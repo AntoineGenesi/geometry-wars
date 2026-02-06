@@ -26,6 +26,8 @@ import { PauseMenu } from './ui/PauseMenu';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
+import { getSoundEngine } from './audio/SoundEngine';
+import { BackgroundMusic } from './audio/BackgroundMusic';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -205,6 +207,7 @@ function checkBulletEnemyCollisions(
           particles.enemyDeath(enemy.position, color);
           scoreManager.awardKill(enemy.scoreValue, enemyType);
           screenShake.shake(0.15, 0.15);
+          getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
 
           // Spawn geoms at death position
           const { u, v } = surface.worldToSurface(enemy.position);
@@ -241,6 +244,7 @@ function checkGeomPickups(
       scoreManager.collectGeom();
       // Green sparkle effect on collection
       particles.geomCollect(position);
+      getSoundEngine().play('geomPickup', { pitch: 0.9 + Math.random() * 0.2 });
     }
   });
 }
@@ -268,10 +272,12 @@ function checkPlayerEnemyCollisions(
         enemy.takeDamage(999);
         particles.bulletImpact(enemy.position);
         screenShake.shake(0.2, 0.15);
+        getSoundEngine().play('shieldHit');
       } else {
         player.die();
         particles.playerDeath(player.mesh.position);
         screenShake.shake(0.5, 0.4);
+        getSoundEngine().play('playerDeath');
         break;
       }
     }
@@ -283,6 +289,13 @@ function checkPlayerEnemyCollisions(
 // ---------------------------------------------------------------------------
 
 function main(selectedSurface?: SurfaceType): void {
+  // Initialize sound engine (user already clicked start menu, so audio context is allowed)
+  const sound = getSoundEngine();
+  sound.init();
+  sound.resume();
+
+  const bgMusic = new BackgroundMusic();
+
   // Load level (default to level 1)
   const levelIndex = 0;
   const level: LevelDefinition = ADVENTURE_LEVELS[levelIndex];
@@ -807,6 +820,10 @@ function main(selectedSurface?: SurfaceType): void {
     // Update grid deformation springs
     surface.updateGrid(dt);
 
+    // Scale music intensity with enemy count
+    const enemyCount = enemySpawner.getActiveCount();
+    bgMusic.setIntensity(Math.min(enemyCount / 30, 1.0));
+
     // Clear per-frame input flags
     input.endFrame();
   };
@@ -848,6 +865,7 @@ function main(selectedSurface?: SurfaceType): void {
   // -- Grid deformation on bullet fire --
   player.onShoot = (origin: THREE.Vector3) => {
     surface.applyForce(origin, 0.1, 0.3);
+    sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
   };
 
   // -- Bomb: massive effects + clear screen --
@@ -856,6 +874,7 @@ function main(selectedSurface?: SurfaceType): void {
     surface.applyForce(pos, 0.5, 3.0);
     particles.bombExplosion(pos);
     screenShake.shake(0.3, 0.3);
+    sound.play('bomb');
 
     // Kill all enemies on screen (bombs award no points)
     const enemies = enemySpawner.getEnemies();
@@ -884,6 +903,12 @@ function main(selectedSurface?: SurfaceType): void {
     screenShake.shake(0.5, 0.4);
     scoreManager.onPlayerDeath();
   };
+
+  // -- Start background music --
+  const audioCtx = sound.getAudioContext();
+  if (audioCtx) {
+    bgMusic.start(audioCtx);
+  }
 
   // -- Start --
   game.start();
