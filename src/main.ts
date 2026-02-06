@@ -24,6 +24,10 @@ import { SuperStatePickup } from './weapons/SuperStatePickup';
 import { WeaponManager } from './weapons/WeaponManager';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
 import { WeaponPickup, getRandomWeaponType } from './weapons/WeaponPickup';
+import { Spawner } from './entities/enemies/Spawner';
+import { TitanGrunt } from './entities/enemies/TitanGrunt';
+import { TitanSpinner } from './entities/enemies/TitanSpinner';
+import { TitanWeaver } from './entities/enemies/TitanWeaver';
 import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { GameOverScreen } from './ui/GameOverScreen';
@@ -605,6 +609,34 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Wire up enemy death handler --
   BaseEnemy.onDeath = (_position: THREE.Vector3, _score: number, _geoms: number) => {
     // Handled in checkBulletEnemyCollisions above
+  };
+
+  // -- Spawner: periodically spawns wanderers --
+  Spawner.onSpawnEnemy = (u: number, v: number) => {
+    enemySpawner.spawn('wanderer', u, v);
+  };
+
+  // -- Titan death spawns: spawn smaller versions on death --
+  TitanGrunt.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const offsetU = (Math.random() - 0.5) * 0.06;
+      const offsetV = (Math.random() - 0.5) * 0.06;
+      enemySpawner.spawn('grunt', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    }
+  };
+  TitanSpinner.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const offsetU = (Math.random() - 0.5) * 0.06;
+      const offsetV = (Math.random() - 0.5) * 0.06;
+      enemySpawner.spawn('spinner', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    }
+  };
+  TitanWeaver.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const offsetU = (Math.random() - 0.5) * 0.06;
+      const offsetV = (Math.random() - 0.5) * 0.06;
+      enemySpawner.spawn('weaver', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    }
   };
 
   // -- Respawn timer --

@@ -12,10 +12,18 @@ import { Snake } from './Snake';
 import { Repulsor } from './Repulsor';
 import { GravityWell } from './GravityWell';
 import { Gate } from './Gate';
+import { Painter } from './Painter';
+import { Virus } from './Virus';
+import { Spawner } from './Spawner';
+import { TitanGrunt } from './TitanGrunt';
+import { TitanSpinner } from './TitanSpinner';
+import { TitanWeaver } from './TitanWeaver';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
-  | 'weaver' | 'spinner' | 'snake' | 'repulsor' | 'gravity_well' | 'gate';
+  | 'weaver' | 'spinner' | 'snake' | 'repulsor' | 'gravity_well' | 'gate'
+  | 'painter' | 'virus' | 'spawner' | 'titan_grunt' | 'titan_spinner' | 'titan_weaver'
+  | 'boss_sapphire' | 'boss_ruby' | 'boss_emerald' | 'boss_topaz' | 'boss_amethyst' | 'boss_opal';
 
 export interface SpawnRegion {
   minU?: number;
@@ -163,6 +171,24 @@ export class EnemySpawner {
         break;
       case 'gate':
         enemy = new Gate(u, v);
+        break;
+      case 'painter':
+        enemy = new Painter(u, v);
+        break;
+      case 'virus':
+        enemy = new Virus(u, v);
+        break;
+      case 'spawner':
+        enemy = new Spawner(u, v);
+        break;
+      case 'titan_grunt':
+        enemy = new TitanGrunt(u, v);
+        break;
+      case 'titan_spinner':
+        enemy = new TitanSpinner(u, v);
+        break;
+      case 'titan_weaver':
+        enemy = new TitanWeaver(u, v);
         break;
       default:
         enemy = new Wanderer(u, v);
