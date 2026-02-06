@@ -80,6 +80,17 @@ const weaponEl = document.getElementById('weapon-display')!;
 const timerEl = document.getElementById('timer-display')!;
 const levelNameEl = document.getElementById('level-name-display')!;
 const countdownEl = document.getElementById('countdown-overlay')!;
+const flashEl = document.getElementById('screen-flash')!;
+
+/** Flash the screen with a color for visual impact */
+function screenFlash(color: string, duration = 150): void {
+  if (!flashEl) return;
+  flashEl.style.background = color;
+  flashEl.classList.add('active');
+  setTimeout(() => {
+    flashEl.classList.remove('active');
+  }, duration);
+}
 
 function updateUI(player: Player, weaponManager?: WeaponManager): void {
   scoreEl.textContent = player.score.toLocaleString();
@@ -356,6 +367,7 @@ function checkPlayerEnemyCollisions(
         particles.playerDeath(player.mesh.position);
         screenShake.shake(0.5, 0.4);
         getSoundEngine().play('playerDeath');
+        screenFlash('rgba(255, 60, 60, 0.4)', 200);
         break;
       }
     }
@@ -1172,6 +1184,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
               particles.playerDeath(player.mesh.position);
               screenShake.shake(0.5, 0.4);
               getSoundEngine().play('playerDeath');
+              screenFlash('rgba(255, 60, 60, 0.4)', 200);
             }
             painterDamageCooldown = 0.5; // brief cooldown
             break;
@@ -1294,6 +1307,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     particles.bombExplosion(pos);
     screenShake.shake(0.3, 0.3);
     sound.play('bomb');
+    screenFlash('rgba(255, 255, 255, 0.6)', 120);
 
     // Kill all enemies on screen (bombs award no points)
     const enemies = enemySpawner.getEnemies();

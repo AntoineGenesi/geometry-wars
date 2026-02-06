@@ -131,9 +131,22 @@
       letter-spacing: 2px;
       line-height: 8px;
     }
+    #screen-flash {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.05s;
+    }
+    #screen-flash.active {
+      opacity: 1;
+      transition: none;
+    }
   </style>
 </head>
 <body>
+  <div id="screen-flash"></div>
   <div id="ui-overlay">
     <div id="score-display">0</div>
     <div id="multiplier-display">x1</div>
