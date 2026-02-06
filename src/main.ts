@@ -281,6 +281,9 @@ function checkBulletEnemyCollisions(
           screenShake.shake(0.15, 0.15);
           getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
 
+          // Grid deformation at death position
+          surface.applyForce(enemy.position, 0.2, 1.0);
+
           // Spawn geoms at death position
           const { u, v } = surface.worldToSurface(enemy.position);
           for (let g = 0; g < enemy.geomCount; g++) {

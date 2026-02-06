@@ -820,6 +820,7 @@ function main(): void {
             screenShake.shake(0.15, 0.15);
             sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
             scorePopups.spawnScore(enemy.position, enemy.scoreValue, player1.multiplier);
+            surface.applyForce(enemy.position, 0.2, 1.0);
 
             const { u, v } = surface.worldToSurface(enemy.position);
             for (let g = 0; g < enemy.geomCount; g++) {
