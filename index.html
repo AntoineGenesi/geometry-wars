@@ -51,6 +51,15 @@
       font-size: 20px;
       text-shadow: 0 0 8px #ff0;
     }
+    #weapon-display {
+      position: absolute;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 16px;
+      text-shadow: 0 0 8px #ff0;
+      transition: color 0.3s, text-shadow 0.3s;
+    }
   </style>
 </head>
 <body>
@@ -59,6 +68,7 @@
     <div id="multiplier-display">x1</div>
     <div id="lives-display"></div>
     <div id="bombs-display"></div>
+    <div id="weapon-display"></div>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>

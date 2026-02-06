@@ -70,6 +70,8 @@ export class Player {
   // -- Callbacks ------------------------------------------------------------
   /** Called when the player fires; receives nose world position + direction. */
   onShoot?: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
+  /** If set, delegates firing to weapon system instead of default bulletPool. */
+  weaponFireHandler?: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
   /** Called when the player uses a bomb. */
   onBomb?: () => void;
   /** Called when the player dies. */
@@ -284,6 +286,12 @@ export class Player {
     this.mesh.updateMatrixWorld(true);
     const origin = this.getNoseWorldPosition();
     const direction = this.getAimDirection();
+
+    // Delegate to weapon system if handler is set
+    if (this.weaponFireHandler) {
+      this.weaponFireHandler(origin, direction);
+      return;
+    }
 
     this.bulletPool.spawn(
       origin,

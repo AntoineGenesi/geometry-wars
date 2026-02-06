@@ -31,6 +31,9 @@ import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
 import { PauseMenu } from './ui/PauseMenu';
 import { GameOverScreen } from './ui/GameOverScreen';
+import { WeaponManager } from './weapons/WeaponManager';
+import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
+import { WeaponPickup, getRandomWeaponType } from './weapons/WeaponPickup';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -54,8 +57,9 @@ const scoreEl = document.getElementById('score-display')!;
 const multiplierEl = document.getElementById('multiplier-display')!;
 const livesEl = document.getElementById('lives-display')!;
 const bombsEl = document.getElementById('bombs-display')!;
+const weaponEl = document.getElementById('weapon-display')!;
 
-function updateUI(player1: Player, player2: Player): void {
+function updateUI(player1: Player, player2: Player, wm1?: WeaponManager, wm2?: WeaponManager): void {
   const totalScore = player1.score + player2.score;
   scoreEl.textContent = totalScore.toLocaleString();
   multiplierEl.textContent = `P1:x${player1.multiplier} P2:x${player2.multiplier}`;
@@ -72,6 +76,20 @@ function updateUI(player1: Player, player2: Player): void {
     bombsEl.textContent = '\u25cf'.repeat(totalBombs);
   } else {
     bombsEl.textContent = `\u25cf x${totalBombs}`;
+  }
+
+  // Show both players' weapons
+  if (wm1 && wm2) {
+    const parts: string[] = [];
+    const w1 = wm1.getCurrentWeapon();
+    const w2 = wm2.getCurrentWeapon();
+    if (w1 !== WeaponType.Standard) {
+      parts.push(`P1: ${WEAPON_CONFIGS[w1].name} [${wm1.getCurrentAmmo()}]`);
+    }
+    if (w2 !== WeaponType.Standard) {
+      parts.push(`P2: ${WEAPON_CONFIGS[w2].name} [${wm2.getCurrentAmmo()}]`);
+    }
+    weaponEl.textContent = parts.join('  |  ');
   }
 }
 
@@ -245,6 +263,48 @@ function main(): void {
 
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
+
+  // -- Weapon managers (one per player) --
+  function createWeaponManager(playerLabel: string): WeaponManager {
+    const wm = new WeaponManager();
+    game.scene.add(wm.getVisualRoot());
+    wm.setCallbacks({
+      getEnemies: () => {
+        return enemySpawner.getEnemies()
+          .filter(e => e.alive && e.mesh)
+          .map((e, i) => ({ position: e.position.clone(), index: i, alive: e.alive }));
+      },
+      onEnemyDamage: (index: number, damage: number, _weaponType: WeaponType) => {
+        const aliveEnemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
+        const enemy = aliveEnemies[index];
+        if (!enemy) return;
+        enemy.takeDamage(damage);
+        if (!enemy.alive) {
+          const color = ENEMY_COLORS[enemy.constructor.name.toLowerCase()] ?? new THREE.Color(0xffffff);
+          particles.enemyDeath(enemy.position, color);
+          scoreManager.awardKill(enemy.scoreValue, enemy.constructor.name.toLowerCase());
+          screenShake.shake(0.15, 0.15);
+          sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+          const { u, v } = surface.worldToSurface(enemy.position);
+          for (let g = 0; g < enemy.geomCount; g++) {
+            geomPool.spawn(u + (Math.random() - 0.5) * 0.03, v + (Math.random() - 0.5) * 0.03);
+          }
+        }
+      },
+      spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {
+        const { u, v } = surface.worldToSurface(origin);
+        const aimAngle = Math.atan2(direction.x, direction.z);
+        bulletPool.spawn(origin, direction, u, v, aimAngle);
+      },
+    });
+    return wm;
+  }
+
+  const weaponManager1 = createWeaponManager('P1');
+  const weaponManager2 = createWeaponManager('P2');
+
+  // -- Weapon pickups --
+  const weaponPickups: WeaponPickup[] = [];
 
   // -- Wave system --
   let waveTimer = 3;
@@ -549,6 +609,14 @@ function main(): void {
             for (let g = 0; g < enemy.geomCount; g++) {
               geomPool.spawn(u + (Math.random() - 0.5) * 0.03, v + (Math.random() - 0.5) * 0.03);
             }
+
+            // ~8% chance to spawn a weapon pickup
+            if (Math.random() < 0.08) {
+              const wpnType = getRandomWeaponType();
+              const wpnPickup = new WeaponPickup(wpnType, u, v);
+              game.scene.add(wpnPickup.mesh);
+              weaponPickups.push(wpnPickup);
+            }
           }
           break;
         }
@@ -582,6 +650,32 @@ function main(): void {
           sound.play('geomPickup', { pitch: 0.9 + Math.random() * 0.2 });
         }
       });
+    }
+
+    // Update weapon managers
+    weaponManager1.update(dt);
+    weaponManager2.update(dt);
+
+    // Update weapon pickups
+    for (let i = weaponPickups.length - 1; i >= 0; i--) {
+      const wp = weaponPickups[i];
+      if (!wp.active) {
+        game.scene.remove(wp.mesh);
+        wp.dispose();
+        weaponPickups.splice(i, 1);
+        continue;
+      }
+      wp.update(dt, game.clock.totalTime);
+      wp.applySurfaceTransform(getTransform);
+
+      // Check both players for pickup collision
+      for (const [player, wm] of [[player1, weaponManager1], [player2, weaponManager2]] as const) {
+        if (player.alive && wp.active && wp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
+          wm.equipWeapon(wp.type);
+          sound.play('weaponPickup');
+          wp.active = false;
+        }
+      }
     }
 
     // Scale music intensity
@@ -618,14 +712,24 @@ function main(): void {
       });
     }
 
-    updateUI(player1, player2);
+    updateUI(player1, player2, weaponManager1, weaponManager2);
   };
 
   // -- Player callbacks --
-  for (const player of [player1, player2]) {
-    player.onShoot = (origin: THREE.Vector3) => {
-      surface.applyForce(origin, 0.1, 0.3);
-      sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
+  const playerWeaponManagers: [Player, WeaponManager][] = [
+    [player1, weaponManager1],
+    [player2, weaponManager2],
+  ];
+
+  for (const [player, wm] of playerWeaponManagers) {
+    // Weapon fire handler: delegates all firing to WeaponManager
+    player.weaponFireHandler = (origin: THREE.Vector3, direction: THREE.Vector3) => {
+      const gameTime = game.clock.totalTime;
+      const fired = wm.fire(origin, direction, gameTime);
+      if (fired) {
+        surface.applyForce(origin, 0.1, 0.3);
+        sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
+      }
     };
 
     player.onBomb = () => {

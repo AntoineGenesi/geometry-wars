@@ -21,9 +21,13 @@ import { BaseDrone, DroneType } from './weapons/BaseDrone';
 import { createDrone } from './weapons/DroneFactory';
 import { SuperStateManager, SuperStateType } from './weapons/SuperState';
 import { SuperStatePickup } from './weapons/SuperStatePickup';
+import { WeaponManager } from './weapons/WeaponManager';
+import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
+import { WeaponPickup, getRandomWeaponType } from './weapons/WeaponPickup';
 import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { GameOverScreen } from './ui/GameOverScreen';
+import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
 import { getSoundEngine } from './audio/SoundEngine';
@@ -62,8 +66,9 @@ const scoreEl = document.getElementById('score-display')!;
 const multiplierEl = document.getElementById('multiplier-display')!;
 const livesEl = document.getElementById('lives-display')!;
 const bombsEl = document.getElementById('bombs-display')!;
+const weaponEl = document.getElementById('weapon-display')!;
 
-function updateUI(player: Player, timeRemaining?: number): void {
+function updateUI(player: Player, weaponManager?: WeaponManager): void {
   scoreEl.textContent = player.score.toLocaleString();
   multiplierEl.textContent = `x${player.multiplier}`;
 
@@ -81,6 +86,20 @@ function updateUI(player: Player, timeRemaining?: number): void {
     bombsEl.textContent = '\u25cf'.repeat(bombs);
   } else {
     bombsEl.textContent = `\u25cf x${bombs}`;
+  }
+
+  // Show current weapon + ammo
+  if (weaponManager) {
+    const weapon = weaponManager.getCurrentWeapon();
+    const config = WEAPON_CONFIGS[weapon];
+    const ammo = weaponManager.getCurrentAmmo();
+    if (weapon === WeaponType.Standard) {
+      weaponEl.textContent = '';
+    } else {
+      weaponEl.textContent = `${config.name} [${ammo}]`;
+      weaponEl.style.color = `#${config.color.toString(16).padStart(6, '0')}`;
+      weaponEl.style.textShadow = `0 0 8px #${config.color.toString(16).padStart(6, '0')}`;
+    }
   }
 }
 
@@ -288,7 +307,7 @@ function checkPlayerEnemyCollisions(
 // Bootstrap
 // ---------------------------------------------------------------------------
 
-function main(selectedSurface?: SurfaceType): void {
+function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // Initialize sound engine (user already clicked start menu, so audio context is allowed)
   const sound = getSoundEngine();
   sound.init();
@@ -296,8 +315,8 @@ function main(selectedSurface?: SurfaceType): void {
 
   const bgMusic = new BackgroundMusic();
 
-  // Load level (default to level 1)
-  const levelIndex = 0;
+  // Load level
+  const levelIndex = Math.min(startLevelIndex, ADVENTURE_LEVELS.length - 1);
   const level: LevelDefinition = ADVENTURE_LEVELS[levelIndex];
 
   // -- Game engine --
@@ -330,8 +349,8 @@ function main(selectedSurface?: SurfaceType): void {
   fillLight.position.set(-5, -5, -5);
   game.scene.add(fillLight);
 
-  // -- Surface: use selected surface from menu, URL param, or default --
-  const surfaceType = selectedSurface || getSurfaceTypeFromURL();
+  // -- Surface: use level's surface (adventure mode), or menu selection, or URL param --
+  const surfaceType = selectedSurface || level.surface || getSurfaceTypeFromURL();
   const surfaceConfig = {
     gridColor: 0x006666,
     surfaceColor: 0x0a0020,
@@ -357,8 +376,8 @@ function main(selectedSurface?: SurfaceType): void {
   const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
   game.scene.add(surface.group);
 
-  // Log which surface is being used (for testing verification)
-  console.log(`[Geometry Wars] Surface type: ${surfaceType}`);
+  // Log which surface/level is being used
+  console.log(`[Geometry Wars] Level ${levelIndex + 1}: ${level.name} (${surfaceType})`);
 
   // -- Mesh-based movement system (BVH) --
   // Wraps the surface mesh for shape-agnostic movement queries.
@@ -470,12 +489,27 @@ function main(selectedSurface?: SurfaceType): void {
     starThresholds: level.starThresholds,
   });
 
+  let isLevelComplete = false;
+
   gameMode.onComplete = (stars: number) => {
-    // Level complete - could show UI overlay
+    if (isLevelComplete) return;
+    isLevelComplete = true;
+    bgMusic.stop();
+    sound.play('multiplierUp');
+    setTimeout(() => {
+      levelCompleteScreen.show(
+        levelIndex,
+        level.name,
+        player.score,
+        stars,
+        level.starThresholds,
+        hasNextLevel,
+      );
+    }, 500);
   };
 
   gameMode.onFailed = () => {
-    // Level failed - could show retry UI
+    // Failed is handled by the game over flow (lives depleted)
   };
 
   // -- Drone system --
@@ -518,6 +552,53 @@ function main(selectedSurface?: SurfaceType): void {
   // -- Super state pickups on the field --
   const superPickups: SuperStatePickup[] = [];
 
+  // -- Weapon manager --
+  const weaponManager = new WeaponManager();
+  game.scene.add(weaponManager.getVisualRoot());
+
+  // Wire weapon callbacks
+  weaponManager.setCallbacks({
+    getEnemies: () => {
+      return enemySpawner.getEnemies()
+        .filter(e => e.alive && e.mesh)
+        .map((e, i) => ({
+          position: e.position.clone(),
+          index: i,
+          alive: e.alive,
+        }));
+    },
+    onEnemyDamage: (index: number, damage: number, _weaponType: WeaponType) => {
+      const enemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
+      const enemy = enemies[index];
+      if (!enemy) return;
+      enemy.takeDamage(damage);
+      if (!enemy.alive) {
+        const enemyType = enemy.constructor.name.toLowerCase();
+        const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
+        particles.enemyDeath(enemy.position, color);
+        scoreManager.awardKill(enemy.scoreValue, enemyType);
+        screenShake.shake(0.15, 0.15);
+        getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+
+        const { u, v } = surface.worldToSurface(enemy.position);
+        for (let g = 0; g < enemy.geomCount; g++) {
+          geomPool.spawn(
+            u + (Math.random() - 0.5) * 0.03,
+            v + (Math.random() - 0.5) * 0.03,
+          );
+        }
+      }
+    },
+    spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {
+      const { u, v } = surface.worldToSurface(origin);
+      const aimAngle = Math.atan2(direction.x, direction.z);
+      bulletPool.spawn(origin, direction, u, v, aimAngle);
+    },
+  });
+
+  // -- Weapon pickups on the field --
+  const weaponPickups: WeaponPickup[] = [];
+
   // -- Wire up enemy death handler --
   BaseEnemy.onDeath = (_position: THREE.Vector3, _score: number, _geoms: number) => {
     // Handled in checkBulletEnemyCollisions above
@@ -545,7 +626,31 @@ function main(selectedSurface?: SurfaceType): void {
   // -- Game over screen --
   const gameOverScreen = new GameOverScreen();
   gameOverScreen.onContinue(() => {
-    // Clean up and reload page to go back to menu
+    game.stop();
+    window.location.href = window.location.pathname;
+  });
+
+  // -- Level complete screen --
+  const levelCompleteScreen = new LevelCompleteScreen();
+  const hasNextLevel = levelIndex + 1 < ADVENTURE_LEVELS.length;
+
+  levelCompleteScreen.onNext(() => {
+    game.stop();
+    bgMusic.stop();
+    weaponManager.dispose();
+    levelCompleteScreen.dispose();
+    gameOverScreen.dispose();
+    main(selectedSurface, levelIndex + 1);
+  });
+  levelCompleteScreen.onReplay(() => {
+    game.stop();
+    bgMusic.stop();
+    weaponManager.dispose();
+    levelCompleteScreen.dispose();
+    gameOverScreen.dispose();
+    main(selectedSurface, levelIndex);
+  });
+  levelCompleteScreen.onMenu(() => {
     game.stop();
     window.location.href = window.location.pathname;
   });
@@ -575,7 +680,7 @@ function main(selectedSurface?: SurfaceType): void {
   // -- Fixed timestep game logic --
   game.onFixedUpdate = (dt: number) => {
     // Skip update if paused or game over
-    if (isPaused || isGameOver) return;
+    if (isPaused || isGameOver || isLevelComplete) return;
 
     const inputState = input.getState();
 
@@ -816,6 +921,13 @@ function main(selectedSurface?: SurfaceType): void {
           game.scene.add(pickup.mesh);
           superPickups.push(pickup);
         }
+        // ~8% chance to spawn a weapon pickup on enemy death
+        if (Math.random() < 0.08) {
+          const wpnType = getRandomWeaponType();
+          const wpnPickup = new WeaponPickup(wpnType, u, v);
+          game.scene.add(wpnPickup.mesh);
+          weaponPickups.push(wpnPickup);
+        }
       },
     );
 
@@ -826,12 +938,44 @@ function main(selectedSurface?: SurfaceType): void {
     const fireModifiers = superStateManager.getFireModifiers();
     checkPlayerEnemyCollisions(player, enemies, particles, screenShake, fireModifiers.isShielded);
 
+    // Update weapon manager (projectiles, effects)
+    weaponManager.update(dt);
+
+    // Update weapon pickups
+    for (let i = weaponPickups.length - 1; i >= 0; i--) {
+      const wp = weaponPickups[i];
+      if (!wp.active) {
+        game.scene.remove(wp.mesh);
+        wp.dispose();
+        weaponPickups.splice(i, 1);
+        continue;
+      }
+      wp.update(dt, game.clock.totalTime);
+      wp.applySurfaceTransform(getTransform);
+
+      // Check player collision with weapon pickup
+      if (player.alive && wp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
+        weaponManager.equipWeapon(wp.type);
+        sound.play('weaponPickup');
+        wp.active = false;
+      }
+    }
+
     // Update grid deformation springs
     surface.updateGrid(dt);
 
     // Scale music intensity with enemy count
     const enemyCount = enemySpawner.getActiveCount();
     bgMusic.setIntensity(Math.min(enemyCount / 30, 1.0));
+
+    // Check level completion for non-timed modes (all waves spawned + no enemies alive)
+    if (!isLevelComplete && !isGameOver
+        && level.timeLimit === 0
+        && waveScheduler.allSpawned
+        && enemyCount === 0
+        && gameMode.phase === ModePhase.Playing) {
+      gameMode.completeLevel(player.score);
+    }
 
     // Clear per-frame input flags
     input.endFrame();
@@ -868,13 +1012,20 @@ function main(selectedSurface?: SurfaceType): void {
     }
 
     // Update HUD
-    updateUI(player);
+    updateUI(player, weaponManager);
   };
 
-  // -- Grid deformation on bullet fire --
-  player.onShoot = (origin: THREE.Vector3) => {
-    surface.applyForce(origin, 0.1, 0.3);
-    sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
+  // -- Weapon fire handler: delegates all firing to WeaponManager --
+  player.weaponFireHandler = (origin: THREE.Vector3, direction: THREE.Vector3) => {
+    const gameTime = game.clock.totalTime;
+    const fired = weaponManager.fire(origin, direction, gameTime);
+    if (fired) {
+      surface.applyForce(origin, 0.1, 0.3);
+      sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
+      if (weaponManager.getCurrentWeapon() !== WeaponType.Standard) {
+        sound.play('weaponPickup', { volume: 0.3, pitch: 1.5 });
+      }
+    }
   };
 
   // -- Bomb: massive effects + clear screen --
