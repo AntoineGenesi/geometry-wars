@@ -46,6 +46,18 @@ const MIN_ENEMY_SEPARATION = 0.05;
 // Max attempts to find valid spawn position
 const MAX_SPAWN_ATTEMPTS = 20;
 
+/** Spawn warning indicator - pulsing ring at spawn location */
+interface SpawnWarning {
+  mesh: THREE.Mesh;
+  u: number;
+  v: number;
+  age: number;
+  duration: number;
+  type: EnemyType;
+}
+
+const SPAWN_WARNING_DURATION = 0.8; // seconds before enemy materializes
+
 export class EnemySpawner {
   private scene: THREE.Scene;
   private enemies: BaseEnemy[] = [];
@@ -60,6 +72,11 @@ export class EnemySpawner {
   private playerU: number = 0;
   private playerV: number = 0;
 
+  // Spawn warning indicators
+  private spawnWarnings: SpawnWarning[] = [];
+  private static warningGeometry: THREE.RingGeometry | null = null;
+  private static warningMaterial: THREE.MeshBasicMaterial | null = null;
+
   constructor(
     scene: THREE.Scene,
     getTransform: (u: number, v: number) => {
@@ -71,6 +88,20 @@ export class EnemySpawner {
   ) {
     this.scene = scene;
     this.getTransform = getTransform;
+
+    // Shared warning geometry/material
+    if (!EnemySpawner.warningGeometry) {
+      EnemySpawner.warningGeometry = new THREE.RingGeometry(0.2, 0.35, 16);
+    }
+    if (!EnemySpawner.warningMaterial) {
+      EnemySpawner.warningMaterial = new THREE.MeshBasicMaterial({
+        color: 0xff4444,
+        transparent: true,
+        opacity: 0.8,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+    }
   }
 
   /** Set player position for spawn distance calculations */
@@ -213,12 +244,31 @@ export class EnemySpawner {
         enemy = new Wanderer(u, v);
     }
 
+    // Create spawn warning indicator first
+    const warningMesh = new THREE.Mesh(
+      EnemySpawner.warningGeometry!,
+      EnemySpawner.warningMaterial!.clone(),
+    );
+    const t = this.getTransform(u, v);
+    warningMesh.position.copy(t.position).addScaledVector(t.normal, 0.05);
+    warningMesh.lookAt(warningMesh.position.clone().add(t.normal));
+    this.scene.add(warningMesh);
+
+    this.spawnWarnings.push({
+      mesh: warningMesh,
+      u, v,
+      age: 0,
+      duration: SPAWN_WARNING_DURATION,
+      type,
+    });
+
     // Apply initial surface transform
     enemy.applySurfaceTransform(this.getTransform);
 
-    // Add to scene if mesh exists
+    // Start hidden - materializes when warning completes
     if (enemy.mesh) {
       this.scene.add(enemy.mesh);
+      enemy.mesh.visible = false;
     }
 
     // Painter trail visuals need separate scene group
@@ -226,7 +276,7 @@ export class EnemySpawner {
       this.scene.add(enemy.trailRoot);
     }
 
-    // Add to enemies list
+    // Add to enemies list (but hidden/invulnerable during warning)
     this.enemies.push(enemy);
 
     return enemy;
@@ -258,12 +308,59 @@ export class EnemySpawner {
     // Track player position for spawn calculations
     this.setPlayerPosition(playerU, playerV);
 
+    // Update spawn warnings
+    for (let i = this.spawnWarnings.length - 1; i >= 0; i--) {
+      const warning = this.spawnWarnings[i];
+      warning.age += dt;
+      const progress = warning.age / warning.duration;
+
+      if (progress >= 1) {
+        // Warning complete - materialize the enemy
+        this.scene.remove(warning.mesh);
+        (warning.mesh.material as THREE.MeshBasicMaterial).dispose();
+        this.spawnWarnings.splice(i, 1);
+
+        // Make enemy visible (find the hidden enemy at this position)
+        for (const enemy of this.enemies) {
+          if (enemy.mesh && !enemy.mesh.visible
+              && Math.abs(enemy.surfacePosition.u - warning.u) < 0.001
+              && Math.abs(enemy.surfacePosition.v - warning.v) < 0.001) {
+            enemy.mesh.visible = true;
+            // Scale-in effect
+            enemy.mesh.scale.setScalar(0.01);
+            break;
+          }
+        }
+      } else {
+        // Animate warning: pulse scale + fade
+        const pulse = 1 + Math.sin(progress * Math.PI * 6) * 0.3;
+        const scale = (1 - progress) * 1.5 + 0.5;
+        warning.mesh.scale.setScalar(scale * pulse);
+        (warning.mesh.material as THREE.MeshBasicMaterial).opacity =
+          0.4 + Math.sin(progress * Math.PI * 4) * 0.4;
+
+        // Reposition on surface (in case surface moves)
+        const t = this.getTransform(warning.u, warning.v);
+        warning.mesh.position.copy(t.position).addScaledVector(t.normal, 0.05);
+        warning.mesh.lookAt(warning.mesh.position.clone().add(t.normal));
+      }
+    }
+
     // Update all enemies
     for (const enemy of this.enemies) {
       if (enemy.active) {
+        // Skip updating enemies that haven't materialized yet
+        if (enemy.mesh && !enemy.mesh.visible) continue;
+
         enemy.setPlayerPosition(playerU, playerV);
         enemy.update(dt);
         enemy.applySurfaceTransform(this.getTransform);
+
+        // Scale-in newly materialized enemies
+        if (enemy.mesh && enemy.mesh.scale.x < 1) {
+          const newScale = Math.min(1, enemy.mesh.scale.x + dt * 3);
+          enemy.mesh.scale.setScalar(newScale);
+        }
       }
     }
 
@@ -297,6 +394,13 @@ export class EnemySpawner {
       enemy.destroy();
     }
     this.enemies = [];
+
+    // Clean up any active spawn warnings
+    for (const warning of this.spawnWarnings) {
+      this.scene.remove(warning.mesh);
+      (warning.mesh.material as THREE.MeshBasicMaterial).dispose();
+    }
+    this.spawnWarnings = [];
   }
 
   getActiveCount(): number {

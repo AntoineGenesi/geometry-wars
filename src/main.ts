@@ -238,6 +238,8 @@ function checkBulletEnemyCollisions(
   bulletPool.forEachActive((bulletIdx, bulletPos) => {
     for (const enemy of enemies) {
       if (!enemy.active || !enemy.alive) continue;
+      // Skip enemies still spawning (mesh hidden)
+      if (enemy.mesh && !enemy.mesh.visible) continue;
 
       const dist = bulletPos.distanceTo(enemy.position);
       if (dist < enemy.radius + 0.15) {
@@ -334,6 +336,8 @@ function checkPlayerEnemyCollisions(
 
   for (const enemy of enemies) {
     if (!enemy.active) continue;
+    // Skip enemies still spawning (mesh hidden)
+    if (enemy.mesh && !enemy.mesh.visible) continue;
 
     const dist = player.mesh.position.distanceTo(enemy.position);
     if (dist < player.mesh.scale.x * 0.3 + enemy.radius) {
