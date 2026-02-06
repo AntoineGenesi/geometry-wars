@@ -29,6 +29,8 @@ import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
+import { PauseMenu } from './ui/PauseMenu';
+import { GameOverScreen } from './ui/GameOverScreen';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -253,14 +255,58 @@ function main(): void {
   let p2RespawnTimer = 0;
   const RESPAWN_DELAY = 1.5;
 
+  // -- Pause & Game Over --
+  let isPaused = false;
+  let isGameOver = false;
+
+  const pauseMenu = new PauseMenu();
+  pauseMenu.onResume(() => { isPaused = false; });
+  pauseMenu.onExit(() => {
+    game.stop();
+    bgMusic.stop();
+    window.location.href = window.location.pathname;
+  });
+
+  const gameOverScreen = new GameOverScreen();
+  gameOverScreen.onContinue(() => {
+    game.stop();
+    bgMusic.stop();
+    window.location.href = window.location.pathname;
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !isGameOver) {
+      if (isPaused) {
+        isPaused = false;
+        pauseMenu.hide();
+      } else {
+        isPaused = true;
+        pauseMenu.show();
+      }
+    }
+  });
+
   // -- Fixed update loop --
   game.onFixedUpdate = (dt: number) => {
+    if (isPaused || isGameOver) return;
+
     const p1Input = input.getPlayer1State();
     const p2Input = input.getPlayer2State();
 
     // -----------------------------------------------------------------------
-    // Handle respawns
+    // Handle respawns and game over
     // -----------------------------------------------------------------------
+
+    // Game over: both players out of lives
+    const bothDead = !player1.alive && player1.lives <= 0 && !player2.alive && player2.lives <= 0;
+    if (bothDead && !isGameOver) {
+      isGameOver = true;
+      bgMusic.stop();
+      setTimeout(() => {
+        gameOverScreen.show(player1.score + player2.score, surfaceType);
+      }, 1000);
+      return;
+    }
 
     if (!player1.alive && player1.lives > 0) {
       p1RespawnTimer += dt;

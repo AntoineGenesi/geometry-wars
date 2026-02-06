@@ -550,7 +550,7 @@ function main(selectedSurface?: SurfaceType): void {
     window.location.href = window.location.pathname;
   });
 
-  // -- Escape key handler for pause --
+  // -- Keyboard handlers (pause, mute) --
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && !isGameOver) {
       if (isPaused) {
@@ -559,6 +559,15 @@ function main(selectedSurface?: SurfaceType): void {
       } else {
         isPaused = true;
         pauseMenu.show();
+      }
+    }
+    // M = toggle mute
+    if (e.key === 'm' || e.key === 'M') {
+      sound.muted = !sound.muted;
+      if (sound.muted) {
+        bgMusic.volume = 0;
+      } else {
+        bgMusic.volume = 0.3;
       }
     }
   });
