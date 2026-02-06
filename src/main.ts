@@ -977,15 +977,17 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
       const playerNormal = playerWalker.normal;
 
-      // Camera follows player along surface normal
+      // Camera follows player along surface normal (smoothly lerped)
       const cameraDistance = 15;
-      game.camera.position.copy(playerWalker.position)
+      const CAMERA_LERP_FACTOR = 0.12;
+      const targetCamPos = playerWalker.position.clone()
         .addScaledVector(playerNormal, cameraDistance);
+      game.camera.position.lerp(targetCamPos, CAMERA_LERP_FACTOR);
       game.camera.lookAt(playerWalker.position);
 
-      // Set camera up to surface tangent (prevents flipping)
+      // Smooth camera up from persistent tangent frame (no discontinuity on torus)
       const frame = playerWalker.getTangentFrame();
-      game.camera.up.copy(frame.bitangent);
+      game.camera.up.lerp(frame.bitangent, CAMERA_LERP_FACTOR).normalize();
 
       // Calculate aim from mouse in screen space
       const camRight = new THREE.Vector3();

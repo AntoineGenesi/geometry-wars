@@ -32,6 +32,8 @@ interface BulletData {
   dirZ: number;
   /** Sphere radius for projection (captured at spawn). */
   sphereRadius: number;
+  /** Player who fired this bullet (-1 = unowned, 0 = P1, 1 = P2, etc.) */
+  ownerId: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,6 +98,7 @@ export class BulletPool {
         dirY: 0,
         dirZ: 0,
         sphereRadius: DEFAULT_SPHERE_RADIUS,
+        ownerId: -1,
       });
     }
   }
@@ -144,6 +147,7 @@ export class BulletPool {
     surfaceU: number,
     surfaceV: number,
     angle: number,
+    ownerId: number = -1,
   ): void {
     const idx = this.findInactive();
     if (idx < 0) return; // pool exhausted
@@ -158,6 +162,7 @@ export class BulletPool {
     b.dirY = direction.y;
     b.dirZ = direction.z;
     b.sphereRadius = origin.length(); // Use spawn distance as radius
+    b.ownerId = ownerId;
 
     const line = this.lines[idx];
     line.position.copy(origin);

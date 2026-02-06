@@ -31,6 +31,11 @@ export class MeshWalker {
   normal: THREE.Vector3;
   faceIndex: number;
 
+  /** Persistent tangent frame that smoothly rotates with the surface.
+   *  Avoids the discontinuity of recomputing from scratch each frame. */
+  private _tangent: THREE.Vector3;
+  private _bitangent: THREE.Vector3;
+
   /** Movement speed in world units per second */
   speed: number;
 
@@ -52,13 +57,24 @@ export class MeshWalker {
       this.normal = new THREE.Vector3(0, 1, 0);
       this.faceIndex = 0;
     }
+
+    // Initialize tangent frame
+    const frame = surface.getTangentFrame(this.normal);
+    this._tangent = frame.tangent.clone();
+    this._bitangent = frame.bitangent.clone();
   }
 
   /**
    * Get the current tangent frame at the walker's position.
+   * Uses the persistent tangent that smoothly rotates with the surface,
+   * avoiding discontinuities on shapes like torus.
    */
   getTangentFrame(): TangentFrame {
-    return this.surface.getTangentFrame(this.normal);
+    return {
+      normal: this.normal.clone(),
+      tangent: this._tangent.clone(),
+      bitangent: this._bitangent.clone(),
+    };
   }
 
   /**
@@ -80,6 +96,7 @@ export class MeshWalker {
 
     if (result) {
       this.position.copy(result.point);
+      this._updateTangentFrame(result.normal);
       this.normal.copy(result.normal);
       this.faceIndex = result.faceIndex;
 
@@ -91,6 +108,33 @@ export class MeshWalker {
     }
 
     return result;
+  }
+
+  /**
+   * Update the persistent tangent frame after the normal changes.
+   * Projects the old tangent onto the new normal's plane and re-orthonormalizes.
+   * This avoids the discontinuity of recomputing from a fixed reference vector.
+   */
+  private _updateTangentFrame(newNormal: THREE.Vector3): void {
+    const n = newNormal.clone().normalize();
+
+    // Project old tangent onto new tangent plane (Gram-Schmidt against new normal)
+    const dot = this._tangent.dot(n);
+    this._tangent.sub(n.clone().multiplyScalar(dot));
+
+    const tangentLen = this._tangent.length();
+    if (tangentLen < 0.001) {
+      // Tangent collapsed (normal did a 90-degree flip) - fall back to surface method
+      const fallback = this.surface.getTangentFrame(n);
+      this._tangent.copy(fallback.tangent);
+      this._bitangent.copy(fallback.bitangent);
+      return;
+    }
+
+    this._tangent.multiplyScalar(1 / tangentLen);
+
+    // Recompute bitangent from cross product
+    this._bitangent.crossVectors(n, this._tangent).normalize();
   }
 
   /**

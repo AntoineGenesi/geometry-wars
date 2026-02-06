@@ -47,6 +47,8 @@ import { TitanGrunt } from './entities/enemies/TitanGrunt';
 import { TitanSpinner } from './entities/enemies/TitanSpinner';
 import { TitanWeaver } from './entities/enemies/TitanWeaver';
 import { Boss } from './entities/enemies/Boss';
+import { KillTracker } from './multiplayer/KillTracker';
+import { AuraManager } from './multiplayer/AuraSystem';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -72,7 +74,14 @@ const livesEl = document.getElementById('lives-display')!;
 const bombsEl = document.getElementById('bombs-display')!;
 const weaponEl = document.getElementById('weapon-display')!;
 
-function updateUI(player1: Player, player2: Player, wm1?: WeaponManager, wm2?: WeaponManager): void {
+function updateUI(
+  player1: Player,
+  player2: Player,
+  wm1?: WeaponManager,
+  wm2?: WeaponManager,
+  kt?: KillTracker,
+  am?: AuraManager,
+): void {
   const totalScore = player1.score + player2.score;
   scoreEl.textContent = totalScore.toLocaleString();
   multiplierEl.textContent = `P1:x${player1.multiplier} P2:x${player2.multiplier}`;
@@ -91,9 +100,9 @@ function updateUI(player1: Player, player2: Player, wm1?: WeaponManager, wm2?: W
     bombsEl.textContent = `\u25cf x${totalBombs}`;
   }
 
-  // Show both players' weapons
+  // Show weapons + kill/assist stats
+  const parts: string[] = [];
   if (wm1 && wm2) {
-    const parts: string[] = [];
     const w1 = wm1.getCurrentWeapon();
     const w2 = wm2.getCurrentWeapon();
     if (w1 !== WeaponType.Standard) {
@@ -102,8 +111,21 @@ function updateUI(player1: Player, player2: Player, wm1?: WeaponManager, wm2?: W
     if (w2 !== WeaponType.Standard) {
       parts.push(`P2: ${WEAPON_CONFIGS[w2].name} [${wm2.getCurrentAmmo()}]`);
     }
-    weaponEl.textContent = parts.join('  |  ');
   }
+  if (kt) {
+    const s1 = kt.getPlayerStats(0);
+    const s2 = kt.getPlayerStats(1);
+    parts.push(`P1:${s1.kills}K/${s1.assists}A`);
+    parts.push(`P2:${s2.kills}K/${s2.assists}A`);
+  }
+  if (am) {
+    const t1 = am.getTier(0);
+    const t2 = am.getTier(1);
+    if (t1 > 0 || t2 > 0) {
+      parts.push(`Aura:${t1 > 0 ? 'P1:' + t1 : ''}${t2 > 0 ? ' P2:' + t2 : ''}`);
+    }
+  }
+  weaponEl.textContent = parts.join('  |  ');
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +263,9 @@ function main(): void {
   game.scene.add(scorePopups.root);
   const screenShake = new ScreenShake();
   const scoreManager = new ScoreManager();
+  const killTracker = new KillTracker();
+  const auraManager = new AuraManager();
+  game.scene.add(auraManager.root);
 
   // -- Player 1 (Cyan, WASD + mouse) --
   const player1 = new Player(bulletPool);
@@ -280,6 +305,25 @@ function main(): void {
   // Sync initial positions
   player1.mesh.position.copy(walker1.position);
   player2.mesh.position.copy(walker2.position);
+
+  // Register players with aura system
+  auraManager.registerPlayer(0); // P1
+  auraManager.registerPlayer(1); // P2
+
+  // Aura callbacks
+  auraManager.onHeal = (playerId: number) => {
+    const p = playerId === 0 ? player1 : player2;
+    if (p.lives < 9) {
+      p.lives++;
+      scorePopups.spawn(p.mesh.position, '+HEAL', '#00ff88', 0.5);
+      sound.play('geomPickup', { pitch: 1.4 });
+    }
+  };
+  auraManager.onTierChange = (playerId: number, newTier: number) => {
+    const p = playerId === 0 ? player1 : player2;
+    scorePopups.spawn(p.mesh.position, `AURA LV.${newTier}!`, '#ffff00', 0.7);
+    sound.play('weaponPickup', { pitch: 0.8 + newTier * 0.1 });
+  };
 
   // P2's facing direction (chevron tip). Updated when P2 moves.
   let p2FaceDirection = new THREE.Vector3(0, 0, 1);
@@ -347,7 +391,7 @@ function main(): void {
   };
 
   // -- Weapon managers (one per player) --
-  function createWeaponManager(playerLabel: string): WeaponManager {
+  function createWeaponManager(ownerId: number): WeaponManager {
     const wm = new WeaponManager();
     game.scene.add(wm.getVisualRoot());
     wm.setCallbacks({
@@ -360,7 +404,12 @@ function main(): void {
         const aliveEnemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
         const enemy = aliveEnemies[index];
         if (!enemy) return;
-        enemy.takeDamage(damage);
+
+        // Apply aura damage multiplier
+        const auraBuff = auraManager.getBuffForPlayer(ownerId);
+        const actualDamage = damage * auraBuff.damageMultiplier;
+        enemy.takeDamage(actualDamage, ownerId);
+
         // Hit flash
         if (enemy.alive && enemy.mesh) {
           enemy.mesh.traverse((child: THREE.Object3D) => {
@@ -376,29 +425,69 @@ function main(): void {
           });
         }
         if (!enemy.alive) {
-          const color = ENEMY_COLORS[enemy.constructor.name.toLowerCase()] ?? new THREE.Color(0xffffff);
-          particles.enemyDeath(enemy.position, color);
-          scoreManager.awardKill(enemy.scoreValue, enemy.constructor.name.toLowerCase());
-          screenShake.shake(0.15, 0.15);
-          sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
-          scorePopups.spawnScore(enemy.position, enemy.scoreValue, player1.multiplier);
-          const { u, v } = surface.worldToSurface(enemy.position);
-          for (let g = 0; g < enemy.geomCount; g++) {
-            geomPool.spawn(u + (Math.random() - 0.5) * 0.03, v + (Math.random() - 0.5) * 0.03);
-          }
+          handleEnemyDeath(enemy, ownerId);
         }
       },
       spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {
         const { u, v } = surface.worldToSurface(origin);
         const aimAngle = Math.atan2(direction.x, direction.z);
-        bulletPool.spawn(origin, direction, u, v, aimAngle);
+        bulletPool.spawn(origin, direction, u, v, aimAngle, ownerId);
       },
     });
     return wm;
   }
 
-  const weaponManager1 = createWeaponManager('P1');
-  const weaponManager2 = createWeaponManager('P2');
+  /** Shared enemy death handler with kill/assist attribution */
+  function handleEnemyDeath(enemy: BaseEnemy, killerPlayerId: number): void {
+    const color = ENEMY_COLORS[enemy.constructor.name.toLowerCase()] ?? new THREE.Color(0xffffff);
+    particles.enemyDeath(enemy.position, color);
+    screenShake.shake(0.15, 0.15);
+    sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+    surface.applyForce(enemy.position, 0.2, 1.0);
+
+    // Kill/assist attribution
+    const result = killTracker.processKill(enemy, killerPlayerId);
+
+    // Award kill score to killer
+    const killerPlayer = killerPlayerId === 0 ? player1 : player2;
+    scoreManager.setPlayer(killerPlayer);
+    scoreManager.awardKill(enemy.scoreValue, enemy.constructor.name.toLowerCase());
+    scorePopups.spawnScore(enemy.position, enemy.scoreValue, killerPlayer.multiplier);
+
+    // Award assist score to assisters
+    for (const assistId of result.assistIds) {
+      const assistPlayer = assistId === 0 ? player1 : player2;
+      assistPlayer.addScore(result.assistScore);
+      // Satisfying assist popup (lighter blue, offset slightly)
+      const offsetPos = enemy.position.clone().add(
+        new THREE.Vector3((Math.random() - 0.5) * 0.3, 0.3, (Math.random() - 0.5) * 0.3),
+      );
+      scorePopups.spawn(offsetPos, `+${result.assistScore} ASSIST`, '#44aaff', 0.45);
+    }
+
+    // Spawn geoms
+    const { u, v } = surface.worldToSurface(enemy.position);
+    for (let g = 0; g < enemy.geomCount; g++) {
+      geomPool.spawn(u + (Math.random() - 0.5) * 0.03, v + (Math.random() - 0.5) * 0.03);
+    }
+
+    // Weapon/super state pickup chance
+    if (Math.random() < 0.08) {
+      const wpnType = getRandomWeaponType();
+      const wpnPickup = new WeaponPickup(wpnType, u, v);
+      game.scene.add(wpnPickup.mesh);
+      weaponPickups.push(wpnPickup);
+    }
+    if (Math.random() < 0.05) {
+      const ssType = SUPER_STATE_TYPES[Math.floor(Math.random() * SUPER_STATE_TYPES.length)];
+      const ssPickup = new SuperStatePickup(ssType, u, v);
+      game.scene.add(ssPickup.mesh);
+      superPickups.push(ssPickup);
+    }
+  }
+
+  const weaponManager1 = createWeaponManager(0); // P1 = ownerId 0
+  const weaponManager2 = createWeaponManager(1); // P2 = ownerId 1
 
   // -- Weapon pickups --
   const weaponPickups: WeaponPickup[] = [];
@@ -409,7 +498,9 @@ function main(): void {
 
   if (level.drone) {
     const droneType = level.drone as DroneType;
+    let droneOwnerIdx = 0;
     for (const [drones, label] of [[drones1, 'P1'], [drones2, 'P2']] as const) {
+      const droneOwnerId = droneOwnerIdx++;
       const drone = createDrone(droneType, 0, {
         onShoot: (origin, direction) => {
           const transform = getTransform(origin.u, origin.v);
@@ -421,7 +512,7 @@ function main(): void {
               transform.normal,
             ),
           );
-          bulletPool.spawn(transform.position, dir, origin.u, origin.v, direction);
+          bulletPool.spawn(transform.position, dir, origin.u, origin.v, direction, droneOwnerId);
         },
         onCollectGeom: (u, v) => {
           geomPool.forEachActive((index, _su, _sv, position) => {
@@ -675,9 +766,13 @@ function main(): void {
       game.camera.position.lerp(targetCamPos, CAMERA_LERP);
       game.camera.lookAt(midPos);
 
-      // Camera up from midpoint surface tangent
-      const midFrame = meshSurface.getTangentFrame(midNormal);
-      game.camera.up.copy(midFrame.bitangent);
+      // Camera up: use average of player tangent frames (smooth, no flip)
+      const upTarget = new THREE.Vector3();
+      for (const w of alivePlayers) {
+        upTarget.add(w.getTangentFrame().bitangent);
+      }
+      upTarget.divideScalar(alivePlayers.length).normalize();
+      game.camera.up.lerp(upTarget, CAMERA_LERP).normalize();
     }
 
     // -----------------------------------------------------------------------
@@ -739,6 +834,13 @@ function main(): void {
     screenShake.update(dt);
     surface.updateGrid(dt);
 
+    // Update aura system (proximity buffs)
+    const walkerMap = new Map<number, MeshWalker>();
+    if (player1.alive) walkerMap.set(0, walker1);
+    if (player2.alive) walkerMap.set(1, walker2);
+    const livesMap = new Map<number, number>([[0, player1.lives], [1, player2.lives]]);
+    auraManager.update(dt, walkerMap, killTracker, livesMap);
+
     // Update drones (follow their respective player)
     const enemies = enemySpawner.getEnemies();
     if (player1.alive) {
@@ -787,14 +889,19 @@ function main(): void {
     // Collisions
     // -----------------------------------------------------------------------
 
-    // Bullet-enemy
-    bulletPool.forEachActive((bulletIdx, bulletPos) => {
+    // Bullet-enemy (with ownership tracking)
+    bulletPool.forEachActive((bulletIdx, bulletPos, bulletData) => {
       for (const enemy of enemies) {
         if (!enemy.active || !enemy.alive) continue;
         const dist = bulletPos.distanceTo(enemy.position);
         if (dist < enemy.radius + 0.15) {
           bulletPool.kill(bulletIdx);
-          enemy.takeDamage(1);
+
+          // Apply aura damage multiplier based on bullet owner
+          const auraBuff = auraManager.getBuffForPlayer(bulletData.ownerId);
+          const damage = 1 * auraBuff.damageMultiplier;
+          enemy.takeDamage(damage, bulletData.ownerId);
+
           particles.bulletImpact(bulletPos);
           surface.applyForce(bulletPos, 0.08, 0.3);
 
@@ -814,33 +921,7 @@ function main(): void {
           }
 
           if (!enemy.alive) {
-            const color = ENEMY_COLORS[enemy.constructor.name.toLowerCase()] ?? new THREE.Color(0xffffff);
-            particles.enemyDeath(enemy.position, color);
-            scoreManager.awardKill(enemy.scoreValue, enemy.constructor.name.toLowerCase());
-            screenShake.shake(0.15, 0.15);
-            sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
-            scorePopups.spawnScore(enemy.position, enemy.scoreValue, player1.multiplier);
-            surface.applyForce(enemy.position, 0.2, 1.0);
-
-            const { u, v } = surface.worldToSurface(enemy.position);
-            for (let g = 0; g < enemy.geomCount; g++) {
-              geomPool.spawn(u + (Math.random() - 0.5) * 0.03, v + (Math.random() - 0.5) * 0.03);
-            }
-
-            // ~8% chance to spawn a weapon pickup
-            if (Math.random() < 0.08) {
-              const wpnType = getRandomWeaponType();
-              const wpnPickup = new WeaponPickup(wpnType, u, v);
-              game.scene.add(wpnPickup.mesh);
-              weaponPickups.push(wpnPickup);
-            }
-            // ~5% chance to spawn a super state pickup
-            if (Math.random() < 0.05) {
-              const ssType = SUPER_STATE_TYPES[Math.floor(Math.random() * SUPER_STATE_TYPES.length)];
-              const ssPickup = new SuperStatePickup(ssType, u, v);
-              game.scene.add(ssPickup.mesh);
-              superPickups.push(ssPickup);
-            }
+            handleEnemyDeath(enemy, bulletData.ownerId);
           }
           break;
         }
@@ -939,7 +1020,7 @@ function main(): void {
       });
     }
 
-    updateUI(player1, player2, weaponManager1, weaponManager2);
+    updateUI(player1, player2, weaponManager1, weaponManager2, killTracker, auraManager);
   };
 
   // -- Player callbacks --

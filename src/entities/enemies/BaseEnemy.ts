@@ -3,10 +3,14 @@ import { Entity, CollisionGroup } from '../../core/Entity';
 
 export abstract class BaseEnemy extends Entity {
   health: number;
+  maxHealth: number;
   scoreValue: number;
   geomCount: number;
   speed: number;
   alive: boolean;
+
+  /** Tracks damage dealt by each player (playerId -> total damage). */
+  readonly damageBy: Map<number, number> = new Map();
 
   protected playerU: number = 0.5;
   protected playerV: number = 0.5;
@@ -25,6 +29,7 @@ export abstract class BaseEnemy extends Entity {
     super();
     this.surfacePosition = { u: surfaceU, v: surfaceV };
     this.health = health;
+    this.maxHealth = health;
     this.scoreValue = scoreValue;
     this.geomCount = geomCount;
     this.speed = speed;
@@ -33,8 +38,12 @@ export abstract class BaseEnemy extends Entity {
     this.collisionGroup = CollisionGroup.Enemy;
   }
 
-  takeDamage(amount: number): void {
+  takeDamage(amount: number, attackerId: number = -1): void {
     this.health -= amount;
+    if (attackerId >= 0) {
+      const prev = this.damageBy.get(attackerId) ?? 0;
+      this.damageBy.set(attackerId, prev + amount);
+    }
     if (this.health <= 0) {
       this.die();
     }
