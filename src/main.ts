@@ -29,6 +29,7 @@ import { TitanGrunt } from './entities/enemies/TitanGrunt';
 import { TitanSpinner } from './entities/enemies/TitanSpinner';
 import { TitanWeaver } from './entities/enemies/TitanWeaver';
 import { Boss } from './entities/enemies/Boss';
+import { ScorePopupManager } from './effects/ScorePopup';
 import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { GameOverScreen } from './ui/GameOverScreen';
@@ -79,6 +80,25 @@ const countdownEl = document.getElementById('countdown-overlay')!;
 function updateUI(player: Player, weaponManager?: WeaponManager): void {
   scoreEl.textContent = player.score.toLocaleString();
   multiplierEl.textContent = `x${player.multiplier}`;
+
+  // Multiplier color scales with value
+  const m = player.multiplier;
+  if (m >= 100) {
+    multiplierEl.style.color = '#ff00ff';
+    multiplierEl.style.textShadow = '0 0 12px #ff00ff';
+  } else if (m >= 50) {
+    multiplierEl.style.color = '#ff8800';
+    multiplierEl.style.textShadow = '0 0 10px #ff8800';
+  } else if (m >= 20) {
+    multiplierEl.style.color = '#ffff00';
+    multiplierEl.style.textShadow = '0 0 8px #ffff00';
+  } else if (m >= 5) {
+    multiplierEl.style.color = '#00ff88';
+    multiplierEl.style.textShadow = '0 0 8px #00ff88';
+  } else {
+    multiplierEl.style.color = '#0f0';
+    multiplierEl.style.textShadow = '0 0 8px #0f0';
+  }
 
   // Show hearts up to 5, then show number
   const lives = Math.max(0, player.lives);
@@ -210,6 +230,7 @@ function checkBulletEnemyCollisions(
   surface: Surface,
   screenShake: ScreenShake,
   onEnemyKilled?: (u: number, v: number) => void,
+  scorePopups?: ScorePopupManager,
 ): void {
   bulletPool.forEachActive((bulletIdx, bulletPos) => {
     for (const enemy of enemies) {
@@ -227,12 +248,31 @@ function checkBulletEnemyCollisions(
         // Grid deformation at impact point
         surface.applyForce(bulletPos, 0.08, 0.3);
 
+        // Hit flash: briefly flash enemy mesh white
+        if (enemy.alive && enemy.mesh) {
+          enemy.mesh.traverse((child) => {
+            if (child instanceof THREE.Mesh && child.material) {
+              const mat = child.material as THREE.MeshStandardMaterial;
+              if (mat.emissive) {
+                const origEmissive = mat.emissive.getHex();
+                mat.emissive.setHex(0xffffff);
+                mat.emissiveIntensity = 2.0;
+                setTimeout(() => {
+                  mat.emissive.setHex(origEmissive);
+                  mat.emissiveIntensity = 0.5;
+                }, 80);
+              }
+            }
+          });
+        }
+
         if (!enemy.alive) {
           // Enemy died
           const enemyType = enemy.constructor.name.toLowerCase();
           const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
           particles.enemyDeath(enemy.position, color);
           scoreManager.awardKill(enemy.scoreValue, enemyType);
+          scorePopups?.spawnScore(enemy.position.clone(), enemy.scoreValue);
           screenShake.shake(0.15, 0.15);
           getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
 
@@ -475,6 +515,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Particle system --
   const particles = new ParticleSystem(5000);
   game.scene.add(particles.root);
+
+  // -- Score popups --
+  const scorePopups = new ScorePopupManager();
+  game.scene.add(scorePopups.root);
 
   // -- Screen shake --
   const screenShake = new ScreenShake();
@@ -905,8 +949,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Update geoms
     geomPool.update(dt, player.surfaceU, player.surfaceV, game.clock.totalTime);
 
-    // Update particles
+    // Update particles and score popups
     particles.update(dt);
+    scorePopups.update(dt);
 
     // Update player glow trail (add point at player position)
     if (player.alive) {
@@ -1028,6 +1073,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
           weaponPickups.push(wpnPickup);
         }
       },
+      scorePopups,
     );
 
     // Player vs geoms
