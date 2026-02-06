@@ -14,7 +14,7 @@ import { ScreenShake } from './effects/ScreenShake';
 import { GlowTrail } from './effects/GlowTrail';
 import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
 import { ScoreManager } from './core/ScoreManager';
-import { GameMode, ModePhase } from './core/GameMode';
+import { GameMode, GameModeType, ModePhase, MODE_DEFAULTS } from './core/GameMode';
 import type { WaveDefinition, LevelDefinition } from './core/LevelData';
 import { ADVENTURE_LEVELS } from './core/LevelData';
 import { BaseDrone, DroneType } from './weapons/BaseDrone';
@@ -533,13 +533,15 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const waveScheduler = new WaveScheduler(level.waves);
 
   // -- Game mode --
+  const modeType = level.mode as GameModeType;
+  const modeDefaults = MODE_DEFAULTS[modeType] || {};
   const gameMode = new GameMode({
-    type: level.mode as any,
+    type: modeType,
     timeLimit: level.timeLimit,
     lives: level.lives,
     bombs: level.bombs,
     supers: level.supers,
-    canShoot: true,
+    canShoot: modeDefaults.canShoot !== undefined ? modeDefaults.canShoot : true,
     starThresholds: level.starThresholds,
   });
 
@@ -564,6 +566,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   gameMode.onFailed = () => {
     // Failed is handled by the game over flow (lives depleted)
+  };
+
+  gameMode.onTimeBonus = (seconds: number) => {
+    // Show time bonus popup at player position
+    scorePopups.spawn(player.mesh.position.clone(), `+${seconds}s`, '#00ffff', 0.6);
+    sound.play('multiplierUp');
   };
 
   // -- Drone system --
@@ -757,6 +765,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // -- Painter trail damage cooldown --
   let painterDamageCooldown = 0;
+
+  // -- Checkpoint wave-clear tracking --
+  let lastEnemyCount = 0;
+  let hadEnemies = false;
 
   // -- Game state --
   let isPaused = false;
@@ -966,7 +978,11 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       player.mesh.updateMatrixWorld(true);
 
       // Player update (shooting, bombs, etc.)
-      player.update(dt, inputState);
+      // Pacifism mode: no shooting allowed
+      const effectiveInput = !gameMode.config.canShoot
+        ? { ...inputState, shooting: false }
+        : inputState;
+      player.update(dt, effectiveInput);
     }
 
     // Spawn enemy waves
@@ -1182,6 +1198,15 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Scale music intensity with enemy count
     const enemyCount = enemySpawner.getActiveCount();
     bgMusic.setIntensity(Math.min(enemyCount / 30, 1.0));
+
+    // Checkpoint mode: detect wave clears (enemies went from >0 to 0)
+    if (modeType === GameModeType.Checkpoint && gameMode.phase === ModePhase.Playing) {
+      if (hadEnemies && enemyCount === 0 && lastEnemyCount > 0) {
+        gameMode.waveClear();
+      }
+      if (enemyCount > 0) hadEnemies = true;
+    }
+    lastEnemyCount = enemyCount;
 
     // Check level completion for non-timed modes (all waves spawned + no enemies alive)
     if (!isLevelComplete && !isGameOver
