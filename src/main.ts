@@ -37,6 +37,7 @@ import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
+import { Minimap } from './ui/Minimap';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
 import { getSoundEngine } from './audio/SoundEngine';
@@ -528,6 +529,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Score popups --
   const scorePopups = new ScorePopupManager();
   game.scene.add(scorePopups.root);
+
+  // -- Minimap --
+  const minimap = new Minimap();
 
   // -- Screen shake --
   const screenShake = new ScreenShake();
@@ -1260,6 +1264,14 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
     // Update HUD
     updateUI(player, weaponManager);
+
+    // Update minimap
+    const minimapEnemies = enemySpawner.getEnemies()
+      .filter(e => e.mesh && e.mesh.visible)
+      .map(e => ({ u: e.surfacePosition.u, v: e.surfacePosition.v, alive: e.alive }));
+    const minimapGeoms: Array<{ u: number; v: number }> = [];
+    geomPool.forEachActive((_i, u, v) => { minimapGeoms.push({ u, v }); });
+    minimap.update(player.surfaceU, player.surfaceV, minimapEnemies, minimapGeoms);
   };
 
   // -- Weapon fire handler: delegates all firing to WeaponManager --
