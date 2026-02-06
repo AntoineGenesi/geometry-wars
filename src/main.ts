@@ -552,6 +552,30 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const scoreManager = new ScoreManager();
   scoreManager.setPlayer(player);
 
+  // Combo display
+  const comboEl = document.getElementById('combo-display')!;
+  scoreManager.onComboChange = (combo: number) => {
+    if (combo >= 3) {
+      comboEl.textContent = `${combo} COMBO`;
+      // Color scales with combo level
+      if (combo >= 20) {
+        comboEl.style.color = '#ff00ff';
+        comboEl.style.textShadow = '0 0 12px #ff00ff';
+      } else if (combo >= 10) {
+        comboEl.style.color = '#ff4400';
+        comboEl.style.textShadow = '0 0 10px #ff4400';
+      } else {
+        comboEl.style.color = '#ff8800';
+        comboEl.style.textShadow = '0 0 8px #ff8800';
+      }
+      // Pop animation
+      comboEl.style.transform = 'scale(1.3)';
+      setTimeout(() => { comboEl.style.transform = 'scale(1)'; }, 100);
+    } else {
+      comboEl.textContent = '';
+    }
+  };
+
   // -- Wave scheduler --
   const waveScheduler = new WaveScheduler(level.waves);
 
@@ -1030,6 +1054,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Update particles and score popups
     particles.update(dt);
     scorePopups.update(dt);
+    scoreManager.updateCombo(dt);
 
     // Update player glow trail (add point at player position)
     if (player.alive) {

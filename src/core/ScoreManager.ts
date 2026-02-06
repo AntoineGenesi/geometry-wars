@@ -25,11 +25,22 @@ export class ScoreManager {
   /** Recent score events for combo display. */
   private readonly recentEvents: ScoreEvent[] = [];
 
+  /** Combo tracking */
+  private comboCount = 0;
+  private comboTimer = 0;
+  private readonly comboWindow = 1.5; // seconds to chain kills
+
+  /** Current combo count (read-only) */
+  get combo(): number { return this.comboCount; }
+
   /** Callback fired whenever score changes (for HUD updates). */
   onScoreChange: ((score: number, multiplier: number) => void) | null = null;
 
   /** Callback fired on each kill (for floating score text). */
   onKill: ((event: ScoreEvent) => void) | null = null;
+
+  /** Callback fired when combo changes (for HUD display). */
+  onComboChange: ((combo: number) => void) | null = null;
 
   setPlayer(player: Player): void {
     this.player = player;
@@ -37,15 +48,24 @@ export class ScoreManager {
 
   /**
    * Called when an enemy is killed. Awards score based on current multiplier.
+   * Combo kills within the time window give bonus score.
    */
   awardKill(basePoints: number, enemyType: string): void {
     if (!this.player) return;
 
-    const multipliedPoints = basePoints * this.player.multiplier;
-    this.player.addScore(basePoints);
+    // Update combo
+    this.comboCount++;
+    this.comboTimer = this.comboWindow;
+
+    // Combo bonus: +10% per combo level (capped at 5x)
+    const comboMultiplier = 1 + Math.min(this.comboCount - 1, 40) * 0.1;
+    const comboPoints = Math.floor(basePoints * comboMultiplier);
+
+    const multipliedPoints = comboPoints * this.player.multiplier;
+    this.player.addScore(comboPoints);
 
     const event: ScoreEvent = {
-      basePoints,
+      basePoints: comboPoints,
       multipliedPoints,
       multiplier: this.player.multiplier,
       enemyType,
@@ -57,7 +77,22 @@ export class ScoreManager {
     }
 
     this.onKill?.(event);
+    this.onComboChange?.(this.comboCount);
     this.onScoreChange?.(this.player.score, this.player.multiplier);
+  }
+
+  /**
+   * Update combo timer. Call each frame.
+   */
+  updateCombo(dt: number): void {
+    if (this.comboTimer > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) {
+        this.comboCount = 0;
+        this.comboTimer = 0;
+        this.onComboChange?.(0);
+      }
+    }
   }
 
   /**
