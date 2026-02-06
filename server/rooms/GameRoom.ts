@@ -5,6 +5,7 @@ import {
   BulletState,
   EnemyState,
   GeomState,
+  WeaponPickupState,
 } from '../schema/GameState';
 
 /** Input message from client */
@@ -34,12 +35,31 @@ const MAX_ENEMIES = 50;
 // Player colors
 const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffff00];
 
+// Weapon configs (server side) - ammo and damage multiplier
+const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number }> = {
+  standard: { ammo: -1, damageMultiplier: 1.0 },
+  spread: { ammo: 50, damageMultiplier: 0.8 },
+  piercing: { ammo: 30, damageMultiplier: 1.5 },
+  homing: { ammo: 20, damageMultiplier: 1.2 },
+  chain_lightning: { ammo: 25, damageMultiplier: 1.0 },
+  plasma_mortar: { ammo: 15, damageMultiplier: 2.0 },
+  gravity_gun: { ammo: 20, damageMultiplier: 0.5 },
+  laser_beam: { ammo: 40, damageMultiplier: 0.6 },
+  black_hole: { ammo: 5, damageMultiplier: 5.0 },
+  tesla_coil: { ammo: 30, damageMultiplier: 0.7 },
+};
+
+const WEAPON_DROP_CHANCE = 0.08; // 8% on enemy death
+const WEAPON_PICKUP_LIFETIME = 20.0; // seconds before despawn
+const WEAPON_TYPES = Object.keys(WEAPON_CONFIGS).filter(t => t !== 'standard');
+
 export class GameRoom extends Room<GameState> {
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private spawnTimer = 0;
   private nextBulletId = 0;
   private nextEnemyId = 0;
   private nextGeomId = 0;
+  private nextPickupId = 0;
   private waveNumber = 0;
 
   onCreate(options: { surfaceType?: string }) {
@@ -124,12 +144,15 @@ export class GameRoom extends Room<GameState> {
       player.score = 0;
       player.multiplier = 1;
       player.alive = true;
+      player.weaponType = 'standard';
+      player.weaponAmmo = -1;
     });
 
     // Clear entities
     this.state.bullets.clear();
     this.state.enemies.clear();
     this.state.geoms.clear();
+    this.state.weaponPickups.clear();
 
     console.log('[GameRoom] Game started!');
   }
@@ -224,6 +247,9 @@ export class GameRoom extends Room<GameState> {
 
     // Check collisions
     this.checkCollisions();
+
+    // Update weapon pickups (age + despawn)
+    this.updateWeaponPickups(dt);
 
     // Spawn enemies
     this.spawnTimer += dt;
@@ -331,20 +357,27 @@ export class GameRoom extends Room<GameState> {
         const dist = Math.sqrt(du * du + dv * dv);
 
         if (dist < 0.05) {
-          // Hit!
-          enemy.health--;
+          // Hit! Apply weapon damage multiplier
+          const owner = this.state.players.get(bullet.ownerId);
+          const weaponCfg = WEAPON_CONFIGS[owner?.weaponType ?? 'standard'] ?? WEAPON_CONFIGS.standard;
+          const damage = Math.ceil(weaponCfg.damageMultiplier);
+          enemy.health -= damage;
+
           if (enemy.health <= 0) {
             enemy.alive = false;
             enemiesToRemove.push(eIndex);
 
-            // Find owner player and add score
-            const owner = this.state.players.get(bullet.ownerId);
             if (owner) {
               owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
             }
 
             // Spawn geom
             this.spawnGeom(enemy.surfaceU, enemy.surfaceV);
+
+            // Chance to spawn weapon pickup
+            if (Math.random() < WEAPON_DROP_CHANCE) {
+              this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+            }
           }
           bulletsToRemove.push(bIndex);
         }
@@ -401,6 +434,29 @@ export class GameRoom extends Room<GameState> {
       });
     });
 
+    // Player-weaponPickup collisions
+    const pickupsToRemove: number[] = [];
+    this.state.players.forEach((player) => {
+      if (!player.alive) return;
+
+      this.state.weaponPickups.forEach((pickup, index) => {
+        if (!pickup.active) return;
+
+        const du = player.surfaceU - pickup.surfaceU;
+        const dv = player.surfaceV - pickup.surfaceV;
+        const dist = Math.sqrt(du * du + dv * dv);
+
+        if (dist < 0.06) {
+          pickup.active = false;
+          pickupsToRemove.push(index);
+
+          const cfg = WEAPON_CONFIGS[pickup.weaponType] ?? WEAPON_CONFIGS.standard;
+          player.weaponType = pickup.weaponType;
+          player.weaponAmmo = cfg.ammo;
+        }
+      });
+    });
+
     // Remove entities (iterate in reverse)
     for (let i = bulletsToRemove.length - 1; i >= 0; i--) {
       this.state.bullets.splice(bulletsToRemove[i], 1);
@@ -410,6 +466,9 @@ export class GameRoom extends Room<GameState> {
     }
     for (let i = geomsToRemove.length - 1; i >= 0; i--) {
       this.state.geoms.splice(geomsToRemove[i], 1);
+    }
+    for (let i = pickupsToRemove.length - 1; i >= 0; i--) {
+      this.state.weaponPickups.splice(pickupsToRemove[i], 1);
     }
   }
 
@@ -521,6 +580,48 @@ export class GameRoom extends Room<GameState> {
       this.state.gameOver = true;
       console.log('[GameRoom] Game Over!');
     }
+  }
+
+  private spawnWeaponPickup(u: number, v: number) {
+    const pickup = new WeaponPickupState();
+    pickup.id = `wp${this.nextPickupId++}`;
+    pickup.surfaceU = u + (Math.random() - 0.5) * 0.04;
+    pickup.surfaceV = v + (Math.random() - 0.5) * 0.04;
+    pickup.weaponType = WEAPON_TYPES[Math.floor(Math.random() * WEAPON_TYPES.length)];
+    pickup.age = 0;
+    pickup.active = true;
+    this.state.weaponPickups.push(pickup);
+  }
+
+  private updateWeaponPickups(dt: number) {
+    const toRemove: number[] = [];
+    this.state.weaponPickups.forEach((pickup, index) => {
+      if (!pickup.active) {
+        toRemove.push(index);
+        return;
+      }
+      pickup.age += dt;
+      if (pickup.age > WEAPON_PICKUP_LIFETIME) {
+        pickup.active = false;
+        toRemove.push(index);
+      }
+    });
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      this.state.weaponPickups.splice(toRemove[i], 1);
+    }
+
+    // Deplete ammo on shooting players
+    this.state.players.forEach((player) => {
+      if (!player.alive || !player.shooting) return;
+      if (player.weaponAmmo > 0) {
+        // Deduct ammo at fire rate (roughly 10 shots/sec)
+        player.weaponAmmo--;
+        if (player.weaponAmmo <= 0) {
+          player.weaponType = 'standard';
+          player.weaponAmmo = -1;
+        }
+      }
+    });
   }
 
   private wrapCoord(v: number): number {

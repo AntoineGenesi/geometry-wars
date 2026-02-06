@@ -14,6 +14,8 @@ export interface NetworkPlayerState {
   alive: boolean;
   shooting: boolean;
   color: number;
+  weaponType: string;
+  weaponAmmo: number;
 }
 
 /** Bullet state from server */
@@ -47,12 +49,23 @@ export interface NetworkGeomState {
   active: boolean;
 }
 
+/** Weapon pickup state from server */
+export interface NetworkWeaponPickupState {
+  id: string;
+  surfaceU: number;
+  surfaceV: number;
+  weaponType: string;
+  age: number;
+  active: boolean;
+}
+
 /** Full game state from server */
 export interface NetworkGameState {
   players: Map<string, NetworkPlayerState>;
   bullets: NetworkBulletState[];
   enemies: NetworkEnemyState[];
   geoms: NetworkGeomState[];
+  weaponPickups: NetworkWeaponPickupState[];
   surfaceType: string;
   waveNumber: number;
   gameTime: number;
@@ -202,6 +215,7 @@ export class NetworkClient {
       bullets: NetworkBulletState[];
       enemies: NetworkEnemyState[];
       geoms: NetworkGeomState[];
+      weaponPickups: NetworkWeaponPickupState[];
       surfaceType: string;
       waveNumber: number;
       gameTime: number;
@@ -214,6 +228,7 @@ export class NetworkClient {
       bullets: Array.from(s.bullets || []),
       enemies: Array.from(s.enemies || []),
       geoms: Array.from(s.geoms || []),
+      weaponPickups: Array.from(s.weaponPickups || []),
       surfaceType: s.surfaceType,
       waveNumber: s.waveNumber,
       gameTime: s.gameTime,

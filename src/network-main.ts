@@ -25,6 +25,7 @@ import {
   NetworkEnemyState,
   NetworkBulletState,
   NetworkGeomState,
+  NetworkWeaponPickupState,
   NetworkGameState,
 } from './network/NetworkClient';
 
@@ -95,6 +96,22 @@ function main() {
   // Enemy tracking
   const enemyMeshes = new Map<string, THREE.Mesh>();
 
+  // Weapon pickup tracking
+  const weaponPickupMeshes = new Map<string, THREE.Mesh>();
+
+  // Weapon pickup colors
+  const WEAPON_COLORS: Record<string, number> = {
+    spread: 0x00ffff,
+    piercing: 0xffffff,
+    homing: 0xff4444,
+    chain_lightning: 0x8844ff,
+    plasma_mortar: 0x44ff00,
+    gravity_gun: 0x880088,
+    laser_beam: 0xff0000,
+    black_hole: 0x220044,
+    tesla_coil: 0x44aaff,
+  };
+
   // Local input
   const input = new InputManager();
 
@@ -123,6 +140,12 @@ function main() {
     'position:fixed;top:10px;left:10px;color:#ff0;font:16px monospace;' +
     'text-shadow:0 0 10px #ff0;z-index:100;';
   document.body.appendChild(playersEl);
+
+  const weaponEl = document.createElement('div');
+  weaponEl.style.cssText =
+    'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);' +
+    'color:#ff0;font:16px monospace;text-shadow:0 0 8px #ff0;z-index:100;';
+  document.body.appendChild(weaponEl);
 
   // Create start button
   const startBtn = document.createElement('button');
@@ -300,10 +323,53 @@ function main() {
       }
     });
 
+    // Sync weapon pickups
+    const activePickupIds = new Set<string>();
+    state.weaponPickups.forEach((pickup: NetworkWeaponPickupState) => {
+      if (!pickup.active) return;
+      activePickupIds.add(pickup.id);
+
+      let mesh = weaponPickupMeshes.get(pickup.id);
+      if (!mesh) {
+        const color = WEAPON_COLORS[pickup.weaponType] ?? 0xffffff;
+        const geo = new THREE.OctahedronGeometry(0.2, 0);
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+        mesh = new THREE.Mesh(geo, mat);
+        scene.add(mesh);
+        weaponPickupMeshes.set(pickup.id, mesh);
+      }
+
+      const sp: SurfacePoint = surface.getPoint(pickup.surfaceU, pickup.surfaceV);
+      mesh.position.copy(sp.position);
+      mesh.position.add(sp.normal.clone().multiplyScalar(0.3));
+      mesh.rotation.y = Date.now() * 0.003;
+      mesh.rotation.x = Date.now() * 0.002;
+
+      // Fade when old
+      if (pickup.age > 15) {
+        (mesh.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - (pickup.age - 15) / 5);
+      }
+    });
+
+    // Remove collected/expired weapon pickups
+    weaponPickupMeshes.forEach((mesh, id) => {
+      if (!activePickupIds.has(id)) {
+        scene.remove(mesh);
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+        weaponPickupMeshes.delete(id);
+      }
+    });
+
     // Update UI
     const localPlayer = state.players.get(localPlayerId);
     if (localPlayer) {
       scoreEl.innerHTML = `Score: ${localPlayer.score}<br>x${localPlayer.multiplier}<br>Lives: ${localPlayer.lives}<br>Bombs: ${localPlayer.bombs}`;
+
+      // Weapon display
+      const wName = localPlayer.weaponType.replace(/_/g, ' ').toUpperCase();
+      const ammoStr = localPlayer.weaponAmmo < 0 ? '' : ` [${localPlayer.weaponAmmo}]`;
+      weaponEl.textContent = wName === 'STANDARD' ? '' : `${wName}${ammoStr}`;
     }
 
     // Player list

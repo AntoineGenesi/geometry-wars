@@ -16,6 +16,8 @@ export class PlayerState extends Schema {
   alive: boolean = true;
   shooting: boolean = false;
   color: number = 0x00ffff;
+  weaponType: string = 'standard';
+  weaponAmmo: number = -1; // -1 = infinite (standard)
 }
 
 defineTypes(PlayerState, {
@@ -31,6 +33,8 @@ defineTypes(PlayerState, {
   alive: 'boolean',
   shooting: 'boolean',
   color: 'number',
+  weaponType: 'string',
+  weaponAmmo: 'number',
 });
 
 /**
@@ -99,6 +103,27 @@ defineTypes(GeomState, {
 });
 
 /**
+ * Weapon pickup state
+ */
+export class WeaponPickupState extends Schema {
+  id: string = '';
+  surfaceU: number = 0;
+  surfaceV: number = 0;
+  weaponType: string = 'spread';
+  age: number = 0;
+  active: boolean = true;
+}
+
+defineTypes(WeaponPickupState, {
+  id: 'string',
+  surfaceU: 'number',
+  surfaceV: 'number',
+  weaponType: 'string',
+  age: 'number',
+  active: 'boolean',
+});
+
+/**
  * Main game state synced across all clients
  */
 export class GameState extends Schema {
@@ -106,6 +131,7 @@ export class GameState extends Schema {
   bullets = new ArraySchema<BulletState>();
   enemies = new ArraySchema<EnemyState>();
   geoms = new ArraySchema<GeomState>();
+  weaponPickups = new ArraySchema<WeaponPickupState>();
 
   surfaceType: string = 'sphere';
   waveNumber: number = 0;
@@ -119,6 +145,7 @@ defineTypes(GameState, {
   bullets: [BulletState],
   enemies: [EnemyState],
   geoms: [GeomState],
+  weaponPickups: [WeaponPickupState],
   surfaceType: 'string',
   waveNumber: 'number',
   gameTime: 'number',
