@@ -38,6 +38,10 @@ import { BaseDrone, DroneType } from './weapons/BaseDrone';
 import { createDrone } from './weapons/DroneFactory';
 import { SuperStateManager, SuperStateType } from './weapons/SuperState';
 import { SuperStatePickup } from './weapons/SuperStatePickup';
+import { ScorePopupManager } from './effects/ScorePopup';
+import { Gate } from './entities/enemies/Gate';
+import { Virus } from './entities/enemies/Virus';
+import { Painter } from './entities/enemies/Painter';
 import { Spawner } from './entities/enemies/Spawner';
 import { TitanGrunt } from './entities/enemies/TitanGrunt';
 import { TitanSpinner } from './entities/enemies/TitanSpinner';
@@ -233,6 +237,8 @@ function main(): void {
   game.scene.add(geomPool.root);
   const particles = new ParticleSystem(5000);
   game.scene.add(particles.root);
+  const scorePopups = new ScorePopupManager();
+  game.scene.add(scorePopups.root);
   const screenShake = new ScreenShake();
   const scoreManager = new ScoreManager();
 
@@ -315,6 +321,31 @@ function main(): void {
     }
   };
 
+  // -- Virus: spawn new virus at killed enemy position (20% chance) --
+  Virus.onInfectKill = (u: number, v: number) => {
+    if (Math.random() < 0.2) {
+      enemySpawner.spawn('virus', u, v);
+    }
+  };
+
+  // -- Gate: detonation effect --
+  Gate.onDetonate = (position: THREE.Vector3, score: number) => {
+    const blastRadius = 3.0;
+    const gateColor = new THREE.Color(0xff8800);
+    const allEnemies = enemySpawner.getEnemies();
+    for (const enemy of allEnemies) {
+      if (enemy.position.distanceTo(position) < blastRadius) {
+        enemy.takeDamage(999);
+        particles.enemyDeath(enemy.position, gateColor);
+      }
+    }
+    scoreManager.awardKill(score, 'Gate');
+    particles.enemyDeath(position, gateColor);
+    screenShake.shake(0.4, 0.3);
+    sound.play('bomb', { volume: 0.6, pitch: 1.2 });
+    scorePopups.spawnScore(position, score, player1.multiplier);
+  };
+
   // -- Weapon managers (one per player) --
   function createWeaponManager(playerLabel: string): WeaponManager {
     const wm = new WeaponManager();
@@ -330,12 +361,27 @@ function main(): void {
         const enemy = aliveEnemies[index];
         if (!enemy) return;
         enemy.takeDamage(damage);
+        // Hit flash
+        if (enemy.alive && enemy.mesh) {
+          enemy.mesh.traverse((child: THREE.Object3D) => {
+            if (child instanceof THREE.Mesh && child.material) {
+              const mat = child.material as THREE.MeshStandardMaterial;
+              if (mat.emissive) {
+                const origEmissive = mat.emissive.getHex();
+                mat.emissive.setHex(0xffffff);
+                mat.emissiveIntensity = 2.0;
+                setTimeout(() => { mat.emissive.setHex(origEmissive); mat.emissiveIntensity = 0.5; }, 80);
+              }
+            }
+          });
+        }
         if (!enemy.alive) {
           const color = ENEMY_COLORS[enemy.constructor.name.toLowerCase()] ?? new THREE.Color(0xffffff);
           particles.enemyDeath(enemy.position, color);
           scoreManager.awardKill(enemy.scoreValue, enemy.constructor.name.toLowerCase());
           screenShake.shake(0.15, 0.15);
           sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+          scorePopups.spawnScore(enemy.position, enemy.scoreValue, player1.multiplier);
           const { u, v } = surface.worldToSurface(enemy.position);
           for (let g = 0; g < enemy.geomCount; g++) {
             geomPool.spawn(u + (Math.random() - 0.5) * 0.03, v + (Math.random() - 0.5) * 0.03);
@@ -689,6 +735,7 @@ function main(): void {
     bulletPool.update(dt);
     geomPool.update(dt, trackU, trackV, game.clock.totalTime);
     particles.update(dt);
+    scorePopups.update(dt);
     screenShake.update(dt);
     surface.updateGrid(dt);
 
@@ -751,12 +798,28 @@ function main(): void {
           particles.bulletImpact(bulletPos);
           surface.applyForce(bulletPos, 0.08, 0.3);
 
+          // Hit flash on damage (enemy still alive)
+          if (enemy.alive && enemy.mesh) {
+            enemy.mesh.traverse((child: THREE.Object3D) => {
+              if (child instanceof THREE.Mesh && child.material) {
+                const mat = child.material as THREE.MeshStandardMaterial;
+                if (mat.emissive) {
+                  const origEmissive = mat.emissive.getHex();
+                  mat.emissive.setHex(0xffffff);
+                  mat.emissiveIntensity = 2.0;
+                  setTimeout(() => { mat.emissive.setHex(origEmissive); mat.emissiveIntensity = 0.5; }, 80);
+                }
+              }
+            });
+          }
+
           if (!enemy.alive) {
             const color = ENEMY_COLORS[enemy.constructor.name.toLowerCase()] ?? new THREE.Color(0xffffff);
             particles.enemyDeath(enemy.position, color);
             scoreManager.awardKill(enemy.scoreValue, enemy.constructor.name.toLowerCase());
             screenShake.shake(0.15, 0.15);
             sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+            scorePopups.spawnScore(enemy.position, enemy.scoreValue, player1.multiplier);
 
             const { u, v } = surface.worldToSurface(enemy.position);
             for (let g = 0; g < enemy.geomCount; g++) {
