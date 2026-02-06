@@ -1,0 +1,277 @@
+import * as THREE from 'three'
+
+export interface SurfacePoint {
+  position: THREE.Vector3
+  normal: THREE.Vector3
+  tangentU: THREE.Vector3
+  tangentV: THREE.Vector3
+}
+
+export interface SpringVertex {
+  restPosition: THREE.Vector3
+  offset: THREE.Vector3
+  velocity: THREE.Vector3
+  damping: number
+  stiffness: number
+}
+
+export interface SurfaceConfig {
+  gridColor?: number
+  surfaceColor?: number
+  surfaceOpacity?: number
+  gridOpacity?: number
+  damping?: number
+  stiffness?: number
+}
+
+const DEFAULT_CONFIG: Required<SurfaceConfig> = {
+  gridColor: 0x00cccc,
+  surfaceColor: 0x110033,
+  surfaceOpacity: 0.15,
+  gridOpacity: 0.8,
+  damping: 0.95,
+  stiffness: 0.2,
+}
+
+export abstract class Surface {
+  readonly mesh: THREE.Mesh
+  readonly gridMesh: THREE.LineSegments
+  readonly gridVertexSprings: SpringVertex[]
+  readonly group: THREE.Group
+  protected readonly config: Required<SurfaceConfig>
+
+  /**
+   * World rotation of the surface. This implements "player-centric" view:
+   * - Player stays at fixed screen position (always visible)
+   * - Surface rotates to simulate player movement
+   * - All entities on surface rotate with it
+   *
+   * This is SHAPE-AGNOSTIC - works for sphere, cube, torus, irregular meshes, etc.
+   */
+  readonly worldRotation: THREE.Quaternion = new THREE.Quaternion()
+
+  /**
+   * The "player front" position in local coordinates (before rotation).
+   * Player is at front of surface (facing camera), not top.
+   * Position gives equal view around the player. Subclasses can override.
+   */
+  protected playerLocalPosition: THREE.Vector3 = new THREE.Vector3(0, 0.7, 0.7).normalize()
+
+  /**
+   * Surface radius (approximate) for calculating player offset from surface.
+   * Subclasses should override this.
+   */
+  protected surfaceRadius: number = 10
+
+  constructor(config?: SurfaceConfig) {
+    this.config = { ...DEFAULT_CONFIG, ...config }
+    this.gridVertexSprings = []
+    this.mesh = this.createMesh()
+    this.gridMesh = this.createGrid()
+    this.initSprings()
+
+    this.group = new THREE.Group()
+    this.group.add(this.mesh)
+    this.group.add(this.gridMesh)
+  }
+
+  // ---------------------------------------------------------------------------
+  // GENERIC ROTATION-BASED MOVEMENT (works for ANY shape)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Rotate the surface based on player input.
+   * This is SHAPE-AGNOSTIC - works for any 3D object.
+   *
+   * Movement input causes the surface to rotate in the opposite direction,
+   * creating the illusion that the player is moving on the surface.
+   *
+   * @param dx - Movement along screen X axis (left/right, -1 to 1)
+   * @param dy - Movement along screen Y axis (up/down = forward/backward, -1 to 1)
+   * @param speed - Movement speed (radians per unit input)
+   */
+  rotateByInput(dx: number, dy: number, speed: number): void {
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return
+
+    // Rotation axes (in world space):
+    // - Moving "forward" (W, dy < 0) = rotate surface around X axis (pitch)
+    // - Moving "right" (D, dx > 0) = rotate surface around Z axis (roll)
+    // The rotation is OPPOSITE to movement direction (surface moves "under" player)
+
+    // FIXED: Negate rotations so player appears to move in the direction pressed
+    // W (dy=-1) should make player go UP/forward on screen, so world rotates DOWN (positive X rotation)
+    // D (dx=+1) should make player go RIGHT, so world rotates LEFT (positive Z rotation)
+    const rotX = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(1, 0, 0),
+      -dy * speed  // Negated: W (dy=-1) gives positive rotation
+    )
+    const rotZ = new THREE.Quaternion().setFromAxisAngle(
+      new THREE.Vector3(0, 0, 1),
+      dx * speed   // Negated: D (dx=+1) gives positive rotation
+    )
+
+    // Apply rotations: first X (forward/back), then Z (left/right)
+    this.worldRotation.premultiply(rotX)
+    this.worldRotation.premultiply(rotZ)
+    this.worldRotation.normalize()
+
+    // Apply to visual group
+    this.group.quaternion.copy(this.worldRotation)
+  }
+
+  /**
+   * Get the player's fixed world position (always at "front" of rotated surface).
+   * This is SHAPE-AGNOSTIC.
+   */
+  getPlayerWorldPosition(): THREE.Vector3 {
+    return this.playerLocalPosition.clone().applyQuaternion(this.worldRotation)
+  }
+
+  /**
+   * Get the surface normal at player's position (for orientation).
+   * This is SHAPE-AGNOSTIC.
+   */
+  getPlayerNormal(): THREE.Vector3 {
+    return this.playerLocalPosition.clone().normalize().applyQuaternion(this.worldRotation)
+  }
+
+  /**
+   * Get tangent vectors at player position for aiming/shooting.
+   */
+  getPlayerTangents(): { tangentU: THREE.Vector3; tangentV: THREE.Vector3 } {
+    // Default tangents for a point at "top" of surface
+    const tangentU = new THREE.Vector3(1, 0, 0).applyQuaternion(this.worldRotation)
+    const tangentV = new THREE.Vector3(0, 0, 1).applyQuaternion(this.worldRotation)
+    return { tangentU, tangentV }
+  }
+
+  /**
+   * Convert world rotation to virtual UV coordinates (for compatibility with UV-based systems).
+   * This allows enemies to "track" the player using UV distance.
+   */
+  getPlayerVirtualUV(): { u: number; v: number } {
+    // Inverse rotation applied to player local position gives "virtual" position
+    const inverseRot = this.worldRotation.clone().invert()
+    const virtualPos = this.playerLocalPosition.clone().applyQuaternion(inverseRot)
+    return this.worldToSurface(virtualPos)
+  }
+
+  /**
+   * Apply world rotation to a local surface point.
+   * Used by getPoint() implementations to transform local coords to world coords.
+   */
+  protected applyWorldRotation(point: SurfacePoint): SurfacePoint {
+    return {
+      position: point.position.applyQuaternion(this.worldRotation),
+      normal: point.normal.applyQuaternion(this.worldRotation),
+      tangentU: point.tangentU.applyQuaternion(this.worldRotation),
+      tangentV: point.tangentV.applyQuaternion(this.worldRotation),
+    }
+  }
+
+  abstract getPoint(u: number, v: number): SurfacePoint
+
+  abstract moveOnSurface(
+    u: number,
+    v: number,
+    du: number,
+    dv: number
+  ): { u: number; v: number }
+
+  abstract worldToSurface(worldPos: THREE.Vector3): { u: number; v: number }
+
+  abstract createMesh(): THREE.Mesh
+
+  abstract createGrid(): THREE.LineSegments
+
+  protected createSurfaceMaterial(): THREE.MeshBasicMaterial {
+    return new THREE.MeshBasicMaterial({
+      color: this.config.surfaceColor,
+      transparent: true,
+      opacity: this.config.surfaceOpacity,
+      side: THREE.FrontSide, // Only render front faces to avoid double-vision on torus/complex shapes
+      depthWrite: true, // Enable depth writing for proper occlusion
+    })
+  }
+
+  protected createGridMaterial(): THREE.LineBasicMaterial {
+    return new THREE.LineBasicMaterial({
+      color: this.config.gridColor,
+      transparent: true,
+      opacity: this.config.gridOpacity,
+    })
+  }
+
+  private initSprings(): void {
+    const geometry = this.gridMesh.geometry
+    const posAttr = geometry.getAttribute('position')
+    if (!posAttr) return
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const rest = new THREE.Vector3(
+        posAttr.getX(i),
+        posAttr.getY(i),
+        posAttr.getZ(i)
+      )
+      this.gridVertexSprings.push({
+        restPosition: rest.clone(),
+        offset: new THREE.Vector3(0, 0, 0),
+        velocity: new THREE.Vector3(0, 0, 0),
+        damping: this.config.damping,
+        stiffness: this.config.stiffness,
+      })
+    }
+  }
+
+  applyForce(worldPos: THREE.Vector3, force: number, radius: number): void {
+    for (const spring of this.gridVertexSprings) {
+      const dist = spring.restPosition.distanceTo(worldPos)
+      if (dist < radius) {
+        const falloff = 1.0 - dist / radius
+        const direction = spring.restPosition.clone().sub(worldPos).normalize()
+        spring.velocity.add(
+          direction.multiplyScalar(force * falloff * falloff)
+        )
+      }
+    }
+  }
+
+  updateGrid(dt: number): void {
+    const posAttr = this.gridMesh.geometry.getAttribute('position')
+    if (!posAttr) return
+
+    const clampedDt = Math.min(dt, 1 / 30)
+    const steps = Math.ceil(clampedDt / (1 / 120))
+    const subDt = clampedDt / steps
+
+    for (let step = 0; step < steps; step++) {
+      for (const spring of this.gridVertexSprings) {
+        const springForce = spring.offset
+          .clone()
+          .multiplyScalar(-spring.stiffness)
+        spring.velocity.add(springForce.multiplyScalar(subDt * 60))
+        spring.velocity.multiplyScalar(Math.pow(spring.damping, subDt * 60))
+        spring.offset.add(spring.velocity.clone().multiplyScalar(subDt))
+      }
+    }
+
+    for (let i = 0; i < this.gridVertexSprings.length; i++) {
+      const spring = this.gridVertexSprings[i]
+      const pos = spring.restPosition.clone().add(spring.offset)
+      posAttr.setXYZ(i, pos.x, pos.y, pos.z)
+    }
+
+    posAttr.needsUpdate = true
+  }
+
+  dispose(): void {
+    this.mesh.geometry.dispose()
+    if (this.mesh.material instanceof THREE.Material) {
+      this.mesh.material.dispose()
+    }
+    this.gridMesh.geometry.dispose()
+    if (this.gridMesh.material instanceof THREE.Material) {
+      this.gridMesh.material.dispose()
+    }
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+.vite/
+.DS_Store
+Thumbs.db
+
+# Test screenshots and artifacts
+screenshots/
+*.png
+test-results/
+/tmp/
