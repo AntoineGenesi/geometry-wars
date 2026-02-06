@@ -3,6 +3,7 @@
  *
  * Connects to a Colyseus server for online multiplayer.
  * Each client renders the authoritative server state.
+ * Uses MeshSurface for proper surface-normal camera and depth-based opacity.
  *
  * Usage: Open http://localhost:3000?mode=network
  * Server must be running: npm run server
@@ -17,6 +18,7 @@ import { GeomPool } from './entities/Geom';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { TrailEffect } from './effects/TrailEffect';
 import { InputManager } from './input/InputManager';
+import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import {
   NetworkClient,
   NetworkPlayerState,
@@ -60,10 +62,20 @@ function main() {
   const scene = game.scene;
   const camera = game.camera;
 
+  // Disable built-in orbit camera - we control camera manually
+  game.disableBuiltInCameraUpdate = true;
+
   // Create surface
   const surfaceType = getSurfaceType();
   const surface = SurfaceFactory.create(surfaceType);
   scene.add(surface.group);
+
+  // Create MeshSurface for camera tracking and depth-based opacity
+  const meshSurface = new MeshSurface(surface.mesh);
+
+  // Camera tracking state
+  const CAMERA_DISTANCE = 20;
+  const CAMERA_LERP = 0.06;
 
   // Create pools for rendering
   const bulletPool = new BulletPool();
@@ -125,21 +137,21 @@ function main() {
   };
   document.body.appendChild(startBtn);
 
-  // Helper to create player mesh
+  // Helper to create player mesh (chevron shape, world-space scale)
   function createPlayerMesh(color: number): THREE.Group {
     const group = new THREE.Group();
 
-    // Ship body
-    const bodyGeom = new THREE.ConeGeometry(0.08, 0.2, 4);
+    // Ship body - chevron
+    const bodyGeom = new THREE.ConeGeometry(0.3, 0.8, 4);
     const bodyMat = new THREE.MeshBasicMaterial({ color });
     const body = new THREE.Mesh(bodyGeom, bodyMat);
     body.rotation.x = Math.PI / 2;
     group.add(body);
 
     // Wings
-    const wingGeom = new THREE.BoxGeometry(0.15, 0.02, 0.08);
+    const wingGeom = new THREE.BoxGeometry(0.6, 0.06, 0.3);
     const wing = new THREE.Mesh(wingGeom, bodyMat);
-    wing.position.z = -0.05;
+    wing.position.z = -0.2;
     group.add(wing);
 
     return group;
@@ -170,19 +182,19 @@ function main() {
 
     switch (type) {
       case 'arrow':
-        geometry = new THREE.ConeGeometry(0.06, 0.15, 3);
+        geometry = new THREE.ConeGeometry(0.25, 0.6, 3);
         break;
       case 'spinner':
-        geometry = new THREE.TorusGeometry(0.05, 0.02, 8, 8);
+        geometry = new THREE.TorusGeometry(0.2, 0.08, 8, 8);
         break;
       case 'blackhole':
-        geometry = new THREE.SphereGeometry(0.1, 8, 8);
+        geometry = new THREE.SphereGeometry(0.4, 8, 8);
         break;
       default:
-        geometry = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+        geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
     }
 
-    const material = new THREE.MeshBasicMaterial({ color });
+    const material = new THREE.MeshBasicMaterial({ color, transparent: true });
     return new THREE.Mesh(geometry, material);
   }
 
@@ -203,14 +215,19 @@ function main() {
         playerTrails.set(id, trail);
       }
 
-      // Position on surface
+      // Position on surface (lift above surface)
       const surfacePoint: SurfacePoint = surface.getPoint(player.surfaceU, player.surfaceV);
       mesh.position.copy(surfacePoint.position);
-      mesh.position.add(surfacePoint.normal.clone().multiplyScalar(0.05));
+      mesh.position.add(surfacePoint.normal.clone().multiplyScalar(0.15));
 
-      // Face aim direction
-      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), surfacePoint.normal);
-      mesh.rotateOnAxis(surfacePoint.normal, player.aimAngle);
+      // Orient on surface: align Y to normal, rotate by aimAngle
+      const normal = surfacePoint.normal.clone().normalize();
+      const forward = surfacePoint.tangentU.clone().normalize();
+      const right = new THREE.Vector3().crossVectors(normal, forward).normalize();
+      const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
+      const rotMatrix = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
+      mesh.quaternion.setFromRotationMatrix(rotMatrix);
+      mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), player.aimAngle);
 
       mesh.visible = player.alive;
       trail?.addPoint(mesh.position.clone());
@@ -243,9 +260,13 @@ function main() {
 
       const surfacePoint: SurfacePoint = surface.getPoint(enemy.surfaceU, enemy.surfaceV);
       mesh.position.copy(surfacePoint.position);
-      mesh.position.add(surfacePoint.normal.clone().multiplyScalar(0.04));
+      mesh.position.add(surfacePoint.normal.clone().multiplyScalar(0.12));
 
-      mesh.visible = enemy.alive;
+      // Depth-based opacity: fade enemies on far side of surface
+      const visibility = meshSurface.getVisibility(mesh.position, surfacePoint.normal, camera.position);
+      const mat = mesh.material as THREE.MeshBasicMaterial;
+      mat.opacity = visibility;
+      mesh.visible = enemy.alive && visibility > 0.05;
     });
 
     // Remove dead enemies
@@ -371,20 +392,20 @@ function main() {
   };
 
   game.onRender = () => {
-    // Camera follows local player
+    // Camera follows local player along surface normal
     const localMesh = playerMeshes.get(localPlayerId);
     if (localMesh) {
-      const targetPos = localMesh.position.clone();
-      const normal = targetPos.clone().normalize();
-      const cameraDistance = 20;
-      const cameraAngle = Math.PI / 4;
-      const camOffset = normal
-        .clone()
-        .multiplyScalar(cameraDistance * Math.cos(cameraAngle));
-      camOffset.y += cameraDistance * Math.sin(cameraAngle);
-      camera.position.lerp(targetPos.clone().add(camOffset), 0.05);
-      camera.lookAt(targetPos);
-      camera.up.copy(normal);
+      // Get surface point for camera positioning (use worldToSurface → getPoint for normal)
+      const uv = surface.worldToSurface(localMesh.position);
+      const sp = surface.getPoint(uv.u, uv.v);
+
+      const targetCamPos = sp.position.clone().add(
+        sp.normal.clone().multiplyScalar(CAMERA_DISTANCE)
+      );
+
+      camera.position.lerp(targetCamPos, CAMERA_LERP);
+      camera.lookAt(sp.position);
+      camera.up.copy(sp.tangentV);
     }
 
     // Apply surface projection for geoms (bullets are synced from server)
@@ -406,6 +427,7 @@ function main() {
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
     network.disconnect();
+    meshSurface.dispose();
   });
 }
 
