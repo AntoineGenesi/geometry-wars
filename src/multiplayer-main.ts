@@ -34,6 +34,10 @@ import { GameOverScreen } from './ui/GameOverScreen';
 import { WeaponManager } from './weapons/WeaponManager';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
 import { WeaponPickup, getRandomWeaponType } from './weapons/WeaponPickup';
+import { BaseDrone, DroneType } from './weapons/BaseDrone';
+import { createDrone } from './weapons/DroneFactory';
+import { SuperStateManager, SuperStateType } from './weapons/SuperState';
+import { SuperStatePickup } from './weapons/SuperStatePickup';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -305,6 +309,53 @@ function main(): void {
 
   // -- Weapon pickups --
   const weaponPickups: WeaponPickup[] = [];
+
+  // -- Drones (one per player if level has drone) --
+  const drones1: BaseDrone[] = [];
+  const drones2: BaseDrone[] = [];
+
+  if (level.drone) {
+    const droneType = level.drone as DroneType;
+    for (const [drones, label] of [[drones1, 'P1'], [drones2, 'P2']] as const) {
+      const drone = createDrone(droneType, 0, {
+        onShoot: (origin, direction) => {
+          const transform = getTransform(origin.u, origin.v);
+          const dir = new THREE.Vector3(
+            Math.cos(direction), 0, Math.sin(direction),
+          ).applyQuaternion(
+            new THREE.Quaternion().setFromUnitVectors(
+              new THREE.Vector3(0, 1, 0),
+              transform.normal,
+            ),
+          );
+          bulletPool.spawn(transform.position, dir, origin.u, origin.v, direction);
+        },
+        onCollectGeom: (u, v) => {
+          geomPool.forEachActive((index, _su, _sv, position) => {
+            const transform = getTransform(u, v);
+            if (transform.position.distanceTo(position) < 0.5) {
+              geomPool.kill(index);
+              scoreManager.collectGeom();
+            }
+          });
+        },
+      });
+      game.scene.add(drone.mesh);
+      drones.push(drone);
+    }
+  }
+
+  // -- Super state managers (one per player) --
+  const superStateManager1 = new SuperStateManager();
+  const superStateManager2 = new SuperStateManager();
+  const superPickups: SuperStatePickup[] = [];
+
+  const SUPER_STATE_TYPES = [
+    SuperStateType.QuadFire, SuperStateType.SplitFire,
+    SuperStateType.ReverseFire, SuperStateType.Missile,
+    SuperStateType.Magnet, SuperStateType.TrailBomb,
+    SuperStateType.Shield,
+  ];
 
   // -- Wave system --
   let waveTimer = 3;
@@ -581,11 +632,53 @@ function main(): void {
     screenShake.update(dt);
     surface.updateGrid(dt);
 
+    // Update drones (follow their respective player)
+    const enemies = enemySpawner.getEnemies();
+    if (player1.alive) {
+      for (const drone of drones1) {
+        drone.update(dt, player1.surfaceU, player1.surfaceV, player1.aimAngle, enemies);
+        drone.applySurfaceTransform(getTransform);
+      }
+    }
+    if (player2.alive) {
+      for (const drone of drones2) {
+        drone.update(dt, player2.surfaceU, player2.surfaceV, player2.aimAngle, enemies);
+        drone.applySurfaceTransform(getTransform);
+      }
+    }
+
+    // Update super state managers
+    superStateManager1.update(dt);
+    superStateManager2.update(dt);
+
+    // Update super state pickups
+    for (let i = superPickups.length - 1; i >= 0; i--) {
+      const pickup = superPickups[i];
+      if (!pickup.active) {
+        game.scene.remove(pickup.mesh);
+        pickup.dispose();
+        superPickups.splice(i, 1);
+        continue;
+      }
+      pickup.update(dt);
+      pickup.applySurfaceTransform(getTransform);
+
+      // Check both players for pickup collision
+      for (const [player, ssm] of [[player1, superStateManager1], [player2, superStateManager2]] as const) {
+        if (player.alive && pickup.active && pickup.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
+          const allDotsGone = pickup.removeClosestDot(player.surfaceU, player.surfaceV);
+          if (allDotsGone) {
+            ssm.activate(pickup.type);
+            pickup.active = false;
+            sound.play('weaponPickup');
+          }
+        }
+      }
+    }
+
     // -----------------------------------------------------------------------
     // Collisions
     // -----------------------------------------------------------------------
-
-    const enemies = enemySpawner.getEnemies();
 
     // Bullet-enemy
     bulletPool.forEachActive((bulletIdx, bulletPos) => {
@@ -617,16 +710,26 @@ function main(): void {
               game.scene.add(wpnPickup.mesh);
               weaponPickups.push(wpnPickup);
             }
+            // ~5% chance to spawn a super state pickup
+            if (Math.random() < 0.05) {
+              const ssType = SUPER_STATE_TYPES[Math.floor(Math.random() * SUPER_STATE_TYPES.length)];
+              const ssPickup = new SuperStatePickup(ssType, u, v);
+              game.scene.add(ssPickup.mesh);
+              superPickups.push(ssPickup);
+            }
           }
           break;
         }
       }
     });
 
-    // Player-enemy (both players)
-    for (const player of [player1, player2]) {
+    // Player-enemy (both players, respects shield super state)
+    const allEnemies = enemySpawner.getEnemies();
+    for (const [player, ssm] of [[player1, superStateManager1], [player2, superStateManager2]] as const) {
       if (!player.canTakeDamage) continue;
-      for (const enemy of enemies) {
+      const mods = ssm.getFireModifiers();
+      if (mods.isShielded) continue; // Shield protects player
+      for (const enemy of allEnemies) {
         if (!enemy.active) continue;
         const dist = player.mesh.position.distanceTo(enemy.position);
         if (dist < player.mesh.scale.x * 0.3 + enemy.radius) {
