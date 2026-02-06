@@ -38,6 +38,11 @@ import { BaseDrone, DroneType } from './weapons/BaseDrone';
 import { createDrone } from './weapons/DroneFactory';
 import { SuperStateManager, SuperStateType } from './weapons/SuperState';
 import { SuperStatePickup } from './weapons/SuperStatePickup';
+import { Spawner } from './entities/enemies/Spawner';
+import { TitanGrunt } from './entities/enemies/TitanGrunt';
+import { TitanSpinner } from './entities/enemies/TitanSpinner';
+import { TitanWeaver } from './entities/enemies/TitanWeaver';
+import { Boss } from './entities/enemies/Boss';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -113,6 +118,14 @@ const ENEMY_COLORS: Record<string, THREE.Color> = {
   snake: new THREE.Color(0x4488ff),
   repulsor: new THREE.Color(0xff4400),
   gravity_well: new THREE.Color(0x4488ff),
+  gate: new THREE.Color(0xffffff),
+  painter: new THREE.Color(0xff44aa),
+  virus: new THREE.Color(0x88ff44),
+  spawner: new THREE.Color(0x440066),
+  titangrunt: new THREE.Color(0x2244cc),
+  titanspinner: new THREE.Color(0xff22ff),
+  titanweaver: new THREE.Color(0x22ff44),
+  boss: new THREE.Color(0xffcc00),
 };
 
 // ---------------------------------------------------------------------------
@@ -267,6 +280,40 @@ function main(): void {
 
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
+
+  // -- Wire enemy type callbacks --
+  Spawner.onSpawnEnemy = (u: number, v: number) => {
+    enemySpawner.spawn('wanderer', u, v);
+  };
+  TitanGrunt.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const ou = (Math.random() - 0.5) * 0.06;
+      const ov = (Math.random() - 0.5) * 0.06;
+      enemySpawner.spawn('grunt', Math.max(0, Math.min(1, u + ou)), Math.max(0, Math.min(1, v + ov)));
+    }
+  };
+  TitanSpinner.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const ou = (Math.random() - 0.5) * 0.06;
+      const ov = (Math.random() - 0.5) * 0.06;
+      enemySpawner.spawn('spinner', Math.max(0, Math.min(1, u + ou)), Math.max(0, Math.min(1, v + ov)));
+    }
+  };
+  TitanWeaver.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const ou = (Math.random() - 0.5) * 0.06;
+      const ov = (Math.random() - 0.5) * 0.06;
+      enemySpawner.spawn('weaver', Math.max(0, Math.min(1, u + ou)), Math.max(0, Math.min(1, v + ov)));
+    }
+  };
+  Boss.onShieldSpawn = (types: string[], count: number, u: number, v: number) => {
+    for (let i = 0; i < count; i++) {
+      const type = types[Math.floor(Math.random() * types.length)];
+      const ou = (Math.random() - 0.5) * 0.3;
+      const ov = (Math.random() - 0.5) * 0.3;
+      enemySpawner.spawn(type as any, Math.max(0, Math.min(1, u + ou)), Math.max(0, Math.min(1, v + ov)));
+    }
+  };
 
   // -- Weapon managers (one per player) --
   function createWeaponManager(playerLabel: string): WeaponManager {
@@ -595,12 +642,25 @@ function main(): void {
     if (waveTimer <= 0) {
       waveTimer = 8;
       waveCount++;
-      const enemyCount = Math.min(5 + waveCount * 2, 20);
-      enemySpawner.spawnWave([
-        { type: 'grunt' as any, count: Math.floor(enemyCount * 0.4) },
-        { type: 'wanderer' as any, count: Math.floor(enemyCount * 0.3) },
-        { type: 'mayfly' as any, count: Math.floor(enemyCount * 0.3) },
-      ]);
+      const enemyCount = Math.min(5 + waveCount * 2, 25);
+
+      // Progressively introduce harder enemy types
+      const wave: Array<{ type: any; count: number }> = [
+        { type: 'grunt', count: Math.floor(enemyCount * 0.3) },
+        { type: 'wanderer', count: Math.floor(enemyCount * 0.2) },
+      ];
+
+      if (waveCount >= 2) wave.push({ type: 'mayfly', count: Math.floor(enemyCount * 0.2) });
+      if (waveCount >= 3) wave.push({ type: 'duck', count: Math.max(2, Math.floor(enemyCount * 0.1)) });
+      if (waveCount >= 4) wave.push({ type: 'rocket', count: Math.max(2, Math.floor(enemyCount * 0.1)) });
+      if (waveCount >= 5) wave.push({ type: 'weaver', count: Math.max(2, Math.floor(enemyCount * 0.1)) });
+      if (waveCount >= 7) wave.push({ type: 'spinner', count: Math.max(1, Math.floor(enemyCount * 0.08)) });
+      if (waveCount >= 9) wave.push({ type: 'snake', count: 1 });
+      if (waveCount >= 10) wave.push({ type: 'spawner', count: 1 });
+      if (waveCount >= 12) wave.push({ type: 'titan_grunt', count: 1 });
+      if (waveCount >= 15 && waveCount % 5 === 0) wave.push({ type: 'boss_sapphire', count: 1 });
+
+      enemySpawner.spawnWave(wave);
     }
 
     // -----------------------------------------------------------------------
