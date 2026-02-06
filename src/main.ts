@@ -28,6 +28,7 @@ import { Spawner } from './entities/enemies/Spawner';
 import { TitanGrunt } from './entities/enemies/TitanGrunt';
 import { TitanSpinner } from './entities/enemies/TitanSpinner';
 import { TitanWeaver } from './entities/enemies/TitanWeaver';
+import { Boss } from './entities/enemies/Boss';
 import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { GameOverScreen } from './ui/GameOverScreen';
@@ -637,6 +638,41 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       const offsetV = (Math.random() - 0.5) * 0.06;
       enemySpawner.spawn('weaver', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
     }
+  };
+
+  // -- Boss system callbacks --
+  Boss.onShieldSpawn = (types: string[], count: number, u: number, v: number) => {
+    for (let i = 0; i < count; i++) {
+      const type = types[Math.floor(Math.random() * types.length)];
+      const offsetU = (Math.random() - 0.5) * 0.3;
+      const offsetV = (Math.random() - 0.5) * 0.3;
+      enemySpawner.spawn(type as any, Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    }
+  };
+
+  const bossBarEl = document.getElementById('boss-health-bar') as HTMLElement | null;
+  const bossBarFill = document.getElementById('boss-health-fill') as HTMLElement | null;
+  const bossPhaseEl = document.getElementById('boss-phase-text') as HTMLElement | null;
+
+  Boss.onHealthUpdate = (currentHP: number, maxHP: number, phase: number, totalPhases: number) => {
+    if (bossBarEl && bossBarFill && bossPhaseEl) {
+      if (maxHP <= 0) {
+        bossBarEl.style.display = 'none';
+        return;
+      }
+      bossBarEl.style.display = 'block';
+      const pct = Math.max(0, Math.min(100, (currentHP / maxHP) * 100));
+      bossBarFill.style.width = `${pct}%`;
+      bossPhaseEl.textContent = `PHASE ${phase + 1}/${totalPhases}`;
+    }
+  };
+
+  Boss.onPhaseChange = (_phase: number) => {
+    // Add time on phase change for timed levels
+    if (level.timeLimit > 0) {
+      gameMode.awardTimeBonus(10); // 10 seconds extra per phase
+    }
+    sound.play('bomb', { volume: 0.8, pitch: 0.5 });
   };
 
   // -- Respawn timer --

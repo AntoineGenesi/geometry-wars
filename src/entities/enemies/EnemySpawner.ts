@@ -18,6 +18,7 @@ import { Spawner } from './Spawner';
 import { TitanGrunt } from './TitanGrunt';
 import { TitanSpinner } from './TitanSpinner';
 import { TitanWeaver } from './TitanWeaver';
+import { Boss } from './Boss';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
@@ -189,6 +190,24 @@ export class EnemySpawner {
         break;
       case 'titan_weaver':
         enemy = new TitanWeaver(u, v);
+        break;
+      case 'boss_sapphire':
+        enemy = new Boss('sapphire', u, v);
+        break;
+      case 'boss_ruby':
+        enemy = new Boss('ruby', u, v);
+        break;
+      case 'boss_emerald':
+        enemy = new Boss('emerald', u, v);
+        break;
+      case 'boss_topaz':
+        enemy = new Boss('topaz', u, v);
+        break;
+      case 'boss_amethyst':
+        enemy = new Boss('amethyst', u, v);
+        break;
+      case 'boss_opal':
+        enemy = new Boss('opal', u, v);
         break;
       default:
         enemy = new Wanderer(u, v);
