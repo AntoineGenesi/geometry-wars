@@ -221,6 +221,11 @@ export class EnemySpawner {
       this.scene.add(enemy.mesh);
     }
 
+    // Painter trail visuals need separate scene group
+    if (enemy instanceof Painter) {
+      this.scene.add(enemy.trailRoot);
+    }
+
     // Add to enemies list
     this.enemies.push(enemy);
 
@@ -271,6 +276,9 @@ export class EnemySpawner {
         if (enemy.mesh) {
           this.scene.remove(enemy.mesh);
         }
+        if (enemy instanceof Painter) {
+          this.scene.remove(enemy.trailRoot);
+        }
         enemy.destroy();
         return false;
       }
@@ -282,6 +290,9 @@ export class EnemySpawner {
     for (const enemy of this.enemies) {
       if (enemy.mesh) {
         this.scene.remove(enemy.mesh);
+      }
+      if (enemy instanceof Painter) {
+        this.scene.remove(enemy.trailRoot);
       }
       enemy.destroy();
     }

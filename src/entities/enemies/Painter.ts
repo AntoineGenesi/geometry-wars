@@ -19,6 +19,12 @@ export class Painter extends BaseEnemy {
   private lastTrailU: number;
   private lastTrailV: number;
 
+  /** Visual trail markers on the surface */
+  public readonly trailRoot = new THREE.Group();
+  private trailMeshes: THREE.Mesh[] = [];
+  private static trailGeometry: THREE.BufferGeometry | null = null;
+  private static trailMaterial: THREE.MeshStandardMaterial | null = null;
+
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
     // health=2, score=75, geoms=1, speed=0.035, radius=0.3
     super(surfaceU, surfaceV, 2, 75, 1, 0.035, 0.3);
@@ -26,6 +32,21 @@ export class Painter extends BaseEnemy {
     this.lastTrailU = surfaceU;
     this.lastTrailV = surfaceV;
     this.createMesh();
+
+    // Shared geometry/material for trail markers (small flat diamond)
+    if (!Painter.trailGeometry) {
+      Painter.trailGeometry = new THREE.OctahedronGeometry(0.08, 0);
+      Painter.trailGeometry.scale(1, 0.3, 1); // flatten
+    }
+    if (!Painter.trailMaterial) {
+      Painter.trailMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff44aa,
+        emissive: 0xff44aa,
+        emissiveIntensity: 0.8,
+        transparent: true,
+        opacity: 0.7,
+      });
+    }
   }
 
   private createMesh(): void {
@@ -67,9 +88,18 @@ export class Painter extends BaseEnemy {
       this.lastTrailU = this.surfacePosition.u;
       this.lastTrailV = this.surfacePosition.v;
 
-      // Trim old trail points
+      // Add visual trail marker
+      const marker = new THREE.Mesh(Painter.trailGeometry!, Painter.trailMaterial!);
+      this.trailRoot.add(marker);
+      this.trailMeshes.push(marker);
+
+      // Trim old trail points + remove oldest visual marker
       if (this.trail.length > this.maxTrailLength) {
         this.trail.shift();
+        const oldMarker = this.trailMeshes.shift();
+        if (oldMarker) {
+          this.trailRoot.remove(oldMarker);
+        }
       }
     }
 
@@ -81,6 +111,27 @@ export class Painter extends BaseEnemy {
     // Rotate mesh
     if (this.mesh) {
       this.mesh.rotation.y += 1.5 * dt;
+    }
+  }
+
+  applySurfaceTransform(getTransform: (u: number, v: number) => {
+    position: THREE.Vector3;
+    normal: THREE.Vector3;
+    tangent: THREE.Vector3;
+    bitangent: THREE.Vector3
+  }): void {
+    super.applySurfaceTransform(getTransform);
+
+    // Position trail markers on surface
+    for (let i = 0; i < this.trail.length && i < this.trailMeshes.length; i++) {
+      const point = this.trail[i];
+      const marker = this.trailMeshes[i];
+      const t = getTransform(point.u, point.v);
+      marker.position.copy(t.position).addScaledVector(t.normal, 0.03);
+      marker.lookAt(marker.position.clone().add(t.normal));
+      // Fade older markers
+      const fadeFactor = Math.max(0.3, 1 - point.age * 0.05);
+      marker.scale.setScalar(fadeFactor);
     }
   }
 
