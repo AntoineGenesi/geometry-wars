@@ -29,6 +29,9 @@ import { TitanGrunt } from './entities/enemies/TitanGrunt';
 import { TitanSpinner } from './entities/enemies/TitanSpinner';
 import { TitanWeaver } from './entities/enemies/TitanWeaver';
 import { Boss } from './entities/enemies/Boss';
+import { Gate } from './entities/enemies/Gate';
+import { Virus } from './entities/enemies/Virus';
+import { Painter } from './entities/enemies/Painter';
 import { ScorePopupManager } from './effects/ScorePopup';
 import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
@@ -502,14 +505,13 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const enemyGlowTrails = new Map<BaseEnemy, GlowTrail>();
 
   // Fast enemy types that get glow trails
-  const FAST_ENEMY_TYPES = ['Mayfly', 'Rocket', 'Duck', 'Arrow'];
+  const FAST_ENEMY_TYPES = ['Mayfly', 'Rocket', 'Duck'];
 
   // Colors for different enemy types
   const ENEMY_TRAIL_COLORS: Record<string, number> = {
     Mayfly: 0xddddff,
     Rocket: 0xff8800,
     Duck: 0xff44aa,
-    Arrow: 0xffff00,
   };
 
   // -- Particle system --
@@ -719,9 +721,42 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     sound.play('bomb', { volume: 0.8, pitch: 0.5 });
   };
 
+  // -- Virus: spawn new virus at killed enemy position (20% chance) --
+  Virus.onInfectKill = (u: number, v: number) => {
+    if (Math.random() < 0.2) {
+      enemySpawner.spawn('virus', u, v);
+    }
+  };
+
+  // -- Gate: detonation effect (kills nearby enemies, awards score) --
+  Gate.onDetonate = (position: THREE.Vector3, score: number) => {
+    // Kill all enemies within blast radius
+    const blastRadius = 3.0;
+    const gateColor = new THREE.Color(0xff8800);
+    const allEnemies = enemySpawner.getEnemies();
+    for (const enemy of allEnemies) {
+      if (enemy.position.distanceTo(position) < blastRadius) {
+        enemy.takeDamage(999);
+        particles.enemyDeath(enemy.position, gateColor);
+      }
+    }
+    scoreManager.awardKill(score, 'Gate');
+    particles.enemyDeath(position, gateColor);
+    screenShake.shake(0.4, 0.3);
+    sound.play('bomb', { volume: 0.6, pitch: 1.2 });
+    scorePopups.spawnScore(position, score, player.multiplier);
+  };
+
   // -- Respawn timer --
   let respawnTimer = 0;
   const RESPAWN_DELAY = 1.5;
+
+  // -- Player previous UV (for gate pass-through detection) --
+  let prevPlayerU = player.surfaceU;
+  let prevPlayerV = player.surfaceV;
+
+  // -- Painter trail damage cooldown --
+  let painterDamageCooldown = 0;
 
   // -- Game state --
   let isPaused = false;
@@ -860,6 +895,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
     // Update player movement and shooting
     if (player.alive) {
+      // Store previous UV for gate pass-through detection
+      prevPlayerU = player.surfaceU;
+      prevPlayerV = player.surfaceV;
+
       // MESH-BASED SURFACE MOVEMENT (BVH)
       // Player moves on mesh surface using world-space tangent projection.
       // No UV coordinates, no pole singularity, constant speed everywhere.
@@ -1082,6 +1121,37 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Player vs enemies
     const fireModifiers = superStateManager.getFireModifiers();
     checkPlayerEnemyCollisions(player, enemies, particles, screenShake, fireModifiers.isShielded);
+
+    // Gate pass-through detection (Pacifism mode mechanic)
+    if (player.alive && player.canTakeDamage) {
+      for (const enemy of enemies) {
+        if (enemy instanceof Gate && enemy.active) {
+          enemy.checkPlayerPassThrough(
+            player.surfaceU, player.surfaceV,
+            prevPlayerU, prevPlayerV
+          );
+        }
+      }
+    }
+
+    // Painter trail damage (hazard zones)
+    if (painterDamageCooldown > 0) painterDamageCooldown -= dt;
+    if (player.alive && player.canTakeDamage && painterDamageCooldown <= 0) {
+      for (const enemy of enemies) {
+        if (enemy instanceof Painter && enemy.active) {
+          if (enemy.isOnTrail(player.surfaceU, player.surfaceV)) {
+            if (!fireModifiers.isShielded) {
+              player.die();
+              particles.playerDeath(player.mesh.position);
+              screenShake.shake(0.5, 0.4);
+              getSoundEngine().play('playerDeath');
+            }
+            painterDamageCooldown = 0.5; // brief cooldown
+            break;
+          }
+        }
+      }
+    }
 
     // Update weapon manager (projectiles, effects)
     weaponManager.update(dt);
