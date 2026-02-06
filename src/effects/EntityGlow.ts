@@ -76,7 +76,7 @@ export class EntityGlow {
       color: this.baseColor,
       transparent: true,
       opacity: opacity,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       depthWrite: false,
     });
 

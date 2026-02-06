@@ -288,12 +288,12 @@ function main(selectedSurface?: SurfaceType): void {
   const level: LevelDefinition = ADVENTURE_LEVELS[levelIndex];
 
   // -- Game engine --
-  // NOTE: Bloom disabled - causes white-out due to grid brightness
+  // Bloom: high threshold so only bright entities glow, not the grid
   const game = new Game({
     bloom: {
-      strength: 0.0,
-      radius: 0.0,
-      threshold: 1.0,
+      strength: 1.0,
+      radius: 0.4,
+      threshold: 0.85,
     },
     cameraDistance: 20,
     cameraSmoothing: 0.05,

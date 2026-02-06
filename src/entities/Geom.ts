@@ -249,7 +249,7 @@ function createGeomMesh(): THREE.Group {
     linewidth: 4,
     transparent: true,
     opacity: 0.5,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
     depthWrite: false,
   });
 

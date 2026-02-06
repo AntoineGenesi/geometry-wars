@@ -131,7 +131,7 @@ function main(): void {
 
   // -- Game engine --
   const game = new Game({
-    bloom: { strength: 0.0, radius: 0.0, threshold: 1.0 },
+    bloom: { strength: 1.0, radius: 0.4, threshold: 0.85 },
     cameraDistance: CAMERA_DISTANCE,
     cameraSmoothing: 0.05,
   });

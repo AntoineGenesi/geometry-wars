@@ -72,7 +72,7 @@ export class GlowTrail {
     this.coreMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       depthWrite: false,
     });
 
@@ -97,7 +97,7 @@ export class GlowTrail {
         vertexColors: true,
         transparent: true,
         opacity: layerOpacity,
-        blending: THREE.AdditiveBlending,
+        blending: THREE.NormalBlending,
         depthWrite: false,
       });
 

@@ -69,7 +69,7 @@ export class WeaponPickup {
       map: glowTexture,
       transparent: true,
       opacity: 0.4,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       depthWrite: false,
     });
     const glowSprite = new THREE.Sprite(glowMat);

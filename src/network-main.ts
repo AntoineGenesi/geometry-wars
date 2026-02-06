@@ -51,9 +51,9 @@ function main() {
   // Create game with disabled bloom (causes white-out)
   const game = new Game({
     bloom: {
-      strength: 0.0,
-      radius: 0.0,
-      threshold: 1.0,
+      strength: 1.0,
+      radius: 0.4,
+      threshold: 0.85,
     },
     cameraDistance: 20,
     cameraSmoothing: 0.05,
