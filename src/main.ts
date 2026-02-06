@@ -67,6 +67,9 @@ const multiplierEl = document.getElementById('multiplier-display')!;
 const livesEl = document.getElementById('lives-display')!;
 const bombsEl = document.getElementById('bombs-display')!;
 const weaponEl = document.getElementById('weapon-display')!;
+const timerEl = document.getElementById('timer-display')!;
+const levelNameEl = document.getElementById('level-name-display')!;
+const countdownEl = document.getElementById('countdown-overlay')!;
 
 function updateUI(player: Player, weaponManager?: WeaponManager): void {
   scoreEl.textContent = player.score.toLocaleString();
@@ -677,10 +680,41 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     }
   });
 
+  // Set level name in HUD
+  levelNameEl.textContent = `${level.name}`;
+
   // -- Fixed timestep game logic --
   game.onFixedUpdate = (dt: number) => {
     // Skip update if paused or game over
     if (isPaused || isGameOver || isLevelComplete) return;
+
+    // Update game mode (handles countdown timer, time limits)
+    gameMode.update(dt, player.score, player.lives);
+
+    // Show countdown overlay
+    if (gameMode.phase === ModePhase.Countdown) {
+      const countVal = Math.ceil(gameMode.countdownTimer);
+      countdownEl.textContent = countVal > 0 ? String(countVal) : 'GO!';
+      countdownEl.classList.add('visible');
+      // During countdown: update grid springs but skip gameplay
+      surface.updateGrid(dt);
+      input.endFrame();
+      return;
+    }
+    // Hide countdown once playing starts (one-time)
+    if (countdownEl.classList.contains('visible')) {
+      countdownEl.textContent = 'GO!';
+      countdownEl.classList.remove('visible');
+    }
+
+    // Update timer display for timed modes
+    if (level.timeLimit > 0) {
+      const secs = Math.ceil(Math.max(0, gameMode.timeRemaining));
+      const mins = Math.floor(secs / 60);
+      const remainingSecs = secs % 60;
+      timerEl.textContent = `${mins}:${String(remainingSecs).padStart(2, '0')}`;
+      timerEl.classList.toggle('urgent', secs <= 10);
+    }
 
     const inputState = input.getState();
 
@@ -889,9 +923,6 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         }
       }
     }
-
-    // Update game mode
-    gameMode.update(dt, player.score, player.lives);
 
     // -- Collision checks --
 
@@ -1109,10 +1140,11 @@ if (isMultiplayerMode()) {
         console.log('[Main] Loaded network multiplayer mode');
       });
     } else {
-      // Single player - start the game with selected surface
-      window.history.replaceState({}, '', `?surface=${selection.surfaceType}`);
-      startMenu.dispose(); // Remove menu from DOM
-      main(selection.surfaceType);
+      // Single player - start the game with selected surface and optional level
+      const levelIdx = selection.levelIndex ?? 0;
+      window.history.replaceState({}, '', `?surface=${selection.surfaceType}&level=${levelIdx}`);
+      startMenu.dispose();
+      main(selection.surfaceType, levelIdx);
     }
   });
 }

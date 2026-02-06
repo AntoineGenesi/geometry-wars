@@ -60,15 +60,61 @@
       text-shadow: 0 0 8px #ff0;
       transition: color 0.3s, text-shadow 0.3s;
     }
+    #timer-display {
+      position: absolute;
+      top: 20px;
+      left: 30px;
+      font-size: 24px;
+      font-weight: bold;
+      text-shadow: 0 0 8px #ff8800;
+      color: #ff8800;
+    }
+    #timer-display.urgent {
+      color: #ff2200;
+      text-shadow: 0 0 12px #ff2200;
+      animation: timer-pulse 0.5s ease-in-out infinite alternate;
+    }
+    @keyframes timer-pulse {
+      from { opacity: 0.7; }
+      to { opacity: 1; }
+    }
+    #level-name-display {
+      position: absolute;
+      top: 95px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 14px;
+      color: #668888;
+      letter-spacing: 3px;
+    }
+    #countdown-overlay {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 120px;
+      font-weight: bold;
+      color: #00ffff;
+      text-shadow: 0 0 30px #00ffff, 0 0 60px #0088ff;
+      letter-spacing: 8px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    #countdown-overlay.visible {
+      opacity: 1;
+    }
   </style>
 </head>
 <body>
   <div id="ui-overlay">
     <div id="score-display">0</div>
     <div id="multiplier-display">x1</div>
+    <div id="timer-display"></div>
     <div id="lives-display"></div>
     <div id="bombs-display"></div>
     <div id="weapon-display"></div>
+    <div id="level-name-display"></div>
+    <div id="countdown-overlay"></div>
   </div>
   <script type="module" src="/src/main.ts"></script>
 </body>
