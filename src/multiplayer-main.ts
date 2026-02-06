@@ -27,6 +27,8 @@ import type { LevelDefinition } from './core/LevelData';
 import { ADVENTURE_LEVELS } from './core/LevelData';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
+import { getSoundEngine } from './audio/SoundEngine';
+import { BackgroundMusic } from './audio/BackgroundMusic';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -127,6 +129,12 @@ function makeSurfaceTransformFn(surface: Surface) {
 // ---------------------------------------------------------------------------
 
 function main(): void {
+  // Initialize sound
+  const sound = getSoundEngine();
+  sound.init();
+  sound.resume();
+  const bgMusic = new BackgroundMusic();
+
   const level: LevelDefinition = ADVENTURE_LEVELS[0];
 
   // -- Game engine --
@@ -489,6 +497,7 @@ function main(): void {
             particles.enemyDeath(enemy.position, color);
             scoreManager.awardKill(enemy.scoreValue, enemy.constructor.name.toLowerCase());
             screenShake.shake(0.15, 0.15);
+            sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
 
             const { u, v } = surface.worldToSurface(enemy.position);
             for (let g = 0; g < enemy.geomCount; g++) {
@@ -510,6 +519,7 @@ function main(): void {
           player.die();
           particles.playerDeath(player.mesh.position);
           screenShake.shake(0.5, 0.4);
+          sound.play('playerDeath');
           break;
         }
       }
@@ -523,9 +533,13 @@ function main(): void {
         if (dist < 0.3) {
           geomPool.kill(index);
           scoreManager.collectGeom();
+          sound.play('geomPickup', { pitch: 0.9 + Math.random() * 0.2 });
         }
       });
     }
+
+    // Scale music intensity
+    bgMusic.setIntensity(Math.min(enemySpawner.getActiveCount() / 30, 1.0));
 
     // Clear input flags
     input.endFrame();
@@ -565,6 +579,7 @@ function main(): void {
   for (const player of [player1, player2]) {
     player.onShoot = (origin: THREE.Vector3) => {
       surface.applyForce(origin, 0.1, 0.3);
+      sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
     };
 
     player.onBomb = () => {
@@ -572,6 +587,7 @@ function main(): void {
       surface.applyForce(pos, 0.5, 3.0);
       particles.bombExplosion(pos);
       screenShake.shake(0.3, 0.3);
+      sound.play('bomb');
 
       for (const enemy of enemySpawner.getEnemies()) {
         if (enemy.active) {
@@ -590,6 +606,12 @@ function main(): void {
       particles.playerDeath(position);
       screenShake.shake(0.5, 0.4);
     };
+  }
+
+  // -- Start background music --
+  const audioCtx = sound.getAudioContext();
+  if (audioCtx) {
+    bgMusic.start(audioCtx);
   }
 
   // -- Start --
