@@ -3,7 +3,10 @@
  *
  * Two players share the same screen and surface:
  * - Player 1 (Cyan): WASD movement, mouse aim, left click shoot, space bomb
- * - Player 2 (Magenta): IJKL movement, shoots in movement direction, O shoot, P bomb
+ * - Player 2 (Magenta): IJKL movement, chevron-tip aim (faces movement dir), O shoot, P bomb
+ *
+ * Both players use MeshWalker for mesh-based movement (no UV pole singularity).
+ * Camera follows the midpoint between both players.
  */
 
 import * as THREE from 'three';
@@ -20,8 +23,10 @@ import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
 import { ScoreManager } from './core/ScoreManager';
-import type { WaveDefinition, LevelDefinition } from './core/LevelData';
+import type { LevelDefinition } from './core/LevelData';
 import { ADVENTURE_LEVELS } from './core/LevelData';
+import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
+import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -47,14 +52,10 @@ const livesEl = document.getElementById('lives-display')!;
 const bombsEl = document.getElementById('bombs-display')!;
 
 function updateUI(player1: Player, player2: Player): void {
-  // Combined score
   const totalScore = player1.score + player2.score;
   scoreEl.textContent = totalScore.toLocaleString();
-
-  // Show both multipliers
   multiplierEl.textContent = `P1:x${player1.multiplier} P2:x${player2.multiplier}`;
 
-  // Combined lives
   const totalLives = player1.lives + player2.lives;
   if (totalLives <= 5) {
     livesEl.textContent = '\u2665'.repeat(totalLives);
@@ -62,7 +63,6 @@ function updateUI(player1: Player, player2: Player): void {
     livesEl.textContent = `\u2665 x${totalLives}`;
   }
 
-  // Combined bombs
   const totalBombs = player1.bombs + player2.bombs;
   if (totalBombs <= 5) {
     bombsEl.textContent = '\u25cf'.repeat(totalBombs);
@@ -90,7 +90,19 @@ const ENEMY_COLORS: Record<string, THREE.Color> = {
 };
 
 // ---------------------------------------------------------------------------
-// Surface transform helper
+// Constants
+// ---------------------------------------------------------------------------
+
+const PLAYER_MOVE_SPEED = 3.0; // world units/sec (MeshWalker)
+const CAMERA_DISTANCE = 20;    // farther back to see both players
+const CAMERA_LERP = 0.08;     // smooth camera follow
+
+// Player colors
+const P1_COLOR = 0x00ffff; // Cyan
+const P2_COLOR = 0xff00ff; // Magenta
+
+// ---------------------------------------------------------------------------
+// Surface transform helper (for enemies/geoms that still use UV)
 // ---------------------------------------------------------------------------
 
 function makeSurfaceTransformFn(surface: Surface) {
@@ -111,17 +123,6 @@ function makeSurfaceTransformFn(surface: Surface) {
 }
 
 // ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const PLAYER_MOVE_SPEED = 1.2;
-const SPHERE_RADIUS = 8;
-
-// Player colors
-const P1_COLOR = 0x00ffff; // Cyan
-const P2_COLOR = 0xff00ff; // Magenta
-
-// ---------------------------------------------------------------------------
 // Main multiplayer game
 // ---------------------------------------------------------------------------
 
@@ -131,9 +132,10 @@ function main(): void {
   // -- Game engine --
   const game = new Game({
     bloom: { strength: 0.0, radius: 0.0, threshold: 1.0 },
-    cameraDistance: 25, // Farther back to see both players
+    cameraDistance: CAMERA_DISTANCE,
     cameraSmoothing: 0.05,
   });
+  game.disableBuiltInCameraUpdate = true; // We control the camera
 
   // -- Lighting --
   const ambient = new THREE.AmbientLight(0x404080, 0.6);
@@ -162,12 +164,25 @@ function main(): void {
   const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
   game.scene.add(surface.group);
 
+  // Surface material: FrontSide only to avoid double-vision
+  surface.mesh.material = new THREE.MeshBasicMaterial({
+    color: 0x0a0020,
+    transparent: true,
+    opacity: 0.35,
+    side: THREE.FrontSide,
+    depthWrite: true,
+  });
+
+  // -- MeshSurface (BVH) --
+  const meshSurface = new MeshSurface(surface.mesh);
+
   // -- Input --
   const input = new MultiplayerInputManager();
 
   // -- Shared systems --
   const getTransform = makeSurfaceTransformFn(surface);
   const bulletPool = new BulletPool();
+  bulletPool.setMeshSurface(meshSurface);
   game.scene.add(bulletPool.root);
   const geomPool = new GeomPool();
   game.scene.add(geomPool.root);
@@ -181,15 +196,14 @@ function main(): void {
   player1.respawn(0.5, 0.5);
   player1.lives = 3;
   player1.bombs = 3;
-  // Change player 1 mesh color (it's built with cyan by default, so it's fine)
   game.scene.add(player1.mesh);
 
-  // -- Player 2 (Magenta, IJKL + auto-aim) --
+  // -- Player 2 (Magenta, IJKL + chevron-tip aim) --
   const player2 = new Player(bulletPool);
   player2.respawn(0.5, 0.5);
   player2.lives = 3;
   player2.bombs = 3;
-  // Change player 2 mesh color to magenta
+  // Recolor P2 to magenta
   player2.mesh.traverse((child) => {
     if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshBasicMaterial) {
       child.material = child.material.clone();
@@ -202,13 +216,28 @@ function main(): void {
   });
   game.scene.add(player2.mesh);
 
-  scoreManager.setPlayer(player1); // P1 is "primary" for scoring
+  scoreManager.setPlayer(player1);
+
+  // -- MeshWalkers for both players --
+  // P1 starts at "top" of shape, P2 offset to the side
+  const p1Start = surface.getPoint(0.3, 0.5);
+  const p2Start = surface.getPoint(0.7, 0.5);
+
+  const walker1 = new MeshWalker(meshSurface, p1Start.position, PLAYER_MOVE_SPEED);
+  const walker2 = new MeshWalker(meshSurface, p2Start.position, PLAYER_MOVE_SPEED);
+
+  // Sync initial positions
+  player1.mesh.position.copy(walker1.position);
+  player2.mesh.position.copy(walker2.position);
+
+  // P2's facing direction (chevron tip). Updated when P2 moves.
+  let p2FaceDirection = new THREE.Vector3(0, 0, 1);
 
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
 
-  // -- Wave system (simplified) --
-  let waveTimer = 3; // First wave after 3 seconds
+  // -- Wave system --
+  let waveTimer = 3;
   let waveCount = 0;
 
   // -- Respawn timers --
@@ -221,30 +250,185 @@ function main(): void {
     const p1Input = input.getPlayer1State();
     const p2Input = input.getPlayer2State();
 
+    // -----------------------------------------------------------------------
     // Handle respawns
+    // -----------------------------------------------------------------------
+
     if (!player1.alive && player1.lives > 0) {
       p1RespawnTimer += dt;
       if (p1RespawnTimer >= RESPAWN_DELAY) {
         p1RespawnTimer = 0;
-        player1.respawn(0.25, 0.5);
+        player1.respawn(0.3, 0.5);
+        const respawnPt = surface.getPoint(0.3, 0.5);
+        const projected = meshSurface.closestPointOnSurface(respawnPt.position);
+        if (projected) {
+          walker1.position.copy(projected.point);
+          walker1.normal.copy(projected.normal);
+          walker1.faceIndex = projected.faceIndex;
+        }
+        player1.mesh.position.copy(walker1.position);
       }
     }
     if (!player2.alive && player2.lives > 0) {
       p2RespawnTimer += dt;
       if (p2RespawnTimer >= RESPAWN_DELAY) {
         p2RespawnTimer = 0;
-        player2.respawn(0.75, 0.5);
+        player2.respawn(0.7, 0.5);
+        const respawnPt = surface.getPoint(0.7, 0.5);
+        const projected = meshSurface.closestPointOnSurface(respawnPt.position);
+        if (projected) {
+          walker2.position.copy(projected.point);
+          walker2.normal.copy(projected.normal);
+          walker2.faceIndex = projected.faceIndex;
+        }
+        player2.mesh.position.copy(walker2.position);
       }
     }
 
-    // Update players
-    updatePlayer(player1, p1Input, dt, surface, game, 0.25); // P1 at left side
-    updatePlayer(player2, p2Input, dt, surface, game, 0.75); // P2 at right side
+    // -----------------------------------------------------------------------
+    // Player 1: MeshWalker + mouse aim
+    // -----------------------------------------------------------------------
 
-    // Spawn waves periodically
+    if (player1.alive) {
+      // Move on surface
+      if (Math.abs(p1Input.moveX) > 0.01 || Math.abs(p1Input.moveY) > 0.01) {
+        walker1.moveFromInput(p1Input.moveX, -p1Input.moveY, game.camera, dt);
+      }
+      player1.mesh.position.copy(walker1.position);
+
+      // Bridge to UV
+      const p1UV = surface.worldToSurface(walker1.position);
+      player1.surfaceU = p1UV.u;
+      player1.surfaceV = p1UV.v;
+
+      // Mouse aim (screen-space -> surface tangent plane)
+      const camRight = new THREE.Vector3();
+      const camUp = new THREE.Vector3();
+      game.camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+
+      const aimLen = Math.sqrt(p1Input.aimX * p1Input.aimX + p1Input.aimY * p1Input.aimY);
+      let p1AimDir: THREE.Vector3;
+      if (aimLen > 0.1) {
+        const screenAim = camRight.clone().multiplyScalar(p1Input.aimX)
+          .add(camUp.clone().multiplyScalar(-p1Input.aimY));
+        const dot = screenAim.dot(walker1.normal);
+        p1AimDir = screenAim.sub(walker1.normal.clone().multiplyScalar(dot)).normalize();
+      } else {
+        const dot = camUp.clone().negate().dot(walker1.normal);
+        p1AimDir = camUp.clone().negate().sub(walker1.normal.clone().multiplyScalar(dot)).normalize();
+      }
+
+      // Orient P1 to face aim direction
+      orientPlayerOnSurface(player1, walker1.normal, p1AimDir);
+
+      // Store aim angle for bullets
+      player1.aimAngle = Math.atan2(p1Input.aimX, -p1Input.aimY);
+      player1.mesh.updateMatrixWorld(true);
+      player1.update(dt, {
+        moveX: p1Input.moveX,
+        moveY: p1Input.moveY,
+        aimX: p1Input.aimX,
+        aimY: p1Input.aimY,
+        shooting: p1Input.shooting,
+        bomb: p1Input.bomb,
+        boost: false,
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // Player 2: MeshWalker + chevron-tip aim (movement direction)
+    // -----------------------------------------------------------------------
+
+    if (player2.alive) {
+      // Move on surface
+      const p2Moving = Math.abs(p2Input.moveX) > 0.01 || Math.abs(p2Input.moveY) > 0.01;
+      if (p2Moving) {
+        const prevPos = walker2.position.clone();
+        walker2.moveFromInput(p2Input.moveX, -p2Input.moveY, game.camera, dt);
+
+        // Update facing direction from actual movement delta
+        const moveDelta = walker2.position.clone().sub(prevPos);
+        if (moveDelta.lengthSq() > 0.0001) {
+          // Project onto surface tangent plane (remove normal component)
+          const dot = moveDelta.dot(walker2.normal);
+          const tangentDelta = moveDelta.sub(walker2.normal.clone().multiplyScalar(dot));
+          if (tangentDelta.lengthSq() > 0.0001) {
+            p2FaceDirection.copy(tangentDelta).normalize();
+          }
+        }
+      }
+      player2.mesh.position.copy(walker2.position);
+
+      // Bridge to UV
+      const p2UV = surface.worldToSurface(walker2.position);
+      player2.surfaceU = p2UV.u;
+      player2.surfaceV = p2UV.v;
+
+      // P2 faces movement direction (chevron tip points where they're going)
+      orientPlayerOnSurface(player2, walker2.normal, p2FaceDirection);
+
+      // Compute aim angle from face direction relative to camera
+      const camRight2 = new THREE.Vector3();
+      const camUp2 = new THREE.Vector3();
+      game.camera.matrixWorld.extractBasis(camRight2, camUp2, new THREE.Vector3());
+      const faceAimX = p2FaceDirection.dot(camRight2);
+      const faceAimY = -p2FaceDirection.dot(camUp2);
+      player2.aimAngle = Math.atan2(faceAimX, -faceAimY);
+
+      player2.mesh.updateMatrixWorld(true);
+      player2.update(dt, {
+        moveX: p2Input.moveX,
+        moveY: p2Input.moveY,
+        aimX: faceAimX,
+        aimY: faceAimY,
+        shooting: p2Input.shooting,
+        bomb: p2Input.bomb,
+        boost: false,
+      });
+    }
+
+    // -----------------------------------------------------------------------
+    // Camera: follow midpoint between both players
+    // -----------------------------------------------------------------------
+
+    const alivePlayers: MeshWalker[] = [];
+    if (player1.alive) alivePlayers.push(walker1);
+    if (player2.alive) alivePlayers.push(walker2);
+
+    if (alivePlayers.length > 0) {
+      // Camera target: midpoint between alive players
+      const midPos = new THREE.Vector3();
+      const midNormal = new THREE.Vector3();
+      for (const w of alivePlayers) {
+        midPos.add(w.position);
+        midNormal.add(w.normal);
+      }
+      midPos.divideScalar(alivePlayers.length);
+      midNormal.divideScalar(alivePlayers.length).normalize();
+
+      // Adjust distance based on player separation
+      let camDist = CAMERA_DISTANCE;
+      if (alivePlayers.length === 2) {
+        const separation = walker1.position.distanceTo(walker2.position);
+        camDist = Math.max(CAMERA_DISTANCE, CAMERA_DISTANCE + separation * 0.5);
+      }
+
+      const targetCamPos = midPos.clone().addScaledVector(midNormal, camDist);
+      game.camera.position.lerp(targetCamPos, CAMERA_LERP);
+      game.camera.lookAt(midPos);
+
+      // Camera up from midpoint surface tangent
+      const midFrame = meshSurface.getTangentFrame(midNormal);
+      game.camera.up.copy(midFrame.bitangent);
+    }
+
+    // -----------------------------------------------------------------------
+    // Spawn enemy waves
+    // -----------------------------------------------------------------------
+
     waveTimer -= dt;
     if (waveTimer <= 0) {
-      waveTimer = 8; // 8 seconds between waves
+      waveTimer = 8;
       waveCount++;
       const enemyCount = Math.min(5 + waveCount * 2, 20);
       enemySpawner.spawnWave([
@@ -254,28 +438,42 @@ function main(): void {
       ]);
     }
 
-    // Update enemies - track the closest player
-    const p1UV = surface.getPlayerVirtualUV();
-    const p2UV = { u: (p1UV.u + 0.5) % 1, v: p1UV.v }; // P2 is offset
-    // Use player1's position for enemy tracking (simplified)
-    enemySpawner.update(dt, p1UV.u, p1UV.v);
+    // -----------------------------------------------------------------------
+    // Update enemies (track closest alive player)
+    // -----------------------------------------------------------------------
 
-    // Update bullets
+    let trackU = 0.5;
+    let trackV = 0.5;
+    if (player1.alive && player2.alive) {
+      // Track the closest player for each enemy (simplified: use P1)
+      trackU = player1.surfaceU;
+      trackV = player1.surfaceV;
+    } else if (player1.alive) {
+      trackU = player1.surfaceU;
+      trackV = player1.surfaceV;
+    } else if (player2.alive) {
+      trackU = player2.surfaceU;
+      trackV = player2.surfaceV;
+    }
+    enemySpawner.update(dt, trackU, trackV);
+
+    // -----------------------------------------------------------------------
+    // Update systems
+    // -----------------------------------------------------------------------
+
     bulletPool.update(dt);
-
-    // Update geoms
-    geomPool.update(dt, p1UV.u, p1UV.v, game.clock.totalTime);
-
-    // Update particles
+    geomPool.update(dt, trackU, trackV, game.clock.totalTime);
     particles.update(dt);
-
-    // Update screen shake
     screenShake.update(dt);
+    surface.updateGrid(dt);
 
+    // -----------------------------------------------------------------------
     // Collisions
+    // -----------------------------------------------------------------------
+
     const enemies = enemySpawner.getEnemies();
 
-    // Bullet-enemy collisions
+    // Bullet-enemy
     bulletPool.forEachActive((bulletIdx, bulletPos) => {
       for (const enemy of enemies) {
         if (!enemy.active || !enemy.alive) continue;
@@ -292,7 +490,6 @@ function main(): void {
             scoreManager.awardKill(enemy.scoreValue, enemy.constructor.name.toLowerCase());
             screenShake.shake(0.15, 0.15);
 
-            // Spawn geoms
             const { u, v } = surface.worldToSurface(enemy.position);
             for (let g = 0; g < enemy.geomCount; g++) {
               geomPool.spawn(u + (Math.random() - 0.5) * 0.03, v + (Math.random() - 0.5) * 0.03);
@@ -303,7 +500,7 @@ function main(): void {
       }
     });
 
-    // Player-enemy collisions
+    // Player-enemy (both players)
     for (const player of [player1, player2]) {
       if (!player.canTakeDamage) continue;
       for (const enemy of enemies) {
@@ -318,7 +515,7 @@ function main(): void {
       }
     }
 
-    // Geom pickups (both players can collect)
+    // Geom pickups (both players)
     for (const player of [player1, player2]) {
       if (!player.alive) continue;
       geomPool.forEachActive((index, _su, _sv, position) => {
@@ -329,9 +526,6 @@ function main(): void {
         }
       });
     }
-
-    // Update grid
-    surface.updateGrid(dt);
 
     // Clear input flags
     input.endFrame();
@@ -344,6 +538,24 @@ function main(): void {
 
     if (screenShake.offset.lengthSq() > 0.0001) {
       game.camera.position.add(screenShake.offset);
+    }
+
+    // Depth-based opacity for enemies
+    const camPos = game.camera.position;
+    const meshCenter = meshSurface.getCenter();
+    for (const enemy of enemySpawner.getEnemies()) {
+      if (!enemy.alive || !enemy.mesh) continue;
+      const approxNormal = enemy.position.clone().sub(meshCenter).normalize();
+      const visibility = meshSurface.getVisibility(enemy.position, approxNormal, camPos);
+      enemy.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material) {
+          const mat = child.material as THREE.MeshBasicMaterial;
+          if (mat.transparent !== undefined) {
+            mat.transparent = true;
+            mat.opacity = visibility;
+          }
+        }
+      });
     }
 
     updateUI(player1, player2);
@@ -361,7 +573,6 @@ function main(): void {
       particles.bombExplosion(pos);
       screenShake.shake(0.3, 0.3);
 
-      // Kill all enemies
       for (const enemy of enemySpawner.getEnemies()) {
         if (enemy.active) {
           const color = ENEMY_COLORS[enemy.constructor.name.toLowerCase()] ?? new THREE.Color(0xffffff);
@@ -381,92 +592,35 @@ function main(): void {
     };
   }
 
-  // -- Game over check --
-  const checkGameOver = () => {
-    if (player1.lives <= 0 && player2.lives <= 0) {
-      // Both players dead - game over
-      console.log('GAME OVER! Final Score:', player1.score + player2.score);
-    }
-  };
-
   // -- Start --
   game.start();
 
-  console.log('[Multiplayer Mode]');
+  console.log('[Local Multiplayer Mode]');
   console.log('Player 1 (Cyan): WASD + Mouse aim + Click to shoot + Space for bomb');
-  console.log('Player 2 (Magenta): IJKL + Auto-aim + O to shoot + P for bomb');
+  console.log('Player 2 (Magenta): IJKL + Shoots from chevron tip + O to shoot + P for bomb');
 }
 
 // ---------------------------------------------------------------------------
-// Helper: Update single player
+// Helper: orient a player mesh on the surface facing a given direction
 // ---------------------------------------------------------------------------
 
-function updatePlayer(
+function orientPlayerOnSurface(
   player: Player,
-  input: { moveX: number; moveY: number; aimX: number; aimY: number; shooting: boolean; bomb: boolean },
-  dt: number,
-  surface: Surface,
-  game: Game,
-  baseOffset: number, // 0.25 for P1, 0.75 for P2
+  surfaceNormal: THREE.Vector3,
+  faceDir: THREE.Vector3,
 ): void {
-  if (!player.alive) return;
+  const normal = surfaceNormal.clone().normalize();
+  const forward = faceDir.clone();
 
-  // Convert input to InputState format
-  const inputState = {
-    moveX: input.moveX,
-    moveY: input.moveY,
-    aimX: input.aimX,
-    aimY: input.aimY,
-    shooting: input.shooting,
-    bomb: input.bomb,
-    boost: false,
-  };
+  // Project forward onto tangent plane
+  forward.sub(normal.clone().multiplyScalar(forward.dot(normal))).normalize();
+  if (forward.lengthSq() < 0.001) return;
 
-  player.update(dt, inputState);
+  const right = new THREE.Vector3().crossVectors(normal, forward).normalize();
+  const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
 
-  // Rotate surface (shared rotation for both players)
-  // Each player contributes half the rotation
-  surface.rotateByInput(
-    input.moveX * 0.5,
-    input.moveY * 0.5,
-    1.2 * dt
-  );
-
-  // Update virtual UV
-  const virtualUV = surface.getPlayerVirtualUV();
-  player.surfaceU = virtualUV.u;
-  player.surfaceV = virtualUV.v;
-
-  // Position player on sphere
-  // Players are offset horizontally from each other
-  const offsetAngle = (baseOffset - 0.5) * Math.PI * 0.3; // +/- 27 degrees
-  const playerPos = new THREE.Vector3(
-    Math.sin(offsetAngle) * 0.9,
-    0.4,
-    Math.cos(offsetAngle) * 0.9
-  ).normalize().multiplyScalar(8);
-  player.mesh.position.copy(playerPos);
-
-  // Calculate orientation
-  const playerNormal = player.mesh.position.clone().normalize();
-  const cameraPos = game.camera.position.clone();
-  const cameraForward = new THREE.Vector3(0, 0, 0).sub(cameraPos).normalize();
-  const worldUp = new THREE.Vector3(0, 1, 0);
-  const cameraRight = new THREE.Vector3().crossVectors(cameraForward, worldUp).normalize();
-  const cameraUp = new THREE.Vector3().crossVectors(cameraRight, cameraForward).normalize();
-
-  const tangentU = cameraRight.clone()
-    .sub(playerNormal.clone().multiplyScalar(cameraRight.dot(playerNormal)))
-    .normalize();
-  const tangentV = cameraUp.clone()
-    .sub(playerNormal.clone().multiplyScalar(cameraUp.dot(playerNormal)))
-    .normalize();
-
-  const mat = new THREE.Matrix4().makeBasis(tangentU, playerNormal, tangentV);
-  const surfaceQuat = new THREE.Quaternion().setFromRotationMatrix(mat);
-  const aimQuat = new THREE.Quaternion().setFromAxisAngle(playerNormal, player.aimAngle);
-  surfaceQuat.premultiply(aimQuat);
-  player.mesh.quaternion.copy(surfaceQuat);
+  const rotMatrix = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
+  player.mesh.quaternion.setFromRotationMatrix(rotMatrix);
 }
 
 main();
