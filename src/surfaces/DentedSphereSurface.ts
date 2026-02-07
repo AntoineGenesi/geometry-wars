@@ -234,6 +234,9 @@ export class DentedSphereSurface extends Surface {
     const segmentsU = gridSegmentsU * 2
     const segmentsV = gridSegmentsV * 2
 
+    // Minimum sinPhi to prevent degenerate pole vertices that confuse BVH projection
+    const MIN_SIN_PHI = 0.05
+
     // Generate vertices
     for (let j = 0; j <= segmentsV; j++) {
       const v = j / segmentsV
@@ -250,10 +253,15 @@ export class DentedSphereSurface extends Surface {
           Math.sin(dentFrequencyV * v * Math.PI)
         const r = radius + displacement
 
-        const sinPhi = Math.sin(phi)
+        const rawSinPhi = Math.sin(phi)
         const cosPhi = Math.cos(phi)
         const sinTheta = Math.sin(theta)
         const cosTheta = Math.cos(theta)
+
+        // Clamp sinPhi away from zero so poles have a small circle instead of a point
+        const sinPhi = Math.abs(rawSinPhi) < MIN_SIN_PHI
+          ? MIN_SIN_PHI * (rawSinPhi >= 0 ? 1 : -1)
+          : rawSinPhi
 
         // Position
         const x = r * sinPhi * cosTheta
@@ -309,8 +317,8 @@ export class DentedSphereSurface extends Surface {
         const d = c + 1
 
         // Two triangles per quad
-        indices.push(a, c, b)
-        indices.push(b, c, d)
+        indices.push(a, b, c)
+        indices.push(b, d, c)
       }
     }
 

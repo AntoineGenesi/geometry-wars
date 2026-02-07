@@ -400,8 +400,9 @@ export function initTestScene(): void {
     const inputY = (keys['s'] ? 1 : 0) - (keys['w'] ? 1 : 0);
 
     // Move player
+    // Negate inputY: W=-1 should become +1 (screen up = bitangent direction)
     if (inputX !== 0 || inputY !== 0) {
-      state.player.moveFromInput(inputX, inputY, camera, dt);
+      state.player.moveFromInput(inputX, -inputY, camera, dt);
     }
 
     // Aim direction

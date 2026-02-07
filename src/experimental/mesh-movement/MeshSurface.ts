@@ -15,6 +15,8 @@
 
 import * as THREE from 'three';
 import { MeshBVH, getTriangleHitPointInfo } from 'three-mesh-bvh';
+import { GeodesicSurface, GeodesicMoveResult } from './geodesic/GeodesicSurface';
+import { FacePosition } from './geodesic/FaceWalker';
 
 export interface SurfaceQueryResult {
   /** Closest point on the mesh surface (world space) */
@@ -39,6 +41,8 @@ export interface TangentFrame {
 export class MeshSurface {
   readonly mesh: THREE.Mesh;
   readonly bvh: MeshBVH;
+  /** Geodesic walking system (half-edge mesh + face walker) */
+  readonly geodesic: GeodesicSurface;
 
   /** Reusable objects to avoid GC pressure */
   private readonly _closestTarget = { point: new THREE.Vector3(), distance: 0, faceIndex: 0 };
@@ -56,6 +60,9 @@ export class MeshSurface {
       geometry.boundsTree = new MeshBVH(geometry);
     }
     this.bvh = geometry.boundsTree as MeshBVH;
+
+    // Build geodesic walking structures (half-edge mesh + face walker)
+    this.geodesic = new GeodesicSurface(geometry);
   }
 
   /**
@@ -180,15 +187,18 @@ export class MeshSurface {
     const projectedDir = moveDirWorld.clone();
     projectedDir.sub(normal.clone().multiplyScalar(projectedDir.dot(normal)));
 
-    // If projected direction is too small (moving straight into/away from surface), skip
     const projLen = projectedDir.length();
+
+    // If projected direction is too small, the moveDir is parallel to the normal.
+    // Return the current position (let the MeshWalker handle stuck recovery using
+    // its persistent tangent frame).
     if (projLen < 0.0001) {
       return this.closestPointOnSurface(currentPos);
     }
     projectedDir.normalize();
 
     // Move along the tangent plane
-    const newPos = currentPos.clone().add(projectedDir.multiplyScalar(distance));
+    const newPos = currentPos.clone().add(projectedDir.clone().multiplyScalar(distance));
 
     // Project back onto mesh surface
     return this.closestPointOnSurface(newPos);
@@ -222,7 +232,37 @@ export class MeshSurface {
     return box.getCenter(new THREE.Vector3());
   }
 
+  /**
+   * Initialize a geodesic face position from a world point and BVH face index.
+   * Call once when creating a walker, then pass the returned FacePosition to moveGeodesic().
+   */
+  initGeodesicPosition(worldPoint: THREE.Vector3, faceIndex: number): FacePosition {
+    return this.geodesic.initializePosition(worldPoint, faceIndex);
+  }
+
+  /**
+   * Move geodesically on the surface using face walking + parallel transport.
+   *
+   * Unlike moveOnSurface() which projects off-surface and snaps back via BVH,
+   * this walks along triangle faces, crossing edges with proper direction transport.
+   * This gives true geodesic paths with no drift on complex shapes (torus, peanut, etc).
+   *
+   * @param facePos - Current face position (from initGeodesicPosition or previous moveGeodesic)
+   * @param directionWorld - Movement direction in world space (tangent to surface)
+   * @param distance - Distance to walk in world units
+   * @returns Geodesic move result with new face position, world position, normal, and transported direction
+   */
+  moveGeodesic(
+    facePos: FacePosition,
+    directionWorld: THREE.Vector3,
+    distance: number,
+  ): GeodesicMoveResult {
+    return this.geodesic.moveGeodesic(facePos, directionWorld, distance);
+  }
+
   dispose(): void {
     this.mesh.geometry.boundsTree = undefined;
   }
 }
+
+export type { FacePosition };

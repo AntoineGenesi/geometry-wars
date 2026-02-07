@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { ChainLightningEffect } from '../effects/ChainLightning';
+import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
 
 /**
  * Projectile data for non-instant weapons
@@ -32,6 +33,8 @@ interface ActiveEffect {
   duration: number;
   elapsed: number;
   mesh?: THREE.Object3D;
+  /** For surface-following laser: the traced polyline points (world space) */
+  beamPoints?: THREE.Vector3[];
 }
 
 /**
@@ -65,6 +68,9 @@ export class WeaponManager {
   // Callbacks
   private callbacks: WeaponCallbacks | null = null;
 
+  // Surface for laser beam tracing
+  private meshSurface: MeshSurface | null = null;
+
   // Materials for projectiles
   private projectileMaterials: Map<WeaponType, THREE.Material> = new Map();
 
@@ -81,6 +87,13 @@ export class WeaponManager {
    */
   setCallbacks(callbacks: WeaponCallbacks): void {
     this.callbacks = callbacks;
+  }
+
+  /**
+   * Set a MeshSurface for surface-following weapons (e.g. laser beam).
+   */
+  setMeshSurface(ms: MeshSurface): void {
+    this.meshSurface = ms;
   }
 
   /**
@@ -457,17 +470,18 @@ export class WeaponManager {
   }
 
   private fireLaser(origin: THREE.Vector3, direction: THREE.Vector3): void {
-    // Laser is a sustained effect
-    const laserGeom = new THREE.CylinderGeometry(0.02, 0.02, 20, 8);
-    laserGeom.rotateX(Math.PI / 2);
+    // Trace beam path along the surface (or fallback to straight line)
+    const beamPoints = this.traceBeamPath(origin, direction, 20, 30);
+
+    // Build a TubeGeometry from the traced points
+    const curve = new THREE.CatmullRomCurve3(beamPoints, false, 'catmullrom', 0.5);
+    const tubeGeom = new THREE.TubeGeometry(curve, beamPoints.length * 2, 0.025, 6, false);
     const laserMat = new THREE.MeshBasicMaterial({
-      color: 0xff0000,
+      color: WEAPON_CONFIGS[WeaponType.LaserBeam].color,
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.85,
     });
-    const laserMesh = new THREE.Mesh(laserGeom, laserMat);
-    laserMesh.position.copy(origin).add(direction.clone().multiplyScalar(10));
-    laserMesh.lookAt(origin.clone().add(direction.clone().multiplyScalar(20)));
+    const laserMesh = new THREE.Mesh(tubeGeom, laserMat);
 
     this.projectileRoot.add(laserMesh);
 
@@ -478,7 +492,70 @@ export class WeaponManager {
       duration: 0.5,
       elapsed: 0,
       mesh: laserMesh,
+      beamPoints,
     });
+  }
+
+  /**
+   * Trace a beam path along the mesh surface starting from startPos
+   * heading in the given direction. Each step projects onto the surface
+   * and re-aligns the direction to stay tangent.
+   */
+  private traceBeamPath(
+    startPos: THREE.Vector3,
+    direction: THREE.Vector3,
+    totalLength: number = 20,
+    segments: number = 30,
+  ): THREE.Vector3[] {
+    const points: THREE.Vector3[] = [startPos.clone()];
+    let currentPos = startPos.clone();
+    let currentDir = direction.clone().normalize();
+    const stepSize = totalLength / segments;
+
+    for (let i = 0; i < segments; i++) {
+      // Step forward in current tangent direction
+      const newPos = currentPos.clone().addScaledVector(currentDir, stepSize);
+
+      if (this.meshSurface) {
+        // Project onto the mesh surface
+        const result = this.meshSurface.closestPointOnSurface(newPos);
+        if (!result) break;
+
+        // Update direction to remain tangent to the surface at the new point
+        const normal = result.normal.clone().normalize();
+        const dot = currentDir.dot(normal);
+        currentDir = currentDir.clone().sub(normal.clone().multiplyScalar(dot));
+        const dirLen = currentDir.length();
+        if (dirLen < 0.0001) break;
+        currentDir.multiplyScalar(1 / dirLen);
+
+        currentPos = result.point.clone();
+      } else {
+        // Fallback: project onto sphere of radius equal to startPos length
+        const radius = startPos.length();
+        if (radius > 0.01) {
+          newPos.normalize().multiplyScalar(radius);
+        }
+        // Re-tangentize direction to sphere
+        const normal = newPos.clone().normalize();
+        const dot = currentDir.dot(normal);
+        currentDir = currentDir.clone().sub(normal.clone().multiplyScalar(dot));
+        const dirLen = currentDir.length();
+        if (dirLen < 0.0001) break;
+        currentDir.multiplyScalar(1 / dirLen);
+
+        currentPos = newPos.clone();
+      }
+
+      points.push(currentPos.clone());
+    }
+
+    // Need at least 2 points for a curve
+    if (points.length < 2) {
+      points.push(startPos.clone().addScaledVector(direction, 0.1));
+    }
+
+    return points;
   }
 
   private fireBlackHole(origin: THREE.Vector3, direction: THREE.Vector3): void {
@@ -716,24 +793,36 @@ export class WeaponManager {
 
     switch (effect.type) {
       case 'laser':
-        // Continuous damage along laser
-        if (this.callbacks && effect.direction) {
+        // Continuous damage along surface-following beam polyline
+        if (this.callbacks && effect.beamPoints && effect.beamPoints.length >= 2) {
           const enemies = this.callbacks.getEnemies();
+          const hitRadius = 0.35;
+
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
 
-            // Check if enemy intersects laser line
-            const toEnemy = enemy.position.clone().sub(effect.position);
-            const projection = toEnemy.dot(effect.direction);
-            if (projection > 0 && projection < 20) {
-              const perpDist = toEnemy.clone()
-                .sub(effect.direction.clone().multiplyScalar(projection))
-                .length();
-
-              if (perpDist < 0.3) {
-                this.callbacks.onEnemyDamage(enemy.index, 2 * dt, WeaponType.LaserBeam);
-              }
+            // Check distance to each segment of the beam polyline
+            let minDist = Infinity;
+            for (let s = 0; s < effect.beamPoints.length - 1; s++) {
+              const segDist = distanceToSegment(
+                enemy.position, effect.beamPoints[s], effect.beamPoints[s + 1],
+              );
+              if (segDist < minDist) minDist = segDist;
+              // Early exit if already within hit radius
+              if (minDist < hitRadius) break;
             }
+
+            if (minDist < hitRadius) {
+              this.callbacks.onEnemyDamage(enemy.index, 2 * dt, WeaponType.LaserBeam);
+            }
+          }
+        }
+
+        // Fade out the beam over its duration
+        if (effect.mesh && effect.mesh instanceof THREE.Mesh) {
+          const mat = effect.mesh.material;
+          if (mat instanceof THREE.MeshBasicMaterial) {
+            mat.opacity = 0.85 * (1 - progress);
           }
         }
         break;
@@ -837,4 +926,28 @@ export class WeaponManager {
       mat.dispose();
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute the shortest distance from point P to the line segment A-B.
+ * Uses clamped projection onto the segment.
+ */
+function distanceToSegment(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): number {
+  const ab = b.clone().sub(a);
+  const ap = p.clone().sub(a);
+  const abLenSq = ab.lengthSq();
+
+  // Degenerate segment (A === B)
+  if (abLenSq < 0.000001) return ap.length();
+
+  // Project AP onto AB, clamped to [0, 1]
+  const t = Math.max(0, Math.min(1, ap.dot(ab) / abLenSq));
+
+  // Closest point on segment
+  const closest = a.clone().addScaledVector(ab, t);
+  return p.distanceTo(closest);
 }

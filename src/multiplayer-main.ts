@@ -393,6 +393,7 @@ function main(): void {
   // -- Weapon managers (one per player) --
   function createWeaponManager(ownerId: number): WeaponManager {
     const wm = new WeaponManager();
+    wm.setMeshSurface(meshSurface);
     game.scene.add(wm.getVisualRoot());
     wm.setCallbacks({
       getEnemies: () => {
@@ -650,21 +651,19 @@ function main(): void {
       player1.surfaceU = p1UV.u;
       player1.surfaceV = p1UV.v;
 
-      // Mouse aim (screen-space -> surface tangent plane)
-      const camRight = new THREE.Vector3();
-      const camUp = new THREE.Vector3();
-      game.camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
-
+      // Mouse aim using tangent frame (screen right = tangent, screen up = bitangent)
+      const p1Frame = walker1.getTangentFrame();
       const aimLen = Math.sqrt(p1Input.aimX * p1Input.aimX + p1Input.aimY * p1Input.aimY);
       let p1AimDir: THREE.Vector3;
       if (aimLen > 0.1) {
-        const screenAim = camRight.clone().multiplyScalar(p1Input.aimX)
-          .add(camUp.clone().multiplyScalar(-p1Input.aimY));
-        const dot = screenAim.dot(walker1.normal);
-        p1AimDir = screenAim.sub(walker1.normal.clone().multiplyScalar(dot)).normalize();
+        // Negate aimY because mouse Y increases downward but bitangent points up
+        p1AimDir = new THREE.Vector3()
+          .addScaledVector(p1Frame.tangent, p1Input.aimX)
+          .addScaledVector(p1Frame.bitangent, -p1Input.aimY)
+          .normalize();
       } else {
-        const dot = camUp.clone().negate().dot(walker1.normal);
-        p1AimDir = camUp.clone().negate().sub(walker1.normal.clone().multiplyScalar(dot)).normalize();
+        // Default: face along bitangent (screen up)
+        p1AimDir = p1Frame.bitangent.clone();
       }
 
       // Orient P1 to face aim direction
@@ -716,12 +715,10 @@ function main(): void {
       // P2 faces movement direction (chevron tip points where they're going)
       orientPlayerOnSurface(player2, walker2.normal, p2FaceDirection);
 
-      // Compute aim angle from face direction relative to camera
-      const camRight2 = new THREE.Vector3();
-      const camUp2 = new THREE.Vector3();
-      game.camera.matrixWorld.extractBasis(camRight2, camUp2, new THREE.Vector3());
-      const faceAimX = p2FaceDirection.dot(camRight2);
-      const faceAimY = -p2FaceDirection.dot(camUp2);
+      // Compute aim angle from face direction relative to tangent frame
+      const p2Frame = walker2.getTangentFrame();
+      const faceAimX = p2FaceDirection.dot(p2Frame.tangent);
+      const faceAimY = -p2FaceDirection.dot(p2Frame.bitangent);
       player2.aimAngle = Math.atan2(faceAimX, -faceAimY);
 
       player2.mesh.updateMatrixWorld(true);

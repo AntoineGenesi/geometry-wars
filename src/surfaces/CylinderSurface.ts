@@ -124,7 +124,7 @@ export class CylinderSurface extends Surface {
       height,
       gridSegmentsU * 2,
       gridSegmentsV * 2,
-      true // open-ended for now
+      false // closed with caps to prevent edge-stuck issues
     )
     return new THREE.Mesh(geometry, this.createSurfaceMaterial())
   }

@@ -397,12 +397,16 @@ export class SphereWithTunnelSurface extends Surface {
     // ===== First hemisphere (positive axis side, with hole) =====
     const h1Vertices: number[][] = []
 
+    // Minimum sinPhi to prevent degenerate pole vertices that confuse BVH projection
+    const MIN_SIN_PHI = 0.05
+
     for (let j = 0; j <= hemisphereVSegments; j++) {
       h1Vertices[j] = []
       // phi goes from 0 (pole) to (PI/2 - holeAngle)
       const phi = (j / hemisphereVSegments) * (Math.PI / 2 - holeAngle)
-      const sinPhi = Math.sin(phi)
+      const rawSinPhi = Math.sin(phi)
       const cosPhi = Math.cos(phi)
+      const sinPhi = Math.max(rawSinPhi, MIN_SIN_PHI)
 
       for (let i = 0; i <= uSegments; i++) {
         const theta = (i / uSegments) * Math.PI * 2
@@ -478,8 +482,9 @@ export class SphereWithTunnelSurface extends Surface {
       h2Vertices[j] = []
       // phi goes from (PI/2 - holeAngle) back to 0 (opposite pole)
       const phi = (1 - j / hemisphereVSegments) * (Math.PI / 2 - holeAngle)
-      const sinPhi = Math.sin(phi)
+      const rawSinPhi = Math.sin(phi)
       const cosPhi = Math.cos(phi)
+      const sinPhi = Math.max(rawSinPhi, MIN_SIN_PHI)
 
       for (let i = 0; i <= uSegments; i++) {
         const theta = (i / uSegments) * Math.PI * 2

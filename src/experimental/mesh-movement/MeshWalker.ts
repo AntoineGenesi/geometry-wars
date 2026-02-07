@@ -7,10 +7,14 @@
  * - No UV coordinates, no shape-specific code
  * - Works on sphere, torus, cube, cup, statue, anything
  * - No pole singularities or speed distortions
+ *
+ * Internally uses geodesic face walking (HalfEdgeMesh + FaceWalker)
+ * for movement with parallel transport across edges. Falls back to
+ * BVH snap-to-surface only for initialization and recovery.
  */
 
 import * as THREE from 'three';
-import { MeshSurface, SurfaceQueryResult, TangentFrame } from './MeshSurface';
+import { MeshSurface, SurfaceQueryResult, TangentFrame, FacePosition } from './MeshSurface';
 
 export interface WalkerState {
   /** Current position on the mesh surface (world space) */
@@ -36,6 +40,9 @@ export class MeshWalker {
   private _tangent: THREE.Vector3;
   private _bitangent: THREE.Vector3;
 
+  /** Geodesic face position (face index + barycentric coordinates) */
+  private _facePos: FacePosition;
+
   /** Movement speed in world units per second */
   speed: number;
 
@@ -46,7 +53,7 @@ export class MeshWalker {
     this.surface = surface;
     this.speed = speed;
 
-    // Project starting position onto surface
+    // Project starting position onto surface via BVH
     const result = surface.closestPointOnSurface(startPos);
     if (result) {
       this.position = result.point.clone();
@@ -57,6 +64,9 @@ export class MeshWalker {
       this.normal = new THREE.Vector3(0, 1, 0);
       this.faceIndex = 0;
     }
+
+    // Initialize geodesic face position
+    this._facePos = surface.initGeodesicPosition(this.position, this.faceIndex);
 
     // Initialize tangent frame
     const frame = surface.getTangentFrame(this.normal);
@@ -86,7 +96,87 @@ export class MeshWalker {
    */
   move(moveDir: THREE.Vector3, dt: number): SurfaceQueryResult | null {
     const distance = this.speed * dt;
+    if (distance < 1e-6) return null;
 
+    // Project moveDir onto surface tangent plane
+    const n = this.normal;
+    const dotN = moveDir.dot(n);
+    const projDir = moveDir.clone().addScaledVector(n, -dotN);
+    const projLen = projDir.length();
+
+    if (projLen < 0.0001) {
+      // moveDir is parallel to normal - try using tangent frame components
+      const tDot = moveDir.dot(this._tangent);
+      const bDot = moveDir.dot(this._bitangent);
+      const inPlaneLen = Math.sqrt(tDot * tDot + bDot * bDot);
+
+      if (inPlaneLen < 0.01) {
+        return null; // Truly perpendicular to surface, can't move
+      }
+
+      projDir.copy(this._tangent).multiplyScalar(tDot)
+        .addScaledVector(this._bitangent, bDot)
+        .normalize();
+    } else {
+      projDir.multiplyScalar(1 / projLen);
+    }
+
+    // Walk geodesically
+    const geoResult = this.surface.moveGeodesic(this._facePos, projDir, distance);
+
+    if (geoResult.distanceTraveled < distance * 0.05) {
+      // Geodesic walk made almost no progress (boundary, degenerate face, etc.)
+      // Fall back to BVH snap-to-surface for the full distance
+      return this._fallbackMove(moveDir, distance);
+    }
+
+    // Apply geodesic result
+    this._facePos = geoResult.facePosition;
+    this.position.copy(geoResult.position);
+    this.faceIndex = geoResult.faceIndex;
+
+    // Update tangent frame using parallel-transported direction
+    this._updateTangentFrame(geoResult.normal);
+    this.normal.copy(geoResult.normal);
+
+    // If geodesic walk only covered part of the distance, use BVH for the remainder
+    const remainingDist = distance - geoResult.distanceTraveled;
+    if (remainingDist > distance * 0.1) {
+      const bvhResult = this.surface.moveOnSurface(
+        this.position,
+        this.normal,
+        geoResult.direction,
+        remainingDist,
+      );
+      if (bvhResult && this.position.distanceTo(bvhResult.point) > remainingDist * 0.05) {
+        this.position.copy(bvhResult.point);
+        this._updateTangentFrame(bvhResult.normal);
+        this.normal.copy(bvhResult.normal);
+        this.faceIndex = bvhResult.faceIndex;
+        this._facePos = this.surface.initGeodesicPosition(bvhResult.point, bvhResult.faceIndex);
+      }
+    }
+
+    if (this.mesh) {
+      this.mesh.position.copy(this.position);
+      this.alignToSurface();
+    }
+
+    return {
+      point: this.position.clone(),
+      normal: this.normal.clone(),
+      distance: geoResult.distanceTraveled,
+      faceIndex: this.faceIndex,
+    };
+  }
+
+  /**
+   * Fallback to BVH-based movement when geodesic walk fails.
+   * This handles edge cases like boundary edges, degenerate triangles, etc.
+   * Tries multiple strategies: direct BVH, tangent-frame decomposition, then fallback axes.
+   */
+  private _fallbackMove(moveDir: THREE.Vector3, distance: number): SurfaceQueryResult | null {
+    // Strategy 1: Direct BVH snap-to-surface
     const result = this.surface.moveOnSurface(
       this.position,
       this.normal,
@@ -94,19 +184,74 @@ export class MeshWalker {
       distance,
     );
 
-    if (result) {
-      this.position.copy(result.point);
-      this._updateTangentFrame(result.normal);
-      this.normal.copy(result.normal);
-      this.faceIndex = result.faceIndex;
+    if (result && this.position.distanceTo(result.point) > distance * 0.05) {
+      return this._applyBvhResult(result);
+    }
 
-      // Update visual mesh position and orientation
-      if (this.mesh) {
-        this.mesh.position.copy(result.point);
-        this.alignToSurface();
+    // Strategy 2: Decompose into tangent frame (helps when moveDir is nearly parallel to normal)
+    const tDot = moveDir.dot(this._tangent);
+    const bDot = moveDir.dot(this._bitangent);
+    const inPlaneLen = Math.sqrt(tDot * tDot + bDot * bDot);
+
+    if (inPlaneLen > 0.01) {
+      const onSurfaceDir = this._tangent.clone().multiplyScalar(tDot)
+        .add(this._bitangent.clone().multiplyScalar(bDot))
+        .normalize();
+
+      const retryResult = this.surface.moveOnSurface(
+        this.position,
+        this.normal,
+        onSurfaceDir,
+        distance,
+      );
+
+      if (retryResult && this.position.distanceTo(retryResult.point) > distance * 0.05) {
+        return this._applyBvhResult(retryResult);
       }
     }
 
+    // Strategy 3: Try tangent and bitangent as fallback directions
+    const tangentResult = this.surface.moveOnSurface(
+      this.position,
+      this.normal,
+      this._tangent,
+      distance,
+    );
+    if (tangentResult && this.position.distanceTo(tangentResult.point) > distance * 0.05) {
+      return this._applyBvhResult(tangentResult);
+    }
+
+    const bitangentResult = this.surface.moveOnSurface(
+      this.position,
+      this.normal,
+      this._bitangent,
+      distance,
+    );
+    if (bitangentResult && this.position.distanceTo(bitangentResult.point) > distance * 0.05) {
+      return this._applyBvhResult(bitangentResult);
+    }
+
+    // If nothing worked, just apply whatever result we got
+    if (result) {
+      return this._applyBvhResult(result);
+    }
+    return null;
+  }
+
+  /**
+   * Apply a BVH surface query result and re-sync geodesic state.
+   */
+  private _applyBvhResult(result: SurfaceQueryResult): SurfaceQueryResult {
+    this.position.copy(result.point);
+    this._updateTangentFrame(result.normal);
+    this.normal.copy(result.normal);
+    this.faceIndex = result.faceIndex;
+    this._facePos = this.surface.initGeodesicPosition(result.point, result.faceIndex);
+
+    if (this.mesh) {
+      this.mesh.position.copy(result.point);
+      this.alignToSurface();
+    }
     return result;
   }
 
@@ -139,76 +284,77 @@ export class MeshWalker {
 
   /**
    * Move using screen-space input (WASD-style).
-   * Converts screen input to world-space movement relative to camera.
+   * Maps screen-space input to the walker's tangent frame.
+   *
+   * The camera looks along the surface normal (from above the surface down
+   * at the player).  Its "up" is set to the walker's bitangent each frame,
+   * so the visual axes on screen correspond directly to the tangent frame:
+   *   - screen right  = walker tangent
+   *   - screen up     = walker bitangent
+   *
+   * Projecting the camera's own basis vectors onto the tangent plane fails
+   * because the camera's forward (-Z) is nearly parallel to the surface
+   * normal, producing a near-zero on-surface vector.  Using the tangent
+   * frame directly avoids this entirely.
    *
    * @param inputX - Horizontal input (-1 to 1, A/D or left/right stick)
-   * @param inputY - Vertical input (-1 to 1, W/S or up/down stick)
-   * @param camera - The camera (used to determine "forward" and "right")
+   * @param inputY - Vertical input (-1 to 1, positive = visual "up" on screen)
+   * @param _camera - The camera (kept for API compatibility; not used)
    * @param dt - Delta time
    */
   moveFromInput(
     inputX: number,
     inputY: number,
-    camera: THREE.Camera,
+    _camera: THREE.Camera,
     dt: number,
   ): SurfaceQueryResult | null {
     if (Math.abs(inputX) < 0.01 && Math.abs(inputY) < 0.01) return null;
 
-    // Get camera right and up vectors
-    const camRight = new THREE.Vector3();
-    const camUp = new THREE.Vector3();
-    camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
-
-    // Build world-space movement direction from screen input
+    // Map screen axes directly to the walker's persistent tangent frame.
+    // tangent  = screen right  (D = +inputX, A = -inputX)
+    // bitangent = screen up    (W = +inputY after call-site negation, S = -inputY)
     const moveDir = new THREE.Vector3()
-      .addScaledVector(camRight, inputX)
-      .addScaledVector(camUp, -inputY); // Negate Y: W (inputY=-1) should go "up" on screen = camera's up
+      .addScaledVector(this._tangent, inputX)
+      .addScaledVector(this._bitangent, inputY);
+
+    if (moveDir.lengthSq() < 0.0001) return null;
 
     return this.move(moveDir, dt);
   }
 
   /**
    * Compute aim direction from screen-space input.
-   * Projects the aim direction onto the surface tangent plane.
+   * Maps screen-space aim to the walker's tangent frame, same as moveFromInput.
    *
    * @param aimX - Horizontal aim (-1 to 1, mouse delta or right stick)
-   * @param aimY - Vertical aim (-1 to 1, mouse delta or right stick)
-   * @param camera - The camera
+   * @param aimY - Vertical aim (-1 to 1, positive = screen down in raw mouse coords)
+   * @param _camera - The camera (kept for API compatibility; not used)
    * @returns World-space aim direction on the surface tangent plane
    */
   getAimDirection(
     aimX: number,
     aimY: number,
-    camera: THREE.Camera,
+    _camera: THREE.Camera,
   ): THREE.Vector3 {
     const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
     if (aimLen < 0.01) {
-      // Default: aim in camera's forward direction projected onto surface
-      const camForward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-      const dot = camForward.dot(this.normal);
-      return camForward.sub(this.normal.clone().multiplyScalar(dot)).normalize();
+      // Default: aim along bitangent (screen up)
+      return this._bitangent.clone();
     }
 
-    // Get camera basis
-    const camRight = new THREE.Vector3();
-    const camUp = new THREE.Vector3();
-    camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+    // Map screen axes to tangent frame.
+    // tangent   = screen right  (+aimX)
+    // bitangent = screen up     (-aimY, because raw mouse Y increases downward)
+    const aimDir = new THREE.Vector3()
+      .addScaledVector(this._tangent, aimX)
+      .addScaledVector(this._bitangent, -aimY);
 
-    // Build screen-space aim vector
-    const screenAim = new THREE.Vector3()
-      .addScaledVector(camRight, aimX)
-      .addScaledVector(camUp, -aimY);
-
-    // Project onto surface tangent plane (remove normal component)
-    const dot = screenAim.dot(this.normal);
-    screenAim.sub(this.normal.clone().multiplyScalar(dot));
-
-    const len = screenAim.length();
+    const len = aimDir.length();
     if (len < 0.0001) {
-      return new THREE.Vector3(0, 0, 1); // fallback
+      return this._bitangent.clone();
     }
 
-    return screenAim.normalize();
+    return aimDir.normalize();
   }
 
   /**

@@ -663,6 +663,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // -- Weapon manager --
   const weaponManager = new WeaponManager();
+  weaponManager.setMeshSurface(meshSurface);
   game.scene.add(weaponManager.getVisualRoot());
 
   // Wire weapon callbacks
@@ -989,27 +990,26 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       const frame = playerWalker.getTangentFrame();
       game.camera.up.lerp(frame.bitangent, CAMERA_LERP_FACTOR).normalize();
 
-      // Calculate aim from mouse in screen space
-      const camRight = new THREE.Vector3();
-      const camUp = new THREE.Vector3();
-      game.camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
-
+      // Calculate aim from mouse in screen space using tangent frame.
+      // The camera looks along the surface normal with up = bitangent,
+      // so screen right = tangent, screen up = bitangent.
+      // Mouse aimX: -1 left, +1 right.  aimY: -1 top, +1 bottom (screen coords).
       const aimX = inputState.aimX;
       const aimY = inputState.aimY;
       const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
 
       let aimDirection: THREE.Vector3;
       if (aimLen > 0.1) {
-        // Project screen aim onto surface tangent plane
-        const screenAim = camRight.multiplyScalar(aimX)
-          .add(camUp.multiplyScalar(-aimY));
-        // Project onto surface (remove normal component)
-        const dot = screenAim.dot(playerNormal);
-        aimDirection = screenAim.sub(playerNormal.clone().multiplyScalar(dot)).normalize();
+        // Map screen aim to tangent frame
+        // tangent = screen right, bitangent = screen up
+        // Negate aimY because mouse Y increases downward but bitangent points up
+        aimDirection = new THREE.Vector3()
+          .addScaledVector(frame.tangent, aimX)
+          .addScaledVector(frame.bitangent, -aimY)
+          .normalize();
       } else {
-        // Default: face camera up direction projected onto surface
-        const dot = camUp.clone().negate().dot(playerNormal);
-        aimDirection = camUp.clone().negate().sub(playerNormal.clone().multiplyScalar(dot)).normalize();
+        // Default: face along bitangent (screen up direction)
+        aimDirection = frame.bitangent.clone();
       }
 
       // Orient player to face aim direction

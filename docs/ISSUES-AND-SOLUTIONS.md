@@ -1,138 +1,78 @@
 # Issues and Solutions Log
 
-## CRITICAL: UV Parameterization Pole Singularity
+## Current Architecture
 
-### Problem
-The current UV-based movement system has fundamental mathematical flaws:
+Player and bullets use **MeshWalker** (BVH-based surface walking via `three-mesh-bvh`). This system works on any mesh geometry with constant world-space speed and no singularities. Enemies and geoms still use UV-parameterized surfaces, bridged to world space via `surface.worldToSurface()`.
 
-1. **Pole Singularity on Sphere**: At V=0 (north pole) or V=1 (south pole), all U values map to a single point. Moving "forward" is impossible, and moving sideways causes infinite angular velocity because circumference → 0.
+Key files:
+- `src/experimental/mesh-movement/MeshSurface.ts` - BVH wrapper (closestPointOnSurface, moveOnSurface, raycast)
+- `src/experimental/mesh-movement/MeshWalker.ts` - Persistent tangent frame movement
+- `src/entities/Bullet.ts` - Modified to use MeshSurface when available
+- `src/main.ts` - Integration: player uses MeshWalker, bullets use MeshSurface
 
-2. **Non-uniform Speed**: Movement in UV space translates to varying world-space speeds:
-   - Equator: Normal speed
-   - Near poles: Lateral movement becomes infinitely fast
-   - This is why player "spins ultra quick" at the top
-
-3. **Shape Dependency**: Each shape requires custom `moveOnSurface()` implementation with its own quirks and singularities (torus has different issues, cube has edge discontinuities).
-
-4. **Cannot Support Arbitrary Meshes**: A cup, statue, or person mesh has no natural UV parameterization.
-
-### Root Cause
-```javascript
-// FLAWED: UV-based movement
-const newUV = surface.moveOnSurface(u, v, du, dv);  // Shape-dependent!
-player.surfaceU = newUV.u;
-player.surfaceV = newUV.v;
-```
-
-The `moveOnSurface()` function tries to handle wrapping/clamping but cannot fix the fundamental singularity problem.
-
-### Solution: Mesh-Based Surface Walking
-Replace UV system with world-space raycasting:
-
-```javascript
-// CORRECT: Mesh-based movement
-// 1. Calculate desired movement in world space (tangent to surface)
-const moveDir = tangent.multiplyScalar(inputX).add(bitangent.multiplyScalar(inputY));
-const newWorldPos = currentPos.add(moveDir.multiplyScalar(speed * dt));
-
-// 2. Project back onto mesh surface via raycast
-const rayOrigin = newWorldPos.add(normal.multiplyScalar(10)); // Above surface
-const rayDir = normal.clone().negate(); // Pointing at surface
-const hit = raycaster.intersectObject(mesh);
-if (hit.length > 0) {
-  player.position.copy(hit[0].point);
-  player.normal = hit[0].face.normal;
-}
-```
-
-Benefits:
-- Works for ANY mesh (cup, statue, arbitrary shape)
-- Uniform speed everywhere (no singularities)
-- No shape-specific code needed
+24 automated tests verify pole traversal, speed constancy, and multi-shape support. Visual verification done on sphere, torus, cube, knot, and cylinder via Puppeteer screenshots.
 
 ---
 
-## ISSUE: Bullets Use Spherical Great-Circle Paths
+## Solved Issues
 
-### Problem
-Bullets are hardcoded to travel in spherical great circles, even on torus/cube:
+### 2026-02 - UV Pole Singularity (RESOLVED)
 
-```javascript
-// From Bullet.ts - WRONG for non-spheres
-const targetRadius = b.sphereRadius > 0 ? b.sphereRadius : this.sphereRadius;
-line.position.multiplyScalar(targetRadius / currentDist);  // Projects onto SPHERE
-```
+**Problem**: UV-based movement on sphere had singularities at poles (V=0 and V=1). All U values mapped to a single point, causing infinite angular velocity near poles and non-uniform speed across the surface. Each shape required custom `moveOnSurface()` with its own quirks.
 
-### Solution
-Bullets should use the same mesh-based movement as player:
-1. Move in world-space direction
-2. Raycast back onto surface each frame
-3. Update direction to stay tangent to surface
+**Resolution**: Replaced UV movement for player and bullets with MeshWalker, which moves in world-space tangent directions and projects back onto the mesh via BVH. Speed is constant everywhere. No shape-specific code needed.
 
----
+### 2026-02 - Bullets Hardcoded to Spherical Great Circles (RESOLVED)
 
-## ISSUE: No Visual Distinction for Far-Side Entities
+**Problem**: Bullets traveled along spherical great circles regardless of actual surface shape. On torus, cube, and other non-spherical surfaces, bullets would fly off-surface or path incorrectly.
 
-### Problem
-Enemies on the back of a shape (through the surface) look identical to nearby enemies.
+**Resolution**: Bullets now use `MeshSurface.moveOnSurface()` to follow any mesh surface. Each frame, the bullet moves in its tangent direction and snaps back to the closest surface point via BVH.
 
-### Solution
-Depth-based opacity:
-```javascript
-// Compare entity position to camera position relative to surface center
-const toCam = camera.position.clone().sub(surfaceCenter);
-const toEntity = entity.position.clone().sub(surfaceCenter);
-const dot = toCam.dot(toEntity);
-const opacity = dot > 0 ? 1.0 : 0.3; // Back side = faint
-entity.material.opacity = opacity;
-```
+### 2026-02 - Torus Camera Flipping (RESOLVED)
+
+**Problem**: Camera `up` vector was recomputed from scratch each frame using cross products, causing discontinuities and sudden flips on torus inner surface.
+
+**Resolution**: MeshWalker uses a persistent tangent frame that smoothly rotates with the surface normal. Camera uses this frame's tangent as its `up` vector, eliminating flips. See `decisions/torus-tangent-frame-fix.md`.
 
 ---
 
-## FAILED APPROACHES LOG
+## Evolution of Approach
 
-### Approach 1: UV Parameterization (FAILED)
-- **What**: Store positions as (u, v) coordinates, use `moveOnSurface()`
-- **Why Failed**: Pole singularities, shape-dependent, varying speeds
-- **Lesson**: Cannot fix mathematically - need different approach entirely
+### Phase 1: UV Parameterization
 
-### Approach 2: Hamster Ball Rotation (FAILED)
-- **What**: Player fixed at center, surface rotates under them
-- **Why Failed**: Doesn't work for non-convex shapes, confusing for multiplayer
-- **Lesson**: Player must actually move on surface
+Initial system stored positions as (u, v) coordinates on parameterized surfaces. Worked well for simple shapes but had fundamental limitations: pole singularities, non-uniform speed, shape-dependent code, and no support for arbitrary meshes.
+
+### Phase 2: Hamster Ball Rotation (Explored, Not Used)
+
+Concept: keep player fixed at center, rotate the surface under them. Rejected because it breaks for non-convex shapes and creates confusion in multiplayer.
+
+### Phase 3: Mesh-Based BVH Walking (Current)
+
+Uses `three-mesh-bvh` for fast `closestPointToPoint()` on any mesh. Player moves in world space along the surface tangent plane, then snaps back to the mesh. Works identically on sphere, torus, cube, imported OBJ/GLB, or any other geometry.
 
 ---
 
-## WORKING APPROACHES
+## Known Limitations
 
-### Mesh-Based Movement with three-mesh-bvh (IMPLEMENTED)
-- **Source**: https://github.com/gkjohnson/three-mesh-bvh
-- **How**: BVH acceleration for fast `closestPointToPoint()` on any mesh
-- **Key files**:
-  - `src/experimental/mesh-movement/MeshSurface.ts` - BVH wrapper
-  - `src/experimental/mesh-movement/MeshWalker.ts` - Entity movement
-  - `src/experimental/mesh-movement/MeshBullet.ts` - Surface-following bullets (standalone)
-  - `src/entities/Bullet.ts` - Modified to use `MeshSurface` when available
-  - `src/main.ts` - Integrated: player uses MeshWalker, bullets use MeshSurface
-- **Status**: INTEGRATED into main game. Player movement + bullets use BVH.
-  - Enemies/geoms still use UV (bridged via `surface.worldToSurface()`)
-  - 24 automated tests passing (pole traversal, speed constancy, multi-shape)
-- **Test results**: Verified on sphere, torus, cube, knot, cylinder via Puppeteer screenshots
+- **Enemies still use UV system**: 15 enemy types move via `surface.moveOnSurface(u, v, du, dv)`. Migration to MeshWalker is planned but not yet started. See `decisions/enemy-meshwalker-migration.md`.
+- **UV bridge approximation**: `surface.worldToSurface()` converts world positions to UV for enemy/geom interaction. This works but adds a layer of coordinate conversion that would be unnecessary if enemies also used MeshWalker.
+- **Far-side entity visibility**: No depth-based opacity yet. Enemies behind the surface look the same as nearby ones.
+- **Bloom tuning**: Bloom is enabled (threshold=0.85, strength=1.0) but additive-blended particles can cause white-out. All particle/trail materials use NormalBlending to mitigate.
 
 ---
 
 ## Testing Requirements
 
-### Movement Tests
-1. Walk to "top" of sphere - should be able to continue over and down other side
-2. Walk in circle at any position - should maintain constant speed
-3. Load arbitrary OBJ mesh - movement should work identically
+### Movement Tests (Automated - 24 passing)
+1. Walk over sphere poles - constant speed, no singularity
+2. Walk in circle at any position - uniform speed
+3. Load arbitrary OBJ mesh - movement works identically
 
-### Bullet Tests
+### Bullet Tests (Automated)
 1. Shoot on sphere - bullet follows surface curve
-2. Shoot on torus - bullet follows torus surface (NOT spherical)
+2. Shoot on torus - bullet follows torus surface (not spherical)
 3. Shoot on cube - bullet follows cube faces and edges
 
-### Visual Tests
-- Enemies behind surface should be visibly fainter
+### Visual Tests (Manual)
 - Player always centered regardless of surface position
+- Camera up vector stable on torus inner surface

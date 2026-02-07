@@ -189,11 +189,21 @@ export class PeanutSurface extends Surface {
     const indices: number[] = []
     const normals: number[] = []
 
+    // Minimum sinPhi to prevent degenerate pole vertices.
+    // Without this, sinPhi=0 at poles collapses all ring vertices to a single
+    // point, creating degenerate triangles that confuse BVH projection.
+    const MIN_SIN_PHI = 0.05
+
     for (let j = 0; j <= rings; j++) {
       const phi = (j / rings) * Math.PI
       const r = baseRadius * (1 + waistDepth * Math.cos(2 * phi))
-      const sinPhi = Math.sin(phi)
+      const rawSinPhi = Math.sin(phi)
       const cosPhi = Math.cos(phi)
+
+      // Clamp sinPhi away from zero so poles have a small circle instead of a point
+      const effectiveSinPhi = Math.abs(rawSinPhi) < MIN_SIN_PHI
+        ? MIN_SIN_PHI * (rawSinPhi >= 0 ? 1 : -1)
+        : rawSinPhi
 
       for (let i = 0; i <= segments; i++) {
         const theta = (i / segments) * Math.PI * 2
@@ -201,16 +211,16 @@ export class PeanutSurface extends Surface {
         const sinTheta = Math.sin(theta)
 
         vertices.push(
-          r * sinPhi * cosTheta,
+          r * effectiveSinPhi * cosTheta,
           r * cosPhi,
-          r * sinPhi * sinTheta
+          r * effectiveSinPhi * sinTheta
         )
 
-        // Approximate normal
+        // Approximate normal (use effective sinPhi for consistency)
         const n = new THREE.Vector3(
-          sinPhi * cosTheta,
+          effectiveSinPhi * cosTheta,
           cosPhi,
-          sinPhi * sinTheta
+          effectiveSinPhi * sinTheta
         ).normalize()
         normals.push(n.x, n.y, n.z)
       }
@@ -222,7 +232,7 @@ export class PeanutSurface extends Surface {
         const b = a + 1
         const c = a + (segments + 1)
         const d = c + 1
-        indices.push(a, c, b, b, c, d)
+        indices.push(a, b, c, b, d, c)
       }
     }
 
