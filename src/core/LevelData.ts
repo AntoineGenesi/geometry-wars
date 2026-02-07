@@ -10,7 +10,11 @@ export type SurfaceType =
   | 'cylinder'
   | 'torus'
   | 'peanut'
-  | 'capsule';
+  | 'capsule'
+  | 'icosahedron'
+  | 'mobius'
+  | 'sphere-tunnel'
+  | 'cube-ring';
 
 export interface WaveDefinition {
   /** Delay in seconds before this wave spawns. */

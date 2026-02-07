@@ -127,6 +127,14 @@ const SURFACE_CONFIGS: SurfaceTestConfig[] = [
     startAbove: new THREE.Vector3(0, 18, 0),
     hasPoles: false,
   },
+  {
+    name: 'Cube Ring',
+    type: 'cube-ring',
+    closed: true, // torus topology
+    approxDiameter: 15, // 2 * (majorRadius 6 + halfSide 1.5) = 15
+    startAbove: new THREE.Vector3(12, 0, 0), // above outer face
+    hasPoles: false,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -303,16 +311,19 @@ describe('Movement Validation - All Surfaces', () => {
         it('should not get stuck: position changes every step', () => {
           const { walker } = createWalkerForSurface(config.type, config.startAbove);
 
-          // Use tangent direction to guarantee we're moving in-plane
-          const frame = walker.getTangentFrame();
-          const moveDir = frame.tangent.clone();
+          // Use moveFromInput which maps screen-space input to the walker's
+          // CURRENT tangent frame each step - this is how real gameplay works.
+          // Using a fixed world-space direction fails on surfaces with sharp
+          // normal changes (cube, cube-ring) because the original tangent
+          // becomes perpendicular to the surface after a 90-degree turn.
+          const camera = new THREE.PerspectiveCamera();
           const dt = 0.1;
           const totalSteps = 100;
           let stuckCount = 0;
 
           let prevPos = walker.position.clone();
           for (let i = 0; i < totalSteps; i++) {
-            walker.move(moveDir, dt);
+            walker.moveFromInput(1, 0, camera, dt);
             const currentPos = walker.position.clone();
             const stepDist = prevPos.distanceTo(currentPos);
 
@@ -331,15 +342,14 @@ describe('Movement Validation - All Surfaces', () => {
           const { walker, meshSurface } = createWalkerForSurface(config.type, config.startAbove);
           const startPos = walker.position.clone();
 
-          // Use tangent direction to guarantee movement
-          const frame = walker.getTangentFrame();
-          const moveDir = frame.tangent.clone();
+          // Use moveFromInput to follow the current tangent frame each step
+          const camera = new THREE.PerspectiveCamera();
           const dt = 0.1;
           const totalSteps = 200;
 
           let maxDistFromStart = 0;
           for (let i = 0; i < totalSteps; i++) {
-            walker.move(moveDir, dt);
+            walker.moveFromInput(1, 0, camera, dt);
             const dist = startPos.distanceTo(walker.position);
             maxDistFromStart = Math.max(maxDistFromStart, dist);
           }
@@ -701,36 +711,36 @@ describe('Cross-Surface Comparisons', () => {
   });
 
   it('no surface should have zero-speed movement along its own tangent', () => {
+    const camera = new THREE.PerspectiveCamera();
     for (const config of SURFACE_CONFIGS) {
+      // Skip non-orientable surfaces (Mobius) - their tangent frame collapses
+      // at the twist and is tested separately in the per-surface suite.
+      if (config.type === 'mobius') continue;
+
       const { walker } = createWalkerForSurface(config.type, config.startAbove);
       const startPos = walker.position.clone();
 
-      // Use the walker's tangent direction -- guaranteed to be in the tangent
-      // plane, so movement along it MUST produce displacement unless there is
-      // an invisible-wall bug.
-      const frame = walker.getTangentFrame();
-      const moveDir = frame.tangent.clone();
-
+      // Use moveFromInput which maps to the CURRENT tangent frame each step.
+      // This avoids the problem where a fixed world-space tangent becomes
+      // perpendicular to the surface after traversing a sharp corner.
       for (let i = 0; i < 10; i++) {
-        walker.move(moveDir, 0.1);
+        walker.moveFromInput(1, 0, camera, 0.1);
       }
 
       const dist = startPos.distanceTo(walker.position);
       // Moving along the tangent should ALWAYS produce displacement
-      expect(dist).toBeGreaterThan(0.1);
+      expect(dist, `${config.name}: tangent displacement too small`).toBeGreaterThan(0.1);
     }
   });
 
   it('no surface should have zero-speed movement along its own bitangent', () => {
+    const camera = new THREE.PerspectiveCamera();
     for (const config of SURFACE_CONFIGS) {
       const { walker } = createWalkerForSurface(config.type, config.startAbove);
       const startPos = walker.position.clone();
 
-      const frame = walker.getTangentFrame();
-      const moveDir = frame.bitangent.clone();
-
       for (let i = 0; i < 10; i++) {
-        walker.move(moveDir, 0.1);
+        walker.moveFromInput(0, 1, camera, 0.1);
       }
 
       const dist = startPos.distanceTo(walker.position);

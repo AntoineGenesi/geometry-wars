@@ -30,6 +30,7 @@ export class StartMenu {
     { type: 'icosahedron', name: 'Icosahedron', icon: '\u2B21' },
     { type: 'mobius', name: 'M\u00F6bius', icon: '\u223F' },
     { type: 'sphere-tunnel', name: 'Sphere Tunnel', icon: '\u2295' },
+    { type: 'cube-ring', name: 'Cube Ring', icon: '\u25A3' },
   ];
 
   constructor() {

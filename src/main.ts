@@ -664,6 +664,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Weapon manager --
   const weaponManager = new WeaponManager();
   weaponManager.setMeshSurface(meshSurface);
+  weaponManager.playerPositionRef = playerWalker.position;
   game.scene.add(weaponManager.getVisualRoot());
 
   // Wire weapon callbacks
@@ -1184,9 +1185,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Player vs geoms
     checkGeomPickups(player, geomPool, scoreManager, particles);
 
-    // Player vs enemies
+    // Player vs enemies (immune if shielded OR tesla coil active)
     const fireModifiers = superStateManager.getFireModifiers();
-    checkPlayerEnemyCollisions(player, enemies, particles, screenShake, fireModifiers.isShielded);
+    const isImmune = fireModifiers.isShielded || weaponManager.isTeslaActive();
+    checkPlayerEnemyCollisions(player, enemies, particles, screenShake, isImmune);
 
     // Gate pass-through detection (Pacifism mode mechanic)
     if (player.alive && player.canTakeDamage) {
@@ -1317,7 +1319,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Weapon fire handler: delegates all firing to WeaponManager --
   player.weaponFireHandler = (origin: THREE.Vector3, direction: THREE.Vector3) => {
     const gameTime = game.clock.totalTime;
-    const fired = weaponManager.fire(origin, direction, gameTime);
+    const fired = weaponManager.fire(origin, direction, gameTime, playerWalker.normal);
     if (fired) {
       surface.applyForce(origin, 0.1, 0.3);
       sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });

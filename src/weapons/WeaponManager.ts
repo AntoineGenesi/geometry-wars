@@ -226,7 +226,7 @@ export class WeaponManager {
 
     switch (this.currentWeapon) {
       case WeaponType.Standard:
-        this.fireStandard(origin, direction);
+        this.fireStandard(origin, direction, surfaceNormal);
         break;
 
       case WeaponType.Spread:
@@ -320,9 +320,10 @@ export class WeaponManager {
   // Weapon-specific fire methods
   // -------------------------------------------------------------------------
 
-  private fireStandard(origin: THREE.Vector3, direction: THREE.Vector3): void {
-    // Dual-barrel setup: fire 2 bullets slightly offset
-    const right = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
+  private fireStandard(origin: THREE.Vector3, direction: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
+    // Dual-barrel setup: fire 2 bullets slightly offset perpendicular to aim direction
+    const up = surfaceNormal?.clone().normalize() ?? new THREE.Vector3(0, 1, 0);
+    const right = new THREE.Vector3().crossVectors(direction, up).normalize();
     const offset = 0.15;
 
     const leftOrigin = origin.clone().addScaledVector(right, -offset);
