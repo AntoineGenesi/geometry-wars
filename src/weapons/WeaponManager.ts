@@ -71,6 +71,9 @@ export class WeaponManager {
   // Surface for laser beam tracing
   private meshSurface: MeshSurface | null = null;
 
+  // Player position reference for following effects
+  playerPositionRef: THREE.Vector3 | null = null;
+
   // Materials for projectiles
   private projectileMaterials: Map<WeaponType, THREE.Material> = new Map();
 
@@ -160,6 +163,13 @@ export class WeaponManager {
   }
 
   /**
+   * Check if tesla coil effect is currently active
+   */
+  isTeslaActive(): boolean {
+    return this.activeEffects.some(effect => effect.type === 'tesla');
+  }
+
+  /**
    * Equip a new weapon with ammo
    */
   equipWeapon(type: WeaponType, ammo?: number): void {
@@ -199,9 +209,10 @@ export class WeaponManager {
    * @param origin - Player position
    * @param direction - Aim direction (normalized)
    * @param currentTime - Current game time
+   * @param surfaceNormal - Surface normal at player position (for spread rotation)
    * @returns true if weapon fired
    */
-  fire(origin: THREE.Vector3, direction: THREE.Vector3, currentTime: number): boolean {
+  fire(origin: THREE.Vector3, direction: THREE.Vector3, currentTime: number, surfaceNormal?: THREE.Vector3): boolean {
     if (!this.canFire(currentTime)) return false;
 
     this.lastFireTime = currentTime;
@@ -219,7 +230,7 @@ export class WeaponManager {
         break;
 
       case WeaponType.Spread:
-        this.fireSpread(origin, direction);
+        this.fireSpread(origin, direction, surfaceNormal);
         break;
 
       case WeaponType.Piercing:
@@ -310,19 +321,29 @@ export class WeaponManager {
   // -------------------------------------------------------------------------
 
   private fireStandard(origin: THREE.Vector3, direction: THREE.Vector3): void {
-    // Use the standard bullet system
-    this.callbacks?.spawnBullet(origin, direction);
+    // Dual-barrel setup: fire 2 bullets slightly offset
+    const right = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 1, 0)).normalize();
+    const offset = 0.15;
+
+    const leftOrigin = origin.clone().addScaledVector(right, -offset);
+    const rightOrigin = origin.clone().addScaledVector(right, offset);
+
+    this.callbacks?.spawnBullet(leftOrigin, direction);
+    this.callbacks?.spawnBullet(rightOrigin, direction);
   }
 
-  private fireSpread(origin: THREE.Vector3, direction: THREE.Vector3): void {
+  private fireSpread(origin: THREE.Vector3, direction: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.Spread];
     const spreadAngle = Math.PI / 6; // 30 degrees total spread
     const bulletCount = 5;
 
+    // Use surface normal for rotation axis, fallback to world Y
+    const rotationAxis = surfaceNormal ? surfaceNormal.clone().normalize() : new THREE.Vector3(0, 1, 0);
+
     for (let i = 0; i < bulletCount; i++) {
       const angle = (i - 2) * (spreadAngle / (bulletCount - 1));
       const rotatedDir = direction.clone()
-        .applyAxisAngle(new THREE.Vector3(0, 1, 0), angle);
+        .applyAxisAngle(rotationAxis, angle);
 
       this.createProjectile(
         WeaponType.Spread,
@@ -560,7 +581,21 @@ export class WeaponManager {
 
   private fireBlackHole(origin: THREE.Vector3, direction: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.BlackHole];
-    const targetPos = origin.clone().add(direction.clone().multiplyScalar(4));
+    let targetPos = origin.clone().add(direction.clone().multiplyScalar(4));
+
+    // Project onto surface
+    if (this.meshSurface) {
+      const result = this.meshSurface.closestPointOnSurface(targetPos);
+      if (result) {
+        targetPos = result.point;
+      }
+    } else {
+      // Fallback: project onto sphere
+      const radius = origin.length();
+      if (radius > 0.01) {
+        targetPos.normalize().multiplyScalar(radius);
+      }
+    }
 
     // Create black hole visual
     const bhGeom = new THREE.SphereGeometry(0.3, 16, 16);
@@ -584,8 +619,8 @@ export class WeaponManager {
   }
 
   private fireTesla(origin: THREE.Vector3): void {
-    // Tesla coil is an area effect around player
-    const teslaGeom = new THREE.SphereGeometry(2, 16, 16);
+    // Tesla coil is an area effect around player (radius 3, stronger damage)
+    const teslaGeom = new THREE.SphereGeometry(3, 16, 16);
     const teslaMat = new THREE.MeshBasicMaterial({
       color: 0x88aaff,
       transparent: true,
@@ -688,8 +723,17 @@ export class WeaponManager {
         if (proj.startPos && proj.endPos) {
           const t = proj.age / proj.maxAge;
           proj.position.lerpVectors(proj.startPos, proj.endPos, t);
-          // Add arc height
-          proj.position.y += Math.sin(t * Math.PI) * 1.5;
+          // Add arc height along surface normal
+          if (this.meshSurface) {
+            const midResult = this.meshSurface.closestPointOnSurface(proj.position);
+            if (midResult) {
+              const arcHeight = Math.sin(t * Math.PI) * 1.5;
+              proj.position.copy(midResult.point).addScaledVector(midResult.normal, arcHeight);
+            }
+          } else {
+            // Fallback: use world Y
+            proj.position.y += Math.sin(t * Math.PI) * 1.5;
+          }
         }
         break;
 
@@ -699,10 +743,34 @@ export class WeaponManager {
         break;
     }
 
-    // Project back onto sphere (radius 8)
-    const dist = proj.position.length();
-    if (dist > 0.01) {
-      proj.position.multiplyScalar(8 / dist);
+    // Project onto surface using MeshSurface BVH, fallback to sphere
+    if (this.meshSurface) {
+      const result = this.meshSurface.closestPointOnSurface(proj.position);
+      if (result) {
+        proj.position.copy(result.point);
+        // Re-tangentize direction to stay on surface
+        const normal = result.normal.clone().normalize();
+        const dot = proj.direction.dot(normal);
+        proj.direction.sub(normal.clone().multiplyScalar(dot));
+        const dirLen = proj.direction.length();
+        if (dirLen > 0.0001) {
+          proj.direction.multiplyScalar(1 / dirLen);
+        }
+      }
+    } else {
+      // Fallback: project onto sphere (radius 8)
+      const dist = proj.position.length();
+      if (dist > 0.01) {
+        proj.position.multiplyScalar(8 / dist);
+        // Re-tangentize direction
+        const normal = proj.position.clone().normalize();
+        const dot = proj.direction.dot(normal);
+        proj.direction.sub(normal.clone().multiplyScalar(dot));
+        const dirLen = proj.direction.length();
+        if (dirLen > 0.0001) {
+          proj.direction.multiplyScalar(1 / dirLen);
+        }
+      }
     }
   }
 
@@ -857,22 +925,28 @@ export class WeaponManager {
         break;
 
       case 'tesla':
-        // Damage all nearby enemies
+        // Damage all nearby enemies (radius 3, 3x damage)
         if (this.callbacks) {
+          // Follow player position
+          if (this.playerPositionRef) {
+            effect.position.copy(this.playerPositionRef);
+            if (effect.mesh) {
+              effect.mesh.position.copy(this.playerPositionRef);
+            }
+          }
+
           const enemies = this.callbacks.getEnemies();
-          const radius = 2;
+          const radius = 3;
 
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
 
             const dist = effect.position.distanceTo(enemy.position);
             if (dist < radius) {
-              this.callbacks.onEnemyDamage(enemy.index, 1 * dt, WeaponType.TeslaCoil);
+              this.callbacks.onEnemyDamage(enemy.index, 3 * dt, WeaponType.TeslaCoil);
             }
           }
 
-          // Update mesh position to follow player position
-          // (effect.position should be updated externally)
           if (effect.mesh) {
             effect.mesh.rotation.x += dt;
             effect.mesh.rotation.y += dt * 0.7;

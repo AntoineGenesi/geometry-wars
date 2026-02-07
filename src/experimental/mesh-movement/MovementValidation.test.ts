@@ -68,9 +68,9 @@ const SURFACE_CONFIGS: SurfaceTestConfig[] = [
   {
     name: 'Cylinder',
     type: 'cylinder',
-    closed: false,
-    approxDiameter: 16, // height 16
-    startAbove: new THREE.Vector3(10, 0, 0),
+    closed: true, // torus topology - doubly periodic
+    approxDiameter: 14, // 2 * (majorRadius 5 + minorRadius 2) = 14
+    startAbove: new THREE.Vector3(12, 0, 0), // above outer edge
     hasPoles: false,
   },
   {
@@ -120,16 +120,6 @@ const SURFACE_CONFIGS: SurfaceTestConfig[] = [
     hasPoles: false,
   },
   {
-    name: 'Dented Sphere',
-    type: 'dented-sphere',
-    closed: true,
-    approxDiameter: 17, // radius ~8.5
-    startAbove: new THREE.Vector3(0, 18, 0),
-    hasPoles: true,
-    poleDirection: new THREE.Vector3(0, 0, 1),
-    poleDistance: 8,
-  },
-  {
     name: 'Sphere Tunnel',
     type: 'sphere-tunnel',
     closed: true,
@@ -157,8 +147,10 @@ function createWalkerForSurface(
   const surface = SurfaceFactory.create(type);
   const mesh = surface.mesh;
 
-  // Ensure geometry is usable
-  mesh.geometry.computeVertexNormals();
+  // Ensure geometry is usable (only compute normals if not already present)
+  if (!mesh.geometry.getAttribute('normal')) {
+    mesh.geometry.computeVertexNormals();
+  }
   mesh.updateMatrixWorld(true);
 
   const meshSurface = new MeshSurface(mesh);

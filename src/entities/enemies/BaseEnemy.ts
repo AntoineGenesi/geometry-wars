@@ -71,7 +71,11 @@ export abstract class BaseEnemy extends Entity {
     this.position.copy(transform.position);
 
     if (this.mesh) {
-      this.mesh.position.copy(transform.position);
+      // Offset the visual mesh above the surface by the enemy's radius
+      // This prevents enemies from appearing half-embedded in the surface
+      const offsetPosition = transform.position.clone();
+      offsetPosition.addScaledVector(transform.normal, this.radius);
+      this.mesh.position.copy(offsetPosition);
 
       const up = transform.normal;
       const forward = transform.tangent;

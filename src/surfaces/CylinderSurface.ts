@@ -2,80 +2,115 @@ import * as THREE from 'three'
 import { Surface, SurfaceConfig, SurfacePoint } from './Surface'
 
 export interface CylinderConfig extends SurfaceConfig {
-  radius?: number
-  height?: number
+  radius?: number // Major radius - distance from center axis to tube center (default 5)
+  height?: number // Tube cross-section diameter (default 4). Capped at 80% of radius.
   gridSegmentsU?: number
   gridSegmentsV?: number
-  includeCaps?: boolean
 }
 
+/**
+ * Cylinder/Ring Surface: topologically a torus, visually a wide ring/band.
+ *
+ * A ring playable on both outside and inside with smooth transitions everywhere.
+ * Internally uses torus parametric equations with proportions that give a
+ * ring-like appearance (large major radius, smaller tube cross-section).
+ *
+ * UV mapping:
+ *   u: [0, 1) azimuthal angle around the ring (major circle)
+ *   v: [0, 1) position around the tube cross-section (minor circle)
+ *     v=0:   outer edge (farthest from center)
+ *     v=0.5: inner edge (closest to center, inside the hole)
+ *
+ * Parametric torus equations:
+ *   x = (R + r*cos(theta)) * cos(phi)
+ *   y = r * sin(theta)
+ *   z = (R + r*cos(theta)) * sin(phi)
+ *
+ * where phi = u * 2pi (ring), theta = v * 2pi (tube)
+ */
 export class CylinderSurface extends Surface {
-  private readonly radius: number
-  private readonly height: number
+  private readonly majorRadius: number
+  private readonly minorRadius: number
   private readonly gridSegmentsU: number
   private readonly gridSegmentsV: number
-  private readonly includeCaps: boolean
 
   constructor(config?: CylinderConfig) {
     const radius = config?.radius ?? 5
-    const height = config?.height ?? 16
-    const gridSegmentsU = config?.gridSegmentsU ?? 20
-    const gridSegmentsV = config?.gridSegmentsV ?? 10
-    const includeCaps = config?.includeCaps ?? false
+    const height = config?.height ?? 4
+    const gridSegmentsU = config?.gridSegmentsU ?? 24
+    const gridSegmentsV = config?.gridSegmentsV ?? 16
+
+    // Compute torus radii: cap minorRadius at 40% of majorRadius to keep ring shape
+    const majorRadius = radius
+    const minorRadius = Math.min(height / 2, radius * 0.4)
 
     ;(CylinderSurface as any).__initData = {
-      radius,
-      height,
+      majorRadius,
+      minorRadius,
       gridSegmentsU,
       gridSegmentsV,
-      includeCaps,
     }
     super(config)
 
-    this.radius = radius
-    this.height = height
+    this.majorRadius = majorRadius
+    this.minorRadius = minorRadius
     this.gridSegmentsU = gridSegmentsU
     this.gridSegmentsV = gridSegmentsV
-    this.includeCaps = includeCaps
 
-    // Player spawns on the side of the cylinder, facing outward
-    this.surfaceRadius = radius
-    this.playerLocalPosition = new THREE.Vector3(radius, 0, 0)
+    this.surfaceRadius = majorRadius + minorRadius
+    this.playerLocalPosition = new THREE.Vector3(majorRadius + minorRadius, 0, 0)
   }
 
-  private static getInitData() {
+  private static getInitData(): {
+    majorRadius: number
+    minorRadius: number
+    gridSegmentsU: number
+    gridSegmentsV: number
+  } {
     return (
       (CylinderSurface as any).__initData ?? {
-        radius: 5,
-        height: 16,
-        gridSegmentsU: 20,
-        gridSegmentsV: 10,
-        includeCaps: false,
+        majorRadius: 5,
+        minorRadius: 2,
+        gridSegmentsU: 24,
+        gridSegmentsV: 16,
       }
     )
   }
 
   getPoint(u: number, v: number): SurfacePoint {
-    const theta = u * Math.PI * 2
-    const y = (v - 0.5) * this.height
-    const r = this.radius
+    const phi = u * Math.PI * 2 // Around ring (major circle)
+    const theta = v * Math.PI * 2 // Around tube (minor circle)
+    const R = this.majorRadius
+    const r = this.minorRadius
 
     const cosTheta = Math.cos(theta)
     const sinTheta = Math.sin(theta)
+    const cosPhi = Math.cos(phi)
+    const sinPhi = Math.sin(phi)
 
+    const ringRadius = R + r * cosTheta
     const position = new THREE.Vector3(
-      r * cosTheta,
-      y,
-      r * sinTheta
+      ringRadius * cosPhi,
+      r * sinTheta,
+      ringRadius * sinPhi
     )
 
-    const normal = new THREE.Vector3(cosTheta, 0, sinTheta)
+    // Normal points outward from tube surface
+    const normal = new THREE.Vector3(
+      cosTheta * cosPhi,
+      sinTheta,
+      cosTheta * sinPhi
+    ).normalize()
 
-    // Tangent in u direction (around circumference)
-    const tangentU = new THREE.Vector3(-sinTheta, 0, cosTheta)
+    // Tangent in u direction (d/dphi - around the ring)
+    const tangentU = new THREE.Vector3(-sinPhi, 0, cosPhi).normalize()
 
-    // Tangent in v direction (along height)
-    const tangentV = new THREE.Vector3(0, 1, 0)
+    // Tangent in v direction (d/dtheta - around the tube cross-section)
+    const tangentV = new THREE.Vector3(
+      -sinTheta * cosPhi,
+      cosTheta,
+      -sinTheta * sinPhi
+    ).normalize()
 
     return { position, normal, tangentU, tangentV }
   }
@@ -86,80 +121,133 @@ export class CylinderSurface extends Surface {
     du: number,
     dv: number
   ): { u: number; v: number } {
-    let newU = u + du
+    const theta = v * Math.PI * 2
+    const cosTheta = Math.cos(theta)
+    const R = this.majorRadius
+    const r = this.minorRadius
+
+    // Scale du for varying circumference at different tube positions
+    const localRadius = R + r * cosTheta
+    const scaleFactor = localRadius > 0.001 ? R / localRadius : 1
+
+    let newU = u + du * scaleFactor
     let newV = v + dv
 
-    // Wrap u around [0, 1)
+    // Both u and v wrap around [0, 1) - doubly periodic torus
     newU = ((newU % 1) + 1) % 1
-
-    // Clamp v to [0, 1] -- cylinder has ends
-    if (!this.includeCaps) {
-      newV = Math.max(0, Math.min(1, newV))
-    } else {
-      newV = Math.max(0, Math.min(1, newV))
-    }
+    newV = ((newV % 1) + 1) % 1
 
     return { u: newU, v: newV }
   }
 
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
-    let theta = Math.atan2(worldPos.z, worldPos.x)
+    const R = this.majorRadius
+
+    // Find phi (u) - angle around the ring
+    let phi = Math.atan2(worldPos.z, worldPos.x)
+    if (phi < 0) phi += Math.PI * 2
+
+    // Find tube center at this phi
+    const cosPhi = Math.cos(phi)
+    const sinPhi = Math.sin(phi)
+    const tubeCenterX = R * cosPhi
+    const tubeCenterZ = R * sinPhi
+
+    // Vector from tube center to point
+    const toPointX = worldPos.x - tubeCenterX
+    const toPointY = worldPos.y
+    const toPointZ = worldPos.z - tubeCenterZ
+
+    // Project onto tube cross-section plane
+    const outward = toPointX * cosPhi + toPointZ * sinPhi
+
+    // theta (v) is the angle in the tube cross-section
+    let theta = Math.atan2(toPointY, outward)
     if (theta < 0) theta += Math.PI * 2
 
-    const u = theta / (Math.PI * 2)
-    const v = worldPos.y / this.height + 0.5
+    const u = phi / (Math.PI * 2)
+    const v = theta / (Math.PI * 2)
 
-    return {
-      u,
-      v: Math.max(0, Math.min(1, v)),
-    }
+    return { u, v }
   }
 
   createMesh(): THREE.Mesh {
-    const { radius, height, gridSegmentsU, gridSegmentsV } =
+    const { majorRadius, minorRadius, gridSegmentsU, gridSegmentsV } =
       CylinderSurface.getInitData()
-    const geometry = new THREE.CylinderGeometry(
-      radius,
-      radius,
-      height,
-      gridSegmentsU * 2,
-      gridSegmentsV * 2,
-      false // closed with caps to prevent edge-stuck issues
+
+    // Three.js TorusGeometry(radius, tube, radialSegments, tubularSegments)
+    const geometry = new THREE.TorusGeometry(
+      majorRadius,
+      minorRadius,
+      gridSegmentsV * 2, // segments around tube (radial)
+      gridSegmentsU * 2 // segments around ring (tubular)
     )
+    // Rotate so hole is along Y axis
+    geometry.rotateX(Math.PI / 2)
     return new THREE.Mesh(geometry, this.createSurfaceMaterial())
   }
 
   createGrid(): THREE.LineSegments {
-    const { radius, height, gridSegmentsU, gridSegmentsV } =
+    const { majorRadius, minorRadius, gridSegmentsU, gridSegmentsV } =
       CylinderSurface.getInitData()
     const vertices: number[] = []
-    const lineDetail = 32
+    const lineDetail = 48
 
-    // Circumference rings (constant v)
-    for (let j = 0; j <= gridSegmentsV; j++) {
-      const y = (j / gridSegmentsV - 0.5) * height
+    const R = majorRadius
+    const r = minorRadius
+
+    // Lines around the ring (constant v/theta, varying u/phi)
+    for (let j = 0; j < gridSegmentsV; j++) {
+      const theta = (j / gridSegmentsV) * Math.PI * 2
+      const cosTheta = Math.cos(theta)
+      const sinTheta = Math.sin(theta)
+      const ringRadius = R + r * cosTheta
+
       for (let i = 0; i < lineDetail; i++) {
-        const theta0 = (i / lineDetail) * Math.PI * 2
-        const theta1 = ((i + 1) / lineDetail) * Math.PI * 2
+        const phi0 = (i / lineDetail) * Math.PI * 2
+        const phi1 = ((i + 1) / lineDetail) * Math.PI * 2
 
         vertices.push(
-          radius * Math.cos(theta0), y, radius * Math.sin(theta0),
-          radius * Math.cos(theta1), y, radius * Math.sin(theta1)
+          ringRadius * Math.cos(phi0),
+          r * sinTheta,
+          ringRadius * Math.sin(phi0)
+        )
+        vertices.push(
+          ringRadius * Math.cos(phi1),
+          r * sinTheta,
+          ringRadius * Math.sin(phi1)
         )
       }
     }
 
-    // Vertical lines (constant u)
+    // Lines around the tube (constant u/phi, varying v/theta)
     for (let i = 0; i < gridSegmentsU; i++) {
-      const theta = (i / gridSegmentsU) * Math.PI * 2
-      const x = radius * Math.cos(theta)
-      const z = radius * Math.sin(theta)
+      const phi = (i / gridSegmentsU) * Math.PI * 2
+      const cosPhi = Math.cos(phi)
+      const sinPhi = Math.sin(phi)
 
-      for (let j = 0; j < gridSegmentsV; j++) {
-        const y0 = (j / gridSegmentsV - 0.5) * height
-        const y1 = ((j + 1) / gridSegmentsV - 0.5) * height
+      for (let j = 0; j < lineDetail; j++) {
+        const theta0 = (j / lineDetail) * Math.PI * 2
+        const theta1 = ((j + 1) / lineDetail) * Math.PI * 2
 
-        vertices.push(x, y0, z, x, y1, z)
+        const cosTheta0 = Math.cos(theta0)
+        const sinTheta0 = Math.sin(theta0)
+        const cosTheta1 = Math.cos(theta1)
+        const sinTheta1 = Math.sin(theta1)
+
+        const ringRadius0 = R + r * cosTheta0
+        const ringRadius1 = R + r * cosTheta1
+
+        vertices.push(
+          ringRadius0 * cosPhi,
+          r * sinTheta0,
+          ringRadius0 * sinPhi
+        )
+        vertices.push(
+          ringRadius1 * cosPhi,
+          r * sinTheta1,
+          ringRadius1 * sinPhi
+        )
       }
     }
 

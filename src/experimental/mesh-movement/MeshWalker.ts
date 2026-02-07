@@ -130,6 +130,12 @@ export class MeshWalker {
       return this._fallbackMove(moveDir, distance);
     }
 
+    // NaN guard: if geodesic produced invalid result, fall back to BVH
+    if (isNaN(geoResult.position.x) || isNaN(geoResult.position.y) || isNaN(geoResult.position.z) ||
+        isNaN(geoResult.normal.x) || isNaN(geoResult.normal.y) || isNaN(geoResult.normal.z)) {
+      return this._fallbackMove(moveDir, distance);
+    }
+
     // Apply geodesic result
     this._facePos = geoResult.facePosition;
     this.position.copy(geoResult.position);

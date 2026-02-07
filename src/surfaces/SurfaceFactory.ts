@@ -7,7 +7,6 @@ import { PeanutSurface, PeanutConfig } from './PeanutSurface'
 import { CapsuleSurface, CapsuleConfig } from './CapsuleSurface'
 import { IcosahedronSurface, IcosahedronConfig } from './IcosahedronSurface'
 import { MobiusSurface, MobiusConfig } from './MobiusSurface'
-import { DentedSphereSurface, DentedSphereConfig } from './DentedSphereSurface'
 import { SphereWithTunnelSurface, SphereWithTunnelConfig } from './SphereWithTunnelSurface'
 
 export type SurfaceType =
@@ -19,7 +18,6 @@ export type SurfaceType =
   | 'capsule'
   | 'icosahedron'
   | 'mobius'
-  | 'dented-sphere'
   | 'sphere-tunnel'
 
 export type SurfaceConfigMap = {
@@ -31,7 +29,6 @@ export type SurfaceConfigMap = {
   capsule: CapsuleConfig
   icosahedron: IcosahedronConfig
   mobius: MobiusConfig
-  'dented-sphere': DentedSphereConfig
   'sphere-tunnel': SphereWithTunnelConfig
 }
 
@@ -57,8 +54,6 @@ export class SurfaceFactory {
         return new IcosahedronSurface(config as IcosahedronConfig)
       case 'mobius':
         return new MobiusSurface(config as MobiusConfig)
-      case 'dented-sphere':
-        return new DentedSphereSurface(config as DentedSphereConfig)
       case 'sphere-tunnel':
         return new SphereWithTunnelSurface(config as SphereWithTunnelConfig)
       default:
@@ -67,6 +62,6 @@ export class SurfaceFactory {
   }
 
   static getAvailableTypes(): SurfaceType[] {
-    return ['sphere', 'cube', 'cylinder', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'dented-sphere', 'sphere-tunnel']
+    return ['sphere', 'cube', 'cylinder', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel']
   }
 }

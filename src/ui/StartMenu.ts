@@ -29,7 +29,6 @@ export class StartMenu {
     { type: 'capsule', name: 'Capsule', icon: '\u2B2C' },
     { type: 'icosahedron', name: 'Icosahedron', icon: '\u2B21' },
     { type: 'mobius', name: 'M\u00F6bius', icon: '\u223F' },
-    { type: 'dented-sphere', name: 'Dented Sphere', icon: '\u25D0' },
     { type: 'sphere-tunnel', name: 'Sphere Tunnel', icon: '\u2295' },
   ];
 

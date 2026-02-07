@@ -39,7 +39,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     name: 'Blaster',
     color: 0xffff44,
     damage: 1,
-    fireRate: 12,
+    fireRate: 15,
     ammo: -1,
     projectileSpeed: 1.5,
     description: 'Rapid-fire energy bolts',
@@ -51,7 +51,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     damage: 1,
     fireRate: 6,
     ammo: 50,
-    projectileSpeed: 1.3,
+    projectileSpeed: 3.0,
     description: '5 bullets in a fan pattern',
   },
   [WeaponType.Piercing]: {
@@ -61,7 +61,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     damage: 3,
     fireRate: 4,
     ammo: 30,
-    projectileSpeed: 3.0,
+    projectileSpeed: 5.0,
     description: 'Penetrates multiple enemies',
   },
   [WeaponType.ChainLightning]: {

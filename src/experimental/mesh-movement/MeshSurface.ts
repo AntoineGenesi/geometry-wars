@@ -78,23 +78,59 @@ export class MeshSurface {
     const result = this.bvh.closestPointToPoint(localPoint, this._closestTarget);
     if (!result) return null;
 
-    // Get face normal at the closest point
-    getTriangleHitPointInfo(
-      this._closestTarget.point,
-      this.mesh.geometry,
-      this._closestTarget.faceIndex,
-      this._hitInfo,
-    );
-
     // Transform results back to world space
     const worldSurfacePoint = this._closestTarget.point.clone()
       .applyMatrix4(this.mesh.matrixWorld);
 
-    // Transform normal to world space (use normal matrix for correct scaling)
+    // Compute normal: prefer interpolated vertex normals (handles mixed-normal meshes
+    // like ring surfaces with inward+outward facing walls). Fall back to face normal.
     const normalMatrix = new THREE.Matrix3().getNormalMatrix(this.mesh.matrixWorld);
-    const worldNormal = this._hitInfo.face.normal.clone()
-      .applyMatrix3(normalMatrix)
-      .normalize();
+    let worldNormal: THREE.Vector3;
+
+    const normalAttr = this.mesh.geometry.getAttribute('normal') as THREE.BufferAttribute | null;
+    const indexAttr = this.mesh.geometry.index;
+
+    if (normalAttr && indexAttr) {
+      // Interpolate vertex normals at the closest point using barycentric coords
+      const fi = this._closestTarget.faceIndex;
+      const i0 = indexAttr.getX(fi * 3);
+      const i1 = indexAttr.getX(fi * 3 + 1);
+      const i2 = indexAttr.getX(fi * 3 + 2);
+
+      // Get triangle vertices
+      const posAttr = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
+      const pA = new THREE.Vector3().fromBufferAttribute(posAttr, i0);
+      const pB = new THREE.Vector3().fromBufferAttribute(posAttr, i1);
+      const pC = new THREE.Vector3().fromBufferAttribute(posAttr, i2);
+
+      // Compute barycentric coords of the closest point
+      const tri = new THREE.Triangle(pA, pB, pC);
+      const bary = new THREE.Vector3();
+      tri.getBarycoord(this._closestTarget.point, bary);
+
+      // Interpolate vertex normals
+      const nA = new THREE.Vector3().fromBufferAttribute(normalAttr, i0);
+      const nB = new THREE.Vector3().fromBufferAttribute(normalAttr, i1);
+      const nC = new THREE.Vector3().fromBufferAttribute(normalAttr, i2);
+
+      const interpolatedNormal = new THREE.Vector3()
+        .addScaledVector(nA, bary.x)
+        .addScaledVector(nB, bary.y)
+        .addScaledVector(nC, bary.z);
+
+      worldNormal = interpolatedNormal.applyMatrix3(normalMatrix).normalize();
+    } else {
+      // Fallback: use face normal from cross product
+      getTriangleHitPointInfo(
+        this._closestTarget.point,
+        this.mesh.geometry,
+        this._closestTarget.faceIndex,
+        this._hitInfo,
+      );
+      worldNormal = this._hitInfo.face.normal.clone()
+        .applyMatrix3(normalMatrix)
+        .normalize();
+    }
 
     return {
       point: worldSurfacePoint,

@@ -111,21 +111,6 @@ export class Game {
   /** Smoothed camera up vector (prevents disorienting flips). */
   private readonly smoothedCameraUp: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
 
-  // ---- Camera orbit state ---------------------------------------------
-
-  /** Camera orbit angles (spherical coordinates) */
-  private cameraTheta: number = 0; // Horizontal angle (around Y axis)
-  private cameraPhi: number = Math.PI / 4; // Vertical angle from top (45 degrees default)
-  private readonly defaultCameraTheta: number = 0;
-  private readonly defaultCameraPhi: number = Math.PI / 4;
-
-  /** Middle mouse button state for camera orbit */
-  private isMiddleMouseDown: boolean = false;
-  private lastMiddleMouseX: number = 0;
-  private lastMiddleMouseY: number = 0;
-  private lastMiddleClickTime: number = 0;
-  private readonly doubleClickThreshold: number = 300; // ms
-
   // ---- Loop bookkeeping -----------------------------------------------
 
   private rafId: number = 0;
@@ -190,12 +175,6 @@ export class Game {
     // -- Window events --
     window.addEventListener('resize', this.onResize);
     window.addEventListener('visibilitychange', this.onVisibilityChange);
-
-    // -- Middle mouse camera orbit --
-    this.renderer.domElement.addEventListener('mousedown', this.onMouseDown);
-    this.renderer.domElement.addEventListener('mousemove', this.onMouseMove);
-    this.renderer.domElement.addEventListener('mouseup', this.onMouseUp);
-    this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
   // ---- Collision rules ------------------------------------------------
@@ -301,81 +280,13 @@ export class Game {
   // ---- Camera ---------------------------------------------------------
 
   /**
-   * Position camera using spherical coordinates.
-   * Can be orbited around the scene using middle mouse button.
-   * Skipped when disableBuiltInCameraUpdate is true.
+   * Camera update. Skipped when disableBuiltInCameraUpdate is true,
+   * allowing external code to control camera position.
    */
   private updateCamera(_alpha: number): void {
     // Skip built-in camera update if disabled (external code controls camera)
     if (this.disableBuiltInCameraUpdate) return;
-
-    const dist = this.cameraDistance;
-
-    // Convert spherical to Cartesian coordinates
-    // phi is angle from vertical (0 = top, PI/2 = side)
-    // theta is horizontal angle around Y axis
-    const sinPhi = Math.sin(this.cameraPhi);
-    const cosPhi = Math.cos(this.cameraPhi);
-    const sinTheta = Math.sin(this.cameraTheta);
-    const cosTheta = Math.cos(this.cameraTheta);
-
-    this.camera.position.set(
-      dist * sinPhi * sinTheta,  // X
-      dist * cosPhi,              // Y (height)
-      dist * sinPhi * cosTheta    // Z
-    );
-
-    // Always look at sphere center
-    this.camera.lookAt(0, 0, 0);
-    this.camera.up.set(0, 1, 0);
   }
-
-  // ---- Mouse event handlers for camera orbit ----------------------------
-
-  private onMouseDown = (e: MouseEvent): void => {
-    // Middle mouse button (button 1)
-    if (e.button === 1) {
-      e.preventDefault();
-
-      // Check for double-click
-      const now = performance.now();
-      if (now - this.lastMiddleClickTime < this.doubleClickThreshold) {
-        // Double-click: reset camera to default
-        this.cameraTheta = this.defaultCameraTheta;
-        this.cameraPhi = this.defaultCameraPhi;
-      }
-      this.lastMiddleClickTime = now;
-
-      this.isMiddleMouseDown = true;
-      this.lastMiddleMouseX = e.clientX;
-      this.lastMiddleMouseY = e.clientY;
-    }
-  };
-
-  private onMouseMove = (e: MouseEvent): void => {
-    if (!this.isMiddleMouseDown) return;
-
-    const deltaX = e.clientX - this.lastMiddleMouseX;
-    const deltaY = e.clientY - this.lastMiddleMouseY;
-
-    // Adjust camera angles based on mouse movement
-    // Sensitivity: 0.005 radians per pixel
-    const sensitivity = 0.005;
-    this.cameraTheta -= deltaX * sensitivity;
-    this.cameraPhi += deltaY * sensitivity;
-
-    // Clamp phi to prevent flipping (keep between 0.1 and PI - 0.1)
-    this.cameraPhi = Math.max(0.1, Math.min(Math.PI - 0.1, this.cameraPhi));
-
-    this.lastMiddleMouseX = e.clientX;
-    this.lastMiddleMouseY = e.clientY;
-  };
-
-  private onMouseUp = (e: MouseEvent): void => {
-    if (e.button === 1) {
-      this.isMiddleMouseDown = false;
-    }
-  };
 
   // ---- Event handlers -------------------------------------------------
 
@@ -406,20 +317,9 @@ export class Game {
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('visibilitychange', this.onVisibilityChange);
 
-    // Clean up mouse event listeners
-    this.renderer.domElement.removeEventListener('mousedown', this.onMouseDown);
-    this.renderer.domElement.removeEventListener('mousemove', this.onMouseMove);
-    this.renderer.domElement.removeEventListener('mouseup', this.onMouseUp);
-
     this.entityManager.clear();
     this.composer.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
-  }
-
-  /** Reset camera to default position */
-  resetCameraOrbit(): void {
-    this.cameraTheta = this.defaultCameraTheta;
-    this.cameraPhi = this.defaultCameraPhi;
   }
 }
