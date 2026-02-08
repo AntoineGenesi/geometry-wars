@@ -12,6 +12,7 @@ export interface PlayerInputState {
   aimY: number;
   shooting: boolean;
   bomb: boolean;
+  weaponSwap: boolean;
 }
 
 export class MultiplayerInputManager {
@@ -146,6 +147,7 @@ export class MultiplayerInputManager {
       aimY: ay,
       shooting: this.p1MouseDown,
       bomb: this.p1KeysJustPressed.has(' '),
+      weaponSwap: this.p1KeysJustPressed.has('e'),
     };
   }
 
@@ -185,6 +187,7 @@ export class MultiplayerInputManager {
       aimY: ay,
       shooting: this.p2KeysDown.has('o'),
       bomb: this.p2KeysJustPressed.has('p'),
+      weaponSwap: this.p2KeysJustPressed.has('u'),
     };
   }
 

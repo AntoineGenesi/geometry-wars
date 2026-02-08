@@ -17,20 +17,21 @@ export interface PlayerBindings {
   right: string;
   shoot: string;
   bomb: string;
+  weaponSwap: string;
   aimMode: 'mouse' | 'movement';
 }
 
 const STORAGE_KEY = 'gw3d-keybindings';
 
 const DEFAULT_BINDINGS: PlayerBindings[] = [
-  // P1: WASD + mouse + click + space
-  { up: 'w', down: 's', left: 'a', right: 'd', shoot: 'MouseLeft', bomb: ' ', aimMode: 'mouse' },
-  // P2: IJKL + auto-aim + O + P
-  { up: 'i', down: 'k', left: 'j', right: 'l', shoot: 'o', bomb: 'p', aimMode: 'movement' },
-  // P3: Arrows + auto-aim + Enter + RShift
-  { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', shoot: 'Enter', bomb: 'Shift', aimMode: 'movement' },
-  // P4: Numpad + auto-aim + Numpad0 + Numpad.
-  { up: '8', down: '5', left: '4', right: '6', shoot: '0', bomb: '.', aimMode: 'movement' },
+  // P1: WASD + mouse + click + space + E to swap weapon
+  { up: 'w', down: 's', left: 'a', right: 'd', shoot: 'MouseLeft', bomb: ' ', weaponSwap: 'e', aimMode: 'mouse' },
+  // P2: IJKL + auto-aim + O + P + U to swap weapon
+  { up: 'i', down: 'k', left: 'j', right: 'l', shoot: 'o', bomb: 'p', weaponSwap: 'u', aimMode: 'movement' },
+  // P3: Arrows + auto-aim + Enter + RShift + . to swap weapon
+  { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight', shoot: 'Enter', bomb: 'Shift', weaponSwap: '.', aimMode: 'movement' },
+  // P4: Numpad + auto-aim + Numpad0 + Numpad. + NumpadEnter to swap weapon
+  { up: '8', down: '5', left: '4', right: '6', shoot: '0', bomb: '.', weaponSwap: 'Enter', aimMode: 'movement' },
 ];
 
 export class ConfigurableInput {
@@ -76,7 +77,8 @@ export class ConfigurableInput {
         const b = this.bindings[p];
         if (this.matchesKey(key, b.up) || this.matchesKey(key, b.down) ||
             this.matchesKey(key, b.left) || this.matchesKey(key, b.right) ||
-            this.matchesKey(key, b.shoot) || this.matchesKey(key, b.bomb)) {
+            this.matchesKey(key, b.shoot) || this.matchesKey(key, b.bomb) ||
+            this.matchesKey(key, b.weaponSwap)) {
           if (!this.keysDown[p].has(key)) {
             this.keysJustPressed[p].add(key);
           }
@@ -143,7 +145,7 @@ export class ConfigurableInput {
   getPlayerState(playerIndex: number): PlayerInputState {
     const b = this.bindings[playerIndex];
     if (!b) {
-      return { moveX: 0, moveY: 0, aimX: 0, aimY: 0, shooting: false, bomb: false };
+      return { moveX: 0, moveY: 0, aimX: 0, aimY: 0, shooting: false, bomb: false, weaponSwap: false };
     }
 
     // Movement
@@ -199,7 +201,10 @@ export class ConfigurableInput {
     // Bomb
     const bomb = this.wasKeyJustPressed(playerIndex, b.bomb);
 
-    return { moveX: mx, moveY: my, aimX: ax, aimY: ay, shooting, bomb };
+    // Weapon swap
+    const weaponSwap = this.wasKeyJustPressed(playerIndex, b.weaponSwap);
+
+    return { moveX: mx, moveY: my, aimX: ax, aimY: ay, shooting, bomb, weaponSwap };
   }
 
   endFrame(): void {
@@ -232,7 +237,11 @@ export class ConfigurableInput {
       if (stored) {
         const parsed = JSON.parse(stored) as PlayerBindings[];
         if (Array.isArray(parsed) && parsed.length >= 4) {
-          return parsed.map(b => ({ ...b }));
+          // Merge with defaults to handle new fields (e.g. weaponSwap)
+          return parsed.map((b, i) => ({
+            ...DEFAULT_BINDINGS[i],
+            ...b,
+          }));
         }
       }
     } catch {
@@ -256,7 +265,7 @@ export class ConfigurableInput {
 
     for (let p = 0; p < this.playerCount; p++) {
       const b = this.bindings[p];
-      for (const key of [b.up, b.down, b.left, b.right, b.shoot, b.bomb]) {
+      for (const key of [b.up, b.down, b.left, b.right, b.shoot, b.bomb, b.weaponSwap]) {
         if (key === 'MouseLeft') continue;
         const existing = allKeys.get(key) ?? [];
         existing.push(p + 1);

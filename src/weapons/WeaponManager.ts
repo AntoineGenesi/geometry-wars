@@ -47,7 +47,16 @@ export interface WeaponCallbacks {
 }
 
 /**
- * Manages all weapon types, ammo, and firing
+ * Inventory entry for a collected weapon
+ */
+export interface WeaponInventoryEntry {
+  type: WeaponType;
+  ammo: number;   // -1 = infinite (Standard)
+  stacks: number; // 1-5
+}
+
+/**
+ * Manages all weapon types, ammo, inventory, and firing
  */
 export class WeaponManager {
   // Current weapon
@@ -55,6 +64,9 @@ export class WeaponManager {
   private ammo: Map<WeaponType, number> = new Map();
   private stacks: Map<WeaponType, number> = new Map();
   private lastFireTime: number = 0;
+
+  // Weapon inventory: ordered list of collected weapons (Standard always first)
+  private inventory: WeaponType[] = [WeaponType.Standard];
 
   // Visual effects
   readonly chainLightning: ChainLightningEffect;
@@ -167,7 +179,9 @@ export class WeaponManager {
   }
 
   /**
-   * Equip a new weapon with ammo
+   * Equip a new weapon with ammo. Adds to inventory if not already present.
+   * If the weapon is already in inventory, stacks ammo.
+   * Switches the active weapon to the newly equipped one.
    */
   equipWeapon(type: WeaponType, ammo?: number): void {
     const config = WEAPON_CONFIGS[type];
@@ -187,9 +201,92 @@ export class WeaponManager {
           this.stacks.set(type, 1);
         }
       }
+
+      // Add to inventory if not already present
+      if (!this.inventory.includes(type)) {
+        this.inventory.push(type);
+      }
     }
 
     this.currentWeapon = type;
+  }
+
+  /**
+   * Cycle to the next weapon in inventory.
+   * Skips weapons with 0 ammo (removes them from inventory).
+   * Returns the new active weapon type.
+   */
+  cycleWeapon(): WeaponType {
+    // Clean up depleted weapons from inventory (keep Standard)
+    this.pruneDepletedWeapons();
+
+    if (this.inventory.length <= 1) {
+      // Only Standard left
+      this.currentWeapon = WeaponType.Standard;
+      return this.currentWeapon;
+    }
+
+    const currentIndex = this.inventory.indexOf(this.currentWeapon);
+    const nextIndex = (currentIndex + 1) % this.inventory.length;
+    this.currentWeapon = this.inventory[nextIndex];
+    return this.currentWeapon;
+  }
+
+  /**
+   * Get the full weapon inventory for HUD display.
+   * Standard is always first with ammo = -1.
+   */
+  getInventory(): WeaponInventoryEntry[] {
+    // Clean up depleted weapons first
+    this.pruneDepletedWeapons();
+
+    return this.inventory.map(type => ({
+      type,
+      ammo: type === WeaponType.Standard ? -1 : (this.ammo.get(type) ?? 0),
+      stacks: this.stacks.get(type) ?? 1,
+    }));
+  }
+
+  /**
+   * Remove weapons with 0 ammo from inventory (never removes Standard).
+   * If current weapon was removed, switch to next available or Standard.
+   */
+  private pruneDepletedWeapons(): void {
+    for (let i = this.inventory.length - 1; i >= 0; i--) {
+      const type = this.inventory[i];
+      if (type === WeaponType.Standard) continue;
+      const ammo = this.ammo.get(type) ?? 0;
+      if (ammo <= 0) {
+        this.inventory.splice(i, 1);
+        this.ammo.delete(type);
+        this.stacks.delete(type);
+      }
+    }
+  }
+
+  /**
+   * Auto-switch to the next weapon with ammo when current runs out.
+   * Prefers the next weapon in inventory order, falls back to Standard.
+   */
+  private autoSwitchOnDepletion(): void {
+    if (this.currentWeapon === WeaponType.Standard) return;
+
+    const ammo = this.ammo.get(this.currentWeapon) ?? 0;
+    if (ammo > 0) return;
+
+    // Current weapon depleted - find next available
+    this.pruneDepletedWeapons();
+
+    // If still in inventory somehow, stay
+    if (this.inventory.includes(this.currentWeapon)) return;
+
+    // Find next weapon with ammo (skip Standard, try others first)
+    const nonStandard = this.inventory.filter(t => t !== WeaponType.Standard);
+    if (nonStandard.length > 0) {
+      this.currentWeapon = nonStandard[0];
+    } else {
+      this.currentWeapon = WeaponType.Standard;
+    }
   }
 
   /**
@@ -205,8 +302,8 @@ export class WeaponManager {
     if (this.currentWeapon !== WeaponType.Standard) {
       const ammo = this.ammo.get(this.currentWeapon) ?? 0;
       if (ammo <= 0) {
-        // Out of ammo, switch to standard
-        this.currentWeapon = WeaponType.Standard;
+        // Out of ammo - auto-switch to next available weapon
+        this.autoSwitchOnDepletion();
         return this.canFire(currentTime);
       }
     }

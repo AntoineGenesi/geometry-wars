@@ -45,11 +45,13 @@ import { GameOverScreen } from './ui/GameOverScreen';
 import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
 import { Minimap } from './ui/Minimap';
 import { KillLog } from './ui/KillLog';
+import { WeaponHUD } from './ui/WeaponHUD';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
 import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
+import { SpatialHash } from './core/SpatialHash';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -311,7 +313,13 @@ class WaveScheduler {
 }
 
 // ---------------------------------------------------------------------------
-// Bullet-enemy collision checker
+// Spatial hash for broad-phase collision (shared between collision checks)
+// ---------------------------------------------------------------------------
+
+const enemySpatialHash = new SpatialHash<BaseEnemy>(2.5);
+
+// ---------------------------------------------------------------------------
+// Bullet-enemy collision checker (optimized: squared distance + spatial hash + cached materials)
 // ---------------------------------------------------------------------------
 
 function checkBulletEnemyCollisions(
@@ -328,14 +336,25 @@ function checkBulletEnemyCollisions(
   onKillLog?: (type: string, color: number) => void,
   showDamageNumbers = true,
 ): void {
-  bulletPool.forEachActive((bulletIdx, bulletPos) => {
-    for (const enemy of enemies) {
-      if (!enemy.active || !enemy.alive) continue;
-      // Skip enemies still spawning (mesh hidden)
-      if (enemy.mesh && !enemy.mesh.visible) continue;
+  // Rebuild spatial hash each frame
+  enemySpatialHash.clear();
+  for (const enemy of enemies) {
+    if (!enemy.active || !enemy.alive) continue;
+    if (enemy.mesh && !enemy.mesh.visible) continue;
+    enemySpatialHash.insert(enemy.position.x, enemy.position.y, enemy.position.z, enemy);
+  }
 
-      const dist = bulletPos.distanceTo(enemy.position);
-      if (dist < enemy.radius + 0.15) {
+  bulletPool.forEachActive((bulletIdx, bulletPos) => {
+    // Use spatial hash for broad-phase: only check nearby enemies
+    const nearby = enemySpatialHash.getNearby(bulletPos.x, bulletPos.y, bulletPos.z);
+    for (let n = 0; n < nearby.length; n++) {
+      const enemy = nearby[n];
+      if (!enemy.active || !enemy.alive) continue;
+
+      // Use distanceToSquared to avoid sqrt
+      const hitRadiusSq = (enemy.radius + 0.15) * (enemy.radius + 0.15);
+      const distSq = bulletPos.distanceToSquared(enemy.position);
+      if (distSq < hitRadiusSq) {
         // Hit!
         bulletPool.kill(bulletIdx);
         enemy.takeDamage(bulletDamage);
@@ -351,22 +370,17 @@ function checkBulletEnemyCollisions(
         // Grid deformation at impact point
         surface.applyForce(bulletPos, 0.08, 0.3);
 
-        // Hit flash: briefly flash enemy mesh white
-        if (enemy.alive && enemy.mesh) {
-          enemy.mesh.traverse((child) => {
-            if (child instanceof THREE.Mesh && child.material) {
-              const mat = child.material as THREE.MeshStandardMaterial;
-              if (mat.emissive) {
-                const origEmissive = mat.emissive.getHex();
-                mat.emissive.setHex(0xffffff);
-                mat.emissiveIntensity = 1.0;
-                setTimeout(() => {
-                  mat.emissive.setHex(origEmissive);
-                  mat.emissiveIntensity = 0.4;
-                }, 80);
-              }
-            }
-          });
+        // Hit flash: use cached material references instead of traverse()
+        if (enemy.alive && enemy.cachedMaterials) {
+          for (const mat of enemy.cachedMaterials) {
+            const origEmissive = mat.emissive.getHex();
+            mat.emissive.setHex(0xffffff);
+            mat.emissiveIntensity = 1.0;
+            setTimeout(() => {
+              mat.emissive.setHex(origEmissive);
+              mat.emissiveIntensity = 0.4;
+            }, 80);
+          }
         }
 
         if (!enemy.alive) {
@@ -408,10 +422,10 @@ function checkGeomPickups(
   scoreManager: ScoreManager,
   particles: ParticleSystem,
 ): void {
-  const pickupRadius = 0.5; // Slightly larger pickup radius
+  const pickupRadiusSq = 0.5 * 0.5; // Squared radius avoids sqrt
   geomPool.forEachActive((index, surfaceU, surfaceV, position) => {
-    const dist = player.mesh.position.distanceTo(position);
-    if (dist < pickupRadius) {
+    const distSq = player.mesh.position.distanceToSquared(position);
+    if (distSq < pickupRadiusSq) {
       geomPool.kill(index);
       scoreManager.collectGeom();
       // Green sparkle effect on collection
@@ -439,8 +453,10 @@ function checkPlayerEnemyCollisions(
     // Skip enemies still spawning (mesh hidden)
     if (enemy.mesh && !enemy.mesh.visible) continue;
 
-    const dist = player.mesh.position.distanceTo(enemy.position);
-    if (dist < player.mesh.scale.x * 0.3 + enemy.radius) {
+    // Use distanceToSquared to avoid sqrt
+    const hitRadius = player.mesh.scale.x * 0.3 + enemy.radius;
+    const distSq = player.mesh.position.distanceToSquared(enemy.position);
+    if (distSq < hitRadius * hitRadius) {
       if (isShielded) {
         // Shield absorbs the hit and kills the enemy
         enemy.takeDamage(999);
@@ -840,6 +856,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     },
   });
 
+  // -- Weapon HUD (inventory display) --
+  const weaponHUD = new WeaponHUD();
+  weaponHUD.setPosition(10, window.innerHeight / 2 - 60);
+
   // -- Weapon pickups on the field --
   const weaponPickups: WeaponPickup[] = [];
   const buffPickups: BuffPickup[] = [];
@@ -1075,6 +1095,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     game.stop();
     bgMusic.stop();
     weaponManager.dispose();
+    weaponHUD.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex + 1);
@@ -1083,6 +1104,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     game.stop();
     bgMusic.stop();
     weaponManager.dispose();
+    weaponHUD.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex);
@@ -1187,6 +1209,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
     // Update player movement and shooting
     if (player.alive) {
+      // Weapon swap (E key)
+      if (inputState.weaponSwap) {
+        weaponManager.cycleWeapon();
+        sound.play('weaponPickup', { volume: 0.4, pitch: 1.2 });
+      }
+
       // Store previous UV for gate pass-through detection
       prevPlayerU = player.surfaceU;
       prevPlayerV = player.surfaceV;
@@ -1577,6 +1605,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const fadeSpeed = 12.0; // opacity change per second (fast snap)
   let isCurrentlyBlocked = false; // track blocking state for enemy fade
 
+  // Pre-allocated temp vectors for render loop (avoids ~5 clone() per enemy per frame)
+  const _renderTempToPlayer = new THREE.Vector3();
+  const _renderTempToPlayerDir = new THREE.Vector3();
+  const _renderTempApproxNormal = new THREE.Vector3();
+  const _renderTempToEnemy = new THREE.Vector3();
+
   // -- Render callback --
   game.onRender = (_alpha: number) => {
     // Project bullets and geoms onto surface
@@ -1584,12 +1618,13 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     geomPool.applySurfaceProjection(getTransform);
 
     // Tunnel transparency: check if surface blocks camera-to-player view
+    // Uses pre-allocated vectors instead of clone()
     const camPos = game.camera.position;
     const playerPos = player.mesh.position;
-    const toPlayer = playerPos.clone().sub(camPos);
-    const distToPlayer = toPlayer.length();
-    const toPlayerDir = toPlayer.clone().normalize();
-    tunnelRaycaster.set(camPos, toPlayerDir);
+    _renderTempToPlayer.copy(playerPos).sub(camPos);
+    const distToPlayer = _renderTempToPlayer.length();
+    _renderTempToPlayerDir.copy(_renderTempToPlayer).normalize();
+    tunnelRaycaster.set(camPos, _renderTempToPlayerDir);
     tunnelRaycaster.far = distToPlayer;
     const hits = tunnelRaycaster.intersectObject(surface.mesh, false);
     // If there are intersections between camera and player, fade surface
@@ -1605,43 +1640,51 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     gridMat.opacity = currentGridOpacity;
 
     // Depth-based opacity + tunnel-blocking opacity for enemies
+    // Cache meshCenter per frame (doesn't change within a frame)
     const meshCenter = meshSurface.getCenter();
     for (const enemy of enemySpawner.getEnemies()) {
       if (!enemy.alive || !enemy.mesh) continue;
-      // Approximate outward normal as direction from mesh center to enemy
-      const approxNormal = enemy.position.clone().sub(meshCenter).normalize();
-      let visibility = meshSurface.getVisibility(enemy.position, approxNormal, camPos);
+      // Approximate outward normal using pre-allocated vector
+      _renderTempApproxNormal.copy(enemy.position).sub(meshCenter).normalize();
+      let visibility = meshSurface.getVisibility(enemy.position, _renderTempApproxNormal, camPos);
 
       // When surface is blocking camera-to-player, also fade enemies between camera and player
       if (isCurrentlyBlocked) {
-        const toEnemy = enemy.position.clone().sub(camPos);
-        const enemyDist = toEnemy.length();
+        _renderTempToEnemy.copy(enemy.position).sub(camPos);
+        const enemyDist = _renderTempToEnemy.length();
         // Check if enemy is between camera and player (closer than player)
         if (enemyDist < distToPlayer) {
           // Check if enemy is roughly along the camera-to-player line
-          // Dot product of normalized directions: 1.0 = same direction, 0 = perpendicular
-          const toEnemyDir = toEnemy.normalize();
-          const alignment = toPlayerDir.dot(toEnemyDir);
+          _renderTempToEnemy.normalize();
+          const alignment = _renderTempToPlayerDir.dot(_renderTempToEnemy);
           // If enemy is within ~45 degrees of the camera-to-player line, fade it
           if (alignment > 0.7) {
-            // Lerp: perfectly aligned (1.0) = max fade (0.12), edge of cone (0.7) = no extra fade
-            const fadeFactor = (alignment - 0.7) / 0.3; // 0..1
-            const tunnelEnemyOpacity = 0.12; // very faint when blocking
+            const fadeFactor = (alignment - 0.7) / 0.3;
+            const tunnelEnemyOpacity = 0.12;
             const tunnelVisibility = 1.0 - fadeFactor * (1.0 - tunnelEnemyOpacity);
             visibility = Math.min(visibility, tunnelVisibility);
           }
         }
       }
 
-      enemy.mesh.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.material) {
-          const mat = child.material as THREE.MeshBasicMaterial;
-          if (mat.transparent !== undefined) {
-            mat.transparent = true;
-            mat.opacity = visibility;
-          }
+      // Use cached materials instead of traverse() (saves ~20 tree walks per enemy per frame)
+      if (enemy.cachedMaterials) {
+        for (const mat of enemy.cachedMaterials) {
+          (mat as any).transparent = true;
+          (mat as any).opacity = visibility;
         }
-      });
+      } else {
+        // Fallback for enemies without cached materials yet
+        enemy.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material) {
+            const mat = child.material as THREE.MeshBasicMaterial;
+            if (mat.transparent !== undefined) {
+              mat.transparent = true;
+              mat.opacity = visibility;
+            }
+          }
+        });
+      }
     }
 
     // Apply screen shake to camera
@@ -1651,6 +1694,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
     // Update HUD
     updateUI(player, weaponManager);
+
+    // Update weapon inventory HUD
+    weaponHUD.update(weaponManager.getInventory(), weaponManager.getCurrentWeapon());
 
     // Update level display in HUD
     if (playerLevel.level > 0) {

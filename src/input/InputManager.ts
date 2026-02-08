@@ -26,6 +26,8 @@ export interface InputState {
   bomb: boolean;
   /** True while the boost action is held. */
   boost: boolean;
+  /** True on the frame the weapon swap key is pressed. */
+  weaponSwap: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +174,7 @@ export class InputManager {
       shooting: kbState.shooting || gpState.shooting,
       bomb: kbState.bomb || gpState.bomb,
       boost: kbState.boost || gpState.boost,
+      weaponSwap: kbState.weaponSwap || gpState.weaponSwap,
     };
   }
 
@@ -242,6 +245,7 @@ export class InputManager {
       shooting: this.mouseLeftDown,
       bomb: this.keysJustPressed.has(' '),
       boost: this.keysDown.has('shift'),
+      weaponSwap: this.keysJustPressed.has('e'),
     };
   }
 
@@ -258,6 +262,7 @@ export class InputManager {
       shooting: false,
       bomb: false,
       boost: false,
+      weaponSwap: false,
     };
 
     if (this.gamepadIndex < 0) return empty;
@@ -288,7 +293,10 @@ export class InputManager {
     // A button (button 0) = boost.
     const boost = gp.buttons[0]?.pressed ?? false;
 
-    return { moveX, moveY, aimX, aimY, shooting, bomb, boost };
+    // Y button (button 3) = weapon swap.
+    const weaponSwap = gp.buttons[3]?.pressed ?? false;
+
+    return { moveX, moveY, aimX, aimY, shooting, bomb, boost, weaponSwap };
   }
 }
 

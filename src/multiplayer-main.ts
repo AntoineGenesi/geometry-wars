@@ -55,6 +55,7 @@ import { SplitScreenHUD, type PlayerHUDData } from './ui/SplitScreenHUD';
 import { AllyGlowManager } from './effects/AllyGlow';
 import { KillLog } from './ui/KillLog';
 import { KillTally } from './ui/KillTally';
+import { WeaponHUD } from './ui/WeaponHUD';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -250,6 +251,10 @@ function main(): void {
       hud.setViewportBounds(i, pv.x, pv.y, pv.w, pv.h);
       killTally.setViewportBounds(i, pv.x, pv.y, pv.w, pv.h);
       input.setViewportBounds(i, pv.x, pv.y, pv.w, pv.h);
+      // Position weapon HUD at bottom-left of each viewport
+      if (weaponHUDs[i]) {
+        weaponHUDs[i].setPosition(pv.x + 8, pv.y + pv.h / 2 - 40);
+      }
     }
   }
   updateViewportSizes();
@@ -505,10 +510,14 @@ function main(): void {
     return wm;
   }
 
+  // -- Per-player weapon HUDs --
+  const weaponHUDs: WeaponHUD[] = [];
+
   for (let i = 0; i < playerCount; i++) {
     weaponManagers.push(createWeaponManager(i));
     superStateManagers.push(new SuperStateManager());
     drones.push([]);
+    weaponHUDs.push(new WeaponHUD());
 
     if (level.drone) {
       const droneType = level.drone as DroneType;
@@ -682,6 +691,12 @@ function main(): void {
 
       if (!player.alive) continue;
 
+      // Weapon swap
+      if (pInput.weaponSwap) {
+        weaponManagers[i].cycleWeapon();
+        sound.play('weaponPickup', { volume: 0.4, pitch: 1.2 });
+      }
+
       // Movement
       const moving = Math.abs(pInput.moveX) > 0.01 || Math.abs(pInput.moveY) > 0.01;
       if (moving) {
@@ -747,6 +762,7 @@ function main(): void {
         shooting: pInput.shooting,
         bomb: pInput.bomb,
         boost: false,
+        weaponSwap: false,
       });
     }
 
@@ -1035,6 +1051,12 @@ function main(): void {
       kills: stats.kills,
       assists: stats.assists,
     });
+
+    // Update per-player weapon inventory HUD
+    const whud = weaponHUDs[playerIndex];
+    if (whud) {
+      whud.update(wm.getInventory(), wm.getCurrentWeapon());
+    }
   };
 
   // -- Start background music --
