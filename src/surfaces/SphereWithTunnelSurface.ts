@@ -4,7 +4,7 @@ import { Surface, SurfaceConfig, SurfacePoint } from './Surface'
 export interface SphereWithTunnelConfig extends SurfaceConfig {
   radius?: number          // Outer sphere radius (default: 8)
   tunnelRadius?: number    // Radius of the tunnel (default: 2)
-  tunnelAxis?: 'x' | 'y' | 'z'  // Which axis tunnel goes through (default: 'y')
+  tunnelAxis?: 'x' | 'y' | 'z'  // Kept for backward compat, always uses 'y'
   gridSegmentsU?: number
   gridSegmentsV?: number
 }
@@ -12,77 +12,68 @@ export interface SphereWithTunnelConfig extends SurfaceConfig {
 /**
  * Sphere with a traversable tunnel through its center.
  *
- * The surface consists of three connected regions:
- * 1. First hemisphere with a circular hole (v: 0 to ~0.3)
- * 2. Inner cylindrical tunnel (v: ~0.3 to ~0.7)
- * 3. Second hemisphere with a circular hole (v: ~0.7 to 1)
+ * Topologically a torus: the outer sphere has two circular holes (near the
+ * poles) connected by an inner cylindrical tunnel through the center.
+ * Players can walk on the outside of the sphere and enter the tunnel at
+ * either pole to traverse through the center.
  *
- * Parameterization:
- * - u in [0, 1): azimuthal angle (wraps around)
- * - v in [0, 1]: position along the path from one hemisphere through the tunnel
+ * UV mapping (torus topology, both periodic):
+ *   u: [0, 1) azimuthal angle around the Y axis
+ *   v: [0, 1) position around the cross-section profile:
+ *     v=0:          bottom hole edge (sphere meets tunnel, y < 0)
+ *     v~0.29:       equator (widest point, r = radius)
+ *     v~0.58:       top hole edge (sphere meets tunnel, y > 0)
+ *     v~0.79:       tunnel midpoint (y = 0, inside)
+ *     v→1.0:        wraps back to v=0
  *
- * Key design: The hole angle (where sphere meets tunnel) is calculated so the
- * tunnel smoothly connects to the sphere surface. The transition zones ensure
- * entities don't get stuck at the boundary.
+ * Profile cross-section (closed loop):
+ *   1. Outer sphere arc: bottom hole → equator → top hole
+ *   2. Inner tunnel:     top hole → center → bottom hole
  */
 export class SphereWithTunnelSurface extends Surface {
   private readonly radius: number
   private readonly tunnelRadius: number
-  private readonly tunnelAxis: 'x' | 'y' | 'z'
   private readonly gridSegmentsU: number
   private readonly gridSegmentsV: number
 
-  // Derived values
-  private readonly holeAngle: number  // Angle at which tunnel meets sphere (in radians from axis)
-  private readonly tunnelLength: number  // Length of the tunnel inside the sphere
+  // Derived geometry
+  private readonly holeAngle: number        // asin(tunnelRadius / radius)
+  private readonly tunnelHalfLen: number     // radius * cos(holeAngle)
 
-  // Region boundaries (in v space)
-  private readonly hemisphere1End: number
-  private readonly tunnelEnd: number
+  // Profile arc lengths
+  private readonly sphereArcLen: number      // Arc of outer sphere between holes
+  private readonly tunnelLength: number      // Full tunnel length (2 * tunnelHalfLen)
+  private readonly totalPerimeter: number    // Sum of all segments
 
   constructor(config?: SphereWithTunnelConfig) {
     const radius = config?.radius ?? 8
     const tunnelRadius = config?.tunnelRadius ?? 2
-    const tunnelAxis = config?.tunnelAxis ?? 'y'
-    const gridSegmentsU = config?.gridSegmentsU ?? 24
-    const gridSegmentsV = config?.gridSegmentsV ?? 20
+    const gridSegmentsU = config?.gridSegmentsU ?? 32
+    const gridSegmentsV = config?.gridSegmentsV ?? 32
 
-    // Store init data for createMesh/createGrid (called before constructor finishes)
     ;(SphereWithTunnelSurface as any).__initData = {
       radius,
       tunnelRadius,
-      tunnelAxis,
       gridSegmentsU,
       gridSegmentsV,
     }
     super(config)
 
     this.radius = radius
-    this.tunnelRadius = Math.min(tunnelRadius, radius * 0.9) // Ensure tunnel fits
-    this.tunnelAxis = tunnelAxis
+    this.tunnelRadius = Math.min(tunnelRadius, radius * 0.5)
     this.gridSegmentsU = gridSegmentsU
     this.gridSegmentsV = gridSegmentsV
 
-    // Calculate the angle where the tunnel meets the sphere
-    // sin(holeAngle) = tunnelRadius / radius
     this.holeAngle = Math.asin(this.tunnelRadius / this.radius)
+    this.tunnelHalfLen = this.radius * Math.cos(this.holeAngle)
 
-    // Tunnel length = 2 * radius * cos(holeAngle)
-    this.tunnelLength = 2 * this.radius * Math.cos(this.holeAngle)
+    this.sphereArcLen = (Math.PI - 2 * this.holeAngle) * this.radius
+    this.tunnelLength = 2 * this.tunnelHalfLen
+    this.totalPerimeter = this.sphereArcLen + this.tunnelLength
 
-    // Calculate v-space region boundaries based on arc lengths
-    // Hemisphere arc from pole to hole edge: (PI/2 - holeAngle) radians
-    // Tunnel is a cylinder of length tunnelLength
-    const sphereArc = (Math.PI / 2 - this.holeAngle) * this.radius
-    const tunnelArc = this.tunnelLength
-    const totalArc = 2 * sphereArc + tunnelArc
-
-    this.hemisphere1End = sphereArc / totalArc
-    this.tunnelEnd = (sphereArc + tunnelArc) / totalArc
-
-    // Set base class properties
     this.surfaceRadius = radius
-    this.playerLocalPosition = this.getAxisVector(radius)
+    // Player spawns on equator (outer sphere, widest point)
+    this.playerLocalPosition = new THREE.Vector3(radius, 0, 0)
   }
 
   private static getInitData() {
@@ -90,674 +81,139 @@ export class SphereWithTunnelSurface extends Surface {
       (SphereWithTunnelSurface as any).__initData ?? {
         radius: 8,
         tunnelRadius: 2,
-        tunnelAxis: 'y' as const,
-        gridSegmentsU: 24,
-        gridSegmentsV: 20,
+        gridSegmentsU: 32,
+        gridSegmentsV: 32,
       }
     )
   }
 
   /**
-   * Get a unit vector along the tunnel axis
+   * Cross-section profile at parameter t in [0, 1).
+   * Returns (r, y) position and (nr, ny) outward normal direction.
+   *
+   * The profile traces a closed loop:
+   *   Segment 1 (outer sphere): bottom hole → equator → top hole
+   *   Segment 2 (inner tunnel): top hole → center → bottom hole
    */
-  private getAxisVector(scale: number = 1): THREE.Vector3 {
-    switch (this.tunnelAxis) {
-      case 'x': return new THREE.Vector3(scale, 0, 0)
-      case 'y': return new THREE.Vector3(0, scale, 0)
-      case 'z': return new THREE.Vector3(0, 0, scale)
-    }
-  }
+  private profileAt(t: number): { r: number; y: number; nr: number; ny: number } {
+    const initData = SphereWithTunnelSurface.getInitData()
+    const R = this.radius ?? initData.radius
+    const tr = this.tunnelRadius ?? Math.min(initData.tunnelRadius, R * 0.5)
+    const ha = this.holeAngle ?? Math.asin(tr / R)
+    const hLen = this.tunnelHalfLen ?? R * Math.cos(ha)
 
-  /**
-   * Get the two perpendicular axes for a given tunnel axis
-   */
-  private getPerpendicularAxes(): { axis1: THREE.Vector3; axis2: THREE.Vector3 } {
-    switch (this.tunnelAxis) {
-      case 'x':
-        return { axis1: new THREE.Vector3(0, 1, 0), axis2: new THREE.Vector3(0, 0, 1) }
-      case 'y':
-        return { axis1: new THREE.Vector3(1, 0, 0), axis2: new THREE.Vector3(0, 0, 1) }
-      case 'z':
-        return { axis1: new THREE.Vector3(1, 0, 0), axis2: new THREE.Vector3(0, 1, 0) }
-    }
-  }
+    const sArc = this.sphereArcLen ?? (Math.PI - 2 * ha) * R
+    const tLen = this.tunnelLength ?? 2 * hLen
+    const totalP = this.totalPerimeter ?? sArc + tLen
 
-  /**
-   * Determine which region a v coordinate is in
-   */
-  private getRegion(v: number): {
-    type: 'hemisphere1' | 'tunnel' | 'hemisphere2'
-    localT: number  // 0-1 within this region
-  } {
-    if (v <= this.hemisphere1End) {
-      return { type: 'hemisphere1', localT: v / this.hemisphere1End }
-    } else if (v <= this.tunnelEnd) {
-      return { type: 'tunnel', localT: (v - this.hemisphere1End) / (this.tunnelEnd - this.hemisphere1End) }
-    } else {
-      return { type: 'hemisphere2', localT: (v - this.tunnelEnd) / (1 - this.tunnelEnd) }
-    }
-  }
+    const pos = ((t % 1) + 1) % 1 * totalP
 
-  /**
-   * Get point on surface in LOCAL coordinates (before world rotation)
-   */
-  private getPointLocal(u: number, v: number): SurfacePoint {
-    const theta = u * Math.PI * 2  // Azimuthal angle
-    const cosTheta = Math.cos(theta)
-    const sinTheta = Math.sin(theta)
-
-    const { axis1, axis2 } = this.getPerpendicularAxes()
-    const mainAxis = this.getAxisVector()
-
-    const region = this.getRegion(v)
-
-    let position: THREE.Vector3
-    let normal: THREE.Vector3
-    let tangentU: THREE.Vector3
-    let tangentV: THREE.Vector3
-
-    switch (region.type) {
-      case 'hemisphere1': {
-        // First hemisphere: from pole (top) to hole edge
-        // phi goes from 0 (pole) to (PI/2 - holeAngle) (edge of hole)
-        const phi = region.localT * (Math.PI / 2 - this.holeAngle)
-        const sinPhi = Math.sin(phi)
-        const cosPhi = Math.cos(phi)
-
-        // Position on sphere
-        // Point = radius * (cosPhi * mainAxis + sinPhi * (cosTheta * axis1 + sinTheta * axis2))
-        position = mainAxis.clone().multiplyScalar(this.radius * cosPhi)
-          .add(axis1.clone().multiplyScalar(this.radius * sinPhi * cosTheta))
-          .add(axis2.clone().multiplyScalar(this.radius * sinPhi * sinTheta))
-
-        // Normal points outward from sphere center
-        normal = position.clone().normalize()
-
-        // Tangent in u direction (around azimuth)
-        tangentU = axis1.clone().multiplyScalar(-sinTheta)
-          .add(axis2.clone().multiplyScalar(cosTheta))
-          .normalize()
-
-        // Tangent in v direction (along meridian, toward hole)
-        tangentV = mainAxis.clone().multiplyScalar(-sinPhi)
-          .add(axis1.clone().multiplyScalar(cosPhi * cosTheta))
-          .add(axis2.clone().multiplyScalar(cosPhi * sinTheta))
-          .normalize()
-        break
-      }
-
-      case 'tunnel': {
-        // Cylindrical tunnel connecting the two holes
-        // Position along tunnel: from +halfLength to -halfLength (along axis)
-        const halfLength = this.tunnelLength / 2
-        const axisPos = halfLength * (1 - 2 * region.localT)  // Goes from +halfLength to -halfLength
-
-        // Position on cylinder surface (inside facing inward)
-        position = mainAxis.clone().multiplyScalar(axisPos)
-          .add(axis1.clone().multiplyScalar(this.tunnelRadius * cosTheta))
-          .add(axis2.clone().multiplyScalar(this.tunnelRadius * sinTheta))
-
-        // Normal points INWARD (toward center axis) since we're inside the tunnel
-        normal = axis1.clone().multiplyScalar(-cosTheta)
-          .add(axis2.clone().multiplyScalar(-sinTheta))
-          .normalize()
-
-        // Tangent in u direction (around circumference)
-        tangentU = axis1.clone().multiplyScalar(-sinTheta)
-          .add(axis2.clone().multiplyScalar(cosTheta))
-          .normalize()
-
-        // Tangent in v direction (along tunnel axis, negative direction)
-        tangentV = mainAxis.clone().multiplyScalar(-1).normalize()
-        break
-      }
-
-      case 'hemisphere2': {
-        // Second hemisphere: from hole edge to opposite pole
-        // phi goes from (PI/2 - holeAngle) to 0 (opposite pole)
-        // But measured from the OPPOSITE pole, so it's actually mirrored
-        const phi = (1 - region.localT) * (Math.PI / 2 - this.holeAngle)
-        const sinPhi = Math.sin(phi)
-        const cosPhi = Math.cos(phi)
-
-        // Position on sphere (on opposite side, so negate mainAxis component)
-        position = mainAxis.clone().multiplyScalar(-this.radius * cosPhi)
-          .add(axis1.clone().multiplyScalar(this.radius * sinPhi * cosTheta))
-          .add(axis2.clone().multiplyScalar(this.radius * sinPhi * sinTheta))
-
-        // Normal points outward
-        normal = position.clone().normalize()
-
-        // Tangent in u direction
-        tangentU = axis1.clone().multiplyScalar(-sinTheta)
-          .add(axis2.clone().multiplyScalar(cosTheta))
-          .normalize()
-
-        // Tangent in v direction (toward opposite pole)
-        tangentV = mainAxis.clone().multiplyScalar(sinPhi)
-          .add(axis1.clone().multiplyScalar(-cosPhi * cosTheta))
-          .add(axis2.clone().multiplyScalar(-cosPhi * sinTheta))
-          .normalize()
-        break
+    // Segment 1: Outer sphere arc
+    // phi goes from (PI - ha) at bottom hole to ha at top hole
+    if (pos < sArc) {
+      const localT = pos / sArc
+      const phi = (Math.PI - ha) - localT * (Math.PI - 2 * ha)
+      return {
+        r: R * Math.sin(phi),
+        y: R * Math.cos(phi),
+        nr: Math.sin(phi),
+        ny: Math.cos(phi),
       }
     }
 
-    return { position: position!, normal: normal!, tangentU: tangentU!, tangentV: tangentV! }
+    // Segment 2: Tunnel (from top hole down to bottom hole)
+    // y goes from +hLen to -hLen, r = tunnelRadius, normal points inward
+    const localT = (pos - sArc) / tLen
+    return {
+      r: tr,
+      y: hLen * (1 - 2 * localT),
+      nr: -1,
+      ny: 0,
+    }
   }
 
-  /**
-   * Get point on surface in WORLD coordinates
-   */
   getPoint(u: number, v: number): SurfacePoint {
-    const local = this.getPointLocal(u, v)
-    return this.applyWorldRotation(local)
+    const phi = u * Math.PI * 2
+    const cosPhi = Math.cos(phi)
+    const sinPhi = Math.sin(phi)
+
+    const { r, y, nr, ny } = this.profileAt(v)
+
+    const position = new THREE.Vector3(r * cosPhi, y, r * sinPhi)
+
+    const normal = new THREE.Vector3(nr * cosPhi, ny, nr * sinPhi).normalize()
+
+    // Tangent in u direction (around the ring)
+    const tangentU = new THREE.Vector3(-sinPhi, 0, cosPhi).normalize()
+
+    // Tangent in v direction (along profile) - finite difference
+    const dv = 0.001
+    const p1 = this.profileAt(v + dv)
+    const p0 = this.profileAt(v - dv)
+    const dr = p1.r - p0.r
+    const dy = p1.y - p0.y
+    const tangentV = new THREE.Vector3(dr * cosPhi, dy, dr * sinPhi).normalize()
+
+    return { position, normal, tangentU, tangentV }
   }
 
   moveOnSurface(
     u: number,
     v: number,
     du: number,
-    dv: number
+    dv: number,
   ): { u: number; v: number } {
-    const region = this.getRegion(v)
-    let correctedDu = du
+    const { r } = this.profileAt(v)
 
-    // Correct du for convergence at poles (hemispheres) and constant radius in tunnel
-    if (region.type === 'hemisphere1') {
-      const phi = region.localT * (Math.PI / 2 - this.holeAngle)
-      const sinPhi = Math.sin(phi)
-      correctedDu = sinPhi > 0.001 ? du / sinPhi : 0
-    } else if (region.type === 'hemisphere2') {
-      const phi = (1 - region.localT) * (Math.PI / 2 - this.holeAngle)
-      const sinPhi = Math.sin(phi)
-      correctedDu = sinPhi > 0.001 ? du / sinPhi : 0
-    }
-    // In tunnel, no correction needed (constant circumference)
+    // Scale du for varying circumference at different cross-section positions
+    const scaleFactor = r > 0.001 ? this.radius / r : 1
 
-    let newU = u + correctedDu
+    let newU = u + du * scaleFactor
     let newV = v + dv
 
-    // Wrap u around [0, 1)
+    // Both u and v are periodic (torus topology)
     newU = ((newU % 1) + 1) % 1
-
-    // Clamp v to avoid pole singularities
-    const epsilon = 0.005
-    newV = Math.max(epsilon, Math.min(1 - epsilon, newV))
+    newV = ((newV % 1) + 1) % 1
 
     return { u: newU, v: newV }
   }
 
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
-    const { axis1, axis2 } = this.getPerpendicularAxes()
-    const mainAxis = this.getAxisVector()
+    // Find azimuthal angle (u)
+    let phi = Math.atan2(worldPos.z, worldPos.x)
+    if (phi < 0) phi += Math.PI * 2
+    const u = phi / (Math.PI * 2)
 
-    // Project position onto perpendicular plane to get azimuthal angle
-    const perpComponent1 = worldPos.dot(axis1)
-    const perpComponent2 = worldPos.dot(axis2)
-    let theta = Math.atan2(perpComponent2, perpComponent1)
-    if (theta < 0) theta += Math.PI * 2
-    const u = theta / (Math.PI * 2)
+    // Find closest v by projecting to (r, y) cross-section and sampling profile
+    const rDist = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z)
+    const yDist = worldPos.y
 
-    // Get position along main axis
-    const axisComponent = worldPos.dot(mainAxis)
-    const perpDist = Math.sqrt(perpComponent1 * perpComponent1 + perpComponent2 * perpComponent2)
-
-    // Determine which region based on geometry
-    const holeY = this.radius * Math.cos(this.holeAngle)  // Axis position of hole edge
-    const isInTunnelRegion = Math.abs(axisComponent) < holeY && perpDist < this.tunnelRadius * 1.5
-
-    let v: number
-
-    if (isInTunnelRegion) {
-      // Inside the tunnel
-      const halfLength = this.tunnelLength / 2
-      // axisComponent goes from +halfLength to -halfLength as v goes through tunnel
-      const localT = (halfLength - axisComponent) / this.tunnelLength
-      v = this.hemisphere1End + localT * (this.tunnelEnd - this.hemisphere1End)
-    } else if (axisComponent > 0) {
-      // First hemisphere (positive axis side)
-      // Calculate phi angle from axis
-      const dist = worldPos.length()
-      const phi = Math.asin(Math.max(0, Math.min(1, perpDist / dist)))
-      const maxPhi = Math.PI / 2 - this.holeAngle
-      const localT = Math.min(1, phi / maxPhi)
-      v = localT * this.hemisphere1End
-    } else {
-      // Second hemisphere (negative axis side)
-      const dist = worldPos.length()
-      const phi = Math.asin(Math.max(0, Math.min(1, perpDist / dist)))
-      const maxPhi = Math.PI / 2 - this.holeAngle
-      const localT = Math.min(1, phi / maxPhi)
-      v = this.tunnelEnd + (1 - localT) * (1 - this.tunnelEnd)
-    }
-
-    return { u, v: Math.max(0, Math.min(1, v)) }
-  }
-
-  createMesh(): THREE.Mesh {
-    const { radius, tunnelRadius, tunnelAxis, gridSegmentsU, gridSegmentsV } =
-      SphereWithTunnelSurface.getInitData()
-
-    // Create custom geometry by merging:
-    // 1. Two sphere sections with holes cut out
-    // 2. An inner cylinder
-
-    const geometry = new THREE.BufferGeometry()
-    const vertices: number[] = []
-    const indices: number[] = []
-    const normals: number[] = []
-    const uvs: number[] = []
-
-    // Recalculate derived values for mesh creation
-    const effectiveTunnelRadius = Math.min(tunnelRadius, radius * 0.9)
-    const holeAngle = Math.asin(effectiveTunnelRadius / radius)
-    const tunnelLength = 2 * radius * Math.cos(holeAngle)
-
-    // Helper to get axis vectors
-    const getAxisVec = (scale: number = 1): THREE.Vector3 => {
-      switch (tunnelAxis) {
-        case 'x': return new THREE.Vector3(scale, 0, 0)
-        case 'y': return new THREE.Vector3(0, scale, 0)
-        case 'z': return new THREE.Vector3(0, 0, scale)
-        default: return new THREE.Vector3(0, scale, 0)
+    let bestV = 0
+    let bestDist = Infinity
+    const samples = 64
+    for (let i = 0; i < samples; i++) {
+      const tv = i / samples
+      const p = this.profileAt(tv)
+      const d = (rDist - p.r) * (rDist - p.r) + (yDist - p.y) * (yDist - p.y)
+      if (d < bestDist) {
+        bestDist = d
+        bestV = tv
       }
     }
 
-    const getPerpAxes = (): { a1: THREE.Vector3; a2: THREE.Vector3 } => {
-      switch (tunnelAxis) {
-        case 'x':
-          return { a1: new THREE.Vector3(0, 1, 0), a2: new THREE.Vector3(0, 0, 1) }
-        case 'y':
-          return { a1: new THREE.Vector3(1, 0, 0), a2: new THREE.Vector3(0, 0, 1) }
-        case 'z':
-          return { a1: new THREE.Vector3(1, 0, 0), a2: new THREE.Vector3(0, 1, 0) }
-        default:
-          return { a1: new THREE.Vector3(1, 0, 0), a2: new THREE.Vector3(0, 0, 1) }
-      }
-    }
-
-    const mainAxis = getAxisVec()
-    const { a1, a2 } = getPerpAxes()
-
-    // Number of segments
-    const uSegments = gridSegmentsU * 2
-    const hemisphereVSegments = Math.ceil(gridSegmentsV * 0.4)
-    const tunnelVSegments = Math.ceil(gridSegmentsV * 0.2)
-
-    let vertexIndex = 0
-
-    // Add vertex helper
-    const addVertex = (pos: THREE.Vector3, norm: THREE.Vector3, uvU: number, uvV: number): number => {
-      vertices.push(pos.x, pos.y, pos.z)
-      normals.push(norm.x, norm.y, norm.z)
-      uvs.push(uvU, uvV)
-      return vertexIndex++
-    }
-
-    // ===== First hemisphere (positive axis side, with hole) =====
-    const h1Vertices: number[][] = []
-
-    // Minimum sinPhi to prevent degenerate pole vertices that confuse BVH projection
-    const MIN_SIN_PHI = 0.05
-
-    for (let j = 0; j <= hemisphereVSegments; j++) {
-      h1Vertices[j] = []
-      // phi goes from 0 (pole) to (PI/2 - holeAngle)
-      const phi = (j / hemisphereVSegments) * (Math.PI / 2 - holeAngle)
-      const rawSinPhi = Math.sin(phi)
-      const cosPhi = Math.cos(phi)
-      const sinPhi = Math.max(rawSinPhi, MIN_SIN_PHI)
-
-      for (let i = 0; i <= uSegments; i++) {
-        const theta = (i / uSegments) * Math.PI * 2
-        const cosTheta = Math.cos(theta)
-        const sinTheta = Math.sin(theta)
-
-        const pos = mainAxis.clone().multiplyScalar(radius * cosPhi)
-          .add(a1.clone().multiplyScalar(radius * sinPhi * cosTheta))
-          .add(a2.clone().multiplyScalar(radius * sinPhi * sinTheta))
-
-        const norm = pos.clone().normalize()
-
-        h1Vertices[j].push(addVertex(pos, norm, i / uSegments, j / hemisphereVSegments * 0.3))
-      }
-    }
-
-    // Add faces for hemisphere 1
-    for (let j = 0; j < hemisphereVSegments; j++) {
-      for (let i = 0; i < uSegments; i++) {
-        const a = h1Vertices[j][i]
-        const b = h1Vertices[j][i + 1]
-        const c = h1Vertices[j + 1][i + 1]
-        const d = h1Vertices[j + 1][i]
-
-        indices.push(a, b, d)
-        indices.push(b, c, d)
-      }
-    }
-
-    // ===== Tunnel (inner cylinder) =====
-    const tunnelVertices: number[][] = []
-    const halfLength = tunnelLength / 2
-
-    for (let j = 0; j <= tunnelVSegments; j++) {
-      tunnelVertices[j] = []
-      const axisPos = halfLength * (1 - 2 * j / tunnelVSegments)
-
-      for (let i = 0; i <= uSegments; i++) {
-        const theta = (i / uSegments) * Math.PI * 2
-        const cosTheta = Math.cos(theta)
-        const sinTheta = Math.sin(theta)
-
-        const pos = mainAxis.clone().multiplyScalar(axisPos)
-          .add(a1.clone().multiplyScalar(effectiveTunnelRadius * cosTheta))
-          .add(a2.clone().multiplyScalar(effectiveTunnelRadius * sinTheta))
-
-        // Normal points inward (toward center of cylinder)
-        const norm = a1.clone().multiplyScalar(-cosTheta)
-          .add(a2.clone().multiplyScalar(-sinTheta))
-          .normalize()
-
-        tunnelVertices[j].push(addVertex(pos, norm, i / uSegments, 0.3 + j / tunnelVSegments * 0.4))
-      }
-    }
-
-    // Add faces for tunnel
-    for (let j = 0; j < tunnelVSegments; j++) {
-      for (let i = 0; i < uSegments; i++) {
-        const a = tunnelVertices[j][i]
-        const b = tunnelVertices[j][i + 1]
-        const c = tunnelVertices[j + 1][i + 1]
-        const d = tunnelVertices[j + 1][i]
-
-        indices.push(a, b, d)
-        indices.push(b, c, d)
-      }
-    }
-
-    // ===== Second hemisphere (negative axis side, with hole) =====
-    const h2Vertices: number[][] = []
-
-    for (let j = 0; j <= hemisphereVSegments; j++) {
-      h2Vertices[j] = []
-      // phi goes from (PI/2 - holeAngle) back to 0 (opposite pole)
-      const phi = (1 - j / hemisphereVSegments) * (Math.PI / 2 - holeAngle)
-      const rawSinPhi = Math.sin(phi)
-      const cosPhi = Math.cos(phi)
-      const sinPhi = Math.max(rawSinPhi, MIN_SIN_PHI)
-
-      for (let i = 0; i <= uSegments; i++) {
-        const theta = (i / uSegments) * Math.PI * 2
-        const cosTheta = Math.cos(theta)
-        const sinTheta = Math.sin(theta)
-
-        // Negative axis side
-        const pos = mainAxis.clone().multiplyScalar(-radius * cosPhi)
-          .add(a1.clone().multiplyScalar(radius * sinPhi * cosTheta))
-          .add(a2.clone().multiplyScalar(radius * sinPhi * sinTheta))
-
-        const norm = pos.clone().normalize()
-
-        h2Vertices[j].push(addVertex(pos, norm, i / uSegments, 0.7 + j / hemisphereVSegments * 0.3))
-      }
-    }
-
-    // Add faces for hemisphere 2
-    for (let j = 0; j < hemisphereVSegments; j++) {
-      for (let i = 0; i < uSegments; i++) {
-        const a = h2Vertices[j][i]
-        const b = h2Vertices[j][i + 1]
-        const c = h2Vertices[j + 1][i + 1]
-        const d = h2Vertices[j + 1][i]
-
-        indices.push(a, b, d)
-        indices.push(b, c, d)
-      }
-    }
-
-    // ===== Transition ring: hemisphere 1 to tunnel =====
-    for (let i = 0; i < uSegments; i++) {
-      const h1Edge = h1Vertices[hemisphereVSegments][i]
-      const h1EdgeNext = h1Vertices[hemisphereVSegments][i + 1]
-      const tStart = tunnelVertices[0][i]
-      const tStartNext = tunnelVertices[0][i + 1]
-
-      indices.push(h1Edge, h1EdgeNext, tStart)
-      indices.push(h1EdgeNext, tStartNext, tStart)
-    }
-
-    // ===== Transition ring: tunnel to hemisphere 2 =====
-    for (let i = 0; i < uSegments; i++) {
-      const tEnd = tunnelVertices[tunnelVSegments][i]
-      const tEndNext = tunnelVertices[tunnelVSegments][i + 1]
-      const h2Edge = h2Vertices[0][i]
-      const h2EdgeNext = h2Vertices[0][i + 1]
-
-      indices.push(tEnd, tEndNext, h2Edge)
-      indices.push(tEndNext, h2EdgeNext, h2Edge)
-    }
-
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
-    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
-    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
-    geometry.setIndex(indices)
-
-    return new THREE.Mesh(geometry, this.createSurfaceMaterial())
-  }
-
-  createGrid(): THREE.LineSegments {
-    const { radius, tunnelRadius, tunnelAxis, gridSegmentsU, gridSegmentsV } =
-      SphereWithTunnelSurface.getInitData()
-
-    const vertices: number[] = []
-    const lineDetail = 48
-
-    // Recalculate derived values
-    const effectiveTunnelRadius = Math.min(tunnelRadius, radius * 0.9)
-    const holeAngle = Math.asin(effectiveTunnelRadius / radius)
-    const tunnelLength = 2 * radius * Math.cos(holeAngle)
-    const halfLength = tunnelLength / 2
-
-    // Helper functions
-    const getAxisVec = (scale: number = 1): THREE.Vector3 => {
-      switch (tunnelAxis) {
-        case 'x': return new THREE.Vector3(scale, 0, 0)
-        case 'y': return new THREE.Vector3(0, scale, 0)
-        case 'z': return new THREE.Vector3(0, 0, scale)
-        default: return new THREE.Vector3(0, scale, 0)
-      }
-    }
-
-    const getPerpAxes = (): { a1: THREE.Vector3; a2: THREE.Vector3 } => {
-      switch (tunnelAxis) {
-        case 'x':
-          return { a1: new THREE.Vector3(0, 1, 0), a2: new THREE.Vector3(0, 0, 1) }
-        case 'y':
-          return { a1: new THREE.Vector3(1, 0, 0), a2: new THREE.Vector3(0, 0, 1) }
-        case 'z':
-          return { a1: new THREE.Vector3(1, 0, 0), a2: new THREE.Vector3(0, 1, 0) }
-        default:
-          return { a1: new THREE.Vector3(1, 0, 0), a2: new THREE.Vector3(0, 0, 1) }
-      }
-    }
-
-    const mainAxis = getAxisVec()
-    const { a1, a2 } = getPerpAxes()
-
-    // ===== Latitude lines on hemisphere 1 =====
-    const hemisphereLatLines = Math.ceil(gridSegmentsV * 0.35)
-    for (let j = 0; j < hemisphereLatLines; j++) {
-      const phi = (j / hemisphereLatLines) * (Math.PI / 2 - holeAngle)
-      const sinPhi = Math.sin(phi)
-      const cosPhi = Math.cos(phi)
-
-      for (let i = 0; i < lineDetail; i++) {
-        const theta0 = (i / lineDetail) * Math.PI * 2
-        const theta1 = ((i + 1) / lineDetail) * Math.PI * 2
-
-        const p0 = mainAxis.clone().multiplyScalar(radius * cosPhi)
-          .add(a1.clone().multiplyScalar(radius * sinPhi * Math.cos(theta0)))
-          .add(a2.clone().multiplyScalar(radius * sinPhi * Math.sin(theta0)))
-
-        const p1 = mainAxis.clone().multiplyScalar(radius * cosPhi)
-          .add(a1.clone().multiplyScalar(radius * sinPhi * Math.cos(theta1)))
-          .add(a2.clone().multiplyScalar(radius * sinPhi * Math.sin(theta1)))
-
-        vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z)
-      }
-    }
-
-    // ===== Latitude lines on hemisphere 2 =====
-    for (let j = 0; j < hemisphereLatLines; j++) {
-      const phi = (j / hemisphereLatLines) * (Math.PI / 2 - holeAngle)
-      const sinPhi = Math.sin(phi)
-      const cosPhi = Math.cos(phi)
-
-      for (let i = 0; i < lineDetail; i++) {
-        const theta0 = (i / lineDetail) * Math.PI * 2
-        const theta1 = ((i + 1) / lineDetail) * Math.PI * 2
-
-        const p0 = mainAxis.clone().multiplyScalar(-radius * cosPhi)
-          .add(a1.clone().multiplyScalar(radius * sinPhi * Math.cos(theta0)))
-          .add(a2.clone().multiplyScalar(radius * sinPhi * Math.sin(theta0)))
-
-        const p1 = mainAxis.clone().multiplyScalar(-radius * cosPhi)
-          .add(a1.clone().multiplyScalar(radius * sinPhi * Math.cos(theta1)))
-          .add(a2.clone().multiplyScalar(radius * sinPhi * Math.sin(theta1)))
-
-        vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z)
-      }
-    }
-
-    // ===== Ring lines at hole edges (sphere-tunnel transition) =====
-    const holeEdgeRadius = radius * Math.sin(Math.PI / 2 - holeAngle)
-    for (let i = 0; i < lineDetail; i++) {
-      const theta0 = (i / lineDetail) * Math.PI * 2
-      const theta1 = ((i + 1) / lineDetail) * Math.PI * 2
-
-      // Positive side hole edge
-      const posY = radius * Math.cos(Math.PI / 2 - holeAngle)
-      const p0h1 = mainAxis.clone().multiplyScalar(posY)
-        .add(a1.clone().multiplyScalar(holeEdgeRadius * Math.cos(theta0)))
-        .add(a2.clone().multiplyScalar(holeEdgeRadius * Math.sin(theta0)))
-      const p1h1 = mainAxis.clone().multiplyScalar(posY)
-        .add(a1.clone().multiplyScalar(holeEdgeRadius * Math.cos(theta1)))
-        .add(a2.clone().multiplyScalar(holeEdgeRadius * Math.sin(theta1)))
-      vertices.push(p0h1.x, p0h1.y, p0h1.z, p1h1.x, p1h1.y, p1h1.z)
-
-      // Negative side hole edge
-      const p0h2 = mainAxis.clone().multiplyScalar(-posY)
-        .add(a1.clone().multiplyScalar(holeEdgeRadius * Math.cos(theta0)))
-        .add(a2.clone().multiplyScalar(holeEdgeRadius * Math.sin(theta0)))
-      const p1h2 = mainAxis.clone().multiplyScalar(-posY)
-        .add(a1.clone().multiplyScalar(holeEdgeRadius * Math.cos(theta1)))
-        .add(a2.clone().multiplyScalar(holeEdgeRadius * Math.sin(theta1)))
-      vertices.push(p0h2.x, p0h2.y, p0h2.z, p1h2.x, p1h2.y, p1h2.z)
-    }
-
-    // ===== Tunnel circumference rings =====
-    const tunnelRings = Math.ceil(gridSegmentsV * 0.3)
-    for (let j = 0; j <= tunnelRings; j++) {
-      const axisPos = halfLength * (1 - 2 * j / tunnelRings)
-
-      for (let i = 0; i < lineDetail; i++) {
-        const theta0 = (i / lineDetail) * Math.PI * 2
-        const theta1 = ((i + 1) / lineDetail) * Math.PI * 2
-
-        const p0 = mainAxis.clone().multiplyScalar(axisPos)
-          .add(a1.clone().multiplyScalar(effectiveTunnelRadius * Math.cos(theta0)))
-          .add(a2.clone().multiplyScalar(effectiveTunnelRadius * Math.sin(theta0)))
-
-        const p1 = mainAxis.clone().multiplyScalar(axisPos)
-          .add(a1.clone().multiplyScalar(effectiveTunnelRadius * Math.cos(theta1)))
-          .add(a2.clone().multiplyScalar(effectiveTunnelRadius * Math.sin(theta1)))
-
-        vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z)
-      }
-    }
-
-    // ===== Longitude/meridian lines =====
-    for (let i = 0; i < gridSegmentsU; i++) {
-      const theta = (i / gridSegmentsU) * Math.PI * 2
-      const cosTheta = Math.cos(theta)
-      const sinTheta = Math.sin(theta)
-
-      // Hemisphere 1 meridian (pole to hole)
-      const h1Segments = Math.ceil(lineDetail * 0.4)
-      for (let j = 0; j < h1Segments; j++) {
-        const phi0 = (j / h1Segments) * (Math.PI / 2 - holeAngle)
-        const phi1 = ((j + 1) / h1Segments) * (Math.PI / 2 - holeAngle)
-
-        const p0 = mainAxis.clone().multiplyScalar(radius * Math.cos(phi0))
-          .add(a1.clone().multiplyScalar(radius * Math.sin(phi0) * cosTheta))
-          .add(a2.clone().multiplyScalar(radius * Math.sin(phi0) * sinTheta))
-
-        const p1 = mainAxis.clone().multiplyScalar(radius * Math.cos(phi1))
-          .add(a1.clone().multiplyScalar(radius * Math.sin(phi1) * cosTheta))
-          .add(a2.clone().multiplyScalar(radius * Math.sin(phi1) * sinTheta))
-
-        vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z)
-      }
-
-      // Tunnel vertical lines
-      const tunnelLineSegments = Math.ceil(lineDetail * 0.2)
-      for (let j = 0; j < tunnelLineSegments; j++) {
-        const axisPos0 = halfLength * (1 - 2 * j / tunnelLineSegments)
-        const axisPos1 = halfLength * (1 - 2 * (j + 1) / tunnelLineSegments)
-
-        const p0 = mainAxis.clone().multiplyScalar(axisPos0)
-          .add(a1.clone().multiplyScalar(effectiveTunnelRadius * cosTheta))
-          .add(a2.clone().multiplyScalar(effectiveTunnelRadius * sinTheta))
-
-        const p1 = mainAxis.clone().multiplyScalar(axisPos1)
-          .add(a1.clone().multiplyScalar(effectiveTunnelRadius * cosTheta))
-          .add(a2.clone().multiplyScalar(effectiveTunnelRadius * sinTheta))
-
-        vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z)
-      }
-
-      // Hemisphere 2 meridian (hole to opposite pole)
-      for (let j = 0; j < h1Segments; j++) {
-        const phi0 = (1 - j / h1Segments) * (Math.PI / 2 - holeAngle)
-        const phi1 = (1 - (j + 1) / h1Segments) * (Math.PI / 2 - holeAngle)
-
-        const p0 = mainAxis.clone().multiplyScalar(-radius * Math.cos(phi0))
-          .add(a1.clone().multiplyScalar(radius * Math.sin(phi0) * cosTheta))
-          .add(a2.clone().multiplyScalar(radius * Math.sin(phi0) * sinTheta))
-
-        const p1 = mainAxis.clone().multiplyScalar(-radius * Math.cos(phi1))
-          .add(a1.clone().multiplyScalar(radius * Math.sin(phi1) * cosTheta))
-          .add(a2.clone().multiplyScalar(radius * Math.sin(phi1) * sinTheta))
-
-        vertices.push(p0.x, p0.y, p0.z, p1.x, p1.y, p1.z)
-      }
-    }
-
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
-
-    return new THREE.LineSegments(geometry, this.createGridMaterial())
+    return { u, v: bestV }
   }
 
   /**
-   * Check if a world position is inside the tunnel
+   * Check if a world position is inside the tunnel.
    */
   isInsideTunnel(worldPos: THREE.Vector3): boolean {
-    const { axis1, axis2 } = this.getPerpendicularAxes()
-    const mainAxis = this.getAxisVector()
-
-    const axisComponent = worldPos.dot(mainAxis)
-    const perpComponent1 = worldPos.dot(axis1)
-    const perpComponent2 = worldPos.dot(axis2)
-    const perpDist = Math.sqrt(perpComponent1 * perpComponent1 + perpComponent2 * perpComponent2)
-
-    const halfLength = this.tunnelLength / 2
-
-    return Math.abs(axisComponent) <= halfLength && perpDist <= this.tunnelRadius * 1.2
+    const rDist = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z)
+    return Math.abs(worldPos.y) <= this.tunnelHalfLen && rDist <= this.tunnelRadius * 1.2
   }
 
   /**
-   * Get the tunnel parameters for external use
+   * Get the tunnel parameters for external use.
    */
   getTunnelParams(): {
     radius: number
@@ -768,8 +224,143 @@ export class SphereWithTunnelSurface extends Surface {
     return {
       radius: this.tunnelRadius,
       length: this.tunnelLength,
-      axis: this.tunnelAxis,
+      axis: 'y',
       holeAngle: this.holeAngle,
     }
+  }
+
+  createMesh(): THREE.Mesh {
+    const initData = SphereWithTunnelSurface.getInitData()
+    const R = initData.radius
+    const tr = Math.min(initData.tunnelRadius, R * 0.5)
+    const ha = Math.asin(tr / R)
+    const hLen = R * Math.cos(ha)
+
+    const sArc = (Math.PI - 2 * ha) * R
+    const tLen = 2 * hLen
+    const totalP = sArc + tLen
+
+    // Compute segment counts for balanced triangle aspect ratios
+    const radialSegs = Math.max(initData.gridSegmentsV, 32)
+    const targetStep = totalP / radialSegs
+    const ringCircumference = 2 * Math.PI * R
+    const tubularSegs = Math.max(Math.round(ringCircumference / targetStep), 48)
+
+    const positions: number[] = []
+    const indices: number[] = []
+
+    // j = radial (around cross-section), i = tubular (around Y axis)
+    // Both go 0..N inclusive, creating duplicate vertices at seams
+    for (let j = 0; j <= radialSegs; j++) {
+      const v = j / radialSegs
+
+      // Inline profileAt to avoid issues during super() construction
+      const posV = v * totalP
+      let pr: number, py: number
+
+      if (posV < sArc) {
+        const localT = posV / sArc
+        const phi = (Math.PI - ha) - localT * (Math.PI - 2 * ha)
+        pr = R * Math.sin(phi)
+        py = R * Math.cos(phi)
+      } else {
+        const localT = (posV - sArc) / tLen
+        py = hLen * (1 - 2 * localT)
+        pr = tr
+      }
+
+      for (let i = 0; i <= tubularSegs; i++) {
+        const theta = (i / tubularSegs) * Math.PI * 2
+        positions.push(pr * Math.cos(theta), py, pr * Math.sin(theta))
+      }
+    }
+
+    // Standard quad indices (no modulo wrapping)
+    for (let j = 0; j < radialSegs; j++) {
+      for (let i = 0; i < tubularSegs; i++) {
+        const a = j * (tubularSegs + 1) + i
+        const b = a + 1
+        const c = (j + 1) * (tubularSegs + 1) + i
+        const d = c + 1
+
+        indices.push(a, c, b)
+        indices.push(b, c, d)
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setIndex(indices)
+    geometry.computeVertexNormals()
+
+    return new THREE.Mesh(geometry, this.createSurfaceMaterial())
+  }
+
+  createGrid(): THREE.LineSegments {
+    const initData = SphereWithTunnelSurface.getInitData()
+    const R = initData.radius
+    const tr = Math.min(initData.tunnelRadius, R * 0.5)
+    const ha = Math.asin(tr / R)
+    const hLen = R * Math.cos(ha)
+
+    const sArc = (Math.PI - 2 * ha) * R
+    const tLen = 2 * hLen
+    const totalP = sArc + tLen
+    const gridU = initData.gridSegmentsU
+    const gridV = initData.gridSegmentsV
+
+    const vertices: number[] = []
+    const lineDetail = 48
+
+    // Helper: compute (r, y) from v parameter
+    const getProfile = (v: number): { r: number; y: number } => {
+      const posV = ((v % 1) + 1) % 1 * totalP
+      if (posV < sArc) {
+        const localT = posV / sArc
+        const phi = (Math.PI - ha) - localT * (Math.PI - 2 * ha)
+        return { r: R * Math.sin(phi), y: R * Math.cos(phi) }
+      }
+      const localT = (posV - sArc) / tLen
+      return { r: tr, y: hLen * (1 - 2 * localT) }
+    }
+
+    // Lines around the ring (constant v, varying u/theta)
+    const vSteps = gridV * 2
+    for (let j = 0; j < vSteps; j++) {
+      const { r, y } = getProfile(j / vSteps)
+
+      for (let i = 0; i < lineDetail; i++) {
+        const theta0 = (i / lineDetail) * Math.PI * 2
+        const theta1 = ((i + 1) / lineDetail) * Math.PI * 2
+
+        vertices.push(
+          r * Math.cos(theta0), y, r * Math.sin(theta0),
+          r * Math.cos(theta1), y, r * Math.sin(theta1),
+        )
+      }
+    }
+
+    // Lines around the cross-section (constant u, varying v)
+    for (let i = 0; i < gridU; i++) {
+      const theta = (i / gridU) * Math.PI * 2
+      const cosTheta = Math.cos(theta)
+      const sinTheta = Math.sin(theta)
+
+      const profileDetail = gridV * 4
+      for (let j = 0; j < profileDetail; j++) {
+        const p0 = getProfile(j / profileDetail)
+        const p1 = getProfile((j + 1) / profileDetail)
+
+        vertices.push(
+          p0.r * cosTheta, p0.y, p0.r * sinTheta,
+          p1.r * cosTheta, p1.y, p1.r * sinTheta,
+        )
+      }
+    }
+
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
+
+    return new THREE.LineSegments(geometry, this.createGridMaterial())
   }
 }

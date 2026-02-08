@@ -19,8 +19,6 @@ export interface Projectile {
   // For mortar
   startPos?: THREE.Vector3;
   endPos?: THREE.Vector3;
-  // For piercing
-  hitEnemies?: Set<number>;
 }
 
 /**
@@ -118,13 +116,6 @@ export class WeaponManager {
       color: WEAPON_CONFIGS[WeaponType.Spread].color,
       transparent: true,
       opacity: 0.9,
-    }));
-
-    // Piercing - white glow
-    this.projectileMaterials.set(WeaponType.Piercing, new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 1.0,
     }));
 
     // Homing - red
@@ -360,15 +351,50 @@ export class WeaponManager {
   private firePiercing(origin: THREE.Vector3, direction: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.Piercing];
 
-    const proj = this.createProjectile(
-      WeaponType.Piercing,
-      origin.clone(),
-      direction.clone(),
-      config.damage,
-      config.projectileSpeed,
-      2.5,
-    );
-    proj.hitEnemies = new Set();
+    // Trace a geodesic beam path along the surface
+    const beamPoints = this.traceBeamPath(origin, direction, 15, 24);
+
+    // Build a thick white beam visual
+    const curve = new THREE.CatmullRomCurve3(beamPoints, false, 'catmullrom', 0.5);
+    const tubeGeom = new THREE.TubeGeometry(curve, beamPoints.length * 2, 0.05, 6, false);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 1.0,
+    });
+    const beamMesh = new THREE.Mesh(tubeGeom, beamMat);
+    this.projectileRoot.add(beamMesh);
+
+    // Instant damage to all enemies along the beam path
+    if (this.callbacks) {
+      const enemies = this.callbacks.getEnemies();
+      const hitRadius = 0.4;
+
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+
+        for (let s = 0; s < beamPoints.length - 1; s++) {
+          const segDist = distanceToSegment(
+            enemy.position, beamPoints[s], beamPoints[s + 1],
+          );
+          if (segDist < hitRadius) {
+            this.callbacks.onEnemyDamage(enemy.index, config.damage, WeaponType.Piercing);
+            break; // Only damage each enemy once
+          }
+        }
+      }
+    }
+
+    // Brief flash effect (fades out over 0.25s)
+    this.activeEffects.push({
+      type: 'laser',
+      position: origin.clone(),
+      direction: direction.clone(),
+      duration: 0.25,
+      elapsed: 0,
+      mesh: beamMesh,
+      beamPoints,
+    });
   }
 
   private fireChainLightning(origin: THREE.Vector3, direction: THREE.Vector3): void {
@@ -684,12 +710,6 @@ export class WeaponManager {
         return new THREE.Mesh(geom, material);
       }
 
-      case WeaponType.Piercing: {
-        const geom = new THREE.CylinderGeometry(0.03, 0.03, 0.5, 8);
-        geom.rotateX(Math.PI / 2);
-        return new THREE.Mesh(geom, material);
-      }
-
       case WeaponType.Homing: {
         const geom = new THREE.ConeGeometry(0.1, 0.3, 6);
         geom.rotateX(Math.PI / 2);
@@ -800,16 +820,11 @@ export class WeaponManager {
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
 
-      // Skip already-hit enemies for piercing
-      if (proj.hitEnemies?.has(enemy.index)) continue;
-
       const dist = proj.position.distanceTo(enemy.position);
       if (dist < hitRadius) {
         this.callbacks.onEnemyDamage(enemy.index, proj.damage, proj.type);
 
-        if (proj.type === WeaponType.Piercing) {
-          proj.hitEnemies?.add(enemy.index);
-        } else if (proj.type === WeaponType.PlasmaMortar) {
+        if (proj.type === WeaponType.PlasmaMortar) {
           // AoE damage
           this.applyAoeDamage(proj.position, 1.5, proj.damage * 0.5);
           this.removeProjectile(index);

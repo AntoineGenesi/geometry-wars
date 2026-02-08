@@ -56,7 +56,9 @@ export class MobiusSurface extends Surface {
 
     // Set base class properties for generic rotation system
     this.surfaceRadius = majorRadius + stripWidth
-    this.playerLocalPosition = new THREE.Vector3(majorRadius, 0, 0)
+    // Spawn on outer part of strip (away from center seam at t=0 where
+    // non-orientable winding causes geodesic walker direction reversal)
+    this.playerLocalPosition = new THREE.Vector3(majorRadius + stripWidth * 0.5, 0, 0)
   }
 
   private static getInitData() {

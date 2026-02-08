@@ -44,10 +44,20 @@ export function transportAcrossEdge(
   // Compute the dihedral angle between the two faces.
   // The dihedral angle is the angle between the normals, measured around the edge.
   // We use atan2 with the signed cross product to get the correct sign.
-  const cosAngle = normalFrom.dot(normalTo);
+  let cosAngle = normalFrom.dot(normalTo);
+
+  // Handle non-orientable surfaces (e.g., Mobius strip seam):
+  // If normals are nearly opposite (dihedral > 120°), the faces are actually nearly
+  // coplanar but with inconsistent winding order. Use the flipped normal to compute
+  // the correct (small) transport angle instead of the erroneous ~180° rotation.
+  let effectiveNormalTo = normalTo;
+  if (cosAngle < -0.5) {
+    effectiveNormalTo = normalTo.clone().negate();
+    cosAngle = normalFrom.dot(effectiveNormalTo);
+  }
 
   // Cross product of normals gives a vector along the edge (with magnitude = sin(angle))
-  _temp.crossVectors(normalFrom, normalTo);
+  _temp.crossVectors(normalFrom, effectiveNormalTo);
   const sinAngle = _temp.dot(_edgeDir);
 
   const angle = Math.atan2(sinAngle, cosAngle);

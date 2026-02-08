@@ -59,10 +59,10 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     name: 'Piercing Beam',
     color: 0xffffff,
     damage: 3,
-    fireRate: 4,
-    ammo: 30,
-    projectileSpeed: 5.0,
-    description: 'Penetrates multiple enemies',
+    fireRate: 3,
+    ammo: 25,
+    projectileSpeed: 0, // instant beam
+    description: 'Geodesic beam that hits all enemies in its path',
   },
   [WeaponType.ChainLightning]: {
     type: WeaponType.ChainLightning,
