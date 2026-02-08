@@ -340,8 +340,8 @@ function checkBulletEnemyCollisions(
         bulletPool.kill(bulletIdx);
         enemy.takeDamage(bulletDamage);
 
-        // Damage number popup
-        if (showDamageNumbers && scorePopups) {
+        // Damage number popup (skip on killing blow - score popup covers it)
+        if (showDamageNumbers && scorePopups && enemy.alive) {
           scorePopups.spawnDamage(enemy.position, bulletDamage);
         }
 
@@ -813,7 +813,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       if (!enemy) return;
       const scorePower = scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier;
       enemy.takeDamage(damage * scorePower);
-      scorePopups.spawnDamage(enemy.position, damage * scorePower);
+      // Show damage number only on non-killing hits (score popup covers killing blows)
+      if (enemy.alive) {
+        scorePopups.spawnDamage(enemy.position, damage * scorePower);
+      }
       if (!enemy.alive) {
         const enemyType = enemy.constructor.name.toLowerCase();
         const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
@@ -1749,7 +1752,7 @@ if (isMultiplayerMode()) {
 
   startMenu.onStart((selection: MenuSelection) => {
     console.log(`[Main] Starting game: ${selection.gameMode} on ${selection.surfaceType}`);
-    startMenu.hide();
+    startMenu.dispose();
 
     // Handle game mode selection
     if (selection.gameMode === 'multiplayer') {
@@ -1770,7 +1773,6 @@ if (isMultiplayerMode()) {
       // Single player - Quick Game (endless) or Adventure level
       const levelIdx = selection.levelIndex ?? -1; // -1 = endless Quick Game
       window.history.replaceState({}, '', `?surface=${selection.surfaceType}&level=${levelIdx}`);
-      startMenu.dispose();
       main(selection.surfaceType, levelIdx);
     }
   });

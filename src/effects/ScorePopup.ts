@@ -43,6 +43,9 @@ export class ScorePopupManager {
 
     const sprite = new THREE.Sprite(material);
     sprite.renderOrder = 999;
+    // Start fully opaque so popups are visible on first rendered frame
+    // (update() runs before collision checks, so new popups have age=0 until next tick)
+    material.opacity = 1.0;
 
     // Offset position slightly toward camera so it doesn't clip into the surface.
     // Use camera direction if available, otherwise fall back to world Y.
@@ -97,10 +100,10 @@ export class ScorePopupManager {
    */
   spawnDamage(position: THREE.Vector3, damage: number): void {
     const text = damage >= 1 ? `-${Math.round(damage)}` : `-${damage.toFixed(1)}`;
-    const offsetX = (Math.random() - 0.5) * 0.4;
-    const offsetZ = (Math.random() - 0.5) * 0.4;
+    const offsetX = (Math.random() - 0.5) * 0.5;
+    const offsetZ = (Math.random() - 0.5) * 0.5;
     const pos = position.clone().add(new THREE.Vector3(offsetX, 0, offsetZ));
-    this.spawn(pos, text, '#ff3333', 0.9, 0.5);
+    this.spawn(pos, text, '#ff4444', 1.3, 0.7);
   }
 
   /**
