@@ -1067,6 +1067,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // -- Pause menu --
   const pauseMenu = new PauseMenu();
+  pauseMenu.setMusic(bgMusic);
   pauseMenu.onResume(() => {
     isPaused = false;
     // Force respawn if player died during pause
@@ -1133,6 +1134,26 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       } else {
         bgMusic.volume = 0.3;
       }
+    }
+    // N = cycle music preset
+    if (e.key === 'n' || e.key === 'N') {
+      const preset = bgMusic.cyclePreset();
+      const name = bgMusic.getPresetDisplayName(preset);
+      // Brief on-screen notification
+      let notify = document.getElementById('music-preset-notify');
+      if (!notify) {
+        notify = document.createElement('div');
+        notify.id = 'music-preset-notify';
+        notify.style.cssText =
+          'position:fixed;top:80px;left:50%;transform:translateX(-50%);' +
+          'color:#00ffff;font-family:"Segoe UI",Arial,sans-serif;font-size:18px;' +
+          'letter-spacing:3px;text-shadow:0 0 8px #00ffff;z-index:3000;' +
+          'pointer-events:none;transition:opacity 0.5s;';
+        document.body.appendChild(notify);
+      }
+      notify.textContent = `MUSIC: ${name.toUpperCase()}`;
+      notify.style.opacity = '1';
+      setTimeout(() => { if (notify) notify.style.opacity = '0'; }, 1500);
     }
   });
 
@@ -1784,7 +1805,17 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 // ---------------------------------------------------------------------------
 
 // Check for direct URL mode params (skip menu)
-if (isMultiplayerMode()) {
+function isBenchmarkMode(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('mode') === 'benchmark';
+}
+
+if (isBenchmarkMode()) {
+  import('./benchmark').then(({ runBenchmark }) => {
+    console.log('[Main] Running performance benchmark');
+    runBenchmark();
+  });
+} else if (isMultiplayerMode()) {
   import('./multiplayer-main').then(() => {
     console.log('[Main] Loaded local multiplayer mode');
   });

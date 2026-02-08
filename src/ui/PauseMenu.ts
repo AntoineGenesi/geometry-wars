@@ -1,6 +1,7 @@
 import { ConfigurableInput } from '../input/ConfigurableInput';
 import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
+import { BackgroundMusic } from '../audio/BackgroundMusic';
 
 /**
  * Pause menu overlay.
@@ -12,6 +13,7 @@ export class PauseMenu {
   private onResumeCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
   private isPaused: boolean = false;
+  private bgMusic: BackgroundMusic | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -41,6 +43,10 @@ export class PauseMenu {
             <span class="btn-icon">⚡</span>
             <span>WEAPONS</span>
           </button>
+          <button class="pause-btn music-btn" data-action="music">
+            <span class="btn-icon">♪</span>
+            <span class="music-label">MUSIC: ELECTRONIC</span>
+          </button>
           <button class="pause-btn exit-btn" data-action="exit">
             <span class="btn-icon">◀</span>
             <span>EXIT TO MENU</span>
@@ -48,7 +54,7 @@ export class PauseMenu {
         </div>
 
         <div class="pause-hint">
-          <p>Press ESC to resume</p>
+          <p>Press ESC to resume | M to mute | N to cycle music</p>
         </div>
       </div>
     `;
@@ -151,6 +157,16 @@ export class PauseMenu {
         box-shadow: 0 0 20px #ffaa44;
       }
 
+      #pause-menu .music-btn {
+        background: linear-gradient(180deg, #663366 0%, #442244 100%);
+        border-color: #cc44ff;
+      }
+
+      #pause-menu .music-btn:hover {
+        background: linear-gradient(180deg, #884488 0%, #663366 100%);
+        box-shadow: 0 0 20px #cc44ff;
+      }
+
       #pause-menu .exit-btn:hover {
         background: linear-gradient(180deg, #444488 0%, #333366 100%);
         box-shadow: 0 0 20px #8888ff;
@@ -200,6 +216,16 @@ export class PauseMenu {
       });
     });
 
+    const musicBtn = this.container.querySelector('[data-action="music"]');
+    musicBtn?.addEventListener('click', () => {
+      if (this.bgMusic) {
+        const preset = this.bgMusic.cyclePreset();
+        const name = this.bgMusic.getPresetDisplayName(preset);
+        const label = this.container.querySelector('.music-label');
+        if (label) label.textContent = `MUSIC: ${name.toUpperCase()}`;
+      }
+    });
+
     exitBtn?.addEventListener('click', () => {
       this.hide();
       this.onExitCallback?.();
@@ -221,6 +247,7 @@ export class PauseMenu {
    */
   show(): void {
     this.isPaused = true;
+    this.updateMusicLabel();
     this.container.classList.remove('hidden');
   }
 
@@ -245,6 +272,23 @@ export class PauseMenu {
    */
   get paused(): boolean {
     return this.isPaused;
+  }
+
+  /**
+   * Set the BackgroundMusic instance for preset cycling in the pause menu.
+   */
+  setMusic(music: BackgroundMusic): void {
+    this.bgMusic = music;
+    this.updateMusicLabel();
+  }
+
+  private updateMusicLabel(): void {
+    if (!this.bgMusic) return;
+    const label = this.container.querySelector('.music-label');
+    if (label) {
+      const name = this.bgMusic.getPresetDisplayName();
+      label.textContent = `MUSIC: ${name.toUpperCase()}`;
+    }
   }
 
   /**
