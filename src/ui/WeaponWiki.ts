@@ -13,6 +13,7 @@
 
 import { WeaponType, WEAPON_CONFIGS, type WeaponConfig } from '../weapons/WeaponTypes';
 import { BuffType, BUFF_CONFIGS, type BuffConfig } from '../weapons/BuffPickup';
+import { WeaponPlayground } from './WeaponPlayground';
 
 /** Convert a numeric hex color (0xRRGGBB) to a CSS hex string */
 function hexColor(n: number): string {
@@ -202,6 +203,7 @@ export class WeaponWiki {
   private modalOverlay: HTMLDivElement | null = null;
   private onCloseCallback: (() => void) | null = null;
   private escHandler: ((e: KeyboardEvent) => void) | null = null;
+  private playground: WeaponPlayground | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -672,6 +674,44 @@ export class WeaponWiki {
         color: var(--modal-color, #888);
         font-weight: bold;
       }
+
+      /* ===== Weapon Playground ===== */
+      .weapon-modal .modal-playground {
+        padding: 0 30px 24px;
+      }
+      .weapon-modal .playground-toggle {
+        display: block;
+        width: 100%;
+        padding: 10px 0;
+        background: rgba(20, 20, 50, 0.8);
+        border: 1px solid var(--modal-color, #666);
+        color: var(--modal-color, #fff);
+        font-size: 13px;
+        font-weight: bold;
+        letter-spacing: 3px;
+        cursor: pointer;
+        transition: all 0.2s;
+        text-align: center;
+      }
+      .weapon-modal .playground-toggle:hover {
+        background: rgba(40, 40, 80, 0.9);
+        box-shadow: 0 0 14px var(--modal-color, #666);
+      }
+      .weapon-modal .playground-toggle.active {
+        border-bottom: none;
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+      }
+      .weapon-modal .playground-container {
+        border: 1px solid var(--modal-color, #666);
+        border-top: none;
+        padding: 12px;
+        background: rgba(5, 5, 16, 0.95);
+        display: none;
+      }
+      .weapon-modal .playground-container.visible {
+        display: block;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -876,6 +916,13 @@ export class WeaponWiki {
           <ul>${tipsHTML}</ul>
         </div>
         ` : ''}
+
+        <div class="modal-playground">
+          <button class="playground-toggle" data-action="toggle-playground" data-weapon-type="${weaponType}">
+            TRY IT
+          </button>
+          <div class="playground-container" data-playground-mount></div>
+        </div>
       </div>
     `;
 
@@ -896,11 +943,44 @@ export class WeaponWiki {
         this.closeModal();
       }
     });
+
+    // Toggle playground
+    overlay.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('[data-action="toggle-playground"]') as HTMLElement | null;
+      if (!btn) return;
+
+      const wType = btn.dataset.weaponType as WeaponType;
+      const mountEl = overlay.querySelector('[data-playground-mount]') as HTMLElement | null;
+      if (!mountEl) return;
+
+      if (this.playground) {
+        // Close playground
+        this.playground.dispose();
+        this.playground = null;
+        mountEl.classList.remove('visible');
+        btn.classList.remove('active');
+        btn.textContent = 'TRY IT';
+      } else {
+        // Open playground
+        mountEl.classList.add('visible');
+        btn.classList.add('active');
+        btn.textContent = 'CLOSE DEMO';
+        this.playground = new WeaponPlayground(mountEl);
+        this.playground.setWeapon(wType);
+      }
+    });
   }
 
   /** Close the detail modal with a fade-out animation */
   private closeModal(): void {
     if (!this.modalOverlay) return;
+
+    // Dispose playground before removing the modal
+    if (this.playground) {
+      this.playground.dispose();
+      this.playground = null;
+    }
+
     const overlay = this.modalOverlay;
     this.modalOverlay = null;
     overlay.classList.add('closing');
