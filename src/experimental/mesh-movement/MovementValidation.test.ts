@@ -135,6 +135,14 @@ const SURFACE_CONFIGS: SurfaceTestConfig[] = [
     startAbove: new THREE.Vector3(12, 0, 0), // above outer face
     hasPoles: false,
   },
+  {
+    name: 'Cube Tunnel',
+    type: 'cube-tunnel',
+    closed: true, // torus topology
+    approxDiameter: 10, // 2 * outerRadius 5
+    startAbove: new THREE.Vector3(8, 0, 0), // above outer wall
+    hasPoles: false,
+  },
 ];
 
 // ---------------------------------------------------------------------------

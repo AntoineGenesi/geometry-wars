@@ -95,6 +95,7 @@ export class WeaponManager {
    */
   setMeshSurface(ms: MeshSurface): void {
     this.meshSurface = ms;
+    this.chainLightning.setMeshSurface(ms);
   }
 
   /**
@@ -796,13 +797,24 @@ export class WeaponManager {
   }
 
   private updateHomingProjectile(proj: Projectile, dt: number): void {
-    if (proj.targetIndex !== undefined && this.callbacks) {
+    if (this.callbacks) {
       const enemies = this.callbacks.getEnemies();
-      const target = enemies.find(e => e.index === proj.targetIndex && e.alive);
 
-      if (target) {
-        // Home toward target
-        const toTarget = target.position.clone().sub(proj.position).normalize();
+      // Re-target nearest alive enemy to the PROJECTILE each frame
+      let nearestDist = Infinity;
+      let nearestEnemy: { position: THREE.Vector3; index: number } | null = null;
+      for (const enemy of enemies) {
+        if (!enemy.alive) continue;
+        const dist = proj.position.distanceTo(enemy.position);
+        if (dist < nearestDist) {
+          nearestDist = dist;
+          nearestEnemy = enemy;
+        }
+      }
+
+      if (nearestEnemy) {
+        proj.targetIndex = nearestEnemy.index;
+        const toTarget = nearestEnemy.position.clone().sub(proj.position).normalize();
         const turnRate = 3.0 * dt;
         proj.direction.lerp(toTarget, turnRate).normalize();
       }

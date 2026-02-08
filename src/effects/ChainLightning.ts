@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
 
 /**
  * Visual chain lightning effect that arcs between enemies
@@ -30,6 +31,7 @@ export class ChainLightningEffect {
   private bolts: LightningBolt[] = [];
   private glowSprites: THREE.Sprite[] = [];
   private readonly maxBolts = 50;
+  private meshSurface: MeshSurface | null = null;
 
   // Materials
   private readonly mainMaterial: THREE.LineBasicMaterial;
@@ -70,6 +72,14 @@ export class ChainLightningEffect {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
+  }
+
+  /**
+   * Set the mesh surface for projecting bolt points onto the surface.
+   * Without this, bolts are drawn as straight lines in world space.
+   */
+  setMeshSurface(ms: MeshSurface | null): void {
+    this.meshSurface = ms;
   }
 
   /**
@@ -272,6 +282,15 @@ export class ChainLightningEffect {
       const jitter2 = (Math.random() - 0.5) * jitterAmount;
       pos.add(perp1.clone().multiplyScalar(jitter1));
       pos.add(perp2.clone().multiplyScalar(jitter2));
+
+      // Project onto mesh surface so bolt follows the shape
+      if (this.meshSurface) {
+        const result = this.meshSurface.closestPointOnSurface(pos);
+        if (result) {
+          // Offset slightly above surface so bolt is visible
+          pos.copy(result.point).addScaledVector(result.normal, 0.05);
+        }
+      }
 
       points.push(pos);
     }

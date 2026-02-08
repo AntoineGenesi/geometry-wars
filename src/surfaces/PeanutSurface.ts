@@ -189,18 +189,24 @@ export class PeanutSurface extends Surface {
     const indices: number[] = []
     const normals: number[] = []
 
-    // Minimum sinPhi to prevent degenerate pole vertices.
-    // Without this, sinPhi=0 at poles collapses all ring vertices to a single
-    // point, creating degenerate triangles that confuse BVH projection.
-    const MIN_SIN_PHI = 0.05
+    // Build all rings including poles (j=0..rings), then cap poles with apex
+    // vertices + fan triangles to close the mesh and eliminate boundary edges
+    // that blocked geodesic face walking.
+    // Use a small MIN_SIN_PHI to keep pole ring vertices near-but-not-at the apex.
+    const MIN_SIN_PHI = 0.01
 
+    // --- Vertex 0: top apex ---
+    const rTop = baseRadius * (1 + waistDepth * Math.cos(0))
+    vertices.push(0, rTop, 0)
+    normals.push(0, 1, 0)
+
+    // --- Rings j=0..rings (standard grid with small pole rings) ---
     for (let j = 0; j <= rings; j++) {
       const phi = (j / rings) * Math.PI
       const r = baseRadius * (1 + waistDepth * Math.cos(2 * phi))
       const rawSinPhi = Math.sin(phi)
       const cosPhi = Math.cos(phi)
 
-      // Clamp sinPhi away from zero so poles have a small circle instead of a point
       const effectiveSinPhi = Math.abs(rawSinPhi) < MIN_SIN_PHI
         ? MIN_SIN_PHI * (rawSinPhi >= 0 ? 1 : -1)
         : rawSinPhi
@@ -216,7 +222,6 @@ export class PeanutSurface extends Surface {
           r * effectiveSinPhi * sinTheta
         )
 
-        // Approximate normal (use effective sinPhi for consistency)
         const n = new THREE.Vector3(
           effectiveSinPhi * cosTheta,
           cosPhi,
@@ -226,14 +231,38 @@ export class PeanutSurface extends Surface {
       }
     }
 
+    // --- Vertex last: bottom apex ---
+    const rBot = baseRadius * (1 + waistDepth * Math.cos(2 * Math.PI))
+    vertices.push(0, -rBot, 0)
+    normals.push(0, -1, 0)
+
+    const topApex = 0
+    const ringStart = (j: number) => 1 + j * (segments + 1)
+    const bottomApex = 1 + (rings + 1) * (segments + 1)
+
+    // --- Fan: top apex → first ring (j=0) ---
+    for (let i = 0; i < segments; i++) {
+      const a = ringStart(0) + i
+      const b = ringStart(0) + i + 1
+      indices.push(topApex, b, a)
+    }
+
+    // --- Quad strips between adjacent rings ---
     for (let j = 0; j < rings; j++) {
       for (let i = 0; i < segments; i++) {
-        const a = j * (segments + 1) + i
+        const a = ringStart(j) + i
         const b = a + 1
-        const c = a + (segments + 1)
+        const c = ringStart(j + 1) + i
         const d = c + 1
         indices.push(a, b, c, b, d, c)
       }
+    }
+
+    // --- Fan: last ring (j=rings) → bottom apex ---
+    for (let i = 0; i < segments; i++) {
+      const a = ringStart(rings) + i
+      const b = ringStart(rings) + i + 1
+      indices.push(a, b, bottomApex)
     }
 
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))

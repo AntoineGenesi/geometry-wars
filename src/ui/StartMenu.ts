@@ -31,6 +31,7 @@ export class StartMenu {
     { type: 'mobius', name: 'M\u00F6bius', icon: '\u223F' },
     { type: 'sphere-tunnel', name: 'Sphere Tunnel', icon: '\u2295' },
     { type: 'cube-ring', name: 'Cube Ring', icon: '\u25A3' },
+    { type: 'cube-tunnel', name: 'Cube Tunnel', icon: '\u25A7' },
   ];
 
   constructor() {

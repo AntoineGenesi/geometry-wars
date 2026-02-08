@@ -9,6 +9,7 @@ import { IcosahedronSurface, IcosahedronConfig } from './IcosahedronSurface'
 import { MobiusSurface, MobiusConfig } from './MobiusSurface'
 import { SphereWithTunnelSurface, SphereWithTunnelConfig } from './SphereWithTunnelSurface'
 import { CubeRingSurface, CubeRingConfig } from './CubeRingSurface'
+import { CubeWithTunnelSurface, CubeWithTunnelConfig } from './CubeWithTunnelSurface'
 
 export type SurfaceType =
   | 'sphere'
@@ -21,6 +22,7 @@ export type SurfaceType =
   | 'mobius'
   | 'sphere-tunnel'
   | 'cube-ring'
+  | 'cube-tunnel'
 
 export type SurfaceConfigMap = {
   sphere: SphereConfig
@@ -33,6 +35,7 @@ export type SurfaceConfigMap = {
   mobius: MobiusConfig
   'sphere-tunnel': SphereWithTunnelConfig
   'cube-ring': CubeRingConfig
+  'cube-tunnel': CubeWithTunnelConfig
 }
 
 export class SurfaceFactory {
@@ -61,12 +64,14 @@ export class SurfaceFactory {
         return new SphereWithTunnelSurface(config as SphereWithTunnelConfig)
       case 'cube-ring':
         return new CubeRingSurface(config as CubeRingConfig)
+      case 'cube-tunnel':
+        return new CubeWithTunnelSurface(config as CubeWithTunnelConfig)
       default:
         throw new Error(`Unknown surface type: ${type}`)
     }
   }
 
   static getAvailableTypes(): SurfaceType[] {
-    return ['sphere', 'cube', 'cylinder', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring']
+    return ['sphere', 'cube', 'cylinder', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel']
   }
 }
