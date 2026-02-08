@@ -1,6 +1,11 @@
 import { SurfaceType } from '../surfaces/SurfaceFactory';
 import { ADVENTURE_LEVELS } from '../core/LevelData';
 import { LevelCompleteScreen, type LevelProgress } from './LevelCompleteScreen';
+import { LANClient } from '../network/LANClient';
+import { ConfigurableInput } from '../input/ConfigurableInput';
+import { ControlsMenu } from './ControlsMenu';
+import { WeaponWiki } from './WeaponWiki';
+import { MenuBackground } from './MenuBackground';
 
 /**
  * Start menu UI for Geometry Wars.
@@ -11,13 +16,20 @@ export interface MenuSelection {
   surfaceType: SurfaceType;
   gameMode: 'single' | 'multiplayer' | 'network';
   levelIndex?: number;
+  playerCount?: 2 | 3 | 4;
+  serverUrl?: string;
 }
 
 export class StartMenu {
   private container: HTMLDivElement;
   private onStartCallback: ((selection: MenuSelection) => void) | null = null;
   private selectedSurface: SurfaceType = 'sphere';
+  private coopSelectedSurface: SurfaceType = 'sphere';
+  private lanSelectedSurface: SurfaceType = 'sphere';
+  private coopPlayerCount: 2 | 3 | 4 = 2;
   private progress: LevelProgress;
+  private lanClient: LANClient = new LANClient();
+  private menuBackground: MenuBackground;
 
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
@@ -42,6 +54,25 @@ export class StartMenu {
     this.applyStyles();
     document.body.appendChild(this.container);
     this.attachEventListeners();
+
+    // Animated 3D background behind the menu overlay
+    this.menuBackground = new MenuBackground();
+    this.menuBackground.start();
+  }
+
+  private createSurfaceGridHTML(gridClass: string, selectedSurface: SurfaceType): string {
+    const buttons = this.surfaces
+      .map(
+        (s) => `
+        <button class="surface-btn${s.type === selectedSurface ? ' selected' : ''}"
+                data-surface="${s.type}">
+          <span class="icon">${s.icon}</span>
+          <span class="name">${s.name}</span>
+        </button>
+      `
+      )
+      .join('');
+    return `<div class="surface-grid ${gridClass}">${buttons}</div>`;
   }
 
   private createMenuHTML(): string {
@@ -108,6 +139,10 @@ export class StartMenu {
             <span class="btn-icon">\u25B6</span>
             <span>LOCAL CO-OP</span>
           </button>
+          <button class="start-btn secondary" data-mode="lan">
+            <span class="btn-icon">\u25B6</span>
+            <span>LAN</span>
+          </button>
           <button class="start-btn secondary" data-mode="network">
             <span class="btn-icon">\u25B6</span>
             <span>ONLINE</span>
@@ -122,6 +157,53 @@ export class StartMenu {
           <button class="back-btn" id="adventure-back">BACK</button>
         </div>
 
+        <div class="section coop-section hidden" id="coop-section">
+          <h3>LOCAL CO-OP</h3>
+          <div class="coop-buttons">
+            <button class="coop-btn" data-players="2">2 PLAYERS</button>
+            <button class="coop-btn" data-players="3">3 PLAYERS</button>
+            <button class="coop-btn" data-players="4">4 PLAYERS</button>
+          </div>
+          <div class="coop-surface-pick hidden" id="coop-surface-pick">
+            <h3>SELECT MAP</h3>
+            ${this.createSurfaceGridHTML('coop-surface-grid', this.coopSelectedSurface)}
+            <button class="start-btn coop-start-btn" id="coop-start-btn">
+              <span class="btn-icon">\u25B6</span>
+              <span>START</span>
+            </button>
+          </div>
+          <button class="controls-btn" id="configure-controls">CONFIGURE CONTROLS</button>
+          <button class="back-btn" id="coop-back">BACK</button>
+        </div>
+
+        <div class="section lan-section hidden" id="lan-section">
+          <h3>LAN GAME</h3>
+          <div id="lan-host-panel">
+            <button class="lan-btn lan-host" id="lan-host-btn">HOST GAME</button>
+            <div id="lan-host-surface-pick" class="hidden">
+              <h3>SELECT MAP</h3>
+              ${this.createSurfaceGridHTML('lan-surface-grid', this.lanSelectedSurface)}
+              <button class="lan-btn lan-host" id="lan-start-host-btn">START HOSTING</button>
+            </div>
+            <div id="lan-host-info" class="hidden">
+              <p id="lan-host-status" class="lan-status">Starting server...</p>
+              <p id="lan-host-url" class="lan-url"></p>
+              <button class="lan-btn lan-enter hidden" id="lan-enter-btn">ENTER GAME</button>
+              <button class="lan-btn lan-stop hidden" id="lan-stop-btn">STOP SERVER</button>
+            </div>
+          </div>
+          <div class="lan-divider">or</div>
+          <div id="lan-join-panel">
+            <div class="lan-input-row">
+              <input type="text" id="lan-ip-input" placeholder="Host IP (e.g. 192.168.1.15)" />
+              <button class="lan-btn lan-connect" id="lan-connect-btn">CONNECT</button>
+            </div>
+            <button class="lan-btn lan-scan" id="lan-scan-btn">SCAN LAN</button>
+            <div id="lan-scan-results"></div>
+          </div>
+          <button class="back-btn" id="lan-back">BACK</button>
+        </div>
+
         <div class="section surface-section" id="surface-section">
           <h3>SELECT SURFACE</h3>
           <div class="surface-grid">
@@ -131,6 +213,7 @@ export class StartMenu {
 
         <div class="controls-hint">
           <p>WASD - Move | Mouse - Aim | Click - Shoot | Space - Bomb | M - Mute</p>
+          <button class="weapon-info-btn" id="weapon-info-btn">WEAPON DATABASE</button>
         </div>
       </div>
     `;
@@ -145,7 +228,7 @@ export class StartMenu {
         left: 0;
         width: 100%;
         height: 100%;
-        background: linear-gradient(135deg, #0a0020 0%, #1a0040 50%, #0a0020 100%);
+        background: linear-gradient(135deg, rgba(10,0,32,0.75) 0%, rgba(26,0,64,0.65) 50%, rgba(10,0,32,0.75) 100%);
         display: flex;
         justify-content: center;
         align-items: center;
@@ -282,6 +365,44 @@ export class StartMenu {
         letter-spacing: 2px;
       }
 
+      #start-menu .weapon-info-btn {
+        background: none;
+        border: 1px solid #666644;
+        color: #aaaa66;
+        padding: 6px 18px;
+        font-size: 11px;
+        cursor: pointer;
+        letter-spacing: 2px;
+        margin-top: 12px;
+        transition: all 0.2s;
+      }
+      #start-menu .weapon-info-btn:hover {
+        border-color: #ffaa44;
+        color: #ffcc66;
+        box-shadow: 0 0 10px rgba(255, 170, 68, 0.4);
+      }
+
+      #start-menu .coop-btn.active {
+        background: linear-gradient(180deg, #8866aa 0%, #553388 100%);
+        box-shadow: 0 0 20px #aa66ff;
+        border-color: #cc88ff;
+      }
+
+      #start-menu .coop-start-btn {
+        margin-top: 15px;
+        background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
+        border: 2px solid #00ff00;
+      }
+      #start-menu .coop-start-btn:hover {
+        background: linear-gradient(180deg, #00cc00 0%, #008800 100%);
+        box-shadow: 0 0 20px #00ff00;
+      }
+
+      #start-menu .coop-surface-pick,
+      #start-menu #lan-host-surface-pick {
+        margin-top: 15px;
+      }
+
       #start-menu .hidden { display: none !important; }
 
       #start-menu .adventure-section {
@@ -343,6 +464,48 @@ export class StartMenu {
         color: #ffdd00;
       }
 
+      #start-menu .coop-buttons {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        margin: 20px 0;
+      }
+
+      #start-menu .coop-btn {
+        background: linear-gradient(180deg, #664488 0%, #442266 100%);
+        border: 2px solid #aa66ff;
+        color: #ffffff;
+        padding: 20px 35px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 2px;
+      }
+
+      #start-menu .coop-btn:hover {
+        background: linear-gradient(180deg, #8866aa 0%, #553388 100%);
+        transform: scale(1.05);
+        box-shadow: 0 0 20px #aa66ff;
+      }
+
+      #start-menu .controls-btn {
+        background: rgba(40, 40, 80, 0.6);
+        border: 1px solid #6666aa;
+        color: #aaaaff;
+        padding: 10px 30px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 2px;
+        margin-top: 10px;
+      }
+      #start-menu .controls-btn:hover {
+        background: rgba(60, 60, 120, 0.8);
+        color: #ffffff;
+        box-shadow: 0 0 10px #6666aa;
+      }
+
       #start-menu .back-btn {
         background: rgba(80, 40, 0, 0.4);
         border: 1px solid #884400;
@@ -359,6 +522,135 @@ export class StartMenu {
         box-shadow: 0 0 15px #ff8800;
       }
 
+      #start-menu .lan-section { text-align: center; }
+
+      #start-menu .lan-btn {
+        background: linear-gradient(180deg, #336644 0%, #224422 100%);
+        border: 2px solid #44ff66;
+        color: #ffffff;
+        padding: 14px 30px;
+        font-size: 15px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 2px;
+        margin: 5px;
+      }
+      #start-menu .lan-btn:hover {
+        background: linear-gradient(180deg, #448855 0%, #336633 100%);
+        transform: scale(1.05);
+        box-shadow: 0 0 15px #44ff66;
+      }
+      #start-menu .lan-btn.lan-enter {
+        background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
+        border-color: #00ff00;
+      }
+      #start-menu .lan-btn.lan-stop {
+        background: linear-gradient(180deg, #884422 0%, #662211 100%);
+        border-color: #ff6633;
+      }
+      #start-menu .lan-divider {
+        color: #556666;
+        font-size: 12px;
+        letter-spacing: 4px;
+        margin: 12px 0;
+      }
+      #start-menu .lan-input-row {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        align-items: center;
+        margin: 10px 0;
+      }
+      #start-menu #lan-ip-input {
+        background: rgba(0, 40, 40, 0.6);
+        border: 1px solid #006666;
+        color: #00ffff;
+        padding: 10px 14px;
+        font: 14px monospace;
+        width: 240px;
+        outline: none;
+      }
+      #start-menu #lan-ip-input:focus {
+        border-color: #00ffff;
+        box-shadow: 0 0 8px #00ffff;
+      }
+      #start-menu .lan-status {
+        color: #88ffaa;
+        font: 13px monospace;
+        margin: 8px 0;
+      }
+      #start-menu .lan-url {
+        color: #00ffff;
+        font: 12px monospace;
+        word-break: break-all;
+        margin: 6px 0;
+        user-select: all;
+      }
+      #start-menu .lan-url-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 6px auto;
+        max-width: 550px;
+        justify-content: center;
+      }
+      #start-menu .lan-url-label {
+        color: #88aacc;
+        font: 11px monospace;
+        min-width: 55px;
+        text-align: right;
+      }
+      #start-menu .lan-url-text {
+        color: #00ffff;
+        font: 12px monospace;
+        word-break: break-all;
+        user-select: all;
+        flex: 1;
+        text-align: left;
+      }
+      #start-menu .lan-copy-btn {
+        background: rgba(0, 100, 100, 0.4);
+        border: 1px solid #006666;
+        color: #00ffff;
+        padding: 4px 10px;
+        font: 11px monospace;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
+      }
+      #start-menu .lan-copy-btn:hover {
+        background: rgba(0, 150, 150, 0.6);
+        border-color: #00ffff;
+        box-shadow: 0 0 8px #00ffff;
+      }
+      #start-menu .lan-copy-btn.copied {
+        background: rgba(0, 150, 50, 0.5);
+        border-color: #00ff66;
+        color: #00ff66;
+      }
+      #start-menu .lan-scan-item {
+        background: rgba(0, 60, 60, 0.4);
+        border: 1px solid #006666;
+        color: #00ffff;
+        padding: 10px 20px;
+        margin: 5px auto;
+        max-width: 350px;
+        cursor: pointer;
+        font: 13px monospace;
+        transition: all 0.2s;
+      }
+      #start-menu .lan-scan-item:hover {
+        background: rgba(0, 100, 100, 0.5);
+        border-color: #00ffff;
+        box-shadow: 0 0 10px #00ffff;
+      }
+      #start-menu .lan-scan-msg {
+        color: #668888;
+        font: 12px monospace;
+        margin: 8px 0;
+      }
+
       #start-menu.hidden {
         display: none;
       }
@@ -370,9 +662,11 @@ export class StartMenu {
     const adventureSection = this.container.querySelector('#adventure-levels') as HTMLElement;
     const surfaceSection = this.container.querySelector('#surface-section') as HTMLElement;
     const modesSection = this.container.querySelector('.game-modes') as HTMLElement;
+    const coopSection = this.container.querySelector('#coop-section') as HTMLElement;
+    const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
 
-    // Surface selection buttons
-    const surfaceBtns = this.container.querySelectorAll('.surface-btn');
+    // Surface selection buttons (Quick Game only - scoped to #surface-section)
+    const surfaceBtns = surfaceSection.querySelectorAll('.surface-btn');
     surfaceBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         surfaceBtns.forEach((b) => b.classList.remove('selected'));
@@ -381,17 +675,37 @@ export class StartMenu {
       });
     });
 
-    // Start buttons (game modes)
-    const startBtns = this.container.querySelectorAll('.start-btn');
+    // Start buttons (game modes - scoped to .game-modes only)
+    const startBtns = modesSection.querySelectorAll('.start-btn');
     startBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = (btn as HTMLElement).dataset.mode as string;
 
         if (mode === 'adventure') {
-          // Show adventure level grid, hide other sections
           adventureSection.classList.remove('hidden');
           surfaceSection.classList.add('hidden');
           modesSection.classList.add('hidden');
+          coopSection.classList.add('hidden');
+          return;
+        }
+
+        if (mode === 'multiplayer') {
+          // Show co-op player count sub-panel
+          coopSection.classList.remove('hidden');
+          surfaceSection.classList.add('hidden');
+          modesSection.classList.add('hidden');
+          adventureSection.classList.add('hidden');
+          lanSection.classList.add('hidden');
+          return;
+        }
+
+        if (mode === 'lan') {
+          // Show LAN host/join panel
+          lanSection.classList.remove('hidden');
+          surfaceSection.classList.add('hidden');
+          modesSection.classList.add('hidden');
+          adventureSection.classList.add('hidden');
+          coopSection.classList.add('hidden');
           return;
         }
 
@@ -401,6 +715,65 @@ export class StartMenu {
           gameMode: mode as 'single' | 'multiplayer' | 'network',
         });
       });
+    });
+
+    // Co-op player count buttons - show surface selection after picking count
+    const coopBtns = this.container.querySelectorAll('.coop-btn');
+    const coopSurfacePick = this.container.querySelector('#coop-surface-pick') as HTMLElement;
+    const coopStartBtn = this.container.querySelector('#coop-start-btn') as HTMLElement;
+
+    coopBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        this.coopPlayerCount = parseInt((btn as HTMLElement).dataset.players ?? '2', 10) as 2 | 3 | 4;
+        // Highlight selected player count
+        coopBtns.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        // Show surface selection
+        coopSurfacePick.classList.remove('hidden');
+      });
+    });
+
+    // Co-op surface selection buttons
+    const coopSurfaceBtns = this.container.querySelectorAll('.coop-surface-grid .surface-btn');
+    coopSurfaceBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        coopSurfaceBtns.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.coopSelectedSurface = (btn as HTMLElement).dataset.surface as SurfaceType;
+      });
+    });
+
+    // Co-op START button - launches game with chosen player count + surface
+    coopStartBtn?.addEventListener('click', () => {
+      this.onStartCallback?.({
+        surfaceType: this.coopSelectedSurface,
+        gameMode: 'multiplayer',
+        playerCount: this.coopPlayerCount,
+      });
+    });
+
+    // Configure controls button
+    const configControlsBtn = this.container.querySelector('#configure-controls');
+    configControlsBtn?.addEventListener('click', () => {
+      // Create a temporary ConfigurableInput for 4 players to show all bindings
+      const tempInput = new ConfigurableInput(4);
+      const controlsMenu = new ControlsMenu();
+      controlsMenu.setInput(tempInput);
+      controlsMenu.onClose(() => {
+        controlsMenu.dispose();
+        tempInput.dispose();
+      });
+      controlsMenu.show();
+    });
+
+    // Back button from co-op
+    const coopBackBtn = this.container.querySelector('#coop-back');
+    coopBackBtn?.addEventListener('click', () => {
+      coopSection.classList.add('hidden');
+      coopSurfacePick.classList.add('hidden');
+      coopBtns.forEach((b) => b.classList.remove('active'));
+      surfaceSection.classList.remove('hidden');
+      modesSection.classList.remove('hidden');
     });
 
     // Adventure level selection
@@ -424,6 +797,195 @@ export class StartMenu {
       surfaceSection.classList.remove('hidden');
       modesSection.classList.remove('hidden');
     });
+
+    // ---- LAN section handlers ----
+    const lanHostBtn = this.container.querySelector('#lan-host-btn') as HTMLElement;
+    const lanHostInfo = this.container.querySelector('#lan-host-info') as HTMLElement;
+    const lanHostStatus = this.container.querySelector('#lan-host-status') as HTMLElement;
+    const lanHostUrl = this.container.querySelector('#lan-host-url') as HTMLElement;
+    const lanEnterBtn = this.container.querySelector('#lan-enter-btn') as HTMLElement;
+    const lanStopBtn = this.container.querySelector('#lan-stop-btn') as HTMLElement;
+    const lanConnectBtn = this.container.querySelector('#lan-connect-btn') as HTMLElement;
+    const lanIpInput = this.container.querySelector('#lan-ip-input') as HTMLInputElement;
+    const lanScanBtn = this.container.querySelector('#lan-scan-btn') as HTMLElement;
+    const lanScanResults = this.container.querySelector('#lan-scan-results') as HTMLElement;
+
+    let hostedServerUrl = '';
+    const lanHostSurfacePick = this.container.querySelector('#lan-host-surface-pick') as HTMLElement;
+    const lanStartHostBtn = this.container.querySelector('#lan-start-host-btn') as HTMLElement;
+
+    // LAN surface selection buttons
+    const lanSurfaceBtns = this.container.querySelectorAll('.lan-surface-grid .surface-btn');
+    lanSurfaceBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        lanSurfaceBtns.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.lanSelectedSurface = (btn as HTMLElement).dataset.surface as SurfaceType;
+      });
+    });
+
+    // HOST GAME - show surface selection first
+    lanHostBtn?.addEventListener('click', () => {
+      lanHostSurfacePick.classList.remove('hidden');
+      lanHostBtn.style.display = 'none';
+    });
+
+    // START HOSTING - actually start the server with selected surface
+    lanStartHostBtn?.addEventListener('click', async () => {
+      lanHostSurfacePick.classList.add('hidden');
+      lanHostInfo.classList.remove('hidden');
+      lanHostStatus.textContent = 'Starting server...';
+      lanHostUrl.textContent = '';
+      lanEnterBtn.classList.add('hidden');
+      lanStopBtn.classList.add('hidden');
+
+      try {
+        const result = await this.lanClient.startHost();
+        if (result.ok) {
+          // Use localhost for same-machine connections (works on WSL2 + Windows)
+          hostedServerUrl = this.lanClient.getServerWsUrl('localhost', result.port);
+          const vitePort = parseInt(window.location.port, 10) || 3000;
+          const localhostUrl = this.lanClient.getJoinUrl('localhost', result.port, this.lanSelectedSurface, vitePort);
+
+          lanHostStatus.textContent = 'Server running!';
+          lanHostUrl.innerHTML = '';
+
+          const makeCopyRow = (label: string, url: string) => {
+            const row = document.createElement('div');
+            row.className = 'lan-url-row';
+            row.innerHTML = `
+              <span class="lan-url-label">${label}:</span>
+              <span class="lan-url-text">${url}</span>
+            `;
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'lan-copy-btn';
+            copyBtn.textContent = 'COPY';
+            copyBtn.addEventListener('click', () => {
+              navigator.clipboard.writeText(url).then(() => {
+                copyBtn.textContent = 'COPIED';
+                copyBtn.classList.add('copied');
+                setTimeout(() => {
+                  copyBtn.textContent = 'COPY';
+                  copyBtn.classList.remove('copied');
+                }, 1500);
+              });
+            });
+            row.appendChild(copyBtn);
+            return row;
+          };
+
+          lanHostUrl.appendChild(makeCopyRow('Same PC', localhostUrl));
+          if (result.addresses.length > 0) {
+            const lanUrl = this.lanClient.getJoinUrl(result.addresses[0], result.port, this.lanSelectedSurface, vitePort);
+            lanHostUrl.appendChild(makeCopyRow('LAN', lanUrl));
+          }
+          lanEnterBtn.classList.remove('hidden');
+          lanStopBtn.classList.remove('hidden');
+        } else {
+          lanHostStatus.textContent = `Failed: ${result.error ?? 'Unknown error'}`;
+          lanHostBtn.style.display = '';
+        }
+      } catch (err) {
+        lanHostStatus.textContent = 'LAN hosting requires dev mode (npm run dev)';
+        lanHostBtn.style.display = '';
+      }
+    });
+
+    // ENTER GAME (after hosting)
+    lanEnterBtn?.addEventListener('click', () => {
+      if (hostedServerUrl) {
+        this.onStartCallback?.({
+          surfaceType: this.lanSelectedSurface,
+          gameMode: 'network',
+          serverUrl: hostedServerUrl,
+        });
+      }
+    });
+
+    // STOP SERVER
+    lanStopBtn?.addEventListener('click', async () => {
+      await this.lanClient.stopHost();
+      lanHostInfo.classList.add('hidden');
+      lanHostSurfacePick.classList.add('hidden');
+      lanHostBtn.style.display = '';
+      hostedServerUrl = '';
+    });
+
+    // CONNECT (manual IP)
+    lanConnectBtn?.addEventListener('click', () => {
+      const ip = lanIpInput.value.trim();
+      if (!ip) return;
+      const serverUrl = this.lanClient.getServerWsUrl(ip, 2567);
+      this.onStartCallback?.({
+        surfaceType: this.selectedSurface,
+        gameMode: 'network',
+        serverUrl,
+      });
+    });
+
+    // Also connect on Enter key in IP input
+    lanIpInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        lanConnectBtn?.click();
+      }
+    });
+
+    // SCAN LAN
+    lanScanBtn?.addEventListener('click', async () => {
+      lanScanResults.innerHTML = '<p class="lan-scan-msg">Scanning local network...</p>';
+      lanScanBtn.textContent = 'SCANNING...';
+      (lanScanBtn as HTMLButtonElement).disabled = true;
+
+      try {
+        const result = await this.lanClient.scan();
+        lanScanResults.innerHTML = '';
+
+        if (result.found.length === 0) {
+          lanScanResults.innerHTML = '<p class="lan-scan-msg">No games found on LAN</p>';
+        } else {
+          for (const server of result.found) {
+            const selfTag = server.info?.self ? ' (you)' : '';
+            const item = document.createElement('div');
+            item.className = 'lan-scan-item';
+            item.textContent = `${server.ip}:${server.port}${selfTag}`;
+            item.addEventListener('click', () => {
+              const serverUrl = this.lanClient.getServerWsUrl(server.ip, server.port);
+              this.onStartCallback?.({
+                surfaceType: this.selectedSurface,
+                gameMode: 'network',
+                serverUrl,
+              });
+            });
+            lanScanResults.appendChild(item);
+          }
+        }
+      } catch {
+        lanScanResults.innerHTML = '<p class="lan-scan-msg">Scan requires dev mode (npm run dev)</p>';
+      }
+
+      lanScanBtn.textContent = 'SCAN LAN';
+      (lanScanBtn as HTMLButtonElement).disabled = false;
+    });
+
+    // Back from LAN
+    const lanBackBtn = this.container.querySelector('#lan-back');
+    lanBackBtn?.addEventListener('click', () => {
+      lanSection.classList.add('hidden');
+      lanHostSurfacePick.classList.add('hidden');
+      lanHostBtn.style.display = '';
+      surfaceSection.classList.remove('hidden');
+      modesSection.classList.remove('hidden');
+    });
+
+    // Weapon database
+    const weaponInfoBtn = this.container.querySelector('#weapon-info-btn');
+    weaponInfoBtn?.addEventListener('click', () => {
+      const wiki = new WeaponWiki();
+      wiki.show();
+      wiki.onClose(() => {
+        wiki.dispose();
+      });
+    });
   }
 
   /**
@@ -434,23 +996,26 @@ export class StartMenu {
   }
 
   /**
-   * Hide the menu.
+   * Hide the menu and stop the 3D background.
    */
   hide(): void {
     this.container.classList.add('hidden');
+    this.menuBackground.stop();
   }
 
   /**
-   * Show the menu.
+   * Show the menu and resume the 3D background.
    */
   show(): void {
     this.container.classList.remove('hidden');
+    this.menuBackground.start();
   }
 
   /**
-   * Remove menu from DOM.
+   * Remove menu from DOM and dispose of the 3D background.
    */
   dispose(): void {
+    this.menuBackground.dispose();
     this.container.remove();
   }
 }

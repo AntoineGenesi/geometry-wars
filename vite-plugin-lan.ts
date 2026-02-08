@@ -1,0 +1,228 @@
+import type { Plugin } from 'vite';
+import type { IncomingMessage, ServerResponse } from 'http';
+import { spawn, type ChildProcess } from 'child_process';
+import { networkInterfaces } from 'os';
+import http from 'http';
+import path from 'path';
+
+const SERVER_PORT = 2567;
+
+function getLANAddresses(): string[] {
+  const interfaces = networkInterfaces();
+  const addresses: string[] = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] ?? []) {
+      if (iface.internal || iface.family !== 'IPv4') continue;
+      addresses.push(iface.address);
+    }
+  }
+  return addresses;
+}
+
+function getSubnet(ip: string): string {
+  const parts = ip.split('.');
+  return `${parts[0]}.${parts[1]}.${parts[2]}`;
+}
+
+function fetchWithTimeout(url: string, timeoutMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = http.get(url, { timeout: timeoutMs }, (res) => {
+      let data = '';
+      res.on('data', (chunk: Buffer) => (data += chunk));
+      res.on('end', () => resolve(data));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('timeout'));
+    });
+  });
+}
+
+function sendJson(res: ServerResponse, data: unknown, status = 200): void {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(data));
+}
+
+export default function lanPlugin(): Plugin {
+  let serverProcess: ChildProcess | null = null;
+  let serverReady = false;
+
+  async function checkServerHealth(): Promise<boolean> {
+    try {
+      await fetchWithTimeout(`http://localhost:${SERVER_PORT}/health`, 500);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function handleStart(): Promise<{ ok: boolean; addresses: string[]; port: number; error?: string }> {
+    const addresses = getLANAddresses();
+
+    // Already hosting
+    if (serverProcess && serverReady) {
+      return { ok: true, addresses, port: SERVER_PORT };
+    }
+
+    // External server already running
+    if (await checkServerHealth()) {
+      serverReady = true;
+      return { ok: true, addresses, port: SERVER_PORT };
+    }
+
+    // Start the Colyseus server as child process
+    const binPath = path.join(process.cwd(), 'node_modules', '.bin');
+    const env = {
+      ...process.env,
+      PATH: `${binPath}:${process.env.PATH ?? ''}`,
+      PORT: String(SERVER_PORT),
+    };
+
+    serverProcess = spawn('tsx', ['server/index.ts'], {
+      cwd: process.cwd(),
+      env,
+      stdio: 'pipe',
+    });
+
+    serverProcess.stdout?.on('data', (data: Buffer) => {
+      const msg = data.toString().trim();
+      if (msg.includes('Server running') || msg.includes('listening')) {
+        serverReady = true;
+      }
+      console.log('[LAN Server]', msg);
+    });
+
+    serverProcess.stderr?.on('data', (data: Buffer) => {
+      console.error('[LAN Server]', data.toString().trim());
+    });
+
+    serverProcess.on('exit', (code) => {
+      console.log(`[LAN Server] Exited with code ${code}`);
+      serverProcess = null;
+      serverReady = false;
+    });
+
+    // Poll until ready (max 15 seconds)
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (await checkServerHealth()) {
+        serverReady = true;
+        return { ok: true, addresses, port: SERVER_PORT };
+      }
+    }
+
+    // Failed - cleanup
+    serverProcess?.kill();
+    serverProcess = null;
+    return { ok: false, addresses, port: SERVER_PORT, error: 'Server failed to start within 15s' };
+  }
+
+  async function handleStop(): Promise<{ ok: boolean }> {
+    if (serverProcess) {
+      serverProcess.kill();
+      serverProcess = null;
+      serverReady = false;
+    }
+    return { ok: true };
+  }
+
+  async function handleScan(): Promise<{ found: Array<{ ip: string; port: number; info?: unknown }>; subnets: string[] }> {
+    const addresses = getLANAddresses();
+    const subnets = [...new Set(addresses.map(getSubnet))];
+    const found: Array<{ ip: string; port: number; info?: unknown }> = [];
+
+    // Include self if hosting
+    if (serverReady) {
+      for (const addr of addresses) {
+        found.push({ ip: addr, port: SERVER_PORT, info: { game: 'geometry-wars-3d', self: true } });
+      }
+    }
+
+    // Scan each subnet
+    const scanPromises: Promise<void>[] = [];
+    for (const subnet of subnets) {
+      for (let i = 1; i <= 254; i++) {
+        const ip = `${subnet}.${i}`;
+        if (addresses.includes(ip)) continue; // Skip self
+        scanPromises.push(
+          fetchWithTimeout(`http://${ip}:${SERVER_PORT}/api/info`, 400)
+            .then((data) => {
+              try {
+                const info = JSON.parse(data);
+                if (info.game === 'geometry-wars-3d') {
+                  found.push({ ip, port: SERVER_PORT, info });
+                }
+              } catch {
+                /* ignore parse errors */
+              }
+            })
+            .catch(() => {
+              /* ignore timeouts/unreachable */
+            }),
+        );
+      }
+    }
+
+    await Promise.allSettled(scanPromises);
+    return { found, subnets };
+  }
+
+  return {
+    name: 'geometry-wars-lan',
+
+    configureServer(server) {
+      server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
+        const url = req.url ?? '';
+        if (!url.startsWith('/__lan/')) {
+          return next();
+        }
+
+        const route = url.replace('/__lan/', '');
+
+        if (route === 'status' && req.method === 'GET') {
+          sendJson(res, {
+            hosting: serverProcess !== null && serverReady,
+            addresses: getLANAddresses(),
+            port: SERVER_PORT,
+          });
+          return;
+        }
+
+        if (route === 'start' && req.method === 'POST') {
+          handleStart()
+            .then((data) => sendJson(res, data, data.ok ? 200 : 500))
+            .catch((err) => sendJson(res, { ok: false, error: (err as Error).message }, 500));
+          return;
+        }
+
+        if (route === 'stop' && req.method === 'POST') {
+          handleStop()
+            .then((data) => sendJson(res, data))
+            .catch((err) => sendJson(res, { ok: false, error: (err as Error).message }, 500));
+          return;
+        }
+
+        if (route === 'scan' && req.method === 'GET') {
+          handleScan()
+            .then((data) => sendJson(res, data))
+            .catch((err) => sendJson(res, { found: [], subnets: [], error: (err as Error).message }, 500));
+          return;
+        }
+
+        sendJson(res, { error: 'Unknown LAN endpoint' }, 404);
+      });
+
+      // Cleanup server process when Vite shuts down
+      server.httpServer?.on('close', () => {
+        if (serverProcess) {
+          console.log('[LAN] Stopping embedded server...');
+          serverProcess.kill();
+          serverProcess = null;
+          serverReady = false;
+        }
+      });
+    },
+  };
+}

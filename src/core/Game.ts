@@ -3,6 +3,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { GameClock } from './GameClock';
 import { EntityManager } from './EntityManager';
@@ -46,9 +47,9 @@ export interface GameConfig {
 
 const DEFAULT_FOV = 60;
 const DEFAULT_BLOOM: BloomConfig = {
-  strength: 1.5,
+  strength: 0.7,
   radius: 0.4,
-  threshold: 0.1,
+  threshold: 0.6,
 };
 const DEFAULT_CAMERA_DISTANCE = 25;
 const DEFAULT_CAMERA_SMOOTHING = 0.92;
@@ -76,8 +77,8 @@ export class Game {
 
   // ---- Post-processing ------------------------------------------------
 
-  private readonly composer: EffectComposer;
-  private readonly bloomPass: UnrealBloomPass;
+  readonly composer: EffectComposer;
+  readonly bloomPass: UnrealBloomPass;
 
   // ---- Game systems ---------------------------------------------------
 
@@ -123,7 +124,7 @@ export class Game {
 
     // -- Scene --
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x000000);
+    this.scene.background = new THREE.Color(0x050510);
 
     // -- Camera --
     const fov = config.fov ?? DEFAULT_FOV;
@@ -163,6 +164,37 @@ export class Game {
     if (bloomCfg.strength > 0) {
       this.composer.addPass(this.bloomPass);
     }
+
+    // Vignette pass - subtle screen-edge darkening (GW3D authentic)
+    const vignettePass = new ShaderPass({
+      uniforms: {
+        tDiffuse: { value: null },
+        offset: { value: 1.0 },
+        darkness: { value: 0.8 },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float offset;
+        uniform float darkness;
+        varying vec2 vUv;
+        void main() {
+          vec4 texel = texture2D(tDiffuse, vUv);
+          vec2 uv = (vUv - vec2(0.5)) * vec2(offset);
+          float vignette = 1.0 - dot(uv, uv);
+          texel.rgb *= mix(1.0 - darkness, 1.0, vignette);
+          gl_FragColor = texel;
+        }
+      `,
+    });
+    this.composer.addPass(vignettePass);
+
     this.composer.addPass(new OutputPass());
 
     // -- Systems --
@@ -232,7 +264,7 @@ export class Game {
   resume(): void {
     if (this._state === GameState.Paused) {
       this._state = GameState.Playing;
-      this.clock.reset(); // avoid large dt spike
+      this.clock.resync(); // avoid large dt spike without resetting totalTime
     }
   }
 
@@ -259,7 +291,11 @@ export class Game {
 
     // Render with interpolation.
     this.updateCamera(this.clock.alpha);
-    this.composer.render();
+    if (this.renderOverride) {
+      this.renderOverride();
+    } else {
+      this.composer.render();
+    }
   };
 
   /** User-provided callback invoked each fixed timestep before entity update. */
@@ -267,6 +303,10 @@ export class Game {
 
   /** User-provided callback invoked each frame before rendering. */
   onRender: ((alpha: number) => void) | null = null;
+
+  /** When set, replaces the default composer.render() call.
+   *  Used by split-screen to render multiple viewports. */
+  renderOverride: (() => void) | null = null;
 
   /**
    * Called by GameClock once per fixed timestep.

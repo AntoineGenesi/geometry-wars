@@ -15,7 +15,7 @@ export class GravityWell extends BaseEnemy {
   public static onApplyGridForce: ((u: number, v: number, strength: number) => void) | null = null;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    super(surfaceU, surfaceV, 10, 500, 2, 0.00625, 0.4);
+    super(surfaceU, surfaceV, 15, 500, 2, 0.00625, 0.4);
 
     this.createMesh();
   }

@@ -14,8 +14,8 @@ export class TitanGrunt extends BaseEnemy {
   public static onDeathSpawn: ((u: number, v: number, count: number) => void) | null = null;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    // health=6, score=200, geoms=3, speed=0.025, radius=0.5
-    super(surfaceU, surfaceV, 6, 200, 3, 0.025, 0.5);
+    // health=10, score=200, geoms=3, speed=0.025, radius=0.5
+    super(surfaceU, surfaceV, 10, 200, 3, 0.025, 0.5);
     this.createMesh();
   }
 

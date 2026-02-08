@@ -22,7 +22,7 @@ export class Mayfly extends BaseEnemy {
   private createMesh(): void {
     // Create 3D triangle prism shape (smaller for mayfly)
     const size = 0.15;
-    this.mesh = buildTriangle3D(size, 0xddddff, 0.08, 0.018);
+    this.mesh = buildTriangle3D(size, 0xaaff00, 0.08, 0.018);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

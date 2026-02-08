@@ -10,14 +10,16 @@ export interface CubeConfig extends SurfaceConfig {
 /**
  * Beveled Cube Surface - A cube with rounded/beveled edges for smooth traversal.
  *
- * The cube is parameterized as:
- * - u in [0, 1): wraps around the cube horizontally (4 side faces + 4 vertical bevels)
- * - v in [0, 1]: goes from bottom to top
+ * All 6 faces are traversable. The cube is parameterized as:
+ * - u in [0, 1): wraps around horizontally (4 side faces + 4 vertical bevels)
+ * - v in [0, 1]: goes from bottom flat face to top flat face
  *
  * V regions (from bottom to top):
- * - [0, bevelFraction]: bottom face corner bevels + bottom face
- * - [bevelFraction, 1-bevelFraction]: middle belt (4 side faces + 4 vertical bevels)
- * - [1-bevelFraction, 1]: top face + top face corner bevels
+ * - [0, flatFrac]:                          bottom flat face (-Y)
+ * - [flatFrac, flatFrac+bevelFrac]:         bottom bevel (curve from -Y to sides)
+ * - [flatFrac+bevelFrac, 1-flatFrac-bevelFrac]: middle belt (4 side faces + 4 vertical bevels)
+ * - [1-flatFrac-bevelFrac, 1-flatFrac]:     top bevel (curve from sides to +Y)
+ * - [1-flatFrac, 1]:                        top flat face (+Y)
  *
  * U regions (around the horizontal belt):
  * Each of the 4 sides is split into:
@@ -29,11 +31,12 @@ export class CubeSurface extends Surface {
   private readonly bevelRadius: number
   private readonly gridSegments: number
   private readonly halfSize: number
-  private readonly flatHalfSize: number // half size of flat face region
-  private readonly bevelFraction: number // fraction of v used by top/bottom bevels
+  private readonly flatHalfSize: number
+  private readonly bevelFraction: number
+  private readonly flatFraction: number
 
   constructor(config?: CubeConfig) {
-    const size = config?.size ?? 10
+    const size = config?.size ?? 18
     const bevelRadius = config?.bevelRadius ?? size * 0.15
     const gridSegments = config?.gridSegments ?? 12
 
@@ -41,40 +44,30 @@ export class CubeSurface extends Surface {
     super(config)
 
     this.size = size
-    this.bevelRadius = Math.min(bevelRadius, size * 0.4) // clamp to prevent overlap
+    this.bevelRadius = Math.min(bevelRadius, size * 0.4)
     this.gridSegments = gridSegments
     this.halfSize = size / 2
     this.flatHalfSize = this.halfSize - this.bevelRadius
 
-    // The bevel arc length is PI/2 * bevelRadius
-    // Total height = flatHalfSize * 2 (top + bottom flat) + 2 * halfSize (middle) + 2 * bevelRadius * PI/2 (top + bottom arcs)
-    // We'll use a simpler approximation: bevel region takes proportional space
-    const totalHeight = size + Math.PI * this.bevelRadius
-    this.bevelFraction = (this.bevelRadius * Math.PI / 2) / totalHeight
+    // Total path length from bottom face center to top face center:
+    // flatHalfSize (bottom face radius) + PI/2 * bevelRadius (bottom bevel arc)
+    // + 2*flatHalfSize (side height) + PI/2 * bevelRadius (top bevel arc)
+    // + flatHalfSize (top face radius)
+    const bevelArc = (Math.PI / 2) * this.bevelRadius
+    const totalHeight = 2 * this.flatHalfSize + 2 * this.flatHalfSize + 2 * bevelArc
+    this.flatFraction = this.flatHalfSize / totalHeight
+    this.bevelFraction = bevelArc / totalHeight
 
-    // Set base class properties for generic rotation system
     this.surfaceRadius = this.halfSize + this.bevelRadius * 0.5
-    // Player spawns on the +Z face of the cube (front face, middle height)
-    // At u=0.125 (center of +Z face), v=0.5 (middle of middle belt)
     const spawnPoint = this.getPointLocal(0.125, 0.5)
     this.playerLocalPosition = spawnPoint.position
   }
 
   private static getInitData(): { size: number; bevelRadius: number; gridSegments: number } {
-    return (CubeSurface as any).__initData ?? { size: 10, bevelRadius: 1.5, gridSegments: 12 }
+    return (CubeSurface as any).__initData ?? { size: 18, bevelRadius: 2.7, gridSegments: 12 }
   }
 
-  /**
-   * Get derived values - used by getPointLocal during construction when instance vars aren't set yet.
-   */
-  private getDerivedValues(): {
-    size: number
-    bevelRadius: number
-    halfSize: number
-    flatHalfSize: number
-    bevelFraction: number
-  } {
-    // Use instance values if available, otherwise fall back to static init data
+  private getDerivedValues() {
     if (this.size !== undefined) {
       return {
         size: this.size,
@@ -82,79 +75,72 @@ export class CubeSurface extends Surface {
         halfSize: this.halfSize,
         flatHalfSize: this.flatHalfSize,
         bevelFraction: this.bevelFraction,
+        flatFraction: this.flatFraction,
       }
     }
-    // Fall back to static data during construction
     const { size, bevelRadius } = CubeSurface.getInitData()
     const clampedBevel = Math.min(bevelRadius, size * 0.4)
     const halfSize = size / 2
     const flatHalfSize = halfSize - clampedBevel
-    const totalHeight = size + Math.PI * clampedBevel
-    const bevelFraction = (clampedBevel * Math.PI / 2) / totalHeight
-    return { size, bevelRadius: clampedBevel, halfSize, flatHalfSize, bevelFraction }
+    const bevelArc = (Math.PI / 2) * clampedBevel
+    const totalHeight = 2 * flatHalfSize + 2 * flatHalfSize + 2 * bevelArc
+    const flatFraction = flatHalfSize / totalHeight
+    const bevelFraction = bevelArc / totalHeight
+    return { size, bevelRadius: clampedBevel, halfSize, flatHalfSize, bevelFraction, flatFraction }
   }
 
   /**
-   * Get the region type and local parameter for a given v coordinate.
+   * V regions: bottomFlat | bottomBevel | middle | topBevel | topFlat
    */
   private getVRegion(v: number, derived?: ReturnType<typeof this.getDerivedValues>): {
-    type: 'bottom' | 'middle' | 'top'
+    type: 'bottomFlat' | 'bottomBevel' | 'middle' | 'topBevel' | 'topFlat'
     localT: number
   } {
-    const { bevelFraction } = derived ?? this.getDerivedValues()
-    if (v <= bevelFraction) {
-      return { type: 'bottom', localT: v / bevelFraction }
-    } else if (v >= 1 - bevelFraction) {
-      return { type: 'top', localT: (v - (1 - bevelFraction)) / bevelFraction }
+    const { bevelFraction, flatFraction } = derived ?? this.getDerivedValues()
+    const bf = flatFraction
+    const bb = flatFraction + bevelFraction
+    const tb = 1 - flatFraction - bevelFraction
+    const tf = 1 - flatFraction
+
+    if (v <= bf) {
+      return { type: 'bottomFlat', localT: bf > 0 ? v / bf : 0 }
+    } else if (v <= bb) {
+      return { type: 'bottomBevel', localT: bb > bf ? (v - bf) / (bb - bf) : 0 }
+    } else if (v <= tb) {
+      return { type: 'middle', localT: tb > bb ? (v - bb) / (tb - bb) : 0.5 }
+    } else if (v <= tf) {
+      return { type: 'topBevel', localT: tf > tb ? (v - tb) / (tf - tb) : 0 }
     } else {
-      return {
-        type: 'middle',
-        localT: (v - bevelFraction) / (1 - 2 * bevelFraction),
-      }
+      return { type: 'topFlat', localT: tf < 1 ? (v - tf) / (1 - tf) : 0 }
     }
   }
 
   /**
-   * Get the horizontal region type and local parameter for a given u coordinate.
-   * The belt is divided into 8 regions: 4 flat faces and 4 corner bevels.
+   * U regions: 4 flat faces + 4 corner bevels around the horizontal belt.
    */
   private getURegion(u: number, derived?: ReturnType<typeof this.getDerivedValues>): {
-    faceIndex: number // 0-3 for the 4 side faces (+Z, +X, -Z, -X)
+    faceIndex: number
     type: 'face' | 'bevel'
-    localS: number // 0-1 within this region
+    localS: number
   } {
     const { flatHalfSize, bevelRadius } = derived ?? this.getDerivedValues()
-    // Calculate the fraction of u taken by each face vs bevel
-    // Face width (flat) = 2 * flatHalfSize, Bevel arc = PI/2 * bevelRadius
     const faceWidth = 2 * flatHalfSize
     const bevelWidth = (Math.PI / 2) * bevelRadius
     const segmentWidth = faceWidth + bevelWidth
     const totalWidth = 4 * segmentWidth
 
-    const scaledU = ((u % 1) + 1) % 1 // ensure in [0,1)
+    const scaledU = ((u % 1) + 1) % 1
     const posInTotal = scaledU * totalWidth
-
     const segmentIndex = Math.floor(posInTotal / segmentWidth)
     const posInSegment = posInTotal - segmentIndex * segmentWidth
 
     if (posInSegment < faceWidth) {
-      return {
-        faceIndex: segmentIndex % 4,
-        type: 'face',
-        localS: posInSegment / faceWidth,
-      }
+      return { faceIndex: segmentIndex % 4, type: 'face', localS: posInSegment / faceWidth }
     } else {
-      return {
-        faceIndex: segmentIndex % 4,
-        type: 'bevel',
-        localS: (posInSegment - faceWidth) / bevelWidth,
-      }
+      return { faceIndex: segmentIndex % 4, type: 'bevel', localS: (posInSegment - faceWidth) / bevelWidth }
     }
   }
 
-  /**
-   * Get 3D position on the surface in local coordinates.
-   */
   private getPointLocal(u: number, v: number): SurfacePoint {
     const derived = this.getDerivedValues()
     const { halfSize, flatHalfSize, bevelRadius } = derived
@@ -166,7 +152,7 @@ export class CubeSurface extends Surface {
     let tangentU: THREE.Vector3
     let tangentV: THREE.Vector3
 
-    // Face normals and directions for the 4 side faces
+    // Face normals and right directions for the 4 side faces
     // faceIndex: 0 = +Z, 1 = +X, 2 = -Z, 3 = -X
     const faceNormals = [
       new THREE.Vector3(0, 0, 1),
@@ -174,8 +160,6 @@ export class CubeSurface extends Surface {
       new THREE.Vector3(0, 0, -1),
       new THREE.Vector3(-1, 0, 0),
     ]
-
-    // Right direction along the face (positive u direction)
     const faceRights = [
       new THREE.Vector3(1, 0, 0),
       new THREE.Vector3(0, 0, -1),
@@ -187,12 +171,63 @@ export class CubeSurface extends Surface {
     const faceRight = faceRights[uRegion.faceIndex]
     const nextFaceNorm = faceNormals[(uRegion.faceIndex + 1) % 4]
 
-    if (vRegion.type === 'middle') {
+    if (vRegion.type === 'bottomFlat') {
+      // Flat bottom face (-Y). localT goes from 0 (center) to 1 (edge).
+      // The u coordinate maps to a position on the bottom face.
+      // We need to map from the perimeter-based u to a 2D position on the square face.
+      const dist = vRegion.localT * flatHalfSize
+      const y = -halfSize
+
+      if (uRegion.type === 'face') {
+        // Along a face edge
+        const x = (uRegion.localS - 0.5) * 2 * flatHalfSize
+        position = faceNorm.clone().multiplyScalar(dist)
+          .add(faceRight.clone().multiplyScalar(x * vRegion.localT))
+          .add(new THREE.Vector3(0, y, 0))
+        // Clamp to face boundary
+        const posXZ = new THREE.Vector2(position.x, position.z)
+        if (Math.abs(position.x) > flatHalfSize) position.x = Math.sign(position.x) * flatHalfSize
+        if (Math.abs(position.z) > flatHalfSize) position.z = Math.sign(position.z) * flatHalfSize
+      } else {
+        // Corner region
+        const hAngle = uRegion.localS * (Math.PI / 2)
+        const blendedDir = faceNorm.clone().multiplyScalar(Math.cos(hAngle))
+          .add(nextFaceNorm.clone().multiplyScalar(Math.sin(hAngle)))
+        position = blendedDir.clone().multiplyScalar(dist)
+          .add(new THREE.Vector3(0, y, 0))
+      }
+
+      normal = new THREE.Vector3(0, -1, 0)
+      tangentU = faceRight.clone()
+      tangentV = faceNorm.clone()
+    } else if (vRegion.type === 'topFlat') {
+      // Flat top face (+Y). localT goes from 0 (edge) to 1 (center).
+      const dist = (1 - vRegion.localT) * flatHalfSize
+      const y = halfSize
+
+      if (uRegion.type === 'face') {
+        const x = (uRegion.localS - 0.5) * 2 * flatHalfSize
+        position = faceNorm.clone().multiplyScalar(dist)
+          .add(faceRight.clone().multiplyScalar(x * (1 - vRegion.localT)))
+          .add(new THREE.Vector3(0, y, 0))
+        if (Math.abs(position.x) > flatHalfSize) position.x = Math.sign(position.x) * flatHalfSize
+        if (Math.abs(position.z) > flatHalfSize) position.z = Math.sign(position.z) * flatHalfSize
+      } else {
+        const hAngle = uRegion.localS * (Math.PI / 2)
+        const blendedDir = faceNorm.clone().multiplyScalar(Math.cos(hAngle))
+          .add(nextFaceNorm.clone().multiplyScalar(Math.sin(hAngle)))
+        position = blendedDir.clone().multiplyScalar(dist)
+          .add(new THREE.Vector3(0, y, 0))
+      }
+
+      normal = new THREE.Vector3(0, 1, 0)
+      tangentU = faceRight.clone()
+      tangentV = faceNorm.clone().negate()
+    } else if (vRegion.type === 'middle') {
       // Middle belt: side faces and vertical bevels
       const y = (vRegion.localT - 0.5) * 2 * flatHalfSize
 
       if (uRegion.type === 'face') {
-        // Flat face
         const x = (uRegion.localS - 0.5) * 2 * flatHalfSize
         position = faceNorm.clone().multiplyScalar(halfSize)
           .add(faceRight.clone().multiplyScalar(x))
@@ -201,59 +236,46 @@ export class CubeSurface extends Surface {
         tangentU = faceRight.clone()
         tangentV = new THREE.Vector3(0, 1, 0)
       } else {
-        // Vertical bevel (cylindrical section connecting two faces)
         const angle = uRegion.localS * (Math.PI / 2)
         const blendedNormal = faceNorm.clone().multiplyScalar(Math.cos(angle))
           .add(nextFaceNorm.clone().multiplyScalar(Math.sin(angle)))
-
-        // Center of the bevel cylinder edge
         const edgeCenter = faceNorm.clone().multiplyScalar(flatHalfSize)
           .add(nextFaceNorm.clone().multiplyScalar(flatHalfSize))
 
         position = edgeCenter.clone()
           .add(blendedNormal.clone().multiplyScalar(bevelRadius))
           .add(new THREE.Vector3(0, y, 0))
-
         normal = blendedNormal.clone().normalize()
-        // Tangent along the bevel arc
         tangentU = faceNorm.clone().multiplyScalar(-Math.sin(angle))
           .add(nextFaceNorm.clone().multiplyScalar(Math.cos(angle)))
           .normalize()
         tangentV = new THREE.Vector3(0, 1, 0)
       }
-    } else if (vRegion.type === 'bottom') {
-      // Bottom region: spherical corners and cylindrical edge bevels leading to bottom face
-      const bevelAngle = (1 - vRegion.localT) * (Math.PI / 2) // from flat (0) to horizontal (PI/2)
+    } else if (vRegion.type === 'bottomBevel') {
+      // Bottom bevel: arc from bottom face edge down to side faces
+      const bevelAngle = (1 - vRegion.localT) * (Math.PI / 2)
       const cosAngle = Math.cos(bevelAngle)
       const sinAngle = Math.sin(bevelAngle)
       const y = -flatHalfSize - bevelRadius * sinAngle
 
       if (uRegion.type === 'face') {
-        // Edge bevel from side face to bottom face
         const x = (uRegion.localS - 0.5) * 2 * flatHalfSize
         const distFromCenter = flatHalfSize + bevelRadius * cosAngle
-
         position = faceNorm.clone().multiplyScalar(distFromCenter)
           .add(faceRight.clone().multiplyScalar(x))
           .add(new THREE.Vector3(0, y, 0))
-
         normal = faceNorm.clone().multiplyScalar(cosAngle)
           .add(new THREE.Vector3(0, -sinAngle, 0))
           .normalize()
-
         tangentU = faceRight.clone()
         tangentV = faceNorm.clone().multiplyScalar(sinAngle)
           .add(new THREE.Vector3(0, cosAngle, 0))
           .normalize()
       } else {
-        // Spherical corner
-        const hAngle = uRegion.localS * (Math.PI / 2) // horizontal angle around corner
-
+        const hAngle = uRegion.localS * (Math.PI / 2)
         const blendedHoriz = faceNorm.clone().multiplyScalar(Math.cos(hAngle))
           .add(nextFaceNorm.clone().multiplyScalar(Math.sin(hAngle)))
           .normalize()
-
-        // Corner center
         const cornerCenter = faceNorm.clone().multiplyScalar(flatHalfSize)
           .add(nextFaceNorm.clone().multiplyScalar(flatHalfSize))
           .add(new THREE.Vector3(0, -flatHalfSize, 0))
@@ -261,53 +283,40 @@ export class CubeSurface extends Surface {
         normal = blendedHoriz.clone().multiplyScalar(cosAngle)
           .add(new THREE.Vector3(0, -sinAngle, 0))
           .normalize()
-
         position = cornerCenter.clone()
           .add(normal.clone().multiplyScalar(bevelRadius))
-
-        // Tangent in u direction (around the corner horizontally)
         tangentU = faceNorm.clone().multiplyScalar(-Math.sin(hAngle))
           .add(nextFaceNorm.clone().multiplyScalar(Math.cos(hAngle)))
           .normalize()
-
-        // Tangent in v direction (along the bevel arc vertically)
         tangentV = blendedHoriz.clone().multiplyScalar(sinAngle)
           .add(new THREE.Vector3(0, cosAngle, 0))
           .normalize()
       }
     } else {
-      // Top region: spherical corners and cylindrical edge bevels leading to top face
-      const bevelAngle = vRegion.localT * (Math.PI / 2) // from flat (0) to horizontal (PI/2)
+      // Top bevel: arc from side faces up to top face edge
+      const bevelAngle = vRegion.localT * (Math.PI / 2)
       const cosAngle = Math.cos(bevelAngle)
       const sinAngle = Math.sin(bevelAngle)
       const y = flatHalfSize + bevelRadius * sinAngle
 
       if (uRegion.type === 'face') {
-        // Edge bevel from side face to top face
         const x = (uRegion.localS - 0.5) * 2 * flatHalfSize
         const distFromCenter = flatHalfSize + bevelRadius * cosAngle
-
         position = faceNorm.clone().multiplyScalar(distFromCenter)
           .add(faceRight.clone().multiplyScalar(x))
           .add(new THREE.Vector3(0, y, 0))
-
         normal = faceNorm.clone().multiplyScalar(cosAngle)
           .add(new THREE.Vector3(0, sinAngle, 0))
           .normalize()
-
         tangentU = faceRight.clone()
         tangentV = faceNorm.clone().multiplyScalar(-sinAngle)
           .add(new THREE.Vector3(0, cosAngle, 0))
           .normalize()
       } else {
-        // Spherical corner
         const hAngle = uRegion.localS * (Math.PI / 2)
-
         const blendedHoriz = faceNorm.clone().multiplyScalar(Math.cos(hAngle))
           .add(nextFaceNorm.clone().multiplyScalar(Math.sin(hAngle)))
           .normalize()
-
-        // Corner center
         const cornerCenter = faceNorm.clone().multiplyScalar(flatHalfSize)
           .add(nextFaceNorm.clone().multiplyScalar(flatHalfSize))
           .add(new THREE.Vector3(0, flatHalfSize, 0))
@@ -315,14 +324,11 @@ export class CubeSurface extends Surface {
         normal = blendedHoriz.clone().multiplyScalar(cosAngle)
           .add(new THREE.Vector3(0, sinAngle, 0))
           .normalize()
-
         position = cornerCenter.clone()
           .add(normal.clone().multiplyScalar(bevelRadius))
-
         tangentU = faceNorm.clone().multiplyScalar(-Math.sin(hAngle))
           .add(nextFaceNorm.clone().multiplyScalar(Math.cos(hAngle)))
           .normalize()
-
         tangentV = blendedHoriz.clone().multiplyScalar(-sinAngle)
           .add(new THREE.Vector3(0, cosAngle, 0))
           .normalize()
@@ -332,32 +338,21 @@ export class CubeSurface extends Surface {
     return { position: position!, normal: normal!, tangentU: tangentU!, tangentV: tangentV! }
   }
 
-  /**
-   * Get point on the beveled cube in world coordinates (after applying world rotation).
-   */
   getPoint(u: number, v: number): SurfacePoint {
     const local = this.getPointLocal(u, v)
     return this.applyWorldRotation(local)
   }
 
-  moveOnSurface(
-    u: number,
-    v: number,
-    du: number,
-    dv: number
-  ): { u: number; v: number } {
-    // Calculate u/v scaling based on current region to maintain consistent speed
+  moveOnSurface(u: number, v: number, du: number, dv: number): { u: number; v: number } {
     const vRegion = this.getVRegion(v)
     const uRegion = this.getURegion(u)
 
     let correctedDu = du
     let correctedDv = dv
 
-    // Scale du based on whether we're on face or bevel (bevel has smaller circumference)
-    // Also scale for spherical corners at top/bottom
-    if (uRegion.type === 'bevel' && vRegion.type !== 'middle') {
-      // Spherical corner - scale by cos of vertical angle
-      const bevelAngle = vRegion.type === 'bottom'
+    // Scale du for bevel regions and spherical corners
+    if (uRegion.type === 'bevel' && (vRegion.type === 'bottomBevel' || vRegion.type === 'topBevel')) {
+      const bevelAngle = vRegion.type === 'bottomBevel'
         ? (1 - vRegion.localT) * (Math.PI / 2)
         : vRegion.localT * (Math.PI / 2)
       const cosAngle = Math.cos(bevelAngle)
@@ -366,79 +361,87 @@ export class CubeSurface extends Surface {
       }
     }
 
-    // Scale dv at top/bottom poles (similar to sphere)
-    if (vRegion.type === 'bottom' && vRegion.localT < 0.1) {
-      correctedDv = dv * 0.5 // slow down near pole
-    } else if (vRegion.type === 'top' && vRegion.localT > 0.9) {
+    // Slow down near top/bottom face centers (pole-like convergence)
+    if (vRegion.type === 'bottomFlat' && vRegion.localT < 0.15) {
+      correctedDv = dv * 0.5
+    } else if (vRegion.type === 'topFlat' && vRegion.localT > 0.85) {
       correctedDv = dv * 0.5
     }
 
     let newU = u + correctedDu
     let newV = v + correctedDv
 
-    // Wrap u around [0, 1)
     newU = ((newU % 1) + 1) % 1
-
-    // Clamp v to [epsilon, 1-epsilon] to avoid singularities
-    const epsilon = 0.005
+    const epsilon = 0.003
     newV = Math.max(epsilon, Math.min(1 - epsilon, newV))
 
     return { u: newU, v: newV }
   }
 
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
-    // Project the world position onto the beveled cube surface
     const x = worldPos.x
     const y = worldPos.y
     const z = worldPos.z
 
-    // First, determine the vertical region (v coordinate)
+    // Determine v based on y position
     let v: number
-    if (y <= -this.flatHalfSize) {
+    const derived = this.getDerivedValues()
+    const { halfSize, flatHalfSize, bevelRadius, flatFraction, bevelFraction } = derived
+
+    if (y <= -(halfSize - 0.01)) {
+      // On or below bottom face
+      const dist = Math.sqrt(x * x + z * z)
+      const localT = Math.min(1, dist / flatHalfSize)
+      v = localT * flatFraction
+    } else if (y <= -flatHalfSize) {
       // Bottom bevel region
-      const angle = Math.atan2(-y - this.flatHalfSize, Math.sqrt(x * x + z * z) - this.flatHalfSize)
+      const horizDist = Math.max(0, Math.sqrt(x * x + z * z) - flatHalfSize)
+      const vertDist = Math.abs(y + flatHalfSize)
+      const angle = Math.atan2(vertDist, horizDist)
       const localT = 1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))
-      v = localT * this.bevelFraction
-    } else if (y >= this.flatHalfSize) {
+      v = flatFraction + localT * bevelFraction
+    } else if (y >= (halfSize - 0.01)) {
+      // On or above top face
+      const dist = Math.sqrt(x * x + z * z)
+      const localT = 1 - Math.min(1, dist / flatHalfSize)
+      v = 1 - flatFraction + localT * flatFraction
+    } else if (y >= flatHalfSize) {
       // Top bevel region
-      const angle = Math.atan2(y - this.flatHalfSize, Math.sqrt(x * x + z * z) - this.flatHalfSize)
+      const horizDist = Math.max(0, Math.sqrt(x * x + z * z) - flatHalfSize)
+      const vertDist = Math.abs(y - flatHalfSize)
+      const angle = Math.atan2(vertDist, horizDist)
       const localT = Math.max(0, Math.min(1, angle / (Math.PI / 2)))
-      v = 1 - this.bevelFraction + localT * this.bevelFraction
+      v = 1 - flatFraction - bevelFraction + localT * bevelFraction
     } else {
       // Middle region
-      const localT = (y + this.flatHalfSize) / (2 * this.flatHalfSize)
-      v = this.bevelFraction + localT * (1 - 2 * this.bevelFraction)
+      const middleStart = flatFraction + bevelFraction
+      const middleEnd = 1 - flatFraction - bevelFraction
+      const localT = (y + flatHalfSize) / (2 * flatHalfSize)
+      v = middleStart + localT * (middleEnd - middleStart)
     }
 
-    // Now determine the horizontal region (u coordinate)
-    // Find which quadrant and whether on face or bevel
+    // Determine u based on x/z position (same as before)
     const absX = Math.abs(x)
     const absZ = Math.abs(z)
-
-    const faceWidth = 2 * this.flatHalfSize
-    const bevelWidth = (Math.PI / 2) * this.bevelRadius
+    const faceWidth = 2 * flatHalfSize
+    const bevelWidth = (Math.PI / 2) * bevelRadius
     const segmentWidth = faceWidth + bevelWidth
     const totalWidth = 4 * segmentWidth
 
     let u: number
 
-    // Determine primary face based on which axis is dominant
     if (absZ >= absX) {
       if (z >= 0) {
-        // +Z face (index 0)
-        if (absX <= this.flatHalfSize) {
-          // On face
-          const localS = (x / this.flatHalfSize + 1) / 2
+        if (absX <= flatHalfSize) {
+          const localS = (x / flatHalfSize + 1) / 2
           u = localS * faceWidth / totalWidth
         } else {
-          // On bevel to +X or -X
           if (x > 0) {
-            const angle = Math.atan2(x - this.flatHalfSize, z - this.flatHalfSize)
+            const angle = Math.atan2(x - flatHalfSize, z - flatHalfSize)
             const localS = Math.max(0, Math.min(1, angle / (Math.PI / 2)))
             u = (faceWidth + localS * bevelWidth) / totalWidth
           } else {
-            // Bevel to -X (going backwards)
-            const angle = Math.atan2(-x - this.flatHalfSize, z - this.flatHalfSize)
+            const angle = Math.atan2(-x - flatHalfSize, z - flatHalfSize)
             const localS = 1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))
             u = localS * faceWidth / totalWidth
             if (localS <= 0) {
@@ -447,18 +450,17 @@ export class CubeSurface extends Surface {
           }
         }
       } else {
-        // -Z face (index 2)
         const baseU = 2 * segmentWidth
-        if (absX <= this.flatHalfSize) {
-          const localS = (-x / this.flatHalfSize + 1) / 2
+        if (absX <= flatHalfSize) {
+          const localS = (-x / flatHalfSize + 1) / 2
           u = (baseU + localS * faceWidth) / totalWidth
         } else {
           if (x < 0) {
-            const angle = Math.atan2(-x - this.flatHalfSize, -z - this.flatHalfSize)
+            const angle = Math.atan2(-x - flatHalfSize, -z - flatHalfSize)
             const localS = Math.max(0, Math.min(1, angle / (Math.PI / 2)))
             u = (baseU + faceWidth + localS * bevelWidth) / totalWidth
           } else {
-            const angle = Math.atan2(x - this.flatHalfSize, -z - this.flatHalfSize)
+            const angle = Math.atan2(x - flatHalfSize, -z - flatHalfSize)
             const localS = 1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))
             u = (baseU + localS * faceWidth) / totalWidth
           }
@@ -466,35 +468,33 @@ export class CubeSurface extends Surface {
       }
     } else {
       if (x >= 0) {
-        // +X face (index 1)
         const baseU = segmentWidth
-        if (absZ <= this.flatHalfSize) {
-          const localS = (-z / this.flatHalfSize + 1) / 2
+        if (absZ <= flatHalfSize) {
+          const localS = (-z / flatHalfSize + 1) / 2
           u = (baseU + localS * faceWidth) / totalWidth
         } else {
           if (z < 0) {
-            const angle = Math.atan2(-z - this.flatHalfSize, x - this.flatHalfSize)
+            const angle = Math.atan2(-z - flatHalfSize, x - flatHalfSize)
             const localS = Math.max(0, Math.min(1, angle / (Math.PI / 2)))
             u = (baseU + faceWidth + localS * bevelWidth) / totalWidth
           } else {
-            const angle = Math.atan2(z - this.flatHalfSize, x - this.flatHalfSize)
+            const angle = Math.atan2(z - flatHalfSize, x - flatHalfSize)
             const localS = 1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))
             u = (baseU + localS * faceWidth) / totalWidth
           }
         }
       } else {
-        // -X face (index 3)
         const baseU = 3 * segmentWidth
-        if (absZ <= this.flatHalfSize) {
-          const localS = (z / this.flatHalfSize + 1) / 2
+        if (absZ <= flatHalfSize) {
+          const localS = (z / flatHalfSize + 1) / 2
           u = (baseU + localS * faceWidth) / totalWidth
         } else {
           if (z > 0) {
-            const angle = Math.atan2(z - this.flatHalfSize, -x - this.flatHalfSize)
+            const angle = Math.atan2(z - flatHalfSize, -x - flatHalfSize)
             const localS = Math.max(0, Math.min(1, angle / (Math.PI / 2)))
             u = (baseU + faceWidth + localS * bevelWidth) / totalWidth
           } else {
-            const angle = Math.atan2(-z - this.flatHalfSize, -x - this.flatHalfSize)
+            const angle = Math.atan2(-z - flatHalfSize, -x - flatHalfSize)
             const localS = 1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))
             u = (baseU + localS * faceWidth) / totalWidth
           }
@@ -502,24 +502,18 @@ export class CubeSurface extends Surface {
       }
     }
 
-    // Wrap u to [0, 1)
     u = ((u % 1) + 1) % 1
-
     return { u, v }
   }
 
   createMesh(): THREE.Mesh {
     const { size, bevelRadius, gridSegments } = CubeSurface.getInitData()
-
-    // Create a rounded box geometry using BufferGeometry
-    // We'll build it from the parametric surface
     const segments = gridSegments * 4
     const positions: number[] = []
     const normals: number[] = []
     const uvs: number[] = []
     const indices: number[] = []
 
-    // Generate vertices using the parametric surface
     const uSegments = segments
     const vSegments = segments
 
@@ -528,12 +522,9 @@ export class CubeSurface extends Surface {
         const u = i / uSegments
         const v = j / vSegments
 
-        // Temporarily set initData for getPointLocal
         const tempData = (CubeSurface as any).__initData
         ;(CubeSurface as any).__initData = { size, bevelRadius, gridSegments }
-
         const point = this.getPointLocal(u, v)
-
         ;(CubeSurface as any).__initData = tempData
 
         positions.push(point.position.x, point.position.y, point.position.z)
@@ -542,14 +533,12 @@ export class CubeSurface extends Surface {
       }
     }
 
-    // Generate indices for triangles
     for (let j = 0; j < vSegments; j++) {
       for (let i = 0; i < uSegments; i++) {
         const a = j * (uSegments + 1) + i
         const b = a + 1
         const c = a + uSegments + 1
         const d = c + 1
-
         indices.push(a, b, c)
         indices.push(b, d, c)
       }
@@ -571,69 +560,55 @@ export class CubeSurface extends Surface {
     const vertices: number[] = []
     const lineDetail = 32
 
-    // Generate horizontal grid lines (constant v)
+    // Horizontal grid lines (constant v)
     const vLines = gridSegments + 2
     for (let j = 0; j <= vLines; j++) {
       const v = j / vLines
-
       for (let i = 0; i < lineDetail * 4; i++) {
         const u0 = i / (lineDetail * 4)
         const u1 = (i + 1) / (lineDetail * 4)
-
         const p0 = this.getPointLocal(u0, v)
         const p1 = this.getPointLocal(u1, v)
-
         vertices.push(p0.position.x, p0.position.y, p0.position.z)
         vertices.push(p1.position.x, p1.position.y, p1.position.z)
       }
     }
 
-    // Generate vertical grid lines (constant u)
-    // We want lines at face centers and at bevels
+    // Vertical grid lines (constant u)
     const faceWidth = 2 * flatHalfSize
     const bevelWidth = (Math.PI / 2) * bevelRadius
     const segmentWidth = faceWidth + bevelWidth
     const totalWidth = 4 * segmentWidth
 
-    // Lines on each face
     const linesPerFace = Math.max(2, Math.floor(gridSegments / 2))
     for (let face = 0; face < 4; face++) {
       for (let i = 0; i <= linesPerFace; i++) {
         const localS = i / linesPerFace
         const u = (face * segmentWidth + localS * faceWidth) / totalWidth
-
         for (let j = 0; j < lineDetail * 2; j++) {
           const v0 = j / (lineDetail * 2)
           const v1 = (j + 1) / (lineDetail * 2)
-
           const p0 = this.getPointLocal(u, v0)
           const p1 = this.getPointLocal(u, v1)
-
           vertices.push(p0.position.x, p0.position.y, p0.position.z)
           vertices.push(p1.position.x, p1.position.y, p1.position.z)
         }
       }
 
-      // Lines on bevel edges (just the center of each bevel)
+      // Bevel edge center line
       const bevelU = (face * segmentWidth + faceWidth + 0.5 * bevelWidth) / totalWidth
       for (let j = 0; j < lineDetail * 2; j++) {
         const v0 = j / (lineDetail * 2)
         const v1 = (j + 1) / (lineDetail * 2)
-
         const p0 = this.getPointLocal(bevelU, v0)
         const p1 = this.getPointLocal(bevelU, v1)
-
         vertices.push(p0.position.x, p0.position.y, p0.position.z)
         vertices.push(p1.position.x, p1.position.y, p1.position.z)
       }
     }
 
     const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(vertices, 3)
-    )
-
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
     return new THREE.LineSegments(geometry, this.createGridMaterial())
   }
 }

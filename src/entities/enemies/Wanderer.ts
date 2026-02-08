@@ -10,7 +10,7 @@ export class Wanderer extends BaseEnemy {
   private spinAngle: number = 0;
 
   constructor(surfaceU: number, surfaceV: number) {
-    super(surfaceU, surfaceV, 1, 5, 1, 0.04, 0.3); // Reduced speed
+    super(surfaceU, surfaceV, 2, 5, 1, 0.04, 0.3); // Reduced speed
 
     // Initialize random direction
     const angle = Math.random() * Math.PI * 2;

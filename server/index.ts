@@ -21,6 +21,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
 });
 
+// LAN discovery endpoint - identifies this as a Geometry Wars server
+app.get('/api/info', (req, res) => {
+  res.json({
+    game: 'geometry-wars-3d',
+    version: '0.1.0',
+    port: PORT,
+  });
+});
+
 // Create HTTP server
 const httpServer = createServer(app);
 
@@ -34,8 +43,8 @@ const gameServer = new Server({
 // Register game room
 gameServer.define('game', GameRoom);
 
-// Start listening
-httpServer.listen(PORT, () => {
+// Start listening on all interfaces (0.0.0.0) for LAN access
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║     GEOMETRY WARS 3D - MULTIPLAYER SERVER                ║

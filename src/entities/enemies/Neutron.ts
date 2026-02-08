@@ -8,7 +8,7 @@ export class Neutron extends BaseEnemy {
   private spinAngle: number = 0;
 
   constructor(surfaceU: number, surfaceV: number) {
-    super(surfaceU, surfaceV, 1, 10, 1, 0.04, 0.3); // Reduced speed
+    super(surfaceU, surfaceV, 2, 10, 1, 0.04, 0.3); // Reduced speed
 
     // Pick random initial direction
     const angle = Math.random() * Math.PI * 2;
@@ -22,7 +22,7 @@ export class Neutron extends BaseEnemy {
     // Create 3D heptagon (7-sided) prism with yellow-green color
     const sides = 7;
     const radius = 0.25;
-    this.mesh = buildPolygon3D(sides, radius, 0xccff00, 0.12, 0.025);
+    this.mesh = buildPolygon3D(sides, radius, 0x44dddd, 0.12, 0.025);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

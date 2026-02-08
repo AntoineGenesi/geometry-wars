@@ -54,9 +54,9 @@ export class ParticleSystem {
   private fragmentContainer: THREE.Group;
   private fragments: ShatterFragment[] = [];
   private fragmentGeometries: THREE.BufferGeometry[] = [];
-  private maxFragments: number = 200;
+  private maxFragments: number = 400;
 
-  constructor(maxParticles: number = 5000) {
+  constructor(maxParticles: number = 10000) {
     this.maxParticles = maxParticles;
     this.nextParticleIndex = 0;
 
@@ -353,31 +353,43 @@ export class ParticleSystem {
   }
 
   enemyDeath(position: THREE.Vector3, color: THREE.Color): void {
-    // Main shatter effect with geometric fragments
-    const fragmentCount = 12 + Math.floor(Math.random() * 8);
-    this.shatterEffect(position, color, fragmentCount, 1.0, 1.0);
+    // Main shatter effect with geometric fragments (GW3D: ~120 particles total)
+    const fragmentCount = 40 + Math.floor(Math.random() * 20);
+    this.shatterEffect(position, color, fragmentCount, 1.0, 1.2);
 
-    // Also emit some small sparkle particles for extra flair
+    // Sparkle particles for the radial burst effect
     const dimColor = color.clone().multiplyScalar(0.7);
     this.emit({
       position,
-      count: 8,
+      count: 40,
       color: dimColor,
-      speed: 3,
-      lifetime: 0.4,
+      speed: 5,
+      lifetime: 0.5,
       size: 1.5,
       spread: Math.PI * 2,
       gravity: -2,
+    });
+
+    // Bright core flash
+    this.emit({
+      position,
+      count: 8,
+      color: new THREE.Color(1.0, 1.0, 1.0),
+      speed: 3,
+      lifetime: 0.15,
+      size: 3,
+      spread: Math.PI * 2,
+      gravity: 0,
     });
   }
 
   bulletImpact(position: THREE.Vector3): void {
     this.emit({
       position,
-      count: 3,
-      color: new THREE.Color(0.7, 0.6, 0.3),
-      speed: 3,
-      lifetime: 0.2,
+      count: 15,
+      color: new THREE.Color(0x88ffff),
+      speed: 4,
+      lifetime: 0.25,
       size: 1.5,
       spread: Math.PI * 2,
       gravity: 0,
@@ -385,48 +397,71 @@ export class ParticleSystem {
   }
 
   bombExplosion(position: THREE.Vector3): void {
+    // White shockwave burst (GW3D authentic)
     this.emit({
       position,
       count: 80,
-      color: new THREE.Color(0.7, 0.4, 0.2),
-      speed: 8,
-      lifetime: 0.8,
+      color: new THREE.Color(1.0, 1.0, 1.0),
+      speed: 10,
+      lifetime: 0.6,
       size: 3,
       spread: Math.PI * 2,
-      gravity: -5,
+      gravity: 0,
+    });
+    // Secondary cyan ring
+    this.emit({
+      position,
+      count: 40,
+      color: new THREE.Color(0x44ffff),
+      speed: 6,
+      lifetime: 0.8,
+      size: 2,
+      spread: Math.PI * 2,
+      gravity: 0,
     });
   }
 
   playerDeath(position: THREE.Vector3): void {
-    // Dramatic player death - cyan colored shatter
+    // GW3D: player death is ~10x enemy death (1200 particles)
     const playerColor = new THREE.Color(0x00ddff);
 
-    // Large, dramatic shatter with many fragments
-    this.shatterEffect(position, playerColor, 35, 1.5, 1.5);
+    // Large dramatic shatter - outer ring
+    this.shatterEffect(position, playerColor, 80, 1.5, 2.0);
 
-    // Secondary ring of fragments slightly delayed appearance effect
-    // Using a brighter cyan for the inner burst
+    // Inner ring of brighter fragments
     const brightCyan = new THREE.Color(0x66ffff);
-    this.shatterEffect(position, brightCyan, 20, 0.8, 2.0);
+    this.shatterEffect(position, brightCyan, 50, 0.8, 2.5);
 
-    // Additional sparkle particles
+    // White-to-yellow sparkle particles (GW3D authentic)
     this.emit({
       position,
-      count: 40,
-      color: new THREE.Color(0.4, 0.9, 1.0),
-      speed: 6,
-      lifetime: 1.0,
+      count: 120,
+      color: new THREE.Color(1.0, 0.95, 0.7),
+      speed: 8,
+      lifetime: 1.5,
       size: 2.5,
       spread: Math.PI * 2,
-      gravity: -4,
+      gravity: -3,
     });
 
-    // White flash particles in center
+    // Cyan sparkle ring
     this.emit({
       position,
-      count: 15,
+      count: 60,
+      color: new THREE.Color(0.4, 0.9, 1.0),
+      speed: 6,
+      lifetime: 1.2,
+      size: 2.0,
+      spread: Math.PI * 2,
+      gravity: -2,
+    });
+
+    // White core flash
+    this.emit({
+      position,
+      count: 30,
       color: new THREE.Color(1.0, 1.0, 1.0),
-      speed: 8,
+      speed: 10,
       lifetime: 0.3,
       size: 4,
       spread: Math.PI * 2,
@@ -435,29 +470,14 @@ export class ParticleSystem {
   }
 
   geomCollect(position: THREE.Vector3): void {
-    // Green sparkle burst when collecting a geom
-    const geomColor = new THREE.Color(0x00ff66);
-
-    // Main sparkle burst
+    // Subtle tick: just a few small sparkles, not a bright burst
     this.emit({
       position,
-      count: 8,
-      color: geomColor,
-      speed: 4,
-      lifetime: 0.3,
-      size: 2.5,
-      spread: Math.PI * 2,
-      gravity: 2, // Float upward slightly
-    });
-
-    // Inner bright flash
-    this.emit({
-      position,
-      count: 4,
-      color: new THREE.Color(0xaaffaa),
-      speed: 2,
-      lifetime: 0.2,
-      size: 3,
+      count: 3,
+      color: new THREE.Color(0x00ff44),
+      speed: 1.5,
+      lifetime: 0.15,
+      size: 1.5,
       spread: Math.PI * 2,
       gravity: 0,
     });

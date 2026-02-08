@@ -14,8 +14,8 @@ export class TitanSpinner extends BaseEnemy {
   public static onDeathSpawn: ((u: number, v: number, count: number) => void) | null = null;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    // health=5, score=250, geoms=3, speed=0.04, radius=0.5
-    super(surfaceU, surfaceV, 5, 250, 3, 0.04, 0.5);
+    // health=8, score=250, geoms=3, speed=0.04, radius=0.5
+    super(surfaceU, surfaceV, 8, 250, 3, 0.04, 0.5);
     this.createMesh();
   }
 

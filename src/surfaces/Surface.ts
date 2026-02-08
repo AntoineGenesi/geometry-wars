@@ -25,10 +25,10 @@ export interface SurfaceConfig {
 }
 
 const DEFAULT_CONFIG: Required<SurfaceConfig> = {
-  gridColor: 0x00cccc,
-  surfaceColor: 0x110033,
-  surfaceOpacity: 0.15,
-  gridOpacity: 0.8,
+  gridColor: 0x1e1e8b,
+  surfaceColor: 0x0a0a2a,
+  surfaceOpacity: 0.3,
+  gridOpacity: 0.35,
   damping: 0.95,
   stiffness: 0.2,
 }

@@ -7,7 +7,7 @@ export class Rocket extends BaseEnemy {
   private directionV: number;
 
   constructor(surfaceU: number, surfaceV: number) {
-    super(surfaceU, surfaceV, 1, 15, 2, 0.05, 0.3); // Reduced speed
+    super(surfaceU, surfaceV, 2, 15, 2, 0.05, 0.3); // Reduced speed
 
     // Pick random initial direction
     const angle = Math.random() * Math.PI * 2;

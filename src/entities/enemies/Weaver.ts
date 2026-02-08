@@ -12,7 +12,7 @@ export class Weaver extends BaseEnemy {
   private readonly dodgeForce = 0.375;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    super(surfaceU, surfaceV, 1, 25, 1, 0.04, 0.3); // Reduced speed
+    super(surfaceU, surfaceV, 2, 25, 1, 0.04, 0.3); // Reduced speed
 
     this.createMesh();
   }

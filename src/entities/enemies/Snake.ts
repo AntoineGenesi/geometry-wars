@@ -22,7 +22,7 @@ export class Snake extends BaseEnemy {
   private readonly historySize = 30;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    super(surfaceU, surfaceV, 2, 35, 3, 0.05, 0.2);
+    super(surfaceU, surfaceV, 4, 35, 3, 0.05, 0.2);
 
     this.createMesh();
     this.createSegments();

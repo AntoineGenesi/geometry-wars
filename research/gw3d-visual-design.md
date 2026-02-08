@@ -584,6 +584,206 @@ const bloomPass = new UnrealBloomPass(
 
 ---
 
+## 13. Precise Technical Parameters (from GW-style XNA implementation)
+
+These values come from the Envato Tuts+ Neon Vector Shooter tutorial series, which is the closest documented technical recreation of the Geometry Wars visual style.
+
+### Bloom Shader Pipeline (3-pass)
+
+The bloom is implemented as a 3-pass pipeline:
+1. **Extract bright pixels**: Subtract `BloomThreshold` from each color component, scale back up so max = 1, clamp to [0,1]
+2. **Gaussian blur**: Two-pass (horizontal + vertical) with `sigma = blurAmount`. Render targets at **half resolution** (performance optimization that doesn't hurt quality since the result is blurred anyway)
+3. **Recombine**: Blend blurred bloom image with original, applying saturation and intensity adjustments
+
+**Exact bloom parameters:**
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Threshold | 0.25 | Anything below 25% brightness excluded from bloom |
+| Blur amount (sigma) | 4.0 | Standard deviation of Gaussian blur |
+| Bloom intensity | 2.0 | How strongly bloom affects final result |
+| Base intensity | 1.0 | How strongly original image affects final result |
+| Bloom saturation | 1.5 | Glow is 50% MORE saturated than source (key to neon look!) |
+| Base saturation | 1.0 | Original image saturation unchanged |
+
+**Saturation formula:**
+```
+luminosity = dot(color, float3(0.3, 0.59, 0.11))  // weighted by human eye sensitivity
+grey = float3(luminosity, luminosity, luminosity)
+saturated = lerp(grey, color, saturationAmount)
+```
+
+**Critical neon insight:** A bloom saturation of 1.5 causes the glow around bright objects to have MORE saturated colors than the objects themselves. This simulates real neon lights where the center appears white while the surrounding glow is strongly colored.
+
+**Base image darkening:** The base image is darkened in areas with bright bloom to prevent clipping when the two are added together.
+
+### Particle System Parameters (exact values)
+
+**System capacity:** 20,480 particles via circular array pool
+
+**Enemy death explosion:**
+- Particle count: **120 particles**
+- Duration: **190 frames (~3.2 seconds at 60fps)**
+- Speed: `18 * (1 - 1 / random(1, 10))` -- weighted toward maximum speed
+- Colors: Two interpolated HSV hues matching enemy color, saturation 0.5, value 1.0
+- Scale: 1.5x base particle size
+- Alpha: `min(1, min(percentLife * 2, speed * 1))^2` -- squared for smooth fade
+- Slowdown: velocity *= 0.97 per frame
+
+**Bullet hit particles:**
+- Particle count: **30 particles**
+- Duration: **50 frames (~0.83 seconds)**
+- Speed: random 0-9 units/frame
+- Color: Light blue
+- Behavior: Bounce off screen edges (velocity reflection)
+
+**Player death:**
+- Particle count: **1,200 particles** (10x enemy death)
+- Duration: **190 frames**
+- Speed: Same weighted formula as enemies
+- Color: White-to-yellow lerp
+- Type: IgnoreGravity (unaffected by black holes)
+
+**Ship exhaust fire (continuous):**
+- Streams: 3 concurrent (center + 2 swiveling sides)
+- Duration: 60 frames per particle
+- Base velocity: -3 units opposite to movement
+- Perpendicular sway: `0.6 * sin(t * 10)` magnitude
+- Particles per frame: 6 (white line + colored glow per stream)
+- Colors: Deep red `(200, 38, 9)` = `#C82609` for sides; Orange-yellow `(255, 187, 30)` = `#FFBB1E` for center
+- Alpha: 0.7 opacity
+
+**Particle visual formula:**
+- Length scaling: `min(min(1, 0.2 * speed + 0.1), alpha)` -- particles stretch by speed
+- LengthMultiplier: Scales particle along velocity direction (motion blur effect)
+
+**Black hole spray (on hit):**
+- 150 particles, 90 frame duration
+- Radial distribution: `TwoPi * i / numParticles + startOffset`
+- Velocity: 8-16 units/frame outward
+- Type: IgnoreGravity
+
+**Black hole continuous orbital spray:**
+- Color: Purple (hue 5, saturation 0.5)
+- Velocity: 12-15 units/frame
+- Duration: 190 frames
+- Rotation: `sprayAngle -= TwoPi / 50` per frame
+
+**Black hole gravity on particles:**
+```
+vel += 10000 * normalToBlackHole / (distance^2 + 10000)
+// Tangential acceleration when distance < 400:
+vel += 45 * perpendicular / (distance + 100)
+```
+
+### Grid Deformation Spring Constants (exact values)
+
+**Grid resolution:** ~1600 point masses across viewport
+- Grid spacing: `sqrt(viewportWidth * viewportHeight / 1600)` -- approximately 1 mass per 30-40 pixels
+
+**Spring network:**
+| Connection | Stiffness | Damping |
+|-----------|-----------|---------|
+| Border anchors | 0.1 | 0.1 |
+| Interior anchors (every 3rd point, 1/9th of masses) | 0.002 | 0.02 |
+| Main spring connections | 0.28 | 0.06 |
+
+**Point mass base friction:** 0.98 per frame
+
+**Force application formulas:**
+- Directed force: `force_on_mass = 10 * force / (10 + distance(force_position, mass_position))`
+- Explosive (bullets): `ApplyExplosiveForce(0.5 * bulletVelocity.length(), bulletPosition, radius=80)`
+- Implosive (black holes): force varies sinusoidally: `sin(sprayAngle / 2) * 10 + 20` with radius=200
+- Player respawn shockwave: `ApplyDirectedForce(vec3(0, 0, 5000), playerPos, radius=50)` -- massive Z-axis impulse
+
+**Temporary damping increase:** After explosive/implosive forces, call `IncreaseDamping(0.6)` to stabilize affected regions
+
+### Black Hole Physics
+
+**Attraction/repulsion by entity type:**
+- Bullets: Constant repulsive force of 0.3 (bullets are pushed away)
+- Enemies/Player: Linear attractive force from 2.0 (closest) to 0.0 (at 250 units), using linear interpolation
+- Particles: Inverse-square gravitational attraction
+
+**Black hole properties:**
+- Destruction threshold: 10 hits to kill
+- Visual pulsation: scale = `1 + 0.1 * sin(time)` (gentle breathing effect)
+- Attraction radius: 250 units
+
+---
+
+## 14. Super State Visual Details
+
+### How Super States Appear
+- Spawn as a **pattern of dots** on the surface, resembling a constellation or symbol
+- Patterns include: arrow, rainbow circle, and other geometric designs
+- Each dot acts like an immobile enemy that must be shot
+- Must destroy ALL dots before the pattern fades to activate the super state
+- Audio cue: "Super State" voice line when pattern appears
+
+### Active Super State Indication
+- **Ship glows a specific color** when a super state is active
+- The changed glow color serves as the primary visual indicator of the active powerup
+
+### Super State Types
+| Super State | Visual Effect |
+|-------------|--------------|
+| **Quad Fire** | Ship fires 4 streams in cardinal directions |
+| **Split Fire** | Bullet streams split mid-flight |
+| **Reverse Fire** | Bullets fire from rear of ship |
+| **Missile** | Homing projectiles with trails |
+| **Trail Bomb** | Medium-sized explosions left in trail |
+| **Magnet** | All geoms on screen pulled to player (green particles stream inward) |
+| **Shield** | Invulnerability aura, can ram enemies to kill them |
+
+---
+
+## 15. Enemy Shader Pipeline (Developer-Confirmed)
+
+From the PlayStation Blog interview with Lucid Games:
+
+1. **Modeling**: Enemies are modeled in **Maya** as geometric shapes
+2. **In-game shading**: Custom internal graphics shaders create the "unique neon glow look"
+3. **Visual stages**: Each enemy goes through wireframe -> polygon surfaces -> in-game object with glowing surfaces
+4. **Behavioral visualization**: Enemy visual state communicates behavior (docile vs. active states must be visually distinct)
+
+This confirms that the neon glow is not just post-processing bloom -- the entities themselves use custom emissive shaders that make their surfaces glow, with bloom then amplifying this effect.
+
+---
+
+## 16. Post-Processing Stack (from PCGamingWiki config)
+
+The game's settings file includes these post-processing toggles:
+- **Bloom**: On/Off
+- **Blur**: On/Off (likely motion blur or depth-of-field)
+- **Vignette**: On/Off (darkening at screen edges)
+- **EffectDetail**: Low/Medium/High (controls particle density and effect complexity)
+
+Reducing to Medium or Low removes special effects, confirming they are layered on top of base rendering.
+
+---
+
+## 17. Current Codebase vs. GW3D Reference (Gap Analysis)
+
+### What matches well:
+- Enemy color assignments (all hex values match reference)
+- Player ship color (cyan `#00FFFF`)
+- Bullet color (white-cyan `#88FFFF`)
+- Geom color (bright green `#00FF44`)
+- Grid color (`#1E1E8B`) and surface color (`#0A0A2A`)
+- Bloom is enabled with threshold 0.85, strength 1.0, radius 0.4
+
+### What could be improved:
+1. **Bloom parameters**: Current threshold (0.85) is conservative. Consider lowering toward 0.25-0.5 for more glow, paired with NormalBlending on all particles
+2. **Bloom saturation**: UnrealBloomPass doesn't natively support separate bloom saturation. Would need custom shader pass to achieve the 1.5x saturation effect
+3. **Particle counts**: Enemy death should spawn ~120 particles (verify current ParticleSystem capacity and death particle counts)
+4. **Player death particles**: Should be 1,200 particles (10x enemy death) with white-to-yellow color
+5. **Ship exhaust**: Currently uses GlowTrail; could add 3-stream exhaust particles (center orange-yellow, sides deep red)
+6. **Grid deformation forces**: Verify spring constants match reference values (stiffness 0.28, damping 0.06)
+7. **Vignette**: Not currently implemented -- adds subtle screen-edge darkening for focus
+8. **Particle stretching by velocity**: Particles should stretch along their movement direction (motion blur effect)
+
+---
+
 ## Sources
 
 - [Steam Community: GW3 Enemy Guide](https://steamcommunity.com/sharedfiles/filedetails/?id=601842273)
@@ -601,3 +801,14 @@ const bloomPass = new UnrealBloomPass(
 - [Geometry Wars Wiki: Boss](https://geometry-wars.fandom.com/wiki/Boss)
 - [Wikipedia: Geometry Wars 3: Dimensions](https://en.wikipedia.org/wiki/Geometry_Wars_3:_Dimensions)
 - [PCGamingWiki: GW3 Dimensions Evolved](https://www.pcgamingwiki.com/wiki/Geometry_Wars_3:_Dimensions_Evolved)
+- [Envato Tuts+: Neon Vector Shooter - Particle Effects](https://code.tutsplus.com/make-a-neon-vector-shooter-in-xna-particle-effects--gamedev-10111t)
+- [Windows Central: Interview with Lucid Games co-founder](https://www.windowscentral.com/we-chat-co-founder-lucid-games-about-geometry-wars-3-dimensions)
+- [Geometry Wars Wiki: Super State](https://geometry-wars.fandom.com/wiki/Super_State)
+- [Geometry Wars Wiki: Super](https://geometry-wars.fandom.com/wiki/Super)
+- [Geometry Wars Wiki: Geoms](https://geometry-wars.fandom.com/wiki/Geoms)
+- [Steam Community: Comprehensive Enemy Guide (2021)](https://steamcommunity.com/sharedfiles/filedetails/?id=2553017498)
+- [GameDev.net: Geometry Wars Pixel Shaders](https://www.gamedev.net/forums/topic/414082-geometry-wars-pixel-shaders/414082/)
+- [LearnOpenGL: Bloom](https://learnopengl.com/Advanced-Lighting/Bloom)
+- [LearnOpenGL: Physically Based Bloom](https://learnopengl.com/Guest-Articles/2022/Phys.-Based-Bloom)
+- [Three.js Forum: Wireframe Glow Model](https://discourse.threejs.org/t/wireframe-glow-model/42289)
+- [Construct 2 Forum: Geometry Wars Style Glow](https://www.construct.net/en/forum/construct-2/how-do-i-18/geometry-wars-style-glow-95943)

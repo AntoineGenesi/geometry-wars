@@ -6,10 +6,10 @@ import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
 // ---------------------------------------------------------------------------
 
 const BULLET_SPEED = 4.0; // units / sec (world space) - fast for responsive gameplay
-const BULLET_LIFETIME = 4; // seconds
+const BULLET_LIFETIME = 6; // seconds
 const POOL_SIZE = 200; // max bullets alive at once
 const BULLET_LENGTH = 0.25; // visual length of the line
-const BULLET_COLOR = new THREE.Color(0xffff44); // bright yellow
+const BULLET_COLOR = new THREE.Color(0x88ffff); // white-cyan (GW3D authentic)
 
 // Default sphere radius for projection (used if no surface function provided)
 const DEFAULT_SPHERE_RADIUS = 8;
@@ -67,6 +67,9 @@ export class BulletPool {
   /** Mesh-based surface for shape-agnostic bullet projection. */
   private meshSurface: MeshSurface | null = null;
 
+  /** External speed multiplier (e.g. from player leveling). */
+  speedMultiplier = 1.0;
+
   constructor() {
     this.root = new THREE.Group();
     this.root.name = 'BulletPool';
@@ -77,7 +80,7 @@ export class BulletPool {
       linewidth: 2,
       transparent: true,
       opacity: 1.0,
-      blending: THREE.AdditiveBlending,
+      blending: THREE.NormalBlending,
       depthWrite: false,
     });
 
@@ -196,7 +199,10 @@ export class BulletPool {
       const line = this.lines[i];
 
       // Move in world space along direction
-      const dist = BULLET_SPEED * dt;
+      const dist = BULLET_SPEED * this.speedMultiplier * dt;
+      const prevX = line.position.x;
+      const prevY = line.position.y;
+      const prevZ = line.position.z;
       line.position.x += b.dirX * dist;
       line.position.y += b.dirY * dist;
       line.position.z += b.dirZ * dist;
@@ -205,6 +211,17 @@ export class BulletPool {
         // -- Mesh-based projection (shape-agnostic) --
         const result = this.meshSurface.closestPointOnSurface(line.position);
         if (!result) {
+          this.kill(i);
+          continue;
+        }
+
+        // Guard: if projection snapped the bullet too far from its previous
+        // position, it likely jumped through the surface to the other side.
+        const dx = result.point.x - prevX;
+        const dy = result.point.y - prevY;
+        const dz = result.point.z - prevZ;
+        const jumpDistSq = dx * dx + dy * dy + dz * dz;
+        if (jumpDistSq > dist * dist * 9) { // > 3x step distance
           this.kill(i);
           continue;
         }

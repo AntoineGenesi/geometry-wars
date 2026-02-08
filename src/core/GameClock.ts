@@ -53,6 +53,18 @@ export class GameClock {
   }
 
   /**
+   * Resync the clock after a pause without resetting totalTime.
+   * Prevents a huge dt spike on the next tick while preserving
+   * game time for effects/pickups that depend on it.
+   */
+  resync(): void {
+    this.previousTime = performance.now() / 1000;
+    this.accumulator = 0;
+    this.alpha = 0;
+    this.started = true;
+  }
+
+  /**
    * Called once per requestAnimationFrame.  Advances the accumulator by
    * the real elapsed wall-clock time (clamped), then runs as many
    * fixed-timestep physics updates as needed.

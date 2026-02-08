@@ -24,10 +24,15 @@ import { SuperStatePickup } from './weapons/SuperStatePickup';
 import { WeaponManager } from './weapons/WeaponManager';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
 import { WeaponPickup, getRandomWeaponType } from './weapons/WeaponPickup';
+import { BuffPickup, getRandomBuffType } from './weapons/BuffPickup';
 import { Spawner } from './entities/enemies/Spawner';
 import { TitanGrunt } from './entities/enemies/TitanGrunt';
 import { TitanSpinner } from './entities/enemies/TitanSpinner';
 import { TitanWeaver } from './entities/enemies/TitanWeaver';
+import { GiantWanderer } from './entities/enemies/GiantWanderer';
+import { GiantRocket } from './entities/enemies/GiantRocket';
+import { GiantSnake } from './entities/enemies/GiantSnake';
+import { GiantNeutron } from './entities/enemies/GiantNeutron';
 import { Boss } from './entities/enemies/Boss';
 import { Gate } from './entities/enemies/Gate';
 import { Virus } from './entities/enemies/Virus';
@@ -35,11 +40,14 @@ import { Painter } from './entities/enemies/Painter';
 import { ScorePopupManager } from './effects/ScorePopup';
 import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
+import { EffectsPanel } from './ui/EffectsPanel';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
 import { Minimap } from './ui/Minimap';
+import { KillLog } from './ui/KillLog';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
+import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
 
@@ -81,6 +89,7 @@ const timerEl = document.getElementById('timer-display')!;
 const levelNameEl = document.getElementById('level-name-display')!;
 const countdownEl = document.getElementById('countdown-overlay')!;
 const flashEl = document.getElementById('screen-flash')!;
+const playerLevelEl = document.getElementById('player-level-display')!;
 
 /** Flash the screen with a color for visual impact */
 function screenFlash(color: string, duration = 150): void {
@@ -154,14 +163,23 @@ const ENEMY_COLORS: Record<string, THREE.Color> = {
   wanderer: new THREE.Color(0xaa44ff),
   grunt: new THREE.Color(0x4444ff),
   duck: new THREE.Color(0xff44aa),
-  mayfly: new THREE.Color(0xddddff),
+  mayfly: new THREE.Color(0xaaff00),
   rocket: new THREE.Color(0xff8800),
-  neutron: new THREE.Color(0xccff00),
+  neutron: new THREE.Color(0x44dddd),
   weaver: new THREE.Color(0x00ff44),
   spinner: new THREE.Color(0xff44ff),
+  spinnerspawn: new THREE.Color(0xff88cc),
   snake: new THREE.Color(0x4488ff),
   repulsor: new THREE.Color(0xff4400),
-  gravity_well: new THREE.Color(0x4488ff),
+  gravitywell: new THREE.Color(0x4488ff),
+  spawner: new THREE.Color(0xff2222),
+  virus: new THREE.Color(0x00cc00),
+  gate: new THREE.Color(0xff8800),
+  painter: new THREE.Color(0xff44aa),
+  titangrunt: new THREE.Color(0x2244cc),
+  titanspinner: new THREE.Color(0xff22ff),
+  titanweaver: new THREE.Color(0x22ff44),
+  boss: new THREE.Color(0x4488ff),
 };
 
 // ---------------------------------------------------------------------------
@@ -202,16 +220,22 @@ class WaveScheduler {
   private waveTimers: number[];
   private waveSpawned: boolean[];
   private elapsed = 0;
+  private endless: boolean;
+  private endlessWave = 0;
+  private endlessNextSpawn = 5; // first endless wave at 5 seconds
+  private endlessInterval = 8; // seconds between endless waves
 
-  constructor(waves: WaveDefinition[]) {
+  constructor(waves: WaveDefinition[], endless = false) {
     this.waves = waves;
     this.waveTimers = waves.map(w => w.delay);
     this.waveSpawned = waves.map(() => false);
+    this.endless = endless;
   }
 
   update(dt: number, spawner: EnemySpawner): void {
     this.elapsed += dt;
 
+    // Scripted waves
     for (let i = 0; i < this.waves.length; i++) {
       if (this.waveSpawned[i]) continue;
       if (this.elapsed >= this.waveTimers[i]) {
@@ -225,10 +249,64 @@ class WaveScheduler {
         );
       }
     }
+
+    // Endless scaling waves
+    if (this.endless && this.elapsed >= this.endlessNextSpawn) {
+      this.endlessWave++;
+      this.endlessNextSpawn += Math.max(3, this.endlessInterval - this.endlessWave * 0.3);
+      const wave = this.generateEndlessWave(this.endlessWave);
+      spawner.spawnWave(wave as any);
+    }
+  }
+
+  private generateEndlessWave(waveNum: number): Array<{ type: string; count: number }> {
+    const basicTypes = ['grunt', 'wanderer', 'duck'];
+    const midTypes = ['weaver', 'spinner', 'rocket', 'neutron'];
+    const hardTypes = ['snake', 'repulsor', 'gravity_well', 'spawner'];
+    const giantTypes = ['giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron', 'titan_grunt', 'titan_spinner', 'titan_weaver'];
+    const eliteTypes = ['mayfly', 'gate', 'virus', 'painter'];
+
+    const enemies: Array<{ type: string; count: number }> = [];
+    const baseCount = 3 + Math.floor(waveNum * 0.8);
+
+    // Always some basic enemies
+    const basicType = basicTypes[waveNum % basicTypes.length];
+    enemies.push({ type: basicType, count: Math.min(baseCount, 12) });
+
+    // Add mid-tier from wave 3+
+    if (waveNum >= 3) {
+      const midType = midTypes[(waveNum - 3) % midTypes.length];
+      enemies.push({ type: midType, count: Math.min(Math.floor(baseCount * 0.6), 8) });
+    }
+
+    // Add hard enemies from wave 6+
+    if (waveNum >= 6) {
+      const hardType = hardTypes[(waveNum - 6) % hardTypes.length];
+      enemies.push({ type: hardType, count: Math.min(Math.floor(baseCount * 0.4), 5) });
+    }
+
+    // Add giant/titan break-apart enemies from wave 8+
+    if (waveNum >= 8) {
+      const giantType = giantTypes[(waveNum - 8) % giantTypes.length];
+      enemies.push({ type: giantType, count: Math.min(Math.floor(baseCount * 0.25), 3) });
+    }
+
+    // Add elite enemies from wave 10+
+    if (waveNum >= 10) {
+      const eliteType = eliteTypes[(waveNum - 10) % eliteTypes.length];
+      enemies.push({ type: eliteType, count: Math.min(Math.floor(baseCount * 0.3), 4) });
+    }
+
+    return enemies;
   }
 
   get allSpawned(): boolean {
+    if (this.endless) return false; // endless never finishes
     return this.waveSpawned.every(s => s);
+  }
+
+  getElapsed(): number {
+    return this.elapsed;
   }
 }
 
@@ -246,6 +324,8 @@ function checkBulletEnemyCollisions(
   screenShake: ScreenShake,
   onEnemyKilled?: (u: number, v: number) => void,
   scorePopups?: ScorePopupManager,
+  bulletDamage: number = 1,
+  onKillLog?: (type: string, color: number) => void,
 ): void {
   bulletPool.forEachActive((bulletIdx, bulletPos) => {
     for (const enemy of enemies) {
@@ -257,7 +337,7 @@ function checkBulletEnemyCollisions(
       if (dist < enemy.radius + 0.15) {
         // Hit!
         bulletPool.kill(bulletIdx);
-        enemy.takeDamage(1);
+        enemy.takeDamage(bulletDamage);
 
         // Bullet impact particles
         particles.bulletImpact(bulletPos);
@@ -273,10 +353,10 @@ function checkBulletEnemyCollisions(
               if (mat.emissive) {
                 const origEmissive = mat.emissive.getHex();
                 mat.emissive.setHex(0xffffff);
-                mat.emissiveIntensity = 2.0;
+                mat.emissiveIntensity = 1.0;
                 setTimeout(() => {
                   mat.emissive.setHex(origEmissive);
-                  mat.emissiveIntensity = 0.5;
+                  mat.emissiveIntensity = 0.4;
                 }, 80);
               }
             }
@@ -292,16 +372,15 @@ function checkBulletEnemyCollisions(
           scorePopups?.spawnScore(enemy.position.clone(), enemy.scoreValue);
           screenShake.shake(0.15, 0.15);
           getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+          onKillLog?.(enemyType, color.getHex());
 
           // Grid deformation at death position
           surface.applyForce(enemy.position, 0.2, 1.0);
 
-          // Spawn geoms at death position
+          // Spawn geoms at death position (burst velocity handles scatter)
           const { u, v } = surface.worldToSurface(enemy.position);
           for (let g = 0; g < enemy.geomCount; g++) {
-            const offsetU = (Math.random() - 0.5) * 0.03;
-            const offsetV = (Math.random() - 0.5) * 0.03;
-            geomPool.spawn(u + offsetU, v + offsetV);
+            geomPool.spawn(u, v);
           }
 
           onEnemyKilled?.(u, v);
@@ -386,17 +465,37 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   const bgMusic = new BackgroundMusic();
 
-  // Load level
-  const levelIndex = Math.min(startLevelIndex, ADVENTURE_LEVELS.length - 1);
-  const level: LevelDefinition = ADVENTURE_LEVELS[levelIndex];
+  // Load level (-1 = endless Quick Game mode)
+  const isEndless = startLevelIndex < 0;
+  const levelIndex = isEndless ? -1 : Math.min(startLevelIndex, ADVENTURE_LEVELS.length - 1);
+  const level: LevelDefinition = isEndless
+    ? {
+        id: -1,
+        name: 'ENDLESS',
+        section: 'quick',
+        mode: 'survival' as GameModeType,
+        surface: (selectedSurface || 'sphere') as any,
+        surfaceScale: 10,
+        timeLimit: 0,
+        lives: 3,
+        bombs: 3,
+        supers: 0,
+        starThresholds: [0, 0, 0] as [number, number, number],
+        waves: [
+          { delay: 2, enemies: [{ type: 'grunt', count: 4 }] },
+          { delay: 6, enemies: [{ type: 'wanderer', count: 3 }] },
+          { delay: 12, enemies: [{ type: 'duck', count: 3 }, { type: 'grunt', count: 4 }] },
+        ],
+      }
+    : ADVENTURE_LEVELS[levelIndex];
 
   // -- Game engine --
   // Bloom: high threshold so only bright entities glow, not the grid
   const game = new Game({
     bloom: {
-      strength: 1.0,
-      radius: 0.4,
-      threshold: 0.85,
+      strength: 0.7,
+      radius: 0.5,
+      threshold: 0.6,
     },
     cameraDistance: 20,
     cameraSmoothing: 0.05,
@@ -404,6 +503,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // Disable built-in camera - we control camera to follow player
   game.disableBuiltInCameraUpdate = true;
+
+  // Effects demo panel (press G to toggle)
+  new EffectsPanel(game);
 
   // -- Lighting --
   // Ambient light for base illumination
@@ -423,14 +525,14 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Surface: use level's surface (adventure mode), or menu selection, or URL param --
   const surfaceType = selectedSurface || level.surface || getSurfaceTypeFromURL();
   const surfaceConfig = {
-    gridColor: 0x006666,
-    surfaceColor: 0x0a0020,
-    surfaceOpacity: 0.35,
-    gridOpacity: 0.5,
+    gridColor: 0x1e1e8b,
+    surfaceColor: 0x0a0a2a,
+    surfaceOpacity: 0.3,
+    gridOpacity: 0.35,
     // Type-specific configs
     radius: level.surfaceScale,           // For sphere, icosahedron, dented-sphere, sphere-tunnel
     size: level.surfaceScale,             // For cube
-    radiusTop: level.surfaceScale * 0.8,  // For cylinder
+    bevelRadius: 0.6,                      // For cylinder bevel edges
     height: level.surfaceScale * 2,       // For cylinder, capsule
     majorRadius: level.surfaceScale * 0.8,// For torus
     minorRadius: level.surfaceScale * 0.3,// For torus
@@ -541,9 +643,30 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Score popups --
   const scorePopups = new ScorePopupManager();
   game.scene.add(scorePopups.root);
+  scorePopups.setCamera(game.camera);
 
   // -- Minimap --
   const minimap = new Minimap();
+
+  // -- Kill log --
+  const killLog = new KillLog();
+
+  // -- Player leveling system (kill-based progression) --
+  const playerLevel = new PlayerLevel();
+  game.scene.add(playerLevel.auraRing);
+  const levelUpNotification = new LevelUpNotification();
+
+  playerLevel.onLevelUp = (level, perk) => {
+    levelUpNotification.show(level, perk);
+    getSoundEngine().play('multiplierUp', { pitch: 1.2 + level * 0.05 });
+    if (perk.bonusBombs > 0) {
+      player.bombs += perk.bonusBombs;
+    }
+    // Update stat multipliers immediately
+    playerWalker.speed = PLAYER_MOVE_SPEED * perk.moveSpeedMultiplier;
+    player.fireRateMultiplier = perk.fireRateMultiplier;
+    bulletPool.speedMultiplier = perk.bulletSpeedMultiplier;
+  };
 
   // -- Screen shake --
   const screenShake = new ScreenShake();
@@ -577,7 +700,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   };
 
   // -- Wave scheduler --
-  const waveScheduler = new WaveScheduler(level.waves);
+  const waveScheduler = new WaveScheduler(level.waves, isEndless);
 
   // -- Game mode --
   const modeType = level.mode as GameModeType;
@@ -608,7 +731,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         level.starThresholds,
         hasNextLevel,
       );
-    }, 500);
+    }, 200);
   };
 
   gameMode.onFailed = () => {
@@ -617,7 +740,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   gameMode.onTimeBonus = (seconds: number) => {
     // Show time bonus popup at player position
-    scorePopups.spawn(player.mesh.position.clone(), `+${seconds}s`, '#00ffff', 0.6);
+    scorePopups.spawn(player.mesh.position.clone(), `+${seconds}s`, '#00ffff', 2.0);
     sound.play('multiplierUp');
   };
 
@@ -682,7 +805,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       const enemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
       const enemy = enemies[index];
       if (!enemy) return;
-      enemy.takeDamage(damage);
+      const scorePower = scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier;
+      enemy.takeDamage(damage * scorePower);
       if (!enemy.alive) {
         const enemyType = enemy.constructor.name.toLowerCase();
         const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
@@ -690,13 +814,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         scoreManager.awardKill(enemy.scoreValue, enemyType);
         screenShake.shake(0.15, 0.15);
         getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+        killLog.addKill(enemyType, color.getHex());
+        playerLevel.addKill();
 
         const { u, v } = surface.worldToSurface(enemy.position);
         for (let g = 0; g < enemy.geomCount; g++) {
-          geomPool.spawn(
-            u + (Math.random() - 0.5) * 0.03,
-            v + (Math.random() - 0.5) * 0.03,
-          );
+          geomPool.spawn(u, v);
         }
       }
     },
@@ -709,6 +832,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // -- Weapon pickups on the field --
   const weaponPickups: WeaponPickup[] = [];
+  const buffPickups: BuffPickup[] = [];
 
   // -- Wire up enemy death handler --
   BaseEnemy.onDeath = (_position: THREE.Vector3, _score: number, _geoms: number) => {
@@ -740,6 +864,36 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       const offsetU = (Math.random() - 0.5) * 0.06;
       const offsetV = (Math.random() - 0.5) * 0.06;
       enemySpawner.spawn('weaver', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    }
+  };
+
+  // -- Giant enemy death spawns: break apart into smaller versions --
+  GiantWanderer.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const offsetU = (Math.random() - 0.5) * 0.08;
+      const offsetV = (Math.random() - 0.5) * 0.08;
+      enemySpawner.spawn('wanderer', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    }
+  };
+  GiantRocket.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const offsetU = (Math.random() - 0.5) * 0.08;
+      const offsetV = (Math.random() - 0.5) * 0.08;
+      enemySpawner.spawn('rocket', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    }
+  };
+  GiantSnake.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const offsetU = (Math.random() - 0.5) * 0.1;
+      const offsetV = (Math.random() - 0.5) * 0.1;
+      enemySpawner.spawn('snake', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    }
+  };
+  GiantNeutron.onDeathSpawn = (u: number, v: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const offsetU = (Math.random() - 0.5) * 0.08;
+      const offsetV = (Math.random() - 0.5) * 0.08;
+      enemySpawner.spawn('neutron', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
     }
   };
 
@@ -827,6 +981,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const pauseMenu = new PauseMenu();
   pauseMenu.onResume(() => {
     isPaused = false;
+    // Force respawn if player died during pause
+    if (!player.alive && player.lives > 0) {
+      respawnTimer = RESPAWN_DELAY;
+    }
   });
   pauseMenu.onExit(() => {
     // Clean up and reload page to go back to menu
@@ -843,7 +1001,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // -- Level complete screen --
   const levelCompleteScreen = new LevelCompleteScreen();
-  const hasNextLevel = levelIndex + 1 < ADVENTURE_LEVELS.length;
+  const hasNextLevel = !isEndless && levelIndex + 1 < ADVENTURE_LEVELS.length;
 
   levelCompleteScreen.onNext(() => {
     game.stop();
@@ -915,13 +1073,18 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       countdownEl.classList.remove('visible');
     }
 
-    // Update timer display for timed modes
+    // Update timer display for timed modes / elapsed time for endless
     if (level.timeLimit > 0) {
       const secs = Math.ceil(Math.max(0, gameMode.timeRemaining));
       const mins = Math.floor(secs / 60);
       const remainingSecs = secs % 60;
       timerEl.textContent = `${mins}:${String(remainingSecs).padStart(2, '0')}`;
       timerEl.classList.toggle('urgent', secs <= 10);
+    } else if (isEndless) {
+      const elapsed = Math.floor(waveScheduler.getElapsed());
+      const mins = Math.floor(elapsed / 60);
+      const secs = elapsed % 60;
+      timerEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
     }
 
     const inputState = input.getState();
@@ -1058,6 +1221,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     particles.update(dt);
     scorePopups.update(dt);
     scoreManager.updateCombo(dt);
+    killLog.update(dt);
 
     // Update player glow trail (add point at player position)
     if (player.alive) {
@@ -1068,6 +1232,11 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Update entity glows
     glowManager.update(dt);
     playerGlow.update(dt);
+
+    // Update player level aura ring
+    if (player.alive) {
+      playerLevel.update(dt, playerWalker.position, playerWalker.normal);
+    }
 
     // Update enemy glow trails (for fast-moving enemies)
     const currentEnemies = enemySpawner.getEnemies();
@@ -1178,8 +1347,17 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
           game.scene.add(wpnPickup.mesh);
           weaponPickups.push(wpnPickup);
         }
+        // ~5% chance to spawn a buff pickup on enemy death
+        if (Math.random() < 0.05) {
+          const bType = getRandomBuffType();
+          const bPickup = new BuffPickup(bType, u, v);
+          game.scene.add(bPickup.mesh);
+          buffPickups.push(bPickup);
+        }
       },
       scorePopups,
+      scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier,
+      (type: string, color: number) => { killLog.addKill(type, color); playerLevel.addKill(); },
     );
 
     // Player vs geoms
@@ -1245,6 +1423,26 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       }
     }
 
+    // Update buff pickups
+    for (let i = buffPickups.length - 1; i >= 0; i--) {
+      const bp = buffPickups[i];
+      if (!bp.active) {
+        game.scene.remove(bp.mesh);
+        bp.dispose();
+        buffPickups.splice(i, 1);
+        continue;
+      }
+      bp.update(dt, game.clock.totalTime);
+      bp.applySurfaceTransform(getTransform);
+
+      // Check player collision with buff pickup
+      if (player.alive && bp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
+        weaponManager.applyBuff(bp.buffType);
+        sound.play('weaponPickup', { volume: 0.3, pitch: 1.5 });
+        bp.active = false;
+      }
+    }
+
     // Update grid deformation springs
     surface.updateGrid(dt);
 
@@ -1261,9 +1459,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     }
     lastEnemyCount = enemyCount;
 
-    // Check level completion for non-timed modes (all waves spawned + no enemies alive)
+    // Check level completion: all waves spawned + no enemies alive (works for timed and non-timed)
     if (!isLevelComplete && !isGameOver
-        && level.timeLimit === 0
         && waveScheduler.allSpawned
         && enemyCount === 0
         && gameMode.phase === ModePhase.Playing) {
@@ -1274,20 +1471,71 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     input.endFrame();
   };
 
+  // -- Tunnel transparency: fade surface when it blocks camera-to-player view --
+  const tunnelRaycaster = new THREE.Raycaster();
+  let currentSurfaceOpacity = surfaceConfig.surfaceOpacity;
+  let currentGridOpacity = surfaceConfig.gridOpacity;
+  const baseSurfaceOpacity = surfaceConfig.surfaceOpacity;
+  const baseGridOpacity = surfaceConfig.gridOpacity;
+  const fadeSpeed = 12.0; // opacity change per second (fast snap)
+  let isCurrentlyBlocked = false; // track blocking state for enemy fade
+
   // -- Render callback --
   game.onRender = (_alpha: number) => {
     // Project bullets and geoms onto surface
     bulletPool.applySurfaceProjection(getTransform);
     geomPool.applySurfaceProjection(getTransform);
 
-    // Depth-based opacity: fade enemies on the far side of the surface
+    // Tunnel transparency: check if surface blocks camera-to-player view
     const camPos = game.camera.position;
+    const playerPos = player.mesh.position;
+    const toPlayer = playerPos.clone().sub(camPos);
+    const distToPlayer = toPlayer.length();
+    const toPlayerDir = toPlayer.clone().normalize();
+    tunnelRaycaster.set(camPos, toPlayerDir);
+    tunnelRaycaster.far = distToPlayer;
+    const hits = tunnelRaycaster.intersectObject(surface.mesh, false);
+    // If there are intersections between camera and player, fade surface
+    isCurrentlyBlocked = hits.length > 0;
+    const targetSurfaceOpacity = isCurrentlyBlocked ? baseSurfaceOpacity * 0.05 : baseSurfaceOpacity;
+    const targetGridOpacity = isCurrentlyBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
+    const frameDt = 1 / 60; // approximate frame dt
+    currentSurfaceOpacity += (targetSurfaceOpacity - currentSurfaceOpacity) * Math.min(1, fadeSpeed * frameDt);
+    currentGridOpacity += (targetGridOpacity - currentGridOpacity) * Math.min(1, fadeSpeed * frameDt);
+    const surfMat = surface.mesh.material as THREE.MeshBasicMaterial;
+    surfMat.opacity = currentSurfaceOpacity;
+    const gridMat = surface.gridMesh.material as THREE.LineBasicMaterial;
+    gridMat.opacity = currentGridOpacity;
+
+    // Depth-based opacity + tunnel-blocking opacity for enemies
     const meshCenter = meshSurface.getCenter();
     for (const enemy of enemySpawner.getEnemies()) {
       if (!enemy.alive || !enemy.mesh) continue;
       // Approximate outward normal as direction from mesh center to enemy
       const approxNormal = enemy.position.clone().sub(meshCenter).normalize();
-      const visibility = meshSurface.getVisibility(enemy.position, approxNormal, camPos);
+      let visibility = meshSurface.getVisibility(enemy.position, approxNormal, camPos);
+
+      // When surface is blocking camera-to-player, also fade enemies between camera and player
+      if (isCurrentlyBlocked) {
+        const toEnemy = enemy.position.clone().sub(camPos);
+        const enemyDist = toEnemy.length();
+        // Check if enemy is between camera and player (closer than player)
+        if (enemyDist < distToPlayer) {
+          // Check if enemy is roughly along the camera-to-player line
+          // Dot product of normalized directions: 1.0 = same direction, 0 = perpendicular
+          const toEnemyDir = toEnemy.normalize();
+          const alignment = toPlayerDir.dot(toEnemyDir);
+          // If enemy is within ~45 degrees of the camera-to-player line, fade it
+          if (alignment > 0.7) {
+            // Lerp: perfectly aligned (1.0) = max fade (0.12), edge of cone (0.7) = no extra fade
+            const fadeFactor = (alignment - 0.7) / 0.3; // 0..1
+            const tunnelEnemyOpacity = 0.12; // very faint when blocking
+            const tunnelVisibility = 1.0 - fadeFactor * (1.0 - tunnelEnemyOpacity);
+            visibility = Math.min(visibility, tunnelVisibility);
+          }
+        }
+      }
+
       enemy.mesh.traverse((child) => {
         if (child instanceof THREE.Mesh && child.material) {
           const mat = child.material as THREE.MeshBasicMaterial;
@@ -1306,6 +1554,18 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
     // Update HUD
     updateUI(player, weaponManager);
+
+    // Update level display in HUD
+    if (playerLevel.level > 0) {
+      const perk = playerLevel.perk;
+      const hexColor = perk.auraColor.toString(16).padStart(6, '0');
+      playerLevelEl.textContent = `LV${playerLevel.level} ${perk.name}`;
+      playerLevelEl.style.color = `#${hexColor}`;
+      playerLevelEl.style.textShadow = `0 0 8px #${hexColor}`;
+    } else {
+      const killsNeeded = playerLevel.killsToNextLevel;
+      playerLevelEl.textContent = killsNeeded > 0 ? `${killsNeeded} kills to LV1` : '';
+    }
 
     // Update minimap
     const minimapEnemies = enemySpawner.getEnemies()
@@ -1342,16 +1602,16 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     const enemies = enemySpawner.getEnemies();
     for (const enemy of enemies) {
       if (enemy.active) {
-        const color = ENEMY_COLORS[enemy.constructor.name.toLowerCase()] ?? new THREE.Color(0xffffff);
+        const enemyType = enemy.constructor.name.toLowerCase();
+        const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
         particles.enemyDeath(enemy.position, color);
+        killLog.addKill(enemyType, color.getHex());
+        playerLevel.addKill();
 
         // Spawn geoms (bombs still drop geoms)
         const { u, v } = surface.worldToSurface(enemy.position);
         for (let g = 0; g < enemy.geomCount; g++) {
-          geomPool.spawn(
-            u + (Math.random() - 0.5) * 0.03,
-            v + (Math.random() - 0.5) * 0.03,
-          );
+          geomPool.spawn(u, v);
         }
 
         enemy.die();
@@ -1400,19 +1660,21 @@ if (isMultiplayerMode()) {
     // Handle game mode selection
     if (selection.gameMode === 'multiplayer') {
       // Local co-op - update URL and load multiplayer module
-      window.history.replaceState({}, '', `?mode=multiplayer&surface=${selection.surfaceType}`);
+      const pc = selection.playerCount ?? 2;
+      window.history.replaceState({}, '', `?mode=multiplayer&surface=${selection.surfaceType}&players=${pc}`);
       import('./multiplayer-main').then(() => {
         console.log('[Main] Loaded local multiplayer mode');
       });
     } else if (selection.gameMode === 'network') {
-      // Online multiplayer - update URL and load network module
-      window.history.replaceState({}, '', `?mode=network&surface=${selection.surfaceType}`);
+      // Online/LAN multiplayer - update URL and load network module
+      const serverParam = selection.serverUrl ? `&server=${encodeURIComponent(selection.serverUrl)}` : '';
+      window.history.replaceState({}, '', `?mode=network&surface=${selection.surfaceType}${serverParam}`);
       import('./network-main').then(() => {
         console.log('[Main] Loaded network multiplayer mode');
       });
     } else {
-      // Single player - start the game with selected surface and optional level
-      const levelIdx = selection.levelIndex ?? 0;
+      // Single player - Quick Game (endless) or Adventure level
+      const levelIdx = selection.levelIndex ?? -1; // -1 = endless Quick Game
       window.history.replaceState({}, '', `?surface=${selection.surfaceType}&level=${levelIdx}`);
       startMenu.dispose();
       main(selection.surfaceType, levelIdx);

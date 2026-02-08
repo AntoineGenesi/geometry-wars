@@ -118,4 +118,25 @@ export class ScoreManager {
   getRecentEvents(): ReadonlyArray<ScoreEvent> {
     return this.recentEvents;
   }
+
+  /**
+   * Get a damage multiplier based on the player's current score.
+   * Higher scores = stronger standard bullets.
+   *
+   * Thresholds:
+   *   0-10K:   1.0x
+   *   10K-50K: 1.25x
+   *   50K-200K: 1.5x
+   *   200K-500K: 2.0x
+   *   500K+:   2.5x
+   */
+  getScorePowerMultiplier(): number {
+    if (!this.player) return 1.0;
+    const s = this.player.score;
+    if (s >= 500_000) return 2.5;
+    if (s >= 200_000) return 2.0;
+    if (s >= 50_000) return 1.5;
+    if (s >= 10_000) return 1.25;
+    return 1.0;
+  }
 }

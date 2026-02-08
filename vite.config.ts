@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite'
 import path from 'path'
+import lanPlugin from './vite-plugin-lan'
 
 export default defineConfig({
+  plugins: [lanPlugin()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src')
@@ -9,6 +11,7 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: true,
     open: true
   },
   build: {

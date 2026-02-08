@@ -12,11 +12,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@colyseus/schema": "^4.0.8",
-    "@colyseus/ws-transport": "^0.17.8",
+    "@colyseus/schema": "^2.0.37",
+    "@colyseus/ws-transport": "^0.15.3",
     "@types/express": "^5.0.6",
-    "colyseus": "^0.17.8",
-    "colyseus.js": "^0.15.0",
+    "colyseus": "^0.15.57",
+    "colyseus.js": "^0.15.28",
     "express": "^5.2.1",
     "puppeteer-core": "^24.36.1",
     "three": "^0.170.0",

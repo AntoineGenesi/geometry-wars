@@ -18,12 +18,17 @@ import { Spawner } from './Spawner';
 import { TitanGrunt } from './TitanGrunt';
 import { TitanSpinner } from './TitanSpinner';
 import { TitanWeaver } from './TitanWeaver';
+import { GiantWanderer } from './GiantWanderer';
+import { GiantRocket } from './GiantRocket';
+import { GiantSnake } from './GiantSnake';
+import { GiantNeutron } from './GiantNeutron';
 import { Boss } from './Boss';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
   | 'weaver' | 'spinner' | 'snake' | 'repulsor' | 'gravity_well' | 'gate'
   | 'painter' | 'virus' | 'spawner' | 'titan_grunt' | 'titan_spinner' | 'titan_weaver'
+  | 'giant_wanderer' | 'giant_rocket' | 'giant_snake' | 'giant_neutron'
   | 'boss_sapphire' | 'boss_ruby' | 'boss_emerald' | 'boss_topaz' | 'boss_amethyst' | 'boss_opal';
 
 export interface SpawnRegion {
@@ -221,6 +226,18 @@ export class EnemySpawner {
         break;
       case 'titan_weaver':
         enemy = new TitanWeaver(u, v);
+        break;
+      case 'giant_wanderer':
+        enemy = new GiantWanderer(u, v);
+        break;
+      case 'giant_rocket':
+        enemy = new GiantRocket(u, v);
+        break;
+      case 'giant_snake':
+        enemy = new GiantSnake(u, v);
+        break;
+      case 'giant_neutron':
+        enemy = new GiantNeutron(u, v);
         break;
       case 'boss_sapphire':
         enemy = new Boss('sapphire', u, v);

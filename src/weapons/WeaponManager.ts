@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { ChainLightningEffect } from '../effects/ChainLightning';
 import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import { BuffType, BUFF_CONFIGS, ActiveBuff } from './BuffPickup';
 
 /**
  * Projectile data for non-instant weapons
@@ -52,6 +53,7 @@ export class WeaponManager {
   // Current weapon
   private currentWeapon: WeaponType = WeaponType.Standard;
   private ammo: Map<WeaponType, number> = new Map();
+  private stacks: Map<WeaponType, number> = new Map();
   private lastFireTime: number = 0;
 
   // Visual effects
@@ -62,6 +64,9 @@ export class WeaponManager {
   private projectiles: Projectile[] = [];
   private activeEffects: ActiveEffect[] = [];
   private projectileMeshes: Map<Projectile, THREE.Object3D> = new Map();
+
+  // Active buffs
+  private activeBuffs: ActiveBuff[] = [];
 
   // Callbacks
   private callbacks: WeaponCallbacks | null = null;
@@ -166,13 +171,25 @@ export class WeaponManager {
    */
   equipWeapon(type: WeaponType, ammo?: number): void {
     const config = WEAPON_CONFIGS[type];
-    this.currentWeapon = type;
 
     if (type !== WeaponType.Standard) {
       const existingAmmo = this.ammo.get(type) ?? 0;
       const addedAmmo = ammo ?? config.ammo;
       this.ammo.set(type, existingAmmo + addedAmmo);
+
+      // Stack: picking up the same weapon again increases its stack level
+      if (this.currentWeapon === type) {
+        const currentStack = this.stacks.get(type) ?? 1;
+        this.stacks.set(type, Math.min(currentStack + 1, 5)); // cap at 5 stacks
+      } else {
+        // Switching to a new weapon - start at stack 1 (unless already stacked)
+        if (!this.stacks.has(type)) {
+          this.stacks.set(type, 1);
+        }
+      }
     }
+
+    this.currentWeapon = type;
   }
 
   /**
@@ -180,7 +197,8 @@ export class WeaponManager {
    */
   canFire(currentTime: number): boolean {
     const config = WEAPON_CONFIGS[this.currentWeapon];
-    const cooldown = 1 / config.fireRate;
+    const rapidMult = this.getBuffMultiplier(BuffType.RapidFire);
+    const cooldown = 1 / (config.fireRate * rapidMult);
 
     if (currentTime - this.lastFireTime < cooldown) return false;
 
@@ -210,10 +228,14 @@ export class WeaponManager {
     this.lastFireTime = currentTime;
     const config = WEAPON_CONFIGS[this.currentWeapon];
 
-    // Consume ammo
+    // Consume ammo (Duration+ buff halves consumption)
     if (this.currentWeapon !== WeaponType.Standard) {
-      const ammo = this.ammo.get(this.currentWeapon) ?? 0;
-      this.ammo.set(this.currentWeapon, ammo - 1);
+      const durationMult = this.getBuffMultiplier(BuffType.DurationPlus);
+      const consumeChance = 1.0 / durationMult;
+      if (Math.random() < consumeChance) {
+        const ammo = this.ammo.get(this.currentWeapon) ?? 0;
+        this.ammo.set(this.currentWeapon, ammo - 1);
+      }
     }
 
     switch (this.currentWeapon) {
@@ -265,6 +287,14 @@ export class WeaponManager {
    * Update all projectiles and effects
    */
   update(dt: number): void {
+    // Tick down active buffs
+    for (let i = this.activeBuffs.length - 1; i >= 0; i--) {
+      this.activeBuffs[i].remaining -= dt;
+      if (this.activeBuffs[i].remaining <= 0) {
+        this.activeBuffs.splice(i, 1);
+      }
+    }
+
     // Update chain lightning effects
     this.chainLightning.update(dt);
 
@@ -344,16 +374,19 @@ export class WeaponManager {
         rotatedDir,
         config.damage,
         config.projectileSpeed,
-        2.0,
+        4.0,
       );
     }
   }
 
   private firePiercing(origin: THREE.Vector3, direction: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.Piercing];
+    const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
+    const stackMult = this.getStackDamageMultiplier(WeaponType.Piercing);
 
     // Trace a geodesic beam path along the surface
-    const beamPoints = this.traceBeamPath(origin, direction, 15, 24);
+    const beamLen = 25 * rangeMult;
+    const beamPoints = this.traceBeamPath(origin, direction, beamLen, Math.ceil(36 * rangeMult));
 
     // Build a thick white beam visual
     const curve = new THREE.CatmullRomCurve3(beamPoints, false, 'catmullrom', 0.5);
@@ -379,7 +412,7 @@ export class WeaponManager {
             enemy.position, beamPoints[s], beamPoints[s + 1],
           );
           if (segDist < hitRadius) {
-            this.callbacks.onEnemyDamage(enemy.index, config.damage, WeaponType.Piercing);
+            this.callbacks.onEnemyDamage(enemy.index, config.damage * stackMult, WeaponType.Piercing);
             break; // Only damage each enemy once
           }
         }
@@ -455,9 +488,10 @@ export class WeaponManager {
       index: firstTarget.index,
     });
 
-    // Fire the visual effect
+    // Fire the visual effect (apply stack multiplier)
+    const stackMult = this.getStackDamageMultiplier(WeaponType.ChainLightning);
     this.chainLightning.fire(origin, chainTargets, (pos, mult, idx) => {
-      this.callbacks?.onEnemyDamage(idx, config.damage * mult, WeaponType.ChainLightning);
+      this.callbacks?.onEnemyDamage(idx, config.damage * mult * stackMult, WeaponType.ChainLightning);
     });
   }
 
@@ -484,14 +518,14 @@ export class WeaponManager {
       direction.clone(),
       config.damage,
       config.projectileSpeed,
-      4.0,
+      6.0,
     );
     proj.targetIndex = targetIndex;
   }
 
   private fireMortar(origin: THREE.Vector3, direction: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.PlasmaMortar];
-    const range = 5;
+    const range = 8;
 
     const proj = this.createProjectile(
       WeaponType.PlasmaMortar,
@@ -514,13 +548,16 @@ export class WeaponManager {
       direction.clone(),
       config.damage,
       config.projectileSpeed,
-      3.0,
+      5.0,
     );
   }
 
   private fireLaser(origin: THREE.Vector3, direction: THREE.Vector3): void {
+    const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
+
     // Trace beam path along the surface (or fallback to straight line)
-    const beamPoints = this.traceBeamPath(origin, direction, 20, 30);
+    const beamLen = 30 * rangeMult;
+    const beamPoints = this.traceBeamPath(origin, direction, beamLen, Math.ceil(45 * rangeMult));
 
     // Build a TubeGeometry from the traced points
     const curve = new THREE.CatmullRomCurve3(beamPoints, false, 'catmullrom', 0.5);
@@ -640,7 +677,7 @@ export class WeaponManager {
     this.activeEffects.push({
       type: 'blackhole',
       position: targetPos,
-      duration: 2.0,
+      duration: 3.0,
       elapsed: 0,
       mesh: bhMesh,
     });
@@ -663,7 +700,7 @@ export class WeaponManager {
     this.activeEffects.push({
       type: 'tesla',
       position: origin,
-      duration: 5.0,
+      duration: 8.0,
       elapsed: 0,
       mesh: teslaMesh,
     });
@@ -681,13 +718,16 @@ export class WeaponManager {
     speed: number,
     maxAge: number,
   ): Projectile {
+    // Apply Extended Range buff + stack damage multiplier
+    const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
+    const stackMult = this.getStackDamageMultiplier(type);
     const proj: Projectile = {
       type,
       position,
       direction: direction.normalize(),
       age: 0,
-      maxAge,
-      damage,
+      maxAge: maxAge * rangeMult,
+      damage: damage * stackMult,
       speed,
     };
 
@@ -1015,6 +1055,70 @@ export class WeaponManager {
     this.activeEffects = [];
 
     this.chainLightning.clear();
+  }
+
+  // -------------------------------------------------------------------------
+  // Buff system
+  // -------------------------------------------------------------------------
+
+  /**
+   * Apply a buff to the weapon system
+   */
+  applyBuff(type: BuffType): void {
+    const config = BUFF_CONFIGS[type];
+
+    // Replace existing buff of same type (reset duration)
+    const existing = this.activeBuffs.find(b => b.type === type);
+    if (existing) {
+      existing.remaining = config.duration;
+      existing.multiplier = config.multiplier;
+      return;
+    }
+
+    this.activeBuffs.push({
+      type,
+      remaining: config.duration,
+      multiplier: config.multiplier,
+    });
+  }
+
+  /**
+   * Check if a specific buff is active
+   */
+  hasBuff(type: BuffType): boolean {
+    return this.activeBuffs.some(b => b.type === type);
+  }
+
+  /**
+   * Get the multiplier for a buff type (1.0 if not active)
+   */
+  getBuffMultiplier(type: BuffType): number {
+    const buff = this.activeBuffs.find(b => b.type === type);
+    return buff ? buff.multiplier : 1.0;
+  }
+
+  /**
+   * Get all active buffs (for HUD display)
+   */
+  getActiveBuffs(): readonly ActiveBuff[] {
+    return this.activeBuffs;
+  }
+
+  /**
+   * Get the stack level for the current weapon (1-5).
+   * Each additional pickup of the same weapon adds +1 stack.
+   */
+  getStackLevel(type?: WeaponType): number {
+    return this.stacks.get(type ?? this.currentWeapon) ?? 1;
+  }
+
+  /**
+   * Get the damage multiplier from weapon stacking.
+   * Each stack adds +25% damage (stack 1 = 1.0x, stack 5 = 2.0x).
+   */
+  getStackDamageMultiplier(type?: WeaponType): number {
+    const stack = this.getStackLevel(type);
+    return 1 + (stack - 1) * 0.25;
   }
 
   /**

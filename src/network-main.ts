@@ -28,6 +28,7 @@ import {
   NetworkWeaponPickupState,
   NetworkGameState,
 } from './network/NetworkClient';
+import { AllyGlowManager } from './effects/AllyGlow';
 
 // Get surface type from URL
 function getSurfaceType(): SurfaceType {
@@ -98,6 +99,9 @@ function main() {
 
   // Weapon pickup tracking
   const weaponPickupMeshes = new Map<string, THREE.Mesh>();
+
+  // Ally glow manager for remote player indicators (visible through surfaces)
+  const allyGlowManager = new AllyGlowManager(scene);
 
   // Weapon pickup colors
   const WEAPON_COLORS: Record<string, number> = {
@@ -236,6 +240,11 @@ function main() {
         trail = new TrailEffect(new THREE.Color(player.color), 50);
         scene.add(trail.root);
         playerTrails.set(id, trail);
+
+        // Add ally glow for remote players (not the local player)
+        if (id !== localPlayerId) {
+          allyGlowManager.addGlow(id, player.color, 0.9);
+        }
       }
 
       // Position on surface (lift above surface)
@@ -254,6 +263,11 @@ function main() {
 
       mesh.visible = player.alive;
       trail?.addPoint(mesh.position.clone());
+
+      // Sync ally glow position for remote players
+      if (id !== localPlayerId && player.alive) {
+        allyGlowManager.setPosition(id, mesh.position);
+      }
     });
 
     // Remove disconnected players
@@ -266,6 +280,7 @@ function main() {
           trail.dispose();
           playerTrails.delete(id);
         }
+        allyGlowManager.removeGlow(id);
       }
     });
 
@@ -442,6 +457,9 @@ function main() {
     // Update particles
     particles.update(dt);
 
+    // Update ally glow pulse animation
+    allyGlowManager.update(dt);
+
     // Update trails
     playerTrails.forEach((trail) => trail.update(dt));
 
@@ -493,6 +511,7 @@ function main() {
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
     network.disconnect();
+    allyGlowManager.dispose();
     meshSurface.dispose();
   });
 }

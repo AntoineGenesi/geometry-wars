@@ -1,3 +1,7 @@
+import { ConfigurableInput } from '../input/ConfigurableInput';
+import { ControlsMenu } from './ControlsMenu';
+import { WeaponWiki } from './WeaponWiki';
+
 /**
  * Pause menu overlay.
  * Shows when Escape is pressed, allows resuming or returning to main menu.
@@ -28,6 +32,14 @@ export class PauseMenu {
           <button class="pause-btn resume-btn" data-action="resume">
             <span class="btn-icon">▶</span>
             <span>RESUME</span>
+          </button>
+          <button class="pause-btn controls-btn" data-action="controls">
+            <span class="btn-icon">⌨</span>
+            <span>CONTROLS</span>
+          </button>
+          <button class="pause-btn weapons-btn" data-action="weapons">
+            <span class="btn-icon">⚡</span>
+            <span>WEAPONS</span>
           </button>
           <button class="pause-btn exit-btn" data-action="exit">
             <span class="btn-icon">◀</span>
@@ -119,6 +131,26 @@ export class PauseMenu {
         box-shadow: 0 0 25px #00ff00;
       }
 
+      #pause-menu .controls-btn {
+        background: linear-gradient(180deg, #336688 0%, #224466 100%);
+        border-color: #44aaff;
+      }
+
+      #pause-menu .controls-btn:hover {
+        background: linear-gradient(180deg, #4488aa 0%, #336688 100%);
+        box-shadow: 0 0 20px #44aaff;
+      }
+
+      #pause-menu .weapons-btn {
+        background: linear-gradient(180deg, #886633 0%, #664422 100%);
+        border-color: #ffaa44;
+      }
+
+      #pause-menu .weapons-btn:hover {
+        background: linear-gradient(180deg, #aa8844 0%, #886633 100%);
+        box-shadow: 0 0 20px #ffaa44;
+      }
+
       #pause-menu .exit-btn:hover {
         background: linear-gradient(180deg, #444488 0%, #333366 100%);
         box-shadow: 0 0 20px #8888ff;
@@ -143,8 +175,29 @@ export class PauseMenu {
     const resumeBtn = this.container.querySelector('[data-action="resume"]');
     const exitBtn = this.container.querySelector('[data-action="exit"]');
 
+    const controlsBtn = this.container.querySelector('[data-action="controls"]');
+
     resumeBtn?.addEventListener('click', () => {
       this.resume();
+    });
+
+    controlsBtn?.addEventListener('click', () => {
+      const tempInput = new ConfigurableInput(4);
+      const controlsMenu = new ControlsMenu();
+      controlsMenu.setInput(tempInput);
+      controlsMenu.show();
+      controlsMenu.onClose(() => {
+        tempInput.dispose();
+      });
+    });
+
+    const weaponsBtn = this.container.querySelector('[data-action="weapons"]');
+    weaponsBtn?.addEventListener('click', () => {
+      const wiki = new WeaponWiki();
+      wiki.show();
+      wiki.onClose(() => {
+        wiki.dispose();
+      });
     });
 
     exitBtn?.addEventListener('click', () => {

@@ -40,7 +40,7 @@ function createTubeSegment(
   const material = new THREE.MeshStandardMaterial({
     color: color,
     emissive: emissive ? color : 0x000000,
-    emissiveIntensity: emissive ? 0.5 : 0,
+    emissiveIntensity: emissive ? 0.4 : 0,
     metalness: 0.3,
     roughness: 0.4,
   });
@@ -73,7 +73,7 @@ function createJoint(
   const material = new THREE.MeshStandardMaterial({
     color: color,
     emissive: emissive ? color : 0x000000,
-    emissiveIntensity: emissive ? 0.5 : 0,
+    emissiveIntensity: emissive ? 0.4 : 0,
     metalness: 0.3,
     roughness: 0.4,
   });

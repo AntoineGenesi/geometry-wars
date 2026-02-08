@@ -22,7 +22,7 @@ export class Virus extends BaseEnemy {
   }
 
   private createMesh(): void {
-    this.mesh = buildOctahedron3D(0.25, 0x88ff44, 0.02);
+    this.mesh = buildOctahedron3D(0.25, 0x00cc00, 0.02);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

@@ -37,6 +37,38 @@ Then open the client:
 
 Source: `src/network-main.ts`, `src/network/NetworkClient.ts`, `server/`
 
+## LAN Hosting
+
+Play with friends on the same WiFi network. No separate server required in dev mode.
+
+### Host a Game
+
+1. Run `npm run dev`
+2. Click **LAN** in the start menu
+3. Click **HOST GAME** - the embedded server starts automatically
+4. Share the displayed URL with LAN players (e.g. `http://192.168.1.15:3000?mode=network&server=ws://192.168.1.15:2567`)
+5. Click **ENTER GAME** to join your own server
+
+### Join a Game
+
+1. Run `npm run dev`
+2. Click **LAN** in the start menu
+3. Either:
+   - Click **SCAN LAN** to auto-discover games on the local network
+   - Enter the host's IP address and click **CONNECT**
+
+### How It Works
+
+A Vite plugin (`vite-plugin-lan.ts`) manages the embedded Colyseus server:
+- `POST /__lan/start` spawns the server as a child process
+- `POST /__lan/stop` kills it
+- `GET /__lan/status` returns hosting state + LAN IP addresses
+- `GET /__lan/scan` scans the local /24 subnet for game servers (via `/api/info` endpoint)
+
+The LAN feature only works in dev mode (requires the Vite dev server). For production deployments, use the Network Multiplayer setup with `npm run server`.
+
+Source: `vite-plugin-lan.ts`, `src/network/LANClient.ts`, `src/ui/StartMenu.ts`
+
 ## Kill Attribution
 
 Bullets carry an `ownerId` field identifying the player who fired them. When an enemy dies, the system determines kill credit and assists.

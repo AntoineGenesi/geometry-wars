@@ -5,8 +5,8 @@ import * as THREE from 'three';
 // ---------------------------------------------------------------------------
 
 const GEOM_SIZE = 0.08; // half-extent of the diamond
-const GEOM_COLOR = new THREE.Color(0x00ff66); // bright green
-const GEOM_GLOW_COLOR = new THREE.Color(0x88ffaa);
+const GEOM_COLOR = new THREE.Color(0x00ff44); // bright green (GW3D authentic)
+const GEOM_GLOW_COLOR = new THREE.Color(0x44ff44);
 const MAGNET_RANGE = 2; // units -- start pulling toward player
 const MAGNET_SPEED = 8; // units/sec when being pulled
 const FADE_DURATION = 10; // seconds before despawn
@@ -23,6 +23,9 @@ interface GeomData {
   age: number;
   surfaceU: number;
   surfaceV: number;
+  /** UV velocity for burst scatter animation. */
+  velU: number;
+  velV: number;
   /** Random spin offset so they do not all rotate in sync. */
   spinOffset: number;
 }
@@ -52,6 +55,8 @@ export class GeomPool {
         age: 0,
         surfaceU: 0,
         surfaceV: 0,
+        velU: 0,
+        velV: 0,
         spinOffset: Math.random() * Math.PI * 2,
       });
     }
@@ -62,7 +67,8 @@ export class GeomPool {
   // -----------------------------------------------------------------------
 
   /**
-   * Spawn a geom at the given surface coordinates.
+   * Spawn a geom at the given surface coordinates with burst velocity.
+   * Spawns exactly at the kill position and flies outward smoothly.
    */
   spawn(surfaceU: number, surfaceV: number): void {
     const idx = this.findInactive();
@@ -74,6 +80,12 @@ export class GeomPool {
     g.surfaceU = surfaceU;
     g.surfaceV = surfaceV;
     g.spinOffset = Math.random() * Math.PI * 2;
+
+    // Random burst direction (radial outward from kill position)
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.05 + Math.random() * 0.1; // UV units/sec
+    g.velU = Math.cos(angle) * speed;
+    g.velV = Math.sin(angle) * speed;
 
     const mesh = this.meshes[idx];
     mesh.visible = true;
@@ -113,22 +125,36 @@ export class GeomPool {
         setGeomOpacity(this.meshes[i], 1 - t);
       }
 
-      // Magnetic pull toward player.
-      const du = playerU - g.surfaceU;
-      const dv = playerV - g.surfaceV;
-      const dist = Math.sqrt(du * du + dv * dv);
+      // Apply burst velocity (decelerates over time)
+      if (Math.abs(g.velU) > 0.001 || Math.abs(g.velV) > 0.001) {
+        g.surfaceU += g.velU * dt;
+        g.surfaceV += g.velV * dt;
+        // Friction deceleration
+        g.velU *= 0.92;
+        g.velV *= 0.92;
+      }
 
-      if (dist < MAGNET_RANGE && dist > 0.01) {
-        // Strength increases as geom gets closer.
-        const strength = 1 - dist / MAGNET_RANGE;
-        const pull = MAGNET_SPEED * strength * dt;
-        g.surfaceU += (du / dist) * pull;
-        g.surfaceV += (dv / dist) * pull;
+      // Magnetic pull toward player (only after initial burst settles, ~0.3s)
+      if (g.age > 0.3) {
+        const du = playerU - g.surfaceU;
+        const dv = playerV - g.surfaceV;
+        const dist = Math.sqrt(du * du + dv * dv);
+
+        if (dist < MAGNET_RANGE && dist > 0.01) {
+          const strength = 1 - dist / MAGNET_RANGE;
+          const pull = MAGNET_SPEED * strength * dt;
+          g.surfaceU += (du / dist) * pull;
+          g.surfaceV += (dv / dist) * pull;
+        }
       }
 
       // Spin animation (around surface normal / local Y).
       const mesh = this.meshes[i];
       mesh.rotation.y = (totalTime * SPIN_SPEED) + g.spinOffset;
+
+      // Sparkle/pulse effect (subtle brightness oscillation)
+      const sparkle = 0.85 + 0.15 * Math.sin(totalTime * 6 + g.spinOffset * 3);
+      mesh.scale.setScalar(sparkle);
     }
   }
 

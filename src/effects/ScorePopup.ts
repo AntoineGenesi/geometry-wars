@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 
 /**
- * Floating score popup that drifts upward and fades out.
- * Creates a 3D sprite/text that shows score values at enemy death positions.
+ * Floating score popup - BF3-style: small, clean, quick.
+ * World-space sprites that drift "up" in screen space and fade out.
+ * Camera-aware: drift direction follows camera.up so popups always
+ * float upward on screen regardless of surface orientation.
  */
 
 interface Popup {
@@ -10,40 +12,61 @@ interface Popup {
   velocity: THREE.Vector3;
   age: number;
   lifetime: number;
+  baseScale: number;
 }
 
 export class ScorePopupManager {
   private popups: Popup[] = [];
   readonly root = new THREE.Group();
   private textureCache = new Map<string, THREE.Texture>();
+  private camera: THREE.Camera | null = null;
+
+  /**
+   * Set the camera reference so popups can drift in screen-up direction.
+   * Must be called before spawning popups.
+   */
+  setCamera(camera: THREE.Camera): void {
+    this.camera = camera;
+  }
 
   /**
    * Spawn a floating score popup at the given world position.
    */
-  spawn(position: THREE.Vector3, text: string, color: string = '#00ffff', scale = 0.5): void {
+  spawn(position: THREE.Vector3, text: string, color: string = '#00ffff', scale = 1.8): void {
     const texture = this.getTexture(text, color);
     const material = new THREE.SpriteMaterial({
       map: texture,
       transparent: true,
       depthTest: false,
+      depthWrite: false,
     });
 
     const sprite = new THREE.Sprite(material);
-    sprite.position.copy(position);
-    sprite.scale.set(scale, scale * 0.4, 1);
+    sprite.renderOrder = 999;
 
-    // Drift upward (along surface normal approximation)
-    const velocity = new THREE.Vector3(
-      (Math.random() - 0.5) * 0.3,
-      1.5,
-      (Math.random() - 0.5) * 0.3,
-    );
+    // Offset position slightly toward camera so it doesn't clip into the surface.
+    // Use camera direction if available, otherwise fall back to world Y.
+    const offsetDir = this.camera
+      ? new THREE.Vector3().subVectors(this.camera.position, position).normalize()
+      : new THREE.Vector3(0, 1, 0);
+    sprite.position.copy(position).addScaledVector(offsetDir, 0.5);
+
+    // Canvas aspect ratio is 256:64 = 4:1, so Y scale = X * 0.25
+    sprite.scale.set(scale, scale * 0.25, 1);
+
+    // Drift in screen-up direction (camera.up) so popups always float upward
+    // on screen regardless of surface orientation.
+    const driftDir = this.camera
+      ? this.camera.up.clone().normalize()
+      : new THREE.Vector3(0, 1, 0);
+    const velocity = driftDir.multiplyScalar(2.0);
 
     const popup: Popup = {
       mesh: sprite,
       velocity,
       age: 0,
       lifetime: 1.0,
+      baseScale: scale,
     };
 
     this.popups.push(popup);
@@ -63,7 +86,8 @@ export class ScorePopupManager {
     if (total >= 1000) color = '#ff8800';
     if (total >= 5000) color = '#ff00ff';
 
-    const scale = 0.4 + Math.min(total / 2000, 0.6);
+    // Scale range: 1.5 to 2.5 (visible at 15 units camera distance)
+    const scale = 1.5 + Math.min(total / 5000, 1.0);
     this.spawn(position, text, color, scale);
   }
 
@@ -71,7 +95,7 @@ export class ScorePopupManager {
    * Spawn a multiplier change popup.
    */
   spawnMultiplier(position: THREE.Vector3, multiplier: number): void {
-    this.spawn(position, `x${multiplier}`, '#00ff00', 0.6);
+    this.spawn(position, `x${multiplier}`, '#00ff00', 2.0);
   }
 
   update(dt: number): void {
@@ -79,23 +103,28 @@ export class ScorePopupManager {
       const popup = this.popups[i];
       popup.age += dt;
 
-      // Move
+      // Move in drift direction (screen-up)
       popup.mesh.position.addScaledVector(popup.velocity, dt);
 
-      // Decelerate
-      popup.velocity.multiplyScalar(0.95);
+      // Decelerate gently
+      popup.velocity.multiplyScalar(0.97);
 
-      // Fade and scale
+      // Fade: quick in, steady, quick out
       const progress = popup.age / popup.lifetime;
-      const alpha = 1 - progress * progress; // ease-out fade
+      let alpha: number;
+      if (progress < 0.1) {
+        alpha = progress / 0.1; // quick fade in
+      } else if (progress < 0.6) {
+        alpha = 1.0; // steady
+      } else {
+        alpha = 1 - (progress - 0.6) / 0.4; // fade out
+      }
       (popup.mesh.material as THREE.SpriteMaterial).opacity = Math.max(0, alpha);
 
-      // Grow slightly then shrink
-      const scaleMultiplier = progress < 0.3
-        ? 1 + progress * 0.5
-        : 1.15 - (progress - 0.3) * 0.3;
-      const baseScale = popup.mesh.scale.x;
-      popup.mesh.scale.setScalar(baseScale * scaleMultiplier / baseScale * popup.mesh.scale.x);
+      // Slight scale-down over time for a clean feel
+      const shrink = 1.0 - progress * 0.2;
+      const s = popup.baseScale * shrink;
+      popup.mesh.scale.set(s, s * 0.25, 1);
 
       // Remove when dead
       if (popup.age >= popup.lifetime) {
@@ -111,32 +140,30 @@ export class ScorePopupManager {
     const cached = this.textureCache.get(key);
     if (cached) return cached;
 
-    // Create canvas texture
+    // Higher resolution canvas for crisp text at larger sprite scale
     const canvas = document.createElement('canvas');
     canvas.width = 256;
-    canvas.height = 128;
+    canvas.height = 64;
     const ctx = canvas.getContext('2d')!;
 
-    // Draw text
-    ctx.clearRect(0, 0, 256, 128);
-    ctx.font = 'bold 48px monospace';
+    ctx.clearRect(0, 0, 256, 64);
+    ctx.font = 'bold 40px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Glow
+    // Glow pass
     ctx.shadowColor = color;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 6;
     ctx.fillStyle = color;
-    ctx.fillText(text, 128, 64);
+    ctx.fillText(text, 128, 32);
 
-    // Second pass for sharper text
-    ctx.shadowBlur = 4;
-    ctx.fillText(text, 128, 64);
+    // Crisp second pass
+    ctx.shadowBlur = 2;
+    ctx.fillText(text, 128, 32);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.needsUpdate = true;
 
-    // Cache moderately (don't cache too many unique strings)
     if (this.textureCache.size < 50) {
       this.textureCache.set(key, texture);
     }

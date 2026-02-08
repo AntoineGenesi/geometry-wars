@@ -22,7 +22,7 @@ export class Repulsor extends BaseEnemy {
   private rearMesh!: THREE.Group;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    super(surfaceU, surfaceV, 3, 425, 4, 0.06, 0.35); // Reduced speed
+    super(surfaceU, surfaceV, 5, 425, 4, 0.06, 0.35); // Reduced speed
 
     this.createMesh();
   }

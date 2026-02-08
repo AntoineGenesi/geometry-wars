@@ -432,8 +432,8 @@ describe('WeaponManager', () => {
       manager.fire(origin(), forward(), T);
       expect(manager.projectileRoot.children.length).toBe(1);
 
-      // Mortar maxAge = range/speed = 5/0.6 = 8.33s. Simulate well past that.
-      for (let i = 0; i < 200; i++) {
+      // Mortar maxAge = range/speed = 8/0.6 = 13.33s. Simulate well past that.
+      for (let i = 0; i < 300; i++) {
         manager.update(0.05);
       }
       // Projectile should be removed after expiry
@@ -579,11 +579,11 @@ describe('WeaponManager', () => {
       expect(mock.pulls.length).toBeGreaterThan(0);
     });
 
-    it('should expire after 2 seconds', () => {
+    it('should expire after 3 seconds', () => {
       manager.fire(origin(), forward(), T);
       expect(manager.projectileRoot.children.length).toBe(1);
 
-      manager.update(2.1);
+      manager.update(3.1);
       expect(manager.projectileRoot.children.length).toBe(0);
     });
 
@@ -664,11 +664,11 @@ describe('WeaponManager', () => {
       expect(teslaMesh.position.distanceTo(newPos)).toBeLessThan(0.01);
     });
 
-    it('should expire after 5 seconds', () => {
+    it('should expire after 8 seconds', () => {
       manager.fire(origin(), forward(), T);
       expect(manager.isTeslaActive()).toBe(true);
 
-      manager.update(5.1);
+      manager.update(8.1);
       expect(manager.isTeslaActive()).toBe(false);
     });
   });

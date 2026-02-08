@@ -18,20 +18,20 @@ export class Spawner extends BaseEnemy {
   public static onSpawnEnemy: ((u: number, v: number) => void) | null = null;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    // health=8, score=300, geoms=3, speed=0.005 (nearly stationary), radius=0.5
-    super(surfaceU, surfaceV, 8, 300, 3, 0.005, 0.5);
+    // health=12, score=300, geoms=3, speed=0.005 (nearly stationary), radius=0.5
+    super(surfaceU, surfaceV, 12, 300, 3, 0.005, 0.5);
     this.createMesh();
   }
 
   private createMesh(): void {
     const group = new THREE.Group();
 
-    // Large outer cage
-    const outer = buildSquare3D(0.5, 0x440066, 0.08, 0.015);
+    // Large outer cage (red when invulnerable)
+    const outer = buildSquare3D(0.5, 0xff2222, 0.08, 0.015);
     group.add(outer);
 
-    // Inner rotating core
-    const inner = buildSquare3D(0.25, 0xaa44ff, 0.06, 0.015);
+    // Inner rotating core (green when vulnerable)
+    const inner = buildSquare3D(0.25, 0x00ff44, 0.06, 0.015);
     inner.name = 'inner-core';
     group.add(inner);
 

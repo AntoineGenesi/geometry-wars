@@ -26,8 +26,8 @@ export class Painter extends BaseEnemy {
   private static trailMaterial: THREE.MeshStandardMaterial | null = null;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    // health=2, score=75, geoms=1, speed=0.035, radius=0.3
-    super(surfaceU, surfaceV, 2, 75, 1, 0.035, 0.3);
+    // health=3, score=75, geoms=1, speed=0.035, radius=0.3
+    super(surfaceU, surfaceV, 3, 75, 1, 0.035, 0.3);
     this.angle = Math.random() * Math.PI * 2;
     this.lastTrailU = surfaceU;
     this.lastTrailV = surfaceV;

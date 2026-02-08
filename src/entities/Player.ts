@@ -52,6 +52,8 @@ export class Player {
 
   // -- Shooting -------------------------------------------------------------
   private fireCooldown = 0;
+  /** External fire rate multiplier (e.g. from leveling). Higher = faster. */
+  fireRateMultiplier = 1.0;
 
   // -- State ----------------------------------------------------------------
   lives = INITIAL_LIVES;
@@ -147,7 +149,7 @@ export class Player {
     // -- Shooting -----------------------------------------------------------
     this.fireCooldown -= dt;
     if (input.shooting && this.fireCooldown <= 0) {
-      this.fireCooldown = FIRE_INTERVAL;
+      this.fireCooldown = FIRE_INTERVAL / this.fireRateMultiplier;
       this.fire();
     }
 
@@ -273,6 +275,31 @@ export class Player {
    */
   addScore(basePoints: number): void {
     this.score += basePoints * this.multiplier;
+  }
+
+  /**
+   * Tint the player mesh to a specific color.
+   * Updates all MeshStandardMaterial (tubes/joints) and LineBasicMaterial children
+   * to use the new color as both diffuse and emissive.
+   */
+  setColor(color: number): void {
+    this.mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        const mat = child.material;
+        if (mat instanceof THREE.MeshStandardMaterial) {
+          mat.color.setHex(color);
+          mat.emissive.setHex(color);
+        } else if (mat instanceof THREE.MeshBasicMaterial) {
+          mat.color.setHex(color);
+        }
+      }
+      if (child instanceof THREE.LineSegments) {
+        const mat = child.material;
+        if (mat instanceof THREE.LineBasicMaterial) {
+          mat.color.setHex(color);
+        }
+      }
+    });
   }
 
   // -----------------------------------------------------------------------
