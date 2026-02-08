@@ -525,7 +525,7 @@ export class WeaponManager {
 
   private fireMortar(origin: THREE.Vector3, direction: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.PlasmaMortar];
-    const range = 8;
+    const range = 10;
 
     const proj = this.createProjectile(
       WeaponType.PlasmaMortar,
@@ -758,7 +758,7 @@ export class WeaponManager {
       }
 
       case WeaponType.PlasmaMortar: {
-        const geom = new THREE.SphereGeometry(0.2, 12, 12);
+        const geom = new THREE.SphereGeometry(0.35, 12, 12);
         return new THREE.Mesh(geom, material);
       }
 
@@ -781,7 +781,7 @@ export class WeaponManager {
         break;
 
       case WeaponType.PlasmaMortar:
-        // Arc trajectory
+        // Arc trajectory - high, dramatic arc for a heavy mortar round
         if (proj.startPos && proj.endPos) {
           const t = proj.age / proj.maxAge;
           proj.position.lerpVectors(proj.startPos, proj.endPos, t);
@@ -789,12 +789,12 @@ export class WeaponManager {
           if (this.meshSurface) {
             const midResult = this.meshSurface.closestPointOnSurface(proj.position);
             if (midResult) {
-              const arcHeight = Math.sin(t * Math.PI) * 1.5;
+              const arcHeight = Math.sin(t * Math.PI) * 2.5;
               proj.position.copy(midResult.point).addScaledVector(midResult.normal, arcHeight);
             }
           } else {
             // Fallback: use world Y
-            proj.position.y += Math.sin(t * Math.PI) * 1.5;
+            proj.position.y += Math.sin(t * Math.PI) * 2.5;
           }
         }
         break;
@@ -877,8 +877,8 @@ export class WeaponManager {
         this.callbacks.onEnemyDamage(enemy.index, proj.damage, proj.type);
 
         if (proj.type === WeaponType.PlasmaMortar) {
-          // AoE damage
-          this.applyAoeDamage(proj.position, 1.5, proj.damage * 0.5);
+          // AoE damage - devastating blast radius
+          this.applyAoeDamage(proj.position, 3.0, proj.damage * 0.75);
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.GravityGun) {
