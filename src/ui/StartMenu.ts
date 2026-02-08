@@ -10,6 +10,8 @@ import { MenuBackground } from './MenuBackground';
 /**
  * Start menu UI for Geometry Wars.
  * Allows selecting game mode and surface type before starting.
+ *
+ * Layout: oval-curved buttons on LEFT, 3D surface preview on CENTER-RIGHT.
  */
 
 export interface MenuSelection {
@@ -19,6 +21,45 @@ export interface MenuSelection {
   playerCount?: 2 | 3 | 4;
   serverUrl?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Ellipse layout helpers
+// ---------------------------------------------------------------------------
+
+/** Ellipse parameters for the oval button curve */
+const ELLIPSE_CENTER_X = 30; // % of viewport width
+const ELLIPSE_CENTER_Y = 50; // % of viewport height
+const ELLIPSE_RX = 25; // semi-major axis (horizontal), % of vw
+const ELLIPSE_RY = 35; // semi-minor axis (vertical), % of vh
+
+/**
+ * Calculate (x%, y%) along the LEFT half of an ellipse.
+ * angle=0 is top-center, distributed from about -60deg to +60deg.
+ *
+ * We distribute N buttons evenly across the LEFT arc of the ellipse,
+ * spanning from -PI/3 (top) to +PI/3 (bottom) in parametric angle.
+ */
+function ellipsePosition(index: number, total: number): { left: string; top: string } {
+  // Parametric angle range: -60deg to +60deg from top (mapped to left arc)
+  const startAngle = -Math.PI / 3;
+  const endAngle = Math.PI / 3;
+  const t = total > 1 ? index / (total - 1) : 0.5;
+  const angle = startAngle + t * (endAngle - startAngle);
+
+  // On the LEFT side of the ellipse: x decreases from center
+  const x = ELLIPSE_CENTER_X - ELLIPSE_RX * Math.sin(angle);
+  const y = ELLIPSE_CENTER_Y + ELLIPSE_RY * Math.sin(angle) * 0.6 - ELLIPSE_RY * Math.cos(angle) * 0.5;
+
+  // Clamp to reasonable bounds
+  const clampedX = Math.max(2, Math.min(50, x));
+  const clampedY = Math.max(5, Math.min(95, y));
+
+  return { left: `${clampedX}%`, top: `${clampedY}%` };
+}
+
+// ---------------------------------------------------------------------------
+// StartMenu
+// ---------------------------------------------------------------------------
 
 export class StartMenu {
   private container: HTMLDivElement;
@@ -30,6 +71,7 @@ export class StartMenu {
   private progress: LevelProgress;
   private lanClient: LANClient = new LANClient();
   private menuBackground: MenuBackground;
+  private styleElement: HTMLStyleElement | null = null;
 
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
@@ -60,6 +102,10 @@ export class StartMenu {
     this.menuBackground.start();
   }
 
+  // -----------------------------------------------------------------------
+  // Surface grid HTML (reused for Quick Game, Co-op, LAN)
+  // -----------------------------------------------------------------------
+
   private createSurfaceGridHTML(gridClass: string, selectedSurface: SurfaceType): string {
     const buttons = this.surfaces
       .map(
@@ -74,6 +120,10 @@ export class StartMenu {
       .join('');
     return `<div class="surface-grid ${gridClass}">${buttons}</div>`;
   }
+
+  // -----------------------------------------------------------------------
+  // Main menu HTML
+  // -----------------------------------------------------------------------
 
   private createMenuHTML(): string {
     const surfaceButtons = this.surfaces
@@ -121,35 +171,43 @@ export class StartMenu {
         `;
       }).join('');
 
-    return `
-      <div class="menu-content">
-        <h1 class="title">GEOMETRY WARS</h1>
-        <h2 class="subtitle">3D DIMENSIONS</h2>
+    // Main menu button definitions for the oval layout
+    const mainButtons = [
+      { mode: 'adventure', label: 'ADVENTURE', primary: true },
+      { mode: 'single', label: 'QUICK GAME', primary: false },
+      { mode: 'multiplayer', label: 'LOCAL CO-OP', primary: false },
+      { mode: 'lan', label: 'LAN', primary: false },
+      { mode: 'network', label: 'ONLINE', primary: false },
+    ];
 
-        <div class="section game-modes">
-          <button class="start-btn" data-mode="adventure">
-            <span class="btn-icon">\u25B6</span>
-            <span>ADVENTURE</span>
-          </button>
-          <button class="start-btn secondary" data-mode="single">
-            <span class="btn-icon">\u25B6</span>
-            <span>QUICK GAME</span>
-          </button>
-          <button class="start-btn secondary" data-mode="multiplayer">
-            <span class="btn-icon">\u25B6</span>
-            <span>LOCAL CO-OP</span>
-          </button>
-          <button class="start-btn secondary" data-mode="lan">
-            <span class="btn-icon">\u25B6</span>
-            <span>LAN</span>
-          </button>
-          <button class="start-btn secondary" data-mode="network">
-            <span class="btn-icon">\u25B6</span>
-            <span>ONLINE</span>
-          </button>
+    // Generate oval-positioned buttons
+    const totalButtons = mainButtons.length;
+    const ovalButtonsHTML = mainButtons.map((btn, i) => {
+      const pos = ellipsePosition(i, totalButtons);
+      const cls = btn.primary ? 'oval-btn oval-btn-primary' : 'oval-btn';
+      return `
+        <button class="${cls}" data-mode="${btn.mode}"
+                style="left: ${pos.left}; top: ${pos.top};">
+          <span class="oval-btn-icon">\u25B6</span>
+          <span class="oval-btn-label">${btn.label}</span>
+        </button>
+      `;
+    }).join('');
+
+    return `
+      <div class="menu-overlay">
+        <!-- Title at top center -->
+        <div class="menu-title-container">
+          <h1 class="title">GEOMETRY WARS 3D</h1>
         </div>
 
-        <div class="section adventure-section hidden" id="adventure-levels">
+        <!-- Oval-layout buttons on the left -->
+        <div class="oval-buttons-container" id="main-buttons">
+          ${ovalButtonsHTML}
+        </div>
+
+        <!-- Sub-panels (hidden by default, shown when button clicked) -->
+        <div class="sub-panel adventure-section hidden" id="adventure-levels">
           <h3>ADVENTURE LEVELS</h3>
           <div class="level-grid">
             ${levelGridHTML}
@@ -157,7 +215,7 @@ export class StartMenu {
           <button class="back-btn" id="adventure-back">BACK</button>
         </div>
 
-        <div class="section coop-section hidden" id="coop-section">
+        <div class="sub-panel coop-section hidden" id="coop-section">
           <h3>LOCAL CO-OP</h3>
           <div class="coop-buttons">
             <button class="coop-btn" data-players="2">2 PLAYERS</button>
@@ -176,7 +234,7 @@ export class StartMenu {
           <button class="back-btn" id="coop-back">BACK</button>
         </div>
 
-        <div class="section lan-section hidden" id="lan-section">
+        <div class="sub-panel lan-section hidden" id="lan-section">
           <h3>LAN GAME</h3>
           <div id="lan-host-panel">
             <button class="lan-btn lan-host" id="lan-host-btn">HOST GAME</button>
@@ -204,7 +262,7 @@ export class StartMenu {
           <button class="back-btn" id="lan-back">BACK</button>
         </div>
 
-        <div class="section surface-section" id="surface-section">
+        <div class="sub-panel surface-section" id="surface-section">
           <h3>SELECT SURFACE</h3>
           <div class="surface-grid">
             ${surfaceButtons}
@@ -219,31 +277,49 @@ export class StartMenu {
     `;
   }
 
+  // -----------------------------------------------------------------------
+  // Styles
+  // -----------------------------------------------------------------------
+
   private applyStyles(): void {
     const style = document.createElement('style');
+    this.styleElement = style;
     style.textContent = `
+      /* ------------------------------------------------------------------- */
+      /* Main overlay                                                         */
+      /* ------------------------------------------------------------------- */
       #start-menu {
         position: fixed;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        background: linear-gradient(135deg, rgba(10,0,32,0.75) 0%, rgba(26,0,64,0.65) 50%, rgba(10,0,32,0.75) 100%);
-        display: flex;
-        justify-content: center;
-        align-items: center;
+        background: linear-gradient(135deg, rgba(10,0,32,0.75) 0%, rgba(26,0,64,0.55) 50%, rgba(10,0,32,0.70) 100%);
         z-index: 1000;
         font-family: 'Segoe UI', Arial, sans-serif;
+        overflow: hidden;
       }
 
-      #start-menu .menu-content {
+      #start-menu .menu-overlay {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* Title                                                                */
+      /* ------------------------------------------------------------------- */
+      #start-menu .menu-title-container {
+        position: absolute;
+        top: 4%;
+        left: 50%;
+        transform: translateX(-50%);
         text-align: center;
-        max-width: 800px;
-        padding: 40px;
+        z-index: 10;
       }
 
       #start-menu .title {
-        font-size: 64px;
+        font-size: clamp(32px, 5vw, 72px);
         font-weight: bold;
         color: #00ffff;
         text-shadow:
@@ -252,18 +328,117 @@ export class StartMenu {
           0 0 40px #0088ff;
         margin: 0;
         letter-spacing: 8px;
+        white-space: nowrap;
       }
 
-      #start-menu .subtitle {
-        font-size: 24px;
-        color: #ff00ff;
-        text-shadow: 0 0 10px #ff00ff;
-        margin: 10px 0 40px;
-        letter-spacing: 12px;
+      /* ------------------------------------------------------------------- */
+      /* Oval button layout (left side)                                       */
+      /* ------------------------------------------------------------------- */
+      #start-menu .oval-buttons-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 55%;
+        height: 100%;
+        z-index: 10;
       }
 
-      #start-menu .section {
-        margin: 30px 0;
+      #start-menu .oval-btn {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        background: linear-gradient(180deg, rgba(40,40,90,0.85) 0%, rgba(20,20,50,0.9) 100%);
+        border: 2px solid rgba(136,136,255,0.6);
+        color: #ccccff;
+        padding: 14px 32px;
+        font-size: 15px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        letter-spacing: 3px;
+        white-space: nowrap;
+        min-width: 180px;
+        justify-content: center;
+        border-radius: 4px;
+        box-shadow: 0 0 8px rgba(136,136,255,0.15);
+      }
+
+      #start-menu .oval-btn:hover {
+        background: linear-gradient(180deg, rgba(60,60,140,0.95) 0%, rgba(30,30,80,0.95) 100%);
+        border-color: #aaaaff;
+        color: #ffffff;
+        transform: translate(-50%, -50%) scale(1.08);
+        box-shadow:
+          0 0 20px rgba(136,136,255,0.4),
+          0 0 40px rgba(136,136,255,0.15);
+      }
+
+      #start-menu .oval-btn-primary {
+        background: linear-gradient(180deg, rgba(0,140,0,0.85) 0%, rgba(0,80,0,0.9) 100%);
+        border-color: rgba(0,255,0,0.6);
+        color: #ffffff;
+        padding: 18px 40px;
+        font-size: 18px;
+        min-width: 220px;
+        box-shadow: 0 0 12px rgba(0,255,0,0.2);
+      }
+
+      #start-menu .oval-btn-primary:hover {
+        background: linear-gradient(180deg, rgba(0,180,0,0.95) 0%, rgba(0,100,0,0.95) 100%);
+        border-color: #00ff00;
+        box-shadow:
+          0 0 25px rgba(0,255,0,0.5),
+          0 0 50px rgba(0,255,0,0.2);
+      }
+
+      #start-menu .oval-btn-icon {
+        font-size: 16px;
+        opacity: 0.7;
+        transition: opacity 0.3s;
+      }
+      #start-menu .oval-btn:hover .oval-btn-icon {
+        opacity: 1;
+      }
+
+      /* Glow pulse animation on buttons */
+      @keyframes menuGlowPulse {
+        0%, 100% { box-shadow: 0 0 8px rgba(136,136,255,0.15); }
+        50% { box-shadow: 0 0 16px rgba(136,136,255,0.3); }
+      }
+      @keyframes menuGlowPulsePrimary {
+        0%, 100% { box-shadow: 0 0 12px rgba(0,255,0,0.2); }
+        50% { box-shadow: 0 0 24px rgba(0,255,0,0.4); }
+      }
+
+      #start-menu .oval-btn {
+        animation: menuGlowPulse 3s ease-in-out infinite;
+      }
+      #start-menu .oval-btn-primary {
+        animation: menuGlowPulsePrimary 2.5s ease-in-out infinite;
+      }
+      #start-menu .oval-btn:hover,
+      #start-menu .oval-btn-primary:hover {
+        animation: none;
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* Sub-panels (adventure, coop, lan, surface selection)                 */
+      /* ------------------------------------------------------------------- */
+      #start-menu .sub-panel {
+        position: absolute;
+        left: 5%;
+        top: 15%;
+        width: 48%;
+        max-height: 75%;
+        overflow-y: auto;
+        z-index: 20;
+        background: rgba(8,4,24,0.92);
+        border: 1px solid rgba(0,255,255,0.15);
+        border-radius: 6px;
+        padding: 24px;
+        box-shadow: 0 0 30px rgba(0,0,0,0.6);
       }
 
       #start-menu h3 {
@@ -271,8 +446,12 @@ export class StartMenu {
         font-size: 16px;
         letter-spacing: 4px;
         margin-bottom: 15px;
+        text-align: center;
       }
 
+      /* ------------------------------------------------------------------- */
+      /* Surface grid                                                         */
+      /* ------------------------------------------------------------------- */
       #start-menu .surface-grid {
         display: grid;
         grid-template-columns: repeat(5, 1fr);
@@ -314,19 +493,15 @@ export class StartMenu {
         letter-spacing: 1px;
       }
 
-      #start-menu .game-modes {
-        display: flex;
-        gap: 20px;
-        justify-content: center;
-        margin-top: 40px;
-      }
-
+      /* ------------------------------------------------------------------- */
+      /* Start button (inside sub-panels)                                     */
+      /* ------------------------------------------------------------------- */
       #start-menu .start-btn {
         background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
         border: 2px solid #00ff00;
         color: #ffffff;
-        padding: 20px 40px;
-        font-size: 18px;
+        padding: 16px 36px;
+        font-size: 16px;
         font-weight: bold;
         cursor: pointer;
         transition: all 0.2s;
@@ -334,6 +509,7 @@ export class StartMenu {
         align-items: center;
         gap: 10px;
         letter-spacing: 2px;
+        justify-content: center;
       }
 
       #start-menu .start-btn:hover {
@@ -342,27 +518,23 @@ export class StartMenu {
         box-shadow: 0 0 20px #00ff00;
       }
 
-      #start-menu .start-btn.secondary {
-        background: linear-gradient(180deg, #444488 0%, #222244 100%);
-        border-color: #8888ff;
-        padding: 15px 25px;
-        font-size: 14px;
-      }
-
-      #start-menu .start-btn.secondary:hover {
-        background: linear-gradient(180deg, #5555aa 0%, #333366 100%);
-        box-shadow: 0 0 20px #8888ff;
-      }
-
       #start-menu .btn-icon {
         font-size: 20px;
       }
 
+      /* ------------------------------------------------------------------- */
+      /* Controls hint (bottom center)                                        */
+      /* ------------------------------------------------------------------- */
       #start-menu .controls-hint {
-        margin-top: 40px;
+        position: absolute;
+        bottom: 3%;
+        left: 50%;
+        transform: translateX(-50%);
+        text-align: center;
         color: #666688;
         font-size: 12px;
         letter-spacing: 2px;
+        z-index: 10;
       }
 
       #start-menu .weapon-info-btn {
@@ -380,6 +552,34 @@ export class StartMenu {
         border-color: #ffaa44;
         color: #ffcc66;
         box-shadow: 0 0 10px rgba(255, 170, 68, 0.4);
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* Co-op buttons                                                        */
+      /* ------------------------------------------------------------------- */
+      #start-menu .coop-buttons {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        margin: 20px 0;
+      }
+
+      #start-menu .coop-btn {
+        background: linear-gradient(180deg, #664488 0%, #442266 100%);
+        border: 2px solid #aa66ff;
+        color: #ffffff;
+        padding: 20px 35px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 2px;
+      }
+
+      #start-menu .coop-btn:hover {
+        background: linear-gradient(180deg, #8866aa 0%, #553388 100%);
+        transform: scale(1.05);
+        box-shadow: 0 0 20px #aa66ff;
       }
 
       #start-menu .coop-btn.active {
@@ -403,10 +603,56 @@ export class StartMenu {
         margin-top: 15px;
       }
 
-      #start-menu .hidden { display: none !important; }
+      /* ------------------------------------------------------------------- */
+      /* Controls config button                                               */
+      /* ------------------------------------------------------------------- */
+      #start-menu .controls-btn {
+        background: rgba(40, 40, 80, 0.6);
+        border: 1px solid #6666aa;
+        color: #aaaaff;
+        padding: 10px 30px;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 2px;
+        margin-top: 10px;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      #start-menu .controls-btn:hover {
+        background: rgba(60, 60, 120, 0.8);
+        color: #ffffff;
+        box-shadow: 0 0 10px #6666aa;
+      }
 
+      /* ------------------------------------------------------------------- */
+      /* Back button                                                          */
+      /* ------------------------------------------------------------------- */
+      #start-menu .back-btn {
+        background: rgba(80, 40, 0, 0.4);
+        border: 1px solid #884400;
+        color: #ff8800;
+        padding: 10px 30px;
+        font-size: 14px;
+        cursor: pointer;
+        margin-top: 15px;
+        letter-spacing: 3px;
+        transition: all 0.2s;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      #start-menu .back-btn:hover {
+        background: rgba(120, 60, 0, 0.5);
+        box-shadow: 0 0 15px #ff8800;
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* Adventure levels                                                     */
+      /* ------------------------------------------------------------------- */
       #start-menu .adventure-section {
-        max-height: 400px;
+        max-height: 70vh;
         overflow-y: auto;
       }
 
@@ -464,64 +710,9 @@ export class StartMenu {
         color: #ffdd00;
       }
 
-      #start-menu .coop-buttons {
-        display: flex;
-        gap: 15px;
-        justify-content: center;
-        margin: 20px 0;
-      }
-
-      #start-menu .coop-btn {
-        background: linear-gradient(180deg, #664488 0%, #442266 100%);
-        border: 2px solid #aa66ff;
-        color: #ffffff;
-        padding: 20px 35px;
-        font-size: 16px;
-        font-weight: bold;
-        cursor: pointer;
-        transition: all 0.2s;
-        letter-spacing: 2px;
-      }
-
-      #start-menu .coop-btn:hover {
-        background: linear-gradient(180deg, #8866aa 0%, #553388 100%);
-        transform: scale(1.05);
-        box-shadow: 0 0 20px #aa66ff;
-      }
-
-      #start-menu .controls-btn {
-        background: rgba(40, 40, 80, 0.6);
-        border: 1px solid #6666aa;
-        color: #aaaaff;
-        padding: 10px 30px;
-        font-size: 13px;
-        cursor: pointer;
-        transition: all 0.2s;
-        letter-spacing: 2px;
-        margin-top: 10px;
-      }
-      #start-menu .controls-btn:hover {
-        background: rgba(60, 60, 120, 0.8);
-        color: #ffffff;
-        box-shadow: 0 0 10px #6666aa;
-      }
-
-      #start-menu .back-btn {
-        background: rgba(80, 40, 0, 0.4);
-        border: 1px solid #884400;
-        color: #ff8800;
-        padding: 10px 30px;
-        font-size: 14px;
-        cursor: pointer;
-        margin-top: 15px;
-        letter-spacing: 3px;
-        transition: all 0.2s;
-      }
-      #start-menu .back-btn:hover {
-        background: rgba(120, 60, 0, 0.5);
-        box-shadow: 0 0 15px #ff8800;
-      }
-
+      /* ------------------------------------------------------------------- */
+      /* LAN section                                                          */
+      /* ------------------------------------------------------------------- */
       #start-menu .lan-section { text-align: center; }
 
       #start-menu .lan-btn {
@@ -651,6 +842,11 @@ export class StartMenu {
         margin: 8px 0;
       }
 
+      /* ------------------------------------------------------------------- */
+      /* Hidden utility                                                       */
+      /* ------------------------------------------------------------------- */
+      #start-menu .hidden { display: none !important; }
+
       #start-menu.hidden {
         display: none;
       }
@@ -658,10 +854,14 @@ export class StartMenu {
     document.head.appendChild(style);
   }
 
+  // -----------------------------------------------------------------------
+  // Event listeners
+  // -----------------------------------------------------------------------
+
   private attachEventListeners(): void {
+    const mainButtonsContainer = this.container.querySelector('#main-buttons') as HTMLElement;
     const adventureSection = this.container.querySelector('#adventure-levels') as HTMLElement;
     const surfaceSection = this.container.querySelector('#surface-section') as HTMLElement;
-    const modesSection = this.container.querySelector('.game-modes') as HTMLElement;
     const coopSection = this.container.querySelector('#coop-section') as HTMLElement;
     const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
 
@@ -675,41 +875,40 @@ export class StartMenu {
       });
     });
 
-    // Start buttons (game modes - scoped to .game-modes only)
-    const startBtns = modesSection.querySelectorAll('.start-btn');
-    startBtns.forEach((btn) => {
+    // Oval buttons (main menu mode selectors)
+    const ovalBtns = mainButtonsContainer.querySelectorAll('.oval-btn');
+    ovalBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = (btn as HTMLElement).dataset.mode as string;
 
         if (mode === 'adventure') {
           adventureSection.classList.remove('hidden');
           surfaceSection.classList.add('hidden');
-          modesSection.classList.add('hidden');
+          mainButtonsContainer.classList.add('hidden');
           coopSection.classList.add('hidden');
+          lanSection.classList.add('hidden');
           return;
         }
 
         if (mode === 'multiplayer') {
-          // Show co-op player count sub-panel
           coopSection.classList.remove('hidden');
           surfaceSection.classList.add('hidden');
-          modesSection.classList.add('hidden');
+          mainButtonsContainer.classList.add('hidden');
           adventureSection.classList.add('hidden');
           lanSection.classList.add('hidden');
           return;
         }
 
         if (mode === 'lan') {
-          // Show LAN host/join panel
           lanSection.classList.remove('hidden');
           surfaceSection.classList.add('hidden');
-          modesSection.classList.add('hidden');
+          mainButtonsContainer.classList.add('hidden');
           adventureSection.classList.add('hidden');
           coopSection.classList.add('hidden');
           return;
         }
 
-        // Other modes: use selected surface
+        // Other modes (single, network): use selected surface
         this.onStartCallback?.({
           surfaceType: this.selectedSurface,
           gameMode: mode as 'single' | 'multiplayer' | 'network',
@@ -725,10 +924,8 @@ export class StartMenu {
     coopBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         this.coopPlayerCount = parseInt((btn as HTMLElement).dataset.players ?? '2', 10) as 2 | 3 | 4;
-        // Highlight selected player count
         coopBtns.forEach((b) => b.classList.remove('active'));
         btn.classList.add('active');
-        // Show surface selection
         coopSurfacePick.classList.remove('hidden');
       });
     });
@@ -743,7 +940,7 @@ export class StartMenu {
       });
     });
 
-    // Co-op START button - launches game with chosen player count + surface
+    // Co-op START button
     coopStartBtn?.addEventListener('click', () => {
       this.onStartCallback?.({
         surfaceType: this.coopSelectedSurface,
@@ -755,7 +952,6 @@ export class StartMenu {
     // Configure controls button
     const configControlsBtn = this.container.querySelector('#configure-controls');
     configControlsBtn?.addEventListener('click', () => {
-      // Create a temporary ConfigurableInput for 4 players to show all bindings
       const tempInput = new ConfigurableInput(4);
       const controlsMenu = new ControlsMenu();
       controlsMenu.setInput(tempInput);
@@ -773,7 +969,7 @@ export class StartMenu {
       coopSurfacePick.classList.add('hidden');
       coopBtns.forEach((b) => b.classList.remove('active'));
       surfaceSection.classList.remove('hidden');
-      modesSection.classList.remove('hidden');
+      mainButtonsContainer.classList.remove('hidden');
     });
 
     // Adventure level selection
@@ -795,7 +991,7 @@ export class StartMenu {
     backBtn?.addEventListener('click', () => {
       adventureSection.classList.add('hidden');
       surfaceSection.classList.remove('hidden');
-      modesSection.classList.remove('hidden');
+      mainButtonsContainer.classList.remove('hidden');
     });
 
     // ---- LAN section handlers ----
@@ -842,7 +1038,6 @@ export class StartMenu {
       try {
         const result = await this.lanClient.startHost();
         if (result.ok) {
-          // Use localhost for same-machine connections (works on WSL2 + Windows)
           hostedServerUrl = this.lanClient.getServerWsUrl('localhost', result.port);
           const vitePort = parseInt(window.location.port, 10) || 3000;
           const localhostUrl = this.lanClient.getJoinUrl('localhost', result.port, this.lanSelectedSurface, vitePort);
@@ -974,7 +1169,7 @@ export class StartMenu {
       lanHostSurfacePick.classList.add('hidden');
       lanHostBtn.style.display = '';
       surfaceSection.classList.remove('hidden');
-      modesSection.classList.remove('hidden');
+      mainButtonsContainer.classList.remove('hidden');
     });
 
     // Weapon database
@@ -987,6 +1182,10 @@ export class StartMenu {
       });
     });
   }
+
+  // -----------------------------------------------------------------------
+  // Public API
+  // -----------------------------------------------------------------------
 
   /**
    * Set callback for when game starts.
@@ -1017,6 +1216,9 @@ export class StartMenu {
   dispose(): void {
     // Remove DOM elements FIRST so UI unblocks even if cleanup throws
     this.container.remove();
+    if (this.styleElement) {
+      this.styleElement.remove();
+    }
     this.menuBackground.dispose();
   }
 }

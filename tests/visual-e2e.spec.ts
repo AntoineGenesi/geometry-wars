@@ -64,8 +64,8 @@ async function startGame(page: Page, surface: string, mode = 'single'): Promise<
     await surfaceBtn.click();
   }
 
-  // Click the game mode button
-  const modeBtn = page.locator(`.start-btn[data-mode="${mode}"]`);
+  // Click the game mode button (oval-btn in redesigned menu)
+  const modeBtn = page.locator(`[data-mode="${mode}"]`);
   await modeBtn.click();
 
   // Wait for menu to hide and game to start
@@ -222,27 +222,27 @@ test.describe('Start Menu', () => {
     await expect(title).toContainText('GEOMETRY WARS');
   });
 
-  test('displays subtitle', async ({ page }) => {
+  test('displays full title with 3D', async ({ page }) => {
     await page.goto(BASE_URL);
-    const subtitle = page.locator('#start-menu .subtitle');
-    await expect(subtitle).toContainText('3D DIMENSIONS');
+    const title = page.locator('#start-menu .title');
+    await expect(title).toContainText('3D');
   });
 
   test('shows all game mode buttons', async ({ page }) => {
     await page.goto(BASE_URL);
-    await expect(page.locator('.start-btn[data-mode="adventure"]')).toBeVisible();
-    await expect(page.locator('.start-btn[data-mode="single"]')).toBeVisible();
-    await expect(page.locator('.start-btn[data-mode="multiplayer"]')).toBeVisible();
-    await expect(page.locator('.start-btn[data-mode="network"]')).toBeVisible();
+    await expect(page.locator('.oval-btn[data-mode="adventure"]')).toBeVisible();
+    await expect(page.locator('.oval-btn[data-mode="single"]')).toBeVisible();
+    await expect(page.locator('.oval-btn[data-mode="multiplayer"]')).toBeVisible();
+    await expect(page.locator('.oval-btn[data-mode="network"]')).toBeVisible();
   });
 
   test('shows surface selection grid', async ({ page }) => {
     await page.goto(BASE_URL);
-    const grid = page.locator('#start-menu .surface-grid');
+    const grid = page.locator('#surface-section .surface-grid');
     await expect(grid).toBeVisible();
 
-    // Should have 11 surface buttons
-    const buttons = page.locator('#start-menu .surface-btn');
+    // Should have 11 surface buttons in the surface section
+    const buttons = page.locator('#surface-section .surface-btn');
     await expect(buttons).toHaveCount(11);
   });
 
@@ -263,7 +263,7 @@ test.describe('Start Menu', () => {
 
   test('adventure mode shows level grid', async ({ page }) => {
     await page.goto(BASE_URL);
-    const adventureBtn = page.locator('.start-btn[data-mode="adventure"]');
+    const adventureBtn = page.locator('.oval-btn[data-mode="adventure"]');
     await adventureBtn.click();
 
     // Adventure section should be visible
@@ -280,13 +280,13 @@ test.describe('Start Menu', () => {
     await page.goto(BASE_URL);
 
     // Go to adventure
-    await page.locator('.start-btn[data-mode="adventure"]').click();
+    await page.locator('.oval-btn[data-mode="adventure"]').click();
     await expect(page.locator('#adventure-levels')).toBeVisible();
 
     // Click back
     await page.locator('#adventure-back').click();
     await expect(page.locator('#adventure-levels')).toBeHidden();
-    await expect(page.locator('.game-modes')).toBeVisible();
+    await expect(page.locator('#main-buttons')).toBeVisible();
   });
 
   test('controls hint is displayed', async ({ page }) => {
@@ -428,7 +428,7 @@ test.describe('Surface Screenshots', () => {
         await surfaceBtn.click();
       }
 
-      const startBtn = page.locator('.start-btn[data-mode="single"]');
+      const startBtn = page.locator('[data-mode="single"]');
       await startBtn.click();
       await page.waitForTimeout(3000);
 
