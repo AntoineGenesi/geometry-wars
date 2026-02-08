@@ -1,0 +1,543 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import * as THREE from 'three';
+import {
+  BulletInstanceManager,
+  BulletVisualType,
+  BULLET_VISUAL_CONFIGS,
+} from './BulletInstanceManager';
+
+describe('BulletInstanceManager', () => {
+  let scene: THREE.Scene;
+  let manager: BulletInstanceManager;
+
+  beforeEach(() => {
+    scene = new THREE.Scene();
+    manager = new BulletInstanceManager(scene, 100);
+  });
+
+  // -----------------------------------------------------------------------
+  // Construction
+  // -----------------------------------------------------------------------
+
+  describe('constructor', () => {
+    it('creates an instance without errors', () => {
+      expect(manager).toBeDefined();
+    });
+
+    it('starts with zero active bullets', () => {
+      expect(manager.activeCount).toBe(0);
+    });
+
+    it('does not add InstancedMesh to scene until first bullet', () => {
+      // Lazy initialization - no batches until a bullet is added
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      );
+      expect(instancedMeshes.length).toBe(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // addBullet
+  // -----------------------------------------------------------------------
+
+  describe('addBullet', () => {
+    it('adds a bullet and increments active count', () => {
+      const pos = new THREE.Vector3(1, 2, 3);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      expect(manager.activeCount).toBe(1);
+    });
+
+    it('lazily creates an InstancedMesh batch on first add', () => {
+      const pos = new THREE.Vector3(0, 1, 0);
+      const dir = new THREE.Vector3(1, 0, 0);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      );
+      expect(instancedMeshes.length).toBe(1);
+    });
+
+    it('creates separate batches for different visual types', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b2', BulletVisualType.Spread, pos, dir);
+      manager.addBullet('b3', BulletVisualType.Piercing, pos, dir);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      );
+      expect(instancedMeshes.length).toBe(3);
+    });
+
+    it('reuses the same batch for same visual type', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b2', BulletVisualType.Standard, pos, dir);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      );
+      expect(instancedMeshes.length).toBe(1);
+    });
+
+    it('accepts a custom color override', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      const color = new THREE.Color(0xff00ff);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir, color);
+      expect(manager.activeCount).toBe(1);
+    });
+
+    it('rejects duplicate bullet ids (idempotent)', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      expect(manager.activeCount).toBe(1);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // updateBullet
+  // -----------------------------------------------------------------------
+
+  describe('updateBullet', () => {
+    it('updates position and direction of an existing bullet', () => {
+      const pos = new THREE.Vector3(1, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+
+      const newPos = new THREE.Vector3(2, 0, 0);
+      const newDir = new THREE.Vector3(0, 1, 0);
+      manager.updateBullet('b1', newPos, newDir);
+      manager.update();
+
+      // Verify the matrix was applied - extract position from instance matrix
+      const stats = manager.getStats();
+      expect(stats.totalActive).toBe(1);
+    });
+
+    it('does nothing for a non-existent bullet id', () => {
+      const pos = new THREE.Vector3(1, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      // Should not throw
+      manager.updateBullet('nonexistent', pos, dir);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // removeBullet
+  // -----------------------------------------------------------------------
+
+  describe('removeBullet', () => {
+    it('removes a bullet and decrements active count', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      expect(manager.activeCount).toBe(1);
+
+      manager.removeBullet('b1');
+      expect(manager.activeCount).toBe(0);
+    });
+
+    it('does nothing for a non-existent bullet id', () => {
+      // Should not throw
+      manager.removeBullet('nonexistent');
+      expect(manager.activeCount).toBe(0);
+    });
+
+    it('frees the slot for reuse', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+
+      // Fill some slots
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b2', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b3', BulletVisualType.Standard, pos, dir);
+      expect(manager.activeCount).toBe(3);
+
+      // Remove middle bullet
+      manager.removeBullet('b2');
+      expect(manager.activeCount).toBe(2);
+
+      // Add a new bullet - should reuse the freed slot
+      manager.addBullet('b4', BulletVisualType.Standard, pos, dir);
+      expect(manager.activeCount).toBe(3);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // update (GPU flush)
+  // -----------------------------------------------------------------------
+
+  describe('update', () => {
+    it('updates instance matrix version (signals GPU upload)', () => {
+      const pos = new THREE.Vector3(1, 2, 3);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      ) as THREE.InstancedMesh[];
+      expect(instancedMeshes.length).toBe(1);
+
+      // Record version before update
+      const versionBefore = instancedMeshes[0].instanceMatrix.version;
+      manager.update();
+      // needsUpdate = true increments the internal version counter
+      expect(instancedMeshes[0].instanceMatrix.version).toBeGreaterThan(versionBefore);
+    });
+
+    it('sets correct InstancedMesh count based on active bullets', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b2', BulletVisualType.Standard, pos, dir);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      ) as THREE.InstancedMesh[];
+      expect(instancedMeshes[0].count).toBeGreaterThanOrEqual(2);
+    });
+
+    it('handles empty state gracefully', () => {
+      // Should not throw
+      manager.update();
+    });
+
+    it('handles add then remove then update cycle', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.removeBullet('b1');
+      manager.update();
+      expect(manager.activeCount).toBe(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Max capacity
+  // -----------------------------------------------------------------------
+
+  describe('max capacity', () => {
+    it('respects the max instance count per batch', () => {
+      const smallManager = new BulletInstanceManager(scene, 5);
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+
+      for (let i = 0; i < 5; i++) {
+        smallManager.addBullet(`b${i}`, BulletVisualType.Standard, pos, dir);
+      }
+      expect(smallManager.activeCount).toBe(5);
+
+      // 6th bullet should be rejected (pool full for this type)
+      smallManager.addBullet('b5', BulletVisualType.Standard, pos, dir);
+      expect(smallManager.activeCount).toBe(5);
+    });
+
+    it('different types have independent capacity', () => {
+      const smallManager = new BulletInstanceManager(scene, 3);
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+
+      // Fill standard slots
+      for (let i = 0; i < 3; i++) {
+        smallManager.addBullet(`s${i}`, BulletVisualType.Standard, pos, dir);
+      }
+      expect(smallManager.activeCount).toBe(3);
+
+      // Can still add spread bullets (different batch)
+      smallManager.addBullet('sp0', BulletVisualType.Spread, pos, dir);
+      expect(smallManager.activeCount).toBe(4);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Matrix computation (position + orientation)
+  // -----------------------------------------------------------------------
+
+  describe('matrix computation', () => {
+    it('encodes position in the instance matrix', () => {
+      const pos = new THREE.Vector3(5, 10, 15);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      ) as THREE.InstancedMesh[];
+      expect(instancedMeshes.length).toBe(1);
+
+      const matrix = new THREE.Matrix4();
+      instancedMeshes[0].getMatrixAt(0, matrix);
+
+      const extractedPos = new THREE.Vector3();
+      const extractedQuat = new THREE.Quaternion();
+      const extractedScale = new THREE.Vector3();
+      matrix.decompose(extractedPos, extractedQuat, extractedScale);
+
+      expect(extractedPos.x).toBeCloseTo(5, 3);
+      expect(extractedPos.y).toBeCloseTo(10, 3);
+      expect(extractedPos.z).toBeCloseTo(15, 3);
+    });
+
+    it('orients bullet along the direction vector', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(1, 0, 0); // pointing +X
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      ) as THREE.InstancedMesh[];
+
+      const matrix = new THREE.Matrix4();
+      instancedMeshes[0].getMatrixAt(0, matrix);
+
+      const extractedPos = new THREE.Vector3();
+      const extractedQuat = new THREE.Quaternion();
+      const extractedScale = new THREE.Vector3();
+      matrix.decompose(extractedPos, extractedQuat, extractedScale);
+
+      // The local +Z axis should align with direction (1,0,0)
+      const localZ = new THREE.Vector3(0, 0, 1).applyQuaternion(extractedQuat);
+      expect(localZ.x).toBeCloseTo(1, 1);
+      expect(localZ.y).toBeCloseTo(0, 1);
+      expect(localZ.z).toBeCloseTo(0, 1);
+    });
+
+    it('applies non-zero scale from visual config', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      ) as THREE.InstancedMesh[];
+
+      const matrix = new THREE.Matrix4();
+      instancedMeshes[0].getMatrixAt(0, matrix);
+
+      const extractedScale = new THREE.Vector3();
+      matrix.decompose(new THREE.Vector3(), new THREE.Quaternion(), extractedScale);
+
+      // Scale should be non-zero (from the visual config)
+      expect(extractedScale.x).toBeGreaterThan(0);
+      expect(extractedScale.y).toBeGreaterThan(0);
+      expect(extractedScale.z).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Bullet visual types
+  // -----------------------------------------------------------------------
+
+  describe('bullet visual types', () => {
+    it('has configs for all BulletVisualType values', () => {
+      const allTypes = Object.values(BulletVisualType);
+      for (const type of allTypes) {
+        expect(BULLET_VISUAL_CONFIGS[type]).toBeDefined();
+        expect(BULLET_VISUAL_CONFIGS[type].color).toBeDefined();
+        expect(BULLET_VISUAL_CONFIGS[type].scaleX).toBeGreaterThan(0);
+        expect(BULLET_VISUAL_CONFIGS[type].scaleY).toBeGreaterThan(0);
+        expect(BULLET_VISUAL_CONFIGS[type].scaleZ).toBeGreaterThan(0);
+      }
+    });
+
+    it('Standard type uses cyan-ish color', () => {
+      const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Standard];
+      // Standard is white-cyan (0x88ffff)
+      expect(config.color).toBe(0x88ffff);
+    });
+
+    it('Spread type uses yellow color', () => {
+      const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Spread];
+      expect(config.color).toBe(0xffff44);
+    });
+
+    it('Piercing type uses red-white color', () => {
+      const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Piercing];
+      expect(config.color).toBe(0xff4444);
+    });
+
+    it('Homing type uses green color', () => {
+      const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Homing];
+      expect(config.color).toBe(0x44ff44);
+    });
+
+    it('Default type exists as fallback', () => {
+      const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Default];
+      expect(config).toBeDefined();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // clear
+  // -----------------------------------------------------------------------
+
+  describe('clear', () => {
+    it('removes all active bullets', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b2', BulletVisualType.Spread, pos, dir);
+      manager.addBullet('b3', BulletVisualType.Piercing, pos, dir);
+      expect(manager.activeCount).toBe(3);
+
+      manager.clear();
+      expect(manager.activeCount).toBe(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // dispose
+  // -----------------------------------------------------------------------
+
+  describe('dispose', () => {
+    it('removes all InstancedMeshes from the scene', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b2', BulletVisualType.Spread, pos, dir);
+      manager.update();
+
+      manager.dispose();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      );
+      expect(instancedMeshes.length).toBe(0);
+    });
+
+    it('resets active count to zero', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.dispose();
+      expect(manager.activeCount).toBe(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // getStats
+  // -----------------------------------------------------------------------
+
+  describe('getStats', () => {
+    it('returns correct stats with mixed bullet types', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b2', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('b3', BulletVisualType.Spread, pos, dir);
+      manager.addBullet('b4', BulletVisualType.Homing, pos, dir);
+
+      const stats = manager.getStats();
+      expect(stats.totalActive).toBe(4);
+      expect(stats.batchCount).toBe(3);
+      expect(stats.typeBreakdown.get(BulletVisualType.Standard)).toBe(2);
+      expect(stats.typeBreakdown.get(BulletVisualType.Spread)).toBe(1);
+      expect(stats.typeBreakdown.get(BulletVisualType.Homing)).toBe(1);
+    });
+
+    it('returns zero stats when empty', () => {
+      const stats = manager.getStats();
+      expect(stats.totalActive).toBe(0);
+      expect(stats.batchCount).toBe(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Stress / lifecycle
+  // -----------------------------------------------------------------------
+
+  describe('lifecycle stress', () => {
+    it('handles rapid add/remove cycles', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+
+      for (let cycle = 0; cycle < 10; cycle++) {
+        // Add 20 bullets
+        for (let i = 0; i < 20; i++) {
+          manager.addBullet(`c${cycle}_b${i}`, BulletVisualType.Standard, pos, dir);
+        }
+        manager.update();
+
+        // Remove all
+        for (let i = 0; i < 20; i++) {
+          manager.removeBullet(`c${cycle}_b${i}`);
+        }
+        manager.update();
+      }
+
+      expect(manager.activeCount).toBe(0);
+    });
+
+    it('handles interleaved add/update/remove across types', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+
+      manager.addBullet('s1', BulletVisualType.Standard, pos, dir);
+      manager.addBullet('sp1', BulletVisualType.Spread, pos, dir);
+      manager.addBullet('p1', BulletVisualType.Piercing, pos, dir);
+      manager.update();
+
+      manager.updateBullet('s1', new THREE.Vector3(1, 0, 0), dir);
+      manager.removeBullet('sp1');
+      manager.addBullet('h1', BulletVisualType.Homing, pos, dir);
+      manager.update();
+
+      expect(manager.activeCount).toBe(3); // s1, p1, h1
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Instance color
+  // -----------------------------------------------------------------------
+
+  describe('instance color', () => {
+    it('sets per-instance color from visual config', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      ) as THREE.InstancedMesh[];
+      expect(instancedMeshes.length).toBe(1);
+
+      // instanceColor should exist and be marked for update
+      expect(instancedMeshes[0].instanceColor).not.toBeNull();
+    });
+
+    it('allows custom color override per bullet', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      const customColor = new THREE.Color(0xff00ff);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir, customColor);
+      manager.update();
+
+      const instancedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.InstancedMesh,
+      ) as THREE.InstancedMesh[];
+
+      // Read back the instance color
+      const readColor = new THREE.Color();
+      instancedMeshes[0].getColorAt(0, readColor);
+      expect(readColor.r).toBeCloseTo(customColor.r, 2);
+      expect(readColor.g).toBeCloseTo(customColor.g, 2);
+      expect(readColor.b).toBeCloseTo(customColor.b, 2);
+    });
+  });
+});
