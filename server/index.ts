@@ -13,6 +13,13 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT) || 2567;
 const app = express();
 
+// Cross-Origin Isolation headers (enables SharedArrayBuffer for Web Workers)
+app.use((_req, res, next) => {
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  next();
+});
+
 // Serve static files from dist folder in production
 app.use(express.static(path.join(__dirname, '../dist')));
 
