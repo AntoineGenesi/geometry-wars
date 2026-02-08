@@ -52,6 +52,7 @@ import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
 import { SpatialHash } from './core/SpatialHash';
+import { CompanionManager, CompanionPickup, CompanionHUD, CompanionType, getRandomCompanionType } from './entities/Companion';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -445,6 +446,7 @@ function checkPlayerEnemyCollisions(
   particles: ParticleSystem,
   screenShake: ScreenShake,
   isShielded: boolean,
+  onPlayerHit?: () => boolean,
 ): void {
   if (!player.canTakeDamage) return;
 
@@ -464,6 +466,16 @@ function checkPlayerEnemyCollisions(
         screenShake.shake(0.2, 0.15);
         getSoundEngine().play('shieldHit');
       } else {
+        // Try companion shield (protector) before dying
+        const saved = onPlayerHit?.() ?? false;
+        if (saved) {
+          // Companion protector activated - kill the enemy, player survives
+          enemy.takeDamage(999);
+          particles.bulletImpact(enemy.position);
+          screenShake.shake(0.3, 0.2);
+          screenFlash('rgba(68, 255, 68, 0.3)', 150);
+          break;
+        }
         player.die();
         particles.playerDeath(player.mesh.position);
         screenShake.shake(0.5, 0.4);
@@ -860,6 +872,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const weaponHUD = new WeaponHUD();
   weaponHUD.setPosition(10, window.innerHeight / 2 - 60);
 
+  // -- Companion system --
+  const companionManager = new CompanionManager();
+  game.scene.add(companionManager.root);
+  const companionPickups: CompanionPickup[] = [];
+  const companionHUD = new CompanionHUD();
+
   // -- Weapon pickups on the field --
   const weaponPickups: WeaponPickup[] = [];
   const buffPickups: BuffPickup[] = [];
@@ -1097,6 +1115,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     bgMusic.stop();
     weaponManager.dispose();
     weaponHUD.dispose();
+    companionManager.dispose();
+    companionHUD.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex + 1);
@@ -1106,6 +1126,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     bgMusic.stop();
     weaponManager.dispose();
     weaponHUD.dispose();
+    companionManager.dispose();
+    companionHUD.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex);
@@ -1433,6 +1455,43 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       drone.applySurfaceTransform(getTransform);
     }
 
+    // Update companions
+    if (player.alive) {
+      const aimDir = player.getAimDirection();
+      companionManager.update(
+        dt,
+        player.surfaceU,
+        player.surfaceV,
+        playerWalker.position,
+        aimDir,
+        enemySpawner.getEnemies().filter(e => e.alive),
+        bulletPool,
+        0, // ownerId = P1
+        playerWalker.normal,
+        getTransform,
+      );
+    }
+
+    // Update companion pickups
+    for (let i = companionPickups.length - 1; i >= 0; i--) {
+      const cp = companionPickups[i];
+      if (!cp.active) {
+        game.scene.remove(cp.mesh);
+        cp.dispose();
+        companionPickups.splice(i, 1);
+        continue;
+      }
+      cp.update(dt, game.clock.totalTime);
+      cp.applySurfaceTransform(getTransform);
+
+      // Check player collision with companion pickup
+      if (player.alive && cp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
+        companionManager.addCompanion(cp.companionType);
+        sound.play('weaponPickup', { volume: 0.5, pitch: 1.8 });
+        cp.active = false;
+      }
+    }
+
     // Update super state manager
     superStateManager.update(dt);
 
@@ -1500,6 +1559,13 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
           game.scene.add(bPickup.mesh);
           buffPickups.push(bPickup);
         }
+        // ~5% chance to spawn a companion pickup on enemy death
+        if (Math.random() < 0.05) {
+          const cType = getRandomCompanionType();
+          const cPickup = new CompanionPickup(cType, u, v);
+          game.scene.add(cPickup.mesh);
+          companionPickups.push(cPickup);
+        }
       },
       scorePopups,
       scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier,
@@ -1509,10 +1575,13 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Player vs geoms
     checkGeomPickups(player, geomPool, scoreManager, particles);
 
-    // Player vs enemies (immune if shielded OR tesla coil active)
+    // Player vs enemies (immune if shielded OR tesla coil active OR companion shield active)
     const fireModifiers = superStateManager.getFireModifiers();
-    const isImmune = fireModifiers.isShielded || weaponManager.isTeslaActive();
-    checkPlayerEnemyCollisions(player, enemies, particles, screenShake, isImmune);
+    const isImmune = fireModifiers.isShielded || weaponManager.isTeslaActive() || companionManager.isShieldActive();
+    checkPlayerEnemyCollisions(
+      player, enemies, particles, screenShake, isImmune,
+      () => companionManager.onPlayerHit(),
+    );
 
     // Gate pass-through detection (Pacifism mode mechanic)
     if (player.alive && player.canTakeDamage) {
@@ -1532,12 +1601,18 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       for (const enemy of enemies) {
         if (enemy instanceof Painter && enemy.active) {
           if (enemy.isOnTrail(player.surfaceU, player.surfaceV)) {
-            if (!fireModifiers.isShielded) {
-              player.die();
-              particles.playerDeath(player.mesh.position);
-              screenShake.shake(0.5, 0.4);
-              getSoundEngine().play('playerDeath');
-              screenFlash('rgba(255, 60, 60, 0.4)', 200);
+            if (!fireModifiers.isShielded && !companionManager.isShieldActive()) {
+              // Try companion protector shield before dying
+              const saved = companionManager.onPlayerHit();
+              if (!saved) {
+                player.die();
+                particles.playerDeath(player.mesh.position);
+                screenShake.shake(0.5, 0.4);
+                getSoundEngine().play('playerDeath');
+                screenFlash('rgba(255, 60, 60, 0.4)', 200);
+              } else {
+                screenFlash('rgba(68, 255, 68, 0.3)', 150);
+              }
             }
             painterDamageCooldown = 0.5; // brief cooldown
             break;
@@ -1718,6 +1793,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
     // Update weapon inventory HUD
     weaponHUD.update(weaponManager.getInventory(), weaponManager.getCurrentWeapon());
+
+    // Update companion HUD
+    companionHUD.update(companionManager.getCompanionCounts());
 
     // Update level display in HUD
     if (playerLevel.level > 0) {
