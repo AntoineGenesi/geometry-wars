@@ -8,6 +8,9 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { GameClock } from './GameClock';
 import { EntityManager } from './EntityManager';
 import { CollisionGroup } from './Entity';
+import { GPUCapabilityReport, detectGPUCapabilities } from '../rendering/GPUCapabilities';
+import { createRenderer } from '../rendering/RendererFactory';
+import { EntityLimits, getEntityLimits } from '../rendering/EntityLimits';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -39,6 +42,11 @@ export interface GameConfig {
   cameraDistance?: number;
   /** How smoothly the camera follows the player (0 = instant, 1 = no follow). */
   cameraSmoothing?: number;
+  /** Pre-built renderer (used by Game.create() factory). When provided,
+   *  the constructor skips creating its own WebGLRenderer. */
+  _renderer?: THREE.WebGLRenderer;
+  /** Pre-detected GPU capabilities (used by Game.create() factory). */
+  _capabilities?: GPUCapabilityReport;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +82,16 @@ export class Game {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly renderer: THREE.WebGLRenderer;
+
+  // ---- GPU capabilities -----------------------------------------------
+
+  /** Detected GPU capabilities. Null when constructed synchronously
+   *  without prior detection (use Game.create() for full detection). */
+  capabilities: GPUCapabilityReport | null = null;
+
+  /** Entity and quality limits derived from the GPU tier. Falls back
+   *  to medium-tier defaults when capabilities are not detected. */
+  entityLimits: EntityLimits;
 
   // ---- Post-processing ------------------------------------------------
 
@@ -119,8 +137,34 @@ export class Game {
 
   // ---- Constructor ----------------------------------------------------
 
+  /**
+   * Async factory that detects GPU capabilities before constructing.
+   * Prefer this over `new Game()` when you want capability-aware rendering.
+   *
+   * Usage:
+   *   const game = await Game.create({ bloom: { strength: 0.7 } });
+   */
+  static async create(config: GameConfig = {}): Promise<Game> {
+    const container = config.container ?? document.body;
+    const capabilities = await detectGPUCapabilities();
+    const { renderer } = await createRenderer(container, capabilities);
+    return new Game({
+      ...config,
+      _renderer: renderer,
+      _capabilities: capabilities,
+    });
+  }
+
   constructor(config: GameConfig = {}) {
     const container = config.container ?? document.body;
+
+    // -- GPU capabilities (set if provided by Game.create()) --
+    if (config._capabilities) {
+      this.capabilities = config._capabilities;
+      this.entityLimits = getEntityLimits(config._capabilities.tier);
+    } else {
+      this.entityLimits = getEntityLimits('medium');
+    }
 
     // -- Scene --
     this.scene = new THREE.Scene();
@@ -138,15 +182,21 @@ export class Game {
     this.smoothedCameraPos.copy(this.camera.position);
 
     // -- Renderer --
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      powerPreference: 'high-performance',
-    });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.toneMapping = THREE.NoToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
-    container.appendChild(this.renderer.domElement);
+    // When a pre-built renderer is provided (via Game.create()), use it directly.
+    // Otherwise, create a standard WebGLRenderer (backward-compatible path).
+    if (config._renderer) {
+      this.renderer = config._renderer;
+    } else {
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: 'high-performance',
+      });
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.renderer.toneMapping = THREE.NoToneMapping;
+      this.renderer.toneMappingExposure = 1.0;
+      container.appendChild(this.renderer.domElement);
+    }
 
     // -- Post-processing --
     const bloomCfg: BloomConfig = { ...DEFAULT_BLOOM, ...config.bloom };
