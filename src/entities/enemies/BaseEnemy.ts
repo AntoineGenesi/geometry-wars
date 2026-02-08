@@ -1,6 +1,11 @@
 import * as THREE from 'three';
 import { Entity, CollisionGroup } from '../../core/Entity';
 
+// Pre-allocated temp objects to avoid per-frame GC pressure
+const _tempMatrix4 = new THREE.Matrix4();
+const _tempEuler = new THREE.Euler();
+const _tempOffsetVec3 = new THREE.Vector3();
+
 export abstract class BaseEnemy extends Entity {
   health: number;
   maxHealth: number;
@@ -8,6 +13,9 @@ export abstract class BaseEnemy extends Entity {
   geomCount: number;
   speed: number;
   alive: boolean;
+
+  /** Cached array of MeshStandardMaterial refs for fast iteration (avoids traverse). */
+  cachedMaterials: THREE.MeshStandardMaterial[] | null = null;
 
   /** Tracks damage dealt by each player (playerId -> total damage). */
   readonly damageBy: Map<number, number> = new Map();
@@ -72,21 +80,28 @@ export abstract class BaseEnemy extends Entity {
 
     if (this.mesh) {
       // Offset the visual mesh above the surface by the enemy's radius
-      // This prevents enemies from appearing half-embedded in the surface
-      const offsetPosition = transform.position.clone();
-      offsetPosition.addScaledVector(transform.normal, this.radius);
-      this.mesh.position.copy(offsetPosition);
+      // Uses pre-allocated vector instead of clone()
+      _tempOffsetVec3.copy(transform.position);
+      _tempOffsetVec3.addScaledVector(transform.normal, this.radius);
+      this.mesh.position.copy(_tempOffsetVec3);
 
-      const up = transform.normal;
-      const forward = transform.tangent;
-      const right = transform.bitangent;
+      // Reuse pre-allocated Matrix4/Euler instead of new allocations
+      _tempMatrix4.makeBasis(transform.bitangent, transform.normal, transform.tangent);
+      _tempEuler.setFromRotationMatrix(_tempMatrix4);
+      this.mesh.rotation.copy(_tempEuler);
 
-      const rotationMatrix = new THREE.Matrix4();
-      rotationMatrix.makeBasis(right, up, forward);
-
-      const rotation = new THREE.Euler();
-      rotation.setFromRotationMatrix(rotationMatrix);
-      this.mesh.rotation.copy(rotation);
+      // Cache material references on first transform (avoids traverse every frame)
+      if (!this.cachedMaterials) {
+        this.cachedMaterials = [];
+        this.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material) {
+            const mat = child.material as THREE.MeshStandardMaterial;
+            if (mat.emissive !== undefined) {
+              this.cachedMaterials!.push(mat);
+            }
+          }
+        });
+      }
     }
   }
 

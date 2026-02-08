@@ -223,15 +223,22 @@ export abstract class Surface {
     }
   }
 
+  // Pre-allocated temp vectors for spring calculations (avoids ~5000 allocations/frame)
+  private readonly _springTempDir = new THREE.Vector3()
+  private readonly _springTempForce = new THREE.Vector3()
+  private readonly _springTempPos = new THREE.Vector3()
+
   applyForce(worldPos: THREE.Vector3, force: number, radius: number): void {
+    const radiusSq = radius * radius
     for (const spring of this.gridVertexSprings) {
-      const dist = spring.restPosition.distanceTo(worldPos)
-      if (dist < radius) {
+      // Use distanceToSquared to avoid sqrt, then only sqrt when within radius
+      const distSq = spring.restPosition.distanceToSquared(worldPos)
+      if (distSq < radiusSq && distSq > 0.0001) {
+        const dist = Math.sqrt(distSq)
         const falloff = 1.0 - dist / radius
-        const direction = spring.restPosition.clone().sub(worldPos).normalize()
-        spring.velocity.add(
-          direction.multiplyScalar(force * falloff * falloff)
-        )
+        // Reuse temp vector instead of clone()
+        this._springTempDir.copy(spring.restPosition).sub(worldPos).normalize()
+        spring.velocity.addScaledVector(this._springTempDir, force * falloff * falloff)
       }
     }
   }
@@ -246,19 +253,21 @@ export abstract class Surface {
 
     for (let step = 0; step < steps; step++) {
       for (const spring of this.gridVertexSprings) {
-        const springForce = spring.offset
-          .clone()
-          .multiplyScalar(-spring.stiffness)
-        spring.velocity.add(springForce.multiplyScalar(subDt * 60))
+        // Compute spring force in-place: F = -stiffness * offset
+        // Instead of clone().multiplyScalar(), use addScaledVector
+        const stiffnessTimesDt = -spring.stiffness * subDt * 60
+        spring.velocity.addScaledVector(spring.offset, stiffnessTimesDt)
         spring.velocity.multiplyScalar(Math.pow(spring.damping, subDt * 60))
-        spring.offset.add(spring.velocity.clone().multiplyScalar(subDt))
+        // Instead of clone().multiplyScalar(subDt), use addScaledVector
+        spring.offset.addScaledVector(spring.velocity, subDt)
       }
     }
 
     for (let i = 0; i < this.gridVertexSprings.length; i++) {
       const spring = this.gridVertexSprings[i]
-      const pos = spring.restPosition.clone().add(spring.offset)
-      posAttr.setXYZ(i, pos.x, pos.y, pos.z)
+      // Use temp vector instead of clone()
+      this._springTempPos.copy(spring.restPosition).add(spring.offset)
+      posAttr.setXYZ(i, this._springTempPos.x, this._springTempPos.y, this._springTempPos.z)
     }
 
     posAttr.needsUpdate = true

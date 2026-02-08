@@ -14,6 +14,11 @@ const BULLET_COLOR = new THREE.Color(0x88ffff); // white-cyan (GW3D authentic)
 // Default sphere radius for projection (used if no surface function provided)
 const DEFAULT_SPHERE_RADIUS = 8;
 
+// Pre-allocated temp vectors to avoid per-frame GC pressure
+const _tempDir = new THREE.Vector3();
+const _tempNormal = new THREE.Vector3();
+const _tempTarget = new THREE.Vector3();
+
 // ---------------------------------------------------------------------------
 // Single bullet data (plain object, no class overhead)
 // ---------------------------------------------------------------------------
@@ -229,23 +234,24 @@ export class BulletPool {
         line.position.copy(result.point);
 
         // Update direction to remain tangent to surface at new position
+        // Uses pre-allocated _tempDir instead of new Vector3
         const normal = result.normal;
-        const dir = new THREE.Vector3(b.dirX, b.dirY, b.dirZ);
-        const dot = dir.dot(normal);
-        dir.x -= dot * normal.x;
-        dir.y -= dot * normal.y;
-        dir.z -= dot * normal.z;
-        const dirLen = dir.length();
+        _tempDir.set(b.dirX, b.dirY, b.dirZ);
+        const dot = _tempDir.dot(normal);
+        _tempDir.x -= dot * normal.x;
+        _tempDir.y -= dot * normal.y;
+        _tempDir.z -= dot * normal.z;
+        const dirLen = _tempDir.length();
         if (dirLen > 0.0001) {
-          dir.multiplyScalar(1 / dirLen);
+          _tempDir.multiplyScalar(1 / dirLen);
         } else {
           this.kill(i);
           continue;
         }
 
-        b.dirX = dir.x;
-        b.dirY = dir.y;
-        b.dirZ = dir.z;
+        b.dirX = _tempDir.x;
+        b.dirY = _tempDir.y;
+        b.dirZ = _tempDir.z;
       } else {
         // -- Legacy sphere projection (fallback) --
         const currentDist = line.position.length();
@@ -254,21 +260,23 @@ export class BulletPool {
           line.position.multiplyScalar(targetRadius / currentDist);
         }
 
-        const normal = line.position.clone().normalize();
-        const dir = new THREE.Vector3(b.dirX, b.dirY, b.dirZ);
-        const dot = dir.dot(normal);
-        dir.x -= dot * normal.x;
-        dir.y -= dot * normal.y;
-        dir.z -= dot * normal.z;
-        dir.normalize();
+        // Uses pre-allocated vectors instead of clone()/new
+        _tempNormal.copy(line.position).normalize();
+        _tempDir.set(b.dirX, b.dirY, b.dirZ);
+        const dot = _tempDir.dot(_tempNormal);
+        _tempDir.x -= dot * _tempNormal.x;
+        _tempDir.y -= dot * _tempNormal.y;
+        _tempDir.z -= dot * _tempNormal.z;
+        _tempDir.normalize();
 
-        b.dirX = dir.x;
-        b.dirY = dir.y;
-        b.dirZ = dir.z;
+        b.dirX = _tempDir.x;
+        b.dirY = _tempDir.y;
+        b.dirZ = _tempDir.z;
       }
 
-      // Orient the line visual to match direction
-      orientLine(line, new THREE.Vector3(b.dirX, b.dirY, b.dirZ));
+      // Orient the line visual to match direction (reuse temp vector)
+      _tempDir.set(b.dirX, b.dirY, b.dirZ);
+      orientLine(line, _tempDir);
     }
   }
 
@@ -359,6 +367,7 @@ function createBulletGeometry(): THREE.BufferGeometry {
 
 /** Point a line object so that its local +Z aligns with `dir`. */
 function orientLine(line: THREE.Line, dir: THREE.Vector3): void {
-  const target = line.position.clone().add(dir);
-  line.lookAt(target);
+  // Use pre-allocated _tempTarget instead of clone()
+  _tempTarget.copy(line.position).add(dir);
+  line.lookAt(_tempTarget);
 }

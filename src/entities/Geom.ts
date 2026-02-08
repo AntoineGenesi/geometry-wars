@@ -14,6 +14,11 @@ const FADE_START = 7; // seconds before starting to fade
 const SPIN_SPEED = 3; // radians / sec
 const POOL_SIZE = 300;
 
+// Pre-allocated temp objects for surface projection (avoids ~900 allocations/frame)
+const _geomTempMatrix = new THREE.Matrix4();
+const _geomTempBaseQuat = new THREE.Quaternion();
+const _geomTempSpinQuat = new THREE.Quaternion();
+
 // ---------------------------------------------------------------------------
 // Single geom data
 // ---------------------------------------------------------------------------
@@ -185,14 +190,12 @@ export class GeomPool {
       mesh.position.copy(position);
 
       // Keep the spin rotation but align up to surface normal.
-      const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
-      const baseQuat = new THREE.Quaternion().setFromRotationMatrix(mat);
-      const spinQuat = new THREE.Quaternion().setFromAxisAngle(
-        normal,
-        mesh.rotation.y,
-      );
-      spinQuat.multiply(baseQuat);
-      mesh.quaternion.copy(spinQuat);
+      // Uses pre-allocated objects instead of new Matrix4/Quaternion per geom
+      _geomTempMatrix.makeBasis(tangent, normal, bitangent);
+      _geomTempBaseQuat.setFromRotationMatrix(_geomTempMatrix);
+      _geomTempSpinQuat.setFromAxisAngle(normal, mesh.rotation.y);
+      _geomTempSpinQuat.multiply(_geomTempBaseQuat);
+      mesh.quaternion.copy(_geomTempSpinQuat);
     }
   }
 

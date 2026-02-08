@@ -38,6 +38,9 @@ export class GlowTrail {
   private currentSpeed = 0;
   private readonly speedThreshold = 0.5; // Minimum speed for full glow
 
+  // Pre-allocated buffers for glow layer color updates (avoids 3 Float32Array allocs per frame)
+  private dimmedColorBuffers: Float32Array[] = [];
+
   // Number of glow layers
   private static readonly GLOW_LAYERS = 3;
 
@@ -109,6 +112,11 @@ export class GlowTrail {
       this.glowMaterials.push(glowMat);
       this.glowLines.push(glowLine);
       this.root.add(glowLine);
+    }
+
+    // Pre-allocate dimmed color buffers (one per glow layer)
+    for (let i = 0; i < GlowTrail.GLOW_LAYERS; i++) {
+      this.dimmedColorBuffers.push(new Float32Array(maxPoints * 3));
     }
   }
 
@@ -263,11 +271,11 @@ export class GlowTrail {
     coreColorAttr.array.set(this.coreColors);
     coreColorAttr.needsUpdate = true;
 
-    // Update glow layer colors (slightly dimmer)
+    // Update glow layer colors (slightly dimmer) - uses pre-allocated buffers
     for (let layer = 0; layer < this.glowGeometries.length; layer++) {
       const glowColorAttr = this.glowGeometries[layer].attributes.color as THREE.BufferAttribute;
       const dimFactor = 0.7 - layer * 0.15;
-      const dimmedColors = new Float32Array(this.coreColors.length);
+      const dimmedColors = this.dimmedColorBuffers[layer];
       for (let i = 0; i < this.coreColors.length; i++) {
         dimmedColors[i] = this.coreColors[i] * dimFactor;
       }

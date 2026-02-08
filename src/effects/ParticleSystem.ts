@@ -559,10 +559,8 @@ export class ParticleSystem {
         continue;
       }
 
-      // Update position
-      fragment.mesh.position.add(
-        fragment.velocity.clone().multiplyScalar(dt),
-      );
+      // Update position (use addScaledVector instead of clone().multiplyScalar())
+      fragment.mesh.position.addScaledVector(fragment.velocity, dt);
 
       // Update rotation (tumbling effect)
       fragment.mesh.rotation.x += fragment.rotationVelocity.x * dt;

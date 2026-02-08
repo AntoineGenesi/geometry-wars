@@ -424,10 +424,12 @@ export class EnemySpawner {
     return this.enemies.filter(e => e.active).length;
   }
 
-  /** Apply gentle separation force between overlapping enemies */
+  /** Apply gentle separation force between overlapping enemies.
+   *  Uses squared distance to avoid sqrt in the common (non-overlapping) case. */
   private applySeparation(dt: number): void {
-    const separationStrength = 0.1; // How fast enemies push apart
+    const separationStrength = 0.1;
     const minDist = MIN_ENEMY_SEPARATION;
+    const minDistSq = minDist * minDist;
 
     for (let i = 0; i < this.enemies.length; i++) {
       const a = this.enemies[i];
@@ -439,10 +441,11 @@ export class EnemySpawner {
 
         const du = a.surfacePosition.u - b.surfacePosition.u;
         const dv = a.surfacePosition.v - b.surfacePosition.v;
-        const dist = Math.sqrt(du * du + dv * dv);
+        const distSq = du * du + dv * dv;
 
-        if (dist < minDist && dist > 0.001) {
-          // Push enemies apart
+        // Only call sqrt when actually overlapping (avoids sqrt in the majority of cases)
+        if (distSq < minDistSq && distSq > 0.000001) {
+          const dist = Math.sqrt(distSq);
           const pushStrength = (minDist - dist) * separationStrength * dt;
           const normU = du / dist;
           const normV = dv / dist;
