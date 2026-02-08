@@ -1015,7 +1015,8 @@ export class StartMenu {
    * Remove menu from DOM and dispose of the 3D background.
    */
   dispose(): void {
-    this.menuBackground.dispose();
+    // Remove DOM elements FIRST so UI unblocks even if cleanup throws
     this.container.remove();
+    this.menuBackground.dispose();
   }
 }

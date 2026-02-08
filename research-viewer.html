@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geometry Wars 3D - Research Viewer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #050510;
+  color: #c8c8d8;
+  font-family: 'Segoe UI', 'Consolas', 'Courier New', monospace;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+header {
+  background: linear-gradient(135deg, #0a0a2a 0%, #1a0a2a 50%, #0a0a2a 100%);
+  border-bottom: 1px solid #1e1e8b;
+  padding: 24px 32px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 4px 20px rgba(0, 255, 255, 0.05);
+}
+
+header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(90deg, #00ffff, #ff44ff, #00ff44);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+}
+
+header .subtitle {
+  color: #6a6a8a;
+  font-size: 14px;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 200px;
+  max-width: 500px;
+  padding: 10px 16px;
+  background: #0a0a1a;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  color: #c8c8d8;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-box:focus {
+  border-color: #00ffff;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.15);
+}
+
+.search-box::placeholder {
+  color: #4a4a6a;
+}
+
+.filter-btn {
+  padding: 8px 16px;
+  border: 1px solid #2a2a4a;
+  border-radius: 6px;
+  background: #0a0a1a;
+  color: #8a8aaa;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  border-color: #4a4a6a;
+  color: #c8c8d8;
+}
+
+.filter-btn.active {
+  border-color: currentColor;
+  color: currentColor;
+  background: rgba(255,255,255,0.03);
+}
+
+.filter-btn.cat-research { color: #4488ff; border-color: #4488ff; }
+.filter-btn.cat-decision { color: #ffcc44; border-color: #ffcc44; }
+.filter-btn.cat-architecture { color: #44ff88; border-color: #44ff88; }
+.filter-btn.cat-debug { color: #ff4466; border-color: #ff4466; }
+
+.stats {
+  color: #4a4a6a;
+  font-size: 13px;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 32px 80px;
+}
+
+.report {
+  margin-bottom: 8px;
+  border: 1px solid #1a1a3a;
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+
+.report:hover {
+  border-color: #2a2a5a;
+}
+
+.report.cat-research { border-left: 3px solid #4488ff; }
+.report.cat-decision { border-left: 3px solid #ffcc44; }
+.report.cat-architecture { border-left: 3px solid #44ff88; }
+.report.cat-debug { border-left: 3px solid #ff4466; }
+
+.report-header {
+  display: flex;
+  align-items: center;
+  padding: 14px 20px;
+  cursor: pointer;
+  background: #0a0a1a;
+  user-select: none;
+  gap: 12px;
+  transition: background 0.15s;
+}
+
+.report-header:hover {
+  background: #0f0f24;
+}
+
+.report-toggle {
+  font-size: 12px;
+  color: #4a4a6a;
+  transition: transform 0.2s;
+  flex-shrink: 0;
+  width: 16px;
+}
+
+.report.expanded .report-toggle {
+  transform: rotate(90deg);
+}
+
+.report-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.cat-research .report-badge { background: rgba(68,136,255,0.15); color: #4488ff; }
+.cat-decision .report-badge { background: rgba(255,204,68,0.15); color: #ffcc44; }
+.cat-architecture .report-badge { background: rgba(68,255,136,0.15); color: #44ff88; }
+.cat-debug .report-badge { background: rgba(255,68,102,0.15); color: #ff4466; }
+
+.report-title {
+  flex: 1;
+  font-size: 15px;
+  font-weight: 500;
+  color: #d8d8e8;
+}
+
+.report-date {
+  font-size: 12px;
+  color: #4a4a6a;
+  flex-shrink: 0;
+}
+
+.report-path {
+  font-size: 11px;
+  color: #3a3a5a;
+  flex-shrink: 0;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-content {
+  display: none;
+  padding: 20px 24px;
+  background: #08081a;
+  border-top: 1px solid #1a1a3a;
+  overflow-x: auto;
+}
+
+.report.expanded .report-content {
+  display: block;
+}
+
+/* Markdown rendered styles */
+.md h1 { font-size: 22px; color: #00ffff; margin: 20px 0 12px; padding-bottom: 6px; border-bottom: 1px solid #1a1a3a; }
+.md h2 { font-size: 18px; color: #44ccff; margin: 18px 0 10px; }
+.md h3 { font-size: 16px; color: #88aaff; margin: 14px 0 8px; }
+.md h4 { font-size: 14px; color: #aa88ff; margin: 12px 0 6px; }
+.md h1:first-child, .md h2:first-child, .md h3:first-child { margin-top: 0; }
+
+.md p { margin: 8px 0; }
+
+.md a { color: #44aaff; text-decoration: none; }
+.md a:hover { text-decoration: underline; color: #66ccff; }
+
+.md strong { color: #e8e8f8; font-weight: 600; }
+.md em { color: #aaaacc; font-style: italic; }
+
+.md code {
+  background: #12122a;
+  color: #ff88cc;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 13px;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+.md pre {
+  background: #0c0c20;
+  border: 1px solid #1a1a3a;
+  border-radius: 6px;
+  padding: 14px 18px;
+  overflow-x: auto;
+  margin: 10px 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.md pre code {
+  background: none;
+  padding: 0;
+  color: #b8b8d0;
+}
+
+.md pre .kw { color: #ff44aa; }
+.md pre .str { color: #44ff88; }
+.md pre .num { color: #ffcc44; }
+.md pre .cmt { color: #4a4a6a; }
+
+.md ul, .md ol {
+  margin: 8px 0 8px 24px;
+}
+
+.md li {
+  margin: 3px 0;
+}
+
+.md li > ul, .md li > ol {
+  margin: 2px 0 2px 20px;
+}
+
+.md blockquote {
+  border-left: 3px solid #2a2a5a;
+  padding: 4px 16px;
+  margin: 10px 0;
+  color: #8a8aaa;
+  background: rgba(255,255,255,0.01);
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid #1a1a3a;
+  margin: 16px 0;
+}
+
+.md table {
+  border-collapse: collapse;
+  margin: 10px 0;
+  width: 100%;
+  font-size: 13px;
+}
+
+.md th {
+  background: #12122a;
+  color: #88aaff;
+  padding: 8px 12px;
+  text-align: left;
+  border: 1px solid #1a1a3a;
+  font-weight: 600;
+}
+
+.md td {
+  padding: 6px 12px;
+  border: 1px solid #1a1a3a;
+}
+
+.md tr:nth-child(even) td {
+  background: rgba(255,255,255,0.01);
+}
+
+.hidden { display: none !important; }
+
+.no-results {
+  text-align: center;
+  padding: 60px 20px;
+  color: #3a3a5a;
+  font-size: 16px;
+}
+
+@media (max-width: 768px) {
+  header { padding: 16px; }
+  header h1 { font-size: 22px; }
+  main { padding: 16px; }
+  .report-header { padding: 12px 14px; flex-wrap: wrap; }
+  .report-path { display: none; }
+  .report-content { padding: 14px 16px; }
+  .controls { gap: 8px; }
+  .filter-btn { padding: 6px 12px; font-size: 12px; }
+  .stats { width: 100%; margin-left: 0; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>GEOMETRY WARS 3D -- Research Viewer</h1>
+  <div class="subtitle">Project research reports, architectural decisions, and documentation</div>
+  <div class="controls">
+    <input type="text" class="search-box" id="searchBox" placeholder="Search reports by keyword...">
+    <button class="filter-btn cat-research active" data-cat="research" onclick="toggleFilter(this)">Research</button>
+    <button class="filter-btn cat-decision active" data-cat="decision" onclick="toggleFilter(this)">Decisions</button>
+    <button class="filter-btn cat-architecture active" data-cat="architecture" onclick="toggleFilter(this)">Architecture</button>
+    <button class="filter-btn cat-debug active" data-cat="debug" onclick="toggleFilter(this)">Debug</button>
+    <span class="stats" id="stats"></span>
+  </div>
+</header>
+
+<main id="reportContainer"></main>
+
+<script>
+// ===== REPORT DATA =====
+const reports = [
+  {
+    title: "Colyseus Schema v2 + ES2022 useDefineForClassFields Bug",
+    path: "decisions/colyseus-schema-es2022-fix.md",
+    category: "debug",
+    date: "2026-02-09",
+    timestamp: 1770561517,
+    content: `## 2026-02-08 - Colyseus Schema v2 + ES2022 useDefineForClassFields Bug
+
+**Context:** LAN multiplayer joiner could connect but saw no game state - all values were \`undefined\`. Server confirmed state was populated.
+
+**Root Cause:**
+\`@colyseus/schema\` v2.0.37 + TypeScript ES2022 target breaks state encoding.
+
+The \`Schema\` constructor installs getter/setter descriptors on \`this\` via \`Object.defineProperties()\`. These setters call \`this.$changes.change(field)\` for change tracking. But with ES2022 target, TypeScript compiles class field initializers (e.g., \`surfaceType: string = 'sphere'\`) to \`Object.defineProperty(this, 'surfaceType', { value: 'sphere', writable: true, ... })\` which **overwrites** the getter/setter with a plain value property. This destroys change tracking.
+
+Even \`id!: string\` (definite assignment with no initializer) emits \`Object.defineProperty\` in esbuild/tsx because ES2022 spec mandates \`[[Define]]\` semantics for class fields.
+
+Result: \`$changes.allChanges\` is always empty, \`encodeAll()\` returns empty array, \`ROOM_STATE\` message contains zero bytes of data.
+
+**Fix:** Use \`declare\` keyword for all schema properties (emits NO JavaScript), set defaults in constructor body (goes through tracked setters).
+
+**Affected file:** \`server/schema/GameState.ts\` - all 6 schema classes
+
+**Key Lesson:** When using \`@colyseus/schema\` (or any library that relies on prototype getter/setters) with TypeScript ES2022 target and esbuild/tsx, ALWAYS use \`declare\` for property declarations.`
+  },
+  {
+    title: "GPU Instanced Rendering for Enemies",
+    path: "decisions/instanced-enemy-rendering-2026-02-09.md",
+    category: "decision",
+    date: "2026-02-09",
+    timestamp: 1770559006,
+    content: `## 2026-02-09 - GPU Instanced Rendering for Enemies
+
+**Context:** At 100 enemies on screen, each enemy's ~20 child meshes produced ~2000 GPU draw calls, causing frame drops.
+
+**Decision:** InstancedMesh per enemy type. 10 instanceable types (Grunt, Duck, Mayfly, Rocket, Neutron, Weaver, Wanderer, SpinnerSpawn, Spinner, Virus). Complex enemies (Snake, Boss, Repulsor, Gate, etc.) keep individual meshes.
+
+**Draw call estimate:**
+- Before: ~20 draw calls per enemy x 100 enemies = ~2000 draw calls
+- After: 10 batches + ~20 individual = ~30 draw calls
+- Net reduction: ~98.5%
+
+**Reversibility:** Easy - set \`enemySpawner.setInstanceManager(null)\`.`
+  },
+  {
+    title: "10K Entity Performance Roadmap",
+    path: "decisions/10k-entity-roadmap.md",
+    category: "architecture",
+    date: "2026-02-09",
+    timestamp: 1770558766,
+    content: `# 10K Entity Roadmap
+
+6-phase plan to scale from ~100 entities to 10,000+ at 60fps.
+
+**Phase 1: GPU Rendering Revolution (100 -> 1,000)** - InstancedMesh for enemies/bullets/geoms/fragments. 99.6% draw call reduction.
+
+**Phase 2: Distance Optimization (1K -> 5K)** - LOD system, billboard impostors, frustum culling, surface-aware occlusion.
+
+**Phase 3: Compute Optimization (5K -> 10K)** - Structure of Arrays storage, update frequency tiers, WebWorker offload, persistent spatial hash.
+
+**Phase 4: Multiplayer Scale** - Interest management (AOI), delta compression, bullet prediction, server-side LOD.
+
+**Phase 5: Adaptive Quality** - FPS monitor with 8-level graceful degradation.
+
+**Phase 6: Advanced (10K -> 50K)** - GPU compute via transform feedback, WebGPU compute shaders, entity streaming.
+
+Estimated timeline: 15+ weeks. Critical path: Phase 1 instancing.`
+  },
+  {
+    title: "Buff System Phase 2: First 8 Buffs Implementation",
+    path: "decisions/buff-system-implementation.md",
+    category: "decision",
+    date: "2026-02-09",
+    timestamp: 1770558239,
+    content: `## 2026-02-09 - Buff System Phase 2: First 8 Buffs
+
+Created separate BuffManager alongside existing WeaponManager buff system. Old buffs are temporary weapon modifiers, new buffs are permanent stackable power (Risk-of-Rain-style).
+
+**Key Implementation Decisions:**
+- Multiplier composition: multiplicative stacking for exponential scaling
+- Proc coefficient: 1.0 for bullets, 0.3 for weapon damage, 0.0 for DOTs
+- Shock aura ticks every 0.5s, volatile explosions don't cascade
+
+**Files Created:** BuffManager.ts (382 lines), BuffHUD.ts (197 lines), BuffPickupNew.ts (217 lines), ShockArcRenderer.ts (102 lines)
+
+**Reversibility:** Easy - remove 4 imports from main.ts.`
+  },
+  {
+    title: "Buff & Upgrade System Design (Muck + Risk of Rain inspired)",
+    path: "decisions/buff-upgrade-system-design.md",
+    category: "research",
+    date: "2026-02-09",
+    timestamp: 1770557204,
+    content: `# Buff & Upgrade System Design
+
+Comprehensive stackable buff system inspired by Muck and Risk of Rain. 25 buffs across 5 categories:
+
+**Offensive (Red):** Hot Hands, Trigger Happy, Armor Piercing, Overkill, Glass Cannon, Critical Mass
+**Defensive (Blue):** Tough Times, Regeneration Field, Repulsion Field, Second Wind
+**Utility (Green):** Afterburner, Magnetism, Multiplier Shield, Cooldown Reduction, Velocity Damage
+**Elemental (Purple):** Shock Aura, Incendiary Rounds, Cryo Shots, Volatile, Gravity Well, Ricochet
+**Legendary (Gold):** Orbital Cannon, Time Dilation, Singularity Core, Berserker Protocol
+
+Three stacking models: Linear, Hyperbolic, Inverse Exponential.
+6 named synergy combos (Superconductor, Meltdown, Glass Storm, Bullet Hell, Event Horizon, Immortal).
+Acquisition via enemy drops, score milestones, wave completion, combo rewards.`
+  },
+  {
+    title: "Performance Benchmark Results",
+    path: "decisions/performance-benchmark-results.md",
+    category: "architecture",
+    date: "2026-02-09",
+    timestamp: 1770556899,
+    content: `# Performance Benchmark Results (2026-02-09)
+
+**Tier 1: Per-Frame Allocation Elimination**
+- BaseEnemy.applySurfaceTransform: 3.2x faster (9.0ms -> 2.8ms for 500 enemies)
+- Bullet.update: 1.9x faster
+- Surface.updateGrid: 1.5x faster
+- Geom.applySurfaceProjection: 3.5x faster
+- Depth-opacity loop: 1.4x faster
+
+**Combined:** 7,444 objects/frame -> 0 (zero GC pressure)
+**Spatial Hash:** 1.2-1.8x speedup for collision detection
+**Material caching:** Eliminated ~4000 tree traversals/frame at 200 enemies
+
+**Bottom line:** CPU is no longer the bottleneck. GPU draw calls remain the primary constraint (~100 enemies at 60fps). InstancedMesh is the next step.`
+  },
+  {
+    title: "Performance Optimization Report",
+    path: "decisions/performance-optimization-report.md",
+    category: "architecture",
+    date: "2026-02-09",
+    timestamp: 1770555713,
+    content: `# Performance Optimization Report
+
+**Primary bottleneck: GPU draw calls.** Each enemy = 12-30+ individual meshes = 20+ draw calls. 100 enemies = ~2000 draw calls (budget: 500-1000).
+
+**Secondary bottleneck:** Per-frame object allocation (~6000+ short-lived objects/frame creating GC stutter).
+
+**Tier 1 (DO FIRST):** Eliminate per-frame allocations, squared distance for collision, reduce glow trail layers, cap score popups.
+**Tier 2 (HIGH IMPACT):** InstancedMesh for enemies (99% draw call reduction), instanced geoms, spatial hash grid, cached material references.
+**Tier 3 (LATER):** WebWorker physics, LOD system, instanced bullets, dynamic bloom quality.
+
+**Estimated capacity after all optimizations:** ~1500+ enemies at 60fps single-player.`
+  },
+  {
+    title: "LAN Hosting Implementation",
+    path: "decisions/lan-hosting-2026-02-08.md",
+    category: "decision",
+    date: "2026-02-08",
+    timestamp: 1770551902,
+    content: `## 2026-02-08 - LAN Hosting + CJS/ESM Fix
+
+Vite plugin approach for dev mode LAN hosting. Plugin adds \`/__lan/*\` endpoints to spawn/stop/scan Colyseus server.
+
+**LAN scan:** Server-side HTTP scan of /24 subnet (all 254 IPs on port 2567 with 400ms timeout).
+
+**CJS/ESM fix:** \`colyseus\` v0.15 ships as CJS. Project has \`"type": "module"\`. Named imports fail. Fixed by adding \`server/package.json\` with \`{ "type": "commonjs" }\`.
+
+**Flow:** HOST clicks button -> plugin starts Colyseus -> shows join URL. JOIN clicks SCAN LAN -> plugin scans subnet -> click found server.`
+  },
+  {
+    title: "GW3D Visual Design Reference",
+    path: "research/gw3d-visual-design.md",
+    category: "research",
+    date: "2026-02-08",
+    timestamp: 1770551432,
+    content: `# Geometry Wars 3: Dimensions - Visual Design Reference
+
+Comprehensive visual reference covering: color palette (all entity hex values), player ship design, 20+ enemy visual descriptions, particle system parameters (exact values from XNA reference), bloom shader pipeline (3-pass with saturation 1.5x), grid deformation spring constants, camera effects, drone/super visuals, and material templates for Three.js.
+
+**Key insight:** Bloom saturation of 1.5 causes glow to be MORE saturated than source - this simulates real neon lights. Center appears white, glow is strongly colored.
+
+**Grid springs:** Stiffness 0.28, damping 0.06, border anchors at 0.1/0.1, interior anchors at 0.002/0.02.
+
+**Enemy death:** 120 particles, 190 frames (~3.2s), speed weighted toward maximum. Player death: 1,200 particles (10x enemy).`
+  },
+  {
+    title: "Multiplayer Documentation",
+    path: "docs/MULTIPLAYER.md",
+    category: "architecture",
+    date: "2026-02-08",
+    timestamp: 1770551432,
+    content: `# Multiplayer
+
+Covers three multiplayer modes:
+- **Local Splitscreen** (?mode=multiplayer): P1 WASD+mouse, P2 IJKL+auto-aim
+- **Network Multiplayer** (?mode=network): Up to 4 players, Colyseus server
+- **LAN Hosting**: Vite plugin auto-discovery via subnet scan
+
+**Kill Attribution:** Bullet ownerId tracking, 20% HP threshold for assists, 40% score reward.
+
+**Aura System:** 5-tier proximity buff based on kill+assist count. Outer ring (cyan): damage + heal. Inner ring (magenta): stronger buffs at tier 3+. Healing accumulates toward +1 life at 30 HP.`
+  },
+  {
+    title: "Score-Based Power & Weapon Stacking",
+    path: "decisions/score-power-stacking-2026-02-08.md",
+    category: "decision",
+    date: "2026-02-08",
+    timestamp: 1770537366,
+    content: `## 2026-02-08 - Score Power + Weapon Stacking
+
+**Score Power:** Damage multiplier scales with score (1.0x at 0, 1.25x at 10K, 1.5x at 50K, 2.0x at 200K, 2.5x at 500K+).
+
+**Weapon Stacking:** Same weapon pickup adds +1 stack (cap 5). Each stack = +25% damage. Stack 5 = 2.0x.
+
+Combined max multiplier: 5.0x (significant without being game-breaking).`
+  },
+  {
+    title: "Visual Effects Overhaul",
+    path: "decisions/visual-overhaul-2026-02-08.md",
+    category: "decision",
+    date: "2026-02-08",
+    timestamp: 1770537351,
+    content: `## 2026-02-08 - Visual Effects Overhaul
+
+**Score Popups:** Smaller canvas (128x48), BF3-style upward drift, 0.7s lifetime.
+**Geom Spawning:** Exact kill position + burst velocity with friction.
+**Particles:** Pool 10K + 400 fragments. Enemy death: 40-60 fragments + 48 particles. Player death: 130 + 210.
+**Bloom:** Threshold 0.3 (was 0.85), Strength 1.5 (was 1.0), Radius 0.5.
+**Vignette:** Added custom shader pass (darkness 1.2, offset 1.0).
+**Effects Demo:** Press G to toggle real-time bloom/vignette sliders.`
+  },
+  {
+    title: "Split-Screen Local Co-Op Implementation",
+    path: "decisions/split-screen-coop.md",
+    category: "decision",
+    date: "2026-02-08",
+    timestamp: 1770532043,
+    content: `## 2026-02-08 - Split-Screen Co-Op
+
+Skip bloom in split-screen (emissive materials still glow). SplitScreenRenderer handles viewport/scissor clipping.
+
+**New files:** SplitScreenRenderer.ts, ConfigurableInput.ts (rebindable keys + localStorage), ControlsMenu.ts, SplitScreenHUD.ts.
+
+Enemy wave scaling: \`baseCount * (1 + (N-1) * 0.3)\` per player count.`
+  },
+  {
+    title: "Weapon Balance Overhaul",
+    path: "decisions/weapon-balance-2026-02-08.md",
+    category: "decision",
+    date: "2026-02-08",
+    timestamp: 1770530506,
+    content: `## 2026-02-08 - Weapon Balance
+
+Ammo counts approximately doubled across all weapons. Projectile range/duration significantly increased. New buff pickup system: ExtendedRange (1.75x range, 15s), RapidFire (2x fire rate, 10s), DurationPlus (2x ammo efficiency, 20s). 5% drop rate from enemy deaths.`
+  },
+  {
+    title: "GW3D Visual Polish (Colors, Bullets, Grid)",
+    path: "decisions/visual-polish-2026-02-08.md",
+    category: "decision",
+    date: "2026-02-08",
+    timestamp: 1770529917,
+    content: `## 2026-02-08 - GW3D Visual Polish
+
+**Grid:** Color \`0x00cccc\` -> \`0x1e1e8b\` (authentic dark blue). Surface \`0x110033\` -> \`0x0a0a2a\`. Background \`0x000000\` -> \`0x050510\`.
+**Bullets:** \`0xffff44\` (yellow) -> \`0x88ffff\` (white-cyan). AdditiveBlending -> NormalBlending.
+**Enemies:** Updated 6 enemy colors to match GW3D research.
+**Emissive:** GeometryBuilder intensity 0.5 -> 0.8.
+**Particles:** Brown impacts -> cyan. Doubled fragment/sparkle counts.`
+  },
+  {
+    title: "Comprehensive Visual Test Suite (408 tests)",
+    path: "decisions/visual-test-suite-2026-02-07.md",
+    category: "decision",
+    date: "2026-02-07",
+    timestamp: 1770529240,
+    content: `## 2026-02-07 - Visual Test Suite
+
+**408 Vitest programmatic tests** across 12 domains: bullet origin/direction, bevel traversal, camera following, enemy positioning, surface mesh quality, bevel continuity, depth-based opacity, collision geometry, player-surface sync, grid deformation, multi-bullet scenarios, world-to-surface.
+
+All 11 surface types tested. Runs in ~5 seconds (no browser needed). Playwright E2E tests supplement for rendered output verification.
+
+Total: 688 tests, all passing.`
+  },
+  {
+    title: "Sphere Tunnel: Smooth Bevel at Junction",
+    path: "decisions/sphere-tunnel-bevel-2026-02-07.md",
+    category: "decision",
+    date: "2026-02-07",
+    timestamp: 1770528166,
+    content: `## 2026-02-07 - Sphere Tunnel Bevel
+
+Added circular arc bevel transitions at sphere-tunnel junctions. Profile now has 4 segments (was 2): outer sphere arc, top bevel arc, inner tunnel, bottom bevel arc. C1-continuous normals at all junctions. Configurable bevel radius (default 0.8 units).`
+  },
+  {
+    title: "Peanut Surface: Closed Poles with Apex Cap",
+    path: "decisions/peanut-pole-cap-2026-02-07.md",
+    category: "decision",
+    date: "2026-02-07",
+    timestamp: 1770527628,
+    content: `## 2026-02-07 - Peanut Pole Cap
+
+Player couldn't traverse peanut tips. Boundary edges at poles caused FaceWalker reflection. Fixed with hybrid approach: reduced pole ring size (0.05 -> 0.01) + added apex vertex + fan triangles. Closes mesh at both poles - no more boundary edges.`
+  },
+  {
+    title: "Geodesic Walker Fixes (Cube + Mobius)",
+    path: "decisions/geodesic-walker-fixes-2026-02-07.md",
+    category: "debug",
+    date: "2026-02-07",
+    timestamp: 1770499453,
+    content: `## 2026-02-07 - Geodesic Walker Fixes
+
+**Cube:** Relaxed inversion test tolerance from 0.7 to 2.0 (parallel transport through 90-degree bends rotates direction - correct behavior).
+
+**Mobius (3 failures):** Non-orientable surface causes direction oscillation at seam center. Fixed ParallelTransport.ts to detect face normal >120 degrees apart and flip destination normal. Moved spawn point away from seam. Known limitation: Mobius center near seam still oscillates.
+
+Test failures: 4 -> 0. All 220 tests passing.`
+  },
+  {
+    title: "SphereWithTunnelSurface Complete Rewrite",
+    path: "decisions/sphere-tunnel-rewrite-2026-02-07.md",
+    category: "decision",
+    date: "2026-02-07",
+    timestamp: 1770498365,
+    content: `## 2026-02-07 - Sphere Tunnel Rewrite
+
+Original had fundamental geometry bug: hemisphere covered 75.5 degrees instead of 14.5, ending near equator instead of near pole. Complete rewrite as torus topology using profileAt() + revolution pattern (like CubeRingSurface). Both u and v wrap (no pole singularity). Player spawns on equator.`
+  },
+  {
+    title: "Geodesic Face Walking System Implementation",
+    path: "decisions/geodesic-face-walking-2026-02-07.md",
+    category: "architecture",
+    date: "2026-02-07",
+    timestamp: 1770445667,
+    content: `## 2026-02-07 - Geodesic Face Walking
+
+Replaced BVH snap-to-surface with true geodesic face walking. Built HalfEdgeMesh, BarycentricUtils, ParallelTransport, FaceWalker, GeodesicSurface. 46 new tests (all pass).
+
+**Key bugs fixed:** Three.js UV seam vertex duplication broke half-edge twins (fixed with position-based canonicalization). rayExitTriangle edge indices differ from half-edge (fixed with mapping). World-space entry point conversion fails on sharp folds (fixed with direct barycentric computation).`
+  },
+  {
+    title: "Issues and Solutions Log",
+    path: "docs/ISSUES-AND-SOLUTIONS.md",
+    category: "debug",
+    date: "2026-02-07",
+    timestamp: 1770445533,
+    content: `# Issues and Solutions Log
+
+Documents the evolution from UV parameterization -> Hamster Ball rotation (rejected) -> Mesh-Based BVH Walking (current).
+
+**Solved:** UV pole singularity, bullets hardcoded to spherical great circles, torus camera flipping.
+
+**Known limitations:** Enemies still use UV system, UV bridge approximation, bloom tuning.`
+  },
+  {
+    title: "GW3D Complete Game Reference",
+    path: "research/gw3d-game-details.md",
+    category: "research",
+    date: "2026-02-07",
+    timestamp: 1770394072,
+    content: `# Geometry Wars 3: Dimensions - Complete Game Reference
+
+Comprehensive reference covering all aspects of GW3D: 30+ enemy types with exact stats (scores, geoms, speeds, behaviors), 15 surface shapes, 10 game modes, 6 drone types, 6 super abilities, 7 super states, scoring/multiplier system, wave-based spawning, 50 adventure levels across 6 gem sections, 11 boss encounters, particle effects, and appendices with implementation numbers.
+
+Compiled from Geometry Wars Wiki, Steam Community Guides, PlayStation Blog, and community discussions.`
+  },
+  {
+    title: "Surface Traversal Alternatives Research Wiki",
+    path: "research/surface-traversal-alternatives.md",
+    category: "research",
+    date: "2026-02-07",
+    timestamp: 1770393486,
+    content: `# Surface Traversal Alternatives
+
+Exhaustive research comparing 15+ approaches for surface-constrained movement:
+
+**Game engines:** Godot 4, Babylon.js, PlayCanvas, Unity WebGL, Unreal (Pixel Streaming)
+**Libraries:** three-mesh-bvh, geometry-central (WASM), geometry-processing-js, Heat Method, NavMesh (Recast)
+**Physics:** Rapier, Cannon-es, Ammo.js/Bullet, PhysX
+**Academic:** Parallel transport, exponential/log map, vector heat method, flip geodesics
+
+**Recommendations:** #1 geometry-central WASM (true geodesic, 10-16 days). #2 Custom TypeScript mesh walker (12-18 days). #3 Gravity snap hybrid (3-5 days, lowest effort).
+
+Includes comparison table, code snippets for parallel transport and face walking.`
+  },
+  {
+    title: "Comprehensive Surface Movement Fixes",
+    path: "decisions/surface-movement-fixes-2026-02-07.md",
+    category: "debug",
+    date: "2026-02-07",
+    timestamp: 1770392635,
+    content: `## 2026-02-07 - Surface Movement Fixes
+
+**Torus inversion:** moveFromInput used camera.up (Y) for forward. Fixed to use camera -Z.
+**Peanut/Cube/DentedSphere zero movement:** Winding order (a,c,b)/(b,c,d) produced inward normals. Reversed.
+**Peanut vertex normals:** Replaced spherical approximation with computeVertexNormals().
+**Cylinder edge stuck:** Changed to closed cylinder with caps.
+**Stuck recovery:** Added detection in MeshWalker.move() with alternate direction fallback.
+
+176 automated tests across all 10 surfaces.`
+  },
+  {
+    title: "Architecture Documentation",
+    path: "docs/ARCHITECTURE.md",
+    category: "architecture",
+    date: "2026-02-07",
+    timestamp: 1770390312,
+    content: `# Architecture
+
+**Movement:** Two systems coexist. MeshWalker (BVH) for player+bullets, UV-based for enemies+geoms. Bridge via worldToSurface().
+
+**Entity System:** Entity base class, EntityManager, Player, 15 enemy types in EnemySpawner, pooled Bullets and Geoms.
+
+**Weapon System:** 10 weapon types, WeaponManager, timed pickups.
+**Drones:** 6 types via DroneFactory.
+**Super States:** 7 states managed by SuperStateManager.
+**Effects:** GPU particles (5000), screen shake, trails, glow, chain lightning, score popups.
+**Audio:** SoundEngine (11 synth sounds) + BackgroundMusic (128bpm procedural).
+**Multiplayer:** KillTracker + AuraManager + NetworkClient (Colyseus).
+**Camera:** Follows surface normal, uses persistent tangent frame for up vector.`
+  },
+  {
+    title: "Project Directory Cleanup",
+    path: "decisions/project-cleanup-2026-02-07.md",
+    category: "decision",
+    date: "2026-02-07",
+    timestamp: 1770390030,
+    content: `## 2026-02-07 - Project Cleanup
+
+Deleted ~6.1MB of stale files: 8 root PNGs, 80+ screenshots, 10 test scripts, SCREENSHOT_INSTRUCTIONS.md, empty directories, visual debug scripts. Kept mesh-test.html and playwright.config.js.`
+  },
+  {
+    title: "Torus Camera/Movement Flipping Fix",
+    path: "decisions/torus-tangent-frame-fix.md",
+    category: "debug",
+    date: "2026-02-06",
+    timestamp: 1770389638,
+    content: `## 2026-02-06 - Torus Tangent Frame Fix
+
+Torus was unplayable: camera flipped, player could only move in one direction. Root cause: MeshSurface.getTangentFrame() used Gram-Schmidt with fixed reference vector, causing tangent frame SNAP at switchover boundary.
+
+**Fix:** Persistent tangent frame in MeshWalker that updates incrementally (projects old tangent onto new normal plane). Camera uses lerp() for smooth transitions.`
+  },
+  {
+    title: "Boss Research (11 Boss Encounters)",
+    path: "research/boss-research.md",
+    category: "research",
+    date: "2026-02-06",
+    timestamp: 1770363104,
+    content: `# Boss Research
+
+6 Adventure bosses (Sapphire, Ruby, Emerald, Opal, Amethyst, Topaz), 4 Ultimate bosses, 1 Hardcore boss. Each has ~5 health phases with crystal shields between them.
+
+**Topaz (Final Boss)** has 7 phases including expanding/contracting lethal walls, 4 mini-bosses, wall-spawned enemy waves, high-value Nufo scoring phase, and offscreen spawning hazards.
+
+Detailed phase breakdowns, enemy spawn patterns, and scoring strategies for each boss.`
+  },
+  {
+    title: "SuperAbility Dead Code Removal",
+    path: "decisions/dead-code-2026-02-06.md",
+    category: "decision",
+    date: "2026-02-06",
+    timestamp: 1770362191,
+    content: `## 2026-02-06 - Dead Code Removal
+
+Removed SuperAbility.ts (438 lines, 6 activated abilities). Zero imports anywhere. Game uses SuperState + SuperStateManager instead. Keeping it caused confusion about which "super" system is active.`
+  },
+  {
+    title: "Enemy MeshWalker Migration Decision",
+    path: "decisions/enemy-meshwalker-migration.md",
+    category: "decision",
+    date: "2026-02-06",
+    timestamp: 1770360733,
+    content: `## 2026-02-06 - Enemy MeshWalker Migration
+
+**Decision:** Defer. UV system works well for 10 built-in surfaces. Enemy behavior logic (chase, bounce, orbit, sine-wave) maps naturally to UV deltas.
+
+**When to migrate:** When arbitrary mesh gameplay is integrated, or when pole singularity becomes visible.
+
+**Migration path:** Add optional MeshWalker to BaseEnemy, convert UV delta to world-space tangent, use worldToSurface() for backward compat.`
+  },
+  {
+    title: "Arbitrary Mesh Loading (OBJ/GLB)",
+    path: "decisions/arbitrary-mesh-loading.md",
+    category: "decision",
+    date: "2026-02-06",
+    timestamp: 1770354790,
+    content: `## 2026-02-06 - Arbitrary Mesh Loading
+
+Test scene integration first (not main game). MeshLoader.ts loads OBJ/GLB/GLTF, extracts/merges geometry, normalizes size. Test scene supports URL params, drag-and-drop, and hot-swap shapes.
+
+**Why not main game yet:** Custom meshes lack UV-based Surface for enemy movement. Need MeshWalker migration first.
+
+15 tests covering extraction, merging, normalization, MeshSurface compatibility.`
+  },
+  {
+    title: "Mesh-Based Movement Integration (Bridge Approach)",
+    path: "decisions/mesh-movement-integration.md",
+    category: "architecture",
+    date: "2026-02-06",
+    timestamp: 1770354329,
+    content: `## 2026-02-06 - Mesh Movement Integration
+
+**Bridge approach chosen:** MeshWalker for player/bullets (world-space BVH), UV bridge for enemies/geoms.
+
+Player movement uses MeshWalker (no UV, constant speed). Bullets use MeshSurface.closestPointOnSurface(). Camera follows MeshWalker position. Depth-based opacity via MeshSurface.getVisibility(). UV bridge: surface.worldToSurface(playerWalker.position).
+
+Enemies, geoms, drones, grid deformation unchanged.`
+  },
+  {
+    title: "three-mesh-bvh API Reference",
+    path: "research/three-mesh-bvh-api.md",
+    category: "research",
+    date: "2026-02-06",
+    timestamp: 1770352880,
+    content: `# three-mesh-bvh API Reference
+
+Complete API documentation: MeshBVH constructor, raycast/raycastFirst, closestPointToPoint, closestPointToGeometry, shapecast (generalized BVH traversal), intersectsSphere/Box/Geometry, refit, serialization. Plus ExtendedTriangle, OrientedBox, StaticGeometryGenerator, MeshBVHHelper.
+
+Includes complete character movement example (capsule collision), surface snapping patterns for Geometry Wars, and performance tips (SAH strategy, maxLeafSize, reuse targets).`
+  },
+  {
+    title: "3D Surface Movement Research",
+    path: "research/surface-movement-approaches.md",
+    category: "research",
+    date: "2026-02-05",
+    timestamp: 1770348080,
+    content: `# 3D Surface Movement Research
+
+5 approaches evaluated: UV-Based Parameterization (current), Mesh Walking / Triangle Traversal, Geodesic Paths (Heat Method), Gravity-Based (Mario Galaxy), World Rotation (Hamster Ball - rejected).
+
+**Recommendation:** UV-Based for predefined shapes + Mesh Walking enhancement for irregular meshes. Includes camera following code, screen-space aiming implementation, and bullet surface following approach.
+
+**Reference repos:** Geometry-Wars-WebGL, gwbase, three-mesh-bvh, recast-navigation-js.`
+  },
+  {
+    title: "Gameplay Balance Decisions",
+    path: "decisions/gameplay-balance.md",
+    category: "decision",
+    date: "2026-02-05",
+    timestamp: 1770277517,
+    content: `# Gameplay Balance
+
+**Spawn Distance Protection:** MIN_SPAWN_DISTANCE = 0.25 UV from player.
+**Enemy Separation:** MIN_ENEMY_SEPARATION = 0.05, applySeparation() force during update.
+**Speed Reductions:** All enemies reduced to be slower than player (0.08). Grunt max: 0.06.
+**Safe Respawn:** Player respawns at (u+0.5, v+0.5) - opposite side.
+**Player Rotation Smoothing:** ROTATION_SMOOTHING = 0.15, slerp toward target.
+**Bullet Great Circle Fix:** World-space movement + sphere projection (no more UV-curved paths).
+**Hamster Ball System:** Surface rotates under player instead of player moving on surface (later replaced by MeshWalker).`
+  },
+  {
+    title: "Workflow & System Prompt Setup",
+    path: "decisions/workflow-setup.md",
+    category: "decision",
+    date: "2026-02-05",
+    timestamp: 1770269704,
+    content: `## 2026-02-05 - Autonomous Decision-Making + Sub-Agent Architecture
+
+Changed from "stop and ask" to "decide + log" workflow. All decisions logged to decisions/ folder with context, options, reasoning, and reversibility.
+
+Sub-agent architecture added: visual debugging, code exploration, build loops, and research tasks offloaded to sub-agents to preserve main context window. Structured return format ensures distilled results.`
+  },
+  {
+    title: "Decisions Log README",
+    path: "decisions/README.md",
+    category: "architecture",
+    date: "2026-02-05",
+    timestamp: 1770269518,
+    content: `# Decisions Log
+
+Transparent record of engineering decisions. Contains context, options considered, reasoning, and reversibility for each decision.
+
+**Review when:** something doesn't work, wondering "why was it done this way?", want to reverse a decision, onboarding new team members.
+
+**Reversibility levels:** Easy (config change), Medium (few files + testing), Hard (significant refactor).`
+  },
+  {
+    title: "Project TODO / Task Backlog",
+    path: "TODO.md",
+    category: "debug",
+    date: "2026-02-08",
+    timestamp: 1770534190,
+    content: `# Task Backlog
+
+**Bugs:** Cube map broken (2/6 sides), cube tunnel wrong, weapons shoot through surfaces, freeze after death/pause, geoms spawn wrong, score popups janky.
+
+**Visual Overhaul:** Research GW3D style, overhaul effects, create effects demo.
+
+**Gameplay:** Points increase bullet power, stacking power-ups, "Shot in the Dark" bonus, verify co-op proximity buff.
+
+**Multiplayer:** LAN hosting with peer discovery.`
+  },
+  {
+    title: "Project README",
+    path: "README.md",
+    category: "architecture",
+    date: "2026-02-07",
+    timestamp: 1770390249,
+    content: `# Geometry Wars 3D Dimensions - Browser Recreation
+
+Three.js ^0.170 + TypeScript 5.7 + Vite 6 + Colyseus ^0.15. Single player, local splitscreen (2-4P), and network multiplayer.
+
+10 surface shapes, 15 enemy types, 10 weapon types, 6 drones, 7 super states. GPU particle system, screen shake, trails, chain lightning, procedural audio.
+
+Controls: WASD + mouse (P1), IJKL + O/P (P2). Custom meshes via drag-and-drop on mesh-test.html.`
+  }
+];
+
+// ===== SIMPLE MARKDOWN PARSER =====
+function parseMarkdown(md) {
+  // Escape HTML first
+  let html = md
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Code blocks (``` ... ```)
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
+    let highlighted = code;
+    // Simple syntax highlighting
+    highlighted = highlighted.replace(/(\/\/.*$)/gm, '<span class="cmt">$1</span>');
+    highlighted = highlighted.replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="cmt">$1</span>');
+    highlighted = highlighted.replace(/\b(const|let|var|function|class|import|export|from|return|if|else|for|while|new|this|typeof|interface|type|extends|implements|async|await|void|null|undefined|true|false|declare|super)\b/g, '<span class="kw">$1</span>');
+    highlighted = highlighted.replace(/(&quot;[^&]*?&quot;|'[^']*?'|`[^`]*?`)/g, '<span class="str">$1</span>');
+    highlighted = highlighted.replace(/\b(\d+\.?\d*)\b/g, '<span class="num">$1</span>');
+    return '<pre><code>' + highlighted + '</code></pre>';
+  });
+
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Tables
+  html = html.replace(/^(\|.+\|)\n(\|[-| :]+\|)\n((?:\|.+\|\n?)*)/gm, function(match, header, separator, body) {
+    let table = '<table><thead><tr>';
+    header.split('|').filter(c => c.trim()).forEach(cell => {
+      table += '<th>' + cell.trim() + '</th>';
+    });
+    table += '</tr></thead><tbody>';
+    body.trim().split('\n').forEach(row => {
+      table += '<tr>';
+      row.split('|').filter(c => c.trim()).forEach(cell => {
+        table += '<td>' + cell.trim() + '</td>';
+      });
+      table += '</tr>';
+    });
+    table += '</tbody></table>';
+    return table;
+  });
+
+  // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+
+  // Horizontal rules
+  html = html.replace(/^---+$/gm, '<hr>');
+  html = html.replace(/^\*\*\*+$/gm, '<hr>');
+
+  // Blockquotes
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // Bold and italic
+  html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+
+  // Links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  // Unordered lists
+  html = html.replace(/^(\s*)[-*] (.+)$/gm, function(match, indent, content) {
+    return indent + '<li>' + content + '</li>';
+  });
+
+  // Ordered lists
+  html = html.replace(/^(\s*)\d+\. (.+)$/gm, function(match, indent, content) {
+    return indent + '<li>' + content + '</li>';
+  });
+
+  // Wrap consecutive <li> in <ul>
+  html = html.replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>');
+
+  // Paragraphs - wrap loose text blocks
+  html = html.replace(/^(?!<[hupoltbd]|<\/|<blockquote|<hr|<pre|<code)(.+)$/gm, '<p>$1</p>');
+
+  // Clean up empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '');
+
+  return html;
+}
+
+// ===== RENDERING =====
+const container = document.getElementById('reportContainer');
+const searchBox = document.getElementById('searchBox');
+const statsEl = document.getElementById('stats');
+
+let activeFilters = new Set(['research', 'decision', 'architecture', 'debug']);
+
+function getCategoryLabel(cat) {
+  switch(cat) {
+    case 'research': return 'Research';
+    case 'decision': return 'Decision';
+    case 'architecture': return 'Architecture';
+    case 'debug': return 'Debug';
+    default: return cat;
+  }
+}
+
+function renderReports() {
+  const query = searchBox.value.toLowerCase().trim();
+  let visibleCount = 0;
+  let html = '';
+
+  for (const r of reports) {
+    // Filter by category
+    if (!activeFilters.has(r.category)) continue;
+
+    // Filter by search
+    if (query) {
+      const searchable = (r.title + ' ' + r.content + ' ' + r.path).toLowerCase();
+      if (!searchable.includes(query)) continue;
+    }
+
+    visibleCount++;
+    const renderedContent = parseMarkdown(r.content);
+
+    html += '<div class="report cat-' + r.category + '" id="report-' + visibleCount + '">'
+      + '<div class="report-header" onclick="toggleReport(this.parentElement)">'
+      + '<span class="report-toggle">&#9654;</span>'
+      + '<span class="report-badge">' + getCategoryLabel(r.category) + '</span>'
+      + '<span class="report-title">' + escapeHtml(r.title) + '</span>'
+      + '<span class="report-date">' + r.date + '</span>'
+      + '<span class="report-path">' + escapeHtml(r.path) + '</span>'
+      + '</div>'
+      + '<div class="report-content"><div class="md">' + renderedContent + '</div></div>'
+      + '</div>';
+  }
+
+  if (visibleCount === 0) {
+    html = '<div class="no-results">No reports match your search.</div>';
+  }
+
+  container.innerHTML = html;
+  statsEl.textContent = visibleCount + ' of ' + reports.length + ' reports';
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function toggleReport(el) {
+  el.classList.toggle('expanded');
+}
+
+function toggleFilter(btn) {
+  const cat = btn.dataset.cat;
+  btn.classList.toggle('active');
+  if (activeFilters.has(cat)) {
+    activeFilters.delete(cat);
+  } else {
+    activeFilters.add(cat);
+  }
+  renderReports();
+}
+
+searchBox.addEventListener('input', function() {
+  renderReports();
+});
+
+// Initial render
+renderReports();
+</script>
+</body>
+</html>

@@ -159,10 +159,28 @@ function main() {
     'padding:20px 40px;font:bold 24px monospace;background:#0a0;color:#fff;' +
     'border:2px solid #0f0;cursor:pointer;z-index:100;display:none;';
   startBtn.onclick = () => {
-    network.startGame();
-    startBtn.style.display = 'none';
+    if (network.isConnected()) {
+      network.startGame();
+      startBtn.style.display = 'none';
+      statusEl.textContent = 'Starting...';
+    } else {
+      statusEl.textContent = 'Not connected to server!';
+      statusEl.style.color = '#f44';
+    }
   };
   document.body.appendChild(startBtn);
+
+  // Back to menu button (shown on connection failure)
+  const backBtn = document.createElement('button');
+  backBtn.textContent = 'BACK TO MENU';
+  backBtn.style.cssText =
+    'position:fixed;top:60%;left:50%;transform:translate(-50%,-50%);' +
+    'padding:15px 30px;font:bold 18px monospace;background:#a00;color:#fff;' +
+    'border:2px solid #f44;cursor:pointer;z-index:100;display:none;';
+  backBtn.onclick = () => {
+    window.location.href = window.location.pathname;
+  };
+  document.body.appendChild(backBtn);
 
   // Helper to create player mesh (chevron shape, world-space scale)
   function createPlayerMesh(color: number): THREE.Group {
@@ -421,6 +439,11 @@ function main() {
 
     network.setCallbacks({
       onStateChange,
+      onGameStart: () => {
+        console.log('[NetworkMain] Game started!');
+        statusEl.textContent = 'Game starting...';
+        startBtn.style.display = 'none';
+      },
       onGameOver: () => {
         statusEl.textContent = 'GAME OVER';
       },
@@ -430,6 +453,8 @@ function main() {
     });
   }).catch((err) => {
     statusEl.textContent = 'Failed to connect to server!';
+    statusEl.style.color = '#f44';
+    backBtn.style.display = 'block';
     console.error('[NetworkMain] Connection failed:', err);
   });
 
