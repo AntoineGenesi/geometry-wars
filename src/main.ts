@@ -581,10 +581,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Surface: use level's surface (adventure mode), or menu selection, or URL param --
   const surfaceType = selectedSurface || level.surface || getSurfaceTypeFromURL();
   const surfaceConfig = {
-    gridColor: 0x1e1e8b,
-    surfaceColor: 0x0a0a2a,
-    surfaceOpacity: 0.3,
-    gridOpacity: 0.35,
+    gridColor: 0x2a2aaa,
+    surfaceColor: 0x141440,
+    surfaceOpacity: 0.35,
+    gridOpacity: 0.4,
     // Type-specific configs
     radius: level.surfaceScale,           // For sphere, icosahedron, dented-sphere, sphere-tunnel
     size: level.surfaceScale,             // For cube
@@ -1813,8 +1813,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   let currentGridOpacity = surfaceConfig.gridOpacity;
   const baseSurfaceOpacity = surfaceConfig.surfaceOpacity;
   const baseGridOpacity = surfaceConfig.gridOpacity;
-  const fadeSpeed = 12.0; // opacity change per second (fast snap)
+  const fadeSpeed = 8.0; // opacity change per second (smooth fade, not too fast)
   let isCurrentlyBlocked = false; // track blocking state for enemy fade
+  let lastRenderTime = performance.now();
 
   // Pre-allocated temp vectors for render loop (avoids ~5 clone() per enemy per frame)
   const _renderTempToPlayer = new THREE.Vector3();
@@ -1842,7 +1843,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     isCurrentlyBlocked = hits.length > 0;
     const targetSurfaceOpacity = isCurrentlyBlocked ? baseSurfaceOpacity * 0.05 : baseSurfaceOpacity;
     const targetGridOpacity = isCurrentlyBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
-    const frameDt = 1 / 60; // approximate frame dt
+    // Use actual frame delta for smooth opacity transitions on all refresh rates
+    const now = performance.now();
+    const frameDt = Math.min((now - lastRenderTime) / 1000, 0.1); // cap at 100ms to avoid huge jumps
+    lastRenderTime = now;
     currentSurfaceOpacity += (targetSurfaceOpacity - currentSurfaceOpacity) * Math.min(1, fadeSpeed * frameDt);
     currentGridOpacity += (targetGridOpacity - currentGridOpacity) * Math.min(1, fadeSpeed * frameDt);
     const surfMat = surface.mesh.material as THREE.MeshBasicMaterial;

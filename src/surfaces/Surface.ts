@@ -25,10 +25,10 @@ export interface SurfaceConfig {
 }
 
 const DEFAULT_CONFIG: Required<SurfaceConfig> = {
-  gridColor: 0x1e1e8b,
-  surfaceColor: 0x0a0a2a,
-  surfaceOpacity: 0.3,
-  gridOpacity: 0.35,
+  gridColor: 0x2a2aaa,
+  surfaceColor: 0x141440,
+  surfaceOpacity: 0.35,
+  gridOpacity: 0.4,
   damping: 0.95,
   stiffness: 0.2,
 }
@@ -69,6 +69,10 @@ export abstract class Surface {
     this.mesh = this.createMesh()
     this.gridMesh = this.createGrid()
     this.initSprings()
+
+    // Render order: surface first (0), grid on top (1) to eliminate z-fighting flicker
+    this.mesh.renderOrder = 0
+    this.gridMesh.renderOrder = 1
 
     this.group = new THREE.Group()
     this.group.add(this.mesh)
@@ -190,7 +194,10 @@ export abstract class Surface {
       transparent: true,
       opacity: this.config.surfaceOpacity,
       side: THREE.FrontSide, // Only render front faces to avoid double-vision on torus/complex shapes
-      depthWrite: true, // Enable depth writing for proper occlusion
+      depthWrite: false, // Transparent surface should not write depth (causes grid z-fighting flicker)
+      polygonOffset: true, // Push surface back in depth to avoid z-fighting with grid overlay
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     })
   }
 
@@ -199,6 +206,7 @@ export abstract class Surface {
       color: this.config.gridColor,
       transparent: true,
       opacity: this.config.gridOpacity,
+      depthWrite: false, // Grid lines should not write depth (prevents flicker with surface)
     })
   }
 

@@ -201,6 +201,9 @@ export class IcosahedronSurface extends Surface {
       opacity: this.config.surfaceOpacity,
       side: THREE.DoubleSide,
       depthWrite: false,
+      polygonOffset: true, // Push surface back in depth to avoid z-fighting with grid overlay
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     })
 
     return new THREE.Mesh(this.icoGeometry, material)
