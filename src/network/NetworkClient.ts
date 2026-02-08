@@ -128,6 +128,28 @@ export class NetworkClient {
 
       // Set up state change listeners
       this.setupListeners();
+
+      // The initial onStateChange fires DURING joinOrCreate (before our handler
+      // is registered), and since the game hasn't started, the server tick does
+      // nothing = no more state changes. We need to poll until state is decoded
+      // and fire the callback manually.
+      const room = this.room;
+      let pollCount = 0;
+      const pollInterval = setInterval(() => {
+        pollCount++;
+        if (!room.state || pollCount > 20) {
+          clearInterval(pollInterval);
+          return;
+        }
+        // Check if state has been populated (players should contain at least us)
+        const players = (room.state as Record<string, unknown>).players as { size?: number };
+        if (players && players.size && players.size > 0) {
+          clearInterval(pollInterval);
+          console.log(`[Network] State ready after ${pollCount * 100}ms, players=${players.size}`);
+          const state = this.convertState(room.state);
+          this.callbacks.onStateChange?.(state);
+        }
+      }, 100);
     } catch (error) {
       console.error('[Network] Connection failed:', error);
       this.callbacks.onError?.(error as Error);
@@ -144,11 +166,16 @@ export class NetworkClient {
       this.callbacks.onStateChange?.(gameState);
     });
 
-    // Player events
+    // Player events - also fire a full state refresh so UI updates
     this.room.state.players.onAdd((player: unknown, key: string) => {
       const p = player as NetworkPlayerState;
       console.log(`[Network] Player joined: ${p.name} (${key})`);
       this.callbacks.onPlayerJoin?.(p);
+      // Force full state refresh since onStateChange might have been missed
+      if (this.room?.state) {
+        const gameState = this.convertState(this.room.state);
+        this.callbacks.onStateChange?.(gameState);
+      }
     });
 
     this.room.state.players.onRemove((_player: unknown, key: string) => {
@@ -181,18 +208,29 @@ export class NetworkClient {
       this.callbacks.onGeomCollect?.(g.id);
     });
 
-    // Game state events
+    // Game state events - also force a full state refresh on these
+    // since onStateChange may not fire if it was registered late
     this.room.state.listen('gameStarted', (value: boolean) => {
+      console.log(`[Network] gameStarted changed to ${value}`);
       if (value) {
-        console.log('[Network] Game started!');
         this.callbacks.onGameStart?.();
+      }
+      // Force full state refresh
+      if (this.room?.state) {
+        const gameState = this.convertState(this.room.state);
+        this.callbacks.onStateChange?.(gameState);
       }
     });
 
     this.room.state.listen('gameOver', (value: boolean) => {
+      console.log(`[Network] gameOver changed to ${value}`);
       if (value) {
-        console.log('[Network] Game over!');
         this.callbacks.onGameOver?.();
+      }
+      // Force full state refresh
+      if (this.room?.state) {
+        const gameState = this.convertState(this.room.state);
+        this.callbacks.onStateChange?.(gameState);
       }
     });
 

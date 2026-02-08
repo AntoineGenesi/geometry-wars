@@ -165,6 +165,10 @@ export class MenuBackground {
   /** Clean up all GPU resources and remove the canvas from the DOM. */
   dispose(): void {
     this.stop();
+
+    // Remove canvas FIRST so it stops blocking even if cleanup throws
+    this.canvas.remove();
+
     window.removeEventListener('resize', this.onResize);
 
     // Dispose entity resources
@@ -182,7 +186,6 @@ export class MenuBackground {
     // Dispose post-processing and renderer
     this.composer.dispose();
     this.renderer.dispose();
-    this.canvas.remove();
   }
 
   // -----------------------------------------------------------------------

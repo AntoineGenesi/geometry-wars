@@ -54,7 +54,6 @@ const WEAPON_PICKUP_LIFETIME = 20.0; // seconds before despawn
 const WEAPON_TYPES = Object.keys(WEAPON_CONFIGS).filter(t => t !== 'standard');
 
 export class GameRoom extends Room<GameState> {
-  private tickInterval: ReturnType<typeof setInterval> | null = null;
   private spawnTimer = 0;
   private nextBulletId = 0;
   private nextEnemyId = 0;
@@ -80,8 +79,11 @@ export class GameRoom extends Room<GameState> {
       }
     });
 
-    // Start game loop
-    this.tickInterval = setInterval(() => this.tick(), 1000 / TICK_RATE);
+    // Use Colyseus's built-in simulation interval (triggers state patch broadcasting)
+    this.setSimulationInterval((dt) => this.tick(), 1000 / TICK_RATE);
+
+    // Explicitly set patch rate to ensure state changes are broadcast
+    this.setPatchRate(50); // Send patches every 50ms
 
     console.log(`[GameRoom] Created with surface: ${this.state.surfaceType}`);
   }
@@ -105,6 +107,10 @@ export class GameRoom extends Room<GameState> {
 
     this.state.players.set(client.sessionId, player);
     console.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
+    console.log(`[GameRoom] State after join: players.size=${this.state.players.size}, surfaceType=${this.state.surfaceType}, gameStarted=${this.state.gameStarted}`);
+    this.state.players.forEach((p, k) => {
+      console.log(`[GameRoom]   player ${k}: name=${p.name}, alive=${p.alive}, lives=${p.lives}`);
+    });
   }
 
   onLeave(client: Client, consented: boolean) {
@@ -122,10 +128,6 @@ export class GameRoom extends Room<GameState> {
   }
 
   onDispose() {
-    if (this.tickInterval) {
-      clearInterval(this.tickInterval);
-      this.tickInterval = null;
-    }
     console.log('[GameRoom] Disposed');
   }
 
