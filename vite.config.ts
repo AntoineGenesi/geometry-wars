@@ -36,7 +36,7 @@ export default defineConfig({
     outDir: 'dist'
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
     exclude: ['**/*.spec.js', '**/*.spec.ts', 'node_modules/**'],
   },
 })
