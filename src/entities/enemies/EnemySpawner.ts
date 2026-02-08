@@ -23,6 +23,7 @@ import { GiantRocket } from './GiantRocket';
 import { GiantSnake } from './GiantSnake';
 import { GiantNeutron } from './GiantNeutron';
 import { Boss } from './Boss';
+import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
@@ -82,6 +83,9 @@ export class EnemySpawner {
   private static warningGeometry: THREE.RingGeometry | null = null;
   private static warningMaterial: THREE.MeshBasicMaterial | null = null;
 
+  /** Optional instance manager for GPU-batched rendering. */
+  private instanceManager: EnemyInstanceManager | null = null;
+
   constructor(
     scene: THREE.Scene,
     getTransform: (u: number, v: number) => {
@@ -107,6 +111,16 @@ export class EnemySpawner {
         depthWrite: false,
       });
     }
+  }
+
+  /** Set the instance manager for GPU-batched enemy rendering. */
+  setInstanceManager(manager: EnemyInstanceManager): void {
+    this.instanceManager = manager;
+  }
+
+  /** Get the instance manager (for external updates). */
+  getInstanceManager(): EnemyInstanceManager | null {
+    return this.instanceManager;
   }
 
   /** Set player position for spawn distance calculations */
@@ -282,10 +296,21 @@ export class EnemySpawner {
     // Apply initial surface transform
     enemy.applySurfaceTransform(this.getTransform);
 
+    // Mark as materializing (spawn warning in progress)
+    enemy.isMaterializing = true;
+
+    // Try to register with instance manager for GPU-batched rendering
+    const instanced = this.instanceManager?.register(enemy) ?? false;
+
     // Start hidden - materializes when warning completes
     if (enemy.mesh) {
-      this.scene.add(enemy.mesh);
-      enemy.mesh.visible = false;
+      if (!instanced) {
+        // Non-instanced: add mesh to scene, hide until materialized
+        this.scene.add(enemy.mesh);
+        enemy.mesh.visible = false;
+      }
+      // Instanced enemies: mesh is already hidden by the instance manager,
+      // and the individual mesh is NOT added to the scene (instance mesh handles rendering)
     }
 
     // Painter trail visuals need separate scene group
@@ -337,14 +362,19 @@ export class EnemySpawner {
         (warning.mesh.material as THREE.MeshBasicMaterial).dispose();
         this.spawnWarnings.splice(i, 1);
 
-        // Make enemy visible (find the hidden enemy at this position)
+        // Make enemy visible (find the materializing enemy at this position)
         for (const enemy of this.enemies) {
-          if (enemy.mesh && !enemy.mesh.visible
+          if (enemy.isMaterializing
               && Math.abs(enemy.surfacePosition.u - warning.u) < 0.001
               && Math.abs(enemy.surfacePosition.v - warning.v) < 0.001) {
-            enemy.mesh.visible = true;
-            // Scale-in effect
-            enemy.mesh.scale.setScalar(0.01);
+            enemy.isMaterializing = false;
+            if (enemy.mesh) {
+              if (!enemy.isInstanced) {
+                enemy.mesh.visible = true;
+              }
+              // Scale-in effect
+              enemy.mesh.scale.setScalar(0.01);
+            }
             break;
           }
         }
@@ -367,7 +397,7 @@ export class EnemySpawner {
     for (const enemy of this.enemies) {
       if (enemy.active) {
         // Skip updating enemies that haven't materialized yet
-        if (enemy.mesh && !enemy.mesh.visible) continue;
+        if (enemy.isMaterializing) continue;
 
         enemy.setPlayerPosition(playerU, playerV);
         enemy.update(dt);
@@ -387,7 +417,11 @@ export class EnemySpawner {
     // Remove dead enemies
     this.enemies = this.enemies.filter(enemy => {
       if (!enemy.active) {
-        if (enemy.mesh) {
+        // Unregister from instance manager
+        if (enemy.isInstanced && this.instanceManager) {
+          this.instanceManager.unregister(enemy);
+        }
+        if (enemy.mesh && !enemy.isInstanced) {
           this.scene.remove(enemy.mesh);
         }
         if (enemy instanceof Painter) {
@@ -402,7 +436,10 @@ export class EnemySpawner {
 
   clear(): void {
     for (const enemy of this.enemies) {
-      if (enemy.mesh) {
+      if (enemy.isInstanced && this.instanceManager) {
+        this.instanceManager.unregister(enemy);
+      }
+      if (enemy.mesh && !enemy.isInstanced) {
         this.scene.remove(enemy.mesh);
       }
       if (enemy instanceof Painter) {

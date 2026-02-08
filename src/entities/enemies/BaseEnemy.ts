@@ -17,6 +17,12 @@ export abstract class BaseEnemy extends Entity {
   /** Cached array of MeshStandardMaterial refs for fast iteration (avoids traverse). */
   cachedMaterials: THREE.MeshStandardMaterial[] | null = null;
 
+  /** When true, this enemy's visual is handled by EnemyInstanceManager (mesh hidden). */
+  isInstanced: boolean = false;
+
+  /** When true, this enemy has not yet materialized (spawn warning in progress). */
+  isMaterializing: boolean = false;
+
   /** Tracks damage dealt by each player (playerId -> total damage). */
   readonly damageBy: Map<number, number> = new Map();
 

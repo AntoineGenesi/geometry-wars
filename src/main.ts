@@ -57,6 +57,7 @@ import { BuffManager, StackBuffType, BUFF_DEFINITIONS } from './buffs/BuffManage
 import { BuffHUD } from './buffs/BuffHUD';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
+import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -342,12 +343,13 @@ function checkBulletEnemyCollisions(
   showDamageNumbers = true,
   onBulletHit?: (enemy: BaseEnemy) => void,
   onEnemyDied?: (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => void,
+  instanceManager?: EnemyInstanceManager | null,
 ): void {
   // Rebuild spatial hash each frame
   enemySpatialHash.clear();
   for (const enemy of enemies) {
     if (!enemy.active || !enemy.alive) continue;
-    if (enemy.mesh && !enemy.mesh.visible) continue;
+    if (enemy.isMaterializing) continue;
     enemySpatialHash.insert(enemy.position.x, enemy.position.y, enemy.position.z, enemy);
   }
 
@@ -382,16 +384,20 @@ function checkBulletEnemyCollisions(
         // Grid deformation at impact point
         surface.applyForce(bulletPos, 0.08, 0.3);
 
-        // Hit flash: use cached material references instead of traverse()
-        if (enemy.alive && enemy.cachedMaterials) {
-          for (const mat of enemy.cachedMaterials) {
-            const origEmissive = mat.emissive.getHex();
-            mat.emissive.setHex(0xffffff);
-            mat.emissiveIntensity = 1.0;
-            setTimeout(() => {
-              mat.emissive.setHex(origEmissive);
-              mat.emissiveIntensity = 0.4;
-            }, 80);
+        // Hit flash: instanced enemies use instanceColor, others use cached materials
+        if (enemy.alive) {
+          if (enemy.isInstanced && instanceManager) {
+            instanceManager.hitFlash(enemy, 80);
+          } else if (enemy.cachedMaterials) {
+            for (const mat of enemy.cachedMaterials) {
+              const origEmissive = mat.emissive.getHex();
+              mat.emissive.setHex(0xffffff);
+              mat.emissiveIntensity = 1.0;
+              setTimeout(() => {
+                mat.emissive.setHex(origEmissive);
+                mat.emissiveIntensity = 0.4;
+              }, 80);
+            }
           }
         }
 
@@ -468,8 +474,8 @@ function checkPlayerEnemyCollisions(
 
   for (const enemy of enemies) {
     if (!enemy.active) continue;
-    // Skip enemies still spawning (mesh hidden)
-    if (enemy.mesh && !enemy.mesh.visible) continue;
+    // Skip enemies still spawning
+    if (enemy.isMaterializing) continue;
 
     // Use distanceToSquared to avoid sqrt
     const hitRadius = player.mesh.scale.x * 0.3 + enemy.radius;
@@ -671,6 +677,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
+
+  // -- GPU instanced rendering for enemies (reduces draw calls from ~2000 to ~15) --
+  const enemyInstanceManager = new EnemyInstanceManager(game.scene);
+  enemySpawner.setInstanceManager(enemyInstanceManager);
 
   // -- Enemy glow trails (for fast-moving enemies) --
   // Track which enemies have trails and their trail objects
@@ -1429,6 +1439,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       enemySpawner.update(dt, fakeU, fakeV);
     }
 
+    // Update GPU-instanced enemy rendering (reads mesh matrices from updated enemies)
+    enemyInstanceManager.updateInstances(enemySpawner.getEnemies());
+
     // Update bullets
     bulletPool.update(dt);
 
@@ -1663,6 +1676,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       true, // showDamageNumbers
       (enemy: BaseEnemy) => { buffManager.onBulletHit(enemy); },
       (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => { buffManager.onEnemyDeath(enemy, allEnemies); },
+      enemyInstanceManager,
     );
 
     // Player vs geoms (magnetism buff expands pickup radius)
@@ -1864,7 +1878,13 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         }
       }
 
-      // Use cached materials instead of traverse() (saves ~20 tree walks per enemy per frame)
+      // Instanced enemies: use instanceColor for visibility (tint modulation)
+      if (enemy.isInstanced) {
+        enemyInstanceManager.setInstanceVisibility(enemy, visibility);
+        continue;
+      }
+
+      // Non-instanced: use cached materials instead of traverse()
       if (enemy.cachedMaterials) {
         for (const mat of enemy.cachedMaterials) {
           (mat as any).transparent = true;
@@ -1883,6 +1903,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         });
       }
     }
+    // Flush all instanced color changes for this frame
+    enemyInstanceManager.flushColors();
 
     // Apply screen shake to camera
     if (screenShake.offset.lengthSq() > 0.0001) {
@@ -1915,7 +1937,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
     // Update minimap
     const minimapEnemies = enemySpawner.getEnemies()
-      .filter(e => e.mesh && e.mesh.visible)
+      .filter(e => e.mesh && !e.isMaterializing)
       .map(e => ({ u: e.surfacePosition.u, v: e.surfacePosition.v, alive: e.alive }));
     const minimapGeoms: Array<{ u: number; v: number }> = [];
     geomPool.forEachActive((_i, u, v) => { minimapGeoms.push({ u, v }); });
