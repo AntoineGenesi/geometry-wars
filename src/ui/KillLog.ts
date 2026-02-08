@@ -1,110 +1,24 @@
 /**
- * Kill log / event feed UI.
+ * Kill log / event feed UI with kill-streak tracking.
  *
  * Displays a scrolling list of enemy kills in the bottom-left corner.
- * Each enemy type gets a single entry with a running tally that increments
- * on subsequent kills.  Entries fade out after a configurable timeout and
- * are removed from the DOM once fully invisible.
+ * Each enemy type gets a single entry with a running streak counter that
+ * increments on subsequent kills within the timeout window. When the same
+ * enemy type is killed again, the timer resets (keeping the streak alive).
+ *
+ * Streaks are visually emphasised:
+ * - x2+ shows a larger, glowing count
+ * - x3+ adds a "STREAK" label with neon pulse
+ * - x5+ upgrades to "RAMPAGE" with intensified glow
+ * - x10+ shows "UNSTOPPABLE" with maximum glow
+ *
+ * An optional onKill callback fires on every kill so external systems
+ * (e.g. TotalKillCounter) can observe without coupling.
  *
  * Shape icons are tiny inline SVGs coloured to match the enemy type.
  */
 
-// ---------------------------------------------------------------------------
-// Shape icon definitions (inline SVG paths per enemy type)
-// ---------------------------------------------------------------------------
-
-/** Returns a small (16x16) inline SVG string for the given enemy type. */
-function shapeIconSVG(type: string, hexColor: string): string {
-  const fill = hexColor;
-  // Each icon is a 16x16 viewBox with a recognisable shape silhouette.
-  switch (type) {
-    case 'grunt':
-    case 'titangrunt':
-      // Diamond
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="8,1 15,8 8,15 1,8" fill="${fill}"/></svg>`;
-    case 'wanderer':
-      // Pinwheel (4-pointed star)
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="8,0 10,6 16,8 10,10 8,16 6,10 0,8 6,6" fill="${fill}"/></svg>`;
-    case 'duck':
-      // Triangle (arrow-like)
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="8,1 15,14 1,14" fill="${fill}"/></svg>`;
-    case 'neutron':
-      // Heptagon (approximated)
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="8,1 13,3 15,8 13,13 8,15 3,13 1,8 3,3" fill="${fill}"/></svg>`;
-    case 'rocket':
-      // Arrow pointing up
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="8,0 13,10 10,9 10,16 6,16 6,9 3,10" fill="${fill}"/></svg>`;
-    case 'spinner':
-    case 'titanspinner':
-      // Octahedron (octagon)
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="5,1 11,1 15,5 15,11 11,15 5,15 1,11 1,5" fill="${fill}"/></svg>`;
-    case 'weaver':
-    case 'titanweaver':
-      // Thin diamond
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="8,0 12,8 8,16 4,8" fill="${fill}"/></svg>`;
-    case 'mayfly':
-      // Small plus / cross
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="6,0 10,0 10,6 16,6 16,10 10,10 10,16 6,16 6,10 0,10 0,6 6,6" fill="${fill}"/></svg>`;
-    case 'painter':
-      // Square
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" fill="${fill}"/></svg>`;
-    case 'snake':
-      // Circle
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="${fill}"/></svg>`;
-    case 'repulsor':
-      // Chevron / double arrow
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="3,1 8,8 3,15 6,15 11,8 6,1" fill="${fill}"/><polygon points="7,1 12,8 7,15 10,15 15,8 10,1" fill="${fill}" opacity="0.6"/></svg>`;
-    case 'gravitywell':
-      // Concentric circles
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="none" stroke="${fill}" stroke-width="1.5"/><circle cx="8" cy="8" r="4" fill="${fill}" opacity="0.7"/></svg>`;
-    case 'spawner':
-      // Cube (square with inset)
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" fill="${fill}" opacity="0.5"/><rect x="4" y="4" width="8" height="8" fill="${fill}"/></svg>`;
-    case 'virus':
-      // Small circle
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="${fill}"/></svg>`;
-    case 'gate':
-      // Two vertical bars (gate shape)
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><rect x="2" y="1" width="4" height="14" fill="${fill}"/><rect x="10" y="1" width="4" height="14" fill="${fill}"/></svg>`;
-    case 'boss':
-      // Pentagon (boss-like)
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="8,1 15,6 13,15 3,15 1,6" fill="${fill}"/></svg>`;
-    default:
-      // Generic hexagon
-      return `<svg width="14" height="14" viewBox="0 0 16 16"><polygon points="4,1 12,1 16,8 12,15 4,15 0,8" fill="${fill}"/></svg>`;
-  }
-}
-
-/** Convert a 0xRRGGBB number to a CSS hex string. */
-function colorToHex(color: number): string {
-  return '#' + color.toString(16).padStart(6, '0');
-}
-
-// ---------------------------------------------------------------------------
-// Pretty display names
-// ---------------------------------------------------------------------------
-
-const DISPLAY_NAMES: Record<string, string> = {
-  grunt: 'Grunt',
-  wanderer: 'Wanderer',
-  duck: 'Duck',
-  neutron: 'Neutron',
-  rocket: 'Rocket',
-  spinner: 'Spinner',
-  weaver: 'Weaver',
-  mayfly: 'Mayfly',
-  painter: 'Painter',
-  snake: 'Snake',
-  repulsor: 'Repulsor',
-  gravitywell: 'Gravity Well',
-  spawner: 'Spawner',
-  virus: 'Virus',
-  gate: 'Gate',
-  titangrunt: 'Titan Grunt',
-  titanspinner: 'Titan Spinner',
-  titanweaver: 'Titan Weaver',
-  boss: 'Boss',
-};
+import { shapeIconSVG, colorToHex, DISPLAY_NAMES } from './KillIcons';
 
 // ---------------------------------------------------------------------------
 // KillLog entry data
@@ -120,6 +34,8 @@ interface KillEntry {
   el: HTMLDivElement;
   /** The span holding the count number. */
   countEl: HTMLSpanElement;
+  /** The span holding the streak label (hidden when count < STREAK_THRESHOLD). */
+  streakEl: HTMLSpanElement;
 }
 
 // ---------------------------------------------------------------------------
@@ -129,11 +45,17 @@ interface KillEntry {
 const MAX_VISIBLE_ENTRIES = 10;
 const FADE_AFTER_SECONDS = 10;
 const FADE_DURATION_SECONDS = 2;
+const STREAK_THRESHOLD = 3;
+const RAMPAGE_THRESHOLD = 5;
+const UNSTOPPABLE_THRESHOLD = 10;
 
 export class KillLog {
   private container: HTMLDivElement;
   private entries: KillEntry[] = [];
   private styleEl: HTMLStyleElement;
+
+  /** Optional callback fired on every kill (type, color). */
+  onKill: ((enemyType: string, color: number) => void) | null = null;
 
   constructor() {
     this.styleEl = document.createElement('style');
@@ -142,7 +64,7 @@ export class KillLog {
         position: fixed;
         bottom: 16px;
         left: 16px;
-        width: 200px;
+        width: 220px;
         max-height: 320px;
         overflow-y: hidden;
         pointer-events: none;
@@ -184,6 +106,27 @@ export class KillLog {
       .kill-entry .kill-count {
         font-variant-numeric: tabular-nums;
         opacity: 0.9;
+        transition: font-size 0.15s ease-out;
+      }
+
+      .kill-entry .kill-count.streak-active {
+        font-size: 15px;
+        font-weight: 800;
+        opacity: 1;
+      }
+
+      .kill-entry .kill-streak-label {
+        font-size: 8px;
+        font-weight: 800;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+        padding: 0 3px;
+        border-radius: 2px;
+        display: none;
+      }
+
+      .kill-entry .kill-streak-label.visible {
+        display: inline;
       }
 
       @keyframes kill-pop-in {
@@ -197,12 +140,22 @@ export class KillLog {
         }
       }
 
+      @keyframes streak-pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.15); }
+        100% { transform: scale(1); }
+      }
+
       .kill-entry.new-entry {
         animation: kill-pop-in 0.2s ease-out;
       }
 
       .kill-entry.count-bump .kill-count {
-        animation: kill-pop-in 0.15s ease-out;
+        animation: streak-pulse 0.2s ease-out;
+      }
+
+      .kill-entry.count-bump .kill-streak-label {
+        animation: streak-pulse 0.2s ease-out;
       }
     `;
     document.head.appendChild(this.styleEl);
@@ -214,13 +167,16 @@ export class KillLog {
 
   /**
    * Record a kill of the given enemy type.
-   * If an entry for this type already exists, its tally is incremented.
-   * Otherwise a new entry is created.
+   * If an entry for this type already exists and hasn't faded out, the streak
+   * counter is incremented and its timer is reset. Otherwise a new streak
+   * begins at x1.
    *
    * @param enemyType  Lowercase enemy type key (e.g. "grunt", "wanderer").
    * @param color      0xRRGGBB colour number for the enemy.
    */
   addKill(enemyType: string, color: number): void {
+    this.onKill?.(enemyType, color);
+
     const existing = this.entries.find(e => e.type === enemyType);
 
     if (existing) {
@@ -228,6 +184,9 @@ export class KillLog {
       existing.age = 0;
       existing.countEl.textContent = `x${existing.count}`;
       existing.el.style.opacity = '1';
+
+      // Update streak visual state
+      this.updateStreakVisuals(existing);
 
       // Brief visual bump
       existing.el.classList.remove('count-bump');
@@ -239,7 +198,7 @@ export class KillLog {
       this.container.appendChild(existing.el);
       this.reorderArray(existing);
     } else {
-      // Create new entry
+      // Create new entry (streak starts at x1)
       const entry = this.createEntry(enemyType, color);
       this.entries.push(entry);
       this.container.appendChild(entry.el);
@@ -264,7 +223,7 @@ export class KillLog {
       if (entry.age > FADE_AFTER_SECONDS) {
         const fadeProgress = (entry.age - FADE_AFTER_SECONDS) / FADE_DURATION_SECONDS;
         if (fadeProgress >= 1) {
-          // Fully faded -- remove
+          // Fully faded -- remove (streak ends)
           entry.el.remove();
           this.entries.splice(i, 1);
         } else {
@@ -272,6 +231,22 @@ export class KillLog {
         }
       }
     }
+  }
+
+  /**
+   * Get the current streak count for a given enemy type.
+   * Returns 0 if no active entry exists.
+   */
+  getStreakCount(enemyType: string): number {
+    const entry = this.entries.find(e => e.type === enemyType);
+    return entry ? entry.count : 0;
+  }
+
+  /**
+   * Get all current active entries (for testing/inspection).
+   */
+  getEntries(): ReadonlyArray<{ type: string; count: number; age: number }> {
+    return this.entries.map(e => ({ type: e.type, count: e.count, age: e.age }));
   }
 
   /**
@@ -307,12 +282,17 @@ export class KillLog {
     nameSpan.className = 'kill-name';
     nameSpan.textContent = displayName;
 
+    const streakSpan = document.createElement('span');
+    streakSpan.className = 'kill-streak-label';
+    streakSpan.textContent = '';
+
     const countSpan = document.createElement('span');
     countSpan.className = 'kill-count';
     countSpan.textContent = 'x1';
 
     el.appendChild(iconSpan);
     el.appendChild(nameSpan);
+    el.appendChild(streakSpan);
     el.appendChild(countSpan);
 
     // Remove the intro animation class after it plays
@@ -320,7 +300,56 @@ export class KillLog {
       el.classList.remove('new-entry');
     }, { once: true });
 
-    return { type, color, count: 1, age: 0, el, countEl: countSpan };
+    return { type, color, count: 1, age: 0, el, countEl: countSpan, streakEl: streakSpan };
+  }
+
+  /** Update the streak label and count styling based on current count. */
+  private updateStreakVisuals(entry: KillEntry): void {
+    const hexColor = colorToHex(entry.color);
+
+    if (entry.count >= UNSTOPPABLE_THRESHOLD) {
+      entry.streakEl.textContent = 'UNSTOPPABLE';
+      entry.streakEl.classList.add('visible');
+      entry.streakEl.style.color = '#ffffff';
+      entry.streakEl.style.textShadow = `0 0 8px ${hexColor}, 0 0 16px ${hexColor}`;
+      entry.countEl.classList.add('streak-active');
+      entry.countEl.style.textShadow = `0 0 10px ${hexColor}, 0 0 20px ${hexColor}`;
+      entry.el.style.borderLeftWidth = '3px';
+      entry.el.style.background = `rgba(${this.hexToRgb(hexColor)}, 0.15)`;
+    } else if (entry.count >= RAMPAGE_THRESHOLD) {
+      entry.streakEl.textContent = 'RAMPAGE';
+      entry.streakEl.classList.add('visible');
+      entry.streakEl.style.color = hexColor;
+      entry.streakEl.style.textShadow = `0 0 6px ${hexColor}`;
+      entry.countEl.classList.add('streak-active');
+      entry.countEl.style.textShadow = `0 0 8px ${hexColor}`;
+      entry.el.style.borderLeftWidth = '3px';
+      entry.el.style.background = 'rgba(0, 0, 20, 0.65)';
+    } else if (entry.count >= STREAK_THRESHOLD) {
+      entry.streakEl.textContent = 'STREAK';
+      entry.streakEl.classList.add('visible');
+      entry.streakEl.style.color = hexColor;
+      entry.streakEl.style.textShadow = `0 0 4px ${hexColor}`;
+      entry.countEl.classList.add('streak-active');
+      entry.countEl.style.textShadow = '';
+      entry.el.style.borderLeftWidth = '2px';
+      entry.el.style.background = 'rgba(0, 0, 20, 0.55)';
+    } else if (entry.count >= 2) {
+      // x2: slightly emphasised count, no streak label yet
+      entry.streakEl.classList.remove('visible');
+      entry.countEl.classList.add('streak-active');
+      entry.countEl.style.textShadow = '';
+      entry.el.style.borderLeftWidth = '2px';
+      entry.el.style.background = 'rgba(0, 0, 20, 0.55)';
+    }
+  }
+
+  /** Extract "r, g, b" decimal values from "#rrggbb" for use in rgba(). */
+  private hexToRgb(hex: string): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `${r}, ${g}, ${b}`;
   }
 
   /** Move an existing entry to the end of the internal array (most recent). */

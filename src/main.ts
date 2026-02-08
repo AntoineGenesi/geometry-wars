@@ -45,6 +45,7 @@ import { GameOverScreen } from './ui/GameOverScreen';
 import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
 import { Minimap } from './ui/Minimap';
 import { KillLog } from './ui/KillLog';
+import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponHUD } from './ui/WeaponHUD';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
@@ -708,8 +709,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Minimap --
   const minimap = new Minimap();
 
-  // -- Kill log --
+  // -- Kill log (bottom-left) + total kill counter (bottom-right) --
   const killLog = new KillLog();
+  const totalKillCounter = new TotalKillCounter();
+  killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
 
   // -- Player leveling system (kill-based progression) --
   const playerLevel = new PlayerLevel();
