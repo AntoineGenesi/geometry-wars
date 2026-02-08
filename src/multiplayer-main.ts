@@ -55,6 +55,7 @@ import { SplitScreenHUD, type PlayerHUDData } from './ui/SplitScreenHUD';
 import { AllyGlowManager } from './effects/AllyGlow';
 import { KillLog } from './ui/KillLog';
 import { KillTally } from './ui/KillTally';
+import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponHUD } from './ui/WeaponHUD';
 
 // ---------------------------------------------------------------------------
@@ -280,7 +281,10 @@ function main(): void {
   const killTracker = new KillTracker();
   const killLog = new KillLog();
   const killTally = new KillTally(playerCount);
+  const totalKillCounter = new TotalKillCounter();
+  killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
   const auraManager = new AuraManager();
+  auraManager.setMeshSurface(meshSurface);
   game.scene.add(auraManager.root);
 
   // -- Create players --
