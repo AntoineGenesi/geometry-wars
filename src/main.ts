@@ -53,6 +53,10 @@ import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
 import { SpatialHash } from './core/SpatialHash';
 import { CompanionManager, CompanionPickup, CompanionHUD, CompanionType, getRandomCompanionType } from './entities/Companion';
+import { BuffManager, StackBuffType, BUFF_DEFINITIONS } from './buffs/BuffManager';
+import { BuffHUD } from './buffs/BuffHUD';
+import { BuffPickupNew } from './buffs/BuffPickupNew';
+import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -336,6 +340,8 @@ function checkBulletEnemyCollisions(
   bulletDamage: number = 1,
   onKillLog?: (type: string, color: number) => void,
   showDamageNumbers = true,
+  onBulletHit?: (enemy: BaseEnemy) => void,
+  onEnemyDied?: (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => void,
 ): void {
   // Rebuild spatial hash each frame
   enemySpatialHash.clear();
@@ -359,6 +365,11 @@ function checkBulletEnemyCollisions(
         // Hit!
         bulletPool.kill(bulletIdx);
         enemy.takeDamage(bulletDamage);
+
+        // Trigger on-hit procs (incendiary rounds, etc.)
+        if (enemy.alive) {
+          onBulletHit?.(enemy);
+        }
 
         // Damage number popup (skip on killing blow - score popup covers it)
         if (showDamageNumbers && scorePopups && enemy.alive) {
@@ -404,6 +415,9 @@ function checkBulletEnemyCollisions(
             geomPool.spawn(u, v);
           }
 
+          // Trigger on-death procs (volatile explosions, etc.)
+          onEnemyDied?.(enemy, enemies);
+
           onEnemyKilled?.(u, v);
         }
 
@@ -422,8 +436,10 @@ function checkGeomPickups(
   geomPool: GeomPool,
   scoreManager: ScoreManager,
   particles: ParticleSystem,
+  bonusRadius = 0,
 ): void {
-  const pickupRadiusSq = 0.5 * 0.5; // Squared radius avoids sqrt
+  const baseRadius = 0.5 + bonusRadius;
+  const pickupRadiusSq = baseRadius * baseRadius; // Squared radius avoids sqrt
   geomPool.forEachActive((index, surfaceU, surfaceV, position) => {
     const distSq = player.mesh.position.distanceToSquared(position);
     if (distSq < pickupRadiusSq) {
@@ -690,16 +706,39 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   game.scene.add(playerLevel.auraRing);
   const levelUpNotification = new LevelUpNotification();
 
+  // -- Buff system (stackable Risk-of-Rain-style buffs) --
+  const buffManager = new BuffManager();
+  const buffHUD = new BuffHUD();
+  const shockArcRenderer = new ShockArcRenderer();
+  game.scene.add(shockArcRenderer.root);
+
+  // Wire buff callbacks
+  buffManager.onBuffGained = (type, _newStacks) => {
+    buffHUD.highlightBuff(type);
+  };
+
+  buffManager.onVolatileExplosion = (position, radius, _damage) => {
+    particles.bombExplosion(position);
+    surface.applyForce(position, 0.3, radius * 0.5);
+    screenShake.shake(0.2, 0.15);
+  };
+
+  /** Recompute combined multipliers from PlayerLevel + BuffManager */
+  function applyStatMultipliers(): void {
+    const perk = playerLevel.perk;
+    playerWalker.speed = PLAYER_MOVE_SPEED * perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier();
+    player.fireRateMultiplier = perk.fireRateMultiplier * buffManager.getFireRateMultiplier();
+    bulletPool.speedMultiplier = perk.bulletSpeedMultiplier;
+  }
+
   playerLevel.onLevelUp = (level, perk) => {
     levelUpNotification.show(level, perk);
     getSoundEngine().play('multiplierUp', { pitch: 1.2 + level * 0.05 });
     if (perk.bonusBombs > 0) {
       player.bombs += perk.bonusBombs;
     }
-    // Update stat multipliers immediately
-    playerWalker.speed = PLAYER_MOVE_SPEED * perk.moveSpeedMultiplier;
-    player.fireRateMultiplier = perk.fireRateMultiplier;
-    bulletPool.speedMultiplier = perk.bulletSpeedMultiplier;
+    // Update stat multipliers immediately (combines PlayerLevel + BuffManager)
+    applyStatMultipliers();
   };
 
   // -- Screen shake --
@@ -839,10 +878,11 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       const enemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
       const enemy = enemies[index];
       if (!enemy) return;
-      const scorePower = scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier;
+      const scorePower = scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier * buffManager.getDamageMultiplier();
       enemy.takeDamage(damage * scorePower);
-      // Show damage number only on non-killing hits (score popup covers killing blows)
+      // Trigger on-hit procs (incendiary etc.) with reduced proc coefficient for weapon damage
       if (enemy.alive) {
+        buffManager.onBulletHit(enemy, 0.3);
         scorePopups.spawnDamage(enemy.position, damage * scorePower);
       }
       if (!enemy.alive) {
@@ -854,6 +894,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
         killLog.addKill(enemyType, color.getHex());
         playerLevel.addKill();
+
+        // Trigger on-death procs (volatile explosions)
+        buffManager.onEnemyDeath(enemy, enemySpawner.getEnemies());
 
         const { u, v } = surface.worldToSurface(enemy.position);
         for (let g = 0; g < enemy.geomCount; g++) {
@@ -881,6 +924,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Weapon pickups on the field --
   const weaponPickups: WeaponPickup[] = [];
   const buffPickups: BuffPickup[] = [];
+  const newBuffPickups: BuffPickupNew[] = [];
 
   // -- Wire up enemy death handler --
   BaseEnemy.onDeath = (_position: THREE.Vector3, _score: number, _geoms: number) => {
@@ -1117,6 +1161,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     weaponHUD.dispose();
     companionManager.dispose();
     companionHUD.dispose();
+    buffManager.dispose();
+    buffHUD.dispose();
+    shockArcRenderer.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex + 1);
@@ -1128,6 +1175,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     weaponHUD.dispose();
     companionManager.dispose();
     companionHUD.dispose();
+    buffManager.dispose();
+    buffHUD.dispose();
+    shockArcRenderer.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex);
@@ -1406,6 +1456,39 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       playerLevel.update(dt, playerWalker.position, playerWalker.normal);
     }
 
+    // Update buff system (shock aura, burning DOT, stat refresh)
+    if (player.alive) {
+      buffManager.update(dt, playerWalker.position, enemySpawner.getEnemies());
+      shockArcRenderer.update(buffManager.shockArcs);
+      // Refresh stat multipliers each frame (buffs can change any time)
+      applyStatMultipliers();
+    }
+
+    // Update new buff pickups
+    for (let i = newBuffPickups.length - 1; i >= 0; i--) {
+      const nbp = newBuffPickups[i];
+      if (!nbp.active) {
+        game.scene.remove(nbp.mesh);
+        nbp.dispose();
+        newBuffPickups.splice(i, 1);
+        continue;
+      }
+      nbp.update(dt, game.clock.totalTime);
+      nbp.applySurfaceTransform(getTransform);
+
+      // Check player collision with new buff pickup
+      if (player.alive && nbp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
+        buffManager.addBuff(nbp.buffType);
+        scorePopups.spawn(
+          player.mesh.position.clone(),
+          `+${BUFF_DEFINITIONS[nbp.buffType].name}`,
+          '#' + BUFF_DEFINITIONS[nbp.buffType].iconColor.toString(16).padStart(6, '0'),
+          1.5,
+        );
+        nbp.active = false;
+      }
+    }
+
     // Update enemy glow trails (for fast-moving enemies)
     const currentEnemies = enemySpawner.getEnemies();
     const activeEnemySet = new Set(currentEnemies);
@@ -1552,12 +1635,19 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
           game.scene.add(wpnPickup.mesh);
           weaponPickups.push(wpnPickup);
         }
-        // ~5% chance to spawn a buff pickup on enemy death
+        // ~5% chance to spawn a buff pickup on enemy death (old weapon-buff system)
         if (Math.random() < 0.05) {
           const bType = getRandomBuffType();
           const bPickup = new BuffPickup(bType, u, v);
           game.scene.add(bPickup.mesh);
           buffPickups.push(bPickup);
+        }
+        // Roll for new stackable buff pickup drop
+        const droppedBuff = BuffManager.rollBuffDrop();
+        if (droppedBuff) {
+          const nbPickup = new BuffPickupNew(droppedBuff, u, v);
+          game.scene.add(nbPickup.mesh);
+          newBuffPickups.push(nbPickup);
         }
         // ~5% chance to spawn a companion pickup on enemy death
         if (Math.random() < 0.05) {
@@ -1568,19 +1658,30 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         }
       },
       scorePopups,
-      scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier,
+      scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier * buffManager.getDamageMultiplier(),
       (type: string, color: number) => { killLog.addKill(type, color); playerLevel.addKill(); },
+      true, // showDamageNumbers
+      (enemy: BaseEnemy) => { buffManager.onBulletHit(enemy); },
+      (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => { buffManager.onEnemyDeath(enemy, allEnemies); },
     );
 
-    // Player vs geoms
-    checkGeomPickups(player, geomPool, scoreManager, particles);
+    // Player vs geoms (magnetism buff expands pickup radius)
+    checkGeomPickups(player, geomPool, scoreManager, particles, buffManager.getCollectionRadiusBonus());
 
     // Player vs enemies (immune if shielded OR tesla coil active OR companion shield active)
     const fireModifiers = superStateManager.getFireModifiers();
     const isImmune = fireModifiers.isShielded || weaponManager.isTeslaActive() || companionManager.isShieldActive();
     checkPlayerEnemyCollisions(
       player, enemies, particles, screenShake, isImmune,
-      () => companionManager.onPlayerHit(),
+      () => {
+        // Try Tough Times block first
+        if (buffManager.onPlayerHit()) {
+          screenFlash('rgba(68, 136, 255, 0.3)', 100);
+          return true; // Blocked by Tough Times
+        }
+        // Then try companion protector
+        return companionManager.onPlayerHit();
+      },
     );
 
     // Gate pass-through detection (Pacifism mode mechanic)
@@ -1796,6 +1897,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
     // Update companion HUD
     companionHUD.update(companionManager.getCompanionCounts());
+
+    // Update buff HUD
+    buffHUD.update(buffManager.getActiveBuffs());
 
     // Update level display in HUD
     if (playerLevel.level > 0) {
