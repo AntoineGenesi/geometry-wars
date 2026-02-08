@@ -32,7 +32,7 @@ export class ScorePopupManager {
   /**
    * Spawn a floating score popup at the given world position.
    */
-  spawn(position: THREE.Vector3, text: string, color: string = '#00ffff', scale = 1.8): void {
+  spawn(position: THREE.Vector3, text: string, color: string = '#00ffff', scale = 1.8, lifetime = 1.0): void {
     const texture = this.getTexture(text, color);
     const material = new THREE.SpriteMaterial({
       map: texture,
@@ -65,7 +65,7 @@ export class ScorePopupManager {
       mesh: sprite,
       velocity,
       age: 0,
-      lifetime: 1.0,
+      lifetime,
       baseScale: scale,
     };
 
@@ -89,6 +89,18 @@ export class ScorePopupManager {
     // Scale range: 1.5 to 2.5 (visible at 15 units camera distance)
     const scale = 1.5 + Math.min(total / 5000, 1.0);
     this.spawn(position, text, color, scale);
+  }
+
+  /**
+   * Spawn a floating damage number at an enemy position.
+   * Small red text, short lifetime, slight random offset to avoid stacking.
+   */
+  spawnDamage(position: THREE.Vector3, damage: number): void {
+    const text = damage >= 1 ? `-${Math.round(damage)}` : `-${damage.toFixed(1)}`;
+    const offsetX = (Math.random() - 0.5) * 0.4;
+    const offsetZ = (Math.random() - 0.5) * 0.4;
+    const pos = position.clone().add(new THREE.Vector3(offsetX, 0, offsetZ));
+    this.spawn(pos, text, '#ff3333', 0.9, 0.5);
   }
 
   /**

@@ -326,6 +326,7 @@ function checkBulletEnemyCollisions(
   scorePopups?: ScorePopupManager,
   bulletDamage: number = 1,
   onKillLog?: (type: string, color: number) => void,
+  showDamageNumbers = true,
 ): void {
   bulletPool.forEachActive((bulletIdx, bulletPos) => {
     for (const enemy of enemies) {
@@ -338,6 +339,11 @@ function checkBulletEnemyCollisions(
         // Hit!
         bulletPool.kill(bulletIdx);
         enemy.takeDamage(bulletDamage);
+
+        // Damage number popup
+        if (showDamageNumbers && scorePopups) {
+          scorePopups.spawnDamage(enemy.position, bulletDamage);
+        }
 
         // Bullet impact particles
         particles.bulletImpact(bulletPos);
@@ -807,6 +813,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       if (!enemy) return;
       const scorePower = scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier;
       enemy.takeDamage(damage * scorePower);
+      scorePopups.spawnDamage(enemy.position, damage * scorePower);
       if (!enemy.alive) {
         const enemyType = enemy.constructor.name.toLowerCase();
         const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
@@ -972,6 +979,17 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Checkpoint wave-clear tracking --
   let lastEnemyCount = 0;
   let hadEnemies = false;
+
+  // -- Camera zoom --
+  let cameraDistance = 15;
+  const CAMERA_DIST_MIN = 6;
+  const CAMERA_DIST_MAX = 35;
+
+  document.addEventListener('wheel', (e) => {
+    if (isPaused || isGameOver) return;
+    const delta = e.deltaY > 0 ? 1.5 : -1.5;
+    cameraDistance = Math.max(CAMERA_DIST_MIN, Math.min(CAMERA_DIST_MAX, cameraDistance + delta));
+  }, { passive: true });
 
   // -- Game state --
   let isPaused = false;
@@ -1143,7 +1161,6 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       const playerNormal = playerWalker.normal;
 
       // Camera follows player along surface normal (smoothly lerped)
-      const cameraDistance = 15;
       const CAMERA_LERP_FACTOR = 0.12;
       const targetCamPos = playerWalker.position.clone()
         .addScaledVector(playerNormal, cameraDistance);
