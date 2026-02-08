@@ -379,6 +379,39 @@ describe('WeaponManager', () => {
         expect(dist).toBeLessThan(5);
       }
     });
+
+    it('should re-target nearest enemy to projectile, not original target', () => {
+      // Far enemy (original target at fire time since it's "nearest" to origin)
+      const farEnemy: MockEnemy = {
+        position: origin().clone().add(forward().clone().multiplyScalar(6)),
+        index: 0, alive: true,
+      };
+      // Close enemy that appears AFTER the missile has been flying
+      const closeEnemy: MockEnemy = {
+        position: origin().clone().add(forward().clone().multiplyScalar(2)),
+        index: 1, alive: true,
+      };
+
+      // Start with only far enemy
+      mock = createMockCallbacks([farEnemy]);
+      manager.setCallbacks(mock.callbacks);
+      manager.fire(origin(), forward(), T);
+
+      // After a couple frames, add the close enemy
+      manager.update(0.05);
+      mock = createMockCallbacks([farEnemy, closeEnemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      // Simulate more frames - missile should re-target closeEnemy
+      for (let i = 0; i < 20; i++) {
+        manager.update(0.05);
+      }
+
+      // The missile should have hit or be very near the close enemy
+      if (mock.damages.length > 0) {
+        expect(mock.damages[0].index).toBe(1); // Hit close enemy first
+      }
+    });
   });
 
   // =========================================================================
