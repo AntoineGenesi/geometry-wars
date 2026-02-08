@@ -66,6 +66,17 @@ Two movement systems coexist, bridged via coordinate conversion.
 
 Camera follows player along surface normal. Uses MeshWalker's persistent tangent frame for the `up` vector, preventing flips on complex surfaces like torus. Distance: 15 world units from player. `game.disableBuiltInCameraUpdate = true` prevents the default orbit camera from overriding.
 
+## Network Multiplayer
+
+Server-authoritative multiplayer using Colyseus 0.15.x with Schema v2 binary state synchronization.
+
+- **Server**: `server/rooms/GameRoom.ts` runs a 60 Hz game loop with input processing, enemy AI, collision detection, and entity spawning. State patches broadcast every 50ms.
+- **Schema**: `server/schema/GameState.ts` defines 6 synced classes (PlayerState, BulletState, EnemyState, GeomState, WeaponPickupState, GameState) using `declare` + `defineTypes()` to avoid ES2022 class field conflicts with Schema setters.
+- **Client**: `src/network/NetworkClient.ts` wraps Colyseus client with typed callbacks. `src/network-main.ts` renders server state onto Three.js surfaces.
+- **LAN Hosting**: `vite-plugin-lan.ts` adds `/__lan/*` middleware to Vite dev server, spawning Colyseus as a child process. `src/network/LANClient.ts` provides the client-side API. Includes subnet scanning for server discovery.
+
+For full details on connection flow, the ES2022 encoding bug, LAN architecture, and lessons learned, see **[LAN Multiplayer Architecture](./lan-multiplayer-architecture.md)**.
+
 ## Game Loop
 
 - **Game** (`src/core/Game.ts`): Renderer, scene, camera, animation loop.
