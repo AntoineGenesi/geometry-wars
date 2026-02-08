@@ -1,6 +1,7 @@
 import { ConfigurableInput } from '../input/ConfigurableInput';
 import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
+import { SettingsMenu } from './SettingsMenu';
 import { BackgroundMusic } from '../audio/BackgroundMusic';
 
 /**
@@ -42,6 +43,10 @@ export class PauseMenu {
           <button class="pause-btn weapons-btn" data-action="weapons">
             <span class="btn-icon">⚡</span>
             <span>WEAPONS</span>
+          </button>
+          <button class="pause-btn settings-btn" data-action="settings">
+            <span class="btn-icon">⚙</span>
+            <span>SETTINGS</span>
           </button>
           <button class="pause-btn music-btn" data-action="music">
             <span class="btn-icon">♪</span>
@@ -157,6 +162,16 @@ export class PauseMenu {
         box-shadow: 0 0 20px #ffaa44;
       }
 
+      #pause-menu .settings-btn {
+        background: linear-gradient(180deg, #335566 0%, #223344 100%);
+        border-color: #44aacc;
+      }
+
+      #pause-menu .settings-btn:hover {
+        background: linear-gradient(180deg, #447788 0%, #335566 100%);
+        box-shadow: 0 0 20px #44aacc;
+      }
+
       #pause-menu .music-btn {
         background: linear-gradient(180deg, #663366 0%, #442244 100%);
         border-color: #cc44ff;
@@ -213,6 +228,15 @@ export class PauseMenu {
       wiki.show();
       wiki.onClose(() => {
         wiki.dispose();
+      });
+    });
+
+    const settingsBtn = this.container.querySelector('[data-action="settings"]');
+    settingsBtn?.addEventListener('click', () => {
+      const settings = new SettingsMenu();
+      settings.show();
+      settings.onClose(() => {
+        settings.dispose();
       });
     });
 

@@ -5,6 +5,7 @@ import { LANClient } from '../network/LANClient';
 import { ConfigurableInput } from '../input/ConfigurableInput';
 import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
+import { SettingsMenu } from './SettingsMenu';
 import { MenuBackground } from './MenuBackground';
 
 /**
@@ -272,6 +273,7 @@ export class StartMenu {
         <div class="controls-hint">
           <p>WASD - Move | Mouse - Aim | Click - Shoot | Space - Bomb | M - Mute</p>
           <button class="weapon-info-btn" id="weapon-info-btn">WEAPON DATABASE</button>
+          <button class="weapon-info-btn" id="settings-btn">SETTINGS</button>
         </div>
       </div>
     `;
@@ -1179,6 +1181,16 @@ export class StartMenu {
       wiki.show();
       wiki.onClose(() => {
         wiki.dispose();
+      });
+    });
+
+    // Settings menu
+    const settingsBtn = this.container.querySelector('#settings-btn');
+    settingsBtn?.addEventListener('click', () => {
+      const settings = new SettingsMenu();
+      settings.show();
+      settings.onClose(() => {
+        settings.dispose();
       });
     });
   }
