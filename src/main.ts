@@ -991,6 +991,53 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     cameraDistance = Math.max(CAMERA_DIST_MIN, Math.min(CAMERA_DIST_MAX, cameraDistance + delta));
   }, { passive: true });
 
+  // -- Camera orbit (middle mouse) --
+  let orbitYaw = 0;   // radians around surface normal (left/right)
+  let orbitPitch = 0;  // radians around tangent (up/down tilt)
+  let isOrbitDragging = false;
+  let lastOrbitX = 0;
+  let lastOrbitY = 0;
+  let orbitResetSpeed = 0; // >0 means actively resetting to default
+  let lastMiddleClickTime = 0;
+  const ORBIT_SENSITIVITY = 0.005;
+  const ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
+
+  document.addEventListener('mousedown', (e) => {
+    if (e.button === 1) { // middle mouse
+      e.preventDefault();
+      const now = Date.now();
+      if (now - lastMiddleClickTime < 350) {
+        // Double-click: reset orbit
+        orbitResetSpeed = 4.0; // will lerp back to 0,0
+      } else {
+        isOrbitDragging = true;
+        lastOrbitX = e.clientX;
+        lastOrbitY = e.clientY;
+      }
+      lastMiddleClickTime = now;
+    }
+  });
+
+  document.addEventListener('mouseup', (e) => {
+    if (e.button === 1) {
+      isOrbitDragging = false;
+    }
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isOrbitDragging) return;
+    const dx = e.clientX - lastOrbitX;
+    const dy = e.clientY - lastOrbitY;
+    lastOrbitX = e.clientX;
+    lastOrbitY = e.clientY;
+    orbitYaw += dx * ORBIT_SENSITIVITY;
+    orbitPitch = Math.max(-ORBIT_PITCH_MAX, Math.min(ORBIT_PITCH_MAX, orbitPitch - dy * ORBIT_SENSITIVITY));
+    orbitResetSpeed = 0; // cancel any active reset if user drags again
+  });
+
+  // Prevent middle-click scroll/auto-scroll
+  document.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+
   // -- Game state --
   let isPaused = false;
   let isGameOver = false;
@@ -1159,17 +1206,47 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       player.surfaceV = playerUV.v;
 
       const playerNormal = playerWalker.normal;
+      const frame = playerWalker.getTangentFrame();
 
-      // Camera follows player along surface normal (smoothly lerped)
+      // Orbit reset: lerp yaw/pitch back to 0 when double-click triggered
+      if (orbitResetSpeed > 0) {
+        const resetRate = orbitResetSpeed * dt;
+        orbitYaw *= Math.max(0, 1 - resetRate * 3);
+        orbitPitch *= Math.max(0, 1 - resetRate * 3);
+        if (Math.abs(orbitYaw) < 0.005 && Math.abs(orbitPitch) < 0.005) {
+          orbitYaw = 0;
+          orbitPitch = 0;
+          orbitResetSpeed = 0;
+        }
+      }
+
+      // Camera follows player along surface normal with orbit rotation
       const CAMERA_LERP_FACTOR = 0.12;
-      const targetCamPos = playerWalker.position.clone()
-        .addScaledVector(playerNormal, cameraDistance);
+
+      // Build camera offset: start with surface normal, rotate by orbit angles
+      // Rotation is relative to the tangent frame (tangent, bitangent, normal)
+      let camOffset = playerNormal.clone().multiplyScalar(cameraDistance);
+      let camUp = frame.bitangent.clone();
+
+      if (Math.abs(orbitYaw) > 0.001 || Math.abs(orbitPitch) > 0.001) {
+        // Rotate around normal (yaw - left/right swing)
+        const yawQuat = new THREE.Quaternion().setFromAxisAngle(playerNormal, orbitYaw);
+        camOffset.applyQuaternion(yawQuat);
+        camUp.applyQuaternion(yawQuat);
+
+        // Rotate around the rotated tangent (pitch - tilt up/down)
+        const rotatedTangent = frame.tangent.clone().applyQuaternion(yawQuat);
+        const pitchQuat = new THREE.Quaternion().setFromAxisAngle(rotatedTangent, orbitPitch);
+        camOffset.applyQuaternion(pitchQuat);
+        camUp.applyQuaternion(pitchQuat);
+      }
+
+      const targetCamPos = playerWalker.position.clone().add(camOffset);
       game.camera.position.lerp(targetCamPos, CAMERA_LERP_FACTOR);
       game.camera.lookAt(playerWalker.position);
 
-      // Smooth camera up from persistent tangent frame (no discontinuity on torus)
-      const frame = playerWalker.getTangentFrame();
-      game.camera.up.lerp(frame.bitangent, CAMERA_LERP_FACTOR).normalize();
+      // Smooth camera up (orbited up vector)
+      game.camera.up.lerp(camUp, CAMERA_LERP_FACTOR).normalize();
 
       // Calculate aim from mouse in screen space using tangent frame.
       // The camera looks along the surface normal with up = bitangent,
