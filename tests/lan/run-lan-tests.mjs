@@ -33,7 +33,9 @@ const PROJECT_ROOT = resolve(__dirname, '../..');
 // Configuration
 // ---------------------------------------------------------------------------
 
-const CHROME_PATH = '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome';
+const CHROME_PATH = process.env.CHROME_PATH
+  || process.env.PUPPETEER_EXECUTABLE_PATH
+  || '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome';
 const DEV_SERVER_PORT = 3000;
 const COLYSEUS_PORT = 2567;
 const BASE_URL = `http://localhost:${DEV_SERVER_PORT}`;
@@ -41,7 +43,11 @@ const SERVER_URL = `ws://localhost:${COLYSEUS_PORT}`;
 const SCREENSHOT_DIR = resolve(PROJECT_ROOT, 'test-screenshots/lan');
 const RESULTS_DIR = resolve(PROJECT_ROOT, 'test-results/lan');
 
-const NVM_PATH = '/home/antoine/.nvm/versions/node/v20.19.5/bin';
+// Detect Node bin directory: use NVM_BIN (set by nvm), or the directory
+// containing the current Node process, or fall back to the known dev path.
+const NVM_PATH = process.env.NVM_BIN
+  || dirname(process.execPath)
+  || '/home/antoine/.nvm/versions/node/v20.19.5/bin';
 
 const LAUNCH_ARGS = [
   '--enable-webgl',

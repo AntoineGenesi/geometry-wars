@@ -33,7 +33,9 @@ const PROJECT_ROOT = resolve(__dirname, '../..');
 // Configuration
 // ---------------------------------------------------------------------------
 
-const CHROME_PATH = '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome';
+const CHROME_PATH = process.env.CHROME_PATH
+  || process.env.PUPPETEER_EXECUTABLE_PATH
+  || '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome';
 const BASE_URL = 'http://localhost:3000';
 const SCREENSHOT_DIR = resolve(PROJECT_ROOT, 'test-screenshots');
 const RESULTS_DIR = resolve(PROJECT_ROOT, 'test-results/visual');
