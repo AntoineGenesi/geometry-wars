@@ -59,13 +59,24 @@ export interface NetworkWeaponPickupState {
   active: boolean;
 }
 
+/**
+ * An array-like collection that supports forEach iteration.
+ * Colyseus ArraySchema<T> is NOT a plain T[] but supports .forEach().
+ * This type is used instead of T[] so we don't need `as unknown as T[]`
+ * casts when passing ArraySchema objects directly (avoiding Array.from()
+ * copies that caused ~30 allocations/sec at 30Hz state sync).
+ */
+export interface ForEachable<T> {
+  forEach(callback: (item: T, index: number) => void): void;
+}
+
 /** Full game state from server */
 export interface NetworkGameState {
   players: Map<string, NetworkPlayerState>;
-  bullets: NetworkBulletState[];
-  enemies: NetworkEnemyState[];
-  geoms: NetworkGeomState[];
-  weaponPickups: NetworkWeaponPickupState[];
+  bullets: ForEachable<NetworkBulletState>;
+  enemies: ForEachable<NetworkEnemyState>;
+  geoms: ForEachable<NetworkGeomState>;
+  weaponPickups: ForEachable<NetworkWeaponPickupState>;
   surfaceType: string;
   waveNumber: number;
   gameTime: number;
@@ -277,10 +288,10 @@ export class NetworkClient {
   private convertState(state: unknown): NetworkGameState {
     const s = state as {
       players: Map<string, NetworkPlayerState>;
-      bullets: NetworkBulletState[];
-      enemies: NetworkEnemyState[];
-      geoms: NetworkGeomState[];
-      weaponPickups: NetworkWeaponPickupState[];
+      bullets: ForEachable<NetworkBulletState>;
+      enemies: ForEachable<NetworkEnemyState>;
+      geoms: ForEachable<NetworkGeomState>;
+      weaponPickups: ForEachable<NetworkWeaponPickupState>;
       surfaceType: string;
       waveNumber: number;
       gameTime: number;
@@ -294,12 +305,16 @@ export class NetworkClient {
     // copies with Array.from(). The onStateChange handler only reads them via
     // .forEach(), which works on both ArraySchema and plain arrays. This avoids
     // 4 array allocations + copies per state change (was ~30 allocations/sec).
+    //
+    // The empty-array fallback handles the brief window during initial state
+    // decode when Colyseus hasn't populated the schema fields yet.
+    const emptyArray: ForEachable<never> = { forEach() {} };
     return {
       players: s.players,
-      bullets: (s.bullets || []) as unknown as NetworkBulletState[],
-      enemies: (s.enemies || []) as unknown as NetworkEnemyState[],
-      geoms: (s.geoms || []) as unknown as NetworkGeomState[],
-      weaponPickups: (s.weaponPickups || []) as unknown as NetworkWeaponPickupState[],
+      bullets: s.bullets || emptyArray,
+      enemies: s.enemies || emptyArray,
+      geoms: s.geoms || emptyArray,
+      weaponPickups: s.weaponPickups || emptyArray,
       surfaceType: s.surfaceType,
       waveNumber: s.waveNumber,
       gameTime: s.gameTime,
