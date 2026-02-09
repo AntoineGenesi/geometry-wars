@@ -112,6 +112,19 @@ export interface NetworkCallbacks {
   onError?: (error: Error) => void;
 }
 
+// Network debug logging: enabled when ?debug=true is in the URL.
+// The LAN E2E test suite (tests/lan/run-lan-tests.mjs) relies on these
+// [Network] prefixed logs to diagnose connection issues. In production
+// (no ?debug flag), these are silenced to keep the console clean.
+const _networkDebug = typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).has('debug');
+
+function netLog(...args: unknown[]): void {
+  if (_networkDebug) {
+    console.log(...args);
+  }
+}
+
 /**
  * Network client for connecting to Colyseus game server
  */
@@ -144,7 +157,7 @@ export class NetworkClient {
       this.localPlayerId = this.room.sessionId;
       this.connected = true;
 
-      console.log(`[Network] Connected as ${this.localPlayerId}`);
+      netLog(`[Network] Connected as ${this.localPlayerId}`);
 
       // Set up state change listeners
       this.setupListeners();
@@ -165,7 +178,7 @@ export class NetworkClient {
         const players = (room.state as Record<string, unknown>).players as { size?: number };
         if (players && players.size && players.size > 0) {
           clearInterval(pollInterval);
-          console.log(`[Network] State ready after ${pollCount * 100}ms, players=${players.size}`);
+          netLog(`[Network] State ready after ${pollCount * 100}ms, players=${players.size}`);
           const state = this.convertState(room.state);
           this.callbacks.onStateChange?.(state);
         }
@@ -209,13 +222,13 @@ export class NetworkClient {
     // if onStateChange already scheduled this frame)
     this.room.state.players.onAdd((player: unknown, key: string) => {
       const p = player as NetworkPlayerState;
-      console.log(`[Network] Player joined: ${p.name} (${key})`);
+      netLog(`[Network] Player joined: ${p.name} (${key})`);
       this.callbacks.onPlayerJoin?.(p);
       this.scheduleStateChange();
     });
 
     this.room.state.players.onRemove((_player: unknown, key: string) => {
-      console.log(`[Network] Player left: ${key}`);
+      netLog(`[Network] Player left: ${key}`);
       this.callbacks.onPlayerLeave?.(key);
     });
 
@@ -246,7 +259,7 @@ export class NetworkClient {
 
     // Game state events - use debounced state refresh instead of immediate
     this.room.state.listen('gameStarted', (value: boolean) => {
-      console.log(`[Network] gameStarted changed to ${value}`);
+      netLog(`[Network] gameStarted changed to ${value}`);
       if (value) {
         this.callbacks.onGameStart?.();
       }
@@ -254,7 +267,7 @@ export class NetworkClient {
     });
 
     this.room.state.listen('gameOver', (value: boolean) => {
-      console.log(`[Network] gameOver changed to ${value}`);
+      netLog(`[Network] gameOver changed to ${value}`);
       if (value) {
         this.callbacks.onGameOver?.();
       }
@@ -263,18 +276,18 @@ export class NetworkClient {
 
     // Server lifecycle messages
     this.room.onMessage('host_left', () => {
-      console.log('[Network] Host left the game');
+      netLog('[Network] Host left the game');
       this.callbacks.onHostLeft?.();
     });
 
     this.room.onMessage('game_ended', () => {
-      console.log('[Network] Host ended the game');
+      netLog('[Network] Host ended the game');
       this.callbacks.onGameEnded?.();
     });
 
     // Disconnection
     this.room.onLeave((code) => {
-      console.log(`[Network] Left room with code: ${code}`);
+      netLog(`[Network] Left room with code: ${code}`);
       this.connected = false;
     });
 
@@ -405,6 +418,6 @@ export class NetworkClient {
       this.room = null;
     }
     this.connected = false;
-    console.log('[Network] Disconnected');
+    netLog('[Network] Disconnected');
   }
 }
