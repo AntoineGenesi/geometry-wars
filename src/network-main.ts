@@ -800,8 +800,6 @@ function main() {
     // Use a simpler approach: clear all bullets not in server state,
     // update existing ones, spawn new ones. Avoid O(n*poolSize) scan.
     const activeBulletIds = new Set<string>();
-    const poolLines = (bulletPool as unknown as { lines: THREE.Line[] }).lines;
-    const poolBullets = (bulletPool as unknown as { bullets: { alive: boolean }[] }).bullets;
 
     state.bullets.forEach((bullet: NetworkBulletState) => {
       activeBulletIds.add(bullet.id);
@@ -811,7 +809,7 @@ function main() {
         // Update existing bullet position (uses pre-allocated temp vector)
         const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
         _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
-        const line = poolLines[existingIdx];
+        const line = bulletPool.getLine(existingIdx);
         if (line && line.visible) {
           line.position.lerp(_netTempPos, 0.4);
         }
@@ -820,19 +818,12 @@ function main() {
         // We CANNOT call bulletPool.spawn() because it internally calls
         // findInactive() which may find a DIFFERENT slot than newIdx,
         // causing bulletIdToIndex to point to the wrong bullet (race condition).
-        // Instead, set the pool data at the found index directly.
-        let newIdx = -1;
-        for (let i = 0; i < poolBullets.length; i++) {
-          if (!poolBullets[i].alive) {
-            newIdx = i;
-            break;
-          }
-        }
+        // Instead, set the pool data at the found index directly via public API.
+        const newIdx = bulletPool.findInactiveSlot();
         if (newIdx >= 0) {
           const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
           // Activate the slot directly (no spawn() call, no index mismatch)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const b = poolBullets[newIdx] as any;
+          const b = bulletPool.getBulletData(newIdx);
           b.alive = true;
           b.age = 0;
           b.surfaceU = bullet.x;
@@ -843,7 +834,7 @@ function main() {
           b.dirZ = bullet.dirZ;
           // Position the line visual (uses pre-allocated temp vector)
           _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
-          const line = poolLines[newIdx];
+          const line = bulletPool.getLine(newIdx);
           line.position.copy(_netTempPos);
           line.visible = true;
           // Orient line to face direction (uses pre-allocated temp vector)
@@ -864,9 +855,6 @@ function main() {
 
     // ----- Sync geoms -----
     const activeGeomIds = new Set<string>();
-    const geomPoolData = (geomPool as unknown as {
-      geoms: { surfaceU: number; surfaceV: number; alive?: boolean; active?: boolean }[]
-    }).geoms;
 
     state.geoms.forEach((geom: NetworkGeomState) => {
       if (!geom.active) return;
@@ -875,30 +863,22 @@ function main() {
       if (geomIdToIndex.has(geom.id)) {
         // Existing geom - update UV
         const idx = geomIdToIndex.get(geom.id)!;
-        const geomData = geomPoolData[idx];
+        const geomData = geomPool.getGeomData(idx);
         if (geomData) {
           geomData.surfaceU = geom.surfaceU;
           geomData.surfaceV = geom.surfaceV;
         }
       } else {
-        // New geom: find inactive slot and activate directly.
+        // New geom: find inactive slot and activate directly via public API.
         // We CANNOT call geomPool.spawn() because it internally calls
         // findInactive() which may find a DIFFERENT slot, causing
         // geomIdToIndex to point to the wrong geom (same race condition
         // as bullets). Also, if no slot is found, we skip instead of
         // spawning an untracked geom that would leak.
-        let newIdx = -1;
-        for (let i = 0; i < geomPoolData.length; i++) {
-          const g = geomPoolData[i];
-          if (!(g as { alive?: boolean }).alive && !(g as { active?: boolean }).active) {
-            newIdx = i;
-            break;
-          }
-        }
+        const newIdx = geomPool.findInactiveSlot();
         if (newIdx >= 0) {
           // Activate the slot directly (no spawn() call, no index mismatch)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const g = geomPoolData[newIdx] as any;
+          const g = geomPool.getGeomData(newIdx);
           g.alive = true;
           g.age = 0;
           g.surfaceU = geom.surfaceU;
@@ -906,9 +886,9 @@ function main() {
           g.velU = 0;
           g.velV = 0;
           // Make mesh visible
-          const geomMeshes = (geomPool as unknown as { meshes: THREE.Group[] }).meshes;
-          if (geomMeshes[newIdx]) {
-            geomMeshes[newIdx].visible = true;
+          const mesh = geomPool.getMesh(newIdx);
+          if (mesh) {
+            mesh.visible = true;
           }
           geomIdToIndex.set(geom.id, newIdx);
         }

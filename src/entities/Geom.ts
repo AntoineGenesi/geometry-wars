@@ -233,6 +233,32 @@ export class GeomPool {
   }
 
   // -----------------------------------------------------------------------
+  // Direct slot access (used by network-main.ts for server-authoritative
+  // geom sync where spawn() cannot be used due to index mismatch).
+  // See C3 entity leak fix in decisions/.
+  // -----------------------------------------------------------------------
+
+  /** Find and return the index of an inactive pool slot, or -1 if full. */
+  findInactiveSlot(): number {
+    return this.findInactive();
+  }
+
+  /** Get the geom data at a specific index for direct modification. */
+  getGeomData(index: number): GeomData {
+    return this.geoms[index];
+  }
+
+  /** Get the mesh visual at a specific index for direct visibility control. */
+  getMesh(index: number): THREE.Group {
+    return this.meshes[index];
+  }
+
+  /** Total pool capacity. */
+  get poolSize(): number {
+    return POOL_SIZE;
+  }
+
+  // -----------------------------------------------------------------------
   // Private
   // -----------------------------------------------------------------------
 

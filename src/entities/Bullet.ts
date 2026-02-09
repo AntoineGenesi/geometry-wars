@@ -448,6 +448,32 @@ export class BulletPool {
   }
 
   // -----------------------------------------------------------------------
+  // Direct slot access (used by network-main.ts for server-authoritative
+  // bullet sync where spawn() cannot be used due to index mismatch).
+  // See C2 race condition fix in decisions/.
+  // -----------------------------------------------------------------------
+
+  /** Find and return the index of an inactive pool slot, or -1 if full. */
+  findInactiveSlot(): number {
+    return this.findInactive();
+  }
+
+  /** Get the bullet data at a specific index for direct modification. */
+  getBulletData(index: number): BulletData {
+    return this.bullets[index];
+  }
+
+  /** Get the line visual at a specific index for direct positioning. */
+  getLine(index: number): THREE.Line {
+    return this.lines[index];
+  }
+
+  /** Total pool capacity. */
+  get poolSize(): number {
+    return POOL_SIZE;
+  }
+
+  // -----------------------------------------------------------------------
   // Private
   // -----------------------------------------------------------------------
 
