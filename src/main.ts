@@ -35,6 +35,7 @@ import { Boss } from './entities/enemies/Boss';
 import { Gate } from './entities/enemies/Gate';
 import { Virus } from './entities/enemies/Virus';
 import { Painter } from './entities/enemies/Painter';
+import { Splitter } from './entities/enemies/Splitter';
 import { ScorePopupManager } from './effects/ScorePopup';
 import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
@@ -940,6 +941,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       const clampedV = Math.max(0, Math.min(1, v + offsetV));
       enemySpawner.spawn(type as any, clampedU, clampedV, Math.max(0, childTier));
     }
+  };
+
+  // -- Splitter death: spawn child splitters at correct generation --
+  Splitter.onSplitterDeath = (u: number, v: number, generation: number) => {
+    enemySpawner._nextSplitterGen = generation;
+    enemySpawner.spawn('splitter', u, v);
   };
 
   // -- Spawner: periodically spawns wanderers --

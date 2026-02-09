@@ -79,6 +79,8 @@ const SPAWN_WARNING_DURATION = 0.8; // seconds before enemy materializes
 export class EnemySpawner {
   private scene: THREE.Scene;
   private enemies: BaseEnemy[] = [];
+  /** Generation for next splitter spawn (0 = default large, 1 = medium, 2 = tiny) */
+  _nextSplitterGen: number = 0;
   private getTransform: (u: number, v: number) => {
     position: THREE.Vector3;
     normal: THREE.Vector3;
@@ -284,7 +286,8 @@ export class EnemySpawner {
         enemy = new Orbiter(u, v);
         break;
       case 'splitter':
-        enemy = new Splitter(u, v);
+        enemy = new Splitter(u, v, this._nextSplitterGen);
+        this._nextSplitterGen = 0; // reset after use
         break;
       case 'phaser':
         enemy = new Phaser(u, v);

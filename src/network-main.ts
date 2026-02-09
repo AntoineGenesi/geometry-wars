@@ -1,15 +1,21 @@
 /**
  * Network Multiplayer Mode
  *
- * Connects to a Colyseus server for online multiplayer.
- * Each client renders the authoritative server state with the SAME visual
- * quality as local co-op: bloom, lighting, grid deformation, particles,
- * screen shake, score popups.
+ * Connects to a Colyseus server for online/LAN multiplayer.
+ * REUSES the same visual components as single player and local co-op:
+ * - Real Player class (same chevron mesh from GeometryBuilder)
+ * - Real EnemySpawner (same enemy meshes from GeometryBuilder)
+ * - Same SurfaceFactory, ParticleSystem, ScreenShake, ScorePopupManager
+ * - Same audio (SoundEngine, BackgroundMusic)
+ * - Same lighting, bloom, and post-processing pipeline via Game class
+ * - Same KillLog, TotalKillCounter, WeaponPickup, WeaponHUD
+ *
+ * The server is authoritative: it runs game logic (movement, collisions,
+ * spawning). This client renders the server's state using the exact same
+ * visual pipeline as single player. Input is sent to the server; entity
+ * positions are received back and applied to real game objects.
  *
  * IMPORTANT: Surface type is determined by the SERVER, not the URL parameter.
- * The client connects first, reads the server's surfaceType from the room state,
- * and only then creates the local surface to match. This ensures host and all
- * clients always play on the same map.
  *
  * Usage: Open http://localhost:3000?mode=network
  * Server must be running: npm run server
@@ -19,16 +25,24 @@ import * as THREE from 'three';
 import { Game } from './core/Game';
 import { SurfaceFactory, SurfaceType } from './surfaces/SurfaceFactory';
 import { Surface, SurfacePoint } from './surfaces/Surface';
+import { Player } from './entities/Player';
 import { BulletPool } from './entities/Bullet';
 import { GeomPool } from './entities/Geom';
+import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
+import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
 import { ScorePopupManager } from './effects/ScorePopup';
-import { TrailEffect } from './effects/TrailEffect';
+import { GlowTrail } from './effects/GlowTrail';
 import { InputManager } from './input/InputManager';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
+import { KillLog } from './ui/KillLog';
+import { TotalKillCounter } from './ui/TotalKillCounter';
+import { WeaponPickup } from './weapons/WeaponPickup';
+import { WeaponType } from './weapons/WeaponTypes';
+import { AllyGlowManager } from './effects/AllyGlow';
 import {
   NetworkClient,
   NetworkPlayerState,
@@ -38,9 +52,11 @@ import {
   NetworkWeaponPickupState,
   NetworkGameState,
 } from './network/NetworkClient';
-import { AllyGlowManager } from './effects/AllyGlow';
 
-// Get surface type from URL (used as fallback only if server state unavailable)
+// ---------------------------------------------------------------------------
+// URL helpers
+// ---------------------------------------------------------------------------
+
 function getUrlSurfaceType(): SurfaceType {
   const params = new URLSearchParams(window.location.search);
   const surfaceParam = params.get('surface');
@@ -51,76 +67,175 @@ function getUrlSurfaceType(): SurfaceType {
   return 'sphere';
 }
 
-// Validate a string is a known surface type
 function isValidSurfaceType(s: string): s is SurfaceType {
   return SurfaceFactory.getAvailableTypes().includes(s as SurfaceType);
 }
 
-// Get server URL from URL params
 function getServerUrl(): string {
   const params = new URLSearchParams(window.location.search);
   return params.get('server') || `ws://${window.location.hostname}:2567`;
 }
 
 // ---------------------------------------------------------------------------
-// Enemy colors for death particle effects (matches co-op and single player)
+// Enemy colors for death particle effects (same map as single player / co-op)
 // ---------------------------------------------------------------------------
 
 const ENEMY_COLORS: Record<string, THREE.Color> = {
+  wanderer: new THREE.Color(0xaa44ff),
   grunt: new THREE.Color(0x4444ff),
-  arrow: new THREE.Color(0xffff00),
+  duck: new THREE.Color(0xff44aa),
+  mayfly: new THREE.Color(0xddddff),
+  rocket: new THREE.Color(0xff8800),
+  neutron: new THREE.Color(0xccff00),
   weaver: new THREE.Color(0x00ff44),
   spinner: new THREE.Color(0xff44ff),
+  spinnerspawn: new THREE.Color(0xff88cc),
   snake: new THREE.Color(0x4488ff),
-  gate: new THREE.Color(0xffffff),
-  blackhole: new THREE.Color(0x4488ff),
   repulsor: new THREE.Color(0xff4400),
-  mayfly: new THREE.Color(0xddddff),
+  gravitywell: new THREE.Color(0x4488ff),
+  spawner: new THREE.Color(0xff2222),
+  virus: new THREE.Color(0x00cc00),
+  gate: new THREE.Color(0xff8800),
+  painter: new THREE.Color(0xff44aa),
+  titangrunt: new THREE.Color(0x2244cc),
+  titanspinner: new THREE.Color(0xff22ff),
+  titanweaver: new THREE.Color(0x22ff44),
+  boss: new THREE.Color(0x4488ff),
+  // Server-side enemy types that may not map 1:1 to single player types
+  arrow: new THREE.Color(0xffff00),
+  blackhole: new THREE.Color(0x4488ff),
   proton: new THREE.Color(0x00ffff),
   ufo: new THREE.Color(0xffffff),
   mines: new THREE.Color(0xff0000),
   mutator: new THREE.Color(0x8080ff),
   bubbles: new THREE.Color(0x00ff80),
   spawnlet: new THREE.Color(0xff8080),
-  wanderer: new THREE.Color(0xaa44ff),
-  duck: new THREE.Color(0xff44aa),
-  rocket: new THREE.Color(0xff8800),
-  neutron: new THREE.Color(0xccff00),
 };
 
-function main() {
-  console.log('[NetworkMain] Starting network multiplayer mode...');
+// ---------------------------------------------------------------------------
+// Server enemy type -> EnemySpawner type mapping
+// The server uses some enemy type names that differ from EnemySpawner types.
+// Map them so we create the correct visual entity.
+// ---------------------------------------------------------------------------
 
+const SERVER_TO_SPAWNER_TYPE: Record<string, EnemyType> = {
+  grunt: 'grunt',
+  arrow: 'grunt', // server "arrow" -> closest local type
+  wanderer: 'wanderer',
+  weaver: 'weaver',
+  spinner: 'spinner',
+  snake: 'snake',
+  gate: 'gate',
+  blackhole: 'gravity_well',
+  repulsor: 'repulsor',
+  mayfly: 'mayfly',
+  duck: 'duck',
+  rocket: 'rocket',
+  neutron: 'neutron',
+  virus: 'virus',
+  spawner: 'spawner',
+  painter: 'painter',
+  titan_grunt: 'titan_grunt',
+  titan_spinner: 'titan_spinner',
+  titan_weaver: 'titan_weaver',
+  proton: 'neutron', // closest visual match
+  ufo: 'wanderer', // closest visual match
+  mines: 'grunt', // closest visual match
+  mutator: 'weaver', // closest visual match
+  bubbles: 'wanderer', // closest visual match
+  spawnlet: 'grunt', // closest visual match
+};
+
+// ---------------------------------------------------------------------------
+// Server weapon type -> WeaponType mapping
+// ---------------------------------------------------------------------------
+
+const SERVER_TO_WEAPON_TYPE: Record<string, WeaponType> = {
+  standard: WeaponType.Standard,
+  spread: WeaponType.Spread,
+  piercing: WeaponType.Piercing,
+  homing: WeaponType.Homing,
+  chain_lightning: WeaponType.ChainLightning,
+  plasma_mortar: WeaponType.PlasmaMortar,
+  gravity_gun: WeaponType.GravityGun,
+  laser_beam: WeaponType.LaserBeam,
+  black_hole: WeaponType.BlackHole,
+  tesla_coil: WeaponType.TeslaCoil,
+};
+
+// ---------------------------------------------------------------------------
+// Surface transform helper (same as co-op / single player)
+// ---------------------------------------------------------------------------
+
+function makeSurfaceTransformFn(surface: Surface) {
+  return (u: number, v: number): {
+    position: THREE.Vector3;
+    normal: THREE.Vector3;
+    tangent: THREE.Vector3;
+    bitangent: THREE.Vector3;
+  } => {
+    const pt: SurfacePoint = surface.getPoint(u, v);
+    return {
+      position: pt.position,
+      normal: pt.normal,
+      tangent: pt.tangentU,
+      bitangent: pt.tangentV,
+    };
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Orient player on surface (same function as co-op)
+// ---------------------------------------------------------------------------
+
+function orientPlayerOnSurface(
+  player: Player,
+  surfaceNormal: THREE.Vector3,
+  aimAngle: number,
+  tangentU: THREE.Vector3,
+): void {
+  const normal = surfaceNormal.clone().normalize();
+  const forward = tangentU.clone().normalize();
+  const right = new THREE.Vector3().crossVectors(normal, forward).normalize();
+  const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
+  const rotMatrix = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
+  player.mesh.quaternion.setFromRotationMatrix(rotMatrix);
+  player.mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), aimAngle);
+}
+
+// ---------------------------------------------------------------------------
+// Player colors (same as co-op)
+// ---------------------------------------------------------------------------
+
+const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
+
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
+
+function main() {
   // Initialize audio (same as co-op)
   const sound = getSoundEngine();
   sound.init();
   sound.resume();
   const bgMusic = new BackgroundMusic();
 
-  // Create game with bloom enabled (matches co-op settings exactly)
+  // -- Game engine (same config as co-op) --
   const game = new Game({
-    bloom: {
-      strength: 1.0,
-      radius: 0.4,
-      threshold: 0.85,
-    },
+    bloom: { strength: 1.0, radius: 0.4, threshold: 0.85 },
     cameraDistance: 15,
     cameraSmoothing: 0.05,
   });
+  game.disableBuiltInCameraUpdate = true;
 
   const scene = game.scene;
   const camera = game.camera;
-
-  // Disable built-in orbit camera - we control camera manually
-  game.disableBuiltInCameraUpdate = true;
 
   // Hide default single-player HUD (same as co-op)
   const defaultHUD = document.getElementById('game-hud');
   if (defaultHUD) defaultHUD.style.display = 'none';
 
-  // -----------------------------------------------------------------------
-  // Lighting - MUST match co-op for identical visual quality
-  // -----------------------------------------------------------------------
+  // -- Lighting (identical to co-op) --
   const ambient = new THREE.AmbientLight(0x404080, 0.6);
   scene.add(ambient);
   const directional = new THREE.DirectionalLight(0xffffff, 0.8);
@@ -130,26 +245,23 @@ function main() {
   fillLight.position.set(-5, -5, -5);
   scene.add(fillLight);
 
-  // -----------------------------------------------------------------------
-  // Surface is created AFTER connecting to the server, using the server's
-  // authoritative surfaceType. This prevents the "wrong map" bug where the
-  // client would use the URL parameter (which defaults to 'sphere') instead
-  // of the host's selected map.
-  // -----------------------------------------------------------------------
+  // -- Surface (created after connecting, using server's authoritative type) --
   let surface: Surface | null = null;
   let meshSurface: MeshSurface | null = null;
   let surfaceReady = false;
+  let getTransform: ReturnType<typeof makeSurfaceTransformFn> | null = null;
+
+  // -- Enemy spawner (created after surface, used to create real enemy meshes) --
+  let enemySpawner: EnemySpawner | null = null;
 
   function initSurface(serverSurfaceType: string): void {
-    if (surfaceReady) return; // Already initialized
+    if (surfaceReady) return;
 
     const surfaceType: SurfaceType = isValidSurfaceType(serverSurfaceType)
       ? serverSurfaceType
-      : getUrlSurfaceType(); // Fallback to URL param if server sends invalid type
+      : getUrlSurfaceType();
 
-    console.log(`[NetworkMain] Creating surface from SERVER state: "${surfaceType}" (server sent: "${serverSurfaceType}")`);
-
-    // Surface config matches co-op EXACTLY for identical visuals
+    // Surface config matches co-op EXACTLY
     const surfaceConfig = {
       gridColor: 0x006666,
       surfaceColor: 0x0a0020,
@@ -178,83 +290,83 @@ function main() {
 
     meshSurface = new MeshSurface(surface.mesh);
     bulletPool.setMeshSurface(meshSurface);
+
+    getTransform = makeSurfaceTransformFn(surface);
+
+    // Create enemy spawner with real surface transform (same as co-op)
+    enemySpawner = new EnemySpawner(scene, getTransform);
+
     surfaceReady = true;
   }
 
-  // Camera tracking state - match co-op distance (15, not 20)
+  // -- Camera constants (match co-op) --
   const CAMERA_DISTANCE = 15;
   const CAMERA_LERP = 0.08;
 
-  // Create pools for rendering
+  // -- Shared visual systems (same as co-op) --
   const bulletPool = new BulletPool();
   scene.add(bulletPool.root);
 
   const geomPool = new GeomPool();
   scene.add(geomPool.root);
 
-  // Particle system (matches co-op)
   const particles = new ParticleSystem(5000);
   scene.add(particles.root);
 
-  // Score popups (co-op has these, LAN was missing them)
   const scorePopups = new ScorePopupManager();
   scene.add(scorePopups.root);
   scorePopups.setCamera(camera);
 
-  // Screen shake (co-op has this, LAN was missing it)
   const screenShake = new ScreenShake();
 
-  // Player tracking - maps server player IDs to local THREE objects
-  const playerMeshes = new Map<string, THREE.Group>();
-  const playerTrails = new Map<string, TrailEffect>();
-  // Track player alive state for death effect detection
-  const playerAliveState = new Map<string, boolean>();
+  // Kill log + total kill counter (same as co-op / single player)
+  const killLog = new KillLog();
+  const totalKillCounter = new TotalKillCounter();
+  killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
 
-  // Enemy tracking
-  const enemyMeshes = new Map<string, THREE.Mesh>();
-
-  // Bullet tracking: server bullet ID -> pool index (for incremental sync)
-  const bulletIdToIndex = new Map<string, number>();
-
-  // Geom tracking: server geom ID -> pool index (for incremental sync)
-  const geomIdToIndex = new Map<string, number>();
-
-  // Weapon pickup tracking
-  const weaponPickupMeshes = new Map<string, THREE.Mesh>();
-
-  // Ally glow manager for remote player indicators (visible through surfaces)
+  // Ally glow manager for remote player indicators
   const allyGlowManager = new AllyGlowManager(scene);
 
-  // Weapon pickup colors
-  const WEAPON_COLORS: Record<string, number> = {
-    spread: 0x00ffff,
-    piercing: 0xffffff,
-    homing: 0xff4444,
-    chain_lightning: 0x8844ff,
-    plasma_mortar: 0x44ff00,
-    gravity_gun: 0x880088,
-    laser_beam: 0xff0000,
-    black_hole: 0x220044,
-    tesla_coil: 0x44aaff,
-  };
+  // -- Player tracking --
+  // Maps server player ID -> real Player instance (same class as single player)
+  const networkPlayers = new Map<string, Player>();
+  const playerGlowTrails = new Map<string, GlowTrail>();
+  const playerAliveState = new Map<string, boolean>();
 
-  // Local input
+  // -- Enemy tracking --
+  // Maps server enemy ID -> real BaseEnemy instance (created via EnemySpawner)
+  const networkEnemies = new Map<string, BaseEnemy>();
+
+  // -- Bullet tracking --
+  const bulletIdToIndex = new Map<string, number>();
+
+  // -- Geom tracking --
+  const geomIdToIndex = new Map<string, number>();
+
+  // -- Weapon pickup tracking --
+  // Uses real WeaponPickup instances (same as co-op)
+  const networkWeaponPickups = new Map<string, WeaponPickup>();
+
+  // -- Local input --
   const input = new InputManager();
 
-  // Network client
+  // -- Network client --
   const network = new NetworkClient(getServerUrl());
-
-  // Track local player
   let localPlayerId = '';
 
-  // Input throttle: send at 30Hz max, and only when input changes
-  // (increased from 20Hz to reduce perceived input lag)
-  const INPUT_SEND_INTERVAL = 0.033; // ~33ms = 30Hz
+  // Input throttle: send at 30Hz max, only when input changes
+  const INPUT_SEND_INTERVAL = 0.033;
   let lastInputSendTime = 0;
-  let lastSentInput: { moveX: number; moveY: number; aimAngle: number; shooting: boolean; bomb: boolean } | null = null;
+  let lastSentInput: {
+    moveX: number; moveY: number; aimAngle: number;
+    shooting: boolean; bomb: boolean;
+  } | null = null;
   let shootSoundTimer = 0;
 
-  // UI elements
+  // -----------------------------------------------------------------------
+  // UI elements (network-specific HUD)
+  // -----------------------------------------------------------------------
+
   const statusEl = document.createElement('div');
   statusEl.style.cssText =
     'position:fixed;top:10px;left:50%;transform:translateX(-50%);' +
@@ -280,7 +392,7 @@ function main() {
     'color:#ff0;font:16px monospace;text-shadow:0 0 8px #ff0;z-index:100;';
   document.body.appendChild(weaponEl);
 
-  // Create start button
+  // Start button
   const startBtn = document.createElement('button');
   startBtn.textContent = 'START GAME';
   startBtn.style.cssText =
@@ -299,7 +411,7 @@ function main() {
   };
   document.body.appendChild(startBtn);
 
-  // Back to menu button (shown on connection failure)
+  // Back to menu button
   const backBtn = document.createElement('button');
   backBtn.textContent = 'BACK TO MENU';
   backBtn.style.cssText =
@@ -311,188 +423,203 @@ function main() {
   };
   document.body.appendChild(backBtn);
 
-  // Helper to create player mesh (chevron shape, world-space scale)
-  function createPlayerMesh(color: number): THREE.Group {
-    const group = new THREE.Group();
+  // -----------------------------------------------------------------------
+  // Helper: get or create a real Player for a network player
+  // -----------------------------------------------------------------------
 
-    // Ship body - chevron
-    const bodyGeom = new THREE.ConeGeometry(0.3, 0.8, 4);
-    const bodyMat = new THREE.MeshBasicMaterial({ color });
-    const body = new THREE.Mesh(bodyGeom, bodyMat);
-    body.rotation.x = Math.PI / 2;
-    group.add(body);
+  function getOrCreatePlayer(id: string, netPlayer: NetworkPlayerState): Player {
+    let player = networkPlayers.get(id);
+    if (player) return player;
 
-    // Wings
-    const wingGeom = new THREE.BoxGeometry(0.6, 0.06, 0.3);
-    const wing = new THREE.Mesh(wingGeom, bodyMat);
-    wing.position.z = -0.2;
-    group.add(wing);
+    // Create a real Player instance (same class as single player)
+    player = new Player(bulletPool);
+    player.respawn(netPlayer.surfaceU, netPlayer.surfaceV);
+    player.lives = netPlayer.lives;
+    player.bombs = netPlayer.bombs;
+    player.score = netPlayer.score;
+    player.multiplier = netPlayer.multiplier;
 
-    return group;
-  }
+    // Set player color (same as co-op)
+    player.setColor(netPlayer.color);
 
-  // Helper to create enemy mesh
-  function createEnemyMesh(type: string): THREE.Mesh {
-    const colors: Record<string, number> = {
-      grunt: 0x00ffff,
-      arrow: 0xffff00,
-      weaver: 0xff00ff,
-      spinner: 0xff8000,
-      snake: 0x00ff00,
-      gate: 0xffffff,
-      blackhole: 0x8000ff,
-      repulsor: 0xff0080,
-      mayfly: 0xffff80,
-      proton: 0x00ffff,
-      ufo: 0xffffff,
-      mines: 0xff0000,
-      mutator: 0x8080ff,
-      bubbles: 0x00ff80,
-      spawnlet: 0xff8080,
-    };
+    scene.add(player.mesh);
+    networkPlayers.set(id, player);
 
-    const color = colors[type] || 0xff0000;
-    let geometry: THREE.BufferGeometry;
+    // Create glow trail (same as single player's GlowTrail)
+    const trail = new GlowTrail(new THREE.Color(netPlayer.color), 60, 0.4);
+    scene.add(trail.root);
+    playerGlowTrails.set(id, trail);
 
-    switch (type) {
-      case 'arrow':
-        geometry = new THREE.ConeGeometry(0.25, 0.6, 3);
-        break;
-      case 'spinner':
-        geometry = new THREE.TorusGeometry(0.2, 0.08, 8, 8);
-        break;
-      case 'blackhole':
-        geometry = new THREE.SphereGeometry(0.4, 8, 8);
-        break;
-      default:
-        geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    // Add ally glow for remote players
+    if (id !== localPlayerId) {
+      allyGlowManager.addGlow(id, netPlayer.color, 0.9);
     }
 
-    const material = new THREE.MeshBasicMaterial({ color, transparent: true });
-    return new THREE.Mesh(geometry, material);
+    return player;
   }
 
-  // State change callback
+  // -----------------------------------------------------------------------
+  // Helper: get or create a real enemy for a network enemy
+  // -----------------------------------------------------------------------
+
+  function getOrCreateEnemy(id: string, netEnemy: NetworkEnemyState): BaseEnemy | null {
+    let enemy = networkEnemies.get(id);
+    if (enemy) return enemy;
+
+    if (!enemySpawner) return null;
+
+    // Map server enemy type to spawner type
+    const spawnerType = SERVER_TO_SPAWNER_TYPE[netEnemy.type] || 'wanderer';
+
+    // Use real EnemySpawner to create the enemy with proper mesh
+    enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV);
+
+    // For network mode, immediately materialize (skip spawn warning)
+    enemy.isMaterializing = false;
+    if (enemy.mesh) {
+      enemy.mesh.visible = true;
+      enemy.mesh.scale.setScalar(1);
+    }
+
+    networkEnemies.set(id, enemy);
+    return enemy;
+  }
+
+  // -----------------------------------------------------------------------
+  // State change callback: sync server state to local visual entities
+  // -----------------------------------------------------------------------
+
   function onStateChange(state: NetworkGameState) {
-    // On first state change, initialize the surface from the server's authoritative type
+    // Initialize surface on first state change
     if (!surfaceReady) {
       initSurface(state.surfaceType);
     }
+    if (!surface || !meshSurface || !getTransform) return;
 
-    // Skip rendering if surface not ready (shouldn't happen, but guard)
-    if (!surface || !meshSurface) return;
-
-    // Bind to local const so TypeScript narrows the type (non-null) for the rest of this function
     const surf = surface;
-    const mSurf = meshSurface;
 
-    // Update players
-    state.players.forEach((player: NetworkPlayerState, id: string) => {
-      let mesh = playerMeshes.get(id);
-      let trail = playerTrails.get(id);
+    // ----- Sync players -----
+    state.players.forEach((netPlayer: NetworkPlayerState, id: string) => {
+      const player = getOrCreatePlayer(id, netPlayer);
 
-      if (!mesh) {
-        mesh = createPlayerMesh(player.color);
-        scene.add(mesh);
-        playerMeshes.set(id, mesh);
+      // Sync state from server
+      player.lives = netPlayer.lives;
+      player.bombs = netPlayer.bombs;
+      player.score = netPlayer.score;
+      player.multiplier = netPlayer.multiplier;
 
-        trail = new TrailEffect(new THREE.Color(player.color), 50);
-        scene.add(trail.root);
-        playerTrails.set(id, trail);
+      // Position on surface using real surface transform (same as co-op)
+      const sp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
+      player.mesh.position.copy(sp.position);
+      player.mesh.position.addScaledVector(sp.normal, 0.15);
+      player.surfaceU = netPlayer.surfaceU;
+      player.surfaceV = netPlayer.surfaceV;
 
-        // Add ally glow for remote players (not the local player)
-        if (id !== localPlayerId) {
-          allyGlowManager.addGlow(id, player.color, 0.9);
-        }
-      }
+      // Orient on surface with aim angle (same math as co-op)
+      orientPlayerOnSurface(player, sp.normal, netPlayer.aimAngle, sp.tangentU);
 
-      // Position on surface (lift above surface)
-      const surfacePoint: SurfacePoint = surf.getPoint(player.surfaceU, player.surfaceV);
-      mesh.position.copy(surfacePoint.position);
-      mesh.position.add(surfacePoint.normal.clone().multiplyScalar(0.15));
-
-      // Orient on surface: align Y to normal, rotate by aimAngle
-      const normal = surfacePoint.normal.clone().normalize();
-      const forward = surfacePoint.tangentU.clone().normalize();
-      const right = new THREE.Vector3().crossVectors(normal, forward).normalize();
-      const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
-      const rotMatrix = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
-      mesh.quaternion.setFromRotationMatrix(rotMatrix);
-      mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), player.aimAngle);
-
-      // Detect player death (was alive, now dead) -> trigger effects
+      // Detect death transition -> trigger effects
       const wasAlive = playerAliveState.get(id) ?? true;
-      if (wasAlive && !player.alive) {
-        particles.playerDeath(mesh.position);
+      if (wasAlive && !netPlayer.alive) {
+        particles.playerDeath(player.mesh.position);
         screenShake.shake(0.5, 0.4);
         sound.play('playerDeath');
       }
-      playerAliveState.set(id, player.alive);
+      playerAliveState.set(id, netPlayer.alive);
 
-      mesh.visible = player.alive;
-      trail?.addPoint(mesh.position.clone());
+      player.mesh.visible = netPlayer.alive;
+
+      // Update glow trail
+      const trail = playerGlowTrails.get(id);
+      if (trail && netPlayer.alive) {
+        trail.addPoint(player.mesh.position.clone());
+      }
 
       // Sync ally glow position for remote players
-      if (id !== localPlayerId && player.alive) {
-        allyGlowManager.setPosition(id, mesh.position);
+      if (id !== localPlayerId && netPlayer.alive) {
+        allyGlowManager.setPosition(id, player.mesh.position);
       }
     });
 
     // Remove disconnected players
-    playerMeshes.forEach((mesh, id) => {
+    networkPlayers.forEach((_player, id) => {
       if (!state.players.has(id)) {
-        scene.remove(mesh);
-        playerMeshes.delete(id);
-        const trail = playerTrails.get(id);
-        if (trail) {
-          trail.dispose();
-          playerTrails.delete(id);
+        const player = networkPlayers.get(id);
+        if (player) {
+          scene.remove(player.mesh);
         }
+        networkPlayers.delete(id);
+
+        const trail = playerGlowTrails.get(id);
+        if (trail) {
+          scene.remove(trail.root);
+          playerGlowTrails.delete(id);
+        }
+
         allyGlowManager.removeGlow(id);
       }
     });
 
-    // Update enemies
+    // ----- Sync enemies -----
     const activeEnemyIds = new Set<string>();
-    state.enemies.forEach((enemy: NetworkEnemyState) => {
-      activeEnemyIds.add(enemy.id);
+    state.enemies.forEach((netEnemy: NetworkEnemyState) => {
+      activeEnemyIds.add(netEnemy.id);
 
-      let mesh = enemyMeshes.get(enemy.id);
-      if (!mesh) {
-        mesh = createEnemyMesh(enemy.type);
-        mesh.userData.enemyType = enemy.type;
-        scene.add(mesh);
-        enemyMeshes.set(enemy.id, mesh);
+      const enemy = getOrCreateEnemy(netEnemy.id, netEnemy);
+      if (!enemy) return;
+
+      // Update position from server (override local AI)
+      enemy.surfacePosition.u = netEnemy.surfaceU;
+      enemy.surfacePosition.v = netEnemy.surfaceV;
+
+      // Apply surface transform (same function as co-op enemy update)
+      if (getTransform) {
+        enemy.applySurfaceTransform(getTransform);
       }
 
-      const surfacePoint: SurfacePoint = surf.getPoint(enemy.surfaceU, enemy.surfaceV);
-      mesh.position.copy(surfacePoint.position);
-      mesh.position.add(surfacePoint.normal.clone().multiplyScalar(0.12));
-
-      // Depth-based opacity: fade enemies on far side of surface
-      const visibility = mSurf.getVisibility(mesh.position, surfacePoint.normal, camera.position);
-      const mat = mesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = visibility;
-      mesh.visible = enemy.alive && visibility > 0.05;
+      // Depth-based opacity (same as co-op's preRender)
+      if (enemy.mesh && meshSurface) {
+        const approxNormal = enemy.position.clone().sub(meshSurface.getCenter()).normalize();
+        const visibility = meshSurface.getVisibility(enemy.position, approxNormal, camera.position);
+        enemy.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material) {
+            const mat = child.material as THREE.MeshBasicMaterial;
+            if (mat.transparent !== undefined) {
+              mat.transparent = true;
+              mat.opacity = visibility;
+            }
+          }
+        });
+        enemy.mesh.visible = netEnemy.alive && visibility > 0.05;
+      }
     });
 
-    // Remove dead enemies (with death effects matching co-op)
-    enemyMeshes.forEach((mesh, id) => {
+    // Remove dead/removed enemies (with death effects)
+    networkEnemies.forEach((enemy, id) => {
       if (!activeEnemyIds.has(id)) {
-        // Trigger death effects at enemy's last position
-        const enemyType = (mesh.userData.enemyType as string) || 'grunt';
+        // Trigger death effects (same as co-op)
+        const enemyType = enemy.baseTypeName || enemy.constructor.name.toLowerCase();
         const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xff0000);
-        particles.enemyDeath(mesh.position, color);
+        particles.enemyDeath(enemy.position, color);
         screenShake.shake(0.15, 0.15);
-        if (surface) surface.applyForce(mesh.position, 0.2, 1.0);
+        if (surface) surface.applyForce(enemy.position, 0.2, 1.0);
         sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
 
-        scene.remove(mesh);
-        enemyMeshes.delete(id);
+        // Score popup at death position
+        scorePopups.spawnScore(enemy.position.clone(), enemy.scoreValue);
+
+        // Kill log entry (same as co-op)
+        killLog.addKill(enemyType, color.getHex());
+
+        // Clean up
+        if (enemy.mesh) {
+          scene.remove(enemy.mesh);
+        }
+        networkEnemies.delete(id);
       }
     });
 
-    // Sync bullets incrementally: update existing, create new, remove stale
+    // ----- Sync bullets -----
     const activeBulletIds = new Set<string>();
     const trackedBulletIndices = new Set(bulletIdToIndex.values());
 
@@ -501,27 +628,23 @@ function main() {
       const existingIdx = bulletIdToIndex.get(bullet.id);
 
       if (existingIdx !== undefined) {
-        // Update existing bullet position with interpolation
-        const surfacePoint: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
-        const targetPos = surfacePoint.position.clone().add(
-          surfacePoint.normal.clone().multiplyScalar(0.02)
-        );
+        // Update existing bullet position
+        const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
+        const targetPos = sp.position.clone().addScaledVector(sp.normal, 0.02);
         const line = (bulletPool as unknown as { lines: THREE.Line[] }).lines[existingIdx];
         if (line && line.visible) {
           line.position.lerp(targetPos, 0.4);
         }
       } else {
-        // New bullet: spawn in pool and track
-        const surfacePoint: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
+        // New bullet: spawn in pool
+        const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
         const dir = new THREE.Vector3(bullet.dirX, bullet.dirY, bullet.dirZ);
         bulletPool.spawn(
-          surfacePoint.position.clone().add(surfacePoint.normal.clone().multiplyScalar(0.02)),
-          dir,
-          bullet.x,
-          bullet.y,
-          Math.atan2(bullet.dirY, bullet.dirX)
+          sp.position.clone().addScaledVector(sp.normal, 0.02),
+          dir, bullet.x, bullet.y,
+          Math.atan2(bullet.dirY, bullet.dirX),
         );
-        // Find the newly spawned index (active but not yet tracked)
+        // Track the newly spawned index
         bulletPool.forEachActive((idx) => {
           if (!trackedBulletIndices.has(idx)) {
             bulletIdToIndex.set(bullet.id, idx);
@@ -530,6 +653,7 @@ function main() {
         });
       }
     });
+
     // Remove bullets no longer in server state
     bulletIdToIndex.forEach((idx, id) => {
       if (!activeBulletIds.has(id)) {
@@ -538,7 +662,7 @@ function main() {
       }
     });
 
-    // Sync geoms incrementally: update existing, create new, remove stale
+    // ----- Sync geoms -----
     const activeGeomIds = new Set<string>();
     const trackedGeomIndices = new Set(geomIdToIndex.values());
 
@@ -547,9 +671,11 @@ function main() {
       activeGeomIds.add(geom.id);
 
       if (geomIdToIndex.has(geom.id)) {
-        // Existing geom - update UV coordinates so projection uses fresh positions
+        // Existing geom - update UV
         const idx = geomIdToIndex.get(geom.id)!;
-        const geomData = (geomPool as unknown as { geoms: { surfaceU: number; surfaceV: number }[] }).geoms[idx];
+        const geomData = (geomPool as unknown as {
+          geoms: { surfaceU: number; surfaceV: number }[]
+        }).geoms[idx];
         if (geomData) {
           geomData.surfaceU = geom.surfaceU;
           geomData.surfaceV = geom.surfaceV;
@@ -557,7 +683,6 @@ function main() {
       } else {
         // New geom: spawn and track
         geomPool.spawn(geom.surfaceU, geom.surfaceV);
-        // Find the newly spawned index (active but not yet tracked)
         geomPool.forEachActive((idx) => {
           if (!trackedGeomIndices.has(idx)) {
             geomIdToIndex.set(geom.id, idx);
@@ -566,6 +691,7 @@ function main() {
         });
       }
     });
+
     // Remove geoms no longer in server state
     geomIdToIndex.forEach((idx, id) => {
       if (!activeGeomIds.has(id)) {
@@ -574,48 +700,66 @@ function main() {
       }
     });
 
-    // Sync weapon pickups
+    // ----- Sync weapon pickups (using real WeaponPickup class) -----
     const activePickupIds = new Set<string>();
-    state.weaponPickups.forEach((pickup: NetworkWeaponPickupState) => {
-      if (!pickup.active) return;
-      activePickupIds.add(pickup.id);
+    state.weaponPickups.forEach((netPickup: NetworkWeaponPickupState) => {
+      if (!netPickup.active) return;
+      activePickupIds.add(netPickup.id);
 
-      let mesh = weaponPickupMeshes.get(pickup.id);
-      if (!mesh) {
-        const color = WEAPON_COLORS[pickup.weaponType] ?? 0xffffff;
-        const geo = new THREE.OctahedronGeometry(0.2, 0);
-        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
-        mesh = new THREE.Mesh(geo, mat);
-        scene.add(mesh);
-        weaponPickupMeshes.set(pickup.id, mesh);
+      let pickup = networkWeaponPickups.get(netPickup.id);
+      if (!pickup) {
+        // Create a real WeaponPickup (same as co-op)
+        const weaponType = SERVER_TO_WEAPON_TYPE[netPickup.weaponType] ?? WeaponType.Spread;
+        pickup = new WeaponPickup(weaponType, netPickup.surfaceU, netPickup.surfaceV);
+        scene.add(pickup.mesh);
+        networkWeaponPickups.set(netPickup.id, pickup);
       }
 
-      const sp: SurfacePoint = surf.getPoint(pickup.surfaceU, pickup.surfaceV);
-      mesh.position.copy(sp.position);
-      mesh.position.add(sp.normal.clone().multiplyScalar(0.3));
-      mesh.rotation.y = Date.now() * 0.003;
-      mesh.rotation.x = Date.now() * 0.002;
-
-      // Fade when old
-      if (pickup.age > 15) {
-        (mesh.material as THREE.MeshBasicMaterial).opacity = 0.9 * (1 - (pickup.age - 15) / 5);
+      // Update position from server
+      pickup.surfaceU = netPickup.surfaceU;
+      pickup.surfaceV = netPickup.surfaceV;
+      if (getTransform) {
+        pickup.applySurfaceTransform(getTransform);
       }
     });
 
-    // Remove collected/expired weapon pickups
-    weaponPickupMeshes.forEach((mesh, id) => {
+    // Remove collected/expired pickups
+    networkWeaponPickups.forEach((pickup, id) => {
       if (!activePickupIds.has(id)) {
-        scene.remove(mesh);
-        mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
-        weaponPickupMeshes.delete(id);
+        scene.remove(pickup.mesh);
+        pickup.dispose();
+        networkWeaponPickups.delete(id);
       }
     });
 
-    // Update UI
+    // ----- Update UI -----
     const localPlayer = state.players.get(localPlayerId);
     if (localPlayer) {
-      scoreEl.innerHTML = `Score: ${localPlayer.score}<br>x${localPlayer.multiplier}<br>Lives: ${localPlayer.lives}<br>Bombs: ${localPlayer.bombs}`;
+      // Score display with multiplier color (same logic as single player)
+      const m = localPlayer.multiplier;
+      let mColor = '#0f0';
+      if (m >= 100) mColor = '#ff00ff';
+      else if (m >= 50) mColor = '#ff8800';
+      else if (m >= 20) mColor = '#ffff00';
+      else if (m >= 5) mColor = '#00ff88';
+
+      // Lives display (hearts, same as single player)
+      const lives = Math.max(0, localPlayer.lives);
+      const livesStr = lives <= 5
+        ? '\u2665'.repeat(lives)
+        : `\u2665 x${lives}`;
+
+      // Bombs display
+      const bombs = Math.max(0, localPlayer.bombs);
+      const bombsStr = bombs <= 5
+        ? '\u25cf'.repeat(bombs)
+        : `\u25cf x${bombs}`;
+
+      scoreEl.innerHTML =
+        `Score: ${localPlayer.score.toLocaleString()}<br>` +
+        `<span style="color:${mColor}">x${localPlayer.multiplier}</span><br>` +
+        `${livesStr}<br>` +
+        `${bombsStr}`;
 
       // Weapon display
       const wName = localPlayer.weaponType.replace(/_/g, ' ').toUpperCase();
@@ -628,7 +772,7 @@ function main() {
     state.players.forEach((p: NetworkPlayerState) => {
       const you = p.id === localPlayerId ? ' (YOU)' : '';
       const status = p.alive ? '' : ' [DEAD]';
-      playerList += `${p.name}${you}: ${p.score}${status}<br>`;
+      playerList += `${p.name}${you}: ${p.score.toLocaleString()}${status}<br>`;
     });
     playersEl.innerHTML = playerList;
 
@@ -646,10 +790,10 @@ function main() {
     }
   }
 
+  // -----------------------------------------------------------------------
   // Connect to server
-  // NOTE: We pass the URL surface type as a hint for room creation (if this
-  // client is the first to join = host). The actual surface used for rendering
-  // comes from the server state, not from this parameter.
+  // -----------------------------------------------------------------------
+
   const urlSurfaceType = getUrlSurfaceType();
   network.connect({
     name: `Player ${Math.floor(Math.random() * 1000)}`,
@@ -657,11 +801,10 @@ function main() {
   }).then(() => {
     localPlayerId = network.getLocalPlayerId();
 
-    // Read the server's authoritative surface type and initialize immediately
+    // Read the server's authoritative surface type
     const serverSurface = network.getServerSurfaceType();
-    console.log(`[NetworkMain] Connected. Server surface: "${serverSurface}", URL surface: "${urlSurfaceType}"`);
     if (serverSurface && serverSurface !== urlSurfaceType) {
-      console.log(`[NetworkMain] NOTE: Server surface differs from URL! Using server's: "${serverSurface}"`);
+      // Server surface differs from URL -- use server's
     }
     initSurface(serverSurface);
 
@@ -671,10 +814,9 @@ function main() {
     network.setCallbacks({
       onStateChange,
       onGameStart: () => {
-        console.log('[NetworkMain] Game started!');
         statusEl.textContent = 'Game starting...';
         startBtn.style.display = 'none';
-        // Start background music (matches co-op)
+        // Start background music (same as co-op)
         const audioCtx = sound.getAudioContext();
         if (audioCtx) bgMusic.start(audioCtx);
       },
@@ -693,41 +835,23 @@ function main() {
     console.error('[NetworkMain] Connection failed:', err);
   });
 
-  // Wire up game loop callbacks
+  // -----------------------------------------------------------------------
+  // Game loop (same structure as co-op)
+  // -----------------------------------------------------------------------
+
   game.onFixedUpdate = (dt: number) => {
-    // Skip if surface not ready yet (still connecting)
     if (!surfaceReady || !surface) return;
 
-    // Get input
+    // -- Send input to server --
     const inputState = input.getState();
-
-    // Calculate aim angle from mouse position.
-    // Negate aimY because screen Y-axis points down, but the math convention
-    // for atan2 expects Y-up. The resulting angle is used on the server where
-    // sin(angle) > 0 means +V direction (which moves UP on screen because
-    // camera.up = tangentV = d/dV direction).
     const mouseX = inputState.aimX;
     const mouseY = inputState.aimY;
     const aimAngle = Math.atan2(-mouseY, mouseX);
 
-    // Throttle input and only send when changed
     lastInputSendTime += dt;
     if (network.isConnected() && lastInputSendTime >= INPUT_SEND_INTERVAL) {
-      // MOVEMENT FIX: Negate moveY before sending to server.
-      //
-      // The InputManager convention is: W = moveY -1, S = moveY +1
-      // (i.e., W is "up" = negative in screen-space Y).
-      //
-      // On the server: surfaceV += moveY * speed
-      //   - Increasing V moves in the +tangentV direction
-      //   - The camera's up vector = tangentV
-      //   - So increasing V = moving UP on screen
-      //
-      // Without negation: W sends moveY=-1, server decreases V, player moves
-      // DOWN on screen. That's inverted!
-      //
-      // With negation: W sends moveY=+1, server increases V, player moves
-      // UP on screen. Correct!
+      // Negate moveY (same fix as before: W = screen up = -moveY, but
+      // server expects +moveY = move up on surface)
       const currentInput = {
         moveX: inputState.moveX,
         moveY: -inputState.moveY,
@@ -736,7 +860,6 @@ function main() {
         bomb: inputState.bomb,
       };
 
-      // Send if input changed or interval elapsed
       const changed = !lastSentInput
         || currentInput.moveX !== lastSentInput.moveX
         || currentInput.moveY !== lastSentInput.moveY
@@ -750,81 +873,76 @@ function main() {
         lastInputSendTime = 0;
       }
 
-      // Play shoot sound locally for responsiveness (co-op does this too)
+      // Play shoot sound locally for responsiveness
       if (currentInput.shooting) {
         shootSoundTimer -= dt;
         if (shootSoundTimer <= 0) {
           sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
-          shootSoundTimer = 0.1; // Match server fire rate
+          shootSoundTimer = 0.1;
         }
       } else {
         shootSoundTimer = 0;
       }
     }
 
-    // Update visual systems (matches co-op)
+    // -- Update visual systems (same as co-op) --
     particles.update(dt);
     scorePopups.update(dt);
     screenShake.update(dt);
     surface.updateGrid(dt);
-
-    // Update ally glow pulse animation
+    killLog.update(dt);
     allyGlowManager.update(dt);
 
-    // Update trails
-    playerTrails.forEach((trail) => trail.update(dt));
+    // Update enemy spawner to clean up spawn warning indicators.
+    // The spawner also runs enemy AI (movement toward player), but that's
+    // harmless since server positions override everything in onStateChange.
+    if (enemySpawner) {
+      const lp = networkPlayers.get(localPlayerId);
+      const trackU = lp ? lp.surfaceU : 0.5;
+      const trackV = lp ? lp.surfaceV : 0.5;
+      enemySpawner.update(dt, trackU, trackV);
+    }
 
-    // Update geom pool (for magnetic pull animation)
-    const localPlayer = playerMeshes.get(localPlayerId);
+    // Update glow trails
+    playerGlowTrails.forEach((trail) => trail.update(dt));
+
+    // Update geom pool (magnetic pull animation toward local player)
+    const localPlayer = networkPlayers.get(localPlayerId);
     if (localPlayer) {
-      // Get local player's approximate UV for geom magnet effect
-      const pt = surface.worldToSurface(localPlayer.position);
+      const pt = surface.worldToSurface(localPlayer.mesh.position);
       geomPool.update(dt, pt.u, pt.v, game.clock.totalTime);
     }
 
-    // Scale music intensity by enemy count (matches co-op)
-    bgMusic.setIntensity(Math.min(enemyMeshes.size / 30, 1.0));
+    // Scale music intensity by enemy count (same as co-op)
+    bgMusic.setIntensity(Math.min(networkEnemies.size / 30, 1.0));
 
     // Clear per-frame input
     input.endFrame();
   };
 
   game.onRender = () => {
-    // Skip if surface not ready yet
-    if (!surfaceReady || !surface) return;
+    if (!surfaceReady || !surface || !getTransform) return;
 
-    // Camera follows local player along surface normal (matches co-op camera)
-    const localMesh = playerMeshes.get(localPlayerId);
-    if (localMesh) {
-      // Get surface point for camera positioning (use worldToSurface -> getPoint for normal)
-      const uv = surface.worldToSurface(localMesh.position);
+    // Camera follows local player along surface normal (same as co-op)
+    const localPlayer = networkPlayers.get(localPlayerId);
+    if (localPlayer) {
+      const uv = surface.worldToSurface(localPlayer.mesh.position);
       const sp = surface.getPoint(uv.u, uv.v);
 
       const targetCamPos = sp.position.clone().addScaledVector(sp.normal, CAMERA_DISTANCE);
-
       camera.position.lerp(targetCamPos, CAMERA_LERP);
       camera.lookAt(sp.position);
 
-      // Smooth camera up vector (prevents disorienting flips, matches co-op)
+      // Smooth camera up vector (same as co-op)
       const upTarget = sp.tangentV;
       camera.up.lerp(upTarget, CAMERA_LERP).normalize();
     }
 
-    // Apply surface projection for geoms and bullets
-    const surfaceRef = surface;
-    const getTransform = (u: number, v: number) => {
-      const pt = surfaceRef.getPoint(u, v);
-      return {
-        position: pt.position,
-        normal: pt.normal,
-        tangent: pt.tangentU,
-        bitangent: pt.tangentV,
-      };
-    };
+    // Apply surface projection for geoms and bullets (same as co-op)
     bulletPool.applySurfaceProjection(getTransform);
     geomPool.applySurfaceProjection(getTransform);
 
-    // Screen shake (matches co-op)
+    // Screen shake (same as co-op)
     if (screenShake.offset.lengthSq() > 0.0001) {
       camera.position.add(screenShake.offset);
     }
