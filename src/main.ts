@@ -17,8 +17,6 @@ import { ScoreManager } from './core/ScoreManager';
 import { GameMode, GameModeType, ModePhase, MODE_DEFAULTS } from './core/GameMode';
 import type { WaveDefinition, LevelDefinition } from './core/LevelData';
 import { ADVENTURE_LEVELS } from './core/LevelData';
-import { BaseDrone, DroneType } from './weapons/BaseDrone';
-import { createDrone } from './weapons/DroneFactory';
 import { SuperStateManager, SuperStateType } from './weapons/SuperState';
 import { SuperStatePickup } from './weapons/SuperStatePickup';
 import { WeaponManager } from './weapons/WeaponManager';
@@ -618,7 +616,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Input --
   const input = new InputManager();
 
-  // Surface transform callback shared by subsystems still using UV (enemies, geoms, drones)
+  // Surface transform callback shared by subsystems still using UV (enemies, geoms)
   const getTransform = makeSurfaceTransformFn(surface);
 
   // -- Bullet pool --
@@ -829,40 +827,6 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     scorePopups.spawn(player.mesh.position.clone(), `+${seconds}s`, '#00ffff', 2.0);
     sound.play('multiplierUp');
   };
-
-  // -- Drone system --
-  const drones: BaseDrone[] = [];
-
-  if (level.drone) {
-    const droneType = level.drone as DroneType;
-    const drone = createDrone(droneType, 0, {
-      onShoot: (origin, direction) => {
-        // Drone bullet spawning
-        const transform = getTransform(origin.u, origin.v);
-        const dir = new THREE.Vector3(
-          Math.cos(direction), 0, Math.sin(direction),
-        ).applyQuaternion(
-          new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            transform.normal,
-          ),
-        );
-        bulletPool.spawn(transform.position, dir, origin.u, origin.v, direction);
-      },
-      onCollectGeom: (u, v) => {
-        // Collect drone picks up nearby geoms
-        geomPool.forEachActive((index, _su, _sv, position) => {
-          const transform = getTransform(u, v);
-          if (transform.position.distanceTo(position) < 0.5) {
-            geomPool.kill(index);
-            scoreManager.collectGeom();
-          }
-        });
-      },
-    });
-    game.scene.add(drone.mesh);
-    drones.push(drone);
-  }
 
   // -- Super state manager --
   const superStateManager = new SuperStateManager();
@@ -1146,6 +1110,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   pauseMenu.setMusic(bgMusic);
   pauseMenu.onResume(() => {
     isPaused = false;
+    game.resume(); // resync clock to avoid massive dt after long pause
     // Force respawn if player died during pause
     if (!player.alive && player.lives > 0) {
       respawnTimer = RESPAWN_DELAY;
@@ -1206,9 +1171,11 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     if (e.key === 'Escape' && !isGameOver) {
       if (isPaused) {
         isPaused = false;
+        game.resume(); // resync clock to avoid massive dt after long pause
         pauseMenu.hide();
       } else {
         isPaused = true;
+        game.pause(); // stop clock ticking while paused
         pauseMenu.show();
       }
     }
@@ -1240,6 +1207,15 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       notify.textContent = `MUSIC: ${name.toUpperCase()}`;
       notify.style.opacity = '1';
       setTimeout(() => { if (notify) notify.style.opacity = '0'; }, 1500);
+    }
+  });
+
+  // -- Auto-pause when tab is hidden (sync with Game.onVisibilityChange) --
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && !isPaused && !isGameOver) {
+      isPaused = true;
+      game.pause(); // stop clock ticking while tab is hidden
+      pauseMenu.show();
     }
   });
 
@@ -1548,12 +1524,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Update screen shake
     screenShake.update(dt);
 
-    // Update drones
+    // Get current enemy list for companions and collision checks
     const enemies = enemySpawner.getEnemies();
-    for (const drone of drones) {
-      drone.update(dt, player.surfaceU, player.surfaceV, player.aimAngle, enemies);
-      drone.applySurfaceTransform(getTransform);
-    }
 
     // Update companions
     if (player.alive) {

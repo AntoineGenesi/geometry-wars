@@ -128,15 +128,41 @@ export default function lanPlugin(): Plugin {
     return { ok: true };
   }
 
-  async function handleScan(): Promise<{ found: Array<{ ip: string; port: number; info?: unknown }>; subnets: string[] }> {
+  interface ScanRoom {
+    roomId: string;
+    name: string;
+    clients: number;
+    maxClients: number;
+    metadata: Record<string, unknown>;
+  }
+
+  interface ScanServer {
+    ip: string;
+    port: number;
+    info?: unknown;
+    rooms?: ScanRoom[];
+  }
+
+  async function fetchRooms(ip: string, port: number): Promise<ScanRoom[]> {
+    try {
+      const data = await fetchWithTimeout(`http://${ip}:${port}/api/rooms`, 600);
+      const parsed = JSON.parse(data);
+      return Array.isArray(parsed.rooms) ? parsed.rooms : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function handleScan(): Promise<{ found: ScanServer[]; subnets: string[] }> {
     const addresses = getLANAddresses();
     const subnets = [...new Set(addresses.map(getSubnet))];
-    const found: Array<{ ip: string; port: number; info?: unknown }> = [];
+    const found: ScanServer[] = [];
 
     // Include self if hosting
     if (serverReady) {
+      const selfRooms = await fetchRooms('localhost', SERVER_PORT);
       for (const addr of addresses) {
-        found.push({ ip: addr, port: SERVER_PORT, info: { game: 'geometry-wars-3d', self: true } });
+        found.push({ ip: addr, port: SERVER_PORT, info: { game: 'geometry-wars-3d', self: true }, rooms: selfRooms });
       }
     }
 
@@ -148,11 +174,12 @@ export default function lanPlugin(): Plugin {
         if (addresses.includes(ip)) continue; // Skip self
         scanPromises.push(
           fetchWithTimeout(`http://${ip}:${SERVER_PORT}/api/info`, 400)
-            .then((data) => {
+            .then(async (data) => {
               try {
                 const info = JSON.parse(data);
                 if (info.game === 'geometry-wars-3d') {
-                  found.push({ ip, port: SERVER_PORT, info });
+                  const rooms = await fetchRooms(ip, SERVER_PORT);
+                  found.push({ ip, port: SERVER_PORT, info, rooms });
                 }
               } catch {
                 /* ignore parse errors */

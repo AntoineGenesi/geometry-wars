@@ -9,12 +9,20 @@ import { BackgroundMusic } from '../audio/BackgroundMusic';
  * Shows when Escape is pressed, allows resuming or returning to main menu.
  */
 
+/** Callbacks for host network actions */
+export interface PauseMenuNetworkCallbacks {
+  onPause: (paused: boolean) => void;
+  onEndGame: () => void;
+}
+
 export class PauseMenu {
   private container: HTMLDivElement;
   private onResumeCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
   private isPaused: boolean = false;
   private bgMusic: BackgroundMusic | null = null;
+  private isHost: boolean = false;
+  private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -55,6 +63,10 @@ export class PauseMenu {
           <button class="pause-btn exit-btn" data-action="exit">
             <span class="btn-icon">◀</span>
             <span>EXIT TO MENU</span>
+          </button>
+          <button class="pause-btn end-game-btn hidden" data-action="end-game">
+            <span class="btn-icon">&#x2716;</span>
+            <span>END GAME FOR ALL</span>
           </button>
         </div>
 
@@ -187,6 +199,20 @@ export class PauseMenu {
         box-shadow: 0 0 20px #8888ff;
       }
 
+      #pause-menu .end-game-btn {
+        background: linear-gradient(180deg, #aa2222 0%, #661111 100%);
+        border-color: #ff4444;
+      }
+
+      #pause-menu .end-game-btn:hover {
+        background: linear-gradient(180deg, #cc3333 0%, #882222 100%);
+        box-shadow: 0 0 25px #ff4444;
+      }
+
+      #pause-menu .end-game-btn.hidden {
+        display: none;
+      }
+
       #pause-menu .btn-icon {
         font-size: 24px;
       }
@@ -255,6 +281,12 @@ export class PauseMenu {
       this.onExitCallback?.();
     });
 
+    const endGameBtn = this.container.querySelector('[data-action="end-game"]');
+    endGameBtn?.addEventListener('click', () => {
+      this.hide();
+      this.networkCallbacks?.onEndGame();
+    });
+
     // Escape key to toggle
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
@@ -273,6 +305,9 @@ export class PauseMenu {
     this.isPaused = true;
     this.updateMusicLabel();
     this.container.classList.remove('hidden');
+    if (this.isHost) {
+      this.networkCallbacks?.onPause(true);
+    }
   }
 
   /**
@@ -287,6 +322,9 @@ export class PauseMenu {
    * Resume the game.
    */
   resume(): void {
+    if (this.isHost) {
+      this.networkCallbacks?.onPause(false);
+    }
     this.hide();
     this.onResumeCallback?.();
   }
@@ -304,6 +342,29 @@ export class PauseMenu {
   setMusic(music: BackgroundMusic): void {
     this.bgMusic = music;
     this.updateMusicLabel();
+  }
+
+  /**
+   * Set whether this client is the host.
+   * When true, shows the "END GAME FOR ALL" button.
+   */
+  setIsHost(isHost: boolean): void {
+    this.isHost = isHost;
+    const endGameBtn = this.container.querySelector('.end-game-btn');
+    if (endGameBtn) {
+      if (isHost) {
+        endGameBtn.classList.remove('hidden');
+      } else {
+        endGameBtn.classList.add('hidden');
+      }
+    }
+  }
+
+  /**
+   * Set network callbacks for host actions (pause/resume, end game).
+   */
+  setNetworkCallbacks(callbacks: PauseMenuNetworkCallbacks): void {
+    this.networkCallbacks = callbacks;
   }
 
   private updateMusicLabel(): void {

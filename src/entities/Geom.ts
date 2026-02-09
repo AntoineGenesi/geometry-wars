@@ -4,7 +4,7 @@ import * as THREE from 'three';
 // Constants
 // ---------------------------------------------------------------------------
 
-const GEOM_SIZE = 0.08; // half-extent of the diamond
+const GEOM_SIZE = 0.15; // half-extent of the diamond (increased for visibility)
 const GEOM_COLOR = new THREE.Color(0x00ff44); // bright green (GW3D authentic)
 const GEOM_GLOW_COLOR = new THREE.Color(0x44ff44);
 const MAGNET_RANGE = 2; // units -- start pulling toward player
@@ -254,8 +254,8 @@ export class GeomPool {
 function createGeomMesh(): THREE.Group {
   const s = GEOM_SIZE;
 
-  // Diamond vertices in XZ plane.
-  const vertices = new Float32Array([
+  // Diamond vertices in XZ plane (outer diamond + cross diagonals for visibility).
+  const outerVertices = new Float32Array([
     0, 0, s,   // top
     s, 0, 0,   // right
     0, 0, -s,  // bottom
@@ -263,8 +263,19 @@ function createGeomMesh(): THREE.Group {
     0, 0, s,   // close the loop
   ]);
 
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  // Cross-diagonals to fill the diamond shape so it reads clearly at distance
+  const crossVertices = new Float32Array([
+    0, 0, s,   // top
+    0, 0, -s,  // bottom
+    s, 0, 0,   // right (break)
+    -s, 0, 0,  // left
+  ]);
+
+  const outerGeometry = new THREE.BufferGeometry();
+  outerGeometry.setAttribute('position', new THREE.BufferAttribute(outerVertices, 3));
+
+  const crossGeometry = new THREE.BufferGeometry();
+  crossGeometry.setAttribute('position', new THREE.BufferAttribute(crossVertices, 3));
 
   const mainMaterial = new THREE.LineBasicMaterial({
     color: GEOM_COLOR,
@@ -273,35 +284,50 @@ function createGeomMesh(): THREE.Group {
     opacity: 1,
   });
 
+  const crossMaterial = new THREE.LineBasicMaterial({
+    color: GEOM_COLOR,
+    linewidth: 2,
+    transparent: true,
+    opacity: 0.9,
+  });
+
   const glowMaterial = new THREE.LineBasicMaterial({
     color: GEOM_GLOW_COLOR,
     linewidth: 4,
     transparent: true,
-    opacity: 0.5,
-    blending: THREE.NormalBlending,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
 
-  const mainLine = new THREE.Line(geometry, mainMaterial);
-  const glowLine = new THREE.Line(geometry.clone(), glowMaterial);
+  const mainLine = new THREE.Line(outerGeometry, mainMaterial);
+  const crossLine = new THREE.LineSegments(crossGeometry, crossMaterial);
+  const glowLine = new THREE.Line(outerGeometry.clone(), glowMaterial);
   glowLine.scale.setScalar(1.3);
 
   const group = new THREE.Group();
-  group.add(glowLine);
-  group.add(mainLine);
+  group.add(glowLine);   // children[0] - glow layer
+  group.add(mainLine);   // children[1] - main outline
+  group.add(crossLine);  // children[2] - cross diagonals
   return group;
 }
 
 /**
  * Set opacity on all line materials within a geom group.
+ * children[0] = glow layer, children[1] = main outline, children[2] = cross diagonals
  */
 function setGeomOpacity(group: THREE.Group, opacity: number): void {
   group.traverse((child) => {
-    if (child instanceof THREE.Line) {
+    if (child instanceof THREE.Line || child instanceof THREE.LineSegments) {
       const mat = child.material as THREE.LineBasicMaterial;
-      mat.opacity = child === group.children[0]
-        ? opacity * 0.3 // glow layer
-        : opacity;
+      if (child === group.children[0]) {
+        // Glow layer - scaled but more visible than before
+        mat.opacity = opacity * 0.7;
+      } else {
+        // Main outline and cross diagonals - stay bright until late fade
+        // Clamp to at least 0.9 while opacity > 0 (sharp visibility until final despawn)
+        mat.opacity = opacity > 0 ? Math.max(opacity, 0.9) : 0;
+      }
     }
   });
 }

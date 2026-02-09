@@ -81,6 +81,13 @@ export class GameRoom extends Room<GameState> {
     // Set max clients (4 player co-op)
     this.maxClients = 4;
 
+    // Set room metadata for lobby browser
+    this.setMetadata({
+      surface: this.state.surfaceType,
+      status: 'waiting',
+      wave: 0,
+    });
+
     // Register message handlers
     this.onMessage('input', (client, input: PlayerInput) => {
       this.handleInput(client, input);
@@ -90,6 +97,19 @@ export class GameRoom extends Room<GameState> {
       if (!this.state.gameStarted) {
         this.startGame();
       }
+    });
+
+    this.onMessage('pause', (client, data: { paused: boolean }) => {
+      if (client.sessionId !== this.state.hostId) return;
+      this.state.isPaused = data.paused;
+      console.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by host`);
+    });
+
+    this.onMessage('end_game', (client) => {
+      if (client.sessionId !== this.state.hostId) return;
+      console.log('[GameRoom] Host ended the game');
+      this.broadcast('game_ended');
+      this.disconnect();
     });
 
     // Use Colyseus's built-in simulation interval (triggers state patch broadcasting)
@@ -106,6 +126,12 @@ export class GameRoom extends Room<GameState> {
     player.id = client.sessionId;
     player.name = options.name || `Player ${this.state.players.size + 1}`;
     player.color = PLAYER_COLORS[this.state.players.size % PLAYER_COLORS.length];
+
+    // First player to join becomes host
+    if (this.state.players.size === 0) {
+      this.state.hostId = client.sessionId;
+      console.log(`[GameRoom] ${player.name} is the host`);
+    }
 
     // Spawn at different positions based on player count
     const spawnOffsets = [
@@ -133,10 +159,23 @@ export class GameRoom extends Room<GameState> {
       this.state.players.delete(client.sessionId);
     }
 
+    // If the host left, notify remaining clients and close the room
+    if (client.sessionId === this.state.hostId) {
+      console.log('[GameRoom] Host left, closing room');
+      this.broadcast('host_left');
+      this.disconnect();
+      return;
+    }
+
     // End game if no players left
     if (this.state.players.size === 0) {
       this.state.gameStarted = false;
       this.state.gameOver = true;
+      this.setMetadata({
+        surface: this.state.surfaceType,
+        status: 'empty',
+        wave: this.waveNumber,
+      });
     }
   }
 
@@ -169,6 +208,12 @@ export class GameRoom extends Room<GameState> {
     this.state.geoms.clear();
     this.state.weaponPickups.clear();
 
+    this.setMetadata({
+      surface: this.state.surfaceType,
+      status: 'playing',
+      wave: 0,
+    });
+
     console.log('[GameRoom] Game started!');
   }
 
@@ -176,11 +221,17 @@ export class GameRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player || !player.alive) return;
 
-    // Update player position
+    // Update player position with sin(phi) correction for UV asymmetry.
+    // On a sphere, moving in U at the poles covers less real distance than at the equator.
+    // Dividing dx by sin(phi) normalizes speed so it feels uniform everywhere.
     const dx = input.moveX * PLAYER_SPEED * (1 / TICK_RATE);
     const dy = input.moveY * PLAYER_SPEED * (1 / TICK_RATE);
 
-    player.surfaceU = this.wrapCoord(player.surfaceU + dx);
+    const phi = player.surfaceV * Math.PI; // V=0 is north pole, V=1 is south pole
+    const sinPhi = Math.sin(phi);
+    const correctedDx = sinPhi > 0.01 ? dx / sinPhi : 0;
+
+    player.surfaceU = this.wrapCoord(player.surfaceU + correctedDx);
     player.surfaceV = this.clampCoord(player.surfaceV + dy);
     player.aimAngle = input.aimAngle;
     player.shooting = input.shooting;
@@ -250,6 +301,7 @@ export class GameRoom extends Room<GameState> {
 
   private tick() {
     if (!this.state.gameStarted || this.state.gameOver) return;
+    if (this.state.isPaused) return;
 
     const dt = 1 / TICK_RATE;
     this.state.gameTime += dt;
@@ -273,8 +325,10 @@ export class GameRoom extends Room<GameState> {
       this.spawnTimer = 0;
     }
 
-    // Update interest management (per-client entity filtering)
-    this.updateInterestManagement();
+    // NOTE: Interest management (updateInterestManagement) is disabled.
+    // The shouldSyncEntity() results were never consumed by Colyseus's state
+    // patching, so the computation was wasted. Needs proper Colyseus filter
+    // integration before re-enabling.
 
     // Check game over
     this.checkGameOver();
@@ -553,6 +607,11 @@ export class GameRoom extends Room<GameState> {
     if (this.nextEnemyId % 10 === 0) {
       this.waveNumber++;
       this.state.waveNumber = this.waveNumber;
+      this.setMetadata({
+        surface: this.state.surfaceType,
+        status: 'playing',
+        wave: this.waveNumber,
+      });
       console.log(`[GameRoom] Wave ${this.waveNumber} started`);
     }
   }
@@ -596,6 +655,11 @@ export class GameRoom extends Room<GameState> {
 
     if (!anyAlive && this.state.players.size > 0) {
       this.state.gameOver = true;
+      this.setMetadata({
+        surface: this.state.surfaceType,
+        status: 'game_over',
+        wave: this.waveNumber,
+      });
       console.log('[GameRoom] Game Over!');
     }
   }

@@ -335,46 +335,48 @@ export class WeaponManager {
       }
     }
 
-    switch (this.currentWeapon) {
-      case WeaponType.Standard:
-        this.fireStandard(origin, direction, surfaceNormal);
-        break;
+    // Always fire the blaster alongside the equipped weapon
+    this.fireStandard(origin, direction, surfaceNormal);
 
-      case WeaponType.Spread:
-        this.fireSpread(origin, direction, surfaceNormal);
-        break;
+    // Fire the equipped weapon (if not Standard, fire it too)
+    if (this.currentWeapon !== WeaponType.Standard) {
+      switch (this.currentWeapon) {
+        case WeaponType.Spread:
+          this.fireSpread(origin, direction, surfaceNormal);
+          break;
 
-      case WeaponType.Piercing:
-        this.firePiercing(origin, direction);
-        break;
+        case WeaponType.Piercing:
+          this.firePiercing(origin, direction);
+          break;
 
-      case WeaponType.ChainLightning:
-        this.fireChainLightning(origin, direction);
-        break;
+        case WeaponType.ChainLightning:
+          this.fireChainLightning(origin, direction);
+          break;
 
-      case WeaponType.Homing:
-        this.fireHoming(origin, direction);
-        break;
+        case WeaponType.Homing:
+          this.fireHoming(origin, direction);
+          break;
 
-      case WeaponType.PlasmaMortar:
-        this.fireMortar(origin, direction);
-        break;
+        case WeaponType.PlasmaMortar:
+          this.fireMortar(origin, direction);
+          break;
 
-      case WeaponType.GravityGun:
-        this.fireGravityGun(origin, direction);
-        break;
+        case WeaponType.GravityGun:
+          this.fireGravityGun(origin, direction);
+          break;
 
-      case WeaponType.LaserBeam:
-        this.fireLaser(origin, direction);
-        break;
+        case WeaponType.LaserBeam:
+          this.fireLaser(origin, direction);
+          break;
 
-      case WeaponType.BlackHole:
-        this.fireBlackHole(origin, direction);
-        break;
+        case WeaponType.BlackHole:
+          this.fireBlackHole(origin, direction);
+          break;
 
-      case WeaponType.TeslaCoil:
-        this.fireTesla(origin);
-        break;
+        case WeaponType.TeslaCoil:
+          this.fireTesla(origin);
+          break;
+      }
     }
 
     return true;

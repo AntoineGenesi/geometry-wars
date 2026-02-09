@@ -2,8 +2,8 @@
  * Interactive weapon demo/playground that runs inside the WeaponWiki modal.
  *
  * Self-contained Three.js scene with its own renderer, camera, a mini sphere
- * surface, a player chevron, target enemies, and weapon visuals. Auto-fires
- * the selected weapon so the user can watch each weapon type in action.
+ * surface, a player chevron, target enemies, and weapon visuals. Mouse-aimed
+ * firing with player death/respawn, lives, and game-over state.
  */
 
 import * as THREE from 'three';
@@ -21,12 +21,23 @@ const ENEMY_SIZE = 0.15;
 const ENEMY_SPEED = 0.3; // radians per second toward player
 const ENEMY_RESPAWN_DELAY = 2.0;
 const CAMERA_DISTANCE = 7.5;
-const PLAYER_ORBIT_SPEED = 0.25; // radians per second
+const PLAYER_MOVE_SPEED = 1.2; // radians per second for WASD movement
+const MIN_DT = 1 / 120;
+const MAX_DT = 1 / 30;
+const PLAYER_DEATH_RADIUS = 0.3;
+const PLAYER_RESPAWN_DELAY = 1.5;
+const STARTING_LIVES = 3;
+const DEATH_FLASH_DURATION = 0.4;
+const TESLA_ARC_RANGE = 2.0;
+const TESLA_ARC_PERSIST = 0.7; // seconds arcs stay visible
+const TESLA_ARC_COUNT = 4; // arcs spawned per fire event
 
 // Temp vectors to avoid GC
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
 const _v3 = new THREE.Vector3();
+const _raycaster = new THREE.Raycaster();
+const _mouseNDC = new THREE.Vector2();
 
 // ---------------------------------------------------------------------------
 // Mini enemy data
@@ -70,6 +81,17 @@ interface DamagePopup {
 }
 
 // ---------------------------------------------------------------------------
+// Tesla arc data
+// ---------------------------------------------------------------------------
+
+interface TeslaArc {
+  line: THREE.Line;
+  age: number;
+  maxAge: number;
+  initialOpacity: number;
+}
+
+// ---------------------------------------------------------------------------
 // WeaponPlayground
 // ---------------------------------------------------------------------------
 
@@ -83,6 +105,7 @@ export class WeaponPlayground {
   private playerTheta = 0;
   private playerPhi = Math.PI / 2;
   private aimTheta = 0; // where the player aims (rotates around sphere)
+  private aimPhi = Math.PI / 2; // polar aim component for mouse aiming
 
   private enemies: PlaygroundEnemy[] = [];
   private projectiles: MiniProjectile[] = [];
@@ -90,6 +113,23 @@ export class WeaponPlayground {
 
   private activeWeapon: WeaponType = WeaponType.Standard;
   private fireCooldown = 0;
+
+  // Mouse state
+  private mouseX = CANVAS_WIDTH / 2;
+  private mouseY = CANVAS_HEIGHT / 2;
+  private mouseDown = false;
+  private mouseOnSphere = false; // whether the mouse ray intersects the sphere
+
+  // Sphere mesh for raycasting
+  private sphereMesh!: THREE.Mesh;
+
+  // Player death/respawn state
+  private playerAlive = true;
+  private respawnTimer = 0;
+  private deathFlashTimer = 0;
+  private lives = STARTING_LIVES;
+  private gameOver = false;
+  private deathEffects: THREE.Object3D[] = [];
 
   // Stats
   private dps = 0;
@@ -102,14 +142,33 @@ export class WeaponPlayground {
   private activeEffectMeshes: THREE.Object3D[] = [];
   private activeEffectTimers: number[] = [];
 
+  // Tesla arcs (persistent)
+  private teslaArcs: TeslaArc[] = [];
+
   // DOM
   private statsOverlay: HTMLDivElement;
   private popupContainer: HTMLDivElement;
+  private hintOverlay: HTMLDivElement;
 
   // Loop
   private rafId = 0;
   private lastTime = 0;
   private disposed = false;
+
+  // Focus & pause state
+  private focused = false;
+  private paused = false;
+
+  // Input state (self-contained, no external InputManager needed)
+  private readonly keysDown: Set<string> = new Set();
+
+  // Bound handlers (stored for cleanup)
+  private readonly onKeyDown: (e: KeyboardEvent) => void;
+  private readonly onKeyUp: (e: KeyboardEvent) => void;
+  private readonly onCanvasClick: (e: MouseEvent) => void;
+  private readonly onMouseMove: (e: MouseEvent) => void;
+  private readonly onMouseDown: (e: MouseEvent) => void;
+  private readonly onMouseUp: (e: MouseEvent) => void;
 
   // Materials (reused)
   private enemyMat: THREE.MeshBasicMaterial;
@@ -145,8 +204,15 @@ export class WeaponPlayground {
       transparent: true,
       opacity: 0.35,
     });
-    const sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
-    this.scene.add(sphereMesh);
+    this.sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
+    this.scene.add(this.sphereMesh);
+
+    // Invisible solid sphere for raycasting (slightly larger to catch edge hits)
+    const raycastGeo = new THREE.SphereGeometry(SPHERE_RADIUS, 32, 24);
+    const raycastMat = new THREE.MeshBasicMaterial({ visible: false });
+    const raycastSphere = new THREE.Mesh(raycastGeo, raycastMat);
+    raycastSphere.name = 'raycastSphere';
+    this.scene.add(raycastSphere);
 
     // -- Player chevron --
     this.playerGroup = this.buildMiniChevron(0x00ffff, 0.2);
@@ -165,12 +231,13 @@ export class WeaponPlayground {
       this.spawnEnemy(i);
     }
 
-    // -- Stats overlay --
+    // -- Stats overlay (includes lives) --
     this.statsOverlay = document.createElement('div');
     this.statsOverlay.style.cssText =
       'display:flex;justify-content:space-between;padding:6px 12px;color:#88aacc;' +
       'font-size:11px;font-family:monospace;letter-spacing:1px;';
     this.statsOverlay.innerHTML =
+      `<span id="pg-lives">LIVES: ${STARTING_LIVES}</span>` +
       '<span id="pg-dps">DPS: 0</span><span id="pg-kills">KILLS: 0</span><span id="pg-time">0.0s</span>';
     container.appendChild(this.statsOverlay);
 
@@ -181,9 +248,137 @@ export class WeaponPlayground {
     container.style.position = 'relative';
     container.appendChild(this.popupContainer);
 
+    // -- Hint overlay (click to play / ESC to pause) --
+    this.hintOverlay = document.createElement('div');
+    this.hintOverlay.style.cssText =
+      'position:absolute;top:0;left:50%;transform:translateX(-50%);' +
+      `width:${CANVAS_WIDTH}px;height:${CANVAS_HEIGHT}px;` +
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+      'background:rgba(5,5,16,0.7);border-radius:4px;cursor:pointer;z-index:10;';
+    this.hintOverlay.innerHTML =
+      '<div style="color:#00ffff;font-family:monospace;font-size:16px;letter-spacing:2px;' +
+      'text-shadow:0 0 10px #00ffff,0 0 20px #0088aa;margin-bottom:8px;">CLICK TO PLAY</div>' +
+      '<div style="color:#88aacc;font-family:monospace;font-size:11px;letter-spacing:1px;">' +
+      'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Pause</div>';
+    container.appendChild(this.hintOverlay);
+
+    // -- Input handlers --
+    this.onKeyDown = (e: KeyboardEvent) => {
+      if (!this.focused || this.disposed) return;
+      const key = e.key.toLowerCase();
+      this.keysDown.add(key);
+
+      // ESC toggles pause
+      if (key === 'escape') {
+        this.paused = !this.paused;
+        if (this.paused) {
+          this.showOverlay('PAUSED', 'Press ESC to resume or click outside to exit');
+        } else {
+          this.hintOverlay.style.display = 'none';
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+
+      // Prevent default for WASD so page does not scroll
+      if (['w', 'a', 's', 'd'].includes(key)) {
+        e.preventDefault();
+      }
+    };
+
+    this.onKeyUp = (e: KeyboardEvent) => {
+      this.keysDown.delete(e.key.toLowerCase());
+    };
+
+    this.onMouseMove = (e: MouseEvent) => {
+      if (!this.focused || this.disposed) return;
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.mouseX = e.clientX - rect.left;
+      this.mouseY = e.clientY - rect.top;
+    };
+
+    this.onMouseDown = (e: MouseEvent) => {
+      if (!this.focused || this.disposed) return;
+      if (e.button === 0) {
+        this.mouseDown = true;
+      }
+    };
+
+    this.onMouseUp = (e: MouseEvent) => {
+      if (e.button === 0) {
+        this.mouseDown = false;
+      }
+    };
+
+    this.onCanvasClick = (e: MouseEvent) => {
+      if (this.disposed) return;
+
+      // Handle game over restart
+      if (this.gameOver) {
+        this.restartGame();
+        this.hintOverlay.style.display = 'none';
+        this.lastTime = performance.now();
+        return;
+      }
+
+      if (this.paused) {
+        // Resume from pause
+        this.paused = false;
+        this.hintOverlay.style.display = 'none';
+        this.lastTime = performance.now(); // reset dt to avoid jump
+        return;
+      }
+      if (!this.focused) {
+        this.focused = true;
+        this.hintOverlay.style.display = 'none';
+        this.lastTime = performance.now(); // reset dt to avoid jump
+        // Capture initial mouse position
+        const rect = this.renderer.domElement.getBoundingClientRect();
+        this.mouseX = e.clientX - rect.left;
+        this.mouseY = e.clientY - rect.top;
+      }
+    };
+
+    // Clicking outside the canvas area releases focus
+    const onDocumentClick = (e: MouseEvent) => {
+      if (this.disposed) return;
+      if (!container.contains(e.target as Node)) {
+        if (this.focused && !this.paused) {
+          this.releaseFocus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('mouseup', this.onMouseUp);
+    this.renderer.domElement.addEventListener('mousemove', this.onMouseMove);
+    this.renderer.domElement.addEventListener('mousedown', this.onMouseDown);
+    container.addEventListener('click', this.onCanvasClick);
+    document.addEventListener('click', onDocumentClick);
+
+    // Store document click handler for cleanup
+    (this as any)._onDocumentClick = onDocumentClick;
+
     // -- Start loop --
     this.lastTime = performance.now();
     this.loop(this.lastTime);
+  }
+
+  private showOverlay(title: string, subtitle: string): void {
+    this.hintOverlay.innerHTML =
+      `<div style="color:#00ffff;font-family:monospace;font-size:16px;letter-spacing:2px;` +
+      `text-shadow:0 0 10px #00ffff,0 0 20px #0088aa;margin-bottom:8px;">${title}</div>` +
+      `<div style="color:#88aacc;font-family:monospace;font-size:11px;letter-spacing:1px;">${subtitle}</div>`;
+    this.hintOverlay.style.display = 'flex';
+  }
+
+  private releaseFocus(): void {
+    this.focused = false;
+    this.mouseDown = false;
+    this.keysDown.clear();
+    this.showOverlay('CLICK TO PLAY', 'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Pause');
   }
 
   // -----------------------------------------------------------------------
@@ -205,9 +400,20 @@ export class WeaponPlayground {
     this.damageAccum = 0;
     this.dpsTimer = 0;
 
+    // Reset lives and player state
+    this.lives = STARTING_LIVES;
+    this.playerAlive = true;
+    this.respawnTimer = 0;
+    this.deathFlashTimer = 0;
+    this.gameOver = false;
+    this.playerGroup.visible = true;
+    this.hintOverlay.style.display = this.focused ? 'none' : 'flex';
+
     // Clear active projectiles and effects
     this.clearProjectiles();
     this.clearEffects();
+    this.clearTeslaArcs();
+    this.clearDeathEffects();
 
     // Reset enemies
     for (let i = 0; i < this.enemies.length; i++) {
@@ -227,8 +433,22 @@ export class WeaponPlayground {
       this.rafId = 0;
     }
 
+    // Remove event listeners
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('mouseup', this.onMouseUp);
+    this.renderer.domElement.removeEventListener('mousemove', this.onMouseMove);
+    this.renderer.domElement.removeEventListener('mousedown', this.onMouseDown);
+    this.container.removeEventListener('click', this.onCanvasClick);
+    const docClickHandler = (this as any)._onDocumentClick;
+    if (docClickHandler) {
+      document.removeEventListener('click', docClickHandler);
+    }
+
     this.clearProjectiles();
     this.clearEffects();
+    this.clearTeslaArcs();
+    this.clearDeathEffects();
 
     // Dispose popups
     for (const p of this.popups) {
@@ -246,6 +466,7 @@ export class WeaponPlayground {
     this.renderer.domElement.remove();
     this.statsOverlay.remove();
     this.popupContainer.remove();
+    this.hintOverlay.remove();
   }
 
   // -----------------------------------------------------------------------
@@ -256,9 +477,16 @@ export class WeaponPlayground {
     if (this.disposed) return;
     this.rafId = requestAnimationFrame(this.loop);
 
-    const dt = Math.min((now - this.lastTime) / 1000, 0.05);
+    // Clamp dt: floor at MIN_DT, cap at MAX_DT to avoid physics explosions
+    const rawDt = (now - this.lastTime) / 1000;
     this.lastTime = now;
-    if (dt <= 0) return;
+    const dt = Math.max(MIN_DT, Math.min(rawDt, MAX_DT));
+
+    // If not focused or paused, still render but do not simulate
+    if (!this.focused || this.paused || this.gameOver) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
 
     this.elapsed += dt;
     this.dpsTimer += dt;
@@ -270,11 +498,17 @@ export class WeaponPlayground {
       this.dpsTimer = 0;
     }
 
+    this.updateMouseAim();
     this.updatePlayer(dt);
     this.updateEnemies(dt);
-    this.autoFire(dt);
+    this.updatePlayerCollisions();
+    this.updateDeathState(dt);
+    if (this.playerAlive) {
+      this.handleFiring(dt);
+    }
     this.updateProjectiles(dt);
     this.updateEffects(dt);
+    this.updateTeslaArcs(dt);
     this.updatePopups(dt);
     this.updateCamera();
     this.updateStats();
@@ -283,25 +517,320 @@ export class WeaponPlayground {
   };
 
   // -----------------------------------------------------------------------
+  // Mouse aim: raycast from screen to sphere surface
+  // -----------------------------------------------------------------------
+
+  private updateMouseAim(): void {
+    // Convert mouse position to NDC (-1 to 1)
+    _mouseNDC.x = (this.mouseX / CANVAS_WIDTH) * 2 - 1;
+    _mouseNDC.y = -(this.mouseY / CANVAS_HEIGHT) * 2 + 1;
+
+    _raycaster.setFromCamera(_mouseNDC, this.camera);
+
+    // Raycast against the invisible sphere
+    const raycastSphere = this.scene.getObjectByName('raycastSphere');
+    if (!raycastSphere) return;
+
+    const intersects = _raycaster.intersectObject(raycastSphere);
+    if (intersects.length > 0) {
+      this.mouseOnSphere = true;
+      const hitPoint = intersects[0].point;
+
+      // Compute theta/phi from hit point
+      this.aimTheta = Math.atan2(hitPoint.x, hitPoint.z);
+      this.aimPhi = Math.acos(Math.max(-1, Math.min(1, hitPoint.y / SPHERE_RADIUS)));
+    } else {
+      // Mouse is off the sphere -- project ray onto sphere plane for a reasonable aim
+      this.mouseOnSphere = false;
+      // Use a fallback: project ray direction onto the sphere surface nearest the player
+      const rayDir = _raycaster.ray.direction.clone();
+      const rayOrigin = _raycaster.ray.origin.clone();
+      // Find closest point on ray to sphere center
+      const toCenter = new THREE.Vector3().sub(rayOrigin);
+      const tClosest = Math.max(0, toCenter.dot(rayDir));
+      const closest = rayOrigin.clone().add(rayDir.clone().multiplyScalar(tClosest));
+      closest.normalize().multiplyScalar(SPHERE_RADIUS);
+      this.aimTheta = Math.atan2(closest.x, closest.z);
+      this.aimPhi = Math.acos(Math.max(-1, Math.min(1, closest.y / SPHERE_RADIUS)));
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Player
   // -----------------------------------------------------------------------
 
   private updatePlayer(dt: number): void {
-    // Auto-rotate around the sphere
-    this.playerTheta += PLAYER_ORBIT_SPEED * dt;
+    if (!this.playerAlive) return;
 
-    // Aim outward (ahead of movement)
-    this.aimTheta = this.playerTheta + Math.PI / 4;
+    // WASD movement on the sphere
+    let dTheta = 0;
+    let dPhi = 0;
+    if (this.keysDown.has('a')) dTheta -= 1;
+    if (this.keysDown.has('d')) dTheta += 1;
+    if (this.keysDown.has('w')) dPhi -= 1;
+    if (this.keysDown.has('s')) dPhi += 1;
+
+    // Normalize diagonal to avoid faster movement
+    const moveLen = Math.sqrt(dTheta * dTheta + dPhi * dPhi);
+    if (moveLen > 1) {
+      dTheta /= moveLen;
+      dPhi /= moveLen;
+    }
+
+    this.playerTheta += dTheta * PLAYER_MOVE_SPEED * dt;
+    this.playerPhi += dPhi * PLAYER_MOVE_SPEED * dt;
+
+    // Clamp phi to avoid poles (keep between ~15 and ~165 degrees)
+    this.playerPhi = Math.max(0.25, Math.min(Math.PI - 0.25, this.playerPhi));
 
     const pos = this.spherePos(this.playerTheta, this.playerPhi);
     this.playerGroup.position.copy(pos);
 
-    // Orient: up = surface normal, forward = tangent direction
+    // Orient: up = surface normal, forward = aim direction on sphere surface
     const normal = pos.clone().normalize();
-    const tangent = new THREE.Vector3(-Math.sin(this.playerTheta), 0, Math.cos(this.playerTheta));
-    const target = pos.clone().add(tangent);
-    this.playerGroup.lookAt(target);
-    this.playerGroup.up.copy(normal);
+
+    // Compute aim point on sphere surface and derive tangent toward it
+    const aimWorldPos = this.spherePos(this.aimTheta, this.aimPhi);
+    const toAim = aimWorldPos.clone().sub(pos);
+
+    // Project toAim onto the tangent plane (remove normal component)
+    const normalComp = toAim.dot(normal);
+    toAim.sub(normal.clone().multiplyScalar(normalComp));
+    const aimLen = toAim.length();
+
+    if (aimLen > 0.001) {
+      toAim.multiplyScalar(1 / aimLen);
+      const target = pos.clone().add(toAim);
+      this.playerGroup.up.copy(normal);
+      this.playerGroup.lookAt(target);
+    } else {
+      // Fallback: aim along theta tangent
+      const tangent = new THREE.Vector3(-Math.sin(this.playerTheta), 0, Math.cos(this.playerTheta));
+      const target = pos.clone().add(tangent);
+      this.playerGroup.up.copy(normal);
+      this.playerGroup.lookAt(target);
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Player collision detection (enemy touches player -> death)
+  // -----------------------------------------------------------------------
+
+  private updatePlayerCollisions(): void {
+    if (!this.playerAlive) return;
+
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (!e.alive) continue;
+
+      const dist = e.mesh.position.distanceTo(this.playerGroup.position);
+      if (dist < PLAYER_DEATH_RADIUS) {
+        this.killPlayer();
+        return;
+      }
+    }
+  }
+
+  private killPlayer(): void {
+    this.playerAlive = false;
+    this.lives--;
+    this.deathFlashTimer = DEATH_FLASH_DURATION;
+    this.playerGroup.visible = false;
+    this.mouseDown = false;
+
+    // Spawn death explosion effect
+    this.spawnDeathExplosion(this.playerGroup.position);
+
+    if (this.lives <= 0) {
+      this.gameOver = true;
+      this.showOverlay(
+        'GAME OVER',
+        `Kills: ${this.kills} | Time: ${this.elapsed.toFixed(1)}s<br>` +
+        '<span style="margin-top:8px;display:inline-block;">Click to restart</span>',
+      );
+    } else {
+      this.respawnTimer = PLAYER_RESPAWN_DELAY;
+    }
+  }
+
+  private spawnDeathExplosion(pos: THREE.Vector3): void {
+    // Expanding ring of particles
+    const ringCount = 12;
+    for (let i = 0; i < ringCount; i++) {
+      const angle = (i / ringCount) * Math.PI * 2;
+      const normal = pos.clone().normalize();
+      // Build a tangent-plane direction
+      const tangentA = new THREE.Vector3(-Math.sin(this.playerTheta), 0, Math.cos(this.playerTheta)).normalize();
+      const tangentB = new THREE.Vector3().crossVectors(normal, tangentA).normalize();
+      const dir = tangentA.clone().multiplyScalar(Math.cos(angle)).add(tangentB.clone().multiplyScalar(Math.sin(angle)));
+
+      const geo = new THREE.SphereGeometry(0.04, 4, 4);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x00ffff,
+        transparent: true,
+        opacity: 1.0,
+      });
+      const particle = new THREE.Mesh(geo, mat);
+      particle.position.copy(pos);
+      // Store velocity in userData
+      particle.userData = { dir: dir.clone(), speed: 3.0, age: 0 };
+      this.scene.add(particle);
+      this.deathEffects.push(particle);
+    }
+
+    // Central flash
+    const flashGeo = new THREE.SphereGeometry(0.5, 8, 8);
+    const flashMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.9,
+    });
+    const flash = new THREE.Mesh(flashGeo, flashMat);
+    flash.position.copy(pos);
+    flash.userData = { dir: new THREE.Vector3(), speed: 0, age: 0, isFlash: true };
+    this.scene.add(flash);
+    this.deathEffects.push(flash);
+  }
+
+  private updateDeathState(dt: number): void {
+    // Update death explosion particles
+    for (let i = this.deathEffects.length - 1; i >= 0; i--) {
+      const p = this.deathEffects[i] as THREE.Mesh;
+      const ud = p.userData;
+      ud.age += dt;
+
+      if (ud.isFlash) {
+        // Flash expands and fades
+        const scale = 1 + ud.age * 4;
+        p.scale.set(scale, scale, scale);
+        const mat = p.material as THREE.MeshBasicMaterial;
+        mat.opacity = Math.max(0, 0.9 - ud.age * 2.5);
+      } else {
+        // Particles fly outward on sphere surface
+        p.position.add(ud.dir.clone().multiplyScalar(ud.speed * dt));
+        p.position.normalize().multiplyScalar(SPHERE_RADIUS);
+        ud.speed *= 0.95; // decelerate
+        const mat = p.material as THREE.MeshBasicMaterial;
+        mat.opacity = Math.max(0, 1.0 - ud.age * 2.0);
+      }
+
+      if (ud.age > 0.6) {
+        this.scene.remove(p);
+        p.geometry.dispose();
+        this.deathEffects.splice(i, 1);
+      }
+    }
+
+    // Death flash timer (screen tint effect via background color flicker)
+    if (this.deathFlashTimer > 0) {
+      this.deathFlashTimer -= dt;
+      const flashIntensity = this.deathFlashTimer / DEATH_FLASH_DURATION;
+      const r = Math.floor(5 + flashIntensity * 60);
+      const g = Math.floor(5 + flashIntensity * 30);
+      const b = Math.floor(16 + flashIntensity * 20);
+      (this.scene.background as THREE.Color).setRGB(r / 255, g / 255, b / 255);
+      if (this.deathFlashTimer <= 0) {
+        (this.scene.background as THREE.Color).setHex(0x050510);
+      }
+    }
+
+    // Handle respawn countdown
+    if (!this.playerAlive && !this.gameOver) {
+      this.respawnTimer -= dt;
+      if (this.respawnTimer <= 0) {
+        this.respawnPlayer();
+      }
+    }
+  }
+
+  private respawnPlayer(): void {
+    this.playerAlive = true;
+    this.playerGroup.visible = true;
+
+    // Move player to a safe location (away from all enemies)
+    let bestTheta = this.playerTheta + Math.PI;
+    let bestPhi = Math.PI / 2;
+    let bestMinDist = 0;
+
+    // Try a few random positions and pick the one farthest from all enemies
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const tryTheta = Math.random() * Math.PI * 2;
+      const tryPhi = 0.4 + Math.random() * (Math.PI - 0.8);
+      const tryPos = this.spherePos(tryTheta, tryPhi);
+
+      let minDist = Infinity;
+      for (const e of this.enemies) {
+        if (!e.alive) continue;
+        const d = tryPos.distanceTo(e.mesh.position);
+        if (d < minDist) minDist = d;
+      }
+
+      if (minDist > bestMinDist) {
+        bestMinDist = minDist;
+        bestTheta = tryTheta;
+        bestPhi = tryPhi;
+      }
+    }
+
+    this.playerTheta = bestTheta;
+    this.playerPhi = bestPhi;
+
+    const pos = this.spherePos(this.playerTheta, this.playerPhi);
+    this.playerGroup.position.copy(pos);
+
+    // Brief invincibility flash handled visually with a blink
+    this.deathFlashTimer = 0;
+  }
+
+  private restartGame(): void {
+    this.lives = STARTING_LIVES;
+    this.playerAlive = true;
+    this.gameOver = false;
+    this.respawnTimer = 0;
+    this.deathFlashTimer = 0;
+    this.playerGroup.visible = true;
+    this.mouseDown = false;
+
+    // Reset position
+    this.playerTheta = 0;
+    this.playerPhi = Math.PI / 2;
+
+    // Reset stats
+    this.dps = 0;
+    this.kills = 0;
+    this.elapsed = 0;
+    this.damageAccum = 0;
+    this.dpsTimer = 0;
+    this.fireCooldown = 0;
+
+    // Clear everything
+    this.clearProjectiles();
+    this.clearEffects();
+    this.clearTeslaArcs();
+    this.clearDeathEffects();
+
+    // Reset enemies
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      e.alive = true;
+      e.health = this.getEnemyHealth();
+      e.maxHealth = e.health;
+      e.respawnTimer = 0;
+      e.mesh.material = this.enemyMat;
+      e.mesh.visible = true;
+      this.randomizeSpherePos(e, i);
+    }
+
+    (this.scene.background as THREE.Color).setHex(0x050510);
+  }
+
+  private clearDeathEffects(): void {
+    for (let i = this.deathEffects.length - 1; i >= 0; i--) {
+      const p = this.deathEffects[i] as THREE.Mesh;
+      this.scene.remove(p);
+      p.geometry.dispose();
+    }
+    this.deathEffects = [];
   }
 
   // -----------------------------------------------------------------------
@@ -362,13 +891,15 @@ export class WeaponPlayground {
         continue;
       }
 
-      // Drift toward player
-      const dTheta = this.playerTheta - e.theta;
-      const dPhi = this.playerPhi - e.phi;
-      const dist = Math.sqrt(dTheta * dTheta + dPhi * dPhi);
-      if (dist > 0.01) {
-        e.theta += (dTheta / dist) * ENEMY_SPEED * dt;
-        e.phi += (dPhi / dist) * ENEMY_SPEED * dt;
+      // Drift toward player (only if player is alive)
+      if (this.playerAlive) {
+        const dTheta = this.playerTheta - e.theta;
+        const dPhi = this.playerPhi - e.phi;
+        const dist = Math.sqrt(dTheta * dTheta + dPhi * dPhi);
+        if (dist > 0.01) {
+          e.theta += (dTheta / dist) * ENEMY_SPEED * dt;
+          e.phi += (dPhi / dist) * ENEMY_SPEED * dt;
+        }
       }
 
       const pos = this.spherePos(e.theta, e.phi);
@@ -399,11 +930,14 @@ export class WeaponPlayground {
   }
 
   // -----------------------------------------------------------------------
-  // Auto-fire
+  // Firing (mouse-controlled)
   // -----------------------------------------------------------------------
 
-  private autoFire(dt: number): void {
+  private handleFiring(dt: number): void {
     this.fireCooldown -= dt;
+
+    // Only fire when mouse is held down
+    if (!this.mouseDown) return;
     if (this.fireCooldown > 0) return;
 
     const cfg = WEAPON_CONFIGS[this.activeWeapon];
@@ -456,17 +990,27 @@ export class WeaponPlayground {
   }
 
   private getAimDirection(): THREE.Vector3 {
-    // Aim along the sphere tangent at the aim angle
-    const dir = new THREE.Vector3(
-      -Math.sin(this.aimTheta) * Math.sin(this.playerPhi),
-      Math.cos(this.playerPhi),
-      Math.cos(this.aimTheta) * Math.sin(this.playerPhi),
-    );
-    // Project tangent to sphere at player position
-    const normal = this.playerGroup.position.clone().normalize();
-    dir.sub(normal.clone().multiplyScalar(dir.dot(normal)));
+    // Compute direction from player to the aim point on the sphere surface
+    const playerPos = this.playerGroup.position;
+    const aimWorldPos = this.spherePos(this.aimTheta, this.aimPhi);
+
+    const dir = aimWorldPos.clone().sub(playerPos);
+
+    // Project onto tangent plane (remove normal component)
+    const normal = playerPos.clone().normalize();
+    const normalComp = dir.dot(normal);
+    dir.sub(normal.clone().multiplyScalar(normalComp));
+
     const len = dir.length();
-    if (len > 0.001) dir.multiplyScalar(1 / len);
+    if (len > 0.001) {
+      dir.multiplyScalar(1 / len);
+    } else {
+      // Fallback: aim along theta tangent
+      dir.set(-Math.sin(this.aimTheta) * Math.sin(this.playerPhi), Math.cos(this.playerPhi), Math.cos(this.aimTheta) * Math.sin(this.playerPhi));
+      dir.sub(normal.clone().multiplyScalar(dir.dot(normal)));
+      const fallbackLen = dir.length();
+      if (fallbackLen > 0.001) dir.multiplyScalar(1 / fallbackLen);
+    }
     return dir;
   }
 
@@ -698,29 +1242,119 @@ export class WeaponPlayground {
   }
 
   private fireTeslaCoil(origin: THREE.Vector3, cfg: typeof WEAPON_CONFIGS[WeaponType]): void {
-    // Electric field around player
-    const geo = new THREE.SphereGeometry(1.5, 10, 10);
-    const mat = new THREE.MeshBasicMaterial({
-      color: 0x88aaff,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.25,
-    });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(origin);
-    this.scene.add(mesh);
-    this.activeEffectMeshes.push(mesh);
-    this.activeEffectTimers.push(0.15);
-
-    // Damage nearby enemies
+    // Find nearby alive enemies within tesla range
+    const nearbyEnemies: { index: number; pos: THREE.Vector3 }[] = [];
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       if (!e.alive) continue;
       const d = e.mesh.position.distanceTo(origin);
-      if (d < 2.0) {
-        this.damageEnemy(i, cfg.damage * 0.5);
+      if (d < TESLA_ARC_RANGE) {
+        nearbyEnemies.push({ index: i, pos: e.mesh.position.clone() });
       }
     }
+
+    // Spawn persistent electric arcs from player to nearby enemies
+    if (nearbyEnemies.length > 0) {
+      for (let a = 0; a < TESLA_ARC_COUNT; a++) {
+        // Pick a random nearby enemy to arc toward
+        const target = nearbyEnemies[Math.floor(Math.random() * nearbyEnemies.length)];
+        const arcPoints = this.generateLightningPoints(origin, target.pos, 10 + Math.floor(Math.random() * 6));
+        const geo = new THREE.BufferGeometry().setFromPoints(arcPoints);
+
+        // Vary arc colors between cyan, white, and blue-purple
+        const arcColors = [0x88ccff, 0xaaffff, 0x6688ff, 0xccddff, 0x4466ee];
+        const color = arcColors[Math.floor(Math.random() * arcColors.length)];
+        const opacity = 0.5 + Math.random() * 0.4;
+
+        const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity });
+        const line = new THREE.Line(geo, mat);
+        this.scene.add(line);
+
+        const arcLife = TESLA_ARC_PERSIST * (0.6 + Math.random() * 0.8);
+        this.teslaArcs.push({
+          line,
+          age: 0,
+          maxAge: arcLife,
+          initialOpacity: opacity,
+        });
+      }
+
+      // Also spawn some random ambient arcs between nearby points on the sphere
+      // near the player for visual flair
+      for (let a = 0; a < 2; a++) {
+        const normal = origin.clone().normalize();
+        const tangentA = new THREE.Vector3(-Math.sin(this.playerTheta), 0, Math.cos(this.playerTheta)).normalize();
+        const tangentB = new THREE.Vector3().crossVectors(normal, tangentA).normalize();
+
+        const angle1 = Math.random() * Math.PI * 2;
+        const angle2 = Math.random() * Math.PI * 2;
+        const radius1 = 0.3 + Math.random() * 0.8;
+        const radius2 = 0.3 + Math.random() * 0.8;
+
+        const p1 = origin.clone()
+          .add(tangentA.clone().multiplyScalar(Math.cos(angle1) * radius1))
+          .add(tangentB.clone().multiplyScalar(Math.sin(angle1) * radius1));
+        p1.normalize().multiplyScalar(SPHERE_RADIUS);
+
+        const p2 = origin.clone()
+          .add(tangentA.clone().multiplyScalar(Math.cos(angle2) * radius2))
+          .add(tangentB.clone().multiplyScalar(Math.sin(angle2) * radius2));
+        p2.normalize().multiplyScalar(SPHERE_RADIUS);
+
+        const arcPoints = this.generateLightningPoints(p1, p2, 5 + Math.floor(Math.random() * 4));
+        const geo = new THREE.BufferGeometry().setFromPoints(arcPoints);
+        const opacity = 0.2 + Math.random() * 0.3;
+        const mat = new THREE.LineBasicMaterial({ color: 0x4466aa, transparent: true, opacity });
+        const line = new THREE.Line(geo, mat);
+        this.scene.add(line);
+
+        this.teslaArcs.push({
+          line,
+          age: 0,
+          maxAge: TESLA_ARC_PERSIST * (0.3 + Math.random() * 0.5),
+          initialOpacity: opacity,
+        });
+      }
+    }
+
+    // Damage nearby enemies
+    for (const target of nearbyEnemies) {
+      this.damageEnemy(target.index, cfg.damage * 0.5);
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Tesla arc update (persistent arcs that fade over time)
+  // -----------------------------------------------------------------------
+
+  private updateTeslaArcs(dt: number): void {
+    for (let i = this.teslaArcs.length - 1; i >= 0; i--) {
+      const arc = this.teslaArcs[i];
+      arc.age += dt;
+
+      if (arc.age >= arc.maxAge) {
+        this.scene.remove(arc.line);
+        arc.line.geometry.dispose();
+        (arc.line.material as THREE.LineBasicMaterial).dispose();
+        this.teslaArcs.splice(i, 1);
+        continue;
+      }
+
+      // Fade out over the arc's lifetime
+      const progress = arc.age / arc.maxAge;
+      const mat = arc.line.material as THREE.LineBasicMaterial;
+      mat.opacity = arc.initialOpacity * (1 - progress * progress); // quadratic fade
+    }
+  }
+
+  private clearTeslaArcs(): void {
+    for (let i = this.teslaArcs.length - 1; i >= 0; i--) {
+      const arc = this.teslaArcs[i];
+      this.scene.remove(arc.line);
+      arc.line.geometry.dispose();
+      (arc.line.material as THREE.LineBasicMaterial).dispose();
+    }
+    this.teslaArcs = [];
   }
 
   // -----------------------------------------------------------------------
@@ -911,9 +1545,11 @@ export class WeaponPlayground {
   // -----------------------------------------------------------------------
 
   private updateStats(): void {
+    const livesEl = this.statsOverlay.querySelector('#pg-lives');
     const dpsEl = this.statsOverlay.querySelector('#pg-dps');
     const killsEl = this.statsOverlay.querySelector('#pg-kills');
     const timeEl = this.statsOverlay.querySelector('#pg-time');
+    if (livesEl) livesEl.textContent = `LIVES: ${this.lives}`;
     if (dpsEl) dpsEl.textContent = `DPS: ${this.dps}`;
     if (killsEl) killsEl.textContent = `KILLS: ${this.kills}`;
     if (timeEl) timeEl.textContent = `${this.elapsed.toFixed(1)}s`;

@@ -71,6 +71,8 @@ export interface NetworkGameState {
   gameTime: number;
   gameStarted: boolean;
   gameOver: boolean;
+  hostId: string;
+  isPaused: boolean;
 }
 
 /** Input to send to server */
@@ -94,6 +96,8 @@ export interface NetworkCallbacks {
   onGeomCollect?: (geomId: string) => void;
   onGameStart?: () => void;
   onGameOver?: () => void;
+  onHostLeft?: () => void;
+  onGameEnded?: () => void;
   onError?: (error: Error) => void;
 }
 
@@ -234,6 +238,17 @@ export class NetworkClient {
       }
     });
 
+    // Server lifecycle messages
+    this.room.onMessage('host_left', () => {
+      console.log('[Network] Host left the game');
+      this.callbacks.onHostLeft?.();
+    });
+
+    this.room.onMessage('game_ended', () => {
+      console.log('[Network] Host ended the game');
+      this.callbacks.onGameEnded?.();
+    });
+
     // Disconnection
     this.room.onLeave((code) => {
       console.log(`[Network] Left room with code: ${code}`);
@@ -259,6 +274,8 @@ export class NetworkClient {
       gameTime: number;
       gameStarted: boolean;
       gameOver: boolean;
+      hostId: string;
+      isPaused: boolean;
     };
 
     return {
@@ -272,6 +289,8 @@ export class NetworkClient {
       gameTime: s.gameTime,
       gameStarted: s.gameStarted,
       gameOver: s.gameOver,
+      hostId: s.hostId,
+      isPaused: s.isPaused,
     };
   }
 
@@ -289,6 +308,22 @@ export class NetworkClient {
   startGame(): void {
     if (!this.room || !this.connected) return;
     this.room.send('start');
+  }
+
+  /**
+   * Send pause/resume command (host only)
+   */
+  sendPause(paused: boolean): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('pause', { paused });
+  }
+
+  /**
+   * Send end game command (host only)
+   */
+  sendEndGame(): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('end_game');
   }
 
   /**

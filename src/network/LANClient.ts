@@ -10,6 +10,18 @@ export interface LANStatus {
   port: number;
 }
 
+export interface LANRoom {
+  roomId: string;
+  name: string;
+  clients: number;
+  maxClients: number;
+  metadata: {
+    surface?: string;
+    status?: string;
+    wave?: number;
+  };
+}
+
 export interface LANServer {
   ip: string;
   port: number;
@@ -17,6 +29,7 @@ export interface LANServer {
     game: string;
     self?: boolean;
   };
+  rooms?: LANRoom[];
 }
 
 export interface LANStartResult {
@@ -74,6 +87,20 @@ export class LANClient {
     const res = await fetch('/__lan/scan');
     if (!res.ok) throw new Error('Scan failed');
     return res.json();
+  }
+
+  /** Fetch room list from a specific server */
+  async fetchRooms(ip: string, port: number): Promise<LANRoom[]> {
+    try {
+      const res = await fetch(`http://${ip}:${port}/api/rooms`, {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data.rooms) ? data.rooms : [];
+    } catch {
+      return [];
+    }
   }
 
   /** Build the WebSocket URL for connecting to a LAN server */

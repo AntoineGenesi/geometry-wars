@@ -44,13 +44,13 @@ function getSurfaceType(): SurfaceType {
 // Get server URL from URL params
 function getServerUrl(): string {
   const params = new URLSearchParams(window.location.search);
-  return params.get('server') || 'ws://localhost:2567';
+  return params.get('server') || `ws://${window.location.hostname}:2567`;
 }
 
 function main() {
   console.log('[NetworkMain] Starting network multiplayer mode...');
 
-  // Create game with disabled bloom (causes white-out)
+  // Create game with bloom enabled (threshold=0.85 prevents white-out)
   const game = new Game({
     bloom: {
       strength: 1.0,
@@ -97,6 +97,12 @@ function main() {
   // Enemy tracking
   const enemyMeshes = new Map<string, THREE.Mesh>();
 
+  // Bullet tracking: server bullet ID -> pool index (for incremental sync)
+  const bulletIdToIndex = new Map<string, number>();
+
+  // Geom tracking: server geom ID -> pool index (for incremental sync)
+  const geomIdToIndex = new Map<string, number>();
+
   // Weapon pickup tracking
   const weaponPickupMeshes = new Map<string, THREE.Mesh>();
 
@@ -124,6 +130,11 @@ function main() {
 
   // Track local player
   let localPlayerId = '';
+
+  // Input throttle: send at 20Hz max, and only when input changes
+  const INPUT_SEND_INTERVAL = 0.05; // 50ms = 20Hz
+  let lastInputSendTime = 0;
+  let lastSentInput: { moveX: number; moveY: number; aimAngle: number; shooting: boolean; bomb: boolean } | null = null;
 
   // UI elements
   const statusEl = document.createElement('div');
@@ -333,26 +344,85 @@ function main() {
       }
     });
 
-    // Sync bullets - clear and respawn from server state
-    // Note: BulletPool doesn't have releaseAll, so we use clear()
-    bulletPool.clear();
+    // Sync bullets incrementally: update existing, create new, remove stale
+    const activeBulletIds = new Set<string>();
+    const trackedBulletIndices = new Set(bulletIdToIndex.values());
+
     state.bullets.forEach((bullet: NetworkBulletState) => {
-      const surfacePoint: SurfacePoint = surface.getPoint(bullet.x, bullet.y);
-      const dir = new THREE.Vector3(bullet.dirX, bullet.dirY, bullet.dirZ);
-      bulletPool.spawn(
-        surfacePoint.position.clone().add(surfacePoint.normal.clone().multiplyScalar(0.02)),
-        dir,
-        bullet.x,
-        bullet.y,
-        Math.atan2(bullet.dirY, bullet.dirX)
-      );
+      activeBulletIds.add(bullet.id);
+      const existingIdx = bulletIdToIndex.get(bullet.id);
+
+      if (existingIdx !== undefined) {
+        // Update existing bullet position with interpolation
+        const surfacePoint: SurfacePoint = surface.getPoint(bullet.x, bullet.y);
+        const targetPos = surfacePoint.position.clone().add(
+          surfacePoint.normal.clone().multiplyScalar(0.02)
+        );
+        const line = (bulletPool as unknown as { lines: THREE.Line[] }).lines[existingIdx];
+        if (line && line.visible) {
+          line.position.lerp(targetPos, 0.4);
+        }
+      } else {
+        // New bullet: spawn in pool and track
+        const surfacePoint: SurfacePoint = surface.getPoint(bullet.x, bullet.y);
+        const dir = new THREE.Vector3(bullet.dirX, bullet.dirY, bullet.dirZ);
+        bulletPool.spawn(
+          surfacePoint.position.clone().add(surfacePoint.normal.clone().multiplyScalar(0.02)),
+          dir,
+          bullet.x,
+          bullet.y,
+          Math.atan2(bullet.dirY, bullet.dirX)
+        );
+        // Find the newly spawned index (active but not yet tracked)
+        bulletPool.forEachActive((idx) => {
+          if (!trackedBulletIndices.has(idx)) {
+            bulletIdToIndex.set(bullet.id, idx);
+            trackedBulletIndices.add(idx);
+          }
+        });
+      }
+    });
+    // Remove bullets no longer in server state
+    bulletIdToIndex.forEach((idx, id) => {
+      if (!activeBulletIds.has(id)) {
+        bulletPool.kill(idx);
+        bulletIdToIndex.delete(id);
+      }
     });
 
-    // Sync geoms - clear and respawn from server state
-    geomPool.clear();
+    // Sync geoms incrementally: update existing, create new, remove stale
+    const activeGeomIds = new Set<string>();
+    const trackedGeomIndices = new Set(geomIdToIndex.values());
+
     state.geoms.forEach((geom: NetworkGeomState) => {
-      if (geom.active) {
+      if (!geom.active) return;
+      activeGeomIds.add(geom.id);
+
+      if (geomIdToIndex.has(geom.id)) {
+        // Existing geom - update UV coordinates so projection uses fresh positions
+        const idx = geomIdToIndex.get(geom.id)!;
+        const geomData = (geomPool as unknown as { geoms: { surfaceU: number; surfaceV: number }[] }).geoms[idx];
+        if (geomData) {
+          geomData.surfaceU = geom.surfaceU;
+          geomData.surfaceV = geom.surfaceV;
+        }
+      } else {
+        // New geom: spawn and track
         geomPool.spawn(geom.surfaceU, geom.surfaceV);
+        // Find the newly spawned index (active but not yet tracked)
+        geomPool.forEachActive((idx) => {
+          if (!trackedGeomIndices.has(idx)) {
+            geomIdToIndex.set(geom.id, idx);
+            trackedGeomIndices.add(idx);
+          }
+        });
+      }
+    });
+    // Remove geoms no longer in server state
+    geomIdToIndex.forEach((idx, id) => {
+      if (!activeGeomIds.has(id)) {
+        geomPool.kill(idx);
+        geomIdToIndex.delete(id);
       }
     });
 
@@ -464,19 +534,36 @@ function main() {
     const inputState = input.getState();
 
     // Calculate aim angle from mouse position
+    // Negate Y because screen Y-axis points down, but UV V-axis increases downward
+    // on the server, so we need to invert to match the math coordinate system
     const mouseX = inputState.aimX;
     const mouseY = inputState.aimY;
-    const aimAngle = Math.atan2(mouseY, mouseX);
+    const aimAngle = Math.atan2(-mouseY, mouseX);
 
-    // Send input to server
-    if (network.isConnected()) {
-      network.sendInput({
+    // Throttle input to 20Hz and only send when changed
+    lastInputSendTime += dt;
+    if (network.isConnected() && lastInputSendTime >= INPUT_SEND_INTERVAL) {
+      const currentInput = {
         moveX: inputState.moveX,
         moveY: inputState.moveY,
         aimAngle,
         shooting: inputState.shooting,
         bomb: inputState.bomb,
-      });
+      };
+
+      // Send if input changed or interval elapsed
+      const changed = !lastSentInput
+        || currentInput.moveX !== lastSentInput.moveX
+        || currentInput.moveY !== lastSentInput.moveY
+        || Math.abs(currentInput.aimAngle - lastSentInput.aimAngle) > 0.02
+        || currentInput.shooting !== lastSentInput.shooting
+        || currentInput.bomb !== lastSentInput.bomb;
+
+      if (changed) {
+        network.sendInput(currentInput);
+        lastSentInput = { ...currentInput };
+        lastInputSendTime = 0;
+      }
     }
 
     // Update particles

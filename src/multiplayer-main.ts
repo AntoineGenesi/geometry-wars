@@ -35,8 +35,6 @@ import { ControlsMenu } from './ui/ControlsMenu';
 import { WeaponManager } from './weapons/WeaponManager';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
 import { WeaponPickup, getRandomWeaponType } from './weapons/WeaponPickup';
-import { BaseDrone, DroneType } from './weapons/BaseDrone';
-import { createDrone } from './weapons/DroneFactory';
 import { SuperStateManager, SuperStateType } from './weapons/SuperState';
 import { SuperStatePickup } from './weapons/SuperStatePickup';
 import { ScorePopupManager } from './effects/ScorePopup';
@@ -243,6 +241,9 @@ function main(): void {
   const hud = new SplitScreenHUD(playerCount);
   const killTally = new KillTally(playerCount);
 
+  // -- Per-player weapon HUDs (declared here so updateViewportSizes can access them) --
+  const weaponHUDs: WeaponHUD[] = [];
+
   // Initial viewport sizing
   function updateViewportSizes(): void {
     const w = window.innerWidth;
@@ -417,8 +418,6 @@ function main(): void {
   // -- Per-player weapon managers --
   const weaponManagers: WeaponManager[] = [];
   const superStateManagers: SuperStateManager[] = [];
-  const drones: BaseDrone[][] = [];
-
   /** Shared enemy death handler */
   function handleEnemyDeath(enemy: BaseEnemy, killerPlayerId: number): void {
     const enemyType = enemy.constructor.name.toLowerCase();
@@ -514,44 +513,10 @@ function main(): void {
     return wm;
   }
 
-  // -- Per-player weapon HUDs --
-  const weaponHUDs: WeaponHUD[] = [];
-
   for (let i = 0; i < playerCount; i++) {
     weaponManagers.push(createWeaponManager(i));
     superStateManagers.push(new SuperStateManager());
-    drones.push([]);
     weaponHUDs.push(new WeaponHUD());
-
-    if (level.drone) {
-      const droneType = level.drone as DroneType;
-      const droneOwnerId = i;
-      const drone = createDrone(droneType, 0, {
-        onShoot: (origin, direction) => {
-          const transform = getTransform(origin.u, origin.v);
-          const dir = new THREE.Vector3(
-            Math.cos(direction), 0, Math.sin(direction),
-          ).applyQuaternion(
-            new THREE.Quaternion().setFromUnitVectors(
-              new THREE.Vector3(0, 1, 0),
-              transform.normal,
-            ),
-          );
-          bulletPool.spawn(transform.position, dir, origin.u, origin.v, direction, droneOwnerId);
-        },
-        onCollectGeom: (u, v) => {
-          geomPool.forEachActive((index, _su, _sv, position) => {
-            const transform = getTransform(u, v);
-            if (transform.position.distanceTo(position) < 0.5) {
-              geomPool.kill(index);
-              scoreManager.collectGeom();
-            }
-          });
-        },
-      });
-      game.scene.add(drone.mesh);
-      drones[i].push(drone);
-    }
   }
 
   // -- Player callbacks --
@@ -608,6 +573,7 @@ function main(): void {
   const pauseMenu = new PauseMenu();
   pauseMenu.onResume(() => {
     isPaused = false;
+    game.resume(); // resync clock to avoid massive dt after long pause
     // Force respawn for any players who died during pause
     for (let i = 0; i < playerCount; i++) {
       if (!players[i].alive && players[i].lives > 0) {
@@ -639,11 +605,22 @@ function main(): void {
     if (e.key === 'Escape' && !isGameOver) {
       if (isPaused) {
         isPaused = false;
+        game.resume(); // resync clock to avoid massive dt after long pause
         pauseMenu.hide();
       } else {
         isPaused = true;
+        game.pause(); // stop clock ticking while paused
         pauseMenu.show();
       }
+    }
+  });
+
+  // -- Auto-pause when tab is hidden (sync with Game.onVisibilityChange) --
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && !isPaused && !isGameOver) {
+      isPaused = true;
+      game.pause(); // stop clock ticking while tab is hidden
+      pauseMenu.show();
     }
   });
 
@@ -858,16 +835,6 @@ function main(): void {
       }
     }
 
-    // Update drones
-    const enemies = enemySpawner.getEnemies();
-    for (let i = 0; i < playerCount; i++) {
-      if (!players[i].alive) continue;
-      for (const drone of drones[i]) {
-        drone.update(dt, players[i].surfaceU, players[i].surfaceV, players[i].aimAngle, enemies);
-        drone.applySurfaceTransform(getTransform);
-      }
-    }
-
     // Update super state managers
     for (const ssm of superStateManagers) {
       ssm.update(dt);
@@ -902,6 +869,8 @@ function main(): void {
     // -----------------------------------------------------------------------
     // Collisions
     // -----------------------------------------------------------------------
+
+    const enemies = enemySpawner.getEnemies();
 
     // Bullet-enemy
     bulletPool.forEachActive((bulletIdx, bulletPos, bulletData) => {

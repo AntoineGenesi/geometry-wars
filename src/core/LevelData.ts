@@ -38,8 +38,6 @@ export interface LevelDefinition {
   supers: number;
   starThresholds: [number, number, number];
   waves: WaveDefinition[];
-  /** Optional drone type for this level. */
-  drone?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -26,10 +26,9 @@ export default defineConfig({
     port: 3000,
     host: true,
     open: true,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
+    // COOP/COEP headers removed - they block cross-device LAN access
+    // (Safari and mobile browsers refuse to load resources with these headers)
+    // SharedArrayBuffer is not used, so these are unnecessary
   },
   build: {
     target: 'es2022',

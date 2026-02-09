@@ -202,6 +202,8 @@ export class GameState extends Schema {
   declare gameTime: number;
   declare gameStarted: boolean;
   declare gameOver: boolean;
+  declare hostId: string;
+  declare isPaused: boolean;
 
   constructor() {
     super();
@@ -215,6 +217,8 @@ export class GameState extends Schema {
     this.gameTime = 0;
     this.gameStarted = false;
     this.gameOver = false;
+    this.hostId = '';
+    this.isPaused = false;
   }
 }
 
@@ -229,4 +233,6 @@ defineTypes(GameState, {
   gameTime: 'number',
   gameStarted: 'boolean',
   gameOver: 'boolean',
+  hostId: 'string',
+  isPaused: 'boolean',
 });

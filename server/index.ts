@@ -13,10 +13,10 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT) || 2567;
 const app = express();
 
-// Cross-Origin Isolation headers (enables SharedArrayBuffer for Web Workers)
+// CORS headers for LAN access (allow any origin to connect)
 app.use((_req, res, next) => {
-  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
-  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   next();
 });
 
@@ -35,6 +35,24 @@ app.get('/api/info', (req, res) => {
     version: '0.1.0',
     port: PORT,
   });
+});
+
+// Room listing endpoint - returns active game rooms for lobby browser
+app.get('/api/rooms', async (_req, res) => {
+  try {
+    const rooms = await gameServer.matchMaker.query({});
+    const roomList = rooms.map((r) => ({
+      roomId: r.roomId,
+      name: r.name,
+      clients: r.clients,
+      maxClients: r.maxClients,
+      metadata: r.metadata || {},
+    }));
+    res.json({ rooms: roomList });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ rooms: [], error: message });
+  }
 });
 
 // Create HTTP server

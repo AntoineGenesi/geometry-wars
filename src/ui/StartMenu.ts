@@ -44,6 +44,9 @@ export class StartMenu {
   private menuBackground: MenuBackground;
   private styleElement: HTMLStyleElement | null = null;
   private pendingMode: 'single' | 'network' = 'single';
+  private lanAutoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private lanAutoRefreshEnabled = true;
+  private lanScanning = false;
 
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
@@ -219,14 +222,22 @@ export class StartMenu {
               <button class="lan-btn lan-stop hidden" id="lan-stop-btn">STOP SERVER</button>
             </div>
           </div>
-          <div class="lan-divider">or</div>
-          <div id="lan-join-panel">
-            <div class="lan-input-row">
-              <input type="text" id="lan-ip-input" placeholder="Host IP (e.g. 192.168.1.15)" />
-              <button class="lan-btn lan-connect" id="lan-connect-btn">CONNECT</button>
+          <div class="lan-divider-line"></div>
+          <h3 class="lan-lobby-title">AVAILABLE GAMES</h3>
+          <div class="lan-lobby-list" id="lan-lobby-list">
+            <div class="lan-lobby-empty" id="lan-lobby-empty">
+              <p>Scanning for games...</p>
             </div>
-            <button class="lan-btn lan-scan" id="lan-scan-btn">SCAN LAN</button>
-            <div id="lan-scan-results"></div>
+          </div>
+          <div class="lan-refresh-bar">
+            <button class="lan-btn lan-refresh" id="lan-refresh-btn">REFRESH</button>
+            <button class="lan-btn lan-auto-toggle active" id="lan-auto-refresh-btn">AUTO-REFRESH: ON</button>
+          </div>
+          <div class="lan-divider-line"></div>
+          <h3 class="lan-manual-title">MANUAL CONNECT</h3>
+          <div class="lan-input-row">
+            <input type="text" id="lan-ip-input" placeholder="Host IP (e.g. 192.168.1.15)" />
+            <button class="lan-btn lan-connect" id="lan-connect-btn">CONNECT</button>
           </div>
           <button class="back-btn" id="lan-back">BACK</button>
         </div>
@@ -817,6 +828,152 @@ export class StartMenu {
       }
 
       /* ------------------------------------------------------------------- */
+      /* LAN lobby browser                                                    */
+      /* ------------------------------------------------------------------- */
+      #start-menu .lan-divider-line {
+        border: none;
+        border-top: 1px solid rgba(0, 255, 255, 0.15);
+        margin: 16px 0 8px;
+        height: 0;
+      }
+      #start-menu .lan-lobby-title,
+      #start-menu .lan-manual-title {
+        color: #66aaaa;
+        font-size: 12px;
+        letter-spacing: 3px;
+        margin: 8px 0 10px;
+        text-align: center;
+      }
+      #start-menu .lan-lobby-list {
+        max-height: 220px;
+        overflow-y: auto;
+        margin: 0 0 10px;
+        scrollbar-width: thin;
+        scrollbar-color: #006666 rgba(0,40,40,0.3);
+      }
+      #start-menu .lan-lobby-list::-webkit-scrollbar {
+        width: 6px;
+      }
+      #start-menu .lan-lobby-list::-webkit-scrollbar-track {
+        background: rgba(0,40,40,0.3);
+      }
+      #start-menu .lan-lobby-list::-webkit-scrollbar-thumb {
+        background: #006666;
+        border-radius: 3px;
+      }
+      #start-menu .lan-lobby-entry {
+        background: rgba(0, 60, 60, 0.35);
+        border: 1px solid #005555;
+        padding: 10px 14px;
+        margin: 0 0 6px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      #start-menu .lan-lobby-entry:hover {
+        background: rgba(0, 100, 100, 0.45);
+        border-color: #00ffff;
+        box-shadow: 0 0 12px rgba(0, 255, 255, 0.25);
+      }
+      #start-menu .lan-lobby-entry.self-server {
+        border-color: #44ff66;
+      }
+      #start-menu .lan-lobby-entry.self-server:hover {
+        border-color: #66ff88;
+        box-shadow: 0 0 12px rgba(68, 255, 102, 0.25);
+      }
+      #start-menu .lan-lobby-info {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      #start-menu .lan-lobby-host {
+        color: #00ffff;
+        font: bold 13px monospace;
+      }
+      #start-menu .lan-lobby-surface {
+        color: #88cccc;
+        font: 11px monospace;
+      }
+      #start-menu .lan-lobby-meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 3px;
+      }
+      #start-menu .lan-lobby-players {
+        color: #aaffaa;
+        font: bold 13px monospace;
+      }
+      #start-menu .lan-lobby-status {
+        font: 11px monospace;
+        padding: 2px 8px;
+        border-radius: 3px;
+      }
+      #start-menu .lan-lobby-status.waiting {
+        color: #ffdd44;
+        background: rgba(255, 221, 68, 0.1);
+      }
+      #start-menu .lan-lobby-status.playing {
+        color: #44ff66;
+        background: rgba(68, 255, 102, 0.1);
+      }
+      #start-menu .lan-lobby-status.game_over {
+        color: #ff6644;
+        background: rgba(255, 102, 68, 0.1);
+      }
+      #start-menu .lan-lobby-status.unknown {
+        color: #888888;
+        background: rgba(136, 136, 136, 0.1);
+      }
+      #start-menu .lan-lobby-empty {
+        text-align: center;
+        padding: 20px;
+        color: #557777;
+        font: 13px monospace;
+      }
+      #start-menu .lan-lobby-empty p {
+        margin: 4px 0;
+      }
+      @keyframes lanScanPulse {
+        0%, 100% { opacity: 0.5; }
+        50% { opacity: 1; }
+      }
+      #start-menu .lan-lobby-scanning {
+        animation: lanScanPulse 1.2s ease-in-out infinite;
+        color: #44dddd;
+      }
+      #start-menu .lan-refresh-bar {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin: 6px 0 10px;
+      }
+      #start-menu .lan-btn.lan-refresh {
+        padding: 8px 20px;
+        font-size: 12px;
+      }
+      #start-menu .lan-btn.lan-auto-toggle {
+        padding: 8px 16px;
+        font-size: 11px;
+        background: linear-gradient(180deg, #224433 0%, #112222 100%);
+        border-color: #338844;
+      }
+      #start-menu .lan-btn.lan-auto-toggle:hover {
+        background: linear-gradient(180deg, #336644 0%, #223333 100%);
+      }
+      #start-menu .lan-btn.lan-auto-toggle.active {
+        border-color: #44ff66;
+        color: #aaffaa;
+      }
+      #start-menu .lan-btn.lan-auto-toggle:not(.active) {
+        border-color: #666666;
+        color: #888888;
+      }
+
+      /* ------------------------------------------------------------------- */
       /* Hidden utility                                                       */
       /* ------------------------------------------------------------------- */
       #start-menu .hidden { display: none !important; }
@@ -879,6 +1036,9 @@ export class StartMenu {
           mainButtonsContainer.classList.add('hidden');
           adventureSection.classList.add('hidden');
           coopSection.classList.add('hidden');
+          // Auto-scan when LAN panel opens
+          this.performLobbyRefresh();
+          this.startAutoRefresh();
           return;
         }
 
@@ -993,8 +1153,8 @@ export class StartMenu {
     const lanStopBtn = this.container.querySelector('#lan-stop-btn') as HTMLElement;
     const lanConnectBtn = this.container.querySelector('#lan-connect-btn') as HTMLElement;
     const lanIpInput = this.container.querySelector('#lan-ip-input') as HTMLInputElement;
-    const lanScanBtn = this.container.querySelector('#lan-scan-btn') as HTMLElement;
-    const lanScanResults = this.container.querySelector('#lan-scan-results') as HTMLElement;
+    const lanRefreshBtn = this.container.querySelector('#lan-refresh-btn') as HTMLElement;
+    const lanAutoRefreshBtn = this.container.querySelector('#lan-auto-refresh-btn') as HTMLElement;
 
     let hostedServerUrl = '';
     const lanHostSurfacePick = this.container.querySelector('#lan-host-surface-pick') as HTMLElement;
@@ -1066,13 +1226,14 @@ export class StartMenu {
           }
           lanEnterBtn.classList.remove('hidden');
           lanStopBtn.classList.remove('hidden');
+          // Refresh lobby list to show the new server
+          this.performLobbyRefresh();
         } else {
           lanHostStatus.textContent = `Failed: ${result.error ?? 'Unknown error'}`;
           lanHostBtn.style.display = '';
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        // fetch() throws TypeError on network failure (e.g. endpoint not available in production builds)
         const isNetworkError = err instanceof TypeError || msg.includes('fetch');
         lanHostStatus.textContent = isNetworkError
           ? 'LAN hosting requires dev mode (npm run dev)'
@@ -1084,6 +1245,7 @@ export class StartMenu {
     // ENTER GAME (after hosting)
     lanEnterBtn?.addEventListener('click', () => {
       if (hostedServerUrl) {
+        this.stopAutoRefresh();
         this.onStartCallback?.({
           surfaceType: this.lanSelectedSurface,
           gameMode: 'network',
@@ -1099,15 +1261,18 @@ export class StartMenu {
       lanHostSurfacePick.classList.add('hidden');
       lanHostBtn.style.display = '';
       hostedServerUrl = '';
+      // Refresh lobby list after stopping
+      this.performLobbyRefresh();
     });
 
     // CONNECT (manual IP)
     lanConnectBtn?.addEventListener('click', () => {
       const ip = lanIpInput.value.trim();
       if (!ip) return;
+      this.stopAutoRefresh();
       const serverUrl = this.lanClient.getServerWsUrl(ip, 2567);
       this.onStartCallback?.({
-        surfaceType: this.selectedSurface,
+        surfaceType: this.lanSelectedSurface,
         gameMode: 'network',
         serverUrl,
       });
@@ -1120,46 +1285,29 @@ export class StartMenu {
       }
     });
 
-    // SCAN LAN
-    lanScanBtn?.addEventListener('click', async () => {
-      lanScanResults.innerHTML = '<p class="lan-scan-msg">Scanning local network...</p>';
-      lanScanBtn.textContent = 'SCANNING...';
-      (lanScanBtn as HTMLButtonElement).disabled = true;
+    // REFRESH button
+    lanRefreshBtn?.addEventListener('click', () => {
+      this.performLobbyRefresh();
+    });
 
-      try {
-        const result = await this.lanClient.scan();
-        lanScanResults.innerHTML = '';
-
-        if (result.found.length === 0) {
-          lanScanResults.innerHTML = '<p class="lan-scan-msg">No games found on LAN</p>';
-        } else {
-          for (const server of result.found) {
-            const selfTag = server.info?.self ? ' (you)' : '';
-            const item = document.createElement('div');
-            item.className = 'lan-scan-item';
-            item.textContent = `${server.ip}:${server.port}${selfTag}`;
-            item.addEventListener('click', () => {
-              const serverUrl = this.lanClient.getServerWsUrl(server.ip, server.port);
-              this.onStartCallback?.({
-                surfaceType: this.selectedSurface,
-                gameMode: 'network',
-                serverUrl,
-              });
-            });
-            lanScanResults.appendChild(item);
-          }
-        }
-      } catch {
-        lanScanResults.innerHTML = '<p class="lan-scan-msg">Scan requires dev mode (npm run dev)</p>';
+    // AUTO-REFRESH toggle
+    lanAutoRefreshBtn?.addEventListener('click', () => {
+      this.lanAutoRefreshEnabled = !this.lanAutoRefreshEnabled;
+      if (this.lanAutoRefreshEnabled) {
+        lanAutoRefreshBtn.textContent = 'AUTO-REFRESH: ON';
+        lanAutoRefreshBtn.classList.add('active');
+        this.startAutoRefresh();
+      } else {
+        lanAutoRefreshBtn.textContent = 'AUTO-REFRESH: OFF';
+        lanAutoRefreshBtn.classList.remove('active');
+        this.stopAutoRefresh();
       }
-
-      lanScanBtn.textContent = 'SCAN LAN';
-      (lanScanBtn as HTMLButtonElement).disabled = false;
     });
 
     // Back from LAN
     const lanBackBtn = this.container.querySelector('#lan-back');
     lanBackBtn?.addEventListener('click', () => {
+      this.stopAutoRefresh();
       lanSection.classList.add('hidden');
       lanHostSurfacePick.classList.add('hidden');
       lanHostBtn.style.display = '';
@@ -1188,6 +1336,165 @@ export class StartMenu {
   }
 
   // -----------------------------------------------------------------------
+  // LAN lobby browser helpers
+  // -----------------------------------------------------------------------
+
+  private startAutoRefresh(): void {
+    this.stopAutoRefresh();
+    if (!this.lanAutoRefreshEnabled) return;
+    this.lanAutoRefreshTimer = setInterval(() => {
+      this.performLobbyRefresh();
+    }, 5000);
+  }
+
+  private stopAutoRefresh(): void {
+    if (this.lanAutoRefreshTimer !== null) {
+      clearInterval(this.lanAutoRefreshTimer);
+      this.lanAutoRefreshTimer = null;
+    }
+  }
+
+  private async performLobbyRefresh(): Promise<void> {
+    if (this.lanScanning) return;
+    this.lanScanning = true;
+
+    const lobbyList = this.container.querySelector('#lan-lobby-list') as HTMLElement;
+    const refreshBtn = this.container.querySelector('#lan-refresh-btn') as HTMLButtonElement | null;
+
+    if (refreshBtn) {
+      refreshBtn.textContent = 'SCANNING...';
+      refreshBtn.disabled = true;
+    }
+
+    // Show scanning state only if list is empty
+    const emptyEl = this.container.querySelector('#lan-lobby-empty') as HTMLElement | null;
+    if (emptyEl && lobbyList.children.length <= 1) {
+      emptyEl.innerHTML = '<p class="lan-lobby-scanning">Scanning local network...</p>';
+      emptyEl.style.display = '';
+    }
+
+    try {
+      const result = await this.lanClient.scan();
+      this.renderLobbyEntries(lobbyList, result.found);
+    } catch {
+      const empty = this.container.querySelector('#lan-lobby-empty') as HTMLElement | null;
+      if (empty) {
+        empty.innerHTML = '<p>Scan requires dev mode (npm run dev)</p>';
+        empty.style.display = '';
+      }
+    }
+
+    if (refreshBtn) {
+      refreshBtn.textContent = 'REFRESH';
+      refreshBtn.disabled = false;
+    }
+
+    this.lanScanning = false;
+  }
+
+  private renderLobbyEntries(
+    container: HTMLElement,
+    servers: Array<{ ip: string; port: number; info?: { game?: string; self?: boolean }; rooms?: Array<{ roomId: string; name: string; clients: number; maxClients: number; metadata: Record<string, unknown> }> }>,
+  ): void {
+    container.innerHTML = '';
+
+    if (servers.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'lan-lobby-empty';
+      empty.id = 'lan-lobby-empty';
+      empty.innerHTML = `
+        <p>No games found on LAN</p>
+        <p style="font-size: 11px; color: #445555;">Make sure a server is running and you are on the same network</p>
+      `;
+      container.appendChild(empty);
+      return;
+    }
+
+    for (const server of servers) {
+      const isSelf = !!(server.info && 'self' in server.info && server.info.self);
+      const rooms = server.rooms ?? [];
+
+      if (rooms.length === 0) {
+        // Server found but no rooms - show a single entry for the server
+        const entry = this.createLobbyEntry(server.ip, server.port, isSelf, {
+          surface: 'Unknown',
+          players: '0/?',
+          status: 'waiting',
+          statusLabel: 'No active rooms',
+        });
+        container.appendChild(entry);
+      } else {
+        for (const room of rooms) {
+          const surface = typeof room.metadata.surface === 'string'
+            ? room.metadata.surface.charAt(0).toUpperCase() + room.metadata.surface.slice(1)
+            : 'Unknown';
+          const status = typeof room.metadata.status === 'string' ? room.metadata.status : 'unknown';
+          const wave = typeof room.metadata.wave === 'number' ? room.metadata.wave : 0;
+
+          let statusLabel = 'Waiting for players';
+          if (status === 'playing') {
+            statusLabel = wave > 0 ? `In Progress - Wave ${wave}` : 'In Progress';
+          } else if (status === 'game_over') {
+            statusLabel = 'Game Over';
+          } else if (status === 'empty') {
+            statusLabel = 'Empty';
+          }
+
+          const rawSurface = typeof room.metadata.surface === 'string' ? room.metadata.surface : 'sphere';
+          const entry = this.createLobbyEntry(server.ip, server.port, isSelf, {
+            surface,
+            players: `${room.clients}/${room.maxClients}`,
+            status,
+            statusLabel,
+            rawSurface,
+          });
+          container.appendChild(entry);
+        }
+      }
+    }
+  }
+
+  private createLobbyEntry(
+    ip: string,
+    port: number,
+    isSelf: boolean,
+    details: { surface: string; players: string; status: string; statusLabel: string; rawSurface?: string },
+  ): HTMLElement {
+    const entry = document.createElement('div');
+    entry.className = `lan-lobby-entry${isSelf ? ' self-server' : ''}`;
+
+    const selfTag = isSelf ? ' (you)' : '';
+    const statusClass = ['waiting', 'playing', 'game_over'].includes(details.status)
+      ? details.status
+      : 'unknown';
+
+    entry.innerHTML = `
+      <div class="lan-lobby-info">
+        <span class="lan-lobby-host">${ip}${selfTag}</span>
+        <span class="lan-lobby-surface">${details.surface}</span>
+      </div>
+      <div class="lan-lobby-meta">
+        <span class="lan-lobby-players">${details.players}</span>
+        <span class="lan-lobby-status ${statusClass}">${details.statusLabel}</span>
+      </div>
+    `;
+
+    entry.addEventListener('click', () => {
+      this.stopAutoRefresh();
+      const serverUrl = this.lanClient.getServerWsUrl(ip, port);
+      // Use the server's actual surface type, not the local Quick Game selection
+      const serverSurface = (details.rawSurface || details.surface.toLowerCase()) as SurfaceType;
+      this.onStartCallback?.({
+        surfaceType: serverSurface,
+        gameMode: 'network',
+        serverUrl,
+      });
+    });
+
+    return entry;
+  }
+
+  // -----------------------------------------------------------------------
   // Public API
   // -----------------------------------------------------------------------
 
@@ -1202,6 +1509,7 @@ export class StartMenu {
    * Hide the menu and stop the 3D background.
    */
   hide(): void {
+    this.stopAutoRefresh();
     this.container.classList.add('hidden');
     this.menuBackground.stop();
   }
@@ -1218,6 +1526,7 @@ export class StartMenu {
    * Remove menu from DOM and dispose of the 3D background.
    */
   dispose(): void {
+    this.stopAutoRefresh();
     // Remove DOM elements FIRST so UI unblocks even if cleanup throws
     this.container.remove();
     if (this.styleElement) {
