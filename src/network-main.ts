@@ -78,6 +78,15 @@ declare global {
   }
 }
 
+// Debug logging: gated behind ?debug=true URL flag, same as NetworkClient.
+// The LAN E2E test suite uses these [NetworkMain] logs for diagnostics.
+const _netMainDebug = new URLSearchParams(window.location.search).has('debug');
+function netMainLog(...args: unknown[]): void {
+  if (_netMainDebug) {
+    console.log(...args);
+  }
+}
+
 // Pre-allocated temp vectors for network state sync (zero per-frame allocation)
 const _netTempPos = new THREE.Vector3();
 const _netTempDir = new THREE.Vector3();
@@ -325,7 +334,7 @@ function main() {
 
       // Type differs - tear down and recreate
       if (lastCreatedSurfaceType !== currentType) {
-        console.log(`[NetworkMain] Surface type changed: ${lastCreatedSurfaceType} -> ${currentType}, rebuilding`);
+        netMainLog(`[NetworkMain] Surface type changed: ${lastCreatedSurfaceType} -> ${currentType}, rebuilding`);
         cleanupSurface();
       } else {
         return; // Same type, not a confirmed upgrade, skip
@@ -377,7 +386,7 @@ function main() {
 
     surfaceReady = true;
     lastCreatedSurfaceType = surfaceType;
-    console.log(`[NetworkMain] Surface initialized: ${surfaceType}`);
+    netMainLog(`[NetworkMain] Surface initialized: ${surfaceType}`);
   }
 
   // -- Camera constants (match co-op) --
@@ -581,7 +590,7 @@ function main() {
         const serverHostId = network.getServerHostId();
         if (serverHostId && serverHostId === localPlayerId) {
           isHost = true;
-          console.log('[NetworkMain] Host status confirmed on ESC press');
+          netMainLog('[NetworkMain] Host status confirmed on ESC press');
         }
       }
       if (isHost) {
@@ -670,7 +679,7 @@ function main() {
     if (state.hostId && state.hostId === localPlayerId && !isHost) {
       isHost = true;
       stopServerBtn.style.display = 'block';
-      console.log('[NetworkMain] Confirmed as host');
+      netMainLog('[NetworkMain] Confirmed as host');
     }
 
     const surf = surface;
