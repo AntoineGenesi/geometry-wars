@@ -253,7 +253,11 @@ function main(): void {
       const pv = splitRenderer.getPixelViewport(i);
       hud.setViewportBounds(i, pv.x, pv.y, pv.w, pv.h);
       killTally.setViewportBounds(i, pv.x, pv.y, pv.w, pv.h);
-      input.setViewportBounds(i, pv.x, pv.y, pv.w, pv.h);
+      // Convert WebGL viewport coords (y-up) to DOM coords (y-down) for mouse aim.
+      // WebGL y=0 is screen bottom; DOM y=0 is screen top.
+      // DOM_y = totalHeight - webgl_y - viewport_height
+      const domY = h - pv.y - pv.h;
+      input.setViewportBounds(i, pv.x, domY, pv.w, pv.h);
       // Position weapon HUD at bottom-left of each viewport
       if (weaponHUDs[i]) {
         weaponHUDs[i].setPosition(pv.x + 8, pv.y + pv.h / 2 - 40);
@@ -322,6 +326,18 @@ function main(): void {
 
     // Register with aura system
     auraManager.registerPlayer(i);
+  }
+
+  // Initialize cameras at correct position/orientation so matrixWorld is valid
+  // from the first frame (needed for camera-relative mouse aim).
+  for (let i = 0; i < playerCount; i++) {
+    const walker = walkers[i];
+    const cam = cameras[i];
+    const camPos = walker.position.clone().addScaledVector(walker.normal, CAMERA_DISTANCE);
+    cam.position.copy(camPos);
+    cam.up.copy(walker.getTangentFrame().bitangent);
+    cam.lookAt(walker.position);
+    cam.updateMatrixWorld(true);
   }
 
   // Add ally glow to every player (each player's glow is visible to all viewports)
@@ -609,13 +625,60 @@ function main(): void {
     const currentWeapon = wm ? wm.getCurrentWeapon() : WeaponType.Standard;
     const weaponConfig = WEAPON_CONFIGS[currentWeapon];
 
+    // Gather aura buff data for all players
+    const auraBuffs: Array<{
+      name: string;
+      stacks: number;
+      description: string;
+      currentValue: string;
+      color: string;
+    }> = [];
+
+    for (let i = 0; i < playerCount; i++) {
+      const tier = auraManager.getTier(i);
+      if (tier > 0) {
+        const buff = auraManager.getBuffForPlayer(i);
+        const dmgBonus = ((buff.damageMultiplier - 1) * 100).toFixed(0);
+        const healRate = buff.healRate.toFixed(1);
+        const hasActiveBuff = buff.damageMultiplier > 1.0 || buff.healRate > 0;
+        const valueStr = hasActiveBuff
+          ? `+${dmgBonus}% dmg, ${healRate} HP/s`
+          : 'No allies in range';
+
+        auraBuffs.push({
+          name: `P${i + 1} Aura`,
+          stacks: tier,
+          description: `Kill-streak aura (Tier ${tier})`,
+          currentValue: valueStr,
+          color: '#00ffff',
+        });
+      }
+    }
+
+    // P1's received aura buff (from allies' auras affecting P1)
+    const p1Buff = auraManager.getBuffForPlayer(0);
+    if (p1Buff.damageMultiplier > 1.0 || p1Buff.healRate > 0) {
+      const dmgBonus = ((p1Buff.damageMultiplier - 1) * 100).toFixed(0);
+      const healRate = p1Buff.healRate.toFixed(1);
+      auraBuffs.push({
+        name: 'Ally Aura Buff',
+        stacks: 1,
+        description: 'Buff received from nearby allies',
+        currentValue: `+${dmgBonus}% damage, +${healRate} HP/s`,
+        color: '#ff00ff',
+      });
+    }
+
     pauseMenu.setGameData({
-      buffs: [],
+      buffs: auraBuffs,
       totalKills: totalKillCounter.getTotalKills(),
       weapon: {
         name: weaponConfig.name,
         baseDamage: weaponConfig.damage,
         fireRate: weaponConfig.fireRate,
+        effectiveDamage: p1Buff.damageMultiplier !== 1
+          ? weaponConfig.damage * p1Buff.damageMultiplier
+          : undefined,
       },
     });
   }
@@ -740,15 +803,32 @@ function main(): void {
 
       // Aim direction
       let aimDir: THREE.Vector3;
+      const frame = walker.getTangentFrame();
       if (bindings.aimMode === 'mouse') {
-        // Mouse aim using tangent frame
-        const frame = walker.getTangentFrame();
+        // Mouse aim using the camera's actual screen axes.
+        // This correctly handles any camera orientation, viewport offset,
+        // and aspect ratio — the camera's right/up vectors ARE screen right/up.
+        const cam = cameras[i];
         const aimLen = Math.sqrt(pInput.aimX * pInput.aimX + pInput.aimY * pInput.aimY);
         if (aimLen > 0.1) {
-          aimDir = new THREE.Vector3()
-            .addScaledVector(frame.tangent, pInput.aimX)
-            .addScaledVector(frame.bitangent, -pInput.aimY)
-            .normalize();
+          // Extract the camera's world-space right and up vectors
+          const camRight = new THREE.Vector3();
+          const camUp = new THREE.Vector3();
+          cam.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+          // Map screen-space aim to world space:
+          //   aimX > 0 = screen right = camera right
+          //   aimY > 0 = screen down  = -camera up
+          const worldAim = new THREE.Vector3()
+            .addScaledVector(camRight, pInput.aimX)
+            .addScaledVector(camUp, -pInput.aimY);
+          // Project onto the surface tangent plane so aiming stays on the surface
+          const normalDot = worldAim.dot(walker.normal);
+          worldAim.addScaledVector(walker.normal, -normalDot);
+          if (worldAim.lengthSq() > 0.0001) {
+            aimDir = worldAim.normalize();
+          } else {
+            aimDir = frame.bitangent.clone();
+          }
         } else {
           aimDir = frame.bitangent.clone();
         }
@@ -759,22 +839,17 @@ function main(): void {
 
       orientPlayerOnSurface(player, walker.normal, aimDir);
 
-      // Compute aim angle for bullets
-      const frame = walker.getTangentFrame();
-      if (bindings.aimMode === 'mouse') {
-        player.aimAngle = Math.atan2(pInput.aimX, -pInput.aimY);
-      } else {
-        const faceAimX = aimDir.dot(frame.tangent);
-        const faceAimY = -aimDir.dot(frame.bitangent);
-        player.aimAngle = Math.atan2(faceAimX, -faceAimY);
-      }
+      // Compute aim angle for bullets (relative to tangent frame)
+      const aimTangentX = aimDir.dot(frame.tangent);
+      const aimTangentY = -aimDir.dot(frame.bitangent);
+      player.aimAngle = Math.atan2(aimTangentX, -aimTangentY);
 
       player.mesh.updateMatrixWorld(true);
       player.update(dt, {
         moveX: pInput.moveX,
         moveY: pInput.moveY,
-        aimX: bindings.aimMode === 'mouse' ? pInput.aimX : aimDir.dot(frame.tangent),
-        aimY: bindings.aimMode === 'mouse' ? pInput.aimY : -aimDir.dot(frame.bitangent),
+        aimX: aimTangentX,
+        aimY: aimTangentY,
         shooting: pInput.shooting,
         bomb: pInput.bomb,
         boost: false,
@@ -793,10 +868,13 @@ function main(): void {
       if (player.alive) {
         const targetCamPos = walker.position.clone().addScaledVector(walker.normal, CAMERA_DISTANCE);
         cam.position.lerp(targetCamPos, CAMERA_LERP);
-        cam.lookAt(walker.position);
 
+        // Lerp up vector BEFORE lookAt so the resulting matrixWorld reflects
+        // the current up direction (used by camera-relative mouse aim next frame).
         const upTarget = walker.getTangentFrame().bitangent;
         cam.up.lerp(upTarget, CAMERA_LERP).normalize();
+
+        cam.lookAt(walker.position);
       }
       // If dead, camera stays at last position
     }

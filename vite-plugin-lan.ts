@@ -58,7 +58,7 @@ export default function lanPlugin(): Plugin {
     }
   }
 
-  async function handleStart(): Promise<{ ok: boolean; addresses: string[]; port: number; error?: string }> {
+  async function handleStart(options?: { shutdownTimeout?: number }): Promise<{ ok: boolean; addresses: string[]; port: number; error?: string }> {
     const addresses = getLANAddresses();
 
     // Already hosting
@@ -74,10 +74,12 @@ export default function lanPlugin(): Plugin {
 
     // Start the Colyseus server as child process
     const binPath = path.join(process.cwd(), 'node_modules', '.bin');
+    const shutdownTimeout = options?.shutdownTimeout ?? 180;
     const env = {
       ...process.env,
       PATH: `${binPath}:${process.env.PATH ?? ''}`,
       PORT: String(SERVER_PORT),
+      SHUTDOWN_TIMEOUT: String(shutdownTimeout),
     };
 
     serverProcess = spawn('tsx', ['server/index.ts'], {
@@ -218,9 +220,18 @@ export default function lanPlugin(): Plugin {
         }
 
         if (route === 'start' && req.method === 'POST') {
-          handleStart()
-            .then((data) => sendJson(res, data, data.ok ? 200 : 500))
-            .catch((err) => sendJson(res, { ok: false, error: (err as Error).message }, 500));
+          // Parse optional JSON body for shutdown timeout
+          let body = '';
+          req.on('data', (chunk: Buffer) => { body += chunk; });
+          req.on('end', () => {
+            let options: { shutdownTimeout?: number } | undefined;
+            if (body) {
+              try { options = JSON.parse(body); } catch { /* ignore */ }
+            }
+            handleStart(options)
+              .then((data) => sendJson(res, data, data.ok ? 200 : 500))
+              .catch((err) => sendJson(res, { ok: false, error: (err as Error).message }, 500));
+          });
           return;
         }
 

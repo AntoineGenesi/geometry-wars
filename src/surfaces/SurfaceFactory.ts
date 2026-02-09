@@ -1,7 +1,8 @@
 import { Surface, SurfaceConfig } from './Surface'
 import { SphereSurface, SphereConfig } from './SphereSurface'
 import { CubeSurface, CubeConfig } from './CubeSurface'
-import { CylinderSurface, CylinderConfig } from './CylinderSurface'
+import { PillSurface, PillConfig } from './PillSurface'
+import { PipeSurface, PipeConfig } from './PipeSurface'
 import { TorusSurface, TorusConfig } from './TorusSurface'
 import { PeanutSurface, PeanutConfig } from './PeanutSurface'
 import { CapsuleSurface, CapsuleConfig } from './CapsuleSurface'
@@ -14,7 +15,8 @@ import { CubeWithTunnelSurface, CubeWithTunnelConfig } from './CubeWithTunnelSur
 export type SurfaceType =
   | 'sphere'
   | 'cube'
-  | 'cylinder'
+  | 'pill'
+  | 'pipe'
   | 'torus'
   | 'peanut'
   | 'capsule'
@@ -27,7 +29,8 @@ export type SurfaceType =
 export type SurfaceConfigMap = {
   sphere: SphereConfig
   cube: CubeConfig
-  cylinder: CylinderConfig
+  pill: PillConfig
+  pipe: PipeConfig
   torus: TorusConfig
   peanut: PeanutConfig
   capsule: CapsuleConfig
@@ -48,8 +51,10 @@ export class SurfaceFactory {
         return new SphereSurface(config as SphereConfig)
       case 'cube':
         return new CubeSurface(config as CubeConfig)
-      case 'cylinder':
-        return new CylinderSurface(config as CylinderConfig)
+      case 'pill':
+        return new PillSurface(config as PillConfig)
+      case 'pipe':
+        return new PipeSurface(config as PipeConfig)
       case 'torus':
         return new TorusSurface(config as TorusConfig)
       case 'peanut':
@@ -72,6 +77,6 @@ export class SurfaceFactory {
   }
 
   static getAvailableTypes(): SurfaceType[] {
-    return ['sphere', 'cube', 'cylinder', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel']
+    return ['sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel']
   }
 }

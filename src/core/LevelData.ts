@@ -7,7 +7,8 @@ import { GameModeType } from './GameMode';
 export type SurfaceType =
   | 'sphere'
   | 'cube'
-  | 'cylinder'
+  | 'pill'
+  | 'pipe'
   | 'torus'
   | 'peanut'
   | 'capsule'
@@ -175,7 +176,7 @@ export const ADVENTURE_LEVELS: LevelDefinition[] = [
     name: 'Maze',
     section: 'Ruby',
     mode: GameModeType.Checkpoint,
-    surface: 'cylinder',
+    surface: 'pill',
     surfaceScale: 8,
     timeLimit: 60,
     lives: 0,
@@ -345,7 +346,7 @@ export const ADVENTURE_LEVELS: LevelDefinition[] = [
     name: 'Pianola Roller',
     section: 'Emerald',
     mode: GameModeType.Evolved,
-    surface: 'cylinder',
+    surface: 'pill',
     surfaceScale: 8,
     timeLimit: 0,
     lives: 1,
@@ -475,7 +476,7 @@ export const ADVENTURE_LEVELS: LevelDefinition[] = [
     name: 'Out of Time',
     section: 'Opal',
     mode: GameModeType.Checkpoint,
-    surface: 'cylinder',
+    surface: 'pill',
     surfaceScale: 10,
     timeLimit: 0,
     lives: 0,
@@ -570,7 +571,7 @@ export const ADVENTURE_LEVELS: LevelDefinition[] = [
     name: 'Barrel Roll',
     section: 'Opal',
     mode: GameModeType.Deadline,
-    surface: 'cylinder',
+    surface: 'pill',
     surfaceScale: 10,
     timeLimit: 120,
     lives: 0,
@@ -746,7 +747,7 @@ export const ADVENTURE_LEVELS: LevelDefinition[] = [
     name: 'Expressionism',
     section: 'Amethyst',
     mode: GameModeType.Rainbow,
-    surface: 'cylinder',
+    surface: 'pill',
     surfaceScale: 10,
     timeLimit: 0,
     lives: 1,
@@ -899,7 +900,7 @@ export const ADVENTURE_LEVELS: LevelDefinition[] = [
     name: 'Deflector',
     section: 'Topaz',
     mode: GameModeType.Evolved,
-    surface: 'cylinder',
+    surface: 'pill',
     surfaceScale: 11,
     timeLimit: 0,
     lives: 1,

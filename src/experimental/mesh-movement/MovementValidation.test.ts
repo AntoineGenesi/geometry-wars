@@ -66,11 +66,11 @@ const SURFACE_CONFIGS: SurfaceTestConfig[] = [
     hasPoles: false,
   },
   {
-    name: 'Cylinder',
-    type: 'cylinder',
-    closed: false, // open-ended cylinder with clamped height
+    name: 'Pill',
+    type: 'pill',
+    closed: false, // open-ended pill with clamped height
     approxDiameter: 8, // 2 * radius 4
-    startAbove: new THREE.Vector3(8, 0, 0), // above cylinder side
+    startAbove: new THREE.Vector3(8, 0, 0), // above pill side
     hasPoles: false,
   },
   {

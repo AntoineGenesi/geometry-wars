@@ -63,8 +63,8 @@ export interface PriorityEntry {
  *
  * @param a - First UV position
  * @param b - Second UV position
- * @param wrapU - Whether U wraps around (true for sphere, torus, cylinder)
- * @param wrapV - Whether V wraps around (true for torus)
+ * @param wrapU - Whether U wraps around (true for sphere, torus, pill, pipe)
+ * @param wrapV - Whether V wraps around (true for torus, pipe)
  */
 export function uvDistance(
   a: UVPosition,

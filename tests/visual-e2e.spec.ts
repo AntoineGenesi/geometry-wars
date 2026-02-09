@@ -24,7 +24,7 @@ const BASE_URL = 'http://localhost:3001';
 
 // All surface types to test
 const SURFACE_TYPES = [
-  'sphere', 'cube', 'torus', 'cylinder', 'peanut',
+  'sphere', 'cube', 'torus', 'pill', 'pipe', 'peanut',
   'capsule', 'icosahedron', 'mobius', 'sphere-tunnel',
   'cube-ring', 'cube-tunnel',
 ];

@@ -1,17 +1,17 @@
 import * as THREE from 'three'
 import { Surface, SurfaceConfig, SurfacePoint } from './Surface'
 
-export interface CylinderConfig extends SurfaceConfig {
-  radius?: number          // Cylinder radius (default 4)
-  height?: number          // Cylinder body height, excluding caps (default 16)
+export interface PillConfig extends SurfaceConfig {
+  radius?: number          // Pill radius (default 4)
+  height?: number          // Pill body height, excluding caps (default 16)
   gridSegmentsU?: number   // Segments around circumference (default 24)
   gridSegmentsV?: number   // Segments along height (default 20)
 }
 
 /**
- * Cylinder Surface: a cylinder with hemispherical caps on both ends.
+ * Pill Surface: a cylinder with hemispherical caps on both ends (capsule shape).
  *
- * The cylinder is elongated (height > diameter) and oriented along the Y axis.
+ * The pill is elongated (height > diameter) and oriented along the Y axis.
  * Players can move freely around the circumference (wrapping) and along the
  * height, traversing over the hemispherical end caps.
  *
@@ -19,16 +19,16 @@ export interface CylinderConfig extends SurfaceConfig {
  *   u: [0, 1) azimuthal angle around circumference (wraps)
  *   v: [0, 1] position along height (clamped near poles)
  *     v=0:           bottom pole
- *     v=capFrac:     bottom of cylinder body
- *     v=1-capFrac:   top of cylinder body
+ *     v=capFrac:     bottom of pill body
+ *     v=1-capFrac:   top of pill body
  *     v=1:           top pole
  *
  * Cap geometry:
- *   Each cap is a quarter-sphere (hemisphere) of the same radius as the cylinder,
+ *   Each cap is a quarter-sphere (hemisphere) of the same radius as the pill,
  *   centered at +/-halfHeight on the Y axis. The cap sweeps from the body junction
  *   (equator, phi=PI/2) to the pole (phi=0 or PI), fully closing both ends.
  */
-export class CylinderSurface extends Surface {
+export class PillSurface extends Surface {
   private readonly radius: number
   private readonly height: number
   private readonly halfHeight: number
@@ -36,13 +36,13 @@ export class CylinderSurface extends Surface {
   private readonly gridSegmentsU: number
   private readonly gridSegmentsV: number
 
-  constructor(config?: CylinderConfig) {
+  constructor(config?: PillConfig) {
     const radius = config?.radius ?? 4
     const height = config?.height ?? 16
     const gridSegmentsU = config?.gridSegmentsU ?? 24
     const gridSegmentsV = config?.gridSegmentsV ?? 20
 
-    ;(CylinderSurface as any).__initData = {
+    ;(PillSurface as any).__initData = {
       radius,
       height,
       gridSegmentsU,
@@ -73,7 +73,7 @@ export class CylinderSurface extends Surface {
     gridSegmentsV: number
   } {
     return (
-      (CylinderSurface as any).__initData ?? {
+      (PillSurface as any).__initData ?? {
         radius: 4,
         height: 16,
         gridSegmentsU: 24,
@@ -85,7 +85,7 @@ export class CylinderSurface extends Surface {
   /**
    * Decompose v into region and local parameter.
    *   Bottom cap: v in [0, capFraction]               localT 0..1
-   *   Cylinder body: v in [capFraction, 1-capFraction] localT 0..1
+   *   Body: v in [capFraction, 1-capFraction]          localT 0..1
    *   Top cap: v in [1-capFraction, 1]                localT 0..1
    */
   private getRegion(v: number): {
@@ -249,7 +249,7 @@ export class CylinderSurface extends Surface {
       const localT = Math.max(0, Math.min(1, 1 - phi / (Math.PI / 2)))
       return { u, v: (1 - cf) + localT * cf }
     } else {
-      // Cylinder body
+      // Pill body
       const localT = (worldPos.y + this.halfHeight) / this.height
       const bodyRange = 1 - 2 * cf
       return { u, v: cf + Math.max(0, Math.min(1, localT)) * bodyRange }
@@ -258,7 +258,7 @@ export class CylinderSurface extends Surface {
 
   createMesh(): THREE.Mesh {
     const { radius, height, gridSegmentsU, gridSegmentsV } =
-      CylinderSurface.getInitData()
+      PillSurface.getInitData()
 
     // CapsuleGeometry creates a cylinder with hemisphere caps -- exactly what we need.
     const geometry = new THREE.CapsuleGeometry(
@@ -272,7 +272,7 @@ export class CylinderSurface extends Surface {
 
   createGrid(): THREE.LineSegments {
     const { radius, height, gridSegmentsU, gridSegmentsV } =
-      CylinderSurface.getInitData()
+      PillSurface.getInitData()
     const vertices: number[] = []
     const lineDetail = 48
     const halfH = height / 2

@@ -250,12 +250,61 @@ function main() {
   let meshSurface: MeshSurface | null = null;
   let surfaceReady = false;
   let getTransform: ReturnType<typeof makeSurfaceTransformFn> | null = null;
+  let lastCreatedSurfaceType: string = '';
 
   // -- Enemy spawner (created after surface, used to create real enemy meshes) --
   let enemySpawner: EnemySpawner | null = null;
 
-  function initSurface(serverSurfaceType: string): void {
-    if (surfaceReady) return;
+  function cleanupSurface(): void {
+    if (surface) {
+      scene.remove(surface.group);
+    }
+    if (meshSurface) {
+      meshSurface.dispose();
+    }
+    // Clean up enemies created by old spawner
+    networkEnemies.forEach((enemy) => {
+      if (enemy.mesh) scene.remove(enemy.mesh);
+    });
+    networkEnemies.clear();
+    surface = null;
+    meshSurface = null;
+    getTransform = null;
+    enemySpawner = null;
+    surfaceReady = false;
+    lastCreatedSurfaceType = '';
+  }
+
+  function initSurface(serverSurfaceType: string, confirmedFromServer: boolean = false): void {
+    // Allow re-initialization if the surface type differs from what was created,
+    // OR if this is the first confirmed-from-server call and the previous init
+    // was just a guess from connect-time (which may have had stale defaults).
+    if (surfaceReady) {
+      const currentType = isValidSurfaceType(serverSurfaceType) ? serverSurfaceType : null;
+      if (!currentType) return; // Still no valid type, skip
+
+      // If the type matches AND we already had a confirmed server type, skip
+      if (lastCreatedSurfaceType === currentType && surfaceConfirmedFromServer) return;
+
+      // If the type matches but was NOT confirmed from server, and this IS
+      // a confirmed call, we can skip the rebuild but mark as confirmed.
+      if (lastCreatedSurfaceType === currentType && confirmedFromServer) {
+        surfaceConfirmedFromServer = true;
+        return;
+      }
+
+      // Type differs - tear down and recreate
+      if (lastCreatedSurfaceType !== currentType) {
+        console.log(`[NetworkMain] Surface type changed: ${lastCreatedSurfaceType} -> ${currentType}, rebuilding`);
+        cleanupSurface();
+      } else {
+        return; // Same type, not a confirmed upgrade, skip
+      }
+    }
+
+    if (confirmedFromServer) {
+      surfaceConfirmedFromServer = true;
+    }
 
     const surfaceType: SurfaceType = isValidSurfaceType(serverSurfaceType)
       ? serverSurfaceType
@@ -297,6 +346,8 @@ function main() {
     enemySpawner = new EnemySpawner(scene, getTransform);
 
     surfaceReady = true;
+    lastCreatedSurfaceType = surfaceType;
+    console.log(`[NetworkMain] Surface initialized: ${surfaceType}`);
   }
 
   // -- Camera constants (match co-op) --
@@ -353,6 +404,12 @@ function main() {
   // -- Network client --
   const network = new NetworkClient(getServerUrl());
   let localPlayerId = '';
+  let isHost = false;
+  let isPaused = false;
+
+  // Track whether surface has been confirmed from a real server state change
+  // (not just a connect-time guess that might have stale defaults).
+  let surfaceConfirmedFromServer = false;
 
   // Input throttle: send at 30Hz max, only when input changes
   const INPUT_SEND_INTERVAL = 0.033;
@@ -423,6 +480,88 @@ function main() {
   };
   document.body.appendChild(backBtn);
 
+  // Stop Server button (visible to host, top-right corner)
+  const stopServerBtn = document.createElement('button');
+  stopServerBtn.textContent = 'STOP SERVER';
+  stopServerBtn.style.cssText =
+    'position:fixed;top:50px;right:10px;' +
+    'padding:8px 16px;font:bold 12px monospace;background:#800;color:#fff;' +
+    'border:2px solid #f44;cursor:pointer;z-index:100;display:none;' +
+    'text-shadow:0 0 5px #f44;';
+  stopServerBtn.onclick = async () => {
+    // Send end_game to server (which broadcasts to all clients)
+    network.sendEndGame();
+    // Try to stop the server process via LAN API
+    try {
+      await fetch('/__lan/stop', { method: 'POST' });
+    } catch {
+      // Ignore — server may not be managed by this Vite instance
+    }
+    // Navigate back to menu
+    window.location.href = window.location.pathname;
+  };
+  document.body.appendChild(stopServerBtn);
+
+  // Pause overlay (shown when game is paused)
+  const pauseOverlay = document.createElement('div');
+  pauseOverlay.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;' +
+    'background:rgba(0,0,0,0.6);z-index:200;' +
+    'display:none;justify-content:center;align-items:center;' +
+    'flex-direction:column;';
+  const pauseTitle = document.createElement('div');
+  pauseTitle.style.cssText =
+    'color:#0ff;font:bold 48px monospace;text-shadow:0 0 20px #0ff;margin-bottom:20px;';
+  pauseTitle.textContent = 'PAUSED';
+  pauseOverlay.appendChild(pauseTitle);
+  const pauseHint = document.createElement('div');
+  pauseHint.style.cssText = 'color:#888;font:16px monospace;';
+  pauseOverlay.appendChild(pauseHint);
+  const resumeBtn = document.createElement('button');
+  resumeBtn.textContent = 'RESUME';
+  resumeBtn.style.cssText =
+    'margin-top:20px;padding:12px 30px;font:bold 18px monospace;' +
+    'background:#060;color:#0f0;border:2px solid #0f0;cursor:pointer;display:none;';
+  resumeBtn.onclick = () => {
+    if (isHost) {
+      isPaused = false;
+      network.sendPause(false);
+      showPauseOverlay(false);
+    }
+  };
+  pauseOverlay.appendChild(resumeBtn);
+  document.body.appendChild(pauseOverlay);
+
+  function showPauseOverlay(paused: boolean): void {
+    isPaused = paused;
+    if (paused) {
+      pauseOverlay.style.display = 'flex';
+      pauseHint.textContent = isHost ? 'Press ESC to resume' : 'Host has paused the game';
+      resumeBtn.style.display = isHost ? 'block' : 'none';
+    } else {
+      pauseOverlay.style.display = 'none';
+    }
+  }
+
+  // Escape key handler: host can toggle pause
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && network.isConnected()) {
+      // Re-check host status in case it wasn't set correctly at connect time
+      if (!isHost) {
+        const serverHostId = network.getServerHostId();
+        if (serverHostId && serverHostId === localPlayerId) {
+          isHost = true;
+          console.log('[NetworkMain] Host status confirmed on ESC press');
+        }
+      }
+      if (isHost) {
+        isPaused = !isPaused;
+        network.sendPause(isPaused);
+        showPauseOverlay(isPaused);
+      }
+    }
+  });
+
   // -----------------------------------------------------------------------
   // Helper: get or create a real Player for a network player
   // -----------------------------------------------------------------------
@@ -490,11 +629,19 @@ function main() {
   // -----------------------------------------------------------------------
 
   function onStateChange(state: NetworkGameState) {
-    // Initialize surface on first state change
-    if (!surfaceReady) {
-      initSurface(state.surfaceType);
+    // Always try to init/update surface from authoritative server state.
+    // This handles both initial creation AND correcting a wrong initial guess.
+    if (state.surfaceType) {
+      initSurface(state.surfaceType, true);
     }
     if (!surface || !meshSurface || !getTransform) return;
+
+    // Re-check isHost on every state change (may have been wrong at connect time)
+    if (state.hostId && state.hostId === localPlayerId && !isHost) {
+      isHost = true;
+      stopServerBtn.style.display = 'block';
+      console.log('[NetworkMain] Confirmed as host');
+    }
 
     const surf = surface;
 
@@ -776,9 +923,14 @@ function main() {
     });
     playersEl.innerHTML = playerList;
 
+    // Sync pause state from server
+    if (state.isPaused !== isPaused) {
+      showPauseOverlay(state.isPaused);
+    }
+
     // Game state
     if (state.gameStarted) {
-      statusEl.textContent = `Wave ${state.waveNumber}`;
+      statusEl.textContent = state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`;
       startBtn.style.display = 'none';
     } else if (state.gameOver) {
       statusEl.textContent = 'GAME OVER';
@@ -800,13 +952,18 @@ function main() {
     surfaceType: urlSurfaceType,
   }).then(() => {
     localPlayerId = network.getLocalPlayerId();
-
-    // Read the server's authoritative surface type
-    const serverSurface = network.getServerSurfaceType();
-    if (serverSurface && serverSurface !== urlSurfaceType) {
-      // Server surface differs from URL -- use server's
+    // Try to detect host status, but this may be wrong if state hasn't decoded.
+    // onStateChange will re-check and correct this.
+    const serverHostId = network.getServerHostId();
+    isHost = serverHostId !== '' && localPlayerId === serverHostId;
+    if (isHost) {
+      stopServerBtn.style.display = 'block';
     }
-    initSurface(serverSurface);
+
+    // Use URL surface type as initial guess (NOT server state, which may be
+    // stale 'sphere' default). The authoritative surface type will come from
+    // onStateChange and override this if different.
+    initSurface(urlSurfaceType, false);
 
     statusEl.textContent = 'Connected! Waiting for game start...';
     startBtn.style.display = 'block';
@@ -827,6 +984,17 @@ function main() {
       onError: (err) => {
         statusEl.textContent = `Error: ${err.message}`;
       },
+      onHostLeft: () => {
+        statusEl.textContent = 'Host disconnected';
+        statusEl.style.color = '#f44';
+        bgMusic.stop();
+        backBtn.style.display = 'block';
+      },
+      onGameEnded: () => {
+        statusEl.textContent = 'Host ended the game';
+        bgMusic.stop();
+        backBtn.style.display = 'block';
+      },
     });
   }).catch((err) => {
     statusEl.textContent = 'Failed to connect to server!';
@@ -841,6 +1009,9 @@ function main() {
 
   game.onFixedUpdate = (dt: number) => {
     if (!surfaceReady || !surface) return;
+    // Don't process input or game logic while paused
+    // (server already stops its tick, but we also skip client-side updates)
+    if (isPaused) return;
 
     // -- Send input to server --
     const inputState = input.getState();
@@ -871,6 +1042,32 @@ function main() {
         network.sendInput(currentInput);
         lastSentInput = { ...currentInput };
         lastInputSendTime = 0;
+      }
+
+      // Client-side prediction: apply local player movement immediately
+      // so it feels responsive. The server position will override on next
+      // onStateChange, but the visual lag between input and response is
+      // eliminated. Uses the same PLAYER_SPEED (0.19 UV/s) as the server.
+      const localPlayer = networkPlayers.get(localPlayerId);
+      if (localPlayer && surface && (currentInput.moveX !== 0 || currentInput.moveY !== 0)) {
+        const predSpeed = 0.19; // Must match server PLAYER_SPEED
+        const predDx = currentInput.moveX * predSpeed * dt;
+        const predDy = currentInput.moveY * predSpeed * dt;
+        let newU = localPlayer.surfaceU + predDx;
+        let newV = localPlayer.surfaceV + predDy;
+        // Wrap U, clamp V (simplified prediction, matches server logic)
+        newU = ((newU % 1) + 1) % 1;
+        newV = Math.max(0.05, Math.min(0.95, newV));
+        localPlayer.surfaceU = newU;
+        localPlayer.surfaceV = newV;
+        // Update visual position immediately
+        const sp = surface.getPoint(newU, newV);
+        localPlayer.mesh.position.copy(sp.position);
+        localPlayer.mesh.position.addScaledVector(sp.normal, 0.15);
+        orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
+        // Update glow trail
+        const trail = playerGlowTrails.get(localPlayerId);
+        if (trail) trail.addPoint(localPlayer.mesh.position.clone());
       }
 
       // Play shoot sound locally for responsiveness

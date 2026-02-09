@@ -228,18 +228,44 @@ export class GameRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player || !player.alive) return;
 
-    // Update player position with sin(phi) correction for UV asymmetry.
-    // On a sphere, moving in U at the poles covers less real distance than at the equator.
-    // Dividing dx by sin(phi) normalizes speed so it feels uniform everywhere.
     const dx = input.moveX * PLAYER_SPEED * (1 / TICK_RATE);
     const dy = input.moveY * PLAYER_SPEED * (1 / TICK_RATE);
 
-    const phi = player.surfaceV * Math.PI; // V=0 is north pole, V=1 is south pole
-    const sinPhi = Math.sin(phi);
-    const correctedDx = sinPhi > 0.01 ? dx / sinPhi : 0;
+    // Apply sin(phi) correction ONLY for sphere-like surfaces where
+    // UV maps to spherical coordinates (U = longitude, V = latitude).
+    // For other surfaces (cube, torus, pill, pipe, etc.), UV space is
+    // roughly uniform, so no correction is needed.
+    const surfaceType = this.state.surfaceType;
+    const isSphereLike = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
+      || surfaceType === 'icosahedron' || surfaceType === 'capsule'
+      || surfaceType === 'peanut';
+
+    let correctedDx = dx;
+    if (isSphereLike) {
+      const phi = player.surfaceV * Math.PI;
+      const sinPhi = Math.sin(phi);
+      // Limit correction near poles to prevent getting stuck.
+      // Use a generous minimum of 0.3 (about 17 degrees from pole) to ensure
+      // the player always has reasonable horizontal movement near poles.
+      // Previous value of 0.15 still caused stuck/jitter near poles.
+      const clampedSinPhi = Math.max(sinPhi, 0.3);
+      correctedDx = dx / clampedSinPhi;
+    }
 
     player.surfaceU = this.wrapCoord(player.surfaceU + correctedDx);
-    player.surfaceV = this.clampCoord(player.surfaceV + dy);
+    // Use wrap for surfaces that wrap in V (torus, pipe, mobius, cube-ring,
+    // cube-tunnel). Use clamp with a small margin for sphere-like surfaces
+    // and pill (which has clamped poles) to prevent getting stuck at exact 0 or 1.
+    const wrapsInV = surfaceType === 'torus' || surfaceType === 'pipe'
+      || surfaceType === 'mobius' || surfaceType === 'cube-ring'
+      || surfaceType === 'cube-tunnel' || surfaceType === 'cube';
+    if (wrapsInV) {
+      player.surfaceV = this.wrapCoord(player.surfaceV + dy);
+    } else {
+      // Clamp with wider margin to keep player well away from pole singularity.
+      // Previous 0.02/0.98 allowed getting too close. 0.05/0.95 is safer.
+      player.surfaceV = Math.max(0.05, Math.min(0.95, player.surfaceV + dy));
+    }
     player.aimAngle = input.aimAngle;
     player.shooting = input.shooting;
 

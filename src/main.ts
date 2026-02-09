@@ -578,8 +578,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Type-specific configs
     radius: level.surfaceScale,           // For sphere, icosahedron, dented-sphere, sphere-tunnel
     size: level.surfaceScale,             // For cube
-    bevelRadius: 0.6,                      // For cylinder bevel edges
-    height: level.surfaceScale * 2,       // For cylinder, capsule
+    bevelRadius: 0.6,                      // For pill bevel edges, pipe bevel curves
+    height: level.surfaceScale * 2,       // For pill, capsule, pipe
     majorRadius: level.surfaceScale * 0.8,// For torus
     minorRadius: level.surfaceScale * 0.3,// For torus
     cylinderRadius: level.surfaceScale * 0.4, // For peanut

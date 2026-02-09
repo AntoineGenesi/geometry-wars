@@ -350,6 +350,15 @@ export class NetworkClient {
   }
 
   /**
+   * Get the host player's session ID from the room state.
+   * Must be called after connect() resolves.
+   */
+  getServerHostId(): string {
+    if (!this.room?.state) return '';
+    return (this.room.state as { hostId?: string }).hostId || '';
+  }
+
+  /**
    * Check if connected
    */
   isConnected(): boolean {

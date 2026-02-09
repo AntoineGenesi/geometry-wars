@@ -65,8 +65,11 @@ export class LANClient {
     return res.json();
   }
 
-  async startHost(): Promise<LANStartResult> {
-    const res = await fetch('/__lan/start', { method: 'POST' });
+  async startHost(options?: { shutdownTimeout?: number }): Promise<LANStartResult> {
+    const body = options ? JSON.stringify(options) : undefined;
+    const headers: Record<string, string> = {};
+    if (body) headers['Content-Type'] = 'application/json';
+    const res = await fetch('/__lan/start', { method: 'POST', body, headers });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
       try {

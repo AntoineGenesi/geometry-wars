@@ -53,7 +53,8 @@ export class StartMenu {
     { type: 'sphere', name: 'Sphere', icon: '\u25EF' },
     { type: 'cube', name: 'Cube', icon: '\u25FB' },
     { type: 'torus', name: 'Torus', icon: '\u25CE' },
-    { type: 'cylinder', name: 'Cylinder', icon: '\u2B2D' },
+    { type: 'pill', name: 'Pill', icon: '\u2B2D' },
+    { type: 'pipe', name: 'Pipe', icon: '\u2393' },
     { type: 'peanut', name: 'Peanut', icon: '\u221E' },
     { type: 'capsule', name: 'Capsule', icon: '\u2B2C' },
     { type: 'icosahedron', name: 'Icosahedron', icon: '\u2B21' },
@@ -213,6 +214,14 @@ export class StartMenu {
             <div id="lan-host-surface-pick" class="hidden">
               <h3>SELECT MAP</h3>
               ${this.createSurfaceGridHTML('lan-surface-grid', this.lanSelectedSurface)}
+              <div class="lan-timeout-row">
+                <label class="lan-timeout-label" for="lan-timeout-input">Idle shutdown delay</label>
+                <div class="lan-timeout-input-wrap">
+                  <input type="number" id="lan-timeout-input" min="0" max="3600" value="180" step="30" />
+                  <span class="lan-timeout-unit">sec</span>
+                </div>
+                <span class="lan-timeout-hint">Server auto-closes when all players leave (0 = never)</span>
+              </div>
               <button class="lan-btn lan-host" id="lan-start-host-btn">START HOSTING</button>
             </div>
             <div id="lan-host-info" class="hidden">
@@ -586,6 +595,51 @@ export class StartMenu {
       #start-menu .coop-surface-pick,
       #start-menu #lan-host-surface-pick {
         margin-top: 15px;
+      }
+
+      #start-menu .lan-timeout-row {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        margin: 12px 0;
+        padding: 10px;
+        background: rgba(0, 40, 40, 0.3);
+        border: 1px solid rgba(0, 100, 100, 0.3);
+        border-radius: 4px;
+      }
+      #start-menu .lan-timeout-label {
+        color: #88cccc;
+        font: 13px monospace;
+        letter-spacing: 1px;
+      }
+      #start-menu .lan-timeout-input-wrap {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      #start-menu #lan-timeout-input {
+        background: rgba(0, 40, 40, 0.6);
+        border: 1px solid #006666;
+        color: #00ffff;
+        padding: 6px 10px;
+        font: 14px monospace;
+        width: 80px;
+        outline: none;
+        text-align: center;
+      }
+      #start-menu #lan-timeout-input:focus {
+        border-color: #00ffff;
+        box-shadow: 0 0 8px #00ffff;
+      }
+      #start-menu .lan-timeout-unit {
+        color: #668888;
+        font: 12px monospace;
+      }
+      #start-menu .lan-timeout-hint {
+        color: #557777;
+        font: 11px monospace;
+        text-align: center;
       }
 
       /* ------------------------------------------------------------------- */
@@ -1186,7 +1240,9 @@ export class StartMenu {
       lanStopBtn.classList.add('hidden');
 
       try {
-        const result = await this.lanClient.startHost();
+        const timeoutInput = this.container.querySelector('#lan-timeout-input') as HTMLInputElement | null;
+        const shutdownTimeout = timeoutInput ? parseInt(timeoutInput.value, 10) || 180 : 180;
+        const result = await this.lanClient.startHost({ shutdownTimeout });
         if (result.ok) {
           hostedServerUrl = this.lanClient.getServerWsUrl('localhost', result.port);
           const vitePort = parseInt(window.location.port, 10) || 3000;

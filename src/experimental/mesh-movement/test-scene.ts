@@ -37,7 +37,7 @@ const CAMERA_LERP = 0.1;   // smooth camera follow
 // Available test shapes
 // ---------------------------------------------------------------------------
 
-type ShapeType = 'sphere' | 'torus' | 'cube' | 'knot' | 'cylinder' | 'custom';
+type ShapeType = 'sphere' | 'torus' | 'cube' | 'knot' | 'pill' | 'custom';
 
 function createShape(type: ShapeType): THREE.Mesh {
   let geometry: THREE.BufferGeometry;
@@ -55,7 +55,7 @@ function createShape(type: ShapeType): THREE.Mesh {
     case 'knot':
       geometry = new THREE.TorusKnotGeometry(5, 1.5, 128, 32);
       break;
-    case 'cylinder':
+    case 'pill':
       geometry = new THREE.CylinderGeometry(5, 5, 12, 48, 8, false);
       break;
     default:
@@ -480,7 +480,7 @@ export function initTestScene(): void {
       '2': 'torus',
       '3': 'cube',
       '4': 'knot',
-      '5': 'cylinder',
+      '5': 'pill',
     };
     if (shapeMap[e.key]) {
       const newMesh = createShape(shapeMap[e.key]);

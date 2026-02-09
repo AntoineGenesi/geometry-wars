@@ -8,7 +8,8 @@
  * DESIGN: Matches actual game conditions exactly:
  * - Real enemy types from src/entities/enemies/
  * - Fire rates match WEAPON_CONFIGS + Player FIRE_RATE gating
- * - Fixed top-down camera (does NOT rotate with player)
+ * - Camera follows player with smooth lerp
+ * - Enemy death particle effects (same ParticleSystem as main game)
  * - Opaque surface for clear visibility at small scale
  */
 
@@ -21,6 +22,7 @@ import { Duck } from '../entities/enemies/Duck';
 import { Weaver } from '../entities/enemies/Weaver';
 import { Spinner } from '../entities/enemies/Spinner';
 import { Rocket } from '../entities/enemies/Rocket';
+import { ParticleSystem } from '../effects/ParticleSystem';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -51,6 +53,16 @@ const PLAYER_FIRE_INTERVAL = 1 / PLAYER_BASE_FIRE_RATE; // 0.1 seconds
 // Enemy types available in the playground (mix of basic + mid-tier)
 type PlaygroundEnemyType = 'grunt' | 'wanderer' | 'duck' | 'weaver' | 'spinner' | 'rocket';
 const ENEMY_TYPES: PlaygroundEnemyType[] = ['grunt', 'wanderer', 'duck', 'weaver', 'spinner', 'rocket'];
+
+// Enemy color map for death particle effects (matches mesh material colors)
+const ENEMY_COLORS: Record<PlaygroundEnemyType, number> = {
+  grunt: 0x4444ff,
+  wanderer: 0xaa44ff,
+  duck: 0xff44aa,
+  weaver: 0x00ff44,
+  spinner: 0xff44ff,
+  rocket: 0xff8800,
+};
 
 // Temp vectors to avoid GC
 const _v1 = new THREE.Vector3();
@@ -236,6 +248,9 @@ export class WeaponPlayground {
   // Sphere UV transform for real enemies
   private readonly sphereTransform: ReturnType<typeof makeSphereTransform>;
 
+  // Particle system for death effects
+  private particleSystem: ParticleSystem;
+
   constructor(container: HTMLElement) {
     this.container = container;
     this.sphereTransform = makeSphereTransform(SPHERE_RADIUS);
@@ -264,7 +279,7 @@ export class WeaponPlayground {
     fillLight.position.set(-5, -5, -5);
     this.scene.add(fillLight);
 
-    // -- Camera: FIXED top-down view, does NOT rotate with player --
+    // -- Camera: follows player position with smooth lerp --
     this.camera = new THREE.PerspectiveCamera(50, CANVAS_WIDTH / CANVAS_HEIGHT, 0.1, 100);
     this.camera.position.set(0, CAMERA_DISTANCE * 0.6, CAMERA_DISTANCE * 0.8);
     this.camera.lookAt(0, 0, 0);
@@ -302,6 +317,10 @@ export class WeaponPlayground {
     // -- Player chevron --
     this.playerGroup = this.buildMiniChevron(0x00ffff, 0.2);
     this.scene.add(this.playerGroup);
+
+    // -- Particle system for enemy death effects --
+    this.particleSystem = new ParticleSystem(2000);
+    this.scene.add(this.particleSystem.root);
 
     // -- Spawn real enemies --
     for (let i = 0; i < ENEMY_COUNT; i++) {
@@ -530,6 +549,9 @@ export class WeaponPlayground {
     }
     this.popups = [];
 
+    // Dispose particle system
+    this.particleSystem.dispose();
+
     // Dispose Three.js
     this.scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
@@ -574,6 +596,7 @@ export class WeaponPlayground {
 
     this.updateMouseAim();
     this.updatePlayer(dt);
+    this.updateCamera(dt);
     this.updateEnemies(dt);
     this.updatePlayerCollisions();
     this.updateDeathState(dt);
@@ -585,6 +608,7 @@ export class WeaponPlayground {
     this.updateTeslaArcs(dt);
     this.updatePopups(dt);
     this.updateStats();
+    this.particleSystem.update(dt);
 
     this.renderer.render(this.scene, this.camera);
   };
@@ -683,6 +707,27 @@ export class WeaponPlayground {
       this.playerGroup.up.copy(normal);
       this.playerGroup.lookAt(target);
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // Camera follow: smoothly track the player position
+  // -----------------------------------------------------------------------
+
+  private updateCamera(dt: number): void {
+    // Compute desired camera position: offset from player position along the
+    // surface normal, keeping the same relative distance as the initial setup.
+    const playerPos = this.playerGroup.position;
+    const normal = playerPos.clone().normalize();
+
+    // Camera sits above the player along the surface normal at CAMERA_DISTANCE
+    const desiredPos = playerPos.clone().add(normal.clone().multiplyScalar(CAMERA_DISTANCE));
+
+    // Smooth lerp toward desired position (higher factor = snappier tracking)
+    const lerpFactor = 1 - Math.exp(-5 * dt);
+    this.camera.position.lerp(desiredPos, lerpFactor);
+
+    // Always look at the player
+    this.camera.lookAt(playerPos);
   }
 
   // -----------------------------------------------------------------------
@@ -1057,6 +1102,10 @@ export class WeaponPlayground {
 
     if (!entry.enemy.alive) {
       // Enemy died via takeDamage -> die()
+      // Spawn death particle effects (same as main game) before hiding mesh
+      const enemyColor = new THREE.Color(ENEMY_COLORS[entry.type] ?? 0xff4444);
+      this.particleSystem.enemyDeath(entry.enemy.position.clone(), enemyColor);
+
       if (entry.enemy.mesh) {
         entry.enemy.mesh.visible = false;
       }
@@ -1180,7 +1229,7 @@ export class WeaponPlayground {
       mesh,
       position: origin.clone(),
       direction: direction.clone().normalize(),
-      speed: cfg.projectileSpeed > 0 ? cfg.projectileSpeed * 4 : 6,
+      speed: cfg.projectileSpeed > 0 ? cfg.projectileSpeed : 6,
       age: 0,
       maxAge: maxAge ?? 3,
       type: this.activeWeapon,

@@ -9,7 +9,8 @@
  * Surface wrapping rules:
  *   sphere:   U wraps, V does NOT wrap (poles)
  *   torus:    U wraps, V wraps
- *   cylinder: U wraps, V does NOT wrap
+ *   pill:     U wraps, V does NOT wrap
+ *   pipe:     U wraps, V wraps
  *   cube:     neither wraps (6 discrete faces mapped to UV)
  *   capsule:  U wraps, V does NOT wrap
  *   peanut:   U wraps, V does NOT wrap
@@ -63,7 +64,8 @@ export interface SurfaceWrapConfig {
 const SURFACE_WRAP_CONFIGS: Record<string, SurfaceWrapConfig> = {
   sphere:   { wrapU: true,  wrapV: false },
   torus:    { wrapU: true,  wrapV: true },
-  cylinder: { wrapU: true,  wrapV: false },
+  pill:     { wrapU: true,  wrapV: false },
+  pipe:     { wrapU: true,  wrapV: true },
   cube:     { wrapU: false, wrapV: false },
   capsule:  { wrapU: true,  wrapV: false },
   peanut:   { wrapU: true,  wrapV: false },

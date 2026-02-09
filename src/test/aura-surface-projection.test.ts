@@ -38,7 +38,7 @@ const TEST_SURFACES: TestSurfaceConfig[] = [
   { name: 'Sphere', type: 'sphere', startAbove: new THREE.Vector3(0, 20, 0) },
   { name: 'Cube', type: 'cube', startAbove: new THREE.Vector3(0, 15, 0) },
   { name: 'Torus', type: 'torus', startAbove: new THREE.Vector3(8.5, 5, 0) },
-  { name: 'Cylinder', type: 'cylinder', startAbove: new THREE.Vector3(8, 0, 0) },
+  { name: 'Pill', type: 'pill', startAbove: new THREE.Vector3(8, 0, 0) },
   { name: 'Peanut', type: 'peanut', startAbove: new THREE.Vector3(0, 15, 0) },
   { name: 'Capsule', type: 'capsule', startAbove: new THREE.Vector3(8, 0, 0) },
   { name: 'Icosahedron', type: 'icosahedron', startAbove: new THREE.Vector3(0, 20, 0) },

@@ -47,7 +47,7 @@ const TEST_SURFACES: TestSurfaceConfig[] = [
   { name: 'Sphere', type: 'sphere', startAbove: new THREE.Vector3(0, 20, 0), hasBevel: false },
   { name: 'Cube', type: 'cube', startAbove: new THREE.Vector3(0, 15, 0), hasBevel: false },
   { name: 'Torus', type: 'torus', startAbove: new THREE.Vector3(8.5, 5, 0), hasBevel: false },
-  { name: 'Cylinder', type: 'cylinder', startAbove: new THREE.Vector3(8, 0, 0), hasBevel: true },
+  { name: 'Pill', type: 'pill', startAbove: new THREE.Vector3(8, 0, 0), hasBevel: true },
   { name: 'Peanut', type: 'peanut', startAbove: new THREE.Vector3(0, 15, 0), hasBevel: false },
   { name: 'Capsule', type: 'capsule', startAbove: new THREE.Vector3(8, 0, 0), hasBevel: false },
   { name: 'Icosahedron', type: 'icosahedron', startAbove: new THREE.Vector3(0, 20, 0), hasBevel: false },
@@ -526,7 +526,7 @@ describe('Enemy Surface Positioning', () => {
         const belowDist = distanceToSurface(meshSurface, below);
 
         // "Above" (along normal) should be further from surface than "below"
-        // This works for all topologies (torus, cylinder, etc.)
+        // This works for all topologies (torus, pill, pipe, etc.)
         expect(aboveDist).toBeGreaterThan(belowDist * 0.5);
       });
 
