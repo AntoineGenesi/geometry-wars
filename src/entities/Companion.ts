@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { BulletPool } from './Bullet';
 import { BaseEnemy } from './enemies/BaseEnemy';
 import { getSoundEngine } from '../audio/SoundEngine';
+import { SurfaceAgent } from '../agents/SurfaceAgent';
+import { OrbitBehavior } from '../agents/behaviors';
+import type { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
 
 // ---------------------------------------------------------------------------
 // Companion Types
@@ -43,6 +46,8 @@ const COMPANION_COLORS: Record<CompanionType, number> = {
 const _tempAimDir = new THREE.Vector3();
 const _tempToEnemy = new THREE.Vector3();
 const _tempCompPos = new THREE.Vector3();
+const _tempOrientMat = new THREE.Matrix4();
+const _tempSpinAxis = new THREE.Vector3(0, 1, 0);
 
 // ---------------------------------------------------------------------------
 // Single Companion entity
@@ -75,6 +80,9 @@ class Companion {
   // Glow trail data
   private glowMaterial: THREE.MeshStandardMaterial;
 
+  // Surface-aware movement agent (orbit delegated to SurfaceAgent + OrbitBehavior)
+  private agent: SurfaceAgent;
+
   constructor(type: CompanionType, orbitPhase: number) {
     this.type = type;
     this.color = COMPANION_COLORS[type];
@@ -100,6 +108,15 @@ class Companion {
     const { group, material } = createCompanionMesh(this.color);
     this.mesh = group;
     this.glowMaterial = material;
+
+    // Initialize surface agent with orbit behavior
+    this.agent = new SurfaceAgent(null, new THREE.Vector3(), this.orbitSpeed);
+    this.agent.setBehavior(new OrbitBehavior(
+      new THREE.Vector3(), // center - updated each frame
+      ORBIT_RADIUS,
+      this.orbitSpeed,
+      this.orbitAngle,
+    ));
   }
 
   /**
@@ -122,35 +139,28 @@ class Companion {
       bitangent: THREE.Vector3;
     },
   ): void {
-    // Advance orbit
-    this.orbitAngle += this.orbitSpeed * dt;
+    // Delegate orbit positioning to SurfaceAgent + OrbitBehavior
+    const orbitBehavior = this.agent.getBehavior() as OrbitBehavior;
+    const playerTransform = getTransform(playerU, playerV);
+    orbitBehavior.center.copy(playerWorldPos);
+    orbitBehavior.setFrame(playerTransform.tangent, playerTransform.bitangent);
+    this.agent.update(dt);
+    this.orbitAngle = orbitBehavior.angle; // sync for any code reading orbitAngle
 
-    // Compute orbit position in UV space around player
-    const orbitU = 0.02; // Small orbit in UV (~1.5 world units on a 10-unit-radius sphere)
-    const orbitV = 0.02;
-    this.surfaceU = playerU + Math.cos(this.orbitAngle) * orbitU;
-    this.surfaceV = playerV + Math.sin(this.orbitAngle) * orbitV;
+    // Position mesh slightly above surface
+    this.mesh.position.copy(this.agent.position);
+    this.mesh.position.addScaledVector(surfaceNormal, 0.2);
 
-    // Clamp UV to [0,1]
-    this.surfaceU = ((this.surfaceU % 1) + 1) % 1;
-    this.surfaceV = ((this.surfaceV % 1) + 1) % 1;
+    // Keep approximate UV for bullet spawning (companion is near player)
+    this.surfaceU = playerU;
+    this.surfaceV = playerV;
 
-    // Apply surface transform to position mesh
-    const transform = getTransform(this.surfaceU, this.surfaceV);
-    this.mesh.position.copy(transform.position);
-    // Offset slightly above surface
-    this.mesh.position.addScaledVector(transform.normal, 0.2);
-
-    // Orient to surface
-    const orientMat = new THREE.Matrix4().makeBasis(
-      transform.tangent,
-      transform.normal,
-      transform.bitangent,
-    );
-    this.mesh.quaternion.setFromRotationMatrix(orientMat);
+    // Orient to surface using player's tangent frame (close enough for small orbits)
+    _tempOrientMat.makeBasis(playerTransform.tangent, surfaceNormal, playerTransform.bitangent);
+    this.mesh.quaternion.setFromRotationMatrix(_tempOrientMat);
 
     // Spin the companion for visual flair
-    this.mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), dt * 3);
+    this.mesh.rotateOnAxis(_tempSpinAxis, dt * 3);
 
     // Type-specific behavior
     switch (this.type) {
@@ -308,6 +318,10 @@ class Companion {
     getSoundEngine().play('shoot', { volume: 0.15, pitch: 1.4 + Math.random() * 0.3 });
   }
 
+  setMeshSurface(ms: MeshSurface | null): void {
+    this.agent.setMeshSurface(ms);
+  }
+
   dispose(): void {
     this.mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
@@ -331,6 +345,7 @@ class Companion {
 export class CompanionManager {
   readonly root: THREE.Group;
   private companions: Companion[] = [];
+  private meshSurface: MeshSurface | null = null;
 
   // Shield bubble for protector
   private shieldBubble: THREE.Mesh | null = null;
@@ -363,8 +378,20 @@ export class CompanionManager {
       }
     }
 
+    companion.setMeshSurface(this.meshSurface);
     this.companions.push(companion);
     this.root.add(companion.mesh);
+  }
+
+  /**
+   * Set the MeshSurface for all companions (enables BVH surface snapping).
+   * Also stored so newly added companions get it automatically.
+   */
+  setMeshSurface(ms: MeshSurface | null): void {
+    this.meshSurface = ms;
+    for (const companion of this.companions) {
+      companion.setMeshSurface(ms);
+    }
   }
 
   /**

@@ -27,36 +27,6 @@ export interface MenuSelection {
 // Ellipse layout helpers
 // ---------------------------------------------------------------------------
 
-/** Ellipse parameters for the oval button curve */
-const ELLIPSE_CENTER_X = 30; // % of viewport width
-const ELLIPSE_CENTER_Y = 50; // % of viewport height
-const ELLIPSE_RX = 25; // semi-major axis (horizontal), % of vw
-const ELLIPSE_RY = 35; // semi-minor axis (vertical), % of vh
-
-/**
- * Calculate (x%, y%) along the LEFT half of an ellipse.
- * angle=0 is top-center, distributed from about -60deg to +60deg.
- *
- * We distribute N buttons evenly across the LEFT arc of the ellipse,
- * spanning from -PI/3 (top) to +PI/3 (bottom) in parametric angle.
- */
-function ellipsePosition(index: number, total: number): { left: string; top: string } {
-  // Parametric angle range: -60deg to +60deg from top (mapped to left arc)
-  const startAngle = -Math.PI / 3;
-  const endAngle = Math.PI / 3;
-  const t = total > 1 ? index / (total - 1) : 0.5;
-  const angle = startAngle + t * (endAngle - startAngle);
-
-  // On the LEFT side of the ellipse: x decreases from center
-  const x = ELLIPSE_CENTER_X - ELLIPSE_RX * Math.sin(angle);
-  const y = ELLIPSE_CENTER_Y + ELLIPSE_RY * Math.sin(angle) * 0.6 - ELLIPSE_RY * Math.cos(angle) * 0.5;
-
-  // Clamp to reasonable bounds
-  const clampedX = Math.max(2, Math.min(50, x));
-  const clampedY = Math.max(5, Math.min(95, y));
-
-  return { left: `${clampedX}%`, top: `${clampedY}%` };
-}
 
 // ---------------------------------------------------------------------------
 // StartMenu
@@ -73,6 +43,7 @@ export class StartMenu {
   private lanClient: LANClient = new LANClient();
   private menuBackground: MenuBackground;
   private styleElement: HTMLStyleElement | null = null;
+  private pendingMode: 'single' | 'network' = 'single';
 
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
@@ -181,14 +152,11 @@ export class StartMenu {
       { mode: 'network', label: 'ONLINE', primary: false },
     ];
 
-    // Generate oval-positioned buttons
-    const totalButtons = mainButtons.length;
-    const ovalButtonsHTML = mainButtons.map((btn, i) => {
-      const pos = ellipsePosition(i, totalButtons);
+    // Generate menu buttons (flex column, no absolute positioning)
+    const ovalButtonsHTML = mainButtons.map((btn) => {
       const cls = btn.primary ? 'oval-btn oval-btn-primary' : 'oval-btn';
       return `
-        <button class="${cls}" data-mode="${btn.mode}"
-                style="left: ${pos.left}; top: ${pos.top};">
+        <button class="${cls}" data-mode="${btn.mode}">
           <span class="oval-btn-icon">\u25B6</span>
           <span class="oval-btn-label">${btn.label}</span>
         </button>
@@ -263,11 +231,16 @@ export class StartMenu {
           <button class="back-btn" id="lan-back">BACK</button>
         </div>
 
-        <div class="sub-panel surface-section" id="surface-section">
+        <div class="sub-panel surface-section hidden" id="surface-section">
           <h3>SELECT SURFACE</h3>
           <div class="surface-grid">
             ${surfaceButtons}
           </div>
+          <button class="start-btn" id="surface-start-btn">
+            <span class="btn-icon">\u25B6</span>
+            <span>START</span>
+          </button>
+          <button class="back-btn" id="surface-back">BACK</button>
         </div>
 
         <div class="controls-hint">
@@ -338,16 +311,16 @@ export class StartMenu {
       /* ------------------------------------------------------------------- */
       #start-menu .oval-buttons-container {
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 55%;
-        height: 100%;
+        top: 50%;
+        left: 5%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
         z-index: 10;
       }
 
       #start-menu .oval-btn {
-        position: absolute;
-        transform: translate(-50%, -50%);
         background: linear-gradient(180deg, rgba(40,40,90,0.85) 0%, rgba(20,20,50,0.9) 100%);
         border: 2px solid rgba(136,136,255,0.6);
         color: #ccccff;
@@ -361,7 +334,7 @@ export class StartMenu {
         gap: 10px;
         letter-spacing: 3px;
         white-space: nowrap;
-        min-width: 180px;
+        min-width: 200px;
         justify-content: center;
         border-radius: 4px;
         box-shadow: 0 0 8px rgba(136,136,255,0.15);
@@ -371,7 +344,7 @@ export class StartMenu {
         background: linear-gradient(180deg, rgba(60,60,140,0.95) 0%, rgba(30,30,80,0.95) 100%);
         border-color: #aaaaff;
         color: #ffffff;
-        transform: translate(-50%, -50%) scale(1.08);
+        transform: scale(1.05);
         box-shadow:
           0 0 20px rgba(136,136,255,0.4),
           0 0 40px rgba(136,136,255,0.15);
@@ -381,9 +354,8 @@ export class StartMenu {
         background: linear-gradient(180deg, rgba(0,140,0,0.85) 0%, rgba(0,80,0,0.9) 100%);
         border-color: rgba(0,255,0,0.6);
         color: #ffffff;
-        padding: 18px 40px;
-        font-size: 18px;
-        min-width: 220px;
+        padding: 16px 40px;
+        font-size: 17px;
         box-shadow: 0 0 12px rgba(0,255,0,0.2);
       }
 
@@ -910,11 +882,13 @@ export class StartMenu {
           return;
         }
 
-        // Other modes (single, network): use selected surface
-        this.onStartCallback?.({
-          surfaceType: this.selectedSurface,
-          gameMode: mode as 'single' | 'multiplayer' | 'network',
-        });
+        // Quick Game / Online: show surface selection first
+        this.pendingMode = mode as 'single' | 'network';
+        surfaceSection.classList.remove('hidden');
+        mainButtonsContainer.classList.add('hidden');
+        adventureSection.classList.add('hidden');
+        coopSection.classList.add('hidden');
+        lanSection.classList.add('hidden');
       });
     });
 
@@ -970,7 +944,6 @@ export class StartMenu {
       coopSection.classList.add('hidden');
       coopSurfacePick.classList.add('hidden');
       coopBtns.forEach((b) => b.classList.remove('active'));
-      surfaceSection.classList.remove('hidden');
       mainButtonsContainer.classList.remove('hidden');
     });
 
@@ -988,11 +961,26 @@ export class StartMenu {
       });
     });
 
+    // Surface section START button (Quick Game / Online)
+    const surfaceStartBtn = this.container.querySelector('#surface-start-btn');
+    surfaceStartBtn?.addEventListener('click', () => {
+      this.onStartCallback?.({
+        surfaceType: this.selectedSurface,
+        gameMode: this.pendingMode,
+      });
+    });
+
+    // Back button from surface selection
+    const surfaceBackBtn = this.container.querySelector('#surface-back');
+    surfaceBackBtn?.addEventListener('click', () => {
+      surfaceSection.classList.add('hidden');
+      mainButtonsContainer.classList.remove('hidden');
+    });
+
     // Back button from adventure
     const backBtn = this.container.querySelector('#adventure-back');
     backBtn?.addEventListener('click', () => {
       adventureSection.classList.add('hidden');
-      surfaceSection.classList.remove('hidden');
       mainButtonsContainer.classList.remove('hidden');
     });
 
@@ -1083,7 +1071,12 @@ export class StartMenu {
           lanHostBtn.style.display = '';
         }
       } catch (err) {
-        lanHostStatus.textContent = 'LAN hosting requires dev mode (npm run dev)';
+        const msg = err instanceof Error ? err.message : String(err);
+        // fetch() throws TypeError on network failure (e.g. endpoint not available in production builds)
+        const isNetworkError = err instanceof TypeError || msg.includes('fetch');
+        lanHostStatus.textContent = isNetworkError
+          ? 'LAN hosting requires dev mode (npm run dev)'
+          : `Failed to start: ${msg}`;
         lanHostBtn.style.display = '';
       }
     });
@@ -1170,7 +1163,6 @@ export class StartMenu {
       lanSection.classList.add('hidden');
       lanHostSurfacePick.classList.add('hidden');
       lanHostBtn.style.display = '';
-      surfaceSection.classList.remove('hidden');
       mainButtonsContainer.classList.remove('hidden');
     });
 

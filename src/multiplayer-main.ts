@@ -241,6 +241,7 @@ function main(): void {
 
   // -- Split-screen HUD --
   const hud = new SplitScreenHUD(playerCount);
+  const killTally = new KillTally(playerCount);
 
   // Initial viewport sizing
   function updateViewportSizes(): void {
@@ -280,7 +281,6 @@ function main(): void {
   const scoreManager = new ScoreManager();
   const killTracker = new KillTracker();
   const killLog = new KillLog();
-  const killTally = new KillTally(playerCount);
   const totalKillCounter = new TotalKillCounter();
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
   const auraManager = new AuraManager();

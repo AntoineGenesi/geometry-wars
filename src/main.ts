@@ -930,6 +930,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // -- Companion system --
   const companionManager = new CompanionManager();
+  companionManager.setMeshSurface(meshSurface);
   game.scene.add(companionManager.root);
   const companionPickups: CompanionPickup[] = [];
   const companionHUD = new CompanionHUD();

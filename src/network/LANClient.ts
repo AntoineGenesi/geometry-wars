@@ -54,6 +54,15 @@ export class LANClient {
 
   async startHost(): Promise<LANStartResult> {
     const res = await fetch('/__lan/start', { method: 'POST' });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      try {
+        const data = JSON.parse(text);
+        return { ok: false, addresses: [], port: 0, error: data.error ?? `HTTP ${res.status}` };
+      } catch {
+        return { ok: false, addresses: [], port: 0, error: `HTTP ${res.status}: ${text.slice(0, 100)}` };
+      }
+    }
     return res.json();
   }
 
