@@ -42,6 +42,36 @@ const COMPANION_COLORS: Record<CompanionType, number> = {
   [CompanionType.Protector]: 0x44ff44,
 };
 
+// Shared soft-glow texture for companion sprites (created lazily)
+let sharedCompanionGlowTexture: THREE.Texture | null = null;
+
+function getCompanionGlowTexture(): THREE.Texture {
+  if (!sharedCompanionGlowTexture) {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d')!;
+
+    const gradient = ctx.createRadialGradient(
+      size / 2, size / 2, 0,
+      size / 2, size / 2, size / 2,
+    );
+    gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+    gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.7)');
+    gradient.addColorStop(0.5, 'rgba(255, 255, 255, 0.25)');
+    gradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.05)');
+    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+
+    sharedCompanionGlowTexture = new THREE.CanvasTexture(canvas);
+    sharedCompanionGlowTexture.needsUpdate = true;
+  }
+  return sharedCompanionGlowTexture;
+}
+
 // Pre-allocated temp vectors
 const _tempAimDir = new THREE.Vector3();
 const _tempToEnemy = new THREE.Vector3();
@@ -619,11 +649,12 @@ export class CompanionPickup {
     innerMesh.name = 'core';
     group.add(innerMesh);
 
-    // Glow sprite
+    // Glow sprite (uses radial gradient texture to avoid square artifact)
     const glowMat = new THREE.SpriteMaterial({
+      map: getCompanionGlowTexture(),
       color: threeColor,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.35,
       blending: THREE.NormalBlending,
       depthWrite: false,
     });
@@ -818,17 +849,30 @@ function createCompanionMesh(color: number): {
   });
   group.add(new THREE.Mesh(wireGeom, wireMat));
 
-  // Small glow sprite
+  // Soft glow sprite (uses radial gradient texture to avoid square artifact)
   const spriteMat = new THREE.SpriteMaterial({
+    map: getCompanionGlowTexture(),
     color: threeColor,
     transparent: true,
-    opacity: 0.25,
+    opacity: 0.3,
     blending: THREE.NormalBlending,
     depthWrite: false,
   });
   const sprite = new THREE.Sprite(spriteMat);
-  sprite.scale.setScalar(0.5);
+  sprite.scale.setScalar(0.6);
   group.add(sprite);
+
+  // 3D torus ring for a true 3D aura visible from all angles
+  const ringGeom = new THREE.TorusGeometry(COMPANION_MESH_RADIUS * 1.8, 0.015, 8, 24);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: threeColor,
+    transparent: true,
+    opacity: 0.45,
+    depthWrite: false,
+  });
+  const ring = new THREE.Mesh(ringGeom, ringMat);
+  ring.name = 'companionRing';
+  group.add(ring);
 
   return { group, material: mat };
 }

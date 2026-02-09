@@ -2,12 +2,25 @@
  * Interactive weapon demo/playground that runs inside the WeaponWiki modal.
  *
  * Self-contained Three.js scene with its own renderer, camera, a mini sphere
- * surface, a player chevron, target enemies, and weapon visuals. Mouse-aimed
- * firing with player death/respawn, lives, and game-over state.
+ * surface, a player chevron, real enemy types from the game, and weapon visuals.
+ * Mouse-aimed firing with player death/respawn, lives, and game-over state.
+ *
+ * DESIGN: Matches actual game conditions exactly:
+ * - Real enemy types from src/entities/enemies/
+ * - Fire rates match WEAPON_CONFIGS + Player FIRE_RATE gating
+ * - Fixed top-down camera (does NOT rotate with player)
+ * - Opaque surface for clear visibility at small scale
  */
 
 import * as THREE from 'three';
 import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
+import { BaseEnemy } from '../entities/enemies/BaseEnemy';
+import { Grunt } from '../entities/enemies/Grunt';
+import { Wanderer } from '../entities/enemies/Wanderer';
+import { Duck } from '../entities/enemies/Duck';
+import { Weaver } from '../entities/enemies/Weaver';
+import { Spinner } from '../entities/enemies/Spinner';
+import { Rocket } from '../entities/enemies/Rocket';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -17,10 +30,8 @@ const SPHERE_RADIUS = 3;
 const CANVAS_WIDTH = 400;
 const CANVAS_HEIGHT = 300;
 const ENEMY_COUNT = 8;
-const ENEMY_SIZE = 0.15;
-const ENEMY_SPEED = 0.3; // radians per second toward player
 const ENEMY_RESPAWN_DELAY = 2.0;
-const CAMERA_DISTANCE = 7.5;
+const CAMERA_DISTANCE = 8;
 const PLAYER_MOVE_SPEED = 1.2; // radians per second for WASD movement
 const MIN_DT = 1 / 120;
 const MAX_DT = 1 / 30;
@@ -32,6 +43,15 @@ const TESLA_ARC_RANGE = 2.0;
 const TESLA_ARC_PERSIST = 0.7; // seconds arcs stay visible
 const TESLA_ARC_COUNT = 4; // arcs spawned per fire event
 
+// Match the real game's Player FIRE_RATE (src/entities/Player.ts: FIRE_RATE = 10)
+// This is the base player fire interval, which gates weapon fire rates
+const PLAYER_BASE_FIRE_RATE = 10; // shots per second
+const PLAYER_FIRE_INTERVAL = 1 / PLAYER_BASE_FIRE_RATE; // 0.1 seconds
+
+// Enemy types available in the playground (mix of basic + mid-tier)
+type PlaygroundEnemyType = 'grunt' | 'wanderer' | 'duck' | 'weaver' | 'spinner' | 'rocket';
+const ENEMY_TYPES: PlaygroundEnemyType[] = ['grunt', 'wanderer', 'duck', 'weaver', 'spinner', 'rocket'];
+
 // Temp vectors to avoid GC
 const _v1 = new THREE.Vector3();
 const _v2 = new THREE.Vector3();
@@ -40,16 +60,12 @@ const _raycaster = new THREE.Raycaster();
 const _mouseNDC = new THREE.Vector2();
 
 // ---------------------------------------------------------------------------
-// Mini enemy data
+// Real enemy wrapper (tracks respawn state alongside the real BaseEnemy)
 // ---------------------------------------------------------------------------
 
-interface PlaygroundEnemy {
-  mesh: THREE.Mesh;
-  theta: number;      // azimuthal angle on sphere
-  phi: number;        // polar angle on sphere
-  alive: boolean;
-  health: number;
-  maxHealth: number;
+interface PlaygroundEnemyEntry {
+  enemy: BaseEnemy;
+  type: PlaygroundEnemyType;
   respawnTimer: number;
 }
 
@@ -92,6 +108,53 @@ interface TeslaArc {
 }
 
 // ---------------------------------------------------------------------------
+// Sphere surface transform for real enemies
+// Maps UV (0-1, 0-1) to a position/normal/tangent/bitangent on the sphere.
+// This mirrors how the real game's SurfaceFactory works for sphere surfaces.
+// ---------------------------------------------------------------------------
+
+function makeSphereTransform(radius: number) {
+  return (u: number, v: number): {
+    position: THREE.Vector3;
+    normal: THREE.Vector3;
+    tangent: THREE.Vector3;
+    bitangent: THREE.Vector3;
+  } => {
+    const theta = u * Math.PI * 2; // azimuthal angle (0 to 2*PI)
+    const phi = v * Math.PI;       // polar angle (0 to PI)
+
+    const sinPhi = Math.sin(phi);
+    const cosPhi = Math.cos(phi);
+    const sinTheta = Math.sin(theta);
+    const cosTheta = Math.cos(theta);
+
+    const position = new THREE.Vector3(
+      radius * sinPhi * sinTheta,
+      radius * cosPhi,
+      radius * sinPhi * cosTheta,
+    );
+
+    const normal = position.clone().normalize();
+
+    // Tangent in U direction (d/dtheta)
+    const tangent = new THREE.Vector3(
+      sinPhi * cosTheta,
+      0,
+      -sinPhi * sinTheta,
+    ).normalize();
+
+    // Bitangent in V direction (d/dphi)
+    const bitangent = new THREE.Vector3(
+      cosPhi * sinTheta,
+      -sinPhi,
+      cosPhi * cosTheta,
+    ).normalize();
+
+    return { position, normal, tangent, bitangent };
+  };
+}
+
+// ---------------------------------------------------------------------------
 // WeaponPlayground
 // ---------------------------------------------------------------------------
 
@@ -107,7 +170,7 @@ export class WeaponPlayground {
   private aimTheta = 0; // where the player aims (rotates around sphere)
   private aimPhi = Math.PI / 2; // polar aim component for mouse aiming
 
-  private enemies: PlaygroundEnemy[] = [];
+  private enemies: PlaygroundEnemyEntry[] = [];
   private projectiles: MiniProjectile[] = [];
   private popups: DamagePopup[] = [];
 
@@ -170,12 +233,12 @@ export class WeaponPlayground {
   private readonly onMouseDown: (e: MouseEvent) => void;
   private readonly onMouseUp: (e: MouseEvent) => void;
 
-  // Materials (reused)
-  private enemyMat: THREE.MeshBasicMaterial;
-  private enemyDeadMat: THREE.MeshBasicMaterial;
+  // Sphere UV transform for real enemies
+  private readonly sphereTransform: ReturnType<typeof makeSphereTransform>;
 
   constructor(container: HTMLElement) {
     this.container = container;
+    this.sphereTransform = makeSphereTransform(SPHERE_RADIUS);
 
     // -- Renderer --
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -191,23 +254,45 @@ export class WeaponPlayground {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x050510);
 
-    // -- Camera --
+    // -- Lighting (needed for real enemies which use MeshStandardMaterial) --
+    const ambient = new THREE.AmbientLight(0x404080, 0.8);
+    this.scene.add(ambient);
+    const directional = new THREE.DirectionalLight(0xffffff, 0.8);
+    directional.position.set(5, 10, 5);
+    this.scene.add(directional);
+    const fillLight = new THREE.DirectionalLight(0x4488ff, 0.4);
+    fillLight.position.set(-5, -5, -5);
+    this.scene.add(fillLight);
+
+    // -- Camera: FIXED top-down view, does NOT rotate with player --
     this.camera = new THREE.PerspectiveCamera(50, CANVAS_WIDTH / CANVAS_HEIGHT, 0.1, 100);
-    this.camera.position.set(0, 3, CAMERA_DISTANCE);
+    this.camera.position.set(0, CAMERA_DISTANCE * 0.6, CAMERA_DISTANCE * 0.8);
     this.camera.lookAt(0, 0, 0);
 
-    // -- Sphere surface (wireframe) --
+    // -- Solid sphere surface (opaque fill for visibility at small scale) --
+    const solidGeo = new THREE.SphereGeometry(SPHERE_RADIUS * 0.995, 32, 24);
+    const solidMat = new THREE.MeshStandardMaterial({
+      color: 0x0a0a2a,
+      transparent: true,
+      opacity: 0.95,
+      roughness: 0.8,
+      metalness: 0.1,
+    });
+    const solidSphere = new THREE.Mesh(solidGeo, solidMat);
+    this.scene.add(solidSphere);
+
+    // -- Wireframe grid overlay --
     const sphereGeo = new THREE.SphereGeometry(SPHERE_RADIUS, 24, 16);
     const sphereMat = new THREE.MeshBasicMaterial({
-      color: 0x112244,
+      color: 0x2a2aaa,
       wireframe: true,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.5,
     });
     this.sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
     this.scene.add(this.sphereMesh);
 
-    // Invisible solid sphere for raycasting (slightly larger to catch edge hits)
+    // Invisible solid sphere for raycasting
     const raycastGeo = new THREE.SphereGeometry(SPHERE_RADIUS, 32, 24);
     const raycastMat = new THREE.MeshBasicMaterial({ visible: false });
     const raycastSphere = new THREE.Mesh(raycastGeo, raycastMat);
@@ -218,17 +303,9 @@ export class WeaponPlayground {
     this.playerGroup = this.buildMiniChevron(0x00ffff, 0.2);
     this.scene.add(this.playerGroup);
 
-    // -- Enemy materials --
-    this.enemyMat = new THREE.MeshBasicMaterial({ color: 0xff3333 });
-    this.enemyDeadMat = new THREE.MeshBasicMaterial({
-      color: 0x331111,
-      transparent: true,
-      opacity: 0.3,
-    });
-
-    // -- Spawn enemies --
+    // -- Spawn real enemies --
     for (let i = 0; i < ENEMY_COUNT; i++) {
-      this.spawnEnemy(i);
+      this.spawnRealEnemy(i);
     }
 
     // -- Stats overlay (includes lives) --
@@ -415,14 +492,10 @@ export class WeaponPlayground {
     this.clearTeslaArcs();
     this.clearDeathEffects();
 
-    // Reset enemies
-    for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
-      e.alive = true;
-      e.health = e.maxHealth;
-      e.respawnTimer = 0;
-      e.mesh.material = this.enemyMat;
-      this.randomizeSpherePos(e, i);
+    // Remove old enemies and spawn fresh ones
+    this.clearEnemies();
+    for (let i = 0; i < ENEMY_COUNT; i++) {
+      this.spawnRealEnemy(i);
     }
   }
 
@@ -449,6 +522,7 @@ export class WeaponPlayground {
     this.clearEffects();
     this.clearTeslaArcs();
     this.clearDeathEffects();
+    this.clearEnemies();
 
     // Dispose popups
     for (const p of this.popups) {
@@ -510,7 +584,6 @@ export class WeaponPlayground {
     this.updateEffects(dt);
     this.updateTeslaArcs(dt);
     this.updatePopups(dt);
-    this.updateCamera();
     this.updateStats();
 
     this.renderer.render(this.scene, this.camera);
@@ -620,11 +693,11 @@ export class WeaponPlayground {
     if (!this.playerAlive) return;
 
     for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
-      if (!e.alive) continue;
+      const entry = this.enemies[i];
+      if (!entry.enemy.alive) continue;
 
-      const dist = e.mesh.position.distanceTo(this.playerGroup.position);
-      if (dist < PLAYER_DEATH_RADIUS) {
+      const dist = entry.enemy.position.distanceTo(this.playerGroup.position);
+      if (dist < PLAYER_DEATH_RADIUS + entry.enemy.radius) {
         this.killPlayer();
         return;
       }
@@ -759,9 +832,9 @@ export class WeaponPlayground {
       const tryPos = this.spherePos(tryTheta, tryPhi);
 
       let minDist = Infinity;
-      for (const e of this.enemies) {
-        if (!e.alive) continue;
-        const d = tryPos.distanceTo(e.mesh.position);
+      for (const entry of this.enemies) {
+        if (!entry.enemy.alive) continue;
+        const d = tryPos.distanceTo(entry.enemy.position);
         if (d < minDist) minDist = d;
       }
 
@@ -809,16 +882,10 @@ export class WeaponPlayground {
     this.clearTeslaArcs();
     this.clearDeathEffects();
 
-    // Reset enemies
-    for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
-      e.alive = true;
-      e.health = this.getEnemyHealth();
-      e.maxHealth = e.health;
-      e.respawnTimer = 0;
-      e.mesh.material = this.enemyMat;
-      e.mesh.visible = true;
-      this.randomizeSpherePos(e, i);
+    // Remove old enemies and spawn fresh ones
+    this.clearEnemies();
+    for (let i = 0; i < ENEMY_COUNT; i++) {
+      this.spawnRealEnemy(i);
     }
 
     (this.scene.background as THREE.Color).setHex(0x050510);
@@ -834,103 +901,175 @@ export class WeaponPlayground {
   }
 
   // -----------------------------------------------------------------------
-  // Enemies
+  // Real enemies (imported from src/entities/enemies/)
   // -----------------------------------------------------------------------
 
-  private spawnEnemy(index: number): void {
-    const geo = new THREE.BoxGeometry(ENEMY_SIZE * 2, ENEMY_SIZE * 2, ENEMY_SIZE * 2);
-    const mesh = new THREE.Mesh(geo, this.enemyMat);
-    this.scene.add(mesh);
-
-    const e: PlaygroundEnemy = {
-      mesh,
-      theta: 0,
-      phi: 0,
-      alive: true,
-      health: this.getEnemyHealth(),
-      maxHealth: this.getEnemyHealth(),
-      respawnTimer: 0,
-    };
-    this.randomizeSpherePos(e, index);
-
-    if (index < this.enemies.length) {
-      this.enemies[index] = e;
-    } else {
-      this.enemies.push(e);
+  /** Create a real enemy instance based on type and UV position. */
+  private createRealEnemy(type: PlaygroundEnemyType, u: number, v: number): BaseEnemy {
+    switch (type) {
+      case 'grunt': return new Grunt(u, v);
+      case 'wanderer': return new Wanderer(u, v);
+      case 'duck': return new Duck(u, v);
+      case 'weaver': return new Weaver(u, v);
+      case 'spinner': return new Spinner(u, v);
+      case 'rocket': return new Rocket(u, v);
+      default: return new Grunt(u, v);
     }
   }
 
-  private getEnemyHealth(): number {
-    const cfg = WEAPON_CONFIGS[this.activeWeapon];
-    // Scale enemy health so they survive a few hits for most weapons
-    return Math.max(1, cfg.damage * 3);
+  /** Spawn a real enemy at a random position away from the player. */
+  private spawnRealEnemy(index: number): void {
+    const type = ENEMY_TYPES[index % ENEMY_TYPES.length];
+
+    // Convert player theta/phi to UV for spawn distance check
+    const playerU = ((this.playerTheta / (Math.PI * 2)) % 1 + 1) % 1;
+    const playerV = this.playerPhi / Math.PI;
+
+    // Find a position away from the player
+    let u: number, v: number;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      u = Math.random();
+      v = 0.15 + Math.random() * 0.7; // avoid poles
+      const du = Math.abs(u - playerU);
+      const dv = Math.abs(v - playerV);
+      if (Math.sqrt(du * du + dv * dv) > 0.25) break;
+    }
+    u = u!;
+    v = v!;
+
+    const enemy = this.createRealEnemy(type, u, v);
+
+    // Apply surface transform to position the enemy on the sphere
+    enemy.applySurfaceTransform(this.sphereTransform);
+
+    // Add enemy mesh to scene
+    if (enemy.mesh) {
+      this.scene.add(enemy.mesh);
+      // Scale down enemies for mini sphere (real enemies are sized for radius ~10 sphere)
+      const scaleFactor = SPHERE_RADIUS / 10;
+      enemy.mesh.scale.setScalar(scaleFactor);
+    }
+
+    const entry: PlaygroundEnemyEntry = {
+      enemy,
+      type,
+      respawnTimer: 0,
+    };
+
+    if (index < this.enemies.length) {
+      this.enemies[index] = entry;
+    } else {
+      this.enemies.push(entry);
+    }
   }
 
-  private randomizeSpherePos(e: PlaygroundEnemy, _index: number): void {
-    // Distribute enemies roughly opposite the player
-    e.theta = this.playerTheta + Math.PI + (Math.random() - 0.5) * Math.PI;
-    e.phi = Math.PI / 2 + (Math.random() - 0.5) * 1.2;
-    const pos = this.spherePos(e.theta, e.phi);
-    e.mesh.position.copy(pos);
+  /** Remove all enemies from the scene and clear the list. */
+  private clearEnemies(): void {
+    for (const entry of this.enemies) {
+      if (entry.enemy.mesh) {
+        this.scene.remove(entry.enemy.mesh);
+      }
+      entry.enemy.destroy();
+    }
+    this.enemies = [];
+  }
+
+  /** Get player UV position for enemy AI targeting. */
+  private getPlayerUV(): { u: number; v: number } {
+    const u = ((this.playerTheta / (Math.PI * 2)) % 1 + 1) % 1;
+    const v = this.playerPhi / Math.PI;
+    return { u, v };
   }
 
   private updateEnemies(dt: number): void {
-    for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
+    const playerUV = this.getPlayerUV();
 
-      if (!e.alive) {
-        e.respawnTimer -= dt;
-        if (e.respawnTimer <= 0) {
-          e.alive = true;
-          e.health = this.getEnemyHealth();
-          e.maxHealth = e.health;
-          e.mesh.material = this.enemyMat;
-          this.randomizeSpherePos(e, i);
-          e.mesh.visible = true;
+    for (let i = 0; i < this.enemies.length; i++) {
+      const entry = this.enemies[i];
+
+      if (!entry.enemy.alive) {
+        entry.respawnTimer -= dt;
+        if (entry.respawnTimer <= 0) {
+          // Respawn: remove old mesh, create new enemy
+          if (entry.enemy.mesh) {
+            this.scene.remove(entry.enemy.mesh);
+          }
+          entry.enemy.destroy();
+
+          // Pick a random type for variety
+          const newType = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+
+          // Find position away from player
+          let u = Math.random();
+          let v = 0.15 + Math.random() * 0.7;
+          for (let attempt = 0; attempt < 20; attempt++) {
+            u = Math.random();
+            v = 0.15 + Math.random() * 0.7;
+            const du = Math.abs(u - playerUV.u);
+            const dv = Math.abs(v - playerUV.v);
+            if (Math.sqrt(du * du + dv * dv) > 0.25) break;
+          }
+
+          const newEnemy = this.createRealEnemy(newType, u, v);
+          newEnemy.applySurfaceTransform(this.sphereTransform);
+          if (newEnemy.mesh) {
+            this.scene.add(newEnemy.mesh);
+            const scaleFactor = SPHERE_RADIUS / 10;
+            newEnemy.mesh.scale.setScalar(scaleFactor);
+          }
+
+          entry.enemy = newEnemy;
+          entry.type = newType;
+          entry.respawnTimer = 0;
         }
         continue;
       }
 
-      // Drift toward player (only if player is alive)
+      // Update enemy AI using real behavior (pass player UV position)
       if (this.playerAlive) {
-        const dTheta = this.playerTheta - e.theta;
-        const dPhi = this.playerPhi - e.phi;
-        const dist = Math.sqrt(dTheta * dTheta + dPhi * dPhi);
-        if (dist > 0.01) {
-          e.theta += (dTheta / dist) * ENEMY_SPEED * dt;
-          e.phi += (dPhi / dist) * ENEMY_SPEED * dt;
+        entry.enemy.setPlayerPosition(playerUV.u, playerUV.v);
+      }
+      entry.enemy.update(dt);
+
+      // Re-apply surface transform to move mesh to correct sphere position
+      entry.enemy.applySurfaceTransform(this.sphereTransform);
+
+      // Keep scale correct (in case the enemy reset it)
+      if (entry.enemy.mesh) {
+        const scaleFactor = SPHERE_RADIUS / 10;
+        const currentScale = entry.enemy.mesh.scale.x;
+        if (Math.abs(currentScale - scaleFactor) > 0.01) {
+          entry.enemy.mesh.scale.setScalar(scaleFactor);
         }
       }
-
-      const pos = this.spherePos(e.theta, e.phi);
-      e.mesh.position.copy(pos);
-
-      // Rotate for visual flair
-      e.mesh.rotation.x += dt * 2;
-      e.mesh.rotation.y += dt * 1.5;
     }
   }
 
   private damageEnemy(index: number, damage: number): void {
-    const e = this.enemies[index];
-    if (!e || !e.alive) return;
+    const entry = this.enemies[index];
+    if (!entry || !entry.enemy.alive) return;
 
-    e.health -= damage;
+    entry.enemy.takeDamage(damage);
     this.damageAccum += damage;
 
     // Spawn damage popup
-    this.spawnPopup(e.mesh.position, damage);
+    this.spawnPopup(entry.enemy.position, damage);
 
-    if (e.health <= 0) {
-      e.alive = false;
-      e.mesh.visible = false;
-      e.respawnTimer = ENEMY_RESPAWN_DELAY;
+    if (!entry.enemy.alive) {
+      // Enemy died via takeDamage -> die()
+      if (entry.enemy.mesh) {
+        entry.enemy.mesh.visible = false;
+      }
+      entry.respawnTimer = ENEMY_RESPAWN_DELAY;
       this.kills++;
     }
   }
 
   // -----------------------------------------------------------------------
   // Firing (mouse-controlled)
+  // Uses the same dual-gating as the real game:
+  // effective cooldown = max(1/weaponFireRate, 1/playerBaseFireRate)
+  // This ensures fire rates exactly match the actual game.
   // -----------------------------------------------------------------------
 
   private handleFiring(dt: number): void {
@@ -941,7 +1080,12 @@ export class WeaponPlayground {
     if (this.fireCooldown > 0) return;
 
     const cfg = WEAPON_CONFIGS[this.activeWeapon];
-    this.fireCooldown = 1 / cfg.fireRate;
+
+    // Dual-gating: weapon fire rate AND player base fire rate (matches real game)
+    // In the real game, Player.update fires at FIRE_RATE=10/sec, and WeaponManager.canFire
+    // checks its own 1/cfg.fireRate cooldown. The effective rate is the slower of the two.
+    const weaponInterval = 1 / cfg.fireRate;
+    this.fireCooldown = Math.max(weaponInterval, PLAYER_FIRE_INTERVAL);
 
     const playerPos = this.playerGroup.position.clone();
     const aimDir = this.getAimDirection();
@@ -1085,10 +1229,10 @@ export class WeaponPlayground {
 
     // Damage enemies along the beam
     for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
-      if (!e.alive) continue;
+      const entry = this.enemies[i];
+      if (!entry.enemy.alive) continue;
       for (let s = 0; s < points.length - 1; s++) {
-        const d = this.distToSegment(e.mesh.position, points[s], points[s + 1]);
+        const d = this.distToSegment(entry.enemy.position, points[s], points[s + 1]);
         if (d < 0.4) {
           this.damageEnemy(i, cfg.damage);
           break;
@@ -1100,8 +1244,8 @@ export class WeaponPlayground {
   private fireChainLightning(origin: THREE.Vector3, cfg: typeof WEAPON_CONFIGS[WeaponType]): void {
     // Find alive enemies sorted by distance
     const alive = this.enemies
-      .map((e, i) => ({ e, i, dist: e.mesh.position.distanceTo(origin) }))
-      .filter(x => x.e.alive)
+      .map((entry, i) => ({ entry, i, dist: entry.enemy.position.distanceTo(origin) }))
+      .filter(x => x.entry.enemy.alive)
       .sort((a, b) => a.dist - b.dist);
 
     if (alive.length === 0) return;
@@ -1112,7 +1256,7 @@ export class WeaponPlayground {
 
     for (let c = 0; c < chainCount; c++) {
       const target = alive[c];
-      const points = this.generateLightningPoints(prevPos, target.e.mesh.position, 8);
+      const points = this.generateLightningPoints(prevPos, target.entry.enemy.position, 8);
       const geo = new THREE.BufferGeometry().setFromPoints(points);
       const color = c === 0 ? 0xaaffff : 0x8844ff;
       const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 });
@@ -1122,7 +1266,7 @@ export class WeaponPlayground {
       this.activeEffectTimers.push(0.3);
 
       this.damageEnemy(target.i, cfg.damage * dmgMult);
-      prevPos = target.e.mesh.position.clone();
+      prevPos = target.entry.enemy.position.clone();
       dmgMult *= 0.75;
     }
   }
@@ -1133,8 +1277,8 @@ export class WeaponPlayground {
     let minDist = Infinity;
     let targetIdx = -1;
     for (let i = 0; i < this.enemies.length; i++) {
-      if (!this.enemies[i].alive) continue;
-      const d = this.enemies[i].mesh.position.distanceTo(origin);
+      if (!this.enemies[i].enemy.alive) continue;
+      const d = this.enemies[i].enemy.position.distanceTo(origin);
       if (d < minDist) { minDist = d; targetIdx = i; }
     }
     proj.targetIdx = targetIdx;
@@ -1155,18 +1299,19 @@ export class WeaponPlayground {
 
     // Pull and damage nearby enemies
     for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
-      if (!e.alive) continue;
-      const d = e.mesh.position.distanceTo(endPos);
+      const entry = this.enemies[i];
+      if (!entry.enemy.alive) continue;
+      const d = entry.enemy.position.distanceTo(endPos);
       if (d < 2.0) {
         this.damageEnemy(i, cfg.damage);
-        // Pull toward beam end
-        const pull = endPos.clone().sub(e.mesh.position).normalize().multiplyScalar(0.3);
-        e.mesh.position.add(pull);
-        e.mesh.position.normalize().multiplyScalar(SPHERE_RADIUS);
-        // Update angular coords
-        e.theta = Math.atan2(e.mesh.position.x, e.mesh.position.z);
-        e.phi = Math.acos(Math.max(-1, Math.min(1, e.mesh.position.y / SPHERE_RADIUS)));
+        // Pull toward beam end by shifting UV position
+        const enemyPos = entry.enemy.position;
+        const pull = endPos.clone().sub(enemyPos).normalize().multiplyScalar(0.02);
+        // Convert pull to UV delta
+        entry.enemy.surfacePosition.u += pull.x * 0.1;
+        entry.enemy.surfacePosition.v += pull.z * 0.1;
+        entry.enemy.surfacePosition.u = Math.max(0, Math.min(1, entry.enemy.surfacePosition.u));
+        entry.enemy.surfacePosition.v = Math.max(0, Math.min(1, entry.enemy.surfacePosition.v));
       }
     }
   }
@@ -1197,10 +1342,10 @@ export class WeaponPlayground {
 
     // Damage enemies along the beam
     for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
-      if (!e.alive) continue;
+      const entry = this.enemies[i];
+      if (!entry.enemy.alive) continue;
       for (let s = 0; s < points.length - 1; s++) {
-        if (this.distToSegment(e.mesh.position, points[s], points[s + 1]) < 0.35) {
+        if (this.distToSegment(entry.enemy.position, points[s], points[s + 1]) < 0.35) {
           this.damageEnemy(i, cfg.damage * 0.5);
           break;
         }
@@ -1232,9 +1377,9 @@ export class WeaponPlayground {
 
     // Instant kill nearby enemies
     for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
-      if (!e.alive) continue;
-      const d = e.mesh.position.distanceTo(targetPos);
+      const entry = this.enemies[i];
+      if (!entry.enemy.alive) continue;
+      const d = entry.enemy.position.distanceTo(targetPos);
       if (d < 1.5) {
         this.damageEnemy(i, cfg.damage);
       }
@@ -1245,11 +1390,11 @@ export class WeaponPlayground {
     // Find nearby alive enemies within tesla range
     const nearbyEnemies: { index: number; pos: THREE.Vector3 }[] = [];
     for (let i = 0; i < this.enemies.length; i++) {
-      const e = this.enemies[i];
-      if (!e.alive) continue;
-      const d = e.mesh.position.distanceTo(origin);
+      const entry = this.enemies[i];
+      if (!entry.enemy.alive) continue;
+      const d = entry.enemy.position.distanceTo(origin);
       if (d < TESLA_ARC_RANGE) {
-        nearbyEnemies.push({ index: i, pos: e.mesh.position.clone() });
+        nearbyEnemies.push({ index: i, pos: entry.enemy.position.clone() });
       }
     }
 
@@ -1373,15 +1518,15 @@ export class WeaponPlayground {
       // Homing: steer toward target
       if (p.type === WeaponType.Homing && p.targetIdx >= 0) {
         const target = this.enemies[p.targetIdx];
-        if (target && target.alive) {
-          const toTarget = target.mesh.position.clone().sub(p.position).normalize();
+        if (target && target.enemy.alive) {
+          const toTarget = target.enemy.position.clone().sub(p.position).normalize();
           p.direction.lerp(toTarget, 4.0 * dt).normalize();
         } else {
           // Re-target nearest
           let minDist = Infinity;
           for (let j = 0; j < this.enemies.length; j++) {
-            if (!this.enemies[j].alive) continue;
-            const d = this.enemies[j].mesh.position.distanceTo(p.position);
+            if (!this.enemies[j].enemy.alive) continue;
+            const d = this.enemies[j].enemy.position.distanceTo(p.position);
             if (d < minDist) { minDist = d; p.targetIdx = j; }
           }
         }
@@ -1403,11 +1548,11 @@ export class WeaponPlayground {
       // Collision with enemies
       const isPiercing = p.type === WeaponType.Piercing;
       for (let j = 0; j < this.enemies.length; j++) {
-        const e = this.enemies[j];
-        if (!e.alive) continue;
+        const entry = this.enemies[j];
+        if (!entry.enemy.alive) continue;
         if (isPiercing && p.hitSet.has(j)) continue;
 
-        const d = e.mesh.position.distanceTo(p.position);
+        const d = entry.enemy.position.distanceTo(p.position);
         if (d < 0.3) {
           const cfg = WEAPON_CONFIGS[this.activeWeapon];
           this.damageEnemy(j, cfg.damage);
@@ -1482,21 +1627,6 @@ export class WeaponPlayground {
     }
     this.activeEffectMeshes = [];
     this.activeEffectTimers = [];
-  }
-
-  // -----------------------------------------------------------------------
-  // Camera
-  // -----------------------------------------------------------------------
-
-  private updateCamera(): void {
-    // Orbit slightly behind and above the player
-    const camTheta = this.playerTheta - Math.PI / 8;
-    const camPhi = Math.PI / 2 - 0.4;
-    const cx = CAMERA_DISTANCE * Math.sin(camPhi) * Math.sin(camTheta);
-    const cy = CAMERA_DISTANCE * Math.cos(camPhi);
-    const cz = CAMERA_DISTANCE * Math.sin(camPhi) * Math.cos(camTheta);
-    this.camera.position.set(cx, cy, cz);
-    this.camera.lookAt(this.playerGroup.position);
   }
 
   // -----------------------------------------------------------------------

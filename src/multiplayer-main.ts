@@ -419,10 +419,15 @@ function main(): void {
   const weaponManagers: WeaponManager[] = [];
   const superStateManagers: SuperStateManager[] = [];
   /** Shared enemy death handler */
-  function handleEnemyDeath(enemy: BaseEnemy, killerPlayerId: number): void {
+  function handleEnemyDeath(enemy: BaseEnemy, killerPlayerId: number, weaponType?: WeaponType): void {
     const enemyType = enemy.constructor.name.toLowerCase();
     const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
-    particles.enemyDeath(enemy.position, color);
+    // Use lightweight death effect for AoE weapon kills to avoid screen-blocking
+    if (weaponType === WeaponType.Homing || weaponType === WeaponType.PlasmaMortar) {
+      particles.aoeDeath(enemy.position, color);
+    } else {
+      particles.enemyDeath(enemy.position, color);
+    }
     screenShake.shake(0.15, 0.15);
     sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
     surface.applyForce(enemy.position, 0.2, 1.0);
@@ -479,7 +484,7 @@ function main(): void {
           .filter(e => e.alive && e.mesh)
           .map((e, i) => ({ position: e.position.clone(), index: i, alive: e.alive }));
       },
-      onEnemyDamage: (index: number, damage: number, _weaponType: WeaponType) => {
+      onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => {
         const aliveEnemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
         const enemy = aliveEnemies[index];
         if (!enemy) return;
@@ -501,13 +506,24 @@ function main(): void {
           });
         }
         if (!enemy.alive) {
-          handleEnemyDeath(enemy, ownerId);
+          handleEnemyDeath(enemy, ownerId, weaponType);
         }
       },
       spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {
         const { u, v } = surface.worldToSurface(origin);
         const aimAngle = Math.atan2(direction.x, direction.z);
         bulletPool.spawn(origin, direction, u, v, aimAngle, ownerId);
+      },
+      onProjectileExplosion: (position: THREE.Vector3, wType: WeaponType) => {
+        if (wType === WeaponType.Homing) {
+          particles.homingExplosion(position);
+          surface.applyForce(position, 0.1, 0.4);
+          screenShake.shake(0.1, 0.1);
+        } else if (wType === WeaponType.PlasmaMortar) {
+          particles.mortarExplosion(position);
+          surface.applyForce(position, 0.25, 1.0);
+          screenShake.shake(0.15, 0.15);
+        }
       },
     });
     return wm;
@@ -587,6 +603,23 @@ function main(): void {
     window.location.href = window.location.pathname;
   });
 
+  /** Build current game data snapshot for pause menu stats panel (P1 weapon + total kills) */
+  function updatePauseMenuData(): void {
+    const wm = weaponManagers[0];
+    const currentWeapon = wm ? wm.getCurrentWeapon() : WeaponType.Standard;
+    const weaponConfig = WEAPON_CONFIGS[currentWeapon];
+
+    pauseMenu.setGameData({
+      buffs: [],
+      totalKills: totalKillCounter.getTotalKills(),
+      weapon: {
+        name: weaponConfig.name,
+        baseDamage: weaponConfig.damage,
+        fireRate: weaponConfig.fireRate,
+      },
+    });
+  }
+
   const gameOverScreen = new GameOverScreen();
   gameOverScreen.onContinue(() => {
     game.stop();
@@ -610,6 +643,7 @@ function main(): void {
       } else {
         isPaused = true;
         game.pause(); // stop clock ticking while paused
+        updatePauseMenuData();
         pauseMenu.show();
       }
     }
@@ -620,6 +654,7 @@ function main(): void {
     if (document.hidden && !isPaused && !isGameOver) {
       isPaused = true;
       game.pause(); // stop clock ticking while tab is hidden
+      updatePauseMenuData();
       pauseMenu.show();
     }
   });

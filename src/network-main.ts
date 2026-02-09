@@ -5,6 +5,11 @@
  * Each client renders the authoritative server state.
  * Uses MeshSurface for proper surface-normal camera and depth-based opacity.
  *
+ * IMPORTANT: Surface type is determined by the SERVER, not the URL parameter.
+ * The client connects first, reads the server's surfaceType from the room state,
+ * and only then creates the local surface to match. This ensures host and all
+ * clients always play on the same map.
+ *
  * Usage: Open http://localhost:3000?mode=network
  * Server must be running: npm run server
  */
@@ -30,8 +35,8 @@ import {
 } from './network/NetworkClient';
 import { AllyGlowManager } from './effects/AllyGlow';
 
-// Get surface type from URL
-function getSurfaceType(): SurfaceType {
+// Get surface type from URL (used as fallback only if server state unavailable)
+function getUrlSurfaceType(): SurfaceType {
   const params = new URLSearchParams(window.location.search);
   const surfaceParam = params.get('surface');
   const validTypes = SurfaceFactory.getAvailableTypes();
@@ -39,6 +44,11 @@ function getSurfaceType(): SurfaceType {
     return surfaceParam as SurfaceType;
   }
   return 'sphere';
+}
+
+// Validate a string is a known surface type
+function isValidSurfaceType(s: string): s is SurfaceType {
+  return SurfaceFactory.getAvailableTypes().includes(s as SurfaceType);
 }
 
 // Get server URL from URL params
@@ -67,13 +77,31 @@ function main() {
   // Disable built-in orbit camera - we control camera manually
   game.disableBuiltInCameraUpdate = true;
 
-  // Create surface
-  const surfaceType = getSurfaceType();
-  const surface = SurfaceFactory.create(surfaceType);
-  scene.add(surface.group);
+  // -----------------------------------------------------------------------
+  // Surface is created AFTER connecting to the server, using the server's
+  // authoritative surfaceType. This prevents the "wrong map" bug where the
+  // client would use the URL parameter (which defaults to 'sphere') instead
+  // of the host's selected map.
+  // -----------------------------------------------------------------------
+  let surface: Surface | null = null;
+  let meshSurface: MeshSurface | null = null;
+  let surfaceReady = false;
 
-  // Create MeshSurface for camera tracking and depth-based opacity
-  const meshSurface = new MeshSurface(surface.mesh);
+  function initSurface(serverSurfaceType: string): void {
+    if (surfaceReady) return; // Already initialized
+
+    const surfaceType: SurfaceType = isValidSurfaceType(serverSurfaceType)
+      ? serverSurfaceType
+      : getUrlSurfaceType(); // Fallback to URL param if server sends invalid type
+
+    console.log(`[NetworkMain] Creating surface from SERVER state: "${surfaceType}" (server sent: "${serverSurfaceType}")`);
+
+    surface = SurfaceFactory.create(surfaceType);
+    scene.add(surface.group);
+
+    meshSurface = new MeshSurface(surface.mesh);
+    surfaceReady = true;
+  }
 
   // Camera tracking state
   const CAMERA_DISTANCE = 20;
@@ -131,8 +159,9 @@ function main() {
   // Track local player
   let localPlayerId = '';
 
-  // Input throttle: send at 20Hz max, and only when input changes
-  const INPUT_SEND_INTERVAL = 0.05; // 50ms = 20Hz
+  // Input throttle: send at 30Hz max, and only when input changes
+  // (increased from 20Hz to reduce perceived input lag)
+  const INPUT_SEND_INTERVAL = 0.033; // ~33ms = 30Hz
   let lastInputSendTime = 0;
   let lastSentInput: { moveX: number; moveY: number; aimAngle: number; shooting: boolean; bomb: boolean } | null = null;
 
@@ -256,6 +285,18 @@ function main() {
 
   // State change callback
   function onStateChange(state: NetworkGameState) {
+    // On first state change, initialize the surface from the server's authoritative type
+    if (!surfaceReady) {
+      initSurface(state.surfaceType);
+    }
+
+    // Skip rendering if surface not ready (shouldn't happen, but guard)
+    if (!surface || !meshSurface) return;
+
+    // Bind to local const so TypeScript narrows the type (non-null) for the rest of this function
+    const surf = surface;
+    const mSurf = meshSurface;
+
     // Update players
     state.players.forEach((player: NetworkPlayerState, id: string) => {
       let mesh = playerMeshes.get(id);
@@ -277,7 +318,7 @@ function main() {
       }
 
       // Position on surface (lift above surface)
-      const surfacePoint: SurfacePoint = surface.getPoint(player.surfaceU, player.surfaceV);
+      const surfacePoint: SurfacePoint = surf.getPoint(player.surfaceU, player.surfaceV);
       mesh.position.copy(surfacePoint.position);
       mesh.position.add(surfacePoint.normal.clone().multiplyScalar(0.15));
 
@@ -325,12 +366,12 @@ function main() {
         enemyMeshes.set(enemy.id, mesh);
       }
 
-      const surfacePoint: SurfacePoint = surface.getPoint(enemy.surfaceU, enemy.surfaceV);
+      const surfacePoint: SurfacePoint = surf.getPoint(enemy.surfaceU, enemy.surfaceV);
       mesh.position.copy(surfacePoint.position);
       mesh.position.add(surfacePoint.normal.clone().multiplyScalar(0.12));
 
       // Depth-based opacity: fade enemies on far side of surface
-      const visibility = meshSurface.getVisibility(mesh.position, surfacePoint.normal, camera.position);
+      const visibility = mSurf.getVisibility(mesh.position, surfacePoint.normal, camera.position);
       const mat = mesh.material as THREE.MeshBasicMaterial;
       mat.opacity = visibility;
       mesh.visible = enemy.alive && visibility > 0.05;
@@ -354,7 +395,7 @@ function main() {
 
       if (existingIdx !== undefined) {
         // Update existing bullet position with interpolation
-        const surfacePoint: SurfacePoint = surface.getPoint(bullet.x, bullet.y);
+        const surfacePoint: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
         const targetPos = surfacePoint.position.clone().add(
           surfacePoint.normal.clone().multiplyScalar(0.02)
         );
@@ -364,7 +405,7 @@ function main() {
         }
       } else {
         // New bullet: spawn in pool and track
-        const surfacePoint: SurfacePoint = surface.getPoint(bullet.x, bullet.y);
+        const surfacePoint: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
         const dir = new THREE.Vector3(bullet.dirX, bullet.dirY, bullet.dirZ);
         bulletPool.spawn(
           surfacePoint.position.clone().add(surfacePoint.normal.clone().multiplyScalar(0.02)),
@@ -442,7 +483,7 @@ function main() {
         weaponPickupMeshes.set(pickup.id, mesh);
       }
 
-      const sp: SurfacePoint = surface.getPoint(pickup.surfaceU, pickup.surfaceV);
+      const sp: SurfacePoint = surf.getPoint(pickup.surfaceU, pickup.surfaceV);
       mesh.position.copy(sp.position);
       mesh.position.add(sp.normal.clone().multiplyScalar(0.3));
       mesh.rotation.y = Date.now() * 0.003;
@@ -499,11 +540,24 @@ function main() {
   }
 
   // Connect to server
+  // NOTE: We pass the URL surface type as a hint for room creation (if this
+  // client is the first to join = host). The actual surface used for rendering
+  // comes from the server state, not from this parameter.
+  const urlSurfaceType = getUrlSurfaceType();
   network.connect({
     name: `Player ${Math.floor(Math.random() * 1000)}`,
-    surfaceType,
+    surfaceType: urlSurfaceType,
   }).then(() => {
     localPlayerId = network.getLocalPlayerId();
+
+    // Read the server's authoritative surface type and initialize immediately
+    const serverSurface = network.getServerSurfaceType();
+    console.log(`[NetworkMain] Connected. Server surface: "${serverSurface}", URL surface: "${urlSurfaceType}"`);
+    if (serverSurface && serverSurface !== urlSurfaceType) {
+      console.log(`[NetworkMain] NOTE: Server surface differs from URL! Using server's: "${serverSurface}"`);
+    }
+    initSurface(serverSurface);
+
     statusEl.textContent = 'Connected! Waiting for game start...';
     startBtn.style.display = 'block';
 
@@ -530,22 +584,42 @@ function main() {
 
   // Wire up game loop callbacks
   game.onFixedUpdate = (dt: number) => {
+    // Skip if surface not ready yet (still connecting)
+    if (!surfaceReady || !surface) return;
+
     // Get input
     const inputState = input.getState();
 
-    // Calculate aim angle from mouse position
-    // Negate Y because screen Y-axis points down, but UV V-axis increases downward
-    // on the server, so we need to invert to match the math coordinate system
+    // Calculate aim angle from mouse position.
+    // Negate aimY because screen Y-axis points down, but the math convention
+    // for atan2 expects Y-up. The resulting angle is used on the server where
+    // sin(angle) > 0 means +V direction (which moves UP on screen because
+    // camera.up = tangentV = d/dV direction).
     const mouseX = inputState.aimX;
     const mouseY = inputState.aimY;
     const aimAngle = Math.atan2(-mouseY, mouseX);
 
-    // Throttle input to 20Hz and only send when changed
+    // Throttle input and only send when changed
     lastInputSendTime += dt;
     if (network.isConnected() && lastInputSendTime >= INPUT_SEND_INTERVAL) {
+      // MOVEMENT FIX: Negate moveY before sending to server.
+      //
+      // The InputManager convention is: W = moveY -1, S = moveY +1
+      // (i.e., W is "up" = negative in screen-space Y).
+      //
+      // On the server: surfaceV += moveY * speed
+      //   - Increasing V moves in the +tangentV direction
+      //   - The camera's up vector = tangentV
+      //   - So increasing V = moving UP on screen
+      //
+      // Without negation: W sends moveY=-1, server decreases V, player moves
+      // DOWN on screen. That's inverted!
+      //
+      // With negation: W sends moveY=+1, server increases V, player moves
+      // UP on screen. Correct!
       const currentInput = {
         moveX: inputState.moveX,
-        moveY: inputState.moveY,
+        moveY: -inputState.moveY,
         aimAngle,
         shooting: inputState.shooting,
         bomb: inputState.bomb,
@@ -588,10 +662,13 @@ function main() {
   };
 
   game.onRender = () => {
+    // Skip if surface not ready yet
+    if (!surfaceReady || !surface) return;
+
     // Camera follows local player along surface normal
     const localMesh = playerMeshes.get(localPlayerId);
     if (localMesh) {
-      // Get surface point for camera positioning (use worldToSurface → getPoint for normal)
+      // Get surface point for camera positioning (use worldToSurface -> getPoint for normal)
       const uv = surface.worldToSurface(localMesh.position);
       const sp = surface.getPoint(uv.u, uv.v);
 
@@ -605,8 +682,9 @@ function main() {
     }
 
     // Apply surface projection for geoms (bullets are synced from server)
+    const surfaceRef = surface;
     const getTransform = (u: number, v: number) => {
-      const pt = surface.getPoint(u, v);
+      const pt = surfaceRef.getPoint(u, v);
       return {
         position: pt.position,
         normal: pt.normal,
@@ -624,7 +702,7 @@ function main() {
   window.addEventListener('beforeunload', () => {
     network.disconnect();
     allyGlowManager.dispose();
-    meshSurface.dispose();
+    meshSurface?.dispose();
   });
 }
 

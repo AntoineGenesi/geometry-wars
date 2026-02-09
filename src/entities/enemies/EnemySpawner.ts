@@ -43,6 +43,8 @@ export interface WaveEnemy {
   type: EnemyType;
   count: number;
   region?: SpawnRegion;
+  /** Difficulty tier for this group (0 = normal, 1+ = scaled). */
+  tier?: number;
 }
 
 // Minimum distance from player for spawning (in UV space)
@@ -170,7 +172,7 @@ export class EnemySpawner {
     return { u: fallbackU, v: fallbackV };
   }
 
-  spawn(type: EnemyType, surfaceU?: number, surfaceV?: number): BaseEnemy {
+  spawn(type: EnemyType, surfaceU?: number, surfaceV?: number, tier: number = 0): BaseEnemy {
     // Use provided position or find valid random position
     let u: number;
     let v: number;
@@ -275,6 +277,14 @@ export class EnemySpawner {
         enemy = new Wanderer(u, v);
     }
 
+    // Store the base type name for tier-based split spawning
+    enemy.baseTypeName = type;
+
+    // Apply difficulty tier scaling (stats, visuals, splitting behavior)
+    if (tier > 0) {
+      enemy.applyDifficultyTier(tier);
+    }
+
     // Create spawn warning indicator first
     const warningMesh = new THREE.Mesh(
       EnemySpawner.warningGeometry!,
@@ -331,12 +341,13 @@ export class EnemySpawner {
       const maxU = region.maxU !== undefined ? region.maxU : 1;
       const minV = region.minV !== undefined ? region.minV : 0;
       const maxV = region.maxV !== undefined ? region.maxV : 1;
+      const tier = waveEnemy.tier ?? 0;
 
       for (let i = 0; i < waveEnemy.count; i++) {
         // Find valid position away from player and other enemies
         const validPos = this.findValidSpawnPosition(minU, maxU, minV, maxV);
         if (validPos) {
-          this.spawn(waveEnemy.type, validPos.u, validPos.v);
+          this.spawn(waveEnemy.type, validPos.u, validPos.v, tier);
         }
       }
     }

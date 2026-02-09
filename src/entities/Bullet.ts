@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import { MeshSurface, FacePosition } from '../experimental/mesh-movement/MeshSurface';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -39,6 +39,10 @@ interface BulletData {
   sphereRadius: number;
   /** Player who fired this bullet (-1 = unowned, 0 = P1, 1 = P2, etc.) */
   ownerId: number;
+  /** Geodesic face position for face-walking movement (avoids BVH vertex attraction). */
+  facePos: FacePosition | null;
+  /** Face index on the mesh surface (for geodesic tracking). */
+  faceIndex: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +111,8 @@ export class BulletPool {
         dirZ: 0,
         sphereRadius: DEFAULT_SPHERE_RADIUS,
         ownerId: -1,
+        facePos: null,
+        faceIndex: 0,
       });
     }
   }
@@ -172,6 +178,21 @@ export class BulletPool {
     b.sphereRadius = origin.length(); // Use spawn distance as radius
     b.ownerId = ownerId;
 
+    // Initialize geodesic face position for face-walking movement
+    if (this.meshSurface) {
+      const closest = this.meshSurface.closestPointOnSurface(origin);
+      if (closest) {
+        b.facePos = this.meshSurface.initGeodesicPosition(closest.point, closest.faceIndex);
+        b.faceIndex = closest.faceIndex;
+      } else {
+        b.facePos = null;
+        b.faceIndex = 0;
+      }
+    } else {
+      b.facePos = null;
+      b.faceIndex = 0;
+    }
+
     const line = this.lines[idx];
     line.position.copy(origin);
     line.visible = true;
@@ -212,8 +233,91 @@ export class BulletPool {
       line.position.y += b.dirY * dist;
       line.position.z += b.dirZ * dist;
 
-      if (this.meshSurface) {
-        // -- Mesh-based projection (shape-agnostic) --
+      if (this.meshSurface && b.facePos) {
+        // -- Geodesic face-walking (true straight paths on surface) --
+        // Uses the same algorithm as the player's MeshWalker: walks along
+        // triangle faces with parallel transport across edges. This avoids
+        // BVH closest-point attraction toward vertices at face convergence
+        // points (cube corners, icosahedron poles, etc.).
+        _tempDir.set(b.dirX, b.dirY, b.dirZ);
+
+        // Undo the world-space step (geodesic walker handles its own movement)
+        line.position.x = prevX;
+        line.position.y = prevY;
+        line.position.z = prevZ;
+
+        const geoResult = this.meshSurface.moveGeodesic(b.facePos, _tempDir, dist);
+
+        if (geoResult.distanceTraveled < dist * 0.05 ||
+            isNaN(geoResult.position.x) || isNaN(geoResult.position.y) || isNaN(geoResult.position.z)) {
+          // Geodesic walk failed -- fall back to BVH projection
+          line.position.x = prevX + b.dirX * dist;
+          line.position.y = prevY + b.dirY * dist;
+          line.position.z = prevZ + b.dirZ * dist;
+
+          const bvhResult = this.meshSurface.closestPointOnSurface(line.position);
+          if (!bvhResult) {
+            this.kill(i);
+            continue;
+          }
+
+          line.position.copy(bvhResult.point);
+          b.facePos = this.meshSurface.initGeodesicPosition(bvhResult.point, bvhResult.faceIndex);
+          b.faceIndex = bvhResult.faceIndex;
+
+          // Update direction tangent to new surface
+          const normal = bvhResult.normal;
+          _tempDir.set(b.dirX, b.dirY, b.dirZ);
+          const dot = _tempDir.dot(normal);
+          _tempDir.x -= dot * normal.x;
+          _tempDir.y -= dot * normal.y;
+          _tempDir.z -= dot * normal.z;
+          const dirLen = _tempDir.length();
+          if (dirLen > 0.0001) {
+            _tempDir.multiplyScalar(1 / dirLen);
+          } else {
+            this.kill(i);
+            continue;
+          }
+          b.dirX = _tempDir.x;
+          b.dirY = _tempDir.y;
+          b.dirZ = _tempDir.z;
+        } else {
+          // Geodesic walk succeeded
+          line.position.copy(geoResult.position);
+          b.facePos = geoResult.facePosition;
+          b.faceIndex = geoResult.faceIndex;
+
+          // Use the parallel-transported direction from the geodesic walker
+          const transportedDir = geoResult.direction;
+          const tLen = transportedDir.length();
+          if (tLen > 0.0001) {
+            b.dirX = transportedDir.x / tLen;
+            b.dirY = transportedDir.y / tLen;
+            b.dirZ = transportedDir.z / tLen;
+          } else {
+            this.kill(i);
+            continue;
+          }
+
+          // If geodesic only covered part of the distance, use BVH for remainder
+          const remaining = dist - geoResult.distanceTraveled;
+          if (remaining > dist * 0.1) {
+            const bvhResult = this.meshSurface.moveOnSurface(
+              line.position,
+              geoResult.normal,
+              transportedDir,
+              remaining,
+            );
+            if (bvhResult && line.position.distanceTo(bvhResult.point) > remaining * 0.05) {
+              line.position.copy(bvhResult.point);
+              b.facePos = this.meshSurface.initGeodesicPosition(bvhResult.point, bvhResult.faceIndex);
+              b.faceIndex = bvhResult.faceIndex;
+            }
+          }
+        }
+      } else if (this.meshSurface) {
+        // -- BVH projection fallback (no geodesic state) --
         const result = this.meshSurface.closestPointOnSurface(line.position);
         if (!result) {
           this.kill(i);
@@ -233,8 +337,11 @@ export class BulletPool {
 
         line.position.copy(result.point);
 
+        // Initialize geodesic state for future frames
+        b.facePos = this.meshSurface.initGeodesicPosition(result.point, result.faceIndex);
+        b.faceIndex = result.faceIndex;
+
         // Update direction to remain tangent to surface at new position
-        // Uses pre-allocated _tempDir instead of new Vector3
         const normal = result.normal;
         _tempDir.set(b.dirX, b.dirY, b.dirZ);
         const dot = _tempDir.dot(normal);

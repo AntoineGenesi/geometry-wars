@@ -341,6 +341,15 @@ export class NetworkClient {
   }
 
   /**
+   * Get the server's authoritative surface type from the room state.
+   * Must be called after connect() resolves.
+   */
+  getServerSurfaceType(): string {
+    if (!this.room?.state) return 'sphere';
+    return (this.room.state as { surfaceType?: string }).surfaceType || 'sphere';
+  }
+
+  /**
    * Check if connected
    */
   isConnected(): boolean {

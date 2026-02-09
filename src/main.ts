@@ -57,6 +57,13 @@ import { BuffHUD } from './buffs/BuffHUD';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
+import { PerformanceTracker } from './core/PerformanceTracker';
+import { DebugOverlay } from './ui/DebugOverlay';
+import {
+  computeDifficultyLevel,
+  generateScaledEndlessWave,
+  type DifficultyInput,
+} from './core/DifficultyScaling';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -232,6 +239,12 @@ class WaveScheduler {
   private endlessNextSpawn = 5; // first endless wave at 5 seconds
   private endlessInterval = 8; // seconds between endless waves
 
+  /** Current difficulty level (computed from player state). */
+  currentDifficultyLevel = 0;
+
+  /** External provider for player state (set by main after construction). */
+  getDifficultyInput: (() => DifficultyInput) | null = null;
+
   constructor(waves: WaveDefinition[], endless = false) {
     this.waves = waves;
     this.waveTimers = waves.map(w => w.delay);
@@ -241,6 +254,15 @@ class WaveScheduler {
 
   update(dt: number, spawner: EnemySpawner): void {
     this.elapsed += dt;
+
+    // Recompute difficulty level from player state
+    if (this.getDifficultyInput) {
+      const input = this.getDifficultyInput();
+      this.currentDifficultyLevel = computeDifficultyLevel({
+        ...input,
+        elapsedTime: this.elapsed,
+      });
+    }
 
     // Scripted waves
     for (let i = 0; i < this.waves.length; i++) {
@@ -252,59 +274,27 @@ class WaveScheduler {
           wave.enemies.map(e => ({
             type: e.type as any,
             count: e.count,
+            tier: 0, // scripted waves always tier 0 (early game)
           })),
         );
       }
     }
 
-    // Endless scaling waves
+    // Endless scaling waves (now with difficulty-based tiers)
     if (this.endless && this.elapsed >= this.endlessNextSpawn) {
       this.endlessWave++;
-      this.endlessNextSpawn += Math.max(3, this.endlessInterval - this.endlessWave * 0.3);
-      const wave = this.generateEndlessWave(this.endlessWave);
-      spawner.spawnWave(wave as any);
+      // Spawn interval decreases faster at higher difficulty
+      const difficultySpeedBonus = Math.min(2, this.currentDifficultyLevel * 0.3);
+      this.endlessNextSpawn += Math.max(
+        2.5,
+        this.endlessInterval - this.endlessWave * 0.3 - difficultySpeedBonus,
+      );
+      const scaledWave = generateScaledEndlessWave(
+        this.endlessWave,
+        this.currentDifficultyLevel,
+      );
+      spawner.spawnWave(scaledWave as any);
     }
-  }
-
-  private generateEndlessWave(waveNum: number): Array<{ type: string; count: number }> {
-    const basicTypes = ['grunt', 'wanderer', 'duck'];
-    const midTypes = ['weaver', 'spinner', 'rocket', 'neutron'];
-    const hardTypes = ['snake', 'repulsor', 'gravity_well', 'spawner'];
-    const giantTypes = ['giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron', 'titan_grunt', 'titan_spinner', 'titan_weaver'];
-    const eliteTypes = ['mayfly', 'gate', 'virus', 'painter'];
-
-    const enemies: Array<{ type: string; count: number }> = [];
-    const baseCount = 3 + Math.floor(waveNum * 0.8);
-
-    // Always some basic enemies
-    const basicType = basicTypes[waveNum % basicTypes.length];
-    enemies.push({ type: basicType, count: Math.min(baseCount, 12) });
-
-    // Add mid-tier from wave 3+
-    if (waveNum >= 3) {
-      const midType = midTypes[(waveNum - 3) % midTypes.length];
-      enemies.push({ type: midType, count: Math.min(Math.floor(baseCount * 0.6), 8) });
-    }
-
-    // Add hard enemies from wave 6+
-    if (waveNum >= 6) {
-      const hardType = hardTypes[(waveNum - 6) % hardTypes.length];
-      enemies.push({ type: hardType, count: Math.min(Math.floor(baseCount * 0.4), 5) });
-    }
-
-    // Add giant/titan break-apart enemies from wave 8+
-    if (waveNum >= 8) {
-      const giantType = giantTypes[(waveNum - 8) % giantTypes.length];
-      enemies.push({ type: giantType, count: Math.min(Math.floor(baseCount * 0.25), 3) });
-    }
-
-    // Add elite enemies from wave 10+
-    if (waveNum >= 10) {
-      const eliteType = eliteTypes[(waveNum - 10) % eliteTypes.length];
-      enemies.push({ type: eliteType, count: Math.min(Math.floor(baseCount * 0.3), 4) });
-    }
-
-    return enemies;
   }
 
   get allSpawned(): boolean {
@@ -681,6 +671,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const enemyInstanceManager = new EnemyInstanceManager(game.scene);
   enemySpawner.setInstanceManager(enemyInstanceManager);
 
+  // -- Debug performance overlay --
+  const perfTracker = new PerformanceTracker(surfaceType);
+  const debugOverlay = new DebugOverlay(perfTracker);
+
   // -- Enemy glow trails (for fast-moving enemies) --
   // Track which enemies have trails and their trail objects
   const enemyGlowTrails = new Map<BaseEnemy, GlowTrail>();
@@ -786,6 +780,15 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Wave scheduler --
   const waveScheduler = new WaveScheduler(level.waves, isEndless);
 
+  // Wire difficulty scaling into wave scheduler (reads player state each wave)
+  waveScheduler.getDifficultyInput = () => ({
+    score: player.score,
+    elapsedTime: 0, // overridden inside WaveScheduler.update()
+    combo: scoreManager.combo,
+    totalKills: playerLevel.totalKills,
+    playerLevel: playerLevel.level,
+  });
+
   // -- Game mode --
   const modeType = level.mode as GameModeType;
   const modeDefaults = MODE_DEFAULTS[modeType] || {};
@@ -804,6 +807,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   gameMode.onComplete = (stars: number) => {
     if (isLevelComplete) return;
     isLevelComplete = true;
+    perfTracker.saveSession();
     bgMusic.stop();
     sound.play('multiplierUp');
     setTimeout(() => {
@@ -851,7 +855,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
           alive: e.alive,
         }));
     },
-    onEnemyDamage: (index: number, damage: number, _weaponType: WeaponType) => {
+    onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => {
       const enemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
       const enemy = enemies[index];
       if (!enemy) return;
@@ -865,7 +869,14 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       if (!enemy.alive) {
         const enemyType = enemy.constructor.name.toLowerCase();
         const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
-        particles.enemyDeath(enemy.position, color);
+
+        // Use lightweight death effect for AoE weapon kills to avoid screen-blocking
+        if (weaponType === WeaponType.Homing || weaponType === WeaponType.PlasmaMortar) {
+          particles.aoeDeath(enemy.position, color);
+        } else {
+          particles.enemyDeath(enemy.position, color);
+        }
+
         scoreManager.awardKill(enemy.scoreValue, enemyType);
         screenShake.shake(0.15, 0.15);
         getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
@@ -885,6 +896,17 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       const { u, v } = surface.worldToSurface(origin);
       const aimAngle = Math.atan2(direction.x, direction.z);
       bulletPool.spawn(origin, direction, u, v, aimAngle);
+    },
+    onProjectileExplosion: (position: THREE.Vector3, wType: WeaponType) => {
+      if (wType === WeaponType.Homing) {
+        particles.homingExplosion(position);
+        surface.applyForce(position, 0.1, 0.4);
+        screenShake.shake(0.1, 0.1);
+      } else if (wType === WeaponType.PlasmaMortar) {
+        particles.mortarExplosion(position);
+        surface.applyForce(position, 0.25, 1.0);
+        screenShake.shake(0.15, 0.15);
+      }
     },
   });
 
@@ -907,6 +929,17 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Wire up enemy death handler --
   BaseEnemy.onDeath = (_position: THREE.Vector3, _score: number, _geoms: number) => {
     // Handled in checkBulletEnemyCollisions above
+  };
+
+  // -- Tier-based split death: tiered enemies break into children on death --
+  BaseEnemy.onTierSplitDeath = (type: string, u: number, v: number, count: number, childTier: number) => {
+    for (let i = 0; i < count; i++) {
+      const offsetU = (Math.random() - 0.5) * 0.08;
+      const offsetV = (Math.random() - 0.5) * 0.08;
+      const clampedU = Math.max(0, Math.min(1, u + offsetU));
+      const clampedV = Math.max(0, Math.min(1, v + offsetV));
+      enemySpawner.spawn(type as any, clampedU, clampedV, Math.max(0, childTier));
+    }
   };
 
   // -- Spawner: periodically spawns wanderers --
@@ -1122,6 +1155,35 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     window.location.href = window.location.pathname;
   });
 
+  /** Build current game data snapshot for pause menu stats panel */
+  function updatePauseMenuData(): void {
+    const currentWeapon = weaponManager.getCurrentWeapon();
+    const weaponConfig = WEAPON_CONFIGS[currentWeapon];
+    const activeBuffs = buffManager.getActiveBuffs();
+
+    const damageMultiplier = buffManager.getDamageMultiplier();
+    const fireRateMultiplier = buffManager.getFireRateMultiplier();
+
+    pauseMenu.setGameData({
+      buffs: activeBuffs.map(b => ({
+        name: b.def.name,
+        stacks: b.stacks,
+        description: b.def.description,
+        currentValue: b.def.formatValue(b.stacks),
+        color: '#' + b.def.iconColor.toString(16).padStart(6, '0'),
+      })),
+      totalKills: totalKillCounter.getTotalKills(),
+      weapon: {
+        name: weaponConfig.name,
+        baseDamage: weaponConfig.damage,
+        fireRate: weaponConfig.fireRate,
+        effectiveDamage: damageMultiplier !== 1 ? weaponConfig.damage * damageMultiplier : undefined,
+        effectiveFireRate: fireRateMultiplier !== 1 ? weaponConfig.fireRate * fireRateMultiplier : undefined,
+      },
+    });
+    pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
+  }
+
   // -- Game over screen --
   const gameOverScreen = new GameOverScreen();
   gameOverScreen.onContinue(() => {
@@ -1143,6 +1205,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     buffManager.dispose();
     buffHUD.dispose();
     shockArcRenderer.dispose();
+    debugOverlay.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex + 1);
@@ -1157,6 +1220,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     buffManager.dispose();
     buffHUD.dispose();
     shockArcRenderer.dispose();
+    debugOverlay.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex);
@@ -1176,6 +1240,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       } else {
         isPaused = true;
         game.pause(); // stop clock ticking while paused
+        updatePauseMenuData();
         pauseMenu.show();
       }
     }
@@ -1215,6 +1280,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     if (document.hidden && !isPaused && !isGameOver) {
       isPaused = true;
       game.pause(); // stop clock ticking while tab is hidden
+      updatePauseMenuData();
       pauseMenu.show();
     }
   });
@@ -1283,6 +1349,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       } else if (!isGameOver) {
         // Game over - no lives left
         isGameOver = true;
+        perfTracker.saveSession();
         // Short delay before showing game over screen
         setTimeout(() => {
           gameOverScreen.show(player.score, surfaceType);
@@ -1886,8 +1953,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Flush all instanced color changes for this frame
     enemyInstanceManager.flushColors();
 
-    // Apply screen shake to camera
-    if (screenShake.offset.lengthSq() > 0.0001) {
+    // Apply screen shake to camera (skip when paused to prevent drift)
+    if (!isPaused && screenShake.offset.lengthSq() > 0.0001) {
       game.camera.position.add(screenShake.offset);
     }
 
@@ -1922,6 +1989,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     const minimapGeoms: Array<{ u: number; v: number }> = [];
     geomPool.forEachActive((_i, u, v) => { minimapGeoms.push({ u, v }); });
     minimap.update(player.surfaceU, player.surfaceV, minimapEnemies, minimapGeoms);
+
+    // Update debug performance overlay
+    perfTracker.setEntityCount(enemySpawner.getActiveCount());
+    perfTracker.setBulletCount(bulletPool.activeCount);
+    perfTracker.recordFrame(frameDt);
+    debugOverlay.update();
   };
 
   // -- Weapon fire handler: delegates all firing to WeaponManager --

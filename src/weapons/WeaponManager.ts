@@ -44,6 +44,8 @@ export interface WeaponCallbacks {
   onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => void;
   onEnemyPull?: (index: number, pullStrength: number, pullCenter: THREE.Vector3) => void;
   spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
+  /** Called when a projectile detonates (homing, mortar, etc.) for weapon-specific VFX */
+  onProjectileExplosion?: (position: THREE.Vector3, weaponType: WeaponType) => void;
 }
 
 /**
@@ -978,6 +980,11 @@ export class WeaponManager {
         if (proj.type === WeaponType.PlasmaMortar) {
           // AoE damage - devastating blast radius
           this.applyAoeDamage(proj.position, 3.0, proj.damage * 0.75);
+          this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.PlasmaMortar);
+          this.removeProjectile(index);
+          return;
+        } else if (proj.type === WeaponType.Homing) {
+          this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.GravityGun) {

@@ -7,12 +7,39 @@ import { BackgroundMusic } from '../audio/BackgroundMusic';
 /**
  * Pause menu overlay.
  * Shows when Escape is pressed, allows resuming or returning to main menu.
+ * Displays active buffs with descriptions, total kills, and weapon stats.
  */
 
 /** Callbacks for host network actions */
 export interface PauseMenuNetworkCallbacks {
   onPause: (paused: boolean) => void;
   onEndGame: () => void;
+}
+
+/** Data passed to the pause menu for the stats info panel */
+export interface PauseMenuGameData {
+  /** Active buffs with stack counts and descriptions */
+  buffs: Array<{
+    name: string;
+    stacks: number;
+    description: string;
+    /** Current computed value string, e.g. "+45% damage" */
+    currentValue: string;
+    /** CSS-compatible hex color for the icon */
+    color: string;
+  }>;
+  /** Total kills across all enemy types */
+  totalKills: number;
+  /** Current weapon info */
+  weapon: {
+    name: string;
+    baseDamage: number;
+    fireRate: number;
+    /** Effective damage after buff multipliers */
+    effectiveDamage?: number;
+    /** Effective fire rate after buff multipliers */
+    effectiveFireRate?: number;
+  };
 }
 
 export class PauseMenu {
@@ -39,35 +66,57 @@ export class PauseMenu {
       <div class="pause-content">
         <h1 class="pause-title">PAUSED</h1>
 
-        <div class="pause-buttons">
-          <button class="pause-btn resume-btn" data-action="resume">
-            <span class="btn-icon">▶</span>
-            <span>RESUME</span>
-          </button>
-          <button class="pause-btn controls-btn" data-action="controls">
-            <span class="btn-icon">⌨</span>
-            <span>CONTROLS</span>
-          </button>
-          <button class="pause-btn weapons-btn" data-action="weapons">
-            <span class="btn-icon">⚡</span>
-            <span>WEAPONS</span>
-          </button>
-          <button class="pause-btn settings-btn" data-action="settings">
-            <span class="btn-icon">⚙</span>
-            <span>SETTINGS</span>
-          </button>
-          <button class="pause-btn music-btn" data-action="music">
-            <span class="btn-icon">♪</span>
-            <span class="music-label">MUSIC: ELECTRONIC</span>
-          </button>
-          <button class="pause-btn exit-btn" data-action="exit">
-            <span class="btn-icon">◀</span>
-            <span>EXIT TO MENU</span>
-          </button>
-          <button class="pause-btn end-game-btn hidden" data-action="end-game">
-            <span class="btn-icon">&#x2716;</span>
-            <span>END GAME FOR ALL</span>
-          </button>
+        <div class="pause-layout">
+          <div class="pause-buttons">
+            <button class="pause-btn resume-btn" data-action="resume">
+              <span class="btn-icon">▶</span>
+              <span>RESUME</span>
+            </button>
+            <button class="pause-btn controls-btn" data-action="controls">
+              <span class="btn-icon">⌨</span>
+              <span>CONTROLS</span>
+            </button>
+            <button class="pause-btn weapons-btn" data-action="weapons">
+              <span class="btn-icon">⚡</span>
+              <span>WEAPONS</span>
+            </button>
+            <button class="pause-btn settings-btn" data-action="settings">
+              <span class="btn-icon">⚙</span>
+              <span>SETTINGS</span>
+            </button>
+            <button class="pause-btn music-btn" data-action="music">
+              <span class="btn-icon">♪</span>
+              <span class="music-label">MUSIC: ELECTRONIC</span>
+            </button>
+            <button class="pause-btn exit-btn" data-action="exit">
+              <span class="btn-icon">◀</span>
+              <span>EXIT TO MENU</span>
+            </button>
+            <button class="pause-btn end-game-btn hidden" data-action="end-game">
+              <span class="btn-icon">&#x2716;</span>
+              <span>END GAME FOR ALL</span>
+            </button>
+          </div>
+
+          <div class="pause-stats-panel">
+            <div class="stats-weapon-section">
+              <div class="stats-section-title">WEAPON</div>
+              <div class="stats-weapon-info"></div>
+            </div>
+            <div class="stats-kills-section">
+              <div class="stats-section-title">TOTAL KILLS</div>
+              <div class="stats-kills-count">0</div>
+            </div>
+            <div class="stats-buffs-section">
+              <div class="stats-section-title">ACTIVE BUFFS</div>
+              <div class="stats-buffs-list"></div>
+              <div class="stats-no-buffs">No active buffs</div>
+            </div>
+            <div class="stats-perf-section">
+              <div class="stats-section-title">PERFORMANCE</div>
+              <div class="stats-perf-content"></div>
+            </div>
+          </div>
         </div>
 
         <div class="pause-hint">
@@ -102,6 +151,8 @@ export class PauseMenu {
       #pause-menu .pause-content {
         text-align: center;
         padding: 40px;
+        max-height: 90vh;
+        overflow-y: auto;
       }
 
       #pause-menu .pause-title {
@@ -215,6 +266,156 @@ export class PauseMenu {
 
       #pause-menu .btn-icon {
         font-size: 24px;
+      }
+
+      #pause-menu .pause-layout {
+        display: flex;
+        gap: 40px;
+        align-items: flex-start;
+        justify-content: center;
+      }
+
+      #pause-menu .pause-stats-panel {
+        width: 300px;
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        max-height: 60vh;
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+
+      #pause-menu .pause-stats-panel::-webkit-scrollbar {
+        width: 4px;
+      }
+
+      #pause-menu .pause-stats-panel::-webkit-scrollbar-track {
+        background: rgba(0, 0, 20, 0.3);
+      }
+
+      #pause-menu .pause-stats-panel::-webkit-scrollbar-thumb {
+        background: #444466;
+        border-radius: 2px;
+      }
+
+      #pause-menu .stats-section-title {
+        font-size: 11px;
+        font-weight: bold;
+        letter-spacing: 3px;
+        color: #8888aa;
+        border-bottom: 1px solid #333366;
+        padding-bottom: 6px;
+        margin-bottom: 8px;
+      }
+
+      #pause-menu .stats-weapon-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      #pause-menu .stats-weapon-name {
+        font-size: 18px;
+        font-weight: bold;
+        letter-spacing: 2px;
+      }
+
+      #pause-menu .stats-weapon-stat {
+        font-size: 13px;
+        color: #aaaacc;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      #pause-menu .stats-weapon-stat .stat-value {
+        color: #ffffff;
+        font-weight: bold;
+      }
+
+      #pause-menu .stats-weapon-stat .stat-effective {
+        color: #44ff44;
+        font-size: 11px;
+        margin-left: 6px;
+      }
+
+      #pause-menu .stats-kills-count {
+        font-size: 36px;
+        font-weight: bold;
+        color: #ff4444;
+        text-shadow: 0 0 10px rgba(255, 68, 68, 0.6);
+        letter-spacing: 2px;
+      }
+
+      #pause-menu .stats-buffs-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      #pause-menu .stats-buff-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 6px 8px;
+        background: rgba(0, 0, 20, 0.4);
+        border-left: 3px solid;
+        border-radius: 2px;
+      }
+
+      #pause-menu .stats-buff-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-weight: bold;
+        flex-shrink: 0;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+      }
+
+      #pause-menu .stats-buff-info {
+        flex: 1;
+        min-width: 0;
+      }
+
+      #pause-menu .stats-buff-header {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
+        margin-bottom: 2px;
+      }
+
+      #pause-menu .stats-buff-name {
+        font-size: 14px;
+        font-weight: bold;
+        color: #ffffff;
+      }
+
+      #pause-menu .stats-buff-stacks {
+        font-size: 12px;
+        font-weight: bold;
+        opacity: 0.8;
+      }
+
+      #pause-menu .stats-buff-desc {
+        font-size: 11px;
+        color: #8888aa;
+        line-height: 1.3;
+      }
+
+      #pause-menu .stats-buff-value {
+        font-size: 11px;
+        font-weight: bold;
+        margin-top: 2px;
+      }
+
+      #pause-menu .stats-no-buffs {
+        font-size: 13px;
+        color: #555577;
+        font-style: italic;
       }
 
       #pause-menu .pause-hint {
@@ -373,6 +574,89 @@ export class PauseMenu {
     if (label) {
       const name = this.bgMusic.getPresetDisplayName();
       label.textContent = `MUSIC: ${name.toUpperCase()}`;
+    }
+  }
+
+  /**
+   * Update the stats info panel with current game data.
+   * Call this before show() to display up-to-date buff, kill, and weapon info.
+   */
+  setGameData(data: PauseMenuGameData): void {
+    this.updateWeaponInfo(data.weapon);
+    this.updateKillCount(data.totalKills);
+    this.updateBuffsList(data.buffs);
+  }
+
+  private updateWeaponInfo(weapon: PauseMenuGameData['weapon']): void {
+    const weaponInfoEl = this.container.querySelector('.stats-weapon-info');
+    if (!weaponInfoEl) return;
+
+    const effectiveDmgHtml = weapon.effectiveDamage !== undefined && weapon.effectiveDamage !== weapon.baseDamage
+      ? `<span class="stat-effective">(${weapon.effectiveDamage.toFixed(2)} effective)</span>`
+      : '';
+
+    const effectiveRateHtml = weapon.effectiveFireRate !== undefined && weapon.effectiveFireRate !== weapon.fireRate
+      ? `<span class="stat-effective">(${weapon.effectiveFireRate.toFixed(1)} effective)</span>`
+      : '';
+
+    weaponInfoEl.innerHTML = `
+      <div class="stats-weapon-name" style="color: #ffff44;">${weapon.name}</div>
+      <div class="stats-weapon-stat">
+        <span>Base Damage</span>
+        <span><span class="stat-value">${weapon.baseDamage}</span>${effectiveDmgHtml}</span>
+      </div>
+      <div class="stats-weapon-stat">
+        <span>Fire Rate</span>
+        <span><span class="stat-value">${weapon.fireRate}/s</span>${effectiveRateHtml}</span>
+      </div>
+    `;
+  }
+
+  private updateKillCount(totalKills: number): void {
+    const killsEl = this.container.querySelector('.stats-kills-count');
+    if (killsEl) {
+      killsEl.textContent = String(totalKills);
+    }
+  }
+
+  private updateBuffsList(buffs: PauseMenuGameData['buffs']): void {
+    const listEl = this.container.querySelector('.stats-buffs-list');
+    const noBuffsEl = this.container.querySelector('.stats-no-buffs') as HTMLElement | null;
+    if (!listEl) return;
+
+    if (buffs.length === 0) {
+      listEl.innerHTML = '';
+      if (noBuffsEl) noBuffsEl.style.display = 'block';
+      return;
+    }
+
+    if (noBuffsEl) noBuffsEl.style.display = 'none';
+
+    listEl.innerHTML = buffs.map(buff => `
+      <div class="stats-buff-row" style="border-color: ${buff.color};">
+        <div class="stats-buff-icon" style="background: ${buff.color}22; color: ${buff.color}; text-shadow: 0 0 4px ${buff.color};">
+          ${buff.stacks}
+        </div>
+        <div class="stats-buff-info">
+          <div class="stats-buff-header">
+            <span class="stats-buff-name">${buff.name}</span>
+            <span class="stats-buff-stacks" style="color: ${buff.color};">x${buff.stacks}</span>
+          </div>
+          <div class="stats-buff-desc">${buff.description}</div>
+          <div class="stats-buff-value" style="color: ${buff.color};">${buff.currentValue}</div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  /**
+   * Set performance summary HTML for the stats panel.
+   * Call before show() to display current performance data.
+   */
+  setPerformanceHTML(html: string): void {
+    const perfEl = this.container.querySelector('.stats-perf-content');
+    if (perfEl) {
+      perfEl.innerHTML = html;
     }
   }
 

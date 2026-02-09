@@ -115,8 +115,10 @@ export class GameRoom extends Room<GameState> {
     // Use Colyseus's built-in simulation interval (triggers state patch broadcasting)
     this.setSimulationInterval((dt) => this.tick(), 1000 / TICK_RATE);
 
-    // Explicitly set patch rate to ensure state changes are broadcast
-    this.setPatchRate(50); // Send patches every 50ms
+    // Patch rate controls how often state changes are broadcast to clients.
+    // Lower = more responsive but more bandwidth. 33ms = ~30Hz is a good balance.
+    // (Previously 50ms/20Hz which felt laggy.)
+    this.setPatchRate(33); // Send patches every ~33ms (~30Hz)
 
     console.log(`[GameRoom] Created with surface: ${this.state.surfaceType}`);
   }

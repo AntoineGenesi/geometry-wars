@@ -83,7 +83,7 @@ export class ParticleSystem {
     this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
     this.geometry.setAttribute('size', new THREE.BufferAttribute(this.sizes, 1));
 
-    // Create shader material
+    // Create shader material — additive blending for see-through energy look
     this.material = new THREE.ShaderMaterial({
       uniforms: {},
       vertexShader: `
@@ -109,16 +109,16 @@ export class ParticleSystem {
           vec2 center = gl_PointCoord - vec2(0.5);
           float dist = length(center);
 
-          // Soft edge falloff
-          float alpha = 1.0 - smoothstep(0.3, 0.5, dist);
+          // Soft edge falloff — reduced peak alpha for additive transparency
+          float alpha = 0.55 * (1.0 - smoothstep(0.2, 0.5, dist));
 
           if (alpha < 0.01) discard;
 
-          gl_FragColor = vec4(vColor, alpha);
+          gl_FragColor = vec4(vColor * alpha, alpha);
         }
       `,
       transparent: true,
-      blending: THREE.NormalBlending,
+      blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
 
@@ -135,13 +135,15 @@ export class ParticleSystem {
       this.createDiamondGeometry(),
     ];
 
-    // Pre-create fragment pool
+    // Pre-create fragment pool — additive blending for see-through energy look
     for (let i = 0; i < this.maxFragments; i++) {
       const material = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: 1,
+        opacity: 0.7,
         side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
       });
       const mesh = new THREE.Mesh(this.fragmentGeometries[0], material);
       mesh.visible = false;
@@ -300,7 +302,7 @@ export class ParticleSystem {
       const mat = fragment.mesh.material as THREE.MeshBasicMaterial;
       const colorVariation = 0.8 + Math.random() * 0.4;
       mat.color.copy(color).multiplyScalar(colorVariation);
-      mat.opacity = 1;
+      mat.opacity = 0.7;
 
       // Position at shatter origin
       fragment.mesh.position.copy(position);
@@ -397,27 +399,126 @@ export class ParticleSystem {
   }
 
   bombExplosion(position: THREE.Vector3): void {
-    // White shockwave burst (GW3D authentic)
-    this.emit({
-      position,
-      count: 80,
-      color: new THREE.Color(1.0, 1.0, 1.0),
-      speed: 10,
-      lifetime: 0.6,
-      size: 3,
-      spread: Math.PI * 2,
-      gravity: 0,
-    });
-    // Secondary cyan ring
+    // White shockwave burst — reduced count/size for additive transparency
     this.emit({
       position,
       count: 40,
-      color: new THREE.Color(0x44ffff),
-      speed: 6,
-      lifetime: 0.8,
+      color: new THREE.Color(1.0, 1.0, 1.0),
+      speed: 12,
+      lifetime: 0.35,
       size: 2,
       spread: Math.PI * 2,
       gravity: 0,
+    });
+    // Secondary cyan ring — fast expanding, short-lived
+    this.emit({
+      position,
+      count: 24,
+      color: new THREE.Color(0x44ffff),
+      speed: 8,
+      lifetime: 0.4,
+      size: 1.5,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+  }
+
+  /**
+   * Homing missile explosion — compact electronic burst, not a cloud.
+   * Fast-fading small sparks that don't obstruct the view.
+   */
+  homingExplosion(position: THREE.Vector3): void {
+    // Small shatter: a handful of fast-moving tiny fragments
+    this.shatterEffect(position, new THREE.Color(0xff6644), 8, 0.4, 2.0);
+
+    // Sparse outward sparks — red-orange electronic feel
+    this.emit({
+      position,
+      count: 12,
+      color: new THREE.Color(0xff4422),
+      speed: 6,
+      lifetime: 0.2,
+      size: 1.2,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+
+    // Tiny white core flash
+    this.emit({
+      position,
+      count: 4,
+      color: new THREE.Color(1.0, 0.8, 0.6),
+      speed: 2,
+      lifetime: 0.1,
+      size: 1.5,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+  }
+
+  /**
+   * Plasma mortar explosion — expanding energy ring with sparse particles.
+   * Visually dramatic but see-through (no opaque cloud).
+   */
+  mortarExplosion(position: THREE.Vector3): void {
+    // Expanding ring of fast-moving particles (simulates energy shockwave)
+    this.emit({
+      position,
+      count: 24,
+      color: new THREE.Color(0x44ff44),
+      speed: 10,
+      lifetime: 0.3,
+      size: 1.5,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+
+    // Secondary ring — slightly slower, cyan tint for electric feel
+    this.emit({
+      position,
+      count: 16,
+      color: new THREE.Color(0x88ffaa),
+      speed: 6,
+      lifetime: 0.4,
+      size: 1.0,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+
+    // Small geometric fragments for impact crunch
+    this.shatterEffect(position, new THREE.Color(0x66ff66), 10, 0.5, 1.5);
+
+    // Tiny bright core
+    this.emit({
+      position,
+      count: 6,
+      color: new THREE.Color(0.9, 1.0, 0.8),
+      speed: 3,
+      lifetime: 0.12,
+      size: 2.0,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+  }
+
+  /**
+   * Lightweight death effect for enemies killed by AoE weapons
+   * (homing splash, mortar splash). Much less visual than a full enemyDeath
+   * so that clusters of AoE kills don't flood the screen.
+   */
+  aoeDeath(position: THREE.Vector3, color: THREE.Color): void {
+    // Sparse sparks — half the normal enemy death
+    this.shatterEffect(position, color, 12, 0.6, 1.0);
+
+    this.emit({
+      position,
+      count: 10,
+      color: color.clone().multiplyScalar(0.7),
+      speed: 4,
+      lifetime: 0.3,
+      size: 1.0,
+      spread: Math.PI * 2,
+      gravity: -1,
     });
   }
 
