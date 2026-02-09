@@ -44,15 +44,20 @@ app.get('/api/info', (req, res) => {
 // Room listing endpoint - returns active game rooms for lobby browser
 app.get('/api/rooms', async (_req, res) => {
   try {
-    const rooms = await gameServer.matchMaker.query({});
-    const roomList = rooms.map((r) => ({
-      roomId: r.roomId,
-      name: r.name,
-      clients: r.clients,
-      maxClients: r.maxClients,
-      metadata: r.metadata || {},
-    }));
-    res.json({ rooms: roomList });
+    // matchMaker may not be available in all Colyseus versions
+    if (gameServer.matchMaker) {
+      const rooms = await gameServer.matchMaker.query({});
+      const roomList = rooms.map((r: { roomId: string; name: string; clients: number; maxClients: number; metadata?: Record<string, unknown> }) => ({
+        roomId: r.roomId,
+        name: r.name,
+        clients: r.clients,
+        maxClients: r.maxClients,
+        metadata: r.metadata || {},
+      }));
+      res.json({ rooms: roomList });
+    } else {
+      res.json({ rooms: [], note: 'matchMaker not available' });
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ rooms: [], error: message });
@@ -79,34 +84,42 @@ let totalConnections = 0;
 function checkAutoShutdown() {
   if (SHUTDOWN_TIMEOUT_MS <= 0) return; // Disabled
 
-  // Query active rooms to count clients
-  gameServer.matchMaker.query({}).then((rooms) => {
-    const totalClients = rooms.reduce((sum, r) => sum + r.clients, 0);
+  // matchMaker may not be available in all Colyseus versions.
+  // Guard against synchronous TypeError when matchMaker is undefined.
+  if (!gameServer.matchMaker) return;
 
-    if (totalClients === 0 && totalConnections > 0) {
-      // No clients connected and at least one client has connected previously
-      if (!shutdownTimer) {
-        const timeoutSec = Math.round(SHUTDOWN_TIMEOUT_MS / 1000);
-        console.log(`[Server] No clients connected. Auto-shutdown in ${timeoutSec}s...`);
-        shutdownTimer = setTimeout(() => {
-          console.log('[Server] Auto-shutdown: no clients for timeout period. Exiting.');
-          gameServer.gracefullyShutdown().then(() => process.exit(0));
-        }, SHUTDOWN_TIMEOUT_MS);
+  try {
+    // Query active rooms to count clients
+    gameServer.matchMaker.query({}).then((rooms: { clients: number }[]) => {
+      const totalClients = rooms.reduce((sum: number, r: { clients: number }) => sum + r.clients, 0);
+
+      if (totalClients === 0 && totalConnections > 0) {
+        // No clients connected and at least one client has connected previously
+        if (!shutdownTimer) {
+          const timeoutSec = Math.round(SHUTDOWN_TIMEOUT_MS / 1000);
+          console.log(`[Server] No clients connected. Auto-shutdown in ${timeoutSec}s...`);
+          shutdownTimer = setTimeout(() => {
+            console.log('[Server] Auto-shutdown: no clients for timeout period. Exiting.');
+            gameServer.gracefullyShutdown().then(() => process.exit(0));
+          }, SHUTDOWN_TIMEOUT_MS);
+        }
+      } else {
+        // Clients connected - cancel any pending shutdown
+        if (shutdownTimer) {
+          console.log('[Server] Client connected - auto-shutdown cancelled.');
+          clearTimeout(shutdownTimer);
+          shutdownTimer = null;
+        }
+        if (totalClients > 0) {
+          totalConnections = Math.max(totalConnections, totalClients);
+        }
       }
-    } else {
-      // Clients connected - cancel any pending shutdown
-      if (shutdownTimer) {
-        console.log('[Server] Client connected - auto-shutdown cancelled.');
-        clearTimeout(shutdownTimer);
-        shutdownTimer = null;
-      }
-      if (totalClients > 0) {
-        totalConnections = Math.max(totalConnections, totalClients);
-      }
-    }
-  }).catch(() => {
-    // Ignore errors during shutdown check
-  });
+    }).catch(() => {
+      // Ignore errors during shutdown check
+    });
+  } catch {
+    // Ignore errors (matchMaker API may differ between Colyseus versions)
+  }
 }
 
 // Check every 10 seconds

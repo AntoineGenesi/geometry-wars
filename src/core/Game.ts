@@ -187,9 +187,15 @@ export class Game {
     if (config._renderer) {
       this.renderer = config._renderer;
     } else {
+      // When ?testMode=true is in the URL, enable preserveDrawingBuffer
+      // so automated tests can read canvas pixels via getImageData/toDataURL.
+      const isTestMode = typeof window !== 'undefined' &&
+        new URLSearchParams(window.location.search).get('testMode') === 'true';
+
       this.renderer = new THREE.WebGLRenderer({
         antialias: true,
         powerPreference: 'high-performance',
+        ...(isTestMode ? { preserveDrawingBuffer: true } : {}),
       });
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       this.renderer.setSize(window.innerWidth, window.innerHeight);

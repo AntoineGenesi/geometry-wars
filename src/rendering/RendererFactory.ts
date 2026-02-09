@@ -36,9 +36,15 @@ export async function createRenderer(
   // Future: when Three.js WebGPURenderer is stable and capabilities.webgpu
   // is true, create a WebGPURenderer here instead.
 
+  // When ?testMode=true is in the URL, enable preserveDrawingBuffer
+  // so automated tests can read canvas pixels via getImageData/toDataURL.
+  const isTestMode = typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('testMode') === 'true';
+
   const renderer = new THREE.WebGLRenderer({
     antialias: capabilities.tier !== 'low',
     powerPreference: 'high-performance',
+    ...(isTestMode ? { preserveDrawingBuffer: true } : {}),
   });
 
   renderer.setPixelRatio(getPixelRatio(capabilities.tier));

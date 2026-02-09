@@ -111,6 +111,11 @@ export class NetworkClient {
   private localPlayerId: string = '';
   private connected = false;
 
+  // Debounce onStateChange to prevent multiple rapid-fire calls from
+  // onAdd/listen/onStateChange all triggering simultaneously. Uses
+  // requestAnimationFrame to coalesce into a single call per frame.
+  private stateChangePending = false;
+
   constructor(serverUrl: string = 'ws://localhost:2567') {
     this.client = new Client(serverUrl);
   }
@@ -161,25 +166,41 @@ export class NetworkClient {
     }
   }
 
+  /**
+   * Schedule a debounced onStateChange call. Multiple triggers within the same
+   * frame (onStateChange + onAdd + listen) are coalesced into a single call
+   * via requestAnimationFrame. This prevents the massive redundant work that
+   * caused lag-out when player 2 joined (3-4 full state conversions + full
+   * entity sync iterations firing simultaneously).
+   */
+  private scheduleStateChange(): void {
+    if (this.stateChangePending) return; // Already scheduled for this frame
+    this.stateChangePending = true;
+    requestAnimationFrame(() => {
+      this.stateChangePending = false;
+      if (!this.room?.state || !this.callbacks.onStateChange) return;
+      const gameState = this.convertState(this.room.state);
+      this.callbacks.onStateChange(gameState);
+    });
+  }
+
   private setupListeners(): void {
     if (!this.room) return;
 
-    // Full state updates
-    this.room.onStateChange((state) => {
-      const gameState = this.convertState(state);
-      this.callbacks.onStateChange?.(gameState);
+    // Full state updates - debounced to prevent multiple calls per frame.
+    // Colyseus fires onStateChange at patch rate (~30Hz), but onAdd/listen
+    // callbacks can also trigger in the same frame, causing 3-4x redundant work.
+    this.room.onStateChange(() => {
+      this.scheduleStateChange();
     });
 
-    // Player events - also fire a full state refresh so UI updates
+    // Player events - schedule a state refresh (debounced, won't double-fire
+    // if onStateChange already scheduled this frame)
     this.room.state.players.onAdd((player: unknown, key: string) => {
       const p = player as NetworkPlayerState;
       console.log(`[Network] Player joined: ${p.name} (${key})`);
       this.callbacks.onPlayerJoin?.(p);
-      // Force full state refresh since onStateChange might have been missed
-      if (this.room?.state) {
-        const gameState = this.convertState(this.room.state);
-        this.callbacks.onStateChange?.(gameState);
-      }
+      this.scheduleStateChange();
     });
 
     this.room.state.players.onRemove((_player: unknown, key: string) => {
@@ -212,18 +233,13 @@ export class NetworkClient {
       this.callbacks.onGeomCollect?.(g.id);
     });
 
-    // Game state events - also force a full state refresh on these
-    // since onStateChange may not fire if it was registered late
+    // Game state events - use debounced state refresh instead of immediate
     this.room.state.listen('gameStarted', (value: boolean) => {
       console.log(`[Network] gameStarted changed to ${value}`);
       if (value) {
         this.callbacks.onGameStart?.();
       }
-      // Force full state refresh
-      if (this.room?.state) {
-        const gameState = this.convertState(this.room.state);
-        this.callbacks.onStateChange?.(gameState);
-      }
+      this.scheduleStateChange();
     });
 
     this.room.state.listen('gameOver', (value: boolean) => {
@@ -231,11 +247,7 @@ export class NetworkClient {
       if (value) {
         this.callbacks.onGameOver?.();
       }
-      // Force full state refresh
-      if (this.room?.state) {
-        const gameState = this.convertState(this.room.state);
-        this.callbacks.onStateChange?.(gameState);
-      }
+      this.scheduleStateChange();
     });
 
     // Server lifecycle messages
@@ -278,12 +290,16 @@ export class NetworkClient {
       isPaused: boolean;
     };
 
+    // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
+    // copies with Array.from(). The onStateChange handler only reads them via
+    // .forEach(), which works on both ArraySchema and plain arrays. This avoids
+    // 4 array allocations + copies per state change (was ~30 allocations/sec).
     return {
       players: s.players,
-      bullets: Array.from(s.bullets || []),
-      enemies: Array.from(s.enemies || []),
-      geoms: Array.from(s.geoms || []),
-      weaponPickups: Array.from(s.weaponPickups || []),
+      bullets: (s.bullets || []) as unknown as NetworkBulletState[],
+      enemies: (s.enemies || []) as unknown as NetworkEnemyState[],
+      geoms: (s.geoms || []) as unknown as NetworkGeomState[],
+      weaponPickups: (s.weaponPickups || []) as unknown as NetworkWeaponPickupState[],
       surfaceType: s.surfaceType,
       waveNumber: s.waveNumber,
       gameTime: s.gameTime,

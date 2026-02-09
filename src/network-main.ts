@@ -724,20 +724,11 @@ function main() {
         enemy.applySurfaceTransform(getTransform);
       }
 
-      // Depth-based opacity (same as co-op's preRender)
-      if (enemy.mesh && meshSurface) {
-        const approxNormal = enemy.position.clone().sub(meshSurface.getCenter()).normalize();
-        const visibility = meshSurface.getVisibility(enemy.position, approxNormal, camera.position);
-        enemy.mesh.traverse((child) => {
-          if (child instanceof THREE.Mesh && child.material) {
-            const mat = child.material as THREE.MeshBasicMaterial;
-            if (mat.transparent !== undefined) {
-              mat.transparent = true;
-              mat.opacity = visibility;
-            }
-          }
-        });
-        enemy.mesh.visible = netEnemy.alive && visibility > 0.05;
+      // Visibility is set based on alive state. Depth-based opacity is
+      // applied in the render loop (onRender) instead of here, to avoid
+      // expensive mesh.traverse() calls on every 30Hz state update.
+      if (enemy.mesh) {
+        enemy.mesh.visible = netEnemy.alive;
       }
     });
 
@@ -767,8 +758,11 @@ function main() {
     });
 
     // ----- Sync bullets -----
+    // Use a simpler approach: clear all bullets not in server state,
+    // update existing ones, spawn new ones. Avoid O(n*poolSize) scan.
     const activeBulletIds = new Set<string>();
-    const trackedBulletIndices = new Set(bulletIdToIndex.values());
+    const poolLines = (bulletPool as unknown as { lines: THREE.Line[] }).lines;
+    const poolBullets = (bulletPool as unknown as { bullets: { alive: boolean }[] }).bullets;
 
     state.bullets.forEach((bullet: NetworkBulletState) => {
       activeBulletIds.add(bullet.id);
@@ -778,26 +772,30 @@ function main() {
         // Update existing bullet position
         const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
         const targetPos = sp.position.clone().addScaledVector(sp.normal, 0.02);
-        const line = (bulletPool as unknown as { lines: THREE.Line[] }).lines[existingIdx];
+        const line = poolLines[existingIdx];
         if (line && line.visible) {
           line.position.lerp(targetPos, 0.4);
         }
       } else {
-        // New bullet: spawn in pool
-        const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
-        const dir = new THREE.Vector3(bullet.dirX, bullet.dirY, bullet.dirZ);
-        bulletPool.spawn(
-          sp.position.clone().addScaledVector(sp.normal, 0.02),
-          dir, bullet.x, bullet.y,
-          Math.atan2(bullet.dirY, bullet.dirX),
-        );
-        // Track the newly spawned index
-        bulletPool.forEachActive((idx) => {
-          if (!trackedBulletIndices.has(idx)) {
-            bulletIdToIndex.set(bullet.id, idx);
-            trackedBulletIndices.add(idx);
+        // New bullet: find an inactive pool slot directly instead of
+        // scanning forEachActive after spawn (which was O(poolSize) per new bullet)
+        let newIdx = -1;
+        for (let i = 0; i < poolBullets.length; i++) {
+          if (!poolBullets[i].alive) {
+            newIdx = i;
+            break;
           }
-        });
+        }
+        if (newIdx >= 0) {
+          const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
+          const dir = new THREE.Vector3(bullet.dirX, bullet.dirY, bullet.dirZ);
+          bulletPool.spawn(
+            sp.position.clone().addScaledVector(sp.normal, 0.02),
+            dir, bullet.x, bullet.y,
+            Math.atan2(bullet.dirY, bullet.dirX),
+          );
+          bulletIdToIndex.set(bullet.id, newIdx);
+        }
       }
     });
 
@@ -811,7 +809,9 @@ function main() {
 
     // ----- Sync geoms -----
     const activeGeomIds = new Set<string>();
-    const trackedGeomIndices = new Set(geomIdToIndex.values());
+    const geomPoolData = (geomPool as unknown as {
+      geoms: { surfaceU: number; surfaceV: number; alive?: boolean; active?: boolean }[]
+    }).geoms;
 
     state.geoms.forEach((geom: NetworkGeomState) => {
       if (!geom.active) return;
@@ -820,22 +820,28 @@ function main() {
       if (geomIdToIndex.has(geom.id)) {
         // Existing geom - update UV
         const idx = geomIdToIndex.get(geom.id)!;
-        const geomData = (geomPool as unknown as {
-          geoms: { surfaceU: number; surfaceV: number }[]
-        }).geoms[idx];
+        const geomData = geomPoolData[idx];
         if (geomData) {
           geomData.surfaceU = geom.surfaceU;
           geomData.surfaceV = geom.surfaceV;
         }
       } else {
-        // New geom: spawn and track
-        geomPool.spawn(geom.surfaceU, geom.surfaceV);
-        geomPool.forEachActive((idx) => {
-          if (!trackedGeomIndices.has(idx)) {
-            geomIdToIndex.set(geom.id, idx);
-            trackedGeomIndices.add(idx);
+        // New geom: find inactive slot directly
+        let newIdx = -1;
+        for (let i = 0; i < geomPoolData.length; i++) {
+          const g = geomPoolData[i];
+          if (!(g as { alive?: boolean }).alive && !(g as { active?: boolean }).active) {
+            newIdx = i;
+            break;
           }
-        });
+        }
+        if (newIdx >= 0) {
+          geomPool.spawn(geom.surfaceU, geom.surfaceV);
+          geomIdToIndex.set(geom.id, newIdx);
+        } else {
+          // No inactive slot found, just spawn and hope for the best
+          geomPool.spawn(geom.surfaceU, geom.surfaceV);
+        }
       }
     });
 
@@ -1090,15 +1096,12 @@ function main() {
     killLog.update(dt);
     allyGlowManager.update(dt);
 
-    // Update enemy spawner to clean up spawn warning indicators.
-    // The spawner also runs enemy AI (movement toward player), but that's
-    // harmless since server positions override everything in onStateChange.
-    if (enemySpawner) {
-      const lp = networkPlayers.get(localPlayerId);
-      const trackU = lp ? lp.surfaceU : 0.5;
-      const trackV = lp ? lp.surfaceV : 0.5;
-      enemySpawner.update(dt, trackU, trackV);
-    }
+    // NOTE: We do NOT call enemySpawner.update() here. That method runs full
+    // enemy AI (movement toward player, separation, spawn warnings) which is
+    // wasted work because the server is authoritative and onStateChange
+    // overrides all positions. On same-PC with two tabs, the CPU was running:
+    // server game logic + tab 1 enemy AI + tab 2 enemy AI, all redundantly.
+    // Spawn warnings are also unnecessary since network enemies appear instantly.
 
     // Update glow trails
     playerGlowTrails.forEach((trail) => trail.update(dt));
@@ -1139,6 +1142,34 @@ function main() {
     bulletPool.applySurfaceProjection(getTransform);
     geomPool.applySurfaceProjection(getTransform);
 
+    // Depth-based opacity for enemies (moved from onStateChange to render loop
+    // to avoid expensive mesh.traverse() on every 30Hz state update)
+    const ms = meshSurface; // capture for TypeScript narrowing in closure
+    if (ms) {
+      const surfCenter = ms.getCenter();
+      networkEnemies.forEach((enemy) => {
+        if (!enemy.mesh || !enemy.mesh.visible) return;
+        const approxNormal = enemy.position.clone().sub(surfCenter).normalize();
+        const visibility = ms.getVisibility(enemy.position, approxNormal, camera.position);
+        // Set opacity directly on the mesh material instead of traverse
+        if (enemy.mesh instanceof THREE.Mesh && enemy.mesh.material) {
+          const mat = enemy.mesh.material as THREE.MeshBasicMaterial;
+          mat.transparent = true;
+          mat.opacity = visibility;
+        } else {
+          // For group meshes, traverse children
+          enemy.mesh.traverse((child) => {
+            if (child instanceof THREE.Mesh && child.material) {
+              const mat = child.material as THREE.MeshBasicMaterial;
+              mat.transparent = true;
+              mat.opacity = visibility;
+            }
+          });
+        }
+        enemy.mesh.visible = visibility > 0.05;
+      });
+    }
+
     // Screen shake (same as co-op)
     if (screenShake.offset.lengthSq() > 0.0001) {
       camera.position.add(screenShake.offset);
@@ -1155,6 +1186,45 @@ function main() {
     allyGlowManager.dispose();
     meshSurface?.dispose();
   });
+
+  // Debug hook: read-only access to game state for automated testing.
+  // Only active when ?debug=true is in the URL. No behavior changes.
+  if (new URLSearchParams(window.location.search).has('debug')) {
+    (window as any).__gameDebug = {
+      getPlayerPosition: () => {
+        const lp = networkPlayers.get(localPlayerId);
+        return lp ? { u: lp.surfaceU, v: lp.surfaceV } : null;
+      },
+      getEnemyCount: () => networkEnemies.size,
+      getEnemies: () => {
+        const result: { id: string; type: string; u: number; v: number; hp: number }[] = [];
+        networkEnemies.forEach((enemy, id) => {
+          result.push({
+            id,
+            type: enemy.baseTypeName || 'unknown',
+            u: enemy.surfacePosition.u,
+            v: enemy.surfacePosition.v,
+            hp: 1,
+          });
+        });
+        return result;
+      },
+      getBulletCount: () => bulletIdToIndex.size,
+      getScore: () => {
+        const lp = networkPlayers.get(localPlayerId);
+        return lp ? lp.score : 0;
+      },
+      isConnected: () => network.isConnected(),
+      getPlayerCount: () => networkPlayers.size,
+      getLocalPlayerId: () => localPlayerId,
+      getSurfaceType: () => lastCreatedSurfaceType,
+      isGameStarted: () => {
+        // Check via status text as a proxy for game state
+        return statusEl.textContent?.includes('Wave') || false;
+      },
+      getWaveText: () => statusEl.textContent || '',
+    };
+  }
 }
 
 main();

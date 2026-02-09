@@ -37,13 +37,27 @@ const CAMERA_DISTANCE = 8;
 const PLAYER_MOVE_SPEED = 1.2; // radians per second for WASD movement
 const MIN_DT = 1 / 120;
 const MAX_DT = 1 / 30;
-const PLAYER_DEATH_RADIUS = 0.3;
 const PLAYER_RESPAWN_DELAY = 1.5;
 const STARTING_LIVES = 3;
 const DEATH_FLASH_DURATION = 0.4;
 const TESLA_ARC_RANGE = 2.0;
 const TESLA_ARC_PERSIST = 0.7; // seconds arcs stay visible
 const TESLA_ARC_COUNT = 4; // arcs spawned per fire event
+
+// Scale factor for enemy meshes & radii in the playground.
+// The real game uses a radius-10 sphere; the playground uses radius 3.
+// We want enemies to be clearly visible — NOT proportionally scaled down to 0.3.
+// A factor of 0.8 keeps them slightly smaller than their raw mesh size but
+// large enough to see easily on the mini sphere.
+const ENEMY_SCALE = 0.8;
+
+// Player death radius — must match the visual player chevron size (0.2) scaled
+// to be proportional on the playground sphere.
+const PLAYER_DEATH_RADIUS = 0.15;
+
+// Projectile hit radius — how close a projectile must be to an enemy to hit it.
+// Must be proportional to the enemy visual size.
+const PROJECTILE_HIT_RADIUS = 0.25;
 
 // Match the real game's Player FIRE_RATE (src/entities/Player.ts: FIRE_RATE = 10)
 // This is the base player fire interval, which gates weapon fire rates
@@ -984,15 +998,18 @@ export class WeaponPlayground {
 
     const enemy = this.createRealEnemy(type, u, v);
 
+    // Scale the enemy's collision radius to match the visual mesh scale.
+    // The raw radius (0.3) is designed for a radius-10 sphere. We scale it
+    // to match ENEMY_SCALE so collision matches what the player sees.
+    enemy.radius *= ENEMY_SCALE;
+
     // Apply surface transform to position the enemy on the sphere
     enemy.applySurfaceTransform(this.sphereTransform);
 
     // Add enemy mesh to scene
     if (enemy.mesh) {
       this.scene.add(enemy.mesh);
-      // Scale down enemies for mini sphere (real enemies are sized for radius ~10 sphere)
-      const scaleFactor = SPHERE_RADIUS / 10;
-      enemy.mesh.scale.setScalar(scaleFactor);
+      enemy.mesh.scale.setScalar(ENEMY_SCALE);
     }
 
     const entry: PlaygroundEnemyEntry = {
@@ -1056,11 +1073,11 @@ export class WeaponPlayground {
           }
 
           const newEnemy = this.createRealEnemy(newType, u, v);
+          newEnemy.radius *= ENEMY_SCALE;
           newEnemy.applySurfaceTransform(this.sphereTransform);
           if (newEnemy.mesh) {
             this.scene.add(newEnemy.mesh);
-            const scaleFactor = SPHERE_RADIUS / 10;
-            newEnemy.mesh.scale.setScalar(scaleFactor);
+            newEnemy.mesh.scale.setScalar(ENEMY_SCALE);
           }
 
           entry.enemy = newEnemy;
@@ -1081,10 +1098,9 @@ export class WeaponPlayground {
 
       // Keep scale correct (in case the enemy reset it)
       if (entry.enemy.mesh) {
-        const scaleFactor = SPHERE_RADIUS / 10;
         const currentScale = entry.enemy.mesh.scale.x;
-        if (Math.abs(currentScale - scaleFactor) > 0.01) {
-          entry.enemy.mesh.scale.setScalar(scaleFactor);
+        if (Math.abs(currentScale - ENEMY_SCALE) > 0.01) {
+          entry.enemy.mesh.scale.setScalar(ENEMY_SCALE);
         }
       }
     }
@@ -1602,7 +1618,7 @@ export class WeaponPlayground {
         if (isPiercing && p.hitSet.has(j)) continue;
 
         const d = entry.enemy.position.distanceTo(p.position);
-        if (d < 0.3) {
+        if (d < PROJECTILE_HIT_RADIUS) {
           const cfg = WEAPON_CONFIGS[this.activeWeapon];
           this.damageEnemy(j, cfg.damage);
           if (isPiercing) {

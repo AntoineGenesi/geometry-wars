@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "server": "tsx server/index.ts",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:visual": "node tests/visual/run-visual-tests.mjs",
+    "test:lan": "node tests/lan/run-lan-tests.mjs"
   },
   "dependencies": {
     "@colyseus/schema": "^2.0.37",
