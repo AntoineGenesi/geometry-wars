@@ -1547,3 +1547,58 @@ The heaviest lift is Phase 1 (extracting game logic from Colyseus) and Phase 3 (
 | Node.js | Via `wrtc` npm package | For dedicated server fallback |
 
 **Conclusion:** WebRTC DataChannel has universal browser support. There are no compatibility concerns for any target platform.
+
+---
+
+## 12. Recommended Hybrid Approach: Colyseus + WebRTC Transport
+
+After analysis, the **smartest migration path** is NOT full WebRTC (replacing Colyseus entirely) but rather keeping Colyseus and swapping only the transport layer. This gives us UDP benefits without losing server authority.
+
+### Three Options Compared
+
+| Approach | Server Needed? | UDP? | Cheat Protection | Migration Risk | Distribution |
+|----------|---------------|------|-----------------|----------------|-------------|
+| **Current (Colyseus + WebSocket)** | Yes (Node.js) | No (TCP only) | Yes (server authority) | None | Requires server hosting |
+| **Colyseus + geckos.io (hybrid)** | Yes (Node.js) | Yes (WebRTC DataChannel) | Yes (server authority) | Low | Requires server hosting |
+| **Full WebRTC (no server)** | No | Yes | No (host is a player) | High | GitHub Pages / static hosting |
+
+### Why Hybrid is Best
+
+1. **Lowest risk** — game logic stays identical, only transport changes
+2. **Keep server authority** — no cheating concerns, consistent state
+3. **Gain UDP** — unreliable channels for positions/aim (no head-of-line blocking)
+4. **Gain lower latency** — WebRTC DataChannel ~1-3ms LAN vs WebSocket ~5-10ms
+5. **Dual channels** — unreliable for high-frequency data (positions), reliable for events (kills, scores)
+6. **geckos.io** handles signaling, STUN/TURN, and NAT traversal automatically
+
+### What is geckos.io?
+
+geckos.io is a real-time client/server library that uses WebRTC DataChannels instead of WebSocket. It provides:
+- A Node.js server component (replaces or wraps the WebSocket layer)
+- A browser client component (replaces the WebSocket connection)
+- Unreliable + reliable channel support out of the box
+- Built-in signaling (no separate signaling server needed)
+- Automatic STUN/TURN handling
+
+### Integration with Colyseus
+
+Two possible approaches:
+1. **Replace Colyseus transport**: Use geckos.io as a custom Colyseus transport (Colyseus supports custom transports)
+2. **Replace Colyseus entirely**: Use geckos.io directly as the networking layer with custom state sync
+
+Option 1 is cleaner if Colyseus supports it. Option 2 gives more control but requires reimplementing state sync.
+
+### Performance Expectations
+
+| Metric | WebSocket (current) | WebRTC DataChannel (hybrid) |
+|--------|--------------------|-----------------------------|
+| LAN median latency | 5-10ms | 1-3ms |
+| LAN P99 latency | 30-50ms | 5-10ms |
+| Internet median | 30-80ms | 20-60ms |
+| Packet loss handling | Retransmit + block (TCP) | Drop + continue (UDP) |
+| Jitter | High during loss | Consistent |
+| Bandwidth | JSON over text frames | Binary over SCTP |
+
+### Next Step
+
+Research geckos.io specifically: API, Colyseus compatibility, integration pattern. Then prototype on a branch.
