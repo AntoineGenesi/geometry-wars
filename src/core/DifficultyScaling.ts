@@ -198,12 +198,12 @@ export interface ScaledWaveEntry {
  * The spawner picks from these based on wave number and difficulty level.
  */
 const BASIC_TYPES = ['grunt', 'wanderer', 'duck'];
-const MID_TYPES = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly'];
-const HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner'];
+const MID_TYPES = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'orbiter'];
+const HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser'];
 const ELITE_TYPES = ['gate', 'virus', 'painter'];
 const SPLITTING_TYPES = [
   'giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron',
-  'titan_grunt', 'titan_spinner', 'titan_weaver',
+  'titan_grunt', 'titan_spinner', 'titan_weaver', 'splitter',
 ];
 
 /**

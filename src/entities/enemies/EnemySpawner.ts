@@ -23,6 +23,14 @@ import { GiantRocket } from './GiantRocket';
 import { GiantSnake } from './GiantSnake';
 import { GiantNeutron } from './GiantNeutron';
 import { Boss } from './Boss';
+import { Cluster } from './Cluster';
+import { Helix } from './Helix';
+import { Fractal } from './Fractal';
+import { Swarm } from './Swarm';
+import { Lurker } from './Lurker';
+import { Orbiter } from './Orbiter';
+import { Splitter } from './Splitter';
+import { Phaser } from './Phaser';
 import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 
 export type EnemyType =
@@ -30,6 +38,8 @@ export type EnemyType =
   | 'weaver' | 'spinner' | 'snake' | 'repulsor' | 'gravity_well' | 'gate'
   | 'painter' | 'virus' | 'spawner' | 'titan_grunt' | 'titan_spinner' | 'titan_weaver'
   | 'giant_wanderer' | 'giant_rocket' | 'giant_snake' | 'giant_neutron'
+  | 'cluster' | 'helix' | 'fractal' | 'swarm'
+  | 'lurker' | 'orbiter' | 'splitter' | 'phaser'
   | 'boss_sapphire' | 'boss_ruby' | 'boss_emerald' | 'boss_topaz' | 'boss_amethyst' | 'boss_opal';
 
 export interface SpawnRegion {
@@ -254,6 +264,30 @@ export class EnemySpawner {
         break;
       case 'giant_neutron':
         enemy = new GiantNeutron(u, v);
+        break;
+      case 'cluster':
+        enemy = new Cluster(u, v);
+        break;
+      case 'helix':
+        enemy = new Helix(u, v);
+        break;
+      case 'fractal':
+        enemy = new Fractal(u, v);
+        break;
+      case 'swarm':
+        enemy = new Swarm(u, v);
+        break;
+      case 'lurker':
+        enemy = new Lurker(u, v);
+        break;
+      case 'orbiter':
+        enemy = new Orbiter(u, v);
+        break;
+      case 'splitter':
+        enemy = new Splitter(u, v);
+        break;
+      case 'phaser':
+        enemy = new Phaser(u, v);
         break;
       case 'boss_sapphire':
         enemy = new Boss('sapphire', u, v);

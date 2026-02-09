@@ -55,6 +55,9 @@ const _zeroScale = new THREE.Vector3(0, 0, 0);
 const INSTANCEABLE_TYPES = new Set([
   'Grunt', 'Duck', 'Mayfly', 'Rocket', 'Neutron',
   'Weaver', 'Wanderer', 'SpinnerSpawn', 'Spinner', 'Virus',
+  'Lurker', 'Orbiter', 'Splitter',
+  // Note: Phaser is excluded because it uses per-instance opacity changes
+  // that require individual material control (transparent fading in/out).
 ]);
 
 export class EnemyInstanceManager {

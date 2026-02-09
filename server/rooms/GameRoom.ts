@@ -28,8 +28,13 @@ interface EnemySpawn {
 
 // Constants
 const TICK_RATE = 60;
-const PLAYER_SPEED = 0.08;
-const BULLET_SPEED = 0.15;
+// Movement speed in UV units per second.
+// Co-op uses MeshWalker at 3.0 world units/s. On a sphere of radius 5,
+// 1 UV unit = pi*5 world units. So 3.0 / (pi*5) = ~0.19 UV/s.
+const PLAYER_SPEED = 0.19;
+// Bullet speed in UV/s. Co-op bullets move at 4.0 world units/s.
+// On a sphere of radius 5: 4.0 / (pi*5) = ~0.255 UV/s.
+const BULLET_SPEED = 0.26;
 const BULLET_LIFETIME = 3.0;
 const SPAWN_INTERVAL = 2.0;
 const MAX_ENEMIES = 50;
@@ -397,24 +402,27 @@ export class GameRoom extends Room<GameState> {
   }
 
   private getEnemySpeed(type: string): number {
+    // Enemy speeds in UV/s. Scaled to match PLAYER_SPEED = 0.19.
+    // Ratio: enemies should be somewhat slower than the player so the game
+    // is playable. These values match the relative speeds from co-op.
     const speeds: Record<string, number> = {
-      grunt: 0.03,
-      arrow: 0.06,
-      weaver: 0.04,
-      spinner: 0.025,
-      snake: 0.05,
-      gate: 0.02,
-      blackhole: 0.01,
-      repulsor: 0.035,
-      mayfly: 0.08,
-      proton: 0.04,
-      ufo: 0.02,
+      grunt: 0.07,
+      arrow: 0.14,
+      weaver: 0.10,
+      spinner: 0.06,
+      snake: 0.12,
+      gate: 0.05,
+      blackhole: 0.025,
+      repulsor: 0.08,
+      mayfly: 0.19,
+      proton: 0.10,
+      ufo: 0.05,
       mines: 0,
-      mutator: 0.03,
-      bubbles: 0.025,
-      spawnlet: 0.05,
+      mutator: 0.07,
+      bubbles: 0.06,
+      spawnlet: 0.12,
     };
-    return speeds[type] || 0.03;
+    return speeds[type] || 0.07;
   }
 
   private checkCollisions() {

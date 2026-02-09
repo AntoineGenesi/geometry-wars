@@ -2,8 +2,9 @@
  * Network Multiplayer Mode
  *
  * Connects to a Colyseus server for online multiplayer.
- * Each client renders the authoritative server state.
- * Uses MeshSurface for proper surface-normal camera and depth-based opacity.
+ * Each client renders the authoritative server state with the SAME visual
+ * quality as local co-op: bloom, lighting, grid deformation, particles,
+ * screen shake, score popups.
  *
  * IMPORTANT: Surface type is determined by the SERVER, not the URL parameter.
  * The client connects first, reads the server's surfaceType from the room state,
@@ -21,9 +22,13 @@ import { Surface, SurfacePoint } from './surfaces/Surface';
 import { BulletPool } from './entities/Bullet';
 import { GeomPool } from './entities/Geom';
 import { ParticleSystem } from './effects/ParticleSystem';
+import { ScreenShake } from './effects/ScreenShake';
+import { ScorePopupManager } from './effects/ScorePopup';
 import { TrailEffect } from './effects/TrailEffect';
 import { InputManager } from './input/InputManager';
 import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
+import { getSoundEngine } from './audio/SoundEngine';
+import { BackgroundMusic } from './audio/BackgroundMusic';
 import {
   NetworkClient,
   NetworkPlayerState,
@@ -57,17 +62,49 @@ function getServerUrl(): string {
   return params.get('server') || `ws://${window.location.hostname}:2567`;
 }
 
+// ---------------------------------------------------------------------------
+// Enemy colors for death particle effects (matches co-op and single player)
+// ---------------------------------------------------------------------------
+
+const ENEMY_COLORS: Record<string, THREE.Color> = {
+  grunt: new THREE.Color(0x4444ff),
+  arrow: new THREE.Color(0xffff00),
+  weaver: new THREE.Color(0x00ff44),
+  spinner: new THREE.Color(0xff44ff),
+  snake: new THREE.Color(0x4488ff),
+  gate: new THREE.Color(0xffffff),
+  blackhole: new THREE.Color(0x4488ff),
+  repulsor: new THREE.Color(0xff4400),
+  mayfly: new THREE.Color(0xddddff),
+  proton: new THREE.Color(0x00ffff),
+  ufo: new THREE.Color(0xffffff),
+  mines: new THREE.Color(0xff0000),
+  mutator: new THREE.Color(0x8080ff),
+  bubbles: new THREE.Color(0x00ff80),
+  spawnlet: new THREE.Color(0xff8080),
+  wanderer: new THREE.Color(0xaa44ff),
+  duck: new THREE.Color(0xff44aa),
+  rocket: new THREE.Color(0xff8800),
+  neutron: new THREE.Color(0xccff00),
+};
+
 function main() {
   console.log('[NetworkMain] Starting network multiplayer mode...');
 
-  // Create game with bloom enabled (threshold=0.85 prevents white-out)
+  // Initialize audio (same as co-op)
+  const sound = getSoundEngine();
+  sound.init();
+  sound.resume();
+  const bgMusic = new BackgroundMusic();
+
+  // Create game with bloom enabled (matches co-op settings exactly)
   const game = new Game({
     bloom: {
       strength: 1.0,
       radius: 0.4,
       threshold: 0.85,
     },
-    cameraDistance: 20,
+    cameraDistance: 15,
     cameraSmoothing: 0.05,
   });
 
@@ -76,6 +113,22 @@ function main() {
 
   // Disable built-in orbit camera - we control camera manually
   game.disableBuiltInCameraUpdate = true;
+
+  // Hide default single-player HUD (same as co-op)
+  const defaultHUD = document.getElementById('game-hud');
+  if (defaultHUD) defaultHUD.style.display = 'none';
+
+  // -----------------------------------------------------------------------
+  // Lighting - MUST match co-op for identical visual quality
+  // -----------------------------------------------------------------------
+  const ambient = new THREE.AmbientLight(0x404080, 0.6);
+  scene.add(ambient);
+  const directional = new THREE.DirectionalLight(0xffffff, 0.8);
+  directional.position.set(5, 10, 5);
+  scene.add(directional);
+  const fillLight = new THREE.DirectionalLight(0x4488ff, 0.4);
+  fillLight.position.set(-5, -5, -5);
+  scene.add(fillLight);
 
   // -----------------------------------------------------------------------
   // Surface is created AFTER connecting to the server, using the server's
@@ -96,16 +149,41 @@ function main() {
 
     console.log(`[NetworkMain] Creating surface from SERVER state: "${surfaceType}" (server sent: "${serverSurfaceType}")`);
 
-    surface = SurfaceFactory.create(surfaceType);
+    // Surface config matches co-op EXACTLY for identical visuals
+    const surfaceConfig = {
+      gridColor: 0x006666,
+      surfaceColor: 0x0a0020,
+      surfaceOpacity: 0.35,
+      gridOpacity: 0.5,
+      radius: 5,
+      size: 5,
+      height: 10,
+      bevelRadius: 0.6,
+      majorRadius: 4,
+      minorRadius: 1.5,
+      gridSegmentsU: 24,
+      gridSegmentsV: 18,
+    };
+    surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
     scene.add(surface.group);
 
+    // Dark transparent surface material (matches co-op)
+    surface.mesh.material = new THREE.MeshBasicMaterial({
+      color: 0x0a0020,
+      transparent: true,
+      opacity: 0.35,
+      side: THREE.FrontSide,
+      depthWrite: true,
+    });
+
     meshSurface = new MeshSurface(surface.mesh);
+    bulletPool.setMeshSurface(meshSurface);
     surfaceReady = true;
   }
 
-  // Camera tracking state
-  const CAMERA_DISTANCE = 20;
-  const CAMERA_LERP = 0.06;
+  // Camera tracking state - match co-op distance (15, not 20)
+  const CAMERA_DISTANCE = 15;
+  const CAMERA_LERP = 0.08;
 
   // Create pools for rendering
   const bulletPool = new BulletPool();
@@ -114,13 +192,23 @@ function main() {
   const geomPool = new GeomPool();
   scene.add(geomPool.root);
 
-  // Particle system
+  // Particle system (matches co-op)
   const particles = new ParticleSystem(5000);
   scene.add(particles.root);
+
+  // Score popups (co-op has these, LAN was missing them)
+  const scorePopups = new ScorePopupManager();
+  scene.add(scorePopups.root);
+  scorePopups.setCamera(camera);
+
+  // Screen shake (co-op has this, LAN was missing it)
+  const screenShake = new ScreenShake();
 
   // Player tracking - maps server player IDs to local THREE objects
   const playerMeshes = new Map<string, THREE.Group>();
   const playerTrails = new Map<string, TrailEffect>();
+  // Track player alive state for death effect detection
+  const playerAliveState = new Map<string, boolean>();
 
   // Enemy tracking
   const enemyMeshes = new Map<string, THREE.Mesh>();
@@ -164,6 +252,7 @@ function main() {
   const INPUT_SEND_INTERVAL = 0.033; // ~33ms = 30Hz
   let lastInputSendTime = 0;
   let lastSentInput: { moveX: number; moveY: number; aimAngle: number; shooting: boolean; bomb: boolean } | null = null;
+  let shootSoundTimer = 0;
 
   // UI elements
   const statusEl = document.createElement('div');
@@ -331,6 +420,15 @@ function main() {
       mesh.quaternion.setFromRotationMatrix(rotMatrix);
       mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), player.aimAngle);
 
+      // Detect player death (was alive, now dead) -> trigger effects
+      const wasAlive = playerAliveState.get(id) ?? true;
+      if (wasAlive && !player.alive) {
+        particles.playerDeath(mesh.position);
+        screenShake.shake(0.5, 0.4);
+        sound.play('playerDeath');
+      }
+      playerAliveState.set(id, player.alive);
+
       mesh.visible = player.alive;
       trail?.addPoint(mesh.position.clone());
 
@@ -362,6 +460,7 @@ function main() {
       let mesh = enemyMeshes.get(enemy.id);
       if (!mesh) {
         mesh = createEnemyMesh(enemy.type);
+        mesh.userData.enemyType = enemy.type;
         scene.add(mesh);
         enemyMeshes.set(enemy.id, mesh);
       }
@@ -377,9 +476,17 @@ function main() {
       mesh.visible = enemy.alive && visibility > 0.05;
     });
 
-    // Remove dead enemies
+    // Remove dead enemies (with death effects matching co-op)
     enemyMeshes.forEach((mesh, id) => {
       if (!activeEnemyIds.has(id)) {
+        // Trigger death effects at enemy's last position
+        const enemyType = (mesh.userData.enemyType as string) || 'grunt';
+        const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xff0000);
+        particles.enemyDeath(mesh.position, color);
+        screenShake.shake(0.15, 0.15);
+        if (surface) surface.applyForce(mesh.position, 0.2, 1.0);
+        sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+
         scene.remove(mesh);
         enemyMeshes.delete(id);
       }
@@ -567,9 +674,13 @@ function main() {
         console.log('[NetworkMain] Game started!');
         statusEl.textContent = 'Game starting...';
         startBtn.style.display = 'none';
+        // Start background music (matches co-op)
+        const audioCtx = sound.getAudioContext();
+        if (audioCtx) bgMusic.start(audioCtx);
       },
       onGameOver: () => {
         statusEl.textContent = 'GAME OVER';
+        bgMusic.stop();
       },
       onError: (err) => {
         statusEl.textContent = `Error: ${err.message}`;
@@ -638,10 +749,24 @@ function main() {
         lastSentInput = { ...currentInput };
         lastInputSendTime = 0;
       }
+
+      // Play shoot sound locally for responsiveness (co-op does this too)
+      if (currentInput.shooting) {
+        shootSoundTimer -= dt;
+        if (shootSoundTimer <= 0) {
+          sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
+          shootSoundTimer = 0.1; // Match server fire rate
+        }
+      } else {
+        shootSoundTimer = 0;
+      }
     }
 
-    // Update particles
+    // Update visual systems (matches co-op)
     particles.update(dt);
+    scorePopups.update(dt);
+    screenShake.update(dt);
+    surface.updateGrid(dt);
 
     // Update ally glow pulse animation
     allyGlowManager.update(dt);
@@ -657,6 +782,9 @@ function main() {
       geomPool.update(dt, pt.u, pt.v, game.clock.totalTime);
     }
 
+    // Scale music intensity by enemy count (matches co-op)
+    bgMusic.setIntensity(Math.min(enemyMeshes.size / 30, 1.0));
+
     // Clear per-frame input
     input.endFrame();
   };
@@ -665,23 +793,24 @@ function main() {
     // Skip if surface not ready yet
     if (!surfaceReady || !surface) return;
 
-    // Camera follows local player along surface normal
+    // Camera follows local player along surface normal (matches co-op camera)
     const localMesh = playerMeshes.get(localPlayerId);
     if (localMesh) {
       // Get surface point for camera positioning (use worldToSurface -> getPoint for normal)
       const uv = surface.worldToSurface(localMesh.position);
       const sp = surface.getPoint(uv.u, uv.v);
 
-      const targetCamPos = sp.position.clone().add(
-        sp.normal.clone().multiplyScalar(CAMERA_DISTANCE)
-      );
+      const targetCamPos = sp.position.clone().addScaledVector(sp.normal, CAMERA_DISTANCE);
 
       camera.position.lerp(targetCamPos, CAMERA_LERP);
       camera.lookAt(sp.position);
-      camera.up.copy(sp.tangentV);
+
+      // Smooth camera up vector (prevents disorienting flips, matches co-op)
+      const upTarget = sp.tangentV;
+      camera.up.lerp(upTarget, CAMERA_LERP).normalize();
     }
 
-    // Apply surface projection for geoms (bullets are synced from server)
+    // Apply surface projection for geoms and bullets
     const surfaceRef = surface;
     const getTransform = (u: number, v: number) => {
       const pt = surfaceRef.getPoint(u, v);
@@ -692,7 +821,13 @@ function main() {
         bitangent: pt.tangentV,
       };
     };
+    bulletPool.applySurfaceProjection(getTransform);
     geomPool.applySurfaceProjection(getTransform);
+
+    // Screen shake (matches co-op)
+    if (screenShake.offset.lengthSq() > 0.0001) {
+      camera.position.add(screenShake.offset);
+    }
   };
 
   // Start the game loop
@@ -701,6 +836,7 @@ function main() {
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
     network.disconnect();
+    bgMusic.stop();
     allyGlowManager.dispose();
     meshSurface?.dispose();
   });
