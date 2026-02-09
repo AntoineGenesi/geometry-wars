@@ -54,6 +54,36 @@ import {
 } from './network/NetworkClient';
 
 // ---------------------------------------------------------------------------
+// Debug API type (exposed as window.__gameDebug when ?debug=true)
+// Used by tests/lan/run-lan-tests.mjs for programmatic game state inspection.
+// ---------------------------------------------------------------------------
+
+interface GameDebugAPI {
+  getPlayerPosition: () => { u: number; v: number } | null;
+  getEnemyCount: () => number;
+  getEnemies: () => { id: string; type: string; u: number; v: number; hp: number }[];
+  getBulletCount: () => number;
+  getScore: () => number;
+  isConnected: () => boolean;
+  getPlayerCount: () => number;
+  getLocalPlayerId: () => string;
+  getSurfaceType: () => string;
+  isGameStarted: () => boolean;
+  getWaveText: () => string;
+}
+
+declare global {
+  interface Window {
+    __gameDebug?: GameDebugAPI;
+  }
+}
+
+// Pre-allocated temp vectors for network state sync (zero per-frame allocation)
+const _netTempPos = new THREE.Vector3();
+const _netTempDir = new THREE.Vector3();
+const _netTempNormal = new THREE.Vector3();
+
+// ---------------------------------------------------------------------------
 // URL helpers
 // ---------------------------------------------------------------------------
 
@@ -769,16 +799,19 @@ function main() {
       const existingIdx = bulletIdToIndex.get(bullet.id);
 
       if (existingIdx !== undefined) {
-        // Update existing bullet position
+        // Update existing bullet position (uses pre-allocated temp vector)
         const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
-        const targetPos = sp.position.clone().addScaledVector(sp.normal, 0.02);
+        _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
         const line = poolLines[existingIdx];
         if (line && line.visible) {
-          line.position.lerp(targetPos, 0.4);
+          line.position.lerp(_netTempPos, 0.4);
         }
       } else {
-        // New bullet: find an inactive pool slot directly instead of
-        // scanning forEachActive after spawn (which was O(poolSize) per new bullet)
+        // New bullet: find an inactive pool slot and activate it directly.
+        // We CANNOT call bulletPool.spawn() because it internally calls
+        // findInactive() which may find a DIFFERENT slot than newIdx,
+        // causing bulletIdToIndex to point to the wrong bullet (race condition).
+        // Instead, set the pool data at the found index directly.
         let newIdx = -1;
         for (let i = 0; i < poolBullets.length; i++) {
           if (!poolBullets[i].alive) {
@@ -788,12 +821,25 @@ function main() {
         }
         if (newIdx >= 0) {
           const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
-          const dir = new THREE.Vector3(bullet.dirX, bullet.dirY, bullet.dirZ);
-          bulletPool.spawn(
-            sp.position.clone().addScaledVector(sp.normal, 0.02),
-            dir, bullet.x, bullet.y,
-            Math.atan2(bullet.dirY, bullet.dirX),
-          );
+          // Activate the slot directly (no spawn() call, no index mismatch)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const b = poolBullets[newIdx] as any;
+          b.alive = true;
+          b.age = 0;
+          b.surfaceU = bullet.x;
+          b.surfaceV = bullet.y;
+          b.angle = Math.atan2(bullet.dirY, bullet.dirX);
+          b.dirX = bullet.dirX;
+          b.dirY = bullet.dirY;
+          b.dirZ = bullet.dirZ;
+          // Position the line visual (uses pre-allocated temp vector)
+          _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
+          const line = poolLines[newIdx];
+          line.position.copy(_netTempPos);
+          line.visible = true;
+          // Orient line to face direction (uses pre-allocated temp vector)
+          _netTempDir.set(bullet.dirX, bullet.dirY, bullet.dirZ);
+          line.lookAt(_netTempPos.copy(line.position).add(_netTempDir));
           bulletIdToIndex.set(bullet.id, newIdx);
         }
       }
@@ -826,7 +872,12 @@ function main() {
           geomData.surfaceV = geom.surfaceV;
         }
       } else {
-        // New geom: find inactive slot directly
+        // New geom: find inactive slot and activate directly.
+        // We CANNOT call geomPool.spawn() because it internally calls
+        // findInactive() which may find a DIFFERENT slot, causing
+        // geomIdToIndex to point to the wrong geom (same race condition
+        // as bullets). Also, if no slot is found, we skip instead of
+        // spawning an untracked geom that would leak.
         let newIdx = -1;
         for (let i = 0; i < geomPoolData.length; i++) {
           const g = geomPoolData[i];
@@ -836,12 +887,24 @@ function main() {
           }
         }
         if (newIdx >= 0) {
-          geomPool.spawn(geom.surfaceU, geom.surfaceV);
+          // Activate the slot directly (no spawn() call, no index mismatch)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const g = geomPoolData[newIdx] as any;
+          g.alive = true;
+          g.age = 0;
+          g.surfaceU = geom.surfaceU;
+          g.surfaceV = geom.surfaceV;
+          g.velU = 0;
+          g.velV = 0;
+          // Make mesh visible
+          const geomMeshes = (geomPool as unknown as { meshes: THREE.Group[] }).meshes;
+          if (geomMeshes[newIdx]) {
+            geomMeshes[newIdx].visible = true;
+          }
           geomIdToIndex.set(geom.id, newIdx);
-        } else {
-          // No inactive slot found, just spawn and hope for the best
-          geomPool.spawn(geom.surfaceU, geom.surfaceV);
         }
+        // If no inactive slot found, skip spawning. Better to miss a geom
+        // than leak an untracked entity that can never be cleaned up.
       }
     });
 
@@ -1149,8 +1212,9 @@ function main() {
       const surfCenter = ms.getCenter();
       networkEnemies.forEach((enemy) => {
         if (!enemy.mesh || !enemy.mesh.visible) return;
-        const approxNormal = enemy.position.clone().sub(surfCenter).normalize();
-        const visibility = ms.getVisibility(enemy.position, approxNormal, camera.position);
+        // Uses pre-allocated temp vector instead of clone() per enemy per frame
+        _netTempNormal.copy(enemy.position).sub(surfCenter).normalize();
+        const visibility = ms.getVisibility(enemy.position, _netTempNormal, camera.position);
         // Set opacity directly on the mesh material instead of traverse
         if (enemy.mesh instanceof THREE.Mesh && enemy.mesh.material) {
           const mat = enemy.mesh.material as THREE.MeshBasicMaterial;
@@ -1190,7 +1254,7 @@ function main() {
   // Debug hook: read-only access to game state for automated testing.
   // Only active when ?debug=true is in the URL. No behavior changes.
   if (new URLSearchParams(window.location.search).has('debug')) {
-    (window as any).__gameDebug = {
+    window.__gameDebug = {
       getPlayerPosition: () => {
         const lp = networkPlayers.get(localPlayerId);
         return lp ? { u: lp.surfaceU, v: lp.surfaceV } : null;
