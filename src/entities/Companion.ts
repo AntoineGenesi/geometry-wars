@@ -47,6 +47,10 @@ let sharedCompanionGlowTexture: THREE.Texture | null = null;
 
 function getCompanionGlowTexture(): THREE.Texture {
   if (!sharedCompanionGlowTexture) {
+    if (typeof document === 'undefined') {
+      sharedCompanionGlowTexture = new THREE.Texture();
+      return sharedCompanionGlowTexture;
+    }
     const size = 64;
     const canvas = document.createElement('canvas');
     canvas.width = size;
