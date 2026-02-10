@@ -2,28 +2,20 @@
  * Playable visual style demo for the Visual Playground.
  *
  * When a user clicks a visual style thumbnail, this class creates a full-screen
- * playable mini-game with that visual style applied. The player can move with WASD,
- * aim with mouse, and shoot with click — exactly like the WeaponPlayground.
+ * playable mini-game with that visual style applied.
  *
- * The visual preset controls: grid color, surface color/opacity, bloom settings,
- * Sektori tile-glow shader, and depth opacity curves.
+ * DESIGN: Uses PlaygroundGame for the core game engine (scene, camera, player,
+ * enemies, collision, game loop). This class adds:
+ * - Full-screen overlay container
+ * - Visual preset application (grid material, surface material, bloom, Sektori shader)
+ * - Focus/pause/game-over state management
+ * - Stats overlay + hint overlay
+ * - Close/back button
  */
 
 import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { SurfaceFactory, SurfaceType } from '../surfaces/SurfaceFactory';
-import { Surface, SurfacePoint } from '../surfaces/Surface';
-import { BaseEnemy } from '../entities/enemies/BaseEnemy';
-import { Grunt } from '../entities/enemies/Grunt';
-import { Wanderer } from '../entities/enemies/Wanderer';
-import { Duck } from '../entities/enemies/Duck';
-import { Weaver } from '../entities/enemies/Weaver';
-import { Spinner } from '../entities/enemies/Spinner';
-import { Rocket } from '../entities/enemies/Rocket';
-import { ParticleSystem } from '../effects/ParticleSystem';
+import { PlaygroundGame } from '../core/PlaygroundGame';
+import { SurfaceType } from '../surfaces/SurfaceFactory';
 import {
   createSektoriGridMaterial,
   updateSektoriUniforms,
@@ -37,149 +29,53 @@ import type { VisualPreset } from './VisualPlayground';
 
 const DEMO_WIDTH = 800;
 const DEMO_HEIGHT = 600;
-const TARGET_RADIUS = 3.5;
-const CAMERA_DISTANCE = 8;
 const ENEMY_COUNT = 8;
-const ENEMY_RESPAWN_DELAY = 2.0;
-const PLAYER_MOVE_SPEED = 0.04;
-const MIN_DT = 1 / 120;
-const MAX_DT = 1 / 30;
-const PLAYER_RESPAWN_DELAY = 1.5;
 const STARTING_LIVES = 3;
-const DEATH_FLASH_DURATION = 0.4;
-const ENEMY_SCALE = 0.8;
-const PLAYER_DEATH_RADIUS = 0.15;
-const PROJECTILE_HIT_RADIUS = 0.25;
-const FIRE_RATE = 10;
-const FIRE_INTERVAL = 1 / FIRE_RATE;
-const PROJECTILE_SPEED = 6;
-const PROJECTILE_DAMAGE = 10;
-const PROJECTILE_MAX_AGE = 3;
-
-type DemoEnemyType = 'grunt' | 'wanderer' | 'duck' | 'weaver' | 'spinner' | 'rocket';
-const ENEMY_TYPES: DemoEnemyType[] = ['grunt', 'wanderer', 'duck', 'weaver', 'spinner', 'rocket'];
-const ENEMY_COLORS: Record<DemoEnemyType, number> = {
-  grunt: 0x4444ff,
-  wanderer: 0xaa44ff,
-  duck: 0xff44aa,
-  weaver: 0x00ff44,
-  spinner: 0xff44ff,
-  rocket: 0xff8800,
-};
-
-// Pre-allocated temp vectors
-const _v1 = new THREE.Vector3();
-const _v2 = new THREE.Vector3();
-const _v3 = new THREE.Vector3();
-const _raycaster = new THREE.Raycaster();
-const _mouseNDC = new THREE.Vector2();
-
-// ---------------------------------------------------------------------------
-// Interfaces
-// ---------------------------------------------------------------------------
-
-interface DemoEnemyEntry {
-  enemy: BaseEnemy;
-  type: DemoEnemyType;
-  respawnTimer: number;
-}
-
-interface DemoProjectile {
-  mesh: THREE.Mesh;
-  position: THREE.Vector3;
-  direction: THREE.Vector3;
-  speed: number;
-  age: number;
-}
-
-// ---------------------------------------------------------------------------
-// Surface transform helper (same pattern as WeaponPlayground)
-// ---------------------------------------------------------------------------
-
-function makeSurfaceTransform(surface: Surface, scale: number) {
-  return (u: number, v: number) => {
-    const pt: SurfacePoint = surface.getPoint(u, v);
-    return {
-      position: pt.position.clone().multiplyScalar(scale),
-      normal: pt.normal.clone(),
-      tangent: pt.tangentU.clone(),
-      bitangent: pt.tangentV.clone(),
-    };
-  };
-}
 
 // ---------------------------------------------------------------------------
 // VisualPlaygroundDemo
 // ---------------------------------------------------------------------------
 
 export class VisualPlaygroundDemo {
+  private playgroundGame: PlaygroundGame;
   private overlay: HTMLDivElement;
-  private demoCanvas: HTMLCanvasElement;
-  private renderer: THREE.WebGLRenderer;
-  private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
-  private composer: EffectComposer;
+  private canvasContainer: HTMLDivElement;
 
-  private surface!: Surface;
-  private surfaceScale = 1;
-  private surfaceGroup!: THREE.Group;
-  private surfaceTransformFn!: ReturnType<typeof makeSurfaceTransform>;
-
-  private playerGroup!: THREE.Group;
-  private playerU = 0.25;
-  private playerV = 0.5;
-  private aimU = 0.25;
-  private aimV = 0.5;
-
-  private enemies: DemoEnemyEntry[] = [];
-  private projectiles: DemoProjectile[] = [];
-  private deathEffects: THREE.Object3D[] = [];
-  private particleSystem: ParticleSystem;
-
-  private playerAlive = true;
-  private respawnTimer = 0;
-  private deathFlashTimer = 0;
-  private lives = STARTING_LIVES;
-  private gameOver = false;
-  private kills = 0;
-  private elapsed = 0;
-  private fireCooldown = 0;
-
-  private mouseX = DEMO_WIDTH / 2;
-  private mouseY = DEMO_HEIGHT / 2;
-  private mouseDown = false;
+  // Focus & pause state
   private focused = false;
   private paused = false;
+  private gameOver = false;
 
-  private readonly keysDown: Set<string> = new Set();
+  // Stats
+  private kills = 0;
+  private elapsed = 0;
+  private lives = STARTING_LIVES;
+
+  // Sektori state
+  private sektoriMaterial: THREE.ShaderMaterial | null = null;
+  private sektoriTrail: SektoriTrailManager | null = null;
+  private elapsedTime = 0;
+
+  // DOM
+  private statsOverlay: HTMLDivElement;
+  private hintOverlay: HTMLDivElement;
+
+  // Background color (stored for flash reset)
+  private bgColor: THREE.Color;
+
+  // Loop supplement
   private rafId = 0;
   private lastTime = 0;
   private disposed = false;
-  private elapsedTime = 0;
 
   private closeCallback: (() => void) | null = null;
   private preset: VisualPreset;
   private surfaceType: SurfaceType;
 
-  // Sektori state
-  private sektoriMaterial: THREE.ShaderMaterial | null = null;
-  private sektoriTrail: SektoriTrailManager | null = null;
-
-  // Stats overlay
-  private statsOverlay: HTMLDivElement;
-  private hintOverlay: HTMLDivElement;
-
-  // Bound handlers
+  // Bound handlers (stored for cleanup)
   private readonly onKeyDownHandler: (e: KeyboardEvent) => void;
-  private readonly onKeyUpHandler: (e: KeyboardEvent) => void;
-  private readonly onMouseMoveHandler: (e: MouseEvent) => void;
-  private readonly onMouseDownHandler: (e: MouseEvent) => void;
-  private readonly onMouseUpHandler: (e: MouseEvent) => void;
   private readonly onCanvasClickHandler: (e: MouseEvent) => void;
   private readonly onDocumentClickHandler: (e: MouseEvent) => void;
-
-  // Background color (stored for flash reset)
-  private bgColor: THREE.Color;
 
   constructor(preset: VisualPreset, surfaceType: SurfaceType) {
     this.preset = preset;
@@ -187,7 +83,6 @@ export class VisualPlaygroundDemo {
 
     // Background color based on preset
     this.bgColor = new THREE.Color(preset.surfaceColor || 0x050510);
-    // Darken it a bit for background
     this.bgColor.multiplyScalar(0.5);
     if (this.bgColor.r < 0.02 && this.bgColor.g < 0.02 && this.bgColor.b < 0.06) {
       this.bgColor.setHex(0x050510);
@@ -237,70 +132,56 @@ export class VisualPlaygroundDemo {
     titleBar.appendChild(backBtn);
     this.overlay.appendChild(titleBar);
 
-    // -- Canvas --
-    this.demoCanvas = document.createElement('canvas');
-    this.demoCanvas.width = DEMO_WIDTH;
-    this.demoCanvas.height = DEMO_HEIGHT;
-    this.demoCanvas.style.cssText =
-      'display:block;border:1px solid rgba(0,255,255,0.2);border-radius:4px;cursor:crosshair;';
-    this.overlay.appendChild(this.demoCanvas);
+    // -- Canvas container (PlaygroundGame renders into this) --
+    this.canvasContainer = document.createElement('div');
+    this.canvasContainer.style.cssText =
+      `position:relative;display:inline-block;width:${DEMO_WIDTH}px;height:${DEMO_HEIGHT}px;`;
 
-    // -- Renderer --
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: this.demoCanvas,
-      antialias: true,
-      alpha: false,
+    // -- Create PlaygroundGame --
+    this.playgroundGame = new PlaygroundGame({
+      container: this.canvasContainer,
+      width: DEMO_WIDTH,
+      height: DEMO_HEIGHT,
+      surface: surfaceType,
+      weapon: null, // free weapon swaps
+      enemyCount: ENEMY_COUNT,
+      lives: STARTING_LIVES,
+      surfaceScale: 10,
+      cameraDistance: 20,
+      bloom: {
+        strength: preset.bloomStrength,
+        radius: preset.bloomRadius ?? 0.4,
+        threshold: preset.bloomThreshold ?? 0.85,
+      },
+      onGameOver: () => this.handleGameOver(),
+      onEnemyKill: () => this.handleEnemyKill(),
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setSize(DEMO_WIDTH, DEMO_HEIGHT);
 
-    // -- Scene --
-    this.scene = new THREE.Scene();
-    this.scene.background = this.bgColor.clone();
-
-    // -- Lighting --
-    const ambient = new THREE.AmbientLight(0x404080, 0.8);
-    this.scene.add(ambient);
-    const directional = new THREE.DirectionalLight(0xffffff, 0.7);
-    directional.position.set(5, 10, 5);
-    this.scene.add(directional);
-
-    // -- Camera --
-    this.camera = new THREE.PerspectiveCamera(50, DEMO_WIDTH / DEMO_HEIGHT, 0.1, 100);
-    this.camera.position.set(0, CAMERA_DISTANCE * 0.6, CAMERA_DISTANCE * 0.8);
-    this.camera.lookAt(0, 0, 0);
-
-    // -- Surface --
-    this.initSurface();
-    this.addSurfaceToScene();
-
-    // -- Post-processing (bloom from preset) --
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    if (preset.bloomStrength > 0) {
-      const bloom = new UnrealBloomPass(
-        new THREE.Vector2(DEMO_WIDTH, DEMO_HEIGHT),
-        preset.bloomStrength,
-        preset.bloomRadius ?? 0.4,
-        preset.bloomThreshold ?? 0.85,
-      );
-      this.composer.addPass(bloom);
+    // Style the canvas
+    const canvas = this.canvasContainer.querySelector('canvas');
+    if (canvas) {
+      canvas.style.cssText =
+        'display:block;border:1px solid rgba(0,255,255,0.2);border-radius:4px;cursor:crosshair;';
     }
-    this.composer.addPass(new OutputPass());
 
-    // -- Player --
-    const playerColor = this.getPlayerColor();
-    this.playerGroup = this.buildMiniChevron(playerColor, 0.2);
-    this.scene.add(this.playerGroup);
+    // -- Apply visual preset to surface and scene --
+    this.applyVisualPreset();
 
-    // -- Particle system --
-    this.particleSystem = new ParticleSystem(2000);
-    this.scene.add(this.particleSystem.root);
+    // -- Hint overlay (click to play) --
+    this.hintOverlay = document.createElement('div');
+    this.hintOverlay.style.cssText =
+      `position:absolute;top:0;left:0;width:${DEMO_WIDTH}px;height:${DEMO_HEIGHT}px;` +
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+      'background:rgba(5,5,16,0.7);border-radius:4px;cursor:pointer;z-index:10;' +
+      'pointer-events:auto;';
+    this.hintOverlay.innerHTML =
+      '<div style="color:#00ffff;font:16px monospace;letter-spacing:2px;' +
+      'text-shadow:0 0 10px #00ffff,0 0 20px #0088aa;margin-bottom:8px;">CLICK TO PLAY</div>' +
+      '<div style="color:#88aacc;font:11px monospace;letter-spacing:1px;">' +
+      'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Back</div>';
+    this.canvasContainer.appendChild(this.hintOverlay);
 
-    // -- Enemies --
-    for (let i = 0; i < ENEMY_COUNT; i++) {
-      this.spawnEnemy(i);
-    }
+    this.overlay.appendChild(this.canvasContainer);
 
     // -- Stats overlay --
     this.statsOverlay = document.createElement('div');
@@ -321,42 +202,17 @@ export class VisualPlaygroundDemo {
     desc.textContent = preset.description;
     this.overlay.appendChild(desc);
 
-    // -- Hint overlay (click to play) --
-    this.hintOverlay = document.createElement('div');
-    this.hintOverlay.style.cssText =
-      `position:absolute;width:${DEMO_WIDTH}px;height:${DEMO_HEIGHT}px;` +
-      'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
-      'background:rgba(5,5,16,0.7);border-radius:4px;cursor:pointer;z-index:10;' +
-      'pointer-events:auto;';
-    this.hintOverlay.innerHTML =
-      '<div style="color:#00ffff;font:16px monospace;letter-spacing:2px;' +
-      'text-shadow:0 0 10px #00ffff,0 0 20px #0088aa;margin-bottom:8px;">CLICK TO PLAY</div>' +
-      '<div style="color:#88aacc;font:11px monospace;letter-spacing:1px;">' +
-      'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Pause</div>';
-
-    // Position relative to canvas
-    const canvasContainer = document.createElement('div');
-    canvasContainer.style.cssText = 'position:relative;display:inline-block;';
-
-    // Re-parent canvas into container
-    this.overlay.removeChild(this.demoCanvas);
-    canvasContainer.appendChild(this.demoCanvas);
-    canvasContainer.appendChild(this.hintOverlay);
-    // Insert after title bar
-    this.overlay.insertBefore(canvasContainer, this.statsOverlay);
-
     // -- Input handlers --
     this.onKeyDownHandler = (e: KeyboardEvent) => {
       if (!this.focused || this.disposed) return;
       const key = e.key.toLowerCase();
-      this.keysDown.add(key);
 
       if (key === 'escape') {
         if (this.paused) {
           this.paused = false;
+          this.playgroundGame.start();
           this.hintOverlay.style.display = 'none';
         } else {
-          // Treat ESC as "go back" when not paused
           this.close();
         }
         e.preventDefault();
@@ -369,27 +225,7 @@ export class VisualPlaygroundDemo {
       }
     };
 
-    this.onKeyUpHandler = (e: KeyboardEvent) => {
-      this.keysDown.delete(e.key.toLowerCase());
-    };
-
-    this.onMouseMoveHandler = (e: MouseEvent) => {
-      if (!this.focused || this.disposed) return;
-      const rect = this.demoCanvas.getBoundingClientRect();
-      this.mouseX = e.clientX - rect.left;
-      this.mouseY = e.clientY - rect.top;
-    };
-
-    this.onMouseDownHandler = (e: MouseEvent) => {
-      if (!this.focused || this.disposed) return;
-      if (e.button === 0) this.mouseDown = true;
-    };
-
-    this.onMouseUpHandler = (e: MouseEvent) => {
-      if (e.button === 0) this.mouseDown = false;
-    };
-
-    this.onCanvasClickHandler = (e: MouseEvent) => {
+    this.onCanvasClickHandler = (_e: MouseEvent) => {
       if (this.disposed) return;
 
       if (this.gameOver) {
@@ -401,6 +237,7 @@ export class VisualPlaygroundDemo {
 
       if (this.paused) {
         this.paused = false;
+        this.playgroundGame.start();
         this.hintOverlay.style.display = 'none';
         this.lastTime = performance.now();
         return;
@@ -409,683 +246,177 @@ export class VisualPlaygroundDemo {
       if (!this.focused) {
         this.focused = true;
         this.hintOverlay.style.display = 'none';
+        this.playgroundGame.start();
         this.lastTime = performance.now();
-        const rect = this.demoCanvas.getBoundingClientRect();
-        this.mouseX = e.clientX - rect.left;
-        this.mouseY = e.clientY - rect.top;
       }
     };
 
     this.onDocumentClickHandler = (e: MouseEvent) => {
       if (this.disposed) return;
       if (!this.overlay.contains(e.target as Node)) return;
-      // If clicking outside the canvas area, release focus
-      if (!canvasContainer.contains(e.target as Node) && this.focused && !this.paused) {
+      if (!this.canvasContainer.contains(e.target as Node) && this.focused && !this.paused) {
         this.releaseFocus();
       }
     };
 
     window.addEventListener('keydown', this.onKeyDownHandler);
-    window.addEventListener('keyup', this.onKeyUpHandler);
-    window.addEventListener('mouseup', this.onMouseUpHandler);
-    this.demoCanvas.addEventListener('mousemove', this.onMouseMoveHandler);
-    this.demoCanvas.addEventListener('mousedown', this.onMouseDownHandler);
-    canvasContainer.addEventListener('click', this.onCanvasClickHandler);
+    this.canvasContainer.addEventListener('click', this.onCanvasClickHandler);
     document.addEventListener('click', this.onDocumentClickHandler);
 
     document.body.appendChild(this.overlay);
 
-    // Start loop
+    // Wire Sektori glow update into the game's render callback
+    if (this.sektoriMaterial && this.sektoriTrail) {
+      const originalOnRender = this.playgroundGame.game.onRender;
+      this.playgroundGame.game.onRender = (alpha?: number) => {
+        // Call PlaygroundGame's own render update (camera follow, grid animation)
+        if (originalOnRender) originalOnRender(alpha ?? 0);
+        // Update Sektori glow
+        this.updateSektoriGlow();
+      };
+    }
+
+    // Wire UI loop for stats + Sektori updates when paused
     this.lastTime = performance.now();
-    this.loop(this.lastTime);
+    this.uiLoop(this.lastTime);
   }
 
   // -----------------------------------------------------------------------
-  // Player color: derive a complementary/readable color from grid color
+  // Visual preset application
   // -----------------------------------------------------------------------
 
-  private getPlayerColor(): number {
-    // Use cyan by default, but if grid is cyan-ish, use white
-    const gc = new THREE.Color(this.preset.gridColor);
-    const playerCyan = new THREE.Color(0x00ffff);
-    // If grid color is too similar to cyan, use white
-    if (gc.r < 0.3 && gc.g > 0.7 && gc.b > 0.7) {
-      return 0xffffff;
-    }
-    // If grid is green-ish, use cyan
-    if (gc.g > 0.7 && gc.r < 0.3 && gc.b < 0.5) {
-      return 0x00ffff;
-    }
-    return playerCyan.getHex();
-  }
+  private applyVisualPreset(): void {
+    const preset = this.preset;
+    const surface = this.playgroundGame.surface;
+    const scene = this.playgroundGame.game.scene;
 
-  // -----------------------------------------------------------------------
-  // Surface
-  // -----------------------------------------------------------------------
+    // Set scene background
+    scene.background = this.bgColor.clone();
 
-  private initSurface(): void {
-    this.surface = SurfaceFactory.create(this.surfaceType, {
-      gridColor: this.preset.gridColor,
-      surfaceColor: this.preset.surfaceColor,
-      surfaceOpacity: this.preset.wireframeOnly ? 0.0 : this.preset.surfaceOpacity,
-      gridOpacity: this.preset.gridOpacity,
-      gridSegmentsU: this.preset.gridSegmentsU,
-      gridSegmentsV: this.preset.gridSegmentsV,
-    } as any);
-
-    this.surface.mesh.geometry.computeBoundingSphere();
-    const bs = this.surface.mesh.geometry.boundingSphere;
-    const radius = bs ? bs.radius : 5;
-    this.surfaceScale = TARGET_RADIUS / radius;
-
-    this.surfaceTransformFn = makeSurfaceTransform(this.surface, this.surfaceScale);
-  }
-
-  private addSurfaceToScene(): void {
-    this.surfaceGroup = new THREE.Group();
-    this.surfaceGroup.scale.setScalar(this.surfaceScale);
-
-    // Apply preset surface material
-    if (this.surface.mesh.material instanceof THREE.Material) {
-      this.surface.mesh.material.dispose();
-    }
-
-    if (this.preset.wireframeOnly) {
-      // Hide the solid surface
-      this.surface.mesh.visible = false;
+    // Apply surface material from preset
+    if (preset.wireframeOnly) {
+      surface.mesh.visible = false;
     } else {
-      this.surface.mesh.material = new THREE.MeshStandardMaterial({
-        color: this.preset.surfaceColor,
+      if (surface.mesh.material instanceof THREE.Material) {
+        surface.mesh.material.dispose();
+      }
+      surface.mesh.material = new THREE.MeshStandardMaterial({
+        color: preset.surfaceColor,
         transparent: true,
-        opacity: this.preset.surfaceOpacity,
+        opacity: preset.surfaceOpacity,
         roughness: 0.8,
         metalness: 0.1,
         side: THREE.DoubleSide,
       });
     }
 
-    // Apply preset grid material (or Sektori shader)
-    if (this.preset.sektoriConfig) {
-      this.sektoriMaterial = createSektoriGridMaterial(this.preset.sektoriConfig);
-      this.sektoriTrail = new SektoriTrailManager(this.preset.sektoriConfig);
-      if (this.surface.gridMesh.material instanceof THREE.Material) {
-        this.surface.gridMesh.material.dispose();
+    // Apply grid material (Sektori shader or standard LineBasicMaterial)
+    if (preset.sektoriConfig) {
+      this.sektoriMaterial = createSektoriGridMaterial(preset.sektoriConfig);
+      this.sektoriTrail = new SektoriTrailManager(preset.sektoriConfig);
+      if (surface.gridMesh.material instanceof THREE.Material) {
+        surface.gridMesh.material.dispose();
       }
-      this.surface.gridMesh.material = this.sektoriMaterial;
+      surface.gridMesh.material = this.sektoriMaterial;
     } else {
-      if (this.surface.gridMesh.material instanceof THREE.Material) {
-        this.surface.gridMesh.material.dispose();
+      if (surface.gridMesh.material instanceof THREE.Material) {
+        surface.gridMesh.material.dispose();
       }
-      this.surface.gridMesh.material = new THREE.LineBasicMaterial({
-        color: this.preset.gridColor,
+      surface.gridMesh.material = new THREE.LineBasicMaterial({
+        color: preset.gridColor,
         transparent: true,
-        opacity: this.preset.gridOpacity,
+        opacity: preset.gridOpacity,
       });
     }
 
-    this.surfaceGroup.add(this.surface.mesh);
-    this.surfaceGroup.add(this.surface.gridMesh);
-    this.scene.add(this.surfaceGroup);
-  }
-
-  private getScaledPoint(u: number, v: number): SurfacePoint {
-    const pt = this.surface.getPoint(u, v);
-    return {
-      position: pt.position.multiplyScalar(this.surfaceScale),
-      normal: pt.normal,
-      tangentU: pt.tangentU,
-      tangentV: pt.tangentV,
-    };
+    // Apply bloom settings (PlaygroundGame already created the bloom pass via Game)
+    const bloomPass = this.playgroundGame.game.bloomPass;
+    if (bloomPass) {
+      bloomPass.strength = preset.bloomStrength;
+      bloomPass.radius = preset.bloomRadius ?? 0.4;
+      bloomPass.threshold = preset.bloomThreshold ?? 0.85;
+    }
   }
 
   // -----------------------------------------------------------------------
-  // Game loop
-  // -----------------------------------------------------------------------
-
-  private loop = (now: number): void => {
-    if (this.disposed) return;
-    this.rafId = requestAnimationFrame(this.loop);
-
-    const rawDt = (now - this.lastTime) / 1000;
-    this.lastTime = now;
-    const dt = Math.max(MIN_DT, Math.min(rawDt, MAX_DT));
-
-    // Track time for Sektori shader
-    this.elapsedTime += dt;
-
-    if (!this.focused || this.paused || this.gameOver) {
-      // Still update Sektori glow even when not playing
-      if (this.sektoriMaterial && this.sektoriTrail) {
-        this.updateSektoriGlow();
-      }
-      this.composer.render();
-      return;
-    }
-
-    this.elapsed += dt;
-
-    this.updateMouseAim();
-    this.updatePlayer(dt);
-    this.updateCamera(dt);
-    this.updateEnemies(dt);
-    this.updatePlayerCollisions();
-    this.updateDeathState(dt);
-    if (this.playerAlive) {
-      this.handleFiring(dt);
-    }
-    this.updateProjectiles(dt);
-    this.updateStats();
-    this.particleSystem.update(dt);
-
-    // Update Sektori glow based on player position
-    if (this.sektoriMaterial && this.sektoriTrail) {
-      this.updateSektoriGlow();
-    }
-
-    this.composer.render();
-  };
-
-  // -----------------------------------------------------------------------
-  // Sektori glow update (uses real player position)
+  // Sektori glow update
   // -----------------------------------------------------------------------
 
   private updateSektoriGlow(): void {
-    const pt = this.surface.getPoint(this.playerU, this.playerV);
-    const playerWorldPos = pt.position.clone().multiplyScalar(this.surfaceScale);
-
-    updateSektoriUniforms(this.sektoriMaterial!, playerWorldPos, this.elapsedTime);
-    this.sektoriTrail!.recordPosition(playerWorldPos);
-    this.sektoriTrail!.updateMaterial(this.sektoriMaterial!);
+    if (!this.sektoriMaterial || !this.sektoriTrail) return;
+    const playerPos = this.playgroundGame.player.mesh.position;
+    this.elapsedTime += 1 / 60; // approximate dt for Sektori shader
+    updateSektoriUniforms(this.sektoriMaterial, playerPos, this.elapsedTime);
+    this.sektoriTrail.recordPosition(playerPos);
+    this.sektoriTrail.updateMaterial(this.sektoriMaterial);
   }
 
   // -----------------------------------------------------------------------
-  // Mouse aim
+  // Game event handlers
   // -----------------------------------------------------------------------
 
-  private updateMouseAim(): void {
-    _mouseNDC.x = (this.mouseX / DEMO_WIDTH) * 2 - 1;
-    _mouseNDC.y = -(this.mouseY / DEMO_HEIGHT) * 2 + 1;
-
-    _raycaster.setFromCamera(_mouseNDC, this.camera);
-    const intersects = _raycaster.intersectObject(this.surfaceGroup, true);
-    if (intersects.length > 0) {
-      const hitLocal = intersects[0].point.clone().multiplyScalar(1 / this.surfaceScale);
-      const uv = this.surface.worldToSurface(hitLocal);
-      this.aimU = uv.u;
-      this.aimV = uv.v;
-    }
+  private handleGameOver(): void {
+    this.gameOver = true;
+    this.playgroundGame.stop();
+    this.showOverlay(
+      'GAME OVER',
+      `Kills: ${this.kills} | Time: ${this.elapsed.toFixed(1)}s<br>` +
+      '<span style="margin-top:8px;display:inline-block;">Click to restart</span>',
+    );
   }
 
-  // -----------------------------------------------------------------------
-  // Player movement
-  // -----------------------------------------------------------------------
-
-  private updatePlayer(dt: number): void {
-    if (!this.playerAlive) return;
-
-    let du = 0;
-    let dv = 0;
-    if (this.keysDown.has('a')) du -= 1;
-    if (this.keysDown.has('d')) du += 1;
-    if (this.keysDown.has('w')) dv -= 1;
-    if (this.keysDown.has('s')) dv += 1;
-
-    const moveLen = Math.sqrt(du * du + dv * dv);
-    if (moveLen > 1) {
-      du /= moveLen;
-      dv /= moveLen;
-    }
-
-    const speed = PLAYER_MOVE_SPEED * dt;
-    const newUV = this.surface.moveOnSurface(this.playerU, this.playerV, du * speed, dv * speed);
-    this.playerU = newUV.u;
-    this.playerV = newUV.v;
-
-    const pt = this.getScaledPoint(this.playerU, this.playerV);
-    this.playerGroup.position.copy(pt.position);
-
-    // Orient toward aim
-    const aimPt = this.getScaledPoint(this.aimU, this.aimV);
-    const toAim = aimPt.position.clone().sub(pt.position);
-    const normalComp = toAim.dot(pt.normal);
-    toAim.sub(pt.normal.clone().multiplyScalar(normalComp));
-    const aimLen = toAim.length();
-
-    if (aimLen > 0.001) {
-      toAim.multiplyScalar(1 / aimLen);
-      const target = pt.position.clone().add(toAim);
-      this.playerGroup.up.copy(pt.normal);
-      this.playerGroup.lookAt(target);
-    } else {
-      const target = pt.position.clone().add(pt.tangentU);
-      this.playerGroup.up.copy(pt.normal);
-      this.playerGroup.lookAt(target);
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Camera
-  // -----------------------------------------------------------------------
-
-  private updateCamera(dt: number): void {
-    const playerPos = this.playerGroup.position;
-    const pt = this.getScaledPoint(this.playerU, this.playerV);
-    const desiredPos = playerPos.clone().add(pt.normal.clone().multiplyScalar(CAMERA_DISTANCE));
-    const lerpFactor = 1 - Math.exp(-5 * dt);
-    this.camera.position.lerp(desiredPos, lerpFactor);
-    this.camera.lookAt(playerPos);
-  }
-
-  // -----------------------------------------------------------------------
-  // Player collisions
-  // -----------------------------------------------------------------------
-
-  private updatePlayerCollisions(): void {
-    if (!this.playerAlive) return;
-
-    for (let i = 0; i < this.enemies.length; i++) {
-      const entry = this.enemies[i];
-      if (!entry.enemy.alive) continue;
-      const dist = entry.enemy.position.distanceTo(this.playerGroup.position);
-      if (dist < PLAYER_DEATH_RADIUS + entry.enemy.radius) {
-        this.killPlayer();
-        return;
-      }
-    }
-  }
-
-  private killPlayer(): void {
-    this.playerAlive = false;
-    this.lives--;
-    this.deathFlashTimer = DEATH_FLASH_DURATION;
-    this.playerGroup.visible = false;
-    this.mouseDown = false;
-
-    this.spawnDeathExplosion(this.playerGroup.position);
-
-    if (this.lives <= 0) {
-      this.gameOver = true;
-      this.showOverlay(
-        'GAME OVER',
-        `Kills: ${this.kills} | Time: ${this.elapsed.toFixed(1)}s<br>` +
-        '<span style="margin-top:8px;display:inline-block;">Click to restart</span>',
-      );
-    } else {
-      this.respawnTimer = PLAYER_RESPAWN_DELAY;
-    }
-  }
-
-  private spawnDeathExplosion(pos: THREE.Vector3): void {
-    const pt = this.getScaledPoint(this.playerU, this.playerV);
-    const tangentA = pt.tangentU;
-    const tangentB = pt.tangentV;
-
-    const ringCount = 12;
-    for (let i = 0; i < ringCount; i++) {
-      const angle = (i / ringCount) * Math.PI * 2;
-      const dir = tangentA.clone().multiplyScalar(Math.cos(angle))
-        .add(tangentB.clone().multiplyScalar(Math.sin(angle)));
-
-      const geo = new THREE.SphereGeometry(0.04, 4, 4);
-      const mat = new THREE.MeshBasicMaterial({
-        color: this.getPlayerColor(),
-        transparent: true,
-        opacity: 1.0,
-      });
-      const particle = new THREE.Mesh(geo, mat);
-      particle.position.copy(pos);
-      particle.userData = { dir: dir.clone(), speed: 3.0, age: 0 };
-      this.scene.add(particle);
-      this.deathEffects.push(particle);
-    }
-  }
-
-  private updateDeathState(dt: number): void {
-    // Update death particles
-    for (let i = this.deathEffects.length - 1; i >= 0; i--) {
-      const p = this.deathEffects[i] as THREE.Mesh;
-      const ud = p.userData;
-      ud.age += dt;
-      p.position.add(ud.dir.clone().multiplyScalar(ud.speed * dt));
-      ud.speed *= 0.95;
-      const mat = p.material as THREE.MeshBasicMaterial;
-      mat.opacity = Math.max(0, 1.0 - ud.age * 2.0);
-
-      if (ud.age > 0.6) {
-        this.scene.remove(p);
-        p.geometry.dispose();
-        this.deathEffects.splice(i, 1);
-      }
-    }
-
-    // Death flash
-    if (this.deathFlashTimer > 0) {
-      this.deathFlashTimer -= dt;
-      const flashIntensity = this.deathFlashTimer / DEATH_FLASH_DURATION;
-      const bg = this.scene.background as THREE.Color;
-      const r = this.bgColor.r + flashIntensity * 0.25;
-      const g = this.bgColor.g + flashIntensity * 0.12;
-      const b = this.bgColor.b + flashIntensity * 0.08;
-      bg.setRGB(r, g, b);
-      if (this.deathFlashTimer <= 0) {
-        bg.copy(this.bgColor);
-      }
-    }
-
-    // Respawn countdown
-    if (!this.playerAlive && !this.gameOver) {
-      this.respawnTimer -= dt;
-      if (this.respawnTimer <= 0) {
-        this.respawnPlayer();
-      }
-    }
-  }
-
-  private respawnPlayer(): void {
-    this.playerAlive = true;
-    this.playerGroup.visible = true;
-
-    let bestU = (this.playerU + 0.5) % 1;
-    let bestV = 0.5;
-    let bestMinDist = 0;
-
-    for (let attempt = 0; attempt < 12; attempt++) {
-      const tryU = Math.random();
-      const tryV = 0.1 + Math.random() * 0.8;
-      const tryPt = this.getScaledPoint(tryU, tryV);
-
-      let minDist = Infinity;
-      for (const entry of this.enemies) {
-        if (!entry.enemy.alive) continue;
-        const d = tryPt.position.distanceTo(entry.enemy.position);
-        if (d < minDist) minDist = d;
-      }
-
-      if (minDist > bestMinDist) {
-        bestMinDist = minDist;
-        bestU = tryU;
-        bestV = tryV;
-      }
-    }
-
-    this.playerU = bestU;
-    this.playerV = bestV;
-    const pt = this.getScaledPoint(this.playerU, this.playerV);
-    this.playerGroup.position.copy(pt.position);
+  private handleEnemyKill(): void {
+    this.kills++;
   }
 
   private restartGame(): void {
-    this.lives = STARTING_LIVES;
-    this.playerAlive = true;
     this.gameOver = false;
-    this.respawnTimer = 0;
-    this.deathFlashTimer = 0;
-    this.playerGroup.visible = true;
-    this.mouseDown = false;
-    this.playerU = 0.25;
-    this.playerV = 0.5;
     this.kills = 0;
     this.elapsed = 0;
-    this.fireCooldown = 0;
+    this.lives = STARTING_LIVES;
 
-    this.clearProjectiles();
-    this.clearDeathEffects();
-    this.clearEnemies();
-    for (let i = 0; i < ENEMY_COUNT; i++) {
-      this.spawnEnemy(i);
-    }
+    // Dispose and recreate PlaygroundGame for clean state
+    this.playgroundGame.dispose();
 
-    (this.scene.background as THREE.Color).copy(this.bgColor);
-  }
-
-  // -----------------------------------------------------------------------
-  // Enemies
-  // -----------------------------------------------------------------------
-
-  private createEnemy(type: DemoEnemyType, u: number, v: number): BaseEnemy {
-    switch (type) {
-      case 'grunt': return new Grunt(u, v);
-      case 'wanderer': return new Wanderer(u, v);
-      case 'duck': return new Duck(u, v);
-      case 'weaver': return new Weaver(u, v);
-      case 'spinner': return new Spinner(u, v);
-      case 'rocket': return new Rocket(u, v);
-      default: return new Grunt(u, v);
-    }
-  }
-
-  private spawnEnemy(index: number): void {
-    const type = ENEMY_TYPES[index % ENEMY_TYPES.length];
-    let u = Math.random();
-    let v = 0.1 + Math.random() * 0.8;
-
-    for (let attempt = 0; attempt < 20; attempt++) {
-      u = Math.random();
-      v = 0.1 + Math.random() * 0.8;
-      const du = Math.abs(u - this.playerU);
-      const dv = Math.abs(v - this.playerV);
-      if (Math.sqrt(du * du + dv * dv) > 0.25) break;
-    }
-
-    const enemy = this.createEnemy(type, u, v);
-    enemy.radius *= ENEMY_SCALE;
-    enemy.applySurfaceTransform(this.surfaceTransformFn);
-
-    if (enemy.mesh) {
-      this.scene.add(enemy.mesh);
-      enemy.mesh.scale.setScalar(ENEMY_SCALE);
-    }
-
-    const entry: DemoEnemyEntry = { enemy, type, respawnTimer: 0 };
-
-    if (index < this.enemies.length) {
-      this.enemies[index] = entry;
-    } else {
-      this.enemies.push(entry);
-    }
-  }
-
-  private clearEnemies(): void {
-    for (const entry of this.enemies) {
-      if (entry.enemy.mesh) this.scene.remove(entry.enemy.mesh);
-      entry.enemy.destroy();
-    }
-    this.enemies = [];
-  }
-
-  private updateEnemies(dt: number): void {
-    const playerUV = { u: this.playerU, v: this.playerV };
-
-    for (let i = 0; i < this.enemies.length; i++) {
-      const entry = this.enemies[i];
-
-      if (!entry.enemy.alive) {
-        entry.respawnTimer -= dt;
-        if (entry.respawnTimer <= 0) {
-          if (entry.enemy.mesh) this.scene.remove(entry.enemy.mesh);
-          entry.enemy.destroy();
-
-          const newType = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
-          let u = Math.random();
-          let v = 0.1 + Math.random() * 0.8;
-          for (let attempt = 0; attempt < 20; attempt++) {
-            u = Math.random();
-            v = 0.1 + Math.random() * 0.8;
-            const du = Math.abs(u - playerUV.u);
-            const dv = Math.abs(v - playerUV.v);
-            if (Math.sqrt(du * du + dv * dv) > 0.25) break;
-          }
-
-          const newEnemy = this.createEnemy(newType, u, v);
-          newEnemy.radius *= ENEMY_SCALE;
-          newEnemy.applySurfaceTransform(this.surfaceTransformFn);
-          if (newEnemy.mesh) {
-            this.scene.add(newEnemy.mesh);
-            newEnemy.mesh.scale.setScalar(ENEMY_SCALE);
-          }
-
-          entry.enemy = newEnemy;
-          entry.type = newType;
-          entry.respawnTimer = 0;
-        }
-        continue;
-      }
-
-      if (this.playerAlive) {
-        entry.enemy.setPlayerPosition(playerUV.u, playerUV.v);
-      }
-      entry.enemy.update(dt);
-      entry.enemy.applySurfaceTransform(this.surfaceTransformFn);
-
-      if (entry.enemy.mesh) {
-        const currentScale = entry.enemy.mesh.scale.x;
-        if (Math.abs(currentScale - ENEMY_SCALE) > 0.01) {
-          entry.enemy.mesh.scale.setScalar(ENEMY_SCALE);
-        }
-      }
-    }
-  }
-
-  private damageEnemy(index: number, damage: number): void {
-    const entry = this.enemies[index];
-    if (!entry || !entry.enemy.alive) return;
-
-    entry.enemy.takeDamage(damage);
-
-    if (!entry.enemy.alive) {
-      const enemyColor = new THREE.Color(ENEMY_COLORS[entry.type] ?? 0xff4444);
-      this.particleSystem.enemyDeath(entry.enemy.position.clone(), enemyColor);
-
-      if (entry.enemy.mesh) entry.enemy.mesh.visible = false;
-      entry.respawnTimer = ENEMY_RESPAWN_DELAY;
-      this.kills++;
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // Firing (standard weapon only)
-  // -----------------------------------------------------------------------
-
-  private handleFiring(dt: number): void {
-    this.fireCooldown -= dt;
-    if (!this.mouseDown) return;
-    if (this.fireCooldown > 0) return;
-
-    this.fireCooldown = FIRE_INTERVAL;
-
-    const playerPos = this.playerGroup.position.clone();
-    const aimDir = this.getAimDirection();
-
-    // Fire a single projectile
-    const geo = new THREE.SphereGeometry(0.04, 6, 6);
-    // Projectile color matches grid color for visual consistency
-    const projColor = this.preset.gridColor;
-    const mat = new THREE.MeshBasicMaterial({ color: projColor });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.position.copy(playerPos);
-    this.scene.add(mesh);
-
-    this.projectiles.push({
-      mesh,
-      position: playerPos.clone(),
-      direction: aimDir.clone().normalize(),
-      speed: PROJECTILE_SPEED,
-      age: 0,
+    this.playgroundGame = new PlaygroundGame({
+      container: this.canvasContainer,
+      width: DEMO_WIDTH,
+      height: DEMO_HEIGHT,
+      surface: this.surfaceType,
+      weapon: null,
+      enemyCount: ENEMY_COUNT,
+      lives: STARTING_LIVES,
+      surfaceScale: 10,
+      cameraDistance: 20,
+      bloom: {
+        strength: this.preset.bloomStrength,
+        radius: this.preset.bloomRadius ?? 0.4,
+        threshold: this.preset.bloomThreshold ?? 0.85,
+      },
+      onGameOver: () => this.handleGameOver(),
+      onEnemyKill: () => this.handleEnemyKill(),
     });
-  }
 
-  private getAimDirection(): THREE.Vector3 {
-    const playerPt = this.getScaledPoint(this.playerU, this.playerV);
-    const aimPt = this.getScaledPoint(this.aimU, this.aimV);
-
-    const dir = aimPt.position.clone().sub(playerPt.position);
-    const normalComp = dir.dot(playerPt.normal);
-    dir.sub(playerPt.normal.clone().multiplyScalar(normalComp));
-
-    const len = dir.length();
-    if (len > 0.001) {
-      dir.multiplyScalar(1 / len);
-    } else {
-      return playerPt.tangentU.clone();
+    // Style the new canvas
+    const canvas = this.canvasContainer.querySelector('canvas');
+    if (canvas) {
+      canvas.style.cssText =
+        'display:block;border:1px solid rgba(0,255,255,0.2);border-radius:4px;cursor:crosshair;';
     }
-    return dir;
-  }
 
-  // -----------------------------------------------------------------------
-  // Projectile update
-  // -----------------------------------------------------------------------
+    // Re-apply visual preset
+    this.applyVisualPreset();
 
-  private updateProjectiles(dt: number): void {
-    for (let i = this.projectiles.length - 1; i >= 0; i--) {
-      const p = this.projectiles[i];
-      p.age += dt;
-      if (p.age >= PROJECTILE_MAX_AGE) {
-        this.removeProjectile(i);
-        continue;
-      }
-
-      // Move
-      p.position.add(p.direction.clone().multiplyScalar(p.speed * dt));
-      // Re-project onto surface
-      const localPos = p.position.clone().multiplyScalar(1 / this.surfaceScale);
-      const projUV = this.surface.worldToSurface(localPos);
-      const projPt = this.getScaledPoint(projUV.u, projUV.v);
-      p.position.copy(projPt.position);
-      // Re-tangentize direction
-      const dot = p.direction.dot(projPt.normal);
-      p.direction.sub(projPt.normal.clone().multiplyScalar(dot));
-      const dirLen = p.direction.length();
-      if (dirLen > 0.001) p.direction.multiplyScalar(1 / dirLen);
-
-      p.mesh.position.copy(p.position);
-
-      // Collision with enemies
-      for (let j = 0; j < this.enemies.length; j++) {
-        const entry = this.enemies[j];
-        if (!entry.enemy.alive) continue;
-        const d = entry.enemy.position.distanceTo(p.position);
-        if (d < PROJECTILE_HIT_RADIUS) {
-          this.damageEnemy(j, PROJECTILE_DAMAGE);
-          this.removeProjectile(i);
-          break;
-        }
-      }
+    // Re-wire Sektori glow if applicable
+    if (this.sektoriMaterial && this.sektoriTrail) {
+      const originalOnRender = this.playgroundGame.game.onRender;
+      this.playgroundGame.game.onRender = (alpha?: number) => {
+        if (originalOnRender) originalOnRender(alpha ?? 0);
+        this.updateSektoriGlow();
+      };
     }
-  }
 
-  private removeProjectile(index: number): void {
-    const p = this.projectiles[index];
-    this.scene.remove(p.mesh);
-    p.mesh.geometry.dispose();
-    this.projectiles.splice(index, 1);
-  }
-
-  private clearProjectiles(): void {
-    for (let i = this.projectiles.length - 1; i >= 0; i--) {
-      this.removeProjectile(i);
-    }
-  }
-
-  private clearDeathEffects(): void {
-    for (let i = this.deathEffects.length - 1; i >= 0; i--) {
-      const p = this.deathEffects[i] as THREE.Mesh;
-      this.scene.remove(p);
-      p.geometry.dispose();
-    }
-    this.deathEffects = [];
-  }
-
-  // -----------------------------------------------------------------------
-  // Stats
-  // -----------------------------------------------------------------------
-
-  private updateStats(): void {
-    const livesEl = this.statsOverlay.querySelector('#vpd-lives');
-    const killsEl = this.statsOverlay.querySelector('#vpd-kills');
-    const timeEl = this.statsOverlay.querySelector('#vpd-time');
-    if (livesEl) livesEl.textContent = `LIVES: ${this.lives}`;
-    if (killsEl) killsEl.textContent = `KILLS: ${this.kills}`;
-    if (timeEl) timeEl.textContent = `${this.elapsed.toFixed(1)}s`;
+    this.playgroundGame.start();
   }
 
   // -----------------------------------------------------------------------
@@ -1102,33 +433,41 @@ export class VisualPlaygroundDemo {
 
   private releaseFocus(): void {
     this.focused = false;
-    this.mouseDown = false;
-    this.keysDown.clear();
+    this.playgroundGame.stop();
     this.showOverlay('CLICK TO PLAY', 'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Back');
   }
 
-  private buildMiniChevron(color: number, scale: number): THREE.Group {
-    const group = new THREE.Group();
-    const shape = new THREE.Shape();
-    shape.moveTo(0, scale);
-    shape.lineTo(-scale * 0.6, -scale * 0.5);
-    shape.lineTo(0, -scale * 0.2);
-    shape.lineTo(scale * 0.6, -scale * 0.5);
-    shape.closePath();
+  // -----------------------------------------------------------------------
+  // UI loop (stats update + Sektori glow when paused)
+  // -----------------------------------------------------------------------
 
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: scale * 0.3, bevelEnabled: false });
-    geo.rotateX(Math.PI / 2);
-    geo.translate(0, 0, scale * 0.15);
-    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
-    const mesh = new THREE.Mesh(geo, mat);
-    group.add(mesh);
+  private uiLoop = (now: number): void => {
+    if (this.disposed) return;
+    this.rafId = requestAnimationFrame(this.uiLoop);
 
-    const wireGeo = new THREE.EdgesGeometry(geo);
-    const wireMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.6 });
-    const wireframe = new THREE.LineSegments(wireGeo, wireMat);
-    group.add(wireframe);
+    const rawDt = (now - this.lastTime) / 1000;
+    this.lastTime = now;
+    const dt = Math.max(1 / 120, Math.min(rawDt, 1 / 30));
 
-    return group;
+    // Update Sektori glow even when paused (visual polish)
+    if (this.sektoriMaterial && this.sektoriTrail && (!this.focused || this.paused)) {
+      this.elapsedTime += dt;
+    }
+
+    if (!this.focused || this.paused || this.gameOver) return;
+
+    this.elapsed += dt;
+    this.updateStats();
+  };
+
+  private updateStats(): void {
+    const stats = this.playgroundGame.getStats();
+    const livesEl = this.statsOverlay.querySelector('#vpd-lives');
+    const killsEl = this.statsOverlay.querySelector('#vpd-kills');
+    const timeEl = this.statsOverlay.querySelector('#vpd-time');
+    if (livesEl) livesEl.textContent = `LIVES: ${stats.lives}`;
+    if (killsEl) killsEl.textContent = `KILLS: ${this.kills}`;
+    if (timeEl) timeEl.textContent = `${this.elapsed.toFixed(1)}s`;
   }
 
   // -----------------------------------------------------------------------
@@ -1155,27 +494,16 @@ export class VisualPlaygroundDemo {
 
     // Remove event listeners
     window.removeEventListener('keydown', this.onKeyDownHandler);
-    window.removeEventListener('keyup', this.onKeyUpHandler);
-    window.removeEventListener('mouseup', this.onMouseUpHandler);
-    this.demoCanvas.removeEventListener('mousemove', this.onMouseMoveHandler);
-    this.demoCanvas.removeEventListener('mousedown', this.onMouseDownHandler);
+    this.canvasContainer.removeEventListener('click', this.onCanvasClickHandler);
     document.removeEventListener('click', this.onDocumentClickHandler);
 
-    this.clearProjectiles();
-    this.clearDeathEffects();
-    this.clearEnemies();
-
-    this.particleSystem.dispose();
-    this.surface.dispose();
+    // Dispose Sektori material
     if (this.sektoriMaterial) this.sektoriMaterial.dispose();
 
-    this.scene.traverse((obj) => {
-      if (obj instanceof THREE.Mesh) {
-        obj.geometry.dispose();
-      }
-    });
-    this.composer.dispose();
-    this.renderer.dispose();
+    // Dispose game engine
+    this.playgroundGame.dispose();
+
+    // Remove DOM
     this.overlay.remove();
   }
 }

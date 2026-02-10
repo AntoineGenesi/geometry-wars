@@ -31,6 +31,8 @@ import { Lurker } from './Lurker';
 import { Orbiter } from './Orbiter';
 import { Splitter } from './Splitter';
 import { Phaser } from './Phaser';
+import { ApproachGlow } from './ApproachGlow';
+import { StealthStalker } from './StealthStalker';
 import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
 
@@ -41,6 +43,7 @@ export type EnemyType =
   | 'giant_wanderer' | 'giant_rocket' | 'giant_snake' | 'giant_neutron'
   | 'cluster' | 'helix' | 'fractal' | 'swarm'
   | 'lurker' | 'orbiter' | 'splitter' | 'phaser'
+  | 'approach_glow' | 'stealth_stalker'
   | 'boss_sapphire' | 'boss_ruby' | 'boss_emerald' | 'boss_topaz' | 'boss_amethyst' | 'boss_opal';
 
 export interface SpawnRegion {
@@ -307,6 +310,12 @@ export class EnemySpawner {
         break;
       case 'phaser':
         enemy = new Phaser(u, v);
+        break;
+      case 'approach_glow':
+        enemy = new ApproachGlow(u, v);
+        break;
+      case 'stealth_stalker':
+        enemy = new StealthStalker(u, v);
         break;
       case 'boss_sapphire':
         enemy = new Boss('sapphire', u, v);

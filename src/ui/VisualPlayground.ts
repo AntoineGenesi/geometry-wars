@@ -27,6 +27,8 @@ import {
   computeDepthVisibility,
 } from '../rendering/DepthOpacity';
 import { VisualPlaygroundDemo } from './VisualPlaygroundDemo';
+import { saveVisualStyle, getActiveStyleIndex } from './VisualStyleSettings';
+import { VisualStyleEditor, loadCustomStyles, deleteCustomStyle } from './VisualStyleEditor';
 import {
   createSektoriGridMaterial,
   updateSektoriUniforms,
@@ -51,7 +53,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const GRID_COLS = 4;
-const GRID_ROWS = 8;
+const GRID_ROWS = 10;
 const CELL_SIZE = 180;
 const CELL_PADDING = 8;
 const CANVAS_WIDTH = GRID_COLS * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
@@ -99,7 +101,7 @@ export interface VisualPreset {
   sektoriConfig?: SektoriGridConfig;
 }
 
-/** All 30 presets (16 standard + 14 Sektori-inspired with proximity tile glow) */
+/** All 38 presets (16 standard + 14 Sektori-inspired with proximity tile glow + 8 experimental) */
 export const VISUAL_PRESETS: VisualPreset[] = [
   {
     name: 'Classic Neon',
@@ -571,6 +573,155 @@ export const VISUAL_PRESETS: VisualPreset[] = [
       trailRadiusFalloff: 0.85,
     },
   },
+  // -- Experimental visual styles (rows 9-10) ---
+  {
+    name: 'Matrix',
+    gridColor: 0x00ff41,
+    surfaceColor: 0x000000,
+    surfaceOpacity: 0.0,
+    gridOpacity: 0.95,
+    wireframeOnly: true,
+    bloomStrength: 2.2,
+    bloomRadius: 0.9,
+    bloomThreshold: 0.8,
+    gridSegmentsU: 48,
+    gridSegmentsV: 36,
+    depthCurve: 'extreme',
+    description: 'Hacker terminal. Dense green wireframe, extreme bloom, extreme depth fade.',
+  },
+  {
+    name: 'Blood Moon',
+    gridColor: 0xcc1100,
+    surfaceColor: 0x080000,
+    surfaceOpacity: 0.25,
+    gridOpacity: 0.85,
+    wireframeOnly: false,
+    bloomStrength: 1.4,
+    bloomRadius: 0.65,
+    bloomThreshold: 0.85,
+    gridSegmentsU: 24,
+    gridSegmentsV: 18,
+    depthCurve: 'moderate',
+    description: 'Deep crimson grid with red/orange proximity glow. Ominous.',
+    sektoriConfig: {
+      baseColor: new THREE.Color(0x1a0000),
+      glowColor: new THREE.Color(0xff2200),
+      glowColor2: new THREE.Color(0xff6600),
+      glowRadius: 4.0,
+      falloffExponent: 2.2,
+      baseOpacity: 0.08,
+      glowOpacity: 0.95,
+      pulseAmplitude: 0.08,
+      pulseSpeed: 0.8,
+      trailCount: 6,
+      trailFalloff: 0.75,
+      trailRadiusFalloff: 0.9,
+    },
+  },
+  {
+    name: 'Tron Legacy',
+    gridColor: 0xff8833,
+    surfaceColor: 0x000818,
+    surfaceOpacity: 0.15,
+    gridOpacity: 0.7,
+    wireframeOnly: false,
+    bloomStrength: 1.6,
+    bloomRadius: 0.9,
+    bloomThreshold: 0.82,
+    gridSegmentsU: 12,
+    gridSegmentsV: 10,
+    depthCurve: 'extreme',
+    description: 'Orange-white grid on deep blue. Sparse lines, wide bloom. The Grid.',
+  },
+  {
+    name: 'Vaporwave Sunset',
+    gridColor: 0xff44aa,
+    surfaceColor: 0x1a0030,
+    surfaceOpacity: 0.4,
+    gridOpacity: 0.75,
+    wireframeOnly: false,
+    bloomStrength: 1.3,
+    bloomRadius: 0.7,
+    bloomThreshold: 0.85,
+    gridSegmentsU: 24,
+    gridSegmentsV: 18,
+    depthCurve: 'moderate',
+    description: 'Pink-magenta on deep purple. Retro vaporwave aesthetic.',
+  },
+  {
+    name: 'Void Minimal',
+    gridColor: 0xffffff,
+    surfaceColor: 0x020204,
+    surfaceOpacity: 0.02,
+    gridOpacity: 0.1,
+    wireframeOnly: false,
+    bloomStrength: 0.15,
+    bloomRadius: 0.2,
+    bloomThreshold: 0.95,
+    gridSegmentsU: 10,
+    gridSegmentsV: 8,
+    depthCurve: 'extreme',
+    description: 'Almost invisible. Faint grid, near-zero surface. Hardcore mode.',
+  },
+  {
+    name: 'Supernova',
+    gridColor: 0xffffff,
+    surfaceColor: 0x0a0a14,
+    surfaceOpacity: 0.2,
+    gridOpacity: 0.9,
+    wireframeOnly: false,
+    bloomStrength: 2.5,
+    bloomRadius: 1.0,
+    bloomThreshold: 0.7,
+    gridSegmentsU: 24,
+    gridSegmentsV: 18,
+    depthCurve: 'moderate',
+    description: 'Maximum bloom. Blinding white glow radiating from every grid line.',
+  },
+  {
+    name: 'Deep Ocean',
+    gridColor: 0x005566,
+    surfaceColor: 0x001a22,
+    surfaceOpacity: 0.7,
+    gridOpacity: 0.3,
+    wireframeOnly: false,
+    bloomStrength: 0.3,
+    bloomRadius: 0.3,
+    bloomThreshold: 0.92,
+    gridSegmentsU: 36,
+    gridSegmentsV: 28,
+    depthCurve: 'gentle',
+    description: 'Dark teal, high-opacity surface, dim grid. Underwater pressure.',
+  },
+  {
+    name: 'Electric Storm',
+    gridColor: 0xffffaa,
+    surfaceColor: 0x050508,
+    surfaceOpacity: 0.1,
+    gridOpacity: 0.95,
+    wireframeOnly: false,
+    bloomStrength: 1.8,
+    bloomRadius: 0.75,
+    bloomThreshold: 0.82,
+    gridSegmentsU: 28,
+    gridSegmentsV: 20,
+    depthCurve: 'steep',
+    description: 'Yellow-white lightning with wide fast-pulsing proximity glow.',
+    sektoriConfig: {
+      baseColor: new THREE.Color(0x080804),
+      glowColor: new THREE.Color(0xffffcc),
+      glowColor2: new THREE.Color(0xffaa00),
+      glowRadius: 6.5,
+      falloffExponent: 1.5,
+      baseOpacity: 0.04,
+      glowOpacity: 1.0,
+      pulseAmplitude: 0.2,
+      pulseSpeed: 3.5,
+      trailCount: 10,
+      trailFalloff: 0.6,
+      trailRadiusFalloff: 0.8,
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -611,8 +762,14 @@ export class VisualPlayground {
   private closeCallback: (() => void) | null = null;
   private expandedIndex = -1;
   private demoInstance: VisualPlaygroundDemo | null = null;
+  private editorInstance: VisualStyleEditor | null = null;
+  /** Combined list of built-in presets + custom styles. Rebuilt on open/save. */
+  private allPresets: VisualPreset[] = [];
 
   constructor() {
+    // -- Build combined preset list --
+    this.rebuildAllPresets();
+
     // -- Style --
     this.styleElement = document.createElement('style');
     this.styleElement.textContent = this.getStyles();
@@ -632,7 +789,7 @@ export class VisualPlayground {
       alpha: true,
     });
     this.renderer.setPixelRatio(1);
-    this.renderer.setSize(CANVAS_WIDTH, CANVAS_HEIGHT);
+    this.renderer.setSize(CANVAS_WIDTH, this.getCanvasHeight());
     this.renderer.autoClear = false;
 
     // -- Build cells --
@@ -640,6 +797,18 @@ export class VisualPlayground {
 
     // -- Attach events --
     this.attachEvents();
+  }
+
+  /** Rebuild the combined presets list: built-in presets + custom styles from localStorage. */
+  private rebuildAllPresets(): void {
+    const customs = loadCustomStyles();
+    this.allPresets = [...VISUAL_PRESETS, ...customs.map((c) => c.preset)];
+  }
+
+  /** Compute canvas height based on the number of presets. */
+  private getCanvasHeight(): number {
+    const rows = Math.ceil(this.allPresets.length / GRID_COLS);
+    return rows * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
   }
 
   // -----------------------------------------------------------------------
@@ -651,9 +820,30 @@ export class VisualPlayground {
       .map((t) => `<option value="${t}" ${t === this.surfaceType ? 'selected' : ''}>${t}</option>`)
       .join('');
 
-    const presetLabels = VISUAL_PRESETS.map((p, i) =>
-      `<div class="vp-label" data-index="${i}">${p.name}</div>`
-    ).join('');
+    const activeIdx = getActiveStyleIndex();
+    const isCustom = (index: number) => index >= VISUAL_PRESETS.length;
+    const presetLabels = this.allPresets.map((p, i) => {
+      const isActive = i === activeIdx;
+      const editBtn = isActive
+        ? `<button class="vp-edit-btn" data-index="${i}">EDIT</button>`
+        : '';
+      const deleteBtn = isCustom(i)
+        ? `<button class="vp-delete-btn" data-index="${i}" title="Delete custom style">X</button>`
+        : '';
+      return `<div class="vp-label${isActive ? ' vp-label-active' : ''}${isCustom(i) ? ' vp-label-custom' : ''}" data-index="${i}">
+        <span class="vp-label-name">${p.name}</span>
+        <div class="vp-label-actions">
+          ${editBtn}
+          <button class="vp-apply-btn" data-index="${i}">${isActive ? 'ACTIVE' : 'APPLY'}</button>
+          ${deleteBtn}
+        </div>
+      </div>`;
+    }).join('');
+
+    // Compute actual grid dimensions based on total preset count
+    const totalPresets = this.allPresets.length;
+    const rows = Math.ceil(totalPresets / GRID_COLS);
+    const canvasH = rows * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
 
     return `
       <div class="vp-container">
@@ -666,11 +856,11 @@ export class VisualPlayground {
             <button class="vp-close-btn">CLOSE</button>
           </div>
         </div>
-        <div class="vp-grid-wrapper">
-          <canvas class="vp-canvas" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}"></canvas>
-          <div class="vp-labels-grid">${presetLabels}</div>
+        <div class="vp-grid-wrapper" style="height:${canvasH}px">
+          <canvas class="vp-canvas" width="${CANVAS_WIDTH}" height="${canvasH}"></canvas>
+          <div class="vp-labels-grid" style="grid-template-rows:repeat(${rows}, 1fr)">${presetLabels}</div>
         </div>
-        <div class="vp-hint">Click any preset to play a demo with that style. Change surface type above.</div>
+        <div class="vp-hint">Click name to preview. Click APPLY to set as game style. EDIT customizes the active style.</div>
       </div>
     `;
   }
@@ -771,8 +961,8 @@ export class VisualPlayground {
       .vp-label {
         display: flex;
         align-items: flex-end;
-        justify-content: center;
-        padding-bottom: 4px;
+        justify-content: space-between;
+        padding: 0 4px 4px 4px;
         color: rgba(200, 255, 255, 0.8);
         font: bold 10px monospace;
         letter-spacing: 1px;
@@ -783,6 +973,79 @@ export class VisualPlayground {
       .vp-label:hover {
         color: #ffffff;
         text-shadow: 0 0 12px #00ffff;
+      }
+      .vp-label-active {
+        border: 1px solid rgba(0, 255, 160, 0.6);
+        border-radius: 2px;
+        background: rgba(0, 255, 160, 0.05);
+      }
+      .vp-label-name {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .vp-apply-btn {
+        background: rgba(0, 80, 40, 0.7);
+        border: 1px solid #00aa66;
+        color: #00ff88;
+        padding: 2px 6px;
+        font: bold 8px monospace;
+        letter-spacing: 1px;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+        pointer-events: auto;
+      }
+      .vp-apply-btn:hover {
+        background: rgba(0, 120, 60, 0.8);
+        box-shadow: 0 0 8px #00ff88;
+      }
+      .vp-label-active .vp-apply-btn {
+        background: rgba(0, 100, 60, 0.8);
+        border-color: #00ff88;
+        color: #ffffff;
+      }
+      .vp-label-actions {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .vp-edit-btn {
+        background: rgba(0, 60, 80, 0.7);
+        border: 1px solid #0088aa;
+        color: #00ccff;
+        padding: 2px 5px;
+        font: bold 7px monospace;
+        letter-spacing: 1px;
+        cursor: pointer;
+        transition: all 0.2s;
+        pointer-events: auto;
+      }
+      .vp-edit-btn:hover {
+        background: rgba(0, 100, 120, 0.8);
+        box-shadow: 0 0 8px #00ccff;
+      }
+      .vp-delete-btn {
+        background: rgba(80, 20, 20, 0.7);
+        border: 1px solid #884444;
+        color: #ff6666;
+        padding: 2px 4px;
+        font: bold 7px monospace;
+        cursor: pointer;
+        transition: all 0.2s;
+        pointer-events: auto;
+      }
+      .vp-delete-btn:hover {
+        background: rgba(120, 30, 30, 0.8);
+        box-shadow: 0 0 8px #ff6666;
+      }
+      .vp-label-custom {
+        border: 1px solid rgba(0, 180, 255, 0.3);
+        border-radius: 2px;
+      }
+      .vp-label-custom .vp-label-name {
+        color: #88ddff;
       }
       .vp-hint {
         color: #557777;
@@ -800,8 +1063,8 @@ export class VisualPlayground {
   private buildCells(): void {
     this.disposeCells();
 
-    for (let i = 0; i < VISUAL_PRESETS.length; i++) {
-      const preset = VISUAL_PRESETS[i];
+    for (let i = 0; i < this.allPresets.length; i++) {
+      const preset = this.allPresets[i];
       const cell = this.createCell(preset, CELL_SIZE, CELL_SIZE);
       this.cells.push(cell);
     }
@@ -933,11 +1196,12 @@ export class VisualPlayground {
     const closeBtn = this.overlay.querySelector('.vp-close-btn');
     closeBtn?.addEventListener('click', () => this.close());
 
-    // Escape key (demo handles its own Escape via stopPropagation)
+    // Escape key (demo and editor handle their own Escape via stopPropagation)
     this.onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // If demo is open, let the demo handle it (it uses stopPropagation)
+        // If demo or editor is open, let them handle it
         if (this.demoInstance) return;
+        if (this.editorInstance) return;
         if (this.expandedIndex >= 0) {
           this.closeExpand();
         } else {
@@ -959,8 +1223,9 @@ export class VisualPlayground {
       const rect = this.canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+      const canvasH = this.getCanvasHeight();
       const scaleX = CANVAS_WIDTH / rect.width;
-      const scaleY = CANVAS_HEIGHT / rect.height;
+      const scaleY = canvasH / rect.height;
       const px = x * scaleX;
       const py = y * scaleY;
 
@@ -968,26 +1233,98 @@ export class VisualPlayground {
       const cellTotalH = CELL_SIZE + CELL_PADDING;
       const col = Math.floor((px - CELL_PADDING) / cellTotalW);
       const row = Math.floor((py - CELL_PADDING) / cellTotalH);
+      const rows = Math.ceil(this.allPresets.length / GRID_COLS);
 
-      if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
+      if (col >= 0 && col < GRID_COLS && row >= 0 && row < rows) {
         const idx = row * GRID_COLS + col;
-        if (idx < VISUAL_PRESETS.length) {
+        if (idx < this.allPresets.length) {
           this.openExpand(idx);
         }
       }
     });
 
-    // Label clicks
-    const labels = this.overlay.querySelectorAll('.vp-label');
+    // Label name clicks (open demo)
+    const labels = this.overlay.querySelectorAll('.vp-label-name');
     labels.forEach((label) => {
-      label.addEventListener('click', () => {
-        const idx = parseInt((label as HTMLElement).dataset.index ?? '0', 10);
+      label.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const parent = (label as HTMLElement).closest('.vp-label') as HTMLElement;
+        const idx = parseInt(parent?.dataset.index ?? '0', 10);
         this.openExpand(idx);
+      });
+    });
+
+    // Apply button clicks (save as game setting)
+    const applyBtns = this.overlay.querySelectorAll('.vp-apply-btn');
+    applyBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt((btn as HTMLElement).dataset.index ?? '0', 10);
+        saveVisualStyle(idx);
+        this.refreshActiveState();
+      });
+    });
+
+    // Edit button clicks (open editor for the active style)
+    const editBtns = this.overlay.querySelectorAll('.vp-edit-btn');
+    editBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt((btn as HTMLElement).dataset.index ?? '0', 10);
+        this.openEditor(idx);
+      });
+    });
+
+    // Delete button clicks (remove custom style)
+    const deleteBtns = this.overlay.querySelectorAll('.vp-delete-btn');
+    deleteBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt((btn as HTMLElement).dataset.index ?? '0', 10);
+        const preset = this.allPresets[idx];
+        if (preset) {
+          deleteCustomStyle(preset.name);
+          this.rebuildPlayground();
+        }
       });
     });
   }
 
   private onKeyDown: ((e: KeyboardEvent) => void) | null = null;
+
+  /** Update all label/button styles to reflect the currently active preset. */
+  private refreshActiveState(): void {
+    const activeIdx = getActiveStyleIndex();
+    const labels = this.overlay.querySelectorAll('.vp-label');
+    labels.forEach((label) => {
+      const el = label as HTMLElement;
+      const idx = parseInt(el.dataset.index ?? '-1', 10);
+      const btn = el.querySelector('.vp-apply-btn') as HTMLElement;
+      const actionsDiv = el.querySelector('.vp-label-actions') as HTMLElement;
+      if (idx === activeIdx) {
+        el.classList.add('vp-label-active');
+        if (btn) btn.textContent = 'ACTIVE';
+        // Add EDIT button if not already present
+        if (actionsDiv && !actionsDiv.querySelector('.vp-edit-btn')) {
+          const editBtn = document.createElement('button');
+          editBtn.className = 'vp-edit-btn';
+          editBtn.dataset.index = String(idx);
+          editBtn.textContent = 'EDIT';
+          editBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.openEditor(idx);
+          });
+          actionsDiv.insertBefore(editBtn, actionsDiv.firstChild);
+        }
+      } else {
+        el.classList.remove('vp-label-active');
+        if (btn) btn.textContent = 'APPLY';
+        // Remove EDIT button if present
+        const existingEdit = actionsDiv?.querySelector('.vp-edit-btn');
+        if (existingEdit) existingEdit.remove();
+      }
+    });
+  }
 
   // -----------------------------------------------------------------------
   // Expand view
@@ -996,7 +1333,8 @@ export class VisualPlayground {
   private openExpand(index: number): void {
     this.closeExpand();
     this.expandedIndex = index;
-    const preset = VISUAL_PRESETS[index];
+    const preset = this.allPresets[index];
+    if (!preset) return;
 
     // Launch playable demo with this visual style
     this.closeDemoInstance();
@@ -1017,6 +1355,80 @@ export class VisualPlayground {
   private closeExpand(): void {
     this.expandedIndex = -1;
     this.closeDemoInstance();
+  }
+
+  // -----------------------------------------------------------------------
+  // Editor
+  // -----------------------------------------------------------------------
+
+  /** Open the style editor for the preset at the given index. */
+  private openEditor(index: number): void {
+    const preset = this.allPresets[index];
+    if (!preset) return;
+
+    this.closeEditorInstance();
+    this.editorInstance = new VisualStyleEditor(preset);
+
+    // Real-time preview: open a demo with the edited preset
+    this.closeDemoInstance();
+    this.demoInstance = new VisualPlaygroundDemo(preset, this.surfaceType);
+    this.demoInstance.onClose(() => {
+      // If the demo is closed directly, close the editor too
+      this.demoInstance = null;
+      this.closeEditorInstance();
+    });
+
+    this.editorInstance.onChange((updated) => {
+      // Rebuild demo with updated preset for real-time preview
+      this.closeDemoInstance();
+      this.demoInstance = new VisualPlaygroundDemo(updated, this.surfaceType);
+      this.demoInstance.onClose(() => {
+        this.demoInstance = null;
+        this.closeEditorInstance();
+      });
+    });
+
+    this.editorInstance.onSave(() => {
+      // After saving a custom style, rebuild the playground to show it
+      this.rebuildPlayground();
+    });
+
+    this.editorInstance.onClose(() => {
+      this.editorInstance = null;
+      this.closeDemoInstance();
+      this.expandedIndex = -1;
+    });
+  }
+
+  private closeEditorInstance(): void {
+    if (this.editorInstance) {
+      this.editorInstance.dispose();
+      this.editorInstance = null;
+    }
+  }
+
+  /** Rebuild the entire playground UI (after adding/removing custom styles). */
+  private rebuildPlayground(): void {
+    this.rebuildAllPresets();
+    this.disposeCells();
+
+    // Rebuild HTML
+    this.overlay.innerHTML = this.buildHTML();
+
+    // Re-acquire canvas
+    this.canvas = this.overlay.querySelector('.vp-canvas') as HTMLCanvasElement;
+    this.renderer.dispose();
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: this.canvas,
+      antialias: false,
+      alpha: true,
+    });
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(CANVAS_WIDTH, this.getCanvasHeight());
+    this.renderer.autoClear = false;
+
+    this.buildCells();
+    this.attachEvents();
   }
 
   // -----------------------------------------------------------------------
@@ -1122,7 +1534,8 @@ export class VisualPlayground {
       // Compute viewport in canvas coordinates (bottom-left origin for GL)
       const x = CELL_PADDING + col * (CELL_SIZE + CELL_PADDING);
       const yFromTop = CELL_PADDING + row * (CELL_SIZE + CELL_PADDING);
-      const yGL = CANVAS_HEIGHT - yFromTop - CELL_SIZE;
+      const canvasH = this.getCanvasHeight();
+      const yGL = canvasH - yFromTop - CELL_SIZE;
 
       this.renderer.setViewport(x, yGL, CELL_SIZE, CELL_SIZE);
       this.renderer.setScissor(x, yGL, CELL_SIZE, CELL_SIZE);
@@ -1149,11 +1562,14 @@ export class VisualPlayground {
   // -----------------------------------------------------------------------
 
   show(): void {
+    // Rebuild in case custom styles changed since last open
+    this.rebuildPlayground();
     this.overlay.style.display = 'flex';
     this.start();
   }
 
   close(): void {
+    this.closeEditorInstance();
     this.closeDemoInstance();
     this.closeExpand();
     this.stop();
@@ -1166,6 +1582,7 @@ export class VisualPlayground {
   }
 
   dispose(): void {
+    this.closeEditorInstance();
     this.closeDemoInstance();
     this.closeExpand();
     this.stop();

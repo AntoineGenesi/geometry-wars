@@ -509,10 +509,10 @@ export class EnemyInstanceManager {
   ): LODSharedBatch {
     const material = new THREE.MeshStandardMaterial({
       color: 0xffffff,
-      emissive: new THREE.Color(0x888888),
-      emissiveIntensity: 1.2,
-      metalness: 0.2,
-      roughness: 0.5,
+      emissive: new THREE.Color(0xffffff),
+      emissiveIntensity: 2.0,
+      metalness: 0.1,
+      roughness: 0.3,
       transparent: true,
       depthWrite: false,
     });

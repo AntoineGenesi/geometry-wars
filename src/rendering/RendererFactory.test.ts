@@ -65,14 +65,25 @@ describe('RendererFactory', () => {
       originalWindow = globalThis.window;
     });
 
-    it('defaults to webgl2 when no URL params', () => {
+    it('defaults to webgl2 when no URL params and no WebGPU', () => {
       // Mock window.location.search with no params
       const mockLocation = { search: '' } as Location;
       vi.stubGlobal('window', { location: mockLocation });
 
-      const caps = mockCapabilities();
+      const caps = mockCapabilities({ webgpu: false });
       const result = resolveRendererPreference(caps);
       expect(result).toBe('webgl2');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('auto-selects webgpu when available and no URL params', () => {
+      const mockLocation = { search: '' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+
+      const caps = mockCapabilities({ webgpu: true });
+      const result = resolveRendererPreference(caps);
+      expect(result).toBe('webgpu');
 
       vi.unstubAllGlobals();
     });
@@ -120,11 +131,23 @@ describe('RendererFactory', () => {
       expect(['webgl2', 'webgpu']).toContain(result);
     });
 
-    it('ignores unknown ?renderer values', () => {
+    it('ignores unknown ?renderer values and auto-selects based on capability', () => {
       const mockLocation = { search: '?renderer=vulkan' } as Location;
       vi.stubGlobal('window', { location: mockLocation });
 
+      // WebGPU available → auto-selects webgpu
       const caps = mockCapabilities({ webgpu: true });
+      const result = resolveRendererPreference(caps);
+      expect(result).toBe('webgpu');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('falls back to webgl2 with unknown ?renderer and no WebGPU', () => {
+      const mockLocation = { search: '?renderer=vulkan' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+
+      const caps = mockCapabilities({ webgpu: false });
       const result = resolveRendererPreference(caps);
       expect(result).toBe('webgl2');
 

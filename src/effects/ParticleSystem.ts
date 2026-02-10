@@ -37,6 +37,21 @@ interface ShatterFragment {
   baseScale: number;
 }
 
+// ---------------------------------------------------------------------------
+// Pre-allocated temp vectors for zero-allocation emit() hot path
+// ---------------------------------------------------------------------------
+const _spreadDir = new THREE.Vector3();
+const _perp1 = new THREE.Vector3();
+const _perp2 = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+const _right = new THREE.Vector3(1, 0, 0);
+const _defaultDir = new THREE.Vector3(0, 1, 0);
+
+// Pre-allocated reusable colors for effect methods (avoid per-call allocations)
+const _white = new THREE.Color(1.0, 1.0, 1.0);
+const _dimColor = new THREE.Color();
+const _tempColor = new THREE.Color();
+
 export class ParticleSystem {
   readonly root: THREE.Points;
   private particles: Particle[];
@@ -54,7 +69,17 @@ export class ParticleSystem {
   private fragmentContainer: THREE.Group;
   private fragments: ShatterFragment[] = [];
   private fragmentGeometries: THREE.BufferGeometry[] = [];
-  private maxFragments: number = 400;
+  private maxFragments: number = 200; // Reduced from 400 — cuts draw calls in half
+
+  // Per-frame emission budget to prevent cascade overload
+  private _emittedThisFrame: number = 0;
+  private _fragmentsThisFrame: number = 0;
+  private _maxEmitPerFrame: number = 200; // Hard cap: 200 particles per frame
+  private _maxFragmentsPerFrame: number = 40; // Hard cap: 40 fragments per frame
+
+  // Active effect count (updated during update() — zero extra iteration)
+  private _activeParticleCount: number = 0;
+  private _activeFragmentCount: number = 0;
 
   constructor(maxParticles: number = 10000) {
     this.maxParticles = maxParticles;
@@ -109,8 +134,8 @@ export class ParticleSystem {
           vec2 center = gl_PointCoord - vec2(0.5);
           float dist = length(center);
 
-          // Soft edge falloff — reduced peak alpha for additive transparency
-          float alpha = 0.55 * (1.0 - smoothstep(0.2, 0.5, dist));
+          // Soft edge falloff — low peak alpha so overlapping particles stay see-through
+          float alpha = 0.3 * (1.0 - smoothstep(0.15, 0.5, dist));
 
           if (alpha < 0.01) discard;
 
@@ -140,7 +165,7 @@ export class ParticleSystem {
       const material = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.4,
         side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
@@ -159,6 +184,17 @@ export class ParticleSystem {
         baseScale: 1,
       });
     }
+  }
+
+  /** Total active particles + fragments (updated each update() call). Zero cost to read. */
+  get activeEffectCount(): number {
+    return this._activeParticleCount + this._activeFragmentCount;
+  }
+
+  /** Set per-frame particle emission budget (tied to quality level). */
+  setEmitBudget(maxParticlesPerFrame: number, maxFragmentsPerFrame: number): void {
+    this._maxEmitPerFrame = maxParticlesPerFrame;
+    this._maxFragmentsPerFrame = maxFragmentsPerFrame;
   }
 
   private createTriangleGeometry(): THREE.BufferGeometry {
@@ -214,11 +250,28 @@ export class ParticleSystem {
       lifetime,
       size,
       spread = Math.PI * 2,
-      direction = new THREE.Vector3(0, 1, 0),
       gravity = 0,
     } = config;
+    const direction = config.direction ?? _defaultDir;
 
-    for (let i = 0; i < count; i++) {
+    // Budget enforcement: clamp count to remaining frame budget
+    const budgetRemaining = this._maxEmitPerFrame - this._emittedThisFrame;
+    if (budgetRemaining <= 0) return;
+    const effectiveCount = Math.min(count, budgetRemaining);
+
+    // Compute perpendicular axes ONCE outside the loop (zero allocation)
+    _perp1.set(0, 0, 0);
+    if (Math.abs(direction.y) < 0.9) {
+      _perp1.crossVectors(direction, _up);
+    } else {
+      _perp1.crossVectors(direction, _right);
+    }
+    _perp1.normalize();
+
+    _perp2.crossVectors(direction, _perp1);
+    _perp2.normalize();
+
+    for (let i = 0; i < effectiveCount; i++) {
       const index = this.getNextParticleIndex();
       if (index === -1) break; // No available particles
 
@@ -242,33 +295,20 @@ export class ParticleSystem {
       // Set size
       this.sizes[index] = size;
 
-      // Set velocity with spread
+      // Set velocity with spread — zero allocations using module-level temps
       const theta = Math.random() * spread - spread / 2;
       const phi = Math.random() * Math.PI * 2;
 
-      const spreadDir = new THREE.Vector3();
-      spreadDir.copy(direction);
-
-      // Apply spherical spread
-      const perpendicular1 = new THREE.Vector3();
-      if (Math.abs(direction.y) < 0.9) {
-        perpendicular1.crossVectors(direction, new THREE.Vector3(0, 1, 0));
-      } else {
-        perpendicular1.crossVectors(direction, new THREE.Vector3(1, 0, 0));
-      }
-      perpendicular1.normalize();
-
-      const perpendicular2 = new THREE.Vector3();
-      perpendicular2.crossVectors(direction, perpendicular1);
-      perpendicular2.normalize();
-
-      spreadDir.addScaledVector(perpendicular1, Math.sin(theta) * Math.cos(phi));
-      spreadDir.addScaledVector(perpendicular2, Math.sin(theta) * Math.sin(phi));
-      spreadDir.normalize();
+      _spreadDir.copy(direction);
+      _spreadDir.addScaledVector(_perp1, Math.sin(theta) * Math.cos(phi));
+      _spreadDir.addScaledVector(_perp2, Math.sin(theta) * Math.sin(phi));
+      _spreadDir.normalize();
 
       const particleSpeed = speed * (0.8 + Math.random() * 0.4);
-      particle.velocity.copy(spreadDir).multiplyScalar(particleSpeed);
+      particle.velocity.copy(_spreadDir).multiplyScalar(particleSpeed);
     }
+
+    this._emittedThisFrame += effectiveCount;
 
     this.geometry.attributes.position.needsUpdate = true;
     this.geometry.attributes.color.needsUpdate = true;
@@ -290,7 +330,12 @@ export class ParticleSystem {
     scale: number = 1.0,
     speed: number = 1.0,
   ): void {
-    for (let i = 0; i < fragmentCount; i++) {
+    // Budget enforcement: clamp fragment count to remaining frame budget
+    const budgetRemaining = this._maxFragmentsPerFrame - this._fragmentsThisFrame;
+    if (budgetRemaining <= 0) return;
+    const effectiveCount = Math.min(fragmentCount, budgetRemaining);
+
+    for (let i = 0; i < effectiveCount; i++) {
       const fragment = this.getNextFragment();
       if (!fragment) break;
 
@@ -302,7 +347,7 @@ export class ParticleSystem {
       const mat = fragment.mesh.material as THREE.MeshBasicMaterial;
       const colorVariation = 0.8 + Math.random() * 0.4;
       mat.color.copy(color).multiplyScalar(colorVariation);
-      mat.opacity = 0.7;
+      mat.opacity = 0.4;
 
       // Position at shatter origin
       fragment.mesh.position.copy(position);
@@ -343,6 +388,8 @@ export class ParticleSystem {
         Math.random() * Math.PI * 2,
       );
     }
+
+    this._fragmentsThisFrame += effectiveCount;
   }
 
   private getNextFragment(): ShatterFragment | null {
@@ -355,41 +402,42 @@ export class ParticleSystem {
   }
 
   enemyDeath(position: THREE.Vector3, color: THREE.Color): void {
-    // Main shatter effect with geometric fragments (GW3D: ~120 particles total)
-    const fragmentCount = 40 + Math.floor(Math.random() * 20);
-    this.shatterEffect(position, color, fragmentCount, 1.0, 1.2);
+    // Geometric fragment shatter — visible but not screen-filling
+    const fragmentCount = 12 + Math.floor(Math.random() * 6); // Reduced from 18-28 to 12-18
+    this.shatterEffect(position, color, fragmentCount, 0.7, 1.4);
 
-    // Sparkle particles for the radial burst effect
-    const dimColor = color.clone().multiplyScalar(0.7);
+    // Sparse sparkle burst — fast-fading so you can see through it
+    _dimColor.copy(color).multiplyScalar(0.6); // Re-use pre-allocated color
     this.emit({
       position,
-      count: 40,
-      color: dimColor,
-      speed: 5,
-      lifetime: 0.5,
-      size: 1.5,
+      count: 12, // Reduced from 16
+      color: _dimColor,
+      speed: 6,
+      lifetime: 0.3,
+      size: 1.0,
       spread: Math.PI * 2,
       gravity: -2,
     });
 
-    // Bright core flash
+    // Tiny bright core flash — quick pop
     this.emit({
       position,
-      count: 8,
-      color: new THREE.Color(1.0, 1.0, 1.0),
+      count: 3, // Reduced from 4
+      color: _white,
       speed: 3,
-      lifetime: 0.15,
-      size: 3,
+      lifetime: 0.08,
+      size: 1.8,
       spread: Math.PI * 2,
       gravity: 0,
     });
   }
 
   bulletImpact(position: THREE.Vector3): void {
+    _tempColor.setHex(0x88ffff);
     this.emit({
       position,
-      count: 15,
-      color: new THREE.Color(0x88ffff),
+      count: 8, // Reduced from 15
+      color: _tempColor,
       speed: 4,
       lifetime: 0.25,
       size: 1.5,
@@ -402,8 +450,8 @@ export class ParticleSystem {
     // White shockwave burst — reduced count/size for additive transparency
     this.emit({
       position,
-      count: 40,
-      color: new THREE.Color(1.0, 1.0, 1.0),
+      count: 24, // Reduced from 40
+      color: _white,
       speed: 12,
       lifetime: 0.35,
       size: 2,
@@ -411,10 +459,11 @@ export class ParticleSystem {
       gravity: 0,
     });
     // Secondary cyan ring — fast expanding, short-lived
+    _tempColor.setHex(0x44ffff);
     this.emit({
       position,
-      count: 24,
-      color: new THREE.Color(0x44ffff),
+      count: 16, // Reduced from 24
+      color: _tempColor,
       speed: 8,
       lifetime: 0.4,
       size: 1.5,
@@ -429,13 +478,15 @@ export class ParticleSystem {
    */
   homingExplosion(position: THREE.Vector3): void {
     // Small shatter: a handful of fast-moving tiny fragments
-    this.shatterEffect(position, new THREE.Color(0xff6644), 8, 0.4, 2.0);
+    _tempColor.setHex(0xff6644);
+    this.shatterEffect(position, _tempColor, 6, 0.4, 2.0); // Reduced from 8
 
     // Sparse outward sparks — red-orange electronic feel
+    _tempColor.setHex(0xff4422);
     this.emit({
       position,
-      count: 12,
-      color: new THREE.Color(0xff4422),
+      count: 8, // Reduced from 12
+      color: _tempColor,
       speed: 6,
       lifetime: 0.2,
       size: 1.2,
@@ -444,10 +495,11 @@ export class ParticleSystem {
     });
 
     // Tiny white core flash
+    _tempColor.set(1.0, 0.8, 0.6);
     this.emit({
       position,
-      count: 4,
-      color: new THREE.Color(1.0, 0.8, 0.6),
+      count: 3, // Reduced from 4
+      color: _tempColor,
       speed: 2,
       lifetime: 0.1,
       size: 1.5,
@@ -457,48 +509,39 @@ export class ParticleSystem {
   }
 
   /**
-   * Plasma mortar explosion — expanding energy ring with sparse particles.
-   * Visually dramatic but see-through (no opaque cloud).
+   * Plasma mortar explosion — fast-expanding neon ring.
+   * Lightweight: single ring of sparks + tiny core flash.
+   * No fragments (AoE kills already spawn their own death effects).
    */
   mortarExplosion(position: THREE.Vector3): void {
-    // Expanding ring of fast-moving particles (simulates energy shockwave)
+    // Single expanding ring of green neon sparks
+    _tempColor.setHex(0x44ff44);
     this.emit({
       position,
-      count: 24,
-      color: new THREE.Color(0x44ff44),
+      count: 16, // Reduced from 24
+      color: _tempColor,
       speed: 10,
-      lifetime: 0.3,
-      size: 1.5,
+      lifetime: 0.25, // Shorter lifetime — fast pop, not lingering cloud
+      size: 1.2,
       spread: Math.PI * 2,
       gravity: 0,
     });
 
-    // Secondary ring — slightly slower, cyan tint for electric feel
+    // Tiny bright core flash
+    _tempColor.set(0.9, 1.0, 0.8);
     this.emit({
       position,
-      count: 16,
-      color: new THREE.Color(0x88ffaa),
-      speed: 6,
-      lifetime: 0.4,
-      size: 1.0,
-      spread: Math.PI * 2,
-      gravity: 0,
-    });
-
-    // Small geometric fragments for impact crunch
-    this.shatterEffect(position, new THREE.Color(0x66ff66), 10, 0.5, 1.5);
-
-    // Tiny bright core
-    this.emit({
-      position,
-      count: 6,
-      color: new THREE.Color(0.9, 1.0, 0.8),
+      count: 4, // Reduced from 6
+      color: _tempColor,
       speed: 3,
-      lifetime: 0.12,
-      size: 2.0,
+      lifetime: 0.1,
+      size: 1.8,
       spread: Math.PI * 2,
       gravity: 0,
     });
+    // NOTE: No fragments here — the AoE enemy deaths already produce
+    // their own shatter effects. Adding fragments to the explosion
+    // itself doubled the visual noise and draw calls for no benefit.
   }
 
   /**
@@ -507,37 +550,35 @@ export class ParticleSystem {
    * so that clusters of AoE kills don't flood the screen.
    */
   aoeDeath(position: THREE.Vector3, color: THREE.Color): void {
-    // Sparse sparks — half the normal enemy death
-    this.shatterEffect(position, color, 12, 0.6, 1.0);
+    // Minimal sparks — just enough to show something died
+    this.shatterEffect(position, color, 6, 0.5, 1.0); // Reduced from 12
 
+    _dimColor.copy(color).multiplyScalar(0.7); // Re-use pre-allocated color
     this.emit({
       position,
-      count: 10,
-      color: color.clone().multiplyScalar(0.7),
+      count: 6, // Reduced from 10
+      color: _dimColor,
       speed: 4,
-      lifetime: 0.3,
-      size: 1.0,
+      lifetime: 0.25,
+      size: 0.8,
       spread: Math.PI * 2,
       gravity: -1,
     });
   }
 
   playerDeath(position: THREE.Vector3): void {
-    // GW3D: player death is ~10x enemy death (1200 particles)
-    const playerColor = new THREE.Color(0x00ddff);
+    // GW3D: player death is ~10x enemy death — dramatic but still budgeted
+    _tempColor.setHex(0x00ddff);
+    this.shatterEffect(position, _tempColor, 60, 1.5, 2.0); // Reduced from 80
 
-    // Large dramatic shatter - outer ring
-    this.shatterEffect(position, playerColor, 80, 1.5, 2.0);
+    _tempColor.setHex(0x66ffff);
+    this.shatterEffect(position, _tempColor, 30, 0.8, 2.5); // Reduced from 50
 
-    // Inner ring of brighter fragments
-    const brightCyan = new THREE.Color(0x66ffff);
-    this.shatterEffect(position, brightCyan, 50, 0.8, 2.5);
-
-    // White-to-yellow sparkle particles (GW3D authentic)
+    _tempColor.set(1.0, 0.95, 0.7);
     this.emit({
       position,
-      count: 120,
-      color: new THREE.Color(1.0, 0.95, 0.7),
+      count: 80, // Reduced from 120
+      color: _tempColor,
       speed: 8,
       lifetime: 1.5,
       size: 2.5,
@@ -545,11 +586,11 @@ export class ParticleSystem {
       gravity: -3,
     });
 
-    // Cyan sparkle ring
+    _tempColor.set(0.4, 0.9, 1.0);
     this.emit({
       position,
-      count: 60,
-      color: new THREE.Color(0.4, 0.9, 1.0),
+      count: 40, // Reduced from 60
+      color: _tempColor,
       speed: 6,
       lifetime: 1.2,
       size: 2.0,
@@ -557,11 +598,10 @@ export class ParticleSystem {
       gravity: -2,
     });
 
-    // White core flash
     this.emit({
       position,
-      count: 30,
-      color: new THREE.Color(1.0, 1.0, 1.0),
+      count: 20, // Reduced from 30
+      color: _white,
       speed: 10,
       lifetime: 0.3,
       size: 4,
@@ -571,11 +611,11 @@ export class ParticleSystem {
   }
 
   geomCollect(position: THREE.Vector3): void {
-    // Subtle tick: just a few small sparkles, not a bright burst
+    _tempColor.setHex(0x00ff44);
     this.emit({
       position,
       count: 3,
-      color: new THREE.Color(0x00ff44),
+      color: _tempColor,
       speed: 1.5,
       lifetime: 0.15,
       size: 1.5,
@@ -585,7 +625,12 @@ export class ParticleSystem {
   }
 
   update(dt: number): void {
+    // Reset per-frame emission budget
+    this._emittedThisFrame = 0;
+    this._fragmentsThisFrame = 0;
+
     let needsUpdate = false;
+    let activeParticles = 0;
 
     // Update point particles
     for (let i = 0; i < this.maxParticles; i++) {
@@ -600,6 +645,7 @@ export class ParticleSystem {
         needsUpdate = true;
         continue;
       }
+      activeParticles++;
 
       // Update position
       const baseIndex = i * 3;
@@ -638,17 +684,20 @@ export class ParticleSystem {
       needsUpdate = true;
     }
 
+    this._activeParticleCount = activeParticles;
+
     if (needsUpdate) {
       this.geometry.attributes.position.needsUpdate = true;
       this.geometry.attributes.color.needsUpdate = true;
       this.geometry.attributes.size.needsUpdate = true;
     }
 
-    // Update shatter fragments
+    // Update shatter fragments (also updates _activeFragmentCount)
     this.updateFragments(dt);
   }
 
   private updateFragments(dt: number): void {
+    let activeFragments = 0;
     for (const fragment of this.fragments) {
       if (!fragment.active) continue;
 
@@ -659,6 +708,7 @@ export class ParticleSystem {
         fragment.mesh.visible = false;
         continue;
       }
+      activeFragments++;
 
       // Update position (use addScaledVector instead of clone().multiplyScalar())
       fragment.mesh.position.addScaledVector(fragment.velocity, dt);
@@ -684,6 +734,7 @@ export class ParticleSystem {
       const scaleMultiplier = 0.5 + 0.5 * lifeRatio;
       fragment.mesh.scale.setScalar(fragment.baseScale * scaleMultiplier);
     }
+    this._activeFragmentCount = activeFragments;
   }
 
   dispose(): void {

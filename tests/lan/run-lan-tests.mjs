@@ -20,7 +20,7 @@
  *   - No other processes on ports 3000-3006 or 2567
  */
 
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
 import { spawn, execSync } from 'child_process';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import { resolve, dirname } from 'path';

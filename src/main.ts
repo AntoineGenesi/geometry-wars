@@ -7,7 +7,7 @@ import { InputManager } from './input/InputManager';
 import { Player } from './entities/Player';
 import { BulletPool } from './entities/Bullet';
 import { GeomPool } from './entities/Geom';
-import { EnemySpawner } from './entities/enemies/EnemySpawner';
+import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
@@ -78,6 +78,8 @@ import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import { DDALogger } from './difficulty/DDALogger';
 import { EntityAudit } from './core/EntityAudit';
+import { PerformanceLogger } from './core/PerformanceLogger';
+import { loadVisualStyle } from './ui/VisualStyleSettings';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -210,6 +212,9 @@ const ENEMY_COLORS: Record<string, THREE.Color> = {
   boss: new THREE.Color(0x4488ff),
 };
 
+/** Fallback color for enemy types not in ENEMY_COLORS — pre-allocated to avoid per-death allocs */
+const ENEMY_COLOR_FALLBACK = new THREE.Color(0xffffff);
+
 // ---------------------------------------------------------------------------
 // Weapon type -> bullet visual type mapping (for BulletInstanceManager)
 // ---------------------------------------------------------------------------
@@ -270,8 +275,8 @@ class WaveScheduler {
   private elapsed = 0;
   private endless: boolean;
   private endlessWave = 0;
-  private endlessNextSpawn = 5; // first endless wave at 5 seconds
-  private endlessInterval = 8; // seconds between endless waves
+  private endlessNextSpawn = 6; // first endless wave at 6 seconds
+  private endlessInterval = 7; // seconds between endless waves (faster base)
 
   /** Current difficulty level (computed from player state). */
   currentDifficultyLevel = 0;
@@ -317,11 +322,12 @@ class WaveScheduler {
     // Endless scaling waves (now with difficulty-based tiers)
     if (this.endless && this.elapsed >= this.endlessNextSpawn) {
       this.endlessWave++;
-      // Spawn interval decreases faster at higher difficulty
-      const difficultySpeedBonus = Math.min(2, this.currentDifficultyLevel * 0.3);
+      // Spawn interval decreases with wave number AND difficulty level
+      // At high difficulty (4+), waves come every 2s — relentless pressure
+      const difficultySpeedBonus = Math.min(3.0, this.currentDifficultyLevel * 0.4);
       this.endlessNextSpawn += Math.max(
-        2.5,
-        this.endlessInterval - this.endlessWave * 0.3 - difficultySpeedBonus,
+        2.0,
+        this.endlessInterval - this.endlessWave * 0.2 - difficultySpeedBonus,
       );
       const scaledWave = generateScaledEndlessWave(
         this.endlessWave,
@@ -430,7 +436,7 @@ function checkBulletEnemyCollisions(
         if (!enemy.alive) {
           // Enemy died
           const enemyType = enemy.constructor.name.toLowerCase();
-          const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
+          const color = ENEMY_COLORS[enemyType] ?? ENEMY_COLOR_FALLBACK;
           particles.enemyDeath(enemy.position, color);
           scoreManager.awardKill(enemy.scoreValue, enemyType);
           scorePopups?.spawnScore(enemy.position.clone(), enemy.scoreValue);
@@ -574,14 +580,18 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       }
     : ADVENTURE_LEVELS[levelIndex];
 
+  // -- Visual style (user-selected from Visual Styles playground) --
+  const savedStyle = loadVisualStyle();
+
   // -- Game engine --
   // On mobile: reduce bloom, cap pixel ratio, apply mobile entity limits
-  const bloomStrength = mobile ? 0.4 : 0.7;
+  const defaultBloomStrength = mobile ? 0.4 : 0.7;
+  const bloomStrength = savedStyle ? savedStyle.bloomStrength : defaultBloomStrength;
   const game = new Game({
     bloom: {
       strength: bloomStrength,
-      radius: mobile ? 0.3 : 0.5,
-      threshold: 0.6,
+      radius: savedStyle?.bloomRadius ?? (mobile ? 0.3 : 0.5),
+      threshold: savedStyle?.bloomThreshold ?? 0.6,
     },
     cameraDistance: 20,
     cameraSmoothing: 0.05,
@@ -607,6 +617,22 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
+  // Apply visual style changes in real-time when user selects a style in Settings
+  SettingsMenu.setGlobalVisualStyleChangeCallback((preset) => {
+    if (game.bloomPass) {
+      if (preset) {
+        game.bloomPass.strength = preset.bloomStrength;
+        if (preset.bloomRadius !== undefined) game.bloomPass.radius = preset.bloomRadius;
+        if (preset.bloomThreshold !== undefined) game.bloomPass.threshold = preset.bloomThreshold;
+      } else {
+        // Reset to defaults
+        game.bloomPass.strength = mobile ? 0.4 : 0.7;
+        game.bloomPass.radius = mobile ? 0.3 : 0.5;
+        game.bloomPass.threshold = 0.6;
+      }
+    }
+  });
+
   // Effects demo panel (press G to toggle)
   new EffectsPanel(game);
 
@@ -628,10 +654,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Surface: use level's surface (adventure mode), or menu selection, or URL param --
   const surfaceType = selectedSurface || level.surface || getSurfaceTypeFromURL();
   const surfaceConfig = {
-    gridColor: 0x2a2aaa,
-    surfaceColor: 0x141440,
-    surfaceOpacity: 0.35,
-    gridOpacity: 0.4,
+    gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
+    surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
+    surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.18,
+    gridOpacity: savedStyle?.gridOpacity ?? 0.3,
     // Type-specific configs
     radius: level.surfaceScale,           // For sphere, icosahedron, dented-sphere, sphere-tunnel
     size: level.surfaceScale,             // For cube
@@ -646,8 +672,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     numDents: 8,                          // For dented-sphere
     dentDepth: level.surfaceScale * 0.15, // For dented-sphere
     tunnelRadius: level.surfaceScale * 0.3,// For sphere-tunnel
-    gridSegmentsU: 24,
-    gridSegmentsV: 18,
+    gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
+    gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
+    wireframeOnly: savedStyle?.wireframeOnly ?? false,
   };
 
   // Cube tunnel needs much larger dimensions — its default size is overridden by level.surfaceScale
@@ -657,6 +684,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     (surfaceConfig as any).wallThickness = 4.0;
     (surfaceConfig as any).bevelRadius = 10.0;
     (surfaceConfig as any).gridSegments = 20;
+  }
+
+  // Cube-ring is too large at default scale — reduce to feel compact but not tiny
+  if (surfaceType === 'cube-ring') {
+    (surfaceConfig as any).majorRadius = 4;
+    (surfaceConfig as any).crossSection = 2;
   }
 
   const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
@@ -674,7 +707,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Depth occlusion (raycast-based) --
   // Raycasts from camera to enemies, counting surface intersections to determine
   // opacity. Enemies behind walls are dimmed/hidden. Batched for performance.
-  const depthOcclusion = new DepthOcclusionSystem();
+  const depthOcclusion = new DepthOcclusionSystem({
+    opacity0: 1.0,     // Clear line of sight: fully bright
+    opacity1: 0.12,    // Behind one surface: dramatically darker
+    opacity2Plus: 0.04, // Behind multiple surfaces: nearly invisible
+    lerpSpeed: 10.0,   // Faster transitions for snappy feel
+  });
   depthOcclusion.setSurfaceMesh(surface.mesh);
 
   // -- Input --
@@ -778,7 +816,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   });
 
   // Apply quality changes when adaptive system transitions between levels
-  adaptiveQuality.onQualityChange = (_oldLevel, _newLevel) => {
+  adaptiveQuality.onQualityChange = (_oldLevel, newLevel) => {
     const settings = adaptiveQuality.getSettings();
 
     // Apply bloom settings (only when using WebGL2 EffectComposer path)
@@ -790,6 +828,22 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         game.bloomPass.strength = 0;
       }
     }
+
+    // Scale particle emission budget with quality level.
+    // At lower quality, fewer particles spawn per frame — keeps FPS stable
+    // during heavy combat even when mortar chains and volatile explosions stack.
+    // `particles` is defined later in this scope; closure captures the reference.
+    if (typeof particles !== 'undefined') {
+      const budgets: Record<string, [number, number]> = {
+        ULTRA: [200, 40],
+        HIGH: [120, 30],
+        MEDIUM: [60, 20],
+        LOW: [30, 10],
+        MINIMAL: [15, 5],
+      };
+      const [maxP, maxF] = budgets[newLevel] ?? [200, 40];
+      particles.setEmitBudget(maxP, maxF);
+    }
   };
 
   // -- Debug performance overlay --
@@ -797,6 +851,14 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const debugOverlay = new DebugOverlay(perfTracker);
   const entityAudit = new EntityAudit();
   debugOverlay.setRendererBackend(game.backend);
+
+  // -- Performance telemetry logger (persistent, never deleted) --
+  const perfLogger = new PerformanceLogger(surfaceType);
+  const perfEnemyTypeMap = new Map<EnemyType, number>(); // pre-allocated
+  let perfEnemyTypeCounter = 0;
+  // Gameplay telemetry: buff string rebuilt every 30th frame (same cadence as enemy types)
+  let perfBuffString = '';
+  let perfBuffStringCounter = 0;
 
   // -- Enemy glow trails (for fast-moving enemies) --
   // Track which enemies have trails and their trail objects
@@ -931,6 +993,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     if (isLevelComplete) return;
     isLevelComplete = true;
     perfTracker.saveSession();
+    perfLogger.saveSession();
     bgMusic.stop();
     sound.play('multiplierUp');
     setTimeout(() => {
@@ -991,7 +1054,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       }
       if (!enemy.alive) {
         const enemyType = enemy.constructor.name.toLowerCase();
-        const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
+        const color = ENEMY_COLORS[enemyType] ?? ENEMY_COLOR_FALLBACK;
 
         // Use lightweight death effect for AoE weapon kills to avoid screen-blocking
         if (weaponType === WeaponType.Homing || weaponType === WeaponType.PlasmaMortar) {
@@ -1280,6 +1343,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Pause menu --
   const pauseMenu = new PauseMenu();
   pauseMenu.setMusic(bgMusic);
+  pauseMenu.setPerformanceLogger(perfLogger);
   pauseMenu.onResume(() => {
     isPaused = false;
     game.resume(); // resync clock to avoid massive dt after long pause
@@ -1498,6 +1562,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         // Game over - no lives left
         isGameOver = true;
         perfTracker.saveSession();
+        perfLogger.saveSession();
         ddaLogger.finalize(); // Persist DDA session log to localStorage
         // Short delay before showing game over screen
         setTimeout(() => {
@@ -2102,7 +2167,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     const targetGridOpacity = isCurrentlyBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
     // Use actual frame delta for smooth opacity transitions on all refresh rates
     const now = performance.now();
-    const frameDt = Math.min((now - lastRenderTime) / 1000, 0.1); // cap at 100ms to avoid huge jumps
+    const rawFrameDt = (now - lastRenderTime) / 1000;
+    const frameDt = Math.min(rawFrameDt, 0.1); // cap at 100ms for opacity transitions only
     lastRenderTime = now;
     currentSurfaceOpacity += (targetSurfaceOpacity - currentSurfaceOpacity) * Math.min(1, fadeSpeed * frameDt);
     currentGridOpacity += (targetGridOpacity - currentGridOpacity) * Math.min(1, fadeSpeed * frameDt);
@@ -2254,8 +2320,55 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     // Update debug performance overlay
     perfTracker.setEntityCount(enemySpawner.getActiveCount());
     perfTracker.setBulletCount(bulletPool.activeCount);
-    perfTracker.recordFrame(frameDt);
+    perfTracker.recordFrame(rawFrameDt);
     debugOverlay.update();
+
+    // Feed performance telemetry logger with all data sources
+    perfLogger.setFrameData(perfTracker.fps, enemySpawner.getActiveCount(), bulletPool.activeCount);
+    const monitorSnap = adaptiveQuality.monitor.getSnapshot();
+    perfLogger.setRendererStats(monitorSnap.drawCalls, monitorSnap.triangles, monitorSnap.memoryMB);
+    const lodStats = lodManager.getStats();
+    perfLogger.setLODStats(lodStats.high, lodStats.medium, lodStats.low);
+    perfLogger.setDDALevel(ddaEngine.getDDALevelSmooth(0));
+    perfLogger.setQualityLevel(adaptiveQuality.getQualityLevel());
+    // Enemy type breakdown + buff string (every 30th frame to avoid per-frame allocation)
+    perfEnemyTypeCounter++;
+    if (perfEnemyTypeCounter >= 30) {
+      perfEnemyTypeCounter = 0;
+      perfEnemyTypeMap.clear();
+      const enemies = enemySpawner.getEnemies();
+      for (let ei = 0; ei < enemies.length; ei++) {
+        const tn = (enemies[ei].baseTypeName || 'unknown') as EnemyType;
+        perfEnemyTypeMap.set(tn, (perfEnemyTypeMap.get(tn) || 0) + 1);
+      }
+      perfLogger.setEnemyTypes(perfEnemyTypeMap);
+    }
+    // Gameplay telemetry: buff string rebuilt on same cadence as enemy types
+    perfBuffStringCounter++;
+    if (perfBuffStringCounter >= 30) {
+      perfBuffStringCounter = 0;
+      const activeBuffsList = buffManager.getActiveBuffs();
+      if (activeBuffsList.length === 0) {
+        perfBuffString = '';
+      } else {
+        // Build compact "type:stacks" string — allocates only every 30th frame
+        const parts: string[] = [];
+        for (let bi = 0; bi < activeBuffsList.length; bi++) {
+          parts.push(activeBuffsList[bi].type + ':' + activeBuffsList[bi].stacks);
+        }
+        perfBuffString = parts.join(',');
+      }
+    }
+    // Feed gameplay data to telemetry logger
+    perfLogger.setGameplayData(
+      player.score,
+      ddaTracker.totalKills,
+      ddaTracker.totalDeaths,
+      weaponManager.getCurrentWeapon(),
+      perfBuffString,
+      particles.activeEffectCount,
+    );
+    perfLogger.recordFrame(rawFrameDt);
 
     // Entity audit: capture snapshot for mismatch detection (every 4th frame)
     auditFrameCounter++;
@@ -2298,7 +2411,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     for (const enemy of enemies) {
       if (enemy.active) {
         const enemyType = enemy.constructor.name.toLowerCase();
-        const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xffffff);
+        const color = ENEMY_COLORS[enemyType] ?? ENEMY_COLOR_FALLBACK;
         particles.enemyDeath(enemy.position, color);
         killLog.addKill(enemyType, color.getHex());
         playerLevel.addKill();
@@ -2339,6 +2452,49 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     player,
     game,
     ddaLogger,
+    perfLogger,
+  };
+
+  // -- Expose performance log API for data export (never deleted) --
+  (window as any).__perfLog = {
+    /** Get live data points from current session ring buffer. */
+    getLiveData: () => perfLogger.getDataPoints(),
+    /** Get all stored sessions from localStorage. */
+    getSessions: () => perfLogger.loadAllSessions(),
+    /** Get current session summary. */
+    getSummary: () => perfLogger.getSessionSummary(),
+    /** Get frame spike events from current session. */
+    getSpikes: () => perfLogger.getSpikeEvents(),
+    /** Export all sessions as JSON string. */
+    exportJSON: () => PerformanceLogger.exportAllAsJSON(),
+    /** Export all sessions as CSV string. */
+    exportCSV: () => PerformanceLogger.exportAllAsCSV(),
+    /** Download all sessions as a JSON file. */
+    downloadJSON: () => {
+      const data = PerformanceLogger.exportAllAsJSON();
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gw-perf-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+    /** Download all sessions as a CSV file. */
+    downloadCSV: () => {
+      const data = PerformanceLogger.exportAllAsCSV();
+      const blob = new Blob([data], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `gw-perf-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    },
+    /** Get total number of stored sessions. */
+    sessionCount: () => perfLogger.loadAllSessions().length,
+    /** Get game counter (number of games played). */
+    gameCounter: () => perfLogger.getGameCounter(),
   };
 
   // -- Start --
@@ -2376,26 +2532,39 @@ if (isBenchmarkMode()) {
     console.log(`[Main] Starting game: ${selection.gameMode} on ${selection.surfaceType}`);
     startMenu.dispose();
 
+    // Preserve debug/test URL params through mode transitions
+    const prevParams = new URLSearchParams(window.location.search);
+    const preserveKeys = ['debug', 'testMode'];
+    function buildUrl(params: Record<string, string>): string {
+      const p = new URLSearchParams(params);
+      for (const key of preserveKeys) {
+        if (prevParams.has(key)) p.set(key, prevParams.get(key)!);
+      }
+      return `?${p.toString()}`;
+    }
+
     // Handle game mode selection
     if (selection.gameMode === 'multiplayer') {
       // Local co-op - update URL and load multiplayer module
       const pc = selection.playerCount ?? 2;
-      window.history.replaceState({}, '', `?mode=multiplayer&surface=${selection.surfaceType}&players=${pc}`);
+      const url = buildUrl({ mode: 'multiplayer', surface: selection.surfaceType, players: String(pc) });
+      window.history.replaceState({}, '', url);
       import('./multiplayer-main').then(() => {
         console.log('[Main] Loaded local multiplayer mode');
       });
     } else if (selection.gameMode === 'network') {
       // Online/LAN multiplayer - update URL and load network module
-      const serverParam = selection.serverUrl ? `&server=${encodeURIComponent(selection.serverUrl)}` : '';
-      const nameParam = selection.playerName ? `&name=${encodeURIComponent(selection.playerName)}` : '';
-      window.history.replaceState({}, '', `?mode=network&surface=${selection.surfaceType}${serverParam}${nameParam}`);
+      const params: Record<string, string> = { mode: 'network', surface: selection.surfaceType };
+      if (selection.serverUrl) params.server = selection.serverUrl;
+      if (selection.playerName) params.name = selection.playerName;
+      window.history.replaceState({}, '', buildUrl(params));
       import('./network-main').then(() => {
         console.log('[Main] Loaded network multiplayer mode');
       });
     } else {
       // Single player - Quick Game (endless) or Adventure level
       const levelIdx = selection.levelIndex ?? -1; // -1 = endless Quick Game
-      window.history.replaceState({}, '', `?surface=${selection.surfaceType}&level=${levelIdx}`);
+      window.history.replaceState({}, '', buildUrl({ surface: selection.surfaceType, level: String(levelIdx) }));
       main(selection.surfaceType, levelIdx);
     }
   });

@@ -209,6 +209,10 @@ export class BuffManager {
   /** Volatile explosion callback - set by main.ts to spawn particles */
   onVolatileExplosion: ((position: THREE.Vector3, radius: number, damage: number) => void) | null = null;
 
+  /** Guard against recursive volatile chain-explosions saturating the frame */
+  private _volatileChainDepth = 0;
+  private static readonly MAX_VOLATILE_CHAIN_DEPTH = 2;
+
   /** Callback when buff is gained (for HUD animation) */
   onBuffGained: ((type: StackBuffType, newStacks: number) => void) | null = null;
 
@@ -363,6 +367,13 @@ export class BuffManager {
     const stacks = this.getStacks(StackBuffType.Volatile);
     if (stacks === 0) return;
 
+    // Prevent infinite chain-explosion cascades from saturating the frame.
+    // After MAX_VOLATILE_CHAIN_DEPTH recursive detonations, damage still
+    // applies but VFX are suppressed — keeps gameplay intact, saves FPS.
+    if (this._volatileChainDepth >= BuffManager.MAX_VOLATILE_CHAIN_DEPTH) return;
+
+    this._volatileChainDepth++;
+
     const dmgPercent = (50 + (stacks - 1) * 15) / 100;
     const explosionRadius = 1.5 + (stacks - 1) * 0.3;
     const explosionDamage = enemy.maxHealth * dmgPercent;
@@ -380,6 +391,8 @@ export class BuffManager {
     // Visual/audio feedback
     this.onVolatileExplosion?.(enemy.position.clone(), explosionRadius, explosionDamage);
     getSoundEngine().play('bomb', { volume: 0.3, pitch: 1.5 + Math.random() * 0.3 });
+
+    this._volatileChainDepth--;
   }
 
   // -----------------------------------------------------------------------

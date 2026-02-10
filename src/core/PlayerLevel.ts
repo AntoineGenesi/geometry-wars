@@ -30,27 +30,29 @@ export interface LevelPerk {
 const LEVELS: LevelPerk[] = [
   // Level 0 (starting)
   { name: 'Rookie', description: '', damageMultiplier: 1.0, fireRateMultiplier: 1.0, moveSpeedMultiplier: 1.0, bulletSpeedMultiplier: 1.0, bonusBombs: 0, auraRadius: 0, auraColor: 0x222244 },
-  // Level 1: 15 kills
-  { name: 'Sharpshooter', description: '+10% damage', damageMultiplier: 1.1, fireRateMultiplier: 1.0, moveSpeedMultiplier: 1.0, bulletSpeedMultiplier: 1.0, bonusBombs: 0, auraRadius: 1.5, auraColor: 0x2244aa },
-  // Level 2: 40 kills
-  { name: 'Gunslinger', description: '+10% fire rate', damageMultiplier: 1.1, fireRateMultiplier: 1.1, moveSpeedMultiplier: 1.0, bulletSpeedMultiplier: 1.0, bonusBombs: 1, auraRadius: 2.0, auraColor: 0x2266cc },
-  // Level 3: 75 kills
-  { name: 'Blitz', description: '+10% move speed', damageMultiplier: 1.1, fireRateMultiplier: 1.1, moveSpeedMultiplier: 1.1, bulletSpeedMultiplier: 1.0, bonusBombs: 0, auraRadius: 2.5, auraColor: 0x0088ff },
-  // Level 4: 120 kills
-  { name: 'Marksman', description: '+15% bullet speed', damageMultiplier: 1.1, fireRateMultiplier: 1.1, moveSpeedMultiplier: 1.1, bulletSpeedMultiplier: 1.15, bonusBombs: 1, auraRadius: 3.0, auraColor: 0x00aaff },
-  // Level 5: 180 kills
-  { name: 'Destroyer', description: '+20% damage', damageMultiplier: 1.3, fireRateMultiplier: 1.1, moveSpeedMultiplier: 1.1, bulletSpeedMultiplier: 1.15, bonusBombs: 0, auraRadius: 3.5, auraColor: 0x00ccff },
-  // Level 6: 250 kills
-  { name: 'Fury', description: '+15% fire rate', damageMultiplier: 1.3, fireRateMultiplier: 1.25, moveSpeedMultiplier: 1.1, bulletSpeedMultiplier: 1.15, bonusBombs: 1, auraRadius: 4.0, auraColor: 0x44ddff },
-  // Level 7: 350 kills
-  { name: 'Juggernaut', description: '+10% move speed', damageMultiplier: 1.3, fireRateMultiplier: 1.25, moveSpeedMultiplier: 1.2, bulletSpeedMultiplier: 1.15, bonusBombs: 0, auraRadius: 4.5, auraColor: 0x88eeff },
-  // Level 8: 500 kills
-  { name: 'Annihilator', description: '+20% damage', damageMultiplier: 1.5, fireRateMultiplier: 1.25, moveSpeedMultiplier: 1.2, bulletSpeedMultiplier: 1.2, bonusBombs: 1, auraRadius: 5.0, auraColor: 0xaaffff },
-  // Level 9: 750 kills
-  { name: 'Apex', description: 'ALL +10%', damageMultiplier: 1.6, fireRateMultiplier: 1.35, moveSpeedMultiplier: 1.3, bulletSpeedMultiplier: 1.3, bonusBombs: 2, auraRadius: 6.0, auraColor: 0xffffff },
+  // Level 1: 10 kills (was 15 — faster first level-up for immediate power fantasy)
+  { name: 'Sharpshooter', description: '+15% damage', damageMultiplier: 1.15, fireRateMultiplier: 1.0, moveSpeedMultiplier: 1.0, bulletSpeedMultiplier: 1.0, bonusBombs: 0, auraRadius: 1.5, auraColor: 0x2244aa },
+  // Level 2: 25 kills (was 40)
+  { name: 'Gunslinger', description: '+15% fire rate', damageMultiplier: 1.15, fireRateMultiplier: 1.15, moveSpeedMultiplier: 1.0, bulletSpeedMultiplier: 1.0, bonusBombs: 1, auraRadius: 2.0, auraColor: 0x2266cc },
+  // Level 3: 50 kills (was 75)
+  { name: 'Blitz', description: '+15% move speed', damageMultiplier: 1.15, fireRateMultiplier: 1.15, moveSpeedMultiplier: 1.15, bulletSpeedMultiplier: 1.0, bonusBombs: 0, auraRadius: 2.5, auraColor: 0x0088ff },
+  // Level 4: 80 kills (was 120)
+  { name: 'Marksman', description: '+20% bullet speed', damageMultiplier: 1.15, fireRateMultiplier: 1.15, moveSpeedMultiplier: 1.15, bulletSpeedMultiplier: 1.2, bonusBombs: 1, auraRadius: 3.0, auraColor: 0x00aaff },
+  // Level 5: 120 kills (was 180)
+  { name: 'Destroyer', description: '+30% damage', damageMultiplier: 1.45, fireRateMultiplier: 1.15, moveSpeedMultiplier: 1.15, bulletSpeedMultiplier: 1.2, bonusBombs: 0, auraRadius: 3.5, auraColor: 0x00ccff },
+  // Level 6: 175 kills (was 250)
+  { name: 'Fury', description: '+25% fire rate', damageMultiplier: 1.45, fireRateMultiplier: 1.4, moveSpeedMultiplier: 1.15, bulletSpeedMultiplier: 1.2, bonusBombs: 1, auraRadius: 4.0, auraColor: 0x44ddff },
+  // Level 7: 250 kills (was 350)
+  { name: 'Juggernaut', description: '+15% move speed', damageMultiplier: 1.45, fireRateMultiplier: 1.4, moveSpeedMultiplier: 1.3, bulletSpeedMultiplier: 1.2, bonusBombs: 0, auraRadius: 4.5, auraColor: 0x88eeff },
+  // Level 8: 350 kills (was 500)
+  { name: 'Annihilator', description: '+35% damage', damageMultiplier: 1.8, fireRateMultiplier: 1.4, moveSpeedMultiplier: 1.3, bulletSpeedMultiplier: 1.3, bonusBombs: 1, auraRadius: 5.0, auraColor: 0xaaffff },
+  // Level 9: 500 kills (was 750)
+  { name: 'Apex', description: 'ALL +15%', damageMultiplier: 2.0, fireRateMultiplier: 1.55, moveSpeedMultiplier: 1.45, bulletSpeedMultiplier: 1.45, bonusBombs: 2, auraRadius: 6.0, auraColor: 0xffffff },
 ];
 
-const LEVEL_THRESHOLDS = [0, 15, 40, 75, 120, 180, 250, 350, 500, 750];
+// Kill thresholds lowered across the board so player levels up faster.
+// This creates the saw-tooth pattern: level up → dominate → difficulty catches up → level up again.
+const LEVEL_THRESHOLDS = [0, 10, 25, 50, 80, 120, 175, 250, 350, 500];
 
 // ---------------------------------------------------------------------------
 // PlayerLevel

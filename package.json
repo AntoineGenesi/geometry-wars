@@ -25,6 +25,10 @@
     "three": "^0.170.0",
     "three-mesh-bvh": "^0.9.8"
   },
+  "optionalDependencies": {
+    "@esbuild/win32-x64": "0.25.12",
+    "@rollup/rollup-win32-x64-msvc": "4.57.1"
+  },
   "devDependencies": {
     "@playwright/test": "^1.58.1",
     "@types/three": "^0.170.0",

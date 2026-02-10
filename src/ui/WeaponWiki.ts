@@ -965,8 +965,19 @@ export class WeaponWiki {
         mountEl.classList.add('visible');
         btn.classList.add('active');
         btn.textContent = 'CLOSE DEMO';
-        this.playground = new WeaponPlayground(mountEl);
-        this.playground.setWeapon(wType);
+        try {
+          this.playground = new WeaponPlayground(mountEl);
+          this.playground.setWeapon(wType);
+        } catch (err) {
+          // If playground fails to initialize (e.g., WebGL context error),
+          // reset the UI state so the button doesn't get stuck on "CLOSE DEMO"
+          console.warn('[WeaponWiki] Failed to create playground:', err);
+          mountEl.classList.remove('visible');
+          btn.classList.remove('active');
+          btn.textContent = 'TRY IT';
+          mountEl.innerHTML = '';
+          this.playground = null;
+        }
       }
     });
   }
@@ -1008,9 +1019,20 @@ export class WeaponWiki {
       }
     });
 
-    // ESC key - close modal first, then wiki
+    // ESC key - close modal first, then wiki.
+    // IMPORTANT: When the playground is focused, ESC should pause the
+    // playground (handled by WeaponPlayground.onKeyDown), NOT close the
+    // modal. We skip our handler when the playground exists and is not
+    // paused, letting WeaponPlayground's handler fire in the bubble phase.
     this.escHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // If the playground is active and focused, let it handle ESC
+        // (playground's keydown handler runs in bubble phase and will
+        // stopPropagation itself)
+        if (this.playground) {
+          // Don't intercept - let the playground pause/unpause
+          return;
+        }
         if (this.modalOverlay) {
           e.stopPropagation();
           this.closeModal();

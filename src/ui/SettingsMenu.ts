@@ -16,6 +16,9 @@ import { QualityLevel, QUALITY_LEVELS } from '../rendering/AdaptiveQuality';
 import type { MusicPreset } from '../audio/BackgroundMusic';
 import type { BenchmarkResult } from './GPUBenchmark';
 import { loadDDASettings, saveDDASettings, type DDASettingsData } from '../difficulty/DDASettings';
+import { getActiveStyleName, getActiveStyleIndex, clearVisualStyle, saveVisualStyle } from './VisualStyleSettings';
+import { VISUAL_PRESETS } from './VisualPlayground';
+import { loadCustomStyles } from './VisualStyleEditor';
 
 // ---------------------------------------------------------------------------
 // Exported settings interfaces
@@ -181,6 +184,8 @@ export class SettingsMenu {
   private static globalRendererIsWebGPU = false;
   /** Cached GPU report -- detected once, shared across all SettingsMenu instances. */
   private static cachedGPUReport: GPUCapabilityReport | null = null;
+  /** Global visual style change callback -- set once, called by ANY SettingsMenu instance. */
+  private static globalVisualStyleChangeCallback: ((preset: import('./VisualPlayground').VisualPreset | null) => void) | null = null;
 
   private container: HTMLDivElement;
   private styleElement: HTMLStyleElement | null = null;
@@ -188,6 +193,7 @@ export class SettingsMenu {
   private onGraphicsChangeCallback: ((settings: GraphicsSettings) => void) | null = null;
   private onAudioChangeCallback: ((settings: AudioSettings) => void) | null = null;
   private onDDAChangeCallback: ((enabled: boolean) => void) | null = null;
+  private onVisualStyleChangeCallback: ((preset: import('./VisualPlayground').VisualPreset | null) => void) | null = null;
 
   private activeTab: TabName = 'gpu';
   private graphicsSettings: GraphicsSettings;
@@ -244,6 +250,12 @@ export class SettingsMenu {
     SettingsMenu.globalRendererIsWebGPU = isWebGPU;
   }
 
+  /** Static setter for visual style change callback -- called by ANY SettingsMenu instance
+   *  when the user selects a visual style. Set once during game initialization. */
+  static setGlobalVisualStyleChangeCallback(callback: (preset: import('./VisualPlayground').VisualPreset | null) => void): void {
+    SettingsMenu.globalVisualStyleChangeCallback = callback;
+  }
+
   /** Set a function that returns live perf data each tick. */
   setPerfDataProvider(provider: () => { fps: number; drawCalls: number; entityCount: number; memoryMB: number }): void {
     this.perfDataProvider = provider;
@@ -269,6 +281,11 @@ export class SettingsMenu {
   /** Register callback for DDA toggle changes. */
   onDDAChange(callback: (enabled: boolean) => void): void {
     this.onDDAChangeCallback = callback;
+  }
+
+  /** Register callback for visual style changes. Receives the selected preset, or null if reset to default. */
+  onVisualStyleChange(callback: (preset: import('./VisualPlayground').VisualPreset | null) => void): void {
+    this.onVisualStyleChangeCallback = callback;
   }
 
   show(): void {
@@ -630,6 +647,55 @@ export class SettingsMenu {
       #settings-menu .section-heading:first-child {
         margin-top: 0;
       }
+
+      /* Visual style list */
+      #settings-menu .style-list {
+        max-height: 250px;
+        overflow-y: auto;
+        border: 1px solid rgba(0, 255, 255, 0.1);
+        border-radius: 4px;
+        margin-bottom: 8px;
+      }
+      #settings-menu .style-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      #settings-menu .style-item:last-child {
+        border-bottom: none;
+      }
+      #settings-menu .style-item:hover {
+        background: rgba(0, 255, 255, 0.08);
+      }
+      #settings-menu .style-item:active {
+        background: rgba(0, 255, 255, 0.15);
+        transform: scale(0.98);
+      }
+      #settings-menu .style-item-active {
+        background: rgba(0, 255, 160, 0.1);
+        border-left: 3px solid #00ffa0;
+      }
+      #settings-menu .style-item-name {
+        color: #ccccff;
+        font-size: 13px;
+        letter-spacing: 1px;
+      }
+      #settings-menu .style-item-active .style-item-name {
+        color: #00ffa0;
+        font-weight: bold;
+      }
+      #settings-menu .style-item-badge {
+        color: #00ff88;
+        font-size: 10px;
+        font-weight: bold;
+        letter-spacing: 2px;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -812,8 +878,29 @@ export class SettingsMenu {
   private renderGraphicsTab(): string {
     const g = this.graphicsSettings;
     const presets = ['ultra', 'high', 'medium', 'low', 'minimal', 'custom'];
+    const activeStyle = getActiveStyleName();
+
+    // Build combined preset list (built-in + custom)
+    const customs = loadCustomStyles();
+    const allPresets = [...VISUAL_PRESETS, ...customs.map(c => c.preset)];
+    const activeIdx = getActiveStyleIndex();
+
+    const styleItems = allPresets.map((p, i) => {
+      const isActive = i === activeIdx;
+      return `<div class="style-item${isActive ? ' style-item-active' : ''}" data-style-index="${i}">
+        <span class="style-item-name">${this.escapeHtml(p.name)}</span>
+        <span class="style-item-badge">${isActive ? 'ACTIVE' : ''}</span>
+      </div>`;
+    }).join('');
 
     return `
+      <div class="section-heading">VISUAL STYLE</div>
+      <div class="style-list" id="visual-style-list">${styleItems}</div>
+      <div style="color:#557777;font-size:11px;margin-bottom:8px;line-height:1.4;">
+        Click a style to select it. Bloom changes apply immediately; surface colors apply on next game start.
+      </div>
+      ${activeStyle !== 'Default' ? '<button class="action-btn" id="reset-visual-style" style="padding:6px 14px;font-size:11px;margin-bottom:12px;">RESET TO DEFAULT</button>' : ''}
+
       <div class="section-heading">QUALITY PRESET</div>
       <div class="setting-row">
         <span class="setting-label">Preset</span>
@@ -999,6 +1086,31 @@ export class SettingsMenu {
   }
 
   private attachGraphicsListeners(): void {
+    // Visual style items - click to apply
+    const styleItems = this.container.querySelectorAll('.style-item');
+    styleItems.forEach(item => {
+      (item as HTMLElement).addEventListener('click', () => {
+        const idx = parseInt((item as HTMLElement).dataset.styleIndex ?? '0', 10);
+        saveVisualStyle(idx);
+        // Notify callbacks with the selected preset
+        const customs = loadCustomStyles();
+        const allPresets = [...VISUAL_PRESETS, ...customs.map(c => c.preset)];
+        const selectedPreset = allPresets[idx] ?? null;
+        this.onVisualStyleChangeCallback?.(selectedPreset);
+        SettingsMenu.globalVisualStyleChangeCallback?.(selectedPreset);
+        this.rebuildContent();
+      });
+    });
+
+    // Reset visual style button
+    const resetStyleBtn = this.container.querySelector('#reset-visual-style') as HTMLButtonElement | null;
+    resetStyleBtn?.addEventListener('click', () => {
+      clearVisualStyle();
+      this.onVisualStyleChangeCallback?.(null);
+      SettingsMenu.globalVisualStyleChangeCallback?.(null);
+      this.rebuildContent();
+    });
+
     // Quality preset dropdown
     const presetSelect = this.container.querySelector('#quality-preset') as HTMLSelectElement | null;
     presetSelect?.addEventListener('change', () => {

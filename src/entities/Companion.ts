@@ -853,20 +853,21 @@ function createCompanionMesh(color: number): {
   });
   group.add(new THREE.Mesh(wireGeom, wireMat));
 
-  // Soft glow sprite (uses radial gradient texture to avoid square artifact)
-  const spriteMat = new THREE.SpriteMaterial({
-    map: getCompanionGlowTexture(),
+  // 3D glow sphere (replaces flat sprite to avoid square artifact)
+  const glowGeom = new THREE.SphereGeometry(COMPANION_MESH_RADIUS * 1.6, 16, 12);
+  const glowMat = new THREE.MeshBasicMaterial({
     color: threeColor,
     transparent: true,
-    opacity: 0.3,
-    blending: THREE.NormalBlending,
+    opacity: 0.15,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
+    side: THREE.BackSide,
   });
-  const sprite = new THREE.Sprite(spriteMat);
-  sprite.scale.setScalar(0.6);
-  group.add(sprite);
+  const glowSphere = new THREE.Mesh(glowGeom, glowMat);
+  glowSphere.name = 'companionGlow';
+  group.add(glowSphere);
 
-  // 3D torus ring for a true 3D aura visible from all angles
+  // Primary torus ring — horizontal aura
   const ringGeom = new THREE.TorusGeometry(COMPANION_MESH_RADIUS * 1.8, 0.015, 8, 24);
   const ringMat = new THREE.MeshBasicMaterial({
     color: threeColor,
@@ -877,6 +878,19 @@ function createCompanionMesh(color: number): {
   const ring = new THREE.Mesh(ringGeom, ringMat);
   ring.name = 'companionRing';
   group.add(ring);
+
+  // Secondary torus ring — tilted 90 degrees for 3D cage effect
+  const ring2Geom = new THREE.TorusGeometry(COMPANION_MESH_RADIUS * 1.6, 0.012, 8, 24);
+  const ring2Mat = new THREE.MeshBasicMaterial({
+    color: threeColor,
+    transparent: true,
+    opacity: 0.3,
+    depthWrite: false,
+  });
+  const ring2 = new THREE.Mesh(ring2Geom, ring2Mat);
+  ring2.rotation.x = Math.PI / 2;
+  ring2.name = 'companionRing2';
+  group.add(ring2);
 
   return { group, material: mat };
 }

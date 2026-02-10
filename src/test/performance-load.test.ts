@@ -272,7 +272,7 @@ describe('Rendering Pipeline Verification', () => {
 
     it('assigns LOW LOD for distant enemies', () => {
       const lodMgr = new LODManager();
-      const { enemies, camera } = createMockEnemies(10, { distances: Array(10).fill(100) });
+      const { enemies, camera } = createMockEnemies(10, { distances: Array(10).fill(150) });
 
       lodMgr.update(camera, enemies);
       const stats = lodMgr.getStats();
@@ -285,11 +285,11 @@ describe('Rendering Pipeline Verification', () => {
 
     it('distributes LOD levels correctly for mixed distances', () => {
       const lodMgr = new LODManager();
-      // 5 close, 5 medium, 5 far
+      // 5 close, 5 medium, 5 far (thresholds: HIGH<60, MEDIUM<120, LOW>=120)
       const distances = [
-        ...Array(5).fill(5),   // HIGH (< 20)
-        ...Array(5).fill(35),  // MEDIUM (20-50)
-        ...Array(5).fill(80),  // LOW (> 50)
+        ...Array(5).fill(10),   // HIGH (< 60)
+        ...Array(5).fill(90),   // MEDIUM (60-120)
+        ...Array(5).fill(150),  // LOW (> 120)
       ];
       const { enemies, camera } = createMockEnemies(15, { distances });
 
@@ -305,11 +305,11 @@ describe('Rendering Pipeline Verification', () => {
 
     it('estimates triangle reduction >60% for 1000 enemies with realistic distribution', () => {
       const lodMgr = new LODManager();
-      // Realistic distribution: 10% HIGH, 30% MEDIUM, 60% LOW
+      // Realistic distribution: 10% HIGH, 30% MEDIUM, 60% LOW (thresholds: 60/120)
       const distances: number[] = [];
-      for (let i = 0; i < 100; i++) distances.push(5 + Math.random() * 10);   // HIGH
-      for (let i = 0; i < 300; i++) distances.push(25 + Math.random() * 20);  // MEDIUM
-      for (let i = 0; i < 600; i++) distances.push(55 + Math.random() * 50);  // LOW
+      for (let i = 0; i < 100; i++) distances.push(5 + Math.random() * 50);    // HIGH (<60)
+      for (let i = 0; i < 300; i++) distances.push(65 + Math.random() * 50);   // MEDIUM (60-120)
+      for (let i = 0; i < 600; i++) distances.push(125 + Math.random() * 80);  // LOW (>120)
 
       const { enemies, camera } = createMockEnemies(1000, { distances });
       lodMgr.update(camera, enemies);
@@ -462,16 +462,16 @@ describe('Load Scaling Tests', () => {
   describe('LODManager distribution at scale', () => {
     it('assigns more LOW than HIGH for 1000 randomly distributed enemies', () => {
       const lodMgr = new LODManager();
-      // Uniform random from 0 to 100 -> most will be beyond 50 -> LOW
-      const { enemies, camera } = createMockEnemies(1000, { randomDistRange: [0, 100] });
+      // Uniform random from 0 to 200 -> most will be beyond 120 -> LOW
+      const { enemies, camera } = createMockEnemies(1000, { randomDistRange: [0, 200] });
 
       lodMgr.update(camera, enemies);
       const stats = lodMgr.getStats();
 
-      // With uniform distribution [0, 100], distances:
-      // HIGH: 0-20 (20% of range)
-      // MEDIUM: 20-50 (30% of range)
-      // LOW: 50-100 (50% of range)
+      // With uniform distribution [0, 200], distances (thresholds: 60/120):
+      // HIGH: 0-60 (30% of range)
+      // MEDIUM: 60-120 (30% of range)
+      // LOW: 120-200 (40% of range)
       // So LOW should be the largest group
       expect(stats.low).toBeGreaterThan(stats.high);
       expect(stats.total).toBe(1000);
@@ -610,8 +610,8 @@ describe('Integration Tests', () => {
         const enemy = new TestGrunt(Math.random(), Math.random());
         enemy.active = true;
         enemy.alive = true;
-        // Place at various distances
-        const dist = i * 2; // 0 to 98
+        // Place at various distances (0 to 245, spanning all LOD tiers: HIGH<60, MED<120, LOW>=120)
+        const dist = i * 5; // 0 to 245
         enemy.position.set(dist, 0, 0);
         enemies.push(enemy);
         instanceMgr.register(enemy);

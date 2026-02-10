@@ -26,11 +26,13 @@ export interface LODConfig {
   hysteresis: number;
 }
 
-/** Sensible defaults: HIGH < 20, MEDIUM < 50, LOW >= 50. */
+/** Defaults: keep full detail much longer (HIGH < 60, MEDIUM < 120).
+ *  Previous values (20/50) caused enemies to appear as grey octagon shapes
+ *  too close to the camera — visually jarring. */
 export const DEFAULT_LOD_CONFIG: LODConfig = {
-  highDistance: 20,
-  mediumDistance: 50,
-  hysteresis: 2,
+  highDistance: 60,
+  mediumDistance: 120,
+  hysteresis: 3,
 };
 
 /** Triangle count estimates per LOD level. */

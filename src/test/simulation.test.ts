@@ -75,10 +75,10 @@ function tick(ctx: ReturnType<typeof createSimulation>, dt: number, playerU = 0.
 
   // Update enemy spawner (handles materialization timers and enemy updates)
   enemySpawner.setPlayerPosition(playerU, playerV);
-  enemySpawner.update(dt);
+  enemySpawner.update(dt, playerU, playerV);
 
   // Update bullets
-  bulletPool.update(dt, 0);
+  bulletPool.update(dt);
 
   // Update surface springs (grid deformation)
   surface.updateGrid(dt);
@@ -487,8 +487,8 @@ describe('Cross-Surface Physics Consistency', () => {
         endPos = pos.clone();
       });
 
-      if (startPos && endPos) {
-        const distance = endPos.distanceTo(startPos);
+      if (startPos !== null && endPos !== null) {
+        const distance = (endPos as THREE.Vector3).distanceTo(startPos as THREE.Vector3);
         speeds.push(distance);
       }
     }

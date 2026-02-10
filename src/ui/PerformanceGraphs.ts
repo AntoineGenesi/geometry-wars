@@ -126,6 +126,9 @@ export class PerformanceGraph {
   private minFpsMoment: PerformanceDataPoint | null = null;
   private maxFpsMoment: PerformanceDataPoint | null = null;
 
+  // Active chart type ('fps' | 'enemies' | 'bullets')
+  private activeChart: 'fps' | 'enemies' | 'bullets' = 'fps';
+
   constructor(canvas: HTMLCanvasElement, config: Partial<GraphConfig> = {}) {
     this.canvas = canvas;
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -183,7 +186,9 @@ export class PerformanceGraph {
     // Draw components
     this.drawGrid();
     this.drawAxes();
-    this.drawFPSMarkers();
+    if (this.activeChart === 'fps') {
+      this.drawFPSMarkers();
+    }
     this.drawDataLine();
     this.drawHoverTooltip();
   }
@@ -192,6 +197,8 @@ export class PerformanceGraph {
    * Render an FPS line chart.
    */
   renderFPSChart(): void {
+    this.activeChart = 'fps';
+    this.resetViewport();
     this.render();
   }
 
@@ -199,7 +206,8 @@ export class PerformanceGraph {
    * Render an enemy count line chart.
    */
   renderEnemyChart(): void {
-    // Use enemy count as the primary value
+    this.activeChart = 'enemies';
+    this.resetViewport();
     this.render();
   }
 
@@ -207,7 +215,8 @@ export class PerformanceGraph {
    * Render a bullet count line chart.
    */
   renderBulletChart(): void {
-    // Use bullet count as the primary value
+    this.activeChart = 'bullets';
+    this.resetViewport();
     this.render();
   }
 
@@ -410,14 +419,29 @@ export class PerformanceGraph {
 
     if (visibleData.length === 0) return;
 
-    ctx.strokeStyle = config.colors.fps;
+    // Pick color and value accessor based on active chart type
+    let color: string;
+    let getValue: (p: PerformanceDataPoint) => number;
+
+    if (this.activeChart === 'enemies') {
+      color = config.colors.enemies;
+      getValue = (p) => p.enemyCount;
+    } else if (this.activeChart === 'bullets') {
+      color = config.colors.bullets;
+      getValue = (p) => p.bulletCount;
+    } else {
+      color = config.colors.fps;
+      getValue = (p) => p.fps;
+    }
+
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.beginPath();
 
     for (let i = 0; i < visibleData.length; i++) {
       const point = visibleData[i];
       const x = this.timeToPixel(point.time);
-      const y = this.valueToPixel(point.fps);
+      const y = this.valueToPixel(getValue(point));
 
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -557,16 +581,27 @@ export class PerformanceGraph {
       return;
     }
 
+    // Pick value accessor based on active chart type
+    let getValue: (p: PerformanceDataPoint) => number;
+    if (this.activeChart === 'enemies') {
+      getValue = (p) => p.enemyCount;
+    } else if (this.activeChart === 'bullets') {
+      getValue = (p) => p.bulletCount;
+    } else {
+      getValue = (p) => p.fps;
+    }
+
     let minTime = Infinity;
     let maxTime = -Infinity;
     let minValue = Infinity;
     let maxValue = -Infinity;
 
     for (const point of this.data) {
+      const value = getValue(point);
       minTime = Math.min(minTime, point.time);
       maxTime = Math.max(maxTime, point.time);
-      minValue = Math.min(minValue, point.fps);
-      maxValue = Math.max(maxValue, point.fps);
+      minValue = Math.min(minValue, value);
+      maxValue = Math.max(maxValue, value);
     }
 
     // Add padding

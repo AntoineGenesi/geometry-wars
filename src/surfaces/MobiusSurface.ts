@@ -233,8 +233,12 @@ export class MobiusSurface extends Surface {
     const segU = gridSegmentsU * 2  // Higher resolution for smooth rendering
     const segV = gridSegmentsV * 2
 
-    // Generate vertices
-    for (let i = 0; i <= segU; i++) {
+    // Generate vertices for rows 0..segU-1 only (NOT segU).
+    // Row segU would duplicate row 0's positions due to the Mobius twist
+    // (t=2*PI maps to same positions as t=0 with v flipped).
+    // Using duplicate vertices creates degenerate zero-length edges that the
+    // HalfEdgeMesh treats as boundaries, making the seam impassable.
+    for (let i = 0; i < segU; i++) {
       const t = (i / segU) * Math.PI * 2
       const halfT = t / 2
       const cosT = Math.cos(t)
@@ -272,8 +276,8 @@ export class MobiusSurface extends Surface {
       }
     }
 
-    // Generate indices for triangles (main body: row 0 through segU-1)
-    for (let i = 0; i < segU; i++) {
+    // Generate indices for triangles (main body: rows 0 through segU-2)
+    for (let i = 0; i < segU - 1; i++) {
       for (let j = 0; j < segV; j++) {
         const a = i * (segV + 1) + j
         const b = a + segV + 1
@@ -285,17 +289,20 @@ export class MobiusSurface extends Surface {
       }
     }
 
-    // Mobius twist: connect last row (segU) back to first row (0) with v-flipped indices.
-    // At t=2π the strip has undergone a half-twist, so v=0 maps to v=1 and vice versa.
-    // Last row starts at vertex index: segU * (segV + 1)
-    // First row starts at vertex index: 0
-    // The v-flip means last_row[j] connects to first_row[segV - j]
-    const lastRowStart = segU * (segV + 1)
+    // Mobius twist: connect the last body row (segU-1) back to the first row (0)
+    // with v-flipped indices. At t approaching 2*PI, the strip has undergone
+    // a half-twist, so v=j maps to v=segV-j on the first row.
+    //
+    // This directly reuses first-row vertex indices (with v-flip) instead of
+    // creating a duplicate last row. This ensures the HalfEdgeMesh sees shared
+    // vertex indices across the seam, producing proper twin edges instead of
+    // degenerate self-edges.
+    const lastBodyRow = (segU - 1) * (segV + 1)
     for (let j = 0; j < segV; j++) {
-      const a = lastRowStart + j           // last row, v=j
-      const b = 0 + (segV - j)            // first row, v=segV-j (twisted)
-      const c = lastRowStart + j + 1       // last row, v=j+1
-      const d = 0 + (segV - j - 1)        // first row, v=segV-j-1 (twisted)
+      const a = lastBodyRow + j               // last body row, v=j
+      const b = 0 + (segV - j)               // first row, v=segV-j (twisted)
+      const c = lastBodyRow + j + 1           // last body row, v=j+1
+      const d = 0 + (segV - j - 1)           // first row, v=segV-j-1 (twisted)
 
       indices.push(a, b, c)
       indices.push(b, d, c)

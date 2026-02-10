@@ -106,7 +106,7 @@ describe('LODManager', () => {
 
     it('assigns MEDIUM for enemies at medium distance', () => {
       const enemy = new TestGrunt();
-      placeEnemy(enemy, 0, 0, -20); // 35 units from camera at z=15
+      placeEnemy(enemy, 0, 0, -75); // 90 units from camera at z=15 (between 60-120)
 
       const assignments = manager.update(camera, [enemy]);
 
@@ -115,7 +115,7 @@ describe('LODManager', () => {
 
     it('assigns LOW for enemies far from camera', () => {
       const enemy = new TestGrunt();
-      placeEnemy(enemy, 0, 0, -50); // 65 units from camera at z=15
+      placeEnemy(enemy, 0, 0, -115); // 130 units from camera at z=15 (>120)
 
       const assignments = manager.update(camera, [enemy]);
 
@@ -147,9 +147,9 @@ describe('LODManager', () => {
       const mid = new TestGrunt();
       const far = new TestGrunt();
 
-      placeEnemy(close, 0, 0, 10);  // 5 units
-      placeEnemy(mid, 0, 0, -20);   // 35 units
-      placeEnemy(far, 0, 0, -50);   // 65 units
+      placeEnemy(close, 0, 0, 10);   // 5 units -> HIGH
+      placeEnemy(mid, 0, 0, -75);    // 90 units -> MEDIUM
+      placeEnemy(far, 0, 0, -115);   // 130 units -> LOW
 
       const assignments = manager.update(camera, [close, mid, far]);
 
@@ -168,9 +168,9 @@ describe('LODManager', () => {
 
   describe('threshold configuration', () => {
     it('uses default thresholds', () => {
-      expect(DEFAULT_LOD_CONFIG.highDistance).toBe(20);
-      expect(DEFAULT_LOD_CONFIG.mediumDistance).toBe(50);
-      expect(DEFAULT_LOD_CONFIG.hysteresis).toBe(2);
+      expect(DEFAULT_LOD_CONFIG.highDistance).toBe(60);
+      expect(DEFAULT_LOD_CONFIG.mediumDistance).toBe(120);
+      expect(DEFAULT_LOD_CONFIG.hysteresis).toBe(3);
     });
 
     it('accepts custom thresholds', () => {
@@ -421,10 +421,10 @@ describe('LODManager', () => {
       const far1 = new TestGrunt();
       const far2 = new TestGrunt();
 
-      placeEnemy(close, 0, 0, 10);  // ~5 units -> HIGH
-      placeEnemy(mid, 0, 0, -20);   // ~35 units -> MEDIUM
-      placeEnemy(far1, 0, 0, -50);  // ~65 units -> LOW
-      placeEnemy(far2, 0, 0, -60);  // ~75 units -> LOW
+      placeEnemy(close, 0, 0, 10);   // ~5 units -> HIGH
+      placeEnemy(mid, 0, 0, -75);    // ~90 units -> MEDIUM
+      placeEnemy(far1, 0, 0, -115);  // ~130 units -> LOW
+      placeEnemy(far2, 0, 0, -130);  // ~145 units -> LOW
 
       manager.update(camera, [close, mid, far1, far2]);
       const stats = manager.getStats();
@@ -484,9 +484,9 @@ describe('LODManager', () => {
       const mid = new TestGrunt();
       const far = new TestGrunt();
 
-      placeEnemy(close, 0, 0, 10);
-      placeEnemy(mid, 0, 0, -20);
-      placeEnemy(far, 0, 0, -50);
+      placeEnemy(close, 0, 0, 10);    // 5 units -> HIGH
+      placeEnemy(mid, 0, 0, -75);     // 90 units -> MEDIUM
+      placeEnemy(far, 0, 0, -115);    // 130 units -> LOW
 
       manager.update(camera, [close, mid, far]);
       const estimate = manager.estimateTriangleReduction(100); // assume 100 tris per full enemy

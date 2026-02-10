@@ -60,6 +60,10 @@ import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
+import { PerformanceTracker } from './core/PerformanceTracker';
+import { PerformanceLogger } from './core/PerformanceLogger';
+import { DebugOverlay } from './ui/DebugOverlay';
+import { SplitScreenPerfOverlay } from './ui/SplitScreenPerfOverlay';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -229,9 +233,10 @@ function main(): void {
   // -- Input --
   const input = new ConfigurableInput(playerCount);
 
-  // -- Split-screen renderer --
-  const splitRenderer = new SplitScreenRenderer(game.renderer, game.scene);
+  // -- Split-screen renderer (with bloom!) --
+  const splitRenderer = new SplitScreenRenderer(game.renderer, game.scene, game.isWebGPU);
   splitRenderer.setLayout(playerCount);
+  splitRenderer.enableBloom({ strength: 1.0, radius: 0.4, threshold: 0.85 });
 
   // -- Per-player cameras --
   const cameras: THREE.PerspectiveCamera[] = [];
@@ -248,6 +253,16 @@ function main(): void {
 
   // -- Per-player weapon HUDs (declared here so updateViewportSizes can access them) --
   const weaponHUDs: WeaponHUD[] = [];
+
+  // -- Performance tracking --
+  const perfTracker = new PerformanceTracker(surfaceType);
+  const perfLogger = new PerformanceLogger(surfaceType);
+  const debugOverlay = new DebugOverlay(perfTracker);
+  debugOverlay.setRendererBackend(game.backend);
+  debugOverlay.hide(); // Hidden by default in split-screen; F3 toggles it
+
+  // Small FPS overlay for Player 1's viewport (always visible)
+  const perfOverlay = new SplitScreenPerfOverlay(perfTracker);
 
   // Initial viewport sizing
   function updateViewportSizes(): void {
@@ -268,6 +283,9 @@ function main(): void {
         weaponHUDs[i].setPosition(pv.x + 8, pv.y + pv.h / 2 - 40);
       }
     }
+    // Position perf overlay in Player 1's viewport
+    const p1vp = splitRenderer.getPixelViewport(0);
+    perfOverlay.setViewportBounds(p1vp.x, p1vp.y, p1vp.w, p1vp.h);
   }
   updateViewportSizes();
   window.addEventListener('resize', updateViewportSizes);
@@ -632,6 +650,8 @@ function main(): void {
   let isGameOver = false;
 
   const pauseMenu = new PauseMenu();
+  pauseMenu.setMusic(bgMusic);
+  pauseMenu.setPerformanceLogger(perfLogger);
   pauseMenu.onResume(() => {
     isPaused = false;
     game.resume(); // resync clock to avoid massive dt after long pause
@@ -643,6 +663,8 @@ function main(): void {
     }
   });
   pauseMenu.onExit(() => {
+    perfTracker.saveSession();
+    perfLogger.saveSession();
     game.stop();
     bgMusic.stop();
     window.location.href = window.location.pathname;
@@ -710,10 +732,55 @@ function main(): void {
           : undefined,
       },
     });
+
+    // Set performance summary for the pause menu stats panel
+    pauseMenu.setPerformanceHTML(buildPerfSummaryHTML());
+  }
+
+  /** Build an HTML string summarizing current performance for the pause menu. */
+  function buildPerfSummaryHTML(): string {
+    const summary = perfTracker.getSummary();
+    const loggerSummary = perfLogger.getSessionSummary();
+    const spikes = perfLogger.getSpikeEvents();
+    const qualityLevel = perfLogger.getDataPoints().length > 0
+      ? perfLogger.getDataPoints()[perfLogger.getDataPoints().length - 1].qualityLevel
+      : 'N/A';
+
+    // Count spikes in the last 30 seconds
+    const now = (Date.now() - (performance as any).__startTime) / 1000; // fallback
+    const sessionElapsed = summary.durationSeconds;
+    const recentSpikes = spikes.filter(s => s.time > sessionElapsed - 30).length;
+
+    const fpsColor = (fps: number): string => {
+      if (fps >= 55) return '#00ff88';
+      if (fps >= 30) return '#ffaa00';
+      return '#ff4444';
+    };
+
+    const formatDuration = (s: number): string => {
+      const m = Math.floor(s / 60);
+      const sec = Math.floor(s % 60);
+      return `${m}:${String(sec).padStart(2, '0')}`;
+    };
+
+    return `
+      <div style="text-align:left;font-family:monospace;font-size:13px;color:#aaccff;line-height:1.6;">
+        <div><span style="color:#668899;">Avg FPS:</span> <span style="color:${fpsColor(summary.avgFps)}">${summary.avgFps.toFixed(1)}</span></div>
+        <div><span style="color:#668899;">Min/Max FPS:</span> <span style="color:${fpsColor(summary.minFps)}">${summary.minFps.toFixed(1)}</span> / <span style="color:${fpsColor(summary.maxFps)}">${summary.maxFps.toFixed(1)}</span></div>
+        <div><span style="color:#668899;">Enemies:</span> <span style="color:#ff8844;">${enemySpawner.getActiveCount()}</span> (peak ${loggerSummary?.peakEnemies ?? 0})</div>
+        <div><span style="color:#668899;">Bullets:</span> <span style="color:#44aaff;">${bulletPool.activeCount}</span> (peak ${loggerSummary?.peakBullets ?? 0})</div>
+        <div><span style="color:#668899;">Quality:</span> <span style="color:#ccaa44;">${qualityLevel}</span></div>
+        <div><span style="color:#668899;">Spikes (30s):</span> <span style="color:${recentSpikes > 5 ? '#ff4444' : recentSpikes > 0 ? '#ffaa00' : '#00ff88'};">${recentSpikes}</span></div>
+        <div><span style="color:#668899;">Session:</span> ${formatDuration(summary.durationSeconds)}</div>
+        <div><span style="color:#668899;">Players:</span> ${playerCount}</div>
+      </div>
+    `;
   }
 
   const gameOverScreen = new GameOverScreen();
   gameOverScreen.onContinue(() => {
+    perfTracker.saveSession();
+    perfLogger.saveSession();
     game.stop();
     bgMusic.stop();
     window.location.href = window.location.pathname;
@@ -1154,6 +1221,11 @@ function main(): void {
     input.endFrame();
   };
 
+  // -- Pre-allocated map for perf enemy type tracking (zero-alloc per frame) --
+  const perfEnemyTypeMap = new Map<string, number>();
+  let perfEnemyTypeFrameCounter = 0;
+  let lastRenderTime = performance.now();
+
   // -- Render callback --
   game.onRender = (_alpha: number) => {
     bulletPool.applySurfaceProjection(getTransform);
@@ -1164,6 +1236,45 @@ function main(): void {
         cam.position.add(screenShake.offset);
       }
     }
+
+    // -- Performance tracking (per-frame) --
+    const now = performance.now();
+    const rawFrameDt = (now - lastRenderTime) / 1000;
+    const frameDt = Math.min(rawFrameDt, 0.1); // clamped for non-perf uses
+    lastRenderTime = now;
+    perfTracker.setEntityCount(enemySpawner.getActiveCount());
+    perfTracker.setBulletCount(bulletPool.activeCount);
+    perfTracker.recordFrame(rawFrameDt);
+
+    // Feed data to the performance logger
+    perfLogger.setFrameData(perfTracker.fps, enemySpawner.getActiveCount(), bulletPool.activeCount);
+    const renderInfo = game.renderer.info;
+    perfLogger.setRendererStats(
+      renderInfo.render.calls,
+      renderInfo.render.triangles,
+      (renderInfo.memory.geometries + renderInfo.memory.textures) * 0.01,
+    );
+    perfLogger.setDDALevel(ddaEngine.getDDALevelSmooth(0));
+    perfLogger.setQualityLevel('N/A'); // Split-screen doesn't use AdaptiveQuality yet
+
+    // Update enemy type breakdown every 30 frames (~2Hz at 60fps)
+    perfEnemyTypeFrameCounter++;
+    if (perfEnemyTypeFrameCounter >= 30) {
+      perfEnemyTypeFrameCounter = 0;
+      perfEnemyTypeMap.clear();
+      for (const enemy of enemySpawner.getEnemies()) {
+        if (!enemy.active) continue;
+        const t = (enemy.baseTypeName || 'unknown');
+        perfEnemyTypeMap.set(t, (perfEnemyTypeMap.get(t) ?? 0) + 1);
+      }
+      perfTracker.setEnemyTypes(perfEnemyTypeMap as Map<any, number>);
+      perfLogger.setEnemyTypes(perfEnemyTypeMap as Map<any, number>);
+    }
+    perfLogger.recordFrame(rawFrameDt);
+
+    // Update overlays
+    debugOverlay.update();
+    perfOverlay.update();
   };
 
   // -- Per-viewport pre-render: depth-based opacity --

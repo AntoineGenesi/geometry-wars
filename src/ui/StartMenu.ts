@@ -82,6 +82,13 @@ export class StartMenu {
     // Animated 3D background behind the menu overlay
     this.menuBackground = new MenuBackground();
     this.menuBackground.start();
+
+    // Dismiss loading screen now that menu is ready
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.classList.add('fade-out');
+      loadingScreen.addEventListener('transitionend', () => loadingScreen.remove());
+    }
   }
 
   // -----------------------------------------------------------------------

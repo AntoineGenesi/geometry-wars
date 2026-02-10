@@ -3,6 +3,13 @@
  *
  * All sounds are synthesized via Web Audio API - no external audio files needed.
  * Matches the electronic/synth aesthetic of GW3D.
+ *
+ * Throttling system:
+ * - Per-type max concurrent instances (e.g., max 3 simultaneous "shoot" sounds)
+ * - Global max concurrent sounds (16 total)
+ * - Rate limiting with minimum intervals per type
+ * - Active sound tracking with automatic expiry
+ * - Cached distortion curves (zero allocation in hot paths)
  */
 
 // ---------------------------------------------------------------------------
@@ -28,9 +35,28 @@ interface SoundOptions {
   pan?: number;   // -1 (left) to 1 (right)
 }
 
+// Pre-computed duration of each sound type (seconds).
+// Used to track when active sounds expire without callbacks.
+const SOUND_DURATIONS: Record<SoundType, number> = {
+  shoot: 0.08,
+  enemyDeath: 0.15,
+  playerDeath: 0.8,
+  bomb: 0.8,
+  geomPickup: 0.06,
+  multiplierUp: 0.22,   // 3 notes * 0.06 offset + 0.1 duration
+  weaponPickup: 0.3,
+  shieldHit: 0.15,
+  spawn: 0.2,
+  menuSelect: 0.15,
+  menuHover: 0.03,
+};
+
 // ---------------------------------------------------------------------------
 // SoundEngine
 // ---------------------------------------------------------------------------
+
+/** Global max concurrent audio voices across all types */
+const GLOBAL_MAX_VOICES = 16;
 
 export class SoundEngine {
   private ctx: AudioContext | null = null;
@@ -39,13 +65,60 @@ export class SoundEngine {
   private _muted = false;
   private initialized = false;
 
-  // Rate limiting for rapid sounds
+  // Rate limiting: minimum seconds between triggers of same type
   private lastPlayTime: Map<SoundType, number> = new Map();
-  private minInterval: Map<SoundType, number> = new Map([
-    ['shoot', 0.05],       // Max 20 shots/sec
-    ['enemyDeath', 0.03],  // Rapid kills allowed
-    ['geomPickup', 0.02],  // Very rapid pickups
+  private readonly minInterval: Map<SoundType, number> = new Map([
+    ['shoot', 0.05],        // Max 20/sec
+    ['enemyDeath', 0.04],   // Max 25/sec (tightened from 0.03)
+    ['geomPickup', 0.03],   // Max ~33/sec
+    ['bomb', 0.15],         // Max ~6/sec (bombs overlap badly)
+    ['shieldHit', 0.08],    // Max ~12/sec
+    ['spawn', 0.1],         // Max 10/sec
+    ['multiplierUp', 0.2],  // Max 5/sec (long sound)
+    ['weaponPickup', 0.3],  // Max ~3/sec (one at a time feel)
+    ['playerDeath', 0.5],   // Max 2/sec
+    ['menuSelect', 0.1],    // Max 10/sec
+    ['menuHover', 0.05],    // Max 20/sec
   ]);
+
+  // Per-type max concurrent instances
+  private readonly maxPerType: Map<SoundType, number> = new Map([
+    ['shoot', 3],
+    ['enemyDeath', 4],
+    ['playerDeath', 1],
+    ['bomb', 2],
+    ['geomPickup', 3],
+    ['multiplierUp', 1],
+    ['weaponPickup', 1],
+    ['shieldHit', 2],
+    ['spawn', 2],
+    ['menuSelect', 1],
+    ['menuHover', 1],
+  ]);
+
+  // Active sound tracking: per-type arrays of expiry times.
+  // Pre-allocated arrays to avoid allocation in play().
+  // Each entry is the AudioContext.currentTime when the sound ends.
+  private readonly activeExpiry: Map<SoundType, number[]> = new Map();
+
+  // Global active voice count (sum of all per-type active sounds)
+  private globalActiveCount = 0;
+
+  // Cached distortion curves (keyed by amount) — avoids Float32Array allocation per play
+  private readonly distortionCache: Map<number, Float32Array<ArrayBuffer>> = new Map();
+
+  constructor() {
+    // Pre-allocate expiry arrays for all types
+    const allTypes: SoundType[] = [
+      'shoot', 'enemyDeath', 'playerDeath', 'bomb', 'geomPickup',
+      'multiplierUp', 'weaponPickup', 'shieldHit', 'spawn',
+      'menuSelect', 'menuHover',
+    ];
+    for (const type of allTypes) {
+      const maxSlots = this.maxPerType.get(type) ?? 2;
+      this.activeExpiry.set(type, new Array<number>(maxSlots).fill(0));
+    }
+  }
 
   /**
    * Initialize audio context. Must be called from a user gesture (click/keypress).
@@ -74,23 +147,57 @@ export class SoundEngine {
   }
 
   /**
-   * Play a sound effect.
+   * Play a sound effect. Returns false if the sound was throttled/skipped.
    */
-  play(type: SoundType, options: SoundOptions = {}): void {
-    if (!this.ctx || !this.masterGain || this._muted) return;
+  play(type: SoundType, options: SoundOptions = {}): boolean {
+    if (!this.ctx || !this.masterGain || this._muted) return false;
 
-    // Rate limit
     const now = this.ctx.currentTime;
+
+    // 1) Rate limit: minimum interval between triggers of the same type
     const minInt = this.minInterval.get(type) ?? 0;
     const lastTime = this.lastPlayTime.get(type) ?? 0;
-    if (now - lastTime < minInt) return;
+    if (now - lastTime < minInt) return false;
+
+    // 2) Per-type concurrent limit: count active (non-expired) instances
+    const expiry = this.activeExpiry.get(type);
+    if (expiry) {
+      // Compact: count still-active, find an expired slot
+      let activeCount = 0;
+      let freeSlot = -1;
+      for (let i = 0; i < expiry.length; i++) {
+        if (expiry[i] > now) {
+          activeCount++;
+        } else if (freeSlot === -1) {
+          freeSlot = i;
+        }
+      }
+
+      const maxConcurrent = this.maxPerType.get(type) ?? 2;
+      if (activeCount >= maxConcurrent) return false;
+
+      // 3) Global concurrent limit
+      // Recount global active (lazy: sum all types' active)
+      this.recomputeGlobalCount(now);
+      if (this.globalActiveCount >= GLOBAL_MAX_VOICES) return false;
+
+      // Claim a slot
+      const duration = SOUND_DURATIONS[type];
+      if (freeSlot !== -1) {
+        expiry[freeSlot] = now + duration;
+      }
+      // If no free slot found (shouldn't happen since activeCount < max), skip tracking
+      this.globalActiveCount++;
+    }
+
+    // Record play time for rate limiting
     this.lastPlayTime.set(type, now);
 
     const vol = options.volume ?? 1.0;
     const pitch = options.pitch ?? 1.0;
     const pan = options.pan ?? 0;
 
-    // Create output chain: source → gain → panner → master
+    // Create output chain: source -> gain -> panner -> master
     const gainNode = this.ctx.createGain();
     gainNode.gain.value = vol;
 
@@ -135,6 +242,8 @@ export class SoundEngine {
         this.synthMenuHover(gainNode);
         break;
     }
+
+    return true;
   }
 
   /** Get the AudioContext (for BackgroundMusic integration) */
@@ -155,6 +264,30 @@ export class SoundEngine {
 
   set muted(m: boolean) {
     this._muted = m;
+  }
+
+  /** Get current number of active audio voices (for debug overlay) */
+  get activeVoiceCount(): number {
+    if (!this.ctx) return 0;
+    this.recomputeGlobalCount(this.ctx.currentTime);
+    return this.globalActiveCount;
+  }
+
+  // -------------------------------------------------------------------------
+  // Active voice tracking
+  // -------------------------------------------------------------------------
+
+  /** Recompute globalActiveCount by scanning all per-type expiry arrays */
+  private recomputeGlobalCount(now: number): void {
+    let total = 0;
+    for (const expiry of this.activeExpiry.values()) {
+      for (let i = 0; i < expiry.length; i++) {
+        if (expiry[i] > now) {
+          total++;
+        }
+      }
+    }
+    this.globalActiveCount = total;
   }
 
   // -------------------------------------------------------------------------
@@ -196,9 +329,9 @@ export class SoundEngine {
     env.gain.setValueAtTime(0.12, t);
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
 
-    // Add some grit
+    // Add some grit (cached distortion curve)
     const distortion = ctx.createWaveShaper();
-    distortion.curve = this.makeDistortionCurve(20);
+    distortion.curve = this.getCachedDistortionCurve(20);
 
     osc.connect(distortion);
     distortion.connect(env);
@@ -238,7 +371,7 @@ export class SoundEngine {
     env2.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
 
     const distortion = ctx.createWaveShaper();
-    distortion.curve = this.makeDistortionCurve(50);
+    distortion.curve = this.getCachedDistortionCurve(50);
 
     osc2.connect(distortion);
     distortion.connect(env2);
@@ -283,7 +416,7 @@ export class SoundEngine {
     env2.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
 
     const distortion = ctx.createWaveShaper();
-    distortion.curve = this.makeDistortionCurve(80);
+    distortion.curve = this.getCachedDistortionCurve(80);
 
     osc2.connect(distortion);
     osc3.connect(distortion);
@@ -444,6 +577,16 @@ export class SoundEngine {
   // Helpers
   // -------------------------------------------------------------------------
 
+  /** Get a cached distortion curve, creating it on first use */
+  private getCachedDistortionCurve(amount: number): Float32Array<ArrayBuffer> {
+    let curve = this.distortionCache.get(amount);
+    if (!curve) {
+      curve = this.makeDistortionCurve(amount);
+      this.distortionCache.set(amount, curve);
+    }
+    return curve;
+  }
+
   /** Create distortion curve for waveshaper */
   private makeDistortionCurve(amount: number): Float32Array<ArrayBuffer> {
     const samples = 256;
@@ -463,6 +606,11 @@ export class SoundEngine {
     }
     this.masterGain = null;
     this.initialized = false;
+    this.globalActiveCount = 0;
+    this.distortionCache.clear();
+    for (const expiry of this.activeExpiry.values()) {
+      expiry.fill(0);
+    }
   }
 }
 

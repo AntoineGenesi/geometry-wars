@@ -3,12 +3,12 @@
  * on detected GPU capabilities and URL parameters.
  *
  * Supports two rendering backends:
- *   - WebGL2 (default): Uses THREE.WebGLRenderer + EffectComposer + UnrealBloomPass
- *   - WebGPU (opt-in via ?renderer=webgpu): Uses WebGPURenderer + TSL PostProcessing
+ *   - WebGPU (default when available): Uses WebGPURenderer + TSL PostProcessing
+ *   - WebGL2 (fallback): Uses THREE.WebGLRenderer + EffectComposer + UnrealBloomPass
  *
  * URL parameters:
- *   ?renderer=webgpu  - Force WebGPU renderer (falls back to WebGL2 if unavailable)
- *   ?renderer=webgl   - Force WebGL2 renderer (default)
+ *   ?renderer=webgpu  - Force WebGPU renderer
+ *   ?renderer=webgl   - Force WebGL2 renderer
  *   ?testMode=true    - Enable preserveDrawingBuffer for automated testing
  *
  * The factory also logs the capability report so developers can see
@@ -43,11 +43,15 @@ export function resolveRendererPreference(
   const params = new URLSearchParams(window.location.search);
   const pref = params.get('renderer');
 
-  if (pref === 'webgpu' && capabilities.webgpu) {
+  // Explicit URL override
+  if (pref === 'webgl') return 'webgl2';
+  if (pref === 'webgpu' && capabilities.webgpu) return 'webgpu';
+
+  // Auto-select: prefer WebGPU when available
+  if (capabilities.webgpu) {
     return 'webgpu';
   }
 
-  // Default to WebGL2 -- it's the stable, proven path
   return 'webgl2';
 }
 

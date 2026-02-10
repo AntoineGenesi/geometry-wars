@@ -54,6 +54,8 @@ export class InputManager {
   private viewportH = 1;
   /** Whether the left mouse button is currently held. */
   private mouseLeftDown = false;
+  /** Optional container element for non-fullscreen playgrounds. */
+  private container: HTMLElement | null = null;
 
   // -- Gamepad --------------------------------------------------------------
   /** Index of the connected gamepad, or -1 if none. */
@@ -127,8 +129,14 @@ export class InputManager {
 
     // -- Resize -------------------------------------------------------------
     this.onResize = () => {
-      this.viewportW = window.innerWidth;
-      this.viewportH = window.innerHeight;
+      if (this.container) {
+        const rect = this.container.getBoundingClientRect();
+        this.viewportW = rect.width;
+        this.viewportH = rect.height;
+      } else {
+        this.viewportW = window.innerWidth;
+        this.viewportH = window.innerHeight;
+      }
     };
 
     // Register all listeners.
@@ -146,6 +154,23 @@ export class InputManager {
   // -----------------------------------------------------------------------
   // Public API
   // -----------------------------------------------------------------------
+
+  /**
+   * Set a container element for non-fullscreen games (e.g. playgrounds).
+   * When set, aim coordinates are calculated relative to this container
+   * instead of the full window. Call with null to revert to fullscreen mode.
+   */
+  setContainer(el: HTMLElement | null): void {
+    this.container = el;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      this.viewportW = rect.width;
+      this.viewportH = rect.height;
+    } else {
+      this.viewportW = window.innerWidth;
+      this.viewportH = window.innerHeight;
+    }
+  }
 
   /** Returns true if `key` (lower-case) is currently held. */
   isKeyDown(key: string): boolean {
@@ -222,13 +247,20 @@ export class InputManager {
       my /= moveLen;
     }
 
-    // Aim direction: mouse position relative to screen centre, normalised
-    // to -1..1 range.  We normalise by the smaller half-dimension so the
-    // magnitude saturates at 1 when the cursor is at the edge of the
-    // shorter axis.
-    const cx = this.viewportW / 2;
-    const cy = this.viewportH / 2;
-    const halfMin = Math.min(cx, cy);
+    // Aim direction: mouse position relative to viewport centre, normalised
+    // to -1..1 range.  When a container is set (non-fullscreen playgrounds),
+    // we use the container's bounding rect so aim is correct even in small
+    // embedded canvases.
+    let cx: number, cy: number;
+    if (this.container) {
+      const rect = this.container.getBoundingClientRect();
+      cx = rect.left + rect.width / 2;
+      cy = rect.top + rect.height / 2;
+    } else {
+      cx = this.viewportW / 2;
+      cy = this.viewportH / 2;
+    }
+    const halfMin = Math.min(this.viewportW / 2, this.viewportH / 2);
     let ax = (this.mouseX - cx) / halfMin;
     let ay = (this.mouseY - cy) / halfMin;
     const aimLen = Math.sqrt(ax * ax + ay * ay);
