@@ -78,9 +78,28 @@ interface GameDebugAPI {
   getWaveText: () => string;
 }
 
+// ---------------------------------------------------------------------------
+// LAN Diagnostic API (exposed as window.__lanDebug in ALL network games)
+// User can paste diagnostic commands in browser console to help debug issues.
+// ---------------------------------------------------------------------------
+
+interface LANDiagAPI {
+  /** Full connection and game state snapshot */
+  status: () => Record<string, unknown>;
+  /** Entity count comparison (client vs what we think server has) */
+  entities: () => Record<string, unknown>;
+  /** Measure round-trip latency to server health endpoint */
+  latency: () => Promise<Record<string, unknown>>;
+  /** Copy full diagnostic report to clipboard */
+  report: () => Promise<string>;
+  /** Toggle real-time diagnostic overlay on screen */
+  overlay: (show?: boolean) => void;
+}
+
 declare global {
   interface Window {
     __gameDebug?: GameDebugAPI;
+    __lanDebug?: LANDiagAPI;
   }
 }
 
@@ -764,10 +783,20 @@ function main() {
       player.score = netPlayer.score;
       player.multiplier = netPlayer.multiplier;
 
-      // Position on surface using real surface transform (same as co-op)
+      // Position on surface using real surface transform (same as co-op).
+      // For LOCAL player, skip position override if we have client-side prediction
+      // active (let prediction handle it, server corrects on next state change).
+      // For REMOTE players, lerp to reduce 30Hz jitter.
       const sp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
-      player.mesh.position.copy(sp.position);
-      player.mesh.position.addScaledVector(sp.normal, 0.15);
+      const targetPos = sp.position.clone().addScaledVector(sp.normal, 0.15);
+
+      if (id === localPlayerId) {
+        // Local player: snap to server position (corrects prediction drift)
+        player.mesh.position.copy(targetPos);
+      } else {
+        // Remote players: lerp for smooth interpolation between 30Hz updates
+        player.mesh.position.lerp(targetPos, 0.3);
+      }
       player.surfaceU = netPlayer.surfaceU;
       player.surfaceV = netPlayer.surfaceV;
 
@@ -831,9 +860,11 @@ function main() {
       const enemy = getOrCreateEnemy(netEnemy.id, netEnemy);
       if (!enemy) return;
 
-      // Update position from server (override local AI)
-      enemy.surfacePosition.u = netEnemy.surfaceU;
-      enemy.surfacePosition.v = netEnemy.surfaceV;
+      // Lerp UV position toward server state for smooth movement between
+      // 30Hz updates. Direct snap causes visible jitter.
+      const lerpFactor = 0.35;
+      enemy.surfacePosition.u += (netEnemy.surfaceU - enemy.surfacePosition.u) * lerpFactor;
+      enemy.surfacePosition.v += (netEnemy.surfaceV - enemy.surfacePosition.v) * lerpFactor;
 
       // Apply surface transform (same function as co-op enemy update)
       if (getTransform) {
@@ -1206,16 +1237,40 @@ function main() {
       // so it feels responsive. The server position will override on next
       // onStateChange, but the visual lag between input and response is
       // eliminated. Uses the same PLAYER_SPEED (0.19 UV/s) as the server.
+      // MUST match server physics (including sin(phi) correction) to avoid
+      // rubber-banding.
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer && surface && (currentInput.moveX !== 0 || currentInput.moveY !== 0)) {
         const predSpeed = 0.19; // Must match server PLAYER_SPEED
-        const predDx = currentInput.moveX * predSpeed * dt;
+        let predDx = currentInput.moveX * predSpeed * dt;
         const predDy = currentInput.moveY * predSpeed * dt;
+
+        // Apply sin(phi) correction for sphere-like surfaces (matches server)
+        const surfType = lastCreatedSurfaceType;
+        const isSphereLike = surfType === 'sphere' || surfType === 'sphere-tunnel'
+          || surfType === 'icosahedron' || surfType === 'capsule'
+          || surfType === 'peanut';
+        if (isSphereLike) {
+          const phi = localPlayer.surfaceV * Math.PI;
+          const sinPhi = Math.sin(phi);
+          const clampedSinPhi = Math.max(sinPhi, 0.3);
+          predDx = predDx / clampedSinPhi;
+        }
+
         let newU = localPlayer.surfaceU + predDx;
         let newV = localPlayer.surfaceV + predDy;
-        // Wrap U, clamp V (simplified prediction, matches server logic)
+
+        // Wrap U, clamp V (matches server logic exactly)
+        const wrapsInV = surfType === 'torus' || surfType === 'pipe'
+          || surfType === 'mobius' || surfType === 'cube-ring'
+          || surfType === 'cube-tunnel' || surfType === 'cube';
         newU = ((newU % 1) + 1) % 1;
-        newV = Math.max(0.05, Math.min(0.95, newV));
+        if (wrapsInV) {
+          newV = ((newV % 1) + 1) % 1;
+        } else {
+          newV = Math.max(0.05, Math.min(0.95, newV));
+        }
+
         localPlayer.surfaceU = newU;
         localPlayer.surfaceV = newV;
         // Update visual position immediately
@@ -1428,6 +1483,153 @@ function main() {
       getWaveText: () => statusEl.textContent || '',
     };
   }
+
+  // -----------------------------------------------------------------------
+  // LAN Diagnostic API — ALWAYS available in network mode (not gated by ?debug)
+  // User pastes commands in browser console to diagnose connection issues.
+  // -----------------------------------------------------------------------
+
+  let diagOverlayEl: HTMLDivElement | null = null;
+  let diagOverlayInterval: ReturnType<typeof setInterval> | null = null;
+
+  window.__lanDebug = {
+    status: () => {
+      const lp = networkPlayers.get(localPlayerId);
+      return {
+        connected: network.isConnected(),
+        localPlayerId,
+        isHost,
+        isPaused,
+        surfaceType: lastCreatedSurfaceType,
+        surfaceReady,
+        gameStatus: statusEl.textContent,
+        playerCount: networkPlayers.size,
+        localPlayerPos: lp ? { u: lp.surfaceU, v: lp.surfaceV } : null,
+        localPlayerAlive: lp ? (playerAliveState.get(localPlayerId) ?? true) : false,
+        serverUrl: getServerUrl(),
+        timestamp: new Date().toISOString(),
+      };
+    },
+
+    entities: () => {
+      return {
+        players: networkPlayers.size,
+        enemies: networkEnemies.size,
+        bullets: bulletIdToIndex.size,
+        geoms: geomIdToIndex.size,
+        weaponPickups: networkWeaponPickups.size,
+        enemyDetails: Array.from(networkEnemies.entries()).slice(0, 10).map(([id, e]) => ({
+          id,
+          type: e.baseTypeName || 'unknown',
+          u: e.surfacePosition.u.toFixed(3),
+          v: e.surfacePosition.v.toFixed(3),
+          visible: e.mesh?.visible ?? false,
+        })),
+      };
+    },
+
+    latency: async () => {
+      const serverUrl = getServerUrl().replace('ws://', 'http://').replace('wss://', 'https://');
+      const pings: number[] = [];
+      for (let i = 0; i < 5; i++) {
+        const start = performance.now();
+        try {
+          await fetch(`${serverUrl}/health`, { signal: AbortSignal.timeout(2000) });
+          pings.push(performance.now() - start);
+        } catch {
+          pings.push(-1);
+        }
+      }
+      const validPings = pings.filter(p => p >= 0);
+      return {
+        pings: pings.map(p => p >= 0 ? `${p.toFixed(1)}ms` : 'TIMEOUT'),
+        avg: validPings.length > 0
+          ? `${(validPings.reduce((a, b) => a + b, 0) / validPings.length).toFixed(1)}ms`
+          : 'ALL FAILED',
+        min: validPings.length > 0 ? `${Math.min(...validPings).toFixed(1)}ms` : 'N/A',
+        max: validPings.length > 0 ? `${Math.max(...validPings).toFixed(1)}ms` : 'N/A',
+        serverReachable: validPings.length > 0,
+      };
+    },
+
+    report: async () => {
+      const status = window.__lanDebug!.status();
+      const entities = window.__lanDebug!.entities();
+      const latency = await window.__lanDebug!.latency();
+      const report = [
+        '=== LAN DIAGNOSTIC REPORT ===',
+        `Time: ${new Date().toISOString()}`,
+        `Browser: ${navigator.userAgent}`,
+        '',
+        '--- Connection ---',
+        JSON.stringify(status, null, 2),
+        '',
+        '--- Entities ---',
+        JSON.stringify(entities, null, 2),
+        '',
+        '--- Latency ---',
+        JSON.stringify(latency, null, 2),
+      ].join('\n');
+
+      try {
+        await navigator.clipboard.writeText(report);
+        console.log('Diagnostic report copied to clipboard!');
+      } catch {
+        console.log('Could not copy to clipboard. Report:');
+        console.log(report);
+      }
+      return report;
+    },
+
+    overlay: (show?: boolean) => {
+      const shouldShow = show ?? !diagOverlayEl;
+
+      if (!shouldShow && diagOverlayEl) {
+        diagOverlayEl.remove();
+        diagOverlayEl = null;
+        if (diagOverlayInterval) {
+          clearInterval(diagOverlayInterval);
+          diagOverlayInterval = null;
+        }
+        return;
+      }
+
+      if (shouldShow && !diagOverlayEl) {
+        diagOverlayEl = document.createElement('div');
+        diagOverlayEl.style.cssText =
+          'position:fixed;bottom:10px;left:10px;background:rgba(0,0,0,0.85);' +
+          'color:#0f0;font:11px monospace;padding:8px 12px;z-index:9999;' +
+          'border:1px solid #0f0;max-width:400px;white-space:pre;pointer-events:none;';
+        document.body.appendChild(diagOverlayEl);
+
+        const updateOverlay = () => {
+          if (!diagOverlayEl) return;
+          const lp = networkPlayers.get(localPlayerId);
+          const lines = [
+            `Connected: ${network.isConnected()} | Host: ${isHost}`,
+            `Players: ${networkPlayers.size} | Enemies: ${networkEnemies.size}`,
+            `Bullets: ${bulletIdToIndex.size} | Geoms: ${geomIdToIndex.size}`,
+            `Surface: ${lastCreatedSurfaceType} (ready: ${surfaceReady})`,
+            `Player UV: ${lp ? `${lp.surfaceU.toFixed(3)}, ${lp.surfaceV.toFixed(3)}` : 'N/A'}`,
+            `Status: ${statusEl.textContent}`,
+          ];
+          diagOverlayEl.textContent = lines.join('\n');
+        };
+        updateOverlay();
+        diagOverlayInterval = setInterval(updateOverlay, 200);
+      }
+    },
+  };
+  // Log diagnostic availability to console
+  console.log(
+    '%c[LAN Debug] Diagnostic commands available:%c\n' +
+    '  __lanDebug.status()   — Connection & game state\n' +
+    '  __lanDebug.entities() — Entity counts & details\n' +
+    '  __lanDebug.latency()  — Ping test (5 samples)\n' +
+    '  __lanDebug.report()   — Full report (copies to clipboard)\n' +
+    '  __lanDebug.overlay()  — Toggle real-time overlay',
+    'color:#0ff;font-weight:bold', 'color:#0ff',
+  );
 }
 
 main();

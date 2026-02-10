@@ -99,7 +99,8 @@ export class GameRoom extends Room<GameState> {
     });
 
     this.onMessage('start', () => {
-      if (!this.state.gameStarted) {
+      // Allow restart after game over (gameStarted stays true, but gameOver is set)
+      if (!this.state.gameStarted || this.state.gameOver) {
         this.startGame();
       }
     });
@@ -307,6 +308,15 @@ export class GameRoom extends Room<GameState> {
 
     (player as unknown as { lastShotTime: number }).lastShotTime = now;
 
+    // Deduct ammo per shot (not per tick). Standard weapon has infinite ammo (-1).
+    if (player.weaponAmmo > 0) {
+      player.weaponAmmo--;
+      if (player.weaponAmmo <= 0) {
+        player.weaponType = 'standard';
+        player.weaponAmmo = -1;
+      }
+    }
+
     // Create bullet
     const bullet = new BulletState();
     bullet.id = `b${this.nextBulletId++}`;
@@ -441,6 +451,10 @@ export class GameRoom extends Room<GameState> {
           const speed = this.getEnemySpeed(enemy.type);
           enemy.surfaceU += (du / dist) * speed * dt;
           enemy.surfaceV += (dv / dist) * speed * dt;
+          // Wrap U, clamp V to same range as players to prevent
+          // enemies from reaching pole singularities and becoming invisible
+          enemy.surfaceU = this.wrapCoord(enemy.surfaceU);
+          enemy.surfaceV = Math.max(0.05, Math.min(0.95, enemy.surfaceV));
         }
       }
     });
@@ -632,24 +646,29 @@ export class GameRoom extends Room<GameState> {
 
     enemy.type = types[Math.floor(Math.random() * types.length)];
 
-    // Spawn at edge
+    // Spawn at edge, but avoid exact 0/1 on V for sphere-like surfaces
+    // (V=0 and V=1 are pole singularities → invisible enemies, stuck movement).
+    // Use 0.05-0.95 range to match player V-clamp.
     const side = Math.floor(Math.random() * 4);
+    const vMin = 0.05;
+    const vMax = 0.95;
+    const randomV = () => vMin + Math.random() * (vMax - vMin);
     switch (side) {
       case 0:
         enemy.surfaceU = Math.random();
-        enemy.surfaceV = 0;
+        enemy.surfaceV = vMin;
         break;
       case 1:
         enemy.surfaceU = Math.random();
-        enemy.surfaceV = 1;
+        enemy.surfaceV = vMax;
         break;
       case 2:
         enemy.surfaceU = 0;
-        enemy.surfaceV = Math.random();
+        enemy.surfaceV = randomV();
         break;
       case 3:
         enemy.surfaceU = 1;
-        enemy.surfaceV = Math.random();
+        enemy.surfaceV = randomV();
         break;
     }
 
@@ -746,19 +765,9 @@ export class GameRoom extends Room<GameState> {
     for (let i = toRemove.length - 1; i >= 0; i--) {
       this.state.weaponPickups.splice(toRemove[i], 1);
     }
-
-    // Deplete ammo on shooting players
-    this.state.players.forEach((player) => {
-      if (!player.alive || !player.shooting) return;
-      if (player.weaponAmmo > 0) {
-        // Deduct ammo at fire rate (roughly 10 shots/sec)
-        player.weaponAmmo--;
-        if (player.weaponAmmo <= 0) {
-          player.weaponType = 'standard';
-          player.weaponAmmo = -1;
-        }
-      }
-    });
+    // NOTE: Ammo deduction is handled in tryShoot() per shot fired,
+    // not per tick. This prevents burning through ammo 6x faster than
+    // shots actually fire (60Hz tick vs 10Hz fire rate).
   }
 
   /**
