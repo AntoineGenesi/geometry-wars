@@ -22,8 +22,10 @@ cd /d "%~dp0"
 REM Check node_modules exists
 if not exist "node_modules" goto :no_modules
 
-REM Check if Windows .cmd wrappers exist (WSL installs only create Unix symlinks)
-if not exist "node_modules\.bin\tsx.cmd" goto :fix_wincmd
+REM Check if Windows-specific native binaries exist (WSL installs Linux-x64 only)
+REM Vite uses its own esbuild copy at node_modules\vite\node_modules\@esbuild
+if not exist "node_modules\vite\node_modules\@esbuild\win32-x64" goto :fix_native
+if not exist "node_modules\@rollup\rollup-win32-x64-msvc" goto :fix_native
 
 :start_servers
 
@@ -89,14 +91,33 @@ echo  [!] Dependencies not installed. Run WINDOWS-SETUP.bat first.
 echo.
 goto :end_pause
 
-:fix_wincmd
+:fix_native
 echo.
-echo  [..] First-time Windows setup: creating binary wrappers...
-echo  (Dependencies were installed in WSL - adding Windows support)
+echo  [..] Installing Windows-specific native binaries...
+echo  (Dependencies were installed in WSL with Linux binaries)
 echo.
-call npm install
+echo  Installing @esbuild/win32-x64 and @rollup/rollup-win32-x64-msvc...
+echo  (Vite needs esbuild 0.25.12, tsx needs esbuild 0.27.3)
+call npm install --no-save @esbuild/win32-x64@0.25.12 @rollup/rollup-win32-x64-msvc@4.57.1 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo  [!] npm install failed. This usually happens because WSL is using
+    echo  some files in node_modules. Try closing any WSL terminals first,
+    echo  then run Play Game.bat again.
+    echo.
+    echo  If it still fails, open a Windows command prompt as Administrator
+    echo  and run:
+    echo    cd "%~dp0"
+    echo    npm install --no-save @esbuild/win32-x64@0.25.12 @rollup/rollup-win32-x64-msvc@4.57.1
+    echo.
+    goto :end_pause
+)
+REM Also install into Vite's nested esbuild if needed
+if not exist "node_modules\vite\node_modules\@esbuild\win32-x64" (
+    xcopy /E /I /Y "node_modules\@esbuild\win32-x64" "node_modules\vite\node_modules\@esbuild\win32-x64" >nul
+)
 echo.
-echo  [OK] Windows binaries ready.
+echo  [OK] Windows native binaries installed.
 goto :start_servers
 
 :end_pause
