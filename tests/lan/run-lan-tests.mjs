@@ -57,7 +57,9 @@ const LAUNCH_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
-  '--window-size=1280,720',
+  '--window-size=640,360',
+  '--disable-frame-rate-limit',
+  '--disable-gpu-vsync',
 ];
 
 // SwiftShader is slow (~2-5 FPS), so timeouts need to be generous
@@ -313,7 +315,7 @@ async function launchBrowser() {
 
 async function createPage(browser) {
   const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 720 });
+  await page.setViewport({ width: 640, height: 360 });
 
   const errors = [];
   const logs = [];

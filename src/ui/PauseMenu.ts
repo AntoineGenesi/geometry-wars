@@ -3,6 +3,7 @@ import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
 import { SettingsMenu } from './SettingsMenu';
 import { BackgroundMusic } from '../audio/BackgroundMusic';
+import { PerformanceLogger } from '../core/PerformanceLogger';
 
 /**
  * Pause menu overlay.
@@ -14,6 +15,7 @@ import { BackgroundMusic } from '../audio/BackgroundMusic';
 export interface PauseMenuNetworkCallbacks {
   onPause: (paused: boolean) => void;
   onEndGame: () => void;
+  onStopServer?: () => void;
 }
 
 /** Data passed to the pause menu for the stats info panel */
@@ -50,6 +52,7 @@ export class PauseMenu {
   private bgMusic: BackgroundMusic | null = null;
   private isHost: boolean = false;
   private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
+  private perfLogger: PerformanceLogger | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -84,6 +87,10 @@ export class PauseMenu {
               <span class="btn-icon">⚙</span>
               <span>SETTINGS</span>
             </button>
+            <button class="pause-btn perf-graphs-btn" data-action="perf-graphs">
+              <span class="btn-icon">📊</span>
+              <span>PERFORMANCE GRAPHS</span>
+            </button>
             <button class="pause-btn music-btn" data-action="music">
               <span class="btn-icon">♪</span>
               <span class="music-label">MUSIC: ELECTRONIC</span>
@@ -95,6 +102,10 @@ export class PauseMenu {
             <button class="pause-btn end-game-btn hidden" data-action="end-game">
               <span class="btn-icon">&#x2716;</span>
               <span>END GAME FOR ALL</span>
+            </button>
+            <button class="pause-btn stop-server-btn hidden" data-action="stop-server">
+              <span class="btn-icon">&#x23F9;</span>
+              <span>STOP SERVER</span>
             </button>
           </div>
 
@@ -235,6 +246,16 @@ export class PauseMenu {
         box-shadow: 0 0 20px #44aacc;
       }
 
+      #pause-menu .perf-graphs-btn {
+        background: linear-gradient(180deg, #556633 0%, #443322 100%);
+        border-color: #ccaa44;
+      }
+
+      #pause-menu .perf-graphs-btn:hover {
+        background: linear-gradient(180deg, #778844 0%, #665533 100%);
+        box-shadow: 0 0 20px #ccaa44;
+      }
+
       #pause-menu .music-btn {
         background: linear-gradient(180deg, #663366 0%, #442244 100%);
         border-color: #cc44ff;
@@ -261,6 +282,20 @@ export class PauseMenu {
       }
 
       #pause-menu .end-game-btn.hidden {
+        display: none;
+      }
+
+      #pause-menu .stop-server-btn {
+        background: linear-gradient(180deg, #884422 0%, #662211 100%);
+        border-color: #ff6633;
+      }
+
+      #pause-menu .stop-server-btn:hover {
+        background: linear-gradient(180deg, #aa5533 0%, #883322 100%);
+        box-shadow: 0 0 25px #ff6633;
+      }
+
+      #pause-menu .stop-server-btn.hidden {
         display: none;
       }
 
@@ -467,6 +502,13 @@ export class PauseMenu {
       });
     });
 
+    const perfGraphsBtn = this.container.querySelector('[data-action="perf-graphs"]');
+    perfGraphsBtn?.addEventListener('click', () => {
+      if (this.perfLogger) {
+        this.showPerformanceGraphsModal();
+      }
+    });
+
     const musicBtn = this.container.querySelector('[data-action="music"]');
     musicBtn?.addEventListener('click', () => {
       if (this.bgMusic) {
@@ -486,6 +528,12 @@ export class PauseMenu {
     endGameBtn?.addEventListener('click', () => {
       this.hide();
       this.networkCallbacks?.onEndGame();
+    });
+
+    const stopServerBtn = this.container.querySelector('[data-action="stop-server"]');
+    stopServerBtn?.addEventListener('click', () => {
+      this.hide();
+      this.networkCallbacks?.onStopServer?.();
     });
 
     // Escape key to toggle
@@ -547,16 +595,26 @@ export class PauseMenu {
 
   /**
    * Set whether this client is the host.
-   * When true, shows the "END GAME FOR ALL" button.
+   * When true, shows the "END GAME FOR ALL" and "STOP SERVER" buttons.
    */
   setIsHost(isHost: boolean): void {
     this.isHost = isHost;
     const endGameBtn = this.container.querySelector('.end-game-btn');
+    const stopServerBtn = this.container.querySelector('.stop-server-btn');
+
     if (endGameBtn) {
       if (isHost) {
         endGameBtn.classList.remove('hidden');
       } else {
         endGameBtn.classList.add('hidden');
+      }
+    }
+
+    if (stopServerBtn) {
+      if (isHost) {
+        stopServerBtn.classList.remove('hidden');
+      } else {
+        stopServerBtn.classList.add('hidden');
       }
     }
   }
@@ -658,6 +716,281 @@ export class PauseMenu {
     if (perfEl) {
       perfEl.innerHTML = html;
     }
+  }
+
+  /**
+   * Set the performance logger for interactive graphs.
+   */
+  setPerformanceLogger(logger: PerformanceLogger): void {
+    this.perfLogger = logger;
+  }
+
+  /**
+   * Show the full-screen performance graphs modal.
+   */
+  private showPerformanceGraphsModal(): void {
+    if (!this.perfLogger) return;
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.id = 'perf-graphs-modal';
+    modal.innerHTML = `
+      <div class="perf-graphs-content">
+        <h2 class="perf-graphs-title">PERFORMANCE ANALYSIS</h2>
+        <div class="perf-graphs-tabs">
+          <button class="perf-tab active" data-tab="fps">FPS</button>
+          <button class="perf-tab" data-tab="enemies">Enemies</button>
+          <button class="perf-tab" data-tab="bullets">Bullets</button>
+          <button class="perf-tab" data-tab="types">Enemy Types</button>
+        </div>
+        <div class="perf-graphs-canvas-container">
+          <canvas id="perf-graph-canvas"></canvas>
+        </div>
+        <div class="perf-graphs-stats">
+          <div class="perf-stat-box">
+            <div class="perf-stat-label">Min FPS</div>
+            <div class="perf-stat-value" id="perf-min-fps">--</div>
+            <div class="perf-stat-detail" id="perf-min-fps-detail"></div>
+          </div>
+          <div class="perf-stat-box">
+            <div class="perf-stat-label">Max FPS</div>
+            <div class="perf-stat-value" id="perf-max-fps">--</div>
+            <div class="perf-stat-detail" id="perf-max-fps-detail"></div>
+          </div>
+        </div>
+        <div class="perf-graphs-hint">
+          Mouse wheel to zoom | Drag to pan | Hover for details
+        </div>
+        <button class="perf-graphs-close">CLOSE</button>
+      </div>
+    `;
+
+    // Style
+    const style = document.createElement('style');
+    style.textContent = `
+      #perf-graphs-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 20, 0.95);
+        z-index: 3000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-family: 'Segoe UI', Arial, sans-serif;
+      }
+
+      #perf-graphs-modal .perf-graphs-content {
+        width: 90%;
+        max-width: 1200px;
+        background: #0a0a14;
+        border: 2px solid #3a3a5e;
+        border-radius: 8px;
+        padding: 30px;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      #perf-graphs-modal .perf-graphs-title {
+        font-size: 36px;
+        font-weight: bold;
+        color: #ccaa44;
+        text-align: center;
+        margin: 0;
+        letter-spacing: 4px;
+      }
+
+      #perf-graphs-modal .perf-graphs-tabs {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      #perf-graphs-modal .perf-tab {
+        background: #1a1a2e;
+        border: 1px solid #3a3a5e;
+        color: #88aacc;
+        padding: 10px 20px;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 1px;
+      }
+
+      #perf-graphs-modal .perf-tab:hover {
+        background: #2a2a3e;
+        border-color: #ccaa44;
+      }
+
+      #perf-graphs-modal .perf-tab.active {
+        background: #ccaa44;
+        border-color: #ccaa44;
+        color: #0a0a14;
+      }
+
+      #perf-graphs-modal .perf-graphs-canvas-container {
+        display: flex;
+        justify-content: center;
+        background: #0a0a14;
+        border: 1px solid #1a1a2e;
+        border-radius: 4px;
+        padding: 10px;
+      }
+
+      #perf-graphs-modal canvas {
+        cursor: grab;
+      }
+
+      #perf-graphs-modal canvas:active {
+        cursor: grabbing;
+      }
+
+      #perf-graphs-modal .perf-graphs-stats {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+      }
+
+      #perf-graphs-modal .perf-stat-box {
+        flex: 1;
+        max-width: 300px;
+        background: #1a1a2e;
+        border: 1px solid #3a3a5e;
+        border-radius: 4px;
+        padding: 15px;
+      }
+
+      #perf-graphs-modal .perf-stat-label {
+        font-size: 11px;
+        font-weight: bold;
+        letter-spacing: 2px;
+        color: #668899;
+        margin-bottom: 5px;
+      }
+
+      #perf-graphs-modal .perf-stat-value {
+        font-size: 28px;
+        font-weight: bold;
+        color: #ccaa44;
+        margin-bottom: 5px;
+      }
+
+      #perf-graphs-modal .perf-stat-detail {
+        font-size: 11px;
+        color: #88aacc;
+        line-height: 1.4;
+      }
+
+      #perf-graphs-modal .perf-graphs-hint {
+        text-align: center;
+        color: #668899;
+        font-size: 12px;
+        letter-spacing: 1px;
+      }
+
+      #perf-graphs-modal .perf-graphs-close {
+        background: linear-gradient(180deg, #aa2222 0%, #661111 100%);
+        border: 2px solid #ff4444;
+        color: #ffffff;
+        padding: 12px 40px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 3px;
+        align-self: center;
+      }
+
+      #perf-graphs-modal .perf-graphs-close:hover {
+        background: linear-gradient(180deg, #cc3333 0%, #882222 100%);
+        box-shadow: 0 0 25px #ff4444;
+        transform: scale(1.05);
+      }
+    `;
+
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+
+    // Initialize graph (lazy import to avoid loading if not needed)
+    import('./PerformanceGraphs').then(({ PerformanceGraph }) => {
+      const canvas = modal.querySelector('#perf-graph-canvas') as HTMLCanvasElement;
+      const graph = new PerformanceGraph(canvas, { width: 1000, height: 500 });
+
+      // Load data
+      const data = this.perfLogger!.getDataPoints();
+      const minMoment = this.perfLogger!.getMinFPSMoment();
+      const maxMoment = this.perfLogger!.getMaxFPSMoment();
+
+      graph.setData(data);
+      graph.setFPSMoments(minMoment, maxMoment);
+      graph.renderFPSChart();
+
+      // Update stats
+      if (minMoment) {
+        const minFpsEl = modal.querySelector('#perf-min-fps') as HTMLElement;
+        const minFpsDetailEl = modal.querySelector('#perf-min-fps-detail') as HTMLElement;
+        minFpsEl.textContent = minMoment.fps.toFixed(1);
+
+        // Enemy type breakdown
+        const topTypes = Array.from(minMoment.enemyTypes.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([type, count]) => `${count} ${type}`)
+          .join(', ');
+        minFpsDetailEl.innerHTML = `
+          ${minMoment.enemyCount} enemies, ${minMoment.bulletCount} bullets<br>
+          Top: ${topTypes || 'none'}
+        `;
+      }
+
+      if (maxMoment) {
+        const maxFpsEl = modal.querySelector('#perf-max-fps') as HTMLElement;
+        const maxFpsDetailEl = modal.querySelector('#perf-max-fps-detail') as HTMLElement;
+        maxFpsEl.textContent = maxMoment.fps.toFixed(1);
+
+        const topTypes = Array.from(maxMoment.enemyTypes.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([type, count]) => `${count} ${type}`)
+          .join(', ');
+        maxFpsDetailEl.innerHTML = `
+          ${maxMoment.enemyCount} enemies, ${maxMoment.bulletCount} bullets<br>
+          Top: ${topTypes || 'none'}
+        `;
+      }
+
+      // Tab switching
+      const tabs = modal.querySelectorAll('.perf-tab');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+
+          const tabType = tab.getAttribute('data-tab');
+          if (tabType === 'fps') {
+            graph.renderFPSChart();
+          } else if (tabType === 'enemies') {
+            graph.renderEnemyChart();
+          } else if (tabType === 'bullets') {
+            graph.renderBulletChart();
+          } else if (tabType === 'types') {
+            graph.renderEnemyTypeChart();
+          }
+        });
+      });
+
+      // Close button
+      const closeBtn = modal.querySelector('.perf-graphs-close');
+      closeBtn?.addEventListener('click', () => {
+        graph.dispose();
+        modal.remove();
+        style.remove();
+      });
+    });
   }
 
   /**

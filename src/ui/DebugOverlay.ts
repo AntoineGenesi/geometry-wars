@@ -9,6 +9,7 @@
  */
 
 import { PerformanceTracker, PerfMoment } from '../core/PerformanceTracker';
+import type { RendererBackend } from '../rendering/RendererFactory';
 
 // ---------------------------------------------------------------------------
 // DebugOverlay
@@ -22,6 +23,7 @@ export class DebugOverlay {
   private readonly fpsEl: HTMLSpanElement;
   private readonly entitiesEl: HTMLSpanElement;
   private readonly bulletsEl: HTMLSpanElement;
+  private readonly rendererEl: HTMLSpanElement;
 
   // Top-10 panel (expandable)
   private readonly topPanel: HTMLDivElement;
@@ -51,6 +53,10 @@ export class DebugOverlay {
     this.container.innerHTML = `
       <div class="debug-live">
         <div class="debug-row">
+          <span class="debug-label">REN</span>
+          <span class="debug-value" id="debug-renderer" style="color:#8888ff">WebGL2</span>
+        </div>
+        <div class="debug-row">
           <span class="debug-label">FPS</span>
           <span class="debug-value" id="debug-fps">--</span>
         </div>
@@ -74,6 +80,7 @@ export class DebugOverlay {
     this.fpsEl = document.getElementById('debug-fps') as HTMLSpanElement;
     this.entitiesEl = document.getElementById('debug-entities') as HTMLSpanElement;
     this.bulletsEl = document.getElementById('debug-bullets') as HTMLSpanElement;
+    this.rendererEl = document.getElementById('debug-renderer') as HTMLSpanElement;
     this.topPanel = document.getElementById('debug-top-panel') as HTMLDivElement;
     this.topContent = document.getElementById('debug-top-content') as HTMLDivElement;
 
@@ -97,6 +104,14 @@ export class DebugOverlay {
       }
     };
     document.addEventListener('keydown', this.keyHandler);
+  }
+
+  /** Set the renderer backend label (e.g. 'webgpu' or 'webgl2'). */
+  setRendererBackend(backend: RendererBackend): void {
+    const label = backend === 'webgpu' ? 'WebGPU' : 'WebGL2';
+    const color = backend === 'webgpu' ? '#44ff88' : '#8888ff';
+    this.rendererEl.textContent = label;
+    this.rendererEl.style.color = color;
   }
 
   // -- Per-frame update (call from render loop) ----------------------------
@@ -215,11 +230,22 @@ export class DebugOverlay {
     const entClass = highlight === 'enemies' ? ' debug-highlight' : '';
     const bulClass = highlight === 'bullets' ? ' debug-highlight' : '';
 
+    // Build enemy type breakdown tooltip
+    let enemyBreakdown = '';
+    if (m.enemyTypes && m.enemyTypes.size > 0) {
+      const types = Array.from(m.enemyTypes.entries())
+        .sort((a, b) => b[1] - a[1]) // Sort by count descending
+        .slice(0, 5) // Top 5 enemy types
+        .map(([type, count]) => `${type}: ${count}`)
+        .join(', ');
+      enemyBreakdown = ` title="${types}"`;
+    }
+
     return `<tr>
       <td class="debug-rank">${rank}</td>
       <td class="debug-time">${m.timeLabel}</td>
       <td class="debug-fps-cell${fpsClass}">${m.fps.toFixed(1)}</td>
-      <td class="debug-ent-cell${entClass}">${m.entityCount}</td>
+      <td class="debug-ent-cell${entClass}"${enemyBreakdown}>${m.entityCount}</td>
       <td class="debug-bul-cell${bulClass}">${m.bulletCount}</td>
     </tr>`;
   }

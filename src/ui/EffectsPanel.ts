@@ -40,29 +40,31 @@ export class EffectsPanel {
     title.style.cssText = 'font-weight:bold; margin-bottom:8px; color:#ff0; text-align:center;';
     this.container.appendChild(title);
 
-    // Bloom strength
-    this.addSlider('Bloom Strength', 0, 3, this.game.bloomPass.strength, 0.1, (v) => {
-      this.game.bloomPass.strength = v;
-    });
-
-    // Bloom threshold
-    this.addSlider('Bloom Threshold', 0, 1, this.game.bloomPass.threshold, 0.05, (v) => {
-      this.game.bloomPass.threshold = v;
-    });
-
-    // Bloom radius
-    this.addSlider('Bloom Radius', 0, 2, (this.game.bloomPass as any).radius ?? 0.4, 0.1, (v) => {
-      (this.game.bloomPass as any).radius = v;
-    });
-
-    // Vignette toggle
-    const vignettePass = this.game.composer.passes.find(
-      (p: any) => p.uniforms?.darkness !== undefined
-    );
-    if (vignettePass) {
-      this.addSlider('Vignette', 0, 2, (vignettePass as any).uniforms.darkness.value, 0.1, (v) => {
-        (vignettePass as any).uniforms.darkness.value = v;
+    // Bloom controls (only available with WebGL2 EffectComposer)
+    if (this.game.bloomPass) {
+      this.addSlider('Bloom Strength', 0, 3, this.game.bloomPass.strength, 0.1, (v) => {
+        if (this.game.bloomPass) this.game.bloomPass.strength = v;
       });
+
+      this.addSlider('Bloom Threshold', 0, 1, this.game.bloomPass.threshold, 0.05, (v) => {
+        if (this.game.bloomPass) this.game.bloomPass.threshold = v;
+      });
+
+      this.addSlider('Bloom Radius', 0, 2, (this.game.bloomPass as any).radius ?? 0.4, 0.1, (v) => {
+        if (this.game.bloomPass) (this.game.bloomPass as any).radius = v;
+      });
+    }
+
+    // Vignette toggle (only available with WebGL2 EffectComposer)
+    if (this.game.composer) {
+      const vignettePass = this.game.composer.passes.find(
+        (p: any) => p.uniforms?.darkness !== undefined
+      );
+      if (vignettePass) {
+        this.addSlider('Vignette', 0, 2, (vignettePass as any).uniforms.darkness.value, 0.1, (v) => {
+          (vignettePass as any).uniforms.darkness.value = v;
+        });
+      }
     }
   }
 

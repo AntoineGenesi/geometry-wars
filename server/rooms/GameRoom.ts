@@ -131,7 +131,26 @@ export class GameRoom extends Room<GameState> {
   onJoin(client: Client, options: { name?: string }) {
     const player = new PlayerState();
     player.id = client.sessionId;
-    player.name = options.name || `Player ${this.state.players.size + 1}`;
+
+    // Sanitize and validate name
+    let rawName = (options.name || '').trim().replace(/<[^>]*>/g, '').slice(0, 20);
+    if (!rawName) {
+      rawName = `Player ${this.state.players.size + 1}`;
+    }
+
+    // Check for name uniqueness; if taken, append a number
+    let finalName = rawName;
+    let suffix = 2;
+    const existingNames = new Set<string>();
+    this.state.players.forEach((p) => {
+      existingNames.add(p.name.toLowerCase());
+    });
+    while (existingNames.has(finalName.toLowerCase())) {
+      finalName = `${rawName.slice(0, 17)}(${suffix})`;
+      suffix++;
+    }
+
+    player.name = finalName;
     player.color = PLAYER_COLORS[this.state.players.size % PLAYER_COLORS.length];
 
     // First player to join becomes host

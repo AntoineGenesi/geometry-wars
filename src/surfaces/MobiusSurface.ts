@@ -272,7 +272,7 @@ export class MobiusSurface extends Surface {
       }
     }
 
-    // Generate indices for triangles
+    // Generate indices for triangles (main body: row 0 through segU-1)
     for (let i = 0; i < segU; i++) {
       for (let j = 0; j < segV; j++) {
         const a = i * (segV + 1) + j
@@ -283,6 +283,22 @@ export class MobiusSurface extends Surface {
         indices.push(a, b, c)
         indices.push(b, d, c)
       }
+    }
+
+    // Mobius twist: connect last row (segU) back to first row (0) with v-flipped indices.
+    // At t=2π the strip has undergone a half-twist, so v=0 maps to v=1 and vice versa.
+    // Last row starts at vertex index: segU * (segV + 1)
+    // First row starts at vertex index: 0
+    // The v-flip means last_row[j] connects to first_row[segV - j]
+    const lastRowStart = segU * (segV + 1)
+    for (let j = 0; j < segV; j++) {
+      const a = lastRowStart + j           // last row, v=j
+      const b = 0 + (segV - j)            // first row, v=segV-j (twisted)
+      const c = lastRowStart + j + 1       // last row, v=j+1
+      const d = 0 + (segV - j - 1)        // first row, v=segV-j-1 (twisted)
+
+      indices.push(a, b, c)
+      indices.push(b, d, c)
     }
 
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))

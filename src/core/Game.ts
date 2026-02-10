@@ -9,7 +9,7 @@ import { GameClock } from './GameClock';
 import { EntityManager } from './EntityManager';
 import { CollisionGroup } from './Entity';
 import { GPUCapabilityReport, detectGPUCapabilities } from '../rendering/GPUCapabilities';
-import { createRenderer } from '../rendering/RendererFactory';
+import { createRenderer, RendererBackend } from '../rendering/RendererFactory';
 import { EntityLimits, getEntityLimits } from '../rendering/EntityLimits';
 
 // ---------------------------------------------------------------------------
@@ -47,6 +47,10 @@ export interface GameConfig {
   _renderer?: THREE.WebGLRenderer;
   /** Pre-detected GPU capabilities (used by Game.create() factory). */
   _capabilities?: GPUCapabilityReport;
+  /** Whether the renderer is WebGPU (used by Game.create() factory). */
+  _isWebGPU?: boolean;
+  /** Active rendering backend name (used by Game.create() factory). */
+  _backend?: RendererBackend;
 }
 
 // ---------------------------------------------------------------------------
@@ -55,9 +59,9 @@ export interface GameConfig {
 
 const DEFAULT_FOV = 60;
 const DEFAULT_BLOOM: BloomConfig = {
-  strength: 0.7,
-  radius: 0.4,
-  threshold: 0.6,
+  strength: 1.0,
+  radius: 0.5,
+  threshold: 0.3,
 };
 const DEFAULT_CAMERA_DISTANCE = 25;
 const DEFAULT_CAMERA_SMOOTHING = 0.92;
@@ -83,6 +87,13 @@ export class Game {
   readonly camera: THREE.PerspectiveCamera;
   readonly renderer: THREE.WebGLRenderer;
 
+  // ---- Renderer backend info ------------------------------------------
+
+  /** Whether the active renderer is WebGPU. */
+  readonly isWebGPU: boolean;
+  /** Active rendering backend name ('webgpu' or 'webgl2'). */
+  readonly backend: RendererBackend;
+
   // ---- GPU capabilities -----------------------------------------------
 
   /** Detected GPU capabilities. Null when constructed synchronously
@@ -95,8 +106,12 @@ export class Game {
 
   // ---- Post-processing ------------------------------------------------
 
-  readonly composer: EffectComposer;
-  readonly bloomPass: UnrealBloomPass;
+  /** EffectComposer for WebGL2 post-processing (null when using WebGPU). */
+  readonly composer: EffectComposer | null;
+  /** UnrealBloomPass for WebGL2 bloom (null when using WebGPU). */
+  readonly bloomPass: UnrealBloomPass | null;
+  /** WebGPU PostProcessing instance (null when using WebGL2). */
+  private webgpuPostProcessing: { render: () => void } | null = null;
 
   // ---- Game systems ---------------------------------------------------
 
@@ -147,16 +162,22 @@ export class Game {
   static async create(config: GameConfig = {}): Promise<Game> {
     const container = config.container ?? document.body;
     const capabilities = await detectGPUCapabilities();
-    const { renderer } = await createRenderer(container, capabilities);
+    const { renderer, isWebGPU, backend } = await createRenderer(container, capabilities);
     return new Game({
       ...config,
       _renderer: renderer,
       _capabilities: capabilities,
+      _isWebGPU: isWebGPU,
+      _backend: backend,
     });
   }
 
   constructor(config: GameConfig = {}) {
     const container = config.container ?? document.body;
+
+    // -- Renderer backend info --
+    this.isWebGPU = config._isWebGPU ?? false;
+    this.backend = config._backend ?? 'webgl2';
 
     // -- GPU capabilities (set if provided by Game.create()) --
     if (config._capabilities) {
@@ -205,53 +226,63 @@ export class Game {
     }
 
     // -- Post-processing --
-    const bloomCfg: BloomConfig = { ...DEFAULT_BLOOM, ...config.bloom };
+    if (this.isWebGPU) {
+      // WebGPU path: EffectComposer is WebGL-specific and cannot work with
+      // WebGPURenderer. Use direct renderer.render() for now.
+      // TSL-based PostProcessing with bloom can be added in a future iteration.
+      this.composer = null;
+      this.bloomPass = null;
+      this.initWebGPUPostProcessing(config.bloom);
+    } else {
+      // WebGL2 path: standard EffectComposer + UnrealBloomPass
+      const bloomCfg: BloomConfig = { ...DEFAULT_BLOOM, ...config.bloom };
 
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
+      this.composer = new EffectComposer(this.renderer);
+      this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-    this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(window.innerWidth, window.innerHeight),
-      bloomCfg.strength,
-      bloomCfg.radius,
-      bloomCfg.threshold,
-    );
-    // Only add bloom if strength > 0
-    if (bloomCfg.strength > 0) {
-      this.composer.addPass(this.bloomPass);
+      this.bloomPass = new UnrealBloomPass(
+        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        bloomCfg.strength,
+        bloomCfg.radius,
+        bloomCfg.threshold,
+      );
+      // Only add bloom if strength > 0
+      if (bloomCfg.strength > 0) {
+        this.composer.addPass(this.bloomPass);
+      }
+
+      // Vignette pass - subtle screen-edge darkening (GW3D authentic)
+      const vignettePass = new ShaderPass({
+        uniforms: {
+          tDiffuse: { value: null },
+          offset: { value: 1.0 },
+          darkness: { value: 0.8 },
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform sampler2D tDiffuse;
+          uniform float offset;
+          uniform float darkness;
+          varying vec2 vUv;
+          void main() {
+            vec4 texel = texture2D(tDiffuse, vUv);
+            vec2 uv = (vUv - vec2(0.5)) * vec2(offset);
+            float vignette = 1.0 - dot(uv, uv);
+            texel.rgb *= mix(1.0 - darkness, 1.0, vignette);
+            gl_FragColor = texel;
+          }
+        `,
+      });
+      this.composer.addPass(vignettePass);
+
+      this.composer.addPass(new OutputPass());
     }
-
-    // Vignette pass - subtle screen-edge darkening (GW3D authentic)
-    const vignettePass = new ShaderPass({
-      uniforms: {
-        tDiffuse: { value: null },
-        offset: { value: 1.0 },
-        darkness: { value: 0.8 },
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float offset;
-        uniform float darkness;
-        varying vec2 vUv;
-        void main() {
-          vec4 texel = texture2D(tDiffuse, vUv);
-          vec2 uv = (vUv - vec2(0.5)) * vec2(offset);
-          float vignette = 1.0 - dot(uv, uv);
-          texel.rgb *= mix(1.0 - darkness, 1.0, vignette);
-          gl_FragColor = texel;
-        }
-      `,
-    });
-    this.composer.addPass(vignettePass);
-
-    this.composer.addPass(new OutputPass());
 
     // -- Systems --
     this.clock = new GameClock(this);
@@ -263,6 +294,70 @@ export class Game {
     // -- Window events --
     window.addEventListener('resize', this.onResize);
     window.addEventListener('visibilitychange', this.onVisibilityChange);
+  }
+
+  /**
+   * Initialize WebGPU post-processing using TSL node-based PostProcessing.
+   *
+   * Three.js 0.170's WebGPU module uses a node-graph approach instead of
+   * EffectComposer. We dynamically import three/webgpu and build a
+   * pass(scene, camera) -> bloom-approximation pipeline.
+   *
+   * Since Three.js 0.170 does NOT have a built-in bloom() TSL function,
+   * we use mip-based blur on the bright pass as an approximation.
+   * The visual result is similar but not identical to UnrealBloomPass.
+   */
+  private initWebGPUPostProcessing(_bloomConfig?: Partial<BloomConfig>): void {
+    // Async initialization -- we set up PostProcessing after dynamic import.
+    // The TSL (Three Shading Language) types are not fully typed for chained
+    // node operations, so we use 'any' casts for the node graph construction.
+    import('three/webgpu').then((webgpuModule: any) => {
+      try {
+        const { PostProcessing, pass, float, max, add, screenUV } = webgpuModule;
+
+        // Create the scene render pass
+        const scenePass = pass(this.scene, this.camera);
+        const sceneTexture = scenePass.getTextureNode();
+
+        // Bloom approximation using mip-based blur:
+        // 1. Extract bright areas (threshold)
+        // 2. Apply mip-level blur to bright areas
+        // 3. Composite with original
+        const strength = _bloomConfig?.strength ?? DEFAULT_BLOOM.strength;
+        const threshold = _bloomConfig?.threshold ?? DEFAULT_BLOOM.threshold;
+        const bloomStrength = float(strength);
+        const bloomThreshold = float(threshold);
+
+        // Extract bright pixels above threshold
+        const brightness = max(
+          sceneTexture.r,
+          max(sceneTexture.g, sceneTexture.b),
+        );
+        const brightMask = max(brightness.sub(bloomThreshold), float(0.0));
+        const brightColor = sceneTexture.mul(brightMask);
+
+        // Mip-based blur gives a soft glow effect
+        // .blur() is a TSL TextureNode method that uses mip levels for blur
+        const blurredBright = (brightColor as any).blur(float(0.3));
+
+        // Composite: original + bloom
+        const finalColor = add(sceneTexture, blurredBright.mul(bloomStrength));
+
+        // Vignette effect
+        const uv = screenUV.sub(float(0.5));
+        const vignette = float(1.0).sub(uv.dot(uv).mul(float(0.8)));
+        const vignetted = finalColor.mul(vignette);
+
+        const postProcessing = new PostProcessing(this.renderer as any, vignetted);
+        this.webgpuPostProcessing = postProcessing;
+      } catch (err) {
+        console.warn('[Game] WebGPU PostProcessing setup failed, using direct render:', err);
+        // Fallback: direct render without post-processing
+        this.webgpuPostProcessing = null;
+      }
+    }).catch((err: unknown) => {
+      console.warn('[Game] Failed to load three/webgpu for PostProcessing:', err);
+    });
   }
 
   // ---- Collision rules ------------------------------------------------
@@ -349,8 +444,13 @@ export class Game {
     this.updateCamera(this.clock.alpha);
     if (this.renderOverride) {
       this.renderOverride();
-    } else {
+    } else if (this.webgpuPostProcessing) {
+      this.webgpuPostProcessing.render();
+    } else if (this.composer) {
       this.composer.render();
+    } else {
+      // Direct render fallback (WebGPU without PostProcessing)
+      (this.renderer as any).render(this.scene, this.camera);
     }
   };
 
@@ -394,8 +494,12 @@ export class Game {
     this.camera.updateProjectionMatrix();
 
     this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
-    this.bloomPass.resolution.set(width, height);
+    if (this.composer) {
+      this.composer.setSize(width, height);
+    }
+    if (this.bloomPass) {
+      this.bloomPass.resolution.set(width, height);
+    }
   };
 
   private onVisibilityChange = (): void => {
@@ -414,7 +518,9 @@ export class Game {
     window.removeEventListener('visibilitychange', this.onVisibilityChange);
 
     this.entityManager.clear();
-    this.composer.dispose();
+    if (this.composer) {
+      this.composer.dispose();
+    }
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }

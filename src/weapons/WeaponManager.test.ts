@@ -156,9 +156,9 @@ describe('WeaponManager', () => {
     it('should respect fire rate cooldown', () => {
       expect(manager.canFire(T)).toBe(true);
       manager.fire(origin(), forward(), T);
-      // Fire rate for Standard is 15/sec = 0.067s cooldown
+      // Fire rate for Standard (blaster) is 6/sec = 0.167s cooldown
       expect(manager.canFire(T + 0.01)).toBe(false);
-      expect(manager.canFire(T + 0.1)).toBe(true);
+      expect(manager.canFire(T + 0.2)).toBe(true);
     });
 
     it('should clear all projectiles and effects', () => {

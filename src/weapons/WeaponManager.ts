@@ -66,6 +66,7 @@ export class WeaponManager {
   private ammo: Map<WeaponType, number> = new Map();
   private stacks: Map<WeaponType, number> = new Map();
   private lastFireTime: number = 0;
+  private lastBlasterFireTime: number = 0;
 
   // Weapon inventory: ordered list of collected weapons (Standard always first)
   private inventory: WeaponType[] = [WeaponType.Standard];
@@ -295,19 +296,25 @@ export class WeaponManager {
    * Check if weapon can fire (cooldown and ammo)
    */
   canFire(currentTime: number): boolean {
+    // When blaster is the active weapon, use blaster cooldown
+    if (this.currentWeapon === WeaponType.Standard) {
+      const blasterConfig = WEAPON_CONFIGS[WeaponType.Standard];
+      const rapidMult = this.getBuffMultiplier(BuffType.RapidFire);
+      const cooldown = 1 / (blasterConfig.fireRate * rapidMult);
+      return currentTime - this.lastBlasterFireTime >= cooldown;
+    }
+
+    // For non-blaster weapons, use primary weapon cooldown
     const config = WEAPON_CONFIGS[this.currentWeapon];
     const rapidMult = this.getBuffMultiplier(BuffType.RapidFire);
     const cooldown = 1 / (config.fireRate * rapidMult);
 
     if (currentTime - this.lastFireTime < cooldown) return false;
 
-    if (this.currentWeapon !== WeaponType.Standard) {
-      const ammo = this.ammo.get(this.currentWeapon) ?? 0;
-      if (ammo <= 0) {
-        // Out of ammo - auto-switch to next available weapon
-        this.autoSwitchOnDepletion();
-        return this.canFire(currentTime);
-      }
+    const ammo = this.ammo.get(this.currentWeapon) ?? 0;
+    if (ammo <= 0) {
+      this.autoSwitchOnDepletion();
+      return this.canFire(currentTime);
     }
 
     return true;
@@ -322,66 +329,68 @@ export class WeaponManager {
    * @returns true if weapon fired
    */
   fire(origin: THREE.Vector3, direction: THREE.Vector3, currentTime: number, surfaceNormal?: THREE.Vector3): boolean {
-    if (!this.canFire(currentTime)) return false;
+    let firedAnything = false;
 
-    this.lastFireTime = currentTime;
-    const config = WEAPON_CONFIGS[this.currentWeapon];
+    // Blaster fires on its OWN independent cooldown (always active)
+    const blasterConfig = WEAPON_CONFIGS[WeaponType.Standard];
+    const rapidMult = this.getBuffMultiplier(BuffType.RapidFire);
+    const blasterCooldown = 1 / (blasterConfig.fireRate * rapidMult);
+    if (currentTime - this.lastBlasterFireTime >= blasterCooldown) {
+      this.lastBlasterFireTime = currentTime;
+      this.fireStandard(origin, direction, surfaceNormal);
+      firedAnything = true;
+    }
 
-    // Consume ammo (Duration+ buff halves consumption)
-    if (this.currentWeapon !== WeaponType.Standard) {
+    // Primary weapon fires on its own cooldown (if not Standard, which is blaster)
+    if (this.currentWeapon !== WeaponType.Standard && this.canFire(currentTime)) {
+      this.lastFireTime = currentTime;
+
+      // Consume ammo (Duration+ buff halves consumption)
       const durationMult = this.getBuffMultiplier(BuffType.DurationPlus);
       const consumeChance = 1.0 / durationMult;
       if (Math.random() < consumeChance) {
         const ammo = this.ammo.get(this.currentWeapon) ?? 0;
         this.ammo.set(this.currentWeapon, ammo - 1);
       }
-    }
 
-    // Always fire the blaster alongside the equipped weapon
-    this.fireStandard(origin, direction, surfaceNormal);
-
-    // Fire the equipped weapon (if not Standard, fire it too)
-    if (this.currentWeapon !== WeaponType.Standard) {
       switch (this.currentWeapon) {
         case WeaponType.Spread:
           this.fireSpread(origin, direction, surfaceNormal);
           break;
-
         case WeaponType.Piercing:
           this.firePiercing(origin, direction);
           break;
-
         case WeaponType.ChainLightning:
           this.fireChainLightning(origin, direction);
           break;
-
         case WeaponType.Homing:
           this.fireHoming(origin, direction);
           break;
-
         case WeaponType.PlasmaMortar:
           this.fireMortar(origin, direction);
           break;
-
         case WeaponType.GravityGun:
           this.fireGravityGun(origin, direction);
           break;
-
         case WeaponType.LaserBeam:
           this.fireLaser(origin, direction);
           break;
-
         case WeaponType.BlackHole:
           this.fireBlackHole(origin, direction);
           break;
-
         case WeaponType.TeslaCoil:
           this.fireTesla(origin);
           break;
       }
+      firedAnything = true;
     }
 
-    return true;
+    // If only blaster equipped, use blaster cooldown for the return value
+    if (this.currentWeapon === WeaponType.Standard) {
+      return firedAnything;
+    }
+
+    return firedAnything;
   }
 
   /**

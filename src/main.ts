@@ -58,13 +58,26 @@ import { BuffHUD } from './buffs/BuffHUD';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
+import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
+import { LODManager, LODLevel } from './rendering/LODManager';
+import { AdaptiveQuality, QualityLevel } from './rendering/AdaptiveQuality';
+import { DepthOcclusionSystem } from './rendering/DepthOpacity';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
+import { SettingsMenu } from './ui/SettingsMenu';
 import {
   computeDifficultyLevel,
   generateScaledEndlessWave,
   type DifficultyInput,
 } from './core/DifficultyScaling';
+import { isMobile } from './core/MobileDetector';
+import { TouchInput } from './input/TouchInput';
+import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
+import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
+import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
+import { loadDDASettings } from './difficulty/DDASettings';
+import { DDALogger } from './difficulty/DDALogger';
+import { EntityAudit } from './core/EntityAudit';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -196,6 +209,26 @@ const ENEMY_COLORS: Record<string, THREE.Color> = {
   titanweaver: new THREE.Color(0x22ff44),
   boss: new THREE.Color(0x4488ff),
 };
+
+// ---------------------------------------------------------------------------
+// Weapon type -> bullet visual type mapping (for BulletInstanceManager)
+// ---------------------------------------------------------------------------
+
+function weaponToBulletVisual(weapon: WeaponType): BulletVisualType {
+  switch (weapon) {
+    case WeaponType.Spread:
+      return BulletVisualType.Spread;
+    case WeaponType.Piercing:
+      return BulletVisualType.Piercing;
+    case WeaponType.Homing:
+      return BulletVisualType.Homing;
+    default:
+      return BulletVisualType.Standard;
+  }
+}
+
+// Pre-allocated temp vector for bullet instance sync (zero per-frame allocation)
+const _bulletSyncDir = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
 // Surface transform helper
@@ -343,7 +376,7 @@ function checkBulletEnemyCollisions(
     enemySpatialHash.insert(enemy.position.x, enemy.position.y, enemy.position.z, enemy);
   }
 
-  bulletPool.forEachActive((bulletIdx, bulletPos) => {
+  bulletPool.forEachActive((bulletIdx, bulletPos, bulletData) => {
     // Use spatial hash for broad-phase: only check nearby enemies
     const nearby = enemySpatialHash.getNearby(bulletPos.x, bulletPos.y, bulletPos.z);
     for (let n = 0; n < nearby.length; n++) {
@@ -354,6 +387,9 @@ function checkBulletEnemyCollisions(
       const hitRadiusSq = (enemy.radius + 0.15) * (enemy.radius + 0.15);
       const distSq = bulletPos.distanceToSquared(enemy.position);
       if (distSq < hitRadiusSq) {
+        // Capture bullet angle BEFORE kill (data persists but capture for clarity)
+        const bulletAngle = bulletData.angle;
+
         // Hit!
         bulletPool.kill(bulletIdx);
         enemy.takeDamage(bulletDamage);
@@ -405,10 +441,10 @@ function checkBulletEnemyCollisions(
           // Grid deformation at death position
           surface.applyForce(enemy.position, 0.2, 1.0);
 
-          // Spawn geoms at death position (burst velocity handles scatter)
+          // Spawn geoms at death position with kill-shot momentum
           const { u, v } = surface.worldToSurface(enemy.position);
           for (let g = 0; g < enemy.geomCount; g++) {
-            geomPool.spawn(u, v);
+            geomPool.spawn(u, v, bulletAngle);
           }
 
           // Trigger on-death procs (volatile explosions, etc.)
@@ -504,6 +540,9 @@ function checkPlayerEnemyCollisions(
 // ---------------------------------------------------------------------------
 
 function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
+  // Detect mobile mode early -- affects quality, input, and UI decisions
+  const mobile = isMobile();
+
   // Initialize sound engine (user already clicked start menu, so audio context is allowed)
   const sound = getSoundEngine();
   sound.init();
@@ -536,19 +575,37 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     : ADVENTURE_LEVELS[levelIndex];
 
   // -- Game engine --
-  // Bloom: high threshold so only bright entities glow, not the grid
+  // On mobile: reduce bloom, cap pixel ratio, apply mobile entity limits
+  const bloomStrength = mobile ? 0.4 : 0.7;
   const game = new Game({
     bloom: {
-      strength: 0.7,
-      radius: 0.5,
+      strength: bloomStrength,
+      radius: mobile ? 0.3 : 0.5,
       threshold: 0.6,
     },
     cameraDistance: 20,
     cameraSmoothing: 0.05,
   });
 
+  // Apply mobile entity limits (cap enemies, particles, etc.)
+  if (mobile) {
+    game.entityLimits = {
+      maxEnemies: 200,
+      maxBullets: 500,
+      maxParticles: 2000,
+      maxGeoms: 300,
+      bloomEnabled: true,
+      shadowsEnabled: false,
+    };
+    // Cap pixel ratio to 2x on mobile (saves GPU fill rate)
+    game.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  }
+
   // Disable built-in camera - we control camera to follow player
   game.disableBuiltInCameraUpdate = true;
+
+  // Set global renderer info so all SettingsMenu instances show it
+  SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
   // Effects demo panel (press G to toggle)
   new EffectsPanel(game);
@@ -592,6 +649,16 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     gridSegmentsU: 24,
     gridSegmentsV: 18,
   };
+
+  // Cube tunnel needs much larger dimensions — its default size is overridden by level.surfaceScale
+  // which is 8-12, far too small for a tunnel. Scale it up dramatically.
+  if (surfaceType === 'cube-tunnel') {
+    surfaceConfig.size = 80;
+    (surfaceConfig as any).wallThickness = 4.0;
+    (surfaceConfig as any).bevelRadius = 10.0;
+    (surfaceConfig as any).gridSegments = 20;
+  }
+
   const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
   game.scene.add(surface.group);
 
@@ -604,8 +671,15 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   surface.mesh.updateMatrixWorld(true);
   const meshSurface = new MeshSurface(surface.mesh);
 
+  // -- Depth occlusion (raycast-based) --
+  // Raycasts from camera to enemies, counting surface intersections to determine
+  // opacity. Enemies behind walls are dimmed/hidden. Batched for performance.
+  const depthOcclusion = new DepthOcclusionSystem();
+  depthOcclusion.setSurfaceMesh(surface.mesh);
+
   // -- Input --
-  const input = new InputManager();
+  // On mobile, use virtual joystick touch controls; otherwise keyboard+mouse.
+  const input = mobile ? new TouchInput() : new InputManager();
 
   // Surface transform callback shared by subsystems still using UV (enemies, geoms)
   const getTransform = makeSurfaceTransformFn(surface);
@@ -620,6 +694,15 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     getTransform,
     (u: number, v: number, du: number, dv: number) => surface.moveOnSurface(u, v, du, dv)
   );
+
+  // -- GPU instanced bullet rendering (reduces draw calls from 1-per-bullet to 1-per-type) --
+  const bulletInstanceManager = new BulletInstanceManager(game.scene, 200);
+
+  // Hide the original line-based bullet visuals since instanced rendering takes over
+  bulletPool.root.visible = false;
+
+  // Track which pool indices are registered with the instance manager
+  const bulletInstanceIds = new Set<string>();
 
   // -- Geom pool --
   const geomPool = new GeomPool();
@@ -672,9 +755,48 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const enemyInstanceManager = new EnemyInstanceManager(game.scene);
   enemySpawner.setInstanceManager(enemyInstanceManager);
 
+  // -- Dynamic Difficulty Adjustment (DDA) system --
+  const ddaSettings = loadDDASettings();
+  const ddaTracker = new DDAPerformanceTracker(0);
+  const ddaEngine = new DDADecisionEngine();
+  ddaEngine.setEnabled(ddaSettings.enabled);
+  const ddaSpawnModifier = new DDASpawnModifier(ddaEngine);
+  enemySpawner.setDDAModifier(ddaSpawnModifier);
+  // Single player: one player position for zone detection
+  const ddaPlayers = [{ index: 0, u: 0.5, v: 0.5 }];
+  enemySpawner.setDDAPlayers(ddaPlayers);
+
+  // -- DDA passive data logger (samples state every 5s, persists to localStorage) --
+  const ddaLogger = new DDALogger([ddaTracker], ddaEngine, surfaceType);
+
+  // -- LOD manager (reduces triangle count for distant enemies) --
+  const lodManager = new LODManager();
+
+  // -- Adaptive quality (auto-adjusts visual fidelity to maintain 60fps) --
+  const adaptiveQuality = new AdaptiveQuality({
+    initialLevel: mobile ? QualityLevel.MEDIUM : QualityLevel.ULTRA,
+  });
+
+  // Apply quality changes when adaptive system transitions between levels
+  adaptiveQuality.onQualityChange = (_oldLevel, _newLevel) => {
+    const settings = adaptiveQuality.getSettings();
+
+    // Apply bloom settings (only when using WebGL2 EffectComposer path)
+    if (game.bloomPass) {
+      if (settings.bloomEnabled) {
+        game.bloomPass.strength = bloomStrength * settings.bloomResolutionScale;
+        game.bloomPass.radius = (mobile ? 0.3 : 0.5) * settings.bloomResolutionScale;
+      } else {
+        game.bloomPass.strength = 0;
+      }
+    }
+  };
+
   // -- Debug performance overlay --
   const perfTracker = new PerformanceTracker(surfaceType);
   const debugOverlay = new DebugOverlay(perfTracker);
+  const entityAudit = new EntityAudit();
+  debugOverlay.setRendererBackend(game.backend);
 
   // -- Enemy glow trails (for fast-moving enemies) --
   // Track which enemies have trails and their trail objects
@@ -915,6 +1037,13 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const weaponHUD = new WeaponHUD();
   weaponHUD.setPosition(10, window.innerHeight / 2 - 60);
 
+  // -- Wire DDA logger extras (buff/weapon tracking) --
+  ddaLogger.setExtrasProvider({
+    getActiveBuffs: () =>
+      buffManager.getActiveBuffs().map(b => `${b.def.shortName}:${b.stacks}`),
+    getCurrentWeapon: () => weaponManager.getCurrentWeapon(),
+  });
+
   // -- Companion system --
   const companionManager = new CompanionManager();
   companionManager.setMeshSurface(meshSurface);
@@ -1145,6 +1274,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   let isPaused = false;
   let isGameOver = false;
 
+  // LOD assignments (shared between fixed update and render callback)
+  let lodAssignments: Map<BaseEnemy, LODLevel> = new Map();
+
   // -- Pause menu --
   const pauseMenu = new PauseMenu();
   pauseMenu.setMusic(bgMusic);
@@ -1158,6 +1290,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   });
   pauseMenu.onExit(() => {
     // Clean up and reload page to go back to menu
+    ddaLogger.finalize(); // Persist DDA session even on early exit
     game.stop();
     window.location.href = window.location.pathname;
   });
@@ -1203,6 +1336,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const hasNextLevel = !isEndless && levelIndex + 1 < ADVENTURE_LEVELS.length;
 
   levelCompleteScreen.onNext(() => {
+    ddaLogger.finalize(); // Persist DDA session before level transition
     game.stop();
     bgMusic.stop();
     weaponManager.dispose();
@@ -1212,12 +1346,16 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     buffManager.dispose();
     buffHUD.dispose();
     shockArcRenderer.dispose();
+    bulletInstanceManager.dispose();
+    lodManager.dispose();
+    depthOcclusion.dispose();
     debugOverlay.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex + 1);
   });
   levelCompleteScreen.onReplay(() => {
+    ddaLogger.finalize(); // Persist DDA session before replay
     game.stop();
     bgMusic.stop();
     weaponManager.dispose();
@@ -1227,6 +1365,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     buffManager.dispose();
     buffHUD.dispose();
     shockArcRenderer.dispose();
+    bulletInstanceManager.dispose();
+    lodManager.dispose();
+    depthOcclusion.dispose();
     debugOverlay.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
@@ -1357,6 +1498,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         // Game over - no lives left
         isGameOver = true;
         perfTracker.saveSession();
+        ddaLogger.finalize(); // Persist DDA session log to localStorage
         // Short delay before showing game over screen
         setTimeout(() => {
           gameOverScreen.show(player.score, surfaceType);
@@ -1493,14 +1635,57 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       enemySpawner.update(dt, fakeU, fakeV);
     }
 
-    // Update GPU-instanced enemy rendering (reads mesh matrices from updated enemies)
-    enemyInstanceManager.updateInstances(enemySpawner.getEnemies());
+    // Update LOD assignments BEFORE instance update so geometry swap uses current frame's data
+    lodAssignments = lodManager.update(game.camera, enemySpawner.getEnemies());
+
+    // Update GPU-instanced enemy rendering with LOD-aware geometry swapping.
+    // Enemies at MEDIUM/LOW LOD are rendered with simplified geometry (20/2 tris)
+    // instead of full-detail meshes (~200 tris), giving real triangle reduction.
+    enemyInstanceManager.updateInstancesWithLOD(
+      enemySpawner.getEnemies(),
+      lodAssignments,
+      game.camera,
+    );
 
     // Update bullets
     bulletPool.update(dt);
 
-    // Update geoms
-    geomPool.update(dt, player.surfaceU, player.surfaceV, game.clock.totalTime);
+    // Sync bullet positions to GPU-instanced rendering
+    // Register new bullets and update positions; unregister killed bullets
+    const currentVisualType = weaponToBulletVisual(weaponManager.getCurrentWeapon());
+    const seenIds = new Set<string>();
+    bulletPool.forEachActive((index, position, data) => {
+      const id = `b${index}`;
+      seenIds.add(id);
+      _bulletSyncDir.set(data.dirX, data.dirY, data.dirZ);
+      if (!bulletInstanceIds.has(id)) {
+        // New bullet: register with instance manager
+        bulletInstanceManager.addBullet(id, currentVisualType, position, _bulletSyncDir);
+        bulletInstanceIds.add(id);
+      } else {
+        // Existing bullet: update position/direction
+        bulletInstanceManager.updateBullet(id, position, _bulletSyncDir);
+      }
+    });
+    // Remove bullets that were killed this frame
+    for (const id of bulletInstanceIds) {
+      if (!seenIds.has(id)) {
+        bulletInstanceManager.removeBullet(id);
+        bulletInstanceIds.delete(id);
+      }
+    }
+    // Flush instance transforms to GPU
+    bulletInstanceManager.update();
+
+    // (LOD assignments are computed earlier, before enemyInstanceManager.updateInstancesWithLOD)
+
+    // Update adaptive quality system (monitors FPS, adjusts quality level)
+    adaptiveQuality.update(dt);
+
+    // Update geoms (magnetism radius = base + buff bonus + super state bonus)
+    const magnetBonus = buffManager.getCollectionRadiusBonus()
+      + superStateManager.getFireModifiers().magnetRange;
+    geomPool.update(dt, player.surfaceU, player.surfaceV, game.clock.totalTime, 2.5 + magnetBonus);
 
     // Update particles and score popups
     particles.update(dt);
@@ -1722,7 +1907,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       },
       scorePopups,
       scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier * buffManager.getDamageMultiplier(),
-      (type: string, color: number) => { killLog.addKill(type, color); playerLevel.addKill(); },
+      (type: string, color: number) => {
+        killLog.addKill(type, color);
+        playerLevel.addKill();
+        ddaTracker.recordKill(1); // DDA: track kill event
+        ddaLogger.recordKill(0, type); // DDA logger: log kill with enemy type
+      },
       true, // showDamageNumbers
       (enemy: BaseEnemy) => { buffManager.onBulletHit(enemy); },
       (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => { buffManager.onEnemyDeath(enemy, allEnemies); },
@@ -1784,6 +1974,23 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
           }
         }
       }
+    }
+
+    // -- DDA system update (after all kills/deaths processed this frame) --
+    {
+      let nearestEnemyDist = 1.0;
+      for (const enemy of enemies) {
+        if (!enemy.active || enemy.isMaterializing) continue;
+        const du = player.surfaceU - enemy.surfacePosition.u;
+        const dv = player.surfaceV - enemy.surfacePosition.v;
+        const dist = Math.sqrt(du * du + dv * dv);
+        if (dist < nearestEnemyDist) nearestEnemyDist = dist;
+      }
+      ddaTracker.update(dt, nearestEnemyDist, player.lives / 3);
+      ddaEngine.update(dt, [ddaTracker]);
+      ddaLogger.update(dt);
+      ddaPlayers[0].u = player.surfaceU;
+      ddaPlayers[0].v = player.surfaceV;
     }
 
     // Update weapon manager (projectiles, effects)
@@ -1870,8 +2077,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // Pre-allocated temp vectors for render loop (avoids ~5 clone() per enemy per frame)
   const _renderTempToPlayer = new THREE.Vector3();
   const _renderTempToPlayerDir = new THREE.Vector3();
-  const _renderTempApproxNormal = new THREE.Vector3();
   const _renderTempToEnemy = new THREE.Vector3();
+  let auditFrameCounter = 0;
 
   // -- Render callback --
   game.onRender = (_alpha: number) => {
@@ -1904,14 +2111,37 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     const gridMat = surface.gridMesh.material as THREE.LineBasicMaterial;
     gridMat.opacity = currentGridOpacity;
 
-    // Depth-based opacity + tunnel-blocking opacity for enemies
-    // Cache meshCenter per frame (doesn't change within a frame)
+    // Depth-based occlusion + tunnel-blocking opacity + LOD-based fading for enemies
+    // Raycast-based: counts surface intersections between camera and each enemy.
+    // Batched across frames for performance (100 raycasts/frame).
+    const allEnemies = enemySpawner.getEnemies();
+    depthOcclusion.update(allEnemies, camPos, frameDt);
+
     const meshCenter = meshSurface.getCenter();
-    for (const enemy of enemySpawner.getEnemies()) {
+    const qualitySettings = adaptiveQuality.getSettings();
+    const maxVisible = qualitySettings.maxVisibleEnemies;
+    let visibleEnemyCount = 0;
+
+    for (const enemy of allEnemies) {
       if (!enemy.alive || !enemy.mesh) continue;
-      // Approximate outward normal using pre-allocated vector
-      _renderTempApproxNormal.copy(enemy.position).sub(meshCenter).normalize();
-      let visibility = meshSurface.getVisibility(enemy.position, _renderTempApproxNormal, camPos);
+
+      // Adaptive quality: cap visible enemies when quality is reduced
+      if (maxVisible > 0 && visibleEnemyCount >= maxVisible) {
+        // Hide excess enemies by zeroing visibility
+        if (enemy.isInstanced) {
+          enemyInstanceManager.setInstanceVisibility(enemy, 0);
+        } else if (enemy.cachedMaterials) {
+          for (const mat of enemy.cachedMaterials) {
+            (mat as any).transparent = true;
+            (mat as any).opacity = 0;
+          }
+        }
+        continue;
+      }
+
+      // Raycast-based occlusion: opacity based on how many surface layers are
+      // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
+      let visibility = depthOcclusion.getOpacity(enemy);
 
       // When surface is blocking camera-to-player, also fade enemies between camera and player
       if (isCurrentlyBlocked) {
@@ -1932,9 +2162,26 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         }
       }
 
-      // Instanced enemies: use instanceColor for visibility (tint modulation)
+      // LOD-based visibility reduction: subtle fade for distant enemies
+      // Keep enemies visible enough to see (previous values of 0.6/0.85 were too aggressive)
+      const lodLevel = lodAssignments.get(enemy);
+      if (lodLevel === LODLevel.LOW) {
+        visibility *= 0.85;
+      } else if (lodLevel === LODLevel.MEDIUM) {
+        visibility *= 0.95;
+      }
+
+      visibleEnemyCount++;
+
+      // Instanced enemies: set visibility on the correct batch (type-specific or LOD shared)
       if (enemy.isInstanced) {
-        enemyInstanceManager.setInstanceVisibility(enemy, visibility);
+        if (enemyInstanceManager.isInLODBatch(enemy)) {
+          // Enemy is in a shared LOD batch (simplified geometry)
+          enemyInstanceManager.setLODInstanceVisibility(enemy, visibility);
+        } else {
+          // Enemy is in its type-specific HIGH-detail batch
+          enemyInstanceManager.setInstanceVisibility(enemy, visibility);
+        }
         continue;
       }
 
@@ -1957,8 +2204,11 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         });
       }
     }
-    // Flush all instanced color changes for this frame
+    // Flush all instanced color/opacity changes for this frame
     enemyInstanceManager.flushColors();
+
+    // Apply depth-based opacity to geoms (far-side geoms nearly invisible)
+    geomPool.applyDepthOpacity(camPos, meshCenter);
 
     // Apply screen shake to camera (skip when paused to prevent drift)
     if (!isPaused && screenShake.offset.lengthSq() > 0.0001) {
@@ -1997,11 +2247,28 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     geomPool.forEachActive((_i, u, v) => { minimapGeoms.push({ u, v }); });
     minimap.update(player.surfaceU, player.surfaceV, minimapEnemies, minimapGeoms);
 
+    // Feed renderer stats to adaptive quality monitor
+    adaptiveQuality.monitor.setRendererInfo(game.renderer.info as any);
+    adaptiveQuality.monitor.setEntityCount(enemySpawner.getActiveCount());
+
     // Update debug performance overlay
     perfTracker.setEntityCount(enemySpawner.getActiveCount());
     perfTracker.setBulletCount(bulletPool.activeCount);
     perfTracker.recordFrame(frameDt);
     debugOverlay.update();
+
+    // Entity audit: capture snapshot for mismatch detection (every 4th frame)
+    auditFrameCounter++;
+    if (auditFrameCounter % 4 === 0) {
+      entityAudit.capture({
+        enemySpawner,
+        enemyInstanceManager,
+        bulletPool,
+        bulletInstanceManager,
+        player,
+        renderer: game.renderer,
+      });
+    }
   };
 
   // -- Weapon fire handler: delegates all firing to WeaponManager --
@@ -2052,6 +2319,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     particles.playerDeath(position);
     screenShake.shake(0.5, 0.4);
     scoreManager.onPlayerDeath();
+    ddaTracker.recordDeath(); // DDA: track death event
+    ddaLogger.recordDeath(0); // DDA logger: log death event
   };
 
   // -- Start background music --
@@ -2059,6 +2328,18 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   if (audioCtx) {
     bgMusic.start(audioCtx);
   }
+
+  // -- Expose debug API for programmatic tests and console access --
+  (window as any).__gameDebug = {
+    entityAudit,
+    perfTracker,
+    enemySpawner,
+    enemyInstanceManager,
+    bulletPool,
+    player,
+    game,
+    ddaLogger,
+  };
 
   // -- Start --
   game.start();
@@ -2106,7 +2387,8 @@ if (isBenchmarkMode()) {
     } else if (selection.gameMode === 'network') {
       // Online/LAN multiplayer - update URL and load network module
       const serverParam = selection.serverUrl ? `&server=${encodeURIComponent(selection.serverUrl)}` : '';
-      window.history.replaceState({}, '', `?mode=network&surface=${selection.surfaceType}${serverParam}`);
+      const nameParam = selection.playerName ? `&name=${encodeURIComponent(selection.playerName)}` : '';
+      window.history.replaceState({}, '', `?mode=network&surface=${selection.surfaceType}${serverParam}${nameParam}`);
       import('./network-main').then(() => {
         console.log('[Main] Loaded network multiplayer mode');
       });

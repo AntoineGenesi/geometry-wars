@@ -21,7 +21,7 @@ Comprehensive documentation of the network multiplayer system in Geometry Wars 3
 
 ## 1. Architecture Overview
 
-The network multiplayer system uses a **server-authoritative** model where a Colyseus game server owns all game state and clients render what the server tells them. There is no client-side prediction or rollback -- the server is the single source of truth.
+The network multiplayer system uses a **server-authoritative** model where a Colyseus game server owns all game state and clients render what the server tells them. Basic client-side prediction is applied to the local player's movement for responsiveness (see `network-main.ts`), but the server remains the single source of truth and overrides client predictions on each state update.
 
 ```
 +-------------------+       +-------------------+       +-------------------+
@@ -44,7 +44,7 @@ The network multiplayer system uses a **server-authoritative** model where a Col
 
 2. **Simulation**: The server runs a 60 Hz game loop (`setSimulationInterval`) that processes inputs, moves entities, runs collision detection, spawns enemies, and mutates the `GameState` schema.
 
-3. **State Sync**: Colyseus automatically detects mutations to `GameState` properties (via getter/setter change tracking) and broadcasts binary delta patches to all clients every 50ms (`setPatchRate(50)`).
+3. **State Sync**: Colyseus automatically detects mutations to `GameState` properties (via getter/setter change tracking) and broadcasts binary delta patches to all clients every ~33ms (`setPatchRate(33)`, ~30Hz).
 
 4. **Rendering**: Each client's `onStateChange` callback receives the decoded state and maps it onto Three.js objects -- positioning player meshes, enemy meshes, bullets, geoms, and weapon pickups on the shared surface.
 
@@ -161,7 +161,7 @@ Mutate schema properties (e.g., enemy.surfaceU += speed * dt)
 Schema setter records change in $changes.allChanges
     |
     v
-Patch rate timer (every 50ms)
+Patch rate timer (every ~33ms)
     |
     v
 Colyseus encodes all changes since last patch into binary delta
@@ -179,10 +179,10 @@ room.onStateChange() fires with updated state
 ### Patch Frequency
 
 - **Simulation rate**: 60 Hz (`setSimulationInterval(tick, 1000/60)`)
-- **Patch rate**: 20 Hz (`setPatchRate(50)` = every 50ms)
+- **Patch rate**: ~30 Hz (`setPatchRate(33)` = every ~33ms)
 - **Input rate**: Every frame (~60 Hz from `requestAnimationFrame`)
 
-The simulation runs faster than patches are sent. This means 3 simulation ticks accumulate changes before each patch is broadcast. Colyseus coalesces changes automatically -- if `enemy.surfaceU` changes 3 times between patches, only the final value is sent.
+The simulation runs faster than patches are sent. This means ~2 simulation ticks accumulate changes before each patch is broadcast. Colyseus coalesces changes automatically -- if `enemy.surfaceU` changes multiple times between patches, only the final value is sent.
 
 ### Bandwidth Characteristics
 
@@ -400,7 +400,7 @@ Client                                Server
    onStateChange callback manually                |
    |                                              |
 10. Ongoing patches                               |
-   |<-- STATE_PATCH messages (every 50ms) --------|
+   |<-- STATE_PATCH messages (every ~33ms) --------|
    |    (binary deltas of changed fields)         |
    |                                              |
    |--- 'input' messages (every frame) ---------->|
@@ -617,24 +617,24 @@ Both fixes required for functional LAN multiplayer.
 | Issue | Impact | Mitigation |
 |-------|--------|------------|
 | **Dev mode only** | LAN hosting requires Vite dev server for `/__lan/` endpoints | Can run `npm run server` manually for production |
-| **No interest management** | All clients receive all entity updates regardless of viewport | Fine for 4 players + 50 enemies; would need fixing at 100+ entities |
-| **No client-side prediction** | Input latency equals round-trip time to server | Acceptable on LAN (~1-5ms); problematic over WAN |
+| **Interest management implemented but basic** | `InterestManager` (`server/systems/InterestManager.ts`) provides per-client entity filtering, but may need tuning for large entity counts | Fine for 4 players + 50 enemies; stress-test at 100+ entities |
+| **Basic client-side prediction only** | Local player movement is predicted client-side but other entities are not | Acceptable on LAN; may need enhancement for WAN play |
 | **Full state re-sync on state change** | `onStateChange` rebuilds all entities from scratch | Colyseus handles diffing internally; rendering does reconcile via Maps |
 | **No reconnection** | If WebSocket drops, client must refresh | Colyseus supports `reconnect()` but it is not wired up |
 | **Scan takes 1-2 seconds** | Sequential HTTP probe of 254 IPs | Could add mDNS via `bonjour-service` for instant discovery |
 
 ### Future Work
 
-1. **Interest Management / Area of Interest**: Only send entity updates for entities near the player's viewport. Colyseus supports custom filters via `@filterChildren`.
+1. **Interest Management Tuning**: Basic `InterestManager` exists (`server/systems/InterestManager.ts` + `PriorityQueue.ts`) but may need tuning and stress testing at higher entity counts.
 
 2. **Delta Compression**: Currently using Schema's built-in delta encoding. Could add custom quantization for positions (fixed-point instead of float64) to reduce bandwidth.
 
 3. **WebTransport**: Replace WebSocket with WebTransport (QUIC-based) for lower latency and unreliable channels. Colyseus has experimental WebTransport support.
 
-4. **Client-Side Prediction**: Implement input prediction with server reconciliation to mask latency. Would require:
-   - Client applies input locally and renders immediately
-   - Server sends authoritative state
-   - Client reconciles by replaying unacknowledged inputs on top of server state
+4. **Enhanced Client-Side Prediction**: Currently only local player movement is predicted. Could extend to include:
+   - Server reconciliation (replaying unacknowledged inputs on top of server state)
+   - Entity interpolation for remote players and enemies
+   - Prediction for bullets to reduce visual jitter
 
 5. **Standalone LAN Server**: `npm run lan` command that bundles both client (served via Express static files) and server into a single process, eliminating the Vite dev server requirement.
 
@@ -695,7 +695,7 @@ Deeply nested schemas multiply the risk of the `defineProperty` bug and make deb
 ```typescript
 // GameRoom constants
 TICK_RATE = 60          // Simulation ticks per second
-PATCH_RATE = 50         // ms between state patches (= 20 patches/sec)
+PATCH_RATE = 33         // ms between state patches (= ~30 patches/sec)
 MAX_CLIENTS = 4         // Max players per room
 PLAYER_SPEED = 0.08     // UV-space units per tick
 BULLET_SPEED = 0.15     // UV-space units per tick

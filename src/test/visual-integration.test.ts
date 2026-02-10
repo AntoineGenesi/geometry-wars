@@ -54,7 +54,7 @@ const TEST_SURFACES: TestSurfaceConfig[] = [
   { name: 'Mobius', type: 'mobius', startAbove: new THREE.Vector3(10, 0, 2), hasBevel: false },
   { name: 'Sphere Tunnel', type: 'sphere-tunnel', startAbove: new THREE.Vector3(0, 18, 0), hasBevel: true },
   { name: 'Cube Ring', type: 'cube-ring', startAbove: new THREE.Vector3(12, 0, 0), hasBevel: true },
-  { name: 'Cube Tunnel', type: 'cube-tunnel', startAbove: new THREE.Vector3(8, 0, 0), hasBevel: true },
+  { name: 'Cube Tunnel', type: 'cube-tunnel', startAbove: new THREE.Vector3(30, 0, 0), hasBevel: true },
 ];
 
 // ---------------------------------------------------------------------------
@@ -738,14 +738,15 @@ describe('Surface Mesh Quality', () => {
       it('BVH queries return valid results from any direction', () => {
         const { meshSurface } = createTestSetup(config.type, config.startAbove);
 
-        // Query from 6 cardinal directions
+        // Query from 6 cardinal directions, far enough to be outside any surface
+        const queryDist = 40;
         const directions = [
-          new THREE.Vector3(20, 0, 0),
-          new THREE.Vector3(-20, 0, 0),
-          new THREE.Vector3(0, 20, 0),
-          new THREE.Vector3(0, -20, 0),
-          new THREE.Vector3(0, 0, 20),
-          new THREE.Vector3(0, 0, -20),
+          new THREE.Vector3(queryDist, 0, 0),
+          new THREE.Vector3(-queryDist, 0, 0),
+          new THREE.Vector3(0, queryDist, 0),
+          new THREE.Vector3(0, -queryDist, 0),
+          new THREE.Vector3(0, 0, queryDist),
+          new THREE.Vector3(0, 0, -queryDist),
         ];
 
         for (const dir of directions) {
@@ -795,7 +796,9 @@ describe('Bevel Surface Continuity', () => {
       it('normals are smooth across bevel (no sudden flips)', () => {
         const surface = SurfaceFactory.create(config.type);
 
-        const samples = 100;
+        // Use enough samples so that even small profile features (e.g. cube tunnel
+        // lip at ~4.5% of V range) get sufficient resolution for smooth normals
+        const samples = 500;
         const normals: THREE.Vector3[] = [];
 
         for (let i = 0; i <= samples; i++) {
@@ -865,8 +868,10 @@ describe('Depth-Based Opacity', () => {
         // Entity on the opposite side of the surface
         const center = meshSurface.getCenter();
         const oppositeDir = walker.position.clone().sub(center).negate().normalize();
+        // Scale query distance to be well beyond any surface (surfaceRadius can be up to ~28)
+        const queryDist = Math.max(40, walker.position.distanceTo(center) * 3);
         const oppositePoint = meshSurface.closestPointOnSurface(
-          center.clone().addScaledVector(oppositeDir, 20)
+          center.clone().addScaledVector(oppositeDir, queryDist)
         );
 
         if (oppositePoint) {

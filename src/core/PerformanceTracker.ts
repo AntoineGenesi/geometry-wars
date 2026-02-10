@@ -7,6 +7,8 @@
  * timestamps and map type for correlation with git history.
  */
 
+import { EnemyType } from '../entities/enemies/EnemySpawner';
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -23,6 +25,8 @@ export interface PerfSnapshot {
   bulletCount: number;
   /** Current surface/map type. */
   mapType: string;
+  /** Enemy type breakdown (optional, only in detailed snapshots). */
+  enemyTypes?: Map<EnemyType, number>;
 }
 
 /** A ranked performance moment (stored in top-10 lists). */
@@ -31,6 +35,8 @@ export interface PerfMoment extends PerfSnapshot {
   timeLabel: string;
   /** Elapsed game seconds since session start. */
   elapsedSeconds: number;
+  /** Enemy type breakdown. */
+  enemyTypes: Map<EnemyType, number>;
 }
 
 /** Summary of a complete session, saved to localStorage. */
@@ -90,6 +96,7 @@ export class PerformanceTracker {
   // -- Current counts (set externally each frame) ---------------------------
   private currentEntityCount = 0;
   private currentBulletCount = 0;
+  private readonly currentEnemyTypes = new Map<EnemyType, number>();
 
   // -- Sampling timer -------------------------------------------------------
   private sampleAccumulator = 0;
@@ -166,6 +173,14 @@ export class PerformanceTracker {
   /** Set the current bullet count (call each frame before recordFrame). */
   setBulletCount(count: number): void {
     this.currentBulletCount = count;
+  }
+
+  /** Set enemy type breakdown for the current frame. */
+  setEnemyTypes(enemyTypes: Map<EnemyType, number>): void {
+    this.currentEnemyTypes.clear();
+    enemyTypes.forEach((count, type) => {
+      this.currentEnemyTypes.set(type, count);
+    });
   }
 
   // -- Getters for live HUD ------------------------------------------------
@@ -308,6 +323,7 @@ export class PerformanceTracker {
       mapType: this.mapType,
       timeLabel: this.formatTime(elapsed),
       elapsedSeconds: Math.round(elapsed * 10) / 10,
+      enemyTypes: new Map(this.currentEnemyTypes),
     };
 
     // Insert into top-10 lists (sorted, capped)

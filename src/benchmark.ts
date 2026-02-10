@@ -31,11 +31,31 @@ import { SpatialHash } from './core/SpatialHash';
 const isHeadless = /HeadlessChrome|SwiftShader/i.test(navigator.userAgent) ||
   !!(navigator as any).webdriver;
 const ENTITY_TIERS = isHeadless
-  ? [50, 100, 200, 500]
-  : [50, 100, 200, 300, 500, 750, 1000];
+  ? [50, 100, 200, 500, 1000]
+  : [50, 100, 200, 300, 500, 750, 1000, 2000, 5000, 10000];
 const WARMUP_SECONDS = isHeadless ? 0.5 : 1;
 const MEASURE_SECONDS = isHeadless ? 2 : 4;
 const PLAYER_MOVE_SPEED = 3.0;
+
+/**
+ * For high entity tiers (2000+), spawning all enemies in a single frame causes
+ * a massive spike. Instead we spawn in batches of SPAWN_BATCH_SIZE per frame,
+ * and the warmup phase absorbs the spawning cost before measurement begins.
+ */
+const SPAWN_BATCH_SIZE = 500;
+
+/**
+ * Extra warmup time for large tiers. At 10K entities with batch spawning of 500/frame,
+ * it takes ~20 frames just to spawn them all. We add extra warmup proportional to count.
+ */
+function warmupForTier(tierCount: number): number {
+  const baseWarmup = isHeadless ? 0.5 : 1;
+  if (tierCount <= 1000) return baseWarmup;
+  // Add ~1s extra warmup per 2000 entities above 1000 to absorb spawn cost
+  const extraEntities = tierCount - 1000;
+  const extraWarmup = Math.ceil(extraEntities / 2000) * 1.0;
+  return baseWarmup + extraWarmup;
+}
 
 interface BenchmarkResult {
   entityCount: number;
@@ -143,8 +163,10 @@ export function runBenchmark(): void {
   // Enemy spawner
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
 
-  // Particles
-  const particles = new ParticleSystem(5000);
+  // Particles — sized for highest tier (10K entities produce a lot of impacts)
+  const maxTier = ENTITY_TIERS[ENTITY_TIERS.length - 1];
+  const particleCapacity = maxTier >= 5000 ? 20000 : maxTier >= 2000 ? 10000 : 5000;
+  const particles = new ParticleSystem(particleCapacity);
   game.scene.add(particles.root);
 
   // Screen shake
@@ -156,8 +178,8 @@ export function runBenchmark(): void {
   // Suppress enemy death to prevent game loop side effects
   BaseEnemy.onDeath = () => {};
 
-  // Camera
-  const cameraDistance = 15;
+  // Camera — pull back further for high entity counts
+  const cameraDistance = maxTier >= 5000 ? 25 : 15;
 
   // ---------------------------------------------------------------------------
   // Frame timing
@@ -176,7 +198,8 @@ export function runBenchmark(): void {
   let shootTimer = 0;
 
   log(`Tiers: ${ENTITY_TIERS.join(', ')} enemies`);
-  log(`Warmup: ${WARMUP_SECONDS}s, Measure: ${MEASURE_SECONDS}s per tier`);
+  log(`Base warmup: ${WARMUP_SECONDS}s (dynamic for high tiers), Measure: ${MEASURE_SECONDS}s per tier`);
+  log(`Batch spawn size: ${SPAWN_BATCH_SIZE} per frame (for tiers > 1000)`);
   log('');
 
   function spawnEnemiesTo(target: number): void {
@@ -184,9 +207,13 @@ export function runBenchmark(): void {
     const need = target - current;
     if (need <= 0) return;
 
-    // Spawn in batches with random positions
+    // For large counts, spawn in batches to avoid a single-frame spike.
+    // The warmup phase will absorb the cost of multi-frame spawning.
+    const batchSize = target > 1000 ? SPAWN_BATCH_SIZE : need;
+    const toSpawn = Math.min(need, batchSize);
+
     const batchTypes = ['grunt', 'wanderer', 'duck', 'weaver'];
-    for (let i = 0; i < need; i++) {
+    for (let i = 0; i < toSpawn; i++) {
       const type = batchTypes[i % batchTypes.length];
       const u = 0.05 + Math.random() * 0.9;
       const v = 0.05 + Math.random() * 0.9;
@@ -343,12 +370,15 @@ export function runBenchmark(): void {
     game.camera.up.lerp(frame.bitangent, 0.12).normalize();
 
     // Phase transitions
-    if (benchmarkPhase === 'warmup' && phaseTimer >= WARMUP_SECONDS) {
+    const currentWarmup = warmupForTier(targetEnemyCount);
+    const allSpawned = enemySpawner.getEnemies().length >= targetEnemyCount;
+    if (benchmarkPhase === 'warmup' && phaseTimer >= currentWarmup && allSpawned) {
       benchmarkPhase = 'measure';
       phaseTimer = 0;
       frameTimes.length = 0;
       lastFrameTime = performance.now();
-      log(`\nMeasuring tier ${currentTierIndex + 1}/${ENTITY_TIERS.length}: ${targetEnemyCount} enemies...`);
+      const actualCount = enemySpawner.getEnemies().length;
+      log(`\nMeasuring tier ${currentTierIndex + 1}/${ENTITY_TIERS.length}: ${actualCount} enemies (target: ${targetEnemyCount})...`);
     }
 
     if (benchmarkPhase === 'measure') {

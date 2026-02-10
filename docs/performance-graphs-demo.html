@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Performance Graphs Demo - Geometry Wars 3D</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #050510;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: #88aacc;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      color: #ccaa44;
+      font-size: 36px;
+      letter-spacing: 4px;
+      margin-bottom: 10px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #668899;
+      margin-bottom: 30px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      margin-bottom: 30px;
+    }
+
+    .feature-card {
+      background: #1a1a2e;
+      border: 1px solid #3a3a5e;
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .feature-card h3 {
+      color: #ccaa44;
+      margin-top: 0;
+      font-size: 18px;
+    }
+
+    .feature-card p {
+      margin: 10px 0;
+      line-height: 1.6;
+      font-size: 14px;
+    }
+
+    .feature-card ul {
+      margin: 10px 0;
+      padding-left: 20px;
+    }
+
+    .feature-card li {
+      margin: 5px 0;
+      font-size: 14px;
+    }
+
+    .mockup {
+      background: #0a0a14;
+      border: 2px solid #3a3a5e;
+      border-radius: 8px;
+      padding: 30px;
+      margin-bottom: 30px;
+    }
+
+    .mockup-title {
+      color: #ccaa44;
+      font-size: 24px;
+      text-align: center;
+      margin-bottom: 20px;
+      letter-spacing: 3px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+
+    .tab {
+      background: #1a1a2e;
+      border: 1px solid #3a3a5e;
+      color: #88aacc;
+      padding: 10px 20px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+    }
+
+    .tab.active {
+      background: #ccaa44;
+      border-color: #ccaa44;
+      color: #0a0a14;
+    }
+
+    .graph-container {
+      background: #0a0a14;
+      border: 1px solid #1a1a2e;
+      border-radius: 4px;
+      padding: 20px;
+      min-height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .graph-placeholder {
+      text-align: center;
+      color: #668899;
+    }
+
+    .stats {
+      display: flex;
+      gap: 20px;
+      margin-top: 20px;
+    }
+
+    .stat-box {
+      flex: 1;
+      background: #1a1a2e;
+      border: 1px solid #3a3a5e;
+      border-radius: 4px;
+      padding: 15px;
+    }
+
+    .stat-label {
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 2px;
+      color: #668899;
+      margin-bottom: 5px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: bold;
+      color: #ccaa44;
+      margin-bottom: 5px;
+    }
+
+    .stat-detail {
+      font-size: 11px;
+      color: #88aacc;
+      line-height: 1.4;
+    }
+
+    .hint {
+      text-align: center;
+      color: #668899;
+      font-size: 12px;
+      margin-top: 20px;
+      letter-spacing: 1px;
+    }
+
+    .code-block {
+      background: #0a0a14;
+      border: 1px solid #1a1a2e;
+      border-radius: 4px;
+      padding: 20px;
+      margin: 20px 0;
+      overflow-x: auto;
+    }
+
+    .code-block pre {
+      margin: 0;
+      color: #88aacc;
+      font-family: 'Consolas', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .highlight {
+      color: #ccaa44;
+      font-weight: bold;
+    }
+
+    .success {
+      color: #00ff88;
+    }
+
+    .warning {
+      color: #ffaa44;
+    }
+
+    .error {
+      color: #ff4444;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PERFORMANCE GRAPHS</h1>
+    <p class="subtitle">Interactive FPS/Entity Correlation Analysis for Geometry Wars 3D</p>
+
+    <!-- Features Grid -->
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>✅ Enhanced Debug Overlay (F3)</h3>
+        <p>Existing debug overlay now shows:</p>
+        <ul>
+          <li>Live FPS, enemy count, bullet count</li>
+          <li>TOP 10 performance moments (expandable)</li>
+          <li><strong>NEW:</strong> Enemy type breakdown tooltips</li>
+          <li>Hover over entity count for details</li>
+        </ul>
+      </div>
+
+      <div class="feature-card">
+        <h3>📊 Interactive Graphs</h3>
+        <p>Canvas-based charts with:</p>
+        <ul>
+          <li>4 chart types (FPS, Enemies, Bullets, Types)</li>
+          <li>Mouse wheel zoom</li>
+          <li>Drag to pan timeline</li>
+          <li>Hover tooltips</li>
+          <li>Min/max FPS markers</li>
+        </ul>
+      </div>
+
+      <div class="feature-card">
+        <h3>💾 Session Logging</h3>
+        <p>Persistent performance data:</p>
+        <ul>
+          <li>Stores last 10 game sessions</li>
+          <li>30 minutes per session @ 500ms sampling</li>
+          <li>Enemy type breakdown per sample</li>
+          <li>localStorage persistence</li>
+        </ul>
+      </div>
+
+      <div class="feature-card">
+        <h3>🔔 10-Game Counter</h3>
+        <p>Research report trigger:</p>
+        <ul>
+          <li>Counts completed games</li>
+          <li>Notification after 10 games</li>
+          <li>Aggregate performance analysis</li>
+          <li>Identify bottlenecks</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- Graph Mockup -->
+    <div class="mockup">
+      <div class="mockup-title">PERFORMANCE ANALYSIS</div>
+
+      <div class="tabs">
+        <div class="tab active">FPS</div>
+        <div class="tab">Enemies</div>
+        <div class="tab">Bullets</div>
+        <div class="tab">Enemy Types</div>
+      </div>
+
+      <div class="graph-container">
+        <div class="graph-placeholder">
+          <div style="font-size: 64px; margin-bottom: 20px;">📈</div>
+          <div style="font-size: 18px; margin-bottom: 10px;">Interactive Time-Series Graph</div>
+          <div style="font-size: 14px; color: #556677;">
+            Canvas-based rendering with zoom, pan, and hover tooltips<br>
+            Min/max FPS markers shown with vertical dashed lines<br>
+            Enemy type breakdown available on hover
+          </div>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat-box">
+          <div class="stat-label">MIN FPS</div>
+          <div class="stat-value" style="color: #ff4444;">24.3</div>
+          <div class="stat-detail">
+            847 enemies, 2341 bullets<br>
+            Top: 234 grunt, 89 weaver, 45 snake
+          </div>
+        </div>
+
+        <div class="stat-box">
+          <div class="stat-label">MAX FPS</div>
+          <div class="stat-value" style="color: #00ff88;">118.7</div>
+          <div class="stat-detail">
+            23 enemies, 156 bullets<br>
+            Top: 12 wanderer, 8 grunt, 3 weaver
+          </div>
+        </div>
+      </div>
+
+      <div class="hint">
+        Mouse wheel to zoom | Drag to pan | Hover for details
+      </div>
+    </div>
+
+    <!-- Integration Example -->
+    <div class="feature-card">
+      <h3>🔧 Integration (5 steps, ~15 min)</h3>
+
+      <div class="code-block">
+        <pre><span class="highlight">// 1. Import and initialize PerformanceLogger</span>
+<span class="success">import { PerformanceLogger } from './core/PerformanceLogger';</span>
+
+const perfTracker = new PerformanceTracker(surfaceType);
+const debugOverlay = new DebugOverlay(perfTracker);
+<span class="success">const perfLogger = new PerformanceLogger(surfaceType); // ADD THIS</span>
+
+<span class="highlight">// 2. Update game loop to track enemy types</span>
+const enemyTypes = new Map();
+for (const enemy of enemySpawner.getEnemies()) {
+  const type = enemy.constructor.name.toLowerCase();
+  enemyTypes.set(type, (enemyTypes.get(type) || 0) + 1);
+}
+
+perfTracker.setEntityCount(enemyCount);
+perfTracker.setBulletCount(bulletCount);
+<span class="success">perfTracker.setEnemyTypes(enemyTypes); // ADD THIS</span>
+perfTracker.recordFrame(frameDt);
+
+<span class="success">perfLogger.setFrameData(perfTracker.fps, enemyCount, bulletCount); // ADD THIS</span>
+<span class="success">perfLogger.setEnemyTypes(enemyTypes); // ADD THIS</span>
+<span class="success">perfLogger.recordFrame(frameDt); // ADD THIS</span>
+
+<span class="highlight">// 3. Pass logger to PauseMenu</span>
+<span class="success">pauseMenu.setPerformanceLogger(perfLogger); // ADD THIS</span>
+
+<span class="highlight">// 4. Save session on game end</span>
+perfTracker.saveSession();
+<span class="success">const shouldShowReport = perfLogger.saveSession(); // ADD THIS</span>
+<span class="success">if (shouldShowReport) {</span>
+<span class="success">  console.log('10 games completed! Performance report available.');</span>
+<span class="success">}</span>
+</pre>
+      </div>
+
+      <p style="margin-top: 20px;">
+        <strong>Full integration guide:</strong>
+        <code style="color: #ccaa44;">docs/performance-graphs-integration.md</code>
+      </p>
+    </div>
+
+    <!-- Technical Details -->
+    <div class="feature-card">
+      <h3>⚡ Performance Characteristics</h3>
+      <ul>
+        <li><span class="success">Zero-GC ring buffer</span> - Pre-allocated 3600-element array</li>
+        <li><span class="success">~50KB bundle size</span> - No external charting libraries</li>
+        <li><span class="success">Lazy-loaded</span> - Only imported when modal opens</li>
+        <li><span class="success">Canvas 2D rendering</span> - Optimized for 3600 data points</li>
+        <li><span class="success">localStorage persistence</span> - Last 10 sessions (~5MB)</li>
+      </ul>
+    </div>
+
+    <!-- Files -->
+    <div class="feature-card">
+      <h3>📁 Files Created/Modified</h3>
+
+      <p><strong>Created (3 files, ~1400 lines):</strong></p>
+      <ul>
+        <li><code>src/core/PerformanceLogger.ts</code> (360 lines)</li>
+        <li><code>src/ui/PerformanceGraphs.ts</code> (650 lines)</li>
+        <li><code>docs/performance-graphs-integration.md</code> (180 lines)</li>
+      </ul>
+
+      <p><strong>Modified (3 files, ~50 lines added):</strong></p>
+      <ul>
+        <li><code>src/core/PerformanceTracker.ts</code> (+12 lines)</li>
+        <li><code>src/ui/DebugOverlay.ts</code> (+8 lines)</li>
+        <li><code>src/ui/PauseMenu.ts</code> (+200 lines)</li>
+      </ul>
+    </div>
+
+    <!-- Verification Status -->
+    <div class="feature-card">
+      <h3>✅ Verification Status</h3>
+      <ul>
+        <li><span class="success">✅ Level 0</span> - Code analysis correct</li>
+        <li><span class="success">✅ Level 1</span> - TypeScript compiles cleanly</li>
+        <li><span class="success">✅ Level 2</span> - No test regressions</li>
+        <li><span class="warning">⏳ Level 4</span> - Requires integration into main.ts</li>
+      </ul>
+
+      <p style="margin-top: 15px; color: #668899; font-size: 13px;">
+        Pre-existing test failures unrelated to this work:<br>
+        • companion.test.ts (16 failures) - existed before changes<br>
+        • simulation.test.ts (1 failure) - existed before changes
+      </p>
+    </div>
+  </div>
+
+  <div style="text-align: center; margin: 40px 0; color: #556677; font-size: 12px;">
+    Implementation complete. Ready for integration testing.
+  </div>
+</body>
+</html>

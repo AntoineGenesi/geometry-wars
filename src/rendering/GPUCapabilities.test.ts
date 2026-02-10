@@ -18,6 +18,8 @@ describe('GPUCapabilities', () => {
       expect(typeof report.sharedArrayBuffer).toBe('boolean');
       expect(typeof report.hardwareConcurrency).toBe('number');
       expect(typeof report.renderer).toBe('string');
+      expect(typeof report.vendor).toBe('string');
+      expect(typeof report.webgpuAdapter).toBe('string');
       expect(['high', 'medium', 'low']).toContain(report.tier);
     });
 

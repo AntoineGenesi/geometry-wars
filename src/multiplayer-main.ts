@@ -55,6 +55,11 @@ import { KillLog } from './ui/KillLog';
 import { KillTally } from './ui/KillTally';
 import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponHUD } from './ui/WeaponHUD';
+import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
+import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
+import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
+import { loadDDASettings } from './difficulty/DDASettings';
+import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -367,6 +372,23 @@ function main(): void {
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
 
+  // -- Dynamic Difficulty Adjustment (DDA) system --
+  const ddaSettings = loadDDASettings();
+  const ddaTrackers: DDAPerformanceTracker[] = [];
+  for (let i = 0; i < playerCount; i++) {
+    ddaTrackers.push(new DDAPerformanceTracker(i));
+  }
+  const ddaEngine = new DDADecisionEngine();
+  ddaEngine.setEnabled(ddaSettings.enabled);
+  const ddaSpawnModifier = new DDASpawnModifier(ddaEngine);
+  enemySpawner.setDDAModifier(ddaSpawnModifier);
+  // Pre-allocate player positions for DDA zone detection (one per player)
+  const ddaPlayers: PlayerPosition[] = [];
+  for (let i = 0; i < playerCount; i++) {
+    ddaPlayers.push({ index: i, u: 0.5, v: 0.5 });
+  }
+  enemySpawner.setDDAPlayers(ddaPlayers);
+
   // -- Wire enemy type callbacks --
   Spawner.onSpawnEnemy = (u: number, v: number) => {
     enemySpawner.spawn('wanderer', u, v);
@@ -452,6 +474,10 @@ function main(): void {
     const result = killTracker.processKill(enemy, killerPlayerId);
     if (killerPlayerId >= 0) {
       killTally.addKill(killerPlayerId, enemyType);
+      // DDA: track kill event for the player who got the kill
+      if (ddaTrackers[killerPlayerId]) {
+        ddaTrackers[killerPlayerId].recordKill(enemy.scoreValue);
+      }
     }
     const killerPlayer = players[killerPlayerId];
     if (killerPlayer) {
@@ -579,6 +605,7 @@ function main(): void {
           particles.enemyDeath(enemy.position, color);
           killLog.addKill(enemyType, color.getHex());
           killTally.addKill(i, enemyType);
+          ddaTrackers[i].recordKill(enemy.scoreValue); // DDA: bomb kill
           const { u, v } = surface.worldToSurface(enemy.position);
           for (let g = 0; g < enemy.geomCount; g++) {
             geomPool.spawn(u, v);
@@ -591,6 +618,8 @@ function main(): void {
     player.onDeath = (position: THREE.Vector3) => {
       particles.playerDeath(position);
       screenShake.shake(0.5, 0.4);
+      // DDA: track death event for this player
+      ddaTrackers[i].recordDeath();
     };
   }
 
@@ -776,7 +805,10 @@ function main(): void {
         sound.play('weaponPickup', { volume: 0.4, pitch: 1.2 });
       }
 
-      // Movement
+      // Movement (apply DDA speed multiplier if active)
+      const ddaSpeed = ddaEngine.getSpeedMultiplier(i);
+      const baseSpeed = walker.speed;
+      walker.speed = baseSpeed * ddaSpeed;
       const moving = Math.abs(pInput.moveX) > 0.01 || Math.abs(pInput.moveY) > 0.01;
       if (moving) {
         const prevPos = walker.position.clone();
@@ -795,6 +827,7 @@ function main(): void {
         }
       }
       player.mesh.position.copy(walker.position);
+      walker.speed = baseSpeed; // Restore base speed after DDA-boosted movement
 
       // Bridge to UV
       const uv = surface.worldToSurface(walker.position);
@@ -1082,6 +1115,36 @@ function main(): void {
           wp.active = false;
         }
       }
+    }
+
+    // -----------------------------------------------------------------------
+    // DDA system update (after all kills/deaths processed this frame)
+    // -----------------------------------------------------------------------
+    {
+      const enemies = enemySpawner.getEnemies();
+      for (let i = 0; i < playerCount; i++) {
+        const player = players[i];
+        if (!player.alive) continue;
+
+        // Compute nearest enemy distance in UV space for this player
+        let nearestEnemyDist = 1.0;
+        for (const enemy of enemies) {
+          if (!enemy.active || enemy.isMaterializing) continue;
+          const du = player.surfaceU - enemy.surfacePosition.u;
+          const dv = player.surfaceV - enemy.surfacePosition.v;
+          const dist = Math.sqrt(du * du + dv * dv);
+          if (dist < nearestEnemyDist) nearestEnemyDist = dist;
+        }
+
+        // Update tracker with per-player metrics
+        ddaTrackers[i].update(dt, nearestEnemyDist, player.lives / 3);
+
+        // Sync player position for DDA zone detection
+        ddaPlayers[i].u = player.surfaceU;
+        ddaPlayers[i].v = player.surfaceV;
+      }
+      // Update engine with all trackers (percentile ranking for multiplayer)
+      ddaEngine.update(dt, ddaTrackers);
     }
 
     // Scale music intensity

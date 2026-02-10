@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geometry Wars — Browser Performance Stress Test</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #050510; color: #0ff; font-family: 'Courier New', monospace; overflow: hidden; }
+#hud {
+  position: fixed; top: 10px; left: 10px; z-index: 100;
+  background: rgba(0,0,0,0.85); padding: 16px 20px; border-radius: 8px;
+  border: 1px solid rgba(0,255,255,0.3); min-width: 320px;
+  font-size: 13px; line-height: 1.6;
+}
+#hud h2 { color: #0ff; font-size: 16px; margin-bottom: 8px; text-shadow: 0 0 10px #0ff; }
+.stat { display: flex; justify-content: space-between; }
+.stat .label { color: #888; }
+.stat .value { color: #0f0; font-weight: bold; }
+.stat .value.warn { color: #ff0; }
+.stat .value.bad { color: #f44; }
+#controls {
+  position: fixed; bottom: 10px; left: 10px; z-index: 100;
+  background: rgba(0,0,0,0.85); padding: 12px 16px; border-radius: 8px;
+  border: 1px solid rgba(0,255,255,0.3);
+}
+button {
+  background: rgba(0,255,255,0.15); color: #0ff; border: 1px solid #0ff;
+  padding: 6px 14px; margin: 2px 4px; border-radius: 4px; cursor: pointer;
+  font-family: inherit; font-size: 12px;
+}
+button:hover { background: rgba(0,255,255,0.3); }
+button.active { background: rgba(0,255,255,0.4); font-weight: bold; }
+#log {
+  position: fixed; top: 10px; right: 10px; z-index: 100;
+  background: rgba(0,0,0,0.85); padding: 12px 16px; border-radius: 8px;
+  border: 1px solid rgba(0,255,255,0.3); max-height: 60vh; overflow-y: auto;
+  font-size: 11px; min-width: 280px;
+}
+#log h3 { color: #0ff; margin-bottom: 6px; }
+.log-entry { color: #aaa; margin-bottom: 2px; }
+.log-entry.good { color: #0f0; }
+.log-entry.warn { color: #ff0; }
+.log-entry.bad { color: #f44; }
+#canvas-container { width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+
+<div id="hud">
+  <h2>STRESS TEST</h2>
+  <div class="stat"><span class="label">Entities:</span><span class="value" id="entity-count">0</span></div>
+  <div class="stat"><span class="label">FPS:</span><span class="value" id="fps">--</span></div>
+  <div class="stat"><span class="label">Frame Time:</span><span class="value" id="frame-time">--</span></div>
+  <div class="stat"><span class="label">Draw Calls:</span><span class="value" id="draw-calls">--</span></div>
+  <div class="stat"><span class="label">Triangles:</span><span class="value" id="triangles">--</span></div>
+  <div class="stat"><span class="label">Geometries:</span><span class="value" id="geometries">--</span></div>
+  <div class="stat"><span class="label">Textures:</span><span class="value" id="textures">--</span></div>
+  <div class="stat"><span class="label">Status:</span><span class="value" id="status">Ready</span></div>
+  <hr style="border-color: rgba(0,255,255,0.2); margin: 8px 0;">
+  <div class="stat"><span class="label">Instanced:</span><span class="value" id="instanced">--</span></div>
+  <div class="stat"><span class="label">Individual:</span><span class="value" id="individual">--</span></div>
+  <div class="stat"><span class="label">Mode:</span><span class="value" id="render-mode">--</span></div>
+</div>
+
+<div id="controls">
+  <button onclick="spawnBatch(100)">+100</button>
+  <button onclick="spawnBatch(500)">+500</button>
+  <button onclick="spawnBatch(1000)">+1K</button>
+  <button onclick="spawnBatch(5000)">+5K</button>
+  <button onclick="spawnBatch(10000)">+10K</button>
+  <button onclick="clearAll()">Clear All</button>
+  <button onclick="runAutoRamp()">Auto Ramp</button>
+  <button onclick="exportResults()">Export JSON</button>
+</div>
+
+<div id="log">
+  <h3>Performance Log</h3>
+  <div id="log-entries"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "/node_modules/three/build/three.module.js",
+    "three/addons/": "/node_modules/three/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ---------------------------------------------------------------------------
+// Scene Setup
+// ---------------------------------------------------------------------------
+
+const container = document.getElementById('canvas-container');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.NoToneMapping;
+container.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x050510);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 15, 25);
+camera.lookAt(0, 0, 0);
+
+// Ambient + directional light
+scene.add(new THREE.AmbientLight(0x222244, 0.5));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(10, 20, 10);
+scene.add(dirLight);
+
+// Surface sphere (wireframe)
+const surfaceGeo = new THREE.SphereGeometry(10, 32, 32);
+const surfaceMat = new THREE.MeshBasicMaterial({ color: 0x112233, wireframe: true, transparent: true, opacity: 0.3 });
+const surfaceMesh = new THREE.Mesh(surfaceGeo, surfaceMat);
+scene.add(surfaceMesh);
+
+// ---------------------------------------------------------------------------
+// Entity types for instancing
+// ---------------------------------------------------------------------------
+
+const ENEMY_TYPES = [
+  { name: 'diamond', geo: new THREE.OctahedronGeometry(0.25, 0), color: 0x4444ff },
+  { name: 'cube',    geo: new THREE.BoxGeometry(0.35, 0.35, 0.35), color: 0xff4444 },
+  { name: 'sphere',  geo: new THREE.IcosahedronGeometry(0.2, 1), color: 0x44ff44 },
+  { name: 'cone',    geo: new THREE.ConeGeometry(0.2, 0.4, 6), color: 0xff44ff },
+  { name: 'torus',   geo: new THREE.TorusGeometry(0.2, 0.06, 6, 12), color: 0xffff44 },
+];
+
+// Instanced mesh batches (one per type)
+const MAX_PER_BATCH = 20000;
+const batches = ENEMY_TYPES.map(type => {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xffffff,
+    emissive: new THREE.Color(type.color),
+    emissiveIntensity: 0.4,
+    metalness: 0.3,
+    roughness: 0.4,
+  });
+  const im = new THREE.InstancedMesh(type.geo, mat, MAX_PER_BATCH);
+  im.count = 0;
+  im.frustumCulled = false;
+  scene.add(im);
+
+  // Init instance colors
+  const c = new THREE.Color(type.color);
+  for (let i = 0; i < MAX_PER_BATCH; i++) {
+    im.setColorAt(i, c);
+  }
+  if (im.instanceColor) im.instanceColor.needsUpdate = true;
+
+  return { name: type.name, mesh: im, count: 0, color: type.color };
+});
+
+// Individual mesh list (for non-instanced test)
+const individualMeshes = [];
+
+// Entity data for animation
+const entities = [];
+let totalEntities = 0;
+let useInstancing = true;
+
+// Pre-allocated temp objects
+const _tmpMatrix = new THREE.Matrix4();
+const _tmpPos = new THREE.Vector3();
+const _tmpQuat = new THREE.Quaternion();
+const _tmpScale = new THREE.Vector3(1, 1, 1);
+const _tmpAxis = new THREE.Vector3();
+
+// ---------------------------------------------------------------------------
+// Spawning
+// ---------------------------------------------------------------------------
+
+function spawnBatch(count) {
+  const radius = 10;
+  for (let i = 0; i < count; i++) {
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    const typeIdx = Math.floor(Math.random() * ENEMY_TYPES.length);
+    const batch = batches[typeIdx];
+
+    if (useInstancing) {
+      if (batch.count >= MAX_PER_BATCH) continue;
+      const idx = batch.count;
+      batch.count++;
+      batch.mesh.count = batch.count;
+
+      entities.push({
+        type: 'instanced',
+        batchIdx: typeIdx,
+        instanceIdx: idx,
+        theta,
+        phi,
+        speed: 0.3 + Math.random() * 0.7,
+        spinSpeed: (Math.random() - 0.5) * 2,
+        radius,
+      });
+    } else {
+      // Individual meshes (for comparison)
+      const type = ENEMY_TYPES[typeIdx];
+      const mesh = new THREE.Mesh(
+        type.geo,
+        new THREE.MeshStandardMaterial({
+          color: type.color,
+          emissive: new THREE.Color(type.color),
+          emissiveIntensity: 0.4,
+        })
+      );
+      scene.add(mesh);
+      individualMeshes.push(mesh);
+
+      entities.push({
+        type: 'individual',
+        mesh,
+        theta,
+        phi,
+        speed: 0.3 + Math.random() * 0.7,
+        spinSpeed: (Math.random() - 0.5) * 2,
+        radius,
+      });
+    }
+
+    totalEntities++;
+  }
+
+  logEntry(`Spawned ${count} entities (total: ${totalEntities})`, 'good');
+  document.getElementById('entity-count').textContent = totalEntities.toLocaleString();
+}
+
+function clearAll() {
+  for (const batch of batches) {
+    batch.count = 0;
+    batch.mesh.count = 0;
+  }
+  for (const mesh of individualMeshes) {
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
+  }
+  individualMeshes.length = 0;
+  entities.length = 0;
+  totalEntities = 0;
+  document.getElementById('entity-count').textContent = '0';
+  logEntry('Cleared all entities', 'warn');
+}
+
+// ---------------------------------------------------------------------------
+// Animation
+// ---------------------------------------------------------------------------
+
+let time = 0;
+function updateEntities(dt) {
+  time += dt;
+  for (let i = 0; i < entities.length; i++) {
+    const e = entities[i];
+    e.theta += e.speed * dt * 0.3;
+    e.phi += Math.sin(time + i * 0.01) * dt * 0.1;
+
+    const r = e.radius;
+    const x = r * Math.sin(e.phi) * Math.cos(e.theta);
+    const y = r * Math.sin(e.phi) * Math.sin(e.theta);
+    const z = r * Math.cos(e.phi);
+
+    if (e.type === 'instanced') {
+      _tmpPos.set(x, y, z);
+      // Compute orientation: face outward from sphere center
+      _tmpAxis.copy(_tmpPos).normalize();
+      _tmpQuat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), _tmpAxis);
+      _tmpMatrix.compose(_tmpPos, _tmpQuat, _tmpScale);
+      batches[e.batchIdx].mesh.setMatrixAt(e.instanceIdx, _tmpMatrix);
+    } else {
+      e.mesh.position.set(x, y, z);
+      e.mesh.rotation.y += e.spinSpeed * dt;
+    }
+  }
+
+  // Mark instance matrices dirty
+  for (const batch of batches) {
+    if (batch.count > 0) {
+      batch.mesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// FPS tracking
+// ---------------------------------------------------------------------------
+
+const fpsHistory = [];
+const HISTORY_SIZE = 60;
+let frameCount = 0;
+let fpsAccum = 0;
+let lastTime = performance.now();
+
+// Results storage for auto-ramp
+const rampResults = [];
+
+function updateHUD() {
+  const now = performance.now();
+  const dt = now - lastTime;
+  lastTime = now;
+
+  if (dt > 0) {
+    const instantFps = 1000 / dt;
+    fpsHistory.push(instantFps);
+    if (fpsHistory.length > HISTORY_SIZE) fpsHistory.shift();
+  }
+
+  frameCount++;
+  if (frameCount % 10 === 0) {
+    const avgFps = fpsHistory.length > 0
+      ? fpsHistory.reduce((a, b) => a + b, 0) / fpsHistory.length
+      : 0;
+    const frameTimeMs = avgFps > 0 ? 1000 / avgFps : 0;
+
+    const fpsEl = document.getElementById('fps');
+    fpsEl.textContent = avgFps.toFixed(0);
+    fpsEl.className = 'value' + (avgFps >= 55 ? '' : avgFps >= 25 ? ' warn' : ' bad');
+
+    const ftEl = document.getElementById('frame-time');
+    ftEl.textContent = frameTimeMs.toFixed(1) + 'ms';
+    ftEl.className = 'value' + (frameTimeMs < 17 ? '' : frameTimeMs < 34 ? ' warn' : ' bad');
+
+    const info = renderer.info;
+    document.getElementById('draw-calls').textContent = info.render.calls;
+    document.getElementById('triangles').textContent = info.render.triangles.toLocaleString();
+    document.getElementById('geometries').textContent = info.memory.geometries;
+    document.getElementById('textures').textContent = info.memory.textures;
+
+    const instancedCount = batches.reduce((s, b) => s + b.count, 0);
+    document.getElementById('instanced').textContent = instancedCount.toLocaleString();
+    document.getElementById('individual').textContent = individualMeshes.length.toLocaleString();
+    document.getElementById('render-mode').textContent = useInstancing ? 'InstancedMesh' : 'Individual';
+  }
+
+  return dt / 1000;
+}
+
+// ---------------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------------
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = updateHUD();
+  updateEntities(Math.min(dt, 0.033)); // Clamp dt
+  renderer.render(scene, camera);
+}
+animate();
+
+// ---------------------------------------------------------------------------
+// Auto Ramp
+// ---------------------------------------------------------------------------
+
+async function runAutoRamp() {
+  const levels = [100, 500, 1000, 2000, 5000, 10000, 20000];
+  logEntry('Starting auto-ramp test...', 'good');
+  document.getElementById('status').textContent = 'Running...';
+  rampResults.length = 0;
+
+  for (const target of levels) {
+    clearAll();
+    await sleep(500);
+
+    spawnBatch(target);
+    await sleep(3000); // Wait 3 seconds for FPS to stabilize
+
+    // Sample FPS over 2 seconds
+    const sampleStart = fpsHistory.length;
+    await sleep(2000);
+    const recentFps = fpsHistory.slice(-60);
+    const avgFps = recentFps.length > 0
+      ? recentFps.reduce((a, b) => a + b, 0) / recentFps.length
+      : 0;
+    const minFps = recentFps.length > 0 ? Math.min(...recentFps) : 0;
+    const maxFps = recentFps.length > 0 ? Math.max(...recentFps) : 0;
+
+    const info = renderer.info;
+    const result = {
+      entities: target,
+      avgFps: Number(avgFps.toFixed(1)),
+      minFps: Number(minFps.toFixed(1)),
+      maxFps: Number(maxFps.toFixed(1)),
+      drawCalls: info.render.calls,
+      triangles: info.render.triangles,
+      frameTimeMs: Number((1000 / avgFps).toFixed(2)),
+    };
+    rampResults.push(result);
+
+    const status = avgFps >= 55 ? 'good' : avgFps >= 25 ? 'warn' : 'bad';
+    logEntry(`${target}: ${avgFps.toFixed(0)} FPS (${(1000/avgFps).toFixed(1)}ms) | ${info.render.calls} draws | ${info.render.triangles} tris`, status);
+
+    if (avgFps < 10) {
+      logEntry('FPS below 10 — stopping ramp', 'bad');
+      break;
+    }
+  }
+
+  document.getElementById('status').textContent = 'Complete';
+  logEntry('Auto-ramp complete. Click Export JSON to save results.', 'good');
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+
+function exportResults() {
+  if (rampResults.length === 0) {
+    logEntry('No ramp results to export. Run Auto Ramp first.', 'warn');
+    return;
+  }
+  const blob = new Blob([JSON.stringify(rampResults, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'browser-stress-test-results.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  logEntry('Results exported to browser-stress-test-results.json', 'good');
+}
+
+// ---------------------------------------------------------------------------
+// Log
+// ---------------------------------------------------------------------------
+
+function logEntry(msg, className = '') {
+  const el = document.createElement('div');
+  el.className = 'log-entry ' + className;
+  el.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  document.getElementById('log-entries').appendChild(el);
+  document.getElementById('log').scrollTop = 999999;
+}
+
+// Expose to global
+window.spawnBatch = spawnBatch;
+window.clearAll = clearAll;
+window.runAutoRamp = runAutoRamp;
+window.exportResults = exportResults;
+
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+logEntry('Stress test ready. Click buttons to spawn entities.', 'good');
+logEntry('GPU: ' + renderer.getContext().getParameter(renderer.getContext().RENDERER), 'good');
+</script>
+</body>
+</html>

@@ -10,9 +10,12 @@
  */
 
 import type { GPUCapabilityReport } from '../rendering/GPUCapabilities';
+import { detectGPUCapabilities } from '../rendering/GPUCapabilities';
+import type { RendererBackend } from '../rendering/RendererFactory';
 import { QualityLevel, QUALITY_LEVELS } from '../rendering/AdaptiveQuality';
 import type { MusicPreset } from '../audio/BackgroundMusic';
 import type { BenchmarkResult } from './GPUBenchmark';
+import { loadDDASettings, saveDDASettings, type DDASettingsData } from '../difficulty/DDASettings';
 
 // ---------------------------------------------------------------------------
 // Exported settings interfaces
@@ -170,14 +173,21 @@ export function applyQualityPreset(preset: string): GraphicsSettings {
 // SettingsMenu class
 // ---------------------------------------------------------------------------
 
-type TabName = 'gpu' | 'graphics' | 'performance' | 'audio';
+type TabName = 'gpu' | 'graphics' | 'performance' | 'audio' | 'gameplay';
 
 export class SettingsMenu {
+  // Static renderer info -- set once, available to all instances
+  private static globalRendererBackend: RendererBackend = 'webgl2';
+  private static globalRendererIsWebGPU = false;
+  /** Cached GPU report -- detected once, shared across all SettingsMenu instances. */
+  private static cachedGPUReport: GPUCapabilityReport | null = null;
+
   private container: HTMLDivElement;
   private styleElement: HTMLStyleElement | null = null;
   private onCloseCallback: (() => void) | null = null;
   private onGraphicsChangeCallback: ((settings: GraphicsSettings) => void) | null = null;
   private onAudioChangeCallback: ((settings: AudioSettings) => void) | null = null;
+  private onDDAChangeCallback: ((enabled: boolean) => void) | null = null;
 
   private activeTab: TabName = 'gpu';
   private graphicsSettings: GraphicsSettings;
@@ -185,6 +195,8 @@ export class SettingsMenu {
 
   // External data injected before show()
   private gpuReport: GPUCapabilityReport | null = null;
+  private rendererBackend: RendererBackend = SettingsMenu.globalRendererBackend;
+  private rendererIsWebGPU = SettingsMenu.globalRendererIsWebGPU;
   private benchmarkResult: BenchmarkResult | null = null;
   private benchmarkRunning = false;
 
@@ -192,10 +204,12 @@ export class SettingsMenu {
   private perfInterval: ReturnType<typeof setInterval> | null = null;
   private perfDataProvider: (() => { fps: number; drawCalls: number; entityCount: number; memoryMB: number }) | null = null;
   private adaptiveQualityEnabled = true;
+  private ddaSettings: DDASettingsData;
 
   constructor() {
     this.graphicsSettings = loadGraphicsSettings();
     this.audioSettings = loadAudioSettings();
+    this.ddaSettings = loadDDASettings();
 
     this.container = document.createElement('div');
     this.container.id = 'settings-menu';
@@ -211,6 +225,23 @@ export class SettingsMenu {
   /** Set GPU capability report (from detectGPUCapabilities). */
   setGPUReport(report: GPUCapabilityReport): void {
     this.gpuReport = report;
+    SettingsMenu.cachedGPUReport = report;
+  }
+
+  /** Set the active renderer backend info (from RendererFactory).
+   *  Also stored globally so future SettingsMenu instances pick it up. */
+  setRendererInfo(backend: RendererBackend, isWebGPU: boolean): void {
+    this.rendererBackend = backend;
+    this.rendererIsWebGPU = isWebGPU;
+    SettingsMenu.globalRendererBackend = backend;
+    SettingsMenu.globalRendererIsWebGPU = isWebGPU;
+  }
+
+  /** Static setter for renderer info -- call once during game initialization.
+   *  All future SettingsMenu instances will automatically use these values. */
+  static setGlobalRendererInfo(backend: RendererBackend, isWebGPU: boolean): void {
+    SettingsMenu.globalRendererBackend = backend;
+    SettingsMenu.globalRendererIsWebGPU = isWebGPU;
   }
 
   /** Set a function that returns live perf data each tick. */
@@ -235,7 +266,31 @@ export class SettingsMenu {
     this.onAudioChangeCallback = callback;
   }
 
+  /** Register callback for DDA toggle changes. */
+  onDDAChange(callback: (enabled: boolean) => void): void {
+    this.onDDAChangeCallback = callback;
+  }
+
   show(): void {
+    // Auto-detect GPU capabilities if not yet set
+    if (!this.gpuReport && SettingsMenu.cachedGPUReport) {
+      this.gpuReport = SettingsMenu.cachedGPUReport;
+    }
+    if (!this.gpuReport) {
+      // Show immediately with placeholder, then update when detection completes
+      this.rebuildContent();
+      this.container.classList.remove('hidden');
+      this.startPerfUpdates();
+      detectGPUCapabilities().then(report => {
+        this.gpuReport = report;
+        SettingsMenu.cachedGPUReport = report;
+        // Refresh if still on GPU tab
+        if (this.activeTab === 'gpu') {
+          this.rebuildContent();
+        }
+      });
+      return;
+    }
     this.rebuildContent();
     this.container.classList.remove('hidden');
     this.startPerfUpdates();
@@ -595,6 +650,7 @@ export class SettingsMenu {
           <button class="tab-btn${this.activeTab === 'graphics' ? ' active' : ''}" data-tab="graphics">GRAPHICS</button>
           <button class="tab-btn${this.activeTab === 'performance' ? ' active' : ''}" data-tab="performance">PERFORMANCE</button>
           <button class="tab-btn${this.activeTab === 'audio' ? ' active' : ''}" data-tab="audio">AUDIO</button>
+          <button class="tab-btn${this.activeTab === 'gameplay' ? ' active' : ''}" data-tab="gameplay">GAMEPLAY</button>
         </div>
         <div class="tab-content" id="settings-tab-content">
           ${this.renderActiveTab()}
@@ -610,6 +666,7 @@ export class SettingsMenu {
       case 'graphics': return this.renderGraphicsTab();
       case 'performance': return this.renderPerformanceTab();
       case 'audio': return this.renderAudioTab();
+      case 'gameplay': return this.renderGameplayTab();
     }
   }
 
@@ -617,9 +674,15 @@ export class SettingsMenu {
 
   private renderGPUTab(): string {
     const r = this.gpuReport;
-    const renderer = r?.renderer ?? 'Not detected';
+    const renderer = r?.renderer ?? 'Detecting...';
+    const vendor = r?.vendor ?? 'Detecting...';
     const tier = r?.tier ?? 'unknown';
     const tierClass = tier === 'high' ? 'good' : tier === 'medium' ? 'warn' : 'bad';
+
+    // Detect if renderer string is masked/generic
+    const isRendererMasked = !r || renderer === 'unknown' || renderer === 'Detecting...' ||
+      renderer.toLowerCase() === 'webkit webgl' ||
+      renderer.toLowerCase().includes('(unknown)');
 
     let benchmarkHTML = '';
     if (this.benchmarkResult) {
@@ -629,11 +692,11 @@ export class SettingsMenu {
         <div class="benchmark-results">
           <div class="benchmark-tier ${tierCls}">Benchmark Tier: ${br.gpuTier.toUpperCase()}</div>
           <div class="info-row">
-            <span class="info-label">Max @ 60fps</span>
+            <span class="info-label">Max @ 60fps (instanced)</span>
             <span class="info-value good">${br.maxAt60fps} entities</span>
           </div>
           <div class="info-row">
-            <span class="info-label">Max @ 30fps</span>
+            <span class="info-label">Max @ 30fps (instanced)</span>
             <span class="info-value warn">${br.maxAt30fps} entities</span>
           </div>
           ${br.scores.map(s => {
@@ -649,18 +712,55 @@ export class SettingsMenu {
               </div>
             `;
           }).join('')}
+          <div style="color:#668888;font-size:11px;margin-top:8px;line-height:1.4;">
+            Uses InstancedMesh rendering (1 draw call per entity type), matching real gameplay performance.
+          </div>
         </div>
       `;
     }
 
     const benchBtnLabel = this.benchmarkRunning ? 'RUNNING...' : 'RUN GPU BENCHMARK';
 
+    const activeRendererLabel = this.rendererIsWebGPU ? 'WebGPU' : 'WebGL2';
+    const activeRendererClass = this.rendererIsWebGPU ? 'good' : '';
+    const webgpuHint = r?.webgpu && !this.rendererIsWebGPU
+      ? ' (add ?renderer=webgpu to URL to enable)'
+      : '';
+
+    // WebGPU adapter info row (only if we have it)
+    const adapterRow = r?.webgpuAdapter
+      ? `<div class="info-row">
+           <span class="info-label">WebGPU Adapter</span>
+           <span class="info-value good">${this.escapeHtml(r.webgpuAdapter)}</span>
+         </div>`
+      : '';
+
+    // Privacy notice when renderer is masked
+    const privacyNote = isRendererMasked
+      ? `<div style="color:#886644;font-size:11px;margin-top:4px;line-height:1.4;">
+           Chrome restricts GPU hardware details for privacy.
+           ${r?.webgpuAdapter ? 'WebGPU adapter info shown above provides hardware details.' : 'Enable WebGPU flags for better hardware detection.'}
+         </div>`
+      : '';
+
     return `
+      <div class="section-heading">RENDERER</div>
+      <div class="info-row">
+        <span class="info-label">Active Renderer</span>
+        <span class="info-value ${activeRendererClass}">${activeRendererLabel}</span>
+      </div>
+
       <div class="section-heading">HARDWARE</div>
       <div class="info-row">
         <span class="info-label">GPU Renderer</span>
         <span class="info-value">${this.escapeHtml(renderer)}</span>
       </div>
+      <div class="info-row">
+        <span class="info-label">GPU Vendor</span>
+        <span class="info-value">${this.escapeHtml(vendor)}</span>
+      </div>
+      ${adapterRow}
+      ${privacyNote}
       <div class="info-row">
         <span class="info-label">Detected Tier</span>
         <span class="info-value ${tierClass}">${tier.toUpperCase()}</span>
@@ -673,7 +773,7 @@ export class SettingsMenu {
       <div class="section-heading">FEATURES</div>
       <div class="info-row">
         <span class="info-label">WebGPU</span>
-        <span class="info-value ${r?.webgpu ? 'good' : ''}">${r?.webgpu ? 'Available' : 'Not available'}</span>
+        <span class="info-value ${r?.webgpu ? 'good' : ''}">${r?.webgpu ? 'Available' : 'Not available'}${webgpuHint}</span>
       </div>
       <div class="info-row">
         <span class="info-label">WebGL2</span>
@@ -694,6 +794,16 @@ export class SettingsMenu {
       </button>
       <div id="benchmark-progress"></div>
       ${benchmarkHTML}
+
+      <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(0,255,255,0.08);">
+        <button class="action-btn" id="run-full-benchmark" style="background:linear-gradient(180deg,#443366 0%,#2a1a44 100%);border-color:#aa66ff;">
+          RUN FULL GAME BENCHMARK
+        </button>
+        <div style="color:#668888;font-size:11px;margin-top:8px;line-height:1.4;">
+          Tests real gameplay performance with moving enemies, bullets, and collisions.
+          Creates a full game session and measures FPS across increasing entity counts.
+        </div>
+      </div>
     `;
   }
 
@@ -818,6 +928,22 @@ export class SettingsMenu {
     `;
   }
 
+  // ---- Gameplay Tab ----
+
+  private renderGameplayTab(): string {
+    return `
+      <div class="section-heading">DIFFICULTY</div>
+      <div class="setting-row">
+        <span class="setting-label">Dynamic Difficulty</span>
+        <div class="toggle ${this.ddaSettings.enabled ? 'on' : ''}" id="toggle-dda" data-setting="ddaEnabled"></div>
+      </div>
+      <div style="color:#668888;font-size:12px;margin-top:4px;line-height:1.5;">
+        Subtly adjusts enemy composition for struggling players.<br>
+        Disabled automatically on Nightmare difficulty.
+      </div>
+    `;
+  }
+
   // -----------------------------------------------------------------------
   // Event listeners
   // -----------------------------------------------------------------------
@@ -854,6 +980,9 @@ export class SettingsMenu {
       case 'audio':
         this.attachAudioListeners();
         break;
+      case 'gameplay':
+        this.attachGameplayListeners();
+        break;
     }
   }
 
@@ -861,6 +990,11 @@ export class SettingsMenu {
     const benchBtn = this.container.querySelector('#run-benchmark') as HTMLButtonElement | null;
     benchBtn?.addEventListener('click', () => {
       this.runBenchmark();
+    });
+
+    const fullBenchBtn = this.container.querySelector('#run-full-benchmark') as HTMLButtonElement | null;
+    fullBenchBtn?.addEventListener('click', () => {
+      this.launchFullBenchmark();
     });
   }
 
@@ -921,6 +1055,14 @@ export class SettingsMenu {
   private attachPerformanceListeners(): void {
     this.attachToggle('toggle-adaptive', (on) => {
       this.adaptiveQualityEnabled = on;
+    });
+  }
+
+  private attachGameplayListeners(): void {
+    this.attachToggle('toggle-dda', (on) => {
+      this.ddaSettings = { ...this.ddaSettings, enabled: on };
+      saveDDASettings(this.ddaSettings);
+      this.onDDAChangeCallback?.(on);
     });
   }
 
@@ -1029,6 +1171,27 @@ export class SettingsMenu {
 
     this.benchmarkRunning = false;
     this.rebuildContent();
+  }
+
+  private async launchFullBenchmark(): Promise<void> {
+    // Hide settings menu before launching -- the benchmark creates its own overlay
+    this.hide();
+    this.onCloseCallback?.();
+
+    try {
+      const { runBenchmark } = await import('../benchmark');
+      runBenchmark();
+    } catch (err) {
+      // If import fails, re-show settings and report error
+      this.show();
+      const content = this.container.querySelector('#settings-tab-content');
+      if (content) {
+        const errDiv = document.createElement('div');
+        errDiv.style.cssText = 'color:#ff4444;font-size:12px;margin-top:12px;';
+        errDiv.textContent = `Full benchmark failed to launch: ${String(err)}`;
+        content.appendChild(errDiv);
+      }
+    }
   }
 
   // -----------------------------------------------------------------------

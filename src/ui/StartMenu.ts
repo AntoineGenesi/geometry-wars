@@ -6,7 +6,9 @@ import { ConfigurableInput } from '../input/ConfigurableInput';
 import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
 import { SettingsMenu } from './SettingsMenu';
+import { VisualPlayground } from './VisualPlayground';
 import { MenuBackground } from './MenuBackground';
+import { createQRCodeDisplay } from './QRCode';
 
 /**
  * Start menu UI for Geometry Wars.
@@ -21,6 +23,7 @@ export interface MenuSelection {
   levelIndex?: number;
   playerCount?: 2 | 3 | 4;
   serverUrl?: string;
+  playerName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +50,9 @@ export class StartMenu {
   private lanAutoRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private lanAutoRefreshEnabled = true;
   private lanScanning = false;
+
+  // LAN name dialog state
+  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string } | null = null;
 
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
@@ -227,6 +233,7 @@ export class StartMenu {
             <div id="lan-host-info" class="hidden">
               <p id="lan-host-status" class="lan-status">Starting server...</p>
               <p id="lan-host-url" class="lan-url"></p>
+              <div id="lan-qr-container"></div>
               <button class="lan-btn lan-enter hidden" id="lan-enter-btn">ENTER GAME</button>
               <button class="lan-btn lan-stop hidden" id="lan-stop-btn">STOP SERVER</button>
             </div>
@@ -263,9 +270,23 @@ export class StartMenu {
           <button class="back-btn" id="surface-back">BACK</button>
         </div>
 
+        <!-- Name input dialog (shown before joining LAN) -->
+        <div class="sub-panel lan-name-dialog hidden" id="lan-name-dialog">
+          <h3>ENTER YOUR NAME</h3>
+          <div class="lan-name-input-wrap">
+            <input type="text" id="lan-name-input" placeholder="Enter your name..." maxlength="20" />
+          </div>
+          <p class="lan-name-error hidden" id="lan-name-error"></p>
+          <div class="lan-name-buttons">
+            <button class="lan-btn lan-name-join" id="lan-name-join-btn">JOIN</button>
+            <button class="back-btn" id="lan-name-cancel-btn">CANCEL</button>
+          </div>
+        </div>
+
         <div class="controls-hint">
           <p>WASD - Move | Mouse - Aim | Click - Shoot | Space - Bomb | M - Mute</p>
           <button class="weapon-info-btn" id="weapon-info-btn">WEAPON DATABASE</button>
+          <button class="weapon-info-btn" id="visual-styles-btn">VISUAL STYLES</button>
           <button class="weapon-info-btn" id="settings-btn">SETTINGS</button>
         </div>
       </div>
@@ -332,8 +353,8 @@ export class StartMenu {
       #start-menu .oval-buttons-container {
         position: absolute;
         top: 50%;
-        left: 5%;
-        transform: translateY(-50%);
+        left: 15%;
+        transform: translate(-50%, -50%);
         display: flex;
         flex-direction: column;
         gap: 16px;
@@ -422,9 +443,11 @@ export class StartMenu {
       /* ------------------------------------------------------------------- */
       #start-menu .sub-panel {
         position: absolute;
-        left: 5%;
-        top: 15%;
-        width: 48%;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 52%;
+        max-width: 700px;
         max-height: 75%;
         overflow-y: auto;
         z-index: 20;
@@ -1028,12 +1051,128 @@ export class StartMenu {
       }
 
       /* ------------------------------------------------------------------- */
+      /* LAN name input dialog                                                */
+      /* ------------------------------------------------------------------- */
+      #start-menu .lan-name-dialog {
+        text-align: center;
+        z-index: 30;
+      }
+      #start-menu .lan-name-input-wrap {
+        display: flex;
+        justify-content: center;
+        margin: 20px 0 10px;
+      }
+      #start-menu #lan-name-input {
+        background: rgba(0, 40, 40, 0.6);
+        border: 2px solid #006666;
+        color: #00ffff;
+        padding: 14px 20px;
+        font: 18px monospace;
+        width: 300px;
+        outline: none;
+        text-align: center;
+        letter-spacing: 2px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      #start-menu #lan-name-input:focus {
+        border-color: #00ffff;
+        box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+      }
+      #start-menu .lan-name-error {
+        color: #ff4444;
+        font: 13px monospace;
+        margin: 8px 0;
+        text-shadow: 0 0 8px rgba(255, 68, 68, 0.5);
+      }
+      #start-menu .lan-name-buttons {
+        display: flex;
+        gap: 15px;
+        justify-content: center;
+        margin-top: 15px;
+      }
+      #start-menu .lan-btn.lan-name-join {
+        background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
+        border-color: #00ff00;
+        padding: 14px 40px;
+        font-size: 16px;
+      }
+      #start-menu .lan-btn.lan-name-join:hover {
+        background: linear-gradient(180deg, #00cc00 0%, #008800 100%);
+        box-shadow: 0 0 20px #00ff00;
+      }
+
+      /* ------------------------------------------------------------------- */
       /* Hidden utility                                                       */
       /* ------------------------------------------------------------------- */
       #start-menu .hidden { display: none !important; }
 
       #start-menu.hidden {
         display: none;
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* Mobile-responsive layout                                             */
+      /* ------------------------------------------------------------------- */
+      @media (max-width: 900px) and (pointer: coarse) {
+        #start-menu .oval-buttons-container {
+          position: static;
+          transform: none;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          padding: 0 20px;
+          margin-top: 15vh;
+        }
+        #start-menu .oval-btn {
+          min-width: 260px;
+          min-height: 48px;
+          padding: 16px 28px;
+          font-size: 16px;
+          touch-action: manipulation;
+        }
+        #start-menu .oval-btn-primary {
+          min-height: 52px;
+          padding: 18px 36px;
+          font-size: 18px;
+        }
+        #start-menu .sub-panel {
+          width: 92%;
+          max-width: none;
+          padding: 16px;
+        }
+        #start-menu .surface-grid {
+          grid-template-columns: repeat(3, 1fr);
+          gap: 8px;
+        }
+        #start-menu .surface-btn {
+          padding: 12px 8px;
+          min-height: 48px;
+        }
+        #start-menu .start-btn {
+          min-height: 52px;
+          padding: 16px 28px;
+          font-size: 17px;
+        }
+        #start-menu .controls-hint {
+          display: none;
+        }
+        #start-menu .title {
+          font-size: clamp(24px, 6vw, 40px);
+          letter-spacing: 4px;
+        }
+        #start-menu .coop-btn {
+          padding: 16px 24px;
+          min-height: 48px;
+        }
+        #start-menu .lan-btn {
+          min-height: 48px;
+          padding: 12px 20px;
+        }
+        #start-menu .level-btn {
+          min-height: 48px;
+          padding: 10px 8px;
+        }
       }
     `;
     document.head.appendChild(style);
@@ -1213,6 +1352,7 @@ export class StartMenu {
     let hostedServerUrl = '';
     const lanHostSurfacePick = this.container.querySelector('#lan-host-surface-pick') as HTMLElement;
     const lanStartHostBtn = this.container.querySelector('#lan-start-host-btn') as HTMLElement;
+    const lanQRContainer = this.container.querySelector('#lan-qr-container') as HTMLElement;
 
     // LAN surface selection buttons
     const lanSurfaceBtns = this.container.querySelectorAll('.lan-surface-grid .surface-btn');
@@ -1236,6 +1376,7 @@ export class StartMenu {
       lanHostInfo.classList.remove('hidden');
       lanHostStatus.textContent = 'Starting server...';
       lanHostUrl.textContent = '';
+      lanQRContainer.innerHTML = '';
       lanEnterBtn.classList.add('hidden');
       lanStopBtn.classList.add('hidden');
 
@@ -1279,6 +1420,12 @@ export class StartMenu {
           if (result.addresses.length > 0) {
             const lanUrl = this.lanClient.getJoinUrl(result.addresses[0], result.port, this.lanSelectedSurface, vitePort);
             lanHostUrl.appendChild(makeCopyRow('LAN', lanUrl));
+
+            // Generate QR code with mobile-optimized join URL
+            const mobileUrl = this.lanClient.getMobileJoinUrl(result.addresses[0], result.port, this.lanSelectedSurface, vitePort);
+            const qrDisplay = createQRCodeDisplay(mobileUrl, mobileUrl, 220);
+            lanQRContainer.innerHTML = '';
+            lanQRContainer.appendChild(qrDisplay);
           }
           lanEnterBtn.classList.remove('hidden');
           lanStopBtn.classList.remove('hidden');
@@ -1298,40 +1445,36 @@ export class StartMenu {
       }
     });
 
-    // ENTER GAME (after hosting)
+    // ENTER GAME (after hosting) - show name dialog first
     lanEnterBtn?.addEventListener('click', () => {
       if (hostedServerUrl) {
-        this.stopAutoRefresh();
-        this.onStartCallback?.({
-          surfaceType: this.lanSelectedSurface,
-          gameMode: 'network',
-          serverUrl: hostedServerUrl,
-        });
+        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl);
       }
     });
 
     // STOP SERVER
     lanStopBtn?.addEventListener('click', async () => {
       await this.lanClient.stopHost();
+      // CRITICAL: Reset ALL hosted state to prevent stale UI
       lanHostInfo.classList.add('hidden');
       lanHostSurfacePick.classList.add('hidden');
+      lanHostStatus.textContent = 'Starting server...';
+      lanHostUrl.textContent = '';
+      lanQRContainer.innerHTML = '';
+      lanEnterBtn.classList.add('hidden');
+      lanStopBtn.classList.add('hidden');
       lanHostBtn.style.display = '';
       hostedServerUrl = '';
       // Refresh lobby list after stopping
       this.performLobbyRefresh();
     });
 
-    // CONNECT (manual IP)
+    // CONNECT (manual IP) - show name dialog first
     lanConnectBtn?.addEventListener('click', () => {
       const ip = lanIpInput.value.trim();
       if (!ip) return;
-      this.stopAutoRefresh();
       const serverUrl = this.lanClient.getServerWsUrl(ip, 2567);
-      this.onStartCallback?.({
-        surfaceType: this.lanSelectedSurface,
-        gameMode: 'network',
-        serverUrl,
-      });
+      this.showNameDialog(this.lanSelectedSurface, serverUrl);
     });
 
     // Also connect on Enter key in IP input
@@ -1380,6 +1523,16 @@ export class StartMenu {
       });
     });
 
+    // Visual styles playground
+    const visualStylesBtn = this.container.querySelector('#visual-styles-btn');
+    visualStylesBtn?.addEventListener('click', () => {
+      const playground = new VisualPlayground();
+      playground.show();
+      playground.onClose(() => {
+        playground.dispose();
+      });
+    });
+
     // Settings menu
     const settingsBtn = this.container.querySelector('#settings-btn');
     settingsBtn?.addEventListener('click', () => {
@@ -1388,6 +1541,28 @@ export class StartMenu {
       settings.onClose(() => {
         settings.dispose();
       });
+    });
+
+    // ---- LAN name dialog handlers ----
+    const lanNameJoinBtn = this.container.querySelector('#lan-name-join-btn');
+    const lanNameCancelBtn = this.container.querySelector('#lan-name-cancel-btn');
+    const lanNameInput = this.container.querySelector('#lan-name-input') as HTMLInputElement;
+
+    lanNameJoinBtn?.addEventListener('click', () => {
+      this.submitNameAndJoin();
+    });
+
+    lanNameCancelBtn?.addEventListener('click', () => {
+      this.cancelNameDialog();
+    });
+
+    lanNameInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        this.submitNameAndJoin();
+      }
+      if (e.key === 'Escape') {
+        this.cancelNameDialog();
+      }
     });
   }
 
@@ -1408,6 +1583,85 @@ export class StartMenu {
       clearInterval(this.lanAutoRefreshTimer);
       this.lanAutoRefreshTimer = null;
     }
+  }
+
+  // -----------------------------------------------------------------------
+  // LAN name dialog helpers
+  // -----------------------------------------------------------------------
+
+  /**
+   * Show the name dialog before joining a LAN game.
+   * Stores the pending join info and shows the dialog overlay.
+   */
+  private showNameDialog(surfaceType: SurfaceType, serverUrl: string): void {
+    this.pendingLanJoin = { surfaceType, serverUrl };
+
+    const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
+    const nameDialog = this.container.querySelector('#lan-name-dialog') as HTMLElement;
+    const nameInput = this.container.querySelector('#lan-name-input') as HTMLInputElement;
+    const errorEl = this.container.querySelector('#lan-name-error') as HTMLElement;
+
+    lanSection.classList.add('hidden');
+    nameDialog.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+    errorEl.textContent = '';
+
+    // Pre-fill from localStorage
+    const savedName = localStorage.getItem('gw3d_player_name') || '';
+    nameInput.value = savedName;
+
+    // Focus the input after a short delay (DOM needs to render)
+    setTimeout(() => nameInput.focus(), 50);
+  }
+
+  /**
+   * Attempt to join with the entered name. Validates locally, then proceeds.
+   */
+  private submitNameAndJoin(): void {
+    if (!this.pendingLanJoin) return;
+
+    const nameInput = this.container.querySelector('#lan-name-input') as HTMLInputElement;
+    const errorEl = this.container.querySelector('#lan-name-error') as HTMLElement;
+
+    // Sanitize: trim, strip HTML tags, limit to 20 chars
+    let name = nameInput.value.trim().replace(/<[^>]*>/g, '').slice(0, 20);
+
+    // If empty, use default
+    if (!name) {
+      name = `Player ${Math.floor(Math.random() * 9000) + 1000}`;
+    }
+
+    // Save to localStorage
+    localStorage.setItem('gw3d_player_name', name);
+
+    // Clear error
+    errorEl.classList.add('hidden');
+    errorEl.textContent = '';
+
+    // Hide dialog and proceed with join
+    const nameDialog = this.container.querySelector('#lan-name-dialog') as HTMLElement;
+    nameDialog.classList.add('hidden');
+
+    this.stopAutoRefresh();
+    this.onStartCallback?.({
+      surfaceType: this.pendingLanJoin.surfaceType,
+      gameMode: 'network',
+      serverUrl: this.pendingLanJoin.serverUrl,
+      playerName: name,
+    });
+
+    this.pendingLanJoin = null;
+  }
+
+  /**
+   * Cancel the name dialog and go back to LAN section.
+   */
+  private cancelNameDialog(): void {
+    this.pendingLanJoin = null;
+    const nameDialog = this.container.querySelector('#lan-name-dialog') as HTMLElement;
+    const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
+    nameDialog.classList.add('hidden');
+    lanSection.classList.remove('hidden');
   }
 
   private async performLobbyRefresh(): Promise<void> {
@@ -1536,15 +1790,10 @@ export class StartMenu {
     `;
 
     entry.addEventListener('click', () => {
-      this.stopAutoRefresh();
       const serverUrl = this.lanClient.getServerWsUrl(ip, port);
       // Use the server's actual surface type, not the local Quick Game selection
       const serverSurface = (details.rawSurface || details.surface.toLowerCase()) as SurfaceType;
-      this.onStartCallback?.({
-        surfaceType: serverSurface,
-        gameMode: 'network',
-        serverUrl,
-      });
+      this.showNameDialog(serverSurface, serverUrl);
     });
 
     return entry;

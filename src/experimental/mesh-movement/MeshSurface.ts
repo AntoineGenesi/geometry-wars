@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { MeshBVH, getTriangleHitPointInfo } from 'three-mesh-bvh';
 import { GeodesicSurface, GeodesicMoveResult } from './geodesic/GeodesicSurface';
 import { FacePosition } from './geodesic/FaceWalker';
+import { computeDepthVisibility, type DepthOpacityCurve, DEFAULT_DEPTH_CURVE } from '../../rendering/DepthOpacity';
 
 export interface SurfaceQueryResult {
   /** Closest point on the mesh surface (world space) */
@@ -244,28 +245,33 @@ export class MeshSurface {
    * Check if a point is on the "near" side of the mesh relative to a camera.
    * Returns a value from 0 to 1:
    * - 1.0 = point is facing the camera (front side)
-   * - 0.0 = point is facing away from the camera (back side)
+   * - ~0.06 = point is facing away from the camera (back side, faint glow)
    *
-   * Used for depth-based opacity of far-side entities.
+   * Uses a steep exponential curve so far-side entities are barely visible.
+   * The curve is configurable via DepthOpacityCurve presets.
+   *
+   * Uses pre-allocated temp vectors internally -- no per-frame allocation.
    */
   getVisibility(
     entityPos: THREE.Vector3,
     entityNormal: THREE.Vector3,
     cameraPos: THREE.Vector3,
+    curve?: DepthOpacityCurve,
   ): number {
-    const toCamera = cameraPos.clone().sub(entityPos).normalize();
-    const dot = entityNormal.dot(toCamera);
-    // Remap: dot > 0 means facing camera, dot < 0 means facing away
-    // Smooth transition: front side = 1.0, back side = 0.2
-    return Math.max(0.2, dot * 0.5 + 0.5);
+    return computeDepthVisibility(entityPos, entityNormal, cameraPos, curve ?? DEFAULT_DEPTH_CURVE);
   }
+
+  /** Pre-allocated box and center for getCenter() (avoids per-frame allocation) */
+  private readonly _centerBox = new THREE.Box3();
+  private readonly _centerVec = new THREE.Vector3();
 
   /**
    * Get the approximate center of the mesh (for gravity direction calculations).
+   * Uses pre-allocated objects internally -- returns same vector reference each call.
    */
   getCenter(): THREE.Vector3 {
-    const box = new THREE.Box3().setFromObject(this.mesh);
-    return box.getCenter(new THREE.Vector3());
+    this._centerBox.setFromObject(this.mesh);
+    return this._centerBox.getCenter(this._centerVec);
   }
 
   /**

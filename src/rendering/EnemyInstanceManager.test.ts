@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as THREE from 'three';
 import { EnemyInstanceManager } from './EnemyInstanceManager';
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
+import { LODLevel } from './LODManager';
 
 // Minimal concrete enemy subclass for testing
 class TestGrunt extends BaseEnemy {
@@ -276,6 +277,332 @@ describe('EnemyInstanceManager', () => {
 
       const stats = manager.getStats();
       expect(stats.totalInstances).toBe(2); // grunt2 + grunt3
+    });
+  });
+
+  // ====== LOD geometry swap tests ======
+
+  describe('updateInstancesWithLOD', () => {
+    let camera: THREE.PerspectiveCamera;
+
+    beforeEach(() => {
+      camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+      camera.position.set(0, 0, 15);
+      camera.lookAt(0, 0, 0);
+      camera.updateMatrixWorld(true);
+    });
+
+    it('creates shared LOD batches on first call', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.HIGH);
+
+      const childCountBefore = scene.children.length;
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      // Should have added 2 shared LOD batches (medium + low)
+      expect(scene.children.length).toBe(childCountBefore + 2);
+    });
+
+    it('keeps HIGH LOD enemies in their type-specific batch', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.HIGH);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      // Enemy should NOT be in a LOD batch
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+
+      // Instance matrix should have the enemy's position (not zero-scaled)
+      const instancedMesh = scene.children.find(
+        c => c instanceof THREE.InstancedMesh && (c as THREE.InstancedMesh).name === 'instanced-Grunt'
+      ) as THREE.InstancedMesh;
+      expect(instancedMesh).toBeDefined();
+
+      const matrix = new THREE.Matrix4();
+      instancedMesh.getMatrixAt(0, matrix);
+      const pos = new THREE.Vector3();
+      pos.setFromMatrixPosition(matrix);
+      expect(pos.x).toBeCloseTo(1, 1);
+    });
+
+    it('moves MEDIUM LOD enemies to shared icosahedron batch', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      // Enemy should be in a LOD batch
+      expect(manager.isInLODBatch(grunt)).toBe(true);
+
+      // The HIGH batch should have this enemy at zero-scale (hidden)
+      const highBatch = scene.children.find(
+        c => c instanceof THREE.InstancedMesh && (c as THREE.InstancedMesh).name === 'instanced-Grunt'
+      ) as THREE.InstancedMesh;
+      const matrix = new THREE.Matrix4();
+      highBatch.getMatrixAt(0, matrix);
+      const scale = new THREE.Vector3();
+      scale.setFromMatrixScale(matrix);
+      expect(scale.x).toBeCloseTo(0);
+      expect(scale.y).toBeCloseTo(0);
+      expect(scale.z).toBeCloseTo(0);
+
+      // The shared medium LOD batch should have the enemy positioned
+      const lodMediumBatch = scene.children.find(
+        c => c instanceof THREE.InstancedMesh && (c as THREE.InstancedMesh).name === 'lod-medium'
+      ) as THREE.InstancedMesh;
+      expect(lodMediumBatch).toBeDefined();
+      expect(lodMediumBatch.count).toBeGreaterThan(0);
+    });
+
+    it('moves LOW LOD enemies to shared billboard batch', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.LOW);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      expect(manager.isInLODBatch(grunt)).toBe(true);
+
+      // The shared low LOD batch should have the enemy positioned
+      const lodLowBatch = scene.children.find(
+        c => c instanceof THREE.InstancedMesh && (c as THREE.InstancedMesh).name === 'lod-low'
+      ) as THREE.InstancedMesh;
+      expect(lodLowBatch).toBeDefined();
+      expect(lodLowBatch.count).toBeGreaterThan(0);
+    });
+
+    it('transitions enemy from LOD batch back to HIGH when LOD changes', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      // First frame: MEDIUM LOD
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      expect(manager.isInLODBatch(grunt)).toBe(true);
+
+      // Second frame: back to HIGH LOD
+      lodAssignments.set(grunt, LODLevel.HIGH);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+    });
+
+    it('handles mixed LOD levels across multiple enemies', () => {
+      const highGrunt = new TestGrunt();
+      const medGrunt = new TestGrunt(0.3, 0.7);
+      const lowGrunt = new TestGrunt(0.1, 0.1);
+
+      manager.register(highGrunt);
+      manager.register(medGrunt);
+      manager.register(lowGrunt);
+
+      highGrunt.mesh!.position.set(1, 0, 0);
+      medGrunt.mesh!.position.set(-5, 0, 0);
+      lowGrunt.mesh!.position.set(-20, 0, 0);
+      highGrunt.mesh!.updateMatrixWorld(true);
+      medGrunt.mesh!.updateMatrixWorld(true);
+      lowGrunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(highGrunt, LODLevel.HIGH);
+      lodAssignments.set(medGrunt, LODLevel.MEDIUM);
+      lodAssignments.set(lowGrunt, LODLevel.LOW);
+
+      manager.updateInstancesWithLOD([highGrunt, medGrunt, lowGrunt], lodAssignments, camera);
+
+      expect(manager.isInLODBatch(highGrunt)).toBe(false);
+      expect(manager.isInLODBatch(medGrunt)).toBe(true);
+      expect(manager.isInLODBatch(lowGrunt)).toBe(true);
+
+      const lodStats = manager.getLODStats();
+      expect(lodStats.mediumCount).toBe(1);
+      expect(lodStats.lowCount).toBe(1);
+    });
+
+    it('skips inactive enemies', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.active = false;
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+    });
+
+    it('skips materializing enemies', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.isMaterializing = true;
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+    });
+
+    it('unregistering enemy also clears LOD placement', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      expect(manager.isInLODBatch(grunt)).toBe(true);
+
+      manager.unregister(grunt);
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+    });
+  });
+
+  describe('setLODInstanceVisibility', () => {
+    let camera: THREE.PerspectiveCamera;
+
+    beforeEach(() => {
+      camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+      camera.position.set(0, 0, 15);
+      camera.updateMatrixWorld(true);
+    });
+
+    it('sets visibility on LOD batch instance without throwing', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      // Should not throw
+      manager.setLODInstanceVisibility(grunt, 0.5);
+      manager.flushColors();
+    });
+
+    it('does nothing for enemies not in LOD batch', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+
+      // Not in LOD batch - should not throw
+      manager.setLODInstanceVisibility(grunt, 0.5);
+    });
+  });
+
+  describe('LOD geometry triangle reduction', () => {
+    it('uses simplified geometry with fewer triangles for MEDIUM LOD', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+
+      const camera = new THREE.PerspectiveCamera();
+      camera.position.set(0, 0, 15);
+      camera.updateMatrixWorld(true);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      // Find the shared medium LOD batch
+      const lodMediumBatch = scene.children.find(
+        c => c instanceof THREE.InstancedMesh && (c as THREE.InstancedMesh).name === 'lod-medium'
+      ) as THREE.InstancedMesh;
+      expect(lodMediumBatch).toBeDefined();
+
+      // Verify the medium LOD geometry is an icosahedron (20 faces = 60 verts non-indexed)
+      const geo = lodMediumBatch.geometry;
+      const posAttr = geo.getAttribute('position');
+      expect(posAttr.count).toBeLessThanOrEqual(100); // Icosahedron detail 0 is small
+
+      // Find the HIGH-detail batch to compare triangle counts
+      const highBatch = scene.children.find(
+        c => c instanceof THREE.InstancedMesh && (c as THREE.InstancedMesh).name === 'instanced-Grunt'
+      ) as THREE.InstancedMesh;
+      const highPosAttr = highBatch.geometry.getAttribute('position');
+
+      // Medium LOD geometry should have fewer vertices than high-detail geometry
+      expect(posAttr.count).toBeLessThan(highPosAttr.count);
+    });
+
+    it('uses billboard geometry with 2 triangles for LOW LOD', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+
+      const camera = new THREE.PerspectiveCamera();
+      camera.position.set(0, 0, 15);
+      camera.updateMatrixWorld(true);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.LOW);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      const lodLowBatch = scene.children.find(
+        c => c instanceof THREE.InstancedMesh && (c as THREE.InstancedMesh).name === 'lod-low'
+      ) as THREE.InstancedMesh;
+      expect(lodLowBatch).toBeDefined();
+
+      // Billboard = PlaneGeometry = 4 vertices (indexed) or 6 (non-indexed)
+      const posAttr = lodLowBatch.geometry.getAttribute('position');
+      expect(posAttr.count).toBeLessThanOrEqual(6);
+    });
+  });
+
+  describe('dispose with LOD batches', () => {
+    it('cleans up LOD batches on dispose', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+
+      const camera = new THREE.PerspectiveCamera();
+      camera.position.set(0, 0, 15);
+      camera.updateMatrixWorld(true);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      // Verify LOD batches exist in scene
+      const lodMeshes = scene.children.filter(
+        c => c instanceof THREE.InstancedMesh &&
+        ((c as THREE.InstancedMesh).name === 'lod-medium' || (c as THREE.InstancedMesh).name === 'lod-low')
+      );
+      expect(lodMeshes.length).toBe(2);
+
+      manager.dispose();
+
+      // All instanced meshes should be removed
+      const remaining = scene.children.filter(c => c instanceof THREE.InstancedMesh);
+      expect(remaining.length).toBe(0);
     });
   });
 });

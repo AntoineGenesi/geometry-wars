@@ -48,7 +48,9 @@ const LAUNCH_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
-  '--window-size=1280,720',
+  '--window-size=640,360',
+  '--disable-frame-rate-limit',
+  '--disable-gpu-vsync',
 ];
 
 // ---------------------------------------------------------------------------
@@ -140,7 +142,7 @@ async function launchBrowser() {
 
 async function createPage(browser) {
   const page = await browser.newPage();
-  await page.setViewport({ width: 1280, height: 720 });
+  await page.setViewport({ width: 640, height: 360 });
 
   // Collect errors
   const errors = [];
@@ -159,11 +161,11 @@ async function startGameOnSurface(page, surface = 'sphere') {
     waitUntil: 'domcontentloaded',
     timeout: 30000,
   });
-  await sleep(3000);
+  await sleep(2000);
 
   // Click Quick Game
   await page.click('[data-mode="single"]');
-  await sleep(1500);
+  await sleep(800);
 
   // Click the Start button in the surface panel
   await page.evaluate(() => {
@@ -177,7 +179,7 @@ async function startGameOnSurface(page, surface = 'sphere') {
   });
 
   // Wait for countdown (3...2...1...) + first render
-  await sleep(5000);
+  await sleep(3000);
 }
 
 /** Screenshot diff: compare two screenshot buffers, return % changed */
@@ -623,7 +625,7 @@ describe('Extended Gameplay', () => {
     await injectCanvasReader(page);
 
     // Wait for enemies to spawn (first wave ~3-5 seconds after countdown)
-    await sleep(8000);
+    await sleep(5000);
 
     const frame = await captureFrameData(page);
     expect(frame).not.toBeNull();

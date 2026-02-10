@@ -11,7 +11,7 @@ Two movement systems coexist, bridged via coordinate conversion.
 
 ### UV-Based (Enemies + Geoms)
 
-- **Surface** (`src/surfaces/Surface.ts`): Abstract base with 10 implementations (Sphere, Torus, Cube, Cylinder, Peanut, Capsule, Icosahedron, Mobius, DentedSphere, SphereWithTunnel). Each provides `getPoint(u,v)`, `moveOnSurface(u,v,du,dv)`, and `worldToSurface(pos)`.
+- **Surface** (`src/surfaces/Surface.ts`): Abstract base with 12 playable implementations (Sphere, Torus, Cube, Pill, Pipe, Peanut, Capsule, Icosahedron, Mobius, SphereWithTunnel, CubeRing, CubeWithTunnel). Each provides `getPoint(u,v)`, `moveOnSurface(u,v,du,dv)`, and `worldToSurface(pos)`. Additional non-playable surfaces (DentedSphere) exist as files but are not registered in SurfaceFactory.
 - **UV Bridge**: `surface.worldToSurface()` converts world positions to UV, allowing MeshWalker-based player to interact with UV-based enemies.
 
 ## Entity System
@@ -19,7 +19,7 @@ Two movement systems coexist, bridged via coordinate conversion.
 - **Entity** (`src/core/Entity.ts`): Base class with mesh, position, alive flag.
 - **EntityManager** (`src/core/EntityManager.ts`): Manages entity lifecycle (add/remove/update).
 - **Player** (`src/entities/Player.ts`): Lives, shield, invincibility, bomb count.
-- **BaseEnemy** (`src/entities/enemies/BaseEnemy.ts`): 15 types registered in EnemySpawner. Constructor: `(surfaceU, surfaceV, health, scoreValue, geomCount, speed, radius?)`. Types: Grunt, Weaver, Wanderer, Snake, Spinner, SpinnerSpawn, Rocket, Duck, Mayfly, Painter, Virus, Spawner, Neutron, Repulsor, Gate. Titan variants: TitanGrunt, TitanSpinner, TitanWeaver. Boss type.
+- **BaseEnemy** (`src/entities/enemies/BaseEnemy.ts`): 30 enemy types. Original types: Grunt, Weaver, Wanderer, Snake, Spinner, SpinnerSpawn, Rocket, Duck, Mayfly, Painter, Virus, Spawner, Neutron, Repulsor, Gate, GravityWell. Titan variants: TitanGrunt, TitanSpinner, TitanWeaver. Giant variants: GiantWanderer, GiantRocket, GiantSnake, GiantNeutron. Newer types: Cluster, Helix, Fractal, Swarm, Lurker, Orbiter, Splitter, Phaser. Boss type.
 - **Bullet** (`src/entities/Bullet.ts`): Pooled. Uses MeshSurface when available, falls back to spherical paths. Tracks `ownerId` for kill attribution.
 - **Geom** (`src/entities/Geom.ts`): Pooled score pickups dropped by enemies.
 
@@ -28,12 +28,6 @@ Two movement systems coexist, bridged via coordinate conversion.
 - **WeaponTypes** (`src/weapons/WeaponTypes.ts`): 10 types -- Standard, Spread, Piercing, ChainLightning, Homing, PlasmaMortar, GravityGun, LaserBeam, BlackHole, TeslaCoil. Each has damage, fire rate, ammo, projectile speed.
 - **WeaponManager** (`src/weapons/WeaponManager.ts`): Handles current weapon, switching, ammo depletion.
 - **WeaponPickup** (`src/weapons/WeaponPickup.ts`): Timed surface pickups that grant weapon changes.
-
-## Drone System
-
-- **DroneFactory** (`src/weapons/DroneFactory.ts`): Creates 6 drone types from `DroneType` enum.
-- Types: Attack (shoots), Collect (gathers geoms), Defend (blocks), Ram (charges enemies), Snipe (long-range), Sweep (area clear).
-- Each drone orbits the player and acts autonomously based on type.
 
 ## Super State System
 
@@ -50,6 +44,7 @@ Two movement systems coexist, bridged via coordinate conversion.
 - **EntityGlow** (`src/effects/EntityGlow.ts`): Per-entity glow effect.
 - **ChainLightning** (`src/effects/ChainLightning.ts`): Visual arcs for chain lightning weapon.
 - **ScorePopup** (`src/effects/ScorePopup.ts`): Floating score text on kills.
+- **AllyGlow** (`src/effects/AllyGlow.ts`): Visual glow effect for allied players in multiplayer.
 
 ## Audio
 
@@ -70,10 +65,11 @@ Camera follows player along surface normal. Uses MeshWalker's persistent tangent
 
 Server-authoritative multiplayer using Colyseus 0.15.x with Schema v2 binary state synchronization.
 
-- **Server**: `server/rooms/GameRoom.ts` runs a 60 Hz game loop with input processing, enemy AI, collision detection, and entity spawning. State patches broadcast every 50ms.
+- **Server**: `server/rooms/GameRoom.ts` runs a 60 Hz game loop with input processing, enemy AI, collision detection, and entity spawning. State patches broadcast every ~33ms (~30Hz).
 - **Schema**: `server/schema/GameState.ts` defines 6 synced classes (PlayerState, BulletState, EnemyState, GeomState, WeaponPickupState, GameState) using `declare` + `defineTypes()` to avoid ES2022 class field conflicts with Schema setters.
 - **Client**: `src/network/NetworkClient.ts` wraps Colyseus client with typed callbacks. `src/network-main.ts` renders server state onto Three.js surfaces.
 - **LAN Hosting**: `vite-plugin-lan.ts` adds `/__lan/*` middleware to Vite dev server, spawning Colyseus as a child process. `src/network/LANClient.ts` provides the client-side API. Includes subnet scanning for server discovery.
+- **Interest Management**: `server/systems/InterestManager.ts` + `PriorityQueue.ts` provide per-client entity filtering based on UV-distance priority classification.
 
 For full details on connection flow, the ES2022 encoding bug, LAN architecture, and lessons learned, see **[LAN Multiplayer Architecture](./lan-multiplayer-architecture.md)**.
 

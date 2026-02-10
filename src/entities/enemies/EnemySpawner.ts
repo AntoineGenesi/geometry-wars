@@ -32,6 +32,7 @@ import { Orbiter } from './Orbiter';
 import { Splitter } from './Splitter';
 import { Phaser } from './Phaser';
 import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
+import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
@@ -100,6 +101,11 @@ export class EnemySpawner {
   /** Optional instance manager for GPU-batched rendering. */
   private instanceManager: EnemyInstanceManager | null = null;
 
+  /** Optional DDA spawn modifier for dynamic difficulty adjustment. */
+  private ddaModifier: DDASpawnModifier | null = null;
+  /** Player positions for DDA zone detection (updated externally). */
+  private ddaPlayers: PlayerPosition[] = [];
+
   constructor(
     scene: THREE.Scene,
     getTransform: (u: number, v: number) => {
@@ -135,6 +141,16 @@ export class EnemySpawner {
   /** Get the instance manager (for external updates). */
   getInstanceManager(): EnemyInstanceManager | null {
     return this.instanceManager;
+  }
+
+  /** Set the DDA spawn modifier for dynamic difficulty adjustment. */
+  setDDAModifier(modifier: DDASpawnModifier): void {
+    this.ddaModifier = modifier;
+  }
+
+  /** Update player positions for DDA zone detection. */
+  setDDAPlayers(players: PlayerPosition[]): void {
+    this.ddaPlayers = players;
   }
 
   /** Set player position for spawn distance calculations */
@@ -372,7 +388,12 @@ export class EnemySpawner {
   }
 
   spawnWave(waveEnemies: WaveEnemy[]): void {
-    for (const waveEnemy of waveEnemies) {
+    // Apply DDA modifications to the wave if modifier is set
+    const modifiedWave = this.ddaModifier
+      ? this.ddaModifier.modifyWave(waveEnemies, this.ddaPlayers)
+      : waveEnemies;
+
+    for (const waveEnemy of modifiedWave) {
       const region = waveEnemy.region || {};
       const minU = region.minU !== undefined ? region.minU : 0;
       const maxU = region.maxU !== undefined ? region.maxU : 1;
@@ -384,7 +405,11 @@ export class EnemySpawner {
         // Find valid position away from player and other enemies
         const validPos = this.findValidSpawnPosition(minU, maxU, minV, maxV);
         if (validPos) {
-          this.spawn(waveEnemy.type, validPos.u, validPos.v, tier);
+          // For individual spawns, also run DDA type modification based on actual position
+          const finalType = this.ddaModifier
+            ? this.ddaModifier.modifySpawnType(waveEnemy.type, validPos.u, validPos.v, this.ddaPlayers)
+            : waveEnemy.type;
+          this.spawn(finalType, validPos.u, validPos.v, tier);
         }
       }
     }

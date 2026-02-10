@@ -1,11 +1,13 @@
 /**
  * Interactive weapon demo/playground that runs inside the WeaponWiki modal.
  *
- * Self-contained Three.js scene with its own renderer, camera, a mini sphere
- * surface, a player chevron, real enemy types from the game, and weapon visuals.
- * Mouse-aimed firing with player death/respawn, lives, and game-over state.
+ * Self-contained Three.js scene with its own renderer, camera, a randomly
+ * chosen surface from the game, a player chevron, real enemy types, and
+ * weapon visuals. Mouse-aimed firing with player death/respawn, lives, and
+ * game-over state.
  *
  * DESIGN: Matches actual game conditions exactly:
+ * - Real surface types from src/surfaces/ (randomly selected)
  * - Real enemy types from src/entities/enemies/
  * - Fire rates match WEAPON_CONFIGS + Player FIRE_RATE gating
  * - Camera follows player with smooth lerp
@@ -23,18 +25,21 @@ import { Weaver } from '../entities/enemies/Weaver';
 import { Spinner } from '../entities/enemies/Spinner';
 import { Rocket } from '../entities/enemies/Rocket';
 import { ParticleSystem } from '../effects/ParticleSystem';
+import { SurfaceFactory, SurfaceType } from '../surfaces/SurfaceFactory';
+import { Surface, SurfacePoint } from '../surfaces/Surface';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const SPHERE_RADIUS = 3;
+/** Target bounding radius for the playground surface (all surfaces scaled to fit) */
+const TARGET_RADIUS = 3;
 const CANVAS_WIDTH = 400;
 const CANVAS_HEIGHT = 300;
 const ENEMY_COUNT = 8;
 const ENEMY_RESPAWN_DELAY = 2.0;
 const CAMERA_DISTANCE = 8;
-const PLAYER_MOVE_SPEED = 1.2; // radians per second for WASD movement
+const PLAYER_MOVE_SPEED = 0.4; // UV units per second for WASD movement
 const MIN_DT = 1 / 120;
 const MAX_DT = 1 / 30;
 const PLAYER_RESPAWN_DELAY = 1.5;
@@ -45,14 +50,14 @@ const TESLA_ARC_PERSIST = 0.7; // seconds arcs stay visible
 const TESLA_ARC_COUNT = 4; // arcs spawned per fire event
 
 // Scale factor for enemy meshes & radii in the playground.
-// The real game uses a radius-10 sphere; the playground uses radius 3.
-// We want enemies to be clearly visible — NOT proportionally scaled down to 0.3.
-// A factor of 0.8 keeps them slightly smaller than their raw mesh size but
-// large enough to see easily on the mini sphere.
+// Enemies are designed for a radius-10 sphere; the playground scales surfaces
+// to TARGET_RADIUS. We want enemies clearly visible — NOT proportionally
+// scaled to 0.3. A factor of 0.8 keeps them slightly smaller than their raw
+// mesh size but large enough to see easily.
 const ENEMY_SCALE = 0.8;
 
 // Player death radius — must match the visual player chevron size (0.2) scaled
-// to be proportional on the playground sphere.
+// to be proportional on the playground surface.
 const PLAYER_DEATH_RADIUS = 0.15;
 
 // Projectile hit radius — how close a projectile must be to an enemy to hit it.
@@ -134,50 +139,37 @@ interface TeslaArc {
 }
 
 // ---------------------------------------------------------------------------
-// Sphere surface transform for real enemies
-// Maps UV (0-1, 0-1) to a position/normal/tangent/bitangent on the sphere.
-// This mirrors how the real game's SurfaceFactory works for sphere surfaces.
+// Surface transform builder for real enemies.
+// Takes a Surface instance and a uniform scale factor, returns a function
+// that maps UV (0-1, 0-1) -> position/normal/tangent/bitangent at scaled size.
 // ---------------------------------------------------------------------------
 
-function makeSphereTransform(radius: number) {
+function makeSurfaceTransform(surface: Surface, scale: number) {
   return (u: number, v: number): {
     position: THREE.Vector3;
     normal: THREE.Vector3;
     tangent: THREE.Vector3;
     bitangent: THREE.Vector3;
   } => {
-    const theta = u * Math.PI * 2; // azimuthal angle (0 to 2*PI)
-    const phi = v * Math.PI;       // polar angle (0 to PI)
+    const pt: SurfacePoint = surface.getPoint(u, v);
 
-    const sinPhi = Math.sin(phi);
-    const cosPhi = Math.cos(phi);
-    const sinTheta = Math.sin(theta);
-    const cosTheta = Math.cos(theta);
-
-    const position = new THREE.Vector3(
-      radius * sinPhi * sinTheta,
-      radius * cosPhi,
-      radius * sinPhi * cosTheta,
-    );
-
-    const normal = position.clone().normalize();
-
-    // Tangent in U direction (d/dtheta)
-    const tangent = new THREE.Vector3(
-      sinPhi * cosTheta,
-      0,
-      -sinPhi * sinTheta,
-    ).normalize();
-
-    // Bitangent in V direction (d/dphi)
-    const bitangent = new THREE.Vector3(
-      cosPhi * sinTheta,
-      -sinPhi,
-      cosPhi * cosTheta,
-    ).normalize();
-
-    return { position, normal, tangent, bitangent };
+    return {
+      position: pt.position.clone().multiplyScalar(scale),
+      normal: pt.normal.clone(),
+      tangent: pt.tangentU.clone(),
+      bitangent: pt.tangentV.clone(),
+    };
   };
+}
+
+/**
+ * Compute the bounding sphere radius of a Surface's mesh geometry.
+ * Used to determine the uniform scale factor to fit the surface to TARGET_RADIUS.
+ */
+function computeSurfaceBoundingRadius(surface: Surface): number {
+  surface.mesh.geometry.computeBoundingSphere();
+  const bs = surface.mesh.geometry.boundingSphere;
+  return bs ? bs.radius : 10;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,10 +183,12 @@ export class WeaponPlayground {
   private container: HTMLElement;
 
   private playerGroup: THREE.Group;
-  private playerTheta = 0;
-  private playerPhi = Math.PI / 2;
-  private aimTheta = 0; // where the player aims (rotates around sphere)
-  private aimPhi = Math.PI / 2; // polar aim component for mouse aiming
+  /** Player position in UV coordinates on the surface */
+  private playerU = 0.25;
+  private playerV = 0.5;
+  /** Aim position in UV coordinates on the surface */
+  private aimU = 0.25;
+  private aimV = 0.5;
 
   private enemies: PlaygroundEnemyEntry[] = [];
   private projectiles: MiniProjectile[] = [];
@@ -207,10 +201,14 @@ export class WeaponPlayground {
   private mouseX = CANVAS_WIDTH / 2;
   private mouseY = CANVAS_HEIGHT / 2;
   private mouseDown = false;
-  private mouseOnSphere = false; // whether the mouse ray intersects the sphere
+  private mouseOnSurface = false; // whether the mouse ray intersects the surface
 
-  // Sphere mesh for raycasting
-  private sphereMesh!: THREE.Mesh;
+  // Surface state
+  private surface!: Surface;
+  private surfaceType!: SurfaceType;
+  private surfaceScale = 1; // uniform scale to fit surface to TARGET_RADIUS
+  private surfaceGroup!: THREE.Group; // scaled group containing surface meshes
+  private surfaceTransformFn!: ReturnType<typeof makeSurfaceTransform>;
 
   // Player death/respawn state
   private playerAlive = true;
@@ -259,15 +257,14 @@ export class WeaponPlayground {
   private readonly onMouseDown: (e: MouseEvent) => void;
   private readonly onMouseUp: (e: MouseEvent) => void;
 
-  // Sphere UV transform for real enemies
-  private readonly sphereTransform: ReturnType<typeof makeSphereTransform>;
-
   // Particle system for death effects
   private particleSystem: ParticleSystem;
 
   constructor(container: HTMLElement) {
     this.container = container;
-    this.sphereTransform = makeSphereTransform(SPHERE_RADIUS);
+
+    // -- Pick a random surface type --
+    this.initSurface();
 
     // -- Renderer --
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
@@ -298,35 +295,8 @@ export class WeaponPlayground {
     this.camera.position.set(0, CAMERA_DISTANCE * 0.6, CAMERA_DISTANCE * 0.8);
     this.camera.lookAt(0, 0, 0);
 
-    // -- Solid sphere surface (opaque fill for visibility at small scale) --
-    const solidGeo = new THREE.SphereGeometry(SPHERE_RADIUS * 0.995, 32, 24);
-    const solidMat = new THREE.MeshStandardMaterial({
-      color: 0x0a0a2a,
-      transparent: true,
-      opacity: 0.95,
-      roughness: 0.8,
-      metalness: 0.1,
-    });
-    const solidSphere = new THREE.Mesh(solidGeo, solidMat);
-    this.scene.add(solidSphere);
-
-    // -- Wireframe grid overlay --
-    const sphereGeo = new THREE.SphereGeometry(SPHERE_RADIUS, 24, 16);
-    const sphereMat = new THREE.MeshBasicMaterial({
-      color: 0x2a2aaa,
-      wireframe: true,
-      transparent: true,
-      opacity: 0.5,
-    });
-    this.sphereMesh = new THREE.Mesh(sphereGeo, sphereMat);
-    this.scene.add(this.sphereMesh);
-
-    // Invisible solid sphere for raycasting
-    const raycastGeo = new THREE.SphereGeometry(SPHERE_RADIUS, 32, 24);
-    const raycastMat = new THREE.MeshBasicMaterial({ visible: false });
-    const raycastSphere = new THREE.Mesh(raycastGeo, raycastMat);
-    raycastSphere.name = 'raycastSphere';
-    this.scene.add(raycastSphere);
+    // -- Add the real surface (scaled to fit playground) --
+    this.addSurfaceToScene();
 
     // -- Player chevron --
     this.playerGroup = this.buildMiniChevron(0x00ffff, 0.2);
@@ -341,12 +311,16 @@ export class WeaponPlayground {
       this.spawnRealEnemy(i);
     }
 
-    // -- Stats overlay (includes lives) --
+    // -- Surface name label --
+    const surfaceLabel = this.surfaceType.toUpperCase().replace('-', ' ');
+
+    // -- Stats overlay (includes lives + surface name) --
     this.statsOverlay = document.createElement('div');
     this.statsOverlay.style.cssText =
       'display:flex;justify-content:space-between;padding:6px 12px;color:#88aacc;' +
       'font-size:11px;font-family:monospace;letter-spacing:1px;';
     this.statsOverlay.innerHTML =
+      `<span id="pg-surface" style="color:#00ffcc;text-transform:uppercase;">${surfaceLabel}</span>` +
       `<span id="pg-lives">LIVES: ${STARTING_LIVES}</span>` +
       '<span id="pg-dps">DPS: 0</span><span id="pg-kills">KILLS: 0</span><span id="pg-time">0.0s</span>';
     container.appendChild(this.statsOverlay);
@@ -492,6 +466,71 @@ export class WeaponPlayground {
   }
 
   // -----------------------------------------------------------------------
+  // Surface initialization
+  // -----------------------------------------------------------------------
+
+  /** Pick a random surface type and create the Surface + transform function. */
+  private initSurface(): void {
+    const types = SurfaceFactory.getAvailableTypes();
+    this.surfaceType = types[Math.floor(Math.random() * types.length)];
+    this.surface = SurfaceFactory.create(this.surfaceType);
+
+    // Compute bounding radius and derive scale
+    const boundingRadius = computeSurfaceBoundingRadius(this.surface);
+    this.surfaceScale = TARGET_RADIUS / boundingRadius;
+
+    // Build the transform function for enemies
+    this.surfaceTransformFn = makeSurfaceTransform(this.surface, this.surfaceScale);
+  }
+
+  /** Add the surface mesh + grid to the scene inside a scaled group. */
+  private addSurfaceToScene(): void {
+    this.surfaceGroup = new THREE.Group();
+    this.surfaceGroup.scale.setScalar(this.surfaceScale);
+
+    // Override surface materials for playground visibility
+    if (this.surface.mesh.material instanceof THREE.Material) {
+      this.surface.mesh.material.dispose();
+    }
+    this.surface.mesh.material = new THREE.MeshStandardMaterial({
+      color: 0x0a0a2a,
+      transparent: true,
+      opacity: 0.95,
+      roughness: 0.8,
+      metalness: 0.1,
+      side: THREE.DoubleSide,
+    });
+
+    // Override grid material for consistent playground look
+    if (this.surface.gridMesh.material instanceof THREE.Material) {
+      this.surface.gridMesh.material.dispose();
+    }
+    this.surface.gridMesh.material = new THREE.LineBasicMaterial({
+      color: 0x2a2aaa,
+      transparent: true,
+      opacity: 0.5,
+    });
+
+    this.surfaceGroup.add(this.surface.mesh);
+    this.surfaceGroup.add(this.surface.gridMesh);
+    this.scene.add(this.surfaceGroup);
+  }
+
+  /**
+   * Get the world-space position for a UV coordinate on the surface,
+   * accounting for the playground's uniform scaling.
+   */
+  private getScaledPoint(u: number, v: number): SurfacePoint {
+    const pt = this.surface.getPoint(u, v);
+    return {
+      position: pt.position.multiplyScalar(this.surfaceScale),
+      normal: pt.normal,
+      tangentU: pt.tangentU,
+      tangentV: pt.tangentV,
+    };
+  }
+
+  // -----------------------------------------------------------------------
   // Public API
   // -----------------------------------------------------------------------
 
@@ -566,6 +605,9 @@ export class WeaponPlayground {
     // Dispose particle system
     this.particleSystem.dispose();
 
+    // Dispose surface
+    this.surface.dispose();
+
     // Dispose Three.js
     this.scene.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
@@ -628,7 +670,7 @@ export class WeaponPlayground {
   };
 
   // -----------------------------------------------------------------------
-  // Mouse aim: raycast from screen to sphere surface
+  // Mouse aim: raycast from screen to surface
   // -----------------------------------------------------------------------
 
   private updateMouseAim(): void {
@@ -638,31 +680,18 @@ export class WeaponPlayground {
 
     _raycaster.setFromCamera(_mouseNDC, this.camera);
 
-    // Raycast against the invisible sphere
-    const raycastSphere = this.scene.getObjectByName('raycastSphere');
-    if (!raycastSphere) return;
-
-    const intersects = _raycaster.intersectObject(raycastSphere);
+    // Raycast against the scaled surface mesh
+    const intersects = _raycaster.intersectObject(this.surfaceGroup, true);
     if (intersects.length > 0) {
-      this.mouseOnSphere = true;
-      const hitPoint = intersects[0].point;
-
-      // Compute theta/phi from hit point
-      this.aimTheta = Math.atan2(hitPoint.x, hitPoint.z);
-      this.aimPhi = Math.acos(Math.max(-1, Math.min(1, hitPoint.y / SPHERE_RADIUS)));
+      this.mouseOnSurface = true;
+      // Hit point is in world space; unscale to get local surface coords
+      const hitLocal = intersects[0].point.clone().multiplyScalar(1 / this.surfaceScale);
+      const uv = this.surface.worldToSurface(hitLocal);
+      this.aimU = uv.u;
+      this.aimV = uv.v;
     } else {
-      // Mouse is off the sphere -- project ray onto sphere plane for a reasonable aim
-      this.mouseOnSphere = false;
-      // Use a fallback: project ray direction onto the sphere surface nearest the player
-      const rayDir = _raycaster.ray.direction.clone();
-      const rayOrigin = _raycaster.ray.origin.clone();
-      // Find closest point on ray to sphere center
-      const toCenter = new THREE.Vector3().sub(rayOrigin);
-      const tClosest = Math.max(0, toCenter.dot(rayDir));
-      const closest = rayOrigin.clone().add(rayDir.clone().multiplyScalar(tClosest));
-      closest.normalize().multiplyScalar(SPHERE_RADIUS);
-      this.aimTheta = Math.atan2(closest.x, closest.z);
-      this.aimPhi = Math.acos(Math.max(-1, Math.min(1, closest.y / SPHERE_RADIUS)));
+      // Mouse is off the surface -- keep previous aim direction
+      this.mouseOnSurface = false;
     }
   }
 
@@ -673,52 +702,86 @@ export class WeaponPlayground {
   private updatePlayer(dt: number): void {
     if (!this.playerAlive) return;
 
-    // WASD movement on the sphere
-    let dTheta = 0;
-    let dPhi = 0;
-    if (this.keysDown.has('a')) dTheta -= 1;
-    if (this.keysDown.has('d')) dTheta += 1;
-    if (this.keysDown.has('w')) dPhi -= 1;
-    if (this.keysDown.has('s')) dPhi += 1;
+    // WASD movement: screen-space input mapped to surface UV via camera orientation.
+    // Without this mapping, WASD would move in raw UV directions which don't align
+    // with the screen axes — causing controls to feel inverted or rotated depending
+    // on camera position relative to the surface.
+    let screenX = 0; // screen right (+) / left (-)
+    let screenY = 0; // screen up (+) / down (-)
+    if (this.keysDown.has('a')) screenX -= 1;
+    if (this.keysDown.has('d')) screenX += 1;
+    if (this.keysDown.has('w')) screenY += 1;
+    if (this.keysDown.has('s')) screenY -= 1;
 
     // Normalize diagonal to avoid faster movement
-    const moveLen = Math.sqrt(dTheta * dTheta + dPhi * dPhi);
+    const moveLen = Math.sqrt(screenX * screenX + screenY * screenY);
     if (moveLen > 1) {
-      dTheta /= moveLen;
-      dPhi /= moveLen;
+      screenX /= moveLen;
+      screenY /= moveLen;
     }
 
-    this.playerTheta += dTheta * PLAYER_MOVE_SPEED * dt;
-    this.playerPhi += dPhi * PLAYER_MOVE_SPEED * dt;
+    // Convert screen-space direction to UV-space using camera and surface tangent frame.
+    // Camera right = +screenX, camera up = +screenY. We project these onto the surface
+    // tangent plane, then decompose into tangentU (du) and tangentV (dv) components.
+    const pt = this.getScaledPoint(this.playerU, this.playerV);
+    const normal = pt.normal;
+    const tangentU = pt.tangentU;
+    const tangentV = pt.tangentV;
 
-    // Clamp phi to avoid poles (keep between ~15 and ~165 degrees)
-    this.playerPhi = Math.max(0.25, Math.min(Math.PI - 0.25, this.playerPhi));
+    // Get camera right and up vectors
+    _v1.set(1, 0, 0).applyQuaternion(this.camera.quaternion); // camera right
+    _v2.set(0, 1, 0).applyQuaternion(this.camera.quaternion); // camera up
 
-    const pos = this.spherePos(this.playerTheta, this.playerPhi);
-    this.playerGroup.position.copy(pos);
+    // Project camera right onto tangent plane (remove normal component)
+    const rDotN = _v1.dot(normal);
+    _v1.addScaledVector(normal, -rDotN);
+    const rLen = _v1.length();
+    if (rLen > 0.001) _v1.multiplyScalar(1 / rLen);
 
-    // Orient: up = surface normal, forward = aim direction on sphere surface
-    const normal = pos.clone().normalize();
+    // Project camera up onto tangent plane
+    const uDotN = _v2.dot(normal);
+    _v2.addScaledVector(normal, -uDotN);
+    const uLen = _v2.length();
+    if (uLen > 0.001) _v2.multiplyScalar(1 / uLen);
 
-    // Compute aim point on sphere surface and derive tangent toward it
-    const aimWorldPos = this.spherePos(this.aimTheta, this.aimPhi);
-    const toAim = aimWorldPos.clone().sub(pos);
+    // Decompose projected camera-right into tangentU/tangentV
+    const rightU = _v1.dot(tangentU);
+    const rightV = _v1.dot(tangentV);
+
+    // Decompose projected camera-up into tangentU/tangentV
+    const upU = _v2.dot(tangentU);
+    const upV = _v2.dot(tangentV);
+
+    // Map screen input to UV deltas
+    const du = screenX * rightU + screenY * upU;
+    const dv = screenX * rightV + screenY * upV;
+
+    const speed = PLAYER_MOVE_SPEED * dt;
+    const newUV = this.surface.moveOnSurface(this.playerU, this.playerV, du * speed, dv * speed);
+    this.playerU = newUV.u;
+    this.playerV = newUV.v;
+
+    const pt = this.getScaledPoint(this.playerU, this.playerV);
+    this.playerGroup.position.copy(pt.position);
+
+    // Orient: up = surface normal, forward = aim direction on surface
+    const aimPt = this.getScaledPoint(this.aimU, this.aimV);
+    const toAim = aimPt.position.clone().sub(pt.position);
 
     // Project toAim onto the tangent plane (remove normal component)
-    const normalComp = toAim.dot(normal);
-    toAim.sub(normal.clone().multiplyScalar(normalComp));
+    const normalComp = toAim.dot(pt.normal);
+    toAim.sub(pt.normal.clone().multiplyScalar(normalComp));
     const aimLen = toAim.length();
 
     if (aimLen > 0.001) {
       toAim.multiplyScalar(1 / aimLen);
-      const target = pos.clone().add(toAim);
-      this.playerGroup.up.copy(normal);
+      const target = pt.position.clone().add(toAim);
+      this.playerGroup.up.copy(pt.normal);
       this.playerGroup.lookAt(target);
     } else {
-      // Fallback: aim along theta tangent
-      const tangent = new THREE.Vector3(-Math.sin(this.playerTheta), 0, Math.cos(this.playerTheta));
-      const target = pos.clone().add(tangent);
-      this.playerGroup.up.copy(normal);
+      // Fallback: aim along tangentU
+      const target = pt.position.clone().add(pt.tangentU);
+      this.playerGroup.up.copy(pt.normal);
       this.playerGroup.lookAt(target);
     }
   }
@@ -731,10 +794,10 @@ export class WeaponPlayground {
     // Compute desired camera position: offset from player position along the
     // surface normal, keeping the same relative distance as the initial setup.
     const playerPos = this.playerGroup.position;
-    const normal = playerPos.clone().normalize();
+    const pt = this.getScaledPoint(this.playerU, this.playerV);
 
     // Camera sits above the player along the surface normal at CAMERA_DISTANCE
-    const desiredPos = playerPos.clone().add(normal.clone().multiplyScalar(CAMERA_DISTANCE));
+    const desiredPos = playerPos.clone().add(pt.normal.clone().multiplyScalar(CAMERA_DISTANCE));
 
     // Smooth lerp toward desired position (higher factor = snappier tracking)
     const lerpFactor = 1 - Math.exp(-5 * dt);
@@ -786,14 +849,16 @@ export class WeaponPlayground {
   }
 
   private spawnDeathExplosion(pos: THREE.Vector3): void {
+    // Use surface tangents at player position for explosion directions
+    const pt = this.getScaledPoint(this.playerU, this.playerV);
+    const normal = pt.normal;
+    const tangentA = pt.tangentU;
+    const tangentB = pt.tangentV;
+
     // Expanding ring of particles
     const ringCount = 12;
     for (let i = 0; i < ringCount; i++) {
       const angle = (i / ringCount) * Math.PI * 2;
-      const normal = pos.clone().normalize();
-      // Build a tangent-plane direction
-      const tangentA = new THREE.Vector3(-Math.sin(this.playerTheta), 0, Math.cos(this.playerTheta)).normalize();
-      const tangentB = new THREE.Vector3().crossVectors(normal, tangentA).normalize();
       const dir = tangentA.clone().multiplyScalar(Math.cos(angle)).add(tangentB.clone().multiplyScalar(Math.sin(angle)));
 
       const geo = new THREE.SphereGeometry(0.04, 4, 4);
@@ -804,8 +869,8 @@ export class WeaponPlayground {
       });
       const particle = new THREE.Mesh(geo, mat);
       particle.position.copy(pos);
-      // Store velocity in userData
-      particle.userData = { dir: dir.clone(), speed: 3.0, age: 0 };
+      // Store velocity in userData along with surface normal for re-projection
+      particle.userData = { dir: dir.clone(), speed: 3.0, age: 0, normal: normal.clone() };
       this.scene.add(particle);
       this.deathEffects.push(particle);
     }
@@ -838,9 +903,8 @@ export class WeaponPlayground {
         const mat = p.material as THREE.MeshBasicMaterial;
         mat.opacity = Math.max(0, 0.9 - ud.age * 2.5);
       } else {
-        // Particles fly outward on sphere surface
+        // Particles fly outward along the surface tangent plane
         p.position.add(ud.dir.clone().multiplyScalar(ud.speed * dt));
-        p.position.normalize().multiplyScalar(SPHERE_RADIUS);
         ud.speed *= 0.95; // decelerate
         const mat = p.material as THREE.MeshBasicMaterial;
         mat.opacity = Math.max(0, 1.0 - ud.age * 2.0);
@@ -879,36 +943,36 @@ export class WeaponPlayground {
     this.playerAlive = true;
     this.playerGroup.visible = true;
 
-    // Move player to a safe location (away from all enemies)
-    let bestTheta = this.playerTheta + Math.PI;
-    let bestPhi = Math.PI / 2;
+    // Move player to a safe location (away from all enemies) using UV coordinates
+    let bestU = (this.playerU + 0.5) % 1;
+    let bestV = 0.5;
     let bestMinDist = 0;
 
     // Try a few random positions and pick the one farthest from all enemies
     for (let attempt = 0; attempt < 12; attempt++) {
-      const tryTheta = Math.random() * Math.PI * 2;
-      const tryPhi = 0.4 + Math.random() * (Math.PI - 0.8);
-      const tryPos = this.spherePos(tryTheta, tryPhi);
+      const tryU = Math.random();
+      const tryV = 0.1 + Math.random() * 0.8;
+      const tryPt = this.getScaledPoint(tryU, tryV);
 
       let minDist = Infinity;
       for (const entry of this.enemies) {
         if (!entry.enemy.alive) continue;
-        const d = tryPos.distanceTo(entry.enemy.position);
+        const d = tryPt.position.distanceTo(entry.enemy.position);
         if (d < minDist) minDist = d;
       }
 
       if (minDist > bestMinDist) {
         bestMinDist = minDist;
-        bestTheta = tryTheta;
-        bestPhi = tryPhi;
+        bestU = tryU;
+        bestV = tryV;
       }
     }
 
-    this.playerTheta = bestTheta;
-    this.playerPhi = bestPhi;
+    this.playerU = bestU;
+    this.playerV = bestV;
 
-    const pos = this.spherePos(this.playerTheta, this.playerPhi);
-    this.playerGroup.position.copy(pos);
+    const pt = this.getScaledPoint(this.playerU, this.playerV);
+    this.playerGroup.position.copy(pt.position);
 
     // Brief invincibility flash handled visually with a blink
     this.deathFlashTimer = 0;
@@ -923,9 +987,9 @@ export class WeaponPlayground {
     this.playerGroup.visible = true;
     this.mouseDown = false;
 
-    // Reset position
-    this.playerTheta = 0;
-    this.playerPhi = Math.PI / 2;
+    // Reset UV position
+    this.playerU = 0.25;
+    this.playerV = 0.5;
 
     // Reset stats
     this.dps = 0;
@@ -980,17 +1044,13 @@ export class WeaponPlayground {
   private spawnRealEnemy(index: number): void {
     const type = ENEMY_TYPES[index % ENEMY_TYPES.length];
 
-    // Convert player theta/phi to UV for spawn distance check
-    const playerU = ((this.playerTheta / (Math.PI * 2)) % 1 + 1) % 1;
-    const playerV = this.playerPhi / Math.PI;
-
-    // Find a position away from the player
+    // Find a position away from the player in UV space
     let u: number, v: number;
     for (let attempt = 0; attempt < 20; attempt++) {
       u = Math.random();
-      v = 0.15 + Math.random() * 0.7; // avoid poles
-      const du = Math.abs(u - playerU);
-      const dv = Math.abs(v - playerV);
+      v = 0.1 + Math.random() * 0.8;
+      const du = Math.abs(u - this.playerU);
+      const dv = Math.abs(v - this.playerV);
       if (Math.sqrt(du * du + dv * dv) > 0.25) break;
     }
     u = u!;
@@ -999,12 +1059,10 @@ export class WeaponPlayground {
     const enemy = this.createRealEnemy(type, u, v);
 
     // Scale the enemy's collision radius to match the visual mesh scale.
-    // The raw radius (0.3) is designed for a radius-10 sphere. We scale it
-    // to match ENEMY_SCALE so collision matches what the player sees.
     enemy.radius *= ENEMY_SCALE;
 
-    // Apply surface transform to position the enemy on the sphere
-    enemy.applySurfaceTransform(this.sphereTransform);
+    // Apply surface transform to position the enemy on the surface
+    enemy.applySurfaceTransform(this.surfaceTransformFn);
 
     // Add enemy mesh to scene
     if (enemy.mesh) {
@@ -1038,9 +1096,7 @@ export class WeaponPlayground {
 
   /** Get player UV position for enemy AI targeting. */
   private getPlayerUV(): { u: number; v: number } {
-    const u = ((this.playerTheta / (Math.PI * 2)) % 1 + 1) % 1;
-    const v = this.playerPhi / Math.PI;
-    return { u, v };
+    return { u: this.playerU, v: this.playerV };
   }
 
   private updateEnemies(dt: number): void {
@@ -1063,10 +1119,10 @@ export class WeaponPlayground {
 
           // Find position away from player
           let u = Math.random();
-          let v = 0.15 + Math.random() * 0.7;
+          let v = 0.1 + Math.random() * 0.8;
           for (let attempt = 0; attempt < 20; attempt++) {
             u = Math.random();
-            v = 0.15 + Math.random() * 0.7;
+            v = 0.1 + Math.random() * 0.8;
             const du = Math.abs(u - playerUV.u);
             const dv = Math.abs(v - playerUV.v);
             if (Math.sqrt(du * du + dv * dv) > 0.25) break;
@@ -1074,7 +1130,7 @@ export class WeaponPlayground {
 
           const newEnemy = this.createRealEnemy(newType, u, v);
           newEnemy.radius *= ENEMY_SCALE;
-          newEnemy.applySurfaceTransform(this.sphereTransform);
+          newEnemy.applySurfaceTransform(this.surfaceTransformFn);
           if (newEnemy.mesh) {
             this.scene.add(newEnemy.mesh);
             newEnemy.mesh.scale.setScalar(ENEMY_SCALE);
@@ -1093,8 +1149,8 @@ export class WeaponPlayground {
       }
       entry.enemy.update(dt);
 
-      // Re-apply surface transform to move mesh to correct sphere position
-      entry.enemy.applySurfaceTransform(this.sphereTransform);
+      // Re-apply surface transform to move mesh to correct surface position
+      entry.enemy.applySurfaceTransform(this.surfaceTransformFn);
 
       // Keep scale correct (in case the enemy reset it)
       if (entry.enemy.mesh) {
@@ -1199,26 +1255,22 @@ export class WeaponPlayground {
   }
 
   private getAimDirection(): THREE.Vector3 {
-    // Compute direction from player to the aim point on the sphere surface
-    const playerPos = this.playerGroup.position;
-    const aimWorldPos = this.spherePos(this.aimTheta, this.aimPhi);
+    // Compute direction from player to the aim point on the surface
+    const playerPt = this.getScaledPoint(this.playerU, this.playerV);
+    const aimPt = this.getScaledPoint(this.aimU, this.aimV);
 
-    const dir = aimWorldPos.clone().sub(playerPos);
+    const dir = aimPt.position.clone().sub(playerPt.position);
 
     // Project onto tangent plane (remove normal component)
-    const normal = playerPos.clone().normalize();
-    const normalComp = dir.dot(normal);
-    dir.sub(normal.clone().multiplyScalar(normalComp));
+    const normalComp = dir.dot(playerPt.normal);
+    dir.sub(playerPt.normal.clone().multiplyScalar(normalComp));
 
     const len = dir.length();
     if (len > 0.001) {
       dir.multiplyScalar(1 / len);
     } else {
-      // Fallback: aim along theta tangent
-      dir.set(-Math.sin(this.aimTheta) * Math.sin(this.playerPhi), Math.cos(this.playerPhi), Math.cos(this.aimTheta) * Math.sin(this.playerPhi));
-      dir.sub(normal.clone().multiplyScalar(dir.dot(normal)));
-      const fallbackLen = dir.length();
-      if (fallbackLen > 0.001) dir.multiplyScalar(1 / fallbackLen);
+      // Fallback: aim along tangentU
+      return playerPt.tangentU.clone();
     }
     return dir;
   }
@@ -1257,7 +1309,8 @@ export class WeaponPlayground {
   }
 
   private fireSpread(origin: THREE.Vector3, direction: THREE.Vector3, cfg: typeof WEAPON_CONFIGS[WeaponType]): void {
-    const normal = origin.clone().normalize();
+    const playerPt = this.getScaledPoint(this.playerU, this.playerV);
+    const normal = playerPt.normal;
     const spreadAngle = Math.PI / 6;
     for (let i = 0; i < 5; i++) {
       const angle = (i - 2) * (spreadAngle / 4);
@@ -1268,7 +1321,7 @@ export class WeaponPlayground {
 
   private firePiercing(origin: THREE.Vector3, direction: THREE.Vector3, cfg: typeof WEAPON_CONFIGS[WeaponType]): void {
     // Instant beam: draw a line and damage everything in path
-    const beamLength = SPHERE_RADIUS * 3;
+    const beamLength = TARGET_RADIUS * 3;
     const points: THREE.Vector3[] = [];
     let pos = origin.clone();
     let dir = direction.clone().normalize();
@@ -1276,11 +1329,13 @@ export class WeaponPlayground {
     for (let i = 0; i <= 20; i++) {
       points.push(pos.clone());
       pos.add(dir.clone().multiplyScalar(beamLength / 20));
-      // Project onto sphere
-      pos.normalize().multiplyScalar(SPHERE_RADIUS);
+      // Re-project onto surface via worldToSurface -> getPoint
+      const localPos = pos.clone().multiplyScalar(1 / this.surfaceScale);
+      const uv = this.surface.worldToSurface(localPos);
+      const projPt = this.getScaledPoint(uv.u, uv.v);
+      pos.copy(projPt.position);
       // Re-tangentize
-      const n = pos.clone().normalize();
-      dir.sub(n.clone().multiplyScalar(dir.dot(n)));
+      dir.sub(projPt.normal.clone().multiplyScalar(dir.dot(projPt.normal)));
       const l = dir.length();
       if (l > 0.001) dir.multiplyScalar(1 / l);
     }
@@ -1352,8 +1407,12 @@ export class WeaponPlayground {
 
   private fireGravityGun(origin: THREE.Vector3, direction: THREE.Vector3, cfg: typeof WEAPON_CONFIGS[WeaponType]): void {
     // Purple beam pulling enemies inward
-    const endPos = origin.clone().add(direction.clone().multiplyScalar(SPHERE_RADIUS * 1.5));
-    endPos.normalize().multiplyScalar(SPHERE_RADIUS);
+    const endPos = origin.clone().add(direction.clone().multiplyScalar(TARGET_RADIUS * 1.5));
+    // Re-project onto surface
+    const localEnd = endPos.clone().multiplyScalar(1 / this.surfaceScale);
+    const endUV = this.surface.worldToSurface(localEnd);
+    const endPt = this.getScaledPoint(endUV.u, endUV.v);
+    endPos.copy(endPt.position);
 
     const geo = new THREE.BufferGeometry().setFromPoints([origin, endPos]);
     const mat = new THREE.LineBasicMaterial({ color: 0x8844ff, transparent: true, opacity: 0.7, linewidth: 2 });
@@ -1382,8 +1441,8 @@ export class WeaponPlayground {
   }
 
   private fireLaserBeam(origin: THREE.Vector3, direction: THREE.Vector3, cfg: typeof WEAPON_CONFIGS[WeaponType]): void {
-    // Sustained red beam along sphere surface
-    const beamLength = SPHERE_RADIUS * 2.5;
+    // Sustained red beam along surface
+    const beamLength = TARGET_RADIUS * 2.5;
     const points: THREE.Vector3[] = [];
     let pos = origin.clone();
     let dir = direction.clone().normalize();
@@ -1391,9 +1450,12 @@ export class WeaponPlayground {
     for (let i = 0; i <= 16; i++) {
       points.push(pos.clone());
       pos.add(dir.clone().multiplyScalar(beamLength / 16));
-      pos.normalize().multiplyScalar(SPHERE_RADIUS);
-      const n = pos.clone().normalize();
-      dir.sub(n.clone().multiplyScalar(dir.dot(n)));
+      // Re-project onto surface
+      const localPos = pos.clone().multiplyScalar(1 / this.surfaceScale);
+      const uv = this.surface.worldToSurface(localPos);
+      const projPt = this.getScaledPoint(uv.u, uv.v);
+      pos.copy(projPt.position);
+      dir.sub(projPt.normal.clone().multiplyScalar(dir.dot(projPt.normal)));
       const l = dir.length();
       if (l > 0.001) dir.multiplyScalar(1 / l);
     }
@@ -1419,8 +1481,12 @@ export class WeaponPlayground {
   }
 
   private fireBlackHole(origin: THREE.Vector3, direction: THREE.Vector3, cfg: typeof WEAPON_CONFIGS[WeaponType]): void {
-    const targetPos = origin.clone().add(direction.clone().multiplyScalar(SPHERE_RADIUS * 0.8));
-    targetPos.normalize().multiplyScalar(SPHERE_RADIUS);
+    const targetPos = origin.clone().add(direction.clone().multiplyScalar(TARGET_RADIUS * 0.8));
+    // Re-project onto surface
+    const localTarget = targetPos.clone().multiplyScalar(1 / this.surfaceScale);
+    const targetUV = this.surface.worldToSurface(localTarget);
+    const targetPt = this.getScaledPoint(targetUV.u, targetUV.v);
+    targetPos.copy(targetPt.position);
 
     const geo = new THREE.SphereGeometry(0.25, 12, 12);
     const mat = new THREE.MeshBasicMaterial({ color: 0x220044, transparent: true, opacity: 0.9 });
@@ -1489,12 +1555,12 @@ export class WeaponPlayground {
         });
       }
 
-      // Also spawn some random ambient arcs between nearby points on the sphere
+      // Also spawn some random ambient arcs between nearby points on the surface
       // near the player for visual flair
+      const playerPt = this.getScaledPoint(this.playerU, this.playerV);
       for (let a = 0; a < 2; a++) {
-        const normal = origin.clone().normalize();
-        const tangentA = new THREE.Vector3(-Math.sin(this.playerTheta), 0, Math.cos(this.playerTheta)).normalize();
-        const tangentB = new THREE.Vector3().crossVectors(normal, tangentA).normalize();
+        const tangentA = playerPt.tangentU;
+        const tangentB = playerPt.tangentV;
 
         const angle1 = Math.random() * Math.PI * 2;
         const angle2 = Math.random() * Math.PI * 2;
@@ -1504,12 +1570,10 @@ export class WeaponPlayground {
         const p1 = origin.clone()
           .add(tangentA.clone().multiplyScalar(Math.cos(angle1) * radius1))
           .add(tangentB.clone().multiplyScalar(Math.sin(angle1) * radius1));
-        p1.normalize().multiplyScalar(SPHERE_RADIUS);
 
         const p2 = origin.clone()
           .add(tangentA.clone().multiplyScalar(Math.cos(angle2) * radius2))
           .add(tangentB.clone().multiplyScalar(Math.sin(angle2) * radius2));
-        p2.normalize().multiplyScalar(SPHERE_RADIUS);
 
         const arcPoints = this.generateLightningPoints(p1, p2, 5 + Math.floor(Math.random() * 4));
         const geo = new THREE.BufferGeometry().setFromPoints(arcPoints);
@@ -1599,12 +1663,14 @@ export class WeaponPlayground {
 
       // Move
       p.position.add(p.direction.clone().multiplyScalar(p.speed * dt));
-      // Project onto sphere
-      p.position.normalize().multiplyScalar(SPHERE_RADIUS);
-      // Re-tangentize direction
-      const n = p.position.clone().normalize();
-      const dot = p.direction.dot(n);
-      p.direction.sub(n.clone().multiplyScalar(dot));
+      // Re-project onto surface via worldToSurface -> getPoint
+      const localPos = p.position.clone().multiplyScalar(1 / this.surfaceScale);
+      const projUV = this.surface.worldToSurface(localPos);
+      const projPt = this.getScaledPoint(projUV.u, projUV.v);
+      p.position.copy(projPt.position);
+      // Re-tangentize direction using surface normal
+      const dot = p.direction.dot(projPt.normal);
+      p.direction.sub(projPt.normal.clone().multiplyScalar(dot));
       const dirLen = p.direction.length();
       if (dirLen > 0.001) p.direction.multiplyScalar(1 / dirLen);
 
@@ -1748,19 +1814,12 @@ export class WeaponPlayground {
     if (dpsEl) dpsEl.textContent = `DPS: ${this.dps}`;
     if (killsEl) killsEl.textContent = `KILLS: ${this.kills}`;
     if (timeEl) timeEl.textContent = `${this.elapsed.toFixed(1)}s`;
+    // Surface name is set once in constructor, no need to update
   }
 
   // -----------------------------------------------------------------------
   // Helpers
   // -----------------------------------------------------------------------
-
-  private spherePos(theta: number, phi: number): THREE.Vector3 {
-    return new THREE.Vector3(
-      SPHERE_RADIUS * Math.sin(phi) * Math.sin(theta),
-      SPHERE_RADIUS * Math.cos(phi),
-      SPHERE_RADIUS * Math.sin(phi) * Math.cos(theta),
-    );
-  }
 
   private buildMiniChevron(color: number, scale: number): THREE.Group {
     const group = new THREE.Group();
@@ -1799,8 +1858,6 @@ export class WeaponPlayground {
       p.x += (Math.random() - 0.5) * jitter;
       p.y += (Math.random() - 0.5) * jitter;
       p.z += (Math.random() - 0.5) * jitter;
-      // Project back onto sphere
-      p.normalize().multiplyScalar(SPHERE_RADIUS);
       points.push(p);
     }
     points.push(end.clone());

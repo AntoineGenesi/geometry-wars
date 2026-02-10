@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { computeDepthVisibility, DEFAULT_DEPTH_CURVE } from '../rendering/DepthOpacity';
+
+// Pre-allocated temp vector for depth opacity normal calculation
+const _geomDepthNormal = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -7,12 +11,29 @@ import * as THREE from 'three';
 const GEOM_SIZE = 0.15; // half-extent of the diamond (increased for visibility)
 const GEOM_COLOR = new THREE.Color(0x00ff44); // bright green (GW3D authentic)
 const GEOM_GLOW_COLOR = new THREE.Color(0x44ff44);
-const MAGNET_RANGE = 2; // units -- start pulling toward player
-const MAGNET_SPEED = 8; // units/sec when being pulled
+const GEOM_ATTRACT_COLOR = new THREE.Color(0x88ffff); // cyan tint when being attracted
+
+/** Base magnetism radius (intentionally small so buff feels impactful). */
+const BASE_MAGNET_RANGE = 2.5;
+/** Maximum pull speed in UV units/sec when geom is very close to player. */
+const MAGNET_MAX_SPEED = 12;
+/** Acceleration factor for smooth ramp-up (UV units/sec^2). */
+const MAGNET_ACCEL = 18;
+/** Minimum age (seconds) before attraction kicks in (let burst settle). */
+const MAGNET_SETTLE_TIME = 0.3;
+
 const FADE_DURATION = 10; // seconds before despawn
 const FADE_START = 7; // seconds before starting to fade
 const SPIN_SPEED = 3; // radians / sec
 const POOL_SIZE = 300;
+
+/** Momentum from kill shot: base UV speed biased toward bullet direction. */
+const KILL_SHOT_MOMENTUM = 0.12; // UV units/sec in bullet direction
+/** Random scatter added on top of kill-shot momentum. */
+const SCATTER_SPEED_MIN = 0.03;
+const SCATTER_SPEED_MAX = 0.08;
+/** Friction multiplier per-frame (applied to velocity each tick). */
+const DRIFT_FRICTION = 0.92;
 
 // Pre-allocated temp objects for surface projection (avoids ~900 allocations/frame)
 const _geomTempMatrix = new THREE.Matrix4();
@@ -28,9 +49,13 @@ interface GeomData {
   age: number;
   surfaceU: number;
   surfaceV: number;
-  /** UV velocity for burst scatter animation. */
+  /** UV velocity (from burst + kill-shot momentum). */
   velU: number;
   velV: number;
+  /** Current magnetic pull speed (ramps up smoothly). */
+  magnetSpeed: number;
+  /** Whether this geom is currently being attracted (for visual feedback). */
+  attracted: boolean;
   /** Random spin offset so they do not all rotate in sync. */
   spinOffset: number;
 }
@@ -62,6 +87,8 @@ export class GeomPool {
         surfaceV: 0,
         velU: 0,
         velV: 0,
+        magnetSpeed: 0,
+        attracted: false,
         spinOffset: Math.random() * Math.PI * 2,
       });
     }
@@ -74,8 +101,14 @@ export class GeomPool {
   /**
    * Spawn a geom at the given surface coordinates with burst velocity.
    * Spawns exactly at the kill position and flies outward smoothly.
+   *
+   * @param surfaceU  Kill position U coordinate.
+   * @param surfaceV  Kill position V coordinate.
+   * @param bulletAngle  Optional angle (radians) of the killing bullet's
+   *                     travel direction on the surface. When provided, the
+   *                     geom receives momentum biased in that direction.
    */
-  spawn(surfaceU: number, surfaceV: number): void {
+  spawn(surfaceU: number, surfaceV: number, bulletAngle?: number): void {
     const idx = this.findInactive();
     if (idx < 0) return;
 
@@ -85,32 +118,48 @@ export class GeomPool {
     g.surfaceU = surfaceU;
     g.surfaceV = surfaceV;
     g.spinOffset = Math.random() * Math.PI * 2;
+    g.magnetSpeed = 0;
+    g.attracted = false;
 
-    // Random burst direction (radial outward from kill position)
-    const angle = Math.random() * Math.PI * 2;
-    const speed = 0.05 + Math.random() * 0.1; // UV units/sec
-    g.velU = Math.cos(angle) * speed;
-    g.velV = Math.sin(angle) * speed;
+    // Random scatter component
+    const scatterAngle = Math.random() * Math.PI * 2;
+    const scatterSpeed = SCATTER_SPEED_MIN + Math.random() * (SCATTER_SPEED_MAX - SCATTER_SPEED_MIN);
+
+    if (bulletAngle !== undefined) {
+      // Kill-shot momentum: bias velocity toward bullet's travel direction
+      // plus a random scatter for natural spread
+      g.velU = Math.cos(bulletAngle) * KILL_SHOT_MOMENTUM + Math.cos(scatterAngle) * scatterSpeed;
+      g.velV = Math.sin(bulletAngle) * KILL_SHOT_MOMENTUM + Math.sin(scatterAngle) * scatterSpeed;
+    } else {
+      // No bullet info -- pure random burst (legacy path)
+      g.velU = Math.cos(scatterAngle) * scatterSpeed;
+      g.velV = Math.sin(scatterAngle) * scatterSpeed;
+    }
 
     const mesh = this.meshes[idx];
     mesh.visible = true;
     setGeomOpacity(mesh, 1);
+    // Reset color to default (in case it was tinted from previous attraction)
+    setGeomColor(mesh, GEOM_COLOR, GEOM_GLOW_COLOR);
   }
 
   /**
    * Update all active geoms.  Handles aging, fading, magnetic pull toward
    * the player, and despawn.
    *
-   * @param dt          Fixed timestep delta (seconds).
-   * @param playerU     Player surface-U coordinate.
-   * @param playerV     Player surface-V coordinate.
-   * @param totalTime   Total game time for animation.
+   * @param dt            Fixed timestep delta (seconds).
+   * @param playerU       Player surface-U coordinate.
+   * @param playerV       Player surface-V coordinate.
+   * @param totalTime     Total game time for animation.
+   * @param magnetRadius  Total magnetism radius (base + buff bonus).
+   *                      Defaults to BASE_MAGNET_RANGE if not provided.
    */
   update(
     dt: number,
     playerU: number,
     playerV: number,
     totalTime: number,
+    magnetRadius: number = BASE_MAGNET_RANGE,
   ): void {
     for (let i = 0; i < POOL_SIZE; i++) {
       const g = this.geoms[i];
@@ -130,35 +179,73 @@ export class GeomPool {
         setGeomOpacity(this.meshes[i], 1 - t);
       }
 
-      // Apply burst velocity (decelerates over time)
+      // Apply drift velocity (decelerates via friction)
       if (Math.abs(g.velU) > 0.001 || Math.abs(g.velV) > 0.001) {
         g.surfaceU += g.velU * dt;
         g.surfaceV += g.velV * dt;
         // Friction deceleration
-        g.velU *= 0.92;
-        g.velV *= 0.92;
+        g.velU *= DRIFT_FRICTION;
+        g.velV *= DRIFT_FRICTION;
       }
 
-      // Magnetic pull toward player (only after initial burst settles, ~0.3s)
-      if (g.age > 0.3) {
+      // Magnetic attraction toward player (only after initial burst settles)
+      const wasAttracted = g.attracted;
+      g.attracted = false;
+
+      if (g.age > MAGNET_SETTLE_TIME) {
         const du = playerU - g.surfaceU;
         const dv = playerV - g.surfaceV;
         const dist = Math.sqrt(du * du + dv * dv);
 
-        if (dist < MAGNET_RANGE && dist > 0.01) {
-          const strength = 1 - dist / MAGNET_RANGE;
-          const pull = MAGNET_SPEED * strength * dt;
-          g.surfaceU += (du / dist) * pull;
-          g.surfaceV += (dv / dist) * pull;
+        if (dist < magnetRadius && dist > 0.005) {
+          g.attracted = true;
+
+          // Inverse-distance force curve: stronger as geom gets closer.
+          // strength goes from ~0 at edge to ~1 near player.
+          // Using (1 - dist/range)^2 for a smooth, accelerating feel.
+          const t = 1 - dist / magnetRadius;
+          const strength = t * t; // quadratic curve = smooth acceleration
+
+          // Smoothly ramp up magnetic speed (acceleration-based, not instant)
+          const targetSpeed = MAGNET_MAX_SPEED * strength;
+          g.magnetSpeed += (targetSpeed - g.magnetSpeed) * Math.min(MAGNET_ACCEL * dt, 1);
+
+          // Apply pull in UV space (direction toward player)
+          const invDist = 1 / dist;
+          const pull = g.magnetSpeed * dt;
+          g.surfaceU += du * invDist * pull;
+          g.surfaceV += dv * invDist * pull;
+
+          // Override drift velocity -- attracted geoms stop drifting randomly
+          g.velU *= 0.8;
+          g.velV *= 0.8;
+        } else {
+          // Outside range: decay magnetic speed back to zero
+          g.magnetSpeed *= 0.9;
+        }
+      }
+
+      // Visual feedback: tint cyan when being attracted
+      if (g.attracted !== wasAttracted) {
+        const mesh = this.meshes[i];
+        if (g.attracted) {
+          setGeomColor(mesh, GEOM_ATTRACT_COLOR, GEOM_ATTRACT_COLOR);
+        } else {
+          setGeomColor(mesh, GEOM_COLOR, GEOM_GLOW_COLOR);
         }
       }
 
       // Spin animation (around surface normal / local Y).
+      // Spin faster when attracted for extra juice.
       const mesh = this.meshes[i];
-      mesh.rotation.y = (totalTime * SPIN_SPEED) + g.spinOffset;
+      const spinMultiplier = g.attracted ? 2.5 : 1;
+      mesh.rotation.y = (totalTime * SPIN_SPEED * spinMultiplier) + g.spinOffset;
 
       // Sparkle/pulse effect (subtle brightness oscillation)
-      const sparkle = 0.85 + 0.15 * Math.sin(totalTime * 6 + g.spinOffset * 3);
+      // Pulse faster and bigger when attracted
+      const pulseFreq = g.attracted ? 12 : 6;
+      const pulseAmp = g.attracted ? 0.25 : 0.15;
+      const sparkle = (1 - pulseAmp) + pulseAmp * Math.sin(totalTime * pulseFreq + g.spinOffset * 3);
       mesh.scale.setScalar(sparkle);
     }
   }
@@ -196,6 +283,44 @@ export class GeomPool {
       _geomTempSpinQuat.setFromAxisAngle(normal, mesh.rotation.y);
       _geomTempSpinQuat.multiply(_geomTempBaseQuat);
       mesh.quaternion.copy(_geomTempSpinQuat);
+    }
+  }
+
+  /**
+   * Apply depth-based opacity to all active geoms.
+   * Far-side geoms (facing away from camera) become nearly transparent;
+   * near-side geoms remain fully opaque. Uses the steep preset by default.
+   *
+   * Must be called AFTER applySurfaceProjection (needs mesh positions set).
+   *
+   * @param cameraPos  World-space camera position.
+   * @param meshCenter Approximate center of the surface mesh (for normal estimation).
+   */
+  applyDepthOpacity(cameraPos: THREE.Vector3, meshCenter: THREE.Vector3): void {
+    for (let i = 0; i < POOL_SIZE; i++) {
+      const g = this.geoms[i];
+      if (!g.alive) continue;
+
+      const mesh = this.meshes[i];
+      // Approximate outward normal: direction from mesh center to geom position
+      _geomDepthNormal.copy(mesh.position).sub(meshCenter).normalize();
+
+      const visibility = computeDepthVisibility(
+        mesh.position,
+        _geomDepthNormal,
+        cameraPos,
+        DEFAULT_DEPTH_CURVE,
+      );
+
+      // Multiply depth visibility into the existing age-based opacity
+      // (age-based opacity is already applied by update() via setGeomOpacity)
+      mesh.traverse((child) => {
+        if (child instanceof THREE.Line || child instanceof THREE.LineSegments) {
+          const mat = child.material as THREE.LineBasicMaterial;
+          // Scale current opacity by depth visibility
+          mat.opacity = mat.opacity * visibility;
+        }
+      });
     }
   }
 
@@ -353,6 +478,23 @@ function setGeomOpacity(group: THREE.Group, opacity: number): void {
         // Main outline and cross diagonals - stay bright until late fade
         // Clamp to at least 0.9 while opacity > 0 (sharp visibility until final despawn)
         mat.opacity = opacity > 0 ? Math.max(opacity, 0.9) : 0;
+      }
+    }
+  });
+}
+
+/**
+ * Set color on all line materials within a geom group.
+ * Used for visual feedback when geom is being magnetically attracted.
+ */
+function setGeomColor(group: THREE.Group, mainColor: THREE.Color, glowColor: THREE.Color): void {
+  group.traverse((child) => {
+    if (child instanceof THREE.Line || child instanceof THREE.LineSegments) {
+      const mat = child.material as THREE.LineBasicMaterial;
+      if (child === group.children[0]) {
+        mat.color.copy(glowColor);
+      } else {
+        mat.color.copy(mainColor);
       }
     }
   });

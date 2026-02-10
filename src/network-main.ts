@@ -52,6 +52,12 @@ import {
   NetworkWeaponPickupState,
   NetworkGameState,
 } from './network/NetworkClient';
+import { PlayerNameLabels } from './ui/PlayerNameLabel';
+import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
+import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
+import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
+import { loadDDASettings } from './difficulty/DDASettings';
+import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 
 // ---------------------------------------------------------------------------
 // Debug API type (exposed as window.__gameDebug when ?debug=true)
@@ -113,6 +119,15 @@ function isValidSurfaceType(s: string): s is SurfaceType {
 function getServerUrl(): string {
   const params = new URLSearchParams(window.location.search);
   return params.get('server') || `ws://${window.location.hostname}:2567`;
+}
+
+function getPlayerName(): string {
+  const params = new URLSearchParams(window.location.search);
+  const urlName = params.get('name');
+  if (urlName) return urlName;
+  const savedName = localStorage.getItem('gw3d_player_name');
+  if (savedName) return savedName;
+  return `Player ${Math.floor(Math.random() * 9000) + 1000}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -384,6 +399,10 @@ function main() {
     // Create enemy spawner with real surface transform (same as co-op)
     enemySpawner = new EnemySpawner(scene, getTransform);
 
+    // Wire DDA modifier into enemy spawner (host uses this for spawn modifications)
+    enemySpawner.setDDAModifier(ddaSpawnModifier);
+    enemySpawner.setDDAPlayers(ddaPlayers);
+
     surfaceReady = true;
     lastCreatedSurfaceType = surfaceType;
     netMainLog(`[NetworkMain] Surface initialized: ${surfaceType}`);
@@ -417,6 +436,9 @@ function main() {
   // Ally glow manager for remote player indicators
   const allyGlowManager = new AllyGlowManager(scene);
 
+  // Floating name labels above player ships
+  const nameLabels = new PlayerNameLabels();
+
   // -- Player tracking --
   // Maps server player ID -> real Player instance (same class as single player)
   const networkPlayers = new Map<string, Player>();
@@ -445,6 +467,33 @@ function main() {
   let localPlayerId = '';
   let isHost = false;
   let isPaused = false;
+
+  // -- Dynamic Difficulty Adjustment (DDA) system --
+  // In LAN mode, DDA tracks local player metrics on every client.
+  // If this client is the host, the DDA engine runs for all players and the
+  // spawn modifier is wired into the enemySpawner (host controls spawning).
+  // Non-host clients only track local metrics (for debug display / future use).
+  const ddaSettings = loadDDASettings();
+  // Map of player server ID -> tracker (dynamically created as players join)
+  const ddaTrackerMap = new Map<string, DDAPerformanceTracker>();
+  let ddaPlayerIndex = 0;
+  const ddaEngine = new DDADecisionEngine();
+  ddaEngine.setEnabled(ddaSettings.enabled);
+  const ddaSpawnModifier = new DDASpawnModifier(ddaEngine);
+  // Pre-allocated player positions for DDA zone detection (max 4 players)
+  const ddaPlayers: PlayerPosition[] = [];
+
+  /** Get or create a DDA tracker for a player by server ID. */
+  function getOrCreateDDATracker(playerId: string): DDAPerformanceTracker {
+    let tracker = ddaTrackerMap.get(playerId);
+    if (!tracker) {
+      tracker = new DDAPerformanceTracker(ddaPlayerIndex);
+      ddaTrackerMap.set(playerId, tracker);
+      ddaPlayers.push({ index: ddaPlayerIndex, u: 0.5, v: 0.5 });
+      ddaPlayerIndex++;
+    }
+    return tracker;
+  }
 
   // Track whether surface has been confirmed from a real server state change
   // (not just a connect-time guess that might have stale defaults).
@@ -569,6 +618,26 @@ function main() {
     }
   };
   pauseOverlay.appendChild(resumeBtn);
+
+  // Stop Server button in pause menu (host only)
+  const pauseStopServerBtn = document.createElement('button');
+  pauseStopServerBtn.textContent = 'STOP SERVER';
+  pauseStopServerBtn.style.cssText =
+    'margin-top:10px;padding:12px 30px;font:bold 18px monospace;' +
+    'background:#800;color:#fff;border:2px solid #f44;cursor:pointer;display:none;' +
+    'text-shadow:0 0 5px #f44;';
+  pauseStopServerBtn.onclick = async () => {
+    // Same as top-right stop button: end game, stop server, return to menu
+    network.sendEndGame();
+    try {
+      await fetch('/__lan/stop', { method: 'POST' });
+    } catch {
+      // Ignore — server may not be managed by this Vite instance
+    }
+    window.location.href = window.location.pathname;
+  };
+  pauseOverlay.appendChild(pauseStopServerBtn);
+
   document.body.appendChild(pauseOverlay);
 
   function showPauseOverlay(paused: boolean): void {
@@ -577,6 +646,7 @@ function main() {
       pauseOverlay.style.display = 'flex';
       pauseHint.textContent = isHost ? 'Press ESC to resume' : 'Host has paused the game';
       resumeBtn.style.display = isHost ? 'block' : 'none';
+      pauseStopServerBtn.style.display = isHost ? 'block' : 'none';
     } else {
       pauseOverlay.style.display = 'none';
     }
@@ -710,6 +780,9 @@ function main() {
         particles.playerDeath(player.mesh.position);
         screenShake.shake(0.5, 0.4);
         sound.play('playerDeath');
+        // DDA: track death event for this player
+        const tracker = getOrCreateDDATracker(id);
+        tracker.recordDeath();
       }
       playerAliveState.set(id, netPlayer.alive);
 
@@ -725,6 +798,9 @@ function main() {
       if (id !== localPlayerId && netPlayer.alive) {
         allyGlowManager.setPosition(id, player.mesh.position);
       }
+
+      // Update floating name label
+      nameLabels.setLabel(id, netPlayer.name, netPlayer.color);
     });
 
     // Remove disconnected players
@@ -743,6 +819,7 @@ function main() {
         }
 
         allyGlowManager.removeGlow(id);
+        nameLabels.removeLabel(id);
       }
     });
 
@@ -787,6 +864,26 @@ function main() {
 
         // Kill log entry (same as co-op)
         killLog.addKill(enemyType, color.getHex());
+
+        // DDA: attribute kill to nearest player (heuristic, server doesn't
+        // send killer ID in state). This is sufficient for DDA tracking since
+        // zone-based difficulty only needs approximate attribution.
+        {
+          let nearestId = localPlayerId;
+          let nearestDistSq = Infinity;
+          networkPlayers.forEach((p, pid) => {
+            const dx = p.mesh.position.x - enemy.position.x;
+            const dy = p.mesh.position.y - enemy.position.y;
+            const dz = p.mesh.position.z - enemy.position.z;
+            const distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq < nearestDistSq) {
+              nearestDistSq = distSq;
+              nearestId = pid;
+            }
+          });
+          const tracker = getOrCreateDDATracker(nearestId);
+          tracker.recordKill(enemy.scoreValue);
+        }
 
         // Clean up
         if (enemy.mesh) {
@@ -885,6 +982,8 @@ function main() {
           g.surfaceV = geom.surfaceV;
           g.velU = 0;
           g.velV = 0;
+          g.magnetSpeed = 0;
+          g.attracted = false;
           // Make mesh visible
           const mesh = geomPool.getMesh(newIdx);
           if (mesh) {
@@ -1005,8 +1104,9 @@ function main() {
   // -----------------------------------------------------------------------
 
   const urlSurfaceType = getUrlSurfaceType();
+  const playerName = getPlayerName();
   network.connect({
-    name: `Player ${Math.floor(Math.random() * 1000)}`,
+    name: playerName,
     surfaceType: urlSurfaceType,
   }).then(() => {
     localPlayerId = network.getLocalPlayerId();
@@ -1165,6 +1265,47 @@ function main() {
       geomPool.update(dt, pt.u, pt.v, game.clock.totalTime);
     }
 
+    // -----------------------------------------------------------------------
+    // DDA system update (runs on all clients for metric tracking;
+    // host can use DDA levels for future server-side spawn modification)
+    // -----------------------------------------------------------------------
+    {
+      // Build ordered array of trackers for the engine
+      const trackersArray: DDAPerformanceTracker[] = [];
+      networkPlayers.forEach((player, id) => {
+        const tracker = getOrCreateDDATracker(id);
+        const alive = playerAliveState.get(id) ?? true;
+        if (alive && surface) {
+          // Compute nearest enemy distance in UV space for this player
+          let nearestEnemyDist = 1.0;
+          networkEnemies.forEach((enemy) => {
+            if (!enemy.alive) return;
+            const du = player.surfaceU - enemy.surfacePosition.u;
+            const dv = player.surfaceV - enemy.surfacePosition.v;
+            const dist = Math.sqrt(du * du + dv * dv);
+            if (dist < nearestEnemyDist) nearestEnemyDist = dist;
+          });
+
+          // Player.lives is synced from server state in onStateChange
+          tracker.update(dt, nearestEnemyDist, player.lives / 3);
+        }
+
+        // Sync player position for DDA zone detection
+        const ddaIdx = tracker.playerIndex;
+        if (ddaIdx < ddaPlayers.length) {
+          ddaPlayers[ddaIdx].u = player.surfaceU;
+          ddaPlayers[ddaIdx].v = player.surfaceV;
+        }
+
+        trackersArray.push(tracker);
+      });
+
+      // Update engine with all trackers (percentile ranking for multiplayer)
+      if (trackersArray.length > 0) {
+        ddaEngine.update(dt, trackersArray);
+      }
+    }
+
     // Scale music intensity by enemy count (same as co-op)
     bgMusic.setIntensity(Math.min(networkEnemies.size / 30, 1.0));
 
@@ -1227,6 +1368,14 @@ function main() {
     if (screenShake.offset.lengthSq() > 0.0001) {
       camera.position.add(screenShake.offset);
     }
+
+    // Update floating name labels (project 3D -> screen)
+    const labelPositions = new Map<string, { worldPos: THREE.Vector3; alive: boolean }>();
+    networkPlayers.forEach((player, id) => {
+      const alive = playerAliveState.get(id) ?? true;
+      labelPositions.set(id, { worldPos: player.mesh.position, alive });
+    });
+    nameLabels.update(camera, labelPositions);
   };
 
   // Start the game loop
@@ -1237,6 +1386,7 @@ function main() {
     network.disconnect();
     bgMusic.stop();
     allyGlowManager.dispose();
+    nameLabels.dispose();
     meshSurface?.dispose();
   });
 

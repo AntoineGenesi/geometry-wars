@@ -1,10 +1,15 @@
 /**
  * Renderer factory -- creates the appropriate Three.js renderer based
- * on detected GPU capabilities.
+ * on detected GPU capabilities and URL parameters.
  *
- * Currently always returns a WebGLRenderer because Three.js WebGPU
- * renderer is still experimental. The factory pattern means we can swap
- * in WebGPURenderer later without touching Game.ts.
+ * Supports two rendering backends:
+ *   - WebGL2 (default): Uses THREE.WebGLRenderer + EffectComposer + UnrealBloomPass
+ *   - WebGPU (opt-in via ?renderer=webgpu): Uses WebGPURenderer + TSL PostProcessing
+ *
+ * URL parameters:
+ *   ?renderer=webgpu  - Force WebGPU renderer (falls back to WebGL2 if unavailable)
+ *   ?renderer=webgl   - Force WebGL2 renderer (default)
+ *   ?testMode=true    - Enable preserveDrawingBuffer for automated testing
  *
  * The factory also logs the capability report so developers can see
  * what was detected at startup.
@@ -13,11 +18,37 @@
 import * as THREE from 'three';
 import { GPUCapabilityReport } from './GPUCapabilities';
 
+/** Which rendering backend is active. */
+export type RendererBackend = 'webgpu' | 'webgl2';
+
 export interface RendererResult {
-  /** The Three.js renderer instance. */
+  /** The Three.js renderer instance (WebGLRenderer or WebGPURenderer). */
   renderer: THREE.WebGLRenderer;
-  /** Whether this is backed by WebGPU (false for now). */
+  /** Whether this is backed by WebGPU. */
   isWebGPU: boolean;
+  /** Descriptive string for the active backend. */
+  backend: RendererBackend;
+}
+
+/**
+ * Determine which renderer the user wants based on URL params and capabilities.
+ *
+ * Exported for testing -- the actual renderer creation uses this internally.
+ */
+export function resolveRendererPreference(
+  capabilities: GPUCapabilityReport,
+): RendererBackend {
+  if (typeof window === 'undefined') return 'webgl2';
+
+  const params = new URLSearchParams(window.location.search);
+  const pref = params.get('renderer');
+
+  if (pref === 'webgpu' && capabilities.webgpu) {
+    return 'webgpu';
+  }
+
+  // Default to WebGL2 -- it's the stable, proven path
+  return 'webgl2';
 }
 
 /**
@@ -25,7 +56,7 @@ export interface RendererResult {
  *
  * @param container - DOM element to attach the canvas to.
  * @param capabilities - Previously detected GPU capability report.
- * @returns The renderer and a flag indicating the backend.
+ * @returns The renderer, backend info, and isWebGPU flag.
  */
 export async function createRenderer(
   container: HTMLElement,
@@ -33,14 +64,35 @@ export async function createRenderer(
 ): Promise<RendererResult> {
   logCapabilities(capabilities);
 
-  // Future: when Three.js WebGPURenderer is stable and capabilities.webgpu
-  // is true, create a WebGPURenderer here instead.
+  const preference = resolveRendererPreference(capabilities);
 
   // When ?testMode=true is in the URL, enable preserveDrawingBuffer
   // so automated tests can read canvas pixels via getImageData/toDataURL.
   const isTestMode = typeof window !== 'undefined' &&
     new URLSearchParams(window.location.search).get('testMode') === 'true';
 
+  // ---- Attempt WebGPU if requested ----
+  if (preference === 'webgpu') {
+    try {
+      const result = await createWebGPURenderer(container, capabilities, isTestMode);
+      if (result) return result;
+    } catch (err) {
+      console.warn('[RendererFactory] WebGPU initialization failed, falling back to WebGL2:', err);
+    }
+  }
+
+  // ---- Default: WebGL2 ----
+  return createWebGLRenderer(container, capabilities, isTestMode);
+}
+
+/**
+ * Create a standard WebGL2 renderer. This is the default, battle-tested path.
+ */
+function createWebGLRenderer(
+  container: HTMLElement,
+  capabilities: GPUCapabilityReport,
+  isTestMode: boolean,
+): RendererResult {
   const renderer = new THREE.WebGLRenderer({
     antialias: capabilities.tier !== 'low',
     powerPreference: 'high-performance',
@@ -54,7 +106,68 @@ export async function createRenderer(
 
   container.appendChild(renderer.domElement);
 
-  return { renderer, isWebGPU: false };
+  console.log('[RendererFactory] Created WebGL2 renderer');
+  return { renderer, isWebGPU: false, backend: 'webgl2' };
+}
+
+/**
+ * Attempt to create a WebGPU renderer using Three.js WebGPURenderer.
+ *
+ * WebGPURenderer uses a completely different class hierarchy from WebGLRenderer:
+ *   - Extends Renderer (common base), NOT WebGLRenderer
+ *   - Uses node-based PostProcessing instead of EffectComposer
+ *   - Has built-in WebGL2 fallback via getFallback parameter
+ *
+ * We return the WebGPURenderer cast to WebGLRenderer for type compatibility
+ * with the rest of the codebase. The APIs used by Game.ts (setSize, setPixelRatio,
+ * render, domElement, toneMapping, toneMappingExposure, dispose, info) are all
+ * available on both renderer types.
+ *
+ * Returns null if WebGPU module cannot be loaded.
+ */
+async function createWebGPURenderer(
+  container: HTMLElement,
+  capabilities: GPUCapabilityReport,
+  _isTestMode: boolean,
+): Promise<RendererResult | null> {
+  try {
+    // Dynamic import of the WebGPU module -- this is a separate bundle
+    const WebGPUModule = await import('three/webgpu');
+    const WebGPURenderer = WebGPUModule.WebGPURenderer;
+
+    if (!WebGPURenderer) {
+      console.warn('[RendererFactory] three/webgpu module found but WebGPURenderer not exported');
+      return null;
+    }
+
+    const renderer = new WebGPURenderer({
+      antialias: capabilities.tier !== 'low',
+      // WebGPURenderer automatically falls back to WebGL2 backend if WebGPU
+      // is not available at the browser/driver level
+    });
+
+    renderer.setPixelRatio(getPixelRatio(capabilities.tier));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.toneMappingExposure = 1.0;
+
+    container.appendChild(renderer.domElement);
+
+    // Wait for the renderer to initialize (needed for WebGPU adapter request)
+    await renderer.init();
+
+    console.log('[RendererFactory] Created WebGPU renderer');
+    // Cast to WebGLRenderer for type compatibility -- the API surface we use
+    // (setSize, setPixelRatio, render, domElement, dispose, info) is identical
+    return {
+      renderer: renderer as unknown as THREE.WebGLRenderer,
+      isWebGPU: true,
+      backend: 'webgpu',
+    };
+  } catch (err) {
+    console.warn('[RendererFactory] Failed to load three/webgpu module:', err);
+    return null;
+  }
 }
 
 /**

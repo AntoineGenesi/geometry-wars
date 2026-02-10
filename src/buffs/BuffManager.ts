@@ -101,7 +101,7 @@ export const BUFF_DEFINITIONS: Record<StackBuffType, BuffDefinition> = {
     type: StackBuffType.Magnetism,
     name: 'Magnetism',
     shortName: 'MAG',
-    description: '+1.5 unit geom collection radius per stack',
+    description: 'Increases geom attraction + collection radius per stack',
     rarity: 'common',
     category: 'utility',
     maxStack: 0,

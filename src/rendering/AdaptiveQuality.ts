@@ -142,6 +142,24 @@ const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualitySettings>> = {
   },
 };
 
+/**
+ * Mobile-optimized quality preset.
+ *
+ * Applied once at startup when mobile mode is detected. Sits between
+ * MEDIUM and LOW -- enough visual polish for the game to look good on
+ * phones while keeping frame rates at 30-60fps.
+ */
+export const MOBILE_QUALITY_PRESET: Readonly<QualitySettings> = {
+  particleCount: 300,
+  bloomResolutionScale: 0.25,
+  bloomEnabled: true,
+  trailDetail: TrailDetail.SIMPLIFIED,
+  enemyDetail: EnemyDetail.LOD,
+  maxVisibleEnemies: 200,
+  shadowsEnabled: false,
+  postProcessingEnabled: false,
+};
+
 // ---------------------------------------------------------------------------
 // Defaults
 // ---------------------------------------------------------------------------

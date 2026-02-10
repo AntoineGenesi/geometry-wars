@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Geometry Wars 3D</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -163,6 +163,61 @@
       opacity: 1;
       transition: none;
     }
+
+    /* ------------------------------------------------------------------- */
+    /* Mobile-optimized HUD (larger text, repositioned for touch)           */
+    /* Activates on small screens with touch (coarse pointer)               */
+    /* ------------------------------------------------------------------- */
+    @media (max-width: 900px) and (pointer: coarse) {
+      #score-display {
+        font-size: 28px;
+        top: 10px;
+        letter-spacing: 2px;
+      }
+      #multiplier-display {
+        font-size: 16px;
+        top: 42px;
+      }
+      #lives-display {
+        font-size: 24px;
+        top: 10px;
+        right: 15px;
+      }
+      #bombs-display {
+        font-size: 24px;
+        top: 40px;
+        right: 15px;
+      }
+      #timer-display {
+        font-size: 20px;
+        top: 10px;
+        left: 15px;
+      }
+      #weapon-display {
+        bottom: 100px; /* above joystick zone */
+        font-size: 14px;
+      }
+      #combo-display {
+        font-size: 16px;
+        top: 48px;
+        right: 15px;
+      }
+      #level-name-display {
+        top: 58px;
+        font-size: 12px;
+      }
+      #player-level-display {
+        top: 62px;
+        right: 15px;
+        font-size: 11px;
+      }
+      #countdown-overlay {
+        font-size: 80px;
+      }
+      #boss-health-bar {
+        width: 200px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -183,6 +238,21 @@
       <div id="boss-phase-text"></div>
     </div>
   </div>
+  <div id="bottom-hints" style="position:fixed;bottom:6px;right:10px;z-index:800;pointer-events:none;font:10px monospace;color:#446;opacity:0.6;text-align:right;">
+    <span id="hint-f3">F3: Debug</span>
+    <span id="hint-platform" style="margin-left:8px;display:none;"></span>
+  </div>
   <script type="module" src="/src/main.ts"></script>
+  <script>
+    // Detect platform and show hint
+    (function() {
+      var p = document.getElementById('hint-platform');
+      if (p && navigator.userAgent.indexOf('Windows') !== -1) {
+        var isElectron = navigator.userAgent.indexOf('Electron') !== -1;
+        p.textContent = isElectron ? 'Windows App' : 'Windows';
+        p.style.display = 'inline';
+      }
+    })();
+  </script>
 </body>
 </html>

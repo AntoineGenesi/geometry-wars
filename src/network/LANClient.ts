@@ -113,6 +113,11 @@ export class LANClient {
 
   /** Build the full join URL for sharing with other players */
   getJoinUrl(ip: string, port: number, surface: string, vitePort: number = 3000): string {
-    return `http://${ip}:${vitePort}?mode=network&surface=${surface}&server=ws://${ip}:${port}`;
+    return `http://${ip}:${vitePort}/?mode=network&surface=${encodeURIComponent(surface)}&server=${encodeURIComponent(`ws://${ip}:${port}`)}`;
+  }
+
+  /** Build a mobile-optimized join URL (includes ?mobile=true for phone-specific UI) */
+  getMobileJoinUrl(ip: string, port: number, surface: string, vitePort: number = 3000): string {
+    return `http://${ip}:${vitePort}/?mobile=true&mode=network&surface=${encodeURIComponent(surface)}&server=${encodeURIComponent(`ws://${ip}:${port}`)}`;
   }
 }

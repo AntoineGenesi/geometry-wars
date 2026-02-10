@@ -10,7 +10,7 @@ Key files:
 - `src/entities/Bullet.ts` - Modified to use MeshSurface when available
 - `src/main.ts` - Integration: player uses MeshWalker, bullets use MeshSurface
 
-24 automated tests verify pole traversal, speed constancy, and multi-shape support. Visual verification done on sphere, torus, cube, knot, and cylinder via Puppeteer screenshots.
+24 automated tests verify pole traversal, speed constancy, and multi-shape support. Visual verification done on sphere, torus, cube, knot, and pill via Puppeteer screenshots.
 
 ---
 
@@ -54,7 +54,7 @@ Uses `three-mesh-bvh` for fast `closestPointToPoint()` on any mesh. Player moves
 
 ## Known Limitations
 
-- **Enemies still use UV system**: 15 enemy types move via `surface.moveOnSurface(u, v, du, dv)`. Migration to MeshWalker is planned but not yet started. See `decisions/enemy-meshwalker-migration.md`.
+- **Enemies still use UV system**: 30 enemy types move via `surface.moveOnSurface(u, v, du, dv)`. Migration to MeshWalker is planned but not yet started. See `decisions/enemy-meshwalker-migration.md`.
 - **UV bridge approximation**: `surface.worldToSurface()` converts world positions to UV for enemy/geom interaction. This works but adds a layer of coordinate conversion that would be unnecessary if enemies also used MeshWalker.
 - **Far-side entity visibility**: No depth-based opacity yet. Enemies behind the surface look the same as nearby ones.
 - **Bloom tuning**: Bloom is enabled (threshold=0.85, strength=1.0) but additive-blended particles can cause white-out. All particle/trail materials use NormalBlending to mitigate.

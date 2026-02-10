@@ -207,11 +207,11 @@ export class MenuBackground {
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x050510);
 
-    // -- Camera -- shifted to the right to complement left-side menu buttons
+    // -- Camera -- centered on the surface with slight elevation
     const aspect = window.innerWidth / window.innerHeight;
     this.camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 200);
-    this.camera.position.set(6, 10, 22);
-    this.camera.lookAt(4, 0, 0);
+    this.camera.position.set(0, 10, 24);
+    this.camera.lookAt(0, 0, 0);
 
     // -- Lighting (subtle ambient + directional for shape definition) --
     const ambient = new THREE.AmbientLight(0x303060, 0.4);
@@ -299,7 +299,7 @@ export class MenuBackground {
   // -----------------------------------------------------------------------
 
   private createSurface(type: SurfaceType): Surface {
-    const scale = 8;
+    const scale = 10;
     const config = {
       gridColor: 0x1e1e8b,
       surfaceColor: 0x0a0a2a,
@@ -315,7 +315,7 @@ export class MenuBackground {
       subdivisions: 2,
       width: scale,
       tunnelRadius: scale * 0.3,
-      bevelRadius: 0.6,
+      bevelRadius: 0.8,
       gridSegmentsU: 20,
       gridSegmentsV: 16,
     };

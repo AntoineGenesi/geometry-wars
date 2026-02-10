@@ -1,0 +1,344 @@
+/**
+ * Virtual joystick touch input system for mobile devices.
+ *
+ * Provides dual virtual joysticks:
+ * - LEFT joystick (bottom-left quadrant) for movement
+ * - RIGHT joystick (bottom-right quadrant) for aiming
+ * - Auto-fires when the right joystick is active
+ * - Tap top-center area for bomb / special ability
+ *
+ * Renders semi-transparent joystick circles as an HTML overlay.
+ * Produces the same InputState interface as InputManager so it
+ * can be used as a drop-in replacement.
+ */
+
+import type { InputState } from './InputManager';
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+/** Maximum distance (px) the thumb can move from the joystick center. */
+const JOYSTICK_RADIUS = 60;
+
+/** Dead zone as a fraction of JOYSTICK_RADIUS. */
+const DEAD_ZONE_FRACTION = 0.15;
+
+/** Size of the base circle visual (px). */
+const BASE_SIZE = 120;
+
+/** Size of the thumb indicator (px). */
+const THUMB_SIZE = 50;
+
+/** Duration to register a bomb tap (ms). */
+const BOMB_TAP_DURATION = 300;
+
+// ---------------------------------------------------------------------------
+// TouchInput
+// ---------------------------------------------------------------------------
+
+export class TouchInput {
+  // -- DOM --
+  private overlay: HTMLDivElement;
+
+  // -- Left joystick state (movement) --
+  private leftActive = false;
+  private leftTouchId: number | null = null;
+  private leftOriginX = 0;
+  private leftOriginY = 0;
+  private leftDeltaX = 0;
+  private leftDeltaY = 0;
+  private leftBase: HTMLDivElement;
+  private leftThumb: HTMLDivElement;
+
+  // -- Right joystick state (aim) --
+  private rightActive = false;
+  private rightTouchId: number | null = null;
+  private rightOriginX = 0;
+  private rightOriginY = 0;
+  private rightDeltaX = 0;
+  private rightDeltaY = 0;
+  private rightBase: HTMLDivElement;
+  private rightThumb: HTMLDivElement;
+
+  // -- Bomb tap state --
+  private bombTriggered = false;
+  private bombTapStart = 0;
+  private bombTouchId: number | null = null;
+
+  // -- Bound handlers --
+  private readonly onTouchStart: (e: TouchEvent) => void;
+  private readonly onTouchMove: (e: TouchEvent) => void;
+  private readonly onTouchEnd: (e: TouchEvent) => void;
+
+  constructor() {
+    // Create overlay container
+    this.overlay = document.createElement('div');
+    this.overlay.id = 'touch-controls-overlay';
+    this.applyOverlayStyles();
+
+    // Create joystick elements
+    this.leftBase = this.createJoystickBase();
+    this.leftThumb = this.createJoystickThumb();
+    this.rightBase = this.createJoystickBase();
+    this.rightThumb = this.createJoystickThumb();
+
+    this.leftBase.appendChild(this.leftThumb);
+    this.rightBase.appendChild(this.rightThumb);
+    this.overlay.appendChild(this.leftBase);
+    this.overlay.appendChild(this.rightBase);
+
+    // Both hidden initially
+    this.leftBase.style.display = 'none';
+    this.rightBase.style.display = 'none';
+
+    document.body.appendChild(this.overlay);
+
+    // Touch event handlers
+    this.onTouchStart = (e: TouchEvent) => this.handleTouchStart(e);
+    this.onTouchMove = (e: TouchEvent) => this.handleTouchMove(e);
+    this.onTouchEnd = (e: TouchEvent) => this.handleTouchEnd(e);
+
+    window.addEventListener('touchstart', this.onTouchStart, { passive: false });
+    window.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    window.addEventListener('touchend', this.onTouchEnd, { passive: false });
+    window.addEventListener('touchcancel', this.onTouchEnd, { passive: false });
+  }
+
+  // -----------------------------------------------------------------------
+  // Public API (matches InputManager interface)
+  // -----------------------------------------------------------------------
+
+  /** Sample touch state and return a unified InputState. */
+  getState(): InputState {
+    const moveX = this.applyDeadZone(this.leftDeltaX / JOYSTICK_RADIUS);
+    const moveY = this.applyDeadZone(this.leftDeltaY / JOYSTICK_RADIUS);
+    const aimX = this.applyDeadZone(this.rightDeltaX / JOYSTICK_RADIUS);
+    const aimY = this.applyDeadZone(this.rightDeltaY / JOYSTICK_RADIUS);
+
+    // Auto-fire when right stick is active
+    const rightStickActive = Math.abs(aimX) > 0 || Math.abs(aimY) > 0;
+
+    return {
+      moveX: this.clamp(moveX, -1, 1),
+      moveY: this.clamp(moveY, -1, 1),
+      aimX: this.clamp(aimX, -1, 1),
+      aimY: this.clamp(aimY, -1, 1),
+      shooting: rightStickActive,
+      bomb: this.bombTriggered,
+      boost: false,
+      weaponSwap: false,
+    };
+  }
+
+  /** Clear per-frame flags (bomb tap). Called at end of frame. */
+  endFrame(): void {
+    this.bombTriggered = false;
+  }
+
+  /** Remove all listeners and DOM elements. */
+  dispose(): void {
+    window.removeEventListener('touchstart', this.onTouchStart);
+    window.removeEventListener('touchmove', this.onTouchMove);
+    window.removeEventListener('touchend', this.onTouchEnd);
+    window.removeEventListener('touchcancel', this.onTouchEnd);
+    this.overlay.remove();
+  }
+
+  /** Show/hide the touch overlay. */
+  setVisible(visible: boolean): void {
+    this.overlay.style.display = visible ? 'block' : 'none';
+  }
+
+  // -----------------------------------------------------------------------
+  // Touch event handlers
+  // -----------------------------------------------------------------------
+
+  private handleTouchStart(e: TouchEvent): void {
+    e.preventDefault();
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      const x = touch.clientX;
+      const y = touch.clientY;
+
+      // Top center strip = bomb tap zone (top 20%, middle 60%)
+      if (y < h * 0.2 && x > w * 0.2 && x < w * 0.8) {
+        this.bombTouchId = touch.identifier;
+        this.bombTapStart = performance.now();
+        continue;
+      }
+
+      // Bottom half of screen for joysticks
+      if (y > h * 0.35) {
+        if (x < w * 0.5) {
+          // Left half = movement joystick
+          if (!this.leftActive) {
+            this.leftActive = true;
+            this.leftTouchId = touch.identifier;
+            this.leftOriginX = x;
+            this.leftOriginY = y;
+            this.leftDeltaX = 0;
+            this.leftDeltaY = 0;
+            this.showJoystick(this.leftBase, this.leftThumb, x, y, 0, 0);
+          }
+        } else {
+          // Right half = aim joystick
+          if (!this.rightActive) {
+            this.rightActive = true;
+            this.rightTouchId = touch.identifier;
+            this.rightOriginX = x;
+            this.rightOriginY = y;
+            this.rightDeltaX = 0;
+            this.rightDeltaY = 0;
+            this.showJoystick(this.rightBase, this.rightThumb, x, y, 0, 0);
+          }
+        }
+      }
+    }
+  }
+
+  private handleTouchMove(e: TouchEvent): void {
+    e.preventDefault();
+
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+
+      if (touch.identifier === this.leftTouchId && this.leftActive) {
+        const rawDx = touch.clientX - this.leftOriginX;
+        const rawDy = touch.clientY - this.leftOriginY;
+        const { dx, dy } = this.clampJoystick(rawDx, rawDy);
+        this.leftDeltaX = dx;
+        this.leftDeltaY = dy;
+        this.updateJoystickVisual(this.leftBase, this.leftThumb, this.leftOriginX, this.leftOriginY, dx, dy);
+      }
+
+      if (touch.identifier === this.rightTouchId && this.rightActive) {
+        const rawDx = touch.clientX - this.rightOriginX;
+        const rawDy = touch.clientY - this.rightOriginY;
+        const { dx, dy } = this.clampJoystick(rawDx, rawDy);
+        this.rightDeltaX = dx;
+        this.rightDeltaY = dy;
+        this.updateJoystickVisual(this.rightBase, this.rightThumb, this.rightOriginX, this.rightOriginY, dx, dy);
+      }
+    }
+  }
+
+  private handleTouchEnd(e: TouchEvent): void {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+
+      if (touch.identifier === this.leftTouchId) {
+        this.leftActive = false;
+        this.leftTouchId = null;
+        this.leftDeltaX = 0;
+        this.leftDeltaY = 0;
+        this.leftBase.style.display = 'none';
+      }
+
+      if (touch.identifier === this.rightTouchId) {
+        this.rightActive = false;
+        this.rightTouchId = null;
+        this.rightDeltaX = 0;
+        this.rightDeltaY = 0;
+        this.rightBase.style.display = 'none';
+      }
+
+      if (touch.identifier === this.bombTouchId) {
+        const elapsed = performance.now() - this.bombTapStart;
+        if (elapsed < BOMB_TAP_DURATION) {
+          this.bombTriggered = true;
+        }
+        this.bombTouchId = null;
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Joystick math
+  // -----------------------------------------------------------------------
+
+  private clampJoystick(rawDx: number, rawDy: number): { dx: number; dy: number } {
+    const dist = Math.sqrt(rawDx * rawDx + rawDy * rawDy);
+    if (dist <= JOYSTICK_RADIUS) {
+      return { dx: rawDx, dy: rawDy };
+    }
+    const scale = JOYSTICK_RADIUS / dist;
+    return { dx: rawDx * scale, dy: rawDy * scale };
+  }
+
+  private applyDeadZone(value: number): number {
+    const abs = Math.abs(value);
+    if (abs < DEAD_ZONE_FRACTION) return 0;
+    const sign = value > 0 ? 1 : -1;
+    return sign * (abs - DEAD_ZONE_FRACTION) / (1 - DEAD_ZONE_FRACTION);
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  // -----------------------------------------------------------------------
+  // Joystick visuals
+  // -----------------------------------------------------------------------
+
+  private showJoystick(base: HTMLDivElement, thumb: HTMLDivElement, cx: number, cy: number, dx: number, dy: number): void {
+    base.style.display = 'block';
+    base.style.left = `${cx - BASE_SIZE / 2}px`;
+    base.style.top = `${cy - BASE_SIZE / 2}px`;
+    thumb.style.left = `${BASE_SIZE / 2 - THUMB_SIZE / 2 + dx}px`;
+    thumb.style.top = `${BASE_SIZE / 2 - THUMB_SIZE / 2 + dy}px`;
+  }
+
+  private updateJoystickVisual(base: HTMLDivElement, thumb: HTMLDivElement, cx: number, cy: number, dx: number, dy: number): void {
+    base.style.left = `${cx - BASE_SIZE / 2}px`;
+    base.style.top = `${cy - BASE_SIZE / 2}px`;
+    thumb.style.left = `${BASE_SIZE / 2 - THUMB_SIZE / 2 + dx}px`;
+    thumb.style.top = `${BASE_SIZE / 2 - THUMB_SIZE / 2 + dy}px`;
+  }
+
+  // -----------------------------------------------------------------------
+  // DOM creation
+  // -----------------------------------------------------------------------
+
+  private applyOverlayStyles(): void {
+    const s = this.overlay.style;
+    s.position = 'fixed';
+    s.top = '0';
+    s.left = '0';
+    s.width = '100%';
+    s.height = '100%';
+    s.pointerEvents = 'none';
+    s.zIndex = '500';
+    s.touchAction = 'none';
+  }
+
+  private createJoystickBase(): HTMLDivElement {
+    const el = document.createElement('div');
+    const s = el.style;
+    s.position = 'absolute';
+    s.width = `${BASE_SIZE}px`;
+    s.height = `${BASE_SIZE}px`;
+    s.borderRadius = '50%';
+    s.background = 'radial-gradient(circle, rgba(0,255,255,0.1) 0%, rgba(0,255,255,0.05) 100%)';
+    s.border = '2px solid rgba(0,255,255,0.3)';
+    s.pointerEvents = 'none';
+    return el;
+  }
+
+  private createJoystickThumb(): HTMLDivElement {
+    const el = document.createElement('div');
+    const s = el.style;
+    s.position = 'absolute';
+    s.width = `${THUMB_SIZE}px`;
+    s.height = `${THUMB_SIZE}px`;
+    s.borderRadius = '50%';
+    s.background = 'radial-gradient(circle, rgba(0,255,255,0.6) 0%, rgba(0,255,255,0.2) 100%)';
+    s.border = '2px solid rgba(0,255,255,0.5)';
+    s.boxShadow = '0 0 10px rgba(0,255,255,0.3)';
+    s.pointerEvents = 'none';
+    return el;
+  }
+}

@@ -39,7 +39,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     name: 'Blaster',
     color: 0xffff44,
     damage: 0.25,
-    fireRate: 12,
+    fireRate: 6,
     ammo: -1,
     projectileSpeed: 1.5,
     description: 'Rapid-fire energy bolts (always fires alongside equipped weapon)',

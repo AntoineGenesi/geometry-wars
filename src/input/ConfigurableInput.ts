@@ -24,8 +24,8 @@ export interface PlayerBindings {
 const STORAGE_KEY = 'gw3d-keybindings';
 
 const DEFAULT_BINDINGS: PlayerBindings[] = [
-  // P1: WASD + mouse + click + space + E to swap weapon
-  { up: 'w', down: 's', left: 'a', right: 'd', shoot: 'MouseLeft', bomb: ' ', weaponSwap: 'e', aimMode: 'mouse' },
+  // P1: WASD + mouse + click + space + Q to swap weapon
+  { up: 'w', down: 's', left: 'a', right: 'd', shoot: 'MouseLeft', bomb: ' ', weaponSwap: 'q', aimMode: 'mouse' },
   // P2: IJKL + auto-aim + O + P + U to swap weapon
   { up: 'i', down: 'k', left: 'j', right: 'l', shoot: 'o', bomb: 'p', weaponSwap: 'u', aimMode: 'movement' },
   // P3: Arrows + auto-aim + Enter + RShift + . to swap weapon

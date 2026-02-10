@@ -1,15 +1,18 @@
 # Geometry Wars 3D Dimensions - Browser Recreation
 
-Browser recreation of Geometry Wars 3: Dimensions using Three.js, TypeScript, and Vite.
+Browser-based 3D arcade shooter inspired by Geometry Wars 3: Dimensions. Built with Three.js, TypeScript, and Vite.
+
+Core experience: you're on a couch with friends, you say "pull out your phone, go to this URL" and everyone is immediately playing together. No downloads, no installs, no accounts.
 
 ## Tech Stack
 
-- Three.js ^0.170 (3D rendering, bloom, GPU particles)
+- Three.js ^0.170 (3D rendering, bloom, GPU particles), WebGPU with WebGL2 fallback
 - TypeScript 5.7 + Vite 6 (build tooling)
 - three-mesh-bvh (BVH-accelerated surface walking)
-- Colyseus ^0.15 (network multiplayer)
+- Colyseus ^0.15 (network multiplayer, server-authoritative)
+- Rapier.js WASM (physics)
 - Web Audio API (procedural synth audio)
-- Node 20+ required
+- Node 20+ required (20.19.5 via nvm)
 
 ## Quick Start
 
@@ -25,11 +28,18 @@ Open http://localhost:3000
 | Mode | URL | Notes |
 |------|-----|-------|
 | Single player | http://localhost:3000 | Default mode |
-| Local multiplayer | http://localhost:3000?mode=multiplayer | 2-player splitscreen |
-| Network multiplayer | http://localhost:3000?mode=network | Up to 4 players |
-| Mesh test scene | http://localhost:3000/mesh-test.html?shape=torus | Surface testing |
+| Local co-op | http://localhost:3000?mode=multiplayer | 2-player same screen |
+| LAN multiplayer | Start menu > LAN > Host Game | Up to 4 players, same WiFi |
+| Network multiplayer | http://localhost:3000?mode=network | Up to 4 players, needs server |
 
-For network multiplayer, start the server first:
+### LAN Multiplayer
+
+1. Run `npm run dev`
+2. Click **LAN** in the start menu, then **HOST GAME**
+3. Share the displayed URL with friends on the same WiFi
+4. Click **ENTER GAME** to join your own server
+
+### Network Multiplayer
 
 ```bash
 npm run server    # Colyseus on port 2567
@@ -39,58 +49,70 @@ Then open http://localhost:3000?mode=network (or `?mode=network&server=ws://host
 
 ## Controls
 
-| Action | Single Player | P1 (Local MP) | P2 (Local MP) |
-|--------|--------------|----------------|----------------|
+| Action | Single Player | P1 (Co-op) | P2 (Co-op) |
+|--------|--------------|-------------|-------------|
 | Move | WASD | WASD | IJKL |
 | Aim | Mouse | Mouse | Auto-aim |
 | Shoot | Click | Click | O |
 | Bomb | Space | Space | P |
 | Pause | ESC | ESC | - |
 | Mute | M | M | - |
+| Debug overlay | F3 | F3 | - |
 
-Additional keys: 1-5 switch surface shape, L toggles debug lines.
+## Surface Shapes (12)
 
-## Surface Shapes
+sphere, cube, pill, pipe, torus, peanut, capsule, icosahedron, mobius, sphere-tunnel, cube-ring, cube-tunnel
 
-sphere, cube, cylinder, torus, peanut, capsule, icosahedron, mobius, dented-sphere, sphere-tunnel
+## Features
 
-## Custom Meshes
-
-Drag and drop an OBJ, GLB, or GLTF file onto `mesh-test.html`, or load via URL:
-
-```
-http://localhost:3000/mesh-test.html?shape=custom&url=path/to/model.glb
-```
+- **Surfaces**: 12 playable surface types with geodesic face-walking movement (MeshWalker)
+- **Enemies**: 30 enemy types with 5-tier difficulty scaling (Normal to Nightmare)
+- **Weapons**: 10 weapon types (Standard, Spread, Piercing, ChainLightning, Homing, PlasmaMortar, GravityGun, LaserBeam, BlackHole, TeslaCoil)
+- **Super states**: 7 types (QuadFire, SplitFire, ReverseFire, Missile, Magnet, TrailBomb, Shield)
+- **Buffs**: 8 buff types with visual auras and pickup system
+- **Companions**: SurfaceAgent system with composable behaviors (Idle, MoveTo, Follow, Orbit, Patrol)
+- **Multiplayer**: Local co-op + LAN via Colyseus with interest management, kill attribution, and proximity aura buffs
+- **Effects**: GPU particle system (5000 pool), screen shake, trails, glow, chain lightning, score popups
+- **Audio**: SoundEngine (11 procedural synth sounds) + BackgroundMusic (4 presets, 128bpm procedural beat)
+- **UI**: Start menu, weapon wiki + playground, settings, kill log, minimap, pause menu with stats, debug overlay (F3)
+- **Performance**: Zero-allocation update loops, InstancedMesh batching, 3-level LOD, adaptive quality targeting 60fps
 
 ## Architecture
 
-- **Core engine**: Game.ts loop, Entity base class, EntityManager, GameClock
-- **Surface system**: 10 UV-parameterized surfaces + MeshSurface (BVH) for mesh-agnostic walking
-- **Movement**: Player and bullets use MeshWalker (BVH raycasting); enemies use UV bridge
-- **Enemies**: 15 types (Grunt, Weaver, Snake, Spinner, Boss, etc.) managed by EnemySpawner
-- **Weapons**: 10 weapon types + WeaponManager + timed pickups
-- **Drones**: 6 types (Attack, Collect, Defend, Ram, Snipe, Sweep) via DroneFactory
-- **Supers**: 7 super states (QuadFire, SplitFire, ReverseFire, Missile, Magnet, TrailBomb, Shield)
-- **Multiplayer**: Local splitscreen + Colyseus network; kill attribution + proximity aura buffs
-- **Effects**: GPU particle system (5000), screen shake, trails, glow, chain lightning
+- **Core engine**: Game.ts loop, Entity base class, EntityManager, GameClock, DifficultyScaling
+- **Surface system**: 12 UV-parameterized surfaces + MeshSurface (BVH) for mesh-agnostic walking
+- **Movement**: Player and bullets use MeshWalker (geodesic face walking); enemies use UV bridge
+- **Enemies**: 30 types managed by EnemySpawner with 5-tier difficulty scaling
+- **Weapons**: 10 weapon types + WeaponManager + timed pickups + super states
+- **Multiplayer**: Local co-op + Colyseus network; kill attribution + proximity aura buffs + interest management
+- **Effects**: GPU particle system, screen shake, trails, glow, chain lightning, score popups, ally glow
 - **Audio**: SoundEngine (11 procedural synth sounds) + BackgroundMusic (128bpm procedural beat)
+- **Rendering**: InstancedMesh enemies + bullets, LOD system, adaptive quality, WebGPU with WebGL2 fallback, depth opacity
 
 ## Directory Structure
 
 ```
-src/           Source code (core/, entities/, surfaces/, weapons/, effects/, audio/, ui/, input/)
-server/        Colyseus multiplayer server
+src/           Source code (core/, entities/, surfaces/, weapons/, effects/, audio/, ui/, input/, etc.)
+server/        Colyseus multiplayer server + InterestManager + PriorityQueue
 decisions/     Architectural decision records
-research/      GW3D research data and surface movement analysis
-docs/          Additional documentation
+research/      Game research data, surface movement analysis, market research
+docs/          Architecture docs, multiplayer docs, WebRTC migration plan
+tasks/         Task tracking files with full context
+reports/       Interactive HTML reports and presentations
 ```
 
 ## Tests
 
 ```bash
-npm test       # 39 tests (24 MeshSurface + 15 MeshLoader)
+npm test            # 1270+ vitest tests (26 files)
+npm run test:visual # Puppeteer visual regression tests
+npm run test:lan    # Programmatic LAN multiplayer tests
 ```
 
-## Architectural Decisions
+## Documentation
 
-See the `decisions/` folder for logged decisions on mesh movement integration, gameplay balance, enemy migration strategy, and more.
+- `docs/ARCHITECTURE.md` - System architecture overview
+- `docs/MULTIPLAYER.md` - Multiplayer modes and controls
+- `docs/lan-multiplayer-architecture.md` - Detailed LAN/network architecture
+- `docs/webrtc-migration-plan.md` - WebRTC migration research
+- `decisions/` - All architectural decision records
