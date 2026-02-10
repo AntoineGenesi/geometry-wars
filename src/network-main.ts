@@ -340,6 +340,8 @@ function main() {
       if (enemy.mesh) scene.remove(enemy.mesh);
     });
     networkEnemies.clear();
+    enemyTargetUV.clear();
+    remotePlayerTargetUV.clear();
     surface = null;
     meshSurface = null;
     getTransform = null;
@@ -468,6 +470,13 @@ function main() {
   // Maps server enemy ID -> real BaseEnemy instance (created via EnemySpawner)
   const networkEnemies = new Map<string, BaseEnemy>();
 
+  // -- Interpolation targets (updated at 30Hz from server, consumed at 60Hz in render) --
+  // Store target UV positions for enemies and remote players so we can
+  // lerp toward them every RENDER frame (60Hz) instead of only on state
+  // change (30Hz). This is the #1 reason co-op feels smooth and LAN doesn't.
+  const enemyTargetUV = new Map<string, { u: number; v: number }>();
+  const remotePlayerTargetUV = new Map<string, { u: number; v: number; aimAngle: number }>();
+
   // -- Bullet tracking --
   const bulletIdToIndex = new Map<string, number>();
 
@@ -518,8 +527,10 @@ function main() {
   // (not just a connect-time guess that might have stale defaults).
   let surfaceConfirmedFromServer = false;
 
-  // Input throttle: send at 30Hz max, only when input changes
-  const INPUT_SEND_INTERVAL = 0.033;
+  // Input throttle: send at 60Hz to match server tick rate (TICK_RATE=60).
+  // Previous 33ms (30Hz) meant inputs were quantized to half the server rate,
+  // adding up to 33ms of latency. Matching the server rate eliminates this.
+  const INPUT_SEND_INTERVAL = 0.016;
   let lastInputSendTime = 0;
   let lastSentInput: {
     moveX: number; moveY: number; aimAngle: number;
@@ -784,24 +795,28 @@ function main() {
       player.multiplier = netPlayer.multiplier;
 
       // Position on surface using real surface transform (same as co-op).
-      // For LOCAL player, skip position override if we have client-side prediction
-      // active (let prediction handle it, server corrects on next state change).
-      // For REMOTE players, lerp to reduce 30Hz jitter.
-      const sp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
-      const targetPos = sp.position.clone().addScaledVector(sp.normal, 0.15);
-
+      // For LOCAL player: snap to server position (corrects client-side prediction drift).
+      // For REMOTE players: store target UV for per-frame interpolation in onRender.
+      //   The interpolation is done in the render loop at 60Hz instead of here at
+      //   30Hz, which is the #1 fix for making LAN feel as smooth as co-op.
       if (id === localPlayerId) {
-        // Local player: snap to server position (corrects prediction drift)
-        player.mesh.position.copy(targetPos);
+        // Local player: snap UV to server for drift correction
+        player.surfaceU = netPlayer.surfaceU;
+        player.surfaceV = netPlayer.surfaceV;
+        const sp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
+        player.mesh.position.copy(sp.position).addScaledVector(sp.normal, 0.15);
+        orientPlayerOnSurface(player, sp.normal, netPlayer.aimAngle, sp.tangentU);
       } else {
-        // Remote players: lerp for smooth interpolation between 30Hz updates
-        player.mesh.position.lerp(targetPos, 0.3);
+        // Remote player: store target UV for smooth per-frame interpolation
+        remotePlayerTargetUV.set(id, {
+          u: netPlayer.surfaceU,
+          v: netPlayer.surfaceV,
+          aimAngle: netPlayer.aimAngle,
+        });
+        // Also update the Player object's UV (used for HUD, DDA, etc.)
+        player.surfaceU = netPlayer.surfaceU;
+        player.surfaceV = netPlayer.surfaceV;
       }
-      player.surfaceU = netPlayer.surfaceU;
-      player.surfaceV = netPlayer.surfaceV;
-
-      // Orient on surface with aim angle (same math as co-op)
-      orientPlayerOnSurface(player, sp.normal, netPlayer.aimAngle, sp.tangentU);
 
       // Detect death transition -> trigger effects
       const wasAlive = playerAliveState.get(id) ?? true;
@@ -849,6 +864,7 @@ function main() {
 
         allyGlowManager.removeGlow(id);
         nameLabels.removeLabel(id);
+        remotePlayerTargetUV.delete(id);
       }
     });
 
@@ -860,15 +876,18 @@ function main() {
       const enemy = getOrCreateEnemy(netEnemy.id, netEnemy);
       if (!enemy) return;
 
-      // Lerp UV position toward server state for smooth movement between
-      // 30Hz updates. Direct snap causes visible jitter.
-      const lerpFactor = 0.35;
-      enemy.surfacePosition.u += (netEnemy.surfaceU - enemy.surfacePosition.u) * lerpFactor;
-      enemy.surfacePosition.v += (netEnemy.surfaceV - enemy.surfacePosition.v) * lerpFactor;
+      // Store target UV for per-frame interpolation in onRender (60Hz).
+      // Previously this lerp happened here at 30Hz, causing visible stutter.
+      const isNewEnemy = !enemyTargetUV.has(netEnemy.id);
+      enemyTargetUV.set(netEnemy.id, { u: netEnemy.surfaceU, v: netEnemy.surfaceV });
 
-      // Apply surface transform (same function as co-op enemy update)
-      if (getTransform) {
-        enemy.applySurfaceTransform(getTransform);
+      // On first creation, snap to position immediately (no lerp needed)
+      if (isNewEnemy) {
+        enemy.surfacePosition.u = netEnemy.surfaceU;
+        enemy.surfacePosition.v = netEnemy.surfaceV;
+        if (getTransform) {
+          enemy.applySurfaceTransform(getTransform);
+        }
       }
 
       // Visibility is set based on alive state. Depth-based opacity is
@@ -921,6 +940,7 @@ function main() {
           scene.remove(enemy.mesh);
         }
         networkEnemies.delete(id);
+        enemyTargetUV.delete(id);
       }
     });
 
@@ -1371,42 +1391,93 @@ function main() {
   game.onRender = () => {
     if (!surfaceReady || !surface || !getTransform) return;
 
-    // Camera follows local player along surface normal (same as co-op)
+    const surf = surface;
+    const transform = getTransform;
+
+    // -----------------------------------------------------------------------
+    // Per-frame interpolation for enemies (60Hz lerp toward 30Hz targets)
+    // THIS IS THE KEY FIX: previously enemies only moved on onStateChange
+    // (30Hz), causing visible stutter. Now they smoothly interpolate every
+    // render frame, matching how co-op updates enemies every frame.
+    // -----------------------------------------------------------------------
+    const ENEMY_LERP = 0.15; // Per-frame lerp at 60fps = smooth convergence
+    networkEnemies.forEach((enemy, id) => {
+      const target = enemyTargetUV.get(id);
+      if (!target) return;
+
+      // Lerp UV position toward server target each render frame
+      enemy.surfacePosition.u += (target.u - enemy.surfacePosition.u) * ENEMY_LERP;
+      enemy.surfacePosition.v += (target.v - enemy.surfacePosition.v) * ENEMY_LERP;
+
+      // Apply surface transform to update 3D position from UV
+      enemy.applySurfaceTransform(transform);
+    });
+
+    // -----------------------------------------------------------------------
+    // Per-frame interpolation for remote players (60Hz lerp toward 30Hz targets)
+    // Same principle as enemies. Co-op moves players every frame via MeshWalker;
+    // LAN must interpolate between 30Hz state changes for equivalent smoothness.
+    // -----------------------------------------------------------------------
+    const PLAYER_LERP = 0.2; // Slightly faster than enemies for responsiveness
+    remotePlayerTargetUV.forEach((target, id) => {
+      const player = networkPlayers.get(id);
+      if (!player || id === localPlayerId) return;
+
+      // Lerp internal UV toward target
+      const currentU = player.surfaceU;
+      const currentV = player.surfaceV;
+      const newU = currentU + (target.u - currentU) * PLAYER_LERP;
+      const newV = currentV + (target.v - currentV) * PLAYER_LERP;
+      player.surfaceU = newU;
+      player.surfaceV = newV;
+
+      // Update 3D position from interpolated UV
+      const sp: SurfacePoint = surf.getPoint(newU, newV);
+      player.mesh.position.copy(sp.position).addScaledVector(sp.normal, 0.15);
+      orientPlayerOnSurface(player, sp.normal, target.aimAngle, sp.tangentU);
+
+      // Update glow trail with interpolated position
+      const trail = playerGlowTrails.get(id);
+      if (trail) trail.addPoint(player.mesh.position.clone());
+
+      // Update ally glow position
+      allyGlowManager.setPosition(id, player.mesh.position);
+    });
+
+    // Camera follows local player along surface normal (same as co-op).
+    // Use the player's mesh position directly instead of worldToSurface
+    // round-trip, which adds jitter from floating-point imprecision.
     const localPlayer = networkPlayers.get(localPlayerId);
     if (localPlayer) {
-      const uv = surface.worldToSurface(localPlayer.mesh.position);
-      const sp = surface.getPoint(uv.u, uv.v);
+      const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
 
       const targetCamPos = sp.position.clone().addScaledVector(sp.normal, CAMERA_DISTANCE);
       camera.position.lerp(targetCamPos, CAMERA_LERP);
-      camera.lookAt(sp.position);
 
-      // Smooth camera up vector (same as co-op)
+      // Smooth camera up vector BEFORE lookAt (same as co-op)
       const upTarget = sp.tangentV;
       camera.up.lerp(upTarget, CAMERA_LERP).normalize();
+
+      camera.lookAt(sp.position);
     }
 
     // Apply surface projection for geoms and bullets (same as co-op)
-    bulletPool.applySurfaceProjection(getTransform);
-    geomPool.applySurfaceProjection(getTransform);
+    bulletPool.applySurfaceProjection(transform);
+    geomPool.applySurfaceProjection(transform);
 
-    // Depth-based opacity for enemies (moved from onStateChange to render loop
-    // to avoid expensive mesh.traverse() on every 30Hz state update)
-    const ms = meshSurface; // capture for TypeScript narrowing in closure
+    // Depth-based opacity for enemies
+    const ms = meshSurface;
     if (ms) {
       const surfCenter = ms.getCenter();
       networkEnemies.forEach((enemy) => {
         if (!enemy.mesh || !enemy.mesh.visible) return;
-        // Uses pre-allocated temp vector instead of clone() per enemy per frame
         _netTempNormal.copy(enemy.position).sub(surfCenter).normalize();
         const visibility = ms.getVisibility(enemy.position, _netTempNormal, camera.position);
-        // Set opacity directly on the mesh material instead of traverse
         if (enemy.mesh instanceof THREE.Mesh && enemy.mesh.material) {
           const mat = enemy.mesh.material as THREE.MeshBasicMaterial;
           mat.transparent = true;
           mat.opacity = visibility;
         } else {
-          // For group meshes, traverse children
           enemy.mesh.traverse((child) => {
             if (child instanceof THREE.Mesh && child.material) {
               const mat = child.material as THREE.MeshBasicMaterial;

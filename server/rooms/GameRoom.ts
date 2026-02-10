@@ -76,6 +76,15 @@ export class GameRoom extends Room<GameState> {
   /** Latest per-player sync sets from interest management */
   private syncSets: Map<string, PlayerSyncSet> = new Map();
 
+  /**
+   * Latest input state per player. Updated on message receipt, consumed
+   * in tick(). This decouples input send rate from movement speed:
+   * movement is applied every tick (60Hz) regardless of how often the
+   * client sends input. Previously, movement was applied per-message,
+   * meaning 30Hz input = half speed, 60Hz input = full speed.
+   */
+  private playerInputs: Map<string, PlayerInput> = new Map();
+
   onCreate(options: { surfaceType?: string }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
@@ -184,6 +193,7 @@ export class GameRoom extends Room<GameState> {
     if (player) {
       console.log(`[GameRoom] ${player.name} left`);
       this.state.players.delete(client.sessionId);
+      this.playerInputs.delete(client.sessionId);
     }
 
     // If the host left, notify remaining clients and close the room
@@ -248,56 +258,61 @@ export class GameRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player || !player.alive) return;
 
-    const dx = input.moveX * PLAYER_SPEED * (1 / TICK_RATE);
-    const dy = input.moveY * PLAYER_SPEED * (1 / TICK_RATE);
+    // Store the latest input. Movement will be applied in tick() at a
+    // consistent 60Hz, decoupling movement speed from input send rate.
+    this.playerInputs.set(client.sessionId, input);
 
-    // Apply sin(phi) correction ONLY for sphere-like surfaces where
-    // UV maps to spherical coordinates (U = longitude, V = latitude).
-    // For other surfaces (cube, torus, pill, pipe, etc.), UV space is
-    // roughly uniform, so no correction is needed.
-    const surfaceType = this.state.surfaceType;
-    const isSphereLike = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
-      || surfaceType === 'icosahedron' || surfaceType === 'capsule'
-      || surfaceType === 'peanut';
-
-    let correctedDx = dx;
-    if (isSphereLike) {
-      const phi = player.surfaceV * Math.PI;
-      const sinPhi = Math.sin(phi);
-      // Limit correction near poles to prevent getting stuck.
-      // Use a generous minimum of 0.3 (about 17 degrees from pole) to ensure
-      // the player always has reasonable horizontal movement near poles.
-      // Previous value of 0.15 still caused stuck/jitter near poles.
-      const clampedSinPhi = Math.max(sinPhi, 0.3);
-      correctedDx = dx / clampedSinPhi;
-    }
-
-    player.surfaceU = this.wrapCoord(player.surfaceU + correctedDx);
-    // Use wrap for surfaces that wrap in V (torus, pipe, mobius, cube-ring,
-    // cube-tunnel). Use clamp with a small margin for sphere-like surfaces
-    // and pill (which has clamped poles) to prevent getting stuck at exact 0 or 1.
-    const wrapsInV = surfaceType === 'torus' || surfaceType === 'pipe'
-      || surfaceType === 'mobius' || surfaceType === 'cube-ring'
-      || surfaceType === 'cube-tunnel' || surfaceType === 'cube';
-    if (wrapsInV) {
-      player.surfaceV = this.wrapCoord(player.surfaceV + dy);
-    } else {
-      // Clamp with wider margin to keep player well away from pole singularity.
-      // Previous 0.02/0.98 allowed getting too close. 0.05/0.95 is safer.
-      player.surfaceV = Math.max(0.05, Math.min(0.95, player.surfaceV + dy));
-    }
+    // Apply aim angle immediately (no movement dependency)
     player.aimAngle = input.aimAngle;
-    player.shooting = input.shooting;
 
-    // Handle shooting
-    if (input.shooting) {
-      this.tryShoot(player);
-    }
-
-    // Handle bomb
+    // Handle bomb immediately (one-shot action, not continuous)
     if (input.bomb && player.bombs > 0) {
       this.useBomb(player);
     }
+  }
+
+  /**
+   * Apply stored input as movement. Called once per tick (60Hz).
+   * This ensures movement speed is consistent regardless of client input rate.
+   */
+  private applyPlayerMovement(dt: number) {
+    this.playerInputs.forEach((input, clientId) => {
+      const player = this.state.players.get(clientId);
+      if (!player || !player.alive) return;
+
+      const dx = input.moveX * PLAYER_SPEED * dt;
+      const dy = input.moveY * PLAYER_SPEED * dt;
+
+      // Apply sin(phi) correction for sphere-like surfaces
+      const surfaceType = this.state.surfaceType;
+      const isSphereLike = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
+        || surfaceType === 'icosahedron' || surfaceType === 'capsule'
+        || surfaceType === 'peanut';
+
+      let correctedDx = dx;
+      if (isSphereLike) {
+        const phi = player.surfaceV * Math.PI;
+        const sinPhi = Math.sin(phi);
+        const clampedSinPhi = Math.max(sinPhi, 0.3);
+        correctedDx = dx / clampedSinPhi;
+      }
+
+      player.surfaceU = this.wrapCoord(player.surfaceU + correctedDx);
+
+      const wrapsInV = surfaceType === 'torus' || surfaceType === 'pipe'
+        || surfaceType === 'mobius' || surfaceType === 'cube-ring'
+        || surfaceType === 'cube-tunnel' || surfaceType === 'cube';
+      if (wrapsInV) {
+        player.surfaceV = this.wrapCoord(player.surfaceV + dy);
+      } else {
+        player.surfaceV = Math.max(0.05, Math.min(0.95, player.surfaceV + dy));
+      }
+
+      // Handle shooting (continuous action, applied per tick)
+      if (input.shooting) {
+        this.tryShoot(player);
+      }
+    });
   }
 
   private tryShoot(player: PlayerState) {
@@ -367,6 +382,9 @@ export class GameRoom extends Room<GameState> {
 
     const dt = 1 / TICK_RATE;
     this.state.gameTime += dt;
+
+    // Apply player movement from stored inputs (60Hz consistent)
+    this.applyPlayerMovement(dt);
 
     // Update bullets
     this.updateBullets(dt);

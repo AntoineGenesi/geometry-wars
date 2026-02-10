@@ -57,6 +57,8 @@ import { BuffManager, StackBuffType, BUFF_DEFINITIONS } from './buffs/BuffManage
 import { BuffHUD } from './buffs/BuffHUD';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
+import { BuffAuraRenderer, AuraQuality } from './buffs/BuffAuraRenderer';
+import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { LODManager, LODLevel } from './rendering/LODManager';
@@ -614,6 +616,31 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // Disable built-in camera - we control camera to follow player
   game.disableBuiltInCameraUpdate = true;
 
+  // -- Shockwave + Chromatic Aberration + Screen Flash post-processing --
+  // This replaces the vignette pass with a combined pass that adds:
+  //   1. Shockwave distortion rings (enemy deaths, explosions)
+  //   2. Chromatic aberration (player damage)
+  //   3. Screen flash (kills, bombs)
+  //   4. Vignette (merged from old pass)
+  const shockwaveEffect = new ShockwaveEffect();
+  shockwaveEffect.setCamera(game.camera);
+
+  // Replace the standalone vignette pass in the EffectComposer with the combined pass
+  if (game.composer) {
+    const passes = game.composer.passes;
+    // Find and remove the old vignette ShaderPass (it's the pass before OutputPass)
+    // Chain is: RenderPass(0) -> BloomPass(1) -> VignettePass(2) -> OutputPass(3)
+    // We replace VignettePass(2) with ShockwavePass
+    for (let i = passes.length - 1; i >= 0; i--) {
+      const pass = passes[i];
+      // The vignette pass is a ShaderPass with 'offset' and 'darkness' uniforms
+      if ((pass as any).uniforms?.offset && (pass as any).uniforms?.darkness && !(pass as any).uniforms?.uShockCount) {
+        passes.splice(i, 1, shockwaveEffect.shaderPass);
+        break;
+      }
+    }
+  }
+
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
@@ -902,6 +929,12 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const shockArcRenderer = new ShockArcRenderer();
   game.scene.add(shockArcRenderer.root);
 
+  // -- Buff aura ring system (per-buff shader effects around the player) --
+  const buffAuraRenderer = new BuffAuraRenderer(
+    mobile ? AuraQuality.Reduced : AuraQuality.Full,
+  );
+  game.scene.add(buffAuraRenderer.root);
+
   // Wire buff callbacks
   buffManager.onBuffGained = (type, _newStacks) => {
     buffHUD.highlightBuff(type);
@@ -911,6 +944,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     particles.bombExplosion(position);
     surface.applyForce(position, 0.3, radius * 0.5);
     screenShake.shake(0.2, 0.15);
+    // Shockwave distortion on volatile explosions
+    shockwaveEffect.spawnShockwave(position, 0.05, 0.9, 0.5, 0.07);
+    shockwaveEffect.triggerWhiteFlash(0.15);
   };
 
   /** Recompute combined multipliers from PlayerLevel + BuffManager */
@@ -1410,6 +1446,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     buffManager.dispose();
     buffHUD.dispose();
     shockArcRenderer.dispose();
+    buffAuraRenderer.dispose();
+    shockwaveEffect.dispose();
     bulletInstanceManager.dispose();
     lodManager.dispose();
     depthOcclusion.dispose();
@@ -1429,6 +1467,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     buffManager.dispose();
     buffHUD.dispose();
     shockArcRenderer.dispose();
+    buffAuraRenderer.dispose();
+    shockwaveEffect.dispose();
     bulletInstanceManager.dispose();
     lodManager.dispose();
     depthOcclusion.dispose();
@@ -1777,6 +1817,16 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     if (player.alive) {
       buffManager.update(dt, playerWalker.position, enemySpawner.getEnemies());
       shockArcRenderer.update(buffManager.shockArcs);
+      // Update buff aura ring visuals (per-buff shader effects around player)
+      const activeBuffsForAura = buffManager.getActiveBuffs().map(b => ({
+        type: b.type,
+        stacks: b.stacks,
+      }));
+      buffAuraRenderer.update(
+        dt, game.clock.totalTime,
+        playerWalker.position, playerWalker.normal,
+        activeBuffsForAura,
+      );
       // Refresh stat multipliers each frame (buffs can change any time)
       applyStatMultipliers();
     }
@@ -1980,7 +2030,17 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       },
       true, // showDamageNumbers
       (enemy: BaseEnemy) => { buffManager.onBulletHit(enemy); },
-      (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => { buffManager.onEnemyDeath(enemy, allEnemies); },
+      (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => {
+        buffManager.onEnemyDeath(enemy, allEnemies);
+        // Shockwave distortion on enemy death (subtle for normal, stronger for titans/bosses)
+        const isBig = enemy.radius > 0.5;
+        shockwaveEffect.spawnShockwave(
+          enemy.position,
+          isBig ? 0.04 : 0.02,   // strength
+          isBig ? 0.7 : 0.6,     // speed
+          isBig ? 0.5 : 0.35,    // lifetime
+        );
+      },
       enemyInstanceManager,
     );
 
@@ -1996,10 +2056,19 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         // Try Tough Times block first
         if (buffManager.onPlayerHit()) {
           screenFlash('rgba(68, 136, 255, 0.3)', 100);
+          buffAuraRenderer.triggerBlockFlash(game.clock.totalTime);
+          shockwaveEffect.triggerChromatic(0.006); // subtle chromatic on block
           return true; // Blocked by Tough Times
         }
         // Then try companion protector
-        return companionManager.onPlayerHit();
+        const saved = companionManager.onPlayerHit();
+        if (!saved) {
+          // Player is about to die — strong chromatic + flash + shockwave
+          shockwaveEffect.triggerChromatic(0.025);
+          shockwaveEffect.spawnShockwave(player.mesh.position, 0.06, 1.0, 0.7, 0.08);
+          shockwaveEffect.triggerFlash(new THREE.Color(1, 0.2, 0.2), 0.4);
+        }
+        return saved;
       },
     );
 
@@ -2170,6 +2239,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     const rawFrameDt = (now - lastRenderTime) / 1000;
     const frameDt = Math.min(rawFrameDt, 0.1); // cap at 100ms for opacity transitions only
     lastRenderTime = now;
+
+    // Update shockwave/chromatic/flash post-processing effects
+    shockwaveEffect.update(frameDt, game.clock.totalTime);
+
     currentSurfaceOpacity += (targetSurfaceOpacity - currentSurfaceOpacity) * Math.min(1, fadeSpeed * frameDt);
     currentGridOpacity += (targetGridOpacity - currentGridOpacity) * Math.min(1, fadeSpeed * frameDt);
     const surfMat = surface.mesh.material as THREE.MeshBasicMaterial;
@@ -2405,6 +2478,10 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     screenShake.shake(0.3, 0.3);
     sound.play('bomb');
     screenFlash('rgba(255, 255, 255, 0.6)', 120);
+    // Heavy shockwave distortion + flash for bomb
+    shockwaveEffect.spawnShockwave(pos, 0.08, 1.2, 0.8, 0.1);
+    shockwaveEffect.triggerWhiteFlash(0.5);
+    shockwaveEffect.triggerChromatic(0.015);
 
     // Kill all enemies on screen (bombs award no points)
     const enemies = enemySpawner.getEnemies();
