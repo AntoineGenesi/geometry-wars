@@ -184,9 +184,22 @@ export class NetworkClient {
         }
       }, 100);
     } catch (error) {
-      console.error('[Network] Connection failed:', error);
-      this.callbacks.onError?.(error as Error);
-      throw error;
+      // Colyseus connection failures often surface as raw ProgressEvent objects
+      // (from XMLHttpRequest) which are unhelpful. Provide a clear message.
+      const isProgressEvent = error && typeof error === 'object' && 'isTrusted' in (error as Record<string, unknown>);
+      const serverUrl = this.client['settings']?.hostname || 'unknown';
+      let friendlyError: Error;
+      if (isProgressEvent) {
+        friendlyError = new Error(
+          `Cannot reach game server. Is the Colyseus server running? ` +
+          `(Tried: ${serverUrl}:2567/matchmake/joinOrCreate/game)`
+        );
+      } else {
+        friendlyError = error instanceof Error ? error : new Error(String(error));
+      }
+      console.error('[Network] Connection failed:', friendlyError.message);
+      this.callbacks.onError?.(friendlyError);
+      throw friendlyError;
     }
   }
 

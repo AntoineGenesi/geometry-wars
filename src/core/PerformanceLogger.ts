@@ -74,6 +74,12 @@ export interface PerformanceDataPoint {
   killsThisSample: number;
   /** Count of active particle effects (particles + fragments). */
   activeEffects: number;
+  /** Enemies visible in camera frustum. */
+  visibleEnemies: number;
+  /** Bullets visible in camera frustum. */
+  visibleBullets: number;
+  /** Active explosion/death effects currently playing. */
+  activeExplosions: number;
 }
 
 /** Serialized data point for localStorage. */
@@ -99,6 +105,9 @@ export interface SerializedDataPoint {
   ab?: string;  // activeBuffs (compact string: "type:stacks,type:stacks")
   ks?: number;  // killsThisSample
   ae?: number;  // activeEffects
+  ve?: number;  // visibleEnemies
+  vb?: number;  // visibleBullets
+  ax?: number;  // activeExplosions
 }
 
 /** Frame spike event logged individually. */
@@ -205,6 +214,11 @@ export class PerformanceLogger {
   private currentActiveEffects = 0;
   private lastSampleKills = 0;  // Kills at previous sample (for delta calculation)
 
+  // Visibility telemetry (set externally)
+  private currentVisibleEnemies = 0;
+  private currentVisibleBullets = 0;
+  private currentActiveExplosions = 0;
+
   // Frame spike tracking
   private readonly spikeEvents: FrameSpikeEvent[] = [];
   private static readonly MAX_SPIKES_PER_SESSION = 200;
@@ -251,6 +265,9 @@ export class PerformanceLogger {
         activeBuffs: '',
         killsThisSample: 0,
         activeEffects: 0,
+        visibleEnemies: 0,
+        visibleBullets: 0,
+        activeExplosions: 0,
       };
     }
   }
@@ -319,6 +336,21 @@ export class PerformanceLogger {
     this.currentActiveWeapon = activeWeapon;
     this.currentActiveBuffs = activeBuffs;
     this.currentActiveEffects = activeEffects;
+  }
+
+  /**
+   * Set visibility telemetry for the current frame.
+   * Call this every frame BEFORE recordFrame().
+   * Zero per-frame allocations — caller must count entities.
+   */
+  setVisibilityData(
+    visibleEnemies: number,
+    visibleBullets: number,
+    activeExplosions: number,
+  ): void {
+    this.currentVisibleEnemies = visibleEnemies;
+    this.currentVisibleBullets = visibleBullets;
+    this.currentActiveExplosions = activeExplosions;
   }
 
   /**
@@ -579,6 +611,7 @@ export class PerformanceLogger {
       'dda_level', 'quality_level', 'top_enemy_types',
       'score', 'kills', 'deaths', 'active_weapon',
       'active_buffs', 'kills_this_sample', 'active_effects',
+      'visible_enemies', 'visible_bullets', 'active_explosions',
     ];
     const rows: string[] = [headers.join(',')];
 
@@ -615,6 +648,9 @@ export class PerformanceLogger {
           const ab = sdp.ab ?? '';
           const ks = sdp.ks ?? 0;
           const ae = sdp.ae ?? 0;
+          const ve = sdp.ve ?? 0;
+          const vb = sdp.vb ?? 0;
+          const ax = sdp.ax ?? 0;
 
           rows.push([
             session.timestamp, session.mapType, time, fps,
@@ -623,6 +659,7 @@ export class PerformanceLogger {
             dd, ql, `"${topTypes}"`,
             score, kills, deaths, aw,
             `"${ab}"`, ks, ae,
+            ve, vb, ax,
           ].join(','));
         }
       }
@@ -685,6 +722,11 @@ export class PerformanceLogger {
     point.activeBuffs = this.currentActiveBuffs;
     point.activeEffects = this.currentActiveEffects;
 
+    // Visibility telemetry
+    point.visibleEnemies = this.currentVisibleEnemies;
+    point.visibleBullets = this.currentVisibleBullets;
+    point.activeExplosions = this.currentActiveExplosions;
+
     // Kills delta since last sample (for kill rate tracking)
     const killsDelta = this.currentKills - this.lastSampleKills;
     point.killsThisSample = killsDelta;
@@ -728,6 +770,9 @@ export class PerformanceLogger {
       activeBuffs: point.activeBuffs,
       killsThisSample: point.killsThisSample,
       activeEffects: point.activeEffects,
+      visibleEnemies: point.visibleEnemies,
+      visibleBullets: point.visibleBullets,
+      activeExplosions: point.activeExplosions,
     };
   }
 
@@ -771,6 +816,9 @@ export class PerformanceLogger {
       ab: point.activeBuffs || undefined,  // omit empty string to save space
       ks: point.killsThisSample,
       ae: point.activeEffects,
+      ve: point.visibleEnemies,
+      vb: point.visibleBullets,
+      ax: point.activeExplosions,
     };
   }
 }

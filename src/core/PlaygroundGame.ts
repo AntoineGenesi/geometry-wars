@@ -188,12 +188,16 @@ export class PlaygroundGame {
     // Game constructor sets camera to (0,15,25) with up=(0,1,0), which is wrong
     // for surface-following cameras. Without this, the camera spirals during the
     // first ~50 frames as lerp fights to converge from the wrong initial state.
+    // REGRESSION GUARD: camera.up MUST be bitangent, NOT normal.
+    // Normal is parallel to the look direction (camera looks down at player along normal),
+    // which causes degenerate lookAt() and spinning. See decisions/playground-spinning-fix.md.
     {
       const startNormal = this._walker.normal;
       const startPos = this._walker.position;
+      const startFrame = this._walker.getTangentFrame();
       const idealCamPos = startNormal.clone().multiplyScalar(cfg.cameraDistance).add(startPos);
       this.game.camera.position.copy(idealCamPos);
-      this.game.camera.up.copy(startNormal);
+      this.game.camera.up.copy(startFrame.bitangent);
       this.game.camera.lookAt(startPos);
     }
 
@@ -319,12 +323,14 @@ export class PlaygroundGame {
     this.player.mesh.position.copy(this._walker.position);
 
     // Immediately reposition camera (avoid spiral convergence on new surface)
+    // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
     {
       const n = this._walker.normal;
       const p = this._walker.position;
+      const surfFrame = this._walker.getTangentFrame();
       const idealCamPos = n.clone().multiplyScalar(this.config.cameraDistance).add(p);
       this.game.camera.position.copy(idealCamPos);
-      this.game.camera.up.copy(n);
+      this.game.camera.up.copy(surfFrame.bitangent);
       this.game.camera.lookAt(p);
     }
 
@@ -371,7 +377,15 @@ export class PlaygroundGame {
 
     if (this.player.alive) {
       // -- Movement via MeshWalker (same as main game) --
+      // IMPORTANT: Uses walker.moveFromInput() which maps screen-space
+      // input directly to the walker's persistent tangent frame.
+      // Do NOT use camera-relative movement — it creates a feedback loop
+      // between camera orientation and movement direction, causing spinning.
       this.movePlayer(inputState, dt);
+
+      // -- Orient player using walker's tangent frame + aim --
+      // (matches main.ts approach: tangent frame aim, not Player.update aim)
+      this.orientPlayer(inputState);
 
       // -- Player update (handles firing, cooldowns, invincibility) --
       this.player.update(dt, inputState);
@@ -450,20 +464,29 @@ export class PlaygroundGame {
     this.input.endFrame();
   }
 
+  // REGRESSION GUARD: Camera up MUST be frame.bitangent, NOT walker.normal.
+  // Since the camera sits along the surface normal looking down at the player,
+  // setting up=normal makes it parallel to the look direction, which is a
+  // degenerate case for lookAt() — it produces wild spinning because the
+  // "up" axis is undefined when it's parallel to the view axis.
+  // Using frame.bitangent gives a stable, perpendicular up vector.
+  // See decisions/playground-spinning-fix.md.
   private renderUpdate(): void {
     if (this.disposed) return;
 
     // Camera follows player (same orbit pattern as main game)
     const target = this.player.mesh.position;
     const normal = this._walker.normal;
+    const frame = this._walker.getTangentFrame();
     const camPos = this._tmpVec
       .copy(normal)
       .multiplyScalar(this.config.cameraDistance)
       .add(target);
 
     this.game.camera.position.lerp(camPos, 0.1);
-    // Smooth camera up vector — direct copy causes wild spinning on curved surfaces
-    this.game.camera.up.lerp(normal, 0.08).normalize();
+    // Camera up = bitangent (perpendicular to both normal and tangent).
+    // NEVER use normal here — it's parallel to the look direction and causes spinning.
+    this.game.camera.up.lerp(frame.bitangent, 0.08).normalize();
     this.game.camera.lookAt(target);
 
     // Surface grid animation
@@ -476,76 +499,82 @@ export class PlaygroundGame {
   // Internal helpers
   // -----------------------------------------------------------------------
 
+  // REGRESSION GUARD: This method MUST use walker.moveFromInput() which maps
+  // screen-space input to the walker's persistent tangent frame. Do NOT replace
+  // with camera-relative movement (projecting camera axes onto tangent plane).
+  // Camera-relative movement creates a feedback loop: camera orientation affects
+  // movement direction, which affects position, which affects camera orientation,
+  // causing the "spinning map" bug. See decisions/playground-spinning-fix.md.
   private movePlayer(input: InputState, dt: number): void {
     const moveX = input.moveX;
     const moveY = input.moveY;
-    if (Math.abs(moveX) < 0.01 && Math.abs(moveY) < 0.01) return;
 
-    // Camera-relative movement: map screen-space input (WASD) to a world-space
-    // direction on the surface tangent plane.
-    //
-    // The camera orbits above the player, looking approximately along the
-    // surface normal. We need "screen right" and "screen up" in world space.
-    //
-    // OLD APPROACH (buggy): Project camera forward (-Z) onto tangent plane to
-    // get "screen up", then cross with normal for "screen right". This breaks
-    // on highly curved surfaces (torus, mobius) because camera forward is nearly
-    // parallel to the normal, making the projection tiny and numerically
-    // unstable. The normalized direction flips every few frames due to camera
-    // lerp, causing oscillation and near-zero net displacement.
-    //
-    // NEW APPROACH: Use the camera's local X axis (right) and Y axis (up)
-    // directly. These are always nearly perpendicular to the normal (since the
-    // camera looks along the normal), so their tangent-plane projections are
-    // large and stable. No cross-product of near-parallel vectors.
-    const cam = this.game.camera;
-    const n = this._walker.normal;
+    // Use MeshWalker.moveFromInput() — same as main.ts
+    // This maps screen axes directly to the walker's persistent tangent frame:
+    //   tangent  = screen right (D/A)
+    //   bitangent = screen up   (W/S)
+    // The -moveY negation is required because InputManager returns W=-1, S=+1
+    // but moveFromInput expects positive = visual up on screen.
+    if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
+      this._walker.moveFromInput(moveX, -moveY, this.game.camera, dt);
+    }
 
-    // Camera local axes in world space
-    const camRight = this._tmpRight.set(1, 0, 0).applyQuaternion(cam.quaternion);
-    const camUp = this._tmpDir.set(0, 1, 0).applyQuaternion(cam.quaternion);
-
-    // Project onto tangent plane (remove normal component)
-    camRight.addScaledVector(n, -camRight.dot(n));
-    camUp.addScaledVector(n, -camUp.dot(n));
-
-    const rightLen = camRight.length();
-    const upLen = camUp.length();
-
-    // If both projections are degenerate (shouldn't happen, but guard), bail out
-    if (rightLen < 0.001 && upLen < 0.001) return;
-
-    if (rightLen > 0.001) camRight.multiplyScalar(1 / rightLen);
-    if (upLen > 0.001) camUp.multiplyScalar(1 / upLen);
-
-    // Combine: moveX maps to camera right, moveY maps to camera up
-    // (moveY is negated because W=-1 should go "screen up" which is +camUp)
-    const dir = this._tmpDir
-      .copy(camUp).multiplyScalar(-moveY)
-      .add(this._tmpVec.copy(camRight).multiplyScalar(moveX))
-      .normalize();
-
-    this._walker.move(dir, dt);
-
-    // Sync position
+    // Sync position from walker
     this.player.mesh.position.copy(this._walker.position);
 
     // Bridge UV for enemy spawner distance checks
     const uv = this._surface.worldToSurface(this._walker.position);
     this.player.surfaceU = uv.u;
     this.player.surfaceV = uv.v;
+  }
 
-    // Apply surface transform so player ship orient + aim direction is correct
-    // (Player.fire() depends on mesh.quaternion being up to date)
-    const walkerNormal = this._walker.normal;
-    const walkerTangent = this._tmpRight.crossVectors(this._tmpDir, walkerNormal).normalize();
-    const walkerBitangent = this._tmpVec.crossVectors(walkerNormal, walkerTangent).normalize();
-    this.player.applySurfaceTransform((_u, _v) => ({
-      position: this._walker.position,
-      normal: walkerNormal,
-      tangent: walkerTangent,
-      bitangent: walkerBitangent,
-    }));
+  /**
+   * Orient the player mesh using the walker's tangent frame + aim direction.
+   * Matches main.ts approach exactly: tangent frame from walker, aim mapped
+   * to tangent frame, orientation built from cross products.
+   *
+   * REGRESSION GUARD: Do NOT use Player.applySurfaceTransform() with a
+   * movement-direction-derived tangent frame. The tangent frame MUST come
+   * from the walker's persistent frame. See decisions/playground-spinning-fix.md.
+   */
+  private orientPlayer(input: InputState): void {
+    const playerNormal = this._walker.normal;
+    const frame = this._walker.getTangentFrame();
+
+    // Calculate aim from mouse in screen space using tangent frame
+    // (same logic as main.ts lines 1695-1726)
+    const aimX = input.aimX;
+    const aimY = input.aimY;
+    const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
+
+    let aimDirection: THREE.Vector3;
+    if (aimLen > 0.1) {
+      // Map screen aim to tangent frame:
+      // tangent = screen right, bitangent = screen up
+      // Negate aimY because mouse Y increases downward but bitangent points up
+      aimDirection = this._tmpDir
+        .set(0, 0, 0)
+        .addScaledVector(frame.tangent, aimX)
+        .addScaledVector(frame.bitangent, -aimY)
+        .normalize();
+    } else {
+      // Default: face along bitangent (screen up direction)
+      aimDirection = this._tmpDir.copy(frame.bitangent);
+    }
+
+    // Orient player to face aim direction (same as main.ts lines 1718-1723)
+    if (aimDirection.lengthSq() > 0.001) {
+      const playerRight = this._tmpRight.crossVectors(playerNormal, aimDirection).normalize();
+      const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
+      const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
+      this.player.mesh.quaternion.setFromRotationMatrix(orientMat);
+    }
+
+    // Store aim angle for bullets
+    this.player.aimAngle = Math.atan2(aimX, -aimY);
+
+    // Update matrix for bullet spawning
+    this.player.mesh.updateMatrixWorld(true);
   }
 
   private respawnPlayer(): void {
@@ -560,11 +589,13 @@ export class PlaygroundGame {
     this.player.mesh.position.copy(this._walker.position);
 
     // Snap camera to avoid spiral after respawn
+    // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
     const n = this._walker.normal;
     const pos = this._walker.position;
+    const respawnFrame = this._walker.getTangentFrame();
     const idealCamPos = n.clone().multiplyScalar(this.config.cameraDistance).add(pos);
     this.game.camera.position.copy(idealCamPos);
-    this.game.camera.up.copy(n);
+    this.game.camera.up.copy(respawnFrame.bitangent);
     this.game.camera.lookAt(pos);
   }
 

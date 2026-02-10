@@ -356,6 +356,15 @@ class WaveScheduler {
 const enemySpatialHash = new SpatialHash<BaseEnemy>(2.5);
 
 // ---------------------------------------------------------------------------
+// Module-level pre-allocated objects for zero-GC frustum visibility checks
+// ---------------------------------------------------------------------------
+
+const _frustum = new THREE.Frustum();
+const _projScreenMatrix = new THREE.Matrix4();
+const _tempBox = new THREE.Box3();
+const _tempSphere = new THREE.Sphere();
+
+// ---------------------------------------------------------------------------
 // Bullet-enemy collision checker (optimized: squared distance + spatial hash + cached materials)
 // ---------------------------------------------------------------------------
 
@@ -2441,6 +2450,35 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
       perfBuffString,
       particles.activeEffectCount,
     );
+
+    // Count visible entities (frustum culling check)
+    _projScreenMatrix.multiplyMatrices(game.camera.projectionMatrix, game.camera.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_projScreenMatrix);
+
+    let visibleEnemies = 0;
+    const enemies = enemySpawner.getEnemies();
+    for (let ei = 0; ei < enemies.length; ei++) {
+      const enemy = enemies[ei];
+      if (!enemy.active || !enemy.alive) continue;
+      // Use entity position + radius for frustum check (zero per-frame allocations)
+      _tempSphere.set(enemy.position, enemy.radius);
+      if (_frustum.intersectsSphere(_tempSphere)) {
+        visibleEnemies++;
+      }
+    }
+
+    let visibleBullets = 0;
+    bulletPool.forEachActive((_bulletIdx, bulletPos, _bulletData) => {
+      // Bullets are small points — just check if position is in frustum
+      if (_frustum.containsPoint(bulletPos)) {
+        visibleBullets++;
+      }
+    });
+
+    // Active explosions = current particle effects count
+    const activeExplosions = particles.activeEffectCount;
+
+    perfLogger.setVisibilityData(visibleEnemies, visibleBullets, activeExplosions);
     perfLogger.recordFrame(rawFrameDt);
 
     // Entity audit: capture snapshot for mismatch detection (every 4th frame)

@@ -1206,9 +1206,25 @@ function main() {
       },
     });
   }).catch((err) => {
-    statusEl.textContent = 'Failed to connect to server!';
+    const msg = err instanceof Error ? err.message : String(err);
+    const isServerDown = msg.includes('Cannot reach') || msg.includes('ERR_EMPTY_RESPONSE')
+      || msg.includes('ProgressEvent') || msg.includes('ECONNREFUSED');
+    statusEl.textContent = isServerDown
+      ? 'Server not responding. Is the game server running?'
+      : `Connection failed: ${msg.slice(0, 80)}`;
     statusEl.style.color = '#f44';
     backBtn.style.display = 'block';
+
+    // Show a retry button for transient failures (stale server, timing issue)
+    const retryBtn = document.createElement('button');
+    retryBtn.textContent = 'RETRY CONNECTION';
+    retryBtn.style.cssText =
+      'position:fixed;top:55%;left:50%;transform:translate(-50%,-50%);' +
+      'padding:15px 30px;font:bold 18px monospace;background:#060;color:#0f0;' +
+      'border:2px solid #0f0;cursor:pointer;z-index:100;';
+    retryBtn.onclick = () => window.location.reload();
+    document.body.appendChild(retryBtn);
+
     console.error('[NetworkMain] Connection failed:', err);
   });
 

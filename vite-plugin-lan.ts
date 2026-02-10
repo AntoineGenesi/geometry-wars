@@ -1,6 +1,6 @@
 import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'http';
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn, execSync, type ChildProcess } from 'child_process';
 import { networkInterfaces } from 'os';
 import http from 'http';
 import path from 'path';
@@ -58,18 +58,69 @@ export default function lanPlugin(): Plugin {
     }
   }
 
+  /**
+   * Deep health check: verifies the server can actually handle game operations,
+   * not just respond to /health. A stale/zombie server may respond to /health
+   * but fail on matchmake, causing ERR_EMPTY_RESPONSE for clients.
+   */
+  async function checkServerDeep(): Promise<boolean> {
+    try {
+      // Check both health AND rooms endpoint (rooms requires Colyseus matchMaker)
+      await fetchWithTimeout(`http://localhost:${SERVER_PORT}/health`, 500);
+      const roomsData = await fetchWithTimeout(`http://localhost:${SERVER_PORT}/api/rooms`, 1000);
+      const parsed = JSON.parse(roomsData);
+      // If we can parse rooms, the server's matchMaker is functional
+      return Array.isArray(parsed.rooms) || parsed.note !== undefined;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Kill any process listening on the server port. Used to clean up stale
+   * servers from previous sessions that might respond to /health but fail
+   * on actual game connections (ERR_EMPTY_RESPONSE).
+   */
+  function killStaleServer(): Promise<void> {
+    return new Promise((resolve) => {
+      try {
+        execSync(`fuser -k ${SERVER_PORT}/tcp 2>/dev/null || true`, { timeout: 3000 });
+      } catch {
+        // Ignore errors (fuser may not be available, or no process on port)
+      }
+      // Give the OS time to release the port
+      setTimeout(resolve, 500);
+    });
+  }
+
   async function handleStart(options?: { shutdownTimeout?: number }): Promise<{ ok: boolean; addresses: string[]; port: number; error?: string }> {
     const addresses = getLANAddresses();
 
-    // Already hosting
+    // Already hosting (we spawned this process ourselves)
     if (serverProcess && serverReady) {
+      // Verify our own server is still healthy
+      if (await checkServerHealth()) {
+        return { ok: true, addresses, port: SERVER_PORT };
+      }
+      // Our server died, clean up
+      serverProcess.kill();
+      serverProcess = null;
+      serverReady = false;
+    }
+
+    // External server already running — do a DEEP check to ensure it can
+    // actually handle game connections, not just respond to /health.
+    // Stale servers from previous sessions often pass /health but fail on
+    // matchmake, causing ERR_EMPTY_RESPONSE for clients.
+    if (await checkServerDeep()) {
+      serverReady = true;
       return { ok: true, addresses, port: SERVER_PORT };
     }
 
-    // External server already running
+    // If something is on the port but failed deep check, kill it
     if (await checkServerHealth()) {
-      serverReady = true;
-      return { ok: true, addresses, port: SERVER_PORT };
+      console.log('[LAN] Stale server detected on port ' + SERVER_PORT + ', killing...');
+      await killStaleServer();
     }
 
     // Start the Colyseus server as child process
