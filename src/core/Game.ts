@@ -9,7 +9,7 @@ import { GameClock } from './GameClock';
 import { EntityManager } from './EntityManager';
 import { CollisionGroup } from './Entity';
 import { GPUCapabilityReport, detectGPUCapabilities } from '../rendering/GPUCapabilities';
-import { createRenderer, RendererBackend } from '../rendering/RendererFactory';
+import { createRenderer, RendererBackend, installWebGPUDiagnostic } from '../rendering/RendererFactory';
 import { EntityLimits, getEntityLimits } from '../rendering/EntityLimits';
 
 // ---------------------------------------------------------------------------
@@ -164,6 +164,8 @@ export class Game {
    */
   static async create(config: GameConfig = {}): Promise<Game> {
     const container = config.container ?? document.body;
+    // Install console diagnostic before detection so it's available immediately
+    installWebGPUDiagnostic();
     const capabilities = await detectGPUCapabilities();
     const { renderer, isWebGPU, backend } = await createRenderer(container, capabilities);
     return new Game({

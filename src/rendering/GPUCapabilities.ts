@@ -109,9 +109,25 @@ async function probeWebGPU(): Promise<WebGPUProbeResult> {
   try {
     if (typeof navigator === 'undefined') return result;
     const gpu = (navigator as any).gpu;
-    if (!gpu) return result;
-    const adapter = await gpu.requestAdapter();
-    if (!adapter) return result;
+    if (!gpu) {
+      console.warn('[WebGPU] navigator.gpu not available. Update Chrome or enable chrome://flags/#enable-unsafe-webgpu');
+      return result;
+    }
+    // Request high-performance adapter to prefer discrete GPU on dual-GPU systems.
+    // Integrated GPUs (Intel UHD) often lack WebGPU support while discrete ones have it.
+    let adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) {
+      // Fallback: try default adapter (no power preference).
+      // Some systems only expose WebGPU on the default/integrated adapter.
+      console.warn('[WebGPU] High-performance adapter not available, trying default...');
+      adapter = await gpu.requestAdapter();
+    }
+    if (!adapter) {
+      console.warn('[WebGPU] No WebGPU adapter available on any GPU.');
+      console.warn('[WebGPU] Check chrome://gpu for details.');
+      console.warn('[WebGPU] Common fixes: update GPU driver, update Chrome, enable chrome://flags/#enable-unsafe-webgpu');
+      return result;
+    }
     result.available = true;
 
     // Extract adapter info -- available in Chrome 113+, Firefox Nightly, etc.

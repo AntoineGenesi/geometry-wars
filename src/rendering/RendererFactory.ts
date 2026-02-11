@@ -146,8 +146,9 @@ async function createWebGPURenderer(
 
     const renderer = new WebGPURenderer({
       antialias: capabilities.tier !== 'low',
-      // WebGPURenderer automatically falls back to WebGL2 backend if WebGPU
-      // is not available at the browser/driver level
+      // Request discrete GPU on dual-GPU systems (e.g. laptop with Intel + NVIDIA).
+      // The integrated GPU often lacks WebGPU support.
+      powerPreference: 'high-performance',
     });
 
     renderer.setPixelRatio(getPixelRatio(capabilities.tier));
@@ -160,16 +161,51 @@ async function createWebGPURenderer(
     // Wait for the renderer to initialize (needed for WebGPU adapter request)
     await renderer.init();
 
-    console.log('[RendererFactory] Created WebGPU renderer');
-    // Cast to WebGLRenderer for type compatibility -- the API surface we use
-    // (setSize, setPixelRatio, render, domElement, dispose, info) is identical
+    // CRITICAL: Detect if WebGPURenderer silently fell back to WebGL2.
+    // Three.js WebGPURenderer.init() catches WebGPUBackend failures and swaps
+    // this.backend to WebGLBackend without throwing. The isWebGPURenderer flag
+    // stays true regardless. We must check the actual backend class.
+    const actualBackend = (renderer as any).backend;
+    const backendName = actualBackend?.constructor?.name ?? 'unknown';
+    const actuallyUsingWebGPU = backendName === 'WebGPUBackend';
+
+    if (!actuallyUsingWebGPU) {
+      console.warn(
+        `[RendererFactory] WebGPURenderer created but fell back to ${backendName} internally.`
+      );
+      console.warn(
+        '[RendererFactory] This means WebGPU device creation failed at the GPU driver level.'
+      );
+      console.warn(
+        '[RendererFactory] Discarding WebGPU renderer and using clean WebGL2 instead.'
+      );
+      console.warn(
+        '[RendererFactory] To diagnose: open chrome://gpu and check "WebGPU" line.'
+      );
+      console.warn(
+        '[RendererFactory] Common fixes: update GPU driver, update Chrome, enable chrome://flags/#enable-unsafe-webgpu'
+      );
+
+      // Discard the silently-degraded renderer. Our own WebGL2 path has proper
+      // EffectComposer + UnrealBloomPass which the WebGPU-turned-WebGL2 path lacks.
+      try {
+        container.removeChild(renderer.domElement);
+        renderer.dispose();
+      } catch { /* best effort cleanup */ }
+      return null;
+    }
+
+    console.log(`[RendererFactory] Created WebGPU renderer (backend: ${backendName})`);
     return {
       renderer: renderer as unknown as THREE.WebGLRenderer,
       isWebGPU: true,
       backend: 'webgpu',
     };
   } catch (err) {
-    console.warn('[RendererFactory] Failed to load three/webgpu module:', err);
+    console.warn('[RendererFactory] WebGPU initialization failed:', err);
+    console.warn('[RendererFactory] Falling back to WebGL2. To diagnose WebGPU issues:');
+    console.warn('[RendererFactory]   1. Open chrome://gpu → check "WebGPU" status');
+    console.warn('[RendererFactory]   2. Run __webgpuDiagnostic() in the browser console');
     return null;
   }
 }
@@ -187,14 +223,99 @@ function getPixelRatio(tier: 'high' | 'medium' | 'low'): number {
 }
 
 /**
+ * Expose a browser-console diagnostic function for debugging WebGPU issues.
+ * User can open DevTools console and type: __webgpuDiagnostic()
+ */
+export function installWebGPUDiagnostic(): void {
+  if (typeof window === 'undefined') return;
+  (window as any).__webgpuDiagnostic = async () => {
+    console.log('%c=== WebGPU Diagnostic ===', 'font-size:14px;font-weight:bold;color:#4488ff');
+
+    // Step 1: Check navigator.gpu
+    const gpu = (navigator as any).gpu;
+    if (!gpu) {
+      console.log('%c FAIL: navigator.gpu not available', 'color:red;font-weight:bold');
+      console.log('Your browser does not expose the WebGPU API.');
+      console.log('Fixes:');
+      console.log('  1. Update Chrome to version 113 or later');
+      console.log('  2. Enable: chrome://flags/#enable-unsafe-webgpu');
+      console.log('  3. Restart the browser');
+      return;
+    }
+    console.log('%c PASS: navigator.gpu exists', 'color:green;font-weight:bold');
+
+    // Step 2: Try high-performance adapter (discrete GPU)
+    let adapter = null;
+    try {
+      adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
+    } catch (e) {
+      console.log('%c FAIL: requestAdapter() threw an error:', 'color:red;font-weight:bold', e);
+      return;
+    }
+
+    if (!adapter) {
+      console.log('%c FAIL: requestAdapter({ powerPreference: "high-performance" }) returned null', 'color:red;font-weight:bold');
+      console.log('Your high-performance GPU does not support WebGPU.');
+
+      // Try default adapter as fallback diagnostic
+      const defaultAdapter = await gpu.requestAdapter();
+      if (defaultAdapter) {
+        const info = defaultAdapter.info;
+        console.log('%c INFO: Default adapter (no preference) succeeded:', 'color:orange;font-weight:bold');
+        console.log('  Vendor:', info?.vendor);
+        console.log('  Architecture:', info?.architecture);
+        console.log('  Device:', info?.device);
+        console.log('  Description:', info?.description);
+        console.log('This means your integrated GPU supports WebGPU but your discrete GPU does not.');
+        console.log('We can use the default adapter instead.');
+      } else {
+        console.log('Default adapter also returned null. No WebGPU support on any GPU.');
+        console.log('Fixes:');
+        console.log('  1. Update your GPU driver from the manufacturer website');
+        console.log('  2. Check chrome://gpu for "WebGPU" status');
+        console.log('  3. Your GPU may be on Chrome\'s blocklist');
+      }
+      return;
+    }
+
+    // Log adapter info
+    const info = adapter.info;
+    console.log('%c PASS: Adapter obtained', 'color:green;font-weight:bold');
+    console.log('  Vendor:', info?.vendor);
+    console.log('  Architecture:', info?.architecture);
+    console.log('  Device:', info?.device);
+    console.log('  Description:', info?.description);
+    console.log('  Features:', [...adapter.features].join(', '));
+
+    // Step 3: Try creating a device
+    try {
+      const device = await adapter.requestDevice();
+      console.log('%c PASS: Device created successfully', 'color:green;font-weight:bold');
+      console.log('WebGPU SHOULD work for this game.');
+      console.log('If the game is still using WebGL2, try adding ?renderer=webgpu to the URL.');
+      device.destroy();
+    } catch (e) {
+      console.log('%c FAIL: requestDevice() failed:', 'color:red;font-weight:bold', e);
+      console.log('Adapter exists but device creation failed. This usually means:');
+      console.log('  - GPU driver is too old for WebGPU device features');
+      console.log('  - Chrome has blocklisted this specific driver version');
+      console.log('  Fix: Update your GPU driver to the latest version');
+    }
+  };
+}
+
+/**
  * Log the capability report to console for developer visibility.
  */
 function logCapabilities(cap: GPUCapabilityReport): void {
+  const webgpuStatus = cap.webgpu
+    ? `available (adapter: ${cap.webgpuAdapter || 'unknown'})`
+    : 'NOT AVAILABLE — run __webgpuDiagnostic() in console for details';
+
   const lines = [
     `[GPUCapabilities] Tier: ${cap.tier.toUpperCase()}`,
-    `  WebGPU: ${cap.webgpu ? 'available' : 'unavailable'}`,
+    `  WebGPU: ${webgpuStatus}`,
     `  WebGL2: ${cap.webgl2 ? 'available' : 'unavailable'}`,
-    `  WebGL1: ${cap.webgl1 ? 'available' : 'unavailable'}`,
     `  GPU: ${cap.renderer}`,
     `  Max texture: ${cap.maxTextureSize}`,
     `  Max instances: ${cap.maxInstanceCount}`,
@@ -202,15 +323,29 @@ function logCapabilities(cap: GPUCapabilityReport): void {
     `  SharedArrayBuffer: ${cap.sharedArrayBuffer ? 'yes' : 'no'}`,
   ];
 
+  if (!cap.webgpu) {
+    lines.push('');
+    lines.push('  [!] WebGPU not available. Possible causes:');
+    lines.push('      - GPU driver does not support WebGPU (update driver)');
+    lines.push('      - Chrome version < 113 (update Chrome)');
+    lines.push('      - WebGPU disabled: check chrome://flags/#enable-unsafe-webgpu');
+    lines.push('      - GPU on Chrome blocklist: check chrome://gpu');
+    lines.push('  [!] Run __webgpuDiagnostic() in console for step-by-step diagnosis');
+  }
+
   // Use a single grouped log to keep the console tidy
   try {
-    console.groupCollapsed('[GPUCapabilities] Detection Report');
+    if (cap.webgpu) {
+      console.groupCollapsed('[GPUCapabilities] Detection Report');
+    } else {
+      // Expand the group when WebGPU is unavailable so the user sees it immediately
+      console.group('[GPUCapabilities] Detection Report');
+    }
     for (const line of lines) {
       console.log(line);
     }
     console.groupEnd();
   } catch {
-    // Fallback for environments without console.group
     for (const line of lines) {
       console.log(line);
     }

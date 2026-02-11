@@ -76,6 +76,7 @@ export class VisualPlaygroundDemo {
   private readonly onKeyDownHandler: (e: KeyboardEvent) => void;
   private readonly onCanvasClickHandler: (e: MouseEvent) => void;
   private readonly onDocumentClickHandler: (e: MouseEvent) => void;
+  private readonly onWheelHandler: (e: WheelEvent) => void;
 
   constructor(preset: VisualPreset, surfaceType: SurfaceType) {
     this.preset = preset;
@@ -148,7 +149,7 @@ export class VisualPlaygroundDemo {
       '<div style="color:#00ffff;font:16px monospace;letter-spacing:2px;' +
       'text-shadow:0 0 10px #00ffff,0 0 20px #0088aa;margin-bottom:8px;">CLICK TO PLAY</div>' +
       '<div style="color:#88aacc;font:11px monospace;letter-spacing:1px;">' +
-      'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Back</div>';
+      'WASD: Move | Mouse: Aim | Click: Shoot | Scroll: Zoom | ESC: Back</div>';
     this.canvasContainer.appendChild(this.hintOverlay);
 
     this.overlay.appendChild(this.canvasContainer);
@@ -267,8 +268,18 @@ export class VisualPlaygroundDemo {
       }
     };
 
+    this.onWheelHandler = (e: WheelEvent) => {
+      if (this.disposed || !this.focused || this.paused) return;
+      e.preventDefault();
+      const currentDist = this.playgroundGame.getCameraDistance();
+      const zoomSpeed = 1.5;
+      const delta = e.deltaY > 0 ? zoomSpeed : -zoomSpeed;
+      this.playgroundGame.setCameraDistance(currentDist + delta);
+    };
+
     window.addEventListener('keydown', this.onKeyDownHandler);
     this.canvasContainer.addEventListener('click', this.onCanvasClickHandler);
+    this.canvasContainer.addEventListener('wheel', this.onWheelHandler, { passive: false });
     document.addEventListener('click', this.onDocumentClickHandler);
 
     // Wire Sektori glow update into the game's render callback
@@ -383,6 +394,11 @@ export class VisualPlaygroundDemo {
     this.elapsed = 0;
     this.lives = STARTING_LIVES;
 
+    // Free old WebGL context explicitly before creating new one
+    const gl = this.playgroundGame.game.renderer.getContext();
+    const loseExt = gl.getExtension('WEBGL_lose_context');
+    if (loseExt) loseExt.loseContext();
+
     // Dispose and recreate PlaygroundGame for clean state
     this.playgroundGame.dispose();
 
@@ -442,7 +458,7 @@ export class VisualPlaygroundDemo {
   private releaseFocus(): void {
     this.focused = false;
     this.playgroundGame.stop();
-    this.showOverlay('CLICK TO PLAY', 'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Back');
+    this.showOverlay('CLICK TO PLAY', 'WASD: Move | Mouse: Aim | Click: Shoot | Scroll: Zoom | ESC: Back');
   }
 
   // -----------------------------------------------------------------------
@@ -503,10 +519,20 @@ export class VisualPlaygroundDemo {
     // Remove event listeners
     window.removeEventListener('keydown', this.onKeyDownHandler);
     this.canvasContainer.removeEventListener('click', this.onCanvasClickHandler);
+    this.canvasContainer.removeEventListener('wheel', this.onWheelHandler);
     document.removeEventListener('click', this.onDocumentClickHandler);
 
     // Dispose Sektori material
     if (this.sektoriMaterial) this.sektoriMaterial.dispose();
+    this.sektoriMaterial = null;
+    this.sektoriTrail = null;
+
+    // Explicitly lose WebGL context to free GPU resources immediately.
+    // Without this, the browser may keep stale contexts alive until GC,
+    // causing new demos to fail silently when the context limit is reached.
+    const gl = this.playgroundGame.game.renderer.getContext();
+    const ext = gl.getExtension('WEBGL_lose_context');
+    if (ext) ext.loseContext();
 
     // Dispose game engine
     this.playgroundGame.dispose();

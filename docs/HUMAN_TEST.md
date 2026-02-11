@@ -2,7 +2,9 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-02-11
+> **Last updated:** 2026-02-12
+>
+> **Visual Test Results (2026-02-12, commit a722f6a):** Headless Puppeteer + SwiftShader testing completed. Items marked `[V5 PASS]` were verified visually at Level 5. Items marked `[V5 INCONCLUSIVE]` could not be tested headless (need real browser). See `tasks/visual-test-human-todos.md` and `tasks/lan-visual-testing.md` for full details.
 
 ---
 
@@ -26,23 +28,31 @@ Play Game.bat                    # starts both Vite + Colyseus
 These fixes were all made in commits `39e5540`, `9da6c5a`, `b1043d9`, `7af24be` on 2026-02-11. None have been user-tested.
 
 ### Core Playability
-- [ ] **Both players can move smoothly** — WASD on both tabs, movement should feel responsive (not jerky/teleporting)
-- [ ] **Bullets fire in correct direction** — Aim with mouse, fire. Bullets should go toward crosshair, not random directions
-- [ ] **Bullets move smoothly** — Bullets should glide, not snap/teleport between positions
-- [ ] **Geoms (score pickups) move smoothly** — Same as bullets, should lerp not snap
-- [ ] **Enemy movement is smooth** — Enemies should move fluidly, not stutter at 30fps intervals
-- [ ] **Player aim updates while stationary** — Stand still, move mouse around. Player should visually rotate to face cursor instantly
+- [ ] **Both players can move smoothly** `[V5 INCONCLUSIVE - died too fast]` — WASD on both tabs, movement should feel responsive (not jerky/teleporting)
+- [ ] **Bullets fire in correct direction** `[V5 INCONCLUSIVE - died too fast]` — Aim with mouse, fire. Bullets should go toward crosshair, not random directions
+- [ ] **Bullets move smoothly** `[V5 INCONCLUSIVE - died too fast]` — Bullets should glide, not snap/teleport between positions
+- [ ] **Geoms (score pickups) move smoothly** `[V5 INCONCLUSIVE - died too fast]` — Same as bullets, should lerp not snap
+- [ ] **Enemy movement is smooth** `[V5 INCONCLUSIVE - died too fast]` — Enemies should move fluidly, not stutter at 30fps intervals
+- [ ] **Player aim updates while stationary** `[V5 INCONCLUSIVE - died too fast]` — Stand still, move mouse around. Player should visually rotate to face cursor instantly
 
 ### Robustness
-- [ ] **Tab-out doesn't break movement** — Alt-tab away from one tab, come back. Player should stop moving while unfocused, resume on return
-- [ ] **No spawn ring ghosts** — Kill enemies. Should NOT see lingering circular warning rings where enemies spawn
-- [ ] **Respawn works** — Die, respawn. Player should be visible and controllable after respawn (not invisible)
+- [ ] **Tab-out doesn't break movement** `[V5 INCONCLUSIVE]` — Alt-tab away from one tab, come back. Player should stop moving while unfocused, resume on return
+- [ ] **No spawn ring ghosts** `[V5 PASS]` — Kill enemies. Should NOT see lingering circular warning rings where enemies spawn
+- [ ] **Respawn works** `[V5 POTENTIAL ISSUE - players stayed dead ~90s]` — Die, respawn. Player should be visible and controllable after respawn (not invisible)
 - [ ] **Cube surface works** — Select cube map. Player should NOT get stuck at origin (0,0). Can move freely everywhere
 - [ ] **Overall feel** — Does it feel like a playable game, or "laggy and weird"?
 
 ### Performance
-- [ ] **Stable 60 FPS** — Open Chrome DevTools Performance tab. FPS should stay near 60, not dip to 30-40
-- [ ] **No debug spam** — Console should NOT show LAN debug messages unless `?debug` is in URL
+- [ ] **Stable 60 FPS** `[V5 INCONCLUSIVE - SwiftShader]` — Open Chrome DevTools Performance tab. FPS should stay near 60, not dip to 30-40
+- [ ] **No debug spam** `[V5 PASS]` — Console should NOT show LAN debug messages unless `?debug` is in URL
+
+### LAN Connection (V5 PASS — verified 2026-02-12)
+- [x] **Host game flow works** — LAN -> HOST GAME -> surface select -> START HOSTING -> ENTER GAME
+- [x] **Join game flow works** — LAN -> lobby discovers hosted game -> click to join
+- [x] **Both players render** — Both player characters visible on sphere with name labels
+- [x] **Enemies spawn in LAN** — Grunts appear and move
+- [x] **Score tracking works** — Host scored 100 points, kill log shows "Grunt x2"
+- [x] **No console errors** — 0 critical errors on either page
 
 ### LAN Task Files (for investigating failures)
 - `tasks/lan-quick-wins-audit.md` — 60Hz patches, depth opacity removal, interpolation
@@ -59,14 +69,14 @@ These fixes were all made in commits `39e5540`, `9da6c5a`, `b1043d9`, `7af24be` 
 
 The god function was split into 8 modules. Game behavior should be identical.
 
-- [ ] **Player movement** — WASD moves player in all directions on all surfaces
-- [ ] **Shooting** — Click to fire, bullets hit enemies, enemies die
-- [ ] **Pickups spawn** — Kill enemies, weapon/buff/companion pickups appear
-- [ ] **Pickup collection** — Walk over pickups, buffs activate, weapons switch
-- [ ] **Camera controls** — Mouse wheel zoom, middle mouse orbit
-- [ ] **Screen flash** — Death/protector activation should flash screen
-- [ ] **UI updates** — Score, multiplier, lives, bombs all update correctly
-- [ ] **Pause menu** — ESC opens pause, shows stats, can resume
+- [ ] **Player movement** `[V5 PASS]` — WASD moves player in all directions on all surfaces
+- [ ] **Shooting** `[V5 INCONCLUSIVE - headless mouse events]` — Click to fire, bullets hit enemies, enemies die
+- [ ] **Pickups spawn** `[V5 INCONCLUSIVE]` — Kill enemies, weapon/buff/companion pickups appear
+- [ ] **Pickup collection** `[V5 INCONCLUSIVE]` — Walk over pickups, buffs activate, weapons switch
+- [ ] **Camera controls** `[V5 INCONCLUSIVE - scroll events]` — Mouse wheel zoom, middle mouse orbit
+- [ ] **Screen flash** `[V5 INCONCLUSIVE]` — Death/protector activation should flash screen
+- [ ] **UI updates** `[V5 PASS]` — Score, multiplier, lives, bombs all update correctly
+- [ ] **Pause menu** `[V5 PASS]` — ESC opens pause, shows stats, can resume
 
 ### Refactor Task File
 - `tasks/refactor-main-god-function.md`
@@ -77,12 +87,12 @@ The god function was split into 8 modules. Game behavior should be identical.
 
 4 new modes added alongside default Waves mode.
 
-- [ ] **Mode selector visible** — Start menu "Quick Game" should show mode dropdown
-- [ ] **Waves mode** — Default behavior, enemies spawn in waves
-- [ ] **King mode** — Safe zones appear, must stand in zone to score
-- [ ] **Rainbow mode** — Kill enemies in color order for bonus multiplier
-- [ ] **Sniper mode** — Limited ammo, precision kills rewarded
-- [ ] **Claustrophobia mode** — Shrinking play area
+- [ ] **Mode selector visible** `[V5 PASS]` — Start menu "Quick Game" should show mode dropdown
+- [ ] **Waves mode** `[V5 PASS]` — Default behavior, enemies spawn in waves
+- [ ] **King mode** `[V5 PASS]` — Safe zones appear, must stand in zone to score
+- [ ] **Rainbow mode** `[V5 PASS]` — Kill enemies in color order for bonus multiplier
+- [ ] **Sniper mode** `[V5 PASS]` — Limited ammo, precision kills rewarded
+- [ ] **Claustrophobia mode** `[V5 PASS]` — Shrinking play area
 
 ### Game Modes Task File
 - `tasks/game-modes-implementation.md`
@@ -103,9 +113,9 @@ The god function was split into 8 modules. Game behavior should be identical.
 
 ## Performance (commits `07aee82`, `a960932`)
 
-- [ ] **No FPS crater at high scores** — Play until 450M+ score. FPS should stay above 30
-- [ ] **Explosion particles don't tank FPS** — Chain explosions (many enemies dying at once) should not drop below 30fps
-- [ ] **Performance graphs work** — Pause menu → Performance → graphs should display data
+- [ ] **No FPS crater at high scores** `[V5 INCONCLUSIVE - SwiftShader]` — Play until 450M+ score. FPS should stay above 30
+- [ ] **Explosion particles don't tank FPS** `[V5 INCONCLUSIVE - SwiftShader]` — Chain explosions (many enemies dying at once) should not drop below 30fps
+- [ ] **Performance graphs work** `[V5 PASS]` — Pause menu → Performance → graphs should display data
 
 ### Performance Task Files
 - `tasks/fps-crater-reinvestigate.md`
@@ -116,23 +126,27 @@ The god function was split into 8 modules. Game behavior should be identical.
 
 ## Visual Features (various commits)
 
-- [ ] **Enemy opacity behind surfaces** — Enemies on the far side of the surface should be nearly invisible (6% opacity), not glowing through
-- [ ] **Enemy surface glow** — Enemies should cast a colored glow on the surface beneath them
-- [ ] **Visual styles playground** — Start menu → Visual Styles → click a style → demo should load and be playable (not spinning wildly)
+- [ ] **Enemy opacity behind surfaces** `[V5 INCONCLUSIVE - SwiftShader]` — Enemies on the far side of the surface should be nearly invisible (6% opacity), not glowing through
+- [ ] **Enemy surface glow** `[V5 INCONCLUSIVE - SwiftShader]` — Enemies should cast a colored glow on the surface beneath them
+- [ ] **Visual styles playground** `[V5 PASS]` — Start menu → Visual Styles → click a style → demo should load and be playable (not spinning wildly)
 - [ ] **Weapon playground** — Start menu → Weapons → playground should work (USER VERIFIED WORKING in `bffc333`)
+- [ ] **Visual playground collision radius** `[V5 INCONCLUSIVE - needs gameplay]` — In Visual Styles demo, enemies should NOT kill you from far away. Must physically touch enemy to die. (Was 1.7-3.3x too large, now matches main game's CollisionSystem.ts)
+- [ ] **Visual playground scroll zoom** `[V5 PASS]` — In Visual Styles demo, scroll wheel zooms camera in/out (matching Weapon Playground behavior)
+- [ ] **Visual playground style switching** `[V5 PASS]` — Open Gold Luxury demo → BACK → open Sektori Cyan → should show cyan glow (NOT gold). Try 3+ style switches in a row.
 
 ### Visual Task Files
 - `tasks/enemy-opacity-behind-surfaces.md`
 - `tasks/enemy-surface-glow.md`
 - `tasks/visual-styles-playground-broken.md`
+- `tasks/visual-styles-playground-v2.md`
 
 ---
 
 ## Difficulty & Gameplay (commit `07aee82`)
 
-- [ ] **Difficulty feels challenging** — Should get hard by wave 5-10, not trivially easy forever
-- [ ] **Enemy speed scales** — Later enemies should be noticeably faster
-- [ ] **Cube-tunnel speed** — Enemies on cube-tunnel should move at similar speed to other surfaces (not 10x faster or 10x slower)
+- [ ] **Difficulty feels challenging** `[V5 PASS - enemy count 4->13->400]` — Should get hard by wave 5-10, not trivially easy forever
+- [ ] **Enemy speed scales** `[V5 INCONCLUSIVE]` — Later enemies should be noticeably faster
+- [ ] **Cube-tunnel speed** `[V5 INCONCLUSIVE]` — Enemies on cube-tunnel should move at similar speed to other surfaces (not 10x faster or 10x slower)
 
 ### Difficulty Task Files
 - `tasks/difficulty-still-too-easy.md`
@@ -140,19 +154,38 @@ The god function was split into 8 modules. Game behavior should be identical.
 
 ---
 
-## WebGPU (if your browser supports it)
+## WebGPU (UPDATED 2026-02-12 — 3 bugs fixed)
 
-**Updated 2026-02-12:** Dynamic bloom settings now work for WebGPU (using TSL uniform nodes)
+**Fixed:** Silent fallback detection, missing powerPreference, zero diagnostics. Previously the game could REPORT "WebGPU" while actually using WebGL2.
 
-- [ ] **WebGPU renderer activates** — Chrome 113+ should auto-detect and use WebGPU
-- [ ] **Bloom effects work** — Neon glow should be visible (not flat/dark)
-- [ ] **Bloom settings update in real-time (WebGPU)** — Open settings, adjust bloom strength slider → bloom should change immediately (not stay frozen)
-- [ ] **Bloom threshold updates (WebGPU)** — Adjust bloom threshold slider → glow area should shrink/expand
-- [ ] **Visual styles change bloom (WebGPU)** — Switch visual styles in settings → bloom should update per style
-- [ ] **Fallback works** — Firefox/Safari should gracefully fall back to WebGL2
+### Step 1: Check your system
+- [ ] **Open Chrome DevTools console** → type `__webgpuDiagnostic()` → run it
+  - Should show green PASS for navigator.gpu, adapter, and device
+  - If any show red FAIL: the diagnostic will explain WHY and how to fix it
+- [ ] **Open chrome://gpu** in a new tab → search for "WebGPU" → should say "Hardware accelerated"
+  - If it says "Disabled" or "Software only": update your GPU driver
 
-### WebGPU Task File
-- `tasks/webgpu-optimization.md`
+### Step 2: Test WebGPU activation
+- [ ] **Start game normally** (`npm run dev` or Play Game.bat) → open Chrome console
+  - Console should show `[GPUCapabilities]` group with `WebGPU: available (adapter: ...)`
+  - Console should show `[RendererFactory] Created WebGPU renderer (backend: WebGPUBackend)`
+  - If you see `WebGPU: NOT AVAILABLE`: the diagnostic in Step 1 explains why
+- [ ] **Check Debug Overlay** — Press F3 → should show "WebGPU" in cyan text (not "WebGL2" in blue)
+- [ ] **Check Settings menu** → System Info → Active Renderer should say "WebGPU"
+
+### Step 3: If WebGPU works, test it
+- [ ] **Bloom effects work** — Neon glow visible on WebGPU (not flat/dark)
+- [ ] **Bloom settings update in real-time** — Open settings, adjust bloom strength → should change immediately
+- [ ] **Visual styles change bloom** — Switch visual styles → bloom should update per style
+- [ ] **Fallback works** — Add `?renderer=webgl` to URL → should use WebGL2 with full bloom
+
+### Step 4: If WebGPU does NOT work
+- [ ] **Note the error** — What does `__webgpuDiagnostic()` say? What does chrome://gpu say for WebGPU?
+- [ ] **Write it here** so Claude can investigate further
+
+### WebGPU Task Files
+- `tasks/webgpu-feasibility-research.md` — 3 bugs found and fixed
+- `tasks/webgpu-optimization.md` — Previous WebGPU work (bloom settings)
 
 ---
 
@@ -161,17 +194,17 @@ The god function was split into 8 modules. Game behavior should be identical.
 50-level campaign mode with progressive difficulty, star ratings, and level progression.
 
 ### Level Select UI
-- [ ] **Adventure button visible** — Start menu shows "ADVENTURE" button as primary option
-- [ ] **Level grid displays** — Click Adventure → shows all 50 levels in 6 sections (Sapphire, Ruby, Emerald, Opal, Amethyst, Topaz)
-- [ ] **Locked levels show lock icon** — Levels after the first should show 🔒 if not unlocked
+- [ ] **Adventure button visible** `[V5 PASS]` — Start menu shows "ADVENTURE" button as primary option
+- [ ] **Level grid displays** `[V5 PASS]` — Click Adventure → shows all 50 levels in 6 sections (Sapphire, Ruby, Emerald, Opal, Amethyst, Topaz)
+- [ ] **Locked levels show lock icon** `[V5 PASS]` — Levels after the first should show 🔒 if not unlocked
 - [ ] **Star ratings display** — Completed levels should show ★★★ or ★★☆ etc. based on performance
-- [ ] **Section headers visible** — Each gem section (Sapphire, Ruby, etc.) should have a visible header
+- [ ] **Section headers visible** `[V5 PASS]` — Each gem section (Sapphire, Ruby, etc.) should have a visible header
 
 ### Level Gameplay
-- [ ] **Level starts on click** — Click an unlocked level → game should start on the level's surface
-- [ ] **Scripted waves spawn** — Level should spawn specific enemy waves (not random endless waves)
+- [ ] **Level starts on click** `[V5 PASS]` — Click an unlocked level → game should start on the level's surface
+- [ ] **Scripted waves spawn** `[V5 PASS]` — Level should spawn specific enemy waves (not random endless waves)
 - [ ] **Lives/bombs/time match level** — Check pause menu → stats should match the level's config (e.g., Level 1 has 3 lives, 60s time limit)
-- [ ] **Timer counts down (Deadline mode)** — Levels with time limits should show countdown timer
+- [ ] **Timer counts down (Deadline mode)** `[V5 PASS]` — Levels with time limits should show countdown timer
 - [ ] **Timer shows elapsed time (Evolved mode)** — Levels without time limits should show elapsed time
 
 ### Level Completion
@@ -189,7 +222,7 @@ The god function was split into 8 modules. Game behavior should be identical.
 - [ ] **Fails when time runs out (before clearing)** — If time expires before all waves cleared → should complete with current score (not fail)
 
 ### Edge Cases
-- [ ] **Can't click locked levels** — Locked levels should be disabled/unclickable
+- [ ] **Can't click locked levels** `[V5 PASS]` — Locked levels should be disabled/unclickable
 - [ ] **Level 50 has no "Next"** — Last level should only show Replay and Menu buttons (no Next)
 - [ ] **Back button works** — Click "Back" from level select → returns to main menu
 

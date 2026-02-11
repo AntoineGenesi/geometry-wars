@@ -434,13 +434,15 @@ export class PlaygroundGame {
     this.particles.update(dt);
 
     // -- Collision: bullets vs enemies --
+    // Uses enemy.radius + 0.15, matching CollisionSystem.ts (main game)
     this.bulletPool.forEachActive((_idx, bulletPos, bulletData) => {
       const enemies = this.enemySpawner.getEnemies();
       for (const enemy of enemies) {
         if (!enemy.active || !enemy.alive || enemy.isMaterializing) continue;
         if (!enemy.mesh) continue;
-        const dist = bulletPos.distanceTo(enemy.mesh.position);
-        if (dist < 1.5) {
+        const hitRadius = enemy.radius + 0.15;
+        const distSq = bulletPos.distanceToSquared(enemy.mesh.position);
+        if (distSq < hitRadius * hitRadius) {
           enemy.takeDamage(1);
           this.bulletPool.kill(_idx);
           if (!enemy.alive) {
@@ -453,12 +455,14 @@ export class PlaygroundGame {
     });
 
     // -- Collision: enemies vs player --
+    // Uses player.mesh.scale.x * 0.3 + enemy.radius, matching CollisionSystem.ts
     if (this.player.canTakeDamage) {
       for (const enemy of this.enemySpawner.getEnemies()) {
         if (!enemy.active || !enemy.alive || enemy.isMaterializing) continue;
         if (!enemy.mesh) continue;
-        const dist = this.player.mesh.position.distanceTo(enemy.mesh.position);
-        if (dist < 1.0) {
+        const hitRadius = this.player.mesh.scale.x * 0.3 + enemy.radius;
+        const distSq = this.player.mesh.position.distanceToSquared(enemy.mesh.position);
+        if (distSq < hitRadius * hitRadius) {
           this.player.lives -= 1;
           this.player.alive = false;
           this.player.mesh.visible = false;

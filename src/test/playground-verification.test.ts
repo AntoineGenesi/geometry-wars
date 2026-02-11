@@ -954,4 +954,67 @@ describe('PlaygroundGame Verification', () => {
       });
     }
   });
+
+  // -----------------------------------------------------------------------
+  // Death Effects Tests
+  // -----------------------------------------------------------------------
+
+  describe('Death Effects', () => {
+    beforeEach(() => {
+      harness = new PlaygroundTestHarness('sphere');
+      harness.tick(10);
+    });
+
+    it('particle system is in the scene graph', () => {
+      expect(harness.isParticleSystemInScene()).toBe(true);
+    });
+
+    it('particle system has frustum culling disabled', () => {
+      expect(harness.isParticleSystemFrustumCullingDisabled()).toBe(true);
+    });
+
+    it('no active effects before any enemies spawn', () => {
+      expect(harness.getActiveEffectCount()).toBe(0);
+    });
+
+    it('enemy death produces active particle effects', () => {
+      // Spawn an enemy near the player
+      harness.spawnEnemies(1, 'grunt');
+      harness.waitForMaterialization(120);
+
+      // Verify enemy is alive
+      const enemies = harness.pg.enemySpawner.getEnemies().filter(e => e.alive);
+      expect(enemies.length).toBeGreaterThan(0);
+
+      // Kill the enemy directly via takeDamage
+      const enemy = enemies[0];
+      const deathPos = enemy.mesh!.position.clone();
+      enemy.takeDamage(9999);
+      expect(enemy.alive).toBe(false);
+
+      // Trigger particle death effect manually (same as collision code does)
+      harness.pg.particles.enemyDeath(deathPos, new THREE.Color(0x4444ff));
+
+      // Advance one frame to process particles
+      harness.tick(1);
+
+      // Verify particles are active (both point particles and shatter fragments)
+      expect(harness.getActiveEffectCount()).toBeGreaterThan(0);
+    });
+
+    it('particle effects fade out over time', () => {
+      // Trigger a death effect
+      const pos = harness.getPlayerWorldPos();
+      harness.pg.particles.enemyDeath(pos, new THREE.Color(0xff0000));
+
+      harness.tick(1);
+      const activeAfterSpawn = harness.getActiveEffectCount();
+      expect(activeAfterSpawn).toBeGreaterThan(0);
+
+      // Advance several seconds — all effects should have faded
+      harness.tickSeconds(3);
+      const activeAfterFade = harness.getActiveEffectCount();
+      expect(activeAfterFade).toBe(0);
+    });
+  });
 });

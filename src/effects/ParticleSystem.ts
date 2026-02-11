@@ -152,6 +152,7 @@ export class ParticleSystem {
     });
 
     this.root = new THREE.Points(this.geometry, this.material);
+    this.root.frustumCulled = false;
 
     // Initialize fragment container and geometries
     this.fragmentContainer = new THREE.Group();

@@ -792,6 +792,25 @@ export class PlaygroundTestHarness {
   }
 
   // =======================================================================
+  // Particle / Effect Queries
+  // =======================================================================
+
+  /** Number of active particle effects + shatter fragments. */
+  getActiveEffectCount(): number {
+    return this.pg.particles.activeEffectCount;
+  }
+
+  /** Whether the particle system root is in the scene graph. */
+  isParticleSystemInScene(): boolean {
+    return this.pg.particles.root.parent === this.pg.game.scene;
+  }
+
+  /** Whether frustum culling is disabled on the particle system root. */
+  isParticleSystemFrustumCullingDisabled(): boolean {
+    return !this.pg.particles.root.frustumCulled;
+  }
+
+  // =======================================================================
   // Cleanup
   // =======================================================================
 
