@@ -1336,17 +1336,39 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   }
 
   // -- Expose debug API for programmatic tests and console access --
-  (window as any).__gameDebug = {
-    entityAudit,
-    perfTracker,
-    enemySpawner,
-    enemyInstanceManager,
-    bulletPool,
-    player,
-    game,
-    ddaLogger,
-    perfLogger,
-  };
+  // Full programmatic API when ?debug=true, otherwise minimal API for compatibility
+  const urlParams = new URLSearchParams(window.location.search);
+  const debugMode = urlParams.get('debug') === 'true';
+
+  if (debugMode) {
+    // Import and initialize GameDebugAPI for full programmatic access
+    import('./debug/GameDebugAPI').then(({ GameDebugAPI }) => {
+      const debugAPI = new GameDebugAPI(
+        game,
+        player,
+        enemySpawner,
+        game.scene,
+        game.camera,
+        gameLoop,
+        input as InputManager,
+      );
+      (window as any).__gameDebug = debugAPI;
+      console.log('[GameDebugAPI] Initialized. Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(debugAPI)).filter(n => n !== 'constructor'));
+    });
+  } else {
+    // Minimal debug API for existing tests/scripts (no overhead)
+    (window as any).__gameDebug = {
+      entityAudit,
+      perfTracker,
+      enemySpawner,
+      enemyInstanceManager,
+      bulletPool,
+      player,
+      game,
+      ddaLogger,
+      perfLogger,
+    };
+  }
 
   // -- Expose performance log API for data export (never deleted) --
   (window as any).__perfLog = {
@@ -1404,7 +1426,32 @@ function isBenchmarkMode(): boolean {
   return params.get('mode') === 'benchmark';
 }
 
-if (isBenchmarkMode()) {
+function isQuickStartMode(): { enabled: boolean; surface?: SurfaceType; seed?: number } {
+  const params = new URLSearchParams(window.location.search);
+  const quickStart = params.get('quickStart') === 'true';
+  if (!quickStart) return { enabled: false };
+
+  const surface = params.get('surface') as SurfaceType || 'sphere';
+  const seedParam = params.get('seed');
+  const seed = seedParam ? parseInt(seedParam, 10) : undefined;
+
+  return { enabled: true, surface, seed };
+}
+
+const quickStartConfig = isQuickStartMode();
+
+if (quickStartConfig.enabled) {
+  // Quick start mode: skip menu, start game immediately with seed
+  console.log(`[Main] Quick start mode: ${quickStartConfig.surface}, seed=${quickStartConfig.seed ?? 'random'}`);
+  if (quickStartConfig.seed !== undefined) {
+    import('./core/SeededRandom').then(({ setGameSeed }) => {
+      setGameSeed(quickStartConfig.seed!);
+      main(quickStartConfig.surface, -1); // -1 = endless mode
+    });
+  } else {
+    main(quickStartConfig.surface, -1);
+  }
+} else if (isBenchmarkMode()) {
   import('./benchmark').then(({ runBenchmark }) => {
     console.log('[Main] Running performance benchmark');
     runBenchmark();
