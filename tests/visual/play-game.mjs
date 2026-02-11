@@ -8,13 +8,25 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SCREENSHOT_DIR = path.join(__dirname, '..', '..', 'test-screenshots', 'play-session');
 const BASE_URL = 'http://localhost:3000';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Task context from CLI args: node play-game.mjs [task-slug] [commit-hash]
+const TASK_SLUG = process.argv[2] || 'general-play';
+const COMMIT_HASH = process.argv[3] || 'unknown';
+
+// Timestamped session directory
+const now = new Date();
+const ts = now.toISOString().replace(/T/, '_').replace(/:/g, '').substring(0, 15);
+const SESSION_NAME = `${ts}_${TASK_SLUG}`;
+const SCREENSHOT_DIR = path.join(__dirname, '..', '..', 'test-screenshots', 'sessions', SESSION_NAME);
 
 async function run() {
   const fs = await import('fs');
   fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  console.log(`  Session: ${SESSION_NAME}`);
+  console.log(`  Task: ${TASK_SLUG}`);
+  console.log(`  Commit: ${COMMIT_HASH}`);
 
   const browser = await puppeteer.launch({
     headless: 'new',
@@ -202,11 +214,47 @@ async function run() {
 
     // Summary
     console.log('\n=== Session Complete ===');
-    console.log(`  12 screenshots in: ${SCREENSHOT_DIR}`);
+    console.log(`  Screenshots in: ${SCREENSHOT_DIR}`);
     console.log(`  Console errors: ${consoleErrors.length}`);
     if (consoleErrors.length > 0) {
       consoleErrors.slice(0, 5).forEach(e => console.log(`    - ${e.substring(0, 120)}`));
     }
+
+    // Write RESULTS.md skeleton for Claude to fill in with visual analysis
+    const screenshotFiles = fs.readdirSync(SCREENSHOT_DIR).filter(f => f.endsWith('.png')).sort();
+    const resultsContent = `# Visual Test Session: ${TASK_SLUG}
+
+**Timestamp:** ${now.toISOString()}
+**Task:** ${TASK_SLUG}
+**Commit:** ${COMMIT_HASH}
+**Script:** tests/visual/play-game.mjs
+**Renderer:** WebGL2 via SwiftShader (headless)
+**Console Errors:** ${consoleErrors.length}
+
+## Screenshots
+
+${screenshotFiles.map(f => `- ${f}`).join('\n')}
+
+## Console Errors (first 10)
+
+${consoleErrors.slice(0, 10).map(e => `- ${e.substring(0, 200)}`).join('\n') || 'None'}
+
+## Visual Analysis
+
+> **Claude must fill this in after reading each screenshot.**
+> Describe what you see. Note anything broken, missing, or unexpected.
+> Do NOT leave this section empty.
+
+## Issues Found
+
+> List specific issues with screenshot references.
+
+## Conclusion
+
+> Overall assessment: what works, what doesn't, what needs real browser testing.
+`;
+    fs.writeFileSync(path.join(SCREENSHOT_DIR, 'RESULTS.md'), resultsContent);
+    console.log(`  RESULTS.md template written — fill in visual analysis after reading screenshots`);
 
   } catch (err) {
     console.error('Error:', err.message);
