@@ -44,13 +44,19 @@ export class BackgroundMusic {
   // Public API
   // ---------------------------------------------------------------------------
 
-  start(audioCtx: AudioContext): void {
+  /**
+   * Start background music.
+   * @param audioCtx The shared AudioContext
+   * @param destinationOverride Optional node to route through (e.g. compressor/limiter).
+   *   If not provided, routes directly to ctx.destination.
+   */
+  start(audioCtx: AudioContext, destinationOverride?: AudioNode): void {
     if (this.playing) return;
     this.ctx = audioCtx;
 
     this.masterGain = this.ctx.createGain();
     this.masterGain.gain.value = this._volume;
-    this.masterGain.connect(this.ctx.destination);
+    this.masterGain.connect(destinationOverride ?? this.ctx.destination);
 
     this.startPreset(this.currentPreset);
     this.playing = true;

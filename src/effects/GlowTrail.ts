@@ -120,25 +120,41 @@ export class GlowTrail {
     }
   }
 
+  // Pool of recycled TrailPoint objects to avoid per-frame Vector3 allocations.
+  // With 120+ fast enemies, the old code allocated 240+ Vector3s per frame.
+  private _pointPool: TrailPoint[] = [];
+
   /**
    * Add a new point to the trail.
+   * NOTE: The position is copied, not stored by reference.
    */
   addPoint(position: THREE.Vector3): void {
     // Calculate speed for dynamic intensity
     if (this.lastPosition) {
       this.currentSpeed = position.distanceTo(this.lastPosition);
     }
-    this.lastPosition = position.clone();
+    if (!this.lastPosition) {
+      this.lastPosition = position.clone();
+    } else {
+      this.lastPosition.copy(position);
+    }
+
+    // Reuse pooled point or create new one
+    let point = this._pointPool.pop();
+    if (point) {
+      point.position.copy(position);
+      point.age = 0;
+    } else {
+      point = { position: position.clone(), age: 0 };
+    }
 
     // Add new point at the front
-    this.points.unshift({
-      position: position.clone(),
-      age: 0,
-    });
+    this.points.unshift(point);
 
-    // Remove oldest point if over limit
+    // Recycle oldest point if over limit
     if (this.points.length > this.maxPoints) {
-      this.points.pop();
+      const removed = this.points.pop()!;
+      this._pointPool.push(removed);
     }
 
     this.updateGeometry();
@@ -154,8 +170,9 @@ export class GlowTrail {
     for (let i = this.points.length - 1; i >= 0; i--) {
       this.points[i].age += dt;
 
-      // Remove points that are too old
+      // Remove points that are too old — recycle into pool
       if (this.points[i].age > this.fadeTime) {
+        this._pointPool.push(this.points[i]);
         this.points.splice(i, 1);
         needsUpdate = true;
       }

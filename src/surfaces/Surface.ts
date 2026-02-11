@@ -63,6 +63,31 @@ export abstract class Surface {
    */
   protected surfaceRadius: number = 10
 
+  /**
+   * Speed normalization factor for UV-based movement.
+   *
+   * All enemies move in UV space (du/dv per second). But the same UV delta
+   * maps to vastly different world-space distances on different surfaces:
+   * - Sphere (radius 10): du=1 covers ~63 world units at equator
+   * - CubeWithTunnel (size 80): du=1 covers ~300 world units
+   *
+   * This factor normalizes speeds so du=1 always covers roughly the same
+   * world distance regardless of surface geometry. Computed automatically
+   * from the surface's UV-to-world mapping relative to a reference sphere.
+   *
+   * Usage: enemies multiply their base UV speed by this factor.
+   * A value < 1 means the surface is larger than reference and speeds
+   * should be reduced. A value > 1 means it's smaller.
+   */
+  private _speedScale: number | null = null
+
+  get speedScale(): number {
+    if (this._speedScale === null) {
+      this._speedScale = this.computeSpeedScale()
+    }
+    return this._speedScale
+  }
+
   constructor(config?: SurfaceConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config }
     this.gridVertexSprings = []
@@ -184,6 +209,86 @@ export abstract class Surface {
 
   abstract worldToSurface(worldPos: THREE.Vector3): { u: number; v: number }
 
+  /**
+   * Get the local UV-to-world-space scale factors at a given UV position.
+   *
+   * Returns how many world units one UV unit covers in each direction.
+   * Used to correct enemy movement speed so that entities move at consistent
+   * world-space speed regardless of UV distortion (e.g. sphere poles,
+   * cube top/bottom faces, capsule caps).
+   *
+   * The returned values are the magnitudes of the Jacobian columns:
+   *   scaleU = |d(worldPos)/du|  (world units per UV unit in u direction)
+   *   scaleV = |d(worldPos)/dv|  (world units per UV unit in v direction)
+   *
+   * Default implementation uses finite differences on getPoint().
+   * Subclasses may override for analytical precision or performance.
+   */
+  getUVScaleAt(u: number, v: number): { scaleU: number; scaleV: number } {
+    const epsilon = 0.0005
+
+    // Save and reset rotation so we measure local geometry
+    const savedRotation = this.worldRotation.clone()
+    this.worldRotation.identity()
+
+    const p0 = this.getPoint(u, v)
+
+    // Measure U direction (handle wrapping)
+    const uPlus = ((u + epsilon) % 1 + 1) % 1
+    const pU = this.getPoint(uPlus, v)
+    const scaleU = p0.position.distanceTo(pU.position) / epsilon
+
+    // Measure V direction (clamp to valid range)
+    const vPlus = Math.min(v + epsilon, 1 - 0.001)
+    const actualEpsV = vPlus - v
+    const pV = this.getPoint(u, vPlus)
+    const scaleV = actualEpsV > 0.0001
+      ? p0.position.distanceTo(pV.position) / actualEpsV
+      : p0.position.distanceTo(pV.position) / epsilon
+
+    // Restore rotation
+    this.worldRotation.copy(savedRotation)
+
+    return {
+      scaleU: Math.max(scaleU, 0.001),
+      scaleV: Math.max(scaleV, 0.001),
+    }
+  }
+
+  /**
+   * Wrap/clamp UV coordinates according to this surface's topology.
+   *
+   * Different surfaces have different boundary behaviors:
+   * - Sphere: u wraps, v clamps (poles)
+   * - Torus: both u and v wrap (doubly periodic)
+   * - Cube: u wraps, v clamps (top/bottom faces)
+   * - Capsule/Pill: u wraps, v clamps (poles)
+   *
+   * Default: u wraps [0,1), v clamps to [epsilon, 1-epsilon].
+   * Subclasses override for surface-specific topology.
+   */
+  wrapUV(u: number, v: number): { u: number; v: number } {
+    const epsilon = 0.005
+    return {
+      u: ((u % 1) + 1) % 1,
+      v: Math.max(epsilon, Math.min(1 - epsilon, v)),
+    }
+  }
+
+  /**
+   * Whether the U axis wraps around (periodic).
+   * Used by separation forces and distance calculations to handle
+   * wrap-around correctly. Default: true (most surfaces wrap in U).
+   */
+  get wrapsU(): boolean { return true }
+
+  /**
+   * Whether the V axis wraps around (periodic).
+   * Default: false (most surfaces clamp V at poles/caps).
+   * Toroidal surfaces override to return true.
+   */
+  get wrapsV(): boolean { return false }
+
   abstract createMesh(): THREE.Mesh
 
   abstract createGrid(): THREE.LineSegments
@@ -279,6 +384,69 @@ export abstract class Surface {
     }
 
     posAttr.needsUpdate = true
+  }
+
+  /**
+   * Compute UV-to-world speed normalization factor by sampling the surface.
+   *
+   * Measures world-space distance per UV unit at multiple sample points,
+   * averages them, then divides by the reference distance (sphere radius=10
+   * at equator: ~62.8 world units per UV unit in U, ~31.4 in V).
+   *
+   * Reference: sphere radius=10, average world distance per UV unit ≈ 47.
+   *
+   * Subclasses can override this if they want to provide an explicit value
+   * instead of sampling (e.g. for performance or precision).
+   */
+  protected computeSpeedScale(): number {
+    // Reference: sphere radius=10.
+    // U circumference at equator (v=0.5): 2*pi*10 = 62.83
+    // V half-circumference (pole to pole): pi*10 = 31.42
+    // Geometric mean of U and V: sqrt(62.83 * 31.42) ≈ 44.4
+    const REFERENCE_WORLD_PER_UV = 44.4
+
+    const epsilon = 0.001
+    const samplePoints = [
+      { u: 0.25, v: 0.25 },
+      { u: 0.25, v: 0.75 },
+      { u: 0.75, v: 0.25 },
+      { u: 0.75, v: 0.75 },
+      { u: 0.5, v: 0.5 },
+    ]
+
+    let totalWorldPerUV = 0
+    let validSamples = 0
+
+    // Save current rotation and temporarily reset to identity
+    // so getPoint returns local coordinates
+    const savedRotation = this.worldRotation.clone()
+    this.worldRotation.identity()
+
+    for (const sp of samplePoints) {
+      const p0 = this.getPoint(sp.u, sp.v)
+
+      // Measure U direction
+      const pU = this.getPoint(sp.u + epsilon, sp.v)
+      const distU = p0.position.distanceTo(pU.position) / epsilon
+
+      // Measure V direction
+      const pV = this.getPoint(sp.u, sp.v + epsilon)
+      const distV = p0.position.distanceTo(pV.position) / epsilon
+
+      if (distU > 0.001 && distV > 0.001) {
+        // Geometric mean of U and V scale
+        totalWorldPerUV += Math.sqrt(distU * distV)
+        validSamples++
+      }
+    }
+
+    // Restore rotation
+    this.worldRotation.copy(savedRotation)
+
+    if (validSamples === 0) return 1.0
+
+    const avgWorldPerUV = totalWorldPerUV / validSamples
+    return REFERENCE_WORLD_PER_UV / avgWorldPerUV
   }
 
   dispose(): void {

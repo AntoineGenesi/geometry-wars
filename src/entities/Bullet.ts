@@ -7,7 +7,7 @@ import { MeshSurface, FacePosition } from '../experimental/mesh-movement/MeshSur
 
 const BULLET_SPEED = 4.0; // units / sec (world space) - fast for responsive gameplay
 const BULLET_LIFETIME = 6; // seconds
-const POOL_SIZE = 200; // max bullets alive at once
+const POOL_SIZE = 500; // max bullets alive at once (200 was too low with 5x hot hands + trigger happy)
 const BULLET_LENGTH = 0.25; // visual length of the line
 const BULLET_COLOR = new THREE.Color(0x88ffff); // white-cyan (GW3D authentic)
 

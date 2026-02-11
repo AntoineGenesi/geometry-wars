@@ -65,6 +65,10 @@ export class ParticleSystem {
   private maxParticles: number;
   private nextParticleIndex: number;
 
+  // High-water mark: tracks the highest active particle index to avoid iterating all 10K slots.
+  // At high scores with 400+ enemies + mortars, this can save iterating thousands of dead slots.
+  private _highWaterMark: number = 0;
+
   // Shatter fragment system
   private fragmentContainer: THREE.Group;
   private fragments: ShatterFragment[] = [];
@@ -274,6 +278,11 @@ export class ParticleSystem {
     for (let i = 0; i < effectiveCount; i++) {
       const index = this.getNextParticleIndex();
       if (index === -1) break; // No available particles
+
+      // Track high water mark for efficient update() iteration
+      if (index >= this._highWaterMark) {
+        this._highWaterMark = index + 1;
+      }
 
       const particle = this.particles[index];
       particle.active = true;
@@ -631,9 +640,12 @@ export class ParticleSystem {
 
     let needsUpdate = false;
     let activeParticles = 0;
+    let newHighWater = 0;
 
-    // Update point particles
-    for (let i = 0; i < this.maxParticles; i++) {
+    // Update point particles — only iterate up to high water mark (not all maxParticles).
+    // At high scores with 400+ enemies + mortars, this avoids iterating thousands of dead slots.
+    const limit = this._highWaterMark;
+    for (let i = 0; i < limit; i++) {
       const particle = this.particles[i];
       if (!particle.active) continue;
 
@@ -646,6 +658,7 @@ export class ParticleSystem {
         continue;
       }
       activeParticles++;
+      newHighWater = i + 1;
 
       // Update position
       const baseIndex = i * 3;
@@ -684,6 +697,7 @@ export class ParticleSystem {
       needsUpdate = true;
     }
 
+    this._highWaterMark = newHighWater;
     this._activeParticleCount = activeParticles;
 
     if (needsUpdate) {

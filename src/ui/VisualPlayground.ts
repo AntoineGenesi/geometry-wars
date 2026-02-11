@@ -860,7 +860,7 @@ export class VisualPlayground {
           <canvas class="vp-canvas" width="${CANVAS_WIDTH}" height="${canvasH}"></canvas>
           <div class="vp-labels-grid" style="grid-template-rows:repeat(${rows}, 1fr)">${presetLabels}</div>
         </div>
-        <div class="vp-hint">Click name to preview. Click APPLY to set as game style. EDIT customizes the active style.</div>
+        <div class="vp-hint">Click any thumbnail to play. APPLY saves as game style. EDIT customizes the active style.</div>
       </div>
     `;
   }
@@ -1243,13 +1243,13 @@ export class VisualPlayground {
       }
     });
 
-    // Label name clicks (open demo)
-    const labels = this.overlay.querySelectorAll('.vp-label-name');
-    labels.forEach((label) => {
-      label.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const parent = (label as HTMLElement).closest('.vp-label') as HTMLElement;
-        const idx = parseInt(parent?.dataset.index ?? '0', 10);
+    // Label clicks (open demo) — clicking anywhere on a cell opens the demo.
+    // Button handlers (APPLY, EDIT, DELETE) use stopPropagation so they don't
+    // trigger this handler.
+    const labelDivs = this.overlay.querySelectorAll('.vp-label');
+    labelDivs.forEach((label) => {
+      label.addEventListener('click', () => {
+        const idx = parseInt((label as HTMLElement).dataset.index ?? '0', 10);
         this.openExpand(idx);
       });
     });

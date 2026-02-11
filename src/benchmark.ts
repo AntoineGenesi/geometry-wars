@@ -162,6 +162,8 @@ export function runBenchmark(): void {
 
   // Enemy spawner
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
+  enemySpawner.setSurfaceSpeedScale(surface.speedScale);
+  enemySpawner.setSurface(surface);
 
   // Particles — sized for highest tier (10K entities produce a lot of impacts)
   const maxTier = ENTITY_TIERS[ENTITY_TIERS.length - 1];

@@ -2,6 +2,10 @@ import * as THREE from 'three';
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { getSoundEngine } from '../audio/SoundEngine';
 
+// Pre-allocated temp vectors for zero-allocation shock arc creation
+const _arcFrom = new THREE.Vector3();
+const _arcTo = new THREE.Vector3();
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -206,12 +210,23 @@ export class BuffManager {
   /** Visual shock arcs for rendering */
   readonly shockArcs: ShockArc[] = [];
 
+  /** Pool of recycled ShockArc objects to avoid per-tick Vector3 allocations.
+   *  At 3+ shock stacks with chains, the old code allocated 8-16 Vector3s per tick (every 0.5s). */
+  private readonly _shockArcPool: ShockArc[] = [];
+
   /** Volatile explosion callback - set by main.ts to spawn particles */
   onVolatileExplosion: ((position: THREE.Vector3, radius: number, damage: number) => void) | null = null;
 
   /** Guard against recursive volatile chain-explosions saturating the frame */
   private _volatileChainDepth = 0;
   private static readonly MAX_VOLATILE_CHAIN_DEPTH = 2;
+
+  /** Per-frame cap on volatile VFX explosions. Reset each frame by update().
+   *  Even at chain depth 1, a mortar killing 20 enemies with volatile can trigger
+   *  20 bombExplosion() calls in one frame. Capping VFX at 6 per frame keeps
+   *  the damage working but prevents particle budget from being blown in a single tick. */
+  private _volatileVfxThisFrame = 0;
+  private static readonly MAX_VOLATILE_VFX_PER_FRAME = 6;
 
   /** Callback when buff is gained (for HUD animation) */
   onBuffGained: ((type: StackBuffType, newStacks: number) => void) | null = null;
@@ -388,9 +403,13 @@ export class BuffManager {
       }
     }
 
-    // Visual/audio feedback
-    this.onVolatileExplosion?.(enemy.position.clone(), explosionRadius, explosionDamage);
-    getSoundEngine().play('bomb', { volume: 0.3, pitch: 1.5 + Math.random() * 0.3 });
+    // Visual/audio feedback — capped per frame to prevent particle budget blow-out.
+    // Damage above always applies; only VFX are throttled.
+    if (this._volatileVfxThisFrame < BuffManager.MAX_VOLATILE_VFX_PER_FRAME) {
+      this._volatileVfxThisFrame++;
+      this.onVolatileExplosion?.(enemy.position, explosionRadius, explosionDamage);
+      getSoundEngine().play('bomb', { volume: 0.3, pitch: 1.5 + Math.random() * 0.3 });
+    }
 
     this._volatileChainDepth--;
   }
@@ -425,6 +444,9 @@ export class BuffManager {
    * @param enemies - All active enemies
    */
   update(dt: number, playerPos: THREE.Vector3, enemies: BaseEnemy[]): void {
+    // Reset per-frame volatile VFX budget so onEnemyDeath() can track this frame's count
+    this._volatileVfxThisFrame = 0;
+
     this.updateShockAura(dt, playerPos, enemies);
     this.updateBurning(dt);
     this.updateShockArcs(dt);
@@ -463,36 +485,27 @@ export class BuffManager {
     for (const enemy of inRange) {
       enemy.takeDamage(tickDamage);
 
-      // Visual arc from player to enemy
-      this.shockArcs.push({
-        from: playerPos.clone(),
-        to: enemy.position.clone(),
-        age: 0,
-        maxAge: 0.15,
-      });
+      // Visual arc from player to enemy (uses pool to avoid per-tick Vector3 allocations)
+      this.shockArcs.push(this._allocShockArc(playerPos, enemy.position, 0.15));
 
       // Chain chance: shock jumps to nearby enemies
       if (Math.random() < chainChance) {
         let chainCount = 0;
-        const chainedSet = new Set<BaseEnemy>(inRange);
-
+        // Avoid allocating a Set every tick: use a simple scan + skip inRange by distance check
         for (const other of enemies) {
           if (chainCount >= maxChainTargets) break;
-          if (chainedSet.has(other) || !other.alive) continue;
+          if (!other.alive) continue;
+          // Skip if already in aura range (was already damaged above)
+          const otherDistToPlayer = other.position.distanceTo(playerPos);
+          if (otherDistToPlayer < auraRadius) continue;
 
           const chainDist = other.position.distanceTo(enemy.position);
           if (chainDist < chainRange) {
             other.takeDamage(tickDamage * 0.5); // Chain does half damage
             chainCount++;
-            chainedSet.add(other);
 
-            // Visual arc from enemy to chained target
-            this.shockArcs.push({
-              from: enemy.position.clone(),
-              to: other.position.clone(),
-              age: 0,
-              maxAge: 0.12,
-            });
+            // Visual arc from enemy to chained target (pooled)
+            this.shockArcs.push(this._allocShockArc(enemy.position, other.position, 0.12));
           }
         }
       }
@@ -542,10 +555,25 @@ export class BuffManager {
   // Shock arc visuals
   // -----------------------------------------------------------------------
 
+  /** Recycle or create a ShockArc object (zero allocation when pool has entries). */
+  private _allocShockArc(from: THREE.Vector3, to: THREE.Vector3, maxAge: number): ShockArc {
+    const recycled = this._shockArcPool.pop();
+    if (recycled) {
+      recycled.from.copy(from);
+      recycled.to.copy(to);
+      recycled.age = 0;
+      recycled.maxAge = maxAge;
+      return recycled;
+    }
+    return { from: from.clone(), to: to.clone(), age: 0, maxAge };
+  }
+
   private updateShockArcs(dt: number): void {
     for (let i = this.shockArcs.length - 1; i >= 0; i--) {
       this.shockArcs[i].age += dt;
       if (this.shockArcs[i].age >= this.shockArcs[i].maxAge) {
+        // Recycle into pool instead of letting GC collect it
+        this._shockArcPool.push(this.shockArcs[i]);
         this.shockArcs.splice(i, 1);
       }
     }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BaseEnemy } from './BaseEnemy';
+import { enhanceMaterialWithShaderEffect } from '../../rendering/EnemyShaderEffects';
 
 /**
  * Boss enemy base class - large gemstone-themed enemies with multi-phase health.
@@ -151,6 +152,9 @@ export class Boss extends BaseEnemy {
       transparent: true,
       opacity: 0.9,
     });
+    // Enhance body material with art-piece shader (iridescent color shifting + wave displacement)
+    enhanceMaterialWithShaderEffect(bodyMat, 'artpiece', new THREE.Color(this.config.color));
+
     const body = new THREE.Mesh(bodyGeo, bodyMat);
     body.name = 'boss-body';
     group.add(body);

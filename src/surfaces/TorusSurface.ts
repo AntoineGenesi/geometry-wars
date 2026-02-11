@@ -159,6 +159,16 @@ export class TorusSurface extends Surface {
     return { u: newU, v: newV }
   }
 
+  /** Torus is doubly periodic — both U and V wrap. */
+  get wrapsV(): boolean { return true }
+
+  wrapUV(u: number, v: number): { u: number; v: number } {
+    return {
+      u: ((u % 1) + 1) % 1,
+      v: ((v % 1) + 1) % 1,
+    }
+  }
+
   /**
    * Convert world position to surface UV coordinates.
    * Finds the closest point on the torus and returns its UV.

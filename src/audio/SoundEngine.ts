@@ -4,11 +4,20 @@
  * All sounds are synthesized via Web Audio API - no external audio files needed.
  * Matches the electronic/synth aesthetic of GW3D.
  *
+ * Anti-distortion architecture (fixes audio overwhelm at 400+ entities):
+ *
+ * Signal chain:  synth oscillators -> per-voice gain -> pan -> sfxBus (auto-ducking)
+ *                                                            -> compressor (limiter)
+ *                                                            -> masterGain -> destination
+ *
  * Throttling system:
- * - Per-type max concurrent instances (e.g., max 3 simultaneous "shoot" sounds)
- * - Global max concurrent sounds (16 total)
+ * - Per-type max concurrent instances (tightened for high-frequency sounds)
+ * - Global max 8 concurrent sounds (down from 16)
  * - Rate limiting with minimum intervals per type
- * - Active sound tracking with automatic expiry
+ * - Priority-based voice allocation (bombs/playerDeath always play)
+ * - Dynamic volume ducking: per-voice volume scales inversely with active count
+ * - DynamicsCompressor as hard limiter to prevent clipping
+ * - Automatic node disconnection after sound completes (prevents audio graph bloat)
  * - Cached distortion curves (zero allocation in hot paths)
  */
 
@@ -51,16 +60,36 @@ const SOUND_DURATIONS: Record<SoundType, number> = {
   menuHover: 0.03,
 };
 
+// Priority levels: higher = more important, won't be dropped at capacity
+const SOUND_PRIORITY: Record<SoundType, number> = {
+  playerDeath: 10,   // Always play
+  bomb: 9,           // Always play
+  weaponPickup: 7,   // Important feedback
+  multiplierUp: 6,   // Important feedback
+  shieldHit: 5,      // Gameplay-critical
+  menuSelect: 5,     // UI feedback
+  menuHover: 4,      // UI feedback
+  shoot: 3,          // Very frequent, can drop
+  enemyDeath: 2,     // Most frequent, fine to drop some
+  geomPickup: 1,     // Least important, drop first
+  spawn: 1,          // Least important, drop first
+};
+
 // ---------------------------------------------------------------------------
 // SoundEngine
 // ---------------------------------------------------------------------------
 
 /** Global max concurrent audio voices across all types */
-const GLOBAL_MAX_VOICES = 16;
+const GLOBAL_MAX_VOICES = 8;
+
+/** When active voices exceed this, low-priority sounds are dropped entirely */
+const HIGH_LOAD_THRESHOLD = 5;
 
 export class SoundEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private compressor: DynamicsCompressorNode | null = null;
+  private sfxBus: GainNode | null = null;
   private _volume = 0.5;
   private _muted = false;
   private initialized = false;
@@ -68,30 +97,30 @@ export class SoundEngine {
   // Rate limiting: minimum seconds between triggers of same type
   private lastPlayTime: Map<SoundType, number> = new Map();
   private readonly minInterval: Map<SoundType, number> = new Map([
-    ['shoot', 0.05],        // Max 20/sec
-    ['enemyDeath', 0.04],   // Max 25/sec (tightened from 0.03)
-    ['geomPickup', 0.03],   // Max ~33/sec
-    ['bomb', 0.15],         // Max ~6/sec (bombs overlap badly)
-    ['shieldHit', 0.08],    // Max ~12/sec
-    ['spawn', 0.1],         // Max 10/sec
-    ['multiplierUp', 0.2],  // Max 5/sec (long sound)
-    ['weaponPickup', 0.3],  // Max ~3/sec (one at a time feel)
+    ['shoot', 0.06],        // Max ~16/sec (tightened from 0.05)
+    ['enemyDeath', 0.06],   // Max ~16/sec (tightened from 0.04)
+    ['geomPickup', 0.05],   // Max ~20/sec (tightened from 0.03)
+    ['bomb', 0.2],          // Max 5/sec (tightened from 0.15)
+    ['shieldHit', 0.1],     // Max 10/sec (tightened from 0.08)
+    ['spawn', 0.15],        // Max ~6/sec (tightened from 0.1)
+    ['multiplierUp', 0.25], // Max 4/sec (tightened from 0.2)
+    ['weaponPickup', 0.3],  // Max ~3/sec
     ['playerDeath', 0.5],   // Max 2/sec
     ['menuSelect', 0.1],    // Max 10/sec
     ['menuHover', 0.05],    // Max 20/sec
   ]);
 
-  // Per-type max concurrent instances
+  // Per-type max concurrent instances (tightened)
   private readonly maxPerType: Map<SoundType, number> = new Map([
-    ['shoot', 3],
-    ['enemyDeath', 4],
+    ['shoot', 2],           // Down from 3
+    ['enemyDeath', 3],      // Down from 4
     ['playerDeath', 1],
-    ['bomb', 2],
-    ['geomPickup', 3],
+    ['bomb', 1],            // Down from 2
+    ['geomPickup', 2],      // Down from 3
     ['multiplierUp', 1],
     ['weaponPickup', 1],
-    ['shieldHit', 2],
-    ['spawn', 2],
+    ['shieldHit', 1],       // Down from 2
+    ['spawn', 1],           // Down from 2
     ['menuSelect', 1],
     ['menuHover', 1],
   ]);
@@ -122,19 +151,57 @@ export class SoundEngine {
 
   /**
    * Initialize audio context. Must be called from a user gesture (click/keypress).
+   *
+   * Signal chain: sfxBus -> compressor (limiter) -> masterGain -> destination
+   *
+   * The compressor acts as a brick-wall limiter: fast attack, slow release,
+   * high ratio. This prevents clipping when many sounds overlap.
    */
   init(): void {
     if (this.initialized) return;
 
     try {
       this.ctx = new AudioContext();
+
+      // Master gain (user volume control) — last in chain before destination
       this.masterGain = this.ctx.createGain();
       this.masterGain.gain.value = this._volume;
       this.masterGain.connect(this.ctx.destination);
+
+      // DynamicsCompressor configured as a limiter — prevents clipping
+      this.compressor = this.ctx.createDynamicsCompressor();
+      this.compressor.threshold.value = -6;   // Start compressing at -6dB
+      this.compressor.knee.value = 3;          // Gentle knee for smooth limiting
+      this.compressor.ratio.value = 20;        // Near brick-wall limiting
+      this.compressor.attack.value = 0.002;    // 2ms attack — catches transients fast
+      this.compressor.release.value = 0.1;     // 100ms release — smooth recovery
+      this.compressor.connect(this.masterGain);
+
+      // SFX bus — all sound effects route through here
+      // Volume is dynamically adjusted based on active voice count
+      this.sfxBus = this.ctx.createGain();
+      this.sfxBus.gain.value = 1.0;
+      this.sfxBus.connect(this.compressor);
+
       this.initialized = true;
     } catch (e) {
-      console.warn('[SoundEngine] Web Audio not available:', e);
+      // Web Audio not available — silently degrade
     }
+  }
+
+  /**
+   * Get the underlying AudioContext (for checking state, e.g. 'suspended').
+   */
+  getContext(): AudioContext | null {
+    return this.ctx;
+  }
+
+  /**
+   * Get the compressor node so BackgroundMusic can route through it too.
+   * This ensures music + SFX combined never clip.
+   */
+  getCompressor(): DynamicsCompressorNode | null {
+    return this.compressor;
   }
 
   /**
@@ -148,9 +215,16 @@ export class SoundEngine {
 
   /**
    * Play a sound effect. Returns false if the sound was throttled/skipped.
+   *
+   * Throttling layers:
+   * 1. Rate limit per type (minimum interval)
+   * 2. Per-type concurrent limit
+   * 3. Priority-based dropping under high load
+   * 4. Global concurrent voice limit
+   * 5. Dynamic volume ducking based on active voices
    */
   play(type: SoundType, options: SoundOptions = {}): boolean {
-    if (!this.ctx || !this.masterGain || this._muted) return false;
+    if (!this.ctx || !this.sfxBus || this._muted) return false;
 
     const now = this.ctx.currentTime;
 
@@ -176,28 +250,44 @@ export class SoundEngine {
       const maxConcurrent = this.maxPerType.get(type) ?? 2;
       if (activeCount >= maxConcurrent) return false;
 
-      // 3) Global concurrent limit
-      // Recount global active (lazy: sum all types' active)
+      // 3) Priority-based dropping under high load
       this.recomputeGlobalCount(now);
-      if (this.globalActiveCount >= GLOBAL_MAX_VOICES) return false;
+      const priority = SOUND_PRIORITY[type];
+
+      // Under high load, drop low-priority sounds
+      if (this.globalActiveCount >= HIGH_LOAD_THRESHOLD && priority <= 2) {
+        return false;
+      }
+
+      // 4) Global concurrent limit (high-priority sounds bypass this)
+      if (this.globalActiveCount >= GLOBAL_MAX_VOICES && priority < 8) {
+        return false;
+      }
 
       // Claim a slot
       const duration = SOUND_DURATIONS[type];
       if (freeSlot !== -1) {
         expiry[freeSlot] = now + duration;
       }
-      // If no free slot found (shouldn't happen since activeCount < max), skip tracking
       this.globalActiveCount++;
     }
 
     // Record play time for rate limiting
     this.lastPlayTime.set(type, now);
 
-    const vol = options.volume ?? 1.0;
+    // 5) Dynamic volume ducking: reduce per-voice volume as more voices are active
+    // With 1 voice: full volume. With 8 voices: ~40% volume per voice.
+    // This keeps the summed output roughly constant regardless of voice count.
+    const duckingFactor = this.globalActiveCount <= 1
+      ? 1.0
+      : 1.0 / Math.sqrt(this.globalActiveCount);
+
+    const baseVol = options.volume ?? 1.0;
+    const vol = baseVol * duckingFactor;
     const pitch = options.pitch ?? 1.0;
     const pan = options.pan ?? 0;
 
-    // Create output chain: source -> gain -> panner -> master
+    // Create output chain: source -> gain -> panner -> sfxBus -> compressor -> master
     const gainNode = this.ctx.createGain();
     gainNode.gain.value = vol;
 
@@ -205,7 +295,12 @@ export class SoundEngine {
     panNode.pan.value = pan;
 
     gainNode.connect(panNode);
-    panNode.connect(this.masterGain);
+    panNode.connect(this.sfxBus);
+
+    // Schedule automatic node disconnection after sound completes
+    // This prevents audio graph bloat from orphaned nodes
+    const duration = SOUND_DURATIONS[type];
+    this.scheduleDisconnect(gainNode, panNode, now + duration + 0.05);
 
     switch (type) {
       case 'shoot':
@@ -291,6 +386,39 @@ export class SoundEngine {
   }
 
   // -------------------------------------------------------------------------
+  // Node cleanup
+  // -------------------------------------------------------------------------
+
+  /**
+   * Schedule disconnection of audio nodes after a sound completes.
+   * Uses a silent oscillator's onended callback to trigger cleanup
+   * at the correct audio-thread time (more accurate than setTimeout).
+   */
+  private scheduleDisconnect(
+    gainNode: GainNode,
+    panNode: StereoPannerNode,
+    endTime: number,
+  ): void {
+    const ctx = this.ctx!;
+
+    // Use a silent oscillator as a timer — its onended fires on the audio thread
+    // at exactly the right time, avoiding setTimeout drift
+    const silent = ctx.createOscillator();
+    const silentGain = ctx.createGain();
+    silentGain.gain.value = 0; // Silent — just a timer
+    silent.connect(silentGain);
+    // Connect to destination so the browser doesn't optimize it away
+    silentGain.connect(ctx.destination);
+    silent.start(endTime - 0.01);
+    silent.stop(endTime);
+    silent.onended = () => {
+      try { gainNode.disconnect(); } catch (_) { /* already disconnected */ }
+      try { panNode.disconnect(); } catch (_) { /* already disconnected */ }
+      try { silentGain.disconnect(); } catch (_) { /* already disconnected */ }
+    };
+  }
+
+  // -------------------------------------------------------------------------
   // Sound Synthesis
   // -------------------------------------------------------------------------
 
@@ -305,7 +433,7 @@ export class SoundEngine {
     osc.frequency.exponentialRampToValueAtTime(220 * pitch, t + 0.06);
 
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.15, t);
+    env.gain.setValueAtTime(0.12, t);  // Reduced from 0.15
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
 
     osc.connect(env);
@@ -326,7 +454,7 @@ export class SoundEngine {
     osc.frequency.exponentialRampToValueAtTime(80, t + 0.15);
 
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.12, t);
+    env.gain.setValueAtTime(0.08, t);  // Reduced from 0.12
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
 
     // Add some grit (cached distortion curve)
@@ -352,7 +480,7 @@ export class SoundEngine {
     osc1.frequency.exponentialRampToValueAtTime(40, t + 0.8);
 
     const env1 = ctx.createGain();
-    env1.gain.setValueAtTime(0.25, t);
+    env1.gain.setValueAtTime(0.2, t);  // Reduced from 0.25
     env1.gain.linearRampToValueAtTime(0.0, t + 0.8);
 
     osc1.connect(env1);
@@ -367,7 +495,7 @@ export class SoundEngine {
     osc2.frequency.exponentialRampToValueAtTime(100, t + 0.5);
 
     const env2 = ctx.createGain();
-    env2.gain.setValueAtTime(0.15, t);
+    env2.gain.setValueAtTime(0.1, t);  // Reduced from 0.15
     env2.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
 
     const distortion = ctx.createWaveShaper();
@@ -392,7 +520,7 @@ export class SoundEngine {
     osc1.frequency.exponentialRampToValueAtTime(20, t + 0.6);
 
     const env1 = ctx.createGain();
-    env1.gain.setValueAtTime(0.4, t);
+    env1.gain.setValueAtTime(0.3, t);  // Reduced from 0.4
     env1.gain.linearRampToValueAtTime(0.0, t + 0.6);
 
     osc1.connect(env1);
@@ -412,7 +540,7 @@ export class SoundEngine {
     osc3.frequency.exponentialRampToValueAtTime(53, t + 0.8);
 
     const env2 = ctx.createGain();
-    env2.gain.setValueAtTime(0.15, t);
+    env2.gain.setValueAtTime(0.1, t);  // Reduced from 0.15
     env2.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
 
     const distortion = ctx.createWaveShaper();
@@ -439,7 +567,7 @@ export class SoundEngine {
     osc.frequency.exponentialRampToValueAtTime(1600 * pitch, t + 0.04);
 
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.1, t);
+    env.gain.setValueAtTime(0.07, t);  // Reduced from 0.1
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
 
     osc.connect(env);
@@ -461,7 +589,7 @@ export class SoundEngine {
 
       const env = ctx.createGain();
       env.gain.setValueAtTime(0.0, t + i * 0.06);
-      env.gain.linearRampToValueAtTime(0.1, t + i * 0.06 + 0.02);
+      env.gain.linearRampToValueAtTime(0.08, t + i * 0.06 + 0.02);  // Reduced from 0.1
       env.gain.exponentialRampToValueAtTime(0.001, t + i * 0.06 + 0.1);
 
       osc.connect(env);
@@ -482,8 +610,8 @@ export class SoundEngine {
     osc.frequency.exponentialRampToValueAtTime(1200, t + 0.2);
 
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.15, t);
-    env.gain.linearRampToValueAtTime(0.2, t + 0.1);
+    env.gain.setValueAtTime(0.12, t);  // Reduced from 0.15
+    env.gain.linearRampToValueAtTime(0.15, t + 0.1);  // Reduced from 0.2
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
 
     osc.connect(env);
@@ -503,7 +631,7 @@ export class SoundEngine {
     osc.frequency.exponentialRampToValueAtTime(500, t + 0.1);
 
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.2, t);
+    env.gain.setValueAtTime(0.15, t);  // Reduced from 0.2
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
 
     osc.connect(env);
@@ -524,7 +652,7 @@ export class SoundEngine {
 
     const env = ctx.createGain();
     env.gain.setValueAtTime(0.0, t);
-    env.gain.linearRampToValueAtTime(0.08, t + 0.05);
+    env.gain.linearRampToValueAtTime(0.06, t + 0.05);  // Reduced from 0.08
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
 
     osc.connect(env);
@@ -544,8 +672,8 @@ export class SoundEngine {
     osc.frequency.setValueAtTime(880, t + 0.06);
 
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.12, t);
-    env.gain.setValueAtTime(0.12, t + 0.1);
+    env.gain.setValueAtTime(0.1, t);  // Reduced from 0.12
+    env.gain.setValueAtTime(0.1, t + 0.1);
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
 
     osc.connect(env);
@@ -564,7 +692,7 @@ export class SoundEngine {
     osc.frequency.value = 1200;
 
     const env = ctx.createGain();
-    env.gain.setValueAtTime(0.05, t);
+    env.gain.setValueAtTime(0.04, t);  // Reduced from 0.05
     env.gain.exponentialRampToValueAtTime(0.001, t + 0.03);
 
     osc.connect(env);
@@ -605,6 +733,8 @@ export class SoundEngine {
       this.ctx = null;
     }
     this.masterGain = null;
+    this.compressor = null;
+    this.sfxBus = null;
     this.initialized = false;
     this.globalActiveCount = 0;
     this.distortionCache.clear();

@@ -97,6 +97,19 @@ describe('PerformanceLogger', () => {
       expect(summary.peakEnemies).toBe(200);
       expect(summary.peakBullets).toBe(100);
     });
+
+    it('BUG-FIX: peakBullets tracks every-frame max, not just sampled peaks', () => {
+      // Simulate a bullet burst: 300 bullets for one frame, then drop to 10
+      // Previously the 0.5s sampling interval missed burst peaks
+      logger.setFrameData(60, 50, 300);
+      logger.recordFrame(0.016); // 16ms frame - NOT a sample interval
+      logger.setFrameData(60, 50, 10);
+      logger.recordFrame(0.016);
+
+      const summary = logger.getSessionSummary();
+      // peakBullets must capture the 300-bullet burst even between samples
+      expect(summary.peakBullets).toBe(300);
+    });
   });
 
   describe('Serialization', () => {

@@ -209,6 +209,16 @@ export class CubeRingSurface extends Surface {
     return { u: newU, v: newV }
   }
 
+  /** CubeRing wraps in both U and V (ring + cross-section loop). */
+  get wrapsV(): boolean { return true }
+
+  wrapUV(u: number, v: number): { u: number; v: number } {
+    return {
+      u: ((u % 1) + 1) % 1,
+      v: ((v % 1) + 1) % 1,
+    }
+  }
+
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
     const R = this.majorRadius
 

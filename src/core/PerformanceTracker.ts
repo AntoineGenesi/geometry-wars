@@ -112,6 +112,10 @@ export class PerformanceTracker {
   private readonly _highestEntities: PerfMoment[] = [];
   private readonly _highestBullets: PerfMoment[] = [];
 
+  // -- Per-frame peak tracking (not sampled — catches burst peaks) ----------
+  private _peakBullets = 0;
+  private _peakEntities = 0;
+
   // -- Warm-up: skip the first second so initial frame spikes don't pollute --
   private warmedUp = false;
   private warmupAccumulator = 0;
@@ -168,11 +172,13 @@ export class PerformanceTracker {
   /** Set the current entity count (call each frame before recordFrame). */
   setEntityCount(count: number): void {
     this.currentEntityCount = count;
+    if (count > this._peakEntities) this._peakEntities = count;
   }
 
   /** Set the current bullet count (call each frame before recordFrame). */
   setBulletCount(count: number): void {
     this.currentBulletCount = count;
+    if (count > this._peakBullets) this._peakBullets = count;
   }
 
   /** Set enemy type breakdown for the current frame. */
@@ -235,12 +241,15 @@ export class PerformanceTracker {
     const maxFps = this._highestFps.length > 0
       ? this._highestFps[0].fps
       : this.currentFps;
-    const peakEntities = this._highestEntities.length > 0
-      ? this._highestEntities[0].entityCount
-      : this.currentEntityCount;
-    const peakBullets = this._highestBullets.length > 0
-      ? this._highestBullets[0].bulletCount
-      : this.currentBulletCount;
+    // Use per-frame peaks (not sampled) for accurate maximums
+    const peakEntities = Math.max(
+      this._peakEntities,
+      this._highestEntities.length > 0 ? this._highestEntities[0].entityCount : 0,
+    );
+    const peakBullets = Math.max(
+      this._peakBullets,
+      this._highestBullets.length > 0 ? this._highestBullets[0].bulletCount : 0,
+    );
 
     return {
       avgFps,

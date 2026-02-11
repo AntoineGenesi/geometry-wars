@@ -143,12 +143,59 @@ export class FaceWalker {
       totalTraveled += distInThisFace;
       remaining -= distInThisFace;
 
+      // Compute the exit barycentric coordinates
+      const exitBary: BaryCoord = {
+        u: currentBary.u + exit.t * baryDir.u,
+        v: currentBary.v + exit.t * baryDir.v,
+        w: currentBary.w + exit.t * baryDir.w,
+      };
+
+      // Check if we're at or near a vertex (two or more components near zero)
+      const eps = 0.05; // Tolerance for vertex detection
+      const atVertex =
+        (Math.abs(exitBary.u) < eps && Math.abs(exitBary.v) < eps) ||
+        (Math.abs(exitBary.v) < eps && Math.abs(exitBary.w) < eps) ||
+        (Math.abs(exitBary.w) < eps && Math.abs(exitBary.u) < eps);
+
       // Map ray-exit edge index to half-edge edge index.
       // rayExitTriangle returns edgeLocal based on which bary component hits zero:
       //   0: u=0 → edge BC (opposite vertex A) → half-edge edge 1 (B→C)
       //   1: v=0 → edge CA (opposite vertex B) → half-edge edge 2 (C→A)
       //   2: w=0 → edge AB (opposite vertex C) → half-edge edge 0 (A→B)
-      const heEdgeLocal = (exit.edgeLocal + 1) % 3;
+      let heEdgeLocal = (exit.edgeLocal + 1) % 3;
+
+      // When at a vertex, we need to pick the correct edge to cross.
+      // The direction vector points toward the adjacent face we want to enter.
+      // Choose the edge where crossing it moves us in the direction of the velocity.
+      if (atVertex) {
+        let bestEdge = heEdgeLocal;
+        let bestDot = -Infinity;
+
+        for (let testEdge = 0; testEdge < 3; testEdge++) {
+          const he = this.halfEdge.getHalfEdge(currentFace, testEdge);
+          if (he.twin < 0) continue; // Skip boundary edges
+
+          // Get the edge midpoint
+          const [edgeStart, edgeEnd] = this.halfEdge.getEdgeVertices(currentFace, testEdge);
+          const edgeMid = new THREE.Vector3().addVectors(edgeStart, edgeEnd).multiplyScalar(0.5);
+
+          // Get the current position in world space
+          const currentPos = barycentricToWorld(exitBary, pA, pB, pC);
+
+          // Direction from current position toward the edge
+          const toEdge = edgeMid.clone().sub(currentPos);
+
+          // How much does our movement direction align with going toward this edge?
+          const dot = _dir3D.dot(toEdge);
+
+          if (dot > bestDot) {
+            bestDot = dot;
+            bestEdge = testEdge;
+          }
+        }
+
+        heEdgeLocal = bestEdge;
+      }
 
       // Get the half-edge we're crossing
       const he = this.halfEdge.getHalfEdge(currentFace, heEdgeLocal);
@@ -213,7 +260,9 @@ export class FaceWalker {
   private _computeEntryBary(twinEdgeLocal: number, alpha: number): BaryCoord {
     // The twin half-edge goes the opposite direction, so flip alpha
     const flippedAlpha = 1 - alpha;
-    const eps = 1e-4;
+    // Nudge entry point away from the edge to avoid immediately re-crossing.
+    // This must be larger than the vertex detection epsilon (0.05) to prevent ping-ponging.
+    const eps = 0.1;
 
     // Entry point on the twin's edge: interpolate between the two edge vertices.
     // For edge i of the triangle, the two vertices on that edge have zero bary for

@@ -273,6 +273,16 @@ export class MobiusBevelSurface extends Surface {
     return { u: newU, v: newV }
   }
 
+  /** MobiusBevel wraps in both U (with twist) and V (tube loop). */
+  get wrapsV(): boolean { return true }
+
+  wrapUV(u: number, v: number): { u: number; v: number } {
+    return {
+      u: ((u % 1) + 1) % 1,
+      v: ((v % 1) + 1) % 1,
+    }
+  }
+
   /**
    * Convert world position to UV coordinates on the Mobius bevel surface.
    *

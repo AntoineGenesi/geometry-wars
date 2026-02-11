@@ -504,9 +504,7 @@ export class PauseMenu {
 
     const perfGraphsBtn = this.container.querySelector('[data-action="perf-graphs"]');
     perfGraphsBtn?.addEventListener('click', () => {
-      if (this.perfLogger) {
-        this.showPerformanceGraphsModal();
-      }
+      this.showPerformanceGraphsModal();
     });
 
     const musicBtn = this.container.querySelector('[data-action="music"]');
@@ -727,9 +725,12 @@ export class PauseMenu {
 
   /**
    * Show the full-screen performance graphs modal.
+   * Handles missing perfLogger, empty data, and import failures gracefully.
    */
   private showPerformanceGraphsModal(): void {
-    if (!this.perfLogger) return;
+    // Remove any existing modal (prevents duplicate modals)
+    const existing = document.getElementById('perf-graphs-modal');
+    if (existing) existing.remove();
 
     // Create modal
     const modal = document.createElement('div');
@@ -839,10 +840,21 @@ export class PauseMenu {
         border: 1px solid #1a1a2e;
         border-radius: 4px;
         padding: 10px;
+        min-height: 200px;
+        align-items: center;
+      }
+
+      #perf-graphs-modal .perf-graphs-error {
+        color: #ff6644;
+        font-size: 16px;
+        font-weight: bold;
+        text-align: center;
+        letter-spacing: 1px;
       }
 
       #perf-graphs-modal canvas {
         cursor: grab;
+        display: block;
       }
 
       #perf-graphs-modal canvas:active {
@@ -915,15 +927,58 @@ export class PauseMenu {
     document.head.appendChild(style);
     document.body.appendChild(modal);
 
+    // Wire close button IMMEDIATELY (not inside .then()) so modal is always closeable
+    const closeModal = () => {
+      modal.remove();
+      style.remove();
+    };
+    const closeBtn = modal.querySelector('.perf-graphs-close');
+    closeBtn?.addEventListener('click', closeModal);
+    // Also close on Escape key
+    const escHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        document.removeEventListener('keydown', escHandler);
+        closeModal();
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    // Show error if no performance logger
+    if (!this.perfLogger) {
+      const container = modal.querySelector('.perf-graphs-canvas-container');
+      if (container) {
+        const canvas = container.querySelector('canvas');
+        if (canvas) canvas.remove();
+        container.innerHTML = '<div class="perf-graphs-error">Performance logger not available.<br>Play for a few seconds and try again.</div>';
+      }
+      return;
+    }
+
+    const perfLogger = this.perfLogger;
+
     // Initialize graph (lazy import to avoid loading if not needed)
     import('./PerformanceGraphs').then(({ PerformanceGraph }) => {
+      // Verify modal is still in the DOM (user might have closed it during import)
+      if (!modal.parentElement) return;
+
       const canvas = modal.querySelector('#perf-graph-canvas') as HTMLCanvasElement;
+      if (!canvas) return;
+
       const graph = new PerformanceGraph(canvas, { width: 1000, height: 500 });
 
+      // Clean up graph when modal closes
+      const origClose = closeModal;
+      const closeWithGraph = () => {
+        graph.dispose();
+        origClose();
+      };
+      closeBtn?.removeEventListener('click', closeModal);
+      closeBtn?.addEventListener('click', closeWithGraph);
+
       // Load data
-      const data = this.perfLogger!.getDataPoints();
-      const minMoment = this.perfLogger!.getMinFPSMoment();
-      const maxMoment = this.perfLogger!.getMaxFPSMoment();
+      const data = perfLogger.getDataPoints();
+      const minMoment = perfLogger.getMinFPSMoment();
+      const maxMoment = perfLogger.getMaxFPSMoment();
 
       graph.setData(data);
       graph.setFPSMoments(minMoment, maxMoment);
@@ -933,7 +988,7 @@ export class PauseMenu {
       if (minMoment) {
         const minFpsEl = modal.querySelector('#perf-min-fps') as HTMLElement;
         const minFpsDetailEl = modal.querySelector('#perf-min-fps-detail') as HTMLElement;
-        minFpsEl.textContent = minMoment.fps.toFixed(1);
+        if (minFpsEl) minFpsEl.textContent = minMoment.fps.toFixed(1);
 
         // Enemy type breakdown
         const topTypes = Array.from(minMoment.enemyTypes.entries())
@@ -941,26 +996,30 @@ export class PauseMenu {
           .slice(0, 3)
           .map(([type, count]) => `${count} ${type}`)
           .join(', ');
-        minFpsDetailEl.innerHTML = `
-          ${minMoment.enemyCount} enemies, ${minMoment.bulletCount} bullets<br>
-          Top: ${topTypes || 'none'}
-        `;
+        if (minFpsDetailEl) {
+          minFpsDetailEl.innerHTML = `
+            ${minMoment.enemyCount} enemies, ${minMoment.bulletCount} bullets<br>
+            Top: ${topTypes || 'none'}
+          `;
+        }
       }
 
       if (maxMoment) {
         const maxFpsEl = modal.querySelector('#perf-max-fps') as HTMLElement;
         const maxFpsDetailEl = modal.querySelector('#perf-max-fps-detail') as HTMLElement;
-        maxFpsEl.textContent = maxMoment.fps.toFixed(1);
+        if (maxFpsEl) maxFpsEl.textContent = maxMoment.fps.toFixed(1);
 
         const topTypes = Array.from(maxMoment.enemyTypes.entries())
           .sort((a, b) => b[1] - a[1])
           .slice(0, 3)
           .map(([type, count]) => `${count} ${type}`)
           .join(', ');
-        maxFpsDetailEl.innerHTML = `
-          ${maxMoment.enemyCount} enemies, ${maxMoment.bulletCount} bullets<br>
-          Top: ${topTypes || 'none'}
-        `;
+        if (maxFpsDetailEl) {
+          maxFpsDetailEl.innerHTML = `
+            ${maxMoment.enemyCount} enemies, ${maxMoment.bulletCount} bullets<br>
+            Top: ${topTypes || 'none'}
+          `;
+        }
       }
 
       // Tab switching
@@ -982,14 +1041,14 @@ export class PauseMenu {
           }
         });
       });
-
-      // Close button
-      const closeBtn = modal.querySelector('.perf-graphs-close');
-      closeBtn?.addEventListener('click', () => {
-        graph.dispose();
-        modal.remove();
-        style.remove();
-      });
+    }).catch((err) => {
+      // Import failed — show error in the canvas container area
+      const container = modal.querySelector('.perf-graphs-canvas-container');
+      if (container) {
+        const canvas = container.querySelector('canvas');
+        if (canvas) canvas.remove();
+        container.innerHTML = `<div class="perf-graphs-error">Failed to load performance graphs module.<br>${String(err)}</div>`;
+      }
     });
   }
 

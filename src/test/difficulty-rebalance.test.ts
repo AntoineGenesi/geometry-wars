@@ -138,28 +138,28 @@ describe('Tier Multipliers', () => {
   it('Tier 1 (Hardened) should be a noticeable step up', () => {
     const tier = getDifficultyTier(1);
     expect(tier.healthMultiplier).toBe(3.0);
-    expect(tier.speedMultiplier).toBe(1.10);
+    expect(tier.speedMultiplier).toBe(1.15);
   });
 
   it('Tier 2 (Veteran) should require sustained fire', () => {
     const tier = getDifficultyTier(2);
-    expect(tier.healthMultiplier).toBe(8.0);
-    expect(tier.speedMultiplier).toBe(1.18);
+    expect(tier.healthMultiplier).toBe(10.0);
+    expect(tier.speedMultiplier).toBe(1.30);
     expect(tier.splitCount).toBe(2);
   });
 
   it('Tier 3 (Elite) should be tanky with dangerous children', () => {
     const tier = getDifficultyTier(3);
-    expect(tier.healthMultiplier).toBe(20.0);
-    expect(tier.speedMultiplier).toBe(1.28);
+    expect(tier.healthMultiplier).toBe(25.0);
+    expect(tier.speedMultiplier).toBe(1.50);
     expect(tier.splitCount).toBe(3);
     expect(tier.splitChildTier).toBe(1); // hardened children
   });
 
   it('Tier 4 (Nightmare) should be a real threat', () => {
     const tier = getDifficultyTier(4);
-    expect(tier.healthMultiplier).toBe(50.0);
-    expect(tier.speedMultiplier).toBe(1.35);
+    expect(tier.healthMultiplier).toBe(60.0);
+    expect(tier.speedMultiplier).toBe(1.70);
     expect(tier.splitCount).toBe(4);
     expect(tier.splitChildTier).toBe(2); // veteran children
   });
@@ -173,8 +173,8 @@ describe('Tier Multipliers', () => {
 
   it('HP multipliers should roughly match player damage scaling', () => {
     // Player at high level + hot hands 5 = ~8.75x damage
-    // Tier 3 (20x HP) with base 2 HP grunt = 40 HP / 8.75 = ~5 bullets
-    // Tier 4 (50x HP) with base 2 HP grunt = 100 HP / 8.75 = ~11 bullets
+    // Tier 3 (25x HP) with base 2 HP grunt = 50 HP / 8.75 = ~6 bullets
+    // Tier 4 (60x HP) with base 2 HP grunt = 120 HP / 8.75 = ~14 bullets
     // These numbers create real tension without being bullet sponges
     const tier3 = getDifficultyTier(3);
     const tier4 = getDifficultyTier(4);
@@ -251,14 +251,14 @@ describe('Enemy Speed Scaling', () => {
     expect(tier.speedMultiplier).toBe(1.0);
   });
 
-  it('Tier 1 speed increase should be 10%', () => {
+  it('Tier 1 speed increase should be 15%', () => {
     const tier = getDifficultyTier(1);
-    expect(tier.speedMultiplier).toBe(1.10);
+    expect(tier.speedMultiplier).toBe(1.15);
   });
 
-  it('Tier 4 speed should be 35% increase', () => {
+  it('Tier 4 speed should be 70% increase', () => {
     const tier = getDifficultyTier(4);
-    expect(tier.speedMultiplier).toBe(1.35);
+    expect(tier.speedMultiplier).toBe(1.70);
   });
 
   it('speed scaling should increase monotonically', () => {

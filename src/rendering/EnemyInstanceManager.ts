@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { LODLevel, LODGeometryCache } from './LODManager';
+import { getEnemyShaderStyle, enhanceMaterialWithShaderEffect } from './EnemyShaderEffects';
 
 /**
  * EnemyInstanceManager - Replaces individual enemy meshes with InstancedMesh
@@ -529,7 +530,7 @@ export class EnemyInstanceManager {
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
+        '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
 
@@ -827,9 +828,14 @@ export class EnemyInstanceManager {
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
+        '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
+
+    // Enhance material with per-type shader effects (lava, crystal, pulse, nebula)
+    // This wraps the existing onBeforeCompile to add vertex displacement + fragment color mods
+    const shaderStyle = getEnemyShaderStyle(typeKey);
+    enhanceMaterialWithShaderEffect(material, shaderStyle, baseColor);
 
     // Create InstancedMesh
     const instancedMesh = new THREE.InstancedMesh(mergedGeometry, material, this.maxInstances);

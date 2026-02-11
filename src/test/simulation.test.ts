@@ -52,6 +52,7 @@ function createSimulation(surfaceType: 'sphere' | 'torus' | 'cube') {
   };
 
   const enemySpawner = new EnemySpawner(scene, getTransform);
+  enemySpawner.setSurface(surface);
   const bulletPool = new BulletPool();
   bulletPool.setSurfaceFunctions(getTransform);
 

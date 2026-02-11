@@ -137,36 +137,6 @@ export class VisualPlaygroundDemo {
     this.canvasContainer.style.cssText =
       `position:relative;display:inline-block;width:${DEMO_WIDTH}px;height:${DEMO_HEIGHT}px;`;
 
-    // -- Create PlaygroundGame --
-    this.playgroundGame = new PlaygroundGame({
-      container: this.canvasContainer,
-      width: DEMO_WIDTH,
-      height: DEMO_HEIGHT,
-      surface: surfaceType,
-      weapon: null, // free weapon swaps
-      enemyCount: ENEMY_COUNT,
-      lives: STARTING_LIVES,
-      surfaceScale: 10,
-      cameraDistance: 20,
-      bloom: {
-        strength: preset.bloomStrength,
-        radius: preset.bloomRadius ?? 0.4,
-        threshold: preset.bloomThreshold ?? 0.85,
-      },
-      onGameOver: () => this.handleGameOver(),
-      onEnemyKill: () => this.handleEnemyKill(),
-    });
-
-    // Style the canvas
-    const canvas = this.canvasContainer.querySelector('canvas');
-    if (canvas) {
-      canvas.style.cssText =
-        'display:block;border:1px solid rgba(0,255,255,0.2);border-radius:4px;cursor:crosshair;';
-    }
-
-    // -- Apply visual preset to surface and scene --
-    this.applyVisualPreset();
-
     // -- Hint overlay (click to play) --
     this.hintOverlay = document.createElement('div');
     this.hintOverlay.style.cssText =
@@ -201,6 +171,44 @@ export class VisualPlaygroundDemo {
       `color:#668888;font:12px monospace;text-align:center;max-width:${DEMO_WIDTH}px;letter-spacing:1px;`;
     desc.textContent = preset.description;
     this.overlay.appendChild(desc);
+
+    // -- Add overlay to DOM BEFORE creating PlaygroundGame --
+    // CRITICAL: PlaygroundGame constructor calls input.setContainer(container),
+    // which calls getBoundingClientRect(). The container MUST be in the DOM
+    // for getBoundingClientRect() to return correct dimensions. Without this,
+    // viewport width/height are 0, causing division-by-zero in aim calculation
+    // (mouseX - cx) / halfMin = NaN, making mouse aim completely broken.
+    document.body.appendChild(this.overlay);
+
+    // -- Create PlaygroundGame (container is now in the DOM) --
+    this.playgroundGame = new PlaygroundGame({
+      container: this.canvasContainer,
+      width: DEMO_WIDTH,
+      height: DEMO_HEIGHT,
+      surface: surfaceType,
+      weapon: null, // free weapon swaps
+      enemyCount: ENEMY_COUNT,
+      lives: STARTING_LIVES,
+      surfaceScale: 10,
+      cameraDistance: 20,
+      bloom: {
+        strength: preset.bloomStrength,
+        radius: preset.bloomRadius ?? 0.4,
+        threshold: preset.bloomThreshold ?? 0.85,
+      },
+      onGameOver: () => this.handleGameOver(),
+      onEnemyKill: () => this.handleEnemyKill(),
+    });
+
+    // Style the canvas
+    const canvas = this.canvasContainer.querySelector('canvas');
+    if (canvas) {
+      canvas.style.cssText =
+        'display:block;border:1px solid rgba(0,255,255,0.2);border-radius:4px;cursor:crosshair;';
+    }
+
+    // -- Apply visual preset to surface and scene --
+    this.applyVisualPreset();
 
     // -- Input handlers --
     this.onKeyDownHandler = (e: KeyboardEvent) => {
@@ -262,8 +270,6 @@ export class VisualPlaygroundDemo {
     window.addEventListener('keydown', this.onKeyDownHandler);
     this.canvasContainer.addEventListener('click', this.onCanvasClickHandler);
     document.addEventListener('click', this.onDocumentClickHandler);
-
-    document.body.appendChild(this.overlay);
 
     // Wire Sektori glow update into the game's render callback
     if (this.sektoriMaterial && this.sektoriTrail) {

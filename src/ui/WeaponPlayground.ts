@@ -80,6 +80,7 @@ export class WeaponPlayground {
   private readonly onKeyUp: (e: KeyboardEvent) => void;
   private readonly onCanvasClick: (e: MouseEvent) => void;
   private readonly onDocumentClick: (e: MouseEvent) => void;
+  private readonly onWheel: (e: WheelEvent) => void;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -145,7 +146,7 @@ export class WeaponPlayground {
       '<div style="color:#00ffff;font-family:monospace;font-size:16px;letter-spacing:2px;' +
       'text-shadow:0 0 10px #00ffff,0 0 20px #0088aa;margin-bottom:8px;">CLICK TO PLAY</div>' +
       '<div style="color:#88aacc;font-family:monospace;font-size:11px;letter-spacing:1px;">' +
-      'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Pause</div>';
+      'WASD: Move | Mouse: Aim | Click: Shoot | Scroll: Zoom | ESC: Pause</div>';
     container.appendChild(this.hintOverlay);
 
     // -- Input handlers for focus/pause management --
@@ -206,8 +207,18 @@ export class WeaponPlayground {
       }
     };
 
+    this.onWheel = (e: WheelEvent) => {
+      if (this.disposed || !this.focused || this.paused) return;
+      e.preventDefault();
+      const currentDist = this.playgroundGame.getCameraDistance();
+      const zoomSpeed = 1.5;
+      const delta = e.deltaY > 0 ? zoomSpeed : -zoomSpeed;
+      this.playgroundGame.setCameraDistance(currentDist + delta);
+    };
+
     window.addEventListener('keydown', this.onKeyDown);
     container.addEventListener('click', this.onCanvasClick);
+    container.addEventListener('wheel', this.onWheel, { passive: false });
     document.addEventListener('click', this.onDocumentClick);
 
     // Don't auto-start; wait for user click
@@ -230,7 +241,7 @@ export class WeaponPlayground {
   private releaseFocus(): void {
     this.focused = false;
     this.playgroundGame.stop();
-    this.showOverlay('CLICK TO PLAY', 'WASD: Move | Mouse: Aim | Click: Shoot | ESC: Pause');
+    this.showOverlay('CLICK TO PLAY', 'WASD: Move | Mouse: Aim | Click: Shoot | Scroll: Zoom | ESC: Pause');
   }
 
   // -----------------------------------------------------------------------
@@ -331,6 +342,7 @@ export class WeaponPlayground {
     // Remove event listeners
     window.removeEventListener('keydown', this.onKeyDown);
     this.container.removeEventListener('click', this.onCanvasClick);
+    this.container.removeEventListener('wheel', this.onWheel);
     document.removeEventListener('click', this.onDocumentClick);
 
     // Dispose popups

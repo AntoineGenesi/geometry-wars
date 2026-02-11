@@ -61,8 +61,8 @@ const TIERS: readonly DifficultyTier[] = [
   {
     tier: 1,
     name: 'Hardened',
-    healthMultiplier: 3.0,   // 2.0→3.0: takes 2-3x more shots (player has ~2x damage by now)
-    speedMultiplier: 1.10,   // 1.05→1.10: noticeably faster
+    healthMultiplier: 3.0,
+    speedMultiplier: 1.15,   // 1.10→1.15: noticeably faster
     scaleMultiplier: 1.1,
     scoreMultiplier: 2.0,
     geomMultiplier: 1.5,
@@ -73,8 +73,8 @@ const TIERS: readonly DifficultyTier[] = [
   {
     tier: 2,
     name: 'Veteran',
-    healthMultiplier: 8.0,   // 4.0→8.0: player has ~4-5x damage, these take sustained fire
-    speedMultiplier: 1.18,   // 1.10→1.18: clearly faster movement
+    healthMultiplier: 10.0,  // 8→10: tougher to chew through
+    speedMultiplier: 1.30,   // 1.18→1.30: significantly faster
     scaleMultiplier: 1.2,
     scoreMultiplier: 4.0,
     geomMultiplier: 2.0,
@@ -85,26 +85,26 @@ const TIERS: readonly DifficultyTier[] = [
   {
     tier: 3,
     name: 'Elite',
-    healthMultiplier: 20.0,  // 10.0→20.0: player has ~6-8x damage, still killable but tanky
-    speedMultiplier: 1.28,   // 1.18→1.28: fast, requires kiting
+    healthMultiplier: 25.0,  // 20→25: tanky but killable with buffs
+    speedMultiplier: 1.50,   // 1.28→1.50: fast, forces constant movement
     scaleMultiplier: 1.35,
     scoreMultiplier: 8.0,
     geomMultiplier: 3.0,
     tintColor: 0xff00ff, // magenta tint
-    splitCount: 3,           // 2→3: more children = more pressure
-    splitChildTier: 1,       // 0→1: children are hardened, not trivial
+    splitCount: 3,
+    splitChildTier: 1,
   },
   {
     tier: 4,
     name: 'Nightmare',
-    healthMultiplier: 50.0,  // 25.0→50.0: player has 8-10x damage, these are real threats
-    speedMultiplier: 1.35,   // 1.25→1.35: aggressive speed, forces movement
+    healthMultiplier: 60.0,  // 50→60: real damage sponges
+    speedMultiplier: 1.70,   // 1.35→1.70: genuinely dangerous speed
     scaleMultiplier: 1.5,
     scoreMultiplier: 15.0,
     geomMultiplier: 4.0,
     tintColor: 0xffffff, // white-hot tint
-    splitCount: 4,           // 3→4: death swarms
-    splitChildTier: 2,       // 1→2: children are veterans, real threats
+    splitCount: 4,
+    splitChildTier: 2,
   },
 ];
 
@@ -116,6 +116,21 @@ export function getDifficultyTier(tier: number): DifficultyTier {
 
 /** Total number of defined tiers. */
 export const MAX_TIER = TIERS.length - 1;
+
+/**
+ * Get a continuous speed multiplier that scales beyond tier 4.
+ * At difficulty 4, returns tier 4 speed (1.70x).
+ * Beyond that, adds +5% per difficulty level — so at difficulty 10,
+ * enemies move at 1.70 * 1.30 = 2.21x base speed.
+ * Capped at 3.0x to stay fair.
+ */
+export function getContinuousSpeedMultiplier(difficultyLevel: number): number {
+  const tier = getDifficultyTier(Math.floor(Math.min(difficultyLevel, MAX_TIER)));
+  const baseSpeed = tier.speedMultiplier;
+  const extraDifficulty = Math.max(0, difficultyLevel - MAX_TIER);
+  const extraSpeedBonus = 1.0 + extraDifficulty * 0.05;
+  return Math.min(3.0, baseSpeed * extraSpeedBonus);
+}
 
 // ---------------------------------------------------------------------------
 // Difficulty level: computed from player state
@@ -243,18 +258,18 @@ export function generateScaledEndlessWave(
   const maxTier = getMaxSpawnTier(difficultyLevel);
   // Base count grows with wave number AND difficulty level
   // At difficulty 4+, each wave has substantially more enemies
-  const difficultyCountBonus = Math.floor(difficultyLevel * 1.5);
-  const baseCount = Math.min(18, 4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus);
+  // Raised cap from 18→30 so extreme difficulty feels overwhelming
+  const difficultyCountBonus = Math.floor(difficultyLevel * 2.0);
+  const baseCount = Math.min(30, 4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus);
 
   // -- Basic enemies: always present, tier scales with difficulty --
   const basicType = BASIC_TYPES[waveNum % BASIC_TYPES.length];
-  // Basic enemies get tiered earlier: at difficulty 1+ they start scaling
   const basicTier = difficultyLevel >= 1
     ? Math.min(maxTier, Math.max(0, maxTier - 1))
     : 0;
   enemies.push({
     type: basicType,
-    count: Math.min(baseCount, 18),
+    count: Math.min(baseCount, 30),
     tier: basicTier,
   });
 
@@ -264,82 +279,95 @@ export function generateScaledEndlessWave(
     const midTier = Math.min(maxTier, Math.max(0, maxTier - 1));
     enemies.push({
       type: midType,
-      count: Math.min(Math.floor(baseCount * 0.6), 10),
+      count: Math.min(Math.floor(baseCount * 0.7), 15),
       tier: midTier,
     });
   }
 
-  // -- Hard enemies from wave 5+ (earlier than 8) --
-  if (waveNum >= 5) {
-    const hardType = HARD_TYPES[(waveNum - 5) % HARD_TYPES.length];
-    const hardTier = maxTier; // hard enemies at max tier — they should be threatening
+  // -- Hard enemies from wave 4+ (earlier!) --
+  if (waveNum >= 4) {
+    const hardType = HARD_TYPES[(waveNum - 4) % HARD_TYPES.length];
+    const hardTier = maxTier;
     enemies.push({
       type: hardType,
-      count: Math.min(Math.floor(baseCount * 0.4), 6),
+      count: Math.min(Math.floor(baseCount * 0.5), 10),
       tier: hardTier,
     });
   }
 
-  // -- Splitting enemies from wave 6+ and difficulty 1+ --
-  if (waveNum >= 6 && difficultyLevel >= 1.0) {
-    const splitType = SPLITTING_TYPES[(waveNum - 6) % SPLITTING_TYPES.length];
+  // -- Splitting enemies from wave 5+ and difficulty 0.8+ (earlier!) --
+  if (waveNum >= 5 && difficultyLevel >= 0.8) {
+    const splitType = SPLITTING_TYPES[(waveNum - 5) % SPLITTING_TYPES.length];
     enemies.push({
       type: splitType,
-      count: Math.min(1 + Math.floor(difficultyLevel * 0.5), 5),
-      tier: Math.min(maxTier, 1), // splitting enemies get at least tier 1 when available
-    });
-  }
-
-  // -- Elite enemies from wave 8+ (earlier than 15) --
-  if (waveNum >= 8) {
-    const eliteType = ELITE_TYPES[(waveNum - 8) % ELITE_TYPES.length];
-    enemies.push({
-      type: eliteType,
-      count: Math.min(Math.floor(baseCount * 0.3), 4),
-      tier: maxTier,
-    });
-  }
-
-  // -- At difficulty 2+, add tiered color-variant basic enemies --
-  // These are tanky versions that force the player to prioritize
-  if (difficultyLevel >= 2) {
-    const variantType = BASIC_TYPES[(waveNum + 1) % BASIC_TYPES.length];
-    enemies.push({
-      type: variantType,
-      count: Math.min(4 + Math.floor(difficultyLevel), 12),
-      tier: maxTier,
-    });
-  }
-
-  // -- At difficulty 3+, add a second group of hard enemies --
-  // More variety and pressure from multiple dangerous types
-  if (difficultyLevel >= 3) {
-    const hardType2 = HARD_TYPES[(waveNum + 3) % HARD_TYPES.length];
-    enemies.push({
-      type: hardType2,
-      count: Math.min(Math.floor(baseCount * 0.3), 5),
-      tier: maxTier,
-    });
-  }
-
-  // -- At difficulty 3.5+, splitting enemy swarm --
-  if (difficultyLevel >= 3.5) {
-    const swarmType = SPLITTING_TYPES[(waveNum + 2) % SPLITTING_TYPES.length];
-    enemies.push({
-      type: swarmType,
-      count: Math.min(2 + Math.floor(difficultyLevel - 3), 6),
+      count: Math.min(1 + Math.floor(difficultyLevel * 0.7), 7),
       tier: Math.min(maxTier, 1),
     });
   }
 
-  // -- At difficulty 5+, a SECOND elite group + extra splitting --
-  // Beyond Nightmare tier: relentless enemy mix
-  if (difficultyLevel >= 5) {
+  // -- Elite enemies from wave 6+ (earlier!) --
+  if (waveNum >= 6) {
+    const eliteType = ELITE_TYPES[(waveNum - 6) % ELITE_TYPES.length];
+    enemies.push({
+      type: eliteType,
+      count: Math.min(Math.floor(baseCount * 0.4), 6),
+      tier: maxTier,
+    });
+  }
+
+  // -- At difficulty 1.5+, add tiered color-variant basic enemies (earlier!) --
+  if (difficultyLevel >= 1.5) {
+    const variantType = BASIC_TYPES[(waveNum + 1) % BASIC_TYPES.length];
+    enemies.push({
+      type: variantType,
+      count: Math.min(6 + Math.floor(difficultyLevel * 1.5), 20),
+      tier: maxTier,
+    });
+  }
+
+  // -- At difficulty 2.5+, add a second group of hard enemies --
+  if (difficultyLevel >= 2.5) {
+    const hardType2 = HARD_TYPES[(waveNum + 3) % HARD_TYPES.length];
+    enemies.push({
+      type: hardType2,
+      count: Math.min(Math.floor(baseCount * 0.4), 8),
+      tier: maxTier,
+    });
+  }
+
+  // -- At difficulty 3+, splitting enemy swarm --
+  if (difficultyLevel >= 3.0) {
+    const swarmType = SPLITTING_TYPES[(waveNum + 2) % SPLITTING_TYPES.length];
+    enemies.push({
+      type: swarmType,
+      count: Math.min(2 + Math.floor(difficultyLevel - 2.5), 8),
+      tier: Math.min(maxTier, 2),
+    });
+  }
+
+  // -- At difficulty 4+, second elite group + extra splitting --
+  if (difficultyLevel >= 4) {
     const eliteType2 = ELITE_TYPES[(waveNum + 1) % ELITE_TYPES.length];
     enemies.push({
       type: eliteType2,
-      count: Math.min(2 + Math.floor(difficultyLevel - 5), 4),
+      count: Math.min(3 + Math.floor(difficultyLevel - 4), 6),
       tier: maxTier,
+    });
+  }
+
+  // -- At difficulty 6+, third hard group + boss-like splitting --
+  if (difficultyLevel >= 6) {
+    const hardType3 = HARD_TYPES[(waveNum + 5) % HARD_TYPES.length];
+    enemies.push({
+      type: hardType3,
+      count: Math.min(4 + Math.floor(difficultyLevel - 6), 8),
+      tier: maxTier,
+    });
+    const megaSplit = SPLITTING_TYPES[(waveNum + 4) % SPLITTING_TYPES.length];
+    enemies.push({
+      type: megaSplit,
+      count: Math.min(Math.floor(difficultyLevel - 5), 5),
+      tier: Math.min(maxTier, 3),
     });
   }
 

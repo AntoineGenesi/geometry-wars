@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Entity, CollisionGroup } from '../../core/Entity';
 import { getDifficultyTier } from '../../core/DifficultyScaling';
 import type { DifficultyTier } from '../../core/DifficultyScaling';
+import type { Surface } from '../../surfaces/Surface';
 
 // Pre-allocated temp objects to avoid per-frame GC pressure
 const _tempMatrix4 = new THREE.Matrix4();
@@ -30,6 +31,31 @@ export abstract class BaseEnemy extends Entity {
 
   /** When true, this enemy has not yet materialized (spawn warning in progress). */
   isMaterializing: boolean = false;
+
+  /**
+   * Surface speed normalization factor. Multiplied into ALL UV movement
+   * automatically by the base update() method. Ensures consistent
+   * perceived speed across surfaces of different sizes.
+   *
+   * Set by EnemySpawner based on the surface's speedScale property.
+   * Default 1.0 = no adjustment (reference surface, e.g. sphere radius=10).
+   * Values < 1 = surface is bigger than reference, slow UV movement down.
+   * Values > 1 = surface is smaller than reference, speed UV movement up.
+   */
+  surfaceSpeedScale: number = 1.0;
+
+  /**
+   * Reference to the current surface for per-position UV correction.
+   * When set, update() will:
+   * 1. Compute the UV Jacobian at the current position
+   * 2. Scale movement deltas inversely proportional to local area distortion
+   * 3. Apply proper UV wrapping/clamping via surface.wrapUV()
+   *
+   * This fixes enemies bunching at UV boundaries on non-toroidal surfaces
+   * (sphere poles, cube top/bottom, capsule/pill caps) by ensuring equal
+   * UV deltas produce equal world-space distances everywhere.
+   */
+  surfaceRef: Surface | null = null;
 
   /** Tracks damage dealt by each player (playerId -> total damage). */
   readonly damageBy: Map<number, number> = new Map();
@@ -204,7 +230,39 @@ export abstract class BaseEnemy extends Entity {
   update(dt: number): void {
     if (!this.alive) return;
 
+    // Record UV position before behavior update
+    const prevU = this.surfacePosition.u;
+    const prevV = this.surfacePosition.v;
+
     this.updateBehavior(dt, this.playerU, this.playerV);
+
+    // Compute the raw UV delta the subclass produced
+    let deltaU = this.surfacePosition.u - prevU;
+    let deltaV = this.surfacePosition.v - prevV;
+
+    // Skip correction if movement is negligible
+    if (Math.abs(deltaU) < 0.000001 && Math.abs(deltaV) < 0.000001) return;
+
+    // Apply global surface speed normalization
+    if (this.surfaceSpeedScale !== 1.0) {
+      deltaU *= this.surfaceSpeedScale;
+      deltaV *= this.surfaceSpeedScale;
+    }
+
+    if (this.surfaceRef) {
+      // Route through surface.moveOnSurface() which provides:
+      // - Per-position UV correction (sphere pole compression, cube face convergence, etc.)
+      // - Proper UV wrapping/clamping for the surface topology
+      // This is the key fix: enemies now get the same corrections that were
+      // previously only applied to entities using moveOnSurface() directly.
+      const result = this.surfaceRef.moveOnSurface(prevU, prevV, deltaU, deltaV);
+      this.surfacePosition.u = result.u;
+      this.surfacePosition.v = result.v;
+    } else {
+      // Fallback: apply delta directly with basic clamping (legacy behavior)
+      this.surfacePosition.u = prevU + deltaU;
+      this.surfacePosition.v = prevV + deltaV;
+    }
   }
 
   onCollision(other: Entity): void {

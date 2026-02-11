@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:visual": "node tests/visual/run-visual-tests.mjs",
-    "test:lan": "node tests/lan/run-lan-tests.mjs"
+    "test:lan": "node tests/lan/run-lan-tests.mjs",
+    "lint:schema": "node scripts/lint-colyseus-schema.mjs"
   },
   "dependencies": {
     "@colyseus/schema": "^2.0.37",

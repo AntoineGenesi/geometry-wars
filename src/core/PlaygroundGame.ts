@@ -255,6 +255,8 @@ export class PlaygroundGame {
 
     // -- Enemy spawner (real EnemySpawner, real enemy AI) --
     this.enemySpawner = new EnemySpawner(this.game.scene, this.getTransformFn());
+    this.enemySpawner.setSurfaceSpeedScale(this._surface.speedScale);
+    this.enemySpawner.setSurface(this._surface);
 
     // -- Particles --
     this.particles = new ParticleSystem();
@@ -300,6 +302,16 @@ export class PlaygroundGame {
     if (type) this.weaponManager.equipWeapon(type);
   }
 
+  /** Adjust camera distance at runtime (for zoom). */
+  setCameraDistance(distance: number): void {
+    this.config.cameraDistance = Math.max(8, Math.min(60, distance));
+  }
+
+  /** Get current camera distance. */
+  getCameraDistance(): number {
+    return this.config.cameraDistance;
+  }
+
   /** Rebuild with a different surface. */
   setSurface(type: SurfaceType): void {
     // Remove old
@@ -338,6 +350,8 @@ export class PlaygroundGame {
     this.enemySpawner.clear();
     // EnemySpawner doesn't have setTransformFn, so we create a new spawner
     (this as any).enemySpawner = new EnemySpawner(this.game.scene, this.getTransformFn());
+    this.enemySpawner.setSurfaceSpeedScale(this._surface.speedScale);
+    this.enemySpawner.setSurface(this._surface);
     this.spawnEnemies(this.config.enemyCount);
 
     this.config.surface = type;
@@ -628,7 +642,7 @@ export class PlaygroundGame {
   }
 
   private createSurface(type: SurfaceType, scale: number): Surface {
-    return SurfaceFactory.create(type, {
+    const config: Record<string, unknown> = {
       radius: scale,
       size: scale,
       height: scale * 2,
@@ -641,6 +655,22 @@ export class PlaygroundGame {
       gridOpacity: 0.4,
       gridSegmentsU: 24,
       gridSegmentsV: 18,
-    } as any);
+    };
+
+    // Cube tunnel needs larger size than the generic scale parameter
+    if (type === 'cube-tunnel') {
+      config.size = 35;
+      config.wallThickness = 2.0;
+      config.bevelRadius = 4.5;
+      config.gridSegments = 16;
+    }
+
+    // Cube-ring needs specific proportions
+    if (type === 'cube-ring') {
+      config.majorRadius = 4;
+      config.crossSection = 2;
+    }
+
+    return SurfaceFactory.create(type, config as any);
   }
 }

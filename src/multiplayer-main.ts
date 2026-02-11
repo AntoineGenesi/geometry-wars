@@ -389,6 +389,8 @@ function main(): void {
 
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
+  enemySpawner.setSurfaceSpeedScale(surface.speedScale);
+  enemySpawner.setSurface(surface);
 
   // -- Dynamic Difficulty Adjustment (DDA) system --
   const ddaSettings = loadDDASettings();
@@ -1319,10 +1321,11 @@ function main(): void {
     }
   };
 
-  // -- Start background music --
+  // -- Start background music (route through compressor to prevent clipping) --
   const audioCtx = sound.getAudioContext();
   if (audioCtx) {
-    bgMusic.start(audioCtx);
+    const compressor = sound.getCompressor();
+    bgMusic.start(audioCtx, compressor ?? undefined);
   }
 
   // -- Start --

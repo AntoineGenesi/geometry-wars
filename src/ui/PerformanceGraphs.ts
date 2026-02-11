@@ -300,10 +300,13 @@ export class PerformanceGraph {
   private drawNoData(): void {
     const { ctx, config } = this;
     ctx.fillStyle = config.colors.text;
-    ctx.font = '16px monospace';
+    ctx.font = '18px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('No performance data available', config.width / 2, config.height / 2);
+    ctx.fillText('No performance data yet', config.width / 2, config.height / 2 - 15);
+    ctx.font = '13px monospace';
+    ctx.fillStyle = '#556677';
+    ctx.fillText('Play for a few seconds, then pause to see graphs.', config.width / 2, config.height / 2 + 15);
   }
 
   private drawGrid(): void {
@@ -602,6 +605,20 @@ export class PerformanceGraph {
       maxTime = Math.max(maxTime, point.time);
       minValue = Math.min(minValue, value);
       maxValue = Math.max(maxValue, value);
+    }
+
+    // Guard against degenerate cases (single data point or all same values)
+    // which cause division by zero in coordinate transforms
+    if (maxTime - minTime < 0.001) {
+      // Single data point or all at the same time
+      minTime = minTime - 5;
+      maxTime = maxTime + 5;
+    }
+    if (maxValue - minValue < 0.001) {
+      // All values identical — show range around the value
+      const center = (minValue + maxValue) / 2;
+      minValue = Math.max(0, center - 10);
+      maxValue = center + 10;
     }
 
     // Add padding
