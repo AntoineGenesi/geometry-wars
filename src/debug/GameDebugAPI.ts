@@ -120,14 +120,29 @@ export class GameDebugAPI {
 
   getEnemyStates(): EnemyState[] {
     const enemies = this.enemySpawner.getEnemies();
-    return enemies.map(e => ({
-      type: e.constructor.name.toLowerCase(),
-      position: this.vec3ToJSON(e.position),
-      surfaceUV: { u: e.surfacePosition.u, v: e.surfacePosition.v },
-      health: e.health,
-      alive: e.alive,
-      faceIndex: (e as any).faceIndex ?? null,
-    }));
+    return enemies.map(e => {
+      let surfaceUV = { u: e.surfacePosition.u, v: e.surfacePosition.v };
+
+      // If enemy is using walker mode, convert walker position to UV
+      const walker = (e as any).walker;
+      const surfaceRef = (e as any).surfaceRef;
+      if (walker && surfaceRef && surfaceRef.worldToSurface) {
+        try {
+          surfaceUV = surfaceRef.worldToSurface(walker.position);
+        } catch (err) {
+          // Fallback to stored UV if conversion fails
+        }
+      }
+
+      return {
+        type: e.constructor.name.toLowerCase(),
+        position: this.vec3ToJSON(e.position),
+        surfaceUV,
+        health: e.health,
+        alive: e.alive,
+        faceIndex: (e as any).faceIndex ?? null,
+      };
+    });
   }
 
   getPlayerState(): PlayerState {
@@ -287,6 +302,25 @@ export class GameDebugAPI {
     // by checking for ?quickStart URL param and calling main() directly
     console.warn('[GameDebugAPI] quickStart() requires URL param ?quickStart=true&surface=X&seed=Y');
     console.warn('[GameDebugAPI] Use: window.location.href = "?quickStart=true&surface=' + surface + '&seed=' + seed + '"');
+  }
+
+  /**
+   * Clear all enemies from the game.
+   * Useful for testing specific enemy behaviors in isolation.
+   */
+  clearEnemies(): void {
+    const enemies = this.enemySpawner.getEnemies().slice();
+    enemies.forEach(e => e.destroy());
+  }
+
+  /**
+   * Teleport player to a specific UV position.
+   * @param u - Surface U coordinate (0-1)
+   * @param v - Surface V coordinate (0-1)
+   */
+  teleportPlayer(u: number, v: number): void {
+    this.player.surfaceU = u;
+    this.player.surfaceV = v;
   }
 
   // -------------------------------------------------------------------------
