@@ -147,4 +147,90 @@ export class Lurker extends BaseEnemy {
       this.cachedMaterials[i].emissive.setHex(hex);
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Track dash direction in world space
+    if (!(this as any).worldDashDir) {
+      (this as any).worldDashDir = new THREE.Vector3();
+    }
+    const worldDashDir: THREE.Vector3 = (this as any).worldDashDir;
+
+    // Update state timer
+    this.stateTimer += dt;
+
+    // Calculate distance to player
+    const delta = playerWorldPos.clone().sub(this.walker.position);
+    const dist = delta.length();
+
+    let velocity: THREE.Vector3 | null = null;
+
+    switch (this.state) {
+      case LurkerState.Idle:
+        // Wait for player to enter detection range
+        if (dist < this.detectionRange && dist > 0.01) {
+          this.state = LurkerState.Charging;
+          this.stateTimer = 0;
+          // Lock dash direction toward current player position
+          worldDashDir.copy(delta).normalize();
+        }
+        velocity = null;
+        break;
+
+      case LurkerState.Charging:
+        // Wind-up glow - update dash direction to track player
+        if (dist > 0.01) {
+          worldDashDir.copy(delta).normalize();
+        }
+
+        // Animate glow intensity ramp
+        this.setEmissiveIntensity(
+          this.baseEmissive + (this.dashEmissive - this.baseEmissive) * (this.stateTimer / this.chargeUpTime)
+        );
+
+        if (this.stateTimer >= this.chargeUpTime) {
+          this.state = LurkerState.Dashing;
+          this.stateTimer = 0;
+        }
+
+        velocity = null;
+        break;
+
+      case LurkerState.Dashing:
+        // Move at extreme speed in locked direction
+        velocity = worldDashDir.clone().multiplyScalar(this.dashSpeed * this.walkerSpeedScale);
+
+        // Full glow during dash
+        this.setEmissiveIntensity(this.dashEmissive);
+
+        // Tint to bright red during dash
+        this.setColor(0xff2200);
+
+        if (this.stateTimer >= this.dashDuration) {
+          this.state = LurkerState.Cooldown;
+          this.stateTimer = 0;
+          // Revert to dark red
+          this.setColor(0x880000);
+          this.setEmissiveIntensity(this.baseEmissive);
+        }
+        break;
+
+      case LurkerState.Cooldown:
+        // Sit still, recharging
+        // Gentle pulse to show it's alive
+        const pulse = 0.5 + 0.5 * Math.sin(this.stateTimer * 4);
+        this.setEmissiveIntensity(this.baseEmissive + pulse * 0.1);
+
+        if (this.stateTimer >= this.cooldownTime) {
+          this.state = LurkerState.Idle;
+          this.stateTimer = 0;
+        }
+
+        velocity = null;
+        break;
+    }
+
+    return velocity;
+  }
 }

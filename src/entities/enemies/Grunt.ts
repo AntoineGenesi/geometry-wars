@@ -43,4 +43,20 @@ export class Grunt extends BaseEnemy {
       this.surfacePosition.v = Math.max(0, Math.min(1, this.surfacePosition.v));
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Increase speed over time up to max (same as UV mode)
+    this.currentSpeed = Math.min(this.maxSpeed, this.currentSpeed + this.speedIncreaseRate * dt);
+
+    // Direction to player in world space
+    const dir = playerWorldPos.clone().sub(this.walker.position);
+    const dist = dir.length();
+    if (dist < 0.01) return null;
+    dir.normalize();
+
+    // Return velocity = direction * world speed
+    return dir.multiplyScalar(this.currentSpeed * this.walkerSpeedScale);
+  }
 }

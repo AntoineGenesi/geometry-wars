@@ -135,4 +135,60 @@ export class Cluster extends BaseEnemy {
       this.mesh.rotation.x += 0.15 * dt;
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Slowly accelerate toward player
+    this.currentSpeed = Math.min(this.maxSpeed, this.currentSpeed + this.speedIncreaseRate * dt);
+
+    // Move toward player
+    const dir = playerWorldPos.clone().sub(this.walker.position);
+    const distance = dir.length();
+
+    if (distance < 0.001) return null;
+
+    dir.normalize();
+
+    // Animate pulsation: cubes push outward and pull inward rhythmically
+    this.pulseTime += dt;
+    const pulseBase = Math.sin(this.pulseTime * 2.5); // main rhythm ~2.5 Hz
+
+    for (let i = 0; i < this.cubeGroups.length; i++) {
+      const cube = this.cubeGroups[i];
+      const basePos = this.cubeBasePositions[i];
+      const offset = CUBE_OFFSETS[i];
+
+      // Each cube has its own phase offset for staggered pulsation
+      const individualPulse = Math.sin(this.pulseTime * 2.5 + offset.phaseOffset);
+
+      // Expand outward from center (direction = normalized base position)
+      _clusterTempVec.copy(basePos);
+      const len = _clusterTempVec.length();
+      if (len > 0.001) {
+        _clusterTempVec.normalize();
+      } else {
+        _clusterTempVec.set(0, 1, 0); // center cube pulses upward
+      }
+
+      const pulseAmount = individualPulse * 0.04; // displacement amount
+      cube.position.set(
+        basePos.x + _clusterTempVec.x * pulseAmount,
+        basePos.y + _clusterTempVec.y * pulseAmount,
+        basePos.z + _clusterTempVec.z * pulseAmount
+      );
+
+      // Scale pulsation: cubes swell and shrink slightly
+      const scalePulse = 1.0 + individualPulse * 0.12;
+      cube.scale.setScalar(scalePulse);
+    }
+
+    // Slow rotation of the whole cluster
+    if (this.mesh) {
+      this.mesh.rotation.y += 0.3 * dt;
+      this.mesh.rotation.x += 0.15 * dt;
+    }
+
+    return dir.multiplyScalar(this.currentSpeed * this.walkerSpeedScale);
+  }
 }

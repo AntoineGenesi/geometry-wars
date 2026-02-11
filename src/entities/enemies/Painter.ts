@@ -144,4 +144,70 @@ export class Painter extends BaseEnemy {
     }
     return false;
   }
+
+  computeMovementDirection(dt: number, _playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Random wandering with periodic direction changes
+    this.turnTimer += dt;
+    if (this.turnTimer >= this.turnInterval) {
+      this.turnTimer = 0;
+      this.angle += (Math.random() - 0.5) * Math.PI; // turn up to 90 degrees
+    }
+
+    // Rotate mesh
+    if (this.mesh) {
+      this.mesh.rotation.y += 1.5 * dt;
+    }
+
+    // Age trail points
+    for (const point of this.trail) {
+      point.age += dt;
+    }
+
+    // Get tangent frame for surface-aligned movement
+    const frame = this.walker.getTangentFrame();
+
+    // Convert angle to surface-aligned direction
+    const tangentDir = frame.tangent.clone().multiplyScalar(Math.cos(this.angle));
+    const bitangentDir = frame.bitangent.clone().multiplyScalar(Math.sin(this.angle));
+
+    const moveDir = tangentDir.add(bitangentDir).normalize();
+
+    // Leave trail (use walker position)
+    const currentPos = this.walker.position;
+    const distFromLast = Math.sqrt(
+      (currentPos.x - this.lastTrailU) ** 2 +
+      (currentPos.z - this.lastTrailV) ** 2
+    );
+
+    if (distFromLast >= this.trailSpacing) {
+      // Store world position as trail point (we'll convert to UV later if needed)
+      if (this.surfaceRef) {
+        const currentUV = this.surfaceRef.worldToSurface(this.walker.position);
+        this.trail.push({ u: currentUV.u, v: currentUV.v, age: 0 });
+        this.lastTrailU = currentPos.x;
+        this.lastTrailV = currentPos.z;
+
+        // Add visual trail marker
+        const marker = new THREE.Mesh(Painter.trailGeometry!, Painter.trailMaterial!);
+        this.trailRoot.add(marker);
+        this.trailMeshes.push(marker);
+
+        // Trim old trail points + remove oldest visual marker
+        if (this.trail.length > this.maxTrailLength) {
+          this.trail.shift();
+          const oldMarker = this.trailMeshes.shift();
+          if (oldMarker) {
+            this.trailRoot.remove(oldMarker);
+          }
+        }
+      }
+    }
+
+    // TODO: Boundary checking would require knowing surface edges in world space
+    // For now, let the walker handle surface constraints
+
+    return moveDir.multiplyScalar(this.speed * this.walkerSpeedScale);
+  }
 }

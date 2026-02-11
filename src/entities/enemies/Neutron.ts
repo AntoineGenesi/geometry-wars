@@ -62,4 +62,28 @@ export class Neutron extends BaseEnemy {
       this.mesh.rotation.z = this.spinAngle;
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Convert UV direction to world space using tangent frame
+    const tangentFrame = this.walker.getTangentFrame();
+    const dir = tangentFrame.tangent
+      .clone()
+      .multiplyScalar(this.directionU)
+      .add(tangentFrame.bitangent.clone().multiplyScalar(this.directionV))
+      .normalize();
+
+    // Fast spin (must run in both modes)
+    this.spinAngle += 5 * dt;
+    if (this.mesh) {
+      this.mesh.rotation.z = this.spinAngle;
+    }
+
+    // Note: On mesh surfaces, we don't bounce - just keep moving in current direction
+    // The random direction changes will still happen periodically in the collision system
+    // or we could add a timer here, but for now just maintain current direction
+
+    return dir.multiplyScalar(this.speed * this.walkerSpeedScale);
+  }
 }

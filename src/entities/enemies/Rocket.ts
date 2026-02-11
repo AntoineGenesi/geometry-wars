@@ -57,4 +57,31 @@ export class Rocket extends BaseEnemy {
       this.mesh.rotation.z = angle - Math.PI / 2; // Adjust for arrow pointing up
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Convert UV direction to world space using tangent frame
+    const tangentFrame = this.walker.getTangentFrame();
+    const dir = tangentFrame.tangent
+      .clone()
+      .multiplyScalar(this.directionU)
+      .add(tangentFrame.bitangent.clone().multiplyScalar(this.directionV))
+      .normalize();
+
+    // Orient mesh to direction of travel (must run in both modes)
+    if (this.mesh && this.walker) {
+      // Calculate world-space velocity direction for orientation
+      const worldVel = dir.clone();
+      const tangentFrame = this.walker.getTangentFrame();
+
+      // Project velocity onto tangent plane to get local angle
+      const localU = worldVel.dot(tangentFrame.tangent);
+      const localV = worldVel.dot(tangentFrame.bitangent);
+      const angle = Math.atan2(localV, localU);
+      this.mesh.rotation.z = angle - Math.PI / 2;
+    }
+
+    return dir.multiplyScalar(this.speed * this.walkerSpeedScale);
+  }
 }

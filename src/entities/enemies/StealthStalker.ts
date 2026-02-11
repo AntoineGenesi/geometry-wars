@@ -93,4 +93,29 @@ export class StealthStalker extends BaseEnemy {
       this.cachedMaterials[i].emissiveIntensity = intensity;
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Accelerate toward player
+    this.currentSpeed = Math.min(this.maxSpeed, this.currentSpeed + this.speedIncreaseRate * dt);
+
+    // Direction to player in world space
+    _stealthDelta.u = playerWorldPos.x - this.walker!.position.x;
+    _stealthDelta.v = playerWorldPos.y - this.walker!.position.y;
+    const distX = playerWorldPos.x - this.walker!.position.x;
+    const distY = playerWorldPos.y - this.walker!.position.y;
+    const distZ = playerWorldPos.z - this.walker!.position.z;
+    const dist = Math.sqrt(distX * distX + distY * distY + distZ * distZ);
+
+    if (dist > 0.03) { // ~0.001 UV * 30 = 0.03 world units
+      // Update brightness based on distance
+      this.updateBrightness(dist / this.walkerSpeedScale); // Convert to UV-equivalent distance
+
+      // Compute direction and scale by world speed
+      const dir = new THREE.Vector3(distX, distY, distZ);
+      dir.normalize().multiplyScalar(this.currentSpeed * this.walkerSpeedScale);
+      return dir;
+    }
+
+    return null;
+  }
 }

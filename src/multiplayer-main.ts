@@ -391,6 +391,7 @@ function main(): void {
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
   enemySpawner.setSurfaceSpeedScale(surface.speedScale);
   enemySpawner.setSurface(surface);
+  enemySpawner.setMeshSurface(meshSurface);
 
   // -- Dynamic Difficulty Adjustment (DDA) system --
   const ddaSettings = loadDDASettings();
@@ -1019,6 +1020,14 @@ function main(): void {
     if (alivePlayers.length > 0) {
       trackU = alivePlayers.reduce((sum, p) => sum + p.surfaceU, 0) / alivePlayers.length;
       trackV = alivePlayers.reduce((sum, p) => sum + p.surfaceV, 0) / alivePlayers.length;
+      // Average world position for mesh-walker enemies
+      const avgWorldPos = new THREE.Vector3();
+      const aliveIndices = players.map((p, i) => p.alive ? i : -1).filter(i => i >= 0);
+      for (const idx of aliveIndices) {
+        avgWorldPos.add(walkers[idx].position);
+      }
+      avgWorldPos.divideScalar(aliveIndices.length);
+      enemySpawner.setPlayerWorldPosition(avgWorldPos);
     }
     enemySpawner.update(dt, trackU, trackV);
 

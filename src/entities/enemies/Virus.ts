@@ -63,4 +63,48 @@ export class Virus extends BaseEnemy {
     }
     super.die();
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Update timers
+    this.pulsePhase += dt * 3;
+    if (this.mesh) {
+      const scale = 1.0 + Math.sin(this.pulsePhase) * 0.15;
+      this.mesh.scale.setScalar(scale);
+    }
+
+    // Random drift with slight player bias
+    this.driftAngle += (Math.random() - 0.5) * 2.0 * dt;
+
+    const toPlayer = playerWorldPos.clone().sub(this.walker.position);
+    const distToPlayer = toPlayer.length();
+
+    // Get tangent frame for surface-aligned movement
+    const frame = this.walker.getTangentFrame();
+
+    // Random drift direction (60% weight)
+    const randomDir = new THREE.Vector3(
+      Math.cos(this.driftAngle),
+      0,
+      Math.sin(this.driftAngle)
+    );
+    const tangentRandom = frame.tangent.clone().multiplyScalar(randomDir.x * 0.6);
+    const bitangentRandom = frame.bitangent.clone().multiplyScalar(randomDir.z * 0.6);
+
+    // Player bias (40% weight)
+    let playerBias = new THREE.Vector3();
+    if (distToPlayer > 0.05) {
+      toPlayer.normalize();
+      playerBias = toPlayer.multiplyScalar(0.4);
+    }
+
+    // Combine
+    const combinedDir = tangentRandom.add(bitangentRandom).add(playerBias);
+    if (combinedDir.length() > 0.001) {
+      return combinedDir.normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+    }
+
+    return null;
+  }
 }

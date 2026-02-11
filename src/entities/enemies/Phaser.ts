@@ -204,4 +204,94 @@ export class Phaser extends BaseEnemy {
       mat.emissiveIntensity = 0.4 * v;
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    this.phaseTimer += dt;
+
+    // Gentle spin (same as updateBehavior)
+    if (this.mesh) {
+      this.mesh.rotation.z += 1.5 * dt;
+    }
+
+    let targetWorldPos: THREE.Vector3;
+
+    switch (this.phase) {
+      case PhaserPhase.FadingIn: {
+        const progress = Math.min(1, this.phaseTimer / this.fadeDuration);
+        this.setVisibility(progress);
+
+        if (progress >= 1) {
+          this.phase = PhaserPhase.Visible;
+          this.phaseTimer = 0;
+          this._invulnerable = false;
+        }
+        return null; // No movement while fading in
+      }
+
+      case PhaserPhase.Visible: {
+        this._invulnerable = false;
+        this.setVisibility(1.0);
+
+        if (this.phaseTimer >= this.visibleDuration) {
+          this.phase = PhaserPhase.FadingOut;
+          this.phaseTimer = 0;
+          this._invulnerable = true;
+
+          // Pick flanking position - offset from player at random angle
+          const frame = this.walker!.getTangentFrame();
+          const flankAngle = Math.random() * Math.PI * 2;
+          const flankDist = 4.5 + Math.random() * 4.5; // ~0.15 UV * 30 = 4.5 world units
+          this.flankTargetU = Math.cos(flankAngle) * flankDist;
+          this.flankTargetV = Math.sin(flankAngle) * flankDist;
+        }
+
+        // Charge at player
+        targetWorldPos = playerWorldPos;
+        break;
+      }
+
+      case PhaserPhase.FadingOut: {
+        const progress = Math.min(1, this.phaseTimer / this.fadeDuration);
+        this.setVisibility(1 - progress);
+        this._invulnerable = true;
+
+        if (progress >= 1) {
+          this.phase = PhaserPhase.Invisible;
+          this.phaseTimer = 0;
+        }
+        return null; // No movement while fading out
+      }
+
+      case PhaserPhase.Invisible: {
+        this._invulnerable = true;
+        this.setVisibility(0);
+
+        if (this.phaseTimer >= this.invisibleDuration) {
+          this.phase = PhaserPhase.FadingIn;
+          this.phaseTimer = 0;
+        }
+
+        // Reposition to flank
+        const frame = this.walker!.getTangentFrame();
+        targetWorldPos = playerWorldPos.clone()
+          .addScaledVector(frame.tangent, this.flankTargetU)
+          .addScaledVector(frame.bitangent, this.flankTargetV);
+        break;
+      }
+    }
+
+    // Move toward target
+    if (targetWorldPos) {
+      const dir = targetWorldPos.clone().sub(this.walker!.position);
+      const dist = dir.length();
+
+      if (dist > 0.15) { // ~0.005 UV * 30 = 0.15 world units
+        const speed = this.phase === PhaserPhase.Invisible ? this.repositionSpeed : this.chargeSpeed;
+        dir.normalize().multiplyScalar(speed * this.walkerSpeedScale);
+        return dir;
+      }
+    }
+
+    return null;
+  }
 }

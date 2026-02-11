@@ -128,4 +128,35 @@ export class Splitter extends BaseEnemy {
 
     super.die();
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Update pulse timer (same as updateBehavior)
+    this.pulseTimer += dt;
+    if (this.mesh) {
+      const pulse = 1.0 + Math.sin(this.pulseTimer * 3) * 0.1;
+      const s = this.baseMeshScale * pulse;
+      this.mesh.scale.set(s, s, s);
+    }
+
+    // Slow rotation (same as updateBehavior)
+    if (this.mesh) {
+      this.mesh.rotation.z += 0.8 * dt;
+    }
+
+    // Move in straight line in world space
+    // Convert direction from UV-like direction to world space using tangent frame
+    const frame = this.walker!.getTangentFrame();
+    _splitDir.u = this.directionU;
+    _splitDir.v = this.directionV;
+
+    // Build direction in world space from tangent frame
+    const worldDir = frame.tangent.clone().multiplyScalar(_splitDir.u)
+      .addScaledVector(frame.bitangent, _splitDir.v)
+      .normalize();
+
+    // Scale by world speed
+    worldDir.multiplyScalar(this.speed * this.walkerSpeedScale);
+
+    return worldDir;
+  }
 }

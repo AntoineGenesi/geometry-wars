@@ -83,6 +83,21 @@ export class Gate extends BaseEnemy {
     this.rightEndpoint.scale.setScalar(pulse);
   }
 
+  computeMovementDirection(dt: number, _playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Gate is stationary
+    // Still update visual effects
+    if (this.mesh) {
+      this.mesh.rotation.z += 0.5 * dt;
+    }
+
+    // Pulse endpoints
+    const pulse = 1 + Math.sin(Date.now() * 0.003) * 0.2;
+    this.leftEndpoint.scale.setScalar(pulse);
+    this.rightEndpoint.scale.setScalar(pulse);
+
+    return null; // No movement
+  }
+
   applySurfaceTransform(getTransform: (u: number, v: number) => {
     position: THREE.Vector3;
     normal: THREE.Vector3;

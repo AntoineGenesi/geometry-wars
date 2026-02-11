@@ -75,6 +75,41 @@ export class GiantWanderer extends BaseEnemy {
     }
   }
 
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Update direction change timer (must run in both modes)
+    this.directionChangeTimer += dt;
+    if (this.directionChangeTimer >= this.nextDirectionChange) {
+      // Pick new random direction using tangent frame
+      const tangentFrame = this.walker.getTangentFrame();
+      const angle = Math.random() * Math.PI * 2;
+      this.directionU = Math.cos(angle);
+      this.directionV = Math.sin(angle);
+
+      this.directionChangeTimer = 0;
+      this.nextDirectionChange = 1.5 + Math.random();
+    }
+
+    // Convert UV direction to world space using tangent frame
+    const tangentFrame = this.walker.getTangentFrame();
+    const dir = tangentFrame.tangent
+      .clone()
+      .multiplyScalar(this.directionU)
+      .add(tangentFrame.bitangent.clone().multiplyScalar(this.directionV))
+      .normalize();
+
+    // Slow menacing spin (must run in both modes)
+    this.spinAngle += 2 * dt;
+    if (this.mesh) {
+      this.mesh.rotation.z = this.spinAngle;
+      const scale = 1.0 + Math.sin(this.spinAngle * 0.5) * 0.06;
+      this.mesh.scale.setScalar(scale);
+    }
+
+    return dir.multiplyScalar(this.speed * this.walkerSpeedScale);
+  }
+
   die(): void {
     if (!this.alive) return;
 

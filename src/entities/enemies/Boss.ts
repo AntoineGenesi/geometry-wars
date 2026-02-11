@@ -489,4 +489,210 @@ export class Boss extends BaseEnemy {
 
     super.die();
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    this.pulsePhase += dt;
+
+    if (this.phaseState === BossPhaseState.ShieldPhase) {
+      return this.computeShieldPhaseMovement(dt, playerWorldPos);
+    } else {
+      return this.computeFightPhaseMovement(dt, playerWorldPos);
+    }
+  }
+
+  private computeShieldPhaseMovement(dt: number, _playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    this.shieldTimer += dt;
+
+    // Spawn enemies once during shield
+    if (!this.hasSpawnedThisShield && this.shieldTimer > 0.5) {
+      this.hasSpawnedThisShield = true;
+      const spawnCount = this.config.spawnCountPerPhase[Math.min(this.currentPhase, this.config.spawnCountPerPhase.length - 1)];
+      if (Boss.onShieldSpawn && this.surfaceRef) {
+        const currentUV = this.surfaceRef.worldToSurface(this.walker.position);
+        Boss.onShieldSpawn(this.config.spawnTypes, spawnCount, currentUV.u, currentUV.v);
+      }
+    }
+
+    // Shield pulse
+    if (this.shieldMesh) {
+      const shieldScale = 1.0 + Math.sin(this.shieldTimer * 4) * 0.1;
+      this.shieldMesh.scale.setScalar(shieldScale);
+      this.shieldMesh.rotation.y += dt * 2;
+    }
+
+    // Visual updates
+    this.updateVisuals(dt);
+
+    // End shield phase
+    if (this.shieldTimer >= this.shieldDuration) {
+      this.phaseState = BossPhaseState.Fighting;
+      if (this.shieldMesh) {
+        (this.shieldMesh.material as THREE.MeshStandardMaterial).opacity = 0;
+      }
+    }
+
+    // Orbit slowly during shield
+    this.orbitAngle += dt * 0.5;
+    const frame = this.walker.getTangentFrame();
+
+    const orbitDir = frame.tangent.clone().multiplyScalar(Math.cos(this.orbitAngle))
+      .add(frame.bitangent.clone().multiplyScalar(Math.sin(this.orbitAngle)));
+
+    return orbitDir.normalize().multiplyScalar(this.speed * this.walkerSpeedScale * 0.5);
+  }
+
+  private computeFightPhaseMovement(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    const toPlayer = playerWorldPos.clone().sub(this.walker.position);
+    const distance = toPlayer.length();
+
+    // Visual updates
+    this.updateVisuals(dt);
+
+    // Movement pattern depends on section + phase
+    const aggression = 0.5 + this.currentPhase * 0.12;
+
+    switch (this.config.section) {
+      case 'sapphire':
+        return this.computeChaseSpin(dt, toPlayer, distance, aggression);
+      case 'ruby':
+        return this.computeChargeRetreat(dt, toPlayer, distance, aggression);
+      case 'emerald':
+        return this.computeSweepArc(dt, playerWorldPos, aggression);
+      case 'topaz':
+        return this.computeDirectChase(dt, toPlayer, distance, aggression * 1.2);
+      case 'amethyst':
+        return this.computeOrbitDive(dt, playerWorldPos, aggression);
+      case 'opal':
+        return this.computeErratic(dt, toPlayer, distance, aggression);
+      default:
+        return this.computeDirectChase(dt, toPlayer, distance, aggression);
+    }
+  }
+
+  // -- Movement patterns converted to world space --
+
+  private computeChaseSpin(dt: number, toPlayer: THREE.Vector3, distance: number, aggression: number): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    if (distance > 0.05) {
+      const dirToPlayer = toPlayer.clone().normalize();
+
+      // Slight orbit
+      this.chaseAngle += dt * 1.5;
+      const frame = this.walker.getTangentFrame();
+
+      const orbitOffset = frame.tangent.clone().multiplyScalar(Math.cos(this.chaseAngle) * 0.002)
+        .add(frame.bitangent.clone().multiplyScalar(Math.sin(this.chaseAngle) * 0.002));
+
+      return dirToPlayer.multiplyScalar(this.speed * aggression * this.walkerSpeedScale)
+        .add(orbitOffset);
+    }
+    return null;
+  }
+
+  private computeChargeRetreat(dt: number, toPlayer: THREE.Vector3, distance: number, aggression: number): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    const cycleTime = 4.0 - this.currentPhase * 0.4;
+    const cycle = (this.pulsePhase % cycleTime) / cycleTime;
+
+    if (cycle < 0.6) {
+      // Charge toward player
+      if (distance > 0.05) {
+        return toPlayer.normalize().multiplyScalar(this.speed * aggression * 2.0 * this.walkerSpeedScale);
+      }
+    } else {
+      // Retreat to center (0, 0, 0 in world space - would need to be surface center)
+      // For now, move away from player
+      if (distance > 0.05) {
+        return toPlayer.normalize().multiplyScalar(-this.speed * this.walkerSpeedScale);
+      }
+    }
+    return null;
+  }
+
+  private computeSweepArc(dt: number, playerWorldPos: THREE.Vector3, aggression: number): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Sweep in arc around player position
+    this.orbitAngle += dt * (1.0 + aggression);
+    const orbitDist = 0.2 - this.currentPhase * 0.02;
+
+    const frame = this.walker.getTangentFrame();
+
+    // Target position: player + orbit offset
+    const targetOffset = frame.tangent.clone().multiplyScalar(Math.cos(this.orbitAngle) * orbitDist)
+      .add(frame.bitangent.clone().multiplyScalar(Math.sin(this.orbitAngle) * orbitDist));
+
+    const targetPos = playerWorldPos.clone().add(targetOffset);
+    const toTarget = targetPos.sub(this.walker.position);
+
+    if (toTarget.length() > 0.01) {
+      return toTarget.normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+    }
+    return null;
+  }
+
+  private computeDirectChase(dt: number, toPlayer: THREE.Vector3, distance: number, aggression: number): THREE.Vector3 | null {
+    if (distance > 0.03) {
+      return toPlayer.normalize().multiplyScalar(this.speed * aggression * this.walkerSpeedScale);
+    }
+    return null;
+  }
+
+  private computeOrbitDive(dt: number, playerWorldPos: THREE.Vector3, aggression: number): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    const cycleTime = 5.0 - this.currentPhase * 0.5;
+    const cycle = (this.pulsePhase % cycleTime) / cycleTime;
+
+    if (cycle < 0.7) {
+      // Orbit
+      this.orbitAngle += dt * (0.8 + aggression * 0.5);
+      const r = 0.25 - this.currentPhase * 0.02;
+      const frame = this.walker.getTangentFrame();
+
+      const targetOffset = frame.tangent.clone().multiplyScalar(Math.cos(this.orbitAngle) * r)
+        .add(frame.bitangent.clone().multiplyScalar(Math.sin(this.orbitAngle) * r));
+
+      const targetPos = playerWorldPos.clone().add(targetOffset);
+      const toTarget = targetPos.sub(this.walker.position);
+
+      if (toTarget.length() > 0.01) {
+        return toTarget.normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+      }
+    } else {
+      // Dive toward player
+      const toPlayer = playerWorldPos.clone().sub(this.walker.position);
+      const dist = toPlayer.length();
+      if (dist > 0.03) {
+        return toPlayer.normalize().multiplyScalar(this.speed * aggression * 2.5 * this.walkerSpeedScale);
+      }
+    }
+    return null;
+  }
+
+  private computeErratic(dt: number, toPlayer: THREE.Vector3, distance: number, aggression: number): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Unpredictable: random teleport-like jumps mixed with chase
+    this.chaseAngle += dt * 3;
+    const jitter = Math.sin(this.chaseAngle * 7) * 0.01 * aggression;
+
+    const frame = this.walker.getTangentFrame();
+    const jitterOffset = frame.tangent.clone().multiplyScalar(jitter)
+      .add(frame.bitangent.clone().multiplyScalar(jitter * 1.3));
+
+    if (distance > 0.03) {
+      return toPlayer.normalize().multiplyScalar(this.speed * aggression * this.walkerSpeedScale)
+        .add(jitterOffset);
+    }
+    return null;
+  }
 }

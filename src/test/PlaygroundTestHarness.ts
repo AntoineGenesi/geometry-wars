@@ -90,6 +90,8 @@ import * as THREE from 'three';
 import { PlaygroundGame } from '../core/PlaygroundGame';
 import type { SurfaceType } from '../surfaces/SurfaceFactory';
 import { WeaponType } from '../weapons/WeaponTypes';
+import { setGameSeed, clearGameSeed } from '../core/SeededRandom';
+import type { EnemyType } from '../entities/enemies/EnemySpawner';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -162,6 +164,73 @@ export interface VerificationReport {
 }
 
 // ---------------------------------------------------------------------------
+// Deterministic Testing Types
+// ---------------------------------------------------------------------------
+
+/** Entity state snapshot for timeline tracking. */
+export interface EntityState {
+  type: string;
+  position: THREE.Vector3;
+  alive: boolean;
+  health: number;
+  faceIndex?: number;
+}
+
+/** Single frame in an entity timeline. */
+export interface EntityTimelineFrame {
+  frame: number;
+  player: { position: THREE.Vector3; aimDirection: THREE.Vector3 };
+  enemies: Array<{ id: number; type: string; position: THREE.Vector3; alive: boolean }>;
+  bullets: THREE.Vector3[];
+}
+
+/** Full entity timeline recording. */
+export interface EntityTimeline {
+  frames: EntityTimelineFrame[];
+  seed: number;
+  surface: string;
+}
+
+/** Scenario configuration for deterministic testing. */
+export interface ScenarioConfig {
+  playerPosition?: { u: number; v: number };
+  enemies?: Array<{
+    type: EnemyType;
+    u: number;
+    v: number;
+    count?: number;
+  }>;
+  seed?: number;
+}
+
+/** Recorded input for a single frame. */
+export interface ReplayInput {
+  frame: number;
+  keys: string[];
+  mouseX: number;
+  mouseY: number;
+  mouseDown: boolean;
+}
+
+/** Complete replay data. */
+export interface ReplayData {
+  seed: number;
+  surface: string;
+  inputs: ReplayInput[];
+  totalFrames: number;
+}
+
+/** Options for PlaygroundTestHarness constructor. */
+export interface HarnessOptions {
+  surface?: SurfaceType;
+  weapon?: WeaponType | null;
+  width?: number;
+  height?: number;
+  seed?: number;
+  enemyCount?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Screen coordinate projection
 // ---------------------------------------------------------------------------
 
@@ -194,6 +263,7 @@ export class PlaygroundTestHarness {
   readonly pg: PlaygroundGame;
   readonly width: number;
   readonly height: number;
+  readonly seed: number | null;
 
   private readonly heldKeys: Set<string> = new Set();
   private mouseX = DEFAULT_WIDTH / 2;
@@ -201,14 +271,55 @@ export class PlaygroundTestHarness {
   private mouseDown = false;
   private _totalFrames = 0;
 
+  // Recording state
+  private isRecording = false;
+  private recordedInputs: ReplayInput[] = [];
+  private recordingStartFrame = 0;
+
   constructor(
-    surface: SurfaceType = 'sphere',
-    weapon: WeaponType | null = null,
-    width: number = DEFAULT_WIDTH,
-    height: number = DEFAULT_HEIGHT,
+    surface?: SurfaceType,
+    weapon?: WeaponType | null,
+    width?: number,
+    height?: number,
+  );
+
+  constructor(options: HarnessOptions);
+
+  constructor(
+    surfaceOrOptions: SurfaceType | HarnessOptions = 'sphere',
+    weapon?: WeaponType | null,
+    width?: number,
+    height?: number,
   ) {
+    // Parse constructor arguments (support both old and new signatures)
+    let surface: SurfaceType;
+    let enemyCount: number;
+    let seed: number | null = null;
+
+    if (typeof surfaceOrOptions === 'object' && surfaceOrOptions !== null) {
+      const opts = surfaceOrOptions;
+      surface = opts.surface ?? 'sphere';
+      weapon = weapon ?? opts.weapon ?? null;
+      width = width ?? opts.width ?? DEFAULT_WIDTH;
+      height = height ?? opts.height ?? DEFAULT_HEIGHT;
+      seed = opts.seed ?? null;
+      enemyCount = opts.enemyCount ?? 0;
+    } else {
+      surface = (surfaceOrOptions as SurfaceType) ?? 'sphere';
+      weapon = weapon ?? null;
+      width = width ?? DEFAULT_WIDTH;
+      height = height ?? DEFAULT_HEIGHT;
+      enemyCount = 0;
+    }
+
     this.width = width;
     this.height = height;
+    this.seed = seed;
+
+    // Set seed BEFORE creating PlaygroundGame (so enemy spawns are deterministic)
+    if (seed !== null) {
+      setGameSeed(seed);
+    }
 
     const container = this.createMockContainer(width, height);
 
@@ -218,7 +329,7 @@ export class PlaygroundTestHarness {
       height,
       surface,
       weapon,
-      enemyCount: 0,
+      enemyCount,
       lives: 99,
     });
 
@@ -229,6 +340,9 @@ export class PlaygroundTestHarness {
   /** Total frames ticked since construction. */
   get totalFrames(): number { return this._totalFrames; }
 
+  /** Access to player (for convenience). */
+  get player() { return this.pg.player; }
+
   // =======================================================================
   // Frame Advancement
   // =======================================================================
@@ -236,6 +350,17 @@ export class PlaygroundTestHarness {
   /** Advance N frames at fixed dt (default 1/60s). */
   tick(frames: number = 1, dt: number = 1 / 60): void {
     for (let i = 0; i < frames; i++) {
+      // Record input if recording is active
+      if (this.isRecording) {
+        this.recordedInputs.push({
+          frame: this._totalFrames - this.recordingStartFrame,
+          keys: Array.from(this.heldKeys),
+          mouseX: this.mouseX,
+          mouseY: this.mouseY,
+          mouseDown: this.mouseDown,
+        });
+      }
+
       (this.pg.game.clock as any).totalTime += dt;
       (this.pg as any).fixedUpdate(dt);
       (this.pg as any).renderUpdate();
@@ -811,12 +936,219 @@ export class PlaygroundTestHarness {
   }
 
   // =======================================================================
+  // Deterministic Testing — Entity Tracking
+  // =======================================================================
+
+  /** Get all enemy positions with their types and health. */
+  getEnemyStates(): EntityState[] {
+    return this.pg.enemySpawner.getEnemies()
+      .map(e => ({
+        type: e.baseTypeName || 'unknown',
+        position: e.position.clone(),
+        alive: e.alive,
+        health: e.health,
+        faceIndex: (e as any).faceIndex,
+      }));
+  }
+
+  /**
+   * Record all entity positions over N frames.
+   * Returns a full timeline that can be compared for determinism verification.
+   */
+  recordEntityTimeline(frames: number, sampleEvery: number = 1): EntityTimeline {
+    const timelineFrames: EntityTimelineFrame[] = [];
+
+    for (let i = 0; i < frames; i++) {
+      this.tick(1);
+
+      if (i % sampleEvery === 0) {
+        const enemies = this.pg.enemySpawner.getEnemies();
+        const bullets: THREE.Vector3[] = [];
+        this.pg.bulletPool.forEachActive((_idx, pos) => {
+          bullets.push(pos.clone());
+        });
+
+        timelineFrames.push({
+          frame: this._totalFrames,
+          player: {
+            position: this.getPlayerWorldPos(),
+            aimDirection: this.player.getAimDirection(),
+          },
+          enemies: enemies
+            .filter(e => e.alive && e.active)
+            .map((e, id) => ({
+              id,
+              type: e.baseTypeName || 'unknown',
+              position: e.position.clone(),
+              alive: e.alive,
+            })),
+          bullets,
+        });
+      }
+    }
+
+    return {
+      frames: timelineFrames,
+      seed: this.seed ?? 0,
+      surface: (this.pg as any)._surface?.constructor?.name || 'unknown',
+    };
+  }
+
+  // =======================================================================
+  // Deterministic Testing — Scenario Builder
+  // =======================================================================
+
+  /**
+   * Build a specific test scenario with pre-positioned entities.
+   * Use this to create reproducible test cases.
+   */
+  buildScenario(config: ScenarioConfig): void {
+    // Apply seed if provided
+    if (config.seed !== undefined) {
+      setGameSeed(config.seed);
+    }
+
+    // Position player
+    if (config.playerPosition) {
+      const { u, v } = config.playerPosition;
+      this.pg.player.respawn(u, v);
+      const point = (this.pg as any)._surface.getPoint(u, v);
+      const walker = (this.pg as any)._walker;
+      walker.position.copy(point.position);
+      walker.normal.copy(point.normal);
+      this.pg.player.mesh.position.copy(walker.position);
+    }
+
+    // Spawn enemies
+    if (config.enemies) {
+      for (const enemyGroup of config.enemies) {
+        const count = enemyGroup.count ?? 1;
+        for (let i = 0; i < count; i++) {
+          this.pg.enemySpawner.spawn(enemyGroup.type, enemyGroup.u, enemyGroup.v);
+        }
+      }
+    }
+
+    // Let enemies materialize
+    this.tick(10);
+  }
+
+  /**
+   * Run a scenario and capture the full entity timeline.
+   * Convenient one-shot method for scenario-based testing.
+   */
+  runScenario(config: ScenarioConfig, frames: number): EntityTimeline {
+    this.buildScenario(config);
+    return this.recordEntityTimeline(frames);
+  }
+
+  // =======================================================================
+  // Deterministic Testing — Replay System
+  // =======================================================================
+
+  /** Start recording all inputs for replay. */
+  startRecording(): void {
+    this.isRecording = true;
+    this.recordedInputs = [];
+    this.recordingStartFrame = this._totalFrames;
+  }
+
+  /** Stop recording and return the replay data. */
+  stopRecording(): ReplayData {
+    this.isRecording = false;
+    return {
+      seed: this.seed ?? 0,
+      surface: (this.pg as any)._surface?.constructor?.name || 'unknown',
+      inputs: this.recordedInputs,
+      totalFrames: this._totalFrames - this.recordingStartFrame,
+    };
+  }
+
+  /**
+   * Play back a recorded replay.
+   * Returns the entity timeline produced by the replay.
+   */
+  playReplay(replay: ReplayData): EntityTimeline {
+    // Reset seed to match original recording
+    if (replay.seed !== 0) {
+      setGameSeed(replay.seed);
+    }
+
+    // Reset state
+    this.releaseAllKeys();
+    this.pg.player.respawn(0.5, 0.5);
+    this.pg.enemySpawner.clear();
+
+    const timelineFrames: EntityTimelineFrame[] = [];
+    let inputIndex = 0;
+
+    for (let frame = 0; frame < replay.totalFrames; frame++) {
+      // Apply recorded input if available for this frame
+      if (inputIndex < replay.inputs.length && replay.inputs[inputIndex].frame <= frame) {
+        const input = replay.inputs[inputIndex];
+
+        // Clear keys
+        this.releaseAllKeys();
+
+        // Apply keys
+        for (const key of input.keys) {
+          this.pressKey(key);
+        }
+
+        // Apply mouse
+        this.setMousePosition(input.mouseX, input.mouseY);
+        this.setMouseDown(input.mouseDown);
+
+        inputIndex++;
+      }
+
+      // Tick
+      this.tick(1);
+
+      // Record timeline
+      const enemies = this.pg.enemySpawner.getEnemies();
+      const bullets: THREE.Vector3[] = [];
+      this.pg.bulletPool.forEachActive((_idx, pos) => {
+        bullets.push(pos.clone());
+      });
+
+      timelineFrames.push({
+        frame: this._totalFrames,
+        player: {
+          position: this.getPlayerWorldPos(),
+          aimDirection: this.player.getAimDirection(),
+        },
+        enemies: enemies
+          .filter(e => e.alive && e.active)
+          .map((e, id) => ({
+            id,
+            type: e.baseTypeName || 'unknown',
+            position: e.position.clone(),
+            alive: e.alive,
+          })),
+        bullets,
+      });
+    }
+
+    return {
+      frames: timelineFrames,
+      seed: replay.seed,
+      surface: replay.surface,
+    };
+  }
+
+  // =======================================================================
   // Cleanup
   // =======================================================================
 
   dispose(): void {
     this.releaseAllKeys();
     this.pg.dispose();
+
+    // Clear seed if we set one
+    if (this.seed !== null) {
+      clearGameSeed();
+    }
   }
 
   // =======================================================================

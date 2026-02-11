@@ -132,6 +132,51 @@ export class GravityWell extends BaseEnemy {
     }
   }
 
+  computeMovementDirection(dt: number, _playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Update timers and state (important: updateBehavior isn't called when walker is active)
+    this.pulsePhase += dt * 2;
+    const scale = 1 + Math.sin(this.pulsePhase) * 0.2;
+    if (this.mesh) {
+      this.mesh.scale.setScalar(scale);
+    }
+
+    // Pulse radius rings when active
+    if (this.gravityActive && this.radiusRing) {
+      const ringPulse = 0.15 + Math.sin(this.pulsePhase * 1.5) * 0.1;
+      (this.radiusRing.material as THREE.MeshBasicMaterial).opacity = ringPulse;
+
+      if (this.dangerRing) {
+        const dangerPulse = 0.3 + Math.sin(this.pulsePhase * 2) * 0.15;
+        (this.dangerRing.material as THREE.MeshBasicMaterial).opacity = dangerPulse;
+      }
+    }
+
+    // Check for detonation
+    if (this.consumedCount >= this.maxConsumed) {
+      this.detonate();
+    }
+
+    // Movement: slow drift when inactive, stationary when active
+    if (!this.gravityActive) {
+      const driftAngle = Date.now() * 0.0001;
+      const direction = new THREE.Vector3(
+        Math.cos(driftAngle),
+        0,
+        Math.sin(driftAngle)
+      ).normalize();
+
+      // Use tangent frame from walker to convert to surface-aligned direction
+      if (this.walker) {
+        const frame = this.walker.getTangentFrame();
+        const tangentDir = frame.tangent.clone().multiplyScalar(direction.x);
+        const bitangentDir = frame.bitangent.clone().multiplyScalar(direction.z);
+        return tangentDir.add(bitangentDir).normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+      }
+    }
+
+    return null; // Stationary when gravity is active
+  }
+
   takeDamage(amount: number): void {
     super.takeDamage(amount);
 

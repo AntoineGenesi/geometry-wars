@@ -88,4 +88,60 @@ export class Spawner extends BaseEnemy {
   getSpawnProgress(): number {
     return this.spawnTimer / this.spawnInterval;
   }
+
+  computeMovementDirection(dt: number, _playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Update timers and state
+    this.spawnTimer += dt;
+    if (this.spawnTimer >= this.spawnInterval && this.totalSpawned < this.maxSpawns) {
+      this.spawnTimer = 0;
+      this.totalSpawned++;
+
+      if (Spawner.onSpawnEnemy) {
+        // Spawn at slight offset from this position
+        // In walker mode, we still use UV offsets (game will convert to world space)
+        const offsetU = (Math.random() - 0.5) * 0.08;
+        const offsetV = (Math.random() - 0.5) * 0.08;
+
+        // Get current UV from walker if available
+        if (this.walker && this.surfaceRef) {
+          const currentUV = this.surfaceRef.worldToSurface(this.walker.position);
+          Spawner.onSpawnEnemy(
+            Math.max(0, Math.min(1, currentUV.u + offsetU)),
+            Math.max(0, Math.min(1, currentUV.v + offsetV))
+          );
+        }
+      }
+
+      // Flash on spawn
+      this.pulsePhase = 0;
+    }
+
+    // Pulsing and inner core rotation
+    this.pulsePhase += dt * 2;
+    if (this.mesh) {
+      const innerCore = this.mesh.getObjectByName('inner-core');
+      if (innerCore) {
+        innerCore.rotation.y += 3 * dt;
+        innerCore.rotation.z += 2 * dt;
+      }
+
+      // Pulse scale when about to spawn
+      const spawnProgress = this.spawnTimer / this.spawnInterval;
+      const pulse = 1.0 + spawnProgress * 0.15;
+      this.mesh.scale.setScalar(pulse);
+    }
+
+    // Very slow drift (nearly stationary)
+    if (this.walker) {
+      const driftAngle = Date.now() * 0.00005;
+      const frame = this.walker.getTangentFrame();
+
+      const tangentDir = frame.tangent.clone().multiplyScalar(Math.cos(driftAngle));
+      const bitangentDir = frame.bitangent.clone().multiplyScalar(Math.sin(driftAngle));
+
+      return tangentDir.add(bitangentDir).normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+    }
+
+    return null;
+  }
 }

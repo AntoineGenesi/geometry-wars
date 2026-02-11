@@ -545,6 +545,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
+  enemySpawner.setMeshSurface(meshSurface);
 
   // -- GPU instanced rendering for enemies (reduces draw calls from ~2000 to ~15) --
   const enemyInstanceManager = new EnemyInstanceManager(game.scene);

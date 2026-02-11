@@ -61,4 +61,61 @@ export class SpinnerSpawn extends BaseEnemy {
       this.mesh.rotation.z += 3 * dt;
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // For walker mode, need to track orbit center in world space
+    // Use a private property to track the world-space orbit center
+    if (!(this as any).worldOrbitCenter) {
+      (this as any).worldOrbitCenter = this.walker.position.clone();
+    }
+    const worldOrbitCenter: THREE.Vector3 = (this as any).worldOrbitCenter;
+
+    // Update orbit angle
+    this.orbitAngle += this.orbitSpeed * dt;
+
+    // Get the tangent frame at current position to define the orbit plane
+    const frame = this.walker.getTangentFrame();
+
+    // Calculate orbit offset in the tangent plane
+    const orbitOffsetLocal = new THREE.Vector3(
+      Math.cos(this.orbitAngle) * this.orbitRadius,
+      Math.sin(this.orbitAngle) * this.orbitRadius,
+      0
+    );
+
+    // Transform to world space using tangent frame
+    const orbitOffsetWorld = new THREE.Vector3();
+    orbitOffsetWorld.addScaledVector(frame.tangent, orbitOffsetLocal.x);
+    orbitOffsetWorld.addScaledVector(frame.bitangent, orbitOffsetLocal.y);
+
+    // Calculate target orbit position
+    const targetPos = worldOrbitCenter.clone().add(orbitOffsetWorld);
+
+    // Drift orbit center toward player
+    const driftDir = playerWorldPos.clone().sub(worldOrbitCenter);
+    const distance = driftDir.length();
+
+    if (distance > 0.01) {
+      driftDir.normalize();
+      worldOrbitCenter.addScaledVector(driftDir, this.driftSpeed * dt);
+    }
+
+    // Move toward target orbit position
+    const moveDir = targetPos.sub(this.walker.position);
+    const moveDist = moveDir.length();
+
+    if (moveDist < 0.001) return null;
+
+    moveDir.normalize();
+
+    // Rotate mesh
+    if (this.mesh) {
+      this.mesh.rotation.z += 3 * dt;
+    }
+
+    // Return velocity scaled by walkerSpeedScale (orbit motion is already in world units)
+    return moveDir.multiplyScalar(moveDist * 5); // Fast convergence to orbit path
+  }
 }

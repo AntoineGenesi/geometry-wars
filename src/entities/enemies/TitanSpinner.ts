@@ -63,4 +63,33 @@ export class TitanSpinner extends BaseEnemy {
 
     super.die();
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Rapid rotation
+    if (this.mesh) {
+      this.mesh.rotation.x += 4 * dt;
+      this.mesh.rotation.y += 5 * dt;
+    }
+
+    // Chase player with wobble
+    const wobbleU = (Math.random() - 0.5) * this.wobbleAmount;
+    const wobbleV = (Math.random() - 0.5) * this.wobbleAmount;
+
+    // Get tangent frame for wobble offset
+    const frame = this.walker.getTangentFrame();
+    const wobbleOffset = frame.tangent.clone().multiplyScalar(wobbleU)
+      .add(frame.bitangent.clone().multiplyScalar(wobbleV));
+
+    // Direction to player with wobble
+    const toPlayer = playerWorldPos.clone().add(wobbleOffset).sub(this.walker.position);
+    const distance = toPlayer.length();
+
+    if (distance > 0.01) {
+      return toPlayer.normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+    }
+
+    return null;
+  }
 }

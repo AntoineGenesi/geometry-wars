@@ -9,6 +9,7 @@ interface SnakeSegment {
   mesh: THREE.Group;
   entity: THREE.Group;
   entitySurface: { u: number; v: number };
+  worldPos?: THREE.Vector3; // For walker mode: world position history
 }
 
 export class Snake extends BaseEnemy {
@@ -19,6 +20,7 @@ export class Snake extends BaseEnemy {
   private readonly sineFrequency = 2;
   private sinePhase = 0;
   private positionHistory: Array<{ u: number; v: number }> = [];
+  private positionHistoryWorld: Array<THREE.Vector3> = []; // For walker mode
   private readonly historySize = 30;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
@@ -135,5 +137,73 @@ export class Snake extends BaseEnemy {
       surface: s.entitySurface,
       radius: 0.15
     }));
+  }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    this.sinePhase += this.sineFrequency * dt;
+
+    // Calculate direction to player
+    const toPlayer = playerWorldPos.clone().sub(this.walker.position);
+    const distance = toPlayer.length();
+
+    if (distance > 0.01) {
+      const dirToPlayer = toPlayer.clone().normalize();
+
+      // Calculate perpendicular for S-pattern (in world space)
+      // Use tangent frame to find perpendicular
+      const frame = this.walker.getTangentFrame();
+
+      // Project player direction onto tangent plane
+      const tangentComponent = dirToPlayer.dot(frame.tangent);
+      const bitangentComponent = dirToPlayer.dot(frame.bitangent);
+
+      // Perpendicular in tangent plane (rotate 90 degrees)
+      const perpTangent = -bitangentComponent;
+      const perpBitangent = tangentComponent;
+
+      // Apply S-pattern offset
+      const sineOffset = Math.sin(this.sinePhase) * this.sineAmplitude;
+
+      // Combine forward direction with perpendicular sine wave
+      const moveDir = frame.tangent.clone().multiplyScalar(tangentComponent + perpTangent * sineOffset)
+        .add(frame.bitangent.clone().multiplyScalar(bitangentComponent + perpBitangent * sineOffset));
+
+      // Add current position to world history
+      this.positionHistoryWorld.unshift(this.walker.position.clone());
+      if (this.positionHistoryWorld.length > this.historySize) {
+        this.positionHistoryWorld.pop();
+      }
+
+      // Update segments to follow head with delay (using world positions)
+      if (this.walker.surface && this.surfaceRef) {
+        for (let i = 0; i < this.segments.length; i++) {
+          const historyIndex = Math.min((i + 1) * 5, this.positionHistoryWorld.length - 1);
+          if (historyIndex < this.positionHistoryWorld.length) {
+            const targetWorldPos = this.positionHistoryWorld[historyIndex];
+
+            // Get closest point on surface to target world position
+            const closest = this.walker.surface.closestPointOnSurface(targetWorldPos);
+            if (closest) {
+              this.segments[i].entity.position.copy(closest.point);
+              this.segments[i].worldPos = closest.point.clone();
+
+              // Store UV for backward compatibility
+              const uv = this.surfaceRef.worldToSurface(closest.point);
+              this.segments[i].u = uv.u;
+              this.segments[i].v = uv.v;
+              this.segments[i].entitySurface = { u: uv.u, v: uv.v };
+            }
+          }
+        }
+      }
+
+      if (moveDir.length() > 0.001) {
+        return moveDir.normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+      }
+    }
+
+    return null;
   }
 }

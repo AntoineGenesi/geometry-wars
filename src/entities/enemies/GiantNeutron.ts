@@ -81,4 +81,26 @@ export class GiantNeutron extends BaseEnemy {
 
     super.die();
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Fast spin + pulsing (same as updateBehavior)
+    this.spinAngle += 4 * dt;
+    this.pulsePhase += dt * 2;
+    if (this.mesh) {
+      this.mesh.rotation.z = this.spinAngle;
+      const scale = 1.0 + Math.sin(this.pulsePhase) * 0.06;
+      this.mesh.scale.setScalar(scale);
+    }
+
+    // Convert direction from local UV-like direction to world space
+    const frame = this.walker!.getTangentFrame();
+    const worldDir = frame.tangent.clone().multiplyScalar(this.directionU)
+      .addScaledVector(frame.bitangent, this.directionV)
+      .normalize();
+
+    // Scale by world speed
+    worldDir.multiplyScalar(this.speed * this.walkerSpeedScale);
+
+    return worldDir;
+  }
 }

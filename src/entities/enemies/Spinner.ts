@@ -60,4 +60,31 @@ export class Spinner extends BaseEnemy {
     // Call parent die() for score/geoms callback
     super.die();
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Add random wobble to chase direction
+    const wobble = new THREE.Vector3(
+      (Math.random() - 0.5) * this.wobbleAmount,
+      (Math.random() - 0.5) * this.wobbleAmount,
+      0
+    );
+
+    const target = playerWorldPos.clone().add(wobble);
+    const dir = target.sub(this.walker.position);
+    const distance = dir.length();
+
+    if (distance < 0.01) return null;
+
+    dir.normalize();
+
+    // Rotate mesh for visual effect
+    if (this.mesh) {
+      this.mesh.rotation.x += 2 * dt;
+      this.mesh.rotation.y += 3 * dt;
+    }
+
+    return dir.multiplyScalar(this.speed * this.walkerSpeedScale);
+  }
 }

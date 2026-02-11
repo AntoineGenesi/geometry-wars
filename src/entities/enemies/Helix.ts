@@ -159,4 +159,67 @@ export class Helix extends BaseEnemy {
       }
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Chase the player
+    const delta = playerWorldPos.clone().sub(this.walker.position);
+    const distance = delta.length();
+
+    if (distance < 0.001) return null;
+
+    delta.normalize();
+
+    // Corkscrew perpendicular wobble (oscillates left/right of chase direction)
+    this.corkscrewPhase += 4.0 * dt;
+
+    // Get tangent frame to define perpendicular direction in the surface
+    const frame = this.walker.getTangentFrame();
+
+    // Calculate perpendicular direction in the tangent plane
+    // Cross product of delta and normal gives perpendicular direction
+    const perpWorld = new THREE.Vector3().crossVectors(delta, frame.normal).normalize();
+
+    const wobbleStrength = 0.3;
+    const wobble = Math.sin(this.corkscrewPhase) * wobbleStrength;
+
+    // Combine chase direction with perpendicular wobble
+    const dir = delta.clone().addScaledVector(perpWorld, wobble);
+    dir.normalize();
+
+    // Face toward player
+    this.facingAngle = Math.atan2(delta.y, delta.x);
+
+    // Continuous helix rotation (faster when close to player)
+    const rotSpeed = 3.0 + Math.max(0, 1.0 - distance) * 3.0;
+    this.helixAngle += rotSpeed * dt;
+
+    // Animate spiral segments: rotate around the central axis
+    if (this.mesh) {
+      // Orient the entire helix toward the player
+      this.mesh.rotation.z = this.facingAngle;
+
+      // Spin the helix around its long axis
+      for (let arm = 0; arm < ARM_COUNT; arm++) {
+        const armPhaseOffset = arm * Math.PI;
+        for (let i = 0; i < this.armSegments[arm].length; i++) {
+          const seg = this.armSegments[arm][i];
+          const t = i / SEGMENTS_PER_ARM;
+          const angle = t * Math.PI * 2 + armPhaseOffset + this.helixAngle;
+          const helixRadius = 0.08;
+
+          seg.position.x = Math.cos(angle) * helixRadius;
+          seg.position.z = Math.sin(angle) * helixRadius;
+          seg.rotation.y = angle;
+
+          // Subtle scale pulse along the helix
+          const pulse = 1.0 + Math.sin(this.helixAngle * 2 + i * 0.5) * 0.15;
+          seg.scale.setScalar(pulse);
+        }
+      }
+    }
+
+    return dir.multiplyScalar(this.speed * this.walkerSpeedScale);
+  }
 }

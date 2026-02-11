@@ -37,6 +37,8 @@ import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 import type { EnemyDecoratorSystem } from '../../rendering/EnemyDecorators';
 import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
 import type { Surface } from '../../surfaces/Surface';
+import { MeshWalker } from '../../experimental/mesh-movement/MeshWalker';
+import type { MeshSurface } from '../../experimental/mesh-movement/MeshSurface';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
@@ -134,6 +136,16 @@ export class EnemySpawner {
    */
   private surface: Surface | null = null;
 
+  /**
+   * MeshSurface for geodesic mesh walking. When set, spawned enemies
+   * get a MeshWalker for surface-constrained movement without UV coordinates.
+   * Set via setMeshSurface() after construction.
+   */
+  private meshSurface: MeshSurface | null = null;
+
+  /** Player world-space position for mesh-walker-mode enemies. */
+  private playerWorldPos: THREE.Vector3 = new THREE.Vector3();
+
   constructor(
     scene: THREE.Scene,
     getTransform: (u: number, v: number) => {
@@ -215,10 +227,29 @@ export class EnemySpawner {
     return this.surface;
   }
 
+  /**
+   * Set the MeshSurface for geodesic mesh walking.
+   * When set, newly spawned enemies receive a MeshWalker for
+   * surface-constrained movement (if they implement computeMovementDirection).
+   */
+  setMeshSurface(meshSurface: MeshSurface): void {
+    this.meshSurface = meshSurface;
+  }
+
+  /** Get the current MeshSurface reference. */
+  getMeshSurface(): MeshSurface | null {
+    return this.meshSurface;
+  }
+
   /** Set player position for spawn distance calculations */
   setPlayerPosition(u: number, v: number): void {
     this.playerU = u;
     this.playerV = v;
+  }
+
+  /** Set player world-space position for mesh-walker-mode enemies. */
+  setPlayerWorldPosition(worldPos: THREE.Vector3): void {
+    this.playerWorldPos.copy(worldPos);
   }
 
   /** Calculate UV distance with proper wrapping for the current surface topology. */
@@ -443,6 +474,15 @@ export class EnemySpawner {
       enemy.applyDifficultyTier(tier);
     }
 
+    // Create MeshWalker for geodesic surface movement (if MeshSurface available).
+    // The walker is created at the enemy's initial world position (from getTransform).
+    // Enemy types that implement computeMovementDirection() will use the walker;
+    // those that don't will continue using the UV code path in BaseEnemy.update().
+    if (this.meshSurface) {
+      const initialTransform = this.getTransform(u, v);
+      enemy.walker = new MeshWalker(this.meshSurface, initialTransform.position, enemy.speed);
+    }
+
     // Apply initial surface transform
     enemy.applySurfaceTransform(this.getTransform);
 
@@ -595,6 +635,7 @@ export class EnemySpawner {
         if (enemy.isMaterializing) continue;
 
         enemy.setPlayerPosition(playerU, playerV);
+        enemy.setPlayerWorldPosition(this.playerWorldPos);
         enemy.update(dt);
         enemy.applySurfaceTransform(this.getTransform);
 

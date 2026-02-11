@@ -201,7 +201,8 @@ export class GameLoop {
       ctx.gameMode.completeLevel(ctx.player.score);
     }
 
-    // Update enemies - use player's actual UV position
+    // Update enemies - use player's actual UV position + world position for mesh walkers
+    ctx.enemySpawner.setPlayerWorldPosition(ctx.playerWalker.position);
     if (ctx.player.canBeTracked) {
       ctx.enemySpawner.update(dt, ctx.player.surfaceU, ctx.player.surfaceV);
     } else {

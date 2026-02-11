@@ -141,4 +141,82 @@ export class Repulsor extends BaseEnemy {
     // Rear is hit if angle is roughly opposite to facing direction
     return Math.abs(angleDiff) > Math.PI / 2;
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Track charge target in world space
+    if (!(this as any).worldChargeTarget) {
+      (this as any).worldChargeTarget = new THREE.Vector3();
+    }
+    const worldChargeTarget: THREE.Vector3 = (this as any).worldChargeTarget;
+
+    // Update phase timer
+    this.phaseTimer += dt;
+
+    let velocity: THREE.Vector3 | null = null;
+
+    switch (this.phase) {
+      case RepulsorPhase.Lock:
+        // Face the player
+        const deltaLock = playerWorldPos.clone().sub(this.walker.position);
+        this.facingAngle = Math.atan2(deltaLock.y, deltaLock.x);
+
+        if (this.phaseTimer >= this.lockDuration) {
+          // Store charge target and switch to charge
+          worldChargeTarget.copy(playerWorldPos);
+          this.phase = RepulsorPhase.Charge;
+          this.phaseTimer = 0;
+        }
+
+        // Pulse front mesh during lock
+        const pulse = 1 + Math.sin(this.phaseTimer * 8) * 0.2;
+        this.frontMesh.scale.setScalar(pulse);
+
+        velocity = null; // Stationary during lock
+        break;
+
+      case RepulsorPhase.Charge:
+        // Dash toward stored target position
+        const deltaCharge = worldChargeTarget.clone().sub(this.walker.position);
+        const distance = deltaCharge.length();
+
+        if (distance > 0.1) {
+          deltaCharge.normalize();
+          velocity = deltaCharge.multiplyScalar(this.chargeSpeed * this.walkerSpeedScale);
+        } else {
+          // Reached target, enter recovery
+          this.phase = RepulsorPhase.Recovery;
+          this.phaseTimer = 0;
+          velocity = null;
+        }
+
+        // Trail effect (scale front)
+        this.frontMesh.scale.setScalar(1.2);
+        break;
+
+      case RepulsorPhase.Recovery:
+        // Slow down and turn around
+        const turnSpeed = Math.PI / this.recoveryDuration;
+        this.facingAngle += turnSpeed * dt;
+
+        this.frontMesh.scale.setScalar(1);
+
+        if (this.phaseTimer >= this.recoveryDuration) {
+          // Back to lock phase
+          this.phase = RepulsorPhase.Lock;
+          this.phaseTimer = 0;
+        }
+
+        velocity = null; // Stationary during recovery
+        break;
+    }
+
+    // Update visual orientation
+    if (this.mesh) {
+      this.mesh.rotation.z = this.facingAngle;
+    }
+
+    return velocity;
+  }
 }

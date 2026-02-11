@@ -3,11 +3,13 @@ import { Entity, CollisionGroup } from '../../core/Entity';
 import { getDifficultyTier } from '../../core/DifficultyScaling';
 import type { DifficultyTier } from '../../core/DifficultyScaling';
 import type { Surface } from '../../surfaces/Surface';
+import type { MeshWalker } from '../../experimental/mesh-movement/MeshWalker';
 
 // Pre-allocated temp objects to avoid per-frame GC pressure
 const _tempMatrix4 = new THREE.Matrix4();
 const _tempEuler = new THREE.Euler();
 const _tempOffsetVec3 = new THREE.Vector3();
+const _tempMoveDir = new THREE.Vector3();
 
 export abstract class BaseEnemy extends Entity {
   health: number;
@@ -57,11 +59,31 @@ export abstract class BaseEnemy extends Entity {
    */
   surfaceRef: Surface | null = null;
 
+  /**
+   * Mesh walker for geodesic surface movement. When set, the enemy uses
+   * world-space mesh walking instead of UV-based movement. Set by
+   * EnemySpawner when a MeshSurface is available.
+   *
+   * During migration: enemies with walker use computeMovementDirection(),
+   * enemies without walker use the existing updateBehavior() UV path.
+   */
+  walker: MeshWalker | null = null;
+
+  /**
+   * Factor to convert UV-based speed values to world-space speed for mesh walker mode.
+   * UV speed 0.06 * 30 = 1.8 world units/sec (player is 3.0).
+   * Set by EnemySpawner. May be tuned per-surface in the future.
+   */
+  walkerSpeedScale: number = 30;
+
   /** Tracks damage dealt by each player (playerId -> total damage). */
   readonly damageBy: Map<number, number> = new Map();
 
   protected playerU: number = 0.5;
   protected playerV: number = 0.5;
+
+  /** Player world-space position for mesh-walker-mode enemies. */
+  protected _playerWorldPos: THREE.Vector3 = new THREE.Vector3();
 
   static onDeath: ((position: THREE.Vector3, score: number, geoms: number) => void) | null = null;
 
@@ -189,34 +211,48 @@ export abstract class BaseEnemy extends Entity {
       bitangent: THREE.Vector3;
     }
   ): void {
-    const transform = getTransform(this.surfacePosition.u, this.surfacePosition.v);
+    if (this.walker) {
+      // ===== MESH WALKER MODE =====
+      // Position/normal come directly from walker — no UV lookup needed
+      this.position.copy(this.walker.position);
 
-    this.position.copy(transform.position);
+      if (this.mesh) {
+        _tempOffsetVec3.copy(this.walker.position);
+        _tempOffsetVec3.addScaledVector(this.walker.normal, this.radius);
+        this.mesh.position.copy(_tempOffsetVec3);
 
-    if (this.mesh) {
-      // Offset the visual mesh above the surface by the enemy's radius
-      // Uses pre-allocated vector instead of clone()
-      _tempOffsetVec3.copy(transform.position);
-      _tempOffsetVec3.addScaledVector(transform.normal, this.radius);
-      this.mesh.position.copy(_tempOffsetVec3);
-
-      // Reuse pre-allocated Matrix4/Euler instead of new allocations
-      _tempMatrix4.makeBasis(transform.bitangent, transform.normal, transform.tangent);
-      _tempEuler.setFromRotationMatrix(_tempMatrix4);
-      this.mesh.rotation.copy(_tempEuler);
-
-      // Cache material references on first transform (avoids traverse every frame)
-      if (!this.cachedMaterials) {
-        this.cachedMaterials = [];
-        this.mesh.traverse((child) => {
-          if (child instanceof THREE.Mesh && child.material) {
-            const mat = child.material as THREE.MeshStandardMaterial;
-            if (mat.emissive !== undefined) {
-              this.cachedMaterials!.push(mat);
-            }
-          }
-        });
+        const frame = this.walker.getTangentFrame();
+        _tempMatrix4.makeBasis(frame.bitangent, frame.normal, frame.tangent);
+        _tempEuler.setFromRotationMatrix(_tempMatrix4);
+        this.mesh.rotation.copy(_tempEuler);
       }
+    } else {
+      // ===== UV MODE (existing) =====
+      const transform = getTransform(this.surfacePosition.u, this.surfacePosition.v);
+      this.position.copy(transform.position);
+
+      if (this.mesh) {
+        _tempOffsetVec3.copy(transform.position);
+        _tempOffsetVec3.addScaledVector(transform.normal, this.radius);
+        this.mesh.position.copy(_tempOffsetVec3);
+
+        _tempMatrix4.makeBasis(transform.bitangent, transform.normal, transform.tangent);
+        _tempEuler.setFromRotationMatrix(_tempMatrix4);
+        this.mesh.rotation.copy(_tempEuler);
+      }
+    }
+
+    // Cache material references on first transform (avoids traverse every frame)
+    if (this.mesh && !this.cachedMaterials) {
+      this.cachedMaterials = [];
+      this.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material) {
+          const mat = child.material as THREE.MeshStandardMaterial;
+          if (mat.emissive !== undefined) {
+            this.cachedMaterials!.push(mat);
+          }
+        }
+      });
     }
   }
 
@@ -225,43 +261,82 @@ export abstract class BaseEnemy extends Entity {
     this.playerV = v;
   }
 
+  /** Set player world-space position (used by mesh-walker-mode enemies). */
+  setPlayerWorldPosition(worldPos: THREE.Vector3): void {
+    this._playerWorldPos.copy(worldPos);
+  }
+
   abstract updateBehavior(dt: number, playerU: number, playerV: number): void;
+
+  /**
+   * Compute desired movement in world space. Override this instead of
+   * updateBehavior() for mesh-walker-based enemies.
+   *
+   * @returns World-space velocity vector (direction * speed in world units/sec),
+   *          or null for no movement this frame. The base class extracts speed
+   *          from the vector length and passes direction to walker.move().
+   */
+  computeMovementDirection(_dt: number, _playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    return null; // Default: no movement. Subclasses override when migrated to walker mode.
+  }
 
   update(dt: number): void {
     if (!this.alive) return;
 
-    // Record UV position before behavior update
-    const prevU = this.surfacePosition.u;
-    const prevV = this.surfacePosition.v;
+    if (this.walker) {
+      // ===== MESH WALKER MODE =====
+      // Enemy computes world-space velocity; walker handles surface-constrained movement.
+      const velocity = this.computeMovementDirection(dt, this._playerWorldPos);
+      if (velocity && velocity.lengthSq() > 0.0001) {
+        const speed = velocity.length();
+        this.walker.speed = speed;
+        _tempMoveDir.copy(velocity).multiplyScalar(1 / speed); // normalize without alloc
+        this.walker.move(_tempMoveDir, dt);
+      }
 
-    this.updateBehavior(dt, this.playerU, this.playerV);
+      // Sync world position from walker
+      this.position.copy(this.walker.position);
 
-    // Compute the raw UV delta the subclass produced
-    let deltaU = this.surfacePosition.u - prevU;
-    let deltaV = this.surfacePosition.v - prevV;
-
-    // Skip correction if movement is negligible
-    if (Math.abs(deltaU) < 0.000001 && Math.abs(deltaV) < 0.000001) return;
-
-    // Apply global surface speed normalization
-    if (this.surfaceSpeedScale !== 1.0) {
-      deltaU *= this.surfaceSpeedScale;
-      deltaV *= this.surfaceSpeedScale;
-    }
-
-    if (this.surfaceRef) {
-      // Route through surface.moveOnSurface() which provides:
-      // - Per-position UV correction (sphere pole compression, cube face convergence, etc.)
-      // - Proper UV wrapping/clamping for the surface topology
-      // This is the key fix: enemies now get the same corrections that were
-      // previously only applied to entities using moveOnSurface() directly.
-      const result = this.surfaceRef.moveOnSurface(prevU, prevV, deltaU, deltaV);
-      this.surfacePosition.u = result.u;
-      this.surfacePosition.v = result.v;
+      // Bridge: derive UV coordinates for backward compatibility
+      // (separation, DDA, gate pass-through, collision, etc. still use UV)
+      if (this.surfaceRef) {
+        const uv = this.surfaceRef.worldToSurface(this.walker.position);
+        this.surfacePosition.u = uv.u;
+        this.surfacePosition.v = uv.v;
+      }
     } else {
-      // Fallback: apply delta directly with basic clamping (legacy behavior)
-      this.surfacePosition.u = prevU + deltaU;
-      this.surfacePosition.v = prevV + deltaV;
+      // ===== UV MODE (existing) =====
+      // Record UV position before behavior update
+      const prevU = this.surfacePosition.u;
+      const prevV = this.surfacePosition.v;
+
+      this.updateBehavior(dt, this.playerU, this.playerV);
+
+      // Compute the raw UV delta the subclass produced
+      let deltaU = this.surfacePosition.u - prevU;
+      let deltaV = this.surfacePosition.v - prevV;
+
+      // Skip correction if movement is negligible
+      if (Math.abs(deltaU) < 0.000001 && Math.abs(deltaV) < 0.000001) return;
+
+      // Apply global surface speed normalization
+      if (this.surfaceSpeedScale !== 1.0) {
+        deltaU *= this.surfaceSpeedScale;
+        deltaV *= this.surfaceSpeedScale;
+      }
+
+      if (this.surfaceRef) {
+        // Route through surface.moveOnSurface() which provides:
+        // - Per-position UV correction (sphere pole compression, cube face convergence, etc.)
+        // - Proper UV wrapping/clamping for the surface topology
+        const result = this.surfaceRef.moveOnSurface(prevU, prevV, deltaU, deltaV);
+        this.surfacePosition.u = result.u;
+        this.surfacePosition.v = result.v;
+      } else {
+        // Fallback: apply delta directly with basic clamping (legacy behavior)
+        this.surfacePosition.u = prevU + deltaU;
+        this.surfacePosition.v = prevV + deltaV;
+      }
     }
   }
 

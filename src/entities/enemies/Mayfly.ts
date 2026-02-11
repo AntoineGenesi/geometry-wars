@@ -55,4 +55,32 @@ export class Mayfly extends BaseEnemy {
       this.surfacePosition.v = Math.max(0, Math.min(1, this.surfacePosition.v));
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Change random offset periodically for swarm jitter (must run in both modes)
+    this.offsetChangeTimer += dt;
+    if (this.offsetChangeTimer >= 0.3) {
+      this.randomOffsetU = (Math.random() - 0.5) * 0.1;
+      this.randomOffsetV = (Math.random() - 0.5) * 0.1;
+      this.offsetChangeTimer = 0;
+    }
+
+    // Convert UV offset to world space offset
+    const tangentFrame = this.walker.getTangentFrame();
+    const offsetWorld = tangentFrame.tangent
+      .clone()
+      .multiplyScalar(this.randomOffsetU * 3) // Scale up for world space
+      .add(tangentFrame.bitangent.clone().multiplyScalar(this.randomOffsetV * 3));
+
+    // Track player with offset
+    const targetPos = playerWorldPos.clone().add(offsetWorld);
+    const dir = targetPos.sub(this.walker.position);
+    const dist = dir.length();
+    if (dist < 0.01) return null;
+    dir.normalize();
+
+    return dir.multiplyScalar(this.speed * this.walkerSpeedScale);
+  }
 }

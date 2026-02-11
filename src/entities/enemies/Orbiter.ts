@@ -89,4 +89,63 @@ export class Orbiter extends BaseEnemy {
       this.mesh.rotation.x = Math.sin(this.orbitAngle) * 0.5;
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Reverse direction periodically
+    this.reverseTimer += dt;
+    if (this.reverseTimer >= this.nextReverse) {
+      this.orbitDirection *= -1;
+      this.reverseTimer = 0;
+      this.nextReverse = 2 + Math.random() * 3;
+    }
+
+    // Advance orbit angle
+    this.orbitAngle += this.orbitSpeed * this.orbitDirection * dt;
+
+    // Spiral inward
+    this.orbitRadius = Math.max(this.minOrbitRadius, this.orbitRadius - this.spiralInRate * dt);
+
+    // Get the tangent frame at current position to define the orbit plane
+    const frame = this.walker.getTangentFrame();
+
+    // Calculate orbit offset in the tangent plane
+    const orbitOffsetLocal = new THREE.Vector3(
+      Math.cos(this.orbitAngle) * this.orbitRadius,
+      Math.sin(this.orbitAngle) * this.orbitRadius,
+      0
+    );
+
+    // Transform to world space using tangent frame
+    const orbitOffsetWorld = new THREE.Vector3();
+    orbitOffsetWorld.addScaledVector(frame.tangent, orbitOffsetLocal.x);
+    orbitOffsetWorld.addScaledVector(frame.bitangent, orbitOffsetLocal.y);
+
+    // Calculate target orbit position around player
+    const targetPos = playerWorldPos.clone().add(orbitOffsetWorld);
+
+    // Smoothly move toward calculated orbit position
+    const delta = targetPos.sub(this.walker.position);
+    const dist = delta.length();
+
+    if (dist < 0.001) return null;
+
+    // Blend toward orbit position (smooth following)
+    const blendRate = 5.0; // how quickly it locks onto orbit path
+    const blend = Math.min(1.0, blendRate * dt);
+
+    delta.normalize();
+
+    // Spin the ring on its axis
+    this.spinAngle += 4 * dt;
+    if (this.mesh) {
+      this.mesh.rotation.z = this.spinAngle;
+      // Tilt ring to face movement direction
+      this.mesh.rotation.x = Math.sin(this.orbitAngle) * 0.5;
+    }
+
+    // Return velocity: direction to orbit position, scaled by distance and blend rate
+    return delta.multiplyScalar(dist * blendRate);
+  }
 }

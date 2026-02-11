@@ -92,4 +92,46 @@ export class TitanWeaver extends BaseEnemy {
 
     super.die();
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Momentum-based chase toward player
+    const delta = playerWorldPos.clone().sub(this.walker!.position);
+    const distance = delta.length();
+
+    if (distance > 0.3) { // ~0.01 UV * 30 = 0.3 world units
+      const dirU = delta.x / distance;
+      const dirV = delta.y / distance;
+
+      this.momentumU += dirU * this.acceleration * dt;
+      this.momentumV += dirV * this.acceleration * dt;
+    }
+
+    // Apply friction
+    this.momentumU *= this.friction;
+    this.momentumV *= this.friction;
+
+    // Limit speed (UV-based momentum, convert to world units)
+    const currentSpeedUV = Math.sqrt(this.momentumU * this.momentumU + this.momentumV * this.momentumV);
+    if (currentSpeedUV > this.speed) {
+      const scale = this.speed / currentSpeedUV;
+      this.momentumU *= scale;
+      this.momentumV *= scale;
+    }
+
+    // Rotate mesh based on velocity direction
+    if (currentSpeedUV > 0.05 && this.mesh) {
+      const angle = Math.atan2(this.momentumV, this.momentumU);
+      this.mesh.rotation.z = angle + Math.PI / 4;
+    }
+
+    // Convert momentum from UV-space to world-space velocity
+    if (currentSpeedUV > 0.001) {
+      const frame = this.walker!.getTangentFrame();
+      const worldVel = frame.tangent.clone().multiplyScalar(this.momentumU * this.walkerSpeedScale)
+        .addScaledVector(frame.bitangent, this.momentumV * this.walkerSpeedScale);
+      return worldVel;
+    }
+
+    return null;
+  }
 }

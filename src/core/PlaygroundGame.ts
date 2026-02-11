@@ -257,6 +257,7 @@ export class PlaygroundGame {
     this.enemySpawner = new EnemySpawner(this.game.scene, this.getTransformFn());
     this.enemySpawner.setSurfaceSpeedScale(this._surface.speedScale);
     this.enemySpawner.setSurface(this._surface);
+    this.enemySpawner.setMeshSurface(this._meshSurface);
 
     // -- Particles --
     this.particles = new ParticleSystem();
@@ -352,6 +353,7 @@ export class PlaygroundGame {
     (this as any).enemySpawner = new EnemySpawner(this.game.scene, this.getTransformFn());
     this.enemySpawner.setSurfaceSpeedScale(this._surface.speedScale);
     this.enemySpawner.setSurface(this._surface);
+    this.enemySpawner.setMeshSurface(this._meshSurface);
     this.spawnEnemies(this.config.enemyCount);
 
     this.config.surface = type;
@@ -422,6 +424,7 @@ export class PlaygroundGame {
     }
 
     // -- Update enemies (real AI, same behavior as main game) --
+    this.enemySpawner.setPlayerWorldPosition(this._walker.position);
     this.enemySpawner.update(dt, this.player.surfaceU, this.player.surfaceV);
 
     // -- Update weapon manager (projectiles, effects, buffs) --

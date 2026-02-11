@@ -58,4 +58,24 @@ export class TitanGrunt extends BaseEnemy {
 
     super.die();
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Pulsing effect (same as updateBehavior)
+    this.pulsePhase += dt * 1.5;
+    if (this.mesh) {
+      const scale = 1.0 + Math.sin(this.pulsePhase) * 0.08;
+      this.mesh.scale.setScalar(scale);
+    }
+
+    // Direct chase toward player
+    const delta = playerWorldPos.clone().sub(this.walker!.position);
+    const distance = delta.length();
+
+    if (distance > 0.3) { // ~0.01 UV * 30 = 0.3 world units
+      delta.normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+      return delta;
+    }
+
+    return null;
+  }
 }

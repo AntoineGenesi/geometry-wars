@@ -95,4 +95,51 @@ export class Weaver extends BaseEnemy {
       this.momentumV += perpV * this.dodgeForce * 0.016;
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    if (!this.walker) return null;
+
+    // Calculate direction to player in world space
+    const dir = playerWorldPos.clone().sub(this.walker.position);
+    const distance = dir.length();
+
+    if (distance > 0.01) {
+      dir.normalize();
+
+      // Apply acceleration toward player (convert UV momentum to world velocity)
+      this.momentumU += dir.x * this.acceleration * dt;
+      this.momentumV += dir.y * this.acceleration * dt;
+    }
+
+    // Check for nearby bullets and dodge (would need bullet system integration)
+    this.checkAndDodgeBullets();
+
+    // Apply friction
+    this.momentumU *= this.friction;
+    this.momentumV *= this.friction;
+
+    // Limit speed
+    const currentSpeed = Math.sqrt(this.momentumU * this.momentumU + this.momentumV * this.momentumV);
+    if (currentSpeed > this.speed) {
+      const scale = this.speed / currentSpeed;
+      this.momentumU *= scale;
+      this.momentumV *= scale;
+    }
+
+    // Rotate mesh based on movement direction
+    if (currentSpeed > 0.1 && this.mesh) {
+      const angle = Math.atan2(this.momentumV, this.momentumU);
+      this.mesh.rotation.z = angle + Math.PI / 4; // +45deg for diamond orientation
+    }
+
+    // Convert momentum to world velocity (treating momentum as UV units/sec, scale by walkerSpeedScale)
+    const velocityX = this.momentumU * this.walkerSpeedScale;
+    const velocityY = this.momentumV * this.walkerSpeedScale;
+
+    if (velocityX * velocityX + velocityY * velocityY < 0.0001) {
+      return null;
+    }
+
+    return new THREE.Vector3(velocityX, velocityY, 0);
+  }
 }

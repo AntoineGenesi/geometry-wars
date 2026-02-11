@@ -179,4 +179,88 @@ export class Fractal extends BaseEnemy {
       sat.scale.setScalar(satPulse);
     }
   }
+
+  computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
+    // Direction to player
+    const delta = playerWorldPos.clone().sub(this.walker!.position);
+    const distance = delta.length();
+    const distanceUV = distance / this.walkerSpeedScale; // Convert to UV-equivalent
+
+    // Approach-retreat state machine (same as updateBehavior)
+    this.phaseTimer += dt;
+
+    let velocity: THREE.Vector3 | null = null;
+
+    switch (this.approachPhase) {
+      case 'advance': {
+        if (distance > 0.03) { // ~0.001 UV * 30
+          this.moveU = delta.x / distance;
+          this.moveV = delta.y / distance;
+        }
+        velocity = delta.clone().normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
+
+        if (this.phaseTimer >= this.advanceDuration || distanceUV < 0.15) {
+          this.approachPhase = 'pause';
+          this.phaseTimer = 0;
+        }
+        break;
+      }
+      case 'pause': {
+        // Hover in place, update move direction
+        if (distance > 0.03) {
+          this.moveU = delta.x / distance;
+          this.moveV = delta.y / distance;
+        }
+        if (this.phaseTimer >= this.pauseDuration) {
+          this.approachPhase = 'retreat';
+          this.phaseTimer = 0;
+        }
+        velocity = null;
+        break;
+      }
+      case 'retreat': {
+        // Move away from player slowly
+        velocity = delta.clone().normalize().multiplyScalar(-this.speed * 0.5 * this.walkerSpeedScale);
+
+        if (this.phaseTimer >= this.retreatDuration) {
+          this.approachPhase = 'advance';
+          this.phaseTimer = 0;
+        }
+        break;
+      }
+    }
+
+    // Central pulse animation (same as updateBehavior)
+    this.pulseTime += dt;
+    if (this.centralMesh) {
+      const corePulse = 1.0 + Math.sin(this.pulseTime * 3.0) * 0.1;
+      this.centralMesh.scale.setScalar(corePulse);
+      this.centralMesh.rotation.y += 0.5 * dt;
+    }
+
+    // Animate orbiting satellites (same as updateBehavior)
+    for (let i = 0; i < SATELLITE_COUNT; i++) {
+      const config = SATELLITE_CONFIGS[i];
+      const sat = this.satellites[i];
+
+      const speedMult = this.approachPhase === 'advance' ? 1.3
+        : this.approachPhase === 'retreat' ? 0.7
+        : 1.0;
+      this.orbitalAngles[i] += config.speed * speedMult * dt;
+      const angle = this.orbitalAngles[i];
+
+      const x = Math.cos(angle) * config.radius;
+      const y = Math.sin(angle) * config.radius * Math.cos(config.tilt);
+      const z = Math.sin(angle) * config.radius * Math.sin(config.tilt);
+      sat.position.set(x, y, z);
+
+      sat.rotation.x += 2.0 * dt;
+      sat.rotation.z += 1.5 * dt;
+
+      const satPulse = 1.0 + Math.sin(this.pulseTime * 2.0 + config.phaseOffset) * 0.2;
+      sat.scale.setScalar(satPulse);
+    }
+
+    return velocity;
+  }
 }
