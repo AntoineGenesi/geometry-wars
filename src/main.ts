@@ -82,6 +82,14 @@ import { DDALogger } from './difficulty/DDALogger';
 import { EntityAudit } from './core/EntityAudit';
 import { PerformanceLogger } from './core/PerformanceLogger';
 import { loadVisualStyle } from './ui/VisualStyleSettings';
+import { UIHelpers } from './ui/UIHelpers';
+import { CollisionSystem } from './core/CollisionSystem';
+import { PickupSpawner } from './core/PickupSpawner';
+import { CameraController } from './core/CameraController';
+import { EnemyDeathCallbacks } from './entities/enemies/EnemyDeathCallbacks';
+import { GameContext } from './core/GameContext';
+import { GameLoop } from './core/GameLoop';
+import { RenderLoop } from './core/RenderLoop';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -109,113 +117,12 @@ function isNetworkMode(): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// UI helpers
+// UI helpers (now in UIHelpers module)
 // ---------------------------------------------------------------------------
 
-const scoreEl = document.getElementById('score-display')!;
-const multiplierEl = document.getElementById('multiplier-display')!;
-const livesEl = document.getElementById('lives-display')!;
-const bombsEl = document.getElementById('bombs-display')!;
-const weaponEl = document.getElementById('weapon-display')!;
-const timerEl = document.getElementById('timer-display')!;
-const levelNameEl = document.getElementById('level-name-display')!;
-const countdownEl = document.getElementById('countdown-overlay')!;
-const flashEl = document.getElementById('screen-flash')!;
-const playerLevelEl = document.getElementById('player-level-display')!;
-
-/** Flash the screen with a color for visual impact */
-function screenFlash(color: string, duration = 150): void {
-  if (!flashEl) return;
-  flashEl.style.background = color;
-  flashEl.classList.add('active');
-  setTimeout(() => {
-    flashEl.classList.remove('active');
-  }, duration);
-}
-
-function updateUI(player: Player, weaponManager?: WeaponManager): void {
-  scoreEl.textContent = player.score.toLocaleString();
-  multiplierEl.textContent = `x${player.multiplier}`;
-
-  // Multiplier color scales with value
-  const m = player.multiplier;
-  if (m >= 100) {
-    multiplierEl.style.color = '#ff00ff';
-    multiplierEl.style.textShadow = '0 0 12px #ff00ff';
-  } else if (m >= 50) {
-    multiplierEl.style.color = '#ff8800';
-    multiplierEl.style.textShadow = '0 0 10px #ff8800';
-  } else if (m >= 20) {
-    multiplierEl.style.color = '#ffff00';
-    multiplierEl.style.textShadow = '0 0 8px #ffff00';
-  } else if (m >= 5) {
-    multiplierEl.style.color = '#00ff88';
-    multiplierEl.style.textShadow = '0 0 8px #00ff88';
-  } else {
-    multiplierEl.style.color = '#0f0';
-    multiplierEl.style.textShadow = '0 0 8px #0f0';
-  }
-
-  // Show hearts up to 5, then show number
-  const lives = Math.max(0, player.lives);
-  if (lives <= 5) {
-    livesEl.textContent = '\u2665'.repeat(lives);
-  } else {
-    livesEl.textContent = `\u2665 x${lives}`;
-  }
-
-  // Show bombs up to 5, then show number
-  const bombs = Math.max(0, player.bombs);
-  if (bombs <= 5) {
-    bombsEl.textContent = '\u25cf'.repeat(bombs);
-  } else {
-    bombsEl.textContent = `\u25cf x${bombs}`;
-  }
-
-  // Show current weapon + ammo
-  if (weaponManager) {
-    const weapon = weaponManager.getCurrentWeapon();
-    const config = WEAPON_CONFIGS[weapon];
-    const ammo = weaponManager.getCurrentAmmo();
-    if (weapon === WeaponType.Standard) {
-      weaponEl.textContent = '';
-    } else {
-      weaponEl.textContent = `${config.name} [${ammo}]`;
-      weaponEl.style.color = `#${config.color.toString(16).padStart(6, '0')}`;
-      weaponEl.style.textShadow = `0 0 8px #${config.color.toString(16).padStart(6, '0')}`;
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
-// Enemy color map (for particle death effects)
+// Enemy colors (now in CollisionSystem module)
 // ---------------------------------------------------------------------------
-
-const ENEMY_COLORS: Record<string, THREE.Color> = {
-  wanderer: new THREE.Color(0xaa44ff),
-  grunt: new THREE.Color(0x4444ff),
-  duck: new THREE.Color(0xff44aa),
-  mayfly: new THREE.Color(0xaaff00),
-  rocket: new THREE.Color(0xff8800),
-  neutron: new THREE.Color(0x44dddd),
-  weaver: new THREE.Color(0x00ff44),
-  spinner: new THREE.Color(0xff44ff),
-  spinnerspawn: new THREE.Color(0xff88cc),
-  snake: new THREE.Color(0x4488ff),
-  repulsor: new THREE.Color(0xff4400),
-  gravitywell: new THREE.Color(0x4488ff),
-  spawner: new THREE.Color(0xff2222),
-  virus: new THREE.Color(0x00cc00),
-  gate: new THREE.Color(0xff8800),
-  painter: new THREE.Color(0xff44aa),
-  titangrunt: new THREE.Color(0x2244cc),
-  titanspinner: new THREE.Color(0xff22ff),
-  titanweaver: new THREE.Color(0x22ff44),
-  boss: new THREE.Color(0x4488ff),
-};
-
-/** Fallback color for enemy types not in ENEMY_COLORS — pre-allocated to avoid per-death allocs */
-const ENEMY_COLOR_FALLBACK = new THREE.Color(0xffffff);
 
 // ---------------------------------------------------------------------------
 // Weapon type -> bullet visual type mapping (for BulletInstanceManager)
@@ -350,12 +257,6 @@ class WaveScheduler {
 }
 
 // ---------------------------------------------------------------------------
-// Spatial hash for broad-phase collision (shared between collision checks)
-// ---------------------------------------------------------------------------
-
-const enemySpatialHash = new SpatialHash<BaseEnemy>(2.5);
-
-// ---------------------------------------------------------------------------
 // Module-level pre-allocated objects for zero-GC frustum visibility checks
 // ---------------------------------------------------------------------------
 
@@ -365,192 +266,8 @@ const _tempBox = new THREE.Box3();
 const _tempSphere = new THREE.Sphere();
 
 // ---------------------------------------------------------------------------
-// Bullet-enemy collision checker (optimized: squared distance + spatial hash + cached materials)
+// Collision detection (now in CollisionSystem module)
 // ---------------------------------------------------------------------------
-
-function checkBulletEnemyCollisions(
-  bulletPool: BulletPool,
-  enemies: BaseEnemy[],
-  particles: ParticleSystem,
-  scoreManager: ScoreManager,
-  geomPool: GeomPool,
-  surface: Surface,
-  screenShake: ScreenShake,
-  onEnemyKilled?: (u: number, v: number) => void,
-  scorePopups?: ScorePopupManager,
-  bulletDamage: number = 1,
-  onKillLog?: (type: string, color: number) => void,
-  showDamageNumbers = true,
-  onBulletHit?: (enemy: BaseEnemy) => void,
-  onEnemyDied?: (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => void,
-  instanceManager?: EnemyInstanceManager | null,
-): void {
-  // Rebuild spatial hash each frame
-  enemySpatialHash.clear();
-  for (const enemy of enemies) {
-    if (!enemy.active || !enemy.alive) continue;
-    if (enemy.isMaterializing) continue;
-    enemySpatialHash.insert(enemy.position.x, enemy.position.y, enemy.position.z, enemy);
-  }
-
-  bulletPool.forEachActive((bulletIdx, bulletPos, bulletData) => {
-    // Use spatial hash for broad-phase: only check nearby enemies
-    const nearby = enemySpatialHash.getNearby(bulletPos.x, bulletPos.y, bulletPos.z);
-    for (let n = 0; n < nearby.length; n++) {
-      const enemy = nearby[n];
-      if (!enemy.active || !enemy.alive) continue;
-
-      // Use distanceToSquared to avoid sqrt
-      const hitRadiusSq = (enemy.radius + 0.15) * (enemy.radius + 0.15);
-      const distSq = bulletPos.distanceToSquared(enemy.position);
-      if (distSq < hitRadiusSq) {
-        // Capture bullet angle BEFORE kill (data persists but capture for clarity)
-        const bulletAngle = bulletData.angle;
-
-        // Hit!
-        bulletPool.kill(bulletIdx);
-        enemy.takeDamage(bulletDamage);
-
-        // Trigger on-hit procs (incendiary rounds, etc.)
-        if (enemy.alive) {
-          onBulletHit?.(enemy);
-        }
-
-        // Damage number popup (skip on killing blow - score popup covers it)
-        if (showDamageNumbers && scorePopups && enemy.alive) {
-          scorePopups.spawnDamage(enemy.position, bulletDamage);
-        }
-
-        // Bullet impact particles
-        particles.bulletImpact(bulletPos);
-
-        // Grid deformation at impact point
-        surface.applyForce(bulletPos, 0.08, 0.3);
-
-        // Hit flash: instanced enemies use instanceColor, others use cached materials
-        if (enemy.alive) {
-          if (enemy.isInstanced && instanceManager) {
-            instanceManager.hitFlash(enemy, 80);
-          } else if (enemy.cachedMaterials) {
-            for (const mat of enemy.cachedMaterials) {
-              const origEmissive = mat.emissive.getHex();
-              mat.emissive.setHex(0xffffff);
-              mat.emissiveIntensity = 1.0;
-              setTimeout(() => {
-                mat.emissive.setHex(origEmissive);
-                mat.emissiveIntensity = 0.4;
-              }, 80);
-            }
-          }
-        }
-
-        if (!enemy.alive) {
-          // Enemy died
-          const enemyType = enemy.constructor.name.toLowerCase();
-          const color = ENEMY_COLORS[enemyType] ?? ENEMY_COLOR_FALLBACK;
-          particles.enemyDeath(enemy.position, color);
-          scoreManager.awardKill(enemy.scoreValue, enemyType);
-          scorePopups?.spawnScore(enemy.position.clone(), enemy.scoreValue);
-          screenShake.shake(0.15, 0.15);
-          getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
-          onKillLog?.(enemyType, color.getHex());
-
-          // Grid deformation at death position
-          surface.applyForce(enemy.position, 0.2, 1.0);
-
-          // Spawn geoms at death position with kill-shot momentum
-          const { u, v } = surface.worldToSurface(enemy.position);
-          for (let g = 0; g < enemy.geomCount; g++) {
-            geomPool.spawn(u, v, bulletAngle);
-          }
-
-          // Trigger on-death procs (volatile explosions, etc.)
-          onEnemyDied?.(enemy, enemies);
-
-          onEnemyKilled?.(u, v);
-        }
-
-        break; // Each bullet hits one enemy
-      }
-    }
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Geom pickup checker
-// ---------------------------------------------------------------------------
-
-function checkGeomPickups(
-  player: Player,
-  geomPool: GeomPool,
-  scoreManager: ScoreManager,
-  particles: ParticleSystem,
-  bonusRadius = 0,
-): void {
-  const baseRadius = 0.5 + bonusRadius;
-  const pickupRadiusSq = baseRadius * baseRadius; // Squared radius avoids sqrt
-  geomPool.forEachActive((index, surfaceU, surfaceV, position) => {
-    const distSq = player.mesh.position.distanceToSquared(position);
-    if (distSq < pickupRadiusSq) {
-      geomPool.kill(index);
-      scoreManager.collectGeom();
-      // Green sparkle effect on collection
-      particles.geomCollect(position);
-      getSoundEngine().play('geomPickup', { pitch: 0.9 + Math.random() * 0.2 });
-    }
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Player-enemy collision checker
-// ---------------------------------------------------------------------------
-
-function checkPlayerEnemyCollisions(
-  player: Player,
-  enemies: BaseEnemy[],
-  particles: ParticleSystem,
-  screenShake: ScreenShake,
-  isShielded: boolean,
-  onPlayerHit?: () => boolean,
-): void {
-  if (!player.canTakeDamage) return;
-
-  for (const enemy of enemies) {
-    if (!enemy.active) continue;
-    // Skip enemies still spawning
-    if (enemy.isMaterializing) continue;
-
-    // Use distanceToSquared to avoid sqrt
-    const hitRadius = player.mesh.scale.x * 0.3 + enemy.radius;
-    const distSq = player.mesh.position.distanceToSquared(enemy.position);
-    if (distSq < hitRadius * hitRadius) {
-      if (isShielded) {
-        // Shield absorbs the hit and kills the enemy
-        enemy.takeDamage(999);
-        particles.bulletImpact(enemy.position);
-        screenShake.shake(0.2, 0.15);
-        getSoundEngine().play('shieldHit');
-      } else {
-        // Try companion shield (protector) before dying
-        const saved = onPlayerHit?.() ?? false;
-        if (saved) {
-          // Companion protector activated - kill the enemy, player survives
-          enemy.takeDamage(999);
-          particles.bulletImpact(enemy.position);
-          screenShake.shake(0.3, 0.2);
-          screenFlash('rgba(68, 255, 68, 0.3)', 150);
-          break;
-        }
-        player.die();
-        particles.playerDeath(player.mesh.position);
-        screenShake.shake(0.5, 0.4);
-        getSoundEngine().play('playerDeath');
-        screenFlash('rgba(255, 60, 60, 0.4)', 200);
-        break;
-      }
-    }
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Bootstrap
@@ -984,27 +701,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   scoreManager.setPlayer(player);
 
   // Combo display
-  const comboEl = document.getElementById('combo-display')!;
   scoreManager.onComboChange = (combo: number) => {
-    if (combo >= 3) {
-      comboEl.textContent = `${combo} COMBO`;
-      // Color scales with combo level
-      if (combo >= 20) {
-        comboEl.style.color = '#ff00ff';
-        comboEl.style.textShadow = '0 0 12px #ff00ff';
-      } else if (combo >= 10) {
-        comboEl.style.color = '#ff4400';
-        comboEl.style.textShadow = '0 0 10px #ff4400';
-      } else {
-        comboEl.style.color = '#ff8800';
-        comboEl.style.textShadow = '0 0 8px #ff8800';
-      }
-      // Pop animation
-      comboEl.style.transform = 'scale(1.3)';
-      setTimeout(() => { comboEl.style.transform = 'scale(1)'; }, 100);
-    } else {
-      comboEl.textContent = '';
-    }
+    UIHelpers.updateComboDisplay(combo);
   };
 
   // -- Wave scheduler --
@@ -1066,8 +764,36 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Super state manager --
   const superStateManager = new SuperStateManager();
 
-  // -- Super state pickups on the field --
-  const superPickups: SuperStatePickup[] = [];
+  // -- Collision system (handles all collision detection + enemy colors) --
+  const collisionSystem = new CollisionSystem();
+
+  // -- Pickup spawner (manages all pickup types) --
+  const pickupSpawner = new PickupSpawner(game.scene);
+
+  // -- Enemy colors for particle effects (also in CollisionSystem, duplicated here for non-collision deaths like bombs/weapons) --
+  const ENEMY_COLORS: Record<string, THREE.Color> = {
+    wanderer: new THREE.Color(0xaa44ff),
+    grunt: new THREE.Color(0x4444ff),
+    duck: new THREE.Color(0xff44aa),
+    mayfly: new THREE.Color(0xaaff00),
+    rocket: new THREE.Color(0xff8800),
+    neutron: new THREE.Color(0x44dddd),
+    weaver: new THREE.Color(0x00ff44),
+    spinner: new THREE.Color(0xff44ff),
+    spinnerspawn: new THREE.Color(0xff88cc),
+    snake: new THREE.Color(0x4488ff),
+    repulsor: new THREE.Color(0xff4400),
+    gravitywell: new THREE.Color(0x4488ff),
+    spawner: new THREE.Color(0xff2222),
+    virus: new THREE.Color(0x00cc00),
+    gate: new THREE.Color(0xff8800),
+    painter: new THREE.Color(0xff44aa),
+    titangrunt: new THREE.Color(0x2244cc),
+    titanspinner: new THREE.Color(0xff22ff),
+    titanweaver: new THREE.Color(0x22ff44),
+    boss: new THREE.Color(0x4488ff),
+  };
+  const ENEMY_COLOR_FALLBACK = new THREE.Color(0xffffff);
 
   // -- Weapon manager --
   const weaponManager = new WeaponManager();
@@ -1156,109 +882,17 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   const companionManager = new CompanionManager();
   companionManager.setMeshSurface(meshSurface);
   game.scene.add(companionManager.root);
-  const companionPickups: CompanionPickup[] = [];
   const companionHUD = new CompanionHUD();
 
-  // -- Weapon pickups on the field --
-  const weaponPickups: WeaponPickup[] = [];
-  const buffPickups: BuffPickup[] = [];
-  const newBuffPickups: BuffPickupNew[] = [];
+  // -- Camera controller (handles positioning, orbit, zoom) --
+  const cameraController = new CameraController(game.camera);
 
-  // -- Wire up enemy death handler --
-  BaseEnemy.onDeath = (_position: THREE.Vector3, _score: number, _geoms: number) => {
-    // Handled in checkBulletEnemyCollisions above
-  };
-
-  // -- Tier-based split death: tiered enemies break into children on death --
-  BaseEnemy.onTierSplitDeath = (type: string, u: number, v: number, count: number, childTier: number) => {
-    for (let i = 0; i < count; i++) {
-      const offsetU = (Math.random() - 0.5) * 0.08;
-      const offsetV = (Math.random() - 0.5) * 0.08;
-      const clampedU = Math.max(0, Math.min(1, u + offsetU));
-      const clampedV = Math.max(0, Math.min(1, v + offsetV));
-      enemySpawner.spawn(type as any, clampedU, clampedV, Math.max(0, childTier));
-    }
-  };
-
-  // -- Splitter death: spawn child splitters at correct generation --
-  Splitter.onSplitterDeath = (u: number, v: number, generation: number) => {
-    enemySpawner._nextSplitterGen = generation;
-    enemySpawner.spawn('splitter', u, v);
-  };
-
-  // -- Spawner: periodically spawns wanderers --
-  Spawner.onSpawnEnemy = (u: number, v: number) => {
-    enemySpawner.spawn('wanderer', u, v);
-  };
-
-  // -- Titan death spawns: spawn smaller versions on death --
-  TitanGrunt.onDeathSpawn = (u: number, v: number, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const offsetU = (Math.random() - 0.5) * 0.06;
-      const offsetV = (Math.random() - 0.5) * 0.06;
-      enemySpawner.spawn('grunt', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    }
-  };
-  TitanSpinner.onDeathSpawn = (u: number, v: number, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const offsetU = (Math.random() - 0.5) * 0.06;
-      const offsetV = (Math.random() - 0.5) * 0.06;
-      enemySpawner.spawn('spinner', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    }
-  };
-  TitanWeaver.onDeathSpawn = (u: number, v: number, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const offsetU = (Math.random() - 0.5) * 0.06;
-      const offsetV = (Math.random() - 0.5) * 0.06;
-      enemySpawner.spawn('weaver', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    }
-  };
-
-  // -- Giant enemy death spawns: break apart into smaller versions --
-  GiantWanderer.onDeathSpawn = (u: number, v: number, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const offsetU = (Math.random() - 0.5) * 0.08;
-      const offsetV = (Math.random() - 0.5) * 0.08;
-      enemySpawner.spawn('wanderer', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    }
-  };
-  GiantRocket.onDeathSpawn = (u: number, v: number, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const offsetU = (Math.random() - 0.5) * 0.08;
-      const offsetV = (Math.random() - 0.5) * 0.08;
-      enemySpawner.spawn('rocket', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    }
-  };
-  GiantSnake.onDeathSpawn = (u: number, v: number, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const offsetU = (Math.random() - 0.5) * 0.1;
-      const offsetV = (Math.random() - 0.5) * 0.1;
-      enemySpawner.spawn('snake', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    }
-  };
-  GiantNeutron.onDeathSpawn = (u: number, v: number, count: number) => {
-    for (let i = 0; i < count; i++) {
-      const offsetU = (Math.random() - 0.5) * 0.08;
-      const offsetV = (Math.random() - 0.5) * 0.08;
-      enemySpawner.spawn('neutron', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    }
-  };
-
-  // -- Boss system callbacks --
-  Boss.onShieldSpawn = (types: string[], count: number, u: number, v: number) => {
-    for (let i = 0; i < count; i++) {
-      const type = types[Math.floor(Math.random() * types.length)];
-      const offsetU = (Math.random() - 0.5) * 0.3;
-      const offsetV = (Math.random() - 0.5) * 0.3;
-      enemySpawner.spawn(type as any, Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    }
-  };
-
+  // -- Wire up enemy death callbacks (now in EnemyDeathCallbacks module) --
   const bossBarEl = document.getElementById('boss-health-bar') as HTMLElement | null;
   const bossBarFill = document.getElementById('boss-health-fill') as HTMLElement | null;
   const bossPhaseEl = document.getElementById('boss-phase-text') as HTMLElement | null;
 
-  Boss.onHealthUpdate = (currentHP: number, maxHP: number, phase: number, totalPhases: number) => {
+  const onBossHealthUpdate = (currentHP: number, maxHP: number, phase: number, totalPhases: number) => {
     if (bossBarEl && bossBarFill && bossPhaseEl) {
       if (maxHP <= 0) {
         bossBarEl.style.display = 'none';
@@ -1271,7 +905,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     }
   };
 
-  Boss.onPhaseChange = (_phase: number) => {
+  const onBossPhaseChange = (_phase: number) => {
     // Add time on phase change for timed levels
     if (level.timeLimit > 0) {
       gameMode.awardTimeBonus(10); // 10 seconds extra per phase
@@ -1279,12 +913,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     sound.play('bomb', { volume: 0.8, pitch: 0.5 });
   };
 
-  // -- Virus: spawn new virus at killed enemy position (20% chance) --
-  Virus.onInfectKill = (u: number, v: number) => {
-    if (Math.random() < 0.2) {
-      enemySpawner.spawn('virus', u, v);
-    }
-  };
+  EnemyDeathCallbacks.wire(enemySpawner);
+  EnemyDeathCallbacks.wireBossCallbacks(enemySpawner, onBossHealthUpdate, onBossPhaseChange);
+  EnemyDeathCallbacks.wireVirusCallback(enemySpawner);
 
   // -- Gate: detonation effect (kills nearby enemies, awards score) --
   Gate.onDetonate = (position: THREE.Vector3, score: number) => {
@@ -1320,63 +951,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   let lastEnemyCount = 0;
   let hadEnemies = false;
 
-  // -- Camera zoom --
-  let cameraDistance = 15;
-  const CAMERA_DIST_MIN = 6;
-  const CAMERA_DIST_MAX = 35;
-
-  document.addEventListener('wheel', (e) => {
-    if (isPaused || isGameOver) return;
-    const delta = e.deltaY > 0 ? 1.5 : -1.5;
-    cameraDistance = Math.max(CAMERA_DIST_MIN, Math.min(CAMERA_DIST_MAX, cameraDistance + delta));
-  }, { passive: true });
-
-  // -- Camera orbit (middle mouse) --
-  let orbitYaw = 0;   // radians around surface normal (left/right)
-  let orbitPitch = 0;  // radians around tangent (up/down tilt)
-  let isOrbitDragging = false;
-  let lastOrbitX = 0;
-  let lastOrbitY = 0;
-  let orbitResetSpeed = 0; // >0 means actively resetting to default
-  let lastMiddleClickTime = 0;
-  const ORBIT_SENSITIVITY = 0.005;
-  const ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
-
-  document.addEventListener('mousedown', (e) => {
-    if (e.button === 1) { // middle mouse
-      e.preventDefault();
-      const now = Date.now();
-      if (now - lastMiddleClickTime < 350) {
-        // Double-click: reset orbit
-        orbitResetSpeed = 4.0; // will lerp back to 0,0
-      } else {
-        isOrbitDragging = true;
-        lastOrbitX = e.clientX;
-        lastOrbitY = e.clientY;
-      }
-      lastMiddleClickTime = now;
-    }
-  });
-
-  document.addEventListener('mouseup', (e) => {
-    if (e.button === 1) {
-      isOrbitDragging = false;
-    }
-  });
-
-  document.addEventListener('mousemove', (e) => {
-    if (!isOrbitDragging) return;
-    const dx = e.clientX - lastOrbitX;
-    const dy = e.clientY - lastOrbitY;
-    lastOrbitX = e.clientX;
-    lastOrbitY = e.clientY;
-    orbitYaw += dx * ORBIT_SENSITIVITY;
-    orbitPitch = Math.max(-ORBIT_PITCH_MAX, Math.min(ORBIT_PITCH_MAX, orbitPitch - dy * ORBIT_SENSITIVITY));
-    orbitResetSpeed = 0; // cancel any active reset if user drags again
-  });
-
-  // Prevent middle-click scroll/auto-scroll
-  document.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
+  // -- Camera control (now in CameraController module) --
 
   // -- Game state --
   let isPaused = false;
@@ -1547,952 +1122,148 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   });
 
   // Set level name in HUD
-  levelNameEl.textContent = `${level.name}`;
+  UIHelpers.setLevelName(level.name);
+
+  // -- Tunnel transparency state (used by render loop) --
+  const tunnelRaycaster = new THREE.Raycaster();
+  const baseSurfaceOpacity = surfaceConfig.surfaceOpacity;
+  const baseGridOpacity = surfaceConfig.gridOpacity;
+
+  // -- Game Context: bundles all shared state for GameLoop and RenderLoop --
+  const ctx: GameContext = {
+    game,
+    player,
+    surface,
+    surfaceType,
+    meshSurface,
+    playerWalker,
+    input: input as InputManager,
+    level,
+    isEndless,
+    bulletPool,
+    geomPool,
+    enemySpawner,
+    bulletInstanceManager,
+    bulletInstanceIds,
+    enemyInstanceManager,
+    particles,
+    screenShake,
+    glowTrail: playerGlowTrail,
+    shockwaveEffect,
+    scorePopups,
+    scoreManager,
+    playerLevel,
+    weaponManager,
+    superManager: superStateManager,
+    buffManager,
+    companionManager,
+    collisionSystem,
+    pickupSpawner,
+    cameraController,
+    lodManager,
+    adaptiveQuality,
+    depthOcclusion,
+    perfTracker,
+    debugOverlay,
+    perfLogger,
+    entityAudit,
+    ddaTracker,
+    ddaEngine,
+    ddaSpawnModifier,
+    ddaLogger,
+    ddaPlayers,
+    gameMode,
+    waveScheduler,
+    minimap,
+    killLog,
+    totalKillCounter,
+    weaponHUD,
+    companionHUD,
+    buffHUD,
+    shockArcRenderer,
+    buffAuraRenderer,
+    pauseMenu,
+    gameOverScreen,
+    levelCompleteScreen,
+    getTransform,
+    weaponToBulletVisual,
+    PLAYER_MOVE_SPEED,
+    ENEMY_COLORS,
+    ENEMY_COLOR_FALLBACK,
+    state: {
+      isPaused,
+      isGameOver,
+      isLevelComplete,
+      respawnTimer,
+      RESPAWN_DELAY,
+      prevPlayerU,
+      prevPlayerV,
+      painterDamageCooldown,
+      lastEnemyCount,
+      hadEnemies,
+      lodAssignments: new Map(),
+      tunnelRaycaster,
+      currentSurfaceOpacity: surfaceConfig.surfaceOpacity,
+      currentGridOpacity: surfaceConfig.gridOpacity,
+      baseSurfaceOpacity,
+      baseGridOpacity,
+      fadeSpeed: 8.0,
+      isCurrentlyBlocked: false,
+      lastRenderTime: performance.now(),
+      auditFrameCounter: 0,
+      perfEnemyTypeMap,
+      perfEnemyTypeCounter,
+      perfBuffString,
+      perfBuffStringCounter,
+    },
+  };
+
+  // -- Game Loop and Render Loop --
+  const gameLoop = new GameLoop();
+  const renderLoop = new RenderLoop();
+
+  // Wire in dependencies that GameLoop needs but aren't part of standard managers
+  gameLoop.setDependencies({
+    playerGlowTrail,
+    glowManager,
+    playerGlow,
+    bgMusic,
+    sound,
+    applyStatMultipliers,
+  });
 
   // -- Fixed timestep game logic --
   game.onFixedUpdate = (dt: number) => {
-    // Skip update if paused or game over
-    if (isPaused || isGameOver || isLevelComplete) return;
-
-    // Update game mode (handles countdown timer, time limits)
-    gameMode.update(dt, player.score, player.lives);
-
-    // Show countdown overlay
-    if (gameMode.phase === ModePhase.Countdown) {
-      const countVal = Math.ceil(gameMode.countdownTimer);
-      countdownEl.textContent = countVal > 0 ? String(countVal) : 'GO!';
-      countdownEl.classList.add('visible');
-      // During countdown: update grid springs but skip gameplay
-      surface.updateGrid(dt);
-      input.endFrame();
-      return;
-    }
-    // Hide countdown once playing starts (one-time)
-    if (countdownEl.classList.contains('visible')) {
-      countdownEl.textContent = 'GO!';
-      countdownEl.classList.remove('visible');
-    }
-
-    // Update timer display for timed modes / elapsed time for endless
-    if (level.timeLimit > 0) {
-      const secs = Math.ceil(Math.max(0, gameMode.timeRemaining));
-      const mins = Math.floor(secs / 60);
-      const remainingSecs = secs % 60;
-      timerEl.textContent = `${mins}:${String(remainingSecs).padStart(2, '0')}`;
-      timerEl.classList.toggle('urgent', secs <= 10);
-    } else if (isEndless) {
-      const elapsed = Math.floor(waveScheduler.getElapsed());
-      const mins = Math.floor(elapsed / 60);
-      const secs = elapsed % 60;
-      timerEl.textContent = `${mins}:${String(secs).padStart(2, '0')}`;
-    }
-
-    const inputState = input.getState();
-
-    // Handle respawn or game over
-    if (!player.alive) {
-      if (player.lives > 0) {
-        respawnTimer += dt;
-        if (respawnTimer >= RESPAWN_DELAY) {
-          respawnTimer = 0;
-          // Respawn at center of surface
-          player.respawn(0.5, 0.5);
-          const respawnPoint = surface.getPoint(0.5, 0.5);
-          // Reset walker to respawn position
-          const projected = meshSurface.closestPointOnSurface(respawnPoint.position);
-          if (projected) {
-            playerWalker.position.copy(projected.point);
-            playerWalker.normal.copy(projected.normal);
-            playerWalker.faceIndex = projected.faceIndex;
-          }
-          player.mesh.position.copy(playerWalker.position);
-        }
-      } else if (!isGameOver) {
-        // Game over - no lives left
-        isGameOver = true;
-        perfTracker.saveSession();
-        perfLogger.saveSession();
-        ddaLogger.finalize(); // Persist DDA session log to localStorage
-        // Short delay before showing game over screen
-        setTimeout(() => {
-          gameOverScreen.show(player.score, surfaceType);
-        }, 1000);
-      }
-    }
-
-    // Update player movement and shooting
-    if (player.alive) {
-      // Weapon swap (E key)
-      if (inputState.weaponSwap) {
-        weaponManager.cycleWeapon();
-        sound.play('weaponPickup', { volume: 0.4, pitch: 1.2 });
-      }
-
-      // Store previous UV for gate pass-through detection
-      prevPlayerU = player.surfaceU;
-      prevPlayerV = player.surfaceV;
-
-      // MESH-BASED SURFACE MOVEMENT (BVH)
-      // Player moves on mesh surface using world-space tangent projection.
-      // No UV coordinates, no pole singularity, constant speed everywhere.
-
-      // Move player on surface via MeshWalker
-      if (Math.abs(inputState.moveX) > 0.01 || Math.abs(inputState.moveY) > 0.01) {
-        playerWalker.moveFromInput(inputState.moveX, -inputState.moveY, game.camera, dt);
-      }
-
-      // Sync player mesh position from walker
-      player.mesh.position.copy(playerWalker.position);
-
-      // Bridge: convert world position to UV for enemies/geoms that still use UV
-      const playerUV = surface.worldToSurface(playerWalker.position);
-      player.surfaceU = playerUV.u;
-      player.surfaceV = playerUV.v;
-
-      const playerNormal = playerWalker.normal;
-      const frame = playerWalker.getTangentFrame();
-
-      // Orbit reset: lerp yaw/pitch back to 0 when double-click triggered
-      if (orbitResetSpeed > 0) {
-        const resetRate = orbitResetSpeed * dt;
-        orbitYaw *= Math.max(0, 1 - resetRate * 3);
-        orbitPitch *= Math.max(0, 1 - resetRate * 3);
-        if (Math.abs(orbitYaw) < 0.005 && Math.abs(orbitPitch) < 0.005) {
-          orbitYaw = 0;
-          orbitPitch = 0;
-          orbitResetSpeed = 0;
-        }
-      }
-
-      // Camera follows player along surface normal with orbit rotation
-      const CAMERA_LERP_FACTOR = 0.12;
-
-      // Build camera offset: start with surface normal, rotate by orbit angles
-      // Rotation is relative to the tangent frame (tangent, bitangent, normal)
-      let camOffset = playerNormal.clone().multiplyScalar(cameraDistance);
-      let camUp = frame.bitangent.clone();
-
-      if (Math.abs(orbitYaw) > 0.001 || Math.abs(orbitPitch) > 0.001) {
-        // Rotate around normal (yaw - left/right swing)
-        const yawQuat = new THREE.Quaternion().setFromAxisAngle(playerNormal, orbitYaw);
-        camOffset.applyQuaternion(yawQuat);
-        camUp.applyQuaternion(yawQuat);
-
-        // Rotate around the rotated tangent (pitch - tilt up/down)
-        const rotatedTangent = frame.tangent.clone().applyQuaternion(yawQuat);
-        const pitchQuat = new THREE.Quaternion().setFromAxisAngle(rotatedTangent, orbitPitch);
-        camOffset.applyQuaternion(pitchQuat);
-        camUp.applyQuaternion(pitchQuat);
-      }
-
-      const targetCamPos = playerWalker.position.clone().add(camOffset);
-      game.camera.position.lerp(targetCamPos, CAMERA_LERP_FACTOR);
-      game.camera.lookAt(playerWalker.position);
-
-      // Smooth camera up (orbited up vector)
-      game.camera.up.lerp(camUp, CAMERA_LERP_FACTOR).normalize();
-
-      // Calculate aim from mouse in screen space using tangent frame.
-      // The camera looks along the surface normal with up = bitangent,
-      // so screen right = tangent, screen up = bitangent.
-      // Mouse aimX: -1 left, +1 right.  aimY: -1 top, +1 bottom (screen coords).
-      const aimX = inputState.aimX;
-      const aimY = inputState.aimY;
-      const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
-
-      let aimDirection: THREE.Vector3;
-      if (aimLen > 0.1) {
-        // Map screen aim to tangent frame
-        // tangent = screen right, bitangent = screen up
-        // Negate aimY because mouse Y increases downward but bitangent points up
-        aimDirection = new THREE.Vector3()
-          .addScaledVector(frame.tangent, aimX)
-          .addScaledVector(frame.bitangent, -aimY)
-          .normalize();
-      } else {
-        // Default: face along bitangent (screen up direction)
-        aimDirection = frame.bitangent.clone();
-      }
-
-      // Orient player to face aim direction
-      if (aimDirection.lengthSq() > 0.001) {
-        const playerRight = new THREE.Vector3().crossVectors(playerNormal, aimDirection).normalize();
-        const playerForward = new THREE.Vector3().crossVectors(playerRight, playerNormal).normalize();
-        const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
-        player.mesh.quaternion.setFromRotationMatrix(orientMat);
-      }
-
-      // Store aim angle for bullets
-      player.aimAngle = Math.atan2(aimX, -aimY);
-
-      // Update matrix for bullet spawning
-      player.mesh.updateMatrixWorld(true);
-
-      // Player update (shooting, bombs, etc.)
-      // Pacifism mode: no shooting allowed
-      const effectiveInput = !gameMode.config.canShoot
-        ? { ...inputState, shooting: false }
-        : inputState;
-      player.update(dt, effectiveInput);
-    }
-
-    // Spawn enemy waves
-    waveScheduler.update(dt, enemySpawner);
-
-    // Update enemies - use player's actual UV position
-    if (player.canBeTracked) {
-      enemySpawner.update(dt, player.surfaceU, player.surfaceV);
-    } else {
-      // Player is invincible/blinking - give enemies a fake position so they don't track
-      const fakeU = 0.5 + Math.sin(game.clock.totalTime * 0.5) * 0.3;
-      const fakeV = 0.5 + Math.cos(game.clock.totalTime * 0.7) * 0.3;
-      enemySpawner.update(dt, fakeU, fakeV);
-    }
-
-    // Update LOD assignments BEFORE instance update so geometry swap uses current frame's data
-    lodAssignments = lodManager.update(game.camera, enemySpawner.getEnemies());
-
-    // Update GPU-instanced enemy rendering with LOD-aware geometry swapping.
-    // Enemies at MEDIUM/LOW LOD are rendered with simplified geometry (20/2 tris)
-    // instead of full-detail meshes (~200 tris), giving real triangle reduction.
-    enemyInstanceManager.updateInstancesWithLOD(
-      enemySpawner.getEnemies(),
-      lodAssignments,
-      game.camera,
-    );
-
-    // Update bullets
-    bulletPool.update(dt);
-
-    // Sync bullet positions to GPU-instanced rendering
-    // Register new bullets and update positions; unregister killed bullets
-    const currentVisualType = weaponToBulletVisual(weaponManager.getCurrentWeapon());
-    const seenIds = new Set<string>();
-    bulletPool.forEachActive((index, position, data) => {
-      const id = `b${index}`;
-      seenIds.add(id);
-      _bulletSyncDir.set(data.dirX, data.dirY, data.dirZ);
-      if (!bulletInstanceIds.has(id)) {
-        // New bullet: register with instance manager
-        bulletInstanceManager.addBullet(id, currentVisualType, position, _bulletSyncDir);
-        bulletInstanceIds.add(id);
-      } else {
-        // Existing bullet: update position/direction
-        bulletInstanceManager.updateBullet(id, position, _bulletSyncDir);
-      }
-    });
-    // Remove bullets that were killed this frame
-    for (const id of bulletInstanceIds) {
-      if (!seenIds.has(id)) {
-        bulletInstanceManager.removeBullet(id);
-        bulletInstanceIds.delete(id);
-      }
-    }
-    // Flush instance transforms to GPU
-    bulletInstanceManager.update();
-
-    // (LOD assignments are computed earlier, before enemyInstanceManager.updateInstancesWithLOD)
-
-    // Update adaptive quality system (monitors FPS, adjusts quality level)
-    adaptiveQuality.update(dt);
-
-    // Update geoms (magnetism radius = base + buff bonus + super state bonus)
-    const magnetBonus = buffManager.getCollectionRadiusBonus()
-      + superStateManager.getFireModifiers().magnetRange;
-    geomPool.update(dt, player.surfaceU, player.surfaceV, game.clock.totalTime, 2.5 + magnetBonus);
-
-    // Update particles and score popups
-    particles.update(dt);
-    scorePopups.update(dt);
-    scoreManager.updateCombo(dt);
-    killLog.update(dt);
-
-    // Update player glow trail (add point at player position)
-    if (player.alive) {
-      playerGlowTrail.addPoint(player.mesh.position.clone());
-    }
-    playerGlowTrail.update(dt);
-
-    // Update entity glows
-    glowManager.update(dt);
-    playerGlow.update(dt);
-
-    // Update player level aura ring
-    if (player.alive) {
-      playerLevel.update(dt, playerWalker.position, playerWalker.normal);
-    }
-
-    // Update buff system (shock aura, burning DOT, stat refresh)
-    if (player.alive) {
-      buffManager.update(dt, playerWalker.position, enemySpawner.getEnemies());
-      shockArcRenderer.update(buffManager.shockArcs);
-      // Update buff aura ring visuals (per-buff shader effects around player)
-      const activeBuffsForAura = buffManager.getActiveBuffs().map(b => ({
-        type: b.type,
-        stacks: b.stacks,
-      }));
-      buffAuraRenderer.update(
-        dt, game.clock.totalTime,
-        playerWalker.position, playerWalker.normal,
-        activeBuffsForAura,
-      );
-      // Refresh stat multipliers each frame (buffs can change any time)
-      applyStatMultipliers();
-    }
-
-    // Update new buff pickups
-    for (let i = newBuffPickups.length - 1; i >= 0; i--) {
-      const nbp = newBuffPickups[i];
-      if (!nbp.active) {
-        game.scene.remove(nbp.mesh);
-        nbp.dispose();
-        newBuffPickups.splice(i, 1);
-        continue;
-      }
-      nbp.update(dt, game.clock.totalTime);
-      nbp.applySurfaceTransform(getTransform);
-
-      // Check player collision with new buff pickup
-      if (player.alive && nbp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
-        buffManager.addBuff(nbp.buffType);
-        scorePopups.spawn(
-          player.mesh.position.clone(),
-          `+${BUFF_DEFINITIONS[nbp.buffType].name}`,
-          '#' + BUFF_DEFINITIONS[nbp.buffType].iconColor.toString(16).padStart(6, '0'),
-          1.5,
-        );
-        nbp.active = false;
-      }
-    }
-
-    // Update enemy glow trails (for fast-moving enemies)
-    const currentEnemies = enemySpawner.getEnemies();
-    const activeEnemySet = new Set(currentEnemies);
-
-    // Remove trails for dead/removed enemies
-    enemyGlowTrails.forEach((trail, enemy) => {
-      if (!activeEnemySet.has(enemy) || !enemy.alive) {
-        trail.dispose();
-        game.scene.remove(trail.root);
-        enemyGlowTrails.delete(enemy);
-      }
-    });
-
-    // Update existing trails and add new ones for fast enemies
-    for (const enemy of currentEnemies) {
-      if (!enemy.alive) continue;
-
-      const enemyTypeName = enemy.constructor.name;
-
-      // Check if this is a fast enemy type
-      if (FAST_ENEMY_TYPES.includes(enemyTypeName)) {
-        let trail = enemyGlowTrails.get(enemy);
-
-        // Create trail if doesn't exist
-        if (!trail) {
-          const color = ENEMY_TRAIL_COLORS[enemyTypeName] || 0xff0000;
-          trail = new GlowTrail(new THREE.Color(color), 40, 0.3);
-          game.scene.add(trail.root);
-          enemyGlowTrails.set(enemy, trail);
-        }
-
-        // Add point at enemy position
-        if (enemy.mesh) {
-          trail.addPoint(enemy.mesh.position.clone());
-        }
-        trail.update(dt);
-      }
-    }
-
-    // Update screen shake
-    screenShake.update(dt);
-
-    // Get current enemy list for companions and collision checks
-    const enemies = enemySpawner.getEnemies();
-
-    // Update companions
-    if (player.alive) {
-      const aimDir = player.getAimDirection();
-      companionManager.update(
-        dt,
-        player.surfaceU,
-        player.surfaceV,
-        playerWalker.position,
-        aimDir,
-        enemySpawner.getEnemies().filter(e => e.alive),
-        bulletPool,
-        0, // ownerId = P1
-        playerWalker.normal,
-        getTransform,
-      );
-    }
-
-    // Update companion pickups
-    for (let i = companionPickups.length - 1; i >= 0; i--) {
-      const cp = companionPickups[i];
-      if (!cp.active) {
-        game.scene.remove(cp.mesh);
-        cp.dispose();
-        companionPickups.splice(i, 1);
-        continue;
-      }
-      cp.update(dt, game.clock.totalTime);
-      cp.applySurfaceTransform(getTransform);
-
-      // Check player collision with companion pickup
-      if (player.alive && cp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
-        companionManager.addCompanion(cp.companionType);
-        sound.play('weaponPickup', { volume: 0.5, pitch: 1.8 });
-        cp.active = false;
-      }
-    }
-
-    // Update super state manager
-    superStateManager.update(dt);
-
-    // Update super state pickups
-    for (let i = superPickups.length - 1; i >= 0; i--) {
-      const pickup = superPickups[i];
-      if (!pickup.active) {
-        game.scene.remove(pickup.mesh);
-        pickup.dispose();
-        superPickups.splice(i, 1);
-        continue;
-      }
-      pickup.update(dt);
-      pickup.applySurfaceTransform(getTransform);
-
-      // Check player collision with pickup
-      if (player.alive && pickup.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
-        const allDotsGone = pickup.removeClosestDot(player.surfaceU, player.surfaceV);
-        if (allDotsGone) {
-          superStateManager.activate(pickup.type);
-          pickup.active = false;
-        }
-      }
-    }
-
-    // -- Collision checks --
-
-    // Bullets vs enemies
-    const SUPER_STATE_TYPES = [
-      SuperStateType.QuadFire, SuperStateType.SplitFire,
-      SuperStateType.ReverseFire, SuperStateType.Missile,
-      SuperStateType.Magnet, SuperStateType.TrailBomb,
-      SuperStateType.Shield,
-    ];
-
-    checkBulletEnemyCollisions(
-      bulletPool,
-      enemies,
-      particles,
-      scoreManager,
-      geomPool,
-      surface,
-      screenShake,
-      (u: number, v: number) => {
-        // ~5% chance to spawn a super state pickup on enemy death
-        if (Math.random() < 0.05) {
-          const type = SUPER_STATE_TYPES[
-            Math.floor(Math.random() * SUPER_STATE_TYPES.length)
-          ];
-          const pickup = new SuperStatePickup(type, u, v);
-          game.scene.add(pickup.mesh);
-          superPickups.push(pickup);
-        }
-        // ~8% chance to spawn a weapon pickup on enemy death
-        if (Math.random() < 0.08) {
-          const wpnType = getRandomWeaponType();
-          const wpnPickup = new WeaponPickup(wpnType, u, v);
-          game.scene.add(wpnPickup.mesh);
-          weaponPickups.push(wpnPickup);
-        }
-        // ~5% chance to spawn a buff pickup on enemy death (old weapon-buff system)
-        if (Math.random() < 0.05) {
-          const bType = getRandomBuffType();
-          const bPickup = new BuffPickup(bType, u, v);
-          game.scene.add(bPickup.mesh);
-          buffPickups.push(bPickup);
-        }
-        // Roll for new stackable buff pickup drop
-        const droppedBuff = BuffManager.rollBuffDrop();
-        if (droppedBuff) {
-          const nbPickup = new BuffPickupNew(droppedBuff, u, v);
-          game.scene.add(nbPickup.mesh);
-          newBuffPickups.push(nbPickup);
-        }
-        // ~5% chance to spawn a companion pickup on enemy death
-        if (Math.random() < 0.05) {
-          const cType = getRandomCompanionType();
-          const cPickup = new CompanionPickup(cType, u, v);
-          game.scene.add(cPickup.mesh);
-          companionPickups.push(cPickup);
-        }
-      },
-      scorePopups,
-      scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier * buffManager.getDamageMultiplier(),
-      (type: string, color: number) => {
-        killLog.addKill(type, color);
-        playerLevel.addKill();
-        ddaTracker.recordKill(1); // DDA: track kill event
-        ddaLogger.recordKill(0, type); // DDA logger: log kill with enemy type
-      },
-      true, // showDamageNumbers
-      (enemy: BaseEnemy) => { buffManager.onBulletHit(enemy); },
-      (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => {
-        buffManager.onEnemyDeath(enemy, allEnemies);
-        // Shockwave distortion on enemy death (subtle for normal, stronger for titans/bosses)
-        const isBig = enemy.radius > 0.5;
-        shockwaveEffect.spawnShockwave(
-          enemy.position,
-          isBig ? 0.04 : 0.02,   // strength
-          isBig ? 0.7 : 0.6,     // speed
-          isBig ? 0.5 : 0.35,    // lifetime
-        );
-      },
-      enemyInstanceManager,
-    );
-
-    // Player vs geoms (magnetism buff expands pickup radius)
-    checkGeomPickups(player, geomPool, scoreManager, particles, buffManager.getCollectionRadiusBonus());
-
-    // Player vs enemies (immune if shielded OR tesla coil active OR companion shield active)
-    const fireModifiers = superStateManager.getFireModifiers();
-    const isImmune = fireModifiers.isShielded || weaponManager.isTeslaActive() || companionManager.isShieldActive();
-    checkPlayerEnemyCollisions(
-      player, enemies, particles, screenShake, isImmune,
-      () => {
-        // Try Tough Times block first
-        if (buffManager.onPlayerHit()) {
-          screenFlash('rgba(68, 136, 255, 0.3)', 100);
-          buffAuraRenderer.triggerBlockFlash(game.clock.totalTime);
-          shockwaveEffect.triggerChromatic(0.006); // subtle chromatic on block
-          return true; // Blocked by Tough Times
-        }
-        // Then try companion protector
-        const saved = companionManager.onPlayerHit();
-        if (!saved) {
-          // Player is about to die — strong chromatic + flash + shockwave
-          shockwaveEffect.triggerChromatic(0.025);
-          shockwaveEffect.spawnShockwave(player.mesh.position, 0.06, 1.0, 0.7, 0.08);
-          shockwaveEffect.triggerFlash(new THREE.Color(1, 0.2, 0.2), 0.4);
-        }
-        return saved;
-      },
-    );
-
-    // Gate pass-through detection (Pacifism mode mechanic)
-    if (player.alive && player.canTakeDamage) {
-      for (const enemy of enemies) {
-        if (enemy instanceof Gate && enemy.active) {
-          enemy.checkPlayerPassThrough(
-            player.surfaceU, player.surfaceV,
-            prevPlayerU, prevPlayerV
-          );
-        }
-      }
-    }
-
-    // Painter trail damage (hazard zones)
-    if (painterDamageCooldown > 0) painterDamageCooldown -= dt;
-    if (player.alive && player.canTakeDamage && painterDamageCooldown <= 0) {
-      for (const enemy of enemies) {
-        if (enemy instanceof Painter && enemy.active) {
-          if (enemy.isOnTrail(player.surfaceU, player.surfaceV)) {
-            if (!fireModifiers.isShielded && !companionManager.isShieldActive()) {
-              // Try companion protector shield before dying
-              const saved = companionManager.onPlayerHit();
-              if (!saved) {
-                player.die();
-                particles.playerDeath(player.mesh.position);
-                screenShake.shake(0.5, 0.4);
-                getSoundEngine().play('playerDeath');
-                screenFlash('rgba(255, 60, 60, 0.4)', 200);
-              } else {
-                screenFlash('rgba(68, 255, 68, 0.3)', 150);
-              }
-            }
-            painterDamageCooldown = 0.5; // brief cooldown
-            break;
-          }
-        }
-      }
-    }
-
-    // -- DDA system update (after all kills/deaths processed this frame) --
-    {
-      let nearestEnemyDist = 1.0;
-      for (const enemy of enemies) {
-        if (!enemy.active || enemy.isMaterializing) continue;
-        const du = player.surfaceU - enemy.surfacePosition.u;
-        const dv = player.surfaceV - enemy.surfacePosition.v;
-        const dist = Math.sqrt(du * du + dv * dv);
-        if (dist < nearestEnemyDist) nearestEnemyDist = dist;
-      }
-      ddaTracker.update(dt, nearestEnemyDist, player.lives / 3);
-      ddaEngine.update(dt, [ddaTracker]);
-      ddaLogger.update(dt);
-      ddaPlayers[0].u = player.surfaceU;
-      ddaPlayers[0].v = player.surfaceV;
-    }
-
-    // Update weapon manager (projectiles, effects)
-    weaponManager.update(dt);
-
-    // Update weapon pickups
-    for (let i = weaponPickups.length - 1; i >= 0; i--) {
-      const wp = weaponPickups[i];
-      if (!wp.active) {
-        game.scene.remove(wp.mesh);
-        wp.dispose();
-        weaponPickups.splice(i, 1);
-        continue;
-      }
-      wp.update(dt, game.clock.totalTime);
-      wp.applySurfaceTransform(getTransform);
-
-      // Check player collision with weapon pickup
-      if (player.alive && wp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
-        weaponManager.equipWeapon(wp.type);
-        sound.play('weaponPickup');
-        wp.active = false;
-      }
-    }
-
-    // Update buff pickups
-    for (let i = buffPickups.length - 1; i >= 0; i--) {
-      const bp = buffPickups[i];
-      if (!bp.active) {
-        game.scene.remove(bp.mesh);
-        bp.dispose();
-        buffPickups.splice(i, 1);
-        continue;
-      }
-      bp.update(dt, game.clock.totalTime);
-      bp.applySurfaceTransform(getTransform);
-
-      // Check player collision with buff pickup
-      if (player.alive && bp.checkPlayerCollision(player.surfaceU, player.surfaceV)) {
-        weaponManager.applyBuff(bp.buffType);
-        sound.play('weaponPickup', { volume: 0.3, pitch: 1.5 });
-        bp.active = false;
-      }
-    }
-
-    // Update grid deformation springs
-    surface.updateGrid(dt);
-
-    // Scale music intensity with enemy count
-    const enemyCount = enemySpawner.getActiveCount();
-    bgMusic.setIntensity(Math.min(enemyCount / 30, 1.0));
-
-    // Checkpoint mode: detect wave clears (enemies went from >0 to 0)
-    if (modeType === GameModeType.Checkpoint && gameMode.phase === ModePhase.Playing) {
-      if (hadEnemies && enemyCount === 0 && lastEnemyCount > 0) {
-        gameMode.waveClear();
-      }
-      if (enemyCount > 0) hadEnemies = true;
-    }
-    lastEnemyCount = enemyCount;
-
-    // Check level completion: all waves spawned + no enemies alive (works for timed and non-timed)
-    if (!isLevelComplete && !isGameOver
-        && waveScheduler.allSpawned
-        && enemyCount === 0
-        && gameMode.phase === ModePhase.Playing) {
-      gameMode.completeLevel(player.score);
-    }
-
-    // Clear per-frame input flags
-    input.endFrame();
+    gameLoop.update(ctx, dt);
+    // Sync mutable state back from ctx.state to local variables
+    isPaused = ctx.state.isPaused;
+    isGameOver = ctx.state.isGameOver;
+    isLevelComplete = ctx.state.isLevelComplete;
+    respawnTimer = ctx.state.respawnTimer;
+    prevPlayerU = ctx.state.prevPlayerU;
+    prevPlayerV = ctx.state.prevPlayerV;
+    painterDamageCooldown = ctx.state.painterDamageCooldown;
+    lastEnemyCount = ctx.state.lastEnemyCount;
+    hadEnemies = ctx.state.hadEnemies;
+    lodAssignments = ctx.state.lodAssignments;
   };
 
-  // -- Tunnel transparency: fade surface when it blocks camera-to-player view --
-  const tunnelRaycaster = new THREE.Raycaster();
-  let currentSurfaceOpacity = surfaceConfig.surfaceOpacity;
-  let currentGridOpacity = surfaceConfig.gridOpacity;
-  const baseSurfaceOpacity = surfaceConfig.surfaceOpacity;
-  const baseGridOpacity = surfaceConfig.gridOpacity;
-  const fadeSpeed = 8.0; // opacity change per second (smooth fade, not too fast)
-  let isCurrentlyBlocked = false; // track blocking state for enemy fade
-  let lastRenderTime = performance.now();
-
-  // Pre-allocated temp vectors for render loop (avoids ~5 clone() per enemy per frame)
-  const _renderTempToPlayer = new THREE.Vector3();
-  const _renderTempToPlayerDir = new THREE.Vector3();
-  const _renderTempToEnemy = new THREE.Vector3();
-  let auditFrameCounter = 0;
+  // Render state variables (synced back from ctx.state)
+  let currentSurfaceOpacity = ctx.state.currentSurfaceOpacity;
+  let currentGridOpacity = ctx.state.currentGridOpacity;
+  let isCurrentlyBlocked = ctx.state.isCurrentlyBlocked;
+  let lastRenderTime = ctx.state.lastRenderTime;
+  let auditFrameCounter = ctx.state.auditFrameCounter;
 
   // -- Render callback --
-  game.onRender = (_alpha: number) => {
-    // Project bullets and geoms onto surface
-    bulletPool.applySurfaceProjection(getTransform);
-    geomPool.applySurfaceProjection(getTransform);
-
-    // Tunnel transparency: check if surface blocks camera-to-player view
-    // Uses pre-allocated vectors instead of clone()
-    const camPos = game.camera.position;
-    const playerPos = player.mesh.position;
-    _renderTempToPlayer.copy(playerPos).sub(camPos);
-    const distToPlayer = _renderTempToPlayer.length();
-    _renderTempToPlayerDir.copy(_renderTempToPlayer).normalize();
-    tunnelRaycaster.set(camPos, _renderTempToPlayerDir);
-    tunnelRaycaster.far = distToPlayer;
-    const hits = tunnelRaycaster.intersectObject(surface.mesh, false);
-    // If there are intersections between camera and player, fade surface
-    isCurrentlyBlocked = hits.length > 0;
-    const targetSurfaceOpacity = isCurrentlyBlocked ? baseSurfaceOpacity * 0.05 : baseSurfaceOpacity;
-    const targetGridOpacity = isCurrentlyBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
-    // Use actual frame delta for smooth opacity transitions on all refresh rates
-    const now = performance.now();
-    const rawFrameDt = (now - lastRenderTime) / 1000;
-    const frameDt = Math.min(rawFrameDt, 0.1); // cap at 100ms for opacity transitions only
-    lastRenderTime = now;
-
-    // Update shockwave/chromatic/flash post-processing effects
-    shockwaveEffect.update(frameDt, game.clock.totalTime);
-
-    currentSurfaceOpacity += (targetSurfaceOpacity - currentSurfaceOpacity) * Math.min(1, fadeSpeed * frameDt);
-    currentGridOpacity += (targetGridOpacity - currentGridOpacity) * Math.min(1, fadeSpeed * frameDt);
-    const surfMat = surface.mesh.material as THREE.MeshBasicMaterial;
-    surfMat.opacity = currentSurfaceOpacity;
-    const gridMat = surface.gridMesh.material as THREE.LineBasicMaterial;
-    gridMat.opacity = currentGridOpacity;
-
-    // Depth-based occlusion + tunnel-blocking opacity + LOD-based fading for enemies
-    // Raycast-based: counts surface intersections between camera and each enemy.
-    // Batched across frames for performance (100 raycasts/frame).
-    const allEnemies = enemySpawner.getEnemies();
-    depthOcclusion.update(allEnemies, camPos, frameDt);
-
-    const meshCenter = meshSurface.getCenter();
-    const qualitySettings = adaptiveQuality.getSettings();
-    const maxVisible = qualitySettings.maxVisibleEnemies;
-    let visibleEnemyCount = 0;
-
-    for (const enemy of allEnemies) {
-      if (!enemy.alive || !enemy.mesh) continue;
-
-      // Adaptive quality: cap visible enemies when quality is reduced
-      if (maxVisible > 0 && visibleEnemyCount >= maxVisible) {
-        // Hide excess enemies by zeroing visibility
-        if (enemy.isInstanced) {
-          enemyInstanceManager.setInstanceVisibility(enemy, 0);
-        } else if (enemy.cachedMaterials) {
-          for (const mat of enemy.cachedMaterials) {
-            (mat as any).transparent = true;
-            (mat as any).opacity = 0;
-          }
-        }
-        continue;
-      }
-
-      // Raycast-based occlusion: opacity based on how many surface layers are
-      // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
-      let visibility = depthOcclusion.getOpacity(enemy);
-
-      // When surface is blocking camera-to-player, also fade enemies between camera and player
-      if (isCurrentlyBlocked) {
-        _renderTempToEnemy.copy(enemy.position).sub(camPos);
-        const enemyDist = _renderTempToEnemy.length();
-        // Check if enemy is between camera and player (closer than player)
-        if (enemyDist < distToPlayer) {
-          // Check if enemy is roughly along the camera-to-player line
-          _renderTempToEnemy.normalize();
-          const alignment = _renderTempToPlayerDir.dot(_renderTempToEnemy);
-          // If enemy is within ~45 degrees of the camera-to-player line, fade it
-          if (alignment > 0.7) {
-            const fadeFactor = (alignment - 0.7) / 0.3;
-            const tunnelEnemyOpacity = 0.12;
-            const tunnelVisibility = 1.0 - fadeFactor * (1.0 - tunnelEnemyOpacity);
-            visibility = Math.min(visibility, tunnelVisibility);
-          }
-        }
-      }
-
-      // LOD-based visibility reduction: subtle fade for distant enemies
-      // Keep enemies visible enough to see (previous values of 0.6/0.85 were too aggressive)
-      const lodLevel = lodAssignments.get(enemy);
-      if (lodLevel === LODLevel.LOW) {
-        visibility *= 0.85;
-      } else if (lodLevel === LODLevel.MEDIUM) {
-        visibility *= 0.95;
-      }
-
-      visibleEnemyCount++;
-
-      // Instanced enemies: set visibility on the correct batch (type-specific or LOD shared)
-      if (enemy.isInstanced) {
-        if (enemyInstanceManager.isInLODBatch(enemy)) {
-          // Enemy is in a shared LOD batch (simplified geometry)
-          enemyInstanceManager.setLODInstanceVisibility(enemy, visibility);
-        } else {
-          // Enemy is in its type-specific HIGH-detail batch
-          enemyInstanceManager.setInstanceVisibility(enemy, visibility);
-        }
-        continue;
-      }
-
-      // Non-instanced: use cached materials instead of traverse()
-      if (enemy.cachedMaterials) {
-        for (const mat of enemy.cachedMaterials) {
-          (mat as any).transparent = true;
-          (mat as any).opacity = visibility;
-        }
-      } else {
-        // Fallback for enemies without cached materials yet
-        enemy.mesh.traverse((child) => {
-          if (child instanceof THREE.Mesh && child.material) {
-            const mat = child.material as THREE.MeshBasicMaterial;
-            if (mat.transparent !== undefined) {
-              mat.transparent = true;
-              mat.opacity = visibility;
-            }
-          }
-        });
-      }
-    }
-    // Flush all instanced color/opacity changes for this frame
-    enemyInstanceManager.flushColors();
-
-    // Apply depth-based opacity to geoms (far-side geoms nearly invisible)
-    geomPool.applyDepthOpacity(camPos, meshCenter);
-
-    // Apply screen shake to camera (skip when paused to prevent drift)
-    if (!isPaused && screenShake.offset.lengthSq() > 0.0001) {
-      game.camera.position.add(screenShake.offset);
-    }
-
-    // Update HUD
-    updateUI(player, weaponManager);
-
-    // Update weapon inventory HUD
-    weaponHUD.update(weaponManager.getInventory(), weaponManager.getCurrentWeapon());
-
-    // Update companion HUD
-    companionHUD.update(companionManager.getCompanionCounts());
-
-    // Update buff HUD
-    buffHUD.update(buffManager.getActiveBuffs());
-
-    // Update level display in HUD
-    if (playerLevel.level > 0) {
-      const perk = playerLevel.perk;
-      const hexColor = perk.auraColor.toString(16).padStart(6, '0');
-      playerLevelEl.textContent = `LV${playerLevel.level} ${perk.name}`;
-      playerLevelEl.style.color = `#${hexColor}`;
-      playerLevelEl.style.textShadow = `0 0 8px #${hexColor}`;
-    } else {
-      const killsNeeded = playerLevel.killsToNextLevel;
-      playerLevelEl.textContent = killsNeeded > 0 ? `${killsNeeded} kills to LV1` : '';
-    }
-
-    // Update minimap
-    const minimapEnemies = enemySpawner.getEnemies()
-      .filter(e => e.mesh && !e.isMaterializing)
-      .map(e => ({ u: e.surfacePosition.u, v: e.surfacePosition.v, alive: e.alive }));
-    const minimapGeoms: Array<{ u: number; v: number }> = [];
-    geomPool.forEachActive((_i, u, v) => { minimapGeoms.push({ u, v }); });
-    minimap.update(player.surfaceU, player.surfaceV, minimapEnemies, minimapGeoms);
-
-    // Feed renderer stats to adaptive quality monitor
-    adaptiveQuality.monitor.setRendererInfo(game.renderer.info as any);
-    adaptiveQuality.monitor.setEntityCount(enemySpawner.getActiveCount());
-
-    // Update debug performance overlay
-    perfTracker.setEntityCount(enemySpawner.getActiveCount());
-    perfTracker.setBulletCount(bulletPool.activeCount);
-    perfTracker.recordFrame(rawFrameDt);
-    debugOverlay.update();
-
-    // Feed performance telemetry logger with all data sources
-    perfLogger.setFrameData(perfTracker.fps, enemySpawner.getActiveCount(), bulletPool.activeCount);
-    const monitorSnap = adaptiveQuality.monitor.getSnapshot();
-    perfLogger.setRendererStats(monitorSnap.drawCalls, monitorSnap.triangles, monitorSnap.memoryMB);
-    const lodStats = lodManager.getStats();
-    perfLogger.setLODStats(lodStats.high, lodStats.medium, lodStats.low);
-    perfLogger.setDDALevel(ddaEngine.getDDALevelSmooth(0));
-    perfLogger.setQualityLevel(adaptiveQuality.getQualityLevel());
-    // Enemy type breakdown + buff string (every 30th frame to avoid per-frame allocation)
-    perfEnemyTypeCounter++;
-    if (perfEnemyTypeCounter >= 30) {
-      perfEnemyTypeCounter = 0;
-      perfEnemyTypeMap.clear();
-      const enemies = enemySpawner.getEnemies();
-      for (let ei = 0; ei < enemies.length; ei++) {
-        const tn = (enemies[ei].baseTypeName || 'unknown') as EnemyType;
-        perfEnemyTypeMap.set(tn, (perfEnemyTypeMap.get(tn) || 0) + 1);
-      }
-      perfLogger.setEnemyTypes(perfEnemyTypeMap);
-    }
-    // Gameplay telemetry: buff string rebuilt on same cadence as enemy types
-    perfBuffStringCounter++;
-    if (perfBuffStringCounter >= 30) {
-      perfBuffStringCounter = 0;
-      const activeBuffsList = buffManager.getActiveBuffs();
-      if (activeBuffsList.length === 0) {
-        perfBuffString = '';
-      } else {
-        // Build compact "type:stacks" string — allocates only every 30th frame
-        const parts: string[] = [];
-        for (let bi = 0; bi < activeBuffsList.length; bi++) {
-          parts.push(activeBuffsList[bi].type + ':' + activeBuffsList[bi].stacks);
-        }
-        perfBuffString = parts.join(',');
-      }
-    }
-    // Feed gameplay data to telemetry logger
-    perfLogger.setGameplayData(
-      player.score,
-      ddaTracker.totalKills,
-      ddaTracker.totalDeaths,
-      weaponManager.getCurrentWeapon(),
-      perfBuffString,
-      particles.activeEffectCount,
-    );
-
-    // Count visible entities (frustum culling check)
-    _projScreenMatrix.multiplyMatrices(game.camera.projectionMatrix, game.camera.matrixWorldInverse);
-    _frustum.setFromProjectionMatrix(_projScreenMatrix);
-
-    let visibleEnemies = 0;
-    const enemies = enemySpawner.getEnemies();
-    for (let ei = 0; ei < enemies.length; ei++) {
-      const enemy = enemies[ei];
-      if (!enemy.active || !enemy.alive) continue;
-      // Use entity position + radius for frustum check (zero per-frame allocations)
-      _tempSphere.set(enemy.position, enemy.radius);
-      if (_frustum.intersectsSphere(_tempSphere)) {
-        visibleEnemies++;
-      }
-    }
-
-    let visibleBullets = 0;
-    bulletPool.forEachActive((_bulletIdx, bulletPos, _bulletData) => {
-      // Bullets are small points — just check if position is in frustum
-      if (_frustum.containsPoint(bulletPos)) {
-        visibleBullets++;
-      }
-    });
-
-    // Active explosions = current particle effects count
-    const activeExplosions = particles.activeEffectCount;
-
-    perfLogger.setVisibilityData(visibleEnemies, visibleBullets, activeExplosions);
-    perfLogger.recordFrame(rawFrameDt);
-
-    // Entity audit: capture snapshot for mismatch detection (every 4th frame)
-    auditFrameCounter++;
-    if (auditFrameCounter % 4 === 0) {
-      entityAudit.capture({
-        enemySpawner,
-        enemyInstanceManager,
-        bulletPool,
-        bulletInstanceManager,
-        player,
-        renderer: game.renderer,
-      });
-    }
+  game.onRender = (alpha: number) => {
+    renderLoop.render(ctx, alpha);
+    // Sync render state back
+    currentSurfaceOpacity = ctx.state.currentSurfaceOpacity;
+    currentGridOpacity = ctx.state.currentGridOpacity;
+    isCurrentlyBlocked = ctx.state.isCurrentlyBlocked;
+    lastRenderTime = ctx.state.lastRenderTime;
+    auditFrameCounter = ctx.state.auditFrameCounter;
   };
 
   // -- Weapon fire handler: delegates all firing to WeaponManager --
@@ -2515,7 +1286,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     particles.bombExplosion(pos);
     screenShake.shake(0.3, 0.3);
     sound.play('bomb');
-    screenFlash('rgba(255, 255, 255, 0.6)', 120);
+    UIHelpers.screenFlash('rgba(255, 255, 255, 0.6)', 120);
     // Heavy shockwave distortion + flash for bomb
     shockwaveEffect.spawnShockwave(pos, 0.08, 1.2, 0.8, 0.1);
     shockwaveEffect.triggerWhiteFlash(0.5);

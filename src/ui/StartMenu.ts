@@ -9,6 +9,7 @@ import { SettingsMenu } from './SettingsMenu';
 import { VisualPlayground } from './VisualPlayground';
 import { MenuBackground } from './MenuBackground';
 import { createQRCodeDisplay } from './QRCode';
+import { QUICK_GAME_MODES, type QuickGameModeType } from '../core/modes';
 
 /**
  * Start menu UI for Geometry Wars.
@@ -24,6 +25,7 @@ export interface MenuSelection {
   playerCount?: 2 | 3 | 4;
   serverUrl?: string;
   playerName?: string;
+  quickGameMode?: QuickGameModeType; // For single player quick game
 }
 
 // ---------------------------------------------------------------------------
@@ -47,6 +49,7 @@ export class StartMenu {
   private menuBackground: MenuBackground;
   private styleElement: HTMLStyleElement | null = null;
   private pendingMode: 'single' | 'network' = 'single';
+  private selectedQuickGameMode: QuickGameModeType = 'waves';
   private lanAutoRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private lanAutoRefreshEnabled = true;
   private lanScanning = false;
@@ -108,6 +111,24 @@ export class StartMenu {
       )
       .join('');
     return `<div class="surface-grid ${gridClass}">${buttons}</div>`;
+  }
+
+  private createModeGridHTML(): string {
+    const buttons = QUICK_GAME_MODES
+      .map(
+        (mode) => `
+        <button class="mode-btn${mode.type === this.selectedQuickGameMode ? ' selected' : ''}"
+                data-mode-type="${mode.type}">
+          <span class="mode-icon">${mode.icon}</span>
+          <div class="mode-info">
+            <span class="mode-name">${mode.name}</span>
+            <span class="mode-desc">${mode.description}</span>
+          </div>
+        </button>
+      `
+      )
+      .join('');
+    return buttons;
   }
 
   // -----------------------------------------------------------------------
@@ -266,6 +287,10 @@ export class StartMenu {
         </div>
 
         <div class="sub-panel surface-section hidden" id="surface-section">
+          <h3>SELECT GAME MODE</h3>
+          <div class="mode-grid">
+            ${this.createModeGridHTML()}
+          </div>
           <h3>SELECT SURFACE</h3>
           <div class="surface-grid">
             ${surfaceButtons}
@@ -471,6 +496,70 @@ export class StartMenu {
         letter-spacing: 4px;
         margin-bottom: 15px;
         text-align: center;
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* Game Mode grid                                                       */
+      /* ------------------------------------------------------------------- */
+      #start-menu .mode-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 20px 0;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      #start-menu .mode-btn {
+        background: rgba(100, 0, 100, 0.3);
+        border: 2px solid #660066;
+        color: #ff00ff;
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        text-align: left;
+      }
+
+      #start-menu .mode-btn:hover {
+        background: rgba(150, 0, 150, 0.4);
+        border-color: #ff00ff;
+        transform: translateX(5px);
+      }
+
+      #start-menu .mode-btn.selected {
+        background: rgba(255, 0, 255, 0.2);
+        border-color: #ff00ff;
+        box-shadow: 0 0 15px #ff00ff;
+      }
+
+      #start-menu .mode-btn .mode-icon {
+        font-size: 32px;
+        min-width: 40px;
+        text-align: center;
+      }
+
+      #start-menu .mode-btn .mode-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+      }
+
+      #start-menu .mode-btn .mode-name {
+        font-size: 14px;
+        font-weight: bold;
+        letter-spacing: 2px;
+        color: #ff88ff;
+      }
+
+      #start-menu .mode-btn .mode-desc {
+        font-size: 11px;
+        color: #cc88cc;
+        letter-spacing: 0.5px;
       }
 
       /* ------------------------------------------------------------------- */
@@ -1196,6 +1285,16 @@ export class StartMenu {
     const coopSection = this.container.querySelector('#coop-section') as HTMLElement;
     const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
 
+    // Mode selection buttons (Quick Game only - scoped to #surface-section)
+    const modeBtns = surfaceSection.querySelectorAll('.mode-btn');
+    modeBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        modeBtns.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.selectedQuickGameMode = (btn as HTMLElement).dataset.modeType as QuickGameModeType;
+      });
+    });
+
     // Surface selection buttons (Quick Game only - scoped to #surface-section)
     const surfaceBtns = surfaceSection.querySelectorAll('.surface-btn');
     surfaceBtns.forEach((btn) => {
@@ -1327,6 +1426,7 @@ export class StartMenu {
       this.onStartCallback?.({
         surfaceType: this.selectedSurface,
         gameMode: this.pendingMode,
+        quickGameMode: this.pendingMode === 'single' ? this.selectedQuickGameMode : undefined,
       });
     });
 
