@@ -112,6 +112,9 @@ export class Game {
   readonly bloomPass: UnrealBloomPass | null;
   /** WebGPU PostProcessing instance (null when using WebGL2). */
   private webgpuPostProcessing: { render: () => void } | null = null;
+  /** WebGPU TSL uniform nodes for dynamic bloom control (null when using WebGL2). */
+  private webgpuBloomStrengthUniform: any = null;
+  private webgpuBloomThresholdUniform: any = null;
 
   // ---- Game systems ---------------------------------------------------
 
@@ -313,7 +316,7 @@ export class Game {
     // node operations, so we use 'any' casts for the node graph construction.
     import('three/webgpu').then((webgpuModule: any) => {
       try {
-        const { PostProcessing, pass, float, max, add, screenUV } = webgpuModule;
+        const { PostProcessing, pass, float, max, add, screenUV, uniform } = webgpuModule;
 
         // Create the scene render pass
         const scenePass = pass(this.scene, this.camera);
@@ -325,8 +328,14 @@ export class Game {
         // 3. Composite with original
         const strength = _bloomConfig?.strength ?? DEFAULT_BLOOM.strength;
         const threshold = _bloomConfig?.threshold ?? DEFAULT_BLOOM.threshold;
-        const bloomStrength = float(strength);
-        const bloomThreshold = float(threshold);
+
+        // Use TSL uniform nodes so we can update bloom settings dynamically
+        const bloomStrength = uniform(strength);
+        const bloomThreshold = uniform(threshold);
+
+        // Store references for dynamic updates
+        this.webgpuBloomStrengthUniform = bloomStrength;
+        this.webgpuBloomThresholdUniform = bloomThreshold;
 
         // Extract bright pixels above threshold
         const brightness = max(
@@ -422,6 +431,24 @@ export class Game {
   /** Transition to game-over state. */
   setGameOver(): void {
     this._state = GameState.GameOver;
+  }
+
+  /**
+   * Update bloom settings dynamically.
+   * Works for both WebGL2 (via bloomPass) and WebGPU (via TSL uniforms).
+   */
+  setBloomSettings(strength: number, threshold: number): void {
+    // WebGL2 path: update UnrealBloomPass directly
+    if (this.bloomPass) {
+      this.bloomPass.strength = strength;
+      this.bloomPass.threshold = threshold;
+    }
+
+    // WebGPU path: update TSL uniform nodes
+    if (this.webgpuBloomStrengthUniform && this.webgpuBloomThresholdUniform) {
+      this.webgpuBloomStrengthUniform.value = strength;
+      this.webgpuBloomThresholdUniform.value = threshold;
+    }
   }
 
   /**

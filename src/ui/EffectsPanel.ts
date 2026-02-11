@@ -40,17 +40,27 @@ export class EffectsPanel {
     title.style.cssText = 'font-weight:bold; margin-bottom:8px; color:#ff0; text-align:center;';
     this.container.appendChild(title);
 
-    // Bloom controls (only available with WebGL2 EffectComposer)
+    // Bloom controls (work with both WebGL2 and WebGPU)
+    // Get initial values from bloomPass if available, otherwise use defaults
+    const initialStrength = this.game.bloomPass?.strength ?? 1.0;
+    const initialThreshold = this.game.bloomPass?.threshold ?? 0.3;
+    const initialRadius = (this.game.bloomPass as any)?.radius ?? 0.4;
+
+    this.addSlider('Bloom Strength', 0, 3, initialStrength, 0.1, (v) => {
+      // Preserve the current threshold value
+      const currentThreshold = this.game.bloomPass?.threshold ?? 0.3;
+      this.game.setBloomSettings(v, currentThreshold);
+    });
+
+    this.addSlider('Bloom Threshold', 0, 1, initialThreshold, 0.05, (v) => {
+      // Preserve the current strength value
+      const currentStrength = this.game.bloomPass?.strength ?? 1.0;
+      this.game.setBloomSettings(currentStrength, v);
+    });
+
+    // Radius is WebGL2-only (no equivalent in WebGPU TSL bloom)
     if (this.game.bloomPass) {
-      this.addSlider('Bloom Strength', 0, 3, this.game.bloomPass.strength, 0.1, (v) => {
-        if (this.game.bloomPass) this.game.bloomPass.strength = v;
-      });
-
-      this.addSlider('Bloom Threshold', 0, 1, this.game.bloomPass.threshold, 0.05, (v) => {
-        if (this.game.bloomPass) this.game.bloomPass.threshold = v;
-      });
-
-      this.addSlider('Bloom Radius', 0, 2, (this.game.bloomPass as any).radius ?? 0.4, 0.1, (v) => {
+      this.addSlider('Bloom Radius', 0, 2, initialRadius, 0.1, (v) => {
         if (this.game.bloomPass) (this.game.bloomPass as any).radius = v;
       });
     }

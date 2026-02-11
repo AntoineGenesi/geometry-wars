@@ -335,12 +335,14 @@ export class VisualPlaygroundDemo {
       });
     }
 
-    // Apply bloom settings (PlaygroundGame already created the bloom pass via Game)
-    const bloomPass = this.playgroundGame.game.bloomPass;
-    if (bloomPass) {
-      bloomPass.strength = preset.bloomStrength;
-      bloomPass.radius = preset.bloomRadius ?? 0.4;
-      bloomPass.threshold = preset.bloomThreshold ?? 0.85;
+    // Apply bloom settings (works for both WebGL2 and WebGPU)
+    this.playgroundGame.game.setBloomSettings(
+      preset.bloomStrength,
+      preset.bloomThreshold ?? 0.85
+    );
+    // Radius is WebGL2-only
+    if (this.playgroundGame.game.bloomPass && preset.bloomRadius !== undefined) {
+      this.playgroundGame.game.bloomPass.radius = preset.bloomRadius;
     }
   }
 

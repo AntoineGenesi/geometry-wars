@@ -142,12 +142,103 @@ The god function was split into 8 modules. Game behavior should be identical.
 
 ## WebGPU (if your browser supports it)
 
+**Updated 2026-02-12:** Dynamic bloom settings now work for WebGPU (using TSL uniform nodes)
+
 - [ ] **WebGPU renderer activates** — Chrome 113+ should auto-detect and use WebGPU
 - [ ] **Bloom effects work** — Neon glow should be visible (not flat/dark)
+- [ ] **Bloom settings update in real-time (WebGPU)** — Open settings, adjust bloom strength slider → bloom should change immediately (not stay frozen)
+- [ ] **Bloom threshold updates (WebGPU)** — Adjust bloom threshold slider → glow area should shrink/expand
+- [ ] **Visual styles change bloom (WebGPU)** — Switch visual styles in settings → bloom should update per style
 - [ ] **Fallback works** — Firefox/Safari should gracefully fall back to WebGL2
 
 ### WebGPU Task File
 - `tasks/webgpu-optimization.md`
+
+---
+
+## Adventure Mode (NEW — 2026-02-12)
+
+50-level campaign mode with progressive difficulty, star ratings, and level progression.
+
+### Level Select UI
+- [ ] **Adventure button visible** — Start menu shows "ADVENTURE" button as primary option
+- [ ] **Level grid displays** — Click Adventure → shows all 50 levels in 6 sections (Sapphire, Ruby, Emerald, Opal, Amethyst, Topaz)
+- [ ] **Locked levels show lock icon** — Levels after the first should show 🔒 if not unlocked
+- [ ] **Star ratings display** — Completed levels should show ★★★ or ★★☆ etc. based on performance
+- [ ] **Section headers visible** — Each gem section (Sapphire, Ruby, etc.) should have a visible header
+
+### Level Gameplay
+- [ ] **Level starts on click** — Click an unlocked level → game should start on the level's surface
+- [ ] **Scripted waves spawn** — Level should spawn specific enemy waves (not random endless waves)
+- [ ] **Lives/bombs/time match level** — Check pause menu → stats should match the level's config (e.g., Level 1 has 3 lives, 60s time limit)
+- [ ] **Timer counts down (Deadline mode)** — Levels with time limits should show countdown timer
+- [ ] **Timer shows elapsed time (Evolved mode)** — Levels without time limits should show elapsed time
+
+### Level Completion
+- [ ] **Level completes when waves clear** — Kill all enemies in all waves → Level Complete screen should show
+- [ ] **Star rating displays** — Level Complete should show 1-3 stars based on score
+- [ ] **Star rating is accurate** — Check score vs. level's star thresholds (shown on pause menu)
+- [ ] **Progress saves** — Complete a level → go back to menu → level should show earned stars
+- [ ] **Next level unlocks** — Complete Level 1 → Level 2 should unlock
+- [ ] **Next button works** — Click "Next Level" → should start the next level
+- [ ] **Replay button works** — Click "Replay" → should restart the same level
+- [ ] **Menu button works** — Click "Menu" → should return to start menu
+
+### Level Failure
+- [ ] **Fails when lives run out** — Die with 0 lives → Game Over screen should show (not Level Complete)
+- [ ] **Fails when time runs out (before clearing)** — If time expires before all waves cleared → should complete with current score (not fail)
+
+### Edge Cases
+- [ ] **Can't click locked levels** — Locked levels should be disabled/unclickable
+- [ ] **Level 50 has no "Next"** — Last level should only show Replay and Menu buttons (no Next)
+- [ ] **Back button works** — Click "Back" from level select → returns to main menu
+
+### Adventure Task File
+- `tasks/adventure-mode-design.md`
+
+---
+
+## Gravity Wells Environmental Hazard (NEW — 2026-02-12)
+
+**Note:** The GravityWell entity has been enhanced with blue/red variants, visual indicators, and pull mechanics. The game loop integration (wiring callbacks) needs to be done separately.
+
+### What Was Changed
+- Added blue wells (0x4488ff): pull force affects movement, non-lethal
+- Added red wells (0xff4444): lethal within 0.5 radius inner zone
+- Added translucent pull radius ring (becomes visible when activated)
+- Added red danger zone ring for red wells
+- Added `onPullPlayer` callback for active force application
+- Added `onWellActivated` audio callback
+- EnemySpawner now supports 'gravity_well_red' spawn type
+
+### How to Test (once wired into game loop)
+
+#### Basic Functionality
+- [ ] **Blue wells spawn and appear correctly** — Should see blue concentric rings
+- [ ] **Red wells spawn and appear correctly** — Should see red concentric rings
+- [ ] **Wells activate on first hit** — Shoot a well. Should change to magenta color and show pull radius ring
+- [ ] **Pull radius ring pulses** — Activated well should show pulsing translucent ring
+- [ ] **Red wells show danger zone** — Red wells should have inner red ring when activated
+
+#### Pull Mechanics
+- [ ] **Blue wells pull player smoothly** — Walk near activated blue well. Should feel pulled toward center (smooth force, not instant teleport)
+- [ ] **Pull strength increases when closer** — Force should be stronger near center, weaker at edge
+- [ ] **No pull when outside radius** — Far from well = no effect
+- [ ] **Blue wells don't kill** — Can touch blue well center without dying
+
+#### Lethal Mechanics (Red Wells)
+- [ ] **Red wells kill on close contact** — Get very close to activated red well center. Should die within danger zone
+- [ ] **Red wells pull from distance** — Should still feel pull force from outside lethal radius
+- [ ] **Death is immediate** — No gradual damage, instant kill in danger zone
+
+#### Edge Cases
+- [ ] **Wells work on all surfaces** — Test on sphere, cube, mobius, torus
+- [ ] **Wells consume enemies** — Enemies pulled into well should be consumed (score added)
+- [ ] **Wells detonate after 10 consumed** — Well should explode after consuming 10 enemies
+- [ ] **Inactive wells don't pull** — Freshly spawned well (not shot yet) should drift but not pull
+
+### Task File
+- `tasks/gravity-wells-hazard.md` — Implementation details
 
 ---
 

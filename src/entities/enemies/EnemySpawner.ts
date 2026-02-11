@@ -40,7 +40,7 @@ import type { Surface } from '../../surfaces/Surface';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
-  | 'weaver' | 'spinner' | 'snake' | 'repulsor' | 'gravity_well' | 'gate'
+  | 'weaver' | 'spinner' | 'snake' | 'repulsor' | 'gravity_well' | 'gravity_well_red' | 'gate'
   | 'painter' | 'virus' | 'spawner' | 'titan_grunt' | 'titan_spinner' | 'titan_weaver'
   | 'giant_wanderer' | 'giant_rocket' | 'giant_snake' | 'giant_neutron'
   | 'cluster' | 'helix' | 'fractal' | 'swarm'
@@ -331,7 +331,10 @@ export class EnemySpawner {
         enemy = new Repulsor(u, v);
         break;
       case 'gravity_well':
-        enemy = new GravityWell(u, v);
+        enemy = new GravityWell(u, v, 'blue');
+        break;
+      case 'gravity_well_red':
+        enemy = new GravityWell(u, v, 'red');
         break;
       case 'gate':
         enemy = new Gate(u, v);

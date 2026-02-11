@@ -189,6 +189,18 @@ export class GameLoop {
     // Spawn enemy waves
     ctx.waveScheduler.update(dt, ctx.enemySpawner);
 
+    // Check wave-based level completion (all waves spawned + all enemies cleared)
+    // Only for non-endless adventure mode levels (endless never completes via waves)
+    if (
+      !ctx.isEndless &&
+      ctx.waveScheduler.allSpawned &&
+      ctx.enemySpawner.getEnemies().length === 0 &&
+      ctx.gameMode.phase === ModePhase.Playing &&
+      !ctx.state.isLevelComplete
+    ) {
+      ctx.gameMode.completeLevel(ctx.player.score);
+    }
+
     // Update enemies - use player's actual UV position
     if (ctx.player.canBeTracked) {
       ctx.enemySpawner.update(dt, ctx.player.surfaceU, ctx.player.surfaceV);

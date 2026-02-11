@@ -372,16 +372,20 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
 
   // Apply visual style changes in real-time when user selects a style in Settings
   SettingsMenu.setGlobalVisualStyleChangeCallback((preset) => {
-    if (game.bloomPass) {
-      if (preset) {
-        game.bloomPass.strength = preset.bloomStrength;
-        if (preset.bloomRadius !== undefined) game.bloomPass.radius = preset.bloomRadius;
-        if (preset.bloomThreshold !== undefined) game.bloomPass.threshold = preset.bloomThreshold;
-      } else {
-        // Reset to defaults
-        game.bloomPass.strength = mobile ? 0.4 : 0.7;
+    if (preset) {
+      // Use setBloomSettings for strength/threshold (works for both WebGL2 and WebGPU)
+      game.setBloomSettings(preset.bloomStrength, preset.bloomThreshold ?? 0.85);
+      // Radius is WebGL2-only (no equivalent in WebGPU TSL bloom approximation)
+      if (game.bloomPass && preset.bloomRadius !== undefined) {
+        game.bloomPass.radius = preset.bloomRadius;
+      }
+    } else {
+      // Reset to defaults
+      const defaultStrength = mobile ? 0.4 : 0.7;
+      const defaultThreshold = 0.6;
+      game.setBloomSettings(defaultStrength, defaultThreshold);
+      if (game.bloomPass) {
         game.bloomPass.radius = mobile ? 0.3 : 0.5;
-        game.bloomPass.threshold = 0.6;
       }
     }
   });
@@ -572,14 +576,16 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   adaptiveQuality.onQualityChange = (_oldLevel, newLevel) => {
     const settings = adaptiveQuality.getSettings();
 
-    // Apply bloom settings (only when using WebGL2 EffectComposer path)
-    if (game.bloomPass) {
-      if (settings.bloomEnabled) {
-        game.bloomPass.strength = bloomStrength * settings.bloomResolutionScale;
+    // Apply bloom settings (works for both WebGL2 and WebGPU)
+    if (settings.bloomEnabled) {
+      const strength = bloomStrength * settings.bloomResolutionScale;
+      game.setBloomSettings(strength, 0.6);  // Keep threshold constant
+      // Radius is WebGL2-only
+      if (game.bloomPass) {
         game.bloomPass.radius = (mobile ? 0.3 : 0.5) * settings.bloomResolutionScale;
-      } else {
-        game.bloomPass.strength = 0;
       }
+    } else {
+      game.setBloomSettings(0, 0.6);  // Disable bloom by setting strength to 0
     }
 
     // Scale particle emission budget with quality level.
