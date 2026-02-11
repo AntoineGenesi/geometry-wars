@@ -1365,62 +1365,73 @@ function main() {
         lastInputSendTime = 0;
       }
 
-      // Client-side prediction: apply local player movement immediately
+      // Client-side prediction: apply local player movement AND aim immediately
       // so it feels responsive. The server position will override on next
       // onStateChange, but the visual lag between input and response is
       // eliminated. Uses the same PLAYER_SPEED (0.19 UV/s) as the server.
       // MUST match server physics (including sin(phi) correction) to avoid
       // rubber-banding.
+      //
+      // CRITICAL FIX (audit #1): Previously prediction ONLY ran when
+      // moveX/moveY were non-zero. This meant aim angle updates (turning
+      // while standing still) waited for server response = 16-33ms lag.
+      // Now prediction ALWAYS runs for the local player, applying:
+      // - Movement (when WASD is held)
+      // - Aim orientation (always, even when stationary)
+      // This matches co-op where aim updates INSTANTLY every frame.
       const localPlayer = networkPlayers.get(localPlayerId);
-      if (localPlayer && surface && (currentInput.moveX !== 0 || currentInput.moveY !== 0)) {
-        const predSpeed = 0.19; // Must match server PLAYER_SPEED
-        let predDx = currentInput.moveX * predSpeed * dt;
-        const predDy = currentInput.moveY * predSpeed * dt;
+      if (localPlayer && surface) {
+        const isMoving = currentInput.moveX !== 0 || currentInput.moveY !== 0;
 
-        // Apply sin(phi) correction for sphere-like surfaces (matches server)
-        const surfType = lastCreatedSurfaceType;
-        const isSphereLike = surfType === 'sphere' || surfType === 'sphere-tunnel'
-          || surfType === 'icosahedron' || surfType === 'capsule'
-          || surfType === 'peanut';
-        if (isSphereLike) {
-          const phi = localPlayer.surfaceV * Math.PI;
-          const sinPhi = Math.sin(phi);
-          const clampedSinPhi = Math.max(sinPhi, 0.3);
-          predDx = predDx / clampedSinPhi;
+        if (isMoving) {
+          const predSpeed = 0.19; // Must match server PLAYER_SPEED
+          let predDx = currentInput.moveX * predSpeed * dt;
+          const predDy = currentInput.moveY * predSpeed * dt;
+
+          // Apply sin(phi) correction for sphere-like surfaces (matches server)
+          const surfType = lastCreatedSurfaceType;
+          const isSphereLike = surfType === 'sphere' || surfType === 'sphere-tunnel'
+            || surfType === 'icosahedron' || surfType === 'capsule'
+            || surfType === 'peanut';
+          if (isSphereLike) {
+            const phi = localPlayer.surfaceV * Math.PI;
+            const sinPhi = Math.sin(phi);
+            const clampedSinPhi = Math.max(sinPhi, 0.3);
+            predDx = predDx / clampedSinPhi;
+          }
+
+          let newU = localPlayer.surfaceU + predDx;
+          let newV = localPlayer.surfaceV + predDy;
+
+          // Wrap U, clamp/wrap V (matches server logic exactly).
+          const wrapsInV = surfType === 'torus' || surfType === 'pipe'
+            || surfType === 'mobius' || surfType === 'cube-ring'
+            || surfType === 'cube-tunnel';
+          newU = ((newU % 1) + 1) % 1;
+          if (wrapsInV) {
+            newV = ((newV % 1) + 1) % 1;
+          } else {
+            const vMin = surfType === 'cube' ? 0.003 : 0.05;
+            const vMax = surfType === 'cube' ? 0.997 : 0.95;
+            newV = Math.max(vMin, Math.min(vMax, newV));
+          }
+
+          localPlayer.surfaceU = newU;
+          localPlayer.surfaceV = newV;
         }
 
-        let newU = localPlayer.surfaceU + predDx;
-        let newV = localPlayer.surfaceV + predDy;
-
-        // Wrap U, clamp/wrap V (matches server logic exactly).
-        // Cube wraps U (around 4 side faces) but CLAMPS V (bottom-to-top).
-        // CubeSurface.moveOnSurface() clamps V to [epsilon, 1-epsilon].
-        // Previously 'cube' was listed as wrapsInV, causing player to
-        // teleport between top and bottom faces (reported as "stuck at origin").
-        const wrapsInV = surfType === 'torus' || surfType === 'pipe'
-          || surfType === 'mobius' || surfType === 'cube-ring'
-          || surfType === 'cube-tunnel';
-        newU = ((newU % 1) + 1) % 1;
-        if (wrapsInV) {
-          newV = ((newV % 1) + 1) % 1;
-        } else {
-          // Match server clamping: cube uses tighter bounds (0.003),
-          // sphere-like uses 0.05 to avoid pole singularity
-          const vMin = surfType === 'cube' ? 0.003 : 0.05;
-          const vMax = surfType === 'cube' ? 0.997 : 0.95;
-          newV = Math.max(vMin, Math.min(vMax, newV));
-        }
-
-        localPlayer.surfaceU = newU;
-        localPlayer.surfaceV = newV;
-        // Update visual position immediately
-        const sp = surface.getPoint(newU, newV);
+        // ALWAYS update visual position + aim orientation (even when stationary).
+        // This ensures aim direction updates instantly without waiting for server.
+        const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
         localPlayer.mesh.position.copy(sp.position);
         localPlayer.mesh.position.addScaledVector(sp.normal, 0.15);
         orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
-        // Update glow trail
-        const trail = playerGlowTrails.get(localPlayerId);
-        if (trail) trail.addPoint(localPlayer.mesh.position.clone());
+
+        // Update glow trail (only meaningful when moving, but cheap to call always)
+        if (isMoving) {
+          const trail = playerGlowTrails.get(localPlayerId);
+          if (trail) trail.addPoint(localPlayer.mesh.position.clone());
+        }
       }
 
       // Play shoot sound locally for responsiveness
