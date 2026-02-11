@@ -361,6 +361,8 @@ function main() {
     networkEnemies.clear();
     enemyTargetUV.clear();
     remotePlayerTargetUV.clear();
+    bulletTargetUV.clear();
+    geomTargetUV.clear();
     surface = null;
     meshSurface = null;
     getTransform = null;
@@ -500,9 +502,15 @@ function main() {
 
   // -- Bullet tracking --
   const bulletIdToIndex = new Map<string, number>();
+  // Interpolation targets for bullets: lerp toward server UV in onRender (60Hz)
+  // instead of snapping in onStateChange (was 30Hz, now 60Hz but still benefits
+  // from smooth lerp). Same pattern as enemyTargetUV.
+  const bulletTargetUV = new Map<string, { u: number; v: number; dirX: number; dirY: number }>();
 
   // -- Geom tracking --
   const geomIdToIndex = new Map<string, number>();
+  // Interpolation targets for geoms (same pattern)
+  const geomTargetUV = new Map<string, { u: number; v: number }>();
 
   // -- Weapon pickup tracking --
   // Uses real WeaponPickup instances (same as co-op)
@@ -1028,22 +1036,13 @@ function main() {
       const existingIdx = bulletIdToIndex.get(bullet.id);
 
       if (existingIdx !== undefined) {
-        // Update existing bullet position and orientation
-        const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
-        _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
-        const line = bulletPool.getLine(existingIdx);
-        if (line && line.visible) {
-          line.position.lerp(_netTempPos, 0.4);
-          // Re-orient bullet along surface tangent frame as it moves
-          // (tangent directions change on curved surfaces)
-          _netTempDir.set(0, 0, 0)
-            .addScaledVector(sp.tangentU, bullet.dirX)
-            .addScaledVector(sp.tangentV, bullet.dirY)
-            .normalize();
-          // Use _netTempPos as scratch for lookAt target (line.position + direction)
-          _netTempPos.copy(line.position).add(_netTempDir);
-          line.lookAt(_netTempPos);
-        }
+        // Store target UV for interpolation in onRender (same pattern as enemies).
+        // Previously this snapped position directly at patch rate, causing stutter.
+        // Now onRender lerps smoothly toward the target every frame.
+        bulletTargetUV.set(bullet.id, {
+          u: bullet.x, v: bullet.y,
+          dirX: bullet.dirX, dirY: bullet.dirY,
+        });
       } else {
         // New bullet: find an inactive pool slot and activate it directly.
         // We CANNOT call bulletPool.spawn() because it internally calls
@@ -1080,6 +1079,11 @@ function main() {
             .normalize();
           line.lookAt(_netTempPos.copy(line.position).add(_netTempDir));
           bulletIdToIndex.set(bullet.id, newIdx);
+          // Store initial target for interpolation
+          bulletTargetUV.set(bullet.id, {
+            u: bullet.x, v: bullet.y,
+            dirX: bullet.dirX, dirY: bullet.dirY,
+          });
         }
       }
     });
@@ -1089,6 +1093,7 @@ function main() {
       if (!activeBulletIds.has(id)) {
         bulletPool.kill(idx);
         bulletIdToIndex.delete(id);
+        bulletTargetUV.delete(id);
       }
     });
 
@@ -1100,13 +1105,8 @@ function main() {
       activeGeomIds.add(geom.id);
 
       if (geomIdToIndex.has(geom.id)) {
-        // Existing geom - update UV
-        const idx = geomIdToIndex.get(geom.id)!;
-        const geomData = geomPool.getGeomData(idx);
-        if (geomData) {
-          geomData.surfaceU = geom.surfaceU;
-          geomData.surfaceV = geom.surfaceV;
-        }
+        // Store target UV for interpolation in onRender (same pattern as bullets/enemies).
+        geomTargetUV.set(geom.id, { u: geom.surfaceU, v: geom.surfaceV });
       } else {
         // New geom: find inactive slot and activate directly via public API.
         // We CANNOT call geomPool.spawn() because it internally calls
@@ -1132,6 +1132,7 @@ function main() {
             mesh.visible = true;
           }
           geomIdToIndex.set(geom.id, newIdx);
+          geomTargetUV.set(geom.id, { u: geom.surfaceU, v: geom.surfaceV });
         }
         // If no inactive slot found, skip spawning. Better to miss a geom
         // than leak an untracked entity that can never be cleaned up.
@@ -1143,6 +1144,7 @@ function main() {
       if (!activeGeomIds.has(id)) {
         geomPool.kill(idx);
         geomIdToIndex.delete(id);
+        geomTargetUV.delete(id);
       }
     });
 
@@ -1562,6 +1564,56 @@ function main() {
       allyGlowManager.setPosition(id, player.mesh.position);
     });
 
+    // -----------------------------------------------------------------------
+    // Per-frame interpolation for bullets (same pattern as enemies/players).
+    // Previously bullets were positioned directly in onStateChange, causing
+    // stutter at the patch rate. Now we lerp UV toward server targets every
+    // render frame for smooth bullet movement.
+    // See decisions/lan-deep-audit-2026-02-11.md #3.
+    // -----------------------------------------------------------------------
+    const BULLET_LERP = 0.3; // Faster lerp — bullets move fast, need to converge quickly
+    bulletTargetUV.forEach((target, id) => {
+      const idx = bulletIdToIndex.get(id);
+      if (idx === undefined) return;
+      const b = bulletPool.getBulletData(idx);
+      if (!b || !b.alive) return;
+
+      // Lerp UV toward server target
+      b.surfaceU += (target.u - b.surfaceU) * BULLET_LERP;
+      b.surfaceV += (target.v - b.surfaceV) * BULLET_LERP;
+
+      // Update 3D position from interpolated UV
+      const sp: SurfacePoint = surf.getPoint(b.surfaceU, b.surfaceV);
+      _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
+      const line = bulletPool.getLine(idx);
+      if (line && line.visible) {
+        line.position.copy(_netTempPos);
+        // Re-orient along surface tangent frame
+        _netTempDir.set(0, 0, 0)
+          .addScaledVector(sp.tangentU, target.dirX)
+          .addScaledVector(sp.tangentV, target.dirY)
+          .normalize();
+        _netTempPos.copy(line.position).add(_netTempDir);
+        line.lookAt(_netTempPos);
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // Per-frame interpolation for geoms (same pattern).
+    // Geoms don't move much after spawning, but smooth lerp prevents any
+    // visible snap when the server adjusts their position.
+    // -----------------------------------------------------------------------
+    const GEOM_LERP = 0.2;
+    geomTargetUV.forEach((target, id) => {
+      const idx = geomIdToIndex.get(id);
+      if (idx === undefined) return;
+      const g = geomPool.getGeomData(idx);
+      if (!g || !g.alive) return;
+
+      g.surfaceU += (target.u - g.surfaceU) * GEOM_LERP;
+      g.surfaceV += (target.v - g.surfaceV) * GEOM_LERP;
+    });
+
     // Camera follows local player along surface normal (same as co-op).
     // Use the player's mesh position directly instead of worldToSurface
     // round-trip, which adds jitter from floating-point imprecision.
@@ -1583,30 +1635,13 @@ function main() {
     bulletPool.applySurfaceProjection(transform);
     geomPool.applySurfaceProjection(transform);
 
-    // Depth-based opacity for enemies
-    const ms = meshSurface;
-    if (ms) {
-      const surfCenter = ms.getCenter();
-      networkEnemies.forEach((enemy) => {
-        if (!enemy.mesh || !enemy.mesh.visible) return;
-        _netTempNormal.copy(enemy.position).sub(surfCenter).normalize();
-        const visibility = ms.getVisibility(enemy.position, _netTempNormal, camera.position);
-        if (enemy.mesh instanceof THREE.Mesh && enemy.mesh.material) {
-          const mat = enemy.mesh.material as THREE.MeshBasicMaterial;
-          mat.transparent = true;
-          mat.opacity = visibility;
-        } else {
-          enemy.mesh.traverse((child) => {
-            if (child instanceof THREE.Mesh && child.material) {
-              const mat = child.material as THREE.MeshBasicMaterial;
-              mat.transparent = true;
-              mat.opacity = visibility;
-            }
-          });
-        }
-        enemy.mesh.visible = visibility > 0.05;
-      });
-    }
+    // Depth-based opacity DISABLED in network mode.
+    // This was computing getVisibility() + setting material.opacity on EVERY enemy
+    // mesh EVERY frame (250+ material updates/frame for 50 enemies with 5 children
+    // each). Material property changes force GPU state flushes = massive FPS hit.
+    // Co-op mode doesn't use depth opacity and feels smooth. Enemies behind the
+    // surface are clipped by the depth buffer or frustum culled naturally.
+    // See decisions/lan-deep-audit-2026-02-11.md #6.
 
     // Screen shake (same as co-op)
     if (screenShake.offset.lengthSq() > 0.0001) {
@@ -1674,13 +1709,18 @@ function main() {
   }
 
   // -----------------------------------------------------------------------
-  // LAN Diagnostic API — ALWAYS available in network mode (not gated by ?debug)
-  // User pastes commands in browser console to diagnose connection issues.
+  // LAN Diagnostic API — gated behind ?debug URL parameter.
+  // Previously always-on, but the 200ms polling interval and entity iteration
+  // added overhead even when the overlay was hidden. Now only activates when
+  // explicitly requested via ?debug=true in the URL.
+  // See decisions/lan-deep-audit-2026-02-11.md #7.
   // -----------------------------------------------------------------------
 
   let diagOverlayEl: HTMLDivElement | null = null;
   let diagOverlayInterval: ReturnType<typeof setInterval> | null = null;
+  const debugEnabled = new URLSearchParams(window.location.search).has('debug');
 
+  if (debugEnabled) {
   window.__lanDebug = {
     status: () => {
       const lp = networkPlayers.get(localPlayerId);
@@ -1819,6 +1859,7 @@ function main() {
     '  __lanDebug.overlay()  — Toggle real-time overlay',
     'color:#0ff;font-weight:bold', 'color:#0ff',
   );
+  } // end if (debugEnabled)
 }
 
 main();

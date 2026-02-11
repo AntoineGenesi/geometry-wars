@@ -131,9 +131,11 @@ export class GameRoom extends Room<GameState> {
     this.setSimulationInterval((dt) => this.tick(), 1000 / TICK_RATE);
 
     // Patch rate controls how often state changes are broadcast to clients.
-    // Lower = more responsive but more bandwidth. 33ms = ~30Hz is a good balance.
-    // (Previously 50ms/20Hz which felt laggy.)
-    this.setPatchRate(33); // Send patches every ~33ms (~30Hz)
+    // Lower = more responsive but more bandwidth. On LAN, bandwidth is not a
+    // concern so we match the simulation rate (60Hz) for minimum perceived latency.
+    // Previously 33ms/30Hz — caused bullets and entities to stutter because the
+    // client only received updates every other frame. See decisions/lan-deep-audit-2026-02-11.md #4.
+    this.setPatchRate(16); // Send patches every ~16ms (~60Hz, matches TICK_RATE)
 
     console.log(`[GameRoom] Created with surface: ${this.state.surfaceType}`);
   }
