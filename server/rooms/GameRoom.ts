@@ -7,8 +7,11 @@ import {
   GeomState,
   WeaponPickupState,
 } from '../schema/GameState';
-import { InterestManager, type PlayerSyncSet, type SyncableEntity } from '../systems/InterestManager';
-import type { UVPosition } from '../systems/PriorityQueue';
+// NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
+// currently used. Interest management was disabled because Colyseus's state
+// patching doesn't consume shouldSyncEntity() results. If re-enabled, import
+// from '../systems/InterestManager' and '../systems/PriorityQueue'.
+// See decisions/lan-deep-audit-2026-02-11.md #11.
 
 /** Input message from client */
 interface PlayerInput {
@@ -60,9 +63,6 @@ const WEAPON_DROP_CHANCE = 0.08; // 8% on enemy death
 const WEAPON_PICKUP_LIFETIME = 20.0; // seconds before despawn
 const WEAPON_TYPES = Object.keys(WEAPON_CONFIGS).filter(t => t !== 'standard');
 
-// How often to log interest management metrics (every N ticks)
-const METRICS_LOG_INTERVAL = 600; // every 10 seconds at 60Hz
-
 export class GameRoom extends Room<GameState> {
   private spawnTimer = 0;
   private nextBulletId = 0;
@@ -70,11 +70,6 @@ export class GameRoom extends Room<GameState> {
   private nextGeomId = 0;
   private nextPickupId = 0;
   private waveNumber = 0;
-
-  /** Interest management: per-client entity filtering */
-  private interestManager: InterestManager | null = null;
-  /** Latest per-player sync sets from interest management */
-  private syncSets: Map<string, PlayerSyncSet> = new Map();
 
   /**
    * Latest input state per player. Updated on message receipt, consumed
@@ -88,9 +83,6 @@ export class GameRoom extends Room<GameState> {
   onCreate(options: { surfaceType?: string }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
-
-    // Initialize interest management for per-client entity filtering
-    this.interestManager = new InterestManager(this.state.surfaceType);
 
     // Set max clients (4 player co-op)
     this.maxClients = 4;
@@ -416,11 +408,6 @@ export class GameRoom extends Room<GameState> {
       this.spawnEnemy();
       this.spawnTimer = 0;
     }
-
-    // NOTE: Interest management (updateInterestManagement) is disabled.
-    // The shouldSyncEntity() results were never consumed by Colyseus's state
-    // patching, so the computation was wasted. Needs proper Colyseus filter
-    // integration before re-enabling.
 
     // Check game over
     this.checkGameOver();
@@ -802,92 +789,6 @@ export class GameRoom extends Room<GameState> {
     // NOTE: Ammo deduction is handled in tryShoot() per shot fired,
     // not per tick. This prevents burning through ammo 6x faster than
     // shots actually fire (60Hz tick vs 10Hz fire rate).
-  }
-
-  /**
-   * Run interest management to determine which entities each player
-   * should receive updates for. Stores results in this.syncSets.
-   */
-  private updateInterestManagement(): void {
-    if (!this.interestManager) return;
-
-    // Build player position map
-    const playerPositions = new Map<string, UVPosition>();
-    this.state.players.forEach((player, id) => {
-      if (player.alive) {
-        playerPositions.set(id, { u: player.surfaceU, v: player.surfaceV });
-      }
-    });
-
-    // Build entity arrays
-    const enemies: SyncableEntity[] = [];
-    this.state.enemies.forEach((enemy) => {
-      if (enemy.alive) {
-        enemies.push({ id: enemy.id, u: enemy.surfaceU, v: enemy.surfaceV });
-      }
-    });
-
-    const bullets: SyncableEntity[] = [];
-    this.state.bullets.forEach((bullet) => {
-      bullets.push({ id: bullet.id, u: bullet.x, v: bullet.y });
-    });
-
-    const geoms: SyncableEntity[] = [];
-    this.state.geoms.forEach((geom) => {
-      if (geom.active) {
-        geoms.push({ id: geom.id, u: geom.surfaceU, v: geom.surfaceV });
-      }
-    });
-
-    const pickups: SyncableEntity[] = [];
-    this.state.weaponPickups.forEach((pickup) => {
-      if (pickup.active) {
-        pickups.push({ id: pickup.id, u: pickup.surfaceU, v: pickup.surfaceV });
-      }
-    });
-
-    // Run interest management update
-    this.syncSets = this.interestManager.update(
-      playerPositions, enemies, bullets, geoms, pickups,
-    );
-
-    // Periodic metrics logging
-    const tick = this.interestManager.getTickNumber();
-    if (tick % METRICS_LOG_INTERVAL === 0 && tick > 0) {
-      const metrics = this.interestManager.getMetrics();
-      console.log(
-        `[InterestMgr] tick=${tick} entities=${metrics.totalEntities}` +
-        ` avg_synced=${metrics.avgEntitiesPerPlayer.toFixed(1)}` +
-        ` savings=${(metrics.bandwidthSavingsRatio * 100).toFixed(1)}%`,
-      );
-    }
-  }
-
-  /**
-   * Query whether a specific entity should be synced to a specific client.
-   * Used for Colyseus filter integration.
-   *
-   * @returns true if entity should be sent to this client
-   */
-  shouldSyncEntity(
-    clientId: string,
-    entityId: string,
-    entityType: 'enemy' | 'bullet' | 'geom' | 'pickup',
-  ): boolean {
-    const syncSet = this.syncSets.get(clientId);
-    if (!syncSet) return true; // No filtering data yet, sync everything
-
-    switch (entityType) {
-      case 'enemy': return syncSet.enemyIds.has(entityId);
-      case 'bullet': return syncSet.bulletIds.has(entityId);
-      case 'geom': return syncSet.geomIds.has(entityId);
-      case 'pickup': return syncSet.pickupIds.has(entityId);
-    }
-  }
-
-  /** Get the interest manager instance (for external metrics/debugging) */
-  getInterestManager(): InterestManager | null {
-    return this.interestManager;
   }
 
   private wrapCoord(v: number): number {
