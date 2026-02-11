@@ -34,7 +34,9 @@ import { Phaser } from './Phaser';
 import { ApproachGlow } from './ApproachGlow';
 import { StealthStalker } from './StealthStalker';
 import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
+import type { EnemyDecoratorSystem } from '../../rendering/EnemyDecorators';
 import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
+import type { Surface } from '../../surfaces/Surface';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
@@ -65,6 +67,9 @@ export interface WaveEnemy {
 const MIN_SPAWN_DISTANCE = 0.25;
 // Minimum distance between enemies (in UV space)
 const MIN_ENEMY_SEPARATION = 0.05;
+
+/** Hard cap on total enemy count to prevent O(n^2) separation from cratering FPS. */
+const MAX_ENEMY_COUNT = 400;
 // Max attempts to find valid spawn position
 const MAX_SPAWN_ATTEMPTS = 20;
 
@@ -104,10 +109,30 @@ export class EnemySpawner {
   /** Optional instance manager for GPU-batched rendering. */
   private instanceManager: EnemyInstanceManager | null = null;
 
+  /** Optional decorator system for enemy visual embellishments. */
+  private decoratorSystem: EnemyDecoratorSystem | null = null;
+
   /** Optional DDA spawn modifier for dynamic difficulty adjustment. */
   private ddaModifier: DDASpawnModifier | null = null;
   /** Player positions for DDA zone detection (updated externally). */
   private ddaPlayers: PlayerPosition[] = [];
+
+  /**
+   * Speed normalization factor from the surface. Enemies multiply their
+   * base UV speed by this factor so that movement feels consistent across
+   * surfaces of different sizes. Default 1.0 (no scaling).
+   * Set via setSurfaceSpeedScale() after construction.
+   */
+  private surfaceSpeedScale: number = 1.0;
+
+  /**
+   * Reference to the current surface, used for:
+   * - Per-position UV Jacobian correction (getUVScaleAt)
+   * - Proper UV wrapping/clamping (wrapUV)
+   * - Topology-aware separation forces (wrapsU/wrapsV)
+   * Set via setSurface() after construction.
+   */
+  private surface: Surface | null = null;
 
   constructor(
     scene: THREE.Scene,
@@ -146,6 +171,11 @@ export class EnemySpawner {
     return this.instanceManager;
   }
 
+  /** Set the decorator system for enemy visual embellishments (motes, cores). */
+  setDecoratorSystem(system: EnemyDecoratorSystem): void {
+    this.decoratorSystem = system;
+  }
+
   /** Set the DDA spawn modifier for dynamic difficulty adjustment. */
   setDDAModifier(modifier: DDASpawnModifier): void {
     this.ddaModifier = modifier;
@@ -156,16 +186,54 @@ export class EnemySpawner {
     this.ddaPlayers = players;
   }
 
+  /**
+   * Set the surface speed normalization factor.
+   * Enemies spawned after this call will have their speed multiplied
+   * by this factor, ensuring consistent perceived speed across surfaces.
+   * Get this value from surface.speedScale.
+   */
+  setSurfaceSpeedScale(scale: number): void {
+    this.surfaceSpeedScale = scale;
+  }
+
+  /** Get the current surface speed scale (for debugging/inspection). */
+  getSurfaceSpeedScale(): number {
+    return this.surfaceSpeedScale;
+  }
+
+  /**
+   * Set the surface reference for UV-aware enemy movement.
+   * This enables per-position speed correction (UV Jacobian),
+   * proper UV wrapping, and topology-aware separation forces.
+   */
+  setSurface(surface: Surface): void {
+    this.surface = surface;
+  }
+
+  /** Get the current surface reference. */
+  getSurface(): Surface | null {
+    return this.surface;
+  }
+
   /** Set player position for spawn distance calculations */
   setPlayerPosition(u: number, v: number): void {
     this.playerU = u;
     this.playerV = v;
   }
 
-  /** Calculate UV distance (wrapping-aware for toroidal surfaces) */
+  /** Calculate UV distance with proper wrapping for the current surface topology. */
   private uvDistance(u1: number, v1: number, u2: number, v2: number): number {
-    const du = Math.abs(u1 - u2);
-    const dv = Math.abs(v1 - v2);
+    let du = Math.abs(u1 - u2);
+    let dv = Math.abs(v1 - v2);
+
+    // Use shortest-path across UV seam for wrapping axes
+    if (this.surface?.wrapsU ?? true) {
+      if (du > 0.5) du = 1 - du;
+    }
+    if (this.surface?.wrapsV ?? false) {
+      if (dv > 0.5) dv = 1 - dv;
+    }
+
     return Math.sqrt(du * du + dv * dv);
   }
 
@@ -203,7 +271,19 @@ export class EnemySpawner {
     return { u: fallbackU, v: fallbackV };
   }
 
-  spawn(type: EnemyType, surfaceU?: number, surfaceV?: number, tier: number = 0): BaseEnemy {
+  spawn(type: EnemyType, surfaceU?: number, surfaceV?: number, tier: number = 0, skipSpawnWarning: boolean = false): BaseEnemy {
+    // Hard cap: skip spawning if at max to prevent FPS crater from O(n^2) separation
+    let activeCount = 0;
+    for (let i = 0; i < this.enemies.length; i++) {
+      if (this.enemies[i].active) activeCount++;
+    }
+    if (activeCount >= MAX_ENEMY_COUNT) {
+      // Return a dummy inactive enemy to avoid null returns; caller handles inactive enemies
+      const dummy = new Wanderer(0, 0);
+      dummy.active = false;
+      return dummy;
+    }
+
     // Use provided position or find valid random position
     let u: number;
     let v: number;
@@ -342,47 +422,77 @@ export class EnemySpawner {
     // Store the base type name for tier-based split spawning
     enemy.baseTypeName = type;
 
+    // Apply surface speed normalization factor.
+    // This scales ALL UV movement automatically in BaseEnemy.update(),
+    // catching speed, currentSpeed, dashSpeed, chargeSpeed, etc.
+    // without requiring changes to individual enemy subclasses.
+    enemy.surfaceSpeedScale = this.surfaceSpeedScale;
+
+    // Pass surface reference for per-position UV correction.
+    // This routes enemy movement through moveOnSurface(), fixing
+    // bunching at UV boundaries on non-toroidal surfaces.
+    if (this.surface) {
+      enemy.surfaceRef = this.surface;
+    }
+
     // Apply difficulty tier scaling (stats, visuals, splitting behavior)
     if (tier > 0) {
       enemy.applyDifficultyTier(tier);
     }
 
-    // Create spawn warning indicator first
-    const warningMesh = new THREE.Mesh(
-      EnemySpawner.warningGeometry!,
-      EnemySpawner.warningMaterial!.clone(),
-    );
-    const t = this.getTransform(u, v);
-    warningMesh.position.copy(t.position).addScaledVector(t.normal, 0.05);
-    warningMesh.lookAt(warningMesh.position.clone().add(t.normal));
-    this.scene.add(warningMesh);
-
-    this.spawnWarnings.push({
-      mesh: warningMesh,
-      u, v,
-      age: 0,
-      duration: SPAWN_WARNING_DURATION,
-      type,
-    });
-
     // Apply initial surface transform
     enemy.applySurfaceTransform(this.getTransform);
-
-    // Mark as materializing (spawn warning in progress)
-    enemy.isMaterializing = true;
 
     // Try to register with instance manager for GPU-batched rendering
     const instanced = this.instanceManager?.register(enemy) ?? false;
 
-    // Start hidden - materializes when warning completes
-    if (enemy.mesh) {
-      if (!instanced) {
-        // Non-instanced: add mesh to scene, hide until materialized
-        this.scene.add(enemy.mesh);
-        enemy.mesh.visible = false;
+    // Register with decorator system for orbiting motes + inner cores
+    this.decoratorSystem?.register(enemy);
+
+    if (skipSpawnWarning) {
+      // Network mode: enemies appear instantly, no warning animation.
+      // The server is authoritative for spawn timing, so the client
+      // should show enemies immediately when the server reports them.
+      enemy.isMaterializing = false;
+      if (enemy.mesh) {
+        if (!instanced) {
+          this.scene.add(enemy.mesh);
+          enemy.mesh.visible = true;
+        }
+        enemy.mesh.scale.setScalar(1);
       }
-      // Instanced enemies: mesh is already hidden by the instance manager,
-      // and the individual mesh is NOT added to the scene (instance mesh handles rendering)
+    } else {
+      // Create spawn warning indicator (pulsing red ring)
+      const warningMesh = new THREE.Mesh(
+        EnemySpawner.warningGeometry!,
+        EnemySpawner.warningMaterial!.clone(),
+      );
+      const t = this.getTransform(u, v);
+      warningMesh.position.copy(t.position).addScaledVector(t.normal, 0.05);
+      warningMesh.lookAt(warningMesh.position.clone().add(t.normal));
+      this.scene.add(warningMesh);
+
+      this.spawnWarnings.push({
+        mesh: warningMesh,
+        u, v,
+        age: 0,
+        duration: SPAWN_WARNING_DURATION,
+        type,
+      });
+
+      // Mark as materializing (spawn warning in progress)
+      enemy.isMaterializing = true;
+
+      // Start hidden - materializes when warning completes
+      if (enemy.mesh) {
+        if (!instanced) {
+          // Non-instanced: add mesh to scene, hide until materialized
+          this.scene.add(enemy.mesh);
+          enemy.mesh.visible = false;
+        }
+        // Instanced enemies: mesh is already hidden by the instance manager,
+        // and the individual mesh is NOT added to the scene (instance mesh handles rendering)
+      }
     }
 
     // Painter trail visuals need separate scene group
@@ -503,6 +613,8 @@ export class EnemySpawner {
         if (enemy.isInstanced && this.instanceManager) {
           this.instanceManager.unregister(enemy);
         }
+        // Unregister from decorator system
+        this.decoratorSystem?.unregister(enemy);
         if (enemy.mesh && !enemy.isInstanced) {
           this.scene.remove(enemy.mesh);
         }
@@ -521,6 +633,7 @@ export class EnemySpawner {
       if (enemy.isInstanced && this.instanceManager) {
         this.instanceManager.unregister(enemy);
       }
+      this.decoratorSystem?.unregister(enemy);
       if (enemy.mesh && !enemy.isInstanced) {
         this.scene.remove(enemy.mesh);
       }
@@ -540,45 +653,149 @@ export class EnemySpawner {
   }
 
   getActiveCount(): number {
-    return this.enemies.filter(e => e.active).length;
+    let count = 0;
+    for (let i = 0; i < this.enemies.length; i++) {
+      if (this.enemies[i].active) count++;
+    }
+    return count;
   }
 
-  /** Apply gentle separation force between overlapping enemies.
-   *  Uses squared distance to avoid sqrt in the common (non-overlapping) case. */
+  /** Separation spatial grid — maps UV cells to enemy indices. Reused across frames. */
+  private readonly sepGrid = new Map<number, number[]>();
+  private readonly sepCellSize = MIN_ENEMY_SEPARATION * 2; // cell slightly larger than sep dist
+  private readonly sepActiveIndices: number[] = [];
+
+  /** Apply gentle separation force between nearby enemies.
+   *  Uses a spatial grid to avoid O(n^2) brute force — only checks neighbors.
+   *
+   *  Fixed to handle UV wrapping: on surfaces where U or V wraps (torus,
+   *  pipe, etc.), enemies near opposing UV boundaries now correctly repel
+   *  each other across the seam. On non-wrapping surfaces (sphere poles,
+   *  cube top/bottom), uses proper wrapUV() instead of hard clamping. */
   private applySeparation(dt: number): void {
     const separationStrength = 0.1;
     const minDist = MIN_ENEMY_SEPARATION;
     const minDistSq = minDist * minDist;
+    const cellSize = this.sepCellSize;
+    const invCell = 1 / cellSize;
+
+    const uWraps = this.surface?.wrapsU ?? true;
+    const vWraps = this.surface?.wrapsV ?? false;
+
+    // Build spatial grid
+    this.sepGrid.forEach(arr => { arr.length = 0; });
+    this.sepActiveIndices.length = 0;
 
     for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (!e.active) continue;
+      this.sepActiveIndices.push(i);
+      const cx = (e.surfacePosition.u * invCell) | 0;
+      const cy = (e.surfacePosition.v * invCell) | 0;
+      const key = cx * 1009 + cy;
+      let bucket = this.sepGrid.get(key);
+      if (!bucket) {
+        bucket = [];
+        this.sepGrid.set(key, bucket);
+      }
+      bucket.push(i);
+
+      // For wrapping surfaces, also hash into wrapped neighbor cells
+      // so enemies near u=0 find enemies near u=1 and vice versa
+      if (uWraps) {
+        const maxCell = (1.0 * invCell) | 0;
+        if (cx <= 0) {
+          const wrappedKey = maxCell * 1009 + cy;
+          let wBucket = this.sepGrid.get(wrappedKey);
+          if (!wBucket) { wBucket = []; this.sepGrid.set(wrappedKey, wBucket); }
+          wBucket.push(i);
+        }
+        if (cx >= maxCell) {
+          const wrappedKey = 0 * 1009 + cy;
+          let wBucket = this.sepGrid.get(wrappedKey);
+          if (!wBucket) { wBucket = []; this.sepGrid.set(wrappedKey, wBucket); }
+          wBucket.push(i);
+        }
+      }
+      if (vWraps) {
+        const maxCell = (1.0 * invCell) | 0;
+        if (cy <= 0) {
+          const wrappedKey = cx * 1009 + maxCell;
+          let wBucket = this.sepGrid.get(wrappedKey);
+          if (!wBucket) { wBucket = []; this.sepGrid.set(wrappedKey, wBucket); }
+          wBucket.push(i);
+        }
+        if (cy >= maxCell) {
+          const wrappedKey = cx * 1009 + 0;
+          let wBucket = this.sepGrid.get(wrappedKey);
+          if (!wBucket) { wBucket = []; this.sepGrid.set(wrappedKey, wBucket); }
+          wBucket.push(i);
+        }
+      }
+    }
+
+    // For each active enemy, check only neighboring cells
+    for (const i of this.sepActiveIndices) {
       const a = this.enemies[i];
-      if (!a.active) continue;
+      const cx = (a.surfacePosition.u * invCell) | 0;
+      const cy = (a.surfacePosition.v * invCell) | 0;
 
-      for (let j = i + 1; j < this.enemies.length; j++) {
-        const b = this.enemies[j];
-        if (!b.active) continue;
+      // Check 3x3 neighborhood
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          const key = (cx + dx) * 1009 + (cy + dy);
+          const bucket = this.sepGrid.get(key);
+          if (!bucket) continue;
 
-        const du = a.surfacePosition.u - b.surfacePosition.u;
-        const dv = a.surfacePosition.v - b.surfacePosition.v;
-        const distSq = du * du + dv * dv;
+          for (const j of bucket) {
+            if (j <= i) continue; // avoid double-processing pairs
 
-        // Only call sqrt when actually overlapping (avoids sqrt in the majority of cases)
-        if (distSq < minDistSq && distSq > 0.000001) {
-          const dist = Math.sqrt(distSq);
-          const pushStrength = (minDist - dist) * separationStrength * dt;
-          const normU = du / dist;
-          const normV = dv / dist;
+            const b = this.enemies[j];
 
-          a.surfacePosition.u += normU * pushStrength;
-          a.surfacePosition.v += normV * pushStrength;
-          b.surfacePosition.u -= normU * pushStrength;
-          b.surfacePosition.v -= normV * pushStrength;
+            // Compute UV delta with wrapping awareness
+            let du = a.surfacePosition.u - b.surfacePosition.u;
+            let dv = a.surfacePosition.v - b.surfacePosition.v;
 
-          // Clamp to surface bounds
-          a.surfacePosition.u = Math.max(0, Math.min(1, a.surfacePosition.u));
-          a.surfacePosition.v = Math.max(0, Math.min(1, a.surfacePosition.v));
-          b.surfacePosition.u = Math.max(0, Math.min(1, b.surfacePosition.u));
-          b.surfacePosition.v = Math.max(0, Math.min(1, b.surfacePosition.v));
+            // Shortest-path distance across UV seam for wrapping axes
+            if (uWraps) {
+              if (du > 0.5) du -= 1;
+              else if (du < -0.5) du += 1;
+            }
+            if (vWraps) {
+              if (dv > 0.5) dv -= 1;
+              else if (dv < -0.5) dv += 1;
+            }
+
+            const distSq = du * du + dv * dv;
+
+            if (distSq < minDistSq && distSq > 0.000001) {
+              const dist = Math.sqrt(distSq);
+              const pushStrength = (minDist - dist) * separationStrength * dt;
+              const normU = du / dist;
+              const normV = dv / dist;
+
+              a.surfacePosition.u += normU * pushStrength;
+              a.surfacePosition.v += normV * pushStrength;
+              b.surfacePosition.u -= normU * pushStrength;
+              b.surfacePosition.v -= normV * pushStrength;
+
+              // Use surface-aware wrapping instead of hard clamping
+              if (this.surface) {
+                const aWrapped = this.surface.wrapUV(a.surfacePosition.u, a.surfacePosition.v);
+                a.surfacePosition.u = aWrapped.u;
+                a.surfacePosition.v = aWrapped.v;
+                const bWrapped = this.surface.wrapUV(b.surfacePosition.u, b.surfacePosition.v);
+                b.surfacePosition.u = bWrapped.u;
+                b.surfacePosition.v = bWrapped.v;
+              } else {
+                // Fallback: basic wrap U, clamp V
+                a.surfacePosition.u = ((a.surfacePosition.u % 1) + 1) % 1;
+                a.surfacePosition.v = Math.max(0.005, Math.min(0.995, a.surfacePosition.v));
+                b.surfacePosition.u = ((b.surfacePosition.u % 1) + 1) % 1;
+                b.surfacePosition.v = Math.max(0.005, Math.min(0.995, b.surfacePosition.v));
+              }
+            }
+          }
         }
       }
     }

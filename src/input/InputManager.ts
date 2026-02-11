@@ -71,6 +71,7 @@ export class InputManager {
   private readonly onGamepadDisconnected: (e: GamepadEvent) => void;
   private readonly onResize: () => void;
   private readonly onContextMenu: (e: Event) => void;
+  private readonly onBlur: () => void;
 
   constructor() {
     // Capture initial viewport size.
@@ -139,6 +140,18 @@ export class InputManager {
       }
     };
 
+    // -- Window blur (focus lost) ------------------------------------------
+    // When the window loses focus (e.g. user clicks a different browser
+    // window on same PC), keyup events stop firing for this window.
+    // Clear all input state so stale keys don't keep sending movement
+    // to the server. Without this, switching between two LAN windows
+    // causes the previous window's player to keep moving indefinitely.
+    this.onBlur = () => {
+      this.keysDown.clear();
+      this.keysJustPressed.clear();
+      this.mouseLeftDown = false;
+    };
+
     // Register all listeners.
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
@@ -149,6 +162,7 @@ export class InputManager {
     window.addEventListener('gamepadconnected', this.onGamepadConnected);
     window.addEventListener('gamepaddisconnected', this.onGamepadDisconnected);
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('blur', this.onBlur);
   }
 
   // -----------------------------------------------------------------------
@@ -225,6 +239,7 @@ export class InputManager {
       this.onGamepadDisconnected,
     );
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('blur', this.onBlur);
   }
 
   // -----------------------------------------------------------------------

@@ -299,13 +299,23 @@ export class GameRoom extends Room<GameState> {
 
       player.surfaceU = this.wrapCoord(player.surfaceU + correctedDx);
 
+      // Cube surface wraps U (around 4 side faces) but CLAMPS V (bottom-to-top).
+      // CubeSurface.moveOnSurface() clamps V to [epsilon, 1-epsilon] because
+      // V=0 is bottom face center and V=1 is top face center (not periodic).
+      // Previous code incorrectly listed 'cube' as wrapsInV, causing the player
+      // to teleport between top and bottom faces when moving past V boundaries
+      // (user reported as "stuck at origin" because player oscillates).
       const wrapsInV = surfaceType === 'torus' || surfaceType === 'pipe'
         || surfaceType === 'mobius' || surfaceType === 'cube-ring'
-        || surfaceType === 'cube-tunnel' || surfaceType === 'cube';
+        || surfaceType === 'cube-tunnel';
       if (wrapsInV) {
         player.surfaceV = this.wrapCoord(player.surfaceV + dy);
       } else {
-        player.surfaceV = Math.max(0.05, Math.min(0.95, player.surfaceV + dy));
+        // Clamp V: use 0.003 for cube (matching CubeSurface epsilon),
+        // 0.05 for sphere-like (avoids pole singularity)
+        const vMin = surfaceType === 'cube' ? 0.003 : 0.05;
+        const vMax = surfaceType === 'cube' ? 0.997 : 0.95;
+        player.surfaceV = Math.max(vMin, Math.min(vMax, player.surfaceV + dy));
       }
 
       // Handle shooting (continuous action, applied per tick)
@@ -470,9 +480,13 @@ export class GameRoom extends Room<GameState> {
           enemy.surfaceU += (du / dist) * speed * dt;
           enemy.surfaceV += (dv / dist) * speed * dt;
           // Wrap U, clamp V to same range as players to prevent
-          // enemies from reaching pole singularities and becoming invisible
+          // enemies from reaching pole singularities and becoming invisible.
+          // Cube uses tighter bounds since V=0/1 are face centers (not poles).
           enemy.surfaceU = this.wrapCoord(enemy.surfaceU);
-          enemy.surfaceV = Math.max(0.05, Math.min(0.95, enemy.surfaceV));
+          const surfType = this.state.surfaceType;
+          const enemyVMin = surfType === 'cube' ? 0.003 : 0.05;
+          const enemyVMax = surfType === 'cube' ? 0.997 : 0.95;
+          enemy.surfaceV = Math.max(enemyVMin, Math.min(enemyVMax, enemy.surfaceV));
         }
       }
     });

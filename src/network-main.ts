@@ -287,10 +287,29 @@ const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
 // ---------------------------------------------------------------------------
 
 function main() {
-  // Initialize audio (same as co-op)
+  // Initialize audio (same as co-op).
+  // AudioContext may already be initialized if coming from StartMenu (where we
+  // call init() synchronously within the click handler). If coming from a direct
+  // URL (QR code scan), AudioContext will start suspended because there was no
+  // user gesture. We add a one-shot listener to resume it on first interaction.
   const sound = getSoundEngine();
   sound.init();
   sound.resume();
+
+  // One-shot listener: resume AudioContext on first user interaction.
+  // Covers the QR-code-scan path where page loads without a user gesture.
+  if (sound.getContext()?.state === 'suspended') {
+    const resumeAudio = () => {
+      sound.resume();
+      document.removeEventListener('click', resumeAudio);
+      document.removeEventListener('keydown', resumeAudio);
+      document.removeEventListener('pointerdown', resumeAudio);
+    };
+    document.addEventListener('click', resumeAudio, { once: true });
+    document.addEventListener('keydown', resumeAudio, { once: true });
+    document.addEventListener('pointerdown', resumeAudio, { once: true });
+  }
+
   const bgMusic = new BackgroundMusic();
 
   // -- Game engine (same config as co-op) --
@@ -419,6 +438,8 @@ function main() {
 
     // Create enemy spawner with real surface transform (same as co-op)
     enemySpawner = new EnemySpawner(scene, getTransform);
+    enemySpawner.setSurfaceSpeedScale(surface.speedScale);
+    enemySpawner.setSurface(surface);
 
     // Wire DDA modifier into enemy spawner (host uses this for spawn modifications)
     enemySpawner.setDDAModifier(ddaSpawnModifier);
@@ -701,6 +722,44 @@ function main() {
     }
   });
 
+  // Window blur handler: when the browser window loses focus (user switches
+  // to a different window on same PC), immediately send zero-input to the
+  // server. Without this, the server keeps applying the last non-zero input
+  // at 60Hz until the client sends an update — but requestAnimationFrame is
+  // throttled when the window is hidden, so the update could be delayed by
+  // hundreds of milliseconds. This causes the player to drift after switching
+  // windows, making same-PC LAN unplayable.
+  window.addEventListener('blur', () => {
+    if (network.isConnected()) {
+      const zeroInput = {
+        moveX: 0,
+        moveY: 0,
+        aimAngle: lastSentInput?.aimAngle ?? 0,
+        shooting: false,
+        bomb: false,
+      };
+      network.sendInput(zeroInput);
+      lastSentInput = { ...zeroInput };
+    }
+  });
+
+  // Also handle document visibility changes (tab switching, minimizing).
+  // This fires in addition to blur in some cases, but the server handles
+  // duplicate zero-inputs gracefully (movement is already 0).
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && network.isConnected()) {
+      const zeroInput = {
+        moveX: 0,
+        moveY: 0,
+        aimAngle: lastSentInput?.aimAngle ?? 0,
+        shooting: false,
+        bomb: false,
+      };
+      network.sendInput(zeroInput);
+      lastSentInput = { ...zeroInput };
+    }
+  });
+
   // -----------------------------------------------------------------------
   // Helper: get or create a real Player for a network player
   // -----------------------------------------------------------------------
@@ -749,15 +808,11 @@ function main() {
     // Map server enemy type to spawner type
     const spawnerType = SERVER_TO_SPAWNER_TYPE[netEnemy.type] || 'wanderer';
 
-    // Use real EnemySpawner to create the enemy with proper mesh
-    enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV);
-
-    // For network mode, immediately materialize (skip spawn warning)
-    enemy.isMaterializing = false;
-    if (enemy.mesh) {
-      enemy.mesh.visible = true;
-      enemy.mesh.scale.setScalar(1);
-    }
+    // Use real EnemySpawner to create the enemy with proper mesh.
+    // Pass skipSpawnWarning=true to avoid creating red ring indicators that
+    // would never be cleaned up (enemySpawner.update() is not called in
+    // network mode because the server is authoritative for enemy positions).
+    enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV, 0, true);
 
     networkEnemies.set(id, enemy);
     return enemy;
@@ -818,18 +873,37 @@ function main() {
         player.surfaceV = netPlayer.surfaceV;
       }
 
-      // Detect death transition -> trigger effects
+      // Detect alive state transitions -> trigger effects
       const wasAlive = playerAliveState.get(id) ?? true;
       if (wasAlive && !netPlayer.alive) {
+        // Player just died: trigger death effects
         particles.playerDeath(player.mesh.position);
         screenShake.shake(0.5, 0.4);
         sound.play('playerDeath');
         // DDA: track death event for this player
         const tracker = getOrCreateDDATracker(id);
         tracker.recordDeath();
+      } else if (!wasAlive && netPlayer.alive) {
+        // Player just respawned (alive transitioned false->true).
+        // This happens when the game restarts via "PLAY AGAIN", or
+        // if the server adds a respawn-after-delay mechanism.
+        // Force-restore full visibility on the mesh and ALL children.
+        // This guards against stale child visibility from invincibility
+        // blink, death effects, or any other code that may have hidden
+        // individual child meshes while the player was dead.
+        player.mesh.visible = true;
+        player.mesh.traverse((child) => {
+          child.visible = true;
+        });
+        // Reset bullet pool state for this player (ensure bullets render)
+        // Play a respawn sound as feedback
+        sound.play('playerDeath', { pitch: 1.5 });
+        netMainLog(`[NetworkMain] Player ${id} respawned, mesh visibility restored`);
       }
       playerAliveState.set(id, netPlayer.alive);
 
+      // Sync alive state and mesh visibility
+      player.alive = netPlayer.alive;
       player.mesh.visible = netPlayer.alive;
 
       // Update glow trail
@@ -954,12 +1028,21 @@ function main() {
       const existingIdx = bulletIdToIndex.get(bullet.id);
 
       if (existingIdx !== undefined) {
-        // Update existing bullet position (uses pre-allocated temp vector)
+        // Update existing bullet position and orientation
         const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
         _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
         const line = bulletPool.getLine(existingIdx);
         if (line && line.visible) {
           line.position.lerp(_netTempPos, 0.4);
+          // Re-orient bullet along surface tangent frame as it moves
+          // (tangent directions change on curved surfaces)
+          _netTempDir.set(0, 0, 0)
+            .addScaledVector(sp.tangentU, bullet.dirX)
+            .addScaledVector(sp.tangentV, bullet.dirY)
+            .normalize();
+          // Use _netTempPos as scratch for lookAt target (line.position + direction)
+          _netTempPos.copy(line.position).add(_netTempDir);
+          line.lookAt(_netTempPos);
         }
       } else {
         // New bullet: find an inactive pool slot and activate it directly.
@@ -985,8 +1068,16 @@ function main() {
           const line = bulletPool.getLine(newIdx);
           line.position.copy(_netTempPos);
           line.visible = true;
-          // Orient line to face direction (uses pre-allocated temp vector)
-          _netTempDir.set(bullet.dirX, bullet.dirY, bullet.dirZ);
+          // Orient line to face direction on the surface.
+          // bullet.dirX/dirY are UV-space direction (cos/sin of aimAngle).
+          // Convert to 3D world direction using the surface tangent frame:
+          // 3D_direction = dirX * tangentU + dirY * tangentV
+          // Without this conversion, bullets point in arbitrary world-space
+          // directions because UV axes don't align with XYZ axes on curved surfaces.
+          _netTempDir.set(0, 0, 0)
+            .addScaledVector(sp.tangentU, bullet.dirX)
+            .addScaledVector(sp.tangentV, bullet.dirY)
+            .normalize();
           line.lookAt(_netTempPos.copy(line.position).add(_netTempDir));
           bulletIdToIndex.set(bullet.id, newIdx);
         }
@@ -1182,9 +1273,12 @@ function main() {
       onGameStart: () => {
         statusEl.textContent = 'Game starting...';
         startBtn.style.display = 'none';
-        // Start background music (same as co-op)
+        // Start background music (route through compressor to prevent clipping)
         const audioCtx = sound.getAudioContext();
-        if (audioCtx) bgMusic.start(audioCtx);
+        if (audioCtx) {
+          const compressor = sound.getCompressor();
+          bgMusic.start(audioCtx, compressor ?? undefined);
+        }
       },
       onGameOver: () => {
         statusEl.textContent = 'GAME OVER';
@@ -1296,15 +1390,23 @@ function main() {
         let newU = localPlayer.surfaceU + predDx;
         let newV = localPlayer.surfaceV + predDy;
 
-        // Wrap U, clamp V (matches server logic exactly)
+        // Wrap U, clamp/wrap V (matches server logic exactly).
+        // Cube wraps U (around 4 side faces) but CLAMPS V (bottom-to-top).
+        // CubeSurface.moveOnSurface() clamps V to [epsilon, 1-epsilon].
+        // Previously 'cube' was listed as wrapsInV, causing player to
+        // teleport between top and bottom faces (reported as "stuck at origin").
         const wrapsInV = surfType === 'torus' || surfType === 'pipe'
           || surfType === 'mobius' || surfType === 'cube-ring'
-          || surfType === 'cube-tunnel' || surfType === 'cube';
+          || surfType === 'cube-tunnel';
         newU = ((newU % 1) + 1) % 1;
         if (wrapsInV) {
           newV = ((newV % 1) + 1) % 1;
         } else {
-          newV = Math.max(0.05, Math.min(0.95, newV));
+          // Match server clamping: cube uses tighter bounds (0.003),
+          // sphere-like uses 0.05 to avoid pole singularity
+          const vMin = surfType === 'cube' ? 0.003 : 0.05;
+          const vMax = surfType === 'cube' ? 0.997 : 0.95;
+          newV = Math.max(vMin, Math.min(vMax, newV));
         }
 
         localPlayer.surfaceU = newU;
