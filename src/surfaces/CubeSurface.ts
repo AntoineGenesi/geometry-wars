@@ -172,28 +172,31 @@ export class CubeSurface extends Surface {
     const nextFaceNorm = faceNormals[(uRegion.faceIndex + 1) % 4]
 
     if (vRegion.type === 'bottomFlat') {
-      // Flat bottom face (-Y). localT goes from 0 (center) to 1 (edge).
-      // The u coordinate maps to a position on the bottom face.
-      // We need to map from the perimeter-based u to a 2D position on the square face.
-      const dist = vRegion.localT * flatHalfSize
+      // Flat bottom face (-Y) with CARTESIAN grid parameterization.
+      // localT goes from 0 (at v=0, center) to 1 (at v=flatFraction, edge with bevel).
+      // Cartesian fix (Session 13): Map UV to a grid on the square face, not radial coordinates.
       const y = -halfSize
 
       if (uRegion.type === 'face') {
-        // Along a face edge
-        const x = (uRegion.localS - 0.5) * 2 * flatHalfSize
-        position = faceNorm.clone().multiplyScalar(dist)
-          .add(faceRight.clone().multiplyScalar(x * vRegion.localT))
-          .add(new THREE.Vector3(0, y, 0))
-        // Clamp to face boundary
-        const posXZ = new THREE.Vector2(position.x, position.z)
-        if (Math.abs(position.x) > flatHalfSize) position.x = Math.sign(position.x) * flatHalfSize
-        if (Math.abs(position.z) > flatHalfSize) position.z = Math.sign(position.z) * flatHalfSize
+        // Cartesian grid mapping on face region
+        // tangentPos: position along the edge (-flatHalfSize to +flatHalfSize)
+        // normalPos: distance from center outward (0 at center, flatHalfSize at edge)
+        const tangentPos = (uRegion.localS - 0.5) * 2 * flatHalfSize
+        const normalPos = flatHalfSize * vRegion.localT  // Fixed: was (1 - vRegion.localT)
+
+        // Build position using face directions
+        const x = faceRight.x * tangentPos + faceNorm.x * normalPos
+        const z = faceRight.z * tangentPos + faceNorm.z * normalPos
+
+        position = new THREE.Vector3(x, y, z)
       } else {
-        // Corner region
+        // Corner region - cartesian approach
         const hAngle = uRegion.localS * (Math.PI / 2)
         const blendedDir = faceNorm.clone().multiplyScalar(Math.cos(hAngle))
           .add(nextFaceNorm.clone().multiplyScalar(Math.sin(hAngle)))
-        position = blendedDir.clone().multiplyScalar(dist)
+        const normalPos = flatHalfSize * vRegion.localT  // Fixed: was (1 - vRegion.localT)
+
+        position = blendedDir.clone().multiplyScalar(normalPos)
           .add(new THREE.Vector3(0, y, 0))
       }
 
@@ -201,22 +204,32 @@ export class CubeSurface extends Surface {
       tangentU = faceRight.clone()
       tangentV = faceNorm.clone()
     } else if (vRegion.type === 'topFlat') {
-      // Flat top face (+Y). localT goes from 0 (edge) to 1 (center).
-      const dist = (1 - vRegion.localT) * flatHalfSize
+      // Flat top face (+Y) with CARTESIAN grid parameterization.
+      // localT goes from 0 (at edge with bevel, v=1-flatFraction) to 1 (at center, v=1).
+      // Cartesian fix (Session 13): Map UV to a grid on the square face, not radial coordinates.
       const y = halfSize
 
       if (uRegion.type === 'face') {
-        const x = (uRegion.localS - 0.5) * 2 * flatHalfSize
-        position = faceNorm.clone().multiplyScalar(dist)
-          .add(faceRight.clone().multiplyScalar(x * (1 - vRegion.localT)))
-          .add(new THREE.Vector3(0, y, 0))
-        if (Math.abs(position.x) > flatHalfSize) position.x = Math.sign(position.x) * flatHalfSize
-        if (Math.abs(position.z) > flatHalfSize) position.z = Math.sign(position.z) * flatHalfSize
+        // Cartesian grid mapping on face region
+        // tangentPos: position along the edge (-flatHalfSize to +flatHalfSize)
+        // normalPos: distance from center outward (flatHalfSize at edge, 0 at center)
+        // For topFlat: localT=0 is at edge, localT=1 is at center
+        const tangentPos = (uRegion.localS - 0.5) * 2 * flatHalfSize
+        const normalPos = flatHalfSize * (1 - vRegion.localT)  // Correct: edge to center
+
+        // Build position using face directions
+        const x = faceRight.x * tangentPos + faceNorm.x * normalPos
+        const z = faceRight.z * tangentPos + faceNorm.z * normalPos
+
+        position = new THREE.Vector3(x, y, z)
       } else {
+        // Corner region - cartesian approach
         const hAngle = uRegion.localS * (Math.PI / 2)
         const blendedDir = faceNorm.clone().multiplyScalar(Math.cos(hAngle))
           .add(nextFaceNorm.clone().multiplyScalar(Math.sin(hAngle)))
-        position = blendedDir.clone().multiplyScalar(dist)
+        const normalPos = flatHalfSize * (1 - vRegion.localT)  // Correct: edge to center
+
+        position = blendedDir.clone().multiplyScalar(normalPos)
           .add(new THREE.Vector3(0, y, 0))
       }
 
@@ -389,9 +402,31 @@ export class CubeSurface extends Surface {
     const { halfSize, flatHalfSize, bevelRadius, flatFraction, bevelFraction } = derived
 
     if (y <= -(halfSize - 0.01)) {
-      // On or below bottom face
-      const dist = Math.sqrt(x * x + z * z)
-      const localT = Math.min(1, dist / flatHalfSize)
+      // On or below bottom face - CARTESIAN inversion
+      // The cartesian mapping uses: x = faceRight.x * tangentPos + faceNorm.x * normalPos
+      //                             z = faceRight.z * tangentPos + faceNorm.z * normalPos
+      // where normalPos = flatHalfSize * localT (distance from center)
+
+      const absX = Math.abs(x)
+      const absZ = Math.abs(z)
+
+      // Determine which face and compute normalPos based on face directions
+      let normalPos: number
+      if (absZ >= absX) {
+        // Closer to +Z or -Z face
+        // For face 0 (+Z): faceNorm = (0,0,1), so normalPos projects onto z
+        // For face 2 (-Z): faceNorm = (0,0,-1), so normalPos projects onto -z
+        normalPos = absZ
+      } else {
+        // Closer to +X or -X face
+        // For face 1 (+X): faceNorm = (1,0,0), so normalPos projects onto x
+        // For face 3 (-X): faceNorm = (-1,0,0), so normalPos projects onto -x
+        normalPos = absX
+      }
+
+      // Invert: normalPos = flatHalfSize * localT
+      // So: localT = normalPos / flatHalfSize
+      const localT = Math.max(0, Math.min(1, normalPos / flatHalfSize))
       v = localT * flatFraction
     } else if (y <= -flatHalfSize) {
       // Bottom bevel region
@@ -401,9 +436,25 @@ export class CubeSurface extends Surface {
       const localT = 1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))
       v = flatFraction + localT * bevelFraction
     } else if (y >= (halfSize - 0.01)) {
-      // On or above top face
-      const dist = Math.sqrt(x * x + z * z)
-      const localT = 1 - Math.min(1, dist / flatHalfSize)
+      // On or above top face - CARTESIAN inversion
+      // Determine which face region this point belongs to by finding dominant axis
+      const absX = Math.abs(x)
+      const absZ = Math.abs(z)
+
+      // Find the closest face edge
+      let normalPos: number
+      if (absZ >= absX) {
+        // Closer to +Z or -Z face
+        normalPos = Math.abs(z)
+      } else {
+        // Closer to +X or -X face
+        normalPos = Math.abs(x)
+      }
+
+      // For topFlat: localT goes from 0 (edge) to 1 (center)
+      // normalPos = flatHalfSize * (1 - localT)
+      // So: localT = 1 - (normalPos / flatHalfSize)
+      const localT = Math.max(0, Math.min(1, 1 - normalPos / flatHalfSize))
       v = 1 - flatFraction + localT * flatFraction
     } else if (y >= flatHalfSize) {
       // Top bevel region
