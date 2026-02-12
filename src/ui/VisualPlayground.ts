@@ -101,7 +101,7 @@ export interface VisualPreset {
   sektoriConfig?: SektoriGridConfig;
 }
 
-/** All 38 presets (16 standard + 14 Sektori-inspired with proximity tile glow + 8 experimental) */
+/** All 42 presets (16 standard + 14 Sektori Dark + 4 Sektori Light + 8 experimental) */
 export const VISUAL_PRESETS: VisualPreset[] = [
   {
     name: 'Classic Neon',
@@ -323,7 +323,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
   },
   // -- Sektori-inspired presets (row 5) ---
   {
-    name: 'Sektori Cyan',
+    name: 'Sektori Cyan Dark',
     gridColor: 0x00ffee,
     surfaceColor: 0x020810,
     surfaceOpacity: 0.15,
@@ -335,11 +335,11 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     gridSegmentsU: 32,
     gridSegmentsV: 24,
     depthCurve: 'moderate',
-    description: 'Sektori-style tile glow. Grid lights up near the player.',
+    description: 'Dark Sektori-style tile glow. Grid lights up near the player.',
     sektoriConfig: SEKTORI_PRESET,
   },
   {
-    name: 'Sektori Extreme',
+    name: 'Sektori Extreme Dark',
     gridColor: 0xff00ff,
     surfaceColor: 0x050018,
     surfaceOpacity: 0.1,
@@ -351,11 +351,11 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     gridSegmentsU: 36,
     gridSegmentsV: 28,
     depthCurve: 'moderate',
-    description: 'Intense magenta proximity glow with wide trail effect.',
+    description: 'Dark intense magenta proximity glow with wide trail effect.',
     sektoriConfig: SEKTORI_EXTREME_PRESET,
   },
   {
-    name: 'Sektori Fire',
+    name: 'Sektori Fire Dark',
     gridColor: 0xff6600,
     surfaceColor: 0x0a0400,
     surfaceOpacity: 0.12,
@@ -367,11 +367,11 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     gridSegmentsU: 30,
     gridSegmentsV: 22,
     depthCurve: 'moderate',
-    description: 'Warm orange-red proximity glow with sharp falloff.',
+    description: 'Dark warm orange-red proximity glow with sharp falloff.',
     sektoriConfig: SEKTORI_FIRE_PRESET,
   },
   {
-    name: 'Sektori Ghost',
+    name: 'Sektori Ghost Dark',
     gridColor: 0x00ff88,
     surfaceColor: 0x000000,
     surfaceOpacity: 0.0,
@@ -383,7 +383,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     gridSegmentsU: 28,
     gridSegmentsV: 20,
     depthCurve: 'steep',
-    description: 'Wireframe only with green proximity glow. Ethereal.',
+    description: 'Dark wireframe only with green proximity glow. Ethereal.',
     sektoriConfig: {
       baseColor: new THREE.Color(0x001a08),
       glowColor: new THREE.Color(0x00ff88),
@@ -401,7 +401,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
   },
   // -- Sektori-inspired presets (rows 6-8) -- NEW variety pack ---
   {
-    name: 'Sektori Ice',
+    name: 'Sektori Ice Dark',
     gridColor: 0xaaddff,
     surfaceColor: 0x020610,
     surfaceOpacity: 0.18,
@@ -417,7 +417,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_ICE_PRESET,
   },
   {
-    name: 'Sektori Ember',
+    name: 'Sektori Ember Dark',
     gridColor: 0xffaa44,
     surfaceColor: 0x0a0200,
     surfaceOpacity: 0.10,
@@ -433,7 +433,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_EMBER_PRESET,
   },
   {
-    name: 'Sektori Void',
+    name: 'Sektori Void Dark',
     gridColor: 0xffffff,
     surfaceColor: 0x000000,
     surfaceOpacity: 0.0,
@@ -449,7 +449,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_VOID_PRESET,
   },
   {
-    name: 'Sektori Aurora',
+    name: 'Sektori Aurora Dark',
     gridColor: 0x44ffaa,
     surfaceColor: 0x010810,
     surfaceOpacity: 0.12,
@@ -465,7 +465,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_AURORA_PRESET,
   },
   {
-    name: 'Sektori Hologram',
+    name: 'Sektori Hologram Dark',
     gridColor: 0x00ffcc,
     surfaceColor: 0x041818,
     surfaceOpacity: 0.08,
@@ -481,7 +481,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_HOLOGRAM_PRESET,
   },
   {
-    name: 'Sektori Bloodline',
+    name: 'Sektori Bloodline Dark',
     gridColor: 0xff1122,
     surfaceColor: 0x060002,
     surfaceOpacity: 0.10,
@@ -497,7 +497,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_BLOODLINE_PRESET,
   },
   {
-    name: 'Sektori Sunspot',
+    name: 'Sektori Sunspot Dark',
     gridColor: 0xffffaa,
     surfaceColor: 0x080600,
     surfaceOpacity: 0.10,
@@ -513,7 +513,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_SUNSPOT_PRESET,
   },
   {
-    name: 'Sektori Ultraviolet',
+    name: 'Sektori Ultraviolet Dark',
     gridColor: 0xcc66ff,
     surfaceColor: 0x040008,
     surfaceOpacity: 0.14,
@@ -529,7 +529,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_ULTRAVIOLET_PRESET,
   },
   {
-    name: 'Sektori Spotlight',
+    name: 'Sektori Spotlight Dark',
     gridColor: 0xffffff,
     surfaceColor: 0x010101,
     surfaceOpacity: 0.05,
@@ -545,7 +545,7 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     sektoriConfig: SEKTORI_SPOTLIGHT_PRESET,
   },
   {
-    name: 'Sektori Edge',
+    name: 'Sektori Edge Dark',
     gridColor: 0x22ffff,
     surfaceColor: 0x000000,
     surfaceOpacity: 0.0,
@@ -721,6 +721,71 @@ export const VISUAL_PRESETS: VisualPreset[] = [
       trailFalloff: 0.6,
       trailRadiusFalloff: 0.8,
     },
+  },
+  // -- Sektori Light variants (rows 11-12) -- Higher surface opacity ---
+  {
+    name: 'Sektori Cyan',
+    gridColor: 0x00ffee,
+    surfaceColor: 0x0a2830,
+    surfaceOpacity: 0.45,
+    gridOpacity: 0.8,
+    wireframeOnly: false,
+    bloomStrength: 1.0,
+    bloomRadius: 0.7,
+    bloomThreshold: 0.9,
+    gridSegmentsU: 32,
+    gridSegmentsV: 24,
+    depthCurve: 'moderate',
+    description: 'Sektori-style tile glow with visible surface. Lighter variant.',
+    sektoriConfig: SEKTORI_PRESET,
+  },
+  {
+    name: 'Sektori Fire',
+    gridColor: 0xff6600,
+    surfaceColor: 0x281808,
+    surfaceOpacity: 0.40,
+    gridOpacity: 0.85,
+    wireframeOnly: false,
+    bloomStrength: 1.1,
+    bloomRadius: 0.65,
+    bloomThreshold: 0.88,
+    gridSegmentsU: 30,
+    gridSegmentsV: 22,
+    depthCurve: 'moderate',
+    description: 'Warm orange-red proximity glow with lighter surface.',
+    sektoriConfig: SEKTORI_FIRE_PRESET,
+  },
+  {
+    name: 'Sektori Ice',
+    gridColor: 0xaaddff,
+    surfaceColor: 0x0a1828,
+    surfaceOpacity: 0.48,
+    gridOpacity: 0.75,
+    wireframeOnly: false,
+    bloomStrength: 0.9,
+    bloomRadius: 0.5,
+    bloomThreshold: 0.9,
+    gridSegmentsU: 32,
+    gridSegmentsV: 24,
+    depthCurve: 'moderate',
+    description: 'Cold blue-white with visible frosted surface.',
+    sektoriConfig: SEKTORI_ICE_PRESET,
+  },
+  {
+    name: 'Sektori Aurora',
+    gridColor: 0x44ffaa,
+    surfaceColor: 0x082818,
+    surfaceOpacity: 0.42,
+    gridOpacity: 0.8,
+    wireframeOnly: false,
+    bloomStrength: 1.3,
+    bloomRadius: 0.7,
+    bloomThreshold: 0.88,
+    gridSegmentsU: 36,
+    gridSegmentsV: 28,
+    depthCurve: 'moderate',
+    description: 'Green-to-blue gradient with lighter surface. Northern lights.',
+    sektoriConfig: SEKTORI_AURORA_PRESET,
   },
 ];
 

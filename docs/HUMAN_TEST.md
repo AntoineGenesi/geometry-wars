@@ -275,6 +275,30 @@ The god function was split into 8 modules. Game behavior should be identical.
 
 ---
 
+## Visual Styles Consistency (NEW — 2026-02-12)
+
+All "Sektori" visual styles renamed to include "Dark" in the name, and lighter variants added.
+
+### Naming
+- [ ] **Sektori Dark styles** — Open Visual Styles → all Sektori styles should have "Dark" suffix (e.g., "Sektori Cyan Dark", "Sektori Fire Dark")
+- [ ] **Lighter Sektori variants exist** — Should see "Sektori Cyan", "Sektori Fire", "Sektori Ice", "Sektori Aurora" WITHOUT "Dark" suffix
+- [ ] **Total preset count is 42** — Should see 42 visual style thumbnails (was 38 before)
+
+### Visual Appearance
+- [ ] **Dark variants are dark** — "Sektori Cyan Dark" should have very dim surface (mostly see grid + glow)
+- [ ] **Light variants are lighter** — "Sektori Cyan" (no Dark) should have MORE visible surface (brighter, more opaque)
+- [ ] **Same glow effect on both** — Both dark and light variants should have the same proximity tile glow
+
+### Rendering Consistency
+- [ ] **Playground preview matches demo** — Click a Sektori style thumbnail → preview should look the same as the playable demo
+- [ ] **Demo matches main game** — Apply a Sektori style → start a game → surface opacity and glow should match the demo
+- [ ] **All 4 light variants work** — Test Cyan, Fire, Ice, Aurora light variants → all should render correctly with visible surface
+
+### Task File
+- `tasks/visual-styles-consistency.md`
+
+---
+
 ## How to Report Failures
 
 When something fails, write a note here with:
