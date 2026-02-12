@@ -421,12 +421,9 @@ export class CubeSurface extends Surface {
       }
     }
 
-    // Slow down near top/bottom face centers (pole-like convergence)
-    if (vRegion.type === 'bottomFlat' && vRegion.localT < 0.15) {
-      correctedDv = dv * 0.5
-    } else if (vRegion.type === 'topFlat' && vRegion.localT > 0.85) {
-      correctedDv = dv * 0.5
-    }
+    // Note: DV slowdown removed in Session 13 Phase 3
+    // The radial parameterization slowdown near face centers created "trappy bits"
+    // With cartesian parameterization, movement is naturally uniform on flat faces
 
     let newU = u + correctedDu
     let newV = v + correctedDv
