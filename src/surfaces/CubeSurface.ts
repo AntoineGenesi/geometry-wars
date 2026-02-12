@@ -190,19 +190,42 @@ export class CubeSurface extends Surface {
 
         position = new THREE.Vector3(x, y, z)
       } else {
-        // Corner region - cartesian approach
-        const hAngle = uRegion.localS * (Math.PI / 2)
-        const blendedDir = faceNorm.clone().multiplyScalar(Math.cos(hAngle))
-          .add(nextFaceNorm.clone().multiplyScalar(Math.sin(hAngle)))
-        const normalPos = flatHalfSize * vRegion.localT  // Fixed: was (1 - vRegion.localT)
+        // Corner region - FIXED: Use cartesian blending for continuity at u=0/u=1 wrap seam
+        // Blend between adjacent face edges using their cartesian coordinate systems
+        const nextFaceRight = faceRights[(uRegion.faceIndex + 1) % 4]
+        const nextFaceNorm = faceNormals[(uRegion.faceIndex + 1) % 4]
+        const normalPos = flatHalfSize * vRegion.localT
 
-        position = blendedDir.clone().multiplyScalar(normalPos)
-          .add(new THREE.Vector3(0, y, 0))
+        // Current face at its right edge (tangentPos = +flatHalfSize)
+        const x1 = faceRight.x * flatHalfSize + faceNorm.x * normalPos
+        const z1 = faceRight.z * flatHalfSize + faceNorm.z * normalPos
+
+        // Next face at its left edge (tangentPos = -flatHalfSize)
+        const x2 = nextFaceRight.x * (-flatHalfSize) + nextFaceNorm.x * normalPos
+        const z2 = nextFaceRight.z * (-flatHalfSize) + nextFaceNorm.z * normalPos
+
+        // Smooth interpolation (cosine for C1 continuity)
+        const blendT = (1 - Math.cos(uRegion.localS * Math.PI)) / 2
+        const x = x1 * (1 - blendT) + x2 * blendT
+        const z = z1 * (1 - blendT) + z2 * blendT
+
+        position = new THREE.Vector3(x, y, z)
+
+        // Tangents for corner: blend between adjacent faces
+        tangentU = faceRight.clone().multiplyScalar(1 - blendT)
+          .add(nextFaceRight.clone().multiplyScalar(blendT))
+          .normalize()
+        tangentV = faceNorm.clone().multiplyScalar(1 - blendT)
+          .add(nextFaceNorm.clone().multiplyScalar(blendT))
+          .normalize()
       }
 
       normal = new THREE.Vector3(0, -1, 0)
-      tangentU = faceRight.clone()
-      tangentV = faceNorm.clone()
+      if (uRegion.type === 'face') {
+        tangentU = faceRight.clone()
+        tangentV = faceNorm.clone()
+      }
+      // else: tangentU and tangentV already set in corner block above
     } else if (vRegion.type === 'topFlat') {
       // Flat top face (+Y) with CARTESIAN grid parameterization.
       // localT goes from 0 (at edge with bevel, v=1-flatFraction) to 1 (at center, v=1).
@@ -223,19 +246,43 @@ export class CubeSurface extends Surface {
 
         position = new THREE.Vector3(x, y, z)
       } else {
-        // Corner region - cartesian approach
-        const hAngle = uRegion.localS * (Math.PI / 2)
-        const blendedDir = faceNorm.clone().multiplyScalar(Math.cos(hAngle))
-          .add(nextFaceNorm.clone().multiplyScalar(Math.sin(hAngle)))
-        const normalPos = flatHalfSize * (1 - vRegion.localT)  // Correct: edge to center
+        // Corner region - FIXED: Use cartesian blending for continuity at u=0/u=1 wrap seam
+        // Blend between adjacent face edges using their cartesian coordinate systems
+        const nextFaceRight = faceRights[(uRegion.faceIndex + 1) % 4]
+        const nextFaceNorm = faceNormals[(uRegion.faceIndex + 1) % 4]
+        const normalPos = flatHalfSize * (1 - vRegion.localT)
 
-        position = blendedDir.clone().multiplyScalar(normalPos)
-          .add(new THREE.Vector3(0, y, 0))
+        // Current face at its right edge (tangentPos = +flatHalfSize)
+        const x1 = faceRight.x * flatHalfSize + faceNorm.x * normalPos
+        const z1 = faceRight.z * flatHalfSize + faceNorm.z * normalPos
+
+        // Next face at its left edge (tangentPos = -flatHalfSize)
+        const x2 = nextFaceRight.x * (-flatHalfSize) + nextFaceNorm.x * normalPos
+        const z2 = nextFaceRight.z * (-flatHalfSize) + nextFaceNorm.z * normalPos
+
+        // Smooth interpolation (cosine for C1 continuity)
+        const blendT = (1 - Math.cos(uRegion.localS * Math.PI)) / 2
+        const x = x1 * (1 - blendT) + x2 * blendT
+        const z = z1 * (1 - blendT) + z2 * blendT
+
+        position = new THREE.Vector3(x, y, z)
+
+        // Tangents for corner: blend between adjacent faces
+        tangentU = faceRight.clone().multiplyScalar(1 - blendT)
+          .add(nextFaceRight.clone().multiplyScalar(blendT))
+          .normalize()
+        tangentV = faceNorm.clone().multiplyScalar(1 - blendT)
+          .add(nextFaceNorm.clone().multiplyScalar(blendT))
+          .normalize()
+          .negate()
       }
 
       normal = new THREE.Vector3(0, 1, 0)
-      tangentU = faceRight.clone()
-      tangentV = faceNorm.clone().negate()
+      if (uRegion.type === 'face') {
+        tangentU = faceRight.clone()
+        tangentV = faceNorm.clone().negate()
+      }
+      // else: tangentU and tangentV already set in corner block above
     } else if (vRegion.type === 'middle') {
       // Middle belt: side faces and vertical bevels
       const y = (vRegion.localT - 0.5) * 2 * flatHalfSize
