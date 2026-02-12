@@ -18,6 +18,8 @@ import type { Player } from '../entities/Player';
 import type { EnemySpawner, EnemyType } from '../entities/enemies/EnemySpawner';
 import type { GameLoop } from '../core/GameLoop';
 import type { InputManager } from '../input/InputManager';
+import type { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
+import type { Surface } from '../surfaces/Surface';
 import { setGameSeed, clearGameSeed } from '../core/SeededRandom';
 
 // ---------------------------------------------------------------------------
@@ -92,6 +94,8 @@ export class GameDebugAPI {
   private camera: THREE.Camera;
   private gameLoop: GameLoop;
   private input: InputManager;
+  private playerWalker: MeshWalker;
+  private surface: Surface;
 
   // Internal state for tick() in paused mode
   private isPaused = false;
@@ -104,6 +108,8 @@ export class GameDebugAPI {
     camera: THREE.Camera,
     gameLoop: GameLoop,
     input: InputManager,
+    playerWalker: MeshWalker,
+    surface: Surface,
   ) {
     this.game = game;
     this.player = player;
@@ -112,6 +118,8 @@ export class GameDebugAPI {
     this.camera = camera;
     this.gameLoop = gameLoop;
     this.input = input;
+    this.playerWalker = playerWalker;
+    this.surface = surface;
   }
 
   // -------------------------------------------------------------------------
@@ -306,12 +314,26 @@ export class GameDebugAPI {
 
   /**
    * Teleport player to a specific UV position.
+   * Syncs both UV coordinates AND MeshWalker position to prevent desync.
    * @param u - Surface U coordinate (0-1)
    * @param v - Surface V coordinate (0-1)
    */
   teleportPlayer(u: number, v: number): void {
+    // Set UV coordinates
     this.player.surfaceU = u;
     this.player.surfaceV = v;
+
+    // Sync walker position: convert UV to world position and move walker there
+    const surfacePoint = this.surface.getPoint(u, v);
+
+    // Apply surface rotation to get actual world position
+    const rotatedPos = surfacePoint.position.clone().applyQuaternion(this.surface.worldRotation);
+
+    // Update walker position directly (MeshWalker.position is a public field)
+    this.playerWalker.position.copy(rotatedPos);
+
+    // Sync player mesh position from walker
+    this.player.mesh.position.copy(this.playerWalker.position);
   }
 
   // -------------------------------------------------------------------------

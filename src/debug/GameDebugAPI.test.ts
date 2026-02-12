@@ -9,6 +9,8 @@ import type { Player } from '../entities/Player';
 import type { EnemySpawner } from '../entities/enemies/EnemySpawner';
 import type { GameLoop } from '../core/GameLoop';
 import type { InputManager } from '../input/InputManager';
+import type { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
+import type { Surface } from '../surfaces/Surface';
 import * as THREE from 'three';
 
 // Mock all dependencies
@@ -79,18 +81,41 @@ function createMockInputManager(): InputManager {
   } as any;
 }
 
+function createMockWalker(): MeshWalker {
+  return {
+    position: new THREE.Vector3(1, 2, 3),
+    normal: new THREE.Vector3(0, 1, 0),
+  } as any;
+}
+
+function createMockSurface(): Surface {
+  return {
+    worldRotation: new THREE.Quaternion(),
+    getPoint: vi.fn((u: number, v: number) => ({
+      position: new THREE.Vector3(u * 10, v * 10, 0),
+      normal: new THREE.Vector3(0, 0, 1),
+      tangentU: new THREE.Vector3(1, 0, 0),
+      tangentV: new THREE.Vector3(0, 1, 0),
+    })),
+  } as any;
+}
+
 describe('GameDebugAPI', () => {
   let api: GameDebugAPI;
   let mockGame: Game;
   let mockPlayer: Player;
   let mockEnemySpawner: EnemySpawner;
   let mockInput: InputManager;
+  let mockWalker: MeshWalker;
+  let mockSurface: Surface;
 
   beforeEach(() => {
     mockGame = createMockGame();
     mockPlayer = createMockPlayer();
     mockEnemySpawner = createMockEnemySpawner();
     mockInput = createMockInputManager();
+    mockWalker = createMockWalker();
+    mockSurface = createMockSurface();
 
     api = new GameDebugAPI(
       mockGame,
@@ -100,6 +125,8 @@ describe('GameDebugAPI', () => {
       mockGame.camera,
       {} as GameLoop,
       mockInput,
+      mockWalker,
+      mockSurface,
     );
   });
 

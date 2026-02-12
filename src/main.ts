@@ -1351,6 +1351,8 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
         game.camera,
         gameLoop,
         input as InputManager,
+        playerWalker,
+        surface,
       );
       (window as any).__gameDebug = debugAPI;
       console.log('[GameDebugAPI] Initialized. Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(debugAPI)).filter(n => n !== 'constructor'));
