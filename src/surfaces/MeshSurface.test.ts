@@ -12,8 +12,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
 import { MeshSurface } from './MeshSurface';
-import { MeshWalker } from './MeshWalker';
-import { MeshBulletPool } from './MeshBullet';
+import { MeshWalker } from '../movement/MeshWalker';
+import { MeshBulletPool } from '../entities/MeshBullet';
 
 // ---------------------------------------------------------------------------
 // Helpers

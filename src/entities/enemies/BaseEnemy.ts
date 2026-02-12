@@ -3,7 +3,7 @@ import { Entity, CollisionGroup } from '../../core/Entity';
 import { getDifficultyTier } from '../../core/DifficultyScaling';
 import type { DifficultyTier } from '../../core/DifficultyScaling';
 import type { Surface } from '../../surfaces/Surface';
-import type { MeshWalker } from '../../experimental/mesh-movement/MeshWalker';
+import type { MeshWalker } from '../../movement/MeshWalker';
 
 // Pre-allocated temp objects to avoid per-frame GC pressure
 const _tempMatrix4 = new THREE.Matrix4();

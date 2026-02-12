@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
+import { MeshWalker } from '../movement/MeshWalker';
 
 /**
  * CameraController

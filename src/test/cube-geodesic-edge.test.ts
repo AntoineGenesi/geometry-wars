@@ -7,9 +7,9 @@
 
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { HalfEdgeMesh } from '../experimental/mesh-movement/geodesic/HalfEdgeMesh';
-import { FaceWalker, FacePosition } from '../experimental/mesh-movement/geodesic/FaceWalker';
-import { GeodesicSurface } from '../experimental/mesh-movement/geodesic/GeodesicSurface';
+import { HalfEdgeMesh } from '../surfaces/geodesic/HalfEdgeMesh';
+import { FaceWalker, FacePosition } from '../surfaces/geodesic/FaceWalker';
+import { GeodesicSurface } from '../surfaces/geodesic/GeodesicSurface';
 
 function createCube(size = 10): THREE.BufferGeometry {
   // Use subdivided BoxGeometry to have triangular faces

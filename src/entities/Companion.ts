@@ -4,7 +4,7 @@ import { BaseEnemy } from './enemies/BaseEnemy';
 import { getSoundEngine } from '../audio/SoundEngine';
 import { SurfaceAgent } from '../agents/SurfaceAgent';
 import { OrbitBehavior } from '../agents/behaviors';
-import type { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import type { MeshSurface } from '../surfaces/MeshSurface';
 
 // ---------------------------------------------------------------------------
 // Companion Types

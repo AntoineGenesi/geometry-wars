@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MeshSurface, FacePosition } from '../experimental/mesh-movement/MeshSurface';
+import { MeshSurface, FacePosition } from '../surfaces/MeshSurface';
 
 // ---------------------------------------------------------------------------
 // Constants

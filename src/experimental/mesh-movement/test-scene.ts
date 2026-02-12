@@ -20,10 +20,10 @@
  */
 
 import * as THREE from 'three';
-import { MeshSurface } from './MeshSurface';
-import { MeshWalker } from './MeshWalker';
-import { MeshBulletPool } from './MeshBullet';
-import { loadMeshFromURL, loadMeshFromFile, type LoadedMesh } from './MeshLoader';
+import { MeshSurface } from '../../surfaces/MeshSurface';
+import { MeshWalker } from '../../movement/MeshWalker';
+import { MeshBulletPool } from '../../entities/MeshBullet';
+import { loadMeshFromURL, loadMeshFromFile, type LoadedMesh } from '../../loaders/MeshLoader';
 
 // ---------------------------------------------------------------------------
 // Configuration

@@ -18,7 +18,7 @@ import type { Player } from '../entities/Player';
 import type { EnemySpawner, EnemyType } from '../entities/enemies/EnemySpawner';
 import type { GameLoop } from '../core/GameLoop';
 import type { InputManager } from '../input/InputManager';
-import type { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
+import type { MeshWalker } from '../movement/MeshWalker';
 import type { Surface } from '../surfaces/Surface';
 import { setGameSeed, clearGameSeed } from '../core/SeededRandom';
 

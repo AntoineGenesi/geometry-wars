@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import { MeshSurface } from './MeshSurface';
+import { MeshSurface } from '../surfaces/MeshSurface';
 
 const BULLET_SPEED = 4.0;       // world units per second
 const BULLET_LIFETIME = 4.0;    // seconds

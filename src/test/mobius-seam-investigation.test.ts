@@ -13,11 +13,11 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { MobiusSurface } from '../surfaces/MobiusSurface';
-import { HalfEdgeMesh } from '../experimental/mesh-movement/geodesic/HalfEdgeMesh';
-import { FaceWalker } from '../experimental/mesh-movement/geodesic/FaceWalker';
-import { GeodesicSurface } from '../experimental/mesh-movement/geodesic/GeodesicSurface';
-import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
-import { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
+import { HalfEdgeMesh } from '../surfaces/geodesic/HalfEdgeMesh';
+import { FaceWalker } from '../surfaces/geodesic/FaceWalker';
+import { GeodesicSurface } from '../surfaces/geodesic/GeodesicSurface';
+import { MeshSurface } from '../surfaces/MeshSurface';
+import { MeshWalker } from '../movement/MeshWalker';
 
 // Helper: create Mobius surface and extract mesh
 function createMobiusMesh(config?: { majorRadius?: number; stripWidth?: number; gridSegmentsU?: number; gridSegmentsV?: number }) {

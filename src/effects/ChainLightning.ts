@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import type { MeshSurface } from '../surfaces/MeshSurface';
 
 /**
  * Visual chain lightning effect that arcs between enemies

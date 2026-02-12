@@ -15,8 +15,8 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
-import { MeshSurface } from './MeshSurface';
-import { MeshWalker } from './MeshWalker';
+import { MeshSurface } from '../../surfaces/MeshSurface';
+import { MeshWalker } from '../../movement/MeshWalker';
 import { SurfaceFactory, SurfaceType } from '../../surfaces/SurfaceFactory';
 
 // ---------------------------------------------------------------------------

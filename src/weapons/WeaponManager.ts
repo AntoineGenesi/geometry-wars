@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { ChainLightningEffect } from '../effects/ChainLightning';
-import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import { MeshSurface } from '../surfaces/MeshSurface';
 import { BuffType, BUFF_CONFIGS, ActiveBuff } from './BuffPickup';
 
 /**

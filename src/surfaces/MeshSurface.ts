@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { MeshBVH, getTriangleHitPointInfo } from 'three-mesh-bvh';
 import { GeodesicSurface, GeodesicMoveResult } from './geodesic/GeodesicSurface';
 import { FacePosition } from './geodesic/FaceWalker';
-import { computeDepthVisibility, type DepthOpacityCurve, DEFAULT_DEPTH_CURVE } from '../../rendering/DepthOpacity';
+import { computeDepthVisibility, type DepthOpacityCurve, DEFAULT_DEPTH_CURVE } from '../rendering/DepthOpacity';
 
 export interface SurfaceQueryResult {
   /** Closest point on the mesh surface (world space) */

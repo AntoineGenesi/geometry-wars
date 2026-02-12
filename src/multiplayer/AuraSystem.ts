@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
-import type { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import type { MeshWalker } from '../movement/MeshWalker';
+import type { MeshSurface } from '../surfaces/MeshSurface';
 import type { KillTracker } from './KillTracker';
 
 // ---------------------------------------------------------------------------

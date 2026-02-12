@@ -14,7 +14,7 @@
  */
 
 import * as THREE from 'three';
-import { MeshSurface, SurfaceQueryResult, TangentFrame, FacePosition } from './MeshSurface';
+import { MeshSurface, SurfaceQueryResult, TangentFrame, FacePosition } from '../surfaces/MeshSurface';
 
 export interface WalkerState {
   /** Current position on the mesh surface (world space) */

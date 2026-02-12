@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
-import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import { MeshSurface } from '../surfaces/MeshSurface';
 import { SurfaceAgent } from './SurfaceAgent';
 import {
   BehaviorStatus,

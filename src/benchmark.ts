@@ -19,8 +19,8 @@ import { EnemySpawner } from './entities/enemies/EnemySpawner';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
-import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
-import { MeshWalker } from './experimental/mesh-movement/MeshWalker';
+import { MeshSurface } from './surfaces/MeshSurface';
+import { MeshWalker } from './movement/MeshWalker';
 import { SpatialHash } from './core/SpatialHash';
 
 // ---------------------------------------------------------------------------

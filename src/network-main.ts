@@ -35,7 +35,7 @@ import { ScreenShake } from './effects/ScreenShake';
 import { ScorePopupManager } from './effects/ScorePopup';
 import { GlowTrail } from './effects/GlowTrail';
 import { InputManager } from './input/InputManager';
-import { MeshSurface } from './experimental/mesh-movement/MeshSurface';
+import { MeshSurface } from './surfaces/MeshSurface';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
 import { KillLog } from './ui/KillLog';

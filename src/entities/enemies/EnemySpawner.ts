@@ -37,8 +37,8 @@ import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 import type { EnemyDecoratorSystem } from '../../rendering/EnemyDecorators';
 import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
 import type { Surface } from '../../surfaces/Surface';
-import { MeshWalker } from '../../experimental/mesh-movement/MeshWalker';
-import type { MeshSurface } from '../../experimental/mesh-movement/MeshSurface';
+import { MeshWalker } from '../../movement/MeshWalker';
+import type { MeshSurface } from '../../surfaces/MeshSurface';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'

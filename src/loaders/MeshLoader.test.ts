@@ -10,8 +10,8 @@
 
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { MeshSurface } from './MeshSurface';
-import { MeshWalker } from './MeshWalker';
+import { MeshSurface } from '../surfaces/MeshSurface';
+import { MeshWalker } from '../movement/MeshWalker';
 
 /**
  * Simulate what MeshLoader.processLoadedObject does:

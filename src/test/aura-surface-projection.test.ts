@@ -9,8 +9,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import * as THREE from 'three';
 import { SurfaceFactory, SurfaceType } from '../surfaces/SurfaceFactory';
-import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
-import { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
+import { MeshSurface } from '../surfaces/MeshSurface';
+import { MeshWalker } from '../movement/MeshWalker';
 import { AuraManager } from '../multiplayer/AuraSystem';
 import { KillTracker } from '../multiplayer/KillTracker';
 

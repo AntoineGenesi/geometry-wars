@@ -12,8 +12,8 @@
 
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
-import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import { MeshWalker } from '../movement/MeshWalker';
+import { MeshSurface } from '../surfaces/MeshSurface';
 import { CubeSurface } from '../surfaces/CubeSurface';
 
 describe('Cube Tangent Frame Fix (Session 12)', () => {

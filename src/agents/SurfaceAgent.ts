@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import type { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
+import type { MeshSurface } from '../surfaces/MeshSurface';
 import type { AgentBehavior, AgentHandle } from './behaviors';
 import { BehaviorStatus } from './behaviors';
 

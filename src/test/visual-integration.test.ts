@@ -19,8 +19,8 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { SurfaceFactory, SurfaceType } from '../surfaces/SurfaceFactory';
-import { MeshSurface } from '../experimental/mesh-movement/MeshSurface';
-import { MeshWalker } from '../experimental/mesh-movement/MeshWalker';
+import { MeshSurface } from '../surfaces/MeshSurface';
+import { MeshWalker } from '../movement/MeshWalker';
 import { BulletPool } from '../entities/Bullet';
 import { Player } from '../entities/Player';
 import { Surface } from '../surfaces/Surface';
