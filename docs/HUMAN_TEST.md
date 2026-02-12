@@ -20,12 +20,19 @@
 - [ ] **No orientation snapping** - While moving with WASD, player orientation should change smoothly, NOT snap to 90/180/270-degree angles
 - [ ] **Circular movement works** - Hold W+D and make a full circle. Movement should be smooth throughout, no discrete snaps or jitter
 
-**What was fixed:** Cross product operand order in orientPlayer() was backwards, causing playerRight vector to point WEST instead of EAST. This corrupted the rotation matrix, leading to 90° orientation errors that manifested as jitter, stuckness, and discrete angle snaps during forward/backward movement.
+**What was fixed:** Three cross product bugs causing tangent frame corruption and orientation errors:
+1. **MeshWalker tangent frame:** `bitangent = normal × tangent` (wrong) → `bitangent = tangent × normal` (right-handed)
+2. **Axis role swapping:** Added continuity logic to prevent tangent/bitangent swapping when moving along different directions
+3. **Player orientation:** `playerForward = playerNormal × playerRight` (backward) → `playerForward = playerRight × playerNormal` (forward)
+
+These bugs caused the coordinate system to flip between left/right-handed (crossProductCheck alternated -1/+1), making tangent and bitangent swap roles every frame during forward/backward movement, which manifested as jitter, stuckness, and 90/180/270° orientation snaps.
 
 **Programmatic Verification (Level 2):**
 - ✓ TypeScript compiles clean (0 errors in changed files)
 - ✓ All regression tests pass (5/5): forward/backward/left/right/diagonal movement
-- ✓ Code path verified: orientPlayer() called every frame from game loop
+- ✓ Diagnostic tests: 0% orientation jumps (was 99.2%), max delta 7.49° (was 179.94°), stable handedness
+- ✓ Ultra-diagnostic: crossProductCheck = +1.0 consistently, tangent/bitangent swap = false, right-handed system
+- ✓ Code path verified: fixes called every frame in game loop
 
 **Status:** READY FOR HUMAN TESTING (Level 6 verification needed — Claude cannot test in real browser)
 

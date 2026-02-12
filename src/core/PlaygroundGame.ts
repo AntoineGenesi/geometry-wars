@@ -715,7 +715,7 @@ export class PlaygroundGame {
     // Fixed: cross product operand order was backwards, causing 90° orientation errors
     if (aimDirection.lengthSq() > 0.001) {
       const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();
-      const playerForward = this._tmpVec.crossVectors(playerNormal, playerRight).normalize();
+      const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
       const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
       this.player.mesh.quaternion.setFromRotationMatrix(orientMat);
     }

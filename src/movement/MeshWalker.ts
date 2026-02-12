@@ -280,30 +280,47 @@ export class MeshWalker {
     if (transportedTangent) {
       // Use the parallel-transported tangent from geodesic walking.
       // This is the "natural" tangent direction along the geodesic path.
-      const newTangent = transportedTangent.clone().normalize();
+      let newTangent = transportedTangent.clone().normalize();
 
       // Project onto tangent plane (remove any normal component due to numerical error)
       const dotN = newTangent.dot(n);
       newTangent.addScaledVector(n, -dotN).normalize();
 
-      // Maintain continuity: tangent directions are ambiguous (both +T and -T are valid).
-      // Choose the sign that maintains continuity with the previous tangent.
-      const tangentDot = newTangent.dot(this._tangent);
-      if (tangentDot < 0) {
-        newTangent.negate();
+      // Recompute the perpendicular direction from cross product (right-handed: bitangent = tangent × normal)
+      let newBitangent = new THREE.Vector3().crossVectors(newTangent, n).normalize();
+
+      // The transported tangent from geodesic is the tangent TO THE PATH, not necessarily
+      // aligned with our frame's "tangent" axis. When moving along the bitangent direction,
+      // the path tangent IS the bitangent. We need to maintain consistent axis assignment
+      // across frames to avoid swapping.
+      //
+      // Check which assignment maintains better continuity:
+      // Option A: keep as-is (tangent=newTangent, bitangent=newBitangent)
+      // Option B: swap them (tangent=newBitangent, bitangent=newTangent)
+      const dotTT = Math.abs(newTangent.dot(this._tangent));
+      const dotBB = Math.abs(newBitangent.dot(this._bitangent));
+      const dotTB = Math.abs(newTangent.dot(this._bitangent));
+      const dotBT = Math.abs(newBitangent.dot(this._tangent));
+
+      const keepScore = dotTT + dotBB;  // tangent stays tangent, bitangent stays bitangent
+      const swapScore = dotTB + dotBT;  // tangent becomes bitangent, bitangent becomes tangent
+
+      if (swapScore > keepScore) {
+        // Swap them to maintain axis roles
+        const temp = newTangent;
+        newTangent = newBitangent;
+        newBitangent = temp;
       }
 
-      this._tangent.copy(newTangent);
-
-      // Recompute bitangent from cross product
-      const newBitangent = new THREE.Vector3().crossVectors(n, this._tangent).normalize();
-
-      // Maintain continuity for bitangent as well
-      const bitangentDot = newBitangent.dot(this._bitangent);
-      if (bitangentDot < 0) {
+      // Now apply sign continuity to maintain direction
+      if (newTangent.dot(this._tangent) < 0) {
+        newTangent.negate();
+      }
+      if (newBitangent.dot(this._bitangent) < 0) {
         newBitangent.negate();
       }
 
+      this._tangent.copy(newTangent);
       this._bitangent.copy(newBitangent);
       return;
     }
@@ -324,8 +341,8 @@ export class MeshWalker {
 
     this._tangent.multiplyScalar(1 / tangentLen);
 
-    // Recompute bitangent from cross product
-    this._bitangent.crossVectors(n, this._tangent).normalize();
+    // Recompute bitangent from cross product (right-handed: bitangent = tangent × normal)
+    this._bitangent.crossVectors(this._tangent, n).normalize();
   }
 
   /**
