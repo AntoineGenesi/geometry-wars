@@ -141,8 +141,8 @@ export class MeshWalker {
     this.position.copy(geoResult.position);
     this.faceIndex = geoResult.faceIndex;
 
-    // Update tangent frame using parallel-transported direction
-    this._updateTangentFrame(geoResult.normal);
+    // Update tangent frame using parallel-transported direction from geodesic
+    this._updateTangentFrame(geoResult.normal, geoResult.direction);
     this.normal.copy(geoResult.normal);
 
     // If geodesic walk only covered part of the distance, use BVH for the remainder
@@ -263,12 +263,52 @@ export class MeshWalker {
 
   /**
    * Update the persistent tangent frame after the normal changes.
-   * Projects the old tangent onto the new normal's plane and re-orthonormalizes.
-   * This avoids the discontinuity of recomputing from a fixed reference vector.
+   *
+   * When a transported tangent is provided (from geodesic walking), use it directly.
+   * This gives true parallel transport and avoids discontinuities at sharp edges.
+   *
+   * When no transported tangent is available (BVH fallback), project the old tangent
+   * onto the new normal's plane using Gram-Schmidt. This is less accurate but works
+   * for surfaces without geodesic support.
+   *
+   * @param newNormal - The new surface normal
+   * @param transportedTangent - Optional parallel-transported tangent from geodesic walk
    */
-  private _updateTangentFrame(newNormal: THREE.Vector3): void {
+  private _updateTangentFrame(newNormal: THREE.Vector3, transportedTangent?: THREE.Vector3): void {
     const n = newNormal.clone().normalize();
 
+    if (transportedTangent) {
+      // Use the parallel-transported tangent from geodesic walking.
+      // This is the "natural" tangent direction along the geodesic path.
+      const newTangent = transportedTangent.clone().normalize();
+
+      // Project onto tangent plane (remove any normal component due to numerical error)
+      const dotN = newTangent.dot(n);
+      newTangent.addScaledVector(n, -dotN).normalize();
+
+      // Maintain continuity: tangent directions are ambiguous (both +T and -T are valid).
+      // Choose the sign that maintains continuity with the previous tangent.
+      const tangentDot = newTangent.dot(this._tangent);
+      if (tangentDot < 0) {
+        newTangent.negate();
+      }
+
+      this._tangent.copy(newTangent);
+
+      // Recompute bitangent from cross product
+      const newBitangent = new THREE.Vector3().crossVectors(n, this._tangent).normalize();
+
+      // Maintain continuity for bitangent as well
+      const bitangentDot = newBitangent.dot(this._bitangent);
+      if (bitangentDot < 0) {
+        newBitangent.negate();
+      }
+
+      this._bitangent.copy(newBitangent);
+      return;
+    }
+
+    // Fallback: Gram-Schmidt projection for BVH-based movement
     // Project old tangent onto new tangent plane (Gram-Schmidt against new normal)
     const dot = this._tangent.dot(n);
     this._tangent.sub(n.clone().multiplyScalar(dot));
