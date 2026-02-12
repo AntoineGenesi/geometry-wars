@@ -45,24 +45,31 @@ async function verify() {
 
     console.log('🎯 Selecting Waves mode...');
     await page.evaluate(() => {
-      const waveBtn = document.querySelector('.mode-btn[data-mode-type="waves"]') || 
+      const waveBtn = document.querySelector('.mode-btn[data-mode-type="waves"]') ||
                       document.querySelector('.mode-btn');
       if (waveBtn) waveBtn.click();
     });
-    await sleep(1000);
+    await sleep(300);
 
     console.log('🎯 Selecting sphere surface...');
     await page.evaluate(() => {
       const section = document.querySelector('#surface-section');
-      if (!section) {
-        const surfBtns = document.querySelectorAll('.surface-btn, [data-surface]');
-        if (surfBtns.length > 0) surfBtns[0].click();
-      } else {
-        const surfBtn = section.querySelector('.surface-btn');
+      if (section) {
+        const surfBtn = section.querySelector('.surface-btn[data-surface="sphere"]');
         if (surfBtn) surfBtn.click();
       }
     });
-    await sleep(4000);
+    await sleep(300);
+
+    console.log('🎯 Clicking START...');
+    await page.evaluate(() => {
+      const btn = document.querySelector('#surface-start-btn');
+      if (btn) {
+        btn.scrollIntoView();
+        btn.click();
+      }
+    });
+    await sleep(8000);
 
     console.log('📸 Screenshot 1: Gameplay start (no buff)');
     await page.screenshot({ path: path.join(screenshotDir, 's15-player-aura-visual-01-gameplay-start.png') });
