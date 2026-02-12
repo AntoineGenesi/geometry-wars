@@ -133,7 +133,10 @@ export class GameLoop {
       ctx.player.mesh.position.copy(ctx.playerWalker.position);
 
       // Bridge: convert world position to UV for enemies/geoms that still use UV
-      const playerUV = ctx.surface.worldToSurface(ctx.playerWalker.position);
+      // CRITICAL: worldToSurface expects local coordinates, so apply inverse rotation first
+      const inverseRot = ctx.surface.worldRotation.clone().invert();
+      const localPos = ctx.playerWalker.position.clone().applyQuaternion(inverseRot);
+      const playerUV = ctx.surface.worldToSurface(localPos);
       ctx.player.surfaceU = playerUV.u;
       ctx.player.surfaceV = playerUV.v;
 

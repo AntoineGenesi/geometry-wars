@@ -10,6 +10,8 @@ const _tempMatrix4 = new THREE.Matrix4();
 const _tempEuler = new THREE.Euler();
 const _tempOffsetVec3 = new THREE.Vector3();
 const _tempMoveDir = new THREE.Vector3();
+const _tempLocalPos = new THREE.Vector3();
+const _tempInverseRot = new THREE.Quaternion();
 
 export abstract class BaseEnemy extends Entity {
   health: number;
@@ -285,6 +287,9 @@ export abstract class BaseEnemy extends Entity {
 
     if (this.walker) {
       // ===== MESH WALKER MODE =====
+      if (window.__debugEnemyUV) {
+        console.log(`[Enemy ${this.constructor.name}] Entering walker mode, walker exists:`, !!this.walker);
+      }
       // Enemy computes world-space velocity; walker handles surface-constrained movement.
       const velocity = this.computeMovementDirection(dt, this._playerWorldPos);
       if (velocity && velocity.lengthSq() > 0.0001) {
@@ -299,13 +304,23 @@ export abstract class BaseEnemy extends Entity {
 
       // Bridge: derive UV coordinates for backward compatibility
       // (separation, DDA, gate pass-through, collision, etc. still use UV)
+      // FIX: worldToSurface() expects local coordinates (before world rotation),
+      // but walker.position is in world coordinates. Must apply inverse rotation first.
       if (this.surfaceRef) {
-        const uv = this.surfaceRef.worldToSurface(this.walker.position);
+        _tempInverseRot.copy(this.surfaceRef.worldRotation).invert();
+        _tempLocalPos.copy(this.walker.position).applyQuaternion(_tempInverseRot);
+        const uv = this.surfaceRef.worldToSurface(_tempLocalPos);
+        if (window.__debugEnemyUV) {
+          console.log(`[Enemy ${this.constructor.name}] Walker mode UV sync: (${uv.u.toFixed(3)}, ${uv.u.toFixed(3)}) from world (${this.walker.position.x.toFixed(2)}, ${this.walker.position.y.toFixed(2)}, ${this.walker.position.z.toFixed(2)})`);
+        }
         this.surfacePosition.u = uv.u;
         this.surfacePosition.v = uv.v;
       }
     } else {
       // ===== UV MODE (existing) =====
+      if (window.__debugEnemyUV) {
+        console.log(`[Enemy ${this.constructor.name}] Using UV mode (no walker)`);
+      }
       // Record UV position before behavior update
       const prevU = this.surfacePosition.u;
       const prevV = this.surfacePosition.v;

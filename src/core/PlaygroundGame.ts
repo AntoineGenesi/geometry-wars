@@ -544,7 +544,10 @@ export class PlaygroundGame {
     this.player.mesh.position.copy(this._walker.position);
 
     // Bridge UV for enemy spawner distance checks
-    const uv = this._surface.worldToSurface(this._walker.position);
+    // CRITICAL: worldToSurface expects local coordinates, so apply inverse rotation first
+    const inverseRot = this._surface.worldRotation.clone().invert();
+    const localPos = this._walker.position.clone().applyQuaternion(inverseRot);
+    const uv = this._surface.worldToSurface(localPos);
     this.player.surfaceU = uv.u;
     this.player.surfaceV = uv.v;
   }
