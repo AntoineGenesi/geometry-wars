@@ -23,7 +23,7 @@ export default defineConfig({
     }
   },
   server: {
-    port: 3000,
+    port: parseInt(process.env.VITE_PORT || '3000'),
     host: true,
     open: true,
     // COOP/COEP headers removed - they block cross-device LAN access
