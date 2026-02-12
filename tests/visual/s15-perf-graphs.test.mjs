@@ -54,24 +54,25 @@ async function runTest() {
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await sleep(5000); // Wait for start menu to render
 
-  console.log('[Perf Graphs Test] Start menu loaded, clicking PLAY');
+  console.log('[Perf Graphs Test] Start menu loaded, clicking Quick Game');
 
-  // Click PLAY button to start game
+  // Click Quick Game button
+  await page.click('[data-mode="single"]');
+  await sleep(800);
+
+  // Click START button to begin game
   await page.evaluate(() => {
-    const playButtons = Array.from(document.querySelectorAll('.menu-button'));
-    const playButton = playButtons.find(btn => btn.textContent.includes('PLAY'));
-    if (playButton) playButton.click();
+    const btns = document.querySelectorAll('button, .btn, [class*="btn"]');
+    for (const btn of btns) {
+      if (btn.textContent?.trim().toUpperCase().includes('START')) {
+        btn.click();
+        return;
+      }
+    }
   });
 
-  await sleep(1000); // Wait for mode selection
-
-  // Click first mode to start game
-  await page.evaluate(() => {
-    const modeButtons = Array.from(document.querySelectorAll('.mode-option'));
-    if (modeButtons[0]) modeButtons[0].click();
-  });
-
-  await sleep(4000); // Play for ~4 seconds to generate performance data
+  // Wait for countdown (3...2...1...) + gameplay to generate data
+  await sleep(4000);
 
   console.log('[Perf Graphs Test] Game started, playing to generate data...');
 
@@ -88,10 +89,15 @@ async function runTest() {
 
   await sleep(2000); // More gameplay
 
-  console.log('[Perf Graphs Test] Opening performance graphs (F3)');
+  console.log('[Perf Graphs Test] Opening pause menu (Escape)');
 
-  // Press F3 to open performance graphs
-  await page.keyboard.press('F3');
+  // Press Escape to open pause menu
+  await page.keyboard.press('Escape');
+  await sleep(800);
+
+  // Click "Performance Graphs" button in pause menu
+  console.log('[Perf Graphs Test] Clicking Performance Graphs button');
+  await page.click('[data-action="perf-graphs"]');
   await sleep(1000); // Wait for modal to open and render
 
   // Take screenshot of FPS chart (default)
