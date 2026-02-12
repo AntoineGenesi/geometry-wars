@@ -7,6 +7,7 @@ import { Painter } from '../entities/enemies/Painter';
 import { getSoundEngine } from '../audio/SoundEngine';
 import { UIHelpers } from '../ui/UIHelpers';
 import { BUFF_DEFINITIONS } from '../buffs/BuffManager';
+import { GlowTrail } from '../effects/GlowTrail';
 import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
 
 /**
@@ -360,7 +361,6 @@ export class GameLoop {
 
         // Create trail if doesn't exist
         if (!trail) {
-          const { GlowTrail } = require('../effects/GlowTrail');
           const color = this.ENEMY_TRAIL_COLORS[enemyTypeName] || 0xff0000;
           trail = new GlowTrail(new THREE.Color(color), 40, 0.3);
           ctx.game.scene.add(trail.root);

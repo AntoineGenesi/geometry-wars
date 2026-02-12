@@ -462,8 +462,15 @@ export class Game {
     this.rafId = requestAnimationFrame(this.loop);
 
     // Advance physics (GameClock calls fixedUpdate N times).
+    // Wrapped in try/catch so exceptions never block rendering — the game
+    // must always render even if a physics step fails, otherwise the user
+    // sees a permanent freeze (RAF continues but render is never reached).
     if (this._state === GameState.Playing) {
-      this.clock.tick(timestamp);
+      try {
+        this.clock.tick(timestamp);
+      } catch (err) {
+        console.error('[Game] Error in fixedUpdate:', err);
+      }
     }
 
     // Pre-render callback (surface projection, etc.).
