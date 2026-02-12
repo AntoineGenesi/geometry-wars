@@ -287,7 +287,7 @@ export abstract class BaseEnemy extends Entity {
 
     if (this.walker) {
       // ===== MESH WALKER MODE =====
-      if (window.__debugEnemyUV) {
+      if (typeof window !== 'undefined' && (window as any).__debugEnemyUV) {
         console.log(`[Enemy ${this.constructor.name}] Entering walker mode, walker exists:`, !!this.walker);
       }
       // Enemy computes world-space velocity; walker handles surface-constrained movement.
@@ -310,15 +310,15 @@ export abstract class BaseEnemy extends Entity {
         _tempInverseRot.copy(this.surfaceRef.worldRotation).invert();
         _tempLocalPos.copy(this.walker.position).applyQuaternion(_tempInverseRot);
         const uv = this.surfaceRef.worldToSurface(_tempLocalPos);
-        if (window.__debugEnemyUV) {
-          console.log(`[Enemy ${this.constructor.name}] Walker mode UV sync: (${uv.u.toFixed(3)}, ${uv.u.toFixed(3)}) from world (${this.walker.position.x.toFixed(2)}, ${this.walker.position.y.toFixed(2)}, ${this.walker.position.z.toFixed(2)})`);
+        if (typeof window !== 'undefined' && (window as any).__debugEnemyUV) {
+          console.log(`[Enemy ${this.constructor.name}] Walker mode UV sync: (${uv.u.toFixed(3)}, ${uv.v.toFixed(3)}) from world (${this.walker.position.x.toFixed(2)}, ${this.walker.position.y.toFixed(2)}, ${this.walker.position.z.toFixed(2)})`);
         }
         this.surfacePosition.u = uv.u;
         this.surfacePosition.v = uv.v;
       }
     } else {
       // ===== UV MODE (existing) =====
-      if (window.__debugEnemyUV) {
+      if (typeof window !== 'undefined' && (window as any).__debugEnemyUV) {
         console.log(`[Enemy ${this.constructor.name}] Using UV mode (no walker)`);
       }
       // Record UV position before behavior update
