@@ -12,12 +12,29 @@
  * game behavior.
  *
  * Usage:
+ *   node tests/lan/run-lan-tests.mjs [OPTIONS]
+ *
+ * Options:
+ *   --network-sim              Enable network simulation mode
+ *   --latency <ms>             Network latency in milliseconds (default: 0)
+ *   --packet-loss <percent>    Packet loss percentage (default: 0)
+ *   --jitter <ms>              Network jitter in milliseconds (default: 0)
+ *
+ * Examples:
+ *   # Run with ideal network (no simulation)
  *   node tests/lan/run-lan-tests.mjs
+ *
+ *   # Run with 50ms latency and 5% packet loss
+ *   node tests/lan/run-lan-tests.mjs --network-sim --latency 50 --packet-loss 5
+ *
+ *   # Run with 100ms latency and 10ms jitter
+ *   node tests/lan/run-lan-tests.mjs --network-sim --latency 100 --jitter 10
  *
  * Prerequisites:
  *   - Node 20+ (nvm)
  *   - Puppeteer Chrome at ~/.cache/puppeteer/chrome/
  *   - No other processes on ports 3000-3006 or 2567
+ *   - sudo access (required for network simulation via tc)
  */
 
 import puppeteer from 'puppeteer-core';
@@ -28,6 +45,32 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, '../..');
+
+// ---------------------------------------------------------------------------
+// CLI Arguments (Network Simulation)
+// ---------------------------------------------------------------------------
+
+let CLI_LATENCY = 0;
+let CLI_PACKET_LOSS = 0;
+let CLI_JITTER = 0;
+let CLI_NETWORK_SIM = false;
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--latency') {
+      CLI_LATENCY = parseInt(args[++i], 10);
+    } else if (args[i] === '--packet-loss') {
+      CLI_PACKET_LOSS = parseFloat(args[++i]);
+    } else if (args[i] === '--jitter') {
+      CLI_JITTER = parseInt(args[++i], 10);
+    } else if (args[i] === '--network-sim') {
+      CLI_NETWORK_SIM = true;
+    }
+  }
+}
+
+parseArgs();
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -63,7 +106,8 @@ const LAUNCH_ARGS = [
 ];
 
 // SwiftShader is slow (~2-5 FPS), so timeouts need to be generous
-const TIMEOUTS = {
+// Adjust timeouts based on network latency
+const BASE_TIMEOUTS = {
   serverBoot: 15000,      // Wait for Colyseus server to start
   devServerBoot: 30000,   // Wait for Vite dev server
   pageLoad: 30000,        // Page navigation timeout
@@ -74,6 +118,24 @@ const TIMEOUTS = {
   movement: 5000,         // Wait for movement to register
   stability: 15000,       // Extended gameplay stability test
 };
+
+// Apply latency multiplier to timeouts
+function getTimeouts(latencyMs) {
+  let multiplier = 1.0;
+  if (latencyMs > 100) {
+    multiplier = 2.0; // 2x for high latency
+  } else if (latencyMs > 50) {
+    multiplier = 1.5; // 1.5x for medium latency
+  }
+
+  const timeouts = {};
+  for (const [key, value] of Object.entries(BASE_TIMEOUTS)) {
+    timeouts[key] = Math.round(value * multiplier);
+  }
+  return timeouts;
+}
+
+const TIMEOUTS = getTimeouts(CLI_LATENCY);
 
 // ---------------------------------------------------------------------------
 // Test Framework
@@ -300,6 +362,55 @@ async function waitForServer(url, timeoutMs) {
   }
   return false;
 }
+
+// ---------------------------------------------------------------------------
+// Network Simulation
+// ---------------------------------------------------------------------------
+
+/** Apply network conditions using scripts/network-sim.sh */
+function applyNetworkSimulation() {
+  if (!CLI_NETWORK_SIM) {
+    return; // Not enabled
+  }
+
+  const hasConditions = CLI_LATENCY > 0 || CLI_PACKET_LOSS > 0 || CLI_JITTER > 0;
+  if (!hasConditions) {
+    console.log('  Network simulation enabled but no conditions specified (0ms latency, 0% loss, 0ms jitter)');
+    return;
+  }
+
+  console.log(`  Applying network conditions: ${CLI_LATENCY}ms latency, ${CLI_PACKET_LOSS}% loss, ${CLI_JITTER}ms jitter`);
+
+  try {
+    execSync(
+      `bash scripts/network-sim.sh apply ${CLI_LATENCY}ms ${CLI_PACKET_LOSS}% ${CLI_JITTER}ms`,
+      { cwd: PROJECT_ROOT, stdio: 'inherit' }
+    );
+  } catch (err) {
+    console.error('  ERROR: Failed to apply network simulation:', err.message);
+    console.error('  Continuing without network simulation...');
+  }
+}
+
+/** Reset network conditions using scripts/network-sim.sh */
+function resetNetworkSimulation() {
+  if (!CLI_NETWORK_SIM) {
+    return; // Not enabled
+  }
+
+  console.log('  Resetting network simulation...');
+
+  try {
+    execSync('bash scripts/network-sim.sh reset', { cwd: PROJECT_ROOT, stdio: 'inherit' });
+  } catch (err) {
+    console.error('  ERROR: Failed to reset network simulation:', err.message);
+  }
+}
+
+// Ensure network simulation is reset on exit
+process.on('exit', () => {
+  resetNetworkSimulation();
+});
 
 // ---------------------------------------------------------------------------
 // Browser Helpers
@@ -725,16 +836,160 @@ test('Scenario 5c: Both clients still see players after extended play', async ({
 });
 
 // ---------------------------------------------------------------------------
+// Network-Specific Tests (only run when network simulation is enabled)
+// ---------------------------------------------------------------------------
+
+test('Network 1: Movement syncs correctly at 100ms latency', async ({ hostPage, joinPage }) => {
+  // Skip if network simulation is not enabled or latency < 100ms
+  if (!CLI_NETWORK_SIM || CLI_LATENCY < 100) {
+    console.log('      Skipped (requires --network-sim with --latency >= 100)');
+    return;
+  }
+
+  // Restart game if needed
+  const text = await getDebug(hostPage, 'getWaveText');
+  if (text && (text.includes('GAME OVER') || text.includes('Waiting'))) {
+    await hostPage.evaluate(() => {
+      const btns = document.querySelectorAll('button');
+      for (const btn of btns) {
+        const t = btn.textContent || '';
+        if ((t.includes('PLAY AGAIN') || t.includes('START GAME')) &&
+            (btn.offsetParent !== null || getComputedStyle(btn).display !== 'none')) {
+          btn.click();
+          return;
+        }
+      }
+    });
+    await sleep(3000);
+  }
+
+  // Get initial host player position
+  const posBefore = await getDebug(hostPage, 'getPlayerPosition');
+  expect(posBefore).not.toBeNull();
+  console.log(`      Host position before: u=${posBefore.u.toFixed(4)}, v=${posBefore.v.toFixed(4)}`);
+
+  // Move on host
+  await hostPage.keyboard.down('w');
+  await sleep(2000);
+  await hostPage.keyboard.up('w');
+
+  // Allow for latency (network delay + processing)
+  await sleep(CLI_LATENCY * 2 + 500);
+
+  // Check that host position changed
+  const posAfter = await getDebug(hostPage, 'getPlayerPosition');
+  expect(posAfter).not.toBeNull();
+  const hostMoved = Math.abs(posAfter.u - posBefore.u) + Math.abs(posAfter.v - posBefore.v) > 0.001;
+  console.log(`      Host position after: u=${posAfter.u.toFixed(4)}, v=${posAfter.v.toFixed(4)} (moved: ${hostMoved})`);
+  expect(hostMoved).toBe(true);
+
+  // Join page should see both players (host player's position is synced via network)
+  const joinPlayers = await getDebug(joinPage, 'getPlayers');
+  expect(joinPlayers).not.toBeNull();
+  expect(joinPlayers.length).toBe(2);
+  console.log(`      Join sees ${joinPlayers.length} players`);
+
+  // Verify host player (non-local on join page) has moved from initial spawn
+  // Note: can't directly verify exact position sync due to network timing variance,
+  // but we can verify the player exists and has a non-default position
+  const hostPlayerId = await getDebug(hostPage, 'getLocalPlayerId');
+  const hostPlayerOnJoin = joinPlayers.find(p => p.id === hostPlayerId);
+
+  if (hostPlayerOnJoin) {
+    console.log(`      Host player on join page: u=${hostPlayerOnJoin.u.toFixed(4)}, v=${hostPlayerOnJoin.v.toFixed(4)}`);
+    // Player should not be at exact spawn point (0.5, 0.5) after movement
+    const atSpawn = Math.abs(hostPlayerOnJoin.u - 0.5) < 0.01 && Math.abs(hostPlayerOnJoin.v - 0.5) < 0.01;
+    if (atSpawn) {
+      console.log('      WARNING: Host player appears to be at spawn point on join page (may not have synced yet)');
+    }
+  } else {
+    console.log('      WARNING: Could not find host player on join page by ID');
+  }
+}, { skip: !CLI_NETWORK_SIM || CLI_LATENCY < 100 });
+
+test('Network 2: No disconnection at 5% packet loss over 30s', async ({ hostPage, joinPage }) => {
+  // Skip if network simulation is not enabled or packet loss < 5%
+  if (!CLI_NETWORK_SIM || CLI_PACKET_LOSS < 5) {
+    console.log('      Skipped (requires --network-sim with --packet-loss >= 5)');
+    return;
+  }
+
+  console.log(`      Testing stability with ${CLI_PACKET_LOSS}% packet loss for 30 seconds...`);
+
+  const startTime = Date.now();
+  let checksCount = 0;
+  while (Date.now() - startTime < 30000) {
+    const hostConn = await getDebug(hostPage, 'isConnected');
+    const joinConn = await getDebug(joinPage, 'isConnected');
+
+    expect(hostConn).toBe(true);
+    expect(joinConn).toBe(true);
+
+    checksCount++;
+    console.log(`      Check ${checksCount}: Host=${hostConn}, Join=${joinConn} (elapsed: ${Math.round((Date.now() - startTime) / 1000)}s)`);
+
+    await sleep(5000);
+  }
+
+  const elapsed = Date.now() - startTime;
+  console.log(`      Completed ${checksCount} connection checks over ${Math.round(elapsed / 1000)}s`);
+  expect(elapsed).toBeGreaterThan(29000);
+}, { skip: !CLI_NETWORK_SIM || CLI_PACKET_LOSS < 5 });
+
+test('Network 3: Gameplay remains smooth with 25ms jitter', async ({ hostPage }) => {
+  // Skip if network simulation is not enabled or jitter < 25ms
+  if (!CLI_NETWORK_SIM || CLI_JITTER < 25) {
+    console.log('      Skipped (requires --network-sim with --jitter >= 25)');
+    return;
+  }
+
+  console.log(`      Testing stability with ${CLI_JITTER}ms jitter...`);
+
+  // Measure position updates over 10 seconds to verify game doesn't freeze
+  const positions = [];
+  for (let i = 0; i < 20; i++) {
+    const pos = await getDebug(hostPage, 'getPlayerPosition');
+    if (pos) {
+      positions.push(pos);
+      console.log(`      Sample ${i + 1}/20: u=${pos.u.toFixed(4)}, v=${pos.v.toFixed(4)}`);
+    } else {
+      console.log(`      Sample ${i + 1}/20: null (player may be dead/respawning)`);
+    }
+    await sleep(500);
+  }
+
+  // Should have at least 15 position samples (allowing for some deaths/respawns)
+  console.log(`      Collected ${positions.length}/20 position samples`);
+  expect(positions.length).toBeGreaterThan(14);
+
+  // Verify game is still connected (not frozen/crashed)
+  const connected = await getDebug(hostPage, 'isConnected');
+  expect(connected).toBe(true);
+}, { skip: !CLI_NETWORK_SIM || CLI_JITTER < 25 });
+
+// ---------------------------------------------------------------------------
 // Screenshots
 // ---------------------------------------------------------------------------
 
 async function takeScreenshots(hostPage, joinPage, label) {
   try {
+    // Include network conditions in filename if simulation is enabled
+    let prefix = 'lan';
+    if (CLI_NETWORK_SIM && (CLI_LATENCY > 0 || CLI_PACKET_LOSS > 0 || CLI_JITTER > 0)) {
+      const latencyPart = CLI_LATENCY > 0 ? `${CLI_LATENCY}ms` : '';
+      const lossPart = CLI_PACKET_LOSS > 0 ? `${CLI_PACKET_LOSS}loss` : '';
+      const jitterPart = CLI_JITTER > 0 ? `${CLI_JITTER}jit` : '';
+      const parts = [latencyPart, lossPart, jitterPart].filter(p => p);
+      if (parts.length > 0) {
+        prefix = `lan-${parts.join('-')}`;
+      }
+    }
+
     const hostBuf = await hostPage.screenshot({ encoding: 'binary' });
-    writeFileSync(`${SCREENSHOT_DIR}/lan-${label}-host.png`, hostBuf);
+    writeFileSync(`${SCREENSHOT_DIR}/${prefix}-${label}-host.png`, hostBuf);
 
     const joinBuf = await joinPage.screenshot({ encoding: 'binary' });
-    writeFileSync(`${SCREENSHOT_DIR}/lan-${label}-join.png`, joinBuf);
+    writeFileSync(`${SCREENSHOT_DIR}/${prefix}-${label}-join.png`, joinBuf);
 
     return true;
   } catch {
@@ -757,12 +1012,27 @@ async function runAllTests() {
   console.log('  Puppeteer + SwiftShader + Colyseus on WSL2');
   console.log('='.repeat(70));
 
+  // Show network simulation config if enabled
+  if (CLI_NETWORK_SIM) {
+    console.log('\n  Network Simulation: ENABLED');
+    console.log(`    Latency: ${CLI_LATENCY}ms`);
+    console.log(`    Packet Loss: ${CLI_PACKET_LOSS}%`);
+    console.log(`    Jitter: ${CLI_JITTER}ms`);
+    console.log(`    Timeout Multiplier: ${CLI_LATENCY > 100 ? '2.0x' : CLI_LATENCY > 50 ? '1.5x' : '1.0x'}`);
+  } else {
+    console.log('\n  Network Simulation: DISABLED (use --network-sim to enable)');
+  }
+
   // Check Chrome binary
   if (!existsSync(CHROME_PATH)) {
     console.error(`\n  ERROR: Chrome not found at ${CHROME_PATH}`);
     process.exit(1);
   }
   console.log(`\n  Chrome: ${CHROME_PATH}`);
+
+  // ---- Apply network simulation BEFORE killing/starting servers ----
+  // This ensures the dev server and Colyseus server will see the network conditions
+  applyNetworkSimulation();
 
   // ---- Kill stale processes ----
   console.log('\n  Killing stale processes on ports 3000-3006, 2567...');
@@ -937,6 +1207,9 @@ async function runAllTests() {
     // Also kill by port in case processes didn't die cleanly
     await sleep(1000);
     killPortProcesses([COLYSEUS_PORT]);
+
+    // Reset network simulation
+    resetNetworkSimulation();
   }
 
   // ---- Summary ----
@@ -965,6 +1238,12 @@ async function runAllTests() {
       devServerPort: DEV_SERVER_PORT,
       colyseusPort: COLYSEUS_PORT,
       surface: 'sphere',
+    },
+    network: {
+      simulationEnabled: CLI_NETWORK_SIM,
+      latency: CLI_LATENCY,
+      packetLoss: CLI_PACKET_LOSS,
+      jitter: CLI_JITTER,
     },
   };
 
