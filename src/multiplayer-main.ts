@@ -187,8 +187,8 @@ function main(): void {
   });
   game.disableBuiltInCameraUpdate = true;
 
-  // Hide default single-player HUD
-  const defaultHUD = document.getElementById('game-hud');
+  // Hide default single-player HUD (it's in #ui-overlay, not #game-hud)
+  const defaultHUD = document.getElementById('ui-overlay');
   if (defaultHUD) defaultHUD.style.display = 'none';
 
   // -- Lighting --
@@ -271,21 +271,28 @@ function main(): void {
     splitRenderer.resize(w, h);
     for (let i = 0; i < playerCount; i++) {
       const pv = splitRenderer.getPixelViewport(i);
-      hud.setViewportBounds(i, pv.x, pv.y, pv.w, pv.h);
-      killTally.setViewportBounds(i, pv.x, pv.y, pv.w, pv.h);
-      // Convert WebGL viewport coords (y-up) to DOM coords (y-down) for mouse aim.
+      // Convert WebGL viewport coords (y-up) to DOM coords (y-down) for all DOM elements.
       // WebGL y=0 is screen bottom; DOM y=0 is screen top.
       // DOM_y = totalHeight - webgl_y - viewport_height
       const domY = h - pv.y - pv.h;
+
+      // HUD and KillTally are DOM elements, so they need DOM coordinates
+      hud.setViewportBounds(i, pv.x, domY, pv.w, pv.h);
+      killTally.setViewportBounds(i, pv.x, domY, pv.w, pv.h);
+
+      // Input also uses DOM coordinates for mouse aim
       input.setViewportBounds(i, pv.x, domY, pv.w, pv.h);
-      // Position weapon HUD at bottom-left of each viewport
+
+      // Position weapon HUD at bottom-left of each viewport (DOM coords)
       if (weaponHUDs[i]) {
-        weaponHUDs[i].setPosition(pv.x + 8, pv.y + pv.h / 2 - 40);
+        // Weapon HUD uses fixed positioning, so it also needs DOM coordinates
+        weaponHUDs[i].setPosition(pv.x + 8, domY + pv.h - 40);
       }
     }
-    // Position perf overlay in Player 1's viewport
+    // Position perf overlay in Player 1's viewport (DOM coords)
     const p1vp = splitRenderer.getPixelViewport(0);
-    perfOverlay.setViewportBounds(p1vp.x, p1vp.y, p1vp.w, p1vp.h);
+    const p1domY = h - p1vp.y - p1vp.h;
+    perfOverlay.setViewportBounds(p1vp.x, p1domY, p1vp.w, p1vp.h);
   }
   updateViewportSizes();
   window.addEventListener('resize', updateViewportSizes);
