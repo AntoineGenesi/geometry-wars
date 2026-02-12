@@ -99,6 +99,7 @@ export class PlaygroundGame {
   private _surface: Surface;
   private _meshSurface: MeshSurface;
   private _walker: MeshWalker;
+  private _surfaceType: SurfaceType;
 
   get surface(): Surface { return this._surface; }
   get meshSurface(): MeshSurface { return this._meshSurface; }
@@ -112,6 +113,7 @@ export class PlaygroundGame {
   private readonly _tmpVec = new THREE.Vector3();
   private readonly _tmpDir = new THREE.Vector3();
   private readonly _tmpRight = new THREE.Vector3();
+  private readonly _tmpQuat = new THREE.Quaternion();
 
   constructor(userConfig: PlaygroundConfig) {
     this.config = {
@@ -155,6 +157,7 @@ export class PlaygroundGame {
     this.game.scene.add(fill);
 
     // -- Surface --
+    this._surfaceType = cfg.surface;
     this._surface = this.createSurface(cfg.surface, cfg.surfaceScale);
     this.game.scene.add(this._surface.group);
     this._surface.mesh.updateMatrixWorld(true);
@@ -325,12 +328,25 @@ export class PlaygroundGame {
     return this.config.cameraDistance;
   }
 
+  /**
+   * Check if current surface should use UV-based movement instead of MeshWalker.
+   * Cube geometry is incompatible with MeshWalker's geodesic walking (flat faces
+   * + sharp 90° edges cause player to get stuck). Use UV-based movement fallback.
+   * See tasks/cube-s13-walker-integration.md for details.
+   */
+  private _isUVBasedSurface(): boolean {
+    return this._surfaceType === 'cube' ||
+           this._surfaceType === 'cube-tunnel' ||
+           this._surfaceType === 'cube-ring';
+  }
+
   /** Rebuild with a different surface. */
   setSurface(type: SurfaceType): void {
     // Remove old
     this.game.scene.remove(this._surface.group);
 
     // Create new
+    this._surfaceType = type;
     this._surface = this.createSurface(type, this.config.surfaceScale);
     this.game.scene.add(this._surface.group);
     this._surface.mesh.updateMatrixWorld(true);
@@ -346,11 +362,23 @@ export class PlaygroundGame {
     const startPoint = this._surface.getPoint(0.5, 0.5);
     this._walker = new MeshWalker(this._meshSurface, startPoint.position, PLAYER_MOVE_SPEED);
     this.player.respawn(0.5, 0.5);
-    this.player.mesh.position.copy(this._walker.position);
 
-    // Immediately reposition camera (avoid spiral convergence on new surface)
-    // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
-    {
+    if (this._isUVBasedSurface()) {
+      // UV-based surfaces: use surface point directly
+      this.player.mesh.position.copy(startPoint.position);
+
+      // Immediately reposition camera
+      // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
+      const idealCamPos = startPoint.normal.clone().multiplyScalar(this.config.cameraDistance).add(startPoint.position);
+      this.game.camera.position.copy(idealCamPos);
+      this.game.camera.up.copy(startPoint.tangentV);
+      this.game.camera.lookAt(startPoint.position);
+    } else {
+      // MeshWalker surfaces
+      this.player.mesh.position.copy(this._walker.position);
+
+      // Immediately reposition camera (avoid spiral convergence on new surface)
+      // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
       const n = this._walker.normal;
       const p = this._walker.position;
       const surfFrame = this._walker.getTangentFrame();
@@ -498,7 +526,7 @@ export class PlaygroundGame {
     this.input.endFrame();
   }
 
-  // REGRESSION GUARD: Camera up MUST be frame.bitangent, NOT walker.normal.
+  // REGRESSION GUARD: Camera up MUST be frame.bitangent, NOT normal.
   // Since the camera sits along the surface normal looking down at the player,
   // setting up=normal makes it parallel to the look direction, which is a
   // degenerate case for lookAt() — it produces wild spinning because the
@@ -510,8 +538,19 @@ export class PlaygroundGame {
 
     // Camera follows player (same orbit pattern as main game)
     const target = this.player.mesh.position;
-    const normal = this._walker.normal;
-    const frame = this._walker.getTangentFrame();
+
+    // Get normal and tangent frame from walker or surface (depending on surface type)
+    let normal: THREE.Vector3;
+    let frame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 };
+
+    if (this._isUVBasedSurface()) {
+      const point = this._surface.getPoint(this.player.surfaceU, this.player.surfaceV);
+      normal = point.normal;
+      frame = { tangent: point.tangentU, bitangent: point.tangentV };
+    } else {
+      normal = this._walker.normal;
+      frame = this._walker.getTangentFrame();
+    }
     const camPos = this._tmpVec
       .copy(normal)
       .multiplyScalar(this.config.cameraDistance)
@@ -565,44 +604,91 @@ export class PlaygroundGame {
   // Camera-relative movement creates a feedback loop: camera orientation affects
   // movement direction, which affects position, which affects camera orientation,
   // causing the "spinning map" bug. See decisions/playground-spinning-fix.md.
+  //
+  // EXCEPTION: Cube surfaces use UV-based movement because MeshWalker is incompatible
+  // with cube geometry (player gets completely stuck). See tasks/cube-s13-uv-fallback.md.
   private movePlayer(input: InputState, dt: number): void {
     const moveX = input.moveX;
     const moveY = input.moveY;
 
-    // Use MeshWalker.moveFromInput() — same as main.ts
-    // This maps screen axes directly to the walker's persistent tangent frame:
-    //   tangent  = screen right (D/A)
-    //   bitangent = screen up   (W/S)
-    // The -moveY negation is required because InputManager returns W=-1, S=+1
-    // but moveFromInput expects positive = visual up on screen.
-    if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
-      this._walker.moveFromInput(moveX, -moveY, this.game.camera, dt);
+    if (this._isUVBasedSurface()) {
+      // -- UV-based movement for cube surfaces --
+      // MeshWalker doesn't work on cube geometry (flat faces + sharp edges).
+      // Use surface.moveOnSurface() directly with screen-space input.
+
+      if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
+        // Get current UV from world position
+        const inverseRot = this._surface.worldRotation.clone().invert();
+        const localPos = this.player.mesh.position.clone().applyQuaternion(inverseRot);
+        const currentUV = this._surface.worldToSurface(localPos);
+
+        // Calculate UV movement deltas
+        // Screen space: right = +U, up = +V
+        // The -moveY negation is because InputManager returns W=-1, S=+1
+        // but we want positive = visual up on screen (+V direction)
+        const speed = PLAYER_MOVE_SPEED * dt;
+        const du = moveX * speed;
+        const dv = -moveY * speed;
+
+        // Move on surface
+        const moved = this._surface.moveOnSurface(currentUV.u, currentUV.v, du, dv);
+
+        // Update position
+        const newPoint = this._surface.getPoint(moved.u, moved.v);
+        this.player.mesh.position.copy(newPoint.position);
+
+        // Store UV for enemy spawner
+        this.player.surfaceU = moved.u;
+        this.player.surfaceV = moved.v;
+      }
+    } else {
+      // -- MeshWalker movement for curved surfaces (sphere, torus, etc.) --
+      // This maps screen axes directly to the walker's persistent tangent frame:
+      //   tangent  = screen right (D/A)
+      //   bitangent = screen up   (W/S)
+      // The -moveY negation is required because InputManager returns W=-1, S=+1
+      // but moveFromInput expects positive = visual up on screen.
+      if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
+        this._walker.moveFromInput(moveX, -moveY, this.game.camera, dt);
+      }
+
+      // Sync position from walker
+      this.player.mesh.position.copy(this._walker.position);
+
+      // Bridge UV for enemy spawner distance checks
+      // CRITICAL: worldToSurface expects local coordinates, so apply inverse rotation first
+      const inverseRot = this._surface.worldRotation.clone().invert();
+      const localPos = this._walker.position.clone().applyQuaternion(inverseRot);
+      const uv = this._surface.worldToSurface(localPos);
+      this.player.surfaceU = uv.u;
+      this.player.surfaceV = uv.v;
     }
-
-    // Sync position from walker
-    this.player.mesh.position.copy(this._walker.position);
-
-    // Bridge UV for enemy spawner distance checks
-    // CRITICAL: worldToSurface expects local coordinates, so apply inverse rotation first
-    const inverseRot = this._surface.worldRotation.clone().invert();
-    const localPos = this._walker.position.clone().applyQuaternion(inverseRot);
-    const uv = this._surface.worldToSurface(localPos);
-    this.player.surfaceU = uv.u;
-    this.player.surfaceV = uv.v;
   }
 
   /**
-   * Orient the player mesh using the walker's tangent frame + aim direction.
-   * Matches main.ts approach exactly: tangent frame from walker, aim mapped
-   * to tangent frame, orientation built from cross products.
+   * Orient the player mesh using the tangent frame + aim direction.
+   * Matches main.ts approach exactly: tangent frame from walker (or surface for UV-based),
+   * aim mapped to tangent frame, orientation built from cross products.
    *
    * REGRESSION GUARD: Do NOT use Player.applySurfaceTransform() with a
    * movement-direction-derived tangent frame. The tangent frame MUST come
-   * from the walker's persistent frame. See decisions/playground-spinning-fix.md.
+   * from the walker's persistent frame (or surface.getTangentFrame for UV-based).
+   * See decisions/playground-spinning-fix.md.
    */
   private orientPlayer(input: InputState): void {
-    const playerNormal = this._walker.normal;
-    const frame = this._walker.getTangentFrame();
+    let playerNormal: THREE.Vector3;
+    let frame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 };
+
+    if (this._isUVBasedSurface()) {
+      // UV-based surfaces: get tangent frame from surface at current UV
+      const point = this._surface.getPoint(this.player.surfaceU, this.player.surfaceV);
+      playerNormal = point.normal;
+      frame = { tangent: point.tangentU, bitangent: point.tangentV };
+    } else {
+      // MeshWalker surfaces: get tangent frame from walker
+      playerNormal = this._walker.normal;
+      frame = this._walker.getTangentFrame();
+    }
 
     // Calculate aim from mouse in screen space using tangent frame
     // (same logic as main.ts lines 1695-1726)
@@ -643,23 +729,40 @@ export class PlaygroundGame {
   private respawnPlayer(): void {
     this.player.respawn(0.5, 0.5);
     const p = this._surface.getPoint(0.5, 0.5);
-    const proj = this._meshSurface.closestPointOnSurface(p.position);
-    if (proj) {
-      this._walker.position.copy(proj.point);
-      this._walker.normal.copy(proj.normal);
-      this._walker.faceIndex = proj.faceIndex;
-    }
-    this.player.mesh.position.copy(this._walker.position);
 
-    // Snap camera to avoid spiral after respawn
-    // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
-    const n = this._walker.normal;
-    const pos = this._walker.position;
-    const respawnFrame = this._walker.getTangentFrame();
-    const idealCamPos = n.clone().multiplyScalar(this.config.cameraDistance).add(pos);
-    this.game.camera.position.copy(idealCamPos);
-    this.game.camera.up.copy(respawnFrame.bitangent);
-    this.game.camera.lookAt(pos);
+    if (this._isUVBasedSurface()) {
+      // UV-based surfaces: use surface point directly
+      this.player.mesh.position.copy(p.position);
+      // Still update walker position for any code that might reference it
+      this._walker.position.copy(p.position);
+      this._walker.normal.copy(p.normal);
+
+      // Snap camera to avoid spiral after respawn
+      // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
+      const idealCamPos = p.normal.clone().multiplyScalar(this.config.cameraDistance).add(p.position);
+      this.game.camera.position.copy(idealCamPos);
+      this.game.camera.up.copy(p.tangentV);
+      this.game.camera.lookAt(p.position);
+    } else {
+      // MeshWalker surfaces: project to mesh surface
+      const proj = this._meshSurface.closestPointOnSurface(p.position);
+      if (proj) {
+        this._walker.position.copy(proj.point);
+        this._walker.normal.copy(proj.normal);
+        this._walker.faceIndex = proj.faceIndex;
+      }
+      this.player.mesh.position.copy(this._walker.position);
+
+      // Snap camera to avoid spiral after respawn
+      // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
+      const n = this._walker.normal;
+      const pos = this._walker.position;
+      const respawnFrame = this._walker.getTangentFrame();
+      const idealCamPos = n.clone().multiplyScalar(this.config.cameraDistance).add(pos);
+      this.game.camera.position.copy(idealCamPos);
+      this.game.camera.up.copy(respawnFrame.bitangent);
+      this.game.camera.lookAt(pos);
+    }
   }
 
   private spawnEnemies(count: number): void {
