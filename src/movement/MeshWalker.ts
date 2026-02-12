@@ -53,6 +53,7 @@ export class MeshWalker {
   private readonly _camRight = new THREE.Vector3();
   private readonly _camUp = new THREE.Vector3();
   private readonly _moveDir = new THREE.Vector3();
+  private readonly _worldQuat = new THREE.Quaternion();
 
   constructor(surface: MeshSurface, startPos: THREE.Vector3, speed: number) {
     this.surface = surface;
@@ -380,8 +381,8 @@ export class MeshWalker {
    * onto the surface tangent plane so WASD always matches what the player
    * sees on screen, even when the camera orbits.
    *
-   * Falls back to tangent-frame-direct mapping when the camera orientation
-   * is degenerate (e.g., unit-test dummy cameras not positioned above the surface).
+   * Falls back to tangent-frame-direct mapping only when the camera axes
+   * project to near-zero on the tangent plane (camera looking edge-on at surface).
    *
    * @param inputX - Horizontal input (-1 to 1, A/D or left/right stick)
    * @param inputY - Vertical input (-1 to 1, positive = visual "up" on screen)
@@ -396,26 +397,12 @@ export class MeshWalker {
   ): SurfaceQueryResult | null {
     if (Math.abs(inputX) < 0.01 && Math.abs(inputY) < 0.01) return null;
 
-    // Check if camera is looking down at the surface (top-down gameplay view).
-    // Camera forward (local -Z) should be roughly antiparallel to the surface normal.
-    // If not (e.g., test cameras with default orientation), fall back to tangent frame.
-    const camFwd = this._moveDir.set(0, 0, -1).applyQuaternion(camera.quaternion);
-    const lookAlignment = camFwd.dot(this.normal);
-
-    if (lookAlignment > -0.3) {
-      // Camera is not looking down at the surface — use tangent frame fallback.
-      // This preserves correct behavior for unit tests with default cameras.
-      const moveDir = this._moveDir
-        .set(0, 0, 0)
-        .addScaledVector(this._tangent, inputX)
-        .addScaledVector(this._bitangent, inputY);
-      if (moveDir.lengthSq() < 0.0001) return null;
-      return this.move(moveDir, dt);
-    }
-
-    // Camera-relative movement: extract camera's right and up, project onto tangent plane.
-    const camRight = this._camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    const camUp = this._camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    // Camera-relative movement: extract camera's right and up from WORLD quaternion,
+    // then project onto surface tangent plane so WASD always matches screen axes.
+    // Uses getWorldQuaternion to handle any parent transforms on the camera.
+    const worldQuat = camera.getWorldQuaternion(this._worldQuat);
+    const camRight = this._camRight.set(1, 0, 0).applyQuaternion(worldQuat);
+    const camUp = this._camUp.set(0, 1, 0).applyQuaternion(worldQuat);
 
     const n = this.normal;
     camRight.addScaledVector(n, -camRight.dot(n));
@@ -425,7 +412,8 @@ export class MeshWalker {
     const upLen = camUp.length();
 
     if (rightLen < 0.001 || upLen < 0.001) {
-      // Degenerate projection: fall back to tangent frame.
+      // Degenerate projection (camera axis parallel to surface normal).
+      // Fall back to tangent frame.
       const moveDir = this._moveDir
         .set(0, 0, 0)
         .addScaledVector(this._tangent, inputX)
@@ -468,23 +456,11 @@ export class MeshWalker {
       return this._bitangent.clone();
     }
 
-    // Check if camera is looking down at the surface (same check as moveFromInput)
-    const camFwd = this._camRight.set(0, 0, -1).applyQuaternion(camera.quaternion);
-    const lookAlignment = camFwd.dot(this.normal);
-
-    if (lookAlignment > -0.3) {
-      // Camera not in top-down view — fall back to tangent frame
-      const aimDir = new THREE.Vector3()
-        .addScaledVector(this._tangent, aimX)
-        .addScaledVector(this._bitangent, -aimY);
-      const len = aimDir.length();
-      if (len < 0.0001) return this._bitangent.clone();
-      return aimDir.multiplyScalar(1 / len);
-    }
-
-    // Camera-relative aiming: same projection as moveFromInput
-    const camRight = this._camRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-    const camUp = this._camUp.set(0, 1, 0).applyQuaternion(camera.quaternion);
+    // Camera-relative aiming: same projection as moveFromInput.
+    // Uses getWorldQuaternion for parent-transform robustness.
+    const worldQuat = camera.getWorldQuaternion(this._worldQuat);
+    const camRight = this._camRight.set(1, 0, 0).applyQuaternion(worldQuat);
+    const camUp = this._camUp.set(0, 1, 0).applyQuaternion(worldQuat);
 
     const n = this.normal;
     camRight.addScaledVector(n, -camRight.dot(n));

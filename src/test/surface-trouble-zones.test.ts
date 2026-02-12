@@ -58,6 +58,15 @@ function createWalker(
   return { walker, surface: meshSurface };
 }
 
+/** Position camera above the walker, looking down at it (simulates real gameplay). */
+function positionCamera(camera: THREE.PerspectiveCamera, walker: MeshWalker, distance = 15): void {
+  const frame = walker.getTangentFrame();
+  camera.position.copy(walker.position).addScaledVector(walker.normal, distance);
+  camera.up.copy(frame.bitangent);
+  camera.lookAt(walker.position);
+  camera.updateMatrixWorld(true);
+}
+
 /** Walk the walker for N steps using moveFromInput, checking invariants each step. */
 function walkAndVerify(
   walker: MeshWalker,
@@ -73,7 +82,10 @@ function walkAndVerify(
   maxStep: number;
   totalDist: number;
 } {
-  const camera = new THREE.PerspectiveCamera(); // default camera → tangent-frame fallback
+  // Use a camera positioned above the walker (simulates real gameplay).
+  // Camera follows the walker each step so camera-relative axes stay correct.
+  const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+  positionCamera(camera, walker);
   let nanCount = 0;
   let teleportCount = 0;
   let stuckCount = 0;
@@ -83,6 +95,8 @@ function walkAndVerify(
 
   for (let i = 0; i < steps; i++) {
     walker.moveFromInput(inputX, inputY, camera, dt);
+    // Update camera to follow walker (same as CameraController would)
+    positionCamera(camera, walker);
 
     // Check for NaN
     if (isNaN(walker.position.x) || isNaN(walker.position.y) || isNaN(walker.position.z) ||
@@ -315,13 +329,15 @@ describe('Surface Trouble Zone Verification', () => {
     it('sphere: 600 steps (30s at 20Hz) without crash', () => {
       const { walker } = createWalker('sphere', 0.5, 0.5);
       // Alternate directions to cover more surface
-      const camera = new THREE.PerspectiveCamera();
+      const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+      positionCamera(camera, walker);
       let nanDetected = false;
       for (let i = 0; i < 600; i++) {
         const angle = i * 0.1;
         const ix = Math.cos(angle);
         const iy = Math.sin(angle);
         walker.moveFromInput(ix, iy, camera, 0.05);
+        positionCamera(camera, walker);
         if (isNaN(walker.position.x) || isNaN(walker.normal.x)) {
           nanDetected = true;
           break;
@@ -332,11 +348,13 @@ describe('Surface Trouble Zone Verification', () => {
 
     it('torus: 600 steps (30s at 20Hz) without crash', () => {
       const { walker } = createWalker('torus', 0.5, 0.5);
-      const camera = new THREE.PerspectiveCamera();
+      const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+      positionCamera(camera, walker);
       let nanDetected = false;
       for (let i = 0; i < 600; i++) {
         const angle = i * 0.1;
         walker.moveFromInput(Math.cos(angle), Math.sin(angle), camera, 0.05);
+        positionCamera(camera, walker);
         if (isNaN(walker.position.x) || isNaN(walker.normal.x)) {
           nanDetected = true;
           break;
@@ -347,11 +365,13 @@ describe('Surface Trouble Zone Verification', () => {
 
     it('capsule: 600 steps (30s at 20Hz) without crash', () => {
       const { walker } = createWalker('capsule', 0.5, 0.5);
-      const camera = new THREE.PerspectiveCamera();
+      const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+      positionCamera(camera, walker);
       let nanDetected = false;
       for (let i = 0; i < 600; i++) {
         const angle = i * 0.15;
         walker.moveFromInput(Math.cos(angle), Math.sin(angle), camera, 0.05);
+        positionCamera(camera, walker);
         if (isNaN(walker.position.x) || isNaN(walker.normal.x)) {
           nanDetected = true;
           break;
@@ -362,11 +382,13 @@ describe('Surface Trouble Zone Verification', () => {
 
     it('mobius: 600 steps (30s at 20Hz) without crash', () => {
       const { walker } = createWalker('mobius', 0.5, 0.5);
-      const camera = new THREE.PerspectiveCamera();
+      const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
+      positionCamera(camera, walker);
       let nanDetected = false;
       for (let i = 0; i < 600; i++) {
         const angle = i * 0.1;
         walker.moveFromInput(Math.cos(angle), Math.sin(angle), camera, 0.05);
+        positionCamera(camera, walker);
         if (isNaN(walker.position.x) || isNaN(walker.normal.x)) {
           nanDetected = true;
           break;

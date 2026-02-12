@@ -129,10 +129,12 @@ export class CameraController {
 
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
     this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
-    (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
 
-    // Smooth camera up (orbited up vector)
+    // Lerp camera.up BEFORE lookAt so lookAt uses the current-frame bitangent
+    // direction. This prevents a one-frame lag in the camera's right/up axes
+    // that caused movement direction jitter on curved surfaces.
     (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, this.CAMERA_LERP_FACTOR).normalize();
+    (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
   }
 
   /**
