@@ -71,6 +71,10 @@ export class CollisionSystem {
     onEnemyDied?: (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => void,
     instanceManager?: EnemyInstanceManager | null,
   ): void {
+    // DIAGNOSTIC: Entry guard (remove after freeze investigation)
+    const debugFreeze = (window as any).__debugFreeze ?? false;
+    if (debugFreeze) console.log('[CollisionSystem] checkBulletEnemyCollisions START');
+
     // Rebuild spatial hash each frame
     this.enemySpatialHash.clear();
     for (const enemy of enemies) {
@@ -78,10 +82,15 @@ export class CollisionSystem {
       if (enemy.isMaterializing) continue;
       this.enemySpatialHash.insert(enemy.position.x, enemy.position.y, enemy.position.z, enemy);
     }
+    if (debugFreeze) console.log('[CollisionSystem] Spatial hash rebuilt');
+
+
 
     bulletPool.forEachActive((bulletIdx, bulletPos, bulletData) => {
       // Use spatial hash for broad-phase: only check nearby enemies
       const nearby = this.enemySpatialHash.getNearby(bulletPos.x, bulletPos.y, bulletPos.z);
+      if (debugFreeze && nearby.length > 0) console.log(`[CollisionSystem] Checking ${nearby.length} nearby enemies`);
+
       for (let n = 0; n < nearby.length; n++) {
         const enemy = nearby[n];
         if (!enemy.active || !enemy.alive) continue;
@@ -132,9 +141,11 @@ export class CollisionSystem {
 
           if (!enemy.alive) {
             // Enemy died
+            if (debugFreeze) console.log('[CollisionSystem] Enemy died, starting death callback');
             const enemyType = enemy.constructor.name.toLowerCase();
             const color = CollisionSystem.ENEMY_COLORS[enemyType] ?? CollisionSystem.ENEMY_COLOR_FALLBACK;
             particles.enemyDeath(enemy.position, color);
+            if (debugFreeze) console.log('[CollisionSystem] Particles spawned');
             scoreManager.awardKill(enemy.scoreValue, enemyType);
             scorePopups?.spawnScore(enemy.position.clone(), enemy.scoreValue);
             screenShake.shake(0.15, 0.15);
@@ -145,21 +156,28 @@ export class CollisionSystem {
             surface.applyForce(enemy.position, 0.2, 1.0);
 
             // Spawn geoms at death position with kill-shot momentum
+            if (debugFreeze) console.log('[CollisionSystem] Converting world to UV');
             const { u, v } = surface.worldToSurface(enemy.position);
+            if (debugFreeze) console.log('[CollisionSystem] UV conversion complete, spawning geoms');
             for (let g = 0; g < enemy.geomCount; g++) {
               geomPool.spawn(u, v, bulletAngle);
             }
 
             // Trigger on-death procs (volatile explosions, etc.)
+            if (debugFreeze) console.log('[CollisionSystem] Calling onEnemyDied callback');
             onEnemyDied?.(enemy, enemies);
 
+            if (debugFreeze) console.log('[CollisionSystem] Calling onEnemyKilled callback');
             onEnemyKilled?.(u, v);
+            if (debugFreeze) console.log('[CollisionSystem] Enemy death complete');
           }
 
           break; // Each bullet hits one enemy
         }
       }
     });
+
+    if (debugFreeze) console.log('[CollisionSystem] checkBulletEnemyCollisions END');
   }
 
   /**

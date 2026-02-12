@@ -121,18 +121,9 @@ export class GameDebugAPI {
   getEnemyStates(): EnemyState[] {
     const enemies = this.enemySpawner.getEnemies();
     return enemies.map(e => {
-      let surfaceUV = { u: e.surfacePosition.u, v: e.surfacePosition.v };
-
-      // If enemy is using walker mode, convert walker position to UV
-      const walker = (e as any).walker;
-      const surfaceRef = (e as any).surfaceRef;
-      if (walker && surfaceRef && surfaceRef.worldToSurface) {
-        try {
-          surfaceUV = surfaceRef.worldToSurface(walker.position);
-        } catch (err) {
-          // Fallback to stored UV if conversion fails
-        }
-      }
+      // For walker mode enemies, BaseEnemy already syncs surfacePosition from walker.position
+      // Just use the synced UV coordinates directly
+      const surfaceUV = { u: e.surfacePosition.u, v: e.surfacePosition.v };
 
       return {
         type: e.constructor.name.toLowerCase(),
