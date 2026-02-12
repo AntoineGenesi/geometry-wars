@@ -8,6 +8,22 @@
 
 ---
 
+## Session 13 Game Regression Fixes (2026-02-12)
+
+### Critical Bug Fixes - MUST TEST (Programmatically Verified Level 4)
+- [ ] **Player movement is smooth** - Move with A/D keys on sphere surface for 30 seconds. Player should NOT have visible up/down jitter or wobble during horizontal movement.
+- [ ] **Bullets can hit enemies without freezing** - Spawn multiple enemies, shoot them continuously for 60 seconds. Game should NOT freeze when bullets hit enemies.
+- [ ] **Enemy positions update correctly** - Watch enemies move around surface. They should move smoothly without getting stuck or teleporting. Check minimap (if visible) to confirm enemy positions update.
+
+**Programmatic Verification (Level 4):** All 3 fixes passed 60-second integration test:
+- ✓ Collision freeze: 3525 frames advanced continuously (no freeze)
+- ✓ Enemy UV sync: Enemy UV coordinates updated correctly (Δ0.153 UV units)
+- ✓ Player movement: No position discontinuities detected (max Δ3.3 units)
+
+**Status:** READY FOR HUMAN TESTING (Level 6 verification needed for final sign-off)
+
+---
+
 ## How to Run
 
 ```bash
