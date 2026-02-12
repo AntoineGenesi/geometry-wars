@@ -47,8 +47,9 @@ function updateCamera(
   const camUp = frame.bitangent.clone();
 
   camera.position.lerp(targetPos, lerpFactor);
-  camera.lookAt(walker.position);
+  // Lerp up BEFORE lookAt so lookAt uses current-frame bitangent (matches CameraController.ts)
   camera.up.lerp(camUp, lerpFactor).normalize();
+  camera.lookAt(walker.position);
 }
 
 /**
