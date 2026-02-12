@@ -8,6 +8,29 @@
 
 ---
 
+## Session 15 Player Movement Fix (2026-02-13)
+
+### Critical Bug Fix - MUST TEST (Programmatically Verified Level 2)
+- [ ] **Player movement is smooth in all directions** - Test in all game modes (visual styles, weapons database, main game waves, local co-op):
+  - Press W (forward) for 5 seconds — player should move smoothly without jitter or getting stuck
+  - Press S (backward) for 5 seconds — player should move smoothly without jitter or getting stuck
+  - Press A (left) for 5 seconds — player should move smoothly (this direction worked before)
+  - Press D (right) for 5 seconds — player should move smoothly (this direction worked before)
+  - Press W+D (diagonal) for 5 seconds — player should move in smooth arc, NOT "square fashion" with 90° turns
+- [ ] **No orientation snapping** - While moving with WASD, player orientation should change smoothly, NOT snap to 90/180/270-degree angles
+- [ ] **Circular movement works** - Hold W+D and make a full circle. Movement should be smooth throughout, no discrete snaps or jitter
+
+**What was fixed:** Cross product operand order in orientPlayer() was backwards, causing playerRight vector to point WEST instead of EAST. This corrupted the rotation matrix, leading to 90° orientation errors that manifested as jitter, stuckness, and discrete angle snaps during forward/backward movement.
+
+**Programmatic Verification (Level 2):**
+- ✓ TypeScript compiles clean (0 errors in changed files)
+- ✓ All regression tests pass (5/5): forward/backward/left/right/diagonal movement
+- ✓ Code path verified: orientPlayer() called every frame from game loop
+
+**Status:** READY FOR HUMAN TESTING (Level 6 verification needed — Claude cannot test in real browser)
+
+---
+
 ## Session 13 Game Regression Fixes (2026-02-12)
 
 ### Critical Bug Fixes - MUST TEST (Programmatically Verified Level 4)
