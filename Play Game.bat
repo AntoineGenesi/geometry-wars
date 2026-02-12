@@ -23,8 +23,11 @@ REM Check node_modules exists
 if not exist "node_modules" goto :no_modules
 
 REM Check if Windows-specific native binaries exist (WSL installs Linux-x64 only)
-REM Vite uses its own esbuild copy at node_modules\vite\node_modules\@esbuild
-if not exist "node_modules\vite\node_modules\@esbuild\win32-x64" goto :fix_native
+REM Modern npm (v7+) hoists/dedupes packages to top level when possible
+REM Check both top-level (hoisted) and nested (older npm) locations
+if not exist "node_modules\@esbuild\win32-x64" (
+    if not exist "node_modules\vite\node_modules\@esbuild\win32-x64" goto :fix_native
+)
 if not exist "node_modules\@rollup\rollup-win32-x64-msvc" goto :fix_native
 
 :start_servers
@@ -97,8 +100,9 @@ echo  [..] Installing Windows-specific native binaries...
 echo  (Dependencies were installed in WSL with Linux binaries)
 echo.
 echo  Installing @esbuild/win32-x64 and @rollup/rollup-win32-x64-msvc...
-echo  (Vite needs esbuild 0.25.12, tsx needs esbuild 0.27.3)
-call npm install --no-save @esbuild/win32-x64@0.25.12 @rollup/rollup-win32-x64-msvc@4.57.1 2>nul
+echo.
+REM Show npm output (removed 2>nul) so user can see progress/errors
+call npm install --no-save @esbuild/win32-x64@0.25.12 @rollup/rollup-win32-x64-msvc@4.57.1
 if %ERRORLEVEL% neq 0 (
     echo.
     echo  [!] npm install failed. This usually happens because WSL is using
@@ -112,10 +116,8 @@ if %ERRORLEVEL% neq 0 (
     echo.
     goto :end_pause
 )
-REM Also install into Vite's nested esbuild if needed
-if not exist "node_modules\vite\node_modules\@esbuild\win32-x64" (
-    xcopy /E /I /Y "node_modules\@esbuild\win32-x64" "node_modules\vite\node_modules\@esbuild\win32-x64" >nul
-)
+REM No need to xcopy - npm handles hoisting/deduplication automatically
+REM Packages are installed at top level or nested depending on npm version
 echo.
 echo  [OK] Windows native binaries installed.
 goto :start_servers
