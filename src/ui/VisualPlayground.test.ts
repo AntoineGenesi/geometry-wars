@@ -10,7 +10,7 @@
  */
 
 import { test, expect, describe } from 'vitest';
-import { VISUAL_PRESETS } from '../../src/ui/VisualPlayground.js';
+import { VISUAL_PRESETS } from './VisualPlayground';
 
 describe('Visual Styles Consistency', () => {
   test('total preset count is 42', () => {
@@ -54,29 +54,29 @@ describe('Visual Styles Consistency', () => {
   test('light variants: Sektori Cyan exists', () => {
     const cyan = VISUAL_PRESETS.find(p => p.name === 'Sektori Cyan');
     expect(cyan).toBeDefined();
-    expect(cyan.sektoriConfig).toBeDefined();
-    expect(cyan.surfaceOpacity).toBeGreaterThanOrEqual(0.4);
+    expect(cyan!.sektoriConfig).toBeDefined();
+    expect(cyan!.surfaceOpacity).toBeGreaterThanOrEqual(0.4);
   });
 
   test('light variants: Sektori Fire exists', () => {
     const fire = VISUAL_PRESETS.find(p => p.name === 'Sektori Fire');
     expect(fire).toBeDefined();
-    expect(fire.sektoriConfig).toBeDefined();
-    expect(fire.surfaceOpacity).toBeGreaterThanOrEqual(0.4);
+    expect(fire!.sektoriConfig).toBeDefined();
+    expect(fire!.surfaceOpacity).toBeGreaterThanOrEqual(0.4);
   });
 
   test('light variants: Sektori Ice exists', () => {
     const ice = VISUAL_PRESETS.find(p => p.name === 'Sektori Ice');
     expect(ice).toBeDefined();
-    expect(ice.sektoriConfig).toBeDefined();
-    expect(ice.surfaceOpacity).toBeGreaterThanOrEqual(0.4);
+    expect(ice!.sektoriConfig).toBeDefined();
+    expect(ice!.surfaceOpacity).toBeGreaterThanOrEqual(0.4);
   });
 
   test('light variants: Sektori Aurora exists', () => {
     const aurora = VISUAL_PRESETS.find(p => p.name === 'Sektori Aurora');
     expect(aurora).toBeDefined();
-    expect(aurora.sektoriConfig).toBeDefined();
-    expect(aurora.surfaceOpacity).toBeGreaterThanOrEqual(0.4);
+    expect(aurora!.sektoriConfig).toBeDefined();
+    expect(aurora!.surfaceOpacity).toBeGreaterThanOrEqual(0.4);
   });
 
   test('dark variants exist for all light variants', () => {
@@ -86,8 +86,8 @@ describe('Visual Styles Consistency', () => {
       const darkName = `${name} Dark`;
       const dark = VISUAL_PRESETS.find(p => p.name === darkName);
       expect(dark, `${darkName} should exist`).toBeDefined();
-      expect(dark.sektoriConfig, `${darkName} should have sektoriConfig`).toBeDefined();
-      expect(dark.surfaceOpacity < 0.2 || dark.wireframeOnly,
+      expect(dark!.sektoriConfig, `${darkName} should have sektoriConfig`).toBeDefined();
+      expect(dark!.surfaceOpacity < 0.2 || dark!.wireframeOnly,
         `${darkName} should have low opacity`).toBe(true);
     });
   });
