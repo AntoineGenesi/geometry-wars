@@ -1,0 +1,89 @@
+[
+  {
+    "config": {
+      "name": "Current (SwiftShader)",
+      "args": [
+        "--enable-webgl",
+        "--use-gl=swiftshader",
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--window-size=640,360"
+      ]
+    },
+    "success": false,
+    "error": "Cannot read properties of undefined (reading 'toFixed')"
+  },
+  {
+    "config": {
+      "name": "SwiftShader + Ignore GPU Blocklist",
+      "args": [
+        "--enable-webgl",
+        "--use-gl=swiftshader",
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader",
+        "--ignore-gpu-blocklist",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--window-size=640,360"
+      ]
+    },
+    "success": false,
+    "error": "Cannot read properties of undefined (reading 'toFixed')"
+  },
+  {
+    "config": {
+      "name": "SwiftShader + Disable GPU",
+      "args": [
+        "--enable-webgl",
+        "--use-gl=swiftshader",
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader",
+        "--disable-gpu",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--window-size=640,360"
+      ]
+    },
+    "success": false,
+    "error": "Cannot read properties of undefined (reading 'toFixed')"
+  },
+  {
+    "config": {
+      "name": "ANGLE Desktop GL",
+      "args": [
+        "--enable-webgl",
+        "--use-gl=desktop",
+        "--use-angle=gl",
+        "--ignore-gpu-blocklist",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--window-size=640,360"
+      ]
+    },
+    "success": false,
+    "error": "Cannot read properties of undefined (reading 'toFixed')"
+  },
+  {
+    "config": {
+      "name": "EGL + SwiftShader",
+      "args": [
+        "--enable-webgl",
+        "--use-gl=egl",
+        "--use-angle=swiftshader",
+        "--enable-unsafe-swiftshader",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--window-size=640,360"
+      ]
+    },
+    "success": false,
+    "error": "Cannot read properties of undefined (reading 'toFixed')"
+  }
+]
