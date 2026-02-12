@@ -58,6 +58,7 @@ import { BuffHUD } from './buffs/BuffHUD';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { BuffAuraRenderer, AuraQuality } from './buffs/BuffAuraRenderer';
+import { BuffParticleAura } from './buffs/BuffParticleAura';
 import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
@@ -669,6 +670,9 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   );
   game.scene.add(buffAuraRenderer.root);
 
+  const buffParticleAura = new BuffParticleAura();
+  game.scene.add(buffParticleAura.root);
+
   // Wire buff callbacks
   buffManager.onBuffGained = (type, _newStacks) => {
     buffHUD.highlightBuff(type);
@@ -1039,6 +1043,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     buffHUD.dispose();
     shockArcRenderer.dispose();
     buffAuraRenderer.dispose();
+    buffParticleAura.dispose();
     shockwaveEffect.dispose();
     bulletInstanceManager.dispose();
     lodManager.dispose();
@@ -1060,6 +1065,7 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     buffHUD.dispose();
     shockArcRenderer.dispose();
     buffAuraRenderer.dispose();
+    buffParticleAura.dispose();
     shockwaveEffect.dispose();
     bulletInstanceManager.dispose();
     lodManager.dispose();
@@ -1243,6 +1249,29 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
   // -- Fixed timestep game logic --
   game.onFixedUpdate = (dt: number) => {
     gameLoop.update(ctx, dt);
+
+    // Update aura renderer with current player state and active buffs
+    const activeBuffs = buffManager.getActiveBuffs().map(b => ({
+      type: b.type,
+      stacks: b.stacks,
+    }));
+    buffAuraRenderer.update(
+      dt,
+      game.clock.totalTime,
+      player.mesh.position,
+      playerWalker.normal,
+      activeBuffs,
+    );
+
+    // Update particle aura system
+    buffParticleAura.update(
+      dt,
+      game.clock.totalTime,
+      player.mesh.position,
+      playerWalker.normal,
+      activeBuffs,
+    );
+
     // Sync mutable state back from ctx.state to local variables
     isPaused = ctx.state.isPaused;
     isGameOver = ctx.state.isGameOver;
