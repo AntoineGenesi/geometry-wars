@@ -121,13 +121,14 @@ export class PerformanceGraph {
   private dragStartViewport: ViewPort | null = null;
   private mouseX = -1;
   private mouseY = -1;
+  private renderScheduled = false;
 
   // Min/max FPS moments for markers
   private minFpsMoment: PerformanceDataPoint | null = null;
   private maxFpsMoment: PerformanceDataPoint | null = null;
 
-  // Active chart type ('fps' | 'enemies' | 'bullets')
-  private activeChart: 'fps' | 'enemies' | 'bullets' = 'fps';
+  // Active chart type ('fps' | 'enemies' | 'bullets' | 'types')
+  private activeChart: 'fps' | 'enemies' | 'bullets' | 'types' = 'fps';
 
   constructor(canvas: HTMLCanvasElement, config: Partial<GraphConfig> = {}) {
     this.canvas = canvas;
@@ -186,10 +187,17 @@ export class PerformanceGraph {
     // Draw components
     this.drawGrid();
     this.drawAxes();
-    if (this.activeChart === 'fps') {
-      this.drawFPSMarkers();
+    this.drawChartTitle();
+
+    if (this.activeChart === 'types') {
+      this.drawEnemyTypeBars();
+    } else {
+      if (this.activeChart === 'fps') {
+        this.drawFPSMarkers();
+      }
+      this.drawDataLine();
     }
-    this.drawDataLine();
+
     this.drawHoverTooltip();
   }
 
@@ -221,78 +229,12 @@ export class PerformanceGraph {
   }
 
   /**
-   * Render an enemy type breakdown stacked area chart.
+   * Render an enemy type breakdown bar chart.
    */
   renderEnemyTypeChart(): void {
-    const { ctx, config, data, viewport } = this;
-
-    ctx.fillStyle = config.colors.background;
-    ctx.fillRect(0, 0, config.width, config.height);
-
-    if (data.length === 0) {
-      this.drawNoData();
-      return;
-    }
-
-    this.drawGrid();
-    this.drawAxes();
-
-    // Collect all enemy types
-    const allTypes = new Set<EnemyType>();
-    for (const point of data) {
-      point.enemyTypes.forEach((_count, type) => {
-        allTypes.add(type);
-      });
-    }
-    const types = Array.from(allTypes);
-
-    // Draw stacked areas
-    const { left, top, right, bottom } = config.padding;
-    const plotWidth = config.width - left - right;
-    const plotHeight = config.height - top - bottom;
-
-    // Filter data to viewport
-    const visibleData = data.filter(
-      p => p.time >= viewport.minTime && p.time <= viewport.maxTime
-    );
-
-    if (visibleData.length === 0) return;
-
-    // For each enemy type, draw a filled area
-    let prevY: number[] = new Array(visibleData.length).fill(plotHeight + top);
-
-    for (const type of types) {
-      ctx.beginPath();
-      ctx.fillStyle = ENEMY_COLORS[type] || '#666666';
-
-      const yValues: number[] = [];
-
-      for (let i = 0; i < visibleData.length; i++) {
-        const point = visibleData[i];
-        const x = this.timeToPixel(point.time);
-        const count = point.enemyTypes.get(type) || 0;
-        const y = prevY[i] - this.valueToPixelHeight(count);
-        yValues.push(y);
-
-        if (i === 0) {
-          ctx.moveTo(x, prevY[i]);
-          ctx.lineTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-
-      // Close path
-      for (let i = visibleData.length - 1; i >= 0; i--) {
-        const point = visibleData[i];
-        const x = this.timeToPixel(point.time);
-        ctx.lineTo(x, prevY[i]);
-      }
-      ctx.closePath();
-      ctx.fill();
-
-      prevY = yValues;
-    }
+    this.activeChart = 'types';
+    this.resetViewport();
+    this.render();
   }
 
   // -- Internal rendering ---------------------------------------------------
@@ -307,6 +249,30 @@ export class PerformanceGraph {
     ctx.font = '13px monospace';
     ctx.fillStyle = '#556677';
     ctx.fillText('Play for a few seconds, then pause to see graphs.', config.width / 2, config.height / 2 + 15);
+  }
+
+  private drawChartTitle(): void {
+    const { ctx, config } = this;
+    const { left, right } = config.padding;
+    const plotWidth = config.width - left - right;
+    const centerX = left + plotWidth / 2;
+
+    let title = '';
+    if (this.activeChart === 'fps') {
+      title = 'FPS Over Time';
+    } else if (this.activeChart === 'enemies') {
+      title = 'Enemy Count Over Time';
+    } else if (this.activeChart === 'bullets') {
+      title = 'Bullet Count Over Time';
+    } else if (this.activeChart === 'types') {
+      title = 'Enemy Types Breakdown';
+    }
+
+    ctx.fillStyle = config.colors.text;
+    ctx.font = 'bold 14px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText(title, centerX, 5);
   }
 
   private drawGrid(): void {
@@ -456,6 +422,55 @@ export class PerformanceGraph {
     ctx.stroke();
   }
 
+  private drawEnemyTypeBars(): void {
+    const { ctx, config, data } = this;
+    const { left, top, right, bottom } = config.padding;
+    const plotWidth = config.width - left - right;
+    const plotHeight = config.height - top - bottom;
+
+    // Collect all enemy types and their total counts
+    const typeCounts = new Map<EnemyType, number>();
+    for (const point of data) {
+      point.enemyTypes.forEach((count, type) => {
+        typeCounts.set(type, (typeCounts.get(type) || 0) + count);
+      });
+    }
+
+    const types = Array.from(typeCounts.entries()).sort((a, b) => b[1] - a[1]); // Sort by count descending
+    if (types.length === 0) return;
+
+    const barWidth = plotWidth / types.length;
+    const maxCount = Math.max(...types.map(([, count]) => count));
+
+    // Draw bars
+    types.forEach(([type, count], index) => {
+      const x = left + index * barWidth;
+      const barHeight = (count / maxCount) * plotHeight;
+      const y = top + plotHeight - barHeight;
+
+      ctx.fillStyle = ENEMY_COLORS[type] || '#666666';
+      ctx.fillRect(x + 2, y, barWidth - 4, barHeight);
+
+      // Draw type label (rotated)
+      ctx.save();
+      ctx.translate(x + barWidth / 2, top + plotHeight + 5);
+      ctx.rotate(-Math.PI / 4);
+      ctx.fillStyle = config.colors.text;
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(type, 0, 0);
+      ctx.restore();
+
+      // Draw count label on bar
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(count.toString(), x + barWidth / 2, y - 2);
+    });
+  }
+
   private drawHoverTooltip(): void {
     if (this.mouseX < 0 || this.mouseY < 0) return;
 
@@ -474,19 +489,57 @@ export class PerformanceGraph {
       return;
     }
 
-    // Find nearest data point
-    const time = this.pixelToTime(this.mouseX);
-    const nearest = this.findNearestPoint(time);
+    let tooltipLines: string[];
 
-    if (!nearest) return;
+    if (this.activeChart === 'types') {
+      // For enemy types chart, show which bar is being hovered
+      const typeCounts = new Map<EnemyType, number>();
+      for (const point of this.data) {
+        point.enemyTypes.forEach((count, type) => {
+          typeCounts.set(type, (typeCounts.get(type) || 0) + count);
+        });
+      }
 
-    // Draw tooltip
-    const tooltipLines = [
-      `Time: ${this.formatTime(nearest.time)}`,
-      `FPS: ${nearest.fps.toFixed(1)}`,
-      `Enemies: ${nearest.enemyCount}`,
-      `Bullets: ${nearest.bulletCount}`,
-    ];
+      const types = Array.from(typeCounts.entries()).sort((a, b) => b[1] - a[1]);
+      if (types.length === 0) return;
+
+      const barWidth = plotWidth / types.length;
+      const barIndex = Math.floor((this.mouseX - left) / barWidth);
+
+      if (barIndex < 0 || barIndex >= types.length) return;
+
+      const [type, count] = types[barIndex];
+
+      // Calculate average FPS contribution (approximate)
+      let totalFps = 0;
+      let dataPointsWithType = 0;
+      for (const point of this.data) {
+        if (point.enemyTypes.has(type)) {
+          totalFps += point.fps;
+          dataPointsWithType++;
+        }
+      }
+      const avgFps = dataPointsWithType > 0 ? totalFps / dataPointsWithType : 0;
+
+      tooltipLines = [
+        `Type: ${type}`,
+        `Total Killed: ${count}`,
+        `Avg FPS: ${avgFps.toFixed(1)}`,
+      ];
+    } else {
+      // For time-series charts, show nearest data point
+      const time = this.pixelToTime(this.mouseX);
+      const nearest = this.findNearestPoint(time);
+
+      if (!nearest) return;
+
+      tooltipLines = [
+        `Time: ${this.formatTime(nearest.time)}`,
+        `FPS: ${nearest.fps.toFixed(1)}`,
+        `Enemies: ${nearest.enemyCount}`,
+        `Bullets: ${nearest.bulletCount}`,
+      ];
+    }
 
     ctx.fillStyle = 'rgba(0, 0, 20, 0.9)';
     ctx.strokeStyle = config.colors.axis;
@@ -584,6 +637,20 @@ export class PerformanceGraph {
       return;
     }
 
+    // For types chart, use special viewport (bar chart doesn't need time/value ranges)
+    if (this.activeChart === 'types') {
+      // Count total enemy types for bar chart
+      const typeCounts = new Map<EnemyType, number>();
+      for (const point of this.data) {
+        point.enemyTypes.forEach((count, type) => {
+          typeCounts.set(type, (typeCounts.get(type) || 0) + count);
+        });
+      }
+      const maxCount = typeCounts.size > 0 ? Math.max(...Array.from(typeCounts.values())) : 100;
+      this.viewport = { minTime: 0, maxTime: typeCounts.size, minValue: 0, maxValue: maxCount * 1.1 };
+      return;
+    }
+
     // Pick value accessor based on active chart type
     let getValue: (p: PerformanceDataPoint) => number;
     if (this.activeChart === 'enemies') {
@@ -641,6 +708,7 @@ export class PerformanceGraph {
     this.canvas.addEventListener('mouseup', this.onMouseUp);
     this.canvas.addEventListener('mouseleave', this.onMouseLeave);
     this.canvas.addEventListener('wheel', this.onWheel);
+    this.canvas.addEventListener('click', this.onClick);
   }
 
   private onMouseDown = (e: MouseEvent): void => {
@@ -666,7 +734,14 @@ export class PerformanceGraph {
       this.viewport.maxTime = start.maxTime + dt;
     }
 
-    this.render();
+    // Throttle rendering using requestAnimationFrame to avoid excessive redraws
+    if (!this.renderScheduled) {
+      this.renderScheduled = true;
+      requestAnimationFrame(() => {
+        this.renderScheduled = false;
+        this.render();
+      });
+    }
   };
 
   private onMouseUp = (): void => {
@@ -693,7 +768,65 @@ export class PerformanceGraph {
     this.viewport.minTime = center - newRange / 2;
     this.viewport.maxTime = center + newRange / 2;
 
-    this.render();
+    // Throttle rendering using requestAnimationFrame to avoid excessive redraws
+    if (!this.renderScheduled) {
+      this.renderScheduled = true;
+      requestAnimationFrame(() => {
+        this.renderScheduled = false;
+        this.render();
+      });
+    }
+  };
+
+  private onClick = (e: MouseEvent): void => {
+    const { left, top, right, bottom } = this.config.padding;
+    const plotWidth = this.config.width - left - right;
+    const plotHeight = this.config.height - top - bottom;
+
+    // Check if click is in plot area
+    if (
+      e.offsetX < left ||
+      e.offsetX > left + plotWidth ||
+      e.offsetY < top ||
+      e.offsetY > top + plotHeight
+    ) {
+      return;
+    }
+
+    if (this.activeChart === 'types') {
+      // For enemy types chart, log clicked bar
+      const typeCounts = new Map<EnemyType, number>();
+      for (const point of this.data) {
+        point.enemyTypes.forEach((count, type) => {
+          typeCounts.set(type, (typeCounts.get(type) || 0) + count);
+        });
+      }
+
+      const types = Array.from(typeCounts.entries()).sort((a, b) => b[1] - a[1]);
+      if (types.length === 0) return;
+
+      const barWidth = plotWidth / types.length;
+      const barIndex = Math.floor((e.offsetX - left) / barWidth);
+
+      if (barIndex >= 0 && barIndex < types.length) {
+        const [type, count] = types[barIndex];
+        console.log(`[Performance Graph] Clicked enemy type: ${type}, Total Killed: ${count}`);
+      }
+    } else {
+      // For time-series charts, log nearest data point
+      const time = this.pixelToTime(e.offsetX);
+      const nearest = this.findNearestPoint(time);
+
+      if (nearest) {
+        console.log(`[Performance Graph] Clicked data point:`, {
+          time: this.formatTime(nearest.time),
+          fps: nearest.fps.toFixed(1),
+          enemies: nearest.enemyCount,
+          bullets: nearest.bulletCount,
+          enemyTypes: Array.from(nearest.enemyTypes.entries()),
+        });
+      }
+    }
   };
 
   // -- Utilities ------------------------------------------------------------
@@ -712,5 +845,6 @@ export class PerformanceGraph {
     this.canvas.removeEventListener('mouseup', this.onMouseUp);
     this.canvas.removeEventListener('mouseleave', this.onMouseLeave);
     this.canvas.removeEventListener('wheel', this.onWheel);
+    this.canvas.removeEventListener('click', this.onClick);
   }
 }
