@@ -99,25 +99,33 @@ echo.
 echo  [..] Installing Windows-specific native binaries...
 echo  (Dependencies were installed in WSL with Linux binaries)
 echo.
-echo  Installing @esbuild/win32-x64 and @rollup/rollup-win32-x64-msvc...
+
+REM Install to a temp directory to avoid WSL file-lock conflicts.
+REM npm install into node_modules directly fails because WSL holds locks
+REM on Linux binaries. Instead: download to temp, copy what we need.
+set "TEMP_DIR=%TEMP%\gw-native-fix-%RANDOM%"
+mkdir "%TEMP_DIR%" 2>nul
+
+echo  Downloading @esbuild/win32-x64 and @rollup/rollup-win32-x64-msvc...
 echo.
-REM Show npm output (removed 2>nul) so user can see progress/errors
-call npm install --no-save @esbuild/win32-x64@0.25.12 @rollup/rollup-win32-x64-msvc@4.57.1
+call npm install --prefix "%TEMP_DIR%" --no-save @esbuild/win32-x64@0.25.12 @rollup/rollup-win32-x64-msvc@4.57.1
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo  [!] npm install failed. This usually happens because WSL is using
-    echo  some files in node_modules. Try closing any WSL terminals first,
-    echo  then run Play Game.bat again.
-    echo.
-    echo  If it still fails, open a Windows command prompt as Administrator
-    echo  and run:
-    echo    cd "%~dp0"
-    echo    npm install --no-save @esbuild/win32-x64@0.25.12 @rollup/rollup-win32-x64-msvc@4.57.1
-    echo.
+    echo  [!] Download failed. Check your internet connection and try again.
+    rmdir /s /q "%TEMP_DIR%" 2>nul
     goto :end_pause
 )
-REM No need to xcopy - npm handles hoisting/deduplication automatically
-REM Packages are installed at top level or nested depending on npm version
+
+REM Copy only the platform-specific binary packages (no tree rebuild)
+echo  Copying native binaries into node_modules...
+if not exist "node_modules\@esbuild" mkdir "node_modules\@esbuild"
+if not exist "node_modules\@rollup" mkdir "node_modules\@rollup"
+xcopy /E /I /Y "%TEMP_DIR%\node_modules\@esbuild\win32-x64" "node_modules\@esbuild\win32-x64" >nul
+xcopy /E /I /Y "%TEMP_DIR%\node_modules\@rollup\rollup-win32-x64-msvc" "node_modules\@rollup\rollup-win32-x64-msvc" >nul
+
+REM Clean up temp directory
+rmdir /s /q "%TEMP_DIR%" 2>nul
+
 echo.
 echo  [OK] Windows native binaries installed.
 goto :start_servers
