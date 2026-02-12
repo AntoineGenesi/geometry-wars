@@ -711,10 +711,11 @@ export class PlaygroundGame {
       aimDirection = this._tmpDir.copy(frame.bitangent);
     }
 
-    // Orient player to face aim direction (same as main.ts lines 1718-1723)
+    // Orient player to face aim direction
+    // Fixed: cross product operand order was backwards, causing 90° orientation errors
     if (aimDirection.lengthSq() > 0.001) {
-      const playerRight = this._tmpRight.crossVectors(playerNormal, aimDirection).normalize();
-      const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
+      const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();
+      const playerForward = this._tmpVec.crossVectors(playerNormal, playerRight).normalize();
       const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
       this.player.mesh.quaternion.setFromRotationMatrix(orientMat);
     }
