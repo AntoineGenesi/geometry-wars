@@ -144,32 +144,16 @@ export class GameLoop {
       ctx.cameraController.update(ctx.playerWalker, dt);
 
       const playerNormal = ctx.playerWalker.normal;
-      const frame = ctx.playerWalker.getTangentFrame();
 
-      // Calculate aim from mouse in screen space using tangent frame.
-      // The camera looks along the surface normal with up = bitangent,
-      // so screen right = tangent, screen up = bitangent.
-      // Mouse aimX: -1 left, +1 right.  aimY: -1 top, +1 bottom (screen coords).
-      const aimX = inputState.aimX;
-      const aimY = inputState.aimY;
-      const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
-
-      let aimDirection: THREE.Vector3;
-      if (aimLen > 0.1) {
-        // Map screen aim to tangent frame
-        // tangent = screen right, bitangent = screen up
-        // Negate aimY because mouse Y increases downward but bitangent points up
-        aimDirection = new THREE.Vector3()
-          .addScaledVector(frame.tangent, aimX)
-          .addScaledVector(frame.bitangent, -aimY)
-          .normalize();
-      } else {
-        // Default: face along bitangent (screen up direction)
-        aimDirection = frame.bitangent.clone();
-      }
+      // Calculate aim direction using camera-relative axes.
+      // walker.getAimDirection() projects the camera's right/up vectors onto
+      // the surface tangent plane, so aiming matches what the player sees on
+      // screen even when the camera orbits (middle mouse drag).
+      const aimDirection = ctx.playerWalker.getAimDirection(
+        inputState.aimX, inputState.aimY, ctx.game.camera,
+      );
 
       // Orient player to face aim direction
-      // Fixed: cross product operand order was backwards, causing 90° orientation errors
       if (aimDirection.lengthSq() > 0.001) {
         const playerRight = new THREE.Vector3().crossVectors(aimDirection, playerNormal).normalize();
         const playerForward = new THREE.Vector3().crossVectors(playerRight, playerNormal).normalize();
@@ -178,7 +162,7 @@ export class GameLoop {
       }
 
       // Store aim angle for bullets
-      ctx.player.aimAngle = Math.atan2(aimX, -aimY);
+      ctx.player.aimAngle = Math.atan2(inputState.aimX, -inputState.aimY);
 
       // Update matrix for bullet spawning
       ctx.player.mesh.updateMatrixWorld(true);
