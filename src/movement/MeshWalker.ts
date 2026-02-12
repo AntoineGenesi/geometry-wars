@@ -284,10 +284,34 @@ export class MeshWalker {
 
       // Project onto tangent plane (remove any normal component due to numerical error)
       const dotN = newTangent.dot(n);
-      newTangent.addScaledVector(n, -dotN).normalize();
+      newTangent.addScaledVector(n, -dotN);
+
+      // Guard against zero-length tangent (transported tangent was parallel to normal)
+      const tangentLen = newTangent.length();
+      if (tangentLen < 0.001) {
+        // Tangent collapsed - fall back to surface method
+        const fallback = this.surface.getTangentFrame(n);
+        this._tangent.copy(fallback.tangent);
+        this._bitangent.copy(fallback.bitangent);
+        return;
+      }
+
+      newTangent.multiplyScalar(1 / tangentLen); // normalize safely
 
       // Recompute the perpendicular direction from cross product (right-handed: bitangent = tangent × normal)
-      let newBitangent = new THREE.Vector3().crossVectors(newTangent, n).normalize();
+      let newBitangent = new THREE.Vector3().crossVectors(newTangent, n);
+
+      // Guard against zero-length bitangent (shouldn't happen, but be safe)
+      const bitangentLen = newBitangent.length();
+      if (bitangentLen < 0.001) {
+        // Degenerate case - fall back to surface method
+        const fallback = this.surface.getTangentFrame(n);
+        this._tangent.copy(fallback.tangent);
+        this._bitangent.copy(fallback.bitangent);
+        return;
+      }
+
+      newBitangent.multiplyScalar(1 / bitangentLen); // normalize safely
 
       // The transported tangent from geodesic is the tangent TO THE PATH, not necessarily
       // aligned with our frame's "tangent" axis. When moving along the bitangent direction,
