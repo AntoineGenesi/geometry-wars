@@ -37,6 +37,7 @@ import { WeaponManager } from '../weapons/WeaponManager';
 import { WeaponType } from '../weapons/WeaponTypes';
 import { ParticleSystem } from '../effects/ParticleSystem';
 import { InputManager, InputState } from '../input/InputManager';
+import { DepthOcclusionSystem } from '../rendering/DepthOpacity';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -92,6 +93,7 @@ export class PlaygroundGame {
   readonly weaponManager: WeaponManager;
   readonly particles: ParticleSystem;
   readonly input: InputManager;
+  readonly depthOcclusion: DepthOcclusionSystem;
 
   // These can change when setSurface() is called
   private _surface: Surface;
@@ -263,6 +265,15 @@ export class PlaygroundGame {
     this.particles = new ParticleSystem();
     this.game.scene.add(this.particles.root);
 
+    // -- Depth occlusion (same config as main game for consistent visual feel) --
+    this.depthOcclusion = new DepthOcclusionSystem({
+      opacity0: 1.0,     // Clear line of sight: fully bright
+      opacity1: 0.12,    // Behind one surface: dramatically darker
+      opacity2Plus: 0.04, // Behind multiple surfaces: nearly invisible
+      lerpSpeed: 10.0,   // Faster transitions for snappy feel
+    });
+    this.depthOcclusion.setSurfaceMesh(this._surface.mesh);
+
     // -- Wire game loop --
     this.game.onFixedUpdate = (dt: number) => this.fixedUpdate(dt);
     this.game.onRender = () => this.renderUpdate();
@@ -295,6 +306,7 @@ export class PlaygroundGame {
     this.disposed = true;
     this.game.dispose();
     this.input.dispose();
+    this.depthOcclusion.dispose();
   }
 
   /** Switch weapon (or null to unlock). */
@@ -328,6 +340,7 @@ export class PlaygroundGame {
     this.bulletPool.setMeshSurface(this._meshSurface);
     this.wireBulletPool();
     this.weaponManager.setMeshSurface(this._meshSurface);
+    this.depthOcclusion.setSurfaceMesh(this._surface.mesh);
 
     // Reset player
     const startPoint = this._surface.getPoint(0.5, 0.5);
@@ -509,6 +522,32 @@ export class PlaygroundGame {
     // NEVER use normal here — it's parallel to the look direction and causes spinning.
     this.game.camera.up.lerp(frame.bitangent, 0.08).normalize();
     this.game.camera.lookAt(target);
+
+    // -- Depth-based opacity (same as main game) --
+    // Updates raycast-based occlusion system and applies opacity to enemies.
+    // Enemies behind the surface are dimmed/hidden based on surface intersection count.
+    const allEnemies = this.enemySpawner.getEnemies();
+    const dt = 1 / 60; // Fixed 60 FPS assumption for playground (main game uses actual frame dt)
+    this.depthOcclusion.update(allEnemies, this.game.camera.position, dt);
+
+    // Apply depth opacity to each enemy
+    for (const enemy of allEnemies) {
+      if (!enemy.alive || !enemy.mesh) continue;
+
+      const visibility = this.depthOcclusion.getOpacity(enemy);
+
+      // Apply opacity to enemy materials
+      // PlaygroundGame enemies are not instanced, so we modify materials directly
+      enemy.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material) {
+          const mat = child.material as THREE.MeshBasicMaterial;
+          if (mat.transparent !== undefined) {
+            mat.transparent = true;
+            mat.opacity = visibility;
+          }
+        }
+      });
+    }
 
     // Surface grid animation
     if (this._surface.updateGrid) {
