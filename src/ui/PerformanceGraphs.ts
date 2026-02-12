@@ -121,6 +121,7 @@ export class PerformanceGraph {
   private dragStartViewport: ViewPort | null = null;
   private mouseX = -1;
   private mouseY = -1;
+  private renderScheduled = false;
 
   // Min/max FPS moments for markers
   private minFpsMoment: PerformanceDataPoint | null = null;
@@ -666,7 +667,14 @@ export class PerformanceGraph {
       this.viewport.maxTime = start.maxTime + dt;
     }
 
-    this.render();
+    // Throttle rendering using requestAnimationFrame to avoid excessive redraws
+    if (!this.renderScheduled) {
+      this.renderScheduled = true;
+      requestAnimationFrame(() => {
+        this.renderScheduled = false;
+        this.render();
+      });
+    }
   };
 
   private onMouseUp = (): void => {
@@ -693,7 +701,14 @@ export class PerformanceGraph {
     this.viewport.minTime = center - newRange / 2;
     this.viewport.maxTime = center + newRange / 2;
 
-    this.render();
+    // Throttle rendering using requestAnimationFrame to avoid excessive redraws
+    if (!this.renderScheduled) {
+      this.renderScheduled = true;
+      requestAnimationFrame(() => {
+        this.renderScheduled = false;
+        this.render();
+      });
+    }
   };
 
   // -- Utilities ------------------------------------------------------------
