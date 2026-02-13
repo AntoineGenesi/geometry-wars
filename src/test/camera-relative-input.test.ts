@@ -238,4 +238,105 @@ describe('Camera-Relative Input', () => {
       expect(dotNormal).toBeLessThan(0.05);
     });
   });
+
+  describe('tangent frame stability (anti-oscillation)', () => {
+    it('should maintain stable bitangent over 120 frames of diagonal movement', () => {
+      // This tests the hysteresis fix: moving at 45° to the tangent frame axes
+      // used to cause the tangent/bitangent to swap every other frame, making
+      // the bitangent oscillate and causing chevron spinning + map jumping.
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const dt = 1 / 60;
+
+      const bitangents: THREE.Vector3[] = [];
+
+      // Move diagonally (45° between tangent and bitangent)
+      for (let i = 0; i < 120; i++) {
+        const frame = walker.getTangentFrame();
+        bitangents.push(frame.bitangent.clone());
+        walker.moveFromInput(0.707, 0.707, camera, dt, frame.bitangent);
+        // Update camera to follow
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+      }
+
+      // Count how many times the bitangent flips sign (dot with previous < 0)
+      let signFlips = 0;
+      for (let i = 1; i < bitangents.length; i++) {
+        if (bitangents[i].dot(bitangents[i - 1]) < 0) {
+          signFlips++;
+        }
+      }
+
+      // With hysteresis fix: should have 0 or very few sign flips
+      // Without fix: would have ~60 flips (every other frame)
+      expect(signFlips).toBeLessThan(3);
+    });
+
+    it('should maintain stable tangent frame on sphere equator during lateral movement', () => {
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const dt = 1 / 60;
+
+      // Move purely right (D key) for 60 frames
+      const tangentAngles: number[] = [];
+      let prevTangent = walker.getTangentFrame().tangent.clone();
+
+      for (let i = 0; i < 60; i++) {
+        const frame = walker.getTangentFrame();
+        walker.moveFromInput(1, 0, camera, dt, frame.bitangent);
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+
+        const angleDelta = frame.tangent.angleTo(prevTangent);
+        tangentAngles.push(angleDelta);
+        prevTangent.copy(frame.tangent);
+      }
+
+      // Maximum angle change between consecutive frames should be small
+      // (smooth rotation, not abrupt flips)
+      const maxAngleDelta = Math.max(...tangentAngles);
+      // On a sphere with radius 10, moving at speed 3 for 1/60s covers ~0.05 units
+      // The tangent should rotate by at most a few degrees per frame
+      expect(maxAngleDelta).toBeLessThan(0.3); // ~17 degrees max per frame
+    });
+
+    it('should keep orientation stable when pressing D on sphere (no chevron spin)', () => {
+      // Simulate the exact scenario that caused "chevron spinning super fast":
+      // Press D, track the aim direction every frame, verify no oscillation.
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const dt = 1 / 60;
+
+      const aimDirs: THREE.Vector3[] = [];
+
+      for (let i = 0; i < 60; i++) {
+        const frame = walker.getTangentFrame();
+        walker.moveFromInput(1, 0, camera, dt, frame.bitangent);
+        // Aim direction with no mouse input (aimX=0, aimY=0)
+        const aim = walker.getAimDirection(0, 0, camera, frame.bitangent);
+        aimDirs.push(aim.clone());
+
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+      }
+
+      // Count direction reversals (sign flips in dot product with previous)
+      let reversals = 0;
+      for (let i = 1; i < aimDirs.length; i++) {
+        if (aimDirs[i].dot(aimDirs[i - 1]) < 0) {
+          reversals++;
+        }
+      }
+
+      // Should have 0 direction reversals (no spinning)
+      expect(reversals).toBe(0);
+    });
+  });
 });
