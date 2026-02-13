@@ -342,6 +342,83 @@ All "Sektori" visual styles renamed to include "Dark" in the name, and lighter v
 
 ---
 
+## Custom Mesh Loading (NEW — 2026-02-13)
+
+**New feature:** Load custom 3D models (.obj, .glb, .gltf) as playable surfaces. Comprehensive documentation in `docs/CUSTOM_MAPS.md` (user guide) and `docs/DEV_CUSTOM_MESHES.md` (developer guide).
+
+### File Loading & Parsing
+
+- [ ] **Load cup.obj via file picker** — Click START GAME → select Mode → "LOAD CUSTOM MAP" → choose `public/meshes/cup.obj` → game starts on custom mesh (player visible on surface)
+- [ ] **Load torus.obj via file picker** — Load `public/meshes/torus.obj` → game starts on torus surface
+- [ ] **Load bunny.obj via file picker** — Load `public/meshes/bunny.obj` → game starts on bunny-shaped surface
+- [ ] **Load sphere-simple.obj via file picker** — Load `public/meshes/sphere-simple.obj` → works like built-in sphere
+- [ ] **Load knot.obj via file picker** — Load `public/meshes/knot.obj` → complex topology, enemies move correctly
+
+### Geometry & Movement
+
+- [ ] **Player spawns on surface** — After loading custom mesh, player should be visible on the surface, not inside or floating above
+- [ ] **Player can move** — Use WASD to move. Player should move smoothly on the custom mesh in all directions
+- [ ] **Enemies spawn on surface** — Enemies should appear on the custom mesh surface, not floating or stuck
+- [ ] **Enemies move smoothly** — Enemies should move around the mesh surface without getting stuck, clipping, or teleporting
+- [ ] **Diagonal movement works** — Press W+D → player should move in smooth diagonal arc on custom mesh
+- [ ] **Camera follows player** — Camera should orient to player's surface normal (not always pointing up), rotate smoothly as player moves
+
+### Error Handling & Edge Cases
+
+- [ ] **Load invalid file (test.txt)** — Attempt to load a text file. Should show error message: "Unsupported file type" or similar. Game should NOT crash
+- [ ] **Load empty file** — Create an empty file named `empty.obj`, try to load. Should show error "No mesh geometry found". Game should NOT crash
+- [ ] **Load non-existent file** — Try loading a file that doesn't exist. Should show error. Game should NOT crash
+- [ ] **File too large (150k+ triangles)** — Create a mesh with >100k triangles, try to load. Should show error "Mesh too large: XXX triangles (max: 100,000)". Game should NOT crash
+- [ ] **Drag-and-drop loads file** — (If enabled) Drag a .glb file onto the game window. Should load and start game
+- [ ] **Corrupted mesh file** — Try loading a broken/corrupted .glb file. Should show error, not crash
+
+### Gameplay On Custom Meshes
+
+- [ ] **Gameplay is playable** — Game is fully playable on custom mesh (not unplayably difficult or broken)
+- [ ] **Scoring works** — Kill enemies, score should increase normally
+- [ ] **Weapons work** — Shoot at enemies on custom mesh. Bullets should hit correctly (not miss or curve wrong)
+- [ ] **UI is visible** — Score, kill log, minimap (if enabled) should be visible and work correctly
+- [ ] **Mode selection works** — Try different game modes (Waves, King, etc.) on custom mesh. All modes should work
+- [ ] **Can pause** — Press ESC to pause. Should show pause menu. Resume should work
+
+### Performance
+
+- [ ] **Cup.obj loads fast** — (~2k triangles) Should load in <1 second
+- [ ] **Bunny.obj loads reasonably** — (~25k triangles) Should load in ~1–3 seconds, no excessive lag during load
+- [ ] **Game runs at 60 FPS on small mesh** — Cup or torus should maintain 60 FPS throughout gameplay (check DevTools Performance tab)
+- [ ] **Game is playable on larger mesh** — Bunny (25k triangles) should run at 30–60 FPS (acceptable variance)
+- [ ] **No frame stutters on spawn** — When enemies spawn or mesh first loads, FPS should not spike or drop sharply
+
+### Multi-Mesh / Animation (if supported)
+
+- [ ] **Animated mesh loads** — (If animated GLB exists) Load an animated mesh. Animation should play smoothly
+- [ ] **Player follows animated surface** — Player should stay on the mesh even as it animates
+- [ ] **Enemies work on animated mesh** — Enemies should spawn and move on animated mesh
+
+### Visual Appearance
+
+- [ ] **Mesh is visible** — Custom mesh should be visible in-game (rendered with semi-transparent material like built-in surfaces)
+- [ ] **Mesh color is consistent** — All custom meshes use same visual style (semi-transparent dark purple)
+- [ ] **UV grid is visible** — (If enabled in debug) UV grid overlay should show longitude/latitude lines on custom mesh
+- [ ] **Mesh is properly scaled** — Custom mesh should be similar size to built-in surfaces (not tiny or huge)
+
+### Multiplayer (if applicable)
+
+- [ ] **Custom mesh works in co-op** — Load custom mesh in split-screen mode. Both players should see the same mesh, move correctly
+- [ ] **Custom mesh works in LAN** — (If LAN enabled) Host game with custom mesh, join from another computer. Both players see mesh
+- [ ] **Multiplayer is smooth** — No lag spikes or desync compared to built-in surfaces
+
+### Documentation
+
+- [ ] **User guide is helpful** — Read `docs/CUSTOM_MAPS.md`. Can you understand how to load a custom map? Is the guide clear?
+- [ ] **Sample meshes are accessible** — Are the included sample meshes easy to find and load?
+- [ ] **Error messages match docs** — When an error occurs, does the message match the troubleshooting guide in `docs/CUSTOM_MAPS.md`?
+
+### Task File
+- `tasks/custom-object-loader-s13-phase6-docs.md` — Phase 6 documentation and polish
+
+---
+
 ## How to Report Failures
 
 When something fails, write a note here with:

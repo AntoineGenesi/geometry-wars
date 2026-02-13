@@ -1,0 +1,59 @@
+CUSTOM MESH SAMPLE MODELS - LICENSE INFORMATION
+================================================
+
+All sample models in this directory are provided as examples for custom mesh loading.
+Most are in the public domain or provided under permissive licenses.
+
+Individual Model Licenses:
+==========================
+
+1. bunny.obj
+   - Stanford Bunny (The Stanford 3D Scanning Repository)
+   - Source: https://graphics.stanford.edu/data/3Dscanrep/
+   - License: Public Domain
+   - Attribution: Stanford Computer Graphics Laboratory
+
+2. dragon.obj
+   - Source: https://graphics.stanford.edu/data/3Dscanrep/
+   - License: Public Domain
+   - Attribution: Stanford Computer Graphics Laboratory
+
+3. knot.obj
+   - Common 3D model (Torus Knot geometry)
+   - License: Public Domain
+   - Created via standard 3D tools (Blender, Three.js, etc.)
+
+4. torus.obj, sphere-simple.obj, tetrahedron.obj, cup.obj
+   - Procedurally generated geometric primitives
+   - License: Public Domain
+   - Created with standard 3D modeling tools
+
+Usage Rights:
+=============
+
+You are free to:
+✓ Use these models in games and applications
+✓ Modify and redistribute them
+✓ Include them in your projects
+✓ Share them online
+✓ Use them commercially
+
+Attribution:
+============
+
+Attribution is appreciated but not required. If you do credit these models:
+
+Stanford-derived models (bunny.obj, dragon.obj):
+  "Bunny model courtesy of Stanford Computer Graphics Laboratory"
+
+Example attribution in your project's README or credits:
+  - Bunny, Dragon: Stanford Computer Graphics Laboratory
+  - Other models: Public domain geometric primitives
+
+No Warranty:
+============
+
+These models are provided "as is" without any warranty.
+
+--
+Last updated: 2026-02-13

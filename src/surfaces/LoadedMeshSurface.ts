@@ -80,7 +80,7 @@ export class LoadedMeshSurface extends Surface {
     loadedMesh.mesh.geometry.computeBoundingSphere();
     const bs = loadedMesh.mesh.geometry.boundingSphere;
     if (!bs) {
-      throw new Error('Failed to compute bounding sphere for loaded mesh');
+      throw new Error('Failed to compute bounding sphere for loaded mesh. This may indicate the mesh has no valid geometry or contains only degenerate triangles.');
     }
 
     this.boundingSphere = new THREE.Sphere().copy(bs);

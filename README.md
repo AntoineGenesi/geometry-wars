@@ -65,7 +65,7 @@ sphere, cube, pill, pipe, torus, peanut, capsule, icosahedron, mobius, sphere-tu
 
 ## Features
 
-- **Surfaces**: 12 playable surface types with geodesic face-walking movement (MeshWalker)
+- **Surfaces**: 12 built-in surfaces + **custom map loading** (OBJ, GLB, GLTF — load your own 3D models!)
 - **Enemies**: 30 enemy types with 5-tier difficulty scaling (Normal to Nightmare)
 - **Weapons**: 10 weapon types (Standard, Spread, Piercing, ChainLightning, Homing, PlasmaMortar, GravityGun, LaserBeam, BlackHole, TeslaCoil)
 - **Super states**: 7 types (QuadFire, SplitFire, ReverseFire, Missile, Magnet, TrailBomb, Shield)
@@ -112,6 +112,8 @@ npm run test:lan    # Programmatic LAN multiplayer tests
 ## Documentation
 
 - `docs/ARCHITECTURE.md` - System architecture overview
+- `docs/CUSTOM_MAPS.md` - **User guide: how to load custom 3D models**
+- `docs/DEV_CUSTOM_MESHES.md` - **Developer guide: custom mesh system architecture and extension**
 - `docs/MULTIPLAYER.md` - Multiplayer modes and controls
 - `docs/lan-multiplayer-architecture.md` - Detailed LAN/network architecture
 - `docs/webrtc-migration-plan.md` - WebRTC migration research
