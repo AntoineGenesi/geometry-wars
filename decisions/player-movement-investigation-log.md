@@ -369,6 +369,43 @@ normalize(bitangent)
 
 Full analysis at `decisions/tangent-frame-dual-gram-schmidt.md`
 
+## Iteration 7 — USER TEST RESULT: CLOSE BUT SURFACE-SPECIFIC ISSUES
+
+**User tested iter 7 in real browser. Verdict: closer but NOT fixed.**
+
+### Symptoms by surface:
+
+**Cube:** Trail effect multiplied (4 copies of the trailing line), offset from player (too far behind/left). Movement "relatively OK" otherwise.
+
+**Sphere:** Jerky map wobble on left/right input — map moves up-then-down to reach position (vertical overshoot). WORSE near the origin, smooths out further away. User suspects UV/coordinate system issue.
+
+**Pill:** WORST. Trail line reveals overshooting zigzag: left→up→RIGHT (overshooting by same distance). Then up→back. Diagonal (left+up, right+up) still jerky.
+
+### Analysis:
+
+1. **The trail effect is a diagnostic tool** — it shows the player's actual frame-by-frame path, and that path is NOT straight for straight-line input.
+2. **Surface-dependent severity suggests curvature × tangent frame interaction** — cube (flat faces) is OK, sphere (constant curvature) has wobble, pill (varying curvature at caps) is worst.
+3. **"Worse near origin"** — on a sphere, the "origin" in UV space may coincide with the pole where the tangent frame is degenerate. The dual Gram-Schmidt may still produce instability at/near poles or UV seams.
+4. **Overshooting pattern (X pixels left → X pixels right)** — this is NOT the old swap oscillation (that was eliminated). This may be a DIFFERENT oscillation: the tangent frame rotating slightly each step due to Gram-Schmidt projection on curved surfaces, creating a systematic drift that compounds into visible overshoot.
+5. **4 trail copies** — may be a rendering bug (instanced geometry offset wrong) unrelated to movement, OR the trail is correctly showing 4 divergent paths from frame-to-frame position jitter.
+
+### Hypotheses for iteration 8:
+
+1. **Gram-Schmidt accumulation error on high-curvature surfaces** — dual Gram-Schmidt is O(curvature × step) per frame. On a sphere with radius 10 and speed 5, that's ~0.008 rad/frame error. Over 60 frames (1 second), that's ~0.5 rad = 28° of accumulated tangent frame rotation. This would cause systematic direction drift, not pure oscillation — but if the camera tracks the drifting frame, the camera-relative input would compensate, creating a damped oscillation.
+
+2. **UV seam/pole singularity** — at the pole of a sphere or UV seam of a pill, the Gram-Schmidt projected tangent can become degenerate (near-zero length), triggering the fallback path which resets the tangent frame abruptly → position/direction discontinuity.
+
+3. **Trail effect is rendering bug** — the trail might use the tangent frame for positioning (offset from player along bitangent). If the tangent frame has the accumulated error from hypothesis 1, the trail is offset in the wrong direction. 4 copies could mean 4 sub-frame positions are being rendered.
+
+4. **Camera up lerp still oscillating on high-curvature** — the sign-flip protection on targetUp may not be enough on surfaces where the bitangent changes rapidly (pill caps, sphere near poles).
+
+### What to test in iteration 8:
+- Move across ALL surfaces systematically
+- Focus on UV boundaries, poles, seams, origin regions
+- Measure per-frame displacement at different surface locations (near pole vs equator)
+- Check if trail effect issue is rendering vs movement
+- Check tangent frame stability at high-curvature regions
+
 ## Rules for Future Iterations
 
 1. READ THIS FILE FIRST
