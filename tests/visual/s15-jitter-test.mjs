@@ -58,27 +58,27 @@ async function run() {
   });
   await sleep(5000);
 
-  // Install per-frame tracking inside the game loop
+  // Install per-frame tracking using requestAnimationFrame (decoupled from game loop)
   const installed = await page.evaluate(() => {
     const dbg = window.__gameDebug;
-    if (!dbg?.game) return false;
+    if (!dbg?.player) return false;
 
     window.__framePositions = [];
     window.__frameTracking = false;
 
-    const orig = dbg.game.onFixedUpdate;
-    dbg.game.onFixedUpdate = function(dt) {
-      const result = orig.call(this, dt);
+    function samplePosition() {
       if (window.__frameTracking && dbg.player?.alive) {
         const p = dbg.player.mesh.position;
         const cam = dbg.game.camera;
+        // Clone position values to avoid capturing mutated reference
         window.__framePositions.push({
           px: p.x, py: p.y, pz: p.z,
           qx: cam.quaternion.x, qy: cam.quaternion.y, qz: cam.quaternion.z, qw: cam.quaternion.w,
         });
       }
-      return result;
-    };
+      requestAnimationFrame(samplePosition);
+    }
+    requestAnimationFrame(samplePosition);
     return true;
   });
   console.log('2. Frame tracking installed:', installed);

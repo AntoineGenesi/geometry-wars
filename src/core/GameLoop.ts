@@ -161,17 +161,16 @@ export class GameLoop {
         inputState.aimX, inputState.aimY, ctx.game.camera, ctx.cameraController.targetUp,
       );
 
-      // Orient player to face aim direction (with slerp smoothing to prevent spinning)
-      // REGRESSION GUARD: Direct quaternion set (no slerp) caused rapid chevron
-      // spinning at 60 FPS when the aim direction oscillated frame-to-frame due
-      // to tangent frame instability. Slerp factor 0.35 gives responsive feel
-      // while damping high-frequency oscillation. See iteration 6 analysis.
+      // Orient player to face aim direction.
+      // Iteration 7: direct quaternion set (no slerp). The iteration 6 slerp was a
+      // bandaid for tangent frame oscillation from the swap logic. With dual
+      // Gram-Schmidt tangent frame (no swap), the aim direction is stable and
+      // slerp adds unnecessary orientation lag.
       if (aimDirection.lengthSq() > 0.001) {
         const playerRight = new THREE.Vector3().crossVectors(aimDirection, playerNormal).normalize();
         const playerForward = new THREE.Vector3().crossVectors(playerRight, playerNormal).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
-        const targetQuat = new THREE.Quaternion().setFromRotationMatrix(orientMat);
-        ctx.player.mesh.quaternion.slerp(targetQuat, 0.35);
+        ctx.player.mesh.quaternion.setFromRotationMatrix(orientMat);
       }
 
       // Store aim angle for bullets

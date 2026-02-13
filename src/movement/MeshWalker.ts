@@ -281,106 +281,52 @@ export class MeshWalker {
    * @param newNormal - The new surface normal
    * @param transportedTangent - Optional parallel-transported tangent from geodesic walk
    */
-  private _updateTangentFrame(newNormal: THREE.Vector3, transportedTangent?: THREE.Vector3): void {
+  // REGRESSION GUARD — Iteration 7 rewrite (dual Gram-Schmidt):
+  // Iterations 1-6 used the geodesic transported tangent + swap/sign logic.
+  // The swap oscillated at ~45° movement angles: after a swap, the NEXT frame's
+  // scores would flip back (keepScore≈0, swapScore≈2), causing the axes to toggle
+  // every frame. This propagated to targetUp → camRight → movement direction,
+  // causing lateral jerk and diagonal freeze.
+  //
+  // The new approach: project BOTH old axes onto the new tangent plane (dual
+  // Gram-Schmidt). This is purely geometry-driven — it tracks the surface
+  // orientation, NOT the movement direction. No swap logic, no swap oscillation.
+  // The transported tangent from geodesic walking is intentionally ignored for
+  // axis direction because it equals the movement direction, which is the wrong
+  // reference for a stable camera-up vector.
+  private _updateTangentFrame(newNormal: THREE.Vector3, _transportedTangent?: THREE.Vector3): void {
     const n = newNormal.clone().normalize();
 
-    if (transportedTangent) {
-      // Use the parallel-transported tangent from geodesic walking.
-      // This is the "natural" tangent direction along the geodesic path.
-      let newTangent = transportedTangent.clone().normalize();
-
-      // Project onto tangent plane (remove any normal component due to numerical error)
-      const dotN = newTangent.dot(n);
-      newTangent.addScaledVector(n, -dotN);
-
-      // Guard against zero-length tangent (transported tangent was parallel to normal)
-      const tangentLen = newTangent.length();
-      if (tangentLen < 0.001) {
-        // Tangent collapsed - fall back to surface method
-        const fallback = this.surface.getTangentFrame(n);
-        this._tangent.copy(fallback.tangent);
-        this._bitangent.copy(fallback.bitangent);
-        return;
-      }
-
-      newTangent.multiplyScalar(1 / tangentLen); // normalize safely
-
-      // Recompute the perpendicular direction from cross product (right-handed: bitangent = tangent × normal)
-      let newBitangent = new THREE.Vector3().crossVectors(newTangent, n);
-
-      // Guard against zero-length bitangent (shouldn't happen, but be safe)
-      const bitangentLen = newBitangent.length();
-      if (bitangentLen < 0.001) {
-        // Degenerate case - fall back to surface method
-        const fallback = this.surface.getTangentFrame(n);
-        this._tangent.copy(fallback.tangent);
-        this._bitangent.copy(fallback.bitangent);
-        return;
-      }
-
-      newBitangent.multiplyScalar(1 / bitangentLen); // normalize safely
-
-      // The transported tangent from geodesic is the tangent TO THE PATH, not necessarily
-      // aligned with our frame's "tangent" axis. When moving along the bitangent direction,
-      // the path tangent IS the bitangent. We need to maintain consistent axis assignment
-      // across frames to avoid swapping.
-      //
-      // Check which assignment maintains better continuity:
-      // Option A: keep as-is (tangent=newTangent, bitangent=newBitangent)
-      // Option B: swap them (tangent=newBitangent, bitangent=newTangent)
-      const dotTT = Math.abs(newTangent.dot(this._tangent));
-      const dotBB = Math.abs(newBitangent.dot(this._bitangent));
-      const dotTB = Math.abs(newTangent.dot(this._bitangent));
-      const dotBT = Math.abs(newBitangent.dot(this._tangent));
-
-      const keepScore = dotTT + dotBB;  // tangent stays tangent, bitangent stays bitangent
-      const swapScore = dotTB + dotBT;  // tangent becomes bitangent, bitangent becomes tangent
-
-      // REGRESSION GUARD: Hysteresis threshold prevents flip-flop oscillation.
-      // Without this, when keepScore ≈ swapScore (movement at ~45° to axes),
-      // the swap can toggle every frame, causing the tangent frame to oscillate.
-      // This oscillation propagates to camera.up and player orientation, visible
-      // as "chevron spinning" and "map jumping" at 60 FPS (but hidden at 7 FPS
-      // Puppeteer because 8 fixed steps average out per rendered frame).
-      // The 0.1 threshold requires a clear advantage before swapping axes.
-      if (swapScore > keepScore + 0.1) {
-        // Swap them to maintain axis roles
-        const temp = newTangent;
-        newTangent = newBitangent;
-        newBitangent = temp;
-      }
-
-      // Now apply sign continuity to maintain direction
-      if (newTangent.dot(this._tangent) < 0) {
-        newTangent.negate();
-      }
-      if (newBitangent.dot(this._bitangent) < 0) {
-        newBitangent.negate();
-      }
-
-      this._tangent.copy(newTangent);
-      this._bitangent.copy(newBitangent);
-      return;
-    }
-
-    // Fallback: Gram-Schmidt projection for BVH-based movement
-    // Project old tangent onto new tangent plane (Gram-Schmidt against new normal)
-    const dot = this._tangent.dot(n);
-    this._tangent.sub(n.clone().multiplyScalar(dot));
-
+    // Project old tangent onto new tangent plane (Gram-Schmidt)
+    const dotT = this._tangent.dot(n);
+    this._tangent.addScaledVector(n, -dotT);
     const tangentLen = this._tangent.length();
+
     if (tangentLen < 0.001) {
-      // Tangent collapsed (normal did a 90-degree flip) - fall back to surface method
+      // Tangent collapsed (normal flipped ~90°) — fall back to surface method
       const fallback = this.surface.getTangentFrame(n);
       this._tangent.copy(fallback.tangent);
       this._bitangent.copy(fallback.bitangent);
       return;
     }
-
     this._tangent.multiplyScalar(1 / tangentLen);
 
-    // Recompute bitangent from cross product (right-handed: bitangent = tangent × normal)
-    this._bitangent.crossVectors(this._tangent, n).normalize();
+    // Project old bitangent onto new tangent plane (Gram-Schmidt)
+    const dotB = this._bitangent.dot(n);
+    this._bitangent.addScaledVector(n, -dotB);
+    const bitangentLen = this._bitangent.length();
+
+    if (bitangentLen < 0.001) {
+      // Bitangent collapsed — recompute from cross product
+      this._bitangent.crossVectors(this._tangent, n).normalize();
+      return;
+    }
+    this._bitangent.multiplyScalar(1 / bitangentLen);
+
+    // Re-orthogonalize: ensure bitangent is perpendicular to tangent
+    // (dual projection can lose exact orthogonality due to floating point)
+    const dotTB = this._bitangent.dot(this._tangent);
+    this._bitangent.addScaledVector(this._tangent, -dotTB).normalize();
   }
 
   /**

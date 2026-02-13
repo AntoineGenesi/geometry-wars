@@ -771,7 +771,7 @@ export class PlaygroundGame {
         const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
         const targetQuat = this._tmpQuat.setFromRotationMatrix(orientMat);
-        this.player.mesh.quaternion.slerp(targetQuat, 0.35);
+        this.player.mesh.quaternion.copy(targetQuat);
       }
 
       this.player.aimAngle = Math.atan2(input.aimX, -input.aimY);
@@ -785,7 +785,7 @@ export class PlaygroundGame {
         const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
         const targetQuat = this._tmpQuat.setFromRotationMatrix(orientMat);
-        this.player.mesh.quaternion.slerp(targetQuat, 0.35);
+        this.player.mesh.quaternion.copy(targetQuat);
       }
 
       this.player.aimAngle = Math.atan2(input.aimX, -input.aimY);
