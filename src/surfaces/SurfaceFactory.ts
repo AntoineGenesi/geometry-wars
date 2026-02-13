@@ -114,7 +114,8 @@ export class SurfaceFactory {
     // Validate triangle count
     if (loadedMesh.triangleCount > 100000) {
       throw new Error(
-        `Mesh too large: ${loadedMesh.triangleCount} triangles (max: 100,000)`
+        `Mesh too large: ${loadedMesh.triangleCount} triangles (max: 100,000). ` +
+        `Reduce polygon count in Blender using the Decimate modifier (target 50-80k triangles).`
       );
     }
 

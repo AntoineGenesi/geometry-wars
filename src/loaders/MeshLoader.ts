@@ -75,7 +75,7 @@ function extractGeometries(root: THREE.Object3D): THREE.BufferGeometry[] {
  */
 function mergeAndClean(geometries: THREE.BufferGeometry[]): THREE.BufferGeometry {
   if (geometries.length === 0) {
-    throw new Error('No meshes found in loaded model');
+    throw new Error('No mesh geometry found in loaded model. The file may be empty or contain only lights/cameras (not geometry).');
   }
 
   if (geometries.length === 1) {
@@ -99,7 +99,7 @@ function mergeAndClean(geometries: THREE.BufferGeometry[]): THREE.BufferGeometry
 
   const merged = mergeGeometries(stripped, false);
   if (!merged) {
-    throw new Error('Failed to merge geometries');
+    throw new Error('Failed to merge geometries. This usually indicates a corrupted model file. Try re-exporting from Blender or another 3D tool.');
   }
 
   merged.computeVertexNormals();
@@ -206,7 +206,7 @@ function processLoadedObject(root: THREE.Object3D, targetRadius: number): Loaded
   const geometries = extractGeometries(root);
 
   if (geometries.length === 0) {
-    throw new Error('No mesh geometry found in loaded model');
+    throw new Error('No mesh geometry found in loaded model. Ensure the file contains visible geometry (not hidden or empty layers).');
   }
 
   // Merge into single geometry
