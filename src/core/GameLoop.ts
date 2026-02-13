@@ -9,6 +9,7 @@ import { UIHelpers } from '../ui/UIHelpers';
 import { BUFF_DEFINITIONS } from '../buffs/BuffManager';
 import { GlowTrail } from '../effects/GlowTrail';
 import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
+import { exportLogsToServer } from '../utils/PerformanceExporter';
 
 /**
  * GameLoop contains the fixed-timestep game update logic, extracted from main.ts onFixedUpdate.
@@ -101,6 +102,10 @@ export class GameLoop {
         ctx.perfTracker.saveSession();
         ctx.perfLogger.saveSession();
         ctx.ddaLogger.finalize(); // Persist DDA session log to localStorage
+
+        // Export logs to disk with git version tagging
+        this.exportLogsToDisk();
+
         // Short delay before showing game over screen
         setTimeout(() => {
           ctx.gameOverScreen.show(ctx.player.score, ctx.surfaceType);
@@ -638,5 +643,30 @@ export class GameLoop {
 
     // Clear per-frame input flags
     ctx.input.endFrame();
+  }
+
+  /**
+   * Export performance and DDA logs to disk via server endpoint.
+   * Called automatically on game over and level complete.
+   * Runs asynchronously - does not block game logic.
+   */
+  private exportLogsToDisk(): void {
+    // Determine server URL (default to localhost:2567 for dev mode)
+    const serverUrl = process.env.NODE_ENV === 'production'
+      ? window.location.origin  // Same origin in production
+      : 'http://localhost:2567'; // Dev server
+
+    // Export asynchronously - don't block game flow
+    exportLogsToServer(serverUrl, true, true)
+      .then((result) => {
+        if (result.success) {
+          console.log('[GameLoop] Performance logs exported:', result.results);
+        } else {
+          console.warn('[GameLoop] Failed to export logs:', result.error);
+        }
+      })
+      .catch((err) => {
+        console.error('[GameLoop] Export error:', err);
+      });
   }
 }

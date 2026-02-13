@@ -69,6 +69,7 @@ export class DebugOverlay {
           <span class="debug-value" id="debug-bullets">--</span>
         </div>
         <button class="debug-toggle-top" id="debug-toggle-top" title="Toggle top-10 moments">TOP 10</button>
+        <button class="debug-export-logs" id="debug-export-logs" title="Export performance logs to disk">EXPORT</button>
       </div>
       <div class="debug-top-panel hidden" id="debug-top-panel">
         <div class="debug-top-content" id="debug-top-content"></div>
@@ -93,6 +94,48 @@ export class DebugOverlay {
         this.renderTopPanel();
       } else {
         this.topPanel.classList.add('hidden');
+      }
+    });
+
+    // Export logs button
+    const exportBtn = document.getElementById('debug-export-logs');
+    exportBtn?.addEventListener('click', async () => {
+      try {
+        // Dynamic import to avoid bundling in production if not needed
+        const { exportLogsToServer, downloadLogsAsFiles } = await import('../utils/PerformanceExporter');
+
+        // Try server export first
+        const serverUrl = process.env.NODE_ENV === 'production'
+          ? window.location.origin
+          : 'http://localhost:2567';
+
+        exportBtn.textContent = 'EXPORTING...';
+        exportBtn.setAttribute('disabled', 'true');
+
+        const result = await exportLogsToServer(serverUrl, true, true);
+
+        if (result.success) {
+          exportBtn.textContent = 'EXPORTED ✓';
+          console.log('[DebugOverlay] Logs exported to disk:', result.results);
+        } else {
+          // Fallback to browser download
+          console.warn('[DebugOverlay] Server export failed, downloading files instead');
+          downloadLogsAsFiles(true, true);
+          exportBtn.textContent = 'DOWNLOADED ✓';
+        }
+
+        // Reset button after 2 seconds
+        setTimeout(() => {
+          exportBtn.textContent = 'EXPORT';
+          exportBtn.removeAttribute('disabled');
+        }, 2000);
+      } catch (err) {
+        console.error('[DebugOverlay] Export error:', err);
+        exportBtn.textContent = 'ERROR';
+        setTimeout(() => {
+          exportBtn.textContent = 'EXPORT';
+          exportBtn.removeAttribute('disabled');
+        }, 2000);
       }
     });
 
@@ -325,6 +368,33 @@ export class DebugOverlay {
     #debug-overlay .debug-toggle-top:hover {
       background: rgba(40, 60, 100, 0.8);
       color: #88aacc;
+    }
+
+    #debug-overlay .debug-export-logs {
+      display: block;
+      width: 100%;
+      margin-top: 4px;
+      padding: 3px 0;
+      background: rgba(40, 100, 60, 0.5);
+      border: 1px solid rgba(60, 120, 80, 0.5);
+      border-radius: 3px;
+      color: #aaccaa;
+      font-size: 10px;
+      font-weight: bold;
+      letter-spacing: 1px;
+      cursor: pointer;
+      pointer-events: auto;
+      transition: background 0.15s;
+    }
+
+    #debug-overlay .debug-export-logs:hover {
+      background: rgba(40, 100, 60, 0.8);
+      color: #88cc88;
+    }
+
+    #debug-overlay .debug-export-logs:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
     }
 
     #debug-overlay .debug-top-panel {

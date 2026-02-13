@@ -5,6 +5,7 @@ import { WebSocketTransport } from '@colyseus/ws-transport';
 import { GameRoom } from './rooms/GameRoom';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { exportPerformanceLogs, exportGameStateLogs } from '../scripts/export-perf-logs.mjs';
 
 // ESM compatibility for __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -21,8 +22,12 @@ const app = express();
 app.use((_req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   next();
 });
+
+// JSON body parser for POST endpoints
+app.use(express.json({ limit: '10mb' }));
 
 // Serve static files from dist folder in production
 app.use(express.static(path.join(__dirname, '../dist')));
@@ -61,6 +66,35 @@ app.get('/api/rooms', async (_req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ rooms: [], error: message });
+  }
+});
+
+// Performance log export endpoint
+app.post('/api/export-perf-logs', (req, res) => {
+  try {
+    const { performanceData, ddaData, gitCommit } = req.body;
+
+    const results: { performance?: { filepath: string }; gameState?: { filepath: string } } = {};
+
+    // Export performance data if provided
+    if (performanceData) {
+      const result = exportPerformanceLogs(performanceData, gitCommit || null);
+      results.performance = result;
+      console.log(`[Server] Exported performance logs to: ${result.filepath}`);
+    }
+
+    // Export DDA/game-state data if provided
+    if (ddaData) {
+      const result = exportGameStateLogs(ddaData, gitCommit || null);
+      results.gameState = result;
+      console.log(`[Server] Exported game state logs to: ${result.filepath}`);
+    }
+
+    res.json({ success: true, results });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[Server] Export failed:', message);
+    res.status(500).json({ success: false, error: message });
   }
 });
 
