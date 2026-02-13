@@ -400,6 +400,68 @@ export class PlaygroundGame {
     this.config.surface = type;
   }
 
+  /**
+   * Switch to a custom surface (e.g., from CustomMeshRegistry).
+   * Similar to setSurface() but accepts a Surface object directly.
+   */
+  setCustomSurface(surface: Surface): void {
+    // Remove old
+    this.game.scene.remove(this._surface.group);
+    this._surface.dispose();
+
+    // Set new
+    this._surface = surface;
+    this._surfaceType = 'custom' as SurfaceType; // Mark as custom
+    this.game.scene.add(this._surface.group);
+    this._surface.mesh.updateMatrixWorld(true);
+    this._meshSurface = new MeshSurface(this._surface.mesh);
+
+    // Re-wire systems
+    this.bulletPool.setMeshSurface(this._meshSurface);
+    this.wireBulletPool();
+    this.weaponManager.setMeshSurface(this._meshSurface);
+    this.depthOcclusion.setSurfaceMesh(this._surface.mesh);
+
+    // Reset player
+    const startPoint = this._surface.getPoint(0.5, 0.5);
+    this._walker = new MeshWalker(this._meshSurface, startPoint.position, PLAYER_MOVE_SPEED);
+    this.player.respawn(0.5, 0.5);
+
+    if (this._isUVBasedSurface()) {
+      // UV-based surfaces: use surface point directly
+      this.player.mesh.position.copy(startPoint.position);
+
+      // Immediately reposition camera
+      // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
+      const idealCamPos = startPoint.normal.clone().multiplyScalar(this.config.cameraDistance).add(startPoint.position);
+      this.game.camera.position.copy(idealCamPos);
+      this.game.camera.up.copy(startPoint.tangentV);
+      this.game.camera.lookAt(startPoint.position);
+    } else {
+      // MeshWalker surfaces
+      this.player.mesh.position.copy(this._walker.position);
+
+      // Immediately reposition camera (avoid spiral convergence on new surface)
+      // REGRESSION GUARD: camera.up = bitangent, NOT normal. See decisions/playground-spinning-fix.md.
+      const n = this._walker.normal;
+      const p = this._walker.position;
+      const surfFrame = this._walker.getTangentFrame();
+      const idealCamPos = n.clone().multiplyScalar(this.config.cameraDistance).add(p);
+      this.game.camera.position.copy(idealCamPos);
+      this.game.camera.up.copy(surfFrame.bitangent);
+      this.game.camera.lookAt(p);
+    }
+
+    // Reset enemies (spawner needs new transform fn — create a new one)
+    this.enemySpawner.clear();
+    // EnemySpawner doesn't have setTransformFn, so we create a new spawner
+    (this as any).enemySpawner = new EnemySpawner(this.game.scene, this.getTransformFn());
+    this.enemySpawner.setSurfaceSpeedScale(this._surface.speedScale);
+    this.enemySpawner.setSurface(this._surface);
+    this.enemySpawner.setMeshSurface(this._meshSurface);
+    this.spawnEnemies(this.config.enemyCount);
+  }
+
   /** Resize the canvas. */
   resize(width: number, height: number): void {
     this.config.width = width;
