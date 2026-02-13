@@ -65,6 +65,63 @@ function computeCV(values) {
   return Math.sqrt(variance) / mean;
 }
 
+/**
+ * Make the player invincible and ensure they're alive.
+ * Called repeatedly during game init to catch the player ASAP.
+ * Returns true if player was found and made invincible.
+ */
+async function makeInvincible(page) {
+  return await page.evaluate(() => {
+    const dbg = window.__gameDebug;
+    if (!dbg || !dbg.player) return false;
+
+    const p = dbg.player;
+
+    // Override death/damage functions
+    p.takeDamage = () => {};
+    p.die = () => {};
+    p.lives = 99;
+
+    // If player is dead, try to revive
+    if (!p.alive) {
+      p.alive = true;
+      p.health = 1;
+      // Reset velocity/state if available
+      if (p.velocity) { p.velocity.set(0, 0, 0); }
+    }
+
+    // Try to clear all enemies so player can't die
+    if (dbg.game) {
+      const g = dbg.game;
+      // Clear enemy arrays if available
+      if (g.enemies) {
+        for (const e of g.enemies) {
+          if (e.mesh) { e.mesh.visible = false; }
+          if (e.alive !== undefined) { e.alive = false; }
+        }
+      }
+      // Try EnemyManager
+      if (g.enemyManager) {
+        if (g.enemyManager.enemies) {
+          for (const e of g.enemyManager.enemies) {
+            if (e.mesh) { e.mesh.visible = false; }
+            if (e.alive !== undefined) { e.alive = false; }
+          }
+        }
+        // Disable spawning
+        if (typeof g.enemyManager.setEnabled === 'function') {
+          g.enemyManager.setEnabled(false);
+        }
+        if (g.enemyManager.spawning !== undefined) {
+          g.enemyManager.spawning = false;
+        }
+      }
+    }
+
+    return p.alive === true;
+  });
+}
+
 async function testSurface(page, surface) {
   console.log(`\n${'='.repeat(60)}`);
   console.log(`=== SURFACE: ${surface} ===`);
@@ -75,27 +132,46 @@ async function testSurface(page, surface) {
   // Navigate to surface
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
   console.log(`  Loading ${surface}...`);
-  await sleep(20000); // Wait for game init
 
-  // Make player invincible
-  await page.evaluate(() => {
-    const dbg = window.__gameDebug;
-    if (!dbg || !dbg.player) return;
-    dbg.player.lives = 99;
-    dbg.player.takeDamage = () => {};
-    dbg.player.die = () => {};
-    if (!dbg.player.alive) {
-      dbg.player.alive = true;
-      dbg.player.health = 1;
+  // Wait for game init, but keep trying to make player invincible
+  // Start checking at 5 seconds, then every 2 seconds
+  let invincible = false;
+  for (let waitTime = 0; waitTime < 25000; waitTime += 2000) {
+    await sleep(Math.min(2000, waitTime === 0 ? 5000 : 2000));
+    invincible = await makeInvincible(page);
+    if (invincible) {
+      console.log(`  Player found and made invincible after ~${waitTime + 2000}ms`);
     }
+    // Keep trying even after success, to catch respawns
+  }
+
+  // Final check + make invincible one more time
+  await makeInvincible(page);
+  await sleep(1000);
+  await makeInvincible(page);
+
+  // Detailed state check
+  const state = await page.evaluate(() => {
+    const dbg = window.__gameDebug;
+    if (!dbg) return { hasDebug: false };
+    return {
+      hasDebug: true,
+      hasPlayer: !!dbg.player,
+      playerAlive: dbg.player?.alive,
+      playerPos: dbg.player?.mesh?.position ? {
+        x: dbg.player.mesh.position.x,
+        y: dbg.player.mesh.position.y,
+        z: dbg.player.mesh.position.z,
+      } : null,
+      hasGame: !!dbg.game,
+      hasCamera: !!dbg.game?.camera,
+    };
   });
 
-  await sleep(2000);
+  console.log(`  State: debug=${state.hasDebug}, player=${state.hasPlayer}, alive=${state.playerAlive}, pos=${state.playerPos ? `(${state.playerPos.x.toFixed(2)},${state.playerPos.y.toFixed(2)},${state.playerPos.z.toFixed(2)})` : 'null'}, game=${state.hasGame}, camera=${state.hasCamera}`);
 
-  // Check player alive
-  const alive = await page.evaluate(() => window.__gameDebug?.player?.alive);
-  if (!alive) {
-    console.log(`  SKIP: Player not alive on ${surface}`);
+  if (!state.playerAlive) {
+    console.log(`  SKIP: Player not alive on ${surface} — game may not have loaded`);
     return null;
   }
 

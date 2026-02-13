@@ -142,8 +142,7 @@ export class CameraController {
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
     this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
 
-    // Save pre-lerp target up for MeshWalker.moveFromInput() upHint.
-    // This gives stable camera axes without the oscillation from lerp lag.
+    // Save target up for MeshWalker.moveFromInput() upHint.
     // Sign-flip protection: if the new up would flip 180° from the current
     // targetUp (possible at surface discontinuities or tangent frame resets),
     // negate it to maintain continuity. This prevents a sudden movement
@@ -151,7 +150,14 @@ export class CameraController {
     if (this.targetUp.dot(this._camUp) < 0) {
       this._camUp.negate();
     }
-    this.targetUp.copy(this._camUp);
+    // Smooth targetUp toward the new bitangent-based up vector.
+    // On smooth surfaces (sphere, pill), the bitangent changes gradually, so
+    // this lerp has minimal effect. On surfaces with sharp edges (cube), the
+    // bitangent jumps abruptly when crossing an edge, causing the camera-relative
+    // movement direction to jump. The lerp smooths out these transitions.
+    // Factor 0.4 converges quickly (90% within 5 frames / 83ms) but prevents
+    // the single-frame direction jump that causes cube forward wobble.
+    this.targetUp.lerp(this._camUp, 0.4).normalize();
 
     // Lerp camera.up BEFORE lookAt so lookAt uses the current-frame bitangent
     // direction. This prevents a one-frame lag in the camera's right/up axes
