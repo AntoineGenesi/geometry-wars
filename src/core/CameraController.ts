@@ -144,6 +144,13 @@ export class CameraController {
 
     // Save pre-lerp target up for MeshWalker.moveFromInput() upHint.
     // This gives stable camera axes without the oscillation from lerp lag.
+    // Sign-flip protection: if the new up would flip 180° from the current
+    // targetUp (possible at surface discontinuities or tangent frame resets),
+    // negate it to maintain continuity. This prevents a sudden movement
+    // direction reversal when the bitangent flips sign.
+    if (this.targetUp.dot(this._camUp) < 0) {
+      this._camUp.negate();
+    }
     this.targetUp.copy(this._camUp);
 
     // Lerp camera.up BEFORE lookAt so lookAt uses the current-frame bitangent

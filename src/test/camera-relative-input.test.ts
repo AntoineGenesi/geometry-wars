@@ -339,4 +339,139 @@ describe('Camera-Relative Input', () => {
       expect(reversals).toBe(0);
     });
   });
+
+  describe('iteration 7 — lateral jerk and diagonal freeze regression', () => {
+    it('lateral movement should produce smooth, continuous displacement (no periodic jerk)', () => {
+      // Simulates the exact scenario from iter 6 user feedback:
+      // Press D for 120 frames, measure per-frame displacement.
+      // A "jerk" is a frame where displacement deviates >3x from the average.
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const dt = 1 / 60;
+
+      const displacements: number[] = [];
+      let prevPos = walker.position.clone();
+
+      for (let i = 0; i < 120; i++) {
+        const frame = walker.getTangentFrame();
+        walker.moveFromInput(1, 0, camera, dt, frame.bitangent);
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+
+        const disp = walker.position.distanceTo(prevPos);
+        displacements.push(disp);
+        prevPos.copy(walker.position);
+      }
+
+      // Compute average displacement (skip first frame which may have camera convergence)
+      const avg = displacements.slice(5).reduce((a, b) => a + b) / (displacements.length - 5);
+
+      // Count "jerks" — frames where displacement is <0.3x or >3x average
+      let jerks = 0;
+      for (let i = 5; i < displacements.length; i++) {
+        if (displacements[i] < avg * 0.3 || displacements[i] > avg * 3) {
+          jerks++;
+        }
+      }
+
+      // Should have 0 jerks. Previous iter 6 had periodic jerks ~4x/second.
+      expect(jerks).toBe(0);
+      // Average displacement should be reasonable (speed 3 * dt 1/60 ≈ 0.05)
+      expect(avg).toBeGreaterThan(0.01);
+      expect(avg).toBeLessThan(0.2);
+    });
+
+    it('diagonal movement (W+D) should produce non-zero displacement (not glitch in place)', () => {
+      // The iter 6 diagonal freeze: W+D caused player to vibrate in place
+      // with zero net displacement due to oscillating movement direction.
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const dt = 1 / 60;
+      const startPos = walker.position.clone();
+
+      // Normalized diagonal input (same as InputManager normalization)
+      const diagInput = 1 / Math.sqrt(2);
+
+      for (let i = 0; i < 120; i++) {
+        const frame = walker.getTangentFrame();
+        // W+D: inputX=diag, inputY=diag (positive Y = forward after -moveY negation)
+        walker.moveFromInput(diagInput, diagInput, camera, dt, frame.bitangent);
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+      }
+
+      const totalDisplacement = walker.position.distanceTo(startPos);
+      // 120 frames at speed 3, dt 1/60 → each frame ~0.05 units → ~6 units total
+      // Allow for curvature (arc vs straight line) but should be significant
+      expect(totalDisplacement).toBeGreaterThan(2);
+    });
+
+    it('lateral movement should maintain consistent direction over 2 seconds', () => {
+      // Check that holding D produces movement that's consistently "rightward"
+      // relative to the initial screen-right direction, without direction reversals.
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const dt = 1 / 60;
+
+      // Capture initial screen-right direction
+      const initialFrame = walker.getTangentFrame();
+      const initialRight = new THREE.Vector3();
+      const z = new THREE.Vector3().copy(camera.position).sub(walker.position).normalize();
+      initialRight.crossVectors(initialFrame.bitangent, z).normalize();
+
+      let prevPos = walker.position.clone();
+      let wrongDirectionFrames = 0;
+
+      for (let i = 0; i < 120; i++) {
+        const frame = walker.getTangentFrame();
+        walker.moveFromInput(1, 0, camera, dt, frame.bitangent);
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+
+        // Check displacement direction vs initial right
+        const displacement = new THREE.Vector3().subVectors(walker.position, prevPos);
+        if (displacement.length() > 0.001) {
+          const dotRight = displacement.normalize().dot(initialRight);
+          // On a sphere, the "right" direction curves, so we allow up to 90° drift
+          // (cos(90°) = 0). But movement should never go LEFT (dot < -0.3).
+          if (dotRight < -0.3) {
+            wrongDirectionFrames++;
+          }
+        }
+        prevPos.copy(walker.position);
+      }
+
+      // Should never move in the wrong direction
+      expect(wrongDirectionFrames).toBe(0);
+    });
+
+    it('diagonal movement on torus should also produce non-zero displacement', () => {
+      const surf = SurfaceFactory.create('torus', { tubeRadius: 2, torusRadius: 5 });
+      surf.mesh.updateMatrixWorld(true);
+      const meshSurface = new MeshSurface(surf.mesh);
+      const startPos = surf.getPoint(0.5, 0.5).position;
+      const walker = new MeshWalker(meshSurface, startPos, 3);
+      const camera = makeTopDownCamera(walker);
+      const dt = 1 / 60;
+      const diagInput = 1 / Math.sqrt(2);
+      const start = walker.position.clone();
+
+      for (let i = 0; i < 120; i++) {
+        const frame = walker.getTangentFrame();
+        walker.moveFromInput(diagInput, diagInput, camera, dt, frame.bitangent);
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+      }
+
+      expect(walker.position.distanceTo(start)).toBeGreaterThan(2);
+    });
+  });
 });

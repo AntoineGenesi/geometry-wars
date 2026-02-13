@@ -303,6 +303,72 @@ PlaygroundGame camera lerp: 0.1→0.2 (position), 0.08→0.18 (up).
 5. **Diagonal input normalization** — When W+A are both pressed, is the input vector normalized? If not, diagonal movement is 1.41x faster, which combined with overshooting could cause the "glitch in place."
 6. **Double movement calls** — Check if both GameLoop AND PlaygroundGame are calling moveFromInput, resulting in double movement per frame.
 
+## Iteration 7 — DUAL GRAM-SCHMIDT (Root Cause Elimination)
+
+### Why Iteration 6 Failed
+
+The swap hysteresis (threshold 0.1) was fundamentally insufficient. After a swap, the score difference becomes ~2.0:
+- Frame N: `swapScore > keepScore + 0.1` → swap fires (scores are close to equal at ~45°)
+- Frame N+1: Post-swap axes are ~45° rotated → `keepScore ≈ 0, swapScore ≈ 2` → immediate swap-back
+- Any hysteresis < 1.0 still oscillates. Hysteresis > 1.0 prevents ALL swaps (effectively removes the feature).
+
+The slerp (0.35) and camera convergence (0.25) were bandaids that masked but didn't fix the oscillation. User saw periodic jerk (swap oscillation peaking through slerp dampening) and diagonal freeze (lateral oscillation cancelling net displacement).
+
+### The Fix: Remove Swap Entirely
+
+**Dual Gram-Schmidt projection** replaces the entire swap-based tangent frame update:
+
+```typescript
+// Project old tangent onto new tangent plane
+tangent -= (tangent · normal) * normal
+normalize(tangent)
+
+// Project old bitangent onto new tangent plane
+bitangent -= (bitangent · normal) * normal
+normalize(bitangent)
+
+// Re-orthogonalize
+bitangent -= (bitangent · tangent) * tangent
+normalize(bitangent)
+```
+
+**Why this works:**
+- No swap = no oscillation, period. Root cause eliminated.
+- Geometry-driven, not movement-driven: frame evolves with surface, not input direction
+- Equivalent to parallel transport for small steps: per-frame error is O(displacement × curvature)
+- Compatible with all surfaces (smooth + sharp via BVH fallback)
+
+**What was removed:**
+- Swap logic in `_updateTangentFrame` (30 lines of keepScore/swapScore/threshold)
+- Orientation slerp(0.35) in GameLoop.ts and PlaygroundGame.ts (bandaid for oscillation)
+- The `_transportedTangent` parameter is now ignored (prefixed with `_`)
+
+**What was added:**
+- Dual Gram-Schmidt in `_updateTangentFrame` (15 lines)
+- Sign-flip protection on `CameraController.targetUp` (3 lines)
+- 4 regression tests targeting lateral jerk and diagonal freeze
+
+### Dead Ends Ruled Out
+
+| Approach | Why It Doesn't Work |
+|----------|-------------------|
+| Increase hysteresis to 0.5+ | Post-swap scores are ~2.0 apart; would need >1.0 which prevents ALL swaps |
+| Swap cooldown (30 frames) | Hack — allows a one-time 40° axis jump that creates visible jerk |
+| Smooth targetUp with exponential decay | Adds lag (failed in iteration 5 as camera.up lerp lag) |
+| Higher slerp factor | Dampens but doesn't eliminate oscillation; makes controls feel sluggish |
+
+### Verification
+
+- 18/18 camera-relative input tests pass (14 existing + 4 new)
+- 27/27 surface trouble zone tests pass
+- 17/17 movement integration tests pass
+- TypeScript compiles clean (only pre-existing test file errors)
+- **Level 2 verification — User testing required for Level 6**
+
+### Decision Log
+
+Full analysis at `decisions/tangent-frame-dual-gram-schmidt.md`
+
 ## Rules for Future Iterations
 
 1. READ THIS FILE FIRST
