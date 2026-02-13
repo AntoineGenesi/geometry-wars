@@ -10,3 +10,4 @@ screenshots/
 *.png
 test-results/
 /tmp/
+.claude/worktrees/
