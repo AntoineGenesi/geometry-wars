@@ -1359,4 +1359,4 @@ async function main(): Promise<void> {
   }
 }
 
-main();
+main().catch(err => console.error('[MultiplayerMain] Game initialization failed:', err));

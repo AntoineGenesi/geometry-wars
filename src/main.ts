@@ -1521,12 +1521,12 @@ if (quickStartConfig.enabled) {
   // Quick start mode: skip menu, start game immediately with seed
   console.log(`[Main] Quick start mode: ${quickStartConfig.surface}, seed=${quickStartConfig.seed ?? 'random'}`);
   if (quickStartConfig.seed !== undefined) {
-    import('./core/SeededRandom').then(({ setGameSeed }) => {
+    import('./core/SeededRandom').then(async ({ setGameSeed }) => {
       setGameSeed(quickStartConfig.seed!);
-      main(quickStartConfig.surface, -1); // -1 = endless mode
+      await main(quickStartConfig.surface, -1); // -1 = endless mode
     });
   } else {
-    main(quickStartConfig.surface, -1);
+    main(quickStartConfig.surface, -1).catch(err => console.error('[Main] Game initialization failed:', err));
   }
 } else if (isBenchmarkMode()) {
   import('./benchmark').then(({ runBenchmark }) => {
@@ -1545,7 +1545,7 @@ if (quickStartConfig.enabled) {
   // Show start menu
   const startMenu = new StartMenu();
 
-  startMenu.onStart((selection: MenuSelection) => {
+  startMenu.onStart(async (selection: MenuSelection) => {
     console.log(`[Main] Starting game: ${selection.gameMode} on ${selection.surfaceType}`);
     startMenu.dispose();
 
@@ -1582,7 +1582,7 @@ if (quickStartConfig.enabled) {
       // Single player - Quick Game (endless) or Adventure level
       const levelIdx = selection.levelIndex ?? -1; // -1 = endless Quick Game
       window.history.replaceState({}, '', buildUrl({ surface: selection.surfaceType, level: String(levelIdx) }));
-      main(selection.surfaceType, levelIdx, selection.customMeshUrl);
+      await main(selection.surfaceType, levelIdx, selection.customMeshUrl);
     }
   });
 }

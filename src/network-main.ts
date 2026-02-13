@@ -286,7 +286,7 @@ const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
 // Main
 // ---------------------------------------------------------------------------
 
-function main() {
+async function main(): Promise<void> {
   // Initialize audio (same as co-op).
   // AudioContext may already be initialized if coming from StartMenu (where we
   // call init() synchronously within the click handler). If coming from a direct
@@ -1873,4 +1873,4 @@ function main() {
   } // end if (debugEnabled)
 }
 
-main();
+main().catch(err => console.error('[NetworkMain] Game initialization failed:', err));
