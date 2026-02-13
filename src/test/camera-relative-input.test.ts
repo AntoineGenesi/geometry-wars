@@ -135,6 +135,84 @@ describe('Camera-Relative Input', () => {
     });
   });
 
+  describe('upHint stable camera axes', () => {
+    it('should move right with upHint=bitangent (same as camera quaternion path)', () => {
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const frame = walker.getTangentFrame();
+
+      // With upHint
+      const { walker: w2 } = createWalkerOnSphere();
+      const cam2 = makeTopDownCamera(w2);
+
+      const start1 = walker.position.clone();
+      walker.moveFromInput(1, 0, camera, 0.1, frame.bitangent);
+      const dir1 = walker.position.clone().sub(start1).normalize();
+
+      const start2 = w2.position.clone();
+      w2.moveFromInput(1, 0, cam2, 0.1);
+      const dir2 = w2.position.clone().sub(start2).normalize();
+
+      // Both paths should produce very similar direction
+      const dot = dir1.dot(dir2);
+      expect(dot).toBeGreaterThan(0.95);
+    });
+
+    it('should produce stable direction over many frames even with camera up lerp lag', () => {
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const dt = 1 / 60;
+
+      // Simulate camera.up lagging behind (lerp factor 0.12 like CameraController)
+      // On a sphere, moving laterally changes the bitangent direction.
+      // With the legacy path, the lerped camera.up would cause direction oscillation.
+      // With upHint, it should be stable.
+      const directions: THREE.Vector3[] = [];
+
+      for (let i = 0; i < 30; i++) {
+        const startPos = walker.position.clone();
+        const frame = walker.getTangentFrame();
+
+        // Move with upHint (stable path)
+        walker.moveFromInput(1, 0, camera, dt, frame.bitangent);
+
+        const displacement = walker.position.clone().sub(startPos);
+        if (displacement.lengthSq() > 0.0001) {
+          directions.push(displacement.normalize());
+        }
+
+        // Simulate camera following with lerp (like CameraController does)
+        const targetCamPos = walker.normal.clone().multiplyScalar(15).add(walker.position);
+        camera.position.lerp(targetCamPos, 0.12);
+        const newFrame = walker.getTangentFrame();
+        (camera as THREE.PerspectiveCamera).up.lerp(newFrame.bitangent, 0.12).normalize();
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+      }
+
+      // Verify no direction sign flips (all should be roughly the same direction)
+      expect(directions.length).toBeGreaterThan(10);
+      let signFlips = 0;
+      for (let i = 1; i < directions.length; i++) {
+        const dot = directions[i].dot(directions[0]);
+        if (dot < 0) signFlips++;
+      }
+      expect(signFlips).toBe(0);
+    });
+
+    it('should produce aim direction with upHint', () => {
+      const { walker } = createWalkerOnSphere();
+      const camera = makeTopDownCamera(walker);
+      const frame = walker.getTangentFrame();
+
+      const aimDir = walker.getAimDirection(1, 0, camera, frame.bitangent);
+
+      expect(aimDir.length()).toBeCloseTo(1.0, 1);
+      const dotNormal = Math.abs(aimDir.dot(walker.normal));
+      expect(dotNormal).toBeLessThan(0.05);
+    });
+  });
+
   describe('fallback for default/test cameras', () => {
     it('should still move with a default camera (not positioned above surface)', () => {
       const { walker } = createWalkerOnSphere();
