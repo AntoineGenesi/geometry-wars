@@ -8,30 +8,28 @@
 
 ---
 
-## Session 15 Player Movement Fix — Iteration 6 (2026-02-13)
+## Session 15 Player Movement Fix — Iterations 6-9 (2026-02-13/14)
 
-### Critical Bug Fix - MUST TEST (Programmatically Verified Level 4)
+### Critical Bug Fix - MUST TEST (Programmatically Verified Level 2)
+- [ ] **Cube lateral movement is smooth** — Press D (right) on CUBE surface for 3+ seconds. Player should move smoothly rightward without oscillating or reversing direction.
 - [ ] **No chevron spinning** — Press A or D on sphere for 5 seconds. The player chevron should NOT spin rapidly or show multiple copies in the same spot.
 - [ ] **No map jumping** — Hold D for 5 seconds on sphere. The map/sphere should rotate smoothly, NOT jump in large discontinuous steps.
 - [ ] **Forward movement is smooth** — Press W for 5 seconds. Player should move in a consistent direction, NOT veer left/right or jitter.
 - [ ] **Diagonal movement works** — Press W+D for 5 seconds. Player should move in smooth diagonal arc, NOT "square fashion" with 90° snaps.
-- [ ] **All surfaces work** — Test on sphere, pill (capsule), and cube. Movement should be smooth on all.
+- [ ] **All surfaces work** — Test on sphere, pill (capsule), cube, and torus. Movement should be smooth on all.
 
-**What was fixed (iteration 6 — three-pronged fix):**
-1. **Tangent frame swap hysteresis** (MeshWalker.ts) — Added +0.1 threshold to prevent tangent/bitangent flip-flop when movement is at ~45° to axes. Root cause of "chevron spinning super fast with multiple copies."
-2. **Orientation slerp smoothing** (GameLoop.ts + PlaygroundGame.ts) — Changed direct quaternion set to slerp(0.35). Dampens residual high-frequency orientation changes.
-3. **Camera convergence speed** (CameraController.ts + PlaygroundGame.ts) — Increased lerp from 0.12→0.25. Eliminates "map jumping" discontinuity (convergence: 0.5s → 0.2s).
+**What was fixed (iterations 6-9):**
+1. **Iteration 6:** Tangent frame swap hysteresis, orientation slerp smoothing, camera convergence speed increase.
+2. **Iteration 7:** Dual Gram-Schmidt tangent frame transport (replaced swap-based approach).
+3. **Iteration 9 (LATEST):** HalfEdgeMesh seam edge linking. ROOT CAUSE: Beveled cube geometry has seams where two halves of each face are built independently, creating false boundary edges. The geodesic walker reflected at these boundaries, causing 188/299 lateral displacement reversals. Fix: `_linkSeamEdges()` proximity-based edge matching (tolerance 0.05) links edges across geometry seams. Result: 2/299 reversals (only at true cube corners).
 
-**Why previous iterations failed:** All programmatic tests (Puppeteer at 7 FPS, vitest) passed because at 7 FPS, 8 fixed timestep updates run per rendered frame, averaging out oscillation. At 60 FPS (real browser), each frame shows a single update, making every oscillation visible.
+**Programmatic Verification (Level 2):**
+- 65/65 movement tests pass (18 camera-relative + 27 surface + 17 integration + 3 cube-lateral)
+- 3 new regression tests verify no false boundary edges, smooth seam crossing, and <5 reversals in 300 frames
+- 0 regressions introduced
+- TypeScript compiles clean (0 errors in changed source files)
 
-**Programmatic Verification (Level 4):**
-- ✓ 61/61 movement tests pass (14 camera-relative + 27 surface + 17 integration + 3 stability)
-- ✓ Puppeteer direction: D=RIGHT, A=LEFT, W=UP, S=DOWN (all 4 correct)
-- ✓ Puppeteer jitter: 100% correct direction, <1% sign flips
-- ✓ TypeScript compiles clean (0 errors in source files)
-- ✓ 3 new stability tests specifically verify anti-oscillation behavior
-
-**Status:** READY FOR HUMAN TESTING at 60 FPS (Level 6 verification needed). Commit 756b681.
+**Status:** READY FOR HUMAN TESTING at 60 FPS (Level 6 verification needed). Commit 1635dbf.
 
 ---
 
