@@ -90,6 +90,8 @@ export class HalfEdgeMesh {
     // 2. Build face data and half-edges
     // Edge map uses canonical vertex indices for twin matching
     const edgeMap = new Map<string, number>();
+    // Vertex normals for face normal consistency check (may be null)
+    const normalAttr = geometry.getAttribute('normal') as THREE.BufferAttribute | null;
 
     for (let fi = 0; fi < this.faceCount; fi++) {
       const a = index.getX(fi * 3);
@@ -107,6 +109,27 @@ export class HalfEdgeMesh {
       const normalLen = normal.length();
       if (normalLen > 1e-10) {
         normal.multiplyScalar(1 / normalLen);
+      }
+
+      // REGRESSION GUARD — Iteration 8: Fix inverted face normals.
+      // The cross product normal depends on winding order. Some meshes (e.g.,
+      // beveled cube from CubeSurface) have inconsistent winding, producing
+      // normals that point inward instead of outward for some faces.
+      // This caused the geodesic walker to reverse direction when crossing
+      // into an inverted-normal face (188/299 lateral reversals on cube).
+      //
+      // Fix: use the geometry's vertex normals (which are always outward-pointing
+      // per Three.js convention) to verify and flip the face normal if it
+      // disagrees with the average vertex normal.
+      if (normalAttr) {
+        const vn = new THREE.Vector3(
+          normalAttr.getX(a) + normalAttr.getX(b) + normalAttr.getX(c),
+          normalAttr.getY(a) + normalAttr.getY(b) + normalAttr.getY(c),
+          normalAttr.getZ(a) + normalAttr.getZ(b) + normalAttr.getZ(c),
+        );
+        if (vn.dot(normal) < 0) {
+          normal.negate();
+        }
       }
 
       this.faces[fi] = { a, b, c, pA, pB, pC, normal };
@@ -147,6 +170,90 @@ export class HalfEdgeMesh {
       const twinIdx = edgeMap.get(twinKey);
       if (twinIdx !== undefined && twinIdx !== i) {
         he.twin = twinIdx;
+      }
+    }
+
+    // 4. REGRESSION GUARD — Iteration 9: Fix geometry seam boundaries.
+    // Some meshes (e.g., beveled cube from CubeSurface) have seams where
+    // two halves of a flat face are built independently with DIFFERENT
+    // triangulations. The vertices along the seam have NEARLY matching
+    // positions (within ~0.02 world units) but are NOT exact duplicates.
+    // The canonical vertex approach (PRECISION=1e-5) can't match these.
+    //
+    // This caused 18 false boundary edges on the cube top face at Z=0,
+    // which made the geodesic walker reflect instead of crossing, producing
+    // 188/299 lateral reversals (the walker ping-pongs at the seam).
+    //
+    // Fix: after the initial twin-linking pass, find unmatched half-edges
+    // and try to match them with other unmatched half-edges whose endpoints
+    // are CLOSE in world space (within SEAM_TOLERANCE). This only runs on
+    // boundary edges, so it's O(B^2) where B is the number of boundaries
+    // (typically <100 even on complex meshes).
+    this._linkSeamEdges(posAttr);
+  }
+
+  /**
+   * Second-pass twin linking for geometry seam edges.
+   * Matches unmatched half-edges whose world-space endpoints are within tolerance,
+   * even if their vertex indices don't canonicalize to the same value.
+   */
+  private _linkSeamEdges(posAttr: THREE.BufferAttribute): void {
+    // Collect all unmatched (boundary) half-edges
+    const unmatched: number[] = [];
+    for (let i = 0; i < this.halfEdges.length; i++) {
+      if (this.halfEdges[i].twin < 0) {
+        unmatched.push(i);
+      }
+    }
+
+    if (unmatched.length === 0) return;
+
+    // Tolerance for position matching across seams.
+    // Cube beveled geometry has vertex offsets of ~0.017 along seams.
+    // Use 0.05 to be safe, but small enough not to match truly separate edges.
+    const SEAM_TOLERANCE = 0.05;
+    const SEAM_TOL_SQ = SEAM_TOLERANCE * SEAM_TOLERANCE;
+
+    // For each unmatched half-edge, pre-compute the world positions of its endpoints.
+    // Use the face vertex positions (already in world space) rather than raw buffer
+    // positions, since faces store transformed positions.
+    const edgeData: { from: THREE.Vector3; to: THREE.Vector3; idx: number }[] = [];
+    for (const heIdx of unmatched) {
+      const he = this.halfEdges[heIdx];
+      const f = this.faces[he.faceIndex];
+      const verts = [f.pA, f.pB, f.pC];
+      edgeData.push({
+        from: verts[he.edgeLocal],
+        to: verts[(he.edgeLocal + 1) % 3],
+        idx: heIdx,
+      });
+    }
+
+    // Try to match each unmatched edge with another unmatched edge going
+    // in the OPPOSITE direction (twin). An edge from A->B should match
+    // an edge from B'->A' where A≈A' and B≈B'.
+    let linked = 0;
+    for (let i = 0; i < edgeData.length; i++) {
+      const ei = edgeData[i];
+      if (this.halfEdges[ei.idx].twin >= 0) continue; // Already matched
+
+      for (let j = i + 1; j < edgeData.length; j++) {
+        const ej = edgeData[j];
+        if (this.halfEdges[ej.idx].twin >= 0) continue; // Already matched
+
+        // Check if ei.from ≈ ej.to AND ei.to ≈ ej.from (opposite direction)
+        if (
+          ei.from.distanceToSquared(ej.to) < SEAM_TOL_SQ &&
+          ei.to.distanceToSquared(ej.from) < SEAM_TOL_SQ
+        ) {
+          // Also verify they're on different faces (not self-matching)
+          if (this.halfEdges[ei.idx].faceIndex !== this.halfEdges[ej.idx].faceIndex) {
+            this.halfEdges[ei.idx].twin = ej.idx;
+            this.halfEdges[ej.idx].twin = ei.idx;
+            linked++;
+            break; // Move to next unmatched edge
+          }
+        }
       }
     }
   }
