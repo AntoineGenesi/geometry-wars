@@ -165,6 +165,50 @@ Or, fix the time accumulation logic in Game.ts / GameLoop.ts to not accumulate t
 - "Forward is jerky" → stale camera.up in lookAt caused oscillating frame-to-frame right/up axes
 - "90/270 degree turns" → camera alignment check triggered fallback to tangent-frame movement mid-play
 
+## Iteration 5 — CAMERA LERP LAG FIX (upHint)
+
+**Root cause identified: Camera.up lerp lag causes oscillating movement direction at 60 FPS.**
+
+### The Problem
+`moveFromInput()` used `camera.getWorldQuaternion()` to extract screen-space right/up vectors. The camera's `up` property is lerped toward the surface bitangent with factor 0.12 (CameraController) or 0.08 (PlaygroundGame). This creates a 1-frame lag in the camera's orientation.
+
+On flat surfaces, this lag is invisible because the bitangent doesn't change. But on **curved surfaces** (sphere, torus, capsule), moving the player changes the surface normal and bitangent. The camera.up lags behind, causing:
+- The extracted camera right/up vectors to oscillate frame-to-frame
+- Movement direction to alternate between correct and slightly-off
+- Visible as "jitter" and "going left-then-up instead of diagonal"
+
+At 7 FPS (SwiftShader), ~8 fixed updates run per rendered frame, so the camera converges much faster relative to what's visible. At 60 FPS, only 1 update runs per frame, making the lag fully visible.
+
+### The Fix: `upHint` parameter
+Added an optional `upHint: THREE.Vector3` parameter to `moveFromInput()` and `getAimDirection()`. When provided, instead of extracting right/up from the camera's lerped world quaternion, the method:
+
+1. Gets the camera's actual world position (minor lag, acceptable)
+2. Uses the `upHint` vector as the ideal (pre-lerp) camera up
+3. Computes camera right/up from a virtual lookAt(camPos, playerPos, upHint) — same Three.js convention
+4. Projects these stable axes onto the surface tangent plane
+
+The `upHint` is:
+- **GameLoop.ts**: `CameraController.targetUp` — the camera's TARGET up (pre-lerp, includes orbit rotation)
+- **PlaygroundGame.ts**: `walker.getTangentFrame().bitangent` — the ideal camera up for zero orbit
+
+### Callers Updated
+- `CameraController.ts`: Added `targetUp` field, saved before lerp in `update()`
+- `GameLoop.ts`: Passes `ctx.cameraController.targetUp` to moveFromInput and getAimDirection
+- `PlaygroundGame.ts`: Passes `frame.bitangent` to moveFromInput and getAimDirection
+
+### Why This Fixes the Per-Surface Variation
+- **Sphere jitter on lateral movement**: Camera.up oscillation between bitangent directions → eliminated by using exact bitangent
+- **Pill partial movement**: Same camera.up lag → fixed
+- **Cube spinning**: Cube uses MeshWalker in main game; tangent frame instability at edges is a separate issue, but stable camera axes help
+
+### Verification
+- 55/55 movement tests pass (11 camera-relative + 27 surface trouble zones + 17 integration)
+- 3 new upHint-specific tests (path equivalence, 30-frame stability, aim direction)
+- Puppeteer direction test: ALL 4 PASS (D=RIGHT, A=LEFT, W=UP, S=DOWN)
+- Puppeteer jitter test: D 100% correct direction, 0% sign flips; W 100% correct direction, 1% sign flips
+- TypeScript compiles clean (only pre-existing errors in test files)
+- Level 4 verification achieved (programmatic visual)
+
 ## Rules for Future Iterations
 
 1. READ THIS FILE FIRST

@@ -54,6 +54,7 @@ export class MeshWalker {
   private readonly _camUp = new THREE.Vector3();
   private readonly _moveDir = new THREE.Vector3();
   private readonly _worldQuat = new THREE.Quaternion();
+  private readonly _camWorldPos = new THREE.Vector3();
 
   constructor(surface: MeshSurface, startPos: THREE.Vector3, speed: number) {
     this.surface = surface;
@@ -388,21 +389,35 @@ export class MeshWalker {
    * @param inputY - Vertical input (-1 to 1, positive = visual "up" on screen)
    * @param camera - The camera (used to extract screen-space axes)
    * @param dt - Delta time
+   * @param upHint - Optional pre-lerp camera up vector. When provided, computes
+   *   camera axes from camera world position + upHint instead of camera.getWorldQuaternion.
+   *   This eliminates frame-to-frame oscillation caused by camera.up lerp lag on
+   *   curved surfaces. Pass CameraController.targetUp or walker tangent frame bitangent.
    */
   moveFromInput(
     inputX: number,
     inputY: number,
     camera: THREE.Camera,
     dt: number,
+    upHint?: THREE.Vector3,
   ): SurfaceQueryResult | null {
     if (Math.abs(inputX) < 0.01 && Math.abs(inputY) < 0.01) return null;
 
-    // Camera-relative movement: extract camera's right and up from WORLD quaternion,
-    // then project onto surface tangent plane so WASD always matches screen axes.
-    // Uses getWorldQuaternion to handle any parent transforms on the camera.
-    const worldQuat = camera.getWorldQuaternion(this._worldQuat);
-    const camRight = this._camRight.set(1, 0, 0).applyQuaternion(worldQuat);
-    const camUp = this._camUp.set(0, 1, 0).applyQuaternion(worldQuat);
+    const camRight = this._camRight;
+    const camUp = this._camUp;
+
+    if (upHint) {
+      // Stable path: compute camera axes from actual camera position + ideal up.
+      // Avoids oscillation from the camera's lerped up vector (which lags behind
+      // the actual surface orientation on curved surfaces at 60 FPS).
+      this._computeStableCameraAxes(camera, upHint, camRight, camUp);
+    } else {
+      // Legacy path: extract from camera's actual world quaternion.
+      // Used by tests that don't provide upHint.
+      const worldQuat = camera.getWorldQuaternion(this._worldQuat);
+      camRight.set(1, 0, 0).applyQuaternion(worldQuat);
+      camUp.set(0, 1, 0).applyQuaternion(worldQuat);
+    }
 
     const n = this.normal;
     camRight.addScaledVector(n, -camRight.dot(n));
@@ -444,23 +459,30 @@ export class MeshWalker {
    * @param aimX - Horizontal aim (-1 to 1, mouse delta or right stick)
    * @param aimY - Vertical aim (-1 to 1, positive = screen down in raw mouse coords)
    * @param camera - The camera (used to extract screen-space axes)
+   * @param upHint - Optional pre-lerp camera up vector (same as moveFromInput)
    * @returns World-space aim direction on the surface tangent plane
    */
   getAimDirection(
     aimX: number,
     aimY: number,
     camera: THREE.Camera,
+    upHint?: THREE.Vector3,
   ): THREE.Vector3 {
     const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
     if (aimLen < 0.01) {
       return this._bitangent.clone();
     }
 
-    // Camera-relative aiming: same projection as moveFromInput.
-    // Uses getWorldQuaternion for parent-transform robustness.
-    const worldQuat = camera.getWorldQuaternion(this._worldQuat);
-    const camRight = this._camRight.set(1, 0, 0).applyQuaternion(worldQuat);
-    const camUp = this._camUp.set(0, 1, 0).applyQuaternion(worldQuat);
+    const camRight = this._camRight;
+    const camUp = this._camUp;
+
+    if (upHint) {
+      this._computeStableCameraAxes(camera, upHint, camRight, camUp);
+    } else {
+      const worldQuat = camera.getWorldQuaternion(this._worldQuat);
+      camRight.set(1, 0, 0).applyQuaternion(worldQuat);
+      camUp.set(0, 1, 0).applyQuaternion(worldQuat);
+    }
 
     const n = this.normal;
     camRight.addScaledVector(n, -camRight.dot(n));
@@ -491,6 +513,51 @@ export class MeshWalker {
     const len = aimDir.length();
     if (len < 0.0001) return this._bitangent.clone();
     return aimDir.multiplyScalar(1 / len);
+  }
+
+  /**
+   * Compute stable camera right/up axes from camera world position + ideal up vector.
+   * Uses the same lookAt convention as Three.js (z = eye - target, x = cross(up, z),
+   * y = cross(z, x)) but with the ACTUAL up hint (no lerp) for frame-stable results.
+   *
+   * This eliminates the oscillation caused by camera.up lerp lag: the camera's lerped
+   * up vector lags behind the surface bitangent on curved surfaces, causing the
+   * extracted right/up to jitter at 60 FPS. Using the pre-lerp target up (upHint)
+   * gives instant, stable axes that exactly match the ideal screen directions.
+   */
+  private _computeStableCameraAxes(
+    camera: THREE.Camera,
+    upHint: THREE.Vector3,
+    outRight: THREE.Vector3,
+    outUp: THREE.Vector3,
+  ): void {
+    // z = normalize(eye - target) — camera-to-player direction
+    const camWorldPos = camera.getWorldPosition(this._camWorldPos);
+    const z = this._moveDir.copy(camWorldPos).sub(this.position);
+    const zLen = z.length();
+
+    if (zLen < 0.001) {
+      // Camera at player position — degenerate, use tangent frame
+      outRight.crossVectors(this._bitangent, this.normal).normalize();
+      outUp.copy(this._bitangent);
+      return;
+    }
+    z.multiplyScalar(1 / zLen);
+
+    // right = normalize(upHint × z) — Three.js lookAt convention
+    outRight.crossVectors(upHint, z);
+    const rLen = outRight.length();
+
+    if (rLen < 0.001) {
+      // upHint is parallel to z — degenerate, use tangent frame
+      outRight.crossVectors(this._bitangent, this.normal).normalize();
+      outUp.copy(this._bitangent);
+      return;
+    }
+    outRight.multiplyScalar(1 / rLen);
+
+    // up = normalize(z × right) — corrected up perpendicular to both z and right
+    outUp.crossVectors(z, outRight).normalize();
   }
 
   /**

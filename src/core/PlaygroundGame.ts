@@ -434,14 +434,15 @@ export class PlaygroundGame {
 
     if (this.player.alive) {
       // -- Movement via MeshWalker (same as main game) --
-      // Uses walker.moveFromInput() which maps screen-space input to camera-
-      // relative axes projected onto the surface tangent plane. This ensures
-      // WASD always matches what the player sees, even with camera orbit.
-      this.movePlayer(inputState, dt);
+      // Get the walker's tangent frame BEFORE movement for stable camera axes.
+      // The frame's bitangent is the camera's target up (pre-lerp), which gives
+      // instant, oscillation-free movement direction on curved surfaces.
+      const frame = this._isUVBasedSurface() ? null : this._walker.getTangentFrame();
+      this.movePlayer(inputState, dt, frame);
 
       // -- Orient player using walker's tangent frame + aim --
       // (matches main.ts approach: tangent frame aim, not Player.update aim)
-      this.orientPlayer(inputState);
+      this.orientPlayer(inputState, frame);
 
       // -- Player update (handles firing, cooldowns, invincibility) --
       this.player.update(dt, inputState);
@@ -607,7 +608,7 @@ export class PlaygroundGame {
   //
   // EXCEPTION: Cube surfaces use UV-based movement because MeshWalker is incompatible
   // with cube geometry (player gets completely stuck). See tasks/cube-s13-uv-fallback.md.
-  private movePlayer(input: InputState, dt: number): void {
+  private movePlayer(input: InputState, dt: number, frame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 } | null): void {
     const moveX = input.moveX;
     const moveY = input.moveY;
 
@@ -643,13 +644,10 @@ export class PlaygroundGame {
       }
     } else {
       // -- MeshWalker movement for curved surfaces (sphere, torus, etc.) --
-      // This maps screen axes directly to the walker's persistent tangent frame:
-      //   tangent  = screen right (D/A)
-      //   bitangent = screen up   (W/S)
-      // The -moveY negation is required because InputManager returns W=-1, S=+1
-      // but moveFromInput expects positive = visual up on screen.
+      // Pass frame.bitangent as upHint: the camera's ideal up vector (pre-lerp).
+      // This eliminates direction oscillation from camera.up lerp lag at 60 FPS.
       if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
-        this._walker.moveFromInput(moveX, -moveY, this.game.camera, dt);
+        this._walker.moveFromInput(moveX, -moveY, this.game.camera, dt, frame?.bitangent);
       }
 
       // Sync position from walker
@@ -675,7 +673,7 @@ export class PlaygroundGame {
    * walker.getAimDirection() (camera-relative) or surface tangent frame for UV-based.
    * See decisions/camera-relative-movement-fix.md.
    */
-  private orientPlayer(input: InputState): void {
+  private orientPlayer(input: InputState, frame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 } | null): void {
     let playerNormal: THREE.Vector3;
 
     if (this._isUVBasedSurface()) {
@@ -708,9 +706,9 @@ export class PlaygroundGame {
 
       this.player.aimAngle = Math.atan2(input.aimX, -input.aimY);
     } else {
-      // MeshWalker surfaces: use camera-relative aim direction
+      // MeshWalker surfaces: use camera-relative aim direction with stable upHint
       playerNormal = this._walker.normal;
-      const aimDirection = this._walker.getAimDirection(input.aimX, input.aimY, this.game.camera);
+      const aimDirection = this._walker.getAimDirection(input.aimX, input.aimY, this.game.camera, frame?.bitangent);
 
       if (aimDirection.lengthSq() > 0.001) {
         const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();

@@ -124,9 +124,13 @@ export class GameLoop {
       // Player moves on mesh surface using world-space tangent projection.
       // No UV coordinates, no pole singularity, constant speed everywhere.
 
-      // Move player on surface via MeshWalker
+      // Move player on surface via MeshWalker.
+      // Pass cameraController.targetUp as upHint: this is the camera's TARGET up
+      // (pre-lerp, includes orbit rotation). Using the ideal up vector instead of
+      // the lerped camera.up eliminates frame-to-frame direction oscillation on
+      // curved surfaces caused by camera.up lerp lag at 60 FPS.
       if (Math.abs(inputState.moveX) > 0.01 || Math.abs(inputState.moveY) > 0.01) {
-        ctx.playerWalker.moveFromInput(inputState.moveX, -inputState.moveY, ctx.game.camera, dt);
+        ctx.playerWalker.moveFromInput(inputState.moveX, -inputState.moveY, ctx.game.camera, dt, ctx.cameraController.targetUp);
       }
 
       // Sync player mesh position from walker
@@ -146,11 +150,9 @@ export class GameLoop {
       const playerNormal = ctx.playerWalker.normal;
 
       // Calculate aim direction using camera-relative axes.
-      // walker.getAimDirection() projects the camera's right/up vectors onto
-      // the surface tangent plane, so aiming matches what the player sees on
-      // screen even when the camera orbits (middle mouse drag).
+      // Pass targetUp as upHint for the same stability fix as movement.
       const aimDirection = ctx.playerWalker.getAimDirection(
-        inputState.aimX, inputState.aimY, ctx.game.camera,
+        inputState.aimX, inputState.aimY, ctx.game.camera, ctx.cameraController.targetUp,
       );
 
       // Orient player to face aim direction

@@ -32,6 +32,13 @@ export class CameraController {
   private readonly _rotatedTangent = new THREE.Vector3();
   private readonly _targetCamPos = new THREE.Vector3();
 
+  /**
+   * The camera's TARGET up vector (before lerp), including orbit rotation.
+   * Pass this to MeshWalker.moveFromInput() as upHint to get stable movement
+   * axes that don't oscillate from camera.up lerp lag on curved surfaces.
+   */
+  readonly targetUp = new THREE.Vector3(0, 1, 0);
+
   constructor(camera: THREE.Camera) {
     this.camera = camera;
     this.setupEventListeners();
@@ -129,6 +136,10 @@ export class CameraController {
 
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
     this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
+
+    // Save pre-lerp target up for MeshWalker.moveFromInput() upHint.
+    // This gives stable camera axes without the oscillation from lerp lag.
+    this.targetUp.copy(this._camUp);
 
     // Lerp camera.up BEFORE lookAt so lookAt uses the current-frame bitangent
     // direction. This prevents a one-frame lag in the camera's right/up axes
