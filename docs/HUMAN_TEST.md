@@ -8,33 +8,30 @@
 
 ---
 
-## Session 15 Player Movement Fix (2026-02-13)
+## Session 15 Player Movement Fix — Iteration 6 (2026-02-13)
 
-### Critical Bug Fix - MUST TEST (Programmatically Verified Level 2)
-- [ ] **Player movement is smooth in all directions** - Test in all game modes (visual styles, weapons database, main game waves, local co-op):
-  - Press W (forward) for 5 seconds — player should move smoothly without jitter or getting stuck
-  - Press S (backward) for 5 seconds — player should move smoothly without jitter or getting stuck
-  - Press A (left) for 5 seconds — player should move smoothly (this direction worked before)
-  - Press D (right) for 5 seconds — player should move smoothly (this direction worked before)
-  - Press W+D (diagonal) for 5 seconds — player should move in smooth arc, NOT "square fashion" with 90° turns
-- [ ] **No orientation snapping** - While moving with WASD, player orientation should change smoothly, NOT snap to 90/180/270-degree angles
-- [ ] **Circular movement works** - Hold W+D and make a full circle. Movement should be smooth throughout, no discrete snaps or jitter
+### Critical Bug Fix - MUST TEST (Programmatically Verified Level 4)
+- [ ] **No chevron spinning** — Press A or D on sphere for 5 seconds. The player chevron should NOT spin rapidly or show multiple copies in the same spot.
+- [ ] **No map jumping** — Hold D for 5 seconds on sphere. The map/sphere should rotate smoothly, NOT jump in large discontinuous steps.
+- [ ] **Forward movement is smooth** — Press W for 5 seconds. Player should move in a consistent direction, NOT veer left/right or jitter.
+- [ ] **Diagonal movement works** — Press W+D for 5 seconds. Player should move in smooth diagonal arc, NOT "square fashion" with 90° snaps.
+- [ ] **All surfaces work** — Test on sphere, pill (capsule), and cube. Movement should be smooth on all.
 
-**What was fixed:** Three cross product bugs causing tangent frame corruption and orientation errors:
-1. **MeshWalker tangent frame:** `bitangent = normal × tangent` (wrong) → `bitangent = tangent × normal` (right-handed)
-2. **Axis role swapping:** Added continuity logic to prevent tangent/bitangent swapping when moving along different directions
-3. **Player orientation:** `playerForward = playerNormal × playerRight` (backward) → `playerForward = playerRight × playerNormal` (forward)
+**What was fixed (iteration 6 — three-pronged fix):**
+1. **Tangent frame swap hysteresis** (MeshWalker.ts) — Added +0.1 threshold to prevent tangent/bitangent flip-flop when movement is at ~45° to axes. Root cause of "chevron spinning super fast with multiple copies."
+2. **Orientation slerp smoothing** (GameLoop.ts + PlaygroundGame.ts) — Changed direct quaternion set to slerp(0.35). Dampens residual high-frequency orientation changes.
+3. **Camera convergence speed** (CameraController.ts + PlaygroundGame.ts) — Increased lerp from 0.12→0.25. Eliminates "map jumping" discontinuity (convergence: 0.5s → 0.2s).
 
-These bugs caused the coordinate system to flip between left/right-handed (crossProductCheck alternated -1/+1), making tangent and bitangent swap roles every frame during forward/backward movement, which manifested as jitter, stuckness, and 90/180/270° orientation snaps.
+**Why previous iterations failed:** All programmatic tests (Puppeteer at 7 FPS, vitest) passed because at 7 FPS, 8 fixed timestep updates run per rendered frame, averaging out oscillation. At 60 FPS (real browser), each frame shows a single update, making every oscillation visible.
 
-**Programmatic Verification (Level 2):**
-- ✓ TypeScript compiles clean (0 errors in changed files)
-- ✓ All regression tests pass (5/5): forward/backward/left/right/diagonal movement
-- ✓ Diagnostic tests: 0% orientation jumps (was 99.2%), max delta 7.49° (was 179.94°), stable handedness
-- ✓ Ultra-diagnostic: crossProductCheck = +1.0 consistently, tangent/bitangent swap = false, right-handed system
-- ✓ Code path verified: fixes called every frame in game loop
+**Programmatic Verification (Level 4):**
+- ✓ 61/61 movement tests pass (14 camera-relative + 27 surface + 17 integration + 3 stability)
+- ✓ Puppeteer direction: D=RIGHT, A=LEFT, W=UP, S=DOWN (all 4 correct)
+- ✓ Puppeteer jitter: 100% correct direction, <1% sign flips
+- ✓ TypeScript compiles clean (0 errors in source files)
+- ✓ 3 new stability tests specifically verify anti-oscillation behavior
 
-**Status:** READY FOR HUMAN TESTING (Level 6 verification needed — Claude cannot test in real browser)
+**Status:** READY FOR HUMAN TESTING at 60 FPS (Level 6 verification needed). Commit 756b681.
 
 ---
 
