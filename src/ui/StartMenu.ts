@@ -26,6 +26,7 @@ export interface MenuSelection {
   serverUrl?: string;
   playerName?: string;
   quickGameMode?: QuickGameModeType; // For single player quick game
+  customMeshFile?: File; // For custom mesh loading
 }
 
 // ---------------------------------------------------------------------------
@@ -56,6 +57,12 @@ export class StartMenu {
 
   // LAN name dialog state
   private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string } | null = null;
+
+  // Custom mesh support
+  private customMeshFile: File | null = null;
+  private customMeshFileQuickGame: File | null = null;
+  private customMeshFileCoop: File | null = null;
+  private customMeshFileLAN: File | null = null;
 
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
@@ -110,7 +117,16 @@ export class StartMenu {
       `
       )
       .join('');
-    return `<div class="surface-grid ${gridClass}">${buttons}</div>`;
+
+    // Add custom mesh button
+    const customMeshBtn = `
+      <button class="surface-btn custom-mesh-btn" data-grid-class="${gridClass}">
+        <span class="icon">📁</span>
+        <span class="name">Load Custom</span>
+      </button>
+    `;
+
+    return `<div class="surface-grid ${gridClass}">${buttons}${customMeshBtn}</div>`;
   }
 
   private createModeGridHTML(): string {
@@ -294,6 +310,14 @@ export class StartMenu {
           <h3>SELECT SURFACE</h3>
           <div class="surface-grid">
             ${surfaceButtons}
+            <button class="surface-btn custom-mesh-btn" data-grid-class="quick-game-surface-grid">
+              <span class="icon">📁</span>
+              <span class="name">Load Custom</span>
+            </button>
+          </div>
+          <input type="file" id="custom-mesh-file-input" accept=".obj,.glb,.gltf" style="display: none;" />
+          <div id="custom-mesh-loading" class="custom-mesh-loading hidden">
+            <p>Loading mesh...</p>
           </div>
           <button class="start-btn" id="surface-start-btn">
             <span class="btn-icon">\u25B6</span>
@@ -604,6 +628,42 @@ export class StartMenu {
       #start-menu .surface-btn .name {
         font-size: 11px;
         letter-spacing: 1px;
+      }
+
+      #start-menu .custom-mesh-btn {
+        background: rgba(100, 50, 100, 0.3);
+        border-color: #aa66ff;
+      }
+
+      #start-menu .custom-mesh-btn:hover {
+        background: rgba(150, 75, 150, 0.4);
+        border-color: #cc88ff;
+      }
+
+      #start-menu .custom-mesh-btn.selected {
+        background: rgba(170, 102, 255, 0.2);
+        border-color: #cc88ff;
+        box-shadow: 0 0 15px #aa66ff;
+      }
+
+      #start-menu .custom-mesh-loading {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.9);
+        padding: 30px 50px;
+        border: 2px solid #00ffff;
+        border-radius: 10px;
+        color: #00ffff;
+        font-size: 18px;
+        letter-spacing: 2px;
+        z-index: 10000;
+        box-shadow: 0 0 30px #00ffff;
+      }
+
+      #start-menu .custom-mesh-loading.hidden {
+        display: none;
       }
 
       /* ------------------------------------------------------------------- */
@@ -1296,14 +1356,95 @@ export class StartMenu {
     });
 
     // Surface selection buttons (Quick Game only - scoped to #surface-section)
-    const surfaceBtns = surfaceSection.querySelectorAll('.surface-btn');
+    const surfaceBtns = surfaceSection.querySelectorAll('.surface-btn:not(.custom-mesh-btn)');
     surfaceBtns.forEach((btn) => {
       btn.addEventListener('click', () => {
         surfaceBtns.forEach((b) => b.classList.remove('selected'));
         btn.classList.add('selected');
         this.selectedSurface = (btn as HTMLElement).dataset.surface as SurfaceType;
+        this.customMeshFileQuickGame = null; // Clear custom mesh when selecting built-in
       });
     });
+
+    // Custom mesh buttons (all sections)
+    const customMeshBtns = this.container.querySelectorAll('.custom-mesh-btn');
+    const customMeshFileInput = this.container.querySelector('#custom-mesh-file-input') as HTMLInputElement;
+
+    customMeshBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const gridClass = (btn as HTMLElement).dataset.gridClass ?? 'quick-game-surface-grid';
+
+        // Store which section this is for
+        (customMeshFileInput as any).__gridClass = gridClass;
+
+        // Trigger file picker
+        customMeshFileInput.click();
+      });
+    });
+
+    // File input change handler
+    if (customMeshFileInput) {
+      customMeshFileInput.addEventListener('change', async (e) => {
+        const input = e.target as HTMLInputElement;
+        const file = input.files?.[0];
+
+        if (!file) return;
+
+        const gridClass = (input as any).__gridClass ?? 'quick-game-surface-grid';
+
+        // Show loading indicator
+        const loadingDiv = this.container.querySelector('#custom-mesh-loading') as HTMLElement;
+        if (loadingDiv) {
+          loadingDiv.classList.remove('hidden');
+        }
+
+        try {
+          // Validate file type
+          const fileName = file.name.toLowerCase();
+          if (!fileName.endsWith('.obj') && !fileName.endsWith('.glb') && !fileName.endsWith('.gltf')) {
+            alert('Unsupported file type. Please use .obj, .glb, or .gltf files.');
+            return;
+          }
+
+          // Store the file based on which section
+          if (gridClass === 'coop-surface-grid') {
+            this.customMeshFileCoop = file;
+            this.coopSelectedSurface = 'custom';
+
+            // Update UI - select the custom button
+            const coopCustomBtn = this.container.querySelector('.coop-surface-grid .custom-mesh-btn') as HTMLElement;
+            const coopBtns = this.container.querySelectorAll('.coop-surface-grid .surface-btn');
+            coopBtns.forEach((b) => b.classList.remove('selected'));
+            coopCustomBtn?.classList.add('selected');
+          } else if (gridClass === 'lan-surface-grid') {
+            this.customMeshFileLAN = file;
+            this.lanSelectedSurface = 'custom';
+
+            const lanCustomBtn = this.container.querySelector('.lan-surface-grid .custom-mesh-btn') as HTMLElement;
+            const lanBtns = this.container.querySelectorAll('.lan-surface-grid .surface-btn');
+            lanBtns.forEach((b) => b.classList.remove('selected'));
+            lanCustomBtn?.classList.add('selected');
+          } else {
+            // Quick game
+            this.customMeshFileQuickGame = file;
+            this.selectedSurface = 'custom';
+
+            const quickCustomBtn = surfaceSection.querySelector('.custom-mesh-btn') as HTMLElement;
+            surfaceBtns.forEach((b) => b.classList.remove('selected'));
+            quickCustomBtn?.classList.add('selected');
+          }
+
+          // Clear the input so the same file can be selected again
+          input.value = '';
+        } catch (err) {
+          alert(`Failed to select mesh: ${(err as Error).message}`);
+        } finally {
+          if (loadingDiv) {
+            loadingDiv.classList.add('hidden');
+          }
+        }
+      });
+    }
 
     // Oval buttons (main menu mode selectors)
     const ovalBtns = mainButtonsContainer.querySelectorAll('.oval-btn');
@@ -1381,6 +1522,7 @@ export class StartMenu {
         surfaceType: this.coopSelectedSurface,
         gameMode: 'multiplayer',
         playerCount: this.coopPlayerCount,
+        customMeshFile: this.coopSelectedSurface === 'custom' ? this.customMeshFileCoop ?? undefined : undefined,
       });
     });
 
@@ -1427,6 +1569,7 @@ export class StartMenu {
         surfaceType: this.selectedSurface,
         gameMode: this.pendingMode,
         quickGameMode: this.pendingMode === 'single' ? this.selectedQuickGameMode : undefined,
+        customMeshFile: this.selectedSurface === 'custom' ? this.customMeshFileQuickGame ?? undefined : undefined,
       });
     });
 

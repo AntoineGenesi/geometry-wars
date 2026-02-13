@@ -274,7 +274,7 @@ const _tempSphere = new THREE.Sphere();
 // Bootstrap
 // ---------------------------------------------------------------------------
 
-function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
+async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File): Promise<void> {
   // Detect mobile mode early -- affects quality, input, and UI decisions
   const mobile = isMobile();
 
@@ -450,7 +450,39 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     (surfaceConfig as any).crossSection = 2;
   }
 
-  const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
+  // Create surface (async for custom meshes, sync for built-in)
+  let surface: Surface;
+  if (surfaceType === 'custom' && customMeshFile) {
+    // Show loading indicator while mesh loads
+    const loadingDiv = document.createElement('div');
+    loadingDiv.textContent = 'Loading custom mesh...';
+    loadingDiv.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #00ffff; font-size: 24px; z-index: 10000; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px;';
+    document.body.appendChild(loadingDiv);
+
+    try {
+      surface = await SurfaceFactory.createCustom({
+        meshSource: customMeshFile,
+        targetRadius: level.surfaceScale || 8,
+        gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
+        surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
+        surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.18,
+        gridOpacity: savedStyle?.gridOpacity ?? 0.3,
+        gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
+        gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
+      });
+    } catch (err) {
+      document.body.removeChild(loadingDiv);
+      alert(`Failed to load custom mesh: ${(err as Error).message}`);
+      // Fallback to sphere
+      surface = SurfaceFactory.create('sphere', surfaceConfig as any);
+    } finally {
+      if (loadingDiv.parentElement) {
+        document.body.removeChild(loadingDiv);
+      }
+    }
+  } else {
+    surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
+  }
   game.scene.add(surface.group);
 
   // Log which surface/level is being used
@@ -1537,7 +1569,7 @@ if (quickStartConfig.enabled) {
       // Single player - Quick Game (endless) or Adventure level
       const levelIdx = selection.levelIndex ?? -1; // -1 = endless Quick Game
       window.history.replaceState({}, '', buildUrl({ surface: selection.surfaceType, level: String(levelIdx) }));
-      main(selection.surfaceType, levelIdx);
+      main(selection.surfaceType, levelIdx, selection.customMeshFile);
     }
   });
 }

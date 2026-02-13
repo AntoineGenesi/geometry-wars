@@ -12,6 +12,8 @@ import { SphereWithTunnelSurface, SphereWithTunnelConfig } from './SphereWithTun
 import { CubeRingSurface, CubeRingConfig } from './CubeRingSurface'
 import { CubeWithTunnelSurface, CubeWithTunnelConfig } from './CubeWithTunnelSurface'
 import { MobiusBevelSurface, MobiusBevelConfig } from './MobiusBevelSurface'
+import { LoadedMeshSurface, LoadedMeshConfig } from './LoadedMeshSurface'
+import { loadMeshFromURL, loadMeshFromFile } from '../loaders/MeshLoader'
 
 export type SurfaceType =
   | 'sphere'
@@ -27,6 +29,14 @@ export type SurfaceType =
   | 'cube-ring'
   | 'cube-tunnel'
   | 'mobius-bevel'
+  | 'custom'
+
+export interface CustomMeshConfig extends LoadedMeshConfig {
+  /** URL or File object for the mesh source */
+  meshSource: string | File;
+  /** Optional target radius for normalization (default: 8) */
+  targetRadius?: number;
+}
 
 export type SurfaceConfigMap = {
   sphere: SphereConfig
@@ -42,6 +52,7 @@ export type SurfaceConfigMap = {
   'cube-ring': CubeRingConfig
   'cube-tunnel': CubeWithTunnelConfig
   'mobius-bevel': MobiusBevelConfig
+  custom: CustomMeshConfig
 }
 
 export class SurfaceFactory {
@@ -83,5 +94,30 @@ export class SurfaceFactory {
 
   static getAvailableTypes(): SurfaceType[] {
     return ['sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel', 'mobius-bevel']
+  }
+
+  /**
+   * Create a custom mesh surface (async).
+   * This is separate from create() to avoid breaking existing synchronous call sites.
+   *
+   * @param config - Custom mesh configuration with meshSource (URL or File)
+   * @returns Promise resolving to a LoadedMeshSurface
+   */
+  static async createCustom(config: CustomMeshConfig): Promise<Surface> {
+    const targetRadius = config.targetRadius ?? 8;
+
+    // Load the mesh
+    const loadedMesh = typeof config.meshSource === 'string'
+      ? await loadMeshFromURL(config.meshSource, targetRadius)
+      : await loadMeshFromFile(config.meshSource, targetRadius);
+
+    // Validate triangle count
+    if (loadedMesh.triangleCount > 100000) {
+      throw new Error(
+        `Mesh too large: ${loadedMesh.triangleCount} triangles (max: 100,000)`
+      );
+    }
+
+    return new LoadedMeshSurface(loadedMesh, config);
   }
 }
