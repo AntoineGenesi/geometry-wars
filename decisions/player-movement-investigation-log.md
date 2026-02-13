@@ -236,6 +236,46 @@ The player may actually be moving correctly now, but:
 3. **Double-orientation problem** — check if PlaygroundGame.orientPlayer() and GameLoop both set player rotation
 4. **Frame-rate dependent oscillation** — the "spinning multiple copies" suggests high-frequency oscillation (hundreds of Hz), which means something is flipping orientation every frame or every other frame
 
+## Iteration 6 — THREE-PRONGED FIX (tangent frame + orientation + camera)
+
+### Root Cause (confirmed by analysis + tests)
+
+The walker's tangent frame `_updateTangentFrame()` has a swap-or-keep decision that compares `keepScore` vs `swapScore`. When movement is at ~45° to the tangent frame axes, these scores are nearly equal, causing the swap to flip-flop every frame. This oscillation propagates to:
+
+1. **Camera.up** (lerps toward the oscillating bitangent → "map jumping")
+2. **upHint** (passes oscillating bitangent to moveFromInput → jittery movement)
+3. **Player orientation** (getAimDirection default = bitangent → "chevron spinning")
+
+At 7 FPS (Puppeteer), 8 fixed steps run per visible frame, averaging out oscillation. At 60 FPS, each step is visible, making oscillation fully apparent.
+
+### Fix 1: Tangent frame swap hysteresis (MeshWalker.ts)
+Changed `if (swapScore > keepScore)` to `if (swapScore > keepScore + 0.1)`.
+The 0.1 threshold requires a clear advantage before swapping axes, preventing ambiguous flip-flop. This is the ROOT CAUSE fix.
+
+### Fix 2: Orientation slerp smoothing (GameLoop.ts + PlaygroundGame.ts)
+Changed direct `quaternion.setFromRotationMatrix(orientMat)` to `quaternion.slerp(targetQuat, 0.35)`.
+This dampens any residual high-frequency orientation changes, preventing the "chevron spinning super fast" visual artifact. Factor 0.35 is responsive but smooth.
+
+### Fix 3: Camera convergence speed (CameraController.ts + PlaygroundGame.ts)
+Increased `CAMERA_LERP_FACTOR` from 0.12 to 0.25.
+At 0.12, camera.up took ~30 frames (0.5s) to converge, creating visible "map jumping" discontinuity. At 0.25, convergence is 97% within 12 frames (0.2s) — below perceptibility threshold.
+PlaygroundGame camera lerp: 0.1→0.2 (position), 0.08→0.18 (up).
+
+### Verification
+- 14/14 camera-relative input tests pass (including 3 NEW stability tests)
+- 27/27 surface trouble zone tests pass
+- 17/17 movement integration tests pass
+- 3/3 frame-by-frame diagnostic tests pass (all report "orientation stability: stable")
+- Puppeteer direction test: ALL 4 PASS (D=RIGHT 3°, A=LEFT 179°, W=UP 89°, S=DOWN -89°)
+- Puppeteer jitter test: W 100% correct dir, 0.7% sign flips; D 100% correct dir, 1% sign flips
+- TypeScript compiles clean (only pre-existing test file errors)
+
+### Why this should work at 60 FPS (unlike previous iterations)
+- Previous iterations: movement direction was correct but TANGENT FRAME oscillated. This was hidden at 7 FPS.
+- This iteration: tangent frame oscillation is ELIMINATED at the source (swap hysteresis).
+- Orientation smoothing provides defense-in-depth against any residual oscillation.
+- Camera convergence is fast enough to track surface changes without visible lag.
+
 ## Rules for Future Iterations
 
 1. READ THIS FILE FIRST

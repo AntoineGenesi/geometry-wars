@@ -336,7 +336,14 @@ export class MeshWalker {
       const keepScore = dotTT + dotBB;  // tangent stays tangent, bitangent stays bitangent
       const swapScore = dotTB + dotBT;  // tangent becomes bitangent, bitangent becomes tangent
 
-      if (swapScore > keepScore) {
+      // REGRESSION GUARD: Hysteresis threshold prevents flip-flop oscillation.
+      // Without this, when keepScore ≈ swapScore (movement at ~45° to axes),
+      // the swap can toggle every frame, causing the tangent frame to oscillate.
+      // This oscillation propagates to camera.up and player orientation, visible
+      // as "chevron spinning" and "map jumping" at 60 FPS (but hidden at 7 FPS
+      // Puppeteer because 8 fixed steps average out per rendered frame).
+      // The 0.1 threshold requires a clear advantage before swapping axes.
+      if (swapScore > keepScore + 0.1) {
         // Swap them to maintain axis roles
         const temp = newTangent;
         newTangent = newBitangent;

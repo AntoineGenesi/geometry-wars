@@ -556,10 +556,11 @@ export class PlaygroundGame {
       .multiplyScalar(this.config.cameraDistance)
       .add(target);
 
-    this.game.camera.position.lerp(camPos, 0.1);
+    this.game.camera.position.lerp(camPos, 0.2);
     // Camera up = bitangent (perpendicular to both normal and tangent).
     // NEVER use normal here — it's parallel to the look direction and causes spinning.
-    this.game.camera.up.lerp(frame.bitangent, 0.08).normalize();
+    // Lerp factor increased from 0.08 to 0.18 to reduce visible camera lag at 60 FPS.
+    this.game.camera.up.lerp(frame.bitangent, 0.18).normalize();
     this.game.camera.lookAt(target);
 
     // -- Depth-based opacity (same as main game) --
@@ -701,7 +702,8 @@ export class PlaygroundGame {
         const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();
         const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
-        this.player.mesh.quaternion.setFromRotationMatrix(orientMat);
+        const targetQuat = this._tmpQuat.setFromRotationMatrix(orientMat);
+        this.player.mesh.quaternion.slerp(targetQuat, 0.35);
       }
 
       this.player.aimAngle = Math.atan2(input.aimX, -input.aimY);
@@ -714,7 +716,8 @@ export class PlaygroundGame {
         const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();
         const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
-        this.player.mesh.quaternion.setFromRotationMatrix(orientMat);
+        const targetQuat = this._tmpQuat.setFromRotationMatrix(orientMat);
+        this.player.mesh.quaternion.slerp(targetQuat, 0.35);
       }
 
       this.player.aimAngle = Math.atan2(input.aimX, -input.aimY);
