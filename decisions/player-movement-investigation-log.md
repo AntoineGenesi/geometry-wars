@@ -276,6 +276,33 @@ PlaygroundGame camera lerp: 0.1→0.2 (position), 0.08→0.18 (up).
 - Orientation smoothing provides defense-in-depth against any residual oscillation.
 - Camera convergence is fast enough to track surface changes without visible lag.
 
+## Iteration 6 — USER TEST RESULT: STILL BROKEN (closer but persistent lateral jerk)
+
+**User tested iteration 6 (three-pronged fix: hysteresis + slerp + camera convergence) in real browser:**
+
+### What WORKS now:
+- Forward/backward movement works FINE (big improvement!)
+- Some spheres work reasonably well for left/right
+
+### What's STILL broken:
+1. **Left/right movement is jerky** — player doesn't move smoothly. There's a repetitive jerk near the end of each "step". It happens every little bit, like a periodic stutter.
+2. **Diagonal movement (W+A, W+D) glitches on the spot** — instead of a smooth curve forward-left or forward-right, the player just glitches/vibrates in place. No actual movement occurs.
+3. **User suspects tick/speed issue** — "obviously the player must be at a frame rate or at some sort of a tick or game speed that's just way too fast because it's really glitchy"
+
+### Analysis:
+- **Forward/back working but left/right jerky** = tangent axis (forward) is stable, but bitangent axis (lateral) still has issues. The swap hysteresis may have helped forward but not fully resolved lateral movement.
+- **"Repetitive jerk near the end"** = suggests periodic oscillation or a cyclic problem. Could be: (a) slerp overshooting and correcting, (b) tangent frame still oscillating at a lower frequency, (c) something in the movement/position update accumulating and snapping periodically.
+- **Diagonal glitching in place** = when both axes are combined, something cancels out. The lateral jitter combined with forward movement results in zero net displacement. This could be: (a) the lateral component fighting the forward component via tangent frame adjustment, (b) orientation slerp dampening too aggressively for diagonal, (c) movement getting clamped or normalized incorrectly when both axes active.
+- **"Too fast" suspicion from user** = might indicate fixed-step dt is wrong, or there's a speed multiplier issue. Or the jitter frequency is so high it looks like "too fast."
+
+### What to investigate in iteration 7:
+1. **Fixed timestep vs render frame** — Are multiple fixed steps happening per render frame? At 60 FPS with fixedDt of 1/60, should be 1:1. But if fixedDt is smaller (e.g., 1/120), 2 steps per frame could cause visible oscillation.
+2. **moveFromInput speed parameter** — Is the movement speed too high? If speed * dt per step is too large, the walker overshoots and wraps, causing the "jerk near the end."
+3. **Lateral-specific tangent frame issue** — Forward movement may use tangent (stable) while lateral uses bitangent (less stable). Check if bitangent computation is smooth along the player's path.
+4. **Slerp factor 0.35** — At 60 FPS, 0.35 per frame converges quickly but may oscillate. Test with 0.15-0.20 and see if jitter reduces.
+5. **Diagonal input normalization** — When W+A are both pressed, is the input vector normalized? If not, diagonal movement is 1.41x faster, which combined with overshooting could cause the "glitch in place."
+6. **Double movement calls** — Check if both GameLoop AND PlaygroundGame are calling moveFromInput, resulting in double movement per frame.
+
 ## Rules for Future Iterations
 
 1. READ THIS FILE FIRST
