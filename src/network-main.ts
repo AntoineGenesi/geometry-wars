@@ -286,7 +286,7 @@ const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
+function main() {
   // Initialize audio (same as co-op).
   // AudioContext may already be initialized if coming from StartMenu (where we
   // call init() synchronously within the click handler). If coming from a direct
@@ -371,7 +371,7 @@ async function main(): Promise<void> {
     lastCreatedSurfaceType = '';
   }
 
-  async function initSurface(serverSurfaceType: string, confirmedFromServer: boolean = false): Promise<void> {
+  function initSurface(serverSurfaceType: string, confirmedFromServer: boolean = false): void {
     // Allow re-initialization if the surface type differs from what was created,
     // OR if this is the first confirmed-from-server call and the previous init
     // was just a guess from connect-time (which may have had stale defaults).
@@ -421,7 +421,7 @@ async function main(): Promise<void> {
       gridSegmentsU: 24,
       gridSegmentsV: 18,
     };
-    surface = await SurfaceFactory.create(surfaceType, surfaceConfig as any);
+    surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
     scene.add(surface.group);
 
     // Dark transparent surface material (matches co-op)
@@ -830,11 +830,11 @@ async function main(): Promise<void> {
   // State change callback: sync server state to local visual entities
   // -----------------------------------------------------------------------
 
-  async function onStateChange(state: NetworkGameState): Promise<void> {
+  function onStateChange(state: NetworkGameState) {
     // Always try to init/update surface from authoritative server state.
     // This handles both initial creation AND correcting a wrong initial guess.
     if (state.surfaceType) {
-      await initSurface(state.surfaceType, true);
+      initSurface(state.surfaceType, true);
     }
     if (!surface || !meshSurface || !getTransform) return;
 
@@ -1252,7 +1252,7 @@ async function main(): Promise<void> {
   network.connect({
     name: playerName,
     surfaceType: urlSurfaceType,
-  }).then(async () => {
+  }).then(() => {
     localPlayerId = network.getLocalPlayerId();
     // Try to detect host status, but this may be wrong if state hasn't decoded.
     // onStateChange will re-check and correct this.
@@ -1265,7 +1265,7 @@ async function main(): Promise<void> {
     // Use URL surface type as initial guess (NOT server state, which may be
     // stale 'sphere' default). The authoritative surface type will come from
     // onStateChange and override this if different.
-    await initSurface(urlSurfaceType, false);
+    initSurface(urlSurfaceType, false);
 
     statusEl.textContent = 'Connected! Waiting for game start...';
     startBtn.style.display = 'block';
@@ -1873,4 +1873,4 @@ async function main(): Promise<void> {
   } // end if (debugEnabled)
 }
 
-main().catch(err => console.error('[NetworkMain] Game initialization failed:', err));
+main();

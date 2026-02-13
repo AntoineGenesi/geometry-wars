@@ -323,7 +323,7 @@ export class PlaygroundTestHarness {
 
     const container = this.createMockContainer(width, height);
 
-    this.pg = await PlaygroundGame.create({
+    this.pg = new PlaygroundGame({
       container,
       width,
       height,

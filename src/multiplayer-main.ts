@@ -169,7 +169,7 @@ function orientPlayerOnSurface(
 // Main multiplayer game
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
+function main(): void {
   const sound = getSoundEngine();
   sound.init();
   sound.resume();
@@ -216,7 +216,7 @@ async function main(): Promise<void> {
     gridSegmentsU: 24,
     gridSegmentsV: 18,
   };
-  const surface = await SurfaceFactory.create(surfaceType, surfaceConfig as any);
+  const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
   game.scene.add(surface.group);
 
   surface.mesh.material = new THREE.MeshBasicMaterial({
@@ -1359,4 +1359,4 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch(err => console.error('[MultiplayerMain] Game initialization failed:', err));
+main();

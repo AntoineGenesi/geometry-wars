@@ -91,7 +91,7 @@ function makeSurfaceTransformFn(surface: Surface) {
 // Benchmark entry point
 // ---------------------------------------------------------------------------
 
-export async function runBenchmark(): Promise<void> {
+export function runBenchmark(): void {
   // Create overlay for results display
   const overlay = document.createElement('div');
   overlay.style.cssText = `
@@ -126,7 +126,7 @@ export async function runBenchmark(): Promise<void> {
   game.scene.add(directional);
 
   // Surface (sphere, radius 10)
-  const surface = await SurfaceFactory.create('sphere', {
+  const surface = SurfaceFactory.create('sphere', {
     radius: 10,
     gridColor: 0x1e1e8b,
     surfaceColor: 0x0a0a2a,
