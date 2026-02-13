@@ -781,6 +781,18 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     isLevelComplete = true;
     perfTracker.saveSession();
     perfLogger.saveSession();
+    ddaLogger.finalize();
+
+    // Export logs to disk with git version tagging
+    import('./utils/PerformanceExporter').then(({ exportLogsToServer }) => {
+      const serverUrl = process.env.NODE_ENV === 'production'
+        ? window.location.origin
+        : 'http://localhost:2567';
+      exportLogsToServer(serverUrl, true, true).catch((err) => {
+        console.error('[Main] Export error:', err);
+      });
+    });
+
     bgMusic.stop();
     sound.play('multiplierUp');
     setTimeout(() => {
