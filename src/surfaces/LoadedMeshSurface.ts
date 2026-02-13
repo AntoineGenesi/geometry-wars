@@ -11,6 +11,7 @@
  */
 
 import * as THREE from 'three';
+import { MeshBVH } from 'three-mesh-bvh';
 import { Surface, SurfaceConfig, SurfacePoint } from './Surface';
 import { MeshSurface } from './MeshSurface';
 import type { LoadedMesh } from '../loaders/MeshLoader';
@@ -21,6 +22,8 @@ export interface LoadedMeshConfig extends SurfaceConfig {
   /** Grid resolution for UV grid lines */
   gridSegmentsU?: number;
   gridSegmentsV?: number;
+  /** Animation playback speed (default: 1.0) */
+  animationSpeed?: number;
 }
 
 export class LoadedMeshSurface extends Surface {
@@ -36,6 +39,12 @@ export class LoadedMeshSurface extends Surface {
 
   /** The original loaded mesh */
   readonly loadedMesh: LoadedMesh;
+
+  /** Animation mixer for playing GLTF animations (null if no animations) */
+  private readonly animationMixer: THREE.AnimationMixer | null = null;
+
+  /** Animation clips from the loaded mesh */
+  private readonly animations: THREE.AnimationClip[];
 
   /** Pre-allocated temp objects to avoid GC pressure */
   private readonly _tempDir = new THREE.Vector3();
@@ -72,9 +81,26 @@ export class LoadedMeshSurface extends Surface {
     this.loadedMesh = loadedMesh;
     this.gridSegmentsU = self.gridSegmentsU;
     this.gridSegmentsV = self.gridSegmentsV;
+    this.animations = loadedMesh.animations || [];
 
     // Create MeshSurface for BVH queries
     this.meshSurface = new MeshSurface(loadedMesh.mesh);
+
+    // Initialize animations if present
+    if (this.animations.length > 0) {
+      this.animationMixer = new THREE.AnimationMixer(loadedMesh.mesh);
+
+      // Set animation speed
+      const animationSpeed = config?.animationSpeed ?? 1.0;
+      this.animationMixer.timeScale = animationSpeed;
+
+      // Play all animations (looping)
+      for (const clip of this.animations) {
+        const action = this.animationMixer.clipAction(clip);
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.play();
+      }
+    }
 
     // Compute bounding sphere for UV projection
     loadedMesh.mesh.geometry.computeBoundingSphere();
@@ -360,8 +386,39 @@ export class LoadedMeshSurface extends Surface {
     return false;
   }
 
+  /**
+   * Update animations. Called from Game.onFixedUpdate().
+   * Uses fixed timestep delta (not wall-clock delta) for determinism.
+   *
+   * @param dt - Fixed timestep delta in seconds (typically 1/60)
+   */
+  updateAnimations(dt: number): void {
+    if (!this.animationMixer) return;
+
+    // Update animation mixer with fixed timestep
+    this.animationMixer.update(dt);
+
+    // After animation updates, rebuild BVH (mesh vertices may have moved)
+    // Note: This is expensive for large meshes (~5-10ms for 50k triangles).
+    // For production optimization, consider:
+    // - Rebuilding only every N frames (e.g., every 3 frames)
+    // - Using a simplified collision mesh (low-poly version for BVH)
+    // - Offloading BVH build to a worker thread
+    // - Only rebuilding if vertex displacement exceeds a threshold
+    const geometry = this.loadedMesh.mesh.geometry;
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+
+    // Rebuild the BVH to reflect animated geometry changes
+    // three-mesh-bvh creates a new BVH when we assign to boundsTree
+    geometry.boundsTree = new MeshBVH(geometry);
+  }
+
   dispose(): void {
     super.dispose();
     this.meshSurface.dispose();
+    if (this.animationMixer) {
+      this.animationMixer.stopAllAction();
+    }
   }
 }

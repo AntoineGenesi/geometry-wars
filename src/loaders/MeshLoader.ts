@@ -27,6 +27,8 @@ export interface LoadedMesh {
   scaleFactor: number;
   /** Number of triangles in the final geometry */
   triangleCount: number;
+  /** Animation clips from GLTF (empty array for OBJ files) */
+  animations: THREE.AnimationClip[];
 }
 
 export type MeshFileType = 'obj' | 'glb' | 'gltf';
@@ -145,17 +147,20 @@ export async function loadMeshFromURL(url: string, targetRadius: number = 8): Pr
   }
 
   let root: THREE.Object3D;
+  let animations: THREE.AnimationClip[] = [];
 
   if (fileType === 'obj') {
     const loader = new OBJLoader();
     root = await loader.loadAsync(url);
+    // OBJ files don't support animations
   } else {
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(url);
     root = gltf.scene;
+    animations = gltf.animations || [];
   }
 
-  return processLoadedObject(root, targetRadius);
+  return processLoadedObject(root, targetRadius, animations);
 }
 
 /**
@@ -175,7 +180,7 @@ export async function loadMeshFromFile(file: File, targetRadius: number = 8): Pr
     const text = await file.text();
     const loader = new OBJLoader();
     const root = loader.parse(text);
-    return processLoadedObject(root, targetRadius);
+    return processLoadedObject(root, targetRadius, []);
   } else {
     // GLB/GLTF: create an object URL and load from it
     const arrayBuffer = await file.arrayBuffer();
@@ -187,7 +192,7 @@ export async function loadMeshFromFile(file: File, targetRadius: number = 8): Pr
         '',
         (gltf) => {
           try {
-            resolve(processLoadedObject(gltf.scene, targetRadius));
+            resolve(processLoadedObject(gltf.scene, targetRadius, gltf.animations || []));
           } catch (err) {
             reject(err);
           }
@@ -201,7 +206,7 @@ export async function loadMeshFromFile(file: File, targetRadius: number = 8): Pr
 /**
  * Process a loaded Three.js object into a single walkable mesh.
  */
-function processLoadedObject(root: THREE.Object3D, targetRadius: number): LoadedMesh {
+function processLoadedObject(root: THREE.Object3D, targetRadius: number, animations: THREE.AnimationClip[]): LoadedMesh {
   // Extract all mesh geometries
   const geometries = extractGeometries(root);
 
@@ -236,5 +241,6 @@ function processLoadedObject(root: THREE.Object3D, targetRadius: number): Loaded
     originalSize,
     scaleFactor,
     triangleCount,
+    animations,
   };
 }
