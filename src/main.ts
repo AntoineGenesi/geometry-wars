@@ -274,7 +274,7 @@ const _tempSphere = new THREE.Sphere();
 // Bootstrap
 // ---------------------------------------------------------------------------
 
-function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
+async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshUrl?: string): Promise<void> {
   // Detect mobile mode early -- affects quality, input, and UI decisions
   const mobile = isMobile();
 
@@ -450,8 +450,53 @@ function main(selectedSurface?: SurfaceType, startLevelIndex = 0): void {
     (surfaceConfig as any).crossSection = 2;
   }
 
-  const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
-  game.scene.add(surface.group);
+  // Custom mesh requires meshSource in config
+  if (surfaceType === 'custom') {
+    if (!customMeshUrl) {
+      throw new Error('Custom mesh selected but no URL provided');
+    }
+    (surfaceConfig as any).meshSource = customMeshUrl;
+    (surfaceConfig as any).targetRadius = 8; // Default radius for custom meshes
+  }
+
+  // Show loading indicator for custom meshes (async operation)
+  let loadingDiv: HTMLDivElement | null = null;
+  if (surfaceType === 'custom') {
+    loadingDiv = document.createElement('div');
+    loadingDiv.style.cssText = `
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(10, 0, 32, 0.95);
+      border: 2px solid #00ffff;
+      color: #00ffff;
+      padding: 30px 50px;
+      font-size: 18px;
+      font-family: monospace;
+      text-align: center;
+      z-index: 10000;
+      box-shadow: 0 0 30px rgba(0, 255, 255, 0.5);
+    `;
+    loadingDiv.innerHTML = `
+      <div style="margin-bottom: 10px;">⏳ LOADING CUSTOM MESH...</div>
+      <div style="font-size: 12px; color: #88ffff;">${customMeshUrl}</div>
+    `;
+    document.body.appendChild(loadingDiv);
+  }
+
+  let surface;
+  try {
+    surface = await SurfaceFactory.create(surfaceType, surfaceConfig as any);
+    game.scene.add(surface.group);
+  } catch (error) {
+    if (loadingDiv) loadingDiv.remove();
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    alert(`Failed to load custom mesh:\n${errorMsg}\n\nPlease check the URL and try again.`);
+    throw error;
+  } finally {
+    if (loadingDiv) loadingDiv.remove();
+  }
 
   // Log which surface/level is being used
   console.log(`[Geometry Wars] Level ${levelIndex + 1}: ${level.name} (${surfaceType})`);
@@ -1537,7 +1582,7 @@ if (quickStartConfig.enabled) {
       // Single player - Quick Game (endless) or Adventure level
       const levelIdx = selection.levelIndex ?? -1; // -1 = endless Quick Game
       window.history.replaceState({}, '', buildUrl({ surface: selection.surfaceType, level: String(levelIdx) }));
-      main(selection.surfaceType, levelIdx);
+      main(selection.surfaceType, levelIdx, selection.customMeshUrl);
     }
   });
 }

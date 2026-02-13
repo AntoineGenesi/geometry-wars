@@ -12,6 +12,8 @@ import { SphereWithTunnelSurface, SphereWithTunnelConfig } from './SphereWithTun
 import { CubeRingSurface, CubeRingConfig } from './CubeRingSurface'
 import { CubeWithTunnelSurface, CubeWithTunnelConfig } from './CubeWithTunnelSurface'
 import { MobiusBevelSurface, MobiusBevelConfig } from './MobiusBevelSurface'
+import { LoadedMeshSurface, LoadedMeshConfig } from './LoadedMeshSurface'
+import { loadMeshFromURL, loadMeshFromFile } from '../loaders/MeshLoader'
 
 export type SurfaceType =
   | 'sphere'
@@ -27,6 +29,12 @@ export type SurfaceType =
   | 'cube-ring'
   | 'cube-tunnel'
   | 'mobius-bevel'
+  | 'custom'
+
+export interface CustomMeshConfig extends SurfaceConfig {
+  meshSource: string | File;  // URL or File object
+  targetRadius?: number;       // normalization size (default: 8)
+}
 
 export type SurfaceConfigMap = {
   sphere: SphereConfig
@@ -42,13 +50,36 @@ export type SurfaceConfigMap = {
   'cube-ring': CubeRingConfig
   'cube-tunnel': CubeWithTunnelConfig
   'mobius-bevel': MobiusBevelConfig
+  custom: CustomMeshConfig
 }
 
 export class SurfaceFactory {
-  static create<T extends SurfaceType>(
+  static async create<T extends SurfaceType>(
     type: T,
     config?: SurfaceConfigMap[T]
-  ): Surface {
+  ): Promise<Surface> {
+    // Custom mesh loading is async
+    if (type === 'custom') {
+      const customConfig = config as CustomMeshConfig;
+      if (!customConfig || !customConfig.meshSource) {
+        throw new Error('Custom mesh requires meshSource in config');
+      }
+
+      const targetRadius = customConfig.targetRadius ?? 8;
+
+      // Enforce poly-count limit
+      const loadedMesh = typeof customConfig.meshSource === 'string'
+        ? await loadMeshFromURL(customConfig.meshSource, targetRadius)
+        : await loadMeshFromFile(customConfig.meshSource, targetRadius);
+
+      if (loadedMesh.triangleCount > 100000) {
+        throw new Error(`Mesh too large: ${loadedMesh.triangleCount} triangles (max: 100,000)`);
+      }
+
+      return new LoadedMeshSurface(loadedMesh, customConfig);
+    }
+
+    // All built-in surfaces are synchronous
     switch (type) {
       case 'sphere':
         return new SphereSurface(config as SphereConfig)
@@ -82,6 +113,6 @@ export class SurfaceFactory {
   }
 
   static getAvailableTypes(): SurfaceType[] {
-    return ['sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel', 'mobius-bevel']
+    return ['sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel', 'mobius-bevel', 'custom']
   }
 }

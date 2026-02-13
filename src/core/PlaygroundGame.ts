@@ -115,7 +115,17 @@ export class PlaygroundGame {
   private readonly _tmpRight = new THREE.Vector3();
   private readonly _tmpQuat = new THREE.Quaternion();
 
-  constructor(userConfig: PlaygroundConfig) {
+  /**
+   * Create a new PlaygroundGame instance (async factory method).
+   * Use this instead of constructor to support async surface loading.
+   */
+  static async create(userConfig: PlaygroundConfig): Promise<PlaygroundGame> {
+    const game = new PlaygroundGame(userConfig);
+    await game.initSurface();
+    return game;
+  }
+
+  private constructor(userConfig: PlaygroundConfig) {
     this.config = {
       container: userConfig.container,
       width: userConfig.width ?? (userConfig.container.clientWidth || 400),
@@ -156,12 +166,11 @@ export class PlaygroundGame {
     fill.position.set(-5, -5, -5);
     this.game.scene.add(fill);
 
-    // -- Surface --
+    // -- Surface (initialized later in initSurface, called by create() factory) --
     this._surfaceType = cfg.surface;
-    this._surface = this.createSurface(cfg.surface, cfg.surfaceScale);
-    this.game.scene.add(this._surface.group);
-    this._surface.mesh.updateMatrixWorld(true);
-    this._meshSurface = new MeshSurface(this._surface.mesh);
+    // Surface creation deferred to initSurface() to support async loading
+    this._surface = null as any; // Will be set by initSurface()
+    this._meshSurface = null as any; // Will be set by initSurface()
 
     // -- Input (container-aware for correct mouse aim in embedded playgrounds) --
     this.input = new InputManager();
@@ -341,13 +350,13 @@ export class PlaygroundGame {
   }
 
   /** Rebuild with a different surface. */
-  setSurface(type: SurfaceType): void {
+  async setSurface(type: SurfaceType): Promise<void> {
     // Remove old
     this.game.scene.remove(this._surface.group);
 
     // Create new
     this._surfaceType = type;
-    this._surface = this.createSurface(type, this.config.surfaceScale);
+    this._surface = await this.createSurface(type, this.config.surfaceScale);
     this.game.scene.add(this._surface.group);
     this._surface.mesh.updateMatrixWorld(true);
     this._meshSurface = new MeshSurface(this._surface.mesh);
@@ -784,6 +793,14 @@ export class PlaygroundGame {
     };
   }
 
+  private async initSurface(): Promise<void> {
+    const cfg = this.config;
+    this._surface = await this.createSurface(cfg.surface, cfg.surfaceScale);
+    this.game.scene.add(this._surface.group);
+    this._surface.mesh.updateMatrixWorld(true);
+    this._meshSurface = new MeshSurface(this._surface.mesh);
+  }
+
   private wireBulletPool(): void {
     const surface = this._surface;
     const getTransform = this.getTransformFn();
@@ -794,7 +811,7 @@ export class PlaygroundGame {
     );
   }
 
-  private createSurface(type: SurfaceType, scale: number): Surface {
+  private async createSurface(type: SurfaceType, scale: number): Promise<Surface> {
     const config: Record<string, unknown> = {
       radius: scale,
       size: scale,
@@ -824,6 +841,6 @@ export class PlaygroundGame {
       config.crossSection = 2;
     }
 
-    return SurfaceFactory.create(type, config as any);
+    return await SurfaceFactory.create(type, config as any);
   }
 }

@@ -26,6 +26,7 @@ export interface MenuSelection {
   serverUrl?: string;
   playerName?: string;
   quickGameMode?: QuickGameModeType; // For single player quick game
+  customMeshUrl?: string; // For custom mesh loading
 }
 
 // ---------------------------------------------------------------------------
@@ -44,6 +45,7 @@ export class StartMenu {
   private coopSelectedSurface: SurfaceType = 'sphere';
   private lanSelectedSurface: SurfaceType = 'sphere';
   private coopPlayerCount: 2 | 3 | 4 = 2;
+  private customMeshUrl: string = '';
   private progress: LevelProgress;
   private lanClient: LANClient = new LANClient();
   private menuBackground: MenuBackground;
@@ -294,6 +296,16 @@ export class StartMenu {
           <h3>SELECT SURFACE</h3>
           <div class="surface-grid">
             ${surfaceButtons}
+          </div>
+          <div class="custom-mesh-section">
+            <button class="custom-mesh-btn" id="custom-mesh-toggle-btn">
+              <span>\u2B73</span>
+              <span>LOAD CUSTOM MESH</span>
+            </button>
+            <div class="custom-mesh-input-wrap hidden" id="custom-mesh-input-wrap">
+              <input type="text" id="custom-mesh-url-input" placeholder="Enter mesh URL (.obj, .glb, .gltf)" />
+              <span class="custom-mesh-hint">Supports OBJ, GLB, and GLTF formats</span>
+            </div>
           </div>
           <button class="start-btn" id="surface-start-btn">
             <span class="btn-icon">\u25B6</span>
@@ -1198,6 +1210,73 @@ export class StartMenu {
       }
 
       /* ------------------------------------------------------------------- */
+      /* Custom mesh section                                                  */
+      /* ------------------------------------------------------------------- */
+      #start-menu .custom-mesh-section {
+        margin: 20px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+      }
+
+      #start-menu .custom-mesh-btn {
+        background: linear-gradient(180deg, #664400 0%, #442200 100%);
+        border: 2px solid #ff8800;
+        color: #ffcc66;
+        padding: 12px 30px;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        letter-spacing: 2px;
+      }
+
+      #start-menu .custom-mesh-btn:hover {
+        background: linear-gradient(180deg, #886600 0%, #664400 100%);
+        transform: scale(1.05);
+        box-shadow: 0 0 15px #ff8800;
+      }
+
+      #start-menu .custom-mesh-btn.active {
+        background: linear-gradient(180deg, #886600 0%, #664400 100%);
+        box-shadow: 0 0 15px #ff8800;
+      }
+
+      #start-menu .custom-mesh-input-wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
+        max-width: 500px;
+      }
+
+      #start-menu #custom-mesh-url-input {
+        background: rgba(0, 40, 40, 0.6);
+        border: 2px solid #006666;
+        color: #00ffff;
+        padding: 12px 16px;
+        font: 14px monospace;
+        width: 100%;
+        outline: none;
+      }
+
+      #start-menu #custom-mesh-url-input:focus {
+        border-color: #00ffff;
+        box-shadow: 0 0 12px rgba(0, 255, 255, 0.4);
+      }
+
+      #start-menu .custom-mesh-hint {
+        color: #668888;
+        font: 11px monospace;
+        text-align: center;
+      }
+
+      /* ------------------------------------------------------------------- */
       /* Hidden utility                                                       */
       /* ------------------------------------------------------------------- */
       #start-menu .hidden { display: none !important; }
@@ -1420,13 +1499,36 @@ export class StartMenu {
       });
     });
 
+    // Custom mesh toggle button
+    const customMeshToggleBtn = this.container.querySelector('#custom-mesh-toggle-btn');
+    const customMeshInputWrap = this.container.querySelector('#custom-mesh-input-wrap') as HTMLElement;
+    const customMeshUrlInput = this.container.querySelector('#custom-mesh-url-input') as HTMLInputElement;
+
+    customMeshToggleBtn?.addEventListener('click', () => {
+      const isHidden = customMeshInputWrap.classList.contains('hidden');
+      if (isHidden) {
+        customMeshInputWrap.classList.remove('hidden');
+        customMeshToggleBtn.classList.add('active');
+      } else {
+        customMeshInputWrap.classList.add('hidden');
+        customMeshToggleBtn.classList.remove('active');
+      }
+    });
+
+    customMeshUrlInput?.addEventListener('input', (e) => {
+      this.customMeshUrl = (e.target as HTMLInputElement).value.trim();
+    });
+
     // Surface section START button (Quick Game / Online)
     const surfaceStartBtn = this.container.querySelector('#surface-start-btn');
     surfaceStartBtn?.addEventListener('click', () => {
+      // If custom mesh URL is provided, use custom surface type
+      const surfaceType = this.customMeshUrl ? 'custom' : this.selectedSurface;
       this.onStartCallback?.({
-        surfaceType: this.selectedSurface,
+        surfaceType,
         gameMode: this.pendingMode,
         quickGameMode: this.pendingMode === 'single' ? this.selectedQuickGameMode : undefined,
+        customMeshUrl: this.customMeshUrl || undefined,
       });
     });
 
