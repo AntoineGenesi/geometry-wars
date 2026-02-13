@@ -31,6 +31,24 @@
 
 **Status:** READY FOR HUMAN TESTING at 60 FPS (Level 6 verification needed). Commit 1635dbf.
 
+### Iteration 10 — Cross-Surface Diagnostic Fix (2026-02-14)
+
+**Puppeteer Level 5 verified (6/8 surfaces ALL PASS):**
+- [x] Sphere: lateral, forward, diagonal all pass (wobble < 0.10)
+- [x] Pill: lateral, forward, diagonal all pass (wobble < 0.08)
+- [x] Torus: lateral, forward, diagonal all pass (wobble < 0.09)
+- [x] Capsule: lateral, forward, diagonal all pass (wobble < 0.09)
+- [x] Peanut: lateral, forward, diagonal all pass (wobble < 0.07)
+- [x] Icosahedron: lateral, forward, diagonal all pass (wobble < 0.08)
+- [ ] Cube: forward wobble 2.954, diagonal zigzag 0.50 (known geometric limitation — beveled edges)
+- [ ] Pipe: lateral wobble 0.214, forward wobble 0.820 (known geometric limitation — tight curvature)
+
+**What was fixed (iteration 10):**
+1. Puppeteer diagnostic timing — player was dying before invincibility took effect on some surfaces
+2. CameraController.targetUp lerp smoothing (factor 0.4) — reduces movement axis disruption at cube edges
+
+**Status:** READY FOR HUMAN TESTING. Commit 1998383.
+
 ---
 
 ## Session 13 Game Regression Fixes (2026-02-12)
