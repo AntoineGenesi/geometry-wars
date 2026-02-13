@@ -29,6 +29,7 @@ function createTestMesh(radius = 8): LoadedMesh {
     originalSize: new THREE.Vector3(radius * 2, radius * 2, radius * 2),
     scaleFactor: 1.0,
     triangleCount: geometry.index ? geometry.index.count / 3 : geometry.attributes.position.count / 3,
+    animations: [],
   };
 }
 

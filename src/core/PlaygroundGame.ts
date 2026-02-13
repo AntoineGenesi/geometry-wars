@@ -32,6 +32,7 @@ import { EnemySpawner, EnemyType } from '../entities/enemies/EnemySpawner';
 import { SurfaceFactory, SurfaceType } from '../surfaces/SurfaceFactory';
 import { Surface } from '../surfaces/Surface';
 import { MeshSurface } from '../surfaces/MeshSurface';
+import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
 import { MeshWalker } from '../movement/MeshWalker';
 import { WeaponManager } from '../weapons/WeaponManager';
 import { WeaponType } from '../weapons/WeaponTypes';
@@ -583,6 +584,11 @@ export class PlaygroundGame {
     const activeCount = this.enemySpawner.getActiveCount();
     if (activeCount < Math.floor(this.config.enemyCount * 0.5)) {
       this.spawnEnemies(this.config.enemyCount - activeCount);
+    }
+
+    // -- Update surface animations (if LoadedMeshSurface with animations) --
+    if (this._surface instanceof LoadedMeshSurface) {
+      this._surface.updateAnimations(dt);
     }
 
     this.input.endFrame();

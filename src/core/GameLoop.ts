@@ -10,6 +10,7 @@ import { BUFF_DEFINITIONS } from '../buffs/BuffManager';
 import { GlowTrail } from '../effects/GlowTrail';
 import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { exportLogsToServer } from '../utils/PerformanceExporter';
+import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
 
 /**
  * GameLoop contains the fixed-timestep game update logic, extracted from main.ts onFixedUpdate.
@@ -639,6 +640,11 @@ export class GameLoop {
         && enemyCount === 0
         && ctx.gameMode.phase === ModePhase.Playing) {
       ctx.gameMode.completeLevel(ctx.player.score);
+    }
+
+    // Update surface animations (if LoadedMeshSurface with animations)
+    if (ctx.surface instanceof LoadedMeshSurface) {
+      ctx.surface.updateAnimations(dt);
     }
 
     // Clear per-frame input flags

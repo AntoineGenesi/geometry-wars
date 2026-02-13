@@ -16,6 +16,7 @@ vi.mock('../loaders/MeshLoader', () => {
       originalSize: new THREE.Vector3(1, 1, 1),
       scaleFactor: 1,
       triangleCount: triangles,
+      animations: [],
     };
   };
 
