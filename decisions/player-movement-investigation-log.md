@@ -209,6 +209,33 @@ The `upHint` is:
 - TypeScript compiles clean (only pre-existing errors in test files)
 - Level 4 verification achieved (programmatic visual)
 
+## Iteration 5 — USER TEST RESULT: STILL BROKEN (closer but not fixed)
+
+**User tested iteration 5 (upHint fix) in real browser:**
+
+### Symptoms:
+1. **Forward still jerky** — player doesn't move linearly forward over 1 second. Veers in different directions.
+2. **A/D causes chevron to glitch** — player chevron spins super fast, you see MULTIPLE COPIES in the same spot. Player barely moves in intended direction. Then the ENTIRE MAP jumps in the correct direction as one big movement.
+3. **Map jumps** — the sphere/map eventually turns the right way but in a single large discontinuous jump, not smooth continuous rotation.
+4. **Better than iter 4** — player CAN move, but the glitching makes it unplayable.
+
+### Analysis:
+- **"Chevron spinning super fast with multiple copies"** = player ORIENTATION is oscillating rapidly while POSITION barely moves. This is the tangent frame or player.quaternion fighting the camera or surface normal.
+- **"Whole map jumps"** = camera eventually snapping to new orientation discontinuously. The camera.up lerp may still be causing issues, OR the upHint is correct for movement but the CAMERA FOLLOW still uses the lagged lerp, causing visual discontinuity.
+- **"Forward veering"** = camera-relative axes still have some residual oscillation, even with upHint.
+
+### Key insight: The upHint fixed the MOVEMENT DIRECTION but not the VISUAL PRESENTATION
+The player may actually be moving correctly now, but:
+1. The ORIENTATION (player mesh rotation / chevron facing) is computed separately and may use the old lagged camera axes
+2. The CAMERA FOLLOW is still lerping, creating visual jumps when the surface normal changes significantly
+3. There may be TWO systems setting player rotation — the movement system and the rendering/orientation system — and they disagree
+
+### What to investigate in iteration 6:
+1. **Player orientation update** — how is the chevron rotation computed? Is it using camera axes (lagged) or surface tangent frame (stable)?
+2. **Camera follow smoothness** — is camera.up lerp creating the "map jump"? Should the camera also use upHint for its own orientation?
+3. **Double-orientation problem** — check if PlaygroundGame.orientPlayer() and GameLoop both set player rotation
+4. **Frame-rate dependent oscillation** — the "spinning multiple copies" suggests high-frequency oscillation (hundreds of Hz), which means something is flipping orientation every frame or every other frame
+
 ## Rules for Future Iterations
 
 1. READ THIS FILE FIRST

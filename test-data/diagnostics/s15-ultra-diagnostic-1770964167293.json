@@ -1,0 +1,1042 @@
+[
+  {
+    "frame": 0,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 5.1556111209427414e-17,
+        "y": 1,
+        "z": -6.311144030689768e-33
+      },
+      "bitangent": {
+        "x": -1.224131122895035e-16,
+        "y": 0,
+        "z": -1
+      },
+      "normal": {
+        "x": -1,
+        "y": 5.1556111209427414e-17,
+        "z": 1.224131122895035e-16
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.04361925940485608,
+        "y": 0.9990482271687245,
+        "z": 2.6079200976698858e-8
+      },
+      "bitangent": {
+        "x": 0.06527886056184133,
+        "y": -0.002850102178851106,
+        "z": -0.9978629902352917
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 1,
+      "bitangentLength": 1,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": 6.011617819790384e-20,
+      "tangentDotNormal": 2.8713289878336178e-18,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 0.9999999999999999,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06527886056184133,
+      "y": -0.002850102178851106,
+      "z": -0.9978629902352917
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.04361925940485608,
+      "y": -0.9990482271687245,
+      "z": -2.6079200977132545e-8
+    },
+    "playerForward": {
+      "x": 0.06527886056184135,
+      "y": -0.0028501021788511064,
+      "z": -0.9978629902352918
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": -6.103600303906281e-20,
+      "rightDotNormal": -2.842991227613623e-18,
+      "forwardDotNormal": 0,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.04361925940485608,
+        "y": -0.9990482271687245,
+        "z": -2.6079200977132545e-8
+      },
+      "actualPlayerRight": {
+        "x": -0.04361925940485608,
+        "y": -0.9990482271687245,
+        "z": -2.6079200977132545e-8
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06527886056184135,
+        "y": -0.0028501021788511064,
+        "z": -0.9978629902352918
+      },
+      "actualPlayerForward": {
+        "x": 0.06527886056184135,
+        "y": -0.0028501021788511064,
+        "z": -0.9978629902352918
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 1,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.04361925940485608,
+        "y": 0.9990482271687245,
+        "z": 2.6079200976698858e-8
+      },
+      "bitangent": {
+        "x": 0.06527886056184133,
+        "y": -0.002850102178851106,
+        "z": -0.9978629902352917
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.043817471394248846,
+        "y": 0.9990349495350097,
+        "z": -0.00303295370801844
+      },
+      "bitangent": {
+        "x": 0.06514597936860443,
+        "y": -0.005886671298950288,
+        "z": -0.9978583809705281
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 1,
+      "bitangentLength": 1,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": 0,
+      "tangentDotNormal": 5.502326025363935e-18,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 1,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06514597936860443,
+      "y": -0.005886671298950288,
+      "z": -0.9978583809705281
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.043817471394248846,
+      "y": -0.9990349495350097,
+      "z": 0.0030329537080184404
+    },
+    "playerForward": {
+      "x": 0.06514597936860445,
+      "y": -0.005886671298950289,
+      "z": -0.9978583809705281
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": 0,
+      "rightDotNormal": -5.5294310796760726e-18,
+      "forwardDotNormal": -1.3877787807814457e-17,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.043817471394248846,
+        "y": -0.9990349495350097,
+        "z": 0.0030329537080184404
+      },
+      "actualPlayerRight": {
+        "x": -0.043817471394248846,
+        "y": -0.9990349495350097,
+        "z": 0.0030329537080184404
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06514597936860445,
+        "y": -0.005886671298950289,
+        "z": -0.9978583809705281
+      },
+      "actualPlayerForward": {
+        "x": 0.06514597936860445,
+        "y": -0.005886671298950289,
+        "z": -0.9978583809705281
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 2,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.043817471394248846,
+        "y": 0.9990349495350097,
+        "z": -0.00303295370801844
+      },
+      "bitangent": {
+        "x": 0.06514597936860443,
+        "y": -0.005886671298950288,
+        "z": -0.9978583809705281
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.043983860810142786,
+        "y": 0.999016637261111,
+        "z": -0.005583767879830201
+      },
+      "bitangent": {
+        "x": 0.06503375596960732,
+        "y": -0.008440483807396558,
+        "z": -0.9978473674954416
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 1,
+      "bitangentLength": 1,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": 8.673617379884035e-19,
+      "tangentDotNormal": -1.6805133673525319e-18,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 1,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06503375596960732,
+      "y": -0.008440483807396558,
+      "z": -0.9978473674954416
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.043983860810142786,
+      "y": -0.999016637261111,
+      "z": 0.005583767879830201
+    },
+    "playerForward": {
+      "x": 0.06503375596960732,
+      "y": -0.00844048380739656,
+      "z": -0.9978473674954416
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": 8.673617379884035e-19,
+      "rightDotNormal": 1.6805133673525319e-18,
+      "forwardDotNormal": 0,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.043983860810142786,
+        "y": -0.999016637261111,
+        "z": 0.005583767879830201
+      },
+      "actualPlayerRight": {
+        "x": -0.043983860810142786,
+        "y": -0.999016637261111,
+        "z": 0.005583767879830201
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06503375596960732,
+        "y": -0.00844048380739656,
+        "z": -0.9978473674954416
+      },
+      "actualPlayerForward": {
+        "x": 0.06503375596960732,
+        "y": -0.00844048380739656,
+        "z": -0.9978473674954416
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 3,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.043983860810142786,
+        "y": 0.999016637261111,
+        "z": -0.005583767879830201
+      },
+      "bitangent": {
+        "x": 0.06503375596960732,
+        "y": -0.008440483807396558,
+        "z": -0.9978473674954416
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.04412388318272727,
+        "y": 0.9989961320777806,
+        "z": -0.007733758886259579
+      },
+      "bitangent": {
+        "x": 0.06493883553127117,
+        "y": -0.010592987540578351,
+        "z": -0.997833020226735
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 1,
+      "bitangentLength": 1,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": 0,
+      "tangentDotNormal": 9.974659986866641e-18,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 1,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06493883553127117,
+      "y": -0.010592987540578351,
+      "z": -0.997833020226735
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.04412388318272727,
+      "y": -0.9989961320777806,
+      "z": 0.00773375888625958
+    },
+    "playerForward": {
+      "x": 0.06493883553127118,
+      "y": -0.010592987540578353,
+      "z": -0.997833020226735
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": 8.673617379884035e-19,
+      "rightDotNormal": -1.0083080204115191e-17,
+      "forwardDotNormal": -1.3877787807814457e-17,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.04412388318272727,
+        "y": -0.9989961320777806,
+        "z": 0.00773375888625958
+      },
+      "actualPlayerRight": {
+        "x": -0.04412388318272727,
+        "y": -0.9989961320777806,
+        "z": 0.00773375888625958
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06493883553127118,
+        "y": -0.010592987540578353,
+        "z": -0.997833020226735
+      },
+      "actualPlayerForward": {
+        "x": 0.06493883553127118,
+        "y": -0.010592987540578353,
+        "z": -0.997833020226735
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 4,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.04412388318272727,
+        "y": 0.9989961320777806,
+        "z": -0.007733758886259579
+      },
+      "bitangent": {
+        "x": 0.06493883553127117,
+        "y": -0.010592987540578351,
+        "z": -0.997833020226735
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.04424201931420528,
+        "y": 0.9989751943732942,
+        "z": -0.009550118001404585
+      },
+      "bitangent": {
+        "x": 0.06485840850870406,
+        "y": -0.012411459150331667,
+        "z": -0.9978172891504125
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 1,
+      "bitangentLength": 1,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": 1.734723475976807e-18,
+      "tangentDotNormal": 1.1600963245594897e-17,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 0.9999999999999998,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06485840850870406,
+      "y": -0.012411459150331667,
+      "z": -0.9978172891504125
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.04424201931420528,
+      "y": -0.9989751943732942,
+      "z": 0.009550118001404583
+    },
+    "playerForward": {
+      "x": 0.06485840850870407,
+      "y": -0.012411459150331667,
+      "z": -0.9978172891504125
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": 0,
+      "rightDotNormal": -1.1492543028346347e-17,
+      "forwardDotNormal": -1.3877787807814457e-17,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.04424201931420528,
+        "y": -0.9989751943732942,
+        "z": 0.009550118001404583
+      },
+      "actualPlayerRight": {
+        "x": -0.04424201931420528,
+        "y": -0.9989751943732942,
+        "z": 0.009550118001404583
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06485840850870407,
+        "y": -0.012411459150331667,
+        "z": -0.9978172891504125
+      },
+      "actualPlayerForward": {
+        "x": 0.06485840850870407,
+        "y": -0.012411459150331667,
+        "z": -0.9978172891504125
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 5,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.04424201931420528,
+        "y": 0.9989751943732942,
+        "z": -0.009550118001404585
+      },
+      "bitangent": {
+        "x": 0.06485840850870406,
+        "y": -0.012411459150331667,
+        "z": -0.9978172891504125
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.044341953152268396,
+        "y": 0.9989548736717345,
+        "z": -0.011088352363241705
+      },
+      "bitangent": {
+        "x": 0.0647901274726519,
+        "y": -0.013951475151053353,
+        "z": -0.997801380898617
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 1.0000000000000002,
+      "bitangentLength": 1,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": -1.734723475976807e-18,
+      "tangentDotNormal": 7.15573433840433e-18,
+      "bitangentDotNormal": 1.3877787807814457e-17,
+      "crossProductCheck": 1,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.0647901274726519,
+      "y": -0.013951475151053353,
+      "z": -0.997801380898617
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.0443419531522684,
+      "y": -0.9989548736717345,
+      "z": 0.011088352363241707
+    },
+    "playerForward": {
+      "x": 0.06479012747265192,
+      "y": -0.013951475151053355,
+      "z": -0.997801380898617
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1.0000000000000002,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": 0,
+      "rightDotNormal": -3.2526065174565133e-19,
+      "forwardDotNormal": 0,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.0443419531522684,
+        "y": -0.9989548736717345,
+        "z": 0.011088352363241707
+      },
+      "actualPlayerRight": {
+        "x": -0.0443419531522684,
+        "y": -0.9989548736717345,
+        "z": 0.011088352363241707
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06479012747265192,
+        "y": -0.013951475151053355,
+        "z": -0.997801380898617
+      },
+      "actualPlayerForward": {
+        "x": 0.06479012747265192,
+        "y": -0.013951475151053355,
+        "z": -0.997801380898617
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 6,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.044341953152268396,
+        "y": 0.9989548736717345,
+        "z": -0.011088352363241705
+      },
+      "bitangent": {
+        "x": 0.0647901274726519,
+        "y": -0.013951475151053353,
+        "z": -0.997801380898617
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.044426717114446,
+        "y": 0.9989357573077456,
+        "z": -0.01239433654674894
+      },
+      "bitangent": {
+        "x": 0.06473203406130107,
+        "y": -0.015258966655778874,
+        "z": -0.9977860129821846
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 1.0000000000000002,
+      "bitangentLength": 0.9999999999999999,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": 0,
+      "tangentDotNormal": 3.903127820947816e-18,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 1,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06473203406130107,
+      "y": -0.015258966655778874,
+      "z": -0.9977860129821846
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.044426717114446006,
+      "y": -0.9989357573077456,
+      "z": 0.012394336546748938
+    },
+    "playerForward": {
+      "x": 0.06473203406130106,
+      "y": -0.015258966655778873,
+      "z": -0.9977860129821847
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1.0000000000000002,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": -1.734723475976807e-18,
+      "rightDotNormal": 3.144186300207963e-18,
+      "forwardDotNormal": 1.3877787807814457e-17,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.044426717114446006,
+        "y": -0.9989357573077456,
+        "z": 0.012394336546748938
+      },
+      "actualPlayerRight": {
+        "x": -0.044426717114446006,
+        "y": -0.9989357573077456,
+        "z": 0.012394336546748938
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06473203406130106,
+        "y": -0.015258966655778873,
+        "z": -0.9977860129821847
+      },
+      "actualPlayerForward": {
+        "x": 0.06473203406130106,
+        "y": -0.015258966655778873,
+        "z": -0.9977860129821847
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 7,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.044426717114446,
+        "y": 0.9989357573077456,
+        "z": -0.01239433654674894
+      },
+      "bitangent": {
+        "x": 0.06473203406130107,
+        "y": -0.015258966655778874,
+        "z": -0.9977860129821846
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.044498810682606325,
+        "y": 0.9989181365388138,
+        "z": -0.013506011315610605
+      },
+      "bitangent": {
+        "x": 0.06468249589428357,
+        "y": -0.016371920633356598,
+        "z": -0.9977715845521263
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 1,
+      "bitangentLength": 0.9999999999999999,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": 0,
+      "tangentDotNormal": 8.239936510889834e-18,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 0.9999999999999998,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06468249589428357,
+      "y": -0.016371920633356598,
+      "z": -0.9977715845521263
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.044498810682606325,
+      "y": -0.9989181365388138,
+      "z": 0.013506011315610605
+    },
+    "playerForward": {
+      "x": 0.06468249589428357,
+      "y": -0.016371920633356598,
+      "z": -0.9977715845521264
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": -1.734723475976807e-18,
+      "rightDotNormal": -8.239936510889834e-18,
+      "forwardDotNormal": 0,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.044498810682606325,
+        "y": -0.9989181365388138,
+        "z": 0.013506011315610605
+      },
+      "actualPlayerRight": {
+        "x": -0.044498810682606325,
+        "y": -0.9989181365388138,
+        "z": 0.013506011315610605
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06468249589428357,
+        "y": -0.016371920633356598,
+        "z": -0.9977715845521264
+      },
+      "actualPlayerForward": {
+        "x": 0.06468249589428357,
+        "y": -0.016371920633356598,
+        "z": -0.9977715845521264
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 8,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.044498810682606325,
+        "y": 0.9989181365388138,
+        "z": -0.013506011315610605
+      },
+      "bitangent": {
+        "x": 0.06468249589428357,
+        "y": -0.016371920633356598,
+        "z": -0.9977715845521263
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.04456029713088218,
+        "y": 0.9989021168681608,
+        "z": -0.014454785917291437
+      },
+      "bitangent": {
+        "x": 0.06464015274493048,
+        "y": -0.017321784195293524,
+        "z": -0.9977582905921674
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 0.9999999999999999,
+      "bitangentLength": 1,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": -3.469446951953614e-18,
+      "tangentDotNormal": 4.7704895589362195e-18,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 0.9999999999999998,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06464015274493048,
+      "y": -0.017321784195293524,
+      "z": -0.9977582905921674
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.044560297130882186,
+      "y": -0.998902116868161,
+      "z": 0.01445478591729144
+    },
+    "playerForward": {
+      "x": 0.06464015274493048,
+      "y": -0.017321784195293524,
+      "z": -0.9977582905921675
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1.0000000000000002,
+      "forwardLength": 1.0000000000000002,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": 0,
+      "rightDotNormal": -1.1926223897340549e-17,
+      "forwardDotNormal": 1.3877787807814457e-17,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.044560297130882186,
+        "y": -0.998902116868161,
+        "z": 0.01445478591729144
+      },
+      "actualPlayerRight": {
+        "x": -0.044560297130882186,
+        "y": -0.998902116868161,
+        "z": 0.01445478591729144
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06464015274493048,
+        "y": -0.017321784195293524,
+        "z": -0.9977582905921675
+      },
+      "actualPlayerForward": {
+        "x": 0.06464015274493048,
+        "y": -0.017321784195293524,
+        "z": -0.9977582905921675
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  },
+  {
+    "frame": 9,
+    "tangentFrameBefore": {
+      "tangent": {
+        "x": 0.04456029713088218,
+        "y": 0.9989021168681608,
+        "z": -0.014454785917291437
+      },
+      "bitangent": {
+        "x": 0.06464015274493048,
+        "y": -0.017321784195293524,
+        "z": -0.9977582905921674
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameAfter": {
+      "tangent": {
+        "x": 0.044612882408001944,
+        "y": 0.9988876907859997,
+        "z": -0.015266693141039006
+      },
+      "bitangent": {
+        "x": 0.06460387101815371,
+        "y": -0.018134621242638167,
+        "z": -0.997746197868905
+      },
+      "normal": {
+        "x": -0.9969132512775217,
+        "y": 0.04352604632399907,
+        "z": -0.06534104926217159
+      }
+    },
+    "tangentFrameQuality": {
+      "tangentLength": 0.9999999999999999,
+      "bitangentLength": 1,
+      "normalLength": 0.9999999999999998,
+      "tangentDotBitangent": 0,
+      "tangentDotNormal": -3.2526065174565133e-18,
+      "bitangentDotNormal": 0,
+      "crossProductCheck": 0.9999999999999998,
+      "handedness": "right"
+    },
+    "aimDirection": {
+      "x": 0.06460387101815371,
+      "y": -0.018134621242638167,
+      "z": -0.997746197868905
+    },
+    "aimDirectionSource": "default-bitangent",
+    "playerRight": {
+      "x": -0.04461288240800195,
+      "y": -0.9988876907859999,
+      "z": 0.01526669314103901
+    },
+    "playerForward": {
+      "x": 0.06460387101815371,
+      "y": -0.018134621242638167,
+      "z": -0.997746197868905
+    },
+    "playerNormal": {
+      "x": -0.9969132512775217,
+      "y": 0.04352604632399907,
+      "z": -0.06534104926217159
+    },
+    "orientationQuality": {
+      "rightLength": 1.0000000000000002,
+      "forwardLength": 1,
+      "normalLength": 0.9999999999999998,
+      "rightDotForward": 0,
+      "rightDotNormal": 3.0357660829594124e-18,
+      "forwardDotNormal": 0,
+      "handedness": "left"
+    },
+    "crossProductVerification": {
+      "expectedPlayerRight": {
+        "x": -0.04461288240800195,
+        "y": -0.9988876907859999,
+        "z": 0.01526669314103901
+      },
+      "actualPlayerRight": {
+        "x": -0.04461288240800195,
+        "y": -0.9988876907859999,
+        "z": 0.01526669314103901
+      },
+      "difference": 0,
+      "expectedPlayerForward": {
+        "x": 0.06460387101815371,
+        "y": -0.018134621242638167,
+        "z": -0.997746197868905
+      },
+      "actualPlayerForward": {
+        "x": 0.06460387101815371,
+        "y": -0.018134621242638167,
+        "z": -0.997746197868905
+      },
+      "forwardDifference": 0
+    },
+    "tangentBitangentSwapped": false,
+    "tangentFlipped": false,
+    "bitangentFlipped": false
+  }
+]
