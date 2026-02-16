@@ -376,6 +376,10 @@ export class MeshWalker {
   private _updateTangentFrame(newNormal: THREE.Vector3, _transportedTangent?: THREE.Vector3): void {
     const n = newNormal.clone().normalize();
 
+    // Store old axes for sign-flip detection
+    const oldTangent = this._tangent.clone();
+    const oldBitangent = this._bitangent.clone();
+
     // Project old tangent onto new tangent plane (Gram-Schmidt)
     const dotT = this._tangent.dot(n);
     this._tangent.addScaledVector(n, -dotT);
@@ -390,6 +394,12 @@ export class MeshWalker {
     }
     this._tangent.multiplyScalar(1 / tangentLen);
 
+    // Sign-flip protection: ensure tangent maintains consistent orientation
+    // Prevents 180° flips at triangle edges that cause movement oscillation
+    if (oldTangent.dot(this._tangent) < 0) {
+      this._tangent.negate();
+    }
+
     // Project old bitangent onto new tangent plane (Gram-Schmidt)
     const dotB = this._bitangent.dot(n);
     this._bitangent.addScaledVector(n, -dotB);
@@ -401,6 +411,12 @@ export class MeshWalker {
       return;
     }
     this._bitangent.multiplyScalar(1 / bitangentLen);
+
+    // Sign-flip protection: ensure bitangent maintains consistent orientation
+    // This is critical - bitangent is used as the "forward" direction for camera-relative input
+    if (oldBitangent.dot(this._bitangent) < 0) {
+      this._bitangent.negate();
+    }
 
     // Re-orthogonalize: ensure bitangent is perpendicular to tangent
     // (dual projection can lose exact orthogonality due to floating point)
