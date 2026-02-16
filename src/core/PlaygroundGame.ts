@@ -159,4 +159,14 @@ export class PlaygroundGame {
   dispose(): void {
     this.instance.dispose();
   }
+
+  /**
+   * Manual render update (for tests only).
+   * In normal operation, this is called automatically by the game loop.
+   * @private
+   */
+  renderUpdate(): void {
+    // Call the instance's render method with alpha=1 (no interpolation)
+    this.instance.render(1.0);
+  }
 }
