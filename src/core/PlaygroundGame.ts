@@ -499,10 +499,9 @@ export class PlaygroundGame {
 
     if (this.player.alive) {
       // -- Movement via MeshWalker (same as main game) --
-      // Get the walker's tangent frame BEFORE movement for stable camera axes.
-      // The frame's bitangent is the camera's target up (pre-lerp), which gives
-      // instant, oscillation-free movement direction on curved surfaces.
-      const frame = this._isUVBasedSurface() ? null : this._walker.getTangentFrame();
+      // Get the walker's SMOOTH tangent frame (vertex normal interpolation).
+      // This eliminates direction drift from discontinuous face normals.
+      const frame = this._isUVBasedSurface() ? null : this._walker.getSmoothTangentFrame();
       this.movePlayer(inputState, dt, frame);
 
       // -- Orient player using walker's tangent frame + aim --
@@ -619,7 +618,7 @@ export class PlaygroundGame {
       frame = { tangent: point.tangentU, bitangent: point.tangentV };
     } else {
       normal = this._walker.normal;
-      frame = this._walker.getTangentFrame();
+      frame = this._walker.getSmoothTangentFrame();
     }
     const camPos = this._tmpVec
       .copy(normal)
@@ -736,8 +735,7 @@ export class PlaygroundGame {
       }
     } else {
       // -- MeshWalker movement for curved surfaces (sphere, torus, etc.) --
-      // Pass frame.bitangent as upHint: the camera's ideal up vector (pre-lerp).
-      // This eliminates direction oscillation from camera.up lerp lag at 60 FPS.
+      // Pass smooth bitangent as upHint - eliminates drift from discontinuous face normals.
       if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
         this._walker.moveFromInput(moveX, -moveY, this.game.camera, dt, frame?.bitangent);
       }
@@ -830,7 +828,7 @@ export class PlaygroundGame {
 
       this.player.aimAngle = Math.atan2(input.aimX, -input.aimY);
     } else {
-      // MeshWalker surfaces: use camera-relative aim direction with stable upHint
+      // MeshWalker surfaces: use camera-relative aim direction with smooth upHint
       playerNormal = this._walker.normal;
       const aimDirection = this._walker.getAimDirection(input.aimX, input.aimY, this.game.camera, frame?.bitangent);
 
