@@ -3,6 +3,7 @@ import type { GameContext } from './GameContext';
 import { LODLevel } from '../rendering/LODManager';
 import { EnemyType } from '../entities/enemies/EnemySpawner';
 import { UIHelpers } from '../ui/UIHelpers';
+import { profiler } from './PerformanceProfiler';
 
 /**
  * RenderLoop contains the render callback logic, extracted from main.ts onRender.
@@ -21,10 +22,13 @@ export class RenderLoop {
   private _tempSphere = new THREE.Sphere();
 
   render(ctx: GameContext, alpha: number): void {
+    profiler.begin('surface_projection');
     // Project bullets and geoms onto surface
     ctx.bulletPool.applySurfaceProjection(ctx.getTransform);
     ctx.geomPool.applySurfaceProjection(ctx.getTransform);
+    profiler.end('surface_projection');
 
+    profiler.begin('transparency_and_occlusion');
     // Tunnel transparency: check if surface blocks camera-to-player view
     // Uses pre-allocated vectors instead of clone()
     const camPos = ctx.game.camera.position;
@@ -60,7 +64,9 @@ export class RenderLoop {
     // Batched across frames for performance (100 raycasts/frame).
     const allEnemies = ctx.enemySpawner.getEnemies();
     ctx.depthOcclusion.update(allEnemies, camPos, frameDt);
+    profiler.end('transparency_and_occlusion');
 
+    profiler.begin('enemy_visibility');
     const meshCenter = ctx.meshSurface.getCenter();
     const qualitySettings = ctx.adaptiveQuality.getSettings();
     const maxVisible = qualitySettings.maxVisibleEnemies;
@@ -153,7 +159,9 @@ export class RenderLoop {
 
     // Apply depth-based opacity to geoms (far-side geoms nearly invisible)
     ctx.geomPool.applyDepthOpacity(camPos, meshCenter);
+    profiler.end('enemy_visibility');
 
+    profiler.begin('camera_and_ui');
     // Apply screen shake to camera (skip when paused to prevent drift)
     if (!ctx.state.isPaused && ctx.screenShake.offset.lengthSq() > 0.0001) {
       ctx.game.camera.position.add(ctx.screenShake.offset);
@@ -187,7 +195,9 @@ export class RenderLoop {
     const minimapGeoms: Array<{ u: number; v: number }> = [];
     ctx.geomPool.forEachActive((_i: number, u: number, v: number) => { minimapGeoms.push({ u, v }); });
     ctx.minimap.update(ctx.player.surfaceU, ctx.player.surfaceV, minimapEnemies, minimapGeoms);
+    profiler.end('camera_and_ui');
 
+    profiler.begin('perf_tracking');
     // Feed renderer stats to adaptive quality monitor
     ctx.adaptiveQuality.monitor.setRendererInfo(ctx.game.renderer.info as any);
     ctx.adaptiveQuality.monitor.setEntityCount(ctx.enemySpawner.getActiveCount());
@@ -305,5 +315,6 @@ export class RenderLoop {
         renderer: ctx.game.renderer,
       });
     }
+    profiler.end('perf_tracking');
   }
 }
