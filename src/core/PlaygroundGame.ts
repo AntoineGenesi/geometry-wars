@@ -819,7 +819,10 @@ export class PlaygroundGame {
 
       if (aimDirection.lengthSq() > 0.001) {
         const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();
-        const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
+        // FIX: Cross product order was wrong — (right × normal) gives -aimDirection
+        // Should be (normal × right) to give +aimDirection. This caused complete
+        // mirroring of gun direction (aiming left fired right, aiming up fired down).
+        const playerForward = this._tmpVec.crossVectors(playerNormal, playerRight).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
         const targetQuat = this._tmpQuat.setFromRotationMatrix(orientMat);
         this.player.mesh.quaternion.copy(targetQuat);
@@ -833,7 +836,8 @@ export class PlaygroundGame {
 
       if (aimDirection.lengthSq() > 0.001) {
         const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();
-        const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
+        // FIX: Cross product order was wrong — same fix as UV-based surfaces above
+        const playerForward = this._tmpVec.crossVectors(playerNormal, playerRight).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
         const targetQuat = this._tmpQuat.setFromRotationMatrix(orientMat);
         this.player.mesh.quaternion.copy(targetQuat);
