@@ -67,6 +67,7 @@ import { AdaptiveQuality, QualityLevel } from './rendering/AdaptiveQuality';
 import { DepthOcclusionSystem } from './rendering/DepthOpacity';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
+import { ProfilingOverlay } from './ui/ProfilingOverlay';
 import { SettingsMenu } from './ui/SettingsMenu';
 import {
   computeDifficultyLevel,
@@ -644,6 +645,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Debug performance overlay --
   const perfTracker = new PerformanceTracker(surfaceType);
   const debugOverlay = new DebugOverlay(perfTracker);
+  const profilingOverlay = new ProfilingOverlay();
   const entityAudit = new EntityAudit();
   debugOverlay.setRendererBackend(game.backend);
 
@@ -1094,6 +1096,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     lodManager.dispose();
     depthOcclusion.dispose();
     debugOverlay.dispose();
+    profilingOverlay.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex + 1);
@@ -1116,6 +1119,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     lodManager.dispose();
     depthOcclusion.dispose();
     debugOverlay.dispose();
+    profilingOverlay.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     main(selectedSurface, levelIndex);
@@ -1232,6 +1236,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     depthOcclusion,
     perfTracker,
     debugOverlay,
+    profilingOverlay,
     perfLogger,
     entityAudit,
     ddaTracker,

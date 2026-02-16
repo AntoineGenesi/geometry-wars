@@ -28,6 +28,7 @@ import type { AdaptiveQuality } from '../rendering/AdaptiveQuality';
 import type { DepthOcclusionSystem } from '../rendering/DepthOpacity';
 import type { PerformanceTracker } from './PerformanceTracker';
 import type { DebugOverlay } from '../ui/DebugOverlay';
+import type { ProfilingOverlay } from '../ui/ProfilingOverlay';
 import type { SettingsMenu } from '../ui/SettingsMenu';
 import type { GameMode } from './GameMode';
 import type { LevelDefinition } from './LevelData';
@@ -108,6 +109,7 @@ export interface GameContext {
   depthOcclusion: DepthOcclusionSystem;
   perfTracker: PerformanceTracker;
   debugOverlay: DebugOverlay;
+  profilingOverlay: ProfilingOverlay;
   perfLogger: PerformanceLogger;
   entityAudit: EntityAudit;
 
