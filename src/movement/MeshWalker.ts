@@ -95,6 +95,85 @@ export class MeshWalker {
   }
 
   /**
+   * Get a smooth tangent frame using interpolated vertex normals.
+   *
+   * This eliminates direction drift caused by discontinuous face normals.
+   * The smooth normal is computed by interpolating vertex normals at the
+   * current barycentric position, then computing a stable bitangent.
+   *
+   * Use the returned bitangent as upHint in moveFromInput() to prevent
+   * camera-relative input drift on curved surfaces.
+   */
+  getSmoothTangentFrame(): TangentFrame {
+    const smoothNormal = this._getSmoothNormal();
+
+    // Compute bitangent from smooth normal using existing tangent as reference.
+    // Project existing tangent onto the smooth normal's tangent plane.
+    const tangent = this._tangent.clone();
+    tangent.addScaledVector(smoothNormal, -tangent.dot(smoothNormal));
+    const tangentLen = tangent.length();
+
+    if (tangentLen < 0.001) {
+      // Fallback: tangent collapsed (shouldn't happen in practice)
+      const frame = this.surface.getTangentFrame(smoothNormal);
+      return {
+        normal: smoothNormal,
+        tangent: frame.tangent,
+        bitangent: frame.bitangent,
+      };
+    }
+
+    tangent.multiplyScalar(1 / tangentLen);
+    const bitangent = new THREE.Vector3().crossVectors(tangent, smoothNormal).normalize();
+
+    return {
+      normal: smoothNormal,
+      tangent,
+      bitangent,
+    };
+  }
+
+  /**
+   * Get interpolated vertex normal at the current position.
+   * Returns face normal as fallback if vertex normals aren't available.
+   */
+  private _getSmoothNormal(): THREE.Vector3 {
+    const geometry = this.surface.mesh.geometry;
+    const normalAttr = geometry.getAttribute('normal') as THREE.BufferAttribute | null;
+    const indexAttr = geometry.index;
+
+    if (!normalAttr || !indexAttr) {
+      // No vertex normals - fall back to face normal
+      return this.normal.clone();
+    }
+
+    const fi = this._facePos.faceIndex;
+    const bary = this._facePos.bary;
+
+    // Get vertex indices for this face
+    const i0 = indexAttr.getX(fi * 3);
+    const i1 = indexAttr.getX(fi * 3 + 1);
+    const i2 = indexAttr.getX(fi * 3 + 2);
+
+    // Get vertex normals
+    const n0 = new THREE.Vector3().fromBufferAttribute(normalAttr, i0);
+    const n1 = new THREE.Vector3().fromBufferAttribute(normalAttr, i1);
+    const n2 = new THREE.Vector3().fromBufferAttribute(normalAttr, i2);
+
+    // Interpolate using barycentric coordinates
+    const smoothNormal = new THREE.Vector3()
+      .addScaledVector(n0, bary.u)
+      .addScaledVector(n1, bary.v)
+      .addScaledVector(n2, bary.w);
+
+    // Transform to world space
+    const normalMatrix = new THREE.Matrix3().getNormalMatrix(this.surface.mesh.matrixWorld);
+    smoothNormal.applyMatrix3(normalMatrix).normalize();
+
+    return smoothNormal;
+  }
+
+  /**
    * Move the walker on the surface.
    *
    * @param moveDir - Desired movement direction in WORLD SPACE
