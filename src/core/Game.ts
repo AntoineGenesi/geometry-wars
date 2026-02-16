@@ -11,6 +11,7 @@ import { CollisionGroup } from './Entity';
 import { GPUCapabilityReport, detectGPUCapabilities } from '../rendering/GPUCapabilities';
 import { createRenderer, RendererBackend, installWebGPUDiagnostic } from '../rendering/RendererFactory';
 import { EntityLimits, getEntityLimits } from '../rendering/EntityLimits';
+import { BloomEffectManager } from '../effects/BloomEffectManager';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -120,6 +121,7 @@ export class Game {
 
   readonly clock: GameClock;
   readonly entityManager: EntityManager;
+  readonly bloomEffectManager: BloomEffectManager;
 
   // ---- State ----------------------------------------------------------
 
@@ -292,6 +294,10 @@ export class Game {
     // -- Systems --
     this.clock = new GameClock(this);
     this.entityManager = new EntityManager();
+
+    // Initialize bloom effect manager with default settings
+    const bloomCfg: BloomConfig = { ...DEFAULT_BLOOM, ...config.bloom };
+    this.bloomEffectManager = new BloomEffectManager(this, bloomCfg.strength, bloomCfg.threshold);
 
     // -- Default collision rules --
     this.setupDefaultCollisionRules();
@@ -507,6 +513,7 @@ export class Game {
   fixedUpdate(dt: number): void {
     this.onFixedUpdate?.(dt);
     this.entityManager.update(dt);
+    this.bloomEffectManager.update(dt);
   }
 
   // ---- Camera ---------------------------------------------------------
