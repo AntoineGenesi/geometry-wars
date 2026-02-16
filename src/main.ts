@@ -91,6 +91,7 @@ import { EnemyDeathCallbacks } from './entities/enemies/EnemyDeathCallbacks';
 import { GameContext } from './core/GameContext';
 import { GameLoop } from './core/GameLoop';
 import { RenderLoop } from './core/RenderLoop';
+import { profiler } from './core/PerformanceProfiler';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -1167,6 +1168,14 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       notify.style.opacity = '1';
       setTimeout(() => { if (notify) notify.style.opacity = '0'; }, 1500);
     }
+    // F3 = log profiler data to console
+    if (e.key === 'F3') {
+      const frameData = profiler.getFrameData();
+      console.log('=== Performance Profiler Frame Data ===');
+      console.table(frameData);
+      console.log(`Total frame time: ${profiler.getTotalFrameTime().toFixed(3)}ms`);
+      console.log(`Scope count: ${profiler.getScopeCount()}`);
+    }
   });
 
   // -- Auto-pause when tab is hidden (sync with Game.onVisibilityChange) --
@@ -1292,6 +1301,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Fixed timestep game logic --
   game.onFixedUpdate = (dt: number) => {
+    // Reset profiler at the start of each frame
+    profiler.reset();
+
     gameLoop.update(ctx, dt);
 
     // Update aura renderer with current player state and active buffs

@@ -11,6 +11,7 @@ import { GlowTrail } from '../effects/GlowTrail';
 import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { exportLogsToServer } from '../utils/PerformanceExporter';
 import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
+import { profiler } from './PerformanceProfiler';
 
 /**
  * GameLoop contains the fixed-timestep game update logic, extracted from main.ts onFixedUpdate.
@@ -56,8 +57,10 @@ export class GameLoop {
     // Skip update if paused or game over
     if (ctx.state.isPaused || ctx.state.isGameOver || ctx.state.isLevelComplete) return;
 
+    profiler.begin('game_mode');
     // Update game mode (handles countdown timer, time limits)
     ctx.gameMode.update(dt, ctx.player.score, ctx.player.lives);
+    profiler.end('game_mode');
 
     // Show countdown overlay
     if (ctx.gameMode.phase === ModePhase.Countdown) {
@@ -114,6 +117,7 @@ export class GameLoop {
       }
     }
 
+    profiler.begin('player_update');
     // Update player movement and shooting
     if (ctx.player.alive) {
       // Weapon swap (E key)
@@ -186,10 +190,14 @@ export class GameLoop {
         : inputState;
       ctx.player.update(dt, effectiveInput);
     }
+    profiler.end('player_update');
 
+    profiler.begin('enemy_spawning');
     // Spawn enemy waves
     ctx.waveScheduler.update(dt, ctx.enemySpawner);
+    profiler.end('enemy_spawning');
 
+    profiler.begin('enemy_update');
     // Check wave-based level completion (all waves spawned + all enemies cleared)
     // Only for non-endless adventure mode levels (endless never completes via waves)
     if (
@@ -224,7 +232,9 @@ export class GameLoop {
       ctx.state.lodAssignments,
       ctx.game.camera,
     );
+    profiler.end('enemy_update');
 
+    profiler.begin('bullet_update');
     // Update bullets
     ctx.bulletPool.update(dt);
 
@@ -255,7 +265,9 @@ export class GameLoop {
     }
     // Flush instance transforms to GPU
     ctx.bulletInstanceManager.update();
+    profiler.end('bullet_update');
 
+    profiler.begin('particles_and_pickups');
     // Update adaptive quality system (monitors FPS, adjusts quality level)
     ctx.adaptiveQuality.update(dt);
 
@@ -269,7 +281,9 @@ export class GameLoop {
     ctx.scorePopups.update(dt);
     ctx.scoreManager.updateCombo(dt);
     ctx.killLog.update(dt);
+    profiler.end('particles_and_pickups');
 
+    profiler.begin('effects_and_buffs');
     // Update player glow trail (add point at player position)
     if (ctx.player.alive && this.playerGlowTrail) {
       this.playerGlowTrail.addPoint(ctx.player.mesh.position.clone());
@@ -310,6 +324,7 @@ export class GameLoop {
         this.applyStatMultipliers();
       }
     }
+    profiler.end('effects_and_buffs');
 
     // Update new buff pickups
     for (let i = ctx.pickupSpawner.newBuffPickups.length - 1; i >= 0; i--) {
@@ -375,6 +390,7 @@ export class GameLoop {
       }
     }
 
+    profiler.begin('companions_and_trails');
     // Update screen shake
     ctx.screenShake.update(dt);
 
@@ -442,7 +458,9 @@ export class GameLoop {
         }
       }
     }
+    profiler.end('companions_and_trails');
 
+    profiler.begin('collision_detection');
     // -- Collision checks --
 
     // Bullets vs enemies
@@ -554,7 +572,9 @@ export class GameLoop {
         }
       }
     }
+    profiler.end('collision_detection');
 
+    profiler.begin('dda_system');
     // -- DDA system update (after all kills/deaths processed this frame) --
     {
       let nearestEnemyDist = 1.0;
@@ -571,7 +591,9 @@ export class GameLoop {
       ctx.ddaPlayers[0].u = ctx.player.surfaceU;
       ctx.ddaPlayers[0].v = ctx.player.surfaceV;
     }
+    profiler.end('dda_system');
 
+    profiler.begin('weapons_and_pickups');
     // Update weapon manager (projectiles, effects)
     ctx.weaponManager.update(dt);
 
@@ -614,7 +636,9 @@ export class GameLoop {
         bp.active = false;
       }
     }
+    profiler.end('weapons_and_pickups');
 
+    profiler.begin('misc_updates');
     // Update grid deformation springs
     ctx.surface.updateGrid(dt);
 
@@ -649,6 +673,7 @@ export class GameLoop {
 
     // Clear per-frame input flags
     ctx.input.endFrame();
+    profiler.end('misc_updates');
   }
 
   /**
