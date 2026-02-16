@@ -626,12 +626,13 @@ export class PlaygroundGame {
       .multiplyScalar(this.config.cameraDistance)
       .add(target);
 
-    this.game.camera.position.lerp(camPos, 0.4);
+    // ZERO LERP: Direct assignment for instant camera follow (Session 19)
+    // User reported camera lag even at lerp 0.4. Changed to instant follow per user request.
+    this.game.camera.position.copy(camPos);
     // Camera up = bitangent (perpendicular to both normal and tangent).
     // NEVER use normal here — it's parallel to the look direction and causes spinning.
-    // Lerp factor history: 0.08 → 0.18 → 0.4 (Session 18 fix for camera lag).
-    // 0.4 matches CameraController and eliminates perceptible lag (7 frames to 97%).
-    this.game.camera.up.lerp(frame.bitangent, 0.4).normalize();
+    // ZERO LERP: Changed from lerp 0.4 to direct copy for instant follow (Session 19).
+    this.game.camera.up.copy(frame.bitangent).normalize();
     this.game.camera.lookAt(target);
 
     // -- Depth-based opacity (same as main game) --
