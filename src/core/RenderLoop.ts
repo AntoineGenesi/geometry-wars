@@ -208,6 +208,7 @@ export class RenderLoop {
     ctx.perfTracker.recordFrame(rawFrameDt);
     ctx.debugOverlay.update();
     ctx.profilingOverlay.update();
+    ctx.profilingPersistence.update(rawFrameDt);
 
     // Feed performance telemetry logger with all data sources
     ctx.perfLogger.setFrameData(ctx.perfTracker.fps, ctx.enemySpawner.getActiveCount(), ctx.bulletPool.activeCount);

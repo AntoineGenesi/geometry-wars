@@ -68,6 +68,7 @@ import { DepthOcclusionSystem } from './rendering/DepthOpacity';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { ProfilingOverlay } from './ui/ProfilingOverlay';
+import { ProfilingPersistence } from './core/ProfilingPersistence';
 import { SettingsMenu } from './ui/SettingsMenu';
 import {
   computeDifficultyLevel,
@@ -646,6 +647,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const perfTracker = new PerformanceTracker(surfaceType);
   const debugOverlay = new DebugOverlay(perfTracker);
   const profilingOverlay = new ProfilingOverlay();
+  const profilingPersistence = new ProfilingPersistence();
   const entityAudit = new EntityAudit();
   debugOverlay.setRendererBackend(game.backend);
 
@@ -1237,6 +1239,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     perfTracker,
     debugOverlay,
     profilingOverlay,
+    profilingPersistence,
     perfLogger,
     entityAudit,
     ddaTracker,
@@ -1507,6 +1510,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Start --
   game.start();
+  profilingPersistence.start();
 }
 
 // ---------------------------------------------------------------------------

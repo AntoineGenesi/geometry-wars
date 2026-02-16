@@ -39,6 +39,7 @@ import type { DDASpawnModifier } from '../difficulty/DDASpawnModifier';
 import type { DDALogger } from '../difficulty/DDALogger';
 import type { EntityAudit } from './EntityAudit';
 import type { PerformanceLogger } from './PerformanceLogger';
+import type { ProfilingPersistence } from './ProfilingPersistence';
 import type { ShockwaveEffect } from '../effects/ShockwaveEffect';
 import type { Minimap } from '../ui/Minimap';
 import type { KillLog } from '../ui/KillLog';
@@ -110,6 +111,7 @@ export interface GameContext {
   perfTracker: PerformanceTracker;
   debugOverlay: DebugOverlay;
   profilingOverlay: ProfilingOverlay;
+  profilingPersistence: ProfilingPersistence;
   perfLogger: PerformanceLogger;
   entityAudit: EntityAudit;
 

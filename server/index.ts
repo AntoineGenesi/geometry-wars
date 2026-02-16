@@ -98,6 +98,38 @@ app.post('/api/export-perf-logs', (req, res) => {
   }
 });
 
+// Profiling snapshot export endpoint (periodic scope timings)
+app.post('/api/profiling-snapshot', async (req, res) => {
+  try {
+    const session = req.body;
+
+    // Validate payload
+    if (!session || !session.metadata || !Array.isArray(session.samples)) {
+      throw new Error('Invalid profiling session payload');
+    }
+
+    // Save to logs/profiling/ directory
+    const timestamp = session.metadata.timestamp || new Date().toISOString();
+    const commitShort = session.metadata.gitCommitShort || 'unknown';
+    const dirtyFlag = session.metadata.dirty ? '-dirty' : '';
+    const filename = `${timestamp.replace(/[:.]/g, '-')}-${commitShort}${dirtyFlag}.json`;
+
+    const fs = await import('fs');
+    const logsDir = path.join(__dirname, '../logs/profiling');
+    fs.mkdirSync(logsDir, { recursive: true });
+
+    const filepath = path.join(logsDir, filename);
+    fs.writeFileSync(filepath, JSON.stringify(session, null, 2));
+
+    console.log(`[Server] Exported profiling snapshot: ${filepath} (${session.samples.length} samples)`);
+    res.json({ success: true, filepath, filename, sampleCount: session.samples.length });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[Server] Profiling snapshot export failed:', message);
+    res.status(500).json({ success: false, error: message });
+  }
+});
+
 // Create HTTP server
 const httpServer = createServer(app);
 
