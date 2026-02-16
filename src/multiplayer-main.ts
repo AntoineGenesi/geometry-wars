@@ -186,6 +186,7 @@ function main(): void {
     cameraSmoothing: 0.05,
   });
   game.disableBuiltInCameraUpdate = true;
+  game.disableBuiltInResize = true;  // Let SplitScreenRenderer handle resizing
 
   // Hide default single-player HUD (it's in #ui-overlay, not #game-hud)
   const defaultHUD = document.getElementById('ui-overlay');
