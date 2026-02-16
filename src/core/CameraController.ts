@@ -22,12 +22,13 @@ export class CameraController {
   private readonly CAMERA_DIST_MAX = 35;
   private readonly ORBIT_SENSITIVITY = 0.005;
   private readonly ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
-  // REGRESSION GUARD: Lerp factor was 0.12 which caused visible camera lag
-  // at 60 FPS — the camera.up took ~30 frames (0.5s) to converge to the surface
-  // bitangent, causing "map jumping" (scene rotation in discontinuous steps).
-  // Factor 0.25 converges 97% within 12 frames (0.2s), eliminating visible lag
-  // while still being smooth. See iteration 6 analysis.
-  private readonly CAMERA_LERP_FACTOR = 0.25;
+  // REGRESSION GUARD: Lerp factor history:
+  // - 0.12: Too slow (30 frames / 0.5s) → "map jumping" (scene rotation in steps)
+  // - 0.25: Better (12 frames / 0.2s) but user still reported lag (Session 18)
+  // - 0.4: Current. Converges 97% within 7 frames (0.117s at 60 FPS).
+  // Matches targetUp smoothing (0.4) added in iteration 10. Fast enough to
+  // eliminate perceived lag while maintaining smooth following.
+  private readonly CAMERA_LERP_FACTOR = 0.4;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
