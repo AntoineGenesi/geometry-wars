@@ -3,6 +3,7 @@ import { Player } from '../entities/Player';
 import { BulletPool } from '../entities/Bullet';
 import { GeomPool } from '../entities/Geom';
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
+import { Boss } from '../entities/enemies/Boss';
 import { ParticleSystem } from '../effects/ParticleSystem';
 import { ScreenShake } from '../effects/ScreenShake';
 import { ScoreManager } from './ScoreManager';
@@ -11,6 +12,7 @@ import { getSoundEngine } from '../audio/SoundEngine';
 import { ScorePopupManager } from '../effects/ScorePopup';
 import { EnemyInstanceManager } from '../rendering/EnemyInstanceManager';
 import { SpatialHash } from './SpatialHash';
+import type { BloomEffectManager } from '../effects/BloomEffectManager';
 
 /**
  * CollisionSystem
@@ -70,6 +72,7 @@ export class CollisionSystem {
     onBulletHit?: (enemy: BaseEnemy) => void,
     onEnemyDied?: (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => void,
     instanceManager?: EnemyInstanceManager | null,
+    bloomEffectManager?: BloomEffectManager | null,
   ): void {
     // DIAGNOSTIC: Entry guard (remove after freeze investigation)
     const debugFreeze = (window as any).__debugFreeze ?? false;
@@ -151,6 +154,11 @@ export class CollisionSystem {
             screenShake.shake(0.15, 0.15);
             getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
             onKillLog?.(enemyType, color.getHex());
+
+            // Trigger bloom pulse for boss deaths only
+            if (enemy instanceof Boss && bloomEffectManager) {
+              bloomEffectManager.triggerBossPulse();
+            }
 
             // Grid deformation at death position
             surface.applyForce(enemy.position, 0.2, 1.0);

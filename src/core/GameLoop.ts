@@ -486,6 +486,7 @@ export class GameLoop {
         );
       },
       ctx.enemyInstanceManager,
+      ctx.game.bloomEffectManager, // Pass bloom effect manager for boss death bloom pulses
     );
 
     // Player vs geoms (magnetism buff expands pickup radius)
