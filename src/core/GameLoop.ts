@@ -178,7 +178,10 @@ export class GameLoop {
       // slerp adds unnecessary orientation lag.
       if (aimDirection.lengthSq() > 0.001) {
         const playerRight = new THREE.Vector3().crossVectors(aimDirection, playerNormal).normalize();
-        const playerForward = new THREE.Vector3().crossVectors(playerRight, playerNormal).normalize();
+        // REGRESSION GUARD: cross(playerNormal, playerRight) = +aimDirection (correct).
+        // cross(playerRight, playerNormal) = -aimDirection (BAC-CAB identity), which mirrors the gun.
+        // This was the root cause of "gun fires opposite to mouse" reported through all of Session 19.
+        const playerForward = new THREE.Vector3().crossVectors(playerNormal, playerRight).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
         ctx.player.mesh.quaternion.setFromRotationMatrix(orientMat);
       }
