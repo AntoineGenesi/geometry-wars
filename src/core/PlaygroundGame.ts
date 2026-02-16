@@ -499,14 +499,15 @@ export class PlaygroundGame {
 
     if (this.player.alive) {
       // -- Movement via MeshWalker (same as main game) --
-      // Get the walker's SMOOTH tangent frame (vertex normal interpolation).
-      // This eliminates direction drift from discontinuous face normals.
-      const frame = this._isUVBasedSurface() ? null : this._walker.getSmoothTangentFrame();
-      this.movePlayer(inputState, dt, frame);
+      // IMPORTANT: Uses walker.moveFromInput() which maps screen-space
+      // input directly to the walker's persistent tangent frame.
+      // Do NOT use camera-relative movement — it creates a feedback loop
+      // between camera orientation and movement direction, causing spinning.
+      this.movePlayer(inputState, dt);
 
       // -- Orient player using walker's tangent frame + aim --
       // (matches main.ts approach: tangent frame aim, not Player.update aim)
-      this.orientPlayer(inputState, frame);
+      this.orientPlayer(inputState);
 
       // -- Player update (handles firing, cooldowns, invincibility) --
       this.player.update(dt, inputState);
@@ -607,242 +608,102 @@ export class PlaygroundGame {
 
     // Camera follows player (same orbit pattern as main game)
     const target = this.player.mesh.position;
-
-    // Get normal and tangent frame from walker or surface (depending on surface type)
-    let normal: THREE.Vector3;
-    let frame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 };
-
-    if (this._isUVBasedSurface()) {
-      const point = this._surface.getPoint(this.player.surfaceU, this.player.surfaceV);
-      normal = point.normal;
-      frame = { tangent: point.tangentU, bitangent: point.tangentV };
-    } else {
-      normal = this._walker.normal;
-      frame = this._walker.getSmoothTangentFrame();
-    }
+    const normal = this._walker.normal;
+    const frame = this._walker.getTangentFrame();
     const camPos = this._tmpVec
       .copy(normal)
       .multiplyScalar(this.config.cameraDistance)
       .add(target);
 
-    // INSTANT POSITION FOLLOW: Direct copy for zero lag (Session 19)
-    // User requested instant position follow with no lag.
-    this.game.camera.position.copy(camPos);
+    this.game.camera.position.lerp(camPos, 0.1);
     // Camera up = bitangent (perpendicular to both normal and tangent).
     // NEVER use normal here — it's parallel to the look direction and causes spinning.
-    // RE-ENABLED LERP: Smooth camera.up to prevent jitter when crossing triangle edges.
-    // Walker constantly crosses edges during movement, causing bitangent changes.
-    // Smoothing with factor 0.4 prevents visible jitter without adding position lag.
-    this.game.camera.up.lerp(frame.bitangent.clone().normalize(), 0.4);
+    this.game.camera.up.lerp(frame.bitangent, 0.08).normalize();
     this.game.camera.lookAt(target);
-
-    // -- Depth-based opacity (same as main game) --
-    // Updates raycast-based occlusion system and applies opacity to enemies.
-    // Enemies behind the surface are dimmed/hidden based on surface intersection count.
-    const allEnemies = this.enemySpawner.getEnemies();
-    const dt = 1 / 60; // Fixed 60 FPS assumption for playground (main game uses actual frame dt)
-    this.depthOcclusion.update(allEnemies, this.game.camera.position, dt);
-
-    // Apply depth opacity to each enemy
-    for (const enemy of allEnemies) {
-      if (!enemy.alive || !enemy.mesh) continue;
-
-      const visibility = this.depthOcclusion.getOpacity(enemy);
-
-      // Apply opacity to enemy materials
-      // PlaygroundGame enemies are not instanced, so we modify materials directly
-      enemy.mesh.traverse((child) => {
-        if (child instanceof THREE.Mesh && child.material) {
-          const mat = child.material as THREE.MeshBasicMaterial;
-          if (mat.transparent !== undefined) {
-            mat.transparent = true;
-            mat.opacity = visibility;
-          }
-        }
-      });
-    }
 
     // Surface grid animation
     if (this._surface.updateGrid) {
       this._surface.updateGrid(1 / 60);
     }
-
-    // Dynamic particle budget scaling based on active entity count
-    // Reduces particle emission when many entities are on screen to maintain FPS
-    const activeEnemyCount = allEnemies.filter(e => e.active && e.alive).length;
-    const activeBulletCount = this.bulletPool.activeCount;
-    const totalEntityCount = activeEnemyCount + activeBulletCount;
-
-    // Scale factor calculation:
-    //   < 100 entities: 100% budget (1.0x)
-    //   100-300 entities: linear scale from 100% to 50% (1.0x to 0.5x)
-    //   300-500 entities: linear scale from 50% to 30% (0.5x to 0.3x)
-    //   > 500 entities: 30% minimum budget (0.3x)
-    let entityScaleFactor = 1.0;
-    if (totalEntityCount > 100) {
-      entityScaleFactor = Math.max(0.3, 1.0 - ((totalEntityCount - 100) / 400));
-    }
-    this.particles.setEntityScaleFactor(entityScaleFactor);
   }
 
   // -----------------------------------------------------------------------
   // Internal helpers
   // -----------------------------------------------------------------------
 
-  // REGRESSION GUARD: This method MUST use walker.moveFromInput() which now uses
-  // camera-relative axes projected onto the surface tangent plane. The old tangent-
-  // frame-direct mapping only worked at zero camera orbit — with any orbit, WASD
-  // directions diverged from visual screen axes, causing broken controls.
-  // Camera-relative input is stable because CameraController orbit is user-controlled
-  // (middle mouse) and NOT coupled to movement direction. No feedback loop.
-  // See decisions/camera-relative-movement-fix.md.
-  //
-  // EXCEPTION: Cube surfaces use UV-based movement because MeshWalker is incompatible
-  // with cube geometry (player gets completely stuck). See tasks/cube-s13-uv-fallback.md.
-  private movePlayer(input: InputState, dt: number, frame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 } | null): void {
+  // REGRESSION GUARD: This method MUST use walker.moveFromInput() which maps
+  // screen-space input to the walker's persistent tangent frame. Do NOT replace
+  // with camera-relative movement (projecting camera axes onto tangent plane).
+  // Camera-relative movement creates a feedback loop: camera orientation affects
+  // movement direction, which affects position, which affects camera orientation,
+  // causing the "spinning map" bug. See decisions/playground-spinning-fix.md.
+  private movePlayer(input: InputState, dt: number): void {
     const moveX = input.moveX;
     const moveY = input.moveY;
 
-    if (this._isUVBasedSurface()) {
-      // -- UV-based movement for cube surfaces --
-      // MeshWalker doesn't work on cube geometry (flat faces + sharp edges).
-      // Use surface.moveOnSurface() directly with screen-space input.
-
-      if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
-        // Get current UV from world position
-        const inverseRot = this._surface.worldRotation.clone().invert();
-        const localPos = this.player.mesh.position.clone().applyQuaternion(inverseRot);
-        const currentUV = this._surface.worldToSurface(localPos);
-
-        // Calculate UV movement deltas
-        // Screen space: right = +U, up = +V
-        // The -moveY negation is because InputManager returns W=-1, S=+1
-        // but we want positive = visual up on screen (+V direction)
-        const speed = PLAYER_MOVE_SPEED * dt;
-        const du = moveX * speed;
-        const dv = -moveY * speed;
-
-        // Move on surface
-        const moved = this._surface.moveOnSurface(currentUV.u, currentUV.v, du, dv);
-
-        // Update position
-        const newPoint = this._surface.getPoint(moved.u, moved.v);
-        this.player.mesh.position.copy(newPoint.position);
-
-        // Store UV for enemy spawner
-        this.player.surfaceU = moved.u;
-        this.player.surfaceV = moved.v;
-      }
-    } else {
-      // -- MeshWalker movement for curved surfaces (sphere, torus, etc.) --
-      // Pass smooth bitangent as upHint - eliminates drift from discontinuous face normals.
-      if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
-        this._walker.moveFromInput(moveX, -moveY, this.game.camera, dt, frame?.bitangent);
-      }
-
-      // Sync position from walker
-      this.player.mesh.position.copy(this._walker.position);
-
-      // Bridge UV for enemy spawner distance checks
-      // CRITICAL: worldToSurface expects local coordinates, so apply inverse rotation first
-      const inverseRot = this._surface.worldRotation.clone().invert();
-      const localPos = this._walker.position.clone().applyQuaternion(inverseRot);
-      const uv = this._surface.worldToSurface(localPos);
-      this.player.surfaceU = uv.u;
-      this.player.surfaceV = uv.v;
+    // Use MeshWalker.moveFromInput() — same as main.ts
+    // This maps screen axes directly to the walker's persistent tangent frame:
+    //   tangent  = screen right (D/A)
+    //   bitangent = screen up   (W/S)
+    // The -moveY negation is required because InputManager returns W=-1, S=+1
+    // but moveFromInput expects positive = visual up on screen.
+    if (Math.abs(moveX) > 0.01 || Math.abs(moveY) > 0.01) {
+      this._walker.moveFromInput(moveX, -moveY, this.game.camera, dt);
     }
+
+    // Sync position from walker
+    this.player.mesh.position.copy(this._walker.position);
+
+    // Bridge UV for enemy spawner distance checks
+    const uv = this._surface.worldToSurface(this._walker.position);
+    this.player.surfaceU = uv.u;
+    this.player.surfaceV = uv.v;
   }
 
   /**
-   * Orient the player mesh using aim direction from camera-relative axes.
-   * Uses walker.getAimDirection() which projects camera axes onto the surface
-   * tangent plane, ensuring aiming matches what the player sees on screen.
+   * Orient the player mesh using the walker's tangent frame + aim direction.
+   * Matches main.ts approach exactly: tangent frame from walker, aim mapped
+   * to tangent frame, orientation built from cross products.
    *
    * REGRESSION GUARD: Do NOT use Player.applySurfaceTransform() with a
-   * movement-direction-derived tangent frame. Aim direction MUST come from
-   * walker.getAimDirection() (camera-relative) or surface tangent frame for UV-based.
-   * See decisions/camera-relative-movement-fix.md.
+   * movement-direction-derived tangent frame. The tangent frame MUST come
+   * from the walker's persistent frame. See decisions/playground-spinning-fix.md.
    */
-  private orientPlayer(input: InputState, frame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 } | null): void {
-    let playerNormal: THREE.Vector3;
+  private orientPlayer(input: InputState): void {
+    const playerNormal = this._walker.normal;
+    const frame = this._walker.getTangentFrame();
 
-    if (this._isUVBasedSurface()) {
-      // UV-based surfaces: get tangent frame from surface at current UV
-      const point = this._surface.getPoint(this.player.surfaceU, this.player.surfaceV);
-      playerNormal = point.normal;
+    // Calculate aim from mouse in screen space using tangent frame
+    // (same logic as main.ts lines 1695-1726)
+    const aimX = input.aimX;
+    const aimY = input.aimY;
+    const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
 
-      // UV-based surfaces: use camera-relative aiming (same as MeshWalker)
-      const aimX = input.aimX;
-      const aimY = input.aimY;
-      const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
-
-      let aimDirection: THREE.Vector3;
-      if (aimLen > 0.1) {
-        // Get camera's world right and up vectors
-        const worldQuat = this.game.camera.getWorldQuaternion(this._tmpQuat);
-        const camRight = this._tmpCamRight.set(1, 0, 0).applyQuaternion(worldQuat);
-        const camUp = this._tmpCamUp.set(0, 1, 0).applyQuaternion(worldQuat);
-
-        // Project camera axes onto surface tangent plane (remove normal component)
-        const n = playerNormal;
-        camRight.addScaledVector(n, -camRight.dot(n));
-        camUp.addScaledVector(n, -camUp.dot(n));
-
-        const rightLen = camRight.length();
-        const upLen = camUp.length();
-
-        if (rightLen > 0.001 && upLen > 0.001) {
-          // Normalize projected camera axes
-          camRight.multiplyScalar(1 / rightLen);
-          camUp.multiplyScalar(1 / upLen);
-
-          // aimX → screen right, -aimY → screen up (negate Y because screen Y is down)
-          // FIXED: Removed incorrect aimX negation (matches MeshWalker.getAimDirection fix)
-          aimDirection = this._tmpDir
-            .set(0, 0, 0)
-            .addScaledVector(camRight, aimX)
-            .addScaledVector(camUp, -aimY)
-            .normalize();
-        } else {
-          // Degenerate projection: fall back to tangent frame
-          aimDirection = this._tmpDir
-            .set(0, 0, 0)
-            .addScaledVector(point.tangentU, aimX)
-            .addScaledVector(point.tangentV, -aimY)
-            .normalize();
-        }
-      } else {
-        aimDirection = this._tmpDir.copy(point.tangentV);
-      }
-
-      if (aimDirection.lengthSq() > 0.001) {
-        const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();
-        // FIX: Cross product order was wrong — (right × normal) gives -aimDirection
-        // Should be (normal × right) to give +aimDirection. This caused complete
-        // mirroring of gun direction (aiming left fired right, aiming up fired down).
-        const playerForward = this._tmpVec.crossVectors(playerNormal, playerRight).normalize();
-        const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
-        const targetQuat = this._tmpQuat.setFromRotationMatrix(orientMat);
-        this.player.mesh.quaternion.copy(targetQuat);
-      }
-
-      this.player.aimAngle = Math.atan2(input.aimX, -input.aimY);
+    let aimDirection: THREE.Vector3;
+    if (aimLen > 0.1) {
+      // Map screen aim to tangent frame:
+      // tangent = screen right, bitangent = screen up
+      // Negate aimY because mouse Y increases downward but bitangent points up
+      aimDirection = this._tmpDir
+        .set(0, 0, 0)
+        .addScaledVector(frame.tangent, aimX)
+        .addScaledVector(frame.bitangent, -aimY)
+        .normalize();
     } else {
-      // MeshWalker surfaces: use camera-relative aim direction with smooth upHint
-      playerNormal = this._walker.normal;
-      const aimDirection = this._walker.getAimDirection(input.aimX, input.aimY, this.game.camera, frame?.bitangent);
-
-      if (aimDirection.lengthSq() > 0.001) {
-        const playerRight = this._tmpRight.crossVectors(aimDirection, playerNormal).normalize();
-        // FIX: Cross product order was wrong — same fix as UV-based surfaces above
-        const playerForward = this._tmpVec.crossVectors(playerNormal, playerRight).normalize();
-        const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
-        const targetQuat = this._tmpQuat.setFromRotationMatrix(orientMat);
-        this.player.mesh.quaternion.copy(targetQuat);
-      }
-
-      this.player.aimAngle = Math.atan2(input.aimX, -input.aimY);
+      // Default: face along bitangent (screen up direction)
+      aimDirection = this._tmpDir.copy(frame.bitangent);
     }
+
+    // Orient player to face aim direction (same as main.ts lines 1718-1723)
+    if (aimDirection.lengthSq() > 0.001) {
+      const playerRight = this._tmpRight.crossVectors(playerNormal, aimDirection).normalize();
+      const playerForward = this._tmpVec.crossVectors(playerRight, playerNormal).normalize();
+      const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
+      this.player.mesh.quaternion.setFromRotationMatrix(orientMat);
+    }
+
+    // Store aim angle for bullets
+    this.player.aimAngle = Math.atan2(aimX, -aimY);
 
     // Update matrix for bullet spawning
     this.player.mesh.updateMatrixWorld(true);
