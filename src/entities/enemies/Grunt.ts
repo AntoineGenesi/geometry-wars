@@ -28,10 +28,12 @@ export class Grunt extends BaseEnemy {
     // Calculate direction to player
     const deltaU = playerU - this.surfacePosition.u;
     const deltaV = playerV - this.surfacePosition.v;
-    const distance = Math.sqrt(deltaU * deltaU + deltaV * deltaV);
+    const distanceSq = deltaU * deltaU + deltaV * deltaV;
 
-    if (distance > 0.001) {
-      // Normalize and move toward player
+    // Optimization: check squared distance first to avoid expensive sqrt
+    if (distanceSq > 0.000001) {
+      // Only compute sqrt when we actually need the distance for normalization
+      const distance = Math.sqrt(distanceSq);
       const dirU = deltaU / distance;
       const dirV = deltaV / distance;
 
