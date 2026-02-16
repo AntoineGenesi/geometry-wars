@@ -81,6 +81,9 @@ export class ParticleSystem {
   private _maxEmitPerFrame: number = 200; // Hard cap: 200 particles per frame
   private _maxFragmentsPerFrame: number = 40; // Hard cap: 40 fragments per frame
 
+  // Dynamic scaling based on entity count (1.0 = full budget, 0.3 = minimum)
+  private _entityScaleFactor: number = 1.0;
+
   // Active effect count (updated during update() — zero extra iteration)
   private _activeParticleCount: number = 0;
   private _activeFragmentCount: number = 0;
@@ -202,6 +205,18 @@ export class ParticleSystem {
     this._maxFragmentsPerFrame = maxFragmentsPerFrame;
   }
 
+  /**
+   * Set dynamic scaling factor based on entity count.
+   * Reduces particle emission when many entities are on screen.
+   * Factor should be in range [0.3, 1.0]:
+   *   1.0 = full budget (normal conditions)
+   *   0.5 = half budget (moderate entity count)
+   *   0.3 = minimum budget (heavy entity count)
+   */
+  setEntityScaleFactor(factor: number): void {
+    this._entityScaleFactor = Math.max(0.3, Math.min(1.0, factor));
+  }
+
   private createTriangleGeometry(): THREE.BufferGeometry {
     const geometry = new THREE.BufferGeometry();
     const vertices = new Float32Array([
@@ -259,8 +274,9 @@ export class ParticleSystem {
     } = config;
     const direction = config.direction ?? _defaultDir;
 
-    // Budget enforcement: clamp count to remaining frame budget
-    const budgetRemaining = this._maxEmitPerFrame - this._emittedThisFrame;
+    // Budget enforcement: apply dynamic scaling then clamp to remaining frame budget
+    const scaledBudget = Math.floor(this._maxEmitPerFrame * this._entityScaleFactor);
+    const budgetRemaining = scaledBudget - this._emittedThisFrame;
     if (budgetRemaining <= 0) return;
     const effectiveCount = Math.min(count, budgetRemaining);
 
@@ -340,8 +356,9 @@ export class ParticleSystem {
     scale: number = 1.0,
     speed: number = 1.0,
   ): void {
-    // Budget enforcement: clamp fragment count to remaining frame budget
-    const budgetRemaining = this._maxFragmentsPerFrame - this._fragmentsThisFrame;
+    // Budget enforcement: apply dynamic scaling then clamp to remaining frame budget
+    const scaledBudget = Math.floor(this._maxFragmentsPerFrame * this._entityScaleFactor);
+    const budgetRemaining = scaledBudget - this._fragmentsThisFrame;
     if (budgetRemaining <= 0) return;
     const effectiveCount = Math.min(fragmentCount, budgetRemaining);
 
