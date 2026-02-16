@@ -115,6 +115,8 @@ export class PlaygroundGame {
   private readonly _tmpDir = new THREE.Vector3();
   private readonly _tmpRight = new THREE.Vector3();
   private readonly _tmpQuat = new THREE.Quaternion();
+  private readonly _tmpCamRight = new THREE.Vector3();
+  private readonly _tmpCamUp = new THREE.Vector3();
 
   constructor(userConfig: PlaygroundConfig) {
     this.config = {
@@ -768,18 +770,46 @@ export class PlaygroundGame {
       const point = this._surface.getPoint(this.player.surfaceU, this.player.surfaceV);
       playerNormal = point.normal;
 
-      // UV-based surfaces don't use MeshWalker aim — use surface tangent frame
+      // UV-based surfaces: use camera-relative aiming (same as MeshWalker)
       const aimX = input.aimX;
       const aimY = input.aimY;
       const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
 
       let aimDirection: THREE.Vector3;
       if (aimLen > 0.1) {
-        aimDirection = this._tmpDir
-          .set(0, 0, 0)
-          .addScaledVector(point.tangentU, aimX)
-          .addScaledVector(point.tangentV, -aimY)
-          .normalize();
+        // Get camera's world right and up vectors
+        const worldQuat = this.game.camera.getWorldQuaternion(this._tmpQuat);
+        const camRight = this._tmpCamRight.set(1, 0, 0).applyQuaternion(worldQuat);
+        const camUp = this._tmpCamUp.set(0, 1, 0).applyQuaternion(worldQuat);
+
+        // Project camera axes onto surface tangent plane (remove normal component)
+        const n = playerNormal;
+        camRight.addScaledVector(n, -camRight.dot(n));
+        camUp.addScaledVector(n, -camUp.dot(n));
+
+        const rightLen = camRight.length();
+        const upLen = camUp.length();
+
+        if (rightLen > 0.001 && upLen > 0.001) {
+          // Normalize projected camera axes
+          camRight.multiplyScalar(1 / rightLen);
+          camUp.multiplyScalar(1 / upLen);
+
+          // aimX → screen right, -aimY → screen up (negate Y because screen Y is down)
+          // Note: Negate aimX to match the cross product handedness in orientPlayer
+          aimDirection = this._tmpDir
+            .set(0, 0, 0)
+            .addScaledVector(camRight, -aimX)
+            .addScaledVector(camUp, -aimY)
+            .normalize();
+        } else {
+          // Degenerate projection: fall back to tangent frame
+          aimDirection = this._tmpDir
+            .set(0, 0, 0)
+            .addScaledVector(point.tangentU, aimX)
+            .addScaledVector(point.tangentV, -aimY)
+            .normalize();
+        }
       } else {
         aimDirection = this._tmpDir.copy(point.tangentV);
       }

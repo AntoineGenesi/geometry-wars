@@ -459,8 +459,9 @@ export class MeshWalker {
 
     // aimX → screen right (camera right projected)
     // -aimY → screen up (negate because raw mouse Y increases downward)
+    // Note: Negate aimX to match the cross product handedness in PlaygroundGame.orientPlayer
     const aimDir = new THREE.Vector3()
-      .addScaledVector(camRight, aimX)
+      .addScaledVector(camRight, -aimX)
       .addScaledVector(camUp, -aimY);
 
     const len = aimDir.length();
