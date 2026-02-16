@@ -8,6 +8,28 @@
 
 ---
 
+## Session 20 Movement Oscillation Fix (2026-02-17, commit 7e694c2)
+
+### CRITICAL FIX - MUST TEST (Programmatically Verified Level 2)
+- [ ] **Forward movement on pill is smooth** — Hold W (forward) for 3+ seconds on PILL surface. Player should move smoothly WITHOUT zigzagging left/right in an "X pattern". Movement should be straight forward.
+- [ ] **Diagonal movement on pill is smooth** — Hold W+D (diagonal) for 3+ seconds on PILL surface. Should move in smooth diagonal, NOT stuttering or switching between component axes.
+- [ ] **Player rotation is correct** — Rotate player with mouse while moving. Player mesh should rotate around the surface normal (spinning in place), NOT rotating around wrong axis (like rolling or tumbling).
+- [ ] **Gun fires toward mouse** — Fire bullets while rotating. Bullets should travel toward mouse cursor position.
+- [ ] **No regressions on other surfaces** — Test forward/diagonal movement on sphere, cube, torus. Should be smooth on all surfaces.
+
+**What was fixed:**
+User reported "X pattern" oscillation: move forward → shift left → forward → shift right 2x → repeat. Also reported wrong rotation axis. Root cause: MeshWalker._updateTangentFrame() dual Gram-Schmidt projection didn't check for 180° sign flips at triangle edges. When bitangent (forward direction) flipped, control system compensated laterally causing zigzag. Fix: Added sign-flip detection (dot product < 0) and negate to maintain consistent orientation, mirroring CameraController's approach.
+
+**Programmatic Verification (Level 2):**
+- 56 MeshWalker tests pass ✅
+- 18 camera-relative input tests pass ✅
+- Tangent frame stability test passes ✅
+- 0 regressions to enemy movement or surface queries
+
+**Status:** READY FOR HUMAN TESTING. Commit 7e694c2 on branch task/s20-player-movement-oscillation-fix.
+
+---
+
 ## Session 19 Camera Smoothing Fix (2026-02-17)
 
 ### Critical Fix - MUST TEST (Programmatically Verified Level 4)
