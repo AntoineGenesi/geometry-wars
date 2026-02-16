@@ -211,6 +211,7 @@ export class GameLoop {
     }
 
     // Update enemies - use player's actual UV position + world position for mesh walkers
+    profiler.begin('enemy_spawner_update');
     ctx.enemySpawner.setPlayerWorldPosition(ctx.playerWalker.position);
     if (ctx.player.canBeTracked) {
       ctx.enemySpawner.update(dt, ctx.player.surfaceU, ctx.player.surfaceV);
@@ -220,18 +221,23 @@ export class GameLoop {
       const fakeV = 0.5 + Math.cos(ctx.game.clock.totalTime * 0.7) * 0.3;
       ctx.enemySpawner.update(dt, fakeU, fakeV);
     }
+    profiler.end('enemy_spawner_update');
 
     // Update LOD assignments BEFORE instance update so geometry swap uses current frame's data
+    profiler.begin('enemy_lod_update');
     ctx.state.lodAssignments = ctx.lodManager.update(ctx.game.camera, ctx.enemySpawner.getEnemies());
+    profiler.end('enemy_lod_update');
 
     // Update GPU-instanced enemy rendering with LOD-aware geometry swapping.
     // Enemies at MEDIUM/LOW LOD are rendered with simplified geometry (20/2 tris)
     // instead of full-detail meshes (~200 tris), giving real triangle reduction.
+    profiler.begin('enemy_instance_update');
     ctx.enemyInstanceManager.updateInstancesWithLOD(
       ctx.enemySpawner.getEnemies(),
       ctx.state.lodAssignments,
       ctx.game.camera,
     );
+    profiler.end('enemy_instance_update');
     profiler.end('enemy_update');
 
     profiler.begin('bullet_update');

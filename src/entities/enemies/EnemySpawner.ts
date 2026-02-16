@@ -39,6 +39,7 @@ import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawn
 import type { Surface } from '../../surfaces/Surface';
 import { MeshWalker } from '../../movement/MeshWalker';
 import type { MeshSurface } from '../../surfaces/MeshSurface';
+import { profiler } from '../../core/PerformanceProfiler';
 
 export type EnemyType =
   | 'wanderer' | 'grunt' | 'duck' | 'mayfly' | 'rocket' | 'neutron'
@@ -146,6 +147,23 @@ export class EnemySpawner {
   /** Player world-space position for mesh-walker-mode enemies. */
   private playerWorldPos: THREE.Vector3 = new THREE.Vector3();
 
+  /**
+   * Transform cache to avoid repeated getTransform() calls for enemies at similar UV positions.
+   * Stores last 32 transforms with UV coordinates. Cache hit saves expensive trig/matrix ops.
+   */
+  private transformCache: Array<{
+    u: number;
+    v: number;
+    transform: {
+      position: THREE.Vector3;
+      normal: THREE.Vector3;
+      tangent: THREE.Vector3;
+      bitangent: THREE.Vector3;
+    };
+  }> = [];
+  private readonly transformCacheSize = 32;
+  private readonly transformCacheEpsilon = 0.001; // UV distance threshold for cache hit
+
   constructor(
     scene: THREE.Scene,
     getTransform: (u: number, v: number) => {
@@ -250,6 +268,43 @@ export class EnemySpawner {
   /** Set player world-space position for mesh-walker-mode enemies. */
   setPlayerWorldPosition(worldPos: THREE.Vector3): void {
     this.playerWorldPos.copy(worldPos);
+  }
+
+  /**
+   * Get surface transform with caching. Returns cached transform if UV coords are within epsilon.
+   * Performance: O(n) scan of cache, but cache is small (32 entries) so faster than getTransform().
+   */
+  private getCachedTransform(u: number, v: number): {
+    position: THREE.Vector3;
+    normal: THREE.Vector3;
+    tangent: THREE.Vector3;
+    bitangent: THREE.Vector3;
+  } {
+    // Check cache for nearby match
+    for (let i = 0; i < this.transformCache.length; i++) {
+      const entry = this.transformCache[i];
+      const du = Math.abs(entry.u - u);
+      const dv = Math.abs(entry.v - v);
+      if (du < this.transformCacheEpsilon && dv < this.transformCacheEpsilon) {
+        // Cache hit! Move to front (LRU)
+        if (i > 0) {
+          this.transformCache.splice(i, 1);
+          this.transformCache.unshift(entry);
+        }
+        return entry.transform;
+      }
+    }
+
+    // Cache miss - compute transform
+    const transform = this.getTransform(u, v);
+
+    // Add to cache (evict oldest if full)
+    if (this.transformCache.length >= this.transformCacheSize) {
+      this.transformCache.pop();
+    }
+    this.transformCache.unshift({ u, v, transform });
+
+    return transform;
   }
 
   /** Calculate UV distance with proper wrapping for the current surface topology. */
@@ -621,14 +676,19 @@ export class EnemySpawner {
         (warning.mesh.material as THREE.MeshBasicMaterial).opacity =
           0.4 + Math.sin(progress * Math.PI * 4) * 0.4;
 
-        // Reposition on surface (in case surface moves)
-        const t = this.getTransform(warning.u, warning.v);
+        // Reposition on surface (in case surface moves) - use cached transform
+        const t = this.getCachedTransform(warning.u, warning.v);
         warning.mesh.position.copy(t.position).addScaledVector(t.normal, 0.05);
         warning.mesh.lookAt(warning.mesh.position.clone().add(t.normal));
       }
     }
 
     // Update all enemies
+    profiler.begin('enemy_loop_update');
+
+    // Clear transform cache at start of frame (spatial locality is per-frame)
+    this.transformCache.length = 0;
+
     for (const enemy of this.enemies) {
       if (enemy.active) {
         // Skip updating enemies that haven't materialized yet
@@ -637,7 +697,9 @@ export class EnemySpawner {
         enemy.setPlayerPosition(playerU, playerV);
         enemy.setPlayerWorldPosition(this.playerWorldPos);
         enemy.update(dt);
-        enemy.applySurfaceTransform(this.getTransform);
+
+        // Use cached transform getter (avoids repeated trig/matrix ops for nearby enemies)
+        enemy.applySurfaceTransform((u: number, v: number) => this.getCachedTransform(u, v));
 
         // Scale-in newly materialized enemies
         if (enemy.mesh && enemy.mesh.scale.x < 1) {
@@ -646,9 +708,12 @@ export class EnemySpawner {
         }
       }
     }
+    profiler.end('enemy_loop_update');
 
     // Apply enemy separation (prevent overlapping)
+    profiler.begin('enemy_separation');
     this.applySeparation(dt);
+    profiler.end('enemy_separation');
 
     // Remove dead enemies
     this.enemies = this.enemies.filter(enemy => {

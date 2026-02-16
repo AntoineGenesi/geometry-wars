@@ -4,6 +4,7 @@ import { getDifficultyTier } from '../../core/DifficultyScaling';
 import type { DifficultyTier } from '../../core/DifficultyScaling';
 import type { Surface } from '../../surfaces/Surface';
 import type { MeshWalker } from '../../movement/MeshWalker';
+import { profiler } from '../../core/PerformanceProfiler';
 
 // Pre-allocated temp objects to avoid per-frame GC pressure
 const _tempMatrix4 = new THREE.Matrix4();
@@ -287,6 +288,7 @@ export abstract class BaseEnemy extends Entity {
 
     if (this.walker) {
       // ===== MESH WALKER MODE =====
+      profiler.begin('enemy_walker_mode');
       if (typeof window !== 'undefined' && (window as any).__debugEnemyUV) {
         console.log(`[Enemy ${this.constructor.name}] Entering walker mode, walker exists:`, !!this.walker);
       }
@@ -316,6 +318,7 @@ export abstract class BaseEnemy extends Entity {
         this.surfacePosition.u = uv.u;
         this.surfacePosition.v = uv.v;
       }
+      profiler.end('enemy_walker_mode');
     } else {
       // ===== UV MODE (existing) =====
       if (typeof window !== 'undefined' && (window as any).__debugEnemyUV) {
@@ -325,7 +328,9 @@ export abstract class BaseEnemy extends Entity {
       const prevU = this.surfacePosition.u;
       const prevV = this.surfacePosition.v;
 
+      profiler.begin('enemy_uv_behavior');
       this.updateBehavior(dt, this.playerU, this.playerV);
+      profiler.end('enemy_uv_behavior');
 
       // Compute the raw UV delta the subclass produced
       let deltaU = this.surfacePosition.u - prevU;
@@ -340,6 +345,7 @@ export abstract class BaseEnemy extends Entity {
         deltaV *= this.surfaceSpeedScale;
       }
 
+      profiler.begin('enemy_uv_correction');
       if (this.surfaceRef) {
         // Route through surface.moveOnSurface() which provides:
         // - Per-position UV correction (sphere pole compression, cube face convergence, etc.)
@@ -352,6 +358,7 @@ export abstract class BaseEnemy extends Entity {
         this.surfacePosition.u = prevU + deltaU;
         this.surfacePosition.v = prevV + deltaV;
       }
+      profiler.end('enemy_uv_correction');
     }
   }
 
