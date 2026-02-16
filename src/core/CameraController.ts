@@ -153,17 +153,20 @@ export class CameraController {
     if (this.targetUp.dot(this._camUp) < 0) {
       this._camUp.negate();
     }
-    // ZERO LERP: Direct assignment for instant camera follow (Session 19)
-    // Smooth targetUp toward the new bitangent-based up vector.
-    // Changed to instant follow per user request. If cube surfaces show wobble,
-    // we can re-enable minimal lerp (0.05) for targetUp only.
-    this.targetUp.copy(this._camUp).normalize();
+    // RE-ENABLED LERP: Smooth targetUp to prevent camera shift on triangle edge crossings.
+    // Session 19 removed all lerp, but this exposed tangent frame discontinuities.
+    // When MeshWalker crosses triangle edges, the bitangent changes abruptly.
+    // Smoothing with factor 0.4 (from investigation log iteration 10) prevents
+    // visible "shift" while maintaining responsive following. This also stabilizes
+    // gun aim direction which depends on camera reference frame.
+    this.targetUp.lerp(this._camUp.normalize(), 0.4);
 
-    // ZERO LERP: Direct assignment for instant camera follow (Session 19)
-    // Set camera.up BEFORE lookAt so lookAt uses the current-frame bitangent
-    // direction. This prevents a one-frame lag in the camera's right/up axes
-    // that caused movement direction jitter on curved surfaces.
-    (this.camera as THREE.PerspectiveCamera).up.copy(this._camUp).normalize();
+    // RE-ENABLED LERP: Smooth camera.up to prevent jitter when crossing triangle edges.
+    // The walker constantly crosses triangle edges during movement, causing bitangent
+    // to change abruptly. Smoothing with factor 0.4 prevents visible jitter while
+    // maintaining responsive camera follow. Set camera.up BEFORE lookAt so lookAt
+    // uses the smoothed up vector (prevents one-frame lag in camera axes).
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp.normalize(), 0.4);
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
   }
 

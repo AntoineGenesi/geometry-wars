@@ -626,13 +626,15 @@ export class PlaygroundGame {
       .multiplyScalar(this.config.cameraDistance)
       .add(target);
 
-    // ZERO LERP: Direct assignment for instant camera follow (Session 19)
-    // User reported camera lag even at lerp 0.4. Changed to instant follow per user request.
+    // INSTANT POSITION FOLLOW: Direct copy for zero lag (Session 19)
+    // User requested instant position follow with no lag.
     this.game.camera.position.copy(camPos);
     // Camera up = bitangent (perpendicular to both normal and tangent).
     // NEVER use normal here — it's parallel to the look direction and causes spinning.
-    // ZERO LERP: Changed from lerp 0.4 to direct copy for instant follow (Session 19).
-    this.game.camera.up.copy(frame.bitangent).normalize();
+    // RE-ENABLED LERP: Smooth camera.up to prevent jitter when crossing triangle edges.
+    // Walker constantly crosses edges during movement, causing bitangent changes.
+    // Smoothing with factor 0.4 prevents visible jitter without adding position lag.
+    this.game.camera.up.lerp(frame.bitangent.clone().normalize(), 0.4);
     this.game.camera.lookAt(target);
 
     // -- Depth-based opacity (same as main game) --
@@ -797,10 +799,10 @@ export class PlaygroundGame {
           camUp.multiplyScalar(1 / upLen);
 
           // aimX → screen right, -aimY → screen up (negate Y because screen Y is down)
-          // Note: Negate aimX to match the cross product handedness in orientPlayer
+          // FIXED: Removed incorrect aimX negation (matches MeshWalker.getAimDirection fix)
           aimDirection = this._tmpDir
             .set(0, 0, 0)
-            .addScaledVector(camRight, -aimX)
+            .addScaledVector(camRight, aimX)
             .addScaledVector(camUp, -aimY)
             .normalize();
         } else {
