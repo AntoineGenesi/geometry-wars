@@ -107,6 +107,12 @@ export class GameLoop {
         ctx.perfLogger.saveSession();
         ctx.ddaLogger.finalize(); // Persist DDA session log to localStorage
 
+        // Stop profiling persistence and export to disk
+        ctx.profilingPersistence.stop();
+        ctx.profilingPersistence.flush().catch((err) => {
+          console.error('[GameLoop] Failed to flush profiling data:', err);
+        });
+
         // Export logs to disk with git version tagging
         this.exportLogsToDisk();
 
