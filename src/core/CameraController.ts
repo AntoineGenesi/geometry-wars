@@ -25,10 +25,12 @@ export class CameraController {
   // REGRESSION GUARD: Lerp factor history:
   // - 0.12: Too slow (30 frames / 0.5s) → "map jumping" (scene rotation in steps)
   // - 0.25: Better (12 frames / 0.2s) but user still reported lag (Session 18)
-  // - 0.4: Current. Converges 97% within 7 frames (0.117s at 60 FPS).
-  // Matches targetUp smoothing (0.4) added in iteration 10. Fast enough to
-  // eliminate perceived lag while maintaining smooth following.
-  private readonly CAMERA_LERP_FACTOR = 0.4;
+  // - 0.4: Fast follow (7 frames / 0.117s) but exposed tangent frame jitter (Session 18)
+  // - 0.0: Instant follow (Session 19) but user reported jerky diagonal movement
+  // - 0.2: Session 19 fix - smooth enough to hide tangent frame oscillations at triangle edges
+  private readonly CAMERA_POS_LERP = 0.2;
+  // Smooth tangent frame changes more aggressively than position to hide bitangent flips
+  private readonly CAMERA_UP_LERP = 0.15;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
@@ -141,9 +143,12 @@ export class CameraController {
     }
 
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
-    // ZERO LERP: Direct assignment for instant camera follow (Session 19)
-    // User reported camera lag even at lerp 0.4. Changed to instant follow per user request.
-    this.camera.position.copy(this._targetCamPos);
+    // RE-ENABLED POSITION LERP: User reversed decision (Session 19).
+    // User reported jerky diagonal movement with instant follow: "camera goes in one of those
+    // two directions (that builds the diagonal), then the other, before going back to diagonal".
+    // This is tangent frame oscillation at triangle edge crossings. Smoothing with 0.2 hides
+    // the jitter while maintaining responsive following.
+    this.camera.position.lerp(this._targetCamPos, this.CAMERA_POS_LERP);
 
     // Save target up for MeshWalker.moveFromInput() upHint.
     // Sign-flip protection: if the new up would flip 180° from the current
@@ -156,17 +161,18 @@ export class CameraController {
     // RE-ENABLED LERP: Smooth targetUp to prevent camera shift on triangle edge crossings.
     // Session 19 removed all lerp, but this exposed tangent frame discontinuities.
     // When MeshWalker crosses triangle edges, the bitangent changes abruptly.
-    // Smoothing with factor 0.4 (from investigation log iteration 10) prevents
-    // visible "shift" while maintaining responsive following. This also stabilizes
-    // gun aim direction which depends on camera reference frame.
-    this.targetUp.lerp(this._camUp.normalize(), 0.4);
+    // Increased smoothing to 0.15 (Session 19 diagonal jerk fix) to more aggressively
+    // hide tangent frame oscillations. This also stabilizes gun aim direction which
+    // depends on camera reference frame.
+    this.targetUp.lerp(this._camUp.normalize(), this.CAMERA_UP_LERP);
 
     // RE-ENABLED LERP: Smooth camera.up to prevent jitter when crossing triangle edges.
     // The walker constantly crosses triangle edges during movement, causing bitangent
-    // to change abruptly. Smoothing with factor 0.4 prevents visible jitter while
-    // maintaining responsive camera follow. Set camera.up BEFORE lookAt so lookAt
-    // uses the smoothed up vector (prevents one-frame lag in camera axes).
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp.normalize(), 0.4);
+    // to change abruptly. Increased smoothing to 0.15 (Session 19 diagonal jerk fix) to
+    // more aggressively hide tangent frame oscillations while maintaining responsive
+    // camera follow. Set camera.up BEFORE lookAt so lookAt uses the smoothed up vector
+    // (prevents one-frame lag in camera axes).
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp.normalize(), this.CAMERA_UP_LERP);
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
   }
 
