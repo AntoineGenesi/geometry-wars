@@ -459,9 +459,11 @@ export class MeshWalker {
 
     // aimX → screen right (camera right projected)
     // -aimY → screen up (negate because raw mouse Y increases downward)
-    // Note: Negate aimX to match the cross product handedness in PlaygroundGame.orientPlayer
+    // FIXED: Removed incorrect aimX negation that caused mirrored gun direction.
+    // Mouse left should aim left, not right. The negation added in commit fdd0423
+    // was incorrect and caused bullets to fire in the mirror of the mouse direction.
     const aimDir = new THREE.Vector3()
-      .addScaledVector(camRight, -aimX)
+      .addScaledVector(camRight, aimX)
       .addScaledVector(camUp, -aimY);
 
     const len = aimDir.length();
