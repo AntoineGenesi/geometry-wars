@@ -2,9 +2,30 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-02-12
+> **Last updated:** 2026-02-17
 >
 > **Visual Test Results (2026-02-12, commit a722f6a):** Headless Puppeteer + SwiftShader testing completed. Items marked `[V5 PASS]` were verified visually at Level 5. Items marked `[V5 INCONCLUSIVE]` could not be tested headless (need real browser). See `tasks/visual-test-human-todos.md` and `tasks/lan-visual-testing.md` for full details.
+
+---
+
+## Session 19 Camera Smoothing Fix (2026-02-17)
+
+### Critical Fix - MUST TEST (Programmatically Verified Level 4)
+- [ ] **Diagonal movement feels smooth** — Hold W+D (diagonal) on sphere/torus for 5+ seconds. Camera should follow smoothly WITHOUT visible snapping or alternating between showing right-then-forward-then-diagonal directions. The movement should feel fluid, not jerky or "stilted."
+- [ ] **Camera follows without lag** — Move in any direction. Camera should track the player responsively without noticeable delay (lerp 0.2 = ~12 frames to converge 90%).
+- [ ] **Gun still aims at mouse** — Fire while moving in various directions. Bullets should travel toward mouse cursor, not at wrong angles.
+- [ ] **No regression on other surfaces** — Test on sphere, cube, torus, pill. Movement should feel smooth on all surfaces.
+
+**What was fixed:**
+User reported diagonal movement felt "stilted/broken" with camera "going in one of those two directions (that builds the diagonal), then the other, before going back to diagonal" causing jerky oscillation. Root cause: tangent frame flips at triangle edge crossings exposed by instant camera follow (zero lerp from Session 19 attempt). Solution: Re-enabled camera smoothing with lerp factors (position 0.2, up vectors 0.15) to filter single-frame jumps while maintaining responsive following.
+
+**Programmatic Verification (Level 4):**
+- Camera stability tests: ✅ 5/5 passed
+- Gun direction accuracy tests: ✅ 8/8 passed
+- Movement direction drift tests: ✅ Diagonal oscillation test now PASSES (was expected to fail)
+- TypeScript compiles clean (0 errors in CameraController.ts)
+
+**Status:** READY FOR HUMAN TESTING. Commit pending (branch task/s19-camera-meshwalker-fix).
 
 ---
 
