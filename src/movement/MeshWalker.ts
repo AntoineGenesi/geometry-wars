@@ -56,6 +56,16 @@ export class MeshWalker {
   private readonly _worldQuat = new THREE.Quaternion();
   private readonly _camWorldPos = new THREE.Vector3();
 
+  // Locked tangent-frame components for drift elimination (Session 19)
+  // When holding a single direction key, we lock the tangent/bitangent components
+  // at the moment the key is pressed. Subsequent frames use these fixed components
+  // with the current tangent frame, maintaining a stable direction relative to the
+  // surface instead of the rotating camera. This prevents direction drift.
+  private _lockedTangentComp: number = 0;
+  private _lockedBitangentComp: number = 0;
+  private _lastInputX: number = 0;
+  private _lastInputY: number = 0;
+
   constructor(surface: MeshSurface, startPos: THREE.Vector3, speed: number) {
     this.surface = surface;
     this.speed = speed;
@@ -433,8 +443,40 @@ export class MeshWalker {
     dt: number,
     upHint?: THREE.Vector3,
   ): SurfaceQueryResult | null {
-    if (Math.abs(inputX) < 0.01 && Math.abs(inputY) < 0.01) return null;
+    // Check if input has stopped
+    if (Math.abs(inputX) < 0.01 && Math.abs(inputY) < 0.01) {
+      // Reset locked direction when input stops
+      this._lockedTangentComp = 0;
+      this._lockedBitangentComp = 0;
+      this._lastInputX = 0;
+      this._lastInputY = 0;
+      return null;
+    }
 
+    // Detect if input direction has changed significantly
+    const inputChanged = Math.abs(inputX - this._lastInputX) > 0.1 ||
+                        Math.abs(inputY - this._lastInputY) > 0.1;
+
+    // Locked direction mode: when holding the same input, use fixed tangent/bitangent
+    // components instead of recomputing from the camera. This maintains a stable
+    // direction relative to the surface, preventing drift on curved surfaces.
+    if ((this._lockedTangentComp !== 0 || this._lockedBitangentComp !== 0) && !inputChanged) {
+      // Use locked tangent frame components with the CURRENT tangent frame
+      const moveDir = this._moveDir
+        .set(0, 0, 0)
+        .addScaledVector(this._tangent, this._lockedTangentComp)
+        .addScaledVector(this._bitangent, this._lockedBitangentComp);
+
+      if (moveDir.lengthSq() < 0.0001) {
+        // Locked direction became degenerate, reset and fall through
+        this._lockedTangentComp = 0;
+        this._lockedBitangentComp = 0;
+      } else {
+        return this.move(moveDir, dt);
+      }
+    }
+
+    // Compute camera-relative axes
     const camRight = this._camRight;
     const camUp = this._camUp;
 
@@ -460,11 +502,17 @@ export class MeshWalker {
 
     if (rightLen < 0.001 || upLen < 0.001) {
       // Degenerate projection (camera axis parallel to surface normal).
-      // Fall back to tangent frame.
+      // Fall back to tangent frame directly using input as tangent/bitangent components.
+      this._lockedTangentComp = inputX;
+      this._lockedBitangentComp = inputY;
+      this._lastInputX = inputX;
+      this._lastInputY = inputY;
+
       const moveDir = this._moveDir
         .set(0, 0, 0)
         .addScaledVector(this._tangent, inputX)
         .addScaledVector(this._bitangent, inputY);
+
       if (moveDir.lengthSq() < 0.0001) return null;
       return this.move(moveDir, dt);
     }
@@ -479,6 +527,16 @@ export class MeshWalker {
       .addScaledVector(camUp, inputY);
 
     if (moveDir.lengthSq() < 0.0001) return null;
+
+    // Decompose the camera-relative move direction into tangent frame components.
+    // Lock these components for future frames to maintain stable direction.
+    const tangentComp = moveDir.dot(this._tangent);
+    const bitangentComp = moveDir.dot(this._bitangent);
+
+    this._lockedTangentComp = tangentComp;
+    this._lockedBitangentComp = bitangentComp;
+    this._lastInputX = inputX;
+    this._lastInputY = inputY;
 
     return this.move(moveDir, dt);
   }
