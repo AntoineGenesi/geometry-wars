@@ -661,6 +661,23 @@ export class PlaygroundGame {
     if (this._surface.updateGrid) {
       this._surface.updateGrid(1 / 60);
     }
+
+    // Dynamic particle budget scaling based on active entity count
+    // Reduces particle emission when many entities are on screen to maintain FPS
+    const activeEnemyCount = allEnemies.filter(e => e.active && e.alive).length;
+    const activeBulletCount = this.bulletPool.activeCount;
+    const totalEntityCount = activeEnemyCount + activeBulletCount;
+
+    // Scale factor calculation:
+    //   < 100 entities: 100% budget (1.0x)
+    //   100-300 entities: linear scale from 100% to 50% (1.0x to 0.5x)
+    //   300-500 entities: linear scale from 50% to 30% (0.5x to 0.3x)
+    //   > 500 entities: 30% minimum budget (0.3x)
+    let entityScaleFactor = 1.0;
+    if (totalEntityCount > 100) {
+      entityScaleFactor = Math.max(0.3, 1.0 - ((totalEntityCount - 100) / 400));
+    }
+    this.particles.setEntityScaleFactor(entityScaleFactor);
   }
 
   // -----------------------------------------------------------------------
