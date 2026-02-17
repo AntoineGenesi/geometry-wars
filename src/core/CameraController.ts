@@ -22,11 +22,10 @@ export class CameraController {
   private readonly CAMERA_DIST_MAX = 35;
   private readonly ORBIT_SENSITIVITY = 0.005;
   private readonly ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
-  // REGRESSION GUARD: Camera follows INSTANTLY. No lerp. Period.
-  // History of failed lerp attempts: 0.12 (map jumping), 0.25 (lag), 0.4 (jitter),
-  // 0.2 (laggy server feel), 0.15 (still laggy). User has demanded zero lerp in
-  // Sessions 18 and 19. The diagonal jitter that appeared without lerp was actually
-  // caused by mirrored gun direction (wrong cross product in GameLoop.ts), not camera.
+  // REGRESSION GUARD: Camera lerp factor 0.12 matches bffc333 (last user-confirmed working version).
+  // Removing lerp (.copy instead of .lerp) causes camera to lurch on every triangle edge crossing.
+  // Do NOT change to .copy() or increase above 0.2 without user testing.
+  private static readonly CAMERA_LERP_FACTOR = 0.12;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
@@ -139,11 +138,7 @@ export class CameraController {
     }
 
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
-    // REGRESSION GUARD: NO LERP on camera position. User explicitly demanded instant follow.
-    // Any lerp factor > 0 causes visible "laggy server" feel. The diagonal jitter that
-    // appeared with instant follow was caused by the gun mirroring bug (wrong cross product
-    // order in GameLoop.ts), NOT by camera position tracking.
-    this.camera.position.copy(this._targetCamPos);
+    this.camera.position.lerp(this._targetCamPos, CameraController.CAMERA_LERP_FACTOR);
 
     // Save target up for MeshWalker.moveFromInput() upHint.
     // Sign-flip protection: if the new up would flip 180° from the current
@@ -153,12 +148,8 @@ export class CameraController {
     if (this.targetUp.dot(this._camUp) < 0) {
       this._camUp.negate();
     }
-    // REGRESSION GUARD: NO LERP on targetUp or camera.up. User explicitly demanded zero lerp.
-    // The tangent frame discontinuities at triangle edges are handled by the seam fix
-    // (HalfEdgeMesh._linkSeamEdges) and dual Gram-Schmidt frame (MeshWalker).
-    // Any remaining jitter is geometric, not a camera issue.
-    this.targetUp.copy(this._camUp.normalize());
-    (this.camera as THREE.PerspectiveCamera).up.copy(this._camUp);
+    this.targetUp.lerp(this._camUp.normalize(), CameraController.CAMERA_LERP_FACTOR);
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, CameraController.CAMERA_LERP_FACTOR).normalize();
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
   }
 

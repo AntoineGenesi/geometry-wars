@@ -165,29 +165,30 @@ export class GameLoop {
 
       const playerNormal = ctx.playerWalker.normal;
 
-      // Calculate aim direction using camera-relative axes.
-      // Pass targetUp as upHint for the same stability fix as movement.
-      const aimDirection = ctx.playerWalker.getAimDirection(
-        inputState.aimX, inputState.aimY, ctx.game.camera, ctx.cameraController.targetUp,
-      );
+      // Get tangent frame for aiming (bffc333 tangent-frame approach)
+      const frame = ctx.playerWalker.getTangentFrame();
+      const aimX = inputState.aimX;
+      const aimY = inputState.aimY;
+      const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
 
-      // Orient player to face aim direction.
-      // Iteration 7: direct quaternion set (no slerp). The iteration 6 slerp was a
-      // bandaid for tangent frame oscillation from the swap logic. With dual
-      // Gram-Schmidt tangent frame (no swap), the aim direction is stable and
-      // slerp adds unnecessary orientation lag.
-      if (aimDirection.lengthSq() > 0.001) {
-        const playerRight = new THREE.Vector3().crossVectors(aimDirection, playerNormal).normalize();
-        // REGRESSION GUARD: cross(playerNormal, playerRight) = +aimDirection (correct).
-        // cross(playerRight, playerNormal) = -aimDirection (BAC-CAB identity), which mirrors the gun.
-        // This was the root cause of "gun fires opposite to mouse" reported through all of Session 19.
-        const playerForward = new THREE.Vector3().crossVectors(playerNormal, playerRight).normalize();
-        const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
-        ctx.player.mesh.quaternion.setFromRotationMatrix(orientMat);
+      let aimDirection: THREE.Vector3;
+      if (aimLen > 0.1) {
+        aimDirection = new THREE.Vector3()
+          .addScaledVector(frame.tangent, aimX)
+          .addScaledVector(frame.bitangent, -aimY)
+          .normalize();
+      } else {
+        aimDirection = frame.bitangent.clone();
       }
 
+      // Orient player mesh
+      const playerRight = new THREE.Vector3().crossVectors(playerNormal, aimDirection).normalize();
+      const playerForward = new THREE.Vector3().crossVectors(playerRight, playerNormal).normalize();
+      const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
+      ctx.player.mesh.quaternion.setFromRotationMatrix(orientMat);
+
       // Store aim angle for bullets
-      ctx.player.aimAngle = Math.atan2(inputState.aimX, -inputState.aimY);
+      ctx.player.aimAngle = Math.atan2(aimX, -aimY);
 
       // Update matrix for bullet spawning
       ctx.player.mesh.updateMatrixWorld(true);
