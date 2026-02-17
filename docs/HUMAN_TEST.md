@@ -551,3 +551,15 @@ Claude will read this file at the start of each session and prioritize fixing re
 ### Failure Notes
 <!-- Add failure notes below this line -->
 
+
+---
+
+## Pill Movement Fix (s22-pill-movement-broken-v3) — 2026-02-18
+
+- [ ] **Pill map: forward movement is straight** — Select Pill map, move with W. Trail should be a smooth arc curving around the pill. **Regression**: before fix, the trail was a saw-tooth zigzag, reversing direction every ~5 frames near the south seam.
+- [ ] **Pill map: movement doesn't stutter at south pole** — Press W for 3+ seconds near the bottom of the pill. Player should move continuously without reversing or stuttering.
+- [ ] **All other maps unaffected** — Sphere, Cube, Icosahedron maps all move smoothly (no regressions from tightening vertex detection epsilon 0.05→0.001).
+
+**Root cause fixed:** `FaceWalker.ts` atVertex detection epsilon was 0.05 — too large. When exiting a triangle near (but not at) a vertex (v≈0.004 < 0.05), the wrong adjacent face was selected with a mismatched alpha, causing position jumps and direction reversals. Fix: tightened epsilon to 0.001.
+
+**Regression test:** `src/test/pill-movement-regression.test.ts` — passes ✅
