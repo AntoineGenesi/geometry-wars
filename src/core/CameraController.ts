@@ -140,17 +140,24 @@ export class CameraController {
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
     this.camera.position.lerp(this._targetCamPos, CameraController.CAMERA_LERP_FACTOR);
 
-    // Save target up for MeshWalker.moveFromInput() upHint.
-    // Sign-flip protection: if the new up would flip 180° from the current
-    // targetUp (possible at surface discontinuities or tangent frame resets),
-    // negate it to maintain continuity. This prevents a sudden movement
-    // direction reversal when the bitangent flips sign.
+    // Sign-flip protection: prevent _camUp from flipping 180° relative to the
+    // previous targetUp (possible at surface discontinuities or tangent frame resets).
+    // This prevents a sudden movement direction reversal when the bitangent flips sign.
     if (this.targetUp.dot(this._camUp) < 0) {
       this._camUp.negate();
     }
-    this.targetUp.lerp(this._camUp.normalize(), CameraController.CAMERA_LERP_FACTOR);
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, CameraController.CAMERA_LERP_FACTOR).normalize();
+    // Store raw (non-lerped) target up for movement upHint.
+    // REGRESSION GUARD: targetUp uses .copy() not .lerp() — avoids double-lerp.
+    // Double-lerping (lerping both targetUp AND camera.up) caused camera up-lurching
+    // at triangle edge crossings. Matches bffc333 intent: upHint = raw computed camUp.
+    this.targetUp.copy(this._camUp).normalize();
+
+    // REGRESSION GUARD: lookAt BEFORE up.lerp — matches bffc333 (last confirmed working).
+    // lookAt uses the OLD camera.up from the previous frame for stability.
+    // Calling lookAt AFTER up.lerp caused lurching at triangle edge crossings.
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
+    // Single lerp on camera.up — no double-lerp, matches bffc333.
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, CameraController.CAMERA_LERP_FACTOR).normalize();
   }
 
   /**
