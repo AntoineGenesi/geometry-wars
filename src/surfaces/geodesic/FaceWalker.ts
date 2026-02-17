@@ -201,16 +201,13 @@ export class FaceWalker {
       const he = this.halfEdge.getHalfEdge(currentFace, heEdgeLocal);
 
       if (he.twin < 0) {
-        // Boundary edge - reflect direction and stay on current face
-        const exitBary: BaryCoord = {
-          u: currentBary.u + exit.t * baryDir.u,
-          v: currentBary.v + exit.t * baryDir.v,
-          w: currentBary.w + exit.t * baryDir.w,
-        };
+        // Boundary edge - this is usually a parameterization artifact (e.g., the inner
+        // v=0/v=1 edges in the cube surface UV-grid mesh). Do NOT reflect: reflecting
+        // causes ping-pong oscillation that appears as bullets/player "stuck" at face
+        // corners. Instead, advance to the boundary and let the caller use BVH fallback
+        // for the remaining distance. BVH correctly projects onto the actual geometry.
         currentBary = clampBarycentric(exitBary);
-        currentDir.copy(this._reflectAtBoundary(_dir3D, currentFace, heEdgeLocal));
-        crossings++;
-        continue;
+        break;
       }
 
       // Get the adjacent face via the twin half-edge

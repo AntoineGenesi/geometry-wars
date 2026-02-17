@@ -210,8 +210,9 @@ export class HalfEdgeMesh {
 
     // Tolerance for position matching across seams.
     // Cube beveled geometry has vertex offsets of ~0.017 along seams.
-    // Use 0.05 to be safe, but small enough not to match truly separate edges.
-    const SEAM_TOLERANCE = 0.05;
+    // Widened from 0.05 to 0.15 to handle larger offsets at bevel transitions
+    // and UV-grid seams where floating-point accumulation can exceed 0.05.
+    const SEAM_TOLERANCE = 0.15;
     const SEAM_TOL_SQ = SEAM_TOLERANCE * SEAM_TOLERANCE;
 
     // For each unmatched half-edge, pre-compute the world positions of its endpoints.
