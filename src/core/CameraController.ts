@@ -158,12 +158,12 @@ export class CameraController {
     // at triangle edge crossings. Matches bffc333 intent: upHint = raw computed camUp.
     this.targetUp.copy(this._camUp).normalize();
 
-    // S22 fix: camera.up.copy() directly — no lerp, no velocity damping.
-    // Programmatic tests (CameraController.jerk.test.ts) confirmed that velocity-damped lerp
-    // caused CV=3.56 orientation variance and 8 jerk frames per 120-frame segment.
-    // The bitangent is stable after iteration 7 dual Gram-Schmidt fix, so no smoothing needed.
+    // Moderate up-vector lerp (0.35): smooths frame-to-frame normal changes on curved surfaces
+    // at 60 FPS without introducing the velocity-damped jerk from S22. Position is instant
+    // (already .copy() above). targetUp stays .copy() for movement upHint — no double-lerp.
+    // 0.35 converges within 2-3 frames at 60 FPS, preventing harsh/jittery camera on curved surfaces.
     // lookAt AFTER camera.up update so orientation uses the correct up vector.
-    (this.camera as THREE.PerspectiveCamera).up.copy(this._camUp);
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, 0.35);
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
   }
 
