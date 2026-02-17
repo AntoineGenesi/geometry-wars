@@ -28,8 +28,10 @@ export class CameraController {
   // History: s19 removed both lerps (jerky), s22 removed only position lerp (correct).
   private static readonly CAMERA_POSITION_LERP = 0.08; // kept for reference, not used
   // Up-vector lerp: s21 lowered 0.06→0.03, s22 lowered 0.03→0.01 — user confirmed still lurching after s21.
-  // Combined with velocity-based damping below, rapid up-vector changes at triangle crossings are heavily dampened.
-  private static readonly CAMERA_UP_LERP = 0.01;
+  // s23: raised 0.01→0.15 — 0.01 was too slow; camera unresponsive during movement. Velocity damping
+  // (multiplier 25) already handles edge-crossing lurch: dampedFactor = 0.15/(1+v*25) → ~0.01 at crossings.
+  // High base lerp for responsiveness + dynamic reduction at edges is the correct model.
+  private static readonly CAMERA_UP_LERP = 0.15;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
