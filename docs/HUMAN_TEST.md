@@ -165,13 +165,16 @@ These fixes were all made in commits `39e5540`, `9da6c5a`, `b1043d9`, `7af24be` 
 - [ ] **Stable 60 FPS** `[V5 INCONCLUSIVE - SwiftShader]` — Open Chrome DevTools Performance tab. FPS should stay near 60, not dip to 30-40
 - [ ] **No debug spam** `[V5 PASS]` — Console should NOT show LAN debug messages unless `?debug` is in URL
 
-### LAN Connection (V5 PASS — verified 2026-02-12)
+### LAN Connection (V5 PASS — re-verified 2026-02-17, 13/13 automated tests PASSED)
 - [x] **Host game flow works** — LAN -> HOST GAME -> surface select -> START HOSTING -> ENTER GAME
 - [x] **Join game flow works** — LAN -> lobby discovers hosted game -> click to join
 - [x] **Both players render** — Both player characters visible on sphere with name labels
 - [x] **Enemies spawn in LAN** — Grunts appear and move
 - [x] **Score tracking works** — Host scored 100 points, kill log shows "Grunt x2"
 - [x] **No console errors** — 0 critical errors on either page
+- [x] **Two clients connect simultaneously** — Both get unique session IDs, server shows players.size=2
+- [x] **Game stable 17+ seconds** — No disconnects, both clients still connected after extended play
+- [x] **User testing required** — Full LAN on two physical devices on same network still needs human test
 
 ### LAN Task Files (for investigating failures)
 - `tasks/lan-quick-wins-audit.md` — 60Hz patches, depth opacity removal, interpolation
