@@ -26,13 +26,14 @@ export class CameraController {
   // Removing lerp (.copy instead of .lerp) causes camera to lurch on every triangle edge crossing.
   // Do NOT change to .copy() or increase above 0.2 without user testing.
   private static readonly CAMERA_POSITION_LERP = 0.12;
-  // Up-vector lerp is lower (0.06) to smooth rapid normal changes on curved surfaces (pill, sphere).
-  // This reduces the "lurching forwards and up" on triangle edge crossings without adding position lag.
-  private static readonly CAMERA_UP_LERP = 0.06;
+  // Up-vector lerp lowered to 0.03 (from 0.06) — s21 user reported "weird camera lurch, not smooth enough".
+  // Combined with velocity-based damping below, rapid up-vector changes at triangle crossings are dampened.
+  private static readonly CAMERA_UP_LERP = 0.03;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
   private readonly _camUp = new THREE.Vector3();
+  private readonly _prevCamUp = new THREE.Vector3(0, 1, 0); // velocity-based damping: previous target up
   private readonly _yawQuat = new THREE.Quaternion();
   private readonly _pitchQuat = new THREE.Quaternion();
   private readonly _rotatedTangent = new THREE.Vector3();
@@ -159,8 +160,16 @@ export class CameraController {
     // lookAt uses the OLD camera.up from the previous frame for stability.
     // Calling lookAt AFTER up.lerp caused lurching at triangle edge crossings.
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
+
+    // Velocity-based damping (Approach 3): when up vector changes rapidly (triangle crossings),
+    // reduce lerp factor further to suppress the lurch. At rest, uses full CAMERA_UP_LERP.
+    // upVelocity ≈ 0 during smooth gliding, ≈ 0.1–0.3+ during rapid normal changes.
+    const upVelocity = this._prevCamUp.distanceTo(this._camUp);
+    this._prevCamUp.copy(this._camUp);
+    const dampedUpLerp = CameraController.CAMERA_UP_LERP / (1 + upVelocity * 10);
+
     // Single lerp on camera.up — no double-lerp, matches bffc333.
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, CameraController.CAMERA_UP_LERP).normalize();
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, dampedUpLerp).normalize();
   }
 
   /**

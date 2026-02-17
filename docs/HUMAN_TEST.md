@@ -8,6 +8,23 @@
 
 ---
 
+## Session 21 Camera Smoothing v2 (2026-02-17)
+
+### Camera Smoothing
+- [ ] **Camera feels smoother on sphere** — Move around sphere for 30+ seconds. Camera should NOT lurch when crossing triangle edges. Up-vector change should be gradual.
+- [ ] **No lurch on pill surface** — Pill has high triangle-edge density. Camera should feel smooth, no visible snapping or lurching upward.
+- [ ] **Position still responsive** — Camera should follow player position promptly (no major lag). Position lerp stays at 0.12 as before.
+- [ ] **Smooth on all maps** — Test sphere, pill, torus, cube. All should feel smoother than before.
+
+**What was changed:**
+- `CAMERA_UP_LERP` lowered from `0.06` → `0.03` (halved — Approach 1)
+- Added velocity-based damping: during rapid up-vector changes (triangle edge crossings), lerp factor is further reduced to `0.03 / (1 + velocity * 10)` (Approach 3)
+- All regression guards preserved. Position lerp unchanged at 0.12.
+
+**Status:** READY FOR HUMAN TESTING. Branch: task/s21-camera-smoothing-v2.
+
+---
+
 ## Session 20 Movement Oscillation Fix (2026-02-17, commit 7e694c2)
 
 ### CRITICAL FIX - MUST TEST (Programmatically Verified Level 2)
