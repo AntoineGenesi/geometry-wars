@@ -20,6 +20,8 @@ import { profiler } from './PerformanceProfiler';
 export class GameLoop {
   // Local variables that need to be shared across multiple local scopes
   private enemyGlowTrails: Map<BaseEnemy, any> = new Map();
+  // Last valid aim direction — used to hold aim when mouse input drops below threshold
+  private lastAimDirection: THREE.Vector3 | null = null;
   // Pre-allocated to avoid per-frame heap churn (used in bullet sync loop)
   private readonly _bulletSyncDir = new THREE.Vector3();
   private readonly _bulletSeenIds = new Set<string>();
@@ -175,12 +177,17 @@ export class GameLoop {
       const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
 
       let aimDirection: THREE.Vector3;
-      if (aimLen > 0.1) {
+      if (aimLen > 0.01) {
         aimDirection = new THREE.Vector3()
           .addScaledVector(frame.tangent, aimX)
           .addScaledVector(frame.bitangent, -aimY)
           .normalize();
+        this.lastAimDirection = aimDirection.clone();
+      } else if (this.lastAimDirection !== null) {
+        // Mouse near center or briefly dropped — hold last known aim direction
+        aimDirection = this.lastAimDirection.clone();
       } else {
+        // No prior aim — default to forward (bitangent)
         aimDirection = frame.bitangent.clone();
       }
 
