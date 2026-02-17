@@ -1307,12 +1307,19 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     applyStatMultipliers,
   });
 
+  // -- Test mode: game state exporter for programmatic tests (?testMode=true) --
+  // Declared before onFixedUpdate so the closure captures the reference.
+  let _stateExporter: { update(): void } | null = null;
+
   // -- Fixed timestep game logic --
   game.onFixedUpdate = (dt: number) => {
     // Reset profiler at the start of each frame
     profiler.reset();
 
     gameLoop.update(ctx, dt);
+
+    // Publish window._gameState for Puppeteer / automated tests
+    if (_stateExporter) _stateExporter.update();
 
     // Update aura renderer with current player state and active buffs
     const activeBuffs = buffManager.getActiveBuffs().map(b => ({
@@ -1464,6 +1471,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       ddaLogger,
       perfLogger,
     };
+  }
+
+  // -- Game state exporter: live window._gameState + window._rendererState --
+  // Activated when ?testMode=true. Zero overhead when not active.
+  if (urlParams.get('testMode') === 'true') {
+    import('./debug/GameStateExporter').then(({ GameStateExporter }) => {
+      _stateExporter = new GameStateExporter(ctx);
+      console.log('[GameStateExporter] Active. window._gameState and window._rendererState are live.');
+    });
   }
 
   // -- Expose performance log API for data export (never deleted) --
