@@ -22,13 +22,14 @@ export class CameraController {
   private readonly CAMERA_DIST_MAX = 35;
   private readonly ORBIT_SENSITIVITY = 0.005;
   private readonly ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
-  // REGRESSION GUARD: Camera position lerp 0.12 matches bffc333 (last user-confirmed working version).
+  // REGRESSION GUARD: Camera position lerp uses lerp() not copy() — critical for smooth triangle edge crossing.
   // Removing lerp (.copy instead of .lerp) causes camera to lurch on every triangle edge crossing.
   // Do NOT change to .copy() or increase above 0.2 without user testing.
-  private static readonly CAMERA_POSITION_LERP = 0.12;
-  // Up-vector lerp lowered to 0.03 (from 0.06) — s21 user reported "weird camera lurch, not smooth enough".
-  // Combined with velocity-based damping below, rapid up-vector changes at triangle crossings are dampened.
-  private static readonly CAMERA_UP_LERP = 0.03;
+  // s22: lowered 0.12→0.08 for smoother feel (user said "still lurching"). Lowering is safe per guard.
+  private static readonly CAMERA_POSITION_LERP = 0.08;
+  // Up-vector lerp: s21 lowered 0.06→0.03, s22 lowered 0.03→0.01 — user confirmed still lurching after s21.
+  // Combined with velocity-based damping below, rapid up-vector changes at triangle crossings are heavily dampened.
+  private static readonly CAMERA_UP_LERP = 0.01;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
@@ -164,9 +165,10 @@ export class CameraController {
     // Velocity-based damping (Approach 3): when up vector changes rapidly (triangle crossings),
     // reduce lerp factor further to suppress the lurch. At rest, uses full CAMERA_UP_LERP.
     // upVelocity ≈ 0 during smooth gliding, ≈ 0.1–0.3+ during rapid normal changes.
+    // s22: increased damping multiplier 10→25 for stronger suppression at edge crossings.
     const upVelocity = this._prevCamUp.distanceTo(this._camUp);
     this._prevCamUp.copy(this._camUp);
-    const dampedUpLerp = CameraController.CAMERA_UP_LERP / (1 + upVelocity * 10);
+    const dampedUpLerp = CameraController.CAMERA_UP_LERP / (1 + upVelocity * 25);
 
     // Single lerp on camera.up — no double-lerp, matches bffc333.
     (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, dampedUpLerp).normalize();
