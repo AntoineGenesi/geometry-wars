@@ -8,6 +8,22 @@
 
 ---
 
+## Session 22 Camera Jerk Fix (2026-02-18)
+
+### Camera Smoothness on All Maps
+
+- [ ] **Camera follows smoothly on sphere** — Move the player with WASD. Camera should track instantly and smoothly. No "camera repositions itself" after a short delay. Every keypress should produce immediate camera response.
+- [ ] **Small movements feel responsive** — Tap a key briefly (single press). Camera should respond immediately, not "dead frame then snap."
+- [ ] **No jerk when stopping** — Stop pressing keys abruptly. Camera should stop without any catch-up snap or lurch. Previously the lerp would "finish catching up" after release.
+- [ ] **Works on torus, cube, capsule** — Try the fix on multiple map types. Camera up-vector should track the surface normal smoothly on all surfaces.
+- [ ] **Orbit (middle-mouse drag) still works** — Middle-click drag to orbit the camera. Should still work correctly.
+
+**What was changed:**
+- `src/core/CameraController.ts`: Removed velocity-damped up-vector lerp (`0.15/(1+v*25)`). Now uses `camera.up.copy(bitangent)` directly each frame. lookAt called AFTER the up update. Bitangent is stable (iteration 7 Gram-Schmidt fix) so no smoothing needed.
+- `src/core/CameraController.jerk.test.ts` (NEW): 5 regression tests. Run `npm test src/core/CameraController.jerk.test.ts` to verify camera smoothness programmatically.
+
+---
+
 ## Session 22 Enemy Visibility Scaling (2026-02-18)
 
 ### Far-Side Enemy Culling at High Entity Counts

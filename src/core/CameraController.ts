@@ -24,19 +24,18 @@ export class CameraController {
   private readonly ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
   // REGRESSION GUARD: Camera position uses .copy() not .lerp() — S22: user explicitly demanded instant
   // position tracking. Position lag = camera lets player move before repositioning = user hates this.
-  // Only the up-vector is smoothed (CAMERA_UP_LERP). Do NOT add position lerp back without user approval.
   // History: s19 removed both lerps (jerky), s22 removed only position lerp (correct).
   private static readonly CAMERA_POSITION_LERP = 0.08; // kept for reference, not used
-  // Up-vector lerp: s21 lowered 0.06→0.03, s22 lowered 0.03→0.01 — user confirmed still lurching after s21.
-  // s23: raised 0.01→0.15 — 0.01 was too slow; camera unresponsive during movement. Velocity damping
-  // (multiplier 25) already handles edge-crossing lurch: dampedFactor = 0.15/(1+v*25) → ~0.01 at crossings.
-  // High base lerp for responsiveness + dynamic reduction at edges is the correct model.
-  private static readonly CAMERA_UP_LERP = 0.15;
+  // Up-vector: S22 programmatic tests showed velocity-damped lerp caused CV=3.56 orientation variance
+  // and 8 jerk frames per 120-frame segment. Root cause: 0.15/(1+v*25) suppressed lerp during
+  // movement, then "snapped" on recovery → user felt "nothing happens, then camera repositions."
+  // Fix: camera.up.copy() directly from bitangent. Bitangent is stable after iteration 7
+  // dual Gram-Schmidt fix, so no smoothing is needed. lookAt called AFTER up update.
+  // Tests: CameraController.jerk.test.ts — must PASS with this approach.
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
   private readonly _camUp = new THREE.Vector3();
-  private readonly _prevCamUp = new THREE.Vector3(0, 1, 0); // velocity-based damping: previous target up
   private readonly _yawQuat = new THREE.Quaternion();
   private readonly _pitchQuat = new THREE.Quaternion();
   private readonly _rotatedTangent = new THREE.Vector3();
@@ -159,21 +158,13 @@ export class CameraController {
     // at triangle edge crossings. Matches bffc333 intent: upHint = raw computed camUp.
     this.targetUp.copy(this._camUp).normalize();
 
-    // REGRESSION GUARD: lookAt BEFORE up.lerp — matches bffc333 (last confirmed working).
-    // lookAt uses the OLD camera.up from the previous frame for stability.
-    // Calling lookAt AFTER up.lerp caused lurching at triangle edge crossings.
+    // S22 fix: camera.up.copy() directly — no lerp, no velocity damping.
+    // Programmatic tests (CameraController.jerk.test.ts) confirmed that velocity-damped lerp
+    // caused CV=3.56 orientation variance and 8 jerk frames per 120-frame segment.
+    // The bitangent is stable after iteration 7 dual Gram-Schmidt fix, so no smoothing needed.
+    // lookAt AFTER camera.up update so orientation uses the correct up vector.
+    (this.camera as THREE.PerspectiveCamera).up.copy(this._camUp);
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
-
-    // Velocity-based damping (Approach 3): when up vector changes rapidly (triangle crossings),
-    // reduce lerp factor further to suppress the lurch. At rest, uses full CAMERA_UP_LERP.
-    // upVelocity ≈ 0 during smooth gliding, ≈ 0.1–0.3+ during rapid normal changes.
-    // s22: increased damping multiplier 10→25 for stronger suppression at edge crossings.
-    const upVelocity = this._prevCamUp.distanceTo(this._camUp);
-    this._prevCamUp.copy(this._camUp);
-    const dampedUpLerp = CameraController.CAMERA_UP_LERP / (1 + upVelocity * 25);
-
-    // Single lerp on camera.up — no double-lerp, matches bffc333.
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, dampedUpLerp).normalize();
   }
 
   /**
