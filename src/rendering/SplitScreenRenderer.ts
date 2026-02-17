@@ -182,6 +182,10 @@ export class SplitScreenRenderer {
   resize(w: number, h: number): void {
     this.width = w;
     this.height = h;
+    // Keep the underlying renderer canvas in sync with the split-screen dimensions.
+    // (Game.ts resize handler is disabled via disableBuiltInResize=true in
+    //  multiplayer-main.ts, so SplitScreenRenderer is the sole owner of canvas size.)
+    this.renderer.setSize(w, h);
     // Update camera aspects
     for (let i = 0; i < this.cameras.length; i++) {
       const cam = this.cameras[i];
