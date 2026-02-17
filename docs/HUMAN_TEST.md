@@ -8,6 +8,27 @@
 
 ---
 
+## Session 22 Camera Smoothing v3 (2026-02-18)
+
+### Camera Smoothing — SIGNIFICANTLY MORE AGGRESSIVE SETTINGS
+
+- [ ] **Camera feels much smoother on sphere** — Move around sphere for 30+ seconds. Up-vector lurch should be MUCH less noticeable than before. Camera roll should be very gradual.
+- [ ] **No position lag** — Camera should still follow the player position reasonably (0.08 lerp instead of 0.12 — slightly slower but not sluggish).
+- [ ] **Smooth on all maps** — Test sphere, pill, torus, cube. All should feel smoother. Pill is the hardest test (densest triangle edges).
+- [ ] **No visual artifacts** — Camera should not appear "stuck" or "floating behind" excessively due to the aggressive smoothing.
+
+**What was changed (s22):**
+- `CAMERA_POSITION_LERP` lowered `0.12` → `0.08` (smoother position following)
+- `CAMERA_UP_LERP` lowered `0.03` → `0.01` (3× smoother up-vector roll)
+- Velocity-based damping multiplier raised `10` → `25` (stronger suppression at edge crossings)
+
+**Previous values (s21):** position=0.12, up=0.03, damping=10
+**New values (s22):** position=0.08, up=0.01, damping=25
+
+**Status:** CHANGES MADE — needs human browser test. Branch: task/s22-sphere-camera-smoothing.
+
+---
+
 ## Session 21 Camera Smoothing v2 (2026-02-17)
 
 ### Camera Smoothing
