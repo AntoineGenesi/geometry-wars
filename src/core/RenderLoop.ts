@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { GameContext } from './GameContext';
 import { LODLevel } from '../rendering/LODManager';
 import { EnemyType } from '../entities/enemies/EnemySpawner';
+import { Boss } from '../entities/enemies/Boss';
 import { UIHelpers } from '../ui/UIHelpers';
 import { profiler } from './PerformanceProfiler';
 
@@ -14,6 +15,10 @@ export class RenderLoop {
   private _renderTempToPlayer = new THREE.Vector3();
   private _renderTempToPlayerDir = new THREE.Vector3();
   private _renderTempToEnemy = new THREE.Vector3();
+
+  // Pre-allocated vectors for far-side enemy culling (zero per-frame allocation)
+  private _farSideCamDir = new THREE.Vector3();
+  private _farSideTempDir = new THREE.Vector3();
 
   // Module-level pre-allocated objects for zero-GC frustum visibility checks
   private _frustum = new THREE.Frustum();
@@ -72,6 +77,21 @@ export class RenderLoop {
     const maxVisible = qualitySettings.maxVisibleEnemies;
     let visibleEnemyCount = 0;
 
+    // Far-side enemy culling: at 150+ entities, hide regular enemies on the back of the surface.
+    // Bosses are exempt — they keep their depth-occlusion opacity (dim but visible as a threat cue).
+    // Uses dot product between camera direction from center and enemy direction from center.
+    // Smooth fade zone near horizon (dot=0) so enemies don't pop in/out.
+    const FAR_SIDE_ENTITY_THRESHOLD = 150;
+    const FAR_SIDE_NEAR_DOT = 0.15;   // dot > this → fully visible (near side)
+    const FAR_SIDE_FAR_DOT = -0.10;   // dot < this → hidden (far side)
+    const farSideRange = FAR_SIDE_NEAR_DOT - FAR_SIDE_FAR_DOT; // 0.25
+
+    const doFarSideCulling = allEnemies.length >= FAR_SIDE_ENTITY_THRESHOLD;
+    if (doFarSideCulling) {
+      // Camera direction from mesh center — computed once per frame, used per-enemy below
+      this._farSideCamDir.copy(camPos).sub(meshCenter).normalize();
+    }
+
     for (const enemy of allEnemies) {
       if (!enemy.alive || !enemy.mesh) continue;
 
@@ -119,6 +139,23 @@ export class RenderLoop {
         visibility *= 0.85;
       } else if (lodLevel === LODLevel.MEDIUM) {
         visibility *= 0.95;
+      }
+
+      // Far-side culling at high entity counts (150+): hide regular enemies on the back half
+      // of the surface to reduce visual clutter. Bosses are exempt (threat cue preserved).
+      if (doFarSideCulling && !(enemy instanceof Boss)) {
+        // Compute enemy direction from mesh center (normalized, zero-alloc)
+        this._farSideTempDir.copy(enemy.position).sub(meshCenter);
+        const enemyFromCenterLen = this._farSideTempDir.length();
+        if (enemyFromCenterLen > 0.001) {
+          this._farSideTempDir.multiplyScalar(1 / enemyFromCenterLen);
+        }
+        // dot > FAR_SIDE_NEAR_DOT: near side → farFactor=1 (fully visible)
+        // dot < FAR_SIDE_FAR_DOT: far side → farFactor=0 (hidden)
+        // in between: smooth linear fade at the horizon
+        const farSideDot = this._farSideCamDir.dot(this._farSideTempDir);
+        const farFactor = Math.max(0, Math.min(1, (farSideDot - FAR_SIDE_FAR_DOT) / farSideRange));
+        visibility = Math.min(visibility, farFactor);
       }
 
       visibleEnemyCount++;

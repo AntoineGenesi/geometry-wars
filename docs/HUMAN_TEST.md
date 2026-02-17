@@ -8,24 +8,28 @@
 
 ---
 
-## Session 22 Camera Smoothing v3 (2026-02-18)
+## Session 22 Enemy Visibility Scaling (2026-02-18)
 
-### Camera Smoothing — SIGNIFICANTLY MORE AGGRESSIVE SETTINGS
+### Far-Side Enemy Culling at High Entity Counts
 
-- [ ] **Camera feels much smoother on sphere** — Move around sphere for 30+ seconds. Up-vector lurch should be MUCH less noticeable than before. Camera roll should be very gradual.
-- [ ] **No position lag** — Camera should still follow the player position reasonably (0.08 lerp instead of 0.12 — slightly slower but not sluggish).
-- [ ] **Smooth on all maps** — Test sphere, pill, torus, cube. All should feel smoother. Pill is the hardest test (densest triangle edges).
-- [ ] **No visual artifacts** — Camera should not appear "stuck" or "floating behind" excessively due to the aggressive smoothing.
+- [ ] **Far-side enemies hidden at 200+ entities** — Spawn 200+ enemies (Waves mode, wait for many waves). Enemies on the BACK of the sphere (the side you can't see directly) should be invisible or nearly invisible. If you can see glowing enemy shapes through the sphere, that's a failure.
+- [ ] **Bosses still visible on far side** — A boss enemy on the far side of the sphere should still be dimly visible (glow effect at ~10% opacity), not completely hidden. Confirms boss threat visibility is preserved.
+- [ ] **Smooth horizon fade, no popping** — As you move around the sphere, enemies should gradually fade in as they come over the horizon, not pop in abruptly. Watch the horizon edge carefully.
+- [ ] **Near-side enemies fully visible** — Enemies on YOUR side of the sphere (near the player) should look exactly the same as before — no unintended dimming.
+- [ ] **Below 150 enemies: no change** — Kill enemies until fewer than 150 are on screen. Far-side enemies should reappear (depth occlusion still hides them behind surface, but the entity-count culling is off).
+- [ ] **Player is clearly visible** — Even with 200+ enemies on screen, the player ship/character should be clearly visible. Player is not affected by far-side culling.
 
-**What was changed (s22):**
-- `CAMERA_POSITION_LERP` lowered `0.12` → `0.08` (smoother position following)
-- `CAMERA_UP_LERP` lowered `0.03` → `0.01` (3× smoother up-vector roll)
-- Velocity-based damping multiplier raised `10` → `25` (stronger suppression at edge crossings)
+### Death Effect Scaling
 
-**Previous values (s21):** position=0.12, up=0.03, damping=10
-**New values (s22):** position=0.08, up=0.01, damping=25
+- [ ] **Shockwave less distorting at 200+ enemies** — When killing many enemies simultaneously (bomb, or heavy shooting in a crowd), the screen distortion (shockwave effect) should be less intense than before. Previously, many simultaneous deaths caused heavy chromatic distortion.
+- [ ] **Shockwave still visible at low counts** — With fewer than 100 enemies on screen, death shockwaves should feel the same as before (full intensity).
+- [ ] **Boss death still impactful** — A boss death shockwave should still feel significant (though scaled at high counts).
 
-**Status:** CHANGES MADE — needs human browser test. Branch: task/s22-sphere-camera-smoothing.
+**What was changed:**
+- `RenderLoop.ts`: At 150+ entities, regular enemies on the far side of the surface (dot product with camera < -0.10) are hidden. Smooth fade zone near horizon (dot between -0.10 and 0.15). Bosses are exempt.
+- `GameLoop.ts`: Death shockwave strength scaled down at high entity counts. Formula: `max(0.3, 1.0 - max(0, count-100)/200)`. At 200 enemies → 0.5×. At 300+ enemies → 0.3× minimum.
+
+**Verification level:** L1 (TypeScript compiles clean). Needs human testing.
 
 ---
 
