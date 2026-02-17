@@ -474,4 +474,98 @@ describe('Camera-Relative Input', () => {
       expect(walker.position.distanceTo(start)).toBeGreaterThan(2);
     });
   });
+
+  describe('pill map — coordinate flip regression (s21)', () => {
+    // Bug: on pill/capsule, pressing W alternated between "up the cylinder" and
+    // "sideways around the cylinder" on every other triangle crossing.
+    // Root cause: dual Gram-Schmidt on both tangent AND bitangent independently
+    // produced 90° frame rotations on adjacent cylindrical triangles.
+    // Fix: derive bitangent from cross product (n × tangent) so the frame is
+    // always self-consistent regardless of which triangle the walker is on.
+
+    function createWalkerOnPill(): { walker: MeshWalker; surface: MeshSurface } {
+      const surf = SurfaceFactory.create('pill', {});
+      surf.mesh.updateMatrixWorld(true);
+      const meshSurface = new MeshSurface(surf.mesh);
+      // Start on the cylindrical body, not a cap
+      const startPos = surf.getPoint(0.5, 0.0).position;
+      const walker = new MeshWalker(meshSurface, startPos, 3);
+      return { walker, surface: meshSurface };
+    }
+
+    it('W key should move consistently up the pill (no coordinate flip between triangles)', () => {
+      const { walker } = createWalkerOnPill();
+      const camera = makeTopDownCamera(walker, 15);
+      const dt = 1 / 60;
+
+      // Capture initial W (forward) displacement direction
+      const frame0 = walker.getTangentFrame();
+      const pos0 = walker.position.clone();
+      walker.moveFromInput(0, 1, camera, dt, frame0.bitangent);
+      const firstDisplacement = walker.position.clone().sub(pos0).normalize();
+
+      // Move forward many more times across triangle boundaries
+      let wrongDirectionCount = 0;
+      for (let i = 0; i < 40; i++) {
+        const prevPos = walker.position.clone();
+        const frame = walker.getTangentFrame();
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+
+        walker.moveFromInput(0, 1, camera, dt, frame.bitangent);
+        const disp = walker.position.clone().sub(prevPos);
+        if (disp.length() > 0.001) {
+          // Each W press should be in roughly the same direction as the first
+          // (allowing for surface curvature: allow dot > 0.3 means ≤72° deviation)
+          const dot = disp.normalize().dot(firstDisplacement);
+          if (dot < 0.3) {
+            wrongDirectionCount++;
+          }
+        }
+      }
+
+      // Without the fix: alternates ~every triangle crossing → many wrong-direction frames
+      // With the fix: smooth continuous forward movement
+      expect(wrongDirectionCount).toBeLessThan(5);
+    });
+
+    it('W key on pill should not produce 90° direction jumps between consecutive frames', () => {
+      const { walker } = createWalkerOnPill();
+      const camera = makeTopDownCamera(walker, 15);
+      const dt = 1 / 60;
+
+      const displacements: THREE.Vector3[] = [];
+
+      for (let i = 0; i < 60; i++) {
+        const prevPos = walker.position.clone();
+        const frame = walker.getTangentFrame();
+        camera.position.copy(walker.position).addScaledVector(walker.normal, 15);
+        camera.up.copy(frame.bitangent);
+        camera.lookAt(walker.position);
+        camera.updateMatrixWorld(true);
+
+        walker.moveFromInput(0, 1, camera, dt, frame.bitangent);
+        const disp = walker.position.clone().sub(prevPos);
+        if (disp.length() > 0.001) {
+          displacements.push(disp.normalize());
+        }
+      }
+
+      // Count direction reversals / 90° jumps between consecutive W presses
+      let largeJumps = 0;
+      for (let i = 1; i < displacements.length; i++) {
+        const dot = displacements[i].dot(displacements[i - 1]);
+        // A 90° rotation gives dot=0; we allow up to ~60° (dot=0.5) for surface curvature
+        if (dot < 0.5) {
+          largeJumps++;
+        }
+      }
+
+      // Without fix: jumps every ~2-4 frames on cylindrical section
+      // With fix: smooth, at most minor deviations due to surface curvature
+      expect(largeJumps).toBeLessThan(5);
+    });
+  });
 });
