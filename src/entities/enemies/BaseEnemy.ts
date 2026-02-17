@@ -224,10 +224,10 @@ export abstract class BaseEnemy extends Entity {
         _tempOffsetVec3.addScaledVector(this.walker.normal, this.radius);
         this.mesh.position.copy(_tempOffsetVec3);
 
-        const frame = this.walker.getTangentFrame();
-        _tempMatrix4.makeBasis(frame.bitangent, frame.normal, frame.tangent);
-        _tempEuler.setFromRotationMatrix(_tempMatrix4);
-        this.mesh.rotation.copy(_tempEuler);
+        // Use direct read-only getters — zero allocations vs getTangentFrame() which clones 3 Vector3s
+        // Use quaternion directly to skip the Euler→rotation conversion step
+        _tempMatrix4.makeBasis(this.walker.bitangent, this.walker.normal, this.walker.tangent);
+        this.mesh.quaternion.setFromRotationMatrix(_tempMatrix4);
       }
     } else {
       // ===== UV MODE (existing) =====
@@ -239,9 +239,9 @@ export abstract class BaseEnemy extends Entity {
         _tempOffsetVec3.addScaledVector(transform.normal, this.radius);
         this.mesh.position.copy(_tempOffsetVec3);
 
+        // Use quaternion directly to skip the Euler→rotation conversion step
         _tempMatrix4.makeBasis(transform.bitangent, transform.normal, transform.tangent);
-        _tempEuler.setFromRotationMatrix(_tempMatrix4);
-        this.mesh.rotation.copy(_tempEuler);
+        this.mesh.quaternion.setFromRotationMatrix(_tempMatrix4);
       }
     }
 
