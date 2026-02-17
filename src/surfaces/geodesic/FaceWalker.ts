@@ -150,8 +150,12 @@ export class FaceWalker {
         w: currentBary.w + exit.t * baryDir.w,
       };
 
-      // Check if we're at or near a vertex (two or more components near zero)
-      const eps = 0.05; // Tolerance for vertex detection
+      // Check if we're at or near a vertex (two or more components near zero).
+      // Use a tight tolerance — true vertex exits have bary components near machine
+      // epsilon (~1e-15). A loose tolerance (like 0.05) falsely triggers when the
+      // player exits an edge very close to a corner (e.g. v=0.004 after normal drift),
+      // causing the wrong adjacent face to be selected with a mismatched alpha.
+      const eps = 0.001; // Tolerance for vertex detection
       const atVertex =
         (Math.abs(exitBary.u) < eps && Math.abs(exitBary.v) < eps) ||
         (Math.abs(exitBary.v) < eps && Math.abs(exitBary.w) < eps) ||
