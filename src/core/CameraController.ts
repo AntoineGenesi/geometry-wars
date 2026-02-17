@@ -22,11 +22,11 @@ export class CameraController {
   private readonly CAMERA_DIST_MAX = 35;
   private readonly ORBIT_SENSITIVITY = 0.005;
   private readonly ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
-  // REGRESSION GUARD: Camera position lerp uses lerp() not copy() — critical for smooth triangle edge crossing.
-  // Removing lerp (.copy instead of .lerp) causes camera to lurch on every triangle edge crossing.
-  // Do NOT change to .copy() or increase above 0.2 without user testing.
-  // s22: lowered 0.12→0.08 for smoother feel (user said "still lurching"). Lowering is safe per guard.
-  private static readonly CAMERA_POSITION_LERP = 0.08;
+  // REGRESSION GUARD: Camera position uses .copy() not .lerp() — S22: user explicitly demanded instant
+  // position tracking. Position lag = camera lets player move before repositioning = user hates this.
+  // Only the up-vector is smoothed (CAMERA_UP_LERP). Do NOT add position lerp back without user approval.
+  // History: s19 removed both lerps (jerky), s22 removed only position lerp (correct).
+  private static readonly CAMERA_POSITION_LERP = 0.08; // kept for reference, not used
   // Up-vector lerp: s21 lowered 0.06→0.03, s22 lowered 0.03→0.01 — user confirmed still lurching after s21.
   // Combined with velocity-based damping below, rapid up-vector changes at triangle crossings are heavily dampened.
   private static readonly CAMERA_UP_LERP = 0.01;
@@ -143,7 +143,7 @@ export class CameraController {
     }
 
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
-    this.camera.position.lerp(this._targetCamPos, CameraController.CAMERA_POSITION_LERP);
+    this.camera.position.copy(this._targetCamPos);
 
     // Sign-flip protection: prevent _camUp from flipping 180° relative to the
     // previous targetUp (possible at surface discontinuities or tangent frame resets).
