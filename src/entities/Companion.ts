@@ -81,7 +81,10 @@ const _tempAimDir = new THREE.Vector3();
 const _tempToEnemy = new THREE.Vector3();
 const _tempCompPos = new THREE.Vector3();
 const _tempOrientMat = new THREE.Matrix4();
-const _tempSpinAxis = new THREE.Vector3(0, 1, 0);
+// Spin axes for independent ring/core rotation (3D gyroscope effect)
+const _spinX = new THREE.Vector3(1, 0, 0);
+const _spinY = new THREE.Vector3(0, 1, 0);
+const _spinZ = new THREE.Vector3(0, 0, 1);
 
 // ---------------------------------------------------------------------------
 // Single Companion entity
@@ -114,6 +117,11 @@ class Companion {
   // Glow trail data
   private glowMaterial: THREE.MeshStandardMaterial;
 
+  // Per-part references for independent 3D rotation (gyroscope effect)
+  private corePart: THREE.Group;
+  private ring1: THREE.Mesh;
+  private ring2: THREE.Mesh;
+
   // Surface-aware movement agent (orbit delegated to SurfaceAgent + OrbitBehavior)
   private agent: SurfaceAgent;
 
@@ -139,9 +147,12 @@ class Companion {
     }
 
     // Build visual mesh
-    const { group, material } = createCompanionMesh(this.color);
+    const { group, material, corePart, ring1, ring2 } = createCompanionMesh(this.color);
     this.mesh = group;
     this.glowMaterial = material;
+    this.corePart = corePart;
+    this.ring1 = ring1;
+    this.ring2 = ring2;
 
     // Initialize surface agent with orbit behavior
     this.agent = new SurfaceAgent(null, new THREE.Vector3(), this.orbitSpeed);
@@ -189,12 +200,17 @@ class Companion {
     this.surfaceU = playerU;
     this.surfaceV = playerV;
 
-    // Orient to surface using player's tangent frame (close enough for small orbits)
+    // Orient the group to the surface (no whole-group spin — parts spin independently)
     _tempOrientMat.makeBasis(playerTransform.tangent, surfaceNormal, playerTransform.bitangent);
     this.mesh.quaternion.setFromRotationMatrix(_tempOrientMat);
 
-    // Spin the companion for visual flair
-    this.mesh.rotateOnAxis(_tempSpinAxis, dt * 3);
+    // 3D gyroscope effect: each part spins on a different local axis
+    // corePart spins around surface normal (Y) — diamond tumbles in the tangent plane
+    this.corePart.rotateOnAxis(_spinY, dt * 3.0);
+    // ring1 spins around tangent (X) — wobbles in the normal-bitangent plane (looks 3D)
+    this.ring1.rotateOnAxis(_spinX, dt * 2.0);
+    // ring2 spins around bitangent (Z) — wobbles in the normal-tangent plane (different arc)
+    this.ring2.rotateOnAxis(_spinZ, dt * -1.5);
 
     // Type-specific behavior
     switch (this.type) {
@@ -653,18 +669,19 @@ export class CompanionPickup {
     innerMesh.name = 'core';
     group.add(innerMesh);
 
-    // Glow sprite (uses radial gradient texture to avoid square artifact)
-    const glowMat = new THREE.SpriteMaterial({
-      map: getCompanionGlowTexture(),
+    // 3D glow sphere (replaces flat sprite — visible from all angles)
+    const glowGeom = new THREE.SphereGeometry(0.45, 12, 8);
+    const glowMat = new THREE.MeshBasicMaterial({
       color: threeColor,
       transparent: true,
-      opacity: 0.35,
-      blending: THREE.NormalBlending,
+      opacity: 0.2,
+      blending: THREE.AdditiveBlending,
       depthWrite: false,
+      side: THREE.BackSide,
     });
-    const glowSprite = new THREE.Sprite(glowMat);
-    glowSprite.scale.setScalar(1.2);
-    group.add(glowSprite);
+    const glowSphere = new THREE.Mesh(glowGeom, glowMat);
+    glowSphere.name = 'pickupGlow';
+    group.add(glowSphere);
 
     return group;
   }
@@ -823,11 +840,19 @@ export function getRandomCompanionType(): CompanionType {
 function createCompanionMesh(color: number): {
   group: THREE.Group;
   material: THREE.MeshStandardMaterial;
+  corePart: THREE.Group;
+  ring1: THREE.Mesh;
+  ring2: THREE.Mesh;
 } {
   const group = new THREE.Group();
   group.name = 'Companion';
 
   const threeColor = new THREE.Color(color);
+
+  // -- Core part (octahedron + glow) — spins as a unit around surface normal --
+  const corePart = new THREE.Group();
+  corePart.name = 'companionCore';
+  group.add(corePart);
 
   // Octahedron (diamond shape)
   const geom = new THREE.OctahedronGeometry(COMPANION_MESH_RADIUS);
@@ -840,8 +865,8 @@ function createCompanionMesh(color: number): {
     metalness: 0.3,
     roughness: 0.4,
   });
-  const mesh = new THREE.Mesh(geom, mat);
-  group.add(mesh);
+  const coreMesh = new THREE.Mesh(geom, mat);
+  corePart.add(coreMesh);
 
   // Wireframe overlay for extra definition
   const wireGeom = new THREE.OctahedronGeometry(COMPANION_MESH_RADIUS * 1.15);
@@ -851,9 +876,9 @@ function createCompanionMesh(color: number): {
     transparent: true,
     opacity: 0.5,
   });
-  group.add(new THREE.Mesh(wireGeom, wireMat));
+  corePart.add(new THREE.Mesh(wireGeom, wireMat));
 
-  // 3D glow sphere (replaces flat sprite to avoid square artifact)
+  // 3D glow sphere (ambient glow visible from all angles)
   const glowGeom = new THREE.SphereGeometry(COMPANION_MESH_RADIUS * 1.6, 16, 12);
   const glowMat = new THREE.MeshBasicMaterial({
     color: threeColor,
@@ -865,32 +890,35 @@ function createCompanionMesh(color: number): {
   });
   const glowSphere = new THREE.Mesh(glowGeom, glowMat);
   glowSphere.name = 'companionGlow';
-  group.add(glowSphere);
+  corePart.add(glowSphere);
 
-  // Primary torus ring — horizontal aura
-  const ringGeom = new THREE.TorusGeometry(COMPANION_MESH_RADIUS * 1.8, 0.015, 8, 24);
-  const ringMat = new THREE.MeshBasicMaterial({
+  // -- Ring 1: starts tilted 45° so it's never face-on from above --
+  // Spins on local X (tangent) axis → wobbles in the normal-bitangent plane
+  const ring1Geom = new THREE.TorusGeometry(COMPANION_MESH_RADIUS * 1.9, 0.018, 8, 28);
+  const ring1Mat = new THREE.MeshBasicMaterial({
     color: threeColor,
     transparent: true,
-    opacity: 0.45,
+    opacity: 0.55,
     depthWrite: false,
   });
-  const ring = new THREE.Mesh(ringGeom, ringMat);
-  ring.name = 'companionRing';
-  group.add(ring);
+  const ring1 = new THREE.Mesh(ring1Geom, ring1Mat);
+  ring1.rotation.x = Math.PI / 4; // 45° initial tilt — never purely face-on from any angle
+  ring1.name = 'companionRing1';
+  group.add(ring1);
 
-  // Secondary torus ring — tilted 90 degrees for 3D cage effect
-  const ring2Geom = new THREE.TorusGeometry(COMPANION_MESH_RADIUS * 1.6, 0.012, 8, 24);
+  // -- Ring 2: starts tilted 90° + 45° from ring1 for 3D cage coverage --
+  // Spins on local Z (bitangent) axis → wobbles in the normal-tangent plane
+  const ring2Geom = new THREE.TorusGeometry(COMPANION_MESH_RADIUS * 1.65, 0.014, 8, 24);
   const ring2Mat = new THREE.MeshBasicMaterial({
     color: threeColor,
     transparent: true,
-    opacity: 0.3,
+    opacity: 0.4,
     depthWrite: false,
   });
   const ring2 = new THREE.Mesh(ring2Geom, ring2Mat);
-  ring2.rotation.x = Math.PI / 2;
+  ring2.rotation.set(Math.PI / 2, Math.PI / 4, 0); // 90° + 45° offset from ring1
   ring2.name = 'companionRing2';
   group.add(ring2);
 
-  return { group, material: mat };
+  return { group, material: mat, corePart, ring1, ring2 };
 }
