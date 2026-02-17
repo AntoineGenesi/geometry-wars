@@ -20,6 +20,9 @@ import { profiler } from './PerformanceProfiler';
 export class GameLoop {
   // Local variables that need to be shared across multiple local scopes
   private enemyGlowTrails: Map<BaseEnemy, any> = new Map();
+  // Pre-allocated to avoid per-frame heap churn (used in bullet sync loop)
+  private readonly _bulletSyncDir = new THREE.Vector3();
+  private readonly _bulletSeenIds = new Set<string>();
   private FAST_ENEMY_TYPES = ['Mayfly', 'Rocket', 'Duck'];
   private ENEMY_TRAIL_COLORS: Record<string, number> = {
     Mayfly: 0xddddff,
@@ -257,24 +260,24 @@ export class GameLoop {
     // Sync bullet positions to GPU-instanced rendering
     // Register new bullets and update positions; unregister killed bullets
     const currentVisualType = ctx.weaponToBulletVisual(ctx.weaponManager.getCurrentWeapon());
-    const seenIds = new Set<string>();
-    const _bulletSyncDir = new THREE.Vector3();
+    // Use pre-allocated class members to avoid creating new Set/Vector3 every frame
+    this._bulletSeenIds.clear();
     ctx.bulletPool.forEachActive((index: number, position: THREE.Vector3, data: any) => {
       const id = `b${index}`;
-      seenIds.add(id);
-      _bulletSyncDir.set(data.dirX, data.dirY, data.dirZ);
+      this._bulletSeenIds.add(id);
+      this._bulletSyncDir.set(data.dirX, data.dirY, data.dirZ);
       if (!ctx.bulletInstanceIds.has(id)) {
         // New bullet: register with instance manager
-        ctx.bulletInstanceManager.addBullet(id, currentVisualType, position, _bulletSyncDir);
+        ctx.bulletInstanceManager.addBullet(id, currentVisualType, position, this._bulletSyncDir);
         ctx.bulletInstanceIds.add(id);
       } else {
         // Existing bullet: update position/direction
-        ctx.bulletInstanceManager.updateBullet(id, position, _bulletSyncDir);
+        ctx.bulletInstanceManager.updateBullet(id, position, this._bulletSyncDir);
       }
     });
     // Remove bullets that were killed this frame
     for (const id of ctx.bulletInstanceIds) {
-      if (!seenIds.has(id)) {
+      if (!this._bulletSeenIds.has(id)) {
         ctx.bulletInstanceManager.removeBullet(id);
         ctx.bulletInstanceIds.delete(id);
       }

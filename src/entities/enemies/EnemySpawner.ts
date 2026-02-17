@@ -736,8 +736,10 @@ export class EnemySpawner {
     this.applySeparation(dt);
     profiler.end('enemy_separation');
 
-    // Remove dead enemies
-    this.enemies = this.enemies.filter(enemy => {
+    // Remove dead enemies — in-place compaction avoids new array allocation every frame
+    let writeIdx = 0;
+    for (let readIdx = 0; readIdx < this.enemies.length; readIdx++) {
+      const enemy = this.enemies[readIdx];
       if (!enemy.active) {
         // Unregister from instance manager
         if (enemy.isInstanced && this.instanceManager) {
@@ -752,10 +754,12 @@ export class EnemySpawner {
           this.scene.remove(enemy.trailRoot);
         }
         enemy.destroy();
-        return false;
+        // skip (don't copy to writeIdx)
+      } else {
+        this.enemies[writeIdx++] = enemy;
       }
-      return true;
-    });
+    }
+    this.enemies.length = writeIdx;
   }
 
   clear(): void {
@@ -909,19 +913,21 @@ export class EnemySpawner {
               b.surfacePosition.u -= normU * pushStrength;
               b.surfacePosition.v -= normV * pushStrength;
 
-              // Use surface-aware wrapping instead of hard clamping
-              if (this.surface) {
-                const aWrapped = this.surface.wrapUV(a.surfacePosition.u, a.surfacePosition.v);
-                a.surfacePosition.u = aWrapped.u;
-                a.surfacePosition.v = aWrapped.v;
-                const bWrapped = this.surface.wrapUV(b.surfacePosition.u, b.surfacePosition.v);
-                b.surfacePosition.u = bWrapped.u;
-                b.surfacePosition.v = bWrapped.v;
-              } else {
-                // Fallback: basic wrap U, clamp V
+              // Inline wrap/clamp using pre-computed wrapsU/vWraps flags — zero allocations.
+              // The push is tiny (<0.001 UV/frame) so values rarely leave [0,1]; the
+              // full surface.wrapUV() call was unnecessary here and allocates {u,v} objects.
+              if (uWraps) {
                 a.surfacePosition.u = ((a.surfacePosition.u % 1) + 1) % 1;
-                a.surfacePosition.v = Math.max(0.005, Math.min(0.995, a.surfacePosition.v));
                 b.surfacePosition.u = ((b.surfacePosition.u % 1) + 1) % 1;
+              } else {
+                a.surfacePosition.u = Math.max(0.005, Math.min(0.995, a.surfacePosition.u));
+                b.surfacePosition.u = Math.max(0.005, Math.min(0.995, b.surfacePosition.u));
+              }
+              if (vWraps) {
+                a.surfacePosition.v = ((a.surfacePosition.v % 1) + 1) % 1;
+                b.surfacePosition.v = ((b.surfacePosition.v % 1) + 1) % 1;
+              } else {
+                a.surfacePosition.v = Math.max(0.005, Math.min(0.995, a.surfacePosition.v));
                 b.surfacePosition.v = Math.max(0.005, Math.min(0.995, b.surfacePosition.v));
               }
             }
