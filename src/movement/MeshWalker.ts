@@ -40,6 +40,18 @@ export class MeshWalker {
   private _tangent: THREE.Vector3;
   private _bitangent: THREE.Vector3;
 
+  /**
+   * Read-only reference to the internal tangent vector.
+   * Zero-allocation access for hot paths. Do NOT modify.
+   */
+  get tangent(): THREE.Vector3 { return this._tangent; }
+
+  /**
+   * Read-only reference to the internal bitangent vector.
+   * Zero-allocation access for hot paths. Do NOT modify.
+   */
+  get bitangent(): THREE.Vector3 { return this._bitangent; }
+
   /** Geodesic face position (face index + barycentric coordinates) */
   private _facePos: FacePosition;
 

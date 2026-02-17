@@ -148,21 +148,21 @@ export class EnemySpawner {
   private playerWorldPos: THREE.Vector3 = new THREE.Vector3();
 
   /**
-   * Transform cache to avoid repeated getTransform() calls for enemies at similar UV positions.
-   * Stores last 32 transforms with UV coordinates. Cache hit saves expensive trig/matrix ops.
+   * Persistent transform cache keyed by integer-rounded UV coordinates.
+   * Uses Map<number, transform> for O(1) lookup instead of O(n) linear scan.
+   * NOT cleared every frame — transforms are stable for static surfaces.
+   * Call clearTransformCache() only when the surface changes.
+   *
+   * Grid size 0.005 = 200×200 cells across UV space. Enemies moving at typical
+   * speed (~0.3 UV/s) land in a new cell every ~1 second, keeping cache warm.
    */
-  private transformCache: Array<{
-    u: number;
-    v: number;
-    transform: {
-      position: THREE.Vector3;
-      normal: THREE.Vector3;
-      tangent: THREE.Vector3;
-      bitangent: THREE.Vector3;
-    };
-  }> = [];
-  private readonly transformCacheSize = 32;
-  private readonly transformCacheEpsilon = 0.001; // UV distance threshold for cache hit
+  private readonly transformMap = new Map<number, {
+    position: THREE.Vector3;
+    normal: THREE.Vector3;
+    tangent: THREE.Vector3;
+    bitangent: THREE.Vector3;
+  }>();
+  private readonly transformMapGridSize = 0.005; // UV grid resolution
 
   constructor(
     scene: THREE.Scene,
@@ -238,6 +238,8 @@ export class EnemySpawner {
    */
   setSurface(surface: Surface): void {
     this.surface = surface;
+    // Surface changed — cached transforms are no longer valid
+    this.transformMap.clear();
   }
 
   /** Get the current surface reference. */
@@ -271,8 +273,10 @@ export class EnemySpawner {
   }
 
   /**
-   * Get surface transform with caching. Returns cached transform if UV coords are within epsilon.
-   * Performance: O(n) scan of cache, but cache is small (32 entries) so faster than getTransform().
+   * Get surface transform with persistent O(1) caching.
+   * Snaps UV to a 0.005 grid for the key, so nearby positions share cache entries.
+   * Cache persists across frames — surface transforms are stable for static surfaces.
+   * Call clearTransformCache() when the surface changes.
    */
   private getCachedTransform(u: number, v: number): {
     position: THREE.Vector3;
@@ -280,31 +284,26 @@ export class EnemySpawner {
     tangent: THREE.Vector3;
     bitangent: THREE.Vector3;
   } {
-    // Check cache for nearby match
-    for (let i = 0; i < this.transformCache.length; i++) {
-      const entry = this.transformCache[i];
-      const du = Math.abs(entry.u - u);
-      const dv = Math.abs(entry.v - v);
-      if (du < this.transformCacheEpsilon && dv < this.transformCacheEpsilon) {
-        // Cache hit! Move to front (LRU)
-        if (i > 0) {
-          this.transformCache.splice(i, 1);
-          this.transformCache.unshift(entry);
-        }
-        return entry.transform;
-      }
-    }
+    // Snap to grid and encode as a single integer key (O(1) Map lookup)
+    const gs = this.transformMapGridSize;
+    const iu = Math.round(u / gs) & 0x3FFF; // clamp to 14 bits (0..16383)
+    const iv = Math.round(v / gs) & 0x3FFF;
+    const key = (iu << 14) | iv; // 28-bit integer key, safe as JS number
 
-    // Cache miss - compute transform
+    const cached = this.transformMap.get(key);
+    if (cached) return cached;
+
+    // Cache miss — compute and store (one-time cost per UV cell)
     const transform = this.getTransform(u, v);
-
-    // Add to cache (evict oldest if full)
-    if (this.transformCache.length >= this.transformCacheSize) {
-      this.transformCache.pop();
-    }
-    this.transformCache.unshift({ u, v, transform });
-
+    this.transformMap.set(key, transform);
     return transform;
+  }
+
+  /**
+   * Clear the transform cache. Call when the surface changes to avoid stale transforms.
+   */
+  clearTransformCache(): void {
+    this.transformMap.clear();
   }
 
   /** Calculate UV distance with proper wrapping for the current surface topology. */
@@ -335,14 +334,39 @@ export class EnemySpawner {
         continue; // Too close to player, try again
       }
 
-      // Check distance from other active enemies
+      // Check distance from other active enemies using spatial grid (O(1) vs O(n))
+      // The sepGrid is populated by the most recent applySeparation() call.
+      // Fall back to O(n) scan only if the grid hasn't been built yet.
       let tooClose = false;
-      for (const enemy of this.enemies) {
-        if (!enemy.active) continue;
-        const enemyDist = this.uvDistance(u, v, enemy.surfacePosition.u, enemy.surfacePosition.v);
-        if (enemyDist < MIN_ENEMY_SEPARATION) {
-          tooClose = true;
-          break;
+      if (this.sepGrid.size > 0) {
+        const invCell = 1 / this.sepCellSize;
+        const cx = (u * invCell) | 0;
+        const cy = (v * invCell) | 0;
+        outerGrid: for (let dx = -1; dx <= 1; dx++) {
+          for (let dy = -1; dy <= 1; dy++) {
+            const key = (cx + dx) * 1009 + (cy + dy);
+            const bucket = this.sepGrid.get(key);
+            if (!bucket) continue;
+            for (const idx of bucket) {
+              const enemy = this.enemies[idx];
+              if (!enemy?.active) continue;
+              const enemyDist = this.uvDistance(u, v, enemy.surfacePosition.u, enemy.surfacePosition.v);
+              if (enemyDist < MIN_ENEMY_SEPARATION) {
+                tooClose = true;
+                break outerGrid;
+              }
+            }
+          }
+        }
+      } else {
+        // First spawn in wave before any update: fall back to O(n) scan
+        for (const enemy of this.enemies) {
+          if (!enemy.active) continue;
+          const enemyDist = this.uvDistance(u, v, enemy.surfacePosition.u, enemy.surfacePosition.v);
+          if (enemyDist < MIN_ENEMY_SEPARATION) {
+            tooClose = true;
+            break;
+          }
         }
       }
 
@@ -685,9 +709,6 @@ export class EnemySpawner {
 
     // Update all enemies
     profiler.begin('enemy_loop_update');
-
-    // Clear transform cache at start of frame (spatial locality is per-frame)
-    this.transformCache.length = 0;
 
     for (const enemy of this.enemies) {
       if (enemy.active) {
