@@ -146,12 +146,11 @@ export class GameLoop {
       // No UV coordinates, no pole singularity, constant speed everywhere.
 
       // Move player on surface via MeshWalker.
-      // Pass cameraController.targetUp as upHint: this is the camera's TARGET up
-      // (pre-lerp, includes orbit rotation). Using the ideal up vector instead of
-      // the lerped camera.up eliminates frame-to-frame direction oscillation on
-      // curved surfaces caused by camera.up lerp lag at 60 FPS.
+      // No upHint: MeshWalker uses camera.getWorldQuaternion() which is already
+      // smoothed by the camera lerp. Passing targetUp created a feedback loop.
+      // Restored from bffc333 (last user-confirmed working version).
       if (Math.abs(inputState.moveX) > 0.01 || Math.abs(inputState.moveY) > 0.01) {
-        ctx.playerWalker.moveFromInput(inputState.moveX, -inputState.moveY, ctx.game.camera, dt, ctx.cameraController.targetUp);
+        ctx.playerWalker.moveFromInput(inputState.moveX, -inputState.moveY, ctx.game.camera, dt);
       }
 
       // Sync player mesh position from walker

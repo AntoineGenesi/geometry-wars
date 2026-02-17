@@ -22,16 +22,9 @@ export class CameraController {
   private readonly CAMERA_DIST_MAX = 35;
   private readonly ORBIT_SENSITIVITY = 0.005;
   private readonly ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
-  // REGRESSION GUARD: Camera position uses .copy() not .lerp() — S22: user explicitly demanded instant
-  // position tracking. Position lag = camera lets player move before repositioning = user hates this.
-  // History: s19 removed both lerps (jerky), s22 removed only position lerp (correct).
-  private static readonly CAMERA_POSITION_LERP = 0.08; // kept for reference, not used
-  // Up-vector: S22 programmatic tests showed velocity-damped lerp caused CV=3.56 orientation variance
-  // and 8 jerk frames per 120-frame segment. Root cause: 0.15/(1+v*25) suppressed lerp during
-  // movement, then "snapped" on recovery → user felt "nothing happens, then camera repositions."
-  // Fix: camera.up.copy() directly from bitangent. Bitangent is stable after iteration 7
-  // dual Gram-Schmidt fix, so no smoothing is needed. lookAt called AFTER up update.
-  // Tests: CameraController.jerk.test.ts — must PASS with this approach.
+  // Restored from bffc333 (last user-confirmed working version):
+  // Both position and up-vector lerp at the same factor for smooth, consistent camera follow.
+  private readonly CAMERA_LERP_FACTOR = 0.12;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
@@ -144,27 +137,16 @@ export class CameraController {
     }
 
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
-    this.camera.position.copy(this._targetCamPos);
+    // Restored from bffc333: lerp position for smooth camera follow.
+    this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
 
-    // Sign-flip protection: prevent _camUp from flipping 180° relative to the
-    // previous targetUp (possible at surface discontinuities or tangent frame resets).
-    // This prevents a sudden movement direction reversal when the bitangent flips sign.
-    if (this.targetUp.dot(this._camUp) < 0) {
-      this._camUp.negate();
-    }
-    // Store raw (non-lerped) target up for movement upHint.
-    // REGRESSION GUARD: targetUp uses .copy() not .lerp() — avoids double-lerp.
-    // Double-lerping (lerping both targetUp AND camera.up) caused camera up-lurching
-    // at triangle edge crossings. Matches bffc333 intent: upHint = raw computed camUp.
+    // Store target up for external reference (no sign-flip protection — matches bffc333).
     this.targetUp.copy(this._camUp).normalize();
 
-    // Moderate up-vector lerp (0.35): smooths frame-to-frame normal changes on curved surfaces
-    // at 60 FPS without introducing the velocity-damped jerk from S22. Position is instant
-    // (already .copy() above). targetUp stays .copy() for movement upHint — no double-lerp.
-    // 0.35 converges within 2-3 frames at 60 FPS, preventing harsh/jittery camera on curved surfaces.
-    // lookAt AFTER camera.up update so orientation uses the correct up vector.
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, 0.35);
+    // Restored from bffc333 ORDER: lookAt FIRST, then lerp up-vector.
+    // This matches the working reference implementation exactly.
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, this.CAMERA_LERP_FACTOR).normalize();
   }
 
   /**
