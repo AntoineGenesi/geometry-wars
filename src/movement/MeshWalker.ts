@@ -367,18 +367,16 @@ export class MeshWalker {
   // every frame. This propagated to targetUp → camRight → movement direction,
   // causing lateral jerk and diagonal freeze.
   //
-  // The new approach: project BOTH old axes onto the new tangent plane (dual
-  // Gram-Schmidt). This is purely geometry-driven — it tracks the surface
-  // orientation, NOT the movement direction. No swap logic, no swap oscillation.
-  // The transported tangent from geodesic walking is intentionally ignored for
-  // axis direction because it equals the movement direction, which is the wrong
-  // reference for a stable camera-up vector.
+  // Approach: project old tangent onto the new tangent plane (Gram-Schmidt),
+  // then DERIVE bitangent from cross product (n × tangent). This guarantees
+  // bitangent is always exactly 90° from tangent — dual Gram-Schmidt on both
+  // axes independently caused 90° frame rotations on cylindrical surfaces like
+  // the pill, making W alternate between "up" and "sideways" on adjacent triangles.
   private _updateTangentFrame(newNormal: THREE.Vector3, _transportedTangent?: THREE.Vector3): void {
     const n = newNormal.clone().normalize();
 
-    // Store old axes for sign-flip detection
+    // Store old tangent for sign-flip detection
     const oldTangent = this._tangent.clone();
-    const oldBitangent = this._bitangent.clone();
 
     // Project old tangent onto new tangent plane (Gram-Schmidt)
     const dotT = this._tangent.dot(n);
@@ -389,39 +387,20 @@ export class MeshWalker {
       // Tangent collapsed (normal flipped ~90°) — fall back to surface method
       const fallback = this.surface.getTangentFrame(n);
       this._tangent.copy(fallback.tangent);
-      this._bitangent.copy(fallback.bitangent);
+      this._bitangent.crossVectors(n, this._tangent).normalize();
       return;
     }
     this._tangent.multiplyScalar(1 / tangentLen);
 
-    // Sign-flip protection: ensure tangent maintains consistent orientation
-    // Prevents 180° flips at triangle edges that cause movement oscillation
+    // Sign-flip protection on tangent: prevents 180° flip of primary axis
     if (oldTangent.dot(this._tangent) < 0) {
       this._tangent.negate();
     }
 
-    // Project old bitangent onto new tangent plane (Gram-Schmidt)
-    const dotB = this._bitangent.dot(n);
-    this._bitangent.addScaledVector(n, -dotB);
-    const bitangentLen = this._bitangent.length();
-
-    if (bitangentLen < 0.001) {
-      // Bitangent collapsed — recompute from cross product
-      this._bitangent.crossVectors(this._tangent, n).normalize();
-      return;
-    }
-    this._bitangent.multiplyScalar(1 / bitangentLen);
-
-    // Sign-flip protection: ensure bitangent maintains consistent orientation
-    // This is critical - bitangent is used as the "forward" direction for camera-relative input
-    if (oldBitangent.dot(this._bitangent) < 0) {
-      this._bitangent.negate();
-    }
-
-    // Re-orthogonalize: ensure bitangent is perpendicular to tangent
-    // (dual projection can lose exact orthogonality due to floating point)
-    const dotTB = this._bitangent.dot(this._tangent);
-    this._bitangent.addScaledVector(this._tangent, -dotTB).normalize();
+    // Derive bitangent from cross product: bitangent = n × tangent
+    // This always produces a bitangent exactly 90° from tangent, eliminating
+    // the frame inconsistency on cylindrical/spherical surfaces (pill bug).
+    this._bitangent.crossVectors(n, this._tangent).normalize();
   }
 
   /**
