@@ -155,13 +155,12 @@ async function navigateToGame(page, surface = 'sphere') {
   return inGame;
 }
 
-async function runSphereTests(browser) {
+async function runSphereTests(page) {
   console.log('\n========================================');
   console.log('  RUN 1: SPHERE — Main Gameplay Tests');
   console.log('========================================\n');
 
   fs.mkdirSync(SPHERE_DIR, { recursive: true });
-  const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 720 });
   setupPageListeners(page);
 
@@ -485,18 +484,15 @@ async function runSphereTests(browser) {
   } catch (err) {
     console.error('Sphere run error:', err.message);
     await page.screenshot({ path: path.join(SPHERE_DIR, 'error.png') }).catch(() => {});
-  } finally {
-    await page.close();
   }
 }
 
-async function runCubeTunnelTests(browser) {
+async function runCubeTunnelTests(page) {
   console.log('\n========================================');
   console.log('  RUN 2: CUBE-TUNNEL — Speed Tests');
   console.log('========================================\n');
 
   fs.mkdirSync(CUBETUNNEL_DIR, { recursive: true });
-  const page = await browser.newPage();
   await page.setViewport({ width: 1280, height: 720 });
   setupPageListeners(page);
 
@@ -636,8 +632,6 @@ async function runCubeTunnelTests(browser) {
   } catch (err) {
     console.error('Cube-tunnel run error:', err.message);
     await page.screenshot({ path: path.join(CUBETUNNEL_DIR, 'error.png') }).catch(() => {});
-  } finally {
-    await page.close();
   }
 }
 
@@ -726,11 +720,13 @@ async function main() {
   }
 
   const browser = await launchBrowser();
+  const page = await browser.newPage();
 
   try {
-    await runSphereTests(browser);
-    await runCubeTunnelTests(browser);
+    await runSphereTests(page);
+    await runCubeTunnelTests(page);
   } finally {
+    await page.close();
     await browser.close();
   }
 
