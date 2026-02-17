@@ -22,10 +22,13 @@ export class CameraController {
   private readonly CAMERA_DIST_MAX = 35;
   private readonly ORBIT_SENSITIVITY = 0.005;
   private readonly ORBIT_PITCH_MAX = Math.PI * 0.4; // don't go past 72 degrees
-  // REGRESSION GUARD: Camera lerp factor 0.12 matches bffc333 (last user-confirmed working version).
+  // REGRESSION GUARD: Camera position lerp 0.12 matches bffc333 (last user-confirmed working version).
   // Removing lerp (.copy instead of .lerp) causes camera to lurch on every triangle edge crossing.
   // Do NOT change to .copy() or increase above 0.2 without user testing.
-  private static readonly CAMERA_LERP_FACTOR = 0.12;
+  private static readonly CAMERA_POSITION_LERP = 0.12;
+  // Up-vector lerp is lower (0.06) to smooth rapid normal changes on curved surfaces (pill, sphere).
+  // This reduces the "lurching forwards and up" on triangle edge crossings without adding position lag.
+  private static readonly CAMERA_UP_LERP = 0.06;
 
   // Pre-allocated temps for camera math (zero per-frame GC)
   private readonly _camOffset = new THREE.Vector3();
@@ -138,7 +141,7 @@ export class CameraController {
     }
 
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
-    this.camera.position.lerp(this._targetCamPos, CameraController.CAMERA_LERP_FACTOR);
+    this.camera.position.lerp(this._targetCamPos, CameraController.CAMERA_POSITION_LERP);
 
     // Sign-flip protection: prevent _camUp from flipping 180° relative to the
     // previous targetUp (possible at surface discontinuities or tangent frame resets).
@@ -157,7 +160,7 @@ export class CameraController {
     // Calling lookAt AFTER up.lerp caused lurching at triangle edge crossings.
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
     // Single lerp on camera.up — no double-lerp, matches bffc333.
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, CameraController.CAMERA_LERP_FACTOR).normalize();
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, CameraController.CAMERA_UP_LERP).normalize();
   }
 
   /**
