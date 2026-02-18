@@ -1317,6 +1317,10 @@ function main(): void {
     particles.setEntityScaleFactor(entityScaleFactor);
 
     // Update overlays
+    debugOverlay.setMemoryInfo(
+      game.renderer.info.memory.geometries,
+      game.renderer.info.memory.textures,
+    );
     debugOverlay.update();
     perfOverlay.update();
   };

@@ -770,6 +770,7 @@ export class EnemySpawner {
         this.decoratorSystem?.unregister(enemy);
         if (enemy.mesh && !enemy.isInstanced) {
           this.scene.remove(enemy.mesh);
+          EnemySpawner.disposeMesh(enemy.mesh);
         }
         if (enemy instanceof Painter) {
           this.scene.remove(enemy.trailRoot);
@@ -791,6 +792,7 @@ export class EnemySpawner {
       this.decoratorSystem?.unregister(enemy);
       if (enemy.mesh && !enemy.isInstanced) {
         this.scene.remove(enemy.mesh);
+        EnemySpawner.disposeMesh(enemy.mesh);
       }
       if (enemy instanceof Painter) {
         this.scene.remove(enemy.trailRoot);
@@ -956,5 +958,26 @@ export class EnemySpawner {
         }
       }
     }
+  }
+
+  /**
+   * Dispose all GPU resources (geometry + materials) from an Object3D tree.
+   * Only call for non-instanced meshes — instanced mesh geometry is shared
+   * and must NOT be disposed per-entity.
+   */
+  private static disposeMesh(obj: THREE.Object3D): void {
+    obj.traverse((child) => {
+      const renderable = child as THREE.Mesh | THREE.Line | THREE.Points;
+      if (renderable.geometry) {
+        renderable.geometry.dispose();
+      }
+      if (renderable.material) {
+        if (Array.isArray(renderable.material)) {
+          renderable.material.forEach((m: THREE.Material) => m.dispose());
+        } else {
+          (renderable.material as THREE.Material).dispose();
+        }
+      }
+    });
   }
 }
