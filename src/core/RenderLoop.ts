@@ -243,6 +243,10 @@ export class RenderLoop {
     ctx.perfTracker.setEntityCount(ctx.enemySpawner.getActiveCount());
     ctx.perfTracker.setBulletCount(ctx.bulletPool.activeCount);
     ctx.perfTracker.recordFrame(rawFrameDt);
+    ctx.debugOverlay.setMemoryInfo(
+      ctx.game.renderer.info.memory.geometries,
+      ctx.game.renderer.info.memory.textures,
+    );
     ctx.debugOverlay.update();
     ctx.profilingOverlay.update();
     ctx.profilingPersistence.update(rawFrameDt);

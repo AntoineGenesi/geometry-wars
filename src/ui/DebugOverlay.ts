@@ -24,6 +24,12 @@ export class DebugOverlay {
   private readonly entitiesEl: HTMLSpanElement;
   private readonly bulletsEl: HTMLSpanElement;
   private readonly rendererEl: HTMLSpanElement;
+  private readonly geoEl: HTMLSpanElement;
+  private readonly texEl: HTMLSpanElement;
+
+  // Latest renderer memory counts (set each frame via setMemoryInfo)
+  private memGeo = 0;
+  private memTex = 0;
 
   // Top-10 panel (expandable)
   private readonly topPanel: HTMLDivElement;
@@ -68,6 +74,14 @@ export class DebugOverlay {
           <span class="debug-label">BUL</span>
           <span class="debug-value" id="debug-bullets">--</span>
         </div>
+        <div class="debug-row">
+          <span class="debug-label">GEO</span>
+          <span class="debug-value" id="debug-geo" style="color:#aaccff">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">TEX</span>
+          <span class="debug-value" id="debug-tex" style="color:#aaccff">--</span>
+        </div>
         <button class="debug-toggle-top" id="debug-toggle-top" title="Toggle top-10 moments">TOP 10</button>
         <button class="debug-export-logs" id="debug-export-logs" title="Export performance logs to disk">EXPORT</button>
       </div>
@@ -82,6 +96,8 @@ export class DebugOverlay {
     this.entitiesEl = document.getElementById('debug-entities') as HTMLSpanElement;
     this.bulletsEl = document.getElementById('debug-bullets') as HTMLSpanElement;
     this.rendererEl = document.getElementById('debug-renderer') as HTMLSpanElement;
+    this.geoEl = document.getElementById('debug-geo') as HTMLSpanElement;
+    this.texEl = document.getElementById('debug-tex') as HTMLSpanElement;
     this.topPanel = document.getElementById('debug-top-panel') as HTMLDivElement;
     this.topContent = document.getElementById('debug-top-content') as HTMLDivElement;
 
@@ -149,6 +165,15 @@ export class DebugOverlay {
     document.addEventListener('keydown', this.keyHandler);
   }
 
+  /**
+   * Feed the latest renderer memory counts (call once per frame before update()).
+   * Counts come from renderer.info.memory.geometries / .textures.
+   */
+  setMemoryInfo(geometries: number, textures: number): void {
+    this.memGeo = geometries;
+    this.memTex = textures;
+  }
+
   /** Set the renderer backend label (e.g. 'webgpu' or 'webgl2'). */
   setRendererBackend(backend: RendererBackend): void {
     const label = backend === 'webgpu' ? 'WebGPU' : 'WebGL2';
@@ -173,6 +198,8 @@ export class DebugOverlay {
     this.fpsEl.textContent = String(Math.round(fps));
     this.entitiesEl.textContent = String(entities);
     this.bulletsEl.textContent = String(bullets);
+    this.geoEl.textContent = String(this.memGeo);
+    this.texEl.textContent = String(this.memTex);
 
     // Color-code FPS
     if (fps >= 55) {

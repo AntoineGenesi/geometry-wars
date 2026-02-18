@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Entity, CollisionGroup } from './Entity';
 
 /**
@@ -275,10 +276,36 @@ export class EntityManager {
       entity.mesh.parent.remove(entity.mesh);
     }
 
-    // Return to pool or let GC collect.
+    // Return to pool or dispose GPU resources.
     if (entity.poolTag) {
       entity.active = false;
       this.pool.release(entity);
+    } else if (entity.mesh) {
+      // Non-pooled entity: dispose all GPU resources (geometry + materials)
+      // to prevent VRAM leaks. Each enemy creates unique CylinderGeometry /
+      // SphereGeometry per tube segment — without disposal these accumulate.
+      EntityManager.disposeObject3D(entity.mesh);
     }
+  }
+
+  /**
+   * Traverse an Object3D and dispose all GPU resources (geometry + materials).
+   * Safe to call on Groups, Meshes, Lines, and Points.
+   * Does NOT dispose textures because those are typically shared/cached.
+   */
+  private static disposeObject3D(obj: THREE.Object3D): void {
+    obj.traverse((child) => {
+      const renderable = child as THREE.Mesh | THREE.Line | THREE.Points;
+      if (renderable.geometry) {
+        renderable.geometry.dispose();
+      }
+      if (renderable.material) {
+        if (Array.isArray(renderable.material)) {
+          renderable.material.forEach((m: THREE.Material) => m.dispose());
+        } else {
+          (renderable.material as THREE.Material).dispose();
+        }
+      }
+    });
   }
 }
