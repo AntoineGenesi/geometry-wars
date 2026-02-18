@@ -569,3 +569,45 @@ Cube and pipe have geometric limitations, not code bugs:
 8. **Check mesh connectivity FIRST** — false boundary edges in HalfEdgeMesh can cause the walker to reflect, producing oscillation that looks like a movement algorithm bug but is actually a mesh topology issue
 9. **Always check Puppeteer timing** — the diagnostic must make player invincible before enemies can kill. Set invincibility repeatedly during loading, not just once.
 10. **Cube/pipe wobble is geometric** — not a code bug. Don't spend time trying to fix movement code for these; the fix would need to be in the surface geometry (smoother bevels, different starting position) or input system (movement direction locking)
+
+---
+
+## Iteration S22-v3 (commit 9e573b1) — atVertex Epsilon Too Large
+
+**What was tried:** Investigated root cause of zigzag trail on pill map south seam.
+Used internal bary-state logging test to get exact per-frame face+bary data.
+
+**Root cause:** `FaceWalker.ts` atVertex detection epsilon = 0.05 was too large.
+When a player exits a triangle very close to (but not at) a corner (e.g., v=0.004374),
+the exit is classified as "at vertex" because v < 0.05. The atVertex logic then uses
+dot-product alignment to choose the best adjacent edge — but gets it wrong at this
+specific geometry, selecting the C→A edge (→ face 2322) instead of the B→C edge
+(→ face 931). The alpha from the B→C exit (0.9957) is then misapplied to the C→A
+crossing, placing the player at a completely wrong position in face 2322.
+
+**Fix:** `FaceWalker.ts` line ~158: `const eps = 0.05` → `const eps = 0.001`.
+True vertex exits have bary components near machine epsilon (~1e-15). An eps of 0.001
+is still large enough to catch floating-point imprecision while not falsely triggering
+on legitimate near-corner edge crossings.
+
+**Test results:** 60-frame reversal test: 0 reversals (was 2). Both regression tests pass.
+
+**User feedback:** Bug reported: "saw-tooth zigzag trail when pressing W on pill map."
+Previous S17 (Gram-Schmidt) and S21 (single-axis tangent frame) fixes were irrelevant
+to this root cause — the tangent frame logic was correct all along. The bug was in
+the geometric edge-crossing topology decision.
+
+**Why it failed before:**
+- S17, S21 both assumed the problem was in the tangent frame calculation
+- This session traced the exact bary values at the crash frame, revealing the atVertex
+  false-trigger as the real cause
+
+**Dead ends ruled out:**
+- Tangent frame calculation (Gram-Schmidt, single-axis) — NOT the cause
+- BVH fallback — does NOT trigger (distanceTraveled=0.049 >> 0.0025 threshold)
+- Seam edge mismatches — faces 934/2322 are correctly linked via twins
+- s22-cube-bullet-glitches fix (tightened seam tolerance) — unrelated, coincidental
+
+**New rule:** When debugging geodesic walk bugs, add internal bary-state logging first
+to get exact face/bary at each step. Mathematical tracing through the atVertex logic
+found this bug in minutes.
