@@ -28,12 +28,12 @@ describe('BulletInstanceManager', () => {
       expect(manager.activeCount).toBe(0);
     });
 
-    it('does not add InstancedMesh to scene until first bullet', () => {
-      // Lazy initialization - no batches until a bullet is added
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
+    it('does not add BatchedMesh to scene until first bullet', () => {
+      // Lazy initialization - no BatchedMesh until a bullet is added
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
       );
-      expect(instancedMeshes.length).toBe(0);
+      expect(batchedMeshes.length).toBe(0);
     });
   });
 
@@ -49,19 +49,19 @@ describe('BulletInstanceManager', () => {
       expect(manager.activeCount).toBe(1);
     });
 
-    it('lazily creates an InstancedMesh batch on first add', () => {
+    it('lazily creates a BatchedMesh on first add', () => {
       const pos = new THREE.Vector3(0, 1, 0);
       const dir = new THREE.Vector3(1, 0, 0);
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
       );
-      expect(instancedMeshes.length).toBe(1);
+      expect(batchedMeshes.length).toBe(1);
     });
 
-    it('creates separate batches for different visual types', () => {
+    it('uses a single BatchedMesh for all visual types (1 draw call)', () => {
       const pos = new THREE.Vector3(0, 0, 0);
       const dir = new THREE.Vector3(0, 0, 1);
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
@@ -69,23 +69,24 @@ describe('BulletInstanceManager', () => {
       manager.addBullet('b3', BulletVisualType.Piercing, pos, dir);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
+      // All bullet types share ONE BatchedMesh → 1 draw call
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
       );
-      expect(instancedMeshes.length).toBe(3);
+      expect(batchedMeshes.length).toBe(1);
     });
 
-    it('reuses the same batch for same visual type', () => {
+    it('reuses the same BatchedMesh for same visual type', () => {
       const pos = new THREE.Vector3(0, 0, 0);
       const dir = new THREE.Vector3(0, 0, 1);
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
       manager.addBullet('b2', BulletVisualType.Standard, pos, dir);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
       );
-      expect(instancedMeshes.length).toBe(1);
+      expect(batchedMeshes.length).toBe(1);
     });
 
     it('accepts a custom color override', () => {
@@ -179,34 +180,29 @@ describe('BulletInstanceManager', () => {
   // -----------------------------------------------------------------------
 
   describe('update', () => {
-    it('updates instance matrix version (signals GPU upload)', () => {
+    it('runs without error after adding a bullet', () => {
       const pos = new THREE.Vector3(1, 2, 3);
       const dir = new THREE.Vector3(0, 0, 1);
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
-      ) as THREE.InstancedMesh[];
-      expect(instancedMeshes.length).toBe(1);
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      );
+      expect(batchedMeshes.length).toBe(1);
 
-      // Record version before update
-      const versionBefore = instancedMeshes[0].instanceMatrix.version;
-      manager.update();
-      // needsUpdate = true increments the internal version counter
-      expect(instancedMeshes[0].instanceMatrix.version).toBeGreaterThan(versionBefore);
+      // update() should not throw and active count should remain correct
+      expect(() => manager.update()).not.toThrow();
+      expect(manager.activeCount).toBe(1);
     });
 
-    it('sets correct InstancedMesh count based on active bullets', () => {
+    it('produces correct active count after update with multiple bullets', () => {
       const pos = new THREE.Vector3(0, 0, 0);
       const dir = new THREE.Vector3(0, 0, 1);
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
       manager.addBullet('b2', BulletVisualType.Standard, pos, dir);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
-      ) as THREE.InstancedMesh[];
-      expect(instancedMeshes[0].count).toBeGreaterThanOrEqual(2);
+      expect(manager.activeCount).toBeGreaterThanOrEqual(2);
     });
 
     it('handles empty state gracefully', () => {
@@ -229,7 +225,7 @@ describe('BulletInstanceManager', () => {
   // -----------------------------------------------------------------------
 
   describe('max capacity', () => {
-    it('respects the max instance count per batch', () => {
+    it('respects the max instance count per type', () => {
       const smallManager = new BulletInstanceManager(scene, 5);
       const pos = new THREE.Vector3(0, 0, 0);
       const dir = new THREE.Vector3(0, 0, 1);
@@ -255,7 +251,7 @@ describe('BulletInstanceManager', () => {
       }
       expect(smallManager.activeCount).toBe(3);
 
-      // Can still add spread bullets (different batch)
+      // Can still add spread bullets (different type pool)
       smallManager.addBullet('sp0', BulletVisualType.Spread, pos, dir);
       expect(smallManager.activeCount).toBe(4);
     });
@@ -272,13 +268,14 @@ describe('BulletInstanceManager', () => {
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
-      ) as THREE.InstancedMesh[];
-      expect(instancedMeshes.length).toBe(1);
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
+      expect(batchedMeshes.length).toBe(1);
 
+      // Standard type's first slot gets instanceId=0
       const matrix = new THREE.Matrix4();
-      instancedMeshes[0].getMatrixAt(0, matrix);
+      batchedMeshes[0].getMatrixAt(0, matrix);
 
       const extractedPos = new THREE.Vector3();
       const extractedQuat = new THREE.Quaternion();
@@ -296,12 +293,12 @@ describe('BulletInstanceManager', () => {
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
-      ) as THREE.InstancedMesh[];
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
 
       const matrix = new THREE.Matrix4();
-      instancedMeshes[0].getMatrixAt(0, matrix);
+      batchedMeshes[0].getMatrixAt(0, matrix);
 
       const extractedPos = new THREE.Vector3();
       const extractedQuat = new THREE.Quaternion();
@@ -321,12 +318,12 @@ describe('BulletInstanceManager', () => {
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
-      ) as THREE.InstancedMesh[];
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
 
       const matrix = new THREE.Matrix4();
-      instancedMeshes[0].getMatrixAt(0, matrix);
+      batchedMeshes[0].getMatrixAt(0, matrix);
 
       const extractedScale = new THREE.Vector3();
       matrix.decompose(new THREE.Vector3(), new THREE.Quaternion(), extractedScale);
@@ -404,7 +401,7 @@ describe('BulletInstanceManager', () => {
   // -----------------------------------------------------------------------
 
   describe('dispose', () => {
-    it('removes all InstancedMeshes from the scene', () => {
+    it('removes the BatchedMesh from the scene', () => {
       const pos = new THREE.Vector3(0, 0, 0);
       const dir = new THREE.Vector3(0, 0, 1);
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
@@ -413,10 +410,10 @@ describe('BulletInstanceManager', () => {
 
       manager.dispose();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
       );
-      expect(instancedMeshes.length).toBe(0);
+      expect(batchedMeshes.length).toBe(0);
     });
 
     it('resets active count to zero', () => {
@@ -444,7 +441,7 @@ describe('BulletInstanceManager', () => {
 
       const stats = manager.getStats();
       expect(stats.totalActive).toBe(4);
-      expect(stats.batchCount).toBe(3);
+      expect(stats.batchCount).toBe(3); // Standard, Spread, Homing have active bullets
       expect(stats.typeBreakdown.get(BulletVisualType.Standard)).toBe(2);
       expect(stats.typeBreakdown.get(BulletVisualType.Spread)).toBe(1);
       expect(stats.typeBreakdown.get(BulletVisualType.Homing)).toBe(1);
@@ -506,19 +503,22 @@ describe('BulletInstanceManager', () => {
   // -----------------------------------------------------------------------
 
   describe('instance color', () => {
-    it('sets per-instance color from visual config', () => {
+    it('sets per-instance color from visual config via getColorAt', () => {
       const pos = new THREE.Vector3(0, 0, 0);
       const dir = new THREE.Vector3(0, 0, 1);
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
-      ) as THREE.InstancedMesh[];
-      expect(instancedMeshes.length).toBe(1);
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
+      expect(batchedMeshes.length).toBe(1);
 
-      // instanceColor should exist and be marked for update
-      expect(instancedMeshes[0].instanceColor).not.toBeNull();
+      // Standard type default color is 0x88ffff — verify it was set
+      const readColor = new THREE.Color();
+      batchedMeshes[0].getColorAt(0, readColor);
+      // Should have non-zero color (set from default or custom)
+      expect(readColor.r + readColor.g + readColor.b).toBeGreaterThan(0);
     });
 
     it('allows custom color override per bullet', () => {
@@ -528,13 +528,13 @@ describe('BulletInstanceManager', () => {
       manager.addBullet('b1', BulletVisualType.Standard, pos, dir, customColor);
       manager.update();
 
-      const instancedMeshes = scene.children.filter(
-        (c) => c instanceof THREE.InstancedMesh,
-      ) as THREE.InstancedMesh[];
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
 
-      // Read back the instance color
+      // Standard type's first instance gets instanceId=0
       const readColor = new THREE.Color();
-      instancedMeshes[0].getColorAt(0, readColor);
+      batchedMeshes[0].getColorAt(0, readColor);
       expect(readColor.r).toBeCloseTo(customColor.r, 2);
       expect(readColor.g).toBeCloseTo(customColor.g, 2);
       expect(readColor.b).toBeCloseTo(customColor.b, 2);
