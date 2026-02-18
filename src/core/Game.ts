@@ -150,6 +150,15 @@ export class Game {
   /** Smoothed camera up vector (prevents disorienting flips). */
   private readonly smoothedCameraUp: THREE.Vector3 = new THREE.Vector3(0, 1, 0);
 
+  // ---- Adaptive quality -----------------------------------------------
+
+  /**
+   * Current bloom render-target scale (1.0 = full-res, 0.5 = half-res, etc.).
+   * Updated by the adaptive quality system via onQualityChange.
+   * Persisted here so window resize can re-apply the correct scale.
+   */
+  bloomResolutionScale: number = 0.5;
+
   // ---- Loop bookkeeping -----------------------------------------------
 
   private rafId: number = 0;
@@ -555,11 +564,14 @@ export class Game {
 
     this.renderer.setSize(width, height);
     if (this.composer) {
-      // Keep composer at 50% of renderer resolution (half-res bloom optimization).
-      this.composer.setSize(Math.floor(width / 2), Math.floor(height / 2));
+      // Use the current bloom resolution scale (set by adaptive quality system).
+      // Defaults to 0.5 (half-res). Lower quality levels reduce this further.
+      const scale = this.bloomResolutionScale;
+      this.composer.setSize(Math.floor(width * scale), Math.floor(height * scale));
     }
     if (this.bloomPass) {
-      this.bloomPass.resolution.set(Math.floor(width / 2), Math.floor(height / 2));
+      const scale = this.bloomResolutionScale;
+      this.bloomPass.resolution.set(Math.floor(width * scale), Math.floor(height * scale));
     }
   };
 
