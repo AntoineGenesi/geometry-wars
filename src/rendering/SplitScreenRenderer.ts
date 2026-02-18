@@ -250,6 +250,14 @@ export class SplitScreenRenderer {
     r.setRenderTarget(null);
     r.autoClear = prevAutoClear;
 
+    // Phase 2: Apply bloom + vignette over entire screen.
+    // CRITICAL: Reset viewport to full screen before the compositor runs.
+    // After the per-viewport loop, the viewport is still set to the LAST player's
+    // viewport (e.g. x=640, w=640 for P2 in a 2-player split). If not reset,
+    // the EffectComposer's final OutputPass renders only to that partial viewport,
+    // leaving the other half of the screen stuck at the clear color.
+    r.setViewport(0, 0, this.width, this.height);
+
     // Phase 2: Apply bloom + vignette over entire screen
     this.composer!.render();
   }

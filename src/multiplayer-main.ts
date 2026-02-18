@@ -188,6 +188,14 @@ function main(): void {
   game.disableBuiltInCameraUpdate = true;
   game.disableBuiltInResize = true;  // Let SplitScreenRenderer handle resizing
 
+  // Dismiss loading screen (normally dismissed by StartMenu, but when navigating
+  // directly to ?mode=multiplayer the start menu is skipped so we must do it here)
+  const loadingScreen = document.getElementById('loading-screen');
+  if (loadingScreen) {
+    loadingScreen.classList.add('fade-out');
+    loadingScreen.addEventListener('transitionend', () => loadingScreen.remove());
+  }
+
   // Hide default single-player HUD (it's in #ui-overlay, not #game-hud)
   const defaultHUD = document.getElementById('ui-overlay');
   if (defaultHUD) defaultHUD.style.display = 'none';
