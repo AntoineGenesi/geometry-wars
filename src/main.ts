@@ -62,7 +62,7 @@ import { BuffParticleAura } from './buffs/BuffParticleAura';
 import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
-import { LODManager, LODLevel } from './rendering/LODManager';
+import { LODManager, LODLevel, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
 import { AdaptiveQuality, QualityLevel } from './rendering/AdaptiveQuality';
 import { DepthOcclusionSystem } from './rendering/DepthOpacity';
 import { PerformanceTracker } from './core/PerformanceTracker';
@@ -617,7 +617,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const ddaLogger = new DDALogger([ddaTracker], ddaEngine, surfaceType);
 
   // -- LOD manager (reduces triangle count for distant enemies) --
-  const lodManager = new LODManager();
+  // On mobile: switch to lower LOD sooner (half the distances) to reduce GPU vertex load.
+  const lodManager = new LODManager(
+    mobile
+      ? { highDistance: 30, mediumDistance: 60, hysteresis: DEFAULT_LOD_CONFIG.hysteresis }
+      : undefined,
+  );
 
   // -- Adaptive quality (auto-adjusts visual fidelity to maintain 60fps) --
   const adaptiveQuality = new AdaptiveQuality({
@@ -674,11 +679,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   let perfBuffStringCounter = 0;
 
   // -- Enemy glow trails (for fast-moving enemies) --
-  // Track which enemies have trails and their trail objects
+  // On mobile: skip glow trails entirely — they add GlowTrail BufferGeometry allocations
+  // every frame and extra draw calls that hurt fill-rate-limited mobile GPUs.
   const enemyGlowTrails = new Map<BaseEnemy, GlowTrail>();
 
-  // Fast enemy types that get glow trails
-  const FAST_ENEMY_TYPES = ['Mayfly', 'Rocket', 'Duck'];
+  // Fast enemy types that get glow trails (disabled on mobile)
+  const FAST_ENEMY_TYPES = mobile ? [] : ['Mayfly', 'Rocket', 'Duck'];
 
   // Colors for different enemy types
   const ENEMY_TRAIL_COLORS: Record<string, number> = {
@@ -690,6 +696,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Particle system --
   const particles = new ParticleSystem(5000);
   game.scene.add(particles.root);
+
+  // On mobile: apply reduced particle emission budget immediately (don't wait for first
+  // quality-level change). Mobile starts at MEDIUM quality (60/20), matching MEDIUM budget.
+  if (mobile) {
+    particles.setEmitBudget(60, 20);
+  }
 
   // -- Score popups --
   const scorePopups = new ScorePopupManager();

@@ -647,3 +647,29 @@ Claude will read this file at the start of each session and prioritize fixing re
 **Root cause fixed:** `FaceWalker.ts` atVertex detection epsilon was 0.05 — too large. When exiting a triangle near (but not at) a vertex (v≈0.004 < 0.05), the wrong adjacent face was selected with a mismatched alpha, causing position jumps and direction reversals. Fix: tightened epsilon to 0.001.
 
 **Regression test:** `src/test/pill-movement-regression.test.ts` — passes ✅
+
+---
+
+## Geometry Sharing + Mobile Tiers (s24-perf-08-geometry-material-sharing) — 2026-02-19
+
+### Geometry sharing (desktop):
+- [ ] **Game runs without crashes** — Play for 60+ seconds. No black screen, no errors in console related to geometry disposal or shared buffers.
+- [ ] **Projectile weapons still look correct** — Fire Spread (cyan spheres), Homing (cone), PlasmaMortar (green sphere), GravityGun (torus). All should appear at correct sizes.
+- [ ] **BlackHole and Tesla weapons still look correct** — BlackHole shows purple sphere; Tesla Coil shows large wireframe sphere around player.
+- [ ] **Weapon pickups still appear** — Pick up any weapon. Rotating octahedron pickup (outer wireframe + inner solid) should appear on the map.
+- [ ] **SuperState pickups still appear** — Dot pattern pickups should appear and disappear as you collect dots.
+
+### Mobile tier (test with `?mobile=true` URL parameter):
+- [ ] **Mobile mode loads without error** — Add `?mobile=true` to the URL and load the game. Should run, no console errors.
+- [ ] **Enemies further away switch to simplified geometry sooner** — At default zoom, distant enemies should appear as low-poly shapes (icosahedron/billboard) while close enemies show full detail. This should be more aggressive than desktop (half the threshold distances).
+- [ ] **No glow trails on mobile** — Fast enemies (Mayfly, Rocket, Duck) should NOT have trailing glow effects in mobile mode. On desktop they do.
+- [ ] **Particle effects are present but lighter** — Explosions and death particles should still appear, but fewer per event than desktop.
+
+**What changed:**
+- Shared geometry cache (`src/rendering/GeometryCache.ts`) — projectile geometries created ONCE, reused across all instances.
+- WeaponManager, WeaponPickup, SuperStatePickup updated to use shared geometries.
+- Mobile: LOD distances halved (highDistance 60→30, mediumDistance 120→60) — more aggressive LOD on mobile.
+- Mobile: Glow trails disabled.
+- Mobile: Particle budget pre-set to MEDIUM (60/frame vs 200/frame on desktop).
+
+**Regression test:** `src/rendering/GeometryCache.test.ts` — passes ✅

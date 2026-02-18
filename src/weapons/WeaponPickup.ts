@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
+import { SharedGeometries } from '../rendering/GeometryCache';
 
 /**
  * Floating weapon pickup that grants new weapons to player
@@ -41,25 +42,23 @@ export class WeaponPickup {
     const config = WEAPON_CONFIGS[this.type];
     const color = new THREE.Color(config.color);
 
-    // Outer octahedron (wireframe)
-    const outerGeom = new THREE.OctahedronGeometry(0.35);
+    // Outer octahedron (wireframe) — shared geometry, per-instance material
     const outerMat = new THREE.MeshBasicMaterial({
       color: color,
       wireframe: true,
       transparent: true,
       opacity: 0.8,
     });
-    const outerMesh = new THREE.Mesh(outerGeom, outerMat);
+    const outerMesh = new THREE.Mesh(SharedGeometries.weaponPickupOuter(), outerMat);
     group.add(outerMesh);
 
-    // Inner solid core
-    const innerGeom = new THREE.OctahedronGeometry(0.15);
+    // Inner solid core — shared geometry, per-instance material
     const innerMat = new THREE.MeshBasicMaterial({
       color: color,
       transparent: true,
       opacity: 0.6,
     });
-    const innerMesh = new THREE.Mesh(innerGeom, innerMat);
+    const innerMesh = new THREE.Mesh(SharedGeometries.weaponPickupInner(), innerMat);
     innerMesh.name = 'core';
     group.add(innerMesh);
 
@@ -270,12 +269,14 @@ export class WeaponPickup {
   dispose(): void {
     this.mesh.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.geometry.dispose();
+        // Do NOT dispose shared geometries (outer/inner octahedra from GeometryCache).
+        // Only dispose per-instance materials.
         if (child.material instanceof THREE.Material) {
           child.material.dispose();
         }
       }
       if (child instanceof THREE.Line) {
+        // Line geometries (weapon indicator shapes) are unique per instance — dispose them.
         child.geometry.dispose();
         if (child.material instanceof THREE.Material) {
           child.material.dispose();

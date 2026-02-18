@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { SuperStateType } from './SuperState';
+import { SharedGeometries } from '../rendering/GeometryCache';
 
 export interface SurfaceTransform {
   position: THREE.Vector3;
@@ -35,12 +36,12 @@ export class SuperStatePickup {
     const color = this.getColorForType();
 
     for (const offset of patterns) {
-      const dotGeometry = new THREE.SphereGeometry(this.dotRadius, 8, 8);
+      // Shared geometry — all dots across all SuperStatePickups use the same sphere.
       const dotMaterial = new THREE.MeshBasicMaterial({
         color,
         wireframe: true,
       });
-      const dot = new THREE.Mesh(dotGeometry, dotMaterial);
+      const dot = new THREE.Mesh(SharedGeometries.superPickupDot(), dotMaterial);
       dot.position.set(offset.x, offset.y, offset.z);
       this.dots.push(dot);
       this.mesh.add(dot);
@@ -226,7 +227,7 @@ export class SuperStatePickup {
     const dot = this.dots.pop();
     if (dot) {
       this.mesh.remove(dot);
-      dot.geometry.dispose();
+      // Do NOT dispose geometry — it's shared via GeometryCache.
       (dot.material as THREE.Material).dispose();
     }
 
@@ -240,9 +241,8 @@ export class SuperStatePickup {
   dispose(): void {
     this.active = false;
 
-    // Clean up all dots
+    // Clean up all dots. Do NOT dispose geometry — it's shared via GeometryCache.
     for (const dot of this.dots) {
-      dot.geometry.dispose();
       (dot.material as THREE.Material).dispose();
       this.mesh.remove(dot);
     }

@@ -3,6 +3,7 @@ import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { ChainLightningEffect } from '../effects/ChainLightning';
 import { MeshSurface } from '../surfaces/MeshSurface';
 import { BuffType, BUFF_CONFIGS, ActiveBuff } from './BuffPickup';
+import { SharedGeometries } from '../rendering/GeometryCache';
 
 /**
  * Projectile data for non-instant weapons
@@ -772,14 +773,13 @@ export class WeaponManager {
       }
     }
 
-    // Create black hole visual
-    const bhGeom = new THREE.SphereGeometry(0.3, 16, 16);
+    // Create black hole visual — geometry shared via GeometryCache
     const bhMat = new THREE.MeshBasicMaterial({
       color: 0x220044,
       transparent: true,
       opacity: 0.9,
     });
-    const bhMesh = new THREE.Mesh(bhGeom, bhMat);
+    const bhMesh = new THREE.Mesh(SharedGeometries.blackholeSphere(), bhMat);
     bhMesh.position.copy(targetPos);
 
     this.projectileRoot.add(bhMesh);
@@ -795,14 +795,14 @@ export class WeaponManager {
 
   private fireTesla(origin: THREE.Vector3): void {
     // Tesla coil is an area effect around player (radius 3, stronger damage)
-    const teslaGeom = new THREE.SphereGeometry(3, 16, 16);
+    // Geometry shared via GeometryCache
     const teslaMat = new THREE.MeshBasicMaterial({
       color: 0x88aaff,
       transparent: true,
       opacity: 0.2,
       wireframe: true,
     });
-    const teslaMesh = new THREE.Mesh(teslaGeom, teslaMat);
+    const teslaMesh = new THREE.Mesh(SharedGeometries.teslaSphere(), teslaMat);
     teslaMesh.position.copy(origin);
 
     this.projectileRoot.add(teslaMesh);
@@ -855,32 +855,25 @@ export class WeaponManager {
   private createProjectileMesh(type: WeaponType): THREE.Object3D {
     const material = this.projectileMaterials.get(type);
 
+    // Geometries are shared via GeometryCache — no allocation per projectile.
     switch (type) {
-      case WeaponType.Spread: {
-        const geom = new THREE.SphereGeometry(0.08, 8, 8);
-        return new THREE.Mesh(geom, material);
-      }
+      case WeaponType.Spread:
+        return new THREE.Mesh(SharedGeometries.spreadProjectile(), material);
 
-      case WeaponType.Homing: {
-        const geom = new THREE.ConeGeometry(0.1, 0.3, 6);
-        geom.rotateX(Math.PI / 2);
-        return new THREE.Mesh(geom, material);
-      }
+      case WeaponType.Homing:
+        return new THREE.Mesh(SharedGeometries.homingProjectile(), material);
 
-      case WeaponType.PlasmaMortar: {
-        const geom = new THREE.SphereGeometry(0.35, 12, 12);
-        return new THREE.Mesh(geom, material);
-      }
+      case WeaponType.PlasmaMortar:
+        return new THREE.Mesh(SharedGeometries.plasmaProjectile(), material);
 
-      case WeaponType.GravityGun: {
-        const geom = new THREE.TorusGeometry(0.15, 0.05, 8, 16);
-        return new THREE.Mesh(geom, material);
-      }
+      case WeaponType.GravityGun:
+        return new THREE.Mesh(SharedGeometries.gravityProjectile(), material);
 
-      default: {
-        const geom = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-        return new THREE.Mesh(geom, material ?? new THREE.MeshBasicMaterial({ color: 0xffffff }));
-      }
+      default:
+        return new THREE.Mesh(
+          SharedGeometries.defaultProjectile(),
+          material ?? new THREE.MeshBasicMaterial({ color: 0xffffff }),
+        );
     }
   }
 
