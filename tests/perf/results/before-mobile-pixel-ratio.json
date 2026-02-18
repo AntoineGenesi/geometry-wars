@@ -1,0 +1,11 @@
+{
+  "note": "Benchmark timed out — SwiftShader at 7fps cannot spawn/stabilize 200 enemies within the 240s window",
+  "timestamp": "2026-02-19T00:00:00.000Z",
+  "status": "timeout",
+  "entityCount": 200,
+  "avgFps": null,
+  "environment": "SwiftShader/WSL2 headless",
+  "explanation": "SwiftShader renders at ~7fps. At this rate, spawning and measuring 200 enemies required >4 minutes. The benchmark was designed for the lower-entity tiers. For the 200-enemy tier, SwiftShader cannot produce enough samples in the 240s timeout.",
+  "desktopImpactNote": "window.devicePixelRatio=1.0 in SwiftShader. The mobile detection (devicePixelRatio>2) does NOT trigger. Pixel ratio cap remains at 2.0 for desktop — behavior is identical before and after the change.",
+  "expectedChange": "0% (no desktop regression expected or possible since SwiftShader devicePixelRatio=1.0)"
+}

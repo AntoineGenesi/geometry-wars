@@ -225,7 +225,13 @@ export class Game {
         powerPreference: 'high-performance',
         ...(isTestMode ? { preserveDrawingBuffer: true } : {}),
       });
-      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      // Mobile devices (high-DPI or UA detection) cap at 1.5 to save ~44% GPU fill.
+      // Desktop devices (devicePixelRatio <= 2) are uncapped — no change.
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        typeof navigator !== 'undefined' ? navigator.userAgent : '',
+      ) || window.devicePixelRatio > 2;
+      const maxPixelRatio = isMobileDevice ? 1.5 : 2.0;
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, maxPixelRatio));
       this.renderer.setSize(window.innerWidth, window.innerHeight);
       this.renderer.toneMapping = THREE.NoToneMapping;
       this.renderer.toneMappingExposure = 1.0;
