@@ -8,6 +8,33 @@
 
 ---
 
+## Session 24 Selective Bloom Masking (2026-02-19)
+
+### Bloom Visual Quality — Arena Should NOT Glow, Enemies SHOULD
+
+With bloom threshold at 0.3, only objects with luminance > 0.3 contribute to bloom. The dark arena surface and grid should NOT have a glow halo around them, while enemies, bullets, and the player SHOULD glow.
+
+- [ ] **Arena surface is non-glowing** — The dark blue/black surface mesh should appear as a flat, non-glowing surface. No halo or bloom glow around the surface itself. If the surface appears to "glow" with a foggy bloom overlay, the threshold is too low.
+- [ ] **Grid lines are non-glowing** — The arena grid lines should be crisp, dim blue lines without a glow halo. Grid should look like a grid, not a glowing web.
+- [ ] **Enemies visibly glow** — Enemies should have a clear bloom glow around them — neon-style glowing shapes. The glow radius should be visible.
+- [ ] **Bullets have glow trails** — Fired bullets should leave bright glowing streaks. Neon glow should be clearly visible.
+- [ ] **Player ship glows** — The player ship/ship model should have a subtle neon glow around it.
+- [ ] **Title screen bloom looks good** — The "GEOMETRY WARS 3D" title in the start menu should have a vivid cyan bloom effect (already verified via Puppeteer Level 5).
+
+**What was verified (2026-02-19):**
+- `DEFAULT_BLOOM.threshold = 0.3` in `src/core/Game.ts` — only pixels with luminance > 0.3 bloom
+- Arena surface: `MeshBasicMaterial`, color `0x141440`, luminance ≈ 0.091 → **does NOT bloom** ✓
+- Arena grid: `LineBasicMaterial`, color `0x2a2aaa`, luminance ≈ 0.201 → **does NOT bloom** ✓
+- Enemies: `emissiveIntensity` ≥ 1.2 → **WILL bloom** ✓
+- Bullets: `emissiveIntensity` = 0.6 → **WILL bloom** ✓
+- Player: `emissiveIntensity` = 0.4 → **WILL bloom** ✓
+- 12 regression tests added in `src/rendering/SelectiveBloom.test.ts` (all pass)
+- Puppeteer screenshot confirms title + menu bloom looks correct, arena background is dark
+
+**Verification level:** L5 (Puppeteer screenshot). Needs human testing to confirm in-game gameplay bloom quality.
+
+---
+
 ## Session 24 LOD System Wiring Verified (2026-02-19)
 
 ### LOD (Level of Detail) Enemy Rendering

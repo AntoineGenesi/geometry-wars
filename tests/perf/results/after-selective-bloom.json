@@ -1,0 +1,38 @@
+[
+  {
+    "entityCount": 50,
+    "avgFps": 1800.2,
+    "minFps": 2.5,
+    "maxFps": 5000,
+    "p95FrameTimeMs": 176.5,
+    "stdDev": 1039.1,
+    "frameCount": 122,
+    "drawCalls": 1,
+    "triangles": 1,
+    "geometries": 1065
+  },
+  {
+    "entityCount": 100,
+    "avgFps": 1399,
+    "minFps": 4.2,
+    "maxFps": 3333.3,
+    "p95FrameTimeMs": 211.8,
+    "stdDev": 741.4,
+    "frameCount": 122,
+    "drawCalls": 1,
+    "triangles": 1,
+    "geometries": 1833
+  },
+  {
+    "entityCount": 200,
+    "avgFps": 1154.7,
+    "minFps": 4.2,
+    "maxFps": 2500,
+    "p95FrameTimeMs": 187.5,
+    "stdDev": 580,
+    "frameCount": 122,
+    "drawCalls": 1,
+    "triangles": 1,
+    "geometries": 2943
+  }
+]
