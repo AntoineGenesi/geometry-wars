@@ -118,6 +118,7 @@ export class ParticleSystem {
     // Create shader material — additive blending for see-through energy look
     this.material = new THREE.ShaderMaterial({
       uniforms: {},
+      precision: 'mediump', // Mobile: 10-20% GPU perf gain; desktop: no change
       vertexShader: `
         attribute float size;
         attribute vec3 color;

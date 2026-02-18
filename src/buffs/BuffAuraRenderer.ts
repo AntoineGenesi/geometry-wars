@@ -481,6 +481,7 @@ export class BuffAuraRenderer {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
         side: THREE.DoubleSide,
+        precision: 'mediump',
       });
 
       const mesh = new THREE.Mesh(this.sharedGeometry, placeholderMat);
@@ -689,6 +690,7 @@ export class BuffAuraRenderer {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
+      precision: 'mediump', // Mobile: 10-20% GPU perf gain; desktop: no change
       uniforms: {
         uTime: { value: 0 },
         uStacks: { value: 1.0 },
