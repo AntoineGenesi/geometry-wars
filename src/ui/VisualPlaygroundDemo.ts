@@ -282,16 +282,9 @@ export class VisualPlaygroundDemo {
     this.canvasContainer.addEventListener('wheel', this.onWheelHandler, { passive: false });
     document.addEventListener('click', this.onDocumentClickHandler);
 
-    // Wire Sektori glow update into the game's render callback
-    if (this.sektoriMaterial && this.sektoriTrail) {
-      const originalOnRender = this.playgroundGame.game.onRender;
-      this.playgroundGame.game.onRender = (alpha?: number) => {
-        // Call PlaygroundGame's own render update (camera follow, grid animation)
-        if (originalOnRender) originalOnRender(alpha ?? 0);
-        // Update Sektori glow
-        this.updateSektoriGlow();
-      };
-    }
+    // NOTE: Sektori glow is updated in uiLoop (not game.onRender) because
+    // GameInstance.start() overwrites game.onRender, making any pre-start
+    // override a no-op. The uiLoop runs at RAF rate and is sufficient.
 
     // Wire UI loop for stats + Sektori updates when paused
     this.lastTime = performance.now();
@@ -361,10 +354,10 @@ export class VisualPlaygroundDemo {
   // Sektori glow update
   // -----------------------------------------------------------------------
 
-  private updateSektoriGlow(): void {
+  private updateSektoriGlow(_dt?: number): void {
     if (!this.sektoriMaterial || !this.sektoriTrail) return;
     const playerPos = this.playgroundGame.player.mesh.position;
-    this.elapsedTime += 1 / 60; // approximate dt for Sektori shader
+    // elapsedTime is already incremented by the caller (uiLoop)
     updateSektoriUniforms(this.sektoriMaterial, playerPos, this.elapsedTime);
     this.sektoriTrail.recordPosition(playerPos);
     this.sektoriTrail.updateMaterial(this.sektoriMaterial);
@@ -431,15 +424,7 @@ export class VisualPlaygroundDemo {
     // Re-apply visual preset
     this.applyVisualPreset();
 
-    // Re-wire Sektori glow if applicable
-    if (this.sektoriMaterial && this.sektoriTrail) {
-      const originalOnRender = this.playgroundGame.game.onRender;
-      this.playgroundGame.game.onRender = (alpha?: number) => {
-        if (originalOnRender) originalOnRender(alpha ?? 0);
-        this.updateSektoriGlow();
-      };
-    }
-
+    // Sektori glow is handled by uiLoop (no game.onRender override needed)
     this.playgroundGame.start();
   }
 
@@ -473,9 +458,10 @@ export class VisualPlaygroundDemo {
     this.lastTime = now;
     const dt = Math.max(1 / 120, Math.min(rawDt, 1 / 30));
 
-    // Update Sektori glow even when paused (visual polish)
-    if (this.sektoriMaterial && this.sektoriTrail && (!this.focused || this.paused)) {
+    // Update Sektori glow every frame (works when paused or playing)
+    if (this.sektoriMaterial && this.sektoriTrail) {
       this.elapsedTime += dt;
+      this.updateSektoriGlow(dt);
     }
 
     if (!this.focused || this.paused || this.gameOver) return;

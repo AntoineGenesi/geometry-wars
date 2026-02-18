@@ -149,6 +149,16 @@ export class CameraController {
     (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, this.CAMERA_LERP_FACTOR).normalize();
   }
 
+  /** Get current camera distance */
+  getCameraDistance(): number {
+    return this.cameraDistance;
+  }
+
+  /** Set camera distance (clamped to allowed range) */
+  setCameraDistance(distance: number): void {
+    this.cameraDistance = Math.max(this.CAMERA_DIST_MIN, Math.min(this.CAMERA_DIST_MAX, distance));
+  }
+
   /**
    * Disable zoom updates (for pause/game-over states)
    */

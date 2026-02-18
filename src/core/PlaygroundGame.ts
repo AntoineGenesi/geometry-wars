@@ -140,6 +140,26 @@ export class PlaygroundGame {
     this.instance.start();
   }
 
+  /** Stop the game loop (non-destructive; game can be restarted with start()) */
+  stop(): void {
+    this.instance.stop();
+  }
+
+  /** Get current camera distance */
+  getCameraDistance(): number {
+    return this.instance.getCameraDistance();
+  }
+
+  /** Set camera distance */
+  setCameraDistance(distance: number): void {
+    this.instance.setCameraDistance(distance);
+  }
+
+  /** Get game stats (lives, etc.) */
+  getStats(): { lives: number } {
+    return this.instance.getStats();
+  }
+
   /** Set a different weapon (for demos) */
   setWeapon(weapon: WeaponType): void {
     this.instance.setWeapon(weapon);

@@ -421,6 +421,30 @@ export class GameInstance {
     }
   }
 
+  /**
+   * Stop the game loop (non-destructive; game can be restarted with start()).
+   * Resets the started flag so start() works again after stop().
+   */
+  stop(): void {
+    this.game.stop();
+    this.started = false;
+  }
+
+  /** Get current camera distance */
+  getCameraDistance(): number {
+    return this.cameraController.getCameraDistance();
+  }
+
+  /** Set camera distance (clamped to min/max) */
+  setCameraDistance(distance: number): void {
+    this.cameraController.setCameraDistance(distance);
+  }
+
+  /** Get current game stats */
+  getStats(): { lives: number } {
+    return { lives: this.player.lives };
+  }
+
   /** Start the game loop */
   start(): void {
     if (this.started) return;
