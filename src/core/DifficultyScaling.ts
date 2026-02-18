@@ -249,18 +249,34 @@ const SPLITTING_TYPES = [
  *   - Splitting enemies appear by wave 6 (not 12) — they're a core mechanic
  *   - Hard/elite types introduced earlier and in larger numbers
  *   - At high difficulty, multiple enemy groups per wave create real pressure
+ *   - At 200+ active entities: per-wave counts soften (logarithmic instead of
+ *     exponential) to prevent overwhelming the player when screen is crowded.
+ *     Difficulty still increases via tiers and enemy types — just fewer per wave.
+ *
+ * @param activeEntityCount Current active enemies on screen (default 0 = no brake).
  */
 export function generateScaledEndlessWave(
   waveNum: number,
   difficultyLevel: number,
+  activeEntityCount: number = 0,
 ): ScaledWaveEntry[] {
   const enemies: ScaledWaveEntry[] = [];
   const maxTier = getMaxSpawnTier(difficultyLevel);
+
+  // Entity count soft brake: reduces per-wave spawn counts when screen is crowded.
+  // Below 200 entities: factor = 1.0 (no effect — early game unchanged).
+  // At 300 entities: factor ≈ 0.67 (33% fewer per wave).
+  // At 400 entities: factor ≈ 0.50 (50% fewer per wave).
+  // At 500+ entities: floor = 0.40 (game still escalates via types/tiers).
+  const entityBrake = activeEntityCount > 200
+    ? Math.max(0.40, 200 / activeEntityCount)
+    : 1.0;
+
   // Base count grows with wave number AND difficulty level
   // At difficulty 4+, each wave has substantially more enemies
   // Raised cap from 18→30 so extreme difficulty feels overwhelming
   const difficultyCountBonus = Math.floor(difficultyLevel * 2.0);
-  const baseCount = Math.min(30, 4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus);
+  const baseCount = Math.min(30, Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake));
 
   // -- Basic enemies: always present, tier scales with difficulty --
   const basicType = BASIC_TYPES[waveNum % BASIC_TYPES.length];
@@ -300,7 +316,7 @@ export function generateScaledEndlessWave(
     const splitType = SPLITTING_TYPES[(waveNum - 5) % SPLITTING_TYPES.length];
     enemies.push({
       type: splitType,
-      count: Math.min(1 + Math.floor(difficultyLevel * 0.7), 7),
+      count: Math.min(Math.round((1 + Math.floor(difficultyLevel * 0.7)) * entityBrake), 7),
       tier: Math.min(maxTier, 1),
     });
   }
@@ -320,7 +336,7 @@ export function generateScaledEndlessWave(
     const variantType = BASIC_TYPES[(waveNum + 1) % BASIC_TYPES.length];
     enemies.push({
       type: variantType,
-      count: Math.min(6 + Math.floor(difficultyLevel * 1.5), 20),
+      count: Math.min(Math.round((6 + Math.floor(difficultyLevel * 1.5)) * entityBrake), 20),
       tier: maxTier,
     });
   }
@@ -340,7 +356,7 @@ export function generateScaledEndlessWave(
     const swarmType = SPLITTING_TYPES[(waveNum + 2) % SPLITTING_TYPES.length];
     enemies.push({
       type: swarmType,
-      count: Math.min(2 + Math.floor(difficultyLevel - 2.5), 8),
+      count: Math.min(Math.round((2 + Math.floor(difficultyLevel - 2.5)) * entityBrake), 8),
       tier: Math.min(maxTier, 2),
     });
   }
@@ -350,7 +366,7 @@ export function generateScaledEndlessWave(
     const eliteType2 = ELITE_TYPES[(waveNum + 1) % ELITE_TYPES.length];
     enemies.push({
       type: eliteType2,
-      count: Math.min(3 + Math.floor(difficultyLevel - 4), 6),
+      count: Math.min(Math.round((3 + Math.floor(difficultyLevel - 4)) * entityBrake), 6),
       tier: maxTier,
     });
   }
@@ -360,13 +376,13 @@ export function generateScaledEndlessWave(
     const hardType3 = HARD_TYPES[(waveNum + 5) % HARD_TYPES.length];
     enemies.push({
       type: hardType3,
-      count: Math.min(4 + Math.floor(difficultyLevel - 6), 8),
+      count: Math.min(Math.round((4 + Math.floor(difficultyLevel - 6)) * entityBrake), 8),
       tier: maxTier,
     });
     const megaSplit = SPLITTING_TYPES[(waveNum + 4) % SPLITTING_TYPES.length];
     enemies.push({
       type: megaSplit,
-      count: Math.min(Math.floor(difficultyLevel - 5), 5),
+      count: Math.min(Math.round(Math.floor(difficultyLevel - 5) * entityBrake), 5),
       tier: Math.min(maxTier, 3),
     });
   }
