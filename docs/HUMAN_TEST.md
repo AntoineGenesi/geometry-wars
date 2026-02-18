@@ -8,6 +8,30 @@
 
 ---
 
+## Session 24 LOD System Wiring Verified (2026-02-19)
+
+### LOD (Level of Detail) Enemy Rendering
+
+The LOD system is active and reduces triangle count for distant enemies. Enemies beyond 60 units use simplified icosahedron geometry (MEDIUM), and beyond 120 units use billboard quads (LOW).
+
+- [ ] **LOD geometry switching visible on large maps** — On a map where you can see enemies far away (e.g., sphere or torus with 50+ enemies), enemies far from the camera should appear as simplified glowing shapes (icosahedrons) rather than complex geometry. This is subtle — the key indicator is smoother, more rounded shapes at distance.
+- [ ] **No enemy disappearing** — All enemies should remain visible regardless of LOD level. LOD should change geometry shape, not remove enemies.
+- [ ] **Positions remain correct** — Enemies at MEDIUM/LOW LOD should still be at their correct world positions (not offset or jittered).
+- [ ] **LOD stats visible in F3 overlay** — Press F3 during gameplay with 50+ enemies. The debug overlay should show LOD stats (high/medium/low counts). Confirm the counts change as enemies move closer/farther.
+- [ ] **Performance at 200 enemies** — Spawn 200 enemies (multiple wave cycles in Waves mode). FPS should be higher (or at least equal) compared to before LOD was active, due to triangle count reduction for distant enemies.
+
+**What was verified (2026-02-19):**
+- `LODManager` is instantiated in `main.ts` (line 619) and passed to `GameContext`
+- `GameLoop.ts` calls `ctx.lodManager.update(camera, enemies)` each fixed step (lines 249-251)
+- `EnemyInstanceManager.updateInstancesWithLOD()` is called with LOD assignments (lines 257-262)
+- `RenderLoop.ts` applies LOD-based opacity adjustments (lines 137-142) and routes visibility to correct batch
+- 29/29 LODManager unit tests pass
+- 34/34 EnemyInstanceManager unit tests pass (including LOD batch methods)
+
+**Verification level:** L2 (unit tests pass). Needs human testing to confirm visual geometry switching.
+
+---
+
 ## Session 22 Camera Jerk Fix (2026-02-18)
 
 ### Camera Smoothness on All Maps
