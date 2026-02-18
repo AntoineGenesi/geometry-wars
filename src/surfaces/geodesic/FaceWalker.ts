@@ -262,8 +262,13 @@ export class FaceWalker {
     // The twin half-edge goes the opposite direction, so flip alpha
     const flippedAlpha = 1 - alpha;
     // Nudge entry point away from the edge to avoid immediately re-crossing.
-    // This must be larger than the vertex detection epsilon (0.05) to prevent ping-ponging.
-    const eps = 0.1;
+    // Must be larger than vertex detection epsilon (0.001) but small enough to not
+    // add significant world displacement at each crossing (the displacement per crossing
+    // is ~eps/(1+eps)*triangle_height, which at eps=0.1 causes ~0.09 extra per cap crossing
+    // and causes oscillation on pill/capsule surfaces). eps=0.005 gives ~0.005*height extra,
+    // which is negligible even for large triangles. Must be > vertex_eps (0.001) to prevent
+    // vertex detection immediately firing on re-entry.
+    const eps = 0.005;
 
     // Entry point on the twin's edge: interpolate between the two edge vertices.
     // For edge i of the triangle, the two vertices on that edge have zero bary for
