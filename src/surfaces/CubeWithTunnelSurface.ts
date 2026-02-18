@@ -54,7 +54,7 @@ export class CubeWithTunnelSurface extends Surface {
   ]
 
   constructor(config?: CubeWithTunnelConfig) {
-    const size = config?.size ?? 35
+    const size = config?.size ?? 24
     const wallThickness = config?.wallThickness ?? 2.0
     const minBevel = wallThickness / 2 + 0.1
     const bevelRadius = Math.max(config?.bevelRadius ?? size * 0.12, minBevel)
@@ -86,7 +86,7 @@ export class CubeWithTunnelSurface extends Surface {
 
   private static getInitData() {
     return (CubeWithTunnelSurface as any).__initData ?? {
-      size: 35, wallThickness: 2.0, bevelRadius: 4.5, gridSegments: 16,
+      size: 24, wallThickness: 2.0, bevelRadius: 2.88, gridSegments: 16,
     }
   }
 
