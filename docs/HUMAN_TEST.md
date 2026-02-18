@@ -570,6 +570,21 @@ Claude will read this file at the start of each session and prioritize fixing re
 
 ---
 
+## Capsule/Pill Oscillation Fix (s23-unified-movement-fix) — 2026-02-18
+
+- [V5 PASS] **Capsule map: movement is smooth** — Select Capsule map, hold W for 8s. Player should move continuously without oscillation. Previously oscillationRatio=0.327 (FAIL). Now: 0.000 (PASS).
+- [V5 PASS] **Pill map: movement is smooth** — Select Pill map, hold W for 8s. Previously oscillationRatio=0.500 (FAIL). Now: 0.000 (PASS).
+- [V5 PASS] **All 13/13 surfaces pass the movement audit** — Puppeteer audit confirms all surfaces now have oscillationRatio=0.000 (or near zero for sphere-tunnel=0.024).
+- [ ] **Capsule: no jitter at cap poles** — Move player to the very bottom/top of the capsule hemisphere. Movement should be smooth without position jumps.
+- [ ] **Pill: same pole test** — Same as above for pill.
+
+**Root cause fixed:** `FaceWalker._computeEntryBary()` used `eps=0.1` as the entry nudge after crossing an edge. This added ~0.09×triangle_height extra world displacement per crossing (discontinuous, untracked). At the cap-cylinder junction, each crossing nudged the player alternately toward the cylinder (+y) and back to the cap (-y), causing oscillation. Fixed by reducing `eps=0.1→0.005` (5× the vertex detection epsilon of 0.001, so no vertex detection issues).
+
+**Puppeteer audit:** 13/13 PASS (was 11/13). Reports saved in `reports/s23-movement-audit-*.html`.
+**Regression test:** `src/test/capsule-pill-regression.test.ts` — passes ✅
+
+---
+
 ## Pill Movement Fix (s22-pill-movement-broken-v3) — 2026-02-18
 
 - [ ] **Pill map: forward movement is straight** — Select Pill map, move with W. Trail should be a smooth arc curving around the pill. **Regression**: before fix, the trail was a saw-tooth zigzag, reversing direction every ~5 frames near the south seam.
