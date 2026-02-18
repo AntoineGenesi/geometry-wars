@@ -1,4 +1,5 @@
 import { SurfaceType } from '../surfaces/SurfaceFactory';
+import { MapSize, getDefaultMapSizeForSurface, MAP_SIZE_LABELS } from '../core/MapSize';
 import { ADVENTURE_LEVELS } from '../core/LevelData';
 import { LevelCompleteScreen, type LevelProgress } from './LevelCompleteScreen';
 import { LANClient } from '../network/LANClient';
@@ -27,6 +28,7 @@ export interface MenuSelection {
   playerName?: string;
   quickGameMode?: QuickGameModeType; // For single player quick game
   customMeshFile?: File; // For custom mesh loading
+  mapSize?: MapSize; // Map size tier for enemy count scaling
 }
 
 // ---------------------------------------------------------------------------
@@ -51,6 +53,7 @@ export class StartMenu {
   private styleElement: HTMLStyleElement | null = null;
   private pendingMode: 'single' | 'network' = 'single';
   private selectedQuickGameMode: QuickGameModeType = 'waves';
+  private selectedMapSize: MapSize = MapSize.MEDIUM;
   private lanAutoRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private lanAutoRefreshEnabled = true;
   private lanScanning = false;
@@ -127,6 +130,17 @@ export class StartMenu {
     `;
 
     return `<div class="surface-grid ${gridClass}">${buttons}${customMeshBtn}</div>`;
+  }
+
+  private createMapSizeSelectorHTML(): string {
+    const sizes: MapSize[] = [MapSize.SMALL, MapSize.MEDIUM, MapSize.LARGE, MapSize.EPIC];
+    const buttons = sizes.map((size) => `
+      <button class="map-size-btn${size === this.selectedMapSize ? ' selected' : ''}"
+              data-map-size="${size}">
+        <span class="map-size-label">${MAP_SIZE_LABELS[size]}</span>
+      </button>
+    `).join('');
+    return `<div class="map-size-selector">${buttons}</div>`;
   }
 
   private createModeGridHTML(): string {
@@ -315,6 +329,8 @@ export class StartMenu {
               <span class="name">Load Custom</span>
             </button>
           </div>
+          <h3>MAP SIZE</h3>
+          ${this.createMapSizeSelectorHTML()}
           <input type="file" id="custom-mesh-file-input" accept=".obj,.glb,.gltf" style="display: none;" />
           <div id="custom-mesh-loading" class="custom-mesh-loading hidden">
             <p>Loading mesh...</p>
@@ -664,6 +680,44 @@ export class StartMenu {
 
       #start-menu .custom-mesh-loading.hidden {
         display: none;
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* Map size selector                                                    */
+      /* ------------------------------------------------------------------- */
+      #start-menu .map-size-selector {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin: 12px 0 16px;
+      }
+
+      #start-menu .map-size-btn {
+        background: rgba(0, 60, 80, 0.4);
+        border: 2px solid #005566;
+        color: #88ddee;
+        padding: 10px 18px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 2px;
+        flex: 1;
+        text-align: center;
+      }
+
+      #start-menu .map-size-btn:hover {
+        background: rgba(0, 100, 130, 0.5);
+        border-color: #00ccee;
+        color: #aaeeff;
+        transform: scale(1.05);
+      }
+
+      #start-menu .map-size-btn.selected {
+        background: rgba(0, 200, 255, 0.15);
+        border-color: #00ccee;
+        color: #00eeff;
+        box-shadow: 0 0 12px rgba(0, 200, 255, 0.4);
       }
 
       /* ------------------------------------------------------------------- */
@@ -1355,6 +1409,16 @@ export class StartMenu {
       });
     });
 
+    // Map size buttons (Quick Game only)
+    const mapSizeBtns = surfaceSection.querySelectorAll('.map-size-btn');
+    mapSizeBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        mapSizeBtns.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.selectedMapSize = (btn as HTMLElement).dataset.mapSize as MapSize;
+      });
+    });
+
     // Surface selection buttons (Quick Game only - scoped to #surface-section)
     const surfaceBtns = surfaceSection.querySelectorAll('.surface-btn:not(.custom-mesh-btn)');
     surfaceBtns.forEach((btn) => {
@@ -1363,6 +1427,13 @@ export class StartMenu {
         btn.classList.add('selected');
         this.selectedSurface = (btn as HTMLElement).dataset.surface as SurfaceType;
         this.customMeshFileQuickGame = null; // Clear custom mesh when selecting built-in
+        // Auto-suggest the default map size for this surface
+        const suggestedSize = getDefaultMapSizeForSurface(this.selectedSurface);
+        this.selectedMapSize = suggestedSize;
+        mapSizeBtns.forEach((b) => {
+          const isMatch = (b as HTMLElement).dataset.mapSize === suggestedSize;
+          b.classList.toggle('selected', isMatch);
+        });
       });
     });
 
@@ -1570,6 +1641,7 @@ export class StartMenu {
         gameMode: this.pendingMode,
         quickGameMode: this.pendingMode === 'single' ? this.selectedQuickGameMode : undefined,
         customMeshFile: this.selectedSurface === 'custom' ? this.customMeshFileQuickGame ?? undefined : undefined,
+        mapSize: this.selectedMapSize,
       });
     });
 
