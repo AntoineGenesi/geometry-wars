@@ -592,6 +592,10 @@ export class GameInstance {
     this.weaponManager.dispose();
     this.particles.dispose();
     this.depthOcclusion.dispose();
+    // Free geometry, BVH, and surface structures to prevent memory accumulation
+    // in test environments where many instances are created and disposed.
+    this._meshSurface.dispose();
+    this._surface.dispose();
   }
 
   /** Set a different weapon (for demos) */

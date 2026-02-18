@@ -181,6 +181,18 @@ export class PlaygroundGame {
   }
 
   /**
+   * Manual fixed update (for tests only).
+   * Mirrors Game.fixedUpdate(dt): runs GameInstance logic + entity manager + bloom.
+   * In normal operation this is driven by GameClock via Game.fixedUpdate.
+   * @private
+   */
+  fixedUpdate(dt: number): void {
+    this.instance.update(dt);
+    this.game.entityManager.update(dt);
+    this.game.bloomEffectManager.update(dt);
+  }
+
+  /**
    * Manual render update (for tests only).
    * In normal operation, this is called automatically by the game loop.
    * @private

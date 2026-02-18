@@ -37,5 +37,8 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
     exclude: ['**/*.spec.js', '**/*.spec.ts', 'node_modules/**'],
+    // Prevent process from hanging after tests complete due to open handles
+    // (timers from EffectDictionary, GameAnalytics, etc.)
+    pool: 'forks',
   },
 })
