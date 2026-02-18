@@ -37,6 +37,9 @@ export class GameLoop {
   private bgMusic: any = null;
   private sound: any = null;
   private applyStatMultipliers: (() => void) | null = null;
+  // DDA close call detection: tracks whether player was already "in" a close call episode
+  // (avoids recording multiple close calls for one continuous proximity event)
+  private _ddaInClosecall = false;
 
   /**
    * Wire in dependencies that are created in main.ts and can't be passed via GameContext
@@ -614,6 +617,18 @@ export class GameLoop {
         const dist = Math.sqrt(du * du + dv * dv);
         if (dist < nearestEnemyDist) nearestEnemyDist = dist;
       }
+      // Close call detection: enemy within danger zone but player survived
+      // Threshold: 0.05 UV units (~5% of surface). Triggers once per proximity episode.
+      const CLOSE_CALL_THRESHOLD = 0.05;
+      if (ctx.player.alive && nearestEnemyDist < CLOSE_CALL_THRESHOLD) {
+        if (!this._ddaInClosecall) {
+          this._ddaInClosecall = true;
+          ctx.ddaTracker.recordCloseCall();
+        }
+      } else {
+        this._ddaInClosecall = false;
+      }
+
       ctx.ddaTracker.update(dt, nearestEnemyDist, ctx.player.lives / 3);
       ctx.ddaEngine.update(dt, [ctx.ddaTracker]);
       ctx.ddaLogger.update(dt);

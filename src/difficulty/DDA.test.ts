@@ -671,9 +671,12 @@ function forceHighDDALevel(engine: DDADecisionEngine): DDAPerformanceTracker {
   // Warmup
   for (let i = 0; i < 360; i++) tracker.update(1 / 60, 0.5, 1.0);
 
-  // Severely struggling: constant deaths, very close enemies, low health
+  // Severely struggling: constant deaths, very close enemies, low health, frequent close calls
+  // recordCloseCall() is needed to push composite score below severeThreshold (0.10).
+  // Without close calls, the minimum composite is 0.15 (closeCallBad contributes 0.15 floor).
   for (let i = 0; i < 600; i++) {
     if (i % 10 === 0) tracker.recordDeath();
+    if (i % 2 === 0) tracker.recordCloseCall(); // ~30 close calls/sec → closeCallBad = 1.0
     tracker.update(1 / 60, 0.01, 0.05);
     engine.update(1 / 60, [tracker]);
   }
