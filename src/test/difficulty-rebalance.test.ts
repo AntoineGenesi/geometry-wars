@@ -293,6 +293,45 @@ describe('Full Game Simulation', () => {
     expect(count).toBeGreaterThanOrEqual(50);
   });
 
+  it('entity count brake: no effect below 200 entities', () => {
+    // Waves with 0 or 100 entities should produce the same counts
+    const withNone = generateScaledEndlessWave(20, 4.0, 0);
+    const withFew = generateScaledEndlessWave(20, 4.0, 100);
+    const totalNone = withNone.reduce((s, e) => s + e.count, 0);
+    const totalFew = withFew.reduce((s, e) => s + e.count, 0);
+    expect(totalNone).toBe(totalFew); // below 200 → no change
+  });
+
+  it('entity count brake: reduces wave counts above 200 entities', () => {
+    const waveBase = generateScaledEndlessWave(20, 4.0, 0);
+    const wave300 = generateScaledEndlessWave(20, 4.0, 300);
+    const totalBase = waveBase.reduce((s, e) => s + e.count, 0);
+    const total300 = wave300.reduce((s, e) => s + e.count, 0);
+    // At 300 entities (brake ≈ 0.67), should be meaningfully fewer
+    expect(total300).toBeLessThan(totalBase * 0.85);
+    expect(total300).toBeGreaterThan(0); // still spawning something
+  });
+
+  it('entity count brake: wave structure (types) unchanged at high counts', () => {
+    // Same enemy types should appear regardless of brake — only counts change
+    const waveBase = generateScaledEndlessWave(20, 4.0, 0);
+    const waveHigh = generateScaledEndlessWave(20, 4.0, 400);
+    const typesBase = waveBase.map(e => e.type).sort();
+    const typesHigh = waveHigh.map(e => e.type).sort();
+    expect(typesBase).toEqual(typesHigh);
+  });
+
+  it('entity count brake: floors at 0.40 at 500+ entities', () => {
+    // At 500 entities: brake = max(0.40, 200/500) = max(0.40, 0.40) = 0.40
+    // At 1000 entities: brake = max(0.40, 200/1000) = max(0.40, 0.20) = 0.40
+    // Both should produce the same counts (floor has kicked in)
+    const wave500 = generateScaledEndlessWave(20, 4.0, 500);
+    const wave1000 = generateScaledEndlessWave(20, 4.0, 1000);
+    const total500 = wave500.reduce((s, e) => s + e.count, 0);
+    const total1000 = wave1000.reduce((s, e) => s + e.count, 0);
+    expect(total500).toBe(total1000); // floor kicks in at same brake value
+  });
+
   it('progression summary: difficulty level at key score milestones', () => {
     const milestones = [
       { score: 10_000, time: 60, label: '10K' },

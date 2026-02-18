@@ -235,16 +235,23 @@ class WaveScheduler {
     // Endless scaling waves (now with difficulty-based tiers)
     if (this.endless && this.elapsed >= this.endlessNextSpawn) {
       this.endlessWave++;
+      const activeCount = spawner.getActiveCount();
       // Spawn interval decreases with wave number AND difficulty level
       // At high difficulty (4+), waves come every 2s — relentless pressure
       const difficultySpeedBonus = Math.min(3.0, this.currentDifficultyLevel * 0.4);
+      // Entity count delay bonus: slow down new waves when screen is already crowded.
+      // No effect at <=200 entities. +1s per 50 extra entities (capped at +5s).
+      const entityDelayBonus = activeCount > 200
+        ? Math.min(5.0, (activeCount - 200) / 50)
+        : 0;
       this.endlessNextSpawn += Math.max(
         2.0,
         this.endlessInterval - this.endlessWave * 0.2 - difficultySpeedBonus,
-      );
+      ) + entityDelayBonus;
       const scaledWave = generateScaledEndlessWave(
         this.endlessWave,
         this.currentDifficultyLevel,
+        activeCount,
       );
       spawner.spawnWave(scaledWave as any);
     }
