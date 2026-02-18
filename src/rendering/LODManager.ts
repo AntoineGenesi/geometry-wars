@@ -321,6 +321,16 @@ export class LODManager {
   }
 
   /**
+   * Update LOD distance thresholds at runtime.
+   * Called by the adaptive quality system when quality level changes —
+   * lower quality levels use tighter distances so more enemies are rendered
+   * at MEDIUM/LOW LOD, reducing GPU vertex load.
+   */
+  setConfig(config: Partial<LODConfig>): void {
+    this.config = { ...this.config, ...config };
+  }
+
+  /**
    * Get the shared geometry cache (for creating InstancedMesh batches per LOD level).
    */
   getGeometryCache(): LODGeometryCache {

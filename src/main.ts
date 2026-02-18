@@ -633,6 +633,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   adaptiveQuality.onQualityChange = (_oldLevel, newLevel) => {
     const settings = adaptiveQuality.getSettings();
 
+    console.log(`[AdaptiveQuality] ${_oldLevel} → ${newLevel} (FPS: ${adaptiveQuality.getPerformanceSnapshot().fps.toFixed(1)})`);
+
     // Apply bloom settings (works for both WebGL2 and WebGPU)
     if (settings.bloomEnabled) {
       const strength = bloomStrength * settings.bloomResolutionScale;
@@ -643,6 +645,24 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       }
     } else {
       game.setBloomSettings(0, 0.6);  // Disable bloom by setting strength to 0
+    }
+
+    // Update bloom render-target resolution (lower quality = smaller target = faster).
+    // Minimum 0.25 even when bloom disabled to keep vignette pass functional.
+    // Stored on `game` so window resize re-applies the correct scale.
+    if (game.composer) {
+      const scale = settings.bloomEnabled ? Math.max(0.25, settings.bloomResolutionScale) : 0.25;
+      game.bloomResolutionScale = scale;
+      game.composer.setSize(
+        Math.floor(window.innerWidth * scale),
+        Math.floor(window.innerHeight * scale),
+      );
+      if (game.bloomPass) {
+        game.bloomPass.resolution.set(
+          Math.floor(window.innerWidth * scale),
+          Math.floor(window.innerHeight * scale),
+        );
+      }
     }
 
     // Scale particle emission budget with quality level.
@@ -659,6 +679,34 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       };
       const [maxP, maxF] = budgets[newLevel] ?? [200, 40];
       particles.setEmitBudget(maxP, maxF);
+    }
+
+    // LOD bias: tighter distance thresholds at lower quality levels so more enemies
+    // switch to simplified/billboard geometry, reducing GPU vertex load.
+    const lodDistances: Record<string, { highDistance: number; mediumDistance: number }> = {
+      ULTRA:   { highDistance: 60,  mediumDistance: 120 },
+      HIGH:    { highDistance: 45,  mediumDistance: 90  },
+      MEDIUM:  { highDistance: 30,  mediumDistance: 60  },
+      LOW:     { highDistance: 15,  mediumDistance: 30  },
+      MINIMAL: { highDistance: 10,  mediumDistance: 20  },
+    };
+    const lodCfg = lodDistances[newLevel];
+    if (lodCfg) {
+      lodManager.setConfig(lodCfg);
+    }
+
+    // Mobile: reduce pixel ratio on lower quality levels to cut fill cost.
+    if (mobile) {
+      const pixelRatioForLevel: Record<string, number> = {
+        ULTRA:   1.5,
+        HIGH:    1.5,
+        MEDIUM:  1.25,
+        LOW:     1.0,
+        MINIMAL: 1.0,
+      };
+      const targetPR = pixelRatioForLevel[newLevel] ?? 1.5;
+      game.renderer.setPixelRatio(Math.min(window.devicePixelRatio, targetPR));
+      game.renderer.setSize(window.innerWidth, window.innerHeight);
     }
   };
 
