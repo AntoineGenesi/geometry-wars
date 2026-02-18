@@ -71,7 +71,7 @@ const MIN_SPAWN_DISTANCE = 0.25;
 // Minimum distance between enemies (in UV space)
 const MIN_ENEMY_SEPARATION = 0.05;
 
-/** Hard cap on total enemy count to prevent O(n^2) separation from cratering FPS. */
+/** Absolute hard cap on total enemy count to prevent O(n^2) separation from cratering FPS. */
 const MAX_ENEMY_COUNT = 400;
 // Max attempts to find valid spawn position
 const MAX_SPAWN_ATTEMPTS = 20;
@@ -119,6 +119,13 @@ export class EnemySpawner {
   private ddaModifier: DDASpawnModifier | null = null;
   /** Player positions for DDA zone detection (updated externally). */
   private ddaPlayers: PlayerPosition[] = [];
+
+  /**
+   * Per-instance max active enemy cap, set by map size tier.
+   * Overrides the module-level MAX_ENEMY_COUNT constant.
+   * Default: MAX_ENEMY_COUNT (400) — matches legacy behavior.
+   */
+  private maxActiveEnemies: number = MAX_ENEMY_COUNT;
 
   /**
    * Speed normalization factor from the surface. Enemies multiply their
@@ -229,6 +236,20 @@ export class EnemySpawner {
   /** Get the current surface speed scale (for debugging/inspection). */
   getSurfaceSpeedScale(): number {
     return this.surfaceSpeedScale;
+  }
+
+  /**
+   * Set the maximum number of simultaneously active enemies.
+   * Used by map size tier to cap enemy pressure proportional to surface area.
+   * Clamped to [1, MAX_ENEMY_COUNT] so a misconfigured value doesn't break spawning.
+   */
+  setMaxActiveEnemies(max: number): void {
+    this.maxActiveEnemies = Math.min(Math.max(1, max), MAX_ENEMY_COUNT);
+  }
+
+  /** Get the current max active enemies cap. */
+  getMaxActiveEnemies(): number {
+    return this.maxActiveEnemies;
   }
 
   /**
@@ -387,7 +408,7 @@ export class EnemySpawner {
     for (let i = 0; i < this.enemies.length; i++) {
       if (this.enemies[i].active) activeCount++;
     }
-    if (activeCount >= MAX_ENEMY_COUNT) {
+    if (activeCount >= this.maxActiveEnemies) {
       // Return a dummy inactive enemy to avoid null returns; caller handles inactive enemies
       const dummy = new Wanderer(0, 0);
       dummy.active = false;

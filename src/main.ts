@@ -76,6 +76,7 @@ import {
   type DifficultyInput,
 } from './core/DifficultyScaling';
 import { isMobile } from './core/MobileDetector';
+import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies } from './core/MapSize';
 import { TouchInput } from './input/TouchInput';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
@@ -284,7 +285,7 @@ const _tempSphere = new THREE.Sphere();
 // Bootstrap
 // ---------------------------------------------------------------------------
 
-async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File): Promise<void> {
+async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File, mapSize?: MapSize): Promise<void> {
   // Detect mobile mode early -- affects quality, input, and UI decisions
   const mobile = isMobile();
 
@@ -590,6 +591,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
   enemySpawner.setMeshSurface(meshSurface);
   enemySpawner.setSurface(surface); // FIX: enemies need surfaceRef for UV sync in walker mode
+
+  // Apply map size cap: limits max simultaneous enemies based on surface area tier.
+  // Falls back to surface default if no explicit size was selected.
+  const resolvedMapSize = mapSize ?? getDefaultMapSizeForSurface(selectedSurface ?? 'sphere');
+  enemySpawner.setMaxActiveEnemies(getMaxActiveEnemies(resolvedMapSize));
 
   // -- GPU instanced rendering for enemies (reduces draw calls from ~2000 to ~15) --
   const enemyInstanceManager = new EnemyInstanceManager(game.scene);
@@ -1625,7 +1631,7 @@ if (quickStartConfig.enabled) {
       // Single player - Quick Game (endless) or Adventure level
       const levelIdx = selection.levelIndex ?? -1; // -1 = endless Quick Game
       window.history.replaceState({}, '', buildUrl({ surface: selection.surfaceType, level: String(levelIdx) }));
-      main(selection.surfaceType, levelIdx, selection.customMeshFile);
+      main(selection.surfaceType, levelIdx, selection.customMeshFile, selection.mapSize);
     }
   });
 }
