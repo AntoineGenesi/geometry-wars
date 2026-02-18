@@ -88,6 +88,7 @@
 
 import * as THREE from 'three';
 import { PlaygroundGame } from '../core/PlaygroundGame';
+import { EffectDictionary } from '../core/EffectDictionary';
 import type { SurfaceType } from '../surfaces/SurfaceFactory';
 import { WeaponType } from '../weapons/WeaponTypes';
 import { setGameSeed, clearGameSeed } from '../core/SeededRandom';
@@ -1149,6 +1150,11 @@ export class PlaygroundTestHarness {
     if (this.seed !== null) {
       clearGameSeed();
     }
+
+    // Clear EffectDictionary singleton to cancel its 2-second saveTimer.
+    // Without this, the pending setTimeout keeps the Node process alive after
+    // tests complete, causing vitest to hang indefinitely at 99% CPU.
+    EffectDictionary.clear();
   }
 
   // =======================================================================

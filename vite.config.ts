@@ -37,8 +37,11 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
     exclude: ['**/*.spec.js', '**/*.spec.ts', 'node_modules/**'],
-    // Prevent process from hanging after tests complete due to open handles
-    // (timers from EffectDictionary, GameAnalytics, etc.)
+    // Use forks pool to isolate PlaygroundGame WebGL/timer state between test files.
+    // Without this, RAF loops and setInterval handles from one file bleed into others.
     pool: 'forks',
+    // Reduce teardown timeout: if a worker doesn't exit cleanly (e.g. EffectDictionary
+    // saveTimer keeps the process alive), kill it after 5s instead of the default 10s.
+    teardownTimeout: 5000,
   },
 })

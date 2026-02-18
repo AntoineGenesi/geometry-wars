@@ -600,13 +600,10 @@ export class GameInstance {
 
   /** Set a different weapon (for demos) */
   setWeapon(weapon: WeaponType): void {
-    // Cycle through weapons until we get to the desired one
-    // (WeaponManager doesn't have setWeapon, only cycleWeapon)
-    let current = this.weaponManager.getCurrentWeapon();
-    while (current !== weapon) {
-      this.weaponManager.cycleWeapon();
-      current = this.weaponManager.getCurrentWeapon();
-    }
+    // Use equipWeapon to directly set the weapon — this avoids an infinite loop
+    // that occurred when cycling through weapons that aren't in the inventory.
+    // equipWeapon adds the weapon to inventory (if not present) and switches to it.
+    this.weaponManager.equipWeapon(weapon);
   }
 
   /** Change surface (for demos) */
