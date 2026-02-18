@@ -62,8 +62,12 @@ interface BenchmarkResult {
   avgFps: number;
   minFps: number;
   maxFps: number;
+  p95FrameTimeMs: number;
   stdDev: number;
   frameCount: number;
+  drawCalls: number;
+  triangles: number;
+  geometries: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +231,8 @@ export function runBenchmark(): void {
     if (frameTimes.length === 0) {
       results.push({
         entityCount: targetEnemyCount,
-        avgFps: 0, minFps: 0, maxFps: 0, stdDev: 0, frameCount: 0,
+        avgFps: 0, minFps: 0, maxFps: 0, p95FrameTimeMs: 0, stdDev: 0, frameCount: 0,
+        drawCalls: 0, triangles: 0, geometries: 0,
       });
     } else {
       const fps = frameTimes.map(t => t > 0 ? 1000 / t : 0);
@@ -237,13 +242,28 @@ export function runBenchmark(): void {
       const variance = fps.reduce((sum, f) => sum + (f - avgFps) ** 2, 0) / fps.length;
       const stdDev = Math.sqrt(variance);
 
+      // P95 frame time: 95th percentile (5% of frames are slower than this)
+      const sortedTimes = [...frameTimes].sort((a, b) => a - b);
+      const p95Idx = Math.floor(sortedTimes.length * 0.95);
+      const p95FrameTimeMs = Math.round((sortedTimes[p95Idx] ?? 0) * 10) / 10;
+
+      // Renderer stats sampled at end of measurement phase
+      const renderInfo = game.renderer.info;
+      const drawCalls = renderInfo.render.calls;
+      const triangles = renderInfo.render.triangles;
+      const geometries = renderInfo.memory.geometries;
+
       results.push({
         entityCount: targetEnemyCount,
         avgFps: Math.round(avgFps * 10) / 10,
         minFps: Math.round(minFps * 10) / 10,
         maxFps: Math.round(maxFps * 10) / 10,
+        p95FrameTimeMs,
         stdDev: Math.round(stdDev * 10) / 10,
         frameCount: frameTimes.length,
+        drawCalls,
+        triangles,
+        geometries,
       });
     }
 
@@ -273,6 +293,14 @@ export function runBenchmark(): void {
     // Put results on window for Puppeteer to read
     (window as any).__benchmarkResults = results;
     (window as any).__benchmarkDone = true;
+    (window as any).__GW_PERF__ = {
+      getRendererInfo: () => ({
+        drawCalls: game.renderer.info.render.calls,
+        triangles: game.renderer.info.render.triangles,
+        geometries: game.renderer.info.memory.geometries,
+        textures: game.renderer.info.memory.textures,
+      }),
+    };
   }
 
   // ---------------------------------------------------------------------------
