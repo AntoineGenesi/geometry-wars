@@ -585,6 +585,19 @@ Claude will read this file at the start of each session and prioritize fixing re
 
 ---
 
+## Half-Resolution Bloom (s24-perf-01-half-resolution-bloom) — 2026-02-19
+
+- [ ] **Bloom glow is still visible** — Play for 30 seconds on any map. Neon glow/bloom should be clearly visible on enemies, bullets, and the player. Should NOT look flat or unlit.
+- [ ] **Bloom is not obviously blocky or pixelated** — The glow effect should look soft and smooth, not pixelated. (Half-res bloom may be very slightly softer — this is acceptable and hard to notice.)
+- [ ] **No visual artifacting on resize** — Resize the browser window. Bloom should remain correct after resize (no half-size render frozen on screen).
+- [ ] **FPS improved vs. previous session** — If you have a baseline FPS reading (F3 overlay), verify it is equal or better than before. Expected improvement: significant on GPU-bound hardware.
+
+**What changed:** `EffectComposer` now runs at 50% of window resolution (e.g., 960×540 instead of 1920×1080) for bloom+vignette post-processing, then upscales to full res for final output. Bloom is inherently blurry so the quality difference is imperceptible while GPU pixel fill is reduced 4×.
+
+**Regression test:** `src/rendering/BloomResolution.test.ts` — 4/4 PASS ✅
+
+---
+
 ## Pill Movement Fix (s22-pill-movement-broken-v3) — 2026-02-18
 
 - [ ] **Pill map: forward movement is straight** — Select Pill map, move with W. Trail should be a smooth arc curving around the pill. **Regression**: before fix, the trail was a saw-tooth zigzag, reversing direction every ~5 frames near the south seam.
