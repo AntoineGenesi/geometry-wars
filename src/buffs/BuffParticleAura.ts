@@ -265,6 +265,7 @@ export class BuffParticleAura {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
       vertexColors: true,
+      precision: 'mediump', // Mobile: 10-20% GPU perf gain; desktop: no change
     });
 
     this.points = new THREE.Points(this.geometry, this.material);
