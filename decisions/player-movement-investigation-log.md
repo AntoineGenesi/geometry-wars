@@ -611,3 +611,40 @@ the geometric edge-crossing topology decision.
 **New rule:** When debugging geodesic walk bugs, add internal bary-state logging first
 to get exact face/bary at each step. Mathematical tracing through the atVertex logic
 found this bug in minutes.
+
+---
+
+## S23 Cross-Map Audit (2026-02-18) — Full 13-Surface Results
+
+**Methodology:** Puppeteer audit script (`tests/visual/s23-all-surfaces-audit.mjs`). W key held 8s, ~60 rAF samples per surface at SwiftShader 7fps. OscillationRatio threshold: 0.25.
+
+**Results:**
+
+| Surface | Status | OscillationRatio |
+|---------|--------|-----------------|
+| sphere | PASS | 0.000 |
+| cube | PASS | 0.000 |
+| pipe | PASS | 0.000 |
+| torus | PASS | 0.000 |
+| peanut | PASS | 0.000 |
+| icosahedron | PASS | 0.000 |
+| mobius | PASS | 0.000 |
+| sphere-tunnel | PASS | 0.020 |
+| cube-ring | PASS | 0.000 |
+| cube-tunnel | PASS | 0.000 |
+| mobius-bevel | PASS | 0.000 |
+| **capsule** | **FAIL** | **0.327** |
+| **pill** | **FAIL** | **0.500** |
+
+**Key findings:**
+1. **The S22-v3 atVertex fix (eps 0.05→0.001) did NOT fully fix pill** — oscillation still 0.500.
+2. **Capsule is broken** — newly discovered. Never previously identified in iterations 1-10.
+3. **The problem is NOT system-level** — 11/13 surfaces pass with 0.000 oscillation. The camera-relative input, tangent frame, and Gram-Schmidt fixes all work correctly.
+4. **Pattern**: Only capsule-type geometry fails (pill + capsule share cylindrical body + hemispherical cap topology). The failure is specific to this mesh structure, likely at the cylinder-cap seam triangulation.
+5. **Capsule ≈ pill geometry**: Both have cylindrical sections meeting hemispherical caps. The atVertex or seam-edge issue that breaks pill almost certainly also breaks capsule.
+
+**Implication for fix:**
+- The S22-v3 fix reduced the epsilon but the underlying atVertex/seam issue persists at the specific face geometry of pill caps
+- Capsule should be investigated with the same bary-state logging approach that found the pill root cause
+- The fix for one will likely fix the other (same geometry pattern)
+- Full HTML report: `reports/s23-movement-audit-2026-02-18T07-31-42.html`
