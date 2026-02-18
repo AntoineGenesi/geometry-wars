@@ -30,8 +30,13 @@ import { SpatialHash } from './core/SpatialHash';
 // Detect headless mode (SwiftShader is very slow, use shorter measurements)
 const isHeadless = /HeadlessChrome|SwiftShader/i.test(navigator.userAgent) ||
   !!(navigator as any).webdriver;
+// Headless tiers are limited to 200 because:
+// - EnemySpawner.maxActiveEnemies defaults to 400, but tiers > 400 cause allSpawned to
+//   never become true (spawner caps silently), causing warmup to hang forever.
+// - The benchmark's primary metric is the 200-entity tier anyway.
+// - In browser mode, the spawner cap is typically raised by the map-size tier.
 const ENTITY_TIERS = isHeadless
-  ? [50, 100, 200, 500, 1000]
+  ? [50, 100, 200]
   : [50, 100, 200, 300, 500, 750, 1000, 2000, 5000, 10000];
 const WARMUP_SECONDS = isHeadless ? 0.5 : 1;
 const MEASURE_SECONDS = isHeadless ? 2 : 4;

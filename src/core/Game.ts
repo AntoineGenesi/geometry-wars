@@ -251,10 +251,15 @@ export class Game {
       const bloomCfg: BloomConfig = { ...DEFAULT_BLOOM, ...config.bloom };
 
       this.composer = new EffectComposer(this.renderer);
+      // Run bloom at 50% resolution: halves pixel fill cost by 4x (half W × half H).
+      // Bloom is a blurry glow effect — upscaling from 50% is visually imperceptible.
+      const halfW = Math.floor(window.innerWidth / 2);
+      const halfH = Math.floor(window.innerHeight / 2);
+      this.composer.setSize(halfW, halfH);
       this.composer.addPass(new RenderPass(this.scene, this.camera));
 
       this.bloomPass = new UnrealBloomPass(
-        new THREE.Vector2(window.innerWidth, window.innerHeight),
+        new THREE.Vector2(halfW, halfH),
         bloomCfg.strength,
         bloomCfg.radius,
         bloomCfg.threshold,
@@ -550,10 +555,11 @@ export class Game {
 
     this.renderer.setSize(width, height);
     if (this.composer) {
-      this.composer.setSize(width, height);
+      // Keep composer at 50% of renderer resolution (half-res bloom optimization).
+      this.composer.setSize(Math.floor(width / 2), Math.floor(height / 2));
     }
     if (this.bloomPass) {
-      this.bloomPass.resolution.set(width, height);
+      this.bloomPass.resolution.set(Math.floor(width / 2), Math.floor(height / 2));
     }
   };
 

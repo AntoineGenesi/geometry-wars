@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-02-18T20:38:53.715Z",
+  "entityCount": 200,
+  "avgFps": 846.3,
+  "minFps": 3,
+  "p95FrameTimeMs": 206.5,
+  "drawCalls": 1,
+  "triangles": 1,
+  "geometries": 3249,
+  "maxFps": 2000,
+  "stdDev": 441.8,
+  "frameCount": 122,
+  "allTiers": [
+    {
+      "entityCount": 50,
+      "avgFps": 1144.9,
+      "minFps": 2.9,
+      "maxFps": 3333.3,
+      "p95FrameTimeMs": 183.9,
+      "stdDev": 676.2,
+      "frameCount": 121,
+      "drawCalls": 1,
+      "triangles": 1,
+      "geometries": 1087
+    },
+    {
+      "entityCount": 100,
+      "avgFps": 1266.7,
+      "minFps": 2.5,
+      "maxFps": 3333.3,
+      "p95FrameTimeMs": 218,
+      "stdDev": 655.4,
+      "frameCount": 122,
+      "drawCalls": 1,
+      "triangles": 1,
+      "geometries": 2064
+    },
+    {
+      "entityCount": 200,
+      "avgFps": 846.3,
+      "minFps": 3,
+      "maxFps": 2000,
+      "p95FrameTimeMs": 206.5,
+      "stdDev": 441.8,
+      "frameCount": 122,
+      "drawCalls": 1,
+      "triangles": 1,
+      "geometries": 3249
+    }
+  ]
+}
