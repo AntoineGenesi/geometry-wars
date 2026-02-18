@@ -1,0 +1,12 @@
+{
+  "note": "Post-fix benchmark — same environment as before, same expected result",
+  "timestamp": "2026-02-19T00:00:00.000Z",
+  "status": "not-run",
+  "entityCount": 200,
+  "avgFps": null,
+  "environment": "SwiftShader/WSL2 headless",
+  "explanation": "Post-fix benchmark would show identical results to baseline. SwiftShader devicePixelRatio=1.0 means mobile detection (devicePixelRatio>2) never triggers. The pixel ratio cap stays at 2.0 for this environment.",
+  "desktopRegressionVerification": "NONE — code analysis confirms: window.devicePixelRatio=1.0 in SwiftShader → isMobileDevice=false → maxPixelRatio=2.0 (same as before). Desktop behavior is identical.",
+  "mobileImprovementNote": "Not measurable in headless WSL2. Expected improvement: ~44% reduction in GPU fill rate on high-DPI mobile (3x/4x/5x displays). Based on pixel math: 1.5^2=2.25 vs 2.0^2=4.0 pixels rendered per CSS pixel. Estimated +50-100% FPS on high-DPI devices.",
+  "comparisonResult": "N/A (0% change confirmed via code analysis)"
+}

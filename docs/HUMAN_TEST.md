@@ -274,6 +274,22 @@ The god function was split into 8 modules. Game behavior should be identical.
 
 ---
 
+## Mobile Pixel Ratio Cap (s24-perf-02) — 2026-02-19
+
+**What was changed:** Mobile devices now cap pixel ratio at 1.5 (was 2.0). Desktop devices are unchanged.
+- `src/core/Game.ts`: UA + `devicePixelRatio > 2` detection → `maxPixelRatio = 1.5` for mobile, `2.0` for desktop.
+- `src/main.ts`: In the `if (mobile)` block, cap changed from `2` → `1.5`.
+
+**Expected improvement on high-DPI mobile:** ~44% reduction in GPU fill work (1.5² = 2.25 vs 2.0² = 4.0 pixels per CSS pixel). Should improve FPS on 3x/4x/5x displays (modern iPhones, Samsung Galaxy).
+
+**Expected behavior on desktop:** ZERO change. Desktop devices have pixel ratio 1.0–2.0, so the cap of 2.0 is unchanged.
+
+- [ ] **Test on mobile device — visually acceptable** — Open the game on an iPhone or Android device with high-DPI display (pixel ratio ≥ 3). Game should look sharp and smooth. Slightly less crisp than before (1.5x vs 2x) but not noticeably blurry.
+- [ ] **Desktop unchanged** — Open on a desktop/laptop. Rendering should look identical to before. Press F3 to open debug overlay and confirm pixel ratio is NOT affected (still uses native ratio up to 2.0).
+- [ ] **FPS improvement on mobile** — On a 3x+ display, the game should run measurably smoother than before, especially on mid-range devices.
+
+---
+
 ## Performance (commits `07aee82`, `a960932`)
 
 - [ ] **No FPS crater at high scores** `[V5 INCONCLUSIVE - SwiftShader]` — Play until 450M+ score. FPS should stay above 30

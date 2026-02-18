@@ -347,8 +347,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       bloomEnabled: true,
       shadowsEnabled: false,
     };
-    // Cap pixel ratio to 2x on mobile (saves GPU fill rate)
-    game.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // Cap pixel ratio to 1.5x on mobile — saves ~44% GPU fill vs 2.0x cap
+    // (1.5² = 2.25 vs 2.0² = 4.0 pixels per CSS pixel on high-DPI displays)
+    game.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   }
 
   // Disable built-in camera - we control camera to follow player
