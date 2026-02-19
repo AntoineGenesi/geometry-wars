@@ -8,6 +8,29 @@
 
 ---
 
+## Session 25 Pixelated vs Modern Visual Style Toggle (2026-02-19)
+
+### Visual Style Toggle in Pause Menu
+
+A "STYLE: PIXELATED / MODERN" button has been added to the pause menu. Pixelated uses half-resolution bloom (current look). Modern uses full-resolution bloom (cleaner, sharper glow).
+
+- [ ] **Button visible in pause menu** — Press ESC during gameplay. Between SETTINGS and PERFORMANCE GRAPHS buttons, there should be a teal "STYLE: PIXELATED" button.
+- [ ] **Toggle switches label** — Click the button. Label should change to "STYLE: MODERN". Click again → back to "STYLE: PIXELATED".
+- [ ] **Visual difference is perceptible** — In Modern mode, bloom glows should appear slightly sharper/crisper. In Pixelated mode they have the classic soft/blurry retro look.
+- [ ] **Persists across sessions** — Switch to Modern, close game, reopen. Should still be in Modern mode (check localStorage key `gw3d-visual-mode`).
+- [ ] **No artifacts on switch** — Switching modes mid-game should not produce visual glitches, flicker, or artifacts.
+- [ ] **Default is Pixelated** — On a fresh browser (clear localStorage), style should default to PIXELATED.
+
+**What was implemented:**
+- `loadVisualMode()`/`saveVisualMode()` in `VisualStyleSettings.ts` (localStorage key: `gw3d-visual-mode`)
+- `Game.setVisualMode(mode)` — updates `bloomResolutionScale` and resizes EffectComposer/BloomPass render targets
+- Toggle button in `PauseMenu.ts` with full callback API
+- `main.ts` — loads saved mode on startup, wires pause menu callback
+
+**Verification level:** L2 (15 unit tests pass). Needs human testing for visual confirmation.
+
+---
+
 ## Session 25 Enemy Visibility Aura Dimming (2026-02-19)
 
 ### Buff Aura Dims When Enemies Are Close

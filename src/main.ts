@@ -85,7 +85,7 @@ import { loadDDASettings } from './difficulty/DDASettings';
 import { DDALogger } from './difficulty/DDALogger';
 import { EntityAudit } from './core/EntityAudit';
 import { PerformanceLogger } from './core/PerformanceLogger';
-import { loadVisualStyle } from './ui/VisualStyleSettings';
+import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
 import { UIHelpers } from './ui/UIHelpers';
 import { CollisionSystem } from './core/CollisionSystem';
 import { PickupSpawner } from './core/PickupSpawner';
@@ -382,6 +382,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
+
+  // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
+  const savedVisualMode = loadVisualMode();
+  game.setVisualMode(savedVisualMode);
 
   // Apply visual style changes in real-time when user selects a style in Settings
   SettingsMenu.setGlobalVisualStyleChangeCallback((preset) => {
@@ -1122,6 +1126,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     ddaLogger.finalize(); // Persist DDA session even on early exit
     game.stop();
     window.location.href = window.location.pathname;
+  });
+
+  // Sync pause menu with the saved visual mode
+  pauseMenu.setVisualMode(savedVisualMode);
+
+  // Toggle visual mode when user clicks the button in the pause menu
+  pauseMenu.onVisualModeChange((mode) => {
+    saveVisualMode(mode);
+    game.setVisualMode(mode);
   });
 
   /** Build current game data snapshot for pause menu stats panel */

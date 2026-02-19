@@ -48,11 +48,13 @@ export class PauseMenu {
   private container: HTMLDivElement;
   private onResumeCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
+  private onVisualModeChangeCallback: ((mode: 'pixelated' | 'modern') => void) | null = null;
   private isPaused: boolean = false;
   private bgMusic: BackgroundMusic | null = null;
   private isHost: boolean = false;
   private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
   private perfLogger: PerformanceLogger | null = null;
+  private visualMode: 'pixelated' | 'modern' = 'pixelated';
 
   constructor() {
     this.container = document.createElement('div');
@@ -86,6 +88,10 @@ export class PauseMenu {
             <button class="pause-btn settings-btn" data-action="settings">
               <span class="btn-icon">⚙</span>
               <span>SETTINGS</span>
+            </button>
+            <button class="pause-btn visual-mode-btn" data-action="visual-mode">
+              <span class="btn-icon">🎨</span>
+              <span class="visual-mode-label">STYLE: PIXELATED</span>
             </button>
             <button class="pause-btn perf-graphs-btn" data-action="perf-graphs">
               <span class="btn-icon">📊</span>
@@ -244,6 +250,16 @@ export class PauseMenu {
       #pause-menu .settings-btn:hover {
         background: linear-gradient(180deg, #447788 0%, #335566 100%);
         box-shadow: 0 0 20px #44aacc;
+      }
+
+      #pause-menu .visual-mode-btn {
+        background: linear-gradient(180deg, #336655 0%, #224433 100%);
+        border-color: #44ffaa;
+      }
+
+      #pause-menu .visual-mode-btn:hover {
+        background: linear-gradient(180deg, #448866 0%, #336644 100%);
+        box-shadow: 0 0 20px #44ffaa;
       }
 
       #pause-menu .perf-graphs-btn {
@@ -502,6 +518,13 @@ export class PauseMenu {
       });
     });
 
+    const visualModeBtn = this.container.querySelector('[data-action="visual-mode"]');
+    visualModeBtn?.addEventListener('click', () => {
+      this.visualMode = this.visualMode === 'pixelated' ? 'modern' : 'pixelated';
+      this.updateVisualModeLabel();
+      this.onVisualModeChangeCallback?.(this.visualMode);
+    });
+
     const perfGraphsBtn = this.container.querySelector('[data-action="perf-graphs"]');
     perfGraphsBtn?.addEventListener('click', () => {
       this.showPerformanceGraphsModal();
@@ -589,6 +612,32 @@ export class PauseMenu {
   setMusic(music: BackgroundMusic): void {
     this.bgMusic = music;
     this.updateMusicLabel();
+  }
+
+  /**
+   * Set the current visual mode. Updates the button label.
+   * Call this on startup to sync with the saved mode.
+   */
+  setVisualMode(mode: 'pixelated' | 'modern'): void {
+    this.visualMode = mode;
+    this.updateVisualModeLabel();
+  }
+
+  /** Get the current visual mode. */
+  getVisualMode(): 'pixelated' | 'modern' {
+    return this.visualMode;
+  }
+
+  /** Register callback for when the user toggles the visual mode. */
+  onVisualModeChange(callback: (mode: 'pixelated' | 'modern') => void): void {
+    this.onVisualModeChangeCallback = callback;
+  }
+
+  private updateVisualModeLabel(): void {
+    const label = this.container.querySelector('.visual-mode-label');
+    if (label) {
+      label.textContent = `STYLE: ${this.visualMode === 'pixelated' ? 'PIXELATED' : 'MODERN'}`;
+    }
   }
 
   /**
