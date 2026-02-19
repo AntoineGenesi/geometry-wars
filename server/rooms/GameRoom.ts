@@ -211,8 +211,11 @@ export class GameRoom extends Room<GameState> {
     player.name = finalName;
     player.color = PLAYER_COLORS[this.state.players.size % PLAYER_COLORS.length];
 
-    // First player to join becomes host
-    if (this.state.players.size === 0) {
+    // First player to join (no host assigned yet) becomes host.
+    // Using hostId === '' is more explicit than players.size === 0 and handles
+    // edge cases like host transfer: if hostId was transferred, new joiners
+    // won't accidentally overwrite the current host.
+    if (this.state.hostId === '') {
       this.state.hostId = client.sessionId;
       console.log(`[GameRoom] ${player.name} is the host`);
     }
@@ -245,12 +248,29 @@ export class GameRoom extends Room<GameState> {
       this.playerInvincibility.delete(client.sessionId);
     }
 
-    // If the host left, notify remaining clients and close the room
+    // If the host left, try to transfer host to another player.
+    // Previously this always closed the room, which meant any host disconnect
+    // (including brief network hiccups) would kick all other players.
+    // Now: transfer host if others are present, close only if room is empty.
     if (client.sessionId === this.state.hostId) {
-      console.log('[GameRoom] Host left, closing room');
-      this.broadcast('host_left');
-      this.disconnect();
-      return;
+      let newHostId = '';
+      this.state.players.forEach((_p, key) => {
+        if (!newHostId) newHostId = key;
+      });
+
+      if (newHostId) {
+        this.state.hostId = newHostId;
+        const newHostPlayer = this.state.players.get(newHostId);
+        console.log(`[GameRoom] Host transferred to: ${newHostPlayer?.name || newHostId}`);
+        // Broadcast so clients can update UI immediately (state patch also carries hostId)
+        this.broadcast('host_changed', { hostId: newHostId });
+      } else {
+        // No remaining players — close the room
+        console.log('[GameRoom] Host left with no other players, closing room');
+        this.broadcast('host_left');
+        this.disconnect();
+        return;
+      }
     }
 
     // End game if no players left
