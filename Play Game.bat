@@ -103,13 +103,19 @@ echo.
 echo  [..] Fixing Windows-specific native binaries...
 echo  (WSL installed Linux binaries; downloading Windows equivalents)
 echo.
-node scripts\fix-native-binaries.js
-if %ERRORLEVEL% neq 0 (
-    echo.
-    echo  [!] Failed to fix native binaries. Check output above.
-    goto :end_pause
-)
+echo  This may take a minute (downloading from npm)...
 echo.
+call node scripts\fix-native-binaries.js
+set FIX_ERR=%ERRORLEVEL%
+echo.
+if %FIX_ERR% neq 0 (
+    echo  [!] Failed to fix native binaries (exit code %FIX_ERR%). See output above.
+    echo.
+    echo  Press any key to close...
+    pause >nul
+    exit /b 1
+)
+echo  Binaries fixed. Starting servers...
 goto :start_servers
 
 :end_pause

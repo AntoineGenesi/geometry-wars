@@ -77,17 +77,31 @@ for (const fix of fixes) {
   console.log(`  Downloading ${fullPkg}...`);
   try {
     execSync(`npm install --prefix "${tmpDir}" --no-save ${fullPkg}`, {
-      stdio: 'pipe',
-      timeout: 60000
+      stdio: 'inherit',
+      timeout: 120000
     });
   } catch (err) {
     console.error(`  [!] Failed to download ${fullPkg}: ${err.message}`);
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
     continue;
   }
 
   // Copy to target
   const srcDir = path.join(tmpDir, 'node_modules', ...fix.pkg.split('/'));
   const dstDir = path.join(PROJECT, fix.target);
+
+  if (!fs.existsSync(srcDir)) {
+    console.error(`  [!] Download succeeded but package not found at ${srcDir}`);
+    // npm might have installed with a different structure — check flat
+    const altSrc = path.join(tmpDir, 'node_modules', fix.pkg.split('/').pop());
+    if (fs.existsSync(altSrc)) {
+      console.log(`  Found at alternate path: ${altSrc}`);
+    } else {
+      console.error(`  [!] Cannot find downloaded package. Skipping.`);
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+      continue;
+    }
+  }
 
   ensureDir(path.dirname(fix.target));
 
@@ -96,8 +110,12 @@ for (const fix of fixes) {
     fs.rmSync(dstDir, { recursive: true, force: true });
   }
 
-  copyDirSync(srcDir, dstDir);
-  console.log(`  Copied to ${fix.target}`);
+  try {
+    copyDirSync(srcDir, dstDir);
+    console.log(`  Copied to ${fix.target}`);
+  } catch (err) {
+    console.error(`  [!] Failed to copy: ${err.message}`);
+  }
 
   // Cleanup temp
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
