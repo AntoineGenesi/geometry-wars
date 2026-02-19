@@ -8,6 +8,26 @@
 
 ---
 
+## Session 25 LAN Pause/Resume Fix (2026-02-19)
+
+### Network Multiplayer: Pause/Resume Player Movement
+
+When the host pauses and resumes the game in LAN mode (`?mode=network`), all clients should be able to move immediately after resume.
+
+- [ ] **Host pauses → overlay appears on all clients** — Host presses ESC. Both host and non-host clients should see the "PAUSED" overlay.
+- [ ] **Non-host client moves after resume** — Host presses ESC to resume (or clicks RESUME button). Non-host player should respond to WASD/joystick input on the very next frame. Player should NOT be frozen.
+- [ ] **No dt spike on first frame after resume** — Player should not teleport or jump position on the first movement after resume. Movement should feel smooth.
+- [ ] **Long pause test** — Pause for 10+ seconds, then resume. Movement should still work. No rubber-banding or position snap.
+
+**What was fixed:**
+- `src/network-main.ts` — `showPauseOverlay()` now calls `game.pause()` when pausing and `game.resume()` when unpausing
+- Previously, `game.resume()` (which resyncs the Game clock via `clock.resync()`) was ONLY called in the ESC key handler, not in the `showPauseOverlay` function
+- Non-host clients receive unpause via `onStateChange → showPauseOverlay(false)` — that path never called `game.resume()`, leaving the clock unsynced and `isPaused=false` causing the game loop to run with a stale/huge dt
+
+**Verification level:** L1 (TypeScript compiles). LAN requires human testing — Level 6.
+
+---
+
 ## Session 25 Pixelated vs Modern Visual Style Toggle (2026-02-19)
 
 ### Visual Style Toggle in Pause Menu
