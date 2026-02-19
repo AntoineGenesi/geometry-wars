@@ -335,4 +335,130 @@ describe('PerformanceLogger', () => {
       expect(summary.peakDifficultyTier).toBe(5.7);
     });
   });
+
+  describe('Player Surface Position Tracking', () => {
+    it('should record player surface position in data points', () => {
+      logger.setPlayerSurfacePosition(0.3, 0.7, 42, 1.5, 2.5, 3.5);
+      logger.recordFrame(0.5);
+
+      const points = logger.getDataPoints();
+      expect(points.length).toBe(1);
+      expect(points[0].playerSurfaceU).toBeCloseTo(0.3, 5);
+      expect(points[0].playerSurfaceV).toBeCloseTo(0.7, 5);
+      expect(points[0].playerFaceIndex).toBe(42);
+      expect(points[0].playerWorldX).toBeCloseTo(1.5, 3);
+      expect(points[0].playerWorldY).toBeCloseTo(2.5, 3);
+      expect(points[0].playerWorldZ).toBeCloseTo(3.5, 3);
+    });
+
+    it('should not flag stuck on first call (player not yet moving)', () => {
+      logger.setPlayerSurfacePosition(0.5, 0.5, 0, 0, 0, 0);
+      logger.recordFrame(0.5);
+
+      const points = logger.getDataPoints();
+      expect(points[0].playerStuck).toBe(false);
+    });
+
+    it('should reset stuck timer when position changes', () => {
+      vi.useFakeTimers();
+
+      // Simulate player stationary for 1.5 seconds
+      logger.setPlayerSurfacePosition(0.3, 0.3, 5, 1, 2, 3);
+      vi.advanceTimersByTime(1500);
+
+      // Player moves — should reset timer
+      logger.setPlayerSurfacePosition(0.4, 0.4, 5, 1.1, 2, 3);
+      vi.advanceTimersByTime(1000); // only 1 second since last move
+
+      logger.recordFrame(0.5);
+      const points = logger.getDataPoints();
+      expect(points[0].playerStuck).toBe(false);
+
+      vi.useRealTimers();
+    });
+
+    it('should flag stuck after >2 seconds without position change', () => {
+      vi.useFakeTimers();
+      // Advance initial time slightly so constructor timestamp isn't "now"
+      vi.advanceTimersByTime(10);
+
+      // Position changes on first call (different from _stuckLastU=0 default)
+      logger.setPlayerSurfacePosition(0.5, 0.5, 10, 1, 2, 3);
+      vi.advanceTimersByTime(2100); // 2.1 seconds later, same position
+
+      logger.setPlayerSurfacePosition(0.5, 0.5, 10, 1, 2, 3);
+      logger.recordFrame(0.5);
+
+      const points = logger.getDataPoints();
+      expect(points[0].playerStuck).toBe(true);
+
+      vi.useRealTimers();
+    });
+
+    it('should not flag stuck if face changes even when UV is same', () => {
+      vi.useFakeTimers();
+      vi.advanceTimersByTime(10);
+
+      logger.setPlayerSurfacePosition(0.5, 0.5, 10, 1, 2, 3);
+      vi.advanceTimersByTime(2100);
+
+      // UV same but face changed — still moving
+      logger.setPlayerSurfacePosition(0.5, 0.5, 11, 1, 2, 3);
+      logger.recordFrame(0.5);
+
+      const points = logger.getDataPoints();
+      expect(points[0].playerStuck).toBe(false);
+
+      vi.useRealTimers();
+    });
+
+    it('should serialize and restore player surface position fields', () => {
+      logger.setPlayerSurfacePosition(0.25, 0.75, 100, 5.5, -2.3, 1.1);
+      logger.recordFrame(0.5);
+      logger.saveSession();
+
+      const sessions = logger.loadAllSessions();
+      expect(sessions.length).toBe(1);
+      const dp = sessions[0].dataPoints[0];
+      expect(dp.pu).toBeCloseTo(0.25, 5);
+      expect(dp.pv).toBeCloseTo(0.75, 5);
+      expect(dp.pf).toBe(100);
+    });
+
+    it('should include player surface position columns in CSV', () => {
+      logger.setPlayerSurfacePosition(0.3, 0.7, 42, 1.5, 2.5, 3.5);
+      logger.recordFrame(0.5);
+      logger.saveSession();
+
+      const csv = PerformanceLogger.exportAllAsCSV();
+      expect(csv).toContain('player_surface_u');
+      expect(csv).toContain('player_surface_v');
+      expect(csv).toContain('player_face_index');
+      expect(csv).toContain('player_world_x');
+      expect(csv).toContain('player_world_y');
+      expect(csv).toContain('player_world_z');
+      expect(csv).toContain('player_stuck');
+    });
+
+    it('should handle old sessions without player surface fields (backward compat)', () => {
+      const oldSession = {
+        timestamp: new Date().toISOString(),
+        mapType: 'sphere',
+        duration: 10,
+        dataPoints: [
+          {
+            t: 0, f: 60, e: 10, b: 5, et: [],
+            dc: 0, tr: 0, mm: 0, lh: 0, lm: 0, ll: 0,
+            dd: 0, ql: 'HIGH', s: 0, k: 0, d: 0, aw: 'Standard', ks: 0, ae: 0,
+            // NO player surface fields (old session format)
+          },
+        ],
+      };
+
+      localStorage.setItem('gw_perf_log', JSON.stringify([oldSession]));
+      const sessions = logger.loadAllSessions();
+      expect(sessions[0].dataPoints[0].pu).toBeUndefined();
+      expect(sessions[0].dataPoints[0].ps).toBeUndefined();
+    });
+  });
 });

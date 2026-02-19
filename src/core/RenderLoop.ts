@@ -302,6 +302,16 @@ export class RenderLoop {
       ctx.particles.activeEffectCount,
     );
 
+    // Player surface position tracking for stuck detection
+    ctx.perfLogger.setPlayerSurfacePosition(
+      ctx.player.surfaceU,
+      ctx.player.surfaceV,
+      ctx.playerWalker.faceIndex,
+      ctx.playerWalker.position.x,
+      ctx.playerWalker.position.y,
+      ctx.playerWalker.position.z,
+    );
+
     // Count visible entities (frustum culling check)
     this._projScreenMatrix.multiplyMatrices(ctx.game.camera.projectionMatrix, ctx.game.camera.matrixWorldInverse);
     this._frustum.setFromProjectionMatrix(this._projScreenMatrix);

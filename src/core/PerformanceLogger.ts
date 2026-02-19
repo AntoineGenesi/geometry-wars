@@ -84,6 +84,19 @@ export interface PerformanceDataPoint {
   visibleBullets: number;
   /** Active explosion/death effects currently playing. */
   activeExplosions: number;
+
+  // -- Player surface position (for stuck detection) --
+  /** Player UV coordinates on surface (0-1 range). */
+  playerSurfaceU: number;
+  playerSurfaceV: number;
+  /** Player face index on mesh surface. */
+  playerFaceIndex: number;
+  /** Player world-space position. */
+  playerWorldX: number;
+  playerWorldY: number;
+  playerWorldZ: number;
+  /** True if player UV+face unchanged for >2 seconds (stuck in mesh). */
+  playerStuck: boolean;
 }
 
 /** Serialized data point for localStorage. */
@@ -114,6 +127,14 @@ export interface SerializedDataPoint {
   ve?: number;  // visibleEnemies
   vb?: number;  // visibleBullets
   ax?: number;  // activeExplosions
+  // Player surface position (optional for backward compat with old sessions)
+  pu?: number;  // playerSurfaceU
+  pv?: number;  // playerSurfaceV
+  pf?: number;  // playerFaceIndex
+  px?: number;  // playerWorldX
+  py?: number;  // playerWorldY
+  pz?: number;  // playerWorldZ
+  ps?: boolean; // playerStuck
 }
 
 /** Frame spike event logged individually. */
@@ -230,6 +251,20 @@ export class PerformanceLogger {
   private currentVisibleBullets = 0;
   private currentActiveExplosions = 0;
 
+  // Player surface position telemetry (set externally)
+  private currentPlayerSurfaceU = 0;
+  private currentPlayerSurfaceV = 0;
+  private currentPlayerFaceIndex = 0;
+  private currentPlayerWorldX = 0;
+  private currentPlayerWorldY = 0;
+  private currentPlayerWorldZ = 0;
+  private currentPlayerStuck = false;
+  // Stuck detection: last known change timestamp + reference position
+  private _stuckLastU = 0;
+  private _stuckLastV = 0;
+  private _stuckLastFace = 0;
+  private _stuckLastChangeMs = 0; // initialized in constructor
+
   // Frame spike tracking
   private readonly spikeEvents: FrameSpikeEvent[] = [];
   private static readonly MAX_SPIKES_PER_SESSION = 200;
@@ -249,6 +284,8 @@ export class PerformanceLogger {
   constructor(mapType: string) {
     this.mapType = mapType;
     this.sessionStart = Date.now();
+    // Initialize stuck timer to now so player is not immediately marked stuck
+    this._stuckLastChangeMs = Date.now();
 
     // Migrate legacy data if exists
     PerformanceLogger.migrateLegacyData();
@@ -282,6 +319,13 @@ export class PerformanceLogger {
         visibleEnemies: 0,
         visibleBullets: 0,
         activeExplosions: 0,
+        playerSurfaceU: 0,
+        playerSurfaceV: 0,
+        playerFaceIndex: 0,
+        playerWorldX: 0,
+        playerWorldY: 0,
+        playerWorldZ: 0,
+        playerStuck: false,
       };
     }
   }
@@ -381,6 +425,46 @@ export class PerformanceLogger {
     this.currentVisibleEnemies = visibleEnemies;
     this.currentVisibleBullets = visibleBullets;
     this.currentActiveExplosions = activeExplosions;
+  }
+
+  /**
+   * Set player surface position for stuck detection telemetry.
+   * Call this every frame BEFORE recordFrame().
+   *
+   * Stuck detection: if UV coordinates and face index are unchanged for >2 seconds,
+   * the player is flagged as stuck (e.g. clipped into mesh geometry).
+   */
+  setPlayerSurfacePosition(
+    u: number,
+    v: number,
+    faceIndex: number,
+    worldX: number,
+    worldY: number,
+    worldZ: number,
+  ): void {
+    const now = Date.now();
+    const STUCK_THRESHOLD_MS = 2000;
+    const UV_EPSILON = 1e-5;
+
+    const posChanged =
+      Math.abs(u - this._stuckLastU) > UV_EPSILON ||
+      Math.abs(v - this._stuckLastV) > UV_EPSILON ||
+      faceIndex !== this._stuckLastFace;
+
+    if (posChanged) {
+      this._stuckLastU = u;
+      this._stuckLastV = v;
+      this._stuckLastFace = faceIndex;
+      this._stuckLastChangeMs = now;
+    }
+
+    this.currentPlayerSurfaceU = u;
+    this.currentPlayerSurfaceV = v;
+    this.currentPlayerFaceIndex = faceIndex;
+    this.currentPlayerWorldX = worldX;
+    this.currentPlayerWorldY = worldY;
+    this.currentPlayerWorldZ = worldZ;
+    this.currentPlayerStuck = (now - this._stuckLastChangeMs) > STUCK_THRESHOLD_MS;
   }
 
   /**
@@ -644,6 +728,8 @@ export class PerformanceLogger {
       'score', 'kills', 'deaths', 'active_weapon',
       'active_buffs', 'kills_this_sample', 'active_effects',
       'visible_enemies', 'visible_bullets', 'active_explosions',
+      'player_surface_u', 'player_surface_v', 'player_face_index',
+      'player_world_x', 'player_world_y', 'player_world_z', 'player_stuck',
     ];
     const rows: string[] = [headers.join(',')];
 
@@ -687,6 +773,14 @@ export class PerformanceLogger {
           const diffTier = sdp.dt ?? 0;
           const powerLevel = sdp.pl ?? 0;
 
+          const pu = sdp.pu ?? 0;
+          const pv = sdp.pv ?? 0;
+          const pf = sdp.pf ?? 0;
+          const px = sdp.px ?? 0;
+          const py = sdp.py ?? 0;
+          const pz = sdp.pz ?? 0;
+          const ps = sdp.ps ? 1 : 0;
+
           rows.push([
             session.timestamp, session.mapType, time, fps,
             enemies, bullets, dc, tr,
@@ -695,6 +789,7 @@ export class PerformanceLogger {
             score, kills, deaths, aw,
             `"${ab}"`, ks, ae,
             ve, vb, ax,
+            pu, pv, pf, px, py, pz, ps,
           ].join(','));
         }
       }
@@ -764,6 +859,15 @@ export class PerformanceLogger {
     point.visibleBullets = this.currentVisibleBullets;
     point.activeExplosions = this.currentActiveExplosions;
 
+    // Player surface position
+    point.playerSurfaceU = this.currentPlayerSurfaceU;
+    point.playerSurfaceV = this.currentPlayerSurfaceV;
+    point.playerFaceIndex = this.currentPlayerFaceIndex;
+    point.playerWorldX = this.currentPlayerWorldX;
+    point.playerWorldY = this.currentPlayerWorldY;
+    point.playerWorldZ = this.currentPlayerWorldZ;
+    point.playerStuck = this.currentPlayerStuck;
+
     // Kills delta since last sample (for kill rate tracking)
     const killsDelta = this.currentKills - this.lastSampleKills;
     point.killsThisSample = killsDelta;
@@ -812,6 +916,13 @@ export class PerformanceLogger {
       visibleEnemies: point.visibleEnemies,
       visibleBullets: point.visibleBullets,
       activeExplosions: point.activeExplosions,
+      playerSurfaceU: point.playerSurfaceU,
+      playerSurfaceV: point.playerSurfaceV,
+      playerFaceIndex: point.playerFaceIndex,
+      playerWorldX: point.playerWorldX,
+      playerWorldY: point.playerWorldY,
+      playerWorldZ: point.playerWorldZ,
+      playerStuck: point.playerStuck,
     };
   }
 
@@ -860,6 +971,14 @@ export class PerformanceLogger {
       ve: point.visibleEnemies,
       vb: point.visibleBullets,
       ax: point.activeExplosions,
+      // Player surface position (omit zero values to save space)
+      pu: point.playerSurfaceU !== 0 ? Math.round(point.playerSurfaceU * 1e5) / 1e5 : undefined,
+      pv: point.playerSurfaceV !== 0 ? Math.round(point.playerSurfaceV * 1e5) / 1e5 : undefined,
+      pf: point.playerFaceIndex !== 0 ? point.playerFaceIndex : undefined,
+      px: point.playerWorldX !== 0 ? Math.round(point.playerWorldX * 1000) / 1000 : undefined,
+      py: point.playerWorldY !== 0 ? Math.round(point.playerWorldY * 1000) / 1000 : undefined,
+      pz: point.playerWorldZ !== 0 ? Math.round(point.playerWorldZ * 1000) / 1000 : undefined,
+      ps: point.playerStuck || undefined,  // omit false to save space
     };
   }
 }
