@@ -34,6 +34,7 @@ import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
 import { ScorePopupManager } from './effects/ScorePopup';
 import { GlowTrail } from './effects/GlowTrail';
+import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
 import { InputManager } from './input/InputManager';
 import { MeshSurface } from './surfaces/MeshSurface';
 import { getSoundEngine } from './audio/SoundEngine';
@@ -408,6 +409,11 @@ function main() {
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
+    enemyGlowTrails.forEach((trail) => {
+      scene.remove(trail.root);
+      trail.dispose();
+    });
+    enemyGlowTrails.clear();
     remotePlayerTargetUV.clear();
     bulletTargetUV.clear();
     geomTargetUV.clear();
@@ -591,9 +597,15 @@ function main() {
   const playerGlowTrails = new Map<string, GlowTrail>();
   const playerAliveState = new Map<string, boolean>();
 
+  // -- EntityGlow for local player (pulsing halo, same as single-player) --
+  const glowManager = new EntityGlowManager();
+
   // -- Enemy tracking --
   // Maps server enemy ID -> real BaseEnemy instance (created via EnemySpawner)
   const networkEnemies = new Map<string, BaseEnemy>();
+  // Maps fast enemy ID -> GlowTrail (Mayfly/Rocket/Duck only, same as single-player)
+  const enemyGlowTrails = new Map<string, GlowTrail>();
+  const FAST_ENEMY_TYPES = new Set<string>(['mayfly', 'rocket', 'duck']);
 
   // -- Interpolation targets (updated at 30Hz from server, consumed at 60Hz in render) --
   // Store target UV positions for enemies and remote players so we can
@@ -1112,6 +1124,12 @@ function main() {
     scene.add(trail.root);
     playerGlowTrails.set(id, trail);
 
+    // Attach EntityGlow halo to local player mesh (same as single-player main.ts)
+    if (id === localPlayerId) {
+      const preset = GlowPresets.player;
+      glowManager.addGlow(player.mesh, preset.color, preset.size, preset.opacity);
+    }
+
     // Add ally glow for remote players
     if (id !== localPlayerId) {
       allyGlowManager.addGlow(id, netPlayer.color, 0.9);
@@ -1140,6 +1158,15 @@ function main() {
     enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV, 0, true);
 
     networkEnemies.set(id, enemy);
+
+    // Create glow trail for fast enemy types (Mayfly/Rocket/Duck), same as single-player
+    if (FAST_ENEMY_TYPES.has(spawnerType)) {
+      const trailColor = ENEMY_COLORS[netEnemy.type] ?? new THREE.Color(0xff8800);
+      const enemyTrail = new GlowTrail(trailColor, 60, 0.4);
+      scene.add(enemyTrail.root);
+      enemyGlowTrails.set(id, enemyTrail);
+    }
+
     return enemy;
   }
 
@@ -1261,6 +1288,7 @@ function main() {
       if (!state.players.has(id)) {
         const player = networkPlayers.get(id);
         if (player) {
+          glowManager.removeGlow(player.mesh);
           scene.remove(player.mesh);
         }
         networkPlayers.delete(id);
@@ -1353,6 +1381,14 @@ function main() {
         }
         networkEnemies.delete(id);
         enemyTargetUV.delete(id);
+
+        // Clean up glow trail for fast enemies
+        const enemyTrail = enemyGlowTrails.get(id);
+        if (enemyTrail) {
+          scene.remove(enemyTrail.root);
+          enemyTrail.dispose();
+          enemyGlowTrails.delete(id);
+        }
       }
     });
 
@@ -1883,6 +1919,7 @@ function main() {
     surface.updateGrid(dt);
     killLog.update(dt);
     allyGlowManager.update(dt);
+    glowManager.update(dt);
 
     // NOTE: We do NOT call enemySpawner.update() here. That method runs full
     // enemy AI (movement toward player, separation, spawn warnings) which is
@@ -1893,6 +1930,7 @@ function main() {
 
     // Update glow trails
     playerGlowTrails.forEach((trail) => trail.update(dt));
+    enemyGlowTrails.forEach((trail) => trail.update(dt));
 
     // Update geom pool (magnetic pull animation toward local player)
     const localPlayer = networkPlayers.get(localPlayerId);
@@ -1983,6 +2021,12 @@ function main() {
 
       // Apply surface transform to update 3D position from UV
       enemy.applySurfaceTransform(transform);
+
+      // Add glow trail point for fast enemies (after position is updated)
+      const enemyTrail = enemyGlowTrails.get(id);
+      if (enemyTrail && enemy.mesh?.visible) {
+        enemyTrail.addPoint(enemy.position.clone());
+      }
     });
 
     // -----------------------------------------------------------------------
