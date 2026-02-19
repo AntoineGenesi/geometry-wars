@@ -64,6 +64,9 @@ import { PerformanceTracker } from './core/PerformanceTracker';
 import { PerformanceLogger } from './core/PerformanceLogger';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { SplitScreenPerfOverlay } from './ui/SplitScreenPerfOverlay';
+import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
+import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
+import { GlowTrail } from './effects/GlowTrail';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -124,6 +127,22 @@ const ENEMY_COLORS: Record<string, THREE.Color> = {
   titanweaver: new THREE.Color(0x22ff44),
   boss: new THREE.Color(0xffcc00),
 };
+
+// ---------------------------------------------------------------------------
+// Weapon type -> bullet visual type mapping (for BulletInstanceManager)
+// ---------------------------------------------------------------------------
+
+function weaponToBulletVisual(weapon: WeaponType): BulletVisualType {
+  switch (weapon) {
+    case WeaponType.Spread: return BulletVisualType.Spread;
+    case WeaponType.Piercing: return BulletVisualType.Piercing;
+    case WeaponType.Homing: return BulletVisualType.Homing;
+    default: return BulletVisualType.Standard;
+  }
+}
+
+// Pre-allocated temp vector for bullet instance sync (zero per-frame allocation)
+const _bulletSyncDir = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
 // Surface transform helper (for enemies/geoms that still use UV)
@@ -314,6 +333,14 @@ function main(): void {
   const bulletPool = new BulletPool();
   bulletPool.setMeshSurface(meshSurface);
   game.scene.add(bulletPool.root);
+
+  // -- GPU instanced bullet rendering (reduces draw calls from 1-per-bullet to 1-per-type) --
+  const bulletInstanceManager = new BulletInstanceManager(game.scene, 400); // 400 for 4 players
+  // Hide the original line-based bullet visuals since instanced rendering takes over
+  bulletPool.root.visible = false;
+  // Track which pool indices are registered with the instance manager
+  const bulletInstanceIds = new Set<string>();
+
   const geomPool = new GeomPool();
   game.scene.add(geomPool.root);
   const particles = new ParticleSystem(5000);
@@ -384,6 +411,14 @@ function main(): void {
     allyGlowManager.addGlow(i, PLAYER_COLORS[i], 0.9);
   }
 
+  // -- Per-player glow trails (follow player movement, different color per player) --
+  const glowTrails: GlowTrail[] = [];
+  for (let i = 0; i < playerCount; i++) {
+    const trail = new GlowTrail(new THREE.Color(PLAYER_COLORS[i]), 60, 0.4);
+    game.scene.add(trail.root);
+    glowTrails.push(trail);
+  }
+
   scoreManager.setPlayer(players[0]);
 
   // Aura callbacks
@@ -408,6 +443,10 @@ function main(): void {
   enemySpawner.setSurfaceSpeedScale(surface.speedScale);
   enemySpawner.setSurface(surface);
   enemySpawner.setMeshSurface(meshSurface);
+
+  // -- GPU instanced rendering for enemies (reduces draw calls from ~2000 to ~15) --
+  const enemyInstanceManager = new EnemyInstanceManager(game.scene);
+  enemySpawner.setInstanceManager(enemyInstanceManager);
 
   // -- Dynamic Difficulty Adjustment (DDA) system --
   const ddaSettings = loadDDASettings();
@@ -621,7 +660,7 @@ function main(): void {
 
     player.weaponFireHandler = (origin: THREE.Vector3, direction: THREE.Vector3) => {
       const gameTime = game.clock.totalTime;
-      const fired = wm.fire(origin, direction, gameTime);
+      const fired = wm.fire(origin, direction, gameTime, walkers[i].normal);
       if (fired) {
         surface.applyForce(origin, 0.1, 0.3);
         sound.play('shoot', { pitch: 0.9 + Math.random() * 0.2 });
@@ -837,6 +876,9 @@ function main(): void {
     }
   });
 
+  // Pre-allocated Set for bullet instance sync (reused each frame, avoids per-frame allocation)
+  const _seenBulletIds = new Set<string>();
+
   // -- Fixed update loop --
   game.onFixedUpdate = (dt: number) => {
     if (isPaused || isGameOver) return;
@@ -974,6 +1016,14 @@ function main(): void {
         boost: false,
         weaponSwap: false,
       });
+
+      // Add point to glow trail (player is alive at this point in the loop)
+      glowTrails[i].addPoint(player.mesh.position.clone());
+    }
+
+    // Update all glow trails (fade out points, even for dead players)
+    for (let i = 0; i < playerCount; i++) {
+      glowTrails[i].update(dt);
     }
 
     // -----------------------------------------------------------------------
@@ -1051,6 +1101,36 @@ function main(): void {
     // Update shared systems
     // -----------------------------------------------------------------------
     bulletPool.update(dt);
+
+    // Sync bullet positions to GPU-instanced rendering
+    // Register new bullets, update existing, remove killed ones
+    _seenBulletIds.clear();
+    bulletPool.forEachActive((index: number, position: THREE.Vector3, data: any) => {
+      const id = `b${index}`;
+      _seenBulletIds.add(id);
+      _bulletSyncDir.set(data.dirX, data.dirY, data.dirZ);
+      if (!bulletInstanceIds.has(id)) {
+        // New bullet: determine visual type from the owner's current weapon
+        const ownerId = (data.ownerId as number) ?? 0;
+        const wmIdx = Math.max(0, Math.min(ownerId, weaponManagers.length - 1));
+        const wm = weaponManagers[wmIdx];
+        const visualType = wm ? weaponToBulletVisual(wm.getCurrentWeapon()) : BulletVisualType.Standard;
+        bulletInstanceManager.addBullet(id, visualType, position, _bulletSyncDir);
+        bulletInstanceIds.add(id);
+      } else {
+        bulletInstanceManager.updateBullet(id, position, _bulletSyncDir);
+      }
+    });
+    // Remove bullets that were killed this frame
+    for (const id of bulletInstanceIds) {
+      if (!_seenBulletIds.has(id)) {
+        bulletInstanceManager.removeBullet(id);
+        bulletInstanceIds.delete(id);
+      }
+    }
+    // Flush instance transforms to GPU
+    bulletInstanceManager.update();
+
     geomPool.update(dt, trackU, trackV, game.clock.totalTime);
     particles.update(dt);
     scorePopups.update(dt);
@@ -1123,6 +1203,10 @@ function main(): void {
           const scorePower = scoreManager.getScorePowerMultiplier();
           const damage = 1 * auraBuff.damageMultiplier * scorePower;
           enemy.takeDamage(damage, bulletData.ownerId);
+
+          if (enemy.alive) {
+            scorePopups.spawnDamage(bulletPos, damage);
+          }
 
           particles.bulletImpact(bulletPos);
           surface.applyForce(bulletPos, 0.08, 0.3);
