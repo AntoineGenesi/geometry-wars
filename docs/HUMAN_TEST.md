@@ -82,6 +82,30 @@ Start a LAN game (host + at least one non-host player).
 
 ---
 
+## Session 26 Visual Styles Playground — Appearance Mismatch & Respawn Fix (2026-02-20)
+
+### Sektori Styles Look Correct in Demo
+
+Open the Visual Styles page → click any **Sektori** style (e.g. "Sektori Cyan", "Sektori Warm"):
+
+- [ ] **Sektori shows vibrant glow, NOT grey/muted** — The grid should glow brightly around the player with the correct color (cyan, warm orange, etc.). Moving around should show the proximity glow follow the player. Should look similar to the thumbnail.
+- [ ] **Glow covers most of the surface** — When standing still, the glow should illuminate a significant portion of the grid around the player (not just a tiny dot).
+- [ ] **Style matches thumbnail** — The preview thumbnail in the style selector should look roughly like the playable demo.
+
+### Infinite Respawns in Playground
+
+In any Visual Styles playground demo:
+
+- [ ] **Player respawns after dying** — Let an enemy touch you. Player dies (flash), waits ~2 seconds, then respawns at center. Game does NOT end.
+- [ ] **No "Game Over" screen** — After dying multiple times in a row, the game continues indefinitely. No game-over state, no black screen.
+- [ ] **Lives display shows ∞** — The HUD (top-left stats overlay) shows `LIVES: ∞`, not a countdown number.
+
+**Root causes fixed (2026-02-20):**
+- `SektoriGridMaterial.glowRadius` was calibrated for thumbnail scale (surface radius ~3) but used unchanged in demo (surface radius ~11). Now scaled by `surfaceRadius / 3.0` to cover the same proportion of the surface.
+- `STARTING_LIVES` was 3. When lives ran out, `GameInstance.onGameOver()` was called. Fixed by passing `lives: 0` (sentinel for infinite) and adding `infiniteLives` logic in `GameInstance.update()`.
+
+---
+
 ## Session 25 Playground Aiming + Hit Detection Fix (2026-02-19)
 
 ### Visual Styles Playground

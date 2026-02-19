@@ -425,4 +425,78 @@ describe('S26 Regression: Playground Modal Glitch', () => {
       pg.dispose();
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Bug 5: Player can't respawn infinitely in playground (lives=0 → infinite)
+  // -----------------------------------------------------------------------
+
+  describe('Bug 5 — Infinite respawns when lives=0 (playground mode)', () => {
+
+    it('GameInstance with lives=0 never calls onGameOver after multiple deaths', () => {
+      const container = createMockContainer();
+      const onGameOver = vi.fn();
+
+      const instance = new GameInstance({
+        container,
+        mode: 'demo',
+        lives: 0, // 0 = infinite respawns
+        enemyCount: 0,
+        onGameOver,
+      });
+
+      // Helper: bypass invincibility so die() actually works
+      const killPlayer = () => {
+        (instance.player as any).isInvincible = false;
+        instance.player.die();
+      };
+
+      // Kill the player 5 times, advancing time past RESPAWN_DELAY each time
+      // Without the fix: onGameOver would be called after lives runs out
+      // With the fix: onGameOver is NEVER called; player always respawns
+      for (let i = 0; i < 5; i++) {
+        killPlayer();
+        // Advance past respawn delay (2 seconds)
+        for (let t = 0; t < 150; t++) {
+          (instance as any).update(1 / 60);
+        }
+        expect(instance.player.alive).toBe(true);
+      }
+
+      expect(onGameOver).not.toHaveBeenCalled();
+
+      instance.dispose();
+    });
+
+    it('GameInstance with lives=3 still calls onGameOver after 3 deaths', () => {
+      const container = createMockContainer();
+      const onGameOver = vi.fn();
+
+      const instance = new GameInstance({
+        container,
+        mode: 'demo',
+        lives: 3,
+        enemyCount: 0,
+        onGameOver,
+      });
+
+      // Helper: bypass invincibility so die() actually works
+      const killPlayer = () => {
+        (instance.player as any).isInvincible = false;
+        instance.player.die();
+      };
+
+      // Kill 3 times, advancing past RESPAWN_DELAY (2s) between deaths
+      for (let i = 0; i < 3; i++) {
+        killPlayer();
+        for (let t = 0; t < 150; t++) {
+          (instance as any).update(1 / 60);
+        }
+      }
+
+      // After 3 deaths with lives=3, onGameOver must have been called
+      expect(onGameOver).toHaveBeenCalled();
+
+      instance.dispose();
+    });
+  });
 });
