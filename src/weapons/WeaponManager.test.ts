@@ -707,3 +707,81 @@ describe('WeaponManager', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// LAN Visual-Only Mode regression tests (s26-mp-special-weapon-rendering)
+//
+// Verifies that WeaponManager can run in "visual-only" mode for LAN multiplayer:
+//   - No-op damage callbacks (server is authoritative)
+//   - No-op bullet spawn (server handles bullets)
+//   - Special weapons (LaserBeam, ChainLightning, TeslaCoil) fire visual effects
+//   - Visual root is added to scene correctly
+// ---------------------------------------------------------------------------
+
+describe('WeaponManager LAN visual-only mode', () => {
+  let wm: WeaponManager;
+
+  beforeEach(() => {
+    wm = new WeaponManager();
+    // Wire up no-op callbacks (same pattern as network-main.ts LAN mode)
+    wm.setCallbacks({
+      getEnemies: () => [],
+      onEnemyDamage: () => {},  // server handles damage
+      spawnBullet: () => {},    // server handles bullets
+    });
+  });
+
+  it('getVisualRoot returns a Group that can be added to scene', () => {
+    const root = wm.getVisualRoot();
+    expect(root).toBeInstanceOf(THREE.Group);
+    // Should contain at least chain lightning root and projectile root
+    expect(root.children.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('LaserBeam fires a visual mesh with no-op damage callback (does not throw)', () => {
+    wm.equipWeapon(WeaponType.LaserBeam, 999);
+    const visRoot = wm.getVisualRoot();
+    const scene = new THREE.Scene();
+    scene.add(visRoot);
+
+    const o = new THREE.Vector3(8, 0, 0);
+    const d = new THREE.Vector3(0, 0, 1);
+    // Should not throw even with no-op callbacks
+    expect(() => wm.fire(o, d, T, new THREE.Vector3(1, 0, 0))).not.toThrow();
+  });
+
+  it('ChainLightning fires with no-op damage callback (does not throw)', () => {
+    wm.equipWeapon(WeaponType.ChainLightning, 999);
+    expect(() => wm.fire(origin(), forward(), T, normal())).not.toThrow();
+  });
+
+  it('TeslaCoil fires with no-op damage callback (does not throw)', () => {
+    wm.equipWeapon(WeaponType.TeslaCoil, 999);
+    expect(() => wm.fire(origin(), forward(), T, normal())).not.toThrow();
+  });
+
+  it('spawnBullet is called (blaster fires alongside special weapons) but is safely no-op', () => {
+    // The blaster fires on its own cooldown whenever fire() is called.
+    // In LAN mode spawnBullet is a no-op so no local bullet meshes are created —
+    // the server sends bullet state which BulletInstanceManager renders instead.
+    let bulletSpawnCount = 0;
+    wm.setCallbacks({
+      getEnemies: () => [],
+      onEnemyDamage: () => {},
+      spawnBullet: () => { bulletSpawnCount++; }, // counts but does nothing (no-op in LAN)
+    });
+    wm.equipWeapon(WeaponType.LaserBeam, 999);
+    wm.fire(origin(), forward(), T, normal());
+    // Blaster fires alongside LaserBeam — spawnBullet WILL be called (intentionally no-op)
+    expect(bulletSpawnCount).toBeGreaterThan(0);
+  });
+
+  it('update runs without error after firing special weapons', () => {
+    wm.equipWeapon(WeaponType.TeslaCoil, 999);
+    wm.fire(origin(), forward(), T, normal());
+    // Update should clean up effects without throwing
+    expect(() => {
+      for (let i = 0; i < 10; i++) wm.update(0.1);
+    }).not.toThrow();
+  });
+});

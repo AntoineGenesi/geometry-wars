@@ -43,6 +43,7 @@ import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponPickup } from './weapons/WeaponPickup';
 import { WeaponType } from './weapons/WeaponTypes';
 import { WeaponHUD } from './ui/WeaponHUD';
+import { WeaponManager } from './weapons/WeaponManager';
 import type { WeaponInventoryEntry } from './weapons/WeaponManager';
 import { AllyGlowManager } from './effects/AllyGlow';
 import { ShockwaveEffect } from './effects/ShockwaveEffect';
@@ -467,6 +468,7 @@ function main() {
 
     meshSurface = new MeshSurface(surface.mesh);
     bulletPool.setMeshSurface(meshSurface);
+    localWeaponManager.setMeshSurface(meshSurface);
 
     getTransform = makeSurfaceTransformFn(surface);
 
@@ -508,6 +510,37 @@ function main() {
 
   const geomPool = new GeomPool();
   scene.add(geomPool.root);
+
+  // -- WeaponManager for local player special weapon visuals --
+  // The server is authoritative for damage and bullet spawning.
+  // WeaponManager handles only CLIENT-SIDE visuals for instant/field weapons
+  // (LaserBeam, ChainLightning, TeslaCoil) that are NOT represented in bullet state.
+  const localWeaponManager = new WeaponManager();
+  scene.add(localWeaponManager.getVisualRoot());
+  localWeaponManager.setCallbacks({
+    getEnemies: () => {
+      const result: { position: THREE.Vector3; index: number; alive: boolean }[] = [];
+      let idx = 0;
+      networkEnemies.forEach((enemy) => {
+        result.push({ position: enemy.position, index: idx++, alive: enemy.alive });
+      });
+      return result;
+    },
+    onEnemyDamage: () => {}, // Server is authoritative for damage in LAN mode
+    spawnBullet: () => {},   // Server handles bullet creation; no local bullet meshes
+  });
+
+  // Special weapons that produce visual effects NOT represented in server bullet state.
+  // Projectile weapons (Spread, Homing, Mortar, etc.) are already rendered by
+  // BulletInstanceManager from server-sent bullet state — don't double-render them.
+  const SPECIAL_VISUAL_WEAPONS = new Set<WeaponType>([
+    WeaponType.LaserBeam,
+    WeaponType.ChainLightning,
+    WeaponType.TeslaCoil,
+  ]);
+
+  // Current weapon type for the local player — synced from server state
+  let localPlayerWeaponType: WeaponType = WeaponType.Standard;
 
   const particles = new ParticleSystem(5000);
   scene.add(particles.root);
@@ -1498,6 +1531,16 @@ function main() {
         hudInventory.push({ type: activeWeaponType, ammo: localPlayer.weaponAmmo, stacks: 1 });
       }
       weaponHUD.update(hudInventory, activeWeaponType);
+
+      // Sync local weapon manager to server-authoritative weapon type.
+      // Only update if the weapon type changed to avoid unnecessary re-stacking.
+      if (activeWeaponType !== localPlayerWeaponType) {
+        localPlayerWeaponType = activeWeaponType;
+        // Set a large ammo reserve so the WeaponManager can fire visuals freely.
+        // Actual ammo/damage is server-authoritative; we only need the visual effect.
+        const ammoReserve = activeWeaponType === WeaponType.Standard ? -1 : 999;
+        localWeaponManager.equipWeapon(activeWeaponType, ammoReserve > 0 ? ammoReserve : undefined);
+      }
     }
 
     // Player list
@@ -1786,6 +1829,28 @@ function main() {
         shootSoundTimer = 0;
       }
     }
+
+    // -- Fire special weapon visuals for local player --
+    // Only for instant/field weapons not represented in server bullet state.
+    // Called here (after input is read) so visuals appear immediately on key-hold.
+    // Uses inputState.shooting (available at outer scope) instead of currentInput
+    // (which is only defined inside the network send block).
+    if (inputState.shooting && !localMenuOpen && network.isConnected()
+        && SPECIAL_VISUAL_WEAPONS.has(localPlayerWeaponType)) {
+      const localPlayer = networkPlayers.get(localPlayerId);
+      if (localPlayer && surface) {
+        const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+        const origin = sp.position.clone().addScaledVector(sp.normal, 0.2);
+        // Compute world-space aim direction from aimAngle + surface tangent frame
+        const aimDir = new THREE.Vector3()
+          .addScaledVector(sp.tangentU, Math.cos(aimAngle))
+          .addScaledVector(sp.tangentV, Math.sin(aimAngle))
+          .normalize();
+        localWeaponManager.playerPositionRef = origin;
+        localWeaponManager.fire(origin, aimDir, game.clock.totalTime, sp.normal);
+      }
+    }
+    localWeaponManager.update(dt);
 
     // -- Update visual systems (same as co-op) --
     particles.update(dt);
