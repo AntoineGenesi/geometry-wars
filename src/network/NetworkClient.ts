@@ -111,6 +111,8 @@ export interface NetworkCallbacks {
   onHostChanged?: (newHostId: string) => void;
   onGameEnded?: () => void;
   onError?: (error: Error) => void;
+  /** Fired when the WebSocket connection to the server closes (any reason). */
+  onDisconnected?: (code: number) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -310,6 +312,7 @@ export class NetworkClient {
     this.room.onLeave((code) => {
       netLog(`[Network] Left room with code: ${code}`);
       this.connected = false;
+      this.callbacks.onDisconnected?.(code);
     });
 
     // Errors

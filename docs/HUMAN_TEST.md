@@ -8,6 +8,28 @@
 
 ---
 
+## Session 25 LAN Host Disconnect — Connection Lost Overlay (2026-02-20)
+
+Start a LAN game (host + at least one non-host/client player).
+
+### Client sees "CONNECTION LOST" when host exits
+
+- [ ] **Overlay appears on host kill** — Have the host close their browser tab or stop the server process. Client should see a red "CONNECTION LOST" overlay immediately (< 2 seconds). Game scene freezes behind it.
+- [ ] **Reason text shows** — Overlay text should describe reason: "Host disconnected from the game." or "Server connection closed (code X)."
+- [ ] **Escape returns to menu** — While "CONNECTION LOST" overlay is shown, press Escape. Browser navigates back to the start screen.
+- [ ] **Return button works** — Click "◀ RETURN TO MAIN MENU" button. Navigates to start screen.
+- [ ] **No frozen-unresponsive state** — Before this fix, screen was frozen with no way out. After fix, the overlay is always shown and Escape always works.
+
+### Client sees overlay when host uses "STOP SERVER"
+
+- [ ] **Overlay shown on game_ended** — When host clicks the STOP SERVER button (which sends `game_ended`), client gets "The host has ended the game." overlay instead of frozen screen.
+
+### Normal disconnect does NOT show overlay
+
+- [ ] **Player clicking "RETURN TO MAIN MENU" does NOT see overlay** — When a player uses the local menu to return to the main menu themselves, they navigate away cleanly without triggering the connection-lost overlay.
+
+---
+
 ## Session 25 LAN Surface Type Race Condition Fix (2026-02-20)
 
 ### LAN Multiplayer — Surface Type Verification
