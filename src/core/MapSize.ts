@@ -11,13 +11,35 @@ export enum MapSize {
   EPIC = 'epic',
 }
 
-/** Maximum simultaneous active enemies per map size tier. */
+/**
+ * Maximum simultaneous active enemies per map size tier.
+ * Scales at 50% / 100% / 150% / 200% relative to MEDIUM baseline (60).
+ */
 export const MAP_SIZE_MAX_ENEMIES: Record<MapSize, number> = {
-  [MapSize.SMALL]: 50,
-  [MapSize.MEDIUM]: 62,
-  [MapSize.LARGE]: 75,
-  [MapSize.EPIC]: 100,
+  [MapSize.SMALL]: 30,  // 50% of 60
+  [MapSize.MEDIUM]: 60, // 100% baseline
+  [MapSize.LARGE]: 90,  // 150% of 60
+  [MapSize.EPIC]: 120,  // 200% of 60
 };
+
+/**
+ * Surface geometry scale factor per map size tier.
+ * Applied to surface.group.scale so the physical surface is larger/smaller.
+ * Player UV speed stays constant — traversal time scales proportionally.
+ */
+export const MAP_SIZE_SCALE_FACTORS: Record<MapSize, number> = {
+  [MapSize.SMALL]: 0.75,
+  [MapSize.MEDIUM]: 1.0,
+  [MapSize.LARGE]: 1.5,
+  [MapSize.EPIC]: 2.0,
+};
+
+/**
+ * Get the Three.js group scale factor for a map size tier.
+ */
+export function getMapSizeScaleFactor(size: MapSize): number {
+  return MAP_SIZE_SCALE_FACTORS[size];
+}
 
 /** Display labels for the UI. */
 export const MAP_SIZE_LABELS: Record<MapSize, string> = {
