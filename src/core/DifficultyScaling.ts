@@ -305,16 +305,21 @@ export function generateScaledEndlessWave(
   // Below 200 entities: factor = 1.0 (no effect — early game unchanged).
   // At 300 entities: factor ≈ 0.67 (33% fewer per wave).
   // At 400 entities: factor ≈ 0.50 (50% fewer per wave).
-  // At 500+ entities: floor = 0.40 (game still escalates via types/tiers).
+  // At difficulty < 8: floor = 0.40 (game still escalates via types/tiers).
+  // At difficulty 8+: floor raised to 0.60 — endgame quality enemies must
+  //   still spawn in meaningful numbers even when the screen is crowded.
+  const brakeFloor = difficultyLevel >= 8 ? 0.60 : 0.40;
   const entityBrake = activeEntityCount > 200
-    ? Math.max(0.40, 200 / activeEntityCount)
+    ? Math.max(brakeFloor, 200 / activeEntityCount)
     : 1.0;
 
   // Base count grows with wave number AND difficulty level
   // At difficulty 4+, each wave has substantially more enemies
-  // Raised cap from 18→30 so extreme difficulty feels overwhelming
+  // Cap scales with difficulty: 30 up to diff 6, then 40 at diff 6+ to allow
+  // larger individual enemy groups at endgame without overwhelming early/mid game
   const difficultyCountBonus = Math.floor(difficultyLevel * 2.0);
-  const baseCount = Math.min(30, Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake));
+  const baseCountCap = difficultyLevel >= 6 ? 40 : 30;
+  const baseCount = Math.min(baseCountCap, Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake));
 
   // -- Basic enemies: always present, tier scales with difficulty --
   const basicType = BASIC_TYPES[waveNum % BASIC_TYPES.length];
@@ -323,7 +328,7 @@ export function generateScaledEndlessWave(
     : 0;
   enemies.push({
     type: basicType,
-    count: Math.min(baseCount, 30),
+    count: baseCount, // capped by baseCountCap above (30 or 40 at high difficulty)
     tier: basicTier,
   });
 

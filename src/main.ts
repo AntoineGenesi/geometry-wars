@@ -242,8 +242,11 @@ class WaveScheduler {
       const difficultySpeedBonus = Math.min(3.0, this.currentDifficultyLevel * 0.4);
       // Entity count delay bonus: slow down new waves when screen is already crowded.
       // No effect at <=200 entities. +1s per 50 extra entities (capped at +5s).
+      // At difficulty 4+, the bonus is reduced so waves stay relentless even when crowded.
+      // At difficulty 9+, the bonus is eliminated entirely — endgame never pauses.
+      const entityDelayBonusMultiplier = Math.max(0, 1.0 - (this.currentDifficultyLevel - 4) * 0.2);
       const entityDelayBonus = activeCount > 200
-        ? Math.min(5.0, (activeCount - 200) / 50)
+        ? Math.min(5.0, (activeCount - 200) / 50) * entityDelayBonusMultiplier
         : 0;
       this.endlessNextSpawn += Math.max(
         2.0,
