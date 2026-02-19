@@ -5,11 +5,34 @@ import { WebSocketTransport } from '@colyseus/ws-transport';
 import { GameRoom } from './rooms/GameRoom';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { networkInterfaces } from 'os';
 import { exportPerformanceLogs, exportGameStateLogs } from '../scripts/export-perf-logs.mjs';
 
 // ESM compatibility for __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+/** Returns all non-loopback IPv4 addresses on this machine */
+function getLANAddresses(): string[] {
+  const interfaces = networkInterfaces();
+  const addresses: string[] = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] ?? []) {
+      if (iface.internal || iface.family !== 'IPv4') continue;
+      addresses.push(iface.address);
+    }
+  }
+  return addresses;
+}
+
+/** Extract client IP from request (handles proxies) */
+function getClientIP(req: express.Request): string {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    return (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(',')[0].trim();
+  }
+  return req.socket.remoteAddress || 'unknown';
+}
 
 const PORT = Number(process.env.PORT) || 2567;
 // Auto-shutdown timeout (ms). Server shuts down if no clients are connected
@@ -32,8 +55,14 @@ app.use(express.json({ limit: '10mb' }));
 // Serve static files from dist folder in production
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// Health check endpoint
+// Health check endpoint — log the requester's IP so we can confirm LAN clients are reaching us
 app.get('/health', (req, res) => {
+  const ip = getClientIP(req);
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  if (!isLocal) {
+    // Only log remote connections (skip localhost health checks from vite-plugin-lan polling)
+    console.log(`[Server] Health check from LAN client: ${ip}`);
+  }
   res.json({ status: 'ok', timestamp: Date.now() });
 });
 
@@ -195,6 +224,10 @@ setInterval(checkAutoShutdown, 10_000);
 const origOnJoin = GameRoom.prototype.onJoin;
 GameRoom.prototype.onJoin = function(client, options) {
   totalConnections++;
+  const ip = (client as unknown as { remoteAddress?: string }).remoteAddress || 'unknown';
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  const name = (options as { name?: string })?.name || '(unnamed)';
+  console.log(`[Server] PLAYER JOINED: "${name}" from ${isLocal ? 'localhost' : 'LAN: ' + ip} (session: ${client.sessionId})`);
   if (shutdownTimer) {
     console.log('[Server] Client connected - auto-shutdown cancelled.');
     clearTimeout(shutdownTimer);
@@ -206,6 +239,8 @@ GameRoom.prototype.onJoin = function(client, options) {
 // Also check on leave — triggers faster shutdown detection than the 10s poll
 const origOnLeave = GameRoom.prototype.onLeave;
 GameRoom.prototype.onLeave = function(client, consented) {
+  const ip = (client as unknown as { remoteAddress?: string }).remoteAddress || 'unknown';
+  console.log(`[Server] PLAYER LEFT: session ${client.sessionId} from ${ip} (consented: ${consented})`);
   const result = origOnLeave.call(this, client, consented);
   // Schedule a check shortly after leave to detect empty server sooner
   setTimeout(checkAutoShutdown, 2000);
@@ -220,23 +255,51 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
+// Log WebSocket upgrade attempts (happens before Colyseus room join — critical for LAN debug)
+httpServer.on('upgrade', (req, socket) => {
+  const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim()
+    || req.socket.remoteAddress || 'unknown';
+  const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+  console.log(`[Server] WebSocket upgrade ${isLocal ? '(local)' : 'from LAN: ' + ip} — path: ${req.url}`);
+  socket.on('error', (err: Error) => {
+    console.error(`[Server] WebSocket error from ${ip}: ${err.message}`);
+  });
+});
+
 // Start listening on all interfaces (0.0.0.0) for LAN access
 httpServer.listen(PORT, '0.0.0.0', () => {
+  const lanAddresses = getLANAddresses();
   const timeoutSec = Math.round(SHUTDOWN_TIMEOUT_MS / 1000);
+
   console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║     GEOMETRY WARS 3D - MULTIPLAYER SERVER                ║
 ╠══════════════════════════════════════════════════════════╣
-║  Server running on http://localhost:${PORT}               ║
-║  WebSocket endpoint: ws://localhost:${PORT}               ║
-║  Auto-shutdown: ${SHUTDOWN_TIMEOUT_MS > 0 ? `${timeoutSec}s after last client` : 'disabled'}             ║
-║                                                          ║
-║  To play:                                                ║
-║  1. Open http://localhost:3000?mode=network              ║
-║  2. Each player connects from their browser              ║
-║  3. First player to click "Start" begins the game        ║
+║  Binding: 0.0.0.0:${PORT} (accepts ALL network interfaces)   ║
+╠══════════════════════════════════════════════════════════╣
+║  LOCAL:  http://localhost:${PORT}                          ║
+║  LOCAL:  ws://localhost:${PORT}                            ║
+╠══════════════════════════════════════════════════════════╣
+║  LAN addresses (share with other players):               ║
+${lanAddresses.map(ip => `║    http://${ip}:${PORT}`.padEnd(58) + '║').join('\n')}
+${lanAddresses.length === 0 ? '║    (none — check your network connection)'.padEnd(58) + '║' : ''}╠══════════════════════════════════════════════════════════╣
+║  Auto-shutdown: ${(SHUTDOWN_TIMEOUT_MS > 0 ? `${timeoutSec}s after last client` : 'disabled').padEnd(39)}║
+╠══════════════════════════════════════════════════════════╣
+║  WAITING FOR CONNECTIONS...                              ║
+║  (Watch for "WebSocket upgrade from LAN" messages below) ║
 ╚══════════════════════════════════════════════════════════╝
-  `);
+`);
+
+  if (lanAddresses.length > 0) {
+    console.log('[Server] LAN addresses detected:');
+    for (const ip of lanAddresses) {
+      console.log(`[Server]   Game:   http://${ip}:3000`);
+      console.log(`[Server]   Server: ws://${ip}:${PORT}`);
+    }
+  } else {
+    console.log('[Server] WARNING: No LAN addresses detected. LAN play may not work.');
+    console.log('[Server] Check that your network adapter is active and connected.');
+  }
 });
 
 // Graceful shutdown

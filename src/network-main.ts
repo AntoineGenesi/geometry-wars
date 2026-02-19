@@ -1249,16 +1249,29 @@ function main() {
 
   const urlSurfaceType = getUrlSurfaceType();
   const playerName = getPlayerName();
+  const serverUrl = getServerUrl();
+
+  // Always log connection details — essential for LAN debugging
+  console.log('[NetworkMain] === LAN CONNECTION INFO ===');
+  console.log(`[NetworkMain] Server URL:  ${serverUrl}`);
+  console.log(`[NetworkMain] Page URL:    ${window.location.href}`);
+  console.log(`[NetworkMain] Player name: ${playerName}`);
+  console.log(`[NetworkMain] Surface:     ${urlSurfaceType}`);
+  console.log('[NetworkMain] Connecting...');
+
   network.connect({
     name: playerName,
     surfaceType: urlSurfaceType,
   }).then(() => {
     localPlayerId = network.getLocalPlayerId();
+    console.log(`[NetworkMain] Connected! Session ID: ${localPlayerId}`);
+    console.log(`[NetworkMain] Server: ${serverUrl}`);
     // Try to detect host status, but this may be wrong if state hasn't decoded.
     // onStateChange will re-check and correct this.
     const serverHostId = network.getServerHostId();
     isHost = serverHostId !== '' && localPlayerId === serverHostId;
     if (isHost) {
+      console.log('[NetworkMain] This client is the HOST');
       stopServerBtn.style.display = 'block';
     }
 
@@ -1321,7 +1334,19 @@ function main() {
     retryBtn.onclick = () => window.location.reload();
     document.body.appendChild(retryBtn);
 
-    console.error('[NetworkMain] Connection failed:', err);
+    // Always log detailed error info for LAN debugging
+    console.error('[NetworkMain] === CONNECTION FAILED ===');
+    console.error(`[NetworkMain] Server URL: ${serverUrl}`);
+    console.error(`[NetworkMain] Error: ${msg}`);
+    console.error('[NetworkMain] --- TROUBLESHOOTING CHECKLIST ---');
+    console.error('[NetworkMain] 1. Is the "Geometry Wars Server" window open and running?');
+    const healthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+    console.error(`[NetworkMain] 2. Can you reach ${healthUrl}/health in a browser tab?`);
+    console.error('[NetworkMain] 3. If connecting from another PC:');
+    console.error('[NetworkMain]    - Use the HOST PC LAN IP (e.g. 192.168.x.x:3000), NOT localhost');
+    console.error('[NetworkMain]    - Check Windows Firewall is allowing port 2567');
+    console.error('[NetworkMain]    - Both PCs must be on the same WiFi/LAN');
+    console.error('[NetworkMain] Full error:', err);
   });
 
   // -----------------------------------------------------------------------

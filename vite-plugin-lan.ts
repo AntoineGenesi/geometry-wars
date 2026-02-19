@@ -163,6 +163,14 @@ export default function lanPlugin(): Plugin {
       await new Promise((r) => setTimeout(r, 500));
       if (await checkServerHealth()) {
         serverReady = true;
+        console.log('[LAN] Server ready! LAN clients can connect at:');
+        for (const addr of addresses) {
+          console.log(`[LAN]   Game:   http://${addr}:3000`);
+          console.log(`[LAN]   Server: ws://${addr}:${SERVER_PORT}`);
+        }
+        if (addresses.length === 0) {
+          console.log('[LAN]   WARNING: No LAN addresses detected.');
+        }
         return { ok: true, addresses, port: SERVER_PORT };
       }
     }
