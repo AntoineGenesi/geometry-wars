@@ -8,6 +8,31 @@
 
 ---
 
+## Session 25 Playground Aiming + Hit Detection Fix (2026-02-19)
+
+### Visual Styles Playground
+
+Open the Visual Styles page (click any style thumbnail → playable demo launches):
+
+- [ ] **Player faces aim direction** — Move the mouse around; the player ship rotates to face the cursor. Should NOT be on the wrong axis or spinning.
+- [ ] **Bullets travel toward cursor** — Fire (click/hold). Bullets should travel in the direction the mouse is pointing.
+- [ ] **Bullets hit enemies** — Aim at a visible enemy and fire. Bullets should visually collide and kill the enemy (enemy disappears with particle effect + geom drops). Bullets must NOT pass through.
+- [ ] **Smooth 60 FPS** — No lag or stutter during gameplay.
+
+### Weapons Database Playground
+
+Open the Weapons Wiki page → "Try It" button for any weapon:
+
+- [ ] **Player faces aim direction** — Same as above; ship should rotate correctly.
+- [ ] **Each weapon type hits enemies** — Cycle through 3+ weapons (the weapon switch buttons). Fire each one at an enemy. All weapon types should kill enemies (not pass through).
+- [ ] **No lag** — Should be smooth 60 FPS, no slowdown.
+
+**Root causes fixed (2026-02-19):**
+- Cross product order in GameInstance.ts:533 was `crossVectors(aimDirection, playerNormal)` — produces left-handed (mirrored) basis. Fixed to `crossVectors(playerNormal, aimDirection)` matching GameLoop.ts.
+- No bullet-enemy collision check existed in GameInstance.update(). Added `_checkBulletEnemyCollisions()` using `bulletPool.forEachActive()` with distance check.
+
+---
+
 ## Session 24 Selective Bloom Masking (2026-02-19)
 
 ### Bloom Visual Quality — Arena Should NOT Glow, Enemies SHOULD

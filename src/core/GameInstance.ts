@@ -406,6 +406,31 @@ export class GameInstance {
     };
   }
 
+  /** Check collisions between regular bullets (bulletPool) and enemies. */
+  private _checkBulletEnemyCollisions(): void {
+    const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
+    this.bulletPool.forEachActive((index, bulletPos, _data) => {
+      for (const enemy of enemies) {
+        const dist = bulletPos.distanceTo(enemy.mesh!.position);
+        if (dist < enemy.radius + 0.1) {
+          this.bulletPool.kill(index);
+          enemy.takeDamage(1);
+          if (!enemy.alive) {
+            this.particles.enemyDeath(enemy.mesh!.position, new THREE.Color(0xff4444));
+            this.config.onEnemyKill(enemy.baseTypeName || 'unknown');
+            const inverseRot = this._surface.worldRotation.clone().invert();
+            const localPos = enemy.mesh!.position.clone().applyQuaternion(inverseRot);
+            const { u, v } = this._surface.worldToSurface(localPos);
+            for (let g = 0; g < enemy.geomCount; g++) {
+              this.geomPool.spawn(u, v, Math.random() * Math.PI * 2);
+            }
+          }
+          break; // bullet hits at most one enemy
+        }
+      }
+    });
+  }
+
   private spawnDemoEnemies(): void {
     // In demo mode, continuously maintain enemy count
     const targetCount = this.config.enemyCount;
@@ -527,11 +552,13 @@ export class GameInstance {
       );
 
       // Orient player to face aim direction
-      // REGRESSION GUARD: cross(playerNormal, playerRight) = +aimDirection (correct).
-      // cross(playerRight, playerNormal) = -aimDirection (mirrors the gun).
+      // REGRESSION GUARD (matches GameLoop.ts): playerRight = cross(playerNormal, aimDirection)
+      // gives a right-handed basis. playerForward = cross(playerRight, playerNormal) ≈ aimDirection.
+      // DO NOT reverse line 1 to cross(aimDirection, playerNormal) — that negates playerRight,
+      // producing a left-handed (mirrored) basis which makes aiming wrong axis.
       if (aimDirection.lengthSq() > 0.001) {
-        const playerRight = new THREE.Vector3().crossVectors(aimDirection, playerNormal).normalize();
-        const playerForward = new THREE.Vector3().crossVectors(playerNormal, playerRight).normalize();
+        const playerRight = new THREE.Vector3().crossVectors(playerNormal, aimDirection).normalize();
+        const playerForward = new THREE.Vector3().crossVectors(playerRight, playerNormal).normalize();
         const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
         this.player.mesh.quaternion.setFromRotationMatrix(orientMat);
       }
@@ -551,6 +578,7 @@ export class GameInstance {
 
     // Update bullets
     this.bulletPool.update(dt);
+    this._checkBulletEnemyCollisions();
 
     // Update weapons (homing projectiles, etc.)
     this.weaponManager.update(dt);
