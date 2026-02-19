@@ -8,23 +8,34 @@
 
 ---
 
-## Session 25 LAN Pause/Resume Fix (2026-02-19)
+## Session 25 LAN Connectivity Debug (2026-02-19)
 
-### Network Multiplayer: Pause/Resume Player Movement
+### LAN Connection from Laptop to Host PC
 
-When the host pauses and resumes the game in LAN mode (`?mode=network`), all clients should be able to move immediately after resume.
+The Colyseus server now opens in a **separate visible window** ("Geometry Wars Server") with full debug logging. The LAN IP is prominently displayed with step-by-step connect instructions.
 
-- [ ] **Host pauses → overlay appears on all clients** — Host presses ESC. Both host and non-host clients should see the "PAUSED" overlay.
-- [ ] **Non-host client moves after resume** — Host presses ESC to resume (or clicks RESUME button). Non-host player should respond to WASD/joystick input on the very next frame. Player should NOT be frozen.
-- [ ] **No dt spike on first frame after resume** — Player should not teleport or jump position on the first movement after resume. Movement should feel smooth.
-- [ ] **Long pause test** — Pause for 10+ seconds, then resume. Movement should still work. No rubber-banding or position snap.
+**How to test:**
+1. Run `Play Game.bat` on the host PC
+2. A new CMD window "Geometry Wars Server (port 2567)" should appear in the taskbar
+3. In that server window, you should see the startup banner with LAN IPs
+4. On your laptop (same WiFi), open `http://<host-LAN-IP>:3000`
 
-**What was fixed:**
-- `src/network-main.ts` — `showPauseOverlay()` now calls `game.pause()` when pausing and `game.resume()` when unpausing
-- Previously, `game.resume()` (which resyncs the Game clock via `clock.resync()`) was ONLY called in the ESC key handler, not in the `showPauseOverlay` function
-- Non-host clients receive unpause via `onStateChange → showPauseOverlay(false)` — that path never called `game.resume()`, leaving the clock unsynced and `isPaused=false` causing the game loop to run with a stale/huge dt
+- [ ] **Server window appears** — Running `Play Game.bat` opens a SECOND window titled "Geometry Wars Server (port 2567)" in the taskbar
+- [ ] **LAN IP shown in server window** — The startup banner shows your PC's IP (e.g. `http://192.168.x.x:2567`)
+- [ ] **LAN IP shown in main window** — The main `Play Game.bat` window shows `>>> http://192.168.x.x:3000 <<<` prominently
+- [ ] **Health check logged** — When laptop opens `http://<host-ip>:3000`, server window shows `[Server] Health check from LAN client: <laptop-ip>`
+- [ ] **WebSocket log appears** — When laptop goes to `?mode=network`, server window shows `[Server] WebSocket upgrade from LAN: <laptop-ip>`
+- [ ] **Player join logged** — Server window shows `[Server] PLAYER JOINED: "<name>" from LAN: <laptop-ip>`
+- [ ] **Browser console** — On the laptop's browser DevTools console, you should see `[NetworkMain] Connecting to server: ws://<host-ip>:2567`
+- [ ] **If firewall blocks** — Run `Play Game.bat` as Administrator to auto-add firewall rules for ports 3000 and 2567
 
-**Verification level:** L1 (TypeScript compiles). LAN requires human testing — Level 6.
+**What was changed:**
+- `Play Game.bat` — Server now in visible window; firewall rules added; prominent IP display with instructions
+- `server/index.ts` — LAN IPs in startup banner; HTTP health check logs remote IP; WebSocket upgrade logging; player join/leave logs with IP
+- `src/network-main.ts` — Always-on console logging of server URL and troubleshooting checklist on failure
+- `vite-plugin-lan.ts` — Logs LAN URLs when in-game Host button starts server
+
+**Verification level:** L1 (TypeScript clean). User testing required — LAN connectivity requires physical devices.
 
 ---
 

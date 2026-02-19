@@ -52,15 +52,53 @@ if %ERRORLEVEL% neq 0 (
     echo  [OK] Native binaries fixed.
 )
 echo  [OK] Native binaries OK.
-
 echo.
-echo  Starting Colyseus multiplayer server (port 2567)...
 
-REM Start Colyseus in background
-start /b npx tsx server/index.ts
+REM ================================================================
+REM  WINDOWS FIREWALL: Allow ports 3000 and 2567 for LAN access
+REM  Requires Administrator. Silently skipped if not admin.
+REM  Run this file as Administrator once to set up firewall rules.
+REM ================================================================
+echo  Setting up Windows Firewall rules for LAN access...
+netsh advfirewall firewall add rule name="Geometry Wars - Game Server (2567)" dir=in action=allow protocol=TCP localport=2567 >nul 2>&1
+netsh advfirewall firewall add rule name="Geometry Wars - Web Server (3000)" dir=in action=allow protocol=TCP localport=3000 >nul 2>&1
+echo  [OK] Firewall rules applied (requires Administrator - may be skipped if not admin).
+echo  [!] If LAN still fails: Right-click this .bat and Run as Administrator,
+echo  [!] OR manually add firewall rules for TCP ports 3000 and 2567 (Inbound).
+echo.
+
+REM Get ALL local IPs for LAN display (show all so user can pick the right one)
+echo  ================================================================
+echo.
+echo   HOST PC LAN ADDRESSES (share one of these with other players):
+echo.
+for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
+    for /f "tokens=*" %%b in ("%%a") do (
+        echo     >>> http://%%b:3000 <<<
+    )
+)
+echo.
+echo   Game (this PC):  http://localhost:3000
+echo.
+echo   TO CONNECT FROM ANOTHER DEVICE:
+echo   1. Make sure both devices are on the same WiFi/LAN
+echo   2. Open a browser on the other device
+echo   3. Try each address above - use 192.168.x.x (not 10.x.x.x which may be VPN)
+echo   4. If it fails, check Windows Firewall - run this file as Administrator
+echo.
+echo  ================================================================
+echo.
+
+echo  Starting Colyseus multiplayer server in a NEW WINDOW (port 2567)...
+echo  Watch the "Geometry Wars Server" window for connection logs!
+echo.
+
+REM Start Colyseus in a NEW VISIBLE window so server logs are visible
+REM The window title is "Geometry Wars Server" - look for it in taskbar
+start "Geometry Wars Server (port 2567)" cmd /c "npx tsx server\index.ts & echo. & echo  Server stopped. Press any key to close. & pause >nul"
 
 REM Wait for Colyseus to start
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 
 echo  Starting Vite dev server (port 3000)...
 echo.
@@ -68,23 +106,11 @@ echo.
 REM Brief delay then open browser
 start /b cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:3000"
 
-REM Get local IP for LAN display
-set "LOCAL_IP=unknown"
-for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
-    for /f "tokens=*" %%b in ("%%a") do set "LOCAL_IP=%%b"
-)
-
+echo  ================================================================
+echo  Check the "Geometry Wars Server" window for your LAN IP addresses
 echo  ================================================================
 echo.
-echo     Game:  http://localhost:3000
-echo     LAN:   http://!LOCAL_IP!:3000
-echo.
-echo     Press F3 in-game for debug overlay
-echo     Close this window to stop all servers
-echo.
-echo  ================================================================
-echo.
-echo  --- Server output below (stays visible on crash) ---
+echo  --- Vite server output below (stays visible on crash) ---
 echo.
 
 REM Run Vite in foreground — window stays open as long as Vite runs
