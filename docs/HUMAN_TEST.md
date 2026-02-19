@@ -8,6 +8,27 @@
 
 ---
 
+## DDA Continuous Difficulty Escalation (s25)
+
+### Score Milestones — Enemies Should Visually Escalate
+
+- [ ] Start a game on any map, get to 1M score. Note enemy appearance (color, behavior, speed).
+- [ ] Continue to 5M score. Enemies should visually look noticeably harder (more orange/red/magenta tint, faster).
+- [ ] Continue to 20M score. Enemies should be clearly harder than at 5M (faster still, tougher to kill).
+- [ ] If you have heavy buff stacks (4+ Hot Hands, 3+ Shock Aura), enemies should escalate aggressively to match.
+- [ ] At NO point between 5M and 300M should the game feel "too easy" for an extended period.
+- [ ] Game should maintain 60+ FPS throughout (check F3 overlay).
+
+**What was implemented (s25-dda-p1/p2):**
+- `DifficultyScaling.ts`: Continuous scaling formula — score, time, kills, player level, and buff power all feed into a single `computeDifficultyLevel()` value
+- `getContinuousHealthMultiplier()` / `getContinuousSpeedMultiplier()` — scale enemy stats beyond Tier 4 (up to 500× HP, 3× speed)
+- `BuffManager.getTotalBuffPower()` — offensive buffs (Shock Aura, Volatile, Hot Hands) raise the DDA difficulty level so power builds pressure back
+- Phase 2 rebalance: score curve raised, entityBrake floor raised at difficulty 8+, baseCount cap at 40 for diff 6+
+
+**Verification level:** L2 (unit tests). Needs human testing to confirm visual difficulty escalation.
+
+---
+
 ## Session 25 LAN Connectivity Debug (2026-02-19)
 
 ### LAN Connection from Laptop to Host PC

@@ -21,6 +21,7 @@ import {
   MAX_TIER,
   type DifficultyInput,
 } from '../core/DifficultyScaling';
+import { BuffManager, StackBuffType } from '../buffs/BuffManager';
 
 // ============================================================================
 // Helper: compute total enemy count from a scaled wave
@@ -581,5 +582,127 @@ describe('Phase 2 Rebalance: Score Curve Acceptance Criteria', () => {
       score: 5_000, elapsedTime: 30, combo: 0, totalKills: 0, playerLevel: 0,
     });
     expect(d).toBeLessThan(0.5);
+  });
+});
+
+// ============================================================================
+// 10. Continuous Escalation — No Plateau (regression guard)
+// ============================================================================
+
+describe('Continuous Escalation — No Plateau', () => {
+  // Realistic milestone snapshots: score, time, kills, level, buffPower
+  const milestones: Array<DifficultyInput & { label: string }> = [
+    { label: '100K',  score: 100_000,     elapsedTime: 120,  combo: 0, totalKills: 50,   playerLevel: 3, buffPower: 0 },
+    { label: '1M',    score: 1_000_000,   elapsedTime: 600,  combo: 0, totalKills: 200,  playerLevel: 7, buffPower: 1.0 },
+    { label: '5M',    score: 5_000_000,   elapsedTime: 1200, combo: 0, totalKills: 500,  playerLevel: 9, buffPower: 3.0 },
+    { label: '20M',   score: 20_000_000,  elapsedTime: 2100, combo: 0, totalKills: 800,  playerLevel: 9, buffPower: 5.0 },
+    { label: '100M',  score: 100_000_000, elapsedTime: 3600, combo: 0, totalKills: 1100, playerLevel: 9, buffPower: 7.0 },
+    { label: '300M',  score: 300_000_000, elapsedTime: 5400, combo: 0, totalKills: 1295, playerLevel: 9, buffPower: 8.45 },
+  ];
+
+  it('should increase difficulty at each milestone', () => {
+    let prevLevel = 0;
+    for (const m of milestones) {
+      const level = computeDifficultyLevel(m);
+      expect(level, `difficulty at ${m.label} should exceed previous milestone`).toBeGreaterThan(prevLevel);
+      prevLevel = level;
+    }
+  });
+
+  it('should have at least 1.5 difficulty increase per 10x score jump (5M → 50M)', () => {
+    const at5M = computeDifficultyLevel({
+      score: 5_000_000, elapsedTime: 1200, combo: 0, totalKills: 500, playerLevel: 9, buffPower: 3.0,
+    });
+    const at50M = computeDifficultyLevel({
+      score: 50_000_000, elapsedTime: 3000, combo: 0, totalKills: 800, playerLevel: 9, buffPower: 5.0,
+    });
+    expect(at50M - at5M).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it('300M with full buff stack should be 5+ levels harder than 5M', () => {
+    const at5M = computeDifficultyLevel({
+      score: 5_000_000, elapsedTime: 1200, combo: 0, totalKills: 500, playerLevel: 9, buffPower: 3.0,
+    });
+    const at300M = computeDifficultyLevel({
+      score: 300_000_000, elapsedTime: 5400, combo: 0, totalKills: 1295, playerLevel: 9, buffPower: 8.45,
+    });
+    expect(at300M - at5M).toBeGreaterThanOrEqual(5.0);
+  });
+
+  it('each milestone step must add at least 0.5 difficulty (no flat segments)', () => {
+    for (let i = 1; i < milestones.length; i++) {
+      const prev = computeDifficultyLevel(milestones[i - 1]);
+      const curr = computeDifficultyLevel(milestones[i]);
+      expect(
+        curr - prev,
+        `segment ${milestones[i - 1].label} → ${milestones[i].label} should add >= 0.5 levels`,
+      ).toBeGreaterThanOrEqual(0.5);
+    }
+  });
+});
+
+// ============================================================================
+// 11. BuffManager.getTotalBuffPower() — unit tests
+// ============================================================================
+
+describe('BuffManager.getTotalBuffPower()', () => {
+  it('returns 0 with no buffs', () => {
+    const bm = new BuffManager();
+    expect(bm.getTotalBuffPower()).toBe(0);
+  });
+
+  it('returns correct value for a single Hot Hands stack', () => {
+    const bm = new BuffManager();
+    // Hot Hands weight = 0.30 per stack
+    (bm as any).stacks.set(StackBuffType.HotHands, 1);
+    expect(bm.getTotalBuffPower()).toBeCloseTo(0.30, 5);
+  });
+
+  it('returns correct value for a single ShockAura stack', () => {
+    const bm = new BuffManager();
+    // ShockAura weight = 0.40 per stack
+    (bm as any).stacks.set(StackBuffType.ShockAura, 1);
+    expect(bm.getTotalBuffPower()).toBeCloseTo(0.40, 5);
+  });
+
+  it('user example load-out (4×HOT, 3×TRG, 5×SHK, 6×INC, 4×VLT, 2×TGH, 3×MAG, 1×AFT) returns >= 6.0', () => {
+    const bm = new BuffManager();
+    const s = (bm as any).stacks as Map<StackBuffType, number>;
+    // Manually set stacks without triggering addBuff() (which calls audio engine)
+    s.set(StackBuffType.HotHands, 4);        // 4 * 0.30 = 1.20
+    s.set(StackBuffType.TriggerHappy, 3);    // 3 * 0.25 = 0.75
+    s.set(StackBuffType.ShockAura, 5);       // 5 * 0.40 = 2.00
+    s.set(StackBuffType.IncendiaryRounds, 6); // 6 * 0.30 = 1.80
+    s.set(StackBuffType.Volatile, 4);        // 4 * 0.50 = 2.00
+    s.set(StackBuffType.ToughTimes, 2);      // 2 * 0.15 = 0.30
+    s.set(StackBuffType.Magnetism, 3);       // 3 * 0.10 = 0.30
+    s.set(StackBuffType.Afterburner, 1);     // 1 * 0.10 = 0.10
+    // Total = 1.20 + 0.75 + 2.00 + 1.80 + 2.00 + 0.30 + 0.30 + 0.10 = 8.45
+    expect(bm.getTotalBuffPower()).toBeGreaterThanOrEqual(6.0);
+    expect(bm.getTotalBuffPower()).toBeCloseTo(8.45, 2);
+  });
+
+  it('offensive buffs contribute more than defensive/utility', () => {
+    const offensive = new BuffManager();
+    const defensive = new BuffManager();
+    // 5 stacks of ShockAura (offensive AoE) = 5 * 0.40 = 2.0
+    (offensive as any).stacks.set(StackBuffType.ShockAura, 5);
+    // 5 stacks of Magnetism (utility) = 5 * 0.10 = 0.5
+    (defensive as any).stacks.set(StackBuffType.Magnetism, 5);
+    expect(offensive.getTotalBuffPower()).toBeGreaterThan(defensive.getTotalBuffPower());
+  });
+
+  it('Volatile stacks contribute 0.50 per stack (highest weight)', () => {
+    const bm = new BuffManager();
+    (bm as any).stacks.set(StackBuffType.Volatile, 3); // 3 * 0.50 = 1.50
+    expect(bm.getTotalBuffPower()).toBeCloseTo(1.50, 5);
+  });
+
+  it('getTotalBuffPower scales linearly with additional stacks', () => {
+    const bm1 = new BuffManager();
+    const bm2 = new BuffManager();
+    (bm1 as any).stacks.set(StackBuffType.HotHands, 2);  // 2 * 0.30 = 0.60
+    (bm2 as any).stacks.set(StackBuffType.HotHands, 4);  // 4 * 0.30 = 1.20
+    expect(bm2.getTotalBuffPower()).toBeCloseTo(bm1.getTotalBuffPower() * 2, 5);
   });
 });
