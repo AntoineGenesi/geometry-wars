@@ -1171,6 +1171,23 @@ export class StartMenu {
         border-color: #66ff88;
         box-shadow: 0 0 12px rgba(68, 255, 102, 0.25);
       }
+      #start-menu .lan-lobby-stop-btn {
+        background: rgba(255, 50, 50, 0.25);
+        border: 1px solid #ff4444;
+        color: #ff6666;
+        font: bold 11px monospace;
+        padding: 4px 10px;
+        cursor: pointer;
+        transition: all 0.2s;
+        flex-shrink: 0;
+        margin-left: 10px;
+      }
+      #start-menu .lan-lobby-stop-btn:hover {
+        background: rgba(255, 50, 50, 0.5);
+        border-color: #ff6666;
+        color: #ffffff;
+        box-shadow: 0 0 8px rgba(255, 50, 50, 0.4);
+      }
       #start-menu .lan-lobby-info {
         display: flex;
         flex-direction: column;
@@ -2109,7 +2126,21 @@ export class StartMenu {
         <span class="lan-lobby-players">${details.players}</span>
         <span class="lan-lobby-status ${statusClass}">${details.statusLabel}</span>
       </div>
+      ${isSelf ? '<button class="lan-lobby-stop-btn">STOP</button>' : ''}
     `;
+
+    // Stop button for self-hosted servers
+    if (isSelf) {
+      const stopBtn = entry.querySelector('.lan-lobby-stop-btn') as HTMLElement | null;
+      stopBtn?.addEventListener('click', async (e) => {
+        e.stopPropagation(); // Don't trigger join
+        stopBtn.textContent = '...';
+        await this.lanClient.stopHost();
+        entry.remove();
+        // Refresh lobby after a short delay for the port to free up
+        setTimeout(() => this.performLobbyRefresh(), 1000);
+      });
+    }
 
     entry.addEventListener('click', () => {
       const serverUrl = this.lanClient.getServerWsUrl(ip, port);
