@@ -1178,6 +1178,9 @@ function main() {
     onVote: (choice: string) => {
       network.sendVote(choice);
     },
+    onHostSetPickMode: (pickMode: boolean) => {
+      network.sendHostSetPickMode(pickMode);
+    },
     onHostLaunch: (choice: string) => {
       network.sendHostLaunch(choice);
     },
