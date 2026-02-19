@@ -320,6 +320,30 @@ export class BuffManager {
   }
 
   /**
+   * Compute a normalized total buff power score for DDA difficulty scaling.
+   * Returns 0 for no buffs, ~1.0 for a moderately buffed player,
+   * and up to ~8+ for a heavily stacked player.
+   *
+   * Weights reflect each buff's offensive DPS contribution:
+   *   - Offensive (hot hands, trigger happy): high weight
+   *   - Elemental AoE (shock aura, volatile): highest weight
+   *   - DoT (incendiary): high weight
+   *   - Utility/defensive (afterburner, magnetism, tough times): low weight
+   */
+  getTotalBuffPower(): number {
+    return (
+      this.getStacks(StackBuffType.HotHands) * 0.30 +
+      this.getStacks(StackBuffType.TriggerHappy) * 0.25 +
+      this.getStacks(StackBuffType.ShockAura) * 0.40 +
+      this.getStacks(StackBuffType.IncendiaryRounds) * 0.30 +
+      this.getStacks(StackBuffType.Volatile) * 0.50 +
+      this.getStacks(StackBuffType.Afterburner) * 0.10 +
+      this.getStacks(StackBuffType.Magnetism) * 0.10 +
+      this.getStacks(StackBuffType.ToughTimes) * 0.15
+    );
+  }
+
+  /**
    * Tough Times: hyperbolic block chance.
    * Formula: 1 - 1/(1 + 0.15 * stacks)
    * Returns probability 0-1 (never reaches 1).

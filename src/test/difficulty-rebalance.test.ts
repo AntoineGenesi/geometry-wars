@@ -445,3 +445,57 @@ describe('Super-Tier Continuous Scaling (difficultyLevel > MAX_TIER)', () => {
     }
   });
 });
+
+// ============================================================================
+// 8. Buff power contribution to difficulty
+// ============================================================================
+
+describe('Buff Power Difficulty Contribution', () => {
+  const baseInput: DifficultyInput = {
+    score: 5_000_000,
+    elapsedTime: 900,
+    combo: 0,
+    totalKills: 500,
+    playerLevel: 5,
+  };
+
+  it('buffPower defaults to 0 — existing tests unaffected', () => {
+    const withoutBuff = computeDifficultyLevel({ ...baseInput });
+    const withZeroBuff = computeDifficultyLevel({ ...baseInput, buffPower: 0 });
+    expect(withoutBuff).toBe(withZeroBuff);
+  });
+
+  it('high buffPower raises difficulty at least 2 levels above no-buff baseline', () => {
+    // buffPower 8 → buffBonus = min(3.0, 8 * 0.25) = 2.0
+    const noBuff = computeDifficultyLevel({ ...baseInput, buffPower: 0 });
+    const highBuff = computeDifficultyLevel({ ...baseInput, buffPower: 8 });
+    expect(highBuff - noBuff).toBeGreaterThanOrEqual(2.0);
+  });
+
+  it('buffPower is capped at +3.0 difficulty levels', () => {
+    // Even at buffPower 20 (god-mode), bonus caps at 3.0
+    const noBuff = computeDifficultyLevel({ ...baseInput, buffPower: 0 });
+    const godMode = computeDifficultyLevel({ ...baseInput, buffPower: 20 });
+    expect(godMode - noBuff).toBeLessThanOrEqual(3.0 + 0.001); // small tolerance
+  });
+
+  it('player with example load-out (buffPower ~8.45) gets meaningfully harder game', () => {
+    // 4x hot hands (1.2) + 3x trigger happy (0.75) + 5x shock aura (2.0)
+    // + 6x incendiary (1.8) + 4x volatile (2.0) + 1x afterburner (0.1)
+    // + 3x magnetism (0.3) + 2x tough times (0.3) = ~8.45
+    const buffPowerExample = 4 * 0.30 + 3 * 0.25 + 5 * 0.40 + 6 * 0.30 + 4 * 0.50 + 1 * 0.10 + 3 * 0.10 + 2 * 0.15;
+    expect(buffPowerExample).toBeGreaterThanOrEqual(6.0);
+
+    const noBuff = computeDifficultyLevel({ ...baseInput, buffPower: 0 });
+    const withExampleBuff = computeDifficultyLevel({ ...baseInput, buffPower: buffPowerExample });
+    expect(withExampleBuff - noBuff).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it('moderate buff stack (buffPower 4) gives meaningful but not extreme bonus', () => {
+    const noBuff = computeDifficultyLevel({ ...baseInput, buffPower: 0 });
+    const moderateBuff = computeDifficultyLevel({ ...baseInput, buffPower: 4 });
+    const diff = moderateBuff - noBuff;
+    expect(diff).toBeGreaterThanOrEqual(0.9);
+    expect(diff).toBeLessThanOrEqual(1.5);
+  });
+});

@@ -848,6 +848,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     combo: scoreManager.combo,
     totalKills: playerLevel.totalKills,
     playerLevel: playerLevel.level,
+    buffPower: buffManager.getTotalBuffPower(),
   });
 
   // -- Game mode --

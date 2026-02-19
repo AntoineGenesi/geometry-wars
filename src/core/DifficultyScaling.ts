@@ -175,6 +175,8 @@ export interface DifficultyInput {
   totalKills: number;
   /** Player level (0-9) */
   playerLevel: number;
+  /** Total buff power from BuffManager.getTotalBuffPower(). Optional — defaults to 0. */
+  buffPower?: number;
 }
 
 /**
@@ -229,8 +231,14 @@ export function computeDifficultyLevel(input: DifficultyInput): number {
   // Players with 1400 kills should face noticeably harder enemies
   const killBonus = Math.min(2.0, input.totalKills / 1000);
 
-  // Combine: score is dominant, time is moderate, combo/kills contribute
-  return scoreLevel + timeLevel * 0.5 + comboLevel + levelBonus + killBonus;
+  // Buff power ramp: each point of buff power adds 0.25 difficulty levels.
+  // A heavily buffed player (buffPower ~8) gets +2.0 difficulty levels.
+  // Capped at 3.0 so even a god-mode player eventually stops facing infinitely
+  // escalating enemies (super-tiers handle the rest).
+  const buffBonus = Math.min(3.0, (input.buffPower ?? 0) * 0.25);
+
+  // Combine: score is dominant, time is moderate, combo/kills/buffs contribute
+  return scoreLevel + timeLevel * 0.5 + comboLevel + levelBonus + killBonus + buffBonus;
 }
 
 /**
