@@ -36,6 +36,8 @@ import { ScorePopupManager } from './effects/ScorePopup';
 import { GlowTrail } from './effects/GlowTrail';
 import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
 import { InputManager } from './input/InputManager';
+import { isMobile } from './core/MobileDetector';
+import { TouchInput } from './input/TouchInput';
 import { MeshSurface } from './surfaces/MeshSurface';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
@@ -306,6 +308,9 @@ const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
 // ---------------------------------------------------------------------------
 
 function main() {
+  // Detect mobile mode early — affects input, quality, and entity limits.
+  const mobile = isMobile();
+
   // Initialize audio (same as co-op).
   // AudioContext may already be initialized if coming from StartMenu (where we
   // call init() synchronously within the click handler). If coming from a direct
@@ -334,17 +339,31 @@ function main() {
   // -- Visual style (user-selected from Visual Styles playground) --
   const savedStyle = loadVisualStyle();
 
-  // -- Game engine (same config as co-op) --
+  // -- Game engine (same config as co-op, mobile reduces bloom) --
   const game = new Game({
     bloom: {
-      strength: savedStyle?.bloomStrength ?? 1.0,
-      radius: savedStyle?.bloomRadius ?? 0.4,
+      strength: savedStyle?.bloomStrength ?? (mobile ? 0.4 : 1.0),
+      radius: savedStyle?.bloomRadius ?? (mobile ? 0.3 : 0.4),
       threshold: savedStyle?.bloomThreshold ?? 0.85,
     },
     cameraDistance: 15,
     cameraSmoothing: 0.05,
   });
   game.disableBuiltInCameraUpdate = true;
+
+  // Apply mobile quality settings (same as main.ts)
+  if (mobile) {
+    game.entityLimits = {
+      maxEnemies: 200,
+      maxBullets: 500,
+      maxParticles: 2000,
+      maxGeoms: 300,
+      bloomEnabled: true,
+      shadowsEnabled: false,
+    };
+    // Cap pixel ratio to 1.5x on mobile — saves ~44% GPU fill vs 2.0x cap
+    game.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  }
 
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
@@ -626,6 +645,9 @@ function main() {
 
   const particles = new ParticleSystem(5000);
   scene.add(particles.root);
+  if (mobile) {
+    particles.setEmitBudget(60, 20);
+  }
 
   const scorePopups = new ScorePopupManager();
   scene.add(scorePopups.root);
@@ -701,7 +723,8 @@ function main() {
   const networkWeaponPickups = new Map<string, WeaponPickup>();
 
   // -- Local input --
-  const input = new InputManager();
+  // On mobile, use virtual joystick touch controls; otherwise keyboard+mouse.
+  const input = mobile ? new TouchInput() : new InputManager();
 
   // -- Network client --
   const network = new NetworkClient(getServerUrl());
