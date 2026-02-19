@@ -15,6 +15,8 @@ const MAX_HIGH_SCORES = 10;
 export class GameOverScreen {
   private container: HTMLDivElement;
   private onContinueCallback: (() => void) | null = null;
+  private onReturnToMenuCallback: (() => void) | null = null;
+  private autoTransitionTimeout: ReturnType<typeof setTimeout> | null = null;
   private finalScore: number = 0;
   private surfaceType: string = 'sphere';
 
@@ -173,49 +175,125 @@ export class GameOverScreen {
         font-size: 12px;
         letter-spacing: 2px;
       }
+
+      #game-over-screen .return-to-menu-btn {
+        background: linear-gradient(180deg, #880000 0%, #550000 100%);
+        border: 2px solid #ff4444;
+        color: #ffffff;
+        padding: 14px 40px;
+        font-size: 18px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 3px;
+        margin-top: 12px;
+        display: block;
+        width: 100%;
+      }
+
+      #game-over-screen .return-to-menu-btn:hover {
+        background: linear-gradient(180deg, #aa0000 0%, #770000 100%);
+        transform: scale(1.03);
+        box-shadow: 0 0 20px #ff4444;
+      }
+
+      #game-over-screen .auto-transition-countdown {
+        margin-top: 16px;
+        color: #8888aa;
+        font-size: 13px;
+        letter-spacing: 1px;
+      }
     `;
     document.head.appendChild(style);
   }
 
   /**
    * Show the game over screen with final score.
+   * @param mode 'solo' (default) = single-player behavior; 'network' = show
+   *             "RETURN TO MENU" button and auto-transition to voting after 4s.
    */
-  show(score: number, surfaceType: string): void {
+  show(score: number, surfaceType: string, mode: 'solo' | 'network' = 'solo'): void {
     this.finalScore = score;
     this.surfaceType = surfaceType;
+    this.clearAutoTransition();
 
     // Save score and get ranking
     const { isNewHighScore, rank } = this.saveScore(score, surfaceType);
     const highScores = this.getHighScores();
 
-    this.container.innerHTML = this.createContentHTML(score, isNewHighScore, rank, highScores);
+    this.container.innerHTML = this.createContentHTML(score, isNewHighScore, rank, highScores, mode);
     this.container.classList.remove('hidden');
 
-    // Attach button listener
+    // Attach continue/return-to-menu button listener
     const continueBtn = this.container.querySelector('.continue-btn');
     continueBtn?.addEventListener('click', () => {
+      this.clearAutoTransition();
       this.hide();
-      this.onContinueCallback?.();
-    });
-
-    // Also allow Enter/Space to continue
-    const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        document.removeEventListener('keydown', keyHandler);
-        this.hide();
+      if (mode === 'network') {
+        this.onReturnToMenuCallback?.();
+      } else {
         this.onContinueCallback?.();
       }
-    };
-    setTimeout(() => {
-      document.addEventListener('keydown', keyHandler);
-    }, 500); // Small delay to prevent accidental skip
+    });
+
+    // In network mode, attach "RETURN TO MENU" button and auto-transition
+    if (mode === 'network') {
+      const AUTO_TRANSITION_MS = 4000;
+
+      // Countdown display update
+      const countdownEl = this.container.querySelector('.auto-transition-countdown');
+      let remaining = AUTO_TRANSITION_MS / 1000;
+      const tick = () => {
+        if (countdownEl) {
+          countdownEl.textContent = `Voting screen in ${remaining}s…`;
+        }
+        remaining--;
+      };
+      tick();
+      const tickInterval = setInterval(tick, 1000);
+
+      // Auto-transition: hide this screen (VotingScreen appears via roomPhase event)
+      this.autoTransitionTimeout = setTimeout(() => {
+        clearInterval(tickInterval);
+        this.autoTransitionTimeout = null;
+        this.hide();
+        this.onContinueCallback?.();
+      }, AUTO_TRANSITION_MS);
+
+      // Enter/Space → go to vote immediately (skip wait)
+      const keyHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          document.removeEventListener('keydown', keyHandler);
+          clearInterval(tickInterval);
+          this.clearAutoTransition();
+          this.hide();
+          this.onContinueCallback?.();
+        }
+      };
+      setTimeout(() => {
+        document.addEventListener('keydown', keyHandler);
+      }, 500);
+    } else {
+      // Solo mode: Enter/Space continues
+      const keyHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          document.removeEventListener('keydown', keyHandler);
+          this.hide();
+          this.onContinueCallback?.();
+        }
+      };
+      setTimeout(() => {
+        document.addEventListener('keydown', keyHandler);
+      }, 500); // Small delay to prevent accidental skip
+    }
   }
 
   private createContentHTML(
     score: number,
     isNewHighScore: boolean,
     rank: number,
-    highScores: HighScoreEntry[]
+    highScores: HighScoreEntry[],
+    mode: 'solo' | 'network' = 'solo'
   ): string {
     const newHighScoreHTML = isNewHighScore
       ? `<div class="new-high-score">NEW HIGH SCORE!</div>`
@@ -235,6 +313,17 @@ export class GameOverScreen {
       })
       .join('');
 
+    const buttonsHTML = mode === 'network'
+      ? `
+        <button class="continue-btn return-to-menu-btn">RETURN TO MENU</button>
+        <div class="auto-transition-countdown"></div>
+        <div class="hint">Press ENTER to go to vote now · click RETURN TO MENU to disconnect</div>
+      `
+      : `
+        <button class="continue-btn">CONTINUE</button>
+        <div class="hint">Press ENTER or click to continue</div>
+      `;
+
     return `
       <div class="content">
         <h1 class="title">GAME OVER</h1>
@@ -252,25 +341,42 @@ export class GameOverScreen {
           </ul>
         </div>
 
-        <button class="continue-btn">CONTINUE</button>
-
-        <div class="hint">Press ENTER or click to continue</div>
+        ${buttonsHTML}
       </div>
     `;
   }
 
   /**
-   * Hide the game over screen.
+   * Hide the game over screen. Cancels any pending auto-transition.
    */
   hide(): void {
+    this.clearAutoTransition();
     this.container.classList.add('hidden');
   }
 
   /**
-   * Set callback for when continue is clicked.
+   * Set callback for when continue is clicked (solo) or auto-transition fires (network).
    */
   onContinue(callback: () => void): void {
     this.onContinueCallback = callback;
+  }
+
+  /**
+   * Set callback for when "RETURN TO MENU" is clicked in network mode.
+   * Should disconnect from the server and reload the page.
+   */
+  onReturnToMenu(callback: () => void): void {
+    this.onReturnToMenuCallback = callback;
+  }
+
+  /**
+   * Cancel any pending auto-transition timeout.
+   */
+  private clearAutoTransition(): void {
+    if (this.autoTransitionTimeout !== null) {
+      clearTimeout(this.autoTransitionTimeout);
+      this.autoTransitionTimeout = null;
+    }
   }
 
   /**

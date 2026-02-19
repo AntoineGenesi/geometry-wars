@@ -1184,11 +1184,19 @@ function main() {
   // -----------------------------------------------------------------------
 
   const gameOverScreen = new GameOverScreen();
-  // In network mode, "CONTINUE" no longer disconnects — the server transitions
-  // roomPhase to 'voting' automatically. Just hide the game over screen; the
-  // VotingScreen will appear when the server pushes the voting phase.
+  // In network mode, auto-transition fires after 4s (or Enter key) — just hide
+  // and let the roomPhase→'voting' server push show VotingScreen.
   gameOverScreen.onContinue(() => {
     gameOverScreen.hide();
+  });
+  // "RETURN TO MENU" button in network mode: end game (host only) then disconnect.
+  gameOverScreen.onReturnToMenu(() => {
+    if (isHost) {
+      network.sendEndGame();
+    } else {
+      network.disconnect();
+    }
+    window.location.href = window.location.pathname;
   });
   let gameOverShown = false;
 
@@ -1839,7 +1847,7 @@ function main() {
         gameOverShown = true;
         const localPlayer = state.players.get(localPlayerId);
         const score = localPlayer?.score ?? 0;
-        gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere');
+        gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network');
       }
     } else if (currentRoomPhase === 'lobby' || (!state.gameStarted && !state.gameOver)) {
       statusEl.textContent = 'Waiting for players...';
@@ -1909,7 +1917,7 @@ function main() {
           gameOverShown = true;
           const localPlayer = networkPlayers.get(localPlayerId);
           const score = localPlayer?.score ?? 0;
-          gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere');
+          gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network');
         }
       },
       onError: (err) => {
