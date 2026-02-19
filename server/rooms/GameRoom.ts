@@ -416,11 +416,31 @@ export class GameRoom extends Room<GameState> {
   private updateBullets(dt: number) {
     const bulletsToRemove: number[] = [];
 
+    // Compute once per tick — same surface type check as applyPlayerMovement()
+    const surfType = this.state.surfaceType;
+    const isSphereLike = surfType === 'sphere' || surfType === 'sphere-tunnel'
+      || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut';
+
     this.state.bullets.forEach((bullet, index) => {
       bullet.age += dt;
 
+      // Apply sin(phi) correction for sphere-like surfaces.
+      // On a sphere, the arc length of a U-step at latitude V is proportional
+      // to sin(phi) where phi = V * PI.  Without correction, bullets aimed
+      // horizontally slow to a crawl near the poles (sin(phi)→0) while V-aimed
+      // bullets travel at normal speed, making every shot appear to curve toward
+      // the poles.  Dividing dirX by sin(phi) restores consistent world-space
+      // bullet speed — the same correction applyPlayerMovement() already uses.
+      let correctedDirX = bullet.dirX;
+      if (isSphereLike) {
+        const phi = bullet.y * Math.PI;
+        const sinPhi = Math.sin(phi);
+        const clampedSinPhi = Math.max(sinPhi, 0.3);
+        correctedDirX = bullet.dirX / clampedSinPhi;
+      }
+
       // Move bullet
-      bullet.x += bullet.dirX * BULLET_SPEED * dt;
+      bullet.x += correctedDirX * BULLET_SPEED * dt;
       bullet.y += bullet.dirY * BULLET_SPEED * dt;
 
       // Wrap/clamp coordinates
