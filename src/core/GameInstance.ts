@@ -519,9 +519,15 @@ export class GameInstance {
 
     const inputState = this.input.getState();
 
-    // Handle respawn or game over
+    // Handle respawn or game over.
+    // lives === 0 in config means infinite respawns (demo/playground mode).
     if (!this.player.alive) {
-      if (this.player.lives > 0) {
+      const infiniteLives = this.config.lives === 0;
+      if (this.player.lives > 0 || infiniteLives) {
+        // In infinite lives mode, reset counter so next die() still triggers respawn
+        if (infiniteLives && this.player.lives <= 0) {
+          this.player.lives = 99;
+        }
         this.respawnTimer += dt;
         if (this.respawnTimer >= RESPAWN_DELAY) {
           this.respawnTimer = 0;

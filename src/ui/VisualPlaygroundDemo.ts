@@ -30,7 +30,8 @@ import type { VisualPreset } from './VisualPlayground';
 const DEMO_WIDTH = 800;
 const DEMO_HEIGHT = 600;
 const ENEMY_COUNT = 8;
-const STARTING_LIVES = 3;
+// Lives: 0 = infinite respawns (demo/playground mode). The player never sees game over.
+const STARTING_LIVES = 0;
 
 // ---------------------------------------------------------------------------
 // VisualPlaygroundDemo
@@ -161,7 +162,7 @@ export class VisualPlaygroundDemo {
       'padding:6px 12px;color:#88aacc;font:11px monospace;letter-spacing:1px;';
     this.statsOverlay.innerHTML =
       `<span style="color:#00ffcc;text-transform:uppercase;">${surfaceType} | ${preset.name}</span>` +
-      '<span id="vpd-lives">LIVES: 3</span>' +
+      '<span id="vpd-lives">LIVES: ∞</span>' +
       '<span id="vpd-kills">KILLS: 0</span>' +
       '<span id="vpd-time">0.0s</span>';
     this.overlay.appendChild(this.statsOverlay);
@@ -326,8 +327,21 @@ export class VisualPlaygroundDemo {
 
     // Apply grid material (Sektori shader or standard LineBasicMaterial)
     if (preset.sektoriConfig) {
-      this.sektoriMaterial = createSektoriGridMaterial(preset.sektoriConfig);
-      this.sektoriTrail = new SektoriTrailManager(preset.sektoriConfig);
+      // Scale the Sektori glow radius for the demo's larger surface.
+      // Thumbnails are scaled to fit radius ~3 (VisualPlayground.createCell scaleFactor).
+      // The demo uses surfaceScale:10, giving a surface with bounding sphere radius ~10-11.
+      // Without scaling, the same glowRadius covers a much smaller fraction of the demo surface,
+      // making most of the grid appear dark/grey (only ~36% coverage vs ~133% in the thumbnail).
+      surface.mesh.geometry.computeBoundingSphere();
+      const surfaceRadius = surface.mesh.geometry.boundingSphere?.radius ?? 10;
+      const THUMBNAIL_SURFACE_RADIUS = 3.0;
+      const glowScale = surfaceRadius / THUMBNAIL_SURFACE_RADIUS;
+      const scaledSektoriConfig = {
+        ...preset.sektoriConfig,
+        glowRadius: (preset.sektoriConfig.glowRadius ?? 4.0) * glowScale,
+      };
+      this.sektoriMaterial = createSektoriGridMaterial(scaledSektoriConfig);
+      this.sektoriTrail = new SektoriTrailManager(scaledSektoriConfig);
       if (surface.gridMesh.material instanceof THREE.Material) {
         surface.gridMesh.material.dispose();
       }
@@ -477,11 +491,11 @@ export class VisualPlaygroundDemo {
   };
 
   private updateStats(): void {
-    const stats = this.playgroundGame.getStats();
     const livesEl = this.statsOverlay.querySelector('#vpd-lives');
     const killsEl = this.statsOverlay.querySelector('#vpd-kills');
     const timeEl = this.statsOverlay.querySelector('#vpd-time');
-    if (livesEl) livesEl.textContent = `LIVES: ${stats.lives}`;
+    // STARTING_LIVES === 0 means infinite respawns; always show ∞
+    if (livesEl) livesEl.textContent = STARTING_LIVES === 0 ? 'LIVES: ∞' : `LIVES: ${this.playgroundGame.getStats().lives}`;
     if (killsEl) killsEl.textContent = `KILLS: ${this.kills}`;
     if (timeEl) timeEl.textContent = `${this.elapsed.toFixed(1)}s`;
   }
