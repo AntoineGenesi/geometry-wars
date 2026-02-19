@@ -275,3 +275,54 @@ describe('Bullet orientation with surface tangent frame', () => {
     // This is DIFFERENT from raw (dirX, dirY, 0) = (1, 0, 0)
   });
 });
+
+// ---------------------------------------------------------------------------
+// s25-mp04: LAN join URL simplification
+// getJoinUrl should not include server= param (it's redundant and ugly)
+// ---------------------------------------------------------------------------
+
+describe('LANClient URL simplification', () => {
+  it('getJoinUrl default port: no server= param, no port= param', async () => {
+    const { LANClient } = await import('../network/LANClient');
+    const client = new LANClient();
+    const url = client.getJoinUrl('192.168.1.100', 2567, 'sphere', 3000);
+    expect(url).toBe('http://192.168.1.100:3000/?mode=network&surface=sphere');
+    expect(url).not.toContain('server=');
+    expect(url).not.toContain('%3A%2F%2F');
+    expect(url).not.toContain('port=');
+  });
+
+  it('getJoinUrl non-default port: includes port= but no server=', async () => {
+    const { LANClient } = await import('../network/LANClient');
+    const client = new LANClient();
+    const url = client.getJoinUrl('192.168.1.100', 2568, 'torus', 3000);
+    expect(url).toBe('http://192.168.1.100:3000/?mode=network&surface=torus&port=2568');
+    expect(url).not.toContain('server=');
+    expect(url).not.toContain('%3A%2F%2F');
+  });
+
+  it('getMobileJoinUrl default port: clean URL with mobile flag', async () => {
+    const { LANClient } = await import('../network/LANClient');
+    const client = new LANClient();
+    const url = client.getMobileJoinUrl('192.168.1.100', 2567, 'sphere', 3000);
+    expect(url).toBe('http://192.168.1.100:3000/?mobile=true&mode=network&surface=sphere');
+    expect(url).not.toContain('server=');
+    expect(url).not.toContain('%3A%2F%2F');
+  });
+
+  it('getMobileJoinUrl non-default port: includes port= param', async () => {
+    const { LANClient } = await import('../network/LANClient');
+    const client = new LANClient();
+    const url = client.getMobileJoinUrl('192.168.1.100', 3000, 'cube', 3001);
+    expect(url).toBe('http://192.168.1.100:3001/?mobile=true&mode=network&surface=cube&port=3000');
+    expect(url).not.toContain('server=');
+  });
+
+  it('URL is human-readable (no percent-encoded characters)', async () => {
+    const { LANClient } = await import('../network/LANClient');
+    const client = new LANClient();
+    const url = client.getJoinUrl('192.168.1.100', 2567, 'sphere', 3000);
+    // Should be directly typeable — no percent encoding
+    expect(url).not.toMatch(/%[0-9A-F]{2}/i);
+  });
+});
