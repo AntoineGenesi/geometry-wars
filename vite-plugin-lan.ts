@@ -185,8 +185,10 @@ export default function lanPlugin(): Plugin {
     if (serverProcess) {
       serverProcess.kill();
       serverProcess = null;
-      serverReady = false;
     }
+    // Also kill any external server on the port (e.g. started by Play Game.bat)
+    await killStaleServer();
+    serverReady = false;
     return { ok: true };
   }
 
@@ -220,12 +222,17 @@ export default function lanPlugin(): Plugin {
     const subnets = [...new Set(addresses.map(getSubnet))];
     const found: ScanServer[] = [];
 
-    // Include self if hosting
-    if (serverReady) {
+    // Check if ANY server is running on the game port (ours or external like Play Game.bat)
+    const localServerAlive = await checkServerHealth();
+    if (localServerAlive) {
+      serverReady = true; // Mark as ready so stop button works
       const selfRooms = await fetchRooms('localhost', SERVER_PORT);
-      for (const addr of addresses) {
-        found.push({ ip: addr, port: SERVER_PORT, info: { game: 'geometry-wars-3d', self: true }, rooms: selfRooms });
-      }
+      // Pick the most likely LAN IP: prefer 192.168.x.x, then any non-172.x, then first available
+      const primaryIp = addresses.find(a => a.startsWith('192.168.'))
+        ?? addresses.find(a => !a.startsWith('172.'))
+        ?? addresses[0]
+        ?? 'localhost';
+      found.push({ ip: primaryIp, port: SERVER_PORT, info: { game: 'geometry-wars-3d', self: true }, rooms: selfRooms });
     }
 
     // Scan each subnet
