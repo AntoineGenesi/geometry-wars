@@ -35,13 +35,13 @@ if not exist "node_modules" (
 
 REM Fix native binaries if needed (WSL installs Linux binaries, Windows needs win32)
 echo  Checking native binaries...
-call node scripts\check-native-binaries.js
+call node scripts\check-native-binaries.cjs
 if %ERRORLEVEL% neq 0 (
     echo.
     echo  [..] Fixing Windows-specific native binaries...
     echo  [..] This may take a minute...
     echo.
-    call node scripts\fix-native-binaries.js
+    call node scripts\fix-native-binaries.cjs
     if !ERRORLEVEL! neq 0 (
         echo.
         echo  [!] Failed to fix native binaries. See output above.
