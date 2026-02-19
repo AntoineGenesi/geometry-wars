@@ -153,7 +153,7 @@ const _bulletSyncDir = new THREE.Vector3();
 // Surface transform helper
 // ---------------------------------------------------------------------------
 
-function makeSurfaceTransformFn(surface: Surface) {
+function makeSurfaceTransformFn(surface: Surface, scaleFactor: number = 1.0) {
   return (u: number, v: number): {
     position: THREE.Vector3;
     normal: THREE.Vector3;
@@ -161,6 +161,13 @@ function makeSurfaceTransformFn(surface: Surface) {
     bitangent: THREE.Vector3;
   } => {
     const pt: SurfacePoint = surface.getPoint(u, v);
+    // surface.getPoint() only applies worldRotation (not the group scale from map size).
+    // Apply the scale factor so UV-based entities (pickups, bullets) appear on the
+    // correctly-sized surface when map size != MEDIUM (scaleFactor != 1.0).
+    if (scaleFactor !== 1.0) {
+      pt.position.multiplyScalar(scaleFactor);
+      // Normals and tangents are unit vectors — uniform scaling does not change their direction.
+    }
     return {
       position: pt.position,
       normal: pt.normal,
@@ -539,8 +546,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // On mobile, use virtual joystick touch controls; otherwise keyboard+mouse.
   const input = mobile ? new TouchInput() : new InputManager();
 
-  // Surface transform callback shared by subsystems still using UV (enemies, geoms)
-  const getTransform = makeSurfaceTransformFn(surface);
+  // Surface transform callback shared by subsystems still using UV (enemies, geoms).
+  // Pass mapSizeScaleFactor so UV-based entities appear on the correctly-scaled surface.
+  const getTransform = makeSurfaceTransformFn(surface, mapSizeScaleFactor);
 
   // -- Bullet pool --
   const bulletPool = new BulletPool();
