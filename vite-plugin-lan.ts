@@ -84,11 +84,19 @@ export default function lanPlugin(): Plugin {
   function killStaleServer(): Promise<void> {
     return new Promise((resolve) => {
       try {
-        execSync(`fuser -k ${SERVER_PORT}/tcp 2>/dev/null || true`, { timeout: 3000 });
+        if (process.platform === 'win32') {
+          // Windows: find PID on port, then kill it
+          const out = execSync(`netstat -ano | findstr ":${SERVER_PORT}" | findstr "LISTENING"`, { timeout: 3000, encoding: 'utf8' });
+          const pids = [...new Set(out.trim().split('\n').map(l => l.trim().split(/\s+/).pop()).filter(Boolean))];
+          for (const pid of pids) {
+            try { execSync(`taskkill /F /PID ${pid}`, { timeout: 3000 }); } catch { /* ignore */ }
+          }
+        } else {
+          execSync(`fuser -k ${SERVER_PORT}/tcp 2>/dev/null`, { timeout: 3000 });
+        }
       } catch {
-        // Ignore errors (fuser may not be available, or no process on port)
+        // Ignore errors — no process on port, or command not available
       }
-      // Give the OS time to release the port
       setTimeout(resolve, 500);
     });
   }
