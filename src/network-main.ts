@@ -47,6 +47,7 @@ import { WeaponHUD } from './ui/WeaponHUD';
 import { WeaponManager } from './weapons/WeaponManager';
 import type { WeaponInventoryEntry } from './weapons/WeaponManager';
 import { AllyGlowManager } from './effects/AllyGlow';
+import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
 import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
@@ -600,6 +601,16 @@ function main() {
   // -- EntityGlow for local player (pulsing halo, same as single-player) --
   const glowManager = new EntityGlowManager();
 
+  // -- PlayerLevel: visual-only kill progression for local player in LAN --
+  // Stat multipliers (damage, fireRate, etc.) are NOT applied — server controls those.
+  // Only the visual aura ring and level-up notification are active.
+  const playerLevel = new PlayerLevel();
+  const levelUpNotification = new LevelUpNotification();
+  playerLevel.onLevelUp = (level, perk) => {
+    levelUpNotification.show(level, perk);
+    sound.play('multiplierUp', { pitch: 1.2 + level * 0.05 });
+  };
+
   // -- Enemy tracking --
   // Maps server enemy ID -> real BaseEnemy instance (created via EnemySpawner)
   const networkEnemies = new Map<string, BaseEnemy>();
@@ -1128,6 +1139,8 @@ function main() {
     if (id === localPlayerId) {
       const preset = GlowPresets.player;
       glowManager.addGlow(player.mesh, preset.color, preset.size, preset.opacity);
+      // Add PlayerLevel aura ring to scene (grows visually with kills)
+      scene.add(playerLevel.auraRing);
     }
 
     // Add ally glow for remote players
@@ -1291,6 +1304,10 @@ function main() {
           glowManager.removeGlow(player.mesh);
           scene.remove(player.mesh);
         }
+        // Remove PlayerLevel aura ring when local player disconnects
+        if (id === localPlayerId) {
+          scene.remove(playerLevel.auraRing);
+        }
         networkPlayers.delete(id);
 
         const trail = playerGlowTrails.get(id);
@@ -1372,6 +1389,11 @@ function main() {
           });
           const tracker = getOrCreateDDATracker(nearestId);
           tracker.recordKill(enemy.scoreValue);
+
+          // PlayerLevel kill attribution: count kill for local player progression
+          if (nearestId === localPlayerId) {
+            playerLevel.addKill();
+          }
         }
 
         // Clean up: unregister from instance manager before removing from scene
@@ -1937,6 +1959,10 @@ function main() {
     if (localPlayer) {
       const pt = surface.worldToSurface(localPlayer.mesh.position);
       geomPool.update(dt, pt.u, pt.v, game.clock.totalTime);
+
+      // Update PlayerLevel aura ring (position + pulse animation each frame)
+      const auraPoint = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+      playerLevel.update(dt, auraPoint.position, auraPoint.normal);
     }
 
     // -----------------------------------------------------------------------
@@ -2218,6 +2244,8 @@ function main() {
     weaponHUD.dispose();
     minimap.dispose();
     meshSurface?.dispose();
+    levelUpNotification.dispose();
+    playerLevel.dispose();
   });
 
   // Debug hook: read-only access to game state for automated testing.
