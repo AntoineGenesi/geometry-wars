@@ -137,7 +137,10 @@ function isValidSurfaceType(s: string): s is SurfaceType {
 
 function getServerUrl(): string {
   const params = new URLSearchParams(window.location.search);
-  return params.get('server') || `ws://${window.location.hostname}:2567`;
+  const explicitServer = params.get('server');
+  if (explicitServer) return explicitServer;
+  const port = params.get('port') || '2567';
+  return `ws://${window.location.hostname}:${port}`;
 }
 
 function getPlayerName(): string {
