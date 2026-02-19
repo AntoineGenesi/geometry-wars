@@ -21,6 +21,29 @@ Open LAN multiplayer with **host choosing a different surface than the URL defau
 
 **Root cause fixed (2026-02-20):** Surface type race condition — client would render entities on wrong surface before server confirmed the correct type via `onStateChange`. Fixed by: (1) guarding `onRender` with `surfaceConfirmedFromServer` flag, (2) adding correction warning when mismatch is detected.
 
+## Session 25 LAN Pause Menu — Escape Key (2026-02-20)
+
+Start a LAN game (host + at least one non-host player).
+
+### Non-Host Player (the main fix)
+
+- [ ] **Escape opens menu** — As a non-host player, press Escape during gameplay. A "MENU" overlay should appear.
+- [ ] **Menu shows correct options** — Should show: RESUME GAME, RETURN TO MAIN MENU. Should NOT show STOP SERVER.
+- [ ] **Warning is visible** — Menu shows "⚠ Game continues — you can still be hit by enemies".
+- [ ] **Escape closes menu** — Press Escape again. Menu disappears, game resumes normally.
+- [ ] **Resume button works** — Click "▶ RESUME GAME". Menu closes, player movement resumes.
+- [ ] **Return to menu button** — Click "◀ RETURN TO MAIN MENU". Disconnects and navigates to the start screen.
+- [ ] **Player stops moving while menu is open** — While menu is open, verify other players see this player standing still (zero input sent to server).
+- [ ] **Other players unaffected** — Open menu as non-host. Host and other non-hosts should see the game still running normally (enemies moving, their own movement unchanged).
+
+### Host Player
+
+- [ ] **Escape opens menu** — As host, press Escape. Menu appears with RESUME GAME, RETURN TO MAIN MENU, AND STOP SERVER.
+- [ ] **Stop Server button works** — Click "⏹ STOP SERVER (ALL PLAYERS)". All players should be disconnected and returned to menu.
+- [ ] **Host escape no longer pauses server** — Opening the local menu (Escape) does NOT freeze other players' game. (The old host-only server pause via Escape is replaced by this menu; server-controlled pause still works via other mechanisms.)
+
+**Verification level:** Level 0 (code analysis only) — LAN requires human testing.
+
 ---
 
 ## Session 25 Playground Aiming + Hit Detection Fix (2026-02-19)

@@ -575,6 +575,7 @@ function main() {
   let localPlayerId = '';
   let isHost = false;
   let isPaused = false;
+  let localMenuOpen = false;
 
   // -- Dynamic Difficulty Adjustment (DDA) system --
   // In LAN mode, DDA tracks local player metrics on every client.
@@ -764,21 +765,127 @@ function main() {
     }
   }
 
-  // Escape key handler: host can toggle pause
+  // -----------------------------------------------------------------------
+  // Local player menu — opened by Escape, visible to ALL players.
+  // Does NOT pause the server game. Each player manages their own menu.
+  // Non-hosts can use this to disconnect. Hosts can stop the server.
+  // -----------------------------------------------------------------------
+
+  const localMenuEl = document.createElement('div');
+  localMenuEl.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;' +
+    'background:rgba(0,0,20,0.88);z-index:300;' +
+    'display:none;flex-direction:column;justify-content:center;align-items:center;' +
+    'backdrop-filter:blur(4px);font-family:monospace;';
+
+  const localMenuTitle = document.createElement('div');
+  localMenuTitle.textContent = 'MENU';
+  localMenuTitle.style.cssText =
+    'color:#ffff00;font-size:64px;font-weight:bold;' +
+    'text-shadow:0 0 20px #ffff00,0 0 40px #ffaa00;' +
+    'margin-bottom:16px;letter-spacing:10px;';
+  localMenuEl.appendChild(localMenuTitle);
+
+  const localMenuWarning = document.createElement('div');
+  localMenuWarning.textContent = '⚠  Game continues — you can still be hit by enemies';
+  localMenuWarning.style.cssText =
+    'color:#ff8800;font-size:14px;margin-bottom:36px;letter-spacing:1px;';
+  localMenuEl.appendChild(localMenuWarning);
+
+  function makeMenuBtn(
+    text: string,
+    bg: string,
+    borderColor: string,
+  ): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.textContent = text;
+    btn.style.cssText =
+      'margin:8px;padding:16px 48px;font:bold 20px monospace;' +
+      `background:${bg};color:#fff;border:2px solid ${borderColor};cursor:pointer;` +
+      'letter-spacing:2px;min-width:320px;transition:filter 0.15s;';
+    btn.addEventListener('mouseenter', () => { btn.style.filter = 'brightness(1.3)'; });
+    btn.addEventListener('mouseleave', () => { btn.style.filter = ''; });
+    return btn;
+  }
+
+  const localMenuResumeBtn = makeMenuBtn('▶  RESUME GAME', '#004400', '#00cc00');
+  localMenuResumeBtn.onclick = () => { hideLocalMenu(); };
+  localMenuEl.appendChild(localMenuResumeBtn);
+
+  const localMenuReturnBtn = makeMenuBtn('◀  RETURN TO MAIN MENU', '#220000', '#cc4444');
+  localMenuReturnBtn.onclick = () => {
+    hideLocalMenu();
+    network.disconnect();
+    window.location.href = window.location.pathname;
+  };
+  localMenuEl.appendChild(localMenuReturnBtn);
+
+  // Host-only: stop the server and kick all players back to menu
+  const localMenuStopServerBtn = makeMenuBtn('⏹  STOP SERVER (ALL PLAYERS)', '#440000', '#ff2200');
+  localMenuStopServerBtn.style.display = 'none';
+  localMenuStopServerBtn.onclick = async () => {
+    hideLocalMenu();
+    network.sendEndGame();
+    try { await fetch('/__lan/stop', { method: 'POST' }); } catch { /* ignore */ }
+    window.location.href = window.location.pathname;
+  };
+  localMenuEl.appendChild(localMenuStopServerBtn);
+
+  const localMenuHint = document.createElement('div');
+  localMenuHint.textContent = 'Press ESC to resume';
+  localMenuHint.style.cssText = 'color:#555566;font-size:13px;margin-top:28px;letter-spacing:2px;';
+  localMenuEl.appendChild(localMenuHint);
+
+  document.body.appendChild(localMenuEl);
+
+  function showLocalMenu(): void {
+    localMenuOpen = true;
+    localMenuStopServerBtn.style.display = isHost ? 'block' : 'none';
+    localMenuEl.style.display = 'flex';
+    // Send zero input immediately so the server stops moving this player
+    if (network.isConnected()) {
+      const zeroInput = {
+        moveX: 0,
+        moveY: 0,
+        aimAngle: lastSentInput?.aimAngle ?? 0,
+        shooting: false,
+        bomb: false,
+      };
+      network.sendInput(zeroInput);
+      lastSentInput = { ...zeroInput };
+    }
+  }
+
+  function hideLocalMenu(): void {
+    localMenuOpen = false;
+    localMenuEl.style.display = 'none';
+  }
+
+  // Escape key handler: open/close local player menu for ALL players.
+  // Opening the menu does NOT pause the server — other players keep playing.
+  // (Host can still pause the server via the existing server-pause overlay's
+  //  Resume button, which sends sendPause(false) via the resumeBtn click.)
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && network.isConnected()) {
-      // Re-check host status in case it wasn't set correctly at connect time
-      if (!isHost) {
-        const serverHostId = network.getServerHostId();
-        if (serverHostId && serverHostId === localPlayerId) {
-          isHost = true;
-          netMainLog('[NetworkMain] Host status confirmed on ESC press');
+      if (localMenuOpen) {
+        // Close the local menu
+        hideLocalMenu();
+      } else if (!isPaused) {
+        // Server is not paused — open local menu for this player
+        // Re-check host status in case it changed since connect
+        if (!isHost) {
+          const serverHostId = network.getServerHostId();
+          if (serverHostId && serverHostId === localPlayerId) {
+            isHost = true;
+            netMainLog('[NetworkMain] Host status confirmed on ESC press');
+          }
         }
-      }
-      if (isHost) {
-        isPaused = !isPaused;
-        network.sendPause(isPaused);
-        showPauseOverlay(isPaused);
+        showLocalMenu();
+      } else if (isHost) {
+        // Server is paused (by host) — host can resume with Escape
+        isPaused = false;
+        network.sendPause(false);
+        showPauseOverlay(false);
       }
     }
   });
@@ -902,6 +1009,7 @@ function main() {
       if (nowIsHost !== isHost) {
         isHost = nowIsHost;
         stopServerBtn.style.display = isHost ? 'block' : 'none';
+        localMenuStopServerBtn.style.display = isHost ? 'block' : 'none';
         netMainLog(`[NetworkMain] Host status updated: ${isHost ? 'IS host' : 'NOT host'}`);
       }
     }
@@ -1452,7 +1560,10 @@ function main() {
     const aimAngle = Math.atan2(-mouseY, mouseX);
 
     lastInputSendTime += dt;
-    if (network.isConnected() && lastInputSendTime >= INPUT_SEND_INTERVAL) {
+    // Skip input sending and client-side prediction while local menu is open.
+    // The server was already sent zero-input when the menu opened, so the player
+    // stays frozen on the server. Visual systems (particles, etc.) still update.
+    if (!localMenuOpen && network.isConnected() && lastInputSendTime >= INPUT_SEND_INTERVAL) {
       // Negate moveY (same fix as before: W = screen up = -moveY, but
       // server expects +moveY = move up on surface)
       const currentInput = {
