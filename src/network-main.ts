@@ -706,8 +706,10 @@ function main() {
       pauseHint.textContent = isHost ? 'Press ESC to resume' : 'Host has paused the game';
       resumeBtn.style.display = isHost ? 'block' : 'none';
       pauseStopServerBtn.style.display = isHost ? 'block' : 'none';
+      game.pause(); // Sync game clock to prevent dt accumulation during pause
     } else {
       pauseOverlay.style.display = 'none';
+      game.resume(); // Resync game clock to avoid massive dt spike on first frame after resume
     }
   }
 
