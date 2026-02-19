@@ -43,6 +43,9 @@ import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponPickup } from './weapons/WeaponPickup';
 import { WeaponType } from './weapons/WeaponTypes';
 import { AllyGlowManager } from './effects/AllyGlow';
+import { ShockwaveEffect } from './effects/ShockwaveEffect';
+import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
+import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import {
   NetworkClient,
   NetworkPlayerState,
@@ -326,6 +329,24 @@ function main() {
   const scene = game.scene;
   const camera = game.camera;
 
+  // -- ShockwaveEffect: post-processing for enemy death distortion, chromatic aberration, flash --
+  // Replaces the vignette pass in the EffectComposer with a combined pass (same as main.ts).
+  const shockwaveEffect = new ShockwaveEffect();
+  shockwaveEffect.setCamera(camera as THREE.PerspectiveCamera);
+  if (game.composer) {
+    const passes = game.composer.passes;
+    // The vignette pass is a ShaderPass with 'offset' and 'darkness' uniforms.
+    // Chain is: RenderPass -> BloomPass -> VignettePass -> OutputPass
+    // We replace VignettePass with ShockwavePass (which also includes vignette).
+    for (let i = passes.length - 1; i >= 0; i--) {
+      const pass = passes[i];
+      if ((pass as any).uniforms?.offset && (pass as any).uniforms?.darkness && !(pass as any).uniforms?.uShockCount) {
+        passes.splice(i, 1, shockwaveEffect.shaderPass);
+        break;
+      }
+    }
+  }
+
   // Hide default single-player HUD (same as co-op)
   const defaultHUD = document.getElementById('game-hud');
   if (defaultHUD) defaultHUD.style.display = 'none';
@@ -359,6 +380,8 @@ function main() {
     }
     // Clean up enemies created by old spawner
     networkEnemies.forEach((enemy) => {
+      // Unregister from instance manager first (frees the instance slot)
+      enemyInstanceManager.unregister(enemy);
       if (enemy.mesh) scene.remove(enemy.mesh);
     });
     networkEnemies.clear();
@@ -446,6 +469,9 @@ function main() {
     enemySpawner.setSurfaceSpeedScale(surface.speedScale);
     enemySpawner.setSurface(surface);
 
+    // Wire instance manager for GPU-batched enemy rendering
+    enemySpawner.setInstanceManager(enemyInstanceManager);
+
     // Wire DDA modifier into enemy spawner (host uses this for spawn modifications)
     enemySpawner.setDDAModifier(ddaSpawnModifier);
     enemySpawner.setDDAPlayers(ddaPlayers);
@@ -462,6 +488,17 @@ function main() {
   // -- Shared visual systems (same as co-op) --
   const bulletPool = new BulletPool();
   scene.add(bulletPool.root);
+
+  // -- GPU instanced enemy rendering (reduces draw calls from ~2000 to ~15) --
+  // Created before initSurface() so it can be wired into the enemySpawner.
+  const enemyInstanceManager = new EnemyInstanceManager(scene);
+
+  // -- GPU instanced bullet rendering (replaces flat line-based visuals) --
+  const bulletInstanceManager = new BulletInstanceManager(scene, 200);
+  // Track which bullet IDs have been registered with the instance manager
+  const bulletInstanceIds = new Set<string>();
+  // Hide the original line-based bullet visuals (BulletInstanceManager takes over)
+  bulletPool.root.visible = false;
 
   const geomPool = new GeomPool();
   scene.add(geomPool.root);
@@ -993,6 +1030,8 @@ function main() {
         const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xff0000);
         particles.enemyDeath(enemy.position, color);
         screenShake.shake(0.15, 0.15);
+        shockwaveEffect.spawnShockwave(enemy.position, 0.05, 0.9, 0.5, 0.07);
+        shockwaveEffect.triggerWhiteFlash(0.15);
         if (surface) surface.applyForce(enemy.position, 0.2, 1.0);
         sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
 
@@ -1022,7 +1061,8 @@ function main() {
           tracker.recordKill(enemy.scoreValue);
         }
 
-        // Clean up
+        // Clean up: unregister from instance manager before removing from scene
+        enemyInstanceManager.unregister(enemy);
         if (enemy.mesh) {
           scene.remove(enemy.mesh);
         }
@@ -1099,6 +1139,9 @@ function main() {
         bulletPool.kill(idx);
         bulletIdToIndex.delete(id);
         bulletTargetUV.delete(id);
+        // Remove from instanced rendering
+        bulletInstanceManager.removeBullet(id);
+        bulletInstanceIds.delete(id);
       }
     });
 
@@ -1480,6 +1523,7 @@ function main() {
     particles.update(dt);
     scorePopups.update(dt);
     screenShake.update(dt);
+    shockwaveEffect.update(dt, game.clock.totalTime);
     surface.updateGrid(dt);
     killLog.update(dt);
     allyGlowManager.update(dt);
@@ -1575,6 +1619,15 @@ function main() {
     });
 
     // -----------------------------------------------------------------------
+    // Update instanced enemy rendering (syncs world matrices from enemy.mesh positions).
+    // enemySpawner.setInstanceManager() wires registration; updateInstances() flushes
+    // transforms to the GPU. No LOD (LODManager not used in network mode).
+    // -----------------------------------------------------------------------
+    const enemyArray = Array.from(networkEnemies.values());
+    enemyInstanceManager.updateInstances(enemyArray);
+    enemyInstanceManager.flushColors();
+
+    // -----------------------------------------------------------------------
     // Per-frame interpolation for remote players (60Hz lerp toward 30Hz targets)
     // Same principle as enemies. Co-op moves players every frame via MeshWalker;
     // LAN must interpolate between 30Hz state changes for equivalent smoothness.
@@ -1611,6 +1664,7 @@ function main() {
     // stutter at the patch rate. Now we lerp UV toward server targets every
     // render frame for smooth bullet movement.
     // See decisions/lan-deep-audit-2026-02-11.md #3.
+    // BulletInstanceManager provides GPU-instanced rendering (replaces flat lines).
     // -----------------------------------------------------------------------
     const BULLET_LERP = 0.3; // Faster lerp — bullets move fast, need to converge quickly
     bulletTargetUV.forEach((target, id) => {
@@ -1626,18 +1680,24 @@ function main() {
       // Update 3D position from interpolated UV
       const sp: SurfacePoint = surf.getPoint(b.surfaceU, b.surfaceV);
       _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
-      const line = bulletPool.getLine(idx);
-      if (line && line.visible) {
-        line.position.copy(_netTempPos);
-        // Re-orient along surface tangent frame
-        _netTempDir.set(0, 0, 0)
-          .addScaledVector(sp.tangentU, target.dirX)
-          .addScaledVector(sp.tangentV, target.dirY)
-          .normalize();
-        _netTempPos.copy(line.position).add(_netTempDir);
-        line.lookAt(_netTempPos);
+
+      // Compute world-space direction from UV-space direction components
+      _netTempDir.set(0, 0, 0)
+        .addScaledVector(sp.tangentU, target.dirX)
+        .addScaledVector(sp.tangentV, target.dirY)
+        .normalize();
+
+      // Register or update with BulletInstanceManager for GPU-instanced rendering.
+      // All network bullets use Standard visual type (no weapon type in bullet state).
+      if (!bulletInstanceIds.has(id)) {
+        bulletInstanceManager.addBullet(id, BulletVisualType.Standard, _netTempPos, _netTempDir);
+        bulletInstanceIds.add(id);
+      } else {
+        bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
       }
     });
+    // Flush bullet instance transforms to GPU
+    bulletInstanceManager.update();
 
     // -----------------------------------------------------------------------
     // Per-frame interpolation for geoms (same pattern).
