@@ -76,6 +76,19 @@ import { SettingsMenu } from './ui/SettingsMenu';
 import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
 
 // ---------------------------------------------------------------------------
+// Bullet visual type helper (mirrors main.ts — no server weapon type in state)
+// ---------------------------------------------------------------------------
+
+function weaponToBulletVisual(weapon: WeaponType): BulletVisualType {
+  switch (weapon) {
+    case WeaponType.Spread:   return BulletVisualType.Spread;
+    case WeaponType.Piercing: return BulletVisualType.Piercing;
+    case WeaponType.Homing:   return BulletVisualType.Homing;
+    default:                  return BulletVisualType.Standard;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Debug API type (exposed as window.__gameDebug when ?debug=true)
 // Used by tests/lan/run-lan-tests.mjs for programmatic game state inspection.
 // ---------------------------------------------------------------------------
@@ -2297,9 +2310,22 @@ function main() {
         .normalize();
 
       // Register or update with BulletInstanceManager for GPU-instanced rendering.
-      // All network bullets use Standard visual type (no weapon type in bullet state).
+      // Use UV proximity heuristic to assign visual type: if the bullet's UV
+      // is close to the local player's UV when first seen, assume it's theirs
+      // and use their current weapon visual. Remote player bullets get Standard.
+      // (NetworkBulletState has no weapon type field — server change needed for
+      // exact attribution; heuristic is acceptable per task design.)
       if (!bulletInstanceIds.has(id)) {
-        bulletInstanceManager.addBullet(id, BulletVisualType.Standard, _netTempPos, _netTempDir);
+        const lp = networkPlayers.get(localPlayerId);
+        let bulletVisual = BulletVisualType.Standard;
+        if (lp) {
+          const du = Math.abs(target.u - lp.surfaceU);
+          const dv = Math.abs(target.v - lp.surfaceV);
+          if (du < 0.05 && dv < 0.05) {
+            bulletVisual = weaponToBulletVisual(localPlayerWeaponType);
+          }
+        }
+        bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir);
         bulletInstanceIds.add(id);
       } else {
         bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
