@@ -27,6 +27,12 @@ import { StackBuffType, BUFF_DEFINITIONS } from './BuffManager';
 /** Maximum simultaneous visible aura rings. */
 const MAX_VISIBLE_RINGS = 3;
 
+/**
+ * Maximum opacity reduction applied when enemies are inside the aura zone.
+ * 0.75 = up to 75% reduction (rings drop to 25% of normal opacity).
+ */
+const AURA_MAX_DIM = 0.75;
+
 /** Ring geometry resolution. */
 const RING_SEGMENTS = 48;
 
@@ -460,6 +466,13 @@ export class BuffAuraRenderer {
   /** Time of last Tough Times block proc (for flash uniform). */
   private lastBlockTime = -10;
 
+  /**
+   * Dimming factor applied to aura opacity when enemies are inside the aura zone.
+   * 0 = no dimming, 1 = maximum dimming (AURA_MAX_DIM reduction).
+   * Updated each frame by main.ts based on nearest enemy distance.
+   */
+  private dimmingFactor = 0;
+
   constructor(quality: AuraQuality = AuraQuality.Full) {
     this.root = new THREE.Group();
     this.root.name = 'BuffAuras';
@@ -543,7 +556,7 @@ export class BuffAuraRenderer {
         // Update shared uniforms
         mat.uniforms.uTime.value = totalTime;
         mat.uniforms.uStacks.value = buff.stacks;
-        mat.uniforms.uOpacity.value = this.getOpacity(displayed.length);
+        mat.uniforms.uOpacity.value = this.getOpacity(displayed.length) * (1.0 - this.dimmingFactor * AURA_MAX_DIM);
 
         // Update block time for Tough Times
         if (buff.type === StackBuffType.ToughTimes && mat.uniforms.uBlockTime) {
@@ -578,6 +591,15 @@ export class BuffAuraRenderer {
   /** Called when Tough Times blocks damage (triggers shield flash). */
   triggerBlockFlash(totalTime: number): void {
     this.lastBlockTime = totalTime;
+  }
+
+  /**
+   * Set aura dimming intensity based on enemy proximity.
+   * @param factor - 0 = no dimming, 1 = maximum dimming (AURA_MAX_DIM opacity reduction)
+   * Call this each frame from the game loop before update().
+   */
+  setDimmingFactor(factor: number): void {
+    this.dimmingFactor = Math.max(0, Math.min(1, factor));
   }
 
   // -----------------------------------------------------------------------

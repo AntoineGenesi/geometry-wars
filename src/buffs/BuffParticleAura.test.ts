@@ -337,4 +337,64 @@ describe('BuffParticleAura', () => {
       expect(true).toBe(true);
     });
   });
+
+  describe('setDimmingFactor — enemy visibility feature', () => {
+    const playerPos = new THREE.Vector3(0, 5, 0);
+    const normal = new THREE.Vector3(0, 1, 0);
+    const buffs = [{ type: StackBuffType.HotHands, stacks: 2 }];
+
+    /** Helper: get the alpha buffer of the Points geometry */
+    function getAlphas(): Float32Array {
+      const geom = (aura.root.children[0] as THREE.Points).geometry as THREE.BufferGeometry;
+      return geom.attributes.aAlpha.array as Float32Array;
+    }
+
+    it('no dimming (factor=0) leaves particle alphas at baseline', () => {
+      // Warm up to get live particles
+      aura.setDimmingFactor(0);
+      for (let i = 0; i < 60; i++) aura.update(1 / 60, i / 60, playerPos, normal, buffs);
+
+      const alphasNoDim = Array.from(getAlphas()).filter(a => a > 0);
+      expect(alphasNoDim.length).toBeGreaterThan(0);
+
+      // Max alpha with no dimming should approach 0.8 (the base multiplier)
+      const maxAlpha = Math.max(...alphasNoDim);
+      expect(maxAlpha).toBeGreaterThan(0.5);
+    });
+
+    it('full dimming (factor=1) significantly reduces all particle alphas', () => {
+      // Run once with no dimming to get alive particles
+      aura.setDimmingFactor(0);
+      for (let i = 0; i < 60; i++) aura.update(1 / 60, i / 60, playerPos, normal, buffs);
+      const alphasNoDim = Array.from(getAlphas()).filter(a => a > 0);
+      const maxNoDim = Math.max(...alphasNoDim);
+
+      // Apply full dimming and run one more frame
+      aura.setDimmingFactor(1);
+      aura.update(1 / 60, 1.0, playerPos, normal, buffs);
+      const alphasDimmed = Array.from(getAlphas()).filter(a => a > 0);
+      const maxDimmed = alphasDimmed.length > 0 ? Math.max(...alphasDimmed) : 0;
+
+      // Dimmed alphas should be significantly lower (25% of original due to PARTICLE_MAX_DIM=0.75)
+      expect(maxDimmed).toBeLessThan(maxNoDim * 0.5);
+    });
+
+    it('clamps factor above 1 to 1', () => {
+      aura.setDimmingFactor(5.0); // Should be clamped to 1
+      for (let i = 0; i < 60; i++) aura.update(1 / 60, i / 60, playerPos, normal, buffs);
+
+      // With PARTICLE_MAX_DIM=0.75 and factor=1, max alpha = 0.8 * (1 - 0.75) = 0.2
+      const maxAlpha = Math.max(...Array.from(getAlphas()).filter(a => a > 0), 0);
+      expect(maxAlpha).toBeLessThanOrEqual(0.2 + 0.01); // small epsilon for floating point
+    });
+
+    it('clamps factor below 0 to 0', () => {
+      aura.setDimmingFactor(-5.0); // Should be clamped to 0
+      for (let i = 0; i < 60; i++) aura.update(1 / 60, i / 60, playerPos, normal, buffs);
+
+      // With factor=0, max alpha = 0.8 (fully visible)
+      const maxAlpha = Math.max(...Array.from(getAlphas()).filter(a => a > 0), 0);
+      expect(maxAlpha).toBeGreaterThan(0.5);
+    });
+  });
 });

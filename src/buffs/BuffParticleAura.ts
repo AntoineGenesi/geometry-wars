@@ -37,6 +37,12 @@ const AURA_RADIUS = 1.2;
 /** Maximum height particles rise above the surface. */
 const MAX_HEIGHT = 1.8;
 
+/**
+ * Maximum alpha reduction applied to particles when enemies are inside the aura zone.
+ * 0.75 = up to 75% reduction (particles drop to 25% of normal alpha).
+ */
+const PARTICLE_MAX_DIM = 0.75;
+
 // ---------------------------------------------------------------------------
 // Pre-allocated temp vectors (module-level, zero allocation in update)
 // ---------------------------------------------------------------------------
@@ -221,6 +227,13 @@ export class BuffParticleAura {
   // Total elapsed time
   private totalTime = 0;
 
+  /**
+   * Dimming factor applied to particle alpha when enemies are inside the aura zone.
+   * 0 = no dimming, 1 = maximum dimming (PARTICLE_MAX_DIM alpha reduction).
+   * Updated each frame by main.ts based on nearest enemy distance.
+   */
+  private dimmingFactor = 0;
+
   constructor() {
     this.root = new THREE.Group();
     this.root.name = 'BuffParticleAuras';
@@ -331,6 +344,15 @@ export class BuffParticleAura {
     (this.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
     (this.geometry.attributes.aSize as THREE.BufferAttribute).needsUpdate = true;
     (this.geometry.attributes.aAlpha as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  /**
+   * Set particle dimming intensity based on enemy proximity.
+   * @param factor - 0 = no dimming, 1 = maximum dimming (PARTICLE_MAX_DIM alpha reduction)
+   * Call this each frame from the game loop before update().
+   */
+  setDimmingFactor(factor: number): void {
+    this.dimmingFactor = Math.max(0, Math.min(1, factor));
   }
 
   // -------------------------------------------------------------------------
@@ -605,7 +627,7 @@ export class BuffParticleAura {
       } else {
         alpha = 1.0;
       }
-      this.gpuAlphas[gpuIdx] = alpha * 0.8;
+      this.gpuAlphas[gpuIdx] = alpha * 0.8 * (1.0 - this.dimmingFactor * PARTICLE_MAX_DIM);
 
       // Color: lerp between primary and alt based on height
       const heightRatio = ly / MAX_HEIGHT;
