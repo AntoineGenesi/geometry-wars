@@ -462,6 +462,23 @@ export class Game {
   }
 
   /**
+   * Switch between Pixelated (half-res bloom) and Modern (full-res bloom).
+   * Immediately resizes the EffectComposer and bloom pass render targets.
+   */
+  setVisualMode(mode: 'pixelated' | 'modern'): void {
+    this.bloomResolutionScale = mode === 'modern' ? 1.0 : 0.5;
+    if (this.composer || this.bloomPass) {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const scale = this.bloomResolutionScale;
+      const sw = Math.floor(w * scale);
+      const sh = Math.floor(h * scale);
+      if (this.composer) this.composer.setSize(sw, sh);
+      if (this.bloomPass) this.bloomPass.resolution.set(sw, sh);
+    }
+  }
+
+  /**
    * Update bloom settings dynamically.
    * Works for both WebGL2 (via bloomPass) and WebGPU (via TSL uniforms).
    */

@@ -88,3 +88,32 @@ export function clearVisualStyle(): void {
     // ignore
   }
 }
+
+// ---------------------------------------------------------------------------
+// Visual Mode (Pixelated vs Modern bloom resolution)
+// ---------------------------------------------------------------------------
+
+const VISUAL_MODE_KEY = 'gw3d-visual-mode';
+
+/** Pixelated = half-res bloom (retro look). Modern = full-res bloom (crisp). */
+export type VisualMode = 'pixelated' | 'modern';
+
+/** Load the saved visual mode. Defaults to 'pixelated' (current behaviour). */
+export function loadVisualMode(): VisualMode {
+  try {
+    const raw = localStorage.getItem(VISUAL_MODE_KEY);
+    if (raw === 'modern' || raw === 'pixelated') return raw;
+  } catch {
+    // localStorage unavailable
+  }
+  return 'pixelated';
+}
+
+/** Persist the chosen visual mode. */
+export function saveVisualMode(mode: VisualMode): void {
+  try {
+    localStorage.setItem(VISUAL_MODE_KEY, mode);
+  } catch {
+    // localStorage unavailable
+  }
+}
