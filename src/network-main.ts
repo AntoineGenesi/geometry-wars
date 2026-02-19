@@ -482,8 +482,8 @@ function main() {
   }
 
   // -- Camera constants (match co-op) --
-  const CAMERA_DISTANCE = 15;
-  const CAMERA_LERP = 0.08;
+  const CAMERA_DISTANCE = 20; // Was 15 — match single-player (main.ts passes cameraDistance: 20)
+  const CAMERA_LERP = 0.12; // Was 0.08 — match CameraController.CAMERA_LERP_FACTOR (restored from bffc333)
 
   // -- Shared visual systems (same as co-op) --
   const bulletPool = new BulletPool();
@@ -1725,11 +1725,12 @@ function main() {
       const targetCamPos = sp.position.clone().addScaledVector(sp.normal, CAMERA_DISTANCE);
       camera.position.lerp(targetCamPos, CAMERA_LERP);
 
-      // Smooth camera up vector BEFORE lookAt (same as co-op)
+      // lookAt FIRST, then lerp up-vector AFTER — matches bffc333 working pattern.
+      // In Three.js, lookAt() uses camera.up to orient. Doing up.lerp() before lookAt()
+      // causes the stale up to feed into lookAt(), amplifying jitter on curved surfaces.
+      camera.lookAt(sp.position);
       const upTarget = sp.tangentV;
       camera.up.lerp(upTarget, CAMERA_LERP).normalize();
-
-      camera.lookAt(sp.position);
     }
 
     // Apply surface projection for geoms and bullets (same as co-op)
