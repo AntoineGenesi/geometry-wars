@@ -8,101 +8,28 @@
 
 ---
 
-## DDA Continuous Difficulty Escalation (s25)
+## Session 25 Playground Aiming + Hit Detection Fix (2026-02-19)
 
-### Score Milestones — Enemies Should Visually Escalate
+### Visual Styles Playground
 
-- [ ] Start a game on any map, get to 1M score. Note enemy appearance (color, behavior, speed).
-- [ ] Continue to 5M score. Enemies should visually look noticeably harder (more orange/red/magenta tint, faster).
-- [ ] Continue to 20M score. Enemies should be clearly harder than at 5M (faster still, tougher to kill).
-- [ ] If you have heavy buff stacks (4+ Hot Hands, 3+ Shock Aura), enemies should escalate aggressively to match.
-- [ ] At NO point between 5M and 300M should the game feel "too easy" for an extended period.
-- [ ] Game should maintain 60+ FPS throughout (check F3 overlay).
+Open the Visual Styles page (click any style thumbnail → playable demo launches):
 
-**What was implemented (s25-dda-p1/p2):**
-- `DifficultyScaling.ts`: Continuous scaling formula — score, time, kills, player level, and buff power all feed into a single `computeDifficultyLevel()` value
-- `getContinuousHealthMultiplier()` / `getContinuousSpeedMultiplier()` — scale enemy stats beyond Tier 4 (up to 500× HP, 3× speed)
-- `BuffManager.getTotalBuffPower()` — offensive buffs (Shock Aura, Volatile, Hot Hands) raise the DDA difficulty level so power builds pressure back
-- Phase 2 rebalance: score curve raised, entityBrake floor raised at difficulty 8+, baseCount cap at 40 for diff 6+
+- [ ] **Player faces aim direction** — Move the mouse around; the player ship rotates to face the cursor. Should NOT be on the wrong axis or spinning.
+- [ ] **Bullets travel toward cursor** — Fire (click/hold). Bullets should travel in the direction the mouse is pointing.
+- [ ] **Bullets hit enemies** — Aim at a visible enemy and fire. Bullets should visually collide and kill the enemy (enemy disappears with particle effect + geom drops). Bullets must NOT pass through.
+- [ ] **Smooth 60 FPS** — No lag or stutter during gameplay.
 
-**Verification level:** L2 (unit tests). Needs human testing to confirm visual difficulty escalation.
+### Weapons Database Playground
 
----
+Open the Weapons Wiki page → "Try It" button for any weapon:
 
-## Session 25 LAN Connectivity Debug (2026-02-19)
+- [ ] **Player faces aim direction** — Same as above; ship should rotate correctly.
+- [ ] **Each weapon type hits enemies** — Cycle through 3+ weapons (the weapon switch buttons). Fire each one at an enemy. All weapon types should kill enemies (not pass through).
+- [ ] **No lag** — Should be smooth 60 FPS, no slowdown.
 
-### LAN Connection from Laptop to Host PC
-
-The Colyseus server now opens in a **separate visible window** ("Geometry Wars Server") with full debug logging. The LAN IP is prominently displayed with step-by-step connect instructions.
-
-**How to test:**
-1. Run `Play Game.bat` on the host PC
-2. A new CMD window "Geometry Wars Server (port 2567)" should appear in the taskbar
-3. In that server window, you should see the startup banner with LAN IPs
-4. On your laptop (same WiFi), open `http://<host-LAN-IP>:3000`
-
-- [ ] **Server window appears** — Running `Play Game.bat` opens a SECOND window titled "Geometry Wars Server (port 2567)" in the taskbar
-- [ ] **LAN IP shown in server window** — The startup banner shows your PC's IP (e.g. `http://192.168.x.x:2567`)
-- [ ] **LAN IP shown in main window** — The main `Play Game.bat` window shows `>>> http://192.168.x.x:3000 <<<` prominently
-- [ ] **Health check logged** — When laptop opens `http://<host-ip>:3000`, server window shows `[Server] Health check from LAN client: <laptop-ip>`
-- [ ] **WebSocket log appears** — When laptop goes to `?mode=network`, server window shows `[Server] WebSocket upgrade from LAN: <laptop-ip>`
-- [ ] **Player join logged** — Server window shows `[Server] PLAYER JOINED: "<name>" from LAN: <laptop-ip>`
-- [ ] **Browser console** — On the laptop's browser DevTools console, you should see `[NetworkMain] Connecting to server: ws://<host-ip>:2567`
-- [ ] **If firewall blocks** — Run `Play Game.bat` as Administrator to auto-add firewall rules for ports 3000 and 2567
-
-**What was changed:**
-- `Play Game.bat` — Server now in visible window; firewall rules added; prominent IP display with instructions
-- `server/index.ts` — LAN IPs in startup banner; HTTP health check logs remote IP; WebSocket upgrade logging; player join/leave logs with IP
-- `src/network-main.ts` — Always-on console logging of server URL and troubleshooting checklist on failure
-- `vite-plugin-lan.ts` — Logs LAN URLs when in-game Host button starts server
-
-**Verification level:** L1 (TypeScript clean). User testing required — LAN connectivity requires physical devices.
-
----
-
-## Session 25 Pixelated vs Modern Visual Style Toggle (2026-02-19)
-
-### Visual Style Toggle in Pause Menu
-
-A "STYLE: PIXELATED / MODERN" button has been added to the pause menu. Pixelated uses half-resolution bloom (current look). Modern uses full-resolution bloom (cleaner, sharper glow).
-
-- [ ] **Button visible in pause menu** — Press ESC during gameplay. Between SETTINGS and PERFORMANCE GRAPHS buttons, there should be a teal "STYLE: PIXELATED" button.
-- [ ] **Toggle switches label** — Click the button. Label should change to "STYLE: MODERN". Click again → back to "STYLE: PIXELATED".
-- [ ] **Visual difference is perceptible** — In Modern mode, bloom glows should appear slightly sharper/crisper. In Pixelated mode they have the classic soft/blurry retro look.
-- [ ] **Persists across sessions** — Switch to Modern, close game, reopen. Should still be in Modern mode (check localStorage key `gw3d-visual-mode`).
-- [ ] **No artifacts on switch** — Switching modes mid-game should not produce visual glitches, flicker, or artifacts.
-- [ ] **Default is Pixelated** — On a fresh browser (clear localStorage), style should default to PIXELATED.
-
-**What was implemented:**
-- `loadVisualMode()`/`saveVisualMode()` in `VisualStyleSettings.ts` (localStorage key: `gw3d-visual-mode`)
-- `Game.setVisualMode(mode)` — updates `bloomResolutionScale` and resizes EffectComposer/BloomPass render targets
-- Toggle button in `PauseMenu.ts` with full callback API
-- `main.ts` — loads saved mode on startup, wires pause menu callback
-
-**Verification level:** L2 (15 unit tests pass). Needs human testing for visual confirmation.
-
----
-
-## Session 25 Enemy Visibility Aura Dimming (2026-02-19)
-
-### Buff Aura Dims When Enemies Are Close
-
-When enemies enter the player's aura zone (within ~2 world units), buff rings and particles should smoothly dim so enemies are clearly visible through the visual noise.
-
-- [ ] **Aura dims when enemy approaches** — Get several buff stacks active (HotHands + ShockAura + IncendiaryRounds). Move an enemy close to the player. The aura rings and floating particles should visibly dim (become more transparent) as the enemy enters the ~2-unit zone.
-- [ ] **Smooth transition (not binary)** — The dimming should ramp smoothly, not snap on/off. Observe the aura as an enemy slowly approaches: it should gradually fade out starting at ~2 units distance and reach maximum dim (~25% opacity) at ~0.5 units.
-- [ ] **Enemies remain fully bright** — Enemy meshes must stay fully opaque and visible at all times. No dimming should be applied to the enemy glowing shapes themselves.
-- [ ] **Aura returns when enemy leaves** — When the enemy moves away beyond 2 units, the aura rings and particles should smoothly restore to full opacity.
-- [ ] **No dimming without buffs** — Without any active buffs, the dimming system is inactive (no overhead, no visual changes).
-- [ ] **6+ buffs scenario** — In a late-game scenario with 6+ buff stacks, enemies should be clearly distinguishable even when surrounded by visual effects. The dimming should make a noticeable gameplay improvement.
-
-**What was implemented:**
-- `BuffAuraRenderer.setDimmingFactor(f)` — reduces ring uOpacity by up to 75% at factor=1
-- `BuffParticleAura.setDimmingFactor(f)` — reduces particle alpha by up to 75% at factor=1
-- `main.ts onFixedUpdate` — computes nearest enemy distance, smooth lerp [2.0 → 0.5 units]
-- 41 unit tests pass (22 + 19); zero TypeScript errors in changed files
-
-**Verification level:** L2 (unit tests). Needs human testing for visual confirmation.
+**Root causes fixed (2026-02-19):**
+- Cross product order in GameInstance.ts:533 was `crossVectors(aimDirection, playerNormal)` — produces left-handed (mirrored) basis. Fixed to `crossVectors(playerNormal, aimDirection)` matching GameLoop.ts.
+- No bullet-enemy collision check existed in GameInstance.update(). Added `_checkBulletEnemyCollisions()` using `bulletPool.forEachActive()` with distance check.
 
 ---
 
