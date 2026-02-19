@@ -222,4 +222,117 @@ describe('PerformanceLogger', () => {
       expect(points[1].visibleEnemies).toBe(15);
     });
   });
+
+  describe('DDA Extended Metrics (difficulty tier + player power level)', () => {
+    it('should record difficulty tier in data points', () => {
+      logger.setDifficultyTier(2.5);
+      logger.recordFrame(0.5);
+
+      const points = logger.getDataPoints();
+      expect(points.length).toBe(1);
+      expect(points[0].difficultyTier).toBe(2.5);
+    });
+
+    it('should record player power level in data points', () => {
+      logger.setPlayerPowerLevel(7);
+      logger.recordFrame(0.5);
+
+      const points = logger.getDataPoints();
+      expect(points.length).toBe(1);
+      expect(points[0].playerPowerLevel).toBe(7);
+    });
+
+    it('should track peak difficulty tier in session summary', () => {
+      logger.setDifficultyTier(1.0);
+      logger.recordFrame(0.016);
+      logger.setDifficultyTier(3.75);
+      logger.recordFrame(0.016);
+      logger.setDifficultyTier(2.5);
+      logger.recordFrame(0.016);
+
+      const summary = logger.getSessionSummary()!;
+      expect(summary.peakDifficultyTier).toBe(3.75);
+    });
+
+    it('should include final player power level in session summary', () => {
+      logger.setPlayerPowerLevel(5);
+      logger.recordFrame(0.016);
+      logger.setPlayerPowerLevel(9);
+      logger.recordFrame(0.016);
+
+      const summary = logger.getSessionSummary()!;
+      expect(summary.finalPlayerPowerLevel).toBe(9);
+    });
+
+    it('should serialize difficulty tier and player power level', () => {
+      logger.setDifficultyTier(3.14);
+      logger.setPlayerPowerLevel(4);
+      logger.recordFrame(0.5);
+      logger.saveSession();
+
+      const sessions = logger.loadAllSessions();
+      expect(sessions.length).toBe(1);
+      const dp = sessions[0].dataPoints[0];
+      expect(dp.dt).toBe(3.14);
+      expect(dp.pl).toBe(4);
+    });
+
+    it('should omit difficulty tier and player level from serialized data when zero', () => {
+      // When values are zero, they should be omitted to save storage space
+      logger.setDifficultyTier(0);
+      logger.setPlayerPowerLevel(0);
+      logger.recordFrame(0.5);
+      logger.saveSession();
+
+      const sessions = logger.loadAllSessions();
+      const dp = sessions[0].dataPoints[0];
+      expect(dp.dt).toBeUndefined();
+      expect(dp.pl).toBeUndefined();
+    });
+
+    it('should include difficulty_tier and player_power_level columns in CSV', () => {
+      logger.setDifficultyTier(2.5);
+      logger.setPlayerPowerLevel(3);
+      logger.recordFrame(0.5);
+      logger.saveSession();
+
+      const csv = PerformanceLogger.exportAllAsCSV();
+      expect(csv).toContain('difficulty_tier');
+      expect(csv).toContain('player_power_level');
+    });
+
+    it('should handle old sessions without difficulty tier fields (backward compat)', () => {
+      const oldSession = {
+        timestamp: new Date().toISOString(),
+        mapType: 'sphere',
+        duration: 10,
+        dataPoints: [
+          {
+            t: 0, f: 60, e: 10, b: 5, et: [],
+            dc: 0, tr: 0, mm: 0, lh: 0, lm: 0, ll: 0,
+            dd: 1.5,
+            ql: 'HIGH',
+            // NO dt or pl fields (old session format)
+          },
+        ],
+      };
+
+      localStorage.setItem('gw_perf_log', JSON.stringify([oldSession]));
+      const sessions = logger.loadAllSessions();
+      expect(sessions[0].dataPoints[0].dt).toBeUndefined();
+      expect(sessions[0].dataPoints[0].pl).toBeUndefined();
+    });
+
+    it('should support super-tier values (difficulty tier > 4)', () => {
+      // Super tiers are continuous values beyond Nightmare (>4)
+      logger.setDifficultyTier(5.7);
+      logger.recordFrame(0.5);
+
+      const points = logger.getDataPoints();
+      expect(points[0].difficultyTier).toBe(5.7);
+
+      const summary = logger.getSessionSummary()!;
+      expect(summary.peakDifficultyTier).toBe(5.7);
+    });
+  });
 });
