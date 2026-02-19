@@ -76,7 +76,7 @@ import {
   type DifficultyInput,
 } from './core/DifficultyScaling';
 import { isMobile } from './core/MobileDetector';
-import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies } from './core/MapSize';
+import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies, getMapSizeScaleFactor } from './core/MapSize';
 import { TouchInput } from './input/TouchInput';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
@@ -495,6 +495,17 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   } else {
     surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
   }
+
+  // Apply map size scale to surface geometry.
+  // This must happen BEFORE scene.add() and updateMatrixWorld() so MeshSurface
+  // (BVH for collision/movement) is built against the correctly-scaled geometry.
+  const resolvedMapSize = mapSize ?? getDefaultMapSizeForSurface(surfaceType);
+  const mapSizeScaleFactor = getMapSizeScaleFactor(resolvedMapSize);
+  if (mapSizeScaleFactor !== 1.0) {
+    surface.group.scale.setScalar(mapSizeScaleFactor);
+  }
+  console.log(`[MapSize] ${surfaceType} → ${resolvedMapSize} (scale: ${mapSizeScaleFactor}x)`);
+
   game.scene.add(surface.group);
 
   // Log which surface/level is being used
@@ -594,8 +605,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   enemySpawner.setSurface(surface); // FIX: enemies need surfaceRef for UV sync in walker mode
 
   // Apply map size cap: limits max simultaneous enemies based on surface area tier.
-  // Falls back to surface default if no explicit size was selected.
-  const resolvedMapSize = mapSize ?? getDefaultMapSizeForSurface(selectedSurface ?? 'sphere');
+  // resolvedMapSize was already computed above when applying surface scale.
   enemySpawner.setMaxActiveEnemies(getMaxActiveEnemies(resolvedMapSize));
 
   // -- GPU instanced rendering for enemies (reduces draw calls from ~2000 to ~15) --

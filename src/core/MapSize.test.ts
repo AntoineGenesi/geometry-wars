@@ -2,27 +2,30 @@ import { describe, it, expect } from 'vitest';
 import {
   MapSize,
   MAP_SIZE_MAX_ENEMIES,
+  MAP_SIZE_SCALE_FACTORS,
   SURFACE_DEFAULT_MAP_SIZES,
   getDefaultMapSizeForSurface,
   getMaxActiveEnemies,
+  getMapSizeScaleFactor,
 } from './MapSize';
 
 describe('MapSize', () => {
   describe('MAP_SIZE_MAX_ENEMIES', () => {
-    it('SMALL has 50 max active enemies', () => {
-      expect(MAP_SIZE_MAX_ENEMIES[MapSize.SMALL]).toBe(50);
+    // Spec: SMALL=50%, MEDIUM=100% (baseline=60), LARGE=150%, EPIC=200%
+    it('SMALL has 30 max active enemies (50% of 60)', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.SMALL]).toBe(30);
     });
 
-    it('MEDIUM has 62 max active enemies (base + 25%)', () => {
-      expect(MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM]).toBe(62);
+    it('MEDIUM has 60 max active enemies (100% baseline)', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM]).toBe(60);
     });
 
-    it('LARGE has 75 max active enemies (base + 50%)', () => {
-      expect(MAP_SIZE_MAX_ENEMIES[MapSize.LARGE]).toBe(75);
+    it('LARGE has 90 max active enemies (150% of 60)', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.LARGE]).toBe(90);
     });
 
-    it('EPIC has 100 max active enemies (base + 100%)', () => {
-      expect(MAP_SIZE_MAX_ENEMIES[MapSize.EPIC]).toBe(100);
+    it('EPIC has 120 max active enemies (200% of 60)', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.EPIC]).toBe(120);
     });
 
     it('enemy counts scale up with size tier', () => {
@@ -32,6 +35,48 @@ describe('MapSize', () => {
         .toBeLessThan(MAP_SIZE_MAX_ENEMIES[MapSize.LARGE]);
       expect(MAP_SIZE_MAX_ENEMIES[MapSize.LARGE])
         .toBeLessThan(MAP_SIZE_MAX_ENEMIES[MapSize.EPIC]);
+    });
+
+    it('SMALL is ~50% of MEDIUM', () => {
+      const ratio = MAP_SIZE_MAX_ENEMIES[MapSize.SMALL] / MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM];
+      expect(ratio).toBeCloseTo(0.5, 1);
+    });
+
+    it('LARGE is ~150% of MEDIUM', () => {
+      const ratio = MAP_SIZE_MAX_ENEMIES[MapSize.LARGE] / MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM];
+      expect(ratio).toBeCloseTo(1.5, 1);
+    });
+
+    it('EPIC is ~200% of MEDIUM', () => {
+      const ratio = MAP_SIZE_MAX_ENEMIES[MapSize.EPIC] / MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM];
+      expect(ratio).toBeCloseTo(2.0, 1);
+    });
+  });
+
+  describe('MAP_SIZE_SCALE_FACTORS', () => {
+    it('SMALL has 0.75 scale factor', () => {
+      expect(MAP_SIZE_SCALE_FACTORS[MapSize.SMALL]).toBe(0.75);
+    });
+
+    it('MEDIUM has 1.0 scale factor (no change)', () => {
+      expect(MAP_SIZE_SCALE_FACTORS[MapSize.MEDIUM]).toBe(1.0);
+    });
+
+    it('LARGE has 1.5 scale factor', () => {
+      expect(MAP_SIZE_SCALE_FACTORS[MapSize.LARGE]).toBe(1.5);
+    });
+
+    it('EPIC has 2.0 scale factor', () => {
+      expect(MAP_SIZE_SCALE_FACTORS[MapSize.EPIC]).toBe(2.0);
+    });
+
+    it('scale factors increase with size tier', () => {
+      expect(MAP_SIZE_SCALE_FACTORS[MapSize.SMALL])
+        .toBeLessThan(MAP_SIZE_SCALE_FACTORS[MapSize.MEDIUM]);
+      expect(MAP_SIZE_SCALE_FACTORS[MapSize.MEDIUM])
+        .toBeLessThan(MAP_SIZE_SCALE_FACTORS[MapSize.LARGE]);
+      expect(MAP_SIZE_SCALE_FACTORS[MapSize.LARGE])
+        .toBeLessThan(MAP_SIZE_SCALE_FACTORS[MapSize.EPIC]);
     });
   });
 
@@ -123,20 +168,38 @@ describe('MapSize', () => {
   });
 
   describe('getMaxActiveEnemies', () => {
-    it('returns 50 for SMALL', () => {
-      expect(getMaxActiveEnemies(MapSize.SMALL)).toBe(50);
+    it('returns 30 for SMALL (50% of baseline)', () => {
+      expect(getMaxActiveEnemies(MapSize.SMALL)).toBe(30);
     });
 
-    it('returns 62 for MEDIUM', () => {
-      expect(getMaxActiveEnemies(MapSize.MEDIUM)).toBe(62);
+    it('returns 60 for MEDIUM (100% baseline)', () => {
+      expect(getMaxActiveEnemies(MapSize.MEDIUM)).toBe(60);
     });
 
-    it('returns 75 for LARGE', () => {
-      expect(getMaxActiveEnemies(MapSize.LARGE)).toBe(75);
+    it('returns 90 for LARGE (150% of baseline)', () => {
+      expect(getMaxActiveEnemies(MapSize.LARGE)).toBe(90);
     });
 
-    it('returns 100 for EPIC', () => {
-      expect(getMaxActiveEnemies(MapSize.EPIC)).toBe(100);
+    it('returns 120 for EPIC (200% of baseline)', () => {
+      expect(getMaxActiveEnemies(MapSize.EPIC)).toBe(120);
+    });
+  });
+
+  describe('getMapSizeScaleFactor', () => {
+    it('returns 0.75 for SMALL', () => {
+      expect(getMapSizeScaleFactor(MapSize.SMALL)).toBe(0.75);
+    });
+
+    it('returns 1.0 for MEDIUM (no scale change)', () => {
+      expect(getMapSizeScaleFactor(MapSize.MEDIUM)).toBe(1.0);
+    });
+
+    it('returns 1.5 for LARGE', () => {
+      expect(getMapSizeScaleFactor(MapSize.LARGE)).toBe(1.5);
+    });
+
+    it('returns 2.0 for EPIC', () => {
+      expect(getMapSizeScaleFactor(MapSize.EPIC)).toBe(2.0);
     });
   });
 });
