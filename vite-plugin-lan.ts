@@ -9,14 +9,27 @@ const SERVER_PORT = 2567;
 
 function getLANAddresses(): string[] {
   const interfaces = networkInterfaces();
-  const addresses: string[] = [];
+  const lanAddresses: string[] = [];
+  const virtualAddresses: string[] = [];
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] ?? []) {
       if (iface.internal || iface.family !== 'IPv4') continue;
-      addresses.push(iface.address);
+      // WSL2 creates a Hyper-V virtual switch with 172.x.x.x IPs.
+      // These are NOT reachable from other devices on the LAN.
+      // Separate them so real LAN IPs (192.168.x, 10.x) come first.
+      const isVirtual = name.toLowerCase().includes('vethernet')
+        || name.toLowerCase().includes('wsl')
+        || name.toLowerCase().includes('hyper-v')
+        || (iface.address.startsWith('172.') && !iface.address.startsWith('172.16.'));
+      if (isVirtual) {
+        virtualAddresses.push(iface.address);
+      } else {
+        lanAddresses.push(iface.address);
+      }
     }
   }
-  return addresses;
+  // Real LAN IPs first, virtual IPs last (so UI shows the right one prominently)
+  return [...lanAddresses, ...virtualAddresses];
 }
 
 function getSubnet(ip: string): string {
