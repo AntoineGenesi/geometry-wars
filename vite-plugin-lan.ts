@@ -124,16 +124,17 @@ export default function lanPlugin(): Plugin {
     }
 
     // Start the Colyseus server as child process
-    const binPath = path.join(process.cwd(), 'node_modules', '.bin');
+    // Use process.execPath (node) + tsx module for cross-platform compatibility.
+    // spawn('tsx', ...) fails on Windows with ENOENT because .bin shims need .cmd extension.
+    const tsxPath = path.join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
     const shutdownTimeout = options?.shutdownTimeout ?? 180;
     const env = {
       ...process.env,
-      PATH: `${binPath}:${process.env.PATH ?? ''}`,
       PORT: String(SERVER_PORT),
       SHUTDOWN_TIMEOUT: String(shutdownTimeout),
     };
 
-    serverProcess = spawn('tsx', ['server/index.ts'], {
+    serverProcess = spawn(process.execPath, [tsxPath, 'server/index.ts'], {
       cwd: process.cwd(),
       env,
       stdio: 'pipe',
