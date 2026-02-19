@@ -59,6 +59,8 @@ import {
 } from './network/NetworkClient';
 import { PlayerNameLabels } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
+import { GameOverScreen } from './ui/GameOverScreen';
+import { PauseMenu } from './ui/PauseMenu';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
@@ -701,66 +703,80 @@ function main() {
   };
   document.body.appendChild(stopServerBtn);
 
-  // Pause overlay (shown when game is paused)
+  // Pause menu — shown when the server has paused the game.
+  // Host: uses full PauseMenu with resume/stop-server buttons.
+  // Non-host: uses a simple styled overlay that says "Host has paused the game".
+  const pauseMenu = new PauseMenu();
+  pauseMenu.setIsHost(false); // updated dynamically before each show()
+  pauseMenu.setNetworkCallbacks({
+    onPause: (paused: boolean) => {
+      // Only send to server when state actually changes (prevents circular trigger
+      // when showPauseOverlay() calls pauseMenu.show() in response to server state).
+      if (isPaused !== paused) {
+        isPaused = paused;
+        network.sendPause(paused);
+      }
+    },
+    onEndGame: () => {
+      network.sendEndGame();
+      network.disconnect();
+      window.location.href = window.location.pathname;
+    },
+    onStopServer: async () => {
+      network.sendEndGame();
+      try { await fetch('/__lan/stop', { method: 'POST' }); } catch { /* ignore */ }
+      network.disconnect();
+      window.location.href = window.location.pathname;
+    },
+  });
+  pauseMenu.onResume(() => {
+    game.resume(); // Resync game clock after host resumes via PauseMenu button
+  });
+  pauseMenu.onExit(() => {
+    network.disconnect();
+    window.location.href = window.location.pathname;
+  });
+
+  // Non-host pause overlay: styled to match game aesthetic, pointer-events:none
+  // so it never accidentally blocks input (display:none when not showing).
   const pauseOverlay = document.createElement('div');
   pauseOverlay.style.cssText =
     'position:fixed;top:0;left:0;width:100%;height:100%;' +
-    'background:rgba(0,0,0,0.6);z-index:200;' +
+    'background:rgba(0,0,20,0.88);z-index:2100;' +
     'display:none;justify-content:center;align-items:center;' +
-    'flex-direction:column;';
-  const pauseTitle = document.createElement('div');
-  pauseTitle.style.cssText =
-    'color:#0ff;font:bold 48px monospace;text-shadow:0 0 20px #0ff;margin-bottom:20px;';
-  pauseTitle.textContent = 'PAUSED';
-  pauseOverlay.appendChild(pauseTitle);
-  const pauseHint = document.createElement('div');
-  pauseHint.style.cssText = 'color:#888;font:16px monospace;';
-  pauseOverlay.appendChild(pauseHint);
-  const resumeBtn = document.createElement('button');
-  resumeBtn.textContent = 'RESUME';
-  resumeBtn.style.cssText =
-    'margin-top:20px;padding:12px 30px;font:bold 18px monospace;' +
-    'background:#060;color:#0f0;border:2px solid #0f0;cursor:pointer;display:none;';
-  resumeBtn.onclick = () => {
-    if (isHost) {
-      isPaused = false;
-      network.sendPause(false);
-      showPauseOverlay(false);
-    }
-  };
-  pauseOverlay.appendChild(resumeBtn);
-
-  // Stop Server button in pause menu (host only)
-  const pauseStopServerBtn = document.createElement('button');
-  pauseStopServerBtn.textContent = 'STOP SERVER';
-  pauseStopServerBtn.style.cssText =
-    'margin-top:10px;padding:12px 30px;font:bold 18px monospace;' +
-    'background:#800;color:#fff;border:2px solid #f44;cursor:pointer;display:none;' +
-    'text-shadow:0 0 5px #f44;';
-  pauseStopServerBtn.onclick = async () => {
-    // Same as top-right stop button: end game, stop server, return to menu
-    network.sendEndGame();
-    try {
-      await fetch('/__lan/stop', { method: 'POST' });
-    } catch {
-      // Ignore — server may not be managed by this Vite instance
-    }
-    window.location.href = window.location.pathname;
-  };
-  pauseOverlay.appendChild(pauseStopServerBtn);
-
+    'flex-direction:column;backdrop-filter:blur(5px);' +
+    'pointer-events:none;';
+  const pauseTitleEl = document.createElement('div');
+  pauseTitleEl.style.cssText =
+    'color:#ffff00;font:bold 64px monospace;' +
+    'text-shadow:0 0 20px #ffff00,0 0 40px #ffaa00;' +
+    'margin-bottom:20px;letter-spacing:12px;';
+  pauseTitleEl.textContent = 'PAUSED';
+  pauseOverlay.appendChild(pauseTitleEl);
+  const pauseHintEl = document.createElement('div');
+  pauseHintEl.style.cssText = 'color:#aaaacc;font:16px monospace;letter-spacing:3px;';
+  pauseHintEl.textContent = 'Host has paused the game';
+  pauseOverlay.appendChild(pauseHintEl);
   document.body.appendChild(pauseOverlay);
 
   function showPauseOverlay(paused: boolean): void {
     isPaused = paused;
     if (paused) {
-      pauseOverlay.style.display = 'flex';
-      pauseHint.textContent = isHost ? 'Press ESC to resume' : 'Host has paused the game';
-      resumeBtn.style.display = isHost ? 'block' : 'none';
-      pauseStopServerBtn.style.display = isHost ? 'block' : 'none';
       game.pause(); // Sync game clock to prevent dt accumulation during pause
+      if (isHost) {
+        // Host: show full PauseMenu (has resume, end game, stop server buttons)
+        pauseMenu.setIsHost(true);
+        pauseMenu.show();
+      } else {
+        // Non-host: show simple "Host has paused" overlay
+        pauseOverlay.style.display = 'flex';
+      }
     } else {
-      pauseOverlay.style.display = 'none';
+      if (isHost) {
+        pauseMenu.hide();
+      } else {
+        pauseOverlay.style.display = 'none';
+      }
       game.resume(); // Resync game clock to avoid massive dt spike on first frame after resume
     }
   }
@@ -929,6 +945,17 @@ function main() {
   });
 
   // -----------------------------------------------------------------------
+  // Game Over screen (replaces bare statusEl "GAME OVER" text)
+  // -----------------------------------------------------------------------
+
+  const gameOverScreen = new GameOverScreen();
+  gameOverScreen.onContinue(() => {
+    network.disconnect();
+    window.location.href = window.location.pathname;
+  });
+  let gameOverShown = false;
+
+  // -----------------------------------------------------------------------
   // Helper: get or create a real Player for a network player
   // -----------------------------------------------------------------------
 
@@ -1010,6 +1037,7 @@ function main() {
         isHost = nowIsHost;
         stopServerBtn.style.display = isHost ? 'block' : 'none';
         localMenuStopServerBtn.style.display = isHost ? 'block' : 'none';
+        pauseMenu.setIsHost(isHost); // Keep pause menu in sync with current host status
         netMainLog(`[NetworkMain] Host status updated: ${isHost ? 'IS host' : 'NOT host'}`);
       }
     }
@@ -1418,8 +1446,13 @@ function main() {
       startBtn.style.display = 'none';
     } else if (state.gameOver) {
       statusEl.textContent = 'GAME OVER';
-      startBtn.style.display = 'block';
-      startBtn.textContent = 'PLAY AGAIN';
+      startBtn.style.display = 'none';
+      if (!gameOverShown) {
+        gameOverShown = true;
+        const localPlayer = state.players.get(localPlayerId);
+        const score = localPlayer?.score ?? 0;
+        gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere');
+      }
     } else {
       statusEl.textContent = 'Waiting for players...';
       startBtn.style.display = 'block';
@@ -1471,6 +1504,8 @@ function main() {
       onGameStart: () => {
         statusEl.textContent = 'Game starting...';
         startBtn.style.display = 'none';
+        gameOverShown = false; // Reset so GameOverScreen can show next game over
+        gameOverScreen.hide(); // Dismiss any lingering game over screen
         // Start background music (route through compressor to prevent clipping)
         const audioCtx = sound.getAudioContext();
         if (audioCtx) {
@@ -1479,8 +1514,14 @@ function main() {
         }
       },
       onGameOver: () => {
-        statusEl.textContent = 'GAME OVER';
         bgMusic.stop();
+        // Show styled GameOverScreen instead of bare text
+        if (!gameOverShown) {
+          gameOverShown = true;
+          const localPlayer = networkPlayers.get(localPlayerId);
+          const score = localPlayer?.score ?? 0;
+          gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere');
+        }
       },
       onError: (err) => {
         statusEl.textContent = `Error: ${err.message}`;
