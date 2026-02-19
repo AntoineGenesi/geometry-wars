@@ -44,7 +44,7 @@ import { BackgroundMusic } from './audio/BackgroundMusic';
 import { KillLog } from './ui/KillLog';
 import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponPickup } from './weapons/WeaponPickup';
-import { WeaponType } from './weapons/WeaponTypes';
+import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
 import { WeaponHUD } from './ui/WeaponHUD';
 import { WeaponManager } from './weapons/WeaponManager';
 import type { WeaponInventoryEntry } from './weapons/WeaponManager';
@@ -81,6 +81,8 @@ import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 import { SettingsMenu } from './ui/SettingsMenu';
 import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
+import { PerformanceTracker } from './core/PerformanceTracker';
+import { DebugOverlay } from './ui/DebugOverlay';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -385,6 +387,12 @@ function main() {
 
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
+
+  // Debug performance overlay — F3 key (same as single-player)
+  // Surface type is unknown until server connects; 'network' is used as placeholder.
+  const perfTracker = new PerformanceTracker('network');
+  const debugOverlay = new DebugOverlay(perfTracker);
+  debugOverlay.setRendererBackend(game.backend);
 
   // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
   const savedVisualMode = loadVisualMode();
@@ -958,6 +966,18 @@ function main() {
       if (isHost) {
         // Host: show full PauseMenu (has resume, end game, stop server buttons)
         pauseMenu.setIsHost(true);
+        // Populate pause menu with LAN game data (kills, weapon, perf)
+        const weaponConfig = WEAPON_CONFIGS[localPlayerWeaponType];
+        pauseMenu.setGameData({
+          buffs: [],
+          totalKills: totalKillCounter.getTotalKills(),
+          weapon: {
+            name: weaponConfig?.name ?? 'Standard',
+            baseDamage: weaponConfig?.damage ?? 1,
+            fireRate: weaponConfig?.fireRate ?? 1,
+          },
+        });
+        pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
         pauseMenu.show();
       } else {
         // Non-host: show simple "Host has paused" overlay
@@ -2275,6 +2295,11 @@ function main() {
     // Scale music intensity by enemy count (same as co-op)
     bgMusic.setIntensity(Math.min(networkEnemies.size / 30, 1.0));
 
+    // Update performance tracker for DebugOverlay (F3)
+    perfTracker.setEntityCount(networkEnemies.size);
+    perfTracker.setBulletCount(bulletIdToIndex.size);
+    perfTracker.recordFrame(dt);
+
     // Clear per-frame input
     input.endFrame();
   };
@@ -2511,6 +2536,9 @@ function main() {
       });
       minimap.update(minimapLocalPlayer.surfaceU, minimapLocalPlayer.surfaceV, minimapEnemies, minimapGeoms);
     }
+
+    // Update debug overlay HUD (throttled internally — no perf cost when F3 is hidden)
+    debugOverlay.update();
   };
 
   // Start the game loop
@@ -2533,6 +2561,7 @@ function main() {
     buffAuraRenderer.dispose();
     buffParticleAura.dispose();
     shockArcRenderer.dispose();
+    debugOverlay.dispose();
   });
 
   // Debug hook: read-only access to game state for automated testing.
