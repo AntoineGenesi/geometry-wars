@@ -95,7 +95,8 @@ echo.
 
 REM Start Colyseus in a NEW VISIBLE window so server logs are visible
 REM The window title is "Geometry Wars Server" - look for it in taskbar
-start "Geometry Wars Server (port 2567)" cmd /c "npx tsx server\index.ts & echo. & echo  Server stopped. Press any key to close. & pause >nul"
+REM Use node + tsx module directly (npx tsx fails on Windows when installed from WSL — no .cmd shim)
+start "Geometry Wars Server (port 2567)" cmd /c "node node_modules\tsx\dist\cli.mjs server\index.ts & echo. & echo  Server stopped. Press any key to close. & pause >nul"
 
 REM Wait for Colyseus to start
 timeout /t 3 /nobreak >nul
@@ -113,12 +114,30 @@ echo.
 echo  --- Vite server output below (stays visible on crash) ---
 echo.
 
+REM Verify vite.js exists before trying to run it
+if not exist "node_modules\vite\bin\vite.js" (
+    echo  [!] Vite not found at node_modules\vite\bin\vite.js
+    echo  [!] Run WINDOWS-SETUP.bat or: npm install
+    echo.
+    pause
+    exit /b 1
+)
+
 REM Run Vite in foreground — window stays open as long as Vite runs
+echo  Running: node node_modules\vite\bin\vite.js --host --port 3000
+echo.
 node node_modules\vite\bin\vite.js --host --port 3000 --open false
+set VITE_EXIT=%ERRORLEVEL%
 
 echo.
 echo  ================================================================
-echo  Server stopped or crashed. Check the output above for errors.
+if %VITE_EXIT% neq 0 (
+    echo  [!] Vite CRASHED with exit code %VITE_EXIT%
+    echo  [!] Check the output above for the error message.
+) else (
+    echo  Vite server stopped normally.
+)
 echo  ================================================================
 echo.
-pause
+echo  Press any key to close this window...
+pause >nul
