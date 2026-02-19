@@ -1,3 +1,11 @@
+/**
+ * EnemySpawner — Wave system that spawns, manages, and despawns all enemy types.
+ *
+ * Owns the active enemy list, spawns waves (with UV-space placement and separation
+ * constraints), shows pre-spawn warning rings, and updates all enemies each frame.
+ * Called from GameInstance.update() every fixed timestep.
+ * Supports all 30+ EnemyType variants and integrates with DDASpawnModifier.
+ */
 import * as THREE from 'three';
 import { BaseEnemy } from './BaseEnemy';
 import { Wanderer } from './Wanderer';

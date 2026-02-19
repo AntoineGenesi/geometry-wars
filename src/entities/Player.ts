@@ -1,3 +1,11 @@
+/**
+ * Player — UV-space player entity for the legacy single-player code path.
+ *
+ * Handles player movement (UV velocity), aiming, shooting (BulletPool),
+ * lives, bombs, and invincibility state. Used by the older Game/GameContext
+ * system. For the consolidated GameInstance path, see GameInstance.ts.
+ * Called from GameInstance → Game context.
+ */
 import * as THREE from 'three';
 import type { InputState } from '../input/InputManager';
 import { BulletPool } from './Bullet';

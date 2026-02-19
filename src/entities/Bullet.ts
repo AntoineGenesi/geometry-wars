@@ -1,3 +1,10 @@
+/**
+ * Bullet / BulletPool — Object-pooled bullet system for the player's projectiles.
+ *
+ * Maintains a fixed pool of 500 bullets to avoid per-frame allocation.
+ * Each bullet walks the mesh surface via MeshSurface.moveOnSurface().
+ * BulletPool is owned by Player and called from GameInstance.update().
+ */
 import * as THREE from 'three';
 import { MeshSurface, FacePosition } from '../surfaces/MeshSurface';
 

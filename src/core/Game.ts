@@ -1,3 +1,11 @@
+/**
+ * Game — Core Three.js engine layer (renderer, scene, camera, bloom, entity management).
+ *
+ * Manages the WebGPU/WebGL2 renderer, EffectComposer post-processing, EntityManager,
+ * and game clock. Does NOT contain movement, input, or game-mode logic — that lives
+ * in GameInstance (demos/tests) or GameLoop (main.ts). Called by both GameInstance
+ * and directly from main.ts via GameContext.
+ */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';

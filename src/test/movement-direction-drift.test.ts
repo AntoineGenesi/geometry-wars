@@ -139,7 +139,6 @@ describe('Movement Direction Drift — Bug Reproduction', () => {
 
     // Record initial position and determine the "right" direction
     const startPos = h.getPlayerWorldPos();
-    const startFrame = h.player.getTangentFrame?.() ?? { tangent: new THREE.Vector3(1, 0, 0), bitangent: new THREE.Vector3(0, 1, 0) };
 
     // Get camera state to determine screen-right direction
     const cam = h.pg.game.camera;
