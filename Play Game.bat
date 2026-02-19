@@ -1,4 +1,19 @@
 @echo off
+REM ============================================================
+REM  BULLETPROOF: call :main then ALWAYS pause, no matter what.
+REM  Even if :main crashes, errors, or exits early, the window
+REM  stays open so the user can read what went wrong.
+REM ============================================================
+call :main
+echo.
+echo  ================================================================
+echo  Window will stay open. Read any errors above.
+echo  ================================================================
+echo.
+pause
+exit /b
+
+:main
 setlocal enabledelayedexpansion
 title Geometry Wars 3D
 color 0A
@@ -13,10 +28,10 @@ REM Check Node.js is available
 where node >nul 2>nul
 if %ERRORLEVEL% neq 0 (
     echo  [!] Node.js is not installed on Windows!
-    echo  Run WINDOWS-SETUP.bat first.
+    echo  [!] Download from https://nodejs.org and install, then try again.
+    echo  [!] Or run WINDOWS-SETUP.bat first.
     echo.
-    pause
-    exit /b 1
+    goto :eof
 )
 
 REM Show versions
@@ -24,13 +39,14 @@ for /f "tokens=*" %%i in ('node --version') do echo  Node.js: %%i
 
 REM Change to project directory
 cd /d "%~dp0"
+echo  Directory: %CD%
+echo.
 
 REM Check node_modules exists
 if not exist "node_modules" (
     echo  [!] Dependencies not installed. Run WINDOWS-SETUP.bat first.
     echo.
-    pause
-    exit /b 1
+    goto :eof
 )
 
 REM Fix native binaries if needed (WSL installs Linux binaries, Windows needs win32)
@@ -45,8 +61,7 @@ if %ERRORLEVEL% neq 0 (
     if !ERRORLEVEL! neq 0 (
         echo.
         echo  [!] Failed to fix native binaries. See output above.
-        pause
-        exit /b 1
+        goto :eof
     )
     echo.
     echo  [OK] Native binaries fixed.
@@ -56,47 +71,53 @@ echo.
 
 REM ================================================================
 REM  WINDOWS FIREWALL: Allow ports 3000 and 2567 for LAN access
-REM  Requires Administrator. Silently skipped if not admin.
-REM  Run this file as Administrator once to set up firewall rules.
 REM ================================================================
 echo  Setting up Windows Firewall rules for LAN access...
 netsh advfirewall firewall add rule name="Geometry Wars - Game Server (2567)" dir=in action=allow protocol=TCP localport=2567 >nul 2>&1
 netsh advfirewall firewall add rule name="Geometry Wars - Web Server (3000)" dir=in action=allow protocol=TCP localport=3000 >nul 2>&1
-echo  [OK] Firewall rules applied (requires Administrator - may be skipped if not admin).
-echo  [!] If LAN still fails: Right-click this .bat and Run as Administrator,
-echo  [!] OR manually add firewall rules for TCP ports 3000 and 2567 (Inbound).
+echo  [OK] Firewall rules set (requires Administrator — may be skipped).
 echo.
 
-REM Get ALL local IPs for LAN display (show all so user can pick the right one)
+REM Get ALL local IPs for LAN display
 echo  ================================================================
 echo.
-echo   HOST PC LAN ADDRESSES (share one of these with other players):
+echo   HOST PC LAN ADDRESSES (share with other players):
 echo.
 for /f "tokens=2 delims=:" %%a in ('ipconfig ^| findstr /c:"IPv4"') do (
     for /f "tokens=*" %%b in ("%%a") do (
-        echo     >>> http://%%b:3000 <<<
+        echo     http://%%b:3000
     )
 )
 echo.
 echo   Game (this PC):  http://localhost:3000
 echo.
 echo   TO CONNECT FROM ANOTHER DEVICE:
-echo   1. Make sure both devices are on the same WiFi/LAN
-echo   2. Open a browser on the other device
-echo   3. Try each address above - use 192.168.x.x (not 10.x.x.x which may be VPN)
-echo   4. If it fails, check Windows Firewall - run this file as Administrator
+echo   1. Both devices on same WiFi/LAN
+echo   2. Open browser on other device, go to one of the addresses above
+echo   3. Prefer 192.168.x.x addresses (not 10.x.x.x which may be VPN)
+echo   4. If blocked, right-click this .bat and Run as Administrator
 echo.
 echo  ================================================================
 echo.
 
-echo  Starting Colyseus multiplayer server in a NEW WINDOW (port 2567)...
-echo  Watch the "Geometry Wars Server" window for connection logs!
-echo.
+REM Check key files exist before launching
+if not exist "node_modules\tsx\dist\cli.mjs" (
+    echo  [!] tsx not found. Run: npm install
+    goto :eof
+)
+if not exist "node_modules\vite\bin\vite.js" (
+    echo  [!] Vite not found. Run: npm install
+    goto :eof
+)
+if not exist "server\index.ts" (
+    echo  [!] server\index.ts not found. Are you in the right directory?
+    goto :eof
+)
 
-REM Start Colyseus in a NEW VISIBLE window so server logs are visible
-REM The window title is "Geometry Wars Server" - look for it in taskbar
-REM Use node + tsx module directly (npx tsx fails on Windows when installed from WSL — no .cmd shim)
-start "Geometry Wars Server (port 2567)" cmd /c "node node_modules\tsx\dist\cli.mjs server\index.ts & echo. & echo  Server stopped. Press any key to close. & pause >nul"
+REM Start Colyseus server in a SEPARATE window (also with pause-on-crash)
+echo  Starting Colyseus multiplayer server in a NEW WINDOW (port 2567)...
+echo.
+start "Geometry Wars Server (port 2567)" cmd /k "node node_modules\tsx\dist\cli.mjs server\index.ts || (echo. & echo [!] SERVER CRASHED - see error above & echo. & pause)"
 
 REM Wait for Colyseus to start
 timeout /t 3 /nobreak >nul
@@ -104,40 +125,15 @@ timeout /t 3 /nobreak >nul
 echo  Starting Vite dev server (port 3000)...
 echo.
 
-REM Brief delay then open browser
-start /b cmd /c "timeout /t 4 /nobreak >nul && start http://localhost:3000"
+REM Open browser after a delay
+start /b cmd /c "timeout /t 5 /nobreak >nul && start http://localhost:3000"
 
-echo  ================================================================
-echo  Check the "Geometry Wars Server" window for your LAN IP addresses
-echo  ================================================================
-echo.
-echo  --- Vite server output below (stays visible on crash) ---
+echo  --- Vite output below ---
 echo.
 
-REM Verify vite.js exists before trying to run it
-if not exist "node_modules\vite\bin\vite.js" (
-    echo  [!] Vite not found at node_modules\vite\bin\vite.js
-    echo  [!] Run WINDOWS-SETUP.bat or: npm install
-    echo.
-    pause
-    exit /b 1
-)
-
-REM Run Vite in foreground — window stays open as long as Vite runs
-echo  Running: node node_modules\vite\bin\vite.js --host --port 3000
-echo.
+REM Run Vite in foreground
 node node_modules\vite\bin\vite.js --host --port 3000 --open false
-set VITE_EXIT=%ERRORLEVEL%
 
 echo.
-echo  ================================================================
-if %VITE_EXIT% neq 0 (
-    echo  [!] Vite CRASHED with exit code %VITE_EXIT%
-    echo  [!] Check the output above for the error message.
-) else (
-    echo  Vite server stopped normally.
-)
-echo  ================================================================
-echo.
-echo  Press any key to close this window...
-pause >nul
+echo  [!] Vite exited (code: %ERRORLEVEL%). See output above.
+goto :eof

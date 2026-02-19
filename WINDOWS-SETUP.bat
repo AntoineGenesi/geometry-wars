@@ -1,4 +1,17 @@
 @echo off
+REM ============================================================
+REM  BULLETPROOF: call :main then ALWAYS pause, no matter what.
+REM ============================================================
+call :main
+echo.
+echo  ================================================================
+echo  Window will stay open. Read any errors above.
+echo  Press any key to close...
+echo  ================================================================
+pause >nul
+exit /b
+
+:main
 setlocal enabledelayedexpansion
 title Geometry Wars - Windows Node.js Setup
 color 0E
@@ -32,7 +45,7 @@ if not exist "%INSTALLER%" (
     echo  Please manually download from:
     echo  %NODE_URL%
     echo.
-    goto :end_pause
+    goto :eof
 )
 
 echo  Download complete. Running installer...
@@ -49,8 +62,7 @@ echo.
 echo  Installer finished. Checking if Node.js is now available...
 echo.
 
-REM Refresh PATH (the installer adds Node to PATH but current shell won't see it)
-REM We need to re-read the system PATH
+REM Refresh PATH
 for /f "tokens=2*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v PATH 2^>nul') do set "SYS_PATH=%%b"
 for /f "tokens=2*" %%a in ('reg query "HKCU\Environment" /v PATH 2^>nul') do set "USR_PATH=%%b"
 set "PATH=%SYS_PATH%;%USR_PATH%"
@@ -61,7 +73,7 @@ if %ERRORLEVEL% neq 0 (
     echo  Please close this window, open a NEW command prompt,
     echo  and run WINDOWS-SETUP.bat again.
     echo.
-    goto :end_pause
+    goto :eof
 )
 
 :node_found
@@ -93,7 +105,7 @@ if %ERRORLEVEL% neq 0 (
     echo.
     echo  [!] npm install failed! Check the errors above.
     echo.
-    goto :end_pause
+    goto :eof
 )
 
 echo.
@@ -105,7 +117,4 @@ echo  ================================================================
 echo     Setup complete! You can now double-click "Play Game.bat"
 echo  ================================================================
 echo.
-
-:end_pause
-echo  Press any key to close...
-pause >nul
+goto :eof
