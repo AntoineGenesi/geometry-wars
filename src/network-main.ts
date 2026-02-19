@@ -766,6 +766,72 @@ function main() {
   }
 
   // -----------------------------------------------------------------------
+  // Connection Lost overlay — shown when the server disconnects unexpectedly.
+  // Replaces the frozen-screen bug: game loop keeps running but this overlay
+  // blocks interaction and provides a clear path back to the main menu.
+  // -----------------------------------------------------------------------
+
+  let connectionLost = false;
+
+  const connectionLostOverlay = document.createElement('div');
+  connectionLostOverlay.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;' +
+    'background:rgba(0,0,0,0.85);z-index:500;' +
+    'display:none;flex-direction:column;justify-content:center;align-items:center;' +
+    'font-family:monospace;';
+
+  const connectionLostTitle = document.createElement('div');
+  connectionLostTitle.style.cssText =
+    'color:#ff4444;font-size:48px;font-weight:bold;' +
+    'text-shadow:0 0 20px #ff2222;margin-bottom:16px;letter-spacing:4px;';
+  connectionLostTitle.textContent = 'CONNECTION LOST';
+  connectionLostOverlay.appendChild(connectionLostTitle);
+
+  const connectionLostReason = document.createElement('div');
+  connectionLostReason.style.cssText =
+    'color:#ffaaaa;font-size:20px;margin-bottom:36px;text-align:center;';
+  connectionLostOverlay.appendChild(connectionLostReason);
+
+  const connectionLostHint = document.createElement('div');
+  connectionLostHint.style.cssText =
+    'color:#888888;font-size:14px;margin-bottom:24px;letter-spacing:2px;';
+  connectionLostHint.textContent = 'Press ESC or click below to return to main menu';
+  connectionLostOverlay.appendChild(connectionLostHint);
+
+  const connectionLostBackBtn = document.createElement('button');
+  connectionLostBackBtn.textContent = '◀  RETURN TO MAIN MENU';
+  connectionLostBackBtn.style.cssText =
+    'padding:16px 48px;font:bold 20px monospace;' +
+    'background:#220000;color:#fff;border:2px solid #cc4444;cursor:pointer;' +
+    'letter-spacing:2px;min-width:320px;';
+  connectionLostBackBtn.addEventListener('mouseenter', () => {
+    connectionLostBackBtn.style.filter = 'brightness(1.3)';
+  });
+  connectionLostBackBtn.addEventListener('mouseleave', () => {
+    connectionLostBackBtn.style.filter = '';
+  });
+  connectionLostBackBtn.onclick = () => {
+    window.location.href = window.location.pathname;
+  };
+  connectionLostOverlay.appendChild(connectionLostBackBtn);
+
+  document.body.appendChild(connectionLostOverlay);
+
+  /**
+   * Show the connection-lost overlay. Idempotent — safe to call multiple times.
+   * Stops music, shows a clear message, and ensures Escape works.
+   */
+  function handleConnectionLost(reason: string): void {
+    if (connectionLost) return; // Already showing — don't double-trigger
+    connectionLost = true;
+    bgMusic.stop();
+    connectionLostReason.textContent = reason;
+    connectionLostOverlay.style.display = 'flex';
+    // Pause game clock so the background scene doesn't keep animating
+    game.pause();
+  }
+
+  // -----------------------------------------------------------------------
   // Local player menu — opened by Escape, visible to ALL players.
   // Does NOT pause the server game. Each player manages their own menu.
   // Non-hosts can use this to disconnect. Hosts can stop the server.
@@ -866,7 +932,15 @@ function main() {
   // (Host can still pause the server via the existing server-pause overlay's
   //  Resume button, which sends sendPause(false) via the resumeBtn click.)
   window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && network.isConnected()) {
+    if (e.key === 'Escape') {
+      // After disconnect, Escape always returns to main menu.
+      if (connectionLost) {
+        window.location.href = window.location.pathname;
+        return;
+      }
+
+      if (!network.isConnected()) return;
+
       if (localMenuOpen) {
         // Close the local menu
         hideLocalMenu();
@@ -1486,10 +1560,7 @@ function main() {
         statusEl.textContent = `Error: ${err.message}`;
       },
       onHostLeft: () => {
-        statusEl.textContent = 'Host disconnected';
-        statusEl.style.color = '#f44';
-        bgMusic.stop();
-        backBtn.style.display = 'block';
+        handleConnectionLost('Host disconnected from the game.');
       },
       onHostChanged: (newHostId: string) => {
         // isHost is updated via onStateChange (state.hostId sync), but give
@@ -1503,9 +1574,16 @@ function main() {
         }
       },
       onGameEnded: () => {
-        statusEl.textContent = 'Host ended the game';
-        bgMusic.stop();
-        backBtn.style.display = 'block';
+        handleConnectionLost('The host has ended the game.');
+      },
+      onDisconnected: (code: number) => {
+        // Fired when the WebSocket closes for any reason (server crash, network
+        // drop, etc.). Only show the overlay if not already handled by a more
+        // specific callback (e.g. onHostLeft) and not a deliberate disconnect
+        // (code 1000 = normal closure triggered by our own disconnect() call).
+        if (!connectionLost && code !== 1000) {
+          handleConnectionLost(`Server connection closed (code ${code}).`);
+        }
       },
     });
   }).catch((err) => {
