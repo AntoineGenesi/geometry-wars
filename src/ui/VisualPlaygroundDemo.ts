@@ -197,6 +197,9 @@ export class VisualPlaygroundDemo {
         radius: preset.bloomRadius ?? 0.4,
         threshold: preset.bloomThreshold ?? 0.85,
       },
+      // Pass preset grid density so the demo surface matches the thumbnail exactly
+      gridSegmentsU: preset.gridSegmentsU,
+      gridSegmentsV: preset.gridSegmentsV,
       onGameOver: () => this.handleGameOver(),
       onEnemyKill: () => this.handleEnemyKill(),
     });
@@ -303,19 +306,20 @@ export class VisualPlaygroundDemo {
     // Set scene background
     scene.background = this.bgColor.clone();
 
-    // Apply surface material from preset
+    // Apply surface material from preset.
+    // Use MeshBasicMaterial (unlit) so colors match the thumbnails exactly —
+    // MeshStandardMaterial (PBR) darkens under scene lighting, causing the
+    // "grey/muted" appearance the user reported.
     if (preset.wireframeOnly) {
       surface.mesh.visible = false;
     } else {
       if (surface.mesh.material instanceof THREE.Material) {
         surface.mesh.material.dispose();
       }
-      surface.mesh.material = new THREE.MeshStandardMaterial({
+      surface.mesh.material = new THREE.MeshBasicMaterial({
         color: preset.surfaceColor,
         transparent: true,
         opacity: preset.surfaceOpacity,
-        roughness: 0.8,
-        metalness: 0.1,
         side: THREE.DoubleSide,
       });
     }
@@ -410,6 +414,8 @@ export class VisualPlaygroundDemo {
         radius: this.preset.bloomRadius ?? 0.4,
         threshold: this.preset.bloomThreshold ?? 0.85,
       },
+      gridSegmentsU: this.preset.gridSegmentsU,
+      gridSegmentsV: this.preset.gridSegmentsV,
       onGameOver: () => this.handleGameOver(),
       onEnemyKill: () => this.handleEnemyKill(),
     });

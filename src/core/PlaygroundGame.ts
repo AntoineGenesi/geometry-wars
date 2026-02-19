@@ -73,6 +73,10 @@ export interface PlaygroundConfig {
   onGameOver?: () => void;
   /** Callback when enemy is killed. */
   onEnemyKill?: (enemyType: string) => void;
+  /** Grid segment counts for surface appearance (passed through to GameInstance). */
+  gridSegmentsU?: number;
+  /** Grid segment counts for surface appearance (passed through to GameInstance). */
+  gridSegmentsV?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +122,8 @@ export class PlaygroundGame {
       enemyCount: config.enemyCount,
       onGameOver: config.onGameOver,
       onEnemyKill: config.onEnemyKill,
+      gridSegmentsU: config.gridSegmentsU,
+      gridSegmentsV: config.gridSegmentsV,
     };
 
     // Create GameInstance

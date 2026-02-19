@@ -102,6 +102,10 @@ export interface GameInstanceConfig {
   onGameOver?: () => void;
   /** Callback when enemy is killed */
   onEnemyKill?: (enemyType: string) => void;
+  /** Grid segment counts for surface appearance (demo mode) */
+  gridSegmentsU?: number;
+  /** Grid segment counts for surface appearance (demo mode) */
+  gridSegmentsV?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -140,13 +144,15 @@ export class GameInstance {
   get surface(): Surface { return this._surface; }
   get meshSurface(): MeshSurface { return this._meshSurface; }
 
-  private config: Required<Omit<GameInstanceConfig, 'features' | 'lockedWeapon' | 'enemyTypes' | 'enemyCount' | 'onGameOver' | 'onEnemyKill'>> & {
+  private config: Required<Omit<GameInstanceConfig, 'features' | 'lockedWeapon' | 'enemyTypes' | 'enemyCount' | 'onGameOver' | 'onEnemyKill' | 'gridSegmentsU' | 'gridSegmentsV'>> & {
     features: GameInstanceFeatures;
     lockedWeapon: WeaponType | null;
     enemyTypes: EnemyType[];
     enemyCount: number;
     onGameOver: () => void;
     onEnemyKill: (enemyType: string) => void;
+    gridSegmentsU: number | undefined;
+    gridSegmentsV: number | undefined;
   };
 
   private respawnTimer = 0;
@@ -179,6 +185,8 @@ export class GameInstance {
       enemyCount: userConfig.enemyCount ?? 8,
       onGameOver: userConfig.onGameOver ?? (() => {}),
       onEnemyKill: userConfig.onEnemyKill ?? (() => {}),
+      gridSegmentsU: userConfig.gridSegmentsU,
+      gridSegmentsV: userConfig.gridSegmentsV,
     };
 
     const cfg = this.config;
@@ -299,6 +307,7 @@ export class GameInstance {
   }
 
   private createSurface(type: SurfaceType, scale: number): Surface {
+    const cfg = this.config;
     return SurfaceFactory.create(type, {
       gridColor: 0x2a2aaa,
       surfaceColor: 0x141440,
@@ -309,6 +318,8 @@ export class GameInstance {
       height: scale * 2,
       majorRadius: scale * 0.8,
       minorRadius: scale * 0.3,
+      ...(cfg.gridSegmentsU !== undefined ? { gridSegmentsU: cfg.gridSegmentsU } : {}),
+      ...(cfg.gridSegmentsV !== undefined ? { gridSegmentsV: cfg.gridSegmentsV } : {}),
     } as any);
   }
 
@@ -429,6 +440,26 @@ export class GameInstance {
         }
       }
     });
+  }
+
+  /** Check enemy-player collisions (simple version for demo mode). */
+  private _checkEnemyPlayerCollisions(): void {
+    const enemies = this.enemySpawner.getEnemies();
+    for (const enemy of enemies) {
+      if (!enemy.alive || !enemy.mesh) continue;
+      // Skip enemies still spawning/materializing
+      if (enemy.isMaterializing) continue;
+
+      const hitRadius = this.player.mesh.scale.x * 0.3 + enemy.radius;
+      const distSq = this.player.mesh.position.distanceToSquared(enemy.position);
+      if (distSq < hitRadius * hitRadius) {
+        this.player.die(); // player.die() checks canTakeDamage internally
+        if (!this.player.alive) {
+          this.particles.playerDeath(this.player.mesh.position);
+        }
+        break;
+      }
+    }
   }
 
   private spawnDemoEnemies(): void {
@@ -579,6 +610,7 @@ export class GameInstance {
     // Update bullets
     this.bulletPool.update(dt);
     this._checkBulletEnemyCollisions();
+    this._checkEnemyPlayerCollisions();
 
     // Update weapons (homing projectiles, etc.)
     this.weaponManager.update(dt);
@@ -615,7 +647,11 @@ export class GameInstance {
     if (this.disposed) return;
     this.disposed = true;
 
-    this.game.stop();
+    // game.dispose() calls stop() AND removes the canvas from the DOM.
+    // This is critical for embedded playgrounds: without it, the old canvas
+    // remains in the container and the next playground instance adds a second
+    // canvas, creating duplicate/linked instances (the "Try It" duplicate bug).
+    this.game.dispose();
     this.input.dispose();
     this.weaponManager.dispose();
     this.particles.dispose();
