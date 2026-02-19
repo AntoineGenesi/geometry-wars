@@ -205,6 +205,20 @@ export class GameState extends Schema {
   declare hostId: string;
   declare isPaused: boolean;
 
+  // Lobby voting state machine
+  /** Canonical room phase: 'lobby' | 'playing' | 'voting' */
+  declare roomPhase: string;
+  /** Maps sessionId → choice string ('surface:mode:size') */
+  declare voteMap: MapSchema<string>;
+  /** Voting countdown in seconds (counts down when roomPhase='voting' and !hostPickMode) */
+  declare votingCountdown: number;
+  /** When true, host picks directly via host_launch; when false, voting + countdown runs */
+  declare hostPickMode: boolean;
+  /** Current game mode (default: 'waves') */
+  declare gameMode: string;
+  /** Current map size (default: 'medium') */
+  declare mapSize: string;
+
   constructor() {
     super();
     this.players = new MapSchema<PlayerState>();
@@ -219,6 +233,14 @@ export class GameState extends Schema {
     this.gameOver = false;
     this.hostId = '';
     this.isPaused = false;
+
+    // Lobby voting state machine defaults
+    this.roomPhase = 'lobby';
+    this.voteMap = new MapSchema<string>();
+    this.votingCountdown = 0;
+    this.hostPickMode = false;
+    this.gameMode = 'waves';
+    this.mapSize = 'medium';
   }
 }
 
@@ -235,4 +257,10 @@ defineTypes(GameState, {
   gameOver: 'boolean',
   hostId: 'string',
   isPaused: 'boolean',
+  roomPhase: 'string',
+  voteMap: { map: 'string' },
+  votingCountdown: 'number',
+  hostPickMode: 'boolean',
+  gameMode: 'string',
+  mapSize: 'string',
 });
