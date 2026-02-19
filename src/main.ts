@@ -1400,6 +1400,31 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       type: b.type,
       stacks: b.stacks,
     }));
+
+    // Enemy visibility: dim buff aura visuals when enemies enter the aura zone.
+    // Threshold: 2 world units (≈ aura ring radius). Full dim: 0.5 units (very close).
+    // This makes enemies clearly visible even with 6+ buff stacks active.
+    if (player.alive && activeBuffs.length > 0) {
+      const DIM_THRESHOLD = 2.0;  // world units: start dimming
+      const DIM_FULL = 0.5;       // world units: maximum dimming
+      const pPos = player.mesh.position;
+      let nearestDistSq = DIM_THRESHOLD * DIM_THRESHOLD;
+      for (const e of enemySpawner.getEnemies()) {
+        if (!e.alive || !e.mesh) continue;
+        const dSq = pPos.distanceToSquared(e.mesh.position);
+        if (dSq < nearestDistSq) nearestDistSq = dSq;
+      }
+      // If no enemy within threshold, nearestDistSq stays at DIM_THRESHOLD² → factor = 0
+      const nearestDist = Math.sqrt(nearestDistSq);
+      const dimFactor = nearestDist <= DIM_FULL ? 1.0
+        : 1.0 - (nearestDist - DIM_FULL) / (DIM_THRESHOLD - DIM_FULL);
+      buffAuraRenderer.setDimmingFactor(dimFactor);
+      buffParticleAura.setDimmingFactor(dimFactor);
+    } else {
+      buffAuraRenderer.setDimmingFactor(0);
+      buffParticleAura.setDimmingFactor(0);
+    }
+
     buffAuraRenderer.update(
       dt,
       game.clock.totalTime,

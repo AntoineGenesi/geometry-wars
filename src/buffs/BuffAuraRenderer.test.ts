@@ -279,6 +279,77 @@ describe('BuffAuraRenderer', () => {
     });
   });
 
+  describe('setDimmingFactor — enemy visibility feature', () => {
+    const pos = new Vector3(0, 1, 0);
+    const normal = new Vector3(0, 1, 0);
+    const singleBuff = [{ type: StackBuffType.ShockAura, stacks: 1 }];
+
+    it('no dimming (factor=0) leaves opacity at base value', () => {
+      renderer.setDimmingFactor(0);
+      renderer.update(0.016, 1.0, pos, normal, singleBuff);
+      const mesh = renderer.root.children.find((c: any) => c.visible) as any;
+      expect(mesh).toBeDefined();
+      // Base opacity for 1 buff = 0.5; with factor=0, dimmed = 0.5 * (1 - 0 * 0.75) = 0.5
+      expect(mesh.material.uniforms.uOpacity.value).toBeCloseTo(0.5, 4);
+    });
+
+    it('full dimming (factor=1) reduces opacity by 75% (AURA_MAX_DIM)', () => {
+      renderer.setDimmingFactor(1);
+      renderer.update(0.016, 1.0, pos, normal, singleBuff);
+      const mesh = renderer.root.children.find((c: any) => c.visible) as any;
+      expect(mesh).toBeDefined();
+      // Base opacity for 1 buff = 0.5; with factor=1, dimmed = 0.5 * (1 - 1 * 0.75) = 0.125
+      expect(mesh.material.uniforms.uOpacity.value).toBeCloseTo(0.125, 4);
+    });
+
+    it('half dimming (factor=0.5) reduces opacity proportionally', () => {
+      renderer.setDimmingFactor(0.5);
+      renderer.update(0.016, 1.0, pos, normal, singleBuff);
+      const mesh = renderer.root.children.find((c: any) => c.visible) as any;
+      expect(mesh).toBeDefined();
+      // Base opacity for 1 buff = 0.5; with factor=0.5, dimmed = 0.5 * (1 - 0.5 * 0.75) = 0.3125
+      expect(mesh.material.uniforms.uOpacity.value).toBeCloseTo(0.3125, 4);
+    });
+
+    it('clamps factor above 1 to 1', () => {
+      renderer.setDimmingFactor(2.0);
+      renderer.update(0.016, 1.0, pos, normal, singleBuff);
+      const mesh = renderer.root.children.find((c: any) => c.visible) as any;
+      // Same as factor=1: opacity = 0.5 * (1 - 0.75) = 0.125
+      expect(mesh.material.uniforms.uOpacity.value).toBeCloseTo(0.125, 4);
+    });
+
+    it('clamps factor below 0 to 0', () => {
+      renderer.setDimmingFactor(-1.0);
+      renderer.update(0.016, 1.0, pos, normal, singleBuff);
+      const mesh = renderer.root.children.find((c: any) => c.visible) as any;
+      // Same as factor=0: opacity = 0.5
+      expect(mesh.material.uniforms.uOpacity.value).toBeCloseTo(0.5, 4);
+    });
+
+    it('dimming state persists across update calls', () => {
+      renderer.setDimmingFactor(1.0);
+      // Two consecutive updates should both have dimming applied
+      renderer.update(0.016, 1.0, pos, normal, singleBuff);
+      const mesh1 = renderer.root.children.find((c: any) => c.visible) as any;
+      expect(mesh1.material.uniforms.uOpacity.value).toBeCloseTo(0.125, 4);
+
+      renderer.update(0.016, 2.0, pos, normal, singleBuff);
+      const mesh2 = renderer.root.children.find((c: any) => c.visible) as any;
+      expect(mesh2.material.uniforms.uOpacity.value).toBeCloseTo(0.125, 4);
+    });
+
+    it('resetting dimming to 0 restores full opacity', () => {
+      renderer.setDimmingFactor(1.0);
+      renderer.update(0.016, 1.0, pos, normal, singleBuff);
+
+      renderer.setDimmingFactor(0);
+      renderer.update(0.016, 2.0, pos, normal, singleBuff);
+      const mesh = renderer.root.children.find((c: any) => c.visible) as any;
+      expect(mesh.material.uniforms.uOpacity.value).toBeCloseTo(0.5, 4);
+    });
+  });
+
   describe('zero allocations', () => {
     it('update performs no allocations (measured via object count)', () => {
       // This is a structural test: verify update doesn't create new objects

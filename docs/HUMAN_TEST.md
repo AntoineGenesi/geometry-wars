@@ -8,6 +8,29 @@
 
 ---
 
+## Session 25 Enemy Visibility Aura Dimming (2026-02-19)
+
+### Buff Aura Dims When Enemies Are Close
+
+When enemies enter the player's aura zone (within ~2 world units), buff rings and particles should smoothly dim so enemies are clearly visible through the visual noise.
+
+- [ ] **Aura dims when enemy approaches** — Get several buff stacks active (HotHands + ShockAura + IncendiaryRounds). Move an enemy close to the player. The aura rings and floating particles should visibly dim (become more transparent) as the enemy enters the ~2-unit zone.
+- [ ] **Smooth transition (not binary)** — The dimming should ramp smoothly, not snap on/off. Observe the aura as an enemy slowly approaches: it should gradually fade out starting at ~2 units distance and reach maximum dim (~25% opacity) at ~0.5 units.
+- [ ] **Enemies remain fully bright** — Enemy meshes must stay fully opaque and visible at all times. No dimming should be applied to the enemy glowing shapes themselves.
+- [ ] **Aura returns when enemy leaves** — When the enemy moves away beyond 2 units, the aura rings and particles should smoothly restore to full opacity.
+- [ ] **No dimming without buffs** — Without any active buffs, the dimming system is inactive (no overhead, no visual changes).
+- [ ] **6+ buffs scenario** — In a late-game scenario with 6+ buff stacks, enemies should be clearly distinguishable even when surrounded by visual effects. The dimming should make a noticeable gameplay improvement.
+
+**What was implemented:**
+- `BuffAuraRenderer.setDimmingFactor(f)` — reduces ring uOpacity by up to 75% at factor=1
+- `BuffParticleAura.setDimmingFactor(f)` — reduces particle alpha by up to 75% at factor=1
+- `main.ts onFixedUpdate` — computes nearest enemy distance, smooth lerp [2.0 → 0.5 units]
+- 41 unit tests pass (22 + 19); zero TypeScript errors in changed files
+
+**Verification level:** L2 (unit tests). Needs human testing for visual confirmation.
+
+---
+
 ## Session 24 Selective Bloom Masking (2026-02-19)
 
 ### Bloom Visual Quality — Arena Should NOT Glow, Enemies SHOULD
