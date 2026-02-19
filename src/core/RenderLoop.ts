@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { GameContext } from './GameContext';
+import { OcclusionSurfaceMaterial } from '../rendering/OcclusionSurfaceMaterial';
 import { LODLevel } from '../rendering/LODManager';
 import { EnemyType } from '../entities/enemies/EnemySpawner';
 import { Boss } from '../entities/enemies/Boss';
@@ -46,7 +47,6 @@ export class RenderLoop {
     const hits = ctx.state.tunnelRaycaster.intersectObject(ctx.surface.mesh, false);
     // If there are intersections between camera and player, fade surface
     ctx.state.isCurrentlyBlocked = hits.length > 0;
-    const targetSurfaceOpacity = ctx.state.isCurrentlyBlocked ? ctx.state.baseSurfaceOpacity * 0.05 : ctx.state.baseSurfaceOpacity;
     const targetGridOpacity = ctx.state.isCurrentlyBlocked ? ctx.state.baseGridOpacity * 0.08 : ctx.state.baseGridOpacity;
     // Use actual frame delta for smooth opacity transitions on all refresh rates
     const now = performance.now();
@@ -57,10 +57,10 @@ export class RenderLoop {
     // Update shockwave/chromatic/flash post-processing effects
     ctx.shockwaveEffect.update(frameDt, ctx.game.clock.totalTime);
 
-    ctx.state.currentSurfaceOpacity += (targetSurfaceOpacity - ctx.state.currentSurfaceOpacity) * Math.min(1, ctx.state.fadeSpeed * frameDt);
     ctx.state.currentGridOpacity += (targetGridOpacity - ctx.state.currentGridOpacity) * Math.min(1, ctx.state.fadeSpeed * frameDt);
-    const surfMat = ctx.surface.mesh.material as THREE.MeshBasicMaterial;
-    surfMat.opacity = ctx.state.currentSurfaceOpacity;
+    // Surface uses depth-fade shader — pass camera+player positions each frame (shader handles the fade)
+    const occlusionMat = ctx.surface.mesh.material as OcclusionSurfaceMaterial;
+    occlusionMat.setOcclusionParams(camPos, playerPos, true);
     const gridMat = ctx.surface.gridMesh.material as THREE.LineBasicMaterial;
     gridMat.opacity = ctx.state.currentGridOpacity;
 

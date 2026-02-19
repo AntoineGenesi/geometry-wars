@@ -1,4 +1,5 @@
 import * as THREE from 'three'
+import { OcclusionSurfaceMaterial } from '../rendering/OcclusionSurfaceMaterial'
 
 export interface SurfacePoint {
   position: THREE.Vector3
@@ -293,8 +294,8 @@ export abstract class Surface {
 
   abstract createGrid(): THREE.LineSegments
 
-  protected createSurfaceMaterial(): THREE.MeshBasicMaterial {
-    return new THREE.MeshBasicMaterial({
+  protected createSurfaceMaterial(): OcclusionSurfaceMaterial {
+    return new OcclusionSurfaceMaterial({
       color: this.config.surfaceColor,
       transparent: true,
       opacity: this.config.surfaceOpacity,
