@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 
 /**
  * Buff type identifiers
@@ -116,6 +117,9 @@ export class BuffPickup {
     const indicator = this.createBuffIndicator(color);
     if (indicator) group.add(indicator);
 
+    // Spawn indicator: flashing arrow for first 30s
+    group.add(createSpawnIndicatorSprite(color));
+
     return group;
   }
 
@@ -184,6 +188,9 @@ export class BuffPickup {
       core.scale.setScalar(pulse);
     }
 
+    // Animate spawn indicator (visible for first 30s)
+    updateSpawnIndicator(this.mesh, this.age, totalTime);
+
     // Fade near end of life
     if (this.age > this.fadeStart) {
       const fadeProgress = (this.age - this.fadeStart) / (this.maxAge - this.fadeStart);
@@ -227,6 +234,10 @@ export class BuffPickup {
         if ((child as THREE.Mesh).material instanceof THREE.Material) {
           ((child as THREE.Mesh).material as THREE.Material).dispose();
         }
+      }
+      if (child instanceof THREE.Sprite) {
+        child.material.map?.dispose();
+        child.material.dispose();
       }
     });
   }

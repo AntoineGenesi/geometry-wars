@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { StackBuffType, BUFF_DEFINITIONS, BuffDefinition } from './BuffManager';
+import { createSpawnIndicatorSprite, updateSpawnIndicator } from '../weapons/SpawnIndicator';
 
 // ---------------------------------------------------------------------------
 // BuffPickupNew - Hexagonal buff pickup entity
@@ -78,6 +79,9 @@ export class BuffPickupNew {
       indicator.position.y = 0.12;
       group.add(indicator);
     }
+
+    // Spawn indicator: flashing arrow for first 30s
+    group.add(createSpawnIndicatorSprite(categoryColor));
 
     return group;
   }
@@ -167,6 +171,9 @@ export class BuffPickupNew {
       ring.scale.setScalar(ringPulse);
     }
 
+    // Animate spawn indicator (visible for first 30s)
+    updateSpawnIndicator(this.mesh, this.age, totalTime);
+
     // Fade near end of life
     if (this.age > FADE_START) {
       const fadeProgress = (this.age - FADE_START) / (PICKUP_LIFETIME - FADE_START);
@@ -211,6 +218,10 @@ export class BuffPickupNew {
         if (mat instanceof THREE.Material) {
           mat.dispose();
         }
+      }
+      if (child instanceof THREE.Sprite) {
+        child.material.map?.dispose();
+        child.material.dispose();
       }
     });
   }

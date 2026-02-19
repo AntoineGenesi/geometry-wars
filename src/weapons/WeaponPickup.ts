@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { SharedGeometries } from '../rendering/GeometryCache';
+import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 
 /**
  * Floating weapon pickup that grants new weapons to player
@@ -80,6 +81,9 @@ export class WeaponPickup {
     if (indicator) {
       group.add(indicator);
     }
+
+    // Spawn indicator: flashing arrow for first 30s
+    group.add(createSpawnIndicatorSprite(color));
 
     return group;
   }
@@ -209,6 +213,9 @@ export class WeaponPickup {
       const pulse = 0.15 + Math.sin(totalTime * 5) * 0.03;
       core.scale.setScalar(pulse / 0.15);
     }
+
+    // Animate spawn indicator (visible for first 30s)
+    updateSpawnIndicator(this.mesh, this.age, totalTime);
 
     // Fade out near end of life
     if (this.age > this.fadeStart) {

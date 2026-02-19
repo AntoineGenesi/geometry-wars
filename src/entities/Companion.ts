@@ -5,6 +5,7 @@ import { getSoundEngine } from '../audio/SoundEngine';
 import { SurfaceAgent } from '../agents/SurfaceAgent';
 import { OrbitBehavior } from '../agents/behaviors';
 import type { MeshSurface } from '../surfaces/MeshSurface';
+import { createSpawnIndicatorSprite, updateSpawnIndicator } from '../weapons/SpawnIndicator';
 
 // ---------------------------------------------------------------------------
 // Companion Types
@@ -683,6 +684,9 @@ export class CompanionPickup {
     glowSphere.name = 'pickupGlow';
     group.add(glowSphere);
 
+    // Spawn indicator: flashing arrow for first 30s
+    group.add(createSpawnIndicatorSprite(threeColor));
+
     return group;
   }
 
@@ -709,6 +713,9 @@ export class CompanionPickup {
       core.scale.setScalar(pulse / 0.12);
     }
 
+    // Animate spawn indicator (visible for first 30s)
+    updateSpawnIndicator(this.mesh, this.age, totalTime);
+
     // Fade near end of life
     if (this.age > this.fadeStart) {
       const fadeProgress = (this.age - this.fadeStart) / (this.maxAge - this.fadeStart);
@@ -721,7 +728,9 @@ export class CompanionPickup {
           }
         }
         if (child instanceof THREE.Sprite) {
-          child.material.opacity = opacity * 0.3;
+          if ((child as THREE.Sprite).name !== 'spawn-indicator') {
+            child.material.opacity = opacity * 0.3;
+          }
         }
       });
     }
@@ -757,6 +766,7 @@ export class CompanionPickup {
         }
       }
       if (child instanceof THREE.Sprite) {
+        child.material.map?.dispose();
         child.material.dispose();
       }
     });

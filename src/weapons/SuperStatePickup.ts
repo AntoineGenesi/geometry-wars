@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { SuperStateType } from './SuperState';
 import { SharedGeometries } from '../rendering/GeometryCache';
+import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 
 export interface SurfaceTransform {
   position: THREE.Vector3;
@@ -46,6 +47,9 @@ export class SuperStatePickup {
       this.dots.push(dot);
       this.mesh.add(dot);
     }
+
+    // Spawn indicator: flashing arrow for first 30s
+    this.mesh.add(createSpawnIndicatorSprite(new THREE.Color(color)));
   }
 
   private getPatternForType(): Array<{ x: number; y: number; z: number }> {
@@ -191,6 +195,10 @@ export class SuperStatePickup {
 
     // Rotate the pattern slowly
     this.mesh.rotation.z += dt * 0.5;
+
+    // Animate spawn indicator (visible for first 30s; no hard age limit since SuperStatePickup
+    // doesn't expire — it stays until collected. animationTime serves as age.)
+    updateSpawnIndicator(this.mesh, this.animationTime, this.animationTime);
   }
 
   applySurfaceTransform(
@@ -246,7 +254,14 @@ export class SuperStatePickup {
       (dot.material as THREE.Material).dispose();
       this.mesh.remove(dot);
     }
-
     this.dots = [];
+
+    // Clean up spawn indicator sprite
+    const indicator = this.mesh.getObjectByName('spawn-indicator') as THREE.Sprite | undefined;
+    if (indicator) {
+      indicator.material.map?.dispose();
+      indicator.material.dispose();
+      this.mesh.remove(indicator);
+    }
   }
 }
