@@ -417,6 +417,7 @@ function main() {
 
       // Type differs - tear down and recreate
       if (lastCreatedSurfaceType !== currentType) {
+        console.warn(`[NetworkMain] Surface type mismatch corrected: ${lastCreatedSurfaceType} → ${currentType}`);
         netMainLog(`[NetworkMain] Surface type changed: ${lastCreatedSurfaceType} -> ${currentType}, rebuilding`);
         cleanupSurface();
       } else {
@@ -1614,6 +1615,7 @@ function main() {
 
   game.onRender = () => {
     if (!surfaceReady || !surface || !getTransform) return;
+    if (!surfaceConfirmedFromServer) return; // Wait for server-confirmed surface type before rendering entities
 
     const surf = surface;
     const transform = getTransform;

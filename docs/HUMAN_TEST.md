@@ -8,6 +8,21 @@
 
 ---
 
+## Session 25 LAN Surface Type Race Condition Fix (2026-02-20)
+
+### LAN Multiplayer — Surface Type Verification
+
+Open LAN multiplayer with **host choosing a different surface than the URL default**:
+
+- [ ] **Correct surface loads for both players** — Host creates room with cube surface. Client joins. BOTH players should see a cube, not sphere. Check console for any `Surface type mismatch corrected` warnings.
+- [ ] **No early entity rendering on wrong surface** — Enemies should NOT briefly appear in wrong positions before the surface loads. (Hard to observe but should be invisible delay < 16ms.)
+- [ ] **No entities before confirmation** — If you have a very fast local connection (same PC), enemies should still appear in correct positions.
+- [ ] **Surface type shown consistently** — Open `window.__lanDebug.status()` in both clients' consoles. Both should report the same `surfaceType`.
+
+**Root cause fixed (2026-02-20):** Surface type race condition — client would render entities on wrong surface before server confirmed the correct type via `onStateChange`. Fixed by: (1) guarding `onRender` with `surfaceConfirmedFromServer` flag, (2) adding correction warning when mismatch is detected.
+
+---
+
 ## Session 25 Playground Aiming + Hit Detection Fix (2026-02-19)
 
 ### Visual Styles Playground
