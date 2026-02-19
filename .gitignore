@@ -11,3 +11,10 @@ screenshots/
 test-results/
 /tmp/
 .claude/worktrees/
+
+# Telemetry session files — not committed (use logs/ for local analysis only)
+# Commit only aggregate reports in reports/
+logs/performance/
+logs/game-state/
+logs/profiling/
+sessions/

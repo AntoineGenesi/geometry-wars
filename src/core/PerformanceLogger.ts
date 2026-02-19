@@ -56,6 +56,10 @@ export interface PerformanceDataPoint {
   lodLow: number;
   /** DDA difficulty level (0-3, fractional). */
   ddaLevel: number;
+  /** Current difficulty tier from wave scheduler (0-4+ for super tiers, continuous). */
+  difficultyTier: number;
+  /** Player power level (kill-based progression level, 0-N). */
+  playerPowerLevel: number;
   /** Current quality level name (ULTRA/HIGH/MEDIUM/LOW/MINIMAL). */
   qualityLevel: string;
 
@@ -96,6 +100,8 @@ export interface SerializedDataPoint {
   lm: number; // lodMedium
   ll: number; // lodLow
   dd: number; // ddaLevel
+  dt?: number; // difficultyTier (optional for backward compat)
+  pl?: number; // playerPowerLevel (optional for backward compat)
   ql: string; // qualityLevel
   // Gameplay telemetry (optional for backward compat with old sessions)
   s?: number;   // score
@@ -149,6 +155,9 @@ export interface StoredSession {
     totalDeaths?: number;
     peakKillRate?: number;   // max kills per sample window
     peakActiveEffects?: number;
+    // DDA / difficulty summary
+    peakDifficultyTier?: number;  // max difficulty tier reached this session
+    finalPlayerPowerLevel?: number; // player power level at session end
   };
 }
 
@@ -203,6 +212,8 @@ export class PerformanceLogger {
   private currentLodMedium = 0;
   private currentLodLow = 0;
   private currentDdaLevel = 0;
+  private currentDifficultyTier = 0;
+  private currentPlayerPowerLevel = 0;
   private currentQualityLevel = 'HIGH';
 
   // Gameplay telemetry (set externally)
@@ -233,6 +244,7 @@ export class PerformanceLogger {
   private peakDrawCalls = 0;
   private peakKillRate = 0;
   private peakActiveEffects = 0;
+  private peakDifficultyTier = 0;
 
   constructor(mapType: string) {
     this.mapType = mapType;
@@ -257,6 +269,8 @@ export class PerformanceLogger {
         lodMedium: 0,
         lodLow: 0,
         ddaLevel: 0,
+        difficultyTier: 0,
+        playerPowerLevel: 0,
         qualityLevel: 'HIGH',
         score: 0,
         kills: 0,
@@ -308,6 +322,22 @@ export class PerformanceLogger {
    */
   setDDALevel(level: number): void {
     this.currentDdaLevel = level;
+  }
+
+  /**
+   * Set current difficulty tier from wave scheduler (0-4+ for super tiers, continuous float).
+   * This is the wave-difficulty tier, distinct from the DDA assistance level.
+   */
+  setDifficultyTier(tier: number): void {
+    this.currentDifficultyTier = tier;
+    if (tier > this.peakDifficultyTier) this.peakDifficultyTier = tier;
+  }
+
+  /**
+   * Set player power level (kill-based progression level, integer 0-N).
+   */
+  setPlayerPowerLevel(level: number): void {
+    this.currentPlayerPowerLevel = level;
   }
 
   /**
@@ -494,6 +524,8 @@ export class PerformanceLogger {
       totalDeaths: this.currentDeaths,
       peakKillRate: this.peakKillRate,
       peakActiveEffects: this.peakActiveEffects,
+      peakDifficultyTier: Math.round(this.peakDifficultyTier * 100) / 100,
+      finalPlayerPowerLevel: this.currentPlayerPowerLevel,
     };
   }
 
@@ -608,7 +640,7 @@ export class PerformanceLogger {
       'session_timestamp', 'session_map', 'time_s', 'fps',
       'enemy_count', 'bullet_count', 'draw_calls', 'triangles',
       'memory_mb', 'lod_high', 'lod_medium', 'lod_low',
-      'dda_level', 'quality_level', 'top_enemy_types',
+      'dda_level', 'difficulty_tier', 'player_power_level', 'quality_level', 'top_enemy_types',
       'score', 'kills', 'deaths', 'active_weapon',
       'active_buffs', 'kills_this_sample', 'active_effects',
       'visible_enemies', 'visible_bullets', 'active_explosions',
@@ -651,12 +683,15 @@ export class PerformanceLogger {
           const ve = sdp.ve ?? 0;
           const vb = sdp.vb ?? 0;
           const ax = sdp.ax ?? 0;
+          // DDA / difficulty fields (default to 0 for old sessions)
+          const diffTier = sdp.dt ?? 0;
+          const powerLevel = sdp.pl ?? 0;
 
           rows.push([
             session.timestamp, session.mapType, time, fps,
             enemies, bullets, dc, tr,
             mm, lh, lm, ll,
-            dd, ql, `"${topTypes}"`,
+            dd, diffTier, powerLevel, ql, `"${topTypes}"`,
             score, kills, deaths, aw,
             `"${ab}"`, ks, ae,
             ve, vb, ax,
@@ -712,6 +747,8 @@ export class PerformanceLogger {
     point.lodMedium = this.currentLodMedium;
     point.lodLow = this.currentLodLow;
     point.ddaLevel = this.currentDdaLevel;
+    point.difficultyTier = Math.round(this.currentDifficultyTier * 100) / 100;
+    point.playerPowerLevel = this.currentPlayerPowerLevel;
     point.qualityLevel = this.currentQualityLevel;
 
     // Gameplay telemetry
@@ -762,6 +799,8 @@ export class PerformanceLogger {
       lodMedium: point.lodMedium,
       lodLow: point.lodLow,
       ddaLevel: point.ddaLevel,
+      difficultyTier: point.difficultyTier,
+      playerPowerLevel: point.playerPowerLevel,
       qualityLevel: point.qualityLevel,
       score: point.score,
       kills: point.kills,
@@ -808,6 +847,8 @@ export class PerformanceLogger {
       lm: point.lodMedium,
       ll: point.lodLow,
       dd: Math.round(point.ddaLevel * 100) / 100,
+      dt: point.difficultyTier !== 0 ? point.difficultyTier : undefined,  // omit 0 to save space
+      pl: point.playerPowerLevel !== 0 ? point.playerPowerLevel : undefined,  // omit 0 to save space
       ql: point.qualityLevel,
       s: point.score,
       k: point.kills,

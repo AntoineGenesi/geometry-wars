@@ -258,6 +258,8 @@ export class RenderLoop {
     const lodStats = ctx.lodManager.getStats();
     ctx.perfLogger.setLODStats(lodStats.high, lodStats.medium, lodStats.low);
     ctx.perfLogger.setDDALevel(ctx.ddaEngine.getDDALevelSmooth(0));
+    ctx.perfLogger.setDifficultyTier(ctx.waveScheduler?.currentDifficultyLevel ?? 0);
+    ctx.perfLogger.setPlayerPowerLevel(ctx.playerLevel.level);
     ctx.perfLogger.setQualityLevel(ctx.adaptiveQuality.getQualityLevel());
 
     // Enemy type breakdown + buff string (every 30th frame to avoid per-frame allocation)
