@@ -42,6 +42,8 @@ import { KillLog } from './ui/KillLog';
 import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponPickup } from './weapons/WeaponPickup';
 import { WeaponType } from './weapons/WeaponTypes';
+import { WeaponHUD } from './ui/WeaponHUD';
+import type { WeaponInventoryEntry } from './weapons/WeaponManager';
 import { AllyGlowManager } from './effects/AllyGlow';
 import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
@@ -516,6 +518,10 @@ function main() {
   const killLog = new KillLog();
   const totalKillCounter = new TotalKillCounter();
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
+
+  // Weapon HUD — same graphical inventory panel as single-player
+  const weaponHUD = new WeaponHUD();
+  weaponHUD.setPosition(10, window.innerHeight / 2 - 60);
 
   // Ally glow manager for remote player indicators
   const allyGlowManager = new AllyGlowManager(scene);
@@ -1265,10 +1271,18 @@ function main() {
         `${livesStr}<br>` +
         `${bombsStr}`;
 
-      // Weapon display
+      // Weapon display (legacy text fallback)
       const wName = localPlayer.weaponType.replace(/_/g, ' ').toUpperCase();
       const ammoStr = localPlayer.weaponAmmo < 0 ? '' : ` [${localPlayer.weaponAmmo}]`;
       weaponEl.textContent = wName === 'STANDARD' ? '' : `${wName}${ammoStr}`;
+
+      // WeaponHUD — graphical weapon panel (same as single-player)
+      const activeWeaponType = SERVER_TO_WEAPON_TYPE[localPlayer.weaponType] ?? WeaponType.Standard;
+      const hudInventory: WeaponInventoryEntry[] = [{ type: WeaponType.Standard, ammo: -1, stacks: 1 }];
+      if (activeWeaponType !== WeaponType.Standard) {
+        hudInventory.push({ type: activeWeaponType, ammo: localPlayer.weaponAmmo, stacks: 1 });
+      }
+      weaponHUD.update(hudInventory, activeWeaponType);
     }
 
     // Player list
@@ -1804,6 +1818,7 @@ function main() {
     bgMusic.stop();
     allyGlowManager.dispose();
     nameLabels.dispose();
+    weaponHUD.dispose();
     meshSurface?.dispose();
   });
 
