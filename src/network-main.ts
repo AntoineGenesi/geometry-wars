@@ -49,6 +49,8 @@ import { AllyGlowManager } from './effects/AllyGlow';
 import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
+import { LODManager } from './rendering/LODManager';
+import { AdaptiveQuality, QualityLevel } from './rendering/AdaptiveQuality';
 import {
   NetworkClient,
   NetworkPlayerState,
@@ -516,6 +518,62 @@ function main() {
   // -- GPU instanced enemy rendering (reduces draw calls from ~2000 to ~15) --
   // Created before initSurface() so it can be wired into the enemySpawner.
   const enemyInstanceManager = new EnemyInstanceManager(scene);
+
+  // -- LOD: reduce triangle count for distant enemies (same as single-player) --
+  const lodManager = new LODManager();
+
+  // -- Adaptive quality: FPS-based auto quality adjustment (same as single-player) --
+  const adaptiveQuality = new AdaptiveQuality({ initialLevel: QualityLevel.ULTRA });
+
+  // Wire quality change callback: adjusts bloom, particle budget, LOD distances
+  adaptiveQuality.onQualityChange = (_oldLevel, newLevel) => {
+    const settings = adaptiveQuality.getSettings();
+
+    // Bloom strength + threshold
+    if (settings.bloomEnabled) {
+      const strength = (savedStyle?.bloomStrength ?? 1.0) * settings.bloomResolutionScale;
+      game.setBloomSettings(strength, 0.6);
+      if (game.bloomPass) {
+        game.bloomPass.radius = (savedStyle?.bloomRadius ?? 0.4) * settings.bloomResolutionScale;
+      }
+    } else {
+      game.setBloomSettings(0, 0.6);
+    }
+
+    // Bloom render-target resolution (lower quality = smaller target = faster)
+    if (game.composer) {
+      const scale = settings.bloomEnabled ? Math.max(0.25, settings.bloomResolutionScale) : 0.25;
+      game.bloomResolutionScale = scale;
+      game.composer.setSize(
+        Math.floor(window.innerWidth * scale),
+        Math.floor(window.innerHeight * scale),
+      );
+    }
+
+    // Particle emission budget
+    const budgets: Record<string, [number, number]> = {
+      ULTRA:   [200, 40],
+      HIGH:    [150, 30],
+      MEDIUM:  [80,  20],
+      LOW:     [30,  10],
+      MINIMAL: [15,   5],
+    };
+    const [maxP, maxF] = budgets[newLevel] ?? [200, 40];
+    particles.setEmitBudget(maxP, maxF);
+
+    // LOD distance thresholds: tighter at lower quality = more enemies at simplified geometry
+    const lodDistances: Record<string, { highDistance: number; mediumDistance: number }> = {
+      ULTRA:   { highDistance: 60, mediumDistance: 120 },
+      HIGH:    { highDistance: 40, mediumDistance: 80  },
+      MEDIUM:  { highDistance: 25, mediumDistance: 50  },
+      LOW:     { highDistance: 15, mediumDistance: 30  },
+      MINIMAL: { highDistance: 10, mediumDistance: 20  },
+    };
+    const lodCfg = lodDistances[newLevel];
+    if (lodCfg) {
+      lodManager.setConfig(lodCfg);
+    }
+  };
 
   // -- GPU instanced bullet rendering (replaces flat line-based visuals) --
   const bulletInstanceManager = new BulletInstanceManager(scene, 200);
@@ -1734,6 +1792,11 @@ function main() {
 
   game.onFixedUpdate = (dt: number) => {
     if (!surfaceReady || !surface) return;
+
+    // Update adaptive quality system (FPS monitoring + quality level adjustment).
+    // Runs even when paused so the monitor stays warm and doesn't misfire on resume.
+    adaptiveQuality.update(dt);
+
     // Don't process input or game logic while paused
     // (server already stops its tick, but we also skip client-side updates)
     if (isPaused) return;
@@ -1986,12 +2049,14 @@ function main() {
     });
 
     // -----------------------------------------------------------------------
-    // Update instanced enemy rendering (syncs world matrices from enemy.mesh positions).
-    // enemySpawner.setInstanceManager() wires registration; updateInstances() flushes
-    // transforms to the GPU. No LOD (LODManager not used in network mode).
+    // Update instanced enemy rendering with LOD support.
+    // LODManager assigns HIGH/MEDIUM/LOW detail per enemy based on camera
+    // distance. updateInstancesWithLOD() uses those assignments to select
+    // simplified geometry for distant enemies, reducing GPU triangle load.
     // -----------------------------------------------------------------------
     const enemyArray = Array.from(networkEnemies.values());
-    enemyInstanceManager.updateInstances(enemyArray);
+    const lodAssignments = lodManager.update(camera, enemyArray);
+    enemyInstanceManager.updateInstancesWithLOD(enemyArray, lodAssignments, camera);
     enemyInstanceManager.flushColors();
 
     // -----------------------------------------------------------------------
@@ -2174,6 +2239,7 @@ function main() {
     weaponHUD.dispose();
     minimap.dispose();
     meshSurface?.dispose();
+    lodManager.dispose();
   });
 
   // Debug hook: read-only access to game state for automated testing.
