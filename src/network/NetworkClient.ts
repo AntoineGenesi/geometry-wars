@@ -84,6 +84,19 @@ export interface NetworkGameState {
   gameOver: boolean;
   hostId: string;
   isPaused: boolean;
+  // Lobby voting state machine fields (Phase 1 server additions)
+  /** Canonical room phase: 'lobby' | 'playing' | 'voting' */
+  roomPhase: string;
+  /** Maps sessionId → choice string ('surface:mode:size') */
+  voteMap: Map<string, string>;
+  /** Voting countdown in seconds */
+  votingCountdown: number;
+  /** When true, host picks directly via host_launch */
+  hostPickMode: boolean;
+  /** Current game mode (e.g. 'waves') */
+  gameMode: string;
+  /** Current map size (e.g. 'medium') */
+  mapSize: string;
 }
 
 /** Input to send to server */
@@ -290,6 +303,21 @@ export class NetworkClient {
       this.scheduleStateChange();
     });
 
+    // Room phase transitions — canonical replacement for gameStarted/gameOver flags
+    // in the voting lobby flow. Fires onGameOver when entering voting, onGameStart
+    // when transitioning back to playing after a vote completes.
+    let prevRoomPhase = 'lobby';
+    this.room.state.listen('roomPhase', (value: string) => {
+      netLog(`[Network] roomPhase changed: ${prevRoomPhase} → ${value}`);
+      if (value === 'voting' && prevRoomPhase === 'playing') {
+        this.callbacks.onGameOver?.();
+      } else if (value === 'playing' && prevRoomPhase === 'voting') {
+        this.callbacks.onGameStart?.();
+      }
+      prevRoomPhase = value;
+      this.scheduleStateChange();
+    });
+
     // Server lifecycle messages
     this.room.onMessage('host_left', () => {
       netLog('[Network] Host left the game');
@@ -336,6 +364,12 @@ export class NetworkClient {
       gameOver: boolean;
       hostId: string;
       isPaused: boolean;
+      roomPhase: string;
+      voteMap: Map<string, string>;
+      votingCountdown: number;
+      hostPickMode: boolean;
+      gameMode: string;
+      mapSize: string;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -346,6 +380,7 @@ export class NetworkClient {
     // The empty-array fallback handles the brief window during initial state
     // decode when Colyseus hasn't populated the schema fields yet.
     const emptyArray: ForEachable<never> = { forEach() {} };
+    const emptyMap = new Map<string, string>();
     return {
       players: s.players,
       bullets: s.bullets || emptyArray,
@@ -359,6 +394,12 @@ export class NetworkClient {
       gameOver: s.gameOver,
       hostId: s.hostId,
       isPaused: s.isPaused,
+      roomPhase: s.roomPhase || 'lobby',
+      voteMap: s.voteMap || emptyMap,
+      votingCountdown: s.votingCountdown ?? 0,
+      hostPickMode: s.hostPickMode ?? false,
+      gameMode: s.gameMode || 'waves',
+      mapSize: s.mapSize || 'medium',
     };
   }
 
@@ -392,6 +433,33 @@ export class NetworkClient {
   sendEndGame(): void {
     if (!this.room || !this.connected) return;
     this.room.send('end_game');
+  }
+
+  /**
+   * Send a vote for the next game configuration.
+   * choice format: 'surface:mode:size' e.g. 'sphere:waves:medium'
+   */
+  sendVote(choice: string): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('vote', { choice });
+  }
+
+  /**
+   * Toggle host pick mode (host only).
+   * When true, host picks directly via sendHostLaunch instead of vote countdown.
+   */
+  sendHostSetPickMode(pickMode: boolean): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('host_set_pick_mode', { pickMode });
+  }
+
+  /**
+   * Launch next game with a specific choice (host only, used in host pick mode).
+   * choice format: 'surface:mode:size' e.g. 'sphere:waves:medium'
+   */
+  sendHostLaunch(choice: string): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('host_launch', { choice });
   }
 
   /**

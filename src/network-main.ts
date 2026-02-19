@@ -61,6 +61,7 @@ import {
 import { PlayerNameLabels } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
 import { GameOverScreen } from './ui/GameOverScreen';
+import { VotingScreen } from './ui/VotingScreen';
 import { PauseMenu } from './ui/PauseMenu';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
@@ -1079,11 +1080,38 @@ function main() {
   // -----------------------------------------------------------------------
 
   const gameOverScreen = new GameOverScreen();
+  // In network mode, "CONTINUE" no longer disconnects — the server transitions
+  // roomPhase to 'voting' automatically. Just hide the game over screen; the
+  // VotingScreen will appear when the server pushes the voting phase.
   gameOverScreen.onContinue(() => {
-    network.disconnect();
-    window.location.href = window.location.pathname;
+    gameOverScreen.hide();
   });
   let gameOverShown = false;
+
+  // -----------------------------------------------------------------------
+  // Voting screen (Phase 3 stub — wired now, real UI in Phase 3)
+  // -----------------------------------------------------------------------
+
+  const votingScreen = new VotingScreen();
+  votingScreen.setCallbacks({
+    onVote: (choice: string) => {
+      network.sendVote(choice);
+    },
+    onHostLaunch: (choice: string) => {
+      network.sendHostLaunch(choice);
+    },
+    onReturnToMenu: () => {
+      if (isHost) {
+        network.sendEndGame();
+      } else {
+        network.disconnect();
+      }
+      window.location.href = window.location.pathname;
+    },
+  });
+
+  // Track the current room phase so we can detect transitions
+  let currentRoomPhase: string = 'lobby';
 
   // -----------------------------------------------------------------------
   // Helper: get or create a real Player for a network player
@@ -1141,6 +1169,50 @@ function main() {
 
     networkEnemies.set(id, enemy);
     return enemy;
+  }
+
+  // -----------------------------------------------------------------------
+  // Game entity reset: clear all transient game state between rounds
+  // Called when roomPhase transitions from 'voting' back to 'playing'.
+  // Players stay connected; the server resets their lives/scores via state sync.
+  // -----------------------------------------------------------------------
+
+  function resetGameEntities(): void {
+    // Clear all active bullets
+    bulletIdToIndex.forEach((idx, id) => {
+      bulletPool.kill(idx);
+      bulletInstanceManager.removeBullet(id);
+    });
+    bulletIdToIndex.clear();
+    bulletTargetUV.clear();
+    bulletInstanceIds.clear();
+
+    // Clear all enemies from scene
+    networkEnemies.forEach((enemy) => {
+      enemyInstanceManager.unregister(enemy);
+      if (enemy.mesh) scene.remove(enemy.mesh);
+    });
+    networkEnemies.clear();
+    enemyTargetUV.clear();
+
+    // Clear all geoms
+    geomIdToIndex.forEach((idx) => {
+      geomPool.kill(idx);
+    });
+    geomIdToIndex.clear();
+    geomTargetUV.clear();
+
+    // Clear weapon pickups
+    networkWeaponPickups.forEach((pickup) => {
+      scene.remove(pickup.mesh);
+      pickup.dispose();
+    });
+    networkWeaponPickups.clear();
+
+    // Reset game-over flag so GameOverScreen can show again next game
+    gameOverShown = false;
+
+    netMainLog('[NetworkMain] Game entities reset for new round');
   }
 
   // -----------------------------------------------------------------------
@@ -1580,11 +1652,45 @@ function main() {
       showPauseOverlay(state.isPaused);
     }
 
-    // Game state
-    if (state.gameStarted) {
+    // ---- Room phase handling (voting lobby state machine) ----
+    const newPhase = state.roomPhase || 'lobby';
+    if (newPhase !== currentRoomPhase) {
+      netMainLog(`[NetworkMain] roomPhase: ${currentRoomPhase} → ${newPhase}`);
+
+      if (newPhase === 'voting') {
+        // Game ended — transition to voting screen.
+        // Hide GameOverScreen if it snuck in (from the old gameOver bool path).
+        gameOverScreen.hide();
+        // Show VotingScreen stub
+        votingScreen.show(state, isHost, localPlayerId);
+      } else if (newPhase === 'playing' && currentRoomPhase === 'voting') {
+        // New game starting after vote — reset and launch.
+        votingScreen.hide();
+        resetGameEntities();
+        // initSurface at the top of onStateChange already handles surface reinit
+        // (called with state.surfaceType and confirmedFromServer=true).
+      } else if (newPhase === 'lobby') {
+        votingScreen.hide();
+        gameOverScreen.hide();
+      }
+
+      currentRoomPhase = newPhase;
+    }
+
+    // If currently in voting phase, keep VotingScreen updated with latest state
+    if (currentRoomPhase === 'voting') {
+      votingScreen.update(state, isHost, localPlayerId);
+    }
+
+    // Game state — derive status text from roomPhase + legacy flags
+    if (currentRoomPhase === 'voting') {
+      statusEl.textContent = 'VOTING';
+      startBtn.style.display = 'none';
+    } else if (state.gameStarted && currentRoomPhase === 'playing') {
       statusEl.textContent = state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`;
       startBtn.style.display = 'none';
-    } else if (state.gameOver) {
+    } else if (state.gameOver && currentRoomPhase !== 'voting') {
+      // Legacy path: gameOver flag (pre-voting-state-machine servers or initial game)
       statusEl.textContent = 'GAME OVER';
       startBtn.style.display = 'none';
       if (!gameOverShown) {
@@ -1593,7 +1699,7 @@ function main() {
         const score = localPlayer?.score ?? 0;
         gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere');
       }
-    } else {
+    } else if (currentRoomPhase === 'lobby' || (!state.gameStarted && !state.gameOver)) {
       statusEl.textContent = 'Waiting for players...';
       startBtn.style.display = 'block';
     }
@@ -1646,6 +1752,7 @@ function main() {
         startBtn.style.display = 'none';
         gameOverShown = false; // Reset so GameOverScreen can show next game over
         gameOverScreen.hide(); // Dismiss any lingering game over screen
+        votingScreen.hide();  // Dismiss voting screen (roomPhase → playing)
         // Start background music (route through compressor to prevent clipping)
         const audioCtx = sound.getAudioContext();
         if (audioCtx) {
