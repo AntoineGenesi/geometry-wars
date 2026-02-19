@@ -15,6 +15,10 @@ import {
   generateScaledEndlessWave,
   getDifficultyTier,
   getMaxSpawnTier,
+  getContinuousHealthMultiplier,
+  getContinuousSpeedMultiplier,
+  getContinuousScaleMultiplier,
+  MAX_TIER,
   type DifficultyInput,
 } from '../core/DifficultyScaling';
 
@@ -361,5 +365,83 @@ describe('Full Game Simulation', () => {
     expect(results[6].tier).toBeGreaterThanOrEqual(4); // 6M: Tier 4 (Nightmare)
     expect(results[7].tier).toBe(4); // 10M: deep Nightmare
     expect(results[8].tier).toBe(4); // 50M: deep Nightmare (capped)
+  });
+});
+
+// ============================================================================
+// 7. Super-tier continuous scaling (beyond tier 4) — regression tests
+// ============================================================================
+
+describe('Super-Tier Continuous Scaling (difficultyLevel > MAX_TIER)', () => {
+  it('getContinuousHealthMultiplier: at MAX_TIER matches discrete tier health', () => {
+    const tier4 = getDifficultyTier(MAX_TIER);
+    expect(getContinuousHealthMultiplier(MAX_TIER)).toBeCloseTo(tier4.healthMultiplier, 5);
+  });
+
+  it('getContinuousHealthMultiplier: at difficulty 8, enemies have more HP than at difficulty 4', () => {
+    const at4 = getContinuousHealthMultiplier(4);
+    const at8 = getContinuousHealthMultiplier(8);
+    expect(at8).toBeGreaterThan(at4);
+  });
+
+  it('getContinuousHealthMultiplier: monotonically increases beyond tier 4', () => {
+    const at4 = getContinuousHealthMultiplier(4);
+    const at5 = getContinuousHealthMultiplier(5);
+    const at6 = getContinuousHealthMultiplier(6);
+    const at8 = getContinuousHealthMultiplier(8);
+    expect(at5).toBeGreaterThan(at4);
+    expect(at6).toBeGreaterThan(at5);
+    expect(at8).toBeGreaterThan(at6);
+  });
+
+  it('getContinuousHealthMultiplier: at difficulty 8, ~2x tier-4 base (60 * 2 = 120)', () => {
+    // Formula: 60 * (1 + (8-4) * 0.25) = 60 * 2.0 = 120
+    expect(getContinuousHealthMultiplier(8)).toBeCloseTo(120, 1);
+  });
+
+  it('getContinuousHealthMultiplier: capped at 500', () => {
+    expect(getContinuousHealthMultiplier(100)).toBe(500);
+  });
+
+  it('getContinuousSpeedMultiplier: at difficulty 8, faster than at difficulty 4', () => {
+    const at4 = getContinuousSpeedMultiplier(4);
+    const at8 = getContinuousSpeedMultiplier(8);
+    expect(at8).toBeGreaterThan(at4);
+  });
+
+  it('getContinuousSpeedMultiplier: capped at 3.0', () => {
+    expect(getContinuousSpeedMultiplier(100)).toBe(3.0);
+  });
+
+  it('getContinuousScaleMultiplier: at difficulty 8, larger than at difficulty 4', () => {
+    const at4 = getContinuousScaleMultiplier(4);
+    const at8 = getContinuousScaleMultiplier(8);
+    expect(at8).toBeGreaterThan(at4);
+  });
+
+  it('getContinuousScaleMultiplier: capped at 2.5', () => {
+    expect(getContinuousScaleMultiplier(100)).toBe(2.5);
+  });
+
+  it('generateScaledEndlessWave: entries have difficultyLevel set when above MAX_TIER', () => {
+    const wave = generateScaledEndlessWave(20, MAX_TIER + 2);
+    expect(wave.length).toBeGreaterThan(0);
+    for (const entry of wave) {
+      expect(entry.difficultyLevel).toBe(MAX_TIER + 2);
+    }
+  });
+
+  it('generateScaledEndlessWave: entries have no difficultyLevel when at or below MAX_TIER', () => {
+    const wave = generateScaledEndlessWave(20, MAX_TIER);
+    for (const entry of wave) {
+      expect(entry.difficultyLevel).toBeUndefined();
+    }
+  });
+
+  it('generateScaledEndlessWave: entries have no difficultyLevel at difficulty 3', () => {
+    const wave = generateScaledEndlessWave(10, 3);
+    for (const entry of wave) {
+      expect(entry.difficultyLevel).toBeUndefined();
+    }
   });
 });

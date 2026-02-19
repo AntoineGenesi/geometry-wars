@@ -64,6 +64,8 @@ export interface WaveEnemy {
   region?: SpawnRegion;
   /** Difficulty tier for this group (0 = normal, 1+ = scaled). */
   tier?: number;
+  /** Continuous difficulty level for super-tier scaling (when > MAX_TIER). */
+  difficultyLevel?: number;
 }
 
 // Minimum distance from player for spawning (in UV space)
@@ -402,7 +404,7 @@ export class EnemySpawner {
     return { u: fallbackU, v: fallbackV };
   }
 
-  spawn(type: EnemyType, surfaceU?: number, surfaceV?: number, tier: number = 0, skipSpawnWarning: boolean = false): BaseEnemy {
+  spawn(type: EnemyType, surfaceU?: number, surfaceV?: number, tier: number = 0, skipSpawnWarning: boolean = false, continuousDifficultyLevel?: number): BaseEnemy {
     // Hard cap: skip spawning if at max to prevent FPS crater from O(n^2) separation
     let activeCount = 0;
     for (let i = 0; i < this.enemies.length; i++) {
@@ -569,8 +571,13 @@ export class EnemySpawner {
       enemy.surfaceRef = this.surface;
     }
 
-    // Apply difficulty tier scaling (stats, visuals, splitting behavior)
-    if (tier > 0) {
+    // Apply difficulty tier scaling (stats, visuals, splitting behavior).
+    // When continuousDifficultyLevel is provided (super-tier scenario), use continuous
+    // scaling which applies discrete tier color/split but overrides health/speed/scale
+    // with smoothly interpolated values beyond tier 4.
+    if (continuousDifficultyLevel !== undefined) {
+      enemy.applyDifficultyTierContinuous(continuousDifficultyLevel);
+    } else if (tier > 0) {
       enemy.applyDifficultyTier(tier);
     }
 
@@ -662,6 +669,7 @@ export class EnemySpawner {
       const minV = region.minV !== undefined ? region.minV : 0;
       const maxV = region.maxV !== undefined ? region.maxV : 1;
       const tier = waveEnemy.tier ?? 0;
+      const continuousDifficultyLevel = waveEnemy.difficultyLevel;
 
       for (let i = 0; i < waveEnemy.count; i++) {
         // Find valid position away from player and other enemies
@@ -671,7 +679,7 @@ export class EnemySpawner {
           const finalType = this.ddaModifier
             ? this.ddaModifier.modifySpawnType(waveEnemy.type, validPos.u, validPos.v, this.ddaPlayers)
             : waveEnemy.type;
-          this.spawn(finalType, validPos.u, validPos.v, tier);
+          this.spawn(finalType, validPos.u, validPos.v, tier, false, continuousDifficultyLevel);
         }
       }
     }

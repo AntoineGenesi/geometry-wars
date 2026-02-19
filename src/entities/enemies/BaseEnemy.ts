@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { Entity, CollisionGroup } from '../../core/Entity';
-import { getDifficultyTier } from '../../core/DifficultyScaling';
+import {
+  getDifficultyTier,
+  getContinuousHealthMultiplier,
+  getContinuousSpeedMultiplier,
+  getContinuousScaleMultiplier,
+  MAX_TIER,
+} from '../../core/DifficultyScaling';
 import type { DifficultyTier } from '../../core/DifficultyScaling';
 import type { Surface } from '../../surfaces/Surface';
 import type { MeshWalker } from '../../movement/MeshWalker';
@@ -146,6 +152,70 @@ export abstract class BaseEnemy extends Entity {
     if (this.mesh && tierData.tintColor !== 0x000000) {
       this.applyTierTint(tierData.tintColor, tierData.tier);
     }
+  }
+
+  /**
+   * Apply continuous difficulty scaling beyond tier 4 boundaries.
+   *
+   * Calls applyDifficultyTier(intTier) first to apply color tint, split behavior,
+   * score/geom/radius scaling. Then overrides health and speed with continuous
+   * values from getContinuousHealthMultiplier / getContinuousSpeedMultiplier.
+   * For super-tier (difficultyLevel > MAX_TIER), also applies additional scale
+   * and increased emissive glow.
+   *
+   * Must be called INSTEAD of applyDifficultyTier() when difficultyLevel > MAX_TIER.
+   */
+  applyDifficultyTierContinuous(difficultyLevel: number): void {
+    const intTier = Math.min(MAX_TIER, Math.floor(difficultyLevel));
+
+    // Save base values before discrete tier mutates them in-place
+    const baseHealth = this.health;
+    const baseSpeed = this.speed;
+
+    // Apply discrete tier: sets difficultyTier (split behavior), tint, score, geom, mesh scale
+    this.applyDifficultyTier(intTier);
+
+    // Override health/speed with continuous values derived from original base stats
+    const continuousHealth = getContinuousHealthMultiplier(difficultyLevel);
+    const continuousSpeed = getContinuousSpeedMultiplier(difficultyLevel);
+    this.maxHealth = Math.ceil(baseHealth * continuousHealth);
+    this.health = this.maxHealth;
+    this.speed = baseSpeed * continuousSpeed;
+
+    // Apply additional scale beyond the discrete tier's contribution
+    if (difficultyLevel > MAX_TIER && intTier > 0) {
+      const continuousScale = getContinuousScaleMultiplier(difficultyLevel);
+      const discreteScale = getDifficultyTier(intTier).scaleMultiplier;
+      const additionalScale = continuousScale / discreteScale;
+      if (additionalScale > 1.0) {
+        if (this.mesh) {
+          this.mesh.scale.multiplyScalar(additionalScale);
+        }
+        this.radius *= additionalScale;
+      }
+
+      // Visual signal: boost emissive glow for super-tier enemies (difficulty >= 5)
+      if (difficultyLevel >= 5) {
+        this.applySupertierGlow(difficultyLevel);
+      }
+    }
+  }
+
+  /**
+   * Boost emissive glow intensity for super-tier enemies to visually signal
+   * their increased power beyond normal tier 4. Called by applyDifficultyTierContinuous.
+   */
+  private applySupertierGlow(difficultyLevel: number): void {
+    if (!this.mesh) return;
+    const extraIntensity = Math.min(2.0, (difficultyLevel - MAX_TIER) * 0.3);
+    this.mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material) {
+        const mat = child.material as THREE.MeshStandardMaterial;
+        if (mat.emissive !== undefined) {
+          mat.emissiveIntensity = Math.min(3.0, (mat.emissiveIntensity || 0.4) + extraIntensity);
+        }
+      }
+    });
   }
 
   /**

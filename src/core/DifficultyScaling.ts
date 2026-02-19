@@ -132,6 +132,34 @@ export function getContinuousSpeedMultiplier(difficultyLevel: number): number {
   return Math.min(3.0, baseSpeed * extraSpeedBonus);
 }
 
+/**
+ * Get continuous health multiplier beyond tier 4.
+ * At difficulty 4: 60x (tier 4 base).
+ * Beyond that: +25% per difficulty level above 4.
+ * At difficulty 8: 60 * (1 + 4*0.25) = 60 * 2.0 = 120x.
+ * Capped at 500x to prevent unkillable enemies.
+ * For difficulty <= 4, returns the discrete tier's health multiplier.
+ */
+export function getContinuousHealthMultiplier(difficultyLevel: number): number {
+  const tier = getDifficultyTier(Math.floor(Math.min(difficultyLevel, MAX_TIER)));
+  const baseHealth = tier.healthMultiplier;
+  const extraDifficulty = Math.max(0, difficultyLevel - MAX_TIER);
+  const extraHealthBonus = 1.0 + extraDifficulty * 0.25;
+  return Math.min(500, baseHealth * extraHealthBonus);
+}
+
+/**
+ * Get continuous scale multiplier beyond tier 4.
+ * At difficulty 4: 1.5x. Beyond: +3% per level. Cap at 2.5x.
+ * For difficulty <= 4, returns the discrete tier's scale multiplier.
+ */
+export function getContinuousScaleMultiplier(difficultyLevel: number): number {
+  const tier = getDifficultyTier(Math.floor(Math.min(difficultyLevel, MAX_TIER)));
+  const baseScale = tier.scaleMultiplier;
+  const extraDifficulty = Math.max(0, difficultyLevel - MAX_TIER);
+  return Math.min(2.5, baseScale + extraDifficulty * 0.03);
+}
+
 // ---------------------------------------------------------------------------
 // Difficulty level: computed from player state
 // ---------------------------------------------------------------------------
@@ -221,6 +249,8 @@ export interface ScaledWaveEntry {
   type: string;
   count: number;
   tier: number;
+  /** Continuous difficulty level for super-tier stat scaling (only set when > MAX_TIER). */
+  difficultyLevel?: number;
 }
 
 /**
@@ -385,6 +415,14 @@ export function generateScaledEndlessWave(
       count: Math.min(Math.round(Math.floor(difficultyLevel - 5) * entityBrake), 5),
       tier: Math.min(maxTier, 3),
     });
+  }
+
+  // Super-tier: when difficulty exceeds MAX_TIER, tag all entries with the continuous
+  // difficulty level so EnemySpawner can apply getContinuousHealthMultiplier etc.
+  if (difficultyLevel > MAX_TIER) {
+    for (const entry of enemies) {
+      entry.difficultyLevel = difficultyLevel;
+    }
   }
 
   return enemies;
