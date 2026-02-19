@@ -3,6 +3,13 @@ setlocal enabledelayedexpansion
 title Geometry Wars 3D
 color 0A
 
+REM DEBUG: Prevent auto-close on any crash
+if "%1"=="" (
+    cmd /k "%~f0" run
+    exit /b
+)
+
+
 echo.
 echo  ================================================================
 echo     GEOMETRY WARS 3D DIMENSIONS - Browser Edition
