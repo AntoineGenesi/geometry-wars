@@ -37,6 +37,7 @@ interface WaveEntry {
 
 // Constants
 const TICK_RATE = 60;
+const VOTING_COUNTDOWN_SECS = 5;
 // Movement speed in UV units per second.
 // Co-op uses MeshWalker at 3.0 world units/s. On a sphere of radius 5,
 // 1 UV unit = pi*5 world units. So 3.0 / (pi*5) = ~0.19 UV/s.
@@ -154,10 +155,30 @@ export class GameRoom extends Room<GameState> {
     });
 
     this.onMessage('start', () => {
-      // Allow restart after game over (gameStarted stays true, but gameOver is set)
-      if (!this.state.gameStarted || this.state.gameOver) {
+      // Initial game start: lobby → playing
+      if (this.state.roomPhase === 'lobby') {
         this.startGame();
       }
+    });
+
+    this.onMessage('vote', (client, data: { choice: string }) => {
+      if (this.state.roomPhase !== 'voting') return;
+      if (typeof data.choice === 'string' && data.choice.length > 0) {
+        this.state.voteMap.set(client.sessionId, data.choice);
+        console.log(`[GameRoom] ${client.sessionId} voted: ${data.choice}`);
+      }
+    });
+
+    this.onMessage('host_set_pick_mode', (client, data: { pickMode: boolean }) => {
+      if (client.sessionId !== this.state.hostId) return;
+      this.state.hostPickMode = data.pickMode;
+      console.log(`[GameRoom] Host set pick mode: ${data.pickMode}`);
+    });
+
+    this.onMessage('host_launch', (client, data: { choice: string }) => {
+      if (client.sessionId !== this.state.hostId) return;
+      if (this.state.roomPhase !== 'voting') return;
+      this.startGameWithSettings(data.choice);
     });
 
     this.onMessage('pause', (client, data: { paused: boolean }) => {
@@ -289,9 +310,21 @@ export class GameRoom extends Room<GameState> {
     console.log('[GameRoom] Disposed');
   }
 
+  private startGameWithSettings(choice: string) {
+    const parts = choice.split(':');
+    const surface = parts[0] || this.state.surfaceType;
+    const mode = parts[1] || 'waves';
+    const size = parts[2] || 'medium';
+    this.state.surfaceType = surface;
+    this.state.gameMode = mode;
+    this.state.mapSize = size;
+    this.startGame();
+  }
+
   private startGame() {
-    this.state.gameStarted = true;
-    this.state.gameOver = false;
+    this.state.roomPhase = 'playing';
+    this.state.gameStarted = true;   // backward compat
+    this.state.gameOver = false;     // backward compat
     this.state.waveNumber = 0;
     this.state.gameTime = 0;
     this.waveNumber = 0;
@@ -460,9 +493,14 @@ export class GameRoom extends Room<GameState> {
   }
 
   private tick() {
-    if (!this.state.gameStarted || this.state.gameOver) return;
-    if (this.state.isPaused) return;
+    if (this.state.roomPhase === 'playing' && !this.state.isPaused) {
+      this.tickGame();
+    } else if (this.state.roomPhase === 'voting' && !this.state.hostPickMode) {
+      this.tickVoting();
+    }
+  }
 
+  private tickGame() {
     const dt = 1 / TICK_RATE;
     this.state.gameTime += dt;
 
@@ -489,6 +527,38 @@ export class GameRoom extends Room<GameState> {
 
     // Check game over
     this.checkGameOver();
+  }
+
+  private tickVoting() {
+    const dt = 1 / TICK_RATE;
+    this.state.votingCountdown = Math.max(0, this.state.votingCountdown - dt);
+    if (this.state.votingCountdown <= 0) {
+      const choice = this.pickMostVoted();
+      console.log(`[GameRoom] Voting countdown ended — auto-launching with: ${choice}`);
+      this.startGameWithSettings(choice);
+    }
+  }
+
+  /** Pick the most-voted choice from voteMap. Falls back to current surface:waves:medium. */
+  private pickMostVoted(): string {
+    const counts = new Map<string, number>();
+    this.state.voteMap.forEach((choice) => {
+      counts.set(choice, (counts.get(choice) ?? 0) + 1);
+    });
+
+    if (counts.size === 0) {
+      return `${this.state.surfaceType}:waves:medium`;
+    }
+
+    let bestChoice = '';
+    let bestCount = 0;
+    counts.forEach((count, choice) => {
+      if (count > bestCount) {
+        bestCount = count;
+        bestChoice = choice;
+      }
+    });
+    return bestChoice;
   }
 
   private updateBullets(dt: number) {
@@ -1057,14 +1127,22 @@ export class GameRoom extends Room<GameState> {
     });
 
     if (!anyAlive && this.state.players.size > 0) {
-      this.state.gameOver = true;
-      this.setMetadata({
-        surface: this.state.surfaceType,
-        status: 'game_over',
-        wave: this.waveNumber,
-      });
-      console.log('[GameRoom] Game Over!');
+      this.transitionToVoting();
     }
+  }
+
+  /** Transition from playing → voting. Starts countdown and clears previous votes. */
+  private transitionToVoting() {
+    this.state.roomPhase = 'voting';
+    this.state.gameOver = true;  // backward compat: existing client code reads gameOver
+    this.state.votingCountdown = VOTING_COUNTDOWN_SECS;
+    this.state.voteMap.clear();
+    this.setMetadata({
+      surface: this.state.surfaceType,
+      status: 'voting',
+      wave: this.waveNumber,
+    });
+    console.log('[GameRoom] Game Over — entering voting phase');
   }
 
   private spawnWeaponPickup(u: number, v: number) {

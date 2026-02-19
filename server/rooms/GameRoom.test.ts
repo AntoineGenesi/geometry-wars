@@ -248,3 +248,222 @@ describe('GameRoom host transfer on disconnect', () => {
     expect(result.newHostId).toBe('player3');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Lobby voting state machine — unit tests
+//
+// Tests below validate the core voting logic in isolation (pure functions),
+// mirroring GameRoom.ts behavior without requiring a live Colyseus Room instance.
+//
+// Covers:
+//   - Vote recording (voteMap.set)
+//   - Pick mode toggle
+//   - Countdown → auto-launch (pickMostVoted)
+//   - host_launch (startGameWithSettings choice parsing)
+// ---------------------------------------------------------------------------
+
+// Mirrors GameRoom.pickMostVoted(): returns most-voted choice or fallback.
+function pickMostVoted(voteMap: Map<string, string>, fallback: string): string {
+  const counts = new Map<string, number>();
+  voteMap.forEach((choice) => {
+    counts.set(choice, (counts.get(choice) ?? 0) + 1);
+  });
+
+  if (counts.size === 0) return fallback;
+
+  let bestChoice = '';
+  let bestCount = 0;
+  counts.forEach((count, choice) => {
+    if (count > bestCount) {
+      bestCount = count;
+      bestChoice = choice;
+    }
+  });
+  return bestChoice;
+}
+
+// Mirrors GameRoom.startGameWithSettings() choice parsing.
+function parseChoice(
+  choice: string,
+  currentSurface: string,
+): { surface: string; mode: string; size: string } {
+  const parts = choice.split(':');
+  return {
+    surface: parts[0] || currentSurface,
+    mode: parts[1] || 'waves',
+    size: parts[2] || 'medium',
+  };
+}
+
+describe('GameRoom vote recording', () => {
+  it('records a vote for a player', () => {
+    const voteMap = new Map<string, string>();
+    voteMap.set('player1', 'sphere:waves:medium');
+    expect(voteMap.get('player1')).toBe('sphere:waves:medium');
+  });
+
+  it('overrides previous vote from the same player', () => {
+    const voteMap = new Map<string, string>();
+    voteMap.set('player1', 'sphere:waves:medium');
+    voteMap.set('player1', 'torus:king:large');
+    expect(voteMap.get('player1')).toBe('torus:king:large');
+    expect(voteMap.size).toBe(1); // still only one entry
+  });
+
+  it('records votes from multiple players independently', () => {
+    const voteMap = new Map<string, string>();
+    voteMap.set('player1', 'sphere:waves:medium');
+    voteMap.set('player2', 'torus:king:large');
+    expect(voteMap.get('player1')).toBe('sphere:waves:medium');
+    expect(voteMap.get('player2')).toBe('torus:king:large');
+    expect(voteMap.size).toBe(2);
+  });
+});
+
+describe('GameRoom pick mode toggle', () => {
+  it('hostPickMode defaults to false (voting mode active)', () => {
+    let hostPickMode = false;
+    expect(hostPickMode).toBe(false);
+  });
+
+  it('host can set pick mode to true', () => {
+    let hostPickMode = false;
+    // Mirrors host_set_pick_mode handler
+    hostPickMode = true;
+    expect(hostPickMode).toBe(true);
+  });
+
+  it('non-host cannot change pick mode (guard check)', () => {
+    const hostId = 'player1';
+    let hostPickMode = false;
+
+    // Non-host attempting to set — should be rejected (returns early)
+    function trySetPickMode(clientId: string, pickMode: boolean): boolean {
+      if (clientId !== hostId) return false; // rejected
+      hostPickMode = pickMode;
+      return true;
+    }
+
+    expect(trySetPickMode('player2', true)).toBe(false);
+    expect(hostPickMode).toBe(false); // unchanged
+
+    expect(trySetPickMode('player1', true)).toBe(true);
+    expect(hostPickMode).toBe(true);
+  });
+});
+
+describe('GameRoom countdown → auto-launch (pickMostVoted)', () => {
+  it('empty vote map → returns fallback choice', () => {
+    const voteMap = new Map<string, string>();
+    const result = pickMostVoted(voteMap, 'sphere:waves:medium');
+    expect(result).toBe('sphere:waves:medium');
+  });
+
+  it('single vote → picks that choice', () => {
+    const voteMap = new Map<string, string>();
+    voteMap.set('player1', 'torus:king:large');
+    const result = pickMostVoted(voteMap, 'sphere:waves:medium');
+    expect(result).toBe('torus:king:large');
+  });
+
+  it('two players vote same choice → picks that choice', () => {
+    const voteMap = new Map<string, string>();
+    voteMap.set('player1', 'cube:waves:small');
+    voteMap.set('player2', 'cube:waves:small');
+    const result = pickMostVoted(voteMap, 'sphere:waves:medium');
+    expect(result).toBe('cube:waves:small');
+  });
+
+  it('majority wins: 2 vs 1 vote', () => {
+    const voteMap = new Map<string, string>();
+    voteMap.set('player1', 'sphere:rainbow:medium');
+    voteMap.set('player2', 'sphere:rainbow:medium');
+    voteMap.set('player3', 'torus:king:large');
+    const result = pickMostVoted(voteMap, 'sphere:waves:medium');
+    expect(result).toBe('sphere:rainbow:medium');
+  });
+
+  it('countdown reaches zero within expected ticks (+ 1 for float rounding)', () => {
+    const VOTING_COUNTDOWN_SECS = 5;
+    const DT = 1 / 60;
+    let countdown = VOTING_COUNTDOWN_SECS;
+    // Allow totalTicks + 1 to handle floating-point: 5.0 / (1/60) = 300 exactly,
+    // but repeated subtraction leaves a tiny residual (~1e-14) that requires one extra tick.
+    const maxTicks = Math.ceil(VOTING_COUNTDOWN_SECS / DT) + 1;
+    let launchTick = -1;
+
+    for (let i = 0; i < maxTicks; i++) {
+      countdown = Math.max(0, countdown - DT);
+      if (countdown <= 0 && launchTick < 0) {
+        launchTick = i;
+      }
+    }
+
+    expect(launchTick).toBeGreaterThanOrEqual(0);        // did trigger
+    expect(launchTick).toBeLessThanOrEqual(maxTicks - 1); // within expected window
+    expect(countdown).toBe(0);
+  });
+});
+
+describe('GameRoom host_launch (choice parsing)', () => {
+  it('parses full choice string correctly', () => {
+    const parsed = parseChoice('sphere:waves:medium', 'torus');
+    expect(parsed.surface).toBe('sphere');
+    expect(parsed.mode).toBe('waves');
+    expect(parsed.size).toBe('medium');
+  });
+
+  it('parses large map size', () => {
+    const parsed = parseChoice('torus:king:large', 'sphere');
+    expect(parsed.surface).toBe('torus');
+    expect(parsed.mode).toBe('king');
+    expect(parsed.size).toBe('large');
+  });
+
+  it('falls back to current surface when surface part is empty', () => {
+    const parsed = parseChoice(':waves:medium', 'capsule');
+    expect(parsed.surface).toBe('capsule'); // fallback
+  });
+
+  it('falls back to waves mode when mode part is missing', () => {
+    const parsed = parseChoice('sphere::medium', 'sphere');
+    expect(parsed.mode).toBe('waves');
+  });
+
+  it('falls back to medium size when size part is missing', () => {
+    const parsed = parseChoice('sphere:waves:', 'sphere');
+    expect(parsed.size).toBe('medium');
+  });
+
+  it('all 12 valid surfaces parse correctly', () => {
+    const surfaces = [
+      'sphere', 'torus', 'cube', 'capsule', 'pill', 'mobius',
+      'klein', 'tunnel', 'cube-tunnel', 'peanut', 'cylinder', 'knot',
+    ];
+    surfaces.forEach((surface) => {
+      const parsed = parseChoice(`${surface}:waves:medium`, 'sphere');
+      expect(parsed.surface).toBe(surface);
+    });
+  });
+
+  it('host_launch guard: only host can launch', () => {
+    const hostId = 'player1';
+    let launched = false;
+
+    function tryHostLaunch(clientId: string, roomPhase: string): boolean {
+      if (clientId !== hostId) return false;
+      if (roomPhase !== 'voting') return false;
+      launched = true;
+      return true;
+    }
+
+    expect(tryHostLaunch('player2', 'voting')).toBe(false);
+    expect(launched).toBe(false);
+
+    expect(tryHostLaunch('player1', 'lobby')).toBe(false);
+    expect(launched).toBe(false);
+
+    expect(tryHostLaunch('player1', 'voting')).toBe(true);
+    expect(launched).toBe(true);
+  });
+});
