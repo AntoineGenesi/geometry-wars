@@ -3,12 +3,6 @@ setlocal enabledelayedexpansion
 title Geometry Wars 3D
 color 0A
 
-REM DEBUG: Prevent auto-close on any crash
-if "%1"=="" (
-    cmd /k "%~f0" run
-    exit /b
-)
-
 
 echo.
 echo  ================================================================
@@ -29,17 +23,9 @@ cd /d "%~dp0"
 REM Check node_modules exists
 if not exist "node_modules" goto :no_modules
 
-REM Check if Windows-specific native binaries exist (WSL installs Linux-x64 only)
-REM Modern npm (v7+) hoists/dedupes packages to top level when possible
-REM Check both top-level (hoisted) and nested (older npm) locations
-if not exist "node_modules\@esbuild\win32-x64" (
-    if not exist "node_modules\vite\node_modules\@esbuild\win32-x64" goto :fix_native
-)
-if not exist "node_modules\@rollup\rollup-win32-x64-msvc" goto :fix_native
-
-REM Check ALL native binaries match (esbuild top-level, vite nested, rollup)
-node -e "var f=require('fs'),p=require('path'),ok=true;[['node_modules/esbuild','node_modules/@esbuild/win32-x64'],['node_modules/vite/node_modules/esbuild','node_modules/vite/node_modules/@esbuild/win32-x64']].forEach(function(x){try{var hv=JSON.parse(f.readFileSync(p.join(x[0],'package.json'))).version;try{var bv=JSON.parse(f.readFileSync(p.join(x[1],'package.json'))).version;if(hv!==bv)ok=false}catch(e){ok=false}}catch(e){}});if(!ok)process.exit(1)" 2>nul
-if %ERRORLEVEL% neq 0 goto :fix_native
+REM Check native binaries using a single Node script (avoids batch goto-in-parens bug)
+node -e "var f=require('fs'),p=require('path'),ok=true;[['node_modules/esbuild','node_modules/@esbuild/win32-x64'],['node_modules/vite/node_modules/esbuild','node_modules/vite/node_modules/@esbuild/win32-x64']].forEach(function(x){try{var hv=JSON.parse(f.readFileSync(p.join(x[0],'package.json'))).version;try{var bv=JSON.parse(f.readFileSync(p.join(x[1],'package.json'))).version;if(hv!==bv)ok=false}catch(e){ok=false}}catch(e){}});try{var rv=JSON.parse(f.readFileSync('node_modules/rollup/package.json')).version;var rbv=JSON.parse(f.readFileSync('node_modules/@rollup/rollup-win32-x64-msvc/package.json')).version;if(rv!==rbv)ok=false}catch(e){ok=false};if(!ok)process.exit(1)" 2>nul
+if %ERRORLEVEL% neq 0 goto fix_native
 
 :start_servers
 
