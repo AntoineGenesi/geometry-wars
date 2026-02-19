@@ -799,3 +799,22 @@ Claude will read this file at the start of each session and prioritize fixing re
 - Mobile: Particle budget pre-set to MEDIUM (60/frame vs 200/frame on desktop).
 
 **Regression test:** `src/rendering/GeometryCache.test.ts` — passes ✅
+
+---
+
+## S26: Map Size Entity Mismatch Fix
+
+### Test: Enemies on correct surface at non-default map sizes
+- [ ] **Start a game on sphere with LARGE map size** — Enemies should appear on the same enlarged sphere as the player, not floating inside a smaller ghost sphere.
+- [ ] **Start a game on sphere with SMALL map size** — Enemies should appear on the same smaller sphere as the player.
+- [ ] **Start a game on sphere with EPIC map size** — Enemies should appear on the same 2x enlarged sphere as the player, not at 1x scale inside it.
+- [ ] **Switch between map sizes** — Each size shows enemies correctly co-located with the player surface.
+- [ ] **Test on cube at non-default size** — Enemies should appear on the cube faces, not hovering inside a smaller cube.
+- [ ] **Test on torus at non-default size** — Enemies should appear on the torus surface, not on a smaller ghost torus inside it.
+- [ ] **Pickups appear on the correct surface** — Weapon and buff pickups should appear on the scaled surface, not at original scale.
+
+**What changed:**
+- `src/surfaces/MeshSurface.ts`: `initGeodesicPosition()` and `moveGeodesic()` now correctly transform between world space and mesh local space. Previously, geodesic walking happened in local geometry space while MeshWalker expected world space, causing entities to jump to unscaled positions after the first movement frame.
+- `src/main.ts`: `makeSurfaceTransformFn()` now accepts and applies `mapSizeScaleFactor` so UV-based entities (pickups, bullets, companions) also appear on the correctly-scaled surface.
+
+**Regression test:** `src/surfaces/MeshSurface.test.ts` — "MeshSurface — map size scale (S26 regression)" — 11 tests covering sphere/cube/torus × SMALL/LARGE/EPIC — passes ✅

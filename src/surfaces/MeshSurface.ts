@@ -51,6 +51,9 @@ export class MeshSurface {
   private readonly _invMatrix = new THREE.Matrix4();
   private readonly _ray = new THREE.Ray();
   private readonly _tempVec = new THREE.Vector3();
+  /** Extra scratch vectors for world↔local geodesic transforms (avoid allocations) */
+  private readonly _tempDir = new THREE.Vector3();
+  private readonly _normalMatrix = new THREE.Matrix3();
 
   constructor(mesh: THREE.Mesh) {
     this.mesh = mesh;
@@ -277,9 +280,17 @@ export class MeshSurface {
   /**
    * Initialize a geodesic face position from a world point and BVH face index.
    * Call once when creating a walker, then pass the returned FacePosition to moveGeodesic().
+   *
+   * Converts the world-space point to mesh local space before querying the
+   * GeodesicSurface (which operates entirely in geometry / local space).
+   * This is required when the mesh's parent group has a non-unit scale
+   * (e.g. map-size scale factors: SMALL=0.75, LARGE=1.5, EPIC=2.0).
    */
   initGeodesicPosition(worldPoint: THREE.Vector3, faceIndex: number): FacePosition {
-    return this.geodesic.initializePosition(worldPoint, faceIndex);
+    // Transform world point to mesh local space — geodesic data is in local space.
+    this._invMatrix.copy(this.mesh.matrixWorld).invert();
+    const localPoint = this._tempVec.copy(worldPoint).applyMatrix4(this._invMatrix);
+    return this.geodesic.initializePosition(localPoint, faceIndex);
   }
 
   /**
@@ -293,13 +304,46 @@ export class MeshSurface {
    * @param directionWorld - Movement direction in world space (tangent to surface)
    * @param distance - Distance to walk in world units
    * @returns Geodesic move result with new face position, world position, normal, and transported direction
+   *
+   * Implementation note: GeodesicSurface / HalfEdgeMesh stores vertex positions in
+   * mesh local space (geometry coordinates, without matrixWorld).  All inputs are
+   * transformed to local space before the walk, and all outputs (position, normal,
+   * direction) are transformed back to world space on return.  facePosition (face
+   * index + barycentric coords) is coordinate-space-agnostic and needs no transform.
    */
   moveGeodesic(
     facePos: FacePosition,
     directionWorld: THREE.Vector3,
     distance: number,
   ): GeodesicMoveResult {
-    return this.geodesic.moveGeodesic(facePos, directionWorld, distance);
+    const matrixWorld = this.mesh.matrixWorld;
+    this._invMatrix.copy(matrixWorld).invert();
+
+    // Transform world-space direction to local space (rotation only, keeps unit length).
+    this._tempDir.copy(directionWorld).transformDirection(this._invMatrix);
+
+    // Scale distance to local space.
+    // getMaxScaleOnAxis is the correct way to get uniform scale from a matrixWorld.
+    const scale = matrixWorld.getMaxScaleOnAxis();
+    const localDistance = scale > 0 ? distance / scale : distance;
+
+    // Run geodesic walk entirely in local space.
+    const localResult = this.geodesic.moveGeodesic(facePos, this._tempDir, localDistance);
+
+    // Transform position and directions back to world space.
+    const worldPos = localResult.position.clone().applyMatrix4(matrixWorld);
+    this._normalMatrix.getNormalMatrix(matrixWorld);
+    const worldNormal = localResult.normal.clone().applyMatrix3(this._normalMatrix).normalize();
+    const worldDir = localResult.direction.clone().transformDirection(matrixWorld).normalize();
+
+    return {
+      faceIndex: localResult.faceIndex,
+      position: worldPos,
+      normal: worldNormal,
+      direction: worldDir,
+      facePosition: localResult.facePosition,
+      distanceTraveled: localResult.distanceTraveled * scale,
+    };
   }
 
   dispose(): void {

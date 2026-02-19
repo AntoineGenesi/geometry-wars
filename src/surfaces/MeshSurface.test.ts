@@ -532,3 +532,340 @@ describe('Surface Adherence Stress Test', () => {
     expect(dist).toBeGreaterThan(0.5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// MAP SIZE SCALE REGRESSION — S26 bug fix
+//
+// When map size != MEDIUM (scale != 1.0), the surface group has a non-unit
+// scale applied via `surface.group.scale.setScalar(mapSizeScaleFactor)`.
+// GeodesicSurface / HalfEdgeMesh operated in local geometry space (unscaled),
+// but MeshWalker expected world-space positions.  This caused enemies (and
+// the player) to appear on an unscaled "ghost" surface after the first frame
+// of movement, while the visual surface was scaled correctly.
+//
+// These tests FAIL without the fix in MeshSurface.initGeodesicPosition()
+// and MeshSurface.moveGeodesic() — and PASS with it.
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a mesh whose *parent group* carries a uniform scale,
+ * mirroring what main.ts does: surface.group.scale.setScalar(scaleFactor).
+ */
+function createScaledSphere(baseRadius = 8, scaleFactor = 1.0, segments = 32): {
+  mesh: THREE.Mesh;
+  group: THREE.Group;
+  worldRadius: number;
+} {
+  const geo = new THREE.SphereGeometry(baseRadius, segments, segments);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshBasicMaterial();
+  const mesh = new THREE.Mesh(geo, mat);
+  const group = new THREE.Group();
+  group.scale.setScalar(scaleFactor);
+  group.add(mesh);
+  // Propagate scale to mesh.matrixWorld (scene.add + updateMatrixWorld in main.ts)
+  group.updateMatrixWorld(true);
+  return { mesh, group, worldRadius: baseRadius * scaleFactor };
+}
+
+function createScaledCube(baseSize = 10, scaleFactor = 1.0): {
+  mesh: THREE.Mesh;
+  group: THREE.Group;
+} {
+  const geo = new THREE.BoxGeometry(baseSize, baseSize, baseSize, 8, 8, 8);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshBasicMaterial();
+  const mesh = new THREE.Mesh(geo, mat);
+  const group = new THREE.Group();
+  group.scale.setScalar(scaleFactor);
+  group.add(mesh);
+  group.updateMatrixWorld(true);
+  return { mesh, group };
+}
+
+function createScaledTorus(majorR = 6, minorR = 2.5, scaleFactor = 1.0): {
+  mesh: THREE.Mesh;
+  group: THREE.Group;
+  worldOuterRadius: number;
+} {
+  const geo = new THREE.TorusGeometry(majorR, minorR, 32, 64);
+  geo.computeVertexNormals();
+  const mat = new THREE.MeshBasicMaterial();
+  const mesh = new THREE.Mesh(geo, mat);
+  const group = new THREE.Group();
+  group.scale.setScalar(scaleFactor);
+  group.add(mesh);
+  group.updateMatrixWorld(true);
+  return { mesh, group, worldOuterRadius: (majorR + minorR) * scaleFactor };
+}
+
+describe('MeshSurface — map size scale (S26 regression)', () => {
+  // Surface types × scale factors as per acceptance criteria (≥ 3 surfaces × 3 sizes)
+  const sphereBaseRadius = 8;
+
+  describe('sphere with SMALL scale (0.75)', () => {
+    it('walker stays on scaled sphere surface after movement', () => {
+      const scaleFactor = 0.75;
+      const { mesh, worldRadius } = createScaledSphere(sphereBaseRadius, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      // Start at the top of the world-space sphere
+      const startPos = new THREE.Vector3(0, worldRadius * 1.5, 0); // above surface
+      const walker = new MeshWalker(surface, startPos, 3.0);
+
+      // Move sideways (tangent direction) for many frames
+      for (let i = 0; i < 30; i++) {
+        const angle = i * 0.3;
+        walker.move(new THREE.Vector3(Math.cos(angle), 0, Math.sin(angle)), 0.05);
+      }
+
+      // Position should be on the SCALED sphere (worldRadius), not the unscaled one (baseRadius)
+      const dist = walker.position.length();
+      expect(dist).toBeGreaterThan(worldRadius * 0.85);
+      expect(dist).toBeLessThan(worldRadius * 1.15);
+    });
+  });
+
+  describe('sphere with LARGE scale (1.5)', () => {
+    it('walker stays on scaled sphere surface after movement', () => {
+      const scaleFactor = 1.5;
+      const { mesh, worldRadius } = createScaledSphere(sphereBaseRadius, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      const startPos = new THREE.Vector3(worldRadius, 0, 0);
+      const walker = new MeshWalker(surface, startPos, 5.0);
+
+      for (let i = 0; i < 30; i++) {
+        const angle = i * 0.3;
+        walker.move(new THREE.Vector3(0, Math.cos(angle), Math.sin(angle)), 0.05);
+      }
+
+      const dist = walker.position.length();
+      expect(dist).toBeGreaterThan(worldRadius * 0.85);
+      expect(dist).toBeLessThan(worldRadius * 1.15);
+    });
+  });
+
+  describe('sphere with EPIC scale (2.0)', () => {
+    it('walker stays on scaled sphere surface after movement', () => {
+      const scaleFactor = 2.0;
+      const { mesh, worldRadius } = createScaledSphere(sphereBaseRadius, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      const startPos = new THREE.Vector3(0, 0, worldRadius);
+      const walker = new MeshWalker(surface, startPos, 8.0);
+
+      for (let i = 0; i < 30; i++) {
+        const angle = i * 0.3;
+        walker.move(new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0), 0.05);
+      }
+
+      const dist = walker.position.length();
+      expect(dist).toBeGreaterThan(worldRadius * 0.85);
+      expect(dist).toBeLessThan(worldRadius * 1.15);
+    });
+
+    it('walker does NOT regress to unscaled radius after movement', () => {
+      // Without the fix: after geodesic walk, walker.position would be at ~baseRadius
+      // (local space), not at worldRadius (world space).
+      const scaleFactor = 2.0;
+      const { mesh, worldRadius } = createScaledSphere(sphereBaseRadius, scaleFactor);
+      const surface = new MeshSurface(mesh);
+      const unscaledRadius = sphereBaseRadius; // what buggy code would produce
+
+      const startPos = new THREE.Vector3(worldRadius, 0, 0);
+      const walker = new MeshWalker(surface, startPos, 5.0);
+
+      // One move is enough to trigger the geodesic walk
+      walker.move(new THREE.Vector3(0, 1, 0), 0.1);
+
+      const dist = walker.position.length();
+      // Should be near worldRadius (16), NOT near unscaledRadius (8)
+      expect(dist).toBeGreaterThan(unscaledRadius * 1.5);
+      expect(dist).toBeCloseTo(worldRadius, 0);
+    });
+  });
+
+  describe('cube with SMALL scale (0.75)', () => {
+    it('walker stays on scaled cube surface after movement', () => {
+      const scaleFactor = 0.75;
+      const baseHalfSize = 5; // BoxGeometry(10,...) → half-extent = 5
+      const worldHalfSize = baseHalfSize * scaleFactor;
+      const { mesh } = createScaledCube(10, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      // Start near the top face
+      const startPos = new THREE.Vector3(0, worldHalfSize * 1.5, 0);
+      const walker = new MeshWalker(surface, startPos, 2.0);
+
+      for (let i = 0; i < 20; i++) {
+        walker.move(new THREE.Vector3(1, 0, 0), 0.05);
+      }
+
+      // Should be within the scaled cube's extents
+      const maxCoord = Math.max(
+        Math.abs(walker.position.x),
+        Math.abs(walker.position.y),
+        Math.abs(walker.position.z),
+      );
+      expect(maxCoord).toBeLessThan(worldHalfSize * 1.3);
+      expect(maxCoord).toBeGreaterThan(worldHalfSize * 0.5);
+    });
+  });
+
+  describe('cube with LARGE scale (1.5)', () => {
+    it('walker stays on scaled cube surface after movement', () => {
+      const scaleFactor = 1.5;
+      const worldHalfSize = 5 * scaleFactor;
+      const { mesh } = createScaledCube(10, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      const startPos = new THREE.Vector3(worldHalfSize, 0, 0);
+      const walker = new MeshWalker(surface, startPos, 3.0);
+
+      for (let i = 0; i < 20; i++) {
+        walker.move(new THREE.Vector3(0, 1, 0), 0.05);
+      }
+
+      const maxCoord = Math.max(
+        Math.abs(walker.position.x),
+        Math.abs(walker.position.y),
+        Math.abs(walker.position.z),
+      );
+      expect(maxCoord).toBeLessThan(worldHalfSize * 1.3);
+      expect(maxCoord).toBeGreaterThan(worldHalfSize * 0.5);
+    });
+  });
+
+  describe('cube with EPIC scale (2.0)', () => {
+    it('walker stays on scaled cube surface after movement', () => {
+      const scaleFactor = 2.0;
+      const worldHalfSize = 5 * scaleFactor;
+      const { mesh } = createScaledCube(10, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      const startPos = new THREE.Vector3(0, worldHalfSize, 0);
+      const walker = new MeshWalker(surface, startPos, 5.0);
+
+      for (let i = 0; i < 20; i++) {
+        walker.move(new THREE.Vector3(1, 0, 0), 0.05);
+      }
+
+      const maxCoord = Math.max(
+        Math.abs(walker.position.x),
+        Math.abs(walker.position.y),
+        Math.abs(walker.position.z),
+      );
+      expect(maxCoord).toBeLessThan(worldHalfSize * 1.3);
+      expect(maxCoord).toBeGreaterThan(worldHalfSize * 0.5);
+    });
+  });
+
+  describe('torus with SMALL scale (0.75)', () => {
+    it('walker stays on scaled torus surface after movement', () => {
+      const scaleFactor = 0.75;
+      const { mesh, worldOuterRadius } = createScaledTorus(6, 2.5, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      // Start at torus outer edge
+      const startPos = new THREE.Vector3(worldOuterRadius, 0, 0);
+      const walker = new MeshWalker(surface, startPos, 2.0);
+
+      for (let i = 0; i < 20; i++) {
+        walker.move(new THREE.Vector3(0, 1, 0), 0.05);
+      }
+
+      // Should be within torus outer radius
+      const dist = walker.position.length();
+      expect(dist).toBeLessThan(worldOuterRadius * 1.2);
+      expect(dist).toBeGreaterThan(0.1);
+    });
+  });
+
+  describe('torus with LARGE scale (1.5)', () => {
+    it('walker stays on scaled torus surface after movement', () => {
+      const scaleFactor = 1.5;
+      const { mesh, worldOuterRadius } = createScaledTorus(6, 2.5, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      const startPos = new THREE.Vector3(worldOuterRadius, 0, 0);
+      const walker = new MeshWalker(surface, startPos, 3.0);
+
+      for (let i = 0; i < 20; i++) {
+        walker.move(new THREE.Vector3(0, 1, 0), 0.05);
+      }
+
+      const dist = walker.position.length();
+      expect(dist).toBeLessThan(worldOuterRadius * 1.2);
+      expect(dist).toBeGreaterThan(0.1);
+    });
+  });
+
+  describe('torus with EPIC scale (2.0)', () => {
+    it('walker stays on scaled torus surface after movement', () => {
+      const scaleFactor = 2.0;
+      const { mesh, worldOuterRadius } = createScaledTorus(6, 2.5, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      const startPos = new THREE.Vector3(worldOuterRadius, 0, 0);
+      const walker = new MeshWalker(surface, startPos, 5.0);
+
+      for (let i = 0; i < 20; i++) {
+        walker.move(new THREE.Vector3(0, 1, 0), 0.05);
+      }
+
+      const dist = walker.position.length();
+      expect(dist).toBeLessThan(worldOuterRadius * 1.2);
+      expect(dist).toBeGreaterThan(0.1);
+    });
+  });
+
+  describe('initGeodesicPosition — world-space input', () => {
+    it('correctly locates a world-space point on a 2x scaled sphere', () => {
+      const scaleFactor = 2.0;
+      const { mesh, worldRadius } = createScaledSphere(sphereBaseRadius, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      // A point on the north pole of the world-space sphere
+      const northPole = new THREE.Vector3(0, worldRadius, 0);
+      const bvhResult = surface.closestPointOnSurface(northPole);
+      expect(bvhResult).not.toBeNull();
+
+      // initGeodesicPosition should map this world-space point to the correct face
+      const facePos = surface.initGeodesicPosition(bvhResult!.point, bvhResult!.faceIndex);
+      // The face index should be within bounds (not 0 due to wrong-space comparison)
+      expect(facePos.faceIndex).toBeGreaterThanOrEqual(0);
+
+      // The barycentric coords should sum to ~1
+      const barySum = facePos.bary.u + facePos.bary.v + facePos.bary.w;
+      expect(barySum).toBeCloseTo(1.0, 3);
+    });
+  });
+
+  describe('moveGeodesic — world-space input and output', () => {
+    it('produces world-space position on a 2x scaled sphere', () => {
+      const scaleFactor = 2.0;
+      const { mesh, worldRadius } = createScaledSphere(sphereBaseRadius, scaleFactor);
+      const surface = new MeshSurface(mesh);
+
+      const startWorldPos = new THREE.Vector3(worldRadius, 0, 0);
+      const bvhResult = surface.closestPointOnSurface(startWorldPos);
+      expect(bvhResult).not.toBeNull();
+
+      const facePos = surface.initGeodesicPosition(bvhResult!.point, bvhResult!.faceIndex);
+      const direction = new THREE.Vector3(0, 1, 0); // tangent direction at (r, 0, 0)
+      const worldDistance = 1.0;
+
+      const result = surface.moveGeodesic(facePos, direction, worldDistance);
+
+      // Result position should be on the WORLD-SPACE sphere (radius = worldRadius)
+      const dist = result.position.length();
+      expect(dist).toBeGreaterThan(worldRadius * 0.9);
+      expect(dist).toBeLessThan(worldRadius * 1.1);
+
+      // distanceTraveled should be in world units (~1.0)
+      expect(result.distanceTraveled).toBeGreaterThan(worldDistance * 0.5);
+      expect(result.distanceTraveled).toBeLessThanOrEqual(worldDistance * 1.1);
+    });
+  });
+});
