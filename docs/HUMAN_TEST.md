@@ -28,6 +28,20 @@ Start a LAN game (host + at least one non-host/client player).
 
 - [ ] **Player clicking "RETURN TO MAIN MENU" does NOT see overlay** — When a player uses the local menu to return to the main menu themselves, they navigate away cleanly without triggering the connection-lost overlay.
 
+## Session 25 LAN Lerp Convergence Fix (2026-02-20)
+
+### LAN Multiplayer — Enemy Position Consistency (Phase 3)
+
+Test with **two separate devices / browser tabs** on the same LAN:
+
+- [ ] **Enemies appear at same positions on both clients** — Watch a group of enemies for 2-3 seconds. They should be at visually identical positions on both clients, not noticeably offset.
+- [ ] **Enemies move smoothly** — No rubber-banding or stutter for enemies (ENEMY_LERP was 0.15, now 0.35 — faster convergence).
+- [ ] **Bullets move smoothly** — Bullets should glide smoothly across the surface (BULLET_LERP was 0.3, now 0.5).
+- [ ] **Local player still feels responsive** — Local player movement and aiming should feel identical to before (PLAYER_LERP is still 0.2, unchanged).
+- [ ] **Newly spawned enemies appear at correct positions** — When a new wave spawns, enemies should appear at correct positions with no snap/pop (snap-on-first-spawn is preserved).
+
+**What was changed (2026-02-20):** Tuned lerp factors in `onRender()` to reduce the convergence window from ~500ms to ~200ms at 60fps. `ENEMY_LERP` 0.15→0.35, `BULLET_LERP` 0.3→0.5, `GEOM_LERP` 0.2→0.3. `PLAYER_LERP` unchanged at 0.2.
+
 ---
 
 ## Session 25 LAN Surface Type Race Condition Fix (2026-02-20)
