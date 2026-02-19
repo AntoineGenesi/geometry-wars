@@ -35,8 +35,8 @@ if not exist "node_modules\@rollup\rollup-win32-x64-msvc" goto :fix_native
 echo.
 echo  Starting Colyseus multiplayer server (port 2567)...
 
-REM Start Colyseus in background using node directly (avoids .cmd/PATH issues)
-start /b node node_modules\tsx\dist\cli.mjs server/index.ts
+REM Start Colyseus in background using npx tsx (resolves tsx from node_modules)
+start /b npx tsx server/index.ts
 
 REM Wait for Colyseus to start
 timeout /t 2 /nobreak >nul
