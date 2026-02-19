@@ -30,13 +30,9 @@ if not exist "node_modules\@esbuild\win32-x64" (
 )
 if not exist "node_modules\@rollup\rollup-win32-x64-msvc" goto :fix_native
 
-REM Check esbuild binary version matches host version (WSL npm install may leave stale binaries)
-for /f "tokens=*" %%v in ('node -e "console.log(require('./node_modules/esbuild/package.json').version)" 2^>nul') do set "ESBUILD_HOST=%%v"
-for /f "tokens=*" %%v in ('node -e "try{console.log(require('./node_modules/@esbuild/win32-x64/package.json').version)}catch{console.log('missing')}" 2^>nul') do set "ESBUILD_BIN=%%v"
-if not "%ESBUILD_HOST%"=="%ESBUILD_BIN%" (
-    echo  [..] esbuild version mismatch: host=%ESBUILD_HOST% binary=%ESBUILD_BIN%
-    goto :fix_native
-)
+REM Check ALL native binaries match (esbuild top-level, vite nested, rollup)
+node -e "var f=require('fs'),p=require('path'),ok=true;[['node_modules/esbuild','node_modules/@esbuild/win32-x64'],['node_modules/vite/node_modules/esbuild','node_modules/vite/node_modules/@esbuild/win32-x64']].forEach(function(x){try{var hv=JSON.parse(f.readFileSync(p.join(x[0],'package.json'))).version;try{var bv=JSON.parse(f.readFileSync(p.join(x[1],'package.json'))).version;if(hv!==bv)ok=false}catch(e){ok=false}}catch(e){}});if(!ok)process.exit(1)" 2>nul
+if %ERRORLEVEL% neq 0 goto :fix_native
 
 :start_servers
 
@@ -104,42 +100,16 @@ goto :end_pause
 
 :fix_native
 echo.
-echo  [..] Installing Windows-specific native binaries...
-echo  (Dependencies were installed in WSL with Linux binaries)
+echo  [..] Fixing Windows-specific native binaries...
+echo  (WSL installed Linux binaries; downloading Windows equivalents)
 echo.
-
-REM Install to a temp directory to avoid WSL file-lock conflicts.
-REM npm install into node_modules directly fails because WSL holds locks
-REM on Linux binaries. Instead: download to temp, copy what we need.
-set "TEMP_DIR=%TEMP%\gw-native-fix-%RANDOM%"
-mkdir "%TEMP_DIR%" 2>nul
-
-REM Read versions dynamically from installed packages (avoids version mismatch)
-for /f "tokens=*" %%v in ('node -e "console.log(require('./node_modules/esbuild/package.json').version)"') do set "ESBUILD_VER=%%v"
-for /f "tokens=*" %%v in ('node -e "console.log(require('./node_modules/rollup/package.json').version)"') do set "ROLLUP_VER=%%v"
-
-echo  Downloading @esbuild/win32-x64@%ESBUILD_VER% and @rollup/rollup-win32-x64-msvc@%ROLLUP_VER%...
-echo.
-call npm install --prefix "%TEMP_DIR%" --no-save @esbuild/win32-x64@%ESBUILD_VER% @rollup/rollup-win32-x64-msvc@%ROLLUP_VER%
+node scripts\fix-native-binaries.js
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo  [!] Download failed. Check your internet connection and try again.
-    rmdir /s /q "%TEMP_DIR%" 2>nul
+    echo  [!] Failed to fix native binaries. Check output above.
     goto :end_pause
 )
-
-REM Copy only the platform-specific binary packages (no tree rebuild)
-echo  Copying native binaries into node_modules...
-if not exist "node_modules\@esbuild" mkdir "node_modules\@esbuild"
-if not exist "node_modules\@rollup" mkdir "node_modules\@rollup"
-xcopy /E /I /Y "%TEMP_DIR%\node_modules\@esbuild\win32-x64" "node_modules\@esbuild\win32-x64" >nul
-xcopy /E /I /Y "%TEMP_DIR%\node_modules\@rollup\rollup-win32-x64-msvc" "node_modules\@rollup\rollup-win32-x64-msvc" >nul
-
-REM Clean up temp directory
-rmdir /s /q "%TEMP_DIR%" 2>nul
-
 echo.
-echo  [OK] Windows native binaries installed.
 goto :start_servers
 
 :end_pause
