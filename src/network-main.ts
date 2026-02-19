@@ -56,6 +56,7 @@ import {
   NetworkGameState,
 } from './network/NetworkClient';
 import { PlayerNameLabels } from './ui/PlayerNameLabel';
+import { Minimap } from './ui/Minimap';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
@@ -522,6 +523,9 @@ function main() {
 
   // Floating name labels above player ships
   const nameLabels = new PlayerNameLabels();
+
+  // Minimap (same as single-player — shows local player, enemies, geoms)
+  const minimap = new Minimap();
 
   // -- Player tracking --
   // Maps server player ID -> real Player instance (same class as single player)
@@ -1793,6 +1797,25 @@ function main() {
       labelPositions.set(id, { worldPos: player.mesh.position, alive });
     });
     nameLabels.update(camera, labelPositions);
+
+    // Update minimap (same pattern as RenderLoop.ts in single-player).
+    // Remote players are included in the geoms layer (green dots) since
+    // the Minimap API only accepts a single local player UV position.
+    const minimapLocalPlayer = networkPlayers.get(localPlayerId);
+    if (minimapLocalPlayer) {
+      const minimapEnemies = Array.from(networkEnemies.values())
+        .filter(e => e.mesh)
+        .map(e => ({ u: e.surfacePosition.u, v: e.surfacePosition.v, alive: e.alive }));
+      const minimapGeoms: Array<{ u: number; v: number }> = [];
+      geomPool.forEachActive((_i: number, u: number, v: number) => { minimapGeoms.push({ u, v }); });
+      // Add remote players as green dots
+      networkPlayers.forEach((player, id) => {
+        if (id !== localPlayerId && (playerAliveState.get(id) ?? true)) {
+          minimapGeoms.push({ u: player.surfaceU, v: player.surfaceV });
+        }
+      });
+      minimap.update(minimapLocalPlayer.surfaceU, minimapLocalPlayer.surfaceV, minimapEnemies, minimapGeoms);
+    }
   };
 
   // Start the game loop
@@ -1804,6 +1827,7 @@ function main() {
     bgMusic.stop();
     allyGlowManager.dispose();
     nameLabels.dispose();
+    minimap.dispose();
     meshSurface?.dispose();
   });
 
