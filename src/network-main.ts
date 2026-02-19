@@ -67,6 +67,8 @@ import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
+import { SettingsMenu } from './ui/SettingsMenu';
+import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
 
 // ---------------------------------------------------------------------------
 // Debug API type (exposed as window.__gameDebug when ?debug=true)
@@ -324,13 +326,27 @@ function main() {
 
   const bgMusic = new BackgroundMusic();
 
+  // -- Visual style (user-selected from Visual Styles playground) --
+  const savedStyle = loadVisualStyle();
+
   // -- Game engine (same config as co-op) --
   const game = new Game({
-    bloom: { strength: 1.0, radius: 0.4, threshold: 0.85 },
+    bloom: {
+      strength: savedStyle?.bloomStrength ?? 1.0,
+      radius: savedStyle?.bloomRadius ?? 0.4,
+      threshold: savedStyle?.bloomThreshold ?? 0.85,
+    },
     cameraDistance: 15,
     cameraSmoothing: 0.05,
   });
   game.disableBuiltInCameraUpdate = true;
+
+  // Set global renderer info so all SettingsMenu instances show it
+  SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
+
+  // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
+  const savedVisualMode = loadVisualMode();
+  game.setVisualMode(savedVisualMode);
 
   const scene = game.scene;
   const camera = game.camera;
@@ -439,29 +455,29 @@ function main() {
       ? serverSurfaceType
       : getUrlSurfaceType();
 
-    // Surface config matches co-op EXACTLY
+    // Surface config — apply saved visual style (mirrors single-player logic)
     const surfaceConfig = {
-      gridColor: 0x006666,
-      surfaceColor: 0x0a0020,
-      surfaceOpacity: 0.35,
-      gridOpacity: 0.5,
+      gridColor: savedStyle?.gridColor ?? 0x006666,
+      surfaceColor: savedStyle?.surfaceColor ?? 0x0a0020,
+      surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.35,
+      gridOpacity: savedStyle?.gridOpacity ?? 0.5,
       radius: 5,
       size: 5,
       height: 10,
       bevelRadius: 0.6,
       majorRadius: 4,
       minorRadius: 1.5,
-      gridSegmentsU: 24,
-      gridSegmentsV: 18,
+      gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
+      gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
     };
     surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
     scene.add(surface.group);
 
-    // Dark transparent surface material (matches co-op)
+    // Surface material — apply saved color/opacity
     surface.mesh.material = new THREE.MeshBasicMaterial({
-      color: 0x0a0020,
+      color: savedStyle?.surfaceColor ?? 0x0a0020,
       transparent: true,
-      opacity: 0.35,
+      opacity: savedStyle?.surfaceOpacity ?? 0.35,
       side: THREE.FrontSide,
       depthWrite: true,
     });
@@ -768,6 +784,13 @@ function main() {
   pauseMenu.onExit(() => {
     network.disconnect();
     window.location.href = window.location.pathname;
+  });
+
+  // Sync pause menu with saved visual mode; wire the toggle
+  pauseMenu.setVisualMode(savedVisualMode);
+  pauseMenu.onVisualModeChange((mode) => {
+    saveVisualMode(mode);
+    game.setVisualMode(mode);
   });
 
   // Non-host pause overlay: styled to match game aesthetic, pointer-events:none
