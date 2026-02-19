@@ -880,11 +880,19 @@ function main() {
     }
     if (!surface || !meshSurface || !getTransform) return;
 
-    // Re-check isHost on every state change (may have been wrong at connect time)
-    if (state.hostId && state.hostId === localPlayerId && !isHost) {
-      isHost = true;
-      stopServerBtn.style.display = 'block';
-      netMainLog('[NetworkMain] Confirmed as host');
+    // Always sync isHost from the server's authoritative hostId.
+    // Previously used `&& !isHost` guard, which meant isHost could only ever
+    // go from false→true, never true→false. This prevented correct updates when:
+    //   1. Initial state arrived before localPlayerId was set (timing race)
+    //   2. Host was transferred to another player (new host needed to be reflected)
+    // Now we always re-evaluate so isHost stays in sync with the server.
+    if (localPlayerId) {
+      const nowIsHost = state.hostId !== '' && state.hostId === localPlayerId;
+      if (nowIsHost !== isHost) {
+        isHost = nowIsHost;
+        stopServerBtn.style.display = isHost ? 'block' : 'none';
+        netMainLog(`[NetworkMain] Host status updated: ${isHost ? 'IS host' : 'NOT host'}`);
+      }
     }
 
     const surf = surface;
@@ -1355,6 +1363,17 @@ function main() {
         statusEl.style.color = '#f44';
         bgMusic.stop();
         backBtn.style.display = 'block';
+      },
+      onHostChanged: (newHostId: string) => {
+        // isHost is updated via onStateChange (state.hostId sync), but give
+        // immediate visual feedback here before the next state patch arrives.
+        if (newHostId === localPlayerId) {
+          isHost = true;
+          stopServerBtn.style.display = 'block';
+          statusEl.textContent = 'You are now the host!';
+          statusEl.style.color = '#0ff';
+          netMainLog('[NetworkMain] Host role transferred to this client');
+        }
       },
       onGameEnded: () => {
         statusEl.textContent = 'Host ended the game';

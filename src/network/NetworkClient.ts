@@ -108,6 +108,7 @@ export interface NetworkCallbacks {
   onGameStart?: () => void;
   onGameOver?: () => void;
   onHostLeft?: () => void;
+  onHostChanged?: (newHostId: string) => void;
   onGameEnded?: () => void;
   onError?: (error: Error) => void;
 }
@@ -291,6 +292,13 @@ export class NetworkClient {
     this.room.onMessage('host_left', () => {
       netLog('[Network] Host left the game');
       this.callbacks.onHostLeft?.();
+    });
+
+    this.room.onMessage('host_changed', (data: { hostId: string }) => {
+      netLog(`[Network] Host changed to: ${data.hostId}`);
+      this.callbacks.onHostChanged?.(data.hostId);
+      // Also schedule a state refresh so onStateChange picks up the new hostId
+      this.scheduleStateChange();
     });
 
     this.room.onMessage('game_ended', () => {
