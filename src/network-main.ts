@@ -1755,7 +1755,17 @@ function main() {
     // (30Hz), causing visible stutter. Now they smoothly interpolate every
     // render frame, matching how co-op updates enemies every frame.
     // -----------------------------------------------------------------------
-    const ENEMY_LERP = 0.15; // Per-frame lerp at 60fps = smooth convergence
+    // LERP TUNING (Phase 3 — eliminate per-client render desync):
+    // At 60fps, two clients rendering at different times will diverge by
+    // up to LERP * remaining_delta per frame-time difference. A higher
+    // lerp factor means faster convergence → smaller window of divergence.
+    //   0.15 → ~30 frames (500ms) to reach 99% of target  [too slow]
+    //   0.35 → ~12 frames (200ms) to reach 99% of target  ← chosen
+    // At 0.35, max UV divergence between clients ≈ 0.35 * delta per 1-frame
+    // timing skew. Empirically this keeps 3D separation < 0.5 world units.
+    // NOTE: Newly spawned enemies are SNAPPED (not lerped) in onStateChange,
+    // so there is no visible rubber-band on first appearance.
+    const ENEMY_LERP = 0.35; // Phase 3: was 0.15; 12-frame convergence at 60fps
     networkEnemies.forEach((enemy, id) => {
       const target = enemyTargetUV.get(id);
       if (!target) return;
@@ -1816,7 +1826,7 @@ function main() {
     // See decisions/lan-deep-audit-2026-02-11.md #3.
     // BulletInstanceManager provides GPU-instanced rendering (replaces flat lines).
     // -----------------------------------------------------------------------
-    const BULLET_LERP = 0.3; // Faster lerp — bullets move fast, need to converge quickly
+    const BULLET_LERP = 0.5; // Phase 3: was 0.3; bullets move fast → snap quickly (7 frames to 99%)
     bulletTargetUV.forEach((target, id) => {
       const idx = bulletIdToIndex.get(id);
       if (idx === undefined) return;
@@ -1854,7 +1864,7 @@ function main() {
     // Geoms don't move much after spawning, but smooth lerp prevents any
     // visible snap when the server adjusts their position.
     // -----------------------------------------------------------------------
-    const GEOM_LERP = 0.2;
+    const GEOM_LERP = 0.3; // Phase 3: was 0.2; geoms rarely move but faster convergence reduces divergence
     geomTargetUV.forEach((target, id) => {
       const idx = geomIdToIndex.get(id);
       if (idx === undefined) return;
