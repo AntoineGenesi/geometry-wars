@@ -48,6 +48,11 @@ import { WeaponManager } from './weapons/WeaponManager';
 import type { WeaponInventoryEntry } from './weapons/WeaponManager';
 import { AllyGlowManager } from './effects/AllyGlow';
 import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
+import { BuffManager } from './buffs/BuffManager';
+import { BuffHUD } from './buffs/BuffHUD';
+import { BuffAuraRenderer } from './buffs/BuffAuraRenderer';
+import { BuffParticleAura } from './buffs/BuffParticleAura';
+import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
@@ -669,6 +674,19 @@ function main() {
     levelUpNotification.show(level, perk);
     sound.play('multiplierUp', { pitch: 1.2 + level * 0.05 });
   };
+
+  // -- Buff system: display infrastructure pre-wired for future server integration --
+  // The server does not yet send buff state, so buffManager remains empty.
+  // These are wired now so when server support is added, nothing else needs to change.
+  const buffManager = new BuffManager();
+  const buffHUD = new BuffHUD();
+  buffManager.onBuffGained = (type, _stacks) => { buffHUD.highlightBuff(type); };
+  const buffAuraRenderer = new BuffAuraRenderer();
+  const buffParticleAura = new BuffParticleAura();
+  const shockArcRenderer = new ShockArcRenderer();
+  scene.add(buffAuraRenderer.root);
+  scene.add(buffParticleAura.root);
+  scene.add(shockArcRenderer.root);
 
   // -- Enemy tracking --
   // Maps server enemy ID -> real BaseEnemy instance (created via EnemySpawner)
@@ -2133,7 +2151,38 @@ function main() {
       // Update PlayerLevel aura ring (position + pulse animation each frame)
       const auraPoint = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
       playerLevel.update(dt, auraPoint.position, auraPoint.normal);
+
+      // Update buff aura visuals (invisible until server sends buff state)
+      const activeBuffs = buffManager.getActiveBuffs().map(b => ({ type: b.type, stacks: b.stacks }));
+
+      // Enemy aura dimming: reduce aura opacity when enemies enter the aura zone
+      // to keep enemies clearly visible even when buff stacks are high.
+      if (activeBuffs.length > 0) {
+        const DIM_THRESHOLD = 2.0;  // world units: start dimming
+        const DIM_FULL = 0.5;       // world units: maximum dimming
+        const pPos = localPlayer.mesh.position;
+        let nearestDistSq = DIM_THRESHOLD * DIM_THRESHOLD;
+        networkEnemies.forEach((e) => {
+          if (!e.alive || !e.mesh) return;
+          const dSq = pPos.distanceToSquared(e.mesh.position);
+          if (dSq < nearestDistSq) nearestDistSq = dSq;
+        });
+        const nearestDist = Math.sqrt(nearestDistSq);
+        const dimFactor = nearestDist <= DIM_FULL ? 1.0
+          : 1.0 - (nearestDist - DIM_FULL) / (DIM_THRESHOLD - DIM_FULL);
+        buffAuraRenderer.setDimmingFactor(dimFactor);
+        buffParticleAura.setDimmingFactor(dimFactor);
+      } else {
+        buffAuraRenderer.setDimmingFactor(0);
+        buffParticleAura.setDimmingFactor(0);
+      }
+
+      buffAuraRenderer.update(dt, game.clock.totalTime, localPlayer.mesh.position, auraPoint.normal, activeBuffs);
+      buffParticleAura.update(dt, game.clock.totalTime, localPlayer.mesh.position, auraPoint.normal, activeBuffs);
     }
+
+    shockArcRenderer.update(buffManager.shockArcs);
+    buffHUD.update(buffManager.getActiveBuffs());
 
     // -----------------------------------------------------------------------
     // DDA system update (runs on all clients for metric tracking;
@@ -2419,6 +2468,11 @@ function main() {
     lodManager.dispose();
     levelUpNotification.dispose();
     playerLevel.dispose();
+    buffManager.dispose();
+    buffHUD.dispose();
+    buffAuraRenderer.dispose();
+    buffParticleAura.dispose();
+    shockArcRenderer.dispose();
   });
 
   // Debug hook: read-only access to game state for automated testing.
