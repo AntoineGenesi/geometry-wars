@@ -499,3 +499,87 @@ describe('Buff Power Difficulty Contribution', () => {
     expect(diff).toBeLessThanOrEqual(1.5);
   });
 });
+
+// ============================================================================
+// 9. Phase 2 rebalance — score-curve acceptance criteria
+// ============================================================================
+
+describe('Phase 2 Rebalance: Score Curve Acceptance Criteria', () => {
+  // Typical-play milestones from the task spec
+  const milestone5M = {
+    score: 5_000_000, elapsedTime: 1200, combo: 0,
+    totalKills: 500, playerLevel: 9, buffPower: 3.0,
+  };
+  const milestone50M = {
+    score: 50_000_000, elapsedTime: 2700, combo: 0,
+    totalKills: 800, playerLevel: 9, buffPower: 6.0,
+  };
+  const milestone300M = {
+    score: 300_000_000, elapsedTime: 5400, combo: 0,
+    totalKills: 1295, playerLevel: 9, buffPower: 8.45,
+  };
+
+  it('AC1: typical 5M game (20min/500kills/L9/buff3) → difficulty >= 5.0', () => {
+    const d = computeDifficultyLevel(milestone5M);
+    expect(d).toBeGreaterThanOrEqual(5.0);
+  });
+
+  it('AC2: typical 50M game (45min/800kills/L9/buff6) → difficulty >= 8.0', () => {
+    const d = computeDifficultyLevel(milestone50M);
+    expect(d).toBeGreaterThanOrEqual(8.0);
+  });
+
+  it('AC3: typical 300M game (90min/1295kills/L9/buff8.45) → difficulty >= 12.0', () => {
+    const d = computeDifficultyLevel(milestone300M);
+    expect(d).toBeGreaterThanOrEqual(12.0);
+  });
+
+  it('AC4: each 10x score milestone adds >= 1.5 difficulty levels', () => {
+    const d5M = computeDifficultyLevel(milestone5M);
+    const d50M = computeDifficultyLevel(milestone50M);
+    const d300M = computeDifficultyLevel(milestone300M);
+    // 5M→50M (10x): should gain at least 1.5 levels
+    expect(d50M - d5M).toBeGreaterThanOrEqual(1.5);
+    // 50M→300M (6x, not full 10x but meaningful): should also gain >= 1.5
+    expect(d300M - d50M).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it('AC5: baseCount cap raised at difficulty 6+ — wave 30 at diff 8 allows more basic enemies', () => {
+    // At difficulty 6+, baseCountCap = 40 (vs 30 before).
+    // Wave 30 at diff 8: difficultyCountBonus=16, sqrt(30)*2≈10, base=(4+10+16)=30→min(40,30)=30
+    // Wave 100 at diff 8: sqrt(100)*2=20, base=(4+20+16)=40→min(40,40)=40 (previously capped at 30)
+    const wave100Diff8 = generateScaledEndlessWave(100, 8.0, 0);
+    const basicEntry = wave100Diff8[0]; // first entry is always basic
+    // At wave 100, diff 8: uncapped basic count = (4+20+16) = 40. Cap is 40 now.
+    expect(basicEntry.count).toBeGreaterThanOrEqual(35); // meaningfully above old cap of 30
+  });
+
+  it('AC6: entityBrake floor raised to 0.60 at difficulty 8+ (was 0.40)', () => {
+    // At diff 8, 500 entities: brake = max(0.60, 200/500) = 0.60
+    // Crowded wave should retain >= 55% of uncrowded count (floor = 0.60)
+    const uncrowded = generateScaledEndlessWave(20, 8.0, 0);
+    const crowded = generateScaledEndlessWave(20, 8.0, 500);
+    const totalUncrowded = uncrowded.reduce((s, e) => s + e.count, 0);
+    const totalCrowded = crowded.reduce((s, e) => s + e.count, 0);
+    expect(totalCrowded).toBeGreaterThanOrEqual(totalUncrowded * 0.55);
+  });
+
+  it('AC6: entityBrake floor still 0.40 below difficulty 8 (no regression)', () => {
+    // At diff 4, 500 entities: brake = max(0.40, 200/500) = 0.40
+    // Crowded wave should retain approximately 40% of uncrowded count
+    const uncrowded = generateScaledEndlessWave(20, 4.0, 0);
+    const crowded = generateScaledEndlessWave(20, 4.0, 500);
+    const totalUncrowded = uncrowded.reduce((s, e) => s + e.count, 0);
+    const totalCrowded = crowded.reduce((s, e) => s + e.count, 0);
+    // Should be < 50% (confirming 0.40 floor, not 0.60)
+    expect(totalCrowded).toBeLessThan(totalUncrowded * 0.50);
+    expect(totalCrowded).toBeGreaterThan(0);
+  });
+
+  it('AC7: early game (5K score, 30s) stays at difficulty < 0.5', () => {
+    const d = computeDifficultyLevel({
+      score: 5_000, elapsedTime: 30, combo: 0, totalKills: 0, playerLevel: 0,
+    });
+    expect(d).toBeLessThan(0.5);
+  });
+});
