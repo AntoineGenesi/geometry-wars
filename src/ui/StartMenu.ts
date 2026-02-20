@@ -1092,6 +1092,27 @@ export class StartMenu {
         border-color: #00ff66;
         color: #00ff66;
       }
+      #start-menu .lan-wsl2-note {
+        background: rgba(80, 40, 0, 0.5);
+        border: 1px solid #ff8800;
+        color: #ffcc66;
+        font: 11px monospace;
+        padding: 8px 12px;
+        margin: 8px auto;
+        max-width: 520px;
+        text-align: left;
+        line-height: 1.6;
+      }
+      #start-menu .lan-wsl2-note code, #start-menu .lan-wsl2-cmd {
+        display: block;
+        color: #aaffff;
+        background: rgba(0, 0, 0, 0.4);
+        padding: 2px 6px;
+        margin-top: 3px;
+        font-size: 10px;
+        user-select: all;
+        word-break: break-all;
+      }
       #start-menu .lan-scan-item {
         background: rgba(0, 60, 60, 0.4);
         border: 1px solid #006666;
@@ -1756,12 +1777,42 @@ export class StartMenu {
           };
 
           lanHostUrl.appendChild(makeCopyRow('Same PC', localhostUrl));
-          if (result.addresses.length > 0) {
+
+          // Pick the best IP for QR code — prefer Windows LAN IP in WSL2
+          const bestLanIp = (result.isWSL2 && result.windowsAddresses?.length)
+            ? result.windowsAddresses[0]
+            : result.addresses[0];
+
+          if (result.isWSL2) {
+            // In WSL2: addresses are 172.x.x.x internal — unreachable from laptop
+            if (result.addresses.length > 0) {
+              const wsl2Url = this.lanClient.getJoinUrl(result.addresses[0], result.port, this.lanSelectedSurface, vitePort);
+              lanHostUrl.appendChild(makeCopyRow('WSL2 (internal)', wsl2Url));
+            }
+            if (result.windowsAddresses && result.windowsAddresses.length > 0) {
+              const winUrl = this.lanClient.getJoinUrl(result.windowsAddresses[0], result.port, this.lanSelectedSurface, vitePort);
+              lanHostUrl.appendChild(makeCopyRow('LAN (Windows)', winUrl));
+            }
+            // WSL2 connectivity warning
+            const wsl2Note = document.createElement('div');
+            wsl2Note.className = 'lan-wsl2-note';
+            const winIp = result.windowsAddresses?.[0] ?? '(unknown)';
+            wsl2Note.innerHTML = `
+              <b>&#9888; WSL2 detected</b> — Use <b>LAN (Windows)</b> address from other devices.<br>
+              Requires port forwarding: run <code>Setup-WSL-LAN.bat</code> as Administrator.<br>
+              <span class="lan-wsl2-cmd">netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectaddress=${result.addresses[0] ?? '?'} connectport=3000</span><br>
+              <span class="lan-wsl2-cmd">netsh interface portproxy add v4tov4 listenport=2567 listenaddress=0.0.0.0 connectaddress=${result.addresses[0] ?? '?'} connectport=2567</span><br>
+              <small>Then connect from laptop: <b>http://${winIp}:${vitePort}</b></small>
+            `;
+            lanHostUrl.appendChild(wsl2Note);
+          } else if (result.addresses.length > 0) {
             const lanUrl = this.lanClient.getJoinUrl(result.addresses[0], result.port, this.lanSelectedSurface, vitePort);
             lanHostUrl.appendChild(makeCopyRow('LAN', lanUrl));
+          }
 
-            // Generate QR code with mobile-optimized join URL
-            const mobileUrl = this.lanClient.getMobileJoinUrl(result.addresses[0], result.port, this.lanSelectedSurface, vitePort);
+          // Generate QR code using best available IP
+          if (bestLanIp) {
+            const mobileUrl = this.lanClient.getMobileJoinUrl(bestLanIp, result.port, this.lanSelectedSurface, vitePort);
             const qrDisplay = createQRCodeDisplay(mobileUrl, mobileUrl, 220);
             lanQRContainer.innerHTML = '';
             lanQRContainer.appendChild(qrDisplay);

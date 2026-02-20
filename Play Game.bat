@@ -97,6 +97,10 @@ echo   2. Open browser on other device, go to one of the addresses above
 echo   3. Prefer 192.168.x.x addresses (not 10.x.x.x which may be VPN)
 echo   4. If blocked, right-click this .bat and Run as Administrator
 echo.
+echo   NOTE: This .bat runs servers on Windows (not WSL2).
+echo   If you use "npm run dev" in WSL2 instead, run
+echo   Setup-WSL-LAN.bat as Administrator to enable LAN access.
+echo.
 echo  ================================================================
 echo.
 
