@@ -2,10 +2,42 @@ import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { spawn, execSync, type ChildProcess } from 'child_process';
 import { networkInterfaces } from 'os';
+import { readFileSync } from 'fs';
 import http from 'http';
 import path from 'path';
 
 const SERVER_PORT = 2567;
+
+/** Check if running inside WSL2 */
+function detectWSL2(): boolean {
+  try {
+    const version = readFileSync('/proc/version', 'utf8').toLowerCase();
+    return version.includes('microsoft');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get Windows host LAN IPs when running inside WSL2.
+ * Uses powershell.exe (available from WSL2) to query Windows network adapters.
+ * Returns empty array if not in WSL2 or powershell unavailable.
+ */
+function getWindowsLANIPs(): string[] {
+  try {
+    const out = execSync(
+      'powershell.exe -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch \'WSL|Loopback|vEthernet\' -and $_.PrefixOrigin -ne \'WellKnown\' }).IPAddress"',
+      { timeout: 4000, encoding: 'utf8' }
+    );
+    return out
+      .trim()
+      .split(/\r?\n/)
+      .map((ip: string) => ip.trim())
+      .filter((ip: string) => /^\d+\.\d+\.\d+\.\d+$/.test(ip) && ip !== '127.0.0.1');
+  } catch {
+    return [];
+  }
+}
 
 function getLANAddresses(): string[] {
   const interfaces = networkInterfaces();
@@ -114,14 +146,16 @@ export default function lanPlugin(): Plugin {
     });
   }
 
-  async function handleStart(options?: { shutdownTimeout?: number }): Promise<{ ok: boolean; addresses: string[]; port: number; error?: string }> {
+  async function handleStart(options?: { shutdownTimeout?: number }): Promise<{ ok: boolean; addresses: string[]; port: number; error?: string; isWSL2?: boolean; windowsAddresses?: string[] }> {
     const addresses = getLANAddresses();
+    const wsl2 = detectWSL2();
+    const windowsAddresses = wsl2 ? getWindowsLANIPs() : [];
 
     // Already hosting (we spawned this process ourselves)
     if (serverProcess && serverReady) {
       // Verify our own server is still healthy
       if (await checkServerHealth()) {
-        return { ok: true, addresses, port: SERVER_PORT };
+        return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses };
       }
       // Our server died, clean up
       serverProcess.kill();
@@ -135,7 +169,7 @@ export default function lanPlugin(): Plugin {
     // matchmake, causing ERR_EMPTY_RESPONSE for clients.
     if (await checkServerDeep()) {
       serverReady = true;
-      return { ok: true, addresses, port: SERVER_PORT };
+      return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses };
     }
 
     // If something is on the port but failed deep check, kill it
@@ -192,14 +226,14 @@ export default function lanPlugin(): Plugin {
         if (addresses.length === 0) {
           console.log('[LAN]   WARNING: No LAN addresses detected.');
         }
-        return { ok: true, addresses, port: SERVER_PORT };
+        return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses };
       }
     }
 
     // Failed - cleanup
     serverProcess?.kill();
     serverProcess = null;
-    return { ok: false, addresses, port: SERVER_PORT, error: 'Server failed to start within 15s' };
+    return { ok: false, addresses, port: SERVER_PORT, error: 'Server failed to start within 15s', isWSL2: wsl2, windowsAddresses };
   }
 
   async function handleStop(): Promise<{ ok: boolean }> {
@@ -299,10 +333,13 @@ export default function lanPlugin(): Plugin {
         const route = url.replace('/__lan/', '');
 
         if (route === 'status' && req.method === 'GET') {
+          const wsl2 = detectWSL2();
           sendJson(res, {
             hosting: serverProcess !== null && serverReady,
             addresses: getLANAddresses(),
             port: SERVER_PORT,
+            isWSL2: wsl2,
+            windowsAddresses: wsl2 ? getWindowsLANIPs() : [],
           });
           return;
         }

@@ -8,6 +8,10 @@ export interface LANStatus {
   hosting: boolean;
   addresses: string[];
   port: number;
+  /** True when the server is running inside WSL2 (affects reachability from LAN) */
+  isWSL2?: boolean;
+  /** Windows host LAN IPs (populated when isWSL2 is true) */
+  windowsAddresses?: string[];
 }
 
 export interface LANRoom {
@@ -37,6 +41,10 @@ export interface LANStartResult {
   addresses: string[];
   port: number;
   error?: string;
+  /** True when the server is running inside WSL2 (addresses will be 172.x.x.x — unreachable from LAN) */
+  isWSL2?: boolean;
+  /** Windows host LAN IPs to use instead when isWSL2 is true (requires port forwarding via Setup-WSL-LAN.bat) */
+  windowsAddresses?: string[];
 }
 
 export interface LANScanResult {
