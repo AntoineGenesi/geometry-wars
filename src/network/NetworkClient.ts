@@ -120,6 +120,8 @@ export interface NetworkCallbacks {
   onGeomCollect?: (geomId: string) => void;
   onGameStart?: () => void;
   onGameOver?: () => void;
+  /** Fired when the server is about to spawn an enemy (1.5s warning). */
+  onPreSpawn?: (data: { type: string; u: number; v: number }) => void;
   onHostLeft?: () => void;
   onHostChanged?: (newHostId: string) => void;
   onGameEnded?: () => void;
@@ -316,6 +318,11 @@ export class NetworkClient {
       }
       prevRoomPhase = value;
       this.scheduleStateChange();
+    });
+
+    // Pre-spawn warning: server fires this 1.5s before adding an enemy to state
+    this.room.onMessage('pre_spawn', (data: { type: string; u: number; v: number }) => {
+      this.callbacks.onPreSpawn?.(data);
     });
 
     // Server lifecycle messages

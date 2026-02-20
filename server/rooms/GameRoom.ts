@@ -37,6 +37,9 @@ interface WaveEntry {
 
 // Constants
 const TICK_RATE = 60;
+// How far in advance (ms) the server warns clients before spawning an enemy.
+// Clients show a pulsing red ring for this duration before the enemy appears.
+const PRE_SPAWN_WARNING_MS = 1500;
 const VOTING_COUNTDOWN_SECS = 5;
 // Movement speed in UV units per second.
 // Co-op uses MeshWalker at 3.0 world units/s. On a sphere of radius 5,
@@ -1064,7 +1067,18 @@ export class GameRoom extends Room<GameState> {
     enemy.health = this.getEnemyHealth(type);
     enemy.alive = true;
 
-    this.state.enemies.push(enemy);
+    // Broadcast pre-spawn warning to all clients so they can show a pulsing
+    // red ring at this UV position before the enemy actually appears.
+    this.broadcast('pre_spawn', { type, u: enemy.surfaceU, v: enemy.surfaceV });
+
+    // Delay adding to state so clients have PRE_SPAWN_WARNING_MS to show
+    // the warning ring before the enemy materialises.
+    setTimeout(() => {
+      // Guard: only push if game is still in progress and cap not reached.
+      if (this.state.roomPhase === 'playing' && this.state.enemies.length < this.getMaxEnemies()) {
+        this.state.enemies.push(enemy);
+      }
+    }, PRE_SPAWN_WARNING_MS);
   }
 
   private getEnemyHealth(type: string): number {

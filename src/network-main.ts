@@ -761,6 +761,26 @@ function main() {
   // Uses real WeaponPickup instances (same as co-op)
   const networkWeaponPickups = new Map<string, WeaponPickup>();
 
+  // -- Spawn warning rings (LAN visual parity) --
+  // Created when 'pre_spawn' message arrives; cleaned up when enemy appears or times out.
+  interface SpawnWarningRing {
+    mesh: THREE.Mesh;
+    u: number;
+    v: number;
+    spawnedAt: number; // performance.now() timestamp when created (ms)
+  }
+  const PRE_SPAWN_DURATION = 1.5; // seconds — must match server PRE_SPAWN_WARNING_MS / 1000
+  const spawnWarningRings: SpawnWarningRing[] = [];
+  // Shared geometry/material for all warning rings (created once, reused)
+  const warningRingGeometry = new THREE.RingGeometry(0.2, 0.35, 16);
+  const warningRingBaseMaterial = new THREE.MeshBasicMaterial({
+    color: 0xff4444,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+
   // -- Local input --
   // On mobile, use virtual joystick touch controls; otherwise keyboard+mouse.
   const input = mobile ? new TouchInput() : new InputManager();
@@ -1395,6 +1415,13 @@ function main() {
     // Reset game-over flag so GameOverScreen can show again next game
     gameOverShown = false;
 
+    // Clear any pending spawn warning rings from the previous round
+    for (const w of spawnWarningRings) {
+      scene.remove(w.mesh);
+      (w.mesh.material as THREE.MeshBasicMaterial).dispose();
+    }
+    spawnWarningRings.length = 0;
+
     netMainLog('[NetworkMain] Game entities reset for new round');
   }
 
@@ -1556,6 +1583,20 @@ function main() {
         enemy.surfacePosition.v = netEnemy.surfaceV;
         if (getTransform) {
           enemy.applySurfaceTransform(getTransform);
+        }
+
+        // Remove any matching spawn warning ring at this UV position.
+        // The ring was created 1.5s ago by the 'pre_spawn' message.
+        for (let i = spawnWarningRings.length - 1; i >= 0; i--) {
+          const w = spawnWarningRings[i];
+          const du = Math.abs(w.u - netEnemy.surfaceU);
+          const dv = Math.abs(w.v - netEnemy.surfaceV);
+          if (du < 0.02 && dv < 0.02) {
+            scene.remove(w.mesh);
+            (w.mesh.material as THREE.MeshBasicMaterial).dispose();
+            spawnWarningRings.splice(i, 1);
+            break; // one ring per spawn position
+          }
         }
       }
 
@@ -1970,6 +2011,24 @@ function main() {
           const score = localPlayer?.score ?? 0;
           gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network');
         }
+        // Clear all pending warning rings when game ends
+        for (const w of spawnWarningRings) {
+          scene.remove(w.mesh);
+          (w.mesh.material as THREE.MeshBasicMaterial).dispose();
+        }
+        spawnWarningRings.length = 0;
+      },
+      onPreSpawn: (data: { type: string; u: number; v: number }) => {
+        // Create a standalone pulsing red ring at the spawn position.
+        // Does NOT require enemySpawner.update() — animated independently in onRender.
+        if (!getTransform) return;
+        const t = getTransform(data.u, data.v);
+        const mat = warningRingBaseMaterial.clone();
+        const mesh = new THREE.Mesh(warningRingGeometry, mat);
+        mesh.position.copy(t.position).addScaledVector(t.normal, 0.05);
+        mesh.lookAt(mesh.position.clone().add(t.normal));
+        scene.add(mesh);
+        spawnWarningRings.push({ mesh, u: data.u, v: data.v, spawnedAt: performance.now() });
       },
       onError: (err) => {
         statusEl.textContent = `Error: ${err.message}`;
@@ -2457,6 +2516,39 @@ function main() {
       g.surfaceU += (target.u - g.surfaceU) * GEOM_LERP;
       g.surfaceV += (target.v - g.surfaceV) * GEOM_LERP;
     });
+
+    // -----------------------------------------------------------------------
+    // Spawn warning rings (LAN visual parity with single-player)
+    // Created by onPreSpawn 1.5s before enemy appears. Animated here and
+    // cleaned up when they expire. Enemy appearance also cleans them up
+    // (in onStateChange via isNewEnemy check).
+    // -----------------------------------------------------------------------
+    const nowMs = performance.now();
+    for (let i = spawnWarningRings.length - 1; i >= 0; i--) {
+      const w = spawnWarningRings[i];
+      const ageSec = (nowMs - w.spawnedAt) / 1000;
+      const progress = Math.min(1, ageSec / PRE_SPAWN_DURATION);
+
+      // Pulse: expand ring and fade it out as the enemy approaches
+      const pulse = 1 + Math.sin(progress * Math.PI * 6) * 0.25;
+      const scale = (0.5 + progress) * pulse;
+      w.mesh.scale.setScalar(scale);
+      (w.mesh.material as THREE.MeshBasicMaterial).opacity = (1.0 - progress * 0.75) * 0.9;
+
+      // Reposition on surface in case getTransform changes (animated surfaces)
+      if (getTransform) {
+        const t = getTransform(w.u, w.v);
+        w.mesh.position.copy(t.position).addScaledVector(t.normal, 0.05);
+        w.mesh.lookAt(w.mesh.position.clone().add(t.normal));
+      }
+
+      // Remove after duration + small buffer (enemy should have appeared by now)
+      if (ageSec >= PRE_SPAWN_DURATION + 0.5) {
+        scene.remove(w.mesh);
+        (w.mesh.material as THREE.MeshBasicMaterial).dispose();
+        spawnWarningRings.splice(i, 1);
+      }
+    }
 
     // Camera follows local player along surface normal (same as co-op).
     // Use the player's mesh position directly instead of worldToSurface
