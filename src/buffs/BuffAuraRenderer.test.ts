@@ -65,6 +65,11 @@ vi.mock('three', () => {
     dispose() {}
   }
 
+  class Quaternion {
+    x = 0; y = 0; z = 0; w = 1;
+    setFromUnitVectors(_from: Vector3, _to: Vector3) { return this; }
+  }
+
   class Mesh {
     geometry: any;
     material: any;
@@ -72,6 +77,7 @@ vi.mock('three', () => {
     frustumCulled: boolean = true;
     renderOrder: number = 0;
     position: Vector3 = new Vector3();
+    quaternion: Quaternion = new Quaternion();
     scale = { setScalar(_s: number) { /* noop */ } };
     constructor(geometry: any, material: any) {
       this.geometry = geometry;

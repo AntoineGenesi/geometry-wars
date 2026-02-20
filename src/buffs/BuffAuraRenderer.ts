@@ -40,8 +40,9 @@ const RING_SEGMENTS = 48;
 const RING_INNER_RADIUS = 0.85;
 const RING_OUTER_RADIUS = 1.15;
 
-// Pre-allocated temp vector (module-level, zero allocation in update)
-const _tempUp = new THREE.Vector3();
+// Pre-allocated for zero-allocation orientation in update()
+// RingGeometry lies in XY plane with +Z as its face normal.
+const _ringZAxis = new THREE.Vector3(0, 0, 1);
 
 // ---------------------------------------------------------------------------
 // Quality tiers
@@ -569,9 +570,10 @@ export class BuffAuraRenderer {
         // Offset along surface normal to prevent z-fighting
         slot.mesh.position.addScaledVector(surfaceNormal, 0.06);
 
-        // Orient ring to face along surface normal
-        _tempUp.copy(playerPos).add(surfaceNormal);
-        slot.mesh.lookAt(_tempUp);
+        // Orient ring to face along surface normal.
+        // setFromUnitVectors is robust for all normal directions, including (0,1,0)
+        // which breaks lookAt() (degenerate when look-direction == world-up).
+        slot.mesh.quaternion.setFromUnitVectors(_ringZAxis, surfaceNormal);
         slot.mesh.scale.setScalar(radiusScale);
 
         slot.mesh.visible = true;
