@@ -22,21 +22,19 @@ export interface VotingScreenCallbacks {
   onReturnToMenu?: () => void;
 }
 
-const SURFACES = [
-  { id: 'sphere',      icon: '🔵', label: 'SPHERE' },
-  { id: 'torus',       icon: '🍩', label: 'TORUS' },
-  { id: 'cube',        icon: '📦', label: 'CUBE' },
-  { id: 'pill',        icon: '💊', label: 'PILL' },
-  { id: 'capsule',     icon: '💉', label: 'CAPSULE' },
-  { id: 'knot',        icon: '🪢', label: 'KNOT' },
-  { id: 'cylinder',    icon: '🥫', label: 'CYLINDER' },
-  { id: 'cube-tunnel', icon: '⬡',  label: 'CUBE-TUNNEL' },
+export const SURFACES = [
+  { id: 'sphere',       icon: '🔵', label: 'SPHERE' },
+  { id: 'torus',        icon: '🍩', label: 'TORUS' },
+  { id: 'cube',         icon: '📦', label: 'CUBE' },
+  { id: 'pill',         icon: '💊', label: 'PILL' },
+  { id: 'capsule',      icon: '💉', label: 'CAPSULE' },
+  { id: 'icosahedron',  icon: '🔷', label: 'ICOSAHEDRON' },
+  { id: 'peanut',       icon: '🥜', label: 'PEANUT' },
+  { id: 'cube-tunnel',  icon: '⬡',  label: 'CUBE-TUNNEL' },
 ];
 
-const MODES = [
-  { id: 'waves',   label: 'WAVES' },
-  { id: 'king',    label: 'KING' },
-  { id: 'rainbow', label: 'RAINBOW' },
+export const MODES = [
+  { id: 'waves', label: 'WAVES' },
 ];
 
 const SIZES = [

@@ -8,6 +8,24 @@
 
 ---
 
+## Session 27 VotingScreen — Valid Options Only (2026-02-21)
+
+After dying in a LAN game (triggers voting phase):
+
+### Surface options — only valid surfaces shown
+
+- [ ] **KNOT and CYLINDER are gone** — The voting screen should NOT show a KNOT or CYLINDER option. The list should be: SPHERE, TORUS, CUBE, PILL, CAPSULE, ICOSAHEDRON, PEANUT, CUBE-TUNNEL (8 surfaces).
+- [ ] **ICOSAHEDRON loads correctly** — Vote for ICOSAHEDRON, launch game. The icosahedron surface loads without error or crash.
+- [ ] **PEANUT loads correctly** — Vote for PEANUT, launch game. The peanut surface loads without error or crash.
+- [ ] **Each surface in the list loads** — Vote for sphere, torus, cube, pill, capsule (one at a time across multiple rounds). Each loads without crash.
+
+### Mode options — only WAVES shown
+
+- [ ] **KING and RAINBOW are gone** — The mode selector should only show WAVES. No KING or RAINBOW option visible.
+- [ ] **Game starts as waves** — After voting, game always starts in waves mode regardless.
+
+---
+
 ## Session 27 Respawn Location Bug Fix (2026-02-21)
 
 Die to an enemy and wait for respawn.
