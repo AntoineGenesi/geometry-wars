@@ -60,6 +60,8 @@ import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { LODManager } from './rendering/LODManager';
+import { DepthOcclusionSystem } from './rendering/DepthOpacity';
+import { OcclusionSurfaceMaterial } from './rendering/OcclusionSurfaceMaterial';
 import { AdaptiveQuality, QualityLevel } from './rendering/AdaptiveQuality';
 import {
   NetworkClient,
@@ -410,6 +412,9 @@ function main() {
   const scene = game.scene;
   const camera = game.camera;
 
+  // Frame-time tracker for depth-occlusion lerp in onRender (avoids per-frame allocation)
+  let _lastNetRenderTime = performance.now();
+
   // -- CameraController: orbit (middle mouse), zoom (scroll wheel), follow (same as single-player) --
   const cameraController = new CameraController(camera);
   cameraController.setCameraDistance(20); // Match existing LAN camera distance
@@ -581,6 +586,8 @@ function main() {
     surface.mesh.updateMatrixWorld(true);
     meshSurface = new MeshSurface(surface.mesh);
     bulletPool.setMeshSurface(meshSurface);
+    // Wire depth occlusion to new surface mesh (BVH built internally for fast raycasting)
+    depthOcclusion.setSurfaceMesh(surface.mesh);
     localWeaponManager.setMeshSurface(meshSurface);
 
     // Pass mapSizeScaleFactor so UV→world transforms correctly reflect the surface scale.
@@ -611,6 +618,11 @@ function main() {
   // -- GPU instanced enemy rendering (reduces draw calls from ~2000 to ~15) --
   // Created before initSurface() so it can be wired into the enemySpawner.
   const enemyInstanceManager = new EnemyInstanceManager(scene);
+
+  // -- Depth-based occlusion: dims enemies behind the surface (view-based, not proximity-based) --
+  // S27b: replaces the disabled proximity-based depth opacity with raycast-based occlusion.
+  // Uses EnemyInstanceManager for performance-friendly instanced visibility updates.
+  const depthOcclusion = new DepthOcclusionSystem();
 
   // -- LOD: reduce triangle count for distant enemies (same as single-player) --
   const lodManager = new LODManager();
@@ -2472,6 +2484,29 @@ function main() {
     const enemyArray = Array.from(networkEnemies.values());
     const lodAssignments = lodManager.update(camera, enemyArray);
     enemyInstanceManager.updateInstancesWithLOD(enemyArray, lodAssignments, camera);
+
+    // -----------------------------------------------------------------------
+    // View-based depth occlusion (S27b): dim enemies behind the surface.
+    // Raycasts from camera to each enemy — counts surface intersections.
+    // 0 intersections = fully visible, 1 = dimmed, 2+ = nearly invisible.
+    // Uses EnemyInstanceManager (GPU-instanced color buffer) for zero per-enemy
+    // material state flushes — avoids the performance problem of the old approach.
+    // -----------------------------------------------------------------------
+    const netRenderNow = performance.now();
+    const netRenderDt = Math.min((netRenderNow - _lastNetRenderTime) / 1000, 0.1);
+    _lastNetRenderTime = netRenderNow;
+
+    depthOcclusion.update(enemyArray, camera.position, netRenderDt);
+    for (const enemy of enemyArray) {
+      if (!enemy.alive || !enemy.mesh) continue;
+      const vis = depthOcclusion.getOpacity(enemy);
+      if (enemyInstanceManager.isInLODBatch(enemy)) {
+        enemyInstanceManager.setLODInstanceVisibility(enemy, vis);
+      } else {
+        enemyInstanceManager.setInstanceVisibility(enemy, vis);
+      }
+    }
+
     enemyInstanceManager.flushColors();
 
     // -----------------------------------------------------------------------
@@ -2633,13 +2668,14 @@ function main() {
     bulletPool.applySurfaceProjection(transform);
     geomPool.applySurfaceProjection(transform);
 
-    // Depth-based opacity DISABLED in network mode.
-    // This was computing getVisibility() + setting material.opacity on EVERY enemy
-    // mesh EVERY frame (250+ material updates/frame for 50 enemies with 5 children
-    // each). Material property changes force GPU state flushes = massive FPS hit.
-    // Co-op mode doesn't use depth opacity and feels smooth. Enemies behind the
-    // surface are clipped by the depth buffer or frustum culled naturally.
-    // See decisions/lan-deep-audit-2026-02-11.md #6.
+    // Surface occlusion shader: fade surface geometry between camera and player (same as single-player).
+    // OcclusionSurfaceMaterial is the default material from SurfaceFactory — safe to cast.
+    if (surf.mesh.material instanceof OcclusionSurfaceMaterial) {
+      const localPlayer = networkPlayers.get(localPlayerId);
+      if (localPlayer) {
+        surf.mesh.material.setOcclusionParams(camera.position, localPlayer.mesh.position, true);
+      }
+    }
 
     // Screen shake (same as co-op)
     if (screenShake.offset.lengthSq() > 0.0001) {

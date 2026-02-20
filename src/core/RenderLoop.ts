@@ -7,10 +7,6 @@ import { Boss } from '../entities/enemies/Boss';
 import { UIHelpers } from '../ui/UIHelpers';
 import { profiler } from './PerformanceProfiler';
 
-/** Enemies within this world-unit radius of the player are boosted to full visibility,
- *  overriding occlusion dimming (X-ray effect near the player). */
-export const NEAR_PLAYER_RADIUS = 8.0;
-
 /**
  * RenderLoop contains the render callback logic, extracted from main.ts onRender.
  * All state is accessed through the GameContext parameter.
@@ -24,9 +20,6 @@ export class RenderLoop {
   // Pre-allocated vectors for far-side enemy culling (zero per-frame allocation)
   private _farSideCamDir = new THREE.Vector3();
   private _farSideTempDir = new THREE.Vector3();
-
-  // Pre-allocated player position snapshot for X-ray near-player boost (zero per-frame allocation)
-  private _xrayPlayerPos = new THREE.Vector3();
 
   // Module-level pre-allocated objects for zero-GC frustum visibility checks
   private _frustum = new THREE.Frustum();
@@ -99,9 +92,6 @@ export class RenderLoop {
       this._farSideCamDir.copy(camPos).sub(meshCenter).normalize();
     }
 
-    // Snapshot player world position once per frame for X-ray boost (zero per-frame allocation)
-    this._xrayPlayerPos.copy(playerPos);
-
     for (const enemy of allEnemies) {
       if (!enemy.alive || !enemy.mesh) continue;
 
@@ -166,18 +156,6 @@ export class RenderLoop {
         const farSideDot = this._farSideCamDir.dot(this._farSideTempDir);
         const farFactor = Math.max(0, Math.min(1, (farSideDot - FAR_SIDE_FAR_DOT) / farSideRange));
         visibility = Math.min(visibility, farFactor);
-      }
-
-      // X-ray boost: enemies within NEAR_PLAYER_RADIUS world units of the player are
-      // pushed toward full visibility, overriding all occlusion/culling dimming.
-      // Quadratic falloff: full boost at distance 0, no boost at NEAR_PLAYER_RADIUS.
-      // Boost is ADDITIVE toward 1.0 (not multiplicative) so even deeply occluded
-      // enemies (visibility=0.04) become fully bright when right next to the player.
-      const xrayDist = enemy.position.distanceTo(this._xrayPlayerPos);
-      if (xrayDist < NEAR_PLAYER_RADIUS) {
-        const t = 1.0 - (xrayDist / NEAR_PLAYER_RADIUS);
-        const boostFactor = t * t; // quadratic: smooth falloff, no harsh boundary
-        visibility = visibility + boostFactor * (1.0 - visibility);
       }
 
       visibleEnemyCount++;
