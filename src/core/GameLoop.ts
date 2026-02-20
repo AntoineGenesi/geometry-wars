@@ -101,9 +101,10 @@ export class GameLoop {
         ctx.state.respawnTimer += dt;
         if (ctx.state.respawnTimer >= ctx.state.RESPAWN_DELAY) {
           ctx.state.respawnTimer = 0;
-          // Respawn at center of surface
-          ctx.player.respawn(0.5, 0.5);
-          const respawnPoint = ctx.surface.getPoint(0.5, 0.5);
+          // Respawn at safe location (opposite side of surface from death location)
+          const safePos = ctx.player.getSafeRespawnPosition();
+          ctx.player.respawn(safePos.u, safePos.v);
+          const respawnPoint = ctx.surface.getPoint(safePos.u, safePos.v);
           // Reset walker to respawn position
           const projected = ctx.meshSurface.closestPointOnSurface(respawnPoint.position);
           if (projected) {

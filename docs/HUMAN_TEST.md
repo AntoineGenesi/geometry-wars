@@ -8,6 +8,17 @@
 
 ---
 
+## Session 27 Respawn Location Bug Fix (2026-02-21)
+
+Die to an enemy and wait for respawn.
+
+### Safe Respawn Position
+
+- [ ] **Player respawns away from death location** — After dying, the player should reappear on the OPPOSITE SIDE of the surface from where they died, NOT at the same spot or at the center. Move to one end of the surface, let enemies kill you, verify you respawn far from that spot.
+- [ ] **LAN respawn also safe** — In a LAN game, die to an enemy (not boss last-life). Player should reappear at diagonally-opposite UV position, not at the death spot or center.
+
+---
+
 ## Session 25 LAN Host Disconnect — Connection Lost Overlay (2026-02-20)
 
 Start a LAN game (host + at least one non-host/client player).
