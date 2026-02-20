@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 
+// Pre-allocated for zero-allocation orientation in update()
+// RingGeometry lies in XY plane with +Z as its face normal.
+const _ringZAxis = new THREE.Vector3(0, 0, 1);
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -172,7 +176,11 @@ export class PlayerLevel {
 
     // Position on surface
     this.auraRing.position.copy(position).addScaledVector(normal, 0.06);
-    this.auraRing.lookAt(position.clone().add(normal));
+    // Orient ring to lie flat on the surface (face perpendicular to surface normal).
+    // setFromUnitVectors is robust for all normal directions, including (0,1,0)
+    // which breaks lookAt() (degenerate when look-direction == world-up).
+    // This fixes the ring appearing incorrect at the top of the torus tube in LAN mode.
+    this.auraRing.quaternion.setFromUnitVectors(_ringZAxis, normal);
 
     // Pulse animation
     const pulse = 1.0 + Math.sin(this.pulseTime * 1.8) * 0.05;
