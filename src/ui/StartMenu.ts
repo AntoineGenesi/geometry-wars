@@ -1747,7 +1747,10 @@ export class StartMenu {
         if (result.ok) {
           hostedServerUrl = this.lanClient.getServerWsUrl('localhost', result.port);
           const vitePort = parseInt(window.location.port, 10) || 3000;
-          const localhostUrl = this.lanClient.getJoinUrl('localhost', result.port, this.lanSelectedSurface, vitePort);
+          
+          // Register short code once for this surface/port combination
+          const shortCodeUrl = await this.lanClient.registerShortCode('localhost', this.lanSelectedSurface, result.port, vitePort);
+          const localhostUrl = shortCodeUrl;
 
           lanHostStatus.textContent = 'Server running!';
           lanHostUrl.innerHTML = '';
@@ -1786,11 +1789,11 @@ export class StartMenu {
           if (result.isWSL2) {
             // In WSL2: addresses are 172.x.x.x internal — unreachable from laptop
             if (result.addresses.length > 0) {
-              const wsl2Url = this.lanClient.getJoinUrl(result.addresses[0], result.port, this.lanSelectedSurface, vitePort);
+              const wsl2Url = shortCodeUrl;
               lanHostUrl.appendChild(makeCopyRow('WSL2 (internal)', wsl2Url));
             }
             if (result.windowsAddresses && result.windowsAddresses.length > 0) {
-              const winUrl = this.lanClient.getJoinUrl(result.windowsAddresses[0], result.port, this.lanSelectedSurface, vitePort);
+              const winUrl = shortCodeUrl;
               lanHostUrl.appendChild(makeCopyRow('LAN (Windows)', winUrl));
             }
             // WSL2 connectivity warning
@@ -1806,14 +1809,14 @@ export class StartMenu {
             `;
             lanHostUrl.appendChild(wsl2Note);
           } else if (result.addresses.length > 0) {
-            const lanUrl = this.lanClient.getJoinUrl(result.addresses[0], result.port, this.lanSelectedSurface, vitePort);
+            const lanUrl = shortCodeUrl;
             lanHostUrl.appendChild(makeCopyRow('LAN', lanUrl));
           }
 
-          // Generate QR code using best available IP
+          // Generate QR code using best available IP (using short code URL)
           if (bestLanIp) {
-            const mobileUrl = this.lanClient.getMobileJoinUrl(bestLanIp, result.port, this.lanSelectedSurface, vitePort);
-            const qrDisplay = createQRCodeDisplay(mobileUrl, mobileUrl, 220);
+            
+            const qrDisplay = createQRCodeDisplay(shortCodeUrl, shortCodeUrl, 220);
             lanQRContainer.innerHTML = '';
             lanQRContainer.appendChild(qrDisplay);
           }

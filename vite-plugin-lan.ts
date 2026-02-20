@@ -90,9 +90,25 @@ function sendJson(res: ServerResponse, data: unknown, status = 200): void {
   res.end(JSON.stringify(data));
 }
 
+function sendRedirect(res: ServerResponse, url: string, status = 302): void {
+  res.statusCode = status;
+  res.setHeader('Location', url);
+  res.end();
+}
+
+// Generate a random 5-digit code (10000-99999)
+function generateShortCode(): string {
+  const code = Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000;
+  return code.toString();
+}
+
+
 export default function lanPlugin(): Plugin {
   let serverProcess: ChildProcess | null = null;
   let serverReady = false;
+
+  // Map short codes (e.g., "12345") to full URL parameters (e.g., { surface: "sphere", port: "2567" })
+  const shortCodeMap = new Map<string, Record<string, string>>();
 
   async function checkServerHealth(): Promise<boolean> {
     try {
@@ -327,7 +343,21 @@ export default function lanPlugin(): Plugin {
       server.middlewares.use((req: IncomingMessage, res: ServerResponse, next: () => void) => {
         const url = req.url ?? '';
         if (!url.startsWith('/__lan/')) {
-          return next();
+                  // Handle short code redirects (e.g., /12345)
+        const shortCodeMatch = url.match(/^\/(\d{5})(?:[/?].*)?$/);
+        if (shortCodeMatch) {
+          const code = shortCodeMatch[1];
+          if (shortCodeMap.has(code)) {
+            const params = shortCodeMap.get(code)!;
+            const queryString = new URLSearchParams(params).toString();
+            const fullUrl = `/?mode=network&${queryString}`;
+            sendRedirect(res, fullUrl);
+            return;
+          }
+          // Code not found, fall through to next()
+        }
+
+        return next();
         }
 
         const route = url.replace('/__lan/', '');
@@ -373,6 +403,34 @@ export default function lanPlugin(): Plugin {
             .catch((err) => sendJson(res, { found: [], subnets: [], error: (err as Error).message }, 500));
           return;
         }
+
+        if (route.startsWith('register-code') && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: Buffer) => { body += chunk; });
+          req.on('end', () => {
+            try {
+              const data = JSON.parse(body);
+              const code = data.code || generateShortCode();
+              shortCodeMap.set(code, data.params || {});
+              sendJson(res, { ok: true, code });
+            } catch (err) {
+              sendJson(res, { ok: false, error: 'Invalid request' }, 400);
+            }
+          });
+          return;
+        }
+
+        if (route.startsWith('lookup-code') && req.method === 'GET') {
+          const code = req.url?.split('?')[0].split('/').pop();
+          if (code && shortCodeMap.has(code)) {
+            const params = shortCodeMap.get(code);
+            sendJson(res, { ok: true, params });
+          } else {
+            sendJson(res, { ok: false, error: 'Code not found' }, 404);
+          }
+          return;
+        }
+
 
         sendJson(res, { error: 'Unknown LAN endpoint' }, 404);
       });

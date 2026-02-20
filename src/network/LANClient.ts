@@ -53,6 +53,8 @@ export interface LANScanResult {
 }
 
 export class LANClient {
+  /** Map of (surface+port) combinations to their short codes */
+  private shortCodeMap = new Map<string, string>();
   private available: boolean | null = null;
 
   /** Check if LAN APIs are available (dev mode only) */
@@ -119,7 +121,34 @@ export class LANClient {
     return `ws://${ip}:${port}`;
   }
 
-  /** Build the full join URL for sharing with other players */
+  /** Register a short code for the given parameters and return the short code URL */
+  async registerShortCode(ip: string, surface: string, port: number, vitePort: number = 3000): Promise<string> {
+    const code = Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000;
+    const codeStr = code.toString();
+    const params: Record<string, string> = { surface: encodeURIComponent(surface) };
+    if (port !== 2567) {
+      params.port = port.toString();
+    }
+    
+    try {
+      const res = await fetch('/__lan/register-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: codeStr, params }),
+      });
+      if (res.ok) {
+        const key = `${surface}:${port}`;
+        this.shortCodeMap.set(key, codeStr);
+        return `http://${ip}:${vitePort}/${codeStr}`;
+      }
+    } catch (err) {
+      console.error('Failed to register short code:', err);
+    }
+    // Fallback to full URL if registration fails
+    return this.getJoinUrl(ip, port, surface, vitePort);
+  }
+
+    /** Build the full join URL for sharing with other players */
   getJoinUrl(ip: string, port: number, surface: string, vitePort: number = 3000): string {
     // Server URL is auto-derived from hostname (ws://hostname:2567).
     // Only include port= when non-default to keep URLs clean and human-readable.
