@@ -1751,6 +1751,11 @@ export class StartMenu {
           // Register short code once for this surface/port combination
           const shortCodeUrl = await this.lanClient.registerShortCode('localhost', this.lanSelectedSurface, result.port, vitePort);
           const localhostUrl = shortCodeUrl;
+          
+          // Helper to replace localhost with actual IP in the short code URL
+          const replaceIpInUrl = (baseUrl: string, newIp: string): string => {
+            return baseUrl.replace('localhost', newIp);
+          };
 
           lanHostStatus.textContent = 'Server running!';
           lanHostUrl.innerHTML = '';
@@ -1789,11 +1794,11 @@ export class StartMenu {
           if (result.isWSL2) {
             // In WSL2: addresses are 172.x.x.x internal — unreachable from laptop
             if (result.addresses.length > 0) {
-              const wsl2Url = shortCodeUrl;
+              const wsl2Url = replaceIpInUrl(shortCodeUrl, result.addresses[0]);
               lanHostUrl.appendChild(makeCopyRow('WSL2 (internal)', wsl2Url));
             }
             if (result.windowsAddresses && result.windowsAddresses.length > 0) {
-              const winUrl = shortCodeUrl;
+              const winUrl = replaceIpInUrl(shortCodeUrl, result.windowsAddresses[0]);
               lanHostUrl.appendChild(makeCopyRow('LAN (Windows)', winUrl));
             }
             // WSL2 connectivity warning
@@ -1809,14 +1814,14 @@ export class StartMenu {
             `;
             lanHostUrl.appendChild(wsl2Note);
           } else if (result.addresses.length > 0) {
-            const lanUrl = shortCodeUrl;
+            const lanUrl = replaceIpInUrl(shortCodeUrl, result.addresses[0]);
             lanHostUrl.appendChild(makeCopyRow('LAN', lanUrl));
           }
 
           // Generate QR code using best available IP (using short code URL)
           if (bestLanIp) {
-            
-            const qrDisplay = createQRCodeDisplay(shortCodeUrl, shortCodeUrl, 220);
+            const qrUrl = replaceIpInUrl(shortCodeUrl, bestLanIp);
+            const qrDisplay = createQRCodeDisplay(qrUrl, qrUrl, 220);
             lanQRContainer.innerHTML = '';
             lanQRContainer.appendChild(qrDisplay);
           }
