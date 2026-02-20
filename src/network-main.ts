@@ -2528,14 +2528,22 @@ function main() {
       b.surfaceU += (target.u - b.surfaceU) * BULLET_LERP;
       b.surfaceV += (target.v - b.surfaceV) * BULLET_LERP;
 
-      // Update 3D position from interpolated UV
-      const sp: SurfacePoint = surf.getPoint(b.surfaceU, b.surfaceV);
-      _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
+      // Update 3D position from interpolated UV.
+      // Use transform() (= getTransform) instead of surf.getPoint() directly so the
+      // mapSizeScaleFactor is applied. surf.getPoint() returns unscaled local-space
+      // positions; transform() multiplies by scaleFactor, matching the visible surface
+      // geometry (surface.group.scale). Without this, bullets on SMALL/LARGE surfaces
+      // (e.g. cube = 0.75x) appear offset from the actual visible surface.
+      const bpt = transform(b.surfaceU, b.surfaceV);
+      _netTempPos.copy(bpt.position).addScaledVector(bpt.normal, 0.02);
 
-      // Compute world-space direction from UV-space direction components
+      // Compute world-space direction from UV-space direction components.
+      // bullet.dirX/dirY = cos/sin of aim angle (UV-space).
+      // Convert to world-space: dir = tangentU * dirX + tangentV * dirY.
+      // transform().tangent = tangentU, bitangent = tangentV.
       _netTempDir.set(0, 0, 0)
-        .addScaledVector(sp.tangentU, target.dirX)
-        .addScaledVector(sp.tangentV, target.dirY)
+        .addScaledVector(bpt.tangent, target.dirX)
+        .addScaledVector(bpt.bitangent, target.dirY)
         .normalize();
 
       // Register or update with BulletInstanceManager for GPU-instanced rendering.
