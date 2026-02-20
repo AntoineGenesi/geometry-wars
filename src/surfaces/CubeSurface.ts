@@ -225,7 +225,10 @@ export class CubeSurface extends Surface {
         tangentU = faceRight.clone()
         tangentV = faceNorm.clone()
       }
-      // else: tangentU and tangentV already set in corner block above
+      // CONSISTENCY FIX: Use world-axis-aligned tangentV on bottom flat face to avoid
+      // 90° camera rotation when player crosses face strip boundaries (causes bouncing).
+      // tangentV = (0,0,1) is face-0's faceNorm direction, consistent for all face strips.
+      tangentV = new THREE.Vector3(0, 0, 1)
     } else if (vRegion.type === 'topFlat') {
       // Flat top face (+Y) with CARTESIAN grid parameterization.
       // localT goes from 0 (at edge with bevel, v=1-flatFraction) to 1 (at center, v=1).
@@ -282,7 +285,10 @@ export class CubeSurface extends Surface {
         tangentU = faceRight.clone()
         tangentV = faceNorm.clone().negate()
       }
-      // else: tangentU and tangentV already set in corner block above
+      // CONSISTENCY FIX: Use world-axis-aligned tangentV on top flat face to avoid
+      // 90° camera rotation when player crosses face strip boundaries (causes bouncing).
+      // tangentV = (0,0,-1) is face-0's faceNorm.negate() direction, consistent for all face strips.
+      tangentV = new THREE.Vector3(0, 0, -1)
     } else if (vRegion.type === 'middle') {
       // Middle belt: side faces and vertical bevels
       const y = (vRegion.localT - 0.5) * 2 * flatHalfSize
