@@ -3,6 +3,12 @@ import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 
+// Pickup collision radius in UV space (MEDIUM map, scale 1.0).
+// Divided by mapSizeScaleFactor in checkPlayerCollision to keep world-space size constant.
+// Reduced from 0.08 (too large — ~4 world units at equator on sphere-radius-8 MEDIUM map)
+// to 0.015 (~0.75 world units, roughly 2.5× the player half-width of 0.15).
+const PICKUP_COLLISION_RADIUS = 0.015;
+
 /**
  * Floating weapon pickup that grants new weapons to player
  */
@@ -19,15 +25,17 @@ export class WeaponPickup {
   private age: number = 0;
   private readonly maxAge: number = 20; // Despawn after 20 seconds
   private readonly fadeStart: number = 15; // Start fading at 15 seconds
+  private readonly mapSizeScaleFactor: number;
 
   // Animation
   private bobPhase: number;
   private spinSpeed: number = 2;
 
-  constructor(type: WeaponType, surfaceU: number, surfaceV: number) {
+  constructor(type: WeaponType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.type = type;
     this.surfaceU = surfaceU;
     this.surfaceV = surfaceV;
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
     this.bobPhase = Math.random() * Math.PI * 2;
 
     this.mesh = this.createMesh();
@@ -258,7 +266,8 @@ export class WeaponPickup {
   }
 
   /**
-   * Check if player is close enough to collect
+   * Check if player is close enough to collect.
+   * Radius is divided by mapSizeScaleFactor so world-space threshold stays constant across map sizes.
    */
   checkPlayerCollision(playerU: number, playerV: number): boolean {
     if (!this.active) return false;
@@ -267,7 +276,7 @@ export class WeaponPickup {
     const dv = playerV - this.surfaceV;
     const dist = Math.sqrt(du * du + dv * dv);
 
-    return dist < 0.08;
+    return dist < PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
   }
 
   /**

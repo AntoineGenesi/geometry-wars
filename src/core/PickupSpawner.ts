@@ -31,6 +31,7 @@ export class PickupSpawner {
   companionDropRate = 0.05; // 5% chance
 
   private scene: THREE.Scene;
+  private readonly mapSizeScaleFactor: number;
 
   // Active pickup arrays
   superPickups: SuperStatePickup[] = [];
@@ -39,8 +40,9 @@ export class PickupSpawner {
   newBuffPickups: BuffPickupNew[] = [];
   companionPickups: CompanionPickup[] = [];
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, mapSizeScaleFactor: number = 1.0) {
     this.scene = scene;
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
   }
 
   /**
@@ -52,7 +54,7 @@ export class PickupSpawner {
       const type = PickupSpawner.SUPER_STATE_TYPES[
         Math.floor(Math.random() * PickupSpawner.SUPER_STATE_TYPES.length)
       ];
-      const pickup = new SuperStatePickup(type, u, v);
+      const pickup = new SuperStatePickup(type, u, v, this.mapSizeScaleFactor);
       this.scene.add(pickup.mesh);
       this.superPickups.push(pickup);
     }
@@ -60,7 +62,7 @@ export class PickupSpawner {
     // ~8% chance to spawn a weapon pickup on enemy death
     if (Math.random() < this.weaponDropRate) {
       const wpnType = getRandomWeaponType();
-      const wpnPickup = new WeaponPickup(wpnType, u, v);
+      const wpnPickup = new WeaponPickup(wpnType, u, v, this.mapSizeScaleFactor);
       this.scene.add(wpnPickup.mesh);
       this.weaponPickups.push(wpnPickup);
     }
@@ -68,7 +70,7 @@ export class PickupSpawner {
     // ~5% chance to spawn a buff pickup on enemy death (old weapon-buff system)
     if (Math.random() < this.oldBuffDropRate) {
       const bType = getRandomBuffType();
-      const bPickup = new BuffPickup(bType, u, v);
+      const bPickup = new BuffPickup(bType, u, v, this.mapSizeScaleFactor);
       this.scene.add(bPickup.mesh);
       this.buffPickups.push(bPickup);
     }
@@ -76,7 +78,7 @@ export class PickupSpawner {
     // Roll for new stackable buff pickup drop
     const droppedBuff = BuffManager.rollBuffDrop();
     if (droppedBuff) {
-      const nbPickup = new BuffPickupNew(droppedBuff, u, v);
+      const nbPickup = new BuffPickupNew(droppedBuff, u, v, this.mapSizeScaleFactor);
       this.scene.add(nbPickup.mesh);
       this.newBuffPickups.push(nbPickup);
     }
@@ -84,7 +86,7 @@ export class PickupSpawner {
     // ~5% chance to spawn a companion pickup on enemy death
     if (Math.random() < this.companionDropRate) {
       const cType = getRandomCompanionType();
-      const cPickup = new CompanionPickup(cType, u, v);
+      const cPickup = new CompanionPickup(cType, u, v, this.mapSizeScaleFactor);
       this.scene.add(cPickup.mesh);
       this.companionPickups.push(cPickup);
     }

@@ -58,6 +58,9 @@ export interface ActiveBuff {
   multiplier: number;
 }
 
+// Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
+const PICKUP_COLLISION_RADIUS = 0.015;
+
 /**
  * Floating buff pickup on the surface
  */
@@ -73,11 +76,13 @@ export class BuffPickup {
   private readonly maxAge: number = 15;
   private readonly fadeStart: number = 11;
   private bobPhase: number;
+  private readonly mapSizeScaleFactor: number;
 
-  constructor(buffType: BuffType, surfaceU: number, surfaceV: number) {
+  constructor(buffType: BuffType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.buffType = buffType;
     this.surfaceU = surfaceU;
     this.surfaceV = surfaceV;
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
     this.bobPhase = Math.random() * Math.PI * 2;
     this.mesh = this.createMesh();
   }
@@ -224,7 +229,7 @@ export class BuffPickup {
     if (!this.active) return false;
     const du = playerU - this.surfaceU;
     const dv = playerV - this.surfaceV;
-    return Math.sqrt(du * du + dv * dv) < 0.08;
+    return Math.sqrt(du * du + dv * dv) < PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
   }
 
   dispose(): void {

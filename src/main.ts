@@ -929,7 +929,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const collisionSystem = new CollisionSystem();
 
   // -- Pickup spawner (manages all pickup types) --
-  const pickupSpawner = new PickupSpawner(game.scene);
+  // Pass mapSizeScaleFactor so pickups scale their UV collision radius inversely,
+  // keeping world-space pickup radius constant across map sizes.
+  const pickupSpawner = new PickupSpawner(game.scene, mapSizeScaleFactor);
 
   // -- Enemy colors for particle effects (also in CollisionSystem, duplicated here for non-collision deaths like bombs/weapons) --
   const ENEMY_COLORS: Record<string, THREE.Color> = {

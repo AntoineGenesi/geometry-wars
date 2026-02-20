@@ -618,6 +618,9 @@ export class CompanionManager {
 // Companion pickup (dropped by enemies, floats on surface)
 // ---------------------------------------------------------------------------
 
+// Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
+const COMPANION_PICKUP_COLLISION_RADIUS = 0.015;
+
 export class CompanionPickup {
   readonly mesh: THREE.Group;
   readonly companionType: CompanionType;
@@ -630,11 +633,13 @@ export class CompanionPickup {
   private readonly maxAge = 25; // seconds before despawn
   private readonly fadeStart = 20;
   private bobPhase: number;
+  private readonly mapSizeScaleFactor: number;
 
-  constructor(companionType: CompanionType, surfaceU: number, surfaceV: number) {
+  constructor(companionType: CompanionType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.companionType = companionType;
     this.surfaceU = surfaceU;
     this.surfaceV = surfaceV;
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
     this.bobPhase = Math.random() * Math.PI * 2;
 
     const color = COMPANION_COLORS[companionType];
@@ -754,7 +759,7 @@ export class CompanionPickup {
     if (!this.active) return false;
     const du = playerU - this.surfaceU;
     const dv = playerV - this.surfaceV;
-    return Math.sqrt(du * du + dv * dv) < 0.08;
+    return Math.sqrt(du * du + dv * dv) < COMPANION_PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
   }
 
   dispose(): void {
