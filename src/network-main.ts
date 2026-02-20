@@ -371,9 +371,9 @@ function main() {
   // -- Game engine (same config as co-op, mobile reduces bloom) --
   const game = new Game({
     bloom: {
-      strength: savedStyle?.bloomStrength ?? (mobile ? 0.4 : 1.0),
-      radius: savedStyle?.bloomRadius ?? (mobile ? 0.3 : 0.4),
-      threshold: savedStyle?.bloomThreshold ?? 0.85,
+      strength: savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7),
+      radius: savedStyle?.bloomRadius ?? (mobile ? 0.3 : 0.5),
+      threshold: savedStyle?.bloomThreshold ?? 0.6,
     },
     cameraDistance: 15,
     cameraSmoothing: 0.05,
@@ -538,10 +538,11 @@ function main() {
 
     // Surface config — apply saved visual style (mirrors single-player logic)
     const surfaceConfig = {
-      gridColor: savedStyle?.gridColor ?? 0x006666,
-      surfaceColor: savedStyle?.surfaceColor ?? 0x0a0020,
-      surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.35,
-      gridOpacity: savedStyle?.gridOpacity ?? 0.5,
+      gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
+      surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
+      surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.18,
+      gridOpacity: savedStyle?.gridOpacity ?? 0.3,
+      wireframeOnly: savedStyle?.wireframeOnly ?? false,
       radius: 10,
       size: 10,
       height: 20,
@@ -574,15 +575,6 @@ function main() {
     console.log(`[MapSize] ${surfaceType} → ${resolvedMapSize} (scale: ${mapSizeScaleFactor}x)`);
 
     scene.add(surface.group);
-
-    // Surface material — apply saved color/opacity
-    surface.mesh.material = new THREE.MeshBasicMaterial({
-      color: savedStyle?.surfaceColor ?? 0x0a0020,
-      transparent: true,
-      opacity: savedStyle?.surfaceOpacity ?? 0.35,
-      side: THREE.FrontSide,
-      depthWrite: true,
-    });
 
     // CRITICAL: updateMatrixWorld before MeshSurface construction so the BVH
     // bakes correctly-scaled world-space coordinates (not unscaled local coords).
