@@ -748,9 +748,9 @@ export class GameRoom extends Room<GameState> {
             player.alive = false;
             console.log(`[GameRoom] ${player.name} died!`);
           } else {
-            // Respawn at center and grant 2s invincibility (matches SP behavior)
-            player.surfaceU = 0.5;
-            player.surfaceV = 0.5;
+            // Respawn on opposite side of surface from death location, grant 2s invincibility
+            player.surfaceU = (player.surfaceU + 0.5) % 1;
+            player.surfaceV = (player.surfaceV + 0.5) % 1;
             this.playerInvincibility.set(player.id, 2.0);
           }
         }

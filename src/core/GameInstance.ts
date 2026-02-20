@@ -531,8 +531,10 @@ export class GameInstance {
         this.respawnTimer += dt;
         if (this.respawnTimer >= RESPAWN_DELAY) {
           this.respawnTimer = 0;
-          this.player.respawn(0.5, 0.5);
-          const respawnPoint = this._surface.getPoint(0.5, 0.5);
+          // Respawn at safe location (opposite side of surface from death location)
+          const safePos = this.player.getSafeRespawnPosition();
+          this.player.respawn(safePos.u, safePos.v);
+          const respawnPoint = this._surface.getPoint(safePos.u, safePos.v);
           const projected = this._meshSurface.closestPointOnSurface(respawnPoint.position);
           if (projected) {
             this._walker.position.copy(projected.point);
