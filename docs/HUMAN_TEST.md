@@ -8,6 +8,32 @@
 
 ---
 
+## Session 27c MP Rendering Rearchitecture (2026-02-21)
+
+SP and MP now share rendering setup via `src/rendering/SharedGameSetup.ts`. Test in LAN multiplayer:
+
+### Visual parity (SP vs MP)
+- [ ] **Surface colors match SP** — Grid color (blue), surface color (dark indigo), opacity all match single-player
+- [ ] **Lighting matches SP** — Same ambient/directional/fill lights as single-player (no washed out or too dark)
+- [ ] **Grid visible** — Grid lines visible on all surface types in MP
+- [ ] **Cube surface works** — No stuck-in-triangle geometry glitch on cube surface
+
+### Pause fix
+- [ ] **Pause freezes enemies** — Press pause in MP. ALL enemies stop moving. They do NOT continue interpolating.
+- [ ] **Camera still orbits during pause** — Can still look around while paused
+
+### Tunnel transparency
+- [ ] **Grid fades in tunnels** — On cube-tunnel or any enclosed surface, grid becomes transparent when it blocks camera-to-player view
+
+### Connectivity
+- [ ] **Laptop can connect via Play Game.bat** — Right-click bat → Run as Administrator. From laptop on same WiFi, navigate to the displayed IP:3000. Game loads and connects.
+
+### Known issues (not fixed by this change)
+- Entity colors (green vs blue) — may still be wrong if server sends incorrect type data
+- Bullet geodesic paths — may still go to origin if server sends UV (0,0) for new bullets
+
+---
+
 ## Session 27 VotingScreen — Valid Options Only (2026-02-21)
 
 After dying in a LAN game (triggers voting phase):
