@@ -59,7 +59,6 @@ import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { BuffAuraRenderer, AuraQuality } from './buffs/BuffAuraRenderer';
 import { BuffParticleAura } from './buffs/BuffParticleAura';
-import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { LODManager, LODLevel, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
@@ -95,6 +94,12 @@ import { GameContext } from './core/GameContext';
 import { GameLoop } from './core/GameLoop';
 import { RenderLoop } from './core/RenderLoop';
 import { profiler } from './core/PerformanceProfiler';
+import {
+  createStandardSurfaceConfig,
+  setupStandardLighting,
+  setupShockwaveEffect,
+  makeSurfaceTransformFn as sharedMakeSurfaceTransformFn,
+} from './rendering/SharedGameSetup';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -150,32 +155,10 @@ function weaponToBulletVisual(weapon: WeaponType): BulletVisualType {
 const _bulletSyncDir = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
-// Surface transform helper
+// Surface transform helper — now using shared module (SharedGameSetup.ts)
 // ---------------------------------------------------------------------------
 
-function makeSurfaceTransformFn(surface: Surface, scaleFactor: number = 1.0) {
-  return (u: number, v: number): {
-    position: THREE.Vector3;
-    normal: THREE.Vector3;
-    tangent: THREE.Vector3;
-    bitangent: THREE.Vector3;
-  } => {
-    const pt: SurfacePoint = surface.getPoint(u, v);
-    // surface.getPoint() only applies worldRotation (not the group scale from map size).
-    // Apply the scale factor so UV-based entities (pickups, bullets) appear on the
-    // correctly-sized surface when map size != MEDIUM (scaleFactor != 1.0).
-    if (scaleFactor !== 1.0) {
-      pt.position.multiplyScalar(scaleFactor);
-      // Normals and tangents are unit vectors — uniform scaling does not change their direction.
-    }
-    return {
-      position: pt.position,
-      normal: pt.normal,
-      tangent: pt.tangentU,
-      bitangent: pt.tangentV,
-    };
-  };
-}
+const makeSurfaceTransformFn = sharedMakeSurfaceTransformFn;
 
 // ---------------------------------------------------------------------------
 // Player movement speed (for sphere rotation)
@@ -371,24 +354,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   //   2. Chromatic aberration (player damage)
   //   3. Screen flash (kills, bombs)
   //   4. Vignette (merged from old pass)
-  const shockwaveEffect = new ShockwaveEffect();
-  shockwaveEffect.setCamera(game.camera);
-
-  // Replace the standalone vignette pass in the EffectComposer with the combined pass
-  if (game.composer) {
-    const passes = game.composer.passes;
-    // Find and remove the old vignette ShaderPass (it's the pass before OutputPass)
-    // Chain is: RenderPass(0) -> BloomPass(1) -> VignettePass(2) -> OutputPass(3)
-    // We replace VignettePass(2) with ShockwavePass
-    for (let i = passes.length - 1; i >= 0; i--) {
-      const pass = passes[i];
-      // The vignette pass is a ShaderPass with 'offset' and 'darkness' uniforms
-      if ((pass as any).uniforms?.offset && (pass as any).uniforms?.darkness && !(pass as any).uniforms?.uShockCount) {
-        passes.splice(i, 1, shockwaveEffect.shaderPass);
-        break;
-      }
-    }
-  }
+  // Shockwave effect (shared with MP via SharedGameSetup)
+  const shockwaveEffect = setupShockwaveEffect(game, game.camera);
 
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
@@ -420,61 +387,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Effects demo panel (press G to toggle)
   new EffectsPanel(game);
 
-  // -- Lighting --
-  // Ambient light for base illumination
-  const ambient = new THREE.AmbientLight(0x404080, 0.6);
-  game.scene.add(ambient);
-
-  // Directional light for 3D shading on prism enemies
-  const directional = new THREE.DirectionalLight(0xffffff, 0.8);
-  directional.position.set(5, 10, 5);
-  game.scene.add(directional);
-
-  // Add a second directional from opposite side for fill
-  const fillLight = new THREE.DirectionalLight(0x4488ff, 0.4);
-  fillLight.position.set(-5, -5, -5);
-  game.scene.add(fillLight);
+  // -- Lighting (shared with MP via SharedGameSetup) --
+  setupStandardLighting(game.scene);
 
   // -- Surface: use level's surface (adventure mode), or menu selection, or URL param --
   const surfaceType = selectedSurface || level.surface || getSurfaceTypeFromURL();
-  const surfaceConfig = {
-    gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
-    surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
-    surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.18,
-    gridOpacity: savedStyle?.gridOpacity ?? 0.3,
-    // Type-specific configs
-    radius: level.surfaceScale,           // For sphere, icosahedron, dented-sphere, sphere-tunnel
-    size: level.surfaceScale,             // For cube
-    bevelRadius: 0.6,                      // For pill bevel edges, pipe bevel curves
-    height: level.surfaceScale * 2,       // For pill, capsule, pipe
-    majorRadius: level.surfaceScale * 0.8,// For torus
-    minorRadius: level.surfaceScale * 0.3,// For torus
-    cylinderRadius: level.surfaceScale * 0.4, // For peanut
-    sphereRadius: level.surfaceScale * 0.6,   // For peanut, capsule
-    subdivisions: 2,                      // For icosahedron
-    width: level.surfaceScale,            // For mobius
-    numDents: 8,                          // For dented-sphere
-    dentDepth: level.surfaceScale * 0.15, // For dented-sphere
-    tunnelRadius: level.surfaceScale * 0.3,// For sphere-tunnel
-    gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
-    gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
-    wireframeOnly: savedStyle?.wireframeOnly ?? false,
-  };
-
-  // Cube tunnel needs much larger dimensions — its default size is overridden by level.surfaceScale
-  // which is 8-12, far too small for a tunnel. Scale it up dramatically.
-  if (surfaceType === 'cube-tunnel') {
-    surfaceConfig.size = 80;
-    (surfaceConfig as any).wallThickness = 4.0;
-    (surfaceConfig as any).bevelRadius = 10.0;
-    (surfaceConfig as any).gridSegments = 20;
-  }
-
-  // Cube-ring is too large at default scale — reduce to feel compact but not tiny
-  if (surfaceType === 'cube-ring') {
-    (surfaceConfig as any).majorRadius = 4;
-    (surfaceConfig as any).crossSection = 2;
-  }
+  // Surface config — shared with MP via SharedGameSetup (single source of truth)
+  const surfaceConfig = createStandardSurfaceConfig(surfaceType, level.surfaceScale, savedStyle);
 
   // Create surface (async for custom meshes, sync for built-in)
   let surface: Surface;
@@ -1310,8 +1229,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Tunnel transparency state (used by render loop) --
   const tunnelRaycaster = new THREE.Raycaster();
-  const baseSurfaceOpacity = surfaceConfig.surfaceOpacity;
-  const baseGridOpacity = surfaceConfig.gridOpacity;
+  const baseSurfaceOpacity = (surfaceConfig.surfaceOpacity as number) ?? 0.18;
+  const baseGridOpacity = (surfaceConfig.gridOpacity as number) ?? 0.3;
 
   // -- Game Context: bundles all shared state for GameLoop and RenderLoop --
   const ctx: GameContext = {
@@ -1389,8 +1308,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       hadEnemies,
       lodAssignments: new Map(),
       tunnelRaycaster,
-      currentSurfaceOpacity: surfaceConfig.surfaceOpacity,
-      currentGridOpacity: surfaceConfig.gridOpacity,
+      currentSurfaceOpacity: baseSurfaceOpacity,
+      currentGridOpacity: baseGridOpacity,
       baseSurfaceOpacity,
       baseGridOpacity,
       fadeSpeed: 8.0,

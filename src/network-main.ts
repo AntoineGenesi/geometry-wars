@@ -55,7 +55,6 @@ import { BuffHUD } from './buffs/BuffHUD';
 import { BuffAuraRenderer } from './buffs/BuffAuraRenderer';
 import { BuffParticleAura } from './buffs/BuffParticleAura';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
-import { ShockwaveEffect } from './effects/ShockwaveEffect';
 import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
@@ -87,6 +86,15 @@ import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyl
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { MapSize, getDefaultMapSizeForSurface, getMapSizeScaleFactor } from './core/MapSize';
+import {
+  createStandardSurfaceConfig,
+  setupStandardLighting,
+  setupShockwaveEffect,
+  makeSurfaceTransformFn as sharedMakeSurfaceTransformFn,
+  orientPlayerOnSurface as sharedOrientPlayerOnSurface,
+  DEFAULT_SURFACE_SCALE,
+  type SurfaceTransformFn,
+} from './rendering/SharedGameSetup';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -282,35 +290,14 @@ const SERVER_TO_WEAPON_TYPE: Record<string, WeaponType> = {
 };
 
 // ---------------------------------------------------------------------------
-// Surface transform helper (same as co-op / single player)
+// Surface transform helper — now using shared module (SharedGameSetup.ts)
 // ---------------------------------------------------------------------------
 
-function makeSurfaceTransformFn(surface: Surface, scaleFactor: number = 1.0) {
-  return (u: number, v: number): {
-    position: THREE.Vector3;
-    normal: THREE.Vector3;
-    tangent: THREE.Vector3;
-    bitangent: THREE.Vector3;
-  } => {
-    const pt: SurfacePoint = surface.getPoint(u, v);
-    // surface.getPoint() only applies worldRotation (not the group scale from map size).
-    // Apply the scale factor so UV-based entities (enemies, bullets) appear on the
-    // correctly-sized surface when map size != MEDIUM (scaleFactor != 1.0).
-    if (scaleFactor !== 1.0) {
-      pt.position.multiplyScalar(scaleFactor);
-      // Normals and tangents are unit vectors — uniform scaling does not change their direction.
-    }
-    return {
-      position: pt.position,
-      normal: pt.normal,
-      tangent: pt.tangentU,
-      bitangent: pt.tangentV,
-    };
-  };
-}
+// Re-export from shared module (keeps backward-compatible local references)
+const makeSurfaceTransformFn = sharedMakeSurfaceTransformFn;
 
 // ---------------------------------------------------------------------------
-// Orient player on surface (same function as co-op)
+// Orient player on surface — now using shared module (SharedGameSetup.ts)
 // ---------------------------------------------------------------------------
 
 function orientPlayerOnSurface(
@@ -319,13 +306,7 @@ function orientPlayerOnSurface(
   aimAngle: number,
   tangentU: THREE.Vector3,
 ): void {
-  const normal = surfaceNormal.clone().normalize();
-  const forward = tangentU.clone().normalize();
-  const right = new THREE.Vector3().crossVectors(normal, forward).normalize();
-  const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
-  const rotMatrix = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
-  player.mesh.quaternion.setFromRotationMatrix(rotMatrix);
-  player.mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), aimAngle);
+  sharedOrientPlayerOnSurface(player.mesh, surfaceNormal, aimAngle, tangentU);
 }
 
 // ---------------------------------------------------------------------------
@@ -415,41 +396,27 @@ function main() {
   // Frame-time tracker for depth-occlusion lerp in onRender (avoids per-frame allocation)
   let _lastNetRenderTime = performance.now();
 
+  // Tunnel transparency: dynamic grid opacity when surface blocks camera-to-player view.
+  // Same logic as SP's RenderLoop.ts — fades grid when player is behind the surface.
+  const _tunnelRaycaster = new THREE.Raycaster();
+  const _tunnelToPlayer = new THREE.Vector3();
+  const _tunnelToPlayerDir = new THREE.Vector3();
+  let _currentGridOpacity = 0.3; // matches default gridOpacity
+  const _gridFadeSpeed = 3.0; // opacity per second convergence rate
+
   // -- CameraController: orbit (middle mouse), zoom (scroll wheel), follow (same as single-player) --
   const cameraController = new CameraController(camera);
   cameraController.setCameraDistance(20); // Match existing LAN camera distance
 
-  // -- ShockwaveEffect: post-processing for enemy death distortion, chromatic aberration, flash --
-  // Replaces the vignette pass in the EffectComposer with a combined pass (same as main.ts).
-  const shockwaveEffect = new ShockwaveEffect();
-  shockwaveEffect.setCamera(camera as THREE.PerspectiveCamera);
-  if (game.composer) {
-    const passes = game.composer.passes;
-    // The vignette pass is a ShaderPass with 'offset' and 'darkness' uniforms.
-    // Chain is: RenderPass -> BloomPass -> VignettePass -> OutputPass
-    // We replace VignettePass with ShockwavePass (which also includes vignette).
-    for (let i = passes.length - 1; i >= 0; i--) {
-      const pass = passes[i];
-      if ((pass as any).uniforms?.offset && (pass as any).uniforms?.darkness && !(pass as any).uniforms?.uShockCount) {
-        passes.splice(i, 1, shockwaveEffect.shaderPass);
-        break;
-      }
-    }
-  }
+  // -- ShockwaveEffect (shared with single-player via SharedGameSetup) --
+  const shockwaveEffect = setupShockwaveEffect(game, camera);
 
   // Hide default single-player HUD (same as co-op)
   const defaultHUD = document.getElementById('game-hud');
   if (defaultHUD) defaultHUD.style.display = 'none';
 
-  // -- Lighting (identical to co-op) --
-  const ambient = new THREE.AmbientLight(0x404080, 0.6);
-  scene.add(ambient);
-  const directional = new THREE.DirectionalLight(0xffffff, 0.8);
-  directional.position.set(5, 10, 5);
-  scene.add(directional);
-  const fillLight = new THREE.DirectionalLight(0x4488ff, 0.4);
-  fillLight.position.set(-5, -5, -5);
-  scene.add(fillLight);
+  // -- Lighting (shared with single-player via SharedGameSetup) --
+  setupStandardLighting(scene);
 
   // -- Surface (created after connecting, using server's authoritative type) --
   let surface: Surface | null = null;
@@ -541,36 +508,9 @@ function main() {
     const resolvedMapSize: MapSize = (mapSize as MapSize) ?? getDefaultMapSizeForSurface(surfaceType);
     const mapSizeScaleFactor = getMapSizeScaleFactor(resolvedMapSize);
 
-    // Surface config — apply saved visual style (mirrors single-player logic)
-    const surfaceConfig = {
-      gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
-      surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
-      surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.18,
-      gridOpacity: savedStyle?.gridOpacity ?? 0.3,
-      wireframeOnly: savedStyle?.wireframeOnly ?? false,
-      radius: 10,
-      size: 10,
-      height: 20,
-      bevelRadius: 0.6,
-      majorRadius: 8,
-      minorRadius: 3,
-      gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
-      gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
-    };
-
-    // Cube tunnel needs much larger dimensions (mirrors main.ts logic)
-    if (surfaceType === 'cube-tunnel') {
-      surfaceConfig.size = 80;
-      (surfaceConfig as any).wallThickness = 4.0;
-      (surfaceConfig as any).bevelRadius = 10.0;
-      (surfaceConfig as any).gridSegments = 20;
-    }
-
-    // Cube-ring: reduce to compact feel (mirrors main.ts logic)
-    if (surfaceType === 'cube-ring') {
-      (surfaceConfig as any).majorRadius = 4;
-      (surfaceConfig as any).crossSection = 2;
-    }
+    // Surface config — shared with single-player via SharedGameSetup.
+    // Uses DEFAULT_SURFACE_SCALE (10) which matches SP's endless mode surfaceScale.
+    const surfaceConfig = createStandardSurfaceConfig(surfaceType, DEFAULT_SURFACE_SCALE, savedStyle);
 
     surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
 
@@ -2440,6 +2380,25 @@ function main() {
     const surf = surface;
     const transform = getTransform;
 
+    // Skip all entity interpolation and game-state rendering while paused.
+    // The scene still renders (via Game.ts EffectComposer) so the pause
+    // overlay looks correct, but entities freeze in place.
+    if (isPaused) {
+      // Still update camera (so orbit controls work in pause) and debug overlay
+      const localPlayer = networkPlayers.get(localPlayerId);
+      if (localPlayer) {
+        const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+        cameraController.updateFromFrame(
+          sp.position,
+          sp.normal,
+          { tangent: sp.tangentU, bitangent: sp.tangentV },
+          lastFixedDt,
+        );
+      }
+      debugOverlay.update();
+      return;
+    }
+
     // -----------------------------------------------------------------------
     // Per-frame interpolation for enemies (60Hz lerp toward 30Hz targets)
     // THIS IS THE KEY FIX: previously enemies only moved on onStateChange
@@ -2668,12 +2627,37 @@ function main() {
     bulletPool.applySurfaceProjection(transform);
     geomPool.applySurfaceProjection(transform);
 
-    // Surface occlusion shader: fade surface geometry between camera and player (same as single-player).
-    // OcclusionSurfaceMaterial is the default material from SurfaceFactory — safe to cast.
-    if (surf.mesh.material instanceof OcclusionSurfaceMaterial) {
+    // -----------------------------------------------------------------------
+    // Tunnel transparency + dynamic grid opacity (same as SP's RenderLoop.ts).
+    // When the surface blocks the camera-to-player view, fade the surface
+    // and grid so the player remains visible inside tunnels/tubes.
+    // -----------------------------------------------------------------------
+    {
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer) {
-        surf.mesh.material.setOcclusionParams(camera.position, localPlayer.mesh.position, true);
+        const camPos = camera.position;
+        const playerPos = localPlayer.mesh.position;
+        _tunnelToPlayer.copy(playerPos).sub(camPos);
+        const distToPlayer = _tunnelToPlayer.length();
+        _tunnelToPlayerDir.copy(_tunnelToPlayer).normalize();
+        _tunnelRaycaster.set(camPos, _tunnelToPlayerDir);
+        _tunnelRaycaster.far = distToPlayer;
+        const hits = _tunnelRaycaster.intersectObject(surf.mesh, false);
+        const isBlocked = hits.length > 0;
+
+        // Grid opacity: fade when blocked (matches SP behavior)
+        const baseGridOpacity = (savedStyle?.gridOpacity ?? 0.3);
+        const targetGridOpacity = isBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
+        _currentGridOpacity += (targetGridOpacity - _currentGridOpacity) * Math.min(1, _gridFadeSpeed * netRenderDt);
+        const gridMat = surf.gridMesh?.material as THREE.LineBasicMaterial | undefined;
+        if (gridMat) {
+          gridMat.opacity = _currentGridOpacity;
+        }
+
+        // Surface occlusion shader: fade surface between camera and player
+        if (surf.mesh.material instanceof OcclusionSurfaceMaterial) {
+          surf.mesh.material.setOcclusionParams(camPos, playerPos, true);
+        }
       }
     }
 
