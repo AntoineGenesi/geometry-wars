@@ -313,7 +313,9 @@ export class GameRoom extends Room<GameState> {
   private startGameWithSettings(choice: string) {
     const parts = choice.split(':');
     const surface = parts[0] || this.state.surfaceType;
-    const mode = parts[1] || 'waves';
+    // Safety guard: only accept implemented modes; fall back to 'waves' for unknown modes
+    const VALID_MODES = ['waves'];
+    const mode = VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
     const size = parts[2] || 'medium';
     this.state.surfaceType = surface;
     this.state.gameMode = mode;
