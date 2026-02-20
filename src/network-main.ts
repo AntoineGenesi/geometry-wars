@@ -83,6 +83,7 @@ import { SettingsMenu } from './ui/SettingsMenu';
 import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
+import { MapSize, getDefaultMapSizeForSurface, getMapSizeScaleFactor } from './core/MapSize';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -281,7 +282,7 @@ const SERVER_TO_WEAPON_TYPE: Record<string, WeaponType> = {
 // Surface transform helper (same as co-op / single player)
 // ---------------------------------------------------------------------------
 
-function makeSurfaceTransformFn(surface: Surface) {
+function makeSurfaceTransformFn(surface: Surface, scaleFactor: number = 1.0) {
   return (u: number, v: number): {
     position: THREE.Vector3;
     normal: THREE.Vector3;
@@ -289,6 +290,13 @@ function makeSurfaceTransformFn(surface: Surface) {
     bitangent: THREE.Vector3;
   } => {
     const pt: SurfacePoint = surface.getPoint(u, v);
+    // surface.getPoint() only applies worldRotation (not the group scale from map size).
+    // Apply the scale factor so UV-based entities (enemies, bullets) appear on the
+    // correctly-sized surface when map size != MEDIUM (scaleFactor != 1.0).
+    if (scaleFactor !== 1.0) {
+      pt.position.multiplyScalar(scaleFactor);
+      // Normals and tangents are unit vectors — uniform scaling does not change their direction.
+    }
     return {
       position: pt.position,
       normal: pt.normal,
@@ -439,6 +447,7 @@ function main() {
   let surfaceReady = false;
   let getTransform: ReturnType<typeof makeSurfaceTransformFn> | null = null;
   let lastCreatedSurfaceType: string = '';
+  let lastMapSize: string = '';
 
   // -- Enemy spawner (created after surface, used to create real enemy meshes) --
   let enemySpawner: EnemySpawner | null = null;
@@ -472,33 +481,39 @@ function main() {
     enemySpawner = null;
     surfaceReady = false;
     lastCreatedSurfaceType = '';
+    lastMapSize = '';
   }
 
-  function initSurface(serverSurfaceType: string, confirmedFromServer: boolean = false): void {
-    // Allow re-initialization if the surface type differs from what was created,
+  function initSurface(serverSurfaceType: string, confirmedFromServer: boolean = false, mapSize?: string): void {
+    // Allow re-initialization if the surface type or map size differs from what was created,
     // OR if this is the first confirmed-from-server call and the previous init
     // was just a guess from connect-time (which may have had stale defaults).
     if (surfaceReady) {
       const currentType = isValidSurfaceType(serverSurfaceType) ? serverSurfaceType : null;
       if (!currentType) return; // Still no valid type, skip
 
-      // If the type matches AND we already had a confirmed server type, skip
-      if (lastCreatedSurfaceType === currentType && surfaceConfirmedFromServer) return;
+      const incomingMapSize = mapSize ?? '';
+      const typeChanged = lastCreatedSurfaceType !== currentType;
+      const mapSizeChanged = incomingMapSize !== '' && lastMapSize !== incomingMapSize;
 
-      // If the type matches but was NOT confirmed from server, and this IS
-      // a confirmed call, we can skip the rebuild but mark as confirmed.
-      if (lastCreatedSurfaceType === currentType && confirmedFromServer) {
+      // If type or map size changed — tear down and recreate
+      if (typeChanged || mapSizeChanged) {
+        if (typeChanged) {
+          console.warn(`[NetworkMain] Surface type mismatch corrected: ${lastCreatedSurfaceType} → ${currentType}`);
+          netMainLog(`[NetworkMain] Surface type changed: ${lastCreatedSurfaceType} -> ${currentType}, rebuilding`);
+        } else {
+          netMainLog(`[NetworkMain] Map size changed: ${lastMapSize} -> ${incomingMapSize}, rebuilding`);
+        }
+        cleanupSurface();
+      } else if (surfaceConfirmedFromServer) {
+        return; // Already confirmed with same type + size, skip
+      } else if (confirmedFromServer) {
+        // Type matches but was NOT confirmed from server, and this IS a confirmed call.
+        // Skip rebuild but upgrade to confirmed status.
         surfaceConfirmedFromServer = true;
         return;
-      }
-
-      // Type differs - tear down and recreate
-      if (lastCreatedSurfaceType !== currentType) {
-        console.warn(`[NetworkMain] Surface type mismatch corrected: ${lastCreatedSurfaceType} → ${currentType}`);
-        netMainLog(`[NetworkMain] Surface type changed: ${lastCreatedSurfaceType} -> ${currentType}, rebuilding`);
-        cleanupSurface();
       } else {
-        return; // Same type, not a confirmed upgrade, skip
+        return; // Same type + size, not a confirmed upgrade, skip
       }
     }
 
@@ -509,6 +524,12 @@ function main() {
     const surfaceType: SurfaceType = isValidSurfaceType(serverSurfaceType)
       ? serverSurfaceType
       : getUrlSurfaceType();
+
+    // Apply map size scale to surface geometry.
+    // Must happen BEFORE scene.add() and updateMatrixWorld() so MeshSurface
+    // (BVH for collision/movement) is built against the correctly-scaled geometry.
+    const resolvedMapSize: MapSize = (mapSize as MapSize) ?? getDefaultMapSizeForSurface(surfaceType);
+    const mapSizeScaleFactor = getMapSizeScaleFactor(resolvedMapSize);
 
     // Surface config — apply saved visual style (mirrors single-player logic)
     const surfaceConfig = {
@@ -526,6 +547,12 @@ function main() {
       gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
     };
     surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
+
+    if (mapSizeScaleFactor !== 1.0) {
+      surface.group.scale.setScalar(mapSizeScaleFactor);
+    }
+    console.log(`[MapSize] ${surfaceType} → ${resolvedMapSize} (scale: ${mapSizeScaleFactor}x)`);
+
     scene.add(surface.group);
 
     // Surface material — apply saved color/opacity
@@ -537,11 +564,15 @@ function main() {
       depthWrite: true,
     });
 
+    // CRITICAL: updateMatrixWorld before MeshSurface construction so the BVH
+    // bakes correctly-scaled world-space coordinates (not unscaled local coords).
+    surface.mesh.updateMatrixWorld(true);
     meshSurface = new MeshSurface(surface.mesh);
     bulletPool.setMeshSurface(meshSurface);
     localWeaponManager.setMeshSurface(meshSurface);
 
-    getTransform = makeSurfaceTransformFn(surface);
+    // Pass mapSizeScaleFactor so UV→world transforms correctly reflect the surface scale.
+    getTransform = makeSurfaceTransformFn(surface, mapSizeScaleFactor);
 
     // Create enemy spawner with real surface transform (same as co-op)
     enemySpawner = new EnemySpawner(scene, getTransform);
@@ -557,7 +588,8 @@ function main() {
 
     surfaceReady = true;
     lastCreatedSurfaceType = surfaceType;
-    netMainLog(`[NetworkMain] Surface initialized: ${surfaceType}`);
+    lastMapSize = mapSize ?? '';
+    netMainLog(`[NetworkMain] Surface initialized: ${surfaceType} (mapSize: ${resolvedMapSize}, scale: ${mapSizeScaleFactor}x)`);
   }
 
   // -- Camera constants (match co-op) --
@@ -1406,7 +1438,7 @@ function main() {
     // Always try to init/update surface from authoritative server state.
     // This handles both initial creation AND correcting a wrong initial guess.
     if (state.surfaceType) {
-      initSurface(state.surfaceType, true);
+      initSurface(state.surfaceType, true, state.mapSize || undefined);
     }
     if (!surface || !meshSurface || !getTransform) return;
 
