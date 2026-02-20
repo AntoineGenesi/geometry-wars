@@ -9,6 +9,9 @@ import { createSpawnIndicatorSprite, updateSpawnIndicator } from '../weapons/Spa
 const PICKUP_LIFETIME = 12; // seconds
 const FADE_START = 9;       // seconds before starting fade
 
+// Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
+const PICKUP_COLLISION_RADIUS = 0.015;
+
 export class BuffPickupNew {
   readonly mesh: THREE.Group;
   readonly buffType: StackBuffType;
@@ -20,12 +23,14 @@ export class BuffPickupNew {
   active = true;
   private age = 0;
   private bobPhase: number;
+  private readonly mapSizeScaleFactor: number;
 
-  constructor(type: StackBuffType, surfaceU: number, surfaceV: number) {
+  constructor(type: StackBuffType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.buffType = type;
     this.def = BUFF_DEFINITIONS[type];
     this.surfaceU = surfaceU;
     this.surfaceV = surfaceV;
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
     this.bobPhase = Math.random() * Math.PI * 2;
     this.mesh = this.createMesh();
   }
@@ -207,7 +212,7 @@ export class BuffPickupNew {
     if (!this.active) return false;
     const du = playerU - this.surfaceU;
     const dv = playerV - this.surfaceV;
-    return Math.sqrt(du * du + dv * dv) < 0.08;
+    return Math.sqrt(du * du + dv * dv) < PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
   }
 
   dispose(): void {

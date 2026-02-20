@@ -10,6 +10,10 @@ export interface SurfaceTransform {
   bitangent: THREE.Vector3;
 }
 
+// Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
+// Was 0.15 (especially large) — reduced to 0.015 for consistent world-space touch radius.
+const PICKUP_COLLISION_RADIUS = 0.015;
+
 export class SuperStatePickup {
   readonly mesh: THREE.Group;
   surfaceU: number;
@@ -20,11 +24,13 @@ export class SuperStatePickup {
   private dots: THREE.Mesh[] = [];
   private readonly dotRadius = 0.05;
   private animationTime = 0;
+  private readonly mapSizeScaleFactor: number;
 
-  constructor(type: SuperStateType, surfaceU: number, surfaceV: number) {
+  constructor(type: SuperStateType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.type = type;
     this.surfaceU = surfaceU;
     this.surfaceV = surfaceV;
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
     this.active = true;
     this.mesh = new THREE.Group();
 
@@ -220,12 +226,13 @@ export class SuperStatePickup {
   }
 
   checkPlayerCollision(playerU: number, playerV: number): boolean {
-    // Check if player is close enough to destroy a dot
+    // Check if player is close enough to destroy a dot.
+    // Divided by mapSizeScaleFactor so world-space threshold stays constant across map sizes.
     const deltaU = playerU - this.surfaceU;
     const deltaV = playerV - this.surfaceV;
     const distance = Math.sqrt(deltaU * deltaU + deltaV * deltaV);
 
-    return distance < 0.15; // Collision radius
+    return distance < PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
   }
 
   removeClosestDot(playerU: number, playerV: number): boolean {
