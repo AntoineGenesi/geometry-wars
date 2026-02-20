@@ -100,6 +100,58 @@ export class CameraController {
   }
 
   /**
+   * Update camera from raw surface vectors (no MeshWalker needed).
+   * Used by LAN multiplayer where the server is authoritative for player position.
+   * tangentFrame.tangent and tangentFrame.bitangent correspond to the surface
+   * tangentU and tangentV vectors from SurfacePoint.getPoint().
+   */
+  updateFromFrame(
+    position: THREE.Vector3,
+    normal: THREE.Vector3,
+    tangentFrame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 },
+    dt: number,
+  ): void {
+    // Orbit reset: lerp yaw/pitch back to 0 when double-click triggered
+    if (this.orbitResetSpeed > 0) {
+      const resetRate = this.orbitResetSpeed * dt;
+      this.orbitYaw *= Math.max(0, 1 - resetRate * 3);
+      this.orbitPitch *= Math.max(0, 1 - resetRate * 3);
+      if (Math.abs(this.orbitYaw) < 0.005 && Math.abs(this.orbitPitch) < 0.005) {
+        this.orbitYaw = 0;
+        this.orbitPitch = 0;
+        this.orbitResetSpeed = 0;
+      }
+    }
+
+    // Build camera offset: start with surface normal, rotate by orbit angles
+    this._camOffset.copy(normal).multiplyScalar(this.cameraDistance);
+    this._camUp.copy(tangentFrame.bitangent); // REGRESSION GUARD: use bitangent NOT normal
+
+    if (Math.abs(this.orbitYaw) > 0.001 || Math.abs(this.orbitPitch) > 0.001) {
+      // Rotate around normal (yaw - left/right swing)
+      this._yawQuat.setFromAxisAngle(normal, this.orbitYaw);
+      this._camOffset.applyQuaternion(this._yawQuat);
+      this._camUp.applyQuaternion(this._yawQuat);
+
+      // Rotate around the rotated tangent (pitch - tilt up/down)
+      this._rotatedTangent.copy(tangentFrame.tangent).applyQuaternion(this._yawQuat);
+      this._pitchQuat.setFromAxisAngle(this._rotatedTangent, this.orbitPitch);
+      this._camOffset.applyQuaternion(this._pitchQuat);
+      this._camUp.applyQuaternion(this._pitchQuat);
+    }
+
+    this._targetCamPos.copy(position).add(this._camOffset);
+    this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
+
+    // Store target up for external reference
+    this.targetUp.copy(this._camUp).normalize();
+
+    // lookAt FIRST, then lerp up-vector (same order as update())
+    (this.camera as THREE.PerspectiveCamera).lookAt(position);
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, this.CAMERA_LERP_FACTOR).normalize();
+  }
+
+  /**
    * Update camera position to follow player on surface
    */
   update(playerWalker: MeshWalker, dt: number): void {

@@ -56,6 +56,7 @@ import { BuffAuraRenderer } from './buffs/BuffAuraRenderer';
 import { BuffParticleAura } from './buffs/BuffParticleAura';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { ShockwaveEffect } from './effects/ShockwaveEffect';
+import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { LODManager } from './rendering/LODManager';
@@ -401,6 +402,10 @@ function main() {
   const scene = game.scene;
   const camera = game.camera;
 
+  // -- CameraController: orbit (middle mouse), zoom (scroll wheel), follow (same as single-player) --
+  const cameraController = new CameraController(camera);
+  cameraController.setCameraDistance(20); // Match existing LAN camera distance
+
   // -- ShockwaveEffect: post-processing for enemy death distortion, chromatic aberration, flash --
   // Replaces the vignette pass in the EffectComposer with a combined pass (same as main.ts).
   const shockwaveEffect = new ShockwaveEffect();
@@ -559,10 +564,6 @@ function main() {
     lastCreatedSurfaceType = surfaceType;
     netMainLog(`[NetworkMain] Surface initialized: ${surfaceType}`);
   }
-
-  // -- Camera constants (match co-op) --
-  const CAMERA_DISTANCE = 20; // Was 15 — match single-player (main.ts passes cameraDistance: 20)
-  const CAMERA_LERP = 0.12; // Was 0.08 — match CameraController.CAMERA_LERP_FACTOR (restored from bffc333)
 
   // -- Shared visual systems (same as co-op) --
   const bulletPool = new BulletPool();
@@ -2040,8 +2041,13 @@ function main() {
   // Game loop (same structure as co-op)
   // -----------------------------------------------------------------------
 
+  // Cached dt from onFixedUpdate for use in onRender (which has no dt param).
+  // Default to 1/60 so camera orbit reset works correctly on first frame.
+  let lastFixedDt = 1 / 60;
+
   game.onFixedUpdate = (dt: number) => {
     if (!surfaceReady || !surface) return;
+    lastFixedDt = dt;
 
     // Update adaptive quality system (FPS monitoring + quality level adjustment).
     // Runs even when paused so the monitor stays warm and doesn't misfire on resume.
@@ -2458,22 +2464,17 @@ function main() {
       g.surfaceV += (target.v - g.surfaceV) * GEOM_LERP;
     });
 
-    // Camera follows local player along surface normal (same as co-op).
-    // Use the player's mesh position directly instead of worldToSurface
-    // round-trip, which adds jitter from floating-point imprecision.
+    // Camera follows local player: orbit, zoom, and smooth follow via CameraController.
+    // Replaces the old manual lerp — now identical feature set to single-player.
     const localPlayer = networkPlayers.get(localPlayerId);
     if (localPlayer) {
       const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-
-      const targetCamPos = sp.position.clone().addScaledVector(sp.normal, CAMERA_DISTANCE);
-      camera.position.lerp(targetCamPos, CAMERA_LERP);
-
-      // lookAt FIRST, then lerp up-vector AFTER — matches bffc333 working pattern.
-      // In Three.js, lookAt() uses camera.up to orient. Doing up.lerp() before lookAt()
-      // causes the stale up to feed into lookAt(), amplifying jitter on curved surfaces.
-      camera.lookAt(sp.position);
-      const upTarget = sp.tangentV;
-      camera.up.lerp(upTarget, CAMERA_LERP).normalize();
+      cameraController.updateFromFrame(
+        sp.position,
+        sp.normal,
+        { tangent: sp.tangentU, bitangent: sp.tangentV },
+        lastFixedDt,
+      );
     }
 
     // Apply surface projection for geoms and bullets (same as co-op)
