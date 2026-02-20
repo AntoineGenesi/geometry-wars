@@ -348,6 +348,11 @@ export class GameRoom extends Room<GameState> {
       player.alive = true;
       player.weaponType = 'standard';
       player.weaponAmmo = -1;
+      // Reset lastShotTime so the player can shoot immediately in the new game.
+      // gameTime resets to 0 on new round; without this reset, lastShotTime from
+      // the previous game (e.g. 45.6s) causes tryShoot() to block shots for the
+      // entire duration of the new game (now - lastShot < 0 → never fires).
+      (player as unknown as { lastShotTime?: number }).lastShotTime = undefined;
     });
 
     // Clear entities

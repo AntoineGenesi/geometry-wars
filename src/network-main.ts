@@ -1438,6 +1438,10 @@ function main() {
     bulletIdToIndex.clear();
     bulletTargetUV.clear();
     bulletInstanceIds.clear();
+    // Safety: clear the entire bullet pool to ensure no orphaned alive slots.
+    // This guards against any state desync between bulletIdToIndex and the pool.
+    bulletPool.clear();
+    bulletInstanceManager.clear();
 
     // Clear all enemies from scene
     networkEnemies.forEach((enemy) => {
