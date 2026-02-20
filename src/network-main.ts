@@ -542,15 +542,30 @@ function main() {
       surfaceColor: savedStyle?.surfaceColor ?? 0x0a0020,
       surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.35,
       gridOpacity: savedStyle?.gridOpacity ?? 0.5,
-      radius: 5,
-      size: 5,
-      height: 10,
+      radius: 10,
+      size: 10,
+      height: 20,
       bevelRadius: 0.6,
-      majorRadius: 4,
-      minorRadius: 1.5,
+      majorRadius: 8,
+      minorRadius: 3,
       gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
       gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
     };
+
+    // Cube tunnel needs much larger dimensions (mirrors main.ts logic)
+    if (surfaceType === 'cube-tunnel') {
+      surfaceConfig.size = 80;
+      (surfaceConfig as any).wallThickness = 4.0;
+      (surfaceConfig as any).bevelRadius = 10.0;
+      (surfaceConfig as any).gridSegments = 20;
+    }
+
+    // Cube-ring: reduce to compact feel (mirrors main.ts logic)
+    if (surfaceType === 'cube-ring') {
+      (surfaceConfig as any).majorRadius = 4;
+      (surfaceConfig as any).crossSection = 2;
+    }
+
     surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
 
     if (mapSizeScaleFactor !== 1.0) {
