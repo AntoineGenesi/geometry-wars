@@ -970,6 +970,15 @@ function main() {
     game.setVisualMode(mode);
   });
 
+  // Show QR code / join URL in pause menu so other players can join conveniently.
+  // Strip personal params (name=) from the URL before sharing.
+  {
+    const params = new URLSearchParams(window.location.search);
+    params.delete('name');
+    const joinUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+    pauseMenu.setJoinUrl(joinUrl);
+  }
+
   // Non-host pause overlay: styled to match game aesthetic, pointer-events:none
   // so it never accidentally blocks input (display:none when not showing).
   const pauseOverlay = document.createElement('div');

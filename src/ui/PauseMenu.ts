@@ -4,6 +4,7 @@ import { WeaponWiki } from './WeaponWiki';
 import { SettingsMenu } from './SettingsMenu';
 import { BackgroundMusic } from '../audio/BackgroundMusic';
 import { PerformanceLogger } from '../core/PerformanceLogger';
+import { createQRCodeDisplay } from './QRCode';
 
 /**
  * Pause menu overlay.
@@ -55,6 +56,7 @@ export class PauseMenu {
   private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
   private perfLogger: PerformanceLogger | null = null;
   private visualMode: 'pixelated' | 'modern' = 'pixelated';
+  private joinUrl: string | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -116,6 +118,10 @@ export class PauseMenu {
           </div>
 
           <div class="pause-stats-panel">
+            <div class="stats-qr-section hidden">
+              <div class="stats-section-title">JOIN THIS GAME</div>
+              <div class="stats-qr-content"></div>
+            </div>
             <div class="stats-weapon-section">
               <div class="stats-section-title">WEAPON</div>
               <div class="stats-weapon-info"></div>
@@ -348,6 +354,15 @@ export class PauseMenu {
       #pause-menu .pause-stats-panel::-webkit-scrollbar-thumb {
         background: #444466;
         border-radius: 2px;
+      }
+
+      #pause-menu .stats-qr-section.hidden {
+        display: none;
+      }
+
+      #pause-menu .stats-qr-content {
+        display: flex;
+        justify-content: center;
       }
 
       #pause-menu .stats-section-title {
@@ -671,6 +686,33 @@ export class PauseMenu {
    */
   setNetworkCallbacks(callbacks: PauseMenuNetworkCallbacks): void {
     this.networkCallbacks = callbacks;
+  }
+
+  /**
+   * Set the join URL for this multiplayer session.
+   * When set, shows a QR code + URL in the stats panel so other players can join.
+   * Pass null to hide the QR section.
+   */
+  setJoinUrl(url: string | null): void {
+    this.joinUrl = url;
+    const qrSection = this.container.querySelector('.stats-qr-section') as HTMLElement | null;
+    const qrContent = this.container.querySelector('.stats-qr-content') as HTMLElement | null;
+    if (!qrSection || !qrContent) return;
+
+    if (!url) {
+      qrSection.classList.add('hidden');
+      qrContent.innerHTML = '';
+      return;
+    }
+
+    qrSection.classList.remove('hidden');
+    qrContent.innerHTML = '';
+    try {
+      const display = createQRCodeDisplay(url, url, 200);
+      qrContent.appendChild(display);
+    } catch {
+      qrContent.innerHTML = `<div style="color:#ff8888;font-size:12px;word-break:break-all;">${url}</div>`;
+    }
   }
 
   private updateMusicLabel(): void {
