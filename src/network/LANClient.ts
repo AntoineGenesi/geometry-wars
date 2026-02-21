@@ -12,6 +12,12 @@ export interface LANStatus {
   isWSL2?: boolean;
   /** Windows host LAN IPs (populated when isWSL2 is true) */
   windowsAddresses?: string[];
+  /**
+   * True when Windows netsh portproxy rules exist for game ports (3000/2567).
+   * These rules intercept LAN connections and redirect them to WSL2, breaking
+   * Play Game.bat mode. Fix: run "Play Game.bat" as Administrator.
+   */
+  portproxyConflict?: boolean;
 }
 
 export interface LANRoom {
@@ -45,6 +51,12 @@ export interface LANStartResult {
   isWSL2?: boolean;
   /** Windows host LAN IPs to use instead when isWSL2 is true (requires port forwarding via Setup-WSL-LAN.bat) */
   windowsAddresses?: string[];
+  /**
+   * True when Windows netsh portproxy rules exist for game ports.
+   * These rules intercept LAN connections and redirect them to WSL2, breaking
+   * Play Game.bat mode. Fix: run "Play Game.bat" as Administrator.
+   */
+  portproxyConflict?: boolean;
 }
 
 export interface LANScanResult {

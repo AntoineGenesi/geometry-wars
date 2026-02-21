@@ -26,6 +26,14 @@ echo.
 echo  This sets up Windows port forwarding so devices on your LAN
 echo  can connect to the game server running inside WSL2.
 echo.
+echo  *** IMPORTANT: This script is for WSL2 dev mode (npm run dev). ***
+echo  *** If you use Play Game.bat, do NOT run this script.           ***
+echo  *** Play Game.bat runs servers on Windows directly — portproxy  ***
+echo  *** rules created here will BREAK Play Game.bat LAN access.    ***
+echo.
+echo  After switching back to Play Game.bat, run "Play Game.bat" as
+echo  Administrator to automatically clean up these portproxy rules.
+echo.
 
 REM Detect WSL2 IP address
 echo  Detecting WSL2 IP address...

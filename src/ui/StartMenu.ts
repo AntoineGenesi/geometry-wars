@@ -1818,6 +1818,23 @@ export class StartMenu {
             lanHostUrl.appendChild(makeCopyRow('LAN', lanUrl));
           }
 
+          // Portproxy conflict warning — stale WSL2 port forwarding breaks LAN access
+          if (result.portproxyConflict && !result.isWSL2) {
+            const ppNote = document.createElement('div');
+            ppNote.className = 'lan-wsl2-note';
+            ppNote.innerHTML = `
+              <b>&#9888; Port forwarding conflict detected!</b><br>
+              Windows portproxy rules from a previous WSL2 session are active.<br>
+              Laptop connections will be redirected to WSL2 (no server there) and <b>will fail</b>.<br>
+              <b>Fix:</b> Right-click <code>Play Game.bat</code> → <b>Run as Administrator</b>.<br>
+              This auto-cleans the stale portproxy rules.<br>
+              <small>Or manually run as Administrator:<br>
+              <code>netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0</code><br>
+              <code>netsh interface portproxy delete v4tov4 listenport=2567 listenaddress=0.0.0.0</code></small>
+            `;
+            lanHostUrl.appendChild(ppNote);
+          }
+
           // Generate QR code using best available IP (using short code URL)
           if (bestLanIp) {
             const qrUrl = replaceIpInUrl(shortCodeUrl, bestLanIp);

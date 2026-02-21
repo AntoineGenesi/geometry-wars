@@ -39,6 +39,26 @@ function getWindowsLANIPs(): string[] {
   }
 }
 
+/**
+ * Detect if Windows netsh portproxy rules exist that could intercept connections
+ * to the game ports (3000 or 2567). Only relevant when Vite runs on Windows
+ * (Play Game.bat mode). In WSL2, portproxy rules are expected and correct.
+ *
+ * When portproxy rules exist and Play Game.bat is used, incoming LAN connections
+ * are redirected to WSL2 instead of reaching the Windows Colyseus server.
+ */
+function detectWindowsPortproxyConflict(): boolean {
+  // Only check on Windows (Vite running natively via Play Game.bat)
+  if (process.platform !== 'win32') return false;
+  try {
+    const out = execSync('netsh interface portproxy show all', { timeout: 3000, encoding: 'utf8' });
+    // Check if portproxy rules exist for game ports
+    return out.includes('2567') || out.includes(' 3000 ') || out.includes('\t3000\t');
+  } catch {
+    return false;
+  }
+}
+
 function getLANAddresses(): string[] {
   const interfaces = networkInterfaces();
   const lanAddresses: string[] = [];
@@ -162,16 +182,24 @@ export default function lanPlugin(): Plugin {
     });
   }
 
-  async function handleStart(options?: { shutdownTimeout?: number }): Promise<{ ok: boolean; addresses: string[]; port: number; error?: string; isWSL2?: boolean; windowsAddresses?: string[] }> {
+  async function handleStart(options?: { shutdownTimeout?: number }): Promise<{ ok: boolean; addresses: string[]; port: number; error?: string; isWSL2?: boolean; windowsAddresses?: string[]; portproxyConflict?: boolean }> {
     const addresses = getLANAddresses();
     const wsl2 = detectWSL2();
     const windowsAddresses = wsl2 ? getWindowsLANIPs() : [];
+    // Detect portproxy conflict only when on Windows (Play Game.bat mode).
+    // In WSL2, portproxy is expected — only warn when it's NOT expected.
+    const portproxyConflict = detectWindowsPortproxyConflict();
+    if (portproxyConflict) {
+      console.warn('[LAN] WARNING: Windows portproxy rules detected for game ports!');
+      console.warn('[LAN] Laptop connections will be redirected to WSL2 instead of the Windows server.');
+      console.warn('[LAN] Fix: Run "Play Game.bat" as Administrator to auto-clean portproxy rules.');
+    }
 
     // Already hosting (we spawned this process ourselves)
     if (serverProcess && serverReady) {
       // Verify our own server is still healthy
       if (await checkServerHealth()) {
-        return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses };
+        return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses, portproxyConflict };
       }
       // Our server died, clean up
       serverProcess.kill();
@@ -185,7 +213,7 @@ export default function lanPlugin(): Plugin {
     // matchmake, causing ERR_EMPTY_RESPONSE for clients.
     if (await checkServerDeep()) {
       serverReady = true;
-      return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses };
+      return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses, portproxyConflict };
     }
 
     // If something is on the port but failed deep check, kill it
@@ -242,14 +270,14 @@ export default function lanPlugin(): Plugin {
         if (addresses.length === 0) {
           console.log('[LAN]   WARNING: No LAN addresses detected.');
         }
-        return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses };
+        return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses, portproxyConflict };
       }
     }
 
     // Failed - cleanup
     serverProcess?.kill();
     serverProcess = null;
-    return { ok: false, addresses, port: SERVER_PORT, error: 'Server failed to start within 15s', isWSL2: wsl2, windowsAddresses };
+    return { ok: false, addresses, port: SERVER_PORT, error: 'Server failed to start within 15s', isWSL2: wsl2, windowsAddresses, portproxyConflict };
   }
 
   async function handleStop(): Promise<{ ok: boolean }> {
@@ -370,6 +398,7 @@ export default function lanPlugin(): Plugin {
             port: SERVER_PORT,
             isWSL2: wsl2,
             windowsAddresses: wsl2 ? getWindowsLANIPs() : [],
+            portproxyConflict: detectWindowsPortproxyConflict(),
           });
           return;
         }
