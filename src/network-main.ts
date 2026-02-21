@@ -1102,7 +1102,7 @@ function main() {
   localMenuEl.appendChild(localMenuTitle);
 
   const localMenuWarning = document.createElement('div');
-  localMenuWarning.textContent = '⚠  Game continues — you can still be hit by enemies';
+  localMenuWarning.textContent = '⚠  Game continues — only the host can pause the server';
   localMenuWarning.style.cssText =
     'color:#ff8800;font-size:14px;margin-bottom:36px;letter-spacing:1px;';
   localMenuEl.appendChild(localMenuWarning);
@@ -1176,10 +1176,9 @@ function main() {
     localMenuEl.style.display = 'none';
   }
 
-  // Escape key handler: open/close local player menu for ALL players.
-  // Opening the menu does NOT pause the server — other players keep playing.
-  // (Host can still pause the server via the existing server-pause overlay's
-  //  Resume button, which sends sendPause(false) via the resumeBtn click.)
+  // Escape key handler:
+  // - HOST: pauses/resumes the server (enemies freeze for everyone)
+  // - Non-host: opens/closes local menu (game continues, only host can pause)
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // After disconnect, Escape always returns to main menu.
@@ -1194,7 +1193,6 @@ function main() {
         // Close the local menu
         hideLocalMenu();
       } else if (!isPaused) {
-        // Server is not paused — open local menu for this player
         // Re-check host status in case it changed since connect
         if (!isHost) {
           const serverHostId = network.getServerHostId();
@@ -1203,7 +1201,15 @@ function main() {
             netMainLog('[NetworkMain] Host status confirmed on ESC press');
           }
         }
-        showLocalMenu();
+        if (isHost) {
+          // Host: pause the server — enemies freeze for ALL players
+          isPaused = true;
+          network.sendPause(true);
+          showPauseOverlay(true);
+        } else {
+          // Non-host: open local menu (only host can pause the server)
+          showLocalMenu();
+        }
       } else if (isHost) {
         // Server is paused (by host) — host can resume with Escape
         isPaused = false;
