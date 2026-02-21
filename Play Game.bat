@@ -70,12 +70,70 @@ echo  [OK] Native binaries OK.
 echo.
 
 REM ================================================================
+REM  ADMIN CHECK — firewall rules and portproxy cleanup require
+REM  Administrator. Detect whether we have those rights now.
+REM ================================================================
+set IS_ADMIN=0
+net session >nul 2>&1
+if %ERRORLEVEL% == 0 set IS_ADMIN=1
+
+if %IS_ADMIN% == 1 (
+    echo  [OK] Running as Administrator.
+) else (
+    echo  [!] NOT running as Administrator.
+    echo  [!] Windows Firewall rules for LAN may not apply.
+    echo  [!] For reliable LAN access: right-click this .bat and
+    echo  [!] choose "Run as Administrator".
+)
+echo.
+
+REM ================================================================
+REM  PORTPROXY CLEANUP — Remove any stale WSL2 port forwarding rules
+REM  that Setup-WSL-LAN.bat may have created. These rules intercept
+REM  LAN traffic and redirect it to WSL2 (which has no server when
+REM  using Play Game.bat), breaking laptop connections.
+REM  Requires Administrator — silently skipped if not admin.
+REM ================================================================
+if %IS_ADMIN% == 1 (
+    echo  Removing stale WSL2 port forwarding rules (if any)...
+    netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0 >nul 2>&1
+    netsh interface portproxy delete v4tov4 listenport=2567 listenaddress=0.0.0.0 >nul 2>&1
+    echo  [OK] Port forwarding rules cleared.
+    echo.
+) else (
+    REM Check if portproxy rules exist (can check without admin)
+    netsh interface portproxy show all 2>nul | findstr /c:"2567" >nul 2>&1
+    if %ERRORLEVEL% == 0 (
+        echo  [!] WARNING: WSL2 port forwarding rules detected for port 2567!
+        echo  [!] These rules will intercept laptop connections and break LAN play.
+        echo  [!] To fix: right-click this .bat and "Run as Administrator".
+        echo  [!] Or manually run as Administrator:
+        echo  [!]   netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0
+        echo  [!]   netsh interface portproxy delete v4tov4 listenport=2567 listenaddress=0.0.0.0
+        echo.
+    ) else (
+        netsh interface portproxy show all 2>nul | findstr /c:"3000" >nul 2>&1
+        if %ERRORLEVEL% == 0 (
+            echo  [!] WARNING: WSL2 port forwarding rules detected for port 3000!
+            echo  [!] These rules may interfere with LAN play.
+            echo  [!] Right-click this .bat and "Run as Administrator" to fix.
+            echo.
+        )
+    )
+)
+
+REM ================================================================
 REM  WINDOWS FIREWALL: Allow ports 3000 and 2567 for LAN access
+REM  (Only fully effective when running as Administrator)
 REM ================================================================
 echo  Setting up Windows Firewall rules for LAN access...
 netsh advfirewall firewall add rule name="Geometry Wars - Game Server (2567)" dir=in action=allow protocol=TCP localport=2567 >nul 2>&1
 netsh advfirewall firewall add rule name="Geometry Wars - Web Server (3000)" dir=in action=allow protocol=TCP localport=3000 >nul 2>&1
-echo  [OK] Firewall rules set (requires Administrator — may be skipped).
+if %IS_ADMIN% == 1 (
+    echo  [OK] Firewall rules set for ports 3000 and 2567.
+) else (
+    echo  [..] Firewall rules attempted (may need Administrator to apply).
+)
 echo.
 
 REM Get ALL local IPs for LAN display
@@ -93,9 +151,9 @@ echo   Game (this PC):  http://localhost:3000
 echo.
 echo   TO CONNECT FROM ANOTHER DEVICE:
 echo   1. Both devices on same WiFi/LAN
-echo   2. Open browser on other device, go to one of the addresses above
-echo   3. Prefer 192.168.x.x addresses (not 10.x.x.x which may be VPN)
-echo   4. If blocked, right-click this .bat and Run as Administrator
+echo   2. Open browser on other device, go to one of the 192.168.x.x addresses above
+echo   3. Avoid 10.x.x.x (VPN) and 172.x.x.x (WSL2 virtual) addresses
+echo   4. Then go to LAN menu in the game and connect, OR use the QR code
 echo.
 echo   NOTE: This .bat runs servers on Windows (not WSL2).
 echo   If you use "npm run dev" in WSL2 instead, run
@@ -123,8 +181,9 @@ echo  Starting Colyseus multiplayer server in a NEW WINDOW (port 2567)...
 echo.
 start "Geometry Wars Server (port 2567)" cmd /k "node node_modules\tsx\dist\cli.mjs server\index.ts || (echo. & echo [!] SERVER CRASHED - see error above & echo. & pause)"
 
-REM Wait for Colyseus to start
-timeout /t 3 /nobreak >nul
+REM Wait for Colyseus to start (5s to ensure it's fully ready)
+echo  Waiting for server to initialize...
+timeout /t 5 /nobreak >nul
 
 echo  Starting Vite dev server (port 3000)...
 echo.
