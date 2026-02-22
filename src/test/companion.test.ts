@@ -347,6 +347,176 @@ describe.skipIf(typeof document === 'undefined')('CompanionHUD', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Regression tests: orbit glitch (cube axis collapse) + flat rendering
+// ---------------------------------------------------------------------------
+
+describe('Companion orbit — axis orthogonality regression', () => {
+  /**
+   * Regression: On cube top face strip 1, surface.getPoint() returns
+   * tangentU=(0,0,-1) and tangentV=(0,0,-1) (identical vectors due to the
+   * world-axis-aligned tangentV override). The OLD code passed these directly
+   * to OrbitBehavior.setFrame(), collapsing the orbit to 1D "up/down" motion.
+   *
+   * The FIX: compute bitangent = normal × tangent, which is always
+   * perpendicular to tangent regardless of surface parameterization.
+   */
+  it('orbit position traces a 2D circle when tangent and bitangent are parallel (cube top face strip 1)', () => {
+    const manager = new CompanionManager();
+    manager.addCompanion(CompanionType.Guardian);
+
+    // Simulate cube top face strip 1: tangentU=(0,0,-1) and tangentV=(0,0,-1) — parallel!
+    // This used to collapse the orbit to 1D.
+    const cubeTopFaceStrip1Transform = (_u: number, _v: number) => ({
+      position: new THREE.Vector3(3, 9, -3),
+      normal: new THREE.Vector3(0, 1, 0),   // top face normal
+      tangent: new THREE.Vector3(0, 0, -1),  // faceRight[1]
+      bitangent: new THREE.Vector3(0, 0, -1), // world-axis override (0,0,-1) — same as tangent!
+    });
+
+    const playerPos = new THREE.Vector3(3, 9, -3);
+    const playerAim = new THREE.Vector3(1, 0, 0);
+    const surfaceNormal = new THREE.Vector3(0, 1, 0);
+
+    // Collect companion positions over a full orbit
+    const positions: THREE.Vector3[] = [];
+    for (let i = 0; i < 120; i++) {
+      manager.update(
+        1 / 60, 0.5, 0.5, playerPos, playerAim,
+        [], makeMockBulletPool(), 0, surfaceNormal, cubeTopFaceStrip1Transform,
+      );
+      const mesh = manager.root.children[0];
+      if (mesh) positions.push(mesh.position.clone());
+    }
+
+    // Check that positions span more than one axis (orbit is 2D, not 1D)
+    // With the fix, the orbit should vary in both X and Z directions.
+    const xVals = positions.map(p => p.x);
+    const zVals = positions.map(p => p.z);
+    const xRange = Math.max(...xVals) - Math.min(...xVals);
+    const zRange = Math.max(...zVals) - Math.min(...zVals);
+
+    // Both axes should have significant range (not collapsed to 1D)
+    // Orbit radius = 1.5, so diameter ≈ 3.0 — we expect at least 1.0 range on each axis
+    expect(xRange).toBeGreaterThan(1.0);
+    expect(zRange).toBeGreaterThan(1.0);
+  });
+
+  it('orbit position traces a 2D circle on torus (tangent=(0,1,0), bitangent=(0,0,1))', () => {
+    const manager = new CompanionManager();
+    manager.addCompanion(CompanionType.Guardian);
+
+    // Torus outer edge: tangent points up, bitangent points along Z
+    const torusOuterEdgeTransform = (_u: number, _v: number) => ({
+      position: new THREE.Vector3(8, 0, 0),
+      normal: new THREE.Vector3(1, 0, 0),
+      tangent: new THREE.Vector3(0, 1, 0),
+      bitangent: new THREE.Vector3(0, 0, 1),
+    });
+
+    const playerPos = new THREE.Vector3(8, 0, 0);
+    const playerAim = new THREE.Vector3(0, 0, 1);
+    const surfaceNormal = new THREE.Vector3(1, 0, 0);
+
+    const positions: THREE.Vector3[] = [];
+    for (let i = 0; i < 120; i++) {
+      manager.update(
+        1 / 60, 0.5, 0.5, playerPos, playerAim,
+        [], makeMockBulletPool(), 0, surfaceNormal, torusOuterEdgeTransform,
+      );
+      const mesh = manager.root.children[0];
+      if (mesh) positions.push(mesh.position.clone());
+    }
+
+    const yVals = positions.map(p => p.y);
+    const zVals = positions.map(p => p.z);
+    const yRange = Math.max(...yVals) - Math.min(...yVals);
+    const zRange = Math.max(...zVals) - Math.min(...zVals);
+
+    expect(yRange).toBeGreaterThan(1.0);
+    expect(zRange).toBeGreaterThan(1.0);
+  });
+});
+
+describe('Companion mesh orientation — right-handed basis regression', () => {
+  /**
+   * Regression: The orientation matrix used makeBasis(tangent, normal, bitangent)
+   * which produces det=-1 (left-handed) for standard surface frames where
+   * tangentU × tangentV = normal. Three.js setFromRotationMatrix on a left-handed
+   * matrix extracts an incorrect quaternion, causing companions to appear flat.
+   *
+   * The FIX: use makeBasis(tangent, normal, tangent × normal) which guarantees
+   * det=+1 and produces a valid rotation quaternion.
+   */
+  it('companion mesh quaternion is non-trivial after update (not collapsed to identity or 180° flat rotation)', () => {
+    const manager = new CompanionManager();
+    manager.addCompanion(CompanionType.Guardian);
+
+    // Torus case where old code produced det=-1 matrix
+    const torusTransform = (_u: number, _v: number) => ({
+      position: new THREE.Vector3(8, 0, 0),
+      normal: new THREE.Vector3(1, 0, 0),
+      tangent: new THREE.Vector3(0, 1, 0),
+      bitangent: new THREE.Vector3(0, 0, 1),
+    });
+
+    const playerPos = new THREE.Vector3(8, 0, 0);
+    const surfaceNormal = new THREE.Vector3(1, 0, 0);
+    manager.update(
+      1 / 60, 0.5, 0.5, playerPos, new THREE.Vector3(0, 0, 1),
+      [], makeMockBulletPool(), 0, surfaceNormal, torusTransform,
+    );
+
+    const mesh = manager.root.children[0];
+    expect(mesh).toBeTruthy();
+    const q = (mesh as THREE.Object3D).quaternion;
+
+    // A proper rotation quaternion should have w != ±1 (not identity or 180° rotation)
+    // and the quaternion should represent a valid 3D orientation, not a flat projection.
+    // With the old buggy code, setFromRotationMatrix on det=-1 matrix gives garbage.
+    // With the fix, we get a proper rotation: the companion faces the surface normal.
+    // Verify it's a valid unit quaternion (|q|=1)
+    const qLen = Math.sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
+    expect(qLen).toBeCloseTo(1.0, 3);
+
+    // Verify that applying this quaternion to (0,1,0) gives approximately the surface normal
+    // (because Y-axis of the companion mesh = surface normal in the new orientation)
+    const localY = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+    expect(localY.x).toBeCloseTo(1.0, 1); // Should align with normal (1,0,0)
+    expect(Math.abs(localY.y)).toBeLessThan(0.5);
+    expect(Math.abs(localY.z)).toBeLessThan(0.5);
+  });
+
+  it('orientation matrix determinant is +1 for all standard surface frames', () => {
+    // Test vectors representing the problematic surfaces
+    const frames = [
+      // Cube top face strip 1: tangent=(0,0,-1), normal=(0,1,0)
+      { tangent: new THREE.Vector3(0, 0, -1), normal: new THREE.Vector3(0, 1, 0) },
+      // Torus outer edge: tangent=(0,1,0), normal=(1,0,0)
+      { tangent: new THREE.Vector3(0, 1, 0), normal: new THREE.Vector3(1, 0, 0) },
+      // Sphere equator: tangent=(0,0,1), normal=(1,0,0)
+      { tangent: new THREE.Vector3(0, 0, 1), normal: new THREE.Vector3(1, 0, 0) },
+      // Cube side face: tangent=(1,0,0), normal=(0,0,1)
+      { tangent: new THREE.Vector3(1, 0, 0), normal: new THREE.Vector3(0, 0, 1) },
+    ];
+
+    for (const { tangent, normal } of frames) {
+      // Compute the orientation Z axis as in the fixed code
+      const orientZ = tangent.clone().cross(normal);
+      const mat = new THREE.Matrix4().makeBasis(tangent, normal, orientZ);
+
+      // Extract the 3x3 determinant
+      const e = mat.elements;
+      const det =
+        e[0] * (e[5] * e[10] - e[9] * e[6]) -
+        e[4] * (e[1] * e[10] - e[9] * e[2]) +
+        e[8] * (e[1] * e[6] - e[5] * e[2]);
+
+      expect(det).toBeCloseTo(1.0, 3);
+    }
+  });
+});
+
 describe('getRandomCompanionType', () => {
   it('returns a valid CompanionType', () => {
     const validTypes = [CompanionType.Guardian, CompanionType.Hunter, CompanionType.Protector];
