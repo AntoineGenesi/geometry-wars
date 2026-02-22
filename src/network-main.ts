@@ -55,6 +55,8 @@ import { BuffHUD } from './buffs/BuffHUD';
 import { BuffAuraRenderer } from './buffs/BuffAuraRenderer';
 import { BuffParticleAura } from './buffs/BuffParticleAura';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
+import { BuffPickupNew } from './buffs/BuffPickupNew';
+import { CompanionManager, CompanionPickup, CompanionHUD, getRandomCompanionType } from './entities/Companion';
 import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
@@ -425,6 +427,7 @@ function main() {
   let getTransform: ReturnType<typeof makeSurfaceTransformFn> | null = null;
   let lastCreatedSurfaceType: string = '';
   let lastMapSize: string = '';
+  let currentMapSizeScaleFactor = 1.0;
 
   // -- Enemy spawner (created after surface, used to create real enemy meshes) --
   let enemySpawner: EnemySpawner | null = null;
@@ -526,6 +529,9 @@ function main() {
     surface.mesh.updateMatrixWorld(true);
     meshSurface = new MeshSurface(surface.mesh);
     bulletPool.setMeshSurface(meshSurface);
+    companionBulletPool.setMeshSurface(meshSurface);
+    companionManager.setMeshSurface(meshSurface);
+    currentMapSizeScaleFactor = mapSizeScaleFactor;
     // Wire depth occlusion to new surface mesh (BVH built internally for fast raycasting)
     depthOcclusion.setSurfaceMesh(surface.mesh);
     localWeaponManager.setMeshSurface(meshSurface);
@@ -722,6 +728,19 @@ function main() {
   scene.add(buffAuraRenderer.root);
   scene.add(buffParticleAura.root);
   scene.add(shockArcRenderer.root);
+
+  // -- Companion system: client-side drones/companions (not server-authoritative) --
+  // Mirrors SP behavior: pickups spawn on enemy death, player collects them, companions orbit.
+  // Server doesn't track companions; gameplay effects (shots, shield) are client-local only.
+  const companionManager = new CompanionManager();
+  scene.add(companionManager.root);
+  const companionHUD = new CompanionHUD();
+  const localCompanionPickups: CompanionPickup[] = [];
+  const localBuffPickups: BuffPickupNew[] = [];
+  // Separate bullet pool for companion shots — kept isolated from the network-synced
+  // bulletPool so server bullet state sync never stomps on companion bullet slots.
+  const companionBulletPool = new BulletPool();
+  scene.add(companionBulletPool.root);
 
   // -- Enemy tracking --
   // Maps server enemy ID -> real BaseEnemy instance (created via EnemySpawner)
@@ -1423,6 +1442,12 @@ function main() {
     });
     networkWeaponPickups.clear();
 
+    // Clear local companion + buff pickups
+    for (const cp of localCompanionPickups) { scene.remove(cp.mesh); cp.dispose(); }
+    localCompanionPickups.length = 0;
+    for (const bp of localBuffPickups) { scene.remove(bp.mesh); bp.dispose(); }
+    localBuffPickups.length = 0;
+
     // Reset game-over flag so GameOverScreen can show again next game
     gameOverShown = false;
 
@@ -1633,6 +1658,28 @@ function main() {
         }
         if (surface) surface.applyForce(enemy.position, 0.2, 1.0);
         sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+
+        // Client-side companion + buff pickup drops (mirrors SP PickupSpawner.spawnPickupsOnEnemyDeath)
+        if (surface) {
+          const deathUV = surface.worldToSurface(enemy.position);
+          if (deathUV) {
+            // ~5% chance for a companion pickup (Guardian, Hunter, or Protector)
+            if (Math.random() < 0.05) {
+              const cPickup = new CompanionPickup(
+                getRandomCompanionType(), deathUV.u, deathUV.v, currentMapSizeScaleFactor,
+              );
+              scene.add(cPickup.mesh);
+              localCompanionPickups.push(cPickup);
+            }
+            // Stackable buff pickup (HotHands, TriggerHappy, etc.)
+            const droppedBuff = BuffManager.rollBuffDrop();
+            if (droppedBuff) {
+              const bPickup = new BuffPickupNew(droppedBuff, deathUV.u, deathUV.v, currentMapSizeScaleFactor);
+              scene.add(bPickup.mesh);
+              localBuffPickups.push(bPickup);
+            }
+          }
+        }
 
         // Score popup at death position
         scorePopups.spawnScore(enemy.position.clone(), enemy.scoreValue);
@@ -2387,6 +2434,65 @@ function main() {
 
       buffAuraRenderer.update(dt, game.clock.totalTime, localPlayer.mesh.position, auraPoint.normal, activeBuffs);
       buffParticleAura.update(dt, game.clock.totalTime, localPlayer.mesh.position, auraPoint.normal, activeBuffs);
+
+      // Update companion + buff pickups, check collection
+      if (getTransform) {
+        for (let i = localCompanionPickups.length - 1; i >= 0; i--) {
+          const cp = localCompanionPickups[i];
+          if (!cp.active) {
+            scene.remove(cp.mesh);
+            cp.dispose();
+            localCompanionPickups.splice(i, 1);
+            continue;
+          }
+          cp.update(dt, game.clock.totalTime);
+          cp.applySurfaceTransform(getTransform);
+          if (cp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV)) {
+            companionManager.addCompanion(cp.companionType);
+            sound.play('weaponPickup', { volume: 0.5, pitch: 1.8 });
+            cp.active = false;
+          }
+        }
+        for (let i = localBuffPickups.length - 1; i >= 0; i--) {
+          const bp = localBuffPickups[i];
+          if (!bp.active) {
+            scene.remove(bp.mesh);
+            bp.dispose();
+            localBuffPickups.splice(i, 1);
+            continue;
+          }
+          bp.update(dt, game.clock.totalTime);
+          bp.applySurfaceTransform(getTransform);
+          if (bp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV)) {
+            buffManager.addBuff(bp.buffType);
+            sound.play('weaponPickup', { volume: 0.4, pitch: 1.2 });
+            bp.active = false;
+          }
+        }
+      }
+
+      // Update companions (orbit player, shoot enemies)
+      if (getTransform) {
+        const aimDir = new THREE.Vector3()
+          .addScaledVector(auraPoint.tangentU, Math.cos(aimAngle))
+          .addScaledVector(auraPoint.tangentV, Math.sin(aimAngle))
+          .normalize();
+        const enemiesArray = Array.from(networkEnemies.values());
+        companionManager.update(
+          dt,
+          localPlayer.surfaceU,
+          localPlayer.surfaceV,
+          localPlayer.mesh.position,
+          aimDir,
+          enemiesArray,
+          companionBulletPool,
+          0,
+          auraPoint.normal,
+          getTransform,
+        );
+      }
+      companionBulletPool.update(dt);
+      companionHUD.update(companionManager.getCompanionCounts());
     }
 
     shockArcRenderer.update(buffManager.shockArcs);
@@ -2806,6 +2912,8 @@ function main() {
     buffAuraRenderer.dispose();
     buffParticleAura.dispose();
     shockArcRenderer.dispose();
+    companionHUD.dispose();
+    companionManager.dispose();
     debugOverlay.dispose();
   });
 
