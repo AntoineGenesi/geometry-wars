@@ -505,10 +505,6 @@ export class GameLoop {
       SuperStateType.Shield,
     ];
 
-    // Scale down death effect shockwave intensity at high entity counts to reduce visual distortion.
-    // At 100+ enemies: linear reduction from 1.0× to 0.3× at 250+ enemies.
-    const deathShockwaveScale = Math.max(0.3, 1.0 - Math.max(0, enemies.length - 100) / 200);
-
     ctx.collisionSystem.checkBulletEnemyCollisions(
       ctx.bulletPool,
       enemies,
@@ -532,14 +528,15 @@ export class GameLoop {
       (enemy: BaseEnemy) => { ctx.buffManager.onBulletHit(enemy); },
       (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => {
         ctx.buffManager.onEnemyDeath(enemy, allEnemies);
-        // Shockwave distortion on enemy death: scale down intensity at high entity counts
-        const isBig = enemy.radius > 0.5;
-        ctx.shockwaveEffect.spawnShockwave(
-          enemy.position,
-          (isBig ? 0.04 : 0.02) * deathShockwaveScale,   // strength (scaled)
-          isBig ? 0.7 : 0.6,                               // speed
-          isBig ? 0.5 : 0.35,                              // lifetime
-        );
+        // Shockwave distortion: only on boss-tier enemies (not regular enemy deaths)
+        if (enemy.baseTypeName.startsWith('boss_')) {
+          ctx.shockwaveEffect.spawnShockwave(
+            enemy.position,
+            0.04,  // boss death strength
+            0.7,   // speed
+            0.6,   // lifetime
+          );
+        }
       },
       ctx.enemyInstanceManager,
       ctx.game.bloomEffectManager, // Pass bloom effect manager for boss death bloom pulses

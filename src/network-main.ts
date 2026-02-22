@@ -1627,8 +1627,10 @@ function main() {
         const color = ENEMY_COLORS[enemyType] ?? new THREE.Color(0xff0000);
         particles.enemyDeath(enemy.position, color);
         screenShake.shake(0.15, 0.15);
-        shockwaveEffect.spawnShockwave(enemy.position, 0.05, 0.9, 0.5, 0.07);
-        shockwaveEffect.triggerWhiteFlash(0.15);
+        // Shockwave only for boss-tier enemies (not every regular enemy death)
+        if (enemy.baseTypeName.startsWith('boss_')) {
+          shockwaveEffect.spawnShockwave(enemy.position, 0.04, 0.7, 0.6);
+        }
         if (surface) surface.applyForce(enemy.position, 0.2, 1.0);
         sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
 

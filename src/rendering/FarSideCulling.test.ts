@@ -101,36 +101,39 @@ describe('Far-side enemy culling', () => {
     });
   });
 
-  describe('death effect scale formula', () => {
-    // Mirrors the formula in GameLoop.ts
-    // Math.max(0.3, 1.0 - Math.max(0, enemies.length - 100) / 200)
-    function computeDeathShockwaveScale(enemyCount: number): number {
-      return Math.max(0.3, 1.0 - Math.max(0, enemyCount - 100) / 200);
+  describe('boss-only shockwave filter', () => {
+    // Regression test: shockwave must only trigger for boss-tier enemies.
+    // The filter used in GameLoop.ts and network-main.ts:
+    //   enemy.baseTypeName.startsWith('boss_')
+    function isBossTier(baseTypeName: string): boolean {
+      return baseTypeName.startsWith('boss_');
     }
 
-    it('is 1.0 at 100 or fewer enemies', () => {
-      expect(computeDeathShockwaveScale(0)).toBe(1.0);
-      expect(computeDeathShockwaveScale(50)).toBe(1.0);
-      expect(computeDeathShockwaveScale(100)).toBe(1.0);
-    });
-
-    it('scales down between 100 and 300 enemies', () => {
-      const scale200 = computeDeathShockwaveScale(200);
-      expect(scale200).toBeGreaterThan(0.3);
-      expect(scale200).toBeLessThan(1.0);
-      expect(scale200).toBeCloseTo(0.5, 5); // (1 - (200-100)/200) = 0.5
-    });
-
-    it('bottoms out at 0.3 at 300+ enemies', () => {
-      expect(computeDeathShockwaveScale(300)).toBeCloseTo(0.3, 5);
-      expect(computeDeathShockwaveScale(500)).toBe(0.3);
-      expect(computeDeathShockwaveScale(1000)).toBe(0.3);
-    });
-
-    it('never goes below minimum of 0.3', () => {
-      for (const count of [0, 100, 200, 300, 500, 1000]) {
-        expect(computeDeathShockwaveScale(count)).toBeGreaterThanOrEqual(0.3);
+    it('triggers for all boss variants', () => {
+      const bossNames = [
+        'boss_sapphire', 'boss_ruby', 'boss_emerald',
+        'boss_topaz', 'boss_amethyst', 'boss_opal',
+      ];
+      for (const name of bossNames) {
+        expect(isBossTier(name)).toBe(true);
       }
+    });
+
+    it('does NOT trigger for regular enemies', () => {
+      const regularNames = [
+        'grunt', 'wanderer', 'snake', 'virus', 'splitter',
+        'swarm', 'fractal', 'lurker', 'orbiter', 'phaser',
+        'cluster', 'helix', 'repulsor', 'painter', 'stealth_stalker',
+        'approach_glow', 'giant_wanderer', 'giant_snake', 'giant_rocket',
+        'titan_grunt', 'titan_spinner', 'titan_weaver', 'spawner',
+      ];
+      for (const name of regularNames) {
+        expect(isBossTier(name)).toBe(false);
+      }
+    });
+
+    it('does NOT trigger for empty baseTypeName', () => {
+      expect(isBossTier('')).toBe(false);
     });
   });
 });
