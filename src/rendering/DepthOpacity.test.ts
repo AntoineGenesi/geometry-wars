@@ -70,6 +70,23 @@ function makeBoxMesh(size: number): THREE.Mesh {
   return mesh;
 }
 
+/**
+ * Create a sphere mesh with BVH, optionally placed inside a scaled group.
+ * This simulates a large-map surface where surface.group.scale.setScalar(scaleFactor)
+ * has been applied (as in main.ts for LARGE=1.5 or EPIC=2.0 maps).
+ */
+function makeScaledSphereMesh(localRadius: number, scaleFactor: number): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(localRadius, 32, 32);
+  geo.boundsTree = new MeshBVH(geo);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial());
+  // Simulate the parent group scale that the game applies for large maps
+  const group = new THREE.Group();
+  group.scale.setScalar(scaleFactor);
+  group.add(mesh);
+  group.updateMatrixWorld(true);
+  return mesh;
+}
+
 describe('DepthOcclusionSystem', () => {
   let system: DepthOcclusionSystem;
 
@@ -262,6 +279,53 @@ describe('DepthOcclusionSystem', () => {
 
     // Should not crash, returns default
     expect(system.getOpacity(entity)).toBe(1.0);
+  });
+
+  // --- Regression test: S27g — entity dimming broken on large/epic maps ---
+  // When surface.group.scale is non-unit (1.5 for LARGE, 2.0 for EPIC), world-space
+  // distances differ from local-space distances. Using world dist as localDist caused
+  // minHitDist to be too large, so the enemy's own face got counted as an intersection
+  // → ALL entities appeared dimmed even on the near side of the surface.
+  it('REGRESSION S27g: near-side entity stays bright on scaled mesh (LARGE map, scale=1.5)', () => {
+    // Sphere: local radius=1 inside a group scaled to 1.5. World radius=1.5.
+    const mesh = makeScaledSphereMesh(1, 1.5);
+    system.setSurfaceMesh(mesh);
+
+    // Camera outside the sphere at world (0, 0, 5). Entity on near side at world (0, 0, 1.5).
+    const camera = new THREE.Vector3(0, 0, 5);
+    const nearEntity = makeEntity(new THREE.Vector3(0, 0, 1.5));
+
+    system.update([nearEntity], camera, 1 / 60);
+
+    // Near-side entity: 0 intersections → should be fully bright (opacity0 = 1.0)
+    // Before fix: localDist was world-space → minHitDist too large → sphere face counted → dimmed
+    expect(system.getOpacity(nearEntity)).toBeCloseTo(DEFAULT_OCCLUSION_CONFIG.opacity0, 2);
+  });
+
+  it('REGRESSION S27g: far-side entity is still dimmed on scaled mesh (LARGE map, scale=1.5)', () => {
+    const mesh = makeScaledSphereMesh(1, 1.5);
+    system.setSurfaceMesh(mesh);
+
+    // Camera at (0, 0, 5), entity on far side at (0, 0, -1.5).
+    const camera = new THREE.Vector3(0, 0, 5);
+    const farEntity = makeEntity(new THREE.Vector3(0, 0, -1.5));
+
+    system.update([farEntity], camera, 1 / 60);
+
+    // Far-side entity: ray passes through near sphere face → 1 intersection → dimmed
+    expect(system.getOpacity(farEntity)).toBeCloseTo(DEFAULT_OCCLUSION_CONFIG.opacity1, 2);
+  });
+
+  it('REGRESSION S27g: near-side entity stays bright on EPIC-scale mesh (scale=2.0)', () => {
+    const mesh = makeScaledSphereMesh(1, 2.0);
+    system.setSurfaceMesh(mesh);
+
+    const camera = new THREE.Vector3(0, 0, 6);
+    const nearEntity = makeEntity(new THREE.Vector3(0, 0, 2.0)); // on near surface (world radius=2)
+
+    system.update([nearEntity], camera, 1 / 60);
+
+    expect(system.getOpacity(nearEntity)).toBeCloseTo(DEFAULT_OCCLUSION_CONFIG.opacity0, 2);
   });
 
   it('uses custom config values', () => {

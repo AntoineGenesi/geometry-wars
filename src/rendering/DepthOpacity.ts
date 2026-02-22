@@ -183,6 +183,8 @@ export const DEFAULT_OCCLUSION_CONFIG: DepthOcclusionConfig = {
 const _occRay = new THREE.Ray();
 const _occDir = new THREE.Vector3();
 const _occInvMatrix = new THREE.Matrix4();
+/** Pre-allocated vector for entity position in local (mesh) space. */
+const _occLocalEntityPos = new THREE.Vector3();
 
 /** Internal per-entity state for the occlusion system. */
 interface OcclusionEntry {
@@ -355,8 +357,17 @@ export class DepthOcclusionSystem {
     _occRay.origin.applyMatrix4(_occInvMatrix);
     _occRay.direction.copy(_occDir).transformDirection(_occInvMatrix).normalize();
 
-    // Raycast all intersections (BVH returns array of { distance, faceIndex, ... })
-    const localDist = dist - this.config.rayOriginOffset;
+    // Compute local-space distance from ray origin to entity.
+    // IMPORTANT: `dist` is world-space, but the BVH operates in local space of the surface
+    // mesh. When the surface group has a non-unit scale (1.5 for LARGE, 2.0 for EPIC maps),
+    // world distances != local distances. Using world dist as localDist causes two bugs:
+    //   1. The BVH ray extends past the entity, hitting the back surface.
+    //   2. minHitDist = localDist * 0.92 is too large, so the enemy's own face (at the
+    //      true local dist) gets counted as an intersection → all entities appear occluded.
+    // Fix: transform entity position to local space and compute exact local distance.
+    _occLocalEntityPos.copy(entity.position).applyMatrix4(_occInvMatrix);
+    const localDist = _occRay.origin.distanceTo(_occLocalEntityPos);
+
     const hits = this.bvh!.raycast(_occRay, THREE.DoubleSide, 0, localDist);
 
     // Count unique face intersections. Filter out hits near the entity itself
