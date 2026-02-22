@@ -8,6 +8,18 @@
 
 ---
 
+## Session 27h Weapon HUD Wrong Weapon (2026-02-23)
+
+Bug: HUD showed wrong weapon (e.g. "Tesla Coil") while player was actually shooting at blaster rate.
+Root cause: `pruneDepletedWeapons()` removed depleted weapons from inventory but didn't update `currentWeapon`, so HUD showed the depleted weapon until the player pressed fire again.
+
+- [ ] **Pick up Tesla Coil, let it deplete** — HUD should switch to show Standard (blaster) as active immediately after ammo runs out, NOT continue showing "Tesla Coil [0]".
+- [ ] **Pick up Tesla Coil + Homing in inventory, deplete Tesla** — HUD should switch to Homing, not Standard.
+- [ ] **HUD weapon display never shows "[0] ammo"** — A weapon with 0 ammo should never appear as the active weapon in the HUD.
+- [ ] **Works in local split-screen** — Test with 2 players. Each player's HUD should show their own active weapon correctly.
+
+---
+
 ## Session 27g Entity Dimming Fix (2026-02-23)
 
 Bug: On LARGE (scale=1.5) and EPIC (scale=2.0) maps, ALL entities were dimmed including near-side

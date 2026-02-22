@@ -153,6 +153,41 @@ describe('WeaponManager', () => {
       expect(manager.getCurrentWeapon()).toBe(WeaponType.Standard);
     });
 
+    it('HUD regression: currentWeapon switches to Standard when getInventory() is called after depletion (without pressing fire)', () => {
+      // Regression for s27h-weapon-hud-wrong-weapon:
+      // After ammo depletes, the HUD update path calls getInventory() without calling fire().
+      // pruneDepletedWeapons() must also update currentWeapon to avoid showing the wrong weapon.
+      manager.equipWeapon(WeaponType.TeslaCoil, 1);
+      expect(manager.getCurrentWeapon()).toBe(WeaponType.TeslaCoil);
+
+      manager.fire(origin(), forward(), T); // Depletes ammo to 0 (consumeChance = 1.0)
+      // ammo is now 0 but currentWeapon is still TeslaCoil (auto-switch hasn't fired yet)
+
+      // Simulate the HUD update path: getInventory() is called every frame by RenderLoop
+      // without the player pressing fire again
+      const inv = manager.getInventory();
+
+      // TeslaCoil should be pruned from inventory
+      expect(inv.some(e => e.type === WeaponType.TeslaCoil)).toBe(false);
+      // currentWeapon MUST be Standard — NOT TeslaCoil — otherwise HUD shows wrong weapon
+      expect(manager.getCurrentWeapon()).toBe(WeaponType.Standard);
+    });
+
+    it('HUD regression: switches to next non-depleted weapon (not Standard) if another special weapon is held', () => {
+      manager.equipWeapon(WeaponType.TeslaCoil, 1);
+      manager.equipWeapon(WeaponType.Homing, 10); // Homing added silently to inventory
+      // Cycle to TeslaCoil (it's already active)
+      expect(manager.getCurrentWeapon()).toBe(WeaponType.TeslaCoil);
+
+      manager.fire(origin(), forward(), T); // Depletes TeslaCoil ammo to 0
+
+      // HUD calls getInventory() — should prune TeslaCoil and switch to Homing
+      const inv = manager.getInventory();
+      expect(inv.some(e => e.type === WeaponType.TeslaCoil)).toBe(false);
+      expect(inv.some(e => e.type === WeaponType.Homing)).toBe(true);
+      expect(manager.getCurrentWeapon()).toBe(WeaponType.Homing);
+    });
+
     it('should respect fire rate cooldown', () => {
       expect(manager.canFire(T)).toBe(true);
       manager.fire(origin(), forward(), T);
