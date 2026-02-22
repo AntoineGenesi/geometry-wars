@@ -94,6 +94,31 @@ export class MeshWalker {
   }
 
   /**
+   * Teleport the walker to a new position on the mesh surface.
+   * Resets ALL internal state (position, normal, faceIndex, _facePos, tangent frame)
+   * so that the next moveFromInput() call starts from the new location.
+   *
+   * Use this for respawns and instant position resets. Direct assignment to
+   * `position`/`faceIndex` skips `_facePos` reinit, causing snap-back on first move.
+   */
+  teleportTo(point: THREE.Vector3, faceIndex: number, normal?: THREE.Vector3): void {
+    this.position.copy(point);
+    this.faceIndex = faceIndex;
+    this._facePos = this.surface.initGeodesicPosition(point, faceIndex);
+
+    if (normal) {
+      this.normal.copy(normal);
+    } else {
+      // Recompute normal from the surface at this position
+      const result = this.surface.closestPointOnSurface(point);
+      if (result) {
+        this.normal.copy(result.normal);
+      }
+    }
+    this._updateTangentFrame(this.normal);
+  }
+
+  /**
    * Get the current tangent frame at the walker's position.
    * Uses the persistent tangent that smoothly rotates with the surface,
    * avoiding discontinuities on shapes like torus.

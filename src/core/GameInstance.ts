@@ -537,9 +537,7 @@ export class GameInstance {
           const respawnPoint = this._surface.getPoint(safePos.u, safePos.v);
           const projected = this._meshSurface.closestPointOnSurface(respawnPoint.position);
           if (projected) {
-            this._walker.position.copy(projected.point);
-            this._walker.normal.copy(projected.normal);
-            this._walker.faceIndex = projected.faceIndex;
+            this._walker.teleportTo(projected.point, projected.faceIndex, projected.normal);
           }
           this.player.mesh.position.copy(this._walker.position);
         }
