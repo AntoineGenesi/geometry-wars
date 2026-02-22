@@ -8,6 +8,20 @@
 
 ---
 
+## Session 27g Entity Dimming Fix (2026-02-23)
+
+Bug: On LARGE (scale=1.5) and EPIC (scale=2.0) maps, ALL entities were dimmed including near-side
+enemies. Root cause: localDist in DepthOcclusionSystem used world-space distance but BVH uses
+local space, causing false occlusion hits on scaled surfaces.
+
+- [ ] **Near-side entities bright on LARGE sphere** — Select sphere surface, choose LARGE map size. Enemies on the same side as you (near camera) should be fully bright, NOT dim. If all enemies look dark even when they're right next to you, bug is not fixed.
+- [ ] **Far-side entities still dim** — Enemies on the opposite side of the sphere (behind surface) should still appear noticeably dimmer than near-side enemies.
+- [ ] **Works on EPIC size** — Repeat with EPIC map size. Same behavior: near-side bright, far-side dim.
+- [ ] **Torus and cube also work** — Try LARGE torus and LARGE cube. Near-side entities should be bright.
+- [ ] **MP: same behavior** — In LAN multiplayer on a large surface, near-side entities should be bright.
+
+---
+
 ## Session 27c MP Rendering Rearchitecture (2026-02-21)
 
 SP and MP now share rendering setup via `src/rendering/SharedGameSetup.ts`. Test in LAN multiplayer:
