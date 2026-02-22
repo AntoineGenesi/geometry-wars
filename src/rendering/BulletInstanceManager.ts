@@ -35,41 +35,45 @@ export interface BulletVisualConfig {
  * Geometries are small capsule/cylinder shapes oriented along local +Z
  * (the lookAt direction). Scales control the elongation.
  */
+// Scale values are relative to the geometry's local axes:
+// - CapsuleGeometry: body extends along +Y. scaleY = bullet length, scaleX=scaleZ = bullet radius.
+// - SphereGeometry: uniform, all scale axes equal.
+// - ConeGeometry: apex at +Y, base at -Y. scaleY = bullet length, scaleX=scaleZ = base radius.
 export const BULLET_VISUAL_CONFIGS: Record<BulletVisualType, BulletVisualConfig> = {
   [BulletVisualType.Standard]: {
     color: 0x88ffff,
     scaleX: 0.04,
-    scaleY: 0.04,
-    scaleZ: 0.15,
-    createGeometry: () => new THREE.CapsuleGeometry(0.5, 1.0, 4, 6),
+    scaleY: 0.18,  // length along travel direction
+    scaleZ: 0.04,
+    createGeometry: () => new THREE.CapsuleGeometry(0.5, 1.0, 4, 8),
   },
   [BulletVisualType.Spread]: {
     color: 0xffff44,
-    scaleX: 0.06,
-    scaleY: 0.06,
-    scaleZ: 0.06,
+    scaleX: 0.07,
+    scaleY: 0.07,  // spherical — all axes equal
+    scaleZ: 0.07,
     createGeometry: () => new THREE.SphereGeometry(0.5, 6, 6),
   },
   [BulletVisualType.Piercing]: {
     color: 0xff4444,
     scaleX: 0.03,
-    scaleY: 0.03,
-    scaleZ: 0.25,
-    createGeometry: () => new THREE.CapsuleGeometry(0.5, 2.0, 4, 6),
+    scaleY: 0.28,  // longer and thinner for piercing bullets
+    scaleZ: 0.03,
+    createGeometry: () => new THREE.CapsuleGeometry(0.5, 2.0, 4, 8),
   },
   [BulletVisualType.Homing]: {
     color: 0x44ff44,
     scaleX: 0.05,
-    scaleY: 0.05,
-    scaleZ: 0.10,
+    scaleY: 0.12,  // cone apex faces +Y (direction of travel)
+    scaleZ: 0.05,
     createGeometry: () => new THREE.ConeGeometry(0.5, 1.5, 6),
   },
   [BulletVisualType.Default]: {
     color: 0xffffff,
     scaleX: 0.04,
-    scaleY: 0.04,
-    scaleZ: 0.12,
-    createGeometry: () => new THREE.CapsuleGeometry(0.5, 1.0, 4, 6),
+    scaleY: 0.15,  // length along travel direction
+    scaleZ: 0.04,
+    createGeometry: () => new THREE.CapsuleGeometry(0.5, 1.0, 4, 8),
   },
 };
 
@@ -125,8 +129,9 @@ const _tmpQuat = new THREE.Quaternion();
 const _tmpPos = new THREE.Vector3();
 const _tmpScale = new THREE.Vector3();
 const _tmpColor = new THREE.Color();
-const _tmpLookTarget = new THREE.Vector3();
-const _tmpObj = new THREE.Object3D();
+const _tmpDir = new THREE.Vector3();
+// CapsuleGeometry's long axis is +Y. Rotate +Y to align with bullet direction.
+const _Y_AXIS = new THREE.Vector3(0, 1, 0);
 
 // ---------------------------------------------------------------------------
 // BulletInstanceManager
@@ -301,19 +306,18 @@ export class BulletInstanceManager {
 
         const instanceId = batch.instanceIds[i];
 
-        // Compute orientation quaternion: align local +Z with direction
+        // Compute orientation quaternion: align capsule +Y axis with bullet direction.
+        // CapsuleGeometry extends along the local +Y axis, so we rotate Y→direction.
+        // (Previously used lookAt which aligned -Z with direction, making the capsule
+        // appear as a disc perpendicular to travel — the "polygon" look the user saw.)
         _tmpPos.set(slot.posX, slot.posY, slot.posZ);
-        _tmpLookTarget.set(
-          slot.posX + slot.dirX,
-          slot.posY + slot.dirY,
-          slot.posZ + slot.dirZ,
-        );
-        _tmpObj.position.copy(_tmpPos);
-        _tmpObj.lookAt(_tmpLookTarget);
-        _tmpObj.updateMatrix();
-
-        // Extract the quaternion from the Object3D's computed matrix
-        _tmpObj.matrix.decompose(_tmpPos, _tmpQuat, _tmpScale);
+        _tmpDir.set(slot.dirX, slot.dirY, slot.dirZ);
+        if (_tmpDir.lengthSq() < 0.0001) {
+          _tmpDir.set(0, 1, 0);
+        } else {
+          _tmpDir.normalize();
+        }
+        _tmpQuat.setFromUnitVectors(_Y_AXIS, _tmpDir);
 
         // Compose final matrix: position + orientation + type scale
         _tmpScale.set(config.scaleX, config.scaleY, config.scaleZ);

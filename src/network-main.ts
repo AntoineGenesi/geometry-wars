@@ -2163,7 +2163,7 @@ function main() {
       // Client-side prediction: apply local player movement AND aim immediately
       // so it feels responsive. The server position will override on next
       // onStateChange, but the visual lag between input and response is
-      // eliminated. Uses the same PLAYER_SPEED (0.19 UV/s) as the server.
+      // eliminated. Uses the same PLAYER_SPEED (0.095 UV/s) as the server.
       // MUST match server physics (including sin(phi) correction) to avoid
       // rubber-banding.
       //
@@ -2179,7 +2179,7 @@ function main() {
         const isMoving = currentInput.moveX !== 0 || currentInput.moveY !== 0;
 
         if (isMoving) {
-          const predSpeed = 0.19; // Must match server PLAYER_SPEED
+          const predSpeed = 0.095; // Must match server PLAYER_SPEED
           let predDx = currentInput.moveX * predSpeed * dt;
           const predDy = currentInput.moveY * predSpeed * dt;
 
