@@ -331,11 +331,6 @@ export class GameLoop {
     // Update adaptive quality system (monitors FPS, adjusts quality level)
     ctx.adaptiveQuality.update(dt);
 
-    // Update geoms (magnetism radius = base + buff bonus + super state bonus)
-    const magnetBonus = ctx.buffManager.getCollectionRadiusBonus()
-      + ctx.superManager.getFireModifiers().magnetRange;
-    ctx.geomPool.update(dt, ctx.player.surfaceU, ctx.player.surfaceV, ctx.game.clock.totalTime, 2.5 + magnetBonus);
-
     // Update particles and score popups
     ctx.particles.update(dt);
     ctx.scorePopups.update(dt);
@@ -536,7 +531,6 @@ export class GameLoop {
       enemies,
       ctx.particles,
       ctx.scoreManager,
-      ctx.geomPool,
       ctx.surface,
       ctx.screenShake,
       (u: number, v: number) => {
@@ -567,9 +561,6 @@ export class GameLoop {
       ctx.enemyInstanceManager,
       ctx.game.bloomEffectManager, // Pass bloom effect manager for boss death bloom pulses
     );
-
-    // Player vs geoms (magnetism buff expands pickup radius)
-    ctx.collisionSystem.checkGeomPickups(ctx.player, ctx.geomPool, ctx.scoreManager, ctx.particles, ctx.buffManager.getCollectionRadiusBonus());
 
     // Player vs enemies (immune if shielded OR tesla coil active OR companion shield active)
     const fireModifiers = ctx.superManager.getFireModifiers();

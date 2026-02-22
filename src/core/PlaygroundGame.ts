@@ -31,7 +31,6 @@ import { GameInstance, GameInstanceConfig, GameMode } from './GameInstance';
 import { Game } from './Game';
 import { Player } from '../entities/Player';
 import { BulletPool } from '../entities/Bullet';
-import { GeomPool } from '../entities/Geom';
 import { EnemySpawner, EnemyType } from '../entities/enemies/EnemySpawner';
 import { SurfaceType } from '../surfaces/SurfaceFactory';
 import { Surface } from '../surfaces/Surface';
@@ -95,7 +94,6 @@ export class PlaygroundGame {
   readonly game: Game;
   readonly player: Player;
   readonly bulletPool: BulletPool;
-  readonly geomPool: GeomPool;
   readonly enemySpawner: EnemySpawner;
   readonly weaponManager: WeaponManager;
   readonly particles: ParticleSystem;
@@ -133,7 +131,6 @@ export class PlaygroundGame {
     this.game = this.instance.game;
     this.player = this.instance.player;
     this.bulletPool = this.instance.bulletPool;
-    this.geomPool = this.instance.geomPool;
     this.enemySpawner = this.instance.enemySpawner;
     this.weaponManager = this.instance.weaponManager;
     this.particles = this.instance.particles;

@@ -29,9 +29,8 @@ export class RenderLoop {
 
   render(ctx: GameContext, alpha: number): void {
     profiler.begin('surface_projection');
-    // Project bullets and geoms onto surface
+    // Project bullets onto surface
     ctx.bulletPool.applySurfaceProjection(ctx.getTransform);
-    ctx.geomPool.applySurfaceProjection(ctx.getTransform);
     profiler.end('surface_projection');
 
     profiler.begin('transparency_and_occlusion');
@@ -194,8 +193,6 @@ export class RenderLoop {
     // Flush all instanced color/opacity changes for this frame
     ctx.enemyInstanceManager.flushColors();
 
-    // Apply depth-based opacity to geoms (far-side geoms nearly invisible)
-    ctx.geomPool.applyDepthOpacity(camPos, meshCenter);
     profiler.end('enemy_visibility');
 
     profiler.begin('camera_and_ui');
@@ -229,9 +226,7 @@ export class RenderLoop {
     const minimapEnemies = ctx.enemySpawner.getEnemies()
       .filter(e => e.mesh && !e.isMaterializing)
       .map(e => ({ u: e.surfacePosition.u, v: e.surfacePosition.v, alive: e.alive }));
-    const minimapGeoms: Array<{ u: number; v: number }> = [];
-    ctx.geomPool.forEachActive((_i: number, u: number, v: number) => { minimapGeoms.push({ u, v }); });
-    ctx.minimap.update(ctx.player.surfaceU, ctx.player.surfaceV, minimapEnemies, minimapGeoms);
+    ctx.minimap.update(ctx.player.surfaceU, ctx.player.surfaceV, minimapEnemies, []);
     profiler.end('camera_and_ui');
 
     profiler.begin('perf_tracking');

@@ -6,7 +6,6 @@ import { SurfaceFactory, SurfaceType } from './surfaces/SurfaceFactory';
 import { InputManager } from './input/InputManager';
 import { Player } from './entities/Player';
 import { BulletPool } from './entities/Bullet';
-import { GeomPool } from './entities/Geom';
 import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
@@ -489,10 +488,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Track which pool indices are registered with the instance manager
   const bulletInstanceIds = new Set<string>();
 
-  // -- Geom pool --
-  const geomPool = new GeomPool();
-  game.scene.add(geomPool.root);
-
   // -- Player --
   const player = new Player(bulletPool);
   player.respawn(0.5, 0.5);
@@ -925,9 +920,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         // Trigger on-death procs (volatile explosions)
         buffManager.onEnemyDeath(enemy, enemySpawner.getEnemies());
 
-        const { u, v } = surface.worldToSurface(enemy.position);
+        // Award multiplier directly on kill (geoms removed)
         for (let g = 0; g < enemy.geomCount; g++) {
-          geomPool.spawn(u, v);
+          scoreManager.collectGeom();
         }
       }
     },
@@ -1244,7 +1239,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     level,
     isEndless,
     bulletPool,
-    geomPool,
     enemySpawner,
     bulletInstanceManager,
     bulletInstanceIds,
@@ -1465,10 +1459,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         killLog.addKill(enemyType, color.getHex());
         playerLevel.addKill();
 
-        // Spawn geoms (bombs still drop geoms)
-        const { u, v } = surface.worldToSurface(enemy.position);
+        // Award multiplier directly on kill (geoms removed)
         for (let g = 0; g < enemy.geomCount; g++) {
-          geomPool.spawn(u, v);
+          scoreManager.collectGeom();
         }
 
         enemy.die();

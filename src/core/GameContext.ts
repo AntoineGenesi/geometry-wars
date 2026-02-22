@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import type { Game } from './Game';
 import type { Player } from '../entities/Player';
 import type { BulletPool } from '../entities/Bullet';
-import type { GeomPool } from '../entities/Geom';
 import type { EnemySpawner, EnemyType } from '../entities/enemies/EnemySpawner';
 import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import type { ParticleSystem } from '../effects/ParticleSystem';
@@ -72,7 +71,6 @@ export interface GameContext {
 
   // Entity pools
   bulletPool: BulletPool;
-  geomPool: GeomPool;
   enemySpawner: EnemySpawner;
 
   // GPU instanced rendering

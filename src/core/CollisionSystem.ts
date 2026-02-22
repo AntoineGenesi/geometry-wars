@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { Player } from '../entities/Player';
 import { BulletPool } from '../entities/Bullet';
-import { GeomPool } from '../entities/Geom';
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { Boss } from '../entities/enemies/Boss';
 import { ParticleSystem } from '../effects/ParticleSystem';
@@ -61,7 +60,6 @@ export class CollisionSystem {
     enemies: BaseEnemy[],
     particles: ParticleSystem,
     scoreManager: ScoreManager,
-    geomPool: GeomPool,
     surface: Surface,
     screenShake: ScreenShake,
     onEnemyKilled?: (u: number, v: number) => void,
@@ -165,12 +163,9 @@ export class CollisionSystem {
             // Grid deformation at death position
             surface.applyForce(enemy.position, 0.2, 1.0);
 
-            // Spawn geoms at death position with kill-shot momentum
-            if (debugFreeze) console.log('[CollisionSystem] Converting world to UV');
-            const { u, v } = surface.worldToSurface(enemy.position);
-            if (debugFreeze) console.log('[CollisionSystem] UV conversion complete, spawning geoms');
+            // Award score multiplier directly on kill (geoms removed — no pickup needed)
             for (let g = 0; g < enemy.geomCount; g++) {
-              geomPool.spawn(u, v, bulletAngle);
+              scoreManager.collectGeom();
             }
 
             // Trigger on-death procs (volatile explosions, etc.)
@@ -178,6 +173,7 @@ export class CollisionSystem {
             onEnemyDied?.(enemy, enemies);
 
             if (debugFreeze) console.log('[CollisionSystem] Calling onEnemyKilled callback');
+            const { u, v } = surface.worldToSurface(enemy.position);
             onEnemyKilled?.(u, v);
             if (debugFreeze) console.log('[CollisionSystem] Enemy death complete');
           }
@@ -188,30 +184,6 @@ export class CollisionSystem {
     });
 
     if (debugFreeze) console.log('[CollisionSystem] checkBulletEnemyCollisions END');
-  }
-
-  /**
-   * Check player-geom pickup collisions
-   */
-  checkGeomPickups(
-    player: Player,
-    geomPool: GeomPool,
-    scoreManager: ScoreManager,
-    particles: ParticleSystem,
-    bonusRadius = 0,
-  ): void {
-    const baseRadius = 0.5 + bonusRadius;
-    const pickupRadiusSq = baseRadius * baseRadius; // Squared radius avoids sqrt
-    geomPool.forEachActive((index, surfaceU, surfaceV, position) => {
-      const distSq = player.mesh.position.distanceToSquared(position);
-      if (distSq < pickupRadiusSq) {
-        geomPool.kill(index);
-        scoreManager.collectGeom();
-        // Green sparkle effect on collection
-        particles.geomCollect(position);
-        getSoundEngine().play('geomPickup', { pitch: 0.9 + Math.random() * 0.2 });
-      }
-    });
   }
 
   /**

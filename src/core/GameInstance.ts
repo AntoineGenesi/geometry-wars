@@ -37,7 +37,6 @@ import * as THREE from 'three';
 import { Game } from './Game';
 import { Player } from '../entities/Player';
 import { BulletPool } from '../entities/Bullet';
-import { GeomPool } from '../entities/Geom';
 import { EnemySpawner, EnemyType } from '../entities/enemies/EnemySpawner';
 import { SurfaceFactory, SurfaceType } from '../surfaces/SurfaceFactory';
 import { Surface } from '../surfaces/Surface';
@@ -127,7 +126,6 @@ export class GameInstance {
   // Core game systems (always present)
   readonly player: Player;
   readonly bulletPool: BulletPool;
-  readonly geomPool: GeomPool;
   readonly enemySpawner: EnemySpawner;
   readonly weaponManager: WeaponManager;
   readonly particles: ParticleSystem;
@@ -229,10 +227,6 @@ export class GameInstance {
     this.game.scene.add(this.bulletPool.root);
     this.bulletPool.setMeshSurface(this._meshSurface);
     this.wireBulletPool();
-
-    // -- Geom pool --
-    this.geomPool = new GeomPool();
-    this.game.scene.add(this.geomPool.root);
 
     // -- Player (real Player class, same ship, same fire rate) --
     this.player = new Player(this.bulletPool);
@@ -357,11 +351,6 @@ export class GameInstance {
           if (!enemy.alive) {
             this.particles.enemyDeath(enemy.mesh!.position, new THREE.Color(0xff4444));
             this.config.onEnemyKill(enemy.baseTypeName || 'unknown');
-            // Spawn geoms
-            const { u, v } = this._surface.worldToSurface(enemy.mesh!.position);
-            for (let g = 0; g < enemy.geomCount; g++) {
-              this.geomPool.spawn(u, v, Math.random() * Math.PI * 2);
-            }
           }
         }
       },
@@ -406,12 +395,6 @@ export class GameInstance {
       for (const enemy of enemies) {
         if (enemy.alive) {
           enemy.takeDamage(999); // Instant kill
-          const inverseRot = this._surface.worldRotation.clone().invert();
-          const localPos = enemy.position.clone().applyQuaternion(inverseRot);
-          const { u, v } = this._surface.worldToSurface(localPos);
-          for (let g = 0; g < enemy.geomCount; g++) {
-            this.geomPool.spawn(u, v, Math.random() * Math.PI * 2);
-          }
         }
       }
     };
@@ -429,12 +412,6 @@ export class GameInstance {
           if (!enemy.alive) {
             this.particles.enemyDeath(enemy.mesh!.position, new THREE.Color(0xff4444));
             this.config.onEnemyKill(enemy.baseTypeName || 'unknown');
-            const inverseRot = this._surface.worldRotation.clone().invert();
-            const localPos = enemy.mesh!.position.clone().applyQuaternion(inverseRot);
-            const { u, v } = this._surface.worldToSurface(localPos);
-            for (let g = 0; g < enemy.geomCount; g++) {
-              this.geomPool.spawn(u, v, Math.random() * Math.PI * 2);
-            }
           }
           break; // bullet hits at most one enemy
         }
@@ -620,9 +597,6 @@ export class GameInstance {
 
     // Update weapons (homing projectiles, etc.)
     this.weaponManager.update(dt);
-
-    // Update geoms (multiplier pickups)
-    this.geomPool.update(dt, this.player.surfaceU, this.player.surfaceV, this.game.clock.totalTime);
 
     // Update particles
     this.particles.update(dt);
