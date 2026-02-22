@@ -911,3 +911,22 @@ Claude will read this file at the start of each session and prioritize fixing re
 - `src/main.ts`: `makeSurfaceTransformFn()` now accepts and applies `mapSizeScaleFactor` so UV-based entities (pickups, bullets, companions) also appear on the correctly-scaled surface.
 
 **Regression test:** `src/surfaces/MeshSurface.test.ts` — "MeshSurface — map size scale (S26 regression)" — 11 tests covering sphere/cube/torus × SMALL/LARGE/EPIC — passes ✅
+
+---
+
+## S27g: Aim Offset Fix — Shooting Direction Aligned With Mouse Cursor
+
+### Test: Bullets travel where you aim
+- [ ] **Open single-player on sphere** — Aim mouse to the right, fire. Bullets should travel right. No angular offset between cursor direction and bullet path.
+- [ ] **Aim precisely at an enemy** — Mouse cursor pointing directly at an enemy. Fire. Bullets should hit or travel through where the cursor is pointing.
+- [ ] **Die and respawn** — After respawn, immediately aim at an enemy. Bullet direction should match cursor direction from the first shot (no "drift" or offset after respawn).
+- [ ] **Move while aiming** — Hold W and aim in various directions. Bullet direction should stay locked to cursor, not drift toward movement direction.
+- [ ] **Test on torus** — Same verification: aim is correct, no offset, respawn doesn't cause drift.
+- [ ] **Test on cube** — Same verification.
+- [ ] **Camera orbit (middle-mouse drag)** — Rotate camera view. Aim direction should still match what cursor points at relative to screen.
+
+**What changed:**
+- `src/core/GameLoop.ts`: Aim direction now derived from camera's actual world-space axes (`camera.matrixWorld` columns 0/1 projected onto the surface plane) instead of raw surface tangent/bitangent. Camera lerp lag previously caused a persistent misalignment between cursor direction on screen and bullet travel direction.
+- `src/core/GameLoop.ts`: `lastAimDirection` is now reset to `null` on respawn, preventing stale aim direction from old surface location from affecting the first shots after respawn.
+
+**Regression test:** `src/test/s27g-aim-offset.regression.test.ts` — 7 tests covering aligned/lagged camera, multi-surface consistency, degenerate fallback, tangent plane correctness — passes ✅

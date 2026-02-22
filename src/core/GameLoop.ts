@@ -104,6 +104,7 @@ export class GameLoop {
           // Respawn at safe location (opposite side of surface from death location)
           const safePos = ctx.player.getSafeRespawnPosition();
           ctx.player.respawn(safePos.u, safePos.v);
+          this.lastAimDirection = null; // Reset stale aim: new surface location, old direction invalid
           const respawnPoint = ctx.surface.getPoint(safePos.u, safePos.v);
           // Reset walker to respawn position
           const projected = ctx.meshSurface.closestPointOnSurface(respawnPoint.position);
@@ -178,25 +179,49 @@ export class GameLoop {
 
       const playerNormal = ctx.playerWalker.normal;
 
-      // Get tangent frame for aiming (bffc333 tangent-frame approach)
+      // Get tangent frame for player orientation (still needed for orient math below)
       const frame = ctx.playerWalker.getTangentFrame();
       const aimX = inputState.aimX;
       const aimY = inputState.aimY;
       const aimLen = Math.sqrt(aimX * aimX + aimY * aimY);
 
+      // Aim axes: use camera's actual world-space axes projected onto the surface plane.
+      // The camera position/up both lerp (factor 0.12) so its right/up vectors lag the
+      // surface tangent frame. Using frame.tangent/bitangent directly creates a visible
+      // offset between mouse cursor and bullet travel direction (worse after respawn, where
+      // the camera is still at the old location while the surface frame is at the new one).
+      // Projecting camera matrixWorld columns onto the surface plane gives axes that exactly
+      // match what the player sees on screen.
+      // Note: Three.js lookAt() sets camera.quaternion but doesn't update matrixWorld immediately.
+      // We call updateMatrixWorld() to ensure the matrix reflects the current orientation.
+      ctx.game.camera.updateMatrixWorld();
+      const camRight = new THREE.Vector3().setFromMatrixColumn(ctx.game.camera.matrixWorld, 0);
+      const camUp = new THREE.Vector3().setFromMatrixColumn(ctx.game.camera.matrixWorld, 1);
+      // Remove normal component so the axes lie on the surface plane
+      camRight.addScaledVector(playerNormal, -camRight.dot(playerNormal));
+      camUp.addScaledVector(playerNormal, -camUp.dot(playerNormal));
+      const useCameraAxes = camRight.lengthSq() > 0.01 && camUp.lengthSq() > 0.01;
+      if (useCameraAxes) {
+        camRight.normalize();
+        camUp.normalize();
+      }
+      // Fallback to surface tangent frame if camera axes degenerate (e.g. camera parallel to surface)
+      const aimAxisX = useCameraAxes ? camRight : frame.tangent;
+      const aimAxisY = useCameraAxes ? camUp : frame.bitangent;
+
       let aimDirection: THREE.Vector3;
       if (aimLen > 0.01) {
         aimDirection = new THREE.Vector3()
-          .addScaledVector(frame.tangent, aimX)
-          .addScaledVector(frame.bitangent, -aimY)
+          .addScaledVector(aimAxisX, aimX)
+          .addScaledVector(aimAxisY, -aimY)
           .normalize();
         this.lastAimDirection = aimDirection.clone();
       } else if (this.lastAimDirection !== null) {
         // Mouse near center or briefly dropped — hold last known aim direction
         aimDirection = this.lastAimDirection.clone();
       } else {
-        // No prior aim — default to forward (bitangent)
-        aimDirection = frame.bitangent.clone();
+        // No prior aim — default to forward (camera up on surface)
+        aimDirection = aimAxisY.clone();
       }
 
       // Orient player mesh
