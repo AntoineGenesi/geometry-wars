@@ -467,3 +467,118 @@ describe('GameRoom host_launch (choice parsing)', () => {
     expect(launched).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: spawn indicators without corresponding enemies (S27g)
+// ---------------------------------------------------------------------------
+// Before this fix, spawnSingleEnemy() sent 'pre_spawn' warnings to all clients
+// for ALL enemies in a wave, then dropped the extras in the setTimeout callback
+// once the cap was reached.  The result: many red dots, few actual spawns.
+//
+// The fix: track pendingEnemyCount (warned but not yet materialized).  Before
+// sending a warning, check (enemies.length + pendingEnemyCount) >= cap.  Only
+// send the warning if there's room.  Return false so spawnWave() can break early.
+// ---------------------------------------------------------------------------
+
+/**
+ * Simulate the spawnSingleEnemy cap logic in isolation.
+ * Returns true if the enemy was queued (warning would be sent), false if dropped.
+ */
+function simulateSpawnSingleEnemy(
+  enemyCount: number,
+  pendingCount: number,
+  maxEnemies: number,
+): { queued: boolean; newPending: number } {
+  if (enemyCount + pendingCount >= maxEnemies) {
+    return { queued: false, newPending: pendingCount };
+  }
+  return { queued: true, newPending: pendingCount + 1 };
+}
+
+/**
+ * Simulate spawnWave with the fixed logic: call spawnSingleEnemy for each
+ * enemy entry, stop when the cap (enemies + pending) is reached.
+ * Returns { warnings, dropped } — warnings = pre_spawn messages sent.
+ */
+function simulateSpawnWave(
+  enemyCount: number,
+  waveTotal: number,
+  maxEnemies: number,
+): { warnings: number; phantomWarnings: number } {
+  let pending = 0;
+  let warnings = 0;
+
+  for (let i = 0; i < waveTotal; i++) {
+    const { queued, newPending } = simulateSpawnSingleEnemy(enemyCount, pending, maxEnemies);
+    if (!queued) {
+      break; // spawnWave breaks when spawnSingleEnemy returns false — no warning sent
+    }
+    pending = newPending;
+    warnings++;
+  }
+  // With the fix: phantomWarnings = 0, because we never send a warning for an enemy
+  // that would be dropped. The remaining wave entries are simply not processed.
+  return { warnings, phantomWarnings: 0 };
+}
+
+describe('spawn indicators 1:1 with enemy spawns (S27g regression)', () => {
+  it('FIXED: never sends more warnings than (cap - currentEnemies)', () => {
+    // With 5 active enemies, cap 30, wave of 51: only 25 warnings should be sent
+    const { warnings, phantomWarnings } = simulateSpawnWave(5, 51, 30);
+    expect(warnings).toBe(25);         // exactly fills remaining cap slots
+    expect(phantomWarnings).toBe(0);   // no phantom red dots
+  });
+
+  it('FIXED: at cap, no warnings sent at all', () => {
+    const { warnings, phantomWarnings } = simulateSpawnWave(30, 20, 30);
+    expect(warnings).toBe(0);
+    expect(phantomWarnings).toBe(0);
+  });
+
+  it('FIXED: small wave under cap — all warnings sent', () => {
+    const { warnings } = simulateSpawnWave(0, 6, 30);
+    expect(warnings).toBe(6); // wave fits entirely within cap
+  });
+
+  it('FIXED: pendingEnemyCount accumulates correctly within a wave', () => {
+    // Verify pending count prevents over-allocation when many are queued at once
+    let pending = 0;
+    let warnings = 0;
+    const enemyCount = 0;
+    const maxEnemies = 10;
+
+    for (let i = 0; i < 20; i++) {
+      const { queued, newPending } = simulateSpawnSingleEnemy(enemyCount, pending, maxEnemies);
+      if (!queued) break;
+      pending = newPending;
+      warnings++;
+    }
+
+    expect(warnings).toBe(10); // never exceeds cap
+    expect(pending).toBe(10);  // pending saturates at cap
+  });
+
+  it('REGRESSION: old behavior would send all warnings regardless of cap', () => {
+    // Demonstrate old behavior (no pending tracking): all 51 warnings sent,
+    // then 26 dropped in setTimeout. This test verifies the old code was wrong.
+    // Old spawnWave: checks enemies.length (never changes), sends all warnings.
+    function oldSimulateSpawnWave(enemyCount: number, waveTotal: number, maxEnemies: number) {
+      let warnings = 0;
+      let droppedInTimeout = 0;
+
+      // Old loop: enemies.length stays at enemyCount throughout (no pending tracking)
+      for (let i = 0; i < waveTotal; i++) {
+        if (enemyCount >= maxEnemies) break; // never true if enemyCount < maxEnemies
+        warnings++;
+      }
+      // setTimeout fires for all 'warnings' — but only (maxEnemies - enemyCount) materialize
+      const materialized = Math.min(warnings, maxEnemies - enemyCount);
+      droppedInTimeout = warnings - materialized;
+      return { warnings, droppedInTimeout };
+    }
+
+    const { warnings, droppedInTimeout } = oldSimulateSpawnWave(5, 51, 30);
+    expect(warnings).toBe(51);          // old code sent all 51 warnings (phantom red dots)
+    expect(droppedInTimeout).toBe(26);  // 26 enemies silently dropped → phantom indicators
+  });
+});

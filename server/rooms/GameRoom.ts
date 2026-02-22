@@ -127,6 +127,22 @@ export class GameRoom extends Room<GameState> {
   private waveElapsed = 0;
   private nextWaveAt = WAVE_FIRST_AT;
 
+  /**
+   * Count of enemies that have been warned to clients (pre_spawn sent) but
+   * not yet added to this.state.enemies (their setTimeout hasn't fired yet).
+   * Used to accurately enforce the max-enemy cap: without this, spawnWave()
+   * sends warnings for far more enemies than the cap allows, resulting in
+   * phantom red dots with no corresponding spawns.
+   */
+  private pendingEnemyCount = 0;
+
+  /**
+   * Incremented each time a game starts. SetTimeouts capture this value; if
+   * it changes (game restarted) they abort rather than pushing stale enemies
+   * into the new game's state and corrupting pendingEnemyCount.
+   */
+  private spawnGeneration = 0;
+
   // Per-player invincibility timers (sessionId → seconds remaining)
   private playerInvincibility: Map<string, number> = new Map();
 
@@ -339,6 +355,11 @@ export class GameRoom extends Room<GameState> {
     this.waveElapsed = 0;
     this.nextWaveAt = WAVE_FIRST_AT;
     this.playerInvincibility.clear();
+
+    // Invalidate any pending spawn timeouts from the previous game.
+    // Bumping spawnGeneration causes old setTimeouts to abort when they fire.
+    this.spawnGeneration++;
+    this.pendingEnemyCount = 0;
 
     // Reset all players
     this.state.players.forEach((player) => {
@@ -879,9 +900,10 @@ export class GameRoom extends Room<GameState> {
     this.waveElapsed += dt;
 
     // Only spawn a new wave when timer is due AND there's room for enemies.
-    // If at max enemies, wait until some are killed before starting next wave.
+    // Include pending (warned but not yet materialized) enemies in the count so
+    // we don't fire a new wave whose warnings will all be phantom (no enemy).
     if (this.waveElapsed < this.nextWaveAt) return;
-    if (this.state.enemies.length >= this.getMaxEnemies()) return;
+    if (this.state.enemies.length + this.pendingEnemyCount >= this.getMaxEnemies()) return;
 
     this.waveNumber++;
     this.state.waveNumber = this.waveNumber;
@@ -1024,25 +1046,34 @@ export class GameRoom extends Room<GameState> {
     // Scale enemy counts with player count:
     // 1 player: 1.0x, 2 players: 1.5x, 3 players: 2.0x, 4 players: 2.5x
     const countMultiplier = 1.0 + (playerCount - 1) * 0.5;
-    const maxEnemies = this.getMaxEnemies();
 
     for (const entry of wave) {
       const resolvedType = WAVE_TYPE_REMAP[entry.type] ?? entry.type;
       const scaledCount = Math.round(entry.count * countMultiplier);
 
       for (let i = 0; i < scaledCount; i++) {
-        // Respect the max-enemy cap even within a single wave
-        if (this.state.enemies.length >= maxEnemies) break;
-        this.spawnSingleEnemy(resolvedType);
+        // spawnSingleEnemy checks (enemies.length + pendingEnemyCount) >= cap
+        // and returns early if over cap — no phantom warnings sent.
+        if (!this.spawnSingleEnemy(resolvedType)) break;
       }
     }
   }
 
   /**
    * Spawn a single enemy of the given type at a random edge position.
+   * Returns true if the enemy was queued (warning sent), false if the cap
+   * would be exceeded (caller should stop spawning further enemies).
    * The type must already be resolved (i.e., present in SERVER_TO_SPAWNER_TYPE).
    */
-  private spawnSingleEnemy(type: string) {
+  private spawnSingleEnemy(type: string): boolean {
+    // Check effective enemy count: materialized + pending (warned but not yet added).
+    // This is the core fix for phantom warning rings: we never send a warning for
+    // an enemy that will be silently dropped by the cap check in the setTimeout.
+    const maxEnemies = this.getMaxEnemies();
+    if (this.state.enemies.length + this.pendingEnemyCount >= maxEnemies) {
+      return false;
+    }
+
     const enemy = new EnemyState();
     enemy.id = `e${this.nextEnemyId++}`;
     enemy.type = type;
@@ -1076,6 +1107,12 @@ export class GameRoom extends Room<GameState> {
     enemy.health = this.getEnemyHealth(type);
     enemy.alive = true;
 
+    // Allocate this enemy in the pending count before broadcasting the warning.
+    // This ensures any subsequent calls to spawnSingleEnemy (synchronous, same tick)
+    // see the updated count and don't over-allocate.
+    this.pendingEnemyCount++;
+    const gen = this.spawnGeneration;
+
     // Broadcast pre-spawn warning to all clients so they can show a pulsing
     // red ring at this UV position before the enemy actually appears.
     this.broadcast('pre_spawn', { type, u: enemy.surfaceU, v: enemy.surfaceV });
@@ -1083,11 +1120,19 @@ export class GameRoom extends Room<GameState> {
     // Delay adding to state so clients have PRE_SPAWN_WARNING_MS to show
     // the warning ring before the enemy materialises.
     setTimeout(() => {
-      // Guard: only push if game is still in progress and cap not reached.
-      if (this.state.roomPhase === 'playing' && this.state.enemies.length < this.getMaxEnemies()) {
+      // Decrement pending count regardless — this spawn slot is consumed.
+      this.pendingEnemyCount = Math.max(0, this.pendingEnemyCount - 1);
+
+      // If the game was restarted after we sent the warning, discard this enemy.
+      if (this.spawnGeneration !== gen) return;
+
+      // Only push if game is still in progress (phase check is a safety net).
+      if (this.state.roomPhase === 'playing') {
         this.state.enemies.push(enemy);
       }
     }, PRE_SPAWN_WARNING_MS);
+
+    return true;
   }
 
   private getEnemyHealth(type: string): number {
