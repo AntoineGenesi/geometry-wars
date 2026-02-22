@@ -82,6 +82,10 @@ const _tempAimDir = new THREE.Vector3();
 const _tempToEnemy = new THREE.Vector3();
 const _tempCompPos = new THREE.Vector3();
 const _tempOrientMat = new THREE.Matrix4();
+// Orbit: guaranteed-perpendicular bitangent = normal × tangent
+const _tempOrbitBitangent = new THREE.Vector3();
+// Orient: right-handed Z axis = tangent × normal (makes det=+1, prevents flat appearance)
+const _tempOrientZ = new THREE.Vector3();
 // Spin axes for independent ring/core rotation (3D gyroscope effect)
 const _spinX = new THREE.Vector3(1, 0, 0);
 const _spinY = new THREE.Vector3(0, 1, 0);
@@ -189,7 +193,12 @@ class Companion {
     const orbitBehavior = this.agent.getBehavior() as OrbitBehavior;
     const playerTransform = getTransform(playerU, playerV);
     orbitBehavior.center.copy(playerWorldPos);
-    orbitBehavior.setFrame(playerTransform.tangent, playerTransform.bitangent);
+    // FIX: Compute guaranteed-perpendicular bitangent = normal × tangent.
+    // The surface's tangentV can be parallel to tangentU on certain cube face strips
+    // (e.g. top face strip 1 where faceRight=(0,0,-1) equals the world-axis override
+    // tangentV=(0,0,-1)), collapsing the orbit to 1D "up/down" oscillation.
+    _tempOrbitBitangent.crossVectors(playerTransform.normal, playerTransform.tangent);
+    orbitBehavior.setFrame(playerTransform.tangent, _tempOrbitBitangent);
     this.agent.update(dt);
     this.orbitAngle = orbitBehavior.angle; // sync for any code reading orbitAngle
 
@@ -201,8 +210,13 @@ class Companion {
     this.surfaceU = playerU;
     this.surfaceV = playerV;
 
-    // Orient the group to the surface (no whole-group spin — parts spin independently)
-    _tempOrientMat.makeBasis(playerTransform.tangent, surfaceNormal, playerTransform.bitangent);
+    // Orient the group to the surface using a right-handed basis.
+    // FIX: Previous makeBasis(tangent, normal, bitangent) produced det=-1 (left-handed)
+    // because tangent × normal ≠ bitangent on most surfaces. Left-handed matrices cause
+    // Three.js setFromRotationMatrix to extract garbage quaternions, making meshes appear flat.
+    // Correct approach: Z axis = tangent × normal guarantees det=+1.
+    _tempOrientZ.crossVectors(playerTransform.tangent, surfaceNormal);
+    _tempOrientMat.makeBasis(playerTransform.tangent, surfaceNormal, _tempOrientZ);
     this.mesh.quaternion.setFromRotationMatrix(_tempOrientMat);
 
     // 3D gyroscope effect: each part spins on a different local axis
