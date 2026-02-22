@@ -5,9 +5,9 @@ import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicat
 
 // Pickup collision radius in UV space (MEDIUM map, scale 1.0).
 // Divided by mapSizeScaleFactor in checkPlayerCollision to keep world-space size constant.
-// Reduced from 0.08 (too large — ~4 world units at equator on sphere-radius-8 MEDIUM map)
-// to 0.015 (~0.75 world units, roughly 2.5× the player half-width of 0.15).
-const PICKUP_COLLISION_RADIUS = 0.015;
+// 0.01 UV ≈ 0.50 world units at equator on sphere-radius-8 MEDIUM map
+// (was 0.015 ≈ 0.75 world units — still felt too large per user feedback).
+const PICKUP_COLLISION_RADIUS = 0.01;
 
 /**
  * Floating weapon pickup that grants new weapons to player

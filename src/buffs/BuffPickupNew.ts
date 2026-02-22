@@ -10,7 +10,8 @@ const PICKUP_LIFETIME = 12; // seconds
 const FADE_START = 9;       // seconds before starting fade
 
 // Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
-const PICKUP_COLLISION_RADIUS = 0.015;
+// 0.01 UV ≈ 0.50 world units at equator on sphere-radius-8 MEDIUM map.
+const PICKUP_COLLISION_RADIUS = 0.01;
 
 export class BuffPickupNew {
   readonly mesh: THREE.Group;

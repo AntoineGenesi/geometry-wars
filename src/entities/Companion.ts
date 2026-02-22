@@ -619,7 +619,8 @@ export class CompanionManager {
 // ---------------------------------------------------------------------------
 
 // Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
-const COMPANION_PICKUP_COLLISION_RADIUS = 0.015;
+// 0.01 UV ≈ 0.50 world units at equator on sphere-radius-8 MEDIUM map.
+const COMPANION_PICKUP_COLLISION_RADIUS = 0.01;
 
 export class CompanionPickup {
   readonly mesh: THREE.Group;
