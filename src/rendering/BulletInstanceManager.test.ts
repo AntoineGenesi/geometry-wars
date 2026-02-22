@@ -305,11 +305,13 @@ describe('BulletInstanceManager', () => {
       const extractedScale = new THREE.Vector3();
       matrix.decompose(extractedPos, extractedQuat, extractedScale);
 
-      // The local +Z axis should align with direction (1,0,0)
-      const localZ = new THREE.Vector3(0, 0, 1).applyQuaternion(extractedQuat);
-      expect(localZ.x).toBeCloseTo(1, 1);
-      expect(localZ.y).toBeCloseTo(0, 1);
-      expect(localZ.z).toBeCloseTo(0, 1);
+      // The local +Y axis should align with direction (1,0,0).
+      // CapsuleGeometry extends along +Y, so the orientation quaternion
+      // rotates +Y to match the bullet's travel direction.
+      const localY = new THREE.Vector3(0, 1, 0).applyQuaternion(extractedQuat);
+      expect(localY.x).toBeCloseTo(1, 1);
+      expect(localY.y).toBeCloseTo(0, 1);
+      expect(localY.z).toBeCloseTo(0, 1);
     });
 
     it('applies non-zero scale from visual config', () => {
