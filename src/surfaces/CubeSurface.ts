@@ -645,6 +645,47 @@ export class CubeSurface extends Surface {
       }
     }
 
+    // CAP TRIANGLES: Fill diamond-shaped holes at center of bottom (v=0) and top (v=1) faces.
+    // The UV grid creates boundary edges in bevel corner regions at v=0 and v=1 because
+    // adjacent face strips' bevel vertices don't align. These boundaries block geodesic walking.
+    // Fix: add a center vertex for each cap and fan triangles to fill the gap.
+    const derived = this.getDerivedValues()
+    const halfSize = derived.halfSize
+
+    // Bottom cap: center vertex at (0, -halfSize, 0), normal (0, -1, 0)
+    const bottomCenterIdx = positions.length / 3
+    positions.push(0, -halfSize, 0)
+    normals.push(0, -1, 0)
+    uvs.push(0.5, 0)
+
+    // Top cap: center vertex at (0, halfSize, 0), normal (0, 1, 0)
+    const topCenterIdx = positions.length / 3
+    positions.push(0, halfSize, 0)
+    normals.push(0, 1, 0)
+    uvs.push(0.5, 1)
+
+    for (let i = 0; i < uSegments; i++) {
+      const uMid = (i + 0.5) / uSegments
+      const uRegion = this.getURegion(uMid, derived)
+
+      // Only add cap triangles for bevel u regions (where boundary gaps exist)
+      if (uRegion.type !== 'bevel') continue
+
+      // Bottom cap: fan triangle from center to v=0 edge vertices
+      // Vertex indices at j=0 row: i and i+1
+      const bottomA = i          // vertex (i, 0)
+      const bottomB = i + 1      // vertex (i+1, 0)
+      // Winding: cross(A-center, B-center) must point down (-Y)
+      indices.push(bottomCenterIdx, bottomA, bottomB)
+
+      // Top cap: fan triangle from center to v=vSegments edge vertices
+      // Vertex indices at j=vSegments row
+      const topA = vSegments * (uSegments + 1) + i
+      const topB = topA + 1
+      // Winding: cross(B-center, A-center) must point up (+Y)
+      indices.push(topCenterIdx, topB, topA)
+    }
+
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
