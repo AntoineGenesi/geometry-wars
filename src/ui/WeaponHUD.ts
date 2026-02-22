@@ -213,6 +213,42 @@ export class WeaponHUD {
     return luminance > 0.5 ? '#000000' : '#ffffff';
   }
 
+  /**
+   * Show a brief banner notifying the player that a weapon was added to inventory
+   * without switching to it (because they already have a special weapon active).
+   * The banner fades out automatically after 2.5 seconds.
+   */
+  showPickupNotification(weaponName: string): void {
+    const banner = document.createElement('div');
+    banner.style.cssText = [
+      'position:fixed',
+      'left:50%',
+      'top:18%',
+      'transform:translateX(-50%)',
+      'background:rgba(0,0,0,0.82)',
+      'border:1px solid #555',
+      'color:#eee',
+      "font-family:'Segoe UI',Arial,sans-serif",
+      'font-size:13px',
+      'padding:6px 16px',
+      'border-radius:4px',
+      'pointer-events:none',
+      'z-index:500',
+      'transition:opacity 0.8s',
+      'opacity:1',
+      'white-space:nowrap',
+      'letter-spacing:0.5px',
+    ].join(';');
+    banner.textContent = `${weaponName} added to inventory  \u2022  [E] to cycle`;
+    document.body.appendChild(banner);
+
+    // Fade out after 2 s, remove after 0.8 s fade
+    setTimeout(() => {
+      banner.style.opacity = '0';
+      setTimeout(() => banner.remove(), 800);
+    }, 2000);
+  }
+
   hide(): void {
     this.container.style.display = 'none';
   }

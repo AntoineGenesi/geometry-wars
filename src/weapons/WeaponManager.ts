@@ -184,10 +184,16 @@ export class WeaponManager {
 
   /**
    * Equip a new weapon with ammo. Adds to inventory if not already present.
-   * If the weapon is already in inventory, stacks ammo.
-   * Switches the active weapon to the newly equipped one.
+   * If the weapon is already in inventory, stacks ammo and increases stack level.
+   *
+   * Auto-switches to the new weapon only when:
+   *   - Currently on Standard (auto-equip first special weapon)
+   *   - Picking up the same type as currently active (no-op switch)
+   * Otherwise silently adds to inventory — player presses [E] to cycle.
+   *
+   * Returns true if the active weapon was switched, false if silently added.
    */
-  equipWeapon(type: WeaponType, ammo?: number): void {
+  equipWeapon(type: WeaponType, ammo?: number): boolean {
     const config = WEAPON_CONFIGS[type];
 
     if (type !== WeaponType.Standard) {
@@ -195,15 +201,13 @@ export class WeaponManager {
       const addedAmmo = ammo ?? config.ammo;
       this.ammo.set(type, existingAmmo + addedAmmo);
 
-      // Stack: picking up the same weapon again increases its stack level
-      if (this.currentWeapon === type) {
-        const currentStack = this.stacks.get(type) ?? 1;
-        this.stacks.set(type, Math.min(currentStack + 1, 5)); // cap at 5 stacks
+      // Stack: each pickup of the same type increments the stack level (up to 5)
+      // regardless of which weapon is currently active.
+      if (this.stacks.has(type)) {
+        const currentStack = this.stacks.get(type)!;
+        this.stacks.set(type, Math.min(currentStack + 1, 5));
       } else {
-        // Switching to a new weapon - start at stack 1 (unless already stacked)
-        if (!this.stacks.has(type)) {
-          this.stacks.set(type, 1);
-        }
+        this.stacks.set(type, 1);
       }
 
       // Add to inventory if not already present
@@ -212,7 +216,13 @@ export class WeaponManager {
       }
     }
 
-    this.currentWeapon = type;
+    // Only auto-switch if player hasn't equipped a special weapon yet,
+    // or if they picked up the same type they're already using.
+    const shouldSwitch = this.currentWeapon === WeaponType.Standard || type === this.currentWeapon;
+    if (shouldSwitch) {
+      this.currentWeapon = type;
+    }
+    return shouldSwitch;
   }
 
   /**
