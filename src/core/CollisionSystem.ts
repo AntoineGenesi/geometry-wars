@@ -99,7 +99,9 @@ export class CollisionSystem {
         if (!enemy.active || !enemy.alive) continue;
 
         // Use distanceToSquared to avoid sqrt
-        const hitRadiusSq = (enemy.radius + 0.15) * (enemy.radius + 0.15);
+        // +0.05 is a small tolerance for bullet-point imprecision; larger values cause
+        // visually-missed shots to register hits (S27g hitbox fix).
+        const hitRadiusSq = (enemy.radius + 0.05) * (enemy.radius + 0.05);
         const distSq = bulletPos.distanceToSquared(enemy.position);
         if (distSq < hitRadiusSq) {
           // Capture bullet angle BEFORE kill (data persists but capture for clarity)

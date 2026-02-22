@@ -8,7 +8,7 @@ export class Duck extends BaseEnemy {
   private readonly directionChangeInterval: number = 0.5;
 
   constructor(surfaceU: number, surfaceV: number) {
-    super(surfaceU, surfaceV, 1, 5, 1, 0.025, 0.3);
+    super(surfaceU, surfaceV, 1, 5, 1, 0.025, 0.25); // radius=0.25 is midpoint of square flat-side(0.22) and corner(0.31) (S27g hitbox fix)
 
     this.currentDirection = Math.floor(Math.random() * 4);
     this.directionTimer = 0;
