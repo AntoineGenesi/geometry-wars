@@ -77,7 +77,7 @@ import { PlayerNameLabels } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { VotingScreen } from './ui/VotingScreen';
-import { PauseMenu } from './ui/PauseMenu';
+import { PauseMenu, PauseMenuGameData } from './ui/PauseMenu';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
@@ -929,8 +929,8 @@ function main() {
   document.body.appendChild(stopServerBtn);
 
   // Pause menu — shown when the server has paused the game.
-  // Host: uses full PauseMenu with resume/stop-server buttons.
-  // Non-host: uses a simple styled overlay that says "Host has paused the game".
+  // Both host and non-host see the full PauseMenu.
+  // Host gets END GAME / STOP SERVER buttons; non-host does not (isHost=false).
   const pauseMenu = new PauseMenu();
   pauseMenu.setIsHost(false); // updated dynamically before each show()
   pauseMenu.setNetworkCallbacks({
@@ -978,58 +978,39 @@ function main() {
     pauseMenu.setJoinUrl(joinUrl);
   }
 
-  // Non-host pause overlay: styled to match game aesthetic, pointer-events:none
-  // so it never accidentally blocks input (display:none when not showing).
-  const pauseOverlay = document.createElement('div');
-  pauseOverlay.style.cssText =
-    'position:fixed;top:0;left:0;width:100%;height:100%;' +
-    'background:rgba(0,0,20,0.88);z-index:2100;' +
-    'display:none;justify-content:center;align-items:center;' +
-    'flex-direction:column;backdrop-filter:blur(5px);' +
-    'pointer-events:none;';
-  const pauseTitleEl = document.createElement('div');
-  pauseTitleEl.style.cssText =
-    'color:#ffff00;font:bold 64px monospace;' +
-    'text-shadow:0 0 20px #ffff00,0 0 40px #ffaa00;' +
-    'margin-bottom:20px;letter-spacing:12px;';
-  pauseTitleEl.textContent = 'PAUSED';
-  pauseOverlay.appendChild(pauseTitleEl);
-  const pauseHintEl = document.createElement('div');
-  pauseHintEl.style.cssText = 'color:#aaaacc;font:16px monospace;letter-spacing:3px;';
-  pauseHintEl.textContent = 'Host has paused the game';
-  pauseOverlay.appendChild(pauseHintEl);
-  document.body.appendChild(pauseOverlay);
+  /** Build PauseMenuGameData from current local player state (buffs, weapon, kills). */
+  function buildPauseMenuGameData(): PauseMenuGameData {
+    const weaponConfig = WEAPON_CONFIGS[localPlayerWeaponType];
+    const buffs = buffManager.getActiveBuffs().map(b => ({
+      name: b.def.name,
+      stacks: b.stacks,
+      description: b.def.description,
+      currentValue: b.def.formatValue(b.stacks),
+      color: '#' + b.def.iconColor.toString(16).padStart(6, '0'),
+    }));
+    return {
+      buffs,
+      totalKills: totalKillCounter.getTotalKills(),
+      weapon: {
+        name: weaponConfig?.name ?? 'Standard',
+        baseDamage: weaponConfig?.damage ?? 1,
+        fireRate: weaponConfig?.fireRate ?? 1,
+      },
+    };
+  }
 
   function showPauseOverlay(paused: boolean): void {
     isPaused = paused;
     if (paused) {
       game.pause(); // Sync game clock to prevent dt accumulation during pause
-      if (isHost) {
-        // Host: show full PauseMenu (has resume, end game, stop server buttons)
-        pauseMenu.setIsHost(true);
-        // Populate pause menu with LAN game data (kills, weapon, perf)
-        const weaponConfig = WEAPON_CONFIGS[localPlayerWeaponType];
-        pauseMenu.setGameData({
-          buffs: [],
-          totalKills: totalKillCounter.getTotalKills(),
-          weapon: {
-            name: weaponConfig?.name ?? 'Standard',
-            baseDamage: weaponConfig?.damage ?? 1,
-            fireRate: weaponConfig?.fireRate ?? 1,
-          },
-        });
-        pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
-        pauseMenu.show();
-      } else {
-        // Non-host: show simple "Host has paused" overlay
-        pauseOverlay.style.display = 'flex';
-      }
+      // Both host and non-host see the full PauseMenu.
+      // Host gets END GAME / STOP SERVER buttons; non-host does not.
+      pauseMenu.setIsHost(isHost);
+      pauseMenu.setGameData(buildPauseMenuGameData());
+      pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
+      pauseMenu.show();
     } else {
-      if (isHost) {
-        pauseMenu.hide();
-      } else {
-        pauseOverlay.style.display = 'none';
-      }
+      pauseMenu.hide();
       game.resume(); // Resync game clock to avoid massive dt spike on first frame after resume
     }
   }
@@ -1198,7 +1179,8 @@ function main() {
 
   // Escape key handler:
   // - HOST: pauses/resumes the server (enemies freeze for everyone)
-  // - Non-host: opens/closes local menu (game continues, only host can pause)
+  // - Non-host (game running): opens local menu (game continues, only host can pause)
+  // - Non-host (server paused): closes the pause menu overlay (game stays frozen server-side)
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
       // After disconnect, Escape always returns to main menu.
@@ -1235,6 +1217,10 @@ function main() {
         isPaused = false;
         network.sendPause(false);
         showPauseOverlay(false);
+      } else {
+        // Non-host: server is paused — Escape dismisses the pause menu overlay.
+        // Game remains frozen server-side until host resumes.
+        pauseMenu.hide();
       }
     }
   });
