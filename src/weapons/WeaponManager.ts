@@ -264,6 +264,10 @@ export class WeaponManager {
   /**
    * Remove weapons with 0 ammo from inventory (never removes Standard).
    * If current weapon was removed, switch to next available or Standard.
+   *
+   * IMPORTANT: Also updates currentWeapon when the active weapon is pruned.
+   * This ensures the HUD (which calls getInventory() every frame) always shows
+   * the correct active weapon without requiring a fire() call to trigger auto-switch.
    */
   private pruneDepletedWeapons(): void {
     for (let i = this.inventory.length - 1; i >= 0; i--) {
@@ -275,6 +279,13 @@ export class WeaponManager {
         this.ammo.delete(type);
         this.stacks.delete(type);
       }
+    }
+
+    // If currentWeapon was just pruned, switch to next available or Standard.
+    // This keeps currentWeapon in sync with inventory at all times, not just on fire().
+    if (this.currentWeapon !== WeaponType.Standard && !this.inventory.includes(this.currentWeapon)) {
+      const nonStandard = this.inventory.filter(t => t !== WeaponType.Standard);
+      this.currentWeapon = nonStandard.length > 0 ? nonStandard[0] : WeaponType.Standard;
     }
   }
 
