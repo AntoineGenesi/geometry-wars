@@ -106,12 +106,12 @@ export class GameLoop {
           ctx.player.respawn(safePos.u, safePos.v);
           this.lastAimDirection = null; // Reset stale aim: new surface location, old direction invalid
           const respawnPoint = ctx.surface.getPoint(safePos.u, safePos.v);
-          // Reset walker to respawn position
+          // Reset walker to respawn position.
+          // MUST use teleportTo() to reinit _facePos — direct assignment leaves stale
+          // geodesic state that causes snap-back to death location on first movement input.
           const projected = ctx.meshSurface.closestPointOnSurface(respawnPoint.position);
           if (projected) {
-            ctx.playerWalker.position.copy(projected.point);
-            ctx.playerWalker.normal.copy(projected.normal);
-            ctx.playerWalker.faceIndex = projected.faceIndex;
+            ctx.playerWalker.teleportTo(projected.point, projected.faceIndex, projected.normal);
           }
           ctx.player.mesh.position.copy(ctx.playerWalker.position);
         }
