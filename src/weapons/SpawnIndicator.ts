@@ -45,7 +45,10 @@ export function createSpawnIndicatorSprite(tint: THREE.Color = new THREE.Color(0
   const sprite = new THREE.Sprite(mat);
   sprite.name = 'spawn-indicator';
   sprite.scale.set(0.35, 0.45, 1.0);
-  sprite.position.set(0, 0.9, 0);
+  // Position along local Z (= bitangent = camera "up") so the arrow appears
+  // above the pickup on screen. Local Y = surface normal (perpendicular to camera up),
+  // so using Y would place the arrow beside the pickup, not above it.
+  sprite.position.set(0, 0, 0.9);
   return sprite;
 }
 
@@ -70,6 +73,6 @@ export function updateSpawnIndicator(mesh: THREE.Object3D, age: number, t: numbe
   const pulse = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 8));
   (indicator.material as THREE.SpriteMaterial).opacity = pulse;
 
-  // Bounce up/down slightly (0 → 0.15 → 0 cycle)
-  indicator.position.y = 0.9 + Math.abs(Math.sin(t * 4)) * 0.15;
+  // Bounce along local Z (= bitangent = camera up) to stay above pickup on screen.
+  indicator.position.z = 0.9 + Math.abs(Math.sin(t * 4)) * 0.15;
 }

@@ -11,8 +11,8 @@ export interface SurfaceTransform {
 }
 
 // Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
-// Was 0.15 (especially large) — reduced to 0.015 for consistent world-space touch radius.
-const PICKUP_COLLISION_RADIUS = 0.015;
+// 0.01 UV ≈ 0.50 world units at equator on sphere-radius-8 MEDIUM map.
+const PICKUP_COLLISION_RADIUS = 0.01;
 
 export class SuperStatePickup {
   readonly mesh: THREE.Group;
@@ -80,41 +80,45 @@ export class SuperStatePickup {
     }
   }
 
+  // Dot patterns use the XZ plane (y=0) because with makeBasis(tangent, normal, bitangent):
+  // local X = tangent, local Y = normal (surface outward), local Z = bitangent.
+  // XZ plane = surface tangent plane, so dots sit flat on the surface.
+
   private createSquarePattern(): Array<{ x: number; y: number; z: number }> {
     const size = 0.2;
     return [
-      { x: -size, y: -size, z: 0 },
-      { x: size, y: -size, z: 0 },
-      { x: size, y: size, z: 0 },
-      { x: -size, y: size, z: 0 },
+      { x: -size, y: 0, z: -size },
+      { x: size, y: 0, z: -size },
+      { x: size, y: 0, z: size },
+      { x: -size, y: 0, z: size },
     ];
   }
 
   private createTrianglePattern(): Array<{ x: number; y: number; z: number }> {
     const size = 0.2;
     return [
-      { x: 0, y: size, z: 0 },
-      { x: -size, y: -size, z: 0 },
-      { x: size, y: -size, z: 0 },
+      { x: 0, y: 0, z: size },
+      { x: -size, y: 0, z: -size },
+      { x: size, y: 0, z: -size },
     ];
   }
 
   private createArrowPattern(): Array<{ x: number; y: number; z: number }> {
     const size = 0.15;
     return [
-      { x: 0, y: size * 2, z: 0 },
-      { x: -size, y: size, z: 0 },
-      { x: size, y: size, z: 0 },
+      { x: 0, y: 0, z: size * 2 },
+      { x: -size, y: 0, z: size },
+      { x: size, y: 0, z: size },
       { x: 0, y: 0, z: 0 },
-      { x: 0, y: -size, z: 0 },
+      { x: 0, y: 0, z: -size },
     ];
   }
 
   private createCrossPattern(): Array<{ x: number; y: number; z: number }> {
     const size = 0.2;
     return [
-      { x: 0, y: size, z: 0 },
-      { x: 0, y: -size, z: 0 },
+      { x: 0, y: 0, z: size },
+      { x: 0, y: 0, z: -size },
       { x: -size, y: 0, z: 0 },
       { x: size, y: 0, z: 0 },
       { x: 0, y: 0, z: 0 },
@@ -130,8 +134,8 @@ export class SuperStatePickup {
       const angle = (i / count) * Math.PI * 2;
       pattern.push({
         x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
-        z: 0,
+        y: 0,
+        z: Math.sin(angle) * radius,
       });
     }
 
@@ -158,8 +162,8 @@ export class SuperStatePickup {
       const angle = (i / count) * Math.PI * 2;
       pattern.push({
         x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius,
-        z: 0,
+        y: 0,
+        z: Math.sin(angle) * radius,
       });
     }
 
@@ -199,8 +203,8 @@ export class SuperStatePickup {
       dot.scale.set(scale, scale, scale);
     }
 
-    // Rotate the pattern slowly
-    this.mesh.rotation.z += dt * 0.5;
+    // Rotate the pattern slowly around local Y (= surface normal) so it spins on the surface.
+    this.mesh.rotation.y += dt * 0.5;
 
     // Animate spawn indicator (visible for first 30s; no hard age limit since SuperStatePickup
     // doesn't expire — it stays until collected. animationTime serves as age.)
@@ -212,17 +216,14 @@ export class SuperStatePickup {
   ): void {
     const transform = getTransform(this.surfaceU, this.surfaceV);
 
-    // Position the mesh on the surface
-    this.mesh.position.copy(transform.position);
+    // Hover above surface
+    this.mesh.position.copy(transform.position).addScaledVector(transform.normal, 0.3);
 
-    // Orient to surface normal
-    this.mesh.quaternion.setFromUnitVectors(
-      new THREE.Vector3(0, 0, 1),
-      transform.normal
-    );
-
-    // Offset slightly above surface
-    this.mesh.position.addScaledVector(transform.normal, 0.1);
+    // Orient consistently with other pickup types: local X = tangent, Y = normal, Z = bitangent.
+    // This keeps dot patterns on the surface tangent plane (XZ) and the spawn indicator
+    // sprite at local (0,0,0.9) — along bitangent = camera "up" = above pickup on screen.
+    const mat = new THREE.Matrix4().makeBasis(transform.tangent, transform.normal, transform.bitangent);
+    this.mesh.quaternion.setFromRotationMatrix(mat);
   }
 
   checkPlayerCollision(playerU: number, playerV: number): boolean {

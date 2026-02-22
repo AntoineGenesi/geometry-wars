@@ -286,12 +286,12 @@ describe('CompanionPickup', () => {
   });
 
   it('detects player collision within radius', () => {
-    // PICKUP_COLLISION_RADIUS = 0.015 (reduced from 0.08 — touch-only, not auto-pickup from afar)
+    // PICKUP_COLLISION_RADIUS = 0.01 (≈ 0.50 world units at equator — touch-only)
     const pickup = new CompanionPickup(CompanionType.Protector, 0.5, 0.5);
-    expect(pickup.checkPlayerCollision(0.5, 0.5)).toBe(true);   // exact match
-    expect(pickup.checkPlayerCollision(0.5, 0.51)).toBe(true);  // dist=0.01 < 0.015 → within radius
-    expect(pickup.checkPlayerCollision(0.5, 0.55)).toBe(false); // dist=0.05 >> 0.015 → too far
-    expect(pickup.checkPlayerCollision(0.8, 0.8)).toBe(false);  // far away
+    expect(pickup.checkPlayerCollision(0.5, 0.5)).toBe(true);    // exact match
+    expect(pickup.checkPlayerCollision(0.5, 0.508)).toBe(true);  // dist=0.008 < 0.01 → within radius
+    expect(pickup.checkPlayerCollision(0.5, 0.515)).toBe(false); // dist=0.015 > 0.01 → too far
+    expect(pickup.checkPlayerCollision(0.8, 0.8)).toBe(false);   // far away
   });
 
   it('applies surface transform without error', () => {
