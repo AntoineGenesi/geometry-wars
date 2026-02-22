@@ -508,8 +508,8 @@ export class GameRoom extends Room<GameState> {
         enemy.alive = false;
         enemiesToRemove.push(index);
 
-        // Spawn geoms at enemy position
-        this.spawnGeom(enemy.surfaceU, enemy.surfaceV);
+        // Geoms removed (s27g-geons-point-pickups-remove-mp)
+        // this.spawnGeom(enemy.surfaceU, enemy.surfaceV);
 
         // Add score
         player.score += 100 * player.multiplier;
@@ -522,6 +522,7 @@ export class GameRoom extends Room<GameState> {
     }
 
     console.log(`[GameRoom] ${player.name} used bomb, killed ${enemiesToRemove.length} enemies`);
+    // NOTE: Geoms are not spawned (removed in s27g-geons-point-pickups-remove-mp)
   }
 
   private tick() {
@@ -744,8 +745,8 @@ export class GameRoom extends Room<GameState> {
               owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
             }
 
-            // Spawn geom
-            this.spawnGeom(enemy.surfaceU, enemy.surfaceV);
+            // Geoms removed (s27g-geons-point-pickups-remove-mp)
+            // this.spawnGeom(enemy.surfaceU, enemy.surfaceV);
 
             // Chance to spawn weapon pickup
             if (Math.random() < WEAPON_DROP_CHANCE) {
