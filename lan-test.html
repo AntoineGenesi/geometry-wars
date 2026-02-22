@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LAN Connection Test — Geometry Wars 3D</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #050510;
+      color: #ccc;
+      font: 14px/1.6 monospace;
+      padding: 30px;
+      min-height: 100vh;
+    }
+    h1 {
+      color: #0ff;
+      font-size: 28px;
+      letter-spacing: 4px;
+      text-shadow: 0 0 20px #0ff;
+      margin-bottom: 8px;
+    }
+    h2 {
+      color: #0af;
+      font-size: 16px;
+      letter-spacing: 2px;
+      margin: 24px 0 10px;
+      text-transform: uppercase;
+    }
+    .subtitle {
+      color: #668;
+      font-size: 13px;
+      margin-bottom: 30px;
+    }
+    .test-card {
+      background: #0a0a18;
+      border: 1px solid #223;
+      border-radius: 4px;
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+    }
+    .test-card.pass { border-left: 4px solid #0f0; }
+    .test-card.fail { border-left: 4px solid #f44; }
+    .test-card.warn { border-left: 4px solid #fa0; }
+    .test-card.pending { border-left: 4px solid #446; }
+    .status-icon {
+      font-size: 20px;
+      min-width: 24px;
+      text-align: center;
+      margin-top: 1px;
+    }
+    .test-label { color: #0af; font-weight: bold; font-size: 13px; }
+    .test-value { color: #aaa; font-size: 13px; margin-top: 3px; }
+    .test-hint { color: #666; font-size: 12px; margin-top: 4px; }
+    .running { animation: blink 0.8s ease-in-out infinite; }
+    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    .info-box {
+      background: #0a1020;
+      border: 1px solid #2244;
+      border-radius: 4px;
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #889;
+    }
+    .info-box b { color: #0af; }
+    a { color: #08f; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .back-link {
+      display: inline-block;
+      margin-top: 30px;
+      padding: 10px 24px;
+      border: 1px solid #446;
+      color: #88a;
+      font-size: 13px;
+      letter-spacing: 1px;
+    }
+    .back-link:hover { border-color: #0af; color: #0af; text-decoration: none; }
+    #summary {
+      margin-top: 24px;
+      padding: 16px 20px;
+      border-radius: 4px;
+      font-size: 15px;
+      display: none;
+    }
+    #summary.ok { background: #020c02; border: 1px solid #0a0; color: #0d0; }
+    #summary.bad { background: #100502; border: 1px solid #c00; color: #f88; }
+    #summary.warn { background: #100800; border: 1px solid #880; color: #fc8; }
+  </style>
+</head>
+<body>
+
+<h1>LAN CONNECTION TEST</h1>
+<p class="subtitle">Geometry Wars 3D — diagnostic tool for LAN multiplayer issues</p>
+
+<h2>Browser &amp; Environment</h2>
+<div id="browser-tests"></div>
+
+<h2>Server Reachability</h2>
+<div id="server-tests"></div>
+
+<div id="summary"></div>
+
+<div>
+  <a href="/" class="back-link">◀ BACK TO GAME</a>
+</div>
+
+<script>
+(function() {
+  const hostname = window.location.hostname;
+  const wsPort = 2567;
+  const httpPort = window.location.port || '3000';
+
+  function card(id, label, status, value, hint) {
+    const card = document.createElement('div');
+    card.className = 'test-card ' + status;
+    card.id = id;
+    const icons = { pass: '✓', fail: '✗', warn: '⚠', pending: '…' };
+    card.innerHTML =
+      '<div class="status-icon">' + (icons[status] || '?') + '</div>' +
+      '<div>' +
+        '<div class="test-label">' + label + '</div>' +
+        '<div class="test-value">' + value + '</div>' +
+        (hint ? '<div class="test-hint">' + hint + '</div>' : '') +
+      '</div>';
+    return card;
+  }
+
+  function updateCard(id, status, value, hint) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.className = 'test-card ' + status;
+    const icons = { pass: '✓', fail: '✗', warn: '⚠', pending: '…' };
+    const icon = el.querySelector('.status-icon');
+    const valEl = el.querySelector('.test-value');
+    const hintEl = el.querySelector('.test-hint');
+    if (icon) icon.textContent = icons[status] || '?';
+    if (valEl) valEl.textContent = value;
+    if (hintEl) hintEl.textContent = hint || '';
+    else if (hint) {
+      const h = document.createElement('div');
+      h.className = 'test-hint';
+      h.textContent = hint;
+      el.querySelector('div:last-child').appendChild(h);
+    }
+  }
+
+  // ---- Browser environment tests (synchronous) ----
+  const browserTests = document.getElementById('browser-tests');
+
+  // User agent
+  browserTests.appendChild(card('ua', 'Browser', 'pass', navigator.userAgent, ''));
+
+  // WebGL2
+  const canvas = document.createElement('canvas');
+  const gl2 = canvas.getContext('webgl2');
+  if (gl2) {
+    const renderer = gl2.getParameter(gl2.RENDERER) || 'unknown';
+    browserTests.appendChild(card('webgl2', 'WebGL2', 'pass', 'Supported — ' + renderer,
+      'Game will run on WebGL2 fallback if WebGPU is not available.'));
+  } else {
+    browserTests.appendChild(card('webgl2', 'WebGL2', 'fail', 'NOT supported',
+      'The game requires WebGL2 or WebGPU. Try Chrome 90+, Firefox 90+, or Edge 90+.'));
+  }
+
+  // WebGPU (async, just check navigator.gpu presence)
+  if (navigator.gpu) {
+    navigator.gpu.requestAdapter().then(function(adapter) {
+      if (adapter) {
+        browserTests.appendChild(card('webgpu', 'WebGPU', 'pass', 'Available',
+          'Game will use WebGPU renderer (best performance).'));
+      } else {
+        browserTests.appendChild(card('webgpu', 'WebGPU', 'warn', 'API present but no adapter found',
+          'Will fall back to WebGL2.'));
+      }
+    }).catch(function() {
+      browserTests.appendChild(card('webgpu', 'WebGPU', 'warn', 'GPU request failed',
+        'Will fall back to WebGL2.'));
+    });
+  } else {
+    browserTests.appendChild(card('webgpu', 'WebGPU', 'warn', 'Not available in this browser',
+      'Game will use WebGL2 fallback — should still work.'));
+  }
+
+  // Mixed content / protocol check
+  const proto = window.location.protocol;
+  if (proto === 'https:') {
+    browserTests.appendChild(card('proto', 'Page Protocol', 'fail',
+      'HTTPS — WebSocket (ws://) will be BLOCKED',
+      'Mixed content: HTTPS pages cannot open unencrypted ws:// WebSockets. ' +
+      'Access the game via http://' + hostname + ':' + httpPort + ' instead.'));
+  } else {
+    browserTests.appendChild(card('proto', 'Page Protocol', 'pass',
+      'HTTP — WebSocket connections allowed', ''));
+  }
+
+  // ---- Server reachability tests (async) ----
+  const serverTests = document.getElementById('server-tests');
+
+  // Health endpoint test
+  const healthId = 'health';
+  const healthUrl = 'http://' + hostname + ':' + wsPort + '/health';
+  serverTests.appendChild(card(healthId, 'Game Server HTTP Health Check',
+    'pending', 'Testing ' + healthUrl + ' …',
+    ''));
+
+  fetch(healthUrl, { signal: AbortSignal.timeout ? AbortSignal.timeout(5000) : undefined })
+    .then(function(r) {
+      if (r.ok) {
+        return r.text().then(function(t) {
+          updateCard(healthId, 'pass',
+            'OK (HTTP ' + r.status + ') — ' + t.slice(0, 80),
+            'Server is reachable. HTTP path is working.');
+        });
+      } else {
+        updateCard(healthId, 'warn',
+          'HTTP ' + r.status + ' — server responded but with error',
+          'The server is up but returned an error code.');
+      }
+    })
+    .catch(function(e) {
+      updateCard(healthId, 'fail',
+        'Cannot reach ' + healthUrl,
+        'Game server may not be running. Start it with "npm run server" on the host PC. ' +
+        'Also check Windows Firewall — port ' + wsPort + ' must be allowed.');
+    });
+
+  // WebSocket test
+  const wsId = 'websocket';
+  const wsUrl = 'ws://' + hostname + ':' + wsPort;
+  serverTests.appendChild(card(wsId, 'WebSocket Connection (port ' + wsPort + ')',
+    'pending', 'Testing ' + wsUrl + ' …', ''));
+
+  let wsResolved = false;
+  try {
+    const ws = new WebSocket(wsUrl);
+    const wsTimeout = setTimeout(function() {
+      if (!wsResolved) {
+        wsResolved = true;
+        ws.close();
+        updateCard(wsId, 'fail',
+          'Connection timed out after 5 seconds',
+          'Port ' + wsPort + ' is not responding. Check: (1) server is running, ' +
+          '(2) Windows Firewall allows port ' + wsPort + ', (3) both devices on same WiFi.');
+      }
+    }, 5000);
+
+    ws.onopen = function() {
+      if (wsResolved) return;
+      wsResolved = true;
+      clearTimeout(wsTimeout);
+      ws.close(1000, 'test complete');
+      updateCard(wsId, 'pass',
+        'WebSocket connected successfully to ' + wsUrl,
+        'Port ' + wsPort + ' is open and responding. Colyseus server is reachable.');
+      showSummary();
+    };
+
+    ws.onerror = function() {
+      if (wsResolved) return;
+      wsResolved = true;
+      clearTimeout(wsTimeout);
+      updateCard(wsId, 'fail',
+        'WebSocket connection refused or blocked at ' + wsUrl,
+        'Common causes: (1) Game server not running — open "Geometry Wars Server" window. ' +
+        '(2) Windows Firewall blocking port ' + wsPort + ' — add inbound rule. ' +
+        '(3) HTTPS page trying ws:// — use http:// URL. ' +
+        '(4) Corporate proxy or VPN intercepting WebSockets.');
+      showSummary();
+    };
+  } catch(e) {
+    wsResolved = true;
+    updateCard(wsId, 'fail', 'WebSocket error: ' + e.message, '');
+    showSummary();
+  }
+
+  // IPv6 check
+  const ipv6Id = 'ipv6';
+  serverTests.appendChild(card(ipv6Id, 'Hostname Resolution',
+    'pass',
+    'Connecting to: ' + hostname + ' (from URL)',
+    hostname === 'localhost'
+      ? 'Localhost — may resolve to ::1 (IPv6). If server only listens on 0.0.0.0 (IPv4), try 127.0.0.1 instead.'
+      : 'Using IP ' + hostname + '. If this is correct, connection issues are likely firewall or server not running.'));
+
+  function showSummary() {
+    const wsCard = document.getElementById('websocket');
+    const isWsOk = wsCard && wsCard.classList.contains('pass');
+    const isHttpsFail = document.getElementById('proto') &&
+      document.getElementById('proto').classList.contains('fail');
+    const isWebGL2Fail = document.getElementById('webgl2') &&
+      document.getElementById('webgl2').classList.contains('fail');
+
+    const summary = document.getElementById('summary');
+    summary.style.display = 'block';
+
+    if (isHttpsFail) {
+      summary.className = 'bad';
+      summary.innerHTML = '✗ HTTPS mixed-content is blocking WebSocket connections.<br>' +
+        'Fix: Open the game via <b>http://</b>' + hostname + ':' + httpPort + '</b> (not https://).';
+    } else if (isWebGL2Fail) {
+      summary.className = 'bad';
+      summary.innerHTML = '✗ This browser does not support WebGL2. The game cannot run.<br>' +
+        'Fix: Use Chrome 90+, Firefox 90+, Edge 90+, or Safari 15+.';
+    } else if (isWsOk) {
+      summary.className = 'ok';
+      summary.innerHTML = '✓ Everything looks good. <a href="/?mode=network&amp;surface=sphere">Try connecting to the game</a>.';
+    } else {
+      summary.className = 'warn';
+      summary.innerHTML =
+        '⚠ WebSocket connection failed. Possible fixes:<br><br>' +
+        '1. Start the game server: run "npm run server" on the host PC (or open "Geometry Wars Server.bat")<br>' +
+        '2. Allow port ' + wsPort + ' in Windows Firewall (inbound TCP rule)<br>' +
+        '3. Both devices must be on the same WiFi network<br>' +
+        '4. Try <a href="http://' + hostname + ':' + httpPort + '/lan-test.html">http:// version of this page</a> if you accessed via https://';
+    }
+  }
+
+  // Trigger summary after a delay in case WebSocket test resolves late
+  setTimeout(showSummary, 6000);
+})();
+</script>
+</body>
+</html>

@@ -2075,35 +2075,99 @@ function main() {
     const msg = err instanceof Error ? err.message : String(err);
     const isServerDown = msg.includes('Cannot reach') || msg.includes('ERR_EMPTY_RESPONSE')
       || msg.includes('ProgressEvent') || msg.includes('ECONNREFUSED');
-    statusEl.textContent = isServerDown
-      ? 'Server not responding. Is the game server running?'
-      : `Connection failed: ${msg.slice(0, 80)}`;
-    statusEl.style.color = '#f44';
-    backBtn.style.display = 'block';
 
-    // Show a retry button for transient failures (stale server, timing issue)
+    // Replace the small status text with a full-screen error panel so the
+    // cause and fix are immediately visible without opening DevTools.
+    statusEl.style.display = 'none';
+
+    const errPanel = document.createElement('div');
+    errPanel.style.cssText =
+      'position:fixed;top:0;left:0;width:100%;height:100%;' +
+      'background:rgba(0,0,0,0.92);z-index:200;' +
+      'display:flex;flex-direction:column;justify-content:center;align-items:center;' +
+      'font-family:monospace;padding:20px;';
+
+    const title = document.createElement('div');
+    title.style.cssText = 'color:#f44;font-size:32px;font-weight:bold;letter-spacing:4px;margin-bottom:12px;';
+    title.textContent = isServerDown ? 'SERVER UNREACHABLE' : 'CONNECTION FAILED';
+    errPanel.appendChild(title);
+
+    const reason = document.createElement('div');
+    reason.style.cssText = 'color:#faa;font-size:14px;margin-bottom:24px;max-width:600px;text-align:center;';
+    reason.textContent = isServerDown
+      ? `Could not reach game server at ${serverUrl}`
+      : `Error: ${msg.slice(0, 120)}`;
+    errPanel.appendChild(reason);
+
+    // Possible-cause checklist (always visible)
+    const healthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+    const isHttps = window.location.protocol === 'https:';
+    const steps = [
+      isServerDown
+        ? '1. Is the "Geometry Wars Server" window open and running on the host PC?'
+        : '1. The server started but the handshake failed — try RETRY below',
+      `2. Firewall: Windows must allow inbound TCP on port 2567`,
+      '3. Both devices must be on the same WiFi / LAN',
+      isHttps
+        ? '4. ⚠ You are on HTTPS — change to http:// to allow WebSocket connections'
+        : `4. Test server health: open ${healthUrl}/health in a browser tab`,
+    ];
+    const list = document.createElement('div');
+    list.style.cssText = 'color:#888;font-size:13px;margin-bottom:24px;text-align:left;max-width:600px;line-height:1.9;';
+    list.innerHTML = steps.map(s => `<div>${s}</div>`).join('');
+    if (isHttps) {
+      list.querySelector('div:last-child')!.setAttribute('style', 'color:#fa0;');
+    }
+    errPanel.appendChild(list);
+
+    // Diagnostic link
+    const diagLink = document.createElement('a');
+    diagLink.href = '/lan-test.html';
+    diagLink.textContent = '🔍 Run LAN Diagnostics';
+    diagLink.style.cssText =
+      'color:#0af;font-size:14px;margin-bottom:20px;letter-spacing:1px;';
+    errPanel.appendChild(diagLink);
+
+    // Retry + back buttons
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;gap:16px;margin-top:8px;';
+
     const retryBtn = document.createElement('button');
     retryBtn.textContent = 'RETRY CONNECTION';
     retryBtn.style.cssText =
-      'position:fixed;top:55%;left:50%;transform:translate(-50%,-50%);' +
-      'padding:15px 30px;font:bold 18px monospace;background:#060;color:#0f0;' +
-      'border:2px solid #0f0;cursor:pointer;z-index:100;';
+      'padding:12px 28px;font:bold 16px monospace;background:#060;color:#0f0;' +
+      'border:2px solid #0f0;cursor:pointer;letter-spacing:2px;';
     retryBtn.onclick = () => window.location.reload();
-    document.body.appendChild(retryBtn);
+    btns.appendChild(retryBtn);
 
-    // Always log detailed error info for LAN debugging
+    const backBtnInPanel = document.createElement('button');
+    backBtnInPanel.textContent = '◀ MAIN MENU';
+    backBtnInPanel.style.cssText =
+      'padding:12px 28px;font:bold 16px monospace;background:#110;color:#888;' +
+      'border:2px solid #446;cursor:pointer;letter-spacing:2px;';
+    backBtnInPanel.onclick = () => { window.location.href = window.location.pathname; };
+    btns.appendChild(backBtnInPanel);
+
+    errPanel.appendChild(btns);
+    document.body.appendChild(errPanel);
+
+    // Also log detailed info for DevTools users
     console.error('[NetworkMain] === CONNECTION FAILED ===');
     console.error(`[NetworkMain] Server URL: ${serverUrl}`);
     console.error(`[NetworkMain] Error: ${msg}`);
     console.error('[NetworkMain] --- TROUBLESHOOTING CHECKLIST ---');
     console.error('[NetworkMain] 1. Is the "Geometry Wars Server" window open and running?');
-    const healthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
     console.error(`[NetworkMain] 2. Can you reach ${healthUrl}/health in a browser tab?`);
     console.error('[NetworkMain] 3. If connecting from another PC:');
     console.error('[NetworkMain]    - Use the HOST PC LAN IP (e.g. 192.168.x.x:3000), NOT localhost');
     console.error('[NetworkMain]    - Check Windows Firewall is allowing port 2567');
     console.error('[NetworkMain]    - Both PCs must be on the same WiFi/LAN');
+    if (isHttps) {
+      console.error('[NetworkMain] 4. *** HTTPS DETECTED *** — ws:// WebSocket blocked by mixed-content policy');
+      console.error(`[NetworkMain]    Access the game via http:// instead of https://`);
+    }
     console.error('[NetworkMain] Full error:', err);
+    console.error(`[NetworkMain] Run LAN diagnostics: ${window.location.origin}/lan-test.html`);
   });
 
   // -----------------------------------------------------------------------
