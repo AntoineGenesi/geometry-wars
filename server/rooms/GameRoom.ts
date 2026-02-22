@@ -42,12 +42,13 @@ const TICK_RATE = 60;
 const PRE_SPAWN_WARNING_MS = 1500;
 const VOTING_COUNTDOWN_SECS = 5;
 // Movement speed in UV units per second.
-// Co-op uses MeshWalker at 3.0 world units/s. On a sphere of radius 5,
-// 1 UV unit = pi*5 world units. So 3.0 / (pi*5) = ~0.19 UV/s.
-const PLAYER_SPEED = 0.19;
+// Co-op uses MeshWalker at 3.0 world units/s. Surface radius = 10 (DEFAULT_SURFACE_SCALE).
+// V direction arc = pi * 10 ≈ 31.4 world units. So 3.0 / (pi*10) ≈ 0.095 UV/s.
+// (Old comment said "radius 5" — this was a bug; actual radius has always been 10.)
+const PLAYER_SPEED = 0.095;
 // Bullet speed in UV/s. Co-op bullets move at 4.0 world units/s.
-// On a sphere of radius 5: 4.0 / (pi*5) = ~0.255 UV/s.
-const BULLET_SPEED = 0.26;
+// On a sphere of radius 10: 4.0 / (pi*10) ≈ 0.127 UV/s.
+const BULLET_SPEED = 0.13;
 const BULLET_LIFETIME = 3.0;
 
 // Wave scheduling constants (mirrors WaveScheduler in src/core/)
@@ -660,37 +661,38 @@ export class GameRoom extends Room<GameState> {
   }
 
   private getEnemySpeed(type: string): number {
-    // Enemy speeds in UV/s. Scaled to match PLAYER_SPEED = 0.19.
+    // Enemy speeds in UV/s. Scaled to match PLAYER_SPEED = 0.095.
     // Ratio: enemies should be somewhat slower than the player so the game
     // is playable. These values match the relative speeds from co-op.
+    // All speeds halved from old values (old comment had wrong radius=5; actual=10).
     const speeds: Record<string, number> = {
-      grunt: 0.07,
-      arrow: 0.14,
-      wanderer: 0.06,
-      duck: 0.05,
-      weaver: 0.10,
-      spinner: 0.06,
-      rocket: 0.14,
-      neutron: 0.10,
-      snake: 0.12,
-      gate: 0.05,
-      blackhole: 0.025,
-      repulsor: 0.08,
-      mayfly: 0.19,
-      proton: 0.10,
-      ufo: 0.05,
+      grunt: 0.035,
+      arrow: 0.07,
+      wanderer: 0.03,
+      duck: 0.025,
+      weaver: 0.05,
+      spinner: 0.03,
+      rocket: 0.07,
+      neutron: 0.05,
+      snake: 0.06,
+      gate: 0.025,
+      blackhole: 0.012,
+      repulsor: 0.04,
+      mayfly: 0.095,
+      proton: 0.05,
+      ufo: 0.025,
       mines: 0,
-      mutator: 0.07,
-      bubbles: 0.06,
-      spawnlet: 0.12,
-      virus: 0.09,
-      spawner: 0.04,
-      painter: 0.08,
-      titan_grunt: 0.05,
-      titan_spinner: 0.04,
-      titan_weaver: 0.06,
+      mutator: 0.035,
+      bubbles: 0.03,
+      spawnlet: 0.06,
+      virus: 0.045,
+      spawner: 0.02,
+      painter: 0.04,
+      titan_grunt: 0.025,
+      titan_spinner: 0.02,
+      titan_weaver: 0.03,
     };
-    return speeds[type] ?? 0.07;
+    return speeds[type] ?? 0.035;
   }
 
   private checkCollisions() {
