@@ -4,10 +4,19 @@ REM  BULLETPROOF: call :main then ALWAYS pause, no matter what.
 REM  Even if :main crashes, errors, or exits early, the window
 REM  stays open so the user can read what went wrong.
 REM ============================================================
-call :main
+
+REM Force working directory to script location (fixes admin elevation changing CWD to System32)
+echo  [debug] Script location: %~dp0
+echo  [debug] Current dir before cd: %CD%
+cd /d "%~dp0"
+echo  [debug] Current dir after cd: %CD%
+echo.
+
+call :main %*
 echo.
 echo  ================================================================
 echo  Window will stay open. Read any errors above.
+echo  Press any key to close.
 echo  ================================================================
 echo.
 pause
@@ -37,7 +46,7 @@ if %ERRORLEVEL% neq 0 (
 REM Show versions
 for /f "tokens=*" %%i in ('node --version') do echo  Node.js: %%i
 
-REM Change to project directory
+REM Change to project directory (redundant with line 10, but safe)
 cd /d "%~dp0"
 echo  Directory: %CD%
 echo.
@@ -95,31 +104,29 @@ REM  using Play Game.bat), breaking laptop connections.
 REM  Requires Administrator — silently skipped if not admin.
 REM ================================================================
 if %IS_ADMIN% == 1 (
-    echo  Removing stale WSL2 port forwarding rules (if any)...
+    echo  Removing stale WSL2 port forwarding rules if any...
     netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0 >nul 2>&1
     netsh interface portproxy delete v4tov4 listenport=2567 listenaddress=0.0.0.0 >nul 2>&1
     echo  [OK] Port forwarding rules cleared.
     echo.
-) else (
-    REM Check if portproxy rules exist (can check without admin)
-    netsh interface portproxy show all 2>nul | findstr /c:"2567" >nul 2>&1
-    if %ERRORLEVEL% == 0 (
+)
+if %IS_ADMIN% == 0 (
+    echo  [..] Checking for stale port forwarding rules...
+    netsh interface portproxy show all 2>nul > "%TEMP%\gw-portproxy.txt"
+    findstr /c:"2567" "%TEMP%\gw-portproxy.txt" >nul 2>&1
+    if !ERRORLEVEL! == 0 (
         echo  [!] WARNING: WSL2 port forwarding rules detected for port 2567!
         echo  [!] These rules will intercept laptop connections and break LAN play.
         echo  [!] To fix: right-click this .bat and "Run as Administrator".
-        echo  [!] Or manually run as Administrator:
-        echo  [!]   netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0
-        echo  [!]   netsh interface portproxy delete v4tov4 listenport=2567 listenaddress=0.0.0.0
         echo.
-    ) else (
-        netsh interface portproxy show all 2>nul | findstr /c:"3000" >nul 2>&1
-        if %ERRORLEVEL% == 0 (
-            echo  [!] WARNING: WSL2 port forwarding rules detected for port 3000!
-            echo  [!] These rules may interfere with LAN play.
-            echo  [!] Right-click this .bat and "Run as Administrator" to fix.
-            echo.
-        )
     )
+    findstr /c:"3000" "%TEMP%\gw-portproxy.txt" >nul 2>&1
+    if !ERRORLEVEL! == 0 (
+        echo  [!] WARNING: WSL2 port forwarding rules detected for port 3000!
+        echo  [!] Right-click this .bat and "Run as Administrator" to fix.
+        echo.
+    )
+    del "%TEMP%\gw-portproxy.txt" >nul 2>&1
 )
 
 REM ================================================================
@@ -127,13 +134,10 @@ REM  WINDOWS FIREWALL: Allow ports 3000 and 2567 for LAN access
 REM  (Only fully effective when running as Administrator)
 REM ================================================================
 echo  Setting up Windows Firewall rules for LAN access...
-netsh advfirewall firewall add rule name="Geometry Wars - Game Server (2567)" dir=in action=allow protocol=TCP localport=2567 >nul 2>&1
-netsh advfirewall firewall add rule name="Geometry Wars - Web Server (3000)" dir=in action=allow protocol=TCP localport=3000 >nul 2>&1
-if %IS_ADMIN% == 1 (
-    echo  [OK] Firewall rules set for ports 3000 and 2567.
-) else (
-    echo  [..] Firewall rules attempted (may need Administrator to apply).
-)
+netsh advfirewall firewall add rule name="GeometryWars-Server-2567" dir=in action=allow protocol=TCP localport=2567 >nul 2>&1
+netsh advfirewall firewall add rule name="GeometryWars-Web-3000" dir=in action=allow protocol=TCP localport=3000 >nul 2>&1
+if %IS_ADMIN% == 1 echo  [OK] Firewall rules set for ports 3000 and 2567.
+if %IS_ADMIN% == 0 echo  [..] Firewall rules attempted - may need Administrator to apply.
 echo.
 
 REM Get ALL local IPs for LAN display
@@ -176,10 +180,10 @@ if not exist "server\index.ts" (
     goto :eof
 )
 
-REM Start Colyseus server in a SEPARATE window (also with pause-on-crash)
-echo  Starting Colyseus multiplayer server in a NEW WINDOW (port 2567)...
+REM Start Colyseus server in a SEPARATE window
+echo  Starting Colyseus multiplayer server in a NEW WINDOW on port 2567...
 echo.
-start "Geometry Wars Server (port 2567)" cmd /k "node node_modules\tsx\dist\cli.mjs server\index.ts || (echo. & echo [!] SERVER CRASHED - see error above & echo. & pause)"
+start "Geometry Wars Server" cmd /k "node node_modules\tsx\dist\cli.mjs server\index.ts || echo SERVER CRASHED && pause"
 
 REM Wait for Colyseus to start (5s to ensure it's fully ready)
 echo  Waiting for server to initialize...
