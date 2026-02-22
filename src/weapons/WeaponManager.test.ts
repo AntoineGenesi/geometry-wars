@@ -167,6 +167,49 @@ describe('WeaponManager', () => {
       manager.clear();
       expect(manager.projectileRoot.children.length).toBe(0);
     });
+
+    // ----- Weapon stacking (S27g regression) -----
+
+    it('should auto-equip first special weapon when on Standard', () => {
+      const switched = manager.equipWeapon(WeaponType.TeslaCoil);
+      expect(switched).toBe(true);
+      expect(manager.getCurrentWeapon()).toBe(WeaponType.TeslaCoil);
+    });
+
+    it('should NOT switch when picking up a different weapon while a special weapon is active', () => {
+      manager.equipWeapon(WeaponType.TeslaCoil); // switch to Tesla
+      const switched = manager.equipWeapon(WeaponType.Homing); // pick up Homing
+      expect(switched).toBe(false);
+      // Still on Tesla — Homing silently added to inventory
+      expect(manager.getCurrentWeapon()).toBe(WeaponType.TeslaCoil);
+    });
+
+    it('should add second weapon to inventory even when not switching', () => {
+      manager.equipWeapon(WeaponType.TeslaCoil);
+      manager.equipWeapon(WeaponType.Homing);
+      const inv = manager.getInventory();
+      const types = inv.map(e => e.type);
+      expect(types).toContain(WeaponType.TeslaCoil);
+      expect(types).toContain(WeaponType.Homing);
+    });
+
+    it('should switch when picking up the same type as currently active', () => {
+      manager.equipWeapon(WeaponType.TeslaCoil);
+      const switched = manager.equipWeapon(WeaponType.TeslaCoil);
+      expect(switched).toBe(true); // same weapon — no real change but counts as "switched"
+      expect(manager.getCurrentWeapon()).toBe(WeaponType.TeslaCoil);
+    });
+
+    it('should increment stacks for non-active weapon when picked up again', () => {
+      manager.equipWeapon(WeaponType.TeslaCoil); // equip Tesla (stack 1)
+      manager.equipWeapon(WeaponType.Homing);    // add Homing (stack 1, not active)
+      manager.equipWeapon(WeaponType.Homing);    // pick up Homing again → stack 2
+      const inv = manager.getInventory();
+      const homing = inv.find(e => e.type === WeaponType.Homing);
+      expect(homing?.stacks).toBe(2);
+      // Active weapon unchanged
+      expect(manager.getCurrentWeapon()).toBe(WeaponType.TeslaCoil);
+    });
   });
 
   // =========================================================================

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { GameContext } from './GameContext';
 import { ModePhase, GameModeType } from './GameMode';
 import { SuperStateType } from '../weapons/SuperState';
+import { WEAPON_CONFIGS } from '../weapons/WeaponTypes';
 import { Gate } from '../entities/enemies/Gate';
 import { Painter } from '../entities/enemies/Painter';
 import { getSoundEngine } from '../audio/SoundEngine';
@@ -683,8 +684,12 @@ export class GameLoop {
 
       // Check player collision with weapon pickup
       if (ctx.player.alive && wp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV)) {
-        ctx.weaponManager.equipWeapon(wp.type);
-        this.sound.play('weaponPickup');
+        const switched = ctx.weaponManager.equipWeapon(wp.type);
+        this.sound.play('weaponPickup', switched ? undefined : { volume: 0.5, pitch: 0.9 });
+        if (!switched) {
+          // Weapon was added to inventory without switching — notify player
+          ctx.weaponHUD.showPickupNotification(WEAPON_CONFIGS[wp.type].name);
+        }
         wp.active = false;
       }
     }
