@@ -8,7 +8,7 @@ export class Neutron extends BaseEnemy {
   private spinAngle: number = 0;
 
   constructor(surfaceU: number, surfaceV: number) {
-    super(surfaceU, surfaceV, 2, 10, 1, 0.04, 0.3); // Reduced speed
+    super(surfaceU, surfaceV, 2, 10, 1, 0.04, 0.25); // radius=0.25 matches 7-gon polygon visual radius (S27g hitbox fix)
 
     // Pick random initial direction
     const angle = Math.random() * Math.PI * 2;

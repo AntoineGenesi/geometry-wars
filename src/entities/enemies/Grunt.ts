@@ -9,7 +9,7 @@ export class Grunt extends BaseEnemy {
   private readonly speedIncreaseRate: number = 0.002;
 
   constructor(surfaceU: number, surfaceV: number) {
-    super(surfaceU, surfaceV, 2, 10, 2, 0.2, 0.3);
+    super(surfaceU, surfaceV, 2, 10, 2, 0.2, 0.25); // radius=0.25 matches diamond visual size (S27g hitbox fix)
     this.currentSpeed = 0.02;
 
     this.createMesh();

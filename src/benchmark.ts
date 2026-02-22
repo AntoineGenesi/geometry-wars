@@ -372,7 +372,7 @@ export function runBenchmark(): void {
       for (let n = 0; n < nearby.length; n++) {
         const enemy = nearby[n];
         if (!enemy.active || !enemy.alive) continue;
-        const hitRadiusSq = (enemy.radius + 0.15) ** 2;
+        const hitRadiusSq = (enemy.radius + 0.05) ** 2; // S27g: keep in sync with CollisionSystem
         const distSq = bulletPos.distanceToSquared(enemy.position);
         if (distSq < hitRadiusSq) {
           bulletPool.kill(bulletIdx);
