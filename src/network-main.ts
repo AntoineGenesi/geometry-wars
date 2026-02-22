@@ -716,9 +716,10 @@ function main() {
     sound.play('multiplierUp', { pitch: 1.2 + level * 0.05 });
   };
 
-  // -- Buff system: display infrastructure pre-wired for future server integration --
-  // The server does not yet send buff state, so buffManager remains empty.
-  // These are wired now so when server support is added, nothing else needs to change.
+  // -- Buff system: client-side buff collection + visual effects --
+  // Buffs are collected via client-side pickup drops (see localBuffPickups).
+  // Server does not send buff state; stats (damage bonus, fire rate) are NOT applied.
+  // Visual effects (ShockAura arcs, aura glow, particle cloud) ARE active via buffManager.update().
   const buffManager = new BuffManager();
   const buffHUD = new BuffHUD();
   buffManager.onBuffGained = (type, _stacks) => { buffHUD.highlightBuff(type); };
@@ -2407,7 +2408,13 @@ function main() {
       const auraPoint = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
       playerLevel.update(dt, auraPoint.position, auraPoint.normal);
 
-      // Update buff aura visuals (invisible until server sends buff state)
+      // Tick buff proc effects (ShockAura arcs, Burning DOT visuals).
+      // Server is authoritative for enemy HP; local damage from ShockAura is a visual-side
+      // effect accepted here (same precedent as companion bullet hits in MP).
+      const enemiesForBuff = Array.from(networkEnemies.values());
+      buffManager.update(dt, localPlayer.mesh.position, enemiesForBuff);
+
+      // Update buff aura visuals
       const activeBuffs = buffManager.getActiveBuffs().map(b => ({ type: b.type, stacks: b.stacks }));
 
       // Enemy aura dimming: reduce aura opacity when enemies enter the aura zone
