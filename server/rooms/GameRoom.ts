@@ -763,7 +763,12 @@ export class GameRoom extends Room<GameState> {
         const dv = bullet.y - enemy.surfaceV;
         const dist = Math.sqrt(du * du + dv * dv);
 
-        if (dist < 0.05) {
+        // S28b: UV-space hit threshold calibrated to match visual enemy size.
+        // Sphere radius=10 → V arc length = π*10 ≈ 31.4 world units per UV unit.
+        // Enemy visual radius ≈ 0.25 world units → 0.25 / 31.4 ≈ 0.008 UV.
+        // Using 0.012 (1.5x) as tolerance for discrete bullet step size (~0.002 UV/tick).
+        // Previous value 0.05 = ~1.57 world units = 6x visual size → enemies died from far away.
+        if (dist < 0.012) {
           // Hit! Apply weapon damage multiplier
           const owner = this.state.players.get(bullet.ownerId);
           const weaponCfg = WEAPON_CONFIGS[owner?.weaponType ?? 'standard'] ?? WEAPON_CONFIGS.standard;

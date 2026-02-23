@@ -1064,3 +1064,94 @@ describe('GameRoom multi-hit prevention (wasHit flag)', () => {
     expect(fixedResult.alive).toBe(true); // still alive (correct)
   });
 });
+
+// ---------------------------------------------------------------------------
+// S28b: Server bullet-enemy hit threshold calibration
+//
+// Root cause: GameRoom.checkCollisions() used dist < 0.05 (UV space), which
+// equals ~1.57 world units on a sphere of radius 10 — 6x larger than the
+// visual enemy radius of ~0.25 world units. S27g and S28a only fixed the
+// client-side CollisionSystem.ts; the server was never updated.
+//
+// Fix: threshold reduced to 0.012 UV, calibrated as:
+//   enemy_radius / (π * surface_radius) = 0.25 / (π * 10) ≈ 0.008
+//   × 1.5 tolerance for discrete bullet step size → 0.012
+// ---------------------------------------------------------------------------
+
+/** Mirror of GameRoom.checkCollisions() bullet-enemy hit logic (post-S28b fix). */
+function serverBulletHitsEnemy(
+  bulletU: number, bulletV: number,
+  enemyU: number, enemyV: number,
+  threshold: number,
+): boolean {
+  const du = bulletU - enemyU;
+  const dv = bulletV - enemyV;
+  const dist = Math.sqrt(du * du + dv * dv);
+  return dist < threshold;
+}
+
+/** Convert world-space radius to UV space on a sphere (V arc-length formula). */
+function worldRadiusToUV(worldRadius: number, sphereRadius: number): number {
+  return worldRadius / (Math.PI * sphereRadius);
+}
+
+describe('S28b: server bullet-enemy hit threshold calibration', () => {
+  const SPHERE_RADIUS = 10;
+  const THRESHOLD_S28B = 0.012; // new threshold
+  const THRESHOLD_OLD = 0.05;   // old threshold (pre-fix)
+
+  it('S28b threshold 0.012 is calibrated to visual enemy size on sphere radius=10', () => {
+    // Enemy visual radius ≈ 0.25 world units → 0.25 / (π * 10) ≈ 0.008 UV
+    // 0.012 is 0.008 × 1.5 — accounts for discrete bullet step size
+    const enemyWorldRadius = 0.25;
+    const uvEquivalent = worldRadiusToUV(enemyWorldRadius, SPHERE_RADIUS);
+    expect(THRESHOLD_S28B).toBeGreaterThan(uvEquivalent);          // includes tolerance
+    expect(THRESHOLD_S28B).toBeLessThan(uvEquivalent * 2.0);       // not more than 2x
+  });
+
+  it('old threshold 0.05 was 6x visual size — enemies died from far away', () => {
+    const enemyWorldRadius = 0.25;
+    const uvEquivalent = worldRadiusToUV(enemyWorldRadius, SPHERE_RADIUS);
+    const inflationFactor = THRESHOLD_OLD / uvEquivalent;
+    // Old threshold was roughly 6x too large
+    expect(inflationFactor).toBeGreaterThan(5.0);
+  });
+
+  it('bullet exactly on enemy (dist=0) hits with new threshold', () => {
+    expect(serverBulletHitsEnemy(0.5, 0.5, 0.5, 0.5, THRESHOLD_S28B)).toBe(true);
+  });
+
+  it('bullet within 0.010 UV hits enemy (inside visual radius)', () => {
+    expect(serverBulletHitsEnemy(0.5, 0.5, 0.510, 0.5, THRESHOLD_S28B)).toBe(true);
+  });
+
+  it('bullet just inside threshold (0.011) hits enemy', () => {
+    expect(serverBulletHitsEnemy(0.5, 0.5, 0.511, 0.5, THRESHOLD_S28B)).toBe(true);
+  });
+
+  it('bullet just outside threshold (0.013) does NOT hit enemy', () => {
+    expect(serverBulletHitsEnemy(0.5, 0.5, 0.513, 0.5, THRESHOLD_S28B)).toBe(false);
+  });
+
+  it('REGRESSION: old threshold 0.05 would incorrectly hit at 0.030 UV (6x visual)', () => {
+    // With old threshold: bullet 0.030 UV away = ~0.94 world units → still "hits"
+    // Visual radius is only 0.25 world units → bullet was nowhere near the enemy
+    const bulletU = 0.5 + 0.030; // 0.030 UV away
+    const oldHits = serverBulletHitsEnemy(0.5, 0.5, bulletU, 0.5, THRESHOLD_OLD);
+    const newHits = serverBulletHitsEnemy(0.5, 0.5, bulletU, 0.5, THRESHOLD_S28B);
+
+    expect(oldHits).toBe(true);  // OLD: hits from far away (wrong)
+    expect(newHits).toBe(false); // NEW: correctly misses (0.030 > 0.012 threshold)
+  });
+
+  it('REGRESSION: old threshold killed enemy when bullet was 1.57 world units away', () => {
+    // 0.05 UV on sphere-R10 (V arc) = 0.05 * π * 10 ≈ 1.57 world units
+    // Enemy visual radius = 0.25 world units → 6x too far
+    const worldDistanceAtOldThreshold = THRESHOLD_OLD * Math.PI * SPHERE_RADIUS;
+    const worldDistanceAtNewThreshold = THRESHOLD_S28B * Math.PI * SPHERE_RADIUS;
+    const enemyVisualRadius = 0.25;
+
+    expect(worldDistanceAtOldThreshold).toBeGreaterThan(enemyVisualRadius * 4); // old was 4x+ too large
+    expect(worldDistanceAtNewThreshold).toBeLessThan(enemyVisualRadius * 2);    // new is within 2x of visual
+  });
+});
