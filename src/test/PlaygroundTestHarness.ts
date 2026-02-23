@@ -1015,8 +1015,20 @@ export class PlaygroundTestHarness {
       this.pg.player.respawn(u, v);
       const point = (this.pg as any)._surface.getPoint(u, v);
       const walker = (this.pg as any)._walker;
-      walker.position.copy(point.position);
-      walker.normal.copy(point.normal);
+      const meshSurface = (this.pg as any)._meshSurface;
+      if (meshSurface) {
+        // Use teleportTo() to reinit _facePos — direct assignment leaves stale geodesic
+        // state that causes snap-back to previous position on first movement.
+        const projected = meshSurface.closestPointOnSurface(point.position);
+        if (projected) {
+          walker.teleportTo(projected.point, projected.faceIndex, projected.normal);
+        } else {
+          walker.teleportTo(point.position, 0, point.normal);
+        }
+      } else {
+        walker.position.copy(point.position);
+        walker.normal.copy(point.normal);
+      }
       this.pg.player.mesh.position.copy(walker.position);
     }
 

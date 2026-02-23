@@ -1000,3 +1000,27 @@ Claude will read this file at the start of each session and prioritize fixing re
 **Root cause:** `THREE.SphereGeometry` UV spheres have all cap triangles sharing a single pole vertex. The geodesic walker couldn't cross this vertex to reach non-adjacent faces — it could only step to neighboring cap triangles, causing the player to circle.
 
 **Regression test:** `src/surfaces/geodesic/geodesic.test.ts` — 2 new pole-crossing tests (north + south) — passes ✅
+
+
+---
+
+## S28a: Player Teleporting Randomly — MP Respawn Snap-Back Fix
+
+### Test: No teleportation after death in multiplayer
+- [ ] **Start local multiplayer** — Select 2-player split-screen mode
+- [ ] **Let a player die** — Allow Player 1 or Player 2 to be killed by an enemy
+- [ ] **Wait for respawn** — After the respawn delay, the player should appear at their fixed spawn UV position
+- [ ] **Move immediately after respawn** — Press movement keys immediately after respawn. **The player should NOT snap back to the death location.**
+- [ ] **Play 5+ minutes** — No random teleportation events should occur during extended play
+
+### Test: No teleportation in single player
+- [ ] **Play single player for 5+ minutes** — Movement should remain smooth; no random position jumps
+- [ ] **Die and respawn in SP** — First move after respawn should continue from respawn position, not snap back to death
+
+**What changed:**
+- `src/multiplayer-main.ts:919-922`: Replaced direct walker assignment (`.position.copy()`, `.normal.copy()`, `.faceIndex =`) with `walker.teleportTo()`. This was the same bug fixed in GameLoop.ts (SP path) in task s27g — the MP path was missed.
+- `src/test/PlaygroundTestHarness.ts:1016-1021`: Fixed same pattern in test harness to use `_meshSurface.closestPointOnSurface()` + `teleportTo()`.
+
+**Root cause:** `_facePos` (internal geodesic state in MeshWalker) was not reset on respawn in multiplayer. First movement after respawn started geodesic walk from stale death location, teleporting player back.
+
+**Regression test:** `src/test/s27g-respawn-snap-back.regression.test.ts` — 3 existing tests covering this exact teleportTo() behavior ✅

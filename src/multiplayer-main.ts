@@ -916,9 +916,10 @@ function main(): void {
           const respawnPt = surface.getPoint(su, sv);
           const projected = meshSurface.closestPointOnSurface(respawnPt.position);
           if (projected) {
-            walker.position.copy(projected.point);
-            walker.normal.copy(projected.normal);
-            walker.faceIndex = projected.faceIndex;
+            // MUST use teleportTo() to reinit _facePos — direct assignment leaves stale
+            // geodesic state that causes snap-back to death location on first movement input.
+            // Same bug fixed in GameLoop.ts (SP path) in task s27g.
+            walker.teleportTo(projected.point, projected.faceIndex, projected.normal);
           }
           player.mesh.position.copy(walker.position);
         }
