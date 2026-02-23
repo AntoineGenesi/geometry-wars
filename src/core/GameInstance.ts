@@ -405,8 +405,10 @@ export class GameInstance {
     const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
     this.bulletPool.forEachActive((index, bulletPos, _data) => {
       for (const enemy of enemies) {
-        const dist = bulletPos.distanceTo(enemy.mesh!.position);
-        if (dist < enemy.radius + 0.1) {
+        // Use enemy.position (surface center, world space) not enemy.mesh.position (above surface).
+        // Zero bonus: S28a fix — hit zone matches visual radius exactly.
+        const distSq = bulletPos.distanceToSquared(enemy.position);
+        if (distSq < enemy.radius * enemy.radius) {
           this.bulletPool.kill(index);
           enemy.takeDamage(1);
           if (!enemy.alive) {

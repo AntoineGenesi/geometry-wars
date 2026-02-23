@@ -97,9 +97,9 @@ export class CollisionSystem {
         if (!enemy.active || !enemy.alive) continue;
 
         // Use distanceToSquared to avoid sqrt
-        // +0.05 is a small tolerance for bullet-point imprecision; larger values cause
-        // visually-missed shots to register hits (S27g hitbox fix).
-        const hitRadiusSq = (enemy.radius + 0.05) * (enemy.radius + 0.05);
+        // S28a: zero bonus — hit zone equals visual mesh radius exactly.
+        // S27g reduced from +0.15 to +0.05; user still reported false positives.
+        const hitRadiusSq = enemy.radius * enemy.radius;
         const distSq = bulletPos.distanceToSquared(enemy.position);
         if (distSq < hitRadiusSq) {
           // Capture bullet angle BEFORE kill (data persists but capture for clarity)
