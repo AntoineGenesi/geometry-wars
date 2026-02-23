@@ -869,6 +869,17 @@ function main() {
     'text-shadow:0 0 10px #0f0;z-index:100;text-align:right;';
   document.body.appendChild(scoreEl);
 
+  // Combined team score display — reuse #score-display (center-top, below wave label)
+  const teamScoreEl = document.getElementById('score-display');
+  if (teamScoreEl) {
+    // Push it below the statusEl (Wave N) which is at top:10px with ~25px line height
+    teamScoreEl.style.top = '45px';
+    teamScoreEl.textContent = '0';
+  }
+  // Hide single-player multiplier display (not meaningful in network mode)
+  const spMultiplierEl = document.getElementById('multiplier-display');
+  if (spMultiplierEl) spMultiplierEl.style.display = 'none';
+
   const playersEl = document.createElement('div');
   playersEl.style.cssText =
     'position:fixed;top:10px;left:10px;color:#ff0;font:16px monospace;' +
@@ -1944,13 +1955,17 @@ function main() {
     }
 
     // Player list
+    // Combined team score — sum of all player scores
+    let combinedScore = 0;
     let playerList = '<b>Players:</b><br>';
     state.players.forEach((p: NetworkPlayerState) => {
+      combinedScore += p.score;
       const you = p.id === localPlayerId ? ' (YOU)' : '';
       const status = p.alive ? '' : ' [DEAD]';
       playerList += `${p.name}${you}: ${p.score.toLocaleString()}${status}<br>`;
     });
     playersEl.innerHTML = playerList;
+    if (teamScoreEl) teamScoreEl.textContent = combinedScore.toLocaleString();
 
     // Sync pause state from server
     if (state.isPaused !== isPaused) {
