@@ -80,6 +80,11 @@ export class RenderLoop {
     // Batched across frames for performance (100 raycasts/frame).
     const allEnemies = ctx.enemySpawner.getEnemies();
     ctx.depthOcclusion.update(allEnemies, camPos, frameDt);
+
+    // Spatial hash visibility: dim enemies far from the player in 3D space.
+    // Complements depth-occlusion (geometric) with player-proximity (geographic).
+    // Works correctly on torus/cube-tunnel where raycasts miss far-side enemies.
+    ctx.spatialHashVisibility.update(allEnemies, playerPos, frameDt);
     profiler.end('transparency_and_occlusion');
 
     profiler.begin('enemy_visibility');
@@ -103,6 +108,8 @@ export class RenderLoop {
       this._farSideCamDir.copy(camPos).sub(meshCenter).normalize();
     }
 
+    // Spatial hash visibility is already computed above (ctx.spatialHashVisibility.update called).
+
     for (const enemy of allEnemies) {
       if (!enemy.alive || !enemy.mesh) continue;
 
@@ -123,6 +130,13 @@ export class RenderLoop {
       // Raycast-based occlusion: opacity based on how many surface layers are
       // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
       let visibility = ctx.depthOcclusion.getOpacity(enemy);
+
+      // Spatial hash visibility: dim enemies far from the player in world space.
+      // Uses min() so an enemy is dim if EITHER far-from-player OR behind a surface.
+      // The proximity override below (PROXIMITY_BRIGHT_RADIUS) will re-brighten any
+      // enemies that are very close to the player, overriding both systems.
+      const spatialVis = ctx.spatialHashVisibility.getOpacity(enemy);
+      visibility = Math.min(visibility, spatialVis);
 
       // When surface is blocking camera-to-player, also fade enemies between camera and player
       if (ctx.state.isCurrentlyBlocked) {

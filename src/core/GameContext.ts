@@ -25,6 +25,7 @@ import type { BulletInstanceManager, BulletVisualType } from '../rendering/Bulle
 import type { LODManager, LODLevel } from '../rendering/LODManager';
 import type { AdaptiveQuality } from '../rendering/AdaptiveQuality';
 import type { DepthOcclusionSystem } from '../rendering/DepthOpacity';
+import type { SpatialHashVisibility } from '../rendering/SpatialHashVisibility';
 import type { PerformanceTracker } from './PerformanceTracker';
 import type { DebugOverlay } from '../ui/DebugOverlay';
 import type { ProfilingOverlay } from '../ui/ProfilingOverlay';
@@ -106,6 +107,7 @@ export interface GameContext {
   lodManager: LODManager;
   adaptiveQuality: AdaptiveQuality;
   depthOcclusion: DepthOcclusionSystem;
+  spatialHashVisibility: SpatialHashVisibility;
   perfTracker: PerformanceTracker;
   debugOverlay: DebugOverlay;
   profilingOverlay: ProfilingOverlay;
