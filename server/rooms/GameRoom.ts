@@ -9,6 +9,7 @@ import {
 } from '../schema/GameState';
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -82,6 +83,37 @@ const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number }>
 const WEAPON_DROP_CHANCE = 0.08; // 8% on enemy death
 const WEAPON_PICKUP_LIFETIME = 20.0; // seconds before despawn
 const WEAPON_TYPES = Object.keys(WEAPON_CONFIGS).filter(t => t !== 'standard');
+
+// ---------------------------------------------------------------------------
+// Startup config hash helpers
+// ---------------------------------------------------------------------------
+
+/** Payload sent to clients so they can cache static game config. */
+interface StartupConfigPayload {
+  weaponConfigs: typeof WEAPON_CONFIGS;
+  serverVersion: string;
+}
+
+/**
+ * Compute a stable SHA-256 hash of the static startup config.
+ * Keys are sorted before serialization to ensure determinism.
+ */
+function computeStartupConfigHash(payload: StartupConfigPayload): string {
+  const stable = JSON.stringify(payload, Object.keys(payload).sort());
+  return createHash('sha256').update(stable).digest('hex').slice(0, 16);
+}
+
+/** Build version identifier — use git commit from env or a fallback constant. */
+const SERVER_VERSION = process.env.GIT_COMMIT?.slice(0, 8) ?? 'dev';
+
+/** Static startup config payload (same for all rooms). */
+const STARTUP_CONFIG_PAYLOAD: StartupConfigPayload = {
+  weaponConfigs: WEAPON_CONFIGS,
+  serverVersion: SERVER_VERSION,
+};
+
+/** Pre-computed hash — stable for the lifetime of this server process. */
+const STARTUP_CONFIG_HASH = computeStartupConfigHash(STARTUP_CONFIG_PAYLOAD);
 
 // ---------------------------------------------------------------------------
 // Wave generation type pools (mirrors DifficultyScaling.ts)
@@ -225,6 +257,17 @@ export class GameRoom extends Room<GameState> {
       this.disconnect();
     });
 
+    // Client reports whether it has the startup config cached.
+    // If it's a cache miss, send the full config so the client can cache it.
+    this.onMessage('startup_cache_ack', (client, data: { hit: boolean }) => {
+      if (!data.hit) {
+        client.send('startup_config', STARTUP_CONFIG_PAYLOAD);
+        console.log(`[GameRoom] startup_config sent to ${client.sessionId} (cache miss)`);
+      } else {
+        console.log(`[GameRoom] ${client.sessionId} used cached startup config`);
+      }
+    });
+
     // Use Colyseus's built-in simulation interval (triggers state patch broadcasting)
     this.setSimulationInterval((dt) => this.tick(), 1000 / TICK_RATE);
 
@@ -328,6 +371,12 @@ export class GameRoom extends Room<GameState> {
     player.surfaceV = spawnPos.v;
 
     this.state.players.set(client.sessionId, player);
+
+    // Send startup config hash — client will check its localStorage cache and
+    // reply with startup_cache_ack { hit: true/false }.  If miss, we send the
+    // full config payload so the client can cache it for future sessions.
+    client.send('startup_hash', { hash: STARTUP_CONFIG_HASH });
+
     console.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
     console.log(`[GameRoom] State after join: players.size=${this.state.players.size}, surfaceType=${this.state.surfaceType}, gameStarted=${this.state.gameStarted}`);
     this.state.players.forEach((p, k) => {
