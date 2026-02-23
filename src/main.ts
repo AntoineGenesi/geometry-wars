@@ -63,6 +63,7 @@ import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInsta
 import { LODManager, LODLevel, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
 import { AdaptiveQuality, QualityLevel } from './rendering/AdaptiveQuality';
 import { DepthOcclusionSystem } from './rendering/DepthOpacity';
+import { SpatialHashVisibility } from './rendering/SpatialHashVisibility';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { ProfilingOverlay } from './ui/ProfilingOverlay';
@@ -473,6 +474,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     lerpSpeed: 10.0,   // Faster transitions for snappy feel
   });
   depthOcclusion.setSurfaceMesh(surface.mesh);
+
+  // -- Spatial hash visibility (player-centric per-instance dimming) --
+  // Dims enemies that are geographically far from the player regardless of
+  // geometric occlusion. Complements depth-occlusion (which handles enemies
+  // behind surfaces). Correct on all surfaces including torus and cube-tunnel.
+  const spatialHashVisibility = new SpatialHashVisibility();
 
   // -- Input --
   // On mobile, use virtual joystick touch controls; otherwise keyboard+mouse.
@@ -1155,6 +1162,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     bulletInstanceManager.dispose();
     lodManager.dispose();
     depthOcclusion.dispose();
+    spatialHashVisibility.dispose();
     debugOverlay.dispose();
     profilingOverlay.dispose();
     levelCompleteScreen.dispose();
@@ -1178,6 +1186,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     bulletInstanceManager.dispose();
     lodManager.dispose();
     depthOcclusion.dispose();
+    spatialHashVisibility.dispose();
     debugOverlay.dispose();
     profilingOverlay.dispose();
     levelCompleteScreen.dispose();
@@ -1293,6 +1302,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     lodManager,
     adaptiveQuality,
     depthOcclusion,
+    spatialHashVisibility,
     perfTracker,
     debugOverlay,
     profilingOverlay,
