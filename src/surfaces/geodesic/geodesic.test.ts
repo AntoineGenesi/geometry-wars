@@ -408,15 +408,48 @@ describe('ParallelTransport', () => {
     const normalFrom = new THREE.Vector3(0, 0, 1); // XY plane
     const normalTo = new THREE.Vector3(0, 1, 0);   // XZ plane (90 degrees)
 
-    // Direction along Y in the source face
+    // Direction along Y in the source face — pointing toward the edge
     const dir = new THREE.Vector3(0, 1, 0);
 
     transportAcrossEdge(dir, edgeStart, edgeEnd, normalFrom, normalTo);
 
-    // After rotating 90 degrees around X axis, Y should become -Z (in the new plane)
-    // The direction should be tangent to the destination face
-    expect(Math.abs(dir.dot(normalTo))).toBeLessThan(0.01);
+    // After parallel transport: Y (toward the edge in source face) should become -Z
+    // (away from the edge in destination face — the "straight ahead" direction).
+    // REGRESSION: if this is (0,1,0) or (0,-1,0), the sign is wrong — the bullet
+    // would follow the edge instead of crossing it.
+    expect(Math.abs(dir.dot(normalTo))).toBeLessThan(0.01); // tangent to dest face
     expect(dir.length()).toBeCloseTo(1, 3);
+    expect(dir.z).toBeCloseTo(-1, 2); // direction is (0,0,-1), NOT (0,0,1)
+    expect(Math.abs(dir.x)).toBeLessThan(0.01);
+    expect(Math.abs(dir.y)).toBeLessThan(0.01);
+  });
+
+  it('should produce straight geodesic path when crossing a cube 90-degree edge (regression)', () => {
+    // Regression test for the bullet 90-degree turn bug (S28a).
+    // A bullet moving perpendicular to a cube edge should continue perpendicular
+    // to it on the other face — NOT parallel to it (edge-following).
+    //
+    // Cube setup: top face (normal +Y) → front face (normal +Z)
+    // Edge along X at top-front boundary.
+    // Bullet direction on top face: (0,0,1) heading toward front face.
+    // Expected after transport: (0,-1,0) — going DOWN the front face, away from edge.
+    const edgeStart = new THREE.Vector3(-5, 5, 5);
+    const edgeEnd   = new THREE.Vector3( 5, 5, 5);
+    const normalTop   = new THREE.Vector3(0, 1, 0); // top face
+    const normalFront = new THREE.Vector3(0, 0, 1); // front face
+
+    const bulletDir = new THREE.Vector3(0, 0, 1); // moving toward front face
+    transportAcrossEdge(bulletDir, edgeStart, edgeEnd, normalTop, normalFront);
+
+    // Must be tangent to the front face
+    expect(Math.abs(bulletDir.dot(normalFront))).toBeLessThan(0.01);
+    expect(bulletDir.length()).toBeCloseTo(1, 2);
+
+    // Must NOT be along the edge (edge is X axis) — that would be the "following edge" bug
+    expect(Math.abs(bulletDir.x)).toBeLessThan(0.1);
+
+    // Must be pointing DOWN the front face (away from the top edge) — not back toward it
+    expect(bulletDir.y).toBeLessThan(-0.9); // approximately (0,-1,0)
   });
 
   it('should preserve direction along the edge itself', () => {
