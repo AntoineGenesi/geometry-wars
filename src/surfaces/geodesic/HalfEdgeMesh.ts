@@ -47,6 +47,19 @@ export class HalfEdgeMesh {
   readonly faceHalfEdges: [number, number, number][];
   readonly vertexCount: number;
   readonly faceCount: number;
+  /**
+   * Canonical vertex index for each vertex (maps position-duplicate vertices
+   * to the same canonical index, enabling edge matching across UV seams).
+   * Exposed for vertex fan traversal in FaceWalker.
+   */
+  readonly canonical: Uint32Array;
+  /**
+   * For each canonical vertex index, the list of face indices that share it.
+   * Used by FaceWalker to traverse vertex fans at poles and singularities,
+   * allowing movement through vertices that connect non-adjacent faces
+   * (e.g., the north/south poles of a UV sphere).
+   */
+  readonly vertexToFaces: number[][];
 
   constructor(geometry: THREE.BufferGeometry) {
     const index = geometry.index;
@@ -75,7 +88,8 @@ export class HalfEdgeMesh {
 
     // Map each vertex index to a canonical index (first occurrence of that position)
     const posToCanonical = new Map<string, number>();
-    const canonical = new Uint32Array(this.vertexCount);
+    this.canonical = new Uint32Array(this.vertexCount);
+    const canonical = this.canonical; // local alias for convenience
     for (let i = 0; i < this.vertexCount; i++) {
       const key = posKey(i);
       const existing = posToCanonical.get(key);
@@ -173,7 +187,25 @@ export class HalfEdgeMesh {
       }
     }
 
-    // 4. REGRESSION GUARD — Iteration 9: Fix geometry seam boundaries.
+    // 4. Build vertex-to-faces adjacency for vertex fan traversal.
+    // Allows FaceWalker to cross through pole vertices (e.g. sphere N/S poles)
+    // by finding all faces adjacent to a vertex, not just those reachable via edges.
+    // Each entry is keyed by canonical vertex index so position-duplicates (UV seams)
+    // are treated as one vertex.
+    this.vertexToFaces = new Array(this.vertexCount);
+    for (let i = 0; i < this.vertexCount; i++) this.vertexToFaces[i] = [];
+
+    for (let fi = 0; fi < this.faceCount; fi++) {
+      const f = this.faces[fi];
+      const cA = canonical[f.a];
+      const cB = canonical[f.b];
+      const cC = canonical[f.c];
+      this.vertexToFaces[cA].push(fi);
+      if (cB !== cA) this.vertexToFaces[cB].push(fi);
+      if (cC !== cA && cC !== cB) this.vertexToFaces[cC].push(fi);
+    }
+
+    // 6. REGRESSION GUARD — Iteration 9: Fix geometry seam boundaries.
     // Some meshes (e.g., beveled cube from CubeSurface) have seams where
     // two halves of a flat face are built independently with DIFFERENT
     // triangulations. The vertices along the seam have NEARLY matching

@@ -171,9 +171,18 @@ export class FaceWalker {
       // When at a vertex, we need to pick the correct edge to cross.
       // The direction vector points toward the adjacent face we want to enter.
       // Choose the edge where crossing it moves us in the direction of the velocity.
+      //
+      // For pole vertices (sphere N/S poles, capsule/pill caps), we also check ALL
+      // faces in the vertex fan — not just the 3 edges of the current face. This
+      // allows crossing through the pole to the "other side" of the sphere.
+      let usedVertexFan = false;
+
       if (atVertex) {
         let bestEdge = heEdgeLocal;
         let bestDot = -Infinity;
+
+        // Get the vertex's world position (all methods agree since exitBary ≈ vertex)
+        const currentPos = barycentricToWorld(exitBary, pA, pB, pC);
 
         for (let testEdge = 0; testEdge < 3; testEdge++) {
           const he = this.halfEdge.getHalfEdge(currentFace, testEdge);
@@ -183,11 +192,8 @@ export class FaceWalker {
           const [edgeStart, edgeEnd] = this.halfEdge.getEdgeVertices(currentFace, testEdge);
           const edgeMid = new THREE.Vector3().addVectors(edgeStart, edgeEnd).multiplyScalar(0.5);
 
-          // Get the current position in world space
-          const currentPos = barycentricToWorld(exitBary, pA, pB, pC);
-
           // Direction from current position toward the edge
-          const toEdge = edgeMid.clone().sub(currentPos);
+          const toEdge = edgeMid.sub(currentPos);
 
           // How much does our movement direction align with going toward this edge?
           const dot = _dir3D.dot(toEdge);
@@ -199,7 +205,84 @@ export class FaceWalker {
         }
 
         heEdgeLocal = bestEdge;
+
+        // Vertex fan traversal: check ALL faces adjacent to this vertex.
+        // Handles pole singularities where adjacent cap triangles don't share
+        // an edge — only a vertex. Without this, the walker circles the pole
+        // indefinitely instead of crossing through.
+        //
+        // Determine which local vertex (A/B/C) of the current face we're at.
+        let vertexGlobalIdx: number;
+        if (Math.abs(exitBary.v) < eps && Math.abs(exitBary.w) < eps) {
+          vertexGlobalIdx = this.halfEdge.faces[currentFace].a; // vertex A (u≈1)
+        } else if (Math.abs(exitBary.u) < eps && Math.abs(exitBary.w) < eps) {
+          vertexGlobalIdx = this.halfEdge.faces[currentFace].b; // vertex B (v≈1)
+        } else {
+          vertexGlobalIdx = this.halfEdge.faces[currentFace].c; // vertex C (w≈1)
+        }
+
+        const canonicalIdx = this.halfEdge.canonical[vertexGlobalIdx];
+        const adjacentFaces = this.halfEdge.vertexToFaces[canonicalIdx];
+
+        // Find the face in the fan with the best alignment to movement direction.
+        // Must beat the local edge selection to be used.
+        let bestFanFace = -1;
+        let bestFanDot = bestDot;
+
+        for (const fi of adjacentFaces) {
+          if (fi === currentFace) continue;
+
+          const [fpA, fpB, fpC] = this.halfEdge.getFaceVertices(fi);
+          const centroidX = (fpA.x + fpB.x + fpC.x) / 3;
+          const centroidY = (fpA.y + fpB.y + fpC.y) / 3;
+          const centroidZ = (fpA.z + fpB.z + fpC.z) / 3;
+          // Direction from vertex toward face centroid (not normalized, consistent with edge-dot above)
+          const toCentX = centroidX - currentPos.x;
+          const toCentY = centroidY - currentPos.y;
+          const toCentZ = centroidZ - currentPos.z;
+          const dot = _dir3D.x * toCentX + _dir3D.y * toCentY + _dir3D.z * toCentZ;
+
+          if (dot > bestFanDot) {
+            bestFanDot = dot;
+            bestFanFace = fi;
+          }
+        }
+
+        if (bestFanFace >= 0) {
+          // Jump into the target face via the vertex fan.
+          // Find which vertex in the target face is the shared pole vertex.
+          const f = this.halfEdge.faces[bestFanFace];
+          const cA = this.halfEdge.canonical[f.a];
+          const cB = this.halfEdge.canonical[f.b];
+          const cC = this.halfEdge.canonical[f.c];
+
+          const nudge = 0.005; // same as _computeEntryBary eps — nudge off the vertex
+          let eu: number, ev: number, ew: number;
+          if (cA === canonicalIdx) {
+            eu = 1 - 2 * nudge; ev = nudge; ew = nudge;
+          } else if (cB === canonicalIdx) {
+            eu = nudge; ev = 1 - 2 * nudge; ew = nudge;
+          } else {
+            eu = nudge; ev = nudge; ew = 1 - 2 * nudge;
+          }
+          // Already sums to 1, no normalization needed
+
+          // Transport direction into new face: project onto new face's tangent plane
+          const adjNormal = this.halfEdge.faces[bestFanFace].normal;
+          const transportedDir = _dir3D.clone();
+          transportedDir.addScaledVector(adjNormal, -transportedDir.dot(adjNormal));
+          const transportLen = transportedDir.length();
+          if (transportLen > 1e-6) transportedDir.multiplyScalar(1 / transportLen);
+
+          currentFace = bestFanFace;
+          currentBary = { u: eu, v: ev, w: ew };
+          currentDir.copy(transportedDir);
+          crossings++;
+          usedVertexFan = true;
+        }
       }
+
+      if (usedVertexFan) continue;
 
       // Get the half-edge we're crossing
       const he = this.halfEdge.getHalfEdge(currentFace, heEdgeLocal);
