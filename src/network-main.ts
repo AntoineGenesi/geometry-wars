@@ -538,6 +538,8 @@ function main() {
     companionBulletPool.setMeshSurface(meshSurface);
     companionManager.setMeshSurface(meshSurface);
     currentMapSizeScaleFactor = mapSizeScaleFactor;
+    // Scale bullet range with map size: larger maps → bullets travel proportionally further.
+    bulletPool.lifetimeMultiplier = mapSizeScaleFactor;
     // Wire depth occlusion to new surface mesh (BVH built internally for fast raycasting)
     depthOcclusion.setSurfaceMesh(surface.mesh);
     localWeaponManager.setMeshSurface(meshSurface);
