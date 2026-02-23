@@ -98,6 +98,12 @@ import {
   DEFAULT_SURFACE_SCALE,
   type SurfaceTransformFn,
 } from './rendering/SharedGameSetup';
+import {
+  isStartupCacheFresh,
+  setStartupCache,
+  type StartupConfigData,
+} from './utils/StartupCache';
+import type { NetworkStartupConfig } from './network/NetworkClient';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -813,6 +819,9 @@ function main() {
   let localPlayerId = '';
   let isHost = false;
   let isPaused = false;
+  // Holds the startup config hash received from the server so onStartupConfig
+  // can store it in localStorage along with the cached data.
+  let pendingStartupHash: string | null = null;
   let localMenuOpen = false;
 
   // -- Dynamic Difficulty Adjustment (DDA) system --
@@ -2211,6 +2220,26 @@ function main() {
         if (!connectionLost && code !== 1000) {
           handleConnectionLost(`Server connection closed (code ${code}).`);
         }
+      },
+      onStartupHash: (hash: string) => {
+        // Check if we have fresh cached startup config for this server version.
+        const hit = isStartupCacheFresh(hash);
+        netMainLog(`[NetworkMain] startup_hash=${hash} cache=${hit ? 'HIT' : 'MISS'}`);
+        // Save hash so onStartupConfig can store it with the cached payload.
+        pendingStartupHash = hash;
+        network.sendStartupCacheAck(hit);
+      },
+      onStartupConfig: (config: NetworkStartupConfig) => {
+        // Cache miss: server sent the full config. Persist it to localStorage
+        // using the hash we received in the prior startup_hash message.
+        if (!pendingStartupHash) return;
+        const cacheData: StartupConfigData = {
+          weaponConfigs: config.weaponConfigs,
+          serverVersion: config.serverVersion,
+        };
+        setStartupCache(pendingStartupHash, cacheData);
+        netMainLog(`[NetworkMain] startup_config cached (hash=${pendingStartupHash})`);
+        pendingStartupHash = null;
       },
     });
   }).catch((err) => {

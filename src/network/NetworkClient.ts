@@ -132,6 +132,12 @@ export interface ClientMetricsPayload {
   activeWeapon: string;
 }
 
+/** Startup config payload from server (mirrors GameRoom.ts StartupConfigPayload) */
+export interface NetworkStartupConfig {
+  weaponConfigs: Record<string, { ammo: number; damageMultiplier: number }>;
+  serverVersion: string;
+}
+
 /** Event callbacks */
 export interface NetworkCallbacks {
   onStateChange?: (state: NetworkGameState) => void;
@@ -152,6 +158,16 @@ export interface NetworkCallbacks {
   onError?: (error: Error) => void;
   /** Fired when the WebSocket connection to the server closes (any reason). */
   onDisconnected?: (code: number) => void;
+  /**
+   * Fired when the server sends its startup config hash.
+   * The handler should check localStorage and call sendStartupCacheAck().
+   */
+  onStartupHash?: (hash: string) => void;
+  /**
+   * Fired when the server sends the full startup config (cache miss path).
+   * The handler should cache this data in localStorage.
+   */
+  onStartupConfig?: (config: NetworkStartupConfig) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -367,6 +383,18 @@ export class NetworkClient {
       this.callbacks.onGameEnded?.();
     });
 
+    // Startup config caching: server sends hash on join, client checks localStorage,
+    // then acknowledges (hit/miss). On miss the server sends the full config.
+    this.room.onMessage('startup_hash', (data: { hash: string }) => {
+      netLog(`[Network] Received startup_hash: ${data.hash}`);
+      this.callbacks.onStartupHash?.(data.hash);
+    });
+
+    this.room.onMessage('startup_config', (config: NetworkStartupConfig) => {
+      netLog('[Network] Received startup_config (cache miss — caching now)');
+      this.callbacks.onStartupConfig?.(config);
+    });
+
     // Disconnection
     this.room.onLeave((code) => {
       netLog(`[Network] Left room with code: ${code}`);
@@ -500,6 +528,16 @@ export class NetworkClient {
   sendHostLaunch(choice: string): void {
     if (!this.room || !this.connected) return;
     this.room.send('host_launch', { choice });
+  }
+
+  /**
+   * Acknowledge the startup config hash the server sent.
+   * Call after checking localStorage: hit=true means client has fresh cached data.
+   * If hit=false the server will send the full startup_config payload.
+   */
+  sendStartupCacheAck(hit: boolean): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('startup_cache_ack', { hit });
   }
 
   /**
