@@ -28,7 +28,7 @@ export class Minimap {
     this.canvas.style.cssText = `
       position: fixed;
       bottom: 16px;
-      right: 16px;
+      right: 164px;
       width: ${this.size}px;
       height: ${this.size}px;
       border: 1px solid rgba(0, 255, 255, 0.3);
