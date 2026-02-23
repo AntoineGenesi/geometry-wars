@@ -102,6 +102,10 @@ export abstract class BaseEnemy extends Entity {
   /** Player world-space position for mesh-walker-mode enemies. */
   protected _playerWorldPos: THREE.Vector3 = new THREE.Vector3();
 
+  /** Knockback UV velocity (decays exponentially, half-life ~0.2s). */
+  private _knockbackU: number = 0;
+  private _knockbackV: number = 0;
+
   static onDeath: ((position: THREE.Vector3, score: number, geoms: number) => void) | null = null;
 
   /** Global callback for tier-based split deaths.
@@ -342,6 +346,20 @@ export abstract class BaseEnemy extends Entity {
     this.playerV = v;
   }
 
+  /**
+   * Apply a UV-space knockback impulse to this enemy.
+   * The impulse decays exponentially with half-life ~0.2s.
+   * Walker-mode enemies ignore knockback (UV knockback is not meaningful in world-space walking).
+   *
+   * @param impulseU - UV velocity to add in the U direction
+   * @param impulseV - UV velocity to add in the V direction
+   */
+  applyKnockback(impulseU: number, impulseV: number): void {
+    if (this.walker) return; // Skip walker-mode enemies
+    this._knockbackU += impulseU;
+    this._knockbackV += impulseV;
+  }
+
   /** Set player world-space position (used by mesh-walker-mode enemies). */
   setPlayerWorldPosition(worldPos: THREE.Vector3): void {
     this._playerWorldPos.copy(worldPos);
@@ -402,9 +420,22 @@ export abstract class BaseEnemy extends Entity {
       if (typeof window !== 'undefined' && (window as any).__debugEnemyUV) {
         console.log(`[Enemy ${this.constructor.name}] Using UV mode (no walker)`);
       }
-      // Record UV position before behavior update
+      // Record UV position before knockback + behavior update
       const prevU = this.surfacePosition.u;
       const prevV = this.surfacePosition.v;
+
+      // Apply knockback displacement before behavior (so behavior runs from knocked-back position)
+      if (this._knockbackU !== 0 || this._knockbackV !== 0) {
+        this.surfacePosition.u += this._knockbackU * dt;
+        this.surfacePosition.v += this._knockbackV * dt;
+        // Exponential decay — half-life 0.2s: factor = 0.5^(dt/0.2)
+        const decay = Math.pow(0.5, dt / 0.2);
+        this._knockbackU *= decay;
+        this._knockbackV *= decay;
+        // Zero out negligible residual
+        if (Math.abs(this._knockbackU) < 0.0001) this._knockbackU = 0;
+        if (Math.abs(this._knockbackV) < 0.0001) this._knockbackV = 0;
+      }
 
       profiler.begin('enemy_uv_behavior');
       this.updateBehavior(dt, this.playerU, this.playerV);
