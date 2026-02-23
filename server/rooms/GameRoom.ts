@@ -40,7 +40,7 @@ const TICK_RATE = 60;
 // How far in advance (ms) the server warns clients before spawning an enemy.
 // Clients show a pulsing red ring for this duration before the enemy appears.
 const PRE_SPAWN_WARNING_MS = 1500;
-const VOTING_COUNTDOWN_SECS = 5;
+const VOTING_COUNTDOWN_SECS = 30;
 // Movement speed in UV units per second.
 // Co-op uses MeshWalker at 3.0 world units/s. Surface radius = 10 (DEFAULT_SURFACE_SCALE).
 // V direction arc = pi * 10 ≈ 31.4 world units. So 3.0 / (pi*10) ≈ 0.095 UV/s.
@@ -564,6 +564,16 @@ export class GameRoom extends Room<GameState> {
 
   private tickVoting() {
     const dt = 1 / TICK_RATE;
+
+    // Auto-launch immediately when all connected players have voted
+    const playerCount = this.state.players.size;
+    if (playerCount > 0 && this.state.voteMap.size >= playerCount) {
+      const choice = this.pickMostVoted();
+      console.log(`[GameRoom] All ${playerCount} players voted — auto-launching with: ${choice}`);
+      this.startGameWithSettings(choice);
+      return;
+    }
+
     this.state.votingCountdown = Math.max(0, this.state.votingCountdown - dt);
     if (this.state.votingCountdown <= 0) {
       const choice = this.pickMostVoted();

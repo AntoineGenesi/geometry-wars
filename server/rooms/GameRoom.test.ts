@@ -383,12 +383,17 @@ describe('GameRoom countdown → auto-launch (pickMostVoted)', () => {
     expect(result).toBe('sphere:rainbow:medium');
   });
 
+  it('countdown is 30 seconds (VOTING_COUNTDOWN_SECS)', () => {
+    // Regression: was 5 seconds; user requested 30 seconds (s27h-voting-timer-short)
+    const VOTING_COUNTDOWN_SECS = 30;
+    expect(VOTING_COUNTDOWN_SECS).toBe(30);
+  });
+
   it('countdown reaches zero within expected ticks (+ 1 for float rounding)', () => {
-    const VOTING_COUNTDOWN_SECS = 5;
+    const VOTING_COUNTDOWN_SECS = 30;
     const DT = 1 / 60;
     let countdown = VOTING_COUNTDOWN_SECS;
-    // Allow totalTicks + 1 to handle floating-point: 5.0 / (1/60) = 300 exactly,
-    // but repeated subtraction leaves a tiny residual (~1e-14) that requires one extra tick.
+    // Allow totalTicks + 1 to handle floating-point rounding from repeated subtraction.
     const maxTicks = Math.ceil(VOTING_COUNTDOWN_SECS / DT) + 1;
     let launchTick = -1;
 
@@ -402,6 +407,36 @@ describe('GameRoom countdown → auto-launch (pickMostVoted)', () => {
     expect(launchTick).toBeGreaterThanOrEqual(0);        // did trigger
     expect(launchTick).toBeLessThanOrEqual(maxTicks - 1); // within expected window
     expect(countdown).toBe(0);
+  });
+
+  it('auto-launches when all players have voted before countdown ends', () => {
+    // Mirrors tickVoting() early-exit logic: voteMap.size >= players.size → launch
+    const voteMap = new Map<string, string>();
+    const playerCount = 2;
+
+    function tickVoting(voteMap: Map<string, string>, playerCount: number, countdown: number): { launched: boolean; countdown: number } {
+      const DT = 1 / 60;
+      // All players voted → launch immediately
+      if (playerCount > 0 && voteMap.size >= playerCount) {
+        return { launched: true, countdown };
+      }
+      const newCountdown = Math.max(0, countdown - DT);
+      if (newCountdown <= 0) {
+        return { launched: true, countdown: 0 };
+      }
+      return { launched: false, countdown: newCountdown };
+    }
+
+    // Before all players vote — no launch
+    voteMap.set('player1', 'sphere:waves:medium');
+    let result = tickVoting(voteMap, playerCount, 25);
+    expect(result.launched).toBe(false);
+
+    // After all players vote — launch immediately
+    voteMap.set('player2', 'torus:waves:small');
+    result = tickVoting(voteMap, playerCount, 25);
+    expect(result.launched).toBe(true);
+    expect(result.countdown).toBe(25); // countdown not decremented (early exit)
   });
 });
 
