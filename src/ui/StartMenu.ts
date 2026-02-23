@@ -113,6 +113,9 @@ export class StartMenu {
       }
     });
 
+    // Mark menu as open so rotate-overlay is suppressed
+    document.body.classList.add('menu-open');
+
     // Dismiss loading screen now that menu is ready
     const loadingScreen = document.getElementById('loading-screen');
     if (loadingScreen) {
@@ -1379,65 +1382,149 @@ export class StartMenu {
       /* ------------------------------------------------------------------- */
       /* Mobile-responsive layout                                             */
       /* ------------------------------------------------------------------- */
-      @media (max-width: 900px) and (pointer: coarse) {
-        #start-menu .oval-buttons-container {
-          position: static;
-          transform: none;
+      @media (max-width: 768px), (pointer: coarse) and (orientation: portrait) {
+        #start-menu {
+          overflow-y: auto;
+        }
+
+        /* Make the overlay a vertical scroll container */
+        #start-menu .menu-overlay {
+          position: relative;
+          min-height: 100%;
           display: flex;
           flex-direction: column;
           align-items: center;
-          gap: 12px;
-          padding: 0 20px;
-          margin-top: 15vh;
+          padding: 16px 0 80px;
+          overflow-y: auto;
+        }
+
+        /* Title: smaller, centered */
+        #start-menu .menu-title-container {
+          position: static;
+          transform: none;
+          text-align: center;
+          margin-bottom: 24px;
+        }
+        #start-menu .title {
+          font-size: clamp(18px, 5vw, 28px);
+          letter-spacing: 4px;
+        }
+
+        /* Buttons: full column, not absolutely positioned */
+        #start-menu .oval-buttons-container {
+          position: static;
+          transform: none;
+          width: 100%;
+          max-width: 320px;
+          padding: 0 16px;
+          gap: 10px;
         }
         #start-menu .oval-btn {
-          min-width: 260px;
-          min-height: 48px;
-          padding: 16px 28px;
-          font-size: 16px;
+          width: 100%;
+          min-width: unset;
+          min-height: 44px;
+          padding: 12px 20px;
+          font-size: 14px;
           touch-action: manipulation;
         }
         #start-menu .oval-btn-primary {
-          min-height: 52px;
-          padding: 18px 36px;
-          font-size: 18px;
+          min-height: 48px;
+          padding: 14px 20px;
+          font-size: 15px;
         }
+
+        /* Sub-panels: fixed overlay, scrollable */
         #start-menu .sub-panel {
-          width: 92%;
-          max-width: none;
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 95vw;
+          max-height: 85vh;
+          overflow-y: auto;
           padding: 16px;
+          z-index: 20;
         }
+
+        /* Controls hint: hide on mobile */
+        #start-menu .controls-hint {
+          display: none;
+        }
+
+        /* Surface grid: 3 columns */
         #start-menu .surface-grid {
           grid-template-columns: repeat(3, 1fr);
           gap: 8px;
         }
         #start-menu .surface-btn {
-          padding: 12px 8px;
-          min-height: 48px;
+          padding: 10px 6px;
+          min-height: 44px;
         }
+        #start-menu .surface-btn .icon {
+          font-size: 20px;
+        }
+        #start-menu .surface-btn .name {
+          font-size: 10px;
+        }
+
+        /* Headings in sub-panels */
+        #start-menu h3 {
+          font-size: 13px;
+          letter-spacing: 3px;
+          margin-bottom: 10px;
+        }
+
+        /* Start / back buttons */
         #start-menu .start-btn {
-          min-height: 52px;
-          padding: 16px 28px;
-          font-size: 17px;
+          width: 100%;
+          min-height: 48px;
+          font-size: 15px;
+          padding: 14px 20px;
+          margin-top: 12px;
         }
-        #start-menu .controls-hint {
-          display: none;
+        #start-menu .back-btn {
+          width: 100%;
+          min-height: 44px;
+          font-size: 13px;
+          padding: 10px 20px;
+          margin-top: 10px;
         }
-        #start-menu .title {
-          font-size: clamp(24px, 6vw, 40px);
-          letter-spacing: 4px;
+
+        /* Co-op buttons: column instead of row */
+        #start-menu .coop-buttons {
+          flex-direction: column;
+          gap: 8px;
         }
         #start-menu .coop-btn {
-          padding: 16px 24px;
-          min-height: 48px;
-        }
-        #start-menu .lan-btn {
-          min-height: 48px;
           padding: 12px 20px;
+          min-height: 44px;
+          font-size: 14px;
+        }
+
+        /* Level buttons: 4 per row */
+        #start-menu .level-row {
+          grid-template-columns: repeat(4, 1fr);
+          gap: 6px;
         }
         #start-menu .level-btn {
-          min-height: 48px;
-          padding: 10px 8px;
+          min-height: 44px;
+          padding: 8px 4px;
+          font-size: 9px;
+        }
+        #start-menu .level-btn .level-num {
+          font-size: 13px;
+        }
+
+        /* Mode buttons: compact */
+        #start-menu .mode-btn .mode-icon {
+          font-size: 24px;
+          min-width: 30px;
+        }
+        #start-menu .mode-btn .mode-name {
+          font-size: 13px;
+        }
+        #start-menu .mode-btn .mode-desc {
+          font-size: 10px;
         }
       }
     `;
@@ -2288,6 +2375,7 @@ export class StartMenu {
     this.stopAutoRefresh();
     this.container.classList.add('hidden');
     this.menuBackground.stop();
+    document.body.classList.remove('menu-open');
   }
 
   /**
@@ -2296,6 +2384,7 @@ export class StartMenu {
   show(): void {
     this.container.classList.remove('hidden');
     this.menuBackground.start();
+    document.body.classList.add('menu-open');
   }
 
   /**
@@ -2303,6 +2392,7 @@ export class StartMenu {
    */
   dispose(): void {
     this.stopAutoRefresh();
+    document.body.classList.remove('menu-open');
     // Remove DOM elements FIRST so UI unblocks even if cleanup throws
     this.container.remove();
     if (this.styleElement) {

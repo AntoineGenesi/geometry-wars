@@ -263,6 +263,10 @@
         display: flex;
       }
     }
+    /* Suppress rotate overlay while menu is open */
+    body.menu-open #rotate-overlay {
+      display: none !important;
+    }
     .rotate-icon {
       font-size: 64px;
       animation: rotate-phone 2s ease-in-out infinite;
