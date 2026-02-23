@@ -249,7 +249,7 @@ export class RenderLoop {
     UIHelpers.updateBoostDisplay(ctx.player.boostActive, ctx.player.boostCooldown);
 
     // Update weapon inventory HUD
-    ctx.weaponHUD.update(ctx.weaponManager.getInventory(), ctx.weaponManager.getCurrentWeapon());
+    ctx.weaponHUD.update(ctx.weaponManager.getInventory(), ctx.weaponManager.getCurrentWeapon(), ctx.weaponMastery.getAllProgress());
 
     // Update companion HUD
     ctx.companionHUD.update(ctx.companionManager.getCompanionCounts());

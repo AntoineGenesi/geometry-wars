@@ -1,10 +1,29 @@
 import { WeaponType } from '../weapons/WeaponTypes';
+import { StackBuffType } from './BuffManager';
 
 // ---------------------------------------------------------------------------
 // Mastery thresholds (kills required per tier)
 // ---------------------------------------------------------------------------
 
 export const MASTERY_THRESHOLDS: readonly [number, number, number] = [10, 30, 75];
+
+// ---------------------------------------------------------------------------
+// WeaponType → mastery StackBuffType mapping
+// Used by main.ts to know which buff to award on tier-up.
+// ---------------------------------------------------------------------------
+
+export const WEAPON_MASTERY_BUFF_MAP: Partial<Record<WeaponType, StackBuffType>> = {
+  [WeaponType.Standard]: StackBuffType.MasteryBlaster,
+  [WeaponType.Spread]: StackBuffType.MasterySpread,
+  [WeaponType.Piercing]: StackBuffType.MasteryPiercing,
+  [WeaponType.ChainLightning]: StackBuffType.MasteryChainLightning,
+  [WeaponType.Homing]: StackBuffType.MasteryHoming,
+  [WeaponType.PlasmaMortar]: StackBuffType.MasteryPlasmaMortar,
+  [WeaponType.GravityGun]: StackBuffType.MasteryGravityGun,
+  [WeaponType.LaserBeam]: StackBuffType.MasteryLaserBeam,
+  [WeaponType.BlackHole]: StackBuffType.MasteryBlackHole,
+  [WeaponType.TeslaCoil]: StackBuffType.MasteryTeslaCoil,
+};
 
 // ---------------------------------------------------------------------------
 // WeaponMasteryManager
@@ -69,6 +88,20 @@ export class WeaponMasteryManager {
     const tier = tierFromKills(kills);
     const nextThreshold = tier < 3 ? MASTERY_THRESHOLDS[tier] : null;
     return { kills, tier, nextThreshold };
+  }
+
+  /**
+   * Returns progress info for all weapons that have at least 1 kill.
+   * Suitable for passing directly to WeaponHUD.update().
+   */
+  getAllProgress(): Map<WeaponType, { kills: number; tier: number; nextThreshold: number | null }> {
+    const result: Map<WeaponType, { kills: number; tier: number; nextThreshold: number | null }> = new Map();
+    for (const [weaponType, killCount] of this.kills.entries()) {
+      if (killCount > 0) {
+        result.set(weaponType, this.getProgress(weaponType));
+      }
+    }
+    return result;
   }
 
   /** Clear all kill counts (call on round reset). */
