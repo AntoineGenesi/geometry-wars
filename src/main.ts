@@ -281,6 +281,20 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Detect mobile mode early -- affects quality, input, and UI decisions
   const mobile = isMobile();
 
+  // On mobile: attempt to lock orientation to landscape.
+  // Screen Orientation API works on Android Chrome; iOS Safari ignores it.
+  // The CSS rotate-overlay in index.html handles iOS by showing a "please rotate" prompt.
+  if (mobile && screen.orientation) {
+    // screen.orientation.lock() is not in TypeScript's lib yet but is widely supported on Android.
+    const lock = (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock;
+    if (typeof lock === 'function') {
+      lock.call(screen.orientation, 'landscape').catch(() => {
+        // Silently ignore — lock is blocked on iOS and some browsers.
+        // The CSS portrait overlay provides the fallback UX.
+      });
+    }
+  }
+
   // Initialize sound engine (user already clicked start menu, so audio context is allowed)
   const sound = getSoundEngine();
   sound.init();

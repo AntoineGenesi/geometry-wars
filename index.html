@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <title>Geometry Wars 3D</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -218,6 +220,53 @@
         width: 200px;
       }
     }
+    /* ------------------------------------------------------------------- */
+    /* Rotate-device overlay — shown when mobile is held in portrait       */
+    /* ------------------------------------------------------------------- */
+    #rotate-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 9999;
+      background: #050510;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+    }
+    /* Show when touch device is in portrait orientation */
+    @media (pointer: coarse) and (orientation: portrait) {
+      #rotate-overlay {
+        display: flex;
+      }
+    }
+    .rotate-icon {
+      font-size: 64px;
+      animation: rotate-phone 2s ease-in-out infinite;
+      transform-origin: center;
+    }
+    @keyframes rotate-phone {
+      0%   { transform: rotate(0deg); }
+      40%  { transform: rotate(0deg); }
+      60%  { transform: rotate(90deg); }
+      100% { transform: rotate(90deg); }
+    }
+    .rotate-text {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 20px;
+      color: #00ffff;
+      text-shadow: 0 0 10px #00ffff;
+      letter-spacing: 3px;
+      text-align: center;
+    }
+    .rotate-sub {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 14px;
+      color: #446688;
+      letter-spacing: 1px;
+      text-align: center;
+    }
+
     /* Loading screen — covers everything until StartMenu is ready */
     #loading-screen {
       position: fixed;
@@ -265,6 +314,13 @@
   </style>
 </head>
 <body>
+  <!-- Rotate device prompt (shown via CSS when portrait on touch device) -->
+  <div id="rotate-overlay">
+    <div class="rotate-icon">📱</div>
+    <div class="rotate-text">ROTATE YOUR DEVICE</div>
+    <div class="rotate-sub">This game is designed for landscape mode</div>
+  </div>
+
   <div id="loading-screen">
     <div class="loading-title">GEOMETRY WARS 3D</div>
     <div class="loading-dots">
