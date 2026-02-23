@@ -41,6 +41,12 @@ export abstract class Surface {
   readonly group: THREE.Group
   protected readonly config: Required<SurfaceConfig>
 
+  // Mesh deformation springs (lazy-initialized on first applyMeshForce call)
+  private meshVertexSprings: SpringVertex[] = []
+  private meshSpringsInitialized = false
+  private readonly _meshSpringTempDir = new THREE.Vector3()
+  private readonly _meshSpringTempPos = new THREE.Vector3()
+
   /**
    * World rotation of the surface. This implements "player-centric" view:
    * - Player stays at fixed screen position (always visible)
@@ -392,6 +398,119 @@ export abstract class Surface {
     }
 
     posAttr.needsUpdate = true
+  }
+
+  // ---------------------------------------------------------------------------
+  // MESH DEFORMATION (for black hole / gravity gun effects)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Lazily initialize springs for the surface mesh vertices.
+   * Called on first applyMeshForce() to avoid overhead on surfaces that never deform.
+   */
+  private initMeshSprings(): void {
+    if (this.meshSpringsInitialized) return
+    const posAttr = this.mesh.geometry.getAttribute('position')
+    if (!posAttr) return
+
+    // Mesh springs are stiffer than grid springs for a snappier "black hole" snap-back effect
+    const MESH_STIFFNESS = 0.4
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const rest = new THREE.Vector3(
+        posAttr.getX(i),
+        posAttr.getY(i),
+        posAttr.getZ(i)
+      )
+      this.meshVertexSprings.push({
+        restPosition: rest.clone(),
+        offset: new THREE.Vector3(0, 0, 0),
+        velocity: new THREE.Vector3(0, 0, 0),
+        damping: this.config.damping,
+        stiffness: MESH_STIFFNESS,
+      })
+    }
+    this.meshSpringsInitialized = true
+  }
+
+  /**
+   * Apply a force to surface mesh vertices within a radius of worldPos.
+   * Negative force = pull inward (toward worldPos) — used for black hole effect.
+   * Positive force = push outward.
+   *
+   * @param worldPos - Impact point (local space, same convention as applyForce)
+   * @param force    - Force magnitude. Negative = inward pull.
+   * @param radius   - Affected radius in local-space units
+   */
+  applyMeshForce(worldPos: THREE.Vector3, force: number, radius: number): void {
+    this.initMeshSprings()
+    const radiusSq = radius * radius
+    for (const spring of this.meshVertexSprings) {
+      const distSq = spring.restPosition.distanceToSquared(worldPos)
+      if (distSq < radiusSq && distSq > 0.0001) {
+        const dist = Math.sqrt(distSq)
+        const falloff = 1.0 - dist / radius
+        // For inward pull (negative force): direction is toward worldPos
+        // this._meshSpringTempDir points FROM spring TO worldPos (inward)
+        this._meshSpringTempDir.copy(worldPos).sub(spring.restPosition).normalize()
+        // force < 0 means pull inward; we flip sign so negative force → inward impulse
+        spring.velocity.addScaledVector(this._meshSpringTempDir, -force * falloff * falloff)
+      }
+    }
+  }
+
+  /**
+   * Integrate mesh spring physics and write deformed positions to the mesh geometry.
+   * Must be called each frame for the deformation animation to play out.
+   *
+   * Uses a dirty-region skip: vertices with negligible offset AND velocity are skipped
+   * to avoid iterating thousands of resting vertices every frame.
+   *
+   * @param dt - Time step in seconds
+   */
+  updateMeshDeformation(dt: number): void {
+    if (!this.meshSpringsInitialized) return
+
+    const posAttr = this.mesh.geometry.getAttribute('position')
+    if (!posAttr) return
+
+    const clampedDt = Math.min(dt, 1 / 30)
+    const steps = Math.ceil(clampedDt / (1 / 120))
+    const subDt = clampedDt / steps
+
+    const IDLE_THRESHOLD_SQ = 0.00001
+
+    for (let step = 0; step < steps; step++) {
+      for (const spring of this.meshVertexSprings) {
+        // Skip vertices that are at rest (dirty-region optimization)
+        if (
+          spring.offset.lengthSq() < IDLE_THRESHOLD_SQ &&
+          spring.velocity.lengthSq() < IDLE_THRESHOLD_SQ
+        ) continue
+
+        const stiffnessTimesDt = -spring.stiffness * subDt * 60
+        spring.velocity.addScaledVector(spring.offset, stiffnessTimesDt)
+        spring.velocity.multiplyScalar(Math.pow(spring.damping, subDt * 60))
+        spring.offset.addScaledVector(spring.velocity, subDt)
+      }
+    }
+
+    let anyActive = false
+    for (let i = 0; i < this.meshVertexSprings.length; i++) {
+      const spring = this.meshVertexSprings[i]
+      if (
+        spring.offset.lengthSq() < IDLE_THRESHOLD_SQ &&
+        spring.velocity.lengthSq() < IDLE_THRESHOLD_SQ
+      ) continue
+
+      anyActive = true
+      this._meshSpringTempPos.copy(spring.restPosition).add(spring.offset)
+      posAttr.setXYZ(i, this._meshSpringTempPos.x, this._meshSpringTempPos.y, this._meshSpringTempPos.z)
+    }
+
+    if (anyActive) {
+      posAttr.needsUpdate = true
+    }
   }
 
   /**

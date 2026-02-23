@@ -1055,6 +1055,109 @@ describe('Grid Deformation', () => {
           surface.updateGrid(0.016);
         }).not.toThrow();
       });
+
+      it('applyMeshForce does not throw', () => {
+        const surface = SurfaceFactory.create(config.type);
+        const pos = surface.getPoint(0.5, 0.5).position;
+
+        expect(() => {
+          surface.applyMeshForce(pos, -2.0, 1.5);
+        }).not.toThrow();
+      });
+
+      it('applyMeshForce moves mesh vertices toward impact point', () => {
+        const surface = SurfaceFactory.create(config.type);
+        const pos = surface.getPoint(0.5, 0.5).position;
+        const posAttr = surface.mesh.geometry.getAttribute('position');
+
+        // Snapshot rest positions
+        const restX: number[] = [];
+        const restY: number[] = [];
+        const restZ: number[] = [];
+        for (let i = 0; i < posAttr.count; i++) {
+          restX.push(posAttr.getX(i));
+          restY.push(posAttr.getY(i));
+          restZ.push(posAttr.getZ(i));
+        }
+
+        // Apply inward pull, then update several frames
+        surface.applyMeshForce(pos, -2.0, 1.5);
+        for (let f = 0; f < 10; f++) surface.updateMeshDeformation(0.016);
+
+        // At least some vertex within the radius should have moved
+        let anyMoved = false;
+        for (let i = 0; i < posAttr.count; i++) {
+          const dx = posAttr.getX(i) - restX[i];
+          const dy = posAttr.getY(i) - restY[i];
+          const dz = posAttr.getZ(i) - restZ[i];
+          if (dx * dx + dy * dy + dz * dz > 0.0001) {
+            anyMoved = true;
+            break;
+          }
+        }
+        expect(anyMoved).toBe(true);
+      });
+
+      it('updateMeshDeformation springs vertices back to rest', () => {
+        const surface = SurfaceFactory.create(config.type);
+        const pos = surface.getPoint(0.5, 0.5).position;
+        const posAttr = surface.mesh.geometry.getAttribute('position');
+
+        // Snapshot rest positions
+        const restX: number[] = [];
+        const restY: number[] = [];
+        const restZ: number[] = [];
+        for (let i = 0; i < posAttr.count; i++) {
+          restX.push(posAttr.getX(i));
+          restY.push(posAttr.getY(i));
+          restZ.push(posAttr.getZ(i));
+        }
+
+        // Apply force, then let the spring decay for many frames
+        surface.applyMeshForce(pos, -2.0, 1.5);
+        for (let f = 0; f < 300; f++) surface.updateMeshDeformation(0.016);
+
+        // All displaced vertices should be back near rest
+        let maxOffset = 0;
+        for (let i = 0; i < posAttr.count; i++) {
+          const dx = posAttr.getX(i) - restX[i];
+          const dy = posAttr.getY(i) - restY[i];
+          const dz = posAttr.getZ(i) - restZ[i];
+          maxOffset = Math.max(maxOffset, dx * dx + dy * dy + dz * dz);
+        }
+        // Should be within 0.01 world units of rest (spring damped out)
+        expect(maxOffset).toBeLessThan(0.01);
+      });
+
+      it('rest positions are preserved (original geometry not mutated)', () => {
+        const surface = SurfaceFactory.create(config.type);
+        const pos = surface.getPoint(0.5, 0.5).position;
+        const posAttr = surface.mesh.geometry.getAttribute('position');
+
+        // Record positions BEFORE init (springs not yet initialized)
+        const originalX: number[] = [];
+        const originalY: number[] = [];
+        const originalZ: number[] = [];
+        for (let i = 0; i < posAttr.count; i++) {
+          originalX.push(posAttr.getX(i));
+          originalY.push(posAttr.getY(i));
+          originalZ.push(posAttr.getZ(i));
+        }
+
+        // Apply force to trigger lazy init, then fully decay
+        surface.applyMeshForce(pos, -2.0, 1.5);
+        for (let f = 0; f < 300; f++) surface.updateMeshDeformation(0.016);
+
+        // After full decay, positions should match originals
+        let maxDrift = 0;
+        for (let i = 0; i < posAttr.count; i++) {
+          const dx = posAttr.getX(i) - originalX[i];
+          const dy = posAttr.getY(i) - originalY[i];
+          const dz = posAttr.getZ(i) - originalZ[i];
+          maxDrift = Math.max(maxDrift, dx * dx + dy * dy + dz * dz);
+        }
+        expect(maxDrift).toBeLessThan(0.01);
+      });
     });
   }
 });
