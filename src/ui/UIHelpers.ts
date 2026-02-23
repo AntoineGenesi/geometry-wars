@@ -21,6 +21,7 @@ export class UIHelpers {
   private static flashEl = document.getElementById('screen-flash')!;
   private static playerLevelEl = document.getElementById('player-level-display')!;
   private static comboEl = document.getElementById('combo-display')!;
+  private static boostEl = document.getElementById('boost-display')!;
 
   /**
    * Flash the screen with a color for visual impact
@@ -159,6 +160,25 @@ export class UIHelpers {
       setTimeout(() => { this.comboEl.style.transform = 'scale(1)'; }, 100);
     } else {
       this.comboEl.textContent = '';
+    }
+  }
+
+  /**
+   * Update boost cooldown indicator
+   * @param boostActive - true during active boost burst
+   * @param boostCooldown - seconds remaining on cooldown (0 = ready)
+   */
+  static updateBoostDisplay(boostActive: boolean, boostCooldown: number): void {
+    if (!this.boostEl) return;
+    this.boostEl.classList.remove('active', 'cooldown');
+    if (boostActive) {
+      this.boostEl.textContent = '⚡ BOOST';
+      this.boostEl.classList.add('active');
+    } else if (boostCooldown > 0) {
+      this.boostEl.textContent = `⚡ ${boostCooldown.toFixed(1)}s`;
+      this.boostEl.classList.add('cooldown');
+    } else {
+      this.boostEl.textContent = '⚡ BOOST';
     }
   }
 

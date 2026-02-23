@@ -4,7 +4,7 @@ import { Game } from './core/Game';
 import { Surface, SurfacePoint } from './surfaces/Surface';
 import { SurfaceFactory, SurfaceType } from './surfaces/SurfaceFactory';
 import { InputManager } from './input/InputManager';
-import { Player } from './entities/Player';
+import { Player, BOOST_SPEED_MULTIPLIER } from './entities/Player';
 import { BulletPool } from './entities/Bullet';
 import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
@@ -754,7 +754,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   /** Recompute combined multipliers from PlayerLevel + BuffManager */
   function applyStatMultipliers(): void {
     const perk = playerLevel.perk;
-    playerWalker.speed = PLAYER_MOVE_SPEED * perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier();
+    const boostMult = player.boostActive ? BOOST_SPEED_MULTIPLIER : 1.0;
+    playerWalker.speed = PLAYER_MOVE_SPEED * perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier() * boostMult;
     player.fireRateMultiplier = perk.fireRateMultiplier * buffManager.getFireRateMultiplier();
     bulletPool.speedMultiplier = perk.bulletSpeedMultiplier;
   }

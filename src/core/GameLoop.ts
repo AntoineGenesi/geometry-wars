@@ -46,6 +46,8 @@ export class GameLoop {
   // DDA close call detection: tracks whether player was already "in" a close call episode
   // (avoids recording multiple close calls for one continuous proximity event)
   private _ddaInClosecall = false;
+  // Boost visual state tracking (only call setColor on state transition)
+  private _prevBoostActive = false;
 
   /**
    * Wire in dependencies that are created in main.ts and can't be passed via GameContext
@@ -345,6 +347,18 @@ export class GameLoop {
     }
     if (this.playerGlowTrail) {
       this.playerGlowTrail.update(dt);
+    }
+
+    // Boost visual feedback: flash player white when boost starts, restore on end
+    if (ctx.player.boostActive !== this._prevBoostActive) {
+      if (ctx.player.boostActive) {
+        ctx.player.setColor(0xffffff); // White flash during boost
+        if (this.sound) this.sound.play('weaponPickup', { volume: 0.5, pitch: 1.6 });
+        UIHelpers.screenFlash('rgba(0, 220, 255, 0.18)', 200);
+      } else {
+        ctx.player.setColor(0x00ffff); // Restore default cyan
+      }
+      this._prevBoostActive = ctx.player.boostActive;
     }
 
     // Update entity glows

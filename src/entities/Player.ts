@@ -23,6 +23,11 @@ const BLINK_FREQUENCY = 10; // blinks per second during invincibility
 const INITIAL_LIVES = 3;
 const INITIAL_BOMBS = 3;
 
+// Boost constants
+const BOOST_DURATION = 0.5;     // seconds the speed boost lasts
+const BOOST_COOLDOWN = 5.0;     // seconds between boosts
+export const BOOST_SPEED_MULTIPLIER = 3.0; // speed multiplier during boost
+
 // Ship visual dimensions.
 const SHIP_HALF_W = 0.15; // half-width of the chevron
 const SHIP_LENGTH = 0.3; // nose to tail
@@ -74,6 +79,14 @@ export class Player {
   private invincibilityTimer = INVINCIBILITY_DURATION;
   private isInvincible = true;
 
+  // -- Boost ----------------------------------------------------------------
+  /** Whether the boost is currently active (speed multiplier applied). */
+  boostActive = false;
+  /** Seconds remaining until boost can be used again (0 = ready). */
+  boostCooldown = 0;
+  private boostTimer = 0;
+  private prevBoostHeld = false;
+
   // -- Bullet pool reference ------------------------------------------------
   private readonly bulletPool: BulletPool;
 
@@ -111,6 +124,9 @@ export class Player {
     this.invincibilityTimer = INVINCIBILITY_DURATION;
     this.isInvincible = true;
     this.fireCooldown = 0;
+    this.boostActive = false;
+    this.boostTimer = 0;
+    this.prevBoostHeld = false;
     this.mesh.visible = true;
   }
 
@@ -165,6 +181,29 @@ export class Player {
     if (input.bomb && this.bombs > 0) {
       this.bombs -= 1;
       this.onBomb?.();
+    }
+
+    // -- Boost --------------------------------------------------------------
+    // Trigger on leading edge of Shift key (not while held)
+    const boostJustPressed = input.boost && !this.prevBoostHeld;
+    this.prevBoostHeld = input.boost;
+    if (boostJustPressed && this.boostCooldown <= 0) {
+      this.boostActive = true;
+      this.boostTimer = BOOST_DURATION;
+      this.boostCooldown = BOOST_COOLDOWN;
+    }
+    // Tick active boost duration
+    if (this.boostActive) {
+      this.boostTimer -= dt;
+      if (this.boostTimer <= 0) {
+        this.boostActive = false;
+        this.boostTimer = 0;
+      }
+    }
+    // Tick cooldown
+    if (this.boostCooldown > 0) {
+      this.boostCooldown -= dt;
+      if (this.boostCooldown < 0) this.boostCooldown = 0;
     }
 
     // -- Invincibility ------------------------------------------------------
