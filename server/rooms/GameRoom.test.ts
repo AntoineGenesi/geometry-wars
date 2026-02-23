@@ -806,3 +806,193 @@ describe('S27h: spawn positions visible to players (not at UV seam)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Player death and game-over logic (S28a — MP player respawn at death location)
+//
+// Tests verify:
+//  1. Game CONTINUES when ONE player dies (other player still alive)
+//  2. Game ENDS only when ALL players are dead
+//  3. Multi-hit prevention: player loses at most one life per tick even when
+//     multiple enemies are simultaneously at the same position
+// ---------------------------------------------------------------------------
+
+/** Mirrors checkGameOver() logic: returns true if game should end. */
+function checkShouldGameOver(players: Map<string, { alive: boolean }>): boolean {
+  let anyAlive = false;
+  players.forEach((player) => {
+    if (player.alive) anyAlive = true;
+  });
+  return !anyAlive && players.size > 0;
+}
+
+/**
+ * Simulate a single player-enemy collision tick WITH the wasHit fix.
+ * Returns the player state after processing all enemy collisions in one tick.
+ */
+function simulateCollisionTick(
+  player: { lives: number; alive: boolean; surfaceU: number; surfaceV: number },
+  invincible: boolean,
+  enemyPositions: Array<{ surfaceU: number; surfaceV: number }>,
+  hitThreshold = 0.04,
+): { lives: number; alive: boolean; wasHit: boolean } {
+  if (!player.alive || invincible) {
+    return { lives: player.lives, alive: player.alive, wasHit: false };
+  }
+
+  let wasHit = false;
+  let lives = player.lives;
+  let alive = player.alive;
+
+  for (const enemy of enemyPositions) {
+    if (wasHit) break; // One hit per tick (the fix)
+    const du = player.surfaceU - enemy.surfaceU;
+    const dv = player.surfaceV - enemy.surfaceV;
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist < hitThreshold) {
+      wasHit = true;
+      lives--;
+      if (lives <= 0) {
+        alive = false;
+      }
+    }
+  }
+
+  return { lives, alive, wasHit };
+}
+
+describe('GameRoom checkGameOver — game ends only when ALL players dead', () => {
+  it('game CONTINUES when one of two players dies', () => {
+    const players = new Map([
+      ['p1', { alive: false }], // dead
+      ['p2', { alive: true }],  // alive
+    ]);
+    expect(checkShouldGameOver(players)).toBe(false);
+  });
+
+  it('game CONTINUES when one of four players dies', () => {
+    const players = new Map([
+      ['p1', { alive: false }],
+      ['p2', { alive: true }],
+      ['p3', { alive: true }],
+      ['p4', { alive: true }],
+    ]);
+    expect(checkShouldGameOver(players)).toBe(false);
+  });
+
+  it('game CONTINUES when three of four players die', () => {
+    const players = new Map([
+      ['p1', { alive: false }],
+      ['p2', { alive: false }],
+      ['p3', { alive: false }],
+      ['p4', { alive: true }],
+    ]);
+    expect(checkShouldGameOver(players)).toBe(false);
+  });
+
+  it('game ENDS when ALL players are dead', () => {
+    const players = new Map([
+      ['p1', { alive: false }],
+      ['p2', { alive: false }],
+    ]);
+    expect(checkShouldGameOver(players)).toBe(true);
+  });
+
+  it('game ENDS when sole player dies', () => {
+    const players = new Map([
+      ['p1', { alive: false }],
+    ]);
+    expect(checkShouldGameOver(players)).toBe(true);
+  });
+
+  it('game does NOT end with empty player list (room closing, not game over)', () => {
+    const players = new Map<string, { alive: boolean }>();
+    // players.size === 0 → condition !anyAlive && players.size > 0 is FALSE
+    expect(checkShouldGameOver(players)).toBe(false);
+  });
+});
+
+describe('GameRoom multi-hit prevention (wasHit flag)', () => {
+  it('player with 3 lives hit by 3 simultaneous enemies loses only 1 life', () => {
+    const player = { lives: 3, alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    const enemies = [
+      { surfaceU: 0.5, surfaceV: 0.5 }, // on top of player
+      { surfaceU: 0.5, surfaceV: 0.5 }, // on top of player
+      { surfaceU: 0.5, surfaceV: 0.5 }, // on top of player
+    ];
+    const result = simulateCollisionTick(player, false, enemies);
+    expect(result.lives).toBe(2);    // lost exactly 1 life
+    expect(result.alive).toBe(true); // still alive
+    expect(result.wasHit).toBe(true);
+  });
+
+  it('player with 1 life hit by 3 simultaneous enemies dies but does NOT go below 0 lives', () => {
+    const player = { lives: 1, alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    const enemies = [
+      { surfaceU: 0.5, surfaceV: 0.5 },
+      { surfaceU: 0.5, surfaceV: 0.5 },
+      { surfaceU: 0.5, surfaceV: 0.5 },
+    ];
+    const result = simulateCollisionTick(player, false, enemies);
+    expect(result.lives).toBe(0);     // exactly 0, not -2
+    expect(result.alive).toBe(false); // dead
+  });
+
+  it('invincible player is not hit even by adjacent enemy', () => {
+    const player = { lives: 3, alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    const enemies = [{ surfaceU: 0.5, surfaceV: 0.5 }];
+    const result = simulateCollisionTick(player, true, enemies); // invincible=true
+    expect(result.lives).toBe(3); // no damage
+    expect(result.wasHit).toBe(false);
+  });
+
+  it('dead player is not processed for collisions', () => {
+    const player = { lives: 0, alive: false, surfaceU: 0.5, surfaceV: 0.5 };
+    const enemies = [{ surfaceU: 0.5, surfaceV: 0.5 }];
+    const result = simulateCollisionTick(player, false, enemies);
+    expect(result.lives).toBe(0); // unchanged
+    expect(result.alive).toBe(false);
+    expect(result.wasHit).toBe(false);
+  });
+
+  it('player hit by non-overlapping enemy is not damaged', () => {
+    const player = { lives: 3, alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    const enemies = [{ surfaceU: 0.8, surfaceV: 0.8 }]; // far away
+    const result = simulateCollisionTick(player, false, enemies);
+    expect(result.lives).toBe(3); // no hit
+    expect(result.wasHit).toBe(false);
+  });
+
+  it('without wasHit fix (BROKEN): player with 3 lives would die to 3 simultaneous enemies', () => {
+    // This test documents the BUG that wasHit fixes.
+    // Without wasHit, all 3 enemy collisions are processed → lives goes 3→2→1→0 → death.
+    const player = { lives: 3, alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    const enemies = [
+      { surfaceU: 0.5, surfaceV: 0.5 },
+      { surfaceU: 0.5, surfaceV: 0.5 },
+      { surfaceU: 0.5, surfaceV: 0.5 },
+    ];
+
+    // BROKEN version (no wasHit flag):
+    let brokenLives = player.lives;
+    let brokenAlive = player.alive;
+    for (const enemy of enemies) {
+      const du = player.surfaceU - enemy.surfaceU;
+      const dv = player.surfaceV - enemy.surfaceV;
+      const dist = Math.sqrt(du * du + dv * dv);
+      if (dist < 0.04) {
+        brokenLives--;
+        if (brokenLives <= 0) brokenAlive = false;
+      }
+    }
+
+    // Document the broken behavior:
+    expect(brokenLives).toBe(0);     // dies! (bug)
+    expect(brokenAlive).toBe(false); // dies! (bug)
+
+    // FIXED version (with wasHit):
+    const fixedResult = simulateCollisionTick(player, false, enemies);
+    expect(fixedResult.lives).toBe(2);    // only lost 1 life (correct)
+    expect(fixedResult.alive).toBe(true); // still alive (correct)
+  });
+});

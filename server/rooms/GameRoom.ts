@@ -776,8 +776,16 @@ export class GameRoom extends Room<GameState> {
       const invincible = this.playerInvincibility.get(player.id) ?? 0;
       if (invincible > 0) return;
 
+      // Prevent multi-hit: only allow one enemy to hit this player per tick.
+      // Without this flag, a player surrounded by enemies could lose all lives
+      // in a single tick (e.g. 3 enemies → instant death from 3 lives), bypassing
+      // the respawn-with-invincibility protection. wasHit ensures only the first
+      // enemy collision per tick is processed; the rest are skipped.
+      let wasHit = false;
+
       this.state.enemies.forEach((enemy) => {
         if (!enemy.alive) return;
+        if (wasHit) return; // Only one hit per player per tick
 
         const du = player.surfaceU - enemy.surfaceU;
         const dv = player.surfaceV - enemy.surfaceV;
@@ -785,6 +793,7 @@ export class GameRoom extends Room<GameState> {
 
         if (dist < 0.04) {
           // Player hit!
+          wasHit = true;
           player.lives--;
           player.multiplier = 1;
 
