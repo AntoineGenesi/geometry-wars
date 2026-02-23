@@ -65,6 +65,8 @@ export class Snake extends BaseEnemy {
     this.orbitAngle = Math.random() * Math.PI * 2; // randomise starting arc
     this.createMesh();
     this.initSegments(INITIAL_SEGMENTS);
+    // Register segmentRoot so generic cleanup code (network-main.ts) removes it from scene.
+    this.auxiliaryObjects.push(this.segmentRoot);
   }
 
   private createMesh(): void {
