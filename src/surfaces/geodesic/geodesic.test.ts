@@ -782,3 +782,72 @@ describe('GeodesicSurface', () => {
     expect(outliers).toBeLessThan(distances.length * 0.2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// MeshWalker Pole Traversal Regression Tests
+// ---------------------------------------------------------------------------
+
+import { MeshSurface } from '../MeshSurface';
+import { MeshWalker } from '../../movement/MeshWalker';
+
+describe('MeshWalker pole traversal', () => {
+  it('should cross the north pole without getting stuck (_tryPoleTraversal)', () => {
+    // Regression test for S28a: player blocked at sphere N/S poles with invisible force field.
+    // The fix adds _tryPoleTraversal() to MeshWalker.move() which detects high-valence
+    // vertices (sphere poles have ~40 adjacent faces vs ~6 for regular vertices) and
+    // teleports the player just past the pole vertex when geodesic walk fails.
+    const mesh = createSphere(8, 32);
+    const surface = new MeshSurface(mesh);
+
+    // Start near the north pole on the +Z side
+    const startPos = new THREE.Vector3(0.3, 7.9, 0.8);
+    startPos.normalize().multiplyScalar(8);
+
+    const walker = new MeshWalker(surface, startPos, 5.0);
+
+    // Walk direction: mostly -Z (from +Z side of pole through to -Z side)
+    const walkDir = new THREE.Vector3(0, 0.15, -1).normalize();
+
+    // Walk for 60 steps of 0.1 world units each = up to 6 total units of movement
+    let crossedPole = false;
+    for (let i = 0; i < 60; i++) {
+      walker.move(walkDir, 0.02); // dt=0.02s at speed=5 → 0.1 world units per step
+
+      // Check if we've crossed to the -Z side of the sphere
+      if (walker.position.z < -1.0) {
+        crossedPole = true;
+        break;
+      }
+    }
+
+    // Player must have crossed through the north pole to the -Z hemisphere
+    expect(crossedPole).toBe(true);
+    // Player must still be on the sphere surface
+    expect(Math.abs(walker.position.length() - 8)).toBeLessThan(0.5);
+  });
+
+  it('should cross the south pole without getting stuck (_tryPoleTraversal)', () => {
+    // Mirror of north pole test
+    const mesh = createSphere(8, 32);
+    const surface = new MeshSurface(mesh);
+
+    const startPos = new THREE.Vector3(0.3, -7.9, 0.8);
+    startPos.normalize().multiplyScalar(8);
+
+    const walker = new MeshWalker(surface, startPos, 5.0);
+    const walkDir = new THREE.Vector3(0, -0.15, -1).normalize();
+
+    let crossedPole = false;
+    for (let i = 0; i < 60; i++) {
+      walker.move(walkDir, 0.02);
+
+      if (walker.position.z < -1.0) {
+        crossedPole = true;
+        break;
+      }
+    }
+
+    expect(crossedPole).toBe(true);
+    expect(Math.abs(walker.position.length() - 8)).toBeLessThan(0.5);
+  });
+});
