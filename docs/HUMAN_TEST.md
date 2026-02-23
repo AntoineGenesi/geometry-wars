@@ -8,6 +8,21 @@
 
 ---
 
+## S28b: Rejoin After Pause — No Dual Host (2026-02-24)
+
+Bug: When a paused game had a player exit to main menu and rejoin, both players saw themselves as host simultaneously. Resume attempt crashed the server.
+
+- [ ] **LAN game with 2 players (one on server machine, one on separate device)** — Start a game. Wait for game to begin.
+- [ ] **Player B (server machine / localhost) pauses the game** — Only one player should have the pause control.
+- [ ] **Player A exits to main menu** — In the pause menu, click exit. Page redirects to main menu.
+- [ ] **Player A rejoins the same server** — Join the room again. Player A should appear as a NON-HOST (no "Stop Server" button, no ability to pause).
+- [ ] **Player B resumes the game** — Game should unpause cleanly, both players visible and active.
+- [ ] **Server logs should NOT show "Host promoted to localhost player" mid-game** — This log line should only appear during lobby join.
+- [ ] **New game after vote** — After game ends and voting screen appears, vote for next game. New game should start UNPAUSED (not frozen).
+- [ ] **Host leaving unpauses game** — If the host pauses, then exits to menu, the remaining player should be able to resume without being stuck in a frozen game.
+
+---
+
 ## S28a: Pause Menu Buffs/Level/Companions (2026-02-23)
 
 Feature: Pause menu now shows player level badge, active companions, cumulative bonuses, and active buffs.
