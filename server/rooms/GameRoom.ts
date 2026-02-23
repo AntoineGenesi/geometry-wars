@@ -119,6 +119,7 @@ const WAVE_TYPE_REMAP: Record<string, string> = {
 export class GameRoom extends Room<GameState> {
   private nextBulletId = 0;
   private nextEnemyId = 0;
+  private hostIsLocal: boolean = false;
   private nextGeomId = 0;
   private nextPickupId = 0;
   private waveNumber = 0;
@@ -174,7 +175,12 @@ export class GameRoom extends Room<GameState> {
       this.handleInput(client, input);
     });
 
-    this.onMessage('start', () => {
+    this.onMessage('start', (client) => {
+      // Only the host can start the game
+      if (client.sessionId !== this.state.hostId) {
+        console.log(`[GameRoom] Non-host ${client.sessionId} tried to start game (host=${this.state.hostId})`);
+        return;
+      }
       // Initial game start: lobby → playing
       if (this.state.roomPhase === 'lobby') {
         this.startGame();
@@ -252,13 +258,29 @@ export class GameRoom extends Room<GameState> {
     player.name = finalName;
     player.color = PLAYER_COLORS[this.state.players.size % PLAYER_COLORS.length];
 
-    // First player to join (no host assigned yet) becomes host.
-    // Using hostId === '' is more explicit than players.size === 0 and handles
-    // edge cases like host transfer: if hostId was transferred, new joiners
-    // won't accidentally overwrite the current host.
+    // Determine if this client is connecting from localhost.
+    // The server host always runs locally, so localhost clients should take
+    // priority over LAN clients for the host role. This prevents a race
+    // condition where the LAN player (phone/tablet) connects slightly before
+    // the localhost player (the PC running the server) and incorrectly gets
+    // the host role.
+    const remoteAddr = (client as unknown as { remoteAddress?: string }).remoteAddress ?? '';
+    const isLocalClient = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
+
     if (this.state.hostId === '') {
+      // First joiner — becomes host
       this.state.hostId = client.sessionId;
-      console.log(`[GameRoom] ${player.name} is the host`);
+      this.hostIsLocal = isLocalClient;
+      console.log(`[GameRoom] ${player.name} is the host (local=${isLocalClient})`);
+    } else if (isLocalClient && !this.hostIsLocal) {
+      // A localhost client joined after a LAN client had already taken the host
+      // role. Promote the localhost client to host since the server is running
+      // on this machine — the person sitting at the PC is the intended host.
+      const prev = this.state.hostId;
+      this.state.hostId = client.sessionId;
+      this.hostIsLocal = true;
+      console.log(`[GameRoom] Host promoted to localhost player: ${player.name} (was ${prev})`);
+      this.broadcast('host_changed', { hostId: client.sessionId });
     }
 
     // Spawn at different positions based on player count
@@ -301,6 +323,7 @@ export class GameRoom extends Room<GameState> {
 
       if (newHostId) {
         this.state.hostId = newHostId;
+        this.hostIsLocal = false; // transferred host may not be local — reset for safety
         const newHostPlayer = this.state.players.get(newHostId);
         console.log(`[GameRoom] Host transferred to: ${newHostPlayer?.name || newHostId}`);
         // Broadcast so clients can update UI immediately (state patch also carries hostId)

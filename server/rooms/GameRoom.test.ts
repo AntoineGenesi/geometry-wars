@@ -250,6 +250,74 @@ describe('GameRoom host transfer on disconnect', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Localhost priority host assignment — unit tests
+//
+// Regression for s28b: second player (LAN phone) connects before first player
+// (localhost PC running the server) and incorrectly becomes host.
+// Fix: if a localhost client joins while a non-local client holds the host
+// role, promote the localhost client to host.
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors the localhost priority logic in GameRoom.onJoin:
+ * - If no host → first joiner is host
+ * - If localhost joins and current host is non-local → promote localhost
+ * - Otherwise → no change
+ */
+function assignHostWithLocalPriority(
+  currentHostId: string,
+  currentHostIsLocal: boolean,
+  newPlayerId: string,
+  newPlayerIsLocal: boolean
+): { hostId: string; hostIsLocal: boolean } {
+  if (currentHostId === '') {
+    return { hostId: newPlayerId, hostIsLocal: newPlayerIsLocal };
+  }
+  if (newPlayerIsLocal && !currentHostIsLocal) {
+    return { hostId: newPlayerId, hostIsLocal: true };
+  }
+  return { hostId: currentHostId, hostIsLocal: currentHostIsLocal };
+}
+
+describe('GameRoom localhost priority host assignment (s28b regression)', () => {
+  it('localhost joining first becomes host (normal case)', () => {
+    const result = assignHostWithLocalPriority('', false, 'local-session', true);
+    expect(result.hostId).toBe('local-session');
+    expect(result.hostIsLocal).toBe(true);
+  });
+
+  it('LAN player joining first becomes host when no host exists', () => {
+    const result = assignHostWithLocalPriority('', false, 'lan-session', false);
+    expect(result.hostId).toBe('lan-session');
+    expect(result.hostIsLocal).toBe(false);
+  });
+
+  it('localhost joining after LAN player takes host → localhost gets promoted', () => {
+    // LAN player joined first (the regression scenario)
+    const afterLAN = assignHostWithLocalPriority('', false, 'lan-session', false);
+    expect(afterLAN.hostId).toBe('lan-session');
+
+    // Localhost player joins second → should be promoted to host
+    const afterLocal = assignHostWithLocalPriority(afterLAN.hostId, afterLAN.hostIsLocal, 'local-session', true);
+    expect(afterLocal.hostId).toBe('local-session');
+    expect(afterLocal.hostIsLocal).toBe(true);
+  });
+
+  it('LAN player joining after localhost host → LAN player stays guest (not promoted)', () => {
+    const afterLocal = assignHostWithLocalPriority('', false, 'local-session', true);
+    const afterLAN = assignHostWithLocalPriority(afterLocal.hostId, afterLocal.hostIsLocal, 'lan-session', false);
+    expect(afterLAN.hostId).toBe('local-session'); // localhost stays host
+    expect(afterLAN.hostIsLocal).toBe(true);
+  });
+
+  it('second localhost joining does not steal host from first localhost', () => {
+    const afterFirst = assignHostWithLocalPriority('', false, 'local1', true);
+    const afterSecond = assignHostWithLocalPriority(afterFirst.hostId, afterFirst.hostIsLocal, 'local2', true);
+    expect(afterSecond.hostId).toBe('local1'); // first localhost stays host
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Lobby voting state machine — unit tests
 //
 // Tests below validate the core voting logic in isolation (pure functions),
