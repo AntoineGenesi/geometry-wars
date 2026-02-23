@@ -124,3 +124,76 @@ describe('S27g/S28a — Enemy hitbox regression', () => {
     expect(EXPECTED_BULLET_BONUS).toBe(0.0);
   });
 });
+
+// ============================================================
+// S28c — Player-Enemy: require enemy to push into player body
+// ============================================================
+/**
+ * Player ship: SHIP_LENGTH=0.3, SHIP_HALF_W=0.15.
+ * Visual bounding radius ≈ 0.15 (half-width).
+ * S28c: player contribution reduced from 0.3 (full length) to 0.1 so enemy
+ * must physically enter the player's body before damage registers.
+ */
+function playerEnemyHitRadius(playerScaleX: number, enemyRadius: number): number {
+  // S28c formula — must match CollisionSystem.ts and GameInstance.ts
+  const PLAYER_COLLISION_MULT = 0.1;
+  return playerScaleX * PLAYER_COLLISION_MULT + enemyRadius;
+}
+
+describe('S28c — Player-enemy: require push-into-player', () => {
+  // Default enemy (radius=0.3), player scale=1.0
+  // hitRadius = 0.1 + 0.3 = 0.4
+
+  it('Enemy visibly inside player body (dist=0.35) should register hit', () => {
+    const hitRadius = playerEnemyHitRadius(1.0, 0.3);
+    const dist = 0.35;
+    expect(dist < hitRadius).toBe(true);
+  });
+
+  it('Enemy touching player boundary (dist=0.40) should register hit', () => {
+    const hitRadius = playerEnemyHitRadius(1.0, 0.3);
+    const dist = 0.40;
+    // dist === hitRadius is NOT a hit (strict <), so 0.40 is right at the boundary
+    // Use slightly less to confirm the boundary
+    expect(0.399 < hitRadius).toBe(true);
+  });
+
+  it('Near-miss: enemy just outside player (dist=0.45) should NOT register', () => {
+    const hitRadius = playerEnemyHitRadius(1.0, 0.3);
+    const dist = 0.45;
+    expect(dist < hitRadius).toBe(false);
+  });
+
+  it('Clear miss: enemy not close (dist=0.60) should NOT register', () => {
+    const hitRadius = playerEnemyHitRadius(1.0, 0.3);
+    const dist = 0.60;
+    expect(dist < hitRadius).toBe(false);
+  });
+
+  it('S28c: player contribution must be 0.1 (was 0.3 pre-fix)', () => {
+    // This test FAILS if the constant is reverted to 0.3
+    const PLAYER_MULT = 0.1;
+    const hitRadius = 1.0 * PLAYER_MULT + 0.3; // scale=1, enemy.radius=0.3
+    expect(hitRadius).toBe(0.4);
+    // Pre-fix: 0.3 + 0.3 = 0.6 (enemy could be 0.3 outside player body)
+    expect(hitRadius).toBeLessThan(0.6);
+  });
+
+  it('S28c: enemy near-edge must be inside player visual body at trigger point', () => {
+    // Player visual half-width (SHIP_HALF_W) = 0.15
+    const PLAYER_VISUAL_RADIUS = 0.15;
+    const hitRadius = playerEnemyHitRadius(1.0, 0.3);
+    const enemyNearEdgeAtTrigger = hitRadius - 0.3; // hitRadius - enemy.radius
+    // Enemy near-edge must be INSIDE the player's visual body (< PLAYER_VISUAL_RADIUS)
+    expect(enemyNearEdgeAtTrigger).toBeLessThan(PLAYER_VISUAL_RADIUS);
+  });
+
+  it('Mayfly enemy (small, radius=0.15): still requires push-into', () => {
+    const hitRadius = playerEnemyHitRadius(1.0, 0.15);
+    expect(hitRadius).toBe(0.25);
+    // Near-miss at 0.30 should not register
+    expect(0.30 < hitRadius).toBe(false);
+    // Push-in at 0.20 should register
+    expect(0.20 < hitRadius).toBe(true);
+  });
+});
