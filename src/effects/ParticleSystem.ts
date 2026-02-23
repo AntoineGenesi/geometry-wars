@@ -117,7 +117,12 @@ export class ParticleSystem {
 
     // Create shader material — additive blending for see-through energy look
     this.material = new THREE.ShaderMaterial({
-      uniforms: {},
+      uniforms: {
+        // In pixelated mode (half-res bloom), additive stacking makes clusters
+        // blindingly bright. colorScale lets us reduce brightness to 0.5 in
+        // pixelated mode to prevent particles from obscuring the player.
+        colorScale: { value: 1.0 },
+      },
       precision: 'mediump', // Mobile: 10-20% GPU perf gain; desktop: no change
       vertexShader: `
         attribute float size;
@@ -135,6 +140,7 @@ export class ParticleSystem {
         }
       `,
       fragmentShader: `
+        uniform float colorScale;
         varying vec3 vColor;
 
         void main() {
@@ -143,7 +149,7 @@ export class ParticleSystem {
           float dist = length(center);
 
           // Soft edge falloff — low peak alpha so overlapping particles stay see-through
-          float alpha = 0.3 * (1.0 - smoothstep(0.15, 0.5, dist));
+          float alpha = 0.3 * colorScale * (1.0 - smoothstep(0.15, 0.5, dist));
 
           if (alpha < 0.01) discard;
 
@@ -216,6 +222,29 @@ export class ParticleSystem {
    */
   setEntityScaleFactor(factor: number): void {
     this._entityScaleFactor = Math.max(0.3, Math.min(1.0, factor));
+  }
+
+  /**
+   * Reduce particle brightness in pixelated mode.
+   *
+   * In pixelated mode the bloom pass runs at half resolution, so bloom spots
+   * are physically larger on screen. Additive blending already stacks particle
+   * brightness; combined with enlarged half-res bloom the cluster around the
+   * player can become a solid white patch that obscures the ship.
+   *
+   * Setting colorScale=0.5 halves per-particle brightness — dense clusters stay
+   * visually interesting without overrunning the player silhouette.
+   * Fragment (shatter) opacity is reduced by the same ratio.
+   */
+  setPixelatedMode(isPixelated: boolean): void {
+    const colorScale = isPixelated ? 0.5 : 1.0;
+    this.material.uniforms.colorScale.value = colorScale;
+
+    // Also reduce opacity on pre-pooled fragment meshes
+    const fragmentOpacity = isPixelated ? 0.2 : 0.4;
+    for (const fragment of this.fragments) {
+      (fragment.mesh.material as THREE.MeshBasicMaterial).opacity = fragmentOpacity;
+    }
   }
 
   private createTriangleGeometry(): THREE.BufferGeometry {

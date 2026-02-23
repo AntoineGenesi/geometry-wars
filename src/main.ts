@@ -735,6 +735,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     particles.setEmitBudget(60, 20);
   }
 
+  // In pixelated mode, half-res bloom enlarges bloom spots for each particle.
+  // Reduce per-particle brightness so additive stacking doesn't create a white
+  // patch that obscures the player (the savedVisualMode was read at game startup).
+  particles.setPixelatedMode(savedVisualMode === 'pixelated');
+
   // -- Score popups --
   const scorePopups = new ScorePopupManager();
   game.scene.add(scorePopups.root);
@@ -1112,6 +1117,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     // Re-apply bloom settings adjusted for new visual mode
     const adjustedStrength = getAdjustedBloomStrength(bloomStrength, mode);
     game.setBloomSettings(adjustedStrength, 0.6);
+    // Reduce particle brightness in pixelated mode to prevent additive stacking
+    // from creating a bright patch that hides the player
+    particles.setPixelatedMode(mode === 'pixelated');
   });
 
   /** Build current game data snapshot for pause menu stats panel */
