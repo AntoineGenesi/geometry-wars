@@ -8,6 +8,22 @@
 
 ---
 
+## S28a: Voting Screen After Round End (2026-02-23)
+
+Bug: After all players died in LAN mode, game restarted immediately with no voting screen shown.
+Root cause: `VotingScreen.show()` auto-voted immediately on display → server saw all votes at once → instant relaunch.
+Fix: Removed auto-vote from `show()`. Votes now only sent on explicit click.
+
+- [ ] **Start a LAN game with 2 players, die on purpose** — After all lives are gone, voting screen should appear with "CHOOSE YOUR BATTLEFIELD" title, map grid, countdown timer.
+- [ ] **Voting countdown visible** — Large yellow countdown timer showing ~30 seconds, ticking down.
+- [ ] **Click different surfaces** — Vote badge count on clicked surface should increment. Other player should see the vote count update.
+- [ ] **Both players vote for the same surface** — Game should launch that surface (not just reuse old one).
+- [ ] **Wait 30 seconds without voting** — Server auto-picks the most voted (or defaults to sphere:waves:medium).
+- [ ] **Host LAUNCH NOW button** — As host, clicking "LAUNCH NOW" should immediately start the game without waiting for countdown.
+- [ ] **Non-host cannot use LAUNCH NOW** — Non-host should only see vote bubbles, no launch button.
+
+---
+
 ## Session 27h Combined Score Display Zero (2026-02-23)
 
 Bug: In LAN (network) mode, `#score-display` (large center-top number under "Wave X") showed "0" and never updated.
