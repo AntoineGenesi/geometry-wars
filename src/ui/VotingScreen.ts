@@ -107,9 +107,6 @@ export class VotingScreen {
 
     this.container.classList.remove('hidden');
     this.update(state, isHost, localPlayerId);
-
-    // Send initial vote so server registers this player's selection
-    this.sendVote();
   }
 
   /**
