@@ -95,6 +95,9 @@ export class WeaponManager {
   // Callbacks
   private callbacks: WeaponCallbacks | null = null;
 
+  // Optional mastery damage multiplier — injected from outside, not hardcoded
+  private masteryMultiplierFn: ((type: WeaponType) => number) | null = null;
+
   // Surface for laser beam tracing
   private meshSurface: MeshSurface | null = null;
 
@@ -127,6 +130,15 @@ export class WeaponManager {
   setMeshSurface(ms: MeshSurface): void {
     this.meshSurface = ms;
     this.chainLightning.setMeshSurface(ms);
+  }
+
+  /**
+   * Inject a mastery damage multiplier function.
+   * Called by the game integration layer (Phase 3) after WeaponMasteryManager
+   * is wired in. Returns 1.0 for any weapon with no mastery stacks.
+   */
+  setMasteryMultiplierFn(fn: (type: WeaponType) => number): void {
+    this.masteryMultiplierFn = fn;
   }
 
   /**
@@ -571,6 +583,7 @@ export class WeaponManager {
     const config = WEAPON_CONFIGS[WeaponType.Piercing];
     const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
     const stackMult = this.getStackDamageMultiplier(WeaponType.Piercing);
+    const masteryMult = this.masteryMultiplierFn?.(WeaponType.Piercing) ?? 1.0;
 
     // Trace a geodesic beam path along the surface
     const beamLen = 25 * rangeMult;
@@ -600,7 +613,7 @@ export class WeaponManager {
             enemy.position, beamPoints[s], beamPoints[s + 1],
           );
           if (segDist < hitRadius) {
-            this.callbacks.onEnemyDamage(enemy.index, config.damage * stackMult, WeaponType.Piercing);
+            this.callbacks.onEnemyDamage(enemy.index, config.damage * stackMult * masteryMult, WeaponType.Piercing);
             break; // Only damage each enemy once
           }
         }
@@ -676,10 +689,11 @@ export class WeaponManager {
       index: firstTarget.index,
     });
 
-    // Fire the visual effect (apply stack multiplier)
+    // Fire the visual effect (apply stack multiplier + mastery multiplier)
     const stackMult = this.getStackDamageMultiplier(WeaponType.ChainLightning);
+    const masteryMult = this.masteryMultiplierFn?.(WeaponType.ChainLightning) ?? 1.0;
     this.chainLightning.fire(origin, chainTargets, (pos, mult, idx) => {
-      this.callbacks?.onEnemyDamage(idx, config.damage * mult * stackMult, WeaponType.ChainLightning);
+      this.callbacks?.onEnemyDamage(idx, config.damage * mult * stackMult * masteryMult, WeaponType.ChainLightning);
     });
   }
 
@@ -937,16 +951,17 @@ export class WeaponManager {
     speed: number,
     maxAge: number,
   ): Projectile {
-    // Apply Extended Range buff + stack damage multiplier
+    // Apply Extended Range buff + stack damage multiplier + mastery multiplier
     const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
     const stackMult = this.getStackDamageMultiplier(type);
+    const masteryMult = this.masteryMultiplierFn?.(type) ?? 1.0;
     const proj: Projectile = {
       type,
       position,
       direction: direction.normalize(),
       age: 0,
       maxAge: maxAge * rangeMult,
-      damage: damage * stackMult,
+      damage: damage * stackMult * masteryMult,
       speed,
     };
 
@@ -1175,7 +1190,8 @@ export class WeaponManager {
             }
 
             if (minDist < hitRadius) {
-              this.callbacks.onEnemyDamage(enemy.index, 2 * dt, WeaponType.LaserBeam);
+              const laserMasteryMult = this.masteryMultiplierFn?.(WeaponType.LaserBeam) ?? 1.0;
+              this.callbacks.onEnemyDamage(enemy.index, 2 * dt * laserMasteryMult, WeaponType.LaserBeam);
             }
           }
         }
@@ -1237,7 +1253,8 @@ export class WeaponManager {
 
             const dist = effect.position.distanceTo(enemy.position);
             if (dist < radius) {
-              this.callbacks.onEnemyDamage(enemy.index, 3 * dt, WeaponType.TeslaCoil);
+              const teslaMasteryMult = this.masteryMultiplierFn?.(WeaponType.TeslaCoil) ?? 1.0;
+              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * teslaMasteryMult, WeaponType.TeslaCoil);
             }
           }
 

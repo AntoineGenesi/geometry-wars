@@ -115,6 +115,58 @@ const BUFF_AURA_CONFIGS: Record<StackBuffType, BuffAuraConfig> = {
     color: new THREE.Color(0xff2244),
     colorAlt: new THREE.Color(0xff88aa),
   },
+
+  // Mastery buffs — golden energy vortex to signal legendary status
+  [StackBuffType.MasteryBlaster]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0xffff44),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasterySpread]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0x44ffff),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasteryPiercing]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0xffffff),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasteryChainLightning]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0xaaffff),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasteryHoming]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0xff4444),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasteryPlasmaMortar]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0x44ff44),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasteryGravityGun]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0x8844ff),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasteryLaserBeam]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0xff0000),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasteryBlackHole]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0x6600cc),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
+  [StackBuffType.MasteryTeslaCoil]: {
+    style: AuraStyle.EnergyVortex,
+    color: new THREE.Color(0x88aaff),
+    colorAlt: new THREE.Color(0xffaa00),
+  },
 };
 
 // ---------------------------------------------------------------------------
