@@ -292,8 +292,15 @@ export class MobiusBevelSurface extends Surface {
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
     const R = this.majorRadius
 
+    // Undo map-size scale: same fix as MobiusSurface — absolute distance computations
+    // require 1x local coordinates, but positions arrive at group.scale world space.
+    const scale = this.group.scale.x
+    const pos = (scale !== 1.0 && scale > 0)
+      ? new THREE.Vector3(worldPos.x / scale, worldPos.y / scale, worldPos.z / scale)
+      : worldPos
+
     // Find the angle t from the XY projection (loop is in XY plane)
-    let t = Math.atan2(worldPos.y, worldPos.x)
+    let t = Math.atan2(pos.y, pos.x)
     if (t < 0) t += Math.PI * 2
 
     // Get the tube frame at this angle
@@ -301,9 +308,9 @@ export class MobiusBevelSurface extends Surface {
 
     // Vector from tube center to the world point
     const toPoint = new THREE.Vector3(
-      worldPos.x - center.x,
-      worldPos.y - center.y,
-      worldPos.z - center.z
+      pos.x - center.x,
+      pos.y - center.y,
+      pos.z - center.z
     )
 
     // Project onto the cross-section frame to get phi

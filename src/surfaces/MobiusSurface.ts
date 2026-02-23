@@ -181,8 +181,18 @@ export class MobiusSurface extends Surface {
     const R = this.majorRadius
     const w = this.stripWidth
 
+    // Undo map-size scale: positions coming in (player via MeshWalker, enemies via
+    // applySurfaceTransform) are in scaled world space (group.scale * local coords).
+    // The Mobius parametric equations use local (1x) coordinates, so we must un-scale
+    // before computing u/v. SphereSurface avoids this by using normalize() (scale-invariant),
+    // but the Mobius toPoint projection depends on absolute distances.
+    const scale = this.group.scale.x
+    const pos = (scale !== 1.0 && scale > 0)
+      ? new THREE.Vector3(worldPos.x / scale, worldPos.y / scale, worldPos.z / scale)
+      : worldPos
+
     // Find the angle t from the XY projection
-    let t = Math.atan2(worldPos.y, worldPos.x)
+    let t = Math.atan2(pos.y, pos.x)
     if (t < 0) t += Math.PI * 2
 
     // At angle t, the center of the strip is at:
@@ -191,9 +201,9 @@ export class MobiusSurface extends Surface {
 
     // Vector from center line to the point (in strip plane)
     const toPoint = new THREE.Vector3(
-      worldPos.x - centerX,
-      worldPos.y - centerY,
-      worldPos.z
+      pos.x - centerX,
+      pos.y - centerY,
+      pos.z
     )
 
     // The strip direction at angle t
