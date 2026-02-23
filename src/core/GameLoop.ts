@@ -558,6 +558,7 @@ export class GameLoop {
         ctx.playerLevel.addKill();
         ctx.ddaTracker.recordKill(1); // DDA: track kill event
         ctx.ddaLogger.recordKill(0, type); // DDA logger: log kill with enemy type
+        ctx.perfLogger.recordWeaponKill(ctx.weaponManager.getCurrentWeapon(), ctx.state.perfBuffString); // weapon analytics
       },
       true, // showDamageNumbers
       (enemy: BaseEnemy) => { ctx.buffManager.onBulletHit(enemy); },
