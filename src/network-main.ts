@@ -1441,6 +1441,9 @@ function main() {
     for (const bp of localBuffPickups) { scene.remove(bp.mesh); bp.dispose(); }
     localBuffPickups.length = 0;
 
+    // Reset buff stacks so new game starts from scratch
+    buffManager.reset();
+
     // Reset game-over flag so GameOverScreen can show again next game
     gameOverShown = false;
 

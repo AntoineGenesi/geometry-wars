@@ -706,3 +706,41 @@ describe('BuffManager.getTotalBuffPower()', () => {
     expect(bm2.getTotalBuffPower()).toBeCloseTo(bm1.getTotalBuffPower() * 2, 5);
   });
 });
+
+// ============================================================================
+// 12. BuffManager.reset() — regression test for s27h (buffs persist between rounds)
+// ============================================================================
+
+describe('BuffManager.reset() — buffs cleared on new game', () => {
+  it('clears all stacks when reset() is called', () => {
+    const bm = new BuffManager();
+    // Simulate picking up buffs during a game
+    const s = (bm as any).stacks as Map<StackBuffType, number>;
+    s.set(StackBuffType.HotHands, 3);
+    s.set(StackBuffType.TriggerHappy, 2);
+    s.set(StackBuffType.ShockAura, 1);
+    expect(bm.getTotalBuffPower()).toBeGreaterThan(0);
+
+    // Simulate game-end reset (voting screen → new round)
+    bm.reset();
+
+    // New game must start with zero buffs
+    expect(bm.getTotalBuffPower()).toBe(0);
+    expect(bm.getActiveBuffs()).toHaveLength(0);
+    expect(bm.getDamageMultiplier()).toBe(1.0);
+    expect(bm.getFireRateMultiplier()).toBe(1.0);
+    expect(bm.getMoveSpeedMultiplier()).toBe(1.0);
+  });
+
+  it('getStacks returns 0 for all types after reset', () => {
+    const bm = new BuffManager();
+    const s = (bm as any).stacks as Map<StackBuffType, number>;
+    for (const type of Object.values(StackBuffType)) {
+      s.set(type, 5);
+    }
+    bm.reset();
+    for (const type of Object.values(StackBuffType)) {
+      expect(bm.getStacks(type)).toBe(0);
+    }
+  });
+});
