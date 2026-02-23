@@ -55,6 +55,7 @@ import { BackgroundMusic } from './audio/BackgroundMusic';
 import { SpatialHash } from './core/SpatialHash';
 import { CompanionManager, CompanionPickup, CompanionHUD, CompanionType, getRandomCompanionType } from './entities/Companion';
 import { BuffManager, StackBuffType, BUFF_DEFINITIONS } from './buffs/BuffManager';
+import { WeaponMasteryManager, WEAPON_MASTERY_BUFF_MAP } from './buffs/WeaponMasteryManager';
 import { BuffHUD } from './buffs/BuffHUD';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
@@ -834,6 +835,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Buff system (stackable Risk-of-Rain-style buffs) --
   const buffManager = new BuffManager();
+
+  // -- Weapon mastery system (per-weapon kill tracking → tier-up buffs) --
+  const weaponMastery = new WeaponMasteryManager();
+
   const buffHUD = new BuffHUD();
   if (mobile) {
     buffHUD.setCompactMode(true);
@@ -861,6 +866,17 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     screenShake.shake(0.2, 0.15);
     // No screen-space shockwave/flash for volatile explosions — too distracting.
     // Shockwave distortion is reserved for mega boss deaths only.
+  };
+
+  // Wire mastery tier-up: award buff + show toast + play sound
+  weaponMastery.onMasteryTierUp = (weaponType, tier) => {
+    const buffType = WEAPON_MASTERY_BUFF_MAP[weaponType];
+    if (buffType) {
+      buffManager.addBuff(buffType);
+      const def = BUFF_DEFINITIONS[buffType];
+      weaponHUD.showMasteryTierUp(WEAPON_CONFIGS[weaponType].name, tier, def.name);
+      getSoundEngine().play('weaponPickup', { volume: 0.7, pitch: 1.6 });
+    }
   };
 
   /** Recompute combined multipliers from PlayerLevel + BuffManager */
@@ -1046,6 +1062,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
         killLog.addKill(enemyType, color.getHex());
         playerLevel.addKill();
+        weaponMastery.recordKill(weaponType);
 
         // Trigger on-death procs (volatile explosions)
         buffManager.onEnemyDeath(enemy, enemySpawner.getEnemies());
@@ -1097,6 +1114,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       }
     },
   });
+
+  // Wire mastery damage multiplier into WeaponManager (used by non-blaster weapons)
+  weaponManager.setMasteryMultiplierFn((type) => buffManager.getMasteryMultiplier(type).damageMultiplier);
 
   // -- Weapon HUD (inventory display) --
   const weaponHUD = new WeaponHUD();
@@ -1496,6 +1516,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     weaponManager,
     superManager: superStateManager,
     buffManager,
+    weaponMastery,
     companionManager,
     collisionSystem,
     pickupSpawner,

@@ -16,6 +16,7 @@ import type { WeaponManager } from '../weapons/WeaponManager';
 import type { SuperStateManager } from '../weapons/SuperState';
 import type { InputManager } from '../input/InputManager';
 import type { BuffManager } from '../buffs/BuffManager';
+import type { WeaponMasteryManager } from '../buffs/WeaponMasteryManager';
 import type { CompanionManager } from '../entities/Companion';
 import type { CollisionSystem } from './CollisionSystem';
 import type { PickupSpawner } from './PickupSpawner';
@@ -96,6 +97,7 @@ export interface GameContext {
   weaponManager: WeaponManager;
   superManager: SuperStateManager;
   buffManager: BuffManager;
+  weaponMastery: WeaponMasteryManager;
   companionManager: CompanionManager;
 
   // Collision and pickups

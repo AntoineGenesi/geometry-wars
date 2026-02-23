@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { GameContext } from './GameContext';
 import { ModePhase, GameModeType } from './GameMode';
 import { SuperStateType } from '../weapons/SuperState';
-import { WEAPON_CONFIGS } from '../weapons/WeaponTypes';
+import { WEAPON_CONFIGS, WeaponType } from '../weapons/WeaponTypes';
 import { Gate } from '../entities/enemies/Gate';
 import { Painter } from '../entities/enemies/Painter';
 import { FractalSnake } from '../entities/enemies/FractalSnake';
@@ -554,10 +554,11 @@ export class GameLoop {
         ctx.pickupSpawner.spawnPickupsOnEnemyDeath(u, v);
       },
       ctx.scorePopups,
-      ctx.scoreManager.getScorePowerMultiplier() * ctx.playerLevel.damageMultiplier * ctx.buffManager.getDamageMultiplier(),
+      ctx.scoreManager.getScorePowerMultiplier() * ctx.playerLevel.damageMultiplier * ctx.buffManager.getDamageMultiplier() * ctx.buffManager.getMasteryMultiplier(WeaponType.Standard).damageMultiplier,
       (type: string, color: number) => {
         ctx.killLog.addKill(type, color);
         ctx.playerLevel.addKill();
+        ctx.weaponMastery.recordKill(WeaponType.Standard); // blaster bullets are always Standard
         ctx.ddaTracker.recordKill(1); // DDA: track kill event
         ctx.ddaLogger.recordKill(0, type); // DDA logger: log kill with enemy type
         ctx.perfLogger.recordWeaponKill(ctx.weaponManager.getCurrentWeapon(), ctx.state.perfBuffString); // weapon analytics
