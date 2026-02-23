@@ -67,6 +67,7 @@ import { SplitScreenPerfOverlay } from './ui/SplitScreenPerfOverlay';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { GlowTrail } from './effects/GlowTrail';
+import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies, getMapSizeScaleFactor } from './core/MapSize';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -87,6 +88,16 @@ function getPlayerCountFromURL(): 2 | 3 | 4 {
   const p = parseInt(params.get('players') ?? '2', 10);
   if (p === 3 || p === 4) return p;
   return 2;
+}
+
+function getMapSizeFromURL(surfaceType: SurfaceType): MapSize {
+  const params = new URLSearchParams(window.location.search);
+  const sizeParam = params.get('mapSize');
+  const validSizes: MapSize[] = [MapSize.SMALL, MapSize.MEDIUM, MapSize.LARGE, MapSize.EPIC];
+  if (sizeParam && validSizes.includes(sizeParam as MapSize)) {
+    return sizeParam as MapSize;
+  }
+  return getDefaultMapSizeForSurface(surfaceType);
 }
 
 // ---------------------------------------------------------------------------

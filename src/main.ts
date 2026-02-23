@@ -1748,7 +1748,8 @@ if (quickStartConfig.enabled) {
     if (selection.gameMode === 'multiplayer') {
       // Local co-op - update URL and load multiplayer module
       const pc = selection.playerCount ?? 2;
-      const url = buildUrl({ mode: 'multiplayer', surface: selection.surfaceType, players: String(pc) });
+      const mpMapSize = selection.mapSize ?? getDefaultMapSizeForSurface(selection.surfaceType);
+      const url = buildUrl({ mode: 'multiplayer', surface: selection.surfaceType, players: String(pc), mapSize: mpMapSize });
       window.history.replaceState({}, '', url);
       import('./multiplayer-main').then(() => {
         console.log('[Main] Loaded local multiplayer mode');
