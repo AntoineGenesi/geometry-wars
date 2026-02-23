@@ -104,10 +104,13 @@ import {
 
 function weaponToBulletVisual(weapon: WeaponType): BulletVisualType {
   switch (weapon) {
-    case WeaponType.Spread:   return BulletVisualType.Spread;
-    case WeaponType.Piercing: return BulletVisualType.Piercing;
-    case WeaponType.Homing:   return BulletVisualType.Homing;
-    default:                  return BulletVisualType.Standard;
+    case WeaponType.Spread:       return BulletVisualType.Spread;
+    case WeaponType.Piercing:     return BulletVisualType.Piercing;
+    case WeaponType.Homing:       return BulletVisualType.Homing;
+    case WeaponType.PlasmaMortar: return BulletVisualType.Homing;  // large projectile visual
+    case WeaponType.GravityGun:   return BulletVisualType.Default;
+    case WeaponType.BlackHole:    return BulletVisualType.Default;
+    default:                      return BulletVisualType.Standard;
   }
 }
 
@@ -168,6 +171,7 @@ function netMainLog(...args: unknown[]): void {
 const _netTempPos = new THREE.Vector3();
 const _netTempDir = new THREE.Vector3();
 const _netTempNormal = new THREE.Vector3();
+const _bulletTmpColor = new THREE.Color();
 
 // ---------------------------------------------------------------------------
 // URL helpers
@@ -630,6 +634,8 @@ function main() {
   const bulletInstanceManager = new BulletInstanceManager(scene, 200);
   // Track which bullet IDs have been registered with the instance manager
   const bulletInstanceIds = new Set<string>();
+  // Track weapon type per bullet (populated from ownerId → player.weaponType in onStateChange)
+  const bulletWeaponType = new Map<string, WeaponType>();
   // Hide the original line-based bullet visuals (BulletInstanceManager takes over)
   bulletPool.root.visible = false;
 
@@ -1775,6 +1781,12 @@ function main() {
             u: bullet.x, v: bullet.y,
             dirX: bullet.dirX, dirY: bullet.dirY,
           });
+          // Store owner's weapon type for visual assignment in the render loop.
+          // Look up ownerId → player.weaponType from current state snapshot.
+          // This replaces the UV proximity heuristic and works for ALL players.
+          const ownerPlayer = state.players.get(bullet.ownerId);
+          const ownerWeapon = SERVER_TO_WEAPON_TYPE[ownerPlayer?.weaponType ?? 'standard'] ?? WeaponType.Standard;
+          bulletWeaponType.set(bullet.id, ownerWeapon);
         }
       }
     });
@@ -1785,6 +1797,7 @@ function main() {
         bulletPool.kill(idx);
         bulletIdToIndex.delete(id);
         bulletTargetUV.delete(id);
+        bulletWeaponType.delete(id);
         // Remove from instanced rendering
         bulletInstanceManager.removeBullet(id);
         bulletInstanceIds.delete(id);
@@ -1920,10 +1933,13 @@ function main() {
       // Only update if the weapon type changed to avoid unnecessary re-stacking.
       if (activeWeaponType !== localPlayerWeaponType) {
         localPlayerWeaponType = activeWeaponType;
+        // forceSetWeapon() always switches currentWeapon (unlike equipWeapon which
+        // has conditional auto-switch logic that can leave currentWeapon stale when
+        // switching between two non-Standard weapons, breaking SPECIAL_VISUAL_WEAPONS effects).
         // Set a large ammo reserve so the WeaponManager can fire visuals freely.
         // Actual ammo/damage is server-authoritative; we only need the visual effect.
-        const ammoReserve = activeWeaponType === WeaponType.Standard ? -1 : 999;
-        localWeaponManager.equipWeapon(activeWeaponType, ammoReserve > 0 ? ammoReserve : undefined);
+        const ammoReserve = activeWeaponType !== WeaponType.Standard ? 999 : undefined;
+        localWeaponManager.forceSetWeapon(activeWeaponType, ammoReserve);
       }
     }
 
@@ -2708,22 +2724,14 @@ function main() {
         .normalize();
 
       // Register or update with BulletInstanceManager for GPU-instanced rendering.
-      // Use UV proximity heuristic to assign visual type: if the bullet's UV
-      // is close to the local player's UV when first seen, assume it's theirs
-      // and use their current weapon visual. Remote player bullets get Standard.
-      // (NetworkBulletState has no weapon type field — server change needed for
-      // exact attribution; heuristic is acceptable per task design.)
+      // Use the stored bulletWeaponType (populated from ownerId → player.weaponType
+      // in onStateChange) for exact visual attribution, covering all players.
       if (!bulletInstanceIds.has(id)) {
-        const lp = networkPlayers.get(localPlayerId);
-        let bulletVisual = BulletVisualType.Standard;
-        if (lp) {
-          const du = Math.abs(target.u - lp.surfaceU);
-          const dv = Math.abs(target.v - lp.surfaceV);
-          if (du < 0.05 && dv < 0.05) {
-            bulletVisual = weaponToBulletVisual(localPlayerWeaponType);
-          }
-        }
-        bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir);
+        const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
+        const bulletVisual = weaponToBulletVisual(weapType);
+        const weapColor = WEAPON_CONFIGS[weapType]?.color;
+        const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
+        bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
         bulletInstanceIds.add(id);
       } else {
         bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);

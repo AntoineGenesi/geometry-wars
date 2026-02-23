@@ -862,4 +862,33 @@ describe('WeaponManager LAN visual-only mode', () => {
       for (let i = 0; i < 10; i++) wm.update(0.1);
     }).not.toThrow();
   });
+
+  it('forceSetWeapon always switches currentWeapon regardless of previous state', () => {
+    // Regression test: equipWeapon() has conditional auto-switch logic that
+    // can leave currentWeapon stale when switching between two non-Standard weapons.
+    // forceSetWeapon() must ALWAYS update currentWeapon to match the server state.
+    wm.equipWeapon(WeaponType.PlasmaMortar, 50);
+    expect(wm.getCurrentWeapon()).toBe(WeaponType.PlasmaMortar);
+
+    // equipWeapon with a DIFFERENT special weapon — should NOT auto-switch
+    const switched = wm.equipWeapon(WeaponType.TeslaCoil, 50);
+    expect(switched).toBe(false); // auto-switch blocked (already on special weapon)
+    expect(wm.getCurrentWeapon()).toBe(WeaponType.PlasmaMortar); // still on Plasma
+
+    // forceSetWeapon MUST switch even when going from one special weapon to another
+    wm.forceSetWeapon(WeaponType.TeslaCoil, 999);
+    expect(wm.getCurrentWeapon()).toBe(WeaponType.TeslaCoil);
+  });
+
+  it('forceSetWeapon fires the correct visual effect after switching between special weapons', () => {
+    // Regression: without forceSetWeapon, TeslaCoil visuals would not appear if
+    // the player previously had PlasmaMortar (equipWeapon wouldn't switch currentWeapon).
+    wm.forceSetWeapon(WeaponType.PlasmaMortar, 50);
+    wm.forceSetWeapon(WeaponType.TeslaCoil, 999);
+    expect(wm.getCurrentWeapon()).toBe(WeaponType.TeslaCoil);
+    // Fire — should fire TeslaCoil visuals without throwing
+    expect(() => wm.fire(origin(), forward(), T, normal())).not.toThrow();
+    // Tesla effect should now be active
+    expect(wm.isTeslaActive()).toBe(true);
+  });
 });

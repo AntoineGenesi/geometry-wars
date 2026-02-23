@@ -2,21 +2,27 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-02-17
+> **Last updated:** 2026-02-23
 >
 > **Visual Test Results (2026-02-12, commit a722f6a):** Headless Puppeteer + SwiftShader testing completed. Items marked `[V5 PASS]` were verified visually at Level 5. Items marked `[V5 INCONCLUSIVE]` could not be tested headless (need real browser). See `tasks/visual-test-human-todos.md` and `tasks/lan-visual-testing.md` for full details.
 
 ---
 
-## Session 27h Weapon HUD Wrong Weapon (2026-02-23)
+## Session 27h Weapon Rendering in MP (2026-02-23)
 
-Bug: HUD showed wrong weapon (e.g. "Tesla Coil") while player was actually shooting at blaster rate.
-Root cause: `pruneDepletedWeapons()` removed depleted weapons from inventory but didn't update `currentWeapon`, so HUD showed the depleted weapon until the player pressed fire again.
+**Task:** s27h-weapon-rendering-broken-mp — all weapons other than blaster had no visual in LAN MP.
 
-- [ ] **Pick up Tesla Coil, let it deplete** — HUD should switch to show Standard (blaster) as active immediately after ammo runs out, NOT continue showing "Tesla Coil [0]".
-- [ ] **Pick up Tesla Coil + Homing in inventory, deplete Tesla** — HUD should switch to Homing, not Standard.
-- [ ] **HUD weapon display never shows "[0] ammo"** — A weapon with 0 ammo should never appear as the active weapon in the HUD.
-- [ ] **Works in local split-screen** — Test with 2 players. Each player's HUD should show their own active weapon correctly.
+**How to test:** Start a LAN game (host + join), pick up a weapon pickup, fire it.
+
+- [ ] **Spread Shot renders** — Bullets appear as small yellow spheres in a fan pattern (not just cyan blaster bolts).
+- [ ] **Piercing Beam renders** — Bullets appear as elongated red capsules (longer/thinner than blaster).
+- [ ] **Homing Missiles render** — Bullets appear as green cone shapes that curve toward enemies.
+- [ ] **Plasma Mortar renders** — Bullets appear as a large projectile (visually distinct from blaster).
+- [ ] **Tesla Coil renders** — Lightning arc field appears around player when holding shoot (not just a bullet). Requires picking up TeslaCoil and holding fire.
+- [ ] **Chain Lightning renders** — Lightning arcs jump between enemies when firing. Requires ChainLightning pickup.
+- [ ] **Laser Beam renders** — Red beam extends from player when holding shoot.
+- [ ] **Weapon visuals match weapon type** — After cycling weapons with [E], the bullet visual changes to match.
+- [ ] **Remote player bullets also have correct visuals** — In 2-player LAN, player 2's Spread bullets appear as yellow spheres on player 1's screen.
 
 ---
 
@@ -942,23 +948,3 @@ Claude will read this file at the start of each session and prioritize fixing re
 - `src/core/GameLoop.ts`: `lastAimDirection` is now reset to `null` on respawn, preventing stale aim direction from old surface location from affecting the first shots after respawn.
 
 **Regression test:** `src/test/s27g-aim-offset.regression.test.ts` — 7 tests covering aligned/lagged camera, multi-surface consistency, degenerate fallback, tangent plane correctness — passes ✅
-
----
-
-## S27h: Buff List Not Showing — Active Buffs Display Fix
-
-### Test: Buff HUD shows during gameplay (runtime HUD)
-- [ ] **Pick up buff in single player** — Kill enemies until a colored buff pickup drops. Walk over it. A small icon should appear top-right of the screen showing the buff type (HOT, TRG, AFT, etc.) and stack count (x1).
-- [ ] **Stack multiple buffs** — Pick up the same buff type twice. Stack count should update to x2.
-- [ ] **Pick up different buff types** — Multiple different icons should appear stacked vertically in the top-right.
-
-### Test: Pause menu shows active buffs (pause menu ACTIVE BUFFS section)
-- [ ] **SP: pause with buffs active** — In single player, pick up some buffs, then press ESC. The pause menu "ACTIVE BUFFS" section should list each buff with name, stacks, and effect description.
-- [ ] **MP host: pause with buffs active** — In multiplayer as host, pick up buffs, press ESC. The pause menu should show YOUR buffs (not empty).
-- [ ] **MP non-host: pause with buffs active** — In multiplayer as non-host player, pick up buffs, press ESC. The full pause menu appears (not a simple "PAUSED" overlay) showing YOUR buffs.
-
-**What changed (previously fixed in s27h-non-host-pause-menu merge):**
-- `src/network-main.ts`: Host's pause menu `setGameData()` call was hardcoded to `buffs: []` — fixed to use `buffManager.getActiveBuffs()`.
-- `src/network-main.ts`: Non-host previously saw a simple "Host has paused" overlay with no buff display — now sees the full PauseMenu with their own buff state.
-
-**Regression test:** `src/buffs/BuffManager.test.ts` — 20 tests covering addBuff, getActiveBuffs, onBuffGained callback, maxStack enforcement, rollBuffDrop, multiplier calculations, and pause menu data format — passes ✅

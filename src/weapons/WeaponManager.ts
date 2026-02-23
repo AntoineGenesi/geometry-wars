@@ -226,6 +226,27 @@ export class WeaponManager {
   }
 
   /**
+   * Force-set the current weapon, bypassing the auto-switch logic of equipWeapon().
+   * Used by the network client to sync currentWeapon with the server-authoritative
+   * weapon type. Unlike equipWeapon(), this ALWAYS switches currentWeapon regardless
+   * of what was previously active.
+   */
+  forceSetWeapon(type: WeaponType, ammo?: number): void {
+    if (type !== WeaponType.Standard) {
+      const existingAmmo = this.ammo.get(type) ?? 0;
+      const addedAmmo = ammo ?? WEAPON_CONFIGS[type].ammo;
+      this.ammo.set(type, existingAmmo + addedAmmo);
+      if (!this.stacks.has(type)) {
+        this.stacks.set(type, 1);
+      }
+      if (!this.inventory.includes(type)) {
+        this.inventory.push(type);
+      }
+    }
+    this.currentWeapon = type;
+  }
+
+  /**
    * Cycle to the next weapon in inventory.
    * Skips weapons with 0 ammo (removes them from inventory).
    * Returns the new active weapon type.
