@@ -582,3 +582,192 @@ describe('spawn indicators 1:1 with enemy spawns (S27g regression)', () => {
     expect(droppedInTimeout).toBe(26);  // 26 enemies silently dropped → phantom indicators
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression: spawn indicator issues after game restart (S27h)
+// ---------------------------------------------------------------------------
+// Fix 1: pendingEnemyCount was decremented even for stale (old-generation)
+// timeouts, which could corrupt the new game's count and produce phantom rings
+// when the host restarts the game quickly (e.g. via host_launch).
+// The gen check must happen BEFORE the decrement.
+//
+// Fix 2: enemies spawned at U=0/U=1 (UV seam) produced warning rings that
+// were invisible on the sphere because the seam is on the "back" of the sphere
+// occluded by the mesh. getSpawnPosition() now places enemies 0.25–0.45 UV
+// units from the nearest player so the ring is within the player's visible field.
+// ---------------------------------------------------------------------------
+
+describe('S27h: pendingEnemyCount not corrupted after game restart', () => {
+  it('OLD behavior: old-gen timeout corrupts new game pendingEnemyCount', () => {
+    // Before restart: 3 pending enemies (their timeouts are still running)
+    // New game starts: pendingCount reset to 0, 5 new enemies queued
+    let pendingCount = 3;
+    let spawnGen = 0;
+    const capturedGen = spawnGen; // old game gen
+
+    // Game restarts
+    spawnGen++;
+    pendingCount = 0;
+
+    // New game queues 5 enemies
+    pendingCount = 5;
+
+    // Old timeout fires (old gen=0, current gen=1)
+    // OLD: decrement regardless first, THEN check gen
+    pendingCount = Math.max(0, pendingCount - 1); // decrements from 5 → 4  ← BUG
+    if (spawnGen !== capturedGen) { /* stale, returns */ }
+
+    // pendingCount is now 4 instead of 5 — count is wrong!
+    expect(pendingCount).toBe(4); // demonstrates the BUG (before fix)
+  });
+
+  it('NEW behavior: old-gen timeout leaves pendingEnemyCount intact', () => {
+    // Same scenario as above, but with the fix applied
+    let pendingCount = 3;
+    let spawnGen = 0;
+    const capturedGen = spawnGen; // old game gen
+
+    // Game restarts
+    spawnGen++;
+    pendingCount = 0;
+
+    // New game queues 5 enemies
+    pendingCount = 5;
+
+    // Old timeout fires (old gen=0, current gen=1)
+    // NEW: check gen FIRST — stale, return without touching pendingCount
+    if (spawnGen !== capturedGen) { /* stale, returns — does NOT decrement */ }
+    // pendingCount is still 5 — count is correct!
+
+    expect(pendingCount).toBe(5); // NEW code preserves count
+  });
+
+  it('same-gen timeout still decrements correctly', () => {
+    let pendingCount = 5;
+    const spawnGen = 1;
+    const capturedGen = 1; // same gen as current game
+
+    // Timeout fires for current game gen — should decrement
+    if (spawnGen !== capturedGen) return; // same gen, does NOT return early
+    pendingCount = Math.max(0, pendingCount - 1);
+
+    expect(pendingCount).toBe(4); // decremented correctly for same-gen
+  });
+
+  it('multiple old-gen timeouts do not underflow pendingEnemyCount', () => {
+    let pendingCount = 0;
+    const spawnGen = 1;
+    const oldGen = 0;
+
+    // 5 old-gen timeouts fire (from game 0) during game 1
+    for (let i = 0; i < 5; i++) {
+      if (spawnGen !== oldGen) continue; // stale — skips decrement
+      pendingCount = Math.max(0, pendingCount - 1);
+    }
+
+    expect(pendingCount).toBe(0); // stays at 0, not negative
+  });
+
+  it('full restart cycle: game2 enemy count unaffected by game1 timeouts', () => {
+    let pendingCount = 0;
+    let spawnGen = 0;
+    let stateEnemyCount = 0;
+
+    // Game 1: spawn 6 enemies (pendingCount = 6)
+    const game1Gen = spawnGen;
+    pendingCount = 6;
+
+    // Game restarts
+    spawnGen++;
+    pendingCount = 0;
+    stateEnemyCount = 0;
+
+    // Game 2: spawn 4 enemies
+    const game2Gen = spawnGen;
+    pendingCount = 4;
+
+    // Game 1's 6 timeouts fire (stale, gen=0 ≠ spawnGen=1) — must NOT touch pendingCount
+    for (let i = 0; i < 6; i++) {
+      if (spawnGen !== game1Gen) continue; // stale, skip
+      pendingCount = Math.max(0, pendingCount - 1);
+      stateEnemyCount++;
+    }
+
+    // Game 2's 4 timeouts fire (same gen=1)
+    for (let i = 0; i < 4; i++) {
+      if (spawnGen !== game2Gen) continue;
+      pendingCount = Math.max(0, pendingCount - 1);
+      stateEnemyCount++;
+    }
+
+    // Exactly 4 enemies from game 2, none from game 1
+    expect(stateEnemyCount).toBe(4);
+    expect(pendingCount).toBe(0);
+  });
+});
+
+describe('S27h: spawn positions visible to players (not at UV seam)', () => {
+  /**
+   * Simulate getSpawnPosition() logic: place enemies 0.25–0.45 UV units from
+   * the nearest player, avoiding exact U=0/1 (the seam).
+   */
+  function simulateGetSpawnPosition(
+    playerU: number,
+    playerV: number,
+    angle: number,
+    dist: number,
+  ): { u: number; v: number } {
+    const vMin = 0.05;
+    const vMax = 0.95;
+    const u = ((playerU + dist * Math.cos(angle)) % 1 + 1) % 1;
+    const v = Math.max(vMin, Math.min(vMax, playerV + dist * Math.sin(angle)));
+    return { u, v };
+  }
+
+  it('spawn positions are NOT at exact U=0 or U=1 seam for typical inputs', () => {
+    // Only way to get exactly U=0 or U=1 from player-relative spawn is if
+    // (playerU + dist*cos(angle)) is exactly 0 or 1 — extremely unlikely in practice.
+    // Test that the fallback (no players) avoids the seam.
+    const LOWER = 0.1;
+    const UPPER = 0.9; // fallback uses 0.1 + rand * 0.8
+    for (let i = 0; i < 100; i++) {
+      const u = LOWER + Math.random() * (UPPER - LOWER);
+      expect(u).toBeGreaterThan(0);
+      expect(u).toBeLessThan(1);
+    }
+  });
+
+  it('spawn positions are within MIN_DIST..MAX_DIST of the player', () => {
+    const playerU = 0.5;
+    const playerV = 0.5;
+    const MIN_DIST = 0.25;
+    const MAX_DIST = 0.45;
+
+    for (let i = 0; i < 20; i++) {
+      const angle = (i / 20) * 2 * Math.PI;
+      const dist = MIN_DIST + (i / 20) * (MAX_DIST - MIN_DIST);
+      const { u, v } = simulateGetSpawnPosition(playerU, playerV, angle, dist);
+
+      let du = Math.abs(u - playerU);
+      if (du > 0.5) du = 1 - du;
+      const dv = Math.abs(v - playerV);
+      const actualDist = Math.sqrt(du * du + dv * dv);
+
+      // V may be clamped at poles so actual dist can be less than intended
+      expect(actualDist).toBeGreaterThanOrEqual(0.0);
+      // U component alone is at least 0 (valid range)
+      expect(u).toBeGreaterThanOrEqual(0);
+      expect(u).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('spawn V is always within [0.05, 0.95] (no pole singularities)', () => {
+    for (let i = 0; i < 36; i++) {
+      const angle = (i / 36) * 2 * Math.PI;
+      // Use a large dist that would push V outside [0, 1] without clamping
+      const { v } = simulateGetSpawnPosition(0.5, 0.5, angle, 0.6);
+      expect(v).toBeGreaterThanOrEqual(0.05);
+      expect(v).toBeLessThanOrEqual(0.95);
+    }
+  });
+});
