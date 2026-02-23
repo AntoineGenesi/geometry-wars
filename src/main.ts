@@ -155,6 +155,24 @@ function weaponToBulletVisual(weapon: WeaponType): BulletVisualType {
 const _bulletSyncDir = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
+// Bloom helpers for pixelated mode
+// ---------------------------------------------------------------------------
+
+/**
+ * Adjust bloom strength based on visual mode.
+ * Pixelated mode (half-res bloom) needs reduced strength to prevent oversaturation.
+ * Modern mode uses full-res bloom and benefits from normal strength values.
+ */
+function getAdjustedBloomStrength(baseStrength: number, visualMode: 'pixelated' | 'modern'): number {
+  if (visualMode === 'pixelated') {
+    // Recommended pixelated bloom strength: ~0.4
+    // Scale base strength down proportionally: multiply by 0.4 / 1.0 = 0.4x
+    return Math.max(0, baseStrength * 0.4);
+  }
+  return baseStrength; // Modern mode uses full strength
+}
+
+// ---------------------------------------------------------------------------
 // Surface transform helper — now using shared module (SharedGameSetup.ts)
 // ---------------------------------------------------------------------------
 
@@ -380,18 +398,22 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // Apply visual style changes in real-time when user selects a style in Settings
   SettingsMenu.setGlobalVisualStyleChangeCallback((preset) => {
+    const currentVisualMode = loadVisualMode();
     if (preset) {
+      // Adjust bloom strength based on visual mode (pixelated vs modern)
+      const adjustedStrength = getAdjustedBloomStrength(preset.bloomStrength, currentVisualMode);
       // Use setBloomSettings for strength/threshold (works for both WebGL2 and WebGPU)
-      game.setBloomSettings(preset.bloomStrength, preset.bloomThreshold ?? 0.85);
+      game.setBloomSettings(adjustedStrength, preset.bloomThreshold ?? 0.85);
       // Radius is WebGL2-only (no equivalent in WebGPU TSL bloom approximation)
       if (game.bloomPass && preset.bloomRadius !== undefined) {
         game.bloomPass.radius = preset.bloomRadius;
       }
     } else {
-      // Reset to defaults
+      // Reset to defaults, adjusted for visual mode
       const defaultStrength = mobile ? 0.4 : 0.7;
+      const adjustedStrength = getAdjustedBloomStrength(defaultStrength, currentVisualMode);
       const defaultThreshold = 0.6;
-      game.setBloomSettings(defaultStrength, defaultThreshold);
+      game.setBloomSettings(adjustedStrength, defaultThreshold);
       if (game.bloomPass) {
         game.bloomPass.radius = mobile ? 0.3 : 0.5;
       }
@@ -1087,6 +1109,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
+    // Re-apply bloom settings adjusted for new visual mode
+    const adjustedStrength = getAdjustedBloomStrength(bloomStrength, mode);
+    game.setBloomSettings(adjustedStrength, 0.6);
   });
 
   /** Build current game data snapshot for pause menu stats panel */

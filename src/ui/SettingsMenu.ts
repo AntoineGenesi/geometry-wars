@@ -466,6 +466,12 @@ export class SettingsMenu {
         min-width: 60px;
         text-align: right;
       }
+      #settings-menu .setting-hint {
+        color: #888899;
+        font-size: 12px;
+        margin: -8px 0 8px 0;
+        padding-left: 0;
+      }
 
       /* Info rows (GPU tab) */
       #settings-menu .info-row {
@@ -918,6 +924,9 @@ export class SettingsMenu {
         <span class="setting-label">Bloom Strength</span>
         <input type="range" id="bloom-strength" min="0" max="2" step="0.1" value="${g.bloomStrength}" />
         <span class="setting-value" id="bloom-strength-val">${g.bloomStrength.toFixed(1)}</span>
+      </div>
+      <div class="setting-hint">
+        <small>Good starting values — Modern: 1.0 | Pixelated: 0.4</small>
       </div>
       <div class="setting-row">
         <span class="setting-label">Particles</span>
