@@ -78,10 +78,10 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.Homing,
     name: 'Homing Missiles',
     color: 0xff4444,
-    damage: 5,
+    damage: 6,
     fireRate: 3,
     ammo: 40,
-    projectileSpeed: 1.2,
+    projectileSpeed: 3.0,
     description: 'Seeks nearest enemy with explosive impact',
   },
   [WeaponType.PlasmaMortar]: {
