@@ -1057,6 +1057,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         particles.mortarExplosion(position);
         surface.applyForce(position, 0.25, 1.0);
         screenShake.shake(0.15, 0.15);
+      } else if (wType === WeaponType.GravityGun) {
+        // Black hole surface deformation: inward pull, dramatic snap-back
+        surface.applyMeshForce(position, -2.5, 1.5);
+        // Also deform grid (visible ripple on grid lines)
+        surface.applyForce(position, -0.15, 1.5);
+        particles.bulletImpact(position);
+        screenShake.shake(0.08, 0.3);
       }
     },
   });

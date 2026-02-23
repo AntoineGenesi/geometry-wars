@@ -618,6 +618,7 @@ export class GameInstance {
 
     // Update surface springs (grid deformation)
     this._surface.updateGrid(dt);
+    this._surface.updateMeshDeformation(dt);
 
     // Demo mode: maintain enemy count
     if (this.config.mode === 'demo') {

@@ -474,6 +474,10 @@ export class WeaponManager {
       proj.age += dt;
 
       if (proj.age >= proj.maxAge) {
+        // GravityGun that reaches max age hit the surface (not an enemy)
+        if (proj.type === WeaponType.GravityGun) {
+          this.callbacks?.onProjectileExplosion?.(proj.position.clone(), WeaponType.GravityGun);
+        }
         this.removeProjectile(i);
         continue;
       }
@@ -1110,6 +1114,7 @@ export class WeaponManager {
         } else if (proj.type === WeaponType.GravityGun) {
           // Pull enemies together
           this.applyGravityPull(proj.position, 2.0);
+          this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.GravityGun);
           this.removeProjectile(index);
           return;
         } else {
