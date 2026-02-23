@@ -1,209 +1,280 @@
 import * as THREE from 'three';
 import { BaseEnemy } from './BaseEnemy';
-import { Entity, CollisionGroup } from '../../core/Entity';
-import { buildCircle3D } from '../../utils/GeometryBuilder';
+import { buildTriangle3D, buildDiamond3D } from '../../utils/GeometryBuilder';
 
-interface SnakeSegment {
+// Pre-allocated temp objects - zero per-frame allocations
+const _tempMatrix = new THREE.Matrix4();
+
+interface SnakeSegData {
   u: number;
   v: number;
   mesh: THREE.Group;
-  entity: THREE.Group;
-  entitySurface: { u: number; v: number };
-  worldPos?: THREE.Vector3; // For walker mode: world position history
 }
 
+const HISTORY_SIZE = 80;
+const SEGMENT_HISTORY_STEP = 8;  // frames between segments in history
+const INITIAL_SEGMENTS = 4;
+const GROW_INTERVAL = 7;         // seconds between new segment spawns
+const MAX_SEGMENTS = 14;
+const ORBIT_ANGULAR_SPEED = 0.7; // radians/sec — how fast it circles the player
+const ORBIT_RADIUS = 0.28;       // UV units from player
+const ORBIT_SHRINK_RATE = 0.002; // UV/sec — slowly tightens orbit
+const ORBIT_RADIUS_MIN = 0.10;   // minimum orbit radius
+
+/**
+ * Snake enemy — a chained series of segments led by a large triangle head.
+ *
+ * Behavior: orbits around the player in a slow spiral, gradually tightening.
+ * Each body segment follows the one ahead via a position-history queue.
+ * Every GROW_INTERVAL seconds a new segment appears at the tail.
+ *
+ * Tactical challenge (risk/reward):
+ * - Bullets hitting the snake (70% chance) peel the last tail segment,
+ *   which immediately spawns as an independent Grunt.
+ * - Bullets that slip through (30% chance) damage the head directly.
+ * - Killing the head spawns ALL remaining segments as independent Grunts.
+ * → Shooting it is always risky; ignoring it makes it grow.
+ *
+ * Visual:
+ * - Head: large yellow-green triangle (buildTriangle3D)
+ * - Segments: smaller green diamonds (buildDiamond3D)
+ * - Segment meshes live in `segmentRoot` (a THREE.Group added to scene by EnemySpawner)
+ */
 export class Snake extends BaseEnemy {
-  private segments: SnakeSegment[] = [];
-  private readonly segmentCount = 5;
-  private readonly segmentSpacing = 0.15;
-  private readonly sineAmplitude = 0.4;
-  private readonly sineFrequency = 2;
-  private sinePhase = 0;
-  private positionHistory: Array<{ u: number; v: number }> = [];
-  private positionHistoryWorld: Array<THREE.Vector3> = []; // For walker mode
-  private readonly historySize = 30;
+  private segs: SnakeSegData[] = [];
 
-  constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    super(surfaceU, surfaceV, 4, 35, 3, 0.05, 0.2);
+  /** All segment meshes. EnemySpawner adds/removes this from the scene. */
+  public readonly segmentRoot = new THREE.Group();
 
+  private posHistory: Array<{ u: number; v: number }> = [];
+
+  private orbitAngle: number;
+  private orbitRadius: number = ORBIT_RADIUS;
+
+  private growTimer: number = 0;
+
+  /** Fired when the head dies. Caller spawns Grunts at each segment position. */
+  static onHeadDeath: ((segments: Array<{ u: number; v: number }>) => void) | null = null;
+
+  /** Fired when a single tail segment is peeled off. Caller spawns one Grunt. */
+  static onSegmentDeath: ((u: number, v: number) => void) | null = null;
+
+  constructor(u: number = 0.5, v: number = 0.5) {
+    // health=6, score=50, geoms=4, speed=0.03 (slow), radius=0.3
+    super(u, v, 6, 50, 4, 0.03, 0.30);
+    this.orbitAngle = Math.random() * Math.PI * 2; // randomise starting arc
     this.createMesh();
-    this.createSegments();
+    this.initSegments(INITIAL_SEGMENTS);
   }
 
   private createMesh(): void {
-    // Head mesh - 3D blue circle/ring with depth
-    this.mesh = buildCircle3D(0.2, 16, 0x4488ff, 0.06, 0.015);
+    // Large yellow-green triangle head
+    this.mesh = buildTriangle3D(0.40, 0xffdd00, 0.12, 0.025);
   }
 
-  private createSegments(): void {
-    for (let i = 0; i < this.segmentCount; i++) {
-      // Create 3D ring segment with darker blue
-      const mesh = buildCircle3D(0.15, 12, 0x224488, 0.05, 0.012);
+  private createSegmentMesh(): THREE.Group {
+    // Slightly smaller green diamond body segment
+    return buildDiamond3D(0.16, 0x44ff88, 0.09, 0.016);
+  }
 
-      // Create group for collision
-      const entity = new THREE.Group();
-      entity.add(mesh);
-
-      const surfaceU = this.surfacePosition.u - (i + 1) * this.segmentSpacing;
-      const surfaceV = this.surfacePosition.v;
-
-      this.segments.push({
-        u: surfaceU,
-        v: surfaceV,
+  private initSegments(count: number): void {
+    for (let i = 0; i < count; i++) {
+      const mesh = this.createSegmentMesh();
+      this.segmentRoot.add(mesh);
+      this.segs.push({
+        u: this.surfacePosition.u - (i + 1) * 0.09,
+        v: this.surfacePosition.v,
         mesh,
-        entity,
-        entitySurface: { u: surfaceU, v: surfaceV }
       });
     }
   }
 
-  updateBehavior(dt: number, playerU: number, playerV: number): void {
-    this.sinePhase += this.sineFrequency * dt;
+  private addSegment(): void {
+    if (this.segs.length >= MAX_SEGMENTS) return;
+    const last = this.segs[this.segs.length - 1];
+    const mesh = this.createSegmentMesh();
+    this.segmentRoot.add(mesh);
+    this.segs.push({
+      u: last ? last.u : this.surfacePosition.u,
+      v: last ? last.v : this.surfacePosition.v,
+      mesh,
+    });
+  }
 
-    // Calculate direction to player
-    const deltaU = playerU - this.surfacePosition.u;
-    const deltaV = playerV - this.surfacePosition.v;
-    const distance = Math.sqrt(deltaU * deltaU + deltaV * deltaV);
+  /** Peel the last segment and dispose its mesh. */
+  private removeLastSegment(): void {
+    const idx = this.segs.length - 1;
+    const seg = this.segs[idx];
+    this.segs.splice(idx, 1);
+    this.segmentRoot.remove(seg.mesh);
+    seg.mesh.traverse((child) => {
+      const m = child as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) {
+        if (Array.isArray(m.material)) m.material.forEach((mt) => (mt as THREE.Material).dispose());
+        else (m.material as THREE.Material).dispose();
+      }
+    });
+  }
 
-    if (distance > 0.01) {
-      const dirU = deltaU / distance;
-      const dirV = deltaV / distance;
+  // ─────────────────────────── damage / death ──────────────────────────────
 
-      // Calculate perpendicular for S-pattern
-      const perpU = -dirV;
-      const perpV = dirU;
-
-      // Apply S-pattern offset
-      const sineOffset = Math.sin(this.sinePhase) * this.sineAmplitude;
-
-      this.surfacePosition.u += (dirU + perpU * sineOffset) * this.speed * dt;
-      this.surfacePosition.v += (dirV + perpV * sineOffset) * this.speed * dt;
+  takeDamage(amount: number, attackerId: number = -1): void {
+    // 70% chance: bullet hits a segment — peel tail, spawn as Grunt
+    if (this.segs.length > 0 && Math.random() < 0.70) {
+      const seg = this.segs[this.segs.length - 1];
+      if (Snake.onSegmentDeath) {
+        Snake.onSegmentDeath(seg.u, seg.v);
+      }
+      this.removeLastSegment();
+      // Award partial score via the base death callback chain (handled externally)
+    } else {
+      // Hit the head directly
+      super.takeDamage(amount, attackerId);
     }
+  }
 
-    // Add current position to history
-    this.positionHistory.unshift({ u: this.surfacePosition.u, v: this.surfacePosition.v });
-    if (this.positionHistory.length > this.historySize) {
-      this.positionHistory.pop();
+  die(): void {
+    if (!this.alive) return;
+    // Spawn remaining segments as independent Grunts
+    if (Snake.onHeadDeath && this.segs.length > 0) {
+      Snake.onHeadDeath(this.segs.map((s) => ({ u: s.u, v: s.v })));
     }
+    super.die();
+  }
 
-    // Update segments to follow head with delay
-    for (let i = 0; i < this.segments.length; i++) {
-      const historyIndex = Math.min((i + 1) * 5, this.positionHistory.length - 1);
-      if (historyIndex < this.positionHistory.length) {
-        const targetPos = this.positionHistory[historyIndex];
-        this.segments[i].u = targetPos.u;
-        this.segments[i].v = targetPos.v;
-        this.segments[i].entitySurface = { u: targetPos.u, v: targetPos.v };
+  // ─────────────────────────── shared logic ────────────────────────────────
+
+  /** Update segment UV positions from head's position history. Also handles growth. */
+  private _updateSegmentsAndGrowth(dt: number): void {
+    for (let i = 0; i < this.segs.length; i++) {
+      const histIdx = Math.min((i + 1) * SEGMENT_HISTORY_STEP, this.posHistory.length - 1);
+      if (histIdx < this.posHistory.length) {
+        this.segs[i].u = this.posHistory[histIdx].u;
+        this.segs[i].v = this.posHistory[histIdx].v;
       }
     }
-  }
 
-  applySurfaceTransform(getTransform: (u: number, v: number) => {
-    position: THREE.Vector3;
-    normal: THREE.Vector3;
-    tangent: THREE.Vector3;
-    bitangent: THREE.Vector3
-  }): void {
-    // Update head
-    super.applySurfaceTransform(getTransform);
-
-    // Update segments
-    for (const segment of this.segments) {
-      const transform = getTransform(segment.u, segment.v);
-      segment.entity.position.copy(transform.position);
-
-      // Orient segment to surface
-      const up = transform.normal;
-      const right = transform.tangent;
-      const forward = transform.bitangent;
-
-      const matrix = new THREE.Matrix4();
-      matrix.makeBasis(right, up, forward);
-      segment.entity.quaternion.setFromRotationMatrix(matrix);
+    this.growTimer += dt;
+    if (this.growTimer >= GROW_INTERVAL) {
+      this.addSegment();
+      this.growTimer = 0;
     }
   }
 
-  destroy(): void {
-    super.destroy();
+  // ─────────────────────────── UV movement mode ────────────────────────────
 
-    // Clean up segments
-    this.segments = [];
+  updateBehavior(dt: number, playerU: number, playerV: number): void {
+    // Orbit around player in UV space
+    this.orbitAngle += ORBIT_ANGULAR_SPEED * dt;
+    this.orbitRadius = Math.max(ORBIT_RADIUS_MIN, this.orbitRadius - ORBIT_SHRINK_RATE * dt);
+
+    const targetU = playerU + Math.cos(this.orbitAngle) * this.orbitRadius;
+    const targetV = playerV + Math.sin(this.orbitAngle) * this.orbitRadius * 0.5; // V compressed
+
+    const dU = targetU - this.surfacePosition.u;
+    const dV = targetV - this.surfacePosition.v;
+    const dist = Math.sqrt(dU * dU + dV * dV);
+
+    if (dist > 0.001) {
+      // Ease into position smoothly; cap movement to speed * dt
+      const moveScale = Math.min(dist / 0.08, 1.0) * this.speed;
+      this.surfacePosition.u += (dU / dist) * moveScale * dt;
+      this.surfacePosition.v += (dV / dist) * moveScale * dt;
+    }
+
+    // Record position AFTER moving
+    this.posHistory.unshift({ u: this.surfacePosition.u, v: this.surfacePosition.v });
+    if (this.posHistory.length > HISTORY_SIZE) this.posHistory.pop();
+
+    this._updateSegmentsAndGrowth(dt);
   }
 
-  // Return all segment data for collision detection
-  public getSegmentData(): Array<{ position: THREE.Vector3; surface: { u: number; v: number }; radius: number }> {
-    return this.segments.map(s => ({
-      position: s.entity.position,
-      surface: s.entitySurface,
-      radius: 0.15
-    }));
-  }
+  // ─────────────────────────── Walker mode (world-space) ───────────────────
 
   computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
     if (!this.walker) return null;
 
-    this.sinePhase += this.sineFrequency * dt;
+    // Record current UV position (bridged from last frame) to history
+    this.posHistory.unshift({ u: this.surfacePosition.u, v: this.surfacePosition.v });
+    if (this.posHistory.length > HISTORY_SIZE) this.posHistory.pop();
 
-    // Calculate direction to player
+    this._updateSegmentsAndGrowth(dt);
+
+    // Orbit in world-space tangent plane
+    this.orbitAngle += ORBIT_ANGULAR_SPEED * dt;
+    this.orbitRadius = Math.max(ORBIT_RADIUS_MIN, this.orbitRadius - ORBIT_SHRINK_RATE * dt);
+
+    const frame = this.walker.getTangentFrame();
     const toPlayer = playerWorldPos.clone().sub(this.walker.position);
-    const distance = toPlayer.length();
+    const distToPlayer = toPlayer.length();
+    if (distToPlayer < 0.01) return null;
+    toPlayer.normalize();
 
-    if (distance > 0.01) {
-      const dirToPlayer = toPlayer.clone().normalize();
+    // Project player direction onto tangent plane
+    const tComp = toPlayer.dot(frame.tangent);
+    const bComp = toPlayer.dot(frame.bitangent);
 
-      // Calculate perpendicular for S-pattern (in world space)
-      // Use tangent frame to find perpendicular
-      const frame = this.walker.getTangentFrame();
+    // Orbit direction = 90° rotation of player direction in tangent plane
+    // Plus a small inward bias so it slowly spirals in
+    const inward = 0.15;
+    const orbitT = -bComp + tComp * inward;
+    const orbitB = tComp + bComp * inward;
 
-      // Project player direction onto tangent plane
-      const tangentComponent = dirToPlayer.dot(frame.tangent);
-      const bitangentComponent = dirToPlayer.dot(frame.bitangent);
+    const moveDir = frame.tangent.clone()
+      .multiplyScalar(orbitT)
+      .add(frame.bitangent.clone().multiplyScalar(orbitB));
 
-      // Perpendicular in tangent plane (rotate 90 degrees)
-      const perpTangent = -bitangentComponent;
-      const perpBitangent = tangentComponent;
-
-      // Apply S-pattern offset
-      const sineOffset = Math.sin(this.sinePhase) * this.sineAmplitude;
-
-      // Combine forward direction with perpendicular sine wave
-      const moveDir = frame.tangent.clone().multiplyScalar(tangentComponent + perpTangent * sineOffset)
-        .add(frame.bitangent.clone().multiplyScalar(bitangentComponent + perpBitangent * sineOffset));
-
-      // Add current position to world history
-      this.positionHistoryWorld.unshift(this.walker.position.clone());
-      if (this.positionHistoryWorld.length > this.historySize) {
-        this.positionHistoryWorld.pop();
-      }
-
-      // Update segments to follow head with delay (using world positions)
-      if (this.walker.surface && this.surfaceRef) {
-        for (let i = 0; i < this.segments.length; i++) {
-          const historyIndex = Math.min((i + 1) * 5, this.positionHistoryWorld.length - 1);
-          if (historyIndex < this.positionHistoryWorld.length) {
-            const targetWorldPos = this.positionHistoryWorld[historyIndex];
-
-            // Get closest point on surface to target world position
-            const closest = this.walker.surface.closestPointOnSurface(targetWorldPos);
-            if (closest) {
-              this.segments[i].entity.position.copy(closest.point);
-              this.segments[i].worldPos = closest.point.clone();
-
-              // Store UV for backward compatibility
-              const uv = this.surfaceRef.worldToSurface(closest.point);
-              this.segments[i].u = uv.u;
-              this.segments[i].v = uv.v;
-              this.segments[i].entitySurface = { u: uv.u, v: uv.v };
-            }
-          }
-        }
-      }
-
-      if (moveDir.length() > 0.001) {
-        return moveDir.normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
-      }
+    if (moveDir.length() > 0.001) {
+      return moveDir.normalize().multiplyScalar(this.speed * this.walkerSpeedScale);
     }
 
     return null;
+  }
+
+  // ─────────────────────────── surface transform ───────────────────────────
+
+  applySurfaceTransform(
+    getTransform: (u: number, v: number) => {
+      position: THREE.Vector3;
+      normal: THREE.Vector3;
+      tangent: THREE.Vector3;
+      bitangent: THREE.Vector3;
+    },
+  ): void {
+    // Update head mesh (uses walker.position or UV transform)
+    super.applySurfaceTransform(getTransform);
+
+    // Update each segment mesh in world space
+    // segmentRoot is at world origin — child positions ARE world positions
+    for (const seg of this.segs) {
+      const t = getTransform(seg.u, seg.v);
+      seg.mesh.position.copy(t.position).addScaledVector(t.normal, this.radius);
+      _tempMatrix.makeBasis(t.bitangent, t.normal, t.tangent);
+      seg.mesh.quaternion.setFromRotationMatrix(_tempMatrix);
+    }
+  }
+
+  // ─────────────────────────── cleanup ─────────────────────────────────────
+
+  destroy(): void {
+    for (const seg of this.segs) {
+      this.segmentRoot.remove(seg.mesh);
+      seg.mesh.traverse((child) => {
+        const m = child as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) {
+          if (Array.isArray(m.material)) m.material.forEach((mt) => (mt as THREE.Material).dispose());
+          else (m.material as THREE.Material).dispose();
+        }
+      });
+    }
+    this.segs = [];
+    super.destroy();
+  }
+
+  /** Expose segment positions for external debugging or special collision queries. */
+  getSegmentData(): Array<{ u: number; v: number; radius: number }> {
+    return this.segs.map((s) => ({ u: s.u, v: s.v, radius: 0.16 }));
   }
 }

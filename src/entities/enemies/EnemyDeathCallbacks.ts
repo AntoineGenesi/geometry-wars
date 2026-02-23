@@ -2,6 +2,7 @@ import { EnemySpawner } from './EnemySpawner';
 import { BaseEnemy } from './BaseEnemy';
 import { Boss } from './Boss';
 import { Spawner } from './Spawner';
+import { Snake } from './Snake';
 import { TitanGrunt } from './TitanGrunt';
 import { TitanSpinner } from './TitanSpinner';
 import { TitanWeaver } from './TitanWeaver';
@@ -33,6 +34,25 @@ export class EnemyDeathCallbacks {
         const clampedU = Math.max(0, Math.min(1, u + offsetU));
         const clampedV = Math.max(0, Math.min(1, v + offsetV));
         enemySpawner.spawn(type as any, clampedU, clampedV, Math.max(0, childTier));
+      }
+    };
+
+    // Snake: peeled tail segment spawns as independent Grunt
+    Snake.onSegmentDeath = (u: number, v: number) => {
+      const offsetU = (Math.random() - 0.5) * 0.06;
+      const offsetV = (Math.random() - 0.5) * 0.06;
+      enemySpawner.spawn('grunt', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    };
+
+    // Snake head kill: all remaining segments spawn as independent Grunts
+    Snake.onHeadDeath = (segments: Array<{ u: number; v: number }>) => {
+      // Half the segments die quietly (score already given), half spawn as enemies
+      for (let i = 0; i < segments.length; i++) {
+        if (i % 2 === 0) continue; // every other segment escapes
+        const seg = segments[i];
+        const offsetU = (Math.random() - 0.5) * 0.08;
+        const offsetV = (Math.random() - 0.5) * 0.08;
+        enemySpawner.spawn('grunt', Math.max(0, Math.min(1, seg.u + offsetU)), Math.max(0, Math.min(1, seg.v + offsetV)));
       }
     };
 

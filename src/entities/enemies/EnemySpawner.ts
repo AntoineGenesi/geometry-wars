@@ -658,6 +658,11 @@ export class EnemySpawner {
       this.scene.add(enemy.trailRoot);
     }
 
+    // Snake segment meshes live in a separate root group (same pattern as Painter)
+    if (enemy instanceof Snake) {
+      this.scene.add(enemy.segmentRoot);
+    }
+
     // Add to enemies list (but hidden/invulnerable during warning)
     this.enemies.push(enemy);
 
@@ -793,6 +798,9 @@ export class EnemySpawner {
         if (enemy instanceof Painter) {
           this.scene.remove(enemy.trailRoot);
         }
+        if (enemy instanceof Snake) {
+          this.scene.remove(enemy.segmentRoot);
+        }
         enemy.destroy();
         // skip (don't copy to writeIdx)
       } else {
@@ -814,6 +822,9 @@ export class EnemySpawner {
       }
       if (enemy instanceof Painter) {
         this.scene.remove(enemy.trailRoot);
+      }
+      if (enemy instanceof Snake) {
+        this.scene.remove(enemy.segmentRoot);
       }
       enemy.destroy();
     }
