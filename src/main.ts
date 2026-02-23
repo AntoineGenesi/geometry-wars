@@ -1088,7 +1088,24 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     const damageMultiplier = buffManager.getDamageMultiplier();
     const fireRateMultiplier = buffManager.getFireRateMultiplier();
 
+    const perk = playerLevel.perk;
+    const totalDamageBonus = Math.round((perk.damageMultiplier * damageMultiplier - 1) * 100);
+    const totalFireRateBonus = Math.round((perk.fireRateMultiplier * fireRateMultiplier - 1) * 100);
+    const totalSpeedBonus = Math.round((perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier() - 1) * 100);
+
     pauseMenu.setGameData({
+      playerLevel: {
+        level: playerLevel.level,
+        name: perk.name,
+        description: perk.description,
+        color: '#' + perk.auraColor.toString(16).padStart(6, '0'),
+      },
+      companions: companionManager.getCompanionCounts(),
+      cumulativeBonuses: {
+        damageBonus: totalDamageBonus,
+        fireRateBonus: totalFireRateBonus,
+        speedBonus: totalSpeedBonus,
+      },
       buffs: activeBuffs.map(b => ({
         name: b.def.name,
         stacks: b.stacks,

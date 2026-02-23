@@ -21,6 +21,26 @@ export interface PauseMenuNetworkCallbacks {
 
 /** Data passed to the pause menu for the stats info panel */
 export interface PauseMenuGameData {
+  /** Player level progression info */
+  playerLevel?: {
+    level: number;
+    name: string;
+    description: string;
+    color: string;
+  };
+  /** Active companions (protector drones, guardians, hunters) */
+  companions?: {
+    guardian: number;
+    hunter: number;
+    protector: number;
+  };
+  /** Cumulative stat bonuses combined from level + buffs */
+  cumulativeBonuses?: {
+    /** e.g. 45 means +45% damage total */
+    damageBonus: number;
+    fireRateBonus: number;
+    speedBonus: number;
+  };
   /** Active buffs with stack counts and descriptions */
   buffs: Array<{
     name: string;
@@ -121,6 +141,18 @@ export class PauseMenu {
             <div class="stats-qr-section hidden">
               <div class="stats-section-title">JOIN THIS GAME</div>
               <div class="stats-qr-content"></div>
+            </div>
+            <div class="stats-level-section hidden">
+              <div class="stats-section-title">PLAYER LEVEL</div>
+              <div class="stats-level-info"></div>
+            </div>
+            <div class="stats-companions-section hidden">
+              <div class="stats-section-title">COMPANIONS</div>
+              <div class="stats-companions-list"></div>
+            </div>
+            <div class="stats-cumulative-section hidden">
+              <div class="stats-section-title">CUMULATIVE BONUSES</div>
+              <div class="stats-cumulative-list"></div>
             </div>
             <div class="stats-weapon-section">
               <div class="stats-section-title">WEAPON</div>
@@ -484,6 +516,73 @@ export class PauseMenu {
         font-style: italic;
       }
 
+      #pause-menu .stats-level-section.hidden,
+      #pause-menu .stats-companions-section.hidden,
+      #pause-menu .stats-cumulative-section.hidden {
+        display: none;
+      }
+
+      #pause-menu .stats-level-badge {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: 4px;
+        border-left: 3px solid;
+      }
+
+      #pause-menu .stats-level-number {
+        font-size: 28px;
+        font-weight: bold;
+        line-height: 1;
+      }
+
+      #pause-menu .stats-level-details {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      #pause-menu .stats-level-name {
+        font-size: 15px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        color: #ffffff;
+      }
+
+      #pause-menu .stats-level-desc {
+        font-size: 11px;
+        color: #8888aa;
+      }
+
+      #pause-menu .stats-companion-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 4px 0;
+        font-size: 13px;
+        color: #aaaacc;
+      }
+
+      #pause-menu .stats-companion-count {
+        font-weight: bold;
+        color: #ffffff;
+      }
+
+      #pause-menu .stats-cumulative-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 3px 0;
+        font-size: 13px;
+        color: #aaaacc;
+      }
+
+      #pause-menu .stats-cumulative-value {
+        font-weight: bold;
+        color: #44ff88;
+      }
+
       #pause-menu .pause-hint {
         margin-top: 40px;
         color: #666688;
@@ -729,9 +828,84 @@ export class PauseMenu {
    * Call this before show() to display up-to-date buff, kill, and weapon info.
    */
   setGameData(data: PauseMenuGameData): void {
+    this.updateLevelInfo(data.playerLevel);
+    this.updateCompanionsList(data.companions);
+    this.updateCumulativeBonuses(data.cumulativeBonuses);
     this.updateWeaponInfo(data.weapon);
     this.updateKillCount(data.totalKills);
     this.updateBuffsList(data.buffs);
+  }
+
+  private updateLevelInfo(playerLevel?: PauseMenuGameData['playerLevel']): void {
+    const section = this.container.querySelector('.stats-level-section') as HTMLElement | null;
+    const infoEl = this.container.querySelector('.stats-level-info');
+    if (!section || !infoEl) return;
+
+    if (!playerLevel) {
+      section.classList.add('hidden');
+      return;
+    }
+
+    section.classList.remove('hidden');
+    const color = playerLevel.color || '#8888cc';
+    infoEl.innerHTML = `
+      <div class="stats-level-badge" style="border-color: ${color}; background: ${color}18;">
+        <div class="stats-level-number" style="color: ${color}; text-shadow: 0 0 8px ${color};">${playerLevel.level}</div>
+        <div class="stats-level-details">
+          <div class="stats-level-name" style="color: ${color};">${playerLevel.name}</div>
+          <div class="stats-level-desc">${playerLevel.description || ''}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  private updateCompanionsList(companions?: PauseMenuGameData['companions']): void {
+    const section = this.container.querySelector('.stats-companions-section') as HTMLElement | null;
+    const listEl = this.container.querySelector('.stats-companions-list');
+    if (!section || !listEl) return;
+
+    const total = companions ? (companions.guardian + companions.hunter + companions.protector) : 0;
+    if (!companions || total === 0) {
+      section.classList.add('hidden');
+      return;
+    }
+
+    section.classList.remove('hidden');
+    const rows: string[] = [];
+    if (companions.protector > 0) {
+      rows.push(`<div class="stats-companion-row"><span>🛡 Protector Drones</span><span class="stats-companion-count">${companions.protector}</span></div>`);
+    }
+    if (companions.guardian > 0) {
+      rows.push(`<div class="stats-companion-row"><span>⚡ Guardians</span><span class="stats-companion-count">${companions.guardian}</span></div>`);
+    }
+    if (companions.hunter > 0) {
+      rows.push(`<div class="stats-companion-row"><span>🎯 Hunters</span><span class="stats-companion-count">${companions.hunter}</span></div>`);
+    }
+    listEl.innerHTML = rows.join('');
+  }
+
+  private updateCumulativeBonuses(bonuses?: PauseMenuGameData['cumulativeBonuses']): void {
+    const section = this.container.querySelector('.stats-cumulative-section') as HTMLElement | null;
+    const listEl = this.container.querySelector('.stats-cumulative-list');
+    if (!section || !listEl) return;
+
+    if (!bonuses || (bonuses.damageBonus === 0 && bonuses.fireRateBonus === 0 && bonuses.speedBonus === 0)) {
+      section.classList.add('hidden');
+      return;
+    }
+
+    section.classList.remove('hidden');
+    const rows: string[] = [];
+    if (bonuses.damageBonus !== 0) {
+      rows.push(`<div class="stats-cumulative-row"><span>Damage</span><span class="stats-cumulative-value">+${bonuses.damageBonus}%</span></div>`);
+    }
+    if (bonuses.fireRateBonus !== 0) {
+      rows.push(`<div class="stats-cumulative-row"><span>Fire Rate</span><span class="stats-cumulative-value">+${bonuses.fireRateBonus}%</span></div>`);
+    }
+    if (bonuses.speedBonus !== 0) {
+      rows.push(`<div class="stats-cumulative-row"><span>Move Speed</span><span class="stats-cumulative-value">+${bonuses.speedBonus}%</span></div>`);
+    }
+    listEl.innerHTML = rows.join('');
   }
 
   private updateWeaponInfo(weapon: PauseMenuGameData['weapon']): void {

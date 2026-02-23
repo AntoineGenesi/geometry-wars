@@ -1005,7 +1005,22 @@ function main() {
       currentValue: b.def.formatValue(b.stacks),
       color: '#' + b.def.iconColor.toString(16).padStart(6, '0'),
     }));
+    const perk = playerLevel.perk;
+    const totalDamageBonus = Math.round((perk.damageMultiplier * buffManager.getDamageMultiplier() - 1) * 100);
+    const totalFireRateBonus = Math.round((perk.fireRateMultiplier * buffManager.getFireRateMultiplier() - 1) * 100);
+    const totalSpeedBonus = Math.round((perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier() - 1) * 100);
     return {
+      playerLevel: {
+        level: playerLevel.level,
+        name: perk.name,
+        description: perk.description,
+        color: '#' + perk.auraColor.toString(16).padStart(6, '0'),
+      },
+      cumulativeBonuses: {
+        damageBonus: totalDamageBonus,
+        fireRateBonus: totalFireRateBonus,
+        speedBonus: totalSpeedBonus,
+      },
       buffs,
       totalKills: totalKillCounter.getTotalKills(),
       weapon: {
