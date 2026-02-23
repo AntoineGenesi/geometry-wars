@@ -748,9 +748,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     particles.bombExplosion(position);
     surface.applyForce(position, 0.3, radius * 0.5);
     screenShake.shake(0.2, 0.15);
-    // Shockwave distortion on volatile explosions
-    shockwaveEffect.spawnShockwave(position, 0.05, 0.9, 0.5, 0.07);
-    shockwaveEffect.triggerWhiteFlash(0.15);
+    // No screen-space shockwave/flash for volatile explosions — too distracting.
+    // Shockwave distortion is reserved for mega boss deaths only.
   };
 
   /** Recompute combined multipliers from PlayerLevel + BuffManager */
