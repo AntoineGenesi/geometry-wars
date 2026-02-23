@@ -1067,3 +1067,28 @@ Claude will read this file at the start of each session and prioritize fixing re
 **Root cause:** `_facePos` (internal geodesic state in MeshWalker) was not reset on respawn in multiplayer. First movement after respawn started geodesic walk from stale death location, teleporting player back.
 
 **Regression test:** `src/test/s27g-respawn-snap-back.regression.test.ts` — 3 existing tests covering this exact teleportTo() behavior ✅
+
+## S28c: Plasma Mortar — Phase 2 Shockwave Effects
+
+### Test: Plasma mortar visual impact
+- [ ] **Pick up plasma mortar weapon** — Find a plasma mortar pickup on the surface
+- [ ] **Fire at surface** — Aim at the surface mesh and fire
+- [ ] **Wave deformation visible** — The surface grid should show a **propagating ring deformation** expanding outward from impact (not instant kick)
+- [ ] **Pronounced screen shake** — Screen shake should be noticeably stronger than other weapons (0.5 intensity vs 0.15 for homing)
+- [ ] **Shockwave ring effect** — A screen-space shockwave ring should appear at the impact point and expand outward
+- [ ] **White flash** — Brief white flash on impact
+- [ ] **Chromatic aberration** — Brief color fringing on impact
+
+### Test: Enemy knockback
+- [ ] **Enemies near impact are knocked back** — Enemies within ~3 world units of the plasma mortar impact should be flung away from the explosion center
+- [ ] **Falloff feels right** — Enemies very close get more knockback; those at the edge get less
+
+### Test: Multiplayer
+- [ ] **Same effects in multiplayer split-screen** — Wave deformation, screen shake, and enemy knockback should all work in 2-player mode
+
+**What changed:**
+- `src/effects/SurfaceShockwave.ts`: New class (Phase 1) — propagating deformation ring
+- `src/core/GameContext.ts`: Added `surfaceShockwave: SurfaceShockwave` field
+- `src/core/GameLoop.ts`: Added `ctx.surfaceShockwave.update(dt)` alongside `surface.updateGrid(dt)`
+- `src/main.ts`: Created `SurfaceShockwave` instance; upgraded plasma mortar explosion (propagating wave, stronger shake, shockwave ring, white flash, chromatic aberration, enemy knockback)
+- `src/multiplayer-main.ts`: Same upgrades (minus post-processing effects which aren't set up in MP)

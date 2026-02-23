@@ -10,6 +10,7 @@ import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
+import { SurfaceShockwave } from './effects/SurfaceShockwave';
 import { GlowTrail } from './effects/GlowTrail';
 import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
 import { ScoreManager } from './core/ScoreManager';
@@ -875,6 +876,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Screen shake --
   const screenShake = new ScreenShake();
 
+  // -- Surface shockwave (propagating deformation ring) --
+  const surfaceShockwave = new SurfaceShockwave(surface);
+
   // -- Score manager --
   const scoreManager = new ScoreManager();
   scoreManager.setPlayer(player);
@@ -1055,8 +1059,25 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         screenShake.shake(0.1, 0.1);
       } else if (wType === WeaponType.PlasmaMortar) {
         particles.mortarExplosion(position);
-        surface.applyForce(position, 0.25, 1.0);
-        screenShake.shake(0.15, 0.15);
+        surfaceShockwave.spawn(position, 3.0, 8.0, 0.4);
+        screenShake.shake(0.5, 0.35);
+        shockwaveEffect.spawnShockwave(position, 0.08, 1.2, 0.8, 0.1);
+        shockwaveEffect.triggerWhiteFlash(0.3);
+        shockwaveEffect.triggerChromatic(0.012);
+        // Knock back enemies within blast radius
+        const KNOCKBACK_RADIUS = 3.0;
+        const KNOCKBACK_SPEED = 0.15;
+        for (const enemy of enemySpawner.getEnemies()) {
+          if (!enemy.alive) continue;
+          const dx = enemy.position.x - position.x;
+          const dz = enemy.position.z - position.z;
+          const distSq = dx * dx + dz * dz;
+          if (distSq < KNOCKBACK_RADIUS * KNOCKBACK_RADIUS && distSq > 0.0001) {
+            const dist = Math.sqrt(distSq);
+            const strength = KNOCKBACK_SPEED * (1.0 - dist / KNOCKBACK_RADIUS);
+            enemy.applyKnockback(dx / dist * strength, dz / dist * strength);
+          }
+        }
       } else if (wType === WeaponType.GravityGun) {
         // Black hole surface deformation: inward pull, dramatic snap-back
         surface.applyMeshForce(position, -2.5, 1.5);
@@ -1402,6 +1423,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     enemyInstanceManager,
     particles,
     screenShake,
+    surfaceShockwave,
     glowTrail: playerGlowTrail,
     shockwaveEffect,
     scorePopups,
