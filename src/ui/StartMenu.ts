@@ -98,14 +98,20 @@ export class StartMenu {
     document.body.appendChild(this.container);
     this.attachEventListeners();
 
-    // Debug OBJ panel — only instantiate when ?debug=true
-    if (this.isDebugMode) {
-      this.objDebugPanel = new OBJDebugPanel();
-    }
+    // Debug OBJ panel — instantiate on demand (F4 key)
+    // Lazy-init: created when user presses F4, not at startup
 
     // Animated 3D background behind the menu overlay
     this.menuBackground = new MenuBackground();
     this.menuBackground.start();
+
+    // F4 key handler — toggle OBJ debug panel
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'F4') {
+        e.preventDefault();
+        this.toggleDebugPanel();
+      }
+    });
 
     // Dismiss loading screen now that menu is ready
     const loadingScreen = document.getElementById('loading-screen');
@@ -2000,6 +2006,24 @@ export class StartMenu {
   }
 
   // -----------------------------------------------------------------------
+  // Debug panel (F4 key)
+  // -----------------------------------------------------------------------
+
+  private toggleDebugPanel(): void {
+    // Lazy-init: create panel on first F4 press
+    if (!this.objDebugPanel) {
+      this.objDebugPanel = new OBJDebugPanel();
+    }
+
+    // Toggle visibility
+    if (this.objDebugPanel.isVisible()) {
+      this.objDebugPanel.hide();
+    } else {
+      this.objDebugPanel.show();
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // LAN lobby browser helpers
   // -----------------------------------------------------------------------
 
@@ -2284,7 +2308,11 @@ export class StartMenu {
     if (this.styleElement) {
       this.styleElement.remove();
     }
+    // Clean up debug panel if it was created
+    if (this.objDebugPanel) {
+      this.objDebugPanel.dispose();
+      this.objDebugPanel = null;
+    }
     this.menuBackground.dispose();
-    this.objDebugPanel?.dispose();
   }
 }
