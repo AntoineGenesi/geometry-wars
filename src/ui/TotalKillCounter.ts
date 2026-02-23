@@ -252,6 +252,13 @@ export class TotalKillCounter {
   }
 
   /**
+   * Hide the counter (e.g. on mobile where screen space is limited).
+   */
+  hide(): void {
+    this.container.style.display = 'none';
+  }
+
+  /**
    * Remove all DOM elements.
    */
   dispose(): void {

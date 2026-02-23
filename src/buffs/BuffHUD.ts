@@ -12,6 +12,7 @@ export class BuffHUD {
   private container: HTMLDivElement;
   private iconElements: Map<StackBuffType, HTMLDivElement> = new Map();
   private glowTimers: Map<StackBuffType, number> = new Map();
+  private compactMode = false;
 
   constructor() {
     this.container = document.createElement('div');
@@ -112,6 +113,20 @@ export class BuffHUD {
   }
 
   /**
+   * Enable compact (icon-only) mode for mobile — hides stack count and tooltip text.
+   */
+  setCompactMode(compact: boolean): void {
+    this.compactMode = compact;
+    // Re-render existing icons with new mode
+    for (const el of this.iconElements.values()) {
+      const countEl = el.querySelector('.buff-count') as HTMLSpanElement | null;
+      const tooltipEl = el.querySelector('.buff-tooltip') as HTMLDivElement | null;
+      if (countEl) countEl.style.display = compact ? 'none' : '';
+      if (tooltipEl) tooltipEl.style.display = compact ? 'none' : '';
+    }
+  }
+
+  /**
    * Set position for splitscreen support.
    */
   setPosition(right: number, top: number): void {
@@ -176,6 +191,7 @@ export class BuffHUD {
       min-width: 24px;
     `;
     countSpan.textContent = 'x1';
+    if (this.compactMode) countSpan.style.display = 'none';
     el.appendChild(countSpan);
 
     // Tooltip (hidden, shown on hover via CSS if needed - currently always visible as compact text)
@@ -190,6 +206,7 @@ export class BuffHUD {
       text-overflow: ellipsis;
     `;
     tooltip.textContent = def.description;
+    if (this.compactMode) tooltip.style.display = 'none';
     el.appendChild(tooltip);
 
     return el;
