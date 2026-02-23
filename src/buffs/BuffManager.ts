@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { getSoundEngine } from '../audio/SoundEngine';
+import { WeaponType } from '../weapons/WeaponTypes';
 
 // Pre-allocated temp vectors for zero-allocation shock arc creation
 const _arcFrom = new THREE.Vector3();
@@ -19,6 +20,18 @@ export enum StackBuffType {
   ShockAura = 'shock_aura',
   IncendiaryRounds = 'incendiary_rounds',
   Volatile = 'volatile',
+
+  // Weapon mastery buffs — awarded by WeaponMasteryManager, NOT in drop pool
+  MasteryBlaster = 'mastery_blaster',
+  MasterySpread = 'mastery_spread',
+  MasteryPiercing = 'mastery_piercing',
+  MasteryChainLightning = 'mastery_chain_lightning',
+  MasteryHoming = 'mastery_homing',
+  MasteryPlasmaMortar = 'mastery_plasma_mortar',
+  MasteryGravityGun = 'mastery_gravity_gun',
+  MasteryLaserBeam = 'mastery_laser_beam',
+  MasteryBlackHole = 'mastery_black_hole',
+  MasteryTeslaCoil = 'mastery_tesla_coil',
 }
 
 export type BuffRarity = 'common' | 'uncommon';
@@ -181,6 +194,167 @@ export const BUFF_DEFINITIONS: Record<StackBuffType, BuffDefinition> = {
       return `${dmgPct}% HP, ${radius.toFixed(1)}u radius`;
     },
   },
+
+  // -------------------------------------------------------------------------
+  // Weapon mastery buffs — NOT in drop pool (awarded by WeaponMasteryManager)
+  // -------------------------------------------------------------------------
+
+  [StackBuffType.MasteryBlaster]: {
+    type: StackBuffType.MasteryBlaster,
+    name: 'Blaster Mastery',
+    shortName: 'M:B',
+    description: '+40% blaster damage per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0xffff44,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 40}% blaster damage — MASTERED`,
+  },
+
+  [StackBuffType.MasterySpread]: {
+    type: StackBuffType.MasterySpread,
+    name: 'Spread Mastery',
+    shortName: 'M:S',
+    description: '+2 extra pellets per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0x44ffff,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 2} pellets — ${5 + s * 2} total — MASTERED`,
+  },
+
+  [StackBuffType.MasteryPiercing]: {
+    type: StackBuffType.MasteryPiercing,
+    name: 'Piercing Mastery',
+    shortName: 'M:P',
+    description: '+50% beam length per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0xffffff,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 50}% beam length — MASTERED`,
+  },
+
+  [StackBuffType.MasteryChainLightning]: {
+    type: StackBuffType.MasteryChainLightning,
+    name: 'Chain Mastery',
+    shortName: 'M:C',
+    description: '+2 chain targets per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0xaaffff,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 2} chain targets — ${6 + s * 2} total — MASTERED`,
+  },
+
+  [StackBuffType.MasteryHoming]: {
+    type: StackBuffType.MasteryHoming,
+    name: 'Homing Mastery',
+    shortName: 'M:H',
+    description: '+40% missile damage + tighter tracking per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0xff4444,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 40}% dmg, +${(s * 30).toFixed(0)}% tracking — MASTERED`,
+  },
+
+  [StackBuffType.MasteryPlasmaMortar]: {
+    type: StackBuffType.MasteryPlasmaMortar,
+    name: 'Mortar Mastery',
+    shortName: 'M:M',
+    description: '+50% AoE blast radius per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0x44ff44,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 50}% AoE radius — MASTERED`,
+  },
+
+  [StackBuffType.MasteryGravityGun]: {
+    type: StackBuffType.MasteryGravityGun,
+    name: 'Gravity Mastery',
+    shortName: 'M:G',
+    description: '+50% pull radius + instant cluster-kill in center per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0x8844ff,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 50}% pull radius, center kill — MASTERED`,
+  },
+
+  [StackBuffType.MasteryLaserBeam]: {
+    type: StackBuffType.MasteryLaserBeam,
+    name: 'Laser Mastery',
+    shortName: 'M:L',
+    description: '+60% laser DPS per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0xff0000,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 60}% laser DPS — MASTERED`,
+  },
+
+  [StackBuffType.MasteryBlackHole]: {
+    type: StackBuffType.MasteryBlackHole,
+    name: 'Black Hole Mastery',
+    shortName: 'M:K',
+    description: '+50% black hole duration + 1 extra shot per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0x6600cc,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 50}% duration, +${s} shots — MASTERED`,
+  },
+
+  [StackBuffType.MasteryTeslaCoil]: {
+    type: StackBuffType.MasteryTeslaCoil,
+    name: 'Tesla Mastery',
+    shortName: 'M:T',
+    description: '+50% tesla radius + +50% DPS per stack',
+    rarity: 'uncommon',
+    category: 'offensive',
+    maxStack: 3,
+    iconColor: 0x88aaff,
+    borderColor: 0xffaa00,
+    stackingFormula: 'linear',
+    formatValue: (s) => `+${s * 50}% radius & DPS — MASTERED`,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// WeaponType → mastery buff mapping (used by getMasteryMultiplier)
+// ---------------------------------------------------------------------------
+
+const WEAPON_TYPE_TO_MASTERY_BUFF: Partial<Record<WeaponType, StackBuffType>> = {
+  [WeaponType.Standard]: StackBuffType.MasteryBlaster,
+  [WeaponType.Spread]: StackBuffType.MasterySpread,
+  [WeaponType.Piercing]: StackBuffType.MasteryPiercing,
+  [WeaponType.ChainLightning]: StackBuffType.MasteryChainLightning,
+  [WeaponType.Homing]: StackBuffType.MasteryHoming,
+  [WeaponType.PlasmaMortar]: StackBuffType.MasteryPlasmaMortar,
+  [WeaponType.GravityGun]: StackBuffType.MasteryGravityGun,
+  [WeaponType.LaserBeam]: StackBuffType.MasteryLaserBeam,
+  [WeaponType.BlackHole]: StackBuffType.MasteryBlackHole,
+  [WeaponType.TeslaCoil]: StackBuffType.MasteryTeslaCoil,
 };
 
 // ---------------------------------------------------------------------------
@@ -331,6 +505,18 @@ export class BuffManager {
    *   - Utility/defensive (afterburner, magnetism, tough times): low weight
    */
   getTotalBuffPower(): number {
+    const masteryPower =
+      this.getStacks(StackBuffType.MasteryBlaster) * 0.30 +
+      this.getStacks(StackBuffType.MasterySpread) * 0.30 +
+      this.getStacks(StackBuffType.MasteryPiercing) * 0.30 +
+      this.getStacks(StackBuffType.MasteryChainLightning) * 0.30 +
+      this.getStacks(StackBuffType.MasteryHoming) * 0.30 +
+      this.getStacks(StackBuffType.MasteryPlasmaMortar) * 0.30 +
+      this.getStacks(StackBuffType.MasteryGravityGun) * 0.30 +
+      this.getStacks(StackBuffType.MasteryLaserBeam) * 0.30 +
+      this.getStacks(StackBuffType.MasteryBlackHole) * 0.30 +
+      this.getStacks(StackBuffType.MasteryTeslaCoil) * 0.30;
+
     return (
       this.getStacks(StackBuffType.HotHands) * 0.30 +
       this.getStacks(StackBuffType.TriggerHappy) * 0.25 +
@@ -339,7 +525,8 @@ export class BuffManager {
       this.getStacks(StackBuffType.Volatile) * 0.50 +
       this.getStacks(StackBuffType.Afterburner) * 0.10 +
       this.getStacks(StackBuffType.Magnetism) * 0.10 +
-      this.getStacks(StackBuffType.ToughTimes) * 0.15
+      this.getStacks(StackBuffType.ToughTimes) * 0.15 +
+      masteryPower
     );
   }
 
@@ -352,6 +539,60 @@ export class BuffManager {
     const stacks = this.getStacks(StackBuffType.ToughTimes);
     if (stacks === 0) return 0;
     return 1 - 1 / (1 + 0.15 * stacks);
+  }
+
+  /**
+   * Returns the mastery damage multiplier and weapon-specific special bonuses
+   * for the given weapon type, based on accumulated mastery buff stacks.
+   *
+   * damageMultiplier: multiply base damage by this value.
+   * specialBonus: per-weapon bonus data (pellets, radius, chain targets, etc.)
+   *   consumed by WeaponManager in Phase 3 integration.
+   */
+  getMasteryMultiplier(weaponType: WeaponType): {
+    damageMultiplier: number;
+    specialBonus: Record<string, number>;
+  } {
+    const buffType = WEAPON_TYPE_TO_MASTERY_BUFF[weaponType];
+    if (!buffType) return { damageMultiplier: 1.0, specialBonus: {} };
+
+    const s = this.getStacks(buffType);
+    if (s === 0) return { damageMultiplier: 1.0, specialBonus: {} };
+
+    switch (weaponType) {
+      case WeaponType.Standard:
+        return { damageMultiplier: 1 + s * 0.4, specialBonus: {} };
+
+      case WeaponType.Spread:
+        return { damageMultiplier: 1.0, specialBonus: { extraPellets: s * 2 } };
+
+      case WeaponType.Piercing:
+        return { damageMultiplier: 1.0, specialBonus: { beamLengthMultiplier: 1 + s * 0.5 } };
+
+      case WeaponType.ChainLightning:
+        return { damageMultiplier: 1.0, specialBonus: { extraChainTargets: s * 2 } };
+
+      case WeaponType.Homing:
+        return { damageMultiplier: 1 + s * 0.4, specialBonus: { trackingBonus: s * 0.3 } };
+
+      case WeaponType.PlasmaMortar:
+        return { damageMultiplier: 1.0, specialBonus: { aoeRadiusMultiplier: 1 + s * 0.5 } };
+
+      case WeaponType.GravityGun:
+        return { damageMultiplier: 1.0, specialBonus: { pullRadiusMultiplier: 1 + s * 0.5 } };
+
+      case WeaponType.LaserBeam:
+        return { damageMultiplier: 1 + s * 0.6, specialBonus: {} };
+
+      case WeaponType.BlackHole:
+        return { damageMultiplier: 1.0, specialBonus: { durationMultiplier: 1 + s * 0.5, extraShots: s } };
+
+      case WeaponType.TeslaCoil:
+        return { damageMultiplier: 1 + s * 0.5, specialBonus: { radiusMultiplier: 1 + s * 0.5 } };
+
+      default:
+        return { damageMultiplier: 1.0, specialBonus: {} };
+    }
   }
 
   // -----------------------------------------------------------------------
@@ -612,8 +853,9 @@ export class BuffManager {
    * Returns the StackBuffType to drop, or null if no drop.
    */
   static rollBuffDrop(): StackBuffType | null {
-    // Roll for each rarity tier
-    const allBuffs = Object.values(BUFF_DEFINITIONS);
+    // Roll for each rarity tier — mastery buffs are excluded (awarded by WeaponMasteryManager only)
+    const allBuffs = Object.values(BUFF_DEFINITIONS)
+      .filter(b => !b.type.startsWith('mastery_'));
 
     // Uncommon check first (lower chance, better buffs)
     const uncommonBuffs = allBuffs.filter(b => b.rarity === 'uncommon');
