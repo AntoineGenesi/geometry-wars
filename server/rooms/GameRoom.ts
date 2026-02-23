@@ -9,6 +9,7 @@ import {
 } from '../schema/GameState';
 import fs from 'fs';
 import path from 'path';
+import Logger from '../logger';
 import { createHash } from 'crypto';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
@@ -155,6 +156,7 @@ export class GameRoom extends Room<GameState> {
   private nextEnemyId = 0;
   private metricsLogPath: string | null = null;
   private hostIsLocal: boolean = false;
+  private logger = new Logger(path.join(process.cwd(), 'logs', 'colyseus-server.log'));
   /** Per-session locality: tracks whether each connected player is a localhost client. */
   private clientLocality: Map<string, boolean> = new Map();
   private nextGeomId = 0;
@@ -215,7 +217,7 @@ export class GameRoom extends Room<GameState> {
     this.onMessage('start', (client) => {
       // Only the host can start the game
       if (client.sessionId !== this.state.hostId) {
-        console.log(`[GameRoom] Non-host ${client.sessionId} tried to start game (host=${this.state.hostId})`);
+        this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to start game (host=${this.state.hostId})`);
         return;
       }
       // Initial game start: lobby → playing
@@ -228,14 +230,14 @@ export class GameRoom extends Room<GameState> {
       if (this.state.roomPhase !== 'voting') return;
       if (typeof data.choice === 'string' && data.choice.length > 0) {
         this.state.voteMap.set(client.sessionId, data.choice);
-        console.log(`[GameRoom] ${client.sessionId} voted: ${data.choice}`);
+        this.logger.log(`[GameRoom] ${client.sessionId} voted: ${data.choice}`);
       }
     });
 
     this.onMessage('host_set_pick_mode', (client, data: { pickMode: boolean }) => {
       if (client.sessionId !== this.state.hostId) return;
       this.state.hostPickMode = data.pickMode;
-      console.log(`[GameRoom] Host set pick mode: ${data.pickMode}`);
+      this.logger.log(`[GameRoom] Host set pick mode: ${data.pickMode}`);
     });
 
     this.onMessage('host_launch', (client, data: { choice: string }) => {
@@ -247,12 +249,12 @@ export class GameRoom extends Room<GameState> {
     this.onMessage('pause', (client, data: { paused: boolean }) => {
       if (client.sessionId !== this.state.hostId) return;
       this.state.isPaused = data.paused;
-      console.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by host`);
+      this.logger.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by host`);
     });
 
     this.onMessage('end_game', (client) => {
       if (client.sessionId !== this.state.hostId) return;
-      console.log('[GameRoom] Host ended the game');
+      this.logger.log('[GameRoom] Host ended the game');
       this.broadcast('game_ended');
       this.disconnect();
     });
@@ -262,9 +264,9 @@ export class GameRoom extends Room<GameState> {
     this.onMessage('startup_cache_ack', (client, data: { hit: boolean }) => {
       if (!data.hit) {
         client.send('startup_config', STARTUP_CONFIG_PAYLOAD);
-        console.log(`[GameRoom] startup_config sent to ${client.sessionId} (cache miss)`);
+        this.logger.log(`[GameRoom] startup_config sent to ${client.sessionId} (cache miss)`);
       } else {
-        console.log(`[GameRoom] ${client.sessionId} used cached startup config`);
+        this.logger.log(`[GameRoom] ${client.sessionId} used cached startup config`);
       }
     });
 
@@ -295,13 +297,13 @@ export class GameRoom extends Room<GameState> {
         surfaceType: this.state.surfaceType,
       });
       fs.appendFileSync(this.metricsLogPath, header + '\n');
-      console.log(`[GameRoom] Metrics log: ${this.metricsLogPath}`);
+      this.logger.log(`[GameRoom] Metrics log: ${this.metricsLogPath}`);
     } catch (err) {
-      console.error('[GameRoom] Failed to initialize metrics log:', err);
+      this.logger.error('[GameRoom] Failed to initialize metrics log:', err);
       this.metricsLogPath = null;
     }
 
-    console.log(`[GameRoom] Created with surface: ${this.state.surfaceType}`);
+    this.logger.log(`[GameRoom] Created with surface: ${this.state.surfaceType}`);
   }
 
   onJoin(client: Client, options: { name?: string }) {
@@ -345,7 +347,7 @@ export class GameRoom extends Room<GameState> {
       // First joiner — becomes host
       this.state.hostId = client.sessionId;
       this.hostIsLocal = isLocalClient;
-      console.log(`[GameRoom] ${player.name} is the host (local=${isLocalClient})`);
+      this.logger.log(`[GameRoom] ${player.name} is the host (local=${isLocalClient})`);
     } else if (isLocalClient && !this.hostIsLocal && this.state.roomPhase === 'lobby') {
       // A localhost client joined after a LAN client had already taken the host
       // role, but ONLY in lobby phase. Once the game is in progress, we never
@@ -355,7 +357,7 @@ export class GameRoom extends Room<GameState> {
       const prev = this.state.hostId;
       this.state.hostId = client.sessionId;
       this.hostIsLocal = true;
-      console.log(`[GameRoom] Host promoted to localhost player: ${player.name} (was ${prev})`);
+      this.logger.log(`[GameRoom] Host promoted to localhost player: ${player.name} (was ${prev})`);
       this.broadcast('host_changed', { hostId: client.sessionId });
     }
 
@@ -377,17 +379,17 @@ export class GameRoom extends Room<GameState> {
     // full config payload so the client can cache it for future sessions.
     client.send('startup_hash', { hash: STARTUP_CONFIG_HASH });
 
-    console.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
-    console.log(`[GameRoom] State after join: players.size=${this.state.players.size}, surfaceType=${this.state.surfaceType}, gameStarted=${this.state.gameStarted}`);
+    this.logger.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
+    this.logger.log(`[GameRoom] State after join: players.size=${this.state.players.size}, surfaceType=${this.state.surfaceType}, gameStarted=${this.state.gameStarted}`);
     this.state.players.forEach((p, k) => {
-      console.log(`[GameRoom]   player ${k}: name=${p.name}, alive=${p.alive}, lives=${p.lives}`);
+      this.logger.log(`[GameRoom]   player ${k}: name=${p.name}, alive=${p.alive}, lives=${p.lives}`);
     });
   }
 
   onLeave(client: Client, consented: boolean) {
     const player = this.state.players.get(client.sessionId);
     if (player) {
-      console.log(`[GameRoom] ${player.name} left`);
+      this.logger.log(`[GameRoom] ${player.name} left`);
       this.state.players.delete(client.sessionId);
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
@@ -413,18 +415,18 @@ export class GameRoom extends Room<GameState> {
         // if they rejoined mid-game (clientLocality.get would have returned true).
         this.hostIsLocal = this.clientLocality.get(newHostId) ?? false;
         const newHostPlayer = this.state.players.get(newHostId);
-        console.log(`[GameRoom] Host transferred to: ${newHostPlayer?.name || newHostId} (local=${this.hostIsLocal})`);
+        this.logger.log(`[GameRoom] Host transferred to: ${newHostPlayer?.name || newHostId} (local=${this.hostIsLocal})`);
         // If the game was paused by the outgoing host, unpause so the new host
         // doesn't inherit a frozen game they didn't create and can't easily recover.
         if (this.state.isPaused) {
           this.state.isPaused = false;
-          console.log('[GameRoom] Unpaused game on host transfer');
+          this.logger.log('[GameRoom] Unpaused game on host transfer');
         }
         // Broadcast so clients can update UI immediately (state patch also carries hostId)
         this.broadcast('host_changed', { hostId: newHostId });
       } else {
         // No remaining players — close the room
-        console.log('[GameRoom] Host left with no other players, closing room');
+        this.logger.log('[GameRoom] Host left with no other players, closing room');
         this.broadcast('host_left');
         this.disconnect();
         return;
@@ -458,7 +460,7 @@ export class GameRoom extends Room<GameState> {
         // Ignore errors on dispose
       }
     }
-    console.log('[GameRoom] Disposed');
+    this.logger.log('[GameRoom] Disposed');
   }
 
   private handleClientMetrics(client: Client, data: Record<string, unknown>): void {
@@ -476,7 +478,7 @@ export class GameRoom extends Room<GameState> {
     try {
       fs.appendFileSync(this.metricsLogPath, entry + '\n');
     } catch (err) {
-      console.error('[GameRoom] Failed to write metrics entry:', err);
+      this.logger.error('[GameRoom] Failed to write metrics entry:', err);
       this.metricsLogPath = null;
     }
   }
@@ -541,7 +543,7 @@ export class GameRoom extends Room<GameState> {
       wave: 0,
     });
 
-    console.log('[GameRoom] Game started!');
+    this.logger.log('[GameRoom] Game started!');
   }
 
   private handleInput(client: Client, input: PlayerInput) {
@@ -690,7 +692,7 @@ export class GameRoom extends Room<GameState> {
       this.state.enemies.splice(enemiesToRemove[i], 1);
     }
 
-    console.log(`[GameRoom] ${player.name} used bomb, killed ${enemiesToRemove.length} enemies`);
+    this.logger.log(`[GameRoom] ${player.name} used bomb, killed ${enemiesToRemove.length} enemies`);
     // NOTE: Geoms are not spawned (removed in s27g-geons-point-pickups-remove-mp)
   }
 
@@ -738,7 +740,7 @@ export class GameRoom extends Room<GameState> {
     const playerCount = this.state.players.size;
     if (playerCount > 0 && this.state.voteMap.size >= playerCount) {
       const choice = this.pickMostVoted();
-      console.log(`[GameRoom] All ${playerCount} players voted — auto-launching with: ${choice}`);
+      this.logger.log(`[GameRoom] All ${playerCount} players voted — auto-launching with: ${choice}`);
       this.startGameWithSettings(choice);
       return;
     }
@@ -746,7 +748,7 @@ export class GameRoom extends Room<GameState> {
     this.state.votingCountdown = Math.max(0, this.state.votingCountdown - dt);
     if (this.state.votingCountdown <= 0) {
       const choice = this.pickMostVoted();
-      console.log(`[GameRoom] Voting countdown ended — auto-launching with: ${choice}`);
+      this.logger.log(`[GameRoom] Voting countdown ended — auto-launching with: ${choice}`);
       this.startGameWithSettings(choice);
     }
   }
@@ -973,7 +975,7 @@ export class GameRoom extends Room<GameState> {
 
           if (player.lives <= 0) {
             player.alive = false;
-            console.log(`[GameRoom] ${player.name} died!`);
+            this.logger.log(`[GameRoom] ${player.name} died!`);
           } else {
             // Respawn on opposite side of surface from death location, grant 2s invincibility
             player.surfaceU = (player.surfaceU + 0.5) % 1;
@@ -1106,7 +1108,7 @@ export class GameRoom extends Room<GameState> {
       status: 'playing',
       wave: this.waveNumber,
     });
-    console.log(`[GameRoom] Wave ${this.waveNumber} started (difficulty ${this.computeDifficultyLevel().toFixed(2)})`);
+    this.logger.log(`[GameRoom] Wave ${this.waveNumber} started (difficulty ${this.computeDifficultyLevel().toFixed(2)})`);
 
     const wave = this.generateServerWave();
     this.spawnWave(wave);
@@ -1444,7 +1446,7 @@ export class GameRoom extends Room<GameState> {
       status: 'voting',
       wave: this.waveNumber,
     });
-    console.log('[GameRoom] Game Over — entering voting phase');
+    this.logger.log('[GameRoom] Game Over — entering voting phase');
   }
 
   private spawnWeaponPickup(u: number, v: number) {

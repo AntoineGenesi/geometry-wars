@@ -7,10 +7,15 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { networkInterfaces } from 'os';
 import { exportPerformanceLogs, exportGameStateLogs } from '../scripts/export-perf-logs.mjs';
+import Logger from './logger';
 
 // ESM compatibility for __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialize logger — logs to both console and file
+const logPath = path.join(process.cwd(), 'logs', 'colyseus-server.log');
+const logger = new Logger(logPath);
 
 /** Returns all non-loopback IPv4 addresses on this machine */
 function getLANAddresses(): string[] {
@@ -61,7 +66,7 @@ app.get('/health', (req, res) => {
   const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
   if (!isLocal) {
     // Only log remote connections (skip localhost health checks from vite-plugin-lan polling)
-    console.log(`[Server] Health check from LAN client: ${ip}`);
+    logger.log(`[Server] Health check from LAN client: ${ip}`);
   }
   res.json({ status: 'ok', timestamp: Date.now() });
 });
@@ -109,20 +114,20 @@ app.post('/api/export-perf-logs', (req, res) => {
     if (performanceData) {
       const result = exportPerformanceLogs(performanceData, gitCommit || null);
       results.performance = result;
-      console.log(`[Server] Exported performance logs to: ${result.filepath}`);
+      logger.log(`[Server] Exported performance logs to: ${result.filepath}`);
     }
 
     // Export DDA/game-state data if provided
     if (ddaData) {
       const result = exportGameStateLogs(ddaData, gitCommit || null);
       results.gameState = result;
-      console.log(`[Server] Exported game state logs to: ${result.filepath}`);
+      logger.log(`[Server] Exported game state logs to: ${result.filepath}`);
     }
 
     res.json({ success: true, results });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[Server] Export failed:', message);
+    logger.error('[Server] Export failed:', message);
     res.status(500).json({ success: false, error: message });
   }
 });
@@ -150,11 +155,11 @@ app.post('/api/profiling-snapshot', async (req, res) => {
     const filepath = path.join(logsDir, filename);
     fs.writeFileSync(filepath, JSON.stringify(session, null, 2));
 
-    console.log(`[Server] Exported profiling snapshot: ${filepath} (${session.samples.length} samples)`);
+    logger.log(`[Server] Exported profiling snapshot: ${filepath} (${session.samples.length} samples)`);
     res.json({ success: true, filepath, filename, sampleCount: session.samples.length });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[Server] Profiling snapshot export failed:', message);
+    logger.error('[Server] Profiling snapshot export failed:', message);
     res.status(500).json({ success: false, error: message });
   }
 });
@@ -192,16 +197,16 @@ function checkAutoShutdown() {
         // No clients connected and at least one client has connected previously
         if (!shutdownTimer) {
           const timeoutSec = Math.round(SHUTDOWN_TIMEOUT_MS / 1000);
-          console.log(`[Server] No clients connected. Auto-shutdown in ${timeoutSec}s...`);
+          logger.log(`[Server] No clients connected. Auto-shutdown in ${timeoutSec}s...`);
           shutdownTimer = setTimeout(() => {
-            console.log('[Server] Auto-shutdown: no clients for timeout period. Exiting.');
+            logger.log('[Server] Auto-shutdown: no clients for timeout period. Exiting.');
             gameServer.gracefullyShutdown().then(() => process.exit(0));
           }, SHUTDOWN_TIMEOUT_MS);
         }
       } else {
         // Clients connected - cancel any pending shutdown
         if (shutdownTimer) {
-          console.log('[Server] Client connected - auto-shutdown cancelled.');
+          logger.log('[Server] Client connected - auto-shutdown cancelled.');
           clearTimeout(shutdownTimer);
           shutdownTimer = null;
         }
@@ -227,9 +232,9 @@ GameRoom.prototype.onJoin = function(client, options) {
   const ip = (client as unknown as { remoteAddress?: string }).remoteAddress || 'unknown';
   const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
   const name = (options as { name?: string })?.name || '(unnamed)';
-  console.log(`[Server] PLAYER JOINED: "${name}" from ${isLocal ? 'localhost' : 'LAN: ' + ip} (session: ${client.sessionId})`);
+  logger.log(`[Server] PLAYER JOINED: "${name}" from ${isLocal ? 'localhost' : 'LAN: ' + ip} (session: ${client.sessionId})`);
   if (shutdownTimer) {
-    console.log('[Server] Client connected - auto-shutdown cancelled.');
+    logger.log('[Server] Client connected - auto-shutdown cancelled.');
     clearTimeout(shutdownTimer);
     shutdownTimer = null;
   }
@@ -240,7 +245,7 @@ GameRoom.prototype.onJoin = function(client, options) {
 const origOnLeave = GameRoom.prototype.onLeave;
 GameRoom.prototype.onLeave = function(client, consented) {
   const ip = (client as unknown as { remoteAddress?: string }).remoteAddress || 'unknown';
-  console.log(`[Server] PLAYER LEFT: session ${client.sessionId} from ${ip} (consented: ${consented})`);
+  logger.log(`[Server] PLAYER LEFT: session ${client.sessionId} from ${ip} (consented: ${consented})`);
   const result = origOnLeave.call(this, client, consented);
   // Schedule a check shortly after leave to detect empty server sooner
   setTimeout(checkAutoShutdown, 2000);
@@ -260,9 +265,9 @@ httpServer.on('upgrade', (req, socket) => {
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim()
     || req.socket.remoteAddress || 'unknown';
   const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
-  console.log(`[Server] WebSocket upgrade ${isLocal ? '(local)' : 'from LAN: ' + ip} — path: ${req.url}`);
+  logger.log(`[Server] WebSocket upgrade ${isLocal ? '(local)' : 'from LAN: ' + ip} — path: ${req.url}`);
   socket.on('error', (err: Error) => {
-    console.error(`[Server] WebSocket error from ${ip}: ${err.message}`);
+    logger.error(`[Server] WebSocket error from ${ip}: ${err.message}`);
   });
 });
 
@@ -271,7 +276,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   const lanAddresses = getLANAddresses();
   const timeoutSec = Math.round(SHUTDOWN_TIMEOUT_MS / 1000);
 
-  console.log(`
+  logger.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║     GEOMETRY WARS 3D - MULTIPLAYER SERVER                ║
 ╠══════════════════════════════════════════════════════════╣
@@ -291,27 +296,27 @@ ${lanAddresses.length === 0 ? '║    (none — check your network connection)'.
 `);
 
   if (lanAddresses.length > 0) {
-    console.log('[Server] LAN addresses detected:');
+    logger.log('[Server] LAN addresses detected:');
     for (const ip of lanAddresses) {
-      console.log(`[Server]   Game:   http://${ip}:3000`);
-      console.log(`[Server]   Server: ws://${ip}:${PORT}`);
+      logger.log(`[Server]   Game:   http://${ip}:3000`);
+      logger.log(`[Server]   Server: ws://${ip}:${PORT}`);
     }
   } else {
-    console.log('[Server] WARNING: No LAN addresses detected. LAN play may not work.');
-    console.log('[Server] Check that your network adapter is active and connected.');
+    logger.log('[Server] WARNING: No LAN addresses detected. LAN play may not work.');
+    logger.log('[Server] Check that your network adapter is active and connected.');
   }
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
-  console.log('\nShutting down server...');
+  logger.log('\nShutting down server...');
   gameServer.gracefullyShutdown().then(() => {
     process.exit(0);
   });
 });
 
 process.on('SIGTERM', () => {
-  console.log('\nShutting down server...');
+  logger.log('\nShutting down server...');
   gameServer.gracefullyShutdown().then(() => {
     process.exit(0);
   });
