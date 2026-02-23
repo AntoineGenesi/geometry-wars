@@ -22,8 +22,11 @@ export class PeanutSurface extends Surface {
   constructor(config?: PeanutConfig) {
     const baseRadius = config?.baseRadius ?? 6
     const waistDepth = config?.waistDepth ?? 0.4
-    const gridSegmentsU = config?.gridSegmentsU ?? 24
-    const gridSegmentsV = config?.gridSegmentsV ?? 20
+    // Higher resolution than other surfaces: the narrow neck region requires more
+    // faces for smooth geodesic face-walking transitions. Low resolution at the neck
+    // causes coarse face exits that can stall movement across the waist area.
+    const gridSegmentsU = config?.gridSegmentsU ?? 32
+    const gridSegmentsV = config?.gridSegmentsV ?? 28
 
     ;(PeanutSurface as any).__initData = {
       baseRadius,
@@ -49,8 +52,8 @@ export class PeanutSurface extends Surface {
       (PeanutSurface as any).__initData ?? {
         baseRadius: 6,
         waistDepth: 0.4,
-        gridSegmentsU: 24,
-        gridSegmentsV: 20,
+        gridSegmentsU: 32,
+        gridSegmentsV: 28,
       }
     )
   }
@@ -146,7 +149,24 @@ export class PeanutSurface extends Surface {
   }
 
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
-    // Approximate: find the closest phi by scanning, then compute theta
+    // Approximate: find the closest phi by scanning, then compute theta.
+    // worldPos may be in scaled world space (e.g. EPIC map applies scale 2.0 to the
+    // surface group). Normalize by the apparent scale — compute the actual surface
+    // radius at the query point and compare against the unit profile to find phi.
+    // This gives correct UV even when the surface group is scaled.
+    const xzDist = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z)
+    const totalDist = Math.sqrt(xzDist * xzDist + worldPos.y * worldPos.y)
+
+    // Estimate the scale by comparing the query distance to the expected surface radius.
+    // We use the max profile radius (at phi=0, r = baseRadius*(1+waistDepth)) as reference.
+    const maxProfileR = this.baseRadius * (1 + this.waistDepth)
+    // Guard: if the query is very close to the origin, fallback to scale 1.
+    const estimatedScale = totalDist > 1e-3 ? totalDist / maxProfileR : 1
+
+    // Normalize the query position into local (unscaled) space for profile matching.
+    const localXZ = estimatedScale > 1e-6 ? xzDist / estimatedScale : xzDist
+    const localY  = estimatedScale > 1e-6 ? worldPos.y / estimatedScale : worldPos.y
+
     let bestPhi = 0
     let bestDist = Infinity
     const steps = 100
@@ -157,10 +177,9 @@ export class PeanutSurface extends Surface {
       const ringRadius = r * Math.sin(phi)
       const ringY = r * Math.cos(phi)
 
-      const xzDist = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z)
       const dist = Math.sqrt(
-        (xzDist - ringRadius) * (xzDist - ringRadius) +
-        (worldPos.y - ringY) * (worldPos.y - ringY)
+        (localXZ - ringRadius) * (localXZ - ringRadius) +
+        (localY - ringY) * (localY - ringY)
       )
 
       if (dist < bestDist) {

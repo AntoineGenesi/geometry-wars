@@ -78,7 +78,12 @@ export class HalfEdgeMesh {
     // 1. Build position-based vertex canonicalization.
     // THREE.js geometries duplicate vertices at UV seams (sphere poles, torus seams).
     // We need to match edges by position, not by index.
-    const PRECISION = 1e-5;
+    // 1e-4 (vs 1e-5) gives a wider merge window for surfaces with thin geometry
+    // (e.g. peanut neck, capsule poles) where floating-point vertex positions can
+    // differ by up to ~1e-5 due to sin/cos computation order. Loose enough to
+    // merge genuine seam duplicates; tight enough to distinguish adjacent vertices
+    // (minimum vertex separation on typical meshes is > 1e-3).
+    const PRECISION = 1e-4;
     const posKey = (idx: number): string => {
       const x = Math.round(posAttr.getX(idx) / PRECISION) * PRECISION;
       const y = Math.round(posAttr.getY(idx) / PRECISION) * PRECISION;
