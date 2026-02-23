@@ -1016,6 +1016,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   EnemyDeathCallbacks.wire(enemySpawner);
   EnemyDeathCallbacks.wireBossCallbacks(enemySpawner, onBossHealthUpdate, onBossPhaseChange);
   EnemyDeathCallbacks.wireVirusCallback(enemySpawner);
+  EnemyDeathCallbacks.wireFractalSnakeCallbacks(enemySpawner, game.scene);
 
   // -- Gate: detonation effect (kills nearby enemies, awards score) --
   Gate.onDetonate = (position: THREE.Vector3, score: number) => {

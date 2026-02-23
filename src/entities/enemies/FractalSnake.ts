@@ -71,8 +71,21 @@ export class FractalSnake extends BaseEnemy {
   /** Called when a follower is freed (damaged to 0). Sub-task 3 wires this. */
   static onFollowerFreed: ((u: number, v: number, enemyType: string) => void) | null = null;
 
-  /** Called when the head dies. Passes all currently alive follower positions. */
-  static onHeadDeath: ((followers: Array<{ u: number; v: number; enemyType: string }>) => void) | null = null;
+  /** Called when the head dies. Passes the FractalSnake instance so caller can triggerShock(). */
+  static onHeadDeath: ((self: FractalSnake) => void) | null = null;
+
+  // ─────────────────────────── shock effect state ──────────────────────────
+
+  /** Lines drawn from head to followers during electric shock. */
+  private _shockLines: THREE.Line[] = [];
+  /** Time remaining on the shock effect (seconds). */
+  private _shockTimeLeft: number = 0;
+  /** Total duration of the shock effect. */
+  private static readonly SHOCK_DURATION = 0.8;
+  /** Scene reference during shock (needed to remove lines when done). */
+  private _shockScene: THREE.Scene | null = null;
+  /** Followers queued to be freed as shock progresses (indices into _followers). */
+  private _shockFollowerQueue: number[] = [];
 
   constructor(
     u: number = 0.5,
@@ -195,15 +208,150 @@ export class FractalSnake extends BaseEnemy {
   die(): void {
     if (!this.alive) return;
 
-    // Fire callback with all currently alive followers before dying
+    // Fire callback with self so caller can invoke triggerShock()
     if (FractalSnake.onHeadDeath) {
-      const aliveFollowers = this._followers.filter((f) => f.alive);
-      FractalSnake.onHeadDeath(
-        aliveFollowers.map((f) => ({ u: f.u, v: f.v, enemyType: f.enemyType })),
-      );
+      FractalSnake.onHeadDeath(this);
     }
 
     super.die();
+  }
+
+  // ─────────────────────────── follower collision ──────────────────────────
+
+  /**
+   * Hit-test a bullet (UV coords) against all alive followers.
+   * Returns the index of the first follower within `radius` UV units, or null.
+   */
+  hitTestFollower(u: number, v: number, radius: number): number | null {
+    const radiusSq = radius * radius;
+    for (let i = 0; i < this._followers.length; i++) {
+      const f = this._followers[i];
+      if (!f.alive) continue;
+      const du = u - f.u;
+      const dv = v - f.v;
+      if (du * du + dv * dv < radiusSq) return i;
+    }
+    return null;
+  }
+
+  /**
+   * Apply damage to follower at `idx`.
+   * Returns true if the follower died (health reached 0).
+   * Fires `onFollowerFreed` when the follower dies.
+   */
+  damageFollower(idx: number, amount: number): boolean {
+    const f = this._followers[idx];
+    if (!f || !f.alive) return false;
+
+    f.health -= amount;
+    if (f.health <= 0) {
+      f.alive = false;
+      f.mesh.visible = false;
+      if (FractalSnake.onFollowerFreed) {
+        FractalSnake.onFollowerFreed(f.u, f.v, f.enemyType);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // ─────────────────────────── electric shock ──────────────────────────────
+
+  /**
+   * Trigger the electric shock death effect.
+   * Creates cyan line segments from the head to each alive follower.
+   * Over SHOCK_DURATION, followers are progressively freed (calling onFollowerFreed).
+   * Called from EnemyDeathCallbacks when the head dies.
+   */
+  triggerShock(scene: THREE.Scene): void {
+    if (this._shockTimeLeft > 0) return; // already shocking
+
+    this._shockScene = scene;
+    this._shockTimeLeft = FractalSnake.SHOCK_DURATION;
+
+    // Build queue of alive follower indices (front to back)
+    this._shockFollowerQueue = this._followers
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => f.alive)
+      .map(({ i }) => i);
+
+    // Create shock lines: one line per alive follower, head → follower
+    const headPos = this.position;
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x00ffee,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    for (const idx of this._shockFollowerQueue) {
+      const f = this._followers[idx];
+      const points = [
+        headPos.clone(),
+        f.mesh.position.clone(),
+      ];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.Line(geo, lineMat.clone());
+      scene.add(line);
+      this._shockLines.push(line);
+    }
+  }
+
+  /**
+   * Update the electric shock effect each frame.
+   * Progressively frees followers as the shock duration elapses.
+   * Call from GameLoop for all active FractalSnakes.
+   */
+  updateShockEffect(dt: number): void {
+    if (this._shockTimeLeft <= 0) return;
+
+    const prevTime = this._shockTimeLeft;
+    this._shockTimeLeft -= dt;
+    const elapsed = FractalSnake.SHOCK_DURATION - this._shockTimeLeft;
+    const progress = elapsed / FractalSnake.SHOCK_DURATION;
+
+    // Free followers progressively over the shock duration
+    const totalFollowers = this._shockFollowerQueue.length;
+    if (totalFollowers > 0) {
+      const targetFreed = Math.floor(progress * totalFollowers);
+      const currentFreed = totalFollowers - this._shockFollowerQueue.length;
+      const toFree = Math.min(targetFreed - currentFreed, this._shockFollowerQueue.length);
+
+      for (let i = 0; i < toFree; i++) {
+        const idx = this._shockFollowerQueue.shift()!;
+        const f = this._followers[idx];
+        if (f && f.alive) {
+          f.alive = false;
+          f.mesh.visible = false;
+          if (FractalSnake.onFollowerFreed) {
+            FractalSnake.onFollowerFreed(f.u, f.v, f.enemyType);
+          }
+        }
+      }
+    }
+
+    // Fade out shock lines
+    const fadeOpacity = 1 - progress;
+    for (const line of this._shockLines) {
+      (line.material as THREE.LineBasicMaterial).opacity = Math.max(0, fadeOpacity * 0.9);
+    }
+
+    // Clean up when done
+    if (this._shockTimeLeft <= 0) {
+      this._removeShockLines();
+    }
+  }
+
+  private _removeShockLines(): void {
+    for (const line of this._shockLines) {
+      this._shockScene?.remove(line);
+      (line.geometry as THREE.BufferGeometry).dispose();
+      (line.material as THREE.LineBasicMaterial).dispose();
+    }
+    this._shockLines = [];
+    this._shockScene = null;
+    this._shockFollowerQueue = [];
   }
 
   // ─────────────────────────── UV movement mode ────────────────────────────
@@ -334,6 +482,9 @@ export class FractalSnake extends BaseEnemy {
   // ─────────────────────────── cleanup ─────────────────────────────────────
 
   destroy(): void {
+    // Clean up any active shock lines
+    this._removeShockLines();
+
     for (const follower of this._followers) {
       this.followerRoot.remove(follower.mesh);
       follower.mesh.traverse((child) => {

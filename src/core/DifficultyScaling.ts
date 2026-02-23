@@ -267,7 +267,7 @@ export interface ScaledWaveEntry {
  */
 const BASIC_TYPES = ['grunt', 'wanderer', 'duck'];
 const MID_TYPES = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'orbiter', 'approach_glow'];
-const HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker'];
+const HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker', 'fractal_snake'];
 const ELITE_TYPES = ['gate', 'virus', 'painter'];
 const SPLITTING_TYPES = [
   'giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron',

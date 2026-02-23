@@ -41,6 +41,7 @@ import { Splitter } from './Splitter';
 import { Phaser } from './Phaser';
 import { ApproachGlow } from './ApproachGlow';
 import { StealthStalker } from './StealthStalker';
+import { FractalSnake } from './FractalSnake';
 import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 import type { EnemyDecoratorSystem } from '../../rendering/EnemyDecorators';
 import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
@@ -56,7 +57,7 @@ export type EnemyType =
   | 'giant_wanderer' | 'giant_rocket' | 'giant_snake' | 'giant_neutron'
   | 'cluster' | 'helix' | 'fractal' | 'swarm'
   | 'lurker' | 'orbiter' | 'splitter' | 'phaser'
-  | 'approach_glow' | 'stealth_stalker'
+  | 'approach_glow' | 'stealth_stalker' | 'fractal_snake'
   | 'boss_sapphire' | 'boss_ruby' | 'boss_emerald' | 'boss_topaz' | 'boss_amethyst' | 'boss_opal';
 
 export interface SpawnRegion {
@@ -101,6 +102,8 @@ const SPAWN_WARNING_DURATION = 0.8; // seconds before enemy materializes
 export class EnemySpawner {
   private scene: THREE.Scene;
   private enemies: BaseEnemy[] = [];
+  /** Active FractalSnake instances — needed for follower hit detection and shock updates. */
+  private fractalSnakes: FractalSnake[] = [];
   /** Generation for next splitter spawn (0 = default large, 1 = medium, 2 = tiny) */
   _nextSplitterGen: number = 0;
   private getTransform: (u: number, v: number) => {
@@ -541,6 +544,9 @@ export class EnemySpawner {
       case 'stealth_stalker':
         enemy = new StealthStalker(u, v);
         break;
+      case 'fractal_snake':
+        enemy = new FractalSnake(u, v, { numRows: 2, followersPerRow: 4 });
+        break;
       case 'boss_sapphire':
         enemy = new Boss('sapphire', u, v);
         break;
@@ -663,6 +669,12 @@ export class EnemySpawner {
       this.scene.add(enemy.segmentRoot);
     }
 
+    // FractalSnake follower meshes live in a separate root group
+    if (enemy instanceof FractalSnake) {
+      this.scene.add(enemy.followerRoot);
+      this.fractalSnakes.push(enemy);
+    }
+
     // Add to enemies list (but hidden/invulnerable during warning)
     this.enemies.push(enemy);
 
@@ -700,6 +712,10 @@ export class EnemySpawner {
 
   getEnemies(): BaseEnemy[] {
     return this.enemies;
+  }
+
+  getFractalSnakes(): FractalSnake[] {
+    return this.fractalSnakes;
   }
 
   update(dt: number, playerU: number, playerV: number): void {
@@ -801,6 +817,11 @@ export class EnemySpawner {
         if (enemy instanceof Snake) {
           this.scene.remove(enemy.segmentRoot);
         }
+        if (enemy instanceof FractalSnake) {
+          this.scene.remove(enemy.followerRoot);
+          const fsIdx = this.fractalSnakes.indexOf(enemy);
+          if (fsIdx !== -1) this.fractalSnakes.splice(fsIdx, 1);
+        }
         enemy.destroy();
         // skip (don't copy to writeIdx)
       } else {
@@ -826,9 +847,13 @@ export class EnemySpawner {
       if (enemy instanceof Snake) {
         this.scene.remove(enemy.segmentRoot);
       }
+      if (enemy instanceof FractalSnake) {
+        this.scene.remove(enemy.followerRoot);
+      }
       enemy.destroy();
     }
     this.enemies = [];
+    this.fractalSnakes = [];
 
     // Clean up any active spawn warnings
     for (const warning of this.spawnWarnings) {

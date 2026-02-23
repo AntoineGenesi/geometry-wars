@@ -1,8 +1,10 @@
+import * as THREE from 'three';
 import { EnemySpawner } from './EnemySpawner';
 import { BaseEnemy } from './BaseEnemy';
 import { Boss } from './Boss';
 import { Spawner } from './Spawner';
 import { Snake } from './Snake';
+import { FractalSnake } from './FractalSnake';
 import { TitanGrunt } from './TitanGrunt';
 import { TitanSpinner } from './TitanSpinner';
 import { TitanWeaver } from './TitanWeaver';
@@ -127,6 +129,27 @@ export class EnemyDeathCallbacks {
 
     // Boss system callbacks are wired separately (need more context)
     // Virus infection callback is wired separately (needs spawner reference)
+  }
+
+  /**
+   * Wire FractalSnake callbacks.
+   * Called after wire() — requires scene reference for shock effect.
+   */
+  static wireFractalSnakeCallbacks(enemySpawner: EnemySpawner, scene: THREE.Scene): void {
+    // When a follower is freed (bullet hit or shock), spawn the corresponding enemy type
+    FractalSnake.onFollowerFreed = (u: number, v: number, enemyType: string) => {
+      const offsetU = (Math.random() - 0.5) * 0.05;
+      const offsetV = (Math.random() - 0.5) * 0.05;
+      const spawnType = enemyType === 'titan_grunt' ? 'titan_grunt' : 'grunt';
+      enemySpawner.spawn(spawnType, Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+    };
+
+    // When the head dies, trigger the electric shock (which frees followers progressively)
+    FractalSnake.onHeadDeath = (fractalSnake: FractalSnake) => {
+      fractalSnake.triggerShock(scene);
+      // Followers are freed progressively as shock completes via updateShockEffect()
+      // onFollowerFreed handles spawning grunts at each freed follower position
+    };
   }
 
   /**
