@@ -19,6 +19,7 @@ import { loadDDASettings, saveDDASettings, type DDASettingsData } from '../diffi
 import { getActiveStyleName, getActiveStyleIndex, clearVisualStyle, saveVisualStyle } from './VisualStyleSettings';
 import { VISUAL_PRESETS } from './VisualPlayground';
 import { loadCustomStyles } from './VisualStyleEditor';
+import { isMobile } from '../core/MobileDetector';
 
 // ---------------------------------------------------------------------------
 // Exported settings interfaces
@@ -41,12 +42,17 @@ export interface AudioSettings {
   musicPreset: MusicPreset;
 }
 
+export interface DebugSettings {
+  showDebugStatistics: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Defaults
 // ---------------------------------------------------------------------------
 
 const GRAPHICS_STORAGE_KEY = 'gw3d-graphics-settings';
 const AUDIO_STORAGE_KEY = 'gw3d-audio-settings';
+const DEBUG_STORAGE_KEY = 'gw3d-debug-settings';
 
 const DEFAULT_GRAPHICS: GraphicsSettings = {
   qualityPreset: 'high',
@@ -63,6 +69,10 @@ const DEFAULT_AUDIO: AudioSettings = {
   sfxVolume: 80,
   musicVolume: 50,
   musicPreset: 'electronic',
+};
+
+const DEFAULT_DEBUG: DebugSettings = {
+  showDebugStatistics: !isMobile() && process.env.NODE_ENV !== 'production',
 };
 
 /** Quality preset values (maps preset name to concrete graphics values). */
@@ -155,12 +165,37 @@ export function saveAudioSettings(settings: AudioSettings): void {
   }
 }
 
+export function loadDebugSettings(): DebugSettings {
+  try {
+    const raw = localStorage.getItem(DEBUG_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_DEBUG, ...parsed };
+    }
+  } catch {
+    // corrupted or unavailable
+  }
+  return { ...DEFAULT_DEBUG };
+}
+
+export function saveDebugSettings(settings: DebugSettings): void {
+  try {
+    localStorage.setItem(DEBUG_STORAGE_KEY, JSON.stringify(settings));
+  } catch {
+    // localStorage unavailable
+  }
+}
+
 export function getDefaultGraphics(): GraphicsSettings {
   return { ...DEFAULT_GRAPHICS };
 }
 
 export function getDefaultAudio(): AudioSettings {
   return { ...DEFAULT_AUDIO };
+}
+
+export function getDefaultDebug(): DebugSettings {
+  return { ...DEFAULT_DEBUG };
 }
 
 export function applyQualityPreset(preset: string): GraphicsSettings {
@@ -186,18 +221,22 @@ export class SettingsMenu {
   private static cachedGPUReport: GPUCapabilityReport | null = null;
   /** Global visual style change callback -- set once, called by ANY SettingsMenu instance. */
   private static globalVisualStyleChangeCallback: ((preset: import('./VisualPlayground').VisualPreset | null) => void) | null = null;
+  /** Global debug settings change callback -- set once, called by ANY SettingsMenu instance. */
+  private static globalDebugChangeCallback: ((settings: DebugSettings) => void) | null = null;
 
   private container: HTMLDivElement;
   private styleElement: HTMLStyleElement | null = null;
   private onCloseCallback: (() => void) | null = null;
   private onGraphicsChangeCallback: ((settings: GraphicsSettings) => void) | null = null;
   private onAudioChangeCallback: ((settings: AudioSettings) => void) | null = null;
+  private onDebugChangeCallback: ((settings: DebugSettings) => void) | null = null;
   private onDDAChangeCallback: ((enabled: boolean) => void) | null = null;
   private onVisualStyleChangeCallback: ((preset: import('./VisualPlayground').VisualPreset | null) => void) | null = null;
 
   private activeTab: TabName = 'gpu';
   private graphicsSettings: GraphicsSettings;
   private audioSettings: AudioSettings;
+  private debugSettings: DebugSettings;
 
   // External data injected before show()
   private gpuReport: GPUCapabilityReport | null = null;
@@ -215,6 +254,7 @@ export class SettingsMenu {
   constructor() {
     this.graphicsSettings = loadGraphicsSettings();
     this.audioSettings = loadAudioSettings();
+    this.debugSettings = loadDebugSettings();
     this.ddaSettings = loadDDASettings();
 
     this.container = document.createElement('div');
@@ -256,6 +296,12 @@ export class SettingsMenu {
     SettingsMenu.globalVisualStyleChangeCallback = callback;
   }
 
+  /** Static setter for debug settings change callback -- called by ANY SettingsMenu instance
+   *  when the user toggles debug settings. Set once during game initialization. */
+  static setGlobalDebugChangeCallback(callback: (settings: DebugSettings) => void): void {
+    SettingsMenu.globalDebugChangeCallback = callback;
+  }
+
   /** Set a function that returns live perf data each tick. */
   setPerfDataProvider(provider: () => { fps: number; drawCalls: number; entityCount: number; memoryMB: number }): void {
     this.perfDataProvider = provider;
@@ -276,6 +322,10 @@ export class SettingsMenu {
 
   onAudioChange(callback: (settings: AudioSettings) => void): void {
     this.onAudioChangeCallback = callback;
+  }
+
+  onDebugChange(callback: (settings: DebugSettings) => void): void {
+    this.onDebugChangeCallback = callback;
   }
 
   /** Register callback for DDA toggle changes. */
@@ -332,6 +382,10 @@ export class SettingsMenu {
 
   getAudioSettings(): AudioSettings {
     return { ...this.audioSettings };
+  }
+
+  getDebugSettings(): DebugSettings {
+    return { ...this.debugSettings };
   }
 
   // -----------------------------------------------------------------------
@@ -981,6 +1035,15 @@ export class SettingsMenu {
         <span class="setting-label">Auto-adjust quality</span>
         <div class="toggle ${this.adaptiveQualityEnabled ? 'on' : ''}" id="toggle-adaptive" data-setting="adaptiveQuality"></div>
       </div>
+
+      <div class="section-heading">DEBUG</div>
+      <div class="setting-row">
+        <span class="setting-label">Debug Statistics</span>
+        <div class="toggle ${this.debugSettings.showDebugStatistics ? 'on' : ''}" id="toggle-debug-stats" data-setting="showDebugStatistics"></div>
+      </div>
+      <div style="color:#668888;font-size:12px;margin-top:4px;line-height:1.5;">
+        Shows FPS, entity count, and performance overlay. Keyboard shortcut: F3.
+      </div>
     `;
   }
 
@@ -1176,6 +1239,14 @@ export class SettingsMenu {
   private attachPerformanceListeners(): void {
     this.attachToggle('toggle-adaptive', (on) => {
       this.adaptiveQualityEnabled = on;
+    });
+
+    this.attachToggle('toggle-debug-stats', (on) => {
+      this.debugSettings = { ...this.debugSettings, showDebugStatistics: on };
+      saveDebugSettings(this.debugSettings);
+      const debugSettings = this.getDebugSettings();
+      this.onDebugChangeCallback?.(debugSettings);
+      SettingsMenu.globalDebugChangeCallback?.(debugSettings);
     });
   }
 

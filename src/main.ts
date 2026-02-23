@@ -68,7 +68,7 @@ import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { ProfilingOverlay } from './ui/ProfilingOverlay';
 import { ProfilingPersistence } from './core/ProfilingPersistence';
-import { SettingsMenu } from './ui/SettingsMenu';
+import { SettingsMenu, loadDebugSettings } from './ui/SettingsMenu';
 import {
   computeDifficultyLevel,
   generateScaledEndlessWave,
@@ -392,6 +392,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
+  // Set global debug change callback
+  SettingsMenu.setGlobalDebugChangeCallback((debugSettings) => {
+    if (debugSettings.showDebugStatistics) {
+      debugOverlay.show();
+    } else {
+      debugOverlay.hide();
+    }
+  });
+
   // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
   const savedVisualMode = loadVisualMode();
   game.setVisualMode(savedVisualMode);
@@ -701,6 +710,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const profilingPersistence = new ProfilingPersistence();
   const entityAudit = new EntityAudit();
   debugOverlay.setRendererBackend(game.backend);
+
+  // Apply debug settings (hide overlay if disabled)
+  const debugSettings = loadDebugSettings();
+  if (!debugSettings.showDebugStatistics) {
+    debugOverlay.hide();
+  }
 
   // -- Performance telemetry logger (persistent, never deleted) --
   const perfLogger = new PerformanceLogger(surfaceType);
