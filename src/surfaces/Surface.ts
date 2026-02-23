@@ -186,6 +186,13 @@ export abstract class Surface {
     return this.worldToSurface(virtualPos)
   }
 
+  /** Update the surface material opacity. */
+  setSurfaceOpacity(opacity: number): void {
+    if (this.mesh.material && typeof (this.mesh.material as any).opacity === 'number') {
+      (this.mesh.material as any).opacity = opacity
+    }
+  }
+
   /**
    * Apply world rotation to a local surface point.
    * Used by getPoint() implementations to transform local coords to world coords.

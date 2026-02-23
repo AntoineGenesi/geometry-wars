@@ -49,6 +49,7 @@ import { InputManager, InputState } from '../input/InputManager';
 import { DepthOcclusionSystem } from '../rendering/DepthOpacity';
 import { CameraController } from './CameraController';
 import { MapSize, getMapSizeScaleFactor } from './MapSize';
+import { loadGraphicsSettings } from '../ui/SettingsMenu';
 
 // ---------------------------------------------------------------------------
 // Configuration Types
@@ -220,6 +221,11 @@ export class GameInstance {
     this.game.scene.add(this._surface.group);
     this._surface.mesh.updateMatrixWorld(true);
     this._meshSurface = new MeshSurface(this._surface.mesh);
+
+    // Apply surface opacity setting from user preferences
+    const graphicsSettings = loadGraphicsSettings();
+    const surfaceOpacity = graphicsSettings.surfaceOpaque ? 1.0 : 0.18;
+    this._surface.setSurfaceOpacity(surfaceOpacity);
 
     // -- Input (container-aware for correct mouse aim in embedded playgrounds) --
     this.input = new InputManager();
@@ -670,6 +676,11 @@ export class GameInstance {
     this.game.scene.add(this._surface.group);
     this._surface.mesh.updateMatrixWorld(true);
     this._meshSurface = new MeshSurface(this._surface.mesh);
+
+    // Apply surface opacity setting from user preferences
+    const graphicsSettings = loadGraphicsSettings();
+    const surfaceOpacity = graphicsSettings.surfaceOpaque ? 1.0 : 0.18;
+    this._surface.setSurfaceOpacity(surfaceOpacity);
 
     // Update subsystems
     this.bulletPool.setMeshSurface(this._meshSurface);

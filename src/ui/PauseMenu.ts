@@ -1,7 +1,7 @@
 import { ConfigurableInput } from '../input/ConfigurableInput';
 import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
-import { SettingsMenu } from './SettingsMenu';
+import { SettingsMenu, type GraphicsSettings } from './SettingsMenu';
 import { BackgroundMusic } from '../audio/BackgroundMusic';
 import { PerformanceLogger } from '../core/PerformanceLogger';
 import { createQRCodeDisplay } from './QRCode';
@@ -70,6 +70,7 @@ export class PauseMenu {
   private onResumeCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
   private onVisualModeChangeCallback: ((mode: 'pixelated' | 'modern') => void) | null = null;
+  private onGraphicsChangeCallback: ((settings: GraphicsSettings) => void) | null = null;
   private isPaused: boolean = false;
   private bgMusic: BackgroundMusic | null = null;
   private isHost: boolean = false;
@@ -627,6 +628,9 @@ export class PauseMenu {
     settingsBtn?.addEventListener('click', () => {
       const settings = new SettingsMenu();
       settings.show();
+      settings.onGraphicsChange((graphicsSettings) => {
+        this.onGraphicsChangeCallback?.(graphicsSettings);
+      });
       settings.onClose(() => {
         settings.dispose();
       });
@@ -1329,6 +1333,11 @@ export class PauseMenu {
    */
   onExit(callback: () => void): void {
     this.onExitCallback = callback;
+  }
+
+  /** Register callback for graphics settings changes. */
+  onGraphicsChange(callback: (settings: GraphicsSettings) => void): void {
+    this.onGraphicsChangeCallback = callback;
   }
 
   /**

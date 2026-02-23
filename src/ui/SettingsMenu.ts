@@ -33,6 +33,7 @@ export interface GraphicsSettings {
   trailEffects: boolean;
   maxEnemies: number;
   resolutionScale: number;
+  surfaceOpaque: boolean;
 }
 
 export interface AudioSettings {
@@ -62,6 +63,7 @@ const DEFAULT_GRAPHICS: GraphicsSettings = {
   trailEffects: true,
   maxEnemies: 500,
   resolutionScale: 1.0,
+  surfaceOpaque: false,
 };
 
 const DEFAULT_AUDIO: AudioSettings = {
@@ -84,6 +86,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: true,
     maxEnemies: 5000,
     resolutionScale: 1.0,
+    surfaceOpaque: false,
   },
   high: {
     bloomEnabled: true,
@@ -92,6 +95,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: true,
     maxEnemies: 500,
     resolutionScale: 1.0,
+    surfaceOpaque: false,
   },
   medium: {
     bloomEnabled: true,
@@ -100,6 +104,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: true,
     maxEnemies: 200,
     resolutionScale: 0.75,
+    surfaceOpaque: false,
   },
   low: {
     bloomEnabled: false,
@@ -108,6 +113,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: false,
     maxEnemies: 100,
     resolutionScale: 0.5,
+    surfaceOpaque: false,
   },
   minimal: {
     bloomEnabled: false,
@@ -116,6 +122,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     trailEffects: false,
     maxEnemies: 50,
     resolutionScale: 0.25,
+    surfaceOpaque: false,
   },
 };
 
@@ -991,6 +998,10 @@ export class SettingsMenu {
         <span class="setting-label">Trail Effects</span>
         <div class="toggle ${g.trailEffects ? 'on' : ''}" id="toggle-trails" data-setting="trailEffects"></div>
       </div>
+      <div class="setting-row">
+        <span class="setting-label">Surface Opacity</span>
+        <div class="toggle ${g.surfaceOpaque ? 'on' : ''}" id="toggle-surface-opaque" data-setting="surfaceOpaque"></div>
+      </div>
 
       <div class="section-heading">LIMITS</div>
       <div class="setting-row">
@@ -1204,6 +1215,12 @@ export class SettingsMenu {
     // Trail toggle
     this.attachToggle('toggle-trails', (on) => {
       this.graphicsSettings = { ...this.graphicsSettings, trailEffects: on, qualityPreset: 'custom' };
+      this.saveAndNotifyGraphics();
+    });
+
+    // Surface opacity toggle
+    this.attachToggle('toggle-surface-opaque', (on) => {
+      this.graphicsSettings = { ...this.graphicsSettings, surfaceOpaque: on, qualityPreset: 'custom' };
       this.saveAndNotifyGraphics();
     });
 
