@@ -21,6 +21,14 @@ export interface Projectile {
   // For mortar
   startPos?: THREE.Vector3;
   endPos?: THREE.Vector3;
+  // For spread shot animation: direction lerps from start to end over spreadDuration seconds
+  spreadStartDir?: THREE.Vector3;
+  spreadEndDir?: THREE.Vector3;
+  spreadDuration?: number;
+  // For split mechanic: child projectiles spawn at splitTime
+  canSplit?: boolean;
+  splitTime?: number;
+  isChild?: boolean;
 }
 
 /**
@@ -95,6 +103,8 @@ export class WeaponManager {
 
   // Materials for projectiles
   private projectileMaterials: Map<WeaponType, THREE.Material> = new Map();
+  // Distinct material for child (split) projectiles
+  private childSpreadMaterial: THREE.MeshBasicMaterial | null = null;
 
   constructor() {
     this.chainLightning = new ChainLightningEffect();
@@ -139,6 +149,13 @@ export class WeaponManager {
       transparent: true,
       opacity: 0.9,
     }));
+
+    // Child (split) projectiles - orange, visually distinct
+    this.childSpreadMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
+      transparent: true,
+      opacity: 0.85,
+    });
 
     // Homing - red
     this.projectileMaterials.set(WeaponType.Homing, new THREE.MeshBasicMaterial({
@@ -470,6 +487,12 @@ export class WeaponManager {
         mesh.position.copy(proj.position);
       }
 
+      // Check for spread pellet split (spawns child projectiles mid-flight)
+      if (proj.canSplit && proj.splitTime !== undefined && proj.age >= proj.splitTime) {
+        this.spawnSplitChildren(proj);
+        proj.canSplit = false;
+      }
+
       // Check collisions
       this.checkProjectileCollisions(proj, i);
     }
@@ -512,23 +535,35 @@ export class WeaponManager {
     const config = WEAPON_CONFIGS[WeaponType.Spread];
     const spreadAngle = Math.PI / 6; // 30 degrees total spread
     const bulletCount = 5;
+    // Spread animation: pellets start aimed at center, fan out over 0.35-0.5s
+    const spreadDuration = 0.35 + Math.random() * 0.15;
 
     // Use surface normal for rotation axis, fallback to world Y
     const rotationAxis = surfaceNormal ? surfaceNormal.clone().normalize() : new THREE.Vector3(0, 1, 0);
+    const centerDir = direction.clone().normalize();
 
     for (let i = 0; i < bulletCount; i++) {
-      const angle = (i - 2) * (spreadAngle / (bulletCount - 1));
-      const rotatedDir = direction.clone()
-        .applyAxisAngle(rotationAxis, angle);
+      const targetAngle = (i - 2) * (spreadAngle / (bulletCount - 1));
+      const targetDir = direction.clone().applyAxisAngle(rotationAxis, targetAngle).normalize();
 
-      this.createProjectile(
+      // 30% chance per pellet to split mid-flight (not the center pellet)
+      const willSplit = i !== 2 && Math.random() < 0.30;
+      const splitTime = willSplit ? 0.3 + Math.random() * 0.4 : undefined;
+
+      const proj = this.createProjectile(
         WeaponType.Spread,
         origin.clone(),
-        rotatedDir,
+        centerDir.clone(), // All pellets start aimed at center
         config.damage,
         config.projectileSpeed,
         4.0,
       );
+      // Attach spread animation metadata
+      proj.spreadStartDir = centerDir.clone();
+      proj.spreadEndDir = targetDir;
+      proj.spreadDuration = spreadDuration;
+      proj.canSplit = willSplit;
+      proj.splitTime = splitTime;
     }
   }
 
@@ -858,6 +893,38 @@ export class WeaponManager {
     });
   }
 
+  /**
+   * Spawn two diverging child projectiles from a split spread pellet.
+   * Children are orange, smaller, and cannot split again.
+   */
+  private spawnSplitChildren(parent: Projectile): void {
+    // Approximate local surface normal from position (works for sphere, rough for others)
+    const localNormal = parent.position.clone().normalize();
+    const splitAngle = Math.PI / 6; // 30° each side
+
+    for (let s = -1; s <= 1; s += 2) {
+      const childDir = parent.direction.clone().applyAxisAngle(localNormal, s * splitAngle).normalize();
+      const child = this.createProjectile(
+        WeaponType.Spread,
+        parent.position.clone(),
+        childDir,
+        parent.damage * 0.6,   // 60% of parent damage
+        parent.speed * 1.2,    // slightly faster
+        2.0,                   // shorter lifetime
+      );
+      child.isChild = true;
+
+      // Apply orange visual to distinguish from parent pellets
+      const mesh = this.projectileMeshes.get(child);
+      if (mesh && this.childSpreadMaterial) {
+        mesh.scale.setScalar(0.55);
+        if (mesh instanceof THREE.Mesh) {
+          mesh.material = this.childSpreadMaterial;
+        }
+      }
+    }
+  }
+
   // -------------------------------------------------------------------------
   // Projectile helpers
   // -------------------------------------------------------------------------
@@ -945,6 +1012,13 @@ export class WeaponManager {
         break;
 
       default:
+        // Spread animation: smoothly rotate to final angle over spreadDuration seconds
+        if (proj.spreadEndDir !== undefined && proj.spreadDuration !== undefined && proj.spreadStartDir !== undefined) {
+          const t = Math.min(proj.age / proj.spreadDuration, 1.0);
+          if (t < 1.0) {
+            proj.direction.lerpVectors(proj.spreadStartDir, proj.spreadEndDir, t).normalize();
+          }
+        }
         // Linear movement
         proj.position.add(proj.direction.clone().multiplyScalar(proj.speed * dt));
         break;
@@ -1281,6 +1355,8 @@ export class WeaponManager {
     for (const mat of this.projectileMaterials.values()) {
       mat.dispose();
     }
+    this.childSpreadMaterial?.dispose();
+    this.childSpreadMaterial = null;
   }
 }
 
