@@ -8,6 +8,18 @@
 
 ---
 
+## S28a: Pause Menu Buffs/Level/Companions (2026-02-23)
+
+Feature: Pause menu now shows player level badge, active companions, cumulative bonuses, and active buffs.
+
+- [ ] **Press ESC in SP game** — Pause menu should show a "PLAYER LEVEL" section with level number and title (e.g., "5 - Destroyer"). Level 0 "Rookie" section is still visible since player always has a level.
+- [ ] **Cumulative bonuses visible** — If at any level above 0 or have any buffs, "CUMULATIVE BONUSES" section shows +X% Damage, +X% Fire Rate, +X% Move Speed.
+- [ ] **Active buffs listed** — Pick up a buff drop mid-game, open pause, confirm the buff appears in "ACTIVE BUFFS" section with name, description, and current value.
+- [ ] **Companions section** — If you have Protector Drones, Guardian, or Hunter companions active, "COMPANIONS" section appears listing types and counts.
+- [ ] **MP pause menu** — In LAN game, pressing ESC shows same player level + cumulative bonuses in the MP pause menu.
+
+---
+
 ## S28a: Voting Screen After Round End (2026-02-23)
 
 Bug: After all players died in LAN mode, game restarted immediately with no voting screen shown.
