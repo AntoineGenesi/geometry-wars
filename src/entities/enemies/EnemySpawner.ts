@@ -714,10 +714,12 @@ export class EnemySpawner {
         this.spawnWarnings.splice(i, 1);
 
         // Make enemy visible (find the materializing enemy at this position)
+        // GHOST FIX: tolerance increased from 0.001 to 0.05 (matches MIN_ENEMY_SEPARATION)
+        // to handle any residual UV drift from forces applied before separation was gated
         for (const enemy of this.enemies) {
           if (enemy.isMaterializing
-              && Math.abs(enemy.surfacePosition.u - warning.u) < 0.001
-              && Math.abs(enemy.surfacePosition.v - warning.v) < 0.001) {
+              && Math.abs(enemy.surfacePosition.u - warning.u) < 0.05
+              && Math.abs(enemy.surfacePosition.v - warning.v) < 0.05) {
             enemy.isMaterializing = false;
             if (enemy.mesh) {
               if (!enemy.isInstanced) {
@@ -862,6 +864,7 @@ export class EnemySpawner {
     for (let i = 0; i < this.enemies.length; i++) {
       const e = this.enemies[i];
       if (!e.active) continue;
+      if (e.isMaterializing) continue; // GHOST FIX: don't push materializing enemies' UV coords
       this.sepActiveIndices.push(i);
       const cx = (e.surfacePosition.u * invCell) | 0;
       const cy = (e.surfacePosition.v * invCell) | 0;

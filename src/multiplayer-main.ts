@@ -1196,6 +1196,7 @@ function main(): void {
     bulletPool.forEachActive((bulletIdx, bulletPos, bulletData) => {
       for (const enemy of enemies) {
         if (!enemy.active || !enemy.alive) continue;
+        if (enemy.isMaterializing) continue; // GHOST FIX: can't shoot materializing enemies
         const dist = bulletPos.distanceTo(enemy.position);
         if (dist < enemy.radius + 0.15) {
           bulletPool.kill(bulletIdx);
@@ -1242,7 +1243,8 @@ function main(): void {
       const mods = ssm.getFireModifiers();
       if (mods.isShielded) continue;
       for (const enemy of allEnemies) {
-        if (!enemy.active) continue;
+        if (!enemy.active || !enemy.alive) continue;
+        if (enemy.isMaterializing) continue; // GHOST FIX: materializing enemies can't harm player
         const dist = player.mesh.position.distanceTo(enemy.position);
         if (dist < player.mesh.scale.x * 0.3 + enemy.radius) {
           player.die();
