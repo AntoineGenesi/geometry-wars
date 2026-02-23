@@ -2,9 +2,27 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-02-17
+> **Last updated:** 2026-02-23
 >
 > **Visual Test Results (2026-02-12, commit a722f6a):** Headless Puppeteer + SwiftShader testing completed. Items marked `[V5 PASS]` were verified visually at Level 5. Items marked `[V5 INCONCLUSIVE]` could not be tested headless (need real browser). See `tasks/visual-test-human-todos.md` and `tasks/lan-visual-testing.md` for full details.
+
+---
+
+## Session 27h Weapon Rendering in MP (2026-02-23)
+
+**Task:** s27h-weapon-rendering-broken-mp — all weapons other than blaster had no visual in LAN MP.
+
+**How to test:** Start a LAN game (host + join), pick up a weapon pickup, fire it.
+
+- [ ] **Spread Shot renders** — Bullets appear as small yellow spheres in a fan pattern (not just cyan blaster bolts).
+- [ ] **Piercing Beam renders** — Bullets appear as elongated red capsules (longer/thinner than blaster).
+- [ ] **Homing Missiles render** — Bullets appear as green cone shapes that curve toward enemies.
+- [ ] **Plasma Mortar renders** — Bullets appear as a large projectile (visually distinct from blaster).
+- [ ] **Tesla Coil renders** — Lightning arc field appears around player when holding shoot (not just a bullet). Requires picking up TeslaCoil and holding fire.
+- [ ] **Chain Lightning renders** — Lightning arcs jump between enemies when firing. Requires ChainLightning pickup.
+- [ ] **Laser Beam renders** — Red beam extends from player when holding shoot.
+- [ ] **Weapon visuals match weapon type** — After cycling weapons with [E], the bullet visual changes to match.
+- [ ] **Remote player bullets also have correct visuals** — In 2-player LAN, player 2's Spread bullets appear as yellow spheres on player 1's screen.
 
 ---
 
