@@ -8,6 +8,19 @@
 
 ---
 
+## Session 27h Combined Score Display Zero (2026-02-23)
+
+Bug: In LAN (network) mode, `#score-display` (large center-top number under "Wave X") showed "0" and never updated.
+Fix: `network-main.ts` now updates `#score-display` with combined team score (sum of all player scores) on each state sync.
+
+- [ ] **Start a LAN game with 2+ players** — The large center number under the wave label should start at 0.
+- [ ] **Earn kills/score in LAN mode** — The center number should increase in real-time as players score.
+- [ ] **Both players scoring simultaneously** — The center score should reflect the combined sum.
+- [ ] **Wave label and score are readable** — "Wave X" appears at top, combined score appears below it (not overlapping).
+- [ ] **Multiplier display (x1) is hidden** — The single-player multiplier display should not be visible in LAN mode.
+
+---
+
 ## Session 27h Weapon HUD Wrong Weapon (2026-02-23)
 
 Bug: HUD showed wrong weapon (e.g. "Tesla Coil") while player was actually shooting at blaster rate.
