@@ -1588,7 +1588,7 @@ function main() {
         player.surfaceU = netPlayer.surfaceU;
         player.surfaceV = netPlayer.surfaceV;
         const sp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
-        player.mesh.position.copy(sp.position).addScaledVector(sp.normal, 0.15);
+        player.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
         orientPlayerOnSurface(player, sp.normal, netPlayer.aimAngle, sp.tangentU);
       } else {
         // Remote player: store target UV for smooth per-frame interpolation
@@ -2463,7 +2463,7 @@ function main() {
         // ALWAYS update visual position + aim orientation (even when stationary).
         // This ensures aim direction updates instantly without waiting for server.
         const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-        localPlayer.mesh.position.copy(sp.position);
+        localPlayer.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor);
         localPlayer.mesh.position.addScaledVector(sp.normal, 0.15);
         orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
 
@@ -2496,7 +2496,7 @@ function main() {
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer && surface) {
         const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-        const origin = sp.position.clone().addScaledVector(sp.normal, 0.2);
+        const origin = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.2);
         // Compute world-space aim direction from aimAngle + surface tangent frame
         const aimDir = new THREE.Vector3()
           .addScaledVector(sp.tangentU, Math.cos(aimAngle))
@@ -2532,12 +2532,13 @@ function main() {
     // Update geom pool (magnetic pull animation toward local player)
     const localPlayer = networkPlayers.get(localPlayerId);
     if (localPlayer) {
-      const pt = surface.worldToSurface(localPlayer.mesh.position);
-      geomPool.update(dt, pt.u, pt.v, game.clock.totalTime);
+      // Use surfaceU/V directly (avoids worldToSurface which assumes unscaled world coords)
+      geomPool.update(dt, localPlayer.surfaceU, localPlayer.surfaceV, game.clock.totalTime);
 
       // Update PlayerLevel aura ring (position + pulse animation each frame)
       const auraPoint = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-      playerLevel.update(dt, auraPoint.position, auraPoint.normal);
+      const auraPos = auraPoint.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+      playerLevel.update(dt, auraPos, auraPoint.normal);
 
       // Tick buff proc effects (ShockAura arcs, Burning DOT visuals).
       // Server is authoritative for enemy HP; local damage from ShockAura is a visual-side
@@ -2726,8 +2727,9 @@ function main() {
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer) {
         const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+        const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
         cameraController.updateFromFrame(
-          sp.position,
+          cameraPos,
           sp.normal,
           { tangent: sp.tangentU, bitangent: sp.tangentV },
           lastFixedDt,
@@ -2826,7 +2828,7 @@ function main() {
 
       // Update 3D position from interpolated UV
       const sp: SurfacePoint = surf.getPoint(newU, newV);
-      player.mesh.position.copy(sp.position).addScaledVector(sp.normal, 0.15);
+      player.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
       orientPlayerOnSurface(player, sp.normal, target.aimAngle, sp.tangentU);
 
       // Update glow trail with interpolated position
@@ -2961,8 +2963,9 @@ function main() {
       }
 
       const sp = surf.getPoint(cameraSourceU, cameraSourceV);
+      const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
       cameraController.updateFromFrame(
-        sp.position,
+        cameraPos,
         sp.normal,
         { tangent: sp.tangentU, bitangent: sp.tangentV },
         lastFixedDt,
