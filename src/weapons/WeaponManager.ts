@@ -1000,7 +1000,7 @@ export class WeaponManager {
       if (nearestEnemy) {
         proj.targetIndex = nearestEnemy.index;
         const toTarget = nearestEnemy.position.clone().sub(proj.position).normalize();
-        const turnRate = 3.0 * dt;
+        const turnRate = 6.0 * dt;
         proj.direction.lerp(toTarget, turnRate).normalize();
       }
     }
@@ -1028,6 +1028,8 @@ export class WeaponManager {
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.Homing) {
+          // AoE damage - smaller but impactful blast
+          this.applyAoeDamage(proj.position, 2.0, proj.damage * 0.6);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
           this.removeProjectile(index);
           return;
