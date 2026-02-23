@@ -461,4 +461,72 @@ describe('PerformanceLogger', () => {
       expect(sessions[0].dataPoints[0].ps).toBeUndefined();
     });
   });
+
+  describe('Weapon Analytics', () => {
+    it('should return empty analytics with no data', () => {
+      const analytics = logger.getWeaponAnalytics();
+      expect(analytics.weaponTimeline).toHaveLength(0);
+      expect(analytics.killsByWeapon).toHaveLength(0);
+      expect(analytics.buffKillContrib).toHaveLength(0);
+    });
+
+    it('should count kills per weapon', () => {
+      logger.recordWeaponKill('Standard', '');
+      logger.recordWeaponKill('Standard', '');
+      logger.recordWeaponKill('spread', '');
+
+      const analytics = logger.getWeaponAnalytics();
+      const standard = analytics.killsByWeapon.find(w => w.weapon === 'Standard');
+      const spread = analytics.killsByWeapon.find(w => w.weapon === 'spread');
+      expect(standard?.kills).toBe(2);
+      expect(spread?.kills).toBe(1);
+    });
+
+    it('should sort kills by weapon descending', () => {
+      logger.recordWeaponKill('spread', '');
+      logger.recordWeaponKill('Standard', '');
+      logger.recordWeaponKill('Standard', '');
+      logger.recordWeaponKill('Standard', '');
+
+      const analytics = logger.getWeaponAnalytics();
+      expect(analytics.killsByWeapon[0].weapon).toBe('Standard');
+      expect(analytics.killsByWeapon[0].kills).toBe(3);
+    });
+
+    it('should track buff kill contributions', () => {
+      logger.recordWeaponKill('Standard', 'hot_hands:3,shock_aura:1');
+      logger.recordWeaponKill('Standard', 'hot_hands:2');
+      logger.recordWeaponKill('spread', '');
+
+      const analytics = logger.getWeaponAnalytics();
+      const hotHands = analytics.buffKillContrib.find(b => b.buff === 'hot_hands');
+      const shockAura = analytics.buffKillContrib.find(b => b.buff === 'shock_aura');
+      expect(hotHands?.kills).toBe(2);
+      expect(shockAura?.kills).toBe(1);
+    });
+
+    it('should compute weapon timeline from sample data', () => {
+      // Record 3 samples with Standard, 1 with spread
+      logger.setGameplayData(0, 0, 0, 'Standard', '', 0);
+      logger.recordFrame(0.5);
+      logger.recordFrame(0.5);
+      logger.recordFrame(0.5);
+      logger.setGameplayData(0, 0, 0, 'spread', '', 0);
+      logger.recordFrame(0.5);
+
+      const analytics = logger.getWeaponAnalytics();
+      expect(analytics.weaponTimeline.length).toBeGreaterThan(0);
+      const standard = analytics.weaponTimeline.find(w => w.weapon === 'Standard');
+      expect(standard).toBeDefined();
+      expect(standard!.pct).toBeCloseTo(75, 0);
+    });
+
+    it('should include weapon analytics in session summary', () => {
+      logger.recordWeaponKill('Standard', 'hot_hands:1');
+      const summary = logger.getSessionSummary();
+      expect(summary?.killsByWeapon).toBeDefined();
+      expect(summary?.weaponTimeline).toBeDefined();
+      expect(summary?.buffKillContrib).toBeDefined();
+    });
+  });
 });

@@ -40,6 +40,7 @@ import { StartMenu, MenuSelection } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { EffectsPanel } from './ui/EffectsPanel';
 import { GameOverScreen } from './ui/GameOverScreen';
+import { AnalyticsPanel } from './ui/AnalyticsPanel';
 import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
 import { Minimap } from './ui/Minimap';
 import { KillLog } from './ui/KillLog';
@@ -1185,9 +1186,14 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Game over screen --
   const gameOverScreen = new GameOverScreen();
+  const analyticsPanel = new AnalyticsPanel();
   gameOverScreen.onContinue(() => {
-    game.stop();
-    window.location.href = window.location.pathname;
+    // Show weapon analytics before navigating away
+    analyticsPanel.show(perfLogger);
+    analyticsPanel.onClose(() => {
+      game.stop();
+      window.location.href = window.location.pathname;
+    });
   });
 
   // -- Level complete screen --
@@ -1216,6 +1222,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     profilingOverlay.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
+    analyticsPanel.dispose();
     main(selectedSurface, levelIndex + 1);
   });
   levelCompleteScreen.onReplay(() => {
@@ -1240,6 +1247,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     profilingOverlay.dispose();
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
+    analyticsPanel.dispose();
     main(selectedSurface, levelIndex);
   });
   levelCompleteScreen.onMenu(() => {

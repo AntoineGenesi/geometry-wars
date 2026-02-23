@@ -179,6 +179,10 @@ export interface StoredSession {
     // DDA / difficulty summary
     peakDifficultyTier?: number;  // max difficulty tier reached this session
     finalPlayerPowerLevel?: number; // player power level at session end
+    // Weapon usage analytics (optional for backward compat)
+    weaponTimeline?: Array<{ weapon: string; pct: number; samples: number }>;
+    killsByWeapon?: Array<{ weapon: string; kills: number }>;
+    buffKillContrib?: Array<{ buff: string; kills: number }>;
   };
 }
 
@@ -280,6 +284,11 @@ export class PerformanceLogger {
   private peakKillRate = 0;
   private peakActiveEffects = 0;
   private peakDifficultyTier = 0;
+
+  // Weapon usage analytics (per-kill tracking)
+  private readonly killsByWeapon = new Map<string, number>();
+  // Buff contribution: how many kills happened while each buff was active
+  private readonly killsWithBuff = new Map<string, number>();
 
   constructor(mapType: string) {
     this.mapType = mapType;
@@ -425,6 +434,74 @@ export class PerformanceLogger {
     this.currentVisibleEnemies = visibleEnemies;
     this.currentVisibleBullets = visibleBullets;
     this.currentActiveExplosions = activeExplosions;
+  }
+
+  /**
+   * Record a kill event with the current weapon and active buffs.
+   * Called from GameLoop on each enemy death.
+   * @param weaponType - WeaponType string (e.g. 'Standard', 'spread')
+   * @param activeBuffsString - compact buff string, e.g. "hot_hands:3,shock_aura:1"
+   */
+  recordWeaponKill(weaponType: string, activeBuffsString: string): void {
+    // Track kills per weapon
+    this.killsByWeapon.set(weaponType, (this.killsByWeapon.get(weaponType) ?? 0) + 1);
+
+    // Track kills for each active buff (non-empty string only)
+    if (activeBuffsString) {
+      // Format: "hot_hands:3,shock_aura:1"
+      const parts = activeBuffsString.split(',');
+      for (let i = 0; i < parts.length; i++) {
+        const colonIdx = parts[i].indexOf(':');
+        if (colonIdx > 0) {
+          const buffName = parts[i].substring(0, colonIdx);
+          this.killsWithBuff.set(buffName, (this.killsWithBuff.get(buffName) ?? 0) + 1);
+        }
+      }
+    }
+  }
+
+  /**
+   * Compute weapon usage analytics from accumulated sample data.
+   * Returns:
+   * - weaponTimeline: % of samples each weapon was active (proxy for time spent)
+   * - killsByWeapon: kills attributed to each weapon
+   * - buffKillContrib: kills that happened while each buff was active
+   */
+  getWeaponAnalytics(): {
+    weaponTimeline: Array<{ weapon: string; pct: number; samples: number }>;
+    killsByWeapon: Array<{ weapon: string; kills: number }>;
+    buffKillContrib: Array<{ buff: string; kills: number }>;
+  } {
+    // --- Weapon timeline from sample data ---
+    const weaponSampleCounts = new Map<string, number>();
+    const count = Math.min(this.bufferSize, RING_BUFFER_SIZE);
+    let totalSamples = 0;
+    for (let i = 0; i < count; i++) {
+      const w = this.buffer[i].activeWeapon;
+      if (w) {
+        weaponSampleCounts.set(w, (weaponSampleCounts.get(w) ?? 0) + 1);
+        totalSamples++;
+      }
+    }
+    const weaponTimeline = Array.from(weaponSampleCounts.entries())
+      .map(([weapon, samples]) => ({
+        weapon,
+        samples,
+        pct: totalSamples > 0 ? Math.round((samples / totalSamples) * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.samples - a.samples);
+
+    // --- Kills per weapon ---
+    const killsByWeapon = Array.from(this.killsByWeapon.entries())
+      .map(([weapon, kills]) => ({ weapon, kills }))
+      .sort((a, b) => b.kills - a.kills);
+
+    // --- Buff kill contribution ---
+    const buffKillContrib = Array.from(this.killsWithBuff.entries())
+      .map(([buff, kills]) => ({ buff, kills }))
+      .sort((a, b) => b.kills - a.kills);
+
+    return { weaponTimeline, killsByWeapon, buffKillContrib };
   }
 
   /**
@@ -595,6 +672,7 @@ export class PerformanceLogger {
 
   /** Get session summary (for export and display). */
   getSessionSummary(): StoredSession['summary'] {
+    const weaponAnalytics = this.getWeaponAnalytics();
     return {
       avgFps: this.fpsCount > 0 ? this.fpsSum / this.fpsCount : 0,
       minFps: this.minFps === Infinity ? 0 : this.minFps,
@@ -610,6 +688,9 @@ export class PerformanceLogger {
       peakActiveEffects: this.peakActiveEffects,
       peakDifficultyTier: Math.round(this.peakDifficultyTier * 100) / 100,
       finalPlayerPowerLevel: this.currentPlayerPowerLevel,
+      weaponTimeline: weaponAnalytics.weaponTimeline,
+      killsByWeapon: weaponAnalytics.killsByWeapon,
+      buffKillContrib: weaponAnalytics.buffKillContrib,
     };
   }
 

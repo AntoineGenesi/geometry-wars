@@ -554,6 +554,10 @@ function main(): void {
       if (ddaTrackers[killerPlayerId]) {
         ddaTrackers[killerPlayerId].recordKill(enemy.scoreValue);
       }
+      // Weapon analytics: record weapon kill for player 0 (primary telemetry player)
+      if (killerPlayerId === 0 && weaponType) {
+        perfLogger.recordWeaponKill(weaponType, '');
+      }
     }
     const killerPlayer = players[killerPlayerId];
     if (killerPlayer) {
