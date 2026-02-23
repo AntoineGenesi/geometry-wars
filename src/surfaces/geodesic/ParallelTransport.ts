@@ -62,10 +62,19 @@ export function transportAcrossEdge(
 
   const angle = Math.atan2(sinAngle, cosAngle);
 
-  // Rotate the direction around the edge axis by the negative of the dihedral angle.
-  // This "unfolds" the direction from the source plane into the destination plane.
+  // Rotate the direction around the edge axis by the dihedral angle.
+  // This parallel-transports the direction from the source plane into the destination plane.
+  //
+  // The angle α = atan2(cross(n1,n2)·e, n1·n2) is the rotation that takes n1 to n2 around e.
+  // Parallel transport applies this same rotation to the direction vector so that geodesic
+  // paths stay locally straight across the fold (unfolding interpretation: a straight path
+  // in the "unrolled" surface maps to the SAME rotation, not its inverse).
+  //
+  // Note: applying -angle (the inverse rotation) was wrong — it caused bullet directions to
+  // rotate 90° the wrong way at cube face boundaries, making bullets follow edges.
+  // REGRESSION GUARD: do NOT revert to -angle without verifying bullet trajectories on cube.
   if (Math.abs(angle) > 1e-8) {
-    direction.applyAxisAngle(_edgeDir, -angle);
+    direction.applyAxisAngle(_edgeDir, angle);
   }
 
   // Project onto the destination face plane to remove any numerical drift
