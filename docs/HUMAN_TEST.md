@@ -930,3 +930,23 @@ Claude will read this file at the start of each session and prioritize fixing re
 - `src/core/GameLoop.ts`: `lastAimDirection` is now reset to `null` on respawn, preventing stale aim direction from old surface location from affecting the first shots after respawn.
 
 **Regression test:** `src/test/s27g-aim-offset.regression.test.ts` — 7 tests covering aligned/lagged camera, multi-surface consistency, degenerate fallback, tangent plane correctness — passes ✅
+
+---
+
+## S27h: Buff List Not Showing — Active Buffs Display Fix
+
+### Test: Buff HUD shows during gameplay (runtime HUD)
+- [ ] **Pick up buff in single player** — Kill enemies until a colored buff pickup drops. Walk over it. A small icon should appear top-right of the screen showing the buff type (HOT, TRG, AFT, etc.) and stack count (x1).
+- [ ] **Stack multiple buffs** — Pick up the same buff type twice. Stack count should update to x2.
+- [ ] **Pick up different buff types** — Multiple different icons should appear stacked vertically in the top-right.
+
+### Test: Pause menu shows active buffs (pause menu ACTIVE BUFFS section)
+- [ ] **SP: pause with buffs active** — In single player, pick up some buffs, then press ESC. The pause menu "ACTIVE BUFFS" section should list each buff with name, stacks, and effect description.
+- [ ] **MP host: pause with buffs active** — In multiplayer as host, pick up buffs, press ESC. The pause menu should show YOUR buffs (not empty).
+- [ ] **MP non-host: pause with buffs active** — In multiplayer as non-host player, pick up buffs, press ESC. The full pause menu appears (not a simple "PAUSED" overlay) showing YOUR buffs.
+
+**What changed (previously fixed in s27h-non-host-pause-menu merge):**
+- `src/network-main.ts`: Host's pause menu `setGameData()` call was hardcoded to `buffs: []` — fixed to use `buffManager.getActiveBuffs()`.
+- `src/network-main.ts`: Non-host previously saw a simple "Host has paused" overlay with no buff display — now sees the full PauseMenu with their own buff state.
+
+**Regression test:** `src/buffs/BuffManager.test.ts` — 20 tests covering addBuff, getActiveBuffs, onBuffGained callback, maxStack enforcement, rollBuffDrop, multiplier calculations, and pause menu data format — passes ✅
