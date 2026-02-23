@@ -656,6 +656,13 @@ function main(): void {
           particles.mortarExplosion(position);
           surface.applyForce(position, 0.25, 1.0);
           screenShake.shake(0.15, 0.15);
+        } else if (wType === WeaponType.GravityGun) {
+          // Black hole surface deformation: inward pull, dramatic snap-back
+          surface.applyMeshForce(position, -2.5, 1.5);
+          // Also deform grid (visible ripple on grid lines)
+          surface.applyForce(position, -0.15, 1.5);
+          particles.bulletImpact(position);
+          screenShake.shake(0.08, 0.3);
         }
       },
     });
@@ -1153,6 +1160,7 @@ function main(): void {
     screenShake.update(dt);
     killLog.update(dt);
     surface.updateGrid(dt);
+    surface.updateMeshDeformation(dt);
 
     // Update aura system
     const walkerMap = new Map<number, MeshWalker>();
