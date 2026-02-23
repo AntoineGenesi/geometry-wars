@@ -333,6 +333,16 @@ const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
 // ---------------------------------------------------------------------------
 
 function main() {
+  // Dismiss loading screen. Normally the StartMenu dismisses it when it creates
+  // itself, but when navigating directly via QR code (?mode=network) or a shared
+  // link, the StartMenu is skipped entirely. Without this, the loading spinner
+  // stays visible forever, covering all connection UI (the core mobile bug).
+  const loadingScreen = document.getElementById('loading-screen');
+  if (loadingScreen) {
+    loadingScreen.classList.add('fade-out');
+    loadingScreen.addEventListener('transitionend', () => loadingScreen.remove(), { once: true });
+  }
+
   // Detect mobile mode early — affects input, quality, and entity limits.
   const mobile = isMobile();
 
@@ -2137,10 +2147,59 @@ function main() {
   console.log(`[NetworkMain] Surface:     ${urlSurfaceType}`);
   console.log('[NetworkMain] Connecting...');
 
+  // 30-second connection timeout: if Colyseus handshake hangs (server reachable
+  // but not responding — common on mobile over Wi-Fi), reject with a clear error
+  // instead of waiting forever.
+  const CONNECTION_TIMEOUT_MS = 30_000;
+  let connectionResolved = false;
+  const timeoutId = setTimeout(() => {
+    if (!connectionResolved) {
+      network.disconnect();
+      // Synthesise a timeout error that feeds into the existing .catch() handler
+      const timeoutError = new Error(
+        `Connection timed out after ${CONNECTION_TIMEOUT_MS / 1000}s. ` +
+        `Is the server running and reachable from this device?`
+      );
+      // Manually trigger the catch path by re-running the error UI inline
+      statusEl.style.display = 'none';
+      const errPanel = document.createElement('div');
+      errPanel.style.cssText =
+        'position:fixed;top:0;left:0;width:100%;height:100%;' +
+        'background:rgba(0,0,0,0.92);z-index:200;' +
+        'display:flex;flex-direction:column;justify-content:center;align-items:center;' +
+        'font-family:monospace;padding:20px;box-sizing:border-box;';
+      const title = document.createElement('div');
+      title.style.cssText = 'color:#f44;font-size:32px;font-weight:bold;letter-spacing:4px;margin-bottom:12px;text-align:center;';
+      title.textContent = 'CONNECTION TIMED OUT';
+      errPanel.appendChild(title);
+      const reason = document.createElement('div');
+      reason.style.cssText = 'color:#faa;font-size:14px;margin-bottom:24px;max-width:600px;text-align:center;';
+      reason.textContent = timeoutError.message;
+      errPanel.appendChild(reason);
+      const btns = document.createElement('div');
+      btns.style.cssText = 'display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;justify-content:center;';
+      const retryBtn = document.createElement('button');
+      retryBtn.textContent = 'RETRY';
+      retryBtn.style.cssText = 'padding:12px 28px;font:bold 16px monospace;background:#060;color:#0f0;border:2px solid #0f0;cursor:pointer;letter-spacing:2px;';
+      retryBtn.onclick = () => window.location.reload();
+      btns.appendChild(retryBtn);
+      const backBtnEl = document.createElement('button');
+      backBtnEl.textContent = '◀ MAIN MENU';
+      backBtnEl.style.cssText = 'padding:12px 28px;font:bold 16px monospace;background:#110;color:#888;border:2px solid #446;cursor:pointer;letter-spacing:2px;';
+      backBtnEl.onclick = () => { window.location.href = window.location.pathname; };
+      btns.appendChild(backBtnEl);
+      errPanel.appendChild(btns);
+      document.body.appendChild(errPanel);
+      console.error(`[NetworkMain] Connection timed out after ${CONNECTION_TIMEOUT_MS / 1000}s`);
+    }
+  }, CONNECTION_TIMEOUT_MS);
+
   network.connect({
     name: playerName,
     surfaceType: urlSurfaceType,
   }).then(() => {
+    connectionResolved = true;
+    clearTimeout(timeoutId);
     localPlayerId = network.getLocalPlayerId();
     console.log(`[NetworkMain] Connected! Session ID: ${localPlayerId}`);
     console.log(`[NetworkMain] Server: ${serverUrl}`);
@@ -2255,6 +2314,8 @@ function main() {
       },
     });
   }).catch((err) => {
+    connectionResolved = true; // Prevent the timeout handler from also showing an error
+    clearTimeout(timeoutId);
     const msg = err instanceof Error ? err.message : String(err);
     const isServerDown = msg.includes('Cannot reach') || msg.includes('ERR_EMPTY_RESPONSE')
       || msg.includes('ProgressEvent') || msg.includes('ECONNREFUSED');
