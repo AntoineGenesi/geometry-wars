@@ -575,6 +575,81 @@ describe('FaceWalker', () => {
       // Allow at most 2 flips (can happen at degenerate triangles near poles/seams)
       expect(flipCount).toBeLessThan(3);
     });
+
+    it('should cross the north pole without getting stuck (vertex fan traversal)', () => {
+      // Regression test for sphere poles being blocked.
+      // A UV sphere has a pole vertex shared by all cap triangles.
+      // Without vertex fan traversal, walking toward the pole gets stuck circling it.
+      const mesh = createSphere(8, 32);
+      const hem = new HalfEdgeMesh(mesh.geometry);
+      const walker = new FaceWalker(hem);
+
+      // Start near the north pole in a cap triangle (slightly south of the pole on +Z side)
+      const startPos = new THREE.Vector3(0.5, 7.9, 0.5);
+      startPos.normalize().multiplyScalar(8);
+      let facePos = walker.locateOnMesh(startPos, 0);
+
+      // Walk toward and over the north pole: direction from start toward -Z
+      // (approaching from the +Z side, through the pole, continuing to -Z)
+      // We do multiple small steps carrying the transported direction
+      let currentDir = new THREE.Vector3(0, 0.3, -1).normalize();
+      let finalPos = startPos.clone();
+
+      let crossedPole = false;
+      let totalDist = 0;
+
+      for (let i = 0; i < 60; i++) {
+        const result = walker.walk(facePos.faceIndex, facePos.bary, currentDir, 0.5);
+        facePos = { faceIndex: result.faceIndex, bary: result.bary };
+        currentDir = result.direction.clone();
+        finalPos = result.position.clone();
+        totalDist += result.distanceTraveled;
+
+        // Check if we've crossed to the -Z side of the sphere (z < -1)
+        if (result.position.z < -1) {
+          crossedPole = true;
+          break;
+        }
+      }
+
+      // Player should have crossed through the pole to the -Z hemisphere
+      expect(crossedPole).toBe(true);
+      // Total distance should be at least some movement (not stuck at zero)
+      expect(totalDist).toBeGreaterThan(0.5);
+      // Final position should still be on the sphere
+      expect(isOnSphere(finalPos, 8, 0.5)).toBe(true);
+    });
+
+    it('should cross the south pole without getting stuck (vertex fan traversal)', () => {
+      // Mirror of north pole test — south pole at (0, -8, 0)
+      const mesh = createSphere(8, 32);
+      const hem = new HalfEdgeMesh(mesh.geometry);
+      const walker = new FaceWalker(hem);
+
+      // Start near the south pole on +Z side
+      const startPos = new THREE.Vector3(0.5, -7.9, 0.5);
+      startPos.normalize().multiplyScalar(8);
+      let facePos = walker.locateOnMesh(startPos, 0);
+
+      let currentDir = new THREE.Vector3(0, -0.3, -1).normalize();
+      let finalPos = startPos.clone();
+      let crossedPole = false;
+
+      for (let i = 0; i < 60; i++) {
+        const result = walker.walk(facePos.faceIndex, facePos.bary, currentDir, 0.5);
+        facePos = { faceIndex: result.faceIndex, bary: result.bary };
+        currentDir = result.direction.clone();
+        finalPos = result.position.clone();
+
+        if (result.position.z < -1) {
+          crossedPole = true;
+          break;
+        }
+      }
+
+      expect(crossedPole).toBe(true);
+      expect(isOnSphere(finalPos, 8, 0.5)).toBe(true);
+    });
   });
 });
 

@@ -962,3 +962,28 @@ Claude will read this file at the start of each session and prioritize fixing re
 - `src/network-main.ts`: Non-host previously saw a simple "Host has paused" overlay with no buff display — now sees the full PauseMenu with their own buff state.
 
 **Regression test:** `src/buffs/BuffManager.test.ts` — 20 tests covering addBuff, getActiveBuffs, onBuffGained callback, maxStack enforcement, rollBuffDrop, multiplier calculations, and pause menu data format — passes ✅
+
+
+---
+
+## S27h: Sphere Poles Blocked — Vertex Fan Traversal Fix
+
+### Test: Walk to North Pole of sphere surface
+- [ ] **Select sphere surface** — Start a game on the "sphere" surface (select from surface menu)
+- [ ] **Walk north toward the pole** — Move the player upward toward the top of the sphere. You should be able to walk all the way to the north pole without stopping or circling.
+- [ ] **Cross the north pole** — Continue pressing "forward" through the north pole. The player should smoothly pass through and continue walking on the other side of the sphere (camera will reorient).
+- [ ] **No spinning or getting stuck** — The player should not circle the pole or freeze when approaching it directly.
+
+### Test: Walk to South Pole of sphere surface
+- [ ] **Walk south toward the south pole** — Move the player downward toward the bottom of the sphere. Should be able to reach and cross the south pole without getting stuck.
+
+### Test: Enemies reach poles
+- [ ] **Enemies follow you to the poles** — With an enemy chasing you, walk to the north or south pole. Enemies should be able to follow (or at least not get stuck circling the pole region).
+
+**What changed:**
+- `src/surfaces/geodesic/HalfEdgeMesh.ts`: Added `canonical[]` (exposed) and `vertexToFaces[]` adjacency map — maps each canonical vertex to all faces sharing it.
+- `src/surfaces/geodesic/FaceWalker.ts`: When walking exits through a pole vertex (`atVertex=true`), the new code traverses the vertex fan (all faces sharing that vertex) to find the face on the "other side" and jumps directly into it. Previously only the 3 edges of the current face were checked, which caused the player to circle the pole.
+
+**Root cause:** `THREE.SphereGeometry` UV spheres have all cap triangles sharing a single pole vertex. The geodesic walker couldn't cross this vertex to reach non-adjacent faces — it could only step to neighboring cap triangles, causing the player to circle.
+
+**Regression test:** `src/surfaces/geodesic/geodesic.test.ts` — 2 new pole-crossing tests (north + south) — passes ✅
