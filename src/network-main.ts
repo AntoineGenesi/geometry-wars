@@ -1099,6 +1099,28 @@ function main() {
   }
 
   // -----------------------------------------------------------------------
+  // Dead player overlay — shown when local player loses all lives in MP.
+  // Game continues for other alive players; this player spectates.
+  // Hidden automatically when a new game starts (player respawns).
+  // -----------------------------------------------------------------------
+
+  const deadOverlay = document.createElement('div');
+  deadOverlay.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;' +
+    'pointer-events:none;z-index:50;' +    // low z-index — does not block game input
+    'display:none;flex-direction:column;justify-content:flex-end;align-items:center;' +
+    'padding-bottom:80px;font-family:monospace;';
+
+  const deadOverlayText = document.createElement('div');
+  deadOverlayText.style.cssText =
+    'color:rgba(255,80,80,0.9);font-size:22px;font-weight:bold;' +
+    'letter-spacing:3px;text-shadow:0 0 12px #ff0000;' +
+    'background:rgba(0,0,0,0.55);padding:10px 28px;border:1px solid rgba(255,80,80,0.4);';
+  deadOverlayText.textContent = 'YOU DIED — SPECTATING';
+  deadOverlay.appendChild(deadOverlayText);
+  document.body.appendChild(deadOverlay);
+
+  // -----------------------------------------------------------------------
   // Local player menu — opened by Escape, visible to ALL players.
   // Does NOT pause the server game. Each player manages their own menu.
   // Non-hosts can use this to disconnect. Hosts can stop the server.
@@ -1458,6 +1480,9 @@ function main() {
     // Reset game-over flag so GameOverScreen can show again next game
     gameOverShown = false;
 
+    // Hide dead overlay — local player is alive again in the new round
+    deadOverlay.style.display = 'none';
+
     // Clear any pending spawn warning rings from the previous round
     for (const w of spawnWarningRings) {
       scene.remove(w.mesh);
@@ -1543,6 +1568,10 @@ function main() {
         // DDA: track death event for this player
         const tracker = getOrCreateDDATracker(id);
         tracker.recordDeath();
+        // Show spectating overlay for the local player only
+        if (id === localPlayerId) {
+          deadOverlay.style.display = 'flex';
+        }
       } else if (!wasAlive && netPlayer.alive) {
         // Player just respawned (alive transitioned false->true).
         // This happens when the game restarts via "PLAY AGAIN", or
@@ -1559,6 +1588,10 @@ function main() {
         // Play a respawn sound as feedback
         sound.play('playerDeath', { pitch: 1.5 });
         netMainLog(`[NetworkMain] Player ${id} respawned, mesh visibility restored`);
+        // Hide spectating overlay when local player is revived (new round)
+        if (id === localPlayerId) {
+          deadOverlay.style.display = 'none';
+        }
       }
       playerAliveState.set(id, netPlayer.alive);
 
@@ -2809,9 +2842,25 @@ function main() {
 
     // Camera follows local player: orbit, zoom, and smooth follow via CameraController.
     // Replaces the old manual lerp — now identical feature set to single-player.
+    // When the local player is dead (spectating), camera follows the first alive
+    // remote player instead of staying frozen at the death position.
     const localPlayer = networkPlayers.get(localPlayerId);
     if (localPlayer) {
-      const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+      const isLocalAlive = playerAliveState.get(localPlayerId) ?? true;
+      let cameraSourceU = localPlayer.surfaceU;
+      let cameraSourceV = localPlayer.surfaceV;
+
+      if (!isLocalAlive) {
+        // Spectating: find the first alive remote player to follow
+        networkPlayers.forEach((player, id) => {
+          if (id !== localPlayerId && (playerAliveState.get(id) ?? true)) {
+            cameraSourceU = player.surfaceU;
+            cameraSourceV = player.surfaceV;
+          }
+        });
+      }
+
+      const sp = surf.getPoint(cameraSourceU, cameraSourceV);
       cameraController.updateFromFrame(
         sp.position,
         sp.normal,
