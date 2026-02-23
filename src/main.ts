@@ -297,22 +297,73 @@ const _tempSphere = new THREE.Sphere();
 // Bootstrap
 // ---------------------------------------------------------------------------
 
+/**
+ * Wait until the device is in landscape orientation before starting the game.
+ *
+ * - If already landscape: resolves immediately (no prompt shown).
+ * - First 3 games of the session: shows the #rotate-overlay as a friendly prompt
+ *   and resolves once the user actually rotates.
+ * - 4th game onward: attempts programmatic lock (works on Android), then proceeds
+ *   regardless (user knows to rotate by now; don't nag them).
+ *
+ * @param sessionGameCount  Number of games played so far this session (0-based count
+ *                          incremented before this call, so first game = 1).
+ */
+async function waitForLandscape(sessionGameCount: number): Promise<void> {
+  // Already landscape — proceed immediately
+  if (window.matchMedia('(orientation: landscape)').matches) return;
+
+  // After 3 games: user knows the drill. Try lock, ignore failure, proceed.
+  if (sessionGameCount >= 3) {
+    try {
+      const lock = (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock;
+      if (typeof lock === 'function') {
+        await lock.call(screen.orientation, 'landscape');
+      }
+    } catch { /* ignore — proceed without prompt */ }
+    return;
+  }
+
+  // First 3 games: show the rotate prompt, wait for actual landscape rotation.
+  const overlay = document.getElementById('rotate-overlay');
+  if (overlay) overlay.style.display = 'flex'; // force-show (overrides body.menu-open hide)
+
+  return new Promise((resolve) => {
+    const mq = window.matchMedia('(orientation: landscape)');
+    const onChange = () => {
+      if (mq.matches) {
+        mq.removeEventListener('change', onChange);
+        if (overlay) overlay.style.display = ''; // reset — let CSS take over
+        resolve();
+      }
+    };
+    mq.addEventListener('change', onChange);
+  });
+}
+
 async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File, mapSize?: MapSize): Promise<void> {
   // Detect mobile mode early -- affects quality, input, and UI decisions
   const mobile = isMobile();
 
-  // On mobile: attempt to lock orientation to landscape.
-  // Screen Orientation API works on Android Chrome; iOS Safari ignores it.
-  // The CSS rotate-overlay in index.html handles iOS by showing a "please rotate" prompt.
-  if (mobile && screen.orientation) {
-    // screen.orientation.lock() is not in TypeScript's lib yet but is widely supported on Android.
-    const lock = (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock;
-    if (typeof lock === 'function') {
-      lock.call(screen.orientation, 'landscape').catch(() => {
-        // Silently ignore — lock is blocked on iOS and some browsers.
-        // The CSS portrait overlay provides the fallback UX.
-      });
+  // On mobile: track how many games the user has played this session, then wait
+  // for landscape before initializing anything. Uses sessionStorage (resets each
+  // browser session so the prompt isn't shown indefinitely).
+  if (mobile) {
+    const sessionGameCount = parseInt(sessionStorage.getItem('gw3d-session-games') ?? '0', 10) + 1;
+    sessionStorage.setItem('gw3d-session-games', String(sessionGameCount));
+
+    // Attempt programmatic lock first (works on Android Chrome).
+    if (screen.orientation) {
+      const lock = (screen.orientation as unknown as { lock?: (o: string) => Promise<void> }).lock;
+      if (typeof lock === 'function') {
+        lock.call(screen.orientation, 'landscape').catch(() => {
+          // Silently ignore — blocked on iOS. waitForLandscape() handles iOS UX.
+        });
+      }
     }
+
+    // Wait for actual landscape (shows friendly prompt on iOS for first few games).
+    await waitForLandscape(sessionGameCount);
   }
 
   // Initialize sound engine (user already clicked start menu, so audio context is allowed)
