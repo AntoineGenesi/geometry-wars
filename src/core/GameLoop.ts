@@ -84,6 +84,7 @@ export class GameLoop {
       UIHelpers.updateCountdownOverlay(ctx.gameMode.countdownTimer, true);
       // During countdown: update grid springs but skip gameplay
       ctx.surface.updateGrid(dt);
+      ctx.surfaceShockwave.update(dt);
       ctx.input.endFrame();
       return;
     }
@@ -749,8 +750,9 @@ export class GameLoop {
     profiler.end('weapons_and_pickups');
 
     profiler.begin('misc_updates');
-    // Update grid deformation springs
+    // Update grid deformation springs and propagating shockwaves
     ctx.surface.updateGrid(dt);
+    ctx.surfaceShockwave.update(dt);
 
     // Scale music intensity with enemy count
     const enemyCount = ctx.enemySpawner.getActiveCount();

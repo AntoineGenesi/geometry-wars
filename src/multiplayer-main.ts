@@ -22,6 +22,7 @@ import { EnemySpawner } from './entities/enemies/EnemySpawner';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
+import { SurfaceShockwave } from './effects/SurfaceShockwave';
 import { ScoreManager } from './core/ScoreManager';
 import type { LevelDefinition } from './core/LevelData';
 import { ADVENTURE_LEVELS } from './core/LevelData';
@@ -360,6 +361,7 @@ function main(): void {
   game.scene.add(scorePopups.root);
   scorePopups.setCamera(game.camera);
   const screenShake = new ScreenShake();
+  const surfaceShockwave = new SurfaceShockwave(surface);
   const scoreManager = new ScoreManager();
   const killTracker = new KillTracker();
   const killLog = new KillLog();
@@ -654,8 +656,22 @@ function main(): void {
           screenShake.shake(0.1, 0.1);
         } else if (wType === WeaponType.PlasmaMortar) {
           particles.mortarExplosion(position);
-          surface.applyForce(position, 0.25, 1.0);
-          screenShake.shake(0.15, 0.15);
+          surfaceShockwave.spawn(position, 3.0, 8.0, 0.4);
+          screenShake.shake(0.5, 0.35);
+          // Knock back enemies within blast radius
+          const KNOCKBACK_RADIUS = 3.0;
+          const KNOCKBACK_SPEED = 0.15;
+          for (const enemy of enemySpawner.getEnemies()) {
+            if (!enemy.alive) continue;
+            const dx = enemy.position.x - position.x;
+            const dz = enemy.position.z - position.z;
+            const distSq = dx * dx + dz * dz;
+            if (distSq < KNOCKBACK_RADIUS * KNOCKBACK_RADIUS && distSq > 0.0001) {
+              const dist = Math.sqrt(distSq);
+              const strength = KNOCKBACK_SPEED * (1.0 - dist / KNOCKBACK_RADIUS);
+              enemy.applyKnockback(dx / dist * strength, dz / dist * strength);
+            }
+          }
         }
       },
     });
@@ -1153,6 +1169,7 @@ function main(): void {
     screenShake.update(dt);
     killLog.update(dt);
     surface.updateGrid(dt);
+    surfaceShockwave.update(dt);
 
     // Update aura system
     const walkerMap = new Map<number, MeshWalker>();
