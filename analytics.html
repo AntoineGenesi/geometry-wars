@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GW3D — Live Analytics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, sans-serif; background: #09090f; color: #e0e0f0; padding: 20px; line-height: 1.5; }
+    h1 { color: #00e5ff; margin-bottom: 4px; font-size: 1.5em; }
+    h2 { color: #7c4dff; margin: 22px 0 10px; border-bottom: 1px solid #1e1e30; padding-bottom: 5px; font-size: 1em; }
+    .meta { color: #555; font-size: 0.82em; margin-bottom: 18px; }
+    .grid4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .card { background: #12121e; border: 1px solid #2a2a40; border-radius: 8px; padding: 12px; text-align: center; }
+    .card .val { font-size: 1.8em; font-weight: 700; color: #00e5ff; line-height: 1.1; }
+    .card .lbl { font-size: 0.72em; color: #666; margin-top: 4px; text-transform: uppercase; letter-spacing: .05em; }
+    .section { background: #0d0d18; border: 1px solid #1a1a2e; border-radius: 8px; padding: 14px; margin-bottom: 18px; }
+    .chart-box { padding: 10px 0; }
+    canvas { max-height: 250px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.82em; }
+    th { background: #16162a; color: #9c88ff; padding: 7px 9px; text-align: left; font-weight: 600; white-space: nowrap; }
+    td { padding: 5px 9px; border-bottom: 1px solid #191928; }
+    tr:hover td { background: #141425; }
+    .g { color: #4caf50; } .w { color: #ff9800; } .r { color: #f44336; }
+    code { color: #64ffda; font-size: 0.9em; }
+    .toolbar { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; align-items: center; }
+    button { background: #1a1a30; border: 1px solid #333; color: #ccc; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 0.85em; transition: all .15s; }
+    button:hover { background: #7c4dff; border-color: #7c4dff; color: #fff; }
+    button.active { background: #7c4dff; border-color: #7c4dff; color: #fff; }
+    .banner { background: #141428; border: 1px solid #333; border-radius: 8px; padding: 16px; color: #888; text-align: center; margin-bottom: 18px; }
+    .banner code { display: block; margin: 8px 0; color: #64ffda; font-size: 0.95em; }
+    .stuck-badge { display: inline-block; background: rgba(244,67,54,.15); color: #f44336; border: 1px solid rgba(244,67,54,.3); padding: 1px 7px; border-radius: 10px; font-size: 0.75em; font-weight: 600; }
+    select { background: #1a1a30; border: 1px solid #333; color: #ccc; padding: 6px 10px; border-radius: 6px; font-size: 0.85em; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 700px) { .row2 { grid-template-columns: 1fr; } }
+    .no-data { color: #444; font-style: italic; padding: 12px 0; }
+  </style>
+</head>
+<body>
+  <h1>GW3D — Live Analytics Dashboard</h1>
+  <p class="meta" id="metaLine">Loading...</p>
+
+  <div class="toolbar">
+    <button id="btnRefresh" onclick="load()">↻ Refresh</button>
+    <button id="btnAll"     onclick="setFilter('all')"  class="active">All Sessions</button>
+    <button id="btnLast5"   onclick="setFilter('last5')">Last 5</button>
+    <button id="btnLast1"   onclick="setFilter('last1')">Last Session</button>
+    <select id="mapFilter" onchange="load()"><option value="">All Maps</option></select>
+    <button onclick="exportCSV()" title="Download all data as CSV">↓ Export CSV</button>
+    <button onclick="exportJSON()" title="Download raw JSON">↓ Export JSON</button>
+    <button onclick="clearData()" style="color:#f44336" title="Clear all stored sessions">🗑 Clear</button>
+  </div>
+
+  <div id="noBanner" class="banner" style="display:none">
+    <strong>No session data found in localStorage.</strong><br>
+    Play the game, end a session (game over or level complete), then refresh this page.<br>
+    <code>localStorage.getItem('gw_perf_log')</code>
+    Or open the game and press <strong>F3 → EXPORT</strong> to capture current session.
+  </div>
+
+  <div id="main" style="display:none">
+
+    <div class="grid4" id="summaryCards"></div>
+
+    <div class="row2">
+      <div>
+        <h2>DDA Level Over Time</h2>
+        <div class="section chart-box"><canvas id="ddaChart"></canvas></div>
+      </div>
+      <div>
+        <h2>Difficulty Tier Over Time</h2>
+        <div class="section chart-box"><canvas id="diffChart"></canvas></div>
+      </div>
+    </div>
+
+    <h2>FPS Per Session (Avg / P5 / Min)</h2>
+    <div class="section chart-box"><canvas id="fpsChart"></canvas></div>
+
+    <div class="row2">
+      <div>
+        <h2>Kill Rate Over Time</h2>
+        <div class="section chart-box"><canvas id="killRateChart"></canvas></div>
+      </div>
+      <div>
+        <h2>Enemy Count vs FPS</h2>
+        <div class="section chart-box"><canvas id="scatterChart"></canvas></div>
+      </div>
+    </div>
+
+    <h2>Session Summary Table</h2>
+    <div class="section" style="overflow-x:auto">
+      <table id="sessionTable">
+        <thead><tr>
+          <th>#</th><th>Date</th><th>Map</th><th>Duration</th>
+          <th>Avg FPS</th><th>Min FPS</th><th>Spikes</th>
+          <th>Kills</th><th>Deaths</th><th>Peak Diff</th><th>Max DDA</th>
+          <th>Stuck?</th>
+        </tr></thead>
+        <tbody id="sessionTbody"></tbody>
+      </table>
+    </div>
+
+    <h2>Stuck Player Events</h2>
+    <div class="section" style="overflow-x:auto">
+      <table id="stuckTable">
+        <thead><tr>
+          <th>Session</th><th>Map</th><th>Time Range</th><th>UV Position</th><th>Face#</th><th>World XYZ</th>
+        </tr></thead>
+        <tbody id="stuckTbody"></tbody>
+      </table>
+    </div>
+
+  </div><!-- /main -->
+
+  <script>
+  const PERF_KEY = 'gw_perf_log';
+  const DDA_KEY  = 'gw3d_dda_sessions';
+
+  let allSessions = [];
+  let filterMode  = 'all';
+  let charts = {};
+
+  function setFilter(mode) {
+    filterMode = mode;
+    document.querySelectorAll('.toolbar button[onclick^="setFilter"]').forEach(b => b.classList.remove('active'));
+    document.getElementById('btn' + (mode === 'all' ? 'All' : mode === 'last5' ? 'Last5' : 'Last1')).classList.add('active');
+    render(allSessions);
+  }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(PERF_KEY);
+      allSessions = raw ? JSON.parse(raw) : [];
+    } catch { allSessions = []; }
+
+    // Populate map filter
+    const maps = [...new Set(allSessions.map(s => s.mapType))].sort();
+    const sel = document.getElementById('mapFilter');
+    const prev = sel.value;
+    while (sel.options.length > 1) sel.remove(1);
+    maps.forEach(m => { const o = document.createElement('option'); o.value = m; o.textContent = m; sel.appendChild(o); });
+    if (prev) sel.value = prev;
+
+    if (allSessions.length === 0) {
+      document.getElementById('noBanner').style.display = 'block';
+      document.getElementById('main').style.display = 'none';
+      document.getElementById('metaLine').textContent = 'No data found in localStorage.';
+      return;
+    }
+    document.getElementById('noBanner').style.display = 'none';
+    document.getElementById('main').style.display = 'block';
+    render(allSessions);
+  }
+
+  function applyFilters(sessions) {
+    let s = [...sessions];
+    const mapVal = document.getElementById('mapFilter').value;
+    if (mapVal) s = s.filter(x => x.mapType === mapVal);
+    if (filterMode === 'last5') s = s.slice(-5);
+    if (filterMode === 'last1') s = s.slice(-1);
+    return s;
+  }
+
+  function expandPoints(session) {
+    return (session.dataPoints ?? []).map(p => ({
+      time:            p.t  ?? 0,
+      fps:             p.f  ?? 0,
+      enemyCount:      p.e  ?? 0,
+      ddaLevel:        p.dd ?? 0,
+      difficultyTier:  p.dt ?? 0,
+      killsThisSample: p.ks ?? 0,
+      score:           p.s  ?? 0,
+      kills:           p.k  ?? 0,
+      deaths:          p.d  ?? 0,
+      playerStuck:     p.ps === true,
+      playerSurfaceU:  p.pu ?? 0,
+      playerSurfaceV:  p.pv ?? 0,
+      playerFaceIndex: p.pf ?? 0,
+      playerWorldX:    p.px ?? 0,
+      playerWorldY:    p.py ?? 0,
+      playerWorldZ:    p.pz ?? 0,
+    }));
+  }
+
+  function avg(arr) { return arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; }
+  function pct5(arr) {
+    if (!arr.length) return 0;
+    const s = [...arr].sort((a, b) => a - b);
+    return s[Math.floor(s.length * 0.05)];
+  }
+  function colorFps(fps) { return fps >= 55 ? '#4caf50' : fps >= 40 ? '#ff9800' : '#f44336'; }
+
+  function destroyCharts() {
+    for (const c of Object.values(charts)) { try { c.destroy(); } catch {} }
+    charts = {};
+  }
+
+  function render(rawSessions) {
+    const sessions = applyFilters(rawSessions);
+    if (!sessions.length) return;
+
+    destroyCharts();
+
+    document.getElementById('metaLine').textContent =
+      `${rawSessions.length} total sessions | showing ${sessions.length} | last updated ${new Date().toLocaleTimeString()}`;
+
+    // ── Summary cards ──
+    const overallAvgFps = avg(sessions.map(s => s.summary?.avgFps ?? 0));
+    const totalKills    = sessions.reduce((a, s) => a + (s.summary?.totalKills ?? 0), 0);
+    const stuckSessions = sessions.filter(s => expandPoints(s).some(p => p.playerStuck));
+    const peakDiff      = Math.max(...sessions.map(s => s.summary?.peakDifficultyTier ?? 0));
+
+    document.getElementById('summaryCards').innerHTML = `
+      <div class="card"><div class="val">${sessions.length}</div><div class="lbl">Sessions</div></div>
+      <div class="card"><div class="val" style="color:${colorFps(overallAvgFps)}">${overallAvgFps.toFixed(1)}</div><div class="lbl">Avg FPS</div></div>
+      <div class="card"><div class="val">${totalKills.toLocaleString()}</div><div class="lbl">Total Kills</div></div>
+      <div class="card"><div class="val">${peakDiff.toFixed(1)}</div><div class="lbl">Peak Diff Tier</div></div>
+      <div class="card"><div class="val" style="color:${stuckSessions.length > 0 ? '#f44336' : '#4caf50'}">${stuckSessions.length}</div><div class="lbl">Stuck Sessions</div></div>
+    `;
+
+    // ── DDA & Difficulty curve (avg across sessions, 30s buckets) ──
+    const ddaBuckets = {}, diffBuckets = {};
+    for (const s of sessions) {
+      for (const p of expandPoints(s)) {
+        const b = Math.floor(p.time / 30) * 30;
+        if (!ddaBuckets[b])   ddaBuckets[b]   = [];
+        if (!diffBuckets[b])  diffBuckets[b]  = [];
+        ddaBuckets[b].push(p.ddaLevel);
+        diffBuckets[b].push(p.difficultyTier);
+      }
+    }
+    const bucketTimes = [...new Set([...Object.keys(ddaBuckets), ...Object.keys(diffBuckets)])].map(Number).sort((a, b) => a - b);
+    const ddaData   = bucketTimes.map(t => avg(ddaBuckets[t]  ?? [0]));
+    const diffData  = bucketTimes.map(t => avg(diffBuckets[t] ?? [0]));
+    const timeLabels = bucketTimes.map(t => `${t}s`);
+
+    const baseOpts = {
+      plugins: { legend: { labels: { color: '#aaa', boxWidth: 12, font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: '#1a1a2e' } },
+        y: { ticks: { color: '#666', font: { size: 10 } }, grid: { color: '#1a1a2e' } },
+      }
+    };
+
+    charts.dda = new Chart('ddaChart', {
+      type: 'line',
+      data: { labels: timeLabels, datasets: [{ label: 'Avg DDA Level (0=hard, 3=assist)', data: ddaData, borderColor: '#7c4dff', backgroundColor: 'rgba(124,77,255,.1)', fill: true, tension: .3, pointRadius: 0 }] },
+      options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, min: 0, max: 3 } } }
+    });
+
+    charts.diff = new Chart('diffChart', {
+      type: 'line',
+      data: { labels: timeLabels, datasets: [{ label: 'Avg Difficulty Tier', data: diffData, borderColor: '#00e5ff', backgroundColor: 'rgba(0,229,255,.07)', fill: true, tension: .3, pointRadius: 0 }] },
+      options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, min: 0, max: 5 } } }
+    });
+
+    // ── FPS per session ──
+    const fpsLabels = sessions.map((s, i) => `S${rawSessions.indexOf(s) + 1}\n${s.mapType ?? '?'}`);
+    const fpsAvg = sessions.map(s => s.summary?.avgFps ?? 0);
+    const fpsMins = sessions.map(s => s.summary?.minFps ?? 0);
+    const fpsP5  = sessions.map(s => {
+      const pts = expandPoints(s);
+      return pct5(pts.map(p => p.fps).filter(f => f > 0));
+    });
+
+    charts.fps = new Chart('fpsChart', {
+      type: 'bar',
+      data: { labels: fpsLabels, datasets: [
+        { label: 'Avg FPS', data: fpsAvg, backgroundColor: fpsAvg.map(f => colorFps(f) + '88'), borderColor: fpsAvg.map(colorFps), borderWidth: 1 },
+        { label: 'P5 FPS',  data: fpsP5,  backgroundColor: 'rgba(255,152,0,.35)', borderColor: '#ff9800', borderWidth: 1 },
+        { label: 'Min FPS', data: fpsMins, backgroundColor: 'rgba(244,67,54,.25)', borderColor: '#f44336', borderWidth: 1 },
+      ]},
+      options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, suggestedMin: 0, suggestedMax: 75 } } }
+    });
+
+    // ── Kill rate over time (last session if multiple) ──
+    const lastSession = sessions[sessions.length - 1];
+    const killBuckets = {};
+    for (const p of expandPoints(lastSession)) {
+      const b = Math.floor(p.time / 30) * 30;
+      if (!killBuckets[b]) killBuckets[b] = [];
+      killBuckets[b].push(p.killsThisSample * 2);  // convert to per-minute
+    }
+    const killTimes = Object.keys(killBuckets).map(Number).sort((a, b) => a - b);
+    const killRates = killTimes.map(t => avg(killBuckets[t] ?? [0]));
+
+    charts.killRate = new Chart('killRateChart', {
+      type: 'line',
+      data: { labels: killTimes.map(t => `${t}s`), datasets: [{ label: 'Kill Rate (kills/min, last session)', data: killRates, borderColor: '#00e676', backgroundColor: 'rgba(0,230,118,.1)', fill: true, tension: .3, pointRadius: 0 }] },
+      options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, suggestedMin: 0 } } }
+    });
+
+    // ── Scatter: enemy count vs FPS ──
+    const scatterData = [];
+    for (const s of sessions.slice(-3)) {  // last 3 sessions max for clarity
+      for (const p of expandPoints(s)) {
+        scatterData.push({ x: p.enemyCount, y: p.fps });
+      }
+    }
+    // Thin out (max 500 points)
+    const step = Math.max(1, Math.floor(scatterData.length / 500));
+    const thinned = scatterData.filter((_, i) => i % step === 0);
+
+    charts.scatter = new Chart('scatterChart', {
+      type: 'scatter',
+      data: { datasets: [{ label: 'Enemy Count vs FPS', data: thinned, backgroundColor: 'rgba(124,77,255,.3)', pointRadius: 3 }] },
+      options: { ...baseOpts, scales: {
+        x: { ...baseOpts.scales.x, title: { display: true, text: 'Enemy Count', color: '#888' }, suggestedMin: 0 },
+        y: { ...baseOpts.scales.y, title: { display: true, text: 'FPS', color: '#888' }, suggestedMin: 0, suggestedMax: 75 },
+      }}
+    });
+
+    // ── Session table ──
+    const tbody = document.getElementById('sessionTbody');
+    tbody.innerHTML = sessions.map((s, idx) => {
+      const pts = expandPoints(s);
+      const hasStuck = pts.some(p => p.playerStuck);
+      const globalIdx = rawSessions.indexOf(s) + 1;
+      const avgFps = s.summary?.avgFps ?? 0;
+      const peakDiffTier = s.summary?.peakDifficultyTier ?? 0;
+      const spikes = pts.filter(p => p.fps < 30).length;
+      const maxDDA = Math.max(...pts.map(p => p.ddaLevel));
+
+      return `<tr>
+        <td>${globalIdx}</td>
+        <td>${(s.timestamp ?? '-').slice(0, 19)}</td>
+        <td>${s.mapType ?? '-'}</td>
+        <td>${((s.duration ?? 0)).toFixed(0)}s</td>
+        <td class="${avgFps >= 55 ? 'g' : avgFps >= 40 ? 'w' : 'r'}">${avgFps.toFixed(1)}</td>
+        <td>${(s.summary?.minFps ?? 0).toFixed(1)}</td>
+        <td class="${spikes > 20 ? 'r' : spikes > 5 ? 'w' : ''}">${spikes}</td>
+        <td>${s.summary?.totalKills ?? 0}</td>
+        <td>${s.summary?.totalDeaths ?? 0}</td>
+        <td>${peakDiffTier.toFixed(2)}</td>
+        <td>${maxDDA.toFixed(2)}</td>
+        <td>${hasStuck ? '<span class="stuck-badge">⚠ STUCK</span>' : '—'}</td>
+      </tr>`;
+    }).join('');
+
+    // ── Stuck events table ──
+    const stuckTbody = document.getElementById('stuckTbody');
+    const stuckRows = [];
+    for (const s of sessions) {
+      const pts = expandPoints(s);
+      const stuckPts = pts.filter(p => p.playerStuck);
+      if (!stuckPts.length) continue;
+
+      // Group into events (gap > 2s = new event)
+      let evStart = null, prevT = -Infinity;
+      for (const p of stuckPts) {
+        if (p.time - prevT > 2) {
+          if (evStart !== null) {
+            stuckRows.push(`<tr>
+              <td>${(s.timestamp ?? '').slice(0, 19)}</td>
+              <td>${s.mapType ?? '?'}</td>
+              <td>${evStart.toFixed(0)}s – ${prevT.toFixed(0)}s</td>
+              <td>U=${evStart_pt?.playerSurfaceU?.toFixed(3) ?? '?'}, V=${evStart_pt?.playerSurfaceV?.toFixed(3) ?? '?'}</td>
+              <td>${evStart_pt?.playerFaceIndex ?? '?'}</td>
+              <td>(${evStart_pt?.playerWorldX?.toFixed(1) ?? '?'}, ${evStart_pt?.playerWorldY?.toFixed(1) ?? '?'}, ${evStart_pt?.playerWorldZ?.toFixed(1) ?? '?'})</td>
+            </tr>`);
+          }
+          evStart = p.time;
+          evStart_pt = p;
+        }
+        prevT = p.time;
+      }
+      if (evStart !== null) {
+        stuckRows.push(`<tr>
+          <td>${(s.timestamp ?? '').slice(0, 19)}</td>
+          <td>${s.mapType ?? '?'}</td>
+          <td>${evStart.toFixed(0)}s – ${prevT.toFixed(0)}s</td>
+          <td>U=${evStart_pt?.playerSurfaceU?.toFixed(3) ?? '?'}, V=${evStart_pt?.playerSurfaceV?.toFixed(3) ?? '?'}</td>
+          <td>${evStart_pt?.playerFaceIndex ?? '?'}</td>
+          <td>(${evStart_pt?.playerWorldX?.toFixed(1) ?? '?'}, ${evStart_pt?.playerWorldY?.toFixed(1) ?? '?'}, ${evStart_pt?.playerWorldZ?.toFixed(1) ?? '?'})</td>
+        </tr>`);
+      }
+    }
+    stuckTbody.innerHTML = stuckRows.length > 0
+      ? stuckRows.join('')
+      : '<tr><td colspan="6" class="no-data">No stuck events — player movement looks healthy</td></tr>';
+  }
+
+  function exportCSV() {
+    const sessions = applyFilters(allSessions);
+    const headers = ['session_ts','map','time_s','fps','enemy_count','dda_level','diff_tier','kills','deaths','player_stuck','pu','pv','face'];
+    const rows = [headers.join(',')];
+    for (const s of sessions) {
+      for (const p of expandPoints(s)) {
+        rows.push([
+          JSON.stringify(s.timestamp ?? ''), s.mapType ?? '',
+          p.time, p.fps, p.enemyCount, p.ddaLevel, p.difficultyTier,
+          p.kills, p.deaths, p.playerStuck ? 1 : 0,
+          p.playerSurfaceU, p.playerSurfaceV, p.playerFaceIndex,
+        ].join(','));
+      }
+    }
+    download('gw3d-telemetry.csv', rows.join('\n'), 'text/csv');
+  }
+
+  function exportJSON() {
+    download('gw3d-sessions.json', JSON.stringify(applyFilters(allSessions), null, 2), 'application/json');
+  }
+
+  function clearData() {
+    if (!confirm('Clear all session data from localStorage? This cannot be undone.')) return;
+    localStorage.removeItem(PERF_KEY);
+    localStorage.removeItem(DDA_KEY);
+    allSessions = [];
+    document.getElementById('noBanner').style.display = 'block';
+    document.getElementById('main').style.display = 'none';
+    document.getElementById('metaLine').textContent = 'Data cleared.';
+  }
+
+  function download(filename, content, mime) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([content], { type: mime }));
+    a.download = filename;
+    a.click();
+  }
+
+  // Auto-refresh every 5 seconds if game is likely running
+  setInterval(() => {
+    const raw = localStorage.getItem(PERF_KEY);
+    const count = raw ? JSON.parse(raw).length : 0;
+    if (count !== allSessions.length) load();
+  }, 5000);
+
+  // Initial load
+  load();
+  </script>
+</body>
+</html>
