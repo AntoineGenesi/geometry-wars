@@ -29,6 +29,7 @@
       font-weight: bold;
       text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
       letter-spacing: 4px;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), letter-spacing 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     #multiplier-display {
       position: absolute;
@@ -38,6 +39,7 @@
       font-size: 18px;
       color: #0f0;
       text-shadow: 0 0 8px #0f0;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     #lives-display {
       position: absolute;
@@ -45,6 +47,7 @@
       right: 30px;
       font-size: 20px;
       text-shadow: 0 0 8px #f0f;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), right 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     #bombs-display {
       position: absolute;
@@ -52,6 +55,7 @@
       right: 30px;
       font-size: 20px;
       text-shadow: 0 0 8px #ff0;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), right 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     #weapon-display {
       position: absolute;
@@ -60,7 +64,7 @@
       transform: translateX(-50%);
       font-size: 16px;
       text-shadow: 0 0 8px #ff0;
-      transition: color 0.3s, text-shadow 0.3s;
+      transition: bottom 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), color 0.3s, text-shadow 0.3s;
     }
     #combo-display {
       position: absolute;
@@ -70,7 +74,7 @@
       font-weight: bold;
       color: #ff8800;
       text-shadow: 0 0 10px #ff8800;
-      transition: transform 0.1s, color 0.2s;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), right 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), transform 0.1s, color 0.2s;
     }
     #timer-display {
       position: absolute;
@@ -80,6 +84,7 @@
       font-weight: bold;
       text-shadow: 0 0 8px #ff8800;
       color: #ff8800;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     #timer-display.urgent {
       color: #ff2200;
@@ -98,6 +103,7 @@
       font-size: 14px;
       color: #668888;
       letter-spacing: 3px;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), letter-spacing 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     #player-level-display {
       position: absolute;
@@ -107,7 +113,7 @@
       letter-spacing: 1.5px;
       color: #6688aa;
       text-shadow: 0 0 6px #4466aa;
-      transition: color 0.3s, text-shadow 0.3s;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), right 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), color 0.3s, text-shadow 0.3s;
     }
     #boost-display {
       position: absolute;
@@ -117,7 +123,7 @@
       letter-spacing: 2px;
       color: #00ffff;
       text-shadow: 0 0 8px #00ffff;
-      transition: color 0.2s, text-shadow 0.2s;
+      transition: bottom 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), letter-spacing 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), color 0.2s, text-shadow 0.2s;
     }
     #boost-display.cooldown {
       color: #336655;
@@ -143,7 +149,7 @@
       text-shadow: 0 0 30px #00ffff, 0 0 60px #0088ff;
       letter-spacing: 8px;
       opacity: 0;
-      transition: opacity 0.2s;
+      transition: opacity 0.2s, font-size 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), letter-spacing 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     #countdown-overlay.visible {
       opacity: 1;
@@ -159,6 +165,7 @@
       background: rgba(255, 255, 255, 0.15);
       border: 1px solid rgba(255, 255, 255, 0.3);
       z-index: 10;
+      transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     #boss-health-fill {
       height: 100%;
@@ -247,7 +254,7 @@
     /* Rotate-device overlay — shown when mobile is held in portrait       */
     /* ------------------------------------------------------------------- */
     #rotate-overlay {
-      display: none;
+      display: flex;
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
       z-index: 9999;
@@ -256,16 +263,21 @@
       align-items: center;
       justify-content: center;
       gap: 24px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
     /* Show when touch device is in portrait orientation */
     @media (pointer: coarse) and (orientation: portrait) {
       #rotate-overlay {
-        display: flex;
+        opacity: 1;
+        pointer-events: auto;
       }
     }
     /* Suppress rotate overlay while menu is open */
     body.menu-open #rotate-overlay {
-      display: none !important;
+      opacity: 0 !important;
+      pointer-events: none !important;
     }
     .rotate-icon {
       font-size: 64px;
