@@ -71,6 +71,7 @@ export class PauseMenu {
   private onExitCallback: (() => void) | null = null;
   private onVisualModeChangeCallback: ((mode: 'pixelated' | 'modern') => void) | null = null;
   private onGraphicsChangeCallback: ((settings: GraphicsSettings) => void) | null = null;
+  private onLookModeCallback: (() => void) | null = null;
   private isPaused: boolean = false;
   private bgMusic: BackgroundMusic | null = null;
   private isHost: boolean = false;
@@ -78,6 +79,7 @@ export class PauseMenu {
   private perfLogger: PerformanceLogger | null = null;
   private visualMode: 'pixelated' | 'modern' = 'pixelated';
   private joinUrl: string | null = null;
+  private isInLookMode: boolean = false;
 
   constructor() {
     this.container = document.createElement('div');
@@ -602,7 +604,13 @@ export class PauseMenu {
     const controlsBtn = this.container.querySelector('[data-action="controls"]');
 
     resumeBtn?.addEventListener('click', () => {
-      this.resume();
+      // For non-host players: enter look mode (can view but game stays paused globally)
+      // For host players: fully resume the game
+      if (!this.isHost) {
+        this.enterLookMode();
+      } else {
+        this.resume();
+      }
     });
 
     controlsBtn?.addEventListener('click', () => {
@@ -675,15 +683,8 @@ export class PauseMenu {
       this.networkCallbacks?.onStopServer?.();
     });
 
-    // Escape key to toggle
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        if (this.isPaused) {
-          this.resume();
-        }
-        // Note: showing pause is handled externally
-      }
-    });
+    // Escape key to toggle pause is handled externally (in main.ts/network-main.ts)
+    // This allows the caller to manage state properly and support look mode for non-host players
   }
 
   /**
@@ -715,6 +716,33 @@ export class PauseMenu {
     }
     this.hide();
     this.onResumeCallback?.();
+  }
+
+  /**
+   * Enter look mode (non-host only): close the pause menu and let the player
+   * look around with the camera while the game stays paused globally.
+   * Does NOT resume the game or notify the network.
+   */
+  enterLookMode(): void {
+    this.isInLookMode = true;
+    this.hide();
+    this.onLookModeCallback?.();
+  }
+
+  /**
+   * Exit look mode and return to the pause menu.
+   */
+  exitLookMode(): void {
+    this.isInLookMode = false;
+    this.isPaused = true;
+    this.container.classList.remove('hidden');
+  }
+
+  /**
+   * Check if in look mode.
+   */
+  get inLookMode(): boolean {
+    return this.isInLookMode;
   }
 
   /**
@@ -1326,6 +1354,13 @@ export class PauseMenu {
    */
   onResume(callback: () => void): void {
     this.onResumeCallback = callback;
+  }
+
+  /**
+   * Set callback for when non-host player enters look mode (clicks resume button).
+   */
+  onLookMode(callback: () => void): void {
+    this.onLookModeCallback = callback;
   }
 
   /**
