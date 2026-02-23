@@ -120,6 +120,8 @@ export class GameRoom extends Room<GameState> {
   private nextBulletId = 0;
   private nextEnemyId = 0;
   private hostIsLocal: boolean = false;
+  /** Per-session locality: tracks whether each connected player is a localhost client. */
+  private clientLocality: Map<string, boolean> = new Map();
   private nextGeomId = 0;
   private nextPickupId = 0;
   private waveNumber = 0;
@@ -267,15 +269,20 @@ export class GameRoom extends Room<GameState> {
     const remoteAddr = (client as unknown as { remoteAddress?: string }).remoteAddress ?? '';
     const isLocalClient = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
 
+    // Track locality for this session (used in onLeave to correctly set hostIsLocal on transfer)
+    this.clientLocality.set(client.sessionId, isLocalClient);
+
     if (this.state.hostId === '') {
       // First joiner — becomes host
       this.state.hostId = client.sessionId;
       this.hostIsLocal = isLocalClient;
       console.log(`[GameRoom] ${player.name} is the host (local=${isLocalClient})`);
-    } else if (isLocalClient && !this.hostIsLocal) {
+    } else if (isLocalClient && !this.hostIsLocal && this.state.roomPhase === 'lobby') {
       // A localhost client joined after a LAN client had already taken the host
-      // role. Promote the localhost client to host since the server is running
-      // on this machine — the person sitting at the PC is the intended host.
+      // role, but ONLY in lobby phase. Once the game is in progress, we never
+      // steal the host role — that would cause dual-host state if the original
+      // host leaves and rejoins mid-game. The lobby-only guard ensures this
+      // promotion only handles the initial connection race, not rejoin scenarios.
       const prev = this.state.hostId;
       this.state.hostId = client.sessionId;
       this.hostIsLocal = true;
@@ -310,6 +317,8 @@ export class GameRoom extends Room<GameState> {
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
     }
+    // Remove locality tracking for this session
+    this.clientLocality.delete(client.sessionId);
 
     // If the host left, try to transfer host to another player.
     // Previously this always closed the room, which meant any host disconnect
@@ -323,9 +332,19 @@ export class GameRoom extends Room<GameState> {
 
       if (newHostId) {
         this.state.hostId = newHostId;
-        this.hostIsLocal = false; // transferred host may not be local — reset for safety
+        // Set hostIsLocal from actual tracked locality of the new host.
+        // Previously always set false ("reset for safety"), which caused the
+        // localhost-priority logic to incorrectly re-promote the original host
+        // if they rejoined mid-game (clientLocality.get would have returned true).
+        this.hostIsLocal = this.clientLocality.get(newHostId) ?? false;
         const newHostPlayer = this.state.players.get(newHostId);
-        console.log(`[GameRoom] Host transferred to: ${newHostPlayer?.name || newHostId}`);
+        console.log(`[GameRoom] Host transferred to: ${newHostPlayer?.name || newHostId} (local=${this.hostIsLocal})`);
+        // If the game was paused by the outgoing host, unpause so the new host
+        // doesn't inherit a frozen game they didn't create and can't easily recover.
+        if (this.state.isPaused) {
+          this.state.isPaused = false;
+          console.log('[GameRoom] Unpaused game on host transfer');
+        }
         // Broadcast so clients can update UI immediately (state patch also carries hostId)
         this.broadcast('host_changed', { hostId: newHostId });
       } else {
@@ -370,6 +389,7 @@ export class GameRoom extends Room<GameState> {
     this.state.roomPhase = 'playing';
     this.state.gameStarted = true;   // backward compat
     this.state.gameOver = false;     // backward compat
+    this.state.isPaused = false;     // always start unpaused (guards stale pause from previous round)
     this.state.waveNumber = 0;
     this.state.gameTime = 0;
     this.waveNumber = 0;

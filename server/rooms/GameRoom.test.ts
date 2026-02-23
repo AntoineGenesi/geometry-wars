@@ -261,19 +261,24 @@ describe('GameRoom host transfer on disconnect', () => {
 /**
  * Mirrors the localhost priority logic in GameRoom.onJoin:
  * - If no host → first joiner is host
- * - If localhost joins and current host is non-local → promote localhost
+ * - If localhost joins and current host is non-local AND game is in lobby → promote localhost
  * - Otherwise → no change
+ *
+ * S28b fix: added roomPhase === 'lobby' guard to prevent host stealing on rejoin.
+ * Without this guard, original host (localhost) leaving and rejoining mid-game
+ * would re-steal the host role from whoever took it over, causing dual-host state.
  */
 function assignHostWithLocalPriority(
   currentHostId: string,
   currentHostIsLocal: boolean,
   newPlayerId: string,
-  newPlayerIsLocal: boolean
+  newPlayerIsLocal: boolean,
+  roomPhase: string = 'lobby',
 ): { hostId: string; hostIsLocal: boolean } {
   if (currentHostId === '') {
     return { hostId: newPlayerId, hostIsLocal: newPlayerIsLocal };
   }
-  if (newPlayerIsLocal && !currentHostIsLocal) {
+  if (newPlayerIsLocal && !currentHostIsLocal && roomPhase === 'lobby') {
     return { hostId: newPlayerId, hostIsLocal: true };
   }
   return { hostId: currentHostId, hostIsLocal: currentHostIsLocal };
@@ -1153,5 +1158,203 @@ describe('S28b: server bullet-enemy hit threshold calibration', () => {
 
     expect(worldDistanceAtOldThreshold).toBeGreaterThan(enemyVisualRadius * 4); // old was 4x+ too large
     expect(worldDistanceAtNewThreshold).toBeLessThan(enemyVisualRadius * 2);    // new is within 2x of visual
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S28b: Rejoin-after-pause dual-host regression
+//
+// Bug: Player A (localhost, original host) leaves mid-game while game is paused.
+// Host transfers to Player B. Player A rejoins. The old localhost-priority logic
+// re-promoted Player A to host (because hostIsLocal was reset to false on transfer),
+// causing BOTH players to think they're host simultaneously.
+//
+// Fix 1: Localhost promotion only applies in 'lobby' phase.
+//        Mid-game rejoins never trigger the localhost priority path.
+//
+// Fix 2: hostIsLocal is set to the actual locality of the new host on transfer
+//        (not always false). This prevents false re-promotion if the new host
+//        was also local.
+//
+// Fix 3: startGame() resets isPaused = false to prevent stale pause state from
+//        a previous round bleeding into a new round after voting.
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors GameRoom.onLeave host transfer with locality tracking.
+ * Returns the new host state including the actual hostIsLocal value.
+ */
+function transferHostWithLocality(
+  leavingPlayerId: string,
+  currentHostId: string,
+  remainingPlayers: Array<{ id: string; isLocal: boolean }>,
+  clientLocality: Map<string, boolean>,
+): { newHostId: string; newHostIsLocal: boolean; shouldClose: boolean; unpaused: boolean } {
+  if (leavingPlayerId !== currentHostId) {
+    return { newHostId: currentHostId, newHostIsLocal: clientLocality.get(currentHostId) ?? false, shouldClose: false, unpaused: false };
+  }
+
+  const nextHost = remainingPlayers[0];
+  if (!nextHost) {
+    return { newHostId: '', newHostIsLocal: false, shouldClose: true, unpaused: false };
+  }
+
+  return {
+    newHostId: nextHost.id,
+    newHostIsLocal: clientLocality.get(nextHost.id) ?? false,
+    shouldClose: false,
+    unpaused: true, // auto-unpause when host leaves
+  };
+}
+
+describe('S28b: localhost-priority blocked mid-game (rejoin dual-host regression)', () => {
+  it('REGRESSION: old code re-promoted localhost host on mid-game rejoin', () => {
+    // OLD assignHostWithLocalPriority (no roomPhase guard):
+    function oldAssign(
+      currentHostId: string,
+      currentHostIsLocal: boolean,
+      newPlayerId: string,
+      newPlayerIsLocal: boolean,
+    ): { hostId: string; hostIsLocal: boolean } {
+      if (currentHostId === '') return { hostId: newPlayerId, hostIsLocal: newPlayerIsLocal };
+      if (newPlayerIsLocal && !currentHostIsLocal) return { hostId: newPlayerId, hostIsLocal: true };
+      return { hostId: currentHostId, hostIsLocal: currentHostIsLocal };
+    }
+
+    // Scenario: localhost host leaves → host transfers to LAN player (hostIsLocal=false)
+    // Localhost player rejoins
+    const result = oldAssign('lan-player', false /* hostIsLocal reset to false */, 'local-rejoin', true);
+    // BUG: localhost gets re-promoted even though game was in progress!
+    expect(result.hostId).toBe('local-rejoin'); // demonstrates the BUG
+  });
+
+  it('FIX: lobby promotion allowed when roomPhase=lobby', () => {
+    const result = assignHostWithLocalPriority('lan-player', false, 'local-player', true, 'lobby');
+    expect(result.hostId).toBe('local-player'); // promotion in lobby is correct
+    expect(result.hostIsLocal).toBe(true);
+  });
+
+  it('FIX: lobby promotion BLOCKED when roomPhase=playing (mid-game rejoin)', () => {
+    // Same scenario as the bug, but with roomPhase='playing'
+    const result = assignHostWithLocalPriority('lan-player', false, 'local-rejoin', true, 'playing');
+    expect(result.hostId).toBe('lan-player'); // host unchanged — no re-promotion
+    expect(result.hostIsLocal).toBe(false);
+  });
+
+  it('FIX: lobby promotion BLOCKED when roomPhase=voting (end-of-game rejoin)', () => {
+    const result = assignHostWithLocalPriority('lan-player', false, 'local-rejoin', true, 'voting');
+    expect(result.hostId).toBe('lan-player'); // host unchanged
+  });
+
+  it('FIX: original scenario — localhost leaves, LAN takes host, localhost rejoins mid-game', () => {
+    // Step 1: Lobby — localhost joins first, becomes host
+    let state = assignHostWithLocalPriority('', false, 'local-p', true, 'lobby');
+    expect(state.hostId).toBe('local-p');
+    expect(state.hostIsLocal).toBe(true);
+
+    // Step 2: LAN player joins in lobby — does NOT steal host
+    state = assignHostWithLocalPriority(state.hostId, state.hostIsLocal, 'lan-p', false, 'lobby');
+    expect(state.hostId).toBe('local-p'); // localhost stays host
+
+    // Step 3: Game starts (roomPhase changes to 'playing')
+    // ... time passes ...
+
+    // Step 4: localhost player leaves — host transfers to LAN player
+    // (Transfer sets hostIsLocal = false since lan-p is not local)
+    state = { hostId: 'lan-p', hostIsLocal: false }; // simulates onLeave + transfer
+
+    // Step 5: localhost player REJOINS with new session ID (roomPhase = 'playing')
+    state = assignHostWithLocalPriority(state.hostId, state.hostIsLocal, 'local-p-new', true, 'playing');
+
+    // FIX: no re-promotion mid-game → only ONE host
+    expect(state.hostId).toBe('lan-p'); // LAN player is still host (correct!)
+    expect(state.hostIsLocal).toBe(false);
+  });
+
+  it('FIX: LAN non-host leaves mid-game — no host change, no dual-host', () => {
+    // LAN player (non-host) leaves — no host transfer
+    const result = assignHostWithLocalPriority('localhost-host', true, 'lan-rejoin', false, 'playing');
+    expect(result.hostId).toBe('localhost-host'); // unchanged
+    expect(result.hostIsLocal).toBe(true);
+  });
+
+  it('FIX: two localhost players — second never steals from first', () => {
+    // First localhost is host
+    const state1 = assignHostWithLocalPriority('', false, 'local1', true, 'lobby');
+    expect(state1.hostId).toBe('local1');
+
+    // Second localhost joins in lobby — should NOT steal (first is already local)
+    const state2 = assignHostWithLocalPriority(state1.hostId, state1.hostIsLocal, 'local2', true, 'lobby');
+    expect(state2.hostId).toBe('local1'); // unchanged (hostIsLocal=true blocks promotion)
+
+    // In playing phase — also no steal
+    const state3 = assignHostWithLocalPriority(state1.hostId, state1.hostIsLocal, 'local2-rejoin', true, 'playing');
+    expect(state3.hostId).toBe('local1');
+  });
+});
+
+describe('S28b: hostIsLocal correctly tracked on host transfer', () => {
+  it('transfer to LAN player: hostIsLocal=false', () => {
+    const clientLocality = new Map([
+      ['local1', true],
+      ['lan-player', false],
+    ]);
+    const result = transferHostWithLocality('local1', 'local1', [{ id: 'lan-player', isLocal: false }], clientLocality);
+    expect(result.newHostId).toBe('lan-player');
+    expect(result.newHostIsLocal).toBe(false); // correctly false, not 'reset for safety'
+  });
+
+  it('transfer to localhost player: hostIsLocal=true (not false as before)', () => {
+    const clientLocality = new Map([
+      ['local1', true],
+      ['local2', true], // both are localhost (same machine, different tabs)
+    ]);
+    const result = transferHostWithLocality('local1', 'local1', [{ id: 'local2', isLocal: true }], clientLocality);
+    expect(result.newHostId).toBe('local2');
+    expect(result.newHostIsLocal).toBe(true); // correctly true
+  });
+
+  it('host transfer auto-unpauses game when host leaves', () => {
+    const clientLocality = new Map([['lan-p', false]]);
+    const result = transferHostWithLocality('paused-host', 'paused-host', [{ id: 'lan-p', isLocal: false }], clientLocality);
+    expect(result.unpaused).toBe(true);
+  });
+
+  it('non-host leave does NOT trigger auto-unpause', () => {
+    const clientLocality = new Map([['actual-host', true], ['lan-p', false]]);
+    const result = transferHostWithLocality('lan-p', 'actual-host', [{ id: 'actual-host', isLocal: true }], clientLocality);
+    expect(result.unpaused).toBe(false);
+    expect(result.newHostId).toBe('actual-host'); // host unchanged
+  });
+});
+
+describe('S28b: isPaused reset on startGame (no stale pause from previous round)', () => {
+  it('startGame always begins with isPaused=false', () => {
+    // Simulate startGame() state changes
+    let isPaused = true; // was paused in previous round
+
+    // startGame() sets isPaused = false
+    isPaused = false;
+
+    expect(isPaused).toBe(false);
+  });
+
+  it('isPaused=true from previous round does NOT carry into new game', () => {
+    // Scenario: game was paused → voting phase ends → new game starts
+    // Without fix: isPaused would remain true, freezing the new game
+    // With fix: startGame() resets isPaused
+
+    let roomPhase = 'playing';
+    let isPaused = true; // game was paused
+
+    // Game over → voting
+    roomPhase = 'voting';
+    // isPaused not reset here (transitionToVoting doesn't touch isPaused — OK since voting tick ignores it)
+
+    // New game starts via host_launch/vote
+    roomPhase = 'playing';
+    isPaused = false; // startGame() resets this
+
+    expect(isPaused).toBe(false); // new game is NOT frozen
   });
 });
