@@ -5,6 +5,7 @@ import { SuperStateType } from '../weapons/SuperState';
 import { WEAPON_CONFIGS } from '../weapons/WeaponTypes';
 import { Gate } from '../entities/enemies/Gate';
 import { Painter } from '../entities/enemies/Painter';
+import { FractalSnake } from '../entities/enemies/FractalSnake';
 import { getSoundEngine } from '../audio/SoundEngine';
 import { UIHelpers } from '../ui/UIHelpers';
 import { BUFF_DEFINITIONS } from '../buffs/BuffManager';
@@ -636,6 +637,32 @@ export class GameLoop {
             break;
           }
         }
+      }
+    }
+    // FractalSnake follower hit detection — runs AFTER the main bullet-enemy collision loop.
+    // New block (not modifying any existing loop) — per REGRESSION GUARD protocol.
+    const fractalSnakes = ctx.enemySpawner.getFractalSnakes();
+    if (fractalSnakes.length > 0) {
+      const bulletDmg = ctx.scoreManager.getScorePowerMultiplier()
+        * ctx.playerLevel.damageMultiplier
+        * ctx.buffManager.getDamageMultiplier();
+      ctx.bulletPool.forEachActive((bulletIdx: number, _bulletPos: THREE.Vector3, bulletData: any) => {
+        const bu = bulletData.surfaceU;
+        const bv = bulletData.surfaceV;
+        for (const fs of fractalSnakes) {
+          if (!fs.alive) continue;
+          const followerIdx = fs.hitTestFollower(bu, bv, 0.08);
+          if (followerIdx !== null) {
+            ctx.bulletPool.kill(bulletIdx);
+            fs.damageFollower(followerIdx, bulletDmg);
+            break;
+          }
+        }
+      });
+
+      // Update shock effects for all active fractal snakes
+      for (const fs of fractalSnakes) {
+        fs.updateShockEffect(dt);
       }
     }
     profiler.end('collision_detection');

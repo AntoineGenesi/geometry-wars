@@ -126,13 +126,13 @@ describe('FractalSnake enemy', () => {
 
   // ──────────────────── die / callbacks ────────────────────
 
-  it('die() fires onHeadDeath with all alive followers', () => {
-    const captured: Array<{ u: number; v: number; enemyType: string }> = [];
-    FractalSnake.onHeadDeath = (list) => list.forEach(f => captured.push(f));
+  it('die() fires onHeadDeath with FractalSnake instance', () => {
+    let receivedSelf: FractalSnake | null = null;
+    FractalSnake.onHeadDeath = (self) => { receivedSelf = self; };
 
     snake.die();
 
-    expect(captured.length).toBe(8);
+    expect(receivedSelf).toBe(snake);
     expect(snake.alive).toBe(false);
   });
 
@@ -146,31 +146,24 @@ describe('FractalSnake enemy', () => {
     expect(callCount).toBe(1);
   });
 
-  it('onHeadDeath receives empty array when all followers are dead', () => {
-    // Mark all followers as dead manually via internal state
-    // (getFollowerData returns copies — we need to kill them via the class)
-    // We achieve this by creating a fresh snake with 0 followers via config
-    // But the interface requires numRows ≥ 1... so instead test via 1-row single follower
+  it('onHeadDeath receives the FractalSnake instance (not an array)', () => {
     const tiny = new FractalSnake(0.5, 0.5, { numRows: 1, followersPerRow: 1 });
-    // Manually mark the one follower as dead by accessing it
-    const data = tiny.getFollowerData();
-    expect(data.length).toBe(1);
+    let receivedSelf: FractalSnake | null = null;
+    FractalSnake.onHeadDeath = (self) => { receivedSelf = self; };
 
-    const captured: Array<{ u: number; v: number; enemyType: string }> = [];
-    FractalSnake.onHeadDeath = (list) => list.forEach(f => captured.push(f));
-
-    // Kill the follower via internal reference (we'll call the method that marks it dead)
-    // Since sub-task 3 handles damage routing, we test the callback receives
-    // only the ALIVE followers — here all are alive
     tiny.die();
-    expect(captured.length).toBe(1); // 1 alive follower
+    expect(receivedSelf).toBe(tiny);
+    // Caller can get followers via receivedSelf.getFollowerData()
+    expect(receivedSelf!.getFollowerData().length).toBe(1);
 
     tiny.destroy();
   });
 
-  it('onHeadDeath callback data includes enemyType', () => {
+  it('onHeadDeath callback — follower data includes enemyType', () => {
     const types: string[] = [];
-    FractalSnake.onHeadDeath = (list) => list.forEach(f => types.push(f.enemyType));
+    FractalSnake.onHeadDeath = (self) => {
+      self.getFollowerData().filter(f => f.alive).forEach(f => types.push(f.enemyType));
+    };
     snake.die();
     expect(types.every(t => typeof t === 'string' && t.length > 0)).toBe(true);
   });
@@ -220,6 +213,58 @@ describe('FractalSnake enemy', () => {
     expect(f1).toBeDefined();
     // V should differ by 0.06 (±0.03 offset from same history position)
     expect(Math.abs(f1.v - f0.v)).toBeCloseTo(0.06, 2);
+  });
+
+  // ──────────────────── hitTestFollower / damageFollower ────────────────────
+
+  it('hitTestFollower returns null when no followers within radius', () => {
+    // Followers start at head position (0.5, 0.5); test far away point
+    const idx = snake.hitTestFollower(0.9, 0.9, 0.08);
+    expect(idx).toBeNull();
+  });
+
+  it('hitTestFollower returns an index for a follower at the same UV', () => {
+    // First follower should be at (0.5, 0.5 ± 0.03) initially
+    const idx = snake.hitTestFollower(0.5, 0.47, 0.08);
+    expect(typeof idx).toBe('number');
+    expect(idx).not.toBeNull();
+  });
+
+  it('damageFollower reduces follower health', () => {
+    const before = snake.getFollowerData()[0].health;
+    const idx = snake.hitTestFollower(0.5, 0.47, 0.08) ?? 0;
+    snake.damageFollower(idx, 1);
+    const after = snake.getFollowerData()[idx].health;
+    expect(after).toBe(before - 1);
+  });
+
+  it('damageFollower returns true when follower health reaches 0', () => {
+    const data = snake.getFollowerData();
+    const idx = 0;
+    const maxHp = data[idx].maxHealth;
+    const died = snake.damageFollower(idx, maxHp);
+    expect(died).toBe(true);
+    expect(snake.getFollowerData()[idx].alive).toBe(false);
+  });
+
+  it('onFollowerFreed fires when follower health reaches 0', () => {
+    let firedU = -1;
+    let firedType = '';
+    FractalSnake.onFollowerFreed = (u, _v, type) => { firedU = u; firedType = type; };
+
+    const data = snake.getFollowerData();
+    snake.damageFollower(0, data[0].maxHealth);
+
+    expect(firedU).toBeGreaterThanOrEqual(0);
+    expect(firedType.length).toBeGreaterThan(0);
+  });
+
+  it('die() fires onHeadDeath before calling super (alive still true inside callback)', () => {
+    let aliveInsideCallback = false;
+    FractalSnake.onHeadDeath = (self) => { aliveInsideCallback = self.alive; };
+    snake.die();
+    expect(aliveInsideCallback).toBe(true);
+    expect(snake.alive).toBe(false);
   });
 
   // ──────────────────── destroy ────────────────────
