@@ -194,19 +194,7 @@ export class IcosahedronSurface extends Surface {
     // detail 3 = 1280 faces (very smooth)
     this.icoGeometry = new THREE.IcosahedronGeometry(radius, subdivisions)
 
-    // Create material - using flat shading to emphasize the faceted look
-    const material = new THREE.MeshBasicMaterial({
-      color: this.config.surfaceColor,
-      transparent: true,
-      opacity: this.config.surfaceOpacity,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-      polygonOffset: true, // Push surface back in depth to avoid z-fighting with grid overlay
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
-    })
-
-    return new THREE.Mesh(this.icoGeometry, material)
+    return new THREE.Mesh(this.icoGeometry, this.createSurfaceMaterial())
   }
 
   /**
