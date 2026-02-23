@@ -1190,7 +1190,8 @@ export class WeaponManager {
             }
 
             if (minDist < hitRadius) {
-              this.callbacks.onEnemyDamage(enemy.index, 2 * dt, WeaponType.LaserBeam);
+              const laserMasteryMult = this.masteryMultiplierFn?.(WeaponType.LaserBeam) ?? 1.0;
+              this.callbacks.onEnemyDamage(enemy.index, 2 * dt * laserMasteryMult, WeaponType.LaserBeam);
             }
           }
         }
@@ -1252,7 +1253,8 @@ export class WeaponManager {
 
             const dist = effect.position.distanceTo(enemy.position);
             if (dist < radius) {
-              this.callbacks.onEnemyDamage(enemy.index, 3 * dt, WeaponType.TeslaCoil);
+              const teslaMasteryMult = this.masteryMultiplierFn?.(WeaponType.TeslaCoil) ?? 1.0;
+              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * teslaMasteryMult, WeaponType.TeslaCoil);
             }
           }
 
