@@ -815,11 +815,17 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Minimap --
   const minimap = new Minimap();
+  if (mobile) {
+    minimap.setVisible(false);
+  }
 
   // -- Kill log (bottom-left) + total kill counter (bottom-right) --
   const killLog = new KillLog();
   const totalKillCounter = new TotalKillCounter();
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
+  if (mobile) {
+    totalKillCounter.hide();
+  }
 
   // -- Player leveling system (kill-based progression) --
   const playerLevel = new PlayerLevel();
@@ -829,6 +835,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Buff system (stackable Risk-of-Rain-style buffs) --
   const buffManager = new BuffManager();
   const buffHUD = new BuffHUD();
+  if (mobile) {
+    buffHUD.setCompactMode(true);
+  }
   const shockArcRenderer = new ShockArcRenderer();
   game.scene.add(shockArcRenderer.root);
 
@@ -1108,6 +1117,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Camera controller (handles positioning, orbit, zoom) --
   const cameraController = new CameraController(game.camera);
+  // Start zoomed in closer on mobile for better visibility of the player
+  if (mobile) {
+    cameraController.setCameraDistance(9);
+  }
 
   // -- Wire up enemy death callbacks (now in EnemyDeathCallbacks module) --
   const bossBarEl = document.getElementById('boss-health-bar') as HTMLElement | null;
@@ -1333,6 +1346,57 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     game.stop();
     window.location.href = window.location.pathname;
   });
+
+  // -- Mobile: wire pause button in TouchInput --
+  if (mobile && input instanceof TouchInput) {
+    input.onPause = () => {
+      if (isGameOver) return;
+      if (isPaused) {
+        isPaused = false;
+        ctx.state.isPaused = false;
+        game.resume();
+        pauseMenu.hide();
+      } else {
+        isPaused = true;
+        ctx.state.isPaused = true;
+        game.pause();
+        updatePauseMenuData();
+        pauseMenu.show();
+      }
+    };
+  }
+
+  // -- Mobile: pinch-to-zoom hint (shown once per session) --
+  if (mobile) {
+    const hintShownKey = 'gw3d-pinch-hint-shown';
+    if (!sessionStorage.getItem(hintShownKey)) {
+      sessionStorage.setItem(hintShownKey, '1');
+      const hint = document.createElement('div');
+      hint.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0,0,0,0.75);
+        color: #00ffff;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        font-size: 16px;
+        letter-spacing: 2px;
+        padding: 12px 24px;
+        border-radius: 8px;
+        border: 1px solid rgba(0,255,255,0.4);
+        text-shadow: 0 0 8px rgba(0,255,255,0.5);
+        pointer-events: none;
+        z-index: 3000;
+        opacity: 1;
+        transition: opacity 0.8s;
+      `;
+      hint.textContent = 'PINCH TO ZOOM';
+      document.body.appendChild(hint);
+      setTimeout(() => { hint.style.opacity = '0'; }, 2500);
+      setTimeout(() => { hint.remove(); }, 3300);
+    }
+  }
 
   // -- Keyboard handlers (pause, mute) --
   document.addEventListener('keydown', (e) => {

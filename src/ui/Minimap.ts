@@ -115,6 +115,11 @@ export class Minimap {
     this.canvas.style.display = this.visible ? 'block' : 'none';
   }
 
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    this.canvas.style.display = visible ? 'block' : 'none';
+  }
+
   dispose(): void {
     document.body.removeChild(this.canvas);
   }

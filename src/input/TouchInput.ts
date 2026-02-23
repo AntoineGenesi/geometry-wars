@@ -66,6 +66,12 @@ export class TouchInput {
   private bombTapStart = 0;
   private bombTouchId: number | null = null;
 
+  // -- Pause button --
+  private pauseBtn: HTMLDivElement;
+
+  /** Called when the pause button is tapped. */
+  onPause: (() => void) | null = null;
+
   // -- Bound handlers --
   private readonly onTouchStart: (e: TouchEvent) => void;
   private readonly onTouchMove: (e: TouchEvent) => void;
@@ -91,6 +97,10 @@ export class TouchInput {
     // Both hidden initially
     this.leftBase.style.display = 'none';
     this.rightBase.style.display = 'none';
+
+    // Pause button (top-right corner)
+    this.pauseBtn = this.createPauseButton();
+    this.overlay.appendChild(this.pauseBtn);
 
     document.body.appendChild(this.overlay);
 
@@ -313,6 +323,38 @@ export class TouchInput {
     s.pointerEvents = 'none';
     s.zIndex = '500';
     s.touchAction = 'none';
+  }
+
+  private createPauseButton(): HTMLDivElement {
+    const el = document.createElement('div');
+    el.style.cssText = `
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(0, 255, 255, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      cursor: pointer;
+      z-index: 600;
+      font-size: 20px;
+      color: rgba(0, 255, 255, 0.85);
+      text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+      user-select: none;
+      -webkit-user-select: none;
+    `;
+    el.textContent = '⏸';
+    el.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (this.onPause) this.onPause();
+    }, { passive: false });
+    return el;
   }
 
   private createJoystickBase(): HTMLDivElement {
