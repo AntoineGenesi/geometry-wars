@@ -72,6 +72,7 @@ import {
   NetworkGeomState,
   NetworkWeaponPickupState,
   NetworkGameState,
+  ClientMetricsPayload,
 } from './network/NetworkClient';
 import { PlayerNameLabels } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
@@ -850,6 +851,14 @@ function main() {
   // adding up to 33ms of latency. Matching the server rate eliminates this.
   const INPUT_SEND_INTERVAL = 0.016;
   let lastInputSendTime = 0;
+
+  // Metrics logging: send perf/DDA data to server every 500ms for persistent logging.
+  // Server saves to logs/mp-perf-{sessionId}-{date}.jsonl for post-match analysis.
+  const METRICS_SEND_INTERVAL = 0.5;
+  let metricsAccumulator = 0;
+  let latestGameTime = 0;
+  let latestWaveNumber = 0;
+  let latestMapSize = 'medium';
   let lastSentInput: {
     moveX: number; moveY: number; aimAngle: number;
     shooting: boolean; bomb: boolean;
@@ -1519,6 +1528,11 @@ function main() {
   // -----------------------------------------------------------------------
 
   function onStateChange(state: NetworkGameState) {
+    // Track latest server state values for metrics logging
+    latestGameTime = state.gameTime;
+    latestWaveNumber = state.waveNumber;
+    latestMapSize = state.mapSize || 'medium';
+
     // Always try to init/update surface from authoritative server state.
     // This handles both initial creation AND correcting a wrong initial guess.
     if (state.surfaceType) {
@@ -2641,6 +2655,28 @@ function main() {
     perfTracker.setEntityCount(networkEnemies.size);
     perfTracker.setBulletCount(bulletIdToIndex.size);
     perfTracker.recordFrame(dt);
+
+    // Send metrics to server every 500ms during active gameplay
+    metricsAccumulator += dt;
+    if (metricsAccumulator >= METRICS_SEND_INTERVAL && network.isConnected() && currentRoomPhase === 'playing') {
+      metricsAccumulator -= METRICS_SEND_INTERVAL;
+      const localPlayerState = networkPlayers.get(localPlayerId);
+      const ddaTracker = ddaTrackerMap.get(localPlayerId);
+      const ddaLevel = ddaTracker ? ddaEngine.getDDALevelSmooth(ddaTracker.playerIndex) : 0;
+      const metrics: ClientMetricsPayload = {
+        time: latestGameTime,
+        fps: Math.round(perfTracker.fps),
+        enemyCount: networkEnemies.size,
+        bulletCount: bulletIdToIndex.size,
+        score: localPlayerState?.score ?? 0,
+        lives: localPlayerState?.lives ?? 0,
+        waveNumber: latestWaveNumber,
+        ddaLevel: Math.round(ddaLevel * 100) / 100,
+        playerPowerLevel: playerLevel.level,
+        activeWeapon: localPlayerWeaponType,
+      };
+      network.sendMetrics(metrics);
+    }
 
     // Clear per-frame input
     input.endFrame();

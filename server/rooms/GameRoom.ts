@@ -7,6 +7,8 @@ import {
   GeomState,
   WeaponPickupState,
 } from '../schema/GameState';
+import fs from 'fs';
+import path from 'path';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -119,6 +121,7 @@ const WAVE_TYPE_REMAP: Record<string, string> = {
 export class GameRoom extends Room<GameState> {
   private nextBulletId = 0;
   private nextEnemyId = 0;
+  private metricsLogPath: string | null = null;
   private hostIsLocal: boolean = false;
   /** Per-session locality: tracks whether each connected player is a localhost client. */
   private clientLocality: Map<string, boolean> = new Map();
@@ -231,6 +234,29 @@ export class GameRoom extends Room<GameState> {
     // Previously 33ms/30Hz — caused bullets and entities to stutter because the
     // client only received updates every other frame. See decisions/lan-deep-audit-2026-02-11.md #4.
     this.setPatchRate(16); // Send patches every ~16ms (~60Hz, matches TICK_RATE)
+
+    this.onMessage('clientMetrics', (client, data: Record<string, unknown>) => {
+      this.handleClientMetrics(client, data);
+    });
+
+    // Initialize session metrics log file
+    try {
+      const sessionDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const logsDir = path.join(process.cwd(), 'logs');
+      fs.mkdirSync(logsDir, { recursive: true });
+      this.metricsLogPath = path.join(logsDir, `mp-perf-${this.roomId}-${sessionDate}.jsonl`);
+      const header = JSON.stringify({
+        _type: 'session_start',
+        sessionId: this.roomId,
+        timestamp: new Date().toISOString(),
+        surfaceType: this.state.surfaceType,
+      });
+      fs.appendFileSync(this.metricsLogPath, header + '\n');
+      console.log(`[GameRoom] Metrics log: ${this.metricsLogPath}`);
+    } catch (err) {
+      console.error('[GameRoom] Failed to initialize metrics log:', err);
+      this.metricsLogPath = null;
+    }
 
     console.log(`[GameRoom] Created with surface: ${this.state.surfaceType}`);
   }
@@ -369,7 +395,41 @@ export class GameRoom extends Room<GameState> {
   }
 
   onDispose() {
+    if (this.metricsLogPath) {
+      try {
+        const footer = JSON.stringify({
+          _type: 'session_end',
+          sessionId: this.roomId,
+          timestamp: new Date().toISOString(),
+          gameTime: this.state.gameTime,
+          waveNumber: this.waveNumber,
+        });
+        fs.appendFileSync(this.metricsLogPath, footer + '\n');
+      } catch {
+        // Ignore errors on dispose
+      }
+    }
     console.log('[GameRoom] Disposed');
+  }
+
+  private handleClientMetrics(client: Client, data: Record<string, unknown>): void {
+    if (!this.metricsLogPath) return;
+    const player = this.state.players.get(client.sessionId);
+    const entry = JSON.stringify({
+      _type: 'metrics',
+      sessionId: this.roomId,
+      timestamp: new Date().toISOString(),
+      playerId: client.sessionId,
+      playerName: player?.name ?? 'unknown',
+      mapSize: this.state.mapSize,
+      ...data,
+    });
+    try {
+      fs.appendFileSync(this.metricsLogPath, entry + '\n');
+    } catch (err) {
+      console.error('[GameRoom] Failed to write metrics entry:', err);
+      this.metricsLogPath = null;
+    }
   }
 
   private startGameWithSettings(choice: string) {

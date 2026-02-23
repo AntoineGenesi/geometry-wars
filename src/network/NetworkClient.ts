@@ -108,6 +108,30 @@ export interface NetworkInput {
   bomb: boolean;
 }
 
+/** Client performance/DDA metrics sent to server every 500ms for persistent logging */
+export interface ClientMetricsPayload {
+  /** Game time in seconds (from server state) */
+  time: number;
+  /** Current FPS */
+  fps: number;
+  /** Active enemy count */
+  enemyCount: number;
+  /** Active bullet count */
+  bulletCount: number;
+  /** Current player score */
+  score: number;
+  /** Player lives remaining */
+  lives: number;
+  /** Current wave number */
+  waveNumber: number;
+  /** DDA difficulty level (0-3, fractional) */
+  ddaLevel: number;
+  /** Player power level (kill-based) */
+  playerPowerLevel: number;
+  /** Active weapon type name */
+  activeWeapon: string;
+}
+
 /** Event callbacks */
 export interface NetworkCallbacks {
   onStateChange?: (state: NetworkGameState) => void;
@@ -416,6 +440,15 @@ export class NetworkClient {
   sendInput(input: NetworkInput): void {
     if (!this.room || !this.connected) return;
     this.room.send('input', input);
+  }
+
+  /**
+   * Send performance/DDA metrics to server for persistent logging.
+   * Called every 500ms during active gameplay.
+   */
+  sendMetrics(metrics: ClientMetricsPayload): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('clientMetrics', metrics);
   }
 
   /**
