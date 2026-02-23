@@ -2387,6 +2387,16 @@ function main() {
           newU = ((newU % 1) + 1) % 1;
           if (wrapsInV) {
             newV = ((newV % 1) + 1) % 1;
+          } else if (surfType === 'sphere') {
+            // Sphere pole traversal: reflect V through north/south pole (matches server).
+            if (newV < 0) {
+              newV = -newV;
+              newU = ((newU + 0.5) % 1 + 1) % 1;
+            } else if (newV > 1) {
+              newV = 2 - newV;
+              newU = ((newU + 0.5) % 1 + 1) % 1;
+            }
+            newV = Math.max(0.001, Math.min(0.999, newV));
           } else {
             const vMin = surfType === 'cube' ? 0.003 : 0.05;
             const vMax = surfType === 'cube' ? 0.997 : 0.95;

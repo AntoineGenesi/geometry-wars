@@ -257,6 +257,16 @@ export class MeshWalker {
       return this._fallbackMove(moveDir, distance);
     }
 
+    // Circling-pole detection: geodesic "succeeded" (made progress) but stayed in a
+    // face that shares the same high-valence pole vertex as the original face.
+    // This happens when the walker crosses to an adjacent cap triangle instead of
+    // crossing THROUGH the pole vertex — resulting in endless circling.
+    if (this._didCirclePole(geoResult.facePosition.faceIndex, projDir)) {
+      const poleResult = this._tryPoleTraversal(projDir, distance);
+      if (poleResult) return poleResult;
+      // If pole traversal failed, fall through to accept the geodesic result below
+    }
+
     // NaN guard: if geodesic produced invalid result, fall back to BVH
     if (isNaN(geoResult.position.x) || isNaN(geoResult.position.y) || isNaN(geoResult.position.z) ||
         isNaN(geoResult.normal.x) || isNaN(geoResult.normal.y) || isNaN(geoResult.normal.z)) {
@@ -301,6 +311,54 @@ export class MeshWalker {
       distance: geoResult.distanceTraveled,
       faceIndex: this.faceIndex,
     };
+  }
+
+  /**
+   * Detect whether the geodesic walk circled a pole vertex instead of crossing through it.
+   *
+   * Returns true when all of:
+   *  1. Current face has a high-valence vertex (pole candidate).
+   *  2. The new face (after geodesic) shares the SAME high-valence vertex.
+   *  3. The movement direction points toward that vertex.
+   *
+   * When this is true, the walker moved to an adjacent cap triangle rather than
+   * crossing through the pole — the classic "circling the pole" failure mode.
+   */
+  private _didCirclePole(newFaceIndex: number, moveDir: THREE.Vector3): boolean {
+    const POLE_VALENCE_THRESHOLD = 8;
+    const halfEdge = this.surface.geodesic.halfEdge;
+    const f = halfEdge.faces[this._facePos.faceIndex];
+
+    // Find highest-valence vertex in current face
+    let poleCanon = -1;
+    let poleLocalPos: THREE.Vector3 | null = null;
+    let bestValence = 0;
+
+    for (const [idx, localPos] of [[f.a, f.pA], [f.b, f.pB], [f.c, f.pC]] as [number, THREE.Vector3][]) {
+      const canon = halfEdge.canonical[idx];
+      const valence = halfEdge.vertexToFaces[canon].length;
+      if (valence > POLE_VALENCE_THRESHOLD && valence > bestValence) {
+        bestValence = valence;
+        poleCanon = canon;
+        poleLocalPos = localPos;
+      }
+    }
+
+    if (poleCanon < 0 || !poleLocalPos) return false; // Not in a cap triangle
+
+    // Check if the NEW face also contains the same pole vertex (stayed in cap region)
+    const nf = halfEdge.faces[newFaceIndex];
+    const newFaceHasSamePole =
+      halfEdge.canonical[nf.a] === poleCanon ||
+      halfEdge.canonical[nf.b] === poleCanon ||
+      halfEdge.canonical[nf.c] === poleCanon;
+
+    if (!newFaceHasSamePole) return false; // New face is past the pole — no circling
+
+    // Confirm direction points toward the pole vertex
+    const poleWorld = poleLocalPos.clone().applyMatrix4(this.surface.mesh.matrixWorld);
+    const toPole = new THREE.Vector3().subVectors(poleWorld, this.position);
+    return toPole.dot(moveDir) > 0;
   }
 
   /**
