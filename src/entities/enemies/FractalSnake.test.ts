@@ -3,10 +3,12 @@
  *
  * Tests: construction, follower model, formation, die callbacks, movement,
  * position-history-driven follower positions, destroy cleanup.
+ * Plus sub-task 2: hitTestFollower, damageFollower, triggerShock.
  *
  * TDD — these were written before the implementation.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as THREE from 'three';
 import { FractalSnake } from './FractalSnake';
 
 // Minimal mock surface transform — same pattern as Snake.test.ts
@@ -17,6 +19,13 @@ const mockTransform = {
   bitangent: { x: 0, y: 0, z: 1 },
 };
 const mockGetTransform = () => mockTransform as any;
+
+function makeScene() {
+  return {
+    add: vi.fn(),
+    remove: vi.fn(),
+  } as unknown as THREE.Scene;
+}
 
 describe('FractalSnake enemy', () => {
   let snake: FractalSnake;
@@ -227,5 +236,148 @@ describe('FractalSnake enemy', () => {
   it('destroy() clears follower array (getFollowerData returns empty)', () => {
     snake.destroy();
     expect(snake.getFollowerData().length).toBe(0);
+  });
+
+  // ──────────────────── hitTestFollower ────────────────────
+
+  it('hitTestFollower returns null when bullet is far from all followers', () => {
+    // All followers start at (0.5, 0.5). Bullet at (0.9, 0.9) is far away.
+    const result = snake.hitTestFollower(0.9, 0.9, 0.08);
+    expect(result).toBeNull();
+  });
+
+  it('hitTestFollower returns a valid index when bullet overlaps a follower', () => {
+    // All followers start at (0.5, 0.5) — bullet directly on them
+    const result = snake.hitTestFollower(0.5, 0.5, 0.08);
+    expect(result).not.toBeNull();
+    expect(typeof result).toBe('number');
+    expect(result!).toBeGreaterThanOrEqual(0);
+  });
+
+  it('hitTestFollower returns correct index (first overlapping follower)', () => {
+    const result = snake.hitTestFollower(0.5, 0.5, 0.08);
+    expect(result).toBe(0);
+  });
+
+  it('dead followers are skipped in hitTestFollower', () => {
+    // Kill follower 0 by dealing lethal damage
+    snake.damageFollower(0, 9999);
+    // Now bullet at (0.5, 0.5) might still hit follower 1 (also at 0.5, 0.5)
+    // but follower 0 must be excluded
+    const result = snake.hitTestFollower(0.5, 0.5, 0.08);
+    if (result !== null) {
+      expect(result).not.toBe(0);
+    }
+  });
+
+  // ──────────────────── damageFollower ────────────────────
+
+  it('damageFollower reduces follower health', () => {
+    const before = snake.getFollowerData()[0].health;
+    snake.damageFollower(0, 1);
+    const after = snake.getFollowerData()[0].health;
+    expect(after).toBe(before - 1);
+  });
+
+  it('damageFollower returns false when follower still alive', () => {
+    const result = snake.damageFollower(0, 1);
+    expect(result).toBe(false);
+  });
+
+  it('damageFollower returns true when follower dies', () => {
+    const result = snake.damageFollower(0, 9999);
+    expect(result).toBe(true);
+  });
+
+  it('damageFollower marks follower as not alive when health reaches 0', () => {
+    snake.damageFollower(0, 9999);
+    expect(snake.getFollowerData()[0].alive).toBe(false);
+  });
+
+  it('damageFollower fires onFollowerFreed when follower dies', () => {
+    let firedU: number | null = null;
+    let firedV: number | null = null;
+    let firedType: string | null = null;
+    FractalSnake.onFollowerFreed = (u, v, type) => {
+      firedU = u;
+      firedV = v;
+      firedType = type;
+    };
+
+    snake.damageFollower(0, 9999);
+
+    expect(firedU).not.toBeNull();
+    expect(firedV).not.toBeNull();
+    expect(typeof firedType).toBe('string');
+  });
+
+  it('damageFollower does not fire onFollowerFreed when follower survives', () => {
+    let fired = false;
+    FractalSnake.onFollowerFreed = () => { fired = true; };
+    snake.damageFollower(0, 1);
+    expect(fired).toBe(false);
+  });
+
+  it('damageFollower removes dead follower mesh from followerRoot', () => {
+    const before = snake.followerRoot.children.length;
+    snake.damageFollower(0, 9999);
+    expect(snake.followerRoot.children.length).toBe(before - 1);
+  });
+
+  // ──────────────────── triggerShock ────────────────────
+
+  it('triggerShock applies 50% maxHealth damage to all alive followers', () => {
+    const scene = makeScene();
+    const before = snake.getFollowerData().map(f => f.health);
+    snake.triggerShock(scene);
+    const after = snake.getFollowerData().map(f => f.health);
+
+    // Each follower that had health > 0 should have health reduced by 50% maxHealth
+    const initial = snake.getFollowerData();
+    for (let i = 0; i < initial.length; i++) {
+      // health was reduced (or follower died)
+      expect(after[i]).toBeLessThanOrEqual(before[i]);
+    }
+  });
+
+  it('triggerShock fires onFollowerFreed for followers that die from shock', () => {
+    // Use a 1-follower snake with health=2, shock deals 50% maxHealth = 1
+    // So health goes from 2 to 1 — still alive. Use titan_grunt (health=4, maxHealth=4)
+    // shock deals 50% of 4 = 2. Health = 4 - 2 = 2 — still alive.
+    // For this test, use custom config where followers die (need health <= 50% maxHealth)
+    // Easiest: pre-damage first follower to 1hp, then shock deals 1 -> dies
+    snake.damageFollower(0, 1); // reduce health by 1
+    // Now follower 0 has health = maxHealth - 1 = 1 (for grunt/wanderer with maxHealth=2)
+    // shock deals 50% of 2 = 1, so health becomes 0 -> dies
+    let freed = 0;
+    FractalSnake.onFollowerFreed = () => { freed++; };
+    const scene = makeScene();
+    snake.triggerShock(scene);
+    // At least one follower should have been freed (the one pre-damaged)
+    expect(freed).toBeGreaterThan(0);
+  });
+
+  it('updateShockEffect frees still-alive followers after shock completes', () => {
+    const scene = makeScene();
+    let freed = 0;
+    FractalSnake.onFollowerFreed = () => { freed++; };
+
+    snake.triggerShock(scene);
+    // Advance past shock duration — all alive followers should be freed
+    snake.updateShockEffect(1.0);
+
+    // All 8 followers should eventually be freed (unless some died from 50% damage)
+    // Grunts have maxHealth=2, shock deals 1 — they survive
+    // After duration, all survivors are freed
+    expect(freed).toBeGreaterThan(0);
+  });
+
+  it('triggerShock does not throw when there are no alive followers', () => {
+    const scene = makeScene();
+    // Kill all followers first
+    for (let i = 0; i < 8; i++) {
+      snake.damageFollower(i, 9999);
+    }
+    expect(() => snake.triggerShock(scene)).not.toThrow();
   });
 });

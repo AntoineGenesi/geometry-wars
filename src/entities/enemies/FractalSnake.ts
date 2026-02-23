@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseEnemy } from './BaseEnemy';
 import { buildTriangle3D, buildDiamond3D, buildCircle3D } from '../../utils/GeometryBuilder';
+import { ElectricShockEffect } from '../../rendering/ElectricShockEffect';
 
 // Pre-allocated temp objects — zero per-frame allocations
 const _tempMatrix = new THREE.Matrix4();
@@ -36,10 +37,10 @@ const DEFAULT_FOLLOWER_TYPES = ['grunt', 'wanderer', 'grunt', 'wanderer'];
  * Followers are held in formation via position-history UV offsets, not independent AI.
  *
  * Damage routing: takeDamage() hits the HEAD only.
- * Sub-task 3 handles routing damage to individual followers.
+ * Per-follower hit detection and damage is handled via hitTestFollower / damageFollower.
  *
  * Static callbacks:
- *   FractalSnake.onFollowerFreed — called when a follower is freed (sub-task 3)
+ *   FractalSnake.onFollowerFreed — called when a follower is freed (damaged to death or shock end)
  *   FractalSnake.onHeadDeath     — called when head dies, passes all alive followers
  */
 export class FractalSnake extends BaseEnemy {
@@ -68,7 +69,16 @@ export class FractalSnake extends BaseEnemy {
 
   private readonly _config: FractalSnakeConfig;
 
-  /** Called when a follower is freed (damaged to 0). Sub-task 3 wires this. */
+  /** Flash timers per follower — when > 0 the follower mesh is tinted white. */
+  private _flashTimers: number[] = [];
+
+  /** Active electric shock effect, if any. */
+  private _shockEffect: ElectricShockEffect | null = null;
+
+  /** True while shock is running — after it completes, remaining alive followers are freed. */
+  private _shockPending: boolean = false;
+
+  /** Called when a follower is freed (damaged to 0, or freed after shock). */
   static onFollowerFreed: ((u: number, v: number, enemyType: string) => void) | null = null;
 
   /** Called when the head dies. Passes all currently alive follower positions. */
@@ -151,6 +161,7 @@ export class FractalSnake extends BaseEnemy {
           row,
           rowIndex,
         });
+        this._flashTimers.push(0);
       }
     }
   }
@@ -159,7 +170,7 @@ export class FractalSnake extends BaseEnemy {
 
   /**
    * Returns a snapshot of all follower states.
-   * Used by sub-task 3 for damage routing and by spawner integration.
+   * Used by the spawner integration and for damage routing.
    */
   getFollowerData(): Array<{
     u: number;
@@ -183,10 +194,112 @@ export class FractalSnake extends BaseEnemy {
     }));
   }
 
+  /**
+   * Test each alive follower's UV position against a bullet UV position.
+   * @returns follower index if hit, null otherwise.
+   */
+  hitTestFollower(bulletU: number, bulletV: number, hitRadius: number): number | null {
+    for (let i = 0; i < this._followers.length; i++) {
+      const f = this._followers[i];
+      if (!f.alive) continue;
+      const du = f.u - bulletU;
+      const dv = f.v - bulletV;
+      if (Math.sqrt(du * du + dv * dv) < hitRadius) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Deal damage to a specific follower.
+   * @returns true if the follower died, false if still alive.
+   */
+  damageFollower(index: number, amount: number): boolean {
+    const f = this._followers[index];
+    if (!f || !f.alive) return false;
+
+    f.health -= amount;
+
+    if (f.health <= 0) {
+      f.alive = false;
+      this.followerRoot.remove(f.mesh);
+      if (FractalSnake.onFollowerFreed) {
+        FractalSnake.onFollowerFreed(f.u, f.v, f.enemyType);
+      }
+      return true;
+    }
+
+    // Start white flash timer
+    this._flashTimers[index] = 0.15;
+    return false;
+  }
+
+  /**
+   * Trigger the electric shock effect on head death.
+   * - Creates lightning lines from head to each alive follower
+   * - Deals 50% maxHealth damage to all alive followers
+   * - After 0.8s, frees any still-alive followers
+   *
+   * Called externally by EnemyDeathCallbacks when head dies.
+   */
+  triggerShock(scene: THREE.Scene): void {
+    const aliveFollowers = this._followers.filter((f) => f.alive);
+    if (aliveFollowers.length === 0) return;
+
+    // Collect world positions for the shock effect
+    const headPos = this.mesh
+      ? this.mesh.position.clone()
+      : new THREE.Vector3(0, 0, 0);
+
+    const targetPositions = aliveFollowers.map((f) => f.mesh.position.clone());
+
+    // Create and trigger shock visual
+    const effect = new ElectricShockEffect(scene);
+    effect.trigger(headPos, targetPositions);
+    this._shockEffect = effect;
+    this._shockPending = true;
+
+    // Apply 50% maxHealth damage to all alive followers
+    for (let i = 0; i < this._followers.length; i++) {
+      const f = this._followers[i];
+      if (!f.alive) continue;
+      const dmg = Math.ceil(f.maxHealth * 0.5);
+      this.damageFollower(i, dmg);
+    }
+  }
+
+  /**
+   * Update the active shock effect and handle post-shock follower freeing.
+   * Call this from applySurfaceTransform or a dedicated update path.
+   */
+  updateShockEffect(dt: number): void {
+    if (!this._shockEffect) return;
+
+    const wasActive = this._shockEffect.active;
+    this._shockEffect.update(dt);
+
+    if (wasActive && !this._shockEffect.active && this._shockPending) {
+      // Shock has completed — free all still-alive followers
+      this._shockPending = false;
+      for (let i = 0; i < this._followers.length; i++) {
+        const f = this._followers[i];
+        if (!f.alive) continue;
+        f.alive = false;
+        this.followerRoot.remove(f.mesh);
+        if (FractalSnake.onFollowerFreed) {
+          FractalSnake.onFollowerFreed(f.u, f.v, f.enemyType);
+        }
+      }
+      this._shockEffect.dispose();
+      this._shockEffect = null;
+    }
+  }
+
   // ─────────────────────────── damage / death ──────────────────────────────
 
   /**
-   * Hits the HEAD only. Followers have their own health — sub-task 3 handles routing.
+   * Hits the HEAD only. Followers have their own health — use damageFollower() for them.
    */
   takeDamage(amount: number, attackerId: number = -1): void {
     super.takeDamage(amount, attackerId);
@@ -318,22 +431,58 @@ export class FractalSnake extends BaseEnemy {
       this.innerTriangles[i].rotation.z = this._innerAngle * dir;
     }
 
-    // Update all follower mesh positions
-    for (const follower of this._followers) {
+    // Update shock effect
+    this.updateShockEffect(this._lastDt);
+
+    // Update all follower mesh positions and flash effects
+    for (let i = 0; i < this._followers.length; i++) {
+      const follower = this._followers[i];
+
       if (!follower.alive) {
         follower.mesh.visible = false;
         continue;
       }
+
       const t = getTransform(follower.u, follower.v);
       follower.mesh.position.copy(t.position).addScaledVector(t.normal, this.radius);
       _tempMatrix.makeBasis(t.bitangent, t.normal, t.tangent);
       follower.mesh.quaternion.setFromRotationMatrix(_tempMatrix);
+
+      // Flash effect: tint emissive white while timer > 0
+      if (this._flashTimers[i] > 0) {
+        this._flashTimers[i] -= this._lastDt;
+        follower.mesh.traverse((child) => {
+          const m = child as THREE.Mesh;
+          if (m.isMesh && m.material) {
+            const mat = m.material as THREE.MeshStandardMaterial;
+            if (mat.emissive) {
+              mat.emissive.set(0xffffff);
+            }
+          }
+        });
+      } else if (this._flashTimers[i] < 0) {
+        // Timer just expired — restore original emissive color
+        this._flashTimers[i] = 0;
+        follower.mesh.traverse((child) => {
+          const m = child as THREE.Mesh;
+          if (m.isMesh && m.material) {
+            const mat = m.material as THREE.MeshStandardMaterial;
+            if (mat.emissive && mat.color) {
+              mat.emissive.copy(mat.color);
+            }
+          }
+        });
+      }
     }
   }
 
   // ─────────────────────────── cleanup ─────────────────────────────────────
 
   destroy(): void {
+    if (this._shockEffect) {
+      this._shockEffect.dispose();
+      this._shockEffect = null;
+    }
     for (const follower of this._followers) {
       this.followerRoot.remove(follower.mesh);
       follower.mesh.traverse((child) => {
@@ -349,6 +498,7 @@ export class FractalSnake extends BaseEnemy {
       });
     }
     this._followers = [];
+    this._flashTimers = [];
     super.destroy();
   }
 }
