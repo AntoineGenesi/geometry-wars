@@ -26,6 +26,15 @@ const WEAPON_SYMBOLS: Record<WeaponType, string> = {
   [WeaponType.TeslaCoil]: 'T',
 };
 
+const TIER_ROMAN = ['', 'I', 'II', 'III'] as const;
+
+/** Mastery progress data shape (matches WeaponMasteryManager.getProgress() return) */
+export interface MasteryProgressEntry {
+  kills: number;
+  tier: number;
+  nextThreshold: number | null;
+}
+
 let styleInjected = false;
 
 function injectStyles(): void {
@@ -44,14 +53,19 @@ function injectStyles(): void {
     }
     .weapon-hud-item {
       display: flex;
-      align-items: center;
-      gap: 4px;
-      height: 22px;
+      flex-direction: column;
+      gap: 1px;
       opacity: 0.5;
       transition: opacity 0.15s;
     }
     .weapon-hud-item.active {
       opacity: 1.0;
+    }
+    .weapon-hud-main-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      height: 22px;
     }
     .weapon-hud-icon {
       width: 20px;
@@ -89,6 +103,44 @@ function injectStyles(): void {
     .weapon-hud-item.active .weapon-hud-name {
       display: inline;
     }
+    .weapon-hud-mastery {
+      display: none;
+      align-items: center;
+      gap: 3px;
+      padding-left: 2px;
+      height: 9px;
+    }
+    .weapon-hud-item.active .weapon-hud-mastery.visible {
+      display: flex;
+    }
+    .weapon-hud-mastery-bar-bg {
+      width: 60px;
+      height: 3px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 2px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .weapon-hud-mastery-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+    .weapon-hud-mastery-tier {
+      font-size: 8px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+    .weapon-hud-mastered {
+      font-size: 8px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-weight: bold;
+      letter-spacing: 1.5px;
+      text-shadow: 0 0 6px currentColor;
+      white-space: nowrap;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -118,8 +170,16 @@ export class WeaponHUD {
   /**
    * Update the HUD to reflect the current inventory.
    * Rebuilds DOM only when inventory composition changes.
+   *
+   * @param masteryProgress Optional per-weapon mastery progress map.
+   *   Key is WeaponType; value comes from WeaponMasteryManager.getProgress().
+   *   Only the active weapon's mastery bar is rendered.
    */
-  update(inventory: WeaponInventoryEntry[], activeWeapon: WeaponType): void {
+  update(
+    inventory: WeaponInventoryEntry[],
+    activeWeapon: WeaponType,
+    masteryProgress?: Map<WeaponType, MasteryProgressEntry>,
+  ): void {
     // Check if inventory composition changed (types added/removed)
     const currentTypes = new Set(this.items.keys());
     const newTypes = new Set(inventory.map(e => e.type));
@@ -159,16 +219,78 @@ export class WeaponHUD {
       // Stack indicator (show dots for stacks > 1)
       const iconEl = item.querySelector('.weapon-hud-icon') as HTMLElement;
       if (iconEl && entry.stacks > 1) {
-        const stackDots = '\u2022'.repeat(Math.min(entry.stacks, 5));
-        const symbolEl = iconEl.querySelector('.icon-symbol') as HTMLElement;
         const stackEl = iconEl.querySelector('.icon-stacks') as HTMLElement;
         if (stackEl) {
-          stackEl.textContent = stackDots;
+          stackEl.textContent = '\u2022'.repeat(Math.min(entry.stacks, 5));
         }
+      }
+
+      // Mastery bar — only update for active weapon
+      if (isActive && masteryProgress) {
+        this.updateMasteryBar(item, entry.type, masteryProgress.get(entry.type));
+      } else if (!isActive) {
+        // Ensure mastery row is hidden for inactive weapons
+        const masteryRow = item.querySelector('.weapon-hud-mastery') as HTMLElement;
+        if (masteryRow) masteryRow.classList.remove('visible');
       }
     }
 
     this.lastActiveType = activeWeapon;
+  }
+
+  private updateMasteryBar(
+    item: HTMLElement,
+    weaponType: WeaponType,
+    progress: MasteryProgressEntry | undefined,
+  ): void {
+    const masteryRow = item.querySelector('.weapon-hud-mastery') as HTMLElement;
+    if (!masteryRow) return;
+
+    // No progress data or zero kills at tier 0 → hide
+    if (!progress || (progress.kills === 0 && progress.tier === 0)) {
+      masteryRow.classList.remove('visible');
+      return;
+    }
+
+    const config = WEAPON_CONFIGS[weaponType];
+    const colorHex = `#${config.color.toString(16).padStart(6, '0')}`;
+    masteryRow.classList.add('visible');
+
+    if (progress.tier >= 3) {
+      // Mastered — show "MASTERED" text, hide bar
+      const barBg = masteryRow.querySelector('.weapon-hud-mastery-bar-bg') as HTMLElement;
+      const masteredEl = masteryRow.querySelector('.weapon-hud-mastered') as HTMLElement;
+      const tierLabel = masteryRow.querySelector('.weapon-hud-mastery-tier') as HTMLElement;
+      if (barBg) barBg.style.display = 'none';
+      if (tierLabel) tierLabel.style.display = 'none';
+      if (masteredEl) {
+        masteredEl.style.display = 'inline';
+        masteredEl.style.color = colorHex;
+      }
+    } else {
+      // Normal progress — fill bar and update tier label
+      const barBg = masteryRow.querySelector('.weapon-hud-mastery-bar-bg') as HTMLElement;
+      const barFill = masteryRow.querySelector('.weapon-hud-mastery-bar-fill') as HTMLElement;
+      const tierLabel = masteryRow.querySelector('.weapon-hud-mastery-tier') as HTMLElement;
+      const masteredEl = masteryRow.querySelector('.weapon-hud-mastered') as HTMLElement;
+
+      if (barBg) barBg.style.display = '';
+      if (masteredEl) masteredEl.style.display = 'none';
+
+      if (barFill) {
+        const pct =
+          progress.nextThreshold && progress.nextThreshold > 0
+            ? Math.min((progress.kills / progress.nextThreshold) * 100, 100)
+            : 0;
+        barFill.style.width = `${pct}%`;
+        barFill.style.backgroundColor = colorHex;
+      }
+
+      if (tierLabel) {
+        tierLabel.style.color = colorHex;
+        tierLabel.textContent = TIER_ROMAN[progress.tier] ?? '';
+      }
+    }
   }
 
   private rebuild(inventory: WeaponInventoryEntry[]): void {
@@ -181,6 +303,10 @@ export class WeaponHUD {
 
       const item = document.createElement('div');
       item.className = 'weapon-hud-item';
+
+      // -- Main row: icon + ammo + name --
+      const mainRow = document.createElement('div');
+      mainRow.className = 'weapon-hud-main-row';
 
       const icon = document.createElement('div');
       icon.className = 'weapon-hud-icon';
@@ -196,9 +322,38 @@ export class WeaponHUD {
       name.className = 'weapon-hud-name';
       name.textContent = config.name;
 
-      item.appendChild(icon);
-      item.appendChild(ammo);
-      item.appendChild(name);
+      mainRow.appendChild(icon);
+      mainRow.appendChild(ammo);
+      mainRow.appendChild(name);
+
+      // -- Mastery row: bar + tier label (hidden until mastery data available) --
+      const masteryRow = document.createElement('div');
+      masteryRow.className = 'weapon-hud-mastery';
+
+      const barBg = document.createElement('div');
+      barBg.className = 'weapon-hud-mastery-bar-bg';
+      const barFill = document.createElement('div');
+      barFill.className = 'weapon-hud-mastery-bar-fill';
+      barFill.style.width = '0%';
+      barFill.style.backgroundColor = colorHex;
+      barBg.appendChild(barFill);
+
+      const tierLabel = document.createElement('span');
+      tierLabel.className = 'weapon-hud-mastery-tier';
+      tierLabel.style.color = colorHex;
+
+      const masteredEl = document.createElement('span');
+      masteredEl.className = 'weapon-hud-mastered';
+      masteredEl.textContent = 'MASTERED';
+      masteredEl.style.color = colorHex;
+      masteredEl.style.display = 'none';
+
+      masteryRow.appendChild(barBg);
+      masteryRow.appendChild(tierLabel);
+      masteryRow.appendChild(masteredEl);
+
+      item.appendChild(mainRow);
+      item.appendChild(masteryRow);
       this.container.appendChild(item);
       this.items.set(entry.type, item);
     }
@@ -247,6 +402,90 @@ export class WeaponHUD {
       banner.style.opacity = '0';
       setTimeout(() => banner.remove(), 800);
     }, 2000);
+  }
+
+  /**
+   * Show a dramatic tier-up toast when weapon mastery advances.
+   * Called from Phase 3 integration when WeaponMasteryManager fires onMasteryTierUp.
+   *
+   * @param weaponName  Display name of the weapon (e.g. "Blaster")
+   * @param tier        New mastery tier (1, 2, or 3)
+   * @param buffName    Name of the buff unlocked at this tier
+   */
+  showMasteryTierUp(weaponName: string, tier: number, buffName: string): void {
+    // Look up weapon color by name for the glow effect
+    const weaponColor = this.findWeaponColor(weaponName);
+    const tierLabel = tier >= 3 ? 'MAX' : TIER_ROMAN[tier] ?? String(tier);
+    const titleText = `${weaponName.toUpperCase()} MASTERY ${tierLabel}`;
+    const subText = `${buffName} unlocked!`;
+
+    const toast = document.createElement('div');
+    toast.style.cssText = [
+      'position:fixed',
+      'left:50%',
+      'top:30%',
+      'transform:translateX(-50%) scale(0.8)',
+      'background:rgba(0,0,0,0.88)',
+      `border:1px solid ${weaponColor}`,
+      `box-shadow:0 0 20px ${weaponColor}, 0 0 40px rgba(0,0,0,0.6)`,
+      'color:#fff',
+      "font-family:'Segoe UI',Arial,sans-serif",
+      'padding:12px 28px',
+      'border-radius:6px',
+      'pointer-events:none',
+      'z-index:600',
+      'text-align:center',
+      'transition:transform 0.2s ease, opacity 0.5s ease',
+      'opacity:0',
+      'white-space:nowrap',
+    ].join(';');
+
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = [
+      'font-size:16px',
+      'font-weight:bold',
+      'letter-spacing:2px',
+      `color:${weaponColor}`,
+      `text-shadow:0 0 10px ${weaponColor}`,
+    ].join(';');
+    titleEl.textContent = titleText;
+
+    const subEl = document.createElement('div');
+    subEl.style.cssText = [
+      'font-size:11px',
+      'letter-spacing:1px',
+      'color:#cccccc',
+      'margin-top:4px',
+    ].join(';');
+    subEl.textContent = subText;
+
+    toast.appendChild(titleEl);
+    toast.appendChild(subEl);
+    document.body.appendChild(toast);
+
+    // Animate in: scale 0.8→1.0, opacity 0→1
+    requestAnimationFrame(() => {
+      toast.style.transform = 'translateX(-50%) scale(1)';
+      toast.style.opacity = '1';
+    });
+
+    // Fade out after 2.5 s, remove after 0.5 s fade
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateX(-50%) scale(0.95)';
+      setTimeout(() => toast.remove(), 500);
+    }, 2500);
+  }
+
+  /** Look up a weapon's color hex string by display name. Falls back to white. */
+  private findWeaponColor(weaponName: string): string {
+    const lower = weaponName.toLowerCase();
+    for (const config of Object.values(WEAPON_CONFIGS)) {
+      if (config.name.toLowerCase() === lower) {
+        return `#${config.color.toString(16).padStart(6, '0')}`;
+      }
+    }
+    return '#ffffff';
   }
 
   hide(): void {
