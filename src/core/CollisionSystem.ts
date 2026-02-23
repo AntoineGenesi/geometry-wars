@@ -151,7 +151,10 @@ export class CollisionSystem {
             if (debugFreeze) console.log('[CollisionSystem] Particles spawned');
             scoreManager.awardKill(enemy.scoreValue, enemyType);
             scorePopups?.spawnScore(enemy.position.clone(), enemy.scoreValue);
-            screenShake.shake(0.15, 0.15);
+            // Scale screen shake intensity based on enemy size: small enemies minimal jitter, large enemies pronounced
+            const jitterIntensity = Math.max(0.05, Math.min(0.35, enemy.radius * 0.5));
+            const jitterDuration = 0.15;
+            screenShake.shake(jitterIntensity, jitterDuration);
             getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
             onKillLog?.(enemyType, color.getHex());
 
