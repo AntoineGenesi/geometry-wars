@@ -435,7 +435,8 @@ export class GameInstance {
       // Skip enemies still spawning/materializing
       if (enemy.isMaterializing) continue;
 
-      const hitRadius = this.player.mesh.scale.x * 0.3 + enemy.radius;
+      // S28c: require enemy to visibly push into player body (same formula as CollisionSystem).
+      const hitRadius = this.player.mesh.scale.x * 0.1 + enemy.radius;
       const distSq = this.player.mesh.position.distanceToSquared(enemy.position);
       if (distSq < hitRadius * hitRadius) {
         this.player.die(); // player.die() checks canTakeDamage internally

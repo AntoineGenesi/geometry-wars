@@ -205,7 +205,12 @@ export class CollisionSystem {
       if (enemy.isMaterializing) continue;
 
       // Use distanceToSquared to avoid sqrt
-      const hitRadius = player.mesh.scale.x * 0.3 + enemy.radius;
+      // S28c: require enemy to visibly push into player body.
+      // Previously 0.3 (= SHIP_LENGTH) allowed hits when enemy was fully outside
+      // the player's visual extent (SHIP_HALF_W=0.15). Reduced to 0.1 so enemy must
+      // penetrate ~33% into the player's visual body before damage registers, creating
+      // real near-miss moments.
+      const hitRadius = player.mesh.scale.x * 0.1 + enemy.radius;
       const distSq = player.mesh.position.distanceToSquared(enemy.position);
       if (distSq < hitRadius * hitRadius) {
         if (isShielded) {
