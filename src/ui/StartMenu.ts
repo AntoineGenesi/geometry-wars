@@ -11,6 +11,7 @@ import { VisualPlayground } from './VisualPlayground';
 import { MenuBackground } from './MenuBackground';
 import { createQRCodeDisplay } from './QRCode';
 import { QUICK_GAME_MODES, type QuickGameModeType } from '../core/modes';
+import { OBJDebugPanel } from './OBJDebugPanel';
 
 /**
  * Start menu UI for Geometry Wars.
@@ -67,6 +68,10 @@ export class StartMenu {
   private customMeshFileCoop: File | null = null;
   private customMeshFileLAN: File | null = null;
 
+  // Debug mode OBJ panel (only active when ?debug=true)
+  private readonly isDebugMode: boolean;
+  private objDebugPanel: OBJDebugPanel | null = null;
+
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
     { type: 'sphere', name: 'Sphere', icon: '\u25EF' },
@@ -84,6 +89,7 @@ export class StartMenu {
   ];
 
   constructor() {
+    this.isDebugMode = new URLSearchParams(window.location.search).get('debug') === 'true';
     this.progress = LevelCompleteScreen.loadProgress();
     this.container = document.createElement('div');
     this.container.id = 'start-menu';
@@ -91,6 +97,11 @@ export class StartMenu {
     this.applyStyles();
     document.body.appendChild(this.container);
     this.attachEventListeners();
+
+    // Debug OBJ panel — only instantiate when ?debug=true
+    if (this.isDebugMode) {
+      this.objDebugPanel = new OBJDebugPanel();
+    }
 
     // Animated 3D background behind the menu overlay
     this.menuBackground = new MenuBackground();
@@ -360,6 +371,7 @@ export class StartMenu {
           <button class="weapon-info-btn" id="weapon-info-btn">WEAPON DATABASE</button>
           <button class="weapon-info-btn" id="visual-styles-btn">VISUAL STYLES</button>
           <button class="weapon-info-btn" id="settings-btn">SETTINGS</button>
+          ${this.isDebugMode ? '<button class="weapon-info-btn debug-obj-btn" id="debug-obj-btn" style="border-color:#ff8800;color:#ff8800;">DEBUG: LOAD MODELS</button>' : ''}
         </div>
       </div>
     `;
@@ -1958,6 +1970,12 @@ export class StartMenu {
       });
     });
 
+    // Debug OBJ panel button (only present when ?debug=true)
+    const debugObjBtn = this.container.querySelector('#debug-obj-btn');
+    debugObjBtn?.addEventListener('click', () => {
+      this.objDebugPanel?.show();
+    });
+
     // ---- LAN name dialog handlers ----
     const lanNameJoinBtn = this.container.querySelector('#lan-name-join-btn');
     const lanNameCancelBtn = this.container.querySelector('#lan-name-cancel-btn');
@@ -2267,5 +2285,6 @@ export class StartMenu {
       this.styleElement.remove();
     }
     this.menuBackground.dispose();
+    this.objDebugPanel?.dispose();
   }
 }
