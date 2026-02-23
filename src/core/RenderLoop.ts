@@ -8,6 +8,18 @@ import { UIHelpers } from '../ui/UIHelpers';
 import { profiler } from './PerformanceProfiler';
 
 /**
+ * Proximity visibility override constants.
+ * Enemies within PROXIMITY_BRIGHT_RADIUS of the player are forced to full visibility,
+ * overriding depth-occlusion dimming. This prevents tunnel-map surfaces from hiding
+ * close-proximity enemies that are about to hit the player.
+ */
+const PROXIMITY_BRIGHT_RADIUS = 8.0;
+const PROXIMITY_BRIGHT_RADIUS_SQ = PROXIMITY_BRIGHT_RADIUS * PROXIMITY_BRIGHT_RADIUS;
+/** Outer edge of smooth fade-out zone. Beyond this distance, occlusion is unaffected. */
+const PROXIMITY_FADE_RADIUS = 12.0;
+const PROXIMITY_FADE_RADIUS_SQ = PROXIMITY_FADE_RADIUS * PROXIMITY_FADE_RADIUS;
+
+/**
  * RenderLoop contains the render callback logic, extracted from main.ts onRender.
  * All state is accessed through the GameContext parameter.
  */
@@ -155,6 +167,23 @@ export class RenderLoop {
         const farSideDot = this._farSideCamDir.dot(this._farSideTempDir);
         const farFactor = Math.max(0, Math.min(1, (farSideDot - FAR_SIDE_FAR_DOT) / farSideRange));
         visibility = Math.min(visibility, farFactor);
+      }
+
+      // Proximity override: enemies within ~8 world units of player are always fully visible.
+      // Applied last so it overrides depth-occlusion, tunnel-blocking fade, LOD, and far-side culling.
+      // Critical for tunnel maps where occluded surfaces can hide enemies approaching the player.
+      {
+        const dx = enemy.position.x - playerPos.x;
+        const dy = enemy.position.y - playerPos.y;
+        const dz = enemy.position.z - playerPos.z;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        if (distSq < PROXIMITY_BRIGHT_RADIUS_SQ) {
+          visibility = Math.max(visibility, 1.0);
+        } else if (distSq < PROXIMITY_FADE_RADIUS_SQ) {
+          const dist = Math.sqrt(distSq);
+          const t = (dist - PROXIMITY_BRIGHT_RADIUS) / (PROXIMITY_FADE_RADIUS - PROXIMITY_BRIGHT_RADIUS);
+          visibility = Math.max(visibility, 1.0 - t);
+        }
       }
 
       visibleEnemyCount++;
