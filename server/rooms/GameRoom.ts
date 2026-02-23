@@ -471,9 +471,26 @@ export class GameRoom extends Room<GameState> {
         || surfaceType === 'cube-tunnel';
       if (wrapsInV) {
         player.surfaceV = this.wrapCoord(player.surfaceV + dy);
+      } else if (surfaceType === 'sphere') {
+        // Sphere poles: allow traversal by reflecting V through the pole.
+        // When V goes below 0, the player crosses the north pole — reflect V and
+        // shift U by 0.5 (continue to the antipodal longitude on the other side).
+        // Same logic applies at the south pole (V > 1).
+        let newV = player.surfaceV + dy;
+        let newU = player.surfaceU; // already wrapped above
+        if (newV < 0) {
+          newV = -newV;
+          newU = this.wrapCoord(newU + 0.5);
+        } else if (newV > 1) {
+          newV = 2 - newV;
+          newU = this.wrapCoord(newU + 0.5);
+        }
+        // Keep V strictly inside (0, 1) to avoid degenerate tangent at exact pole
+        player.surfaceV = Math.max(0.001, Math.min(0.999, newV));
+        player.surfaceU = newU;
       } else {
         // Clamp V: use 0.003 for cube (matching CubeSurface epsilon),
-        // 0.05 for sphere-like (avoids pole singularity)
+        // 0.05 for other sphere-like (avoids pole singularity on non-sphere surfaces)
         const vMin = surfaceType === 'cube' ? 0.003 : 0.05;
         const vMax = surfaceType === 'cube' ? 0.997 : 0.95;
         player.surfaceV = Math.max(vMin, Math.min(vMax, player.surfaceV + dy));
