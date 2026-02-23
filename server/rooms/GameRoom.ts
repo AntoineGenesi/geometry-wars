@@ -1061,7 +1061,62 @@ export class GameRoom extends Room<GameState> {
   }
 
   /**
-   * Spawn a single enemy of the given type at a random edge position.
+   * Choose a spawn UV position that is visible to at least one player (within
+   * 0.25–0.45 UV units of the nearest player) while remaining far enough away
+   * not to instantly hit them.  Avoids exact U=0/1 seam positions which map to
+   * the "back" of the sphere and produce warning rings the player can never see.
+   *
+   * Falls back to a random safe position if no suitable player-relative position
+   * is found in 20 attempts.
+   */
+  private getSpawnPosition(): { u: number; v: number } {
+    const vMin = 0.05;
+    const vMax = 0.95;
+    const MIN_DIST = 0.25;
+    const MAX_DIST = 0.45;
+
+    // Collect alive player UV positions
+    const players: Array<{ u: number; v: number }> = [];
+    this.state.players.forEach((p) => {
+      if (p.alive) players.push({ u: p.surfaceU, v: p.surfaceV });
+    });
+
+    if (players.length > 0) {
+      // Spawn on a ring around a random player (MIN_DIST..MAX_DIST away in UV).
+      // This keeps the ring in the player's "visible hemisphere" so they can
+      // actually see the warning before the enemy arrives.
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const target = players[Math.floor(Math.random() * players.length)];
+        const angle = Math.random() * 2 * Math.PI;
+        const dist = MIN_DIST + Math.random() * (MAX_DIST - MIN_DIST);
+
+        // Wrap U, clamp V to avoid pole singularities
+        const u = ((target.u + dist * Math.cos(angle)) % 1 + 1) % 1;
+        const v = Math.max(vMin, Math.min(vMax, target.v + dist * Math.sin(angle)));
+
+        // Confirm it is far enough from ALL players (one may have moved since target was picked)
+        let farEnough = true;
+        for (const p of players) {
+          let du = Math.abs(u - p.u);
+          if (du > 0.5) du = 1 - du;
+          const dv = Math.abs(v - p.v);
+          if (Math.sqrt(du * du + dv * dv) < MIN_DIST) {
+            farEnough = false;
+            break;
+          }
+        }
+        if (farEnough) return { u, v };
+      }
+    }
+
+    // Fallback: random safe position (no players alive yet, or 20 attempts exhausted)
+    const u = 0.1 + Math.random() * 0.8;  // stay away from exact 0/1 seam
+    const v = vMin + Math.random() * (vMax - vMin);
+    return { u, v };
+  }
+
+  /**
+   * Spawn a single enemy of the given type at a player-visible position.
    * Returns true if the enemy was queued (warning sent), false if the cap
    * would be exceeded (caller should stop spawning further enemies).
    * The type must already be resolved (i.e., present in SERVER_TO_SPAWNER_TYPE).
@@ -1079,31 +1134,14 @@ export class GameRoom extends Room<GameState> {
     enemy.id = `e${this.nextEnemyId++}`;
     enemy.type = type;
 
-    // Spawn at edge, but avoid exact 0/1 on V for sphere-like surfaces
-    // (V=0 and V=1 are pole singularities → invisible enemies, stuck movement).
-    // Use 0.05-0.95 range to match player V-clamp.
-    const side = Math.floor(Math.random() * 4);
-    const vMin = 0.05;
-    const vMax = 0.95;
-    const randomV = () => vMin + Math.random() * (vMax - vMin);
-    switch (side) {
-      case 0:
-        enemy.surfaceU = Math.random();
-        enemy.surfaceV = vMin;
-        break;
-      case 1:
-        enemy.surfaceU = Math.random();
-        enemy.surfaceV = vMax;
-        break;
-      case 2:
-        enemy.surfaceU = 0;
-        enemy.surfaceV = randomV();
-        break;
-      case 3:
-        enemy.surfaceU = 1;
-        enemy.surfaceV = randomV();
-        break;
-    }
+    // Spawn at a position visible to the player (S27h fix).
+    // Old logic spawned at U=0/1 (UV seam = back of sphere) which produced
+    // warning rings the player could never see because they were occluded by
+    // the sphere geometry.  getSpawnPosition() places enemies 0.25–0.45 UV
+    // units from the nearest player so the ring is in their visible field.
+    const pos = this.getSpawnPosition();
+    enemy.surfaceU = pos.u;
+    enemy.surfaceV = pos.v;
 
     enemy.health = this.getEnemyHealth(type);
     enemy.alive = true;
@@ -1121,11 +1159,13 @@ export class GameRoom extends Room<GameState> {
     // Delay adding to state so clients have PRE_SPAWN_WARNING_MS to show
     // the warning ring before the enemy materialises.
     setTimeout(() => {
-      // Decrement pending count regardless — this spawn slot is consumed.
-      this.pendingEnemyCount = Math.max(0, this.pendingEnemyCount - 1);
-
-      // If the game was restarted after we sent the warning, discard this enemy.
+      // CRITICAL: check generation BEFORE decrementing pendingEnemyCount.
+      // Old code decremented "regardless" — but if the game was restarted,
+      // decrementing would corrupt the NEW game's pending count (allowing more
+      // enemies than the cap) and produce phantom warning rings in the new round.
       if (this.spawnGeneration !== gen) return;
+
+      this.pendingEnemyCount = Math.max(0, this.pendingEnemyCount - 1);
 
       // Only push if game is still in progress (phase check is a safety net).
       if (this.state.roomPhase === 'playing') {
