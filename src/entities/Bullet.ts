@@ -86,6 +86,9 @@ export class BulletPool {
   /** External speed multiplier (e.g. from player leveling). */
   speedMultiplier = 1.0;
 
+  /** Bullet lifetime multiplier scaled by map size. Larger maps → longer range. */
+  lifetimeMultiplier = 1.0;
+
   constructor() {
     this.root = new THREE.Group();
     this.root.name = 'BulletPool';
@@ -224,7 +227,7 @@ export class BulletPool {
       if (!b.alive) continue;
 
       b.age += dt;
-      if (b.age >= BULLET_LIFETIME) {
+      if (b.age >= BULLET_LIFETIME * this.lifetimeMultiplier) {
         this.kill(i);
         continue;
       }

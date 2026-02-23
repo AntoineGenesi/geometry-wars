@@ -48,6 +48,7 @@ import { ParticleSystem } from '../effects/ParticleSystem';
 import { InputManager, InputState } from '../input/InputManager';
 import { DepthOcclusionSystem } from '../rendering/DepthOpacity';
 import { CameraController } from './CameraController';
+import { MapSize, getMapSizeScaleFactor } from './MapSize';
 
 // ---------------------------------------------------------------------------
 // Configuration Types
@@ -105,6 +106,8 @@ export interface GameInstanceConfig {
   gridSegmentsU?: number;
   /** Grid segment counts for surface appearance (demo mode) */
   gridSegmentsV?: number;
+  /** Map size tier — scales bullet range proportionally (SMALL < MEDIUM < LARGE < EPIC). */
+  mapSize?: MapSize;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +145,7 @@ export class GameInstance {
   get surface(): Surface { return this._surface; }
   get meshSurface(): MeshSurface { return this._meshSurface; }
 
-  private config: Required<Omit<GameInstanceConfig, 'features' | 'lockedWeapon' | 'enemyTypes' | 'enemyCount' | 'onGameOver' | 'onEnemyKill' | 'gridSegmentsU' | 'gridSegmentsV'>> & {
+  private config: Required<Omit<GameInstanceConfig, 'features' | 'lockedWeapon' | 'enemyTypes' | 'enemyCount' | 'onGameOver' | 'onEnemyKill' | 'gridSegmentsU' | 'gridSegmentsV' | 'mapSize'>> & {
     features: GameInstanceFeatures;
     lockedWeapon: WeaponType | null;
     enemyTypes: EnemyType[];
@@ -226,6 +229,9 @@ export class GameInstance {
     this.bulletPool = new BulletPool();
     this.game.scene.add(this.bulletPool.root);
     this.bulletPool.setMeshSurface(this._meshSurface);
+    if (userConfig.mapSize) {
+      this.bulletPool.lifetimeMultiplier = getMapSizeScaleFactor(userConfig.mapSize);
+    }
     this.wireBulletPool();
 
     // -- Player (real Player class, same ship, same fire rate) --

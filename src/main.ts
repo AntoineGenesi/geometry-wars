@@ -492,6 +492,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     getTransform,
     (u: number, v: number, du: number, dv: number) => surface.moveOnSurface(u, v, du, dv)
   );
+  // Scale bullet range with map size: larger maps → bullets travel proportionally further.
+  bulletPool.lifetimeMultiplier = mapSizeScaleFactor;
 
   // -- GPU instanced bullet rendering (reduces draw calls from 1-per-bullet to 1-per-type) --
   const bulletInstanceManager = new BulletInstanceManager(game.scene, 200);
