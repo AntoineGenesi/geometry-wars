@@ -249,6 +249,10 @@ export class MeshWalker {
 
     if (geoResult.distanceTraveled < distance * 0.05) {
       // Geodesic walk made almost no progress (boundary, degenerate face, etc.)
+      // Try pole traversal first: handles sphere N/S poles where many triangles
+      // converge at a single vertex and geodesic walking gets stuck.
+      const poleResult = this._tryPoleTraversal(projDir, distance);
+      if (poleResult) return poleResult;
       // Fall back to BVH snap-to-surface for the full distance
       return this._fallbackMove(moveDir, distance);
     }
@@ -297,6 +301,71 @@ export class MeshWalker {
       distance: geoResult.distanceTraveled,
       faceIndex: this.faceIndex,
     };
+  }
+
+  /**
+   * Attempt to cross through a pole vertex when geodesic walking fails.
+   *
+   * Sphere poles (N/S) are high-valence vertices where many triangles converge.
+   * At these vertices, geodesic walking can get stuck because:
+   *  - The cap triangles are tiny, causing degenerate barycentric calculations
+   *  - Direction transport breaks down with many faces converging at a point
+   *
+   * Detection: pole vertices have many adjacent faces (e.g. 40 for a 40-segment sphere)
+   * vs. regular vertices which have ~6. Threshold of 8 safely distinguishes them.
+   *
+   * Fix: teleport the player just past the pole vertex in the movement direction,
+   * then snap back to the surface. This bypasses the degenerate region entirely.
+   *
+   * @param moveDir - Projected movement direction (world space, tangent to surface)
+   * @param distance - Distance to move (world units)
+   */
+  private _tryPoleTraversal(moveDir: THREE.Vector3, distance: number): SurfaceQueryResult | null {
+    // Regular sphere vertices have ~6 adjacent faces; poles have ~40 (= widthSegments).
+    // Using 8 as threshold catches all realistic sphere poles without false positives.
+    const POLE_VALENCE_THRESHOLD = 8;
+    const halfEdge = this.surface.geodesic.halfEdge;
+    const f = halfEdge.faces[this._facePos.faceIndex];
+
+    // Find the highest-valence vertex in the current face (candidate pole vertex)
+    let poleLocalPos: THREE.Vector3 | null = null;
+    let bestValence = 0;
+
+    const faceVerts: Array<[number, THREE.Vector3]> = [
+      [f.a, f.pA],
+      [f.b, f.pB],
+      [f.c, f.pC],
+    ];
+
+    for (const [idx, localPos] of faceVerts) {
+      const canon = halfEdge.canonical[idx];
+      const valence = halfEdge.vertexToFaces[canon].length;
+      if (valence > POLE_VALENCE_THRESHOLD && valence > bestValence) {
+        bestValence = valence;
+        poleLocalPos = localPos;
+      }
+    }
+
+    if (!poleLocalPos) return null; // No pole vertex found in current face
+
+    // Transform the pole vertex (stored in local mesh space) to world space
+    const poleWorld = poleLocalPos.clone().applyMatrix4(this.surface.mesh.matrixWorld);
+
+    // Only teleport if we're actually heading toward the pole
+    const toPole = new THREE.Vector3().subVectors(poleWorld, this.position);
+    if (toPole.dot(moveDir) <= 0) return null;
+
+    // Land just past the pole in the movement direction, then snap to surface.
+    // Using max(distance, 0.05) ensures we clear the pole even for very small steps.
+    const nudge = Math.max(distance, 0.05);
+    const target = poleWorld.clone().addScaledVector(moveDir, nudge);
+    const result = this.surface.closestPointOnSurface(target);
+    if (!result) return null;
+
+    // Confirm we actually moved past the pole (not snapped back to same position)
+    if (this.position.distanceTo(result.point) < distance * 0.05) return null;
+
+    return this._applyBvhResult(result);
   }
 
   /**
