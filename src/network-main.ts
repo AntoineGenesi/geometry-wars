@@ -448,6 +448,8 @@ function main() {
       // Unregister from instance manager first (frees the instance slot)
       enemyInstanceManager.unregister(enemy);
       if (enemy.mesh) scene.remove(enemy.mesh);
+      // Remove auxiliary scene objects (e.g. Snake.segmentRoot, Painter.trailRoot)
+      for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
@@ -1465,6 +1467,8 @@ function main() {
     networkEnemies.forEach((enemy) => {
       enemyInstanceManager.unregister(enemy);
       if (enemy.mesh) scene.remove(enemy.mesh);
+      // Remove auxiliary scene objects (e.g. Snake.segmentRoot, Painter.trailRoot)
+      for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
@@ -1772,6 +1776,10 @@ function main() {
         if (enemy.mesh) {
           scene.remove(enemy.mesh);
         }
+        // Remove auxiliary scene objects (e.g. Snake.segmentRoot, Painter.trailRoot).
+        // These are added to the scene by EnemySpawner but not children of enemy.mesh,
+        // so they must be removed explicitly to prevent ghost entities.
+        for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
         networkEnemies.delete(id);
         enemyTargetUV.delete(id);
 

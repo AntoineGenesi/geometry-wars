@@ -85,6 +85,14 @@ export abstract class BaseEnemy extends Entity {
    */
   walkerSpeedScale: number = 30;
 
+  /**
+   * Extra THREE.Object3D roots that were added to the scene alongside `mesh`.
+   * Examples: Snake.segmentRoot, Painter.trailRoot.
+   * Cleanup code (EnemySpawner, network-main.ts) removes these when the enemy dies.
+   * Subclasses push their extra roots here in their constructor.
+   */
+  readonly auxiliaryObjects: THREE.Object3D[] = [];
+
   /** Tracks damage dealt by each player (playerId -> total damage). */
   readonly damageBy: Map<number, number> = new Map();
 

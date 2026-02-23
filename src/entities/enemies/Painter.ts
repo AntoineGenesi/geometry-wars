@@ -32,6 +32,8 @@ export class Painter extends BaseEnemy {
     this.lastTrailU = surfaceU;
     this.lastTrailV = surfaceV;
     this.createMesh();
+    // Register trailRoot so generic cleanup code (network-main.ts) removes it from scene.
+    this.auxiliaryObjects.push(this.trailRoot);
 
     // Shared geometry/material for trail markers (small flat diamond)
     if (!Painter.trailGeometry) {
