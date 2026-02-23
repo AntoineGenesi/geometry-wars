@@ -819,6 +819,7 @@ function main() {
   let localPlayerId = '';
   let isHost = false;
   let isPaused = false;
+  let isInLookMode = false;
   // Holds the startup config hash received from the server so onStartupConfig
   // can store it in localStorage along with the cached data.
   let pendingStartupHash: string | null = null;
@@ -996,6 +997,11 @@ function main() {
   pauseMenu.onResume(() => {
     game.resume(); // Resync game clock after host resumes via PauseMenu button
   });
+  pauseMenu.onLookMode(() => {
+    // Non-host player entered look mode: menu is closed but game stays paused
+    isInLookMode = true;
+    // Game remains paused globally, camera can move locally
+  });
   pauseMenu.onExit(() => {
     network.disconnect();
     window.location.href = window.location.pathname;
@@ -1064,6 +1070,7 @@ function main() {
       pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
       pauseMenu.show();
     } else {
+      isInLookMode = false; // Reset look mode when game resumes
       pauseMenu.hide();
       game.resume(); // Resync game clock to avoid massive dt spike on first frame after resume
     }
@@ -1293,10 +1300,15 @@ function main() {
         isPaused = false;
         network.sendPause(false);
         showPauseOverlay(false);
+      } else if (isInLookMode) {
+        // Non-host: in look mode — Escape returns to pause menu
+        isInLookMode = false;
+        pauseMenu.exitLookMode();
       } else {
-        // Non-host: server is paused — Escape dismisses the pause menu overlay.
-        // Game remains frozen server-side until host resumes.
-        pauseMenu.hide();
+        // Non-host: server is paused — Escape enters look mode
+        // (lets player look around while game stays paused globally)
+        isInLookMode = true;
+        pauseMenu.enterLookMode();
       }
     }
   });
