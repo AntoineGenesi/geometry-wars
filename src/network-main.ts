@@ -863,6 +863,9 @@ function main() {
   // -- Local input --
   // On mobile, use virtual joystick touch controls; otherwise keyboard+mouse.
   const input = mobile ? new TouchInput() : new InputManager();
+  // In lobby phase (before game starts), don't intercept touch events so that
+  // DOM buttons (Start Game, Stop Server, Back to Menu) receive click events.
+  if (input instanceof TouchInput) input.setGamePaused(true);
 
   // -- Network client --
   const { primary: primaryUrl, fallback: fallbackServerUrl } = getServerUrls();
@@ -1308,6 +1311,8 @@ function main() {
     localMenuOpen = true;
     localMenuStopServerBtn.style.display = isHost ? 'block' : 'none';
     localMenuEl.style.display = 'flex';
+    // Allow touch events to reach menu buttons while local menu is open.
+    if (input instanceof TouchInput) input.setGamePaused(true);
     // Send zero input immediately so the server stops moving this player
     if (network.isConnected()) {
       const zeroInput = {
@@ -1326,6 +1331,8 @@ function main() {
   function hideLocalMenu(): void {
     localMenuOpen = false;
     localMenuEl.style.display = 'none';
+    // Re-enable joystick touch capture when menu is dismissed.
+    if (input instanceof TouchInput) input.setGamePaused(false);
   }
 
   // Escape key handler:
@@ -2149,21 +2156,27 @@ function main() {
         gameOverScreen.hide();
         // Show VotingScreen stub
         votingScreen.show(state, isHost, localPlayerId);
+        // Re-enable pass-through so voting screen buttons work on mobile.
+        if (input instanceof TouchInput) input.setGamePaused(true);
       } else if (newPhase === 'playing' && currentRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
         votingScreen.hide();
         resetGameEntities();
         // initSurface at the top of onStateChange already handles surface reinit
         // (called with state.surfaceType and confirmedFromServer=true).
+        if (input instanceof TouchInput) input.setGamePaused(false);
       } else if (newPhase === 'playing' && currentRoomPhase === 'lobby') {
         // Initial game start: lobby → playing.
         // Reset entities (safe to call even when empty — clears any stale state).
         resetGameEntities();
         gameOverScreen.hide();
         votingScreen.hide();
+        if (input instanceof TouchInput) input.setGamePaused(false);
       } else if (newPhase === 'lobby') {
         votingScreen.hide();
         gameOverScreen.hide();
+        // Back to lobby — re-enable pass-through for lobby buttons.
+        if (input instanceof TouchInput) input.setGamePaused(true);
       }
 
       currentRoomPhase = newPhase;
@@ -2333,6 +2346,8 @@ function main() {
         gameOverShown = false; // Reset so GameOverScreen can show next game over
         gameOverScreen.hide(); // Dismiss any lingering game over screen
         votingScreen.hide();  // Dismiss voting screen (roomPhase → playing)
+        // Game is now active — enable joystick touch capture.
+        if (input instanceof TouchInput) input.setGamePaused(false);
         // Start background music (route through compressor to prevent clipping)
         const audioCtx = sound.getAudioContext();
         if (audioCtx) {

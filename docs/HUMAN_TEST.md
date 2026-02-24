@@ -1135,3 +1135,19 @@ Claude will read this file at the start of each session and prioritize fixing re
 - `src/core/GameLoop.ts`: Added `ctx.surfaceShockwave.update(dt)` alongside `surface.updateGrid(dt)`
 - `src/main.ts`: Created `SurfaceShockwave` instance; upgraded plasma mortar explosion (propagating wave, stronger shake, shockwave ring, white flash, chromatic aberration, enemy knockback)
 - `src/multiplayer-main.ts`: Same upgrades (minus post-processing effects which aren't set up in MP)
+
+## S32: MP Lobby Touch Routing Fix (iPhone)
+
+**Root cause:** `TouchInput` called `e.preventDefault()` on all `window` touch events, blocking browser click generation on DOM lobby buttons. Fixed by calling `setGamePaused(true)` at lobby start (and on all non-playing phases), `setGamePaused(false)` when game actually starts.
+
+### Test: MP lobby buttons on iPhone (host)
+- [ ] **Join as mobile host** — Scan QR / open LAN URL on iPhone, become the host (first to join)
+- [ ] **"START GAME" button responds** — Tap it; game should start (no joystick should appear)
+- [ ] **"STOP SERVER" button responds** — If visible, tap it; should navigate back to menu
+- [ ] **No joystick when tapping buttons** — Verify joystick does NOT appear during button taps
+
+### Test: Joystick works after game starts
+- [ ] **Joystick active once playing** — After host taps "START GAME" and game begins, virtual joystick should respond normally to touch
+
+### Test: No desktop regression
+- [ ] **Desktop mouse still works** — Open in browser on PC, verify Start Game / Stop Server buttons respond to mouse clicks normally
