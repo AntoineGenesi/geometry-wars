@@ -474,10 +474,10 @@ function placeFormatBits(matrix: Matrix, maskIdx: number): void {
     matrix[vertCol8[i]][8] = bit;
   }
 
-  // Second copy: row 8 right side, and column 8 bottom side
+  // Second copy vertical: column 8, rows size-1 down to size-7 (bits 14..8)
   for (let i = 0; i < 7; i++) {
     const bit = (bits >> (14 - i)) & 1;
-    matrix[vertical[7 - i]][8] = bit;
+    matrix[vertical[i]][8] = bit;
   }
   // Top-right: row 8, columns size-8 to size-1
   for (let i = 0; i < 8; i++) {
@@ -657,18 +657,22 @@ export function createQRCodeDisplay(
   label?: string,
   canvasSize: number = 220,
 ): HTMLDivElement {
-  // Calculate scale to achieve desired canvas pixel size
-  // Estimate: version 3 = 29 modules + 8 quiet zone = 37, so scale ~ canvasSize / 37
-  const estimatedModules = 37; // conservative estimate
-  const scale = Math.max(2, Math.floor(canvasSize / estimatedModules));
+  // Generate matrix first to get exact module count, then compute pixel-perfect scale.
+  // quietZone = 4 on each side (spec minimum). totalModules = QR size + 2*quietZone.
+  const quietZone = 4;
+  const matrix = generateQRMatrix(url);
+  const totalModules = matrix.length + quietZone * 2;
+  const scale = Math.max(2, Math.floor(canvasSize / totalModules));
 
   const canvas = generateQRCode(url, {
     scale,
+    quietZone,
     foreground: '#000000',
     background: '#ffffff',
   });
 
-  // Set display size via CSS (independent of internal resolution)
+  // Set display size via CSS so it always fills the requested canvasSize.
+  // imageRendering: pixelated keeps module edges crisp (no bilinear interpolation).
   canvas.style.width = `${canvasSize}px`;
   canvas.style.height = `${canvasSize}px`;
   canvas.style.imageRendering = 'pixelated';
