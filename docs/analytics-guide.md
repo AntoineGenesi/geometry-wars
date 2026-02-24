@@ -22,7 +22,7 @@ The dashboard auto-refreshes every 5 seconds and reads directly from `localStora
 ### Exporting to Files (for git tracking + CLI analysis)
 1. Run the game + server: `npm run dev` + `npm run server`
 2. Play a session until game over or level complete — data auto-exports via `/api/export-perf-logs`
-3. Or: press **F3** in-game → click **EXPORT** to trigger manual export
+3. Or: press **F4** in-game → click **EXPORT** to trigger manual export
 4. Files appear in `logs/performance/` and `logs/game-state/` named with timestamp + git commit hash
 
 ### From the browser console

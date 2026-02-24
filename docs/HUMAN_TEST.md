@@ -333,7 +333,7 @@ The LOD system is active and reduces triangle count for distant enemies. Enemies
 - [ ] **LOD geometry switching visible on large maps** — On a map where you can see enemies far away (e.g., sphere or torus with 50+ enemies), enemies far from the camera should appear as simplified glowing shapes (icosahedrons) rather than complex geometry. This is subtle — the key indicator is smoother, more rounded shapes at distance.
 - [ ] **No enemy disappearing** — All enemies should remain visible regardless of LOD level. LOD should change geometry shape, not remove enemies.
 - [ ] **Positions remain correct** — Enemies at MEDIUM/LOW LOD should still be at their correct world positions (not offset or jittered).
-- [ ] **LOD stats visible in F3 overlay** — Press F3 during gameplay with 50+ enemies. The debug overlay should show LOD stats (high/medium/low counts). Confirm the counts change as enemies move closer/farther.
+- [ ] **LOD stats visible in F4 overlay** — Press F4 during gameplay with 50+ enemies. The debug overlay should show LOD stats (high/medium/low counts). Confirm the counts change as enemies move closer/farther.
 - [ ] **Performance at 200 enemies** — Spawn 200 enemies (multiple wave cycles in Waves mode). FPS should be higher (or at least equal) compared to before LOD was active, due to triangle count reduction for distant enemies.
 
 **What was verified (2026-02-19):**
@@ -625,7 +625,7 @@ The god function was split into 8 modules. Game behavior should be identical.
 **Expected behavior on desktop:** ZERO change. Desktop devices have pixel ratio 1.0–2.0, so the cap of 2.0 is unchanged.
 
 - [ ] **Test on mobile device — visually acceptable** — Open the game on an iPhone or Android device with high-DPI display (pixel ratio ≥ 3). Game should look sharp and smooth. Slightly less crisp than before (1.5x vs 2x) but not noticeably blurry.
-- [ ] **Desktop unchanged** — Open on a desktop/laptop. Rendering should look identical to before. Press F3 to open debug overlay and confirm pixel ratio is NOT affected (still uses native ratio up to 2.0).
+- [ ] **Desktop unchanged** — Open on a desktop/laptop. Rendering should look identical to before. Press F4 to open debug overlay and confirm pixel ratio is NOT affected (still uses native ratio up to 2.0).
 - [ ] **FPS improvement on mobile** — On a 3x+ display, the game should run measurably smoother than before, especially on mid-range devices.
 
 ---
@@ -703,7 +703,7 @@ Real-time performance profiler that shows CPU hot spots during gameplay. Part of
   - Console should show `[GPUCapabilities]` group with `WebGPU: available (adapter: ...)`
   - Console should show `[RendererFactory] Created WebGPU renderer (backend: WebGPUBackend)`
   - If you see `WebGPU: NOT AVAILABLE`: the diagnostic in Step 1 explains why
-- [ ] **Check Debug Overlay** — Press F3 → should show "WebGPU" in cyan text (not "WebGL2" in blue)
+- [ ] **Check Debug Overlay** — Press F4 → should show "WebGPU" in cyan text (not "WebGL2" in blue)
 - [ ] **Check Profiling Overlay** — Press F4 → should show real-time performance profiler with top 8 CPU consumers, frame time, and visual bars
 - [ ] **Check Settings menu** → System Info → Active Renderer should say "WebGPU"
 
@@ -960,7 +960,7 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Bloom glow is still visible** — Play for 30 seconds on any map. Neon glow/bloom should be clearly visible on enemies, bullets, and the player. Should NOT look flat or unlit.
 - [ ] **Bloom is not obviously blocky or pixelated** — The glow effect should look soft and smooth, not pixelated. (Half-res bloom may be very slightly softer — this is acceptable and hard to notice.)
 - [ ] **No visual artifacting on resize** — Resize the browser window. Bloom should remain correct after resize (no half-size render frozen on screen).
-- [ ] **FPS improved vs. previous session** — If you have a baseline FPS reading (F3 overlay), verify it is equal or better than before. Expected improvement: significant on GPU-bound hardware.
+- [ ] **FPS improved vs. previous session** — If you have a baseline FPS reading (F4 overlay), verify it is equal or better than before. Expected improvement: significant on GPU-bound hardware.
 
 **What changed:** `EffectComposer` now runs at 50% of window resolution (e.g., 960×540 instead of 1920×1080) for bloom+vignette post-processing, then upscales to full res for final output. Bloom is inherently blurry so the quality difference is imperceptible while GPU pixel fill is reduced 4×.
 

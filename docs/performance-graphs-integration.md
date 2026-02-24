@@ -4,7 +4,7 @@
 
 This document explains how to integrate the new performance logging and graphing system into the game. The system provides:
 
-1. **Enhanced Debug Overlay (F3)** - Shows enemy type breakdown at min/max FPS moments
+1. **Enhanced Debug Overlay (F4)** - Shows enemy type breakdown at min/max FPS moments
 2. **Interactive Performance Graphs** - Plotly-style charts accessible from pause menu
 3. **Per-game session logging** - Stores performance data in localStorage
 4. **10-game counter** - Triggers notification for research report generation
@@ -100,7 +100,7 @@ if (shouldShowReport) {
 
 ### For Players
 
-1. **F3** - Toggle debug overlay
+1. **F4** - Toggle debug overlay
    - Click "TOP 10" to expand detailed performance moments
    - Hover over entity counts to see enemy type breakdown
 

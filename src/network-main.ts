@@ -427,7 +427,7 @@ function main() {
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
-  // Debug performance overlay — F3 key (same as single-player)
+  // Debug performance overlay — F4 key (same as single-player)
   // Surface type is unknown until server connects; 'network' is used as placeholder.
   const perfTracker = new PerformanceTracker('network');
   const debugOverlay = new DebugOverlay(perfTracker);
@@ -2886,7 +2886,7 @@ function main() {
     // Scale music intensity by enemy count (same as co-op)
     bgMusic.setIntensity(Math.min(networkEnemies.size / 30, 1.0));
 
-    // Update performance tracker for DebugOverlay (F3)
+    // Update performance tracker for DebugOverlay (F4)
     perfTracker.setEntityCount(networkEnemies.size);
     perfTracker.setBulletCount(bulletIdToIndex.size);
     perfTracker.recordFrame(dt);
@@ -3264,7 +3264,7 @@ function main() {
       minimap.update(minimapLocalPlayer.surfaceU, minimapLocalPlayer.surfaceV, minimapEnemies, minimapGeoms);
     }
 
-    // Update debug overlay HUD (throttled internally — no perf cost when F3 is hidden)
+    // Update debug overlay HUD (throttled internally — no perf cost when F4 is hidden)
     debugOverlay.update();
   };
 

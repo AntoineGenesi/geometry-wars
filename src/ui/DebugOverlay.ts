@@ -5,7 +5,7 @@
  * FPS, entity count, and bullet count.  Expandable top-10 table
  * with highest/lowest FPS and peak entity/bullet moments.
  *
- * Toggle with F3.  ON by default for development/testing.
+ * Toggle with F4.  ON by default for development/testing.
  */
 
 import { PerformanceTracker, PerfMoment } from '../core/PerformanceTracker';
@@ -155,9 +155,9 @@ export class DebugOverlay {
       }
     });
 
-    // F3 toggle
+    // F4 toggle (moved from F3 to avoid Windows Quick Search hotkey conflict on Windows)
     this.keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'F3') {
+      if (e.key === 'F4') {
         e.preventDefault();
         this.toggle();
       }

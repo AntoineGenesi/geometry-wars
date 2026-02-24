@@ -281,7 +281,7 @@ A: Yes! Custom maps work in all modes:
 **Q: My map loads but looks stretched/squashed. How do I fix it?**
 A: The game auto-scales your mesh to fit a radius of 16 units. If your model has very different proportions:
 1. Scale uniformly in Blender before export
-2. Check the on-screen coordinates after loading (debug overlay, F3)
+2. Check the on-screen coordinates after loading (debug overlay, F4)
 3. Try a different mesh if proportions are inherently extreme
 
 ---

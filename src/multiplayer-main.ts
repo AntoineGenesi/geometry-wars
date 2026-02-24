@@ -303,7 +303,7 @@ function main(): void {
   const perfLogger = new PerformanceLogger(surfaceType);
   const debugOverlay = new DebugOverlay(perfTracker);
   debugOverlay.setRendererBackend(game.backend);
-  // Apply saved debug setting (hide if disabled; F3 still toggles it)
+  // Apply saved debug setting (hide if disabled; F4 still toggles it)
   const initialDebugSettings = loadDebugSettings();
   if (!initialDebugSettings.showDebugStatistics) {
     debugOverlay.hide();

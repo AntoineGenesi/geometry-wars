@@ -1061,7 +1061,7 @@ export class SettingsMenu {
         <div class="toggle ${this.debugSettings.showDebugStatistics ? 'on' : ''}" id="toggle-debug-stats" data-setting="showDebugStatistics"></div>
       </div>
       <div style="color:#668888;font-size:12px;margin-top:4px;line-height:1.5;">
-        Shows FPS, entity count, and performance overlay. Keyboard shortcut: F3.
+        Shows FPS, entity count, and performance overlay. Keyboard shortcut: F4.
       </div>
     `;
   }
