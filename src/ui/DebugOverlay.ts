@@ -524,5 +524,57 @@ export class DebugOverlay {
       background: rgba(60, 80, 120, 0.5);
       border-radius: 2px;
     }
+
+    /* --- Mobile compact mode (≤ 500px wide) --- */
+    @media (max-width: 500px) {
+      #debug-overlay {
+        top: 4px;
+        left: auto;
+        right: 4px;
+        font-size: 10px;
+        line-height: 1.3;
+      }
+
+      #debug-overlay .debug-live {
+        display: flex;
+        flex-direction: row;
+        gap: 6px;
+        align-items: center;
+        padding: 3px 6px;
+      }
+
+      /* Layout each row inline instead of stacked */
+      #debug-overlay .debug-row {
+        display: flex;
+        gap: 3px;
+        align-items: center;
+      }
+
+      /* Hide BUL (4th), GEO (5th), TEX (6th) rows — keep only REN, FPS, ENT */
+      #debug-overlay .debug-live .debug-row:nth-child(n+4) {
+        display: none;
+      }
+
+      /* Hide the TOP10 and EXPORT buttons on mobile (too big, no use on phone) */
+      #debug-overlay .debug-toggle-top,
+      #debug-overlay .debug-export-logs {
+        display: none;
+      }
+
+      /* Hide the expanded top panel on mobile */
+      #debug-overlay .debug-top-panel {
+        display: none !important;
+      }
+
+      #debug-overlay .debug-label {
+        font-size: 9px;
+        letter-spacing: 0;
+      }
+
+      #debug-overlay .debug-value {
+        min-width: 24px;
+        font-size: 10px;
+      }
+    }
   `;
 }

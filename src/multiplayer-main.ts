@@ -305,6 +305,8 @@ function main(): void {
   if (!initialDebugSettings.showDebugStatistics) {
     debugOverlay.hide();
   }
+
+  // Wire the global debug change callback so the Settings toggle updates the overlay
   SettingsMenu.setGlobalDebugChangeCallback((debugSettings) => {
     if (debugSettings.showDebugStatistics) {
       debugOverlay.show();
