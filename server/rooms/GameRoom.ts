@@ -72,6 +72,14 @@ const MAX_ENEMIES_BY_PLAYER_COUNT = [30, 50, 70, 90];
 // Player colors
 const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffff00];
 
+// Spawn positions (shared between onJoin initial placement and startGame round reset)
+const SPAWN_OFFSETS = [
+  { u: 0.5, v: 0.5 },
+  { u: 0.6, v: 0.5 },
+  { u: 0.4, v: 0.5 },
+  { u: 0.5, v: 0.6 },
+];
+
 // Weapon configs (server side) - ammo and damage multiplier
 const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number }> = {
   standard: { ammo: -1, damageMultiplier: 1.0 },
@@ -370,13 +378,7 @@ export class GameRoom extends Room<GameState> {
     }
 
     // Spawn at different positions based on player count
-    const spawnOffsets = [
-      { u: 0.5, v: 0.5 },
-      { u: 0.6, v: 0.5 },
-      { u: 0.4, v: 0.5 },
-      { u: 0.5, v: 0.6 },
-    ];
-    const spawnPos = spawnOffsets[this.state.players.size % spawnOffsets.length];
+    const spawnPos = SPAWN_OFFSETS[this.state.players.size % SPAWN_OFFSETS.length];
     player.surfaceU = spawnPos.u;
     player.surfaceV = spawnPos.v;
 
@@ -525,6 +527,7 @@ export class GameRoom extends Room<GameState> {
     this.pendingEnemyCount = 0;
 
     // Reset all players
+    let spawnIdx = 0;
     this.state.players.forEach((player) => {
       player.lives = 3;
       player.bombs = 3;
@@ -538,6 +541,13 @@ export class GameRoom extends Room<GameState> {
       // the previous game (e.g. 45.6s) causes tryShoot() to block shots for the
       // entire duration of the new game (now - lastShot < 0 → never fires).
       (player as unknown as { lastShotTime?: number }).lastShotTime = undefined;
+      // Reset position to spawn offsets so players don't start a new round at
+      // their final position from the previous game (which could be near enemies
+      // or off-screen, causing apparent teleportation at round start).
+      const spawnPos = SPAWN_OFFSETS[spawnIdx % SPAWN_OFFSETS.length];
+      player.surfaceU = spawnPos.u;
+      player.surfaceV = spawnPos.v;
+      spawnIdx++;
     });
 
     // Clear entities
@@ -1019,10 +1029,12 @@ export class GameRoom extends Room<GameState> {
             player.alive = false;
             this.logger.log(`[GameRoom] ${player.name} died!`);
           } else {
-            // Respawn on opposite side of surface from death location, grant 2s invincibility
-            player.surfaceU = (player.surfaceU + 0.5) % 1;
-            player.surfaceV = (player.surfaceV + 0.5) % 1;
+            // Stay at hit location, grant 2s invincibility. No position teleport —
+            // the +0.5 "opposite side" respawn was the primary cause of the
+            // "players teleporting to arbitrary positions" bug (s31-mp-teleporting-randomly).
+            // The invincibility window gives the player time to move away from enemies.
             this.playerInvincibility.set(player.id, 2.0);
+            this.logger.log(`[GameRoom] ${player.name} hit, ${player.lives} lives remaining (invincible 2s)`);
           }
         }
       });
