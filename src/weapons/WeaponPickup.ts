@@ -3,11 +3,11 @@ import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 
-// Pickup collision radius in UV space (MEDIUM map, scale 1.0).
-// Divided by mapSizeScaleFactor in checkPlayerCollision to keep world-space size constant.
-// 0.01 UV ≈ 0.50 world units at equator on sphere-radius-8 MEDIUM map
-// (was 0.015 ≈ 0.75 world units — still felt too large per user feedback).
-const PICKUP_COLLISION_RADIUS = 0.01;
+// World-space pickup collision radius (in world units).
+// Using world-space distance instead of UV-space because UV metric is non-uniform:
+// 0.01 UV = 0.63 world units at sphere equator but only 0.13 on torus tube direction.
+// Visual octahedron radius = 0.35 world units; 0.6 gives comfortable margin.
+const PICKUP_WORLD_RADIUS = 0.6;
 
 /**
  * Floating weapon pickup that grants new weapons to player
@@ -19,6 +19,9 @@ export class WeaponPickup {
   // Surface position
   surfaceU: number;
   surfaceV: number;
+
+  // World-space position on surface (updated in applySurfaceTransform; used for hitbox)
+  private readonly _surfaceWorldPos: THREE.Vector3 = new THREE.Vector3();
 
   // State
   active: boolean = true;
@@ -257,8 +260,11 @@ export class WeaponPickup {
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
 
+    // Store surface world position (before hover offset) for hitbox
+    this._surfaceWorldPos.copy(position);
+
     // Hover above surface
-    this.mesh.position.copy(position).add(normal.clone().multiplyScalar(0.5));
+    this.mesh.position.copy(position).addScaledVector(normal, 0.5);
 
     // Orient to surface
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
@@ -267,16 +273,22 @@ export class WeaponPickup {
 
   /**
    * Check if player is close enough to collect.
-   * Radius is divided by mapSizeScaleFactor so world-space threshold stays constant across map sizes.
+   * Uses world-space distance (uniform across all surfaces and map sizes).
+   * Falls back to UV-space when playerWorldPos is unavailable.
    */
-  checkPlayerCollision(playerU: number, playerV: number): boolean {
+  checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
     if (!this.active) return false;
 
-    const du = playerU - this.surfaceU;
-    const dv = playerV - this.surfaceV;
-    const dist = Math.sqrt(du * du + dv * dv);
+    if (playerWorldPos) {
+      return playerWorldPos.distanceTo(this._surfaceWorldPos) < PICKUP_WORLD_RADIUS;
+    }
 
-    return dist < PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
+    // UV fallback with shortest-path wrapping for seam-safe distance
+    let du = playerU - this.surfaceU;
+    let dv = playerV - this.surfaceV;
+    if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
+    if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1;
+    return Math.sqrt(du * du + dv * dv) < 0.01 / this.mapSizeScaleFactor;
   }
 
   /**

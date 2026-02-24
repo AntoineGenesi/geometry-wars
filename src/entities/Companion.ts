@@ -632,9 +632,8 @@ export class CompanionManager {
 // Companion pickup (dropped by enemies, floats on surface)
 // ---------------------------------------------------------------------------
 
-// Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
-// 0.01 UV ≈ 0.50 world units at equator on sphere-radius-8 MEDIUM map.
-const COMPANION_PICKUP_COLLISION_RADIUS = 0.01;
+// World-space pickup collision radius. See WeaponPickup.ts for rationale.
+const COMPANION_PICKUP_WORLD_RADIUS = 0.6;
 
 export class CompanionPickup {
   readonly mesh: THREE.Group;
@@ -644,6 +643,7 @@ export class CompanionPickup {
   surfaceV: number;
   active = true;
 
+  private readonly _surfaceWorldPos: THREE.Vector3 = new THREE.Vector3();
   private age = 0;
   private readonly maxAge = 25; // seconds before despawn
   private readonly fadeStart = 20;
@@ -765,16 +765,22 @@ export class CompanionPickup {
     },
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
-    this.mesh.position.copy(position).add(normal.clone().multiplyScalar(0.4));
+    this._surfaceWorldPos.copy(position);
+    this.mesh.position.copy(position).addScaledVector(normal, 0.4);
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
   }
 
-  checkPlayerCollision(playerU: number, playerV: number): boolean {
+  checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
     if (!this.active) return false;
-    const du = playerU - this.surfaceU;
-    const dv = playerV - this.surfaceV;
-    return Math.sqrt(du * du + dv * dv) < COMPANION_PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
+    if (playerWorldPos) {
+      return playerWorldPos.distanceTo(this._surfaceWorldPos) < COMPANION_PICKUP_WORLD_RADIUS;
+    }
+    let du = playerU - this.surfaceU;
+    let dv = playerV - this.surfaceV;
+    if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
+    if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1;
+    return Math.sqrt(du * du + dv * dv) < 0.01 / this.mapSizeScaleFactor;
   }
 
   dispose(): void {

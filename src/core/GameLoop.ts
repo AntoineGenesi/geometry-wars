@@ -411,7 +411,7 @@ export class GameLoop {
       nbp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with new buff pickup
-      if (ctx.player.alive && nbp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV)) {
+      if (ctx.player.alive && nbp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, ctx.playerWalker.position)) {
         ctx.buffManager.addBuff(nbp.buffType);
         ctx.scorePopups.spawn(
           ctx.player.mesh.position.clone(),
@@ -499,7 +499,7 @@ export class GameLoop {
       cp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with companion pickup
-      if (ctx.player.alive && cp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV)) {
+      if (ctx.player.alive && cp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, ctx.playerWalker.position)) {
         ctx.companionManager.addCompanion(cp.companionType);
         this.sound.play('weaponPickup', { volume: 0.5, pitch: 1.8 });
         cp.active = false;
@@ -522,7 +522,7 @@ export class GameLoop {
       pickup.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with pickup
-      if (ctx.player.alive && pickup.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV)) {
+      if (ctx.player.alive && pickup.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, ctx.playerWalker.position)) {
         const allDotsGone = pickup.removeClosestDot(ctx.player.surfaceU, ctx.player.surfaceV);
         if (allDotsGone) {
           ctx.superManager.activate(pickup.type);
@@ -719,7 +719,7 @@ export class GameLoop {
       wp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with weapon pickup
-      if (ctx.player.alive && wp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV)) {
+      if (ctx.player.alive && wp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, ctx.playerWalker.position)) {
         const switched = ctx.weaponManager.equipWeapon(wp.type);
         this.sound.play('weaponPickup', switched ? undefined : { volume: 0.5, pitch: 0.9 });
         if (!switched) {
@@ -743,7 +743,7 @@ export class GameLoop {
       bp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with buff pickup
-      if (ctx.player.alive && bp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV)) {
+      if (ctx.player.alive && bp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, ctx.playerWalker.position)) {
         ctx.weaponManager.applyBuff(bp.buffType);
         this.sound.play('weaponPickup', { volume: 0.3, pitch: 1.5 });
         bp.active = false;

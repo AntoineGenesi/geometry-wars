@@ -10,14 +10,14 @@ export interface SurfaceTransform {
   bitangent: THREE.Vector3;
 }
 
-// Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
-// 0.01 UV ≈ 0.50 world units at equator on sphere-radius-8 MEDIUM map.
-const PICKUP_COLLISION_RADIUS = 0.01;
+// World-space pickup collision radius. See WeaponPickup.ts for rationale.
+const PICKUP_WORLD_RADIUS = 0.6;
 
 export class SuperStatePickup {
   readonly mesh: THREE.Group;
   surfaceU: number;
   surfaceV: number;
+  private readonly _surfaceWorldPos: THREE.Vector3 = new THREE.Vector3();
   type: SuperStateType;
   active: boolean;
 
@@ -216,24 +216,26 @@ export class SuperStatePickup {
   ): void {
     const transform = getTransform(this.surfaceU, this.surfaceV);
 
+    // Store surface point for hitbox
+    this._surfaceWorldPos.copy(transform.position);
+
     // Hover above surface
     this.mesh.position.copy(transform.position).addScaledVector(transform.normal, 0.3);
 
     // Orient consistently with other pickup types: local X = tangent, Y = normal, Z = bitangent.
-    // This keeps dot patterns on the surface tangent plane (XZ) and the spawn indicator
-    // sprite at local (0,0,0.9) — along bitangent = camera "up" = above pickup on screen.
     const mat = new THREE.Matrix4().makeBasis(transform.tangent, transform.normal, transform.bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
   }
 
-  checkPlayerCollision(playerU: number, playerV: number): boolean {
-    // Check if player is close enough to destroy a dot.
-    // Divided by mapSizeScaleFactor so world-space threshold stays constant across map sizes.
-    const deltaU = playerU - this.surfaceU;
-    const deltaV = playerV - this.surfaceV;
-    const distance = Math.sqrt(deltaU * deltaU + deltaV * deltaV);
-
-    return distance < PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
+  checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
+    if (playerWorldPos) {
+      return playerWorldPos.distanceTo(this._surfaceWorldPos) < PICKUP_WORLD_RADIUS;
+    }
+    let du = playerU - this.surfaceU;
+    let dv = playerV - this.surfaceV;
+    if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
+    if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1;
+    return Math.sqrt(du * du + dv * dv) < 0.01 / this.mapSizeScaleFactor;
   }
 
   removeClosestDot(playerU: number, playerV: number): boolean {
