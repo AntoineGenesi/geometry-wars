@@ -446,15 +446,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
-  // Set global debug change callback
-  SettingsMenu.setGlobalDebugChangeCallback((debugSettings) => {
-    if (debugSettings.showDebugStatistics) {
-      debugOverlay.show();
-    } else {
-      debugOverlay.hide();
-    }
-  });
-
   // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
   const savedVisualMode = loadVisualMode();
   game.setVisualMode(savedVisualMode);
@@ -765,6 +756,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const entityAudit = new EntityAudit();
   debugOverlay.setRendererBackend(game.backend);
 
+  // Set global debug change callback (must be after debugOverlay is created)
+  SettingsMenu.setGlobalDebugChangeCallback((debugSettings) => {
+    if (debugSettings.showDebugStatistics) {
+      debugOverlay.show();
+    } else {
+      debugOverlay.hide();
+    }
+  });
+
   // Apply debug settings (hide overlay if disabled)
   const debugSettings = loadDebugSettings();
   if (!debugSettings.showDebugStatistics) {
@@ -866,17 +866,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     screenShake.shake(0.2, 0.15);
     // No screen-space shockwave/flash for volatile explosions — too distracting.
     // Shockwave distortion is reserved for mega boss deaths only.
-  };
-
-  // Wire mastery tier-up: award buff + show toast + play sound
-  weaponMastery.onMasteryTierUp = (weaponType, tier) => {
-    const buffType = WEAPON_MASTERY_BUFF_MAP[weaponType];
-    if (buffType) {
-      buffManager.addBuff(buffType);
-      const def = BUFF_DEFINITIONS[buffType];
-      weaponHUD.showMasteryTierUp(WEAPON_CONFIGS[weaponType].name, tier, def.name);
-      getSoundEngine().play('weaponPickup', { volume: 0.7, pitch: 1.6 });
-    }
   };
 
   /** Recompute combined multipliers from PlayerLevel + BuffManager */
@@ -1121,6 +1110,17 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Weapon HUD (inventory display) --
   const weaponHUD = new WeaponHUD();
   weaponHUD.setPosition(10, window.innerHeight / 2 - 60);
+
+  // Wire mastery tier-up: award buff + show toast + play sound (must be after weaponHUD is created)
+  weaponMastery.onMasteryTierUp = (weaponType, tier) => {
+    const buffType = WEAPON_MASTERY_BUFF_MAP[weaponType];
+    if (buffType) {
+      buffManager.addBuff(buffType);
+      const def = BUFF_DEFINITIONS[buffType];
+      weaponHUD.showMasteryTierUp(WEAPON_CONFIGS[weaponType].name, tier, def.name);
+      getSoundEngine().play('weaponPickup', { volume: 0.7, pitch: 1.6 });
+    }
+  };
 
   // -- Wire DDA logger extras (buff/weapon tracking) --
   ddaLogger.setExtrasProvider({
