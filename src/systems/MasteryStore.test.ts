@@ -266,6 +266,112 @@ describe('MasteryStore — reset()', () => {
   });
 });
 
+describe('MasteryStore — awardGameXP() realistic scenario', () => {
+  it('5 Blaster kills + 3 Spread Shot kills — XP awarded correctly', () => {
+    const store = freshStore();
+    const results = store.awardGameXP(
+      killMap({ [WeaponType.Standard]: 5, [WeaponType.Spread]: 3 }),
+    );
+
+    // gamesPlayed was 0 for both → diminishingFactor = 1.0
+    const blasterResult = results.find(r => r.weaponType === WeaponType.Standard)!;
+    const spreadResult  = results.find(r => r.weaponType === WeaponType.Spread)!;
+
+    expect(blasterResult).toBeDefined();
+    expect(spreadResult).toBeDefined();
+
+    // 5 kills × 10 XP × 1.0 = 50 XP
+    expect(blasterResult.xpBefore).toBe(0);
+    expect(blasterResult.xpAfter).toBeCloseTo(50, 5);
+
+    // 3 kills × 10 XP × 1.0 = 30 XP
+    expect(spreadResult.xpBefore).toBe(0);
+    expect(spreadResult.xpAfter).toBeCloseTo(30, 5);
+  });
+
+  it('gamesPlayed incremented only for weapons with kills > 0', () => {
+    const store = freshStore();
+    // Award with 5 Blaster kills
+    store.awardGameXP(killMap({ [WeaponType.Standard]: 5 }));
+    const xpAfterGame1 = store.getXP(WeaponType.Standard);
+
+    // Second game with 5 kills — gamesPlayed is now 1 → diminishing returns
+    store.awardGameXP(killMap({ [WeaponType.Standard]: 5 }));
+    const xpGame2 = store.getXP(WeaponType.Standard) - xpAfterGame1;
+
+    // gamesPlayed=1 → factor = 1/(1+0.15) ≈ 0.869 → 5*10*0.869 ≈ 43.5
+    expect(xpGame2).toBeCloseTo(50 / 1.15, 1);
+
+    // Spread Shot had 0 kills → gamesPlayed stays 0 → next game still gets full XP
+    store.awardGameXP(killMap({ [WeaponType.Spread]: 5 }));
+    expect(store.getXP(WeaponType.Spread)).toBeCloseTo(50, 5);
+  });
+});
+
+describe('MasteryStore — getAllLevels()', () => {
+  it('returns a map with all 10 weapon types', () => {
+    const store = freshStore();
+    const levels = store.getAllLevels();
+    expect(levels.size).toBe(10);
+    for (const type of Object.values(WeaponType)) {
+      expect(levels.has(type)).toBe(true);
+    }
+  });
+
+  it('returns level 0 for weapons with no XP', () => {
+    const store = freshStore();
+    const levels = store.getAllLevels();
+    for (const lv of levels.values()) {
+      expect(lv).toBe(0);
+    }
+  });
+
+  it('reflects current levels after XP award', () => {
+    localStorage.setItem('gw_weapon_mastery', JSON.stringify({
+      version: 1,
+      weapons: { [WeaponType.Standard]: { xp: 300, gamesPlayed: 5 } },
+    }));
+    const store = MasteryStore.load();
+    const levels = store.getAllLevels();
+    expect(levels.get(WeaponType.Standard)).toBe(2);
+    expect(levels.get(WeaponType.Homing)).toBe(0);
+  });
+});
+
+describe('MasteryStore — getBonusDescription()', () => {
+  it('returns empty string for level 0', () => {
+    const store = freshStore();
+    expect(store.getBonusDescription(WeaponType.Standard, 0)).toBe('');
+  });
+
+  it('level 2 Blaster: includes weapon name and damage percentage', () => {
+    const store = freshStore();
+    // Level 2: t=(2-1)/4=0.25, dmg=1.10+0.25*(1.50-1.10)=1.20 → +20%
+    const desc = store.getBonusDescription(WeaponType.Standard, 2);
+    expect(desc).toContain('Blaster');
+    expect(desc).toContain('+20%');
+  });
+
+  it('level 5 Plasma Mortar: returns special bonus', () => {
+    const store = freshStore();
+    const desc = store.getBonusDescription(WeaponType.PlasmaMortar, 5);
+    expect(desc).toContain('Plasma Mortar');
+    expect(desc).toContain('+50% AoE radius');
+  });
+
+  it('level 5 Blaster: returns special bonus (not damage %)', () => {
+    const store = freshStore();
+    const desc = store.getBonusDescription(WeaponType.Standard, 5);
+    expect(desc).toContain('+1 extra bullet');
+  });
+
+  it('level 1 returns a non-empty description', () => {
+    const store = freshStore();
+    const desc = store.getBonusDescription(WeaponType.Homing, 1);
+    expect(desc.length).toBeGreaterThan(0);
+  });
+});
+
 describe('MasteryStore — getProgress()', () => {
   it('returns correct progress at level 0', () => {
     const store = freshStore();

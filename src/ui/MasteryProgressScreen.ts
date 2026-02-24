@@ -321,7 +321,7 @@ export class MasteryProgressScreen {
     const rows: Array<{
       row: HTMLDivElement;
       fillEl: HTMLDivElement;
-      badgeEl: HTMLDivElement;
+      badgeEl: HTMLSpanElement;
       unlockEl: HTMLDivElement;
       result: MasteryXPResult;
     }> = [];
