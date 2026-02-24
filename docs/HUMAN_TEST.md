@@ -8,6 +8,17 @@
 
 ---
 
+## S32: LAN Multiplayer — "(You)" Label Only on Local Player (2026-02-25)
+
+Bug: In LAN mode, ALL player ships showed the "(You)" floating label. Fix: `network-main.ts` now uses `id === localPlayerId ? '(You)' : netPlayer.name` when setting the 3D label.
+
+- [ ] **LAN game with 2 players** — Each player should see "(You)" above ONLY their own ship.
+- [ ] **Other player's ship** — Should show the remote player's entered name (from the lobby name input), NOT "(You)".
+- [ ] **No label regression in single-player** — No floating name labels appear in single-player mode.
+- [ ] **No label regression in split-screen** — Split-screen uses P1/P2 corner labels (not floating 3D labels). No "(You)" should appear.
+
+---
+
 ## S31: LAN Multiplayer — No Teleport on Hit (2026-02-25)
 
 Bug: In LAN MP, when a player was hit by an enemy (but still had lives), the server teleported them to `(U+0.5, V+0.5)` — the "opposite side" of the surface. The client snapped to this position, causing apparent "random teleportation." Also: players started each new round at their final death position from the previous game.
