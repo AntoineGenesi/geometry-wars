@@ -933,14 +933,19 @@ function main() {
     'padding:20px 40px;font:bold 24px monospace;background:#0a0;color:#fff;' +
     'border:2px solid #0f0;cursor:pointer;z-index:100;display:none;';
   startBtn.onclick = () => {
-    if (network.isConnected()) {
-      network.startGame();
-      startBtn.style.display = 'none';
-      statusEl.textContent = 'Starting...';
-    } else {
+    if (!network.isConnected()) {
       statusEl.textContent = 'Not connected to server!';
       statusEl.style.color = '#f44';
+      return;
     }
+    if (!isHost) {
+      // Should not happen (button is hidden for non-hosts) but guard just in case.
+      statusEl.textContent = 'Only the host can start the game.';
+      return;
+    }
+    network.startGame();
+    startBtn.style.display = 'none';
+    statusEl.textContent = 'Starting...';
   };
   document.body.appendChild(startBtn);
 
@@ -2095,6 +2100,12 @@ function main() {
         resetGameEntities();
         // initSurface at the top of onStateChange already handles surface reinit
         // (called with state.surfaceType and confirmedFromServer=true).
+      } else if (newPhase === 'playing' && currentRoomPhase === 'lobby') {
+        // Initial game start: lobby → playing.
+        // Reset entities (safe to call even when empty — clears any stale state).
+        resetGameEntities();
+        gameOverScreen.hide();
+        votingScreen.hide();
       } else if (newPhase === 'lobby') {
         votingScreen.hide();
         gameOverScreen.hide();
@@ -2126,8 +2137,15 @@ function main() {
         gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network');
       }
     } else if (currentRoomPhase === 'lobby' || (!state.gameStarted && !state.gameOver)) {
-      statusEl.textContent = 'Waiting for players...';
-      startBtn.style.display = 'block';
+      if (isHost) {
+        // Host sees the Start Game button — only the host can trigger game start.
+        statusEl.textContent = 'Waiting for players... (Host: press START GAME)';
+        startBtn.style.display = 'block';
+      } else {
+        // Non-host: show waiting message, no button (server-side guard rejects non-host starts).
+        statusEl.textContent = 'Waiting for host to start the game...';
+        startBtn.style.display = 'none';
+      }
     }
   }
 
@@ -2217,8 +2235,15 @@ function main() {
     // onStateChange and override this if different.
     initSurface(urlSurfaceType, false);
 
-    statusEl.textContent = 'Connected! Waiting for game start...';
-    startBtn.style.display = 'block';
+    // Show Start Game button immediately if we're the host; onStateChange will
+    // re-evaluate this on every state update with the authoritative isHost value.
+    if (isHost) {
+      statusEl.textContent = 'Connected! You are the HOST — press START GAME.';
+      startBtn.style.display = 'block';
+    } else {
+      statusEl.textContent = 'Connected! Waiting for host to start the game...';
+      startBtn.style.display = 'none';
+    }
 
     network.setCallbacks({
       onStateChange,
