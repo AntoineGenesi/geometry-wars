@@ -8,6 +8,20 @@
 
 ---
 
+## S31: Mobile Pause Menu — Touch Routing Fix (2026-02-24)
+
+Bug: On mobile (landscape), pause menu buttons only highlighted on touch but didn't fire click events. Joystick appeared when touching the menu. Root cause: `TouchInput.handleTouchStart` called `e.preventDefault()` unconditionally, preventing the browser from generating synthetic click events. Fixed by adding `setGamePaused()` — when paused, touch events pass through without preventDefault so buttons work normally.
+
+- [ ] **Open game on mobile (iPhone landscape)** — Tap the pause button (top-right ⏸). Menu should open.
+- [ ] **Tap RESUME** — Game should resume, menu should close. No joystick should appear.
+- [ ] **Tap SETTINGS** — Settings menu should open. No joystick.
+- [ ] **Tap EXIT TO MENU** — Should return to main menu. No joystick.
+- [ ] **Joystick check** — While pause menu is open, touching ANY area of the screen should NOT show a joystick. The joystick only appears during gameplay.
+- [ ] **Scrolling** — If pause menu content is tall enough to scroll (many buffs), scroll gesture should work, not freeze.
+- [ ] **Desktop regression** — ESC key still pauses/resumes on desktop. Mouse clicks on all menu buttons still work.
+
+---
+
 ## S28b: Rejoin After Pause — No Dual Host (2026-02-24)
 
 Bug: When a paused game had a player exit to main menu and rejoin, both players saw themselves as host simultaneously. Resume attempt crashed the server.

@@ -432,4 +432,71 @@ describe('TouchInput', () => {
     expect(state.weaponSwap).toBe(false);
     input.dispose();
   });
+
+  // -------------------------------------------------------------------------
+  // setGamePaused — touch routing fix (regression guard: S31)
+  // -------------------------------------------------------------------------
+  // When the game is paused and the pause menu is visible, touch events must
+  // NOT call e.preventDefault(). Without this, the browser cannot generate
+  // synthetic click events on pause menu buttons. The joystick must also not
+  // activate while the game is paused.
+
+  it('setGamePaused(true) — touchstart does NOT call preventDefault (allows click events on menu buttons)', () => {
+    const input = new TouchInput();
+    input.setGamePaused(true);
+
+    const listeners = _windowListeners.get('touchstart') ?? [];
+    const event = {
+      changedTouches: { length: 1, 0: touch(1, W * 0.25, H * 0.6) },
+      preventDefault: vi.fn(),
+    } as unknown as TouchEvent;
+    for (const fn of [...listeners]) fn(event as unknown as Event);
+
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    input.dispose();
+  });
+
+  it('setGamePaused(true) — joystick does NOT activate (no movement output)', () => {
+    const input = new TouchInput();
+    input.setGamePaused(true);
+
+    // Touch in left joystick zone
+    fireWindowEvent('touchstart', [touch(1, W * 0.25, H * 0.6)]);
+    fireWindowEvent('touchmove', [touch(1, W * 0.25 + 50, H * 0.6)]);
+
+    const state = input.getState();
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+    input.dispose();
+  });
+
+  it('setGamePaused(false) — joystick activates normally after unpause', () => {
+    const input = new TouchInput();
+    input.setGamePaused(true);
+    input.setGamePaused(false);
+
+    // Touch in left joystick zone and drag right
+    fireWindowEvent('touchstart', [touch(1, W * 0.25, H * 0.6)]);
+    fireWindowEvent('touchmove', [touch(1, W * 0.25 + 70, H * 0.6)]);
+
+    const state = input.getState();
+    expect(state.moveX).toBeGreaterThan(0);
+    input.dispose();
+  });
+
+  it('setGamePaused(true) — hides active joystick visuals immediately', () => {
+    const input = new TouchInput();
+
+    // Start a joystick touch while unpaused
+    fireWindowEvent('touchstart', [touch(1, W * 0.25, H * 0.6)]);
+
+    // Then pause — should hide joystick
+    input.setGamePaused(true);
+
+    // State should be reset to zero
+    const state = input.getState();
+    expect(state.moveX).toBe(0);
+    expect(state.moveY).toBe(0);
+    input.dispose();
+  });
 });
