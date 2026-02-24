@@ -910,6 +910,20 @@ All "Sektori" visual styles renamed to include "Dark" in the name, and lighter v
 
 ---
 
+## Debug OBJ Model Panel (s31)
+
+Open the game with `?debug=true` in the URL (e.g. `http://localhost:3000/?debug=true`).
+
+- [ ] **Orange "DEBUG: LOAD MODELS" button visible** — Main menu should show an orange-outlined button labelled "DEBUG: LOAD MODELS" in the bottom button row (next to WEAPON DATABASE, VISUAL STYLES, SETTINGS)
+- [ ] **Button opens OBJ panel** — Click "DEBUG: LOAD MODELS". A panel should appear with file upload, preset model buttons, and a 3D preview area
+- [ ] **Preset "Cube (OBJ)" loads** — Click the Cube preset. A 3D cube should appear in the preview renderer
+- [ ] **Button absent in release mode** — Load the game WITHOUT `?debug=true`. The orange button should NOT be visible
+
+### Task File
+- `tasks/s31-debug-object-loading-demo-missing.md`
+
+---
+
 ## How to Report Failures
 
 When something fails, write a note here with:
