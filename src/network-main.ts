@@ -897,8 +897,18 @@ function main() {
   let latestMapSize = 'medium';
   let lastSentInput: {
     moveX: number; moveY: number; aimAngle: number;
-    shooting: boolean; bomb: boolean;
+    shooting: boolean; bomb: boolean; boost: boolean;
   } | null = null;
+
+  // Client-side boost state for prediction (mirrors server logic in GameRoom.ts).
+  // Leading-edge detection ensures boost only triggers once per Shift press.
+  let localBoostActive = false;
+  let localBoostTimer = 0;
+  let localBoostCooldown = 0;
+  let localPrevBoostHeld = false;
+  const LOCAL_BOOST_DURATION = 0.5;
+  const LOCAL_BOOST_COOLDOWN = 5.0;
+  const LOCAL_BOOST_SPEED_MULTIPLIER = 3.0;
   let shootSoundTimer = 0;
 
   // -----------------------------------------------------------------------
@@ -1280,6 +1290,7 @@ function main() {
         aimAngle: lastSentInput?.aimAngle ?? 0,
         shooting: false,
         bomb: false,
+        boost: false,
       };
       network.sendInput(zeroInput);
       lastSentInput = { ...zeroInput };
@@ -1359,6 +1370,7 @@ function main() {
         aimAngle: lastSentInput?.aimAngle ?? 0,
         shooting: false,
         bomb: false,
+        boost: false,
       };
       network.sendInput(zeroInput);
       lastSentInput = { ...zeroInput };
@@ -1376,6 +1388,7 @@ function main() {
         aimAngle: lastSentInput?.aimAngle ?? 0,
         shooting: false,
         bomb: false,
+        boost: false,
       };
       network.sendInput(zeroInput);
       lastSentInput = { ...zeroInput };
@@ -2502,6 +2515,7 @@ function main() {
         aimAngle,
         shooting: inputState.shooting,
         bomb: inputState.bomb,
+        boost: inputState.boost,
       };
 
       const changed = !lastSentInput
@@ -2509,7 +2523,8 @@ function main() {
         || currentInput.moveY !== lastSentInput.moveY
         || Math.abs(currentInput.aimAngle - lastSentInput.aimAngle) > 0.02
         || currentInput.shooting !== lastSentInput.shooting
-        || currentInput.bomb !== lastSentInput.bomb;
+        || currentInput.bomb !== lastSentInput.bomb
+        || currentInput.boost !== lastSentInput.boost;
 
       if (changed) {
         network.sendInput(currentInput);
@@ -2531,14 +2546,36 @@ function main() {
       // - Movement (when WASD is held)
       // - Aim orientation (always, even when stationary)
       // This matches co-op where aim updates INSTANTLY every frame.
+      // Tick local boost state for client-side prediction (mirrors server GameRoom.ts).
+      const boostHeld = inputState.boost;
+      const boostJustPressed = boostHeld && !localPrevBoostHeld;
+      localPrevBoostHeld = boostHeld;
+      if (boostJustPressed && localBoostCooldown <= 0) {
+        localBoostActive = true;
+        localBoostTimer = LOCAL_BOOST_DURATION;
+        localBoostCooldown = LOCAL_BOOST_COOLDOWN;
+      }
+      if (localBoostActive) {
+        localBoostTimer -= dt;
+        if (localBoostTimer <= 0) {
+          localBoostActive = false;
+          localBoostTimer = 0;
+        }
+      }
+      if (localBoostCooldown > 0) {
+        localBoostCooldown -= dt;
+        if (localBoostCooldown < 0) localBoostCooldown = 0;
+      }
+
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer && surface) {
         const isMoving = currentInput.moveX !== 0 || currentInput.moveY !== 0;
 
         if (isMoving) {
           const predSpeed = 0.095; // Must match server PLAYER_SPEED
-          let predDx = currentInput.moveX * predSpeed * dt;
-          const predDy = currentInput.moveY * predSpeed * dt;
+          const predSpeedMultiplier = localBoostActive ? LOCAL_BOOST_SPEED_MULTIPLIER : 1.0;
+          let predDx = currentInput.moveX * predSpeed * predSpeedMultiplier * dt;
+          const predDy = currentInput.moveY * predSpeed * predSpeedMultiplier * dt;
 
           // Apply sin(phi) correction for sphere-like surfaces (matches server)
           const surfType = lastCreatedSurfaceType;
