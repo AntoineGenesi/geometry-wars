@@ -56,6 +56,7 @@ import { SpatialHash } from './core/SpatialHash';
 import { CompanionManager, CompanionPickup, CompanionHUD, CompanionType, getRandomCompanionType } from './entities/Companion';
 import { BuffManager, StackBuffType, BUFF_DEFINITIONS } from './buffs/BuffManager';
 import { WeaponMasteryManager, WEAPON_MASTERY_BUFF_MAP } from './buffs/WeaponMasteryManager';
+import { MasteryStore } from './systems/MasteryStore';
 import { BuffHUD } from './buffs/BuffHUD';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
@@ -836,6 +837,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Buff system (stackable Risk-of-Rain-style buffs) --
   const buffManager = new BuffManager();
 
+  // -- Cross-game passive mastery bonuses (loaded from localStorage, fixed for this session) --
+  const masteryStore = MasteryStore.load();
+  const passiveMasteryBonuses = masteryStore.getPassiveMultipliers();
+  // Build level map for HUD display (0-5 per weapon)
+  const persistentMasteryLevels = new Map<WeaponType, number>();
+  for (const type of Object.values(WeaponType)) {
+    persistentMasteryLevels.set(type, masteryStore.getLevel(type));
+  }
+
   // -- Weapon mastery system (per-weapon kill tracking → tier-up buffs) --
   const weaponMastery = new WeaponMasteryManager();
 
@@ -868,12 +878,16 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     // Shockwave distortion is reserved for mega boss deaths only.
   };
 
-  /** Recompute combined multipliers from PlayerLevel + BuffManager */
+  /** Recompute combined multipliers from PlayerLevel + BuffManager + passive mastery */
   function applyStatMultipliers(): void {
     const perk = playerLevel.perk;
     const boostMult = player.boostActive ? BOOST_SPEED_MULTIPLIER : 1.0;
     playerWalker.speed = PLAYER_MOVE_SPEED * perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier() * boostMult;
-    player.fireRateMultiplier = perk.fireRateMultiplier * buffManager.getFireRateMultiplier();
+    // Fire rate: combine PlayerLevel + BuffManager + passive mastery for current weapon
+    const currentWeapon = weaponManager.getCurrentWeapon();
+    const passiveBonus = passiveMasteryBonuses.get(currentWeapon);
+    const persistentFireRateMult = passiveBonus?.fireRateMultiplier ?? 1.0;
+    player.fireRateMultiplier = perk.fireRateMultiplier * buffManager.getFireRateMultiplier() * persistentFireRateMult;
     bulletPool.speedMultiplier = perk.bulletSpeedMultiplier;
   }
 
@@ -1104,8 +1118,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     },
   });
 
-  // Wire mastery damage multiplier into WeaponManager (used by non-blaster weapons)
-  weaponManager.setMasteryMultiplierFn((type) => buffManager.getMasteryMultiplier(type).damageMultiplier);
+  // Wire mastery damage multiplier into WeaponManager (combines in-session tier + persistent cross-game bonus)
+  weaponManager.setMasteryMultiplierFn((type) => {
+    const inSessionMult = buffManager.getMasteryMultiplier(type).damageMultiplier;
+    const passiveBonus = passiveMasteryBonuses.get(type);
+    const persistentMult = passiveBonus?.damageMultiplier ?? 1.0;
+    return inSessionMult * persistentMult;
+  });
 
   // -- Weapon HUD (inventory display) --
   const weaponHUD = new WeaponHUD();
@@ -1554,6 +1573,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     ddaSpawnModifier,
     ddaLogger,
     ddaPlayers,
+    persistentMasteryLevels,
     gameMode,
     waveScheduler,
     minimap,

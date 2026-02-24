@@ -153,6 +153,17 @@ function injectStyles(): void {
     .weapon-hud-item.active .weapon-hud-session-level.visible {
       display: inline;
     }
+    .weapon-hud-persistent-stars {
+      display: none;
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: #ffd700;
+      text-shadow: 0 0 4px #ffd700;
+      white-space: nowrap;
+    }
+    .weapon-hud-item.active .weapon-hud-persistent-stars.visible {
+      display: inline;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -188,12 +199,15 @@ export class WeaponHUD {
    *   Only the active weapon's mastery bar is rendered.
    * @param sessionLevels Optional per-weapon session pickup counts.
    *   Shows a compact "Lv.N" badge for the active weapon at level ≥ 2.
+   * @param persistentLevels Optional per-weapon cross-game mastery levels (0-5).
+   *   Shows gold stars (★) for weapons with persistent mastery.
    */
   update(
     inventory: WeaponInventoryEntry[],
     activeWeapon: WeaponType,
     masteryProgress?: Map<WeaponType, MasteryProgressEntry>,
     sessionLevels?: Map<WeaponType, number>,
+    persistentLevels?: Map<WeaponType, number>,
   ): void {
     // Check if inventory composition changed (types added/removed)
     const currentTypes = new Set(this.items.keys());
@@ -262,6 +276,24 @@ export class WeaponHUD {
           }
         } else if (!isActive) {
           sessionBadge.classList.remove('visible');
+        }
+      }
+
+      // Persistent mastery stars — gold stars for cross-game mastery level ≥ 1
+      const starsEl = item.querySelector('.weapon-hud-persistent-stars') as HTMLElement;
+      if (starsEl) {
+        if (isActive && persistentLevels) {
+          const mastLevel = persistentLevels.get(entry.type) ?? 0;
+          if (mastLevel >= 1) {
+            const filled = '★'.repeat(mastLevel);
+            const empty = '☆'.repeat(5 - mastLevel);
+            starsEl.textContent = filled + empty;
+            starsEl.classList.add('visible');
+          } else {
+            starsEl.classList.remove('visible');
+          }
+        } else if (!isActive) {
+          starsEl.classList.remove('visible');
         }
       }
     }
@@ -357,10 +389,14 @@ export class WeaponHUD {
       sessionLevel.className = 'weapon-hud-session-level';
       sessionLevel.style.color = colorHex;
 
+      const persistentStars = document.createElement('span');
+      persistentStars.className = 'weapon-hud-persistent-stars';
+
       mainRow.appendChild(icon);
       mainRow.appendChild(ammo);
       mainRow.appendChild(name);
       mainRow.appendChild(sessionLevel);
+      mainRow.appendChild(persistentStars);
 
       // -- Mastery row: bar + tier label (hidden until mastery data available) --
       const masteryRow = document.createElement('div');
