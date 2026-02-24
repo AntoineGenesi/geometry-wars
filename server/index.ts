@@ -46,11 +46,29 @@ const PORT = Number(process.env.PORT) || 2567;
 const SHUTDOWN_TIMEOUT_MS = (Number(process.env.SHUTDOWN_TIMEOUT) || 180) * 1000;
 const app = express();
 
-// CORS headers for LAN access (allow any origin to connect)
-app.use((_req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+// CORS headers for LAN access.
+// Colyseus.js 0.15 sends withCredentials:true on matchmake HTTP requests.
+// When withCredentials is set, browsers REJECT Access-Control-Allow-Origin: *
+// (wildcard is incompatible with credentials). Instead, echo the specific
+// request origin so cross-origin matchmake works from LAN devices that may
+// have loaded the page from a different IP/hostname than the scan result.
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  } else {
+    // No Origin header (same-origin or non-browser) — wildcard is fine
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Handle CORS preflight (OPTIONS) requests immediately — don't forward to routes
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
   next();
 });
 
