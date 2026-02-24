@@ -316,9 +316,13 @@ export default function lanPlugin(): Plugin {
     }
   }
 
-  async function handleScan(): Promise<{ found: ScanServer[]; subnets: string[] }> {
+  async function handleScan(): Promise<{ found: ScanServer[]; subnets: string[]; isWSL2?: boolean; windowsAddresses?: string[] }> {
     const addresses = getLANAddresses();
-    const subnets = [...new Set(addresses.map(getSubnet))];
+    const wsl2 = detectWSL2();
+    // In WSL2, the Windows LAN IPs (192.168.x.x) are unreachable from WSL2's
+    // perspective but ARE reachable from laptop/phone on LAN. We must report
+    // the Windows IP in scan results, not the WSL2 internal 172.28.x.x.
+    const windowsAddresses = wsl2 ? getWindowsLANIPs() : [];
     const found: ScanServer[] = [];
 
     // Check if ANY server is running on the game port (ours or external like Play Game.bat)
@@ -326,20 +330,32 @@ export default function lanPlugin(): Plugin {
     if (localServerAlive) {
       serverReady = true; // Mark as ready so stop button works
       const selfRooms = await fetchRooms('localhost', SERVER_PORT);
-      // Pick the most likely LAN IP: prefer 192.168.x.x, then any non-172.x, then first available
-      const primaryIp = addresses.find(a => a.startsWith('192.168.'))
-        ?? addresses.find(a => !a.startsWith('172.'))
-        ?? addresses[0]
-        ?? 'localhost';
+      // In WSL2: use Windows LAN IP (192.168.x.x) so other devices can connect.
+      // WSL2 internal IPs (172.28.x.x) are unreachable from laptop/phone.
+      // On Windows/non-WSL2: prefer 192.168.x.x, then any non-172.x, then first available.
+      const primaryIp = (wsl2 && windowsAddresses.length > 0)
+        ? windowsAddresses[0]
+        : (addresses.find(a => a.startsWith('192.168.'))
+          ?? addresses.find(a => !a.startsWith('172.'))
+          ?? addresses[0]
+          ?? 'localhost');
       found.push({ ip: primaryIp, port: SERVER_PORT, info: { game: 'geometry-wars-3d', self: true }, rooms: selfRooms });
     }
+
+    // Build the list of subnets to scan.
+    // In WSL2: also scan Windows LAN subnets (192.168.x) so we discover other
+    // game servers on the same LAN as the Windows host.
+    const allScanAddresses = wsl2 && windowsAddresses.length > 0
+      ? [...addresses, ...windowsAddresses]
+      : addresses;
+    const subnets = [...new Set(allScanAddresses.map(getSubnet))];
 
     // Scan each subnet
     const scanPromises: Promise<void>[] = [];
     for (const subnet of subnets) {
       for (let i = 1; i <= 254; i++) {
         const ip = `${subnet}.${i}`;
-        if (addresses.includes(ip)) continue; // Skip self
+        if (allScanAddresses.includes(ip)) continue; // Skip self
         scanPromises.push(
           fetchWithTimeout(`http://${ip}:${SERVER_PORT}/api/info`, 400)
             .then(async (data) => {
@@ -361,7 +377,7 @@ export default function lanPlugin(): Plugin {
     }
 
     await Promise.allSettled(scanPromises);
-    return { found, subnets };
+    return { found, subnets, isWSL2: wsl2, windowsAddresses };
   }
 
   return {

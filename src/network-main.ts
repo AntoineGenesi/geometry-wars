@@ -2346,6 +2346,9 @@ function main() {
     // Possible-cause checklist (always visible)
     const healthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
     const isHttps = window.location.protocol === 'https:';
+    // Detect WSL2 internal IP (172.16–31.x.x range, typically 172.28.x.x for WSL2)
+    const hostname = window.location.hostname;
+    const isWSL2Ip = /^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname);
     const steps = [
       isServerDown
         ? '1. Is the "Geometry Wars Server" window open and running on the host PC?'
@@ -2355,10 +2358,15 @@ function main() {
       isHttps
         ? '4. ⚠ You are on HTTPS — change to http:// to allow WebSocket connections'
         : `4. Test server health: open ${healthUrl}/health in a browser tab`,
+      ...(isWSL2Ip ? [
+        `5. ⚠ WSL2 IP detected (${hostname}) — this IP is unreachable from other devices!`,
+        '   Use the Windows LAN IP (192.168.x.x) shown in the host screen instead.',
+        '   Run Setup-WSL-LAN.bat as Administrator to enable port forwarding.',
+      ] : []),
     ];
     const list = document.createElement('div');
     list.style.cssText = 'color:#888;font-size:13px;margin-bottom:24px;text-align:left;max-width:600px;line-height:1.9;';
-    list.innerHTML = steps.map(s => `<div>${s}</div>`).join('');
+    list.innerHTML = steps.map(s => `<div>${isWSL2Ip && s.startsWith('5.') ? `<span style="color:#fa0">${s}</span>` : s}</div>`).join('');
     if (isHttps) {
       list.querySelector('div:last-child')!.setAttribute('style', 'color:#fa0;');
     }
