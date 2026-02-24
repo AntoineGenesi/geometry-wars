@@ -260,6 +260,19 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
+// Log matchmaking HTTP requests — critical for diagnosing connection failures.
+// Colyseus intercepts /matchmake/* requests before Express, so we use the raw
+// 'request' event to log them before Colyseus processes them.
+httpServer.prependListener('request', (req, _res) => {
+  if (req.url && req.url.includes('/matchmake')) {
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim()
+      || req.socket.remoteAddress || 'unknown';
+    const isLocal = ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+    const origin = req.headers['origin'] || '(no origin)';
+    logger.log(`[Server] Matchmake ${req.method} ${isLocal ? '(local)' : 'from LAN: ' + ip} — path: ${req.url}, origin: ${origin}`);
+  }
+});
+
 // Log WebSocket upgrade attempts (happens before Colyseus room join — critical for LAN debug)
 httpServer.on('upgrade', (req, socket) => {
   const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim()

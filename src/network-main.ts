@@ -198,15 +198,36 @@ function isValidSurfaceType(s: string): s is SurfaceType {
   return SurfaceFactory.getAvailableTypes().includes(s as SurfaceType);
 }
 
-function getServerUrl(): string {
+/**
+ * Returns { primary, fallback } server URLs for the Colyseus connection.
+ * Primary: Vite proxy path (ws://host:3000/ws) — only needs port 3000 on LAN.
+ * Fallback: direct Colyseus (ws://host:2567) — in case proxy fails (browser
+ * cache, proxy misconfiguration, etc.).
+ */
+function getServerUrls(): { primary: string; fallback: string | null } {
   const params = new URLSearchParams(window.location.search);
   const explicitServer = params.get('server');
-  if (explicitServer) return explicitServer;
+  if (explicitServer) {
+    // If an explicit server URL is provided, also compute a fallback.
+    // If it goes through the proxy (/ws path), fallback is direct port 2567.
+    // If it's already direct (port 2567), no fallback needed.
+    let fallback: string | null = null;
+    try {
+      const url = new URL(explicitServer);
+      if (url.pathname === '/ws' || url.pathname.startsWith('/ws/')) {
+        // Proxy URL → fallback to direct port 2567
+        fallback = `${url.protocol}//${url.hostname}:2567`;
+      }
+    } catch { /* not a valid URL, no fallback */ }
+    return { primary: explicitServer, fallback };
+  }
   // Route through Vite dev server proxy (/ws → localhost:2567).
   // LAN clients only need port 3000 (the Vite port) to be accessible.
-  // No separate portproxy rule for port 2567 required.
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/ws`;
+  const primary = `${protocol}//${window.location.host}/ws`;
+  // Fallback: try direct Colyseus port in case proxy is broken
+  const fallback = `${protocol}//${window.location.hostname}:2567`;
+  return { primary, fallback };
 }
 
 function getPlayerName(): string {
@@ -844,7 +865,8 @@ function main() {
   const input = mobile ? new TouchInput() : new InputManager();
 
   // -- Network client --
-  const network = new NetworkClient(getServerUrl());
+  const { primary: primaryUrl, fallback: fallbackServerUrl } = getServerUrls();
+  const network = new NetworkClient(primaryUrl, fallbackServerUrl);
   let localPlayerId = '';
   let isHost = false;
   let isPaused = false;
@@ -2188,15 +2210,35 @@ function main() {
 
   const urlSurfaceType = getUrlSurfaceType();
   const playerName = getPlayerName();
-  const serverUrl = getServerUrl();
+  const { primary: serverUrl, fallback: fallbackUrl } = getServerUrls();
 
   // Always log connection details — essential for LAN debugging
   console.log('[NetworkMain] === LAN CONNECTION INFO ===');
-  console.log(`[NetworkMain] Server URL:  ${serverUrl}`);
+  console.log(`[NetworkMain] Primary URL: ${serverUrl}`);
+  console.log(`[NetworkMain] Fallback URL: ${fallbackUrl ?? '(none)'}`);
   console.log(`[NetworkMain] Page URL:    ${window.location.href}`);
   console.log(`[NetworkMain] Player name: ${playerName}`);
   console.log(`[NetworkMain] Surface:     ${urlSurfaceType}`);
   console.log('[NetworkMain] Connecting...');
+
+  // Pre-connection diagnostic: check if the server is reachable via HTTP.
+  // This helps diagnose proxy vs direct port issues without waiting for
+  // the full Colyseus timeout. Runs asynchronously — doesn't block connect.
+  {
+    const proxyHealthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://') + '/health';
+    const directHealthUrl = `http://${window.location.hostname}:2567/health`;
+    // Fire both checks in parallel
+    const checkHealth = async (label: string, url: string) => {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        console.log(`[NetworkMain] ${label} health check: ${res.ok ? 'OK' : 'HTTP ' + res.status} (${url})`);
+      } catch (e) {
+        console.warn(`[NetworkMain] ${label} health check FAILED: ${(e as Error).message} (${url})`);
+      }
+    };
+    checkHealth('Proxy', proxyHealthUrl);
+    checkHealth('Direct', directHealthUrl);
+  }
 
   // 30-second connection timeout: if Colyseus handshake hangs (server reachable
   // but not responding — common on mobile over Wi-Fi), reject with a clear error
@@ -3317,7 +3359,7 @@ function main() {
         playerCount: networkPlayers.size,
         localPlayerPos: lp ? { u: lp.surfaceU, v: lp.surfaceV } : null,
         localPlayerAlive: lp ? (playerAliveState.get(localPlayerId) ?? true) : false,
-        serverUrl: getServerUrl(),
+        serverUrl: primaryUrl,
         timestamp: new Date().toISOString(),
       };
     },
@@ -3340,7 +3382,7 @@ function main() {
     },
 
     latency: async () => {
-      const serverUrl = getServerUrl().replace('ws://', 'http://').replace('wss://', 'https://');
+      const serverUrl = primaryUrl.replace('ws://', 'http://').replace('wss://', 'https://');
       const pings: number[] = [];
       for (let i = 0; i < 5; i++) {
         const start = performance.now();
