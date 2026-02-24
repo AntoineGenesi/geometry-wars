@@ -62,6 +62,10 @@ export interface LANStartResult {
 export interface LANScanResult {
   found: LANServer[];
   subnets: string[];
+  /** True when the scan ran inside WSL2 */
+  isWSL2?: boolean;
+  /** Windows host LAN IPs discovered during scan (populated when isWSL2 is true) */
+  windowsAddresses?: string[];
 }
 
 export class LANClient {
