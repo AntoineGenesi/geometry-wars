@@ -1850,8 +1850,11 @@ export class StartMenu {
         const shutdownTimeout = timeoutInput ? parseInt(timeoutInput.value, 10) || 180 : 180;
         const result = await this.lanClient.startHost({ shutdownTimeout });
         if (result.ok) {
-          hostedServerUrl = this.lanClient.getServerWsUrl('localhost', result.port);
           const vitePort = parseInt(window.location.port, 10) || 3000;
+          // Use Vite proxy path for host too — consistent with how LAN clients connect.
+          // This also makes the host connection go through the same code path as clients,
+          // reducing the chance of proxy-only bugs going undetected.
+          hostedServerUrl = `ws://localhost:${vitePort}/ws`;
           
           // Register short code once for this surface/port combination
           const shortCodeUrl = await this.lanClient.registerShortCode('localhost', this.lanSelectedSurface, result.port, vitePort);

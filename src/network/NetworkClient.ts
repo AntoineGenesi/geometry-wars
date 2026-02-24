@@ -199,24 +199,54 @@ export class NetworkClient {
   // requestAnimationFrame to coalesce into a single call per frame.
   private stateChangePending = false;
 
-  constructor(serverUrl: string = 'ws://localhost:2567') {
+  /** The primary server URL this client was constructed with. */
+  private serverUrl: string;
+  /** Optional fallback URL to try if the primary URL fails. */
+  private fallbackUrl: string | null;
+
+  constructor(serverUrl: string = 'ws://localhost:2567', fallbackUrl: string | null = null) {
+    this.serverUrl = serverUrl;
+    this.fallbackUrl = fallbackUrl;
     this.client = new Client(serverUrl);
   }
 
   /**
-   * Connect to the game server and join a room
+   * Connect to the game server and join a room.
+   * Tries the primary URL first; if it fails and a fallback URL was provided,
+   * retries once with the fallback (e.g. direct port 2567 if proxy fails).
    */
   async connect(options: { name?: string; surfaceType?: string } = {}): Promise<void> {
+    const joinOpts = {
+      name: options.name || `Player ${Math.floor(Math.random() * 1000)}`,
+      surfaceType: options.surfaceType || 'sphere',
+    };
+
+    // Attempt 1: primary URL
+    console.log(`[Network] Connecting to: ${this.serverUrl}`);
     try {
-      this.room = await this.client.joinOrCreate('game', {
-        name: options.name || `Player ${Math.floor(Math.random() * 1000)}`,
-        surfaceType: options.surfaceType || 'sphere',
-      });
+      await this.attemptConnect(joinOpts);
+      return;
+    } catch (primaryError) {
+      if (!this.fallbackUrl) {
+        throw primaryError;
+      }
+      console.warn(`[Network] Primary URL failed (${this.serverUrl}), trying fallback: ${this.fallbackUrl}`);
+    }
+
+    // Attempt 2: fallback URL (e.g. direct ws://host:2567)
+    this.client = new Client(this.fallbackUrl);
+    console.log(`[Network] Connecting to fallback: ${this.fallbackUrl}`);
+    await this.attemptConnect(joinOpts);
+  }
+
+  private async attemptConnect(joinOpts: { name: string; surfaceType: string }): Promise<void> {
+    try {
+      this.room = await this.client.joinOrCreate('game', joinOpts);
 
       this.localPlayerId = this.room.sessionId;
       this.connected = true;
 
-      netLog(`[Network] Connected as ${this.localPlayerId}`);
+      console.log(`[Network] Connected as ${this.localPlayerId}`);
 
       // Set up state change listeners
       this.setupListeners();
@@ -246,12 +276,15 @@ export class NetworkClient {
       // Colyseus connection failures often surface as raw ProgressEvent objects
       // (from XMLHttpRequest) which are unhelpful. Provide a clear message.
       const isProgressEvent = error && typeof error === 'object' && 'isTrusted' in (error as Record<string, unknown>);
-      const serverUrl = this.client['settings']?.hostname || 'unknown';
+      const settings = this.client['settings'];
+      const actualUrl = settings
+        ? `${settings.secure ? 'https' : 'http'}://${settings.hostname}:${settings.port}${settings.pathname}`
+        : 'unknown';
       let friendlyError: Error;
       if (isProgressEvent) {
         friendlyError = new Error(
-          `Cannot reach game server. Is the Colyseus server running? ` +
-          `(Tried: ${serverUrl}:2567/matchmake/joinOrCreate/game)`
+          `Cannot reach game server at ${actualUrl}/matchmake/joinOrCreate/game. ` +
+          `Is the server running? Check that the port is accessible from this device.`
         );
       } else {
         friendlyError = error instanceof Error ? error : new Error(String(error));
