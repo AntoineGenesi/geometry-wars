@@ -2213,12 +2213,17 @@ function main() {
   const { primary: serverUrl, fallback: fallbackUrl } = getServerUrls();
 
   // Always log connection details — essential for LAN debugging
+  const serverHostname = (() => { try { return new URL(serverUrl.replace(/^ws/, 'http')).hostname; } catch { return '(parse error)'; } })();
+  const isCrossOrigin = serverHostname !== window.location.hostname;
   console.log('[NetworkMain] === LAN CONNECTION INFO ===');
   console.log(`[NetworkMain] Primary URL: ${serverUrl}`);
   console.log(`[NetworkMain] Fallback URL: ${fallbackUrl ?? '(none)'}`);
-  console.log(`[NetworkMain] Page URL:    ${window.location.href}`);
-  console.log(`[NetworkMain] Player name: ${playerName}`);
-  console.log(`[NetworkMain] Surface:     ${urlSurfaceType}`);
+  console.log(`[NetworkMain] Page origin:  ${window.location.origin}`);
+  console.log(`[NetworkMain] Page URL:     ${window.location.href}`);
+  console.log(`[NetworkMain] Server host:  ${serverHostname}`);
+  console.log(`[NetworkMain] Cross-origin: ${isCrossOrigin ? 'YES ⚠ (CORS required)' : 'no (same-origin ✓)'}`);
+  console.log(`[NetworkMain] Player name:  ${playerName}`);
+  console.log(`[NetworkMain] Surface:      ${urlSurfaceType}`);
   console.log('[NetworkMain] Connecting...');
 
   // Pre-connection diagnostic: check if the server is reachable via HTTP.
@@ -3360,6 +3365,8 @@ function main() {
         localPlayerPos: lp ? { u: lp.surfaceU, v: lp.surfaceV } : null,
         localPlayerAlive: lp ? (playerAliveState.get(localPlayerId) ?? true) : false,
         serverUrl: primaryUrl,
+        pageOrigin: window.location.origin,
+        crossOrigin: (() => { try { return new URL(primaryUrl.replace(/^ws/, 'http')).hostname !== window.location.hostname; } catch { return 'unknown'; } })(),
         timestamp: new Date().toISOString(),
       };
     },
