@@ -20,6 +20,24 @@ const PROXIMITY_FADE_RADIUS = 12.0;
 const PROXIMITY_FADE_RADIUS_SQ = PROXIMITY_FADE_RADIUS * PROXIMITY_FADE_RADIUS;
 
 /**
+ * Surface UV-distance visibility constants.
+ * Dims enemies that are far from the player along the surface — using UV coordinates
+ * (normalized surface parameterization) rather than Euclidean 3D distance.
+ *
+ * Why UV distance instead of 3D distance: on surfaces with holes (torus, cube-ring,
+ * sphere-tunnel), raycasts can pass through the hole giving 0 intersections → full
+ * brightness for enemies actually far away on the surface. UV distance is always
+ * proportional to surface arc length regardless of the hole topology.
+ *
+ * UV space is [0,1]×[0,1] for all surfaces. Distance ~0 = same position, ~0.5 = far.
+ * Both U and V are treated as wrapping (correct for torus; slight over-correction for
+ * non-wrapping surfaces is negligible at UV distances below 0.5).
+ */
+const SURFACE_NEAR_UV = 0.15;    // fully bright within 15% of surface
+const SURFACE_FAR_UV  = 0.45;    // fully dim beyond 45% of surface
+const SURFACE_DIM_OPACITY = 0.08; // minimum opacity for far-away enemies
+
+/**
  * RenderLoop contains the render callback logic, extracted from main.ts onRender.
  * All state is accessed through the GameContext parameter.
  */
@@ -81,10 +99,6 @@ export class RenderLoop {
     const allEnemies = ctx.enemySpawner.getEnemies();
     ctx.depthOcclusion.update(allEnemies, camPos, frameDt);
 
-    // Spatial hash visibility: dim enemies far from the player in 3D space.
-    // Complements depth-occlusion (geometric) with player-proximity (geographic).
-    // Works correctly on torus/cube-tunnel where raycasts miss far-side enemies.
-    ctx.spatialHashVisibility.update(allEnemies, playerPos, frameDt);
     profiler.end('transparency_and_occlusion');
 
     profiler.begin('enemy_visibility');
@@ -92,6 +106,11 @@ export class RenderLoop {
     const qualitySettings = ctx.adaptiveQuality.getSettings();
     const maxVisible = qualitySettings.maxVisibleEnemies;
     let visibleEnemyCount = 0;
+
+    // Cache player UV position for surface-distance calculations (once per frame)
+    const playerU = ctx.player.surfaceU;
+    const playerV = ctx.player.surfaceV;
+    const wrapsV = ctx.surface.wrapsV;
 
     // Far-side enemy culling: at 150+ entities, hide regular enemies on the back of the surface.
     // Bosses are exempt — they keep their depth-occlusion opacity (dim but visible as a threat cue).
@@ -107,8 +126,6 @@ export class RenderLoop {
       // Camera direction from mesh center — computed once per frame, used per-enemy below
       this._farSideCamDir.copy(camPos).sub(meshCenter).normalize();
     }
-
-    // Spatial hash visibility is already computed above (ctx.spatialHashVisibility.update called).
 
     for (const enemy of allEnemies) {
       if (!enemy.alive || !enemy.mesh) continue;
@@ -131,12 +148,30 @@ export class RenderLoop {
       // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
       let visibility = ctx.depthOcclusion.getOpacity(enemy);
 
-      // Spatial hash visibility: dim enemies far from the player in world space.
-      // Uses min() so an enemy is dim if EITHER far-from-player OR behind a surface.
-      // The proximity override below (PROXIMITY_BRIGHT_RADIUS) will re-brighten any
-      // enemies that are very close to the player, overriding both systems.
-      const spatialVis = ctx.spatialHashVisibility.getOpacity(enemy);
-      visibility = Math.min(visibility, spatialVis);
+      // Surface UV-distance visibility: dim enemies far from the player on the surface.
+      // Uses UV coordinates (normalized surface parameterization) rather than Euclidean
+      // 3D distance, which is misleading on surfaces with holes (torus, cube-ring,
+      // sphere-tunnel) where enemies visible through the hole have short 3D distance
+      // but long surface distance from the player.
+      {
+        const euRaw = Math.abs(enemy.surfacePosition.u - playerU);
+        const evRaw = Math.abs(enemy.surfacePosition.v - playerV);
+        // Both U and V treated as wrapping — correct for torus; harmless for others
+        const eu = Math.min(euRaw, 1.0 - euRaw);
+        const ev = wrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
+        const uvDist = Math.sqrt(eu * eu + ev * ev);
+        let surfaceVis: number;
+        if (uvDist <= SURFACE_NEAR_UV) {
+          surfaceVis = 1.0;
+        } else if (uvDist >= SURFACE_FAR_UV) {
+          surfaceVis = SURFACE_DIM_OPACITY;
+        } else {
+          const uvT = (uvDist - SURFACE_NEAR_UV) / (SURFACE_FAR_UV - SURFACE_NEAR_UV);
+          const uvSt = uvT * uvT * (3.0 - 2.0 * uvT);
+          surfaceVis = 1.0 - uvSt * (1.0 - SURFACE_DIM_OPACITY);
+        }
+        visibility = Math.min(visibility, surfaceVis);
+      }
 
       // When surface is blocking camera-to-player, also fade enemies between camera and player
       if (ctx.state.isCurrentlyBlocked) {
