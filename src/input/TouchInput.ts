@@ -72,6 +72,9 @@ export class TouchInput {
   /** Called when the pause button is tapped. */
   onPause: (() => void) | null = null;
 
+  // -- Game paused flag (disables touch routing to joysticks when menu is open) --
+  private gamePaused = false;
+
   // -- Bound handlers --
   private readonly onTouchStart: (e: TouchEvent) => void;
   private readonly onTouchMove: (e: TouchEvent) => void;
@@ -160,11 +163,45 @@ export class TouchInput {
     this.overlay.style.display = visible ? 'block' : 'none';
   }
 
+  /**
+   * Notify TouchInput whether the game is paused.
+   * When paused, all touch events are passed through without preventDefault()
+   * so that pause menu buttons receive click events normally.
+   * Also hides any active joystick visuals immediately.
+   */
+  setGamePaused(paused: boolean): void {
+    this.gamePaused = paused;
+    if (paused) {
+      this.resetJoystickState();
+    }
+  }
+
+  private resetJoystickState(): void {
+    this.leftActive = false;
+    this.leftTouchId = null;
+    this.leftDeltaX = 0;
+    this.leftDeltaY = 0;
+    this.leftBase.style.display = 'none';
+
+    this.rightActive = false;
+    this.rightTouchId = null;
+    this.rightDeltaX = 0;
+    this.rightDeltaY = 0;
+    this.rightBase.style.display = 'none';
+
+    this.bombTouchId = null;
+  }
+
   // -----------------------------------------------------------------------
   // Touch event handlers
   // -----------------------------------------------------------------------
 
   private handleTouchStart(e: TouchEvent): void {
+    // When the game is paused, the pause menu is open.
+    // Do NOT call preventDefault() so the browser can generate click events
+    // on pause menu buttons. Return immediately to prevent joystick activation.
+    if (this.gamePaused) return;
+
     e.preventDefault();
     const w = window.innerWidth;
     const h = window.innerHeight;
@@ -211,6 +248,7 @@ export class TouchInput {
   }
 
   private handleTouchMove(e: TouchEvent): void {
+    if (this.gamePaused) return;
     e.preventDefault();
 
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -237,6 +275,7 @@ export class TouchInput {
   }
 
   private handleTouchEnd(e: TouchEvent): void {
+    if (this.gamePaused) return;
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
 

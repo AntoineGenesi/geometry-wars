@@ -1105,6 +1105,7 @@ function main() {
 
   function showPauseOverlay(paused: boolean): void {
     isPaused = paused;
+    if (input instanceof TouchInput) input.setGamePaused(paused);
     if (paused) {
       game.pause(); // Sync game clock to prevent dt accumulation during pause
       // Both host and non-host see the full PauseMenu.

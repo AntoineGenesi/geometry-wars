@@ -1225,6 +1225,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   pauseMenu.setPerformanceLogger(perfLogger);
   pauseMenu.onResume(() => {
     isPaused = false;
+    if (input instanceof TouchInput) input.setGamePaused(false);
     game.resume(); // resync clock to avoid massive dt after long pause
     // Force respawn if player died during pause
     if (!player.alive && player.lives > 0) {
@@ -1377,11 +1378,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       if (isPaused) {
         isPaused = false;
         ctx.state.isPaused = false;
+        input.setGamePaused(false);
         game.resume();
         pauseMenu.hide();
       } else {
         isPaused = true;
         ctx.state.isPaused = true;
+        input.setGamePaused(true);
         game.pause();
         updatePauseMenuData();
         pauseMenu.show();
@@ -1426,10 +1429,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     if (e.key === 'Escape' && !isGameOver) {
       if (isPaused) {
         isPaused = false;
+        if (input instanceof TouchInput) input.setGamePaused(false);
         game.resume(); // resync clock to avoid massive dt after long pause
         pauseMenu.hide();
       } else {
         isPaused = true;
+        if (input instanceof TouchInput) input.setGamePaused(true);
         game.pause(); // stop clock ticking while paused
         updatePauseMenuData();
         pauseMenu.show();
@@ -1478,6 +1483,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && !isPaused && !isGameOver) {
       isPaused = true;
+      if (input instanceof TouchInput) input.setGamePaused(true);
       game.pause(); // stop clock ticking while tab is hidden
       updatePauseMenuData();
       pauseMenu.show();
