@@ -56,17 +56,17 @@ export class CameraController {
       );
     }, { passive: true });
 
-    // Pinch-to-zoom (touch)
+    // Pinch-to-zoom (touch) — requires 3+ fingers to avoid conflicting with dual joysticks
     let lastPinchDist = 0;
     document.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 2) {
+      if (e.touches.length >= 3) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         lastPinchDist = Math.sqrt(dx * dx + dy * dy);
       }
     }, { passive: true });
     document.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 2) {
+      if (e.touches.length >= 3) {
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.sqrt(dx * dx + dy * dy);
