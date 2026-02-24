@@ -196,10 +196,13 @@ export class PauseMenu {
         background: rgba(0, 0, 20, 0.85);
         display: flex;
         justify-content: center;
-        align-items: center;
+        align-items: flex-start;
+        overflow-y: auto;
+        overflow-x: hidden;
         z-index: 2000;
         font-family: 'Segoe UI', Arial, sans-serif;
         backdrop-filter: blur(5px);
+        -webkit-overflow-scrolling: touch;
       }
 
       #pause-menu.hidden {
@@ -209,8 +212,9 @@ export class PauseMenu {
       #pause-menu .pause-content {
         text-align: center;
         padding: 40px;
-        max-height: 90vh;
-        overflow-y: auto;
+        margin: auto;
+        width: 100%;
+        box-sizing: border-box;
       }
 
       #pause-menu .pause-title {
@@ -591,6 +595,55 @@ export class PauseMenu {
         color: #666688;
         font-size: 14px;
         letter-spacing: 2px;
+      }
+
+      /* Mobile landscape: compact layout to fit small viewport height */
+      @media (max-height: 500px) {
+        #pause-menu .pause-content {
+          padding: 12px 16px;
+        }
+
+        #pause-menu .pause-title {
+          font-size: 28px;
+          margin: 0 0 12px;
+          letter-spacing: 6px;
+        }
+
+        #pause-menu .pause-layout {
+          gap: 16px;
+          align-items: flex-start;
+        }
+
+        #pause-menu .pause-buttons {
+          gap: 8px;
+        }
+
+        #pause-menu .pause-btn {
+          padding: 8px 16px;
+          font-size: 13px;
+          min-width: 180px;
+          gap: 8px;
+          letter-spacing: 1px;
+        }
+
+        #pause-menu .btn-icon {
+          font-size: 16px;
+        }
+
+        #pause-menu .pause-stats-panel {
+          width: 220px;
+          max-height: none;
+          gap: 10px;
+        }
+
+        #pause-menu .pause-hint {
+          margin-top: 12px;
+          font-size: 11px;
+        }
+
+        #pause-menu .stats-kills-count {
+          font-size: 24px;
+        }
       }
     `;
     document.head.appendChild(style);

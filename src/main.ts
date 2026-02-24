@@ -1218,6 +1218,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Pause menu --
   const pauseMenu = new PauseMenu();
+  // Single-player is always the host — enables Resume to fully resume the game
+  // (without this, isHost defaults to false → Resume enters look mode instead of resuming)
+  pauseMenu.setIsHost(true);
   pauseMenu.setMusic(bgMusic);
   pauseMenu.setPerformanceLogger(perfLogger);
   pauseMenu.onResume(() => {
