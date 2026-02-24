@@ -58,9 +58,8 @@ export interface ActiveBuff {
   multiplier: number;
 }
 
-// Pickup collision radius in UV space (MEDIUM map, scale 1.0). See WeaponPickup for rationale.
-// 0.01 UV ≈ 0.50 world units at equator on sphere-radius-8 MEDIUM map.
-const PICKUP_COLLISION_RADIUS = 0.01;
+// World-space pickup collision radius. See WeaponPickup.ts for rationale.
+const PICKUP_WORLD_RADIUS = 0.6;
 
 /**
  * Floating buff pickup on the surface
@@ -71,6 +70,8 @@ export class BuffPickup {
 
   surfaceU: number;
   surfaceV: number;
+
+  private readonly _surfaceWorldPos: THREE.Vector3 = new THREE.Vector3();
 
   active: boolean = true;
   private age: number = 0;
@@ -221,16 +222,22 @@ export class BuffPickup {
     },
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
-    this.mesh.position.copy(position).add(normal.clone().multiplyScalar(0.5));
+    this._surfaceWorldPos.copy(position);
+    this.mesh.position.copy(position).addScaledVector(normal, 0.5);
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
   }
 
-  checkPlayerCollision(playerU: number, playerV: number): boolean {
+  checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
     if (!this.active) return false;
-    const du = playerU - this.surfaceU;
-    const dv = playerV - this.surfaceV;
-    return Math.sqrt(du * du + dv * dv) < PICKUP_COLLISION_RADIUS / this.mapSizeScaleFactor;
+    if (playerWorldPos) {
+      return playerWorldPos.distanceTo(this._surfaceWorldPos) < PICKUP_WORLD_RADIUS;
+    }
+    let du = playerU - this.surfaceU;
+    let dv = playerV - this.surfaceV;
+    if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
+    if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1;
+    return Math.sqrt(du * du + dv * dv) < 0.01 / this.mapSizeScaleFactor;
   }
 
   dispose(): void {
