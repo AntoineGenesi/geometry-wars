@@ -250,4 +250,14 @@ export class MasteryStore {
       // silent
     }
   }
+
+  /**
+   * Dev-only: set XP for a weapon directly (skips game logic).
+   * Use window.__setMasteryLevel() from browser console to call this.
+   */
+  devSetXP(weapon: WeaponType, xp: number): void {
+    const entry = getEntry(this.data, weapon);
+    this.data.weapons[weapon] = { xp: Math.max(0, xp), gamesPlayed: entry.gamesPlayed };
+    this.save();
+  }
 }

@@ -43,7 +43,7 @@ import { EffectsPanel } from './ui/EffectsPanel';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { AnalyticsPanel } from './ui/AnalyticsPanel';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
-import { MasteryStore } from './systems/MasteryStore';
+import { MasteryStore, XP_THRESHOLDS } from './systems/MasteryStore';
 import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
 import { Minimap } from './ui/Minimap';
 import { KillLog } from './ui/KillLog';
@@ -58,7 +58,6 @@ import { SpatialHash } from './core/SpatialHash';
 import { CompanionManager, CompanionPickup, CompanionHUD, CompanionType, getRandomCompanionType } from './entities/Companion';
 import { BuffManager, StackBuffType, BUFF_DEFINITIONS } from './buffs/BuffManager';
 import { WeaponMasteryManager, WEAPON_MASTERY_BUFF_MAP } from './buffs/WeaponMasteryManager';
-import { MasteryStore } from './systems/MasteryStore';
 import { BuffHUD } from './buffs/BuffHUD';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
@@ -851,9 +850,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Weapon mastery system (per-weapon kill tracking → tier-up buffs) --
   const weaponMastery = new WeaponMasteryManager();
 
-  // -- Cross-game mastery store (XP persistence across sessions) --
-  const masteryStore = MasteryStore.load();
-
   const buffHUD = new BuffHUD();
   if (mobile) {
     buffHUD.setCompactMode(true);
@@ -1130,6 +1126,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     const persistentMult = passiveBonus?.damageMultiplier ?? 1.0;
     return inSessionMult * persistentMult;
   });
+
+  // Wire mastery level function for Level 5 final form behavior gates
+  weaponManager.setMasteryLevelFn((type) => masteryStore.getLevel(type));
 
   // -- Weapon HUD (inventory display) --
   const weaponHUD = new WeaponHUD();
@@ -1902,6 +1901,25 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     /** Get game counter (number of games played). */
     gameCounter: () => perfLogger.getGameCounter(),
   };
+
+  // -- Dev console: instant mastery level setter for testing Level 5 final forms --
+  // Usage: window.__setMasteryLevel('standard', 5)  or  window.__setMasteryLevel('spread', 5)
+  // Weapon name strings: 'standard', 'spread', 'piercing', 'chain_lightning', 'homing',
+  //                      'plasma_mortar', 'gravity_gun', 'laser_beam', 'black_hole', 'tesla_coil'
+  if ((import.meta as any).env?.DEV === true) {
+    (window as any).__setMasteryLevel = (weaponName: string, level: number) => {
+      const type = weaponName as WeaponType;
+      if (!Object.values(WeaponType).includes(type)) {
+        console.warn(`[Mastery] Unknown weapon: "${weaponName}". Valid names: ${Object.values(WeaponType).join(', ')}`);
+        return;
+      }
+      const clampedLevel = Math.max(0, Math.min(5, Math.round(level)));
+      const xp = XP_THRESHOLDS[clampedLevel];
+      masteryStore.devSetXP(type, xp);
+      console.log(`[Mastery] ${weaponName} set to level ${clampedLevel} (${xp} XP). Reload or re-enter game to apply.`);
+    };
+    console.log('[Mastery] Dev tool loaded. Use: window.__setMasteryLevel("standard", 5)');
+  }
 
   // -- Start --
   game.start();

@@ -43,6 +43,8 @@ interface ActiveEffect {
   mesh?: THREE.Object3D;
   /** For surface-following laser: the traced polyline points (world space) */
   beamPoints?: THREE.Vector3[];
+  /** Level 5 mastery final form flag — used for Black Hole Event Horizon expiry logic */
+  isMasteryL5?: boolean;
 }
 
 /**
@@ -116,6 +118,9 @@ export class WeaponManager {
   // Optional mastery damage multiplier — injected from outside, not hardcoded
   private masteryMultiplierFn: ((type: WeaponType) => number) | null = null;
 
+  // Optional mastery level function — injected for Level 5 final form behavior gates
+  private masteryLevelFn: ((type: WeaponType) => number) | null = null;
+
   // Session pickup counters: uncapped, NOT reset by ammo depletion
   private sessionPickupCounts: Map<WeaponType, number> = new Map();
 
@@ -163,6 +168,20 @@ export class WeaponManager {
    */
   setMasteryMultiplierFn(fn: (type: WeaponType) => number): void {
     this.masteryMultiplierFn = fn;
+  }
+
+  /**
+   * Inject a mastery level function (returns 0-5 for each weapon type).
+   * Called from main.ts after MasteryStore is initialized.
+   * Used to gate Level 5 "final form" behavior.
+   */
+  setMasteryLevelFn(fn: (type: WeaponType) => number): void {
+    this.masteryLevelFn = fn;
+  }
+
+  /** Returns true if the given weapon has reached Level 5 (max mastery). */
+  private isMasteryMaxLevel(type: WeaponType): boolean {
+    return (this.masteryLevelFn?.(type) ?? 0) >= 5;
   }
 
   /**
@@ -552,6 +571,11 @@ export class WeaponManager {
         if (effect.mesh) {
           this.projectileRoot.remove(effect.mesh);
         }
+        // LEVEL 5 FINAL FORM — Black Hole Event Horizon: massive AoE explosion on expiry
+        if (effect.type === 'blackhole' && effect.isMasteryL5) {
+          this.applyAoeDamage(effect.position, 8.0, 150);
+          this.callbacks?.onProjectileExplosion?.(effect.position.clone(), WeaponType.BlackHole);
+        }
         this.activeEffects.splice(i, 1);
         continue;
       }
@@ -575,25 +599,39 @@ export class WeaponManager {
 
     this.callbacks?.spawnBullet(leftOrigin, direction);
     this.callbacks?.spawnBullet(rightOrigin, direction);
+
+    // LEVEL 5 FINAL FORM — Twin Stream: fire 2 additional V-patterned bullets at ±15°
+    // Creates a spectacular 4-bullet spread that effectively doubles DPS
+    if (this.isMasteryMaxLevel(WeaponType.Standard)) {
+      const spreadAngle = Math.PI / 12; // 15 degrees
+      const rotAxis = up.clone();
+      const leftDir = direction.clone().applyAxisAngle(rotAxis, -spreadAngle).normalize();
+      const rightDir = direction.clone().applyAxisAngle(rotAxis, spreadAngle).normalize();
+      this.callbacks?.spawnBullet(leftOrigin, leftDir);
+      this.callbacks?.spawnBullet(rightOrigin, rightDir);
+    }
   }
 
   private fireSpread(origin: THREE.Vector3, direction: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.Spread];
-    const spreadAngle = Math.PI / 6; // 30 degrees total spread
-    const bulletCount = 5;
+    // LEVEL 5 FINAL FORM — Mega Fan: 9 pellets at 45° spread (vs normal 5 at 30°)
+    const isL5 = this.isMasteryMaxLevel(WeaponType.Spread);
+    const bulletCount = isL5 ? 9 : 5;
+    const spreadAngle = isL5 ? Math.PI / 4 : Math.PI / 6; // 45° vs 30°
     // Spread animation: pellets start aimed at center, fan out over 0.35-0.5s
     const spreadDuration = 0.35 + Math.random() * 0.15;
 
     // Use surface normal for rotation axis, fallback to world Y
     const rotationAxis = surfaceNormal ? surfaceNormal.clone().normalize() : new THREE.Vector3(0, 1, 0);
     const centerDir = direction.clone().normalize();
+    const centerIdx = Math.floor(bulletCount / 2); // 2 for 5 bullets, 4 for 9 bullets
 
     for (let i = 0; i < bulletCount; i++) {
-      const targetAngle = (i - 2) * (spreadAngle / (bulletCount - 1));
+      const targetAngle = (i - centerIdx) * (spreadAngle / (bulletCount - 1));
       const targetDir = direction.clone().applyAxisAngle(rotationAxis, targetAngle).normalize();
 
       // 30% chance per pellet to split mid-flight (not the center pellet)
-      const willSplit = i !== 2 && Math.random() < 0.30;
+      const willSplit = i !== centerIdx && Math.random() < 0.30;
       const splitTime = willSplit ? 0.3 + Math.random() * 0.4 : undefined;
 
       const proj = this.createProjectile(
@@ -750,15 +788,34 @@ export class WeaponManager {
       }
     }
 
-    const proj = this.createProjectile(
-      WeaponType.Homing,
-      origin.clone(),
-      direction.clone(),
-      config.damage,
-      config.projectileSpeed,
-      20.0,
-    );
-    proj.targetIndex = targetIndex;
+    // LEVEL 5 FINAL FORM — Seeking Swarm: fire 3 missiles simultaneously in V-formation
+    // Each missile tracks independently — spectacular when all 3 converge on one target
+    if (this.isMasteryMaxLevel(WeaponType.Homing)) {
+      const localUp = origin.clone().normalize(); // approximate surface normal
+      const spreadAngle = Math.PI / 12; // 15 degrees
+      for (let i = -1; i <= 1; i++) {
+        const missileDir = direction.clone().applyAxisAngle(localUp, i * spreadAngle).normalize();
+        const proj = this.createProjectile(
+          WeaponType.Homing,
+          origin.clone(),
+          missileDir,
+          config.damage,
+          config.projectileSpeed,
+          20.0,
+        );
+        proj.targetIndex = targetIndex;
+      }
+    } else {
+      const proj = this.createProjectile(
+        WeaponType.Homing,
+        origin.clone(),
+        direction.clone(),
+        config.damage,
+        config.projectileSpeed,
+        20.0,
+      );
+      proj.targetIndex = targetIndex;
+    }
   }
 
   private fireMortar(origin: THREE.Vector3, direction: THREE.Vector3): void {
@@ -900,9 +957,13 @@ export class WeaponManager {
       }
     }
 
+    // LEVEL 5 FINAL FORM — Event Horizon: 50% longer duration, stronger pull, AoE explosion on expiry
+    const isL5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
+    const duration = isL5 ? 4.5 : 3.0; // 50% longer at L5
+
     // Create black hole visual — geometry shared via GeometryCache
     const bhMat = new THREE.MeshBasicMaterial({
-      color: 0x220044,
+      color: isL5 ? 0x110022 : 0x220044, // darker core at L5
       transparent: true,
       opacity: 0.9,
     });
@@ -914,9 +975,10 @@ export class WeaponManager {
     this.activeEffects.push({
       type: 'blackhole',
       position: targetPos,
-      duration: 3.0,
+      duration,
       elapsed: 0,
       mesh: bhMesh,
+      isMasteryL5: isL5,
     });
   }
 
@@ -1259,8 +1321,9 @@ export class WeaponManager {
               if (dist < 0.5) {
                 this.callbacks.onEnemyDamage(enemy.index, 999, WeaponType.BlackHole);
               } else {
-                // Pull toward center
-                this.callbacks.onEnemyPull?.(enemy.index, 0.5, effect.position);
+                // LEVEL 5 FINAL FORM — Event Horizon: 30% stronger pull
+                const pullStrength = effect.isMasteryL5 ? 0.65 : 0.5;
+                this.callbacks.onEnemyPull?.(enemy.index, pullStrength, effect.position);
               }
             }
           }
