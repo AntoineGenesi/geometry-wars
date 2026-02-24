@@ -67,6 +67,30 @@ export interface GameConfig {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_FOV = 60;
+/**
+ * Compute vertical FOV that maintains a consistent horizontal perspective.
+ *
+ * Three.js PerspectiveCamera uses vertical FOV. On ultra-wide screens (e.g.
+ * iPhone 13 landscape at 2.16:1), a fixed 60° vertical FOV produces ~102°
+ * horizontal FOV, creating cylindrical/stretched distortion on curved surfaces.
+ *
+ * Fix: lock horizontal FOV to the value it would have at 16:9 (the design
+ * baseline) and back-compute the vertical FOV for wider aspect ratios.
+ * Narrower-than-16:9 screens are unaffected (normal hor+ behaviour).
+ *
+ * @param aspect  Viewport aspect ratio (width / height)
+ * @param baseFov Base vertical FOV in degrees, designed for 16:9 (default 60)
+ */
+function computeVerticalFOV(aspect: number, baseFov: number = DEFAULT_FOV): number {
+  const BASE_ASPECT = 16 / 9; // ~1.778 — the design reference aspect ratio
+  if (aspect <= BASE_ASPECT) {
+    return baseFov; // portrait / 4:3 / 16:9 — keep vertical FOV unchanged
+  }
+  // Lock horizontal FOV to what baseFov produces at 16:9, then solve for vFOV
+  const hFovRad = 2 * Math.atan(Math.tan((baseFov * Math.PI / 180) / 2) * BASE_ASPECT);
+  return (2 * Math.atan(Math.tan(hFovRad / 2) / aspect)) * (180 / Math.PI);
+}
+
 const DEFAULT_BLOOM: BloomConfig = {
   strength: 1.0,
   radius: 0.5,
@@ -167,6 +191,10 @@ export class Game {
    */
   bloomResolutionScale: number = 0.5;
 
+  /** Base (design-reference) vertical FOV in degrees, used to recompute the
+   *  actual vertical FOV on resize via computeVerticalFOV(). */
+  private readonly baseFov: number;
+
   // ---- Loop bookkeeping -----------------------------------------------
 
   private rafId: number = 0;
@@ -216,8 +244,9 @@ export class Game {
     this.scene.background = new THREE.Color(0x050510);
 
     // -- Camera --
-    const fov = config.fov ?? DEFAULT_FOV;
+    this.baseFov = config.fov ?? DEFAULT_FOV;
     const aspect = window.innerWidth / window.innerHeight;
+    const fov = computeVerticalFOV(aspect, this.baseFov);
     this.camera = new THREE.PerspectiveCamera(fov, aspect, 0.1, 1000);
     this.camera.position.set(0, 15, 25);
     this.camera.lookAt(0, 0, 0);
@@ -585,6 +614,7 @@ export class Game {
     const height = window.innerHeight;
 
     this.camera.aspect = width / height;
+    this.camera.fov = computeVerticalFOV(this.camera.aspect, this.baseFov);
     this.camera.updateProjectionMatrix();
 
     this.renderer.setSize(width, height);
