@@ -106,6 +106,7 @@ export interface NetworkInput {
   aimAngle: number;
   shooting: boolean;
   bomb: boolean;
+  boost?: boolean;
 }
 
 /** Client performance/DDA metrics sent to server every 500ms for persistent logging */

@@ -24,6 +24,7 @@ interface PlayerInput {
   aimAngle: number;
   shooting: boolean;
   bomb: boolean;
+  boost?: boolean;
 }
 
 /** Enemy spawn message (server-authoritative) */
@@ -50,6 +51,10 @@ const VOTING_COUNTDOWN_SECS = 30;
 // V direction arc = pi * 10 ≈ 31.4 world units. So 3.0 / (pi*10) ≈ 0.095 UV/s.
 // (Old comment said "radius 5" — this was a bug; actual radius has always been 10.)
 const PLAYER_SPEED = 0.095;
+// Boost (sprint) constants — must match client-side Player.ts values.
+const BOOST_DURATION = 0.5;       // seconds the speed boost lasts
+const BOOST_COOLDOWN = 5.0;       // seconds between boosts
+const BOOST_SPEED_MULTIPLIER = 3.0; // speed multiplier during boost
 // Bullet speed in UV/s. Co-op bullets move at 4.0 world units/s.
 // On a sphere of radius 10: 4.0 / (pi*10) ≈ 0.127 UV/s.
 const BULLET_SPEED = 0.13;
@@ -194,6 +199,9 @@ export class GameRoom extends Room<GameState> {
    * meaning 30Hz input = half speed, 60Hz input = full speed.
    */
   private playerInputs: Map<string, PlayerInput> = new Map();
+
+  /** Per-player boost (sprint) state: active, timer, cooldown, and prev key held. */
+  private playerBoostStates: Map<string, { active: boolean; timer: number; cooldown: number; prevHeld: boolean }> = new Map();
 
   onCreate(options: { surfaceType?: string }) {
     this.setState(new GameState());
@@ -393,6 +401,7 @@ export class GameRoom extends Room<GameState> {
       this.state.players.delete(client.sessionId);
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
+      this.playerBoostStates.delete(client.sessionId);
     }
     // Remove locality tracking for this session
     this.clientLocality.delete(client.sessionId);
@@ -561,6 +570,20 @@ export class GameRoom extends Room<GameState> {
     if (input.bomb && player.bombs > 0) {
       this.useBomb(player);
     }
+
+    // Boost: detect leading edge of Shift key and activate if cooldown ready.
+    // Leading-edge detection prevents continuous activation while key is held.
+    const boostState = this.playerBoostStates.get(client.sessionId)
+      ?? { active: false, timer: 0, cooldown: 0, prevHeld: false };
+    const boostHeld = input.boost ?? false;
+    const boostJustPressed = boostHeld && !boostState.prevHeld;
+    boostState.prevHeld = boostHeld;
+    if (boostJustPressed && boostState.cooldown <= 0) {
+      boostState.active = true;
+      boostState.timer = BOOST_DURATION;
+      boostState.cooldown = BOOST_COOLDOWN;
+    }
+    this.playerBoostStates.set(client.sessionId, boostState);
   }
 
   /**
@@ -572,8 +595,27 @@ export class GameRoom extends Room<GameState> {
       const player = this.state.players.get(clientId);
       if (!player || !player.alive) return;
 
-      const dx = input.moveX * PLAYER_SPEED * dt;
-      const dy = input.moveY * PLAYER_SPEED * dt;
+      // Tick boost timer and cooldown; apply speed multiplier while boost is active.
+      const boostState = this.playerBoostStates.get(clientId);
+      let speedMultiplier = 1.0;
+      if (boostState) {
+        if (boostState.active) {
+          boostState.timer -= dt;
+          if (boostState.timer <= 0) {
+            boostState.active = false;
+            boostState.timer = 0;
+          } else {
+            speedMultiplier = BOOST_SPEED_MULTIPLIER;
+          }
+        }
+        if (boostState.cooldown > 0) {
+          boostState.cooldown -= dt;
+          if (boostState.cooldown < 0) boostState.cooldown = 0;
+        }
+      }
+
+      const dx = input.moveX * PLAYER_SPEED * speedMultiplier * dt;
+      const dy = input.moveY * PLAYER_SPEED * speedMultiplier * dt;
 
       // Apply sin(phi) correction for sphere-like surfaces
       const surfaceType = this.state.surfaceType;
