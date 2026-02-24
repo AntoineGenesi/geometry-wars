@@ -202,8 +202,11 @@ function getServerUrl(): string {
   const params = new URLSearchParams(window.location.search);
   const explicitServer = params.get('server');
   if (explicitServer) return explicitServer;
-  const port = params.get('port') || '2567';
-  return `ws://${window.location.hostname}:${port}`;
+  // Route through Vite dev server proxy (/ws → localhost:2567).
+  // LAN clients only need port 3000 (the Vite port) to be accessible.
+  // No separate portproxy rule for port 2567 required.
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws`;
 }
 
 function getPlayerName(): string {
@@ -2407,7 +2410,7 @@ function main() {
       isServerDown
         ? '1. Is the "Geometry Wars Server" window open and running on the host PC?'
         : '1. The server started but the handshake failed — try RETRY below',
-      `2. Firewall: Windows must allow inbound TCP on port 2567`,
+      `2. Firewall: Windows must allow inbound TCP on port 3000 (the Vite dev server port)`,
       '3. Both devices must be on the same WiFi / LAN',
       isHttps
         ? '4. ⚠ You are on HTTPS — change to http:// to allow WebSocket connections'

@@ -29,6 +29,18 @@ export default defineConfig({
     // COOP/COEP headers removed - they block cross-device LAN access
     // (Safari and mobile browsers refuse to load resources with these headers)
     // SharedArrayBuffer is not used, so these are unnecessary
+    proxy: {
+      // Route Colyseus WebSocket (and matchmake HTTP) through the Vite dev server.
+      // LAN clients connect to ws://host:3000/ws (same port as the web page),
+      // and Vite proxies it to localhost:2567 (Colyseus) from inside WSL2 / Windows.
+      // This eliminates the need for a separate portproxy rule for port 2567 —
+      // only port 3000 needs to be accessible from the LAN.
+      '/ws': {
+        target: 'http://localhost:2567',
+        ws: true,
+        rewrite: (path: string) => path.replace(/^\/ws/, '') || '/',
+      },
+    },
   },
   build: {
     target: 'es2022',
