@@ -141,6 +141,18 @@ function injectStyles(): void {
       text-shadow: 0 0 6px currentColor;
       white-space: nowrap;
     }
+    .weapon-hud-session-level {
+      display: none;
+      font-size: 9px;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+      opacity: 0.7;
+    }
+    .weapon-hud-item.active .weapon-hud-session-level.visible {
+      display: inline;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -174,11 +186,14 @@ export class WeaponHUD {
    * @param masteryProgress Optional per-weapon mastery progress map.
    *   Key is WeaponType; value comes from WeaponMasteryManager.getProgress().
    *   Only the active weapon's mastery bar is rendered.
+   * @param sessionLevels Optional per-weapon session pickup counts.
+   *   Shows a compact "Lv.N" badge for the active weapon at level ≥ 2.
    */
   update(
     inventory: WeaponInventoryEntry[],
     activeWeapon: WeaponType,
     masteryProgress?: Map<WeaponType, MasteryProgressEntry>,
+    sessionLevels?: Map<WeaponType, number>,
   ): void {
     // Check if inventory composition changed (types added/removed)
     const currentTypes = new Set(this.items.keys());
@@ -232,6 +247,22 @@ export class WeaponHUD {
         // Ensure mastery row is hidden for inactive weapons
         const masteryRow = item.querySelector('.weapon-hud-mastery') as HTMLElement;
         if (masteryRow) masteryRow.classList.remove('visible');
+      }
+
+      // Session level badge — only show for active weapon at level ≥ 2
+      const sessionBadge = item.querySelector('.weapon-hud-session-level') as HTMLElement;
+      if (sessionBadge) {
+        if (isActive && sessionLevels) {
+          const level = sessionLevels.get(entry.type) ?? 0;
+          if (level >= 2) {
+            sessionBadge.textContent = `Lv.${level}`;
+            sessionBadge.classList.add('visible');
+          } else {
+            sessionBadge.classList.remove('visible');
+          }
+        } else if (!isActive) {
+          sessionBadge.classList.remove('visible');
+        }
       }
     }
 
@@ -322,9 +353,14 @@ export class WeaponHUD {
       name.className = 'weapon-hud-name';
       name.textContent = config.name;
 
+      const sessionLevel = document.createElement('span');
+      sessionLevel.className = 'weapon-hud-session-level';
+      sessionLevel.style.color = colorHex;
+
       mainRow.appendChild(icon);
       mainRow.appendChild(ammo);
       mainRow.appendChild(name);
+      mainRow.appendChild(sessionLevel);
 
       // -- Mastery row: bar + tier label (hidden until mastery data available) --
       const masteryRow = document.createElement('div');
@@ -369,11 +405,11 @@ export class WeaponHUD {
   }
 
   /**
-   * Show a brief banner notifying the player that a weapon was added to inventory
-   * without switching to it (because they already have a special weapon active).
-   * The banner fades out automatically after 2.5 seconds.
+   * Show a brief banner notification.
+   * Used for: weapon added to inventory, and session level-up toasts.
+   * The message is displayed as-is. The banner fades out automatically after 2.5 seconds.
    */
-  showPickupNotification(weaponName: string): void {
+  showPickupNotification(message: string): void {
     const banner = document.createElement('div');
     banner.style.cssText = [
       'position:fixed',
@@ -394,7 +430,7 @@ export class WeaponHUD {
       'white-space:nowrap',
       'letter-spacing:0.5px',
     ].join(';');
-    banner.textContent = `${weaponName} added to inventory  \u2022  [E] to cycle`;
+    banner.textContent = message;
     document.body.appendChild(banner);
 
     // Fade out after 2 s, remove after 0.8 s fade

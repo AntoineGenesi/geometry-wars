@@ -67,6 +67,24 @@ export interface WeaponInventoryEntry {
 }
 
 /**
+ * Per-pickup session bonus rates.
+ * Multiplier formula: 1.0 + (sessionLevel - 1) * damagePerLevel
+ * Level 1 = no bonus, Level 2 = +damagePerLevel, Level 7 = +6*damagePerLevel.
+ */
+const SESSION_LEVEL_BONUSES: Record<WeaponType, { damagePerLevel: number }> = {
+  [WeaponType.Standard]:       { damagePerLevel: 0.05 },
+  [WeaponType.Spread]:         { damagePerLevel: 0.05 },
+  [WeaponType.Piercing]:       { damagePerLevel: 0.06 },
+  [WeaponType.ChainLightning]: { damagePerLevel: 0.05 },
+  [WeaponType.Homing]:         { damagePerLevel: 0.05 },
+  [WeaponType.PlasmaMortar]:   { damagePerLevel: 0.07 },
+  [WeaponType.GravityGun]:     { damagePerLevel: 0.06 },
+  [WeaponType.LaserBeam]:      { damagePerLevel: 0.08 },
+  [WeaponType.BlackHole]:      { damagePerLevel: 0.07 },
+  [WeaponType.TeslaCoil]:      { damagePerLevel: 0.07 },
+};
+
+/**
  * Manages all weapon types, ammo, inventory, and firing
  */
 export class WeaponManager {
@@ -97,6 +115,12 @@ export class WeaponManager {
 
   // Optional mastery damage multiplier — injected from outside, not hardcoded
   private masteryMultiplierFn: ((type: WeaponType) => number) | null = null;
+
+  // Session pickup counters: uncapped, NOT reset by ammo depletion
+  private sessionPickupCounts: Map<WeaponType, number> = new Map();
+
+  /** Fires after each weapon pickup with the new session level. Level 1 = first pickup. */
+  onWeaponLevelUp?: (type: WeaponType, newLevel: number) => void;
 
   // Surface for laser beam tracing
   private meshSurface: MeshSurface | null = null;
@@ -238,6 +262,12 @@ export class WeaponManager {
       } else {
         this.stacks.set(type, 1);
       }
+
+      // Session pickup counter: uncapped, survives ammo depletion within a session
+      const prevSessionCount = this.sessionPickupCounts.get(type) ?? 0;
+      const newSessionCount = prevSessionCount + 1;
+      this.sessionPickupCounts.set(type, newSessionCount);
+      this.onWeaponLevelUp?.(type, newSessionCount);
 
       // Add to inventory if not already present
       if (!this.inventory.includes(type)) {
@@ -588,6 +618,7 @@ export class WeaponManager {
     const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
     const stackMult = this.getStackDamageMultiplier(WeaponType.Piercing);
     const masteryMult = this.masteryMultiplierFn?.(WeaponType.Piercing) ?? 1.0;
+    const sessionMult = this.getSessionDamageMultiplier(WeaponType.Piercing);
 
     // Trace a geodesic beam path along the surface
     const beamLen = 25 * rangeMult;
@@ -617,7 +648,7 @@ export class WeaponManager {
             enemy.position, beamPoints[s], beamPoints[s + 1],
           );
           if (segDist < hitRadius) {
-            this.callbacks.onEnemyDamage(enemy.index, config.damage * stackMult * masteryMult, WeaponType.Piercing);
+            this.callbacks.onEnemyDamage(enemy.index, config.damage * stackMult * masteryMult * sessionMult, WeaponType.Piercing);
             break; // Only damage each enemy once
           }
         }
@@ -693,11 +724,12 @@ export class WeaponManager {
       index: firstTarget.index,
     });
 
-    // Fire the visual effect (apply stack multiplier + mastery multiplier)
+    // Fire the visual effect (apply stack multiplier + mastery multiplier + session multiplier)
     const stackMult = this.getStackDamageMultiplier(WeaponType.ChainLightning);
     const masteryMult = this.masteryMultiplierFn?.(WeaponType.ChainLightning) ?? 1.0;
+    const sessionMult = this.getSessionDamageMultiplier(WeaponType.ChainLightning);
     this.chainLightning.fire(origin, chainTargets, (pos, mult, idx) => {
-      this.callbacks?.onEnemyDamage(idx, config.damage * mult * stackMult * masteryMult, WeaponType.ChainLightning);
+      this.callbacks?.onEnemyDamage(idx, config.damage * mult * stackMult * masteryMult * sessionMult, WeaponType.ChainLightning);
     });
   }
 
@@ -955,17 +987,18 @@ export class WeaponManager {
     speed: number,
     maxAge: number,
   ): Projectile {
-    // Apply Extended Range buff + stack damage multiplier + mastery multiplier
+    // Apply Extended Range buff + stack damage multiplier + mastery multiplier + session multiplier
     const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
     const stackMult = this.getStackDamageMultiplier(type);
     const masteryMult = this.masteryMultiplierFn?.(type) ?? 1.0;
+    const sessionMult = this.getSessionDamageMultiplier(type);
     const proj: Projectile = {
       type,
       position,
       direction: direction.normalize(),
       age: 0,
       maxAge: maxAge * rangeMult,
-      damage: damage * stackMult * masteryMult,
+      damage: damage * stackMult * masteryMult * sessionMult,
       speed,
     };
 
@@ -1196,7 +1229,8 @@ export class WeaponManager {
 
             if (minDist < hitRadius) {
               const laserMasteryMult = this.masteryMultiplierFn?.(WeaponType.LaserBeam) ?? 1.0;
-              this.callbacks.onEnemyDamage(enemy.index, 2 * dt * laserMasteryMult, WeaponType.LaserBeam);
+              const laserSessionMult = this.getSessionDamageMultiplier(WeaponType.LaserBeam);
+              this.callbacks.onEnemyDamage(enemy.index, 2 * dt * laserMasteryMult * laserSessionMult, WeaponType.LaserBeam);
             }
           }
         }
@@ -1259,7 +1293,8 @@ export class WeaponManager {
             const dist = effect.position.distanceTo(enemy.position);
             if (dist < radius) {
               const teslaMasteryMult = this.masteryMultiplierFn?.(WeaponType.TeslaCoil) ?? 1.0;
-              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * teslaMasteryMult, WeaponType.TeslaCoil);
+              const teslaSessionMult = this.getSessionDamageMultiplier(WeaponType.TeslaCoil);
+              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * teslaMasteryMult * teslaSessionMult, WeaponType.TeslaCoil);
             }
           }
 
@@ -1367,6 +1402,46 @@ export class WeaponManager {
   getStackDamageMultiplier(type?: WeaponType): number {
     const stack = this.getStackLevel(type);
     return 1 + (stack - 1) * 0.25;
+  }
+
+  // -------------------------------------------------------------------------
+  // Session pickup level
+  // -------------------------------------------------------------------------
+
+  /**
+   * How many times this weapon has been picked up this session (0 if never).
+   * Uncapped and NOT reset when ammo depletes.
+   */
+  getSessionLevel(type: WeaponType): number {
+    return this.sessionPickupCounts.get(type) ?? 0;
+  }
+
+  /**
+   * All weapons that have been picked up at least once this session.
+   * Returns a snapshot Map — safe to iterate without holding a reference.
+   */
+  getSessionLevels(): Map<WeaponType, number> {
+    return new Map(this.sessionPickupCounts);
+  }
+
+  /**
+   * Session damage multiplier for the given weapon type.
+   * Level 1 = 1.0 (no bonus). Each additional pickup adds SESSION_LEVEL_BONUSES[type].damagePerLevel.
+   * Formula: 1.0 + (level - 1) * damagePerLevel
+   */
+  getSessionDamageMultiplier(type: WeaponType): number {
+    const level = this.getSessionLevel(type);
+    if (level <= 1) return 1.0;
+    return 1.0 + (level - 1) * SESSION_LEVEL_BONUSES[type].damagePerLevel;
+  }
+
+  /**
+   * Clear all session pickup counts. Call on game restart (new session).
+   * NOTE: In most cases the WeaponManager is fully reconstructed on restart,
+   * so this is mainly useful for explicit resets within a session.
+   */
+  resetSession(): void {
+    this.sessionPickupCounts.clear();
   }
 
   /**

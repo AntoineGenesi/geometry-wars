@@ -942,4 +942,83 @@ describe('WeaponManager LAN visual-only mode', () => {
     // Tesla effect should now be active
     expect(wm.isTeslaActive()).toBe(true);
   });
+
+  // ---------------------------------------------------------------------------
+  // Session pickup level tests
+  // ---------------------------------------------------------------------------
+
+  describe('session pickup level', () => {
+    it('getSessionLevel returns 0 before any pickup', () => {
+      expect(wm.getSessionLevel(WeaponType.Spread)).toBe(0);
+    });
+
+    it('picking up same weapon 5x returns session level 5', () => {
+      for (let i = 0; i < 5; i++) {
+        wm.equipWeapon(WeaponType.Spread, 20);
+      }
+      expect(wm.getSessionLevel(WeaponType.Spread)).toBe(5);
+    });
+
+    it('getSessionDamageMultiplier at level 1 returns 1.0', () => {
+      wm.equipWeapon(WeaponType.Standard);
+      expect(wm.getSessionDamageMultiplier(WeaponType.Standard)).toBe(1.0);
+    });
+
+    it('getSessionDamageMultiplier at level 3 returns correct value for Spread', () => {
+      // Spread: damagePerLevel = 0.05. Level 3 = 1.0 + (3-1)*0.05 = 1.10
+      wm.equipWeapon(WeaponType.Spread, 20);
+      wm.equipWeapon(WeaponType.Spread, 20);
+      wm.equipWeapon(WeaponType.Spread, 20);
+      expect(wm.getSessionDamageMultiplier(WeaponType.Spread)).toBeCloseTo(1.10, 10);
+    });
+
+    it('pruneDepletedWeapons does NOT reset session level', () => {
+      // Equip spread with 1 ammo, fire it to depletion, check session level persists
+      wm.equipWeapon(WeaponType.Spread, 1);
+      wm.equipWeapon(WeaponType.Spread, 1);
+      expect(wm.getSessionLevel(WeaponType.Spread)).toBe(2);
+      // Manually deplete ammo by calling getInventory (which calls pruneDepletedWeapons)
+      wm.fire(origin(), forward(), T, normal());
+      wm.getInventory(); // triggers prune
+      // Session level must survive depletion
+      expect(wm.getSessionLevel(WeaponType.Spread)).toBe(2);
+    });
+
+    it('resetSession clears all session levels', () => {
+      wm.equipWeapon(WeaponType.Spread, 20);
+      wm.equipWeapon(WeaponType.Homing, 20);
+      expect(wm.getSessionLevel(WeaponType.Spread)).toBe(1);
+      expect(wm.getSessionLevel(WeaponType.Homing)).toBe(1);
+      wm.resetSession();
+      expect(wm.getSessionLevel(WeaponType.Spread)).toBe(0);
+      expect(wm.getSessionLevel(WeaponType.Homing)).toBe(0);
+    });
+
+    it('onWeaponLevelUp callback fires with correct level on each pickup', () => {
+      const events: { type: WeaponType; level: number }[] = [];
+      wm.onWeaponLevelUp = (type, level) => events.push({ type, level });
+
+      wm.equipWeapon(WeaponType.Spread, 20); // level 1
+      wm.equipWeapon(WeaponType.Spread, 20); // level 2
+      wm.equipWeapon(WeaponType.Spread, 20); // level 3
+
+      expect(events).toHaveLength(3);
+      expect(events[0]).toEqual({ type: WeaponType.Spread, level: 1 });
+      expect(events[1]).toEqual({ type: WeaponType.Spread, level: 2 });
+      expect(events[2]).toEqual({ type: WeaponType.Spread, level: 3 });
+    });
+
+    it('getSessionLevels returns snapshot of all tracked levels', () => {
+      wm.equipWeapon(WeaponType.Spread, 20);
+      wm.equipWeapon(WeaponType.Spread, 20);
+      wm.equipWeapon(WeaponType.Homing, 20);
+
+      const levels = wm.getSessionLevels();
+      expect(levels.get(WeaponType.Spread)).toBe(2);
+      expect(levels.get(WeaponType.Homing)).toBe(1);
+      // Modifying the snapshot does not affect the manager
+      levels.set(WeaponType.Spread, 999);
+      expect(wm.getSessionLevel(WeaponType.Spread)).toBe(2);
+    });
+  });
 });

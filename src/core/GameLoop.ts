@@ -724,7 +724,7 @@ export class GameLoop {
         this.sound.play('weaponPickup', switched ? undefined : { volume: 0.5, pitch: 0.9 });
         if (!switched) {
           // Weapon was added to inventory without switching — notify player
-          ctx.weaponHUD.showPickupNotification(WEAPON_CONFIGS[wp.type].name);
+          ctx.weaponHUD.showPickupNotification(`${WEAPON_CONFIGS[wp.type].name} added to inventory  \u2022  [E] to cycle`);
         }
         wp.active = false;
       }
