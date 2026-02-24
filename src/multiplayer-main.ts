@@ -1459,14 +1459,36 @@ function main(): void {
     perfOverlay.update();
   };
 
-  // -- Per-viewport pre-render: depth-based opacity --
-  splitRenderer.preRender = (playerIndex: number, camera: THREE.PerspectiveCamera) => {
-    const camPos = camera.position;
-    const meshCenter = meshSurface.getCenter();
+  // -- Per-viewport pre-render: surface UV-distance opacity --
+  // Uses UV-space distance from the active player to each enemy so that enemies far
+  // away on the surface are dimmed regardless of 3D Euclidean proximity.
+  // This correctly handles torus/cube-ring/sphere-tunnel surfaces where raycasts
+  // pass through holes and the dot-product approx-normal approach breaks.
+  const _mpSurfaceNearUV = 0.15;
+  const _mpSurfaceFarUV  = 0.45;
+  const _mpSurfaceDimOp  = 0.08;
+  const _mpWrapsV = surface.wrapsV;
+  splitRenderer.preRender = (playerIndex: number, _camera: THREE.PerspectiveCamera) => {
+    const activePlayer = players[playerIndex];
+    const playerU = activePlayer.surfaceU;
+    const playerV = activePlayer.surfaceV;
     for (const enemy of enemySpawner.getEnemies()) {
       if (!enemy.alive || !enemy.mesh) continue;
-      const approxNormal = enemy.position.clone().sub(meshCenter).normalize();
-      const visibility = meshSurface.getVisibility(enemy.position, approxNormal, camPos);
+      const euRaw = Math.abs(enemy.surfacePosition.u - playerU);
+      const evRaw = Math.abs(enemy.surfacePosition.v - playerV);
+      const eu = Math.min(euRaw, 1.0 - euRaw);
+      const ev = _mpWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
+      const uvDist = Math.sqrt(eu * eu + ev * ev);
+      let visibility: number;
+      if (uvDist <= _mpSurfaceNearUV) {
+        visibility = 1.0;
+      } else if (uvDist >= _mpSurfaceFarUV) {
+        visibility = _mpSurfaceDimOp;
+      } else {
+        const uvT = (uvDist - _mpSurfaceNearUV) / (_mpSurfaceFarUV - _mpSurfaceNearUV);
+        const uvSt = uvT * uvT * (3.0 - 2.0 * uvT);
+        visibility = 1.0 - uvSt * (1.0 - _mpSurfaceDimOp);
+      }
       enemy.mesh.traverse((child) => {
         if (child instanceof THREE.Mesh && child.material) {
           const mat = child.material as THREE.MeshBasicMaterial;
