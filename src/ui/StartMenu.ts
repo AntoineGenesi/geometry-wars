@@ -2071,7 +2071,10 @@ export class StartMenu {
     // Debug OBJ panel button (only present when ?debug=true)
     const debugObjBtn = this.container.querySelector('#debug-obj-btn');
     debugObjBtn?.addEventListener('click', () => {
-      this.objDebugPanel?.show();
+      if (!this.objDebugPanel) {
+        this.objDebugPanel = new OBJDebugPanel();
+      }
+      this.objDebugPanel.show();
     });
 
     // ---- LAN name dialog handlers ----
