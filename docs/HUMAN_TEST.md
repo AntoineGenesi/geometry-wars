@@ -8,6 +8,21 @@
 
 ---
 
+## S31: LAN Multiplayer — No Teleport on Hit (2026-02-25)
+
+Bug: In LAN MP, when a player was hit by an enemy (but still had lives), the server teleported them to `(U+0.5, V+0.5)` — the "opposite side" of the surface. The client snapped to this position, causing apparent "random teleportation." Also: players started each new round at their final death position from the previous game.
+
+Fix: Removed the `+0.5` position offset on hit. Player stays at hit location with 2s invincibility. Added `surfaceU/V` reset to spawn offsets when a new game starts.
+
+- [ ] **LAN game with 2 players** — Start a game. Both players should appear at spawn positions near center (U=0.5, V=0.5 for player 1; U=0.6, V=0.5 for player 2).
+- [ ] **Player gets hit by enemy** — Player should NOT teleport to a random position. Player should stay in place (or very close to it) with 2s of invincibility (blinking effect).
+- [ ] **Player should be able to move away from enemies during invincibility** — The invincibility window gives time to escape.
+- [ ] **New round (after voting)** — Players should respawn at spawn positions, not wherever they died in the previous round.
+- [ ] **Death (lives=0)** — Player still disappears (alive=false), no regression there.
+- [ ] **No other teleportation** — During normal movement, player position should stay consistent with WASD input. No rubber-banding or jumps.
+
+---
+
 ## S31: Mobile Pause Menu — Touch Routing Fix (2026-02-24)
 
 Bug: On mobile (landscape), pause menu buttons only highlighted on touch but didn't fire click events. Joystick appeared when touching the menu. Root cause: `TouchInput.handleTouchStart` called `e.preventDefault()` unconditionally, preventing the browser from generating synthetic click events. Fixed by adding `setGamePaused()` — when paused, touch events pass through without preventDefault so buttons work normally.

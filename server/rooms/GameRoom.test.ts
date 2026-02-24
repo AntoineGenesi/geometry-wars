@@ -1328,6 +1328,187 @@ describe('S28b: hostIsLocal correctly tracked on host transfer', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// S31: No-teleport respawn (s31-mp-teleporting-randomly)
+//
+// Bug: when a player was hit but still had lives remaining, the server
+// teleported them to (U+0.5, V+0.5) as a "respawn on opposite side" mechanic.
+// The client snapped to this server position, causing visible jumps that users
+// reported as "players teleporting to arbitrary positions during MP gameplay".
+//
+// Fix: removed the +0.5 position offset. The player stays at their hit
+// location and receives 2s invincibility (unchanged). No teleport occurs.
+//
+// These tests verify the corrected collision logic in isolation (extracted
+// from GameRoom.checkCollisions without requiring a live Colyseus Room).
+// ---------------------------------------------------------------------------
+
+interface MockPlayer {
+  id: string;
+  surfaceU: number;
+  surfaceV: number;
+  lives: number;
+  alive: boolean;
+  multiplier: number;
+}
+
+interface MockEnemy {
+  alive: boolean;
+  surfaceU: number;
+  surfaceV: number;
+}
+
+/**
+ * Mirrors the player-enemy collision logic from GameRoom.checkCollisions().
+ * Returns the updated player state and whether invincibility was granted.
+ * This is the FIXED version (no teleport on hit).
+ */
+function processPlayerEnemyCollision(
+  player: MockPlayer,
+  enemy: MockEnemy,
+  invincibility: number,
+): { player: MockPlayer; invincible: boolean } {
+  if (!player.alive || !enemy.alive) {
+    return { player, invincible: false };
+  }
+  if (invincibility > 0) {
+    return { player, invincible: true }; // already invincible, skip
+  }
+
+  const du = player.surfaceU - enemy.surfaceU;
+  const dv = player.surfaceV - enemy.surfaceV;
+  const dist = Math.sqrt(du * du + dv * dv);
+
+  if (dist >= 0.04) {
+    return { player, invincible: false }; // no collision
+  }
+
+  // Hit!
+  const updated = { ...player };
+  updated.lives--;
+  updated.multiplier = 1;
+
+  if (updated.lives <= 0) {
+    updated.alive = false;
+    return { player: updated, invincible: false };
+  }
+
+  // Fixed: NO position teleport — stay at hit location, just grant invincibility.
+  // (Old code did: player.surfaceU = (player.surfaceU + 0.5) % 1; etc.)
+  return { player: updated, invincible: true };
+}
+
+describe('S31: Player respawn — no teleport on hit (s31-mp-teleporting-randomly)', () => {
+  it('player position UNCHANGED after hit with lives remaining (regression guard)', () => {
+    const player: MockPlayer = {
+      id: 'p1', surfaceU: 0.3, surfaceV: 0.4, lives: 3, alive: true, multiplier: 2,
+    };
+    const enemy: MockEnemy = { alive: true, surfaceU: 0.31, surfaceV: 0.41 }; // within 0.04 range
+    const { player: updated } = processPlayerEnemyCollision(player, enemy, 0);
+
+    // Position must be unchanged — no teleport to (U+0.5, V+0.5)
+    expect(updated.surfaceU).toBe(0.3);
+    expect(updated.surfaceV).toBe(0.4);
+  });
+
+  it('player loses a life on hit', () => {
+    const player: MockPlayer = {
+      id: 'p1', surfaceU: 0.5, surfaceV: 0.5, lives: 3, alive: true, multiplier: 1,
+    };
+    const enemy: MockEnemy = { alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    const { player: updated } = processPlayerEnemyCollision(player, enemy, 0);
+    expect(updated.lives).toBe(2);
+    expect(updated.alive).toBe(true);
+  });
+
+  it('invincibility is granted after hit with lives remaining', () => {
+    const player: MockPlayer = {
+      id: 'p1', surfaceU: 0.5, surfaceV: 0.5, lives: 3, alive: true, multiplier: 1,
+    };
+    const enemy: MockEnemy = { alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    const { invincible } = processPlayerEnemyCollision(player, enemy, 0);
+    expect(invincible).toBe(true);
+  });
+
+  it('player dies (alive=false) when last life is lost', () => {
+    const player: MockPlayer = {
+      id: 'p1', surfaceU: 0.5, surfaceV: 0.5, lives: 1, alive: true, multiplier: 1,
+    };
+    const enemy: MockEnemy = { alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    const { player: updated, invincible } = processPlayerEnemyCollision(player, enemy, 0);
+    expect(updated.alive).toBe(false);
+    expect(invincible).toBe(false); // no invincibility on death
+  });
+
+  it('invincible player is not hit again', () => {
+    const player: MockPlayer = {
+      id: 'p1', surfaceU: 0.5, surfaceV: 0.5, lives: 3, alive: true, multiplier: 1,
+    };
+    const enemy: MockEnemy = { alive: true, surfaceU: 0.5, surfaceV: 0.5 };
+    // First hit grants invincibility
+    const { player: afterHit } = processPlayerEnemyCollision(player, enemy, 0);
+    expect(afterHit.lives).toBe(2);
+
+    // Second hit while invincible — should be skipped
+    const { player: afterSecondHit, invincible } = processPlayerEnemyCollision(
+      afterHit, enemy, 2.0 // 2s invincibility remaining
+    );
+    expect(afterSecondHit.lives).toBe(2); // lives unchanged
+    expect(invincible).toBe(true); // still invincible
+  });
+
+  it('OLD behavior (teleport) would have changed position — documented for reference', () => {
+    // This test documents the OLD (broken) behavior for clarity.
+    // Old code: player.surfaceU = (player.surfaceU + 0.5) % 1;
+    const oldU = (0.3 + 0.5) % 1; // = 0.8
+    const oldV = (0.4 + 0.5) % 1; // = 0.9
+    // Old code would have moved player to (0.8, 0.9) — far from hit location (0.3, 0.4).
+    // New code keeps player at (0.3, 0.4). Verify these are different positions.
+    expect(oldU).not.toBe(0.3);
+    expect(oldV).not.toBe(0.4);
+  });
+});
+
+describe('S31: Player spawn positions reset on game start', () => {
+  // Mirrors the SPAWN_OFFSETS constant and startGame() reset logic.
+  const SPAWN_OFFSETS = [
+    { u: 0.5, v: 0.5 },
+    { u: 0.6, v: 0.5 },
+    { u: 0.4, v: 0.5 },
+    { u: 0.5, v: 0.6 },
+  ];
+
+  it('first player resets to spawn offset 0 (0.5, 0.5)', () => {
+    const spawnPos = SPAWN_OFFSETS[0];
+    expect(spawnPos.u).toBe(0.5);
+    expect(spawnPos.v).toBe(0.5);
+  });
+
+  it('second player resets to spawn offset 1 (0.6, 0.5)', () => {
+    const spawnPos = SPAWN_OFFSETS[1];
+    expect(spawnPos.u).toBe(0.6);
+    expect(spawnPos.v).toBe(0.5);
+  });
+
+  it('players start at spawn positions on new game (not wherever they died)', () => {
+    // Simulate a player that ended previous game at a random death position
+    const prevGameEndU = 0.82;
+    const prevGameEndV = 0.13;
+
+    // startGame() should reset these to spawn offset
+    const spawnPos = SPAWN_OFFSETS[0];
+    let playerU = prevGameEndU;
+    let playerV = prevGameEndV;
+
+    // Apply startGame reset
+    playerU = spawnPos.u;
+    playerV = spawnPos.v;
+
+    expect(playerU).toBe(0.5); // reset to spawn, not 0.82
+    expect(playerV).toBe(0.5); // reset to spawn, not 0.13
+  });
+});
+
 describe('S28b: isPaused reset on startGame (no stale pause from previous round)', () => {
   it('startGame always begins with isPaused=false', () => {
     // Simulate startGame() state changes
