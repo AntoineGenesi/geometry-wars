@@ -9,9 +9,20 @@ import * as THREE from 'three';
 // Reusable projection vector (zero per-frame allocation)
 const _projVec = new THREE.Vector3();
 
+// Lerp factor for screen-space label position smoothing.
+// At 60fps this damps 20Hz network corrections (client-prediction snaps)
+// while adding only ~2 frames (~33ms) of steady-state lag during smooth motion.
+const LABEL_SCREEN_LERP = 0.3;
+
 interface NameLabel {
   element: HTMLDivElement;
   color: number;
+  // Smoothed screen position — lerped toward projected position each frame
+  // to eliminate visual jitter from network corrections. Initialized on first
+  // visible frame to avoid lerping in from an off-screen position.
+  smoothX: number;
+  smoothY: number;
+  hasPosition: boolean;
 }
 
 export class PlayerNameLabels {
@@ -60,7 +71,7 @@ export class PlayerNameLabels {
       const element = document.createElement('div');
       element.className = 'player-name-label';
       this.container.appendChild(element);
-      label = { element, color };
+      label = { element, color, smoothX: 0, smoothY: 0, hasPosition: false };
       this.labels.set(id, label);
     }
 
@@ -100,6 +111,7 @@ export class PlayerNameLabels {
       const playerInfo = playerPositions.get(id);
       if (!playerInfo || !playerInfo.alive) {
         label.element.style.opacity = '0';
+        label.hasPosition = false;
         return;
       }
 
@@ -110,6 +122,7 @@ export class PlayerNameLabels {
       // Check if behind camera
       if (_projVec.z > 1) {
         label.element.style.opacity = '0';
+        label.hasPosition = false;
         return;
       }
 
@@ -124,12 +137,25 @@ export class PlayerNameLabels {
       // Check if off-screen
       if (x < -100 || x > width + 100 || y < -50 || y > height + 50) {
         label.element.style.opacity = '0';
+        label.hasPosition = false;
         return;
       }
 
+      // Smooth the screen-space position to eliminate jitter from network
+      // corrections (client-prediction snaps). Snap on first visible frame so
+      // the label doesn't lerp in from a stale off-screen position.
+      if (!label.hasPosition) {
+        label.smoothX = x;
+        label.smoothY = y;
+        label.hasPosition = true;
+      } else {
+        label.smoothX += (x - label.smoothX) * LABEL_SCREEN_LERP;
+        label.smoothY += (y - label.smoothY) * LABEL_SCREEN_LERP;
+      }
+
       label.element.style.opacity = '1';
-      label.element.style.left = `${x}px`;
-      label.element.style.top = `${y}px`;
+      label.element.style.left = `${label.smoothX}px`;
+      label.element.style.top = `${label.smoothY}px`;
     });
   }
 
