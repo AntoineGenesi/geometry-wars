@@ -13,6 +13,7 @@
 
 import * as THREE from 'three';
 import { OBJModelManager } from '../rendering/OBJModelManager';
+import { WalkingDemo } from './WalkingDemo';
 
 // ---------------------------------------------------------------------------
 // Preset models (CORS-friendly, no auth required)
@@ -74,6 +75,8 @@ export class OBJDebugPanel {
   private statusEl: HTMLParagraphElement | null = null;
   private perfEl: HTMLDivElement | null = null;
   private animListEl: HTMLSelectElement | null = null;
+  private walkingDemo: WalkingDemo | null = null;
+  private elapsedTime = 0;
 
   constructor() {
     this.styleEl = document.createElement('style');
@@ -161,6 +164,14 @@ export class OBJDebugPanel {
                 <span class="obj-perf-label">Frame time</span><span id="obj-ft">—</span>
                 <span class="obj-perf-label">Geometries</span><span id="obj-geo">—</span>
                 <span class="obj-perf-label">Textures</span><span id="obj-tex">—</span>
+              </div>
+            </section>
+
+            <section class="obj-section">
+              <h3>Walking Models Demo</h3>
+              <p class="obj-demo-desc">3 animated low-poly characters: Robot · Alien · Warrior</p>
+              <div class="obj-row">
+                <button id="obj-walking-demo-btn" class="obj-btn obj-btn-demo">▶ Launch Walking Demo</button>
               </div>
             </section>
 
@@ -271,7 +282,9 @@ export class OBJDebugPanel {
       if (!this.previewRenderer || !this.previewScene || !this.previewCamera) return;
       this.animFrameId = requestAnimationFrame(loop);
       const dt = this.clock.getDelta();
+      this.elapsedTime += dt;
       this.manager?.update(dt);
+      this.walkingDemo?.update(this.elapsedTime);
       this.previewRenderer.render(this.previewScene, this.previewCamera);
       this.updatePerfDisplay();
     };
@@ -291,6 +304,12 @@ export class OBJDebugPanel {
 
   private async loadModel(source: File | string): Promise<void> {
     if (!this.manager) return;
+
+    // Clear walking demo if active
+    if (this.walkingDemo) {
+      this.walkingDemo.dispose();
+      this.walkingDemo = null;
+    }
 
     this.setStatus('Loading...', 'loading');
     try {
@@ -422,6 +441,61 @@ export class OBJDebugPanel {
     stopBtn?.addEventListener('click', () => {
       this.manager?.stopAnimation();
     });
+
+    const walkingDemoBtn = this.container.querySelector('#obj-walking-demo-btn');
+    walkingDemoBtn?.addEventListener('click', () => {
+      this.activateWalkingDemo();
+    });
+  }
+
+  private activateWalkingDemo(): void {
+    if (!this.previewScene) return;
+
+    // Clear any existing model
+    if (this.previewModel) {
+      this.previewScene.remove(this.previewModel);
+      this.previewModel = null;
+    }
+    this.manager?.removeFromScene();
+
+    // Clear existing walking demo
+    if (this.walkingDemo) {
+      this.walkingDemo.dispose();
+      this.walkingDemo = null;
+    }
+
+    // Reset elapsed time so walk cycle starts fresh
+    this.elapsedTime = 0;
+
+    // Reset camera to a good overview angle
+    this.orbitState.radius = 6;
+    this.orbitState.theta = Math.PI / 5;
+    this.orbitState.phi = Math.PI / 3.5;
+    this.updateOrbit();
+
+    this.walkingDemo = new WalkingDemo(this.previewScene);
+
+    // Update model info with demo stats
+    const infoSection = this.container.querySelector('#obj-model-info') as HTMLElement;
+    const tableEl = this.container.querySelector('#obj-info-table') as HTMLElement;
+    if (infoSection && tableEl) {
+      const rows = [
+        ['Characters', '3'],
+        ['Polygons', '~240 tris total'],
+        ['Animation', 'Sinusoidal walk cycle'],
+        ['Models', 'Robot · Alien · Warrior'],
+      ];
+      tableEl.innerHTML = rows.map(([k, v]) =>
+        `<span class="obj-info-key">${k}</span><span class="obj-info-val">${v}</span>`,
+      ).join('');
+      infoSection.style.display = '';
+    }
+
+    // Hide animation controls (auto-playing, no manual clips)
+    const animSection = this.container.querySelector('#obj-anim-section') as HTMLElement;
+    if (animSection) animSection.style.display = 'none';
+
+    this.setStatus('✓ Walking demo active — Robot (blue) · Alien (green) · Warrior (orange)', 'ok');
   }
 
   // -------------------------------------------------------------------------
@@ -444,6 +518,8 @@ export class OBJDebugPanel {
 
   dispose(): void {
     this.stopRenderLoop();
+    this.walkingDemo?.dispose();
+    this.walkingDemo = null;
     this.manager?.dispose();
     this.previewRenderer?.dispose();
     this.container.remove();
@@ -613,6 +689,23 @@ export class OBJDebugPanel {
       margin: 3px 0;
       font: 11px monospace;
       color: #557777;
+    }
+
+    .obj-demo-desc {
+      margin: 0 0 8px;
+      font: 11px monospace;
+      color: #559977;
+    }
+
+    .obj-btn-demo {
+      background: rgba(0, 100, 60, 0.6);
+      border-color: #00ffaa;
+      color: #00ffaa;
+    }
+    .obj-btn-demo:hover {
+      background: rgba(0, 160, 80, 0.7);
+      border-color: #44ffcc;
+      box-shadow: 0 0 12px rgba(0, 255, 160, 0.4);
     }
 
     .obj-preview-area {
