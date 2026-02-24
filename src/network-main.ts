@@ -736,6 +736,9 @@ function main() {
 
   // Minimap (same as single-player — shows local player, enemies, geoms)
   const minimap = new Minimap();
+  if (mobile) {
+    minimap.setVisible(false);
+  }
 
   // -- Player tracking --
   // Maps server player ID -> real Player instance (same class as single player)
