@@ -640,13 +640,13 @@ The god function was split into 8 modules. Game behavior should be identical.
 
 Real-time performance profiler that shows CPU hot spots during gameplay. Part of Phase 3 of the profiling dashboard.
 
-- [ ] **Profiling overlay toggles with F4** — Press F4 → overlay should appear in top-right corner
+- [ ] **Profiling overlay toggles with F5** — Press F5 → overlay should appear in top-right corner
 - [ ] **Shows top 8 CPU consumers** — Overlay should list 8-10 systems/scopes sorted by time (e.g., "enemy_update", "render_draw", "particle_update")
 - [ ] **Frame time is visible** — Should show current frame time (e.g., "13.2ms") vs budget (16.67ms for 60fps)
 - [ ] **Percentage and visual bars** — Each scope should show percentage of frame budget and a visual bar chart
 - [ ] **Color-coded frame time** — Green when under 80% budget, orange 80-100%, red over 100%
 - [ ] **Profiling ON/OFF button works** — Click button in overlay → profiling should toggle on/off (status text updates)
-- [ ] **No performance impact when hidden** — Press F4 to hide → FPS should not change (overlay only updates when visible)
+- [ ] **No performance impact when hidden** — Press F5 to hide → FPS should not change (overlay only updates when visible)
 - [ ] **Updates in real-time** — Watch overlay during gameplay → values should update every ~200ms reflecting current CPU usage
 - [ ] **Test during explosion spike** — Spawn 200+ enemies, cause mass explosions → overlay should show which system is the bottleneck
 
@@ -704,7 +704,7 @@ Real-time performance profiler that shows CPU hot spots during gameplay. Part of
   - Console should show `[RendererFactory] Created WebGPU renderer (backend: WebGPUBackend)`
   - If you see `WebGPU: NOT AVAILABLE`: the diagnostic in Step 1 explains why
 - [ ] **Check Debug Overlay** — Press F4 → should show "WebGPU" in cyan text (not "WebGL2" in blue)
-- [ ] **Check Profiling Overlay** — Press F4 → should show real-time performance profiler with top 8 CPU consumers, frame time, and visual bars
+- [ ] **Check Profiling Overlay** — Press F5 → should show real-time performance profiler with top 8 CPU consumers, frame time, and visual bars
 - [ ] **Check Settings menu** → System Info → Active Renderer should say "WebGPU"
 
 ### Step 3: If WebGPU works, test it
