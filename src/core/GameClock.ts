@@ -36,6 +36,14 @@ export class GameClock {
   /** Whether the clock has been started at least once. */
   private started: boolean = false;
 
+  // ---- Speed diagnostic (S32 debug) ----
+  /** Wall-clock time (seconds) when the clock was last reset/resynced. */
+  private _wallOrigin: number = 0;
+  /** Game time when the clock was last reset. */
+  private _gameOrigin: number = 0;
+  /** Ratio of game time advancement to wall clock (1.0 = normal, <1.0 = slow). */
+  speedRatio: number = 1.0;
+
   constructor(game: Game) {
     this.game = game;
   }
@@ -50,6 +58,9 @@ export class GameClock {
     this.alpha = 0;
     this.totalTime = 0;
     this.started = true;
+    this._wallOrigin = performance.now() / 1000;
+    this._gameOrigin = 0;
+    this.speedRatio = 1.0;
   }
 
   /**
@@ -101,6 +112,13 @@ export class GameClock {
     // Alpha represents how far into the next tick we are -- useful for
     // interpolating positions in the render pass.
     this.alpha = this.accumulator / this.fixedDeltaTime;
+
+    // Speed diagnostic: update ratio of game time to wall time (S32 debug)
+    const wallElapsed = currentTime - this._wallOrigin;
+    const gameElapsed = this.totalTime - this._gameOrigin;
+    if (wallElapsed > 1.0) {
+      this.speedRatio = gameElapsed / wallElapsed;
+    }
 
     return steps;
   }

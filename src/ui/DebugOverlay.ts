@@ -24,12 +24,16 @@ export class DebugOverlay {
   private readonly entitiesEl: HTMLSpanElement;
   private readonly bulletsEl: HTMLSpanElement;
   private readonly rendererEl: HTMLSpanElement;
+  private readonly speedEl: HTMLSpanElement;
   private readonly geoEl: HTMLSpanElement;
   private readonly texEl: HTMLSpanElement;
 
   // Latest renderer memory counts (set each frame via setMemoryInfo)
   private memGeo = 0;
   private memTex = 0;
+
+  // Game speed ratio (1.0 = normal, <1.0 = slow)
+  private _speedRatio = 1.0;
 
   // Top-10 panel (expandable)
   private readonly topPanel: HTMLDivElement;
@@ -75,6 +79,10 @@ export class DebugOverlay {
           <span class="debug-value" id="debug-bullets">--</span>
         </div>
         <div class="debug-row">
+          <span class="debug-label">SPD</span>
+          <span class="debug-value" id="debug-speed" style="color:#ffcc00">--</span>
+        </div>
+        <div class="debug-row">
           <span class="debug-label">GEO</span>
           <span class="debug-value" id="debug-geo" style="color:#aaccff">--</span>
         </div>
@@ -96,6 +104,7 @@ export class DebugOverlay {
     this.entitiesEl = document.getElementById('debug-entities') as HTMLSpanElement;
     this.bulletsEl = document.getElementById('debug-bullets') as HTMLSpanElement;
     this.rendererEl = document.getElementById('debug-renderer') as HTMLSpanElement;
+    this.speedEl = document.getElementById('debug-speed') as HTMLSpanElement;
     this.geoEl = document.getElementById('debug-geo') as HTMLSpanElement;
     this.texEl = document.getElementById('debug-tex') as HTMLSpanElement;
     this.topPanel = document.getElementById('debug-top-panel') as HTMLDivElement;
@@ -174,6 +183,11 @@ export class DebugOverlay {
     this.memTex = textures;
   }
 
+  /** Set the game speed ratio from GameClock (1.0 = normal, <1.0 = slow). */
+  setSpeedRatio(ratio: number): void {
+    this._speedRatio = ratio;
+  }
+
   /** Set the renderer backend label (e.g. 'webgpu' or 'webgl2'). */
   setRendererBackend(backend: RendererBackend): void {
     const label = backend === 'webgpu' ? 'WebGPU' : 'WebGL2';
@@ -200,6 +214,17 @@ export class DebugOverlay {
     this.bulletsEl.textContent = String(bullets);
     this.geoEl.textContent = String(this.memGeo);
     this.texEl.textContent = String(this.memTex);
+
+    // Speed ratio display
+    const speedPct = Math.round(this._speedRatio * 100);
+    this.speedEl.textContent = `${speedPct}%`;
+    if (this._speedRatio >= 0.95) {
+      this.speedEl.style.color = '#00ff88';
+    } else if (this._speedRatio >= 0.80) {
+      this.speedEl.style.color = '#ffaa00';
+    } else {
+      this.speedEl.style.color = '#ff4444';
+    }
 
     // Color-code FPS
     if (fps >= 55) {
