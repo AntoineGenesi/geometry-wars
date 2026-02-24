@@ -1111,6 +1111,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const weaponHUD = new WeaponHUD();
   weaponHUD.setPosition(10, window.innerHeight / 2 - 60);
 
+  // Wire session level-up: show compact level toast after each pickup beyond the first
+  weaponManager.onWeaponLevelUp = (weaponType, level) => {
+    if (level >= 2) {
+      const mult = weaponManager.getSessionDamageMultiplier(weaponType);
+      const bonusPct = Math.round((mult - 1) * 100);
+      weaponHUD.showPickupNotification(`${WEAPON_CONFIGS[weaponType].name} Lv.${level} — +${bonusPct}% dmg`);
+    }
+  };
+
   // Wire mastery tier-up: award buff + show toast + play sound (must be after weaponHUD is created)
   weaponMastery.onMasteryTierUp = (weaponType, tier) => {
     const buffType = WEAPON_MASTERY_BUFF_MAP[weaponType];
