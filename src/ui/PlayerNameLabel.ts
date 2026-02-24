@@ -105,9 +105,6 @@ export class PlayerNameLabels {
 
       // Project world position to normalized device coordinates
       _projVec.copy(playerInfo.worldPos);
-      // Offset upward (above the ship) in world space along the camera's up direction
-      // Use a fixed offset that works well for the game's camera distance
-      _projVec.addScaledVector(camera.up, 0.6);
       _projVec.project(camera);
 
       // Check if behind camera
@@ -118,7 +115,11 @@ export class PlayerNameLabels {
 
       // Convert to screen coordinates
       const x = ((_projVec.x + 1) / 2) * width;
-      const y = ((-_projVec.y + 1) / 2) * height;
+      // Apply screen-space Y offset (40px above ship center) instead of a
+      // world-space camera.up offset. camera.up is lerped at 0.12/frame and
+      // lags behind the camera, which caused the label to jitter whenever the
+      // player moved on a curved surface (sphere, torus).
+      const y = ((-_projVec.y + 1) / 2) * height - 40;
 
       // Check if off-screen
       if (x < -100 || x > width + 100 || y < -50 || y > height + 50) {
