@@ -56,6 +56,10 @@ export class RenderLoop {
   private _tempBox = new THREE.Box3();
   private _tempSphere = new THREE.Sphere();
 
+  // Throttle HUD updates to ~10fps to reduce DOM overhead (S32 fix)
+  private _lastHudUpdateTime = 0;
+  private static readonly HUD_UPDATE_INTERVAL_MS = 100;
+
   render(ctx: GameContext, alpha: number): void {
     profiler.begin('surface_projection');
     // Project bullets onto surface
@@ -275,18 +279,22 @@ export class RenderLoop {
       ctx.game.camera.position.add(ctx.screenShake.offset);
     }
 
-    // Update HUD
-    UIHelpers.updateUI(ctx.player, ctx.weaponManager);
-    UIHelpers.updateBoostDisplay(ctx.player.boostActive, ctx.player.boostCooldown);
+    // Update HUD — throttled to ~10fps to reduce DOM overhead (S32 perf fix)
+    const hudNow = performance.now();
+    if (hudNow - this._lastHudUpdateTime >= RenderLoop.HUD_UPDATE_INTERVAL_MS) {
+      this._lastHudUpdateTime = hudNow;
+      UIHelpers.updateUI(ctx.player, ctx.weaponManager);
+      UIHelpers.updateBoostDisplay(ctx.player.boostActive, ctx.player.boostCooldown);
 
-    // Update weapon inventory HUD
-    ctx.weaponHUD.update(ctx.weaponManager.getInventory(), ctx.weaponManager.getCurrentWeapon(), ctx.weaponMastery.getAllProgress(), ctx.weaponManager.getSessionLevels(), ctx.persistentMasteryLevels);
+      // Update weapon inventory HUD
+      ctx.weaponHUD.update(ctx.weaponManager.getInventory(), ctx.weaponManager.getCurrentWeapon(), ctx.weaponMastery.getAllProgress(), ctx.weaponManager.getSessionLevels(), ctx.persistentMasteryLevels);
 
-    // Update companion HUD
-    ctx.companionHUD.update(ctx.companionManager.getCompanionCounts());
+      // Update companion HUD
+      ctx.companionHUD.update(ctx.companionManager.getCompanionCounts());
 
-    // Update buff HUD
-    ctx.buffHUD.update(ctx.buffManager.getActiveBuffs());
+      // Update buff HUD
+      ctx.buffHUD.update(ctx.buffManager.getActiveBuffs());
+    }
 
     // Update level display in HUD
     if (ctx.playerLevel.level > 0) {
@@ -317,6 +325,7 @@ export class RenderLoop {
       ctx.game.renderer.info.memory.geometries,
       ctx.game.renderer.info.memory.textures,
     );
+    ctx.debugOverlay.setSpeedRatio(ctx.game.clock.speedRatio);
     ctx.debugOverlay.update();
     ctx.profilingOverlay.update();
     ctx.profilingPersistence.update(rawFrameDt);
