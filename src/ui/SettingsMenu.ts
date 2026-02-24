@@ -257,6 +257,7 @@ export class SettingsMenu {
   private perfDataProvider: (() => { fps: number; drawCalls: number; entityCount: number; memoryMB: number }) | null = null;
   private adaptiveQualityEnabled = true;
   private ddaSettings: DDASettingsData;
+  private _disposed = false;
 
   constructor() {
     this.graphicsSettings = loadGraphicsSettings();
@@ -376,7 +377,14 @@ export class SettingsMenu {
   }
 
   dispose(): void {
+    this._disposed = true;
     this.stopPerfUpdates();
+    this.onCloseCallback = null;
+    this.onGraphicsChangeCallback = null;
+    this.onAudioChangeCallback = null;
+    this.onDebugChangeCallback = null;
+    this.onDDAChangeCallback = null;
+    this.onVisualStyleChangeCallback = null;
     this.container.remove();
     if (this.styleElement) {
       this.styleElement.remove();
@@ -1311,9 +1319,17 @@ export class SettingsMenu {
 
   private attachToggle(id: string, onChange: (on: boolean) => void): void {
     const el = this.container.querySelector(`#${id}`);
-    el?.addEventListener('click', () => {
+    el?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._disposed) return;
       const isOn = el.classList.toggle('on');
-      onChange(isOn);
+      try {
+        onChange(isOn);
+      } catch (err) {
+        console.error('[SettingsMenu] Toggle handler error:', err);
+        // Revert toggle state on error
+        el.classList.toggle('on');
+      }
     });
   }
 
