@@ -1993,7 +1993,9 @@ export class StartMenu {
     lanConnectBtn?.addEventListener('click', () => {
       const ip = lanIpInput.value.trim();
       if (!ip) return;
-      const serverUrl = this.lanClient.getServerWsUrl(ip, 2567);
+      // Use Vite proxy path (/ws) — only port 3000 needs to be accessible, not 2567 separately.
+      const vitePort = parseInt(window.location.port, 10) || 3000;
+      const serverUrl = `ws://${ip}:${vitePort}/ws`;
       this.showNameDialog(this.lanSelectedSurface, serverUrl);
     });
 
@@ -2348,7 +2350,10 @@ export class StartMenu {
     }
 
     entry.addEventListener('click', () => {
-      const serverUrl = this.lanClient.getServerWsUrl(ip, port);
+      // Use Vite proxy path (/ws) — routes to localhost:2567 server-side.
+      // Only port 3000 (the Vite port) needs to be accessible from LAN, not 2567 separately.
+      const vitePort = parseInt(window.location.port, 10) || 3000;
+      const serverUrl = `ws://${ip}:${vitePort}/ws`;
       // Use the server's actual surface type, not the local Quick Game selection
       const serverSurface = (details.rawSurface || details.surface.toLowerCase()) as SurfaceType;
       this.showNameDialog(serverSurface, serverUrl);
