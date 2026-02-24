@@ -1,4 +1,4 @@
-import { WeaponType } from '../weapons/WeaponTypes';
+import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
 
 // ── Storage ─────────────────────────────────────────────────────────────────
 
@@ -17,7 +17,7 @@ interface MasteryStoreData {
 // ── XP / Level thresholds ────────────────────────────────────────────────────
 
 /** XP required to reach each level (index = level). Level 5 = 1000+ XP. */
-const XP_THRESHOLDS = [0, 100, 300, 500, 700, 1000] as const;
+export const XP_THRESHOLDS = [0, 100, 300, 500, 700, 1000] as const;
 
 // ── Passive bonus table ───────────────────────────────────────────────────────
 
@@ -153,6 +153,32 @@ export class MasteryStore {
       result.set(type, this.getProgress(type));
     }
     return result;
+  }
+
+  /** Returns current mastery level (0-5) for every weapon. */
+  getAllLevels(): Map<WeaponType, number> {
+    const result = new Map<WeaponType, number>();
+    for (const type of Object.values(WeaponType)) {
+      result.set(type, this.getLevel(type));
+    }
+    return result;
+  }
+
+  /**
+   * Returns a human-readable description of the passive bonus unlocked at the given level.
+   * e.g. "Blaster: +20% damage always" or "Plasma Mortar: +50% AoE radius" at level 5.
+   * Returns empty string for level 0.
+   */
+  getBonusDescription(weapon: WeaponType, level: number): string {
+    if (level === 0) return '';
+    const cfg = BONUS_TABLE[weapon];
+    const name = WEAPON_CONFIGS[weapon].name;
+    if (level === 5 && cfg.special) {
+      return `${name}: ${cfg.special}`;
+    }
+    const t = (level - 1) / 4;
+    const dmgPct = Math.round((cfg.dmgL1 + t * (cfg.dmgL5 - cfg.dmgL1) - 1) * 100);
+    return `${name}: +${dmgPct}% damage always`;
   }
 
   getPassiveMultipliers(): Map<WeaponType, PassiveMasteryBonus> {
