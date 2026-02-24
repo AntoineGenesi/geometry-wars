@@ -84,7 +84,7 @@ import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
-import { SettingsMenu } from './ui/SettingsMenu';
+import { SettingsMenu, loadDebugSettings } from './ui/SettingsMenu';
 import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
@@ -408,6 +408,19 @@ function main() {
   const perfTracker = new PerformanceTracker('network');
   const debugOverlay = new DebugOverlay(perfTracker);
   debugOverlay.setRendererBackend(game.backend);
+
+  // Apply saved debug settings and wire up toggle (mirrors main.ts behaviour)
+  const initialDebugSettings = loadDebugSettings();
+  if (!initialDebugSettings.showDebugStatistics) {
+    debugOverlay.hide();
+  }
+  SettingsMenu.setGlobalDebugChangeCallback((debugSettings) => {
+    if (debugSettings.showDebugStatistics) {
+      debugOverlay.show();
+    } else {
+      debugOverlay.hide();
+    }
+  });
 
   // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
   const savedVisualMode = loadVisualMode();

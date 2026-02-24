@@ -60,6 +60,7 @@ import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
+import { SettingsMenu, loadDebugSettings } from './ui/SettingsMenu';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { PerformanceLogger } from './core/PerformanceLogger';
@@ -299,7 +300,18 @@ function main(): void {
   const perfLogger = new PerformanceLogger(surfaceType);
   const debugOverlay = new DebugOverlay(perfTracker);
   debugOverlay.setRendererBackend(game.backend);
-  debugOverlay.hide(); // Hidden by default in split-screen; F3 toggles it
+  // Apply saved debug setting (hide if disabled; F3 still toggles it)
+  const initialDebugSettings = loadDebugSettings();
+  if (!initialDebugSettings.showDebugStatistics) {
+    debugOverlay.hide();
+  }
+  SettingsMenu.setGlobalDebugChangeCallback((debugSettings) => {
+    if (debugSettings.showDebugStatistics) {
+      debugOverlay.show();
+    } else {
+      debugOverlay.hide();
+    }
+  });
 
   // Small FPS overlay for Player 1's viewport (always visible)
   const perfOverlay = new SplitScreenPerfOverlay(perfTracker);
