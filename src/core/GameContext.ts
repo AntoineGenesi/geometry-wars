@@ -47,6 +47,7 @@ import type { Minimap } from '../ui/Minimap';
 import type { KillLog } from '../ui/KillLog';
 import type { TotalKillCounter } from '../ui/TotalKillCounter';
 import type { WeaponHUD } from '../ui/WeaponHUD';
+import type { WeaponType } from '../weapons/WeaponTypes';
 import type { CompanionHUD } from '../entities/Companion';
 import type { BuffHUD } from '../buffs/BuffHUD';
 import type { ShockArcRenderer } from '../buffs/ShockArcRenderer';
@@ -129,6 +130,9 @@ export interface GameContext {
   // Game mode
   gameMode: GameMode;
   waveScheduler: any; // WaveScheduler class defined in main.ts
+
+  // Cross-game mastery levels (0-5 per weapon) — loaded once at game start from MasteryStore
+  persistentMasteryLevels: Map<WeaponType, number>;
 
   // UI
   minimap: Minimap;
