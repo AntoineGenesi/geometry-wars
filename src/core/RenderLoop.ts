@@ -8,16 +8,15 @@ import { UIHelpers } from '../ui/UIHelpers';
 import { profiler } from './PerformanceProfiler';
 
 /**
- * Proximity visibility override constants.
- * Enemies within PROXIMITY_BRIGHT_RADIUS of the player are forced to full visibility,
- * overriding depth-occlusion dimming. This prevents tunnel-map surfaces from hiding
- * close-proximity enemies that are about to hit the player.
+ * Proximity visibility override using UV surface distance.
+ * Enemies within PROXIMITY_NEAR_UV of the player on the surface are forced to full
+ * visibility, overriding depth-occlusion dimming. Uses the same UV metric as the
+ * surface dimming system so torus/ring topology is handled correctly — enemies
+ * visible through the torus hole have large UV distance and stay dim even when
+ * close in 3D world space.
  */
-const PROXIMITY_BRIGHT_RADIUS = 8.0;
-const PROXIMITY_BRIGHT_RADIUS_SQ = PROXIMITY_BRIGHT_RADIUS * PROXIMITY_BRIGHT_RADIUS;
-/** Outer edge of smooth fade-out zone. Beyond this distance, occlusion is unaffected. */
-const PROXIMITY_FADE_RADIUS = 12.0;
-const PROXIMITY_FADE_RADIUS_SQ = PROXIMITY_FADE_RADIUS * PROXIMITY_FADE_RADIUS;
+const PROXIMITY_NEAR_UV = 0.08;   // fully visible within 8% of surface (same position)
+const PROXIMITY_FADE_UV = 0.15;   // fade out to surface dimming by 15% (= SURFACE_NEAR_UV)
 
 /**
  * Surface UV-distance visibility constants.
@@ -148,11 +147,14 @@ export class RenderLoop {
       // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
       let visibility = ctx.depthOcclusion.getOpacity(enemy);
 
-      // Surface UV-distance visibility: dim enemies far from the player on the surface.
-      // Uses UV coordinates (normalized surface parameterization) rather than Euclidean
-      // 3D distance, which is misleading on surfaces with holes (torus, cube-ring,
-      // sphere-tunnel) where enemies visible through the hole have short 3D distance
-      // but long surface distance from the player.
+      // Surface UV-distance visibility + proximity override.
+      // UV distance is computed once and reused for both:
+      //   (a) dimming enemies far from the player on the surface
+      //   (b) proximity override to keep very-close enemies visible despite occlusion
+      //
+      // Using UV distance (not Euclidean 3D) correctly handles torus/ring/sphere-tunnel
+      // topology: enemies visible through the hole have small 3D distance but large UV
+      // distance, so they stay dim. The old 3D proximity override brightened those enemies.
       {
         const euRaw = Math.abs(enemy.surfacePosition.u - playerU);
         const evRaw = Math.abs(enemy.surfacePosition.v - playerV);
@@ -160,6 +162,8 @@ export class RenderLoop {
         const eu = Math.min(euRaw, 1.0 - euRaw);
         const ev = wrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
         const uvDist = Math.sqrt(eu * eu + ev * ev);
+
+        // (a) Surface dimming: min-clamp visibility based on UV distance
         let surfaceVis: number;
         if (uvDist <= SURFACE_NEAR_UV) {
           surfaceVis = 1.0;
@@ -171,6 +175,15 @@ export class RenderLoop {
           surfaceVis = 1.0 - uvSt * (1.0 - SURFACE_DIM_OPACITY);
         }
         visibility = Math.min(visibility, surfaceVis);
+
+        // (b) Proximity override: enemies very close on the surface are always visible,
+        // overriding depth-occlusion. Applied after min-clamp so it can only raise visibility.
+        if (uvDist <= PROXIMITY_NEAR_UV) {
+          visibility = Math.max(visibility, 1.0);
+        } else if (uvDist <= PROXIMITY_FADE_UV) {
+          const t = (uvDist - PROXIMITY_NEAR_UV) / (PROXIMITY_FADE_UV - PROXIMITY_NEAR_UV);
+          visibility = Math.max(visibility, 1.0 - t);
+        }
       }
 
       // When surface is blocking camera-to-player, also fade enemies between camera and player
@@ -216,23 +229,6 @@ export class RenderLoop {
         const farSideDot = this._farSideCamDir.dot(this._farSideTempDir);
         const farFactor = Math.max(0, Math.min(1, (farSideDot - FAR_SIDE_FAR_DOT) / farSideRange));
         visibility = Math.min(visibility, farFactor);
-      }
-
-      // Proximity override: enemies within ~8 world units of player are always fully visible.
-      // Applied last so it overrides depth-occlusion, tunnel-blocking fade, LOD, and far-side culling.
-      // Critical for tunnel maps where occluded surfaces can hide enemies approaching the player.
-      {
-        const dx = enemy.position.x - playerPos.x;
-        const dy = enemy.position.y - playerPos.y;
-        const dz = enemy.position.z - playerPos.z;
-        const distSq = dx * dx + dy * dy + dz * dz;
-        if (distSq < PROXIMITY_BRIGHT_RADIUS_SQ) {
-          visibility = Math.max(visibility, 1.0);
-        } else if (distSq < PROXIMITY_FADE_RADIUS_SQ) {
-          const dist = Math.sqrt(distSq);
-          const t = (dist - PROXIMITY_BRIGHT_RADIUS) / (PROXIMITY_FADE_RADIUS - PROXIMITY_BRIGHT_RADIUS);
-          visibility = Math.max(visibility, 1.0 - t);
-        }
       }
 
       visibleEnemyCount++;
