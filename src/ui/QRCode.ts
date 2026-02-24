@@ -45,20 +45,21 @@ function rsGeneratorPoly(degree: number): Uint8Array {
 }
 
 function rsEncode(data: Uint8Array, ecCount: number): Uint8Array {
+  // gen is LSB-first: gen[0]=constant, gen[ecCount]=1 (leading coefficient).
+  // Use shift-register algorithm: for each data byte, update remainder using gen[ecCount-1..0]
+  // (which maps to MSB-first coeff[1..ecCount] used in standard formulations).
   const gen = rsGeneratorPoly(ecCount);
-  const result = new Uint8Array(data.length + ecCount);
-  result.set(data);
+  const remainder = new Uint8Array(ecCount);
 
-  for (let i = 0; i < data.length; i++) {
-    const coef = result[i];
-    if (coef !== 0) {
-      for (let j = 0; j < gen.length; j++) {
-        result[i + j] ^= gfMul(gen[j], coef);
-      }
+  for (const byte of data) {
+    const factor = byte ^ remainder[0];
+    for (let j = 0; j < ecCount - 1; j++) {
+      remainder[j] = remainder[j + 1] ^ gfMul(gen[ecCount - 1 - j], factor);
     }
+    remainder[ecCount - 1] = gfMul(gen[0], factor);
   }
 
-  return result.slice(data.length);
+  return remainder;
 }
 
 // ---------------------------------------------------------------------------
@@ -458,31 +459,30 @@ function placeFormatBits(matrix: Matrix, maskIdx: number): void {
   const size = matrix.length;
   const bits = FORMAT_INFO[maskIdx];
 
-  // Place around top-left finder (horizontal + vertical)
-  const horizontal = [0, 1, 2, 3, 4, 5, 7, 8]; // columns at row 8
-  const vertical = [size - 1, size - 2, size - 3, size - 4, size - 5, size - 6, size - 7, size - 8]; // rows at col 8
+  // Copy 1: around top-left finder pattern.
+  // Per QR spec: F0 (LSB) goes at (row8, col0), F1 at (row8, col1), ..., F6 at (row8, col7),
+  //              F7 at (row8, col8), F8 at (row7, col8), F9 at (row5, col8), ..., F14 at (row0, col8).
 
-  // First 8 bits go around top-left (row 8, skipping col 6)
+  // Row 8, cols 0-5 (skip col6=timing), 7, 8  →  F0..F7 (bits 0..7)
+  const col8Positions = [0, 1, 2, 3, 4, 5, 7, 8];
   for (let i = 0; i < 8; i++) {
-    const bit = (bits >> (14 - i)) & 1;
-    matrix[8][horizontal[i]] = bit;
-  }
-  // Bits 8-14 go down column 8 from row 7 to row 0
-  const vertCol8 = [7, 5, 4, 3, 2, 1, 0]; // rows at column 8 (skip row 6 = timing)
-  for (let i = 0; i < 7; i++) {
-    const bit = (bits >> (6 - i)) & 1;
-    matrix[vertCol8[i]][8] = bit;
+    matrix[8][col8Positions[i]] = (bits >> i) & 1;
   }
 
-  // Second copy vertical: column 8, rows size-1 down to size-7 (bits 14..8)
+  // Col 8, rows 7 (skip row6=timing), 5, 4, 3, 2, 1, 0  →  F8..F14 (bits 8..14)
+  const row8Positions = [7, 5, 4, 3, 2, 1, 0];
   for (let i = 0; i < 7; i++) {
-    const bit = (bits >> (14 - i)) & 1;
-    matrix[vertical[i]][8] = bit;
+    matrix[row8Positions[i]][8] = (bits >> (8 + i)) & 1;
   }
-  // Top-right: row 8, columns size-8 to size-1
+
+  // Copy 2: bottom-left strip (col 8, rows size-7 to size-1)  →  F8..F14 (bits 8..14)
+  for (let i = 0; i < 7; i++) {
+    matrix[size - 7 + i][8] = (bits >> (8 + i)) & 1;
+  }
+
+  // Copy 2: top-right strip (row 8, cols size-8 to size-1)  →  F7..F0 (bits 7..0)
   for (let i = 0; i < 8; i++) {
-    const bit = (bits >> (7 - i)) & 1;
-    matrix[8][size - 8 + i] = bit;
+    matrix[8][size - 8 + i] = (bits >> (7 - i)) & 1;
   }
 }
 
