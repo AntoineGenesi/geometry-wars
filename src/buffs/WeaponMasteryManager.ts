@@ -104,6 +104,18 @@ export class WeaponMasteryManager {
     return result;
   }
 
+  /**
+   * Returns a copy of the kills map for all weapons that have at least 1 kill.
+   * Used by the post-game mastery progress flow to award XP.
+   */
+  getKillsByWeapon(): Map<WeaponType, number> {
+    const result = new Map<WeaponType, number>();
+    for (const [weapon, count] of this.kills.entries()) {
+      if (count > 0) result.set(weapon, count);
+    }
+    return result;
+  }
+
   /** Clear all kill counts (call on round reset). */
   reset(): void {
     this.kills.clear();

@@ -70,6 +70,9 @@ import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { GlowTrail } from './effects/GlowTrail';
 import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies, getMapSizeScaleFactor } from './core/MapSize';
+import { WeaponMasteryManager } from './buffs/WeaponMasteryManager';
+import { MasteryStore } from './systems/MasteryStore';
+import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -559,6 +562,10 @@ function main(): void {
   // -- Per-player weapon managers --
   const weaponManagers: WeaponManager[] = [];
   const superStateManagers: SuperStateManager[] = [];
+
+  // -- Cross-game mastery (player 1 only — device-wide persistence) --
+  const weaponMasteryP1 = new WeaponMasteryManager();
+  const masteryStore = MasteryStore.load();
   /** Shared enemy death handler */
   function handleEnemyDeath(enemy: BaseEnemy, killerPlayerId: number, weaponType?: WeaponType): void {
     const enemyType = enemy.constructor.name.toLowerCase();
@@ -584,6 +591,7 @@ function main(): void {
       // Weapon analytics: record weapon kill for player 0 (primary telemetry player)
       if (killerPlayerId === 0 && weaponType) {
         perfLogger.recordWeaponKill(weaponType, '');
+        weaponMasteryP1.recordKill(weaponType);
       }
     }
     const killerPlayer = players[killerPlayerId];
@@ -884,9 +892,33 @@ function main(): void {
   gameOverScreen.onContinue(() => {
     perfTracker.saveSession();
     perfLogger.saveSession();
-    game.stop();
-    bgMusic.stop();
-    window.location.href = window.location.pathname;
+
+    // Award XP to mastery store based on player 1's kills this game
+    const killsByWeapon = weaponMasteryP1.getKillsByWeapon();
+    const xpResults = masteryStore.awardGameXP(killsByWeapon);
+    masteryStore.save();
+
+    const anyXP = xpResults.some(r => r.xpAfter > r.xpBefore);
+    if (anyXP) {
+      const masteryScreen = new MasteryProgressScreen();
+      masteryScreen.show(
+        {
+          results: xpResults,
+          allLevels: masteryStore.getAllLevels(),
+          getBonusDescription: (w, lv) => masteryStore.getBonusDescription(w, lv),
+        },
+        () => {
+          masteryScreen.dispose();
+          game.stop();
+          bgMusic.stop();
+          window.location.href = window.location.pathname;
+        },
+      );
+    } else {
+      game.stop();
+      bgMusic.stop();
+      window.location.href = window.location.pathname;
+    }
   });
 
   // Controls menu (accessible via pause menu or C key)

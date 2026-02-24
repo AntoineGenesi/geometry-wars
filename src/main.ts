@@ -42,6 +42,8 @@ import { PauseMenu } from './ui/PauseMenu';
 import { EffectsPanel } from './ui/EffectsPanel';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { AnalyticsPanel } from './ui/AnalyticsPanel';
+import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
+import { MasteryStore } from './systems/MasteryStore';
 import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
 import { Minimap } from './ui/Minimap';
 import { KillLog } from './ui/KillLog';
@@ -849,6 +851,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Weapon mastery system (per-weapon kill tracking → tier-up buffs) --
   const weaponMastery = new WeaponMasteryManager();
 
+  // -- Cross-game mastery store (XP persistence across sessions) --
+  const masteryStore = MasteryStore.load();
+
   const buffHUD = new BuffHUD();
   if (mobile) {
     buffHUD.setCompactMode(true);
@@ -1335,8 +1340,31 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     // Show weapon analytics before navigating away
     analyticsPanel.show(perfLogger);
     analyticsPanel.onClose(() => {
-      game.stop();
-      window.location.href = window.location.pathname;
+      // Award XP to the cross-game mastery store based on this game's kills
+      const killsByWeapon = weaponMastery.getKillsByWeapon();
+      const xpResults = masteryStore.awardGameXP(killsByWeapon);
+      masteryStore.save();
+
+      // Show mastery progress screen if any XP was earned this game
+      const anyXP = xpResults.some(r => r.xpAfter > r.xpBefore);
+      if (anyXP) {
+        const masteryScreen = new MasteryProgressScreen();
+        masteryScreen.show(
+          {
+            results: xpResults,
+            allLevels: masteryStore.getAllLevels(),
+            getBonusDescription: (w, lv) => masteryStore.getBonusDescription(w, lv),
+          },
+          () => {
+            masteryScreen.dispose();
+            game.stop();
+            window.location.href = window.location.pathname;
+          },
+        );
+      } else {
+        game.stop();
+        window.location.href = window.location.pathname;
+      }
     });
   });
 
