@@ -1782,6 +1782,7 @@ function main() {
         allyGlowManager.removeGlow(id);
         nameLabels.removeLabel(id);
         remotePlayerTargetUV.delete(id);
+        playerAliveState.delete(id);
       }
     });
 
@@ -2432,6 +2433,30 @@ function main() {
       },
       onError: (err) => {
         statusEl.textContent = `Error: ${err.message}`;
+      },
+      onPlayerLeave: (id: string) => {
+        // Immediately remove the entity when the server removes this player from
+        // state.players (fires from Colyseus onRemove, before the debounced
+        // onStateChange reconciliation runs). This prevents a 1-frame ghost.
+        const player = networkPlayers.get(id);
+        if (player) {
+          glowManager.removeGlow(player.mesh);
+          scene.remove(player.mesh);
+        }
+        if (id === localPlayerId) {
+          scene.remove(playerLevel.auraRing);
+        }
+        networkPlayers.delete(id);
+        const trail = playerGlowTrails.get(id);
+        if (trail) {
+          scene.remove(trail.root);
+          playerGlowTrails.delete(id);
+        }
+        allyGlowManager.removeGlow(id);
+        nameLabels.removeLabel(id);
+        remotePlayerTargetUV.delete(id);
+        playerAliveState.delete(id);
+        netMainLog(`[NetworkMain] Player ${id} entity removed immediately on disconnect`);
       },
       onHostLeft: () => {
         handleConnectionLost('Host disconnected from the game.');

@@ -335,6 +335,9 @@ export class NetworkClient {
     this.room.state.players.onRemove((_player: unknown, key: string) => {
       netLog(`[Network] Player left: ${key}`);
       this.callbacks.onPlayerLeave?.(key);
+      // Trigger immediate reconciliation so ghost entities are removed
+      // in the same frame rather than waiting for the next state patch.
+      this.scheduleStateChange();
     });
 
     // Enemy events
