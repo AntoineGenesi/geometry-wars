@@ -346,11 +346,14 @@ function createReservedMask(size: number, version: number, alignments: number[])
   const reserved = Array.from({ length: size }, () => new Array(size).fill(false));
 
   // Finder patterns + separators
+  // Top-left: full 9×9 (rows 0-8, cols 0-8)
+  // Top-right: rows 0-8, cols (size-8)..(size-1) — only 8 cols (c=0..7 → size-1..size-8)
+  // Bottom-left: rows (size-8)..(size-1), cols 0-8 — only 8 rows (r=0..7 → size-1..size-8)
   for (let r = 0; r <= 8; r++) {
     for (let c = 0; c <= 8; c++) {
       reserved[r][c] = true;
-      if (r < size && size - 1 - c >= 0) reserved[r][size - 1 - c] = true;
-      if (size - 1 - r >= 0 && c < size) reserved[size - 1 - r][c] = true;
+      if (c < 8) reserved[r][size - 1 - c] = true;   // top-right: exclude col size-9 (c=8)
+      if (r < 8) reserved[size - 1 - r][c] = true;   // bottom-left: exclude row size-9 (r=8)
     }
   }
 
