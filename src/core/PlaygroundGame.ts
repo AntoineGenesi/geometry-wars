@@ -158,6 +158,16 @@ export class PlaygroundGame {
     this.instance.setCameraDistance(distance);
   }
 
+  /** Set orbit yaw and pitch for the camera. */
+  setOrbitAngles(yaw: number, pitch: number): void {
+    this.instance.setOrbitAngles(yaw, pitch);
+  }
+
+  /** Get current orbit angles. */
+  getOrbitAngles(): { yaw: number; pitch: number } {
+    return this.instance.getOrbitAngles();
+  }
+
   /** Get game stats (lives, etc.) */
   getStats(): { lives: number } {
     return this.instance.getStats();

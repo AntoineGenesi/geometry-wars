@@ -81,6 +81,17 @@ export class WeaponPlayground {
   private readonly onCanvasClick: (e: MouseEvent) => void;
   private readonly onDocumentClick: (e: MouseEvent) => void;
   private readonly onWheel: (e: WheelEvent) => void;
+  private readonly onTouchStart: (e: TouchEvent) => void;
+  private readonly onTouchMove: (e: TouchEvent) => void;
+  private readonly onTouchEnd: (e: TouchEvent) => void;
+
+  // Touch state for drag-to-orbit and pinch-to-zoom
+  private touchOrbitActive = false;
+  private touchOrbitId: number | null = null;
+  private touchOrbitLastX = 0;
+  private touchOrbitLastY = 0;
+  private touchPinchLastDist = 0;
+  private readonly TOUCH_ORBIT_SENSITIVITY = 0.005;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -142,11 +153,15 @@ export class WeaponPlayground {
       `width:${CANVAS_WIDTH}px;height:${CANVAS_HEIGHT}px;` +
       'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
       'background:rgba(5,5,16,0.7);border-radius:4px;cursor:pointer;z-index:10;';
+    const isTouchDevice = 'ontouchstart' in window;
     this.hintOverlay.innerHTML =
       '<div style="color:#00ffff;font-family:monospace;font-size:16px;letter-spacing:2px;' +
-      'text-shadow:0 0 10px #00ffff,0 0 20px #0088aa;margin-bottom:8px;">CLICK TO PLAY</div>' +
+      `text-shadow:0 0 10px #00ffff,0 0 20px #0088aa;margin-bottom:8px;">${isTouchDevice ? 'TAP TO VIEW' : 'CLICK TO PLAY'}</div>` +
       '<div style="color:#88aacc;font-family:monospace;font-size:11px;letter-spacing:1px;">' +
-      'WASD: Move | Mouse: Aim | Click: Shoot | Scroll: Zoom | ESC: Pause</div>';
+      (isTouchDevice
+        ? 'Drag: Orbit Camera | Pinch: Zoom'
+        : 'WASD: Move | Mouse: Aim | Click: Shoot | Scroll: Zoom | ESC: Pause') +
+      '</div>';
     container.appendChild(this.hintOverlay);
 
     // -- Input handlers for focus/pause management --
@@ -216,9 +231,86 @@ export class WeaponPlayground {
       this.playgroundGame.setCameraDistance(currentDist + delta);
     };
 
+    // Touch handlers for drag-to-orbit and pinch-to-zoom in WeaponDB
+    this.onTouchStart = (e: TouchEvent) => {
+      if (this.disposed || this.paused || this.gameOver) return;
+      e.preventDefault();
+
+      if (e.touches.length === 1 && !this.touchOrbitActive) {
+        // Single finger drag = orbit camera
+        const t = e.touches[0];
+        this.touchOrbitActive = true;
+        this.touchOrbitId = t.identifier;
+        this.touchOrbitLastX = t.clientX;
+        this.touchOrbitLastY = t.clientY;
+        this.touchPinchLastDist = 0;
+
+        // Focus playground on first touch
+        if (!this.focused) {
+          this.focused = true;
+          this.hintOverlay.style.display = 'none';
+          this.playgroundGame.start();
+          this.lastTime = performance.now();
+        }
+      } else if (e.touches.length === 2) {
+        // Two fingers = pinch to zoom
+        this.touchOrbitActive = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        this.touchPinchLastDist = Math.sqrt(dx * dx + dy * dy);
+      }
+    };
+
+    this.onTouchMove = (e: TouchEvent) => {
+      if (this.disposed || this.paused || this.gameOver) return;
+      e.preventDefault();
+
+      if (e.touches.length === 1 && this.touchOrbitActive) {
+        // Single finger drag = orbit
+        for (let i = 0; i < e.changedTouches.length; i++) {
+          const t = e.changedTouches[i];
+          if (t.identifier !== this.touchOrbitId) continue;
+          const dx = t.clientX - this.touchOrbitLastX;
+          const dy = t.clientY - this.touchOrbitLastY;
+          this.touchOrbitLastX = t.clientX;
+          this.touchOrbitLastY = t.clientY;
+          const { yaw, pitch } = this.playgroundGame.getOrbitAngles();
+          const PITCH_MAX = Math.PI * 0.4;
+          this.playgroundGame.setOrbitAngles(
+            yaw + dx * this.TOUCH_ORBIT_SENSITIVITY,
+            Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch - dy * this.TOUCH_ORBIT_SENSITIVITY)),
+          );
+        }
+      } else if (e.touches.length === 2) {
+        // Two fingers = pinch to zoom
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (this.touchPinchLastDist > 0) {
+          const delta = (this.touchPinchLastDist - dist) * 0.05;
+          this.playgroundGame.setCameraDistance(this.playgroundGame.getCameraDistance() + delta);
+        }
+        this.touchPinchLastDist = dist;
+      }
+    };
+
+    this.onTouchEnd = (e: TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === this.touchOrbitId) {
+          this.touchOrbitActive = false;
+          this.touchOrbitId = null;
+        }
+      }
+      if (e.touches.length < 2) this.touchPinchLastDist = 0;
+    };
+
     window.addEventListener('keydown', this.onKeyDown);
     container.addEventListener('click', this.onCanvasClick);
     container.addEventListener('wheel', this.onWheel, { passive: false });
+    container.addEventListener('touchstart', this.onTouchStart, { passive: false });
+    container.addEventListener('touchmove', this.onTouchMove, { passive: false });
+    container.addEventListener('touchend', this.onTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', this.onTouchEnd, { passive: true });
     document.addEventListener('click', this.onDocumentClick);
 
     // Don't auto-start; wait for user click
@@ -343,6 +435,10 @@ export class WeaponPlayground {
     window.removeEventListener('keydown', this.onKeyDown);
     this.container.removeEventListener('click', this.onCanvasClick);
     this.container.removeEventListener('wheel', this.onWheel);
+    this.container.removeEventListener('touchstart', this.onTouchStart);
+    this.container.removeEventListener('touchmove', this.onTouchMove);
+    this.container.removeEventListener('touchend', this.onTouchEnd);
+    this.container.removeEventListener('touchcancel', this.onTouchEnd);
     document.removeEventListener('click', this.onDocumentClick);
 
     // Dispose popups

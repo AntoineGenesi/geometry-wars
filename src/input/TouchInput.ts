@@ -66,11 +66,26 @@ export class TouchInput {
   private bombTapStart = 0;
   private bombTouchId: number | null = null;
 
+  // -- Weapon swap button --
+  private weaponSwapTriggered = false;
+  private weaponSwapBtn: HTMLDivElement;
+
+  // -- Camera tilt buttons --
+  private tiltUpBtn: HTMLDivElement;
+  private tiltDownBtn: HTMLDivElement;
+  /** Tilt delta per second (radians). Applied while button is held. */
+  private tiltUpHeld = false;
+  private tiltDownHeld = false;
+  private readonly TILT_SPEED = 0.8; // radians per second
+
   // -- Pause button --
   private pauseBtn: HTMLDivElement;
 
   /** Called when the pause button is tapped. */
   onPause: (() => void) | null = null;
+
+  /** Called when camera tilt buttons are held. delta is radians/second to apply. */
+  onCameraTilt: ((delta: number) => void) | null = null;
 
   // -- Game paused flag (disables touch routing to joysticks when menu is open) --
   private gamePaused = false;
@@ -104,6 +119,16 @@ export class TouchInput {
     // Pause button (top-right corner)
     this.pauseBtn = this.createPauseButton();
     this.overlay.appendChild(this.pauseBtn);
+
+    // Weapon swap button (top-left corner)
+    this.weaponSwapBtn = this.createWeaponSwapButton();
+    this.overlay.appendChild(this.weaponSwapBtn);
+
+    // Camera tilt buttons (right side, above aim joystick area)
+    this.tiltUpBtn = this.createTiltButton('▲', true);
+    this.tiltDownBtn = this.createTiltButton('▼', false);
+    this.overlay.appendChild(this.tiltUpBtn);
+    this.overlay.appendChild(this.tiltDownBtn);
 
     document.body.appendChild(this.overlay);
 
@@ -140,13 +165,25 @@ export class TouchInput {
       shooting: rightStickActive,
       bomb: this.bombTriggered,
       boost: false,
-      weaponSwap: false,
+      weaponSwap: this.weaponSwapTriggered,
     };
   }
 
-  /** Clear per-frame flags (bomb tap). Called at end of frame. */
+  /** Clear per-frame flags (bomb tap, weapon swap). Called at end of frame. */
   endFrame(): void {
     this.bombTriggered = false;
+    this.weaponSwapTriggered = false;
+  }
+
+  /**
+   * Apply camera tilt based on held tilt buttons.
+   * Should be called once per frame with the frame delta time (seconds).
+   * No-op when the game is paused.
+   */
+  applyTilt(dt: number): void {
+    if (!this.onCameraTilt || this.gamePaused) return;
+    if (this.tiltUpHeld) this.onCameraTilt(-this.TILT_SPEED * dt);
+    if (this.tiltDownHeld) this.onCameraTilt(this.TILT_SPEED * dt);
   }
 
   /** Remove all listeners and DOM elements. */
@@ -190,6 +227,8 @@ export class TouchInput {
     this.rightBase.style.display = 'none';
 
     this.bombTouchId = null;
+    this.tiltUpHeld = false;
+    this.tiltDownHeld = false;
   }
 
   // -----------------------------------------------------------------------
@@ -420,6 +459,86 @@ export class TouchInput {
     s.border = '2px solid rgba(0,255,255,0.5)';
     s.boxShadow = '0 0 10px rgba(0,255,255,0.3)';
     s.pointerEvents = 'none';
+    return el;
+  }
+
+  private createWeaponSwapButton(): HTMLDivElement {
+    const el = document.createElement('div');
+    el.style.cssText = `
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1px solid rgba(255, 200, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      cursor: pointer;
+      z-index: 600;
+      font-size: 18px;
+      color: rgba(255, 200, 0, 0.9);
+      text-shadow: 0 0 8px rgba(255, 200, 0, 0.5);
+      user-select: none;
+      -webkit-user-select: none;
+    `;
+    el.textContent = '⇄';
+    el.title = 'Swap Weapon';
+    el.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      this.weaponSwapTriggered = true;
+      // Brief visual feedback
+      el.style.background = 'rgba(255, 200, 0, 0.3)';
+      setTimeout(() => { el.style.background = 'rgba(0, 0, 0, 0.55)'; }, 150);
+    }, { passive: false });
+    return el;
+  }
+
+  private createTiltButton(symbol: string, isUp: boolean): HTMLDivElement {
+    const el = document.createElement('div');
+    el.style.cssText = `
+      position: absolute;
+      right: 66px;
+      ${isUp ? 'bottom: 110px' : 'bottom: 60px'};
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(0, 200, 255, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: auto;
+      cursor: pointer;
+      z-index: 600;
+      font-size: 16px;
+      color: rgba(0, 200, 255, 0.75);
+      user-select: none;
+      -webkit-user-select: none;
+    `;
+    el.textContent = symbol;
+
+    el.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      if (isUp) this.tiltUpHeld = true;
+      else this.tiltDownHeld = true;
+      el.style.background = 'rgba(0, 200, 255, 0.2)';
+    }, { passive: false });
+
+    const stopTilt = () => {
+      if (isUp) this.tiltUpHeld = false;
+      else this.tiltDownHeld = false;
+      el.style.background = 'rgba(0, 0, 0, 0.45)';
+    };
+
+    el.addEventListener('touchend', stopTilt, { passive: true });
+    el.addEventListener('touchcancel', stopTilt, { passive: true });
+
     return el;
   }
 }

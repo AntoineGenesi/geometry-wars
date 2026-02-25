@@ -235,6 +235,32 @@ export class CameraController {
     this.cameraDistance = Math.max(this.CAMERA_DIST_MIN, Math.min(this.CAMERA_DIST_MAX, distance));
   }
 
+  /** Adjust camera distance by a delta (clamped). Positive = zoom out, negative = zoom in. */
+  adjustZoom(delta: number): void {
+    this.setCameraDistance(this.cameraDistance + delta);
+  }
+
+  /** Adjust orbit pitch by a delta (clamped to ORBIT_PITCH_MAX). */
+  adjustPitch(delta: number): void {
+    this.orbitPitch = Math.max(
+      -this.ORBIT_PITCH_MAX,
+      Math.min(this.ORBIT_PITCH_MAX, this.orbitPitch + delta),
+    );
+    this.orbitResetSpeed = 0;
+  }
+
+  /** Set orbit yaw and pitch directly. Cancels any active reset. */
+  setOrbitAngles(yaw: number, pitch: number): void {
+    this.orbitYaw = yaw;
+    this.orbitPitch = Math.max(-this.ORBIT_PITCH_MAX, Math.min(this.ORBIT_PITCH_MAX, pitch));
+    this.orbitResetSpeed = 0;
+  }
+
+  /** Get current orbit angles { yaw, pitch } */
+  getOrbitAngles(): { yaw: number; pitch: number } {
+    return { yaw: this.orbitYaw, pitch: this.orbitPitch };
+  }
+
   /**
    * Disable zoom updates (for pause/game-over states)
    */
