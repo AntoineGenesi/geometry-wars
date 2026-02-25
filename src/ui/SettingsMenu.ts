@@ -501,9 +501,10 @@ export class SettingsMenu {
       #settings-menu .tab-content {
         padding: 24px;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
         flex: 1;
-        min-height: 300px;
-        max-height: 55vh;
+        min-height: 0;
       }
 
       /* Section groups */
@@ -770,6 +771,36 @@ export class SettingsMenu {
         font-size: 10px;
         font-weight: bold;
         letter-spacing: 2px;
+      }
+
+      /* Mobile: expand modal, compact padding, bigger touch targets */
+      @media (pointer: coarse), (max-width: 768px) {
+        #settings-menu .settings-content {
+          max-height: 95vh;
+          width: 98%;
+        }
+        #settings-menu .settings-header {
+          padding: 10px 14px;
+        }
+        #settings-menu .settings-header h1 {
+          font-size: 18px;
+          letter-spacing: 4px;
+        }
+        #settings-menu .tab-btn {
+          font-size: 10px;
+          padding: 10px 6px;
+          letter-spacing: 1px;
+        }
+        #settings-menu .tab-content {
+          padding: 14px;
+        }
+        #settings-menu .style-list {
+          max-height: none;
+        }
+        #settings-menu .style-item {
+          padding: 12px;
+          min-height: 44px;
+        }
       }
     `;
     document.head.appendChild(style);
