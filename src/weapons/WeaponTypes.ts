@@ -130,7 +130,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     color: 0x88aaff,
     damage: 1, // per tick
     fireRate: 30, // ticks per second
-    ammo: 300, // duration ticks (10 seconds)
+    ammo: 150, // duration ticks (5 seconds — nerfed from 10s; was too powerful with refills)
     projectileSpeed: 0, // area effect
     description: 'Damages all nearby enemies',
   },

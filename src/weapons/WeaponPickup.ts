@@ -331,7 +331,7 @@ export function getRandomWeaponType(): WeaponType {
     [WeaponType.PlasmaMortar, 10],
     [WeaponType.GravityGun, 8],
     [WeaponType.LaserBeam, 8],
-    [WeaponType.TeslaCoil, 7],
+    [WeaponType.TeslaCoil, 3],  // nerfed from 7 — ammo halved + less frequent
     [WeaponType.BlackHole, 5],
   ];
 
