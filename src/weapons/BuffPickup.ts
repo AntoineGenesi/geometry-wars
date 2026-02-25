@@ -78,6 +78,7 @@ export class BuffPickup {
   private readonly maxAge: number = 15;
   private readonly fadeStart: number = 11;
   private bobPhase: number;
+  private _currentTotalTime: number = 0;
   private readonly mapSizeScaleFactor: number;
 
   constructor(buffType: BuffType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
@@ -181,12 +182,11 @@ export class BuffPickup {
       return;
     }
 
+    // Store totalTime for bob animation in applySurfaceTransform
+    this._currentTotalTime = totalTime;
+
     // Spin (faster than weapons to distinguish)
     this.mesh.rotation.y = totalTime * 3;
-
-    // Bob
-    const bob = Math.sin(totalTime * 3 + this.bobPhase) * 0.05;
-    this.mesh.position.y += bob * dt;
 
     // Pulse core
     const core = this.mesh.getObjectByName('core');
@@ -223,7 +223,8 @@ export class BuffPickup {
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
     this._surfaceWorldPos.copy(position);
-    this.mesh.position.copy(position).addScaledVector(normal, 0.5);
+    const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08;
+    this.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
   }

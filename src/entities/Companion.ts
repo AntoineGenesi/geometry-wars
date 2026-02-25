@@ -648,6 +648,7 @@ export class CompanionPickup {
   private readonly maxAge = 25; // seconds before despawn
   private readonly fadeStart = 20;
   private bobPhase: number;
+  private _currentTotalTime = 0;
   private readonly mapSizeScaleFactor: number;
 
   constructor(companionType: CompanionType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
@@ -719,12 +720,11 @@ export class CompanionPickup {
       return;
     }
 
+    // Store totalTime for bob animation in applySurfaceTransform
+    this._currentTotalTime = totalTime;
+
     // Spin
     this.mesh.rotation.y = totalTime * 2;
-
-    // Bob
-    const bob = Math.sin(totalTime * 3 + this.bobPhase) * 0.04;
-    this.mesh.position.y += bob * dt;
 
     // Pulse core
     const core = this.mesh.getObjectByName('core');
@@ -766,7 +766,8 @@ export class CompanionPickup {
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
     this._surfaceWorldPos.copy(position);
-    this.mesh.position.copy(position).addScaledVector(normal, 0.4);
+    const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.07;
+    this.mesh.position.copy(position).addScaledVector(normal, 0.4 + bob);
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
   }

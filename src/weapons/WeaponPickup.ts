@@ -33,6 +33,7 @@ export class WeaponPickup {
   // Animation
   private bobPhase: number;
   private spinSpeed: number = 2;
+  private _currentTotalTime: number = 0;
 
   constructor(type: WeaponType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.type = type;
@@ -211,12 +212,11 @@ export class WeaponPickup {
       return;
     }
 
-    // Spin animation
-    this.mesh.rotation.y = totalTime * this.spinSpeed;
+    // Store totalTime for use in applySurfaceTransform (bob along surface normal)
+    this._currentTotalTime = totalTime;
 
-    // Bob animation
-    const bob = Math.sin(totalTime * 3 + this.bobPhase) * 0.05;
-    this.mesh.position.y += bob * dt;
+    // Spin animation (applied after surface transform — rotation.y overridden by applySurfaceTransform)
+    this.mesh.rotation.y = totalTime * this.spinSpeed;
 
     // Pulse the inner core
     const core = this.mesh.getObjectByName('core');
@@ -263,8 +263,9 @@ export class WeaponPickup {
     // Store surface world position (before hover offset) for hitbox
     this._surfaceWorldPos.copy(position);
 
-    // Hover above surface
-    this.mesh.position.copy(position).addScaledVector(normal, 0.5);
+    // Hover above surface with bob animation along normal
+    const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08;
+    this.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
 
     // Orient to surface
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);

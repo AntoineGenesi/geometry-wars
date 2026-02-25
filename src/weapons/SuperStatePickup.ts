@@ -25,6 +25,7 @@ export class SuperStatePickup {
   private readonly dotRadius = 0.05;
   private animationTime = 0;
   private readonly mapSizeScaleFactor: number;
+  private _bobPhase: number = Math.random() * Math.PI * 2;
 
   constructor(type: SuperStateType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.type = type;
@@ -203,7 +204,8 @@ export class SuperStatePickup {
       dot.scale.set(scale, scale, scale);
     }
 
-    // Rotate the pattern slowly around local Y (= surface normal) so it spins on the surface.
+    // Rotate the pattern slowly (applied before applySurfaceTransform overwrites quaternion,
+    // but kept here for visual variety — the quaternion is reset by applySurfaceTransform anyway)
     this.mesh.rotation.y += dt * 0.5;
 
     // Animate spawn indicator (visible for first 30s; no hard age limit since SuperStatePickup
@@ -219,8 +221,9 @@ export class SuperStatePickup {
     // Store surface point for hitbox
     this._surfaceWorldPos.copy(transform.position);
 
-    // Hover above surface
-    this.mesh.position.copy(transform.position).addScaledVector(transform.normal, 0.3);
+    // Hover above surface with bob animation along normal
+    const bob = Math.sin(this.animationTime * 2.5 + this._bobPhase) * 0.07;
+    this.mesh.position.copy(transform.position).addScaledVector(transform.normal, 0.3 + bob);
 
     // Orient consistently with other pickup types: local X = tangent, Y = normal, Z = bitangent.
     const mat = new THREE.Matrix4().makeBasis(transform.tangent, transform.normal, transform.bitangent);

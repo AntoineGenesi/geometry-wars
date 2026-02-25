@@ -176,8 +176,9 @@ export class CollisionSystem {
             onEnemyDied?.(enemy, enemies);
 
             if (debugFreeze) console.log('[CollisionSystem] Calling onEnemyKilled callback');
-            const { u, v } = surface.worldToSurface(enemy.position);
-            onEnemyKilled?.(u, v);
+            // Use enemy's tracked UV directly — avoids worldToSurface() which ignores
+            // surface.worldRotation, causing pickups to spawn at the wrong position.
+            onEnemyKilled?.(enemy.surfacePosition.u, enemy.surfacePosition.v);
             if (debugFreeze) console.log('[CollisionSystem] Enemy death complete');
           }
 
