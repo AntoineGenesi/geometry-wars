@@ -19,6 +19,21 @@ interface MasteryStoreData {
 /** XP required to reach each level (index = level). Level 5 = 1000+ XP. */
 export const XP_THRESHOLDS = [0, 100, 300, 500, 700, 1000] as const;
 
+/**
+ * XP awarded per kill (base, before diminishing returns).
+ * Calibrated so ~20 games of regular use (150+ kills/game) reaches Level 5.
+ * Was 10 before; reduced 20x to prevent single-game max-outs.
+ */
+export const XP_PER_KILL = 0.5;
+
+/**
+ * Per-game diminishing returns factor.
+ * Formula: 1 / (1 + gamesPlayed * DIMINISHING_FACTOR).
+ * Reduced from 0.15 to 0.05 to keep late-game progression meaningful
+ * when XP_PER_KILL is properly calibrated.
+ */
+export const DIMINISHING_FACTOR = 0.05;
+
 // ── Passive bonus table ───────────────────────────────────────────────────────
 
 interface BonusConfig {
@@ -206,8 +221,8 @@ export class MasteryStore {
       const xpBefore = entry.xp;
       const levelBefore = xpToLevel(xpBefore);
 
-      const diminishingFactor = 1 / (1 + entry.gamesPlayed * 0.15);
-      const gameXp = kills * 10 * diminishingFactor;
+      const diminishingFactor = 1 / (1 + entry.gamesPlayed * DIMINISHING_FACTOR);
+      const gameXp = kills * XP_PER_KILL * diminishingFactor;
       const xpAfter = xpBefore + gameXp;
       const levelAfter = xpToLevel(xpAfter);
 
