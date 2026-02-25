@@ -1130,7 +1130,15 @@ function main() {
 
   function showPauseOverlay(paused: boolean): void {
     isPaused = paused;
-    if (input instanceof TouchInput) input.setGamePaused(paused);
+    // Only toggle joystick when actually in the playing phase — never re-enable
+    // joystick input while in lobby/voting phases even if the game is "unpaused".
+    if (input instanceof TouchInput) {
+      if (currentRoomPhase === 'playing') {
+        input.setGamePaused(paused);
+      } else {
+        input.setGamePaused(true); // lobby/voting: always keep buttons accessible
+      }
+    }
     if (paused) {
       game.pause(); // Sync game clock to prevent dt accumulation during pause
       // Both host and non-host see the full PauseMenu.
@@ -1331,8 +1339,11 @@ function main() {
   function hideLocalMenu(): void {
     localMenuOpen = false;
     localMenuEl.style.display = 'none';
-    // Re-enable joystick touch capture when menu is dismissed.
-    if (input instanceof TouchInput) input.setGamePaused(false);
+    // Re-enable joystick touch capture when menu is dismissed —
+    // but only during active gameplay; not in lobby/voting where buttons must work.
+    if (input instanceof TouchInput && currentRoomPhase === 'playing') {
+      input.setGamePaused(false);
+    }
   }
 
   // Escape key handler:
@@ -2214,6 +2225,13 @@ function main() {
         statusEl.textContent = 'Waiting for host to start the game...';
         startBtn.style.display = 'none';
       }
+    }
+
+    // Safety guard: ensure joystick input is disabled whenever we're NOT in active gameplay.
+    // This fires on every state update (~30Hz) and corrects any stale gamePaused=false
+    // that may have slipped through from showPauseOverlay/hideLocalMenu/onGameStart race conditions.
+    if (input instanceof TouchInput && currentRoomPhase !== 'playing') {
+      input.setGamePaused(true);
     }
   }
 
