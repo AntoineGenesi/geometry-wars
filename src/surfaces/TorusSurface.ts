@@ -82,26 +82,34 @@ export class TorusSurface extends Surface {
     const cosPhi = Math.cos(phi)
     const sinPhi = Math.sin(phi)
 
-    // Position on torus
+    // Position on torus.
+    // NOTE: Three.js TorusGeometry is created in the XY plane (hole along Z),
+    // then rotated by geometry.rotateX(π/2) so the hole is along Y.
+    // After that rotation, the tube Y component is -r*sinTheta (not +r*sinTheta).
+    // All analytical formulas must match this mesh orientation so that BVH
+    // positions (world space from mesh) and analytical positions (from getPoint)
+    // are in the same coordinate system. If they differ, the world-space
+    // pickup collision check fails for any tube position where sinTheta ≠ 0.
     const ringRadius = R + r * cosTheta
     const position = new THREE.Vector3(
       ringRadius * cosPhi,
-      r * sinTheta,
+      -r * sinTheta,  // negative: matches geometry.rotateX(π/2) mesh orientation
       ringRadius * sinPhi
     )
 
     // Normal vector (points outward from the tube surface)
-    // Direction from tube center to surface point
+    // Direction from tube center to surface point (corrected for -sinTheta)
     const normal = new THREE.Vector3(
       cosTheta * cosPhi,
-      sinTheta,
+      -sinTheta,  // negative: matches the corrected position formula
       cosTheta * sinPhi
     ).normalize()
 
     // Tangent in u direction (d/dtheta - around the tube, through the hole)
+    // d(position)/dtheta: dx = -sinTheta*cosP, dy = -cosTheta, dz = -sinTheta*sinP
     const tangentU = new THREE.Vector3(
       -sinTheta * cosPhi,
-      cosTheta,
+      -cosTheta,  // negative: d/dtheta of (-r*sinTheta) = -r*cosTheta
       -sinTheta * sinPhi
     ).normalize()
 
@@ -176,9 +184,16 @@ export class TorusSurface extends Surface {
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
     const R = this.majorRadius
 
-    // Find phi (v) - the angle around the main ring
-    // Project onto XZ plane to find the angle
-    let phi = Math.atan2(worldPos.z, worldPos.x)
+    // Undo map-size scale so calculations use unit-space geometry dimensions.
+    // (Same fix as MobiusSurface worldToSurface — S28b regression.)
+    const scale = this.group.scale.x
+    const x = worldPos.x / scale
+    const y = worldPos.y / scale
+    const z = worldPos.z / scale
+
+    // Find phi (v) - the angle around the main ring.
+    // Project onto XZ plane to find the angle (scale-invariant ratio).
+    let phi = Math.atan2(z, x)
     if (phi < 0) phi += Math.PI * 2
 
     // Find the center of the tube cross-section at this phi
@@ -187,18 +202,20 @@ export class TorusSurface extends Surface {
     const tubeCenterX = R * cosPhi
     const tubeCenterZ = R * sinPhi
 
-    // Vector from tube center to the point
-    const toPointX = worldPos.x - tubeCenterX
-    const toPointY = worldPos.y
-    const toPointZ = worldPos.z - tubeCenterZ
+    // Vector from tube center to the point (in unscaled space)
+    const toPointX = x - tubeCenterX
+    const toPointY = y
+    const toPointZ = z - tubeCenterZ
 
-    // Project onto the tube cross-section plane
-    // The outward direction in this plane is (cosPhi, 0, sinPhi)
+    // Project onto the tube cross-section plane.
+    // The outward direction in this plane is (cosPhi, 0, sinPhi).
     const outward = toPointX * cosPhi + toPointZ * sinPhi
 
-    // theta (u) is the angle in the tube cross-section
-    // outward component gives radial direction, y gives vertical
-    let theta = Math.atan2(toPointY, outward)
+    // theta (u) is the angle in the tube cross-section.
+    // With the corrected getPointLocal (y = -r*sinTheta), we invert correctly:
+    //   outward = r*cosTheta, toPointY = -r*sinTheta
+    //   => theta = atan2(-toPointY, outward) = atan2(r*sinTheta, r*cosTheta) = theta ✓
+    let theta = Math.atan2(-toPointY, outward)
     if (theta < 0) theta += Math.PI * 2
 
     const u = theta / (Math.PI * 2)
