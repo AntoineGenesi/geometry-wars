@@ -1743,9 +1743,8 @@ function main() {
         allyGlowManager.setPosition(id, player.mesh.position);
       }
 
-      // Update floating name label — show "(You)" for local player, actual name for remote
-      const displayName = id === localPlayerId ? '(You)' : netPlayer.name;
-      nameLabels.setLabel(id, displayName, netPlayer.color);
+      // Update floating name label
+      nameLabels.setLabel(id, netPlayer.name, netPlayer.color);
     });
 
     // Remove disconnected players
