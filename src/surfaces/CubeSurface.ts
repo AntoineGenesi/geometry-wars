@@ -675,15 +675,21 @@ export class CubeSurface extends Surface {
       // Vertex indices at j=0 row: i and i+1
       const bottomA = i          // vertex (i, 0)
       const bottomB = i + 1      // vertex (i+1, 0)
-      // Winding: cross(A-center, B-center) must point down (-Y)
-      indices.push(bottomCenterIdx, bottomA, bottomB)
+      // WINDING FIX: Grid's bottom boundary edge goes i→(i+1).
+      // HalfEdgeMesh twin requires the opposite: (i+1)→i.
+      // Order (center, B, A) gives half-edges: center→B, B→A=(i+1)→i, A→center.
+      // This makes B→A the twin of the grid's A→B boundary edge. ✓
+      indices.push(bottomCenterIdx, bottomB, bottomA)
 
       // Top cap: fan triangle from center to v=vSegments edge vertices
       // Vertex indices at j=vSegments row
       const topA = vSegments * (uSegments + 1) + i
       const topB = topA + 1
-      // Winding: cross(B-center, A-center) must point up (+Y)
-      indices.push(topCenterIdx, topB, topA)
+      // WINDING FIX: Grid's top boundary edge (j=vSegments-1 Triangle 2) goes topB→topA.
+      // HalfEdgeMesh twin requires the opposite: topA→topB.
+      // Order (center, A, B) gives half-edges: center→A, A→B=topA→topB, B→center.
+      // This makes A→B the twin of the grid's B→A boundary edge. ✓
+      indices.push(topCenterIdx, topA, topB)
     }
 
     const geometry = new THREE.BufferGeometry()
