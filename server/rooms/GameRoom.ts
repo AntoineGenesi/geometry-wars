@@ -169,9 +169,13 @@ export class GameRoom extends Room<GameState> {
   private nextEnemyId = 0;
   private metricsLogPath: string | null = null;
   private hostIsLocal: boolean = false;
+  /** True when the current host joined with requestHost=true (navigated from the start menu). */
+  private hostRequestedHost: boolean = false;
   private logger = new Logger(path.join(process.cwd(), 'logs', 'colyseus-server.log'));
   /** Per-session locality: tracks whether each connected player is a localhost client. */
   private clientLocality: Map<string, boolean> = new Map();
+  /** Per-session requestHost flag: tracks who joined with requestHost=true. */
+  private clientRequestedHost: Map<string, boolean> = new Map();
   private nextGeomId = 0;
   private nextPickupId = 0;
   private waveNumber = 0;
@@ -322,7 +326,7 @@ export class GameRoom extends Room<GameState> {
     this.logger.log(`[GameRoom] Created with surface: ${this.state.surfaceType}`);
   }
 
-  onJoin(client: Client, options: { name?: string }) {
+  onJoin(client: Client, options: { name?: string; requestHost?: boolean }) {
     const player = new PlayerState();
     player.id = client.sessionId;
 
@@ -355,25 +359,29 @@ export class GameRoom extends Room<GameState> {
     // the host role.
     const remoteAddr = (client as unknown as { remoteAddress?: string }).remoteAddress ?? '';
     const isLocalClient = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
+    const didRequestHost = options.requestHost === true;
 
-    // Track locality for this session (used in onLeave to correctly set hostIsLocal on transfer)
+    // Track locality and creator intent for this session.
+    // Used in onLeave to correctly set flags when host role transfers.
     this.clientLocality.set(client.sessionId, isLocalClient);
+    this.clientRequestedHost.set(client.sessionId, didRequestHost);
 
     if (this.state.hostId === '') {
       // First joiner — becomes host
       this.state.hostId = client.sessionId;
       this.hostIsLocal = isLocalClient;
-      this.logger.log(`[GameRoom] ${player.name} is the host (local=${isLocalClient})`);
-    } else if (isLocalClient && !this.hostIsLocal && this.state.roomPhase === 'lobby') {
-      // A localhost client joined after a LAN client had already taken the host
-      // role, but ONLY in lobby phase. Once the game is in progress, we never
-      // steal the host role — that would cause dual-host state if the original
-      // host leaves and rejoins mid-game. The lobby-only guard ensures this
-      // promotion only handles the initial connection race, not rejoin scenarios.
+      this.hostRequestedHost = didRequestHost;
+      this.logger.log(`[GameRoom] ${player.name} is the host (local=${isLocalClient}, requestHost=${didRequestHost})`);
+    } else if ((isLocalClient || didRequestHost) && !(this.hostIsLocal || this.hostRequestedHost) && this.state.roomPhase === 'lobby') {
+      // A game creator (requestHost=true) or localhost client joined after a plain LAN client
+      // had already taken the host role — promote them to host (lobby phase only).
+      // The lobby-only guard ensures this only handles the initial connection race, not rejoin scenarios.
+      // Priority logic: creator/localhost always beats a non-creator, non-localhost first-joiner.
       const prev = this.state.hostId;
       this.state.hostId = client.sessionId;
-      this.hostIsLocal = true;
-      this.logger.log(`[GameRoom] Host promoted to localhost player: ${player.name} (was ${prev})`);
+      this.hostIsLocal = isLocalClient;
+      this.hostRequestedHost = didRequestHost;
+      this.logger.log(`[GameRoom] Host promoted to ${didRequestHost ? 'creator' : 'localhost'} player: ${player.name} (was ${prev})`);
       this.broadcast('host_changed', { hostId: client.sessionId });
     }
 
@@ -405,8 +413,9 @@ export class GameRoom extends Room<GameState> {
       this.playerInvincibility.delete(client.sessionId);
       this.playerBoostStates.delete(client.sessionId);
     }
-    // Remove locality tracking for this session
+    // Remove locality and creator-intent tracking for this session
     this.clientLocality.delete(client.sessionId);
+    this.clientRequestedHost.delete(client.sessionId);
 
     // If the host left, try to transfer host to another player.
     // Previously this always closed the room, which meant any host disconnect
@@ -420,13 +429,14 @@ export class GameRoom extends Room<GameState> {
 
       if (newHostId) {
         this.state.hostId = newHostId;
-        // Set hostIsLocal from actual tracked locality of the new host.
+        // Set hostIsLocal and hostRequestedHost from actual tracked values of the new host.
         // Previously always set false ("reset for safety"), which caused the
         // localhost-priority logic to incorrectly re-promote the original host
         // if they rejoined mid-game (clientLocality.get would have returned true).
         this.hostIsLocal = this.clientLocality.get(newHostId) ?? false;
+        this.hostRequestedHost = this.clientRequestedHost.get(newHostId) ?? false;
         const newHostPlayer = this.state.players.get(newHostId);
-        this.logger.log(`[GameRoom] Host transferred to: ${newHostPlayer?.name || newHostId} (local=${this.hostIsLocal})`);
+        this.logger.log(`[GameRoom] Host transferred to: ${newHostPlayer?.name || newHostId} (local=${this.hostIsLocal}, requestHost=${this.hostRequestedHost})`);
         // If the game was paused by the outgoing host, unpause so the new host
         // doesn't inherit a frozen game they didn't create and can't easily recover.
         if (this.state.isPaused) {

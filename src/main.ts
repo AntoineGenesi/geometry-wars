@@ -2056,7 +2056,9 @@ if (quickStartConfig.enabled) {
       });
     } else if (selection.gameMode === 'network') {
       // Online/LAN multiplayer - update URL and load network module
-      const params: Record<string, string> = { mode: 'network', surface: selection.surfaceType };
+      // creator=1 signals that this player is the game creator and should be host.
+      // QR code joiners / direct URL users do NOT have creator=1, so they become non-host.
+      const params: Record<string, string> = { mode: 'network', surface: selection.surfaceType, creator: '1' };
       if (selection.serverUrl) params.server = selection.serverUrl;
       if (selection.playerName) params.name = selection.playerName;
       window.history.replaceState({}, '', buildUrl(params));
