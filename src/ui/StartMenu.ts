@@ -1446,9 +1446,25 @@ export class StartMenu {
           z-index: 20;
         }
 
-        /* Controls hint: hide on mobile */
-        #start-menu .controls-hint {
+        /* Controls hint: hide keyboard text on mobile, but show action buttons */
+        #start-menu .controls-hint p {
           display: none;
+        }
+        #start-menu .controls-hint {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          margin-top: 12px;
+          padding: 0 16px;
+        }
+        #start-menu .controls-hint .weapon-info-btn {
+          width: 100%;
+          max-width: 280px;
+          min-height: 44px;
+          font-size: 13px;
+          padding: 12px 16px;
+          touch-action: manipulation;
         }
 
         /* Surface grid: 3 columns */
