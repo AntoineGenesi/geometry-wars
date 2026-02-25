@@ -2146,8 +2146,11 @@ function main() {
     state.players.forEach((p: NetworkPlayerState) => {
       combinedScore += p.score;
       const you = p.id === localPlayerId ? ' (YOU)' : '';
-      const status = p.alive ? '' : ' [DEAD]';
-      playerList += `${p.name}${you}: ${p.score.toLocaleString()}${status}<br>`;
+      const lives = Math.max(0, p.lives);
+      const livesHtml = p.alive
+        ? (lives <= 5 ? '\u2665'.repeat(lives) : `\u2665 x${lives}`)
+        : '<span style="color:#ff5555">[DEAD]</span>';
+      playerList += `${p.name}${you}: ${livesHtml} ${p.score.toLocaleString()}<br>`;
     });
     playersEl.innerHTML = playerList;
     if (teamScoreEl) teamScoreEl.textContent = combinedScore.toLocaleString();
