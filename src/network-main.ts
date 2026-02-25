@@ -1110,12 +1110,36 @@ function main() {
   // Show QR code / join URL in pause menu so other players can join conveniently.
   // Strip personal params (name=, creator=) from the URL before sharing.
   // creator=1 must be removed so QR code scanners don't accidentally claim host.
+  // Use the real LAN IP (not localhost) so mobile devices can scan and connect.
   {
     const params = new URLSearchParams(window.location.search);
     params.delete('name');
     params.delete('creator');
-    const joinUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
-    pauseMenu.setJoinUrl(joinUrl);
+    const port = parseInt(window.location.port, 10) || 3000;
+    const path = `${window.location.pathname}?${params.toString()}`;
+
+    // Attempt to resolve the real LAN IP via the Vite LAN plugin.
+    // Falls back to window.location.origin (localhost) if the endpoint is unavailable.
+    (async () => {
+      try {
+        const status = await fetch('/__lan/status').then(r => r.json()) as {
+          addresses: string[];
+          windowsAddresses?: string[];
+          isWSL2?: boolean;
+        };
+        // Prefer Windows LAN IP in WSL2 (172.x IPs are unreachable from other devices)
+        const lanIp = (status.isWSL2 && status.windowsAddresses?.length)
+          ? status.windowsAddresses[0]
+          : status.addresses?.[0];
+        const joinUrl = lanIp
+          ? `http://${lanIp}:${port}${path}`
+          : `${window.location.origin}${path}`;
+        pauseMenu.setJoinUrl(joinUrl);
+      } catch {
+        // Fallback: use current origin (localhost) — at least the URL is shown
+        pauseMenu.setJoinUrl(`${window.location.origin}${path}`);
+      }
+    })();
   }
 
   /** Build PauseMenuGameData from current local player state (buffs, weapon, kills). */
