@@ -15,7 +15,8 @@ export class KingMode implements IGameMode {
   // Zone state
   private zoneU: number = 0.5;
   private zoneV: number = 0.5;
-  private zoneRadius: number = 0.1; // UV space
+  private zoneRadiusUV: number = 0.12; // UV-space radius for gameplay detection
+  private zoneRadiusWorld: number = 2.5; // World-space ring radius for visibility
   private zoneTimer: number = 15; // seconds until zone moves
   private readonly zoneDuration = 15;
 
@@ -50,7 +51,7 @@ export class KingMode implements IGameMode {
     const distU = this.wrappedDistance(playerU, this.zoneU, context.surface.wrapsU);
     const distV = this.wrappedDistance(playerV, this.zoneV, context.surface.wrapsV);
     const distSq = distU * distU + distV * distV;
-    this.inZone = distSq <= this.zoneRadius * this.zoneRadius;
+    this.inZone = distSq <= this.zoneRadiusUV * this.zoneRadiusUV;
 
     // Update zone visual
     this.updateZoneVisual(context);
@@ -119,17 +120,25 @@ export class KingMode implements IGameMode {
   }
 
   private createZoneVisual(context: GameModeContext): void {
+    // Adapt ring size to surface dimensions: use ~25% of surface radius for good visibility
+    const geo = context.surface.mesh.geometry;
+    if (!geo.boundingSphere) geo.computeBoundingSphere();
+    if (geo.boundingSphere) {
+      this.zoneRadiusWorld = Math.max(1.0, geo.boundingSphere.radius * 0.25);
+    }
     // Create a glowing ring on the surface
-    const geometry = new THREE.RingGeometry(this.zoneRadius * 0.8, this.zoneRadius, 32);
+    const geometry = new THREE.RingGeometry(this.zoneRadiusWorld * 0.75, this.zoneRadiusWorld, 48);
     const material = new THREE.MeshBasicMaterial({
       color: this.zoneColor,
       transparent: true,
-      opacity: 0.4,
+      opacity: 0.5,
       side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      depthTest: false, // Always render on top — prevents z-fighting with surface
     });
     this.zoneMesh = new THREE.Mesh(geometry, material);
+    this.zoneMesh.renderOrder = 10; // Render after surface
     context.scene.add(this.zoneMesh);
   }
 
