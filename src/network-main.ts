@@ -1538,6 +1538,15 @@ function main() {
   // Track the current room phase so we can detect transitions
   let currentRoomPhase: string = 'lobby';
 
+  // Latest state received during voting phase — used to pass fresh state to
+  // votingScreen.show() from the mastery callback (the closure-captured `state`
+  // at transition time is stale by the time the player dismisses mastery).
+  let latestVotingState: NetworkGameState | null = null;
+
+  // Active mastery screen reference — allows the voting→playing transition to
+  // forcefully dismiss it when the countdown expires while mastery is showing.
+  let activeMasteryScreen: MasteryProgressScreen | null = null;
+
   // -----------------------------------------------------------------------
   // Helper: get or create a real Player for a network player
   // -----------------------------------------------------------------------
@@ -2230,9 +2239,11 @@ function main() {
         const killsByWeapon = weaponMastery.getKillsByWeapon();
         const xpResults = masteryStore.awardGameXP(killsByWeapon);
         masteryStore.save();
+        latestVotingState = state; // seed with transition-time state; updated every onStateChange
         const anyXP = xpResults.some(r => r.xpAfter > r.xpBefore);
         if (anyXP) {
           const masteryScreen = new MasteryProgressScreen();
+          activeMasteryScreen = masteryScreen;
           masteryScreen.show(
             {
               results: xpResults,
@@ -2240,8 +2251,13 @@ function main() {
               getBonusDescription: (w, lv) => masteryStore.getBonusDescription(w, lv),
             },
             () => {
+              activeMasteryScreen = null;
               masteryScreen.dispose();
-              votingScreen.show(state, isHost, localPlayerId);
+              // Only show voting if still in voting phase — if roomPhase already
+              // advanced to 'playing' (countdown expired during mastery), skip it.
+              if (currentRoomPhase === 'voting') {
+                votingScreen.show(latestVotingState ?? state, isHost, localPlayerId);
+              }
             },
           );
         } else {
@@ -2250,6 +2266,12 @@ function main() {
       } else if (newPhase === 'playing' && currentRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
         votingScreen.hide();
+        // If the voting countdown expired while the mastery screen was still showing,
+        // dismiss it now so the player doesn't get stuck on a stale screen.
+        if (activeMasteryScreen) {
+          activeMasteryScreen.dispose();
+          activeMasteryScreen = null;
+        }
         resetGameEntities();
         // initSurface at the top of onStateChange already handles surface reinit
         // (called with state.surfaceType and confirmedFromServer=true).
@@ -2271,8 +2293,10 @@ function main() {
       currentRoomPhase = newPhase;
     }
 
-    // If currently in voting phase, keep VotingScreen updated with latest state
+    // If currently in voting phase, keep VotingScreen updated with latest state.
+    // Also track the latest state so the mastery→voting handoff uses fresh countdown.
     if (currentRoomPhase === 'voting') {
+      latestVotingState = state;
       votingScreen.update(state, isHost, localPlayerId);
     }
 

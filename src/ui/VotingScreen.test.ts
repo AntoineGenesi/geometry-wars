@@ -128,3 +128,79 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
     screen.dispose();
   });
 });
+
+// ---------------------------------------------------------------------------
+// S34b regression: mastery-screen desync — frozen timer on voting screen
+// ---------------------------------------------------------------------------
+
+describe('VotingScreen — mastery desync regression (S34b)', () => {
+  /** Minimal fake NetworkGameState for testing */
+  function makeState(countdown: number, overrides: Partial<NetworkGameState> = {}): NetworkGameState {
+    return {
+      players: new Map(),
+      bullets: { forEach() {} } as never,
+      enemies: { forEach() {} } as never,
+      geoms: { forEach() {} } as never,
+      weaponPickups: { forEach() {} } as never,
+      surfaceType: 'sphere',
+      waveNumber: 0,
+      gameTime: 0,
+      gameStarted: false,
+      gameOver: true,
+      hostId: 'player1',
+      isPaused: false,
+      roomPhase: 'voting',
+      voteMap: new Map(),
+      votingCountdown: countdown,
+      hostPickMode: false,
+      gameMode: 'waves',
+      mapSize: 'medium',
+      ...overrides,
+    };
+  }
+
+  it('update() after show() with fresh state reflects the live countdown', () => {
+    // Simulates: mastery callback calls show() with stale state (countdown=30),
+    // then next onStateChange fires update() with current state (countdown=15).
+    const screen = new VotingScreen();
+
+    // show() with stale countdown (as if captured in mastery screen closure)
+    screen.show(makeState(30), false, 'player1');
+
+    // update() with current countdown (as the fix ensures)
+    screen.update(makeState(15), false, 'player1');
+
+    const cdEl = document.querySelector('.vs-countdown') as HTMLElement;
+    expect(cdEl).not.toBeNull();
+    // Timer must reflect the LIVE value, not the stale show() value
+    expect(cdEl.textContent).toBe('15');
+
+    screen.dispose();
+  });
+
+  it('update() before show() is a safe no-op (does not throw)', () => {
+    // Simulates: onStateChange fires update() while mastery screen is showing
+    // (votingScreen.isBuilt is false, show() not yet called).
+    // This must not throw — VotingScreen guards with isBuilt.
+    const screen = new VotingScreen();
+    expect(() => {
+      screen.update(makeState(25), false, 'player1');
+    }).not.toThrow();
+    screen.dispose();
+  });
+
+  it('show() with fresh latestVotingState reflects live countdown immediately', () => {
+    // Simulates the fix: mastery callback uses latestVotingState (countdown=12)
+    // instead of stale closure state (countdown=30).
+    const screen = new VotingScreen();
+
+    // The FIX: show() called with fresh state
+    screen.show(makeState(12), false, 'player1');
+
+    const cdEl = document.querySelector('.vs-countdown') as HTMLElement;
+    expect(cdEl).not.toBeNull();
+    expect(cdEl.textContent).toBe('12');
+
+    screen.dispose();
+  });
+});
