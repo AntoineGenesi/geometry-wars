@@ -449,31 +449,33 @@ export class WeaponHUD {
     const banner = document.createElement('div');
     banner.style.cssText = [
       'position:fixed',
-      'left:50%',
-      'top:18%',
-      'transform:translateX(-50%)',
-      'background:rgba(0,0,0,0.82)',
-      'border:1px solid #555',
-      'color:#eee',
+      'right:20px',
+      'top:20px',
+      'background:rgba(0,0,0,0.75)',
+      'border:1px solid #444',
+      'color:#bbb',
       "font-family:'Segoe UI',Arial,sans-serif",
-      'font-size:13px',
-      'padding:6px 16px',
-      'border-radius:4px',
+      'font-size:12px',
+      'padding:4px 12px',
+      'border-radius:3px',
       'pointer-events:none',
       'z-index:500',
       'transition:opacity 0.8s',
-      'opacity:1',
+      'opacity:0.85',
       'white-space:nowrap',
-      'letter-spacing:0.5px',
+      'letter-spacing:0.3px',
+      'max-width:200px',
+      'overflow:hidden',
+      'text-overflow:ellipsis',
     ].join(';');
     banner.textContent = message;
     document.body.appendChild(banner);
 
-    // Fade out after 2 s, remove after 0.8 s fade
+    // Fade out after 2.5 s, remove after 0.8 s fade
     setTimeout(() => {
       banner.style.opacity = '0';
       setTimeout(() => banner.remove(), 800);
-    }, 2000);
+    }, 2500);
   }
 
   /**

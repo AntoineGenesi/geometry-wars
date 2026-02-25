@@ -1455,27 +1455,38 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       const hint = document.createElement('div');
       hint.style.cssText = `
         position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        background: rgba(0,0,0,0.75);
-        color: #00ffff;
+        bottom: 80px;
+        left: 20px;
+        background: rgba(0,0,0,0.80);
+        color: #00dddd;
         font-family: 'Segoe UI', Arial, sans-serif;
-        font-size: 16px;
-        letter-spacing: 2px;
-        padding: 12px 24px;
-        border-radius: 8px;
-        border: 1px solid rgba(0,255,255,0.4);
-        text-shadow: 0 0 8px rgba(0,255,255,0.5);
+        font-size: 13px;
+        letter-spacing: 0.5px;
+        padding: 10px 16px;
+        border-radius: 6px;
+        border: 1px solid rgba(0,200,200,0.5);
+        text-shadow: 0 0 6px rgba(0,200,200,0.4);
         pointer-events: none;
         z-index: 3000;
         opacity: 1;
         transition: opacity 0.8s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
       `;
-      hint.textContent = 'PINCH TO ZOOM';
+
+      const textSpan = document.createElement('span');
+      textSpan.textContent = 'Pinch with THREE fingers to zoom';
+
+      const iconSpan = document.createElement('span');
+      iconSpan.style.cssText = 'font-size:18px;';
+      iconSpan.textContent = '👆';
+
+      hint.appendChild(iconSpan);
+      hint.appendChild(textSpan);
       document.body.appendChild(hint);
-      setTimeout(() => { hint.style.opacity = '0'; }, 2500);
-      setTimeout(() => { hint.remove(); }, 3300);
+      setTimeout(() => { hint.style.opacity = '0'; }, 3000);
+      setTimeout(() => { hint.remove(); }, 3800);
     }
   }
 

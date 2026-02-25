@@ -84,7 +84,7 @@ export class KillLog {
         background: rgba(0, 0, 20, 0.55);
         border-left: 2px solid currentColor;
         border-radius: 2px;
-        font-size: 13px;
+        font-size: 12px;
         font-weight: 600;
         letter-spacing: 0.5px;
         white-space: nowrap;
@@ -110,7 +110,7 @@ export class KillLog {
       }
 
       .kill-entry .kill-count.streak-active {
-        font-size: 15px;
+        font-size: 13px;
         font-weight: 800;
         opacity: 1;
       }
