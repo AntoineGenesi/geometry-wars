@@ -239,6 +239,16 @@ function getPlayerName(): string {
   return `Player ${Math.floor(Math.random() * 9000) + 1000}`;
 }
 
+/**
+ * Returns true when this player navigated here via the start menu's "Create Network Game" button.
+ * The start menu sets creator=1 in the URL to signal creator intent so the server can assign host.
+ * QR code joiners and direct URL users do NOT have this param and become non-host.
+ */
+function isGameCreator(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('creator') === '1';
+}
+
 // ---------------------------------------------------------------------------
 // Enemy colors for death particle effects (same map as single player / co-op)
 // ---------------------------------------------------------------------------
@@ -1084,10 +1094,12 @@ function main() {
   });
 
   // Show QR code / join URL in pause menu so other players can join conveniently.
-  // Strip personal params (name=) from the URL before sharing.
+  // Strip personal params (name=, creator=) from the URL before sharing.
+  // creator=1 must be removed so QR code scanners don't accidentally claim host.
   {
     const params = new URLSearchParams(window.location.search);
     params.delete('name');
+    params.delete('creator');
     const joinUrl = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
     pauseMenu.setJoinUrl(joinUrl);
   }
@@ -2356,6 +2368,7 @@ function main() {
   network.connect({
     name: playerName,
     surfaceType: urlSurfaceType,
+    requestHost: isGameCreator(),
   }).then(() => {
     connectionResolved = true;
     clearTimeout(timeoutId);
