@@ -434,6 +434,11 @@ function main() {
     game.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   }
 
+  // Ensure camera aspect ratio matches current viewport dimensions
+  // (fixes horizontal stretch on game start, especially on mobile where window
+  // dimensions may not be stable at Game construction time)
+  game.ensureCameraAspectRatio();
+
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
