@@ -1426,7 +1426,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     window.location.href = window.location.pathname;
   });
 
-  // -- Mobile: wire pause button in TouchInput --
+  // -- Mobile: wire pause button and camera tilt in TouchInput --
   if (mobile && input instanceof TouchInput) {
     input.onPause = () => {
       if (isGameOver) return;
@@ -1443,6 +1443,22 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         game.pause();
         updatePauseMenuData();
         pauseMenu.show();
+      }
+    };
+
+    // Wire tilt buttons to camera controller
+    input.onCameraTilt = (delta: number) => {
+      cameraController.adjustPitch(delta);
+    };
+
+    // Reset camera pitch on pause (tilt resets to 0, yaw preserved)
+    const origOnPause = input.onPause;
+    input.onPause = () => {
+      origOnPause?.();
+      if (isPaused) {
+        // Just became paused — reset vertical tilt
+        const { yaw } = cameraController.getOrbitAngles();
+        cameraController.setOrbitAngles(yaw, 0);
       }
     };
   }
@@ -1669,6 +1685,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   game.onFixedUpdate = (dt: number) => {
     // Reset profiler at the start of each frame
     profiler.reset();
+
+    // Apply mobile camera tilt (must run before gameLoop so cameraController sees updated pitch)
+    if (input instanceof TouchInput) input.applyTilt(dt);
 
     gameLoop.update(ctx, dt);
 

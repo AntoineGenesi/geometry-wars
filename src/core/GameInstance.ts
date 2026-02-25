@@ -488,6 +488,16 @@ export class GameInstance {
     this.cameraController.setCameraDistance(distance);
   }
 
+  /** Set orbit yaw and pitch for the camera. */
+  setOrbitAngles(yaw: number, pitch: number): void {
+    this.cameraController.setOrbitAngles(yaw, pitch);
+  }
+
+  /** Get current orbit angles. */
+  getOrbitAngles(): { yaw: number; pitch: number } {
+    return this.cameraController.getOrbitAngles();
+  }
+
   /** Get current game stats */
   getStats(): { lives: number } {
     return { lives: this.player.lives };
