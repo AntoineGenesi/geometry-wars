@@ -348,15 +348,19 @@ export class GameInstance {
     this.weaponManager.setCallbacks({
       getEnemies: () => {
         return this.enemySpawner.getEnemies()
-          .filter(e => e.alive && e.mesh)
+          .filter(e => e.alive && e.mesh && !e.isMaterializing)
           .map((e, i) => ({
-            position: e.mesh!.position.clone(),
+            // Use e.position (surface center, world space) not e.mesh.position (above surface).
+            // WeaponManager projectiles are projected onto the surface, so comparing against
+            // mesh.position (offset by enemy.radius above surface) causes misses.
+            position: e.position.clone(),
             index: i,
             alive: e.alive,
           }));
       },
       onEnemyDamage: (index: number, damage: number) => {
-        const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
+        // Must use same filter as getEnemies so indices match.
+        const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh && !e.isMaterializing);
         const enemy = enemies[index];
         if (enemy) {
           enemy.takeDamage(damage);
@@ -414,7 +418,10 @@ export class GameInstance {
 
   /** Check collisions between regular bullets (bulletPool) and enemies. */
   private _checkBulletEnemyCollisions(): void {
-    const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
+    // Filter out materializing enemies (invisible during spawn warning — same as CollisionSystem).
+    // Without this, invisible enemies silently absorb bullets during the 0.8s spawn warning,
+    // making it appear as if the first 1-2 shots "miss" before the enemy visually appears.
+    const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh && !e.isMaterializing);
     this.bulletPool.forEachActive((index, bulletPos, _data) => {
       for (const enemy of enemies) {
         // Use enemy.position (surface center, world space) not enemy.mesh.position (above surface).
