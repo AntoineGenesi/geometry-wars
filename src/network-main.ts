@@ -50,6 +50,9 @@ import { WeaponManager } from './weapons/WeaponManager';
 import type { WeaponInventoryEntry } from './weapons/WeaponManager';
 import { AllyGlowManager } from './effects/AllyGlow';
 import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
+import { WeaponMasteryManager } from './buffs/WeaponMasteryManager';
+import { MasteryStore } from './systems/MasteryStore';
+import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
 import { BuffManager } from './buffs/BuffManager';
 import { BuffHUD } from './buffs/BuffHUD';
 import { BuffAuraRenderer } from './buffs/BuffAuraRenderer';
@@ -797,6 +800,12 @@ function main() {
     levelUpNotification.show(level, perk);
     sound.play('multiplierUp', { pitch: 1.2 + level * 0.05 });
   };
+
+  // -- Weapon mastery tracking + persistent XP store --
+  // Tracks kills per weapon type for the local player (same as SP/co-op).
+  // Shown on game end via MasteryProgressScreen before VotingScreen.
+  const weaponMastery = new WeaponMasteryManager();
+  const masteryStore = MasteryStore.load();
 
   // -- Buff system: client-side buff collection + visual effects --
   // Buffs are collected via client-side pickup drops (see localBuffPickups).
@@ -1633,6 +1642,9 @@ function main() {
     // Reset buff stacks so new game starts from scratch
     buffManager.reset();
 
+    // Reset weapon mastery kill counters (XP already awarded at game end)
+    weaponMastery.reset();
+
     // Reset game-over flag so GameOverScreen can show again next game
     gameOverShown = false;
 
@@ -1909,9 +1921,10 @@ function main() {
           const tracker = getOrCreateDDATracker(nearestId);
           tracker.recordKill(enemy.scoreValue);
 
-          // PlayerLevel kill attribution: count kill for local player progression
+          // PlayerLevel + weapon mastery kill attribution for local player
           if (nearestId === localPlayerId) {
             playerLevel.addKill();
+            weaponMastery.recordKill(localWeaponManager.getCurrentWeapon());
           }
         }
 
@@ -2187,10 +2200,29 @@ function main() {
         // Game ended — transition to voting screen.
         // Hide GameOverScreen if it snuck in (from the old gameOver bool path).
         gameOverScreen.hide();
-        // Show VotingScreen stub
-        votingScreen.show(state, isHost, localPlayerId);
-        // Re-enable pass-through so voting screen buttons work on mobile.
+        // Re-enable pass-through so mastery/voting screen buttons work on mobile.
         if (input instanceof TouchInput) input.setGamePaused(true);
+        // Show MasteryProgressScreen first (if any XP was earned), then VotingScreen.
+        const killsByWeapon = weaponMastery.getKillsByWeapon();
+        const xpResults = masteryStore.awardGameXP(killsByWeapon);
+        masteryStore.save();
+        const anyXP = xpResults.some(r => r.xpAfter > r.xpBefore);
+        if (anyXP) {
+          const masteryScreen = new MasteryProgressScreen();
+          masteryScreen.show(
+            {
+              results: xpResults,
+              allLevels: masteryStore.getAllLevels(),
+              getBonusDescription: (w, lv) => masteryStore.getBonusDescription(w, lv),
+            },
+            () => {
+              masteryScreen.dispose();
+              votingScreen.show(state, isHost, localPlayerId);
+            },
+          );
+        } else {
+          votingScreen.show(state, isHost, localPlayerId);
+        }
       } else if (newPhase === 'playing' && currentRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
         votingScreen.hide();
