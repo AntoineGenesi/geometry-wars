@@ -440,3 +440,116 @@ export function generateScaledEndlessWave(
 
   return enemies;
 }
+
+// ---------------------------------------------------------------------------
+// Score Explosion Detector
+//
+// Detects when the player is steamrolling — score increases N-fold in a short
+// window — and returns a temporary difficulty bonus to push harder enemies and
+// faster spawns. This supplements the logarithmic base difficulty curve with
+// a rate-of-growth signal so the game reacts when a player goes on a tear.
+// ---------------------------------------------------------------------------
+
+/** A recorded score/time snapshot. */
+interface ScoreSnapshot {
+  readonly time: number;
+  readonly score: number;
+}
+
+/**
+ * ScoreExplosionDetector
+ *
+ * Usage: call update() every frame (or every game tick) with the current score
+ * and elapsed time. Returns the surge difficulty bonus (0 when inactive).
+ *
+ * The bonus is added on top of the base computeDifficultyLevel() result before
+ * passing it to wave generation, giving harder enemy tiers, faster spawns, and
+ * greater enemy variety when the player is clearly steamrolling.
+ */
+export class ScoreExplosionDetector {
+  /** How often to record a score snapshot (seconds). */
+  private readonly SAMPLE_INTERVAL = 5;
+
+  /** Detection window (seconds). Looks this far back for the reference score. */
+  readonly windowSeconds: number;
+
+  /** Score ratio threshold that triggers a surge. Default: 5x in 60s. */
+  readonly threshold: number;
+
+  /** Difficulty bonus added during a surge. */
+  private readonly surgeBonus: number;
+
+  /** How long (seconds) a triggered surge lasts before expiring. */
+  private readonly surgeDuration: number;
+
+  private lastSampleTime = -999;
+  private readonly samples: ScoreSnapshot[] = [];
+
+  private _isInSurge = false;
+  private surgeExpireTime = 0;
+
+  constructor(
+    windowSeconds = 60,
+    threshold = 5,
+    surgeBonus = 2.0,
+    surgeDuration = 45,
+  ) {
+    this.windowSeconds = windowSeconds;
+    this.threshold = threshold;
+    this.surgeBonus = surgeBonus;
+    this.surgeDuration = surgeDuration;
+  }
+
+  /**
+   * Call once per game update. Returns the current surge difficulty bonus:
+   *   0 when the player is playing normally
+   *   surgeBonus (default 2.0) during a detected score explosion
+   *
+   * @param currentScore Player's current score.
+   * @param currentTime  Elapsed game time in seconds.
+   */
+  update(currentScore: number, currentTime: number): number {
+    // Sample score at regular intervals
+    if (currentTime - this.lastSampleTime >= this.SAMPLE_INTERVAL) {
+      this.samples.push({ time: currentTime, score: currentScore });
+      this.lastSampleTime = currentTime;
+
+      // Prune samples older than the detection window
+      const cutoff = currentTime - this.windowSeconds;
+      while (this.samples.length > 1 && this.samples[0].time < cutoff) {
+        this.samples.shift();
+      }
+
+      // Check for score explosion: compare oldest in-window sample vs now.
+      // Require a minimum reference score to avoid false positives at game start.
+      if (this.samples.length >= 2) {
+        const ref = this.samples[0];
+        if (ref.score > 5_000 && currentScore >= ref.score * this.threshold) {
+          // Score multiplied by threshold within the detection window → surge!
+          this._isInSurge = true;
+          this.surgeExpireTime = currentTime + this.surgeDuration;
+        }
+      }
+    }
+
+    // Deactivate surge when expired
+    if (this._isInSurge && currentTime >= this.surgeExpireTime) {
+      this._isInSurge = false;
+    }
+
+    return this._isInSurge ? this.surgeBonus : 0;
+  }
+
+  /** Whether the detector is currently in an active surge. */
+  isInSurge(): boolean {
+    return this._isInSurge;
+  }
+
+  /** Reset detector state (call on game restart). */
+  reset(): void {
+    this.samples.length = 0;
+    this.lastSampleTime = -999;
+    this._isInSurge = false;
+    this.surgeExpireTime = 0;
+  }
+}

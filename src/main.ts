@@ -78,6 +78,7 @@ import { SettingsMenu, loadDebugSettings } from './ui/SettingsMenu';
 import {
   computeDifficultyLevel,
   generateScaledEndlessWave,
+  ScoreExplosionDetector,
   type DifficultyInput,
 } from './core/DifficultyScaling';
 import { isMobile } from './core/MobileDetector';
@@ -206,11 +207,14 @@ class WaveScheduler {
   private endlessNextSpawn = 6; // first endless wave at 6 seconds
   private endlessInterval = 7; // seconds between endless waves (faster base)
 
-  /** Current difficulty level (computed from player state). */
+  /** Current difficulty level (computed from player state + surge bonus). */
   currentDifficultyLevel = 0;
 
   /** External provider for player state (set by main after construction). */
   getDifficultyInput: (() => DifficultyInput) | null = null;
+
+  /** Detects rapid score growth and applies a temporary difficulty surge. */
+  private readonly scoreExplosion = new ScoreExplosionDetector();
 
   constructor(waves: WaveDefinition[], endless = false) {
     this.waves = waves;
@@ -222,13 +226,16 @@ class WaveScheduler {
   update(dt: number, spawner: EnemySpawner): void {
     this.elapsed += dt;
 
-    // Recompute difficulty level from player state
+    // Recompute difficulty level from player state + score explosion surge
     if (this.getDifficultyInput) {
       const input = this.getDifficultyInput();
-      this.currentDifficultyLevel = computeDifficultyLevel({
+      const baseLevel = computeDifficultyLevel({
         ...input,
         elapsedTime: this.elapsed,
       });
+      // Score explosion: adds +2 difficulty levels when player scores 5x in 60s
+      const surgeBonus = this.scoreExplosion.update(input.score, this.elapsed);
+      this.currentDifficultyLevel = baseLevel + surgeBonus;
     }
 
     // Scripted waves
