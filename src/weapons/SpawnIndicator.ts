@@ -5,33 +5,44 @@ import * as THREE from 'three';
  * for the first 30 seconds after spawning. Helps players distinguish pickups
  * from enemies at a glance.
  *
- * Returns a Sprite named 'spawn-indicator' at local position (0, 0.8, 0).
+ * Returns a Sprite named 'spawn-indicator' at local position (0, 0, 0.9).
+ * Local Z = bitangent = camera "up", so the arrow appears above the pickup on screen.
  * Call updateSpawnIndicator() each frame to animate it.
  */
 export function createSpawnIndicatorSprite(tint: THREE.Color = new THREE.Color(0xffffff)): THREE.Sprite {
   const canvas = document.createElement('canvas');
-  canvas.width = 32;
-  canvas.height = 40;
+  canvas.width = 64;
+  canvas.height = 80;
   const ctx = canvas.getContext('2d')!;
 
   const r = Math.round(tint.r * 255);
   const g = Math.round(tint.g * 255);
   const b = Math.round(tint.b * 255);
-  const fillColor = `rgb(${r},${g},${b})`;
 
-  // Downward-pointing arrow (▼) with shaft
-  ctx.fillStyle = fillColor;
+  // Outer glow (soft halo)
+  const glowGrad = ctx.createRadialGradient(32, 40, 4, 32, 40, 30);
+  glowGrad.addColorStop(0, `rgba(${r},${g},${b},0.5)`);
+  glowGrad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(0, 0, 64, 80);
 
-  // Shaft (top portion)
-  ctx.fillRect(11, 2, 10, 18);
+  // Bright arrow body
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
 
-  // Arrowhead (bottom triangle)
+  // Shaft (top portion) — wider for visibility
+  ctx.fillRect(22, 4, 20, 36);
+
+  // Arrowhead (bottom triangle) — larger
   ctx.beginPath();
-  ctx.moveTo(16, 38); // tip
-  ctx.lineTo(4, 18);  // left
-  ctx.lineTo(28, 18); // right
+  ctx.moveTo(32, 76); // tip
+  ctx.lineTo(6, 36);  // left
+  ctx.lineTo(58, 36); // right
   ctx.closePath();
   ctx.fill();
+
+  // Bright white highlight on shaft for contrast
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.fillRect(27, 4, 10, 30);
 
   const texture = new THREE.CanvasTexture(canvas);
   const mat = new THREE.SpriteMaterial({
@@ -44,11 +55,12 @@ export function createSpawnIndicatorSprite(tint: THREE.Color = new THREE.Color(0
 
   const sprite = new THREE.Sprite(mat);
   sprite.name = 'spawn-indicator';
-  sprite.scale.set(0.35, 0.45, 1.0);
+  // Scale up 2x from original (0.35, 0.45) → now prominent and visible
+  sprite.scale.set(0.7, 0.9, 1.0);
   // Position along local Z (= bitangent = camera "up") so the arrow appears
   // above the pickup on screen. Local Y = surface normal (perpendicular to camera up),
   // so using Y would place the arrow beside the pickup, not above it.
-  sprite.position.set(0, 0, 0.9);
+  sprite.position.set(0, 0, 1.0);
   return sprite;
 }
 
@@ -69,10 +81,10 @@ export function updateSpawnIndicator(mesh: THREE.Object3D, age: number, t: numbe
 
   indicator.visible = true;
 
-  // Pulse: 0.3 → 1.0 at ~4 Hz
-  const pulse = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 8));
+  // Pulse: 0.5 → 1.0 at ~3 Hz (more pronounced flash)
+  const pulse = 0.5 + 0.5 * (0.5 + 0.5 * Math.sin(t * 6));
   (indicator.material as THREE.SpriteMaterial).opacity = pulse;
 
-  // Bounce along local Z (= bitangent = camera up) to stay above pickup on screen.
-  indicator.position.z = 0.9 + Math.abs(Math.sin(t * 4)) * 0.15;
+  // Bounce along local Z (= bitangent = camera up) with larger amplitude
+  indicator.position.z = 1.0 + Math.abs(Math.sin(t * 4)) * 0.25;
 }

@@ -25,6 +25,7 @@ export class BuffPickupNew {
   active = true;
   private age = 0;
   private bobPhase: number;
+  private _currentTotalTime = 0;
   private readonly mapSizeScaleFactor: number;
 
   constructor(type: StackBuffType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
@@ -157,12 +158,11 @@ export class BuffPickupNew {
       return;
     }
 
+    // Store totalTime for bob animation in applySurfaceTransform
+    this._currentTotalTime = totalTime;
+
     // Slow spin
     this.mesh.rotation.y = totalTime * 2;
-
-    // Bob up and down
-    const bob = Math.sin(totalTime * 2.5 + this.bobPhase) * 0.04;
-    this.mesh.position.y += bob * dt;
 
     // Pulse core
     const core = this.mesh.getObjectByName('core');
@@ -206,7 +206,8 @@ export class BuffPickupNew {
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
     this._surfaceWorldPos.copy(position);
-    this.mesh.position.copy(position).addScaledVector(normal, 0.4);
+    const bob = Math.sin(this._currentTotalTime * 2.5 + this.bobPhase) * 0.08;
+    this.mesh.position.copy(position).addScaledVector(normal, 0.4 + bob);
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
   }

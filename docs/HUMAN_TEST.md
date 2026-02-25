@@ -1151,3 +1151,26 @@ Claude will read this file at the start of each session and prioritize fixing re
 
 ### Test: No desktop regression
 - [ ] **Desktop mouse still works** — Open in browser on PC, verify Start Game / Stop Server buttons respond to mouse clicks normally
+
+## S34: Pickup/Arrow System Alignment Fix
+
+**Root causes fixed:**
+1. Pickups spawned at wrong UV position (worldToSurface ignored worldRotation)
+2. Arrow sprite too small
+3. Bob animation didn't work (was overridden by surface transform)
+
+### Test: Pickup spawning and collection (all surfaces)
+- [ ] **Kill an enemy** — A pickup should appear WHERE the enemy died (not somewhere random)
+- [ ] **Arrow visible** — A downward-pointing arrow above the pickup, clearly visible and flashing
+- [ ] **Arrow above pickup** — Arrow should be directly above the pickup visual, not offset to the side
+- [ ] **Collect pickup** — Walk over the pickup; it should be collected when player touches it
+
+### Test: Torus surface specifically
+- [ ] **Kill enemies on torus** — Pickups appear at correct positions on torus (both inner and outer surfaces)
+- [ ] **Torus collection works** — Walking over pickups on torus collects them (was broken due to worldRotation bug)
+
+### Test: Arrow visual improvements
+- [ ] **Arrow is prominent** — Arrow sprite is bigger and brighter than before (2x larger, with glow halo)
+- [ ] **Arrow pulses** — Arrow flashes/pulses to attract attention
+- [ ] **Arrow bounces** — Arrow bounces up and down above pickup
+- [ ] **Pickup bobs** — Pickup visual bobs up and down along the surface normal
