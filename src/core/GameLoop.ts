@@ -152,7 +152,23 @@ export class GameLoop {
 
         // Short delay before showing game over screen
         setTimeout(() => {
-          ctx.gameOverScreen.show(ctx.player.score, ctx.surfaceType);
+          // KotH (and other modes with custom scoring): use mode's getScore().
+          // Falls back to player.score for standard modes.
+          const modeCtx = {
+            player: ctx.player,
+            enemySpawner: ctx.enemySpawner,
+            surface: ctx.surface,
+            weaponManager: ctx.weaponManager,
+            buffManager: ctx.buffManager,
+            game: ctx.game,
+            scene: ctx.game.scene,
+            camera: ctx.game.camera,
+          };
+          const finalScore = ctx.quickGameMode
+            ? ctx.quickGameMode.getScore(modeCtx)
+            : ctx.player.score;
+          const scoreLabel = ctx.quickGameMode?.getScoreLabel?.();
+          ctx.gameOverScreen.show(finalScore, ctx.surfaceType, 'solo', scoreLabel);
         }, 1000);
       }
     }

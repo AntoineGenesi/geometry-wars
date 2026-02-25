@@ -211,8 +211,10 @@ export class GameOverScreen {
    * Show the game over screen with final score.
    * @param mode 'solo' (default) = single-player behavior; 'network' = show
    *             "RETURN TO MENU" button and auto-transition to voting after 4s.
+   * @param scoreLabel Optional label override (e.g. "ZONE TIME" for KotH).
+   *                   Defaults to "SCORE".
    */
-  show(score: number, surfaceType: string, mode: 'solo' | 'network' = 'solo'): void {
+  show(score: number, surfaceType: string, mode: 'solo' | 'network' = 'solo', scoreLabel?: string): void {
     this.finalScore = score;
     this.surfaceType = surfaceType;
     this.clearAutoTransition();
@@ -221,7 +223,7 @@ export class GameOverScreen {
     const { isNewHighScore, rank } = this.saveScore(score, surfaceType);
     const highScores = this.getHighScores();
 
-    this.container.innerHTML = this.createContentHTML(score, isNewHighScore, rank, highScores, mode);
+    this.container.innerHTML = this.createContentHTML(score, isNewHighScore, rank, highScores, mode, scoreLabel);
     this.container.classList.remove('hidden');
 
     // Attach continue/return-to-menu button listener
@@ -293,7 +295,8 @@ export class GameOverScreen {
     isNewHighScore: boolean,
     rank: number,
     highScores: HighScoreEntry[],
-    mode: 'solo' | 'network' = 'solo'
+    mode: 'solo' | 'network' = 'solo',
+    scoreLabel: string = 'SCORE',
   ): string {
     const newHighScoreHTML = isNewHighScore
       ? `<div class="new-high-score">NEW HIGH SCORE!</div>`
@@ -329,7 +332,7 @@ export class GameOverScreen {
         <h1 class="title">GAME OVER</h1>
 
         <div class="final-score">
-          SCORE: <span>${score.toLocaleString()}</span>
+          ${scoreLabel}: <span>${score.toLocaleString()}</span>
         </div>
 
         ${newHighScoreHTML}

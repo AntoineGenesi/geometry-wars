@@ -18,10 +18,11 @@ function createMockPlayer() {
   } as any;
 }
 
-function createMockEnemy(u = 0.5, v = 0.5, health = 10) {
+function createMockEnemy(u = 0.5, v = 0.5, health = 10, scoreValue = 100) {
   return {
     surfacePosition: { u, v },
     health,
+    scoreValue,
     takeDamage: vi.fn(),
   } as any;
 }
@@ -39,6 +40,7 @@ const mockSurface = {
 
 const mockEnemySpawner = {
   getEnemies: () => [] as any[],
+  spawnWave: vi.fn(),
 } as any;
 
 const mockWeaponManager = {} as any;
@@ -111,6 +113,10 @@ describe('KingMode', () => {
     expect(mode.icon).toBe('\u{1F451}');
   });
 
+  it('should return ZONE TIME as score label', () => {
+    expect(mode.getScoreLabel?.()).toBe('ZONE TIME');
+  });
+
   it('should create zone visual on start', () => {
     const childCount = context.scene.children.length;
     expect(childCount).toBeGreaterThan(0);
@@ -166,6 +172,116 @@ describe('KingMode', () => {
     const initialCount = context.scene.children.length;
     mode.dispose(context);
     expect(context.scene.children.length).toBeLessThan(initialCount);
+  });
+
+  // ---- New scoring overhaul tests ----
+
+  it('getScore returns centiseconds of zone time (0 at start)', () => {
+    expect(mode.getScore(context)).toBe(0);
+  });
+
+  it('accumulates zone time when player is in zone', () => {
+    // Position player at zone center
+    const zoneU = (mode as any).zoneU;
+    const zoneV = (mode as any).zoneV;
+    context.player.surfaceU = zoneU;
+    context.player.surfaceV = zoneV;
+
+    // Simulate 5 seconds of updates
+    for (let i = 0; i < 5; i++) {
+      mode.onFixedUpdate(1.0, context);
+    }
+
+    // Zone time should be ~5 seconds = 500 centiseconds
+    expect(mode.getScore(context)).toBeGreaterThan(400);
+    expect(mode.getScore(context)).toBeLessThanOrEqual(500);
+  });
+
+  it('does NOT accumulate zone time when player is outside zone', () => {
+    // Place player far from zone center
+    const zoneU = (mode as any).zoneU;
+    const zoneV = (mode as any).zoneV;
+    context.player.surfaceU = (zoneU + 0.5) % 1.0;
+    context.player.surfaceV = (zoneV + 0.5) % 1.0;
+
+    for (let i = 0; i < 5; i++) {
+      mode.onFixedUpdate(1.0, context);
+    }
+
+    expect(mode.getScore(context)).toBe(0);
+  });
+
+  it('tracks kill points separately from zone time', () => {
+    // Place player in zone
+    const zoneU = (mode as any).zoneU;
+    const zoneV = (mode as any).zoneV;
+    context.player.surfaceU = zoneU;
+    context.player.surfaceV = zoneV;
+    mode.onFixedUpdate(0.016, context); // enter zone
+
+    // Kill two enemies
+    mode.onEnemyKilled(createMockEnemy(0.5, 0.5, 10, 100), context);
+    mode.onEnemyKilled(createMockEnemy(0.5, 0.5, 10, 200), context);
+
+    const killPoints = (mode as any).killPoints;
+    expect(killPoints).toBe(300);
+  });
+
+  it('zone shrinks over time', () => {
+    const initialRadius = (mode as any).zoneRadiusUV;
+    // Simulate 60 seconds
+    for (let i = 0; i < 60; i++) {
+      mode.onFixedUpdate(1.0, context);
+    }
+    const newRadius = (mode as any).zoneRadiusUV;
+    expect(newRadius).toBeLessThan(initialRadius);
+  });
+
+  it('zone does not shrink below minimum', () => {
+    const minRadius = (mode as any).zoneMinRadiusUV;
+    // Simulate a very long game (1000 seconds)
+    for (let i = 0; i < 200; i++) {
+      mode.onFixedUpdate(5.0, context);
+    }
+    const finalRadius = (mode as any).zoneRadiusUV;
+    expect(finalRadius).toBeGreaterThanOrEqual(minRadius);
+  });
+
+  it('fires pre-planned wave when zone shrinks to threshold', () => {
+    // Reset spawnWave spy
+    mockEnemySpawner.spawnWave.mockClear?.() ?? vi.clearAllMocks();
+    const spawnWaveSpy = vi.spyOn(mockEnemySpawner, 'spawnWave');
+
+    // Set zone radius just above the first threshold (0.09)
+    (mode as any).zoneRadiusUV = 0.091;
+
+    // One update with enough time to push it below 0.09
+    mode.onFixedUpdate(10.0, context);
+
+    // Should have triggered spawnWave
+    expect(spawnWaveSpy).toHaveBeenCalled();
+  });
+
+  it('HUD overlay shows zone time and kill points', () => {
+    // Place player in zone for 2 seconds
+    const zoneU = (mode as any).zoneU;
+    const zoneV = (mode as any).zoneV;
+    context.player.surfaceU = zoneU;
+    context.player.surfaceV = zoneV;
+
+    for (let i = 0; i < 2; i++) {
+      mode.onFixedUpdate(1.0, context);
+    }
+
+    mode.onEnemyKilled(createMockEnemy(0.5, 0.5, 10, 500), context);
+
+    const hud = mode.getHUDOverlay(context);
+    expect(hud).not.toBeNull();
+    // Primary shows zone time
+    expect(hud!.primary).toBeDefined();
+    // Secondary shows kill points
+    expect(hud!.secondary).toBeDefined();
+    expect(hud!.secondary).toContain('500');
   });
 });
 
