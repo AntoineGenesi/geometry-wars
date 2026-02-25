@@ -32,6 +32,7 @@ import type { DebugOverlay } from '../ui/DebugOverlay';
 import type { ProfilingOverlay } from '../ui/ProfilingOverlay';
 import type { SettingsMenu } from '../ui/SettingsMenu';
 import type { GameMode } from './GameMode';
+import type { IGameMode } from './modes/IGameMode';
 import type { LevelDefinition } from './LevelData';
 import type { PlayerLevel } from './PlayerLevel';
 import type { DDAPerformanceTracker } from '../difficulty/DDAPerformanceTracker';
@@ -129,6 +130,7 @@ export interface GameContext {
 
   // Game mode
   gameMode: GameMode;
+  quickGameMode?: IGameMode;
   waveScheduler: any; // WaveScheduler class defined in main.ts
 
   // Cross-game mastery levels (0-5 per weapon) — loaded once at game start from MasteryStore

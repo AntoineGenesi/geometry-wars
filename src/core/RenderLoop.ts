@@ -450,5 +450,68 @@ export class RenderLoop {
       });
     }
     profiler.end('perf_tracking');
+
+    // Quick game mode render hook (KotH HUD overlay, etc.)
+    if (ctx.quickGameMode) {
+      ctx.quickGameMode.onRender(alpha, {
+        player: ctx.player,
+        enemySpawner: ctx.enemySpawner,
+        surface: ctx.surface,
+        weaponManager: ctx.weaponManager,
+        buffManager: ctx.buffManager,
+        game: ctx.game,
+        scene: ctx.game.scene,
+        camera: ctx.game.camera,
+      });
+      // Show mode-specific HUD overlay
+      const hudData = ctx.quickGameMode.getHUDOverlay({
+        player: ctx.player,
+        enemySpawner: ctx.enemySpawner,
+        surface: ctx.surface,
+        weaponManager: ctx.weaponManager,
+        buffManager: ctx.buffManager,
+        game: ctx.game,
+        scene: ctx.game.scene,
+        camera: ctx.game.camera,
+      });
+      RenderLoop.updateModeHUD(hudData);
+    } else {
+      RenderLoop.updateModeHUD(null);
+    }
+  }
+
+  /** Show/hide a mode-specific HUD element (KotH zone bonus, Sniper ammo, etc.) */
+  private static modeHudEl: HTMLElement | null = null;
+
+  private static updateModeHUD(data: { primary?: string; primaryColor?: string; secondary?: string; warning?: string; warningColor?: string } | null): void {
+    if (!data) {
+      if (RenderLoop.modeHudEl) RenderLoop.modeHudEl.style.display = 'none';
+      return;
+    }
+    if (!RenderLoop.modeHudEl) {
+      const el = document.createElement('div');
+      el.id = 'mode-hud';
+      el.style.cssText = [
+        'position:fixed', 'top:80px', 'left:50%', 'transform:translateX(-50%)',
+        'text-align:center', 'pointer-events:none', 'z-index:100',
+        'font-family:monospace', 'font-size:18px', 'font-weight:bold',
+        'text-shadow:0 0 8px currentColor',
+        'padding:4px 12px',
+      ].join(';');
+      document.body.appendChild(el);
+      RenderLoop.modeHudEl = el;
+    }
+    RenderLoop.modeHudEl.style.display = 'block';
+    let html = '';
+    if (data.primary) {
+      html += `<div style="color:${data.primaryColor ?? '#00ffff'}">${data.primary}</div>`;
+    }
+    if (data.secondary) {
+      html += `<div style="color:#888;font-size:14px">${data.secondary}</div>`;
+    }
+    if (data.warning) {
+      html += `<div style="color:${data.warningColor ?? '#ff4444'}">${data.warning}</div>`;
+    }
+    RenderLoop.modeHudEl.innerHTML = html;
   }
 }

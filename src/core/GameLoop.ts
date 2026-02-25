@@ -77,6 +77,19 @@ export class GameLoop {
     profiler.begin('game_mode');
     // Update game mode (handles countdown timer, time limits)
     ctx.gameMode.update(dt, ctx.player.score, ctx.player.lives);
+    // Update interactive game mode (KotH zone, Sniper ammo, etc.)
+    if (ctx.quickGameMode) {
+      ctx.quickGameMode.onFixedUpdate(dt, {
+        player: ctx.player,
+        enemySpawner: ctx.enemySpawner,
+        surface: ctx.surface,
+        weaponManager: ctx.weaponManager,
+        buffManager: ctx.buffManager,
+        game: ctx.game,
+        scene: ctx.game.scene,
+        camera: ctx.game.camera,
+      });
+    }
     profiler.end('game_mode');
 
     // Show countdown overlay
@@ -601,6 +614,8 @@ export class GameLoop {
           ctx.shockwaveEffect.triggerChromatic(0.025);
           ctx.shockwaveEffect.spawnShockwave(ctx.player.mesh.position, 0.06, 1.0, 0.7, 0.08);
           ctx.shockwaveEffect.triggerFlash(new THREE.Color(1, 0.2, 0.2), 0.4);
+          // Player death indicator: red floating text at player position
+          ctx.scorePopups.spawn(ctx.player.mesh.position.clone(), '-LIFE', '#ff4444', 2.0, 1.2);
         }
         return saved;
       },

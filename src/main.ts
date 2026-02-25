@@ -15,6 +15,7 @@ import { GlowTrail } from './effects/GlowTrail';
 import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
 import { ScoreManager } from './core/ScoreManager';
 import { GameMode, GameModeType, ModePhase, MODE_DEFAULTS } from './core/GameMode';
+import { createGameMode, type QuickGameModeType } from './core/modes';
 import type { WaveDefinition, LevelDefinition } from './core/LevelData';
 import { ADVENTURE_LEVELS } from './core/LevelData';
 import { SuperStateManager, SuperStateType } from './weapons/SuperState';
@@ -345,7 +346,7 @@ async function waitForLandscape(sessionGameCount: number): Promise<void> {
   });
 }
 
-async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File, mapSize?: MapSize): Promise<void> {
+async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File, mapSize?: MapSize, quickGameModeType?: QuickGameModeType): Promise<void> {
   // Detect mobile mode early -- affects quality, input, and UI decisions
   const mobile = isMobile();
 
@@ -1921,6 +1922,26 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     console.log('[Mastery] Dev tool loaded. Use: window.__setMasteryLevel("standard", 5)');
   }
 
+  // -- Quick Game Mode (KotH, Sniper, Rainbow, etc.) --
+  // Create and start the IGameMode. onStart() adds visual elements to the scene.
+  const quickGameMode = (quickGameModeType && quickGameModeType !== 'waves')
+    ? createGameMode(quickGameModeType)
+    : undefined;
+  if (quickGameMode) {
+    const gameModeContext = {
+      player,
+      enemySpawner,
+      surface,
+      weaponManager,
+      buffManager,
+      game,
+      scene: game.scene,
+      camera: game.camera,
+    };
+    quickGameMode.onStart(gameModeContext);
+    ctx.quickGameMode = quickGameMode;
+  }
+
   // -- Start --
   game.start();
   profilingPersistence.start();
@@ -2016,7 +2037,7 @@ if (quickStartConfig.enabled) {
       // Single player - Quick Game (endless) or Adventure level
       const levelIdx = selection.levelIndex ?? -1; // -1 = endless Quick Game
       window.history.replaceState({}, '', buildUrl({ surface: selection.surfaceType, level: String(levelIdx) }));
-      main(selection.surfaceType, levelIdx, selection.customMeshFile, selection.mapSize);
+      main(selection.surfaceType, levelIdx, selection.customMeshFile, selection.mapSize, selection.quickGameMode);
     }
   });
 }
