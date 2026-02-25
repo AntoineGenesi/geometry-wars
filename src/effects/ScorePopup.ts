@@ -83,8 +83,9 @@ export class ScorePopupManager {
     const total = score * multiplier;
     const text = total >= 1000 ? `+${(total / 1000).toFixed(1)}k` : `+${total}`;
 
-    // Color based on value
-    let color = '#00ffff';
+    // Color based on value: blue for low, cyan for mid, yellow/orange/magenta for high
+    let color = '#4488ff';
+    if (total >= 200) color = '#00ccff';
     if (total >= 500) color = '#ffff00';
     if (total >= 1000) color = '#ff8800';
     if (total >= 5000) color = '#ff00ff';
