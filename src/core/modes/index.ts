@@ -35,7 +35,7 @@ export const QUICK_GAME_MODES: Array<{
   {
     type: 'king',
     name: 'King',
-    description: 'Dominate the safe zone for bonus points. Zone moves every 15s.',
+    description: 'Survive inside the safe zone. Zone time = your score. Zone shrinks!',
     icon: '👑',
   },
   {

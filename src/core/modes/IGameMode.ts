@@ -75,8 +75,15 @@ export interface IGameMode {
 
   /**
    * Get current score (may be different from player.score for mode-specific scoring).
+   * KotH: returns zone time in centiseconds. Others: returns player.score.
    */
   getScore(context: GameModeContext): number;
+
+  /**
+   * Optional label for the game over screen score display.
+   * If omitted, defaults to "SCORE".
+   */
+  getScoreLabel?(): string;
 
   /**
    * Check if game over condition is met.
