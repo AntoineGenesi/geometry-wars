@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { BaseEnemy } from '../../entities/enemies/BaseEnemy';
 import type { IGameMode, GameModeContext, ModeHUDData } from './IGameMode';
 import type { EnemyType } from '../../entities/enemies/EnemySpawner';
+import { generateScaledEndlessWave } from '../DifficultyScaling';
 
 /**
  * King of the Hill mode — scoring overhaul.
@@ -67,34 +68,49 @@ export class KingMode implements IGameMode {
     spawned: boolean;
   }> = [
     {
-      // Mid-shrink — moderate pressure wave pushing toward zone
+      // Mid-shrink — pressure wave of faster, erratic enemies
       threshold: 0.09,
       wave: [
-        { type: 'grunt', count: 4 },
-        { type: 'wanderer', count: 3 },
+        { type: 'spinner', count: 4 },
+        { type: 'weaver', count: 3 },
+        { type: 'rocket', count: 2 },
       ],
       spawned: false,
     },
     {
-      // Heavy assault as zone gets small
+      // Heavy assault — gravitational hazards + swarms to disrupt player position
       threshold: 0.07,
       wave: [
-        { type: 'grunt', count: 6 },
-        { type: 'rocket', count: 2 },
+        { type: 'gravity_well', count: 2 },
+        { type: 'swarm', count: 3 },
+        { type: 'stealth_stalker', count: 2 },
+        { type: 'titan_grunt', count: 2 },
       ],
       spawned: false,
     },
     {
-      // Final push when zone is nearly minimum
+      // Final boss rush when zone is nearly minimum — maximum drama
       threshold: 0.05,
       wave: [
-        { type: 'grunt', count: 8 },
-        { type: 'duck', count: 3 },
-        { type: 'rocket', count: 2 },
+        { type: 'boss_sapphire', count: 1 },
+        { type: 'splitter', count: 3 },
+        { type: 'cluster', count: 2 },
+        { type: 'fractal', count: 2 },
       ],
       spawned: false,
     },
   ];
+
+  // ---------------------------------------------------------------------------
+  // Time-based wave spawning (independent of zone shrink thresholds)
+  // ---------------------------------------------------------------------------
+
+  /** Seconds until the next timed wave fires. First wave at 8s. */
+  private kothWaveTimer: number = 8;
+  /** How many timed waves have fired so far (used for variety cycling). */
+  private kothWaveNumber: number = 0;
+  /** Total elapsed game time (drives difficulty ramp). */
+  private kothElapsed: number = 0;
 
   // Pre-allocated temp vectors
   private static readonly _tempVec3 = new THREE.Vector3();
@@ -109,6 +125,13 @@ export class KingMode implements IGameMode {
   }
 
   onFixedUpdate(dt: number, context: GameModeContext): void {
+    // 0. Tick elapsed time and fire timed waves
+    this.kothElapsed += dt;
+    this.kothWaveTimer -= dt;
+    if (this.kothWaveTimer <= 0) {
+      this.spawnTimedKothWave(context);
+    }
+
     // 1. Shrink zone
     this.zoneRadiusUV = Math.max(
       this.zoneMinRadiusUV,
@@ -295,6 +318,25 @@ export class KingMode implements IGameMode {
 
     const opacity = this.inZone ? 0.6 : 0.4;
     (this.zoneMesh.material as THREE.MeshBasicMaterial).opacity = opacity;
+  }
+
+  /**
+   * Spawn a timed escalating wave using the difficulty-scaling system.
+   * Called every 5–10s throughout the match, creating continuous pressure
+   * that increases in intensity over time.
+   */
+  private spawnTimedKothWave(context: GameModeContext): void {
+    this.kothWaveNumber++;
+
+    // Difficulty ramps from 0 → 5 over 5 minutes (aggressive for KotH)
+    const difficultyLevel = Math.min(5.0, this.kothElapsed / 60.0);
+    const activeCount = context.enemySpawner.getActiveCount();
+    const wave = generateScaledEndlessWave(this.kothWaveNumber, difficultyLevel, activeCount);
+    context.enemySpawner.spawnWave(wave as any);
+
+    // Interval shrinks from 10s → 5s as waves accumulate (max every 5s)
+    const interval = Math.max(5.0, 10.0 - Math.floor(this.kothWaveNumber / 4));
+    this.kothWaveTimer = interval;
   }
 
   /**
