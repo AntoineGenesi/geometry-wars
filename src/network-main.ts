@@ -1741,17 +1741,49 @@ function main() {
       player.multiplier = netPlayer.multiplier;
 
       // Position on surface using real surface transform (same as co-op).
-      // For LOCAL player: snap to server position (corrects client-side prediction drift).
+      // For LOCAL player: reconcile client prediction with server-authoritative position.
+      //   Hard-snap was replaced with threshold+blend to eliminate rubber-banding and
+      //   "direction inversion" bugs (S34b). The server position is RTT-delayed (~50ms
+      //   behind client), so hard-snapping moved the player backward on every state update.
+      //   - Large error (>10% UV = respawn / round-start / genuine desync): hard snap
+      //   - Small error (normal RTT drift): gentle 10% blend per state update
+      //   Mesh position is NOT updated here; the render loop (onRender) handles it at 60Hz
+      //   from the corrected surfaceU/V values.
       // For REMOTE players: store target UV for per-frame interpolation in onRender.
       //   The interpolation is done in the render loop at 60Hz instead of here at
       //   30Hz, which is the #1 fix for making LAN feel as smooth as co-op.
+      //
+      // Threshold: 0.1 UV ≈ 1 second of movement at PLAYER_SPEED (0.095 UV/s).
+      // Normal RTT drift ≈ 0.005 UV (50ms * 0.095). Snap threshold is 20x RTT drift.
+      const SERVER_SNAP_THRESHOLD_SQ = 0.1 * 0.1; // squared for cheap distance check
+      const SERVER_CORRECTION_BLEND = 0.1;         // 10% blend per 30Hz state update
       if (id === localPlayerId) {
-        // Local player: snap UV to server for drift correction
-        player.surfaceU = netPlayer.surfaceU;
-        player.surfaceV = netPlayer.surfaceV;
-        const sp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
-        player.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
-        orientPlayerOnSurface(player, sp.normal, netPlayer.aimAngle, sp.tangentU);
+        const prevAlive = playerAliveState.get(id) ?? true;
+        const justRespawned = !prevAlive && netPlayer.alive;
+        const isDeadNow = !netPlayer.alive;
+
+        const du = netPlayer.surfaceU - player.surfaceU;
+        const dv = netPlayer.surfaceV - player.surfaceV;
+        const errSq = du * du + dv * dv;
+
+        if (justRespawned || isDeadNow || errSq > SERVER_SNAP_THRESHOLD_SQ) {
+          // Hard snap on: respawn (always snap to spawn location), death/dead state
+          // (client prediction may have drifted the UV while dead), large discrepancy
+          // (round-start reset or genuine multi-second desync).
+          player.surfaceU = netPlayer.surfaceU;
+          player.surfaceV = netPlayer.surfaceV;
+          // Also update mesh position immediately for hard snaps so the mesh appears
+          // at the correct location before the render loop runs (avoids 1-frame flash
+          // at wrong position on respawn, especially visible when mesh becomes visible).
+          const snapSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
+          player.mesh.position.copy(snapSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(snapSp.normal, 0.15);
+        } else {
+          // Small RTT-induced drift: gentle blend toward server position.
+          // This corrects accumulated float error without reversing movement direction.
+          player.surfaceU += du * SERVER_CORRECTION_BLEND;
+          player.surfaceV += dv * SERVER_CORRECTION_BLEND;
+          // Mesh position updated by render loop (onRender) at 60Hz — no update needed here.
+        }
       } else {
         // Remote player: store target UV for smooth per-frame interpolation
         remotePlayerTargetUV.set(id, {
