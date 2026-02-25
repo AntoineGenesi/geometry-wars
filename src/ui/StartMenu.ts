@@ -2356,21 +2356,25 @@ export class StartMenu {
     }
 
     entry.addEventListener('click', () => {
-      // Use Vite proxy path (/ws) — routes to localhost:2567 server-side.
-      // Only port 3000 (the Vite port) needs to be accessible from LAN, not 2567 separately.
       const vitePort = parseInt(window.location.port, 10) || 3000;
-      // CRITICAL FIX (attempt #5): For self-hosted servers, use window.location.hostname
-      // instead of the scan result IP. The scan may return a different IP string than the
-      // one the browser navigated to (e.g., scan returns 192.168.1.100 but browser loaded
-      // via hostname.local). Different IP strings = cross-origin, and Colyseus.js uses
-      // withCredentials:true on matchmake HTTP requests, which browsers reject when the
-      // server responds with Access-Control-Allow-Origin:* (incompatible with credentials).
-      // Using window.location.hostname guarantees same-origin = no CORS = works.
-      const connectIp = isSelf ? window.location.hostname : ip;
-      const serverUrl = `ws://${connectIp}:${vitePort}/ws`;
-      // Use the server's actual surface type, not the local Quick Game selection
       const serverSurface = (details.rawSurface || details.surface.toLowerCase()) as SurfaceType;
-      this.showNameDialog(serverSurface, serverUrl);
+
+      // ALWAYS use window.location.hostname for same-origin connections.
+      // The lobby scan runs on the Vite server that served this page, so all
+      // "self" entries are the same machine. Using window.location.hostname
+      // guarantees same-origin (no CORS issues from withCredentials:true).
+      //
+      // For non-self entries (different server on LAN), we REDIRECT the browser
+      // to that server's Vite URL. This avoids cross-origin issues entirely —
+      // the page loads from the target server, making the connection same-origin.
+      if (isSelf || ip === window.location.hostname) {
+        const serverUrl = `ws://${window.location.hostname}:${vitePort}/ws`;
+        this.showNameDialog(serverSurface, serverUrl);
+      } else {
+        // Different server: redirect to that server's page (same-origin there)
+        const targetUrl = `http://${ip}:${vitePort}/?mode=network&surface=${encodeURIComponent(serverSurface)}`;
+        window.location.href = targetUrl;
+      }
     });
 
     return entry;

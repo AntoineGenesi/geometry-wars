@@ -2242,20 +2242,45 @@ function main() {
   // Pre-connection diagnostic: check if the server is reachable via HTTP.
   // This helps diagnose proxy vs direct port issues without waiting for
   // the full Colyseus timeout. Runs asynchronously — doesn't block connect.
+  // Results are stored so the error panel can display them.
+  const diagnosticResults: Record<string, string> = {};
   {
     const proxyHealthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://') + '/health';
     const directHealthUrl = `http://${window.location.hostname}:2567/health`;
-    // Fire both checks in parallel
     const checkHealth = async (label: string, url: string) => {
       try {
         const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
-        console.log(`[NetworkMain] ${label} health check: ${res.ok ? 'OK' : 'HTTP ' + res.status} (${url})`);
+        const status = res.ok ? 'OK' : `HTTP ${res.status}`;
+        diagnosticResults[label] = status;
+        console.log(`[NetworkMain] ${label} health check: ${status} (${url})`);
       } catch (e) {
-        console.warn(`[NetworkMain] ${label} health check FAILED: ${(e as Error).message} (${url})`);
+        const msg = (e as Error).message;
+        diagnosticResults[label] = `FAILED: ${msg}`;
+        console.warn(`[NetworkMain] ${label} health check FAILED: ${msg} (${url})`);
+      }
+    };
+    // Also test the matchmake endpoint specifically (Colyseus handles this
+    // separately from Express, with its own CORS headers)
+    const matchmakeTestUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://') + '/matchmake/game';
+    const checkMatchmake = async () => {
+      try {
+        const res = await fetch(matchmakeTestUrl, {
+          method: 'GET',
+          signal: AbortSignal.timeout(3000),
+          credentials: 'include',
+        });
+        const status = res.ok ? 'OK' : `HTTP ${res.status}`;
+        diagnosticResults['Matchmake'] = status;
+        console.log(`[NetworkMain] Matchmake endpoint: ${status} (${matchmakeTestUrl})`);
+      } catch (e) {
+        const msg = (e as Error).message;
+        diagnosticResults['Matchmake'] = `FAILED: ${msg}`;
+        console.warn(`[NetworkMain] Matchmake check FAILED: ${msg} (${matchmakeTestUrl})`);
       }
     };
     checkHealth('Proxy', proxyHealthUrl);
     checkHealth('Direct', directHealthUrl);
+    checkMatchmake();
   }
 
   // 30-second connection timeout: if Colyseus handshake hangs (server reachable
@@ -2492,10 +2517,25 @@ function main() {
     }
     errPanel.appendChild(list);
 
+    // Show pre-connection diagnostic results (if available)
+    const diagEntries = Object.entries(diagnosticResults);
+    if (diagEntries.length > 0) {
+      const diagSection = document.createElement('div');
+      diagSection.style.cssText = 'color:#666;font-size:12px;margin-bottom:16px;max-width:600px;text-align:left;border:1px solid #333;padding:10px;border-radius:4px;';
+      diagSection.innerHTML = '<div style="color:#888;margin-bottom:6px;font-weight:bold;">Connection Diagnostics:</div>' +
+        `<div>Server URL: <span style="color:#0af">${serverUrl}</span></div>` +
+        `<div>Fallback URL: <span style="color:#0af">${fallbackUrl ?? '(none)'}</span></div>` +
+        `<div>Cross-origin: <span style="color:${isCrossOrigin ? '#f44' : '#0f0'}">${isCrossOrigin ? 'YES' : 'no (same-origin)'}</span></div>` +
+        diagEntries.map(([label, status]) =>
+          `<div>${label}: <span style="color:${status.startsWith('OK') ? '#0f0' : '#f44'}">${status}</span></div>`
+        ).join('');
+      errPanel.appendChild(diagSection);
+    }
+
     // Diagnostic link
     const diagLink = document.createElement('a');
     diagLink.href = '/lan-test.html';
-    diagLink.textContent = '🔍 Run LAN Diagnostics';
+    diagLink.textContent = 'Run LAN Diagnostics';
     diagLink.style.cssText =
       'color:#0af;font-size:14px;margin-bottom:20px;letter-spacing:1px;';
     errPanel.appendChild(diagLink);
