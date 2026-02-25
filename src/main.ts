@@ -639,6 +639,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   enemySpawner.setMeshSurface(meshSurface);
   enemySpawner.setSurface(surface); // FIX: enemies need surfaceRef for UV sync in walker mode
 
+  // Normalize enemy UV speed so world-space speed stays consistent across all maps.
+  // Without this, enemies on SMALL maps (0.75x scale) move at 75% world speed vs MEDIUM.
+  // Formula: (surface.speedScale / mapSizeScaleFactor) normalizes to sphere-equivalent speed.
+  // benchmark.ts and multiplayer-main.ts also call this; main.ts was missing it.
+  enemySpawner.setSurfaceSpeedScale(surface.speedScale / mapSizeScaleFactor);
+
   // Apply map size cap: limits max simultaneous enemies based on surface area tier.
   // resolvedMapSize was already computed above when applying surface scale.
   enemySpawner.setMaxActiveEnemies(getMaxActiveEnemies(resolvedMapSize));
