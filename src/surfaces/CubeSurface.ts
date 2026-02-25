@@ -1,6 +1,20 @@
 import * as THREE from 'three'
 import { Surface, SurfaceConfig, SurfacePoint } from './Surface'
 
+// Module-level constants for cube face geometry — avoids 8 Vector3 allocations per getPoint() call.
+const CUBE_FACE_NORMALS: readonly THREE.Vector3[] = [
+  new THREE.Vector3(0, 0, 1),
+  new THREE.Vector3(1, 0, 0),
+  new THREE.Vector3(0, 0, -1),
+  new THREE.Vector3(-1, 0, 0),
+]
+const CUBE_FACE_RIGHTS: readonly THREE.Vector3[] = [
+  new THREE.Vector3(1, 0, 0),
+  new THREE.Vector3(0, 0, -1),
+  new THREE.Vector3(-1, 0, 0),
+  new THREE.Vector3(0, 0, 1),
+]
+
 export interface CubeConfig extends SurfaceConfig {
   size?: number
   bevelRadius?: number
@@ -152,24 +166,12 @@ export class CubeSurface extends Surface {
     let tangentU: THREE.Vector3
     let tangentV: THREE.Vector3
 
-    // Face normals and right directions for the 4 side faces
+    // Use module-level constants (avoids 8 Vector3 allocations per call)
     // faceIndex: 0 = +Z, 1 = +X, 2 = -Z, 3 = -X
-    const faceNormals = [
-      new THREE.Vector3(0, 0, 1),
-      new THREE.Vector3(1, 0, 0),
-      new THREE.Vector3(0, 0, -1),
-      new THREE.Vector3(-1, 0, 0),
-    ]
-    const faceRights = [
-      new THREE.Vector3(1, 0, 0),
-      new THREE.Vector3(0, 0, -1),
-      new THREE.Vector3(-1, 0, 0),
-      new THREE.Vector3(0, 0, 1),
-    ]
-
-    const faceNorm = faceNormals[uRegion.faceIndex]
-    const faceRight = faceRights[uRegion.faceIndex]
-    const nextFaceNorm = faceNormals[(uRegion.faceIndex + 1) % 4]
+    const faceNorm = CUBE_FACE_NORMALS[uRegion.faceIndex]
+    const faceRight = CUBE_FACE_RIGHTS[uRegion.faceIndex]
+    const nextFaceNorm = CUBE_FACE_NORMALS[(uRegion.faceIndex + 1) % 4]
+    const nextFaceRight = CUBE_FACE_RIGHTS[(uRegion.faceIndex + 1) % 4]
 
     if (vRegion.type === 'bottomFlat') {
       // Flat bottom face (-Y) with CARTESIAN grid parameterization.
@@ -192,8 +194,7 @@ export class CubeSurface extends Surface {
       } else {
         // Corner region - FIXED: Use cartesian blending for continuity at u=0/u=1 wrap seam
         // Blend between adjacent face edges using their cartesian coordinate systems
-        const nextFaceRight = faceRights[(uRegion.faceIndex + 1) % 4]
-        const nextFaceNorm = faceNormals[(uRegion.faceIndex + 1) % 4]
+        // (nextFaceRight and nextFaceNorm hoisted to top of getPointLocal — no re-allocation)
         const normalPos = flatHalfSize * vRegion.localT
 
         // Current face at its right edge (tangentPos = +flatHalfSize)
@@ -251,8 +252,7 @@ export class CubeSurface extends Surface {
       } else {
         // Corner region - FIXED: Use cartesian blending for continuity at u=0/u=1 wrap seam
         // Blend between adjacent face edges using their cartesian coordinate systems
-        const nextFaceRight = faceRights[(uRegion.faceIndex + 1) % 4]
-        const nextFaceNorm = faceNormals[(uRegion.faceIndex + 1) % 4]
+        // (nextFaceRight and nextFaceNorm hoisted to top of getPointLocal — no re-allocation)
         const normalPos = flatHalfSize * (1 - vRegion.localT)
 
         // Current face at its right edge (tangentPos = +flatHalfSize)
@@ -706,7 +706,11 @@ export class CubeSurface extends Surface {
     const derived = this.getDerivedValues()
     const { flatHalfSize, bevelRadius } = derived
     const vertices: number[] = []
-    const lineDetail = 32
+    // Cube grid uses fewer segments than curved surfaces (torus/sphere use 48).
+    // Flat faces only need a few segments; bevel corners are short arcs.
+    // Reducing from 32 → 8 cuts grid spring count from ~7936 to ~1984 (4x),
+    // matching sphere's ~2496 springs and eliminating the per-frame overhead gap.
+    const lineDetail = 8
 
     // Horizontal grid lines (constant v)
     const vLines = gridSegments + 2
