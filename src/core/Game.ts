@@ -593,6 +593,22 @@ export class Game {
   // ---- Camera ---------------------------------------------------------
 
   /**
+   * Recalculate and update the camera's aspect ratio and projection matrix
+   * based on current window dimensions. Call this after the Game is created
+   * to ensure the camera matches the actual viewport, especially on mobile
+   * where window dimensions may not be stable at construction time.
+   */
+  ensureCameraAspectRatio(): void {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const aspect = width / height;
+
+    (this.camera as THREE.PerspectiveCamera).aspect = aspect;
+    (this.camera as THREE.PerspectiveCamera).fov = computeVerticalFOV(aspect, this.baseFov);
+    (this.camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+  }
+
+  /**
    * Camera update. Skipped when disableBuiltInCameraUpdate is true,
    * allowing external code to control camera position.
    */

@@ -437,6 +437,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Disable built-in camera - we control camera to follow player
   game.disableBuiltInCameraUpdate = true;
 
+  // Ensure camera aspect ratio matches current viewport dimensions
+  // (fixes potential horizontal stretch on game start, especially on mobile)
+  game.ensureCameraAspectRatio();
+
   // -- Shockwave + Chromatic Aberration + Screen Flash post-processing --
   // This replaces the vignette pass with a combined pass that adds:
   //   1. Shockwave distortion rings (enemy deaths, explosions)
