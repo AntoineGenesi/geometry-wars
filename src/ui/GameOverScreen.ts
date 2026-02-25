@@ -1,15 +1,19 @@
 /**
  * Game Over screen.
- * Shows final score, saves to local storage, displays high scores.
+ * Phase 1: Name + optional note entry.
+ * Phase 2: Shows final score, leaderboard with names, continue button.
  */
 
 interface HighScoreEntry {
   score: number;
   surface: string;
   date: string;
+  name?: string;
+  note?: string;
 }
 
 const STORAGE_KEY = 'geometry_wars_high_scores';
+const LAST_NAME_KEY = 'geometry_wars_last_name';
 const MAX_HIGH_SCORES = 10;
 
 export class GameOverScreen {
@@ -54,6 +58,7 @@ export class GameOverScreen {
         text-align: center;
         padding: 40px;
         max-width: 600px;
+        width: 100%;
       }
 
       #game-over-screen .title {
@@ -93,6 +98,95 @@ export class GameOverScreen {
         to { opacity: 1; transform: scale(1.05); }
       }
 
+      /* ── Name entry phase ─────────────────────────────────────────────── */
+
+      #game-over-screen .name-entry {
+        margin: 24px 0;
+        padding: 24px;
+        background: rgba(0, 50, 80, 0.4);
+        border: 1px solid #006688;
+        border-radius: 8px;
+        text-align: left;
+      }
+
+      #game-over-screen .name-entry h2 {
+        font-size: 16px;
+        color: #88ffff;
+        margin: 0 0 16px;
+        letter-spacing: 4px;
+        text-align: center;
+      }
+
+      #game-over-screen .name-entry label {
+        display: block;
+        font-size: 12px;
+        color: #88aaaa;
+        letter-spacing: 2px;
+        margin-bottom: 6px;
+        margin-top: 12px;
+      }
+
+      #game-over-screen .name-entry label:first-of-type {
+        margin-top: 0;
+      }
+
+      #game-over-screen .name-input,
+      #game-over-screen .note-input {
+        width: 100%;
+        box-sizing: border-box;
+        background: rgba(0, 20, 40, 0.8);
+        border: 1px solid #006688;
+        border-radius: 4px;
+        color: #ffffff;
+        font-size: 18px;
+        font-family: 'Segoe UI', Arial, sans-serif;
+        padding: 10px 14px;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+
+      #game-over-screen .name-input:focus,
+      #game-over-screen .note-input:focus {
+        border-color: #00ccff;
+        box-shadow: 0 0 8px rgba(0, 204, 255, 0.4);
+      }
+
+      #game-over-screen .note-input {
+        font-size: 14px;
+        color: #aabbcc;
+      }
+
+      #game-over-screen .name-entry-hint {
+        font-size: 11px;
+        color: #446677;
+        margin-top: 8px;
+        letter-spacing: 1px;
+        text-align: center;
+      }
+
+      #game-over-screen .submit-score-btn {
+        background: linear-gradient(180deg, #0066aa 0%, #004477 100%);
+        border: 2px solid #00aaff;
+        color: #ffffff;
+        padding: 16px 48px;
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 4px;
+        margin-top: 20px;
+        width: 100%;
+        display: block;
+      }
+
+      #game-over-screen .submit-score-btn:hover {
+        background: linear-gradient(180deg, #0088cc 0%, #005599 100%);
+        transform: scale(1.03);
+        box-shadow: 0 0 24px #00aaff;
+      }
+
+      /* ── Results / leaderboard phase ─────────────────────────────────── */
+
       #game-over-screen .high-scores {
         margin: 30px 0;
         padding: 20px;
@@ -116,11 +210,12 @@ export class GameOverScreen {
 
       #game-over-screen .score-list li {
         display: flex;
-        justify-content: space-between;
+        align-items: flex-start;
         padding: 8px 0;
         border-bottom: 1px solid rgba(0, 100, 136, 0.3);
         color: #aaffff;
-        font-size: 16px;
+        font-size: 15px;
+        gap: 6px;
       }
 
       #game-over-screen .score-list li:last-child {
@@ -133,21 +228,62 @@ export class GameOverScreen {
       }
 
       #game-over-screen .score-list .rank {
-        width: 30px;
+        width: 28px;
+        flex-shrink: 0;
         text-align: left;
         color: #668888;
+        padding-top: 2px;
+      }
+
+      #game-over-screen .score-list li.current .rank {
+        color: #aaaa44;
+      }
+
+      #game-over-screen .score-list .player-info {
+        flex: 1;
+        min-width: 0;
+        text-align: left;
+      }
+
+      #game-over-screen .score-list .player-name {
+        display: block;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      #game-over-screen .score-list .player-note {
+        display: block;
+        font-size: 11px;
+        color: #557788;
+        font-style: italic;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 2px;
+      }
+
+      #game-over-screen .score-list li.current .player-note {
+        color: #888833;
       }
 
       #game-over-screen .score-list .score-value {
-        flex: 1;
+        flex-shrink: 0;
         text-align: right;
+        min-width: 90px;
       }
 
       #game-over-screen .score-list .surface-name {
-        width: 100px;
-        text-align: center;
+        flex-shrink: 0;
+        width: 80px;
+        text-align: right;
         color: #88aaaa;
         font-size: 12px;
+        padding-top: 2px;
+      }
+
+      #game-over-screen .score-list li.current .surface-name {
+        color: #aaaa66;
       }
 
       #game-over-screen .continue-btn {
@@ -209,24 +345,144 @@ export class GameOverScreen {
 
   /**
    * Show the game over screen with final score.
-   * @param mode 'solo' (default) = single-player behavior; 'network' = show
-   *             "RETURN TO MENU" button and auto-transition to voting after 4s.
-   * @param scoreLabel Optional label override (e.g. "ZONE TIME" for KotH).
-   *                   Defaults to "SCORE".
+   * Phase 1: name/note entry. Phase 2: leaderboard results.
+   * @param mode 'solo' (default) = single-player; 'network' = auto-transition to voting after 4s.
+   * @param scoreLabel Optional label override (e.g. "ZONE TIME" for KotH). Defaults to "SCORE".
    */
   show(score: number, surfaceType: string, mode: 'solo' | 'network' = 'solo', scoreLabel?: string): void {
     this.finalScore = score;
     this.surfaceType = surfaceType;
     this.clearAutoTransition();
 
-    // Save score and get ranking
-    const { isNewHighScore, rank } = this.saveScore(score, surfaceType);
-    const highScores = this.getHighScores();
-
-    this.container.innerHTML = this.createContentHTML(score, isNewHighScore, rank, highScores, mode, scoreLabel);
+    this.renderNameEntry(score, surfaceType, mode, scoreLabel ?? 'SCORE');
     this.container.classList.remove('hidden');
+  }
 
-    // Attach continue/return-to-menu button listener
+  // ── Phase 1: name entry ──────────────────────────────────────────────────
+
+  private renderNameEntry(score: number, surfaceType: string, mode: 'solo' | 'network', scoreLabel: string): void {
+    const lastName = this.getLastName();
+    this.container.innerHTML = this.createNameEntryHTML(score, mode, scoreLabel, lastName);
+
+    const nameInput = this.container.querySelector<HTMLInputElement>('.name-input');
+    const noteInput = this.container.querySelector<HTMLInputElement>('.note-input');
+    const submitBtn = this.container.querySelector<HTMLButtonElement>('.submit-score-btn');
+
+    const doSubmit = () => {
+      const name = nameInput?.value.trim() || 'Player';
+      const note = noteInput?.value.trim() || '';
+      this.saveLastName(name);
+      const { isNewHighScore, rank } = this.saveScore(score, surfaceType, name, note);
+      const highScores = this.getHighScores();
+      this.renderResults(score, isNewHighScore, rank, highScores, mode, scoreLabel);
+    };
+
+    submitBtn?.addEventListener('click', doSubmit);
+
+    // Enter in name input focuses note; Enter in note input (or Tab sequence) submits
+    nameInput?.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        noteInput?.focus();
+      }
+    });
+    noteInput?.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        doSubmit();
+      }
+    });
+
+    if (mode === 'network') {
+      const AUTO_TRANSITION_MS = 4000;
+      let remaining = Math.round(AUTO_TRANSITION_MS / 1000);
+      const countdownEl = this.container.querySelector('.auto-transition-countdown');
+
+      const tick = () => {
+        if (countdownEl) countdownEl.textContent = `Auto-submitting in ${remaining}s…`;
+        remaining--;
+      };
+      tick();
+      const tickInterval = setInterval(tick, 1000);
+
+      this.autoTransitionTimeout = setTimeout(() => {
+        clearInterval(tickInterval);
+        this.autoTransitionTimeout = null;
+        // Auto-submit with whatever is in the input (or default)
+        const name = nameInput?.value.trim() || 'Player';
+        const note = noteInput?.value.trim() || '';
+        this.saveLastName(name);
+        const { isNewHighScore, rank } = this.saveScore(score, surfaceType, name, note);
+        const highScores = this.getHighScores();
+        this.renderResults(score, isNewHighScore, rank, highScores, mode, scoreLabel);
+        // Immediately trigger the network transition from results
+        this.hide();
+        this.onContinueCallback?.();
+      }, AUTO_TRANSITION_MS);
+    } else {
+      // Focus name input so user can type immediately
+      setTimeout(() => nameInput?.focus(), 100);
+    }
+  }
+
+  private createNameEntryHTML(score: number, mode: 'solo' | 'network', scoreLabel: string, lastName: string): string {
+    const countdownHTML = mode === 'network'
+      ? `<div class="auto-transition-countdown"></div>`
+      : '';
+
+    return `
+      <div class="content">
+        <h1 class="title">GAME OVER</h1>
+
+        <div class="final-score">
+          ${scoreLabel}: <span>${score.toLocaleString()}</span>
+        </div>
+
+        <div class="name-entry">
+          <h2>RECORD YOUR SCORE</h2>
+          <label for="gw-name-input">NAME</label>
+          <input
+            id="gw-name-input"
+            class="name-input"
+            type="text"
+            maxlength="24"
+            placeholder="Player"
+            value="${this.escapeHTML(lastName)}"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <label for="gw-note-input">NOTE <span style="color:#446677">(optional)</span></label>
+          <input
+            id="gw-note-input"
+            class="note-input"
+            type="text"
+            maxlength="60"
+            placeholder="e.g. first attempt, full combo..."
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <div class="name-entry-hint">ENTER to move to note · ENTER again to submit</div>
+        </div>
+
+        ${countdownHTML}
+
+        <button class="submit-score-btn">RECORD SCORE</button>
+      </div>
+    `;
+  }
+
+  // ── Phase 2: results + leaderboard ──────────────────────────────────────
+
+  private renderResults(
+    score: number,
+    isNewHighScore: boolean,
+    rank: number,
+    highScores: HighScoreEntry[],
+    mode: 'solo' | 'network',
+    scoreLabel: string,
+  ): void {
+    this.container.innerHTML = this.createResultsHTML(score, isNewHighScore, rank, highScores, mode, scoreLabel);
+
     const continueBtn = this.container.querySelector('.continue-btn');
     continueBtn?.addEventListener('click', () => {
       this.clearAutoTransition();
@@ -238,23 +494,18 @@ export class GameOverScreen {
       }
     });
 
-    // In network mode, attach "RETURN TO MENU" button and auto-transition
     if (mode === 'network') {
       const AUTO_TRANSITION_MS = 4000;
-
-      // Countdown display update
       const countdownEl = this.container.querySelector('.auto-transition-countdown');
-      let remaining = AUTO_TRANSITION_MS / 1000;
+      let remaining = Math.round(AUTO_TRANSITION_MS / 1000);
+
       const tick = () => {
-        if (countdownEl) {
-          countdownEl.textContent = `Voting screen in ${remaining}s…`;
-        }
+        if (countdownEl) countdownEl.textContent = `Voting screen in ${remaining}s…`;
         remaining--;
       };
       tick();
       const tickInterval = setInterval(tick, 1000);
 
-      // Auto-transition: hide this screen (VotingScreen appears via roomPhase event)
       this.autoTransitionTimeout = setTimeout(() => {
         clearInterval(tickInterval);
         this.autoTransitionTimeout = null;
@@ -262,7 +513,6 @@ export class GameOverScreen {
         this.onContinueCallback?.();
       }, AUTO_TRANSITION_MS);
 
-      // Enter/Space → go to vote immediately (skip wait)
       const keyHandler = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
           document.removeEventListener('keydown', keyHandler);
@@ -272,11 +522,8 @@ export class GameOverScreen {
           this.onContinueCallback?.();
         }
       };
-      setTimeout(() => {
-        document.addEventListener('keydown', keyHandler);
-      }, 500);
+      setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
     } else {
-      // Solo mode: Enter/Space continues
       const keyHandler = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
           document.removeEventListener('keydown', keyHandler);
@@ -284,13 +531,11 @@ export class GameOverScreen {
           this.onContinueCallback?.();
         }
       };
-      setTimeout(() => {
-        document.addEventListener('keydown', keyHandler);
-      }, 500); // Small delay to prevent accidental skip
+      setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
     }
   }
 
-  private createContentHTML(
+  private createResultsHTML(
     score: number,
     isNewHighScore: boolean,
     rank: number,
@@ -306,9 +551,17 @@ export class GameOverScreen {
       .slice(0, MAX_HIGH_SCORES)
       .map((entry, i) => {
         const isCurrent = i === rank - 1;
+        const displayName = entry.name || 'Player';
+        const noteHTML = entry.note
+          ? `<span class="player-note">${this.escapeHTML(entry.note)}</span>`
+          : '';
         return `
           <li class="${isCurrent ? 'current' : ''}">
             <span class="rank">${i + 1}.</span>
+            <span class="player-info">
+              <span class="player-name">${this.escapeHTML(displayName)}</span>
+              ${noteHTML}
+            </span>
             <span class="score-value">${entry.score.toLocaleString()}</span>
             <span class="surface-name">${entry.surface}</span>
           </li>
@@ -349,6 +602,8 @@ export class GameOverScreen {
     `;
   }
 
+  // ── Public API ───────────────────────────────────────────────────────────
+
   /**
    * Hide the game over screen. Cancels any pending auto-transition.
    */
@@ -373,8 +628,14 @@ export class GameOverScreen {
   }
 
   /**
-   * Cancel any pending auto-transition timeout.
+   * Remove from DOM.
    */
+  dispose(): void {
+    this.container.remove();
+  }
+
+  // ── Private helpers ──────────────────────────────────────────────────────
+
   private clearAutoTransition(): void {
     if (this.autoTransitionTimeout !== null) {
       clearTimeout(this.autoTransitionTimeout);
@@ -383,31 +644,31 @@ export class GameOverScreen {
   }
 
   /**
-   * Save score to local storage.
+   * Save score to localStorage with name and note.
    * Returns whether it's a new high score and its rank.
    */
-  private saveScore(score: number, surface: string): { isNewHighScore: boolean; rank: number } {
+  private saveScore(
+    score: number,
+    surface: string,
+    name: string,
+    note: string,
+  ): { isNewHighScore: boolean; rank: number } {
     const highScores = this.getHighScores();
 
     const newEntry: HighScoreEntry = {
       score,
       surface,
       date: new Date().toISOString().split('T')[0],
+      name: name || 'Player',
+      ...(note ? { note } : {}),
     };
 
-    // Find where this score ranks
     let rank = highScores.findIndex((entry) => score > entry.score);
-    if (rank === -1) {
-      rank = highScores.length;
-    }
+    if (rank === -1) rank = highScores.length;
 
-    // Insert at correct position
     highScores.splice(rank, 0, newEntry);
-
-    // Keep only top scores
     const trimmed = highScores.slice(0, MAX_HIGH_SCORES);
 
-    // Save to local storage
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
     } catch (e) {
@@ -418,25 +679,37 @@ export class GameOverScreen {
     return { isNewHighScore, rank: rank + 1 };
   }
 
-  /**
-   * Get high scores from local storage.
-   */
   private getHighScores(): HighScoreEntry[] {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
-      if (data) {
-        return JSON.parse(data);
-      }
+      if (data) return JSON.parse(data);
     } catch (e) {
       console.warn('Could not load high scores:', e);
     }
     return [];
   }
 
-  /**
-   * Remove from DOM.
-   */
-  dispose(): void {
-    this.container.remove();
+  private getLastName(): string {
+    try {
+      return localStorage.getItem(LAST_NAME_KEY) ?? '';
+    } catch {
+      return '';
+    }
+  }
+
+  private saveLastName(name: string): void {
+    try {
+      localStorage.setItem(LAST_NAME_KEY, name);
+    } catch {
+      // ignore
+    }
+  }
+
+  private escapeHTML(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 }
