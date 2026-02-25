@@ -55,9 +55,9 @@ export class PipeSurface extends Surface {
   // bottomBevelEnd = 1.0 (wraps to 0)
 
   constructor(config?: PipeConfig) {
-    const radius = config?.radius ?? 5
-    const height = config?.height ?? 14
-    const bevelRadius = config?.bevelRadius ?? 1.5
+    const radius = config?.radius ?? 3.5
+    const height = config?.height ?? 10
+    const bevelRadius = config?.bevelRadius ?? 1
     const gridSegmentsU = config?.gridSegmentsU ?? 24
     const gridSegmentsV = config?.gridSegmentsV ?? 28
 
@@ -102,9 +102,9 @@ export class PipeSurface extends Surface {
   } {
     return (
       (PipeSurface as any).__initData ?? {
-        radius: 5,
-        height: 14,
-        bevelRadius: 1.5,
+        radius: 3.5,
+        height: 10,
+        bevelRadius: 1,
         gridSegmentsU: 24,
         gridSegmentsV: 28,
       }
