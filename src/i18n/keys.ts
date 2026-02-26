@@ -119,6 +119,7 @@ export const KEYS = {
     performanceGraphs: 'pauseMenu.performanceGraphs',
     music: 'pauseMenu.music',
     exitToMenu: 'pauseMenu.exitToMenu',
+    exitToVoting: 'pauseMenu.exitToVoting',
     endGameForAll: 'pauseMenu.endGameForAll',
     stopServer: 'pauseMenu.stopServer',
     hint: 'pauseMenu.hint',

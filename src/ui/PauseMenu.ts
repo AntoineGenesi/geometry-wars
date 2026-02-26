@@ -19,6 +19,7 @@ import { MasteryPointStore } from '../systems/MasteryPointStore';
 /** Callbacks for host network actions */
 export interface PauseMenuNetworkCallbacks {
   onPause: (paused: boolean) => void;
+  onExitToVoting?: () => void;
   onEndGame: () => void;
   onStopServer?: () => void;
 }
@@ -150,6 +151,10 @@ export class PauseMenu {
             <button class="pause-btn exit-btn" data-action="exit">
               <span class="btn-icon">◀</span>
               <span>${t('pauseMenu.exitToMenu')}</span>
+            </button>
+            <button class="pause-btn exit-to-voting-btn hidden" data-action="exit-to-voting">
+              <span class="btn-icon">&#x21BA;</span>
+              <span>${t('pauseMenu.exitToVoting')}</span>
             </button>
             <button class="pause-btn end-game-btn hidden" data-action="end-game">
               <span class="btn-icon">&#x2716;</span>
@@ -363,6 +368,20 @@ export class PauseMenu {
       #pause-menu .exit-btn:hover {
         background: linear-gradient(180deg, #444488 0%, #333366 100%);
         box-shadow: 0 0 20px #8888ff;
+      }
+
+      #pause-menu .exit-to-voting-btn {
+        background: linear-gradient(180deg, #226622 0%, #114411 100%);
+        border-color: #44ff44;
+      }
+
+      #pause-menu .exit-to-voting-btn:hover {
+        background: linear-gradient(180deg, #338833 0%, #225522 100%);
+        box-shadow: 0 0 25px #44ff44;
+      }
+
+      #pause-menu .exit-to-voting-btn.hidden {
+        display: none;
       }
 
       #pause-menu .end-game-btn {
@@ -824,6 +843,12 @@ export class PauseMenu {
       this.onExitCallback?.();
     });
 
+    const exitToVotingBtn = this.container.querySelector('[data-action="exit-to-voting"]');
+    exitToVotingBtn?.addEventListener('click', () => {
+      this.hide();
+      this.networkCallbacks?.onExitToVoting?.();
+    });
+
     const endGameBtn = this.container.querySelector('[data-action="end-game"]');
     endGameBtn?.addEventListener('click', () => {
       this.hide();
@@ -969,12 +994,21 @@ export class PauseMenu {
 
   /**
    * Set whether this client is the host.
-   * When true, shows the "END GAME FOR ALL" and "STOP SERVER" buttons.
+   * When true, shows the "EXIT TO VOTING SCREEN", "END GAME FOR ALL" and "STOP SERVER" buttons.
    */
   setIsHost(isHost: boolean): void {
     this.isHost = isHost;
+    const exitToVotingBtn = this.container.querySelector('.exit-to-voting-btn');
     const endGameBtn = this.container.querySelector('.end-game-btn');
     const stopServerBtn = this.container.querySelector('.stop-server-btn');
+
+    if (exitToVotingBtn) {
+      if (isHost) {
+        exitToVotingBtn.classList.remove('hidden');
+      } else {
+        exitToVotingBtn.classList.add('hidden');
+      }
+    }
 
     if (endGameBtn) {
       if (isHost) {
