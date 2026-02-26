@@ -79,6 +79,7 @@ export class PauseMenu {
   private isPaused: boolean = false;
   private bgMusic: BackgroundMusic | null = null;
   private isHost: boolean = false;
+  private serverPaused: boolean = true;
   private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
   private perfLogger: PerformanceLogger | null = null;
   private visualMode: 'pixelated' | 'modern' = 'pixelated';
@@ -741,11 +742,17 @@ export class PauseMenu {
     const controlsBtn = this.container.querySelector('[data-action="controls"]');
 
     resumeBtn?.addEventListener('click', () => {
-      // For non-host players: enter look mode (can view but game stays paused globally)
-      // For host players: fully resume the game
       if (!this.isHost) {
-        this.enterLookMode();
+        if (this.serverPaused) {
+          // Server is paused: enter look mode (camera can move, game stays frozen globally)
+          this.enterLookMode();
+        } else {
+          // Local menu only (game still running): just close the menu
+          this.hide();
+          this.onResumeCallback?.();
+        }
       } else {
+        // Host: fully resume the game (notifies server)
         this.resume();
       }
     });
@@ -991,6 +998,17 @@ export class PauseMenu {
         stopServerBtn.classList.add('hidden');
       }
     }
+  }
+
+  /**
+   * Set whether the server is currently paused.
+   * When false (game still running), the resume button simply closes the menu
+   * instead of entering look mode — used when non-host opens their local menu
+   * during active gameplay.
+   * Defaults to true so the existing server-pause behavior is unchanged.
+   */
+  setServerPaused(paused: boolean): void {
+    this.serverPaused = paused;
   }
 
   /**

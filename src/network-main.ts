@@ -1145,6 +1145,7 @@ async function main() {
     network.disconnect();
     window.location.href = window.location.pathname;
   });
+  pauseMenu.setMasteryPointStore(masteryPointStore);
 
   // Sync pause menu with saved visual mode; wire the toggle
   pauseMenu.setVisualMode(savedVisualMode);
@@ -1239,6 +1240,7 @@ async function main() {
       game.pause(); // Sync game clock to prevent dt accumulation during pause
       // Both host and non-host see the full PauseMenu.
       // Host gets END GAME / STOP SERVER buttons; non-host does not.
+      pauseMenu.setServerPaused(true); // Server-paused: resume → look mode for non-host
       pauseMenu.setIsHost(isHost);
       pauseMenu.setGameData(buildPauseMenuGameData());
       pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
@@ -1413,8 +1415,6 @@ async function main() {
 
   function showLocalMenu(): void {
     localMenuOpen = true;
-    localMenuStopServerBtn.style.display = isHost ? 'block' : 'none';
-    localMenuEl.style.display = 'flex';
     // Allow touch events to reach menu buttons while local menu is open.
     if (input instanceof TouchInput) input.setGamePaused(true);
     // Send zero input immediately so the server stops moving this player
@@ -1430,11 +1430,18 @@ async function main() {
       network.sendInput(zeroInput);
       lastSentInput = { ...zeroInput };
     }
+    // Show the full PauseMenu (game still running — server not paused).
+    // Resume button closes the menu without entering look mode.
+    pauseMenu.setServerPaused(false);
+    pauseMenu.setIsHost(isHost);
+    pauseMenu.setGameData(buildPauseMenuGameData());
+    pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
+    pauseMenu.show();
   }
 
   function hideLocalMenu(): void {
     localMenuOpen = false;
-    localMenuEl.style.display = 'none';
+    pauseMenu.hide();
     // Re-enable joystick touch capture when menu is dismissed —
     // but only during active gameplay; not in lobby/voting where buttons must work.
     if (input instanceof TouchInput && currentRoomPhase === 'playing') {
