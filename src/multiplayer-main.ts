@@ -1119,6 +1119,12 @@ function main(): void {
         // Lerp up vector BEFORE lookAt so the resulting matrixWorld reflects
         // the current up direction (used by camera-relative mouse aim next frame).
         const upTarget = walker.getTangentFrame().bitangent;
+        // Sign-flip protection: prevent 180° camera flip when crossing cube face edges.
+        // Without this, the bitangent from the fallback in _updateTangentFrame can be
+        // opposite to cam.up, causing the view to rotate 180° and invert controls.
+        if (cam.up.dot(upTarget) < 0) {
+          upTarget.negate();
+        }
         cam.up.lerp(upTarget, CAMERA_LERP).normalize();
 
         cam.lookAt(walker.position);
