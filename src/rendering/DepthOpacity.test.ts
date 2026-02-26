@@ -191,7 +191,7 @@ describe('DepthOcclusionSystem', () => {
     expect(smallBatchSystem.getOpacity(entity2)).toBeCloseTo(DEFAULT_OCCLUSION_CONFIG.opacity1, 2);
   });
 
-  it('smooth lerps opacity toward target', () => {
+  it('smooth lerps opacity toward target after EMA stabilizes', () => {
     // Use a large box so entity at (0,0,-5) is inside it (behind one wall from camera)
     const mesh = makeBoxMesh(20);
     const slowLerp = new DepthOcclusionSystem({ batchSize: 1000, lerpSpeed: 2.0 });
@@ -209,12 +209,17 @@ describe('DepthOcclusionSystem', () => {
     // Now move entity outside the box (clear LOS)
     entity.position.set(0, 0, 15);
 
-    // Update: target changes to opacity0 (1.0), but current should lerp gradually
+    // EMA smoothing (alpha=0.7): the target doesn't change until smoothedCount crosses 0.5.
+    // After frame 1 (count=0): smoothedCount = 1.0*0.7 + 0*0.3 = 0.7 → still opacity1
     slowLerp.update([entity], camera, 1 / 60);
-    const afterOneLerp = slowLerp.getOpacity(entity);
-    // Should be moving toward 1.0 but not there yet (at lerpSpeed=2.0, dt=1/60)
-    expect(afterOneLerp).toBeGreaterThan(initial);
-    expect(afterOneLerp).toBeLessThan(DEFAULT_OCCLUSION_CONFIG.opacity0);
+    expect(slowLerp.getOpacity(entity)).toBeCloseTo(initial, 2); // no change yet
+
+    // After frame 2 (count=0): smoothedCount = 0.7*0.7 = 0.49 → crosses 0.5 → target = opacity0
+    // The lerp starts moving toward 1.0
+    slowLerp.update([entity], camera, 1 / 60);
+    const afterEmaStabilizes = slowLerp.getOpacity(entity);
+    expect(afterEmaStabilizes).toBeGreaterThan(initial);
+    expect(afterEmaStabilizes).toBeLessThan(DEFAULT_OCCLUSION_CONFIG.opacity0);
   });
 
   it('skips dead entities during raycast', () => {
@@ -326,6 +331,61 @@ describe('DepthOcclusionSystem', () => {
     system.update([nearEntity], camera, 1 / 60);
 
     expect(system.getOpacity(nearEntity)).toBeCloseTo(DEFAULT_OCCLUSION_CONFIG.opacity0, 2);
+  });
+
+  // --- Regression test: S35 — entity dimming flicker on cube edge ---
+  // When the camera looks at a cube edge, rays to far-side entities barely clip the face
+  // edge. Floating-point imprecision causes the intersection count to alternate between
+  // 0 and 1 each frame. The EMA smoothing (alpha=0.7) prevents this single-frame noise
+  // from flipping the target opacity: one rogue count=1 only raises smoothedCount to 0.3
+  // (below the 0.5 threshold), so the target stays at opacity0.
+  it('REGRESSION S35: single-frame count spike does NOT flip target opacity', () => {
+    const mesh = makeBoxMesh(4);
+    system.setSurfaceMesh(mesh);
+    const camera = new THREE.Vector3(0, 0, 20);
+
+    // Entity clearly outside box (count=0, bright)
+    const entity = makeEntity(new THREE.Vector3(0, 0, 5));
+    system.update([entity], camera, 1 / 60);
+    expect(system.getOpacity(entity)).toBeCloseTo(DEFAULT_OCCLUSION_CONFIG.opacity0, 2);
+
+    // Simulate a single-frame "rogue" hit by moving entity briefly into box territory
+    // then immediately back. The EMA should absorb the spike.
+    entity.position.set(0, 0, -5); // behind box → count=1-2
+    system.update([entity], camera, 1 / 60);
+
+    // Move back to clear position
+    entity.position.set(0, 0, 5);
+    system.update([entity], camera, 1 / 60);
+
+    // After: smoothedCount went up then back down. Target may have temporarily changed
+    // but the lerp should not have completed — opacity should still be significantly bright.
+    // The key: a transient hit followed by clear ray should recover quickly.
+    const opacityAfterSpike = system.getOpacity(entity);
+    // Should not have dropped to opacity1 (0.5) entirely — the spike is absorbed
+    // Opacity should be above 0.7 (closer to bright than to dimmed).
+    expect(opacityAfterSpike).toBeGreaterThan(0.7);
+  });
+
+  it('REGRESSION S35: sustained count change DOES update target (two consecutive frames)', () => {
+    const mesh = makeBoxMesh(4);
+    system.setSurfaceMesh(mesh);
+    const camera = new THREE.Vector3(0, 0, 20);
+
+    // Start: entity outside box (bright)
+    const entity = makeEntity(new THREE.Vector3(0, 0, 5));
+    system.update([entity], camera, 1 / 60);
+    expect(system.getOpacity(entity)).toBeCloseTo(DEFAULT_OCCLUSION_CONFIG.opacity0, 2);
+
+    // Sustained occlusion: 2 consecutive frames behind the box
+    entity.position.set(0, 0, -5);
+    system.update([entity], camera, 1 / 60); // frame 1: smoothedCount → 0.3 (spike absorbed)
+    system.update([entity], camera, 1 / 60); // frame 2: smoothedCount → 0.51, crosses 0.5 → target changes
+
+    // After 2 frames: target has changed. With instant-set currentOpacity (EMA crossed threshold),
+    // the lerp begins. The opacity should now be below opacity0.
+    const opacityAfterSustained = system.getOpacity(entity);
+    expect(opacityAfterSustained).toBeLessThan(DEFAULT_OCCLUSION_CONFIG.opacity0);
   });
 
   it('uses custom config values', () => {

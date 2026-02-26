@@ -2,7 +2,8 @@
  * Regression tests for the far-side enemy visibility culling feature.
  *
  * At 150+ entities, regular enemies on the far side of the surface are hidden
- * to reduce visual clutter. This file tests the core math that drives the fade zone.
+ * to reduce visual clutter. Culling deactivates below 120 (hysteresis) to prevent
+ * flickering when enemy count oscillates around the activation threshold.
  *
  * The logic lives in RenderLoop.ts (enemy_visibility section).
  * These tests verify the constants and formula produce correct behaviour.
@@ -11,10 +12,22 @@
 import { describe, it, expect } from 'vitest';
 
 // Constants mirrored from RenderLoop.ts — if they change there, update here.
-const FAR_SIDE_ENTITY_THRESHOLD = 150;
+const FAR_SIDE_ENTITY_THRESHOLD_ON  = 150;  // culling activates at 150+
+const FAR_SIDE_ENTITY_THRESHOLD_OFF = 120;  // culling deactivates below 120 (hysteresis)
 const FAR_SIDE_NEAR_DOT = 0.15;   // dot > this: fully visible (near side)
 const FAR_SIDE_FAR_DOT = -0.10;   // dot < this: hidden (far side)
 const FAR_SIDE_RANGE = FAR_SIDE_NEAR_DOT - FAR_SIDE_FAR_DOT; // 0.25
+
+/**
+ * Simulate the hysteresis culling state machine from RenderLoop.ts.
+ * @param entityCount - current number of entities
+ * @param currentlyActive - whether culling is currently active
+ */
+function updateCullingState(entityCount: number, currentlyActive: boolean): boolean {
+  if (!currentlyActive && entityCount >= FAR_SIDE_ENTITY_THRESHOLD_ON) return true;
+  if (currentlyActive && entityCount < FAR_SIDE_ENTITY_THRESHOLD_OFF) return false;
+  return currentlyActive;
+}
 
 /**
  * The far-factor formula from RenderLoop.ts — pure function for testing.
@@ -27,28 +40,51 @@ function computeFarFactor(dot: number): number {
 }
 
 describe('Far-side enemy culling', () => {
-  describe('entity count threshold', () => {
-    it('activates culling at exactly 150 entities', () => {
-      expect(FAR_SIDE_ENTITY_THRESHOLD).toBe(150);
+  describe('entity count threshold with hysteresis', () => {
+    it('does NOT cull when starting from 0 entities at 149 (below ON threshold)', () => {
+      expect(updateCullingState(149, false)).toBe(false);
     });
 
-    it('does NOT cull at 149 entities (one below threshold)', () => {
-      // Verified by allEnemies.length >= FAR_SIDE_ENTITY_THRESHOLD check
-      const entityCount = 149;
-      const doCulling = entityCount >= FAR_SIDE_ENTITY_THRESHOLD;
-      expect(doCulling).toBe(false);
+    it('activates culling at exactly 150 entities (ON threshold)', () => {
+      expect(updateCullingState(150, false)).toBe(true);
     });
 
-    it('culls at 150 entities (at threshold)', () => {
-      const entityCount = 150;
-      const doCulling = entityCount >= FAR_SIDE_ENTITY_THRESHOLD;
-      expect(doCulling).toBe(true);
+    it('activates culling at 200 entities', () => {
+      expect(updateCullingState(200, false)).toBe(true);
     });
 
-    it('culls at 200 entities (above threshold)', () => {
-      const entityCount = 200;
-      const doCulling = entityCount >= FAR_SIDE_ENTITY_THRESHOLD;
-      expect(doCulling).toBe(true);
+    it('stays active when already active at 130 (between OFF=120 and ON=150)', () => {
+      // Hysteresis: once active, culling stays on until below 120
+      expect(updateCullingState(130, true)).toBe(true);
+    });
+
+    it('stays active when already active at 121 (just above OFF threshold)', () => {
+      expect(updateCullingState(121, true)).toBe(true);
+    });
+
+    it('deactivates when already active and count drops below 120 (OFF threshold)', () => {
+      expect(updateCullingState(119, true)).toBe(false);
+    });
+
+    it('deactivates at exactly 0 entities when active', () => {
+      expect(updateCullingState(0, true)).toBe(false);
+    });
+
+    it('hysteresis prevents flicker: 150→149→150 cycle stays stable', () => {
+      // Simulates enemy count oscillating around 150
+      let active = false;
+      active = updateCullingState(150, active); // → true
+      active = updateCullingState(149, active); // → still true (149 >= OFF=120)
+      active = updateCullingState(150, active); // → still true
+      expect(active).toBe(true);
+    });
+
+    it('hysteresis prevents flicker: drop to 119 is needed to deactivate', () => {
+      let active = true;
+      active = updateCullingState(148, active); // → still true
+      active = updateCullingState(120, active); // → still true (120 >= OFF=120)
+      active = updateCullingState(119, active); // → false
+      expect(active).toBe(false);
     });
   });
 

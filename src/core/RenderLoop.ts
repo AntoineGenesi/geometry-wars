@@ -60,6 +60,10 @@ export class RenderLoop {
   private _lastHudUpdateTime = 0;
   private static readonly HUD_UPDATE_INTERVAL_MS = 100;
 
+  // Hysteresis state for far-side entity culling.
+  // Prevents flickering when enemy count oscillates around the activation threshold.
+  private _farSideCullingActive = false;
+
   render(ctx: GameContext, alpha: number): void {
     profiler.begin('surface_projection');
     // Project bullets onto surface
@@ -115,16 +119,26 @@ export class RenderLoop {
     const playerV = ctx.player.surfaceV;
     const wrapsV = ctx.surface.wrapsV;
 
-    // Far-side enemy culling: at 150+ entities, hide regular enemies on the back of the surface.
+    // Far-side enemy culling: at high entity counts, hide regular enemies on the back of the surface.
     // Bosses are exempt — they keep their depth-occlusion opacity (dim but visible as a threat cue).
     // Uses dot product between camera direction from center and enemy direction from center.
     // Smooth fade zone near horizon (dot=0) so enemies don't pop in/out.
-    const FAR_SIDE_ENTITY_THRESHOLD = 150;
+    //
+    // Hysteresis: turn ON at 150 entities, turn OFF below 120. This prevents flickering when
+    // enemy count oscillates around 150 (enemies dying/spawning), which would otherwise cause
+    // far-side entities to abruptly jump between their dimmed state and fully hidden.
+    const FAR_SIDE_ENTITY_THRESHOLD_ON  = 150;
+    const FAR_SIDE_ENTITY_THRESHOLD_OFF = 120;
     const FAR_SIDE_NEAR_DOT = 0.15;   // dot > this → fully visible (near side)
     const FAR_SIDE_FAR_DOT = -0.10;   // dot < this → hidden (far side)
     const farSideRange = FAR_SIDE_NEAR_DOT - FAR_SIDE_FAR_DOT; // 0.25
 
-    const doFarSideCulling = allEnemies.length >= FAR_SIDE_ENTITY_THRESHOLD;
+    if (!this._farSideCullingActive && allEnemies.length >= FAR_SIDE_ENTITY_THRESHOLD_ON) {
+      this._farSideCullingActive = true;
+    } else if (this._farSideCullingActive && allEnemies.length < FAR_SIDE_ENTITY_THRESHOLD_OFF) {
+      this._farSideCullingActive = false;
+    }
+    const doFarSideCulling = this._farSideCullingActive;
     if (doFarSideCulling) {
       // Camera direction from mesh center — computed once per frame, used per-enemy below
       this._farSideCamDir.copy(camPos).sub(meshCenter).normalize();
