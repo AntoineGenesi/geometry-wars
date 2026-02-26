@@ -105,8 +105,11 @@ export class GlowTrail {
       });
 
       const glowLine = new THREE.Line(glowGeom, glowMat);
-      // Scale each glow layer slightly larger
-      glowLine.scale.setScalar(1 + (i + 1) * 0.15);
+      // Glow layers share the same world-space positions as the core line.
+      // Do NOT scale from world origin — on curved surfaces (torus, etc.) scaling from origin
+      // shifts glow layers away from the player proportionally to their world-space distance
+      // from the origin, making trails appear at "extremities" of the surface.
+      // The glow effect is achieved through layered opacity/brightness alone.
 
       this.glowGeometries.push(glowGeom);
       this.glowMaterials.push(glowMat);
