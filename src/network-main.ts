@@ -1566,6 +1566,15 @@ function main() {
       };
       network.sendInput(zeroInput);
       lastSentInput = { ...zeroInput };
+    } else if (!document.hidden && !isPaused) {
+      // Tab became visible again and the server is NOT paused.
+      // Game.ts pauses the physics loop (onFixedUpdate) when the tab hides but
+      // has no resume handler for when visibility returns. This leaves the game
+      // clock stuck in Paused state, causing the joining player to be unable to
+      // move (no input sent) while the camera still updates from server state —
+      // the exact "player stuck but camera follows host" bug reported in S35.
+      // Explicitly resume here so the fixed-update loop restarts immediately.
+      game.resume();
     }
   });
 
