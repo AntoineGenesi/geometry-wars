@@ -446,7 +446,7 @@ export class GameLoop {
         ctx.pickupSpawner.newBuffPickups.splice(i, 1);
         continue;
       }
-      nbp.update(dt, ctx.game.clock.totalTime);
+      nbp.update(dt, ctx.game.clock.totalTime, ctx.game.camera.up);
       nbp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with new buff pickup
@@ -534,7 +534,7 @@ export class GameLoop {
         ctx.pickupSpawner.companionPickups.splice(i, 1);
         continue;
       }
-      cp.update(dt, ctx.game.clock.totalTime);
+      cp.update(dt, ctx.game.clock.totalTime, ctx.game.camera.up);
       cp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with companion pickup
@@ -557,7 +557,7 @@ export class GameLoop {
         ctx.pickupSpawner.superPickups.splice(i, 1);
         continue;
       }
-      pickup.update(dt);
+      pickup.update(dt, ctx.game.camera.up);
       pickup.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with pickup
@@ -756,7 +756,7 @@ export class GameLoop {
         ctx.pickupSpawner.weaponPickups.splice(i, 1);
         continue;
       }
-      wp.update(dt, ctx.game.clock.totalTime);
+      wp.update(dt, ctx.game.clock.totalTime, ctx.game.camera.up);
       wp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with weapon pickup
@@ -780,7 +780,7 @@ export class GameLoop {
         ctx.pickupSpawner.buffPickups.splice(i, 1);
         continue;
       }
-      bp.update(dt, ctx.game.clock.totalTime);
+      bp.update(dt, ctx.game.clock.totalTime, ctx.game.camera.up);
       bp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with buff pickup

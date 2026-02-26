@@ -1,13 +1,17 @@
 import * as THREE from 'three';
 
+// Pre-allocated temps for updateSpawnIndicator (zero per-frame allocations)
+const _indicatorInvQ = new THREE.Quaternion();
+const _indicatorLocalUp = new THREE.Vector3();
+
 /**
  * Creates a flashing downward-pointing arrow sprite to appear above pickups
  * for the first 30 seconds after spawning. Helps players distinguish pickups
  * from enemies at a glance.
  *
  * Returns a Sprite named 'spawn-indicator' at local position (0, 0, 0.9).
- * Local Z = bitangent = camera "up", so the arrow appears above the pickup on screen.
- * Call updateSpawnIndicator() each frame to animate it.
+ * Pass camera.up to updateSpawnIndicator() each frame to position it correctly
+ * above the pickup in screen space regardless of surface orientation.
  */
 export function createSpawnIndicatorSprite(tint: THREE.Color = new THREE.Color(0xffffff)): THREE.Sprite {
   const canvas = document.createElement('canvas');
@@ -66,11 +70,21 @@ export function createSpawnIndicatorSprite(tint: THREE.Color = new THREE.Color(0
 
 /**
  * Animate the spawn indicator. Call inside pickup update().
- * @param mesh  The pickup's root THREE.Group
- * @param age   How long the pickup has existed (seconds)
- * @param t     Running time for phase animation
+ * @param mesh      The pickup's root THREE.Group
+ * @param age       How long the pickup has existed (seconds)
+ * @param t         Running time for phase animation
+ * @param cameraUp  Camera's world-space up vector (camera.up). When provided, the
+ *                  sprite is positioned so it appears ABOVE the pickup in screen space.
+ *                  Without it the sprite falls back to local-Z offset which is wrong on
+ *                  surfaces where tangentV (bitangent) at the pickup differs from camera up
+ *                  (e.g. torus — tangentV rotates 360° around the ring).
  */
-export function updateSpawnIndicator(mesh: THREE.Object3D, age: number, t: number): void {
+export function updateSpawnIndicator(
+  mesh: THREE.Object3D,
+  age: number,
+  t: number,
+  cameraUp?: THREE.Vector3,
+): void {
   const indicator = mesh.getObjectByName('spawn-indicator') as THREE.Sprite | undefined;
   if (!indicator) return;
 
@@ -85,6 +99,21 @@ export function updateSpawnIndicator(mesh: THREE.Object3D, age: number, t: numbe
   const pulse = 0.5 + 0.5 * (0.5 + 0.5 * Math.sin(t * 6));
   (indicator.material as THREE.SpriteMaterial).opacity = pulse;
 
-  // Bounce along local Z (= bitangent = camera up) with larger amplitude
-  indicator.position.z = 1.0 + Math.abs(Math.sin(t * 4)) * 0.25;
+  // Bounce distance
+  const offsetDist = 1.0 + Math.abs(Math.sin(t * 4)) * 0.25;
+
+  if (cameraUp) {
+    // Transform camera.up (world space) into the pickup group's local space so the
+    // sprite's world position = pickup.position + cameraUp * offsetDist.
+    // This ensures the sprite always appears ABOVE the pickup on screen regardless of
+    // where on the surface the pickup is (fixes torus and any other surface where the
+    // pickup's bitangent diverges from the player's bitangent / camera up).
+    _indicatorInvQ.copy(mesh.quaternion).invert();
+    _indicatorLocalUp.copy(cameraUp).applyQuaternion(_indicatorInvQ);
+    indicator.position.copy(_indicatorLocalUp).multiplyScalar(offsetDist);
+  } else {
+    // Fallback: offset along local Z (= bitangent at pickup position).
+    // Correct when camera up ≈ pickup bitangent, but wrong on torus.
+    indicator.position.z = offsetDist;
+  }
 }

@@ -196,7 +196,7 @@ export class SuperStatePickup {
     }
   }
 
-  update(dt: number): void {
+  update(dt: number, cameraUp?: THREE.Vector3): void {
     if (!this.active) return;
 
     // Track age factor for surface dimming in RenderLoop (SuperStatePickup never fades)
@@ -216,7 +216,7 @@ export class SuperStatePickup {
 
     // Animate spawn indicator (visible for first 30s; no hard age limit since SuperStatePickup
     // doesn't expire — it stays until collected. animationTime serves as age.)
-    updateSpawnIndicator(this.mesh, this.animationTime, this.animationTime);
+    updateSpawnIndicator(this.mesh, this.animationTime, this.animationTime, cameraUp);
   }
 
   applySurfaceTransform(
