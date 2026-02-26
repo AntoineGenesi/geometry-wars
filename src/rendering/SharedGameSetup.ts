@@ -79,11 +79,12 @@ export function createStandardSurfaceConfig(
     tunnelRadius: scale * 0.3,
   };
 
-  // Cube tunnel needs much larger dimensions
+  // Cube tunnel: reduced size for more claustrophobic gameplay (S37)
+  // Proportionally reduced: 80 * (20/24) ≈ 67, wallThickness: 4.0 * (20/24) ≈ 3.3, bevelRadius: 10.0 * (20/24) ≈ 8.3
   if (surfaceType === 'cube-tunnel') {
-    config.size = 80;
-    config.wallThickness = 4.0;
-    config.bevelRadius = 10.0;
+    config.size = 67;
+    config.wallThickness = 3.3;
+    config.bevelRadius = 8.3;
     config.gridSegments = 20;
   }
 
