@@ -331,6 +331,226 @@ export class DebugOverlay {
 
   // -- Internal rendering --------------------------------------------------
 
+  private renderMiniGraphs(): void {
+    const data = this.perfLogger ? this.perfLogger.getDataPoints() : [];
+
+    // -- Unified canvas (FPS / ENT / BUL normalized) --
+    {
+      const canvas = this.unifiedCanvas;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const W = canvas.width;
+        const H = canvas.height;
+        const pad = { top: 8, right: 6, bottom: 18, left: 28 };
+        const pw = W - pad.left - pad.right;
+        const ph = H - pad.top - pad.bottom;
+
+        ctx.fillStyle = '#0a0a14';
+        ctx.fillRect(0, 0, W, H);
+
+        if (data.length < 2) {
+          ctx.fillStyle = '#445566';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('No data', W / 2, H / 2);
+        } else {
+          // Compute maxes for normalization
+          let maxFps = 1, maxEnemies = 1, maxBullets = 1;
+          for (const p of data) {
+            if (p.fps > maxFps) maxFps = p.fps;
+            if (p.enemyCount > maxEnemies) maxEnemies = p.enemyCount;
+            if (p.bulletCount > maxBullets) maxBullets = p.bulletCount;
+          }
+
+          const minTime = data[0].time;
+          const maxTime = data[data.length - 1].time;
+          const timeRange = Math.max(maxTime - minTime, 0.001);
+
+          const tx = (t: number) => pad.left + ((t - minTime) / timeRange) * pw;
+          const ty = (v: number) => pad.top + ph * (1 - Math.min(1, Math.max(0, v)));
+
+          // Grid line at 50%
+          ctx.strokeStyle = '#1a1a2e';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(pad.left, pad.top + ph / 2);
+          ctx.lineTo(pad.left + pw, pad.top + ph / 2);
+          ctx.stroke();
+
+          // Axes
+          ctx.strokeStyle = '#3a3a5e';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(pad.left, pad.top);
+          ctx.lineTo(pad.left, pad.top + ph);
+          ctx.lineTo(pad.left + pw, pad.top + ph);
+          ctx.stroke();
+
+          // Y labels
+          ctx.fillStyle = '#556677';
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('100%', pad.left - 2, pad.top);
+          ctx.fillText('0%', pad.left - 2, pad.top + ph);
+
+          // Draw lines (FPS=green, ENT=orange, BUL=blue)
+          const lines: Array<{ color: string; getValue: (p: { fps: number; enemyCount: number; bulletCount: number }) => number; max: number }> = [
+            { color: '#00ff88', getValue: p => p.fps, max: maxFps },
+            { color: '#ff6644', getValue: p => p.enemyCount, max: maxEnemies },
+            { color: '#44aaff', getValue: p => p.bulletCount, max: maxBullets },
+          ];
+
+          for (const line of lines) {
+            ctx.strokeStyle = line.color;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let i = 0; i < data.length; i++) {
+              const x = tx(data[i].time);
+              const y = ty(line.getValue(data[i]) / line.max);
+              if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+          }
+
+          // Legend (bottom row)
+          const legendItems = [
+            { color: '#00ff88', label: 'FPS' },
+            { color: '#ff6644', label: 'ENT' },
+            { color: '#44aaff', label: 'BUL' },
+          ];
+          ctx.font = '8px monospace';
+          ctx.textBaseline = 'bottom';
+          let lx = pad.left;
+          for (const item of legendItems) {
+            ctx.fillStyle = item.color;
+            ctx.fillRect(lx, H - 1, 6, -6);
+            ctx.fillStyle = '#88aacc';
+            ctx.textAlign = 'left';
+            ctx.fillText(item.label, lx + 8, H - 1);
+            lx += 36;
+          }
+        }
+      }
+    }
+
+    // -- Stacked canvas (enemy composition) --
+    {
+      const canvas = this.stackedCanvas;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const W = canvas.width;
+        const H = canvas.height;
+        const pad = { top: 6, right: 6, bottom: 14, left: 28 };
+        const pw = W - pad.left - pad.right;
+        const ph = H - pad.top - pad.bottom;
+
+        ctx.fillStyle = '#0a0a14';
+        ctx.fillRect(0, 0, W, H);
+
+        if (data.length < 2) {
+          ctx.fillStyle = '#445566';
+          ctx.font = '10px monospace';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('No data', W / 2, H / 2);
+        } else {
+          // Collect enemy types
+          const typeTotals = new Map<string, number>();
+          for (const point of data) {
+            point.enemyTypes.forEach((count, type) => {
+              typeTotals.set(type, (typeTotals.get(type) || 0) + count);
+            });
+          }
+
+          const sortedTypes = Array.from(typeTotals.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([type]) => type);
+
+          // Max cumulative enemy count
+          let maxTotal = 1;
+          for (const point of data) {
+            let total = 0;
+            point.enemyTypes.forEach(c => { total += c; });
+            if (total > maxTotal) maxTotal = total;
+          }
+          if (maxTotal < 1) maxTotal = 1;
+
+          const minTime = data[0].time;
+          const maxTime = data[data.length - 1].time;
+          const timeRange = Math.max(maxTime - minTime, 0.001);
+
+          const tx = (t: number) => pad.left + ((t - minTime) / timeRange) * pw;
+          const ty = (v: number) => pad.top + ph * (1 - Math.min(1, Math.max(0, v / maxTotal)));
+
+          // Axes
+          ctx.strokeStyle = '#3a3a5e';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(pad.left, pad.top);
+          ctx.lineTo(pad.left, pad.top + ph);
+          ctx.lineTo(pad.left + pw, pad.top + ph);
+          ctx.stroke();
+
+          if (sortedTypes.length === 0) {
+            // No type data — draw total enemy line
+            ctx.strokeStyle = '#ff6644';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            for (let i = 0; i < data.length; i++) {
+              const x = tx(data[i].time);
+              const y = ty(data[i].enemyCount);
+              if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+          } else {
+            // Draw stacked bands
+            for (let ti = 0; ti < sortedTypes.length; ti++) {
+              const type = sortedTypes[ti];
+              const color = ENEMY_COLORS[type] || '#888888';
+
+              ctx.beginPath();
+              // Forward: top edge
+              for (let i = 0; i < data.length; i++) {
+                const point = data[i];
+                const x = tx(point.time);
+                let cumTop = 0;
+                for (let k = 0; k <= ti; k++) {
+                  cumTop += point.enemyTypes.get(sortedTypes[k] as any) || 0;
+                }
+                const y = ty(cumTop);
+                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+              }
+              // Backward: bottom edge
+              for (let i = data.length - 1; i >= 0; i--) {
+                const point = data[i];
+                const x = tx(point.time);
+                let cumBottom = 0;
+                for (let k = 0; k < ti; k++) {
+                  cumBottom += point.enemyTypes.get(sortedTypes[k] as any) || 0;
+                }
+                ctx.lineTo(x, ty(cumBottom));
+              }
+              ctx.closePath();
+              ctx.fillStyle = color + 'aa';
+              ctx.fill();
+            }
+          }
+
+          // Y label
+          ctx.fillStyle = '#556677';
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'top';
+          ctx.fillText(String(maxTotal), pad.left - 2, pad.top);
+          ctx.textBaseline = 'bottom';
+          ctx.fillText('0', pad.left - 2, pad.top + ph);
+        }
+      }
+    }
+  }
+
   private renderTopPanel(): void {
     const sections = [
       { title: 'HIGHEST FPS', data: this.tracker.highestFps, highlight: 'fps' },
