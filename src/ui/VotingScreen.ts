@@ -21,6 +21,12 @@ export interface VotingScreenCallbacks {
   onHostLaunch?: (choice: string) => void;
   /** Called when player clicks RETURN TO MENU */
   onReturnToMenu?: () => void;
+  /** Called when player clicks WEAPON MASTERY button */
+  onOpenMastery?: () => void;
+  /** Called when player clicks READY UP button */
+  onReadyUp?: () => void;
+  /** Called when host pauses or resumes the countdown (host only) */
+  onHostPauseCountdown?: (paused: boolean) => void;
 }
 
 export const SURFACES = [
@@ -62,9 +68,14 @@ export class VotingScreen {
   private sizeCounts = new Map<string, HTMLElement>();
   private countdownArea: HTMLElement | null = null;
   private countdownEl: HTMLElement | null = null;
+  private countdownPausedEl: HTMLElement | null = null;
   private hostControls: HTMLElement | null = null;
   private pickModeToggle: HTMLInputElement | null = null;
   private launchBtn: HTMLElement | null = null;
+  private pauseCountdownBtn: HTMLElement | null = null;
+  private readyUpBtn: HTMLElement | null = null;
+  private readyStatusEl: HTMLElement | null = null;
+  private localIsReady = false;
 
   private isBuilt = false;
   private isHost = false;
@@ -112,6 +123,13 @@ export class VotingScreen {
 
     if (!this.isBuilt) {
       this.buildDOM();
+    }
+
+    // Reset ready state for new voting round
+    this.localIsReady = false;
+    if (this.readyUpBtn) {
+      this.readyUpBtn.textContent = 'READY UP';
+      this.readyUpBtn.classList.remove('vs-ready-btn--active');
     }
 
     this.container.classList.remove('hidden');
@@ -172,12 +190,32 @@ export class VotingScreen {
     });
 
     // Countdown: hide when countdown <= 0 or in host pick mode
-    if (this.countdownArea && this.countdownEl) {
+    if (this.countdownArea && this.countdownEl && this.countdownPausedEl) {
       const hideCountdown = state.hostPickMode || state.votingCountdown <= 0;
       this.countdownArea.style.display = hideCountdown ? 'none' : 'flex';
       if (!hideCountdown) {
-        this.countdownEl.textContent = String(Math.ceil(state.votingCountdown));
+        const isPaused = (state as { countdownPaused?: boolean }).countdownPaused ?? false;
+        this.countdownEl.style.display = isPaused ? 'none' : 'block';
+        this.countdownPausedEl.style.display = isPaused ? 'block' : 'none';
+        if (!isPaused) {
+          this.countdownEl.textContent = String(Math.ceil(state.votingCountdown));
+        }
+        // Update pause button label (host only)
+        if (this.pauseCountdownBtn) {
+          this.pauseCountdownBtn.textContent = isPaused ? '▶ RESUME TIMER' : '⏸ PAUSE TIMER';
+        }
       }
+    }
+
+    // Ready status: show which players are ready
+    const readyMap = (state as { readyMap?: Map<string, boolean> }).readyMap;
+    if (this.readyStatusEl && readyMap) {
+      const totalPlayers = state.players ? state.players.size : 0;
+      let readyCount = 0;
+      readyMap.forEach((val) => { if (val) readyCount++; });
+      this.readyStatusEl.textContent = totalPlayers > 0
+        ? `${readyCount}/${totalPlayers} ready`
+        : '';
     }
 
     // Host controls: visible only to host
@@ -213,6 +251,7 @@ export class VotingScreen {
     this.modeCounts.clear();
     this.sizeButtons.clear();
     this.sizeCounts.clear();
+    this.localIsReady = false;
 
     // ---- Layout wrapper ----
     const wrap = document.createElement('div');
@@ -291,9 +330,45 @@ export class VotingScreen {
     cdEl.className = 'vs-countdown';
     cdEl.textContent = '–';
     cdArea.appendChild(cdEl);
+    const cdPausedEl = document.createElement('div');
+    cdPausedEl.className = 'vs-countdown-paused';
+    cdPausedEl.textContent = 'PAUSED';
+    cdPausedEl.style.display = 'none';
+    cdArea.appendChild(cdPausedEl);
     wrap.appendChild(cdArea);
     this.countdownArea = cdArea;
     this.countdownEl = cdEl;
+    this.countdownPausedEl = cdPausedEl;
+
+    // ---- Ready status row ----
+    const readyRow = document.createElement('div');
+    readyRow.className = 'vs-ready-status';
+    wrap.appendChild(readyRow);
+    this.readyStatusEl = readyRow;
+
+    // ---- Ready Up button ----
+    const readyBtn = document.createElement('button');
+    readyBtn.className = 'vs-ready-btn';
+    readyBtn.textContent = 'READY UP';
+    readyBtn.addEventListener('click', () => {
+      if (!this.localIsReady) {
+        this.localIsReady = true;
+        readyBtn.textContent = '✓ READY';
+        readyBtn.classList.add('vs-ready-btn--active');
+        this.callbacks.onReadyUp?.();
+      }
+    });
+    wrap.appendChild(readyBtn);
+    this.readyUpBtn = readyBtn;
+
+    // ---- Weapon Mastery button ----
+    const masteryBtn = document.createElement('button');
+    masteryBtn.className = 'vs-mastery-btn';
+    masteryBtn.textContent = '✦ WEAPON MASTERY';
+    masteryBtn.addEventListener('click', () => {
+      this.callbacks.onOpenMastery?.();
+    });
+    wrap.appendChild(masteryBtn);
 
     // ---- Host controls (initially hidden; update() shows/hides) ----
     const hostCtrl = document.createElement('div');
@@ -327,6 +402,18 @@ export class VotingScreen {
     });
     hostCtrl.appendChild(launchBtn);
     this.launchBtn = launchBtn;
+
+    // PAUSE/RESUME countdown button (host only)
+    const pauseBtn = document.createElement('button');
+    pauseBtn.className = 'vs-pause-countdown-btn';
+    pauseBtn.textContent = '⏸ PAUSE TIMER';
+    pauseBtn.addEventListener('click', () => {
+      const willPause = pauseBtn.textContent?.startsWith('⏸');
+      this.callbacks.onHostPauseCountdown?.(!!willPause);
+    });
+    hostCtrl.appendChild(pauseBtn);
+    this.pauseCountdownBtn = pauseBtn;
+
     this.hostControls = hostCtrl;
     wrap.appendChild(hostCtrl);
 
@@ -670,6 +757,96 @@ export class VotingScreen {
       #voting-screen .vs-return-btn:hover {
         background: rgba(80, 0, 0, 0.8);
         box-shadow: 0 0 20px #ff4444;
+      }
+
+      /* ---- Countdown paused indicator ---- */
+      #voting-screen .vs-countdown-paused {
+        font-size: 36px;
+        font-weight: bold;
+        color: #ff8800;
+        text-shadow: 0 0 20px #ff8800, 0 0 40px #ff4400;
+        letter-spacing: 6px;
+        line-height: 1;
+        animation: vs-pulse 1s ease-in-out infinite alternate;
+      }
+
+      /* ---- Ready Up button ---- */
+      #voting-screen .vs-ready-btn {
+        background: rgba(0, 20, 40, 0.7);
+        border: 2px solid #0066aa;
+        color: #88ccdd;
+        padding: 14px 40px;
+        font-size: 16px;
+        font-weight: bold;
+        cursor: pointer;
+        letter-spacing: 3px;
+        transition: all 0.2s;
+        font-family: inherit;
+        border-radius: 4px;
+        margin: 8px 0;
+      }
+      #voting-screen .vs-ready-btn:hover {
+        border-color: #00aaff;
+        color: #00ffff;
+        box-shadow: 0 0 16px rgba(0, 170, 255, 0.5);
+      }
+      #voting-screen .vs-ready-btn.vs-ready-btn--active {
+        background: rgba(0, 60, 20, 0.7);
+        border-color: #00ff88;
+        color: #00ff88;
+        box-shadow: 0 0 20px rgba(0, 255, 136, 0.6);
+        cursor: default;
+      }
+
+      /* ---- Ready status display ---- */
+      #voting-screen .vs-ready-status {
+        font-size: 13px;
+        color: #668888;
+        letter-spacing: 2px;
+        margin: 4px 0 8px;
+        min-height: 20px;
+        text-align: center;
+      }
+
+      /* ---- Weapon Mastery button ---- */
+      #voting-screen .vs-mastery-btn {
+        background: rgba(20, 0, 40, 0.7);
+        border: 2px solid #440066;
+        color: #aa66ff;
+        padding: 10px 28px;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: pointer;
+        letter-spacing: 3px;
+        transition: all 0.2s;
+        font-family: inherit;
+        border-radius: 4px;
+        margin: 4px 0;
+      }
+      #voting-screen .vs-mastery-btn:hover {
+        border-color: #aa44ff;
+        color: #cc88ff;
+        box-shadow: 0 0 16px rgba(170, 68, 255, 0.5);
+      }
+
+      /* ---- Pause countdown button (in host controls) ---- */
+      #voting-screen .vs-pause-countdown-btn {
+        background: rgba(40, 20, 0, 0.7);
+        border: 2px solid #885500;
+        color: #ffaa44;
+        padding: 10px 20px;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: pointer;
+        letter-spacing: 2px;
+        transition: all 0.2s;
+        font-family: inherit;
+        border-radius: 4px;
+      }
+      #voting-screen .vs-pause-countdown-btn:hover {
+        border-color: #ffaa00;
+        color: #ffcc44;
+        box-shadow: 0 0 16px rgba(255, 170, 0, 0.5);
       }
     `;
     document.head.appendChild(style);

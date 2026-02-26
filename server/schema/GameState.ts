@@ -218,6 +218,10 @@ export class GameState extends Schema {
   declare gameMode: string;
   /** Current map size (default: 'medium') */
   declare mapSize: string;
+  /** Maps sessionId → ready boolean for ready-up system */
+  declare readyMap: MapSchema<boolean>;
+  /** When true, host has paused the voting countdown */
+  declare countdownPaused: boolean;
 
   constructor() {
     super();
@@ -241,6 +245,8 @@ export class GameState extends Schema {
     this.hostPickMode = false;
     this.gameMode = 'waves';
     this.mapSize = 'medium';
+    this.readyMap = new MapSchema<boolean>();
+    this.countdownPaused = false;
   }
 }
 
@@ -263,4 +269,6 @@ defineTypes(GameState, {
   hostPickMode: 'boolean',
   gameMode: 'string',
   mapSize: 'string',
+  readyMap: { map: 'boolean' },
+  countdownPaused: 'boolean',
 });

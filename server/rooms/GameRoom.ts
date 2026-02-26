@@ -307,6 +307,25 @@ export class GameRoom extends Room<GameState> {
       this.startGameWithSettings(data.choice);
     });
 
+    this.onMessage('ready_up', (client) => {
+      if (this.state.roomPhase !== 'voting') return;
+      this.state.readyMap.set(client.sessionId, true);
+      const playerCount = this.state.players.size;
+      this.logger.log(`[GameRoom] ${client.sessionId} ready (${this.state.readyMap.size}/${playerCount})`);
+      if (playerCount > 0 && this.state.readyMap.size >= playerCount) {
+        const choice = this.pickMostVoted();
+        this.logger.log(`[GameRoom] All players ready — launching with: ${choice}`);
+        this.startGameWithSettings(choice);
+      }
+    });
+
+    this.onMessage('pause_countdown', (client, data: { paused: boolean }) => {
+      if (client.sessionId !== this.state.hostId) return;
+      if (this.state.roomPhase !== 'voting') return;
+      this.state.countdownPaused = data.paused;
+      this.logger.log(`[GameRoom] Countdown ${data.paused ? 'paused' : 'resumed'} by host`);
+    });
+
     this.onMessage('pause', (client, data: { paused: boolean }) => {
       if (client.sessionId !== this.state.hostId) return;
       this.state.isPaused = data.paused;
@@ -901,8 +920,11 @@ export class GameRoom extends Room<GameState> {
       return;
     }
 
-    this.state.votingCountdown = Math.max(0, this.state.votingCountdown - dt);
-    if (this.state.votingCountdown <= 0) {
+    // Skip countdown decrement when host has paused it
+    if (!this.state.countdownPaused) {
+      this.state.votingCountdown = Math.max(0, this.state.votingCountdown - dt);
+    }
+    if (this.state.votingCountdown <= 0 && !this.state.countdownPaused) {
       const choice = this.pickMostVoted();
       this.logger.log(`[GameRoom] Voting countdown ended — auto-launching with: ${choice}`);
       this.startGameWithSettings(choice);
@@ -2059,6 +2081,8 @@ export class GameRoom extends Room<GameState> {
     this.state.gameOver = true;  // backward compat: existing client code reads gameOver
     this.state.votingCountdown = VOTING_COUNTDOWN_SECS;
     this.state.voteMap.clear();
+    this.state.readyMap.clear();
+    this.state.countdownPaused = false;
     this.setMetadata({
       surface: this.state.surfaceType,
       status: 'voting',

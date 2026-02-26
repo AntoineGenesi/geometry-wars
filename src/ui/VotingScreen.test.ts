@@ -91,6 +91,8 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
       hostPickMode: false,
       gameMode: 'waves',
       mapSize: 'medium',
+      readyMap: new Map(),
+      countdownPaused: false,
       ...overrides,
     };
   }
@@ -155,6 +157,8 @@ describe('VotingScreen — mastery desync regression (S34b)', () => {
       hostPickMode: false,
       gameMode: 'waves',
       mapSize: 'medium',
+      readyMap: new Map(),
+      countdownPaused: false,
       ...overrides,
     };
   }

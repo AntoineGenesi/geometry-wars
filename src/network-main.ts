@@ -52,6 +52,9 @@ import { AllyGlowManager } from './effects/AllyGlow';
 import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
 import { WeaponMasteryManager } from './buffs/WeaponMasteryManager';
 import { MasteryStore } from './systems/MasteryStore';
+import { MasteryPointStore } from './systems/MasteryPointStore';
+import { MatchUpgradeTracker } from './systems/MatchUpgradeTracker';
+import { WeaponMasteryScreen } from './ui/WeaponMasteryScreen';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
 import { BuffManager } from './buffs/BuffManager';
 import { BuffHUD } from './buffs/BuffHUD';
@@ -810,6 +813,13 @@ async function main() {
   // Shown on game end via MasteryProgressScreen before VotingScreen.
   const weaponMastery = new WeaponMasteryManager();
   const masteryStore = MasteryStore.load();
+
+  // -- Per-match upgrade tracker (reset each round in MP) --
+  // Activates permanently-unlocked mastery nodes via kill thresholds (same as SP).
+  // In MP, we create a fresh tracker each time a new round begins.
+  const masteryPointStore = MasteryPointStore.load();
+  let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+  localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
 
   // -- Buff system: client-side buff collection + visual effects --
   // Buffs are collected via client-side pickup drops (see localBuffPickups).
@@ -1622,6 +1632,8 @@ async function main() {
   // -----------------------------------------------------------------------
 
   const votingScreen = new VotingScreen();
+  let activeVotingMasteryScreen: WeaponMasteryScreen | null = null;
+
   votingScreen.setCallbacks({
     onVote: (choice: string) => {
       network.sendVote(choice);
@@ -1631,6 +1643,24 @@ async function main() {
     },
     onHostLaunch: (choice: string) => {
       network.sendHostLaunch(choice);
+    },
+    onReadyUp: () => {
+      network.sendReadyUp();
+    },
+    onHostPauseCountdown: (paused: boolean) => {
+      network.sendPauseCountdown(paused);
+    },
+    onOpenMastery: () => {
+      if (activeVotingMasteryScreen) return; // already open
+      const masteryPointStore = MasteryPointStore.load();
+      const screen = new WeaponMasteryScreen();
+      screen.setPointStore(masteryPointStore);
+      activeVotingMasteryScreen = screen;
+      screen.onClose(() => {
+        screen.dispose();
+        activeVotingMasteryScreen = null;
+      });
+      screen.show(MasteryStore.load());
     },
     onReturnToMenu: () => {
       if (isHost) {
@@ -2119,7 +2149,9 @@ async function main() {
           // PlayerLevel + weapon mastery kill attribution for local player
           if (nearestId === localPlayerId) {
             playerLevel.addKill();
-            weaponMastery.recordKill(localWeaponManager.getCurrentWeapon());
+            const killedWithWeapon = localWeaponManager.getCurrentWeapon();
+            weaponMastery.recordKill(killedWithWeapon);
+            matchUpgradeTracker.recordKill(killedWithWeapon);
           }
         }
 
@@ -2421,12 +2453,20 @@ async function main() {
       } else if (newPhase === 'playing' && currentRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
         votingScreen.hide();
-        // If the voting countdown expired while the mastery screen was still showing,
+        // Dismiss any open mastery overlay from the voting screen.
+        if (activeVotingMasteryScreen) {
+          activeVotingMasteryScreen.dispose();
+          activeVotingMasteryScreen = null;
+        }
+        // If the voting countdown expired while the mastery progress screen was still showing,
         // dismiss it now so the player doesn't get stuck on a stale screen.
         if (activeMasteryScreen) {
           activeMasteryScreen.dispose();
           activeMasteryScreen = null;
         }
+        // Reset per-match upgrade tracker for the new round.
+        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+        localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
         // initSurface at the top of onStateChange already handles surface reinit
         // (called with state.surfaceType and confirmedFromServer=true).
@@ -2434,6 +2474,9 @@ async function main() {
       } else if (newPhase === 'playing' && currentRoomPhase === 'lobby') {
         // Initial game start: lobby → playing.
         // Reset entities (safe to call even when empty — clears any stale state).
+        // Reset per-match upgrade tracker for the first round.
+        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+        localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
         gameOverScreen.hide();
         votingScreen.hide();

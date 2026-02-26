@@ -97,6 +97,10 @@ export interface NetworkGameState {
   gameMode: string;
   /** Current map size (e.g. 'medium') */
   mapSize: string;
+  /** Maps sessionId → ready boolean for ready-up system */
+  readyMap: Map<string, boolean>;
+  /** When true, host has paused the voting countdown */
+  countdownPaused: boolean;
 }
 
 /** Input to send to server */
@@ -467,6 +471,8 @@ export class NetworkClient {
       hostPickMode: boolean;
       gameMode: string;
       mapSize: string;
+      readyMap: Map<string, boolean>;
+      countdownPaused: boolean;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -478,6 +484,7 @@ export class NetworkClient {
     // decode when Colyseus hasn't populated the schema fields yet.
     const emptyArray: ForEachable<never> = { forEach() {} };
     const emptyMap = new Map<string, string>();
+    const emptyBoolMap = new Map<string, boolean>();
     return {
       players: s.players,
       bullets: s.bullets || emptyArray,
@@ -497,6 +504,8 @@ export class NetworkClient {
       hostPickMode: s.hostPickMode ?? false,
       gameMode: s.gameMode || 'waves',
       mapSize: s.mapSize || 'medium',
+      readyMap: s.readyMap || emptyBoolMap,
+      countdownPaused: s.countdownPaused ?? false,
     };
   }
 
@@ -576,6 +585,18 @@ export class NetworkClient {
   sendStartupCacheAck(hit: boolean): void {
     if (!this.room || !this.connected) return;
     this.room.send('startup_cache_ack', { hit });
+  }
+
+  /** Signal that this player is ready to start (voting phase) */
+  sendReadyUp(): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('ready_up');
+  }
+
+  /** Host: pause or resume the voting countdown */
+  sendPauseCountdown(paused: boolean): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('pause_countdown', { paused });
   }
 
   /**
