@@ -651,6 +651,9 @@ async function main(): Promise<void> {
         const scorePower = scoreManager.getScorePowerMultiplier();
         const actualDamage = damage * auraBuff.damageMultiplier * scorePower;
         enemy.takeDamage(actualDamage, ownerId);
+        if (enemy.alive) {
+          scorePopups.spawnDamage(enemy.position, actualDamage);
+        }
         if (enemy.alive && enemy.mesh) {
           enemy.mesh.traverse((child: THREE.Object3D) => {
             if (child instanceof THREE.Mesh && child.material) {
