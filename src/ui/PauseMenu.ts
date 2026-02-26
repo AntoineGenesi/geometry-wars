@@ -1089,10 +1089,11 @@ export class PauseMenu {
       <div class="perf-graphs-content">
         <h2 class="perf-graphs-title">PERFORMANCE ANALYSIS</h2>
         <div class="perf-graphs-tabs">
-          <button class="perf-tab active" data-tab="fps">FPS</button>
+          <button class="perf-tab active" data-tab="unified">Unified</button>
+          <button class="perf-tab" data-tab="stacked">Enemy Composition</button>
+          <button class="perf-tab" data-tab="fps">FPS</button>
           <button class="perf-tab" data-tab="enemies">Enemies</button>
           <button class="perf-tab" data-tab="bullets">Bullets</button>
-          <button class="perf-tab" data-tab="types">Enemy Types</button>
         </div>
         <div class="perf-graphs-canvas-container">
           <canvas id="perf-graph-canvas"></canvas>
@@ -1332,7 +1333,7 @@ export class PauseMenu {
 
       graph.setData(data);
       graph.setFPSMoments(minMoment, maxMoment);
-      graph.renderFPSChart();
+      graph.renderUnifiedChart();
 
       // Update stats
       if (minMoment) {
@@ -1380,7 +1381,11 @@ export class PauseMenu {
           tab.classList.add('active');
 
           const tabType = tab.getAttribute('data-tab');
-          if (tabType === 'fps') {
+          if (tabType === 'unified') {
+            graph.renderUnifiedChart();
+          } else if (tabType === 'stacked') {
+            graph.renderStackedAreaChart();
+          } else if (tabType === 'fps') {
             graph.renderFPSChart();
           } else if (tabType === 'enemies') {
             graph.renderEnemyChart();

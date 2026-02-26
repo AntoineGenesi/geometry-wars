@@ -70,7 +70,7 @@ const DEFAULT_CONFIG: GraphConfig = {
 };
 
 // Enemy type colors for stacked area chart
-const ENEMY_COLORS: Record<string, string> = {
+export const ENEMY_COLORS: Record<string, string> = {
   wanderer: '#ff6644',
   grunt: '#ff8844',
   duck: '#ffaa44',
@@ -127,8 +127,8 @@ export class PerformanceGraph {
   private minFpsMoment: PerformanceDataPoint | null = null;
   private maxFpsMoment: PerformanceDataPoint | null = null;
 
-  // Active chart type ('fps' | 'enemies' | 'bullets' | 'types')
-  private activeChart: 'fps' | 'enemies' | 'bullets' | 'types' = 'fps';
+  // Active chart type
+  private activeChart: 'fps' | 'enemies' | 'bullets' | 'types' | 'unified' | 'stacked' = 'unified';
 
   constructor(canvas: HTMLCanvasElement, config: Partial<GraphConfig> = {}) {
     this.canvas = canvas;
@@ -189,7 +189,11 @@ export class PerformanceGraph {
     this.drawAxes();
     this.drawChartTitle();
 
-    if (this.activeChart === 'types') {
+    if (this.activeChart === 'unified') {
+      this.drawUnifiedChart();
+    } else if (this.activeChart === 'stacked') {
+      this.drawStackedAreaChart();
+    } else if (this.activeChart === 'types') {
       this.drawEnemyTypeBars();
     } else {
       if (this.activeChart === 'fps') {
@@ -237,6 +241,26 @@ export class PerformanceGraph {
     this.render();
   }
 
+  /**
+   * Render unified performance chart: FPS, enemies, and bullets normalized to 0-100%
+   * so correlations between them are visible on a single axis.
+   */
+  renderUnifiedChart(): void {
+    this.activeChart = 'unified';
+    this.resetViewport();
+    this.render();
+  }
+
+  /**
+   * Render stacked area chart showing enemy type composition over time.
+   * Each type's area stacks cumulatively (waterfall style).
+   */
+  renderStackedAreaChart(): void {
+    this.activeChart = 'stacked';
+    this.resetViewport();
+    this.render();
+  }
+
   // -- Internal rendering ---------------------------------------------------
 
   private drawNoData(): void {
@@ -258,7 +282,11 @@ export class PerformanceGraph {
     const centerX = left + plotWidth / 2;
 
     let title = '';
-    if (this.activeChart === 'fps') {
+    if (this.activeChart === 'unified') {
+      title = 'Unified Performance (Normalized %)';
+    } else if (this.activeChart === 'stacked') {
+      title = 'Enemy Type Composition Over Time';
+    } else if (this.activeChart === 'fps') {
       title = 'FPS Over Time';
     } else if (this.activeChart === 'enemies') {
       title = 'Enemy Count Over Time';
@@ -331,10 +359,11 @@ export class PerformanceGraph {
     ctx.textBaseline = 'middle';
 
     // Y axis labels
+    const showPctSuffix = this.activeChart === 'unified';
     for (let i = 0; i <= 5; i++) {
       const value = viewport.minValue + ((viewport.maxValue - viewport.minValue) / 5) * (5 - i);
       const y = top + (plotHeight / 5) * i;
-      ctx.fillText(Math.round(value).toString(), left - 10, y);
+      ctx.fillText(Math.round(value).toString() + (showPctSuffix ? '%' : ''), left - 10, y);
     }
 
     // X axis labels
@@ -471,6 +500,205 @@ export class PerformanceGraph {
     });
   }
 
+  /**
+   * Unified performance chart: FPS, enemy count, and bullet count normalized
+   * to 0-100% on the same axis so correlations between them are visible.
+   */
+  private drawUnifiedChart(): void {
+    const { ctx, config, data, viewport } = this;
+
+    if (data.length === 0) return;
+
+    // Compute global maxes from ALL data (not just viewport) so scale stays stable while panning
+    let maxFps = 1, maxEnemies = 1, maxBullets = 1;
+    for (const p of data) {
+      if (p.fps > maxFps) maxFps = p.fps;
+      if (p.enemyCount > maxEnemies) maxEnemies = p.enemyCount;
+      if (p.bulletCount > maxBullets) maxBullets = p.bulletCount;
+    }
+
+    // Filter to viewport
+    const visible = data.filter(p => p.time >= viewport.minTime && p.time <= viewport.maxTime);
+    if (visible.length < 2) return;
+
+    const { left, top, right, bottom } = config.padding;
+    const plotHeight = config.height - top - bottom;
+
+    // Draw transparent fill areas first
+    const drawFill = (color: string, getValue: (p: PerformanceDataPoint) => number, maxVal: number) => {
+      ctx.beginPath();
+      ctx.moveTo(this.timeToPixel(visible[0].time), this.valueToPixel(getValue(visible[0]) / maxVal * 100));
+      for (let i = 1; i < visible.length; i++) {
+        ctx.lineTo(this.timeToPixel(visible[i].time), this.valueToPixel(getValue(visible[i]) / maxVal * 100));
+      }
+      ctx.lineTo(this.timeToPixel(visible[visible.length - 1].time), top + plotHeight);
+      ctx.lineTo(this.timeToPixel(visible[0].time), top + plotHeight);
+      ctx.closePath();
+      ctx.fillStyle = color + '18';
+      ctx.fill();
+    };
+
+    // Draw lines
+    const drawLine = (color: string, getValue: (p: PerformanceDataPoint) => number, maxVal: number) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < visible.length; i++) {
+        const x = this.timeToPixel(visible[i].time);
+        const y = this.valueToPixel(getValue(visible[i]) / maxVal * 100);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    };
+
+    drawFill(config.colors.fps, p => p.fps, maxFps);
+    drawFill(config.colors.enemies, p => p.enemyCount, maxEnemies);
+    drawFill(config.colors.bullets, p => p.bulletCount, maxBullets);
+
+    drawLine(config.colors.fps, p => p.fps, maxFps);
+    drawLine(config.colors.enemies, p => p.enemyCount, maxEnemies);
+    drawLine(config.colors.bullets, p => p.bulletCount, maxBullets);
+
+    // Draw legend in top-right area
+    const legendItems = [
+      { color: config.colors.fps, label: `FPS  (max: ${Math.round(maxFps)})` },
+      { color: config.colors.enemies, label: `Enemies (max: ${maxEnemies})` },
+      { color: config.colors.bullets, label: `Bullets (max: ${maxBullets})` },
+    ];
+    const legendX = config.width - right - 175;
+    const legendY = top + 5;
+    ctx.fillStyle = 'rgba(0,0,20,0.75)';
+    ctx.fillRect(legendX - 6, legendY - 4, 178, legendItems.length * 18 + 8);
+    for (let i = 0; i < legendItems.length; i++) {
+      const item = legendItems[i];
+      const y = legendY + i * 18;
+      ctx.fillStyle = item.color;
+      ctx.fillRect(legendX, y, 12, 12);
+      ctx.fillStyle = config.colors.text;
+      ctx.font = '11px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(item.label, legendX + 16, y);
+    }
+  }
+
+  /**
+   * Stacked area chart: shows enemy type composition over time.
+   * Each type stacks cumulatively from the bottom (waterfall style).
+   */
+  private drawStackedAreaChart(): void {
+    const { ctx, config, data, viewport } = this;
+
+    const visible = data.filter(p => p.time >= viewport.minTime && p.time <= viewport.maxTime);
+    if (visible.length < 2) return;
+
+    // Collect all enemy types and sort by total count (most common → bottom of stack)
+    const typeTotals = new Map<string, number>();
+    for (const point of visible) {
+      point.enemyTypes.forEach((count, type) => {
+        typeTotals.set(type, (typeTotals.get(type) || 0) + count);
+      });
+    }
+
+    const sortedTypes = Array.from(typeTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([type]) => type);
+
+    if (sortedTypes.length === 0) {
+      // No enemy type data — fall back to showing total enemy count
+      const { left, top, right, bottom } = config.padding;
+      const plotHeight = config.height - top - bottom;
+      ctx.beginPath();
+      for (let i = 0; i < visible.length; i++) {
+        const x = this.timeToPixel(visible[i].time);
+        const y = this.valueToPixel(visible[i].enemyCount);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.lineTo(this.timeToPixel(visible[visible.length - 1].time), top + plotHeight);
+      ctx.lineTo(this.timeToPixel(visible[0].time), top + plotHeight);
+      ctx.closePath();
+      ctx.fillStyle = config.colors.enemies + '88';
+      ctx.fill();
+      return;
+    }
+
+    // Draw each type's band (bottom to top)
+    for (let ti = 0; ti < sortedTypes.length; ti++) {
+      const type = sortedTypes[ti];
+      const color = ENEMY_COLORS[type] || '#888888';
+
+      ctx.beginPath();
+
+      // Forward pass: top edge of this band
+      for (let i = 0; i < visible.length; i++) {
+        const point = visible[i];
+        const x = this.timeToPixel(point.time);
+        let cumTop = 0;
+        for (let k = 0; k <= ti; k++) {
+          cumTop += point.enemyTypes.get(sortedTypes[k] as EnemyType) || 0;
+        }
+        const y = this.valueToPixel(cumTop);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+
+      // Backward pass: bottom edge of this band
+      for (let i = visible.length - 1; i >= 0; i--) {
+        const point = visible[i];
+        const x = this.timeToPixel(point.time);
+        let cumBottom = 0;
+        for (let k = 0; k < ti; k++) {
+          cumBottom += point.enemyTypes.get(sortedTypes[k] as EnemyType) || 0;
+        }
+        const y = this.valueToPixel(cumBottom);
+        ctx.lineTo(x, y);
+      }
+
+      ctx.closePath();
+      ctx.fillStyle = color + 'bb';
+      ctx.fill();
+
+      // Top stroke for band boundary clarity
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      for (let i = 0; i < visible.length; i++) {
+        const point = visible[i];
+        const x = this.timeToPixel(point.time);
+        let cumTop = 0;
+        for (let k = 0; k <= ti; k++) {
+          cumTop += point.enemyTypes.get(sortedTypes[k] as EnemyType) || 0;
+        }
+        const y = this.valueToPixel(cumTop);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // Legend: top-right, up to 10 most common types
+    const legendTypes = sortedTypes.slice(0, 10);
+    const { right, top } = config.padding;
+    const legendX = config.width - right - 175;
+    const legendY = top + 5;
+    ctx.fillStyle = 'rgba(0,0,20,0.75)';
+    ctx.fillRect(legendX - 6, legendY - 4, 178, legendTypes.length * 16 + 8);
+    for (let i = 0; i < legendTypes.length; i++) {
+      const type = legendTypes[i];
+      const color = ENEMY_COLORS[type] || '#888888';
+      const y = legendY + i * 16;
+      ctx.fillStyle = color;
+      ctx.fillRect(legendX, y, 10, 10);
+      ctx.fillStyle = config.colors.text;
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`${type}: ${typeTotals.get(type)}`, legendX + 14, y);
+    }
+  }
+
   private drawHoverTooltip(): void {
     if (this.mouseX < 0 || this.mouseY < 0) return;
 
@@ -526,8 +754,24 @@ export class PerformanceGraph {
         `Total Killed: ${count}`,
         `Avg FPS: ${avgFps.toFixed(1)}`,
       ];
+    } else if (this.activeChart === 'stacked') {
+      // For stacked area chart, show enemy type breakdown at nearest time point
+      const time = this.pixelToTime(this.mouseX);
+      const nearest = this.findNearestPoint(time);
+      if (!nearest) return;
+
+      const topTypes = Array.from(nearest.enemyTypes.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([type, count]) => `  ${type}: ${count}`);
+
+      tooltipLines = [
+        `Time: ${this.formatTime(nearest.time)}`,
+        `Total: ${nearest.enemyCount}`,
+        ...topTypes,
+      ];
     } else {
-      // For time-series charts, show nearest data point
+      // For time-series charts (fps/enemies/bullets/unified), show nearest data point
       const time = this.pixelToTime(this.mouseX);
       const nearest = this.findNearestPoint(time);
 
@@ -547,7 +791,7 @@ export class PerformanceGraph {
 
     const tooltipPadding = 8;
     const lineHeight = 16;
-    const tooltipWidth = 150;
+    const tooltipWidth = this.activeChart === 'stacked' ? 190 : 150;
     const tooltipHeight = tooltipLines.length * lineHeight + tooltipPadding * 2;
 
     let tooltipX = this.mouseX + 10;
@@ -634,6 +878,34 @@ export class PerformanceGraph {
   private resetViewport(): void {
     if (this.data.length === 0) {
       this.viewport = { minTime: 0, maxTime: 10, minValue: 0, maxValue: 100 };
+      return;
+    }
+
+    // For unified chart: Y axis is always 0-100% (normalized), X is time range
+    if (this.activeChart === 'unified') {
+      let minTime = this.data[0].time;
+      let maxTime = this.data[this.data.length - 1].time;
+      if (maxTime - minTime < 0.001) { minTime -= 5; maxTime += 5; }
+      const timePad = (maxTime - minTime) * 0.05;
+      this.viewport = { minTime: minTime - timePad, maxTime: maxTime + timePad, minValue: 0, maxValue: 100 };
+      return;
+    }
+
+    // For stacked area chart: Y axis is 0 to max cumulative enemy count
+    if (this.activeChart === 'stacked') {
+      let maxTotal = 1;
+      let minTime = Infinity, maxTime = -Infinity;
+      for (const point of this.data) {
+        let total = 0;
+        point.enemyTypes.forEach(count => { total += count; });
+        maxTotal = Math.max(maxTotal, total);
+        minTime = Math.min(minTime, point.time);
+        maxTime = Math.max(maxTime, point.time);
+      }
+      if (minTime === Infinity) { minTime = 0; maxTime = 10; }
+      if (maxTime - minTime < 0.001) { minTime -= 5; maxTime += 5; }
+      const timePad = (maxTime - minTime) * 0.05;
+      this.viewport = { minTime: minTime - timePad, maxTime: maxTime + timePad, minValue: 0, maxValue: maxTotal * 1.05 };
       return;
     }
 
