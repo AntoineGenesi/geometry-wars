@@ -32,24 +32,6 @@ i18next-based localization with 4 languages. English is real; Spanish/French/Ger
 
 ---
 
-## S36: Mobile UI Fixes Batch (Re-report of S35)
-
-Root causes fixed:
-1. **Pause button unreliable on iOS Safari** — button was inside a `pointer-events:none` overlay; moved to direct `document.body` child with `position:fixed`
-2. **Stop server in HUD** — S35 only hid on mobile; now always hidden (desktop hosts also affected)
-3. **Score too large on mobile** — `scoreEl` now 14px on mobile (was 24px)
-4. **Player list too large on mobile** — `playersEl` now 11px on mobile (was 16px)
-5. **SplitScreenHUD** — added mobile media query for all font sizes
-6. **Local menu hint** — now says "Tap ⏸ to resume" on mobile
-
-- [ ] **Mobile MP** — join LAN game on phone → tap ⏸ → pause menu appears (must work reliably, not just sometimes)
-- [ ] **Mobile SP** — single-player game on phone → tap ⏸ → pause menu appears
-- [ ] **Stop server button** — NOT visible anywhere in the main HUD (neither desktop host nor mobile) — only accessible from pause menu
-- [ ] **Score size** — score display in top-right is readable but not oversized on phone
-- [ ] **Player names** — player list (top-left) is readable but compact on phone
-- [ ] **Split-screen HUD** — if playing 2-player split-screen on mobile, HUD text is small but readable
-- [ ] **Resume hint** — when in pause menu on mobile, hint reads "Tap ⏸ to resume" (not "Press ESC")
-
 ## S35: Mobile Pause Menu Access (LAN Multiplayer)
 
 Bug: On mobile in LAN mode, the ⏸ pause button did nothing (the `onPause` callback was never wired in `network-main.ts`). Also, the "STOP SERVER" button appeared in the main HUD on mobile, cluttering the screen — it should only be in the pause menu (host-only).
@@ -1259,21 +1241,21 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Camera may tilt** — Camera IS allowed to tilt/orbit over one axis (this is normal for cube surface walking)
 - [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
 
+
 ---
 
-## S36: Pickup Inconsistent Radius Fix
+## S36: MP Movement Control Loss on Join (Re-report of S35)
 
-### Test: Pickup collection works on all map sizes
+**Fix:** Removed `!isPaused` guard from the `document.visibilitychange` resume handler in `src/network-main.ts`. The guard caused `game.resume()` to be skipped when the server happened to be paused at the same moment the tab became visible — leaving the game clock permanently stuck in `Paused` state. Added `game.clock.resync()` to prevent dt spike on resume.
 
-**Root cause fixed:** `PICKUP_WORLD_RADIUS` was a fixed 0.6 world units but player/pickup world positions
-scale with `mapSizeScaleFactor`. On EPIC (2×) maps, the effective collection radius was half as generous
-as on MEDIUM maps — sometimes requiring the player to stand exactly on the pickup.
+**Symptom:** Mobile joined, was frozen (couldn't move). Host's character appeared to move in mobile's camera direction. Pause → resume fixed it.
 
-- [ ] **MEDIUM map, any surface** — Spawn 3 pickups (kill enemies). Walk toward each pickup. Should collect with comfortable margin (~half a player width away). No "struggle to reach, then suddenly collect" behavior.
-- [ ] **EPIC map, any surface** — Same test on EPIC size. Collection radius should feel the same as MEDIUM (not smaller). Walk near each pickup — should collect at same relative distance.
-- [ ] **SMALL map, any surface** — Same relative feel. Should collect, not require pixel-perfect positioning.
-- [ ] **Peanut surface, MEDIUM** — Kill enemies on peanut. Pickups near the narrow waist AND on the bulges should all collect without requiring player to be at the exact center axis.
-- [ ] **Magnetism buff active** — Activate magnetism buff (if available). Pickup collection radius should NOT change — magnetism pulls pickups toward you, but the collision detection threshold is unchanged.
-- [ ] **No "random eventually picks up" behavior** — Walk to a pickup and stand on it. Should collect immediately. No "sometimes works, sometimes doesn't" behavior.
+### Test: Joining player can move immediately (no pause/resume workaround needed)
 
-**Regression test:** `src/test/pickup-scale-invariant-radius.regression.test.ts` — 7 tests covering scale invariance — passes ✅
+- [ ] **Setup:** Desktop as host + phone as client (LAN). Select any surface (Peanut recommended per report).
+- [ ] **Phone joins** — Phone scans QR code / enters URL, joins the session.
+- [ ] **Phone can move immediately** — As soon as the game starts, press arrow keys / joystick on phone. The phone player MUST move without any pause/resume.
+- [ ] **No frozen player** — Phone player should NOT be frozen or stuck in place.
+- [ ] **No input crosstalk** — Phone input controls ONLY the phone player. Desktop input controls ONLY the desktop player.
+- [ ] **Repeat 3x** — Test join sequence 3 times to confirm no race condition.
+- [ ] **[Regression]** Pause/resume still works normally — Host pauses, both players freeze. Host resumes, both players can move again.

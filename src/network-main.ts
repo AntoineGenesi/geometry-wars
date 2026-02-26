@@ -1569,15 +1569,30 @@ async function main() {
       };
       network.sendInput(zeroInput);
       lastSentInput = { ...zeroInput };
-    } else if (!document.hidden && !isPaused) {
-      // Tab became visible again and the server is NOT paused.
+    } else if (!document.hidden) {
+      // Tab became visible again — always resume the game clock.
       // Game.ts pauses the physics loop (onFixedUpdate) when the tab hides but
       // has no resume handler for when visibility returns. This leaves the game
       // clock stuck in Paused state, causing the joining player to be unable to
       // move (no input sent) while the camera still updates from server state —
-      // the exact "player stuck but camera follows host" bug reported in S35.
-      // Explicitly resume here so the fixed-update loop restarts immediately.
+      // the exact "player stuck but camera follows host" bug reported in S35/S36.
+      //
+      // S35 fix had a `!isPaused` guard that prevented resume when the server
+      // happened to be paused at the same time the tab became visible (e.g. host
+      // paused right while mobile was in the background). This left the game
+      // clock permanently stuck even after the server unpaused — because
+      // showPauseOverlay(false) calls game.resume() which is a no-op when
+      // game._state is already Paused and isPaused was never true-then-false
+      // from network-main.ts's perspective.
+      //
+      // Fix: resume unconditionally. The isPaused check in onFixedUpdate still
+      // prevents input from being sent while the server is paused, so gameplay
+      // stays correctly frozen. We just keep the clock alive.
       game.resume();
+      // Also resync clock to avoid a dt spike if the clock was already running
+      // during a server-paused period (game.resume() only resyncs on Paused→Playing
+      // transitions; if clock was running, resync here prevents accumulated dt).
+      game.clock.resync();
     }
   });
 
