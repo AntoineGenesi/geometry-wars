@@ -6,6 +6,7 @@ import { LANClient } from '../network/LANClient';
 import { ConfigurableInput } from '../input/ConfigurableInput';
 import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
+import { WeaponMasteryScreen } from './WeaponMasteryScreen';
 import { SettingsMenu } from './SettingsMenu';
 import { VisualPlayground } from './VisualPlayground';
 import { MenuBackground } from './MenuBackground';
@@ -377,6 +378,7 @@ export class StartMenu {
 
         <div class="controls-hint">
           <p>WASD - Move | Mouse - Aim | Click - Shoot | Space - Bomb | M - Mute</p>
+          <button class="weapon-info-btn" id="weapon-mastery-btn">WEAPON MASTERY</button>
           <button class="weapon-info-btn" id="weapon-info-btn">WEAPON DATABASE</button>
           <button class="weapon-info-btn" id="visual-styles-btn">VISUAL STYLES</button>
           <button class="weapon-info-btn" id="settings-btn">SETTINGS</button>
@@ -2052,6 +2054,14 @@ export class StartMenu {
       lanHostSurfacePick.classList.add('hidden');
       lanHostBtn.style.display = '';
       mainButtonsContainer.classList.remove('hidden');
+    });
+
+    // Weapon mastery
+    const weaponMasteryBtn = this.container.querySelector('#weapon-mastery-btn');
+    weaponMasteryBtn?.addEventListener('click', () => {
+      const masteryScreen = new WeaponMasteryScreen();
+      masteryScreen.show();
+      masteryScreen.onClose(() => masteryScreen.dispose());
     });
 
     // Weapon database
