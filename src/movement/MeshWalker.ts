@@ -413,9 +413,20 @@ export class MeshWalker {
     const toPole = new THREE.Vector3().subVectors(poleWorld, this.position);
     if (toPole.dot(moveDir) <= 0) return null;
 
+    // Only teleport if the player is close enough to actually reach the pole in this step.
+    // If the player is still approaching (farther than ~1.5x the step distance away), the
+    // geodesic walk can handle it naturally — don't jump prematurely.
+    // This prevents the "pole skip" bug: without this check, _tryPoleTraversal fires when
+    // the player is still 0.7+ world units from the pole (inside a large cap triangle), and
+    // the resulting teleport overshoots by up to 6x the expected step distance.
+    const distToPole = toPole.length();
+    if (distToPole > distance * 1.5) return null;
+
     // Land just past the pole in the movement direction, then snap to surface.
-    // Using max(distance, 0.05) ensures we clear the pole even for very small steps.
-    const nudge = Math.max(distance, 0.05);
+    // Use the remaining distance after crossing the pole so the total movement is correct:
+    // player travels distToPole to reach the pole, then continues (distance - distToPole) past it.
+    const remaining = distance - distToPole;
+    const nudge = Math.max(remaining, 0.01);
     const target = poleWorld.clone().addScaledVector(moveDir, nudge);
     const result = this.surface.closestPointOnSurface(target);
     if (!result) return null;
