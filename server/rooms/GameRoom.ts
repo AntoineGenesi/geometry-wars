@@ -2150,7 +2150,7 @@ export class GameRoom extends Room<GameState> {
   /**
    * Check for inactivity and auto-pause or shutdown the room.
    * - If idle > INACTIVITY_PAUSE_THRESHOLD: auto-pause
-   * - If idle > INACTIVITY_SHUTDOWN_THRESHOLD: gracefully shutdown
+   * - If paused > INACTIVITY_SHUTDOWN_THRESHOLD: gracefully shutdown
    * - Resumes on any player activity (input message resets timer and resumes)
    */
   private checkInactivity() {
@@ -2168,23 +2168,30 @@ export class GameRoom extends Room<GameState> {
     const inactiveMs = now - this.lastActivityTime;
     const inactiveSecs = inactiveMs / 1000;
 
-    // Check for auto-shutdown (15 minutes of inactivity)
-    if (inactiveSecs > INACTIVITY_SHUTDOWN_THRESHOLD) {
-      this.logger.log(
-        `[GameRoom] Server auto-shutdown triggered after ${inactiveSecs.toFixed(1)}s of inactivity`
-      );
-      this.broadcast('game_ended', { reason: 'server_shutdown_idle' });
-      this.disconnect();
-      return;
-    }
+    // If game is paused, check if it's been paused too long for shutdown
+    if (this.state.isPaused && this.autoPausedTime !== null) {
+      const pausedMs = now - this.autoPausedTime;
+      const pausedSecs = pausedMs / 1000;
 
-    // Check for auto-pause (2 minutes of inactivity)
-    if (inactiveSecs > INACTIVITY_PAUSE_THRESHOLD && !this.state.isPaused) {
-      this.state.isPaused = true;
-      this.autoPausedTime = now;
-      this.logger.log(
-        `[GameRoom] Server auto-paused after ${inactiveSecs.toFixed(1)}s of inactivity`
-      );
+      // Check for auto-shutdown (15 minutes of pause)
+      if (pausedSecs > INACTIVITY_SHUTDOWN_THRESHOLD) {
+        this.logger.log(
+          `[GameRoom] Server auto-shutdown triggered after ${pausedSecs.toFixed(1)}s of pause`
+        );
+        this.broadcast('game_ended', { reason: 'server_shutdown_idle' });
+        this.disconnect();
+        return;
+      }
+    } else {
+      // Game is not paused, check if we should auto-pause due to inactivity
+      // Check for auto-pause (2 minutes of inactivity)
+      if (inactiveSecs > INACTIVITY_PAUSE_THRESHOLD && !this.state.isPaused) {
+        this.state.isPaused = true;
+        this.autoPausedTime = now;
+        this.logger.log(
+          `[GameRoom] Server auto-paused after ${inactiveSecs.toFixed(1)}s of inactivity`
+        );
+      }
     }
   }
 }
