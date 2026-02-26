@@ -650,6 +650,8 @@ export class CompanionPickup {
   private bobPhase: number;
   private _currentTotalTime = 0;
   private readonly mapSizeScaleFactor: number;
+  private readonly _storedCameraUp = new THREE.Vector3();
+  private _hasCameraUp = false;
 
   constructor(companionType: CompanionType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.companionType = companionType;
@@ -736,8 +738,11 @@ export class CompanionPickup {
       core.scale.setScalar(pulse / 0.12);
     }
 
-    // Animate spawn indicator (visible for first 30s)
-    updateSpawnIndicator(this.mesh, this.age, totalTime, cameraUp);
+    // Store cameraUp for deferred use in applySurfaceTransform()
+    if (cameraUp) {
+      this._storedCameraUp.copy(cameraUp);
+      this._hasCameraUp = true;
+    }
 
     // Track age factor for surface dimming in RenderLoop
     this.mesh.userData.ageFactor = this.age > this.fadeStart
@@ -778,6 +783,9 @@ export class CompanionPickup {
     this.mesh.position.copy(position).addScaledVector(normal, 0.4 + bob);
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
+
+    // Update spawn indicator after quaternion is set so cameraUp transforms correctly
+    updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
   }
 
   checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
