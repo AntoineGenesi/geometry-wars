@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { Surface, SurfaceConfig, SurfacePoint } from './Surface'
 
 export interface CubeWithTunnelConfig extends SurfaceConfig {
-  size?: number           // Outer cube dimension (default: 35)
+  size?: number           // Outer cube dimension (default: 20)
   wallThickness?: number  // Wall thickness (default: 2.0)
   bevelRadius?: number    // Vertical edge bevel radius on spine (default: size * 0.12)
   gridSegments?: number   // Grid detail per face (default: 16)
@@ -54,7 +54,7 @@ export class CubeWithTunnelSurface extends Surface {
   ]
 
   constructor(config?: CubeWithTunnelConfig) {
-    const size = config?.size ?? 24
+    const size = config?.size ?? 20
     const wallThickness = config?.wallThickness ?? 2.0
     const minBevel = wallThickness / 2 + 0.1
     const bevelRadius = Math.max(config?.bevelRadius ?? size * 0.12, minBevel)
@@ -86,7 +86,7 @@ export class CubeWithTunnelSurface extends Surface {
 
   private static getInitData() {
     return (CubeWithTunnelSurface as any).__initData ?? {
-      size: 24, wallThickness: 2.0, bevelRadius: 2.88, gridSegments: 16,
+      size: 20, wallThickness: 2.0, bevelRadius: 2.4, gridSegments: 16,
     }
   }
 
