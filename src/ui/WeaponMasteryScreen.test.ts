@@ -345,23 +345,23 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   // ── UpgradeTreeData integration ────────────────────────────────────────────
 
-  it('each weapon has exactly 6 nodes in UPGRADE_TREES', () => {
+  it('each weapon has exactly 10 nodes in UPGRADE_TREES', () => {
     for (const wt of Object.values(WT)) {
-      expect(UPGRADE_TREES[wt].nodes).toHaveLength(6);
+      expect(UPGRADE_TREES[wt].nodes).toHaveLength(10);
     }
   });
 
-  it('each weapon has branch a and branch b nodes (3 each)', () => {
+  it('each weapon has branch a and branch b nodes (5 each)', () => {
     for (const wt of Object.values(WT)) {
-      expect(getBranchNodes(wt, 'a')).toHaveLength(3);
-      expect(getBranchNodes(wt, 'b')).toHaveLength(3);
+      expect(getBranchNodes(wt, 'a')).toHaveLength(5);
+      expect(getBranchNodes(wt, 'b')).toHaveLength(5);
     }
   });
 
   it('node IDs follow weaponType_branch_index pattern', () => {
     const nodes = getAllNodes();
     for (const n of nodes) {
-      expect(n.id).toMatch(/^[a-zA-Z_]+_[ab]_[123]$/);
+      expect(n.id).toMatch(/^[a-zA-Z_]+_[ab]_[12345]$/);
     }
   });
 
