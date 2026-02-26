@@ -1390,6 +1390,10 @@ export class GameRoom extends Room<GameState> {
     });
 
     // Player-enemy collisions (with invincibility check)
+    // hitEnemyIds: prevents one enemy from draining lives from multiple players
+    // in the same tick. Each enemy can hit at most one player per tick.
+    const hitEnemyIds = new Set<string>();
+
     this.state.players.forEach((player) => {
       if (!player.alive) return;
 
@@ -1407,6 +1411,7 @@ export class GameRoom extends Room<GameState> {
       this.state.enemies.forEach((enemy) => {
         if (!enemy.alive) return;
         if (wasHit) return; // Only one hit per player per tick
+        if (hitEnemyIds.has(enemy.id)) return; // Each enemy hits at most one player per tick
 
         // Use wrap-aware UV distance so collision works across seams on torus.
         const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
@@ -1414,6 +1419,7 @@ export class GameRoom extends Room<GameState> {
         if (dist < 0.04) {
           // Player hit!
           wasHit = true;
+          hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
           player.lives--;
           player.multiplier = 1;
 
