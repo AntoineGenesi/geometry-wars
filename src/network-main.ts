@@ -896,6 +896,9 @@ function main() {
   const network = new NetworkClient(primaryUrl, fallbackServerUrl);
   let localPlayerId = '';
   let isHost = false;
+  // Track per-player lives from previous state update to detect life losses.
+  // Key: player server ID, Value: lives count from last onStateChange call.
+  const prevLivesMap = new Map<string, number>();
   let isPaused = false;
   let isInLookMode = false;
   // Holds the startup config hash received from the server so onStartupConfig
@@ -996,6 +999,33 @@ function main() {
     'position:fixed;top:10px;left:10px;color:#ff0;font:16px monospace;' +
     'text-shadow:0 0 10px #ff0;z-index:100;';
   document.body.appendChild(playersEl);
+
+  // Life-loss notification: briefly shows which player lost a life.
+  // Helps distinguish per-player life changes from shared lives.
+  const lifeLostEl = document.createElement('div');
+  lifeLostEl.style.cssText =
+    'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+    'color:#ff4444;font:22px monospace;text-shadow:0 0 12px #ff4444;' +
+    'z-index:200;pointer-events:none;opacity:0;transition:opacity 0.3s;' +
+    'text-align:center;';
+  document.body.appendChild(lifeLostEl);
+  let lifeLostTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function showLifeLostNotification(playerName: string, remainingLives: number, isLocal: boolean): void {
+    if (lifeLostTimer) clearTimeout(lifeLostTimer);
+    const hearts = remainingLives > 0
+      ? '\u2665'.repeat(Math.min(remainingLives, 5))
+      : '\u2665 x0';
+    const who = isLocal ? 'You lost a life!' : `${playerName} lost a life!`;
+    lifeLostEl.innerHTML = `${who}<br>${hearts}`;
+    lifeLostEl.style.color = isLocal ? '#ff4444' : '#ffaa44';
+    lifeLostEl.style.textShadow = isLocal ? '0 0 12px #ff4444' : '0 0 12px #ffaa44';
+    lifeLostEl.style.opacity = '1';
+    lifeLostTimer = setTimeout(() => {
+      lifeLostEl.style.opacity = '0';
+      lifeLostTimer = null;
+    }, 2000);
+  }
 
   const weaponEl = document.createElement('div');
   weaponEl.style.cssText =
@@ -1739,6 +1769,17 @@ function main() {
       player.bombs = netPlayer.bombs;
       player.score = netPlayer.score;
       player.multiplier = netPlayer.multiplier;
+
+      // Detect life loss and show notification so players can see WHICH player
+      // lost a life (proving lives are per-player, not shared).
+      // Only fire during active gameplay (gameStarted avoids false positives at round reset).
+      if (state.gameStarted) {
+        const prev = prevLivesMap.get(id);
+        if (prev !== undefined && netPlayer.lives < prev && netPlayer.lives >= 0) {
+          showLifeLostNotification(netPlayer.name, netPlayer.lives, id === localPlayerId);
+        }
+      }
+      prevLivesMap.set(id, netPlayer.lives);
 
       // Position on surface using real surface transform (same as co-op).
       // For LOCAL player: reconcile client prediction with server-authoritative position.
