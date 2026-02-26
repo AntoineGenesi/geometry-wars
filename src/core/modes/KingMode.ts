@@ -272,7 +272,9 @@ export class KingMode implements IGameMode {
     const geo = context.surface.mesh.geometry;
     if (!geo.boundingSphere) geo.computeBoundingSphere();
     if (geo.boundingSphere) {
-      this.zoneRadiusWorld = Math.max(1.0, geo.boundingSphere.radius * 0.25);
+      // Apply map size scale factor so ring is sized relative to actual visible surface
+      const scaleFactor = context.surface.group.scale.x;
+      this.zoneRadiusWorld = Math.max(0.5, geo.boundingSphere.radius * 0.25 * scaleFactor);
     }
     const geometry = new THREE.RingGeometry(this.zoneRadiusWorld * 0.75, this.zoneRadiusWorld, 48);
     const material = new THREE.MeshBasicMaterial({
@@ -292,9 +294,13 @@ export class KingMode implements IGameMode {
   private updateZoneVisual(context: GameModeContext): void {
     if (!this.zoneMesh) return;
 
-    // Get surface point at zone location
+    // Get surface point at zone location.
+    // getPoint() returns local-space (unscaled) coords. Apply group scale so the
+    // zone sits on the actual visible surface regardless of map size (small=0.75,
+    // medium=1.0, large=1.5, epic=2.0). Matches makeSurfaceTransformFn pattern.
+    const scaleFactor = context.surface.group.scale.x;
     const point = context.surface.getPoint(this.zoneU, this.zoneV);
-    this.zoneMesh.position.copy(point.position);
+    this.zoneMesh.position.copy(point.position).multiplyScalar(scaleFactor);
 
     // Orient to surface
     const up = KingMode._tempVec3.copy(point.normal);

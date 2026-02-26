@@ -36,10 +36,20 @@ const mockSurface = {
     tangentU: new THREE.Vector3(1, 0, 0),
     tangentV: new THREE.Vector3(0, 1, 0),
   }),
+  mesh: {
+    geometry: {
+      boundingSphere: { radius: 10 },
+      computeBoundingSphere: vi.fn(),
+    },
+  },
+  group: {
+    scale: { x: 1.0 },
+  },
 } as any;
 
 const mockEnemySpawner = {
   getEnemies: () => [] as any[],
+  getActiveCount: () => 0,
   spawnWave: vi.fn(),
 } as any;
 
@@ -260,6 +270,57 @@ describe('KingMode', () => {
 
     // Should have triggered spawnWave
     expect(spawnWaveSpy).toHaveBeenCalled();
+  });
+
+  it('REGRESSION: zone mesh position scales with map size (small=0.75, large=1.5)', () => {
+    // surface.getPoint() returns local-space (unscaled) coords.
+    // The zone mesh must multiply by surface.group.scale.x to sit on the
+    // actual visible surface regardless of map size.
+
+    // Use a surface that always returns a fixed predictable world position.
+    const fixedLocalPos = new THREE.Vector3(10, 0, 0);
+    const scaledSurface = {
+      wrapsU: false,
+      wrapsV: false,
+      getPoint: (_u: number, _v: number) => ({
+        position: fixedLocalPos.clone(),
+        normal: new THREE.Vector3(0, 1, 0),
+        tangentU: new THREE.Vector3(1, 0, 0),
+        tangentV: new THREE.Vector3(0, 0, 1),
+      }),
+      mesh: {
+        geometry: {
+          boundingSphere: { radius: 10 },
+          computeBoundingSphere: vi.fn(),
+        },
+      },
+      group: { scale: { x: 0.75 } }, // SMALL map
+    } as any;
+
+    const smallCtx: GameModeContext = {
+      ...createMockContext(),
+      surface: scaledSurface,
+    };
+
+    const smallMode = new KingMode();
+    smallMode.onStart(smallCtx);
+    smallMode.onFixedUpdate(0.016, smallCtx);
+
+    const zoneMesh = (smallMode as any).zoneMesh as THREE.Mesh;
+    // Position must be 10 * 0.75 = 7.5 (scaled), not 10 (local-space)
+    expect(zoneMesh.position.x).toBeCloseTo(7.5, 4);
+
+    // Now verify LARGE map (scale 1.5)
+    const largeSurface = {
+      ...scaledSurface,
+      group: { scale: { x: 1.5 } },
+    };
+    const largeCtx: GameModeContext = { ...smallCtx, surface: largeSurface };
+    const largeMode = new KingMode();
+    largeMode.onStart(largeCtx);
+    largeMode.onFixedUpdate(0.016, largeCtx);
+    const largeMesh = (largeMode as any).zoneMesh as THREE.Mesh;
+    expect(largeMesh.position.x).toBeCloseTo(15.0, 4);
   });
 
   it('HUD overlay shows zone time and kill points', () => {
