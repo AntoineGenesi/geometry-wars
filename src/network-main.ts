@@ -107,6 +107,7 @@ import {
   type StartupConfigData,
 } from './utils/StartupCache';
 import type { NetworkStartupConfig } from './network/NetworkClient';
+import { initI18n } from './i18n';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -369,7 +370,8 @@ const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
 // Main
 // ---------------------------------------------------------------------------
 
-function main() {
+async function main() {
+  await initI18n();
   // Dismiss loading screen. Normally the StartMenu dismisses it when it creates
   // itself, but when navigating directly via QR code (?mode=network) or a shared
   // link, the StartMenu is skipped entirely. Without this, the loading spinner

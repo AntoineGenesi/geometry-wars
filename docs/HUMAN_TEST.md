@@ -8,6 +8,30 @@
 
 ---
 
+## S34: i18n Language Selector
+
+i18next-based localization with 4 languages. English is real; Spanish/French/German show `[ES]`/`[FR]`/`[DE]` prefixes as placeholders.
+
+**Automated Level 5 evidence (2026-02-27):**
+- Start menu in English: no foreign-language prefixes ✓ (see `test-screenshots/sessions/i18n-verification/10-english-dom-check.png`)
+- Surface names in Spanish: show `[ES]` prefix ✓ (see `test-screenshots/sessions/i18n-verification/11-spanish-dom-check.png`)
+- localStorage persistence verified ✓
+
+**Human verification required:**
+
+- [ ] Start game → all menus in English (no `[ES]`/`[FR]`/`[DE]` prefixes anywhere)
+- [ ] Press Escape → pause menu opens correctly in English
+- [ ] In pause menu, find **LANGUAGE** section → 4 flag buttons visible (🇬🇧 English, 🇪🇸 Español, 🇫🇷 Français, 🇩🇪 Deutsch)
+- [ ] Click **Español** flag → all pause menu text immediately shows `[ES]` prefix
+- [ ] Close pause menu, reopen → still Spanish
+- [ ] Reload page → game still in Spanish (`gw_language` persists in localStorage)
+- [ ] Click **English** flag → English text restored everywhere (no `[ES]` prefix)
+- [ ] Surface names in start menu: in Spanish mode, show `[ES] Sphere`, `[ES] Cube`, etc.
+- [ ] Settings menu: all labels show translated text when in Spanish mode
+- [ ] Mobile: language flag buttons are tap-friendly (no accidental mis-hits)
+
+---
+
 ## S35: Mobile Pause Menu Access (LAN Multiplayer)
 
 Bug: On mobile in LAN mode, the ⏸ pause button did nothing (the `onPause` callback was never wired in `network-main.ts`). Also, the "STOP SERVER" button appeared in the main HUD on mobile, cluttering the screen — it should only be in the pause menu (host-only).
