@@ -92,7 +92,7 @@ describe('S36 Torus bullet direction regression', () => {
 
   it('client: non-torus passes target.dirX unchanged', () => {
     const serverDirX = 1; // cos(0) not negated for sphere
-    const surfaceType = 'sphere';
+    const surfaceType: string = 'sphere';
     const bulletDirX = surfaceType === 'torus' ? -serverDirX : serverDirX;
     expect(bulletDirX).toBe(1);
   });
