@@ -402,4 +402,42 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(result).toBe(false);
     expect(ps.getSpentPoints()).toBe(1);
   });
+
+  // ── Right-click refund tests ────────────────────────────────────────────────
+
+  it('right-click on unlocked node triggers refund directly (no pending state)', () => {
+    const ps = new MasteryPointStore();
+    ps.earnPoint();
+    ps.spendPoint(`${WT.Standard}_a_1`);
+    expect(ps.availablePoints).toBe(0);
+    expect(ps.isUnlocked(`${WT.Standard}_a_1`)).toBe(true);
+
+    // Simulate right-click by calling refundPoint directly
+    ps.refundPoint(`${WT.Standard}_a_1`);
+    expect(ps.availablePoints).toBe(1);
+    expect(ps.isUnlocked(`${WT.Standard}_a_1`)).toBe(false);
+  });
+
+  it('right-click on locked node does nothing', () => {
+    const ps = new MasteryPointStore(); // No points
+    expect(ps.availablePoints).toBe(0);
+    // Cannot refund a locked node
+    const result = ps.refundPoint(`${WT.Standard}_a_1`);
+    expect(result).toBe(false);
+  });
+
+  it('right-click on affordable node does nothing', () => {
+    const ps = new MasteryPointStore();
+    ps.earnPoint(); // 1 point available
+    expect(ps.isUnlocked(`${WT.Standard}_a_1`)).toBe(false);
+    // Cannot refund an unspent node
+    const result = ps.refundPoint(`${WT.Standard}_a_1`);
+    expect(result).toBe(false);
+  });
+
+  it('hint text mentions right-click refund option', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    expect(html).toContain('Right-click to refund');
+  });
 });
