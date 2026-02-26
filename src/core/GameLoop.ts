@@ -373,9 +373,15 @@ export class GameLoop {
     profiler.end('particles_and_pickups');
 
     profiler.begin('effects_and_buffs');
-    // Update player glow trail (add point at player position)
+    // Update player glow trail (add point at player position, offset slightly backward)
     if (ctx.player.alive && this.playerGlowTrail) {
-      this.playerGlowTrail.addPoint(ctx.player.mesh.position.clone());
+      const trailPos = ctx.player.mesh.position.clone();
+      // Offset trail points slightly behind the player in their local space
+      // This improves visual appearance on curved surfaces like torus
+      const aimDir = ctx.player.getAimDirection();
+      const TRAIL_OFFSET = 0.15; // Keep trails close to player
+      trailPos.addScaledVector(aimDir, -TRAIL_OFFSET);
+      this.playerGlowTrail.addPoint(trailPos);
     }
     if (this.playerGlowTrail) {
       this.playerGlowTrail.update(dt);
