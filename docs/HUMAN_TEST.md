@@ -1240,3 +1240,9 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Controls stay intuitive** — After face transition, "up" still moves the direction you expect
 - [ ] **Camera may tilt** — Camera IS allowed to tilt/orbit over one axis (this is normal for cube surface walking)
 - [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
+
+### Test: Peanut movement speed consistency (S36 fix)
+- [ ] **Start single-player on peanut** — Select Quick Game → Peanut → Start
+- [ ] **Move from bulge toward waist** — Hold W/S to move from top bulge toward the narrow center section
+- [ ] **Speed feels consistent** — Movement should feel the same speed at bulge and at waist (no "sluggish center / fast ends")
+- [ ] **Enemies move consistently** — Enemies should approach the player at the same apparent speed regardless of where they are on the peanut surface
