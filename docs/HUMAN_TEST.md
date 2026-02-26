@@ -1240,3 +1240,16 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Controls stay intuitive** — After face transition, "up" still moves the direction you expect
 - [ ] **Camera may tilt** — Camera IS allowed to tilt/orbit over one axis (this is normal for cube surface walking)
 - [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
+
+## S36: KotH Zone Positioning on Small Maps (re-verification)
+
+**Fix verified (S35 fix still in place):** Zone ring is correctly positioned ON sphere surface at small (0.75x) scale. Zone time accumulates when player is inside zone.
+
+### Test: King of the Hill on small sphere
+- [ ] **Start KotH on small sphere** — Quick Game → King mode → Sphere → SMALL → START
+- [ ] **Zone ring visible ON surface** — Cyan ring should sit ON the globe, not floating above it
+- [ ] **Walk into zone** — Move player to the cyan ring area; zone time counter should increase
+- [ ] **Zone time increases** — HUD shows increasing time (e.g. "⬛ 1.23s") when inside ring
+- [ ] **Zone time stops** — When you leave the ring, timer pauses
+- [ ] **Zone shrinks over time** — Ring visibly gets smaller during the game
+- [ ] **Zone moves every 15s** — After 15 seconds, zone teleports to a new location on the sphere
