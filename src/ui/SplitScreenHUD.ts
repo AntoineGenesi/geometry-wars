@@ -99,6 +99,23 @@ export class SplitScreenHUD {
         font-size: 12px;
         display: block;
       }
+      @media (max-width: 900px) and (pointer: coarse) {
+        #splitscreen-hud .hud-label {
+          font-size: 10px;
+        }
+        #splitscreen-hud .hud-score {
+          font-size: 12px;
+        }
+        #splitscreen-hud .hud-stats {
+          font-size: 9px;
+        }
+        #splitscreen-hud .hud-lives {
+          font-size: 10px;
+        }
+        #splitscreen-hud .hud-weapon {
+          font-size: 9px;
+        }
+      }
     `;
     document.head.appendChild(style);
   }

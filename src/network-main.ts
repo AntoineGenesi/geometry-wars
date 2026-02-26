@@ -985,7 +985,7 @@ async function main() {
 
   const scoreEl = document.createElement('div');
   scoreEl.style.cssText =
-    'position:fixed;top:10px;right:10px;color:#0f0;font:24px monospace;' +
+    `position:fixed;top:10px;right:10px;color:#0f0;font:${mobile ? '14px' : '24px'} monospace;` +
     'text-shadow:0 0 10px #0f0;z-index:100;text-align:right;';
   document.body.appendChild(scoreEl);
 
@@ -1002,7 +1002,7 @@ async function main() {
 
   const playersEl = document.createElement('div');
   playersEl.style.cssText =
-    'position:fixed;top:10px;left:10px;color:#ff0;font:16px monospace;' +
+    `position:fixed;top:10px;left:10px;color:#ff0;font:${mobile ? '11px' : '16px'} monospace;` +
     'text-shadow:0 0 10px #ff0;z-index:100;';
   document.body.appendChild(playersEl);
 
@@ -1395,7 +1395,7 @@ async function main() {
   localMenuEl.appendChild(localMenuStopServerBtn);
 
   const localMenuHint = document.createElement('div');
-  localMenuHint.textContent = 'Press ESC to resume';
+  localMenuHint.textContent = mobile ? 'Tap ⏸ to resume' : 'Press ESC to resume';
   localMenuHint.style.cssText = 'color:#555566;font-size:13px;margin-top:28px;letter-spacing:2px;';
   localMenuEl.appendChild(localMenuHint);
 
@@ -1814,8 +1814,8 @@ async function main() {
       const nowIsHost = state.hostId !== '' && state.hostId === localPlayerId;
       if (nowIsHost !== isHost) {
         isHost = nowIsHost;
-        // On mobile: stop server is only accessible from the pause menu, never the HUD.
-        stopServerBtn.style.display = (isHost && !mobile) ? 'block' : 'none';
+        // Stop server is only accessible from the pause menu, never the main HUD.
+        stopServerBtn.style.display = 'none';
         localMenuStopServerBtn.style.display = isHost ? 'block' : 'none';
         pauseMenu.setIsHost(isHost); // Keep pause menu in sync with current host status
         netMainLog(`[NetworkMain] Host status updated: ${isHost ? 'IS host' : 'NOT host'}`);
@@ -2606,7 +2606,8 @@ async function main() {
     isHost = serverHostId !== '' && localPlayerId === serverHostId;
     if (isHost) {
       console.log('[NetworkMain] This client is the HOST');
-      if (!mobile) stopServerBtn.style.display = 'block';
+      // Stop server is only in the pause menu — never shown in the HUD.
+      stopServerBtn.style.display = 'none';
     }
 
     // Use URL surface type as initial guess (NOT server state, which may be
@@ -2704,7 +2705,8 @@ async function main() {
         // immediate visual feedback here before the next state patch arrives.
         if (newHostId === localPlayerId) {
           isHost = true;
-          if (!mobile) stopServerBtn.style.display = 'block';
+          // Stop server is only in the pause menu — never shown in the HUD.
+          stopServerBtn.style.display = 'none';
           statusEl.textContent = 'You are now the host!';
           statusEl.style.color = '#0ff';
           netMainLog('[NetworkMain] Host role transferred to this client');

@@ -116,9 +116,11 @@ export class TouchInput {
     this.leftBase.style.display = 'none';
     this.rightBase.style.display = 'none';
 
-    // Pause button (top-right corner)
+    // Pause button (top-right corner) — direct body child, NOT inside the
+    // pointer-events:none overlay, to guarantee touch events reach it on all
+    // mobile browsers (some browsers don't propagate to auto children of none parents).
     this.pauseBtn = this.createPauseButton();
-    this.overlay.appendChild(this.pauseBtn);
+    document.body.appendChild(this.pauseBtn);
 
     // Weapon swap button (top-left corner)
     this.weaponSwapBtn = this.createWeaponSwapButton();
@@ -193,11 +195,15 @@ export class TouchInput {
     window.removeEventListener('touchend', this.onTouchEnd);
     window.removeEventListener('touchcancel', this.onTouchEnd);
     this.overlay.remove();
+    // pauseBtn is a direct body child (not inside overlay) — remove separately.
+    this.pauseBtn.remove();
   }
 
   /** Show/hide the touch overlay. */
   setVisible(visible: boolean): void {
     this.overlay.style.display = visible ? 'block' : 'none';
+    // Keep pause button in sync with overlay visibility.
+    this.pauseBtn.style.display = visible ? 'flex' : 'none';
   }
 
   /**
@@ -405,8 +411,9 @@ export class TouchInput {
 
   private createPauseButton(): HTMLDivElement {
     const el = document.createElement('div');
+    el.id = 'touch-pause-btn';
     el.style.cssText = `
-      position: absolute;
+      position: fixed;
       top: 12px;
       right: 12px;
       width: 44px;
@@ -425,6 +432,7 @@ export class TouchInput {
       text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
       user-select: none;
       -webkit-user-select: none;
+      touch-action: manipulation;
     `;
     el.textContent = '⏸';
     el.addEventListener('touchstart', (e) => {

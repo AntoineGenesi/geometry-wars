@@ -32,6 +32,24 @@ i18next-based localization with 4 languages. English is real; Spanish/French/Ger
 
 ---
 
+## S36: Mobile UI Fixes Batch (Re-report of S35)
+
+Root causes fixed:
+1. **Pause button unreliable on iOS Safari** — button was inside a `pointer-events:none` overlay; moved to direct `document.body` child with `position:fixed`
+2. **Stop server in HUD** — S35 only hid on mobile; now always hidden (desktop hosts also affected)
+3. **Score too large on mobile** — `scoreEl` now 14px on mobile (was 24px)
+4. **Player list too large on mobile** — `playersEl` now 11px on mobile (was 16px)
+5. **SplitScreenHUD** — added mobile media query for all font sizes
+6. **Local menu hint** — now says "Tap ⏸ to resume" on mobile
+
+- [ ] **Mobile MP** — join LAN game on phone → tap ⏸ → pause menu appears (must work reliably, not just sometimes)
+- [ ] **Mobile SP** — single-player game on phone → tap ⏸ → pause menu appears
+- [ ] **Stop server button** — NOT visible anywhere in the main HUD (neither desktop host nor mobile) — only accessible from pause menu
+- [ ] **Score size** — score display in top-right is readable but not oversized on phone
+- [ ] **Player names** — player list (top-left) is readable but compact on phone
+- [ ] **Split-screen HUD** — if playing 2-player split-screen on mobile, HUD text is small but readable
+- [ ] **Resume hint** — when in pause menu on mobile, hint reads "Tap ⏸ to resume" (not "Press ESC")
+
 ## S35: Mobile Pause Menu Access (LAN Multiplayer)
 
 Bug: On mobile in LAN mode, the ⏸ pause button did nothing (the `onPause` callback was never wired in `network-main.ts`). Also, the "STOP SERVER" button appeared in the main HUD on mobile, cluttering the screen — it should only be in the pause menu (host-only).
