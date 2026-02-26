@@ -8,6 +8,8 @@
  *  - Hit flash (brief white emissive burst)
  *  - Death animation + fade-out
  *  - Respawn callback (onDead fires after death anim completes)
+ *  - State machine: IDLE → WALKING → ATTACKING → DYING → DEAD
+ *  - Attack behavior slot (assigned by CharacterBehaviorSystem)
  *
  * Debug-only — not part of the main game code path.
  */
@@ -29,14 +31,31 @@ const COLLISION_RADIUS = 0.55;
 /** How long the hit flash lasts (seconds). */
 const HIT_FLASH_DURATION = 0.12;
 
-/** Health fraction at which the character starts playing attack-melee. */
-const ATTACK_THRESHOLD = 0.45;
-
 /** Delay (ms) between death animation start and fade-out start. */
 const DEATH_ANIM_WAIT_MS = 1100;
 
 /** Fade-out duration (ms). */
 const FADE_DURATION_MS = 500;
+
+/**
+ * UV distance at which the enemy transitions from WALKING → ATTACKING state.
+ * Actual attack execution is gated by behavior.range in CharacterBehaviorSystem.
+ */
+const ATTACK_STATE_THRESHOLD = 0.25;
+
+// ---------------------------------------------------------------------------
+// State machine
+// ---------------------------------------------------------------------------
+
+/**
+ * Enemy state machine:
+ *   IDLE      — no player detected (or too far away)
+ *   WALKING   — moving toward player
+ *   ATTACKING — player within attack-state range (CharacterBehaviorSystem fires attacks)
+ *   DYING     — death animation playing
+ *   DEAD      — fully faded, onDead callback fired
+ */
+export type EnemyState = 'idle' | 'walking' | 'attacking' | 'dying' | 'dead';
 
 // ---------------------------------------------------------------------------
 // GLBCharacterEnemy
@@ -52,12 +71,13 @@ export class GLBCharacterEnemy {
   /** True while the character is alive and interactive. */
   alive: boolean = true;
 
+  /** Current state machine state. */
+  state: EnemyState = 'idle';
+
   /** Fired after death animation + fade complete. */
   onDead?: (enemy: GLBCharacterEnemy) => void;
 
   private hitFlashTimer = 0;
-  private deathStarted = false;
-  private hasPlayedAttack = false;
 
   constructor(config: AnimatedCharacterConfig, health = 3) {
     this.health = health;
@@ -78,49 +98,52 @@ export class GLBCharacterEnemy {
   }
 
   /**
-   * Update movement, animations, and hit flash.
+   * Update movement, state machine, animations, and hit flash.
    * @param dt         - Frame delta time (seconds, already clamped)
    * @param playerU    - Player UV u-coordinate on the surface
    * @param playerV    - Player UV v-coordinate on the surface
    * @param surface    - The shared game surface for moveOnSurface()
    */
   update(dt: number, playerU: number, playerV: number, surface: Surface): void {
-    if (this.deathStarted) {
-      // During death: keep animating but don't move
+    if (this.state === 'dying' || this.state === 'dead') {
       this.char.tickExternal(dt);
       return;
     }
     if (!this.alive) return;
 
-    // --- Movement toward player in UV space ---
+    // --- UV distance to player ---
     const du = playerU - this.char.u;
     const dv = playerV - this.char.v;
     const uvDist = Math.sqrt(du * du + dv * dv);
 
-    if (uvDist > 0.005) {
-      const step = MOVE_SPEED * dt;
-      const moved = surface.moveOnSurface(
-        this.char.u,
-        this.char.v,
-        (du / uvDist) * step,
-        (dv / uvDist) * step,
-      );
-      this.char.u = moved.u;
-      this.char.v = moved.v;
-      // Face the player: heading = angle toward player in UV tangent space
-      this.char.headingAngle = Math.atan2(dv, du);
-      this.char.setState('walk');
+    // --- State machine transitions ---
+    if (uvDist > 0.5) {
+      // Player too far — idle
+      this._setState('idle');
+    } else if (uvDist > ATTACK_STATE_THRESHOLD) {
+      // Mid-range — walk toward player
+      this._setState('walking');
     } else {
-      this.char.setState('idle');
+      // Close range — switch to attacking state (CharacterBehaviorSystem handles fire)
+      this._setState('attacking');
     }
 
-    // --- One-shot attack anim when health drops below threshold ---
-    if (
-      !this.hasPlayedAttack &&
-      this.health / this.maxHealth < ATTACK_THRESHOLD
-    ) {
-      this.hasPlayedAttack = true;
-      this.char.playOneShot('attack-melee');
+    // --- Movement (WALKING state: chase player; ATTACKING state: keep facing) ---
+    if (uvDist > 0.005) {
+      // Always face player
+      this.char.headingAngle = Math.atan2(dv, du);
+
+      if (this.state === 'walking') {
+        const step = MOVE_SPEED * dt;
+        const moved = surface.moveOnSurface(
+          this.char.u,
+          this.char.v,
+          (du / uvDist) * step,
+          (dv / uvDist) * step,
+        );
+        this.char.u = moved.u;
+        this.char.v = moved.v;
+      }
     }
 
     // --- Hit flash countdown ---
@@ -138,7 +161,7 @@ export class GLBCharacterEnemy {
    * Apply damage. Triggers hit flash; triggers death sequence at 0 HP.
    */
   takeDamage(amount = 1): void {
-    if (!this.alive || this.deathStarted) return;
+    if (!this.alive || this.state === 'dying' || this.state === 'dead') return;
     this.health -= amount;
     this._applyHitFlash();
     if (this.health <= 0) {
@@ -149,6 +172,23 @@ export class GLBCharacterEnemy {
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
+
+  private _setState(newState: EnemyState): void {
+    if (this.state === newState) return;
+    this.state = newState;
+    switch (newState) {
+      case 'idle':
+        this.char.setState('idle');
+        break;
+      case 'walking':
+        this.char.setState('walk');
+        break;
+      case 'attacking':
+        // Stay in walk animation while in attack range (attack oneshots overlay)
+        this.char.setState('walk');
+        break;
+    }
+  }
 
   private _applyHitFlash(): void {
     this.char.root.traverse((obj) => {
@@ -181,7 +221,7 @@ export class GLBCharacterEnemy {
 
   private _startDeath(): void {
     this.alive = false;
-    this.deathStarted = true;
+    this.state = 'dying';
 
     this.char.playOneShot('die');
 
@@ -211,6 +251,7 @@ export class GLBCharacterEnemy {
       if (t < 1) {
         requestAnimationFrame(fadeTick);
       } else {
+        this.state = 'dead';
         this.onDead?.(this);
       }
     };
