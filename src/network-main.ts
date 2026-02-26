@@ -525,6 +525,7 @@ function main() {
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
+    enemyPrevHealth.clear();
     enemyGlowTrails.forEach((trail) => {
       scene.remove(trail.root);
       trail.dispose();
@@ -847,6 +848,8 @@ function main() {
   // change (30Hz). This is the #1 reason co-op feels smooth and LAN doesn't.
   const enemyTargetUV = new Map<string, { u: number; v: number }>();
   const remotePlayerTargetUV = new Map<string, { u: number; v: number; aimAngle: number }>();
+  // Track previous health per enemy to detect damage and spawn damage number popups
+  const enemyPrevHealth = new Map<string, number>();
 
   // -- Bullet tracking --
   const bulletIdToIndex = new Map<string, number>();
@@ -1681,6 +1684,7 @@ function main() {
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
+    enemyPrevHealth.clear();
 
     // Clear all geoms
     geomIdToIndex.forEach((idx) => {
@@ -1963,6 +1967,16 @@ function main() {
       if (enemy.mesh) {
         enemy.mesh.visible = netEnemy.alive;
       }
+
+      // Damage number popup: detect health decrease from server state updates.
+      // Server is authoritative for HP; we compare against previous known health
+      // to show numbers whenever any source deals damage (bullets, ShockAura, etc.).
+      const prevHealth = enemyPrevHealth.get(netEnemy.id);
+      if (prevHealth !== undefined && netEnemy.health < prevHealth && netEnemy.alive) {
+        const damageDealt = prevHealth - netEnemy.health;
+        scorePopups.spawnDamage(enemy.position.clone(), damageDealt);
+      }
+      enemyPrevHealth.set(netEnemy.id, netEnemy.health);
     });
 
     // Remove dead/removed enemies (with death effects)
@@ -2045,6 +2059,7 @@ function main() {
         for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
         networkEnemies.delete(id);
         enemyTargetUV.delete(id);
+        enemyPrevHealth.delete(id);
 
         // Clean up glow trail for fast enemies
         const enemyTrail = enemyGlowTrails.get(id);
