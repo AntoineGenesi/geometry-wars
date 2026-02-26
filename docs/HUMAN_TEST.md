@@ -1240,3 +1240,16 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Controls stay intuitive** — After face transition, "up" still moves the direction you expect
 - [ ] **Camera may tilt** — Camera IS allowed to tilt/orbit over one axis (this is normal for cube surface walking)
 - [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
+
+## S36: Torus Bullet Direction Fix
+
+**Fix:** S35 negated `tangentU` and player movement `correctedDx` for torus, but forgot to negate `bullet.dirX` in `tryShoot()`. Server bullets traveled in +U (camera-left) while visual showed bullets going camera-right. This caused enemies on the right to be unkillable and random deaths from misdirected bullets.
+
+**Root cause:** Bullet UV direction was anti-parallel to the rendered visual direction on torus only.
+
+### Test: Torus LAN multiplayer — shoot at enemies
+- [ ] **Aim right → bullets go right** — In LAN MP on torus, aim mouse right and fire. Bullets should visually travel right AND kill enemies on the right side.
+- [ ] **Aim left → bullets go left** — Aim mouse left, fire. Enemies on the left side should die.
+- [ ] **No random deaths** — Avoid all enemies. You should NOT die from bullets hitting enemies you did not aim at.
+- [ ] **Controls still non-inverted** — Movement WASD/thumbstick should match expected directions (S35 fix still intact).
+- [ ] **Hit detection works** — Aim directly at an enemy and fire. It should take damage and die.
