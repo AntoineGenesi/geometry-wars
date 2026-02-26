@@ -524,7 +524,7 @@ export class RenderLoop {
 
     // Quick game mode render hook (KotH HUD overlay, etc.)
     if (ctx.quickGameMode) {
-      ctx.quickGameMode.onRender(alpha, {
+      const modeCtx = {
         player: ctx.player,
         enemySpawner: ctx.enemySpawner,
         surface: ctx.surface,
@@ -533,19 +533,22 @@ export class RenderLoop {
         game: ctx.game,
         scene: ctx.game.scene,
         camera: ctx.game.camera,
-      });
+      };
+      ctx.quickGameMode.onRender(alpha, modeCtx);
       // Show mode-specific HUD overlay
-      const hudData = ctx.quickGameMode.getHUDOverlay({
-        player: ctx.player,
-        enemySpawner: ctx.enemySpawner,
-        surface: ctx.surface,
-        weaponManager: ctx.weaponManager,
-        buffManager: ctx.buffManager,
-        game: ctx.game,
-        scene: ctx.game.scene,
-        camera: ctx.game.camera,
-      });
-      RenderLoop.updateModeHUD(hudData);
+      const hudData = ctx.quickGameMode.getHUDOverlay(modeCtx);
+      // If mode has a primary metric (e.g. KotH zone time), promote it to the main
+      // score display (top-center, 36px) so it's the visually dominant number.
+      // Kill points / secondary info goes to the smaller mode HUD overlay below.
+      if (hudData?.primary) {
+        UIHelpers.getDOMElements().scoreEl.textContent = hudData.primary;
+      }
+      // Pass only secondary/warning to the mode HUD overlay (primary is now in scoreEl)
+      RenderLoop.updateModeHUD(hudData ? {
+        secondary: hudData.secondary,
+        warning: hudData.warning,
+        warningColor: hudData.warningColor,
+      } : null);
     } else {
       RenderLoop.updateModeHUD(null);
     }
