@@ -2904,6 +2904,10 @@ function main() {
             const clampedSinPhi = Math.max(sinPhi, 0.3);
             predDx = predDx / clampedSinPhi;
           }
+          // Torus: negate U-delta to match server-side fix (see GameRoom.ts + TorusSurface.ts).
+          if (surfType === 'torus') {
+            predDx = -predDx;
+          }
 
           let newU = localPlayer.surfaceU + predDx;
           let newV = localPlayer.surfaceV + predDy;

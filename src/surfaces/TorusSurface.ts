@@ -105,12 +105,13 @@ export class TorusSurface extends Surface {
       cosTheta * sinPhi
     ).normalize()
 
-    // Tangent in u direction (d/dtheta - around the tube, through the hole)
-    // d(position)/dtheta: dx = -sinTheta*cosP, dy = -cosTheta, dz = -sinTheta*sinP
+    // Tangent in u direction (negated d/dtheta to produce a right-handed frame).
+    // Natural d/dtheta gives tangentU=(0,-1,0) at outer edge, anti-parallel to camera
+    // right=(0,+1,0), inverting horizontal controls. Negating makes tangentU × tangentV = +normal.
     const tangentU = new THREE.Vector3(
-      -sinTheta * cosPhi,
-      -cosTheta,  // negative: d/dtheta of (-r*sinTheta) = -r*cosTheta
-      -sinTheta * sinPhi
+      sinTheta * cosPhi,
+      cosTheta,
+      sinTheta * sinPhi
     ).normalize()
 
     // Tangent in v direction (d/dphi - around the ring, around the donut)
