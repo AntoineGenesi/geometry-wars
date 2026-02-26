@@ -752,11 +752,16 @@ export class CubeSurface extends Surface {
       vertices.push(coord, yTop, flatHalfSize)
     }
 
-    // Vertical grid lines (constant u)
+    // Vertical grid lines (constant u) — skip flat face regions.
+    // Same fix as horizontal lines: the 4 UV strips run in perpendicular directions on
+    // the flat faces, so constant-u lines trace radial fan patterns there. Skip those
+    // v segments and let the Cartesian grid lines above handle the flat faces.
     const faceWidth = 2 * flatHalfSize
     const bevelWidth = (Math.PI / 2) * bevelRadius
     const segmentWidth = faceWidth + bevelWidth
     const totalWidth = 4 * segmentWidth
+    const vMin = derived.flatFraction
+    const vMax = 1 - derived.flatFraction
 
     const linesPerFace = Math.max(2, Math.floor(gridSegments / 2))
     for (let face = 0; face < 4; face++) {
@@ -766,20 +771,24 @@ export class CubeSurface extends Surface {
         for (let j = 0; j < lineDetail * 2; j++) {
           const v0 = j / (lineDetail * 2)
           const v1 = (j + 1) / (lineDetail * 2)
-          const p0 = this.getPointLocal(u, v0)
-          const p1 = this.getPointLocal(u, v1)
+          // Skip segments in flat face v regions — cartesian grid handles those
+          if (v1 <= vMin || v0 >= vMax) continue
+          const p0 = this.getPointLocal(u, Math.max(v0, vMin))
+          const p1 = this.getPointLocal(u, Math.min(v1, vMax))
           vertices.push(p0.position.x, p0.position.y, p0.position.z)
           vertices.push(p1.position.x, p1.position.y, p1.position.z)
         }
       }
 
-      // Bevel edge center line
+      // Bevel edge center line — also skip flat face v regions
       const bevelU = (face * segmentWidth + faceWidth + 0.5 * bevelWidth) / totalWidth
       for (let j = 0; j < lineDetail * 2; j++) {
         const v0 = j / (lineDetail * 2)
         const v1 = (j + 1) / (lineDetail * 2)
-        const p0 = this.getPointLocal(bevelU, v0)
-        const p1 = this.getPointLocal(bevelU, v1)
+        // Skip segments in flat face v regions
+        if (v1 <= vMin || v0 >= vMax) continue
+        const p0 = this.getPointLocal(bevelU, Math.max(v0, vMin))
+        const p1 = this.getPointLocal(bevelU, Math.min(v1, vMax))
         vertices.push(p0.position.x, p0.position.y, p0.position.z)
         vertices.push(p1.position.x, p1.position.y, p1.position.z)
       }
