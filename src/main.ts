@@ -1912,6 +1912,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       bulletPool,
       player,
       game,
+      ctx,
       ddaLogger,
       perfLogger,
     };

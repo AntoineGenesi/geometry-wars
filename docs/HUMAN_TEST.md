@@ -1241,15 +1241,15 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Camera may tilt** — Camera IS allowed to tilt/orbit over one axis (this is normal for cube surface walking)
 - [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
 
-## S36: Torus Bullet Direction Fix
+## S36: KotH Zone Positioning on Small Maps (re-verification)
 
-**Fix:** S35 negated `tangentU` and player movement `correctedDx` for torus, but forgot to negate `bullet.dirX` in `tryShoot()`. Server bullets traveled in +U (camera-left) while visual showed bullets going camera-right. This caused enemies on the right to be unkillable and random deaths from misdirected bullets.
+**Fix verified (S35 fix still in place):** Zone ring is correctly positioned ON sphere surface at small (0.75x) scale. Zone time accumulates when player is inside zone.
 
-**Root cause:** Bullet UV direction was anti-parallel to the rendered visual direction on torus only.
-
-### Test: Torus LAN multiplayer — shoot at enemies
-- [ ] **Aim right → bullets go right** — In LAN MP on torus, aim mouse right and fire. Bullets should visually travel right AND kill enemies on the right side.
-- [ ] **Aim left → bullets go left** — Aim mouse left, fire. Enemies on the left side should die.
-- [ ] **No random deaths** — Avoid all enemies. You should NOT die from bullets hitting enemies you did not aim at.
-- [ ] **Controls still non-inverted** — Movement WASD/thumbstick should match expected directions (S35 fix still intact).
-- [ ] **Hit detection works** — Aim directly at an enemy and fire. It should take damage and die.
+### Test: King of the Hill on small sphere
+- [ ] **Start KotH on small sphere** — Quick Game → King mode → Sphere → SMALL → START
+- [ ] **Zone ring visible ON surface** — Cyan ring should sit ON the globe, not floating above it
+- [ ] **Walk into zone** — Move player to the cyan ring area; zone time counter should increase
+- [ ] **Zone time increases** — HUD shows increasing time (e.g. "⬛ 1.23s") when inside ring
+- [ ] **Zone time stops** — When you leave the ring, timer pauses
+- [ ] **Zone shrinks over time** — Ring visibly gets smaller during the game
+- [ ] **Zone moves every 15s** — After 15 seconds, zone teleports to a new location on the sphere
