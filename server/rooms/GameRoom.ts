@@ -922,30 +922,51 @@ export class GameRoom extends Room<GameState> {
 
     // Compute once per tick — same surface type check as applyPlayerMovement()
     const surfType = this.state.surfaceType;
+    // Note: 'peanut' removed from isSphereLike — gets separate 2-axis metric correction below.
     const isSphereLike = surfType === 'sphere' || surfType === 'sphere-tunnel'
-      || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut';
+      || surfType === 'icosahedron' || surfType === 'capsule';
+    const isPeanut = surfType === 'peanut';
 
     this.state.bullets.forEach((bullet, index) => {
       bullet.age += dt;
 
-      // Apply sin(phi) correction for sphere-like surfaces.
-      // On a sphere, the arc length of a U-step at latitude V is proportional
-      // to sin(phi) where phi = V * PI.  Without correction, bullets aimed
-      // horizontally slow to a crawl near the poles (sin(phi)→0) while V-aimed
-      // bullets travel at normal speed, making every shot appear to curve toward
-      // the poles.  Dividing dirX by sin(phi) restores consistent world-space
-      // bullet speed — the same correction applyPlayerMovement() already uses.
-      let correctedDirX = bullet.dirX;
-      if (isSphereLike) {
+      if (isPeanut) {
+        // Peanut surface: 2-axis metric correction.
+        // Profile: r(phi) = R*(1 + w*cos(2*phi)), where R=baseRadius, w=waistDepth.
+        // Since server only has UV coords (not absolute scale), normalize by R:
+        //   rNorm = 1 + w*cos(2*phi)  (profile radius relative to R)
+        //   drNorm = -2*w*sin(2*phi)  (profile derivative relative to R)
+        // U metric (arc length per unit theta change): rNorm * sin(phi)
+        // V metric (arc length per unit phi change):  sqrt(rNorm^2 + drNorm^2)
+        // Dividing each dir component by its metric gives equal world-space step size.
+        const PEANUT_WAIST_DEPTH = 0.4;
         const phi = bullet.y * Math.PI;
+        const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
+        const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
         const sinPhi = Math.sin(phi);
-        const clampedSinPhi = Math.max(sinPhi, 0.3);
-        correctedDirX = bullet.dirX / clampedSinPhi;
+        const metricU = Math.max(rNorm * sinPhi, 0.1);
+        const metricV = Math.max(Math.sqrt(rNorm * rNorm + drNorm * drNorm), 0.1);
+        bullet.x += (bullet.dirX / metricU) * BULLET_SPEED * dt;
+        bullet.y += (bullet.dirY / metricV) * BULLET_SPEED * dt;
+      } else {
+        // Apply sin(phi) correction for sphere-like surfaces.
+        // On a sphere, the arc length of a U-step at latitude V is proportional
+        // to sin(phi) where phi = V * PI.  Without correction, bullets aimed
+        // horizontally slow to a crawl near the poles (sin(phi)→0) while V-aimed
+        // bullets travel at normal speed, making every shot appear to curve toward
+        // the poles.  Dividing dirX by sin(phi) restores consistent world-space
+        // bullet speed — the same correction applyPlayerMovement() already uses.
+        let correctedDirX = bullet.dirX;
+        if (isSphereLike) {
+          const phi = bullet.y * Math.PI;
+          const sinPhi = Math.sin(phi);
+          const clampedSinPhi = Math.max(sinPhi, 0.3);
+          correctedDirX = bullet.dirX / clampedSinPhi;
+        }
+        // Move bullet
+        bullet.x += correctedDirX * BULLET_SPEED * dt;
+        bullet.y += bullet.dirY * BULLET_SPEED * dt;
       }
-
-      // Move bullet
-      bullet.x += correctedDirX * BULLET_SPEED * dt;
-      bullet.y += bullet.dirY * BULLET_SPEED * dt;
 
       // Wrap/clamp coordinates. U always wraps. V wraps on torus-like surfaces,
       // clamps on sphere-like surfaces (avoids pole singularity).
