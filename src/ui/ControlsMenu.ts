@@ -8,6 +8,7 @@
  */
 
 import type { ConfigurableInput, PlayerBindings } from '../input/ConfigurableInput';
+import { t } from '../i18n';
 
 const PLAYER_COLORS = ['#00ffff', '#ff00ff', '#00ff00', '#ffaa00'];
 const ACTION_LABELS: Array<{ key: keyof PlayerBindings; label: string }> = [
@@ -181,32 +182,32 @@ export class ControlsMenu {
     const pc = this.input.getPlayerCount();
     const cols = pc + 1; // action label + one column per player
 
-    let html = '<div class="controls-content"><h1>CONTROLS</h1>';
+    let html = `<div class="controls-content"><h1>${t('controls.title')}</h1>`;
     html += `<div class="bindings-grid" style="grid-template-columns: 80px repeat(${pc}, 1fr);">`;
 
     // Header row
-    html += '<div class="grid-header">ACTION</div>';
+    html += `<div class="grid-header">${t('controls.action')}</div>`;
     for (let p = 0; p < pc; p++) {
       html += `<div class="grid-header" style="color:${PLAYER_COLORS[p]}">P${p + 1}</div>`;
     }
 
     // Aim mode row
-    html += '<div class="grid-header">AIM</div>';
+    html += `<div class="grid-header">${t('controls.aim')}</div>`;
     for (let p = 0; p < pc; p++) {
       const b = this.input.getBindings(p);
-      html += `<div class="grid-header" style="color:${PLAYER_COLORS[p]}">${b.aimMode === 'mouse' ? 'MOUSE' : 'AUTO'}</div>`;
+      html += `<div class="grid-header" style="color:${PLAYER_COLORS[p]}">${b.aimMode === 'mouse' ? t('controls.mouse') : t('controls.auto')}</div>`;
     }
 
     // Key binding rows
     for (const action of ACTION_LABELS) {
-      html += `<div class="grid-header">${action.label}</div>`;
+      html += `<div class="grid-header">${t('controls.actions.' + action.key)}</div>`;
       for (let p = 0; p < pc; p++) {
         const b = this.input.getBindings(p);
         const keyVal = b[action.key] as string;
         const isListening = this.rebindPlayer === p && this.rebindAction === action.key;
         html += `<div class="key-slot${isListening ? ' listening' : ''}"
                       data-player="${p}" data-action="${action.key}">
-                   ${isListening ? 'PRESS KEY...' : displayKey(keyVal)}
+                   ${isListening ? t('controls.pressKey') : displayKey(keyVal)}
                  </div>`;
       }
     }
@@ -214,12 +215,12 @@ export class ControlsMenu {
 
     // Conflicts
     const conflicts = this.input.getConflicts();
-    html += `<div class="conflict-warning">${conflicts.length > 0 ? 'Conflicts: ' + conflicts.join(', ') : ''}</div>`;
+    html += `<div class="conflict-warning">${conflicts.length > 0 ? t('controls.conflicts', { list: conflicts.join(', ') }) : ''}</div>`;
 
     // Buttons
     html += '<div class="controls-buttons">';
-    html += '<button class="ctrl-btn" data-action="reset">RESET DEFAULTS</button>';
-    html += '<button class="ctrl-btn primary" data-action="done">DONE</button>';
+    html += `<button class="ctrl-btn" data-action="reset">${t('controls.resetDefaults')}</button>`;
+    html += `<button class="ctrl-btn primary" data-action="done">${t('controls.done')}</button>`;
     html += '</div></div>';
 
     this.container.innerHTML = html;

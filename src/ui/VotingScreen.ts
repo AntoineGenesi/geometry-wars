@@ -10,6 +10,7 @@
  */
 
 import type { NetworkGameState } from '../network/NetworkClient';
+import { t, onLanguageChange } from '../i18n';
 
 export interface VotingScreenCallbacks {
   /** Called when local player votes for a choice */
@@ -68,6 +69,7 @@ export class VotingScreen {
   private isBuilt = false;
   private isHost = false;
   private localPlayerId = '';
+  private _langUnsub: (() => void) | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -75,6 +77,13 @@ export class VotingScreen {
     this.applyStyles();
     this.container.classList.add('hidden');
     document.body.appendChild(this.container);
+
+    this._langUnsub = onLanguageChange(() => {
+      this.isBuilt = false;
+      if (!this.container.classList.contains('hidden')) {
+        this.buildDOM();
+      }
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -187,6 +196,7 @@ export class VotingScreen {
   }
 
   dispose(): void {
+    this._langUnsub?.();
     this.container.remove();
   }
 
@@ -197,6 +207,12 @@ export class VotingScreen {
   private buildDOM(): void {
     this.isBuilt = true;
     this.container.innerHTML = '';
+    this.surfaceCards.clear();
+    this.surfaceBadges.clear();
+    this.modeButtons.clear();
+    this.modeCounts.clear();
+    this.sizeButtons.clear();
+    this.sizeCounts.clear();
 
     // ---- Layout wrapper ----
     const wrap = document.createElement('div');
@@ -206,7 +222,7 @@ export class VotingScreen {
     // ---- Title ----
     const title = document.createElement('h1');
     title.className = 'vs-title';
-    title.textContent = 'CHOOSE YOUR BATTLEFIELD';
+    title.textContent = t('voting.title');
     wrap.appendChild(title);
 
     // ---- Surfaces grid ----
@@ -215,12 +231,13 @@ export class VotingScreen {
     wrap.appendChild(grid);
 
     for (const surf of SURFACES) {
+      const surfKey = surf.id.replace(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
       const card = document.createElement('div');
       card.className = 'vs-card';
       card.setAttribute('data-surface', surf.id);
       card.innerHTML = `
         <div class="vs-card-icon">${surf.icon}</div>
-        <div class="vs-card-label">${surf.label}</div>
+        <div class="vs-card-label">${t('voting.surfaces.' + surfKey)}</div>
         <div class="vs-vote-badge">0</div>
       `;
       card.addEventListener('click', () => {
@@ -239,7 +256,10 @@ export class VotingScreen {
     }
 
     // ---- Mode row ----
-    const modeRow = this.buildOptionRow('MODE', MODES, this.selectedMode,
+    const modeRow = this.buildOptionRow(
+      t('voting.mode'),
+      MODES.map(m => ({ id: m.id, label: t(`voting.modes.${m.id}`) })),
+      this.selectedMode,
       (id) => {
         this.selectedMode = id;
         this.modeButtons.forEach((btn, bid) => btn.classList.toggle('vs-selected', bid === id));
@@ -250,7 +270,10 @@ export class VotingScreen {
     wrap.appendChild(modeRow);
 
     // ---- Size row ----
-    const sizeRow = this.buildOptionRow('SIZE', SIZES, this.selectedSize,
+    const sizeRow = this.buildOptionRow(
+      t('voting.size'),
+      SIZES.map(s => ({ id: s.id, label: t(`voting.sizes.${s.id}`) })),
+      this.selectedSize,
       (id) => {
         this.selectedSize = id;
         this.sizeButtons.forEach((btn, bid) => btn.classList.toggle('vs-selected', bid === id));
@@ -281,12 +304,12 @@ export class VotingScreen {
     const toggleWrap = document.createElement('label');
     toggleWrap.className = 'vs-toggle-wrap';
     toggleWrap.innerHTML = `
-      <span class="vs-toggle-label">VOTING</span>
+      <span class="vs-toggle-label">${t('voting.voting')}</span>
       <div class="vs-toggle-pill">
         <input type="checkbox" class="vs-toggle-checkbox">
         <span class="vs-toggle-knob"></span>
       </div>
-      <span class="vs-toggle-label">HOST PICKS</span>
+      <span class="vs-toggle-label">${t('voting.hostPicks')}</span>
     `;
     const checkbox = toggleWrap.querySelector('.vs-toggle-checkbox') as HTMLInputElement;
     checkbox.addEventListener('change', () => {
@@ -298,7 +321,7 @@ export class VotingScreen {
     // LAUNCH NOW button
     const launchBtn = document.createElement('button');
     launchBtn.className = 'vs-launch-btn';
-    launchBtn.textContent = 'LAUNCH NOW';
+    launchBtn.textContent = t('voting.launchNow');
     launchBtn.addEventListener('click', () => {
       this.callbacks.onHostLaunch?.(this.currentChoice());
     });
@@ -310,7 +333,7 @@ export class VotingScreen {
     // ---- Return to menu ----
     const returnBtn = document.createElement('button');
     returnBtn.className = 'vs-return-btn';
-    returnBtn.textContent = 'RETURN TO MENU';
+    returnBtn.textContent = t('voting.returnToMenu');
     returnBtn.addEventListener('click', () => {
       this.callbacks.onReturnToMenu?.();
     });
@@ -330,7 +353,7 @@ export class VotingScreen {
 
     const lbl = document.createElement('span');
     lbl.className = 'vs-option-label';
-    lbl.textContent = label + ':';
+    lbl.textContent = label;
     row.appendChild(lbl);
 
     for (const opt of options) {

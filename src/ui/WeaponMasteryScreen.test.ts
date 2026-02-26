@@ -9,6 +9,13 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WeaponMasteryScreen } from './WeaponMasteryScreen';
 import { WeaponType } from '../weapons/WeaponTypes';
 
+vi.mock('../i18n', () => ({
+  t: (key: string, opts?: Record<string, unknown>) => {
+    if (key === 'mastery.levelBadge' && opts?.level !== undefined) return `Lv.${opts.level}`;
+    return key;
+  },
+}));
+
 // ── localStorage stub ─────────────────────────────────────────────────────────
 
 let _store: Record<string, string> = {};

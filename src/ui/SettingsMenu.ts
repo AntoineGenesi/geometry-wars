@@ -9,6 +9,7 @@
  * Settings persist to localStorage.
  */
 
+import { t } from '../i18n';
 import type { GPUCapabilityReport } from '../rendering/GPUCapabilities';
 import { detectGPUCapabilities } from '../rendering/GPUCapabilities';
 import type { RendererBackend } from '../rendering/RendererFactory';
@@ -814,15 +815,15 @@ export class SettingsMenu {
     this.container.innerHTML = `
       <div class="settings-content">
         <div class="settings-header">
-          <h1>SETTINGS</h1>
-          <button class="close-btn" data-action="close">DONE</button>
+          <h1>${t('settings.title')}</h1>
+          <button class="close-btn" data-action="close">${t('settings.done')}</button>
         </div>
         <div class="tabs">
-          <button class="tab-btn${this.activeTab === 'gpu' ? ' active' : ''}" data-tab="gpu">GPU INFO</button>
-          <button class="tab-btn${this.activeTab === 'graphics' ? ' active' : ''}" data-tab="graphics">GRAPHICS</button>
-          <button class="tab-btn${this.activeTab === 'performance' ? ' active' : ''}" data-tab="performance">PERFORMANCE</button>
-          <button class="tab-btn${this.activeTab === 'audio' ? ' active' : ''}" data-tab="audio">AUDIO</button>
-          <button class="tab-btn${this.activeTab === 'gameplay' ? ' active' : ''}" data-tab="gameplay">GAMEPLAY</button>
+          <button class="tab-btn${this.activeTab === 'gpu' ? ' active' : ''}" data-tab="gpu">${t('settings.tabs.gpuInfo')}</button>
+          <button class="tab-btn${this.activeTab === 'graphics' ? ' active' : ''}" data-tab="graphics">${t('settings.tabs.graphics')}</button>
+          <button class="tab-btn${this.activeTab === 'performance' ? ' active' : ''}" data-tab="performance">${t('settings.tabs.performance')}</button>
+          <button class="tab-btn${this.activeTab === 'audio' ? ' active' : ''}" data-tab="audio">${t('settings.tabs.audio')}</button>
+          <button class="tab-btn${this.activeTab === 'gameplay' ? ' active' : ''}" data-tab="gameplay">${t('settings.tabs.gameplay')}</button>
         </div>
         <div class="tab-content" id="settings-tab-content">
           ${this.renderActiveTab()}
@@ -862,13 +863,13 @@ export class SettingsMenu {
       const tierCls = br.gpuTier;
       benchmarkHTML = `
         <div class="benchmark-results">
-          <div class="benchmark-tier ${tierCls}">Benchmark Tier: ${br.gpuTier.toUpperCase()}</div>
+          <div class="benchmark-tier ${tierCls}">${t('settings.gpu.benchmarkTier', { tier: br.gpuTier.toUpperCase() })}</div>
           <div class="info-row">
-            <span class="info-label">Max @ 60fps (instanced)</span>
+            <span class="info-label">${t('settings.gpu.maxAt60fps')}</span>
             <span class="info-value good">${br.maxAt60fps} entities</span>
           </div>
           <div class="info-row">
-            <span class="info-label">Max @ 30fps (instanced)</span>
+            <span class="info-label">${t('settings.gpu.maxAt30fps')}</span>
             <span class="info-value warn">${br.maxAt30fps} entities</span>
           </div>
           ${br.scores.map(s => {
@@ -891,7 +892,7 @@ export class SettingsMenu {
       `;
     }
 
-    const benchBtnLabel = this.benchmarkRunning ? 'RUNNING...' : 'RUN GPU BENCHMARK';
+    const benchBtnLabel = this.benchmarkRunning ? t('settings.gpu.running') : t('settings.gpu.runBenchmark');
 
     const activeRendererLabel = this.rendererIsWebGPU ? 'WebGPU' : 'WebGL2';
     const activeRendererClass = this.rendererIsWebGPU ? 'good' : '';
@@ -902,7 +903,7 @@ export class SettingsMenu {
     // WebGPU adapter info row (only if we have it)
     const adapterRow = r?.webgpuAdapter
       ? `<div class="info-row">
-           <span class="info-label">WebGPU Adapter</span>
+           <span class="info-label">${t('settings.gpu.webgpuAdapter')}</span>
            <span class="info-value good">${this.escapeHtml(r.webgpuAdapter)}</span>
          </div>`
       : '';
@@ -916,51 +917,51 @@ export class SettingsMenu {
       : '';
 
     return `
-      <div class="section-heading">RENDERER</div>
+      <div class="section-heading">${t('settings.gpu.renderer')}</div>
       <div class="info-row">
-        <span class="info-label">Active Renderer</span>
+        <span class="info-label">${t('settings.gpu.activeRenderer')}</span>
         <span class="info-value ${activeRendererClass}">${activeRendererLabel}</span>
       </div>
 
-      <div class="section-heading">HARDWARE</div>
+      <div class="section-heading">${t('settings.gpu.hardware')}</div>
       <div class="info-row">
-        <span class="info-label">GPU Renderer</span>
+        <span class="info-label">${t('settings.gpu.gpuRenderer')}</span>
         <span class="info-value">${this.escapeHtml(renderer)}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">GPU Vendor</span>
+        <span class="info-label">${t('settings.gpu.gpuVendor')}</span>
         <span class="info-value">${this.escapeHtml(vendor)}</span>
       </div>
       ${adapterRow}
       ${privacyNote}
       <div class="info-row">
-        <span class="info-label">Detected Tier</span>
+        <span class="info-label">${t('settings.gpu.detectedTier')}</span>
         <span class="info-value ${tierClass}">${tier.toUpperCase()}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">Max Texture Size</span>
+        <span class="info-label">${t('settings.gpu.maxTextureSize')}</span>
         <span class="info-value">${r?.maxTextureSize ?? 'N/A'}</span>
       </div>
 
-      <div class="section-heading">FEATURES</div>
+      <div class="section-heading">${t('settings.gpu.features')}</div>
       <div class="info-row">
-        <span class="info-label">WebGPU</span>
-        <span class="info-value ${r?.webgpu ? 'good' : ''}">${r?.webgpu ? 'Available' : 'Not available'}${webgpuHint}</span>
+        <span class="info-label">${t('settings.gpu.webgpu')}</span>
+        <span class="info-value ${r?.webgpu ? 'good' : ''}">${r?.webgpu ? t('common.available') : t('common.notAvailable')}${webgpuHint}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">WebGL2</span>
-        <span class="info-value ${r?.webgl2 ? 'good' : ''}">${r?.webgl2 ? 'Available' : 'Not available'}</span>
+        <span class="info-label">${t('settings.gpu.webgl2')}</span>
+        <span class="info-value ${r?.webgl2 ? 'good' : ''}">${r?.webgl2 ? t('common.available') : t('common.notAvailable')}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">SharedArrayBuffer</span>
-        <span class="info-value ${r?.sharedArrayBuffer ? 'good' : ''}">${r?.sharedArrayBuffer ? 'Available' : 'Not available'}</span>
+        <span class="info-label">${t('settings.gpu.sharedArrayBuffer')}</span>
+        <span class="info-value ${r?.sharedArrayBuffer ? 'good' : ''}">${r?.sharedArrayBuffer ? t('common.available') : t('common.notAvailable')}</span>
       </div>
       <div class="info-row">
-        <span class="info-label">CPU Cores</span>
+        <span class="info-label">${t('settings.gpu.cpuCores')}</span>
         <span class="info-value">${r?.hardwareConcurrency ?? 'N/A'}</span>
       </div>
 
-      <div class="section-heading">BENCHMARK</div>
+      <div class="section-heading">${t('settings.gpu.benchmark')}</div>
       <button class="action-btn" id="run-benchmark" ${this.benchmarkRunning ? 'disabled' : ''}>
         ${benchBtnLabel}
       </button>
@@ -969,7 +970,7 @@ export class SettingsMenu {
 
       <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(0,255,255,0.08);">
         <button class="action-btn" id="run-full-benchmark" style="background:linear-gradient(180deg,#443366 0%,#2a1a44 100%);border-color:#aa66ff;">
-          RUN FULL GAME BENCHMARK
+          ${t('settings.gpu.runFullBenchmark')}
         </button>
         <div style="color:#668888;font-size:11px;margin-top:8px;line-height:1.4;">
           Tests real gameplay performance with moving enemies, bullets, and collisions.
@@ -1000,56 +1001,56 @@ export class SettingsMenu {
     }).join('');
 
     return `
-      <div class="section-heading">VISUAL STYLE</div>
+      <div class="section-heading">${t('settings.graphics.visualStyle')}</div>
       <div class="style-list" id="visual-style-list">${styleItems}</div>
       <div style="color:#557777;font-size:11px;margin-bottom:8px;line-height:1.4;">
         Click a style to select it. Bloom changes apply immediately; surface colors apply on next game start.
       </div>
-      ${activeStyle !== 'Default' ? '<button class="action-btn" id="reset-visual-style" style="padding:6px 14px;font-size:11px;margin-bottom:12px;">RESET TO DEFAULT</button>' : ''}
+      ${activeStyle !== 'Default' ? `<button class="action-btn" id="reset-visual-style" style="padding:6px 14px;font-size:11px;margin-bottom:12px;">${t('settings.graphics.resetToDefault')}</button>` : ''}
 
-      <div class="section-heading">QUALITY PRESET</div>
+      <div class="section-heading">${t('settings.graphics.qualityPreset')}</div>
       <div class="setting-row">
-        <span class="setting-label">Preset</span>
+        <span class="setting-label">${t('settings.graphics.preset')}</span>
         <select id="quality-preset">
           ${presets.map(p => `<option value="${p}" ${g.qualityPreset === p ? 'selected' : ''}>${p.toUpperCase()}</option>`).join('')}
         </select>
       </div>
 
-      <div class="section-heading">VISUAL EFFECTS</div>
+      <div class="section-heading">${t('settings.graphics.visualEffects')}</div>
       <div class="setting-row">
-        <span class="setting-label">Bloom</span>
+        <span class="setting-label">${t('settings.graphics.bloom')}</span>
         <div class="toggle ${g.bloomEnabled ? 'on' : ''}" id="toggle-bloom" data-setting="bloomEnabled"></div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Bloom Strength</span>
+        <span class="setting-label">${t('settings.graphics.bloomStrength')}</span>
         <input type="range" id="bloom-strength" min="0" max="2" step="0.1" value="${g.bloomStrength}" />
         <span class="setting-value" id="bloom-strength-val">${g.bloomStrength.toFixed(1)}</span>
       </div>
       <div class="setting-hint">
-        <small>Good starting values — Modern: 1.0 | Pixelated: 0.4</small>
+        <small>${t('settings.graphics.bloomHint')}</small>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Particles</span>
+        <span class="setting-label">${t('settings.graphics.particles')}</span>
         <input type="range" id="particle-count" min="100" max="5000" step="100" value="${g.particleCount}" />
         <span class="setting-value" id="particle-count-val">${g.particleCount}</span>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Trail Effects</span>
+        <span class="setting-label">${t('settings.graphics.trailEffects')}</span>
         <div class="toggle ${g.trailEffects ? 'on' : ''}" id="toggle-trails" data-setting="trailEffects"></div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Surface Opacity</span>
+        <span class="setting-label">${t('settings.graphics.surfaceOpacity')}</span>
         <div class="toggle ${g.surfaceOpaque ? 'on' : ''}" id="toggle-surface-opaque" data-setting="surfaceOpaque"></div>
       </div>
 
-      <div class="section-heading">LIMITS</div>
+      <div class="section-heading">${t('settings.graphics.limits')}</div>
       <div class="setting-row">
-        <span class="setting-label">Max Enemies</span>
+        <span class="setting-label">${t('settings.graphics.maxEnemies')}</span>
         <input type="range" id="max-enemies" min="50" max="5000" step="50" value="${g.maxEnemies}" />
         <span class="setting-value" id="max-enemies-val">${g.maxEnemies}</span>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Resolution Scale</span>
+        <span class="setting-label">${t('settings.graphics.resolutionScale')}</span>
         <input type="range" id="resolution-scale" min="0.25" max="1" step="0.05" value="${g.resolutionScale}" />
         <span class="setting-value" id="resolution-scale-val">${(g.resolutionScale * 100).toFixed(0)}%</span>
       </div>
@@ -1060,39 +1061,39 @@ export class SettingsMenu {
 
   private renderPerformanceTab(): string {
     return `
-      <div class="section-heading">LIVE STATS</div>
+      <div class="section-heading">${t('settings.performance.liveStats')}</div>
       <div class="perf-grid">
         <div class="perf-card">
           <div class="perf-value" id="perf-fps">--</div>
-          <div class="perf-label">FPS</div>
+          <div class="perf-label">${t('settings.performance.fps')}</div>
         </div>
         <div class="perf-card">
           <div class="perf-value" id="perf-draw-calls">--</div>
-          <div class="perf-label">DRAW CALLS</div>
+          <div class="perf-label">${t('settings.performance.drawCalls')}</div>
         </div>
         <div class="perf-card">
           <div class="perf-value" id="perf-entities">--</div>
-          <div class="perf-label">ENTITIES</div>
+          <div class="perf-label">${t('settings.performance.entities')}</div>
         </div>
         <div class="perf-card">
           <div class="perf-value" id="perf-memory">--</div>
-          <div class="perf-label">MEMORY (MB)</div>
+          <div class="perf-label">${t('settings.performance.memoryMB')}</div>
         </div>
       </div>
 
-      <div class="section-heading">ADAPTIVE QUALITY</div>
+      <div class="section-heading">${t('settings.performance.adaptiveQuality')}</div>
       <div class="setting-row">
-        <span class="setting-label">Auto-adjust quality</span>
+        <span class="setting-label">${t('settings.performance.autoAdjustQuality')}</span>
         <div class="toggle ${this.adaptiveQualityEnabled ? 'on' : ''}" id="toggle-adaptive" data-setting="adaptiveQuality"></div>
       </div>
 
-      <div class="section-heading">DEBUG</div>
+      <div class="section-heading">${t('settings.performance.debug')}</div>
       <div class="setting-row">
-        <span class="setting-label">Debug Statistics</span>
+        <span class="setting-label">${t('settings.performance.debugStatistics')}</span>
         <div class="toggle ${this.debugSettings.showDebugStatistics ? 'on' : ''}" id="toggle-debug-stats" data-setting="showDebugStatistics"></div>
       </div>
       <div style="color:#668888;font-size:12px;margin-top:4px;line-height:1.5;">
-        Shows FPS, entity count, and performance overlay. Keyboard shortcut: F4.
+        ${t('settings.performance.debugHint')}
       </div>
     `;
   }
@@ -1102,36 +1103,30 @@ export class SettingsMenu {
   private renderAudioTab(): string {
     const a = this.audioSettings;
     const presets: MusicPreset[] = ['electronic', 'ambient', 'synthwave', 'minimal'];
-    const presetNames: Record<MusicPreset, string> = {
-      electronic: 'Electronic',
-      ambient: 'Ambient',
-      synthwave: 'Synthwave',
-      minimal: 'Minimal',
-    };
 
     return `
-      <div class="section-heading">VOLUME</div>
+      <div class="section-heading">${t('settings.audio.volume')}</div>
       <div class="setting-row">
-        <span class="setting-label">Master</span>
+        <span class="setting-label">${t('settings.audio.master')}</span>
         <input type="range" id="master-volume" min="0" max="100" step="1" value="${a.masterVolume}" />
         <span class="setting-value" id="master-volume-val">${a.masterVolume}%</span>
       </div>
       <div class="setting-row">
-        <span class="setting-label">SFX</span>
+        <span class="setting-label">${t('settings.audio.sfx')}</span>
         <input type="range" id="sfx-volume" min="0" max="100" step="1" value="${a.sfxVolume}" />
         <span class="setting-value" id="sfx-volume-val">${a.sfxVolume}%</span>
       </div>
       <div class="setting-row">
-        <span class="setting-label">Music</span>
+        <span class="setting-label">${t('settings.audio.music')}</span>
         <input type="range" id="music-volume" min="0" max="100" step="1" value="${a.musicVolume}" />
         <span class="setting-value" id="music-volume-val">${a.musicVolume}%</span>
       </div>
 
-      <div class="section-heading">MUSIC STYLE</div>
+      <div class="section-heading">${t('settings.audio.musicStyle')}</div>
       <div class="setting-row">
-        <span class="setting-label">Preset</span>
+        <span class="setting-label">${t('settings.audio.preset')}</span>
         <select id="music-preset">
-          ${presets.map(p => `<option value="${p}" ${a.musicPreset === p ? 'selected' : ''}>${presetNames[p]}</option>`).join('')}
+          ${presets.map(p => `<option value="${p}" ${a.musicPreset === p ? 'selected' : ''}>${t('settings.audio.presets.' + p)}</option>`).join('')}
         </select>
       </div>
     `;
@@ -1141,14 +1136,13 @@ export class SettingsMenu {
 
   private renderGameplayTab(): string {
     return `
-      <div class="section-heading">DIFFICULTY</div>
+      <div class="section-heading">${t('settings.gameplay.difficulty')}</div>
       <div class="setting-row">
-        <span class="setting-label">Dynamic Difficulty</span>
+        <span class="setting-label">${t('settings.gameplay.dynamicDifficulty')}</span>
         <div class="toggle ${this.ddaSettings.enabled ? 'on' : ''}" id="toggle-dda" data-setting="ddaEnabled"></div>
       </div>
       <div style="color:#668888;font-size:12px;margin-top:4px;line-height:1.5;">
-        Subtly adjusts enemy composition for struggling players.<br>
-        Disabled automatically on Nightmare difficulty.
+        ${t('settings.gameplay.ddaHint')}
       </div>
     `;
   }

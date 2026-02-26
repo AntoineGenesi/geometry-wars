@@ -7,6 +7,45 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 // ---------------------------------------------------------------------------
+// i18n mock — return English translations so string-checking tests pass
+// ---------------------------------------------------------------------------
+
+vi.mock('../i18n', () => ({
+  t: (key: string, opts?: Record<string, unknown>) => {
+    const map: Record<string, string> = {
+      'gameOver.title': 'GAME OVER',
+      'gameOver.recordScore': 'RECORD YOUR SCORE',
+      'gameOver.recordScoreBtn': 'RECORD SCORE',
+      'gameOver.namePlaceholder': 'Player',
+      'gameOver.nameLabelField': 'NAME',
+      'gameOver.noteLabelField': 'NOTE',
+      'gameOver.noteOptional': '(optional)',
+      'gameOver.notePlaceholder': 'e.g. first attempt, full combo...',
+      'gameOver.nameHint': 'ENTER to move to note \u00b7 ENTER again to submit',
+      'gameOver.newHighScore': 'NEW HIGH SCORE!',
+      'gameOver.highScores': 'HIGH SCORES',
+      'gameOver.noScores': 'No scores yet',
+      'gameOver.continueBtn': 'CONTINUE',
+      'gameOver.returnToMenu': 'RETURN TO MENU',
+      'gameOver.hintContinue': 'Press ENTER or click to continue',
+      'gameOver.hintVote': 'Press ENTER to go to vote now \u00b7 click RETURN TO MENU to disconnect',
+      'gameOver.autoSubmitting': 'Auto-submitting in {{count}}s\u2026',
+      'gameOver.votingCountdown': 'Voting screen in {{count}}s\u2026',
+    };
+    if (key in map) {
+      let val = map[key];
+      if (opts) {
+        for (const [k, v] of Object.entries(opts)) {
+          val = val.replace(`{{${k}}}`, String(v));
+        }
+      }
+      return val;
+    }
+    return key;
+  },
+}));
+
+// ---------------------------------------------------------------------------
 // Minimal DOM mock
 // ---------------------------------------------------------------------------
 

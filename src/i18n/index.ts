@@ -40,3 +40,16 @@ export function changeLanguage(lang: string): Promise<void> {
 export function getCurrentLanguage(): string {
   return i18next.language;
 }
+
+/**
+ * Subscribe to language change events. Returns an unsubscribe function.
+ *
+ * @example
+ *   const unsub = onLanguageChange(() => rebuild());
+ *   // later:
+ *   unsub();
+ */
+export function onLanguageChange(handler: () => void): () => void {
+  i18next.on('languageChanged', handler);
+  return () => i18next.off('languageChanged', handler);
+}
