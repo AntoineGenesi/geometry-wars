@@ -136,12 +136,28 @@ export class EnemyDeathCallbacks {
    * Called after wire() — requires scene reference for shock effect.
    */
   static wireFractalSnakeCallbacks(enemySpawner: EnemySpawner, scene: THREE.Scene): void {
-    // When a follower is freed (bullet hit or shock), spawn the corresponding enemy type
+    // Maps follower enemyType labels to spawnable EnemyType strings
+    const FOLLOWER_TYPE_MAP: Record<string, string> = {
+      grunt: 'grunt',
+      wanderer: 'wanderer',
+      spinner: 'spinner',
+      titan_grunt: 'titan_grunt',
+      rocket: 'rocket',
+      neutron: 'neutron',
+    };
+
+    // When a follower is freed (bullet hit or shock), spawn the correct enemy type at 50% health
     FractalSnake.onFollowerFreed = (u: number, v: number, enemyType: string) => {
       const offsetU = (Math.random() - 0.5) * 0.05;
       const offsetV = (Math.random() - 0.5) * 0.05;
-      const spawnType = enemyType === 'titan_grunt' ? 'titan_grunt' : 'grunt';
-      enemySpawner.spawn(spawnType, Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
+      const spawnType = (FOLLOWER_TYPE_MAP[enemyType] ?? 'grunt') as any;
+      const spawnU = Math.max(0, Math.min(1, u + offsetU));
+      const spawnV = Math.max(0, Math.min(1, v + offsetV));
+      const enemy = enemySpawner.spawn(spawnType, spawnU, spawnV);
+      // Apply 50% health — released followers are weakened
+      if (enemy.active) {
+        enemy.health = Math.max(1, Math.floor(enemy.health * 0.5));
+      }
     };
 
     // When the head dies, trigger the electric shock (which frees followers progressively)
