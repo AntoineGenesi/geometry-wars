@@ -247,6 +247,26 @@ export class Snake extends BaseEnemy {
     // Update head mesh (uses walker.position or UV transform)
     super.applySurfaceTransform(getTransform);
 
+    // In MP mode, updateBehavior is not called (server is authoritative for positions),
+    // so posHistory never gets filled and segments would stay at their initial spawn positions.
+    // Detect this by checking if head has moved since the last history entry.
+    // In SP, updateBehavior already recorded the same position → no duplicate added.
+    const headU = this.surfacePosition.u;
+    const headV = this.surfacePosition.v;
+    const lastH = this.posHistory[0];
+    if (!lastH || Math.abs(lastH.u - headU) > 0.0005 || Math.abs(lastH.v - headV) > 0.0005) {
+      this.posHistory.unshift({ u: headU, v: headV });
+      if (this.posHistory.length > HISTORY_SIZE) this.posHistory.pop();
+      // Update segment UV positions from history so they trail the head
+      for (let i = 0; i < this.segs.length; i++) {
+        const histIdx = Math.min((i + 1) * SEGMENT_HISTORY_STEP, this.posHistory.length - 1);
+        if (histIdx < this.posHistory.length) {
+          this.segs[i].u = this.posHistory[histIdx].u;
+          this.segs[i].v = this.posHistory[histIdx].v;
+        }
+      }
+    }
+
     // Update each segment mesh in world space
     // segmentRoot is at world origin — child positions ARE world positions
     for (const seg of this.segs) {
