@@ -55,6 +55,12 @@ export class PlayerNameLabels {
         pointer-events: none;
         transition: opacity 0.15s;
       }
+      @media (max-width: 900px) and (pointer: coarse) {
+        .player-name-label {
+          font: bold 9px monospace;
+          padding: 1px 5px;
+        }
+      }
     `;
     document.head.appendChild(this.styleElement);
   }

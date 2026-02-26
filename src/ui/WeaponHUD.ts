@@ -164,6 +164,41 @@ function injectStyles(): void {
     .weapon-hud-item.active .weapon-hud-persistent-stars.visible {
       display: inline;
     }
+    /* Mobile scaling — reduce weapon HUD size on small screens */
+    @media (max-width: 900px) and (pointer: coarse) {
+      .weapon-hud-main-row {
+        height: 16px;
+        gap: 3px;
+      }
+      .weapon-hud-icon {
+        width: 14px;
+        height: 14px;
+        font-size: 8px;
+      }
+      .weapon-hud-ammo {
+        font-size: 8px;
+        min-width: 18px;
+      }
+      .weapon-hud-name {
+        font-size: 7px;
+      }
+      .weapon-hud-mastery-bar-bg {
+        width: 45px;
+        height: 2px;
+      }
+      .weapon-hud-mastery-tier {
+        font-size: 6px;
+      }
+      .weapon-hud-mastered {
+        font-size: 6px;
+      }
+      .weapon-hud-session-level {
+        font-size: 7px;
+      }
+      .weapon-hud-persistent-stars {
+        font-size: 7px;
+      }
+    }
   `;
   document.head.appendChild(style);
 }
