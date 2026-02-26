@@ -203,8 +203,9 @@ export class WeaponPickup {
 
   /**
    * Update pickup animation and state
+   * @param cameraUp  Camera's world-space up vector — passed to spawn indicator for correct screen placement
    */
-  update(dt: number, totalTime: number): void {
+  update(dt: number, totalTime: number, cameraUp?: THREE.Vector3): void {
     if (!this.active) return;
 
     this.age += dt;
@@ -229,7 +230,7 @@ export class WeaponPickup {
     }
 
     // Animate spawn indicator (visible for first 30s)
-    updateSpawnIndicator(this.mesh, this.age, totalTime);
+    updateSpawnIndicator(this.mesh, this.age, totalTime, cameraUp);
 
     // Track age factor for surface dimming in RenderLoop
     this.mesh.userData.ageFactor = this.age > this.fadeStart

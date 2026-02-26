@@ -175,7 +175,7 @@ export class BuffPickup {
     }
   }
 
-  update(dt: number, totalTime: number): void {
+  update(dt: number, totalTime: number, cameraUp?: THREE.Vector3): void {
     if (!this.active) return;
 
     this.age += dt;
@@ -198,7 +198,7 @@ export class BuffPickup {
     }
 
     // Animate spawn indicator (visible for first 30s)
-    updateSpawnIndicator(this.mesh, this.age, totalTime);
+    updateSpawnIndicator(this.mesh, this.age, totalTime, cameraUp);
 
     // Track age factor for surface dimming in RenderLoop
     this.mesh.userData.ageFactor = this.age > this.fadeStart

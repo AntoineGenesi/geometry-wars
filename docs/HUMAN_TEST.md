@@ -1196,6 +1196,8 @@ Claude will read this file at the start of each session and prioritize fixing re
 ### Test: Torus surface specifically
 - [ ] **Kill enemies on torus** — Pickups appear at correct positions on torus (both inner and outer surfaces)
 - [ ] **Torus collection works** — Walking over pickups on torus collects them (was broken due to worldRotation bug)
+- [ ] **[S35 NEW] Arrow points AT pickup (torus)** — Arrow should appear ABOVE the pickup and point DOWN toward it. Previously the arrow pointed away (below/opposite) when pickups were far around the ring from the player. Fixed by using camera.up instead of bitangent_at_pickup to position the sprite.
+- [ ] **[S35 NEW] Arrow correct on other surfaces** — Kill enemies on sphere, cube, peanut, cylinder and confirm arrow always appears above the pickup pointing toward it (same fix, universal).
 
 ### Test: Arrow visual improvements
 - [ ] **Arrow is prominent** — Arrow sprite is bigger and brighter than before (2x larger, with glow halo)
