@@ -646,18 +646,30 @@ export class GameRoom extends Room<GameState> {
       const dx = input.moveX * PLAYER_SPEED * speedMultiplier * dt;
       const dy = input.moveY * PLAYER_SPEED * speedMultiplier * dt;
 
-      // Apply sin(phi) correction for sphere-like surfaces
+      // Apply metric corrections for sphere-like and peanut surfaces
       const surfaceType = this.state.surfaceType;
       const isSphereLike = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
-        || surfaceType === 'icosahedron' || surfaceType === 'capsule'
-        || surfaceType === 'peanut';
+        || surfaceType === 'icosahedron' || surfaceType === 'capsule';
 
       let correctedDx = dx;
+      let correctedDy = dy;
       if (isSphereLike) {
         const phi = player.surfaceV * Math.PI;
         const sinPhi = Math.sin(phi);
         const clampedSinPhi = Math.max(sinPhi, 0.3);
         correctedDx = dx / clampedSinPhi;
+      } else if (surfaceType === 'peanut') {
+        // Peanut: surface of revolution with r(phi) = R*(1 + waistDepth*cos(2*phi)).
+        // Both U and V need metric corrections to maintain constant world-space speed.
+        // U correction: dx / (rNorm * sinPhi)
+        // V correction: dy / sqrt(rNorm^2 + drNorm^2)  (arc length along meridian)
+        const PEANUT_WAIST_DEPTH = 0.4;
+        const phi = player.surfaceV * Math.PI;
+        const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
+        const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
+        const sinPhi = Math.sin(phi);
+        correctedDx = dx / Math.max(rNorm * sinPhi, 0.1);
+        correctedDy = dy / Math.max(Math.sqrt(rNorm * rNorm + drNorm * drNorm), 0.1);
       }
       // Torus: negate U-delta because TorusSurface uses negated tangentU for a right-handed
       // frame. Increasing U moves toward the old (left-handed) tangentU = camera left.
@@ -698,10 +710,11 @@ export class GameRoom extends Room<GameState> {
         player.surfaceU = newU;
       } else {
         // Clamp V: use 0.003 for cube (matching CubeSurface epsilon),
-        // 0.05 for other sphere-like (avoids pole singularity on non-sphere surfaces)
+        // 0.05 for other sphere-like (avoids pole singularity on non-sphere surfaces).
+        // Use correctedDy for peanut (metric-corrected), dy for others.
         const vMin = surfaceType === 'cube' ? 0.003 : 0.05;
         const vMax = surfaceType === 'cube' ? 0.997 : 0.95;
-        player.surfaceV = Math.max(vMin, Math.min(vMax, player.surfaceV + dy));
+        player.surfaceV = Math.max(vMin, Math.min(vMax, player.surfaceV + correctedDy));
       }
 
       // Handle shooting (continuous action, applied per tick)

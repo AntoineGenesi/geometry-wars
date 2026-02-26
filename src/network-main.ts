@@ -2954,18 +2954,27 @@ function main() {
           const predSpeed = 0.095; // Must match server PLAYER_SPEED
           const predSpeedMultiplier = localBoostActive ? LOCAL_BOOST_SPEED_MULTIPLIER : 1.0;
           let predDx = currentInput.moveX * predSpeed * predSpeedMultiplier * dt;
-          const predDy = currentInput.moveY * predSpeed * predSpeedMultiplier * dt;
+          let predDy = currentInput.moveY * predSpeed * predSpeedMultiplier * dt;
 
-          // Apply sin(phi) correction for sphere-like surfaces (matches server)
+          // Apply metric corrections for sphere-like and peanut surfaces (matches server)
           const surfType = lastCreatedSurfaceType;
           const isSphereLike = surfType === 'sphere' || surfType === 'sphere-tunnel'
-            || surfType === 'icosahedron' || surfType === 'capsule'
-            || surfType === 'peanut';
+            || surfType === 'icosahedron' || surfType === 'capsule';
           if (isSphereLike) {
             const phi = localPlayer.surfaceV * Math.PI;
             const sinPhi = Math.sin(phi);
             const clampedSinPhi = Math.max(sinPhi, 0.3);
             predDx = predDx / clampedSinPhi;
+          } else if (surfType === 'peanut') {
+            // Peanut: surface of revolution with r(phi) = R*(1 + waistDepth*cos(2*phi)).
+            // Both U and V need metric corrections to maintain constant world-space speed.
+            const PEANUT_WAIST_DEPTH = 0.4;
+            const phi = localPlayer.surfaceV * Math.PI;
+            const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
+            const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
+            const sinPhi = Math.sin(phi);
+            predDx = predDx / Math.max(rNorm * sinPhi, 0.1);
+            predDy = predDy / Math.max(Math.sqrt(rNorm * rNorm + drNorm * drNorm), 0.1);
           }
           // Torus: negate U-delta to match server-side fix (see GameRoom.ts + TorusSurface.ts).
           if (surfType === 'torus') {
