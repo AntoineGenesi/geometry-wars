@@ -930,45 +930,85 @@ export class GameRoom extends Room<GameState> {
     const isSphereLike = surfType === 'sphere' || surfType === 'sphere-tunnel'
       || surfType === 'icosahedron' || surfType === 'capsule';
     const isPeanut = surfType === 'peanut';
+    const isTorus = surfType === 'torus' || surfType === 'torus-tunnel';
 
     this.state.bullets.forEach((bullet, index) => {
       bullet.age += dt;
 
       if (isPeanut) {
-        // Peanut surface: 2-axis metric correction.
-        // Profile: r(phi) = R*(1 + w*cos(2*phi)), where R=baseRadius, w=waistDepth.
-        // Since server only has UV coords (not absolute scale), normalize by R:
-        //   rNorm = 1 + w*cos(2*phi)  (profile radius relative to R)
-        //   drNorm = -2*w*sin(2*phi)  (profile derivative relative to R)
-        // U metric (arc length per unit theta change): rNorm * sin(phi)
-        // V metric (arc length per unit phi change):  sqrt(rNorm^2 + drNorm^2)
-        // Dividing each dir component by its metric gives equal world-space step size.
+        // Peanut surface: parallel transport + 2-axis metric correction.
+        // Profile: r(phi) = R*(1 + w*cos(2*phi)), normalized (R=1).
+        //   rNorm = 1 + w*cos(2*phi)
+        //   drNorm = -2*w*sin(2*phi)
         const PEANUT_WAIST_DEPTH = 0.4;
         const phi = bullet.y * Math.PI;
         const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
         const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
         const sinPhi = Math.sin(phi);
+        const cosPhi = Math.cos(phi);
         const metricU = Math.max(rNorm * sinPhi, 0.1);
         const metricV = Math.max(Math.sqrt(rNorm * rNorm + drNorm * drNorm), 0.1);
+
+        // Parallel transport: rotate direction using Christoffel symbols for peanut
+        const cotPhi = cosPhi / Math.max(Math.abs(sinPhi), 0.01);
+        const g_vv = rNorm * rNorm + drNorm * drNorm;
+        const Gamma_u_uv = (drNorm / Math.max(rNorm, 0.01)) + cotPhi;
+        const Gamma_v_uu = -rNorm * sinPhi * (rNorm * cosPhi + drNorm * sinPhi) / Math.max(g_vv, 0.01);
+        const step = BULLET_SPEED * dt;
+        const prevDirXPeanut = bullet.dirX;
+        bullet.dirX += -2 * Gamma_u_uv * bullet.dirX * bullet.dirY * step;
+        bullet.dirY += -Gamma_v_uu * prevDirXPeanut * prevDirXPeanut * step;
+        const peanutLen = Math.sqrt(bullet.dirX * bullet.dirX + bullet.dirY * bullet.dirY);
+        if (peanutLen > 0.001) { bullet.dirX /= peanutLen; bullet.dirY /= peanutLen; }
+
         bullet.x += (bullet.dirX / metricU) * BULLET_SPEED * dt;
         bullet.y += (bullet.dirY / metricV) * BULLET_SPEED * dt;
+      } else if (isSphereLike) {
+        // Sphere: parallel transport + metric correction for u-axis.
+        // Geodesic equations for sphere: Γ^u_uv = cot(phi), Γ^v_uu = -sin(phi)*cos(phi)
+        const phi = bullet.y * Math.PI;
+        const sinPhi = Math.sin(phi);
+        const cosPhi = Math.cos(phi);
+        const clampedSinPhi = Math.max(Math.abs(sinPhi), 0.1);
+
+        // Parallel transport: rotate direction using Christoffel symbols
+        const cotPhi = cosPhi / Math.max(Math.abs(sinPhi), 0.01);
+        const step = BULLET_SPEED * dt;
+        const prevDirX = bullet.dirX;
+        bullet.dirX += -2 * cotPhi * bullet.dirX * bullet.dirY * step;
+        bullet.dirY += sinPhi * cosPhi * prevDirX * prevDirX * step;
+        const sphereLen = Math.sqrt(bullet.dirX * bullet.dirX + bullet.dirY * bullet.dirY);
+        if (sphereLen > 0.001) { bullet.dirX /= sphereLen; bullet.dirY /= sphereLen; }
+
+        // Move bullet with metric correction for u (arc-length preserving)
+        bullet.x += (bullet.dirX / clampedSinPhi) * BULLET_SPEED * dt;
+        bullet.y += bullet.dirY * BULLET_SPEED * dt;
+      } else if (isTorus) {
+        // Torus: parallel transport + 2-axis metric correction.
+        // Normalized radii R=1, r=3/8 (preserves game's 8:3 aspect ratio).
+        // Christoffel symbols: Γ^u_uv = -r*sinV/rho, Γ^v_uu = rho*sinV/r
+        const TORUS_r = 0.375; // minor radius (normalized: r/R = 3/8)
+        const v = bullet.y * 2 * Math.PI;
+        const cosV = Math.cos(v);
+        const sinV = Math.sin(v);
+        const rho = Math.max(1 + TORUS_r * cosV, 0.1); // major + minor*cos(v)
+
+        // Parallel transport
+        const Gamma_u_uv = -TORUS_r * sinV / rho;
+        const Gamma_v_uu = rho * sinV / TORUS_r;
+        const step = BULLET_SPEED * dt;
+        const prevDirX = bullet.dirX;
+        bullet.dirX += -2 * Gamma_u_uv * bullet.dirX * bullet.dirY * step;
+        bullet.dirY += -Gamma_v_uu * prevDirX * prevDirX * step;
+        const torusLen = Math.sqrt(bullet.dirX * bullet.dirX + bullet.dirY * bullet.dirY);
+        if (torusLen > 0.001) { bullet.dirX /= torusLen; bullet.dirY /= torusLen; }
+
+        // Move bullet with metric correction (constant arc-length speed)
+        bullet.x += (bullet.dirX / rho) * BULLET_SPEED * dt;
+        bullet.y += (bullet.dirY / TORUS_r) * BULLET_SPEED * dt;
       } else {
-        // Apply sin(phi) correction for sphere-like surfaces.
-        // On a sphere, the arc length of a U-step at latitude V is proportional
-        // to sin(phi) where phi = V * PI.  Without correction, bullets aimed
-        // horizontally slow to a crawl near the poles (sin(phi)→0) while V-aimed
-        // bullets travel at normal speed, making every shot appear to curve toward
-        // the poles.  Dividing dirX by sin(phi) restores consistent world-space
-        // bullet speed — the same correction applyPlayerMovement() already uses.
-        let correctedDirX = bullet.dirX;
-        if (isSphereLike) {
-          const phi = bullet.y * Math.PI;
-          const sinPhi = Math.sin(phi);
-          const clampedSinPhi = Math.max(sinPhi, 0.3);
-          correctedDirX = bullet.dirX / clampedSinPhi;
-        }
-        // Move bullet
-        bullet.x += correctedDirX * BULLET_SPEED * dt;
+        // Flat / other surfaces (cube, plane, pipe, mobius) — straight-line UV motion.
+        bullet.x += bullet.dirX * BULLET_SPEED * dt;
         bullet.y += bullet.dirY * BULLET_SPEED * dt;
       }
 
