@@ -26,6 +26,8 @@ export class SuperStatePickup {
   private animationTime = 0;
   private readonly mapSizeScaleFactor: number;
   private _bobPhase: number = Math.random() * Math.PI * 2;
+  private readonly _storedCameraUp = new THREE.Vector3();
+  private _hasCameraUp = false;
 
   constructor(type: SuperStateType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.type = type;
@@ -214,9 +216,11 @@ export class SuperStatePickup {
     // but kept here for visual variety — the quaternion is reset by applySurfaceTransform anyway)
     this.mesh.rotation.y += dt * 0.5;
 
-    // Animate spawn indicator (visible for first 30s; no hard age limit since SuperStatePickup
-    // doesn't expire — it stays until collected. animationTime serves as age.)
-    updateSpawnIndicator(this.mesh, this.animationTime, this.animationTime, cameraUp);
+    // Store cameraUp for deferred use in applySurfaceTransform()
+    if (cameraUp) {
+      this._storedCameraUp.copy(cameraUp);
+      this._hasCameraUp = true;
+    }
   }
 
   applySurfaceTransform(
@@ -234,6 +238,9 @@ export class SuperStatePickup {
     // Orient consistently with other pickup types: local X = tangent, Y = normal, Z = bitangent.
     const mat = new THREE.Matrix4().makeBasis(transform.tangent, transform.normal, transform.bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
+
+    // Update spawn indicator after quaternion is set so cameraUp transforms correctly
+    updateSpawnIndicator(this.mesh, this.animationTime, this.animationTime, this._hasCameraUp ? this._storedCameraUp : undefined);
   }
 
   checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {

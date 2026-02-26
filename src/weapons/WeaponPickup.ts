@@ -36,6 +36,10 @@ export class WeaponPickup {
   private spinSpeed: number = 2;
   private _currentTotalTime: number = 0;
 
+  // Deferred cameraUp: stored in update(), consumed in applySurfaceTransform() after quaternion is set
+  private readonly _storedCameraUp = new THREE.Vector3();
+  private _hasCameraUp = false;
+
   constructor(type: WeaponType, surfaceU: number, surfaceV: number, mapSizeScaleFactor: number = 1.0) {
     this.type = type;
     this.surfaceU = surfaceU;
@@ -159,8 +163,12 @@ export class WeaponPickup {
       core.scale.setScalar(pulse / 0.15);
     }
 
-    // Animate spawn indicator (visible for first 30s)
-    updateSpawnIndicator(this.mesh, this.age, totalTime, cameraUp);
+    // Store cameraUp for use in applySurfaceTransform() (called after update()).
+    // updateSpawnIndicator is deferred there so it runs with the correct surface quaternion.
+    if (cameraUp) {
+      this._storedCameraUp.copy(cameraUp);
+      this._hasCameraUp = true;
+    }
 
     // Track age factor for surface dimming in RenderLoop
     this.mesh.userData.ageFactor = this.age > this.fadeStart
@@ -209,6 +217,10 @@ export class WeaponPickup {
     // Orient to surface
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);
+
+    // Update spawn indicator NOW (after quaternion is set) so the correct surface
+    // orientation is used to transform cameraUp into local space.
+    updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
   }
 
   /**
