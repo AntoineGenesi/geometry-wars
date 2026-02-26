@@ -4,6 +4,24 @@ import { ChainLightningEffect } from '../effects/ChainLightning';
 import { MeshSurface } from '../surfaces/MeshSurface';
 import { BuffType, BUFF_CONFIGS, ActiveBuff } from './BuffPickup';
 import { SharedGeometries } from '../rendering/GeometryCache';
+import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
+
+// ---------------------------------------------------------------------------
+// Gas Cloud (Homing branch B node 3)
+// ---------------------------------------------------------------------------
+
+interface GasCloudInstance {
+  position: THREE.Vector3;
+  elapsed: number;
+  duration: number;
+  tickTimer: number;
+  mesh: THREE.Mesh;
+}
+
+const GAS_CLOUD_RADIUS = 2.0;
+const GAS_CLOUD_DAMAGE = 3.0;   // per tick
+const GAS_CLOUD_DURATION = 5.0; // seconds
+const GAS_CLOUD_TICK = 0.5;     // seconds between damage ticks
 
 /**
  * Projectile data for non-instant weapons
@@ -121,6 +139,15 @@ export class WeaponManager {
   // Optional mastery level function — injected for Level 5 final form behavior gates
   private masteryLevelFn: ((type: WeaponType) => number) | null = null;
 
+  // Upgrade tracker — per-match, wired from main.ts
+  private upgradeTracker: MatchUpgradeTracker | null = null;
+
+  // Active gas clouds (Homing branch B node 3)
+  private gasClouds: GasCloudInstance[] = [];
+
+  // Spread cone alternation state (for spread_b_3)
+  private spreadConeToggle = false;
+
   // Session pickup counters: uncapped, NOT reset by ammo depletion
   private sessionPickupCounts: Map<WeaponType, number> = new Map();
 
@@ -182,6 +209,88 @@ export class WeaponManager {
   /** Returns true if the given weapon has reached Level 5 (max mastery). */
   private isMasteryMaxLevel(type: WeaponType): boolean {
     return (this.masteryLevelFn?.(type) ?? 0) >= 5;
+  }
+
+  /**
+   * Set the per-match upgrade tracker. Call before match start.
+   * Pass null to disable upgrade effects (e.g. on game over).
+   */
+  setUpgradeTracker(tracker: MatchUpgradeTracker | null): void {
+    this.upgradeTracker = tracker;
+  }
+
+  /**
+   * Record a kill towards upgrade thresholds for a weapon.
+   * Called by GameLoop for blaster kills (which bypass main.ts's onEnemyDamage).
+   */
+  recordKillForUpgrades(weaponType: WeaponType): void {
+    this.upgradeTracker?.recordKill(weaponType);
+  }
+
+  /**
+   * Returns the upgrade damage multiplier for a weapon (additive bonuses from active nodes).
+   * Public so GameLoop.ts can apply it to blaster bullets which bypass createProjectile.
+   */
+  getUpgradeDamageMult(weaponType: WeaponType): number {
+    if (!this.upgradeTracker) return 1.0;
+    const active = this.upgradeTracker.getActiveUpgrades(weaponType);
+    let bonus = 0;
+    switch (weaponType) {
+      case WeaponType.Standard:
+        if (active.has('standard_a_1')) bonus += 0.20;
+        if (active.has('standard_a_2')) bonus += 0.40;
+        if (active.has('standard_a_3')) bonus += 0.60;
+        break;
+      case WeaponType.ChainLightning:
+        if (active.has('chain_lightning_b_1')) bonus += 0.25;
+        if (active.has('chain_lightning_b_2')) bonus += 0.50;
+        if (active.has('chain_lightning_b_3')) bonus += 0.80;
+        break;
+      case WeaponType.PlasmaMortar:
+        if (active.has('plasma_mortar_b_1')) bonus += 0.25;
+        if (active.has('plasma_mortar_b_2')) bonus += 0.50;
+        if (active.has('plasma_mortar_b_3')) bonus += 0.80;
+        break;
+      case WeaponType.LaserBeam:
+        // Ramp nodes treated as damage increase
+        if (active.has('laser_beam_a_1')) bonus += 0.25;
+        if (active.has('laser_beam_a_2')) bonus += 0.50;
+        if (active.has('laser_beam_a_3')) bonus += 1.00; // instant peak
+        break;
+      case WeaponType.TeslaCoil:
+        if (active.has('tesla_coil_b_1')) bonus += 0.25;
+        if (active.has('tesla_coil_b_2')) bonus += 0.50;
+        if (active.has('tesla_coil_b_3')) bonus += 0.80;
+        break;
+      case WeaponType.Piercing:
+        // Piercing has no dedicated damage branch; fire rate is branch B, range is branch A
+        break;
+      default:
+        break;
+    }
+    return 1.0 + bonus;
+  }
+
+  /** Upgrade fire rate multiplier for a weapon (used in cooldown computation). */
+  private getUpgradeFireRateMult(weaponType: WeaponType): number {
+    if (!this.upgradeTracker) return 1.0;
+    const active = this.upgradeTracker.getActiveUpgrades(weaponType);
+    let bonus = 0;
+    if (weaponType === WeaponType.Standard) {
+      if (active.has('standard_b_1')) bonus += 0.15;
+      if (active.has('standard_b_2')) bonus += 0.30;
+      if (active.has('standard_b_3')) bonus += 0.50;
+    } else if (weaponType === WeaponType.Piercing) {
+      if (active.has('piercing_b_1')) bonus += 0.20;
+      if (active.has('piercing_b_2')) bonus += 0.40;
+      if (active.has('piercing_b_3')) bonus += 0.60;
+    }
+    return 1.0 + bonus;
+  }
+
+  /** Active upgrade node set for a weapon (empty set if no tracker). */
+  private activeUpgradeNodes(weaponType: WeaponType): Set<string> {
+    return this.upgradeTracker?.getActiveUpgrades(weaponType) ?? new Set();
   }
 
   /**
@@ -421,14 +530,16 @@ export class WeaponManager {
     if (this.currentWeapon === WeaponType.Standard) {
       const blasterConfig = WEAPON_CONFIGS[WeaponType.Standard];
       const rapidMult = this.getBuffMultiplier(BuffType.RapidFire);
-      const cooldown = 1 / (blasterConfig.fireRate * rapidMult);
+      const upgradeRateMult = this.getUpgradeFireRateMult(WeaponType.Standard);
+      const cooldown = 1 / (blasterConfig.fireRate * rapidMult * upgradeRateMult);
       return currentTime - this.lastBlasterFireTime >= cooldown;
     }
 
     // For non-blaster weapons, use primary weapon cooldown
     const config = WEAPON_CONFIGS[this.currentWeapon];
     const rapidMult = this.getBuffMultiplier(BuffType.RapidFire);
-    const cooldown = 1 / (config.fireRate * rapidMult);
+    const upgradeRateMult = this.getUpgradeFireRateMult(this.currentWeapon);
+    const cooldown = 1 / (config.fireRate * rapidMult * upgradeRateMult);
 
     if (currentTime - this.lastFireTime < cooldown) return false;
 
@@ -455,7 +566,8 @@ export class WeaponManager {
     // Blaster fires on its OWN independent cooldown (always active)
     const blasterConfig = WEAPON_CONFIGS[WeaponType.Standard];
     const rapidMult = this.getBuffMultiplier(BuffType.RapidFire);
-    const blasterCooldown = 1 / (blasterConfig.fireRate * rapidMult);
+    const blasterUpgradeRate = this.getUpgradeFireRateMult(WeaponType.Standard);
+    const blasterCooldown = 1 / (blasterConfig.fireRate * rapidMult * blasterUpgradeRate);
     if (currentTime - this.lastBlasterFireTime >= blasterCooldown) {
       this.lastBlasterFireTime = currentTime;
       this.fireStandard(origin, direction, surfaceNormal);
@@ -562,6 +674,30 @@ export class WeaponManager {
       this.checkProjectileCollisions(proj, i);
     }
 
+    // Update gas clouds (Homing branch B node 3)
+    for (let i = this.gasClouds.length - 1; i >= 0; i--) {
+      const cloud = this.gasClouds[i];
+      cloud.elapsed += dt;
+      cloud.tickTimer += dt;
+
+      if (cloud.elapsed >= cloud.duration) {
+        this.projectileRoot.remove(cloud.mesh);
+        this.gasClouds.splice(i, 1);
+        continue;
+      }
+
+      // Damage tick every 0.5s
+      if (cloud.tickTimer >= GAS_CLOUD_TICK) {
+        cloud.tickTimer -= GAS_CLOUD_TICK;
+        this.applyAoeDamage(cloud.position, GAS_CLOUD_RADIUS, GAS_CLOUD_DAMAGE);
+      }
+
+      // Pulsing animation
+      const pulse = 0.9 + Math.sin(cloud.elapsed * Math.PI * 2) * 0.1;
+      cloud.mesh.scale.setScalar(GAS_CLOUD_RADIUS * pulse);
+      cloud.mesh.rotation.y += dt * 0.5;
+    }
+
     // Update active effects
     for (let i = this.activeEffects.length - 1; i >= 0; i--) {
       const effect = this.activeEffects[i];
@@ -616,8 +752,30 @@ export class WeaponManager {
     const config = WEAPON_CONFIGS[WeaponType.Spread];
     // LEVEL 5 FINAL FORM — Mega Fan: 9 pellets at 45° spread (vs normal 5 at 30°)
     const isL5 = this.isMasteryMaxLevel(WeaponType.Spread);
-    const bulletCount = isL5 ? 9 : 5;
-    const spreadAngle = isL5 ? Math.PI / 4 : Math.PI / 6; // 45° vs 30°
+    const spreadNodes = this.activeUpgradeNodes(WeaponType.Spread);
+
+    // Pellet count upgrades (branch A): base 5, +1 per node (cap at L5 override)
+    const upgradePellets =
+      (spreadNodes.has('spread_a_1') ? 1 : 0) +
+      (spreadNodes.has('spread_a_2') ? 1 : 0) +
+      (spreadNodes.has('spread_a_3') ? 1 : 0);
+    const bulletCount = isL5 ? 9 : 5 + upgradePellets;
+
+    // Cone width upgrades (branch B): b_3 alternates, b_1 tightens, b_2 widens
+    let spreadAngle: number;
+    if (isL5) {
+      spreadAngle = Math.PI / 4; // L5 override
+    } else if (spreadNodes.has('spread_b_3')) {
+      // Adaptive cone: alternate tight/wide each shot
+      this.spreadConeToggle = !this.spreadConeToggle;
+      spreadAngle = this.spreadConeToggle ? Math.PI / 8 : Math.PI / 4; // 22.5° / 45°
+    } else if (spreadNodes.has('spread_b_2')) {
+      spreadAngle = Math.PI / 5; // +20% wider ≈ 36°
+    } else if (spreadNodes.has('spread_b_1')) {
+      spreadAngle = Math.PI / 7.5; // -15% tighter ≈ 24°
+    } else {
+      spreadAngle = Math.PI / 6; // base 30°
+    }
     // Spread animation: pellets start aimed at center, fan out over 0.35-0.5s
     const spreadDuration = 0.35 + Math.random() * 0.15;
 
@@ -658,9 +816,17 @@ export class WeaponManager {
     const masteryMult = this.masteryMultiplierFn?.(WeaponType.Piercing) ?? 1.0;
     const sessionMult = this.getSessionDamageMultiplier(WeaponType.Piercing);
 
+    // Beam length upgrades (branch A): +50%, +100%, +200% per node
+    const piercingNodes = this.activeUpgradeNodes(WeaponType.Piercing);
+    const lengthBonus =
+      (piercingNodes.has('piercing_a_1') ? 0.50 : 0) +
+      (piercingNodes.has('piercing_a_2') ? 1.00 : 0) +
+      (piercingNodes.has('piercing_a_3') ? 2.00 : 0);
+    const upgradeLengthMult = 1.0 + lengthBonus;
+
     // Trace a geodesic beam path along the surface
-    const beamLen = 25 * rangeMult;
-    const beamPoints = this.traceBeamPath(origin, direction, beamLen, Math.ceil(36 * rangeMult));
+    const beamLen = 25 * rangeMult * upgradeLengthMult;
+    const beamPoints = this.traceBeamPath(origin, direction, beamLen, Math.ceil(36 * rangeMult * upgradeLengthMult));
 
     // Build a thick white beam visual
     const curve = new THREE.CatmullRomCurve3(beamPoints, false, 'catmullrom', 0.5);
@@ -746,12 +912,17 @@ export class WeaponManager {
 
     if (!firstTarget) return;
 
-    // Find chain targets
+    // Find chain targets (virality upgrades: +2 per branch-A node, base 5)
+    const chainNodes = this.activeUpgradeNodes(WeaponType.ChainLightning);
+    const extraTargets =
+      (chainNodes.has('chain_lightning_a_1') ? 2 : 0) +
+      (chainNodes.has('chain_lightning_a_2') ? 2 : 0) +
+      (chainNodes.has('chain_lightning_a_3') ? 2 : 0);
     const otherEnemies = enemies.filter(e => e.index !== firstTarget!.index);
     const chainTargets = ChainLightningEffect.findChainTargets(
       firstTarget.position,
       otherEnemies,
-      5,
+      5 + extraTargets,
       3,
     );
 
@@ -762,12 +933,13 @@ export class WeaponManager {
       index: firstTarget.index,
     });
 
-    // Fire the visual effect (apply stack multiplier + mastery multiplier + session multiplier)
+    // Fire the visual effect (apply stack multiplier + mastery multiplier + session multiplier + upgrade)
     const stackMult = this.getStackDamageMultiplier(WeaponType.ChainLightning);
     const masteryMult = this.masteryMultiplierFn?.(WeaponType.ChainLightning) ?? 1.0;
     const sessionMult = this.getSessionDamageMultiplier(WeaponType.ChainLightning);
+    const upgradeDmgMult = this.getUpgradeDamageMult(WeaponType.ChainLightning);
     this.chainLightning.fire(origin, chainTargets, (pos, mult, idx) => {
-      this.callbacks?.onEnemyDamage(idx, config.damage * mult * stackMult * masteryMult * sessionMult, WeaponType.ChainLightning);
+      this.callbacks?.onEnemyDamage(idx, config.damage * mult * stackMult * masteryMult * sessionMult * upgradeDmgMult, WeaponType.ChainLightning);
     });
   }
 
@@ -788,6 +960,14 @@ export class WeaponManager {
       }
     }
 
+    // Speed upgrades (branch A): +25%, +50%, +80% per node
+    const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);
+    const speedBonus =
+      (homingNodes.has('homing_a_1') ? 0.25 : 0) +
+      (homingNodes.has('homing_a_2') ? 0.50 : 0) +
+      (homingNodes.has('homing_a_3') ? 0.80 : 0);
+    const upgradeSpeed = config.projectileSpeed * (1.0 + speedBonus);
+
     // LEVEL 5 FINAL FORM — Seeking Swarm: fire 3 missiles simultaneously in V-formation
     // Each missile tracks independently — spectacular when all 3 converge on one target
     if (this.isMasteryMaxLevel(WeaponType.Homing)) {
@@ -800,7 +980,7 @@ export class WeaponManager {
           origin.clone(),
           missileDir,
           config.damage,
-          config.projectileSpeed,
+          upgradeSpeed,
           20.0,
         );
         proj.targetIndex = targetIndex;
@@ -811,7 +991,7 @@ export class WeaponManager {
         origin.clone(),
         direction.clone(),
         config.damage,
-        config.projectileSpeed,
+        upgradeSpeed,
         20.0,
       );
       proj.targetIndex = targetIndex;
@@ -866,11 +1046,19 @@ export class WeaponManager {
 
     this.projectileRoot.add(laserMesh);
 
+    // Duration upgrades (branch B): +20%, +40%, +70% per node
+    const laserNodes = this.activeUpgradeNodes(WeaponType.LaserBeam);
+    const durationBonus =
+      (laserNodes.has('laser_beam_b_1') ? 0.20 : 0) +
+      (laserNodes.has('laser_beam_b_2') ? 0.40 : 0) +
+      (laserNodes.has('laser_beam_b_3') ? 0.70 : 0);
+    const laserDuration = 0.5 * (1.0 + durationBonus);
+
     this.activeEffects.push({
       type: 'laser',
       position: origin.clone(),
       direction: direction.clone(),
-      duration: 0.5,
+      duration: laserDuration,
       elapsed: 0,
       mesh: laserMesh,
       beamPoints,
@@ -957,9 +1145,16 @@ export class WeaponManager {
       }
     }
 
+    // Duration upgrades (branch A): +30%, +60%, +100% per node
+    const bhNodes = this.activeUpgradeNodes(WeaponType.BlackHole);
+    const bhDurationBonus =
+      (bhNodes.has('black_hole_a_1') ? 0.30 : 0) +
+      (bhNodes.has('black_hole_a_2') ? 0.60 : 0) +
+      (bhNodes.has('black_hole_a_3') ? 1.00 : 0);
+
     // LEVEL 5 FINAL FORM — Event Horizon: 50% longer duration, stronger pull, AoE explosion on expiry
     const isL5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
-    const duration = isL5 ? 4.5 : 3.0; // 50% longer at L5
+    const duration = (isL5 ? 4.5 : 3.0) * (1.0 + bhDurationBonus);
 
     // Create black hole visual — geometry shared via GeometryCache
     const bhMat = new THREE.MeshBasicMaterial({
@@ -1049,18 +1244,19 @@ export class WeaponManager {
     speed: number,
     maxAge: number,
   ): Projectile {
-    // Apply Extended Range buff + stack damage multiplier + mastery multiplier + session multiplier
+    // Apply Extended Range buff + stack damage multiplier + mastery multiplier + session multiplier + upgrade
     const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
     const stackMult = this.getStackDamageMultiplier(type);
     const masteryMult = this.masteryMultiplierFn?.(type) ?? 1.0;
     const sessionMult = this.getSessionDamageMultiplier(type);
+    const upgradeDmgMult = this.getUpgradeDamageMult(type);
     const proj: Projectile = {
       type,
       position,
       direction: direction.normalize(),
       age: 0,
       maxAge: maxAge * rangeMult,
-      damage: damage * stackMult * masteryMult * sessionMult,
+      damage: damage * stackMult * masteryMult * sessionMult * upgradeDmgMult,
       speed,
     };
 
@@ -1210,15 +1406,28 @@ export class WeaponManager {
         this.callbacks.onEnemyDamage(enemy.index, proj.damage, proj.type);
 
         if (proj.type === WeaponType.PlasmaMortar) {
-          // AoE damage - devastating blast radius
-          this.applyAoeDamage(proj.position, 3.0, proj.damage * 0.75);
+          // AoE radius upgrades (branch A): +30%, +60%, +100%
+          const mortarNodes = this.activeUpgradeNodes(WeaponType.PlasmaMortar);
+          const mortarRadiusBonus =
+            (mortarNodes.has('plasma_mortar_a_1') ? 0.30 : 0) +
+            (mortarNodes.has('plasma_mortar_a_2') ? 0.60 : 0) +
+            (mortarNodes.has('plasma_mortar_a_3') ? 1.00 : 0);
+          this.applyAoeDamage(proj.position, 3.0 * (1.0 + mortarRadiusBonus), proj.damage * 0.75);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.PlasmaMortar);
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.Homing) {
-          // AoE damage - dramatic blast radius
-          this.applyAoeDamage(proj.position, 3.5, proj.damage * 0.8);
+          // Explosion radius upgrades (branch B): +30%, +60%  (b_3 = gas cloud, no extra radius)
+          const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);
+          const homingRadiusBonus =
+            (homingNodes.has('homing_b_1') ? 0.30 : 0) +
+            (homingNodes.has('homing_b_2') ? 0.60 : 0);
+          this.applyAoeDamage(proj.position, 3.5 * (1.0 + homingRadiusBonus), proj.damage * 0.8);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
+          // Gas cloud: spawn when homing_b_3 is active
+          if (homingNodes.has('homing_b_3')) {
+            this.spawnGasCloud(proj.position.clone());
+          }
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.GravityGun) {
@@ -1250,8 +1459,23 @@ export class WeaponManager {
     }
   }
 
-  private applyGravityPull(center: THREE.Vector3, radius: number): void {
+  private applyGravityPull(center: THREE.Vector3, baseRadius: number): void {
     if (!this.callbacks?.onEnemyPull) return;
+
+    // Pull radius upgrades (branch A): +30%, +60%, +100%
+    const ggNodes = this.activeUpgradeNodes(WeaponType.GravityGun);
+    const radiusBonus =
+      (ggNodes.has('gravity_gun_a_1') ? 0.30 : 0) +
+      (ggNodes.has('gravity_gun_a_2') ? 0.60 : 0) +
+      (ggNodes.has('gravity_gun_a_3') ? 1.00 : 0);
+    const radius = baseRadius * (1.0 + radiusBonus);
+
+    // Kinetic crush damage per detonation (branch B)
+    // b_3 = collision force: enemies deal damage to each other — modeled as amplified crush damage
+    const kineticDamage =
+      ggNodes.has('gravity_gun_b_3') ? 9.0 :
+      ggNodes.has('gravity_gun_b_2') ? 5.0 :
+      ggNodes.has('gravity_gun_b_1') ? 2.0 : 0;
 
     const enemies = this.callbacks.getEnemies();
     for (const enemy of enemies) {
@@ -1261,6 +1485,10 @@ export class WeaponManager {
       if (dist < radius) {
         const strength = 1 - dist / radius;
         this.callbacks.onEnemyPull(enemy.index, strength, center);
+        // Kinetic crush: deal instant damage when pulled
+        if (kineticDamage > 0) {
+          this.callbacks.onEnemyDamage(enemy.index, kineticDamage * strength, WeaponType.GravityGun);
+        }
       }
     }
   }
@@ -1292,7 +1520,8 @@ export class WeaponManager {
             if (minDist < hitRadius) {
               const laserMasteryMult = this.masteryMultiplierFn?.(WeaponType.LaserBeam) ?? 1.0;
               const laserSessionMult = this.getSessionDamageMultiplier(WeaponType.LaserBeam);
-              this.callbacks.onEnemyDamage(enemy.index, 2 * dt * laserMasteryMult * laserSessionMult, WeaponType.LaserBeam);
+              const laserUpgradeMult = this.getUpgradeDamageMult(WeaponType.LaserBeam);
+              this.callbacks.onEnemyDamage(enemy.index, 2 * dt * laserMasteryMult * laserSessionMult * laserUpgradeMult, WeaponType.LaserBeam);
             }
           }
         }
@@ -1310,7 +1539,13 @@ export class WeaponManager {
         // Pull and damage enemies
         if (this.callbacks) {
           const enemies = this.callbacks.getEnemies();
-          const radius = 3 + progress * 2;
+          // Pull radius upgrades (branch B): +30%, +60%, +100%
+          const bhActiveNodes = this.activeUpgradeNodes(WeaponType.BlackHole);
+          const bhPullBonus =
+            (bhActiveNodes.has('black_hole_b_1') ? 0.30 : 0) +
+            (bhActiveNodes.has('black_hole_b_2') ? 0.60 : 0) +
+            (bhActiveNodes.has('black_hole_b_3') ? 1.00 : 0);
+          const radius = (3 + progress * 2) * (1.0 + bhPullBonus);
 
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
@@ -1347,17 +1582,25 @@ export class WeaponManager {
             }
           }
 
+          // Radius upgrades (branch A): +25%, +50%, +80%
+          const teslaNodes = this.activeUpgradeNodes(WeaponType.TeslaCoil);
+          const teslaRadiusBonus =
+            (teslaNodes.has('tesla_coil_a_1') ? 0.25 : 0) +
+            (teslaNodes.has('tesla_coil_a_2') ? 0.50 : 0) +
+            (teslaNodes.has('tesla_coil_a_3') ? 0.80 : 0);
+          const radius = 3 * (1.0 + teslaRadiusBonus);
+
           const enemies = this.callbacks.getEnemies();
-          const radius = 3;
+          const teslaMasteryMult = this.masteryMultiplierFn?.(WeaponType.TeslaCoil) ?? 1.0;
+          const teslaSessionMult = this.getSessionDamageMultiplier(WeaponType.TeslaCoil);
+          const teslaUpgradeDmgMult = this.getUpgradeDamageMult(WeaponType.TeslaCoil);
 
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
 
             const dist = effect.position.distanceTo(enemy.position);
             if (dist < radius) {
-              const teslaMasteryMult = this.masteryMultiplierFn?.(WeaponType.TeslaCoil) ?? 1.0;
-              const teslaSessionMult = this.getSessionDamageMultiplier(WeaponType.TeslaCoil);
-              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * teslaMasteryMult * teslaSessionMult, WeaponType.TeslaCoil);
+              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * teslaMasteryMult * teslaSessionMult * teslaUpgradeDmgMult, WeaponType.TeslaCoil);
             }
           }
 
@@ -1368,6 +1611,26 @@ export class WeaponManager {
         }
         break;
     }
+  }
+
+  private spawnGasCloud(position: THREE.Vector3): void {
+    const cloudMat = new THREE.MeshBasicMaterial({
+      color: WEAPON_CONFIGS[WeaponType.Homing].color,
+      transparent: true,
+      opacity: 0.25,
+    });
+    const cloudMesh = new THREE.Mesh(SharedGeometries.blackholeSphere(), cloudMat);
+    cloudMesh.scale.setScalar(GAS_CLOUD_RADIUS);
+    cloudMesh.position.copy(position);
+    this.projectileRoot.add(cloudMesh);
+
+    this.gasClouds.push({
+      position: position.clone(),
+      elapsed: 0,
+      duration: GAS_CLOUD_DURATION,
+      tickTimer: 0,
+      mesh: cloudMesh,
+    });
   }
 
   private removeProjectile(index: number): void {
@@ -1399,6 +1662,11 @@ export class WeaponManager {
       }
     }
     this.activeEffects = [];
+
+    for (const cloud of this.gasClouds) {
+      this.projectileRoot.remove(cloud.mesh);
+    }
+    this.gasClouds = [];
 
     this.chainLightning.clear();
   }

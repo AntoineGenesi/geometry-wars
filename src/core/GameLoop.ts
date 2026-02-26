@@ -599,11 +599,12 @@ export class GameLoop {
         ctx.pickupSpawner.spawnPickupsOnEnemyDeath(u, v);
       },
       ctx.scorePopups,
-      ctx.scoreManager.getScorePowerMultiplier() * ctx.playerLevel.damageMultiplier * ctx.buffManager.getDamageMultiplier() * ctx.buffManager.getMasteryMultiplier(WeaponType.Standard).damageMultiplier,
+      ctx.scoreManager.getScorePowerMultiplier() * ctx.playerLevel.damageMultiplier * ctx.buffManager.getDamageMultiplier() * ctx.buffManager.getMasteryMultiplier(WeaponType.Standard).damageMultiplier * ctx.weaponManager.getUpgradeDamageMult(WeaponType.Standard),
       (type: string, color: number) => {
         ctx.killLog.addKill(type, color);
         ctx.playerLevel.addKill();
         ctx.weaponMastery.recordKill(WeaponType.Standard); // blaster bullets are always Standard
+        ctx.weaponManager.recordKillForUpgrades(WeaponType.Standard); // upgrade tracker
         ctx.ddaTracker.recordKill(1); // DDA: track kill event
         ctx.ddaLogger.recordKill(0, type); // DDA logger: log kill with enemy type
         ctx.perfLogger.recordWeaponKill(ctx.weaponManager.getCurrentWeapon(), ctx.state.perfBuffString); // weapon analytics

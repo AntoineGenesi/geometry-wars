@@ -45,6 +45,8 @@ import { GameOverScreen } from './ui/GameOverScreen';
 import { AnalyticsPanel } from './ui/AnalyticsPanel';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
 import { MasteryStore, XP_THRESHOLDS } from './systems/MasteryStore';
+import { MasteryPointStore } from './systems/MasteryPointStore';
+import { MatchUpgradeTracker } from './systems/MatchUpgradeTracker';
 import { LevelCompleteScreen } from './ui/LevelCompleteScreen';
 import { Minimap } from './ui/Minimap';
 import { KillLog } from './ui/KillLog';
@@ -869,6 +871,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Weapon mastery system (per-weapon kill tracking → tier-up buffs) --
   const weaponMastery = new WeaponMasteryManager();
 
+  // -- Mastery point store (cross-session persistent; tracks earned/spent points & permanent unlocks) --
+  const masteryPointStore = MasteryPointStore.load();
+
+  // -- Per-match upgrade tracker (activates permanently-unlocked nodes via kill thresholds) --
+  const matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+
   const buffHUD = new BuffHUD();
   if (mobile) {
     buffHUD.setCompactMode(true);
@@ -919,6 +927,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     }
     // Update stat multipliers immediately (combines PlayerLevel + BuffManager)
     applyStatMultipliers();
+  };
+
+  // Persist earned mastery points on every level-up
+  playerLevel.onMasteryPointEarned = () => {
+    masteryPointStore.earnPoint();
   };
 
   // -- Screen shake --
@@ -1045,6 +1058,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const weaponManager = new WeaponManager();
   weaponManager.setMeshSurface(meshSurface);
   weaponManager.playerPositionRef = playerWalker.position;
+  weaponManager.setUpgradeTracker(matchUpgradeTracker);
   game.scene.add(weaponManager.getVisualRoot());
 
   // Wire weapon callbacks
@@ -1086,6 +1100,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         killLog.addKill(enemyType, color.getHex());
         playerLevel.addKill();
         weaponMastery.recordKill(weaponType);
+        matchUpgradeTracker.recordKill(weaponType);
 
         // Trigger on-death procs (volatile explosions)
         buffManager.onEnemyDeath(enemy, enemySpawner.getEnemies());
