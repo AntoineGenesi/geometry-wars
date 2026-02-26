@@ -672,6 +672,11 @@ export class EnemySpawner {
       this.scene.add(enemy.segmentRoot);
     }
 
+    // GiantSnake segment meshes live in a separate root group (same pattern as Snake)
+    if (enemy instanceof GiantSnake) {
+      this.scene.add(enemy.segmentRoot);
+    }
+
     // FractalSnake follower meshes live in a separate root group
     if (enemy instanceof FractalSnake) {
       this.scene.add(enemy.followerRoot);
@@ -820,6 +825,9 @@ export class EnemySpawner {
         if (enemy instanceof Snake) {
           this.scene.remove(enemy.segmentRoot);
         }
+        if (enemy instanceof GiantSnake) {
+          this.scene.remove(enemy.segmentRoot);
+        }
         if (enemy instanceof FractalSnake) {
           this.scene.remove(enemy.followerRoot);
           const fsIdx = this.fractalSnakes.indexOf(enemy);
@@ -848,6 +856,9 @@ export class EnemySpawner {
         this.scene.remove(enemy.trailRoot);
       }
       if (enemy instanceof Snake) {
+        this.scene.remove(enemy.segmentRoot);
+      }
+      if (enemy instanceof GiantSnake) {
         this.scene.remove(enemy.segmentRoot);
       }
       if (enemy instanceof FractalSnake) {
