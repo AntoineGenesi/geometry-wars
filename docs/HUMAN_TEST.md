@@ -1240,3 +1240,19 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Controls stay intuitive** — After face transition, "up" still moves the direction you expect
 - [ ] **Camera may tilt** — Camera IS allowed to tilt/orbit over one axis (this is normal for cube surface walking)
 - [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
+
+
+## S36: FractalSnake Variants in KotH
+
+**Fix:** EnemySpawner now cycles through all 4 FractalSnake head variants sequentially (standard → triple_inner → double_outer → pulsing) instead of random selection. KingMode now spawns FractalSnakes at 10s, 18s, 26s, 34s (staggered) to guarantee all 4 variants appear within the first 35 seconds.
+
+### Test: All 4 FractalSnake variants visible in KotH
+- [ ] **Start KotH mode** — Quick Game → King → Sphere → Start
+- [ ] **Snake spawns at ~10s** — A FractalSnake should appear around 10 seconds in
+- [ ] **Snake has standard head** — First snake should have the default triangular head
+- [ ] **Snake at ~18s** — Second snake with triple_inner head (extra inner triangle geometry)
+- [ ] **Snake at ~26s** — Third snake with double_outer head (outer doubled frame)
+- [ ] **Snake at ~34s** — Fourth snake with pulsing head (animated pulsing geometry)
+- [ ] **All variants visually distinct** — Each of the 4 snakes should look noticeably different
+- [ ] **Follower chain visible** — Each snake has a double row of 4 followers behind the head (8 followers total)
+- [ ] **Kill head → followers released** — On head kill, followers become independent enemies
