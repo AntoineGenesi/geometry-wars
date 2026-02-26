@@ -104,6 +104,13 @@
       "cubeTunnel": "[ES] Cube Tunnel"
     }
   },
+  "languages": {
+    "title": "[ES] IDIOMA",
+    "en": "English",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch"
+  },
   "pauseMenu": {
     "title": "[ES] PAUSED",
     "resume": "[ES] RESUME",

@@ -224,4 +224,11 @@ export const KEYS = {
     newPassiveUnlocked: 'mastery.newPassiveUnlocked',
     levelBadge: 'mastery.levelBadge',
   },
+  languages: {
+    title: 'languages.title',
+    en: 'languages.en',
+    es: 'languages.es',
+    fr: 'languages.fr',
+    de: 'languages.de',
+  },
 } as const;

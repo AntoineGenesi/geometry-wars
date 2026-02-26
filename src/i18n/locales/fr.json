@@ -104,6 +104,13 @@
       "cubeTunnel": "[FR] Cube Tunnel"
     }
   },
+  "languages": {
+    "title": "[FR] LANGUE",
+    "en": "English",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch"
+  },
   "pauseMenu": {
     "title": "[FR] PAUSED",
     "resume": "[FR] RESUME",

@@ -6,6 +6,7 @@ import { BackgroundMusic } from '../audio/BackgroundMusic';
 import { PerformanceLogger } from '../core/PerformanceLogger';
 import { createQRCodeDisplay } from './QRCode';
 import { t, onLanguageChange } from '../i18n';
+import { LanguageSelector } from './LanguageSelector';
 
 /**
  * Pause menu overlay.
@@ -82,6 +83,7 @@ export class PauseMenu {
   private joinUrl: string | null = null;
   private isInLookMode: boolean = false;
   private _langUnsub: (() => void) | null = null;
+  private _languageSelector: LanguageSelector | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -187,6 +189,8 @@ export class PauseMenu {
             </div>
           </div>
         </div>
+
+        <div id="pause-lang-selector"></div>
 
         <div class="pause-hint">
           <p>${t('pauseMenu.hint')}</p>
@@ -608,6 +612,57 @@ export class PauseMenu {
         letter-spacing: 2px;
       }
 
+      /* Language selector */
+      #pause-menu .lang-selector-section {
+        margin-top: 32px;
+        text-align: center;
+      }
+
+      #pause-menu .lang-selector-title {
+        font-size: 11px;
+        font-weight: bold;
+        letter-spacing: 3px;
+        color: #8888aa;
+        margin-bottom: 12px;
+      }
+
+      #pause-menu .lang-selector-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+      }
+
+      #pause-menu .lang-btn {
+        background: linear-gradient(180deg, #222244 0%, #111133 100%);
+        border: 2px solid #444466;
+        color: #8888aa;
+        padding: 10px 18px;
+        font-size: 15px;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 1px;
+        min-width: 120px;
+        border-radius: 2px;
+        font-family: inherit;
+        /* Mobile: large tap target */
+        min-height: 44px;
+      }
+
+      #pause-menu .lang-btn:hover {
+        border-color: #6666cc;
+        color: #ccccff;
+        background: linear-gradient(180deg, #333366 0%, #222244 100%);
+      }
+
+      #pause-menu .lang-btn.selected {
+        background: linear-gradient(180deg, #223388 0%, #112266 100%);
+        border-color: #4488ff;
+        color: #ffffff;
+        box-shadow: 0 0 12px rgba(68, 136, 255, 0.5);
+        text-shadow: 0 0 8px rgba(68, 136, 255, 0.8);
+      }
+
       /* Mobile landscape: compact layout to fit small viewport height */
       @media (max-height: 500px) {
         #pause-menu .pause-content {
@@ -746,6 +801,16 @@ export class PauseMenu {
       this.hide();
       this.networkCallbacks?.onStopServer?.();
     });
+
+    // Mount language selector
+    if (this._languageSelector) {
+      this._languageSelector.dispose();
+    }
+    const langMount = this.container.querySelector<HTMLElement>('#pause-lang-selector');
+    if (langMount) {
+      this._languageSelector = new LanguageSelector(langMount);
+      this._languageSelector.render();
+    }
 
     // Escape key to toggle pause is handled externally (in main.ts/network-main.ts)
     // This allows the caller to manage state properly and support look mode for non-host players
