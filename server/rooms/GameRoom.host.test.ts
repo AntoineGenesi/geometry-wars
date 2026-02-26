@@ -1,9 +1,13 @@
 /**
  * Tests for GameRoom host determination logic.
  *
- * Covers the new requestHost mechanic: when a game creator navigates from
+ * Covers the requestHost mechanic: when a game creator navigates from
  * the start menu, they pass requestHost=true in join options, and the server
  * prioritizes them as host even if another player joined first.
+ *
+ * Key invariant (S35 fix): game creator can promote over a non-creator host
+ * at ANY room phase — not just 'lobby'. This handles the case where mobile
+ * joins first, starts the game, and then the creator connects mid-game.
  *
  * These tests validate the promotion logic in isolation without requiring a
  * live Colyseus Room instance.
@@ -60,16 +64,19 @@ function simulateJoin(
     newState.hostId = client.sessionId;
     newState.hostIsLocal = isLocalClient;
     newState.hostRequestedHost = didRequestHost;
-  } else if (
-    (isLocalClient || didRequestHost) &&
-    !(state.hostIsLocal || state.hostRequestedHost) &&
-    state.roomPhase === 'lobby'
-  ) {
-    // Creator or localhost joined after a plain LAN client had already taken host — promote
-    newState.hostId = client.sessionId;
-    newState.hostIsLocal = isLocalClient;
-    newState.hostRequestedHost = didRequestHost;
-    broadcastHostChanged = true;
+  } else {
+    // Two promotion paths (S35 fix splits the original single condition):
+    // (A) Creator (requestHost=true) promotes over non-creator, non-localhost host at ANY phase.
+    //     This fixes the case where mobile starts the game before the creator connects.
+    // (B) Localhost promotes over plain LAN first-joiner, but ONLY in lobby phase.
+    const creatorCanPromote = didRequestHost && !state.hostIsLocal && !state.hostRequestedHost;
+    const localhostCanPromote = isLocalClient && !state.hostIsLocal && !state.hostRequestedHost && state.roomPhase === 'lobby';
+    if (creatorCanPromote || localhostCanPromote) {
+      newState.hostId = client.sessionId;
+      newState.hostIsLocal = isLocalClient;
+      newState.hostRequestedHost = didRequestHost;
+      broadcastHostChanged = true;
+    }
   }
 
   return { state: newState, broadcastHostChanged };
@@ -224,24 +231,45 @@ describe('GameRoom host determination', () => {
     });
   });
 
-  describe('game in progress: no host promotion', () => {
-    it('creator joining during playing phase does NOT steal host', () => {
+  describe('game in progress: creator can reclaim host (S35 fix)', () => {
+    it('creator joining during playing phase DOES promote over non-creator host', () => {
+      // The key S35 scenario: mobile joined first, mobile started the game,
+      // creator connects after game started. Without the fix, creator stays non-host.
       const locality = new Map<string, boolean>();
       const reqHost = new Map<string, boolean>();
-      const first = makeClient('first', '192.168.1.10');
+      const phone = makeClient('phone', '192.168.1.10');
       const creator = makeClient('creator', '192.168.1.1');
 
       let state = makeState();
-      ({ state } = simulateJoin(first, {}, state, locality, reqHost));
-      state.roomPhase = 'playing'; // game in progress
+      ({ state } = simulateJoin(phone, {}, state, locality, reqHost));
+      state.roomPhase = 'playing'; // mobile started the game as (incorrect) host
 
       const result = simulateJoin(creator, { requestHost: true }, state, locality, reqHost);
 
-      expect(result.state.hostId).toBe('first'); // no promotion during game
-      expect(result.broadcastHostChanged).toBe(false);
+      expect(result.state.hostId).toBe('creator'); // creator reclaims host
+      expect(result.state.hostRequestedHost).toBe(true);
+      expect(result.broadcastHostChanged).toBe(true);
+    });
+
+    it('creator joining during voting phase DOES promote over non-creator host', () => {
+      // Game ended (voting phase) — creator connects, should get host
+      const locality = new Map<string, boolean>();
+      const reqHost = new Map<string, boolean>();
+      const phone = makeClient('phone', '192.168.1.10');
+      const creator = makeClient('creator', '192.168.1.1');
+
+      let state = makeState();
+      ({ state } = simulateJoin(phone, {}, state, locality, reqHost));
+      state.roomPhase = 'voting';
+
+      const result = simulateJoin(creator, { requestHost: true }, state, locality, reqHost);
+
+      expect(result.state.hostId).toBe('creator');
+      expect(result.broadcastHostChanged).toBe(true);
     });
 
     it('localhost joining during playing phase does NOT steal host', () => {
+      // Localhost promotion is still lobby-only (existing behavior preserved)
       const locality = new Map<string, boolean>();
       const reqHost = new Map<string, boolean>();
       const first = makeClient('first', '192.168.1.10');
@@ -249,11 +277,11 @@ describe('GameRoom host determination', () => {
 
       let state = makeState();
       ({ state } = simulateJoin(first, {}, state, locality, reqHost));
-      state.roomPhase = 'playing'; // game in progress
+      state.roomPhase = 'playing';
 
       const result = simulateJoin(local, {}, state, locality, reqHost);
 
-      expect(result.state.hostId).toBe('first'); // no promotion during game
+      expect(result.state.hostId).toBe('first'); // localhost does NOT promote mid-game
       expect(result.broadcastHostChanged).toBe(false);
     });
   });

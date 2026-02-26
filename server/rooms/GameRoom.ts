@@ -372,17 +372,26 @@ export class GameRoom extends Room<GameState> {
       this.hostIsLocal = isLocalClient;
       this.hostRequestedHost = didRequestHost;
       this.logger.log(`[GameRoom] ${player.name} is the host (local=${isLocalClient}, requestHost=${didRequestHost})`);
-    } else if ((isLocalClient || didRequestHost) && !(this.hostIsLocal || this.hostRequestedHost) && this.state.roomPhase === 'lobby') {
-      // A game creator (requestHost=true) or localhost client joined after a plain LAN client
-      // had already taken the host role — promote them to host (lobby phase only).
-      // The lobby-only guard ensures this only handles the initial connection race, not rejoin scenarios.
-      // Priority logic: creator/localhost always beats a non-creator, non-localhost first-joiner.
-      const prev = this.state.hostId;
-      this.state.hostId = client.sessionId;
-      this.hostIsLocal = isLocalClient;
-      this.hostRequestedHost = didRequestHost;
-      this.logger.log(`[GameRoom] Host promoted to ${didRequestHost ? 'creator' : 'localhost'} player: ${player.name} (was ${prev})`);
-      this.broadcast('host_changed', { hostId: client.sessionId });
+    } else {
+      // Determine whether to promote this client to host.
+      // Two separate promotion paths:
+      // (A) Game creator (requestHost=true) can displace a non-creator, non-localhost host at
+      //     ANY room phase. This handles the case where mobile joined first and started the game
+      //     before the real creator connected — without this, the creator could never reclaim host
+      //     because roomPhase never returns to 'lobby' after the first game start.
+      // (B) Localhost client can promote over a plain LAN first-joiner, but ONLY during lobby
+      //     to avoid disrupting an in-progress game.
+      // Priority hierarchy: creator > localhost > plain LAN (first creator/localhost keeps host).
+      const creatorCanPromote = didRequestHost && !this.hostIsLocal && !this.hostRequestedHost;
+      const localhostCanPromote = isLocalClient && !this.hostIsLocal && !this.hostRequestedHost && this.state.roomPhase === 'lobby';
+      if (creatorCanPromote || localhostCanPromote) {
+        const prev = this.state.hostId;
+        this.state.hostId = client.sessionId;
+        this.hostIsLocal = isLocalClient;
+        this.hostRequestedHost = didRequestHost;
+        this.logger.log(`[GameRoom] Host promoted to ${didRequestHost ? 'creator' : 'localhost'} player: ${player.name} (was ${prev}, phase=${this.state.roomPhase})`);
+        this.broadcast('host_changed', { hostId: client.sessionId });
+      }
     }
 
     // Spawn at different positions based on player count
