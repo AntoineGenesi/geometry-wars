@@ -1479,6 +1479,53 @@ function main() {
     }
   });
 
+  // -- Mobile: wire pause button in TouchInput (mirrors Escape key handler above) --
+  // The TouchInput pause button fires input.onPause but it was never set in network-main,
+  // making the mobile pause button a no-op. Wire it here to match Escape key behavior.
+  if (mobile && input instanceof TouchInput) {
+    input.onPause = () => {
+      if (connectionLost) {
+        window.location.href = window.location.pathname;
+        return;
+      }
+      if (!network.isConnected()) return;
+
+      if (localMenuOpen) {
+        hideLocalMenu();
+      } else if (!isPaused) {
+        // Re-check host status in case it changed since connect (same as Escape handler)
+        if (!isHost) {
+          const serverHostId = network.getServerHostId();
+          if (serverHostId && serverHostId === localPlayerId) {
+            isHost = true;
+          }
+        }
+        if (isHost) {
+          // Host: pause the server — enemies freeze for ALL players
+          isPaused = true;
+          network.sendPause(true);
+          showPauseOverlay(true);
+        } else {
+          // Non-host: open local menu (only host can pause the server)
+          showLocalMenu();
+        }
+      } else if (isHost) {
+        // Server is paused by host — tap pause again to resume
+        isPaused = false;
+        network.sendPause(false);
+        showPauseOverlay(false);
+      } else if (isInLookMode) {
+        // Non-host in look mode — return to pause menu
+        isInLookMode = false;
+        pauseMenu.exitLookMode();
+      } else {
+        // Non-host: server is paused — enter look mode (look around while frozen)
+        isInLookMode = true;
+        pauseMenu.enterLookMode();
+      }
+    };
+  }
+
   // Window blur handler: when the browser window loses focus (user switches
   // to a different window on same PC), immediately send zero-input to the
   // server. Without this, the server keeps applying the last non-zero input
@@ -1751,7 +1798,8 @@ function main() {
       const nowIsHost = state.hostId !== '' && state.hostId === localPlayerId;
       if (nowIsHost !== isHost) {
         isHost = nowIsHost;
-        stopServerBtn.style.display = isHost ? 'block' : 'none';
+        // On mobile: stop server is only accessible from the pause menu, never the HUD.
+        stopServerBtn.style.display = (isHost && !mobile) ? 'block' : 'none';
         localMenuStopServerBtn.style.display = isHost ? 'block' : 'none';
         pauseMenu.setIsHost(isHost); // Keep pause menu in sync with current host status
         netMainLog(`[NetworkMain] Host status updated: ${isHost ? 'IS host' : 'NOT host'}`);
@@ -2531,7 +2579,7 @@ function main() {
     isHost = serverHostId !== '' && localPlayerId === serverHostId;
     if (isHost) {
       console.log('[NetworkMain] This client is the HOST');
-      stopServerBtn.style.display = 'block';
+      if (!mobile) stopServerBtn.style.display = 'block';
     }
 
     // Use URL surface type as initial guess (NOT server state, which may be
@@ -2629,7 +2677,7 @@ function main() {
         // immediate visual feedback here before the next state patch arrives.
         if (newHostId === localPlayerId) {
           isHost = true;
-          stopServerBtn.style.display = 'block';
+          if (!mobile) stopServerBtn.style.display = 'block';
           statusEl.textContent = 'You are now the host!';
           statusEl.style.color = '#0ff';
           netMainLog('[NetworkMain] Host role transferred to this client');
