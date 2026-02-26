@@ -140,6 +140,45 @@ export class AnimatedCharacter {
   }
 
   /**
+   * Play a named animation once (death, hit reactions, attacks).
+   * Does not update this.state — use for one-shot non-looping clips.
+   */
+  playOneShot(name: string): void {
+    if (!this.mixer) return;
+    const clip = this.clips.get(name) ?? this.clips.get(name.toLowerCase());
+    if (!clip) return;
+    const action = this.mixer.clipAction(clip);
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.reset();
+    if (this.currentAction && this.currentAction !== action) {
+      action.crossFadeFrom(this.currentAction, 0.15, true);
+    }
+    action.play();
+    this.currentAction = action;
+  }
+
+  /**
+   * Advance the animation mixer and apply the surface transform without
+   * changing UV position. Used by GLBCharacterEnemy which controls movement
+   * externally.
+   */
+  tickExternal(dt: number): void {
+    this.mixer?.update(dt);
+    if (this.loaded) this.applySurfaceTransform();
+  }
+
+  /** Set the heading angle (radians in UV tangent space). Used for directional facing. */
+  set headingAngle(val: number) {
+    this.heading = val;
+  }
+
+  /** Whether the GLB has finished loading. */
+  get isLoaded(): boolean {
+    return this.loaded;
+  }
+
+  /**
    * Update animation mixer, advance UV position, and apply surface transform.
    * Call once per frame with the frame delta time in seconds.
    */
