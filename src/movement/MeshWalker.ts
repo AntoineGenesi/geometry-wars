@@ -539,8 +539,9 @@ export class MeshWalker {
   private _updateTangentFrame(newNormal: THREE.Vector3, _transportedTangent?: THREE.Vector3): void {
     const n = newNormal.clone().normalize();
 
-    // Store old tangent for sign-flip detection
+    // Store old tangent and bitangent for sign-flip detection
     const oldTangent = this._tangent.clone();
+    const oldBitangent = this._bitangent.clone();
 
     // Project old tangent onto new tangent plane (Gram-Schmidt)
     const dotT = this._tangent.dot(n);
@@ -548,10 +549,18 @@ export class MeshWalker {
     const tangentLen = this._tangent.length();
 
     if (tangentLen < 0.001) {
-      // Tangent collapsed (normal flipped ~90°) — fall back to surface method
+      // Tangent collapsed (normal is ~parallel to old tangent) — fall back to surface method.
+      // The surface fallback can return an arbitrary tangent that produces a bitangent
+      // 180° opposite to the old one, causing a camera flip on cube face transitions.
       const fallback = this.surface.getTangentFrame(n);
       this._tangent.copy(fallback.tangent);
       this._bitangent.crossVectors(n, this._tangent).normalize();
+      // Sign-flip protection: if the new bitangent is opposite to the old one,
+      // negate the tangent so that n×(-t) = -(n×t) preserves the camera up direction.
+      if (oldBitangent.dot(this._bitangent) < 0) {
+        this._tangent.negate();
+        this._bitangent.negate();
+      }
       return;
     }
     this._tangent.multiplyScalar(1 / tangentLen);
