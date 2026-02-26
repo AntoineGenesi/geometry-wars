@@ -65,11 +65,13 @@ function simulateJoin(
     newState.hostIsLocal = isLocalClient;
     newState.hostRequestedHost = didRequestHost;
   } else {
-    // Two promotion paths (S35 fix splits the original single condition):
-    // (A) Creator (requestHost=true) promotes over non-creator, non-localhost host at ANY phase.
-    //     This fixes the case where mobile starts the game before the creator connects.
+    // Two promotion paths:
+    // (A) Creator (requestHost=true) always displaces a non-creator host at ANY phase.
+    //     Do NOT check hostIsLocal — through the Vite proxy, ALL clients appear as localhost,
+    //     so isLocalClient/hostIsLocal is unreliable. The requestHost flag is the ONLY
+    //     reliable signal for "I am the game creator." (S36 fix)
     // (B) Localhost promotes over plain LAN first-joiner, but ONLY in lobby phase.
-    const creatorCanPromote = didRequestHost && !state.hostIsLocal && !state.hostRequestedHost;
+    const creatorCanPromote = didRequestHost && !state.hostRequestedHost;
     const localhostCanPromote = isLocalClient && !state.hostIsLocal && !state.hostRequestedHost && state.roomPhase === 'lobby';
     if (creatorCanPromote || localhostCanPromote) {
       newState.hostId = client.sessionId;
@@ -282,6 +284,45 @@ describe('GameRoom host determination', () => {
       const result = simulateJoin(local, {}, state, locality, reqHost);
 
       expect(result.state.hostId).toBe('first'); // localhost does NOT promote mid-game
+      expect(result.broadcastHostChanged).toBe(false);
+    });
+  });
+
+  describe('Vite proxy regression (S36): all clients appear as localhost via proxy', () => {
+    it('creator with requestHost=true displaces a localhost-appearing first joiner (Vite proxy case)', () => {
+      // Root cause: Vite dev server proxies WS connections, so ALL clients appear as 127.0.0.1
+      // to Colyseus — including LAN phones. The old code checked !hostIsLocal, which was ALWAYS
+      // false through the proxy, preventing the creator from ever reclaiming host.
+      const locality = new Map<string, boolean>();
+      const reqHost = new Map<string, boolean>();
+      // Phone joins first — appears as localhost due to Vite proxy
+      const phone = makeClient('phone', '127.0.0.1');
+      const creator = makeClient('creator', '127.0.0.1'); // also appears as localhost via proxy
+
+      let state = makeState();
+      ({ state } = simulateJoin(phone, {}, state, locality, reqHost));
+      expect(state.hostId).toBe('phone');
+      expect(state.hostIsLocal).toBe(true); // proxy made it look local
+
+      // Creator joins with requestHost=true — should displace phone despite both being "localhost"
+      const result = simulateJoin(creator, { requestHost: true }, state, locality, reqHost);
+      expect(result.state.hostId).toBe('creator'); // MUST promote creator
+      expect(result.state.hostRequestedHost).toBe(true);
+      expect(result.broadcastHostChanged).toBe(true);
+    });
+
+    it('creator does NOT displace an existing creator even when both appear as localhost via proxy', () => {
+      const locality = new Map<string, boolean>();
+      const reqHost = new Map<string, boolean>();
+      const creator1 = makeClient('creator1', '127.0.0.1');
+      const creator2 = makeClient('creator2', '127.0.0.1');
+
+      let state = makeState();
+      ({ state } = simulateJoin(creator1, { requestHost: true }, state, locality, reqHost));
+      expect(state.hostId).toBe('creator1');
+
+      const result = simulateJoin(creator2, { requestHost: true }, state, locality, reqHost);
+      expect(result.state.hostId).toBe('creator1'); // first creator keeps host
       expect(result.broadcastHostChanged).toBe(false);
     });
   });
