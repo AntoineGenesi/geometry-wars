@@ -217,10 +217,11 @@ export class KingMode implements IGameMode {
       (this.zoneStartRadiusUV - this.zoneMinRadiusUV);
     const shrinkPct = Math.round(Math.min(1, shrinkProgress) * 100);
 
-    const primary = this.inZone
-      ? `⬛ IN ZONE: ${timeStr}`
-      : `⬜ ZONE TIME: ${timeStr}`;
+    // Primary (LARGE) = Zone time (seconds in zone) with in-zone status indicator
+    const indicator = this.inZone ? '⬛' : '⬜';
+    const primary = `${indicator} ${timeStr}`;
 
+    // Secondary (small) = Kill points
     const secondary = `PTS: ${this.killPoints.toLocaleString()}  |  Zone: ${100 - shrinkPct}%`;
 
     const zoneTimeLimit = Math.ceil(this.zoneTimer);
