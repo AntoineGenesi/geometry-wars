@@ -659,6 +659,12 @@ export class GameRoom extends Room<GameState> {
         const clampedSinPhi = Math.max(sinPhi, 0.3);
         correctedDx = dx / clampedSinPhi;
       }
+      // Torus: negate U-delta because TorusSurface uses negated tangentU for a right-handed
+      // frame. Increasing U moves toward the old (left-handed) tangentU = camera left.
+      // Negating corrects so moveX>0 (D key) moves player in camera-right direction.
+      if (surfaceType === 'torus') {
+        correctedDx = -correctedDx;
+      }
 
       player.surfaceU = this.wrapCoord(player.surfaceU + correctedDx);
 
