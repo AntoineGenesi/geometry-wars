@@ -704,7 +704,7 @@ export class CubeSurface extends Surface {
   createGrid(): THREE.LineSegments {
     const { gridSegments } = CubeSurface.getInitData()
     const derived = this.getDerivedValues()
-    const { flatHalfSize, bevelRadius } = derived
+    const { flatHalfSize, bevelRadius, halfSize } = derived
     const vertices: number[] = []
     // Cube grid uses fewer segments than curved surfaces (torus/sphere use 48).
     // Flat faces only need a few segments; bevel corners are short arcs.
@@ -712,10 +712,16 @@ export class CubeSurface extends Surface {
     // matching sphere's ~2496 springs and eliminating the per-frame overhead gap.
     const lineDetail = 8
 
-    // Horizontal grid lines (constant v)
+    // Horizontal grid lines (constant v) — skip flat face regions.
+    // The top/bottom flat faces use a 4-strip Cartesian UV parameterization where each
+    // strip runs in a different direction (+x, -z, -x, +z). Sweeping u=0→1 at fixed v
+    // traces a folded star/cross pattern rather than a clean grid line. Instead, we
+    // draw proper Cartesian grid lines for the flat faces below.
     const vLines = gridSegments + 2
     for (let j = 0; j <= vLines; j++) {
       const v = j / vLines
+      const vRegion = this.getVRegion(v, derived)
+      if (vRegion.type === 'bottomFlat' || vRegion.type === 'topFlat') continue
       for (let i = 0; i < lineDetail * 4; i++) {
         const u0 = i / (lineDetail * 4)
         const u1 = (i + 1) / (lineDetail * 4)
@@ -724,6 +730,26 @@ export class CubeSurface extends Surface {
         vertices.push(p0.position.x, p0.position.y, p0.position.z)
         vertices.push(p1.position.x, p1.position.y, p1.position.z)
       }
+    }
+
+    // Cartesian grid lines for bottom and top flat faces.
+    // Draws a clean rectangular grid directly in world space, matching the density
+    // of the side face grid (linesPerFace lines per face direction).
+    const flatGridN = Math.max(2, Math.floor(gridSegments / 2))
+    const yBottom = -halfSize
+    const yTop = halfSize
+    for (let i = 0; i <= flatGridN; i++) {
+      const coord = -flatHalfSize + (i / flatGridN) * 2 * flatHalfSize
+      // Bottom face: lines parallel to x-axis (at z=coord) and z-axis (at x=coord)
+      vertices.push(-flatHalfSize, yBottom, coord)
+      vertices.push(flatHalfSize, yBottom, coord)
+      vertices.push(coord, yBottom, -flatHalfSize)
+      vertices.push(coord, yBottom, flatHalfSize)
+      // Top face: same pattern
+      vertices.push(-flatHalfSize, yTop, coord)
+      vertices.push(flatHalfSize, yTop, coord)
+      vertices.push(coord, yTop, -flatHalfSize)
+      vertices.push(coord, yTop, flatHalfSize)
     }
 
     // Vertical grid lines (constant u)
