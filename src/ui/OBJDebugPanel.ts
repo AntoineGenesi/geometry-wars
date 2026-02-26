@@ -17,6 +17,7 @@ import { OBJModelManager } from '../rendering/OBJModelManager';
 import { WalkingDemo, type CharacterIndex } from './WalkingDemo';
 import { AnimatedCharacterDemo } from '../demo/AnimatedCharacterDemo';
 import { AnimatedCharacterBattleDemo } from '../demo/AnimatedCharacterBattleDemo';
+import { BenchmarkRunner, type BenchmarkResult } from '../demo/BenchmarkRunner';
 
 // ---------------------------------------------------------------------------
 // Preset models (local files — no CORS, always work)
@@ -90,7 +91,10 @@ export class OBJDebugPanel {
   private walkingDemo: WalkingDemo | null = null;
   private characterDemo: AnimatedCharacterDemo | null = null;
   private battleDemo: AnimatedCharacterBattleDemo | null = null;
-  private demoMode: 'flat' | 'sphere' = 'flat';
+  private benchmarkRunner: BenchmarkRunner | null = null;
+  private benchmarkHistory: BenchmarkResult[] = [];
+  private benchmarkRunning = false;
+  private demoMode: 'flat' | 'sphere' | 'benchmark' = 'flat';
   private elapsedTime = 0;
 
   constructor() {
@@ -209,6 +213,30 @@ export class OBJDebugPanel {
             </section>
 
             <section class="obj-section">
+              <h3>Performance Benchmark</h3>
+              <div class="obj-row">
+                <label class="obj-label">Characters</label>
+                <input type="range" id="obj-char-count" min="1" max="50" value="4" style="flex:1">
+                <span id="obj-char-count-display" style="color:#00cccc;font:11px monospace;min-width:30px;text-align:right">4</span>
+              </div>
+              <div class="obj-row" style="gap:6px">
+                <button id="obj-run-benchmark" class="obj-btn obj-btn-benchmark">▶ RUN BENCHMARK (5s)</button>
+                <button id="obj-export-results" class="obj-btn" style="display:none">⬆ EXPORT</button>
+              </div>
+              <div id="obj-benchmark-status" style="display:none;font:10px monospace;color:#ffcc44;padding:4px 0">Waiting for characters to load…</div>
+              <div id="obj-benchmark-results" class="obj-bench-results" style="display:none">
+                <div class="obj-perf-grid">
+                  <span class="obj-perf-label">FPS (avg)</span><span id="obj-bench-fps">—</span>
+                  <span class="obj-perf-label">FPS (min)</span><span id="obj-bench-min-fps">—</span>
+                  <span class="obj-perf-label">Draw Calls</span><span id="obj-bench-calls">—</span>
+                  <span class="obj-perf-label">Triangles</span><span id="obj-bench-tris">—</span>
+                  <span class="obj-perf-label">Anim CPU</span><span id="obj-bench-anim">—</span>
+                </div>
+              </div>
+              <div id="obj-benchmark-history" style="margin-top:8px"></div>
+            </section>
+
+            <section class="obj-section">
               <h3>Notes</h3>
               <div class="obj-notes">
                 <p>• OBJ: static geometry only (no animations)</p>
@@ -322,8 +350,10 @@ export class OBJDebugPanel {
       this.manager?.update(dt);
       this.walkingDemo?.update(this.elapsedTime);
       this.characterDemo?.update(dt);
+      this.benchmarkRunner?.update(dt);
       this.previewRenderer.render(this.previewScene, this.previewCamera);
       this.updatePerfDisplay();
+      this.updateBenchmarkFpsDisplay(dt);
     };
     this.animFrameId = requestAnimationFrame(loop);
   }
@@ -713,6 +743,167 @@ export class OBJDebugPanel {
     stopBtn?.addEventListener('click', () => {
       this.manager?.stopAnimation();
     });
+
+    // Benchmark controls
+    const charCountSlider = this.container.querySelector('#obj-char-count') as HTMLInputElement;
+    const charCountDisplay = this.container.querySelector('#obj-char-count-display') as HTMLSpanElement;
+    charCountSlider?.addEventListener('input', () => {
+      if (charCountDisplay) charCountDisplay.textContent = charCountSlider.value;
+    });
+
+    const runBenchmarkBtn = this.container.querySelector('#obj-run-benchmark') as HTMLButtonElement;
+    runBenchmarkBtn?.addEventListener('click', () => {
+      if (this.benchmarkRunning) return;
+      const count = parseInt(charCountSlider?.value ?? '4', 10);
+      this.runBenchmark(count);
+    });
+
+    const exportBtn = this.container.querySelector('#obj-export-results') as HTMLButtonElement;
+    exportBtn?.addEventListener('click', () => {
+      this.exportBenchmarkResults();
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Benchmark
+  // -------------------------------------------------------------------------
+
+  private async runBenchmark(count: number): Promise<void> {
+    if (!this.previewRenderer || !this.previewScene) return;
+    if (this.benchmarkRunning) return;
+
+    this.benchmarkRunning = true;
+    this.demoMode = 'benchmark';
+
+    // Clear other demos
+    if (this.walkingDemo) { this.walkingDemo.dispose(); this.walkingDemo = null; }
+    if (this.characterDemo) { this.characterDemo.dispose(); this.characterDemo = null; }
+    if (this.previewModel) {
+      this.previewScene.remove(this.previewModel);
+      this.previewModel = null;
+    }
+    this.manager?.removeFromScene();
+
+    // Hide/show UI sections
+    const flatSection = this.container.querySelector('#obj-flat-chars-section') as HTMLElement;
+    const sphereSection = this.container.querySelector('#obj-sphere-chars-section') as HTMLElement;
+    if (flatSection) flatSection.style.display = 'none';
+    if (sphereSection) sphereSection.style.display = 'none';
+
+    const runBtn = this.container.querySelector('#obj-run-benchmark') as HTMLButtonElement;
+    const statusEl = this.container.querySelector('#obj-benchmark-status') as HTMLElement;
+    const resultsEl = this.container.querySelector('#obj-benchmark-results') as HTMLElement;
+
+    if (runBtn) { runBtn.disabled = true; runBtn.textContent = '⏳ RUNNING…'; }
+    if (statusEl) { statusEl.style.display = ''; statusEl.textContent = `Loading ${count} characters on sphere…`; }
+    if (resultsEl) resultsEl.style.display = 'none';
+
+    this.setStatus(`⏳ Benchmark running — ${count} characters`, 'loading');
+
+    // Adjust camera for sphere view
+    this.orbitState.radius = 7;
+    this.orbitState.theta = Math.PI / 4;
+    this.orbitState.phi = Math.PI / 3;
+    this.updateOrbit();
+
+    // Create runner
+    if (!this.benchmarkRunner) {
+      this.benchmarkRunner = new BenchmarkRunner(this.previewScene, this.previewRenderer);
+    }
+    this.benchmarkRunner.onProgress = (fraction, samples) => {
+      if (statusEl) {
+        const pct = Math.round(fraction * 100);
+        statusEl.textContent = `Collecting… ${pct}% (${samples} samples)`;
+      }
+    };
+
+    try {
+      const result = await this.benchmarkRunner.runBenchmark(count, 5000);
+      this.benchmarkHistory.push(result);
+      this.displayBenchmarkResult(result);
+      this.renderBenchmarkHistory();
+      this.setStatus(
+        `✓ Benchmark done — ${count} chars: ${result.avgFps} avg FPS / ${result.minFps} min FPS`,
+        'ok',
+        '#00ffcc',
+      );
+      if (statusEl) statusEl.style.display = 'none';
+      if (resultsEl) resultsEl.style.display = '';
+      const exportBtn = this.container.querySelector('#obj-export-results') as HTMLButtonElement;
+      if (exportBtn) exportBtn.style.display = '';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.setStatus(`✗ Benchmark error: ${msg}`, 'error');
+      if (statusEl) { statusEl.style.display = ''; statusEl.textContent = `Error: ${msg}`; }
+    } finally {
+      if (runBtn) { runBtn.disabled = false; runBtn.textContent = '▶ RUN BENCHMARK (5s)'; }
+      this.benchmarkRunning = false;
+    }
+  }
+
+  private displayBenchmarkResult(r: BenchmarkResult): void {
+    const fpsSel = this.container.querySelector('#obj-bench-fps');
+    const minFpsSel = this.container.querySelector('#obj-bench-min-fps');
+    const callsSel = this.container.querySelector('#obj-bench-calls');
+    const trisSel = this.container.querySelector('#obj-bench-tris');
+    const animSel = this.container.querySelector('#obj-bench-anim');
+    if (fpsSel) fpsSel.textContent = String(r.avgFps);
+    if (minFpsSel) minFpsSel.textContent = String(r.minFps);
+    if (callsSel) callsSel.textContent = String(r.drawCalls);
+    if (trisSel) trisSel.textContent = r.triangles.toLocaleString();
+    if (animSel) animSel.textContent = `${r.animCpuMs}ms`;
+  }
+
+  private renderBenchmarkHistory(): void {
+    const histEl = this.container.querySelector('#obj-benchmark-history') as HTMLElement;
+    if (!histEl || this.benchmarkHistory.length === 0) return;
+
+    const rows = this.benchmarkHistory
+      .slice()
+      .sort((a, b) => a.characterCount - b.characterCount)
+      .map((r) => `<tr>
+        <td>${r.characterCount}</td>
+        <td style="color:${r.avgFps >= 50 ? '#44ff88' : r.avgFps >= 30 ? '#ffcc44' : '#ff4444'}">${r.avgFps}</td>
+        <td style="color:${r.minFps >= 30 ? '#44ff88' : '#ff4444'}">${r.minFps}</td>
+        <td>${r.drawCalls}</td>
+        <td>${r.triangles.toLocaleString()}</td>
+        <td>${r.animCpuMs}ms</td>
+      </tr>`)
+      .join('');
+
+    histEl.innerHTML = `
+      <table class="obj-bench-table">
+        <thead><tr>
+          <th>Chars</th><th>Avg FPS</th><th>Min FPS</th><th>Calls</th><th>Tris</th><th>Anim</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  private updateBenchmarkFpsDisplay(dt: number): void {
+    if (!this.benchmarkRunning || !this.benchmarkRunner?.isCollecting) return;
+    const liveFpsEl = this.container.querySelector('#obj-fps');
+    if (liveFpsEl && dt > 0) {
+      liveFpsEl.textContent = String(Math.round(1 / dt));
+    }
+  }
+
+  private exportBenchmarkResults(): void {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      results: this.benchmarkHistory,
+    };
+    const json = JSON.stringify(data, null, 2);
+    try {
+      navigator.clipboard.writeText(json);
+      localStorage.setItem('gw_character_bench', json);
+      this.setStatus('✓ Results copied to clipboard + saved to localStorage', 'ok', '#00ffcc');
+    } catch {
+      // Clipboard may fail in non-secure context; at least save to localStorage
+      localStorage.setItem('gw_character_bench', json);
+      this.setStatus('✓ Results saved to localStorage (clipboard unavailable)', 'ok', '#ffcc44');
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -741,6 +932,8 @@ export class OBJDebugPanel {
     this.characterDemo = null;
     this.battleDemo?.dispose();
     this.battleDemo = null;
+    this.benchmarkRunner?.dispose();
+    this.benchmarkRunner = null;
     this.manager?.dispose();
     this.previewRenderer?.dispose();
     this.container.remove();
@@ -993,6 +1186,48 @@ export class OBJDebugPanel {
       font: 10px monospace;
       color: #334455;
       text-align: center;
+    }
+
+    .obj-btn-benchmark {
+      background: rgba(20, 50, 20, 0.6);
+      border-color: #44ff88;
+      color: #44ff88;
+    }
+    .obj-btn-benchmark:hover {
+      background: rgba(30, 80, 30, 0.7);
+      border-color: #88ffaa;
+      color: #88ffaa;
+    }
+    .obj-btn-benchmark:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .obj-bench-results {
+      margin-top: 6px;
+    }
+
+    .obj-bench-table {
+      width: 100%;
+      border-collapse: collapse;
+      font: 10px monospace;
+      margin-top: 6px;
+    }
+    .obj-bench-table th {
+      color: #668888;
+      text-align: center;
+      padding: 2px 4px;
+      border-bottom: 1px solid rgba(0, 255, 200, 0.12);
+      font-weight: normal;
+      letter-spacing: 0.5px;
+    }
+    .obj-bench-table td {
+      color: #00cccc;
+      text-align: center;
+      padding: 2px 4px;
+    }
+    .obj-bench-table tbody tr:hover {
+      background: rgba(0, 255, 200, 0.04);
     }
   `;
 }
