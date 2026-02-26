@@ -1,12 +1,14 @@
 import { ConfigurableInput } from '../input/ConfigurableInput';
 import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
+import { WeaponMasteryScreen } from './WeaponMasteryScreen';
 import { SettingsMenu, type GraphicsSettings } from './SettingsMenu';
 import { BackgroundMusic } from '../audio/BackgroundMusic';
 import { PerformanceLogger } from '../core/PerformanceLogger';
 import { createQRCodeDisplay } from './QRCode';
 import { t, onLanguageChange } from '../i18n';
 import { LanguageSelector } from './LanguageSelector';
+import { MasteryPointStore } from '../systems/MasteryPointStore';
 
 /**
  * Pause menu overlay.
@@ -84,6 +86,8 @@ export class PauseMenu {
   private isInLookMode: boolean = false;
   private _langUnsub: (() => void) | null = null;
   private _languageSelector: LanguageSelector | null = null;
+  private masteryPointStore: MasteryPointStore | null = null;
+  private onMasteryScreenCloseCallback: (() => void) | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -122,6 +126,10 @@ export class PauseMenu {
             <button class="pause-btn weapons-btn" data-action="weapons">
               <span class="btn-icon">⚡</span>
               <span>${t('pauseMenu.weapons')}</span>
+            </button>
+            <button class="pause-btn mastery-btn" data-action="mastery">
+              <span class="btn-icon">⭐</span>
+              <span>WEAPON MASTERY</span>
             </button>
             <button class="pause-btn settings-btn" data-action="settings">
               <span class="btn-icon">⚙</span>
@@ -300,6 +308,16 @@ export class PauseMenu {
       #pause-menu .weapons-btn:hover {
         background: linear-gradient(180deg, #aa8844 0%, #886633 100%);
         box-shadow: 0 0 20px #ffaa44;
+      }
+
+      #pause-menu .mastery-btn {
+        background: linear-gradient(180deg, #336644 0%, #224433 100%);
+        border-color: #44cc66;
+      }
+
+      #pause-menu .mastery-btn:hover {
+        background: linear-gradient(180deg, #448855 0%, #336644 100%);
+        box-shadow: 0 0 20px #44cc66;
       }
 
       #pause-menu .settings-btn {
@@ -751,6 +769,22 @@ export class PauseMenu {
       });
     });
 
+    const masteryBtn = this.container.querySelector('[data-action="mastery"]');
+    masteryBtn?.addEventListener('click', () => {
+      if (!this.masteryPointStore) return;
+      // Hide pause menu without resuming the game
+      this.container.classList.add('hidden');
+      const masteryScreen = new WeaponMasteryScreen();
+      masteryScreen.setPointStore(this.masteryPointStore);
+      masteryScreen.show();
+      masteryScreen.onClose(() => {
+        masteryScreen.dispose();
+        this.onMasteryScreenCloseCallback?.();
+        // Return to pause menu — game stays paused
+        this.container.classList.remove('hidden');
+      });
+    });
+
     const settingsBtn = this.container.querySelector('[data-action="settings"]');
     settingsBtn?.addEventListener('click', () => {
       const settings = new SettingsMenu();
@@ -887,6 +921,22 @@ export class PauseMenu {
   setMusic(music: BackgroundMusic): void {
     this.bgMusic = music;
     this.updateMusicLabel();
+  }
+
+  /**
+   * Set the MasteryPointStore so the "WEAPON MASTERY" button can open the
+   * constellation upgrade screen during a paused game.
+   */
+  setMasteryPointStore(store: MasteryPointStore): void {
+    this.masteryPointStore = store;
+  }
+
+  /**
+   * Register a callback fired after the player closes the Weapon Mastery
+   * screen from within the pause menu (e.g. to refresh MatchUpgradeTracker).
+   */
+  onMasteryScreenClose(callback: () => void): void {
+    this.onMasteryScreenCloseCallback = callback;
   }
 
   /**
