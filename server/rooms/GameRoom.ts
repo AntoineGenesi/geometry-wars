@@ -805,6 +805,13 @@ export class GameRoom extends Room<GameState> {
     bullet.dirX = Math.cos(angle);
     bullet.dirY = Math.sin(angle);
     bullet.dirZ = 0;
+    // S35 negated tangentU in TorusSurface.ts and correctedDx for player movement,
+    // but forgot to negate bullet.dirX. Server tracks bullets in UV-space using
+    // +U = tangentU_natural (camera-left), but client renders using tangentU_negated
+    // (camera-right). Negate dirX here so server collision matches visual direction.
+    if (this.state.surfaceType === 'torus') {
+      bullet.dirX = -bullet.dirX;
+    }
     bullet.age = 0;
 
     this.state.bullets.push(bullet);

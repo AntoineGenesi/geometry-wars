@@ -3440,8 +3440,11 @@ async function main() {
       // bullet.dirX/dirY = cos/sin of aim angle (UV-space).
       // Convert to world-space: dir = tangentU * dirX + tangentV * dirY.
       // transform().tangent = tangentU, bitangent = tangentV.
+      // For torus: server now negates bullet.dirX in tryShoot() to match tangentU_negated.
+      // Client must also negate for visual rendering to stay in sync with server physics.
+      const bulletDirX = lastCreatedSurfaceType === 'torus' ? -target.dirX : target.dirX;
       _netTempDir.set(0, 0, 0)
-        .addScaledVector(bpt.tangent, target.dirX)
+        .addScaledVector(bpt.tangent, bulletDirX)
         .addScaledVector(bpt.bitangent, target.dirY)
         .normalize();
 
