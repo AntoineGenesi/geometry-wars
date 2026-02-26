@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { StackBuffType, BUFF_DEFINITIONS, BuffDefinition } from './BuffManager';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from '../weapons/SpawnIndicator';
+import { createBuffIconSprite } from '../pickups/PickupIconSprite';
 
 // ---------------------------------------------------------------------------
 // BuffPickupNew - Hexagonal buff pickup entity
@@ -84,73 +85,14 @@ export class BuffPickupNew {
     coreMesh.name = 'core';
     group.add(coreMesh);
 
-    // Category indicator letter (using a simple line-based mark)
-    const indicator = this.createCategoryIndicator(categoryColor);
-    if (indicator) {
-      indicator.position.y = 0.12;
-      group.add(indicator);
-    }
+    // Canvas icon sprite (per-buff-type, faces camera for readability)
+    const iconSprite = createBuffIconSprite(this.buffType, categoryColor, this.def.category);
+    group.add(iconSprite);
 
     // Spawn indicator: flashing arrow for first 30s
     group.add(createSpawnIndicatorSprite(categoryColor));
 
     return group;
-  }
-
-  private createCategoryIndicator(color: THREE.Color): THREE.Object3D | null {
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8 });
-    mat.userData.baseOpacity = 0.8;
-
-    switch (this.def.category) {
-      case 'offensive': {
-        // Upward arrow (damage)
-        const pts = [
-          new THREE.Vector3(0, -0.06, 0),
-          new THREE.Vector3(0, 0.06, 0),
-          new THREE.Vector3(-0.04, 0.02, 0),
-          new THREE.Vector3(0, 0.06, 0),
-          new THREE.Vector3(0.04, 0.02, 0),
-        ];
-        return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
-      }
-      case 'defensive': {
-        // Shield shape
-        const pts = [
-          new THREE.Vector3(-0.04, 0.04, 0),
-          new THREE.Vector3(0, 0.06, 0),
-          new THREE.Vector3(0.04, 0.04, 0),
-          new THREE.Vector3(0.04, -0.02, 0),
-          new THREE.Vector3(0, -0.06, 0),
-          new THREE.Vector3(-0.04, -0.02, 0),
-          new THREE.Vector3(-0.04, 0.04, 0),
-        ];
-        return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
-      }
-      case 'utility': {
-        // Star/speed lines
-        const group = new THREE.Group();
-        for (let i = -1; i <= 1; i++) {
-          const pts = [
-            new THREE.Vector3(-0.05, i * 0.03, 0),
-            new THREE.Vector3(0.05, i * 0.03, 0),
-          ];
-          group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat));
-        }
-        return group;
-      }
-      case 'elemental': {
-        // Lightning bolt
-        const pts = [
-          new THREE.Vector3(-0.02, 0.06, 0),
-          new THREE.Vector3(0.01, 0.01, 0),
-          new THREE.Vector3(-0.01, -0.01, 0),
-          new THREE.Vector3(0.02, -0.06, 0),
-        ];
-        return new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
-      }
-      default:
-        return null;
-    }
   }
 
   update(dt: number, totalTime: number, cameraUp?: THREE.Vector3): void {
