@@ -2040,7 +2040,6 @@ function main() {
         // Instead, set the pool data at the found index directly via public API.
         const newIdx = bulletPool.findInactiveSlot();
         if (newIdx >= 0) {
-          const sp: SurfacePoint = surf.getPoint(bullet.x, bullet.y);
           // Activate the slot directly (no spawn() call, no index mismatch)
           const b = bulletPool.getBulletData(newIdx);
           b.alive = true;
@@ -2051,22 +2050,15 @@ function main() {
           b.dirX = bullet.dirX;
           b.dirY = bullet.dirY;
           b.dirZ = bullet.dirZ;
-          // Position the line visual (uses pre-allocated temp vector)
-          _netTempPos.copy(sp.position).addScaledVector(sp.normal, 0.02);
+          // Keep the legacy bulletPool line HIDDEN — bulletInstanceManager handles
+          // all bullet rendering in MP via GPU instancing. Setting line.visible=true
+          // here creates ghost bullets at the UNSCALED position (surf.getPoint()
+          // returns 1x local-space coords). On EPIC surfaces like peanut (2x scale),
+          // these ghost lines appear inside the visible geometry, making bullets look
+          // like they originate from the center/origin. The render loop uses
+          // transform() which correctly applies mapSizeScaleFactor.
           const line = bulletPool.getLine(newIdx);
-          line.position.copy(_netTempPos);
-          line.visible = true;
-          // Orient line to face direction on the surface.
-          // bullet.dirX/dirY are UV-space direction (cos/sin of aimAngle).
-          // Convert to 3D world direction using the surface tangent frame:
-          // 3D_direction = dirX * tangentU + dirY * tangentV
-          // Without this conversion, bullets point in arbitrary world-space
-          // directions because UV axes don't align with XYZ axes on curved surfaces.
-          _netTempDir.set(0, 0, 0)
-            .addScaledVector(sp.tangentU, bullet.dirX)
-            .addScaledVector(sp.tangentV, bullet.dirY)
-            .normalize();
-          line.lookAt(_netTempPos.copy(line.position).add(_netTempDir));
+          line.visible = false;
           bulletIdToIndex.set(bullet.id, newIdx);
           // Store initial target for interpolation
           bulletTargetUV.set(bullet.id, {
@@ -3018,6 +3010,12 @@ function main() {
 
       // Update companion + buff pickups, check collection
       if (getTransform) {
+        // Compute player's analytical surface position for world-space pickup collision.
+        // SP (GameLoop.ts) passes this to checkPlayerCollision() so it uses the 0.6 world-unit
+        // radius instead of the UV fallback (0.01/scaleFactor). Without this, peanut (2x scale)
+        // uses a UV threshold of 0.005 ≈ 0.11 world units — much too small to feel responsive.
+        const playerAnalyticalPos = getTransform(localPlayer.surfaceU, localPlayer.surfaceV).position;
+
         for (let i = localCompanionPickups.length - 1; i >= 0; i--) {
           const cp = localCompanionPickups[i];
           if (!cp.active) {
@@ -3028,7 +3026,7 @@ function main() {
           }
           cp.update(dt, game.clock.totalTime);
           cp.applySurfaceTransform(getTransform);
-          if (cp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV)) {
+          if (cp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV, playerAnalyticalPos)) {
             companionManager.addCompanion(cp.companionType);
             sound.play('weaponPickup', { volume: 0.5, pitch: 1.8 });
             cp.active = false;
@@ -3044,7 +3042,7 @@ function main() {
           }
           bp.update(dt, game.clock.totalTime);
           bp.applySurfaceTransform(getTransform);
-          if (bp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV)) {
+          if (bp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV, playerAnalyticalPos)) {
             buffManager.addBuff(bp.buffType);
             sound.play('weaponPickup', { volume: 0.4, pitch: 1.2 });
             bp.active = false;
