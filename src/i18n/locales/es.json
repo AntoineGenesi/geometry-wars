@@ -1,0 +1,229 @@
+{
+  "common": {
+    "continue": "[ES] CONTINUE",
+    "menu": "[ES] MENU",
+    "cancel": "[ES] CANCEL",
+    "ok": "[ES] OK",
+    "done": "[ES] DONE",
+    "loading": "[ES] LOADING...",
+    "resume": "[ES] RESUME",
+    "settings": "[ES] SETTINGS",
+    "controls": "[ES] CONTROLS",
+    "score": "[ES] SCORE",
+    "available": "[ES] Available",
+    "notAvailable": "[ES] Not available"
+  },
+  "gameOver": {
+    "title": "[ES] GAME OVER",
+    "scoreLabel": "[ES] SCORE",
+    "newHighScore": "[ES] NEW HIGH SCORE!",
+    "highScores": "[ES] HIGH SCORES",
+    "noScores": "[ES] No scores yet",
+    "continueBtn": "[ES] CONTINUE",
+    "returnToMenu": "[ES] RETURN TO MENU",
+    "hintContinue": "[ES] Press ENTER or click to continue",
+    "hintVote": "[ES] Press ENTER to go to vote now · click RETURN TO MENU to disconnect",
+    "votingCountdown": "[ES] Voting screen in {{count}}s…",
+    "recordScore": "[ES] RECORD YOUR SCORE",
+    "recordScoreBtn": "[ES] RECORD SCORE",
+    "namePlaceholder": "[ES] Player",
+    "nameLabelField": "[ES] NAME",
+    "noteLabelField": "[ES] NOTE",
+    "noteOptional": "[ES] (optional)",
+    "notePlaceholder": "[ES] e.g. first attempt, full combo...",
+    "nameHint": "[ES] ENTER to move to note · ENTER again to submit",
+    "autoSubmitting": "[ES] Auto-submitting in {{count}}s…"
+  },
+  "levelComplete": {
+    "title": "[ES] COMPLETE",
+    "nextStarAt": "[ES] Next star at {{score}}",
+    "maxStars": "[ES] Maximum stars earned!",
+    "nextLevel": "[ES] NEXT LEVEL",
+    "replay": "[ES] REPLAY",
+    "menu": "[ES] MENU"
+  },
+  "controls": {
+    "title": "[ES] CONTROLS",
+    "action": "[ES] ACTION",
+    "aim": "[ES] AIM",
+    "mouse": "[ES] MOUSE",
+    "auto": "[ES] AUTO",
+    "pressKey": "[ES] PRESS KEY...",
+    "conflicts": "[ES] Conflicts: {{list}}",
+    "resetDefaults": "[ES] RESET DEFAULTS",
+    "done": "[ES] DONE",
+    "actions": {
+      "up": "[ES] UP",
+      "down": "[ES] DOWN",
+      "left": "[ES] LEFT",
+      "right": "[ES] RIGHT",
+      "shoot": "[ES] SHOOT",
+      "bomb": "[ES] BOMB"
+    }
+  },
+  "voting": {
+    "title": "[ES] CHOOSE YOUR BATTLEFIELD",
+    "mode": "[ES] MODE:",
+    "size": "[ES] SIZE:",
+    "voting": "[ES] VOTING",
+    "hostPicks": "[ES] HOST PICKS",
+    "launchNow": "[ES] LAUNCH NOW",
+    "returnToMenu": "[ES] RETURN TO MENU",
+    "surfaces": {
+      "sphere": "[ES] SPHERE",
+      "torus": "[ES] TORUS",
+      "cube": "[ES] CUBE",
+      "pill": "[ES] PILL",
+      "capsule": "[ES] CAPSULE",
+      "icosahedron": "[ES] ICOSAHEDRON",
+      "peanut": "[ES] PEANUT",
+      "cubeTunnel": "[ES] CUBE-TUNNEL"
+    },
+    "modes": {
+      "waves": "[ES] WAVES"
+    },
+    "sizes": {
+      "small": "[ES] SMALL",
+      "medium": "[ES] MEDIUM",
+      "large": "[ES] LARGE"
+    }
+  },
+  "menu": {
+    "surfaces": {
+      "sphere": "[ES] Sphere",
+      "cube": "[ES] Cube",
+      "torus": "[ES] Torus",
+      "pill": "[ES] Pill",
+      "pipe": "[ES] Pipe",
+      "peanut": "[ES] Peanut",
+      "capsule": "[ES] Capsule",
+      "icosahedron": "[ES] Icosahedron",
+      "mobius": "[ES] Möbius",
+      "sphereTunnel": "[ES] Sphere Tunnel",
+      "cubeRing": "[ES] Cube Ring",
+      "cubeTunnel": "[ES] Cube Tunnel"
+    }
+  },
+  "pauseMenu": {
+    "title": "[ES] PAUSED",
+    "resume": "[ES] RESUME",
+    "controls": "[ES] CONTROLS",
+    "weapons": "[ES] WEAPONS",
+    "settings": "[ES] SETTINGS",
+    "stylePixelated": "[ES] STYLE: PIXELATED",
+    "styleModern": "[ES] STYLE: MODERN",
+    "performanceGraphs": "[ES] PERFORMANCE GRAPHS",
+    "music": "[ES] MUSIC: {{name}}",
+    "exitToMenu": "[ES] EXIT TO MENU",
+    "endGameForAll": "[ES] END GAME FOR ALL",
+    "stopServer": "[ES] STOP SERVER",
+    "hint": "[ES] Press ESC to resume | M to mute | N to cycle music",
+    "stats": {
+      "joinThisGame": "[ES] JOIN THIS GAME",
+      "playerLevel": "[ES] PLAYER LEVEL",
+      "companions": "[ES] COMPANIONS",
+      "cumulativeBonuses": "[ES] CUMULATIVE BONUSES",
+      "weapon": "[ES] WEAPON",
+      "totalKills": "[ES] TOTAL KILLS",
+      "activeBuffs": "[ES] ACTIVE BUFFS",
+      "noActiveBuffs": "[ES] No active buffs",
+      "performance": "[ES] PERFORMANCE"
+    }
+  },
+  "settings": {
+    "title": "[ES] SETTINGS",
+    "done": "[ES] DONE",
+    "tabs": {
+      "gpuInfo": "[ES] GPU INFO",
+      "graphics": "[ES] GRAPHICS",
+      "performance": "[ES] PERFORMANCE",
+      "audio": "[ES] AUDIO",
+      "gameplay": "[ES] GAMEPLAY"
+    },
+    "gpu": {
+      "renderer": "[ES] RENDERER",
+      "hardware": "[ES] HARDWARE",
+      "features": "[ES] FEATURES",
+      "benchmark": "[ES] BENCHMARK",
+      "activeRenderer": "[ES] Active Renderer",
+      "gpuRenderer": "[ES] GPU Renderer",
+      "gpuVendor": "[ES] GPU Vendor",
+      "webgpuAdapter": "[ES] WebGPU Adapter",
+      "detectedTier": "[ES] Detected Tier",
+      "maxTextureSize": "[ES] Max Texture Size",
+      "webgpu": "[ES] WebGPU",
+      "webgl2": "[ES] WebGL2",
+      "sharedArrayBuffer": "[ES] SharedArrayBuffer",
+      "cpuCores": "[ES] CPU Cores",
+      "runBenchmark": "[ES] RUN GPU BENCHMARK",
+      "running": "[ES] RUNNING...",
+      "runFullBenchmark": "[ES] RUN FULL GAME BENCHMARK",
+      "benchmarkTier": "[ES] Benchmark Tier: {{tier}}",
+      "maxAt60fps": "[ES] Max @ 60fps (instanced)",
+      "maxAt30fps": "[ES] Max @ 30fps (instanced)"
+    },
+    "graphics": {
+      "visualStyle": "[ES] VISUAL STYLE",
+      "qualityPreset": "[ES] QUALITY PRESET",
+      "visualEffects": "[ES] VISUAL EFFECTS",
+      "limits": "[ES] LIMITS",
+      "preset": "[ES] Preset",
+      "bloom": "[ES] Bloom",
+      "bloomStrength": "[ES] Bloom Strength",
+      "particles": "[ES] Particles",
+      "trailEffects": "[ES] Trail Effects",
+      "surfaceOpacity": "[ES] Surface Opacity",
+      "maxEnemies": "[ES] Max Enemies",
+      "resolutionScale": "[ES] Resolution Scale",
+      "resetToDefault": "[ES] RESET TO DEFAULT",
+      "bloomHint": "[ES] Good starting values — Modern: 1.0 | Pixelated: 0.4"
+    },
+    "performance": {
+      "liveStats": "[ES] LIVE STATS",
+      "adaptiveQuality": "[ES] ADAPTIVE QUALITY",
+      "debug": "[ES] DEBUG",
+      "fps": "[ES] FPS",
+      "drawCalls": "[ES] DRAW CALLS",
+      "entities": "[ES] ENTITIES",
+      "memoryMB": "[ES] MEMORY (MB)",
+      "autoAdjustQuality": "[ES] Auto-adjust quality",
+      "debugStatistics": "[ES] Debug Statistics",
+      "debugHint": "[ES] Shows FPS, entity count, and performance overlay. Keyboard shortcut: F4."
+    },
+    "audio": {
+      "volume": "[ES] VOLUME",
+      "musicStyle": "[ES] MUSIC STYLE",
+      "master": "[ES] Master",
+      "sfx": "[ES] SFX",
+      "music": "[ES] Music",
+      "preset": "[ES] Preset",
+      "presets": {
+        "electronic": "[ES] Electronic",
+        "ambient": "[ES] Ambient",
+        "synthwave": "[ES] Synthwave",
+        "minimal": "[ES] Minimal"
+      }
+    },
+    "gameplay": {
+      "difficulty": "[ES] DIFFICULTY",
+      "dynamicDifficulty": "[ES] Dynamic Difficulty",
+      "ddaHint": "[ES] Subtly adjusts enemy composition for struggling players. Disabled automatically on Nightmare difficulty."
+    }
+  },
+  "hud": {
+    "kills": "[ES] KILLS",
+    "killLog": {
+      "streak": "[ES] STREAK",
+      "rampage": "[ES] RAMPAGE",
+      "unstoppable": "[ES] UNSTOPPABLE"
+    }
+  },
+  "mastery": {
+    "title": "[ES] WEAPON MASTERY",
+    "subtitle": "[ES] PROGRESS UPDATE",
+    "continueBtn": "[ES] CONTINUE",
+    "continueHint": "[ES] ENTER / SPACE / CLICK",
+    "newPassiveUnlocked": "[ES] New Passive Unlocked",
+    "levelBadge": "[ES] Lv.{{level}}"
+  }
+}

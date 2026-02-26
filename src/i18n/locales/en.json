@@ -1,0 +1,229 @@
+{
+  "common": {
+    "continue": "CONTINUE",
+    "menu": "MENU",
+    "cancel": "CANCEL",
+    "ok": "OK",
+    "done": "DONE",
+    "loading": "LOADING...",
+    "resume": "RESUME",
+    "settings": "SETTINGS",
+    "controls": "CONTROLS",
+    "score": "SCORE",
+    "available": "Available",
+    "notAvailable": "Not available"
+  },
+  "gameOver": {
+    "title": "GAME OVER",
+    "scoreLabel": "SCORE",
+    "newHighScore": "NEW HIGH SCORE!",
+    "highScores": "HIGH SCORES",
+    "noScores": "No scores yet",
+    "continueBtn": "CONTINUE",
+    "returnToMenu": "RETURN TO MENU",
+    "hintContinue": "Press ENTER or click to continue",
+    "hintVote": "Press ENTER to go to vote now · click RETURN TO MENU to disconnect",
+    "votingCountdown": "Voting screen in {{count}}s\u2026",
+    "recordScore": "RECORD YOUR SCORE",
+    "recordScoreBtn": "RECORD SCORE",
+    "namePlaceholder": "Player",
+    "nameLabelField": "NAME",
+    "noteLabelField": "NOTE",
+    "noteOptional": "(optional)",
+    "notePlaceholder": "e.g. first attempt, full combo...",
+    "nameHint": "ENTER to move to note \u00b7 ENTER again to submit",
+    "autoSubmitting": "Auto-submitting in {{count}}s\u2026"
+  },
+  "levelComplete": {
+    "title": "COMPLETE",
+    "nextStarAt": "Next star at {{score}}",
+    "maxStars": "Maximum stars earned!",
+    "nextLevel": "NEXT LEVEL",
+    "replay": "REPLAY",
+    "menu": "MENU"
+  },
+  "controls": {
+    "title": "CONTROLS",
+    "action": "ACTION",
+    "aim": "AIM",
+    "mouse": "MOUSE",
+    "auto": "AUTO",
+    "pressKey": "PRESS KEY...",
+    "conflicts": "Conflicts: {{list}}",
+    "resetDefaults": "RESET DEFAULTS",
+    "done": "DONE",
+    "actions": {
+      "up": "UP",
+      "down": "DOWN",
+      "left": "LEFT",
+      "right": "RIGHT",
+      "shoot": "SHOOT",
+      "bomb": "BOMB"
+    }
+  },
+  "voting": {
+    "title": "CHOOSE YOUR BATTLEFIELD",
+    "mode": "MODE:",
+    "size": "SIZE:",
+    "voting": "VOTING",
+    "hostPicks": "HOST PICKS",
+    "launchNow": "LAUNCH NOW",
+    "returnToMenu": "RETURN TO MENU",
+    "surfaces": {
+      "sphere": "SPHERE",
+      "torus": "TORUS",
+      "cube": "CUBE",
+      "pill": "PILL",
+      "capsule": "CAPSULE",
+      "icosahedron": "ICOSAHEDRON",
+      "peanut": "PEANUT",
+      "cubeTunnel": "CUBE-TUNNEL"
+    },
+    "modes": {
+      "waves": "WAVES"
+    },
+    "sizes": {
+      "small": "SMALL",
+      "medium": "MEDIUM",
+      "large": "LARGE"
+    }
+  },
+  "menu": {
+    "surfaces": {
+      "sphere": "Sphere",
+      "cube": "Cube",
+      "torus": "Torus",
+      "pill": "Pill",
+      "pipe": "Pipe",
+      "peanut": "Peanut",
+      "capsule": "Capsule",
+      "icosahedron": "Icosahedron",
+      "mobius": "M\u00f6bius",
+      "sphereTunnel": "Sphere Tunnel",
+      "cubeRing": "Cube Ring",
+      "cubeTunnel": "Cube Tunnel"
+    }
+  },
+  "pauseMenu": {
+    "title": "PAUSED",
+    "resume": "RESUME",
+    "controls": "CONTROLS",
+    "weapons": "WEAPONS",
+    "settings": "SETTINGS",
+    "stylePixelated": "STYLE: PIXELATED",
+    "styleModern": "STYLE: MODERN",
+    "performanceGraphs": "PERFORMANCE GRAPHS",
+    "music": "MUSIC: {{name}}",
+    "exitToMenu": "EXIT TO MENU",
+    "endGameForAll": "END GAME FOR ALL",
+    "stopServer": "STOP SERVER",
+    "hint": "Press ESC to resume | M to mute | N to cycle music",
+    "stats": {
+      "joinThisGame": "JOIN THIS GAME",
+      "playerLevel": "PLAYER LEVEL",
+      "companions": "COMPANIONS",
+      "cumulativeBonuses": "CUMULATIVE BONUSES",
+      "weapon": "WEAPON",
+      "totalKills": "TOTAL KILLS",
+      "activeBuffs": "ACTIVE BUFFS",
+      "noActiveBuffs": "No active buffs",
+      "performance": "PERFORMANCE"
+    }
+  },
+  "settings": {
+    "title": "SETTINGS",
+    "done": "DONE",
+    "tabs": {
+      "gpuInfo": "GPU INFO",
+      "graphics": "GRAPHICS",
+      "performance": "PERFORMANCE",
+      "audio": "AUDIO",
+      "gameplay": "GAMEPLAY"
+    },
+    "gpu": {
+      "renderer": "RENDERER",
+      "hardware": "HARDWARE",
+      "features": "FEATURES",
+      "benchmark": "BENCHMARK",
+      "activeRenderer": "Active Renderer",
+      "gpuRenderer": "GPU Renderer",
+      "gpuVendor": "GPU Vendor",
+      "webgpuAdapter": "WebGPU Adapter",
+      "detectedTier": "Detected Tier",
+      "maxTextureSize": "Max Texture Size",
+      "webgpu": "WebGPU",
+      "webgl2": "WebGL2",
+      "sharedArrayBuffer": "SharedArrayBuffer",
+      "cpuCores": "CPU Cores",
+      "runBenchmark": "RUN GPU BENCHMARK",
+      "running": "RUNNING...",
+      "runFullBenchmark": "RUN FULL GAME BENCHMARK",
+      "benchmarkTier": "Benchmark Tier: {{tier}}",
+      "maxAt60fps": "Max @ 60fps (instanced)",
+      "maxAt30fps": "Max @ 30fps (instanced)"
+    },
+    "graphics": {
+      "visualStyle": "VISUAL STYLE",
+      "qualityPreset": "QUALITY PRESET",
+      "visualEffects": "VISUAL EFFECTS",
+      "limits": "LIMITS",
+      "preset": "Preset",
+      "bloom": "Bloom",
+      "bloomStrength": "Bloom Strength",
+      "particles": "Particles",
+      "trailEffects": "Trail Effects",
+      "surfaceOpacity": "Surface Opacity",
+      "maxEnemies": "Max Enemies",
+      "resolutionScale": "Resolution Scale",
+      "resetToDefault": "RESET TO DEFAULT",
+      "bloomHint": "Good starting values \u2014 Modern: 1.0 | Pixelated: 0.4"
+    },
+    "performance": {
+      "liveStats": "LIVE STATS",
+      "adaptiveQuality": "ADAPTIVE QUALITY",
+      "debug": "DEBUG",
+      "fps": "FPS",
+      "drawCalls": "DRAW CALLS",
+      "entities": "ENTITIES",
+      "memoryMB": "MEMORY (MB)",
+      "autoAdjustQuality": "Auto-adjust quality",
+      "debugStatistics": "Debug Statistics",
+      "debugHint": "Shows FPS, entity count, and performance overlay. Keyboard shortcut: F4."
+    },
+    "audio": {
+      "volume": "VOLUME",
+      "musicStyle": "MUSIC STYLE",
+      "master": "Master",
+      "sfx": "SFX",
+      "music": "Music",
+      "preset": "Preset",
+      "presets": {
+        "electronic": "Electronic",
+        "ambient": "Ambient",
+        "synthwave": "Synthwave",
+        "minimal": "Minimal"
+      }
+    },
+    "gameplay": {
+      "difficulty": "DIFFICULTY",
+      "dynamicDifficulty": "Dynamic Difficulty",
+      "ddaHint": "Subtly adjusts enemy composition for struggling players. Disabled automatically on Nightmare difficulty."
+    }
+  },
+  "hud": {
+    "kills": "KILLS",
+    "killLog": {
+      "streak": "STREAK",
+      "rampage": "RAMPAGE",
+      "unstoppable": "UNSTOPPABLE"
+    }
+  },
+  "mastery": {
+    "title": "WEAPON MASTERY",
+    "subtitle": "PROGRESS UPDATE",
+    "continueBtn": "CONTINUE",
+    "continueHint": "ENTER / SPACE / CLICK",
+    "newPassiveUnlocked": "New Passive Unlocked",
+    "levelBadge": "Lv.{{level}}"
+  }
+}
