@@ -169,8 +169,9 @@ const WAVE_TYPE_REMAP: Record<string, string> = {
 
 // Server-side AI state for each live enemy. Not synced to clients.
 interface ServerEnemyAI {
-  // Grunt: acceleration ramp
+  // Grunt / Swarm / ApproachGlow: acceleration ramp (maxSpeed stored per-type)
   currentSpeed?: number;
+  maxSpeed?: number;
   // Wanderer / Neutron: direction vector + change timer
   directionU?: number;
   directionV?: number;
@@ -179,7 +180,7 @@ interface ServerEnemyAI {
   // Rocket / Arrow: straight-line direction (set once on spawn, changes on bounce)
   rocketDirU?: number;
   rocketDirV?: number;
-  // Mayfly: jitter offset + timer
+  // Mayfly / Spinner: jitter offset + timer
   jitterOffsetU?: number;
   jitterOffsetV?: number;
   jitterTimer?: number;
@@ -192,6 +193,9 @@ interface ServerEnemyAI {
   // Weaver: momentum
   momentumU?: number;
   momentumV?: number;
+  // Duck: cardinal direction (0=up, 1=right, 2=down, 3=left) + change timer
+  duckDirection?: number;
+  duckTimer?: number;
 }
 
 export class GameRoom extends Room<GameState> {
@@ -1062,6 +1066,16 @@ export class GameRoom extends Room<GameState> {
         case 'weaver':
           this.updateWeaver(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
           break;
+        case 'duck':
+          this.updateDuck(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'spinner':
+          this.updateSpinner(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'swarm':
+        case 'approach_glow':
+          this.updateAcceleratingChaser(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
         default:
           this.updateDefaultChase(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
           break;
@@ -1279,6 +1293,94 @@ export class GameRoom extends Room<GameState> {
     this.applyUVBounds(enemy, wrapsV, surfType);
   }
 
+  /** Duck: moves in cardinal directions, biased toward player, changes direction every 0.5s */
+  private updateDuck(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    const DUCK_SPEED = 0.025;
+    const DIRECTION_INTERVAL = 0.5;
+
+    // Initialize duck state
+    if (ai.duckDirection === undefined) {
+      ai.duckDirection = Math.floor(Math.random() * 4);
+      ai.duckTimer = 0;
+    }
+
+    ai.duckTimer = (ai.duckTimer ?? 0) + dt;
+    if (ai.duckTimer >= DIRECTION_INTERVAL) {
+      ai.duckTimer = 0;
+
+      if (player && Math.random() >= 0.2) {
+        // Bias toward player: pick cardinal direction that reduces distance most
+        const du = player.surfaceU - enemy.surfaceU;
+        const dv = player.surfaceV - enemy.surfaceV;
+        if (Math.abs(du) > Math.abs(dv)) {
+          ai.duckDirection = du > 0 ? 1 : 3; // right or left
+        } else {
+          ai.duckDirection = dv > 0 ? 0 : 2; // up or down
+        }
+      } else {
+        // Random direction
+        ai.duckDirection = Math.floor(Math.random() * 4);
+      }
+    }
+
+    // Move in current cardinal direction
+    switch (ai.duckDirection) {
+      case 0: enemy.surfaceV += DUCK_SPEED * dt; break;  // up
+      case 1: enemy.surfaceU += DUCK_SPEED * dt; break;  // right
+      case 2: enemy.surfaceV -= DUCK_SPEED * dt; break;  // down
+      case 3: enemy.surfaceU -= DUCK_SPEED * dt; break;  // left
+    }
+
+    this.applyUVBounds(enemy, wrapsV, surfType);
+  }
+
+  /** Spinner: chases player with per-frame random wobble (less precise homing) */
+  private updateSpinner(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    if (!player) return;
+
+    const SPINNER_SPEED = 0.05;
+    const WOBBLE_AMOUNT = 0.15;
+
+    const wobbleU = (Math.random() - 0.5) * WOBBLE_AMOUNT;
+    const wobbleV = (Math.random() - 0.5) * WOBBLE_AMOUNT;
+    const targetU = player.surfaceU + wobbleU;
+    const targetV = player.surfaceV + wobbleV;
+
+    const du = this.uvDelta(enemy.surfaceU, targetU, true);
+    const dv = this.uvDelta(enemy.surfaceV, targetV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+
+    if (dist > 0.01) {
+      enemy.surfaceU += (du / dist) * SPINNER_SPEED * dt;
+      enemy.surfaceV += (dv / dist) * SPINNER_SPEED * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  /** Swarm / ApproachGlow: accelerates toward nearest player (magnet feel), capped at maxSpeed */
+  private updateAcceleratingChaser(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    const maxSpeed = ai.maxSpeed ?? 0.055;
+    ai.currentSpeed = Math.min(maxSpeed, (ai.currentSpeed ?? 0.02) + 0.002 * dt);
+    if (!player) return;
+    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist > 0.01) {
+      enemy.surfaceU += (du / dist) * ai.currentSpeed * dt;
+      enemy.surfaceV += (dv / dist) * ai.currentSpeed * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
   /** Default: flat-speed chase toward nearest player (used for snake, gate, blackhole, repulsor, etc.) */
   private updateDefaultChase(
     enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
@@ -1345,6 +1447,21 @@ export class GameRoom extends Room<GameState> {
         };
       case 'weaver':
         return { momentumU: 0, momentumV: 0 };
+      case 'duck':
+        return {
+          duckDirection: Math.floor(Math.random() * 4),
+          duckTimer: 0,
+        };
+      case 'spinner':
+        return {
+          jitterOffsetU: (Math.random() - 0.5) * 0.15,
+          jitterOffsetV: (Math.random() - 0.5) * 0.15,
+          jitterTimer: 0,
+        };
+      case 'swarm':
+        return { currentSpeed: 0.03, maxSpeed: 0.055 };
+      case 'approach_glow':
+        return { currentSpeed: 0.02, maxSpeed: 0.055 };
       default:
         return {};
     }
