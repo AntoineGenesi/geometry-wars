@@ -52,6 +52,7 @@ import { Minimap } from './ui/Minimap';
 import { KillLog } from './ui/KillLog';
 import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponHUD } from './ui/WeaponHUD';
+import { UpgradeNotification } from './ui/UpgradeNotification';
 import { MeshSurface } from './surfaces/MeshSurface';
 import { MeshWalker } from './movement/MeshWalker';
 import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
@@ -855,6 +856,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const playerLevel = new PlayerLevel();
   game.scene.add(playerLevel.auraRing);
   const levelUpNotification = new LevelUpNotification();
+  const upgradeNotification = new UpgradeNotification();
 
   // -- Buff system (stackable Risk-of-Rain-style buffs) --
   const buffManager = new BuffManager();
@@ -929,9 +931,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     applyStatMultipliers();
   };
 
-  // Persist earned mastery points on every level-up
+  // Persist earned mastery points on every level-up, and notify the player
   playerLevel.onMasteryPointEarned = () => {
     masteryPointStore.earnPoint();
+    upgradeNotification.showMasteryPointEarned();
+  };
+
+  // Notify the player when a weapon upgrade node activates mid-match
+  matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
+    upgradeNotification.show(nodeId, weaponType);
   };
 
   // -- Screen shake --
@@ -1291,6 +1299,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   pauseMenu.setIsHost(true);
   pauseMenu.setMusic(bgMusic);
   pauseMenu.setPerformanceLogger(perfLogger);
+  pauseMenu.setMasteryPointStore(masteryPointStore);
+  pauseMenu.onMasteryScreenClose(() => {
+    // After player spends/refunds points mid-match, activate any newly-unlocked
+    // nodes whose kill thresholds were already crossed in this match
+    matchUpgradeTracker.refreshFromStore(masteryPointStore);
+  });
   pauseMenu.onResume(() => {
     isPaused = false;
     if (input instanceof TouchInput) input.setGamePaused(false);

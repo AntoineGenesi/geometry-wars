@@ -1,5 +1,6 @@
 import { WeaponType } from '../weapons/WeaponTypes';
 import { UPGRADE_TREES } from './UpgradeTreeData';
+import { MasteryPointStore } from './MasteryPointStore';
 
 // ---------------------------------------------------------------------------
 // MatchUpgradeTracker
@@ -59,6 +60,39 @@ export class MatchUpgradeTracker {
   reset(): void {
     this.killCounts = new Map();
     this.activeUpgrades = new Map();
+  }
+
+  /**
+   * Refresh permanent unlocks from a (possibly updated) MasteryPointStore.
+   * Call this after the player spends mastery points mid-match (via pause menu).
+   * For any newly-unlocked nodes whose kill thresholds are already met, fires
+   * onUpgradeActivated immediately.
+   */
+  refreshFromStore(store: MasteryPointStore): void {
+    const newUnlocks = store.getUnlockedNodes();
+
+    // Determine which nodes are newly unlocked (not already tracked)
+    const newlyUnlocked: string[] = [];
+    for (const nodeId of newUnlocks) {
+      if (!this.permanentUnlocks.has(nodeId)) {
+        newlyUnlocked.push(nodeId);
+        this.permanentUnlocks.add(nodeId);
+      }
+    }
+
+    if (newlyUnlocked.length === 0) return;
+
+    // For each weapon type, check if newly-unlocked nodes already have met their kill threshold
+    for (const [weaponTypeKey, tree] of Object.entries(UPGRADE_TREES)) {
+      const weaponType = weaponTypeKey as WeaponType;
+      const currentKills = this.killCounts.get(weaponType) ?? 0;
+      for (const upgradeNode of tree.nodes) {
+        if (!newlyUnlocked.includes(upgradeNode.id)) continue;
+        if (currentKills >= upgradeNode.killThreshold) {
+          this.activateNode(upgradeNode.id, weaponType);
+        }
+      }
+    }
   }
 
   // -------------------------------------------------------------------------
