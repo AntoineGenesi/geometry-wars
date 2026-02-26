@@ -29,6 +29,24 @@ interface PresetModel {
 
 const PRESET_MODELS: PresetModel[] = [
   {
+    name: 'Knight (Rigged)',
+    url: '/characters/knight.glb',
+    format: 'glb',
+    description: 'Male knight — 32 anims: idle, walk, attack-melee, die…',
+  },
+  {
+    name: 'Mage (Rigged)',
+    url: '/characters/mage.glb',
+    format: 'glb',
+    description: 'Female mage — 32 anims: idle, walk, attack-melee, die…',
+  },
+  {
+    name: 'Warrior (Rigged)',
+    url: '/characters/warrior.glb',
+    format: 'glb',
+    description: 'Male warrior — 32 anims: idle, walk, attack-melee, die…',
+  },
+  {
     name: 'Low-Poly Bunny',
     url: '/meshes/bunny.obj',
     format: 'obj',
@@ -410,6 +428,23 @@ export class OBJDebugPanel {
 
       this.showModelInfo(result);
       this.showAnimations(result.animations.map((a) => a.name));
+
+      // Auto-play idle animation if present
+      if (result.animations.length > 0) {
+        const idleClip = result.animations.find((a) =>
+          a.name.toLowerCase().includes('idle'),
+        );
+        if (idleClip) {
+          this.manager?.playAnimation(idleClip.name);
+          // Sync the select element to show the active clip
+          const select = this.container.querySelector('#obj-anim-select') as HTMLSelectElement;
+          if (select) {
+            const idx = result.animations.findIndex((a) => a.name === idleClip.name);
+            if (idx >= 0) select.value = String(idx);
+          }
+        }
+      }
+
       this.setStatus(
         `✓ Loaded ${result.format.toUpperCase()} — ${result.vertexCount.toLocaleString()} verts, ` +
         `${result.triangleCount.toLocaleString()} tris — in ${Math.round(result.loadTimeMs)}ms`,
