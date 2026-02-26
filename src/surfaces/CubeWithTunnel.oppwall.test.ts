@@ -142,7 +142,14 @@ describe('CubeWithTunnelSurface.areOnOppositeWallSides (S37)', () => {
   })
 
   it('outer wall → bottom lip: not opposite', () => {
-    expect(surface.areOnOppositeWallSides(0.3, 0.95)).toBe(false)
+    // For size=67: inner wall ends at ~0.962, bottom lip spans [0.962, 1.0)
+    // V=0.97 is in the bottom lip region (NOT inner wall)
+    expect(surface.areOnOppositeWallSides(0.3, 0.97)).toBe(false)
+  })
+
+  it('outer wall → inner wall near the bottom: still opposite', () => {
+    // V=0.95 < 0.962 → still inner wall for size=67. Should be opposite.
+    expect(surface.areOnOppositeWallSides(0.3, 0.95)).toBe(true)
   })
 
   it('wraps correctly for V values outside [0,1)', () => {
