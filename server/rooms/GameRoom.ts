@@ -420,7 +420,11 @@ export class GameRoom extends Room<GameState> {
       // (B) Localhost client can promote over a plain LAN first-joiner, but ONLY during lobby
       //     to avoid disrupting an in-progress game.
       // Priority hierarchy: creator > localhost > plain LAN (first creator/localhost keeps host).
-      const creatorCanPromote = didRequestHost && !this.hostIsLocal && !this.hostRequestedHost;
+      // Creator (requestHost=true from URL param) always displaces a non-creator host.
+      // Do NOT check hostIsLocal — through the Vite proxy, ALL clients appear as localhost,
+      // so isLocalClient/hostIsLocal is unreliable. The requestHost flag is the ONLY
+      // reliable signal for "I am the game creator."
+      const creatorCanPromote = didRequestHost && !this.hostRequestedHost;
       const localhostCanPromote = isLocalClient && !this.hostIsLocal && !this.hostRequestedHost && this.state.roomPhase === 'lobby';
       if (creatorCanPromote || localhostCanPromote) {
         const prev = this.state.hostId;
