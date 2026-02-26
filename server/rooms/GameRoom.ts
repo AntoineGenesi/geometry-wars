@@ -66,6 +66,10 @@ const WAVE_INTERVAL_BASE = 7.0;  // base interval between waves
 const WAVE_INTERVAL_MIN = 2.0;   // minimum interval (hard floor)
 const WAVE_INTERVAL_DECAY = 0.2; // seconds shorter per wave
 
+// Inactivity tracking constants (auto-pause and shutdown)
+const INACTIVITY_PAUSE_THRESHOLD = 120;      // 2 minutes (120 seconds) before auto-pause
+const INACTIVITY_SHUTDOWN_THRESHOLD = 900;   // 15 minutes (900 seconds) before auto-shutdown
+
 // Enemy-count limits (indexed by playerCount-1, capped at 4 players)
 const MAX_ENEMIES_BY_PLAYER_COUNT = [30, 50, 70, 90];
 
@@ -183,6 +187,10 @@ export class GameRoom extends Room<GameState> {
   // Wave scheduling state
   private waveElapsed = 0;
   private nextWaveAt = WAVE_FIRST_AT;
+
+  // Inactivity tracking state (auto-pause and shutdown)
+  private lastActivityTime = Date.now(); // Track last player activity (input, movement, etc.)
+  private autoPausedTime: number | null = null; // Tracks when room was auto-paused for shutdown logic
 
   /**
    * Count of enemies that have been warned to clients (pre_spawn sent) but
@@ -588,6 +596,15 @@ export class GameRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player || !player.alive) return;
 
+    // Update last activity timestamp — player provided input
+    this.lastActivityTime = Date.now();
+    // Clear auto-paused flag and resume game if it was auto-paused
+    if (this.autoPausedTime !== null) {
+      this.autoPausedTime = null;
+      this.state.isPaused = false;
+      this.logger.log('[GameRoom] Game resumed — player activity detected after auto-pause');
+    }
+
     // Store the latest input. Movement will be applied in tick() at a
     // consistent 60Hz, decoupling movement speed from input send rate.
     this.playerInputs.set(client.sessionId, input);
@@ -787,6 +804,9 @@ export class GameRoom extends Room<GameState> {
   }
 
   private tick() {
+    // Check for inactivity and auto-pause/shutdown
+    this.checkInactivity();
+
     if (this.state.roomPhase === 'playing' && !this.state.isPaused) {
       this.tickGame();
     } else if (this.state.roomPhase === 'voting' && !this.state.hostPickMode) {
@@ -1623,5 +1643,46 @@ export class GameRoom extends Room<GameState> {
     let dv = Math.abs(v1 - v2);
     if (wrapsV && dv > 0.5) dv = 1 - dv;
     return Math.sqrt(du * du + dv * dv);
+  }
+
+  /**
+   * Check for inactivity and auto-pause or shutdown the room.
+   * - If idle > INACTIVITY_PAUSE_THRESHOLD: auto-pause
+   * - If idle > INACTIVITY_SHUTDOWN_THRESHOLD: gracefully shutdown
+   * - Resumes on any player activity (input message resets timer and resumes)
+   */
+  private checkInactivity() {
+    // Only check during active game phases
+    if (this.state.roomPhase !== 'playing' && this.state.roomPhase !== 'voting') {
+      return;
+    }
+
+    // No players? No need to track inactivity
+    if (this.state.players.size === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const inactiveMs = now - this.lastActivityTime;
+    const inactiveSecs = inactiveMs / 1000;
+
+    // Check for auto-shutdown (15 minutes of inactivity)
+    if (inactiveSecs > INACTIVITY_SHUTDOWN_THRESHOLD) {
+      this.logger.log(
+        `[GameRoom] Server auto-shutdown triggered after ${inactiveSecs.toFixed(1)}s of inactivity`
+      );
+      this.broadcast('game_ended', { reason: 'server_shutdown_idle' });
+      this.disconnect();
+      return;
+    }
+
+    // Check for auto-pause (2 minutes of inactivity)
+    if (inactiveSecs > INACTIVITY_PAUSE_THRESHOLD && !this.state.isPaused) {
+      this.state.isPaused = true;
+      this.autoPausedTime = now;
+      this.logger.log(
+        `[GameRoom] Server auto-paused after ${inactiveSecs.toFixed(1)}s of inactivity`
+      );
+    }
   }
 }
