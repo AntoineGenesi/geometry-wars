@@ -141,6 +141,11 @@ export class SplitScreenRenderer {
     this.renderer.setRenderTarget(prevRenderTarget);
 
     this.composer = new EffectComposer(this.renderer);
+    // Must set size explicitly so EffectComposer initializes its internal render targets
+    // (width/height of the intermediate render target we created above).
+    // Without this, EffectComposer creates render targets lazily on first render(),
+    // which may leave them uninitialized and cause bloom artifacts with garbage GPU memory data.
+    this.composer.setSize(w, h);
 
     // TexturePass reads from the intermediate render target
     const texturePass = new TexturePass(this.renderTarget.texture);
