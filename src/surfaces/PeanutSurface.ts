@@ -133,10 +133,21 @@ export class PeanutSurface extends Surface {
   ): { u: number; v: number } {
     const phi = v * Math.PI
     const sinPhi = Math.sin(phi)
-    const correctedDu = sinPhi > 0.001 ? du / sinPhi : 0
+
+    // Full peanut metric corrections to maintain constant world-space speed.
+    // The peanut is a surface of revolution: r(phi) = R*(1 + waistDepth*cos(2*phi))
+    // U (azimuthal) arc length scale: r * sinPhi  → divide du by (rNorm * sinPhi)
+    // V (meridional) arc length scale: sqrt(r'^2 + r^2) → divide dv by sqrt(drNorm^2 + rNorm^2)
+    const rNorm = 1 + this.waistDepth * Math.cos(2 * phi)
+    const drNorm = -2 * this.waistDepth * Math.sin(2 * phi)
+    const uScale = rNorm * sinPhi
+    const vScale = Math.sqrt(rNorm * rNorm + drNorm * drNorm)
+
+    const correctedDu = uScale > 0.001 ? du / uScale : 0
+    const correctedDv = vScale > 0.001 ? dv / vScale : 0
 
     let newU = u + correctedDu
-    let newV = v + dv
+    let newV = v + correctedDv
 
     // Wrap u
     newU = ((newU % 1) + 1) % 1
