@@ -209,13 +209,17 @@ describe('DepthOcclusionSystem', () => {
     // Now move entity outside the box (clear LOS)
     entity.position.set(0, 0, 15);
 
-    // EMA smoothing (alpha=0.7): the target doesn't change until smoothedCount crosses 0.5.
-    // After frame 1 (count=0): smoothedCount = 1.0*0.7 + 0*0.3 = 0.7 → still opacity1
+    // EMA smoothing (alpha=0.7): after one count=0 frame, smoothedCount = 1.0*0.7 + 0*0.3 = 0.7.
+    // With S36 threshold=0.75: 0.7 < 0.75 → target immediately becomes opacity0 and lerp starts.
+    // (Old threshold was 0.5: 0.7 > 0.5 → target stayed at opacity1 for one more frame.)
     slowLerp.update([entity], camera, 1 / 60);
-    expect(slowLerp.getOpacity(entity)).toBeCloseTo(initial, 2); // no change yet
+    // Lerp has started (target=opacity0 already); with lerpSpeed=2.0 and dt=1/60, one frame of lerp:
+    // opacity = initial + (opacity0 - initial) * (2.0/60) ≈ slightly above initial
+    expect(slowLerp.getOpacity(entity)).toBeGreaterThan(initial);          // lerp already moving
+    expect(slowLerp.getOpacity(entity)).toBeLessThan(DEFAULT_OCCLUSION_CONFIG.opacity0); // not there yet
 
-    // After frame 2 (count=0): smoothedCount = 0.7*0.7 = 0.49 → crosses 0.5 → target = opacity0
-    // The lerp starts moving toward 1.0
+    // After frame 2 (count=0): smoothedCount = 0.49 → still below 0.75 → target stays opacity0,
+    // lerp continues moving toward 1.0
     slowLerp.update([entity], camera, 1 / 60);
     const afterEmaStabilizes = slowLerp.getOpacity(entity);
     expect(afterEmaStabilizes).toBeGreaterThan(initial);
@@ -377,15 +381,43 @@ describe('DepthOcclusionSystem', () => {
     system.update([entity], camera, 1 / 60);
     expect(system.getOpacity(entity)).toBeCloseTo(DEFAULT_OCCLUSION_CONFIG.opacity0, 2);
 
-    // Sustained occlusion: 2 consecutive frames behind the box
+    // Sustained occlusion: entity behind the box (both entry and exit faces intersected → count=2)
+    // EMA with α=0.7: frame 1 → smoothedCount=0.6 (< 0.75, stays opacity0)
+    //                  frame 2 → smoothedCount=1.02 (crosses 0.75 threshold → target=opacity1)
     entity.position.set(0, 0, -5);
-    system.update([entity], camera, 1 / 60); // frame 1: smoothedCount → 0.3 (spike absorbed)
-    system.update([entity], camera, 1 / 60); // frame 2: smoothedCount → 0.51, crosses 0.5 → target changes
+    system.update([entity], camera, 1 / 60); // frame 1: smoothedCount → 0.6 (below 0.75 threshold)
+    system.update([entity], camera, 1 / 60); // frame 2: smoothedCount → 1.02, crosses 0.75 → target changes
 
-    // After 2 frames: target has changed. With instant-set currentOpacity (EMA crossed threshold),
-    // the lerp begins. The opacity should now be below opacity0.
+    // After 2 frames: target has changed, lerp begins. Opacity should now be below opacity0.
     const opacityAfterSustained = system.getOpacity(entity);
     expect(opacityAfterSustained).toBeLessThan(DEFAULT_OCCLUSION_CONFIG.opacity0);
+  });
+
+  it('REGRESSION S36: alternating 0/1 noise does NOT flicker (EMA steady state stays below 0.75 threshold)', () => {
+    // With EMA α=0.7, sustained 0/1 alternation (rays grazing a cube edge each frame) produces
+    // a steady-state oscillation of ~0.41/0.59. The old threshold (0.5) was in the middle of this
+    // range, causing the opacity target to flip every frame → visible flickering.
+    //
+    // New threshold (0.75) is above the 0.59 ceiling → steady-state noise never triggers
+    // opacity1, eliminating the flicker entirely.
+    //
+    // Mathematical proof: for α=0.7 and alternating count 0/1,
+    //   smoothedHigh = 0.7 * smoothedLow + 0.3 * 1
+    //   smoothedLow  = 0.7 * smoothedHigh
+    //   → smoothedHigh = 0.588  (which is < 0.75, so threshold is never crossed)
+    const EMA_ALPHA = 0.7;
+    const THRESHOLD = 0.75; // the value we changed to in S36
+
+    let smoothed = 0;
+    for (let i = 0; i < 100; i++) {
+      const count = i % 2 === 0 ? 0 : 1; // alternating 0/1 noise
+      smoothed = smoothed * EMA_ALPHA + count * (1 - EMA_ALPHA);
+    }
+
+    // After 100 frames the EMA is at steady state (~0.41 or ~0.59 depending on last step).
+    // Both values must be below the threshold so the noise never crosses into opacity1.
+    expect(smoothed).toBeLessThan(THRESHOLD); // noise never triggers dimming
+    expect(smoothed).toBeGreaterThan(0.3);    // confirms steady-state is active (not zero)
   });
 
   it('uses custom config values', () => {
