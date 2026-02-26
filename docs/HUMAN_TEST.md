@@ -1241,8 +1241,21 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Camera may tilt** — Camera IS allowed to tilt/orbit over one axis (this is normal for cube surface walking)
 - [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
 
-### Test: Peanut movement speed consistency (S36 fix)
-- [ ] **Start single-player on peanut** — Select Quick Game → Peanut → Start
-- [ ] **Move from bulge toward waist** — Hold W/S to move from top bulge toward the narrow center section
-- [ ] **Speed feels consistent** — Movement should feel the same speed at bulge and at waist (no "sluggish center / fast ends")
-- [ ] **Enemies move consistently** — Enemies should approach the player at the same apparent speed regardless of where they are on the peanut surface
+---
+
+## S36: Pickup Inconsistent Radius Fix
+
+### Test: Pickup collection works on all map sizes
+
+**Root cause fixed:** `PICKUP_WORLD_RADIUS` was a fixed 0.6 world units but player/pickup world positions
+scale with `mapSizeScaleFactor`. On EPIC (2×) maps, the effective collection radius was half as generous
+as on MEDIUM maps — sometimes requiring the player to stand exactly on the pickup.
+
+- [ ] **MEDIUM map, any surface** — Spawn 3 pickups (kill enemies). Walk toward each pickup. Should collect with comfortable margin (~half a player width away). No "struggle to reach, then suddenly collect" behavior.
+- [ ] **EPIC map, any surface** — Same test on EPIC size. Collection radius should feel the same as MEDIUM (not smaller). Walk near each pickup — should collect at same relative distance.
+- [ ] **SMALL map, any surface** — Same relative feel. Should collect, not require pixel-perfect positioning.
+- [ ] **Peanut surface, MEDIUM** — Kill enemies on peanut. Pickups near the narrow waist AND on the bulges should all collect without requiring player to be at the exact center axis.
+- [ ] **Magnetism buff active** — Activate magnetism buff (if available). Pickup collection radius should NOT change — magnetism pulls pickups toward you, but the collision detection threshold is unchanged.
+- [ ] **No "random eventually picks up" behavior** — Walk to a pickup and stand on it. Should collect immediately. No "sometimes works, sometimes doesn't" behavior.
+
+**Regression test:** `src/test/pickup-scale-invariant-radius.regression.test.ts` — 7 tests covering scale invariance — passes ✅

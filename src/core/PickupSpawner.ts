@@ -49,6 +49,9 @@ export class PickupSpawner {
    * Roll for pickups on enemy death. Called from collision handler.
    */
   spawnPickupsOnEnemyDeath(u: number, v: number): void {
+    // Clamp v away from poles [0,1] to avoid world-space singularity near peanut/sphere poles.
+    // Near v=0 or v=1 all positions converge to a point, causing false positive collision detections.
+    v = Math.max(0.02, Math.min(0.98, v));
     // ~5% chance to spawn a super state pickup on enemy death
     if (Math.random() < this.superStateDropRate) {
       const type = PickupSpawner.SUPER_STATE_TYPES[

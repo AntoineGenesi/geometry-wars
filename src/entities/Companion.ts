@@ -791,7 +791,7 @@ export class CompanionPickup {
   checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
     if (!this.active) return false;
     if (playerWorldPos) {
-      return playerWorldPos.distanceTo(this._surfaceWorldPos) < COMPANION_PICKUP_WORLD_RADIUS;
+      return playerWorldPos.distanceTo(this._surfaceWorldPos) < COMPANION_PICKUP_WORLD_RADIUS * this.mapSizeScaleFactor;
     }
     let du = playerU - this.surfaceU;
     let dv = playerV - this.surfaceV;
