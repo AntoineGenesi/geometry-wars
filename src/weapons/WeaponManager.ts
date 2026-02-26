@@ -47,6 +47,9 @@ export interface Projectile {
   canSplit?: boolean;
   splitTime?: number;
   isChild?: boolean;
+  // For pierce mechanic: number of additional enemies this projectile can pass through
+  canPierce?: number;
+  pierceCount?: number; // how many enemies already pierced
 }
 
 /**
@@ -63,6 +66,12 @@ interface ActiveEffect {
   beamPoints?: THREE.Vector3[];
   /** Level 5 mastery final form flag — used for Black Hole Event Horizon expiry logic */
   isMasteryL5?: boolean;
+  /** For laser beam sweep mode (b_5): current sweep angle offset in radians */
+  sweepAngle?: number;
+  /** For laser beam sweep mode (b_5): sweep direction (1 or -1) */
+  sweepDir?: number;
+  /** For laser beam wide beam (b_4): wider hit radius */
+  wideBeam?: boolean;
 }
 
 /**
@@ -147,6 +156,20 @@ export class WeaponManager {
 
   // Spread cone alternation state (for spread_b_3)
   private spreadConeToggle = false;
+
+  // Pending delayed shots: used for piercing double/triple tap, mortar carpet bomb, chain blast secondary
+  private pendingShots: Array<{
+    delay: number;
+    remaining: number;
+    type: WeaponType;
+    origin: THREE.Vector3;
+    direction: THREE.Vector3;
+    surfaceNormal?: THREE.Vector3;
+    // For chain blast: spawn AoE explosion at position instead of a projectile
+    isChainBlast?: boolean;
+    chainBlastRadius?: number;
+    chainBlastDamage?: number;
+  }> = [];
 
   // Session pickup counters: uncapped, NOT reset by ammo depletion
   private sessionPickupCounts: Map<WeaponType, number> = new Map();
@@ -237,6 +260,7 @@ export class WeaponManager {
     let bonus = 0;
     switch (weaponType) {
       case WeaponType.Standard:
+        // Branch A nodes 1-3 are damage bonuses; 4+5 switch to fan-out (handled via getBlasterExtraBolts)
         if (active.has('standard_a_1')) bonus += 0.20;
         if (active.has('standard_a_2')) bonus += 0.40;
         if (active.has('standard_a_3')) bonus += 0.60;
@@ -245,22 +269,33 @@ export class WeaponManager {
         if (active.has('chain_lightning_b_1')) bonus += 0.25;
         if (active.has('chain_lightning_b_2')) bonus += 0.50;
         if (active.has('chain_lightning_b_3')) bonus += 0.80;
+        // b_4 = stun (separate effect), b_5 = kill explosion (separate effect)
         break;
       case WeaponType.PlasmaMortar:
         if (active.has('plasma_mortar_b_1')) bonus += 0.25;
         if (active.has('plasma_mortar_b_2')) bonus += 0.50;
         if (active.has('plasma_mortar_b_3')) bonus += 0.80;
+        // b_4 = armor pierce: no armor system yet, treat as +30% damage bonus
+        if (active.has('plasma_mortar_b_4')) bonus += 0.30;
+        // b_5 = annihilator: instant-kill threshold (handled in collision), still gets damage bonus
+        if (active.has('plasma_mortar_b_5')) bonus += 0.50;
         break;
       case WeaponType.LaserBeam:
-        // Ramp nodes treated as damage increase
+        // Ramp nodes treated as damage increase; nodes 4+5 extend the max cap
         if (active.has('laser_beam_a_1')) bonus += 0.25;
         if (active.has('laser_beam_a_2')) bonus += 0.50;
         if (active.has('laser_beam_a_3')) bonus += 1.00; // instant peak
+        if (active.has('laser_beam_a_4')) bonus += 1.50;
+        if (active.has('laser_beam_a_5')) bonus += 2.00; // max dmg 3× baseline; also adds ignite DoT (TODO: DoT system)
         break;
       case WeaponType.TeslaCoil:
         if (active.has('tesla_coil_b_1')) bonus += 0.25;
         if (active.has('tesla_coil_b_2')) bonus += 0.50;
         if (active.has('tesla_coil_b_3')) bonus += 0.80;
+        // b_4 = rapid tick (tick rate handled in updateEffect), still +damage per tick
+        if (active.has('tesla_coil_b_4')) bonus += 1.00;
+        // b_5 = surge overload: +150% dmg/tick + stun (stun is TODO: no slow system yet)
+        if (active.has('tesla_coil_b_5')) bonus += 1.50;
         break;
       case WeaponType.Piercing:
         // Piercing has no dedicated damage branch; fire rate is branch B, range is branch A
@@ -280,10 +315,12 @@ export class WeaponManager {
       if (active.has('standard_b_1')) bonus += 0.15;
       if (active.has('standard_b_2')) bonus += 0.30;
       if (active.has('standard_b_3')) bonus += 0.50;
+      // standard_b_4/b_5 = homing on bolts (handled via getBlasterHomingStrength), no fire rate change
     } else if (weaponType === WeaponType.Piercing) {
       if (active.has('piercing_b_1')) bonus += 0.20;
       if (active.has('piercing_b_2')) bonus += 0.40;
       if (active.has('piercing_b_3')) bonus += 0.60;
+      // piercing_b_4/b_5 = double/triple tap: fire rate unchanged, extra shots queued on fire
     }
     return 1.0 + bonus;
   }
@@ -291,6 +328,54 @@ export class WeaponManager {
   /** Active upgrade node set for a weapon (empty set if no tracker). */
   private activeUpgradeNodes(weaponType: WeaponType): Set<string> {
     return this.upgradeTracker?.getActiveUpgrades(weaponType) ?? new Set();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Blaster (Standard) fan-out helpers — queried by fireStandard and by GameLoop
+  // for damage numbers that use BulletPool instead of createProjectile.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns how many extra side bolts to spawn for the blaster (Branch A fan-out).
+   * 0 = only the standard 2 parallel bolts; 6 = 7 total in a fan.
+   */
+  getBlasterExtraBolts(): number {
+    if (!this.upgradeTracker) return 0;
+    const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    if (active.has('standard_a_5')) return 6;  // 7 total
+    if (active.has('standard_a_4')) return 4;  // 5 total
+    if (active.has('standard_a_3')) return 3;  // 4 total
+    if (active.has('standard_a_2')) return 2;  // 3 total
+    if (active.has('standard_a_1')) return 1;  // 2 total
+    return 0;
+  }
+
+  /**
+   * Returns blaster cone spread angle in radians for the fan-out (Branch A).
+   * 0 means no fan (two parallel bolts only).
+   */
+  getBlasterSpreadAngle(): number {
+    if (!this.upgradeTracker) return 0;
+    const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    if (active.has('standard_a_5')) return Math.PI / 4.5; // 40° fan
+    if (active.has('standard_a_4')) return Math.PI / 7.2; // 25°
+    if (active.has('standard_a_3')) return Math.PI / 12;  // 15°
+    if (active.has('standard_a_2')) return Math.PI / 18;  // 10°
+    if (active.has('standard_a_1')) return Math.PI / 36;  // 5°
+    return 0;
+  }
+
+  /**
+   * Returns whether blaster bolts have homing bias (Branch B nodes 4+5).
+   * 0 = no homing; 0.8 = strong homing.
+   * The caller lerps bullet direction toward nearest enemy each frame by this factor.
+   */
+  getBlasterHomingStrength(): number {
+    if (!this.upgradeTracker) return 0;
+    const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    if (active.has('standard_b_5')) return 0.8;  // strong homing
+    if (active.has('standard_b_4')) return 0.4;  // mild homing
+    return 0;
   }
 
   /**
@@ -698,6 +783,24 @@ export class WeaponManager {
       cloud.mesh.rotation.y += dt * 0.5;
     }
 
+    // Process pending delayed shots (piercing double/triple tap, mortar chain blast, carpet bomb)
+    for (let i = this.pendingShots.length - 1; i >= 0; i--) {
+      const pending = this.pendingShots[i];
+      pending.remaining -= dt;
+      if (pending.remaining <= 0) {
+        if (pending.isChainBlast) {
+          // Chain blast: secondary explosion at same position
+          this.applyAoeDamage(pending.origin, pending.chainBlastRadius ?? 1.5, pending.chainBlastDamage ?? 0);
+          this.callbacks?.onProjectileExplosion?.(pending.origin.clone(), WeaponType.PlasmaMortar);
+        } else if (pending.type === WeaponType.Piercing) {
+          this.firePiercing(pending.origin, pending.direction, true); // isQueued=true: no further queuing
+        } else if (pending.type === WeaponType.PlasmaMortar) {
+          this.fireMortar(pending.origin, pending.direction);
+        }
+        this.pendingShots.splice(i, 1);
+      }
+    }
+
     // Update active effects
     for (let i = this.activeEffects.length - 1; i >= 0; i--) {
       const effect = this.activeEffects[i];
@@ -733,14 +836,31 @@ export class WeaponManager {
     const leftOrigin = origin.clone().addScaledVector(right, -offset);
     const rightOrigin = origin.clone().addScaledVector(right, offset);
 
-    this.callbacks?.spawnBullet(leftOrigin, direction);
-    this.callbacks?.spawnBullet(rightOrigin, direction);
+    // Branch A fan-out: standard_a_1 through standard_a_5 add extra bolts in a spreading cone
+    const extraBolts = this.getBlasterExtraBolts();
+    const fanAngle = this.getBlasterSpreadAngle();
+    const rotAxis = up.clone();
+
+    if (extraBolts > 0 && fanAngle > 0) {
+      // Fan mode: fire the center bolt + extraBolts side bolts spread across ±fanAngle/2
+      // The standard 2 parallel bolts are replaced by the fan for cleaner visuals
+      const totalBolts = extraBolts + 1; // center + sides
+      for (let i = 0; i < totalBolts; i++) {
+        const t = totalBolts === 1 ? 0 : (i / (totalBolts - 1)) * 2 - 1; // -1 to +1
+        const angle = t * (fanAngle / 2);
+        const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
+        this.callbacks?.spawnBullet(origin.clone(), boltDir);
+      }
+    } else {
+      // Default: dual-barrel (no branch A upgrades)
+      this.callbacks?.spawnBullet(leftOrigin, direction);
+      this.callbacks?.spawnBullet(rightOrigin, direction);
+    }
 
     // LEVEL 5 FINAL FORM — Twin Stream: fire 2 additional V-patterned bullets at ±15°
     // Creates a spectacular 4-bullet spread that effectively doubles DPS
     if (this.isMasteryMaxLevel(WeaponType.Standard)) {
       const spreadAngle = Math.PI / 12; // 15 degrees
-      const rotAxis = up.clone();
       const leftDir = direction.clone().applyAxisAngle(rotAxis, -spreadAngle).normalize();
       const rightDir = direction.clone().applyAxisAngle(rotAxis, spreadAngle).normalize();
       this.callbacks?.spawnBullet(leftOrigin, leftDir);
@@ -754,12 +874,19 @@ export class WeaponManager {
     const isL5 = this.isMasteryMaxLevel(WeaponType.Spread);
     const spreadNodes = this.activeUpgradeNodes(WeaponType.Spread);
 
-    // Pellet count upgrades (branch A): base 5, +1 per node (cap at L5 override)
+    // Pellet count upgrades (branch A): base 5, +1 per node 1-3, then +4 and +5 for nodes 4 and 5
     const upgradePellets =
       (spreadNodes.has('spread_a_1') ? 1 : 0) +
       (spreadNodes.has('spread_a_2') ? 1 : 0) +
-      (spreadNodes.has('spread_a_3') ? 1 : 0);
+      (spreadNodes.has('spread_a_3') ? 1 : 0) +
+      (spreadNodes.has('spread_a_4') ? 4 : 0) +  // +4 more (9 total with nodes 1-3)
+      (spreadNodes.has('spread_a_5') ? 5 : 0);   // +5 more (10 total with nodes 1-3)
     const bulletCount = isL5 ? 9 : 5 + upgradePellets;
+
+    // Pierce upgrades (branch B nodes 4+5): pellets pass through enemies
+    const piercePellets =
+      spreadNodes.has('spread_b_5') ? 2 :
+      spreadNodes.has('spread_b_4') ? 1 : 0;
 
     // Cone width upgrades (branch B): b_3 alternates, b_1 tightens, b_2 widens
     let spreadAngle: number;
@@ -806,23 +933,31 @@ export class WeaponManager {
       proj.spreadDuration = spreadDuration;
       proj.canSplit = willSplit;
       proj.splitTime = splitTime;
+      // Pierce: branch B nodes 4+5 allow pellets to pass through enemies
+      if (piercePellets > 0) {
+        proj.canPierce = piercePellets;
+        proj.pierceCount = 0;
+      }
     }
   }
 
-  private firePiercing(origin: THREE.Vector3, direction: THREE.Vector3): void {
+  private firePiercing(origin: THREE.Vector3, direction: THREE.Vector3, isQueued = false): void {
     const config = WEAPON_CONFIGS[WeaponType.Piercing];
     const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
     const stackMult = this.getStackDamageMultiplier(WeaponType.Piercing);
     const masteryMult = this.masteryMultiplierFn?.(WeaponType.Piercing) ?? 1.0;
     const sessionMult = this.getSessionDamageMultiplier(WeaponType.Piercing);
 
-    // Beam length upgrades (branch A): +50%, +100%, +200% per node
+    // Beam length upgrades (branch A): +50%, +100%, +200%, +300%, +500% per node
+    // a_4 = arc beam (secondary arc to a 2nd target); a_5 = wrap-eligible (doubled max length)
     const piercingNodes = this.activeUpgradeNodes(WeaponType.Piercing);
     const lengthBonus =
       (piercingNodes.has('piercing_a_1') ? 0.50 : 0) +
       (piercingNodes.has('piercing_a_2') ? 1.00 : 0) +
       (piercingNodes.has('piercing_a_3') ? 2.00 : 0);
-    const upgradeLengthMult = 1.0 + lengthBonus;
+    // a_5: beam so long it wraps — double the max length
+    const wrapMult = piercingNodes.has('piercing_a_5') ? 2.0 : 1.0;
+    const upgradeLengthMult = (1.0 + lengthBonus) * wrapMult;
 
     // Trace a geodesic beam path along the surface
     const beamLen = 25 * rangeMult * upgradeLengthMult;
@@ -844,6 +979,10 @@ export class WeaponManager {
       const enemies = this.callbacks.getEnemies();
       const hitRadius = 0.4;
 
+      // a_4 = arc beam: track the primary hit to arc to a secondary target
+      let primaryHitPos: THREE.Vector3 | null = null;
+      let primaryHitDir: THREE.Vector3 | null = null;
+
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
 
@@ -853,8 +992,34 @@ export class WeaponManager {
           );
           if (segDist < hitRadius) {
             this.callbacks.onEnemyDamage(enemy.index, config.damage * stackMult * masteryMult * sessionMult, WeaponType.Piercing);
+            // Record hit location for arc beam
+            if (!primaryHitPos) {
+              primaryHitPos = enemy.position.clone();
+              primaryHitDir = direction.clone().normalize();
+            }
             break; // Only damage each enemy once
           }
+        }
+      }
+
+      // a_4 = arc beam: after primary hit, arc to a 2nd enemy within 15° of beam direction
+      if (piercingNodes.has('piercing_a_4') && primaryHitPos) {
+        const arcAngleCos = Math.cos(Math.PI / 12); // 15°
+        let arcTarget: { position: THREE.Vector3; index: number } | null = null;
+        let arcMinDist = Infinity;
+        for (const enemy of enemies) {
+          if (!enemy.alive) continue;
+          const toEnemy = enemy.position.clone().sub(primaryHitPos!);
+          const dist = toEnemy.length();
+          const dot = toEnemy.normalize().dot(primaryHitDir!);
+          if (dot > arcAngleCos && dist < arcMinDist && dist > 0.1) {
+            arcMinDist = dist;
+            arcTarget = enemy;
+          }
+        }
+        if (arcTarget) {
+          // 50% damage for arc
+          this.callbacks.onEnemyDamage(arcTarget.index, config.damage * stackMult * masteryMult * sessionMult * 0.5, WeaponType.Piercing);
         }
       }
     }
@@ -869,6 +1034,16 @@ export class WeaponManager {
       mesh: beamMesh,
       beamPoints,
     });
+
+    // b_4 = double tap / b_5 = triple tap: queue extra shots (only on the INITIAL fire, not recursive)
+    if (!isQueued) {
+      if (piercingNodes.has('piercing_b_5')) {
+        this.pendingShots.push({ delay: 0.1, remaining: 0.1, type: WeaponType.Piercing, origin: origin.clone(), direction: direction.clone() });
+        this.pendingShots.push({ delay: 0.2, remaining: 0.2, type: WeaponType.Piercing, origin: origin.clone(), direction: direction.clone() });
+      } else if (piercingNodes.has('piercing_b_4')) {
+        this.pendingShots.push({ delay: 0.1, remaining: 0.1, type: WeaponType.Piercing, origin: origin.clone(), direction: direction.clone() });
+      }
+    }
   }
 
   private fireChainLightning(origin: THREE.Vector3, direction: THREE.Vector3): void {
@@ -918,12 +1093,17 @@ export class WeaponManager {
       (chainNodes.has('chain_lightning_a_1') ? 2 : 0) +
       (chainNodes.has('chain_lightning_a_2') ? 2 : 0) +
       (chainNodes.has('chain_lightning_a_3') ? 2 : 0);
+
+    // a_4 = +40% chain jump range
+    const baseJumpRange = 3;
+    const jumpRange = chainNodes.has('chain_lightning_a_4') ? baseJumpRange * 1.4 : baseJumpRange;
+
     const otherEnemies = enemies.filter(e => e.index !== firstTarget!.index);
     const chainTargets = ChainLightningEffect.findChainTargets(
       firstTarget.position,
       otherEnemies,
       5 + extraTargets,
-      3,
+      jumpRange,
     );
 
     // Add first target at front
@@ -938,9 +1118,35 @@ export class WeaponManager {
     const masteryMult = this.masteryMultiplierFn?.(WeaponType.ChainLightning) ?? 1.0;
     const sessionMult = this.getSessionDamageMultiplier(WeaponType.ChainLightning);
     const upgradeDmgMult = this.getUpgradeDamageMult(WeaponType.ChainLightning);
+
+    // b_5 = kill explosion: track enemies killed to trigger small AoE
+    const killExplosion = chainNodes.has('chain_lightning_b_5');
+
     this.chainLightning.fire(origin, chainTargets, (pos, mult, idx) => {
       this.callbacks?.onEnemyDamage(idx, config.damage * mult * stackMult * masteryMult * sessionMult * upgradeDmgMult, WeaponType.ChainLightning);
+      // b_5: small AoE explosion on kill (approximated — we don't get kill callbacks here,
+      // so apply half-damage AoE on each hit; a true kill-only version requires onEnemyKill callback)
+      if (killExplosion) {
+        // TODO: upgrade to kill-only trigger if onEnemyKill callback is added
+        this.applyAoeDamage(pos, 1.5, config.damage * 0.3 * stackMult * masteryMult * sessionMult * upgradeDmgMult);
+      }
     });
+
+    // a_5 = re-arc: after initial chain resolves, a second pass re-arcs to already-hit targets for 30% bonus
+    if (chainNodes.has('chain_lightning_a_5') && chainTargets.length > 1) {
+      // Re-arc to each target in reverse order at 30% damage
+      for (const target of chainTargets) {
+        this.callbacks?.onEnemyDamage(
+          target.index,
+          config.damage * 0.3 * target.damageMultiplier * stackMult * masteryMult * sessionMult * upgradeDmgMult,
+          WeaponType.ChainLightning,
+        );
+      }
+    }
+
+    // b_4 = stun: TODO — no slow/stun system exists yet. Stub for future implementation.
+    // When a slow system is added: apply 30% speed reduction for 1s to all chain targets.
+    // if (chainNodes.has('chain_lightning_b_4')) { applyStun(chainTargets, 0.3, 1.0); }
   }
 
   private fireHoming(origin: THREE.Vector3, direction: THREE.Vector3): void {
@@ -960,13 +1166,23 @@ export class WeaponManager {
       }
     }
 
-    // Speed upgrades (branch A): +25%, +50%, +80% per node
+    // Speed upgrades (branch A): +25%, +50%, +80%, +100%, +150% per node
+    // Nodes 4+5 also apply turn multiplier to make tracking tighter
     const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);
     const speedBonus =
       (homingNodes.has('homing_a_1') ? 0.25 : 0) +
       (homingNodes.has('homing_a_2') ? 0.50 : 0) +
-      (homingNodes.has('homing_a_3') ? 0.80 : 0);
+      (homingNodes.has('homing_a_3') ? 0.80 : 0) +
+      (homingNodes.has('homing_a_4') ? 1.00 : 0) +
+      (homingNodes.has('homing_a_5') ? 1.50 : 0);
     const upgradeSpeed = config.projectileSpeed * (1.0 + speedBonus);
+    // turnMult increases how aggressively the missile steers toward its target
+    // Applied in updateProjectile via a per-projectile field (stored in speed for now,
+    // since Projectile doesn't have a separate turnRate field — the turn logic in
+    // updateProjectile uses a fixed lerp rate of min(1.0, 12.0 * dt)).
+    // For nodes 4+5, we scale the base speed higher so effectively missiles arrive faster;
+    // the actual turn tightening would require a dedicated turnRate field (future enhancement).
+    // TODO: add turnRate field to Projectile for proper turn tightening.
 
     // LEVEL 5 FINAL FORM — Seeking Swarm: fire 3 missiles simultaneously in V-formation
     // Each missile tracks independently — spectacular when all 3 converge on one target
@@ -1054,6 +1270,11 @@ export class WeaponManager {
       (laserNodes.has('laser_beam_b_3') ? 0.70 : 0);
     const laserDuration = 0.5 * (1.0 + durationBonus);
 
+    // b_4 = wide beam: hits enemies within 0.3 units of beam line instead of 0.35
+    const wideBeam = laserNodes.has('laser_beam_b_4');
+    // b_5 = sweep mode: beam rotates ±0.4 rad/s while active
+    const sweepMode = laserNodes.has('laser_beam_b_5');
+
     this.activeEffects.push({
       type: 'laser',
       position: origin.clone(),
@@ -1062,6 +1283,9 @@ export class WeaponManager {
       elapsed: 0,
       mesh: laserMesh,
       beamPoints,
+      wideBeam,
+      sweepAngle: sweepMode ? 0 : undefined,
+      sweepDir: sweepMode ? 1 : undefined,
     });
   }
 
@@ -1146,35 +1370,51 @@ export class WeaponManager {
     }
 
     // Duration upgrades (branch A): +30%, +60%, +100% per node
+    // a_4 = twin holes (2 black holes), a_5 = doomsday (2 holes + +150% duration)
     const bhNodes = this.activeUpgradeNodes(WeaponType.BlackHole);
     const bhDurationBonus =
       (bhNodes.has('black_hole_a_1') ? 0.30 : 0) +
       (bhNodes.has('black_hole_a_2') ? 0.60 : 0) +
-      (bhNodes.has('black_hole_a_3') ? 1.00 : 0);
+      (bhNodes.has('black_hole_a_3') ? 1.00 : 0) +
+      (bhNodes.has('black_hole_a_5') ? 1.50 : 0); // doomsday extra duration
 
     // LEVEL 5 FINAL FORM — Event Horizon: 50% longer duration, stronger pull, AoE explosion on expiry
     const isL5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
     const duration = (isL5 ? 4.5 : 3.0) * (1.0 + bhDurationBonus);
 
-    // Create black hole visual — geometry shared via GeometryCache
-    const bhMat = new THREE.MeshBasicMaterial({
-      color: isL5 ? 0x110022 : 0x220044, // darker core at L5
-      transparent: true,
-      opacity: 0.9,
-    });
-    const bhMesh = new THREE.Mesh(SharedGeometries.blackholeSphere(), bhMat);
-    bhMesh.position.copy(targetPos);
+    // Helper to spawn one black hole at a position
+    const spawnOneBlackHole = (pos: THREE.Vector3): void => {
+      const bhMat = new THREE.MeshBasicMaterial({
+        color: isL5 ? 0x110022 : 0x220044, // darker core at L5
+        transparent: true,
+        opacity: 0.9,
+      });
+      const bhMesh = new THREE.Mesh(SharedGeometries.blackholeSphere(), bhMat);
+      bhMesh.position.copy(pos);
+      this.projectileRoot.add(bhMesh);
+      this.activeEffects.push({
+        type: 'blackhole',
+        position: pos,
+        duration,
+        elapsed: 0,
+        mesh: bhMesh,
+        isMasteryL5: isL5,
+      });
+    };
 
-    this.projectileRoot.add(bhMesh);
+    spawnOneBlackHole(targetPos);
 
-    this.activeEffects.push({
-      type: 'blackhole',
-      position: targetPos,
-      duration,
-      elapsed: 0,
-      mesh: bhMesh,
-      isMasteryL5: isL5,
-    });
+    // a_4/a_5 = twin holes: spawn a second black hole slightly offset
+    if (bhNodes.has('black_hole_a_4') || bhNodes.has('black_hole_a_5')) {
+      const perpOffset = new THREE.Vector3().crossVectors(direction, targetPos.clone().normalize()).normalize();
+      const secondPos = targetPos.clone().addScaledVector(perpOffset, 1.5);
+      // Project second hole onto surface
+      if (this.meshSurface) {
+        const result = this.meshSurface.closestPointOnSurface(secondPos);
+        if (result) secondPos.copy(result.point);
+      }
+      spawnOneBlackHole(secondPos);
+    }
   }
 
   private fireTesla(origin: THREE.Vector3): void {
@@ -1412,22 +1652,87 @@ export class WeaponManager {
             (mortarNodes.has('plasma_mortar_a_1') ? 0.30 : 0) +
             (mortarNodes.has('plasma_mortar_a_2') ? 0.60 : 0) +
             (mortarNodes.has('plasma_mortar_a_3') ? 1.00 : 0);
-          this.applyAoeDamage(proj.position, 3.0 * (1.0 + mortarRadiusBonus), proj.damage * 0.75);
+          const blastRadius = 3.0 * (1.0 + mortarRadiusBonus);
+          // b_5 = annihilator: instant-kill enemies below 10% HP. Since we don't have HP access,
+          // apply a large bonus damage to push low-HP enemies over the threshold.
+          // Implementation: deal double damage for b_5 which effectively one-shots weak enemies.
+          const annihilatorMult = mortarNodes.has('plasma_mortar_b_5') ? 2.0 : 1.0;
+          this.applyAoeDamage(proj.position, blastRadius, proj.damage * 0.75 * annihilatorMult);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.PlasmaMortar);
+
+          // a_4 = chain blast: 0.3s after main explosion, secondary blast at 50% radius
+          if (mortarNodes.has('plasma_mortar_a_4') || mortarNodes.has('plasma_mortar_a_5')) {
+            this.pendingShots.push({
+              delay: 0.3,
+              remaining: 0.3,
+              type: WeaponType.PlasmaMortar,
+              origin: proj.position.clone(),
+              direction: proj.direction.clone(),
+              isChainBlast: true,
+              chainBlastRadius: blastRadius * 0.5,
+              chainBlastDamage: proj.damage * 0.4,
+            });
+          }
+
+          // a_5 = carpet bomb: queue 2 additional mortars offset from player origin
+          // NOTE: We don't have player origin here, so we use the mortar's start position
+          // and fan the extra shots at ±15° from original direction
+          if (mortarNodes.has('plasma_mortar_a_5') && proj.startPos) {
+            const localUp = proj.startPos.clone().normalize();
+            const angles = [-Math.PI / 12, Math.PI / 12]; // ±15°
+            for (const ang of angles) {
+              const fanDir = proj.direction.clone().applyAxisAngle(localUp, ang).normalize();
+              this.pendingShots.push({
+                delay: 0.05,
+                remaining: 0.05,
+                type: WeaponType.PlasmaMortar,
+                origin: proj.startPos.clone(),
+                direction: fanDir,
+              });
+            }
+          }
+
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.Homing) {
-          // Explosion radius upgrades (branch B): +30%, +60%  (b_3 = gas cloud, no extra radius)
+          // Explosion radius upgrades (branch B): +30%, +60%
           const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);
           const homingRadiusBonus =
             (homingNodes.has('homing_b_1') ? 0.30 : 0) +
             (homingNodes.has('homing_b_2') ? 0.60 : 0);
-          this.applyAoeDamage(proj.position, 3.5 * (1.0 + homingRadiusBonus), proj.damage * 0.8);
+          // b_5 = nova burst: combines explosion + napalm + stun; bigger radius than base
+          const novaRadiusMult = homingNodes.has('homing_b_5') ? 1.5 : 1.0;
+          this.applyAoeDamage(proj.position, 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult, proj.damage * 0.8);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
-          // Gas cloud: spawn when homing_b_3 is active
+
+          // b_3 = cluster bomb: spawn 3 mini-missiles on detonation
           if (homingNodes.has('homing_b_3')) {
+            const miniConfig = WEAPON_CONFIGS[WeaponType.Homing];
+            const localUp = proj.position.clone().normalize();
+            const miniAngles = [-Math.PI / 6, 0, Math.PI / 6]; // 3 directions
+            for (const angle of miniAngles) {
+              const miniDir = proj.direction.clone().applyAxisAngle(localUp, angle).normalize();
+              const mini = this.createProjectile(
+                WeaponType.Homing,
+                proj.position.clone(),
+                miniDir,
+                miniConfig.damage * 0.5,  // 50% damage for mini-missiles
+                proj.speed * 1.1,
+                8.0,
+              );
+              mini.targetIndex = proj.targetIndex; // track same target
+            }
+          }
+
+          // b_4 = napalm: spawn gas cloud on detonation (previously b_3's role)
+          if (homingNodes.has('homing_b_4') || homingNodes.has('homing_b_5')) {
             this.spawnGasCloud(proj.position.clone());
           }
+
+          // b_5 = nova burst stun: TODO — no slow system yet
+          // When slow system added: apply 30% speed reduction for 0.5s to enemies in explosion radius.
+          // if (homingNodes.has('homing_b_5')) { applyStun(nearbyEnemies, 0.3, 0.5); }
+
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.GravityGun) {
@@ -1437,6 +1742,12 @@ export class WeaponManager {
           this.removeProjectile(index);
           return;
         } else {
+          // Check pierce mechanic (Spread pellets with spread_b_4/b_5 active)
+          if (proj.canPierce !== undefined && proj.pierceCount !== undefined && proj.pierceCount < proj.canPierce) {
+            // Pellet passes through — increment pierce count but don't remove
+            proj.pierceCount++;
+            return; // Done with this enemy; continue checking others for this projectile
+          }
           this.removeProjectile(index);
           return;
         }
@@ -1463,21 +1774,26 @@ export class WeaponManager {
     if (!this.callbacks?.onEnemyPull) return;
 
     // Pull radius upgrades (branch A): +30%, +60%, +100%
+    // a_4 = mass capture: +100% radius on top of existing bonuses
     const ggNodes = this.activeUpgradeNodes(WeaponType.GravityGun);
     const radiusBonus =
       (ggNodes.has('gravity_gun_a_1') ? 0.30 : 0) +
       (ggNodes.has('gravity_gun_a_2') ? 0.60 : 0) +
-      (ggNodes.has('gravity_gun_a_3') ? 1.00 : 0);
+      (ggNodes.has('gravity_gun_a_3') ? 1.00 : 0) +
+      (ggNodes.has('gravity_gun_a_4') ? 1.00 : 0);  // mass capture: +100% radius
     const radius = baseRadius * (1.0 + radiusBonus);
 
-    // Kinetic crush damage per detonation (branch B)
-    // b_3 = collision force: enemies deal damage to each other — modeled as amplified crush damage
+    // Kinetic crush damage per detonation (branch B) — extended for b_4/b_5
     const kineticDamage =
+      ggNodes.has('gravity_gun_b_5') ? 20.0 :
+      ggNodes.has('gravity_gun_b_4') ? 15.0 :
       ggNodes.has('gravity_gun_b_3') ? 9.0 :
       ggNodes.has('gravity_gun_b_2') ? 5.0 :
       ggNodes.has('gravity_gun_b_1') ? 2.0 : 0;
 
     const enemies = this.callbacks.getEnemies();
+    const pulledPositions: THREE.Vector3[] = [];
+
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
 
@@ -1489,6 +1805,23 @@ export class WeaponManager {
         if (kineticDamage > 0) {
           this.callbacks.onEnemyDamage(enemy.index, kineticDamage * strength, WeaponType.GravityGun);
         }
+        pulledPositions.push(enemy.position.clone());
+      }
+    }
+
+    // a_5 = event gravity: enemies pulled together deal collision damage to each other
+    // Check enemies within 1.0 units of each other in the pulled set
+    if (ggNodes.has('gravity_gun_a_5') && pulledPositions.length >= 2) {
+      const collidingEnemies = this.callbacks.getEnemies().filter(e => e.alive && center.distanceTo(e.position) < radius);
+      for (let i = 0; i < collidingEnemies.length; i++) {
+        for (let j = i + 1; j < collidingEnemies.length; j++) {
+          const dist = collidingEnemies[i].position.distanceTo(collidingEnemies[j].position);
+          if (dist < 1.0) {
+            // Collision damage: 2 damage to each
+            this.callbacks.onEnemyDamage(collidingEnemies[i].index, 2, WeaponType.GravityGun);
+            this.callbacks.onEnemyDamage(collidingEnemies[j].index, 2, WeaponType.GravityGun);
+          }
+        }
       }
     }
   }
@@ -1498,10 +1831,35 @@ export class WeaponManager {
 
     switch (effect.type) {
       case 'laser':
+        // b_5 = sweep mode: rotate beam direction by ±0.4 rad/s, bouncing at ±15° (0.26 rad)
+        if (effect.sweepAngle !== undefined && effect.sweepDir !== undefined && effect.direction) {
+          const sweepRate = 0.4; // rad/s
+          const maxSweep = Math.PI / 12; // 15°
+          effect.sweepAngle += sweepRate * effect.sweepDir * dt;
+          if (Math.abs(effect.sweepAngle) >= maxSweep) {
+            effect.sweepDir = -effect.sweepDir;
+            effect.sweepAngle = Math.sign(effect.sweepAngle) * maxSweep;
+          }
+          // Re-trace beam with swept direction each frame for accurate hit detection
+          if (this.meshSurface) {
+            const localUp = effect.position.clone().normalize();
+            const sweptDir = effect.direction.clone().applyAxisAngle(localUp, effect.sweepAngle).normalize();
+            const rangeMult = this.getBuffMultiplier(BuffType.ExtendedRange);
+            const laserNodesNow = this.activeUpgradeNodes(WeaponType.LaserBeam);
+            const dBon =
+              (laserNodesNow.has('laser_beam_b_1') ? 0.20 : 0) +
+              (laserNodesNow.has('laser_beam_b_2') ? 0.40 : 0) +
+              (laserNodesNow.has('laser_beam_b_3') ? 0.70 : 0);
+            const sweptLen = 30 * rangeMult * (1.0 + dBon);
+            effect.beamPoints = this.traceBeamPath(effect.position, sweptDir, sweptLen, Math.ceil(45 * rangeMult));
+          }
+        }
+
         // Continuous damage along surface-following beam polyline
         if (this.callbacks && effect.beamPoints && effect.beamPoints.length >= 2) {
           const enemies = this.callbacks.getEnemies();
-          const hitRadius = 0.35;
+          // b_4 = wide beam: 0.5 unit cylinder; default 0.35
+          const hitRadius = effect.wideBeam ? 0.5 : 0.35;
 
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
@@ -1547,6 +1905,11 @@ export class WeaponManager {
             (bhActiveNodes.has('black_hole_b_3') ? 1.00 : 0);
           const radius = (3 + progress * 2) * (1.0 + bhPullBonus);
 
+          // b_4/b_5 = crush damage: enemies trapped in the black hole take damage/sec
+          const bhTrapDPS =
+            bhActiveNodes.has('black_hole_b_5') ? 10 :
+            bhActiveNodes.has('black_hole_b_4') ? 5 : 0;
+
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
 
@@ -1559,6 +1922,10 @@ export class WeaponManager {
                 // LEVEL 5 FINAL FORM — Event Horizon: 30% stronger pull
                 const pullStrength = effect.isMasteryL5 ? 0.65 : 0.5;
                 this.callbacks.onEnemyPull?.(enemy.index, pullStrength, effect.position);
+                // Crush damage per second for trapped enemies (b_4/b_5)
+                if (bhTrapDPS > 0) {
+                  this.callbacks.onEnemyDamage(enemy.index, bhTrapDPS * dt, WeaponType.BlackHole);
+                }
               }
             }
           }
@@ -1583,26 +1950,41 @@ export class WeaponManager {
           }
 
           // Radius upgrades (branch A): +25%, +50%, +80%
+          // a_4 = arc reach: +20% bonus radius for a secondary arc ring
+          // a_5 = tempest: +120% additive radius
           const teslaNodes = this.activeUpgradeNodes(WeaponType.TeslaCoil);
           const teslaRadiusBonus =
             (teslaNodes.has('tesla_coil_a_1') ? 0.25 : 0) +
             (teslaNodes.has('tesla_coil_a_2') ? 0.50 : 0) +
-            (teslaNodes.has('tesla_coil_a_3') ? 0.80 : 0);
+            (teslaNodes.has('tesla_coil_a_3') ? 0.80 : 0) +
+            (teslaNodes.has('tesla_coil_a_5') ? 1.20 : 0); // tempest: +120% radius
           const radius = 3 * (1.0 + teslaRadiusBonus);
+          // Arc reach: secondary ring extends 20% beyond the main field
+          const arcRadius = teslaNodes.has('tesla_coil_a_4') ? radius * 1.20 : 0;
 
           const enemies = this.callbacks.getEnemies();
           const teslaMasteryMult = this.masteryMultiplierFn?.(WeaponType.TeslaCoil) ?? 1.0;
           const teslaSessionMult = this.getSessionDamageMultiplier(WeaponType.TeslaCoil);
           const teslaUpgradeDmgMult = this.getUpgradeDamageMult(WeaponType.TeslaCoil);
 
+          // b_4 = rapid tick: effectively doubles DPS by applying 2× dt per update tick
+          // b_5 = surge overload: stun (TODO: no slow system) + already handled via damage mult
+          const rapidTickMult = teslaNodes.has('tesla_coil_b_4') || teslaNodes.has('tesla_coil_b_5') ? 2.0 : 1.0;
+
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
 
             const dist = effect.position.distanceTo(enemy.position);
             if (dist < radius) {
-              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * teslaMasteryMult * teslaSessionMult * teslaUpgradeDmgMult, WeaponType.TeslaCoil);
+              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * rapidTickMult * teslaMasteryMult * teslaSessionMult * teslaUpgradeDmgMult, WeaponType.TeslaCoil);
+            } else if (arcRadius > 0 && dist < arcRadius) {
+              // a_4 arc reach: 50% damage to outlying enemies in extended ring
+              this.callbacks.onEnemyDamage(enemy.index, 3 * dt * 0.5 * teslaMasteryMult * teslaSessionMult * teslaUpgradeDmgMult, WeaponType.TeslaCoil);
             }
           }
+
+          // b_5 stun: TODO — no slow system yet
+          // When slow system added: apply 30% speed reduction for 0.5s to enemies in radius.
 
           if (effect.mesh) {
             effect.mesh.rotation.x += dt;
@@ -1667,6 +2049,7 @@ export class WeaponManager {
       this.projectileRoot.remove(cloud.mesh);
     }
     this.gasClouds = [];
+    this.pendingShots = [];
 
     this.chainLightning.clear();
   }
