@@ -342,10 +342,10 @@ async function main(): Promise<void> {
       // Input also uses DOM coordinates for mouse aim
       input.setViewportBounds(i, pv.x, domY, pv.w, pv.h);
 
-      // Position weapon HUD at bottom-left of each viewport (DOM coords)
+      // Position weapon HUD near top-left of each viewport (DOM coords)
       if (weaponHUDs[i]) {
         // Weapon HUD uses fixed positioning, so it also needs DOM coordinates
-        weaponHUDs[i].setPosition(pv.x + 8, domY + pv.h - 40);
+        weaponHUDs[i].setPosition(pv.x + 8, domY + 50);
       }
     }
     // Position perf overlay in Player 1's viewport (DOM coords)

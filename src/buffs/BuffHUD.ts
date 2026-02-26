@@ -19,7 +19,7 @@ export class BuffHUD {
     this.container.id = 'buff-hud';
     this.container.style.cssText = `
       position: fixed;
-      top: 100px;
+      top: 50px;
       right: 30px;
       display: flex;
       flex-direction: column;
