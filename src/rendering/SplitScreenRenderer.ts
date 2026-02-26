@@ -133,6 +133,13 @@ export class SplitScreenRenderer {
       type: THREE.HalfFloatType,
     });
 
+    // Clear the render target immediately to avoid uninitialized data causing bloom artifacts on spawn
+    const prevRenderTarget = this.renderer.getRenderTarget();
+    this.renderer.setRenderTarget(this.renderTarget);
+    this.renderer.setClearColor(0x000000, 1);
+    this.renderer.clear();
+    this.renderer.setRenderTarget(prevRenderTarget);
+
     this.composer = new EffectComposer(this.renderer);
 
     // TexturePass reads from the intermediate render target
