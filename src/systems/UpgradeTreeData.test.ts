@@ -18,30 +18,28 @@ describe('UPGRADE_TREES', () => {
     }
   });
 
-  it('each weapon tree has exactly 6 nodes (3 per branch)', () => {
+  it('each weapon tree has exactly 10 nodes (5 per branch)', () => {
     for (const tree of Object.values(UPGRADE_TREES)) {
-      expect(tree.nodes.length).toBe(6);
+      expect(tree.nodes.length).toBe(10);
       const branchA = tree.nodes.filter(n => n.branch === 'a');
       const branchB = tree.nodes.filter(n => n.branch === 'b');
-      expect(branchA.length).toBe(3);
-      expect(branchB.length).toBe(3);
+      expect(branchA.length).toBe(5);
+      expect(branchB.length).toBe(5);
     }
   });
 
-  it('total node count across all weapons is 60', () => {
-    expect(getAllNodes().length).toBe(60);
+  it('total node count across all weapons is 100', () => {
+    expect(getAllNodes().length).toBe(100);
   });
 
   it('every node id follows the pattern "${weaponType}_${branch}_${nodeIndex}"', () => {
     for (const node of getAllNodes()) {
-      const expected = `${node.id.split('_').slice(0, -2).join('_')}_${node.branch}_${node.nodeIndex}`;
-      // Reconstruct weapon type from id by removing _branch_index suffix
       const parts = node.id.split('_');
       const branch = parts[parts.length - 2];
       const idx = Number(parts[parts.length - 1]);
       expect(branch).toMatch(/^[ab]$/);
       expect(idx).toBeGreaterThanOrEqual(1);
-      expect(idx).toBeLessThanOrEqual(3);
+      expect(idx).toBeLessThanOrEqual(5);
       expect(node.branch).toBe(branch);
       expect(node.nodeIndex).toBe(idx);
     }
@@ -74,10 +72,31 @@ describe('UPGRADE_TREES', () => {
     }
   });
 
+  it('kill thresholds for node index 4 are 80', () => {
+    const nodes = getAllNodes().filter(n => n.nodeIndex === 4);
+    for (const n of nodes) {
+      expect(n.killThreshold).toBe(80);
+    }
+  });
+
+  it('kill thresholds for node index 5 are 120', () => {
+    const nodes = getAllNodes().filter(n => n.nodeIndex === 5);
+    for (const n of nodes) {
+      expect(n.killThreshold).toBe(120);
+    }
+  });
+
   it('every node has a non-empty description and effect', () => {
     for (const node of getAllNodes()) {
       expect(node.description.length).toBeGreaterThan(0);
       expect(node.effect.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('each weapon tree has non-empty branchAName and branchBName', () => {
+    for (const tree of Object.values(UPGRADE_TREES)) {
+      expect(tree.branchAName.length).toBeGreaterThan(0);
+      expect(tree.branchBName.length).toBeGreaterThan(0);
     }
   });
 });
@@ -86,7 +105,7 @@ describe('getUpgradeTree', () => {
   it('returns the correct tree for a weapon type', () => {
     const tree = getUpgradeTree(WeaponType.PlasmaMortar);
     expect(tree.weaponType).toBe(WeaponType.PlasmaMortar);
-    expect(tree.nodes.length).toBe(6);
+    expect(tree.nodes.length).toBe(10);
   });
 });
 
@@ -108,7 +127,7 @@ describe('getNodeById', () => {
 describe('getBranchNodes', () => {
   it('returns only branch-a nodes for a weapon', () => {
     const nodes = getBranchNodes(WeaponType.Standard, 'a');
-    expect(nodes.length).toBe(3);
+    expect(nodes.length).toBe(5);
     for (const n of nodes) {
       expect(n.branch).toBe('a');
     }
@@ -116,7 +135,7 @@ describe('getBranchNodes', () => {
 
   it('returns only branch-b nodes for a weapon', () => {
     const nodes = getBranchNodes(WeaponType.TeslaCoil, 'b');
-    expect(nodes.length).toBe(3);
+    expect(nodes.length).toBe(5);
     for (const n of nodes) {
       expect(n.branch).toBe('b');
     }
@@ -127,6 +146,8 @@ describe('getBranchNodes', () => {
     expect(nodes[0].nodeIndex).toBe(1);
     expect(nodes[1].nodeIndex).toBe(2);
     expect(nodes[2].nodeIndex).toBe(3);
+    expect(nodes[3].nodeIndex).toBe(4);
+    expect(nodes[4].nodeIndex).toBe(5);
   });
 });
 
@@ -136,8 +157,12 @@ describe('plasma_mortar node ids', () => {
     expect(ids).toContain('plasma_mortar_a_1');
     expect(ids).toContain('plasma_mortar_a_2');
     expect(ids).toContain('plasma_mortar_a_3');
+    expect(ids).toContain('plasma_mortar_a_4');
+    expect(ids).toContain('plasma_mortar_a_5');
     expect(ids).toContain('plasma_mortar_b_1');
     expect(ids).toContain('plasma_mortar_b_2');
     expect(ids).toContain('plasma_mortar_b_3');
+    expect(ids).toContain('plasma_mortar_b_4');
+    expect(ids).toContain('plasma_mortar_b_5');
   });
 });
