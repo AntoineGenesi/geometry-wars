@@ -220,7 +220,7 @@ export class WeaponPickup {
     if (!this.active) return false;
 
     if (playerWorldPos) {
-      return playerWorldPos.distanceTo(this._surfaceWorldPos) < PICKUP_WORLD_RADIUS;
+      return playerWorldPos.distanceTo(this._surfaceWorldPos) < PICKUP_WORLD_RADIUS * this.mapSizeScaleFactor;
     }
 
     // UV fallback with shortest-path wrapping for seam-safe distance
