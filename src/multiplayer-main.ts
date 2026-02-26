@@ -73,6 +73,7 @@ import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies, getMapSizeSc
 import { WeaponMasteryManager } from './buffs/WeaponMasteryManager';
 import { MasteryStore } from './systems/MasteryStore';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
+import { initI18n } from './i18n';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -204,7 +205,8 @@ function orientPlayerOnSurface(
 // Main multiplayer game
 // ---------------------------------------------------------------------------
 
-function main(): void {
+async function main(): Promise<void> {
+  await initI18n();
   const sound = getSoundEngine();
   sound.init();
   sound.resume();

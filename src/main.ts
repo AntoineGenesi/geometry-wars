@@ -107,6 +107,7 @@ import {
   setupShockwaveEffect,
   makeSurfaceTransformFn as sharedMakeSurfaceTransformFn,
 } from './rendering/SharedGameSetup';
+import { initI18n } from './i18n';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -2018,6 +2019,9 @@ function isQuickStartMode(): { enabled: boolean; surface?: SurfaceType; seed?: n
   return { enabled: true, surface, seed };
 }
 
+(async () => {
+  await initI18n();
+
 const quickStartConfig = isQuickStartMode();
 
 if (quickStartConfig.enabled) {
@@ -2092,3 +2096,4 @@ if (quickStartConfig.enabled) {
     }
   });
 }
+})();
