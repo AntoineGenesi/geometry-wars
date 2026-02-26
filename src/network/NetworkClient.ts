@@ -551,6 +551,15 @@ export class NetworkClient {
   }
 
   /**
+   * Send exit-to-voting command (host only).
+   * Ends the current match and transitions all players to the voting screen.
+   */
+  sendExitToVoting(): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('exit_to_voting');
+  }
+
+  /**
    * Send a vote for the next game configuration.
    * choice format: 'surface:mode:size' e.g. 'sphere:waves:medium'
    */

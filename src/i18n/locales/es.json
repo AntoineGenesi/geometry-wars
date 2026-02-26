@@ -122,6 +122,7 @@
     "performanceGraphs": "[ES] PERFORMANCE GRAPHS",
     "music": "[ES] MUSIC: {{name}}",
     "exitToMenu": "[ES] EXIT TO MENU",
+    "exitToVoting": "[ES] EXIT TO VOTING SCREEN",
     "endGameForAll": "[ES] END GAME FOR ALL",
     "stopServer": "[ES] STOP SERVER",
     "hint": "[ES] Press ESC to resume | M to mute | N to cycle music",

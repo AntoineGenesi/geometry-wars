@@ -332,6 +332,13 @@ export class GameRoom extends Room<GameState> {
       this.logger.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by host`);
     });
 
+    this.onMessage('exit_to_voting', (client) => {
+      if (client.sessionId !== this.state.hostId) return;
+      if (this.state.roomPhase !== 'playing') return;
+      this.logger.log('[GameRoom] Host exited to voting screen');
+      this.transitionToVoting();
+    });
+
     this.onMessage('end_game', (client) => {
       if (client.sessionId !== this.state.hostId) return;
       this.logger.log('[GameRoom] Host ended the game');
@@ -2079,6 +2086,7 @@ export class GameRoom extends Room<GameState> {
   private transitionToVoting() {
     this.state.roomPhase = 'voting';
     this.state.gameOver = true;  // backward compat: existing client code reads gameOver
+    this.state.isPaused = false; // clear any in-game pause so voting screen shows cleanly
     this.state.votingCountdown = VOTING_COUNTDOWN_SECS;
     this.state.voteMap.clear();
     this.state.readyMap.clear();

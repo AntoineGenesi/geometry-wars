@@ -1121,6 +1121,9 @@ async function main() {
         network.sendPause(paused);
       }
     },
+    onExitToVoting: () => {
+      network.sendExitToVoting();
+    },
     onEndGame: () => {
       network.sendEndGame();
       network.disconnect();
