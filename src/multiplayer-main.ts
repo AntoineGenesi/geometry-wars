@@ -72,6 +72,8 @@ import { GlowTrail } from './effects/GlowTrail';
 import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies, getMapSizeScaleFactor } from './core/MapSize';
 import { WeaponMasteryManager } from './buffs/WeaponMasteryManager';
 import { MasteryStore } from './systems/MasteryStore';
+import { MasteryPointStore } from './systems/MasteryPointStore';
+import { MatchUpgradeTracker } from './systems/MatchUpgradeTracker';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
 import { initI18n } from './i18n';
 
@@ -165,7 +167,7 @@ const _bulletSyncDir = new THREE.Vector3();
 // Surface transform helper (for enemies/geoms that still use UV)
 // ---------------------------------------------------------------------------
 
-function makeSurfaceTransformFn(surface: Surface) {
+function makeSurfaceTransformFn(surface: Surface, scaleFactor: number = 1.0) {
   return (u: number, v: number): {
     position: THREE.Vector3;
     normal: THREE.Vector3;
@@ -173,6 +175,9 @@ function makeSurfaceTransformFn(surface: Surface) {
     bitangent: THREE.Vector3;
   } => {
     const pt: SurfacePoint = surface.getPoint(u, v);
+    if (scaleFactor !== 1.0) {
+      pt.position.multiplyScalar(scaleFactor);
+    }
     return {
       position: pt.position,
       normal: pt.normal,
@@ -215,6 +220,7 @@ async function main(): Promise<void> {
   const playerCount = getPlayerCountFromURL();
   const level: LevelDefinition = ADVENTURE_LEVELS[0];
   const surfaceType = getSurfaceTypeFromURL();
+  const resolvedMapSize = getMapSizeFromURL(surfaceType);
 
   // -- Game engine --
   const game = new Game({
@@ -271,6 +277,13 @@ async function main(): Promise<void> {
 
   const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
   game.scene.add(surface.group);
+
+  // Apply map size scale to surface geometry and track factor for entity placement
+  const mapSizeScaleFactor = getMapSizeScaleFactor(resolvedMapSize);
+  if (mapSizeScaleFactor !== 1.0) {
+    surface.group.scale.setScalar(mapSizeScaleFactor);
+    console.log(`[MapSize] ${surfaceType} → ${resolvedMapSize} (scale: ${mapSizeScaleFactor}x)`);
+  }
 
   surface.mesh.material = new THREE.MeshBasicMaterial({
     color: 0x0a0020,
@@ -367,9 +380,12 @@ async function main(): Promise<void> {
   game.renderOverride = () => splitRenderer.render();
 
   // -- Shared systems --
-  const getTransform = makeSurfaceTransformFn(surface);
+  // Pass mapSizeScaleFactor so entity positions match the scaled surface geometry
+  const getTransform = makeSurfaceTransformFn(surface, mapSizeScaleFactor);
   const bulletPool = new BulletPool();
   bulletPool.setMeshSurface(meshSurface);
+  // Extend bullet lifetime proportional to map scale so bullets traverse larger maps
+  bulletPool.lifetimeMultiplier = mapSizeScaleFactor;
   game.scene.add(bulletPool.root);
 
   // -- GPU instanced bullet rendering (reduces draw calls from 1-per-bullet to 1-per-type) --
@@ -479,7 +495,9 @@ async function main(): Promise<void> {
 
   // -- Enemy spawner --
   const enemySpawner = new EnemySpawner(game.scene, getTransform);
-  enemySpawner.setSurfaceSpeedScale(surface.speedScale);
+  // Divide by mapSizeScaleFactor: on larger maps the surface is physically bigger,
+  // so UV-speed must be reduced to maintain sphere-equivalent traversal time.
+  enemySpawner.setSurfaceSpeedScale(surface.speedScale / mapSizeScaleFactor);
   enemySpawner.setSurface(surface);
   enemySpawner.setMeshSurface(meshSurface);
 
@@ -571,10 +589,14 @@ async function main(): Promise<void> {
   // -- Per-player weapon managers --
   const weaponManagers: WeaponManager[] = [];
   const superStateManagers: SuperStateManager[] = [];
+  // Per-player in-match upgrade trackers (activate mastery-unlocked nodes during a match)
+  const matchUpgradeTrackers: MatchUpgradeTracker[] = [];
 
   // -- Cross-game mastery (player 1 only — device-wide persistence) --
   const weaponMasteryP1 = new WeaponMasteryManager();
   const masteryStore = MasteryStore.load();
+  // MasteryPointStore: which upgrade nodes are permanently unlocked (used by MatchUpgradeTracker)
+  const masteryPointStore = MasteryPointStore.load();
   /** Shared enemy death handler */
   function handleEnemyDeath(enemy: BaseEnemy, killerPlayerId: number, weaponType?: WeaponType): void {
     const enemyType = enemy.constructor.name.toLowerCase();
@@ -602,6 +624,10 @@ async function main(): Promise<void> {
         perfLogger.recordWeaponKill(weaponType, '');
         weaponMasteryP1.recordKill(weaponType);
       }
+      // In-match upgrade tracker: every player tracks kills to activate mastery nodes mid-match
+      if (weaponType && matchUpgradeTrackers[killerPlayerId]) {
+        matchUpgradeTrackers[killerPlayerId].recordKill(weaponType);
+      }
     }
     const killerPlayer = players[killerPlayerId];
     if (killerPlayer) {
@@ -628,13 +654,14 @@ async function main(): Promise<void> {
 
     if (Math.random() < 0.08) {
       const wpnType = getRandomWeaponType();
-      const wpnPickup = new WeaponPickup(wpnType, u, v);
+      // Pass mapSizeScaleFactor so collision radius scales inversely with map size
+      const wpnPickup = new WeaponPickup(wpnType, u, v, mapSizeScaleFactor);
       game.scene.add(wpnPickup.mesh);
       weaponPickups.push(wpnPickup);
     }
     if (Math.random() < 0.05) {
       const ssType = SUPER_STATE_TYPES[Math.floor(Math.random() * SUPER_STATE_TYPES.length)];
-      const ssPickup = new SuperStatePickup(ssType, u, v);
+      const ssPickup = new SuperStatePickup(ssType, u, v, mapSizeScaleFactor);
       game.scene.add(ssPickup.mesh);
       superPickups.push(ssPickup);
     }
@@ -713,7 +740,13 @@ async function main(): Promise<void> {
   }
 
   for (let i = 0; i < playerCount; i++) {
-    weaponManagers.push(createWeaponManager(i));
+    const wm = createWeaponManager(i);
+    weaponManagers.push(wm);
+    // Create per-player MatchUpgradeTracker and wire it into the weapon manager so
+    // mastery-unlocked upgrade nodes activate mid-match (mirrors SP main.ts behaviour).
+    const upgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+    matchUpgradeTrackers.push(upgradeTracker);
+    wm.setUpgradeTracker(upgradeTracker);
     superStateManagers.push(new SuperStateManager());
     weaponHUDs.push(new WeaponHUD());
   }
@@ -1548,6 +1581,41 @@ async function main(): Promise<void> {
           }
         }
       });
+    }
+
+    // Pickup UV-distance dimming (mirrors enemy dimming, so pickups on far side are also dimmed)
+    // SpawnIndicator arrow children are NOT dimmed (they are Sprite, not Mesh) so remain visible.
+    const dimPickupMesh = (pickupU: number, pickupV: number, mesh: THREE.Group) => {
+      const puRaw = Math.abs(pickupU - playerU);
+      const pvRaw = Math.abs(pickupV - playerV);
+      const pu = Math.min(puRaw, 1.0 - puRaw);
+      const pv = _mpWrapsV ? Math.min(pvRaw, 1.0 - pvRaw) : pvRaw;
+      const uvDist = Math.sqrt(pu * pu + pv * pv);
+      let vis: number;
+      if (uvDist <= _mpSurfaceNearUV) {
+        vis = 1.0;
+      } else if (uvDist >= _mpSurfaceFarUV) {
+        vis = _mpSurfaceDimOp;
+      } else {
+        const t = (uvDist - _mpSurfaceNearUV) / (_mpSurfaceFarUV - _mpSurfaceNearUV);
+        const st = t * t * (3.0 - 2.0 * t);
+        vis = 1.0 - st * (1.0 - _mpSurfaceDimOp);
+      }
+      mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material) {
+          const mat = child.material as THREE.MeshBasicMaterial;
+          if (mat.transparent !== undefined) {
+            mat.transparent = true;
+            mat.opacity = vis;
+          }
+        }
+      });
+    };
+    for (const wp of weaponPickups) {
+      if (wp.active) dimPickupMesh(wp.surfaceU, wp.surfaceV, wp.mesh);
+    }
+    for (const sp of superPickups) {
+      if (sp.active) dimPickupMesh(sp.surfaceU, sp.surfaceV, sp.mesh);
     }
 
     // Update per-viewport HUD
