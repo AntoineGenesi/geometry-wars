@@ -196,11 +196,18 @@ export class RenderLoop {
 
         // (b) Proximity override: enemies very close on the surface are always visible,
         // overriding depth-occlusion. Applied after min-clamp so it can only raise visibility.
-        if (uvDist <= PROXIMITY_NEAR_UV) {
-          visibility = Math.max(visibility, 1.0);
-        } else if (uvDist <= PROXIMITY_FADE_UV) {
-          const t = (uvDist - PROXIMITY_NEAR_UV) / (PROXIMITY_FADE_UV - PROXIMITY_NEAR_UV);
-          visibility = Math.max(visibility, 1.0 - t);
+        // EXCEPTION: suppress the override when player and enemy are on opposite wall sides
+        // (e.g., outer vs inner tunnel wall on cube-tunnel). These entities are physically
+        // separated by the wall — their UV distance is small only because the lip transition
+        // is narrow, not because they're actually close together.
+        const oppositeWalls = ctx.surface.areOnOppositeWallSides(playerV, enemy.surfacePosition.v);
+        if (!oppositeWalls) {
+          if (uvDist <= PROXIMITY_NEAR_UV) {
+            visibility = Math.max(visibility, 1.0);
+          } else if (uvDist <= PROXIMITY_FADE_UV) {
+            const t = (uvDist - PROXIMITY_NEAR_UV) / (PROXIMITY_FADE_UV - PROXIMITY_NEAR_UV);
+            visibility = Math.max(visibility, 1.0 - t);
+          }
         }
       }
 

@@ -2,9 +2,25 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-02-17
+> **Last updated:** 2026-02-27
 >
 > **Visual Test Results (2026-02-12, commit a722f6a):** Headless Puppeteer + SwiftShader testing completed. Items marked `[V5 PASS]` were verified visually at Level 5. Items marked `[V5 INCONCLUSIVE]` could not be tested headless (need real browser). See `tasks/visual-test-human-todos.md` and `tasks/lan-visual-testing.md` for full details.
+
+---
+
+## S37: Cube Tunnel Enemy Visibility (opposite-wall dimming)
+
+Enemies on the inner tunnel wall should stay dim, not brighten when the player is near the lip.
+
+**What to test:**
+- [ ] Select **Cube Tunnel** map and start playing
+- [ ] Move toward any tunnel face (outer wall) and approach the top lip
+- [ ] Enemies visible through/on the inner wall should appear **dim**, not bright
+- [ ] Enemies actually adjacent to you on the *same* outer wall should remain **lit**
+- [ ] No flickering when standing near the outer wall top (V≈0.44)
+- [ ] Enemy dimming transitions smoothly as you move away from an enemy on the same wall
+
+**The bug (before fix):** Standing near the top of an outer face (V≈0.44) caused enemies just inside the inner wall (V≈0.51) to pop to full brightness, despite the physical wall separating them. UV distance was only 0.07 (below 0.08 threshold), triggering the proximity override incorrectly.
 
 ---
 
