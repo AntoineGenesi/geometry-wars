@@ -5,6 +5,7 @@ import { SettingsMenu, type GraphicsSettings } from './SettingsMenu';
 import { BackgroundMusic } from '../audio/BackgroundMusic';
 import { PerformanceLogger } from '../core/PerformanceLogger';
 import { createQRCodeDisplay } from './QRCode';
+import { t, onLanguageChange } from '../i18n';
 
 /**
  * Pause menu overlay.
@@ -80,6 +81,7 @@ export class PauseMenu {
   private visualMode: 'pixelated' | 'modern' = 'pixelated';
   private joinUrl: string | null = null;
   private isInLookMode: boolean = false;
+  private _langUnsub: (() => void) | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -89,96 +91,105 @@ export class PauseMenu {
     this.container.classList.add('hidden');
     document.body.appendChild(this.container);
     this.attachEventListeners();
+
+    this._langUnsub = onLanguageChange(() => {
+      this.container.innerHTML = this.createMenuHTML();
+      this.attachEventListeners();
+      this.updateVisualModeLabel();
+      this.updateMusicLabel();
+      if (this.isHost) this.setIsHost(this.isHost);
+      if (this.joinUrl) this.setJoinUrl(this.joinUrl);
+    });
   }
 
   private createMenuHTML(): string {
     return `
       <div class="pause-content">
-        <h1 class="pause-title">PAUSED</h1>
+        <h1 class="pause-title">${t('pauseMenu.title')}</h1>
 
         <div class="pause-layout">
           <div class="pause-buttons">
             <button class="pause-btn resume-btn" data-action="resume">
               <span class="btn-icon">▶</span>
-              <span>RESUME</span>
+              <span>${t('pauseMenu.resume')}</span>
             </button>
             <button class="pause-btn controls-btn" data-action="controls">
               <span class="btn-icon">⌨</span>
-              <span>CONTROLS</span>
+              <span>${t('pauseMenu.controls')}</span>
             </button>
             <button class="pause-btn weapons-btn" data-action="weapons">
               <span class="btn-icon">⚡</span>
-              <span>WEAPONS</span>
+              <span>${t('pauseMenu.weapons')}</span>
             </button>
             <button class="pause-btn settings-btn" data-action="settings">
               <span class="btn-icon">⚙</span>
-              <span>SETTINGS</span>
+              <span>${t('pauseMenu.settings')}</span>
             </button>
             <button class="pause-btn visual-mode-btn" data-action="visual-mode">
               <span class="btn-icon">🎨</span>
-              <span class="visual-mode-label">STYLE: PIXELATED</span>
+              <span class="visual-mode-label">${t('pauseMenu.stylePixelated')}</span>
             </button>
             <button class="pause-btn perf-graphs-btn" data-action="perf-graphs">
               <span class="btn-icon">📊</span>
-              <span>PERFORMANCE GRAPHS</span>
+              <span>${t('pauseMenu.performanceGraphs')}</span>
             </button>
             <button class="pause-btn music-btn" data-action="music">
               <span class="btn-icon">♪</span>
-              <span class="music-label">MUSIC: ELECTRONIC</span>
+              <span class="music-label">${t('pauseMenu.music', { name: 'ELECTRONIC' })}</span>
             </button>
             <button class="pause-btn exit-btn" data-action="exit">
               <span class="btn-icon">◀</span>
-              <span>EXIT TO MENU</span>
+              <span>${t('pauseMenu.exitToMenu')}</span>
             </button>
             <button class="pause-btn end-game-btn hidden" data-action="end-game">
               <span class="btn-icon">&#x2716;</span>
-              <span>END GAME FOR ALL</span>
+              <span>${t('pauseMenu.endGameForAll')}</span>
             </button>
             <button class="pause-btn stop-server-btn hidden" data-action="stop-server">
               <span class="btn-icon">&#x23F9;</span>
-              <span>STOP SERVER</span>
+              <span>${t('pauseMenu.stopServer')}</span>
             </button>
           </div>
 
           <div class="pause-stats-panel">
             <div class="stats-qr-section hidden">
-              <div class="stats-section-title">JOIN THIS GAME</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.joinThisGame')}</div>
               <div class="stats-qr-content"></div>
             </div>
             <div class="stats-level-section hidden">
-              <div class="stats-section-title">PLAYER LEVEL</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.playerLevel')}</div>
               <div class="stats-level-info"></div>
             </div>
             <div class="stats-companions-section hidden">
-              <div class="stats-section-title">COMPANIONS</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.companions')}</div>
               <div class="stats-companions-list"></div>
             </div>
             <div class="stats-cumulative-section hidden">
-              <div class="stats-section-title">CUMULATIVE BONUSES</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.cumulativeBonuses')}</div>
               <div class="stats-cumulative-list"></div>
             </div>
             <div class="stats-weapon-section">
-              <div class="stats-section-title">WEAPON</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.weapon')}</div>
               <div class="stats-weapon-info"></div>
             </div>
             <div class="stats-kills-section">
-              <div class="stats-section-title">TOTAL KILLS</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.totalKills')}</div>
               <div class="stats-kills-count">0</div>
             </div>
             <div class="stats-buffs-section">
-              <div class="stats-section-title">ACTIVE BUFFS</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.activeBuffs')}</div>
               <div class="stats-buffs-list"></div>
-              <div class="stats-no-buffs">No active buffs</div>
+              <div class="stats-no-buffs">${t('pauseMenu.stats.noActiveBuffs')}</div>
             </div>
             <div class="stats-perf-section">
-              <div class="stats-section-title">PERFORMANCE</div>
+              <div class="stats-section-title">${t('pauseMenu.stats.performance')}</div>
               <div class="stats-perf-content"></div>
             </div>
           </div>
         </div>
 
         <div class="pause-hint">
-          <p>Press ESC to resume | M to mute | N to cycle music</p>
+          <p>${t('pauseMenu.hint')}</p>
         </div>
       </div>
     `;
@@ -715,7 +726,7 @@ export class PauseMenu {
         const preset = this.bgMusic.cyclePreset();
         const name = this.bgMusic.getPresetDisplayName(preset);
         const label = this.container.querySelector('.music-label');
-        if (label) label.textContent = `MUSIC: ${name.toUpperCase()}`;
+        if (label) label.textContent = t('pauseMenu.music', { name: name.toUpperCase() });
       }
     });
 
@@ -835,7 +846,9 @@ export class PauseMenu {
   private updateVisualModeLabel(): void {
     const label = this.container.querySelector('.visual-mode-label');
     if (label) {
-      label.textContent = `STYLE: ${this.visualMode === 'pixelated' ? 'PIXELATED' : 'MODERN'}`;
+      label.textContent = this.visualMode === 'pixelated'
+        ? t('pauseMenu.stylePixelated')
+        : t('pauseMenu.styleModern');
     }
   }
 
@@ -904,7 +917,7 @@ export class PauseMenu {
     const label = this.container.querySelector('.music-label');
     if (label) {
       const name = this.bgMusic.getPresetDisplayName();
-      label.textContent = `MUSIC: ${name.toUpperCase()}`;
+      label.textContent = t('pauseMenu.music', { name: name.toUpperCase() });
     }
   }
 
@@ -1437,6 +1450,7 @@ export class PauseMenu {
    * Remove from DOM.
    */
   dispose(): void {
+    this._langUnsub?.();
     this.container.remove();
   }
 }

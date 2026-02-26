@@ -1,4 +1,5 @@
 import { SurfaceType } from '../surfaces/SurfaceFactory';
+import { t } from '../i18n';
 import { MapSize, getDefaultMapSizeForSurface, MAP_SIZE_LABELS } from '../core/MapSize';
 import { ADVENTURE_LEVELS } from '../core/LevelData';
 import { LevelCompleteScreen, type LevelProgress } from './LevelCompleteScreen';
@@ -132,13 +133,16 @@ export class StartMenu {
   private createSurfaceGridHTML(gridClass: string, selectedSurface: SurfaceType): string {
     const buttons = this.surfaces
       .map(
-        (s) => `
-        <button class="surface-btn${s.type === selectedSurface ? ' selected' : ''}"
-                data-surface="${s.type}">
-          <span class="icon">${s.icon}</span>
-          <span class="name">${s.name}</span>
-        </button>
-      `
+        (s) => {
+          const i18nKey = s.type.replace(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+          return `
+          <button class="surface-btn${s.type === selectedSurface ? ' selected' : ''}"
+                  data-surface="${s.type}">
+            <span class="icon">${s.icon}</span>
+            <span class="name">${t('menu.surfaces.' + i18nKey)}</span>
+          </button>
+        `;
+        }
       )
       .join('');
 

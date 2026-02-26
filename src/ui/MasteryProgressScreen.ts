@@ -10,6 +10,7 @@ import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
 import type { MasteryXPResult } from '../systems/MasteryStore';
 import { XP_THRESHOLDS } from '../systems/MasteryStore';
 import { getSoundEngine } from '../audio/SoundEngine';
+import { t } from '../i18n';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -306,12 +307,12 @@ export class MasteryProgressScreen {
 
     const title = document.createElement('h1');
     title.className = 'mastery-title';
-    title.textContent = 'WEAPON MASTERY';
+    title.textContent = t('mastery.title');
     content.appendChild(title);
 
     const subtitle = document.createElement('p');
     subtitle.className = 'mastery-subtitle';
-    subtitle.textContent = 'PROGRESS UPDATE';
+    subtitle.textContent = t('mastery.subtitle');
     content.appendChild(subtitle);
 
     const weaponList = document.createElement('div');
@@ -357,7 +358,7 @@ export class MasteryProgressScreen {
       const badgeEl = document.createElement('span');
       badgeEl.className = `mastery-level-badge${result.leveledUp ? ' levelup' : ''}`;
       const currentLevel = data.allLevels.get(result.weaponType) ?? result.levelAfter;
-      badgeEl.textContent = `Lv.${currentLevel}`;
+      badgeEl.textContent = t('mastery.levelBadge', { level: currentLevel });
       nameRow.appendChild(badgeEl);
 
       info.appendChild(nameRow);
@@ -385,7 +386,7 @@ export class MasteryProgressScreen {
       if (result.leveledUp && data.getBonusDescription) {
         const desc = data.getBonusDescription(result.weaponType, result.levelAfter);
         if (desc) {
-          unlockEl.innerHTML = `<span class="mastery-unlock-label">New Passive Unlocked</span> — ${desc}`;
+          unlockEl.innerHTML = `<span class="mastery-unlock-label">${t('mastery.newPassiveUnlocked')}</span> — ${desc}`;
         }
       }
       info.appendChild(unlockEl);
@@ -402,13 +403,13 @@ export class MasteryProgressScreen {
     const btnWrap = document.createElement('div');
     const btn = document.createElement('button');
     btn.className = 'mastery-continue-btn';
-    btn.textContent = 'CONTINUE';
+    btn.textContent = t('mastery.continueBtn');
     btn.addEventListener('click', () => this._continue());
     btnWrap.appendChild(btn);
 
     const hint = document.createElement('div');
     hint.className = 'mastery-continue-hint';
-    hint.textContent = 'ENTER / SPACE / CLICK';
+    hint.textContent = t('mastery.continueHint');
     btnWrap.appendChild(hint);
 
     content.appendChild(btnWrap);

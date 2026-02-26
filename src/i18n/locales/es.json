@@ -212,6 +212,7 @@
   },
   "hud": {
     "kills": "[ES] KILLS",
+    "mastered": "[ES] MASTERED",
     "killLog": {
       "streak": "[ES] STREAK",
       "rampage": "[ES] RAMPAGE",

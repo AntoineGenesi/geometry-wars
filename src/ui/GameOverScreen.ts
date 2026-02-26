@@ -4,6 +4,8 @@
  * Phase 2: Shows final score, leaderboard with names, continue button.
  */
 
+import { t } from '../i18n';
+
 interface HighScoreEntry {
   score: number;
   surface: string;
@@ -369,7 +371,7 @@ export class GameOverScreen {
     const submitBtn = this.container.querySelector<HTMLButtonElement>('.submit-score-btn');
 
     const doSubmit = () => {
-      const name = nameInput?.value.trim() || 'Player';
+      const name = nameInput?.value.trim() || t('gameOver.namePlaceholder');
       const note = noteInput?.value.trim() || '';
       this.saveLastName(name);
       const { isNewHighScore, rank } = this.saveScore(score, surfaceType, name, note);
@@ -399,7 +401,7 @@ export class GameOverScreen {
       const countdownEl = this.container.querySelector('.auto-transition-countdown');
 
       const tick = () => {
-        if (countdownEl) countdownEl.textContent = `Auto-submitting in ${remaining}s…`;
+        if (countdownEl) countdownEl.textContent = t('gameOver.autoSubmitting', { count: remaining });
         remaining--;
       };
       tick();
@@ -409,7 +411,7 @@ export class GameOverScreen {
         clearInterval(tickInterval);
         this.autoTransitionTimeout = null;
         // Auto-submit with whatever is in the input (or default)
-        const name = nameInput?.value.trim() || 'Player';
+        const name = nameInput?.value.trim() || t('gameOver.namePlaceholder');
         const note = noteInput?.value.trim() || '';
         this.saveLastName(name);
         const { isNewHighScore, rank } = this.saveScore(score, surfaceType, name, note);
@@ -432,41 +434,41 @@ export class GameOverScreen {
 
     return `
       <div class="content">
-        <h1 class="title">GAME OVER</h1>
+        <h1 class="title">${t('gameOver.title')}</h1>
 
         <div class="final-score">
           ${scoreLabel}: <span>${score.toLocaleString()}</span>
         </div>
 
         <div class="name-entry">
-          <h2>RECORD YOUR SCORE</h2>
-          <label for="gw-name-input">NAME</label>
+          <h2>${t('gameOver.recordScore')}</h2>
+          <label for="gw-name-input">${t('gameOver.nameLabelField')}</label>
           <input
             id="gw-name-input"
             class="name-input"
             type="text"
             maxlength="24"
-            placeholder="Player"
+            placeholder="${t('gameOver.namePlaceholder')}"
             value="${this.escapeHTML(lastName)}"
             autocomplete="off"
             spellcheck="false"
           />
-          <label for="gw-note-input">NOTE <span style="color:#446677">(optional)</span></label>
+          <label for="gw-note-input">${t('gameOver.noteLabelField')} <span style="color:#446677">${t('gameOver.noteOptional')}</span></label>
           <input
             id="gw-note-input"
             class="note-input"
             type="text"
             maxlength="60"
-            placeholder="e.g. first attempt, full combo..."
+            placeholder="${t('gameOver.notePlaceholder')}"
             autocomplete="off"
             spellcheck="false"
           />
-          <div class="name-entry-hint">ENTER to move to note · ENTER again to submit</div>
+          <div class="name-entry-hint">${t('gameOver.nameHint')}</div>
         </div>
 
         ${countdownHTML}
 
-        <button class="submit-score-btn">RECORD SCORE</button>
+        <button class="submit-score-btn">${t('gameOver.recordScoreBtn')}</button>
       </div>
     `;
   }
@@ -500,7 +502,7 @@ export class GameOverScreen {
       let remaining = Math.round(AUTO_TRANSITION_MS / 1000);
 
       const tick = () => {
-        if (countdownEl) countdownEl.textContent = `Voting screen in ${remaining}s…`;
+        if (countdownEl) countdownEl.textContent = t('gameOver.votingCountdown', { count: remaining });
         remaining--;
       };
       tick();
@@ -544,14 +546,14 @@ export class GameOverScreen {
     scoreLabel: string = 'SCORE',
   ): string {
     const newHighScoreHTML = isNewHighScore
-      ? `<div class="new-high-score">NEW HIGH SCORE!</div>`
+      ? `<div class="new-high-score">${t('gameOver.newHighScore')}</div>`
       : '';
 
     const scoreListHTML = highScores
       .slice(0, MAX_HIGH_SCORES)
       .map((entry, i) => {
         const isCurrent = i === rank - 1;
-        const displayName = entry.name || 'Player';
+        const displayName = entry.name || t('gameOver.namePlaceholder');
         const noteHTML = entry.note
           ? `<span class="player-note">${this.escapeHTML(entry.note)}</span>`
           : '';
@@ -571,18 +573,18 @@ export class GameOverScreen {
 
     const buttonsHTML = mode === 'network'
       ? `
-        <button class="continue-btn return-to-menu-btn">RETURN TO MENU</button>
+        <button class="continue-btn return-to-menu-btn">${t('gameOver.returnToMenu')}</button>
         <div class="auto-transition-countdown"></div>
-        <div class="hint">Press ENTER to go to vote now · click RETURN TO MENU to disconnect</div>
+        <div class="hint">${t('gameOver.hintVote')}</div>
       `
       : `
-        <button class="continue-btn">CONTINUE</button>
-        <div class="hint">Press ENTER or click to continue</div>
+        <button class="continue-btn">${t('gameOver.continueBtn')}</button>
+        <div class="hint">${t('gameOver.hintContinue')}</div>
       `;
 
     return `
       <div class="content">
-        <h1 class="title">GAME OVER</h1>
+        <h1 class="title">${t('gameOver.title')}</h1>
 
         <div class="final-score">
           ${scoreLabel}: <span>${score.toLocaleString()}</span>
@@ -591,9 +593,9 @@ export class GameOverScreen {
         ${newHighScoreHTML}
 
         <div class="high-scores">
-          <h2>HIGH SCORES</h2>
+          <h2>${t('gameOver.highScores')}</h2>
           <ul class="score-list">
-            ${scoreListHTML || '<li>No scores yet</li>'}
+            ${scoreListHTML || `<li>${t('gameOver.noScores')}</li>`}
           </ul>
         </div>
 
@@ -659,7 +661,7 @@ export class GameOverScreen {
       score,
       surface,
       date: new Date().toISOString().split('T')[0],
-      name: name || 'Player',
+      name: name || t('gameOver.namePlaceholder'),
       ...(note ? { note } : {}),
     };
 

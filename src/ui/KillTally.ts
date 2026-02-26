@@ -9,6 +9,7 @@
  */
 
 import { shapeIconSVG, getEnemyColor } from './KillIcons';
+import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -190,7 +191,7 @@ export class KillTally {
     const entries = tally.sortedEntries.slice(0, MAX_DISPLAYED_TYPES);
 
     // Build HTML
-    let html = `<div class="kill-tally-header" style="color:${accentColor}">KILLS</div>`;
+    let html = `<div class="kill-tally-header" style="color:${accentColor}">${t('hud.kills')}</div>`;
 
     for (const entry of entries) {
       const enemyColor = getEnemyColor(entry.type);

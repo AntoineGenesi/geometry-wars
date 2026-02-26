@@ -3,6 +3,8 @@
  * Shows star rating, score, and next level / replay options.
  */
 
+import { t } from '../i18n';
+
 const PROGRESS_KEY = 'geometry_wars_level_progress';
 
 export interface LevelProgress {
@@ -147,24 +149,24 @@ export class LevelCompleteScreen {
     ).join('');
 
     const nextThreshold = stars < 3
-      ? `Next star at ${starThresholds[Math.min(stars, 2)].toLocaleString()}`
-      : 'Maximum stars earned!';
+      ? t('levelComplete.nextStarAt', { score: starThresholds[Math.min(stars, 2)].toLocaleString() })
+      : t('levelComplete.maxStars');
 
     const nextBtnHTML = hasNextLevel
-      ? `<button class="btn btn-next" data-action="next">NEXT LEVEL</button>`
+      ? `<button class="btn btn-next" data-action="next">${t('levelComplete.nextLevel')}</button>`
       : '';
 
     this.container.innerHTML = `
       <div class="content">
-        <h1 class="title">COMPLETE</h1>
+        <h1 class="title">${t('levelComplete.title')}</h1>
         <div class="level-name">${levelName}</div>
         <div class="stars">${starHTML}</div>
         <div class="score-info">${score.toLocaleString()}</div>
         <div class="next-threshold">${nextThreshold}</div>
         <div class="buttons">
           ${nextBtnHTML}
-          <button class="btn btn-replay" data-action="replay">REPLAY</button>
-          <button class="btn btn-menu" data-action="menu">MENU</button>
+          <button class="btn btn-replay" data-action="replay">${t('levelComplete.replay')}</button>
+          <button class="btn btn-menu" data-action="menu">${t('levelComplete.menu')}</button>
         </div>
       </div>
     `;

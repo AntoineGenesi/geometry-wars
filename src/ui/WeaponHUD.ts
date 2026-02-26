@@ -11,6 +11,7 @@
 
 import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
 import type { WeaponInventoryEntry } from '../weapons/WeaponManager';
+import { t } from '../i18n';
 
 /** Short symbol/letter for each weapon type (displayed inside the icon) */
 const WEAPON_SYMBOLS: Record<WeaponType, string> = {
@@ -451,7 +452,7 @@ export class WeaponHUD {
 
       const masteredEl = document.createElement('span');
       masteredEl.className = 'weapon-hud-mastered';
-      masteredEl.textContent = 'MASTERED';
+      masteredEl.textContent = t('hud.mastered');
       masteredEl.style.color = colorHex;
       masteredEl.style.display = 'none';
 

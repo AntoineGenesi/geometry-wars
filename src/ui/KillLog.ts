@@ -19,6 +19,7 @@
  */
 
 import { shapeIconSVG, colorToHex, DISPLAY_NAMES } from './KillIcons';
+import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // KillLog entry data
@@ -308,7 +309,7 @@ export class KillLog {
     const hexColor = colorToHex(entry.color);
 
     if (entry.count >= UNSTOPPABLE_THRESHOLD) {
-      entry.streakEl.textContent = 'UNSTOPPABLE';
+      entry.streakEl.textContent = t('hud.killLog.unstoppable');
       entry.streakEl.classList.add('visible');
       entry.streakEl.style.color = '#ffffff';
       entry.streakEl.style.textShadow = `0 0 8px ${hexColor}, 0 0 16px ${hexColor}`;
@@ -317,7 +318,7 @@ export class KillLog {
       entry.el.style.borderLeftWidth = '3px';
       entry.el.style.background = `rgba(${this.hexToRgb(hexColor)}, 0.15)`;
     } else if (entry.count >= RAMPAGE_THRESHOLD) {
-      entry.streakEl.textContent = 'RAMPAGE';
+      entry.streakEl.textContent = t('hud.killLog.rampage');
       entry.streakEl.classList.add('visible');
       entry.streakEl.style.color = hexColor;
       entry.streakEl.style.textShadow = `0 0 6px ${hexColor}`;
@@ -326,7 +327,7 @@ export class KillLog {
       entry.el.style.borderLeftWidth = '3px';
       entry.el.style.background = 'rgba(0, 0, 20, 0.65)';
     } else if (entry.count >= STREAK_THRESHOLD) {
-      entry.streakEl.textContent = 'STREAK';
+      entry.streakEl.textContent = t('hud.killLog.streak');
       entry.streakEl.classList.add('visible');
       entry.streakEl.style.color = hexColor;
       entry.streakEl.style.textShadow = `0 0 4px ${hexColor}`;
