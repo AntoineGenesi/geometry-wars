@@ -105,6 +105,7 @@ export class BuffPickup {
       transparent: true,
       opacity: 0.8,
     });
+    outerMat.userData.baseOpacity = 0.8;
     const outerMesh = new THREE.Mesh(outerGeom, outerMat);
     outerMesh.rotation.set(Math.PI / 4, 0, Math.PI / 4);
     group.add(outerMesh);
@@ -116,6 +117,7 @@ export class BuffPickup {
       transparent: true,
       opacity: 0.6,
     });
+    innerMat.userData.baseOpacity = 0.6;
     const innerMesh = new THREE.Mesh(innerGeom, innerMat);
     innerMesh.rotation.set(Math.PI / 4, 0, Math.PI / 4);
     innerMesh.name = 'core';
@@ -197,6 +199,11 @@ export class BuffPickup {
 
     // Animate spawn indicator (visible for first 30s)
     updateSpawnIndicator(this.mesh, this.age, totalTime);
+
+    // Track age factor for surface dimming in RenderLoop
+    this.mesh.userData.ageFactor = this.age > this.fadeStart
+      ? Math.max(0, 1 - (this.age - this.fadeStart) / (this.maxAge - this.fadeStart))
+      : 1.0;
 
     // Fade near end of life
     if (this.age > this.fadeStart) {
