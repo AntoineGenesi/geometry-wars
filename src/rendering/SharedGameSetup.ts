@@ -57,8 +57,8 @@ export function createStandardSurfaceConfig(
     // Visual appearance
     gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
     surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
-    surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.18,
-    gridOpacity: savedStyle?.gridOpacity ?? 0.3,
+    surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.05,
+    gridOpacity: savedStyle?.gridOpacity ?? 0.10,
     wireframeOnly: savedStyle?.wireframeOnly ?? false,
     gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
     gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,

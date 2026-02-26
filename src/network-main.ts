@@ -481,7 +481,7 @@ async function main() {
   const _tunnelRaycaster = new THREE.Raycaster();
   const _tunnelToPlayer = new THREE.Vector3();
   const _tunnelToPlayerDir = new THREE.Vector3();
-  let _currentGridOpacity = 0.3; // matches default gridOpacity
+  let _currentGridOpacity = 0.10; // matches default gridOpacity
   const _gridFadeSpeed = 3.0; // opacity per second convergence rate
 
   // -- CameraController: orbit (middle mouse), zoom (scroll wheel), follow (same as single-player) --
@@ -3563,7 +3563,7 @@ async function main() {
         const isBlocked = hits.length > 0;
 
         // Grid opacity: fade when blocked (matches SP behavior)
-        const baseGridOpacity = (savedStyle?.gridOpacity ?? 0.3);
+        const baseGridOpacity = (savedStyle?.gridOpacity ?? 0.10);
         const targetGridOpacity = isBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
         _currentGridOpacity += (targetGridOpacity - _currentGridOpacity) * Math.min(1, _gridFadeSpeed * netRenderDt);
         const gridMat = surf.gridMesh?.material as THREE.LineBasicMaterial | undefined;

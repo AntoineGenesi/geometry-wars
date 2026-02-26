@@ -515,8 +515,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         targetRadius: level.surfaceScale || 8,
         gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
         surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
-        surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.18,
-        gridOpacity: savedStyle?.gridOpacity ?? 0.3,
+        surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.05,
+        gridOpacity: savedStyle?.gridOpacity ?? 0.10,
         gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
         gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
       });
@@ -1598,8 +1598,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Tunnel transparency state (used by render loop) --
   const tunnelRaycaster = new THREE.Raycaster();
-  const baseSurfaceOpacity = (surfaceConfig.surfaceOpacity as number) ?? 0.18;
-  const baseGridOpacity = (surfaceConfig.gridOpacity as number) ?? 0.3;
+  const baseSurfaceOpacity = (surfaceConfig.surfaceOpacity as number) ?? 0.05;
+  const baseGridOpacity = (surfaceConfig.gridOpacity as number) ?? 0.10;
 
   // -- Game Context: bundles all shared state for GameLoop and RenderLoop --
   const ctx: GameContext = {

@@ -511,7 +511,7 @@ export class EnemyInstanceManager {
     const material = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: new THREE.Color(0xffffff),
-      emissiveIntensity: 2.0,
+      emissiveIntensity: 2.5,
       metalness: 0.1,
       roughness: 0.3,
       transparent: true,
@@ -805,7 +805,7 @@ export class EnemyInstanceManager {
     const material = new THREE.MeshStandardMaterial({
       color: 0xffffff, // White - actual color comes from instanceColor
       emissive: baseColor.clone(),
-      emissiveIntensity: templateMaterial ? Math.max((templateMaterial as THREE.MeshStandardMaterial).emissiveIntensity, 1.2) : 1.2,
+      emissiveIntensity: templateMaterial ? Math.max((templateMaterial as THREE.MeshStandardMaterial).emissiveIntensity, 2.0) : 2.0,
       metalness: templateMaterial ? (templateMaterial as THREE.MeshStandardMaterial).metalness : 0.3,
       roughness: templateMaterial ? (templateMaterial as THREE.MeshStandardMaterial).roughness : 0.4,
       transparent: true,

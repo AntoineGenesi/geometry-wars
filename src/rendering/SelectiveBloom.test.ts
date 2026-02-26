@@ -51,8 +51,8 @@ const GRID_COLOR = 0x2a2aaa;     // medium blue
 // Enemy / bullet emissive intensities
 // ---------------------------------------------------------------------------
 
-const ENEMY_EMISSIVE_MIN = 1.2;   // EnemyInstanceManager minimum
-const ENEMY_EMISSIVE_DEFAULT = 2.0; // EnemyInstanceManager default
+const ENEMY_EMISSIVE_MIN = 2.0;   // EnemyInstanceManager minimum
+const ENEMY_EMISSIVE_DEFAULT = 2.5; // EnemyInstanceManager default
 const BULLET_EMISSIVE = 0.6;      // BulletInstanceManager
 const PLAYER_EMISSIVE = 0.4;      // GeometryBuilder default for ship mesh
 
