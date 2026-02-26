@@ -8,6 +8,20 @@
 
 ---
 
+## S35: Mobile Pause Menu Access (LAN Multiplayer)
+
+Bug: On mobile in LAN mode, the ⏸ pause button did nothing (the `onPause` callback was never wired in `network-main.ts`). Also, the "STOP SERVER" button appeared in the main HUD on mobile, cluttering the screen — it should only be in the pause menu (host-only).
+
+Fix: Wired `input.onPause` in `network-main.ts` to mirror the Escape key handler. Added `!mobile` guard to all `stopServerBtn.style.display = 'block'` assignments.
+
+- [ ] **Mobile pause button works (host)** — On mobile in LAN, tap ⏸ (top-right corner) as the HOST. The pause menu should open, game freezes for all players. Tap ⏸ again (or Resume) to resume.
+- [ ] **Mobile pause button works (non-host)** — On mobile in LAN, tap ⏸ as a NON-HOST. The local menu should open ("Game continues — only the host can pause the server"). Resume button closes it.
+- [ ] **Stop server in pause menu (host only)** — Open pause menu as host. "STOP SERVER" button should be visible. As non-host, it should not appear.
+- [ ] **Stop server NOT in main HUD on mobile** — When playing as host on mobile, the STOP SERVER button should NOT appear in the corner of the screen during gameplay. It should only be accessible from the pause menu.
+- [ ] **Non-mobile HUD unaffected** — On desktop/keyboard, "STOP SERVER" button still appears in the HUD corner as before (host only).
+
+---
+
 ## S35: Torus Hit Detection Fix (LAN Multiplayer)
 
 Bug: On torus map in LAN multiplayer, hit detection was completely broken. Enemies walked through players without dealing damage. Root causes: (1) server used raw Euclidean UV distance (no wrap-around), so entities near V seam had inflated distance (0.94 instead of 0.06); (2) enemy V coordinate was clamped to 0.05-0.95 (enemies piled up at boundaries and couldn't cross V seam); (3) enemy tracking direction was wrong across V seam; (4) bullet V was clamped instead of wrapped.
