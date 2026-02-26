@@ -163,7 +163,6 @@ const WAVE_TYPE_REMAP: Record<string, string> = {
   // Splitting / giant types without client mapping
   giant_wanderer: 'titan_grunt',
   giant_rocket: 'titan_spinner',
-  giant_snake: 'titan_weaver',
   giant_neutron: 'titan_grunt',
   splitter: 'titan_weaver',
 };

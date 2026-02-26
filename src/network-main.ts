@@ -315,6 +315,7 @@ const SERVER_TO_SPAWNER_TYPE: Record<string, EnemyType> = {
   titan_grunt: 'titan_grunt',
   titan_spinner: 'titan_spinner',
   titan_weaver: 'titan_weaver',
+  giant_snake: 'giant_snake',
   proton: 'neutron', // closest visual match
   ufo: 'wanderer', // closest visual match
   mines: 'grunt', // closest visual match

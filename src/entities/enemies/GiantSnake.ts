@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { BaseEnemy } from './BaseEnemy';
 import { buildCircle3D } from '../../utils/GeometryBuilder';
 
+// Pre-allocated temp — zero per-frame allocations
+const _gsSegMatrix = new THREE.Matrix4();
+
 /**
  * Giant Snake - oversized snake that breaks into 2 regular snakes on death.
  * Chases player with S-pattern movement, larger head and segments.
@@ -41,7 +44,7 @@ export class GiantSnake extends BaseEnemy {
     for (let i = 0; i < this.segmentCount; i++) {
       const segSize = 0.28 - i * 0.02;
       const mesh = buildCircle3D(Math.max(segSize, 0.12), 12, 0x1144aa, 0.08, 0.02);
-
+      this.segmentRoot.add(mesh);
       this.segments.push({
         u: this.surfacePosition.u - (i + 1) * 0.12,
         v: this.surfacePosition.v,
@@ -97,14 +100,32 @@ export class GiantSnake extends BaseEnemy {
   ): void {
     super.applySurfaceTransform(getTransform);
 
-    for (const segment of this.segments) {
-      const transform = getTransform(segment.u, segment.v);
-      const offsetPos = transform.position.clone().addScaledVector(transform.normal, 0.3);
-      segment.mesh.position.copy(offsetPos);
+    // In MP mode, updateBehavior is not called (server is authoritative for positions),
+    // so positionHistory never gets filled and segments would stay at their initial spawn positions.
+    // Detect this by checking if head has moved since the last history entry.
+    // In SP, updateBehavior already recorded the same position → no duplicate added.
+    const headU = this.surfacePosition.u;
+    const headV = this.surfacePosition.v;
+    const lastH = this.positionHistory[0];
+    if (!lastH || Math.abs(lastH.u - headU) > 0.0005 || Math.abs(lastH.v - headV) > 0.0005) {
+      this.positionHistory.unshift({ u: headU, v: headV });
+      if (this.positionHistory.length > this.historySize) this.positionHistory.pop();
+      // Update segment UV positions from history so they trail the head
+      for (let i = 0; i < this.segments.length; i++) {
+        const historyIndex = Math.min((i + 1) * 5, this.positionHistory.length - 1);
+        if (historyIndex < this.positionHistory.length) {
+          this.segments[i].u = this.positionHistory[historyIndex].u;
+          this.segments[i].v = this.positionHistory[historyIndex].v;
+        }
+      }
+    }
 
-      const matrix = new THREE.Matrix4();
-      matrix.makeBasis(transform.bitangent, transform.normal, transform.tangent);
-      segment.mesh.quaternion.setFromRotationMatrix(matrix);
+    // Update each segment mesh in world space using pre-allocated matrix
+    for (const segment of this.segments) {
+      const t = getTransform(segment.u, segment.v);
+      segment.mesh.position.copy(t.position).addScaledVector(t.normal, 0.3);
+      _gsSegMatrix.makeBasis(t.bitangent, t.normal, t.tangent);
+      segment.mesh.quaternion.setFromRotationMatrix(_gsSegMatrix);
     }
   }
 
@@ -134,8 +155,19 @@ export class GiantSnake extends BaseEnemy {
   }
 
   destroy(): void {
-    super.destroy();
+    for (const seg of this.segments) {
+      this.segmentRoot.remove(seg.mesh);
+      seg.mesh.traverse((child) => {
+        const m = child as THREE.Mesh;
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) {
+          if (Array.isArray(m.material)) m.material.forEach((mt) => (mt as THREE.Material).dispose());
+          else (m.material as THREE.Material).dispose();
+        }
+      });
+    }
     this.segments = [];
+    super.destroy();
   }
 
   computeMovementDirection(dt: number, playerWorldPos: THREE.Vector3): THREE.Vector3 | null {
