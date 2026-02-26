@@ -262,6 +262,13 @@ async function main(): Promise<void> {
     gridSegmentsU: 24,
     gridSegmentsV: 18,
   };
+
+  // Apply S37 size reduction for cube-tunnel (downsize for more claustrophobic gameplay)
+  if (surfaceType === 'cube-tunnel') {
+    surfaceConfig.size = 67;
+    surfaceConfig.bevelRadius = 8.3;
+  }
+
   const surface = SurfaceFactory.create(surfaceType, surfaceConfig as any);
   game.scene.add(surface.group);
 
