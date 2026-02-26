@@ -867,9 +867,14 @@ export class GameRoom extends Room<GameState> {
       bullet.x += correctedDirX * BULLET_SPEED * dt;
       bullet.y += bullet.dirY * BULLET_SPEED * dt;
 
-      // Wrap/clamp coordinates
+      // Wrap/clamp coordinates. U always wraps. V wraps on torus-like surfaces,
+      // clamps on sphere-like surfaces (avoids pole singularity).
       bullet.x = this.wrapCoord(bullet.x);
-      bullet.y = this.clampCoord(bullet.y);
+      if (this.surfaceWrapsV()) {
+        bullet.y = this.wrapCoord(bullet.y);
+      } else {
+        bullet.y = this.clampCoord(bullet.y);
+      }
 
       // Remove old bullets
       if (bullet.age > BULLET_LIFETIME) {
@@ -885,18 +890,19 @@ export class GameRoom extends Room<GameState> {
 
   private updateEnemies(dt: number) {
     // Simple enemy AI: move toward nearest player
+    const wrapsV = this.surfaceWrapsV();
+    const surfType = this.state.surfaceType;
+
     this.state.enemies.forEach((enemy) => {
       if (!enemy.alive) return;
 
-      // Find nearest player
+      // Find nearest player using wrap-aware UV distance
       let nearestPlayer: PlayerState | null = null;
       let nearestDist = Infinity;
 
       this.state.players.forEach((player) => {
         if (!player.alive) return;
-        const du = player.surfaceU - enemy.surfaceU;
-        const dv = player.surfaceV - enemy.surfaceV;
-        const dist = Math.sqrt(du * du + dv * dv);
+        const dist = this.uvDistWrapped(enemy.surfaceU, enemy.surfaceV, player.surfaceU, player.surfaceV);
         if (dist < nearestDist) {
           nearestDist = dist;
           nearestPlayer = player;
@@ -904,22 +910,25 @@ export class GameRoom extends Room<GameState> {
       });
 
       if (nearestPlayer) {
-        // Move toward player
-        const du = nearestPlayer.surfaceU - enemy.surfaceU;
-        const dv = nearestPlayer.surfaceV - enemy.surfaceV;
+        // Move toward player using shortest-path delta (handles wrap-around seams)
+        const du = this.uvDelta(enemy.surfaceU, nearestPlayer.surfaceU, true);
+        const dv = this.uvDelta(enemy.surfaceV, nearestPlayer.surfaceV, wrapsV);
         const dist = Math.sqrt(du * du + dv * dv);
         if (dist > 0.01) {
           const speed = this.getEnemySpeed(enemy.type);
           enemy.surfaceU += (du / dist) * speed * dt;
           enemy.surfaceV += (dv / dist) * speed * dt;
-          // Wrap U, clamp V to same range as players to prevent
-          // enemies from reaching pole singularities and becoming invisible.
-          // Cube uses tighter bounds since V=0/1 are face centers (not poles).
+          // Always wrap U. Wrap or clamp V depending on surface topology.
           enemy.surfaceU = this.wrapCoord(enemy.surfaceU);
-          const surfType = this.state.surfaceType;
-          const enemyVMin = surfType === 'cube' ? 0.003 : 0.05;
-          const enemyVMax = surfType === 'cube' ? 0.997 : 0.95;
-          enemy.surfaceV = Math.max(enemyVMin, Math.min(enemyVMax, enemy.surfaceV));
+          if (wrapsV) {
+            // Torus/pipe: V wraps around fully — no dead zones at seam
+            enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+          } else {
+            // Sphere-like: clamp V to avoid pole singularities
+            const enemyVMin = surfType === 'cube' ? 0.003 : 0.05;
+            const enemyVMax = surfType === 'cube' ? 0.997 : 0.95;
+            enemy.surfaceV = Math.max(enemyVMin, Math.min(enemyVMax, enemy.surfaceV));
+          }
         }
       }
     });
@@ -969,9 +978,9 @@ export class GameRoom extends Room<GameState> {
       this.state.enemies.forEach((enemy, eIndex) => {
         if (!enemy.alive) return;
 
-        const du = bullet.x - enemy.surfaceU;
-        const dv = bullet.y - enemy.surfaceV;
-        const dist = Math.sqrt(du * du + dv * dv);
+        // Use wrap-aware UV distance so bullets crossing the U or V seam
+        // still hit enemies on the other side (critical on torus where both axes wrap).
+        const dist = this.uvDistWrapped(bullet.x, bullet.y, enemy.surfaceU, enemy.surfaceV);
 
         // S28b: UV-space hit threshold calibrated to match visual enemy size.
         // Sphere radius=10 → V arc length = π*10 ≈ 31.4 world units per UV unit.
@@ -1025,9 +1034,8 @@ export class GameRoom extends Room<GameState> {
         if (!enemy.alive) return;
         if (wasHit) return; // Only one hit per player per tick
 
-        const du = player.surfaceU - enemy.surfaceU;
-        const dv = player.surfaceV - enemy.surfaceV;
-        const dist = Math.sqrt(du * du + dv * dv);
+        // Use wrap-aware UV distance so collision works across seams on torus.
+        const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
 
         if (dist < 0.04) {
           // Player hit!
@@ -1058,9 +1066,7 @@ export class GameRoom extends Room<GameState> {
       this.state.geoms.forEach((geom, index) => {
         if (!geom.active) return;
 
-        const du = player.surfaceU - geom.surfaceU;
-        const dv = player.surfaceV - geom.surfaceV;
-        const dist = Math.sqrt(du * du + dv * dv);
+        const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, geom.surfaceU, geom.surfaceV);
 
         if (dist < 0.05) {
           // Collect geom
@@ -1080,9 +1086,7 @@ export class GameRoom extends Room<GameState> {
       this.state.weaponPickups.forEach((pickup, index) => {
         if (!pickup.active) return;
 
-        const du = player.surfaceU - pickup.surfaceU;
-        const dv = player.surfaceV - pickup.surfaceV;
-        const dist = Math.sqrt(du * du + dv * dv);
+        const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
 
         if (dist < 0.06) {
           pickup.active = false;
@@ -1551,5 +1555,45 @@ export class GameRoom extends Room<GameState> {
 
   private clampCoord(v: number): number {
     return Math.max(0, Math.min(1, v));
+  }
+
+  /**
+   * Whether the current surface wraps in the V direction.
+   * Torus, pipe, mobius, and cube variants all wrap V.
+   * Used for collision distance calculations and coordinate wrapping.
+   */
+  private surfaceWrapsV(): boolean {
+    const st = this.state.surfaceType;
+    return st === 'torus' || st === 'pipe' || st === 'mobius'
+      || st === 'cube-ring' || st === 'cube-tunnel';
+  }
+
+  /**
+   * Compute the shortest delta between two UV coordinates on a periodic axis.
+   * @param a - First coordinate [0, 1)
+   * @param b - Second coordinate [0, 1)
+   * @param wraps - Whether this axis wraps (periodic)
+   * @returns Signed shortest delta from a to b
+   */
+  private uvDelta(a: number, b: number, wraps: boolean): number {
+    let d = b - a;
+    if (wraps) {
+      if (d > 0.5) d -= 1;
+      else if (d < -0.5) d += 1;
+    }
+    return d;
+  }
+
+  /**
+   * Compute the wrap-aware UV distance between two surface points.
+   * U always wraps; V wraps only on torus-like surfaces.
+   */
+  private uvDistWrapped(u1: number, v1: number, u2: number, v2: number): number {
+    const wrapsV = this.surfaceWrapsV();
+    let du = Math.abs(u1 - u2);
+    if (du > 0.5) du = 1 - du;
+    let dv = Math.abs(v1 - v2);
+    if (wrapsV && dv > 0.5) dv = 1 - dv;
+    return Math.sqrt(du * du + dv * dv);
   }
 }

@@ -8,6 +8,20 @@
 
 ---
 
+## S35: Torus Hit Detection Fix (LAN Multiplayer)
+
+Bug: On torus map in LAN multiplayer, hit detection was completely broken. Enemies walked through players without dealing damage. Root causes: (1) server used raw Euclidean UV distance (no wrap-around), so entities near V seam had inflated distance (0.94 instead of 0.06); (2) enemy V coordinate was clamped to 0.05-0.95 (enemies piled up at boundaries and couldn't cross V seam); (3) enemy tracking direction was wrong across V seam; (4) bullet V was clamped instead of wrapped.
+
+Fix: Added `uvDistWrapped()`, `uvDelta()`, `surfaceWrapsV()` helpers to `server/rooms/GameRoom.ts`. All 5 collision checks now use wrap-aware distance. Enemy/bullet V coordinates now wrap correctly on torus.
+
+- [ ] **Enemy hits player on torus** — In LAN MP on torus, let an enemy touch your player. You should take damage (lose a life or die). Before fix: enemies could overlap player with no damage.
+- [ ] **Enemies cross V seam** — Watch enemies on torus. They should be able to move smoothly from V≈1.0 to V≈0.0 (crossing the tube seam). Before fix: enemies piled up at the boundary.
+- [ ] **Bullets hit enemies near seam** — Fire bullets toward the V=0/1 seam on torus. Enemies near the seam should be killable. Before fix: bullets near seam would miss.
+- [ ] **Player dies from expected distance** — Enemy touching you = death. No gaps where enemy overlaps you but no damage occurs.
+- [ ] **Sphere/cube not broken** — Verify hit detection still works on sphere and cube maps (these use clamp for V, should be unchanged).
+
+---
+
 ## S31: LAN Multiplayer — No Teleport on Hit (2026-02-25)
 
 Bug: In LAN MP, when a player was hit by an enemy (but still had lives), the server teleported them to `(U+0.5, V+0.5)` — the "opposite side" of the surface. The client snapped to this position, causing apparent "random teleportation." Also: players started each new round at their final death position from the previous game.
