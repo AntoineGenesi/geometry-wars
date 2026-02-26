@@ -1242,20 +1242,17 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
 
 
----
+## S36: FractalSnake Variants in KotH
 
-## S36: MP Movement Control Loss on Join (Re-report of S35)
+**Fix:** EnemySpawner now cycles through all 4 FractalSnake head variants sequentially (standard → triple_inner → double_outer → pulsing) instead of random selection. KingMode now spawns FractalSnakes at 10s, 18s, 26s, 34s (staggered) to guarantee all 4 variants appear within the first 35 seconds.
 
-**Fix:** Removed `!isPaused` guard from the `document.visibilitychange` resume handler in `src/network-main.ts`. The guard caused `game.resume()` to be skipped when the server happened to be paused at the same moment the tab became visible — leaving the game clock permanently stuck in `Paused` state. Added `game.clock.resync()` to prevent dt spike on resume.
-
-**Symptom:** Mobile joined, was frozen (couldn't move). Host's character appeared to move in mobile's camera direction. Pause → resume fixed it.
-
-### Test: Joining player can move immediately (no pause/resume workaround needed)
-
-- [ ] **Setup:** Desktop as host + phone as client (LAN). Select any surface (Peanut recommended per report).
-- [ ] **Phone joins** — Phone scans QR code / enters URL, joins the session.
-- [ ] **Phone can move immediately** — As soon as the game starts, press arrow keys / joystick on phone. The phone player MUST move without any pause/resume.
-- [ ] **No frozen player** — Phone player should NOT be frozen or stuck in place.
-- [ ] **No input crosstalk** — Phone input controls ONLY the phone player. Desktop input controls ONLY the desktop player.
-- [ ] **Repeat 3x** — Test join sequence 3 times to confirm no race condition.
-- [ ] **[Regression]** Pause/resume still works normally — Host pauses, both players freeze. Host resumes, both players can move again.
+### Test: All 4 FractalSnake variants visible in KotH
+- [ ] **Start KotH mode** — Quick Game → King → Sphere → Start
+- [ ] **Snake spawns at ~10s** — A FractalSnake should appear around 10 seconds in
+- [ ] **Snake has standard head** — First snake should have the default triangular head
+- [ ] **Snake at ~18s** — Second snake with triple_inner head (extra inner triangle geometry)
+- [ ] **Snake at ~26s** — Third snake with double_outer head (outer doubled frame)
+- [ ] **Snake at ~34s** — Fourth snake with pulsing head (animated pulsing geometry)
+- [ ] **All variants visually distinct** — Each of the 4 snakes should look noticeably different
+- [ ] **Follower chain visible** — Each snake has a double row of 4 followers behind the head (8 followers total)
+- [ ] **Kill head → followers released** — On head kill, followers become independent enemies

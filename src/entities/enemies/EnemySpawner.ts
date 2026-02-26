@@ -106,6 +106,8 @@ export class EnemySpawner {
   private fractalSnakes: FractalSnake[] = [];
   /** Generation for next splitter spawn (0 = default large, 1 = medium, 2 = tiny) */
   _nextSplitterGen: number = 0;
+  /** Cycles through all 4 FractalSnake head variants so users see full variety over time. */
+  private _fractalSnakeVariantIndex: number = 0;
   private getTransform: (u: number, v: number) => {
     position: THREE.Vector3;
     normal: THREE.Vector3;
@@ -545,8 +547,11 @@ export class EnemySpawner {
         enemy = new StealthStalker(u, v);
         break;
       case 'fractal_snake': {
+        // Cycle through all 4 variants in sequence so users see full variety.
+        // After 4 spawns the cycle repeats, preventing any single variant dominating.
         const fsVariants: FractalSnakeHeadVariant[] = ['standard', 'triple_inner', 'double_outer', 'pulsing'];
-        const fsHeadVariant = fsVariants[Math.floor(Math.random() * fsVariants.length)];
+        const fsHeadVariant = fsVariants[this._fractalSnakeVariantIndex % fsVariants.length];
+        this._fractalSnakeVariantIndex++;
         enemy = new FractalSnake(u, v, { numRows: 2, followersPerRow: 4, headVariant: fsHeadVariant });
         break;
       }

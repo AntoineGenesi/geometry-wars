@@ -119,8 +119,12 @@ export class KingMode implements IGameMode {
   private kothWaveNumber: number = 0;
   /** Total elapsed game time (drives difficulty ramp). */
   private kothElapsed: number = 0;
-  /** Countdown for the guaranteed early fractal_snake spawn (~12 seconds in). */
-  private fractalSnakeStartTimer: number = 12;
+  /**
+   * Staggered showcase spawns: fire a fractal_snake at 10s, 18s, 26s, 34s.
+   * Combined with variant cycling in EnemySpawner, this guarantees the user
+   * sees all 4 head variants within the first 35 seconds of KotH gameplay.
+   */
+  private fractalSnakeShowcaseTimers: number[] = [10, 18, 26, 34];
 
   // Pre-allocated temp vectors
   private static readonly _tempVec3 = new THREE.Vector3();
@@ -142,11 +146,12 @@ export class KingMode implements IGameMode {
       this.spawnTimedKothWave(context);
     }
 
-    // Guaranteed early FractalSnake spawn at ~12 seconds — user must see it
-    if (this.fractalSnakeStartTimer > 0) {
-      this.fractalSnakeStartTimer -= dt;
-      if (this.fractalSnakeStartTimer <= 0) {
+    // Staggered showcase: spawn one fractal_snake at each showcase timer threshold.
+    // EnemySpawner cycles variants, so snakes at 10s/18s/26s/34s each show a different head.
+    for (let i = this.fractalSnakeShowcaseTimers.length - 1; i >= 0; i--) {
+      if (this.kothElapsed >= this.fractalSnakeShowcaseTimers[i]) {
         context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }]);
+        this.fractalSnakeShowcaseTimers.splice(i, 1);
       }
     }
 
