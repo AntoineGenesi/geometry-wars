@@ -1,7 +1,7 @@
 /**
  * Weapon Mastery Screen — full-screen constellation/space-themed upgrade tree.
  *
- * Each weapon is a "constellation" cluster: 2 branches × 3 nodes, connected by
+ * Each weapon is a "constellation" cluster: 2 branches × 5 nodes, connected by
  * glowing SVG lines. Players spend/refund mastery points to permanently unlock nodes.
  *
  * Public API (unchanged from previous version):
@@ -270,7 +270,7 @@ function injectStyles(): void {
     #weapon-mastery-screen .wms-constellation-area {
       position: relative;
       width: 100%;
-      height: 155px;
+      height: 240px;
     }
     #weapon-mastery-screen .wms-constellation-svg {
       position: absolute;
@@ -393,23 +393,27 @@ function injectStyles(): void {
   document.head.appendChild(style);
 }
 
-// ── Node layout constants (SVG viewBox 280×155) ───────────────────────────────
+// ── Node layout constants (SVG viewBox 280×240) ───────────────────────────────
 
 interface NodePos { x: number; y: number; }
 
 const NODE_POSITIONS: Record<string, NodePos> = {
-  // Branch A: down-left
-  'a_1': { x: 95,  y: 52  },
-  'a_2': { x: 57,  y: 95  },
-  'a_3': { x: 20,  y: 138 },
-  // Branch B: down-right
-  'b_1': { x: 185, y: 52  },
-  'b_2': { x: 223, y: 95  },
-  'b_3': { x: 260, y: 138 },
+  // Branch A: down-left diagonal
+  'a_1': { x: 103, y:  52 },
+  'a_2': { x:  74, y:  90 },
+  'a_3': { x:  45, y: 128 },
+  'a_4': { x:  22, y: 166 },
+  'a_5': { x:   8, y: 204 },
+  // Branch B: down-right diagonal
+  'b_1': { x: 177, y:  52 },
+  'b_2': { x: 206, y:  90 },
+  'b_3': { x: 235, y: 128 },
+  'b_4': { x: 258, y: 166 },
+  'b_5': { x: 272, y: 204 },
 };
 
 const SVG_W = 280;
-const SVG_H = 155;
+const SVG_H = 240;  // was 155
 // Center junction point (where the two branches split)
 const CENTER_X = 140;
 const CENTER_Y = 18;
@@ -582,7 +586,7 @@ export class WeaponMasteryScreen {
 
     // Chain lines within each branch
     for (const branch of ['a', 'b'] as const) {
-      for (let i = 1; i <= 2; i++) {
+      for (let i = 1; i <= 4; i++) {
         const from = NODE_POSITIONS[`${branch}_${i}`];
         const to = NODE_POSITIONS[`${branch}_${i + 1}`];
         const toUnlocked = ps.isUnlocked(`${weaponType}_${branch}_${i + 1}`);
@@ -704,14 +708,18 @@ export class WeaponMasteryScreen {
     };
 
     const lines = svg.querySelectorAll<SVGLineElement>('line');
-    // Lines order: center→A1, center→B1, A1→A2, A2→A3, B1→B2, B2→B3
+    // Lines order: center→A1, center→B1, A1→A2, A2→A3, A3→A4, A4→A5, B1→B2, B2→B3, B3→B4, B4→B5
     const nodeIds = [
-      `${weaponType}_a_1`,
-      `${weaponType}_b_1`,
-      `${weaponType}_a_2`,
-      `${weaponType}_a_3`,
-      `${weaponType}_b_2`,
-      `${weaponType}_b_3`,
+      `${weaponType}_a_1`,  // center→A1 glow (if A1 unlocked)
+      `${weaponType}_b_1`,  // center→B1 glow
+      `${weaponType}_a_2`,  // A1→A2
+      `${weaponType}_a_3`,  // A2→A3
+      `${weaponType}_a_4`,  // A3→A4
+      `${weaponType}_a_5`,  // A4→A5
+      `${weaponType}_b_2`,  // B1→B2
+      `${weaponType}_b_3`,  // B2→B3
+      `${weaponType}_b_4`,  // B3→B4
+      `${weaponType}_b_5`,  // B4→B5
     ];
     lines.forEach((line, i) => updateLine(nodeIds[i], line));
   }
