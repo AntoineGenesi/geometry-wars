@@ -10,6 +10,8 @@
 
 import { PerformanceTracker, PerfMoment } from '../core/PerformanceTracker';
 import type { RendererBackend } from '../rendering/RendererFactory';
+import type { PerformanceLogger, PerformanceDataPoint } from '../core/PerformanceLogger';
+import { ENEMY_COLORS } from './PerformanceGraphs';
 
 // ---------------------------------------------------------------------------
 // DebugOverlay
@@ -39,6 +41,13 @@ export class DebugOverlay {
   private readonly topPanel: HTMLDivElement;
   private readonly topContent: HTMLDivElement;
   private topPanelExpanded = false;
+
+  // Graphs panel (expandable mini-graphs)
+  private readonly graphsPanel: HTMLDivElement;
+  private readonly unifiedCanvas: HTMLCanvasElement;
+  private readonly stackedCanvas: HTMLCanvasElement;
+  private graphsPanelExpanded = false;
+  private perfLogger: PerformanceLogger | null = null;
 
   // State
   private visible = true;
@@ -91,10 +100,17 @@ export class DebugOverlay {
           <span class="debug-value" id="debug-tex" style="color:#aaccff">--</span>
         </div>
         <button class="debug-toggle-top" id="debug-toggle-top" title="Toggle top-10 moments">TOP 10</button>
+        <button class="debug-toggle-graphs" id="debug-toggle-graphs" title="Toggle live performance graphs">GRAPHS</button>
         <button class="debug-export-logs" id="debug-export-logs" title="Export performance logs to disk">EXPORT</button>
       </div>
       <div class="debug-top-panel hidden" id="debug-top-panel">
         <div class="debug-top-content" id="debug-top-content"></div>
+      </div>
+      <div class="debug-graphs-panel hidden" id="debug-graphs-panel">
+        <div class="debug-graphs-subtitle">UNIFIED (FPS / ENT / BUL)</div>
+        <canvas id="debug-unified-canvas" width="280" height="100"></canvas>
+        <div class="debug-graphs-subtitle">ENEMY COMPOSITION</div>
+        <canvas id="debug-stacked-canvas" width="280" height="90"></canvas>
       </div>
     `;
     document.body.appendChild(this.container);
@@ -109,6 +125,9 @@ export class DebugOverlay {
     this.texEl = document.getElementById('debug-tex') as HTMLSpanElement;
     this.topPanel = document.getElementById('debug-top-panel') as HTMLDivElement;
     this.topContent = document.getElementById('debug-top-content') as HTMLDivElement;
+    this.graphsPanel = document.getElementById('debug-graphs-panel') as HTMLDivElement;
+    this.unifiedCanvas = document.getElementById('debug-unified-canvas') as HTMLCanvasElement;
+    this.stackedCanvas = document.getElementById('debug-stacked-canvas') as HTMLCanvasElement;
 
     // Top-10 toggle button
     const toggleBtn = document.getElementById('debug-toggle-top');
@@ -119,6 +138,18 @@ export class DebugOverlay {
         this.renderTopPanel();
       } else {
         this.topPanel.classList.add('hidden');
+      }
+    });
+
+    // Graphs toggle button
+    const graphsBtn = document.getElementById('debug-toggle-graphs');
+    graphsBtn?.addEventListener('click', () => {
+      this.graphsPanelExpanded = !this.graphsPanelExpanded;
+      if (this.graphsPanelExpanded) {
+        this.graphsPanel.classList.remove('hidden');
+        this.renderMiniGraphs();
+      } else {
+        this.graphsPanel.classList.add('hidden');
       }
     });
 
@@ -196,6 +227,11 @@ export class DebugOverlay {
     this.rendererEl.style.color = color;
   }
 
+  /** Provide access to the PerformanceLogger for live mini-graphs. */
+  setPerformanceLogger(logger: PerformanceLogger): void {
+    this.perfLogger = logger;
+  }
+
   // -- Per-frame update (call from render loop) ----------------------------
 
   update(): void {
@@ -238,6 +274,11 @@ export class DebugOverlay {
     // Update top panel if expanded (less frequently -- every 2nd update)
     if (this.topPanelExpanded && this.frameCounter % (DebugOverlay.UPDATE_EVERY_N_FRAMES * 8) === 0) {
       this.renderTopPanel();
+    }
+
+    // Update mini graphs if expanded (every ~4 seconds at 15Hz update rate)
+    if (this.graphsPanelExpanded && this.frameCounter % (DebugOverlay.UPDATE_EVERY_N_FRAMES * 60) === 0) {
+      this.renderMiniGraphs();
     }
   }
 
