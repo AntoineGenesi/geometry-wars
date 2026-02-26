@@ -75,6 +75,9 @@ export class PlayerLevel {
   /** Callback when player levels up */
   onLevelUp: ((level: number, perk: LevelPerk) => void) | null = null;
 
+  /** Callback fired on every level-up to award a mastery point */
+  onMasteryPointEarned: (() => void) | null = null;
+
   constructor() {
     this.auraGeometry = new THREE.RingGeometry(0.85, 1.0, 48);
     this.auraMaterial = new THREE.MeshBasicMaterial({
@@ -100,6 +103,7 @@ export class PlayerLevel {
       const perk = LEVELS[this.currentLevel];
       this.updateAuraVisual();
       this.onLevelUp?.(this.currentLevel, perk);
+      this.onMasteryPointEarned?.();
     }
   }
 
