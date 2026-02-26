@@ -10,6 +10,9 @@ import { buildCircle3D } from '../../utils/GeometryBuilder';
 export class GiantSnake extends BaseEnemy {
   private segments: Array<{ u: number; v: number; mesh: THREE.Group }> = [];
   private readonly segmentCount = 7;
+
+  /** All segment meshes in a shared root — added to scene by EnemySpawner, same pattern as Snake. */
+  public readonly segmentRoot = new THREE.Group();
   private readonly sineAmplitude = 0.5;
   private readonly sineFrequency = 1.8;
   private sinePhase = 0;
@@ -25,6 +28,8 @@ export class GiantSnake extends BaseEnemy {
     super(surfaceU, surfaceV, 10, 200, 4, 0.04, 0.4);
     this.createMesh();
     this.createSegments();
+    // Register segmentRoot so generic cleanup code (network-main.ts) removes it from scene.
+    this.auxiliaryObjects.push(this.segmentRoot);
   }
 
   private createMesh(): void {
