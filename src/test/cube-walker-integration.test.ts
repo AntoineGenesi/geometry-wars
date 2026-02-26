@@ -373,4 +373,33 @@ describe('Cube MeshWalker Integration (Session 13 Phase 3)', () => {
     const movedDistance = startPos.distanceTo(endPos)
     expect(movedDistance).toBeGreaterThan(1)
   })
+
+  it('S35 regression: bitangent must not flip 180° when crossing cube face edges', () => {
+    // Regression test for the cube MP camera 180° rotation bug (S35).
+    // Root cause: _updateTangentFrame fallback path could return a bitangent opposite to
+    // the previous one when the tangent collapses (tangent parallel to new face normal).
+    // Fix: sign-flip protection in fallback branch — negate tangent/bitangent if dot < 0.
+    //
+    // This test FAILS without the fix (minBitangentDot approaches -1 on edge crossings)
+    // and PASSES with the fix (bitangent never flips sign between consecutive steps).
+    const walker = (harness as any).pg._walker
+    harness.pressKey('w') // Walk forward continuously to cross face edges
+
+    let minBitangentDot = 1
+    let prevBitangent = walker.getTangentFrame().bitangent.clone()
+
+    // Walk 20 seconds (1200 frames) at 60fps — enough to traverse multiple cube faces
+    for (let i = 0; i < 1200; i++) {
+      harness.tick(1)
+      const frame = walker.getTangentFrame()
+      const dot = prevBitangent.dot(frame.bitangent)
+      minBitangentDot = Math.min(minBitangentDot, dot)
+      prevBitangent = frame.bitangent.clone()
+    }
+
+    // Bitangent should never flip sign in a single step.
+    // dot >= 0 means the bitangent stayed in the same hemisphere (no 180° flip).
+    // The camera lerps toward bitangent, so a sign flip here causes visible 180° rotation.
+    expect(minBitangentDot).toBeGreaterThanOrEqual(0)
+  })
 })
