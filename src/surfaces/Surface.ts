@@ -303,6 +303,15 @@ export abstract class Surface {
    */
   get wrapsV(): boolean { return false }
 
+  /**
+   * Returns true if two V-coordinates are on geometrically opposite wall sides,
+   * separated by a physical surface boundary (e.g., outer vs inner tunnel wall).
+   * Used by the proximity visibility override to suppress brightening enemies that
+   * are UV-close but physically separated by a wall.
+   * Default: false (most surfaces have no such wall boundary).
+   */
+  areOnOppositeWallSides(_playerV: number, _enemyV: number): boolean { return false }
+
   abstract createMesh(): THREE.Mesh
 
   abstract createGrid(): THREE.LineSegments

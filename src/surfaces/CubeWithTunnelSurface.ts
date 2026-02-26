@@ -274,6 +274,23 @@ export class CubeWithTunnelSurface extends Surface {
   /** CubeWithTunnel wraps in both U and V (torus-like topology). */
   get wrapsV(): boolean { return true }
 
+  /**
+   * Returns true if playerV and enemyV are on geometrically opposite walls
+   * (one on the outer wall, the other on the inner wall).
+   * This prevents the proximity UV override from brightening enemies that are
+   * UV-close but physically separated by the tunnel lip/wall boundary.
+   */
+  areOnOppositeWallSides(playerV: number, enemyV: number): boolean {
+    const owf = this.outerWallFrac
+    const lf = this.lipFrac
+    const pNorm = ((playerV % 1) + 1) % 1
+    const eNorm = ((enemyV % 1) + 1) % 1
+    const isOuterWall = (v: number) => v < owf
+    const isInnerWall = (v: number) => v >= owf + lf && v < 2 * owf + lf
+    return (isOuterWall(pNorm) && isInnerWall(eNorm)) ||
+           (isInnerWall(pNorm) && isOuterWall(eNorm))
+  }
+
   wrapUV(u: number, v: number): { u: number; v: number } {
     return {
       u: ((u % 1) + 1) % 1,
