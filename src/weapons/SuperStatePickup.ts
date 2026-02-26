@@ -48,7 +48,10 @@ export class SuperStatePickup {
       const dotMaterial = new THREE.MeshBasicMaterial({
         color,
         wireframe: true,
+        transparent: true,
+        opacity: 1.0,
       });
+      dotMaterial.userData.baseOpacity = 1.0;
       const dot = new THREE.Mesh(SharedGeometries.superPickupDot(), dotMaterial);
       dot.position.set(offset.x, offset.y, offset.z);
       this.dots.push(dot);
@@ -195,6 +198,9 @@ export class SuperStatePickup {
 
   update(dt: number): void {
     if (!this.active) return;
+
+    // Track age factor for surface dimming in RenderLoop (SuperStatePickup never fades)
+    this.mesh.userData.ageFactor = 1.0;
 
     // Animate dots - pulse effect
     this.animationTime += dt;

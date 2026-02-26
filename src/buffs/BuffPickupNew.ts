@@ -54,6 +54,7 @@ export class BuffPickupNew {
       transparent: true,
       opacity: 0.7,
     });
+    hexMat.userData.baseOpacity = 0.7;
     const hexMesh = new THREE.Mesh(hexGeom, hexMat);
     hexMesh.name = 'hex-body';
     group.add(hexMesh);
@@ -66,6 +67,7 @@ export class BuffPickupNew {
       transparent: true,
       opacity: 0.6,
     });
+    ringMat.userData.baseOpacity = 0.6;
     const ringMesh = new THREE.Mesh(ringGeom, ringMat);
     ringMesh.name = 'rarity-ring';
     group.add(ringMesh);
@@ -77,6 +79,7 @@ export class BuffPickupNew {
       transparent: true,
       opacity: 0.9,
     });
+    coreMat.userData.baseOpacity = 0.9;
     const coreMesh = new THREE.Mesh(coreGeom, coreMat);
     coreMesh.name = 'core';
     group.add(coreMesh);
@@ -96,6 +99,7 @@ export class BuffPickupNew {
 
   private createCategoryIndicator(color: THREE.Color): THREE.Object3D | null {
     const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8 });
+    mat.userData.baseOpacity = 0.8;
 
     switch (this.def.category) {
       case 'offensive': {
@@ -180,6 +184,11 @@ export class BuffPickupNew {
 
     // Animate spawn indicator (visible for first 30s)
     updateSpawnIndicator(this.mesh, this.age, totalTime);
+
+    // Track age factor for surface dimming in RenderLoop
+    this.mesh.userData.ageFactor = this.age > FADE_START
+      ? Math.max(0, 1 - (this.age - FADE_START) / (PICKUP_LIFETIME - FADE_START))
+      : 1.0;
 
     // Fade near end of life
     if (this.age > FADE_START) {

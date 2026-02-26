@@ -676,6 +676,7 @@ export class CompanionPickup {
       transparent: true,
       opacity: 0.7,
     });
+    outerMat.userData.baseOpacity = 0.7;
     group.add(new THREE.Mesh(outerGeom, outerMat));
 
     // Inner solid diamond
@@ -687,6 +688,7 @@ export class CompanionPickup {
       transparent: true,
       opacity: 0.9,
     });
+    innerMat.userData.baseOpacity = 0.9;
     const innerMesh = new THREE.Mesh(innerGeom, innerMat);
     innerMesh.name = 'core';
     group.add(innerMesh);
@@ -701,6 +703,7 @@ export class CompanionPickup {
       depthWrite: false,
       side: THREE.BackSide,
     });
+    glowMat.userData.baseOpacity = 0.2;
     const glowSphere = new THREE.Mesh(glowGeom, glowMat);
     glowSphere.name = 'pickupGlow';
     group.add(glowSphere);
@@ -735,6 +738,11 @@ export class CompanionPickup {
 
     // Animate spawn indicator (visible for first 30s)
     updateSpawnIndicator(this.mesh, this.age, totalTime);
+
+    // Track age factor for surface dimming in RenderLoop
+    this.mesh.userData.ageFactor = this.age > this.fadeStart
+      ? Math.max(0, 1 - (this.age - this.fadeStart) / (this.maxAge - this.fadeStart))
+      : 1.0;
 
     // Fade near end of life
     if (this.age > this.fadeStart) {

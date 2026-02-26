@@ -62,6 +62,7 @@ export class WeaponPickup {
       transparent: true,
       opacity: 0.8,
     });
+    outerMat.userData.baseOpacity = 0.8;
     const outerMesh = new THREE.Mesh(SharedGeometries.weaponPickupOuter(), outerMat);
     group.add(outerMesh);
 
@@ -71,6 +72,7 @@ export class WeaponPickup {
       transparent: true,
       opacity: 0.6,
     });
+    innerMat.userData.baseOpacity = 0.6;
     const innerMesh = new THREE.Mesh(SharedGeometries.weaponPickupInner(), innerMat);
     innerMesh.name = 'core';
     group.add(innerMesh);
@@ -84,6 +86,7 @@ export class WeaponPickup {
       blending: THREE.NormalBlending,
       depthWrite: false,
     });
+    glowMat.userData.baseOpacity = 0.4;
     const glowSprite = new THREE.Sprite(glowMat);
     glowSprite.scale.setScalar(1.5);
     group.add(glowSprite);
@@ -227,6 +230,11 @@ export class WeaponPickup {
 
     // Animate spawn indicator (visible for first 30s)
     updateSpawnIndicator(this.mesh, this.age, totalTime);
+
+    // Track age factor for surface dimming in RenderLoop
+    this.mesh.userData.ageFactor = this.age > this.fadeStart
+      ? Math.max(0, 1 - (this.age - this.fadeStart) / (this.maxAge - this.fadeStart))
+      : 1.0;
 
     // Fade out near end of life
     if (this.age > this.fadeStart) {
