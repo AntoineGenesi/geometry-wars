@@ -190,7 +190,11 @@ const _occLocalEntityPos = new THREE.Vector3();
 interface OcclusionEntry {
   /** Number of surface intersections between camera and entity (last raycast). */
   intersectionCount: number;
-  /** Target opacity based on intersection count. */
+  /** Exponential moving average of intersection count (alpha=0.7).
+   *  Prevents single-frame raycast noise (e.g. grazing cube edges) from flipping
+   *  the target opacity — a one-frame spike barely moves this value. */
+  smoothedCount: number;
+  /** Target opacity based on smoothedCount (stable, hysteresis-like). */
   targetOpacity: number;
   /** Current smoothed opacity (lerped toward target each frame). */
   currentOpacity: number;
@@ -396,35 +400,43 @@ export class DepthOcclusionSystem {
       }
     }
 
-    // Map intersection count to target opacity.
-    // On a closed surface, a ray entering and exiting counts as 2 unique hits.
-    // 0       = clear line of sight (full opacity)
-    // 1-2     = behind one surface layer (dimmed)
-    // 3+      = behind multiple surfaces (nearly invisible)
-    let targetOpacity: number;
-    if (count === 0) {
-      targetOpacity = this.config.opacity0;
-    } else if (count <= 2) {
-      // Behind one surface layer (enter + exit)
-      targetOpacity = this.config.opacity1;
-    } else {
-      // Behind multiple surfaces
-      targetOpacity = this.config.opacity2Plus;
-    }
-
     // Get or create entry
     const existing = this.entries.get(entity);
     if (!existing) {
+      // First raycast: initialize smoothedCount to actual count (no history to average)
+      const targetOpacity = this.countToOpacity(count);
       this.entries.set(entity, {
         intersectionCount: count,
+        smoothedCount: count,
         targetOpacity,
         currentOpacity: targetOpacity, // No lerp on first appearance
         lastRaycastFrame: this.frameNumber,
       });
     } else {
+      // Update EMA of intersection count (alpha=0.7 → history weight, 0.3 → new sample).
+      // A single-frame spike of count=1 on an otherwise clear ray only raises smoothedCount
+      // to 0.3 (< 0.5 threshold), so the target stays at opacity0 — no flicker.
+      // Sustained change (count=1 for 3 frames) reaches ~0.66, crossing 0.5 → opacity1.
+      const EMA_ALPHA = 0.7;
+      existing.smoothedCount = existing.smoothedCount * EMA_ALPHA + count * (1 - EMA_ALPHA);
       existing.intersectionCount = count;
-      existing.targetOpacity = targetOpacity;
+      existing.targetOpacity = this.countToOpacity(existing.smoothedCount);
       existing.lastRaycastFrame = this.frameNumber;
+    }
+  }
+
+  /**
+   * Map a (possibly fractional) smoothed intersection count to a target opacity.
+   * Thresholds are set at 0.5 and 2.5 so that a single-frame spike from 0→1
+   * (smoothed to 0.3) doesn't cross the 0.5 boundary and cause a visible flicker.
+   */
+  private countToOpacity(smoothedCount: number): number {
+    if (smoothedCount < 0.5) {
+      return this.config.opacity0;      // Clear line of sight
+    } else if (smoothedCount < 2.5) {
+      return this.config.opacity1;      // Behind one surface layer
+    } else {
+      return this.config.opacity2Plus;  // Behind multiple surfaces
     }
   }
 }
