@@ -1548,6 +1548,13 @@ async function main(): Promise<void> {
     const wm = weaponManagers[playerIndex];
     const stats = killTracker.getPlayerStats(playerIndex);
     const currentWeapon = wm.getCurrentWeapon();
+
+    // Calculate total kills across all players
+    let totalKills = 0;
+    for (let i = 0; i < players.length; i++) {
+      totalKills += killTracker.getPlayerStats(i).kills;
+    }
+
     hud.update(playerIndex, {
       score: player.score,
       multiplier: player.multiplier,
@@ -1557,6 +1564,7 @@ async function main(): Promise<void> {
       ammo: currentWeapon === WeaponType.Standard ? -1 : wm.getCurrentAmmo(),
       kills: stats.kills,
       assists: stats.assists,
+      totalKills,
     });
 
     // Update per-player weapon inventory HUD

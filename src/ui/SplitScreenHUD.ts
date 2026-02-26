@@ -19,6 +19,7 @@ export interface PlayerHUDData {
   ammo: number;       // -1 = infinite (Standard)
   kills: number;
   assists: number;
+  totalKills?: number; // Total kills by all players (for "X out of N" display)
 }
 
 export class SplitScreenHUD {
@@ -147,7 +148,7 @@ export class SplitScreenHUD {
     el.innerHTML = `
       <div class="hud-label" style="color:${color}">P${playerIndex + 1}</div>
       <div class="hud-score">${data.score.toLocaleString()} <span style="color:${color};font-size:12px">x${data.multiplier}</span></div>
-      <div class="hud-stats">${data.kills}K / ${data.assists}A</div>
+      <div class="hud-stats">${data.kills} out of ${data.totalKills ?? 0}</div>
       <div class="hud-lives">
         <span class="hearts">${hearts}</span>
         <span class="bombs-display">${bombs}</span>
