@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
+import { createWeaponIconSprite } from '../pickups/PickupIconSprite';
 
 // World-space pickup collision radius (in world units).
 // Using world-space distance instead of UV-space because UV metric is non-uniform:
@@ -91,85 +92,14 @@ export class WeaponPickup {
     glowSprite.scale.setScalar(1.5);
     group.add(glowSprite);
 
-    // Add weapon type indicator (small icon based on type)
-    const indicator = this.createWeaponIndicator();
-    if (indicator) {
-      group.add(indicator);
-    }
+    // Canvas icon sprite (faces camera; covers all weapon types with recognizable symbols)
+    const iconSprite = createWeaponIconSprite(this.type, color);
+    group.add(iconSprite);
 
     // Spawn indicator: flashing arrow for first 30s
     group.add(createSpawnIndicatorSprite(color));
 
     return group;
-  }
-
-  /**
-   * Create weapon-specific indicator mesh
-   */
-  private createWeaponIndicator(): THREE.Object3D | null {
-    const color = new THREE.Color(0xffffff);
-
-    switch (this.type) {
-      case WeaponType.Spread: {
-        // Fan of lines
-        const group = new THREE.Group();
-        const lineMat = new THREE.LineBasicMaterial({ color });
-        for (let i = -2; i <= 2; i++) {
-          const angle = (i * 15 * Math.PI) / 180;
-          const points = [
-            new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(Math.sin(angle) * 0.2, 0, Math.cos(angle) * 0.2),
-          ];
-          const geom = new THREE.BufferGeometry().setFromPoints(points);
-          const line = new THREE.Line(geom, lineMat);
-          group.add(line);
-        }
-        return group;
-      }
-
-      case WeaponType.ChainLightning: {
-        // Zigzag lightning bolt
-        const points = [
-          new THREE.Vector3(-0.1, 0, 0.1),
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(0.05, 0, -0.05),
-          new THREE.Vector3(-0.05, 0, -0.1),
-          new THREE.Vector3(0.1, 0, -0.15),
-        ];
-        const geom = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineBasicMaterial({ color: 0x88aaff });
-        return new THREE.Line(geom, mat);
-      }
-
-      case WeaponType.Homing: {
-        // Small arrow pointing forward
-        const shape = new THREE.Shape();
-        shape.moveTo(0, 0.08);
-        shape.lineTo(0.06, -0.08);
-        shape.lineTo(0, -0.04);
-        shape.lineTo(-0.06, -0.08);
-        shape.closePath();
-
-        const geom = new THREE.ShapeGeometry(shape);
-        geom.rotateX(-Math.PI / 2);
-        const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
-        return new THREE.Mesh(geom, mat);
-      }
-
-      case WeaponType.LaserBeam: {
-        // Horizontal line
-        const points = [
-          new THREE.Vector3(-0.15, 0, 0),
-          new THREE.Vector3(0.15, 0, 0),
-        ];
-        const geom = new THREE.BufferGeometry().setFromPoints(points);
-        const mat = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
-        return new THREE.Line(geom, mat);
-      }
-
-      default:
-        return null;
-    }
   }
 
   /**
