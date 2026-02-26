@@ -1166,8 +1166,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Weapon HUD (inventory display) --
   const weaponHUD = new WeaponHUD();
-  // Position higher on mobile to avoid interfering with gameplay visibility
-  const weaponHUDY = mobile ? window.innerHeight / 4 : window.innerHeight / 2 - 60;
+  // Position near top for better visibility on all platforms
+  const weaponHUDY = mobile ? 40 : 60;
   weaponHUD.setPosition(10, weaponHUDY);
 
   // Wire session level-up: show compact level toast after each pickup beyond the first

@@ -772,7 +772,7 @@ async function main() {
 
   // Weapon HUD — same graphical inventory panel as single-player
   const weaponHUD = new WeaponHUD();
-  weaponHUD.setPosition(10, window.innerHeight / 2 - 60);
+  weaponHUD.setPosition(10, 60);
 
   // Ally glow manager for remote player indicators
   const allyGlowManager = new AllyGlowManager(scene);
