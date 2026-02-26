@@ -41,7 +41,7 @@ import { Splitter } from './Splitter';
 import { Phaser } from './Phaser';
 import { ApproachGlow } from './ApproachGlow';
 import { StealthStalker } from './StealthStalker';
-import { FractalSnake } from './FractalSnake';
+import { FractalSnake, FractalSnakeHeadVariant } from './FractalSnake';
 import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 import type { EnemyDecoratorSystem } from '../../rendering/EnemyDecorators';
 import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
@@ -544,9 +544,12 @@ export class EnemySpawner {
       case 'stealth_stalker':
         enemy = new StealthStalker(u, v);
         break;
-      case 'fractal_snake':
-        enemy = new FractalSnake(u, v, { numRows: 2, followersPerRow: 4 });
+      case 'fractal_snake': {
+        const fsVariants: FractalSnakeHeadVariant[] = ['standard', 'triple_inner', 'double_outer', 'pulsing'];
+        const fsHeadVariant = fsVariants[Math.floor(Math.random() * fsVariants.length)];
+        enemy = new FractalSnake(u, v, { numRows: 2, followersPerRow: 4, headVariant: fsHeadVariant });
         break;
+      }
       case 'boss_sapphire':
         enemy = new Boss('sapphire', u, v);
         break;

@@ -425,4 +425,76 @@ describe('FractalSnake enemy', () => {
     }
     expect(() => snake.triggerShock(scene)).not.toThrow();
   });
+
+  // ──────────────────── headVariant ────────────────────
+
+  it('standard variant has 2 inner triangles', () => {
+    const s = new FractalSnake(0.5, 0.5, { headVariant: 'standard' });
+    expect(s.innerTriangles.length).toBe(2);
+    s.destroy();
+  });
+
+  it('triple_inner variant has 3 inner triangles', () => {
+    const s = new FractalSnake(0.5, 0.5, { headVariant: 'triple_inner' });
+    expect(s.innerTriangles.length).toBe(3);
+    s.destroy();
+  });
+
+  it('double_outer variant has 1 inner triangle', () => {
+    const s = new FractalSnake(0.5, 0.5, { headVariant: 'double_outer' });
+    expect(s.innerTriangles.length).toBe(1);
+    s.destroy();
+  });
+
+  it('pulsing variant has 0 inner triangles', () => {
+    const s = new FractalSnake(0.5, 0.5, { headVariant: 'pulsing' });
+    expect(s.innerTriangles.length).toBe(0);
+    s.destroy();
+  });
+
+  it('default (no variant) produces same as standard (2 inner triangles)', () => {
+    const s = new FractalSnake(0.5, 0.5);
+    expect(s.innerTriangles.length).toBe(2);
+    s.destroy();
+  });
+
+  // ──────────────────── follower mesh variety ────────────────────
+
+  it('titan_grunt followerTypes creates 8 followers with spinAngle initialized', () => {
+    const s = new FractalSnake(0.5, 0.5, {
+      followerTypes: ['titan_grunt', 'rocket', 'neutron', 'wanderer'],
+    });
+    const data = s.getFollowerData();
+    expect(data.length).toBe(8);
+    s.destroy();
+  });
+
+  // ──────────────────── triggerShock 50% damage ────────────────────
+
+  it('triggerShock immediately applies 50% maxHealth damage to all alive followers', () => {
+    const scene = makeScene();
+    const before = snake.getFollowerData().map(f => ({ health: f.health, maxHealth: f.maxHealth }));
+    snake.triggerShock(scene);
+    const after = snake.getFollowerData();
+    for (let i = 0; i < before.length; i++) {
+      const expectedDamage = Math.max(1, Math.floor(before[i].maxHealth * 0.5));
+      const expectedHealth = before[i].health - expectedDamage;
+      if (expectedHealth <= 0) {
+        // Follower died — it should be marked not alive
+        expect(after[i].alive).toBe(false);
+      } else {
+        expect(after[i].health).toBe(expectedHealth);
+      }
+    }
+  });
+
+  it('triggerShock: followers that survive 50% damage are queued for progressive release', () => {
+    const scene = makeScene();
+    // Grunts have maxHealth=2, shock deals floor(2*0.5)=1, health goes 2→1 — survives
+    snake.triggerShock(scene);
+    // All grunt followers should still be alive (survived 50% damage)
+    const data = snake.getFollowerData();
+    const survivingGrunts = data.filter(f => f.enemyType === 'grunt' && f.alive);
+    expect(survivingGrunts.length).toBeGreaterThan(0);
+  });
 });

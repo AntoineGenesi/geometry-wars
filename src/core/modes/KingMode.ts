@@ -68,6 +68,14 @@ export class KingMode implements IGameMode {
     spawned: boolean;
   }> = [
     {
+      // Early dramatic reveal — guaranteed FractalSnake before high difficulty
+      threshold: 0.10,
+      wave: [
+        { type: 'fractal_snake', count: 1 },
+      ],
+      spawned: false,
+    },
+    {
       // Mid-shrink — pressure wave of faster, erratic enemies
       threshold: 0.09,
       wave: [
@@ -111,6 +119,8 @@ export class KingMode implements IGameMode {
   private kothWaveNumber: number = 0;
   /** Total elapsed game time (drives difficulty ramp). */
   private kothElapsed: number = 0;
+  /** Countdown for the guaranteed early fractal_snake spawn (~12 seconds in). */
+  private fractalSnakeStartTimer: number = 12;
 
   // Pre-allocated temp vectors
   private static readonly _tempVec3 = new THREE.Vector3();
@@ -130,6 +140,14 @@ export class KingMode implements IGameMode {
     this.kothWaveTimer -= dt;
     if (this.kothWaveTimer <= 0) {
       this.spawnTimedKothWave(context);
+    }
+
+    // Guaranteed early FractalSnake spawn at ~12 seconds — user must see it
+    if (this.fractalSnakeStartTimer > 0) {
+      this.fractalSnakeStartTimer -= dt;
+      if (this.fractalSnakeStartTimer <= 0) {
+        context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }]);
+      }
     }
 
     // 1. Shrink zone
@@ -340,6 +358,11 @@ export class KingMode implements IGameMode {
     const activeCount = context.enemySpawner.getActiveCount();
     const wave = generateScaledEndlessWave(this.kothWaveNumber, difficultyLevel, activeCount);
     context.enemySpawner.spawnWave(wave as any);
+
+    // Every 3rd wave, add a fractal_snake to keep them appearing throughout the match
+    if (this.kothWaveNumber % 3 === 0) {
+      context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }]);
+    }
 
     // Interval shrinks from 10s → 5s as waves accumulate (max every 5s)
     const interval = Math.max(5.0, 10.0 - Math.floor(this.kothWaveNumber / 4));
