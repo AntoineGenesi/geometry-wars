@@ -427,12 +427,21 @@ export class DepthOcclusionSystem {
 
   /**
    * Map a (possibly fractional) smoothed intersection count to a target opacity.
-   * Thresholds are set at 0.5 and 2.5 so that a single-frame spike from 0→1
-   * (smoothed to 0.3) doesn't cross the 0.5 boundary and cause a visible flicker.
+   *
+   * Threshold choice (0.75) — raised from 0.5 in S36 fix:
+   * With EMA α=0.7, alternating 0/1 raycast noise (rays grazing cube edges each frame)
+   * settles at a steady-state oscillation of ~0.41/0.59. The old threshold of 0.5
+   * sat in the middle of this range, so the target opacity flipped every frame
+   * → visible flicker on cube adjacent faces.
+   *
+   * Raising to 0.75 puts the threshold above the 0.59 noise ceiling:
+   *   - Noise (0/1 alternating): smoothedCount stays ≤ 0.59 < 0.75 → always opacity0, no flicker.
+   *   - Genuine far-side entity (count=1 sustained): smoothedCount reaches 0.75+ in ~4 frames
+   *     (~67ms at 60fps) → correctly transitions to opacity1.
    */
   private countToOpacity(smoothedCount: number): number {
-    if (smoothedCount < 0.5) {
-      return this.config.opacity0;      // Clear line of sight
+    if (smoothedCount < 0.75) {
+      return this.config.opacity0;      // Clear line of sight (or edge noise — stays bright)
     } else if (smoothedCount < 2.5) {
       return this.config.opacity1;      // Behind one surface layer
     } else {
