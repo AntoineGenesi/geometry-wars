@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { OBJModelManager } from '../rendering/OBJModelManager';
 import { WalkingDemo, type CharacterIndex } from './WalkingDemo';
 import { AnimatedCharacterDemo } from '../demo/AnimatedCharacterDemo';
+import { AnimatedCharacterBattleDemo } from '../demo/AnimatedCharacterBattleDemo';
 
 // ---------------------------------------------------------------------------
 // Preset models (local files — no CORS, always work)
@@ -88,6 +89,7 @@ export class OBJDebugPanel {
   private animListEl: HTMLSelectElement | null = null;
   private walkingDemo: WalkingDemo | null = null;
   private characterDemo: AnimatedCharacterDemo | null = null;
+  private battleDemo: AnimatedCharacterBattleDemo | null = null;
   private demoMode: 'flat' | 'sphere' = 'flat';
   private elapsedTime = 0;
 
@@ -131,6 +133,7 @@ export class OBJDebugPanel {
               <div class="obj-char-row">
                 <button id="obj-mode-flat" class="obj-btn obj-btn-demo obj-char-active">⬜ FLAT</button>
                 <button id="obj-mode-sphere" class="obj-btn obj-btn-sphere">🌐 SPHERE</button>
+                <button id="obj-mode-live" class="obj-btn obj-btn-live">⚔ LIVE MODE</button>
               </div>
             </section>
 
@@ -650,6 +653,15 @@ export class OBJDebugPanel {
       }
     });
 
+    const modeLiveBtn = this.container.querySelector('#obj-mode-live');
+    modeLiveBtn?.addEventListener('click', () => {
+      this.hide();
+      this.battleDemo = new AnimatedCharacterBattleDemo();
+      this.battleDemo.onClose = () => {
+        this.battleDemo = null;
+      };
+    });
+
     // Character selection buttons
     const allBtn = this.container.querySelector('#obj-char-all');
     allBtn?.addEventListener('click', () => this.activateWalkingDemo());
@@ -727,6 +739,8 @@ export class OBJDebugPanel {
     this.walkingDemo = null;
     this.characterDemo?.dispose();
     this.characterDemo = null;
+    this.battleDemo?.dispose();
+    this.battleDemo = null;
     this.manager?.dispose();
     this.previewRenderer?.dispose();
     this.container.remove();
@@ -900,6 +914,16 @@ export class OBJDebugPanel {
       background: rgba(0, 20, 80, 0.5);
       border-color: #0088ff;
       color: #44aaff;
+    }
+    .obj-btn-live {
+      background: rgba(80, 0, 20, 0.5);
+      border-color: #ff4444;
+      color: #ff8888;
+    }
+    .obj-btn-live:hover {
+      background: rgba(120, 0, 30, 0.6);
+      border-color: #ff6666;
+      color: #ffaaaa;
     }
 
     .obj-status-text {
