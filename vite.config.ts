@@ -25,7 +25,7 @@ export default defineConfig({
   server: {
     port: parseInt(process.env.VITE_PORT || '3000'),
     host: true,
-    open: true,
+    open: false,
     // COOP/COEP headers removed - they block cross-device LAN access
     // (Safari and mobile browsers refuse to load resources with these headers)
     // SharedArrayBuffer is not used, so these are unnecessary
