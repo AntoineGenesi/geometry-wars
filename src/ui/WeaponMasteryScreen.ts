@@ -513,7 +513,7 @@ export class WeaponMasteryScreen {
         <div class="wms-grid">
           ${cards}
         </div>
-        <div class="wms-hint">Hover node for details &middot; Click to unlock &middot; Click unlocked to refund &middot; ESC to close</div>
+        <div class="wms-hint">Hover node for details &middot; Click to unlock &middot; Right-click to refund &middot; ESC to close</div>
       </div>
     `;
   }
@@ -746,6 +746,16 @@ export class WeaponMasteryScreen {
       }
     });
 
+    // Right-click to refund (direct refund, no confirmation)
+    this.container.addEventListener('contextmenu', (e) => {
+      const target = e.target as HTMLElement;
+      const nodeEl = target.closest<HTMLElement>('.wms-node');
+      if (nodeEl) {
+        e.preventDefault(); // Prevent browser context menu
+        this._handleNodeRightClick(nodeEl);
+      }
+    });
+
     // Tooltip: mouseover
     this.container.addEventListener('mouseover', (e) => {
       const nodeEl = (e.target as HTMLElement).closest<HTMLElement>('.wms-node');
@@ -824,6 +834,27 @@ export class WeaponMasteryScreen {
       }
     }
     // locked nodes: no action
+  }
+
+  private _handleNodeRightClick(nodeEl: HTMLElement): void {
+    const ps = this._pointStore!;
+    const nodeId = nodeEl.dataset.nodeId!;
+    const state = nodeEl.dataset.nodeState as 'unlocked' | 'affordable' | 'locked';
+
+    // Right-click refund: only works on unlocked nodes, refund immediately (no pending state)
+    if (state === 'unlocked') {
+      const refunded = ps.refundPoint(nodeId);
+      if (refunded) {
+        this._pendingRefundNodeId = null;
+        this._updateNodeEl(nodeEl);
+        this._refreshAllNodeStates();
+        const weaponType = nodeEl.closest<HTMLElement>('.wms-card')?.dataset.weaponType as WeaponType;
+        const color = nodeEl.style.getPropertyValue('--wc');
+        if (weaponType) this._updateConstellationLines(weaponType, color);
+        this._updatePointsDisplay();
+      }
+    }
+    // locked or affordable nodes: no action on right-click
   }
 
   /** Refresh all nodes' visual state (e.g. after points change). */
