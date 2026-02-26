@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { OBJModelManager } from '../rendering/OBJModelManager';
 import { WalkingDemo, type CharacterIndex } from './WalkingDemo';
+import { AnimatedCharacterDemo } from '../demo/AnimatedCharacterDemo';
 
 // ---------------------------------------------------------------------------
 // Preset models (local files — no CORS, always work)
@@ -86,6 +87,8 @@ export class OBJDebugPanel {
   private perfEl: HTMLDivElement | null = null;
   private animListEl: HTMLSelectElement | null = null;
   private walkingDemo: WalkingDemo | null = null;
+  private characterDemo: AnimatedCharacterDemo | null = null;
+  private demoMode: 'flat' | 'sphere' = 'flat';
   private elapsedTime = 0;
 
   constructor() {
@@ -124,6 +127,14 @@ export class OBJDebugPanel {
           <div class="obj-controls">
 
             <section class="obj-section">
+              <h3>Demo Mode</h3>
+              <div class="obj-char-row">
+                <button id="obj-mode-flat" class="obj-btn obj-btn-demo obj-char-active">⬜ FLAT</button>
+                <button id="obj-mode-sphere" class="obj-btn obj-btn-sphere">🌐 SPHERE</button>
+              </div>
+            </section>
+
+            <section class="obj-section" id="obj-flat-chars-section">
               <h3>Walking Characters</h3>
               <p class="obj-demo-desc">3 animated low-poly characters — click to isolate</p>
               <div class="obj-char-row">
@@ -132,6 +143,12 @@ export class OBJDebugPanel {
                 <button id="obj-char-1" class="obj-btn obj-btn-alien">👽 ALIEN</button>
                 <button id="obj-char-2" class="obj-btn obj-btn-warrior">⚔ WARRIOR</button>
               </div>
+            </section>
+
+            <section class="obj-section" id="obj-sphere-chars-section" style="display:none">
+              <h3>Sphere Mode</h3>
+              <p class="obj-demo-desc">Rigged GLB characters walking on game sphere surface</p>
+              <p class="obj-demo-desc" style="color:#00aaff">Knight · Mage · Warrior — UV movement + animations</p>
             </section>
 
             <section class="obj-section">
@@ -301,6 +318,7 @@ export class OBJDebugPanel {
       this.elapsedTime += dt;
       this.manager?.update(dt);
       this.walkingDemo?.update(this.elapsedTime);
+      this.characterDemo?.update(dt);
       this.previewRenderer.render(this.previewScene, this.previewCamera);
       this.updatePerfDisplay();
     };
@@ -320,6 +338,7 @@ export class OBJDebugPanel {
 
   private activateWalkingDemo(showCharIndex?: CharacterIndex): void {
     if (!this.previewScene) return;
+    this.demoMode = 'flat';
 
     // Clear any loaded OBJ/GLB model
     if (this.previewModel) {
@@ -327,6 +346,19 @@ export class OBJDebugPanel {
       this.previewModel = null;
     }
     this.manager?.removeFromScene();
+
+    // Dispose sphere demo if running
+    if (this.characterDemo) {
+      this.characterDemo.dispose();
+      this.characterDemo = null;
+    }
+
+    // Show/hide sections
+    const flatSection = this.container.querySelector('#obj-flat-chars-section') as HTMLElement;
+    const sphereSection = this.container.querySelector('#obj-sphere-chars-section') as HTMLElement;
+    if (flatSection) flatSection.style.display = '';
+    if (sphereSection) sphereSection.style.display = 'none';
+    this.updateModeButtons('flat');
 
     // Create walking demo if not already running
     if (!this.walkingDemo) {
@@ -379,6 +411,88 @@ export class OBJDebugPanel {
     // Hide animation controls (auto-playing, no manual clips)
     const animSection = this.container.querySelector('#obj-anim-section') as HTMLElement;
     if (animSection) animSection.style.display = 'none';
+  }
+
+  // -------------------------------------------------------------------------
+  // Sphere demo activation
+  // -------------------------------------------------------------------------
+
+  private activateSphereDemo(): void {
+    if (!this.previewScene) return;
+    this.demoMode = 'sphere';
+
+    // Clear any loaded OBJ/GLB model
+    if (this.previewModel) {
+      this.previewScene.remove(this.previewModel);
+      this.previewModel = null;
+    }
+    this.manager?.removeFromScene();
+
+    // Dispose flat walking demo
+    if (this.walkingDemo) {
+      this.walkingDemo.dispose();
+      this.walkingDemo = null;
+    }
+
+    // Create sphere demo
+    if (!this.characterDemo) {
+      this.characterDemo = new AnimatedCharacterDemo(this.previewScene);
+    }
+
+    // Update UI
+    this.updateModeButtons('sphere');
+    const flatSection = this.container.querySelector('#obj-flat-chars-section') as HTMLElement;
+    const sphereSection = this.container.querySelector('#obj-sphere-chars-section') as HTMLElement;
+    if (flatSection) flatSection.style.display = 'none';
+    if (sphereSection) sphereSection.style.display = '';
+
+    this.setStatus('✓ Sphere mode — 3 GLB characters walking on sphere surface', 'ok', '#00aaff');
+
+    // Show sphere demo info
+    const infoSection = this.container.querySelector('#obj-model-info') as HTMLElement;
+    const tableEl = this.container.querySelector('#obj-info-table') as HTMLElement;
+    if (infoSection && tableEl) {
+      tableEl.innerHTML = [
+        ['Surface', 'Sphere (radius 2)'],
+        ['Characters', '3 rigged GLB (Kenney)'],
+        ['Movement', 'UV-based (game system)'],
+        ['Animations', 'idle / walk (skeletal)'],
+      ].map(([k, v]) => `<span class="obj-info-key">${k}</span><span class="obj-info-val">${v}</span>`).join('');
+      infoSection.style.display = '';
+    }
+
+    const animSection = this.container.querySelector('#obj-anim-section') as HTMLElement;
+    if (animSection) animSection.style.display = 'none';
+
+    // Adjust camera for sphere view
+    this.orbitState.radius = 7;
+    this.orbitState.theta = Math.PI / 4;
+    this.orbitState.phi = Math.PI / 3;
+    this.updateOrbit();
+  }
+
+  private deactivateSphereDemo(): void {
+    if (this.characterDemo) {
+      this.characterDemo.dispose();
+      this.characterDemo = null;
+    }
+    this.demoMode = 'flat';
+
+    // Show flat chars section, hide sphere section
+    const flatSection = this.container.querySelector('#obj-flat-chars-section') as HTMLElement;
+    const sphereSection = this.container.querySelector('#obj-sphere-chars-section') as HTMLElement;
+    if (flatSection) flatSection.style.display = '';
+    if (sphereSection) sphereSection.style.display = 'none';
+
+    this.updateModeButtons('flat');
+  }
+
+  private updateModeButtons(active: 'flat' | 'sphere'): void {
+    const flatBtn = this.container.querySelector('#obj-mode-flat') as HTMLButtonElement;
+    const sphereBtn = this.container.querySelector('#obj-mode-sphere') as HTMLButtonElement;
+    if (!flatBtn || !sphereBtn) return;
+    flatBtn.classList.toggle('obj-char-active', active === 'flat');
+    sphereBtn.classList.toggle('obj-char-active', active === 'sphere');
   }
 
   private updateCharButtons(activeIndex: number): void {
@@ -520,6 +634,22 @@ export class OBJDebugPanel {
     const closeBtn = this.container.querySelector('#obj-panel-close');
     closeBtn?.addEventListener('click', () => this.hide());
 
+    // Demo mode toggle buttons
+    const modeFlatBtn = this.container.querySelector('#obj-mode-flat');
+    modeFlatBtn?.addEventListener('click', () => {
+      if (this.demoMode !== 'flat') {
+        this.deactivateSphereDemo();
+        this.activateWalkingDemo();
+      }
+    });
+
+    const modeSphereBtn = this.container.querySelector('#obj-mode-sphere');
+    modeSphereBtn?.addEventListener('click', () => {
+      if (this.demoMode !== 'sphere') {
+        this.activateSphereDemo();
+      }
+    });
+
     // Character selection buttons
     const allBtn = this.container.querySelector('#obj-char-all');
     allBtn?.addEventListener('click', () => this.activateWalkingDemo());
@@ -595,6 +725,8 @@ export class OBJDebugPanel {
     this.stopRenderLoop();
     this.walkingDemo?.dispose();
     this.walkingDemo = null;
+    this.characterDemo?.dispose();
+    this.characterDemo = null;
     this.manager?.dispose();
     this.previewRenderer?.dispose();
     this.container.remove();
@@ -763,6 +895,11 @@ export class OBJDebugPanel {
       background: rgba(80, 40, 0, 0.5);
       border-color: #ff8844;
       color: #ffaa66;
+    }
+    .obj-btn-sphere {
+      background: rgba(0, 20, 80, 0.5);
+      border-color: #0088ff;
+      color: #44aaff;
     }
 
     .obj-status-text {
