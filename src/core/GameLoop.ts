@@ -427,14 +427,15 @@ export class GameLoop {
     }
     profiler.end('effects_and_buffs');
 
-    // Compute player's analytical surface position from UV (used for all pickup collision checks).
-    // Using the analytical position (from getTransform/getPoint) instead of the BVH mesh position
-    // (ctx.playerWalker.position) ensures both the player position and pickup _surfaceWorldPos are
-    // in the same coordinate system (analytical parametric surface), eliminating tessellation-induced
-    // position mismatches that caused pickups to be uncollectable on curved surfaces (torus bug).
-    const playerAnalyticalSurfacePos = ctx.player.alive
-      ? ctx.getTransform(ctx.player.surfaceU, ctx.player.surfaceV).position
-      : null;
+    // Use playerWalker.position directly for pickup collision checks.
+    // Both playerWalker.position and pickup._surfaceWorldPos are in the same world space
+    // (both include worldRotation and scaleFactor). The previous UV round-trip approach
+    // (playerWalker → worldToSurface → UV → getTransform → analytical pos) introduced
+    // errors on peanut (approximate 100-step phi scan) and cube (complex UV parameterization),
+    // causing inconsistent pickup detection across maps.
+    // REGRESSION GUARD: This fixes peanut/cube pickup detection. The UV round-trip was
+    // previously added to fix torus (s34b) but that fix was in getPointLocal y-flip, not here.
+    const playerPickupPos = ctx.player.alive ? ctx.playerWalker.position : null;
 
     // Update new buff pickups
     for (let i = ctx.pickupSpawner.newBuffPickups.length - 1; i >= 0; i--) {
@@ -449,7 +450,7 @@ export class GameLoop {
       nbp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with new buff pickup
-      if (ctx.player.alive && nbp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerAnalyticalSurfacePos ?? ctx.playerWalker.position)) {
+      if (ctx.player.alive && nbp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerPickupPos ?? ctx.playerWalker.position)) {
         ctx.buffManager.addBuff(nbp.buffType);
         ctx.scorePopups.spawn(
           ctx.player.mesh.position.clone(),
@@ -537,7 +538,7 @@ export class GameLoop {
       cp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with companion pickup
-      if (ctx.player.alive && cp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerAnalyticalSurfacePos ?? ctx.playerWalker.position)) {
+      if (ctx.player.alive && cp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerPickupPos ?? ctx.playerWalker.position)) {
         ctx.companionManager.addCompanion(cp.companionType);
         this.sound.play('weaponPickup', { volume: 0.5, pitch: 1.8 });
         cp.active = false;
@@ -560,7 +561,7 @@ export class GameLoop {
       pickup.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with pickup
-      if (ctx.player.alive && pickup.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerAnalyticalSurfacePos ?? ctx.playerWalker.position)) {
+      if (ctx.player.alive && pickup.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerPickupPos ?? ctx.playerWalker.position)) {
         const allDotsGone = pickup.removeClosestDot(ctx.player.surfaceU, ctx.player.surfaceV);
         if (allDotsGone) {
           ctx.superManager.activate(pickup.type);
@@ -759,7 +760,7 @@ export class GameLoop {
       wp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with weapon pickup
-      if (ctx.player.alive && wp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerAnalyticalSurfacePos ?? ctx.playerWalker.position)) {
+      if (ctx.player.alive && wp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerPickupPos ?? ctx.playerWalker.position)) {
         const switched = ctx.weaponManager.equipWeapon(wp.type);
         this.sound.play('weaponPickup', switched ? undefined : { volume: 0.5, pitch: 0.9 });
         if (!switched) {
@@ -783,7 +784,7 @@ export class GameLoop {
       bp.applySurfaceTransform(ctx.getTransform);
 
       // Check player collision with buff pickup
-      if (ctx.player.alive && bp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerAnalyticalSurfacePos ?? ctx.playerWalker.position)) {
+      if (ctx.player.alive && bp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerPickupPos ?? ctx.playerWalker.position)) {
         ctx.weaponManager.applyBuff(bp.buffType);
         this.sound.play('weaponPickup', { volume: 0.3, pitch: 1.5 });
         bp.active = false;
