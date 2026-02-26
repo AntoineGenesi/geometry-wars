@@ -1,0 +1,43 @@
+## Session 36 — CONTINUATION: Re-Reports of S35 Bugs (19 Tasks)
+
+User reports S35 bugs as still broken. These are NOT new bugs — they're re-reports of supposedly "fixed" tasks.
+
+**CRITICAL (Depends on S36 phases 2+3):**
+- s36-cube-dimming-glitch-re-report — Entities flicker between dim/bright, need stability
+- s36-peanut-geodesic-mp-still-broken-re-report — MP peanut broken, SP works. Regression from prior fix.
+- s36-mp-lives-still-shared-re-report — Been "fixed" twice in S34/S35, still broken. Something's missing.
+
+**HIGH (Sequential Wave 1 — Surface Bugs):**
+- s36-cube-top-bottom-wrapping-paper-re-report — Top/bottom faces have line artifacts
+- s36-pickup-inconsistent-radius-re-report — Radius inconsistent, sometimes uses magnet radius
+- s36-torus-arrow-rendering-re-report — Arrow points wrong direction, fix pattern applies to all maps
+- s36-torus-hit-detection-inverted-controls-re-report [actually should be Plane] — Plane: controls inverted + no hit detection + enemies walk through
+
+**HIGH (Wave 2 — Gameplay):**
+- s36-koth-zone-positioning-re-report — Zone hovers above surface, should be ON surface
+- s36-mp-movement-control-loss-re-report — Joining player frozen, can't control
+- s36-sphere-pole-skip-re-report — Skipping over axis at poles, peanut does it smoothly
+- s36-mp-enemy-ai-strategies-re-report — MP enemies just rush, no SP strategies
+- s36-peanut-movement-speed-variation-re-report — Speed varies (sluggish center, fast ends)
+
+**HIGH (Wave 3 — Multiplayer/UI):**
+- s36-mobile-ui-fixes-batch-re-report — Pause broken, UI too large, stop button in wrong place
+- s36-mp-host-detection-re-report — First joiner marked as host (should be creator)
+- s36-mp-damage-numbers-re-report — No damage feedback in MP
+- s36-cube-mp-camera-180-re-report — 180° flip on top/bottom surfaces, controls inverted
+
+**STANDARD (Can parallelize):**
+- s36-snake-entity-variants-missing-re-report — Variants implemented but user hasn't seen them
+
+**QUICK/MEDIUM:**
+- s36-kill-counter-fix-re-report — Shows combined kills, should be "X out of N"
+- s36-weapon-boost-ui-position-re-report — Icons too low on screen
+- s36-bloom-spawn-glitch-re-report — White bloom covers screen on spawn
+- s36-server-auto-shutdown-re-report — Should pause then shutdown, not just shutdown
+- s36-torus-light-trails-cosmetic-re-report — Trail positioning wrong (low priority, informational)
+
+**EXECUTION STRATEGY:**
+1. Wait for S36 phases 2+3 to complete (2 workers currently active)
+2. Launch S36 re-report waves (merge requires fixing code that was supposedly "fixed")
+3. Each wave = multiple workers fixing related categories
+4. Checkpoint progress: track which S35 re-reports are actually fixed

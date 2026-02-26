@@ -136,12 +136,127 @@ export class SphereSurface extends Surface {
   createMesh(): THREE.Mesh {
     const { radius, gridSegmentsU, gridSegmentsV } =
       SphereSurface.getInitData()
-    const geometry = new THREE.SphereGeometry(
+    const geometry = this._buildSphereGeometry(
       radius,
       gridSegmentsU * 2,
-      gridSegmentsV * 2
+      gridSegmentsV * 2,
     )
     return new THREE.Mesh(geometry, this.createSurfaceMaterial())
+  }
+
+  /**
+   * Build a sphere geometry with small pole cap triangles.
+   *
+   * THREE.SphereGeometry creates cap triangles ~0.785 world units wide (on a
+   * radius-10, 40-segment sphere). These large cap triangles cause the geodesic
+   * face-walker to get stuck and circle at poles, producing the "pole skip".
+   *
+   * Fix: use MIN_SIN_PHI = 0.01 so the first ring is placed only ~0.1 world
+   * units from the apex — small enough for the geodesic walker to cross in one
+   * step. This mirrors exactly what PeanutSurface does for its apex regions.
+   *
+   * Structure:
+   *   vertex 0           = top apex (0, radius, 0)
+   *   vertices 1 .. N    = regular rings j=0..rings (segments+1 verts each)
+   *   vertex N+1         = bottom apex (0, -radius, 0)
+   *   Fan triangles cap the top and bottom with the apex vertices.
+   */
+  private _buildSphereGeometry(
+    radius: number,
+    segments: number,
+    rings: number,
+  ): THREE.BufferGeometry {
+    // Minimum sin(phi) at the pole rings — limits cap-triangle size to ~0.1 world
+    // units (radius * MIN_SIN_PHI) instead of the ~0.785 units from SphereGeometry.
+    const MIN_SIN_PHI = 0.01
+
+    const geometry = new THREE.BufferGeometry()
+    const vertices: number[] = []
+    const indices: number[] = []
+    const normals: number[] = []
+
+    // --- Vertex 0: top apex ---
+    vertices.push(0, radius, 0)
+    normals.push(0, 1, 0)
+
+    // --- Rings j=0..rings with clamped sin(phi) near poles ---
+    for (let j = 0; j <= rings; j++) {
+      const phi = (j / rings) * Math.PI
+      const rawSinPhi = Math.sin(phi)
+      const cosPhi = Math.cos(phi)
+
+      // Clamp sin(phi) so the pole rings are slightly offset from the apex.
+      // This gives small cap triangles (height ≈ radius * MIN_SIN_PHI = 0.1)
+      // rather than the large ones THREE.SphereGeometry produces.
+      const effectiveSinPhi =
+        Math.abs(rawSinPhi) < MIN_SIN_PHI
+          ? MIN_SIN_PHI * (rawSinPhi >= 0 ? 1 : -1)
+          : rawSinPhi
+
+      for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * Math.PI * 2
+        const cosTheta = Math.cos(theta)
+        const sinTheta = Math.sin(theta)
+
+        vertices.push(
+          radius * effectiveSinPhi * cosTheta,
+          radius * cosPhi,
+          radius * effectiveSinPhi * sinTheta,
+        )
+
+        // Outward normal (exact sphere normal, not affected by effectiveSinPhi clamping)
+        const nx = effectiveSinPhi * cosTheta
+        const ny = cosPhi
+        const nz = effectiveSinPhi * sinTheta
+        const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz)
+        normals.push(nx / nLen, ny / nLen, nz / nLen)
+      }
+    }
+
+    // --- Last vertex: bottom apex ---
+    vertices.push(0, -radius, 0)
+    normals.push(0, -1, 0)
+
+    const topApex = 0
+    const ringStart = (j: number) => 1 + j * (segments + 1)
+    const bottomApex = 1 + (rings + 1) * (segments + 1)
+
+    // --- Fan: top apex → first ring (j=0) ---
+    for (let i = 0; i < segments; i++) {
+      const a = ringStart(0) + i
+      const b = ringStart(0) + i + 1
+      indices.push(topApex, b, a)
+    }
+
+    // --- Quad strips between adjacent rings ---
+    for (let j = 0; j < rings; j++) {
+      for (let i = 0; i < segments; i++) {
+        const a = ringStart(j) + i
+        const b = a + 1
+        const c = ringStart(j + 1) + i
+        const d = c + 1
+        indices.push(a, b, c, b, d, c)
+      }
+    }
+
+    // --- Fan: last ring (j=rings) → bottom apex ---
+    for (let i = 0; i < segments; i++) {
+      const a = ringStart(rings) + i
+      const b = ringStart(rings) + i + 1
+      indices.push(a, b, bottomApex)
+    }
+
+    geometry.setAttribute(
+      'position',
+      new THREE.Float32BufferAttribute(vertices, 3),
+    )
+    geometry.setAttribute(
+      'normal',
+      new THREE.Float32BufferAttribute(normals, 3),
+    )
+    geometry.setIndex(indices)
+
+    return geometry
   }
 
   createGrid(): THREE.LineSegments {

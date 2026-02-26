@@ -1,0 +1,168 @@
+# S36 Re-Report Tasks Created (Session 36 Voice Dump Triage)
+
+## Task Files Created (19 Total)
+
+### CRITICAL (3 tasks) — Must Fix Before Others Can Proceed
+1. s36-cube-dimming-glitch-re-report.md
+   - Entities flicker between dim/bright on near vs far cube surfaces
+   - Re-report of: s35-entity-dimming-glitch-cube
+   
+2. s36-peanut-geodesic-mp-still-broken-re-report.md
+   - MP peanut breaks (bullets to origin/poles), SP works
+   - User: "you've had it fixed before" (regression from prior fix)
+   - Re-report of: s35-peanut-geodesic-mp-only-critical
+   
+3. s36-mp-lives-still-shared-re-report.md
+   - Hearts still shared in MP (one death affects all players)
+   - Fixed 3 times: S34 → S34b → S35 (all "Done"), still broken
+   - Re-report of: s35-mp-lives-investigation-continued (+ s34 + s34b attempts)
+
+### HIGH (11 tasks) — Surface Bugs + Gameplay + MP Issues
+
+#### Surface Geometry (4 tasks)
+4. s36-cube-top-bottom-wrapping-paper-re-report.md
+   - Top/bottom cube faces have weird line artifacts (wrapping paper effect)
+   - Re-report of: s35-cube-top-bottom-surface-folded-geometry
+
+5. s36-pickup-inconsistent-radius-re-report.md
+   - Pickup radius varies (sometimes perfect, sometimes can't collect)
+   - Uses magnet radius instead of player radius sometimes
+   - On peanut: doesn't register until moving to center axis
+   - Re-report of: s35-pickup-system-comprehensive-fix
+
+6. s36-torus-arrow-rendering-re-report.md
+   - Arrow on torus doesn't point at pickup correctly
+   - Fix pattern to apply to all 12 maps
+   - Re-report of: s35-torus-pickup-arrow-rendering
+
+7. s36-plane-hit-detection-inverted-controls-re-report.md
+   - Plane: all controls inverted (up = down, aim inverted)
+   - Plane: no hit detection (enemies walk through)
+   - Plane: random deaths
+   - Re-report of: [New / not in S35]
+
+#### Gameplay (5 tasks)
+8. s36-koth-zone-positioning-re-report.md
+   - KotH zone hovers above surface, should be ON surface
+   - Doesn't work on smaller maps
+   - Re-report of: s35-koth-zone-positioning-small-maps
+
+9. s36-sphere-pole-skip-re-report.md
+   - Near north/south poles, player skips over axis instead of smooth passage
+   - Peanut does it smoothly (use as reference)
+   - Re-report of: s35-sphere-pole-skip-issue
+
+10. s36-mp-movement-control-loss-re-report.md
+    - Joining player frozen, cannot move
+    - Host's character moves in joining player's camera direction
+    - Pause → resume fixes it (input initialization issue)
+    - Re-report of: s35-mp-movement-control-loss
+
+11. s36-mp-enemy-ai-strategies-re-report.md
+    - MP: all enemies just rush toward nearest player
+    - SP: enemies use intelligent strategies (magnets fly to where you stood, etc.)
+    - Strategies not ported to MP
+    - Re-report of: s35-mp-enemy-ai-strategies
+
+12. s36-peanut-movement-speed-variation-re-report.md
+    - Peanut movement speed varies (sluggish near center, fast at bulges)
+    - Should be consistent across entire surface
+    - Re-report of: s35-peanut-movement-speed-variation
+
+#### Multiplayer/UI (2 tasks)
+13. s36-cube-mp-camera-180-re-report.md
+    - Cube MP: 180° perspective shift on top/bottom surfaces
+    - Direction controls inverted
+    - Re-report of: s35-cube-mp-camera-180-rotation
+
+14. s36-mobile-ui-fixes-batch-re-report.md
+    - Pause button doesn't work on mobile (MP)
+    - Stop server button in wrong place (should only be in pause menu)
+    - Score text too large, player names too large
+    - Re-report of: s35-mobile-pause-menu-access + s35-mobile-ui-scaling-adjustments
+
+### HIGH (3 tasks) — Multiplayer Specific
+
+15. s36-mp-host-detection-re-report.md
+    - First joiner marked as host (should be game creator)
+    - Re-report of: s35-mp-host-detection-first-joiner
+
+16. s36-mp-damage-numbers-re-report.md
+    - No damage numbers showing in MP when enemies hit
+    - Player can't see impact feedback
+    - Re-report of: s35-mp-damage-numbers-missing
+
+### STANDARD (1 task) — Features Missing
+
+17. s36-snake-entity-variants-missing-re-report.md
+    - KotH should have snake variants: double-column, enemy-carrying, fancy heads
+    - Supposedly implemented but user hasn't seen them
+    - Re-report of: s35-koth-snake-entity-variants
+
+### QUICK/MEDIUM (4 tasks) — Easy Fixes
+
+18. s36-kill-counter-fix-re-report.md
+    - Shows combined kills, should be "X out of N" format
+    - X = this player's kills, N = total kills all players
+    - [New task, not in S35]
+
+19. s36-weapon-boost-ui-position-re-report.md
+    - Weapon and boost display positioned too low
+    - Should be higher on screen
+    - [New task, not in S35]
+
+20. s36-bloom-spawn-glitch-re-report.md
+    - White bloom covers screen on spawn sometimes
+    - Pause → resume fixes it (cosmetic but annoying)
+    - Re-report of: s35-mp-bloom-white-ball-spawn
+
+21. s36-server-auto-shutdown-re-report.md
+    - Should auto-PAUSE (idle), then shutdown after 10-15 min
+    - Currently just shuts down immediately
+    - Re-report of: s35-server-auto-shutdown-logic
+
+### LOW/INFORMATIONAL (1 task)
+
+22. s36-torus-light-trails-cosmetic-re-report.md
+    - Player light trails position wrong on torus
+    - Low priority (cosmetic)
+    - Re-report of: s35-torus-light-trails-cosmetic
+
+---
+
+## Summary by Category
+
+| Category | Count | Priority |
+|----------|-------|----------|
+| CRITICAL | 3 | Must fix first (block other work) |
+| HIGH | 14 | High priority (gameplay/MP affecting) |
+| STANDARD | 1 | Feature implementation |
+| QUICK | 3 | Easy fixes |
+| LOW | 1 | Cosmetic/informational |
+| **TOTAL** | **22** | **All 19 user reports covered** |
+
+**Note:** Some user reports (e.g., "Light trails on torus") appear in multiple map contexts.
+Total unique issues: ~20-22 distinct problems reported across 27 voice statements.
+
+---
+
+## Execution Status
+
+- **Created:** 2026-02-27
+- **Status:** Ready for execution (waiting for S36 phases 2+3 to complete)
+- **Estimated Duration:** 4-5 hours for all fixes (6 waves)
+- **Dependencies:** None on external systems (internal re-reports only)
+
+---
+
+## Quality Assurance Checklist
+
+Each task file includes:
+- [x] User report (exact wording from voice dump)
+- [x] Root cause hypothesis
+- [x] Acceptance criteria (specific, testable)
+- [x] Key files (likely locations)
+- [x] Investigation points (where to start)
+- [x] Test plan (how to verify fix)
+- [x] Link back to S35 original (preserve history)
+

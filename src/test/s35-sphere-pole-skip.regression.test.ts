@@ -154,3 +154,64 @@ describe('S35: Sphere pole skip regression', () => {
     expect(result.maxStepMultiple).toBeLessThanOrEqual(2.0);
   });
 });
+
+/**
+ * S36 Regression: Sphere mesh uses small cap triangles (MIN_SIN_PHI).
+ *
+ * SphereSurface.createMesh() previously used THREE.SphereGeometry which
+ * produces cap triangles ~0.785 world units from the apex — causing the
+ * geodesic walker to circle and `_tryPoleTraversal` to fire prematurely.
+ *
+ * Fix: custom mesh builder with MIN_SIN_PHI=0.01, so cap triangles are only
+ * ~0.1 world units from the apex (same technique as PeanutSurface).
+ *
+ * This test verifies the mesh structure:
+ * - The apex vertex (highest Y on sphere) must have adjacent vertices within
+ *   MIN_SIN_PHI * radius = 0.1 world units (not 0.785 like THREE.SphereGeometry).
+ */
+describe('S36: Sphere cap triangle size regression', () => {
+  it('sphere mesh cap triangles are small (apex neighbours within 0.15 world units)', () => {
+    const { surf } = createSphereSurface();
+    const geo = surf.mesh.geometry;
+    const posAttr = geo.getAttribute('position') as THREE.BufferAttribute;
+    const indexAttr = geo.index!;
+
+    // Find the top-apex vertex: highest Y coordinate
+    let apexIdx = 0;
+    let apexY = -Infinity;
+    for (let i = 0; i < posAttr.count; i++) {
+      const y = posAttr.getY(i);
+      if (y > apexY) { apexY = y; apexIdx = i; }
+    }
+
+    // Find all vertices that share a triangle with the apex
+    const neighbourDistances: number[] = [];
+    const apexX = posAttr.getX(apexIdx);
+    const apexZ = posAttr.getZ(apexIdx);
+
+    const triCount = indexAttr.count / 3;
+    for (let t = 0; t < triCount; t++) {
+      const i0 = indexAttr.getX(t * 3);
+      const i1 = indexAttr.getX(t * 3 + 1);
+      const i2 = indexAttr.getX(t * 3 + 2);
+      const verts = [i0, i1, i2];
+      if (!verts.includes(apexIdx)) continue;
+
+      for (const v of verts) {
+        if (v === apexIdx) continue;
+        const dx = posAttr.getX(v) - apexX;
+        const dy = posAttr.getY(v) - apexY;
+        const dz = posAttr.getZ(v) - apexZ;
+        neighbourDistances.push(Math.sqrt(dx * dx + dy * dy + dz * dz));
+      }
+    }
+
+    expect(neighbourDistances.length).toBeGreaterThan(0);
+
+    // With MIN_SIN_PHI=0.01 and radius=10: neighbour distance ≈ 0.10 world units.
+    // With THREE.SphereGeometry (no fix): neighbour distance ≈ 0.786 world units.
+    // Threshold of 0.15 catches any reversion to large cap triangles.
+    const maxNeighbourDist = Math.max(...neighbourDistances);
+    expect(maxNeighbourDist).toBeLessThan(0.15);
+  });
+});
