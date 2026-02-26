@@ -1204,3 +1204,15 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Arrow pulses** — Arrow flashes/pulses to attract attention
 - [ ] **Arrow bounces** — Arrow bounces up and down above pickup
 - [ ] **Pickup bobs** — Pickup visual bobs up and down along the surface normal
+
+## S35: Cube MP Camera 180° Rotation Fix
+
+**Fix:** MeshWalker bitangent sign-flip protection prevents 180° camera rotation when crossing cube face edges in multiplayer.
+
+### Test: Cube multiplayer — walk between faces, verify no camera flip
+- [ ] **Start multiplayer on cube** — Open multiplayer, select cube surface, start game
+- [ ] **Walk between all faces** — Move player between front/back/left/right/top/bottom faces
+- [ ] **No 180° flip** — Camera should NOT suddenly rotate 180° (view should stay consistent)
+- [ ] **Controls stay intuitive** — After face transition, "up" still moves the direction you expect
+- [ ] **Camera may tilt** — Camera IS allowed to tilt/orbit over one axis (this is normal for cube surface walking)
+- [ ] **Tested on single-player too** — Walk between cube faces in single-player, same behavior
