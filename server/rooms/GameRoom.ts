@@ -168,6 +168,33 @@ const WAVE_TYPE_REMAP: Record<string, string> = {
   splitter: 'titan_weaver',
 };
 
+// Server-side AI state for each live enemy. Not synced to clients.
+interface ServerEnemyAI {
+  // Grunt: acceleration ramp
+  currentSpeed?: number;
+  // Wanderer / Neutron: direction vector + change timer
+  directionU?: number;
+  directionV?: number;
+  directionChangeTimer?: number;
+  nextDirectionChange?: number;
+  // Rocket / Arrow: straight-line direction (set once on spawn, changes on bounce)
+  rocketDirU?: number;
+  rocketDirV?: number;
+  // Mayfly: jitter offset + timer
+  jitterOffsetU?: number;
+  jitterOffsetV?: number;
+  jitterTimer?: number;
+  // Orbiter: orbit angle, radius, direction, reverse timer
+  orbitAngle?: number;
+  orbitRadius?: number;
+  orbitDirection?: number;
+  reverseTimer?: number;
+  nextReverse?: number;
+  // Weaver: momentum
+  momentumU?: number;
+  momentumV?: number;
+}
+
 export class GameRoom extends Room<GameState> {
   private nextBulletId = 0;
   private nextEnemyId = 0;
@@ -210,6 +237,9 @@ export class GameRoom extends Room<GameState> {
 
   // Per-player invincibility timers (sessionId → seconds remaining)
   private playerInvincibility: Map<string, number> = new Map();
+
+  // Per-enemy AI state (server-side only — not synced to clients)
+  private enemyAI: Map<string, ServerEnemyAI> = new Map();
 
   /**
    * Latest input state per player. Updated on message receipt, consumed
@@ -580,6 +610,7 @@ export class GameRoom extends Room<GameState> {
     // Clear entities
     this.state.bullets.clear();
     this.state.enemies.clear();
+    this.enemyAI.clear();
     this.state.geoms.clear();
     this.state.weaponPickups.clear();
 
@@ -784,6 +815,7 @@ export class GameRoom extends Room<GameState> {
     this.state.enemies.forEach((enemy, index) => {
       if (enemy.alive) {
         enemy.alive = false;
+        this.enemyAI.delete(enemy.id);
         enemiesToRemove.push(index);
 
         // Geoms removed (s27g-geons-point-pickups-remove-mp)
@@ -937,49 +969,321 @@ export class GameRoom extends Room<GameState> {
   }
 
   private updateEnemies(dt: number) {
-    // Simple enemy AI: move toward nearest player
     const wrapsV = this.surfaceWrapsV();
     const surfType = this.state.surfaceType;
 
     this.state.enemies.forEach((enemy) => {
       if (!enemy.alive) return;
 
-      // Find nearest player using wrap-aware UV distance
-      let nearestPlayer: PlayerState | null = null;
-      let nearestDist = Infinity;
+      const ai = this.enemyAI.get(enemy.id) ?? {};
+      const nearestPlayer = this.findNearestPlayer(enemy.surfaceU, enemy.surfaceV);
 
-      this.state.players.forEach((player) => {
-        if (!player.alive) return;
-        const dist = this.uvDistWrapped(enemy.surfaceU, enemy.surfaceV, player.surfaceU, player.surfaceV);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearestPlayer = player;
-        }
-      });
-
-      if (nearestPlayer) {
-        // Move toward player using shortest-path delta (handles wrap-around seams)
-        const du = this.uvDelta(enemy.surfaceU, nearestPlayer.surfaceU, true);
-        const dv = this.uvDelta(enemy.surfaceV, nearestPlayer.surfaceV, wrapsV);
-        const dist = Math.sqrt(du * du + dv * dv);
-        if (dist > 0.01) {
-          const speed = this.getEnemySpeed(enemy.type);
-          enemy.surfaceU += (du / dist) * speed * dt;
-          enemy.surfaceV += (dv / dist) * speed * dt;
-          // Always wrap U. Wrap or clamp V depending on surface topology.
-          enemy.surfaceU = this.wrapCoord(enemy.surfaceU);
-          if (wrapsV) {
-            // Torus/pipe: V wraps around fully — no dead zones at seam
-            enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
-          } else {
-            // Sphere-like: clamp V to avoid pole singularities
-            const enemyVMin = surfType === 'cube' ? 0.003 : 0.05;
-            const enemyVMax = surfType === 'cube' ? 0.997 : 0.95;
-            enemy.surfaceV = Math.max(enemyVMin, Math.min(enemyVMax, enemy.surfaceV));
-          }
-        }
+      switch (enemy.type) {
+        case 'grunt':
+          this.updateGrunt(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'wanderer':
+          this.updateWanderer(enemy, ai, dt, wrapsV, surfType);
+          break;
+        case 'neutron':
+          this.updateNeutron(enemy, ai, dt, wrapsV, surfType);
+          break;
+        case 'rocket':
+        case 'arrow':
+          this.updateRocket(enemy, ai, dt, wrapsV, surfType);
+          break;
+        case 'mayfly':
+          this.updateMayfly(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'weaver':
+          this.updateWeaver(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        default:
+          this.updateDefaultChase(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
       }
+
+      // Persist updated AI state
+      this.enemyAI.set(enemy.id, ai);
     });
+  }
+
+  private findNearestPlayer(u: number, v: number): PlayerState | null {
+    let nearest: PlayerState | null = null;
+    let nearestDist = Infinity;
+    this.state.players.forEach((p) => {
+      if (!p.alive) return;
+      const d = this.uvDistWrapped(u, v, p.surfaceU, p.surfaceV);
+      if (d < nearestDist) { nearestDist = d; nearest = p; }
+    });
+    return nearest;
+  }
+
+  /** Grunt: accelerates toward nearest player over time */
+  private updateGrunt(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    ai.currentSpeed = Math.min(0.06, (ai.currentSpeed ?? 0.02) + 0.002 * dt);
+    if (!player) return;
+    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist > 0.01) {
+      enemy.surfaceU += (du / dist) * ai.currentSpeed * dt;
+      enemy.surfaceV += (dv / dist) * ai.currentSpeed * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  /** Wanderer: moves in random direction, bounces off UV boundaries, changes direction periodically */
+  private updateWanderer(
+    enemy: EnemyState, ai: ServerEnemyAI,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    // Initialize direction if not set
+    if (ai.directionU === undefined || ai.directionV === undefined) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.directionU = Math.cos(angle);
+      ai.directionV = Math.sin(angle);
+      ai.directionChangeTimer = 0;
+      ai.nextDirectionChange = 1 + Math.random();
+    }
+
+    ai.directionChangeTimer = (ai.directionChangeTimer ?? 0) + dt;
+    if (ai.directionChangeTimer >= (ai.nextDirectionChange ?? 1)) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.directionU = Math.cos(angle);
+      ai.directionV = Math.sin(angle);
+      ai.directionChangeTimer = 0;
+      ai.nextDirectionChange = 1 + Math.random();
+    }
+
+    const WANDER_SPEED = 0.04;
+    enemy.surfaceU += ai.directionU * WANDER_SPEED * dt;
+    enemy.surfaceV += ai.directionV * WANDER_SPEED * dt;
+
+    // Bounce off U boundaries
+    if (enemy.surfaceU <= 0) {
+      enemy.surfaceU = 0;
+      ai.directionU = Math.abs(ai.directionU);
+    } else if (enemy.surfaceU >= 1) {
+      enemy.surfaceU = 1;
+      ai.directionU = -Math.abs(ai.directionU);
+    }
+
+    // Bounce off V boundaries (or wrap on torus-like surfaces)
+    if (wrapsV) {
+      enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+    } else {
+      if (enemy.surfaceV <= 0) {
+        enemy.surfaceV = 0;
+        ai.directionV = Math.abs(ai.directionV);
+      } else if (enemy.surfaceV >= 1) {
+        enemy.surfaceV = 1;
+        ai.directionV = -Math.abs(ai.directionV);
+      }
+    }
+  }
+
+  /** Neutron: flies in straight line, bounces randomly off boundaries */
+  private updateNeutron(
+    enemy: EnemyState, ai: ServerEnemyAI,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    if (ai.directionU === undefined || ai.directionV === undefined) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.directionU = Math.cos(angle);
+      ai.directionV = Math.sin(angle);
+    }
+
+    const NEUTRON_SPEED = 0.05;
+    enemy.surfaceU += ai.directionU * NEUTRON_SPEED * dt;
+    enemy.surfaceV += ai.directionV * NEUTRON_SPEED * dt;
+
+    let bounced = false;
+    if (enemy.surfaceU <= 0) { enemy.surfaceU = 0; bounced = true; }
+    else if (enemy.surfaceU >= 1) { enemy.surfaceU = 1; bounced = true; }
+
+    if (wrapsV) {
+      enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+    } else {
+      if (enemy.surfaceV <= 0) { enemy.surfaceV = 0; bounced = true; }
+      else if (enemy.surfaceV >= 1) { enemy.surfaceV = 1; bounced = true; }
+    }
+
+    if (bounced) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.directionU = Math.cos(angle);
+      ai.directionV = Math.sin(angle);
+    }
+  }
+
+  /** Rocket/Arrow: flies in straight line at high speed, reflects off boundaries */
+  private updateRocket(
+    enemy: EnemyState, ai: ServerEnemyAI,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    if (ai.rocketDirU === undefined || ai.rocketDirV === undefined) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.rocketDirU = Math.cos(angle);
+      ai.rocketDirV = Math.sin(angle);
+    }
+
+    const ROCKET_SPEED = 0.07;
+    enemy.surfaceU += ai.rocketDirU * ROCKET_SPEED * dt;
+    enemy.surfaceV += ai.rocketDirV * ROCKET_SPEED * dt;
+
+    if (enemy.surfaceU <= 0) {
+      enemy.surfaceU = 0;
+      ai.rocketDirU = Math.abs(ai.rocketDirU);
+    } else if (enemy.surfaceU >= 1) {
+      enemy.surfaceU = 1;
+      ai.rocketDirU = -Math.abs(ai.rocketDirU);
+    }
+
+    if (wrapsV) {
+      enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+    } else {
+      if (enemy.surfaceV <= 0) {
+        enemy.surfaceV = 0;
+        ai.rocketDirV = Math.abs(ai.rocketDirV);
+      } else if (enemy.surfaceV >= 1) {
+        enemy.surfaceV = 1;
+        ai.rocketDirV = -Math.abs(ai.rocketDirV);
+      }
+    }
+  }
+
+  /** Mayfly: chases player with periodic jitter offset (swarm effect) */
+  private updateMayfly(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    ai.jitterTimer = (ai.jitterTimer ?? 0) + dt;
+    if (ai.jitterTimer >= 0.3) {
+      ai.jitterOffsetU = (Math.random() - 0.5) * 0.1;
+      ai.jitterOffsetV = (Math.random() - 0.5) * 0.1;
+      ai.jitterTimer = 0;
+    }
+
+    if (!player) return;
+    const targetU = player.surfaceU + (ai.jitterOffsetU ?? 0);
+    const targetV = player.surfaceV + (ai.jitterOffsetV ?? 0);
+    const du = this.uvDelta(enemy.surfaceU, targetU, true);
+    const dv = this.uvDelta(enemy.surfaceV, targetV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist > 0.001) {
+      const MAYFLY_SPEED = 0.095;
+      enemy.surfaceU += (du / dist) * MAYFLY_SPEED * dt;
+      enemy.surfaceV += (dv / dist) * MAYFLY_SPEED * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  /** Weaver: momentum-based chase with friction — overshoots and weaves */
+  private updateWeaver(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    ai.momentumU = ai.momentumU ?? 0;
+    ai.momentumV = ai.momentumV ?? 0;
+
+    if (player) {
+      const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+      const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+      const dist = Math.sqrt(du * du + dv * dv);
+      if (dist > 0.01) {
+        ai.momentumU += (du / dist) * 0.3 * dt;
+        ai.momentumV += (dv / dist) * 0.3 * dt;
+      }
+    }
+
+    // Apply friction
+    ai.momentumU *= 0.92;
+    ai.momentumV *= 0.92;
+
+    // Cap speed
+    const spd = Math.sqrt(ai.momentumU * ai.momentumU + ai.momentumV * ai.momentumV);
+    if (spd > 0.04) {
+      ai.momentumU = (ai.momentumU / spd) * 0.04;
+      ai.momentumV = (ai.momentumV / spd) * 0.04;
+    }
+
+    enemy.surfaceU += ai.momentumU * dt;
+    enemy.surfaceV += ai.momentumV * dt;
+    this.applyUVBounds(enemy, wrapsV, surfType);
+  }
+
+  /** Default: flat-speed chase toward nearest player (used for snake, gate, blackhole, repulsor, etc.) */
+  private updateDefaultChase(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    if (!player) return;
+    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist > 0.01) {
+      const speed = this.getEnemySpeed(enemy.type);
+      enemy.surfaceU += (du / dist) * speed * dt;
+      enemy.surfaceV += (dv / dist) * speed * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  /** Apply UV boundary wrapping/clamping after movement */
+  private applyUVBounds(enemy: EnemyState, wrapsV: boolean, surfType: string): void {
+    enemy.surfaceU = this.wrapCoord(enemy.surfaceU);
+    if (wrapsV) {
+      enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+    } else {
+      const enemyVMin = surfType === 'cube' ? 0.003 : 0.05;
+      const enemyVMax = surfType === 'cube' ? 0.997 : 0.95;
+      enemy.surfaceV = Math.max(enemyVMin, Math.min(enemyVMax, enemy.surfaceV));
+    }
+  }
+
+  /** Create initial AI state for a newly spawned enemy */
+  private createEnemyAI(type: string): ServerEnemyAI {
+    switch (type) {
+      case 'grunt':
+        return { currentSpeed: 0.02 };
+      case 'wanderer': {
+        const angle = Math.random() * Math.PI * 2;
+        return {
+          directionU: Math.cos(angle),
+          directionV: Math.sin(angle),
+          directionChangeTimer: 0,
+          nextDirectionChange: 1 + Math.random(),
+        };
+      }
+      case 'neutron': {
+        const angle = Math.random() * Math.PI * 2;
+        return {
+          directionU: Math.cos(angle),
+          directionV: Math.sin(angle),
+        };
+      }
+      case 'rocket':
+      case 'arrow': {
+        const angle = Math.random() * Math.PI * 2;
+        return {
+          rocketDirU: Math.cos(angle),
+          rocketDirV: Math.sin(angle),
+        };
+      }
+      case 'mayfly':
+        return {
+          jitterOffsetU: (Math.random() - 0.5) * 0.1,
+          jitterOffsetV: (Math.random() - 0.5) * 0.1,
+          jitterTimer: 0,
+        };
+      case 'weaver':
+        return { momentumU: 0, momentumV: 0 };
+      default:
+        return {};
+    }
   }
 
   private getEnemySpeed(type: string): number {
@@ -1044,6 +1348,7 @@ export class GameRoom extends Room<GameState> {
 
           if (enemy.health <= 0) {
             enemy.alive = false;
+            this.enemyAI.delete(enemy.id);
             enemiesToRemove.push(eIndex);
 
             if (owner) {
@@ -1456,6 +1761,9 @@ export class GameRoom extends Room<GameState> {
 
     enemy.health = this.getEnemyHealth(type);
     enemy.alive = true;
+
+    // Initialize per-type AI state
+    this.enemyAI.set(enemy.id, this.createEnemyAI(type));
 
     // Allocate this enemy in the pending count before broadcasting the warning.
     // This ensures any subsequent calls to spawnSingleEnemy (synchronous, same tick)
