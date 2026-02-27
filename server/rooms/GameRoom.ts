@@ -86,9 +86,9 @@ const SPAWN_OFFSETS = [
 
 // Weapon configs (server side) - ammo, damage multiplier, and actual damage per hit.
 // damage values mirror src/weapons/WeaponTypes.ts so displayed damage numbers match SP.
-// standard uses 1 (not 0.25) to avoid fractional display on integer enemy HP.
+// standard uses 0.25 to match SP balance (S38c-05 fix: was 1, causing 4x damage in MP).
 const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number; damage: number }> = {
-  standard:       { ammo: -1,  damageMultiplier: 1.0, damage: 1   },
+  standard:       { ammo: -1,  damageMultiplier: 1.0, damage: 0.25 },
   spread:         { ammo: 50,  damageMultiplier: 0.8, damage: 1   },
   piercing:       { ammo: 30,  damageMultiplier: 1.5, damage: 3   },
   homing:         { ammo: 20,  damageMultiplier: 1.2, damage: 6   },
