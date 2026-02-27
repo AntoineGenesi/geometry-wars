@@ -8,6 +8,34 @@
 
 ---
 
+## S38c-02: Laptop LAN Connection (Portproxy Fix)
+
+**Root cause identified:** WSL2 portproxy rules from a previous `Setup-WSL-LAN.bat` session intercept laptop connections on port 3000, routing them to WSL2 (which has no server). Host PC works because localhost connections bypass portproxy.
+
+**Pre-test setup (REQUIRED first time):**
+1. On the HOST PC, right-click `CLEANUP-PORTPROXY.bat` → Run as Administrator
+2. Verify output shows rules removed for ports 3000 and 2567
+3. After cleanup, portproxy rules are cleared permanently — no need to repeat
+
+**What to test:**
+- [ ] Run `Play Game.bat` on HOST PC (non-admin is fine after cleanup)
+- [ ] Verify no portproxy warning appears in the bat output
+- [ ] Note the LAN IP shown (e.g., `http://192.168.1.100:3000`)
+- [ ] Open that URL on the **LAPTOP** browser (Chrome recommended)
+- [ ] Laptop should load the game page (not "connection refused")
+- [ ] Go to LAN menu → see the host server in the lobby list
+- [ ] Click JOIN → enter name → connect to game
+- [ ] Both HOST and LAPTOP should see each other's player in-game
+- [ ] Shoot at each other — positions should be synchronized
+- [ ] Play a full round (wave 1-3) together — no disconnects
+
+**What happens if portproxy still exists (diagnostics):**
+- If `Play Game.bat` detects portproxy + not admin → it HALTS with a CRITICAL ERROR
+- Run `CLEANUP-PORTPROXY.bat` as admin to fix, then retry
+- If laptop connects but game fails → open DevTools → check for "PORTPROXY CONFLICT DETECTED" in the error panel
+
+---
+
 ## S38b-07: Weapon Mastery — 4-Endpoint Branching Tree
 
 **What changed:** Standard (Blaster) weapon now has a 4-endpoint branching tree instead of 2 linear branches. Other weapons unchanged.

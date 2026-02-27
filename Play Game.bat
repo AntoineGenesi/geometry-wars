@@ -111,22 +111,41 @@ if %IS_ADMIN% == 1 (
     echo.
 )
 if %IS_ADMIN% == 0 (
-    echo  [..] Checking for stale port forwarding rules...
+    echo  [..] Checking for stale WSL2 port forwarding rules...
     netsh interface portproxy show all 2>nul > "%TEMP%\gw-portproxy.txt"
+    set PORTPROXY_FOUND=0
     findstr /c:"2567" "%TEMP%\gw-portproxy.txt" >nul 2>&1
-    if !ERRORLEVEL! == 0 (
-        echo  [!] WARNING: WSL2 port forwarding rules detected for port 2567!
-        echo  [!] These rules will intercept laptop connections and break LAN play.
-        echo  [!] To fix: right-click this .bat and "Run as Administrator".
-        echo.
-    )
+    if !ERRORLEVEL! == 0 set PORTPROXY_FOUND=1
     findstr /c:"3000" "%TEMP%\gw-portproxy.txt" >nul 2>&1
-    if !ERRORLEVEL! == 0 (
-        echo  [!] WARNING: WSL2 port forwarding rules detected for port 3000!
-        echo  [!] Right-click this .bat and "Run as Administrator" to fix.
-        echo.
-    )
+    if !ERRORLEVEL! == 0 set PORTPROXY_FOUND=1
     del "%TEMP%\gw-portproxy.txt" >nul 2>&1
+
+    if !PORTPROXY_FOUND! == 1 (
+        echo.
+        color 4E
+        echo  ################################################################
+        echo  ##  CRITICAL: WSL2 PORT FORWARDING RULES DETECTED!           ##
+        echo  ##                                                            ##
+        echo  ##  Stale portproxy rules from a previous WSL2 session are   ##
+        echo  ##  intercepting LAN connections on ports 3000 and/or 2567.  ##
+        echo  ##                                                            ##
+        echo  ##  EFFECT: Laptop/phone connections will FAIL — they are    ##
+        echo  ##  redirected to WSL2 which has no game server running.     ##
+        echo  ##  Your own PC works because localhost bypasses portproxy.  ##
+        echo  ##                                                            ##
+        echo  ##  FIX (choose one):                                        ##
+        echo  ##    1. Right-click Play Game.bat → Run as Administrator    ##
+        echo  ##    2. OR: Run CLEANUP-PORTPROXY.bat as Administrator      ##
+        echo  ##       (one-time fix — then Play Game.bat works normally)  ##
+        echo  ##                                                            ##
+        echo  ##  Stopping here to prevent a broken LAN session.          ##
+        echo  ################################################################
+        echo.
+        color 0A
+        goto :eof
+    )
+    echo  [OK] No stale port forwarding rules found.
+    echo.
 )
 
 REM ================================================================

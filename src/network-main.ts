@@ -2957,6 +2957,11 @@ async function main() {
       'color:#0af;font-size:14px;margin-bottom:20px;letter-spacing:1px;';
     errPanel.appendChild(diagLink);
 
+    // Portproxy detection placeholder — async-populated after panel mounts
+    const portproxyHint = document.createElement('div');
+    portproxyHint.style.cssText = 'display:none;';
+    errPanel.appendChild(portproxyHint);
+
     // Retry + back buttons
     const btns = document.createElement('div');
     btns.style.cssText = 'display:flex;gap:16px;margin-top:8px;';
@@ -2979,6 +2984,29 @@ async function main() {
 
     errPanel.appendChild(btns);
     document.body.appendChild(errPanel);
+
+    // Async portproxy check — runs after panel is in DOM so we can update it.
+    // If the host PC has stale WSL2 portproxy rules, this is the most likely
+    // cause of laptop connection failures (portproxy intercepts LAN traffic
+    // on port 3000 and routes it to WSL2 which has no server).
+    fetch('/__lan/status', { signal: AbortSignal.timeout(2000) })
+      .then(r => r.ok ? r.json() : null)
+      .then((status: { portproxyConflict?: boolean; isWSL2?: boolean } | null) => {
+        if (status?.portproxyConflict && !status?.isWSL2) {
+          portproxyHint.style.cssText =
+            'margin:12px 0;padding:12px 16px;background:#330000;border:2px solid #f44;' +
+            'max-width:600px;font-size:13px;line-height:1.8;text-align:left;color:#faa;';
+          portproxyHint.innerHTML =
+            '<b style="color:#f44">⚠ PORTPROXY CONFLICT DETECTED</b><br>' +
+            'Windows WSL2 port forwarding rules are intercepting laptop connections.<br>' +
+            'Laptop traffic on port 3000 is being redirected to WSL2 (which has no server).<br>' +
+            '<b>Fix:</b> Run <code style="background:#222;padding:2px 4px">CLEANUP-PORTPROXY.bat</code> ' +
+            'as Administrator, then retry.';
+          portproxyHint.style.display = '';
+          console.error('[NetworkMain] PORTPROXY CONFLICT: WSL2 port forwarding rules are intercepting LAN traffic. Run CLEANUP-PORTPROXY.bat as Administrator.');
+        }
+      })
+      .catch(() => { /* /__lan/status unavailable in production — ignore */ });
 
     // Also log detailed info for DevTools users
     console.error('[NetworkMain] === CONNECTION FAILED ===');
