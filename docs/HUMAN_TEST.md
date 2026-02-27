@@ -1334,6 +1334,24 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Enemy at pickup glow** — Enemy enters the glow of a nearby pickup item → should NOT cause life loss
 - [ ] **Life loss gives invincibility** — After being hit, brief invincibility (enemies pass through) → then normal again
 
+## S38b-01: LAN Laptop Connection Regression (creator flag fix)
+
+**Fix:** Laptop joiners were incorrectly receiving `creator=1` URL param (→ `requestHost=true` in Colyseus), which should only be set for the HOST (PC clicking HOST GAME → ENTER GAME). Without this fix, laptops joining via LAN lobby try to claim the host role, which can prevent the game from starting properly.
+
+### Test: Laptop can join LAN game
+- [ ] **Start LAN host on PC** — Run "Play Game.bat", go to LAN tab, click HOST GAME, then ENTER GAME
+- [ ] **Laptop joins from LAN lobby** — On same WiFi, open laptop browser to PC's IP:port. The LAN lobby should appear. Click the server entry. Enter name. Click Join.
+- [ ] **Game starts for both players** — Both PC and laptop should load into the game simultaneously without one being stuck on loading screen
+- [ ] **PC is the host (Player 1)** — The PC player should appear as Player 1 / host
+- [ ] **Laptop is the joiner (Player 2)** — The laptop player should appear as Player 2 / joiner, NOT trying to be host
+- [ ] **Phone can also join** — QR code / phone join should still work alongside the laptop
+
+### Test: Phone join still works (regression check)
+- [ ] **Scan QR code on phone** — Should join as non-creator (same as before)
+- [ ] **Manual IP connect on phone** — Enter server IP manually → should join as non-creator
+
+---
+
 ## S38b-03: Geodesic Bullets in LAN (UV Wrap Fix)
 
 **Fix:** Bullet lerp in network-main.ts now uses wrap-aware delta to take the shortest path around UV boundaries. Without this fix, bullets teleport/snap to wrong positions when crossing the u=0/1 boundary (server wraps with modulo, client lerped the long way around).

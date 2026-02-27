@@ -2103,9 +2103,12 @@ if (quickStartConfig.enabled) {
     // Handle game mode selection
     if (selection.gameMode === 'network') {
       // Online/LAN multiplayer - update URL and load network module
-      // creator=1 signals that this player is the game creator and should be host.
-      // QR code joiners / direct URL users do NOT have creator=1, so they become non-host.
-      const params: Record<string, string> = { mode: 'network', surface: selection.surfaceType, creator: '1' };
+      // creator=1 signals that this player hosted the server and should claim host status.
+      // Only set for the player who explicitly clicked HOST GAME → ENTER GAME.
+      // LAN lobby joiners (laptops, phones joining via StartMenu), QR code scanners,
+      // and direct URL users do NOT get creator=1 — they join as non-host.
+      const params: Record<string, string> = { mode: 'network', surface: selection.surfaceType };
+      if (selection.isCreator) params.creator = '1';
       if (selection.serverUrl) params.server = selection.serverUrl;
       if (selection.playerName) params.name = selection.playerName;
       window.history.replaceState({}, '', buildUrl(params));
