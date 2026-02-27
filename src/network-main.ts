@@ -3239,7 +3239,7 @@ async function main() {
       // Server is authoritative for enemy HP; local damage from ShockAura is a visual-side
       // effect accepted here (same precedent as companion bullet hits in MP).
       const enemiesForBuff = Array.from(networkEnemies.values());
-      buffManager.update(dt, localPlayer.mesh.position, enemiesForBuff);
+      buffManager.update(dt, localPlayer.mesh.position, enemiesForBuff, scorePopups);
 
       // Update buff aura visuals
       const activeBuffs = buffManager.getActiveBuffs().map(b => ({ type: b.type, stacks: b.stacks }));
