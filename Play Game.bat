@@ -79,8 +79,7 @@ echo  [OK] Native binaries OK.
 echo.
 
 REM ================================================================
-REM  ADMIN CHECK — firewall rules and portproxy cleanup require
-REM  Administrator. Detect whether we have those rights now.
+REM  ADMIN CHECK
 REM ================================================================
 set IS_ADMIN=0
 net session >nul 2>&1
@@ -97,56 +96,11 @@ if %IS_ADMIN% == 1 (
 echo.
 
 REM ================================================================
-REM  PORTPROXY CLEANUP — Remove any stale WSL2 port forwarding rules
-REM  that Setup-WSL-LAN.bat may have created. These rules intercept
-REM  LAN traffic and redirect it to WSL2 (which has no server when
-REM  using Play Game.bat), breaking laptop connections.
-REM  Requires Administrator — silently skipped if not admin.
+REM  PORTPROXY CLEANUP - subroutine avoids nested if() parsing bugs
 REM ================================================================
-if %IS_ADMIN% == 1 (
-    echo  Removing stale WSL2 port forwarding rules if any...
-    netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0 >nul 2>&1
-    netsh interface portproxy delete v4tov4 listenport=2567 listenaddress=0.0.0.0 >nul 2>&1
-    echo  [OK] Port forwarding rules cleared.
-    echo.
-)
-if %IS_ADMIN% == 0 (
-    echo  [..] Checking for stale WSL2 port forwarding rules...
-    netsh interface portproxy show all 2>nul > "%TEMP%\gw-portproxy.txt"
-    set PORTPROXY_FOUND=0
-    findstr /c:"2567" "%TEMP%\gw-portproxy.txt" >nul 2>&1
-    if !ERRORLEVEL! == 0 set PORTPROXY_FOUND=1
-    findstr /c:"3000" "%TEMP%\gw-portproxy.txt" >nul 2>&1
-    if !ERRORLEVEL! == 0 set PORTPROXY_FOUND=1
-    del "%TEMP%\gw-portproxy.txt" >nul 2>&1
-
-    if !PORTPROXY_FOUND! == 1 (
-        echo.
-        color 4E
-        echo  ################################################################
-        echo  ##  CRITICAL: WSL2 PORT FORWARDING RULES DETECTED!           ##
-        echo  ##                                                            ##
-        echo  ##  Stale portproxy rules from a previous WSL2 session are   ##
-        echo  ##  intercepting LAN connections on ports 3000 and/or 2567.  ##
-        echo  ##                                                            ##
-        echo  ##  EFFECT: Laptop/phone connections will FAIL — they are    ##
-        echo  ##  redirected to WSL2 which has no game server running.     ##
-        echo  ##  Your own PC works because localhost bypasses portproxy.  ##
-        echo  ##                                                            ##
-        echo  ##  FIX (choose one):                                        ##
-        echo  ##    1. Right-click Play Game.bat → Run as Administrator    ##
-        echo  ##    2. OR: Run CLEANUP-PORTPROXY.bat as Administrator      ##
-        echo  ##       (one-time fix — then Play Game.bat works normally)  ##
-        echo  ##                                                            ##
-        echo  ##  Stopping here to prevent a broken LAN session.          ##
-        echo  ################################################################
-        echo.
-        color 0A
-        goto :eof
-    )
-    echo  [OK] No stale port forwarding rules found.
-    echo.
-)
+if %IS_ADMIN% == 1 call :cleanup_portproxy_admin
+if %IS_ADMIN% == 0 call :check_portproxy_nonadmin
+if "!PORTPROXY_HALT!"=="1" goto :eof
 
 REM ================================================================
 REM  WINDOWS FIREWALL: Allow ports 3000 and 2567 for LAN access
@@ -222,4 +176,55 @@ node node_modules\vite\bin\vite.js --host --port 3000 --open false
 
 echo.
 echo  [!] Vite exited (code: %ERRORLEVEL%). See output above.
+goto :eof
+
+REM ================================================================
+REM  SUBROUTINES (outside main flow - called via "call :label")
+REM ================================================================
+
+:cleanup_portproxy_admin
+echo  Removing stale WSL2 port forwarding rules if any...
+netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0 >nul 2>&1
+netsh interface portproxy delete v4tov4 listenport=2567 listenaddress=0.0.0.0 >nul 2>&1
+echo  [OK] Port forwarding rules cleared.
+echo.
+goto :eof
+
+:check_portproxy_nonadmin
+set PORTPROXY_HALT=0
+echo  [..] Checking for stale WSL2 port forwarding rules...
+netsh interface portproxy show all 2>nul > "%TEMP%\gw-portproxy.txt"
+set PORTPROXY_FOUND=0
+findstr /c:"2567" "%TEMP%\gw-portproxy.txt" >nul 2>&1
+if !ERRORLEVEL! == 0 set PORTPROXY_FOUND=1
+findstr /c:"3000" "%TEMP%\gw-portproxy.txt" >nul 2>&1
+if !ERRORLEVEL! == 0 set PORTPROXY_FOUND=1
+del "%TEMP%\gw-portproxy.txt" >nul 2>&1
+if !PORTPROXY_FOUND! == 0 (
+    echo  [OK] No stale port forwarding rules found.
+    echo.
+    goto :eof
+)
+echo.
+color 4E
+echo  ################################################################
+echo  ##  CRITICAL: WSL2 PORT FORWARDING RULES DETECTED!           ##
+echo  ##                                                            ##
+echo  ##  Stale portproxy rules from a previous WSL2 session are   ##
+echo  ##  intercepting LAN connections on ports 3000 and/or 2567.  ##
+echo  ##                                                            ##
+echo  ##  EFFECT: Laptop/phone connections will FAIL because they  ##
+echo  ##  get redirected to WSL2 which has no game server running. ##
+echo  ##  Your own PC works because localhost bypasses portproxy.  ##
+echo  ##                                                            ##
+echo  ##  FIX (choose one):                                        ##
+echo  ##    1. Right-click Play Game.bat, Run as Administrator     ##
+echo  ##    2. OR: Run CLEANUP-PORTPROXY.bat as Administrator      ##
+echo  ##       (one-time fix, then Play Game.bat works normally)   ##
+echo  ##                                                            ##
+echo  ##  Stopping here to prevent a broken LAN session.          ##
+echo  ################################################################
+echo.
+color 0A
+set PORTPROXY_HALT=1
 goto :eof
