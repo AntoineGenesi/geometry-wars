@@ -3460,10 +3460,45 @@ async function main() {
     const netRenderDt = Math.min((netRenderNow - _lastNetRenderTime) / 1000, 0.1);
     _lastNetRenderTime = netRenderNow;
 
+    // UV-distance surface dimming constants (SP parity — RenderLoop.ts SURFACE_* consts).
+    // Dims enemies far from the local player on the surface. This handles flat/open
+    // surfaces (e.g. cylinder, cube faces) where raycasts may count 0 intersections
+    // for enemies on the far side, leaving them fully bright without UV-distance clamping.
+    const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
+    const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
+    const NET_SURFACE_DIM_OPC  = 0.08;   // minimum opacity for far-away enemies
+
+    const _lpForDim = networkPlayers.get(localPlayerId);
+    const _lpU = _lpForDim?.surfaceU ?? 0;
+    const _lpV = _lpForDim?.surfaceV ?? 0;
+    const _netWrapsV = surf.wrapsV;
+
     depthOcclusion.update(enemyArray, camera.position, netRenderDt);
     for (const enemy of enemyArray) {
       if (!enemy.alive || !enemy.mesh) continue;
-      const vis = depthOcclusion.getOpacity(enemy);
+      let vis = depthOcclusion.getOpacity(enemy);
+
+      // UV-distance surface dimming (LAN parity with SP RenderLoop.ts).
+      // Catches flat/open-surface cases where raycasts register 0 intersections.
+      if (_lpForDim) {
+        const euRaw = Math.abs(enemy.surfacePosition.u - _lpU);
+        const evRaw = Math.abs(enemy.surfacePosition.v - _lpV);
+        const eu = Math.min(euRaw, 1.0 - euRaw);
+        const ev = _netWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
+        const uvDist = Math.sqrt(eu * eu + ev * ev);
+        let surfaceVis: number;
+        if (uvDist <= NET_SURFACE_NEAR_UV) {
+          surfaceVis = 1.0;
+        } else if (uvDist >= NET_SURFACE_FAR_UV) {
+          surfaceVis = NET_SURFACE_DIM_OPC;
+        } else {
+          const uvT = (uvDist - NET_SURFACE_NEAR_UV) / (NET_SURFACE_FAR_UV - NET_SURFACE_NEAR_UV);
+          const uvSt = uvT * uvT * (3.0 - 2.0 * uvT);
+          surfaceVis = 1.0 - uvSt * (1.0 - NET_SURFACE_DIM_OPC);
+        }
+        vis = Math.min(vis, surfaceVis);
+      }
+
       if (enemyInstanceManager.isInLODBatch(enemy)) {
         enemyInstanceManager.setLODInstanceVisibility(enemy, vis);
       } else {
@@ -3643,6 +3678,60 @@ async function main() {
     // Apply surface projection for geoms and bullets (same as co-op)
     bulletPool.applySurfaceProjection(transform);
     geomPool.applySurfaceProjection(transform);
+
+    // -----------------------------------------------------------------------
+    // Weapon pickup dimming (LAN parity with SP's RenderLoop.ts pickup_dimming).
+    // Dims pickups on the far side of the surface so players know they are not
+    // immediately reachable. Uses UV distance from local player — same thresholds
+    // as single-player (NEAR=0.20, FAR=0.45, min=0.35). The spawn-indicator ring
+    // is kept at full brightness so players always see where pickups are.
+    // -----------------------------------------------------------------------
+    {
+      const lpPickup = networkPlayers.get(localPlayerId);
+      if (lpPickup && networkWeaponPickups.size > 0) {
+        const PICKUP_NEAR_UV   = 0.20;
+        const PICKUP_FAR_UV    = 0.45;
+        const PICKUP_MIN_SCALE = 0.35;
+        const puPlayerU = lpPickup.surfaceU;
+        const puPlayerV = lpPickup.surfaceV;
+        const puWrapsV  = surf.wrapsV;
+
+        networkWeaponPickups.forEach((pickup) => {
+          const euRaw = Math.abs(pickup.surfaceU - puPlayerU);
+          const evRaw = Math.abs(pickup.surfaceV - puPlayerV);
+          const eu = Math.min(euRaw, 1.0 - euRaw);
+          const ev = puWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
+          const uvDist = Math.sqrt(eu * eu + ev * ev);
+          let dimFactor: number;
+          if (uvDist <= PICKUP_NEAR_UV) {
+            dimFactor = 1.0;
+          } else if (uvDist >= PICKUP_FAR_UV) {
+            dimFactor = PICKUP_MIN_SCALE;
+          } else {
+            const t = (uvDist - PICKUP_NEAR_UV) / (PICKUP_FAR_UV - PICKUP_NEAR_UV);
+            const smooth = t * t * (3.0 - 2.0 * t);
+            dimFactor = 1.0 - smooth * (1.0 - PICKUP_MIN_SCALE);
+          }
+
+          pickup.mesh.traverse((child) => {
+            if (child.name === 'spawn-indicator') return;
+            if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+              const mat = child.material as THREE.MeshBasicMaterial;
+              if ('opacity' in mat) {
+                if (mat.userData.baseOpacity === undefined) {
+                  mat.userData.baseOpacity = mat.opacity;
+                }
+                mat.opacity = (mat.userData.baseOpacity as number) * dimFactor;
+              }
+            } else if (child instanceof THREE.Sprite) {
+              if (child.material.userData.baseOpacity !== undefined) {
+                child.material.opacity = (child.material.userData.baseOpacity as number) * dimFactor;
+              }
+            }
+          });
+        });
+      }
+    }
 
     // -----------------------------------------------------------------------
     // Tunnel transparency + dynamic grid opacity (same as SP's RenderLoop.ts).
