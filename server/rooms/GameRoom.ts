@@ -121,6 +121,44 @@ function getMapScaleFactor(mapSize: string): number {
   }
 }
 
+/**
+ * Compute great-circle arc distance between two UV points on a sphere.
+ *
+ * Root cause of S38b MP hit detection bug:
+ *   UV Euclidean distance on sphere is non-uniform. 0.04 UV ≈ 1.26 world units
+ *   in the V direction on sphere R=10 — 3× too large vs visual collision size
+ *   (player 0.15 + enemy 0.30 = 0.45 world units). Near poles, U is compressed
+ *   further, making the hitbox asymmetric and wildly wrong.
+ *
+ * Solution: For sphere-like surfaces, compute great-circle distance directly.
+ * This naturally handles pole wrap-around without seam discontinuities.
+ *
+ * UV parameterisation on sphere:
+ *   V = polar angle / π  (0 = north pole, 1 = south pole)
+ *   U = azimuthal angle / (2π)  (wraps 0–1)
+ *
+ * @param u1,v1  UV of entity 1
+ * @param u2,v2  UV of entity 2
+ * @param R      sphere radius (world units) = 10 * mapScaleFactor
+ * @returns      arc distance in world units
+ */
+export function sphereGreatCircleDist(
+  u1: number, v1: number,
+  u2: number, v2: number,
+  R: number,
+): number {
+  const phi1 = v1 * Math.PI;
+  const phi2 = v2 * Math.PI;
+  const theta1 = u1 * 2 * Math.PI;
+  const theta2 = u2 * 2 * Math.PI;
+  // Dot product of unit position vectors
+  const dot = Math.sin(phi1) * Math.cos(theta1) * Math.sin(phi2) * Math.cos(theta2)
+            + Math.sin(phi1) * Math.sin(theta1) * Math.sin(phi2) * Math.sin(theta2)
+            + Math.cos(phi1) * Math.cos(phi2);
+  // Clamp for numerical safety at coincident/antipodal points
+  return R * Math.acos(Math.max(-1, Math.min(1, dot)));
+}
+
 // ---------------------------------------------------------------------------
 // Startup config hash helpers
 // ---------------------------------------------------------------------------
@@ -1558,16 +1596,33 @@ export class GameRoom extends Room<GameState> {
   }
 
   private checkCollisions() {
-    // Scale collision thresholds inversely with map size so world-space collision
-    // feel stays consistent regardless of surface scale. Larger maps have more
-    // world units per UV unit, so UV thresholds must shrink proportionally.
     const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
-    // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin, scaled by map size.
-    // Enemy-player: 0.04 base, pickup: matches enemy-player (not larger) to prevent false triggers.
-    const BULLET_HIT_RADIUS  = 0.015 / scaleFactor;
-    const ENEMY_HIT_RADIUS   = 0.04  / scaleFactor;
-    const GEOM_RADIUS        = 0.05  / scaleFactor;
-    const PICKUP_RADIUS      = 0.04  / scaleFactor;  // was 0.06 — reduced to match enemy hit
+    const surfaceType = this.state.surfaceType;
+
+    // Sphere-like surfaces (UV parameterisation = spherical coordinates) use
+    // great-circle arc distance for accurate world-space collision.  UV Euclidean
+    // distance is up to 3× too large on sphere because the U metric shrinks toward
+    // the poles (all longitudes converge) while V stays constant.
+    // Reference surface radius = 10; scales with map size.
+    const isSphereLike = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
+      || surfaceType === 'capsule' || surfaceType === 'icosahedron';
+    const sphereR = 10 * scaleFactor;
+
+    // --- World-space thresholds (sphere-like only, in world units) ---
+    // Player ship half-width 0.15 + default enemy radius 0.30 + small margin = 0.5.
+    // Entity sizes do NOT scale with map size, so these are fixed world-unit values.
+    const ENEMY_HIT_WORLD   = 0.5;   // ≈ player(0.15) + enemy(0.30) + margin
+    const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
+    const PICKUP_WORLD      = 0.6;   // matches client-side PICKUP_WORLD_RADIUS
+
+    // --- UV thresholds (non-sphere surfaces, scaled inversely with map size) ---
+    // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin — unchanged.
+    // Enemy-player: reduced from 0.04 → 0.02 (was ~1.26 world units on sphere V,
+    //   now ~0.63 world units — still UV-based but halved for other surface types).
+    const BULLET_HIT_RADIUS = 0.015 / scaleFactor;
+    const ENEMY_HIT_RADIUS  = 0.02  / scaleFactor;  // was 0.04
+    const GEOM_RADIUS       = 0.025 / scaleFactor;  // was 0.05
+    const PICKUP_RADIUS     = 0.02  / scaleFactor;  // was 0.04
 
     // Bullet-enemy collisions
     const bulletsToRemove: number[] = [];
@@ -1639,10 +1694,16 @@ export class GameRoom extends Room<GameState> {
         if (wasHit) return; // Only one hit per player per tick
         if (hitEnemyIds.has(enemy.id)) return; // Each enemy hits at most one player per tick
 
-        // Use wrap-aware UV distance so collision works across seams on torus.
-        const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
+        // For sphere-like surfaces: use great-circle world-space distance (S38b fix).
+        // UV Euclidean distance on sphere was 3× too large (0.04 UV ≈ 1.26 world units
+        // in V direction on sphere R=10, vs correct ~0.5 world units).
+        // For other surfaces: wrap-aware UV distance unchanged.
+        const dist = isSphereLike
+          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, sphereR)
+          : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
+        const hitThreshold = isSphereLike ? ENEMY_HIT_WORLD : ENEMY_HIT_RADIUS;
 
-        if (dist < ENEMY_HIT_RADIUS) {
+        if (dist < hitThreshold) {
           // Player hit!
           wasHit = true;
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
@@ -1672,9 +1733,12 @@ export class GameRoom extends Room<GameState> {
       this.state.geoms.forEach((geom, index) => {
         if (!geom.active) return;
 
-        const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, geom.surfaceU, geom.surfaceV);
+        const dist = isSphereLike
+          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, geom.surfaceU, geom.surfaceV, sphereR)
+          : this.uvDistWrapped(player.surfaceU, player.surfaceV, geom.surfaceU, geom.surfaceV);
+        const geomThreshold = isSphereLike ? GEOM_WORLD : GEOM_RADIUS;
 
-        if (dist < GEOM_RADIUS) {
+        if (dist < geomThreshold) {
           // Collect geom
           geom.active = false;
           geomsToRemove.push(index);
@@ -1692,9 +1756,12 @@ export class GameRoom extends Room<GameState> {
       this.state.weaponPickups.forEach((pickup, index) => {
         if (!pickup.active) return;
 
-        const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
+        const dist = isSphereLike
+          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, sphereR)
+          : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
+        const pickupThreshold = isSphereLike ? PICKUP_WORLD : PICKUP_RADIUS;
 
-        if (dist < PICKUP_RADIUS) {
+        if (dist < pickupThreshold) {
           pickup.active = false;
           pickupsToRemove.push(index);
 
