@@ -117,8 +117,8 @@ describe('MapSize', () => {
       expect(SURFACE_DEFAULT_MAP_SIZES['cube-ring']).toBe(MapSize.LARGE);
     });
 
-    it('cube-tunnel is EPIC', () => {
-      expect(SURFACE_DEFAULT_MAP_SIZES['cube-tunnel']).toBe(MapSize.EPIC);
+    it('cube-tunnel is MEDIUM', () => {
+      expect(SURFACE_DEFAULT_MAP_SIZES['cube-tunnel']).toBe(MapSize.MEDIUM);
     });
 
     it('mobius is EPIC', () => {
@@ -158,7 +158,7 @@ describe('MapSize', () => {
       expect(getDefaultMapSizeForSurface('cube')).toBe(MapSize.SMALL);
       expect(getDefaultMapSizeForSurface('sphere')).toBe(MapSize.MEDIUM);
       expect(getDefaultMapSizeForSurface('pipe')).toBe(MapSize.LARGE);
-      expect(getDefaultMapSizeForSurface('cube-tunnel')).toBe(MapSize.EPIC);
+      expect(getDefaultMapSizeForSurface('cube-tunnel')).toBe(MapSize.MEDIUM);
     });
 
     it('falls back to MEDIUM for unknown surface', () => {
