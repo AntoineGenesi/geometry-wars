@@ -3118,7 +3118,7 @@ async function main() {
     const inputState = input.getState();
     const mouseX = inputState.aimX;
     const mouseY = inputState.aimY;
-    const aimAngle = Math.atan2(-mouseY, mouseX);
+    const aimAngle = Math.atan2(mouseY, mouseX);
 
     lastInputSendTime += dt;
     // Skip input sending and client-side prediction while local menu is open.
