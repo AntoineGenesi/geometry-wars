@@ -2185,6 +2185,15 @@ async function main() {
           }
         }
 
+        // Damage number for killing blow: server removes enemies immediately when they die,
+        // so the client never sees health < prevHealth for lethal hits (enemy goes straight
+        // from last-known-health to "removed from state"). Spawn the killing-blow damage
+        // number here using the last stored health value.
+        const killingBlow = enemyPrevHealth.get(id);
+        if (killingBlow !== undefined && killingBlow > 0) {
+          scorePopups.spawnDamage(enemy.position.clone(), killingBlow);
+        }
+
         // Score popup at death position
         scorePopups.spawnScore(enemy.position.clone(), enemy.scoreValue);
 
