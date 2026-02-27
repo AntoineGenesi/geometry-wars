@@ -1155,6 +1155,7 @@ async function main() {
     window.location.href = window.location.pathname;
   });
   pauseMenu.setMasteryPointStore(masteryPointStore);
+  pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
 
   // Sync pause menu with saved visual mode; wire the toggle
   pauseMenu.setVisualMode(savedVisualMode);
@@ -1846,6 +1847,22 @@ async function main() {
     }
     spawnWarningRings.length = 0;
 
+    // Reset companions — drones must NOT carry over between rounds
+    companionManager.reset();
+
+    // Reset player level — each round starts at level 0 with no aura stacks
+    playerLevel.reset();
+
+    // Reset local weapon type display so HUD shows the correct weapon next round
+    localPlayerWeaponType = WeaponType.Standard;
+
+    // Clean up enemy glow trails from the previous round
+    enemyGlowTrails.forEach((trail) => {
+      scene.remove(trail.root);
+      trail.dispose();
+    });
+    enemyGlowTrails.clear();
+
     netMainLog('[NetworkMain] Game entities reset for new round');
   }
 
@@ -2500,6 +2517,7 @@ async function main() {
           upgradeNotification.show(nodeId, weaponType);
         };
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
+        pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
         // initSurface at the top of onStateChange already handles surface reinit
         // (called with state.surfaceType and confirmedFromServer=true).
@@ -2513,6 +2531,7 @@ async function main() {
           upgradeNotification.show(nodeId, weaponType);
         };
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
+        pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
         gameOverScreen.hide();
         votingScreen.hide();

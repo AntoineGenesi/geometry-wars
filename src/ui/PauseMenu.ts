@@ -9,6 +9,7 @@ import { createQRCodeDisplay } from './QRCode';
 import { t, onLanguageChange } from '../i18n';
 import { LanguageSelector } from './LanguageSelector';
 import { MasteryPointStore } from '../systems/MasteryPointStore';
+import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 
 /**
  * Pause menu overlay.
@@ -90,6 +91,7 @@ export class PauseMenu {
   private _langUnsub: (() => void) | null = null;
   private _languageSelector: LanguageSelector | null = null;
   private masteryPointStore: MasteryPointStore | null = null;
+  private matchUpgradeTracker: MatchUpgradeTracker | null = null;
   private onMasteryScreenCloseCallback: (() => void) | null = null;
 
   constructor() {
@@ -803,6 +805,7 @@ export class PauseMenu {
       this.container.classList.add('hidden');
       const masteryScreen = new WeaponMasteryScreen();
       masteryScreen.setPointStore(this.masteryPointStore);
+      masteryScreen.setMatchUpgradeTracker(this.matchUpgradeTracker);
       masteryScreen.show();
       masteryScreen.onClose(() => {
         masteryScreen.dispose();
@@ -962,6 +965,15 @@ export class PauseMenu {
    */
   setMasteryPointStore(store: MasteryPointStore): void {
     this.masteryPointStore = store;
+  }
+
+  /**
+   * Set the per-match upgrade tracker so the weapon mastery screen opened from
+   * the pause menu can show which upgrades are "earned this match" vs permanently
+   * unlocked but not yet activated.
+   */
+  setMatchUpgradeTracker(tracker: MatchUpgradeTracker | null): void {
+    this.matchUpgradeTracker = tracker;
   }
 
   /**

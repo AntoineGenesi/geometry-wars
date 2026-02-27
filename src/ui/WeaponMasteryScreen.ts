@@ -18,6 +18,7 @@ import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
 import { MasteryStore } from '../systems/MasteryStore';
 import { MasteryPointStore } from '../systems/MasteryPointStore';
 import { UPGRADE_TREES, UpgradeNode } from '../systems/UpgradeTreeData';
+import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -333,6 +334,52 @@ function injectStyles(): void {
       animation: none;
     }
 
+    /* permanently unlocked but NOT yet earned this match — dim outline only */
+    #weapon-mastery-screen .wms-node--unlocked-inactive {
+      background: color-mix(in srgb, var(--wc, #888) 8%, rgba(0,0,0,0.6));
+      border: 2px dashed color-mix(in srgb, var(--wc, #888) 40%, transparent);
+      color: color-mix(in srgb, var(--wc, #888) 50%, transparent);
+      box-shadow: none;
+      opacity: 0.6;
+    }
+
+    /* active this match — bright glow + green "ACTIVE" badge */
+    #weapon-mastery-screen .wms-node--active-this-match {
+      background: color-mix(in srgb, var(--wc, #888) 20%, rgba(0,0,0,0.5));
+      border: 2px solid var(--wc, #888);
+      color: var(--wc, #888);
+      box-shadow: 0 0 10px var(--wc, #888), 0 0 22px color-mix(in srgb, var(--wc, #888) 50%, transparent),
+                  0 0 4px #44ff88, 0 0 12px rgba(68,255,136,0.4);
+      animation: wms-node-active 1.8s ease-in-out infinite;
+    }
+
+    @keyframes wms-node-active {
+      0%, 100% { box-shadow: 0 0 8px var(--wc, #888),  0 0 18px color-mix(in srgb, var(--wc, #888) 40%, transparent), 0 0 4px #44ff88; }
+      50%       { box-shadow: 0 0 16px var(--wc, #888), 0 0 36px color-mix(in srgb, var(--wc, #888) 60%, transparent), 0 0 10px rgba(68,255,136,0.7); }
+    }
+
+    /* Match mode legend bar */
+    #weapon-mastery-screen .wms-match-legend {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: rgba(255,255,255,0.6);
+      padding: 4px 0 0;
+      letter-spacing: 0.05em;
+    }
+    #weapon-mastery-screen .wms-legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+    .wms-legend-dot--active { background: #44ff88; box-shadow: 0 0 6px #44ff88; }
+    .wms-legend-dot--inactive { background: rgba(255,255,255,0.2); border: 1px dashed rgba(255,255,255,0.3); }
+
     @keyframes wms-node-pulse {
       0%, 100% { box-shadow: 0 0 8px var(--wc, #888),  0 0 18px color-mix(in srgb, var(--wc, #888) 40%, transparent); }
       50%       { box-shadow: 0 0 16px var(--wc, #888), 0 0 36px color-mix(in srgb, var(--wc, #888) 60%, transparent); }
@@ -428,6 +475,7 @@ export class WeaponMasteryScreen {
 
   private _masteryStore: MasteryStore | null = null;
   private _pointStore: MasteryPointStore | null = null;
+  private _matchUpgradeTracker: MatchUpgradeTracker | null = null;
   private _pendingRefundNodeId: string | null = null;
 
   constructor() {
@@ -446,6 +494,15 @@ export class WeaponMasteryScreen {
   /** Set the point store before calling show(). */
   setPointStore(store: MasteryPointStore): void {
     this._pointStore = store;
+  }
+
+  /**
+   * Optionally set the per-match upgrade tracker (LAN mode only).
+   * When set, the screen shows which permanently unlocked nodes have been
+   * "earned this match" (kill threshold crossed) vs just permanently unlocked.
+   */
+  setMatchUpgradeTracker(tracker: MatchUpgradeTracker | null): void {
+    this._matchUpgradeTracker = tracker;
   }
 
   /**
@@ -517,6 +574,11 @@ export class WeaponMasteryScreen {
         <div class="wms-grid">
           ${cards}
         </div>
+        ${this._matchUpgradeTracker ? `
+        <div class="wms-match-legend">
+          <span><span class="wms-legend-dot wms-legend-dot--active"></span>Earned this match</span>
+          <span><span class="wms-legend-dot wms-legend-dot--inactive"></span>Permanently unlocked (earn by killing with this weapon)</span>
+        </div>` : ''}
         <div class="wms-hint">Hover node for details &middot; Click to unlock &middot; Right-click to refund &middot; ESC to close</div>
       </div>
     `;
@@ -607,7 +669,7 @@ export class WeaponMasteryScreen {
       const pos = NODE_POSITIONS[`${n.branch}_${n.nodeIndex}`];
       const leftPct = ((pos.x / SVG_W) * 100).toFixed(2);
       const topPct = ((pos.y / SVG_H) * 100).toFixed(2);
-      const state = this._nodeState(n.id, ps, hasPoints);
+      const state = this._nodeState(n.id, ps, hasPoints, weaponType);
       const isPendingRefund = this._pendingRefundNodeId === n.id;
       const stateClass = isPendingRefund ? 'wms-node--refund-pending' : `wms-node--${state}`;
       const label = isPendingRefund ? '↩' : String(n.nodeIndex);
@@ -646,8 +708,15 @@ export class WeaponMasteryScreen {
     nodeId: string,
     ps: MasteryPointStore,
     hasPoints: boolean,
-  ): 'unlocked' | 'affordable' | 'locked' {
-    if (ps.isUnlocked(nodeId)) return 'unlocked';
+    weaponType?: WeaponType,
+  ): 'active-this-match' | 'unlocked-inactive' | 'unlocked' | 'affordable' | 'locked' {
+    if (ps.isUnlocked(nodeId)) {
+      if (this._matchUpgradeTracker && weaponType !== undefined) {
+        const activeSet = this._matchUpgradeTracker.getActiveUpgrades(weaponType);
+        return activeSet.has(nodeId) ? 'active-this-match' : 'unlocked-inactive';
+      }
+      return 'unlocked';
+    }
     if (hasPoints) return 'affordable';
     return 'locked';
   }
@@ -683,7 +752,9 @@ export class WeaponMasteryScreen {
     const ps = this._pointStore!;
     const nodeId = nodeEl.dataset.nodeId!;
     const hasPoints = ps.availablePoints > 0;
-    const state = this._nodeState(nodeId, ps, hasPoints);
+    // Extract weapon type from node id (format: "<weaponType>_<branch>_<index>")
+    const weaponType = nodeId.split('_')[0] as WeaponType | undefined;
+    const state = this._nodeState(nodeId, ps, hasPoints, weaponType);
     const isPendingRefund = this._pendingRefundNodeId === nodeId;
 
     nodeEl.className = `wms-node ${isPendingRefund ? 'wms-node--refund-pending' : `wms-node--${state}`}`;
@@ -800,7 +871,11 @@ export class WeaponMasteryScreen {
   private _handleNodeClick(nodeEl: HTMLElement): void {
     const ps = this._pointStore!;
     const nodeId = nodeEl.dataset.nodeId!;
-    const state = nodeEl.dataset.nodeState as 'unlocked' | 'affordable' | 'locked';
+    const rawState = nodeEl.dataset.nodeState as string;
+    // Treat match-specific states as "unlocked" for click/refund purposes
+    const state = (rawState === 'active-this-match' || rawState === 'unlocked-inactive')
+      ? 'unlocked'
+      : rawState as 'unlocked' | 'affordable' | 'locked';
 
     if (state === 'affordable') {
       const spent = ps.spendPoint(nodeId);
@@ -847,7 +922,11 @@ export class WeaponMasteryScreen {
   private _handleNodeRightClick(nodeEl: HTMLElement): void {
     const ps = this._pointStore!;
     const nodeId = nodeEl.dataset.nodeId!;
-    const state = nodeEl.dataset.nodeState as 'unlocked' | 'affordable' | 'locked';
+    const rawState = nodeEl.dataset.nodeState as string;
+    // Treat match-specific states as "unlocked" for refund purposes
+    const state = (rawState === 'active-this-match' || rawState === 'unlocked-inactive')
+      ? 'unlocked'
+      : rawState as 'unlocked' | 'affordable' | 'locked';
 
     // Right-click refund: only works on unlocked nodes, refund immediately (no pending state)
     if (state === 'unlocked') {
@@ -872,7 +951,8 @@ export class WeaponMasteryScreen {
     this.container.querySelectorAll<HTMLElement>('.wms-node').forEach(nodeEl => {
       const nodeId = nodeEl.dataset.nodeId!;
       if (this._pendingRefundNodeId !== nodeId) {
-        const state = this._nodeState(nodeId, ps, hasPoints);
+        const weaponType = nodeId.split('_')[0] as WeaponType | undefined;
+        const state = this._nodeState(nodeId, ps, hasPoints, weaponType);
         nodeEl.className = `wms-node wms-node--${state}`;
         nodeEl.dataset.nodeState = state;
         const nodeIndex = nodeId.split('_').pop() ?? '?';
@@ -888,7 +968,7 @@ export class WeaponMasteryScreen {
     const nodeId = nodeEl.dataset.nodeId!;
     const name = nodeEl.dataset.nodeName ?? '';
     const effect = nodeEl.dataset.nodeEffect ?? '';
-    const state = nodeEl.dataset.nodeState as 'unlocked' | 'affordable' | 'locked';
+    const state = nodeEl.dataset.nodeState as string;
     const isPendingRefund = this._pendingRefundNodeId === nodeId;
 
     let costHtml = '';
@@ -896,6 +976,11 @@ export class WeaponMasteryScreen {
       costHtml = '<div class="wms-tt-cost">Click again to confirm refund</div>';
     } else if (state === 'affordable') {
       costHtml = '<div class="wms-tt-cost">Cost: 1 point &nbsp;·&nbsp; Click to unlock</div>';
+    } else if (state === 'active-this-match') {
+      costHtml = '<div class="wms-tt-cost">&#x2713; Active this match &nbsp;·&nbsp; Click to refund</div>';
+    } else if (state === 'unlocked-inactive') {
+      const threshold = nodeEl.dataset.killThreshold ?? '?';
+      costHtml = `<div class="wms-tt-cost">Permanently unlocked &nbsp;·&nbsp; Get ${threshold} kills with this weapon to activate &nbsp;·&nbsp; Click to refund</div>`;
     } else if (state === 'unlocked') {
       costHtml = '<div class="wms-tt-cost">Unlocked &nbsp;·&nbsp; Click to refund</div>';
     } else {

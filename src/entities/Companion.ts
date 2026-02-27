@@ -576,6 +576,26 @@ export class CompanionManager {
   }
 
   /**
+   * Remove all companions between rounds. The manager itself remains reusable —
+   * call addCompanion() to populate again next round.
+   */
+  reset(): void {
+    for (const c of this.companions) {
+      this.root.remove(c.mesh);
+      c.dispose();
+    }
+    this.companions = [];
+    this.shieldTimer = 0;
+    this.shieldActive = false;
+    if (this.shieldBubble) {
+      this.shieldBubble.geometry.dispose();
+      (this.shieldBubble.material as THREE.Material).dispose();
+      this.root.remove(this.shieldBubble);
+      this.shieldBubble = null;
+    }
+  }
+
+  /**
    * Dispose all companions and resources.
    */
   dispose(): void {
