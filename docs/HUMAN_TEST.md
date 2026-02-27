@@ -2,9 +2,29 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-02-27
+> **Last updated:** 2026-02-28
 >
 > **Visual Test Results (2026-02-12, commit a722f6a):** Headless Puppeteer + SwiftShader testing completed. Items marked `[V5 PASS]` were verified visually at Level 5. Items marked `[V5 INCONCLUSIVE]` could not be tested headless (need real browser). See `tasks/visual-test-human-todos.md` and `tasks/lan-visual-testing.md` for full details.
+
+---
+
+## S38b-07: Weapon Mastery — 4-Endpoint Branching Tree
+
+**What changed:** Standard (Blaster) weapon now has a 4-endpoint branching tree instead of 2 linear branches. Other weapons unchanged.
+
+**What to test:**
+- [ ] Open Weapon Mastery screen (from menu)
+- [ ] **Blaster** card shows 4 branch labels: SCATTER, RAPID FIRE, SEEKING, DEVASTATION
+- [ ] Tree visually branches at level 4 into 4 separate columns at levels 5-10
+- [ ] Clicking a locked node does NOT dim the screen (stopPropagation fix)
+- [ ] Clicking a locked node can be dismissed by clicking elsewhere
+- [ ] Earn some mastery points and spend them — unlocked nodes show bright gold
+- [ ] RAPID FIRE and DEVASTATION branches cost 2 points per node (shows "2 pts" tooltip)
+- [ ] SCATTER and SEEKING branches cost 1 point per node
+- [ ] Right-click an unlocked node to refund the point
+- [ ] All other weapons (Spread, Homing, etc.) still show their normal 2-branch trees
+
+**V5 PASS** (Puppeteer screenshot 2026-02-28): 4 endpoints visible, branch labels correct, unlocked/locked states render properly.
 
 ---
 
