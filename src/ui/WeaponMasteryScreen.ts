@@ -259,12 +259,20 @@ function injectStyles(): void {
       margin-bottom: 2px;
       padding: 0 8px;
     }
+    /* 4-endpoint branching weapons: labels across full width */
+    #weapon-mastery-screen .wms-branch-labels--4 {
+      justify-content: space-around;
+    }
     #weapon-mastery-screen .wms-branch-label {
       font-size: 9px;
       letter-spacing: 2px;
       color: color-mix(in srgb, var(--wc, #888) 70%, white);
       text-transform: uppercase;
       opacity: 0.7;
+    }
+    /* Premium-cost node indicator — slightly brighter border */
+    #weapon-mastery-screen .wms-node--premium {
+      border-style: double;
     }
 
     /* ── Constellation area ── */
@@ -441,12 +449,13 @@ function injectStyles(): void {
   document.head.appendChild(style);
 }
 
-// ── Node layout constants (SVG viewBox 280×380) ───────────────────────────────
-// Supports up to 10 nodes per branch. For weapons with 5 nodes, only positions
-// a_1–a_5 and b_1–b_5 are used; the extra positions exist for extended branches.
+// ── Node layout constants ─────────────────────────────────────────────────────
+// Fallback positions for weapons that do NOT specify explicit x/y on their nodes.
+// Branching weapons (e.g. Standard) use explicit x/y per node instead.
 
 interface NodePos { x: number; y: number; }
 
+/** Fallback positions for legacy linear-branch nodes (branch 'a' or 'b', depth 1-10). */
 const NODE_POSITIONS: Record<string, NodePos> = {
   // Branch A: down-left diagonal (10 positions)
   'a_1':  { x: 103, y:  46 },
@@ -473,10 +482,7 @@ const NODE_POSITIONS: Record<string, NodePos> = {
 };
 
 const SVG_W = 280;
-// Height scales with max depth: 5-node branches use 240, 10-node use 380
-const SVG_H_5  = 240;
-const SVG_H_10 = 380;
-// Center junction point (where the two branches split)
+// Center junction point (where the two branches split from the weapon hub)
 const CENTER_X = 140;
 const CENTER_Y = 18;
 
@@ -626,10 +632,17 @@ export class WeaponMasteryScreen {
           </div>
           <span class="wms-xp-val">${xpLabel}</span>
         </div>
+        ${tree.branchALName ? `
+        <div class="wms-branch-labels wms-branch-labels--4">
+          <span class="wms-branch-label">${tree.branchALName}</span>
+          <span class="wms-branch-label">${tree.branchARName ?? ''}</span>
+          <span class="wms-branch-label">${tree.branchBLName ?? ''}</span>
+          <span class="wms-branch-label">${tree.branchBRName ?? ''}</span>
+        </div>` : `
         <div class="wms-branch-labels">
           <span class="wms-branch-label">${tree.branchAName}</span>
           <span class="wms-branch-label">${tree.branchBName}</span>
-        </div>
+        </div>`}
         ${constellationHTML}
       </div>
     `;
@@ -643,49 +656,40 @@ export class WeaponMasteryScreen {
     const tree = UPGRADE_TREES[weaponType];
     const hasPoints = ps.availablePoints > 0;
 
-    // Determine actual branch depth (may be 5 or 10)
-    const branchANodes = tree.nodes.filter(n => n.branch === 'a');
-    const branchBNodes = tree.nodes.filter(n => n.branch === 'b');
-    const maxDepth = Math.max(
-      branchANodes.reduce((m, n) => Math.max(m, n.nodeIndex), 0),
-      branchBNodes.reduce((m, n) => Math.max(m, n.nodeIndex), 0),
-    );
-    const SVG_H = maxDepth > 5 ? SVG_H_10 : SVG_H_5;
+    // Determine SVG height from tree config or infer from max nodeIndex
+    const SVG_H = this._svgHeight(tree);
+    const areaHeight = SVG_H;
 
-    // Update constellation area height via inline style on the container
-    const areaHeight = maxDepth > 5 ? 380 : 240;
+    // Build position map for all nodes
+    const posMap = new Map<string, NodePos>();
+    for (const n of tree.nodes) {
+      posMap.set(n.id, this._getNodePos(n));
+    }
 
-    // Build SVG lines
-    const lines: string[] = [];
     const lineStyle = (unlocked: boolean) =>
       unlocked
         ? `stroke="${color}" stroke-opacity="0.5" filter="url(#glow-${weaponType})"`
         : 'stroke="rgba(255,255,255,0.08)"';
 
-    // Center → A1 and Center → B1
-    const a1 = NODE_POSITIONS['a_1'];
-    const b1 = NODE_POSITIONS['b_1'];
-    const a1Unlocked = ps.isUnlocked(`${weaponType}_a_1`);
-    const b1Unlocked = ps.isUnlocked(`${weaponType}_b_1`);
-
-    lines.push(`<line x1="${CENTER_X}" y1="${CENTER_Y}" x2="${a1.x}" y2="${a1.y}" stroke-width="1.5" ${lineStyle(a1Unlocked)}/>`);
-    lines.push(`<line x1="${CENTER_X}" y1="${CENTER_Y}" x2="${b1.x}" y2="${b1.y}" stroke-width="1.5" ${lineStyle(b1Unlocked)}/>`);
-
-    // Chain lines within each branch (up to actual depth)
-    for (const branch of ['a', 'b'] as const) {
-      const branchNodes = tree.nodes.filter(n => n.branch === branch);
-      const depth = branchNodes.reduce((m, n) => Math.max(m, n.nodeIndex), 0);
-      for (let i = 1; i < depth; i++) {
-        const from = NODE_POSITIONS[`${branch}_${i}`];
-        const to = NODE_POSITIONS[`${branch}_${i + 1}`];
-        const toUnlocked = ps.isUnlocked(`${weaponType}_${branch}_${i + 1}`);
-        lines.push(`<line x1="${from.x}" y1="${from.y}" x2="${to.x}" y2="${to.y}" stroke-width="1.5" ${lineStyle(toUnlocked)}/>`);
+    // Build SVG lines: each node connects to its parent (or to center if no parentId)
+    const lines: string[] = [];
+    for (const n of tree.nodes) {
+      const pos = posMap.get(n.id)!;
+      const unlocked = ps.isUnlocked(n.id);
+      if (n.parentId) {
+        const parentPos = posMap.get(n.parentId);
+        if (parentPos) {
+          lines.push(`<line x1="${parentPos.x}" y1="${parentPos.y}" x2="${pos.x}" y2="${pos.y}" stroke-width="1.5" ${lineStyle(unlocked)}/>`);
+        }
+      } else {
+        // Root node → connect to center
+        lines.push(`<line x1="${CENTER_X}" y1="${CENTER_Y}" x2="${pos.x}" y2="${pos.y}" stroke-width="1.5" ${lineStyle(unlocked)}/>`);
       }
     }
 
-    // Center dot (weapon icon)
-    const centerUnlocked = a1Unlocked || b1Unlocked;
-    const centerGlow = centerUnlocked
+    // Center dot (weapon icon) — glows if any root node is unlocked
+    const rootsUnlocked = tree.nodes.filter(n => !n.parentId).some(n => ps.isUnlocked(n.id));
+    const centerGlow = rootsUnlocked
       ? `fill="${color}" fill-opacity="0.8" filter="url(#glow-${weaponType})"`
       : 'fill="rgba(255,255,255,0.2)"';
     const centerDot = `<circle cx="${CENTER_X}" cy="${CENTER_Y}" r="5" ${centerGlow}/>`;
@@ -693,13 +697,14 @@ export class WeaponMasteryScreen {
     // Build node divs
     const nodes: string[] = [];
     for (const n of tree.nodes) {
-      const pos = NODE_POSITIONS[`${n.branch}_${n.nodeIndex}`];
+      const pos = posMap.get(n.id)!;
       const leftPct = ((pos.x / SVG_W) * 100).toFixed(2);
       const topPct = ((pos.y / SVG_H) * 100).toFixed(2);
       const state = this._nodeState(n, ps, hasPoints, weaponType);
       const stateClass = `wms-node--${state}`;
       const label = this._nodeLabel(n, ps);
       const maxPts = getNodeMaxPoints(n);
+      const cost = n.cost ?? 1;
 
       nodes.push(`
         <div class="wms-node ${stateClass}"
@@ -710,6 +715,7 @@ export class WeaponMasteryScreen {
           data-node-state="${state}"
           data-kill-threshold="${n.killThreshold}"
           data-max-points="${maxPts}"
+          data-cost="${cost}"
         >${label}</div>
       `);
     }
@@ -729,6 +735,23 @@ export class WeaponMasteryScreen {
         ${nodes.join('\n        ')}
       </div>
     `;
+  }
+
+  /** Returns explicit position if the node has one; falls back to NODE_POSITIONS for legacy linear-branch nodes. */
+  private _getNodePos(n: UpgradeNode): NodePos {
+    if (n.x !== undefined && n.y !== undefined) {
+      return { x: n.x, y: n.y };
+    }
+    // Legacy fallback: branch must be 'a' or 'b' for NODE_POSITIONS lookup
+    const key = `${n.branch}_${n.nodeIndex}`;
+    return NODE_POSITIONS[key] ?? { x: CENTER_X, y: CENTER_Y + n.nodeIndex * 30 };
+  }
+
+  /** Computes SVG viewBox height for a weapon tree. */
+  private _svgHeight(tree: import('../systems/UpgradeTreeData').UpgradeTree): number {
+    if (tree.svgHeight !== undefined) return tree.svgHeight;
+    const maxIdx = tree.nodes.reduce((m, n) => Math.max(m, n.nodeIndex), 0);
+    return maxIdx > 5 ? 380 : 240;
   }
 
   /** Generate the visible label for a node div. */
@@ -764,8 +787,9 @@ export class WeaponMasteryScreen {
       return 'unlocked';
     }
 
-    // Not yet unlocked
-    if (hasPoints) return 'affordable';
+    // Not yet unlocked — check if player can afford this node's cost
+    const cost = node.cost ?? 1;
+    if (ps.availablePoints >= cost) return 'affordable';
     return 'locked';
   }
 
@@ -803,9 +827,10 @@ export class WeaponMasteryScreen {
     // Extract weapon type from node id (format: "<weaponType>_<branch>_<index>")
     const weaponType = nodeId.split('_')[0] as WeaponType | undefined;
     const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
+    const cost = parseInt(nodeEl.dataset.cost ?? '1', 10);
 
     // Reconstruct a minimal UpgradeNode for state calculation
-    const minimalNode = { id: nodeId, maxPoints } as UpgradeNode;
+    const minimalNode = { id: nodeId, maxPoints, cost } as UpgradeNode;
     const state = this._nodeState(minimalNode, ps, hasPoints, weaponType);
 
     nodeEl.className = `wms-node wms-node--${state}`;
@@ -828,34 +853,26 @@ export class WeaponMasteryScreen {
     const svg = area?.querySelector('svg');
     if (!svg) return;
 
-    const updateLine = (nodeId: string, lineEl: SVGLineElement | null) => {
+    const tree = UPGRADE_TREES[weaponType];
+    const lines = svg.querySelectorAll<SVGLineElement>('line');
+
+    // Lines are added in the same order as tree.nodes iteration in _buildConstellation
+    tree.nodes.forEach((n, i) => {
+      const lineEl = lines[i];
       if (!lineEl) return;
-      const unlocked = ps.isUnlocked(nodeId);
+      const unlocked = ps.isUnlocked(n.id);
       lineEl.setAttribute('stroke', unlocked ? color : 'rgba(255,255,255,0.08)');
       lineEl.setAttribute('stroke-opacity', unlocked ? '0.5' : '1');
-    };
-
-    const tree = UPGRADE_TREES[weaponType];
-    const branchADepth = tree.nodes.filter(n => n.branch === 'a').reduce((m, n) => Math.max(m, n.nodeIndex), 0);
-    const branchBDepth = tree.nodes.filter(n => n.branch === 'b').reduce((m, n) => Math.max(m, n.nodeIndex), 0);
-
-    // Lines order: center→A1, center→B1, then A1→A2...A(n-1)→An, then B1→B2...B(m-1)→Bm
-    const nodeIds: string[] = [
-      `${weaponType}_a_1`,  // center→A1 glow
-      `${weaponType}_b_1`,  // center→B1 glow
-    ];
-    for (let i = 2; i <= branchADepth; i++) nodeIds.push(`${weaponType}_a_${i}`);
-    for (let i = 2; i <= branchBDepth; i++) nodeIds.push(`${weaponType}_b_${i}`);
-
-    const lines = svg.querySelectorAll<SVGLineElement>('line');
-    lines.forEach((line, i) => updateLine(nodeIds[i], line));
+    });
   }
 
   // ── Event Listeners ─────────────────────────────────────────────────────────
 
   private _attachListeners(): void {
     // Delegated click on container
+    // stopPropagation prevents clicks from reaching the game layer behind the overlay
     this.container.addEventListener('click', (e) => {
+      e.stopPropagation();
       const target = e.target as HTMLElement;
 
       // Close button
@@ -872,11 +889,13 @@ export class WeaponMasteryScreen {
     });
 
     // Right-click to refund (direct refund, no confirmation)
+    // stopPropagation + preventDefault prevents game-layer context-menu and game interactions
     this.container.addEventListener('contextmenu', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
       const target = e.target as HTMLElement;
       const nodeEl = target.closest<HTMLElement>('.wms-node');
       if (nodeEl) {
-        e.preventDefault(); // Prevent browser context menu
         this._handleNodeRightClick(nodeEl);
       }
     });
@@ -919,13 +938,16 @@ export class WeaponMasteryScreen {
     const nodeId = nodeEl.dataset.nodeId!;
     const rawState = nodeEl.dataset.nodeState as string;
     const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
+    const cost = parseInt(nodeEl.dataset.cost ?? '1', 10);
 
     // Left-click ONLY adds points — never refunds (right-click is for refunds)
     // States that allow spending: affordable, partial (multi-level, not yet at max)
     const canSpend = rawState === 'affordable' || rawState === 'partial';
 
     if (canSpend) {
-      const spent = ps.spendPoint(nodeId, maxPoints);
+      // For first-time unlock use cost; subsequent ranks on multi-level nodes still cost 1 each
+      const pointsToSpend = rawState === 'affordable' ? cost : 1;
+      const spent = ps.spendPoint(nodeId, maxPoints, pointsToSpend);
       if (spent) {
         this._updateNodeEl(nodeEl);
         this._refreshAllNodeStates();
@@ -972,7 +994,8 @@ export class WeaponMasteryScreen {
       const nodeId = nodeEl.dataset.nodeId!;
       const weaponType = nodeId.split('_')[0] as WeaponType | undefined;
       const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
-      const minimalNode = { id: nodeId, maxPoints } as UpgradeNode;
+      const cost = parseInt(nodeEl.dataset.cost ?? '1', 10);
+      const minimalNode = { id: nodeId, maxPoints, cost } as UpgradeNode;
       const state = this._nodeState(minimalNode, ps, hasPoints, weaponType);
       nodeEl.className = `wms-node wms-node--${state}`;
       nodeEl.dataset.nodeState = state;
@@ -997,9 +1020,11 @@ export class WeaponMasteryScreen {
     const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
     const currentPoints = ps.getNodePoints(nodeId);
 
+    const cost = parseInt(nodeEl.dataset.cost ?? '1', 10);
     let costHtml = '';
     if (state === 'affordable') {
-      costHtml = '<div class="wms-tt-cost">Cost: 1 point &nbsp;·&nbsp; Left-click to unlock</div>';
+      const costStr = cost > 1 ? `${cost} points (premium)` : '1 point';
+      costHtml = `<div class="wms-tt-cost">Cost: ${costStr} &nbsp;·&nbsp; Left-click to unlock</div>`;
     } else if (state === 'partial') {
       const remaining = maxPoints - currentPoints;
       costHtml = `<div class="wms-tt-cost">Rank ${currentPoints}/${maxPoints} &nbsp;·&nbsp; Left-click to upgrade (+${remaining} point${remaining !== 1 ? 's' : ''} to max) &nbsp;·&nbsp; Right-click to refund 1 rank</div>`;
@@ -1014,7 +1039,8 @@ export class WeaponMasteryScreen {
       const rankStr = maxPoints > 1 ? ` (Rank ${currentPoints}/${maxPoints})` : '';
       costHtml = `<div class="wms-tt-cost">Unlocked${rankStr} &nbsp;·&nbsp; Right-click to refund</div>`;
     } else {
-      costHtml = `<div class="wms-tt-cost">Need points to unlock &nbsp;(have: ${ps.availablePoints})</div>`;
+      const costStr = cost > 1 ? `${cost} points` : '1 point';
+      costHtml = `<div class="wms-tt-cost">Need ${costStr} to unlock &nbsp;(have: ${ps.availablePoints})</div>`;
     }
 
     this.tooltip.innerHTML = `

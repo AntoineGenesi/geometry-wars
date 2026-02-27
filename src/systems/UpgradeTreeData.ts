@@ -4,31 +4,60 @@ import { WeaponType } from '../weapons/WeaponTypes';
 // Types
 // ---------------------------------------------------------------------------
 
-export type UpgradeBranch = 'a' | 'b';
+/**
+ * Branch identifier.
+ * 'a' / 'b' = main branches (root of each side).
+ * 'al' / 'ar' = sub-branches off the A main branch (left / right split).
+ * 'bl' / 'br' = sub-branches off the B main branch (left / right split).
+ */
+export type UpgradeBranch = 'a' | 'b' | 'al' | 'ar' | 'bl' | 'br';
 
 export interface UpgradeNode {
   /** Stable unique identifier: "${weaponType}_${branch}_${nodeIndex}" */
   id: string;
   branch: UpgradeBranch;
-  /** 1-indexed position within the branch */
+  /** 1-indexed position within the branch (sub-branches continue counting from split depth) */
   nodeIndex: number;
+  /**
+   * Parent node ID. If set, lines draw from parent → this node.
+   * If undefined, the node is a root node and connects to the weapon center.
+   */
+  parentId?: string;
   description: string;
   /** In-match kill count required to activate this node */
   killThreshold: number;
   /** Human-readable summary of the gameplay effect */
   effect: string;
   /**
+   * Mastery-point cost to unlock this node (default: 1).
+   * Higher-cost nodes unlock more powerful effects.
+   */
+  cost?: number;
+  /**
    * How many mastery points can be spent in this node (default: 1).
-   * When > 1, the node supports internal upgrade leveling — spending
-   * additional points amplifies the effect further.
+   * When > 1, the node supports internal upgrade leveling.
    */
   maxPoints?: number;
+  /** Optional explicit SVG x position (0–280). Used for branching layouts. */
+  x?: number;
+  /** Optional explicit SVG y position (0–svgHeight). Used for branching layouts. */
+  y?: number;
 }
 
 export interface UpgradeTree {
   weaponType: WeaponType;
   branchAName: string;
   branchBName: string;
+  /** Sub-branch labels (only for 4-endpoint branching trees) */
+  branchALName?: string;
+  branchARName?: string;
+  branchBLName?: string;
+  branchBRName?: string;
+  /**
+   * Custom SVG viewBox height. Defaults inferred from max nodeIndex:
+   * ≤5 → 240, ≤10 → 380, branching → set explicitly.
+   */
+  svgHeight?: number;
   nodes: UpgradeNode[];
 }
 
@@ -59,16 +88,28 @@ function node(
   index: number,
   description: string,
   effect: string,
-  maxPoints?: number,
+  opts?: number | {
+    maxPoints?: number;
+    parentId?: string;
+    cost?: number;
+    x?: number;
+    y?: number;
+  },
 ): UpgradeNode {
+  const maxPoints = typeof opts === 'number' ? opts : opts?.maxPoints;
+  const extra = (typeof opts === 'object' && opts !== null) ? opts : {};
   return {
     id: `${weaponType}_${branch}_${index}`,
     branch,
     nodeIndex: index,
     description,
-    killThreshold: KILL_THRESHOLDS[index],
+    killThreshold: KILL_THRESHOLDS[index] ?? KILL_THRESHOLDS[10],
     effect,
     ...(maxPoints !== undefined && maxPoints > 1 ? { maxPoints } : {}),
+    ...(extra.parentId ? { parentId: extra.parentId } : {}),
+    ...(extra.cost !== undefined && extra.cost !== 1 ? { cost: extra.cost } : {}),
+    ...(extra.x !== undefined ? { x: extra.x } : {}),
+    ...(extra.y !== undefined ? { y: extra.y } : {}),
   };
 }
 
@@ -78,35 +119,72 @@ function node(
 
 export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
   // -------------------------------------------------------------------------
-  // 1. Standard (Blaster)
-  //    Branch A "SCATTER" — fan out, more bullets, wider arc (10 levels)
-  //    Branch B "HONE"    — tight cone, more bullets, homing bias (10 levels)
+  // 1. Standard (Blaster) — 4-endpoint branching tree
+  //
+  //    Branch A trunk (a_1..a_4): Fire-rate theme, diverges at level 4
+  //      Sub-branch AL (al_5..al_10): "Scatter" — explosive multi-bolt spread [cost:1]
+  //      Sub-branch AR (ar_5..ar_10): "Rapid Fire" — extreme fire rate [cost:2]
+  //
+  //    Branch B trunk (b_1..b_4): Damage theme, diverges at level 4
+  //      Sub-branch BL (bl_5..bl_10): "Seeking" — homing bolts [cost:1]
+  //      Sub-branch BR (br_5..br_10): "Devastation" — raw damage [cost:2]
+  //
+  //    SVG viewBox: 280 × 390
+  //    4 endpoints at level 10: al_10, ar_10, bl_10, br_10
   // -------------------------------------------------------------------------
   [WeaponType.Standard]: {
     weaponType: WeaponType.Standard,
-    branchAName: 'Scatter',
-    branchBName: 'Hone',
+    branchAName: 'Fire Rate',
+    branchBName: 'Damage',
+    branchALName: 'Scatter',
+    branchARName: 'Rapid Fire',
+    branchBLName: 'Seeking',
+    branchBRName: 'Devastation',
+    svgHeight: 390,
     nodes: [
-      node(WeaponType.Standard, 'a', 1,  'Dual bolts',      'Fires 2 bolts side by side (+1 bullet)'),
-      node(WeaponType.Standard, 'a', 2,  'Triple spray',    'Fires 3 bolts in a narrow fan (+2 bullets)'),
-      node(WeaponType.Standard, 'a', 3,  'Quad burst',      'Fires 4 bolts, fan widens slightly (+3 bullets)'),
-      node(WeaponType.Standard, 'a', 4,  'Shotgun spread',  'Fires 5 bolts in a 25° arc (+4 bullets)'),
-      node(WeaponType.Standard, 'a', 5,  'Hellstorm',       'Fires 7 bolts in a 40° arc (+6 bullets)'),
-      node(WeaponType.Standard, 'a', 6,  'Nova burst',      'Fires 9 bolts in a 55° arc (+8 bullets)'),
-      node(WeaponType.Standard, 'a', 7,  'Ring shot',       'Fires 12 bolts in a full 360° ring burst'),
-      node(WeaponType.Standard, 'a', 8,  'Bullet wall',     '360° ring + forward 5-bolt dense fan simultaneously'),
-      node(WeaponType.Standard, 'a', 9,  'Annihilator',     'Bullet wall with +30% damage per bolt'),
-      node(WeaponType.Standard, 'a', 10, 'Omega scatter',   'Dual-phase: ring burst then forward 15-bolt fan; +50% damage'),
-      node(WeaponType.Standard, 'b', 1,  'Focused pair',    'Fires 2 bolts in a tight 5° cone (+1 bullet)'),
-      node(WeaponType.Standard, 'b', 2,  'Triple needle',   'Fires 3 bolts in a 5° cone (+2 bullets)'),
-      node(WeaponType.Standard, 'b', 3,  'Quad lance',      'Fires 4 tightly-grouped bolts (+3 bullets)'),
-      node(WeaponType.Standard, 'b', 4,  'Seeking bolts',   'Fires 4 bolts with mild homing bias'),
-      node(WeaponType.Standard, 'b', 5,  'Smart swarm',     'Fires 5 bolts, each auto-corrects toward nearest enemy'),
-      node(WeaponType.Standard, 'b', 6,  'Precision burst', 'Fires 6 bolts with strong homing; +10% speed'),
-      node(WeaponType.Standard, 'b', 7,  'Lock-on volley',  'Fires 8 homing bolts that split target among 2 enemies'),
-      node(WeaponType.Standard, 'b', 8,  'Guided cluster',  '8 homing bolts + secondary seeker per bolt on impact'),
-      node(WeaponType.Standard, 'b', 9,  'Smart strike',    'Guided cluster + +40% damage per bolt'),
-      node(WeaponType.Standard, 'b', 10, 'Apex hunter',     'All bolts near-perfect homing; on miss they loop back once'),
+      // ── Trunk A (Fire Rate theme) ──
+      node(WeaponType.Standard, 'a', 1, 'Dual bolts',    'Fires 2 bolts side by side (+1 bullet)',          { x: 103, y:  46 }),
+      node(WeaponType.Standard, 'a', 2, 'Triple spray',  'Fires 3 bolts in a narrow fan (+2 bullets)',      { x:  80, y:  78 }),
+      node(WeaponType.Standard, 'a', 3, 'Quad burst',    'Fires 4 bolts, fan widens slightly (+3 bullets)', { x:  57, y: 110 }),
+      node(WeaponType.Standard, 'a', 4, 'Rapid burst',   '+30% fire rate; fires 5 bolts in tight burst',    { x:  35, y: 142 }),
+
+      // ── Sub-branch AL: Scatter (cost:1) ──
+      node(WeaponType.Standard, 'al', 5, 'Shotgun spread',  'Fires 5 bolts in a 25° arc (+4 bullets)',              { parentId: 'standard_a_4', x:  10, y: 178 }),
+      node(WeaponType.Standard, 'al', 6, 'Nova burst',      'Fires 9 bolts in a 55° arc (+8 bullets)',              { parentId: 'standard_al_5', x:   8, y: 214 }),
+      node(WeaponType.Standard, 'al', 7, 'Ring shot',       'Fires 12 bolts in a full 360° ring burst',             { parentId: 'standard_al_6', x:  10, y: 250 }),
+      node(WeaponType.Standard, 'al', 8, 'Bullet wall',     '360° ring + forward 5-bolt dense fan simultaneously',  { parentId: 'standard_al_7', x:  15, y: 285 }),
+      node(WeaponType.Standard, 'al', 9, 'Annihilator',     'Bullet wall with +30% damage per bolt',                { parentId: 'standard_al_8', x:  23, y: 318 }),
+      node(WeaponType.Standard, 'al', 10,'Omega scatter',   'Dual-phase ring burst then 15-bolt fan; +50% damage',  { parentId: 'standard_al_9', x:  14, y: 352 }),
+
+      // ── Sub-branch AR: Rapid Fire (cost:2 — premium path) ──
+      node(WeaponType.Standard, 'ar', 5, 'Overclock',      '+50% fire rate',                                        { parentId: 'standard_a_4',  cost: 2, x:  63, y: 178 }),
+      node(WeaponType.Standard, 'ar', 6, 'Hyperclock',     '+80% fire rate; bullets pierce 1 enemy',               { parentId: 'standard_ar_5', cost: 2, x:  66, y: 214 }),
+      node(WeaponType.Standard, 'ar', 7, 'Machine gun',    '+120% fire rate; bolts gain slight homing',             { parentId: 'standard_ar_6', cost: 2, x:  63, y: 250 }),
+      node(WeaponType.Standard, 'ar', 8, 'Railgun charge', 'Every 10th shot fires a high-damage piercing bolt',     { parentId: 'standard_ar_7', cost: 2, x:  56, y: 285 }),
+      node(WeaponType.Standard, 'ar', 9, 'Minigun',        '+200% fire rate; enters rapid-fire mode',               { parentId: 'standard_ar_8', cost: 2, x:  48, y: 318 }),
+      node(WeaponType.Standard, 'ar', 10,'Infinity burst', 'Unlimited rapid fire for 3s on kill; +30% bolt speed', { parentId: 'standard_ar_9', cost: 2, x:  56, y: 352 }),
+
+      // ── Trunk B (Damage theme) ──
+      node(WeaponType.Standard, 'b', 1, 'Focused pair',   'Fires 2 bolts in a tight 5° cone (+1 bullet)',   { x: 177, y:  46 }),
+      node(WeaponType.Standard, 'b', 2, 'Triple needle',  'Fires 3 bolts in a 5° cone (+2 bullets)',        { x: 200, y:  78 }),
+      node(WeaponType.Standard, 'b', 3, 'Quad lance',     'Fires 4 tightly-grouped bolts (+3 bullets)',     { x: 223, y: 110 }),
+      node(WeaponType.Standard, 'b', 4, 'Heavy bolt',     'Bolts deal +40% damage; penetrate 1 enemy',     { x: 245, y: 142 }),
+
+      // ── Sub-branch BL: Seeking (cost:1) ──
+      node(WeaponType.Standard, 'bl', 5, 'Seeking bolts',  'Fires 4 bolts with mild homing bias',                  { parentId: 'standard_b_4',  x: 217, y: 178 }),
+      node(WeaponType.Standard, 'bl', 6, 'Smart swarm',    'Fires 5 bolts, each auto-corrects toward nearest enemy',{ parentId: 'standard_bl_5', x: 214, y: 214 }),
+      node(WeaponType.Standard, 'bl', 7, 'Precision burst','Fires 6 homing bolts with +10% speed',                  { parentId: 'standard_bl_6', x: 217, y: 250 }),
+      node(WeaponType.Standard, 'bl', 8, 'Lock-on volley', 'Fires 8 homing bolts split among 2 enemies',            { parentId: 'standard_bl_7', x: 224, y: 285 }),
+      node(WeaponType.Standard, 'bl', 9, 'Guided cluster', 'Homing bolts + secondary seeker per bolt on impact',    { parentId: 'standard_bl_8', x: 232, y: 318 }),
+      node(WeaponType.Standard, 'bl', 10,'Apex hunter',    'Near-perfect homing; bolts loop back once on miss',     { parentId: 'standard_bl_9', x: 224, y: 352 }),
+
+      // ── Sub-branch BR: Devastation (cost:2 — premium path) ──
+      node(WeaponType.Standard, 'br', 5, 'Power shot',     '+60% damage per bolt',                                  { parentId: 'standard_b_4',  cost: 2, x: 268, y: 178 }),
+      node(WeaponType.Standard, 'br', 6, 'Explosive round','Bolts detonate on impact; +30% AoE splash',             { parentId: 'standard_br_5', cost: 2, x: 272, y: 214 }),
+      node(WeaponType.Standard, 'br', 7, 'Supercharged',   '+100% damage; bolts leave ignite trail',                { parentId: 'standard_br_6', cost: 2, x: 270, y: 250 }),
+      node(WeaponType.Standard, 'br', 8, 'Armor-pierce',   'Ignores 50% enemy damage resistance',                   { parentId: 'standard_br_7', cost: 2, x: 264, y: 285 }),
+      node(WeaponType.Standard, 'br', 9, 'Death bolt',     'Each bolt has 5% chance to instant-kill enemy',         { parentId: 'standard_br_8', cost: 2, x: 256, y: 318 }),
+      node(WeaponType.Standard, 'br', 10,'Annihilator',    '+150% damage; kills trigger mini-shockwave',            { parentId: 'standard_br_9', cost: 2, x: 266, y: 352 }),
     ],
   },
 
@@ -170,12 +248,12 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.ChainLightning, 'a', 2, 'Wide arcs',   '+3 chain targets (9 total), +15% jump range'),
       node(WeaponType.ChainLightning, 'a', 3, 'Storm arcs',  '+5 chain targets (11 total), +25% jump range'),
       node(WeaponType.ChainLightning, 'a', 4, 'Mega chain',  '+7 chain targets (13 total), +40% jump range'),
-      node(WeaponType.ChainLightning, 'a', 5, 'Uberstorm',   '+10 chain targets (16 total), chains re-arc to already-hit targets for bonus damage'),
+      node(WeaponType.ChainLightning, 'a', 5, 'Uberstorm',   '+10 chain targets (16 total), chains re-arc for bonus damage'),
       node(WeaponType.ChainLightning, 'b', 1, 'High voltage','+30% damage per arc'),
       node(WeaponType.ChainLightning, 'b', 2, 'Overcharge',  '+60% damage per arc'),
       node(WeaponType.ChainLightning, 'b', 3, 'Supercharge', '+100% damage per arc'),
       node(WeaponType.ChainLightning, 'b', 4, 'Stun bolt',   '+100% dmg/arc, hit enemies are slowed 30% for 1s'),
-      node(WeaponType.ChainLightning, 'b', 5, 'Overload',    '+130% dmg/arc, enemies killed by chain explode in a mini-shockwave'),
+      node(WeaponType.ChainLightning, 'b', 5, 'Overload',    '+130% dmg/arc, enemies killed by chain explode in mini-shockwave'),
     ],
   },
 
@@ -293,14 +371,12 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
     branchBName: 'Gravity',
     nodes: [
       // a_1: maxPoints=3 — "Bigger void" can be upgraded up to 3 times
-      // Each spend adds +30% duration (Level 1 = +30%, Level 2 = +60%, Level 3 = +90%)
       node(WeaponType.BlackHole, 'a', 1, 'Bigger void', '+30% duration per rank (up to 3 ranks = +90%)', 3),
       node(WeaponType.BlackHole, 'a', 2, 'Deep void',   '+60% duration, +1 shot'),
       node(WeaponType.BlackHole, 'a', 3, 'Singularity', '+100% duration, +2 shots'),
       node(WeaponType.BlackHole, 'a', 4, 'Twin holes',  'Fires 2 black holes simultaneously'),
       node(WeaponType.BlackHole, 'a', 5, 'Doomsday',    'Fires 2 black holes, each +150% duration'),
       // b_1: maxPoints=3 — "Stronger pull" can be upgraded up to 3 times
-      // Each spend adds +30% pull radius (Level 1 = +30%, Level 2 = +60%, Level 3 = +90%)
       node(WeaponType.BlackHole, 'b', 1, 'Stronger pull','+30% pull radius per rank (up to 3 ranks = +90%)', 3),
       node(WeaponType.BlackHole, 'b', 2, 'Deep pull',   '+60% pull radius'),
       node(WeaponType.BlackHole, 'b', 3, 'Inescapable', '+100% pull radius'),
@@ -352,7 +428,7 @@ export function getNodeById(nodeId: string): UpgradeNode | undefined {
   return getAllNodes().find(n => n.id === nodeId);
 }
 
-/** Returns nodes for a specific weapon and branch. */
+/** Returns nodes for a specific weapon and branch (exact branch match). */
 export function getBranchNodes(weaponType: WeaponType, branch: UpgradeBranch): UpgradeNode[] {
   return UPGRADE_TREES[weaponType].nodes.filter(n => n.branch === branch);
 }

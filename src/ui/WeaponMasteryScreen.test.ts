@@ -351,10 +351,16 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     }
   });
 
-  it('Standard has 10-level branches (20 nodes)', () => {
-    expect(UPGRADE_TREES[WT.Standard].nodes).toHaveLength(20);
-    expect(getBranchNodes(WT.Standard, 'a')).toHaveLength(10);
-    expect(getBranchNodes(WT.Standard, 'b')).toHaveLength(10);
+  it('Standard has 4-endpoint branching tree (32 nodes)', () => {
+    expect(UPGRADE_TREES[WT.Standard].nodes).toHaveLength(32);
+    // Trunk branches have 4 nodes each (split at level 4)
+    expect(getBranchNodes(WT.Standard, 'a')).toHaveLength(4);
+    expect(getBranchNodes(WT.Standard, 'b')).toHaveLength(4);
+    // Sub-branches have 6 nodes each (levels 5-10)
+    expect(getBranchNodes(WT.Standard, 'al')).toHaveLength(6);
+    expect(getBranchNodes(WT.Standard, 'ar')).toHaveLength(6);
+    expect(getBranchNodes(WT.Standard, 'bl')).toHaveLength(6);
+    expect(getBranchNodes(WT.Standard, 'br')).toHaveLength(6);
   });
 
   it('Homing has 10-level branches (20 nodes)', () => {
@@ -375,7 +381,8 @@ describe('WeaponMasteryScreen — constellation UI', () => {
   it('node IDs follow weaponType_branch_index pattern (index 1-10)', () => {
     const nodes = getAllNodes();
     for (const n of nodes) {
-      expect(n.id).toMatch(/^[a-zA-Z_]+_[ab]_([1-9]|10)$/);
+      // branch may be a, b, al, ar, bl, br (Standard 4-endpoint tree)
+      expect(n.id).toMatch(/^[a-zA-Z_]+_(a|b|al|ar|bl|br)_([1-9]|10)$/);
     }
   });
 
