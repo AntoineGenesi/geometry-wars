@@ -3711,15 +3711,17 @@ async function main() {
     geomPool.applySurfaceProjection(transform);
 
     // -----------------------------------------------------------------------
-    // Weapon pickup dimming (LAN parity with SP's RenderLoop.ts pickup_dimming).
-    // Dims pickups on the far side of the surface so players know they are not
-    // immediately reachable. Uses UV distance from local player — same thresholds
-    // as single-player (NEAR=0.20, FAR=0.45, min=0.35). The spawn-indicator ring
-    // is kept at full brightness so players always see where pickups are.
+    // Pickup dimming (LAN parity with SP's RenderLoop.ts pickup_dimming).
+    // Dims ALL pickup types on the far side of the surface so players know
+    // they are not immediately reachable. Uses UV distance from local player
+    // — same thresholds as single-player (NEAR=0.20, FAR=0.45, min=0.35).
+    // The spawn-indicator ring is kept at full brightness.
+    // Covers: networkWeaponPickups, localCompanionPickups, localBuffPickups.
     // -----------------------------------------------------------------------
     {
       const lpPickup = networkPlayers.get(localPlayerId);
-      if (lpPickup && networkWeaponPickups.size > 0) {
+      const hasAnyPickup = networkWeaponPickups.size > 0 || localCompanionPickups.length > 0 || localBuffPickups.length > 0;
+      if (lpPickup && hasAnyPickup) {
         const PICKUP_NEAR_UV   = 0.20;
         const PICKUP_FAR_UV    = 0.45;
         const PICKUP_MIN_SCALE = 0.35;
@@ -3727,24 +3729,23 @@ async function main() {
         const puPlayerV = lpPickup.surfaceV;
         const puWrapsV  = surf.wrapsV;
 
-        networkWeaponPickups.forEach((pickup) => {
-          const euRaw = Math.abs(pickup.surfaceU - puPlayerU);
-          const evRaw = Math.abs(pickup.surfaceV - puPlayerV);
+        const computeDimFactor = (pickupU: number, pickupV: number): number => {
+          const euRaw = Math.abs(pickupU - puPlayerU);
+          const evRaw = Math.abs(pickupV - puPlayerV);
           const eu = Math.min(euRaw, 1.0 - euRaw);
           const ev = puWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
           const uvDist = Math.sqrt(eu * eu + ev * ev);
-          let dimFactor: number;
-          if (uvDist <= PICKUP_NEAR_UV) {
-            dimFactor = 1.0;
-          } else if (uvDist >= PICKUP_FAR_UV) {
-            dimFactor = PICKUP_MIN_SCALE;
-          } else {
-            const t = (uvDist - PICKUP_NEAR_UV) / (PICKUP_FAR_UV - PICKUP_NEAR_UV);
-            const smooth = t * t * (3.0 - 2.0 * t);
-            dimFactor = 1.0 - smooth * (1.0 - PICKUP_MIN_SCALE);
-          }
+          if (uvDist <= PICKUP_NEAR_UV) return 1.0;
+          if (uvDist >= PICKUP_FAR_UV) return PICKUP_MIN_SCALE;
+          const t = (uvDist - PICKUP_NEAR_UV) / (PICKUP_FAR_UV - PICKUP_NEAR_UV);
+          const smooth = t * t * (3.0 - 2.0 * t);
+          return 1.0 - smooth * (1.0 - PICKUP_MIN_SCALE);
+        };
 
-          pickup.mesh.traverse((child) => {
+        const applyDimming = (mesh: THREE.Group, pickupU: number, pickupV: number): void => {
+          const dimFactor = computeDimFactor(pickupU, pickupV);
+          const ageFactor = (mesh.userData.ageFactor as number) ?? 1.0;
+          mesh.traverse((child) => {
             if (child.name === 'spawn-indicator') return;
             if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
               const mat = child.material as THREE.MeshBasicMaterial;
@@ -3752,15 +3753,19 @@ async function main() {
                 if (mat.userData.baseOpacity === undefined) {
                   mat.userData.baseOpacity = mat.opacity;
                 }
-                mat.opacity = (mat.userData.baseOpacity as number) * dimFactor;
+                mat.opacity = (mat.userData.baseOpacity as number) * ageFactor * dimFactor;
               }
             } else if (child instanceof THREE.Sprite) {
               if (child.material.userData.baseOpacity !== undefined) {
-                child.material.opacity = (child.material.userData.baseOpacity as number) * dimFactor;
+                child.material.opacity = (child.material.userData.baseOpacity as number) * ageFactor * dimFactor;
               }
             }
           });
-        });
+        };
+
+        networkWeaponPickups.forEach((pickup) => applyDimming(pickup.mesh, pickup.surfaceU, pickup.surfaceV));
+        for (const cp of localCompanionPickups) { if (cp.active) applyDimming(cp.mesh, cp.surfaceU, cp.surfaceV); }
+        for (const bp of localBuffPickups)      { if (bp.active) applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV); }
       }
     }
 
