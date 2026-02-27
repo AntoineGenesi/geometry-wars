@@ -6,6 +6,13 @@ import { buildTriangle3D, buildDiamond3D, buildCircle3D, buildChevron3D, buildPo
 const _tempMatrix = new THREE.Matrix4();
 const _tempQuat = new THREE.Quaternion();
 
+/** Per-row carrier line data (pre-allocated buffers for zero GC per frame). */
+interface CarrierLineData {
+  line: THREE.Line;
+  posAttr: THREE.BufferAttribute;
+  followerIndices: number[]; // indices into _followers for this row
+}
+
 const HISTORY_SIZE = 100;
 const SEGMENT_HISTORY_STEP = 6; // frames between follower slots in history
 
@@ -73,6 +80,9 @@ export class FractalSnake extends BaseEnemy {
 
   private readonly _config: FractalSnakeConfig;
 
+  /** Persistent green carrier lines — one per follower row, visible while carrying entities. */
+  private _carrierLinesData: CarrierLineData[] = [];
+
   /** Called when a follower is freed (damaged to 0). Sub-task 3 wires this. */
   static onFollowerFreed: ((u: number, v: number, enemyType: string) => void) | null = null;
 
@@ -110,6 +120,7 @@ export class FractalSnake extends BaseEnemy {
 
     this.createMesh();
     this.initFollowers();
+    this.initCarrierLines();
 
     // Register followerRoot so generic cleanup code removes it from scene
     this.auxiliaryObjects.push(this.followerRoot);
@@ -217,6 +228,72 @@ export class FractalSnake extends BaseEnemy {
           spinAngle: Math.random() * Math.PI * 2, // random start angle for variety
         });
       }
+    }
+  }
+
+  /**
+   * Create pre-allocated carrier line buffers — one line per follower row.
+   * Bright green, double lines (2 rows = 2 parallel lines) visible while alive.
+   * Added to followerRoot so scene management handles them automatically.
+   */
+  private initCarrierLines(): void {
+    const lineMat = new THREE.LineBasicMaterial({
+      color: 0x00ff88,
+      transparent: true,
+      opacity: 0.65,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    for (let row = 0; row < this._config.numRows; row++) {
+      const followerIndices: number[] = [];
+      for (let i = 0; i < this._followers.length; i++) {
+        if (this._followers[i].row === row) {
+          followerIndices.push(i);
+        }
+      }
+      if (followerIndices.length === 0) continue;
+
+      // head + N followers = N+1 points per line
+      const pointCount = followerIndices.length + 1;
+      const positions = new Float32Array(pointCount * 3);
+      const posAttr = new THREE.BufferAttribute(positions, 3);
+      posAttr.setUsage(THREE.DynamicDrawUsage);
+
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', posAttr);
+
+      const line = new THREE.Line(geo, lineMat.clone());
+      this.followerRoot.add(line);
+
+      this._carrierLinesData.push({ line, posAttr, followerIndices });
+    }
+  }
+
+  /**
+   * Update carrier line geometries each frame — called from applySurfaceTransform
+   * after followers have been repositioned. Zero allocations per frame.
+   */
+  private _updateCarrierLines(): void {
+    const hp = this.position; // head world position (set by super.applySurfaceTransform)
+    for (const cl of this._carrierLinesData) {
+      // Point 0: head
+      cl.posAttr.setXYZ(0, hp.x, hp.y, hp.z);
+
+      let anyAlive = false;
+      for (let i = 0; i < cl.followerIndices.length; i++) {
+        const f = this._followers[cl.followerIndices[i]];
+        if (f.alive) {
+          anyAlive = true;
+          cl.posAttr.setXYZ(i + 1, f.mesh.position.x, f.mesh.position.y, f.mesh.position.z);
+        } else {
+          // Collapse dead-follower segment to head (zero-length, invisible)
+          cl.posAttr.setXYZ(i + 1, hp.x, hp.y, hp.z);
+        }
+      }
+
+      cl.posAttr.needsUpdate = true;
+      cl.line.visible = anyAlive;
     }
   }
 
@@ -557,6 +634,9 @@ export class FractalSnake extends BaseEnemy {
       _tempQuat.setFromAxisAngle(t.normal, follower.spinAngle);
       follower.mesh.quaternion.multiply(_tempQuat);
     }
+
+    // Update carrier lines last (after followers have new positions)
+    this._updateCarrierLines();
   }
 
   // ─────────────────────────── cleanup ─────────────────────────────────────
@@ -564,6 +644,14 @@ export class FractalSnake extends BaseEnemy {
   destroy(): void {
     // Clean up any active shock lines
     this._removeShockLines();
+
+    // Clean up carrier lines
+    for (const cl of this._carrierLinesData) {
+      this.followerRoot.remove(cl.line);
+      cl.line.geometry.dispose();
+      (cl.line.material as THREE.LineBasicMaterial).dispose();
+    }
+    this._carrierLinesData = [];
 
     for (const follower of this._followers) {
       this.followerRoot.remove(follower.mesh);

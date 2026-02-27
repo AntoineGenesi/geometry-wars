@@ -414,10 +414,11 @@ export function generateScaledEndlessWave(
     });
   }
 
-  // -- FractalSnake: guaranteed composite enemy every 5 waves at difficulty 1.0+ --
+  // -- FractalSnake: guaranteed composite enemy every 4 waves from wave 3 --
   // fractal_snake is at index 8 in HARD_TYPES and only naturally appears at wave 12+.
-  // This block ensures it shows up in normal waves early enough for the player to see it.
-  if (difficultyLevel >= 1.0 && waveNum >= 5 && (waveNum - 5) % 5 === 0) {
+  // Start from wave 3 (no difficulty requirement) so players see it early.
+  // Waves 3, 7, 11, 15... — more frequent than before (was wave 5+ at difficulty 1.0+).
+  if (waveNum >= 3 && (waveNum - 3) % 4 === 0) {
     enemies.push({
       type: 'fractal_snake',
       count: 1,
