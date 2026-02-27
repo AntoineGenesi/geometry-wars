@@ -54,6 +54,7 @@ import { WeaponMasteryManager } from './buffs/WeaponMasteryManager';
 import { MasteryStore } from './systems/MasteryStore';
 import { MasteryPointStore } from './systems/MasteryPointStore';
 import { MatchUpgradeTracker } from './systems/MatchUpgradeTracker';
+import { UpgradeNotification } from './ui/UpgradeNotification';
 import { WeaponMasteryScreen } from './ui/WeaponMasteryScreen';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
 import { BuffManager } from './buffs/BuffManager';
@@ -819,6 +820,10 @@ async function main() {
   // In MP, we create a fresh tracker each time a new round begins.
   const masteryPointStore = MasteryPointStore.load();
   let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+  const upgradeNotification = new UpgradeNotification();
+  matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
+    upgradeNotification.show(nodeId, weaponType);
+  };
   localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
 
   // -- Buff system: client-side buff collection + visual effects --
@@ -1758,6 +1763,7 @@ async function main() {
     enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV, 0, true);
 
     networkEnemies.set(id, enemy);
+    enemyPrevHealth.set(id, netEnemy.health);
 
     // Create glow trail for fast enemy types (Mayfly/Rocket/Duck), same as single-player
     if (FAST_ENEMY_TYPES.has(spawnerType)) {
@@ -2101,7 +2107,7 @@ async function main() {
       // Server is authoritative for HP; we compare against previous known health
       // to show numbers whenever any source deals damage (bullets, ShockAura, etc.).
       const prevHealth = enemyPrevHealth.get(netEnemy.id);
-      if (prevHealth !== undefined && netEnemy.health < prevHealth && netEnemy.alive) {
+      if (prevHealth !== undefined && netEnemy.health < prevHealth) {
         const damageDealt = prevHealth - netEnemy.health;
         scorePopups.spawnDamage(enemy.position.clone(), damageDealt);
       }
@@ -2490,6 +2496,9 @@ async function main() {
         }
         // Reset per-match upgrade tracker for the new round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+        matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
+          upgradeNotification.show(nodeId, weaponType);
+        };
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
         // initSurface at the top of onStateChange already handles surface reinit
@@ -2500,6 +2509,9 @@ async function main() {
         // Reset entities (safe to call even when empty — clears any stale state).
         // Reset per-match upgrade tracker for the first round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+        matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
+          upgradeNotification.show(nodeId, weaponType);
+        };
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
         gameOverScreen.hide();
