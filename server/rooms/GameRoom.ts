@@ -766,7 +766,7 @@ export class GameRoom extends Room<GameState> {
         const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
         const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
         const sinPhi = Math.sin(phi);
-        correctedDx = dx / Math.max(rNorm * sinPhi, 0.1);
+        correctedDx = dx / Math.max(rNorm * sinPhi, 0.3);  // matches sphere clamp — prevents pole oscillation
         correctedDy = dy / Math.max(Math.sqrt(rNorm * rNorm + drNorm * drNorm), 0.1);
       }
       // Torus: negate U-delta because TorusSurface uses negated tangentU for a right-handed
