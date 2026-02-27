@@ -4,8 +4,6 @@ import { MapSize, getDefaultMapSizeForSurface, MAP_SIZE_LABELS } from '../core/M
 import { ADVENTURE_LEVELS } from '../core/LevelData';
 import { LevelCompleteScreen, type LevelProgress } from './LevelCompleteScreen';
 import { LANClient } from '../network/LANClient';
-import { ConfigurableInput } from '../input/ConfigurableInput';
-import { ControlsMenu } from './ControlsMenu';
 import { WeaponWiki } from './WeaponWiki';
 import { WeaponMasteryScreen } from './WeaponMasteryScreen';
 import { SettingsMenu } from './SettingsMenu';
@@ -24,9 +22,8 @@ import { OBJDebugPanel } from './OBJDebugPanel';
 
 export interface MenuSelection {
   surfaceType: SurfaceType;
-  gameMode: 'single' | 'multiplayer' | 'network';
+  gameMode: 'single' | 'network';
   levelIndex?: number;
-  playerCount?: 2 | 3 | 4;
   serverUrl?: string;
   playerName?: string;
   quickGameMode?: QuickGameModeType; // For single player quick game
@@ -47,9 +44,7 @@ export class StartMenu {
   private container: HTMLDivElement;
   private onStartCallback: ((selection: MenuSelection) => void) | null = null;
   private selectedSurface: SurfaceType = 'sphere';
-  private coopSelectedSurface: SurfaceType = 'sphere';
   private lanSelectedSurface: SurfaceType = 'sphere';
-  private coopPlayerCount: 2 | 3 | 4 = 2;
   private progress: LevelProgress;
   private lanClient: LANClient = new LANClient();
   private menuBackground: MenuBackground;
@@ -67,7 +62,6 @@ export class StartMenu {
   // Custom mesh support
   private customMeshFile: File | null = null;
   private customMeshFileQuickGame: File | null = null;
-  private customMeshFileCoop: File | null = null;
   private customMeshFileLAN: File | null = null;
 
   // Debug mode OBJ panel (only active when ?debug=true)
@@ -240,7 +234,6 @@ export class StartMenu {
     const mainButtons = [
       { mode: 'adventure', label: 'ADVENTURE', primary: true },
       { mode: 'single', label: 'QUICK GAME', primary: false },
-      { mode: 'multiplayer', label: 'LOCAL CO-OP', primary: false },
       { mode: 'lan', label: 'LAN', primary: false },
       { mode: 'network', label: 'ONLINE', primary: false },
     ];
@@ -275,25 +268,6 @@ export class StartMenu {
             ${levelGridHTML}
           </div>
           <button class="back-btn" id="adventure-back">BACK</button>
-        </div>
-
-        <div class="sub-panel coop-section hidden" id="coop-section">
-          <h3>LOCAL CO-OP</h3>
-          <div class="coop-buttons">
-            <button class="coop-btn" data-players="2">2 PLAYERS</button>
-            <button class="coop-btn" data-players="3">3 PLAYERS</button>
-            <button class="coop-btn" data-players="4">4 PLAYERS</button>
-          </div>
-          <div class="coop-surface-pick hidden" id="coop-surface-pick">
-            <h3>SELECT MAP</h3>
-            ${this.createSurfaceGridHTML('coop-surface-grid', this.coopSelectedSurface)}
-            <button class="start-btn coop-start-btn" id="coop-start-btn">
-              <span class="btn-icon">\u25B6</span>
-              <span>START</span>
-            </button>
-          </div>
-          <button class="controls-btn" id="configure-controls">CONFIGURE CONTROLS</button>
-          <button class="back-btn" id="coop-back">BACK</button>
         </div>
 
         <div class="sub-panel lan-section hidden" id="lan-section">
@@ -538,7 +512,7 @@ export class StartMenu {
       }
 
       /* ------------------------------------------------------------------- */
-      /* Sub-panels (adventure, coop, lan, surface selection)                 */
+      /* Sub-panels (adventure, lan, surface selection)                       */
       /* ------------------------------------------------------------------- */
       #start-menu .sub-panel {
         position: absolute;
@@ -808,51 +782,6 @@ export class StartMenu {
         box-shadow: 0 0 10px rgba(255, 170, 68, 0.4);
       }
 
-      /* ------------------------------------------------------------------- */
-      /* Co-op buttons                                                        */
-      /* ------------------------------------------------------------------- */
-      #start-menu .coop-buttons {
-        display: flex;
-        gap: 15px;
-        justify-content: center;
-        margin: 20px 0;
-      }
-
-      #start-menu .coop-btn {
-        background: linear-gradient(180deg, #664488 0%, #442266 100%);
-        border: 2px solid #aa66ff;
-        color: #ffffff;
-        padding: 20px 35px;
-        font-size: 16px;
-        font-weight: bold;
-        cursor: pointer;
-        transition: all 0.2s;
-        letter-spacing: 2px;
-      }
-
-      #start-menu .coop-btn:hover {
-        background: linear-gradient(180deg, #8866aa 0%, #553388 100%);
-        transform: scale(1.05);
-        box-shadow: 0 0 20px #aa66ff;
-      }
-
-      #start-menu .coop-btn.active {
-        background: linear-gradient(180deg, #8866aa 0%, #553388 100%);
-        box-shadow: 0 0 20px #aa66ff;
-        border-color: #cc88ff;
-      }
-
-      #start-menu .coop-start-btn {
-        margin-top: 15px;
-        background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
-        border: 2px solid #00ff00;
-      }
-      #start-menu .coop-start-btn:hover {
-        background: linear-gradient(180deg, #00cc00 0%, #008800 100%);
-        box-shadow: 0 0 20px #00ff00;
-      }
-
-      #start-menu .coop-surface-pick,
       #start-menu #lan-host-surface-pick {
         margin-top: 15px;
       }
@@ -1512,17 +1441,6 @@ export class StartMenu {
           margin-top: 10px;
         }
 
-        /* Co-op buttons: column instead of row */
-        #start-menu .coop-buttons {
-          flex-direction: column;
-          gap: 8px;
-        }
-        #start-menu .coop-btn {
-          padding: 12px 20px;
-          min-height: 44px;
-          font-size: 14px;
-        }
-
         /* Level buttons: 4 per row */
         #start-menu .level-row {
           grid-template-columns: repeat(4, 1fr);
@@ -1561,7 +1479,6 @@ export class StartMenu {
     const mainButtonsContainer = this.container.querySelector('#main-buttons') as HTMLElement;
     const adventureSection = this.container.querySelector('#adventure-levels') as HTMLElement;
     const surfaceSection = this.container.querySelector('#surface-section') as HTMLElement;
-    const coopSection = this.container.querySelector('#coop-section') as HTMLElement;
     const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
 
     // Mode selection buttons (Quick Game only - scoped to #surface-section)
@@ -1643,16 +1560,7 @@ export class StartMenu {
           }
 
           // Store the file based on which section
-          if (gridClass === 'coop-surface-grid') {
-            this.customMeshFileCoop = file;
-            this.coopSelectedSurface = 'custom';
-
-            // Update UI - select the custom button
-            const coopCustomBtn = this.container.querySelector('.coop-surface-grid .custom-mesh-btn') as HTMLElement;
-            const coopBtns = this.container.querySelectorAll('.coop-surface-grid .surface-btn');
-            coopBtns.forEach((b) => b.classList.remove('selected'));
-            coopCustomBtn?.classList.add('selected');
-          } else if (gridClass === 'lan-surface-grid') {
+          if (gridClass === 'lan-surface-grid') {
             this.customMeshFileLAN = file;
             this.lanSelectedSurface = 'custom';
 
@@ -1692,16 +1600,6 @@ export class StartMenu {
           adventureSection.classList.remove('hidden');
           surfaceSection.classList.add('hidden');
           mainButtonsContainer.classList.add('hidden');
-          coopSection.classList.add('hidden');
-          lanSection.classList.add('hidden');
-          return;
-        }
-
-        if (mode === 'multiplayer') {
-          coopSection.classList.remove('hidden');
-          surfaceSection.classList.add('hidden');
-          mainButtonsContainer.classList.add('hidden');
-          adventureSection.classList.add('hidden');
           lanSection.classList.add('hidden');
           return;
         }
@@ -1711,7 +1609,6 @@ export class StartMenu {
           surfaceSection.classList.add('hidden');
           mainButtonsContainer.classList.add('hidden');
           adventureSection.classList.add('hidden');
-          coopSection.classList.add('hidden');
           // Auto-scan when LAN panel opens
           this.performLobbyRefresh();
           this.startAutoRefresh();
@@ -1723,65 +1620,8 @@ export class StartMenu {
         surfaceSection.classList.remove('hidden');
         mainButtonsContainer.classList.add('hidden');
         adventureSection.classList.add('hidden');
-        coopSection.classList.add('hidden');
         lanSection.classList.add('hidden');
       });
-    });
-
-    // Co-op player count buttons - show surface selection after picking count
-    const coopBtns = this.container.querySelectorAll('.coop-btn');
-    const coopSurfacePick = this.container.querySelector('#coop-surface-pick') as HTMLElement;
-    const coopStartBtn = this.container.querySelector('#coop-start-btn') as HTMLElement;
-
-    coopBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        this.coopPlayerCount = parseInt((btn as HTMLElement).dataset.players ?? '2', 10) as 2 | 3 | 4;
-        coopBtns.forEach((b) => b.classList.remove('active'));
-        btn.classList.add('active');
-        coopSurfacePick.classList.remove('hidden');
-      });
-    });
-
-    // Co-op surface selection buttons
-    const coopSurfaceBtns = this.container.querySelectorAll('.coop-surface-grid .surface-btn');
-    coopSurfaceBtns.forEach((btn) => {
-      btn.addEventListener('click', () => {
-        coopSurfaceBtns.forEach((b) => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        this.coopSelectedSurface = (btn as HTMLElement).dataset.surface as SurfaceType;
-      });
-    });
-
-    // Co-op START button
-    coopStartBtn?.addEventListener('click', () => {
-      this.onStartCallback?.({
-        surfaceType: this.coopSelectedSurface,
-        gameMode: 'multiplayer',
-        playerCount: this.coopPlayerCount,
-        customMeshFile: this.coopSelectedSurface === 'custom' ? this.customMeshFileCoop ?? undefined : undefined,
-      });
-    });
-
-    // Configure controls button
-    const configControlsBtn = this.container.querySelector('#configure-controls');
-    configControlsBtn?.addEventListener('click', () => {
-      const tempInput = new ConfigurableInput(4);
-      const controlsMenu = new ControlsMenu();
-      controlsMenu.setInput(tempInput);
-      controlsMenu.onClose(() => {
-        controlsMenu.dispose();
-        tempInput.dispose();
-      });
-      controlsMenu.show();
-    });
-
-    // Back button from co-op
-    const coopBackBtn = this.container.querySelector('#coop-back');
-    coopBackBtn?.addEventListener('click', () => {
-      coopSection.classList.add('hidden');
-      coopSurfacePick.classList.add('hidden');
-      coopBtns.forEach((b) => b.classList.remove('active'));
-      mainButtonsContainer.classList.remove('hidden');
     });
 
     // Adventure level selection

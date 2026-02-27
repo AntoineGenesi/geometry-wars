@@ -114,7 +114,7 @@ import { initI18n } from './i18n';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
-// Usage: ?surface=torus, ?mode=multiplayer
+// Usage: ?surface=torus, ?mode=network
 // ---------------------------------------------------------------------------
 
 function getSurfaceTypeFromURL(): SurfaceType {
@@ -125,11 +125,6 @@ function getSurfaceTypeFromURL(): SurfaceType {
     return surfaceParam as SurfaceType;
   }
   return 'sphere'; // Default
-}
-
-function isMultiplayerMode(): boolean {
-  const params = new URLSearchParams(window.location.search);
-  return params.get('mode') === 'multiplayer';
 }
 
 function isNetworkMode(): boolean {
@@ -653,7 +648,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Normalize enemy UV speed so world-space speed stays consistent across all maps.
   // Without this, enemies on SMALL maps (0.75x scale) move at 75% world speed vs MEDIUM.
   // Formula: (surface.speedScale / mapSizeScaleFactor) normalizes to sphere-equivalent speed.
-  // benchmark.ts and multiplayer-main.ts also call this; main.ts was missing it.
+  // benchmark.ts also calls this; main.ts was missing it.
   enemySpawner.setSurfaceSpeedScale(surface.speedScale / mapSizeScaleFactor);
 
   // Apply map size cap: limits max simultaneous enemies based on surface area tier.
@@ -2070,10 +2065,6 @@ if (quickStartConfig.enabled) {
     console.log('[Main] Running performance benchmark');
     runBenchmark();
   });
-} else if (isMultiplayerMode()) {
-  import('./multiplayer-main').then(() => {
-    console.log('[Main] Loaded local multiplayer mode');
-  });
 } else if (isNetworkMode()) {
   import('./network-main').then(() => {
     console.log('[Main] Loaded network multiplayer mode');
@@ -2098,16 +2089,7 @@ if (quickStartConfig.enabled) {
     }
 
     // Handle game mode selection
-    if (selection.gameMode === 'multiplayer') {
-      // Local co-op - update URL and load multiplayer module
-      const pc = selection.playerCount ?? 2;
-      const mpMapSize = selection.mapSize ?? getDefaultMapSizeForSurface(selection.surfaceType);
-      const url = buildUrl({ mode: 'multiplayer', surface: selection.surfaceType, players: String(pc), mapSize: mpMapSize });
-      window.history.replaceState({}, '', url);
-      import('./multiplayer-main').then(() => {
-        console.log('[Main] Loaded local multiplayer mode');
-      });
-    } else if (selection.gameMode === 'network') {
+    if (selection.gameMode === 'network') {
       // Online/LAN multiplayer - update URL and load network module
       // creator=1 signals that this player is the game creator and should be host.
       // QR code joiners / direct URL users do NOT have creator=1, so they become non-host.

@@ -55,7 +55,7 @@ import { loadGraphicsSettings } from '../ui/SettingsMenu';
 // Configuration Types
 // ---------------------------------------------------------------------------
 
-export type GameMode = 'demo' | 'single-player' | 'split-screen' | 'lan' | 'adventure';
+export type GameMode = 'demo' | 'single-player' | 'lan' | 'adventure';
 
 export interface GameInstanceFeatures {
   /** Dynamic Difficulty Adjustment system */

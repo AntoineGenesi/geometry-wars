@@ -5,9 +5,9 @@
  * only their life counter decreases while other players retain their lives.
  *
  * Covers:
- *  - Split-screen: Player class instances are independent
  *  - Server: GameRoom collision decrements only the hit player
- *  - HUD: SplitScreenHUD receives per-player data
+ *  - Client: Player class instances are independent
+ *  - HUD: per-player data independence
  */
 
 import { describe, it, expect } from 'vitest';
@@ -222,7 +222,7 @@ describe('MP Lives Independence — Server collision logic', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests: Client-side Player class independence (split-screen)
+// Tests: Client-side Player class independence
 // ---------------------------------------------------------------------------
 
 describe('MP Lives Independence — Player class instances', () => {
@@ -291,20 +291,16 @@ describe('MP Lives Independence — Player class instances', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tests: SplitScreenHUD data independence
+// Tests: HUD data independence
 // ---------------------------------------------------------------------------
 
 describe('MP Lives Independence — HUD data', () => {
   it('HUD update receives correct per-player lives data', () => {
-    // Simulate the data that multiplayer-main.ts passes to hud.update()
+    // Verify each player's HUD data object is independent
     const players = [
       { score: 1000, multiplier: 2, lives: 2, bombs: 3 },
       { score: 500, multiplier: 1, lives: 3, bombs: 1 },
     ];
-
-    // In multiplayer-main.ts line 1540-1544:
-    // hud.update(playerIndex, { lives: player.lives, ... })
-    // Verify each player index gets their own data
     const hudData0 = {
       score: players[0].score,
       multiplier: players[0].multiplier,
