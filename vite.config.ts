@@ -29,6 +29,13 @@ export default defineConfig({
     // COOP/COEP headers removed - they block cross-device LAN access
     // (Safari and mobile browsers refuse to load resources with these headers)
     // SharedArrayBuffer is not used, so these are unnecessary
+    //
+    // no-store: prevents browsers (especially laptop/phone LAN clients) from
+    // serving stale cached JS modules when the dev server restarts between
+    // sessions. In dev mode this has no downside — always want latest source.
+    headers: {
+      'Cache-Control': 'no-store',
+    },
     proxy: {
       // Route Colyseus WebSocket (and matchmake HTTP) through the Vite dev server.
       // LAN clients connect to ws://host:3000/ws (same port as the web page),
