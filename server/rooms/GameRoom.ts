@@ -84,18 +84,20 @@ const SPAWN_OFFSETS = [
   { u: 0.5, v: 0.6 },
 ];
 
-// Weapon configs (server side) - ammo and damage multiplier
-const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number }> = {
-  standard: { ammo: -1, damageMultiplier: 1.0 },
-  spread: { ammo: 50, damageMultiplier: 0.8 },
-  piercing: { ammo: 30, damageMultiplier: 1.5 },
-  homing: { ammo: 20, damageMultiplier: 1.2 },
-  chain_lightning: { ammo: 25, damageMultiplier: 1.0 },
-  plasma_mortar: { ammo: 15, damageMultiplier: 2.0 },
-  gravity_gun: { ammo: 20, damageMultiplier: 0.5 },
-  laser_beam: { ammo: 40, damageMultiplier: 0.6 },
-  black_hole: { ammo: 5, damageMultiplier: 5.0 },
-  tesla_coil: { ammo: 30, damageMultiplier: 0.7 },
+// Weapon configs (server side) - ammo, damage multiplier, and actual damage per hit.
+// damage values mirror src/weapons/WeaponTypes.ts so displayed damage numbers match SP.
+// standard uses 1 (not 0.25) to avoid fractional display on integer enemy HP.
+const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number; damage: number }> = {
+  standard:       { ammo: -1,  damageMultiplier: 1.0, damage: 1   },
+  spread:         { ammo: 50,  damageMultiplier: 0.8, damage: 1   },
+  piercing:       { ammo: 30,  damageMultiplier: 1.5, damage: 3   },
+  homing:         { ammo: 20,  damageMultiplier: 1.2, damage: 6   },
+  chain_lightning:{ ammo: 25,  damageMultiplier: 1.0, damage: 4   },
+  plasma_mortar:  { ammo: 15,  damageMultiplier: 2.0, damage: 20  },
+  gravity_gun:    { ammo: 20,  damageMultiplier: 0.5, damage: 1   },
+  laser_beam:     { ammo: 40,  damageMultiplier: 0.6, damage: 2   },
+  black_hole:     { ammo: 5,   damageMultiplier: 5.0, damage: 999 },
+  tesla_coil:     { ammo: 30,  damageMultiplier: 0.7, damage: 1   },
 };
 
 const WEAPON_DROP_CHANCE = 0.08; // 8% on enemy death
@@ -1585,10 +1587,10 @@ export class GameRoom extends Room<GameState> {
         // Using 0.015 (up from 0.012) for anti-tunneling margin; scaled by map size.
         // Previous value 0.05 = ~1.57 world units = 6x visual size → enemies died from far away.
         if (dist < BULLET_HIT_RADIUS) {
-          // Hit! Apply weapon damage multiplier
+          // Hit! Apply weapon damage
           const owner = this.state.players.get(bullet.ownerId);
           const weaponCfg = WEAPON_CONFIGS[owner?.weaponType ?? 'standard'] ?? WEAPON_CONFIGS.standard;
-          const damage = Math.ceil(weaponCfg.damageMultiplier);
+          const damage = weaponCfg.damage;
           enemy.health -= damage;
 
           if (enemy.health <= 0) {
