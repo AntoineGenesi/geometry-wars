@@ -135,6 +135,16 @@ export interface ClientMetricsPayload {
   playerPowerLevel: number;
   /** Active weapon type name */
   activeWeapon: string;
+  /** Total kills this match */
+  kills?: number;
+  /** Total deaths this match */
+  deaths?: number;
+  /** Active buffs as compact string (e.g. "hot_hands:3,shock_aura:1") */
+  activeBuffs?: string;
+  /** Current surface type (e.g. "sphere", "torus") */
+  surfaceName?: string;
+  /** Current game mode (e.g. "waves") */
+  gameMode?: string;
 }
 
 /** Startup config payload from server (mirrors GameRoom.ts StartupConfigPayload) */
