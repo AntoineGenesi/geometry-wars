@@ -102,6 +102,23 @@ const WEAPON_DROP_CHANCE = 0.08; // 8% on enemy death
 const WEAPON_PICKUP_LIFETIME = 20.0; // seconds before despawn
 const WEAPON_TYPES = Object.keys(WEAPON_CONFIGS).filter(t => t !== 'standard');
 
+/**
+ * Returns the map size scale factor matching client-side getMapSizeScaleFactor().
+ * Used to scale UV-space collision thresholds inversely: larger maps have bigger
+ * world distances per UV unit, so the same UV threshold would feel too large.
+ * Dividing by scaleFactor keeps collisions consistent in world space.
+ */
+function getMapScaleFactor(mapSize: string): number {
+  switch (mapSize) {
+    case 'tiny':   return 0.5;
+    case 'small':  return 0.75;
+    case 'medium': return 1.0;
+    case 'large':  return 1.5;
+    case 'huge':   return 2.0;
+    default:       return 1.0;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Startup config hash helpers
 // ---------------------------------------------------------------------------
@@ -1539,6 +1556,17 @@ export class GameRoom extends Room<GameState> {
   }
 
   private checkCollisions() {
+    // Scale collision thresholds inversely with map size so world-space collision
+    // feel stays consistent regardless of surface scale. Larger maps have more
+    // world units per UV unit, so UV thresholds must shrink proportionally.
+    const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
+    // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin, scaled by map size.
+    // Enemy-player: 0.04 base, pickup: matches enemy-player (not larger) to prevent false triggers.
+    const BULLET_HIT_RADIUS  = 0.015 / scaleFactor;
+    const ENEMY_HIT_RADIUS   = 0.04  / scaleFactor;
+    const GEOM_RADIUS        = 0.05  / scaleFactor;
+    const PICKUP_RADIUS      = 0.04  / scaleFactor;  // was 0.06 — reduced to match enemy hit
+
     // Bullet-enemy collisions
     const bulletsToRemove: number[] = [];
     const enemiesToRemove: number[] = [];
@@ -1554,9 +1582,9 @@ export class GameRoom extends Room<GameState> {
         // S28b: UV-space hit threshold calibrated to match visual enemy size.
         // Sphere radius=10 → V arc length = π*10 ≈ 31.4 world units per UV unit.
         // Enemy visual radius ≈ 0.25 world units → 0.25 / 31.4 ≈ 0.008 UV.
-        // Using 0.012 (1.5x) as tolerance for discrete bullet step size (~0.002 UV/tick).
+        // Using 0.015 (up from 0.012) for anti-tunneling margin; scaled by map size.
         // Previous value 0.05 = ~1.57 world units = 6x visual size → enemies died from far away.
-        if (dist < 0.012) {
+        if (dist < BULLET_HIT_RADIUS) {
           // Hit! Apply weapon damage multiplier
           const owner = this.state.players.get(bullet.ownerId);
           const weaponCfg = WEAPON_CONFIGS[owner?.weaponType ?? 'standard'] ?? WEAPON_CONFIGS.standard;
@@ -1612,7 +1640,7 @@ export class GameRoom extends Room<GameState> {
         // Use wrap-aware UV distance so collision works across seams on torus.
         const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
 
-        if (dist < 0.04) {
+        if (dist < ENEMY_HIT_RADIUS) {
           // Player hit!
           wasHit = true;
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
@@ -1644,7 +1672,7 @@ export class GameRoom extends Room<GameState> {
 
         const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, geom.surfaceU, geom.surfaceV);
 
-        if (dist < 0.05) {
+        if (dist < GEOM_RADIUS) {
           // Collect geom
           geom.active = false;
           geomsToRemove.push(index);
@@ -1664,7 +1692,7 @@ export class GameRoom extends Room<GameState> {
 
         const dist = this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
 
-        if (dist < 0.06) {
+        if (dist < PICKUP_RADIUS) {
           pickup.active = false;
           pickupsToRemove.push(index);
 
