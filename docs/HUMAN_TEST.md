@@ -1272,3 +1272,18 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **All variants visually distinct** — Each of the 4 snakes should look noticeably different
 - [ ] **Follower chain visible** — Each snake has a double row of 4 followers behind the head (8 followers total)
 - [ ] **Kill head → followers released** — On head kill, followers become independent enemies
+
+
+## S38b-03: Geodesic Bullets in LAN (UV Wrap Fix)
+
+**Fix:** Bullet lerp in network-main.ts now uses wrap-aware delta to take the shortest path around UV boundaries. Without this fix, bullets teleport/snap to wrong positions when crossing the u=0/1 boundary (server wraps with modulo, client lerped the long way around).
+
+### Test: Bullets follow geodesics in LAN gameplay
+- [ ] **Start LAN game** — Use "Play Game.bat" → LAN mode, connect two clients
+- [ ] **Fire bullets on Sphere** — Bullets should curve following great-circle geodesics, same as single-player
+- [ ] **Fire bullets on Torus** — Bullets should curve on torus surface without teleporting at UV boundaries  
+- [ ] **Fire bullets on Cube** — Bullets move in straight UV lines (flat UV is expected/correct for cube)
+- [ ] **Fire bullets near u=0/u=1 boundary** — Bullets should NOT teleport when crossing the wrap boundary
+- [ ] **Fire bullets on Peanut** — Bullets should curve with 2-axis metric correction
+- [ ] **Fire bullets on Pipe/Mobius/Cube-Ring/Cube-Tunnel** — No teleportation at V boundary either
+- [ ] **Visually matches single-player** — LAN bullet paths should look the same as SP bullet paths
