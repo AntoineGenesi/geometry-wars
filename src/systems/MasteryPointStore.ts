@@ -1,6 +1,7 @@
 // ---------------------------------------------------------------------------
 // MasteryPointStore
 // Persists earned/spent mastery points and permanent node unlocks to localStorage.
+// Supports multi-level nodes (maxPoints > 1) — a node can be upgraded multiple times.
 // ---------------------------------------------------------------------------
 
 const STORAGE_KEY = 'gw_mastery_points';
@@ -8,13 +9,24 @@ const STORAGE_KEY = 'gw_mastery_points';
 interface StoredState {
   totalPoints: number;
   spentPoints: number;
-  permanentUnlocks: Record<string, true>;
+  /**
+   * Points spent per node (value = how many points invested, 0 = not unlocked).
+   * Replaces the old `permanentUnlocks: Record<string, true>` format.
+   * Migration: if old format is detected on load, each entry is converted to 1 point.
+   */
+  nodePoints: Record<string, number>;
+  /**
+   * Legacy field — present in old saves. Migrated to nodePoints on load.
+   * @deprecated
+   */
+  permanentUnlocks?: Record<string, true>;
 }
 
 export class MasteryPointStore {
   private totalPoints: number = 0;
   private spentPoints: number = 0;
-  private permanentUnlocks: Record<string, true> = {};
+  /** Points invested per node (0 = locked, ≥1 = at least partially unlocked). */
+  private nodePoints: Record<string, number> = {};
 
   constructor() {
     this.load();
@@ -39,28 +51,38 @@ export class MasteryPointStore {
   }
 
   /**
-   * Permanently unlock a node by spending a point.
-   * Returns true if successful; false if not enough points or already unlocked.
+   * Spend 1 point in a node.
+   * - `maxPoints` controls how many total points can be invested (default 1).
+   * - Returns true if the point was successfully spent; false if the node is
+   *   already at max points or no points are available.
    */
-  spendPoint(nodeId: string): boolean {
-    if (this.permanentUnlocks[nodeId]) return false;
+  spendPoint(nodeId: string, maxPoints: number = 1): boolean {
+    const current = this.nodePoints[nodeId] ?? 0;
+    if (current >= maxPoints) return false;
     if (this.availablePoints <= 0) return false;
 
-    this.permanentUnlocks = { ...this.permanentUnlocks, [nodeId]: true };
+    this.nodePoints = { ...this.nodePoints, [nodeId]: current + 1 };
     this.spentPoints = this.spentPoints + 1;
     this.save();
     return true;
   }
 
   /**
-   * Re-lock a permanently unlocked node and refund its point.
-   * Returns true if node was unlocked and has been refunded; false otherwise.
+   * Refund 1 point from a node.
+   * For multi-level nodes, decrements by 1. If the count reaches 0, the node is locked.
+   * Returns true if a point was refunded; false if node has no points invested.
    */
   refundPoint(nodeId: string): boolean {
-    if (!this.permanentUnlocks[nodeId]) return false;
+    const current = this.nodePoints[nodeId] ?? 0;
+    if (current <= 0) return false;
 
-    const { [nodeId]: _removed, ...rest } = this.permanentUnlocks;
-    this.permanentUnlocks = rest;
+    const newCount = current - 1;
+    if (newCount === 0) {
+      const { [nodeId]: _removed, ...rest } = this.nodePoints;
+      this.nodePoints = rest;
+    } else {
+      this.nodePoints = { ...this.nodePoints, [nodeId]: newCount };
+    }
     this.spentPoints = this.spentPoints - 1;
     this.save();
     return true;
@@ -70,12 +92,22 @@ export class MasteryPointStore {
   // Queries
   // -------------------------------------------------------------------------
 
-  getUnlockedNodes(): Set<string> {
-    return new Set(Object.keys(this.permanentUnlocks));
+  /** Returns the number of points currently invested in a node (0 if locked). */
+  getNodePoints(nodeId: string): number {
+    return this.nodePoints[nodeId] ?? 0;
   }
 
+  /**
+   * Returns true if at least 1 point has been invested in this node.
+   * For multi-level nodes, this returns true even if not at max level.
+   */
   isUnlocked(nodeId: string): boolean {
-    return this.permanentUnlocks[nodeId] === true;
+    return (this.nodePoints[nodeId] ?? 0) > 0;
+  }
+
+  /** Returns the set of all node IDs with at least 1 point invested. */
+  getUnlockedNodes(): Set<string> {
+    return new Set(Object.keys(this.nodePoints).filter(id => (this.nodePoints[id] ?? 0) > 0));
   }
 
   getTotalPoints(): number {
@@ -94,7 +126,7 @@ export class MasteryPointStore {
     const state: StoredState = {
       totalPoints: this.totalPoints,
       spentPoints: this.spentPoints,
-      permanentUnlocks: { ...this.permanentUnlocks },
+      nodePoints: { ...this.nodePoints },
     };
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -110,15 +142,24 @@ export class MasteryPointStore {
       const state = JSON.parse(raw) as StoredState;
       this.totalPoints = typeof state.totalPoints === 'number' ? state.totalPoints : 0;
       this.spentPoints = typeof state.spentPoints === 'number' ? state.spentPoints : 0;
-      this.permanentUnlocks =
-        state.permanentUnlocks && typeof state.permanentUnlocks === 'object'
-          ? { ...state.permanentUnlocks }
-          : {};
+
+      if (state.nodePoints && typeof state.nodePoints === 'object') {
+        // New format: node points map
+        this.nodePoints = { ...state.nodePoints };
+      } else if (state.permanentUnlocks && typeof state.permanentUnlocks === 'object') {
+        // Legacy format migration: convert boolean unlocks to 1 point each
+        this.nodePoints = {};
+        for (const nodeId of Object.keys(state.permanentUnlocks)) {
+          this.nodePoints[nodeId] = 1;
+        }
+      } else {
+        this.nodePoints = {};
+      }
     } catch {
       // Corrupt data — reset to defaults
       this.totalPoints = 0;
       this.spentPoints = 0;
-      this.permanentUnlocks = {};
+      this.nodePoints = {};
     }
   }
 
@@ -126,7 +167,7 @@ export class MasteryPointStore {
   reset(): void {
     this.totalPoints = 0;
     this.spentPoints = 0;
-    this.permanentUnlocks = {};
+    this.nodePoints = {};
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {

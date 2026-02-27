@@ -215,4 +215,90 @@ describe('MasteryPointStore', () => {
     nodes.add('standard_b_1'); // mutate the returned set
     expect(store.isUnlocked('standard_b_1')).toBe(false);
   });
+
+  // -------------------------------------------------------------------------
+  // Multi-level node support (maxPoints > 1)
+  // -------------------------------------------------------------------------
+
+  it('spendPoint with maxPoints=3 allows spending up to 3 times on same node', () => {
+    store.earnPoint();
+    store.earnPoint();
+    store.earnPoint();
+
+    expect(store.spendPoint('black_hole_a_1', 3)).toBe(true);
+    expect(store.getNodePoints('black_hole_a_1')).toBe(1);
+    expect(store.isUnlocked('black_hole_a_1')).toBe(true);
+
+    expect(store.spendPoint('black_hole_a_1', 3)).toBe(true);
+    expect(store.getNodePoints('black_hole_a_1')).toBe(2);
+
+    expect(store.spendPoint('black_hole_a_1', 3)).toBe(true);
+    expect(store.getNodePoints('black_hole_a_1')).toBe(3);
+
+    // 4th spend should fail — at maxPoints
+    expect(store.spendPoint('black_hole_a_1', 3)).toBe(false);
+    expect(store.getNodePoints('black_hole_a_1')).toBe(3);
+    expect(store.availablePoints).toBe(0);
+  });
+
+  it('refundPoint decrements multi-level node one rank at a time', () => {
+    store.earnPoint();
+    store.earnPoint();
+    store.earnPoint();
+
+    store.spendPoint('black_hole_a_1', 3);
+    store.spendPoint('black_hole_a_1', 3);
+    store.spendPoint('black_hole_a_1', 3);
+    expect(store.getNodePoints('black_hole_a_1')).toBe(3);
+
+    // Refund once → rank 2
+    expect(store.refundPoint('black_hole_a_1')).toBe(true);
+    expect(store.getNodePoints('black_hole_a_1')).toBe(2);
+    expect(store.isUnlocked('black_hole_a_1')).toBe(true); // still has points
+    expect(store.availablePoints).toBe(1);
+
+    // Refund twice → rank 1
+    store.refundPoint('black_hole_a_1');
+    expect(store.getNodePoints('black_hole_a_1')).toBe(1);
+
+    // Refund three times → fully locked
+    store.refundPoint('black_hole_a_1');
+    expect(store.getNodePoints('black_hole_a_1')).toBe(0);
+    expect(store.isUnlocked('black_hole_a_1')).toBe(false);
+    expect(store.availablePoints).toBe(3);
+  });
+
+  it('getNodePoints returns 0 for unknown node', () => {
+    expect(store.getNodePoints('nonexistent_a_1')).toBe(0);
+  });
+
+  it('multi-level node points persist across instances', () => {
+    store.earnPoint();
+    store.earnPoint();
+    store.spendPoint('black_hole_a_1', 3);
+    store.spendPoint('black_hole_a_1', 3);
+
+    const store2 = new MasteryPointStore();
+    expect(store2.getNodePoints('black_hole_a_1')).toBe(2);
+    expect(store2.isUnlocked('black_hole_a_1')).toBe(true);
+    expect(store2.getSpentPoints()).toBe(2);
+  });
+
+  it('legacy permanentUnlocks format is migrated to nodePoints on load', () => {
+    // Simulate old format in localStorage
+    const oldFormat = JSON.stringify({
+      totalPoints: 5,
+      spentPoints: 2,
+      permanentUnlocks: { 'standard_a_1': true, 'homing_b_2': true },
+    });
+    localStorageMock.setItem('gw_mastery_points', oldFormat);
+
+    const migrated = new MasteryPointStore();
+    expect(migrated.getTotalPoints()).toBe(5);
+    expect(migrated.getSpentPoints()).toBe(2);
+    expect(migrated.isUnlocked('standard_a_1')).toBe(true);
+    expect(migrated.isUnlocked('homing_b_2')).toBe(true);
+    expect(migrated.getNodePoints('standard_a_1')).toBe(1);
+    expect(migrated.getNodePoints('homing_b_2')).toBe(1);
+  });
 });
