@@ -209,6 +209,13 @@ class WaveScheduler {
   /** Current difficulty level (computed from player state + surge bonus). */
   currentDifficultyLevel = 0;
 
+  /**
+   * Number of active players (1-4). Default 1 (single-player).
+   * Set before the first wave spawns. Scales enemy counts per-wave:
+   *   1p=1.0x, 2p=1.5x, 3p=2.0x, 4p=2.5x
+   */
+  playerCount = 1;
+
   /** External provider for player state (set by main after construction). */
   getDifficultyInput: (() => DifficultyInput) | null = null;
 
@@ -276,6 +283,7 @@ class WaveScheduler {
         this.endlessWave,
         this.currentDifficultyLevel,
         activeCount,
+        this.playerCount,
       );
       spawner.spawnWave(scaledWave as any);
     }
@@ -972,6 +980,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     totalKills: playerLevel.totalKills,
     playerLevel: playerLevel.level,
     buffPower: buffManager.getTotalBuffPower(),
+    playerCount: waveScheduler.playerCount, // always 1 for main.ts (single-player)
   });
 
   // -- Game mode --

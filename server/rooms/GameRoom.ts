@@ -1860,14 +1860,23 @@ export class GameRoom extends Room<GameState> {
   }
 
   /**
-   * Compute a simple difficulty level from wave number and elapsed game time.
+   * Compute a simple difficulty level from wave number, elapsed game time, and player count.
    * Avoids dependency on score/kills/combo (not reliably aggregated server-side).
-   * Calibration: wave 1 = 0.0, wave 10 ≈ 2.7, wave 20 ≈ 5.4, wave 27+ = 8.0 cap.
+   *
+   * Calibration (1 player):
+   *   wave 1 = 0.0, wave 10 ≈ 2.7, wave 20 ≈ 5.4, wave 27+ = 8.0 cap
+   *
+   * Player count bonus: each additional player adds +0.3 difficulty levels.
+   *   1p → +0.0, 2p → +0.3, 3p → +0.6, 4p → +0.9
+   * Rationale: co-op groups kill enemies faster, so harder types must arrive sooner.
+   * Note: enemy COUNT scaling is handled separately in spawnWave() (1.0x / 1.5x / 2.0x / 2.5x).
    */
   private computeDifficultyLevel(): number {
     const waveContrib = Math.max(0, (this.waveNumber - 1) * 0.3);
     const timeContrib = this.state.gameTime / 600; // +1 level per 10 minutes
-    return Math.min(8.0, waveContrib + timeContrib);
+    const playerCount = Math.max(1, this.state.players.size);
+    const playerCountBonus = (playerCount - 1) * 0.3; // matches DifficultyScaling.ts formula
+    return Math.min(8.0, waveContrib + timeContrib + playerCountBonus);
   }
 
   /**
