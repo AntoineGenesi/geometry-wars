@@ -235,7 +235,7 @@ export class BuffPickup {
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
     this._surfaceWorldPos.copy(position);
-    const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08;
+    const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08 * this.mapSizeScaleFactor;
     this.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
     const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
     this.mesh.quaternion.setFromRotationMatrix(mat);

@@ -210,8 +210,8 @@ export class WeaponPickup {
     // Store surface world position (before hover offset) for hitbox
     this._surfaceWorldPos.copy(position);
 
-    // Hover above surface with bob animation along normal
-    const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08;
+    // Hover above surface with bob animation along normal (scaled by map size for consistency)
+    const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08 * this.mapSizeScaleFactor;
     this.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
 
     // Orient to surface
