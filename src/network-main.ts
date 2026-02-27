@@ -1897,6 +1897,12 @@ async function main() {
         const prev = prevLivesMap.get(id);
         if (prev !== undefined && netPlayer.lives < prev && netPlayer.lives >= 0) {
           showLifeLostNotification(netPlayer.name, netPlayer.lives, id === localPlayerId);
+          // Visual feedback: screen shake when a player loses a life but survives
+          // (e.g. invincibility granted — alive stays true, lives decrements).
+          // Death-based life loss already triggers shake via the wasAlive→!alive block.
+          if (netPlayer.alive) {
+            screenShake.shake(0.3, 0.3);
+          }
         }
       }
       prevLivesMap.set(id, netPlayer.lives);
@@ -1961,6 +1967,13 @@ async function main() {
       const wasAlive = playerAliveState.get(id) ?? true;
       if (wasAlive && !netPlayer.alive) {
         // Player just died: trigger death effects
+        // CRITICAL: For remote players, snap mesh to server-authoritative death position
+        // before spawning explosion particles. The interpolated mesh position may be
+        // lagging behind the actual death UV (onRender hasn't run yet for this frame).
+        if (id !== localPlayerId) {
+          const deathSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
+          player.mesh.position.copy(deathSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(deathSp.normal, 0.15);
+        }
         particles.playerDeath(player.mesh.position);
         screenShake.shake(0.5, 0.4);
         sound.play('playerDeath');
