@@ -449,6 +449,15 @@ async function main() {
   // dimensions may not be stable at Game construction time)
   game.ensureCameraAspectRatio();
 
+  // Resize handler: iOS Safari changes innerHeight when URL bar shows/hides.
+  // Without this, canvas stays at initial size and appears cropped/zoomed on mobile.
+  if (mobile) {
+    window.addEventListener('resize', () => {
+      game.renderer.setSize(window.innerWidth, window.innerHeight);
+      game.ensureCameraAspectRatio();
+    }, { passive: true });
+  }
+
   // Set global renderer info so all SettingsMenu instances show it
   SettingsMenu.setGlobalRendererInfo(game.backend, game.isWebGPU);
 
@@ -496,9 +505,15 @@ async function main() {
   // -- ShockwaveEffect (shared with single-player via SharedGameSetup) --
   const shockwaveEffect = setupShockwaveEffect(game, camera);
 
-  // Hide default single-player HUD (same as co-op)
-  const defaultHUD = document.getElementById('game-hud');
-  if (defaultHUD) defaultHUD.style.display = 'none';
+  // Hide single-player HUD elements that conflict with LAN-specific UI.
+  // Note: #score-display is intentionally kept (reused for team score below).
+  // Note: #multiplier-display is hidden separately below.
+  ['lives-display', 'bombs-display', 'weapon-display', 'combo-display',
+   'boost-display', 'timer-display', 'level-name-display', 'player-level-display',
+   'boss-health-bar'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
 
   // -- Lighting (shared with single-player via SharedGameSetup) --
   setupStandardLighting(scene);
@@ -775,8 +790,10 @@ async function main() {
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
 
   // Weapon HUD — same graphical inventory panel as single-player
+  // On mobile: position below the top HUD cluster (scoreEl/playersEl at top: 10px).
   const weaponHUD = new WeaponHUD();
-  weaponHUD.setPosition(10, 60);
+  const weaponHUDY = mobile ? Math.max(80, Math.round(window.innerHeight * 0.2)) : 60;
+  weaponHUD.setPosition(10, weaponHUDY);
 
   // Ally glow manager for remote player indicators
   const allyGlowManager = new AllyGlowManager(scene);

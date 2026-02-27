@@ -26,6 +26,31 @@
 
 **V5 PASS** (Puppeteer screenshot 2026-02-28): 4 endpoints visible, branch labels correct, unlocked/locked states render properly.
 
+## S38b-06: Mobile UI — Joysticks, HUD Visibility, Pause Button (iPhone)
+
+Test on a real mobile device (iPhone in landscape mode).
+
+**Single-player mobile (`?quickStart=true&surface=sphere&mobile=true`):**
+- [ ] Left joystick appears at the BOTTOM-LEFT where you tap (not top-right)
+- [ ] Right joystick appears at the BOTTOM-RIGHT where you tap (not top-left)
+- [ ] WeaponHUD (weapon inventory panel) is visible in the LEFT side, NOT overlapping score/timer
+- [ ] Pause button (⏸) is visible in the TOP-RIGHT corner, not hidden behind notch/home indicator
+- [ ] HUD is readable — score, lives, bombs all visible without crowding
+- [ ] After URL bar hides (on first interaction), game canvas stays full-screen (no black gap at bottom)
+
+**LAN multiplayer (mobile joins via QR code):**
+- [ ] Single-player HUD elements (lives, bombs, boost, combo, timer) are HIDDEN
+- [ ] Only LAN-specific HUD shows: team score (center top), per-player score (top right), player list (top left)
+- [ ] WeaponHUD visible on the left side without overlapping other elements
+- [ ] Pause button (⏸) visible top-right
+
+**The fixes (S38b-06):**
+- Added `viewport-fit=cover` to viewport meta — full-screen on notched iPhones
+- Pause button now uses `env(safe-area-inset-*)` to avoid home indicator / notch
+- WeaponHUD moved from 40px to `max(80px, 20% of screen height)` — below score/timer cluster
+- SP HUD elements properly hidden in LAN mode (were all visible before, cluttering the screen)
+- Added `window.resize` handler to update canvas when iOS URL bar shows/hides
+
 ---
 
 ## S37: Cube Tunnel Enemy Visibility (opposite-wall dimming)
