@@ -137,7 +137,12 @@ export class LANClient {
     return `ws://${ip}:${port}`;
   }
 
-  /** Register a short code for the given parameters and return the short code URL */
+  /**
+   * Register a short code for LAN joins and return the short code URL.
+   * The short code maps to surface and port, so the QR code stays simple.
+   * Example: QR encodes http://192.168.1.100:3000/12345
+   *          Server redirects /12345 to /?mode=network&surface=sphere
+   */
   async registerShortCode(ip: string, surface: string, port: number, vitePort: number = 3000): Promise<string> {
     const code = Math.floor(Math.random() * (99999 - 10000 + 1)) + 10000;
     const codeStr = code.toString();
@@ -145,7 +150,7 @@ export class LANClient {
     if (port !== 2567) {
       params.port = port.toString();
     }
-    
+
     try {
       const res = await fetch('/__lan/register-code', {
         method: 'POST',
@@ -155,12 +160,19 @@ export class LANClient {
       if (res.ok) {
         const key = `${surface}:${port}`;
         this.shortCodeMap.set(key, codeStr);
-        return `http://${ip}:${vitePort}/${codeStr}`;
+        console.log(`[LAN] Registered short code ${codeStr} for ${surface} (port ${port})`);
+        const shortUrl = `http://${ip}:${vitePort}/${codeStr}`;
+        console.log(`[LAN] QR will encode: ${shortUrl}`);
+        return shortUrl;
+      } else {
+        const errText = await res.text().catch(() => 'unknown error');
+        console.warn(`[LAN] Short code registration failed: HTTP ${res.status}: ${errText}`);
       }
     } catch (err) {
-      console.error('Failed to register short code:', err);
+      console.error('[LAN] Failed to register short code:', err);
     }
-    // Fallback to full URL if registration fails
+    // Fallback to full URL if registration fails (should not happen in normal operation)
+    console.log('[LAN] Falling back to full join URL with parameters');
     return this.getJoinUrl(ip, port, surface, vitePort);
   }
 
