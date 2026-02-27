@@ -383,10 +383,10 @@ describe('S38b-03: Client UV wrap-aware lerp — U boundary fix', () => {
 
   it('U boundary fix: bullet at 0.02, target at 0.98 → takes short backward path', () => {
     const result = clientBulletLerp({ u: 0.02, v: 0.5 }, { u: 0.98, v: 0.5 }, 'sphere');
-    // Short path delta = 0.98 - 0.02 - 1 = -0.04 → new u = 0.02 - 0.02 = 0.00 → wraps to 0.0
-    // Result should be near 1.0 (just below), NOT near 0.5
-    expect(result.u).toBeGreaterThan(0.9); // took short backward path → near 1.0
-    expect(result.u).toBeLessThanOrEqual(1);
+    // Short path delta = 0.98 - 0.02 - 1 = -0.04 → lerp → 0.02 + (-0.04)*0.5 = 0.00 → wraps to 0.0
+    // Result should be near 0.0 (just above 0), NOT near 0.5 (which is the long path result)
+    expect(result.u).toBeLessThan(0.1); // took short backward path → near 0.0
+    expect(result.u).toBeGreaterThanOrEqual(0); // stays in bounds
   });
 
   it('result always stays in [0, 1] for U (sphere, all boundaries)', () => {
@@ -461,38 +461,43 @@ describe('S38b-03: Integration — server UV matches client lerp target on wrap'
   const DT = 1 / 60;
 
   it('sphere bullet crossing U=1 boundary: server wraps, client lerps short path', () => {
-    // Bullet starting near u=0.99, aimed right → will cross boundary
+    // Bullet starting near u=0.995, aimed right → will cross boundary in ~3 ticks
+    // (at equator: du/tick = BULLET_SPEED/60 ≈ 0.00217; need 0.005/0.00217 ≈ 2.3 ticks)
     const serverBullet = runServerBullet(
-      { x: 0.99, y: 0.5, dirX: 1, dirY: 0, age: 0 },
-      'sphere', 2, DT,
+      { x: 0.995, y: 0.5, dirX: 1, dirY: 0, age: 0 },
+      'sphere', 6, DT,
     );
     // Server will have wrapped bullet.x → small value near 0
+    // 6 ticks × 0.00217/tick = 0.013 → 0.995 + 0.013 = 1.008 → wraps to ~0.008
     expect(serverBullet.x).toBeLessThan(0.1);
 
-    // Client lerps from 0.99 toward server target (which is near 0.0)
-    const clientResult = clientBulletLerp(
-      { u: 0.99, v: 0.5 },
-      { u: serverBullet.x, v: serverBullet.y },
-      'sphere',
-    );
-    // Wrap-aware lerp: client takes short path → near 0 (not 0.5 like the bug)
-    expect(clientResult.u).toBeLessThan(0.2);
-    expect(clientResult.u).toBeGreaterThanOrEqual(0);
+    // Client lerps from 0.995 toward server target (which is near 0.0)
+    // Wrap-aware lerp: takes short path (delta ≈ 0.013 forward) not long path (delta ≈ -0.987)
+    // After multiple lerp steps, client should converge toward server target near 0.0
+    let clientUV = { u: 0.995, v: 0.5 };
+    for (let i = 0; i < 15; i++) {
+      clientUV = clientBulletLerp(clientUV, { u: serverBullet.x, v: serverBullet.y }, 'sphere');
+    }
+    // After 15 lerp steps (>99% convergence), client should be very near server target
+    expect(clientUV.u).toBeLessThan(0.05);
+    expect(clientUV.u).toBeGreaterThanOrEqual(0);
   });
 
   it('torus bullet crossing U=1 boundary: server wraps, client lerps short path', () => {
+    // Start at u=0.995 to cross boundary quickly (at torus v=0.25: rho≈1, step≈0.00217/tick)
     const serverBullet = runServerBullet(
-      { x: 0.99, y: 0.25, dirX: 1, dirY: 0, age: 0 },
-      'torus', 5, DT,
+      { x: 0.995, y: 0.25, dirX: 1, dirY: 0, age: 0 },
+      'torus', 6, DT,
     );
-    expect(serverBullet.x).toBeLessThan(0.2); // wrapped
+    expect(serverBullet.x).toBeLessThan(0.1); // wrapped: 0.995 + 6*0.00217 ≈ 1.008 → wraps to ~0.008
 
-    const clientResult = clientBulletLerp(
-      { u: 0.99, v: 0.25 },
-      { u: serverBullet.x, v: serverBullet.y },
-      'torus',
-    );
-    expect(clientResult.u).toBeLessThan(0.2);
-    expect(clientResult.u).toBeGreaterThanOrEqual(0);
+    // Client lerps from 0.995 toward server target near 0.0
+    // After multiple lerp steps, client converges to server target (via short forward path)
+    let clientUV = { u: 0.995, v: 0.25 };
+    for (let i = 0; i < 15; i++) {
+      clientUV = clientBulletLerp(clientUV, { u: serverBullet.x, v: serverBullet.y }, 'torus');
+    }
+    expect(clientUV.u).toBeLessThan(0.05);
+    expect(clientUV.u).toBeGreaterThanOrEqual(0);
   });
 });
