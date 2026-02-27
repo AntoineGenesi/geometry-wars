@@ -8,6 +8,20 @@
 
 ---
 
+## S38d-07b: Bullet Paths Straight Near Poles (Vertex Fan Parallel Transport Fix)
+
+**Fix:** Vertex fan traversal in `FaceWalker.ts` now uses proper parallel transport (`transportAcrossEdge`) instead of simple normal projection when crossing between faces at sphere poles. Simple projection caused accumulated angular errors — bullets visibly curved when traveling near north/south poles.
+
+### Test: Bullets travel straight near poles
+- [ ] **Start single-player on Sphere** — Use "Play Game.bat" → select Sphere surface
+- [ ] **Fire bullets toward north pole** — Aim from equator toward +Y (north). Bullets should travel in a straight great-circle arc toward and through the pole
+- [ ] **Fire bullets toward south pole** — Same test heading -Y. No curving.
+- [ ] **Fire bullets across the pole** — Position player near a pole and fire through it. Bullet should exit on the far side moving in a consistent direction (not spiraling or veering)
+- [ ] **Compare with equator** — Bullets near equator should look the same straightness as bullets near poles
+- [ ] **Capsule/Pill surfaces** — Similar pole regions at the end caps; bullets should also travel straight there
+
+---
+
 ## S38c-04: Damage Numbers in LAN Multiplayer
 
 **What changed:** Killing-blow damage numbers now spawn in LAN MP. Root cause: server removed enemies in the same tick as the fatal hit, so client never saw `health < prevHealth`. Fix spawns damage number in the dead-enemy detection loop using last known health.

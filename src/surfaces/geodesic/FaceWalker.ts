@@ -54,6 +54,7 @@ export interface WalkResult {
 
 const MAX_CROSSINGS = 200;
 const _dir3D = new THREE.Vector3();
+const _fanTransportTemp = new THREE.Vector3(); // for vertex fan parallel transport
 
 export class FaceWalker {
   readonly halfEdge: HalfEdgeMesh;
@@ -267,12 +268,46 @@ export class FaceWalker {
           }
           // Already sums to 1, no normalization needed
 
-          // Transport direction into new face: project onto new face's tangent plane
+          // Transport direction into new face using proper parallel transport.
+          // Simple projection (subtract normal component) loses the in-plane rotation
+          // information and causes accumulated angular errors near high-valence vertices
+          // like sphere poles, visibly curving bullet paths. Proper transport rotates
+          // by the dihedral angle (same as edge crossings) to avoid this drift.
           const adjNormal = this.halfEdge.faces[bestFanFace].normal;
           const transportedDir = _dir3D.clone();
-          transportedDir.addScaledVector(adjNormal, -transportedDir.dot(adjNormal));
-          const transportLen = transportedDir.length();
-          if (transportLen > 1e-6) transportedDir.multiplyScalar(1 / transportLen);
+
+          // Try to find a shared edge between currentFace and bestFanFace.
+          // Adjacent fan faces share a polar edge → use dihedral-angle rotation.
+          // Non-adjacent fan faces (only share the vertex) → rotate by normal rotation.
+          let sharedEdgeLocal = -1;
+          for (let testEdge = 0; testEdge < 3; testEdge++) {
+            const testHe = this.halfEdge.getHalfEdge(currentFace, testEdge);
+            if (testHe.twin >= 0 && this.halfEdge.halfEdges[testHe.twin].faceIndex === bestFanFace) {
+              sharedEdgeLocal = testEdge;
+              break;
+            }
+          }
+
+          if (sharedEdgeLocal >= 0) {
+            // Adjacent faces share an edge — proper dihedral-angle rotation (same as edge crossings)
+            const [edgeStart, edgeEnd] = this.halfEdge.getEdgeVertices(currentFace, sharedEdgeLocal);
+            transportAcrossEdge(transportedDir, edgeStart, edgeEnd, faceNormal, adjNormal);
+          } else {
+            // Non-adjacent faces only share the vertex — rotate direction using normal rotation axis.
+            // This computes the same dihedral rotation as transportAcrossEdge but uses the
+            // cross(n1, n2) axis since there is no specific shared edge to rotate around.
+            _fanTransportTemp.crossVectors(faceNormal, adjNormal);
+            const sinA = _fanTransportTemp.length();
+            if (sinA > 1e-8) {
+              _fanTransportTemp.multiplyScalar(1 / sinA);
+              const angle = Math.atan2(sinA, faceNormal.dot(adjNormal));
+              transportedDir.applyAxisAngle(_fanTransportTemp, angle);
+            }
+            // Project onto destination face plane to remove numerical drift
+            transportedDir.addScaledVector(adjNormal, -transportedDir.dot(adjNormal));
+            const transportLen = transportedDir.length();
+            if (transportLen > 1e-6) transportedDir.multiplyScalar(1 / transportLen);
+          }
 
           currentFace = bestFanFace;
           currentBary = { u: eu, v: ev, w: ew };

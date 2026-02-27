@@ -893,3 +893,97 @@ describe('MeshWalker pole traversal', () => {
     expect(Math.abs(walker.position.length() - 8)).toBeLessThan(0.5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// FaceWalker Pole Parallel Transport Regression Tests (s38d-07b)
+// ---------------------------------------------------------------------------
+
+describe('FaceWalker pole parallel transport', () => {
+  it('should maintain straight bullet path through north pole (no lateral drift)', () => {
+    // Regression test for s38d-07b: vertex fan transport used simple projection instead
+    // of proper parallel transport, causing accumulated angular errors near poles.
+    // A bullet fired from the equator heading north follows a great circle — it should
+    // cross the north pole and continue heading south on the same longitude.
+    // With the bug: direction drifts laterally due to repeated projection errors.
+    // With the fix: proper dihedral-angle rotation keeps the path straight.
+    const mesh = createSphere(8, 40); // 40 segments matches production sphere
+    const hem = new HalfEdgeMesh(mesh.geometry);
+    const walker = new FaceWalker(hem);
+
+    // Start at equator on the +Z side, heading north (+Y)
+    const startPos = new THREE.Vector3(0, 0, 8);
+    let facePos = walker.locateOnMesh(startPos, 0);
+    let currentDir = new THREE.Vector3(0, 1, 0);
+
+    // Walk through the north pole and onto the far side
+    let crossedPole = false;
+    let finalDir = currentDir.clone();
+    let finalPos = startPos.clone();
+
+    for (let i = 0; i < 100; i++) {
+      const result = walker.walk(facePos.faceIndex, facePos.bary, currentDir, 0.2);
+      facePos = { faceIndex: result.faceIndex, bary: result.bary };
+      currentDir = result.direction.clone();
+      finalPos = result.position.clone();
+
+      // Detect pole crossing: y was near 8 (pole) and now we're descending
+      if (result.position.y > 6.5) {
+        crossedPole = true;
+      }
+
+      // Stop when well past the pole on the far side
+      if (crossedPole && result.position.y < 4.0) {
+        finalDir = result.direction.clone();
+        break;
+      }
+    }
+
+    expect(crossedPole).toBe(true);
+    // After crossing the pole and descending, direction should be mostly southward (-Y)
+    expect(finalDir.y).toBeLessThan(0);
+    // Lateral (X) drift should be minimal — the bullet follows its original longitude
+    // Simple projection caused > 0.5 drift; proper parallel transport keeps it < 0.3
+    expect(Math.abs(finalDir.x)).toBeLessThan(0.3);
+    // Position should still be on the sphere
+    expect(isOnSphere(finalPos, 8, 0.5)).toBe(true);
+  });
+
+  it('should maintain straight bullet path through south pole (no lateral drift)', () => {
+    // Mirror test for south pole (s38d-07b regression)
+    const mesh = createSphere(8, 40);
+    const hem = new HalfEdgeMesh(mesh.geometry);
+    const walker = new FaceWalker(hem);
+
+    // Start at equator on the +Z side, heading south (-Y)
+    const startPos = new THREE.Vector3(0, 0, 8);
+    let facePos = walker.locateOnMesh(startPos, 0);
+    let currentDir = new THREE.Vector3(0, -1, 0);
+
+    let crossedPole = false;
+    let finalDir = currentDir.clone();
+    let finalPos = startPos.clone();
+
+    for (let i = 0; i < 100; i++) {
+      const result = walker.walk(facePos.faceIndex, facePos.bary, currentDir, 0.2);
+      facePos = { faceIndex: result.faceIndex, bary: result.bary };
+      currentDir = result.direction.clone();
+      finalPos = result.position.clone();
+
+      if (result.position.y < -6.5) {
+        crossedPole = true;
+      }
+
+      if (crossedPole && result.position.y > -4.0) {
+        finalDir = result.direction.clone();
+        break;
+      }
+    }
+
+    expect(crossedPole).toBe(true);
+    // After crossing south pole, direction should be mostly northward (+Y)
+    expect(finalDir.y).toBeGreaterThan(0);
+    // Minimal lateral drift
+    expect(Math.abs(finalDir.x)).toBeLessThan(0.3);
+    expect(isOnSphere(finalPos, 8, 0.5)).toBe(true);
+  });
+});
