@@ -1288,3 +1288,17 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Pickup collection** — Walk over a weapon pickup → should collect when visually overlapping, not from distance
 - [ ] **Enemy at pickup glow** — Enemy enters the glow of a nearby pickup item → should NOT cause life loss
 - [ ] **Life loss gives invincibility** — After being hit, brief invincibility (enemies pass through) → then normal again
+
+## S38b-03: Geodesic Bullets in LAN (UV Wrap Fix)
+
+**Fix:** Bullet lerp in network-main.ts now uses wrap-aware delta to take the shortest path around UV boundaries. Without this fix, bullets teleport/snap to wrong positions when crossing the u=0/1 boundary (server wraps with modulo, client lerped the long way around).
+
+### Test: Bullets follow geodesics in LAN gameplay
+- [ ] **Start LAN game** — Use "Play Game.bat" → LAN mode, connect two clients
+- [ ] **Fire bullets on Sphere** — Bullets should curve following great-circle geodesics, same as single-player
+- [ ] **Fire bullets on Torus** — Bullets should curve on torus surface without teleporting at UV boundaries
+- [ ] **Fire bullets on Cube** — Bullets move in straight UV lines (flat UV is expected/correct for cube)
+- [ ] **Fire bullets near u=0/u=1 boundary** — Bullets should NOT teleport when crossing the wrap boundary
+- [ ] **Fire bullets on Peanut** — Bullets should curve with 2-axis metric correction
+- [ ] **Fire bullets on Pipe/Mobius/Cube-Ring/Cube-Tunnel** — No teleportation at V boundary either
+- [ ] **Visually matches single-player** — LAN bullet paths should look the same as SP bullet paths

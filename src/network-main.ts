@@ -3573,9 +3573,21 @@ async function main() {
       const b = bulletPool.getBulletData(idx);
       if (!b || !b.alive) return;
 
-      // Lerp UV toward server target
-      b.surfaceU += (target.u - b.surfaceU) * BULLET_LERP;
-      b.surfaceV += (target.v - b.surfaceV) * BULLET_LERP;
+      // Wrap-aware lerp: take shortest path around periodic UV boundaries.
+      // Server always wraps bullet.x (U) with wrapCoord() = ((v%1)+1)%1.
+      // Without this, bullets crossing the u=0/1 boundary lerp the WRONG way
+      // (long way around), causing visual teleportation. V wraps only for
+      // torus, pipe, mobius, cube-ring, cube-tunnel (mirrors server surfaceWrapsV()).
+      let du = target.u - b.surfaceU;
+      if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
+      const vWraps = lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pipe'
+        || lastCreatedSurfaceType === 'mobius' || lastCreatedSurfaceType === 'cube-ring'
+        || lastCreatedSurfaceType === 'cube-tunnel';
+      let dv = target.v - b.surfaceV;
+      if (vWraps) { if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1; }
+      b.surfaceU = ((b.surfaceU + du * BULLET_LERP) % 1 + 1) % 1;
+      b.surfaceV += dv * BULLET_LERP;
+      if (vWraps) b.surfaceV = ((b.surfaceV % 1) + 1) % 1;
 
       // Update 3D position from interpolated UV.
       // Use transform() (= getTransform) instead of surf.getPoint() directly so the
