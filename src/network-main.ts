@@ -1112,6 +1112,7 @@ async function main() {
   // Host gets END GAME / STOP SERVER buttons; non-host does not (isHost=false).
   const pauseMenu = new PauseMenu();
   pauseMenu.setIsHost(false); // updated dynamically before each show()
+  pauseMenu.setIsMultiplayer(true); // we're in multiplayer mode
   pauseMenu.setNetworkCallbacks({
     onPause: (paused: boolean) => {
       // Only send to server when state actually changes (prevents circular trigger

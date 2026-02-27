@@ -80,6 +80,7 @@ export class PauseMenu {
   private isPaused: boolean = false;
   private bgMusic: BackgroundMusic | null = null;
   private isHost: boolean = false;
+  private isMultiplayer: boolean = false;
   private serverPaused: boolean = true;
   private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
   private perfLogger: PerformanceLogger | null = null;
@@ -1002,15 +1003,33 @@ export class PauseMenu {
   /**
    * Set whether this client is the host.
    * When true, shows the "EXIT TO VOTING SCREEN", "END GAME FOR ALL" and "STOP SERVER" buttons.
+   * (only if also in multiplayer mode)
    */
   setIsHost(isHost: boolean): void {
     this.isHost = isHost;
+    this.updateNetworkButtonsVisibility();
+  }
+
+  /**
+   * Set whether we're in a multiplayer game.
+   * Network buttons are only shown if isHost && isMultiplayer.
+   */
+  setIsMultiplayer(isMultiplayer: boolean): void {
+    this.isMultiplayer = isMultiplayer;
+    this.updateNetworkButtonsVisibility();
+  }
+
+  /**
+   * Update visibility of multiplayer-specific buttons based on host status and multiplayer mode.
+   */
+  private updateNetworkButtonsVisibility(): void {
+    const shouldShowNetworkButtons = this.isHost && this.isMultiplayer;
     const exitToVotingBtn = this.container.querySelector('.exit-to-voting-btn');
     const endGameBtn = this.container.querySelector('.end-game-btn');
     const stopServerBtn = this.container.querySelector('.stop-server-btn');
 
     if (exitToVotingBtn) {
-      if (isHost) {
+      if (shouldShowNetworkButtons) {
         exitToVotingBtn.classList.remove('hidden');
       } else {
         exitToVotingBtn.classList.add('hidden');
@@ -1018,7 +1037,7 @@ export class PauseMenu {
     }
 
     if (endGameBtn) {
-      if (isHost) {
+      if (shouldShowNetworkButtons) {
         endGameBtn.classList.remove('hidden');
       } else {
         endGameBtn.classList.add('hidden');
@@ -1026,7 +1045,7 @@ export class PauseMenu {
     }
 
     if (stopServerBtn) {
-      if (isHost) {
+      if (shouldShowNetworkButtons) {
         stopServerBtn.classList.remove('hidden');
       } else {
         stopServerBtn.classList.add('hidden');
