@@ -988,6 +988,8 @@ async function main() {
   let latestGameTime = 0;
   let latestWaveNumber = 0;
   let latestMapSize = 'medium';
+  let latestGameMode = 'waves';
+  let localPlayerDeaths = 0;
   let lastSentInput: {
     moveX: number; moveY: number; aimAngle: number;
     shooting: boolean; bomb: boolean; boost: boolean;
@@ -1880,6 +1882,9 @@ async function main() {
     });
     enemyGlowTrails.clear();
 
+    // Reset per-round counters for telemetry
+    localPlayerDeaths = 0;
+
     netMainLog('[NetworkMain] Game entities reset for new round');
   }
 
@@ -1892,6 +1897,7 @@ async function main() {
     latestGameTime = state.gameTime;
     latestWaveNumber = state.waveNumber;
     latestMapSize = state.mapSize || 'medium';
+    if (state.gameMode) latestGameMode = state.gameMode;
 
     // Always try to init/update surface from authoritative server state.
     // This handles both initial creation AND correcting a wrong initial guess.
@@ -1942,6 +1948,10 @@ async function main() {
           // Death-based life loss already triggers shake via the wasAlive→!alive block.
           if (netPlayer.alive) {
             screenShake.shake(0.3, 0.3);
+          }
+          // Track deaths for local player telemetry
+          if (id === localPlayerId) {
+            localPlayerDeaths++;
           }
         }
       }
@@ -3489,6 +3499,11 @@ async function main() {
       const localPlayerState = networkPlayers.get(localPlayerId);
       const ddaTracker = ddaTrackerMap.get(localPlayerId);
       const ddaLevel = ddaTracker ? ddaEngine.getDDALevelSmooth(ddaTracker.playerIndex) : 0;
+      // Format active buffs as compact string (mirrors SP PerformanceLogger format)
+      const activeBuffsList = buffManager.getActiveBuffs();
+      const activeBuffsStr = activeBuffsList.length > 0
+        ? activeBuffsList.map(b => `${b.type}:${b.stacks}`).join(',')
+        : undefined;
       const metrics: ClientMetricsPayload = {
         time: latestGameTime,
         fps: Math.round(perfTracker.fps),
@@ -3500,6 +3515,11 @@ async function main() {
         ddaLevel: Math.round(ddaLevel * 100) / 100,
         playerPowerLevel: playerLevel.level,
         activeWeapon: localPlayerWeaponType,
+        kills: totalKillCounter.getTotalKills(),
+        deaths: localPlayerDeaths,
+        activeBuffs: activeBuffsStr,
+        surfaceName: lastCreatedSurfaceType || undefined,
+        gameMode: latestGameMode || undefined,
       };
       network.sendMetrics(metrics);
     }
