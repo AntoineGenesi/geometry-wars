@@ -177,6 +177,17 @@ export interface DifficultyInput {
   playerLevel: number;
   /** Total buff power from BuffManager.getTotalBuffPower(). Optional — defaults to 0. */
   buffPower?: number;
+  /**
+   * Number of active players (1-4). Optional — defaults to 1.
+   *
+   * Each additional player adds +0.3 to the base difficulty level:
+   *   1 player → +0.0,  2 players → +0.3,  3 players → +0.6,  4 players → +0.9
+   *
+   * Rationale: co-op groups collectively kill enemies faster, so the game must
+   * compensate by escalating to harder enemy types sooner to maintain pressure.
+   * This bonus stacks with the normal score/time/kill ramps.
+   */
+  playerCount?: number;
 }
 
 /**
@@ -237,8 +248,13 @@ export function computeDifficultyLevel(input: DifficultyInput): number {
   // escalating enemies (super-tiers handle the rest).
   const buffBonus = Math.min(3.0, (input.buffPower ?? 0) * 0.25);
 
-  // Combine: score is dominant, time is moderate, combo/kills/buffs contribute
-  return scoreLevel + timeLevel * 0.5 + comboLevel + levelBonus + killBonus + buffBonus;
+  // Player count bonus: each additional player adds +0.3 difficulty levels.
+  // 2p → +0.3, 3p → +0.6, 4p → +0.9.
+  // Rationale: co-op groups kill enemies faster, so harder types arrive sooner.
+  const playerCountBonus = ((input.playerCount ?? 1) - 1) * 0.3;
+
+  // Combine: score is dominant, time is moderate, combo/kills/buffs/player-count contribute
+  return scoreLevel + timeLevel * 0.5 + comboLevel + levelBonus + killBonus + buffBonus + playerCountBonus;
 }
 
 /**
@@ -275,7 +291,7 @@ const SPLITTING_TYPES = [
 ];
 
 /**
- * Generate a scaled endless wave based on wave number and difficulty level.
+ * Generate a scaled endless wave based on wave number, difficulty level, and player count.
  *
  * Tuned for aggressive scaling that matches player power growth.
  * A player with stacked buffs (hot hands 5, trigger happy, shock aura 3,
@@ -291,15 +307,28 @@ const SPLITTING_TYPES = [
  *     exponential) to prevent overwhelming the player when screen is crowded.
  *     Difficulty still increases via tiers and enemy types — just fewer per wave.
  *
+ * Player count scaling (matches server-side GameRoom.ts for consistency):
+ *   1 player → 1.0x enemy count (baseline)
+ *   2 players → 1.5x enemy count
+ *   3 players → 2.0x enemy count
+ *   4 players → 2.5x enemy count
+ *
  * @param activeEntityCount Current active enemies on screen (default 0 = no brake).
+ * @param playerCount Number of active players 1-4 (default 1 = single-player).
  */
 export function generateScaledEndlessWave(
   waveNum: number,
   difficultyLevel: number,
   activeEntityCount: number = 0,
+  playerCount: number = 1,
 ): ScaledWaveEntry[] {
   const enemies: ScaledWaveEntry[] = [];
   const maxTier = getMaxSpawnTier(difficultyLevel);
+
+  // Player count multiplier: more players = more enemies per wave to maintain pressure.
+  // Formula: 1.0 + (playerCount - 1) * 0.5  →  1p=1.0x, 2p=1.5x, 3p=2.0x, 4p=2.5x
+  // Mirrors server-side GameRoom.ts spawnWave() formula for cross-system consistency.
+  const playerCountMultiplier = 1.0 + (Math.max(1, playerCount) - 1) * 0.5;
 
   // Entity count soft brake: reduces per-wave spawn counts when screen is crowded.
   // Below 200 entities: factor = 1.0 (no effect — early game unchanged).
@@ -315,11 +344,11 @@ export function generateScaledEndlessWave(
 
   // Base count grows with wave number AND difficulty level
   // At difficulty 4+, each wave has substantially more enemies
-  // Cap scales with difficulty: 30 up to diff 6, then 40 at diff 6+ to allow
-  // larger individual enemy groups at endgame without overwhelming early/mid game
+  // Cap scales with both difficulty and player count so multiplayer waves
+  // don't hit a low single-player ceiling.
   const difficultyCountBonus = Math.floor(difficultyLevel * 2.0);
-  const baseCountCap = difficultyLevel >= 6 ? 40 : 30;
-  const baseCount = Math.min(baseCountCap, Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake));
+  const baseCountCap = Math.round((difficultyLevel >= 6 ? 40 : 30) * playerCountMultiplier);
+  const baseCount = Math.min(baseCountCap, Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake * playerCountMultiplier));
 
   // -- Basic enemies: always present, tier scales with difficulty --
   const basicType = BASIC_TYPES[waveNum % BASIC_TYPES.length];
