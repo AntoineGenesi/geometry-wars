@@ -414,7 +414,7 @@ export class GameLoop {
 
     // Update buff system (shock aura, burning DOT, stat refresh)
     if (ctx.player.alive) {
-      ctx.buffManager.update(dt, ctx.playerWalker.position, ctx.enemySpawner.getEnemies());
+      ctx.buffManager.update(dt, ctx.playerWalker.position, ctx.enemySpawner.getEnemies(), ctx.scorePopups);
       ctx.shockArcRenderer.update(ctx.buffManager.shockArcs);
       // Update buff aura ring visuals (per-buff shader effects around player)
       const activeBuffsForAura = ctx.buffManager.getActiveBuffs().map(b => ({

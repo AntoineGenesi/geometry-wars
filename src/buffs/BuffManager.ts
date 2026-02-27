@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { getSoundEngine } from '../audio/SoundEngine';
 import { WeaponType } from '../weapons/WeaponTypes';
+import type { ScorePopupManager } from '../effects/ScorePopup';
 
 // Pre-allocated temp vectors for zero-allocation shock arc creation
 const _arcFrom = new THREE.Vector3();
@@ -707,12 +708,13 @@ export class BuffManager {
    * @param dt - Fixed timestep delta
    * @param playerPos - Player world position
    * @param enemies - All active enemies
+   * @param scorePopups - Optional popup manager; when provided, damage numbers appear for ShockAura hits
    */
-  update(dt: number, playerPos: THREE.Vector3, enemies: BaseEnemy[]): void {
+  update(dt: number, playerPos: THREE.Vector3, enemies: BaseEnemy[], scorePopups?: ScorePopupManager): void {
     // Reset per-frame volatile VFX budget so onEnemyDeath() can track this frame's count
     this._volatileVfxThisFrame = 0;
 
-    this.updateShockAura(dt, playerPos, enemies);
+    this.updateShockAura(dt, playerPos, enemies, scorePopups);
     this.updateBurning(dt);
     this.updateShockArcs(dt);
   }
@@ -721,7 +723,7 @@ export class BuffManager {
   // Shock Aura logic
   // -----------------------------------------------------------------------
 
-  private updateShockAura(dt: number, playerPos: THREE.Vector3, enemies: BaseEnemy[]): void {
+  private updateShockAura(dt: number, playerPos: THREE.Vector3, enemies: BaseEnemy[], scorePopups?: ScorePopupManager): void {
     const stacks = this.getStacks(StackBuffType.ShockAura);
     if (stacks === 0) return;
 
@@ -750,6 +752,11 @@ export class BuffManager {
     for (const enemy of inRange) {
       enemy.takeDamage(tickDamage);
 
+      // Show damage number popup for aura hit (only if enemy survived — killed enemies show score popup)
+      if (scorePopups && enemy.alive) {
+        scorePopups.spawnDamage(enemy.position, tickDamage);
+      }
+
       // Visual arc from player to enemy (uses pool to avoid per-tick Vector3 allocations)
       this.shockArcs.push(this._allocShockArc(playerPos, enemy.position, 0.15));
 
@@ -767,6 +774,12 @@ export class BuffManager {
           const chainDist = other.position.distanceTo(enemy.position);
           if (chainDist < chainRange) {
             other.takeDamage(tickDamage * 0.5); // Chain does half damage
+
+            // Show damage number for chain hit too
+            if (scorePopups && other.alive) {
+              scorePopups.spawnDamage(other.position, tickDamage * 0.5);
+            }
+
             chainCount++;
 
             // Visual arc from enemy to chained target (pooled)
