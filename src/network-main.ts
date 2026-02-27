@@ -2908,10 +2908,10 @@ async function main() {
     errPanel.appendChild(title);
 
     const reason = document.createElement('div');
-    reason.style.cssText = 'color:#faa;font-size:14px;margin-bottom:24px;max-width:600px;text-align:center;';
+    reason.style.cssText = 'color:#faa;font-size:14px;margin-bottom:24px;max-width:600px;text-align:center;word-break:break-word;white-space:pre-wrap;';
     reason.textContent = isServerDown
       ? `Could not reach game server at ${serverUrl}`
-      : `Error: ${msg.slice(0, 120)}`;
+      : `Error: ${msg}`;
     errPanel.appendChild(reason);
 
     // Possible-cause checklist (always visible)
@@ -2992,6 +2992,64 @@ async function main() {
     btns.appendChild(backBtnInPanel);
 
     errPanel.appendChild(btns);
+
+    // Copy Debug Info button
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = '📋 COPY DEBUG INFO';
+    copyBtn.style.cssText =
+      'margin-top:12px;padding:8px 20px;font:bold 13px monospace;background:#001133;color:#06f;' +
+      'border:1px solid #06f;cursor:pointer;letter-spacing:1px;';
+    copyBtn.onclick = () => {
+      const info = [
+        `=== LAN DEBUG INFO ===`,
+        `Date: ${new Date().toISOString()}`,
+        `Page: ${window.location.href}`,
+        `Server URL: ${serverUrl}`,
+        `Fallback URL: ${fallbackUrl ?? '(none)'}`,
+        `Cross-origin: ${isCrossOrigin}`,
+        `Error: ${msg}`,
+        `--- Diagnostics ---`,
+        ...Object.entries(diagnosticResults).map(([k, v]) => `${k}: ${v}`),
+      ].join('\n');
+      navigator.clipboard.writeText(info).then(
+        () => { copyBtn.textContent = '✓ COPIED'; setTimeout(() => { copyBtn.textContent = '📋 COPY DEBUG INFO'; }, 2000); },
+        () => { copyBtn.textContent = 'COPY FAILED — SEE CONSOLE'; }
+      );
+    };
+    errPanel.appendChild(copyBtn);
+
+    // Direct connect input — bypass lobby, type host IP manually
+    const directDiv = document.createElement('div');
+    directDiv.style.cssText = 'margin-top:20px;max-width:600px;width:100%;border-top:1px solid #333;padding-top:16px;';
+    directDiv.innerHTML = '<div style="color:#666;font-size:12px;margin-bottom:8px;letter-spacing:1px;">DIRECT CONNECT (bypass lobby — type host IP)</div>';
+    const directRow = document.createElement('div');
+    directRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
+    const directInput = document.createElement('input');
+    directInput.type = 'text';
+    directInput.placeholder = '192.168.1.100';
+    directInput.value = window.location.hostname !== 'localhost' ? window.location.hostname : '';
+    directInput.style.cssText =
+      'flex:1;padding:8px 12px;font:14px monospace;background:#001;color:#0af;' +
+      'border:1px solid #06f;outline:none;';
+    const directBtn = document.createElement('button');
+    directBtn.textContent = 'CONNECT';
+    directBtn.style.cssText =
+      'padding:8px 16px;font:bold 13px monospace;background:#003;color:#06f;' +
+      'border:1px solid #06f;cursor:pointer;white-space:nowrap;';
+    directBtn.onclick = () => {
+      const ip = directInput.value.trim();
+      if (!ip) return;
+      const params = new URLSearchParams(window.location.search);
+      const surface = params.get('surface') || urlSurfaceType || 'sphere';
+      const name = params.get('name') || playerName;
+      window.location.href = `http://${ip}:3000/?mode=network&surface=${surface}&name=${encodeURIComponent(name)}`;
+    };
+    directInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') directBtn.click(); });
+    directRow.appendChild(directInput);
+    directRow.appendChild(directBtn);
+    directDiv.appendChild(directRow);
+    errPanel.appendChild(directDiv);
+
     document.body.appendChild(errPanel);
 
     // Async portproxy check — runs after panel is in DOM so we can update it.

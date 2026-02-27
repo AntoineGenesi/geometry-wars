@@ -19,6 +19,35 @@
 - [ ] Aura damage (ShockAura buff) also shows numbers (separate fix from S38c-03, should still work)
 - [ ] Score popups (white numbers on kill) still appear alongside damage numbers
 
+## S38d-01: Laptop LAN Deep Debug — Error Visibility + Direct Connect
+
+**What changed:**
+1. Error panel now shows the FULL error message (was truncated to 120 chars — hiding the real cause)
+2. Added "Copy Debug Info" button — copies full diagnostics to clipboard for sharing
+3. Added "Direct Connect" input field — bypass lobby by typing host IP directly
+
+**What to test (when laptop fails to connect):**
+- [ ] Run `Play Game.bat` on HOST PC
+- [ ] On LAPTOP, open `http://[host-ip]:3000/` and try to join via LAN menu
+- [ ] If connection fails, the error panel now shows the **FULL untruncated error message**
+- [ ] Click "📋 COPY DEBUG INFO" and share the output in the issue/session report
+- [ ] The error message should tell us exactly why it's failing (previously hidden)
+
+**If lobby doesn't work — Direct Connect bypass:**
+- [ ] When error panel appears, find "DIRECT CONNECT" section at the bottom
+- [ ] Type the host's IP address (e.g. `192.168.1.100`) and click CONNECT
+- [ ] This bypasses the lobby scan entirely and connects directly
+- [ ] If this works but lobby doesn't, the bug is in the lobby scan, not the connection
+
+**What the error message will reveal:**
+- "Cannot reach game server" = network/firewall issue
+- "WebSocket handshake failed" or "403" = proxy or CORS issue
+- "Room not found" or "Lobby closed" = server state issue
+- "Invalid schema" = version mismatch between client and server
+- Any error longer than 120 chars was previously invisible!
+
+---
+
 ## S38c-02: Laptop LAN Connection (Portproxy Fix)
 
 **Root cause identified:** WSL2 portproxy rules from a previous `Setup-WSL-LAN.bat` session intercept laptop connections on port 3000, routing them to WSL2 (which has no server). Host PC works because localhost connections bypass portproxy.
