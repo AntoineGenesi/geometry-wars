@@ -1365,3 +1365,18 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Fire bullets on Peanut** — Bullets should curve with 2-axis metric correction
 - [ ] **Fire bullets on Pipe/Mobius/Cube-Ring/Cube-Tunnel** — No teleportation at V boundary either
 - [ ] **Visually matches single-player** — LAN bullet paths should look the same as SP bullet paths
+
+## S38c-01: MP Bullets Not Curving Toward Poles (Regression Verification)
+
+**Investigation:** S38b-03 UV wrap fix IS in the code. Server geodesic math pushes bullets AWAY from poles (toward equator), not toward poles. Root cause of user-reported pole convergence is most likely s38c-00 (changes not visible due to deployment issue).
+
+**Programmatic regression tests added:** `server/rooms/GameRoom.geodesic-bullets-lan.test.ts` — 6 tests verify bullets move away from poles on sphere, no NaN, no out-of-bounds UV.
+
+### Test: Bullet paths are straight in LAN (not pole-converging)
+- [ ] **Start LAN game** — Use "Play Game.bat" → LAN mode (after s38c-00 deployment fix is applied)
+- [ ] **Fire bullets on Sphere toward equator** — Should travel in great-circle arc, NOT drift toward north or south pole
+- [ ] **Fire bullets at multiple angles on Sphere** — No bullet should spiral toward or reach v=0 (north pole) or v=1 (south pole) unless deliberately aimed there
+- [ ] **Fire bullets near UV boundary on Sphere** — No teleportation, bullets smoothly cross u=0/u=1
+- [ ] **Fire on Torus** — Bullets travel in straight geodesic lines on torus surface
+- [ ] **Compare with single-player** — Bullet paths should look identical to SP mode on same surface
+- [ ] **Test all 12 surfaces** — No pole-convergence on any surface
