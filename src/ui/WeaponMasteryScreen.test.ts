@@ -345,23 +345,37 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   // ── UpgradeTreeData integration ────────────────────────────────────────────
 
-  it('each weapon has exactly 10 nodes in UPGRADE_TREES', () => {
+  it('each weapon has at least 10 nodes in UPGRADE_TREES', () => {
     for (const wt of Object.values(WT)) {
-      expect(UPGRADE_TREES[wt].nodes).toHaveLength(10);
+      expect(UPGRADE_TREES[wt].nodes.length).toBeGreaterThanOrEqual(10);
     }
   });
 
-  it('each weapon has branch a and branch b nodes (5 each)', () => {
-    for (const wt of Object.values(WT)) {
+  it('Standard has 10-level branches (20 nodes)', () => {
+    expect(UPGRADE_TREES[WT.Standard].nodes).toHaveLength(20);
+    expect(getBranchNodes(WT.Standard, 'a')).toHaveLength(10);
+    expect(getBranchNodes(WT.Standard, 'b')).toHaveLength(10);
+  });
+
+  it('Homing has 10-level branches (20 nodes)', () => {
+    expect(UPGRADE_TREES[WT.Homing].nodes).toHaveLength(20);
+    expect(getBranchNodes(WT.Homing, 'a')).toHaveLength(10);
+    expect(getBranchNodes(WT.Homing, 'b')).toHaveLength(10);
+  });
+
+  it('non-extended weapons have 5-level branches (10 nodes each)', () => {
+    const fiveLevel = [WT.Spread, WT.Piercing, WT.ChainLightning, WT.PlasmaMortar,
+                       WT.GravityGun, WT.LaserBeam, WT.BlackHole, WT.TeslaCoil];
+    for (const wt of fiveLevel) {
       expect(getBranchNodes(wt, 'a')).toHaveLength(5);
       expect(getBranchNodes(wt, 'b')).toHaveLength(5);
     }
   });
 
-  it('node IDs follow weaponType_branch_index pattern', () => {
+  it('node IDs follow weaponType_branch_index pattern (index 1-10)', () => {
     const nodes = getAllNodes();
     for (const n of nodes) {
-      expect(n.id).toMatch(/^[a-zA-Z_]+_[ab]_[12345]$/);
+      expect(n.id).toMatch(/^[a-zA-Z_]+_[ab]_([1-9]|10)$/);
     }
   });
 
