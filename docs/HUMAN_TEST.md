@@ -8,6 +8,19 @@
 
 ---
 
+## S38c-04: Damage Numbers in LAN Multiplayer
+
+**What changed:** Killing-blow damage numbers now spawn in LAN MP. Root cause: server removed enemies in the same tick as the fatal hit, so client never saw `health < prevHealth`. Fix spawns damage number in the dead-enemy detection loop using last known health.
+
+**What to test:**
+- [ ] Start LAN game (2 devices or same device with 2 browser tabs)
+- [ ] Shoot a basic enemy (grunt/wanderer) — red damage number should appear at the kill
+- [ ] Shoot a multi-HP enemy (weaver, spinner) — number should appear on every hit AND on the kill
+- [ ] Aura damage (ShockAura buff) also shows numbers (separate fix from S38c-03, should still work)
+- [ ] Score popups (white numbers on kill) still appear alongside damage numbers
+
+---
+
 ## S38b-07: Weapon Mastery — 4-Endpoint Branching Tree
 
 **What changed:** Standard (Blaster) weapon now has a 4-endpoint branching tree instead of 2 linear branches. Other weapons unchanged.
