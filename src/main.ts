@@ -447,6 +447,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // (fixes potential horizontal stretch on game start, especially on mobile)
   game.ensureCameraAspectRatio();
 
+  // Resize handler: iOS Safari can change innerHeight when the URL bar shows/hides.
+  // Without this, the canvas stays at the initial size and appears cropped/zoomed.
+  if (mobile) {
+    window.addEventListener('resize', () => {
+      game.renderer.setSize(window.innerWidth, window.innerHeight);
+      game.ensureCameraAspectRatio();
+    }, { passive: true });
+  }
+
   // -- Shockwave + Chromatic Aberration + Screen Flash post-processing --
   // This replaces the vignette pass with a combined pass that adds:
   //   1. Shockwave distortion rings (enemy deaths, explosions)
@@ -1169,8 +1178,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Weapon HUD (inventory display) --
   const weaponHUD = new WeaponHUD();
-  // Position near top for better visibility on all platforms
-  const weaponHUDY = mobile ? 40 : 60;
+  // On mobile: position below the top HUD cluster (score at 8px, bombs at 28px, etc. extend to ~60px).
+  // Use viewport-relative value so it adapts to screen size. Minimum 80px on mobile.
+  const weaponHUDY = mobile ? Math.max(80, Math.round(window.innerHeight * 0.2)) : 60;
   weaponHUD.setPosition(10, weaponHUDY);
 
   // Wire session level-up: show compact level toast after each pickup beyond the first

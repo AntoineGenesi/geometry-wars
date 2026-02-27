@@ -402,8 +402,8 @@ export class TouchInput {
     s.position = 'fixed';
     s.top = '0';
     s.left = '0';
-    s.width = '100%';
-    s.height = '100%';
+    s.right = '0';
+    s.bottom = '0';
     s.pointerEvents = 'none';
     s.zIndex = '500';
     s.touchAction = 'none';
@@ -414,8 +414,8 @@ export class TouchInput {
     el.id = 'touch-pause-btn';
     el.style.cssText = `
       position: fixed;
-      top: 12px;
-      right: 12px;
+      top: max(12px, env(safe-area-inset-top, 0px));
+      right: max(12px, env(safe-area-inset-right, 0px));
       width: 44px;
       height: 44px;
       border-radius: 8px;
