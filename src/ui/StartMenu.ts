@@ -29,6 +29,9 @@ export interface MenuSelection {
   quickGameMode?: QuickGameModeType; // For single player quick game
   customMeshFile?: File; // For custom mesh loading
   mapSize?: MapSize; // Map size tier for enemy count scaling
+  /** True only when this player created/hosted the server (clicked HOST GAME → ENTER GAME).
+   *  LAN lobby joiners and QR code scanners are NOT creators — they should not claim host. */
+  isCreator?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -57,7 +60,7 @@ export class StartMenu {
   private lanScanning = false;
 
   // LAN name dialog state
-  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string } | null = null;
+  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean } | null = null;
 
   // Custom mesh support
   private customMeshFile: File | null = null;
@@ -1830,10 +1833,11 @@ export class StartMenu {
       }
     });
 
-    // ENTER GAME (after hosting) - show name dialog first
+    // ENTER GAME (after hosting) - show name dialog first.
+    // isCreator=true: this player started the server, so they should claim host status.
     lanEnterBtn?.addEventListener('click', () => {
       if (hostedServerUrl) {
-        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl);
+        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl, true);
       }
     });
 
@@ -2014,9 +2018,11 @@ export class StartMenu {
   /**
    * Show the name dialog before joining a LAN game.
    * Stores the pending join info and shows the dialog overlay.
+   * @param isCreator - true only when this player hosted the server (clicked ENTER GAME after HOST GAME).
+   *   LAN lobby joiners, QR code scanners, and manual IP joiners are NOT creators.
    */
-  private showNameDialog(surfaceType: SurfaceType, serverUrl: string): void {
-    this.pendingLanJoin = { surfaceType, serverUrl };
+  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false): void {
+    this.pendingLanJoin = { surfaceType, serverUrl, isCreator };
 
     const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
     const nameDialog = this.container.querySelector('#lan-name-dialog') as HTMLElement;
@@ -2070,6 +2076,7 @@ export class StartMenu {
       gameMode: 'network',
       serverUrl: this.pendingLanJoin.serverUrl,
       playerName: name,
+      isCreator: this.pendingLanJoin.isCreator,
     });
 
     this.pendingLanJoin = null;
