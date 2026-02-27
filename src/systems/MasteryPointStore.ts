@@ -51,18 +51,20 @@ export class MasteryPointStore {
   }
 
   /**
-   * Spend 1 point in a node.
+   * Spend points in a node.
    * - `maxPoints` controls how many total points can be invested (default 1).
-   * - Returns true if the point was successfully spent; false if the node is
-   *   already at max points or no points are available.
+   * - `cost` controls how many points are deducted from availablePoints (default 1).
+   *   Premium nodes may cost 2 points to initially unlock.
+   * - Returns true if the spend was successful; false if node is at max points
+   *   or insufficient points are available.
    */
-  spendPoint(nodeId: string, maxPoints: number = 1): boolean {
+  spendPoint(nodeId: string, maxPoints: number = 1, cost: number = 1): boolean {
     const current = this.nodePoints[nodeId] ?? 0;
     if (current >= maxPoints) return false;
-    if (this.availablePoints <= 0) return false;
+    if (this.availablePoints < cost) return false;
 
     this.nodePoints = { ...this.nodePoints, [nodeId]: current + 1 };
-    this.spentPoints = this.spentPoints + 1;
+    this.spentPoints = this.spentPoints + cost;
     this.save();
     return true;
   }
