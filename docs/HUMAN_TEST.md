@@ -1272,3 +1272,19 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **All variants visually distinct** — Each of the 4 snakes should look noticeably different
 - [ ] **Follower chain visible** — Each snake has a double row of 4 followers behind the head (8 followers total)
 - [ ] **Kill head → followers released** — On head kill, followers become independent enemies
+
+
+## S38b: LAN MP Hit Detection — Sphere Fix
+
+**Fix:** Server-side collision on sphere now uses great-circle world-space distance instead of UV Euclidean distance. Old threshold (0.04 UV ≈ 1.26 world units) was 3× too large. New threshold (0.5 world units) matches visual entity sizes (player 0.15 + enemy 0.30 + margin).
+
+### Test: LAN multiplayer sphere hit detection
+**Requires:** Two devices on same LAN. Start server with `npm run server`.
+
+- [ ] **Start LAN game on sphere** — Both players connect, Sphere map selected
+- [ ] **Enemies don't kill at distance** — Stand near an enemy but not visually touching → should NOT lose life
+- [ ] **Enemies kill on contact** — Move into an enemy until visually overlapping → SHOULD lose life
+- [ ] **Test near north pole** — Move to top of sphere (near pole) and repeat above checks
+- [ ] **Pickup collection** — Walk over a weapon pickup → should collect when visually overlapping, not from distance
+- [ ] **Enemy at pickup glow** — Enemy enters the glow of a nearby pickup item → should NOT cause life loss
+- [ ] **Life loss gives invincibility** — After being hit, brief invincibility (enemies pass through) → then normal again
