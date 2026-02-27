@@ -1135,9 +1135,11 @@ export class StartMenu {
         margin: 0 0 6px;
         cursor: pointer;
         transition: all 0.2s;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto;
+        gap: 10px;
+        align-items: start;
       }
       #start-menu .lan-lobby-entry:hover {
         background: rgba(0, 100, 100, 0.45);
@@ -1160,7 +1162,9 @@ export class StartMenu {
         cursor: pointer;
         transition: all 0.2s;
         flex-shrink: 0;
-        margin-left: 10px;
+        grid-column: 2;
+        grid-row: 1 / 3;
+        align-self: center;
       }
       #start-menu .lan-lobby-stop-btn:hover {
         background: rgba(255, 50, 50, 0.5);
@@ -1172,6 +1176,8 @@ export class StartMenu {
         display: flex;
         flex-direction: column;
         gap: 3px;
+        grid-column: 1;
+        grid-row: 1;
       }
       #start-menu .lan-lobby-host {
         color: #00ffff;
@@ -1184,8 +1190,18 @@ export class StartMenu {
       #start-menu .lan-lobby-meta {
         display: flex;
         flex-direction: column;
-        align-items: flex-end;
+        align-items: flex-start;
         gap: 3px;
+        grid-column: 1;
+        grid-row: 1;
+        margin-left: 180px;
+      }
+      #start-menu .lan-lobby-qr-container {
+        grid-column: 1 / 3;
+        grid-row: 2;
+        display: flex;
+        justify-content: center;
+        align-items: center;
       }
       #start-menu .lan-lobby-players {
         color: #aaffaa;
@@ -2216,8 +2232,22 @@ export class StartMenu {
         <span class="lan-lobby-players">${details.players}</span>
         <span class="lan-lobby-status ${statusClass}">${details.statusLabel}</span>
       </div>
+      <div class="lan-lobby-qr-container"></div>
       ${isSelf ? '<button class="lan-lobby-stop-btn">STOP</button>' : ''}
     `;
+
+    // Generate QR code for this lobby entry
+    const vitePort = parseInt(window.location.port, 10) || 3000;
+    const serverSurface = (details.rawSurface || details.surface.toLowerCase()) as SurfaceType;
+    const joinUrl = `http://${ip}:${vitePort}/?mode=network&surface=${encodeURIComponent(serverSurface)}`;
+
+    const qrContainer = entry.querySelector('.lan-lobby-qr-container') as HTMLElement | null;
+    if (qrContainer) {
+      const qrDisplay = createQRCodeDisplay(joinUrl, 'Scan to join', 120);
+      qrDisplay.style.margin = '8px 0';
+      qrDisplay.style.padding = '8px';
+      qrContainer.appendChild(qrDisplay);
+    }
 
     // Stop button for self-hosted servers
     if (isSelf) {
@@ -2233,9 +2263,6 @@ export class StartMenu {
     }
 
     entry.addEventListener('click', () => {
-      const vitePort = parseInt(window.location.port, 10) || 3000;
-      const serverSurface = (details.rawSurface || details.surface.toLowerCase()) as SurfaceType;
-
       // ALWAYS use window.location.hostname for same-origin connections.
       // The lobby scan runs on the Vite server that served this page, so all
       // "self" entries are the same machine. Using window.location.hostname
@@ -2249,8 +2276,7 @@ export class StartMenu {
         this.showNameDialog(serverSurface, serverUrl);
       } else {
         // Different server: redirect to that server's page (same-origin there)
-        const targetUrl = `http://${ip}:${vitePort}/?mode=network&surface=${encodeURIComponent(serverSurface)}`;
-        window.location.href = targetUrl;
+        window.location.href = joinUrl;
       }
     });
 
