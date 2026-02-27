@@ -79,12 +79,14 @@ export function createStandardSurfaceConfig(
     tunnelRadius: scale * 0.3,
   };
 
-  // Cube tunnel: reduced size for more claustrophobic gameplay (S37)
-  // Proportionally reduced: 80 * (20/24) ≈ 67, wallThickness: 4.0 * (20/24) ≈ 3.3, bevelRadius: 10.0 * (20/24) ≈ 8.3
+  // Cube tunnel: size proportional to scale (like all other surfaces).
+  // At scale=10: size=20, wallThickness=2.0, bevelRadius=2.4 — matches CubeWithTunnelSurface defaults.
+  // MapSize group-scale is then applied on top (SMALL=0.75x, MEDIUM=1.0x, LARGE=1.5x, EPIC=2.0x).
+  // S38: removed hardcoded size=67 — it ignored scale and produced a 134-unit tunnel at EPIC default.
   if (surfaceType === 'cube-tunnel') {
-    config.size = 67;
-    config.wallThickness = 3.3;
-    config.bevelRadius = 8.3;
+    config.size = scale * 2;           // 20 at scale=10
+    config.wallThickness = scale * 0.2; // 2.0 at scale=10
+    config.bevelRadius = scale * 0.24;  // 2.4 at scale=10 (= size * 0.12)
     config.gridSegments = 20;
   }
 
