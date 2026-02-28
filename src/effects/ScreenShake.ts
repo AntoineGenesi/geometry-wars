@@ -3,6 +3,9 @@ import * as THREE from 'three';
 export class ScreenShake {
   readonly offset: THREE.Vector3;
 
+  // Cap concurrent shakes so rapid kills don't stack into continuous jitter
+  private static readonly MAX_CONCURRENT_SHAKES = 4;
+
   private shakes: Array<{
     intensity: number;
     duration: number;
@@ -15,6 +18,7 @@ export class ScreenShake {
   }
 
   shake(intensity: number, duration: number): void {
+    if (this.shakes.length >= ScreenShake.MAX_CONCURRENT_SHAKES) return;
     this.shakes.push({
       intensity,
       duration,
