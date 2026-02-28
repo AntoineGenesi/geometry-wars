@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 
+// Pre-allocated temps for applySurfaceTransform
+const _bufpMat4 = new THREE.Matrix4();
+const _bufpQSurface = new THREE.Quaternion();
+const _bufpQSpin = new THREE.Quaternion();
+const _bufpSpinAxis = new THREE.Vector3(0, 1, 0);
+
 /**
  * Buff type identifiers
  */
@@ -189,8 +195,7 @@ export class BuffPickup {
     // Store totalTime for bob animation in applySurfaceTransform
     this._currentTotalTime = totalTime;
 
-    // Spin (faster than weapons to distinguish)
-    this.mesh.rotation.y = totalTime * 3;
+    // Spin applied in applySurfaceTransform() to avoid quaternion override issue.
 
     // Pulse core
     const core = this.mesh.getObjectByName('core');
@@ -237,8 +242,12 @@ export class BuffPickup {
     this._surfaceWorldPos.copy(position);
     const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08 * this.mapSizeScaleFactor;
     this.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
-    const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
-    this.mesh.quaternion.setFromRotationMatrix(mat);
+    // Orient to surface + spin around local Y (= surface normal) so the wireframe box
+    // reads as 3D rather than a flat 2D silhouette.
+    _bufpMat4.makeBasis(tangent, normal, bitangent);
+    _bufpQSurface.setFromRotationMatrix(_bufpMat4);
+    _bufpQSpin.setFromAxisAngle(_bufpSpinAxis, this._currentTotalTime * 3);
+    this.mesh.quaternion.copy(_bufpQSurface).multiply(_bufpQSpin);
 
     // Update spawn indicator after quaternion is set so cameraUp transforms correctly
     updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
