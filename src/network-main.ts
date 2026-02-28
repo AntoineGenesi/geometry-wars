@@ -3742,6 +3742,11 @@ async function main() {
     const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
     const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
     const NET_SURFACE_DIM_OPC  = 0.08;   // minimum opacity for far-away enemies
+    // World-space proximity override constants (SP parity — RenderLoop.ts PROXIMITY_*).
+    const NET_PROXIMITY_NEAR_WORLD    = 2.0;
+    const NET_PROXIMITY_NEAR_WORLD_SQ = NET_PROXIMITY_NEAR_WORLD * NET_PROXIMITY_NEAR_WORLD;
+    const NET_PROXIMITY_FADE_WORLD    = 5.0;
+    const NET_PROXIMITY_FADE_WORLD_SQ = NET_PROXIMITY_FADE_WORLD * NET_PROXIMITY_FADE_WORLD;
 
     const _lpForDim = networkPlayers.get(localPlayerId);
     const _lpU = _lpForDim?.surfaceU ?? 0;
@@ -3772,6 +3777,23 @@ async function main() {
           surfaceVis = 1.0 - uvSt * (1.0 - NET_SURFACE_DIM_OPC);
         }
         vis = Math.min(vis, surfaceVis);
+
+        // World-space proximity override (SP parity — pole-distortion fix).
+        // Near poles, UV distance is warped so UV-far enemies may be world-close.
+        // World distance correctly identifies enemies that are physically adjacent.
+        if (_lpForDim.mesh) {
+          const oppositeWalls = surf.areOnOppositeWallSides(_lpV, enemy.surfacePosition.v);
+          if (!oppositeWalls) {
+            const worldDistSq = enemy.position.distanceToSquared(_lpForDim.mesh.position);
+            if (worldDistSq <= NET_PROXIMITY_NEAR_WORLD_SQ) {
+              vis = Math.max(vis, 1.0);
+            } else if (worldDistSq <= NET_PROXIMITY_FADE_WORLD_SQ) {
+              const worldDist = Math.sqrt(worldDistSq);
+              const t = (worldDist - NET_PROXIMITY_NEAR_WORLD) / (NET_PROXIMITY_FADE_WORLD - NET_PROXIMITY_NEAR_WORLD);
+              vis = Math.max(vis, 1.0 - t);
+            }
+          }
+        }
       }
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {

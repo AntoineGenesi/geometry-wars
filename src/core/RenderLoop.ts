@@ -8,15 +8,23 @@ import { UIHelpers } from '../ui/UIHelpers';
 import { profiler } from './PerformanceProfiler';
 
 /**
- * Proximity visibility override using UV surface distance.
- * Enemies within PROXIMITY_NEAR_UV of the player on the surface are forced to full
- * visibility, overriding depth-occlusion dimming. Uses the same UV metric as the
- * surface dimming system so torus/ring topology is handled correctly — enemies
- * visible through the torus hole have large UV distance and stay dim even when
- * close in 3D world space.
+ * Proximity visibility override using world-space (Euclidean 3D) distance.
+ * Enemies within PROXIMITY_NEAR_WORLD units of the player are forced to full
+ * visibility, overriding depth-occlusion and surface-dimming.
+ *
+ * World distance is used instead of UV distance because UV space is severely
+ * warped near poles (sphere, peanut, capsule): two enemies at the same pole
+ * with different longitudes have large UV distance but near-zero world distance.
+ * UV-based proximity incorrectly dimmed these enemies even though they were
+ * physically adjacent and about to hit the player.
+ *
+ * The cube-tunnel opposite-wall guard (areOnOppositeWallSides) still prevents
+ * the inner-wall false-positive that was the original motivation for UV distance.
  */
-const PROXIMITY_NEAR_UV = 0.08;   // fully visible within 8% of surface (same position)
-const PROXIMITY_FADE_UV = 0.15;   // fade out to surface dimming by 15% (= SURFACE_NEAR_UV)
+const PROXIMITY_NEAR_WORLD    = 2.0;   // fully visible within 2 world units
+const PROXIMITY_NEAR_WORLD_SQ = PROXIMITY_NEAR_WORLD * PROXIMITY_NEAR_WORLD;
+const PROXIMITY_FADE_WORLD    = 5.0;   // fade to surface dimming by 5 world units
+const PROXIMITY_FADE_WORLD_SQ = PROXIMITY_FADE_WORLD * PROXIMITY_FADE_WORLD;
 
 /**
  * Surface UV-distance visibility constants.
@@ -165,14 +173,17 @@ export class RenderLoop {
       // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
       let visibility = ctx.depthOcclusion.getOpacity(enemy);
 
-      // Surface UV-distance visibility + proximity override.
-      // UV distance is computed once and reused for both:
-      //   (a) dimming enemies far from the player on the surface
-      //   (b) proximity override to keep very-close enemies visible despite occlusion
+      // Surface UV-distance visibility + world-space proximity override.
+      // UV distance is computed for:
+      //   (a) surface dimming — dims enemies far from the player along the surface
+      // World-space (Euclidean 3D) distance is used for:
+      //   (b) proximity override — keeps very-close enemies visible despite occlusion
       //
-      // Using UV distance (not Euclidean 3D) correctly handles torus/ring/sphere-tunnel
-      // topology: enemies visible through the hole have small 3D distance but large UV
-      // distance, so they stay dim. The old 3D proximity override brightened those enemies.
+      // UV distance for (a) correctly handles torus/ring topology: enemies visible through
+      // the hole have large UV distance and stay dim.
+      // World distance for (b) correctly handles pole distortion: near poles, enemies with
+      // the same latitude but different longitude have large UV distance but tiny world
+      // distance — they should be visible, not dimmed.
       {
         const euRaw = Math.abs(enemy.surfacePosition.u - playerU);
         const evRaw = Math.abs(enemy.surfacePosition.v - playerV);
@@ -194,18 +205,22 @@ export class RenderLoop {
         }
         visibility = Math.min(visibility, surfaceVis);
 
-        // (b) Proximity override: enemies very close on the surface are always visible,
+        // (b) Proximity override: enemies very close in world space are always visible,
         // overriding depth-occlusion. Applied after min-clamp so it can only raise visibility.
+        // Uses world-space (Euclidean 3D) distance rather than UV distance to correctly
+        // handle pole-distorted UV coordinates — near poles, enemies with large UV distance
+        // may be physically adjacent (tiny world distance) and should stay visible.
         // EXCEPTION: suppress the override when player and enemy are on opposite wall sides
         // (e.g., outer vs inner tunnel wall on cube-tunnel). These entities are physically
-        // separated by the wall — their UV distance is small only because the lip transition
-        // is narrow, not because they're actually close together.
+        // separated by the wall regardless of world distance.
         const oppositeWalls = ctx.surface.areOnOppositeWallSides(playerV, enemy.surfacePosition.v);
         if (!oppositeWalls) {
-          if (uvDist <= PROXIMITY_NEAR_UV) {
+          const worldDistSq = enemy.position.distanceToSquared(playerPos);
+          if (worldDistSq <= PROXIMITY_NEAR_WORLD_SQ) {
             visibility = Math.max(visibility, 1.0);
-          } else if (uvDist <= PROXIMITY_FADE_UV) {
-            const t = (uvDist - PROXIMITY_NEAR_UV) / (PROXIMITY_FADE_UV - PROXIMITY_NEAR_UV);
+          } else if (worldDistSq <= PROXIMITY_FADE_WORLD_SQ) {
+            const worldDist = Math.sqrt(worldDistSq);
+            const t = (worldDist - PROXIMITY_NEAR_WORLD) / (PROXIMITY_FADE_WORLD - PROXIMITY_NEAR_WORLD);
             visibility = Math.max(visibility, 1.0 - t);
           }
         }
