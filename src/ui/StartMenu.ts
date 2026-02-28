@@ -1,5 +1,5 @@
 import { SurfaceType } from '../surfaces/SurfaceFactory';
-import { t } from '../i18n';
+import { t, onLanguageChange } from '../i18n';
 import { LanguageSelector } from './LanguageSelector';
 import { MapSize, getDefaultMapSizeForSurface, MAP_SIZE_LABELS } from '../core/MapSize';
 import { ADVENTURE_LEVELS } from '../core/LevelData';
@@ -74,6 +74,7 @@ export class StartMenu {
 
   // Language selector
   private _languageSelector: LanguageSelector | null = null;
+  private _langUnsub: (() => void) | null = null;
 
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
@@ -107,6 +108,22 @@ export class StartMenu {
       this._languageSelector = new LanguageSelector(langMount);
       this._languageSelector.render();
     }
+
+    // Re-render menu text when language changes (same pattern as PauseMenu)
+    this._langUnsub = onLanguageChange(() => {
+      this.container.innerHTML = this.createMenuHTML();
+      this.attachEventListeners();
+      // Re-mount LanguageSelector into the new DOM
+      if (this._languageSelector) {
+        this._languageSelector.dispose();
+        this._languageSelector = null;
+      }
+      const mount = this.container.querySelector<HTMLElement>('#start-lang-selector');
+      if (mount) {
+        this._languageSelector = new LanguageSelector(mount);
+        this._languageSelector.render();
+      }
+    });
 
     // Debug OBJ panel — instantiate on demand (F4 key)
     // Lazy-init: created when user presses F4, not at startup
@@ -2393,6 +2410,11 @@ export class StartMenu {
     this.container.remove();
     if (this.styleElement) {
       this.styleElement.remove();
+    }
+    // Clean up language change subscription
+    if (this._langUnsub) {
+      this._langUnsub();
+      this._langUnsub = null;
     }
     // Clean up language selector
     if (this._languageSelector) {
