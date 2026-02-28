@@ -1176,6 +1176,15 @@ async function main() {
   });
   pauseMenu.onResume(() => {
     game.resume(); // Resync game clock after host resumes via PauseMenu button
+    // Fix: re-enable joystick + clear localMenuOpen so mobile can move after resuming.
+    // Without this, gamePaused stays true (joystick disabled) after clicking Resume,
+    // because showPauseOverlay(false) is skipped when isPaused was already updated
+    // inside networkCallbacks.onPause(). localMenuOpen must also be cleared for
+    // non-host players whose local menu path bypasses hideLocalMenu().
+    localMenuOpen = false;
+    if (input instanceof TouchInput && currentRoomPhase === 'playing') {
+      input.setGamePaused(false);
+    }
   });
   pauseMenu.onLookMode(() => {
     // Non-host player entered look mode: menu is closed but game stays paused
@@ -2595,7 +2604,9 @@ async function main() {
         resetGameEntities();
         // initSurface at the top of onStateChange already handles surface reinit
         // (called with state.surfaceType and confirmedFromServer=true).
-        if (input instanceof TouchInput) input.setGamePaused(false);
+        // Fix: respect isPaused so joining mid-paused-game doesn't enable joystick
+        // while pause menu is shown (which blocks scroll via preventDefault).
+        if (input instanceof TouchInput) input.setGamePaused(isPaused);
       } else if (newPhase === 'playing' && currentRoomPhase === 'lobby') {
         // Initial game start: lobby → playing.
         // Reset entities (safe to call even when empty — clears any stale state).
@@ -2609,7 +2620,9 @@ async function main() {
         resetGameEntities();
         gameOverScreen.hide();
         votingScreen.hide();
-        if (input instanceof TouchInput) input.setGamePaused(false);
+        // Fix: respect isPaused so joining mid-paused-game doesn't enable joystick
+        // while pause menu is shown (which blocks scroll via preventDefault).
+        if (input instanceof TouchInput) input.setGamePaused(isPaused);
       } else if (newPhase === 'lobby') {
         votingScreen.hide();
         gameOverScreen.hide();
