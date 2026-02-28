@@ -1809,12 +1809,16 @@ export class GameRoom extends Room<GameState> {
             player.alive = false;
             this.logger.log(`[GameRoom] ${player.name} died!`);
           } else {
-            // Stay at hit location, grant 2s invincibility. No position teleport —
-            // the +0.5 "opposite side" respawn was the primary cause of the
-            // "players teleporting to arbitrary positions" bug (s31-mp-teleporting-randomly).
-            // The invincibility window gives the player time to move away from enemies.
+            // S41-03: Respawn at a random location away from death spot and enemies.
+            // Old S31 fix kept player at hit location; user now explicitly wants
+            // respawn elsewhere so they don't get immediately killed again.
+            const deathU = player.surfaceU;
+            const deathV = player.surfaceV;
+            const respawnPos = this.getPlayerRespawnPosition(deathU, deathV);
+            player.surfaceU = respawnPos.u;
+            player.surfaceV = respawnPos.v;
             this.playerInvincibility.set(player.id, 2.0);
-            this.logger.log(`[GameRoom] ${player.name} hit, ${player.lives} lives remaining (invincible 2s)`);
+            this.logger.log(`[GameRoom] ${player.name} hit, ${player.lives} lives remaining — respawned at (${respawnPos.u.toFixed(2)}, ${respawnPos.v.toFixed(2)}) (invincible 2s)`);
           }
         }
       });
@@ -2153,6 +2157,50 @@ export class GameRoom extends Room<GameState> {
     const u = 0.1 + Math.random() * 0.8;  // stay away from exact 0/1 seam
     const v = vMin + Math.random() * (vMax - vMin);
     return { u, v };
+  }
+
+  /**
+   * Pick a respawn position for a player that just lost a life (S41-03).
+   * Returns a UV position that is at least MIN_RESPAWN_DIST away from the
+   * death position and clears active enemies by ENEMY_CLEAR_DIST.
+   * Falls back to an offset from the death position if 20 attempts fail.
+   */
+  private getPlayerRespawnPosition(deathU: number, deathV: number): { u: number; v: number } {
+    const vMin = 0.05;
+    const vMax = 0.95;
+    const MIN_RESPAWN_DIST = 0.3;  // at least 0.3 UV units from death position
+    const ENEMY_CLEAR_DIST = 0.1;  // stay at least 0.1 UV units from enemies
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const u = 0.1 + Math.random() * 0.8;
+      const v = vMin + Math.random() * (vMax - vMin);
+
+      // Wrap-aware distance from death position
+      let du = Math.abs(u - deathU);
+      if (du > 0.5) du = 1 - du;
+      const dv = Math.abs(v - deathV);
+      if (Math.sqrt(du * du + dv * dv) < MIN_RESPAWN_DIST) continue;
+
+      // Stay clear of all alive enemies
+      let clearOfEnemies = true;
+      this.state.enemies.forEach((enemy) => {
+        if (!enemy.alive) return;
+        let edu = Math.abs(u - enemy.surfaceU);
+        if (edu > 0.5) edu = 1 - edu;
+        const edv = Math.abs(v - enemy.surfaceV);
+        if (Math.sqrt(edu * edu + edv * edv) < ENEMY_CLEAR_DIST) {
+          clearOfEnemies = false;
+        }
+      });
+      if (!clearOfEnemies) continue;
+
+      return { u, v };
+    }
+
+    // Fallback: place 0.4–0.5 UV units away in U direction, random V
+    const fallbackU = ((deathU + 0.4 + Math.random() * 0.1) % 1 + 1) % 1;
+    const fallbackV = vMin + Math.random() * (vMax - vMin);
+    return { u: fallbackU, v: fallbackV };
   }
 
   /**

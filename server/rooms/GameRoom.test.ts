@@ -1361,12 +1361,13 @@ interface MockEnemy {
 /**
  * Mirrors the player-enemy collision logic from GameRoom.checkCollisions().
  * Returns the updated player state and whether invincibility was granted.
- * This is the FIXED version (no teleport on hit).
+ * S41-03: on hit with lives remaining, player is moved to respawnPos.
  */
 function processPlayerEnemyCollision(
   player: MockPlayer,
   enemy: MockEnemy,
   invincibility: number,
+  respawnPos?: { u: number; v: number },
 ): { player: MockPlayer; invincible: boolean } {
   if (!player.alive || !enemy.alive) {
     return { player, invincible: false };
@@ -1393,22 +1394,29 @@ function processPlayerEnemyCollision(
     return { player: updated, invincible: false };
   }
 
-  // Fixed: NO position teleport — stay at hit location, just grant invincibility.
-  // (Old code did: player.surfaceU = (player.surfaceU + 0.5) % 1; etc.)
+  // S41-03: Teleport to respawn position (away from death spot).
+  if (respawnPos) {
+    updated.surfaceU = respawnPos.u;
+    updated.surfaceV = respawnPos.v;
+  }
   return { player: updated, invincible: true };
 }
 
-describe('S31: Player respawn — no teleport on hit (s31-mp-teleporting-randomly)', () => {
-  it('player position UNCHANGED after hit with lives remaining (regression guard)', () => {
+// Note: S41-03 supersedes the S31 "no teleport" fix. The user now explicitly
+// wants respawn elsewhere on hit. The old +0.5 arithmetic was replaced with
+// getPlayerRespawnPosition() which picks a random safe location.
+describe('S31/S41-03: Player respawn on hit (s31-mp-teleporting-randomly superseded by s41-03)', () => {
+  it('player position is updated to respawn position after hit with lives remaining', () => {
     const player: MockPlayer = {
       id: 'p1', surfaceU: 0.3, surfaceV: 0.4, lives: 3, alive: true, multiplier: 2,
     };
     const enemy: MockEnemy = { alive: true, surfaceU: 0.31, surfaceV: 0.41 }; // within 0.04 range
-    const { player: updated } = processPlayerEnemyCollision(player, enemy, 0);
+    const respawnPos = { u: 0.8, v: 0.7 }; // simulated getPlayerRespawnPosition result
+    const { player: updated } = processPlayerEnemyCollision(player, enemy, 0, respawnPos);
 
-    // Position must be unchanged — no teleport to (U+0.5, V+0.5)
-    expect(updated.surfaceU).toBe(0.3);
-    expect(updated.surfaceV).toBe(0.4);
+    // S41-03: player IS moved to respawn position (far from death spot)
+    expect(updated.surfaceU).toBe(0.8);
+    expect(updated.surfaceV).toBe(0.7);
   });
 
   it('player loses a life on hit', () => {
@@ -1457,15 +1465,18 @@ describe('S31: Player respawn — no teleport on hit (s31-mp-teleporting-randoml
     expect(invincible).toBe(true); // still invincible
   });
 
-  it('OLD behavior (teleport) would have changed position — documented for reference', () => {
-    // This test documents the OLD (broken) behavior for clarity.
-    // Old code: player.surfaceU = (player.surfaceU + 0.5) % 1;
-    const oldU = (0.3 + 0.5) % 1; // = 0.8
-    const oldV = (0.4 + 0.5) % 1; // = 0.9
-    // Old code would have moved player to (0.8, 0.9) — far from hit location (0.3, 0.4).
-    // New code keeps player at (0.3, 0.4). Verify these are different positions.
-    expect(oldU).not.toBe(0.3);
-    expect(oldV).not.toBe(0.4);
+  it('respawn position is distinct from death position', () => {
+    // S41-03: the respawn position must be different from the death position.
+    // The getPlayerRespawnPosition() method guarantees MIN_RESPAWN_DIST=0.3 UV units.
+    const deathU = 0.3;
+    const deathV = 0.4;
+    const respawnPos = { u: 0.8, v: 0.7 }; // simulated result
+    // Verify wrap-aware UV distance is >= 0.3
+    let du = Math.abs(respawnPos.u - deathU);
+    if (du > 0.5) du = 1 - du;
+    const dv = Math.abs(respawnPos.v - deathV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    expect(dist).toBeGreaterThanOrEqual(0.3);
   });
 });
 
