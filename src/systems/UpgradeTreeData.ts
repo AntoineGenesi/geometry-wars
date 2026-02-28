@@ -44,6 +44,18 @@ export interface UpgradeNode {
   y?: number;
 }
 
+/**
+ * A cross-branch skip connection lets a player unlock `toId` using `fromId`
+ * as an alternative prerequisite (instead of the normal sequential parent).
+ * Visually rendered as a dashed golden line.
+ */
+export interface SkipConnection {
+  /** Source node ID — must be fully unlocked to activate this skip. */
+  fromId: string;
+  /** Target node ID — can be unlocked via this skip (alternative to normal parent). */
+  toId: string;
+}
+
 export interface UpgradeTree {
   weaponType: WeaponType;
   branchAName: string;
@@ -59,6 +71,12 @@ export interface UpgradeTree {
    */
   svgHeight?: number;
   nodes: UpgradeNode[];
+  /**
+   * Optional cross-branch skip connections. A skip allows unlocking `toId`
+   * without going through its normal prerequisite chain, as long as `fromId`
+   * is fully unlocked.
+   */
+  skipConnections?: SkipConnection[];
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +203,13 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.Standard, 'br', 8, 'Armor-pierce',   'Ignores 50% enemy damage resistance',                   { parentId: 'standard_br_7', cost: 2, x: 264, y: 285 }),
       node(WeaponType.Standard, 'br', 9, 'Death bolt',     'Each bolt has 5% chance to instant-kill enemy',         { parentId: 'standard_br_8', cost: 2, x: 256, y: 318 }),
       node(WeaponType.Standard, 'br', 10,'Annihilator',    '+150% damage; kills trigger mini-shockwave',            { parentId: 'standard_br_9', cost: 2, x: 266, y: 352 }),
+    ],
+    // Cross-branch shortcuts: Fire Rate trunk tier 2 → Damage trunk tier 3 (and vice versa).
+    // Unlocking Triple spray (a_2) grants shortcut access to Quad lance (b_3),
+    // and unlocking Triple needle (b_2) grants shortcut to Quad burst (a_3).
+    skipConnections: [
+      { fromId: 'standard_a_2', toId: 'standard_b_3' },
+      { fromId: 'standard_b_2', toId: 'standard_a_3' },
     ],
   },
 
@@ -439,4 +464,53 @@ export function getBranchNodes(weaponType: WeaponType, branch: UpgradeBranch): U
  */
 export function getNodeMaxPoints(node: UpgradeNode): number {
   return node.maxPoints ?? 1;
+}
+
+/**
+ * Returns the prerequisite node for a given node:
+ * - If the node has an explicit `parentId`, returns that parent.
+ * - Otherwise, returns the previous node (nodeIndex - 1) in the same branch.
+ * - Returns null for root nodes (nodeIndex === 1 with no parentId).
+ */
+export function getImplicitParent(node: UpgradeNode, tree: UpgradeTree): UpgradeNode | null {
+  if (node.parentId) {
+    return tree.nodes.find(n => n.id === node.parentId) ?? null;
+  }
+  if (node.nodeIndex <= 1) return null;
+  const prevId = `${tree.weaponType}_${node.branch}_${node.nodeIndex - 1}`;
+  return tree.nodes.find(n => n.id === prevId) ?? null;
+}
+
+/**
+ * Duck-typed interface for the point store used in prerequisite checks.
+ * Avoids importing MasteryPointStore to prevent circular dependencies.
+ */
+interface PointLookup {
+  getNodePoints(id: string): number;
+}
+
+/**
+ * Returns true if the node's prerequisite is met:
+ * - Root nodes (no sequential parent) are always accessible.
+ * - Non-root nodes require their implicit parent to be fully invested.
+ * - OR: any skip connection targeting this node has its source fully invested.
+ */
+export function isPrerequisiteMet(node: UpgradeNode, tree: UpgradeTree, ps: PointLookup): boolean {
+  const parent = getImplicitParent(node, tree);
+  if (!parent) return true; // Root node — always accessible
+
+  // Normal prerequisite: parent is fully invested
+  if (ps.getNodePoints(parent.id) >= getNodeMaxPoints(parent)) return true;
+
+  // Skip connections: any skip source fully invested grants access to this node
+  if (tree.skipConnections) {
+    for (const skip of tree.skipConnections) {
+      if (skip.toId === node.id) {
+        const from = tree.nodes.find(n => n.id === skip.fromId);
+        if (from && ps.getNodePoints(from.id) >= getNodeMaxPoints(from)) return true;
+      }
+    }
+  }
+
+  return false;
 }

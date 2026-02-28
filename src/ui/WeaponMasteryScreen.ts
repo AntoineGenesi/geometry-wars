@@ -17,7 +17,15 @@
 import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
 import { MasteryStore } from '../systems/MasteryStore';
 import { MasteryPointStore } from '../systems/MasteryPointStore';
-import { UPGRADE_TREES, UpgradeNode, getNodeMaxPoints } from '../systems/UpgradeTreeData';
+import {
+  UPGRADE_TREES,
+  UpgradeNode,
+  UpgradeTree,
+  getNodeMaxPoints,
+  getNodeById,
+  getImplicitParent,
+  isPrerequisiteMet,
+} from '../systems/UpgradeTreeData';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -309,11 +317,19 @@ function injectStyles(): void {
     }
     #weapon-mastery-screen .wms-node:hover { transform: translate(-50%, -50%) scale(1.2); }
 
-    /* locked — very dim */
+    /* locked — very dim (no points or prereq not met) */
     #weapon-mastery-screen .wms-node--locked {
       background: rgba(255,255,255,0.04);
       border: 2px solid rgba(255,255,255,0.1);
       color: rgba(255,255,255,0.2);
+    }
+
+    /* prereq-locked — prerequisite not met; slightly warmer tint to distinguish */
+    #weapon-mastery-screen .wms-node--prereq-locked {
+      background: rgba(255,100,50,0.04);
+      border: 2px solid rgba(255,100,50,0.15);
+      color: rgba(255,150,100,0.25);
+      cursor: not-allowed;
     }
 
     /* affordable — dim with gold ring */
@@ -433,6 +449,12 @@ function injectStyles(): void {
     #wms-tooltip .wms-tt-cost {
       font-size: 10px;
       color: #ffcc00;
+      margin-top: 6px;
+      letter-spacing: 1px;
+    }
+    #wms-tooltip .wms-tt-prereq {
+      font-size: 10px;
+      color: #ff8855;
       margin-top: 6px;
       letter-spacing: 1px;
     }
@@ -666,24 +688,52 @@ export class WeaponMasteryScreen {
       posMap.set(n.id, this._getNodePos(n));
     }
 
-    const lineStyle = (unlocked: boolean) =>
-      unlocked
-        ? `stroke="${color}" stroke-opacity="0.5" filter="url(#glow-${weaponType})"`
-        : 'stroke="rgba(255,255,255,0.08)"';
+    /**
+     * 3-state line style:
+     *  activated — child node is fully unlocked → bright glow
+     *  possible  — prerequisite met but child not yet unlocked → faint colored
+     *  locked    — prerequisite not met → very faint white
+     */
+    const lineStyle = (childUnlocked: boolean, prereqMet: boolean): string => {
+      if (childUnlocked) return `stroke="${color}" stroke-opacity="0.85" filter="url(#glow-${weaponType})"`;
+      if (prereqMet)     return `stroke="${color}" stroke-opacity="0.22"`;
+      return 'stroke="rgba(255,255,255,0.06)"';
+    };
 
     // Build SVG lines: each node connects to its parent (or to center if no parentId)
     const lines: string[] = [];
     for (const n of tree.nodes) {
       const pos = posMap.get(n.id)!;
-      const unlocked = ps.isUnlocked(n.id);
+      const childUnlocked = ps.isUnlocked(n.id);
+      // A line is "possible" if the prerequisite for the child is met
+      const prereqMet = isPrerequisiteMet(n, tree, ps);
+      const attribs = lineStyle(childUnlocked, prereqMet);
       if (n.parentId) {
         const parentPos = posMap.get(n.parentId);
         if (parentPos) {
-          lines.push(`<line x1="${parentPos.x}" y1="${parentPos.y}" x2="${pos.x}" y2="${pos.y}" stroke-width="1.5" ${lineStyle(unlocked)}/>`);
+          lines.push(`<line x1="${parentPos.x}" y1="${parentPos.y}" x2="${pos.x}" y2="${pos.y}" stroke-width="1.5" ${attribs}/>`);
         }
       } else {
         // Root node → connect to center
-        lines.push(`<line x1="${CENTER_X}" y1="${CENTER_Y}" x2="${pos.x}" y2="${pos.y}" stroke-width="1.5" ${lineStyle(unlocked)}/>`);
+        lines.push(`<line x1="${CENTER_X}" y1="${CENTER_Y}" x2="${pos.x}" y2="${pos.y}" stroke-width="1.5" ${attribs}/>`);
+      }
+    }
+
+    // Skip connection lines — dashed golden lines for cross-branch shortcuts
+    const skipLines: string[] = [];
+    if (tree.skipConnections) {
+      for (const skip of tree.skipConnections) {
+        const fromPos = posMap.get(skip.fromId);
+        const toPos = posMap.get(skip.toId);
+        if (!fromPos || !toPos) continue;
+        const fromUnlocked = ps.isUnlocked(skip.fromId);
+        const toUnlocked = ps.isUnlocked(skip.toId);
+        const skipOpacity = fromUnlocked && toUnlocked ? '0.85' : fromUnlocked ? '0.45' : '0.12';
+        const skipFilter = fromUnlocked && toUnlocked ? ` filter="url(#glow-${weaponType})"` : '';
+        skipLines.push(
+          `<line data-skip="true" x1="${fromPos.x}" y1="${fromPos.y}" x2="${toPos.x}" y2="${toPos.y}"` +
+          ` stroke-width="1" stroke-dasharray="5,3" stroke="#d4aa40" stroke-opacity="${skipOpacity}"${skipFilter}/>`
+        );
       }
     }
 
@@ -700,11 +750,15 @@ export class WeaponMasteryScreen {
       const pos = posMap.get(n.id)!;
       const leftPct = ((pos.x / SVG_W) * 100).toFixed(2);
       const topPct = ((pos.y / SVG_H) * 100).toFixed(2);
-      const state = this._nodeState(n, ps, hasPoints, weaponType);
+      const state = this._nodeState(n, ps, hasPoints, weaponType, tree);
       const stateClass = `wms-node--${state}`;
       const label = this._nodeLabel(n, ps);
       const maxPts = getNodeMaxPoints(n);
       const cost = n.cost ?? 1;
+
+      // Prereq info for tooltip
+      const implicitParent = getImplicitParent(n, tree);
+      const prereqName = implicitParent ? this._esc(implicitParent.description) : '';
 
       nodes.push(`
         <div class="wms-node ${stateClass}"
@@ -716,13 +770,14 @@ export class WeaponMasteryScreen {
           data-kill-threshold="${n.killThreshold}"
           data-max-points="${maxPts}"
           data-cost="${cost}"
+          data-prereq-name="${prereqName}"
         >${label}</div>
       `);
     }
 
     return `
       <div class="wms-constellation-area" data-weapon-type="${weaponType}" style="height: ${areaHeight}px">
-        <svg class="wms-constellation-svg" viewBox="0 0 ${SVG_W} ${SVG_H}" preserveAspectRatio="xMidYMid meet">
+        <svg class="wms-constellation-svg" viewBox="0 0 ${SVG_W} ${SVG_H}" preserveAspectRatio="none">
           <defs>
             <filter id="glow-${weaponType}" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="2.5" result="blur"/>
@@ -730,6 +785,7 @@ export class WeaponMasteryScreen {
             </filter>
           </defs>
           ${lines.join('\n          ')}
+          ${skipLines.join('\n          ')}
           ${centerDot}
         </svg>
         ${nodes.join('\n        ')}
@@ -768,7 +824,8 @@ export class WeaponMasteryScreen {
     ps: MasteryPointStore,
     hasPoints: boolean,
     weaponType?: WeaponType,
-  ): 'active-this-match' | 'unlocked-inactive' | 'unlocked' | 'partial' | 'affordable' | 'locked' {
+    tree?: UpgradeTree | null,
+  ): 'active-this-match' | 'unlocked-inactive' | 'unlocked' | 'partial' | 'affordable' | 'prereq-locked' | 'locked' {
     const nodeId = node.id;
     const maxPts = getNodeMaxPoints(node);
     const current = ps.getNodePoints(nodeId);
@@ -787,7 +844,10 @@ export class WeaponMasteryScreen {
       return 'unlocked';
     }
 
-    // Not yet unlocked — check if player can afford this node's cost
+    // Not yet unlocked — check prerequisites first
+    if (tree && !isPrerequisiteMet(node, tree, ps)) return 'prereq-locked';
+
+    // Prerequisite met — check if player can afford this node's cost
     const cost = node.cost ?? 1;
     if (ps.availablePoints >= cost) return 'affordable';
     return 'locked';
@@ -829,9 +889,10 @@ export class WeaponMasteryScreen {
     const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
     const cost = parseInt(nodeEl.dataset.cost ?? '1', 10);
 
-    // Reconstruct a minimal UpgradeNode for state calculation
-    const minimalNode = { id: nodeId, maxPoints, cost } as UpgradeNode;
-    const state = this._nodeState(minimalNode, ps, hasPoints, weaponType);
+    // Look up full node for prerequisite checks; fall back to minimal node
+    const fullNode = getNodeById(nodeId) ?? ({ id: nodeId, maxPoints, cost } as UpgradeNode);
+    const tree = weaponType ? (UPGRADE_TREES[weaponType] ?? null) : null;
+    const state = this._nodeState(fullNode, ps, hasPoints, weaponType, tree);
 
     nodeEl.className = `wms-node wms-node--${state}`;
     nodeEl.dataset.nodeState = state;
@@ -854,16 +915,46 @@ export class WeaponMasteryScreen {
     if (!svg) return;
 
     const tree = UPGRADE_TREES[weaponType];
-    const lines = svg.querySelectorAll<SVGLineElement>('line');
 
-    // Lines are added in the same order as tree.nodes iteration in _buildConstellation
+    // Regular lines (no data-skip attribute), indexed by tree.nodes order
+    const regularLines = Array.from(svg.querySelectorAll<SVGLineElement>('line:not([data-skip])'));
     tree.nodes.forEach((n, i) => {
-      const lineEl = lines[i];
+      const lineEl = regularLines[i];
       if (!lineEl) return;
-      const unlocked = ps.isUnlocked(n.id);
-      lineEl.setAttribute('stroke', unlocked ? color : 'rgba(255,255,255,0.08)');
-      lineEl.setAttribute('stroke-opacity', unlocked ? '0.5' : '1');
+      const childUnlocked = ps.isUnlocked(n.id);
+      const prereqMet = isPrerequisiteMet(n, tree, ps);
+      if (childUnlocked) {
+        lineEl.setAttribute('stroke', color);
+        lineEl.setAttribute('stroke-opacity', '0.85');
+        lineEl.setAttribute('filter', `url(#glow-${weaponType})`);
+      } else if (prereqMet) {
+        lineEl.setAttribute('stroke', color);
+        lineEl.setAttribute('stroke-opacity', '0.22');
+        lineEl.removeAttribute('filter');
+      } else {
+        lineEl.setAttribute('stroke', 'rgba(255,255,255,0.06)');
+        lineEl.setAttribute('stroke-opacity', '1');
+        lineEl.removeAttribute('filter');
+      }
     });
+
+    // Skip connection lines
+    if (tree.skipConnections) {
+      const skipLines = Array.from(svg.querySelectorAll<SVGLineElement>('line[data-skip]'));
+      tree.skipConnections.forEach((skip, i) => {
+        const lineEl = skipLines[i];
+        if (!lineEl) return;
+        const fromUnlocked = ps.isUnlocked(skip.fromId);
+        const toUnlocked = ps.isUnlocked(skip.toId);
+        const opacity = fromUnlocked && toUnlocked ? '0.85' : fromUnlocked ? '0.45' : '0.12';
+        lineEl.setAttribute('stroke-opacity', opacity);
+        if (fromUnlocked && toUnlocked) {
+          lineEl.setAttribute('filter', `url(#glow-${weaponType})`);
+        } else {
+          lineEl.removeAttribute('filter');
+        }
+      });
+    }
   }
 
   // ── Event Listeners ─────────────────────────────────────────────────────────
@@ -942,6 +1033,7 @@ export class WeaponMasteryScreen {
 
     // Left-click ONLY adds points — never refunds (right-click is for refunds)
     // States that allow spending: affordable, partial (multi-level, not yet at max)
+    // prereq-locked and locked do NOT allow spending
     const canSpend = rawState === 'affordable' || rawState === 'partial';
 
     if (canSpend) {
@@ -995,8 +1087,9 @@ export class WeaponMasteryScreen {
       const weaponType = nodeId.split('_')[0] as WeaponType | undefined;
       const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
       const cost = parseInt(nodeEl.dataset.cost ?? '1', 10);
-      const minimalNode = { id: nodeId, maxPoints, cost } as UpgradeNode;
-      const state = this._nodeState(minimalNode, ps, hasPoints, weaponType);
+      const fullNode = getNodeById(nodeId) ?? ({ id: nodeId, maxPoints, cost } as UpgradeNode);
+      const tree = weaponType ? (UPGRADE_TREES[weaponType] ?? null) : null;
+      const state = this._nodeState(fullNode, ps, hasPoints, weaponType, tree);
       nodeEl.className = `wms-node wms-node--${state}`;
       nodeEl.dataset.nodeState = state;
       if (maxPoints > 1) {
@@ -1038,6 +1131,10 @@ export class WeaponMasteryScreen {
     } else if (state === 'unlocked') {
       const rankStr = maxPoints > 1 ? ` (Rank ${currentPoints}/${maxPoints})` : '';
       costHtml = `<div class="wms-tt-cost">Unlocked${rankStr} &nbsp;·&nbsp; Right-click to refund</div>`;
+    } else if (state === 'prereq-locked') {
+      const prereqName = nodeEl.dataset.prereqName ?? '';
+      const prereqText = prereqName ? `Unlock <em>${prereqName}</em> first` : 'Unlock the previous node first';
+      costHtml = `<div class="wms-tt-prereq">&#x26A0; ${prereqText}</div>`;
     } else {
       const costStr = cost > 1 ? `${cost} points` : '1 point';
       costHtml = `<div class="wms-tt-cost">Need ${costStr} to unlock &nbsp;(have: ${ps.availablePoints})</div>`;
