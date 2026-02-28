@@ -167,8 +167,20 @@ export class CameraController {
     this._targetCamPos.copy(position).add(this._camOffset);
     this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
 
+    // Pole inversion protection for UV-based frames (multiplayer camera).
+    // On sphere/peanut, tangentV (used as bitangent) can flip ~180° when the
+    // player's UV longitude (U) jumps by ~0.5 after crossing a pole — the UV
+    // parameterisation wraps and the tangent direction reverses.  Without this
+    // check the camera.up lerp traverses 180°, producing a visible inversion.
+    // Compare the new target against the previous frame's target (this.targetUp);
+    // if they are more than 90° apart, negate to maintain continuity.
+    this._camUp.normalize();
+    if (this.targetUp.dot(this._camUp) < 0) {
+      this._camUp.negate();
+    }
+
     // Store target up for external reference
-    this.targetUp.copy(this._camUp).normalize();
+    this.targetUp.copy(this._camUp);
 
     // lookAt FIRST, then lerp up-vector (same order as update())
     (this.camera as THREE.PerspectiveCamera).lookAt(position);
