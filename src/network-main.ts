@@ -38,7 +38,7 @@ import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow
 import { InputManager } from './input/InputManager';
 import { isMobile } from './core/MobileDetector';
 import { TouchInput } from './input/TouchInput';
-import { MeshSurface } from './surfaces/MeshSurface';
+import { MeshSurface, FacePosition } from './surfaces/MeshSurface';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
 import { KillLog } from './ui/KillLog';
@@ -188,6 +188,9 @@ const _netTempPos = new THREE.Vector3();
 const _netTempDir = new THREE.Vector3();
 const _netTempNormal = new THREE.Vector3();
 const _bulletTmpColor = new THREE.Color();
+// Pre-allocated temp vectors for geodesic bullet rendering (dual-barrel offset)
+const _bulletRight = new THREE.Vector3();
+const _bulletOffsetPos = new THREE.Vector3();
 
 // Pre-allocated temp vectors for camera-frame aim-angle correction (s40-03)
 const _aimCamRight = new THREE.Vector3();
@@ -560,6 +563,7 @@ async function main() {
     enemyGlowTrails.clear();
     remotePlayerTargetUV.clear();
     bulletTargetUV.clear();
+    bulletGeodesicState.clear();
     geomTargetUV.clear();
     surface = null;
     meshSurface = null;
@@ -897,6 +901,10 @@ async function main() {
   // instead of snapping in onStateChange (was 30Hz, now 60Hz but still benefits
   // from smooth lerp). Same pattern as enemyTargetUV.
   const bulletTargetUV = new Map<string, { u: number; v: number; dirX: number; dirY: number }>();
+  // Client-side geodesic state for visual bullet rendering.
+  // Server uses UV-based movement (Christoffel stepping) for authoritative hit detection.
+  // Client uses FaceWalker geodesics so bullets visually follow great circles on every surface.
+  const bulletGeodesicState = new Map<string, { facePos: FacePosition, dirWorld: THREE.Vector3 }>();
 
   // -- Geom tracking --
   const geomIdToIndex = new Map<string, number>();
@@ -1811,10 +1819,13 @@ async function main() {
     // Clear all active bullets
     bulletIdToIndex.forEach((idx, id) => {
       bulletPool.kill(idx);
+      bulletInstanceManager.removeBullet(id + '_l');
+      bulletInstanceManager.removeBullet(id + '_r');
       bulletInstanceManager.removeBullet(id);
     });
     bulletIdToIndex.clear();
     bulletTargetUV.clear();
+    bulletGeodesicState.clear();
     bulletInstanceIds.clear();
     // Safety: clear the entire bullet pool to ensure no orphaned alive slots.
     // This guards against any state desync between bulletIdToIndex and the pool.
@@ -2322,6 +2333,25 @@ async function main() {
           const ownerPlayer = state.players.get(bullet.ownerId);
           const ownerWeapon = SERVER_TO_WEAPON_TYPE[ownerPlayer?.weaponType ?? 'standard'] ?? WeaponType.Standard;
           bulletWeaponType.set(bullet.id, ownerWeapon);
+
+          // Initialize geodesic face position for client-side geodesic rendering.
+          // Server uses UV Christoffel stepping; client uses FaceWalker for true geodesics.
+          if (meshSurface && surface) {
+            const sp = surface.getPoint(bullet.x, bullet.y);
+            const worldPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+            const closest = meshSurface.closestPointOnSurface(worldPos);
+            if (closest) {
+              const facePos = meshSurface.initGeodesicPosition(closest.point, closest.faceIndex);
+              // Convert UV-space direction to world-space using surface tangent frame.
+              // Apply same torus dirX negation as rendering for consistency.
+              const bDirX = lastCreatedSurfaceType === 'torus' ? -bullet.dirX : bullet.dirX;
+              const dirWorld = new THREE.Vector3()
+                .addScaledVector(sp.tangentU, bDirX)
+                .addScaledVector(sp.tangentV, bullet.dirY)
+                .normalize();
+              bulletGeodesicState.set(bullet.id, { facePos, dirWorld });
+            }
+          }
         }
       }
     });
@@ -2332,8 +2362,11 @@ async function main() {
         bulletPool.kill(idx);
         bulletIdToIndex.delete(id);
         bulletTargetUV.delete(id);
+        bulletGeodesicState.delete(id);
         bulletWeaponType.delete(id);
-        // Remove from instanced rendering
+        // Remove from instanced rendering (standard weapon renders 2 visual bullets: _l and _r)
+        bulletInstanceManager.removeBullet(id + '_l');
+        bulletInstanceManager.removeBullet(id + '_r');
         bulletInstanceManager.removeBullet(id);
         bulletInstanceIds.delete(id);
       }
@@ -3716,69 +3749,99 @@ async function main() {
     });
 
     // -----------------------------------------------------------------------
-    // Per-frame interpolation for bullets (same pattern as enemies/players).
-    // Previously bullets were positioned directly in onStateChange, causing
-    // stutter at the patch rate. Now we lerp UV toward server targets every
-    // render frame for smooth bullet movement.
-    // See decisions/lan-deep-audit-2026-02-11.md #3.
-    // BulletInstanceManager provides GPU-instanced rendering (replaces flat lines).
+    // Per-frame bullet rendering via client-side FaceWalker geodesics.
+    // Previously used UV lerp toward server targets (Christoffel stepping) which
+    // caused bullets to follow coordinate lines instead of great circles.
+    // Now: client predicts bullet position using true geodesic face walking.
+    // Server still uses UV for authoritative hit detection (unchanged).
+    // BulletInstanceManager provides GPU-instanced rendering.
+    // Standard weapon: renders 2 parallel visual bullets (matching SP dual-barrel).
     // -----------------------------------------------------------------------
-    const BULLET_LERP = 0.5; // Phase 3: was 0.3; bullets move fast → snap quickly (7 frames to 99%)
-    bulletTargetUV.forEach((target, id) => {
-      const idx = bulletIdToIndex.get(id);
-      if (idx === undefined) return;
+    const BULLET_SPEED_WORLD = 4.0; // world units/sec — matches SP Bullet.ts speed
+    const DUAL_BARREL_OFFSET = 0.15; // perpendicular offset for standard weapon dual-barrel
+    bulletIdToIndex.forEach((idx, id) => {
       const b = bulletPool.getBulletData(idx);
       if (!b || !b.alive) return;
 
-      // Wrap-aware lerp: take shortest path around periodic UV boundaries.
-      // Server always wraps bullet.x (U) with wrapCoord() = ((v%1)+1)%1.
-      // Without this, bullets crossing the u=0/1 boundary lerp the WRONG way
-      // (long way around), causing visual teleportation. V wraps only for
-      // torus, pipe, mobius, cube-ring, cube-tunnel (mirrors server surfaceWrapsV()).
-      let du = target.u - b.surfaceU;
-      if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
-      const vWraps = lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pipe'
-        || lastCreatedSurfaceType === 'mobius' || lastCreatedSurfaceType === 'cube-ring'
-        || lastCreatedSurfaceType === 'cube-tunnel';
-      let dv = target.v - b.surfaceV;
-      if (vWraps) { if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1; }
-      b.surfaceU = ((b.surfaceU + du * BULLET_LERP) % 1 + 1) % 1;
-      b.surfaceV += dv * BULLET_LERP;
-      if (vWraps) b.surfaceV = ((b.surfaceV % 1) + 1) % 1;
+      const geoState = bulletGeodesicState.get(id);
+      if (meshSurface && geoState) {
+        // Advance bullet along geodesic (true great-circle path on any surface)
+        const dist = BULLET_SPEED_WORLD * lastFixedDt;
+        const result = meshSurface.moveGeodesic(geoState.facePos, geoState.dirWorld, dist);
+        geoState.facePos = result.facePosition;
+        geoState.dirWorld.copy(result.direction);
+        _netTempPos.copy(result.position).addScaledVector(result.normal, 0.02);
+        _netTempDir.copy(result.direction);
 
-      // Update 3D position from interpolated UV.
-      // Use transform() (= getTransform) instead of surf.getPoint() directly so the
-      // mapSizeScaleFactor is applied. surf.getPoint() returns unscaled local-space
-      // positions; transform() multiplies by scaleFactor, matching the visible surface
-      // geometry (surface.group.scale). Without this, bullets on SMALL/LARGE surfaces
-      // (e.g. cube = 0.75x) appear offset from the actual visible surface.
-      const bpt = transform(b.surfaceU, b.surfaceV);
-      _netTempPos.copy(bpt.position).addScaledVector(bpt.normal, 0.02);
-
-      // Compute world-space direction from UV-space direction components.
-      // bullet.dirX/dirY = cos/sin of aim angle (UV-space).
-      // Convert to world-space: dir = tangentU * dirX + tangentV * dirY.
-      // transform().tangent = tangentU, bitangent = tangentV.
-      // For torus: server now negates bullet.dirX in tryShoot() to match tangentU_negated.
-      // Client must also negate for visual rendering to stay in sync with server physics.
-      const bulletDirX = lastCreatedSurfaceType === 'torus' ? -target.dirX : target.dirX;
-      _netTempDir.set(0, 0, 0)
-        .addScaledVector(bpt.tangent, bulletDirX)
-        .addScaledVector(bpt.bitangent, target.dirY)
-        .normalize();
-
-      // Register or update with BulletInstanceManager for GPU-instanced rendering.
-      // Use the stored bulletWeaponType (populated from ownerId → player.weaponType
-      // in onStateChange) for exact visual attribution, covering all players.
-      if (!bulletInstanceIds.has(id)) {
+        // Determine weapon type for visual style
         const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
         const bulletVisual = weaponToBulletVisual(weapType);
         const weapColor = WEAPON_CONFIGS[weapType]?.color;
         const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
-        bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
+
+        if (weapType === WeaponType.Standard) {
+          // Dual-barrel: render 2 parallel visual bullets offset perpendicular to direction.
+          // Matches SP fireStandard() which fires leftOrigin and rightOrigin ±0.15 from aim.
+          _bulletRight.crossVectors(_netTempDir, result.normal).normalize();
+
+          const lId = id + '_l';
+          const rId = id + '_r';
+          _bulletOffsetPos.copy(_netTempPos).addScaledVector(_bulletRight, -DUAL_BARREL_OFFSET);
+          if (!bulletInstanceIds.has(id)) {
+            bulletInstanceManager.addBullet(lId, bulletVisual, _bulletOffsetPos, _netTempDir, color);
+          } else {
+            bulletInstanceManager.updateBullet(lId, _bulletOffsetPos, _netTempDir);
+          }
+          _bulletOffsetPos.copy(_netTempPos).addScaledVector(_bulletRight, DUAL_BARREL_OFFSET);
+          if (!bulletInstanceIds.has(id)) {
+            bulletInstanceManager.addBullet(rId, bulletVisual, _bulletOffsetPos, _netTempDir, color);
+          } else {
+            bulletInstanceManager.updateBullet(rId, _bulletOffsetPos, _netTempDir);
+          }
+        } else {
+          // Non-standard weapons: single visual bullet (spread, sniper, etc. handle their own layout)
+          if (!bulletInstanceIds.has(id)) {
+            bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
+          } else {
+            bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
+          }
+        }
         bulletInstanceIds.add(id);
       } else {
-        bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
+        // Fallback: UV lerp (for bullets without geodesic state — should not normally occur)
+        const target = bulletTargetUV.get(id);
+        if (!target) return;
+
+        const BULLET_LERP = 0.5;
+        let du = target.u - b.surfaceU;
+        if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
+        const vWraps = lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pipe'
+          || lastCreatedSurfaceType === 'mobius' || lastCreatedSurfaceType === 'cube-ring'
+          || lastCreatedSurfaceType === 'cube-tunnel';
+        let dv = target.v - b.surfaceV;
+        if (vWraps) { if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1; }
+        b.surfaceU = ((b.surfaceU + du * BULLET_LERP) % 1 + 1) % 1;
+        b.surfaceV += dv * BULLET_LERP;
+        if (vWraps) b.surfaceV = ((b.surfaceV % 1) + 1) % 1;
+
+        const bpt = transform(b.surfaceU, b.surfaceV);
+        _netTempPos.copy(bpt.position).addScaledVector(bpt.normal, 0.02);
+        const bulletDirX = lastCreatedSurfaceType === 'torus' ? -target.dirX : target.dirX;
+        _netTempDir.set(0, 0, 0)
+          .addScaledVector(bpt.tangent, bulletDirX)
+          .addScaledVector(bpt.bitangent, target.dirY)
+          .normalize();
+
+        if (!bulletInstanceIds.has(id)) {
+          const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
+          const bulletVisual = weaponToBulletVisual(weapType);
+          const weapColor = WEAPON_CONFIGS[weapType]?.color;
+          const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
+          bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
+          bulletInstanceIds.add(id);
+        } else {
+          bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
+        }
       }
     });
     // Flush bullet instance transforms to GPU
