@@ -294,81 +294,87 @@ export class StartMenu {
 
         <!-- Sub-panels (hidden by default, shown when button clicked) -->
         <div class="sub-panel adventure-section hidden" id="adventure-levels">
-          <h3>ADVENTURE LEVELS</h3>
-          <div class="level-grid">
-            ${levelGridHTML}
+          <div class="scrollable-content">
+            <h3>ADVENTURE LEVELS</h3>
+            <div class="level-grid">
+              ${levelGridHTML}
+            </div>
           </div>
           <button class="back-btn" id="adventure-back">BACK</button>
         </div>
 
         <div class="sub-panel lan-section hidden" id="lan-section">
-          <h3>LAN GAME</h3>
-          <div id="lan-host-panel">
-            <button class="lan-btn lan-host" id="lan-host-btn">HOST GAME</button>
-            <div id="lan-host-surface-pick" class="hidden">
-              <h3>SELECT MAP</h3>
-              ${this.createSurfaceGridHTML('lan-surface-grid', this.lanSelectedSurface)}
-              <div class="lan-timeout-row">
-                <label class="lan-timeout-label" for="lan-timeout-input">Idle shutdown delay</label>
-                <div class="lan-timeout-input-wrap">
-                  <input type="number" id="lan-timeout-input" min="0" max="3600" value="180" step="30" />
-                  <span class="lan-timeout-unit">sec</span>
+          <div class="scrollable-content">
+            <h3>LAN GAME</h3>
+            <div id="lan-host-panel">
+              <button class="lan-btn lan-host" id="lan-host-btn">HOST GAME</button>
+              <div id="lan-host-surface-pick" class="hidden">
+                <h3>SELECT MAP</h3>
+                ${this.createSurfaceGridHTML('lan-surface-grid', this.lanSelectedSurface)}
+                <div class="lan-timeout-row">
+                  <label class="lan-timeout-label" for="lan-timeout-input">Idle shutdown delay</label>
+                  <div class="lan-timeout-input-wrap">
+                    <input type="number" id="lan-timeout-input" min="0" max="3600" value="180" step="30" />
+                    <span class="lan-timeout-unit">sec</span>
+                  </div>
+                  <span class="lan-timeout-hint">Server auto-closes when all players leave (0 = never)</span>
                 </div>
-                <span class="lan-timeout-hint">Server auto-closes when all players leave (0 = never)</span>
+                <button class="lan-btn lan-host" id="lan-start-host-btn">START HOSTING</button>
               </div>
-              <button class="lan-btn lan-host" id="lan-start-host-btn">START HOSTING</button>
+              <div id="lan-host-info" class="hidden">
+                <p id="lan-host-status" class="lan-status">Starting server...</p>
+                <p id="lan-host-url" class="lan-url"></p>
+                <div id="lan-qr-container"></div>
+                <button class="lan-btn lan-enter hidden" id="lan-enter-btn">ENTER GAME</button>
+                <button class="lan-btn lan-stop hidden" id="lan-stop-btn">STOP SERVER</button>
+              </div>
             </div>
-            <div id="lan-host-info" class="hidden">
-              <p id="lan-host-status" class="lan-status">Starting server...</p>
-              <p id="lan-host-url" class="lan-url"></p>
-              <div id="lan-qr-container"></div>
-              <button class="lan-btn lan-enter hidden" id="lan-enter-btn">ENTER GAME</button>
-              <button class="lan-btn lan-stop hidden" id="lan-stop-btn">STOP SERVER</button>
+            <div class="lan-divider-line"></div>
+            <h3 class="lan-lobby-title">AVAILABLE GAMES</h3>
+            <div class="lan-lobby-list" id="lan-lobby-list">
+              <div class="lan-lobby-empty" id="lan-lobby-empty">
+                <p>Scanning for games...</p>
+              </div>
             </div>
-          </div>
-          <div class="lan-divider-line"></div>
-          <h3 class="lan-lobby-title">AVAILABLE GAMES</h3>
-          <div class="lan-lobby-list" id="lan-lobby-list">
-            <div class="lan-lobby-empty" id="lan-lobby-empty">
-              <p>Scanning for games...</p>
+            <div class="lan-refresh-bar">
+              <button class="lan-btn lan-refresh" id="lan-refresh-btn">REFRESH</button>
+              <button class="lan-btn lan-auto-toggle active" id="lan-auto-refresh-btn">AUTO-REFRESH: ON</button>
             </div>
-          </div>
-          <div class="lan-refresh-bar">
-            <button class="lan-btn lan-refresh" id="lan-refresh-btn">REFRESH</button>
-            <button class="lan-btn lan-auto-toggle active" id="lan-auto-refresh-btn">AUTO-REFRESH: ON</button>
-          </div>
-          <div class="lan-divider-line"></div>
-          <h3 class="lan-manual-title">MANUAL CONNECT</h3>
-          <div class="lan-input-row">
-            <input type="text" id="lan-ip-input" placeholder="Host IP (e.g. 192.168.1.15)" />
-            <button class="lan-btn lan-connect" id="lan-connect-btn">CONNECT</button>
+            <div class="lan-divider-line"></div>
+            <h3 class="lan-manual-title">MANUAL CONNECT</h3>
+            <div class="lan-input-row">
+              <input type="text" id="lan-ip-input" placeholder="Host IP (e.g. 192.168.1.15)" />
+              <button class="lan-btn lan-connect" id="lan-connect-btn">CONNECT</button>
+            </div>
           </div>
           <button class="back-btn" id="lan-back">BACK</button>
         </div>
 
         <div class="sub-panel surface-section hidden" id="surface-section">
-          <h3>SELECT GAME MODE</h3>
-          <div class="mode-grid">
-            ${this.createModeGridHTML()}
-          </div>
-          <h3>SELECT SURFACE</h3>
-          <div class="surface-grid">
-            ${surfaceButtons}
-            <button class="surface-btn custom-mesh-btn" data-grid-class="quick-game-surface-grid">
-              <span class="icon">📁</span>
-              <span class="name">Load Custom</span>
+          <div class="scrollable-content">
+            <h3>SELECT GAME MODE</h3>
+            <div class="mode-grid">
+              ${this.createModeGridHTML()}
+            </div>
+            <h3>SELECT SURFACE</h3>
+            <div class="surface-grid">
+              ${surfaceButtons}
+              <button class="surface-btn custom-mesh-btn" data-grid-class="quick-game-surface-grid">
+                <span class="icon">📁</span>
+                <span class="name">Load Custom</span>
+              </button>
+            </div>
+            <h3>MAP SIZE</h3>
+            ${this.createMapSizeSelectorHTML()}
+            <input type="file" id="custom-mesh-file-input" accept=".obj,.glb,.gltf" style="display: none;" />
+            <div id="custom-mesh-loading" class="custom-mesh-loading hidden">
+              <p>Loading mesh...</p>
+            </div>
+            <button class="start-btn" id="surface-start-btn">
+              <span class="btn-icon">\u25B6</span>
+              <span>START</span>
             </button>
           </div>
-          <h3>MAP SIZE</h3>
-          ${this.createMapSizeSelectorHTML()}
-          <input type="file" id="custom-mesh-file-input" accept=".obj,.glb,.gltf" style="display: none;" />
-          <div id="custom-mesh-loading" class="custom-mesh-loading hidden">
-            <p>Loading mesh...</p>
-          </div>
-          <button class="start-btn" id="surface-start-btn">
-            <span class="btn-icon">\u25B6</span>
-            <span>START</span>
-          </button>
           <button class="back-btn" id="surface-back">BACK</button>
         </div>
 
@@ -556,13 +562,35 @@ export class StartMenu {
         width: 52%;
         max-width: 700px;
         max-height: 75%;
-        overflow-y: auto;
         z-index: 20;
         background: rgba(8,4,24,0.92);
         border: 1px solid rgba(0,255,255,0.15);
         border-radius: 6px;
         padding: 24px;
         box-shadow: 0 0 30px rgba(0,0,0,0.6);
+        display: flex;
+        flex-direction: column;
+      }
+
+      #start-menu .scrollable-content {
+        overflow-y: auto;
+        flex: 1;
+        padding-right: 8px;
+      }
+
+      /* Scrollbar styling for scrollable content */
+      #start-menu .scrollable-content::-webkit-scrollbar {
+        width: 8px;
+      }
+      #start-menu .scrollable-content::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      #start-menu .scrollable-content::-webkit-scrollbar-thumb {
+        background: rgba(0, 255, 255, 0.3);
+        border-radius: 4px;
+      }
+      #start-menu .scrollable-content::-webkit-scrollbar-thumb:hover {
+        background: rgba(0, 255, 255, 0.5);
       }
 
       #start-menu h3 {
@@ -898,12 +926,13 @@ export class StartMenu {
         padding: 10px 30px;
         font-size: 14px;
         cursor: pointer;
-        margin-top: 15px;
+        margin-top: 12px;
         letter-spacing: 3px;
         transition: all 0.2s;
         display: block;
         margin-left: auto;
         margin-right: auto;
+        flex-shrink: 0;
       }
       #start-menu .back-btn:hover {
         background: rgba(120, 60, 0, 0.5);
@@ -915,7 +944,6 @@ export class StartMenu {
       /* ------------------------------------------------------------------- */
       #start-menu .adventure-section {
         max-height: 70vh;
-        overflow-y: auto;
       }
 
       #start-menu .level-section h4 {
