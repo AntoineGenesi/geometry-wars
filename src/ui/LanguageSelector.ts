@@ -45,7 +45,12 @@ export class LanguageSelector {
       btn.className = 'lang-btn';
       if (code === currentLang) btn.classList.add('selected');
       btn.dataset.lang = code;
-      btn.textContent = flag;
+      // Set flag as background image
+      btn.style.backgroundImage = `url(/assets/flags/${code}.svg)`;
+      btn.style.backgroundSize = 'cover';
+      btn.style.backgroundPosition = 'center';
+      // Display two-letter code as text overlay
+      btn.textContent = code.toUpperCase();
       btn.title = t(`languages.${code}`); // Tooltip shows language name on hover
       btn.addEventListener('click', () => {
         changeLanguage(code);

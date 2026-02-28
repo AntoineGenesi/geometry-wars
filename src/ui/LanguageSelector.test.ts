@@ -187,18 +187,18 @@ describe('LanguageSelector', () => {
     expect(buttons).toHaveLength(5);
   });
 
-  it('buttons contain only flag emoji', async () => {
+  it('buttons contain two-letter language code', async () => {
     const { LanguageSelector } = await import('./LanguageSelector');
     const selector = new LanguageSelector(container as unknown as HTMLElement);
     selector.render();
 
     const buttons = container.querySelectorAll('.lang-btn');
     const texts = buttons.map((b) => b.textContent);
-    expect(texts).toContain('🇬🇧');
-    expect(texts).toContain('🇪🇸');
-    expect(texts).toContain('🇫🇷');
-    expect(texts).toContain('🇩🇪');
-    expect(texts).toContain('🇷🇺');
+    expect(texts).toContain('EN');
+    expect(texts).toContain('ES');
+    expect(texts).toContain('FR');
+    expect(texts).toContain('DE');
+    expect(texts).toContain('RU');
   });
 
   it('selected button matches current language', async () => {

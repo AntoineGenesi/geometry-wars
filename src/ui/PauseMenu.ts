@@ -675,29 +675,30 @@ export class PauseMenu {
       }
 
       #pause-menu .lang-btn {
-        background: linear-gradient(180deg, #222244 0%, #111133 100%);
-        border: 2px solid #444466;
+        border: 2px solid rgba(255,255,255,0.3);
         cursor: pointer;
         transition: all 0.2s;
         border-radius: 2px;
-        font-family: inherit;
-        /* Flag-only: square buttons with large tap targets */
+        font-family: Arial, sans-serif;
+        /* Flag background with text overlay */
         width: 56px;
         height: 56px;
-        font-size: 36px;
+        font-size: 14px;
+        font-weight: bold;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 0;
+        color: white;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8), -2px -2px 4px rgba(0, 0, 0, 0.8);
       }
 
       #pause-menu .lang-btn:hover {
-        border-color: #6666cc;
-        background: linear-gradient(180deg, #333366 0%, #222244 100%);
+        border-color: rgba(255,255,255,0.6);
+        filter: brightness(1.1);
       }
 
       #pause-menu .lang-btn.selected {
-        background: linear-gradient(180deg, #223388 0%, #112266 100%);
         border-color: #4488ff;
         box-shadow: 0 0 12px rgba(68, 136, 255, 0.5);
       }

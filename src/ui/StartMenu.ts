@@ -1573,11 +1573,11 @@ export class StartMenu {
       }
 
       #start-menu #start-lang-selector .lang-btn {
-        background: rgba(255,255,255,0.05);
-        border: 1px solid rgba(255,255,255,0.15);
+        border: 2px solid rgba(255,255,255,0.3);
         border-radius: 4px;
         cursor: pointer;
-        font-size: 24px;
+        font-size: 14px;
+        font-weight: bold;
         line-height: 1;
         width: 40px;
         height: 40px;
@@ -1585,24 +1585,27 @@ export class StartMenu {
         align-items: center;
         justify-content: center;
         padding: 0;
-        transition: opacity 0.2s, border-color 0.2s, background 0.2s;
+        transition: opacity 0.2s, border-color 0.2s, filter 0.2s;
         user-select: none;
+        color: white;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8), -2px -2px 4px rgba(0, 0, 0, 0.8);
+        font-family: Arial, sans-serif;
       }
 
       #start-menu #start-lang-selector .lang-btn:hover {
-        opacity: 0.8;
-        border-color: rgba(255,255,255,0.4);
-        background: rgba(255,255,255,0.1);
+        opacity: 0.9;
+        border-color: rgba(255,255,255,0.6);
+        filter: brightness(1.1);
       }
 
       #start-menu #start-lang-selector .lang-btn.selected {
-        border-color: rgba(100,200,255,0.7);
-        background: rgba(100,200,255,0.15);
+        border-color: rgba(100,200,255,0.9);
+        box-shadow: 0 0 8px rgba(100,200,255,0.5);
       }
 
       @media (max-width: 768px) {
         #start-menu #start-lang-selector .lang-btn {
-          font-size: 28px;
+          font-size: 16px;
           width: 48px;
           height: 48px;
         }
