@@ -107,8 +107,10 @@ REM  WINDOWS FIREWALL: Allow ports 3000 and 2567 for LAN access
 REM  (Only fully effective when running as Administrator)
 REM ================================================================
 echo  Setting up Windows Firewall rules for LAN access...
-netsh advfirewall firewall add rule name="GeometryWars-Server-2567" dir=in action=allow protocol=TCP localport=2567 >nul 2>&1
-netsh advfirewall firewall add rule name="GeometryWars-Web-3000" dir=in action=allow protocol=TCP localport=3000 >nul 2>&1
+netsh advfirewall firewall delete rule name="GeometryWars-Server-2567" >nul 2>&1
+netsh advfirewall firewall delete rule name="GeometryWars-Web-3000" >nul 2>&1
+netsh advfirewall firewall add rule name="GeometryWars-Server-2567" dir=in action=allow protocol=TCP localport=2567 profile=any >nul 2>&1
+netsh advfirewall firewall add rule name="GeometryWars-Web-3000" dir=in action=allow protocol=TCP localport=3000 profile=any >nul 2>&1
 if %IS_ADMIN% == 1 echo  [OK] Firewall rules set for ports 3000 and 2567.
 if %IS_ADMIN% == 0 echo  [..] Firewall rules attempted - may need Administrator to apply.
 echo.
