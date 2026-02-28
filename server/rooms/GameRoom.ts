@@ -229,7 +229,7 @@ interface ServerEnemyAI {
   // Grunt / Swarm / ApproachGlow: acceleration ramp (maxSpeed stored per-type)
   currentSpeed?: number;
   maxSpeed?: number;
-  // Wanderer / Neutron: direction vector + change timer
+  // Wanderer / Neutron / Painter: direction vector + change timer
   directionU?: number;
   directionV?: number;
   directionChangeTimer?: number;
@@ -247,12 +247,24 @@ interface ServerEnemyAI {
   orbitDirection?: number;
   reverseTimer?: number;
   nextReverse?: number;
-  // Weaver: momentum
+  // Weaver / TitanWeaver: momentum
   momentumU?: number;
   momentumV?: number;
   // Duck: cardinal direction (0=up, 1=right, 2=down, 3=left) + change timer
   duckDirection?: number;
   duckTimer?: number;
+  // Lurker: state machine (0=idle, 1=charging, 2=dashing, 3=cooldown) + timer + dash dir
+  lurkerState?: number;
+  stateTimer?: number;
+  dashDirU?: number;
+  dashDirV?: number;
+  // Repulsor: phase (0=lock, 1=charge, 2=recovery) + phase timer + charge target
+  repulsorPhase?: number;
+  phaseTimer?: number;
+  chargeTargetU?: number;
+  chargeTargetV?: number;
+  // Helix: corkscrew phase for perpendicular wobble
+  corkscrewPhase?: number;
 }
 
 export class GameRoom extends Room<GameState> {
@@ -1210,6 +1222,39 @@ export class GameRoom extends Room<GameState> {
         case 'swarm':
         case 'approach_glow':
           this.updateAcceleratingChaser(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'orbiter':
+          this.updateOrbiter(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'helix':
+          this.updateHelix(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'lurker':
+          this.updateLurker(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'repulsor':
+          this.updateRepulsor(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'painter':
+          this.updatePainter(enemy, ai, dt, wrapsV, surfType);
+          break;
+        case 'giant_wanderer':
+          this.updateGiantWanderer(enemy, ai, dt, wrapsV, surfType);
+          break;
+        case 'giant_rocket':
+          this.updateGiantRocket(enemy, ai, dt, wrapsV, surfType);
+          break;
+        case 'giant_neutron':
+          this.updateGiantNeutron(enemy, ai, dt, wrapsV, surfType);
+          break;
+        case 'titan_grunt':
+          this.updateTitanGrunt(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'titan_spinner':
+          this.updateTitanSpinner(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'titan_weaver':
+          this.updateTitanWeaver(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
           break;
         default:
           this.updateDefaultChase(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
