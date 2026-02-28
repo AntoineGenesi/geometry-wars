@@ -21,6 +21,7 @@ import {
   ENEMY_SPEEDS,
   ENEMY_SCORES,
   ENEMY_HEALTH,
+  LEVEL_THRESHOLDS,
 } from '../shared/GameConstants';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
@@ -694,6 +695,8 @@ export class GameRoom extends Room<GameState> {
       player.alive = true;
       player.weaponType = 'standard';
       player.weaponAmmo = -1;
+      player.playerLevel = 0;
+      player.playerKills = 0;
       // Reset lastShotTime so the player can shoot immediately in the new game.
       // gameTime resets to 0 on new round; without this reset, lastShotTime from
       // the previous game (e.g. 45.6s) causes tryShoot() to block shots for the
@@ -946,6 +949,16 @@ export class GameRoom extends Room<GameState> {
     // Remove dead enemies (iterate in reverse)
     for (let i = enemiesToRemove.length - 1; i >= 0; i--) {
       this.state.enemies.splice(enemiesToRemove[i], 1);
+    }
+
+    // Track kills for level progression (bomb kills count)
+    if (enemiesToRemove.length > 0) {
+      player.playerKills += enemiesToRemove.length;
+      const newLevel = this.getPlayerLevel(player.playerKills);
+      if (newLevel > player.playerLevel) {
+        player.playerLevel = newLevel;
+        this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+      }
     }
 
     this.logger.log(`[GameRoom] ${player.name} used bomb, killed ${enemiesToRemove.length} enemies`);
@@ -1756,6 +1769,12 @@ export class GameRoom extends Room<GameState> {
 
             if (owner) {
               owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
+              owner.playerKills++;
+              const newLevel = this.getPlayerLevel(owner.playerKills);
+              if (newLevel > owner.playerLevel) {
+                owner.playerLevel = newLevel;
+                this.broadcast('player_level_up', { playerId: owner.id, newLevel, playerName: owner.name });
+              }
             }
 
             // Geoms removed (s27g-geons-point-pickups-remove-mp)
@@ -1935,6 +1954,19 @@ export class GameRoom extends Room<GameState> {
     // Decrease interval over time (same formula as WaveScheduler)
     const nextInterval = Math.max(WAVE_INTERVAL_MIN, WAVE_INTERVAL_BASE - this.waveNumber * WAVE_INTERVAL_DECAY);
     this.nextWaveAt = this.waveElapsed + nextInterval;
+  }
+
+  /**
+   * Compute the player level (0–9) from total kills.
+   * Mirrors getLevel() logic in src/core/PlayerLevel.ts.
+   */
+  private getPlayerLevel(kills: number): number {
+    let level = 0;
+    for (let i = 1; i < LEVEL_THRESHOLDS.length; i++) {
+      if (kills >= LEVEL_THRESHOLDS[i]) level = i;
+      else break;
+    }
+    return level;
   }
 
   /**

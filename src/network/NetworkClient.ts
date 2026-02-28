@@ -16,6 +16,8 @@ export interface NetworkPlayerState {
   color: number;
   weaponType: string;
   weaponAmmo: number;
+  playerLevel: number;
+  playerKills: number;
 }
 
 /** Bullet state from server */
@@ -183,6 +185,8 @@ export interface NetworkCallbacks {
    * The handler should cache this data in localStorage.
    */
   onStartupConfig?: (config: NetworkStartupConfig) => void;
+  /** Fired when a player levels up (server-authoritative). */
+  onPlayerLevelUp?: (data: { playerId: string; newLevel: number; playerName: string }) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -445,6 +449,12 @@ export class NetworkClient {
     this.room.onMessage('startup_config', (config: NetworkStartupConfig) => {
       netLog('[Network] Received startup_config (cache miss — caching now)');
       this.callbacks.onStartupConfig?.(config);
+    });
+
+    // Player level-up (server-authoritative kill tracking)
+    this.room.onMessage('player_level_up', (data: { playerId: string; newLevel: number; playerName: string }) => {
+      netLog(`[Network] player_level_up: ${data.playerName} reached level ${data.newLevel}`);
+      this.callbacks.onPlayerLevelUp?.(data);
     });
 
     // Disconnection

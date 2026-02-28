@@ -49,7 +49,7 @@ import { WeaponHUD } from './ui/WeaponHUD';
 import { WeaponManager } from './weapons/WeaponManager';
 import type { WeaponInventoryEntry } from './weapons/WeaponManager';
 import { AllyGlowManager } from './effects/AllyGlow';
-import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
+import { PlayerLevel, LevelUpNotification, getLevelPerk } from './core/PlayerLevel';
 import { WeaponMasteryManager } from './buffs/WeaponMasteryManager';
 import { MasteryStore } from './systems/MasteryStore';
 import { MasteryPointStore } from './systems/MasteryPointStore';
@@ -2943,6 +2943,14 @@ async function main() {
       },
       onGameEnded: () => {
         handleConnectionLost('The host has ended the game.');
+      },
+      onPlayerLevelUp: (data: { playerId: string; newLevel: number; playerName: string }) => {
+        if (data.playerId === localPlayerId) {
+          // Server confirms local player leveled up — show notification with perk data
+          const perk = getLevelPerk(data.newLevel);
+          levelUpNotification.show(data.newLevel, perk);
+          sound.play('multiplierUp', { pitch: 1.2 + data.newLevel * 0.05 });
+        }
       },
       onDisconnected: (code: number) => {
         // Fired when the WebSocket closes for any reason (server crash, network

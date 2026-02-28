@@ -59,6 +59,18 @@ const LEVELS: LevelPerk[] = [
 const LEVEL_THRESHOLDS = [0, 10, 25, 50, 80, 120, 175, 250, 350, 500];
 
 // ---------------------------------------------------------------------------
+// Utility
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the perk data for a given level index (0–9).
+ * Used by network-main.ts to display notifications for server-broadcast level-ups.
+ */
+export function getLevelPerk(level: number): LevelPerk {
+  return LEVELS[Math.min(Math.max(level, 0), LEVELS.length - 1)];
+}
+
+// ---------------------------------------------------------------------------
 // PlayerLevel
 // ---------------------------------------------------------------------------
 
