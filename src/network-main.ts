@@ -3792,153 +3792,110 @@ async function main() {
     });
 
     // -----------------------------------------------------------------------
-    // Per-frame bullet rendering via client-side Christoffel UV stepping.
-    // s40-08 fix: replaced FaceWalker (s40-04) with server-mirrored UV physics.
+    // Per-frame bullet rendering via client-side FaceWalker geodesics.
+    // s41-01 fix: restored FaceWalker (s40-04) after s40-08 regression.
     //
-    // Root cause of "visual hit, no damage" bug:
-    //   The FaceWalker advances bullets at 4 world/s in the world-space aim direction.
-    //   The server Christoffel equations advance bullets at a direction-dependent UV
-    //   speed (up to 2× faster in the U direction on sphere). This caused the server
-    //   bullet to travel a DIFFERENT world trajectory than the visual — server missed
-    //   enemies the FaceWalker visually hit.
+    // Architecture: visual rendering (client) and hit detection (server) are separate:
+    //   Visual: client uses FaceWalker.moveGeodesic() — true great-circle paths on all surfaces
+    //   Hit detection: server uses Christoffel UV-based collision (unchanged, server-authoritative)
     //
-    // Fix: mirror the server's exact Christoffel equations on the client so visual
-    // position = server UV position (within one patch interval ≈ 50ms of drift).
-    // Server resyncs b.surfaceU/V on each state patch (see onStateChange above).
+    // Server sends b.surfaceU/V/dirX/dirY on each state patch (~20Hz) used for spawn init.
+    // Client FaceWalker advances independently between patches for smooth geodesic rendering.
     // BulletInstanceManager provides GPU-instanced rendering.
     // Standard weapon: renders 2 parallel visual bullets (matching SP dual-barrel).
     // -----------------------------------------------------------------------
-    const BULLET_SPEED_UV = 0.13; // mirrors server BULLET_SPEED constant
+    const BULLET_SPEED_WORLD = 4.0; // world units/sec — matches SP Bullet.ts speed
     const DUAL_BARREL_OFFSET = 0.15;
     const nowRenderMs = performance.now();
-    // Use actual frame time (not lastFixedDt) so bullet speed is correct at any
-    // display refresh rate (60Hz, 120Hz, etc.).
+    // Use actual frame time so bullet speed is correct at any display refresh rate.
     const renderDt = lastRenderTimestampMs > 0
       ? Math.min((nowRenderMs - lastRenderTimestampMs) / 1000, 0.05)
       : lastFixedDt;
     lastRenderTimestampMs = nowRenderMs;
 
-    const bSurfType = lastCreatedSurfaceType;
-    const bIsSphereLike = bSurfType === 'sphere' || bSurfType === 'sphere-tunnel'
-      || bSurfType === 'icosahedron' || bSurfType === 'capsule';
-    const bIsPeanut = bSurfType === 'peanut';
-    const bIsTorus = bSurfType === 'torus' || bSurfType === 'torus-tunnel';
-
     bulletIdToIndex.forEach((idx, id) => {
       const b = bulletPool.getBulletData(idx);
       if (!b || !b.alive) return;
 
-      // Advance bullet UV using the same Christoffel equations as the server.
-      // This ensures visual position tracks server authoritative position exactly.
-      if (bIsPeanut) {
-        const PEANUT_WAIST_DEPTH = 0.4;
-        const phi = b.surfaceV * Math.PI;
-        const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
-        const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
-        const sinPhi = Math.sin(phi);
-        const cosPhi = Math.cos(phi);
-        const metricU = Math.max(rNorm * sinPhi, 0.1);
-        const metricV = Math.max(Math.sqrt(rNorm * rNorm + drNorm * drNorm), 0.1);
-        const cotPhi = cosPhi / Math.max(Math.abs(sinPhi), 0.01);
-        const g_vv = rNorm * rNorm + drNorm * drNorm;
-        const Gamma_u_uv = (drNorm / Math.max(rNorm, 0.01)) + cotPhi;
-        const Gamma_v_uu = -rNorm * sinPhi * (rNorm * cosPhi + drNorm * sinPhi) / Math.max(g_vv, 0.01);
-        const step = BULLET_SPEED_UV * renderDt;
-        const prevDirXP = b.dirX;
-        b.dirX += -2 * Gamma_u_uv * b.dirX * b.dirY * step;
-        b.dirY += -Gamma_v_uu * prevDirXP * prevDirXP * step;
-        const peanutLen = Math.sqrt(b.dirX * b.dirX + b.dirY * b.dirY);
-        if (peanutLen > 0.001) { b.dirX /= peanutLen; b.dirY /= peanutLen; }
-        b.surfaceU = ((b.surfaceU + (b.dirX / metricU) * BULLET_SPEED_UV * renderDt) % 1 + 1) % 1;
-        b.surfaceV += (b.dirY / metricV) * BULLET_SPEED_UV * renderDt;
-      } else if (bIsSphereLike) {
-        const phi = b.surfaceV * Math.PI;
-        const sinPhi = Math.sin(phi);
-        const cosPhi = Math.cos(phi);
-        const clampedSinPhi = Math.max(Math.abs(sinPhi), 0.1);
-        const cotPhi = cosPhi / Math.max(Math.abs(sinPhi), 0.01);
-        const step = BULLET_SPEED_UV * renderDt;
-        const prevDirXS = b.dirX;
-        b.dirX += -2 * cotPhi * b.dirX * b.dirY * step;
-        b.dirY += sinPhi * cosPhi * prevDirXS * prevDirXS * step;
-        const sphereLen = Math.sqrt(b.dirX * b.dirX + b.dirY * b.dirY);
-        if (sphereLen > 0.001) { b.dirX /= sphereLen; b.dirY /= sphereLen; }
-        b.surfaceU = ((b.surfaceU + (b.dirX / clampedSinPhi) * BULLET_SPEED_UV * renderDt) % 1 + 1) % 1;
-        b.surfaceV += b.dirY * BULLET_SPEED_UV * renderDt;
-        // Pole crossing (mirrors server logic)
-        if (b.surfaceV < 0) {
-          b.surfaceV = -b.surfaceV;
-          b.surfaceU = ((b.surfaceU + 0.5) % 1 + 1) % 1;
-          b.dirX = -b.dirX; b.dirY = -b.dirY;
-        } else if (b.surfaceV > 1) {
-          b.surfaceV = 2 - b.surfaceV;
-          b.surfaceU = ((b.surfaceU + 0.5) % 1 + 1) % 1;
-          b.dirX = -b.dirX; b.dirY = -b.dirY;
-        }
-      } else if (bIsTorus) {
-        const TORUS_r = 0.375;
-        const v = b.surfaceV * 2 * Math.PI;
-        const cosV = Math.cos(v);
-        const sinV = Math.sin(v);
-        const rho = Math.max(1 + TORUS_r * cosV, 0.1);
-        const Gamma_u_uv = -TORUS_r * sinV / rho;
-        const Gamma_v_uu = rho * sinV / TORUS_r;
-        const step = BULLET_SPEED_UV * renderDt;
-        const prevDirXT = b.dirX;
-        b.dirX += -2 * Gamma_u_uv * b.dirX * b.dirY * step;
-        b.dirY += -Gamma_v_uu * prevDirXT * prevDirXT * step;
-        const torusLen = Math.sqrt(b.dirX * b.dirX + b.dirY * b.dirY);
-        if (torusLen > 0.001) { b.dirX /= torusLen; b.dirY /= torusLen; }
-        b.surfaceU = ((b.surfaceU + (b.dirX / rho) * BULLET_SPEED_UV * renderDt) % 1 + 1) % 1;
-        b.surfaceV = ((b.surfaceV + (b.dirY / TORUS_r) * BULLET_SPEED_UV * renderDt) % 1 + 1) % 1;
-      } else {
-        // Flat / other surfaces — straight UV motion (mirrors server)
-        b.surfaceU = ((b.surfaceU + b.dirX * BULLET_SPEED_UV * renderDt) % 1 + 1) % 1;
-        b.surfaceV += b.dirY * BULLET_SPEED_UV * renderDt;
-      }
+      const geoState = bulletGeodesicState.get(id);
+      if (meshSurface && geoState) {
+        // Advance bullet along geodesic (true great-circle path on any surface)
+        const dist = BULLET_SPEED_WORLD * renderDt;
+        const result = meshSurface.moveGeodesic(geoState.facePos, geoState.dirWorld, dist);
+        geoState.facePos = result.facePosition;
+        geoState.dirWorld.copy(result.direction);
+        _netTempPos.copy(result.position).addScaledVector(result.normal, 0.02);
+        _netTempDir.copy(result.direction);
 
-      // Convert UV to world-space for rendering
-      const bpt = transform(b.surfaceU, b.surfaceV);
-      _netTempPos.copy(bpt.position).addScaledVector(bpt.normal, 0.02);
-      // For torus, server negates dirX at spawn (to match negated tangentU).
-      // Client rendering must negate back to get original visual direction.
-      const bRenderDirX = bIsTorus ? -b.dirX : b.dirX;
-      _netTempDir.set(0, 0, 0)
-        .addScaledVector(bpt.tangent, bRenderDirX)
-        .addScaledVector(bpt.bitangent, b.dirY)
-        .normalize();
+        const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
+        const bulletVisual = weaponToBulletVisual(weapType);
+        const weapColor = WEAPON_CONFIGS[weapType]?.color;
+        const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
 
-      const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
-      const bulletVisual = weaponToBulletVisual(weapType);
-      const weapColor = WEAPON_CONFIGS[weapType]?.color;
-      const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
+        if (weapType === WeaponType.Standard) {
+          // Dual-barrel: render 2 parallel visual bullets offset perpendicular to direction.
+          // Matches SP fireStandard() which fires leftOrigin and rightOrigin ±0.15 from aim.
+          _bulletRight.crossVectors(_netTempDir, result.normal).normalize();
 
-      if (weapType === WeaponType.Standard) {
-        // Dual-barrel: render 2 parallel visual bullets offset perpendicular to direction.
-        const bNormal = bpt.normal;
-        _bulletRight.crossVectors(_netTempDir, bNormal).normalize();
-        const lId = id + '_l';
-        const rId = id + '_r';
-        _bulletOffsetPos.copy(_netTempPos).addScaledVector(_bulletRight, -DUAL_BARREL_OFFSET);
-        if (!bulletInstanceIds.has(id)) {
-          bulletInstanceManager.addBullet(lId, bulletVisual, _bulletOffsetPos, _netTempDir, color);
+          const lId = id + '_l';
+          const rId = id + '_r';
+          _bulletOffsetPos.copy(_netTempPos).addScaledVector(_bulletRight, -DUAL_BARREL_OFFSET);
+          if (!bulletInstanceIds.has(id)) {
+            bulletInstanceManager.addBullet(lId, bulletVisual, _bulletOffsetPos, _netTempDir, color);
+          } else {
+            bulletInstanceManager.updateBullet(lId, _bulletOffsetPos, _netTempDir);
+          }
+          _bulletOffsetPos.copy(_netTempPos).addScaledVector(_bulletRight, DUAL_BARREL_OFFSET);
+          if (!bulletInstanceIds.has(id)) {
+            bulletInstanceManager.addBullet(rId, bulletVisual, _bulletOffsetPos, _netTempDir, color);
+          } else {
+            bulletInstanceManager.updateBullet(rId, _bulletOffsetPos, _netTempDir);
+          }
         } else {
-          bulletInstanceManager.updateBullet(lId, _bulletOffsetPos, _netTempDir);
+          // Non-standard weapons: single visual bullet
+          if (!bulletInstanceIds.has(id)) {
+            bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
+          } else {
+            bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
+          }
         }
-        _bulletOffsetPos.copy(_netTempPos).addScaledVector(_bulletRight, DUAL_BARREL_OFFSET);
-        if (!bulletInstanceIds.has(id)) {
-          bulletInstanceManager.addBullet(rId, bulletVisual, _bulletOffsetPos, _netTempDir, color);
-        } else {
-          bulletInstanceManager.updateBullet(rId, _bulletOffsetPos, _netTempDir);
-        }
+        bulletInstanceIds.add(id);
       } else {
+        // Fallback: UV lerp (for bullets without geodesic state — should not normally occur)
+        const target = bulletTargetUV.get(id);
+        if (!target) return;
+
+        const BULLET_LERP = 0.5;
+        let du = target.u - b.surfaceU;
+        if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
+        const vWraps = lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pipe'
+          || lastCreatedSurfaceType === 'mobius' || lastCreatedSurfaceType === 'cube-ring'
+          || lastCreatedSurfaceType === 'cube-tunnel';
+        let dv = target.v - b.surfaceV;
+        if (vWraps) { if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1; }
+        b.surfaceU = ((b.surfaceU + du * BULLET_LERP) % 1 + 1) % 1;
+        b.surfaceV += dv * BULLET_LERP;
+        if (vWraps) b.surfaceV = ((b.surfaceV % 1) + 1) % 1;
+
+        const bpt = transform(b.surfaceU, b.surfaceV);
+        _netTempPos.copy(bpt.position).addScaledVector(bpt.normal, 0.02);
+        const bulletDirX = lastCreatedSurfaceType === 'torus' ? -target.dirX : target.dirX;
+        _netTempDir.set(0, 0, 0)
+          .addScaledVector(bpt.tangent, bulletDirX)
+          .addScaledVector(bpt.bitangent, target.dirY)
+          .normalize();
+
         if (!bulletInstanceIds.has(id)) {
+          const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
+          const bulletVisual = weaponToBulletVisual(weapType);
+          const weapColor = WEAPON_CONFIGS[weapType]?.color;
+          const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
           bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
+          bulletInstanceIds.add(id);
         } else {
           bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
         }
       }
-      bulletInstanceIds.add(id);
     });
     // Flush bullet instance transforms to GPU
     bulletInstanceManager.update();
