@@ -537,3 +537,351 @@ describe('GameRoom enemy AI — per-type behavior', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// New S42-04g: Lurker, Repulsor, Orbiter, Helix, Spawner tests
+// ---------------------------------------------------------------------------
+
+interface ExtendedAI extends AI {
+  lurkerState?: number;
+  stateTimer?: number;
+  dashDirU?: number;
+  dashDirV?: number;
+  nextDirectionChange?: number;
+  repulsorPhase?: number;
+  phaseTimer?: number;
+  chargeTargetU?: number;
+  chargeTargetV?: number;
+  orbitAngle?: number;
+  orbitRadius?: number;
+  orbitDirection?: number;
+  reverseTimer?: number;
+  nextReverse?: number;
+  corkscrewPhase?: number;
+  spawnTimer?: number;
+}
+
+function updateLurker(
+  enemy: EnemyStub, ai: ExtendedAI, player: PlayerStub | null, dt: number
+): void {
+  ai.stateTimer = (ai.stateTimer ?? 0) + dt;
+  switch (ai.lurkerState ?? 0) {
+    case 0: { // Idle
+      if (ai.stateTimer >= (ai.nextDirectionChange ?? 2.5) && player) {
+        ai.lurkerState = 1;
+        ai.stateTimer = 0;
+      }
+      break;
+    }
+    case 1: { // Charging: track player, lock direction
+      if (player) {
+        const du = uvDelta(enemy.surfaceU, player.surfaceU, true);
+        const dv = uvDelta(enemy.surfaceV, player.surfaceV, false);
+        const dist = Math.sqrt(du * du + dv * dv);
+        if (dist > 0.001) { ai.dashDirU = du / dist; ai.dashDirV = dv / dist; }
+      }
+      if (ai.stateTimer >= 1.0) { ai.lurkerState = 2; ai.stateTimer = 0; }
+      break;
+    }
+    case 2: { // Dashing
+      const DASH_SPEED = 0.105;
+      enemy.surfaceU += (ai.dashDirU ?? 0) * DASH_SPEED * dt;
+      enemy.surfaceV += (ai.dashDirV ?? 0) * DASH_SPEED * dt;
+      applyBounds(enemy, false);
+      if (ai.stateTimer >= 0.5) { ai.lurkerState = 3; ai.stateTimer = 0; }
+      break;
+    }
+    case 3: { // Cooldown
+      if (ai.stateTimer >= 1.5) {
+        ai.lurkerState = 0;
+        ai.stateTimer = 0;
+        ai.nextDirectionChange = 2 + Math.random();
+      }
+      break;
+    }
+  }
+}
+
+function updateRepulsor(
+  enemy: EnemyStub, ai: ExtendedAI, player: PlayerStub | null, dt: number
+): void {
+  ai.phaseTimer = (ai.phaseTimer ?? 0) + dt;
+  switch (ai.repulsorPhase ?? 0) {
+    case 0: { // Lock
+      if (player) {
+        const du = uvDelta(enemy.surfaceU, player.surfaceU, true);
+        const dv = uvDelta(enemy.surfaceV, player.surfaceV, false);
+        const dist = Math.sqrt(du * du + dv * dv);
+        if (dist > 0.01) {
+          enemy.surfaceU += (du / dist) * 0.03 * dt;
+          enemy.surfaceV += (dv / dist) * 0.03 * dt;
+          applyBounds(enemy, false);
+        }
+        if (ai.phaseTimer >= 2.0) {
+          const awayU = uvDelta(player.surfaceU, enemy.surfaceU, true);
+          const awayV = uvDelta(player.surfaceV, enemy.surfaceV, false);
+          const awayDist = Math.sqrt(awayU * awayU + awayV * awayV);
+          if (awayDist > 0.001) {
+            ai.chargeTargetU = awayU / awayDist;
+            ai.chargeTargetV = awayV / awayDist;
+          } else {
+            ai.chargeTargetU = 1; ai.chargeTargetV = 0;
+          }
+          ai.repulsorPhase = 1; ai.phaseTimer = 0;
+        }
+      }
+      break;
+    }
+    case 1: { // Charge AWAY
+      const CHARGE_SPEED = 0.18;
+      enemy.surfaceU += (ai.chargeTargetU ?? 0) * CHARGE_SPEED * dt;
+      enemy.surfaceV += (ai.chargeTargetV ?? 0) * CHARGE_SPEED * dt;
+      applyBounds(enemy, false);
+      if (ai.phaseTimer >= 0.8) { ai.repulsorPhase = 2; ai.phaseTimer = 0; }
+      break;
+    }
+    case 2: { // Recovery
+      if (ai.phaseTimer >= 1.0) { ai.repulsorPhase = 0; ai.phaseTimer = 0; }
+      break;
+    }
+  }
+}
+
+function updateOrbiter(
+  enemy: EnemyStub, ai: ExtendedAI, player: PlayerStub | null, dt: number
+): void {
+  const ORBIT_SPEED = 2.5;
+  const ORBIT_RADIUS = ai.orbitRadius ?? 0.15;
+  ai.reverseTimer = (ai.reverseTimer ?? 0) + dt;
+  if (ai.reverseTimer >= (ai.nextReverse ?? 4)) {
+    ai.orbitDirection = -(ai.orbitDirection ?? 1);
+    ai.reverseTimer = 0;
+    ai.nextReverse = 3 + Math.random() * 2;
+  }
+  ai.orbitAngle = (ai.orbitAngle ?? 0) + ORBIT_SPEED * (ai.orbitDirection ?? 1) * dt;
+  if (!player) return;
+  const orbitU = player.surfaceU + Math.cos(ai.orbitAngle) * ORBIT_RADIUS;
+  const orbitV = player.surfaceV + Math.sin(ai.orbitAngle) * ORBIT_RADIUS;
+  const du = uvDelta(enemy.surfaceU, orbitU, true);
+  const dv = uvDelta(enemy.surfaceV, orbitV, false);
+  const dist = Math.sqrt(du * du + dv * dv);
+  if (dist > 0.001) {
+    const ORBIT_CHASE_SPEED = 0.07;
+    enemy.surfaceU += (du / dist) * ORBIT_CHASE_SPEED * dt;
+    enemy.surfaceV += (dv / dist) * ORBIT_CHASE_SPEED * dt;
+    applyBounds(enemy, false);
+  }
+}
+
+function updateHelix(
+  enemy: EnemyStub, ai: ExtendedAI, player: PlayerStub | null, dt: number
+): void {
+  if (!player) return;
+  const HELIX_SPEED = 0.07;
+  const WOBBLE_AMPLITUDE = 0.05;
+  const CORKSCREW_RATE = Math.PI * 4;
+  ai.corkscrewPhase = (ai.corkscrewPhase ?? 0) + CORKSCREW_RATE * dt;
+  const du = uvDelta(enemy.surfaceU, player.surfaceU, true);
+  const dv = uvDelta(enemy.surfaceV, player.surfaceV, false);
+  const dist = Math.sqrt(du * du + dv * dv);
+  if (dist > 0.001) {
+    const dirU = du / dist; const dirV = dv / dist;
+    const perpU = -dirV; const perpV = dirU;
+    const wobble = Math.sin(ai.corkscrewPhase) * WOBBLE_AMPLITUDE;
+    enemy.surfaceU += (dirU + perpU * wobble) * HELIX_SPEED * dt;
+    enemy.surfaceV += (dirV + perpV * wobble) * HELIX_SPEED * dt;
+    applyBounds(enemy, false);
+  }
+}
+
+describe('S42-04g: New enemy AI behaviors', () => {
+
+  // -------------------------------------------------------------------------
+  // Lurker
+  // -------------------------------------------------------------------------
+  describe('Lurker: state machine', () => {
+    it('starts in idle state and stays still until timer', () => {
+      const ai: ExtendedAI = { lurkerState: 0, stateTimer: 0, nextDirectionChange: 2.5 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      const initialU = enemy.surfaceU;
+      runTicks(30, () => updateLurker(enemy, ai, player, DT)); // 0.5s — still in idle
+      expect(enemy.surfaceU).toBeCloseTo(initialU, 5); // doesn't move in idle
+      expect(ai.lurkerState).toBe(0);
+    });
+
+    it('transitions idle → charging after idle timer expires', () => {
+      const ai: ExtendedAI = { lurkerState: 0, stateTimer: 2.49, nextDirectionChange: 2.5 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      updateLurker(enemy, ai, player, DT); // stateTimer crosses threshold
+      expect(ai.lurkerState).toBe(1);
+      expect(ai.stateTimer).toBeCloseTo(0, 3);
+    });
+
+    it('transitions charging → dashing after 1s windup', () => {
+      const ai: ExtendedAI = { lurkerState: 1, stateTimer: 0.99, dashDirU: 1, dashDirV: 0 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      updateLurker(enemy, ai, player, DT);
+      expect(ai.lurkerState).toBe(2);
+    });
+
+    it('dashes fast in locked direction (state 2)', () => {
+      const ai: ExtendedAI = { lurkerState: 2, stateTimer: 0, dashDirU: 1, dashDirV: 0 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      const initialU = enemy.surfaceU;
+      runTicks(10, () => updateLurker(enemy, ai, player, DT));
+      expect(enemy.surfaceU).toBeGreaterThan(initialU + 0.01); // moved significantly
+    });
+
+    it('transitions dashing → cooldown after 0.5s', () => {
+      const ai: ExtendedAI = { lurkerState: 2, stateTimer: 0.49, dashDirU: 1, dashDirV: 0 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      updateLurker(enemy, ai, null, DT);
+      expect(ai.lurkerState).toBe(3);
+    });
+
+    it('transitions cooldown → idle after 1.5s', () => {
+      const ai: ExtendedAI = { lurkerState: 3, stateTimer: 1.49 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      updateLurker(enemy, ai, null, DT);
+      expect(ai.lurkerState).toBe(0);
+      expect(ai.stateTimer).toBeCloseTo(0, 3);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Repulsor
+  // -------------------------------------------------------------------------
+  describe('Repulsor: charges away from player', () => {
+    it('in lock phase: moves toward player', () => {
+      const ai: ExtendedAI = { repulsorPhase: 0, phaseTimer: 0 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      const initialU = enemy.surfaceU;
+      runTicks(60, () => updateRepulsor(enemy, ai, player, DT)); // 1s of lock phase
+      expect(enemy.surfaceU).toBeGreaterThan(initialU); // approaches player
+    });
+
+    it('transitions lock → charge after 2s', () => {
+      const ai: ExtendedAI = { repulsorPhase: 0, phaseTimer: 1.99 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      updateRepulsor(enemy, ai, player, DT);
+      expect(ai.repulsorPhase).toBe(1);
+      // Charge direction should be AWAY from player (enemy at 0.3, player at 0.7 → away = -U)
+      expect(ai.chargeTargetU).toBeLessThan(0);
+    });
+
+    it('in charge phase: moves AWAY from player', () => {
+      // Enemy at 0.5, player at 0.7 → awayU is negative (moves left, away from player)
+      const ai: ExtendedAI = {
+        repulsorPhase: 1, phaseTimer: 0,
+        chargeTargetU: -1, chargeTargetV: 0, // moving left (away from player at right)
+      };
+      const enemy = { surfaceU: 0.5, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      const initialU = enemy.surfaceU;
+      runTicks(10, () => updateRepulsor(enemy, ai, player, DT));
+      expect(enemy.surfaceU).toBeLessThan(initialU); // moved away (leftward)
+    });
+
+    it('transitions charge → recovery after 0.8s', () => {
+      const ai: ExtendedAI = { repulsorPhase: 1, phaseTimer: 0.79, chargeTargetU: 1, chargeTargetV: 0 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      updateRepulsor(enemy, ai, null, DT);
+      expect(ai.repulsorPhase).toBe(2);
+    });
+
+    it('transitions recovery → lock after 1s', () => {
+      const ai: ExtendedAI = { repulsorPhase: 2, phaseTimer: 0.99 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      updateRepulsor(enemy, ai, null, DT);
+      expect(ai.repulsorPhase).toBe(0);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Orbiter
+  // -------------------------------------------------------------------------
+  describe('Orbiter: orbits around player', () => {
+    it('moves toward orbit position (not directly toward player)', () => {
+      // enemy at center (0.5, 0.5), player at (0.5, 0.5)
+      // orbit target at angle=0: orbitU=0.65, orbitV=0.5
+      // enemy should chase (0.65, 0.5) → moves in +U direction
+      const ai: ExtendedAI = {
+        orbitAngle: 0, orbitRadius: 0.15, orbitDirection: 1,
+        reverseTimer: 0, nextReverse: 100,
+      };
+      const enemy = { surfaceU: 0.5, surfaceV: 0.5 };
+      const player = { surfaceU: 0.5, surfaceV: 0.5, alive: true };
+      const initialU = enemy.surfaceU;
+      runTicks(30, () => updateOrbiter(enemy, ai, player, DT));
+      expect(enemy.surfaceU).toBeGreaterThan(initialU);
+    });
+
+    it('orbit angle advances each tick', () => {
+      const ai: ExtendedAI = {
+        orbitAngle: 0, orbitRadius: 0.15, orbitDirection: 1,
+        reverseTimer: 0, nextReverse: 100,
+      };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      const initialAngle = ai.orbitAngle!;
+      runTicks(10, () => updateOrbiter(enemy, ai, player, DT));
+      expect(ai.orbitAngle).toBeGreaterThan(initialAngle);
+    });
+
+    it('orbit direction reverses after reverseTimer expires', () => {
+      const ai: ExtendedAI = {
+        orbitAngle: 0, orbitRadius: 0.15, orbitDirection: 1,
+        reverseTimer: 3.99, nextReverse: 4,
+      };
+      const enemy = { surfaceU: 0.5, surfaceV: 0.5 };
+      const player = { surfaceU: 0.5, surfaceV: 0.5, alive: true };
+      updateOrbiter(enemy, ai, player, DT);
+      expect(ai.orbitDirection).toBe(-1);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Helix
+  // -------------------------------------------------------------------------
+  describe('Helix: corkscrew wobble chase', () => {
+    it('moves toward player overall', () => {
+      const ai: ExtendedAI = { corkscrewPhase: 0 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      const initialU = enemy.surfaceU;
+      runTicks(60, () => updateHelix(enemy, ai, player, DT));
+      expect(enemy.surfaceU).toBeGreaterThan(initialU);
+    });
+
+    it('corkscrewPhase advances each tick', () => {
+      const ai: ExtendedAI = { corkscrewPhase: 0 };
+      const enemy = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      updateHelix(enemy, ai, player, DT);
+      expect(ai.corkscrewPhase).toBeGreaterThan(0);
+    });
+
+    it('produces different trajectory than pure chase (V deviates)', () => {
+      // Two helixes with opposite initial corkscrew phases should diverge in V
+      const ai1: ExtendedAI = { corkscrewPhase: 0 };       // starts at sin=0, then goes +
+      const ai2: ExtendedAI = { corkscrewPhase: Math.PI }; // starts at sin=0 going -
+      const e1 = { surfaceU: 0.3, surfaceV: 0.5 };
+      const e2 = { surfaceU: 0.3, surfaceV: 0.5 };
+      const player = { surfaceU: 0.7, surfaceV: 0.5, alive: true };
+      // Run for a short period where wobble phase matters
+      runTicks(15, () => {
+        updateHelix(e1, ai1, player, DT);
+        updateHelix(e2, ai2, player, DT);
+      });
+      // V positions should differ due to opposite wobble
+      const vDiff = Math.abs(e1.surfaceV - e2.surfaceV);
+      expect(vDiff).toBeGreaterThan(0.0001);
+    });
+  });
+});

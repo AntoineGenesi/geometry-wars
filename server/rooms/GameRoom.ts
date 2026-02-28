@@ -265,6 +265,8 @@ interface ServerEnemyAI {
   chargeTargetV?: number;
   // Helix: corkscrew phase for perpendicular wobble
   corkscrewPhase?: number;
+  // Spawner: timer for periodic spawnlet spawning
+  spawnTimer?: number;
 }
 
 export class GameRoom extends Room<GameState> {
@@ -1235,6 +1237,9 @@ export class GameRoom extends Room<GameState> {
         case 'repulsor':
           this.updateRepulsor(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
           break;
+        case 'spawner':
+          this.updateSpawner(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
         case 'painter':
           this.updatePainter(enemy, ai, dt, wrapsV, surfType);
           break;
@@ -1600,6 +1605,377 @@ export class GameRoom extends Room<GameState> {
     }
   }
 
+  /** Orbiter: maintains orbit around player, reverses direction periodically */
+  private updateOrbiter(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    const ORBIT_SPEED = 2.5; // radians/sec
+    const ORBIT_RADIUS = ai.orbitRadius ?? 0.15;
+
+    // Reverse direction periodically
+    ai.reverseTimer = (ai.reverseTimer ?? 0) + dt;
+    if (ai.reverseTimer >= (ai.nextReverse ?? 4)) {
+      ai.orbitDirection = -(ai.orbitDirection ?? 1);
+      ai.reverseTimer = 0;
+      ai.nextReverse = 3 + Math.random() * 2;
+    }
+
+    // Advance orbit angle
+    ai.orbitAngle = (ai.orbitAngle ?? 0) + ORBIT_SPEED * (ai.orbitDirection ?? 1) * dt;
+
+    if (!player) return;
+
+    // Calculate target orbit position around player
+    const orbitU = player.surfaceU + Math.cos(ai.orbitAngle) * ORBIT_RADIUS;
+    const orbitV = player.surfaceV + Math.sin(ai.orbitAngle) * ORBIT_RADIUS;
+
+    // Chase toward the orbit position at fixed speed
+    const du = this.uvDelta(enemy.surfaceU, orbitU, true);
+    const dv = this.uvDelta(enemy.surfaceV, orbitV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist > 0.001) {
+      const ORBIT_CHASE_SPEED = 0.07;
+      enemy.surfaceU += (du / dist) * ORBIT_CHASE_SPEED * dt;
+      enemy.surfaceV += (dv / dist) * ORBIT_CHASE_SPEED * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  /** Helix: chases player with sinusoidal perpendicular wobble */
+  private updateHelix(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    if (!player) return;
+
+    const HELIX_SPEED = 0.07;
+    const WOBBLE_AMPLITUDE = 0.05; // perpendicular UV units
+    const CORKSCREW_RATE = Math.PI * 4; // 2 Hz = 2 * 2π rad/s
+
+    // Advance corkscrew phase
+    ai.corkscrewPhase = (ai.corkscrewPhase ?? 0) + CORKSCREW_RATE * dt;
+
+    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+
+    if (dist > 0.001) {
+      const dirU = du / dist;
+      const dirV = dv / dist;
+      // Perpendicular direction (90° rotation)
+      const perpU = -dirV;
+      const perpV = dirU;
+      const wobble = Math.sin(ai.corkscrewPhase) * WOBBLE_AMPLITUDE;
+
+      enemy.surfaceU += (dirU + perpU * wobble) * HELIX_SPEED * dt;
+      enemy.surfaceV += (dirV + perpV * wobble) * HELIX_SPEED * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  /** Lurker: state machine — idle (still) → charging (1s windup) → dashing (fast) → cooldown */
+  private updateLurker(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    ai.stateTimer = (ai.stateTimer ?? 0) + dt;
+
+    switch (ai.lurkerState ?? 0) {
+      case 0: { // Idle: stays still, waits 2-3s then begins charging
+        if (ai.stateTimer >= (ai.nextDirectionChange ?? 2.5) && player) {
+          ai.lurkerState = 1; // → charging
+          ai.stateTimer = 0;
+        }
+        break;
+      }
+      case 1: { // Charging: 1s windup, tracks player and locks dash direction
+        if (player) {
+          const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+          const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+          const dist = Math.sqrt(du * du + dv * dv);
+          if (dist > 0.001) {
+            ai.dashDirU = du / dist;
+            ai.dashDirV = dv / dist;
+          }
+        }
+        if (ai.stateTimer >= 1.0) {
+          ai.lurkerState = 2; // → dashing
+          ai.stateTimer = 0;
+        }
+        break;
+      }
+      case 2: { // Dashing: 3× normal speed toward locked direction for 0.5s
+        const DASH_SPEED = 0.105; // 3 × normal lurker speed (~0.035)
+        enemy.surfaceU += (ai.dashDirU ?? 0) * DASH_SPEED * dt;
+        enemy.surfaceV += (ai.dashDirV ?? 0) * DASH_SPEED * dt;
+        this.applyUVBounds(enemy, wrapsV, surfType);
+        if (ai.stateTimer >= 0.5) {
+          ai.lurkerState = 3; // → cooldown
+          ai.stateTimer = 0;
+        }
+        break;
+      }
+      case 3: { // Cooldown: waits 1.5s then returns to idle
+        if (ai.stateTimer >= 1.5) {
+          ai.lurkerState = 0; // → idle
+          ai.stateTimer = 0;
+          ai.nextDirectionChange = 2 + Math.random(); // new random idle duration
+        }
+        break;
+      }
+    }
+  }
+
+  /** Repulsor: state machine — lock (slow approach) → charge (AWAY from player) → recovery */
+  private updateRepulsor(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    ai.phaseTimer = (ai.phaseTimer ?? 0) + dt;
+
+    switch (ai.repulsorPhase ?? 0) {
+      case 0: { // Lock: moves slowly toward player, picks charge direction after 2s
+        if (player) {
+          const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+          const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+          const dist = Math.sqrt(du * du + dv * dv);
+          if (dist > 0.01) {
+            const LOCK_SPEED = 0.03;
+            enemy.surfaceU += (du / dist) * LOCK_SPEED * dt;
+            enemy.surfaceV += (dv / dist) * LOCK_SPEED * dt;
+            this.applyUVBounds(enemy, wrapsV, surfType);
+          }
+          if (ai.phaseTimer >= 2.0) {
+            // Charge direction: AWAY from player (enemy - player direction)
+            const awayU = this.uvDelta(player.surfaceU, enemy.surfaceU, true);
+            const awayV = this.uvDelta(player.surfaceV, enemy.surfaceV, wrapsV);
+            const awayDist = Math.sqrt(awayU * awayU + awayV * awayV);
+            if (awayDist > 0.001) {
+              ai.chargeTargetU = awayU / awayDist; // normalized direction
+              ai.chargeTargetV = awayV / awayDist;
+            } else {
+              const angle = Math.random() * Math.PI * 2;
+              ai.chargeTargetU = Math.cos(angle);
+              ai.chargeTargetV = Math.sin(angle);
+            }
+            ai.repulsorPhase = 1; // → charge
+            ai.phaseTimer = 0;
+          }
+        }
+        break;
+      }
+      case 1: { // Charge: blasts AWAY from player at high speed for 0.8s
+        const CHARGE_SPEED = 0.18;
+        enemy.surfaceU += (ai.chargeTargetU ?? 0) * CHARGE_SPEED * dt;
+        enemy.surfaceV += (ai.chargeTargetV ?? 0) * CHARGE_SPEED * dt;
+        this.applyUVBounds(enemy, wrapsV, surfType);
+        if (ai.phaseTimer >= 0.8) {
+          ai.repulsorPhase = 2; // → recovery
+          ai.phaseTimer = 0;
+        }
+        break;
+      }
+      case 2: { // Recovery: stationary pause for 1s then back to lock
+        if (ai.phaseTimer >= 1.0) {
+          ai.repulsorPhase = 0; // → lock
+          ai.phaseTimer = 0;
+        }
+        break;
+      }
+    }
+  }
+
+  /** Spawner: slow drift toward player, periodically spawns 2–3 spawnlets */
+  private updateSpawner(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    // Very slow drift toward player (0.02 UV/s)
+    if (player) {
+      const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+      const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+      const dist = Math.sqrt(du * du + dv * dv);
+      if (dist > 0.01) {
+        const SPAWNER_DRIFT = 0.02;
+        enemy.surfaceU += (du / dist) * SPAWNER_DRIFT * dt;
+        enemy.surfaceV += (dv / dist) * SPAWNER_DRIFT * dt;
+        this.applyUVBounds(enemy, wrapsV, surfType);
+      }
+    }
+
+    // Spawn timer: every 8 seconds, spawn 2–3 spawnlet enemies
+    ai.spawnTimer = (ai.spawnTimer ?? 0) + dt;
+    if (ai.spawnTimer >= 8.0) {
+      ai.spawnTimer = 0;
+      const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
+      for (let i = 0; i < count; i++) {
+        this.spawnEnemyNearPosition('spawnlet', enemy.surfaceU, enemy.surfaceV);
+      }
+    }
+  }
+
+  /** Painter: random walk with frequent direction changes */
+  private updatePainter(
+    enemy: EnemyState, ai: ServerEnemyAI,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    if (ai.directionU === undefined || ai.directionV === undefined) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.directionU = Math.cos(angle);
+      ai.directionV = Math.sin(angle);
+      ai.directionChangeTimer = 0;
+      ai.nextDirectionChange = 0.5 + Math.random() * 1.5;
+    }
+    ai.directionChangeTimer = (ai.directionChangeTimer ?? 0) + dt;
+    if (ai.directionChangeTimer >= (ai.nextDirectionChange ?? 1)) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.directionU = Math.cos(angle);
+      ai.directionV = Math.sin(angle);
+      ai.directionChangeTimer = 0;
+      ai.nextDirectionChange = 0.5 + Math.random() * 1.5;
+    }
+    const PAINTER_SPEED = 0.04;
+    enemy.surfaceU += ai.directionU * PAINTER_SPEED * dt;
+    enemy.surfaceV += ai.directionV * PAINTER_SPEED * dt;
+    this.applyUVBounds(enemy, wrapsV, surfType);
+  }
+
+  /** GiantWanderer: slow wanderer with longer direction intervals */
+  private updateGiantWanderer(
+    enemy: EnemyState, ai: ServerEnemyAI,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    if (ai.directionU === undefined || ai.directionV === undefined) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.directionU = Math.cos(angle);
+      ai.directionV = Math.sin(angle);
+      ai.directionChangeTimer = 0;
+      ai.nextDirectionChange = 2 + Math.random() * 2;
+    }
+    ai.directionChangeTimer = (ai.directionChangeTimer ?? 0) + dt;
+    if (ai.directionChangeTimer >= (ai.nextDirectionChange ?? 2)) {
+      const angle = Math.random() * Math.PI * 2;
+      ai.directionU = Math.cos(angle);
+      ai.directionV = Math.sin(angle);
+      ai.directionChangeTimer = 0;
+      ai.nextDirectionChange = 2 + Math.random() * 2;
+    }
+    const GIANT_WANDER_SPEED = 0.025;
+    enemy.surfaceU += ai.directionU * GIANT_WANDER_SPEED * dt;
+    enemy.surfaceV += ai.directionV * GIANT_WANDER_SPEED * dt;
+    this.applyUVBounds(enemy, wrapsV, surfType);
+  }
+
+  /** GiantRocket: straight-line trajectory (reuses rocket logic) */
+  private updateGiantRocket(
+    enemy: EnemyState, ai: ServerEnemyAI,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    // Giant variant uses same trajectory as rocket but getEnemySpeed handles the difference
+    this.updateRocket(enemy, ai, dt, wrapsV, surfType);
+  }
+
+  /** GiantNeutron: straight-line bounce (reuses neutron logic) */
+  private updateGiantNeutron(
+    enemy: EnemyState, ai: ServerEnemyAI,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    this.updateNeutron(enemy, ai, dt, wrapsV, surfType);
+  }
+
+  /** TitanGrunt: heavy, faster-accelerating grunt */
+  private updateTitanGrunt(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    ai.currentSpeed = Math.min(0.08, (ai.currentSpeed ?? 0.03) + 0.003 * dt);
+    if (!player) return;
+    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist > 0.01) {
+      enemy.surfaceU += (du / dist) * ai.currentSpeed * dt;
+      enemy.surfaceV += (dv / dist) * ai.currentSpeed * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  /** TitanSpinner: larger wobble radius, faster chase than regular spinner */
+  private updateTitanSpinner(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    if (!player) return;
+    const TITAN_SPINNER_SPEED = 0.045;
+    const WOBBLE_AMOUNT = 0.12;
+    const wobbleU = (Math.random() - 0.5) * WOBBLE_AMOUNT;
+    const wobbleV = (Math.random() - 0.5) * WOBBLE_AMOUNT;
+    const targetU = player.surfaceU + wobbleU;
+    const targetV = player.surfaceV + wobbleV;
+    const du = this.uvDelta(enemy.surfaceU, targetU, true);
+    const dv = this.uvDelta(enemy.surfaceV, targetV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist > 0.01) {
+      enemy.surfaceU += (du / dist) * TITAN_SPINNER_SPEED * dt;
+      enemy.surfaceV += (dv / dist) * TITAN_SPINNER_SPEED * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  /** TitanWeaver: momentum-based chase with higher speed cap than regular weaver */
+  private updateTitanWeaver(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    ai.momentumU = ai.momentumU ?? 0;
+    ai.momentumV = ai.momentumV ?? 0;
+    if (player) {
+      const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+      const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+      const dist = Math.sqrt(du * du + dv * dv);
+      if (dist > 0.01) {
+        ai.momentumU += (du / dist) * 0.4 * dt;
+        ai.momentumV += (dv / dist) * 0.4 * dt;
+      }
+    }
+    ai.momentumU *= 0.90;
+    ai.momentumV *= 0.90;
+    const spd = Math.sqrt(ai.momentumU * ai.momentumU + ai.momentumV * ai.momentumV);
+    const MAX_SPEED = 0.06;
+    if (spd > MAX_SPEED) {
+      ai.momentumU = (ai.momentumU / spd) * MAX_SPEED;
+      ai.momentumV = (ai.momentumV / spd) * MAX_SPEED;
+    }
+    enemy.surfaceU += ai.momentumU * dt;
+    enemy.surfaceV += ai.momentumV * dt;
+    this.applyUVBounds(enemy, wrapsV, surfType);
+  }
+
+  /**
+   * Spawn an enemy of the given type near a specific UV position.
+   * Used by the Spawner enemy to create spawnlets around itself.
+   * Does not send a pre_spawn warning (spawnlets appear immediately).
+   */
+  private spawnEnemyNearPosition(type: string, u: number, v: number): void {
+    const maxEnemies = this.getMaxEnemies();
+    if (this.state.enemies.length + this.pendingEnemyCount >= maxEnemies) return;
+    if (this.state.roomPhase !== 'playing') return;
+
+    const enemy = new EnemyState();
+    enemy.id = `e${this.nextEnemyId++}`;
+    enemy.type = type;
+    // Small random offset from spawner position
+    const offsetU = (Math.random() - 0.5) * 0.06;
+    const offsetV = (Math.random() - 0.5) * 0.06;
+    enemy.surfaceU = Math.max(0.05, Math.min(0.95, u + offsetU));
+    enemy.surfaceV = Math.max(0.05, Math.min(0.95, v + offsetV));
+    enemy.health = this.getEnemyHealth(type);
+    enemy.alive = true;
+    this.enemyAI.set(enemy.id, this.createEnemyAI(type));
+    this.state.enemies.push(enemy);
+  }
+
   /** Default: flat-speed chase toward nearest player (used for snake, gate, blackhole, repulsor, etc.) */
   private updateDefaultChase(
     enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
@@ -1695,6 +2071,50 @@ export class GameRoom extends Room<GameState> {
         return { currentSpeed: 0.03, maxSpeed: 0.055 };
       case 'approach_glow':
         return { currentSpeed: 0.02, maxSpeed: 0.055 };
+      case 'lurker':
+        return {
+          lurkerState: 0,
+          stateTimer: 0,
+          dashDirU: 0,
+          dashDirV: 0,
+          nextDirectionChange: 2 + Math.random(), // idle duration: 2-3s
+        };
+      case 'orbiter':
+        return {
+          orbitAngle: Math.random() * Math.PI * 2,
+          orbitRadius: 0.15,
+          orbitDirection: Math.random() < 0.5 ? 1 : -1,
+          reverseTimer: 0,
+          nextReverse: 3 + Math.random() * 2,
+        };
+      case 'helix':
+        return { corkscrewPhase: 0 };
+      case 'repulsor':
+        return { repulsorPhase: 0, phaseTimer: 0 };
+      case 'spawner':
+        return { spawnTimer: 0 };
+      case 'painter':
+      case 'giant_wanderer': {
+        const angle = Math.random() * Math.PI * 2;
+        return {
+          directionU: Math.cos(angle),
+          directionV: Math.sin(angle),
+          directionChangeTimer: 0,
+          nextDirectionChange: 1 + Math.random() * 2,
+        };
+      }
+      case 'giant_rocket':
+      case 'giant_neutron': {
+        const angle = Math.random() * Math.PI * 2;
+        return {
+          rocketDirU: Math.cos(angle),
+          rocketDirV: Math.sin(angle),
+        };
+      }
+      case 'titan_grunt':
+        return { currentSpeed: 0.03 };
+      case 'titan_weaver':
+        return { momentumU: 0, momentumV: 0 };
       default:
         return {};
     }
