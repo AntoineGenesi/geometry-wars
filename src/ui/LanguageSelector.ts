@@ -5,6 +5,7 @@ const LANGUAGES = [
   { code: 'es', flag: '🇪🇸' },
   { code: 'fr', flag: '🇫🇷' },
   { code: 'de', flag: '🇩🇪' },
+  { code: 'ru', flag: '🇷🇺' },
 ] as const;
 
 type LanguageCode = (typeof LANGUAGES)[number]['code'];

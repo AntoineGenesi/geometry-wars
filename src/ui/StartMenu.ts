@@ -1,5 +1,6 @@
 import { SurfaceType } from '../surfaces/SurfaceFactory';
 import { t } from '../i18n';
+import { LanguageSelector } from './LanguageSelector';
 import { MapSize, getDefaultMapSizeForSurface, MAP_SIZE_LABELS } from '../core/MapSize';
 import { ADVENTURE_LEVELS } from '../core/LevelData';
 import { LevelCompleteScreen, type LevelProgress } from './LevelCompleteScreen';
@@ -71,6 +72,9 @@ export class StartMenu {
   private readonly isDebugMode: boolean;
   private objDebugPanel: OBJDebugPanel | null = null;
 
+  // Language selector
+  private _languageSelector: LanguageSelector | null = null;
+
   // Available surfaces with display names
   private readonly surfaces: { type: SurfaceType; name: string; icon: string }[] = [
     { type: 'sphere', name: 'Sphere', icon: '\u25EF' },
@@ -96,6 +100,13 @@ export class StartMenu {
     this.applyStyles();
     document.body.appendChild(this.container);
     this.attachEventListeners();
+
+    // Language selector — bottom-right corner
+    const langMount = this.container.querySelector<HTMLElement>('#start-lang-selector');
+    if (langMount) {
+      this._languageSelector = new LanguageSelector(langMount);
+      this._languageSelector.render();
+    }
 
     // Debug OBJ panel — instantiate on demand (F4 key)
     // Lazy-init: created when user presses F4, not at startup
@@ -365,6 +376,9 @@ export class StartMenu {
           <button class="weapon-info-btn" id="settings-btn">SETTINGS</button>
           ${this.isDebugMode ? '<button class="weapon-info-btn debug-obj-btn" id="debug-obj-btn" style="border-color:#ff8800;color:#ff8800;">DEBUG: LOAD MODELS</button>' : ''}
         </div>
+
+        <!-- Language selector — bottom-right corner -->
+        <div id="start-lang-selector"></div>
       </div>
     `;
   }
@@ -1482,6 +1496,66 @@ export class StartMenu {
           font-size: 10px;
         }
       }
+
+      /* ------------------------------------------------------------------- */
+      /* Language selector — bottom-right corner                              */
+      /* ------------------------------------------------------------------- */
+      #start-menu #start-lang-selector {
+        position: absolute;
+        bottom: 12px;
+        right: 16px;
+        z-index: 10;
+      }
+
+      #start-menu #start-lang-selector .lang-selector-section {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 4px;
+      }
+
+      #start-menu #start-lang-selector .lang-selector-title {
+        font-size: 10px;
+        color: rgba(255,255,255,0.4);
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      #start-menu #start-lang-selector .lang-selector-grid {
+        display: flex;
+        flex-direction: row;
+        gap: 4px;
+      }
+
+      #start-menu #start-lang-selector .lang-btn {
+        background: rgba(255,255,255,0.05);
+        border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 4px;
+        color: rgba(255,255,255,0.6);
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 1;
+        padding: 4px 6px;
+        transition: opacity 0.2s, border-color 0.2s;
+        user-select: none;
+      }
+
+      #start-menu #start-lang-selector .lang-btn:hover {
+        opacity: 0.8;
+        border-color: rgba(255,255,255,0.4);
+      }
+
+      #start-menu #start-lang-selector .lang-btn.selected {
+        border-color: rgba(100,200,255,0.7);
+        color: rgba(255,255,255,0.95);
+      }
+
+      @media (max-width: 768px) {
+        #start-menu #start-lang-selector .lang-btn {
+          font-size: 22px;
+          padding: 6px 8px;
+        }
+      }
     `;
     document.head.appendChild(style);
   }
@@ -2319,6 +2393,11 @@ export class StartMenu {
     this.container.remove();
     if (this.styleElement) {
       this.styleElement.remove();
+    }
+    // Clean up language selector
+    if (this._languageSelector) {
+      this._languageSelector.dispose();
+      this._languageSelector = null;
     }
     // Clean up debug panel if it was created
     if (this.objDebugPanel) {

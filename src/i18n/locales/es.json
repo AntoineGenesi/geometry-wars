@@ -109,7 +109,8 @@
     "en": "English",
     "es": "Español",
     "fr": "Français",
-    "de": "Deutsch"
+    "de": "Deutsch",
+    "ru": "Русский"
   },
   "pauseMenu": {
     "title": "[ES] PAUSED",

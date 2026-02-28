@@ -1,0 +1,239 @@
+{
+  "common": {
+    "continue": "ПРОДОЛЖИТЬ",
+    "menu": "МЕНЮ",
+    "cancel": "ОТМЕНА",
+    "ok": "ОК",
+    "done": "ГОТОВО",
+    "loading": "ЗАГРУЗКА...",
+    "resume": "ВОЗОБНОВИТЬ",
+    "settings": "НАСТРОЙКИ",
+    "controls": "УПРАВЛЕНИЕ",
+    "score": "СЧЁТ",
+    "available": "Доступно",
+    "notAvailable": "Недоступно"
+  },
+  "gameOver": {
+    "title": "ИГРА ОКОНЧЕНА",
+    "scoreLabel": "СЧЁТ",
+    "newHighScore": "НОВЫЙ РЕКОРД!",
+    "highScores": "РЕКОРДЫ",
+    "noScores": "Нет результатов",
+    "continueBtn": "ПРОДОЛЖИТЬ",
+    "returnToMenu": "В ГЛАВНОЕ МЕНЮ",
+    "hintContinue": "Нажмите ENTER или кликните для продолжения",
+    "hintVote": "Нажмите ENTER для голосования · кликните В МЕНЮ для отключения",
+    "votingCountdown": "Экран голосования через {{count}}с…",
+    "recordScore": "СОХРАНИТЬ РЕЗУЛЬТАТ",
+    "recordScoreBtn": "СОХРАНИТЬ",
+    "namePlaceholder": "Игрок",
+    "nameLabelField": "ИМЯ",
+    "noteLabelField": "ЗАМЕТКА",
+    "noteOptional": "(необязательно)",
+    "notePlaceholder": "например: первая попытка, полное комбо...",
+    "nameHint": "ENTER для заметки · ещё раз ENTER для отправки",
+    "autoSubmitting": "Автоотправка через {{count}}с…"
+  },
+  "levelComplete": {
+    "title": "ЗАВЕРШЕНО",
+    "nextStarAt": "Следующая звезда при {{score}}",
+    "maxStars": "Все звёзды получены!",
+    "nextLevel": "СЛЕДУЮЩИЙ УРОВЕНЬ",
+    "replay": "ПОВТОРИТЬ",
+    "menu": "МЕНЮ"
+  },
+  "controls": {
+    "title": "УПРАВЛЕНИЕ",
+    "action": "ДЕЙСТВИЕ",
+    "aim": "ПРИЦЕЛ",
+    "mouse": "МЫШЬ",
+    "auto": "АВТО",
+    "pressKey": "НАЖМИТЕ КЛАВИШУ...",
+    "conflicts": "Конфликты: {{list}}",
+    "resetDefaults": "СБРОС",
+    "done": "ГОТОВО",
+    "actions": {
+      "up": "ВВЕРХ",
+      "down": "ВНИЗ",
+      "left": "ВЛЕВО",
+      "right": "ВПРАВО",
+      "shoot": "СТРЕЛЯТЬ",
+      "bomb": "БОМБА"
+    }
+  },
+  "voting": {
+    "title": "ВЫБЕРИТЕ ПОЛЕ БОЯ",
+    "mode": "РЕЖИМ:",
+    "size": "РАЗМЕР:",
+    "voting": "ГОЛОСОВАНИЕ",
+    "hostPicks": "ВЫБОР ХОСТА",
+    "launchNow": "НАЧАТЬ",
+    "returnToMenu": "В ГЛАВНОЕ МЕНЮ",
+    "surfaces": {
+      "sphere": "СФЕРА",
+      "torus": "ТОР",
+      "cube": "КУБ",
+      "pill": "КАПСУЛА",
+      "capsule": "КАПСУЛА",
+      "icosahedron": "ИКОСАЭДР",
+      "peanut": "АРАХИС",
+      "cubeTunnel": "КУБ-ТУННЕЛЬ"
+    },
+    "modes": {
+      "waves": "ВОЛНЫ"
+    },
+    "sizes": {
+      "small": "МАЛЕНЬКИЙ",
+      "medium": "СРЕДНИЙ",
+      "large": "БОЛЬШОЙ"
+    }
+  },
+  "menu": {
+    "surfaces": {
+      "sphere": "Сфера",
+      "cube": "Куб",
+      "torus": "Тор",
+      "pill": "Пилюля",
+      "pipe": "Труба",
+      "peanut": "Арахис",
+      "capsule": "Капсула",
+      "icosahedron": "Икосаэдр",
+      "mobius": "Лента Мёбиуса",
+      "sphereTunnel": "Сферический туннель",
+      "cubeRing": "Кольцо куба",
+      "cubeTunnel": "Туннель куба"
+    }
+  },
+  "languages": {
+    "title": "ЯЗЫК",
+    "en": "English",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch",
+    "ru": "Русский"
+  },
+  "pauseMenu": {
+    "title": "ПАУЗА",
+    "resume": "ВОЗОБНОВИТЬ",
+    "controls": "УПРАВЛЕНИЕ",
+    "weapons": "ОРУЖИЕ",
+    "settings": "НАСТРОЙКИ",
+    "stylePixelated": "СТИЛЬ: ПИКСЕЛЬНЫЙ",
+    "styleModern": "СТИЛЬ: СОВРЕМЕННЫЙ",
+    "performanceGraphs": "ГРАФИКИ ПРОИЗВОДИТЕЛЬНОСТИ",
+    "music": "МУЗЫКА: {{name}}",
+    "exitToMenu": "ВЫХОД В МЕНЮ",
+    "exitToVoting": "ЭКРАН ГОЛОСОВАНИЯ",
+    "endGameForAll": "ЗАВЕРШИТЬ ДЛЯ ВСЕХ",
+    "stopServer": "ОСТАНОВИТЬ СЕРВЕР",
+    "hint": "ESC — возобновить | M — звук | N — следующий трек",
+    "stats": {
+      "joinThisGame": "ВОЙТИ В ИГРУ",
+      "playerLevel": "УРОВЕНЬ ИГРОКА",
+      "companions": "КОМПАНЬОНЫ",
+      "cumulativeBonuses": "НАКОПЛЕННЫЕ БОНУСЫ",
+      "weapon": "ОРУЖИЕ",
+      "totalKills": "ВСЕГО УБИЙСТВ",
+      "activeBuffs": "АКТИВНЫЕ БАФФЫ",
+      "noActiveBuffs": "Нет активных баффов",
+      "performance": "ПРОИЗВОДИТЕЛЬНОСТЬ"
+    }
+  },
+  "settings": {
+    "title": "НАСТРОЙКИ",
+    "done": "ГОТОВО",
+    "tabs": {
+      "gpuInfo": "GPU INFO",
+      "graphics": "ГРАФИКА",
+      "performance": "ПРОИЗВОДИТЕЛЬНОСТЬ",
+      "audio": "ЗВУК",
+      "gameplay": "ГЕЙМПЛЕЙ"
+    },
+    "gpu": {
+      "renderer": "РЕНДЕРЕР",
+      "hardware": "ЖЕЛЕЗО",
+      "features": "ФУНКЦИИ",
+      "benchmark": "ТЕСТ",
+      "activeRenderer": "Активный рендерер",
+      "gpuRenderer": "Рендерер GPU",
+      "gpuVendor": "Производитель GPU",
+      "webgpuAdapter": "Адаптер WebGPU",
+      "detectedTier": "Определённый уровень",
+      "maxTextureSize": "Макс. размер текстуры",
+      "webgpu": "WebGPU",
+      "webgl2": "WebGL2",
+      "sharedArrayBuffer": "SharedArrayBuffer",
+      "cpuCores": "Ядра CPU",
+      "runBenchmark": "ТЕСТ GPU",
+      "running": "ТЕСТИРОВАНИЕ...",
+      "runFullBenchmark": "ПОЛНЫЙ ТЕСТ ИГРЫ",
+      "benchmarkTier": "Уровень теста: {{tier}}",
+      "maxAt60fps": "Макс. при 60fps (instanced)",
+      "maxAt30fps": "Макс. при 30fps (instanced)"
+    },
+    "graphics": {
+      "visualStyle": "ВИЗУАЛЬНЫЙ СТИЛЬ",
+      "qualityPreset": "ПРЕСЕТ КАЧЕСТВА",
+      "visualEffects": "ВИЗУАЛЬНЫЕ ЭФФЕКТЫ",
+      "limits": "ОГРАНИЧЕНИЯ",
+      "preset": "Пресет",
+      "bloom": "Свечение",
+      "bloomStrength": "Интенсивность свечения",
+      "particles": "Частицы",
+      "trailEffects": "Следы",
+      "surfaceOpacity": "Прозрачность поверхности",
+      "maxEnemies": "Макс. враги",
+      "resolutionScale": "Масштаб разрешения",
+      "resetToDefault": "СБРОС",
+      "bloomHint": "Хорошие значения — Современный: 1.0 | Пиксельный: 0.4"
+    },
+    "performance": {
+      "liveStats": "СТАТИСТИКА",
+      "adaptiveQuality": "АДАПТИВНОЕ КАЧЕСТВО",
+      "debug": "ОТЛАДКА",
+      "fps": "FPS",
+      "drawCalls": "ВЫЗОВЫ ОТРИСОВКИ",
+      "entities": "ОБЪЕКТЫ",
+      "memoryMB": "ПАМЯТЬ (МБ)",
+      "autoAdjustQuality": "Авто-настройка качества",
+      "debugStatistics": "Статистика отладки",
+      "debugHint": "Показывает FPS, количество объектов и оверлей. Горячая клавиша: F4."
+    },
+    "audio": {
+      "volume": "ГРОМКОСТЬ",
+      "musicStyle": "СТИЛЬ МУЗЫКИ",
+      "master": "Общая",
+      "sfx": "Звуки",
+      "music": "Музыка",
+      "preset": "Пресет",
+      "presets": {
+        "electronic": "Электронная",
+        "ambient": "Амбиент",
+        "synthwave": "Синтвейв",
+        "minimal": "Минимал"
+      }
+    },
+    "gameplay": {
+      "difficulty": "СЛОЖНОСТЬ",
+      "dynamicDifficulty": "Динамическая сложность",
+      "ddaHint": "Тонко подстраивает состав врагов. Отключается на уровне Кошмар."
+    }
+  },
+  "hud": {
+    "kills": "УБИЙСТВА",
+    "mastered": "ОСВОЕНО",
+    "killLog": {
+      "streak": "СЕРИЯ",
+      "rampage": "ЯРОСТЬ",
+      "unstoppable": "НЕУДЕРЖИМЫЙ"
+    }
+  },
+  "mastery": {
+    "title": "МАСТЕРСТВО ОРУЖИЯ",
+    "subtitle": "ОБНОВЛЕНИЕ ПРОГРЕССА",
+    "continueBtn": "ПРОДОЛЖИТЬ",
+    "continueHint": "ENTER / ПРОБЕЛ / КЛИК",
+    "newPassiveUnlocked": "Разблокирован новый пассивный навык",
+    "levelBadge": "Ур.{{level}}"
+  }
+}
