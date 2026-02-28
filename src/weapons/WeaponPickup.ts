@@ -7,8 +7,8 @@ import { createWeaponIconSprite } from '../pickups/PickupIconSprite';
 // World-space pickup collision radius (in world units).
 // Using world-space distance instead of UV-space because UV metric is non-uniform:
 // 0.01 UV = 0.63 world units at sphere equator but only 0.13 on torus tube direction.
-// Visual octahedron radius = 0.35 world units; 0.6 gives comfortable margin.
-const PICKUP_WORLD_RADIUS = 0.6;
+// Visual octahedron radius = 0.35 world units; 0.3 requires player to be visibly close.
+const PICKUP_WORLD_RADIUS = 0.3;
 
 /**
  * Floating weapon pickup that grants new weapons to player

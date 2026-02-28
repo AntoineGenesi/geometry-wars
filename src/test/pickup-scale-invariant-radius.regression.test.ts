@@ -72,58 +72,58 @@ function buffNewCollides(
 
 describe('Pickup scale-invariant collection radius (S36 regression)', () => {
   /**
-   * The BASE_RADIUS is 0.6 world units. On scale=1 the threshold is 0.6.
-   * On scale=2 the threshold should be 1.2. We test that a gap of 0.8
-   * world units (which is < 0.6*2 = 1.2) is collected on scale=2 but was
-   * NOT collected before the fix (when threshold was still 0.6).
+   * The BASE_RADIUS is 0.3 world units (reduced in S40-10 for tighter collection).
+   * On scale=1 the threshold is 0.3. On scale=2 the threshold should be 0.6.
+   * We test that a gap of 0.4 world units (which is < 0.3*2 = 0.6) is collected
+   * on scale=2 but NOT collected on scale=1 (where threshold is 0.3).
    *
-   * 0.8 > 0.6  → was NOT collected at scale=2 before fix (BUG)
-   * 0.8 < 1.2  → IS collected at scale=2 after fix (CORRECT)
+   * 0.4 > 0.3  → NOT collected at scale=1 (CORRECT)
+   * 0.4 < 0.6  → IS collected at scale=2 (CORRECT)
    */
   const PICKUP_POS = new THREE.Vector3(0, 0, 0);
-  const PLAYER_GAP_0_8 = new THREE.Vector3(0.8, 0, 0); // 0.8 units away
+  const PLAYER_GAP_0_4 = new THREE.Vector3(0.4, 0, 0); // 0.4 units away
 
-  it('WeaponPickup: collects at 0.8 units on scale=2 (would fail if radius not scaled)', () => {
-    // Before fix: 0.8 < 0.6 → false. After fix: 0.8 < 0.6*2=1.2 → true.
-    expect(weaponCollides(PICKUP_POS, PLAYER_GAP_0_8, 2.0)).toBe(true);
+  it('WeaponPickup: collects at 0.4 units on scale=2 (would fail if radius not scaled)', () => {
+    // 0.4 < 0.3*2=0.6 → true.
+    expect(weaponCollides(PICKUP_POS, PLAYER_GAP_0_4, 2.0)).toBe(true);
   });
 
-  it('WeaponPickup: does NOT collect at 0.8 units on scale=1 (radius=0.6)', () => {
-    // 0.8 > 0.6 → should not collect
-    expect(weaponCollides(PICKUP_POS, PLAYER_GAP_0_8, 1.0)).toBe(false);
+  it('WeaponPickup: does NOT collect at 0.4 units on scale=1 (radius=0.3)', () => {
+    // 0.4 > 0.3 → should not collect
+    expect(weaponCollides(PICKUP_POS, PLAYER_GAP_0_4, 1.0)).toBe(false);
   });
 
-  it('BuffPickup: collects at 0.8 units on scale=2', () => {
-    expect(buffCollides(PICKUP_POS, PLAYER_GAP_0_8, 2.0)).toBe(true);
+  it('BuffPickup: collects at 0.4 units on scale=2', () => {
+    expect(buffCollides(PICKUP_POS, PLAYER_GAP_0_4, 2.0)).toBe(true);
   });
 
-  it('BuffPickupNew: collects at 0.8 units on scale=2', () => {
-    expect(buffNewCollides(PICKUP_POS, PLAYER_GAP_0_8, 2.0)).toBe(true);
+  it('BuffPickupNew: collects at 0.4 units on scale=2', () => {
+    expect(buffNewCollides(PICKUP_POS, PLAYER_GAP_0_4, 2.0)).toBe(true);
   });
 
-  it('WeaponPickup: does NOT collect at 1.3 units on scale=2 (outside 0.6*2=1.2)', () => {
-    const farPlayer = new THREE.Vector3(1.3, 0, 0);
+  it('WeaponPickup: does NOT collect at 0.7 units on scale=2 (outside 0.3*2=0.6)', () => {
+    const farPlayer = new THREE.Vector3(0.7, 0, 0);
     expect(weaponCollides(PICKUP_POS, farPlayer, 2.0)).toBe(false);
   });
 
   it('WeaponPickup: consistent radius across SMALL(0.75), MEDIUM(1.0), LARGE(1.5), EPIC(2.0)', () => {
-    // For each scale, a player at exactly 0.5 * scaleFactor units away should always collect.
-    // This verifies scale invariance in UV terms.
+    // For each scale, a player at exactly 0.25 * scaleFactor units away should always collect.
+    // This verifies scale invariance in UV terms (0.25*scale < 0.3*scale).
     for (const scale of [0.75, 1.0, 1.5, 2.0]) {
-      const playerPos = new THREE.Vector3(0.5 * scale, 0, 0);
+      const playerPos = new THREE.Vector3(0.25 * scale, 0, 0);
       expect(
         weaponCollides(PICKUP_POS, playerPos, scale),
-        `scale=${scale}: player at 0.5*scale should collect`,
+        `scale=${scale}: player at 0.25*scale should collect`,
       ).toBe(true);
     }
   });
 
-  it('WeaponPickup: player at 0.7 * scaleFactor always NOT collected (outside 0.6 threshold)', () => {
+  it('WeaponPickup: player at 0.35 * scaleFactor always NOT collected (outside 0.3 threshold)', () => {
     for (const scale of [0.75, 1.0, 1.5, 2.0]) {
-      const playerPos = new THREE.Vector3(0.7 * scale, 0, 0);
+      const playerPos = new THREE.Vector3(0.35 * scale, 0, 0);
       expect(
         weaponCollides(PICKUP_POS, playerPos, scale),
-        `scale=${scale}: player at 0.7*scale should NOT collect`,
+        `scale=${scale}: player at 0.35*scale should NOT collect`,
       ).toBe(false);
     }
   });
