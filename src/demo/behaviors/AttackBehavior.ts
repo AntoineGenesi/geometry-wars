@@ -9,6 +9,7 @@
 
 import * as THREE from 'three';
 import type { GLBCharacterEnemy } from '../GLBCharacterEnemy';
+import type { Projectile } from './Projectile';
 
 export interface AttackBehavior {
   /** Unique name for this behavior */
@@ -49,6 +50,11 @@ export interface AttackBehavior {
   ): void;
   /** Remove all active projectiles / effects from the scene. */
   dispose(): void;
+  /**
+   * Optional: return active world-space projectiles that can be deflected by player bullets.
+   * Behaviors without deflectable projectiles can omit this.
+   */
+  getActiveProjectiles?(): ReadonlyArray<Projectile>;
 }
 
 export type AttackType = 'melee' | 'slam' | 'slow-arrow' | 'fast-arrow';

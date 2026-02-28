@@ -15,7 +15,7 @@ import { Projectile } from './Projectile';
 const SLOW_ARROW_DAMAGE = 1;
 const SLOW_ARROW_SPEED = 3.0; // world units / second
 const SLOW_ARROW_LIFETIME = 8.0; // seconds before auto-expiry
-const SLOW_ARROW_HIT_RADIUS = 1.2; // world units
+const SLOW_ARROW_HIT_RADIUS = 0.6; // world units (reduced from 1.2 — was too generous)
 const FIRE_DELAY_MS = 500; // animation wind-up
 
 export class SlowArrowBehavior implements AttackBehavior {
@@ -87,6 +87,10 @@ export class SlowArrowBehavior implements AttackBehavior {
       proj.hit(); // removes from scene
     }
     this.activeProjectiles = [];
+  }
+
+  getActiveProjectiles(): ReadonlyArray<Projectile> {
+    return this.activeProjectiles;
   }
 
   private _buildMesh(): THREE.Mesh {

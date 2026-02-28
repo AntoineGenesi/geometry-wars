@@ -87,6 +87,32 @@ export class CharacterBehaviorSystem {
     }
   }
 
+  /** Return all registered behaviors (used for deflected projectile → enemy collision). */
+  getBehaviors(): IterableIterator<AttackBehavior> {
+    return this.registry.values();
+  }
+
+  /**
+   * Check if a player bullet at `bulletPos` hits any deflectable enemy projectile.
+   * Deflects the first matching projectile and returns true (meaning kill the bullet).
+   *
+   * @param bulletPos - World-space position of the player bullet
+   * @param bulletRadius - Hit radius for the deflection check (world units)
+   */
+  checkProjectileDeflection(bulletPos: THREE.Vector3, bulletRadius: number): boolean {
+    for (const behavior of this.registry.values()) {
+      const projs = behavior.getActiveProjectiles?.();
+      if (!projs) continue;
+      for (const proj of projs) {
+        if (!proj.deflected && proj.mesh.position.distanceTo(bulletPos) < bulletRadius + proj.hitRadius) {
+          proj.deflect();
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** Dispose all behaviors and clear registry. Call on demo teardown. */
   dispose(): void {
     for (const behavior of this.registry.values()) {
