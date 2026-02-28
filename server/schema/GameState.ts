@@ -26,6 +26,7 @@ export class PlayerState extends Schema {
   declare weaponAmmo: number;
   declare playerLevel: number;
   declare playerKills: number;
+  declare ddaLevel: number;
 
   constructor() {
     super();
@@ -45,6 +46,7 @@ export class PlayerState extends Schema {
     this.weaponAmmo = -1; // -1 = infinite (standard)
     this.playerLevel = 0;
     this.playerKills = 0;
+    this.ddaLevel = 0;
   }
 }
 
@@ -65,6 +67,7 @@ defineTypes(PlayerState, {
   weaponAmmo: 'number',
   playerLevel: 'number',
   playerKills: 'number',
+  ddaLevel: 'number',
 });
 
 /**
