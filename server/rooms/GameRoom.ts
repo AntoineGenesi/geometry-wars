@@ -6,6 +6,7 @@ import {
   EnemyState,
   GeomState,
   WeaponPickupState,
+  SuperPickupState,
 } from '../schema/GameState';
 import fs from 'fs';
 import path from 'path';
@@ -101,6 +102,12 @@ const SPAWN_OFFSETS = [
 
 // WEAPON_CONFIGS, WEAPON_DROP_CHANCE, WEAPON_PICKUP_LIFETIME imported from ../shared/GameConstants
 const WEAPON_TYPES = Object.keys(WEAPON_CONFIGS).filter(t => t !== 'standard');
+
+// Super pickup constants
+// Bomb resupply spawns every SUPER_PICKUP_WAVE_INTERVAL waves (e.g. wave 5, 10, 15...).
+// Lifetime of 30s gives players time to travel and collect before it despawns.
+const SUPER_PICKUP_LIFETIME = 30;
+const SUPER_PICKUP_WAVE_INTERVAL = 5;
 
 /**
  * Returns the map size scale factor matching client-side getMapSizeScaleFactor().
@@ -281,6 +288,7 @@ export class GameRoom extends Room<GameState> {
   private clientRequestedHost: Map<string, boolean> = new Map();
   private nextGeomId = 0;
   private nextPickupId = 0;
+  private nextSuperPickupId = 0;
   private waveNumber = 0;
 
   // Wave scheduling state
@@ -752,6 +760,7 @@ export class GameRoom extends Room<GameState> {
     this.enemyAI.clear();
     this.state.geoms.clear();
     this.state.weaponPickups.clear();
+    this.state.superPickups.clear();
 
     this.setMetadata({
       surface: this.state.surfaceType,
@@ -1032,6 +1041,9 @@ export class GameRoom extends Room<GameState> {
 
     // Update weapon pickups (age + despawn)
     this.updateWeaponPickups(dt);
+
+    // Update super pickups (age + despawn)
+    this.updateSuperPickups(dt);
 
     // Wave-based enemy spawning (replaces old per-2s individual spawn)
     this.tickWaves(dt);
@@ -2298,6 +2310,13 @@ export class GameRoom extends Room<GameState> {
           wasHit = true;
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
           player.lives--;
+
+          // If player had a meaningful multiplier, spawn a multiplier_boost pickup
+          // at the death spot so surviving players can capitalize on it.
+          if (player.multiplier > 5) {
+            this.spawnSuperPickup('multiplier_boost');
+            this.logger.log(`[GameRoom] Spawned multiplier_boost (player had ×${player.multiplier})`);
+          }
           player.multiplier = 1;
           // DDA: track death event for this player
           this.trackDDADeath(player.id);
@@ -2368,6 +2387,33 @@ export class GameRoom extends Room<GameState> {
       });
     });
 
+    // Player-superPickup collisions
+    const superPickupsToRemove: number[] = [];
+    this.state.players.forEach((player) => {
+      if (!player.alive) return;
+
+      this.state.superPickups.forEach((pickup, index) => {
+        if (!pickup.active) return;
+
+        const dist = isSphereLike
+          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, sphereR)
+          : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
+        const threshold = isSphereLike ? PICKUP_WORLD : PICKUP_RADIUS;
+
+        if (dist < threshold) {
+          pickup.active = false;
+          superPickupsToRemove.push(index);
+
+          if (pickup.pickupType === 'bomb_resupply') {
+            player.bombs = Math.min(player.bombs + 2, 5);
+          } else if (pickup.pickupType === 'multiplier_boost') {
+            player.multiplier = Math.min(player.multiplier + 10, 150);
+          }
+          this.logger.log(`[GameRoom] Player ${player.id} collected ${pickup.pickupType} super pickup`);
+        }
+      });
+    });
+
     // Remove entities (iterate in reverse)
     for (let i = bulletsToRemove.length - 1; i >= 0; i--) {
       this.state.bullets.splice(bulletsToRemove[i], 1);
@@ -2380,6 +2426,9 @@ export class GameRoom extends Room<GameState> {
     }
     for (let i = pickupsToRemove.length - 1; i >= 0; i--) {
       this.state.weaponPickups.splice(pickupsToRemove[i], 1);
+    }
+    for (let i = superPickupsToRemove.length - 1; i >= 0; i--) {
+      this.state.superPickups.splice(superPickupsToRemove[i], 1);
     }
   }
 
@@ -2422,6 +2471,13 @@ export class GameRoom extends Room<GameState> {
 
     const wave = this.generateServerWave();
     this.spawnWave(wave);
+
+    // Every SUPER_PICKUP_WAVE_INTERVAL waves, spawn a bomb resupply super pickup.
+    // This gives players a periodic reward for surviving and adds MP tension (race to collect).
+    if (this.waveNumber % SUPER_PICKUP_WAVE_INTERVAL === 0) {
+      this.spawnSuperPickup('bomb_resupply');
+      this.logger.log(`[GameRoom] Spawned bomb_resupply super pickup at wave ${this.waveNumber}`);
+    }
 
     // Decrease interval over time (same formula as WaveScheduler)
     const nextInterval = Math.max(WAVE_INTERVAL_MIN, WAVE_INTERVAL_BASE - this.waveNumber * WAVE_INTERVAL_DECAY);
@@ -2917,6 +2973,60 @@ export class GameRoom extends Room<GameState> {
     pickup.age = 0;
     pickup.active = true;
     this.state.weaponPickups.push(pickup);
+  }
+
+  /**
+   * Spawn a super pickup at a random UV position at least 0.3 away from all players.
+   * Falls back to a random position if no safe location is found after 20 attempts.
+   */
+  private spawnSuperPickup(type: 'bomb_resupply' | 'multiplier_boost') {
+    const MIN_DIST = 0.3; // minimum UV distance from any player
+    let u = Math.random();
+    let v = Math.max(0.05, Math.min(0.95, Math.random())); // clamp away from poles
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const candidateU = Math.random();
+      const candidateV = Math.max(0.05, Math.min(0.95, Math.random()));
+      let tooClose = false;
+      this.state.players.forEach((player) => {
+        if (tooClose) return;
+        const du = Math.abs(candidateU - player.surfaceU);
+        const dv = Math.abs(candidateV - player.surfaceV);
+        if (Math.sqrt(du * du + dv * dv) < MIN_DIST) tooClose = true;
+      });
+      if (!tooClose) {
+        u = candidateU;
+        v = candidateV;
+        break;
+      }
+    }
+
+    const pickup = new SuperPickupState();
+    pickup.id = `sp${this.nextSuperPickupId++}`;
+    pickup.surfaceU = u;
+    pickup.surfaceV = v;
+    pickup.pickupType = type;
+    pickup.active = true;
+    pickup.age = 0;
+    this.state.superPickups.push(pickup);
+  }
+
+  private updateSuperPickups(dt: number) {
+    const toRemove: number[] = [];
+    this.state.superPickups.forEach((pickup, index) => {
+      if (!pickup.active) {
+        toRemove.push(index);
+        return;
+      }
+      pickup.age += dt;
+      if (pickup.age > SUPER_PICKUP_LIFETIME) {
+        pickup.active = false;
+        toRemove.push(index);
+      }
+    });
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      this.state.superPickups.splice(toRemove[i], 1);
+    }
   }
 
   private updateWeaponPickups(dt: number) {
