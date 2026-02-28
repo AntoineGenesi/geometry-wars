@@ -49,6 +49,10 @@ export class GameLoop {
   private _ddaInClosecall = false;
   // Boost visual state tracking (only call setColor on state transition)
   private _prevBoostActive = false;
+  // Camera aspect re-sync on countdown → playing transition (iOS URL bar may change
+  // window.innerHeight during the 3-second countdown without firing a resize event).
+  // Reset to false each countdown so the sync fires once per game start.
+  private _cameraAspectSyncedForSession = false;
 
   /**
    * Wire in dependencies that are created in main.ts and can't be passed via GameContext
@@ -94,6 +98,7 @@ export class GameLoop {
 
     // Show countdown overlay
     if (ctx.gameMode.phase === ModePhase.Countdown) {
+      this._cameraAspectSyncedForSession = false; // reset so sync fires on next transition
       UIHelpers.updateCountdownOverlay(ctx.gameMode.countdownTimer, true);
       // During countdown: update grid springs but skip gameplay
       ctx.surface.updateGrid(dt);
@@ -104,6 +109,14 @@ export class GameLoop {
     }
     // Hide countdown once playing starts (one-time)
     UIHelpers.updateCountdownOverlay(0, false);
+
+    // Re-sync camera aspect/FOV on the first frame of gameplay.
+    // iOS Safari hides the URL bar during the countdown (changing window.innerHeight)
+    // without firing a resize event, leaving the camera with a stale aspect ratio.
+    if (!this._cameraAspectSyncedForSession) {
+      this._cameraAspectSyncedForSession = true;
+      ctx.game.ensureCameraAspectRatio();
+    }
 
     // Update timer display for timed modes / elapsed time for endless
     if (ctx.level.timeLimit > 0) {
