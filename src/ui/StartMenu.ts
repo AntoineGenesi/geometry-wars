@@ -1135,11 +1135,10 @@ export class StartMenu {
         margin: 0 0 6px;
         cursor: pointer;
         transition: all 0.2s;
-        display: grid;
-        grid-template-columns: 1fr auto;
-        grid-template-rows: auto auto;
-        gap: 10px;
-        align-items: start;
+        display: flex;
+        flex-direction: row;
+        gap: 15px;
+        align-items: center;
       }
       #start-menu .lan-lobby-entry:hover {
         background: rgba(0, 100, 100, 0.45);
@@ -1161,9 +1160,7 @@ export class StartMenu {
         padding: 4px 10px;
         cursor: pointer;
         transition: all 0.2s;
-        flex-shrink: 0;
-        grid-column: 2;
-        grid-row: 1 / 3;
+        flex: 0 0 auto;
         align-self: center;
       }
       #start-menu .lan-lobby-stop-btn:hover {
@@ -1176,8 +1173,8 @@ export class StartMenu {
         display: flex;
         flex-direction: column;
         gap: 3px;
-        grid-column: 1;
-        grid-row: 1;
+        flex: 1;
+        min-width: 0;
       }
       #start-menu .lan-lobby-host {
         color: #00ffff;
@@ -1192,13 +1189,12 @@ export class StartMenu {
         flex-direction: column;
         align-items: flex-start;
         gap: 3px;
-        grid-column: 1;
-        grid-row: 1;
-        margin-left: 180px;
+        flex: 1;
+        min-width: 0;
       }
       #start-menu .lan-lobby-qr-container {
-        grid-column: 1 / 3;
-        grid-row: 2;
+        flex: 0 0 auto;
+        width: 150px;
         display: flex;
         justify-content: center;
         align-items: center;
