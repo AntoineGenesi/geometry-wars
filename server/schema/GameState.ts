@@ -24,6 +24,7 @@ export class PlayerState extends Schema {
   declare color: number;
   declare weaponType: string;
   declare weaponAmmo: number;
+  declare ddaLevel: number;
 
   constructor() {
     super();
@@ -41,6 +42,7 @@ export class PlayerState extends Schema {
     this.color = 0x00ffff;
     this.weaponType = 'standard';
     this.weaponAmmo = -1; // -1 = infinite (standard)
+    this.ddaLevel = 0;
   }
 }
 
@@ -59,6 +61,7 @@ defineTypes(PlayerState, {
   color: 'number',
   weaponType: 'string',
   weaponAmmo: 'number',
+  ddaLevel: 'number',
 });
 
 /**

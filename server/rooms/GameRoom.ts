@@ -51,6 +51,16 @@ interface WaveEntry {
   count: number;
 }
 
+/**
+ * Rolling 30-second performance window for server-side DDA.
+ * Reset every 30s; DDA level computed from the completed window.
+ */
+interface PlayerPerfWindow {
+  kills: number;
+  deaths: number;
+  windowStart: number; // gameTime when window started
+}
+
 // Constants
 const TICK_RATE = 60;
 // How far in advance (ms) the server warns clients before spawning an enemy.
@@ -320,6 +330,18 @@ export class GameRoom extends Room<GameState> {
    */
   private playerVFlip: Map<string, boolean> = new Map();
 
+  // Server-side DDA state
+  /** Rolling 30s kill/death window per player (keyed by sessionId) */
+  private playerPerfWindows: Map<string, PlayerPerfWindow> = new Map();
+  /** Seconds until next DDA evaluation (fires every 5s) */
+  private ddaUpdateTimer: number = 0;
+  /**
+   * Hysteresis counter for DDA level decrease.
+   * Difficulty decreases only every 2 DDA updates (not every 1).
+   * Map: sessionId → pending decrease ticks (0 or 1).
+   */
+  private ddaDecreaseCounters: Map<string, number> = new Map();
+
   onCreate(options: { surfaceType?: string }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
@@ -542,6 +564,8 @@ export class GameRoom extends Room<GameState> {
     client.send('startup_hash', { hash: STARTUP_CONFIG_HASH });
 
     this.playerVFlip.set(client.sessionId, false);
+    // Initialize DDA performance window for new player
+    this.playerPerfWindows.set(client.sessionId, { kills: 0, deaths: 0, windowStart: 0 });
     this.logger.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
     this.logger.log(`[GameRoom] State after join: players.size=${this.state.players.size}, surfaceType=${this.state.surfaceType}, gameStarted=${this.state.gameStarted}`);
     this.state.players.forEach((p, k) => {
@@ -558,6 +582,8 @@ export class GameRoom extends Room<GameState> {
       this.playerInvincibility.delete(client.sessionId);
       this.playerBoostStates.delete(client.sessionId);
       this.playerVFlip.delete(client.sessionId);
+      this.playerPerfWindows.delete(client.sessionId);
+      this.ddaDecreaseCounters.delete(client.sessionId);
     }
     // Remove locality and creator-intent tracking for this session
     this.clientLocality.delete(client.sessionId);
@@ -705,8 +731,14 @@ export class GameRoom extends Room<GameState> {
       const spawnPos = SPAWN_OFFSETS[spawnIdx % SPAWN_OFFSETS.length];
       player.surfaceU = spawnPos.u;
       player.surfaceV = spawnPos.v;
+      player.ddaLevel = 0;
       spawnIdx++;
     });
+
+    // Reset DDA state for new game
+    this.playerPerfWindows.clear();
+    this.ddaUpdateTimer = 0;
+    this.ddaDecreaseCounters.clear();
 
     // Clear entities
     this.state.bullets.clear();
@@ -987,6 +1019,9 @@ export class GameRoom extends Room<GameState> {
 
     // Drain per-player invincibility timers
     this.drainInvincibility(dt);
+
+    // Update server-side DDA (runs every 5s)
+    this.updateDDA(dt);
 
     // Check game over
     this.checkGameOver();
@@ -1756,6 +1791,8 @@ export class GameRoom extends Room<GameState> {
 
             if (owner) {
               owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
+              // DDA: track kill for this player
+              this.trackDDAKill(bullet.ownerId);
             }
 
             // Geoms removed (s27g-geons-point-pickups-remove-mp)
@@ -1810,6 +1847,8 @@ export class GameRoom extends Room<GameState> {
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
           player.lives--;
           player.multiplier = 1;
+          // DDA: track death event for this player
+          this.trackDDADeath(player.id);
 
           if (player.lives <= 0) {
             player.alive = false;
@@ -1974,11 +2013,18 @@ export class GameRoom extends Room<GameState> {
       ? Math.max(brakeFloor, 200 / activeCount)
       : 1.0;
 
+    // DDA wave size reduction: if any player is struggling (ddaLevel >= 2),
+    // reduce base wave count by 20% to give them a chance to recover.
+    let ddaWaveMultiplier = 1.0;
+    this.state.players.forEach((player) => {
+      if (player.ddaLevel >= 2) ddaWaveMultiplier = 0.8;
+    });
+
     // Base count grows with wave number and difficulty
     const difficultyCountBonus = Math.floor(difficultyLevel * 2.0);
     const baseCountCap = difficultyLevel >= 6 ? 40 : 30;
     const baseCount = Math.min(baseCountCap,
-      Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake));
+      Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake * ddaWaveMultiplier));
 
     const maxTier = Math.min(4, Math.floor(difficultyLevel));
 
@@ -2097,19 +2143,31 @@ export class GameRoom extends Room<GameState> {
     const vMax = 0.95;
     const MIN_DIST = 0.25;
     const MAX_DIST = 0.45;
+    // Struggling players (ddaLevel >= 2) get a larger exclusion zone so enemies
+    // don't spawn near them, giving them more time to react.
+    const DDA_MIN_DIST = 0.35;
 
-    // Collect alive player UV positions
-    const players: Array<{ u: number; v: number }> = [];
+    // Collect alive player UV positions, flagging struggling ones
+    const normalPlayers: Array<{ u: number; v: number }> = [];
+    const strugglingPlayers: Array<{ u: number; v: number }> = [];
     this.state.players.forEach((p) => {
-      if (p.alive) players.push({ u: p.surfaceU, v: p.surfaceV });
+      if (!p.alive) return;
+      if (p.ddaLevel >= 2) {
+        strugglingPlayers.push({ u: p.surfaceU, v: p.surfaceV });
+      } else {
+        normalPlayers.push({ u: p.surfaceU, v: p.surfaceV });
+      }
     });
 
-    if (players.length > 0) {
-      // Spawn on a ring around a random player (MIN_DIST..MAX_DIST away in UV).
+    // Prefer to target non-struggling players when possible; fall back to struggling if no others
+    const targetPool = normalPlayers.length > 0 ? normalPlayers : strugglingPlayers;
+
+    if (targetPool.length > 0) {
+      // Spawn on a ring around a random non-struggling player (MIN_DIST..MAX_DIST away in UV).
       // This keeps the ring in the player's "visible hemisphere" so they can
       // actually see the warning before the enemy arrives.
       for (let attempt = 0; attempt < 20; attempt++) {
-        const target = players[Math.floor(Math.random() * players.length)];
+        const target = targetPool[Math.floor(Math.random() * targetPool.length)];
         const angle = Math.random() * 2 * Math.PI;
         const dist = MIN_DIST + Math.random() * (MAX_DIST - MIN_DIST);
 
@@ -2117,15 +2175,27 @@ export class GameRoom extends Room<GameState> {
         const u = ((target.u + dist * Math.cos(angle)) % 1 + 1) % 1;
         const v = Math.max(vMin, Math.min(vMax, target.v + dist * Math.sin(angle)));
 
-        // Confirm it is far enough from ALL players (one may have moved since target was picked)
+        // Confirm it is far enough from ALL players.
+        // Normal players use MIN_DIST; struggling players use DDA_MIN_DIST.
         let farEnough = true;
-        for (const p of players) {
+        for (const p of normalPlayers) {
           let du = Math.abs(u - p.u);
           if (du > 0.5) du = 1 - du;
           const dv = Math.abs(v - p.v);
           if (Math.sqrt(du * du + dv * dv) < MIN_DIST) {
             farEnough = false;
             break;
+          }
+        }
+        if (farEnough) {
+          for (const p of strugglingPlayers) {
+            let du = Math.abs(u - p.u);
+            if (du > 0.5) du = 1 - du;
+            const dv = Math.abs(v - p.v);
+            if (Math.sqrt(du * du + dv * dv) < DDA_MIN_DIST) {
+              farEnough = false;
+              break;
+            }
           }
         }
         if (farEnough) return { u, v };
@@ -2258,6 +2328,79 @@ export class GameRoom extends Room<GameState> {
         this.playerInvincibility.delete(id);
       } else {
         this.playerInvincibility.set(id, newRemaining);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Server-side DDA (Dynamic Difficulty Adjustment)
+  // ---------------------------------------------------------------------------
+
+  /** Record a kill for the player that owns the given sessionId. */
+  private trackDDAKill(sessionId: string) {
+    const window = this.playerPerfWindows.get(sessionId);
+    if (window) window.kills++;
+  }
+
+  /** Record a life-loss (hit) for the player with the given sessionId. */
+  private trackDDADeath(sessionId: string) {
+    const window = this.playerPerfWindows.get(sessionId);
+    if (window) window.deaths++;
+  }
+
+  /**
+   * Update DDA levels every 5 seconds.
+   * Evaluates each player's kill/death window and adjusts ddaLevel:
+   *   - Increase: recentDeaths >= 3 AND recentKills < 5  → +1 (fast, every update)
+   *   - Decrease: recentDeaths == 0 AND recentKills >= 10 → -1 (slow, every 2 updates)
+   * Hysteresis: levels increase every evaluation, but decrease only every other.
+   */
+  private updateDDA(dt: number) {
+    this.ddaUpdateTimer += dt;
+    if (this.ddaUpdateTimer < 5.0) return;
+    this.ddaUpdateTimer -= 5.0;
+
+    const currentTime = this.state.gameTime;
+
+    this.state.players.forEach((player, sessionId) => {
+      // Get or init perf window
+      let perfWindow = this.playerPerfWindows.get(sessionId);
+      if (!perfWindow) {
+        perfWindow = { kills: 0, deaths: 0, windowStart: currentTime };
+        this.playerPerfWindows.set(sessionId, perfWindow);
+      }
+
+      const { kills, deaths } = perfWindow;
+
+      // Evaluate thresholds
+      const isStruggling = deaths >= 3 && kills < 5;
+      const isExcelling = deaths === 0 && kills >= 10;
+
+      if (isStruggling) {
+        // Increase difficulty aid (lower is easier — level 3 = most help)
+        player.ddaLevel = Math.min(3, player.ddaLevel + 1);
+        this.logger.log(`[DDA] ${player.name}: struggling (${deaths}d/${kills}k) → level ${player.ddaLevel}`);
+      } else if (isExcelling) {
+        // Decrease difficulty aid slowly (hysteresis: only every 2 evaluations)
+        const counter = (this.ddaDecreaseCounters.get(sessionId) ?? 0) + 1;
+        this.ddaDecreaseCounters.set(sessionId, counter);
+        if (counter >= 2) {
+          player.ddaLevel = Math.max(0, player.ddaLevel - 1);
+          this.ddaDecreaseCounters.set(sessionId, 0);
+          this.logger.log(`[DDA] ${player.name}: excelling (${deaths}d/${kills}k) → level ${player.ddaLevel}`);
+        }
+      } else {
+        // Reset decrease counter when neither condition holds
+        this.ddaDecreaseCounters.set(sessionId, 0);
+      }
+
+      // Reset 30s window (windowStart tracks elapsed time; we reset every 5s evaluation
+      // but the task spec calls for a 30s rolling window — so accumulate over 6 evaluations.
+      // Simpler: reset each 30s by checking elapsed time).
+      if (currentTime - perfWindow.windowStart >= 30.0) {
+        perfWindow.kills = 0;
+        perfWindow.deaths = 0;
+        perfWindow.windowStart = currentTime;
       }
     });
   }
