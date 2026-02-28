@@ -59,6 +59,16 @@ export interface NetworkWeaponPickupState {
   active: boolean;
 }
 
+export interface NetworkSuperPickupState {
+  id: string;
+  surfaceU: number;
+  surfaceV: number;
+  /** 'bomb_resupply' | 'multiplier_boost' */
+  pickupType: string;
+  active: boolean;
+  age: number;
+}
+
 /**
  * An array-like collection that supports forEach iteration.
  * Colyseus ArraySchema<T> is NOT a plain T[] but supports .forEach().
@@ -77,6 +87,7 @@ export interface NetworkGameState {
   enemies: ForEachable<NetworkEnemyState>;
   geoms: ForEachable<NetworkGeomState>;
   weaponPickups: ForEachable<NetworkWeaponPickupState>;
+  superPickups: ForEachable<NetworkSuperPickupState>;
   surfaceType: string;
   waveNumber: number;
   gameTime: number;
@@ -468,6 +479,7 @@ export class NetworkClient {
       enemies: ForEachable<NetworkEnemyState>;
       geoms: ForEachable<NetworkGeomState>;
       weaponPickups: ForEachable<NetworkWeaponPickupState>;
+      superPickups: ForEachable<NetworkSuperPickupState>;
       surfaceType: string;
       waveNumber: number;
       gameTime: number;
@@ -501,6 +513,7 @@ export class NetworkClient {
       enemies: s.enemies || emptyArray,
       geoms: s.geoms || emptyArray,
       weaponPickups: s.weaponPickups || emptyArray,
+      superPickups: s.superPickups || emptyArray,
       surfaceType: s.surfaceType,
       waveNumber: s.waveNumber,
       gameTime: s.gameTime,

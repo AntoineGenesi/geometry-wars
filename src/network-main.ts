@@ -78,6 +78,7 @@ import {
   NetworkBulletState,
   NetworkGeomState,
   NetworkWeaponPickupState,
+  NetworkSuperPickupState,
   NetworkGameState,
   ClientMetricsPayload,
 } from './network/NetworkClient';
@@ -919,6 +920,26 @@ async function main() {
   // -- Weapon pickup tracking --
   // Uses real WeaponPickup instances (same as co-op)
   const networkWeaponPickups = new Map<string, WeaponPickup>();
+
+  // -- Super pickup tracking (bomb resupply, multiplier boost) --
+  // Each entry stores { mesh, surfaceU, surfaceV, pickupType, spawnTime }
+  interface SuperPickupVisual {
+    mesh: THREE.Group;
+    surfaceU: number;
+    surfaceV: number;
+    pickupType: string;
+    spawnTime: number; // game clock time when spawned (for pulse animation)
+  }
+  const networkSuperPickups = new Map<string, SuperPickupVisual>();
+
+  // Shared geometries for super pickups (created once, never disposed)
+  const superPickupGeometry = new THREE.SphereGeometry(0.25, 12, 8);
+
+  // Pre-allocated temps for super pickup animation (zero per-frame allocations)
+  const _spMat4 = new THREE.Matrix4();
+  const _spQSurface = new THREE.Quaternion();
+  const _spQSpin = new THREE.Quaternion();
+  const _spSpinAxis = new THREE.Vector3(0, 1, 0);
 
   // -- Spawn warning rings (LAN visual parity) --
   // Created when 'pre_spawn' message arrives; cleaned up when enemy appears or times out.
@@ -1875,6 +1896,21 @@ async function main() {
     });
     networkWeaponPickups.clear();
 
+    // Clear super pickups
+    networkSuperPickups.forEach((visual) => {
+      scene.remove(visual.mesh);
+      visual.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.material instanceof THREE.Material && child.material.dispose();
+        }
+        if (child instanceof THREE.Sprite) {
+          child.material.map?.dispose();
+          child.material.dispose();
+        }
+      });
+    });
+    networkSuperPickups.clear();
+
     // Clear local companion + buff pickups
     for (const cp of localCompanionPickups) { scene.remove(cp.mesh); cp.dispose(); }
     localCompanionPickups.length = 0;
@@ -2449,6 +2485,110 @@ async function main() {
         geomPool.kill(idx);
         geomIdToIndex.delete(id);
         geomTargetUV.delete(id);
+      }
+    });
+
+    // ----- Sync super pickups (bomb resupply / multiplier boost) -----
+    const activeSuperPickupIds = new Set<string>();
+    state.superPickups.forEach((netPickup: NetworkSuperPickupState) => {
+      if (!netPickup.active) return;
+      activeSuperPickupIds.add(netPickup.id);
+
+      if (!networkSuperPickups.has(netPickup.id)) {
+        // Create gold pulsing sphere visual
+        const group = new THREE.Group();
+        group.name = `SuperPickup_${netPickup.pickupType}_${netPickup.id}`;
+
+        const color = netPickup.pickupType === 'bomb_resupply'
+          ? new THREE.Color(0xffd700) // gold for bomb resupply
+          : new THREE.Color(0xff8800); // orange for multiplier boost
+
+        // Outer sphere (wireframe)
+        const outerMat = new THREE.MeshBasicMaterial({
+          color,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.7,
+        });
+        outerMat.userData.baseOpacity = 0.7;
+        const outerMesh = new THREE.Mesh(superPickupGeometry, outerMat);
+        outerMesh.scale.setScalar(1.4);
+        group.add(outerMesh);
+
+        // Inner solid sphere
+        const innerMat = new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.9,
+        });
+        innerMat.userData.baseOpacity = 0.9;
+        const innerMesh = new THREE.Mesh(superPickupGeometry, innerMat);
+        innerMesh.name = 'core';
+        group.add(innerMesh);
+
+        // Glow sprite
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 64; glowCanvas.height = 64;
+        const glowCtx = glowCanvas.getContext('2d')!;
+        const r = Math.floor(color.r * 255), g = Math.floor(color.g * 255), b = Math.floor(color.b * 255);
+        const grad = glowCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        grad.addColorStop(0, `rgba(${r},${g},${b},1)`);
+        grad.addColorStop(0.4, `rgba(${r},${g},${b},0.4)`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        glowCtx.fillStyle = grad;
+        glowCtx.fillRect(0, 0, 64, 64);
+        const glowMat = new THREE.SpriteMaterial({
+          map: new THREE.CanvasTexture(glowCanvas),
+          transparent: true,
+          opacity: 0.5,
+          blending: THREE.NormalBlending,
+          depthWrite: false,
+        });
+        glowMat.userData.baseOpacity = 0.5;
+        const glowSprite = new THREE.Sprite(glowMat);
+        glowSprite.scale.setScalar(2.0);
+        group.add(glowSprite);
+
+        scene.add(group);
+        networkSuperPickups.set(netPickup.id, {
+          mesh: group,
+          surfaceU: netPickup.surfaceU,
+          surfaceV: netPickup.surfaceV,
+          pickupType: netPickup.pickupType,
+          spawnTime: game.clock.totalTime,
+        });
+      } else {
+        // Update position from server
+        const visual = networkSuperPickups.get(netPickup.id)!;
+        visual.surfaceU = netPickup.surfaceU;
+        visual.surfaceV = netPickup.surfaceV;
+        if (getTransform) {
+          const { position, normal } = getTransform(visual.surfaceU, visual.surfaceV);
+          visual.mesh.position.copy(position).addScaledVector(normal, 0.5);
+        }
+      }
+    });
+    // Remove collected/expired super pickups (with particle burst effect)
+    networkSuperPickups.forEach((visual, id) => {
+      if (!activeSuperPickupIds.has(id)) {
+        // Fire collection burst at pickup position
+        const burstColor = visual.pickupType === 'bomb_resupply'
+          ? new THREE.Color(0xffd700)  // gold
+          : new THREE.Color(0xff8800); // orange
+        particles.enemyDeath(visual.mesh.position, burstColor);
+        sound.play('multiplierUp', { volume: 0.6, pitch: 1.5 });
+
+        scene.remove(visual.mesh);
+        visual.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.material instanceof THREE.Material && child.material.dispose();
+          }
+          if (child instanceof THREE.Sprite) {
+            child.material.map?.dispose();
+            child.material.dispose();
+          }
+        });
+        networkSuperPickups.delete(id);
       }
     });
 
@@ -3564,6 +3704,37 @@ async function main() {
       });
     }
 
+    // Animate super pickups (pulse + bob along surface normal).
+    if (getTransform && networkSuperPickups.size > 0) {
+      const transform = getTransform;
+      const totalTime = game.clock.totalTime;
+      networkSuperPickups.forEach((visual) => {
+        const { position, normal, tangent, bitangent } = transform(visual.surfaceU, visual.surfaceV);
+
+        // Bob above surface
+        const bob = Math.sin(totalTime * 3 + visual.spawnTime) * 0.08;
+        visual.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
+
+        // Orient to surface + slow spin
+        _spMat4.makeBasis(tangent, normal, bitangent);
+        _spQSurface.setFromRotationMatrix(_spMat4);
+        _spQSpin.setFromAxisAngle(_spSpinAxis, totalTime * 1.2);
+        visual.mesh.quaternion.copy(_spQSurface).multiply(_spQSpin);
+
+        // Pulse core scale
+        const core = visual.mesh.getObjectByName('core');
+        if (core) {
+          const pulse = 1.0 + Math.sin(totalTime * 5) * 0.2;
+          core.scale.setScalar(pulse);
+        }
+
+        // Track age factor for dimming
+        visual.mesh.userData.ageFactor = 1.0;
+        visual.mesh.userData.surfaceU = visual.surfaceU;
+        visual.mesh.userData.surfaceV = visual.surfaceV;
+      });
+    }
+
     shockArcRenderer.update(buffManager.shockArcs);
     buffHUD.update(buffManager.getActiveBuffs());
 
@@ -4082,6 +4253,7 @@ async function main() {
         };
 
         networkWeaponPickups.forEach((pickup) => applyDimming(pickup.mesh, pickup.surfaceU, pickup.surfaceV));
+        networkSuperPickups.forEach((visual) => applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV));
         for (const cp of localCompanionPickups) { if (cp.active) applyDimming(cp.mesh, cp.surfaceU, cp.surfaceV); }
         for (const bp of localBuffPickups)      { if (bp.active) applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV); }
       }
@@ -4279,6 +4451,7 @@ async function main() {
         bullets: bulletIdToIndex.size,
         geoms: geomIdToIndex.size,
         weaponPickups: networkWeaponPickups.size,
+        superPickups: networkSuperPickups.size,
         enemyDetails: Array.from(networkEnemies.entries()).slice(0, 10).map(([id, e]) => ({
           id,
           type: e.baseTypeName || 'unknown',

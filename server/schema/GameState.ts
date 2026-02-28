@@ -189,6 +189,39 @@ defineTypes(WeaponPickupState, {
 });
 
 /**
+ * Super pickup state (bomb resupply, multiplier boost)
+ * Spawned by server on wave milestones; collected by player proximity.
+ */
+export class SuperPickupState extends Schema {
+  declare id: string;
+  declare surfaceU: number;
+  declare surfaceV: number;
+  /** 'bomb_resupply' | 'multiplier_boost' */
+  declare pickupType: string;
+  declare active: boolean;
+  declare age: number;
+
+  constructor() {
+    super();
+    this.id = '';
+    this.surfaceU = 0.5;
+    this.surfaceV = 0.5;
+    this.pickupType = 'bomb_resupply';
+    this.active = true;
+    this.age = 0;
+  }
+}
+
+defineTypes(SuperPickupState, {
+  id: 'string',
+  surfaceU: 'number',
+  surfaceV: 'number',
+  pickupType: 'string',
+  active: 'boolean',
+  age: 'number',
+});
+
+/**
  * Main game state synced across all clients
  */
 export class GameState extends Schema {
@@ -197,6 +230,7 @@ export class GameState extends Schema {
   declare enemies: ArraySchema<EnemyState>;
   declare geoms: ArraySchema<GeomState>;
   declare weaponPickups: ArraySchema<WeaponPickupState>;
+  declare superPickups: ArraySchema<SuperPickupState>;
   declare surfaceType: string;
   declare waveNumber: number;
   declare gameTime: number;
@@ -230,6 +264,7 @@ export class GameState extends Schema {
     this.enemies = new ArraySchema<EnemyState>();
     this.geoms = new ArraySchema<GeomState>();
     this.weaponPickups = new ArraySchema<WeaponPickupState>();
+    this.superPickups = new ArraySchema<SuperPickupState>();
     this.surfaceType = 'sphere';
     this.waveNumber = 0;
     this.gameTime = 0;
@@ -256,6 +291,7 @@ defineTypes(GameState, {
   enemies: [EnemyState],
   geoms: [GeomState],
   weaponPickups: [WeaponPickupState],
+  superPickups: [SuperPickupState],
   surfaceType: 'string',
   waveNumber: 'number',
   gameTime: 'number',
