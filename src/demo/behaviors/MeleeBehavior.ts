@@ -13,9 +13,10 @@ import type { GLBCharacterEnemy } from '../GLBCharacterEnemy';
 
 const MELEE_DAMAGE = 2;
 const SWING_DELAY_MS = 400;
-const FLASH_LIFETIME = 0.3; // seconds
+const SHOCKWAVE_LIFETIME = 0.35; // seconds
+const SHOCKWAVE_MAX_SCALE = 2.5; // torus expansion factor
 
-interface FlashEffect {
+interface ShockwaveEffect {
   mesh: THREE.Mesh;
   life: number;
   scene: THREE.Scene;
@@ -27,7 +28,7 @@ export class MeleeBehavior implements AttackBehavior {
   readonly cooldown = 1.5; // seconds
 
   private cooldownTimer = 0;
-  private flashes: FlashEffect[] = [];
+  private shockwaves: ShockwaveEffect[] = [];
 
   isReady(): boolean {
     return this.cooldownTimer <= 0;
@@ -46,13 +47,10 @@ export class MeleeBehavior implements AttackBehavior {
       if (!character.alive) return;
       // Re-check distance at impact time
       const dist = character.worldPosition.distanceTo(playerPos);
-      if (dist < 2.5) { // world-space threshold ≈ touching
+      if (dist < 1.5) { // world-space threshold ≈ touching (reduced from 2.5)
         onPlayerHit(MELEE_DAMAGE, 'melee');
-        // Red impact flash at midpoint between character and player
-        const flashPos = new THREE.Vector3()
-          .addVectors(character.worldPosition, playerPos)
-          .multiplyScalar(0.5);
-        this._spawnFlash(flashPos, scene);
+        // Surface shockwave ring at impact point (character's position on surface)
+        this._spawnShockwave(character.worldPosition, scene);
       }
     }, SWING_DELAY_MS);
   }
@@ -62,44 +60,49 @@ export class MeleeBehavior implements AttackBehavior {
       this.cooldownTimer = Math.max(0, this.cooldownTimer - dt);
     }
 
-    // Animate + clean up flash effects
-    for (let i = this.flashes.length - 1; i >= 0; i--) {
-      const flash = this.flashes[i];
-      flash.life -= dt;
-      const t = 1 - flash.life / FLASH_LIFETIME;
+    // Animate + clean up shockwave rings
+    for (let i = this.shockwaves.length - 1; i >= 0; i--) {
+      const sw = this.shockwaves[i];
+      sw.life -= dt;
+      const t = 1 - sw.life / SHOCKWAVE_LIFETIME;
+      const scale = 1 + t * (SHOCKWAVE_MAX_SCALE - 1);
       const opacity = 1 - t;
-      const mat = flash.mesh.material as THREE.MeshBasicMaterial;
-      mat.opacity = opacity;
-      flash.mesh.scale.setScalar(1 + t * 2); // expand outward
-      if (flash.life <= 0) {
-        flash.scene.remove(flash.mesh);
-        flash.mesh.geometry.dispose();
-        mat.dispose();
-        this.flashes.splice(i, 1);
+      sw.mesh.scale.setScalar(scale);
+      (sw.mesh.material as THREE.MeshBasicMaterial).opacity = opacity;
+      if (sw.life <= 0) {
+        sw.scene.remove(sw.mesh);
+        sw.mesh.geometry.dispose();
+        (sw.mesh.material as THREE.Material).dispose();
+        this.shockwaves.splice(i, 1);
       }
     }
   }
 
   dispose(): void {
-    for (const flash of this.flashes) {
-      flash.scene.remove(flash.mesh);
-      flash.mesh.geometry.dispose();
-      (flash.mesh.material as THREE.Material).dispose();
+    for (const sw of this.shockwaves) {
+      sw.scene.remove(sw.mesh);
+      sw.mesh.geometry.dispose();
+      (sw.mesh.material as THREE.Material).dispose();
     }
-    this.flashes = [];
+    this.shockwaves = [];
   }
 
-  private _spawnFlash(pos: THREE.Vector3, scene: THREE.Scene): void {
+  private _spawnShockwave(impactPos: THREE.Vector3, scene: THREE.Scene): void {
+    // Flat torus ring lying on the sphere surface at impact point
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 8, 8),
+      new THREE.TorusGeometry(0.6, 0.08, 8, 32),
       new THREE.MeshBasicMaterial({
         color: 0xff2200,
         transparent: true,
         opacity: 1.0,
+        side: THREE.DoubleSide,
       }),
     );
-    mesh.position.copy(pos);
+    mesh.position.copy(impactPos);
+    // Orient so the ring faces outward along the sphere surface normal
+    const normal = impactPos.clone().normalize();
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
     scene.add(mesh);
-    this.flashes.push({ mesh, life: FLASH_LIFETIME, scene });
+    this.shockwaves.push({ mesh, life: SHOCKWAVE_LIFETIME, scene });
   }
 }

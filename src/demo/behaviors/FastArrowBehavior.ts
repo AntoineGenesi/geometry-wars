@@ -15,7 +15,7 @@ import { Projectile } from './Projectile';
 const FAST_ARROW_DAMAGE = 3;
 const FAST_ARROW_SPEED = 18.0; // world units / second (6× slow arrow)
 const FAST_ARROW_LIFETIME = 3.0; // seconds before auto-expiry
-const FAST_ARROW_HIT_RADIUS = 1.0; // world units
+const FAST_ARROW_HIT_RADIUS = 0.5; // world units (reduced from 1.0 — was too generous)
 const FIRE_DELAY_MS = 250; // quick release
 
 export class FastArrowBehavior implements AttackBehavior {
@@ -85,6 +85,10 @@ export class FastArrowBehavior implements AttackBehavior {
       proj.hit();
     }
     this.activeProjectiles = [];
+  }
+
+  getActiveProjectiles(): ReadonlyArray<Projectile> {
+    return this.activeProjectiles;
   }
 
   private _buildMesh(origin: THREE.Vector3, target: THREE.Vector3): THREE.Mesh {

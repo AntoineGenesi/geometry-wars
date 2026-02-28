@@ -184,8 +184,8 @@ export class GLBCharacterEnemy {
         this.char.setState('walk');
         break;
       case 'attacking':
-        // Stay in walk animation while in attack range (attack oneshots overlay)
-        this.char.setState('walk');
+        // Idle while attacking — attack oneshots overlay the idle animation
+        this.char.setState('idle');
         break;
     }
   }

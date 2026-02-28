@@ -13,7 +13,7 @@ import type { GLBCharacterEnemy } from '../GLBCharacterEnemy';
 
 const SLAM_DAMAGE = 1;
 const SLAM_RADIUS_UV = 0.2; // UV units — radius of AoE damage zone
-const SLAM_RADIUS_WORLD = 3.5; // world units — must hit player within this
+const SLAM_RADIUS_WORLD = 2.0; // world units (reduced from 3.5 — was too generous)
 const SLAM_DELAY_MS = 800; // wind-up before impact
 const RING_LIFETIME = 0.6; // seconds the ring animation lasts
 const RING_MAX_SCALE = 4.0; // maximum torus scale expansion

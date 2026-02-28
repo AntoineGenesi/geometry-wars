@@ -36,6 +36,8 @@ export class Projectile {
   private lifetime: number;
   private readonly arc: boolean;
   private dead = false;
+  /** True if this projectile has been deflected back by a player bullet. */
+  deflected = false;
 
   constructor(config: ProjectileConfig) {
     this.mesh = config.mesh;
@@ -83,6 +85,25 @@ export class Projectile {
   /** Mark as hit — removes from scene. */
   hit(): void {
     this._destroy();
+  }
+
+  /**
+   * Deflect the projectile: reverse its velocity and change appearance.
+   * After deflection it travels back toward where it came from.
+   */
+  deflect(): void {
+    if (this.deflected || this.dead) return;
+    this.deflected = true;
+    this.velocity.negate();
+    // Extend lifetime so deflected projectile can reach its source
+    this.lifetime = Math.max(this.lifetime, 3.0);
+    // Change color to cyan to indicate deflected state
+    const mats = Array.isArray(this.mesh.material) ? this.mesh.material : [this.mesh.material];
+    for (const m of mats) {
+      const mat = m as THREE.MeshStandardMaterial;
+      if (mat.color) mat.color.setHex(0x00ffff);
+      if (mat.emissive) { mat.emissive.setHex(0x007777); mat.emissiveIntensity = 2.0; }
+    }
   }
 
   get isDead(): boolean {

@@ -363,9 +363,16 @@ export class AnimatedCharacterBattleDemo {
     // Update behavior system (projectiles, cooldowns, attack execution)
     this.behaviorSystem.update(dt, playerPos, playerU, playerV);
 
-    // Bullet → enemy collision
+    // Bullet → enemy collision + projectile deflection
     const enemies = this.enemies;
+    const BULLET_RADIUS = 0.3; // world units (approximate player bullet size)
     this.pg.bulletPool.forEachActive((i, pos) => {
+      // Check enemy projectile deflection first (bullet intercepts incoming projectile)
+      if (this.behaviorSystem.checkProjectileDeflection(pos, BULLET_RADIUS)) {
+        this.pg.bulletPool.kill(i);
+        return;
+      }
+      // Then check direct enemy hit
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
         if (pos.distanceTo(enemy.worldPosition) < enemy.collisionRadius) {
@@ -375,6 +382,22 @@ export class AnimatedCharacterBattleDemo {
         }
       }
     });
+
+    // Deflected projectile → enemy collision
+    for (const enemy of enemies) {
+      if (!enemy.alive) continue;
+      for (const behavior of this.behaviorSystem.getBehaviors()) {
+        const projs = behavior.getActiveProjectiles?.();
+        if (!projs) continue;
+        for (const proj of projs) {
+          if (!proj.deflected) continue;
+          if (proj.mesh.position.distanceTo(enemy.worldPosition) < enemy.collisionRadius + proj.hitRadius) {
+            enemy.takeDamage(2); // deflected shots deal double damage
+            proj.hit();
+          }
+        }
+      }
+    }
 
     // Fade out screen flash
     if (this.screenFlashTimer > 0) {
