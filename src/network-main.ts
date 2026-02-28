@@ -3503,7 +3503,7 @@ async function main() {
             localCompanionPickups.splice(i, 1);
             continue;
           }
-          cp.update(dt, game.clock.totalTime);
+          cp.update(dt, game.clock.totalTime, camera.up);
           cp.applySurfaceTransform(getTransform);
           if (cp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV, playerAnalyticalPos)) {
             companionManager.addCompanion(cp.companionType);
@@ -3519,7 +3519,7 @@ async function main() {
             localBuffPickups.splice(i, 1);
             continue;
           }
-          bp.update(dt, game.clock.totalTime);
+          bp.update(dt, game.clock.totalTime, camera.up);
           bp.applySurfaceTransform(getTransform);
           if (bp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV, playerAnalyticalPos)) {
             buffManager.addBuff(bp.buffType);
@@ -3551,6 +3551,17 @@ async function main() {
       }
       companionBulletPool.update(dt);
       companionHUD.update(companionManager.getCompanionCounts());
+    }
+
+    // Animate server-synced weapon pickups (spin, bob, spawn indicator).
+    // Position is set by onStateChange (server-authoritative); animation runs here at fixed dt.
+    if (getTransform && networkWeaponPickups.size > 0) {
+      const transform = getTransform; // capture for closure (TS narrows out in forEach callback)
+      networkWeaponPickups.forEach((pickup) => {
+        if (!pickup.active) return;
+        pickup.update(dt, game.clock.totalTime, camera.up);
+        pickup.applySurfaceTransform(transform);
+      });
     }
 
     shockArcRenderer.update(buffManager.shockArcs);
