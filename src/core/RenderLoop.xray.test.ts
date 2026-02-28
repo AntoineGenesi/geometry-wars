@@ -13,6 +13,15 @@ import { describe, it, expect } from 'vitest';
  * of depth-occlusion dimming. This prevents tunnel-map surfaces from hiding
  * close-proximity enemies that are about to hit the player.
  * The DepthOcclusionSystem itself is UNCHANGED — the boost is a RenderLoop override.
+ *
+ * S41-09 UPDATE: Proximity override changed from UV-space to world-space distance.
+ * Near poles (sphere, peanut, capsule), UV space is warped: enemies at the same pole
+ * with different longitudes have large UV distance but near-zero world distance.
+ * World-space distance (PROXIMITY_NEAR_WORLD=2.0, PROXIMITY_FADE_WORLD=5.0) correctly
+ * keeps these enemies visible. The cube-tunnel areOnOppositeWallSides guard still
+ * prevents the inner-wall false-positive.
+ * NOTE: The constants below reflect the OLD S28a thresholds for historical reference.
+ * Current RenderLoop.ts uses PROXIMITY_NEAR_WORLD=2.0, PROXIMITY_FADE_WORLD=5.0.
  */
 
 /** Opacity values from DepthOcclusionSystem DEFAULT_OCCLUSION_CONFIG. */
