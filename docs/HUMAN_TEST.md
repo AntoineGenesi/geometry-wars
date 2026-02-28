@@ -8,15 +8,18 @@
 
 ---
 
-## S39-01: Bullets Not Curving at Poles in LAN Multiplayer (Server-Side Pole Crossing)
+## S39-02: LAN MP Aim Direction Fix
 
-**Fix:** `GameRoom.updateBullets()` now handles pole crossing for sphere-like surfaces. Previously, bullets reaching the north/south pole were clamped at v=0 or v=1 and got stuck. Now they cross through: v reflects, u shifts 0.5 (antipodal longitude), and both direction components flip. Matches the behavior the FaceWalker fix (S38d-07b) achieved for single-player.
+**Fix:** Reverted `atan2(mouseY, mouseX)` → `atan2(-mouseY, mouseX)` in `network-main.ts`. The S38d-08 "fix" was wrong — it inverted vertical aim. Root cause: `tangentV = camera.up` = screen UP direction, so mouse-up (aimY < 0) needs `-aimY` positive to produce `+tangentV` (screen up) bullet direction.
 
-### Test: Bullets travel straight through poles in LAN Multiplayer
-- [ ] **Start LAN MP on Sphere** — host PC + one other device connected via LAN
-- [ ] **Fire bullets toward north pole** — Aim from equator toward the north. Bullets should travel in a straight arc through the pole and exit on the other side
-- [ ] **Fire bullets toward south pole** — Same test heading south. No curving, no sticking.
-- [ ] **Compare with single-player** — SP and MP should show matching bullet behavior on sphere
+### Test: Bullets follow mouse direction in LAN MP
+
+- [ ] Start LAN game (host + 1 client on same device with 2 tabs, or 2 devices)
+- [ ] Move mouse to the RIGHT of center → bullets should fly to the RIGHT on screen
+- [ ] Move mouse ABOVE center → bullets should fly UPWARD on screen
+- [ ] Move mouse BELOW center → bullets should fly DOWNWARD on screen
+- [ ] Move mouse to the LEFT of center → bullets should fly to the LEFT on screen
+- [ ] **Regression:** Aim in all 4 diagonal directions — bullets should match mouse angle precisely
 
 ---
 
