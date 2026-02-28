@@ -313,6 +313,15 @@ export class GameRoom extends Room<GameState> {
   /** Per-player boost (sprint) state: active, timer, cooldown, and prev key held. */
   private playerBoostStates: Map<string, { active: boolean; timer: number; cooldown: number; prevHeld: boolean }> = new Map();
 
+  /**
+   * Per-player V-axis direction flip state for pole traversal.
+   * Toggles each time a player crosses a sphere/capsule/peanut pole boundary.
+   * Without this, the player oscillates at the pole because the input direction
+   * (dy from W/S keys) doesn't automatically reverse after crossing a pole.
+   * The flip makes "W = forward" continue to mean "forward" past the pole.
+   */
+  private playerVFlip: Map<string, boolean> = new Map();
+
   onCreate(options: { surfaceType?: string }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
@@ -534,6 +543,7 @@ export class GameRoom extends Room<GameState> {
     // full config payload so the client can cache it for future sessions.
     client.send('startup_hash', { hash: STARTUP_CONFIG_HASH });
 
+    this.playerVFlip.set(client.sessionId, false);
     this.logger.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
     this.logger.log(`[GameRoom] State after join: players.size=${this.state.players.size}, surfaceType=${this.state.surfaceType}, gameStarted=${this.state.gameStarted}`);
     this.state.players.forEach((p, k) => {
@@ -549,6 +559,7 @@ export class GameRoom extends Room<GameState> {
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
       this.playerBoostStates.delete(client.sessionId);
+      this.playerVFlip.delete(client.sessionId);
     }
     // Remove locality and creator-intent tracking for this session
     this.clientLocality.delete(client.sessionId);
@@ -667,6 +678,8 @@ export class GameRoom extends Room<GameState> {
     this.waveElapsed = 0;
     this.nextWaveAt = WAVE_FIRST_AT;
     this.playerInvincibility.clear();
+    // Reset per-player V-flip state so all players start with unflipped direction
+    this.playerVFlip.forEach((_, id) => this.playerVFlip.set(id, false));
 
     // Invalidate any pending spawn timeouts from the previous game.
     // Bumping spawnGeneration causes old setTimeouts to abort when they fire.
@@ -829,27 +842,36 @@ export class GameRoom extends Room<GameState> {
         || surfaceType === 'cube-tunnel';
       if (wrapsInV) {
         player.surfaceV = this.wrapCoord(player.surfaceV + dy);
-      } else if (surfaceType === 'sphere') {
-        // Sphere poles: allow traversal by reflecting V through the pole.
+      } else if (isSphereLike || surfaceType === 'peanut') {
+        // Sphere/capsule/icosahedron/peanut poles: allow pole traversal by reflecting V.
         // When V goes below 0, the player crosses the north pole — reflect V and
         // shift U by 0.5 (continue to the antipodal longitude on the other side).
         // Same logic applies at the south pole (V > 1).
-        let newV = player.surfaceV + dy;
+        //
+        // Key fix for oscillation (s40-06): without vFlip, the player holds W
+        // (constant dy) and oscillates at the pole — dy pushes V past the pole,
+        // reflection puts them back, repeat. The vFlip flag tracks whether the
+        // player has crossed an odd number of poles, flipping the effective dy
+        // sign so "forward" continues to mean "forward" past each pole crossing.
+        const vFlip = this.playerVFlip.get(clientId) ?? false;
+        // Use correctedDy for peanut (metric-corrected), dy for sphere-like
+        const effectiveDy = (surfaceType === 'peanut' ? correctedDy : dy) * (vFlip ? -1 : 1);
+        let newV = player.surfaceV + effectiveDy;
         let newU = player.surfaceU; // already wrapped above
         if (newV < 0) {
           newV = -newV;
           newU = this.wrapCoord(newU + 0.5);
+          this.playerVFlip.set(clientId, !vFlip);
         } else if (newV > 1) {
           newV = 2 - newV;
           newU = this.wrapCoord(newU + 0.5);
+          this.playerVFlip.set(clientId, !vFlip);
         }
         // Keep V strictly inside (0, 1) to avoid degenerate tangent at exact pole
         player.surfaceV = Math.max(0.001, Math.min(0.999, newV));
         player.surfaceU = newU;
       } else {
-        // Clamp V: use 0.003 for cube (matching CubeSurface epsilon),
-        // 0.05 for other sphere-like (avoids pole singularity on non-sphere surfaces).
-        // Use correctedDy for peanut (metric-corrected), dy for others.
+        // Clamp V for cube and other surfaces that don't have pole traversal.
         const vMin = surfaceType === 'cube' ? 0.003 : 0.05;
         const vMax = surfaceType === 'cube' ? 0.997 : 0.95;
         player.surfaceV = Math.max(vMin, Math.min(vMax, player.surfaceV + correctedDy));
@@ -1266,6 +1288,19 @@ export class GameRoom extends Room<GameState> {
     // Bounce off V boundaries (or wrap on torus-like surfaces)
     if (wrapsV) {
       enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+    } else if (surfType === 'sphere' || surfType === 'sphere-tunnel'
+        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut') {
+      // Sphere-like: reflect through poles (continuous traversal instead of hard bounce)
+      if (enemy.surfaceV < 0) {
+        enemy.surfaceV = -enemy.surfaceV;
+        enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
+        ai.directionV = Math.abs(ai.directionV ?? 0);
+      } else if (enemy.surfaceV > 1) {
+        enemy.surfaceV = 2 - enemy.surfaceV;
+        enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
+        ai.directionV = -Math.abs(ai.directionV ?? 0);
+      }
+      enemy.surfaceV = Math.max(0.001, Math.min(0.999, enemy.surfaceV));
     } else {
       if (enemy.surfaceV <= 0) {
         enemy.surfaceV = 0;
@@ -1298,6 +1333,19 @@ export class GameRoom extends Room<GameState> {
 
     if (wrapsV) {
       enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+    } else if (surfType === 'sphere' || surfType === 'sphere-tunnel'
+        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut') {
+      // Sphere-like: reflect through poles instead of bouncing with random direction
+      if (enemy.surfaceV < 0) {
+        enemy.surfaceV = -enemy.surfaceV;
+        enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
+        ai.directionV = Math.abs(ai.directionV ?? 0);
+      } else if (enemy.surfaceV > 1) {
+        enemy.surfaceV = 2 - enemy.surfaceV;
+        enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
+        ai.directionV = -Math.abs(ai.directionV ?? 0);
+      }
+      enemy.surfaceV = Math.max(0.001, Math.min(0.999, enemy.surfaceV));
     } else {
       if (enemy.surfaceV <= 0) { enemy.surfaceV = 0; bounced = true; }
       else if (enemy.surfaceV >= 1) { enemy.surfaceV = 1; bounced = true; }
@@ -1335,6 +1383,19 @@ export class GameRoom extends Room<GameState> {
 
     if (wrapsV) {
       enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+    } else if (surfType === 'sphere' || surfType === 'sphere-tunnel'
+        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut') {
+      // Sphere-like: reflect through poles (continuous traversal)
+      if (enemy.surfaceV < 0) {
+        enemy.surfaceV = -enemy.surfaceV;
+        enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
+        ai.rocketDirV = Math.abs(ai.rocketDirV ?? 0);
+      } else if (enemy.surfaceV > 1) {
+        enemy.surfaceV = 2 - enemy.surfaceV;
+        enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
+        ai.rocketDirV = -Math.abs(ai.rocketDirV ?? 0);
+      }
+      enemy.surfaceV = Math.max(0.001, Math.min(0.999, enemy.surfaceV));
     } else {
       if (enemy.surfaceV <= 0) {
         enemy.surfaceV = 0;
@@ -1516,6 +1577,20 @@ export class GameRoom extends Room<GameState> {
     enemy.surfaceU = this.wrapCoord(enemy.surfaceU);
     if (wrapsV) {
       enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
+    } else if (surfType === 'sphere' || surfType === 'sphere-tunnel'
+        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut') {
+      // Sphere-like surfaces have poles at V=0 and V=1. Reflect through them
+      // instead of clamping so enemies can cross poles to chase players.
+      // Without this, enemies cluster at the pole boundary (V=0.05/0.95)
+      // and cannot reach players on the other side.
+      if (enemy.surfaceV < 0) {
+        enemy.surfaceV = -enemy.surfaceV;
+        enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
+      } else if (enemy.surfaceV > 1) {
+        enemy.surfaceV = 2 - enemy.surfaceV;
+        enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
+      }
+      enemy.surfaceV = Math.max(0.001, Math.min(0.999, enemy.surfaceV));
     } else {
       const enemyVMin = surfType === 'cube' ? 0.003 : 0.05;
       const enemyVMax = surfType === 'cube' ? 0.997 : 0.95;
