@@ -22,6 +22,7 @@ import {
   ENEMY_SCORES,
   ENEMY_HEALTH,
   LEVEL_THRESHOLDS,
+  LEVEL_DAMAGE_MULTIPLIERS,
 } from '../shared/GameConstants';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
@@ -964,6 +965,9 @@ export class GameRoom extends Room<GameState> {
   private useBomb(player: PlayerState) {
     player.bombs--;
 
+    // Bombs are instant kills (enemy.alive = false), so the levelDamageMult from the
+    // bullet damage formula does not affect the kill mechanism — bombs always kill regardless
+    // of level. Level progression (playerKills + playerLevel) is still tracked below.
     // Kill all enemies
     const enemiesToRemove: number[] = [];
     this.state.enemies.forEach((enemy, index) => {
@@ -2211,11 +2215,20 @@ export class GameRoom extends Room<GameState> {
         // Using 0.015 (up from 0.012) for anti-tunneling margin; scaled by map size.
         // Previous value 0.05 = ~1.57 world units = 6x visual size → enemies died from far away.
         if (dist < BULLET_HIT_RADIUS) {
-          // Hit! Apply weapon damage
+          // Hit! Apply weapon damage with full damage formula:
+          //   finalDamage = baseDamage × levelDamageMult × buffDamageMult × masteryDamageMult
+          // NOTE: SP also multiplies by scorePowerMult (kill-streak multiplier) but in MP
+          // player.multiplier is an integer used for SCORE only — it is NOT applied to damage here
+          // to avoid wildly inflated damage at high multipliers.
           const owner = this.state.players.get(bullet.ownerId);
           const weaponCfg = WEAPON_CONFIGS[owner?.weaponType ?? 'standard'] ?? WEAPON_CONFIGS.standard;
-          const damage = weaponCfg.damage;
-          enemy.health -= damage;
+          const baseDamage = weaponCfg.damage;
+          const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+          const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+          const buffDamageMult = 1.0; // TODO Phase D: apply server-side buff damage multiplier
+          const masteryDamageMult = 1.0; // TODO: weapon mastery damage multiplier
+          const finalDamage = baseDamage * levelDamageMult * buffDamageMult * masteryDamageMult;
+          enemy.health -= finalDamage;
 
           if (enemy.health <= 0) {
             enemy.alive = false;
