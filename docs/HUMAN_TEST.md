@@ -1511,3 +1511,26 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Test same-type maps** — Play sphere → vote sphere again → confirm no duplicate sphere meshes visible
 - [ ] **Test all surface transitions** — sphere→torus, cube→peanut, etc. each transition should be clean
 - [ ] **Memory: play 3+ consecutive games** — Browser memory usage should not grow unboundedly between games (GPU resources disposed)
+
+---
+
+## S42-02: Pole Crossing Camera Inversion Fix
+
+**Fix:** Two separate fixes:
+1. `MeshWalker._tryPoleTraversal()` now resets the tangent frame to align with the movement direction after teleporting past the pole. Previously, frame-rotation accumulated during pole-circling could invert the bitangent (camera up), causing camera inversion after crossing.
+2. `CameraController.updateFromFrame()` (MP camera path) now has sign-flip protection: if the UV-derived camera "up" vector flips >90° from the previous frame (UV wrapping at pole), it is negated to maintain continuity.
+
+### Test: SP — Cross north/south pole on sphere without camera inverting
+
+- [ ] **Start SP game on sphere** — Use "Play Game.bat" → sphere surface
+- [ ] **Walk toward north pole** — Hold W to move toward the top of the sphere
+- [ ] **Cross the north pole** — Continue holding W through the pole. Player should pass through and continue on the other side without stalling or spinning.
+- [ ] **Camera NOT inverted after crossing** — After the pole crossing, pressing W should still move the player "forward" (away from where you came). If the camera inverted, W would move the player backward.
+- [ ] **Repeat for south pole** — Walk to bottom of sphere, cross, verify no inversion
+- [ ] **Peanut surface: both poles** — Switch to peanut surface, cross both poles, same smooth behavior expected
+
+### Test: MP — Pole crossing in LAN multiplayer
+
+- [ ] **LAN MP on sphere** — Host + join a LAN game on sphere surface
+- [ ] **Both players can cross poles** — Both host and client should be able to cross poles without camera inversion
+- [ ] **User testing required** — Claude can only test SP visually; MP pole crossing requires human LAN test

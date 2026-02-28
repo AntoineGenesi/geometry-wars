@@ -434,7 +434,43 @@ export class MeshWalker {
     // Confirm we actually moved past the pole (not snapped back to same position)
     if (this.position.distanceTo(result.point) < distance * 0.05) return null;
 
-    return this._applyBvhResult(result);
+    // Apply position/normal/face — same as _applyBvhResult but with explicit frame reset.
+    this.position.copy(result.point);
+    const newNormal = result.normal;
+    this.normal.copy(newNormal);
+    this.faceIndex = result.faceIndex;
+    this._facePos = this.surface.initGeodesicPosition(result.point, result.faceIndex);
+
+    // Reset tangent frame aligned with the post-crossing movement direction.
+    //
+    // Problem: before crossing the pole, the player may have circled around it
+    // (each step rotating the tangent frame slightly via Gram-Schmidt).  After
+    // 180° of circling the accumulated error inverts the frame — bitangent ends
+    // up pointing backward, so the camera appears flipped after the crossing.
+    //
+    // Fix: project moveDir onto the new tangent plane and use it to define the
+    // post-crossing frame.  moveDir is the world-space direction the player was
+    // heading (same before and after the crossing on a smooth surface), so setting
+    // bitangent = moveDir keeps "forward is forward" across the pole.
+    //
+    // Uses _camRight as a zero-allocation temp (safe: move() never calls moveFromInput).
+    const dotN = moveDir.dot(newNormal);
+    this._camRight.copy(moveDir).addScaledVector(newNormal, -dotN);
+    const projLen = this._camRight.length();
+    if (projLen > 0.001) {
+      this._camRight.multiplyScalar(1 / projLen);
+      this._bitangent.copy(this._camRight);                          // camera up = forward
+      this._tangent.crossVectors(this._camRight, newNormal).normalize(); // tangent = bitangent × normal
+    } else {
+      // Degenerate: moveDir is nearly parallel to normal (shouldn't happen in practice)
+      this._updateTangentFrame(newNormal);
+    }
+
+    if (this.mesh) {
+      this.mesh.position.copy(result.point);
+      this.alignToSurface();
+    }
+    return result;
   }
 
   /**
