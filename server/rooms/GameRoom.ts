@@ -2220,32 +2220,35 @@ export class GameRoom extends Room<GameState> {
   }
 
   private getEnemyHealth(type: string): number {
+    // Values mirror SP base health (third arg in each enemy's super() constructor call).
+    // S40-07: Fixed parity — spinner/virus/gate were 3x-6x too high vs SP baseline;
+    // grunt/wanderer/rocket/snake were too low. All values now match SP src/entities/enemies/*.ts.
     const health: Record<string, number> = {
-      grunt: 1,
-      arrow: 1,
-      wanderer: 1,
-      duck: 1,
-      weaver: 2,
-      spinner: 3,
-      rocket: 1,
-      neutron: 2,
-      snake: 1,
-      gate: 2,
-      blackhole: 10,
-      repulsor: 3,
-      mayfly: 1,
-      proton: 5,
-      ufo: 5,
-      mines: 1,
-      mutator: 4,
-      bubbles: 2,
-      spawnlet: 1,
-      virus: 3,
-      spawner: 4,
-      painter: 2,
-      titan_grunt: 5,
-      titan_spinner: 8,
-      titan_weaver: 6,
+      grunt: 2,        // Grunt.ts: super(..., 2, ...)
+      arrow: 1,        // no SP equivalent, keep 1
+      wanderer: 2,     // Wanderer.ts: super(..., 2, ...)
+      duck: 1,         // Duck.ts: super(..., 1, ...)
+      weaver: 2,       // Weaver.ts: super(..., 2, ...)
+      spinner: 1,      // Spinner.ts: super(..., 1, ...) — was 3, caused 3x slower kills
+      rocket: 2,       // Rocket.ts: super(..., 2, ...)
+      neutron: 2,      // Neutron.ts: super(..., 2, ...)
+      snake: 6,        // Snake.ts: super(..., 6, ...)
+      gate: 1,         // Gate.ts: super(..., 1, ...) — was 2, caused 2x slower kills
+      blackhole: 10,   // no SP equivalent, keep 10
+      repulsor: 5,     // Repulsor.ts: super(..., 5, ...)
+      mayfly: 1,       // Mayfly.ts: super(..., 1, ...)
+      proton: 5,       // no SP equivalent, keep 5
+      ufo: 5,          // no SP equivalent, keep 5
+      mines: 1,        // no SP equivalent, keep 1
+      mutator: 4,      // no SP equivalent, keep 4
+      bubbles: 2,      // no SP equivalent, keep 2
+      spawnlet: 1,     // no SP equivalent, keep 1
+      virus: 1,        // Virus.ts: super(..., 1, ...) — was 3, caused 3x slower kills
+      spawner: 12,     // Spawner.ts: super(..., 12, ...)
+      painter: 3,      // Painter.ts: super(..., 3, ...)
+      titan_grunt: 10, // TitanGrunt.ts: super(..., 10, ...)
+      titan_spinner: 8, // TitanSpinner.ts: super(..., 8, ...)
+      titan_weaver: 8, // TitanWeaver.ts: super(..., 8, ...)
     };
     return health[type] ?? 1;
   }
