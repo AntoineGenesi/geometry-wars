@@ -4,6 +4,12 @@ import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 import { createWeaponIconSprite } from '../pickups/PickupIconSprite';
 
+// Pre-allocated temps for applySurfaceTransform (zero per-call allocations)
+const _wpMat4 = new THREE.Matrix4();
+const _wpQSurface = new THREE.Quaternion();
+const _wpQSpin = new THREE.Quaternion();
+const _wpSpinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
+
 // World-space pickup collision radius (in world units).
 // Using world-space distance instead of UV-space because UV metric is non-uniform:
 // 0.01 UV = 0.63 world units at sphere equator but only 0.13 on torus tube direction.
@@ -153,9 +159,6 @@ export class WeaponPickup {
     // Store totalTime for use in applySurfaceTransform (bob along surface normal)
     this._currentTotalTime = totalTime;
 
-    // Spin animation (applied after surface transform — rotation.y overridden by applySurfaceTransform)
-    this.mesh.rotation.y = totalTime * this.spinSpeed;
-
     // Pulse the inner core
     const core = this.mesh.getObjectByName('core');
     if (core) {
@@ -214,9 +217,13 @@ export class WeaponPickup {
     const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08 * this.mapSizeScaleFactor;
     this.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
 
-    // Orient to surface
-    const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
-    this.mesh.quaternion.setFromRotationMatrix(mat);
+    // Orient to surface, then apply spin around local Y (= surface normal).
+    // This makes the 3D wireframe visibly rotate so the octahedron looks 3D,
+    // not like a flat 2D diamond. (Previously rotation.y in update() was overridden here.)
+    _wpMat4.makeBasis(tangent, normal, bitangent);
+    _wpQSurface.setFromRotationMatrix(_wpMat4);
+    _wpQSpin.setFromAxisAngle(_wpSpinAxis, this._currentTotalTime * this.spinSpeed);
+    this.mesh.quaternion.copy(_wpQSurface).multiply(_wpQSpin);
 
     // Update spawn indicator NOW (after quaternion is set) so the correct surface
     // orientation is used to transform cameraUp into local space.

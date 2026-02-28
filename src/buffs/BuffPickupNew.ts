@@ -3,6 +3,12 @@ import { StackBuffType, BUFF_DEFINITIONS, BuffDefinition } from './BuffManager';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from '../weapons/SpawnIndicator';
 import { createBuffIconSprite } from '../pickups/PickupIconSprite';
 
+// Pre-allocated temps for applySurfaceTransform (zero per-call allocations)
+const _bpMat4 = new THREE.Matrix4();
+const _bpQSurface = new THREE.Quaternion();
+const _bpQSpin = new THREE.Quaternion();
+const _bpSpinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
+
 // ---------------------------------------------------------------------------
 // BuffPickupNew - Hexagonal buff pickup entity
 // ---------------------------------------------------------------------------
@@ -109,8 +115,7 @@ export class BuffPickupNew {
     // Store totalTime for bob animation in applySurfaceTransform
     this._currentTotalTime = totalTime;
 
-    // Slow spin
-    this.mesh.rotation.y = totalTime * 2;
+    // Spin angle stored in _currentTotalTime (applied in applySurfaceTransform)
 
     // Pulse core
     const core = this.mesh.getObjectByName('core');
@@ -164,8 +169,12 @@ export class BuffPickupNew {
     this._surfaceWorldPos.copy(position);
     const bob = Math.sin(this._currentTotalTime * 2.5 + this.bobPhase) * 0.08 * this.mapSizeScaleFactor;
     this.mesh.position.copy(position).addScaledVector(normal, 0.4 + bob);
-    const mat = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
-    this.mesh.quaternion.setFromRotationMatrix(mat);
+    // Orient to surface + spin around local Y (= surface normal) so the hexagonal prism
+    // visibly rotates and reads as 3D rather than a flat 2D silhouette.
+    _bpMat4.makeBasis(tangent, normal, bitangent);
+    _bpQSurface.setFromRotationMatrix(_bpMat4);
+    _bpQSpin.setFromAxisAngle(_bpSpinAxis, this._currentTotalTime * 2);
+    this.mesh.quaternion.copy(_bpQSurface).multiply(_bpQSpin);
 
     // Update spawn indicator after quaternion is set so cameraUp transforms correctly
     updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);

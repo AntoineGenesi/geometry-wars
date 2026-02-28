@@ -2461,9 +2461,10 @@ async function main() {
 
       let pickup = networkWeaponPickups.get(netPickup.id);
       if (!pickup) {
-        // Create a real WeaponPickup (same as co-op)
+        // Create a real WeaponPickup (same as co-op), passing the current map scale
+        // so the bob animation and collision radius scale proportionally with the surface.
         const weaponType = SERVER_TO_WEAPON_TYPE[netPickup.weaponType] ?? WeaponType.Spread;
-        pickup = new WeaponPickup(weaponType, netPickup.surfaceU, netPickup.surfaceV);
+        pickup = new WeaponPickup(weaponType, netPickup.surfaceU, netPickup.surfaceV, currentMapSizeScaleFactor);
         scene.add(pickup.mesh);
         networkWeaponPickups.set(netPickup.id, pickup);
       }
