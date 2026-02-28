@@ -1079,6 +1079,26 @@ export class GameRoom extends Room<GameState> {
         // Move bullet with metric correction for u (arc-length preserving)
         bullet.x += (bullet.dirX / clampedSinPhi) * BULLET_SPEED * dt;
         bullet.y += bullet.dirY * BULLET_SPEED * dt;
+
+        // Pole crossing: when bullet passes through north (v<0) or south (v>1) pole,
+        // it emerges on the opposite side of the sphere. In UV space this means:
+        //   - v reflects: north v → -v, south v → 2-v  (back into [0,1])
+        //   - u shifts by 0.5 (antipodal longitude on the other side of the pole)
+        //   - Both direction components flip (east/south reverse at antipodal longitude)
+        // This replaces the hard clamp that caused bullets to get stuck at poles.
+        // Geometrically correct: at (u+0.5) near pole, the local east/south basis
+        // vectors are the 3D-opposite of the basis vectors at (u).
+        if (bullet.y < 0) {
+          bullet.y = -bullet.y;
+          bullet.x = this.wrapCoord(bullet.x + 0.5);
+          bullet.dirX = -bullet.dirX;
+          bullet.dirY = -bullet.dirY;
+        } else if (bullet.y > 1) {
+          bullet.y = 2 - bullet.y;
+          bullet.x = this.wrapCoord(bullet.x + 0.5);
+          bullet.dirX = -bullet.dirX;
+          bullet.dirY = -bullet.dirY;
+        }
       } else if (isTorus) {
         // Torus: parallel transport + 2-axis metric correction.
         // Normalized radii R=1, r=3/8 (preserves game's 8:3 aspect ratio).

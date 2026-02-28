@@ -8,6 +8,18 @@
 
 ---
 
+## S39-01: Bullets Not Curving at Poles in LAN Multiplayer (Server-Side Pole Crossing)
+
+**Fix:** `GameRoom.updateBullets()` now handles pole crossing for sphere-like surfaces. Previously, bullets reaching the north/south pole were clamped at v=0 or v=1 and got stuck. Now they cross through: v reflects, u shifts 0.5 (antipodal longitude), and both direction components flip. Matches the behavior the FaceWalker fix (S38d-07b) achieved for single-player.
+
+### Test: Bullets travel straight through poles in LAN Multiplayer
+- [ ] **Start LAN MP on Sphere** — host PC + one other device connected via LAN
+- [ ] **Fire bullets toward north pole** — Aim from equator toward the north. Bullets should travel in a straight arc through the pole and exit on the other side
+- [ ] **Fire bullets toward south pole** — Same test heading south. No curving, no sticking.
+- [ ] **Compare with single-player** — SP and MP should show matching bullet behavior on sphere
+
+---
+
 ## S38d-07b: Bullet Paths Straight Near Poles (Vertex Fan Parallel Transport Fix)
 
 **Fix:** Vertex fan traversal in `FaceWalker.ts` now uses proper parallel transport (`transportAcrossEdge`) instead of simple normal projection when crossing between faces at sphere poles. Simple projection caused accumulated angular errors — bullets visibly curved when traveling near north/south poles.

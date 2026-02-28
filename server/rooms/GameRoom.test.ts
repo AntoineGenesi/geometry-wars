@@ -1539,3 +1539,141 @@ describe('S28b: isPaused reset on startGame (no stale pause from previous round)
     expect(isPaused).toBe(false); // new game is NOT frozen
   });
 });
+
+// ---------------------------------------------------------------------------
+// Pole crossing — regression guard for s39-01-bullets-curving-at-poles-mp
+//
+// Server-side bullet movement on sphere-like surfaces must handle pole crossing.
+// When bullet.y < 0 (north pole) or bullet.y > 1 (south pole), the bullet
+// should "pass through" the pole: reflect v, shift u by 0.5, flip both
+// direction components. Previously, the code used clampCoord which stuck bullets.
+// ---------------------------------------------------------------------------
+
+interface BulletState {
+  x: number; y: number;
+  dirX: number; dirY: number;
+}
+
+/** Mirrors the exact pole-crossing logic added to GameRoom.updateBullets() isSphereLike block. */
+function wrapCoord(v: number): number {
+  return ((v % 1) + 1) % 1;
+}
+
+function applyPoleCrossing(bullet: BulletState): BulletState {
+  if (bullet.y < 0) {
+    return {
+      y: -bullet.y,
+      x: wrapCoord(bullet.x + 0.5),
+      dirX: -bullet.dirX,
+      dirY: -bullet.dirY,
+    };
+  } else if (bullet.y > 1) {
+    return {
+      y: 2 - bullet.y,
+      x: wrapCoord(bullet.x + 0.5),
+      dirX: -bullet.dirX,
+      dirY: -bullet.dirY,
+    };
+  }
+  return { ...bullet };
+}
+
+describe('GameRoom sphere bullet pole crossing (S39-01)', () => {
+  const BULLET_SPEED = 0.13;
+  const DT = 1 / 60;
+  const STEP = BULLET_SPEED * DT;
+
+  it('bullet heading north (dirY<0) crosses north pole: v reflects, u shifts 0.5', () => {
+    // Bullet just past north pole (v went slightly negative)
+    const bullet: BulletState = { x: 0.25, y: -0.002, dirX: 0, dirY: -1 };
+    const result = applyPoleCrossing(bullet);
+    expect(result.y).toBeCloseTo(0.002, 6);  // reflected
+    expect(result.x).toBeCloseTo(0.75, 6);   // u shifted by 0.5
+    expect(result.dirX).toBeCloseTo(0, 6);   // dirX flipped (was 0, stays 0)
+    expect(result.dirY).toBeCloseTo(1, 6);   // dirY flipped: now heading south
+  });
+
+  it('bullet heading south (dirY>0) crosses south pole: v reflects, u shifts 0.5', () => {
+    // Bullet just past south pole
+    const bullet: BulletState = { x: 0.1, y: 1.003, dirX: 0.5, dirY: 0.866 };
+    const result = applyPoleCrossing(bullet);
+    expect(result.y).toBeCloseTo(0.997, 6);    // 2 - 1.003
+    expect(result.x).toBeCloseTo(0.6, 6);      // 0.1 + 0.5
+    expect(result.dirX).toBeCloseTo(-0.5, 6);  // dirX flipped
+    expect(result.dirY).toBeCloseTo(-0.866, 6); // dirY flipped
+  });
+
+  it('bullet in middle (y=0.5) is not modified by pole crossing', () => {
+    const bullet: BulletState = { x: 0.3, y: 0.5, dirX: 0.707, dirY: 0.707 };
+    const result = applyPoleCrossing(bullet);
+    expect(result.y).toBeCloseTo(0.5, 6);
+    expect(result.x).toBeCloseTo(0.3, 6);
+    expect(result.dirX).toBeCloseTo(0.707, 6);
+    expect(result.dirY).toBeCloseTo(0.707, 6);
+  });
+
+  it('u coordinate wraps correctly when crossing north pole near u=0.8', () => {
+    // u = 0.8 + 0.5 = 1.3 → wraps to 0.3
+    const bullet: BulletState = { x: 0.8, y: -0.001, dirX: 0.5, dirY: -0.866 };
+    const result = applyPoleCrossing(bullet);
+    expect(result.x).toBeCloseTo(0.3, 6);  // 0.8 + 0.5 = 1.3 → 0.3 (wrapped)
+  });
+
+  it('bullet heading due north from (u=0.25) emerges heading south at (u=0.75)', () => {
+    // Simulate many ticks approaching the north pole and crossing
+    let x = 0.25, y = 0.05, dirX = 0, dirY = -1;
+    let poleCrossed = false;
+
+    for (let i = 0; i < 300; i++) {
+      const phi = y * Math.PI;
+      const sinPhi = Math.sin(phi);
+      const clampedSinPhi = Math.max(Math.abs(sinPhi), 0.1);
+      x += (dirX / clampedSinPhi) * BULLET_SPEED * DT;
+      y += dirY * BULLET_SPEED * DT;
+
+      if (y < 0) {
+        y = -y;
+        x = wrapCoord(x + 0.5);
+        dirX = -dirX;
+        dirY = -dirY;
+        poleCrossed = true;
+        break;
+      }
+    }
+
+    expect(poleCrossed).toBe(true);
+    expect(dirY).toBeGreaterThan(0);  // now heading south (away from north pole)
+    // u should have shifted by ~0.5 (from ~0.25 to ~0.75)
+    expect(Math.abs(x - 0.75)).toBeLessThan(0.05);
+  });
+
+  it('bullet heading purely north does NOT get stuck at v=0 (old clamp bug)', () => {
+    // With old clamp: after reaching v=0, bullet would stay at v=0 forever
+    // With new pole crossing: bullet crosses to the other side
+    let x = 0.25, y = 0.005, dirX = 0, dirY = -1;
+    let minY = y;
+
+    for (let i = 0; i < 60; i++) {
+      const phi = y * Math.PI;
+      const sinPhi = Math.sin(phi);
+      const clampedSinPhi = Math.max(Math.abs(sinPhi), 0.1);
+      x += (dirX / clampedSinPhi) * BULLET_SPEED * DT;
+      y += dirY * BULLET_SPEED * DT;
+
+      // New behavior: pole crossing
+      if (y < 0) {
+        y = -y;
+        x = wrapCoord(x + 0.5);
+        dirX = -dirX;
+        dirY = -dirY;
+      }
+
+      minY = Math.min(minY, y);
+    }
+
+    // After crossing the pole, bullet should be moving south — y should increase
+    expect(dirY).toBeGreaterThan(0);  // heading away from north pole
+    // y should be positive (not stuck at 0)
+    expect(y).toBeGreaterThan(0);
+  });
+});
