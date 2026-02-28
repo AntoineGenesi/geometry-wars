@@ -1015,6 +1015,12 @@ async function main() {
   let localBoostCooldown = 0;
   let localPrevBoostHeld = false;
   const LOCAL_BOOST_DURATION = 0.5;
+
+  // Client-side V-direction flip state for pole traversal prediction.
+  // Mirrors server-side playerVFlip in GameRoom.ts.
+  // Toggles each time the local player crosses a sphere-like pole, so the
+  // prediction applies the same effective direction as the server.
+  let localPlayerVFlip = false;
   const LOCAL_BOOST_COOLDOWN = 5.0;
   const LOCAL_BOOST_SPEED_MULTIPLIER = 3.0;
   let shootSoundTimer = 0;
@@ -3301,8 +3307,15 @@ async function main() {
             predDx = -predDx;
           }
 
+          // Apply vFlip for sphere-like pole traversal (mirrors server GameRoom.ts logic)
+          const isSphereLikePred = surfType === 'sphere' || surfType === 'sphere-tunnel'
+            || surfType === 'icosahedron' || surfType === 'capsule';
+          const effectiveDy = (isSphereLikePred || surfType === 'peanut')
+            ? predDy * (localPlayerVFlip ? -1 : 1)
+            : predDy;
+
           let newU = localPlayer.surfaceU + predDx;
-          let newV = localPlayer.surfaceV + predDy;
+          let newV = localPlayer.surfaceV + effectiveDy;
 
           // Wrap U, clamp/wrap V (matches server logic exactly).
           const wrapsInV = surfType === 'torus' || surfType === 'pipe'
@@ -3311,14 +3324,17 @@ async function main() {
           newU = ((newU % 1) + 1) % 1;
           if (wrapsInV) {
             newV = ((newV % 1) + 1) % 1;
-          } else if (surfType === 'sphere') {
-            // Sphere pole traversal: reflect V through north/south pole (matches server).
+          } else if (isSphereLikePred || surfType === 'peanut') {
+            // Pole traversal: reflect V through north/south pole (matches server).
+            // vFlip toggles so forward direction continues past the pole.
             if (newV < 0) {
               newV = -newV;
               newU = ((newU + 0.5) % 1 + 1) % 1;
+              localPlayerVFlip = !localPlayerVFlip;
             } else if (newV > 1) {
               newV = 2 - newV;
               newU = ((newU + 0.5) % 1 + 1) % 1;
+              localPlayerVFlip = !localPlayerVFlip;
             }
             newV = Math.max(0.001, Math.min(0.999, newV));
           } else {
