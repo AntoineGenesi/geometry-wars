@@ -3478,7 +3478,7 @@ async function main() {
       // Update companion + buff pickups, check collection
       if (getTransform) {
         // Compute player's analytical surface position for world-space pickup collision.
-        // SP (GameLoop.ts) passes this to checkPlayerCollision() so it uses the 0.6 world-unit
+        // SP (GameLoop.ts) passes this to checkPlayerCollision() so it uses the 0.3 world-unit
         // radius instead of the UV fallback (0.01/scaleFactor). Without this, peanut (2x scale)
         // uses a UV threshold of 0.005 ≈ 0.11 world units — much too small to feel responsive.
         const playerAnalyticalPos = getTransform(localPlayer.surfaceU, localPlayer.surfaceV).position;
