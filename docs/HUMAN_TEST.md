@@ -8,6 +8,24 @@
 
 ---
 
+## S40-03: LAN MP Aim Camera-Frame Correction
+
+**Fix:** In `network-main.ts`, `aimAngle` is now computed using the camera's actual world-space right/up vectors projected onto the surface tangent plane, instead of naively assuming `camera.right == tangentU`. This accounts for camera orbit (middle mouse) and camera-lerp lag. See `src/utils/aimAngle.ts` for the logic.
+
+### Test: Aim is correct regardless of camera orbit
+
+- [ ] Start LAN game (host + 1 client)
+- [ ] Move mouse to the RIGHT of center → bullets fly RIGHT on screen ✓
+- [ ] Move mouse ABOVE center → bullets fly UPWARD on screen ✓
+- [ ] Move mouse BELOW center → bullets fly DOWNWARD on screen ✓
+- [ ] Move mouse to the LEFT of center → bullets fly LEFT on screen ✓
+- [ ] **Orbit test:** Hold middle mouse and drag to orbit camera ~90°. Bullets should STILL follow the mouse direction (not rotate with the surface tangent frame)
+- [ ] **180° orbit test:** Orbit camera ~180°. Bullets should STILL follow the mouse direction (previously this would cause aim to be correct only "every 180°")
+- [ ] **Regression (S39-02):** Confirm `atan2(-mouseY, mouseX)` fallback is not triggered (no orbit = same behaviour as before)
+- [ ] Test on at least 2 different surfaces (e.g. sphere and torus)
+
+---
+
 ## S39-02: LAN MP Aim Direction Fix
 
 **Fix:** Reverted `atan2(mouseY, mouseX)` → `atan2(-mouseY, mouseX)` in `network-main.ts`. The S38d-08 "fix" was wrong — it inverted vertical aim. Root cause: `tangentV = camera.up` = screen UP direction, so mouse-up (aimY < 0) needs `-aimY` positive to produce `+tangentV` (screen up) bullet direction.

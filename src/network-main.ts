@@ -112,6 +112,7 @@ import {
 } from './utils/StartupCache';
 import type { NetworkStartupConfig } from './network/NetworkClient';
 import { initI18n } from './i18n';
+import { computeCameraRelativeAimAngle } from './utils/aimAngle';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -187,6 +188,10 @@ const _netTempPos = new THREE.Vector3();
 const _netTempDir = new THREE.Vector3();
 const _netTempNormal = new THREE.Vector3();
 const _bulletTmpColor = new THREE.Color();
+
+// Pre-allocated temp vectors for camera-frame aim-angle correction (s40-03)
+const _aimCamRight = new THREE.Vector3();
+const _aimCamUp = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
 // URL helpers
@@ -3128,7 +3133,27 @@ async function main() {
     const inputState = input.getState();
     const mouseX = inputState.aimX;
     const mouseY = inputState.aimY;
-    const aimAngle = Math.atan2(-mouseY, mouseX);
+
+    // Compute aim angle in surface UV space, corrected for camera-frame misalignment.
+    // The naive formula atan2(-mouseY, mouseX) assumes camera.right == tangentU, which
+    // breaks when the camera is orbited (middle mouse) or lags due to lerp.
+    // Fix: use camera's actual world-space axes projected onto the surface tangent plane.
+    // This matches GameLoop.ts SP (lines 233-251). See src/utils/aimAngle.ts for details.
+    let aimAngle = Math.atan2(-mouseY, mouseX); // fallback if no player/camera data
+    {
+      const _aimPlayer = networkPlayers.get(localPlayerId);
+      if (_aimPlayer) {
+        const _aimSp = surface.getPoint(_aimPlayer.surfaceU, _aimPlayer.surfaceV);
+        camera.updateMatrixWorld();
+        _aimCamRight.setFromMatrixColumn(camera.matrixWorld, 0);
+        _aimCamUp.setFromMatrixColumn(camera.matrixWorld, 1);
+        aimAngle = computeCameraRelativeAimAngle(
+          mouseX, mouseY,
+          _aimCamRight, _aimCamUp,
+          _aimSp.normal, _aimSp.tangentU, _aimSp.tangentV,
+        );
+      }
+    }
 
     lastInputSendTime += dt;
     // Skip input sending and client-side prediction while local menu is open.

@@ -31,7 +31,11 @@
 
 import { describe, it, expect } from 'vitest';
 
-/** Replicates the CORRECT formula from src/network-main.ts line 3131. */
+/**
+ * Replicates the FALLBACK screen-space formula still used in src/utils/aimAngle.ts
+ * when camera axes are degenerate. The primary formula (s40-03) is in aimAngle.ts and
+ * tested in src/utils/aimAngle.test.ts.
+ */
 function computeAimAngle(aimX: number, aimY: number): number {
   return Math.atan2(-aimY, aimX);
 }
