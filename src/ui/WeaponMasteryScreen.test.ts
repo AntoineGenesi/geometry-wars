@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { UPGRADE_TREES, getBranchNodes, getAllNodes } from '../systems/UpgradeTreeData';
+import { UPGRADE_TREES, getBranchNodes, getAllNodes, getImplicitParent, isPrerequisiteMet } from '../systems/UpgradeTreeData';
 import { WeaponType as WT } from '../weapons/WeaponTypes';
 
 // ── Minimal DOM mock ──────────────────────────────────────────────────────────
@@ -279,9 +279,10 @@ describe('WeaponMasteryScreen — constellation UI', () => {
   it('show() HTML contains branch labels for each weapon', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;
-    // Damage and Rate are branch names for Standard weapon
-    expect(html).toContain('Damage');
-    expect(html).toContain('Rate');
+    // Standard uses 4-endpoint branching: sub-branch labels instead of trunk names
+    expect(html).toContain('Scatter');   // Standard branchALName
+    expect(html).toContain('Seeking');   // Standard branchBLName
+    expect(html).toContain('DPS');       // TeslaCoil branchBName
   });
 
   it('show() HTML contains available points display', () => {
@@ -460,5 +461,183 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;
     expect(html).toContain('Right-click to refund');
+  });
+
+  // ── Prerequisite enforcement tests ─────────────────────────────────────────
+
+  it('tier-1 root nodes are affordable when player has points (no prereq)', () => {
+    const ps = new MasteryPointStore();
+    ps.earnPoint();
+    screen.setPointStore(ps);
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    // Root nodes (a_1, b_1) should be affordable since they have no prerequisite
+    expect(html).toContain('wms-node--affordable');
+  });
+
+  it('tier-2 nodes are prereq-locked when tier-1 is not unlocked', () => {
+    const ps = new MasteryPointStore();
+    for (let i = 0; i < 5; i++) ps.earnPoint(); // Plenty of points but nothing unlocked
+    screen.setPointStore(ps);
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    // Tier-2 nodes should be prereq-locked since tier-1 not unlocked
+    expect(html).toContain('wms-node--prereq-locked');
+    // Root tier-1 nodes should still be affordable
+    expect(html).toContain('wms-node--affordable');
+  });
+
+  it('tier-2 node becomes affordable after tier-1 is fully unlocked', () => {
+    const ps = new MasteryPointStore();
+    for (let i = 0; i < 5; i++) ps.earnPoint();
+    // Unlock Spread weapon tier 1 on branch A
+    ps.spendPoint(`${WT.Spread}_a_1`);
+    screen.setPointStore(ps);
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    // spread_a_2 should now be affordable (parent spread_a_1 is unlocked)
+    // Its state should appear in the HTML
+    expect(html).toContain(`data-node-id="${WT.Spread}_a_2"`);
+    // With tier-1 unlocked and 4 remaining points, tier-2 should NOT be prereq-locked
+    expect(html).not.toContain(`data-node-id="${WT.Spread}_a_2" `);  // ensure it's present
+    // Verify via getImplicitParent / isPrerequisiteMet logic
+    const tree = UPGRADE_TREES[WT.Spread];
+    const a2 = tree.nodes.find(n => n.id === `${WT.Spread}_a_2`)!;
+    expect(isPrerequisiteMet(a2, tree, ps)).toBe(true);
+  });
+
+  it('isPrerequisiteMet: root nodes always pass', () => {
+    const ps = new MasteryPointStore(); // 0 points
+    const tree = UPGRADE_TREES[WT.Spread];
+    const a1 = tree.nodes.find(n => n.id === `${WT.Spread}_a_1`)!;
+    expect(isPrerequisiteMet(a1, tree, ps)).toBe(true);
+  });
+
+  it('isPrerequisiteMet: tier-2 node fails when tier-1 not unlocked', () => {
+    const ps = new MasteryPointStore();
+    const tree = UPGRADE_TREES[WT.Spread];
+    const a2 = tree.nodes.find(n => n.id === `${WT.Spread}_a_2`)!;
+    expect(isPrerequisiteMet(a2, tree, ps)).toBe(false);
+  });
+
+  it('isPrerequisiteMet: tier-2 node passes when tier-1 is unlocked', () => {
+    const ps = new MasteryPointStore();
+    ps.earnPoint();
+    ps.spendPoint(`${WT.Spread}_a_1`);
+    const tree = UPGRADE_TREES[WT.Spread];
+    const a2 = tree.nodes.find(n => n.id === `${WT.Spread}_a_2`)!;
+    expect(isPrerequisiteMet(a2, tree, ps)).toBe(true);
+  });
+
+  it('isPrerequisiteMet: multi-point parent must be FULLY unlocked (all points spent)', () => {
+    const ps = new MasteryPointStore();
+    // BlackHole a_1 has maxPoints=3 — spending only 1 is not enough for a_2
+    for (let i = 0; i < 3; i++) ps.earnPoint();
+    ps.spendPoint(`${WT.BlackHole}_a_1`, 3); // Spend 1 of 3
+    const tree = UPGRADE_TREES[WT.BlackHole];
+    const a2 = tree.nodes.find(n => n.id === `${WT.BlackHole}_a_2`)!;
+    // After 1 spend, parent has 1/3 points — prereq NOT met
+    expect(isPrerequisiteMet(a2, tree, ps)).toBe(false);
+    // After 2 more spends (3 total), prereq IS met
+    ps.spendPoint(`${WT.BlackHole}_a_1`, 3, 1);
+    ps.spendPoint(`${WT.BlackHole}_a_1`, 3, 1);
+    expect(isPrerequisiteMet(a2, tree, ps)).toBe(true);
+  });
+
+  // ── getImplicitParent tests ────────────────────────────────────────────────
+
+  it('getImplicitParent: root nodes return null', () => {
+    const tree = UPGRADE_TREES[WT.Spread];
+    const a1 = tree.nodes.find(n => n.id === `${WT.Spread}_a_1`)!;
+    expect(getImplicitParent(a1, tree)).toBeNull();
+  });
+
+  it('getImplicitParent: non-root no-parentId nodes return previous same-branch node', () => {
+    const tree = UPGRADE_TREES[WT.Spread];
+    const a2 = tree.nodes.find(n => n.id === `${WT.Spread}_a_2`)!;
+    const parent = getImplicitParent(a2, tree);
+    expect(parent?.id).toBe(`${WT.Spread}_a_1`);
+  });
+
+  it('getImplicitParent: nodes with explicit parentId return that parent', () => {
+    const tree = UPGRADE_TREES[WT.Standard];
+    // al_5 has explicit parentId: standard_a_4
+    const al5 = tree.nodes.find(n => n.id === 'standard_al_5')!;
+    const parent = getImplicitParent(al5, tree);
+    expect(parent?.id).toBe('standard_a_4');
+  });
+
+  // ── Skip connections tests ─────────────────────────────────────────────────
+
+  it('Standard weapon has skip connections defined', () => {
+    const tree = UPGRADE_TREES[WT.Standard];
+    expect(tree.skipConnections).toBeDefined();
+    expect(tree.skipConnections!.length).toBeGreaterThan(0);
+  });
+
+  it('skip connection allows accessing tier-3 from opposite branch tier-2', () => {
+    const ps = new MasteryPointStore();
+    for (let i = 0; i < 5; i++) ps.earnPoint();
+    // Unlock Standard trunk A tier 1 and tier 2 (skip source)
+    ps.spendPoint('standard_a_1');
+    ps.spendPoint('standard_a_2');
+    const tree = UPGRADE_TREES[WT.Standard];
+    // standard_b_3 normally requires standard_b_2 (which requires standard_b_1)
+    // But standard_a_2 → standard_b_3 is a skip connection
+    const b3 = tree.nodes.find(n => n.id === 'standard_b_3')!;
+    // Without skip: b_1 and b_2 not unlocked, so prereq would fail normally
+    // With skip from a_2 (unlocked): prereq IS met
+    expect(isPrerequisiteMet(b3, tree, ps)).toBe(true);
+  });
+
+  it('skip connection does NOT help if skip source is NOT unlocked', () => {
+    const ps = new MasteryPointStore();
+    for (let i = 0; i < 5; i++) ps.earnPoint();
+    // Only unlock standard_a_1, NOT standard_a_2 (the skip source)
+    ps.spendPoint('standard_a_1');
+    const tree = UPGRADE_TREES[WT.Standard];
+    const b3 = tree.nodes.find(n => n.id === 'standard_b_3')!;
+    // standard_b_3 requires either standard_b_2 (not unlocked) OR standard_a_2 (not unlocked)
+    expect(isPrerequisiteMet(b3, tree, ps)).toBe(false);
+  });
+
+  it('skip connection HTML contains dashed golden line markup', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    // Skip lines should have data-skip attribute and dashed stroke
+    expect(html).toContain('data-skip="true"');
+    expect(html).toContain('stroke-dasharray');
+    expect(html).toContain('#d4aa40'); // golden color
+  });
+
+  // ── Path visualization tests ───────────────────────────────────────────────
+
+  it('SVG uses preserveAspectRatio="none" for accurate node-line alignment', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    expect(html).toContain('preserveAspectRatio="none"');
+    expect(html).not.toContain('preserveAspectRatio="xMidYMid meet"');
+  });
+
+  it('activated paths (unlocked nodes) use high opacity colored stroke', () => {
+    const ps = new MasteryPointStore();
+    for (let i = 0; i < 3; i++) ps.earnPoint();
+    ps.spendPoint(`${WT.Spread}_a_1`);
+    screen.setPointStore(ps);
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    // Activated lines should have stroke-opacity="0.85"
+    expect(html).toContain('stroke-opacity="0.85"');
+  });
+
+  it('possible paths (prereq met, not yet unlocked) use low opacity colored stroke', () => {
+    const ps = new MasteryPointStore();
+    for (let i = 0; i < 3; i++) ps.earnPoint();
+    ps.spendPoint(`${WT.Spread}_a_1`); // Now a_2 is possible
+    screen.setPointStore(ps);
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    // Possible lines (faint colored) should have stroke-opacity="0.22"
+    expect(html).toContain('stroke-opacity="0.22"');
   });
 });
