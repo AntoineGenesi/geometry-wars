@@ -97,13 +97,10 @@ describe('UPGRADE_TREES', () => {
 
   it('weapons without extended branches have exactly 10 nodes (5 per branch)', () => {
     const fiveLevelWeapons = [
-      WeaponType.Spread,
-      WeaponType.Piercing,
       WeaponType.ChainLightning,
       WeaponType.PlasmaMortar,
       WeaponType.GravityGun,
       WeaponType.LaserBeam,
-      WeaponType.BlackHole,
       WeaponType.TeslaCoil,
     ];
     for (const wt of fiveLevelWeapons) {
@@ -116,8 +113,34 @@ describe('UPGRADE_TREES', () => {
     }
   });
 
-  it('total node count: Standard(32) + Homing(20) + 8×10 = 132', () => {
-    expect(getAllNodes().length).toBe(132);
+  it('Spread, Piercing, BlackHole have 4-endpoint branching trees (14 nodes each)', () => {
+    const branchingWeapons = [WeaponType.Spread, WeaponType.Piercing, WeaponType.BlackHole];
+    for (const wt of branchingWeapons) {
+      const tree = UPGRADE_TREES[wt];
+      expect(tree.nodes.length).toBe(14);
+      // Trunk: 3 nodes each side
+      expect(tree.nodes.filter(n => n.branch === 'a').length).toBe(3);
+      expect(tree.nodes.filter(n => n.branch === 'b').length).toBe(3);
+      // Sub-branches: 2 nodes each
+      expect(tree.nodes.filter(n => n.branch === 'al').length).toBe(2);
+      expect(tree.nodes.filter(n => n.branch === 'ar').length).toBe(2);
+      expect(tree.nodes.filter(n => n.branch === 'bl').length).toBe(2);
+      expect(tree.nodes.filter(n => n.branch === 'br').length).toBe(2);
+      // Has 4 sub-branch labels
+      expect(tree.branchALName).toBeTruthy();
+      expect(tree.branchARName).toBeTruthy();
+      expect(tree.branchBLName).toBeTruthy();
+      expect(tree.branchBRName).toBeTruthy();
+      // All nodes have explicit x/y positions
+      for (const n of tree.nodes) {
+        expect(n.x).toBeDefined();
+        expect(n.y).toBeDefined();
+      }
+    }
+  });
+
+  it('total node count: Standard(32) + Homing(20) + Spread(14) + Piercing(14) + BlackHole(14) + 5×10 = 144', () => {
+    expect(getAllNodes().length).toBe(144);
   });
 
   it('every node id follows the pattern "${weaponType}_${branch}_${nodeIndex}"', () => {
@@ -237,13 +260,12 @@ describe('getBranchNodes', () => {
     }
   });
 
-  it('branch nodes are ordered by nodeIndex', () => {
+  it('BlackHole branch-a trunk nodes are in order (3 nodes after branching redesign)', () => {
     const nodes = getBranchNodes(WeaponType.BlackHole, 'a');
+    expect(nodes.length).toBe(3);
     expect(nodes[0].nodeIndex).toBe(1);
     expect(nodes[1].nodeIndex).toBe(2);
     expect(nodes[2].nodeIndex).toBe(3);
-    expect(nodes[3].nodeIndex).toBe(4);
-    expect(nodes[4].nodeIndex).toBe(5);
   });
 });
 
@@ -274,6 +296,18 @@ describe('multi-level nodes (maxPoints > 1)', () => {
     const n = getNodeById('black_hole_b_1');
     expect(n).toBeDefined();
     expect(getNodeMaxPoints(n!)).toBe(3);
+  });
+
+  it('Homing a_1 has maxPoints: 2', () => {
+    const n = getNodeById('homing_a_1');
+    expect(n).toBeDefined();
+    expect(getNodeMaxPoints(n!)).toBe(2);
+  });
+
+  it('Homing b_1 has maxPoints: 2', () => {
+    const n = getNodeById('homing_b_1');
+    expect(n).toBeDefined();
+    expect(getNodeMaxPoints(n!)).toBe(2);
   });
 
   it('standard nodes (no maxPoints) default to 1 via getNodeMaxPoints', () => {
