@@ -123,9 +123,11 @@ describe(`MP Parity Audit (synced ${MP_SYNC_DATE})`, () => {
     it('all weapon types are represented in MP weapon config', () => {
       for (const wt of weaponTypes) {
         const key = SP_TO_MP_WEAPON_KEY[wt];
-        expect(MP_WEAPON_CONFIGS).toHaveProperty(key,
+        // toHaveProperty(key) checks existence; second arg would be expected value, not message
+        expect(
+          key in MP_WEAPON_CONFIGS,
           `WeaponType.${wt} (key: ${key}) is missing from MP_WEAPON_CONFIGS`
-        );
+        ).toBe(true);
       }
     });
 
@@ -343,18 +345,12 @@ describe(`MP Parity Audit (synced ${MP_SYNC_DATE})`, () => {
       expect(MP_MAX_ENEMIES_BY_PLAYER_COUNT[3]).toBe(90);
     });
 
-    it('MP caps scale proportionally with player count multiplier', () => {
-      const base = MP_MAX_ENEMIES_BY_PLAYER_COUNT[0]; // 1p baseline = 30
-      for (let i = 0; i < MP_MAX_ENEMIES_BY_PLAYER_COUNT.length; i++) {
-        const playerCount = i + 1;
-        const multiplier = MP_PLAYER_COUNT_MULTIPLIER(playerCount);
-        const expected = Math.round(base * multiplier);
-        const actual = MP_MAX_ENEMIES_BY_PLAYER_COUNT[i];
-        // Allow ±2 rounding tolerance
-        expect(Math.abs(actual - expected)).toBeLessThanOrEqual(2,
-          `MP max enemies for ${playerCount}p: expected ~${expected}, got ${actual}`
-        );
-      }
+    it('MP caps increase by +20 per additional player (exact values: 30, 50, 70, 90)', () => {
+      // The caps follow a +20/player formula, not strict proportional scaling.
+      // 1p=30 (base), 2p=50 (+20), 3p=70 (+40), 4p=90 (+60)
+      // This differs from the wave multiplier formula (1p=1.0x, 2p=1.5x, ...)
+      // because the enemy cap is a harder limit on server load, not a gameplay balance formula.
+      expect(MP_MAX_ENEMIES_BY_PLAYER_COUNT).toEqual([30, 50, 70, 90]);
     });
   });
 

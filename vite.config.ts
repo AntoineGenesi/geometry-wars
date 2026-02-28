@@ -54,7 +54,7 @@ export default defineConfig({
     outDir: 'dist'
   },
   test: {
-    include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'server/**/*.test.ts', 'tests/**/*.test.ts'],
     exclude: ['**/*.spec.js', '**/*.spec.ts', 'node_modules/**'],
     // Use forks pool to isolate PlaygroundGame WebGL/timer state between test files.
     // Without this, RAF loops and setInterval handles from one file bleed into others.

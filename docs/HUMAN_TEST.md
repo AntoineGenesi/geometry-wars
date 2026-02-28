@@ -2,9 +2,41 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-02-28
+> **Last updated:** 2026-03-01
 >
 > **Visual Test Results (2026-02-12, commit a722f6a):** Headless Puppeteer + SwiftShader testing completed. Items marked `[V5 PASS]` were verified visually at Level 5. Items marked `[V5 INCONCLUSIVE]` could not be tested headless (need real browser). See `tasks/visual-test-human-todos.md` and `tasks/lan-visual-testing.md` for full details.
+
+---
+
+## S42-04h: MP Parity Regression Tests (Phase H)
+
+**Status:** Regression tests written. Automated tests lock in parity guarantees. Human testing verifies the gameplay experience matches the numbers.
+
+**Puppeteer V5 result (2026-03-01):** Start menu, Quick Game mode/surface selection all render correctly via SwiftShader. Game UI shows GEOMETRY WARS 3D title, WebGL 3D surface preview visible in background, all navigation buttons present. Screenshots: `test-screenshots/s42-04h/`.
+
+### Test: MP Parity — Level System
+
+- [ ] Join a LAN game (host + 1 client on same device)
+- [ ] Kill 10 enemies → verify level-up notification appears ("LEVEL 1 — Sharpshooter +15% damage")
+- [ ] Kill 25 total enemies → verify level 2 notification ("LEVEL 2 — Gunslinger +15% fire rate")
+- [ ] At level 5, bullets should visually kill enemies noticeably faster (1.45× damage)
+
+### Test: MP Parity — Buff Pickups
+
+- [ ] Play until a buff pickup (glowing colored orb) spawns
+- [ ] Walk over it → verify HUD shows the buff name (e.g. "Hot Hands ×1")
+- [ ] Collect 3 HotHands buffs → damage should be ~18% higher (1.18× multiplier)
+
+### Test: MP Parity — DDA System
+
+- [ ] Die 3 times without getting 5 kills → DDA should activate (enemies spawn farther away next wave)
+- [ ] Play well (0 deaths, 10+ kills) → enemies should start spawning slightly closer/faster
+
+### Test: MP Parity — Pickups & Progression
+
+- [ ] Wait 5 waves → bomb resupply pickup (star icon) should appear
+- [ ] Collect it → bomb count should increase by 2 (up to max 5)
+- [ ] Kill 25+ enemies to reach level 2 → damage should noticeably increase (faster enemy deaths)
 
 ---
 
