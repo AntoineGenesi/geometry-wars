@@ -320,7 +320,7 @@ export class WeaponManager {
       if (active.has('piercing_b_1')) bonus += 0.20;
       if (active.has('piercing_b_2')) bonus += 0.40;
       if (active.has('piercing_b_3')) bonus += 0.60;
-      // piercing_b_4/b_5 = double/triple tap: fire rate unchanged, extra shots queued on fire
+      // piercing_bl_4/bl_5 = double/triple tap: fire rate unchanged, extra shots queued on fire
     }
     return 1.0 + bonus;
   }
@@ -879,14 +879,14 @@ export class WeaponManager {
       (spreadNodes.has('spread_a_1') ? 1 : 0) +
       (spreadNodes.has('spread_a_2') ? 1 : 0) +
       (spreadNodes.has('spread_a_3') ? 1 : 0) +
-      (spreadNodes.has('spread_a_4') ? 4 : 0) +  // +4 more (9 total with nodes 1-3)
-      (spreadNodes.has('spread_a_5') ? 5 : 0);   // +5 more (10 total with nodes 1-3)
+      (spreadNodes.has('spread_al_4') ? 4 : 0) +  // +4 more (9 total with nodes 1-3)
+      (spreadNodes.has('spread_al_5') ? 5 : 0);   // +5 more (10 total with nodes 1-3)
     const bulletCount = isL5 ? 9 : 5 + upgradePellets;
 
     // Pierce upgrades (branch B nodes 4+5): pellets pass through enemies
     const piercePellets =
-      spreadNodes.has('spread_b_5') ? 2 :
-      spreadNodes.has('spread_b_4') ? 1 : 0;
+      spreadNodes.has('spread_bl_5') ? 2 :
+      spreadNodes.has('spread_bl_4') ? 1 : 0;
 
     // Cone width upgrades (branch B): b_3 alternates, b_1 tightens, b_2 widens
     let spreadAngle: number;
@@ -956,7 +956,7 @@ export class WeaponManager {
       (piercingNodes.has('piercing_a_2') ? 1.00 : 0) +
       (piercingNodes.has('piercing_a_3') ? 2.00 : 0);
     // a_5: beam so long it wraps — double the max length
-    const wrapMult = piercingNodes.has('piercing_a_5') ? 2.0 : 1.0;
+    const wrapMult = piercingNodes.has('piercing_al_5') ? 2.0 : 1.0;
     const upgradeLengthMult = (1.0 + lengthBonus) * wrapMult;
 
     // Trace a geodesic beam path along the surface
@@ -1003,7 +1003,7 @@ export class WeaponManager {
       }
 
       // a_4 = arc beam: after primary hit, arc to a 2nd enemy within 15° of beam direction
-      if (piercingNodes.has('piercing_a_4') && primaryHitPos) {
+      if (piercingNodes.has('piercing_al_4') && primaryHitPos) {
         const arcAngleCos = Math.cos(Math.PI / 12); // 15°
         let arcTarget: { position: THREE.Vector3; index: number } | null = null;
         let arcMinDist = Infinity;
@@ -1035,12 +1035,12 @@ export class WeaponManager {
       beamPoints,
     });
 
-    // b_4 = double tap / b_5 = triple tap: queue extra shots (only on the INITIAL fire, not recursive)
+    // bl_4 = double tap / bl_5 = triple tap: queue extra shots (only on the INITIAL fire, not recursive)
     if (!isQueued) {
-      if (piercingNodes.has('piercing_b_5')) {
+      if (piercingNodes.has('piercing_bl_5')) {
         this.pendingShots.push({ delay: 0.1, remaining: 0.1, type: WeaponType.Piercing, origin: origin.clone(), direction: direction.clone() });
         this.pendingShots.push({ delay: 0.2, remaining: 0.2, type: WeaponType.Piercing, origin: origin.clone(), direction: direction.clone() });
-      } else if (piercingNodes.has('piercing_b_4')) {
+      } else if (piercingNodes.has('piercing_bl_4')) {
         this.pendingShots.push({ delay: 0.1, remaining: 0.1, type: WeaponType.Piercing, origin: origin.clone(), direction: direction.clone() });
       }
     }
@@ -1376,7 +1376,7 @@ export class WeaponManager {
       (bhNodes.has('black_hole_a_1') ? 0.30 : 0) +
       (bhNodes.has('black_hole_a_2') ? 0.60 : 0) +
       (bhNodes.has('black_hole_a_3') ? 1.00 : 0) +
-      (bhNodes.has('black_hole_a_5') ? 1.50 : 0); // doomsday extra duration
+      (bhNodes.has('black_hole_al_5') ? 1.50 : 0); // doomsday extra duration
 
     // LEVEL 5 FINAL FORM — Event Horizon: 50% longer duration, stronger pull, AoE explosion on expiry
     const isL5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
@@ -1404,8 +1404,8 @@ export class WeaponManager {
 
     spawnOneBlackHole(targetPos);
 
-    // a_4/a_5 = twin holes: spawn a second black hole slightly offset
-    if (bhNodes.has('black_hole_a_4') || bhNodes.has('black_hole_a_5')) {
+    // al_4/al_5 = twin holes: spawn a second black hole slightly offset
+    if (bhNodes.has('black_hole_al_4') || bhNodes.has('black_hole_al_5')) {
       const perpOffset = new THREE.Vector3().crossVectors(direction, targetPos.clone().normalize()).normalize();
       const secondPos = targetPos.clone().addScaledVector(perpOffset, 1.5);
       // Project second hole onto surface
@@ -1742,7 +1742,7 @@ export class WeaponManager {
           this.removeProjectile(index);
           return;
         } else {
-          // Check pierce mechanic (Spread pellets with spread_b_4/b_5 active)
+          // Check pierce mechanic (Spread pellets with spread_bl_4/bl_5 active)
           if (proj.canPierce !== undefined && proj.pierceCount !== undefined && proj.pierceCount < proj.canPierce) {
             // Pellet passes through — increment pierce count but don't remove
             proj.pierceCount++;
@@ -1905,10 +1905,10 @@ export class WeaponManager {
             (bhActiveNodes.has('black_hole_b_3') ? 1.00 : 0);
           const radius = (3 + progress * 2) * (1.0 + bhPullBonus);
 
-          // b_4/b_5 = crush damage: enemies trapped in the black hole take damage/sec
+          // br_4/br_5 = crush damage: enemies trapped in the black hole take damage/sec
           const bhTrapDPS =
-            bhActiveNodes.has('black_hole_b_5') ? 10 :
-            bhActiveNodes.has('black_hole_b_4') ? 5 : 0;
+            bhActiveNodes.has('black_hole_br_5') ? 10 :
+            bhActiveNodes.has('black_hole_br_4') ? 5 : 0;
 
           for (const enemy of enemies) {
             if (!enemy.alive) continue;

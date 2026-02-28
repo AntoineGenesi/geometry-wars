@@ -214,48 +214,104 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
   },
 
   // -------------------------------------------------------------------------
-  // 2. Spread Shot
-  //    Branch A "MORE PELLETS" — pure pellet count, damage per pellet
-  //    Branch B "TIGHT CLUSTER" — reduce cone, increase damage
+  // 2. Spread Shot — 4-endpoint branching tree
+  //
+  //    Branch A trunk (a_1..a_3): More Pellets theme, diverges at level 3
+  //      Sub-branch AL (al_4..al_5): "Storm" — max pellet count [cost:1]
+  //      Sub-branch AR (ar_4..ar_5): "Explosive" — pellets with AoE splash [cost:2]
+  //
+  //    Branch B trunk (b_1..b_3): Tight Cluster theme, diverges at level 3
+  //      Sub-branch BL (bl_4..bl_5): "Piercing" — pierce through enemies [cost:1]
+  //      Sub-branch BR (br_4..br_5): "Sniper" — extreme damage, tight focus [cost:2]
+  //
+  //    SVG viewBox: 280 × 224
   // -------------------------------------------------------------------------
   [WeaponType.Spread]: {
     weaponType: WeaponType.Spread,
     branchAName: 'More Pellets',
     branchBName: 'Tight Cluster',
+    branchALName: 'Storm',
+    branchARName: 'Explosive',
+    branchBLName: 'Piercing',
+    branchBRName: 'Sniper',
+    svgHeight: 224,
     nodes: [
-      node(WeaponType.Spread, 'a', 1, 'Extra pellet',     '+1 pellet (6 total)'),
-      node(WeaponType.Spread, 'a', 2, 'Two extra',        '+2 pellets (7 total)'),
-      node(WeaponType.Spread, 'a', 3, 'Three extra',      '+3 pellets (8 total)'),
-      node(WeaponType.Spread, 'a', 4, 'Heavy barrage',    '+4 pellets (9 total)'),
-      node(WeaponType.Spread, 'a', 5, 'Pellet storm',     '+5 pellets (10 total), +15% damage/pellet'),
-      node(WeaponType.Spread, 'b', 1, 'Tight pattern',    '-10% cone width, denser grouping'),
-      node(WeaponType.Spread, 'b', 2, 'Focused burst',    '-20% cone width, +10% damage/pellet'),
-      node(WeaponType.Spread, 'b', 3, 'Slug mode',        '-30% cone width, +20% damage/pellet'),
-      node(WeaponType.Spread, 'b', 4, 'Piercing cluster', '-30% cone, +30% dmg/pellet, pellets pierce 1 enemy'),
-      node(WeaponType.Spread, 'b', 5, 'Needle volley',    '-30% cone, +50% dmg/pellet, pellets pierce 2 enemies'),
+      // ── Trunk A (More Pellets theme) ──
+      node(WeaponType.Spread, 'a', 1, 'Extra pellet',      '+1 pellet (6 total)',                                     { x: 103, y:  46 }),
+      node(WeaponType.Spread, 'a', 2, 'Two extra',         '+2 pellets (7 total)',                                    { x:  80, y:  78 }),
+      node(WeaponType.Spread, 'a', 3, 'Three extra',       '+3 pellets (8 total)',                                    { x:  57, y: 110 }),
+
+      // ── Sub-branch AL: Storm (maximum pellets) ──
+      node(WeaponType.Spread, 'al', 4, 'Heavy barrage',    '+4 pellets (9 total)',                                    { parentId: 'spread_a_3', x:  30, y: 148 }),
+      node(WeaponType.Spread, 'al', 5, 'Pellet storm',     '+5 pellets (10 total), +15% damage/pellet',              { parentId: 'spread_al_4', x:  16, y: 186 }),
+
+      // ── Sub-branch AR: Explosive (pellets with AoE splash) ──
+      node(WeaponType.Spread, 'ar', 4, 'Explosive pellets','Each pellet deals small AoE splash on impact',            { parentId: 'spread_a_3', cost: 2, x:  68, y: 148 }),
+      node(WeaponType.Spread, 'ar', 5, 'Nova burst',       'Each pellet triggers a shockwave — devastating at close range', { parentId: 'spread_ar_4', cost: 2, x:  66, y: 186 }),
+
+      // ── Trunk B (Tight Cluster theme) ──
+      node(WeaponType.Spread, 'b', 1, 'Tight pattern',     '-10% cone width, denser grouping',                       { x: 177, y:  46 }),
+      node(WeaponType.Spread, 'b', 2, 'Focused burst',     '-20% cone width, +10% damage/pellet',                    { x: 200, y:  78 }),
+      node(WeaponType.Spread, 'b', 3, 'Slug mode',         '-30% cone width, +20% damage/pellet',                    { x: 223, y: 110 }),
+
+      // ── Sub-branch BL: Piercing (pierce through enemies) ──
+      node(WeaponType.Spread, 'bl', 4, 'Piercing cluster', '-30% cone, +30% dmg/pellet, pellets pierce 1 enemy',     { parentId: 'spread_b_3', x: 212, y: 148 }),
+      node(WeaponType.Spread, 'bl', 5, 'Needle volley',    '-30% cone, +50% dmg/pellet, pellets pierce 2 enemies',   { parentId: 'spread_bl_4', x: 214, y: 186 }),
+
+      // ── Sub-branch BR: Sniper (extreme damage, ultra-tight focus) ──
+      node(WeaponType.Spread, 'br', 4, 'Sniper spread',    'Ultra-tight 5° cone, +50% damage per pellet',            { parentId: 'spread_b_3', cost: 2, x: 250, y: 148 }),
+      node(WeaponType.Spread, 'br', 5, 'Railgun burst',    '4 rapid-fire precise shots, +80% damage, pierce 1 enemy',{ parentId: 'spread_br_4', cost: 2, x: 264, y: 186 }),
     ],
   },
 
   // -------------------------------------------------------------------------
-  // 3. Piercing Beam
-  //    Branch A "RANGE"      — longer beam, bigger reach
-  //    Branch B "RAPID FIRE" — fire rate, multi-shot
+  // 3. Piercing Beam — 4-endpoint branching tree
+  //
+  //    Branch A trunk (a_1..a_3): Range theme, diverges at level 3
+  //      Sub-branch AL (al_4..al_5): "Reach" — extreme range & topology [cost:1]
+  //      Sub-branch AR (ar_4..ar_5): "Multi-Beam" — multiple simultaneous beams [cost:2]
+  //
+  //    Branch B trunk (b_1..b_3): Rapid Fire theme, diverges at level 3
+  //      Sub-branch BL (bl_4..bl_5): "Burst" — multiple beams per trigger [cost:1]
+  //      Sub-branch BR (br_4..br_5): "Charged" — devastating charged shots [cost:2]
+  //
+  //    SVG viewBox: 280 × 224
   // -------------------------------------------------------------------------
   [WeaponType.Piercing]: {
     weaponType: WeaponType.Piercing,
     branchAName: 'Range',
     branchBName: 'Rapid Fire',
+    branchALName: 'Reach',
+    branchARName: 'Multi-Beam',
+    branchBLName: 'Burst',
+    branchBRName: 'Charged',
+    svgHeight: 224,
     nodes: [
-      node(WeaponType.Piercing, 'a', 1, 'Extended beam', '+40% beam length'),
-      node(WeaponType.Piercing, 'a', 2, 'Long reach',    '+80% beam length'),
-      node(WeaponType.Piercing, 'a', 3, 'Full sweep',    '+130% beam length'),
-      node(WeaponType.Piercing, 'a', 4, 'Arc beam',      '+200% beam length, beam curves to hit 2nd target off-axis'),
-      node(WeaponType.Piercing, 'a', 5, 'Cross surface', 'Beam wraps across entire surface topology'),
-      node(WeaponType.Piercing, 'b', 1, 'Fast reload',   '+25% fire rate'),
-      node(WeaponType.Piercing, 'b', 2, 'Overclock',     '+50% fire rate'),
-      node(WeaponType.Piercing, 'b', 3, 'Double tap',    'Fires 2 beams per trigger pull (0.1s apart)'),
-      node(WeaponType.Piercing, 'b', 4, 'Triple tap',    'Fires 3 beams per trigger pull'),
-      node(WeaponType.Piercing, 'b', 5, 'Beam burst',    'Fires 4 beams per trigger pull at +70% total fire rate'),
+      // ── Trunk A (Range theme) ──
+      node(WeaponType.Piercing, 'a', 1, 'Extended beam',   '+40% beam length',                                         { x: 103, y:  46 }),
+      node(WeaponType.Piercing, 'a', 2, 'Long reach',      '+80% beam length',                                         { x:  80, y:  78 }),
+      node(WeaponType.Piercing, 'a', 3, 'Full sweep',      '+130% beam length',                                        { x:  57, y: 110 }),
+
+      // ── Sub-branch AL: Reach (extreme range and topology-wrap) ──
+      node(WeaponType.Piercing, 'al', 4, 'Arc beam',       '+200% beam length, beam curves to hit 2nd target off-axis',{ parentId: 'piercing_a_3', x:  30, y: 148 }),
+      node(WeaponType.Piercing, 'al', 5, 'Cross surface',  'Beam wraps across entire surface topology',                { parentId: 'piercing_al_4', x:  16, y: 186 }),
+
+      // ── Sub-branch AR: Multi-Beam (fire multiple beams simultaneously) ──
+      node(WeaponType.Piercing, 'ar', 4, 'Twin beams',     'Fires 2 parallel beams simultaneously',                    { parentId: 'piercing_a_3', cost: 2, x:  68, y: 148 }),
+      node(WeaponType.Piercing, 'ar', 5, 'Fan sweep',      'Fires 3 beams in a 45° fan',                               { parentId: 'piercing_ar_4', cost: 2, x:  66, y: 186 }),
+
+      // ── Trunk B (Rapid Fire theme) ──
+      node(WeaponType.Piercing, 'b', 1, 'Fast reload',     '+25% fire rate',                                           { x: 177, y:  46 }),
+      node(WeaponType.Piercing, 'b', 2, 'Overclock',       '+50% fire rate',                                           { x: 200, y:  78 }),
+      node(WeaponType.Piercing, 'b', 3, 'Double tap',      'Fires 2 beams per trigger pull (0.1s apart)',              { x: 223, y: 110 }),
+
+      // ── Sub-branch BL: Burst (multiple beams per trigger pull) ──
+      node(WeaponType.Piercing, 'bl', 4, 'Triple tap',     'Fires 3 beams per trigger pull',                           { parentId: 'piercing_b_3', x: 212, y: 148 }),
+      node(WeaponType.Piercing, 'bl', 5, 'Beam burst',     'Fires 4 beams per trigger pull at +70% total fire rate',   { parentId: 'piercing_bl_4', x: 214, y: 186 }),
+
+      // ── Sub-branch BR: Charged (devastating charged shots) ──
+      node(WeaponType.Piercing, 'br', 4, 'Charged bolt',   '0.5s charge releases a megabeam dealing 5× damage',        { parentId: 'piercing_b_3', cost: 2, x: 250, y: 148 }),
+      node(WeaponType.Piercing, 'br', 5, 'Overcharge',     'Rapid fire + every 5th shot is an auto-charged megabeam',  { parentId: 'piercing_br_4', cost: 2, x: 264, y: 186 }),
     ],
   },
 
@@ -292,7 +348,7 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
     branchAName: 'Speed',
     branchBName: 'Warhead',
     nodes: [
-      node(WeaponType.Homing, 'a', 1,  'Afterburner',    '+25% missile speed'),
+      node(WeaponType.Homing, 'a', 1,  'Afterburner',    '+25% missile speed per rank (up to 2 ranks = +50%)', 2),
       node(WeaponType.Homing, 'a', 2,  'Hyperdrive',     '+50% missile speed'),
       node(WeaponType.Homing, 'a', 3,  'Laser-guided',   '+75% speed, tighter turn radius'),
       node(WeaponType.Homing, 'a', 4,  'Mach strike',    '+100% speed, tighter turn radius'),
@@ -302,7 +358,7 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.Homing, 'a', 8,  'Twin rails',     'Fires 2 railshots per trigger pull'),
       node(WeaponType.Homing, 'a', 9,  'Quad rails',     'Fires 4 railshots that fan slightly'),
       node(WeaponType.Homing, 'a', 10, 'Gauss barrage',  '6 railshots; each penetrates through first target'),
-      node(WeaponType.Homing, 'b', 1,  'Bigger warhead', '+30% explosion radius'),
+      node(WeaponType.Homing, 'b', 1,  'Bigger warhead', '+30% explosion radius per rank (up to 2 ranks = +60%)', 2),
       node(WeaponType.Homing, 'b', 2,  'Shockwave',      '+60% explosion radius'),
       node(WeaponType.Homing, 'b', 3,  'Cluster bomb',   'On detonation, spawns 3 child missiles'),
       node(WeaponType.Homing, 'b', 4,  'Napalm',         'Explosion leaves gas cloud (3s, 3 dmg/tick)'),
@@ -385,28 +441,57 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
   },
 
   // -------------------------------------------------------------------------
-  // 9. Black Hole
-  //    Branch A "SIZE"    — duration, number of shots
-  //                         Nodes a_1 and b_1 have maxPoints: 3 (internal leveling demo)
-  //    Branch B "GRAVITY" — pull radius, crush damage
+  // 9. Black Hole — 4-endpoint branching tree
+  //
+  //    Branch A trunk (a_1..a_3): Size theme, diverges at level 3
+  //      a_1 has maxPoints: 3 (multi-upgrade demo)
+  //      Sub-branch AL (al_4..al_5): "Multi Void" — multiple simultaneous black holes [cost:1]
+  //      Sub-branch AR (ar_4..ar_5): "Giant Void" — single massive black hole [cost:2]
+  //
+  //    Branch B trunk (b_1..b_3): Gravity theme, diverges at level 3
+  //      b_1 has maxPoints: 3 (multi-upgrade demo)
+  //      Sub-branch BL (bl_4..bl_5): "Gravity Well" — mass capture [cost:1]
+  //      Sub-branch BR (br_4..br_5): "Event Horizon" — maximum gravitational damage [cost:2]
+  //
+  //    SVG viewBox: 280 × 224
   // -------------------------------------------------------------------------
   [WeaponType.BlackHole]: {
     weaponType: WeaponType.BlackHole,
     branchAName: 'Size',
     branchBName: 'Gravity',
+    branchALName: 'Multi Void',
+    branchARName: 'Giant Void',
+    branchBLName: 'Gravity Well',
+    branchBRName: 'Event Horizon',
+    svgHeight: 224,
     nodes: [
+      // ── Trunk A (Size theme) ──
       // a_1: maxPoints=3 — "Bigger void" can be upgraded up to 3 times
-      node(WeaponType.BlackHole, 'a', 1, 'Bigger void', '+30% duration per rank (up to 3 ranks = +90%)', 3),
-      node(WeaponType.BlackHole, 'a', 2, 'Deep void',   '+60% duration, +1 shot'),
-      node(WeaponType.BlackHole, 'a', 3, 'Singularity', '+100% duration, +2 shots'),
-      node(WeaponType.BlackHole, 'a', 4, 'Twin holes',  'Fires 2 black holes simultaneously'),
-      node(WeaponType.BlackHole, 'a', 5, 'Doomsday',    'Fires 2 black holes, each +150% duration'),
+      node(WeaponType.BlackHole, 'a', 1, 'Bigger void',   '+30% duration per rank (up to 3 ranks = +90%)', { maxPoints: 3, x: 103, y:  46 }),
+      node(WeaponType.BlackHole, 'a', 2, 'Deep void',     '+60% duration, +1 shot',                        { x:  80, y:  78 }),
+      node(WeaponType.BlackHole, 'a', 3, 'Singularity',   '+100% duration, +2 shots',                      { x:  57, y: 110 }),
+
+      // ── Sub-branch AL: Multi Void (multiple simultaneous black holes) ──
+      node(WeaponType.BlackHole, 'al', 4, 'Twin holes',   'Fires 2 black holes simultaneously',            { parentId: 'black_hole_a_3', x:  30, y: 148 }),
+      node(WeaponType.BlackHole, 'al', 5, 'Doomsday',     'Fires 2 black holes, each +150% duration',     { parentId: 'black_hole_al_4', x:  16, y: 186 }),
+
+      // ── Sub-branch AR: Giant Void (single massive long-duration black hole) ──
+      node(WeaponType.BlackHole, 'ar', 4, 'Mega void',    '+200% duration; black hole is 40% larger',     { parentId: 'black_hole_a_3', cost: 2, x:  68, y: 148 }),
+      node(WeaponType.BlackHole, 'ar', 5, 'Eternal collapse','Black hole persists until all enemies absorbed; collapses in a shockwave', { parentId: 'black_hole_ar_4', cost: 2, x:  66, y: 186 }),
+
+      // ── Trunk B (Gravity theme) ──
       // b_1: maxPoints=3 — "Stronger pull" can be upgraded up to 3 times
-      node(WeaponType.BlackHole, 'b', 1, 'Stronger pull','+30% pull radius per rank (up to 3 ranks = +90%)', 3),
-      node(WeaponType.BlackHole, 'b', 2, 'Deep pull',   '+60% pull radius'),
-      node(WeaponType.BlackHole, 'b', 3, 'Inescapable', '+100% pull radius'),
-      node(WeaponType.BlackHole, 'b', 4, 'Crushing void','+100% radius; trapped enemies take 5 dmg/s'),
-      node(WeaponType.BlackHole, 'b', 5, 'Event horizon','+150% radius; enemies that enter cannot escape; 10 dmg/s'),
+      node(WeaponType.BlackHole, 'b', 1, 'Stronger pull', '+30% pull radius per rank (up to 3 ranks = +90%)', { maxPoints: 3, x: 177, y:  46 }),
+      node(WeaponType.BlackHole, 'b', 2, 'Deep pull',     '+60% pull radius',                              { x: 200, y:  78 }),
+      node(WeaponType.BlackHole, 'b', 3, 'Inescapable',   '+100% pull radius',                             { x: 223, y: 110 }),
+
+      // ── Sub-branch BL: Gravity Well (mass capture & collision damage) ──
+      node(WeaponType.BlackHole, 'bl', 4, 'Mass capture', 'Can hold up to 12 enemies simultaneously',     { parentId: 'black_hole_b_3', x: 212, y: 148 }),
+      node(WeaponType.BlackHole, 'bl', 5, 'Event gravity','Pulled enemies collide for bonus damage',       { parentId: 'black_hole_bl_4', x: 214, y: 186 }),
+
+      // ── Sub-branch BR: Event Horizon (maximum gravitational damage) ──
+      node(WeaponType.BlackHole, 'br', 4, 'Crushing void','+100% radius; trapped enemies take 5 dmg/s',  { parentId: 'black_hole_b_3', cost: 2, x: 250, y: 148 }),
+      node(WeaponType.BlackHole, 'br', 5, 'Event horizon','+150% radius; enemies cannot escape; 10 dmg/s',{ parentId: 'black_hole_br_4', cost: 2, x: 264, y: 186 }),
     ],
   },
 

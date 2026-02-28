@@ -332,40 +332,39 @@ function injectStyles(): void {
       cursor: not-allowed;
     }
 
-    /* affordable — dim with gold ring */
+    /* affordable — bright weapon-color glow: this is what you SHOULD click next */
     #weapon-mastery-screen .wms-node--affordable {
-      background: rgba(255,200,0,0.06);
-      border: 2px solid #ffcc00;
-      color: #ffaa00;
-      box-shadow: 0 0 8px rgba(255,200,0,0.5);
-      animation: wms-gold-shimmer 2.5s ease-in-out infinite;
-    }
-
-    /* partial — multi-level node with some but not all points spent */
-    #weapon-mastery-screen .wms-node--partial {
-      background: color-mix(in srgb, var(--wc, #888) 10%, rgba(0,0,0,0.5));
-      border: 2px dashed var(--wc, #888);
-      color: var(--wc, #888);
-      box-shadow: 0 0 6px color-mix(in srgb, var(--wc, #888) 40%, transparent);
-      animation: wms-gold-shimmer 2.5s ease-in-out infinite;
-    }
-
-    /* unlocked — bright weapon color glow (fully spent / single-point) */
-    #weapon-mastery-screen .wms-node--unlocked {
-      background: color-mix(in srgb, var(--wc, #888) 20%, rgba(0,0,0,0.5));
+      background: color-mix(in srgb, var(--wc, #888) 18%, rgba(0,0,0,0.5));
       border: 2px solid var(--wc, #888);
       color: var(--wc, #888);
-      box-shadow: 0 0 10px var(--wc, #888), 0 0 22px color-mix(in srgb, var(--wc, #888) 50%, transparent);
+      box-shadow: 0 0 14px var(--wc, #888), 0 0 30px color-mix(in srgb, var(--wc, #888) 55%, transparent);
+      animation: wms-node-pulse 2.0s ease-in-out infinite;
+    }
+
+    /* partial — multi-level node with some but not all points spent; still actionable */
+    #weapon-mastery-screen .wms-node--partial {
+      background: color-mix(in srgb, var(--wc, #888) 15%, rgba(0,0,0,0.5));
+      border: 2px dashed var(--wc, #888);
+      color: var(--wc, #888);
+      box-shadow: 0 0 10px color-mix(in srgb, var(--wc, #888) 55%, transparent);
       animation: wms-node-pulse 2.2s ease-in-out infinite;
     }
 
-    /* permanently unlocked but NOT yet earned this match — dim outline only */
+    /* unlocked — dim steady glow: acquired, not the current focus */
+    #weapon-mastery-screen .wms-node--unlocked {
+      background: color-mix(in srgb, var(--wc, #888) 12%, rgba(0,0,0,0.6));
+      border: 2px solid color-mix(in srgb, var(--wc, #888) 65%, transparent);
+      color: color-mix(in srgb, var(--wc, #888) 75%, white);
+      box-shadow: 0 0 6px color-mix(in srgb, var(--wc, #888) 40%, transparent);
+    }
+
+    /* permanently unlocked but NOT yet earned this match — dim glow (visible but subtle) */
     #weapon-mastery-screen .wms-node--unlocked-inactive {
-      background: color-mix(in srgb, var(--wc, #888) 8%, rgba(0,0,0,0.6));
-      border: 2px dashed color-mix(in srgb, var(--wc, #888) 40%, transparent);
-      color: color-mix(in srgb, var(--wc, #888) 50%, transparent);
-      box-shadow: none;
-      opacity: 0.6;
+      background: color-mix(in srgb, var(--wc, #888) 10%, rgba(0,0,0,0.6));
+      border: 2px dashed color-mix(in srgb, var(--wc, #888) 55%, transparent);
+      color: color-mix(in srgb, var(--wc, #888) 65%, white);
+      box-shadow: 0 0 5px color-mix(in srgb, var(--wc, #888) 28%, transparent);
+      opacity: 0.75;
     }
 
     /* active this match — bright glow + green "ACTIVE" badge */
@@ -691,13 +690,13 @@ export class WeaponMasteryScreen {
     /**
      * 3-state line style:
      *  activated — child node is fully unlocked → bright glow
-     *  possible  — prerequisite met but child not yet unlocked → faint colored
-     *  locked    — prerequisite not met → very faint white
+     *  possible  — prerequisite met but child not yet unlocked → visible colored
+     *  locked    — prerequisite not met → faint white
      */
     const lineStyle = (childUnlocked: boolean, prereqMet: boolean): string => {
-      if (childUnlocked) return `stroke="${color}" stroke-opacity="0.85" filter="url(#glow-${weaponType})"`;
-      if (prereqMet)     return `stroke="${color}" stroke-opacity="0.22"`;
-      return 'stroke="rgba(255,255,255,0.06)"';
+      if (childUnlocked) return `stroke="${color}" stroke-opacity="0.90" filter="url(#glow-${weaponType})"`;
+      if (prereqMet)     return `stroke="${color}" stroke-opacity="0.42"`;
+      return 'stroke="rgba(255,255,255,0.14)"';
     };
 
     // Build SVG lines: each node connects to its parent (or to center if no parentId)
@@ -711,11 +710,11 @@ export class WeaponMasteryScreen {
       if (n.parentId) {
         const parentPos = posMap.get(n.parentId);
         if (parentPos) {
-          lines.push(`<line x1="${parentPos.x}" y1="${parentPos.y}" x2="${pos.x}" y2="${pos.y}" stroke-width="1.5" ${attribs}/>`);
+          lines.push(`<line x1="${parentPos.x}" y1="${parentPos.y}" x2="${pos.x}" y2="${pos.y}" stroke-width="2" ${attribs}/>`);
         }
       } else {
         // Root node → connect to center
-        lines.push(`<line x1="${CENTER_X}" y1="${CENTER_Y}" x2="${pos.x}" y2="${pos.y}" stroke-width="1.5" ${attribs}/>`);
+        lines.push(`<line x1="${CENTER_X}" y1="${CENTER_Y}" x2="${pos.x}" y2="${pos.y}" stroke-width="2" ${attribs}/>`);
       }
     }
 
@@ -925,14 +924,14 @@ export class WeaponMasteryScreen {
       const prereqMet = isPrerequisiteMet(n, tree, ps);
       if (childUnlocked) {
         lineEl.setAttribute('stroke', color);
-        lineEl.setAttribute('stroke-opacity', '0.85');
+        lineEl.setAttribute('stroke-opacity', '0.90');
         lineEl.setAttribute('filter', `url(#glow-${weaponType})`);
       } else if (prereqMet) {
         lineEl.setAttribute('stroke', color);
-        lineEl.setAttribute('stroke-opacity', '0.22');
+        lineEl.setAttribute('stroke-opacity', '0.42');
         lineEl.removeAttribute('filter');
       } else {
-        lineEl.setAttribute('stroke', 'rgba(255,255,255,0.06)');
+        lineEl.setAttribute('stroke', 'rgba(255,255,255,0.14)');
         lineEl.setAttribute('stroke-opacity', '1');
         lineEl.removeAttribute('filter');
       }
