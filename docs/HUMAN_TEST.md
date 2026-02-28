@@ -8,6 +8,21 @@
 
 ---
 
+## S39-02: LAN MP Aim Direction Fix
+
+**Fix:** Reverted `atan2(mouseY, mouseX)` → `atan2(-mouseY, mouseX)` in `network-main.ts`. The S38d-08 "fix" was wrong — it inverted vertical aim. Root cause: `tangentV = camera.up` = screen UP direction, so mouse-up (aimY < 0) needs `-aimY` positive to produce `+tangentV` (screen up) bullet direction.
+
+### Test: Bullets follow mouse direction in LAN MP
+
+- [ ] Start LAN game (host + 1 client on same device with 2 tabs, or 2 devices)
+- [ ] Move mouse to the RIGHT of center → bullets should fly to the RIGHT on screen
+- [ ] Move mouse ABOVE center → bullets should fly UPWARD on screen
+- [ ] Move mouse BELOW center → bullets should fly DOWNWARD on screen
+- [ ] Move mouse to the LEFT of center → bullets should fly to the LEFT on screen
+- [ ] **Regression:** Aim in all 4 diagonal directions — bullets should match mouse angle precisely
+
+---
+
 ## S38d-07b: Bullet Paths Straight Near Poles (Vertex Fan Parallel Transport Fix)
 
 **Fix:** Vertex fan traversal in `FaceWalker.ts` now uses proper parallel transport (`transportAcrossEdge`) instead of simple normal projection when crossing between faces at sphere poles. Simple projection caused accumulated angular errors — bullets visibly curved when traveling near north/south poles.
