@@ -677,31 +677,29 @@ export class PauseMenu {
       #pause-menu .lang-btn {
         background: linear-gradient(180deg, #222244 0%, #111133 100%);
         border: 2px solid #444466;
-        color: #8888aa;
-        padding: 10px 18px;
-        font-size: 15px;
         cursor: pointer;
         transition: all 0.2s;
-        letter-spacing: 1px;
-        min-width: 120px;
         border-radius: 2px;
         font-family: inherit;
-        /* Mobile: large tap target */
-        min-height: 44px;
+        /* Flag-only: square buttons with large tap targets */
+        width: 56px;
+        height: 56px;
+        font-size: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
       }
 
       #pause-menu .lang-btn:hover {
         border-color: #6666cc;
-        color: #ccccff;
         background: linear-gradient(180deg, #333366 0%, #222244 100%);
       }
 
       #pause-menu .lang-btn.selected {
         background: linear-gradient(180deg, #223388 0%, #112266 100%);
         border-color: #4488ff;
-        color: #ffffff;
         box-shadow: 0 0 12px rgba(68, 136, 255, 0.5);
-        text-shadow: 0 0 8px rgba(68, 136, 255, 0.8);
       }
 
       /* Mobile landscape: compact layout to fit small viewport height */

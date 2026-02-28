@@ -51,22 +51,47 @@ type EventCb = (e?: Event) => void;
 
 class MockElement {
   tagName: string;
-  className = '';
+  private _className = '';
   textContent = '';
   innerHTML = '';
   dataset: Record<string, string> = {};
   children: MockElement[] = [];
   style: Record<string, string> = {};
+  title = '';
   private listeners: Record<string, EventCb[]> = {};
 
   constructor(tag: string) {
     this.tagName = tag.toUpperCase();
   }
 
+  get className(): string {
+    return this._className;
+  }
+
+  set className(value: string) {
+    this._className = value;
+    // Sync classList with className
+    this.classList._classes.clear();
+    if (value) {
+      value.split(/\s+/).forEach((cls) => {
+        if (cls) this.classList._classes.add(cls);
+      });
+    }
+  }
+
   classList = {
     _classes: new Set<string>(),
-    add: (cls: string) => { this.classList._classes.add(cls); },
-    remove: (cls: string) => { this.classList._classes.delete(cls); },
+    add: (cls: string) => {
+      this.classList._classes.add(cls);
+      // Sync className with classList
+      const parts = Array.from(this.classList._classes);
+      this._className = parts.join(' ');
+    },
+    remove: (cls: string) => {
+      this.classList._classes.delete(cls);
+      const parts = Array.from(this.classList._classes);
+      this._className = parts.join(' ');
+    },
     toggle: (cls: string, force?: boolean) => {
       if (force === undefined) {
         if (this.classList._classes.has(cls)) {
@@ -79,6 +104,8 @@ class MockElement {
       } else {
         this.classList._classes.delete(cls);
       }
+      const parts = Array.from(this.classList._classes);
+      this._className = parts.join(' ');
     },
     contains: (cls: string) => this.classList._classes.has(cls),
   };
@@ -114,6 +141,21 @@ class MockElement {
 const createdElements: MockElement[] = [];
 
 // ---------------------------------------------------------------------------
+// Setup DOM mock
+// ---------------------------------------------------------------------------
+
+function setupDOMMock() {
+  createdElements.length = 0;
+  vi.stubGlobal('document', {
+    createElement: (tag: string): MockElement => {
+      const el = new MockElement(tag);
+      createdElements.push(el);
+      return el as unknown as HTMLElement;
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -128,16 +170,12 @@ describe('LanguageSelector', () => {
 
     container = new MockElement('div');
 
-    // Patch document.createElement to return MockElements
-    vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-      const el = new MockElement(tag);
-      createdElements.push(el);
-      return el as unknown as HTMLElement;
-    });
+    // Setup DOM mock
+    setupDOMMock();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('renders 5 language buttons', async () => {
@@ -149,18 +187,18 @@ describe('LanguageSelector', () => {
     expect(buttons).toHaveLength(5);
   });
 
-  it('buttons contain flag + language name', async () => {
+  it('buttons contain only flag emoji', async () => {
     const { LanguageSelector } = await import('./LanguageSelector');
     const selector = new LanguageSelector(container as unknown as HTMLElement);
     selector.render();
 
     const buttons = container.querySelectorAll('.lang-btn');
     const texts = buttons.map((b) => b.textContent);
-    expect(texts).toContain('🇬🇧 English');
-    expect(texts).toContain('🇪🇸 Español');
-    expect(texts).toContain('🇫🇷 Français');
-    expect(texts).toContain('🇩🇪 Deutsch');
-    expect(texts).toContain('🇷🇺 Русский');
+    expect(texts).toContain('🇬🇧');
+    expect(texts).toContain('🇪🇸');
+    expect(texts).toContain('🇫🇷');
+    expect(texts).toContain('🇩🇪');
+    expect(texts).toContain('🇷🇺');
   });
 
   it('selected button matches current language', async () => {

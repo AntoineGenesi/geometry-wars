@@ -45,7 +45,8 @@ export class LanguageSelector {
       btn.className = 'lang-btn';
       if (code === currentLang) btn.classList.add('selected');
       btn.dataset.lang = code;
-      btn.textContent = `${flag} ${t(`languages.${code}`)}`;
+      btn.textContent = flag;
+      btn.title = t(`languages.${code}`); // Tooltip shows language name on hover
       btn.addEventListener('click', () => {
         changeLanguage(code);
       });

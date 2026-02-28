@@ -1548,29 +1548,35 @@ export class StartMenu {
         background: rgba(255,255,255,0.05);
         border: 1px solid rgba(255,255,255,0.15);
         border-radius: 4px;
-        color: rgba(255,255,255,0.6);
         cursor: pointer;
-        font-size: 18px;
+        font-size: 24px;
         line-height: 1;
-        padding: 4px 6px;
-        transition: opacity 0.2s, border-color 0.2s;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        transition: opacity 0.2s, border-color 0.2s, background 0.2s;
         user-select: none;
       }
 
       #start-menu #start-lang-selector .lang-btn:hover {
         opacity: 0.8;
         border-color: rgba(255,255,255,0.4);
+        background: rgba(255,255,255,0.1);
       }
 
       #start-menu #start-lang-selector .lang-btn.selected {
         border-color: rgba(100,200,255,0.7);
-        color: rgba(255,255,255,0.95);
+        background: rgba(100,200,255,0.15);
       }
 
       @media (max-width: 768px) {
         #start-menu #start-lang-selector .lang-btn {
-          font-size: 22px;
-          padding: 6px 8px;
+          font-size: 28px;
+          width: 48px;
+          height: 48px;
         }
       }
     `;
