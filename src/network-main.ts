@@ -111,6 +111,7 @@ import {
   type StartupConfigData,
 } from './utils/StartupCache';
 import type { NetworkStartupConfig } from './network/NetworkClient';
+import { LANClient } from './network/LANClient';
 import { initI18n } from './i18n';
 import { computeCameraRelativeAimAngle } from './utils/aimAngle';
 
@@ -1215,19 +1216,13 @@ async function main() {
     game.setVisualMode(mode);
   });
 
-  // Show QR code / join URL in pause menu so other players can join conveniently.
-  // Strip personal params (name=, creator=) from the URL before sharing.
-  // creator=1 must be removed so QR code scanners don't accidentally claim host.
-  // Use the real LAN IP (not localhost) so mobile devices can scan and connect.
+  // Show short code QR in pause menu — 5-digit code is smaller and more reliable than full URL.
+  // Registers the short code with the Vite LAN plugin so scanning redirects to the right surface.
   {
-    const params = new URLSearchParams(window.location.search);
-    params.delete('name');
-    params.delete('creator');
-    const port = parseInt(window.location.port, 10) || 3000;
-    const path = `${window.location.pathname}?${params.toString()}`;
+    const vitePort = parseInt(window.location.port, 10) || 3000;
+    const surfaceParam = new URLSearchParams(window.location.search).get('surface') || 'sphere';
+    const lanClient = new LANClient();
 
-    // Attempt to resolve the real LAN IP via the Vite LAN plugin.
-    // Falls back to window.location.origin (localhost) if the endpoint is unavailable.
     (async () => {
       try {
         const status = await fetch('/__lan/status').then(r => r.json()) as {
@@ -1239,13 +1234,17 @@ async function main() {
         const lanIp = (status.isWSL2 && status.windowsAddresses?.length)
           ? status.windowsAddresses[0]
           : status.addresses?.[0];
-        const joinUrl = lanIp
-          ? `http://${lanIp}:${port}${path}`
-          : `${window.location.origin}${path}`;
-        pauseMenu.setJoinUrl(joinUrl);
+        if (lanIp) {
+          // Register short code — returns http://{lanIp}:{vitePort}/{code} (tiny QR)
+          const shortUrl = await lanClient.registerShortCode(lanIp, surfaceParam, 2567, vitePort);
+          pauseMenu.setJoinUrl(shortUrl);
+        } else {
+          // No LAN IP available — fall back to full URL (localhost, not scannable but visible)
+          pauseMenu.setJoinUrl(lanClient.getJoinUrl('localhost', 2567, surfaceParam, vitePort));
+        }
       } catch {
-        // Fallback: use current origin (localhost) — at least the URL is shown
-        pauseMenu.setJoinUrl(`${window.location.origin}${path}`);
+        // LAN plugin unavailable (production build or no dev server) — hide QR
+        pauseMenu.setJoinUrl(null);
       }
     })();
   }

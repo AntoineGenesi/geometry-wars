@@ -1102,7 +1102,15 @@ export class PauseMenu {
     qrSection.classList.remove('hidden');
     qrContent.innerHTML = '';
     try {
-      const display = createQRCodeDisplay(url, url, 200);
+      // Extract 5-digit short code from URL for a readable label (e.g. http://host:3000/12345)
+      let label = url;
+      try {
+        const pathname = new URL(url).pathname;
+        if (/^\/\d{5}$/.test(pathname)) {
+          label = `Join Code: ${pathname.slice(1)}`;
+        }
+      } catch { /* keep label as url */ }
+      const display = createQRCodeDisplay(url, label, 160);
       qrContent.appendChild(display);
     } catch {
       qrContent.innerHTML = `<div style="color:#ff8888;font-size:12px;word-break:break-all;">${url}</div>`;
