@@ -1495,3 +1495,19 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Fire on Torus** — Bullets travel in straight geodesic lines on torus surface
 - [ ] **Compare with single-player** — Bullet paths should look identical to SP mode on same surface
 - [ ] **Test all 12 surfaces** — No pole-convergence on any surface
+
+---
+
+## S41-07: MP Scene Cleanup — Stale Objects Between Maps
+
+**Fix:** `cleanupSurface()` now calls `surface.dispose()` (geometry/material GPU resources freed), resets `surfaceConfirmedFromServer`, and the voting→playing transition now force-calls `cleanupSurface()` + `initSurface()` to guarantee the old surface is removed for every new game round, including same-type transitions (sphere→sphere).
+
+### Test: No stale floating objects when switching maps in LAN MP
+- [ ] **Start LAN game** — Use "Play Game.bat" → LAN mode, connect two clients
+- [ ] **Play a game to completion** — Any map (e.g. Sphere)
+- [ ] **Vote to play again on a DIFFERENT map** — e.g. vote for Peanut
+- [ ] **Confirm no stale sphere** — When peanut map starts, there should be NO large sphere mesh floating around/behind the peanut
+- [ ] **No floating shiny objects** — No enemy meshes, bullet trails, or surface geometry at old sphere positions
+- [ ] **Test same-type maps** — Play sphere → vote sphere again → confirm no duplicate sphere meshes visible
+- [ ] **Test all surface transitions** — sphere→torus, cube→peanut, etc. each transition should be clean
+- [ ] **Memory: play 3+ consecutive games** — Browser memory usage should not grow unboundedly between games (GPU resources disposed)

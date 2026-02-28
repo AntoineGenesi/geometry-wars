@@ -541,6 +541,9 @@ async function main() {
   function cleanupSurface(): void {
     if (surface) {
       scene.remove(surface.group);
+      // Dispose geometry and materials to free GPU memory (prevents accumulation
+      // across map changes). surface.group children (mesh + gridMesh) are disposed here.
+      surface.dispose();
     }
     if (meshSurface) {
       meshSurface.dispose();
@@ -570,6 +573,7 @@ async function main() {
     getTransform = null;
     enemySpawner = null;
     surfaceReady = false;
+    surfaceConfirmedFromServer = false;
     lastCreatedSurfaceType = '';
     lastMapSize = '';
   }
@@ -2619,8 +2623,16 @@ async function main() {
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
-        // initSurface at the top of onStateChange already handles surface reinit
-        // (called with state.surfaceType and confirmedFromServer=true).
+        // Force-cleanup and rebuild the surface for the new game round.
+        // initSurface() at the top of onStateChange may have returned early if the
+        // surface type didn't change (same map type played twice), leaving the old
+        // surface in the scene with stale objects floating at previous-map coordinates.
+        // Calling cleanupSurface() here guarantees the old surface is removed, then
+        // initSurface() recreates it fresh regardless of whether the type changed.
+        cleanupSurface();
+        if (state.surfaceType) {
+          initSurface(state.surfaceType, true, state.mapSize || undefined);
+        }
         // Fix: respect isPaused so joining mid-paused-game doesn't enable joystick
         // while pause menu is shown (which blocks scroll via preventDefault).
         if (input instanceof TouchInput) input.setGamePaused(isPaused);
