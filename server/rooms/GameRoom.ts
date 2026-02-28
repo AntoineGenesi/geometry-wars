@@ -1712,10 +1712,16 @@ export class GameRoom extends Room<GameState> {
 
     // --- UV thresholds (non-sphere surfaces, scaled inversely with map size) ---
     // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin — unchanged.
-    // Enemy-player: reduced from 0.04 → 0.02 (was ~1.26 world units on sphere V,
-    //   now ~0.63 world units — still UV-based but halved for other surface types).
+    // Enemy-player: restored from 0.02 → 0.04.
+    //   Rationale: sphere-like surfaces now use world-space great-circle distance
+    //   (ENEMY_HIT_WORLD = 0.5), so the sphere over-detection that motivated the
+    //   0.04→0.02 reduction no longer applies here.
+    //   For torus (majorRadius=6, minorRadius=2): 0.04 UV in the tube (U) direction
+    //   = 0.04 * 2π * 2 ≈ 0.50 world units — matches player(0.15) + enemy(0.30) = 0.45,
+    //   i.e. enemy visually touching player triggers damage. 0.02 was only 0.25 world
+    //   units — enemies had to overlap the player body halfway before registering.
     const BULLET_HIT_RADIUS = 0.015 / scaleFactor;
-    const ENEMY_HIT_RADIUS  = 0.02  / scaleFactor;  // was 0.04
+    const ENEMY_HIT_RADIUS  = 0.04  / scaleFactor;  // restored from 0.02; sphere uses ENEMY_HIT_WORLD
     const GEOM_RADIUS       = 0.025 / scaleFactor;  // was 0.05
     const PICKUP_RADIUS     = 0.02  / scaleFactor;  // was 0.04
 
