@@ -7,6 +7,7 @@ import {
   GeomState,
   WeaponPickupState,
   SuperPickupState,
+  BuffPickupState,
 } from '../schema/GameState';
 import fs from 'fs';
 import path from 'path';
@@ -102,6 +103,13 @@ const SPAWN_OFFSETS = [
 
 // WEAPON_CONFIGS, WEAPON_DROP_CHANCE, WEAPON_PICKUP_LIFETIME imported from ../shared/GameConstants
 const WEAPON_TYPES = Object.keys(WEAPON_CONFIGS).filter(t => t !== 'standard');
+
+// Buff pickup constants (Phase D: damage-affecting buffs only)
+// TODO: ShockAura, Magnetism, Afterburner, ToughTimes require physics effects — future phase
+const BUFF_PICKUP_TYPES = ['hot_hands', 'trigger_happy', 'incendiary_rounds', 'volatile'] as const;
+const BUFF_PICKUP_DROP_CHANCE = 0.15;  // 15% chance per enemy kill
+const BUFF_PICKUP_LIFETIME = 20.0;     // same as WEAPON_PICKUP_LIFETIME
+const BUFF_STACK_MAX = 8;              // max stacks per buff type per player
 
 // Super pickup constants
 // Bomb resupply spawns every SUPER_PICKUP_WAVE_INTERVAL waves (e.g. wave 5, 10, 15...).
@@ -289,6 +297,7 @@ export class GameRoom extends Room<GameState> {
   private nextGeomId = 0;
   private nextPickupId = 0;
   private nextSuperPickupId = 0;
+  private nextBuffPickupId = 0;
   private waveNumber = 0;
 
   // Wave scheduling state
@@ -734,6 +743,8 @@ export class GameRoom extends Room<GameState> {
       player.weaponAmmo = -1;
       player.playerLevel = 0;
       player.playerKills = 0;
+      // Reset buff stacks so each round starts clean
+      player.buffStacks.clear();
       // Reset lastShotTime so the player can shoot immediately in the new game.
       // gameTime resets to 0 on new round; without this reset, lastShotTime from
       // the previous game (e.g. 45.6s) causes tryShoot() to block shots for the
@@ -761,6 +772,7 @@ export class GameRoom extends Room<GameState> {
     this.state.geoms.clear();
     this.state.weaponPickups.clear();
     this.state.superPickups.clear();
+    this.state.buffPickups.clear();
 
     this.setMetadata({
       surface: this.state.surfaceType,
@@ -1044,6 +1056,9 @@ export class GameRoom extends Room<GameState> {
 
     // Update super pickups (age + despawn)
     this.updateSuperPickups(dt);
+
+    // Update buff pickups (age + despawn)
+    this.updateBuffPickups(dt);
 
     // Wave-based enemy spawning (replaces old per-2s individual spawn)
     this.tickWaves(dt);
@@ -2237,7 +2252,7 @@ export class GameRoom extends Room<GameState> {
           const baseDamage = weaponCfg.damage;
           const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
           const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
-          const buffDamageMult = 1.0; // TODO Phase D: apply server-side buff damage multiplier
+          const buffDamageMult = owner ? this.calculateBuffDamageMult(owner) : 1.0;
           const masteryDamageMult = 1.0; // TODO: weapon mastery damage multiplier
           const finalDamage = baseDamage * levelDamageMult * buffDamageMult * masteryDamageMult;
           enemy.health -= finalDamage;
@@ -2265,6 +2280,11 @@ export class GameRoom extends Room<GameState> {
             // Chance to spawn weapon pickup
             if (Math.random() < WEAPON_DROP_CHANCE) {
               this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+            }
+
+            // Chance to spawn a damage-affecting buff pickup
+            if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+              this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
             }
           }
           bulletsToRemove.push(bIndex);
@@ -2320,6 +2340,9 @@ export class GameRoom extends Room<GameState> {
           player.multiplier = 1;
           // DDA: track death event for this player
           this.trackDDADeath(player.id);
+
+          // Reset buff stacks on any hit (lose buffs on death, same as SP)
+          player.buffStacks.clear();
 
           if (player.lives <= 0) {
             player.alive = false;
@@ -2387,6 +2410,30 @@ export class GameRoom extends Room<GameState> {
       });
     });
 
+    // Player-buffPickup collisions
+    const buffPickupsToRemove: number[] = [];
+    this.state.players.forEach((player) => {
+      if (!player.alive) return;
+
+      this.state.buffPickups.forEach((pickup, index) => {
+        if (!pickup.active) return;
+
+        const dist = isSphereLike
+          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, sphereR)
+          : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
+        const threshold = isSphereLike ? PICKUP_WORLD : PICKUP_RADIUS;
+
+        if (dist < threshold) {
+          pickup.active = false;
+          buffPickupsToRemove.push(index);
+
+          const current = player.buffStacks.get(pickup.buffType) ?? 0;
+          player.buffStacks.set(pickup.buffType, Math.min(current + 1, BUFF_STACK_MAX));
+          this.logger.log(`[GameRoom] ${player.name} collected ${pickup.buffType} buff (now ${player.buffStacks.get(pickup.buffType)}×)`);
+        }
+      });
+    });
+
     // Player-superPickup collisions
     const superPickupsToRemove: number[] = [];
     this.state.players.forEach((player) => {
@@ -2429,6 +2476,9 @@ export class GameRoom extends Room<GameState> {
     }
     for (let i = superPickupsToRemove.length - 1; i >= 0; i--) {
       this.state.superPickups.splice(superPickupsToRemove[i], 1);
+    }
+    for (let i = buffPickupsToRemove.length - 1; i >= 0; i--) {
+      this.state.buffPickups.splice(buffPickupsToRemove[i], 1);
     }
   }
 
@@ -2973,6 +3023,52 @@ export class GameRoom extends Room<GameState> {
     pickup.age = 0;
     pickup.active = true;
     this.state.weaponPickups.push(pickup);
+  }
+
+  /**
+   * Calculate combined buff damage multiplier for a player.
+   * Called every bullet hit — must be pure and fast.
+   * Phase D: only 4 damage-affecting buffs. TriggerHappy affects fire rate, not damage (skipped here).
+   * TODO: ShockAura, Magnetism, Afterburner, ToughTimes require physics effects — future phase
+   */
+  private calculateBuffDamageMult(player: PlayerState): number {
+    let mult = 1.0;
+    const hotHands = player.buffStacks.get('hot_hands') ?? 0;
+    if (hotHands > 0) mult *= 1 + hotHands * 0.06;
+    const volatile_ = player.buffStacks.get('volatile') ?? 0;
+    if (volatile_ > 0) mult *= 1 + volatile_ * 0.08;
+    const incendiary = player.buffStacks.get('incendiary_rounds') ?? 0;
+    if (incendiary > 0) mult *= 1 + incendiary * 0.04;
+    return Math.min(mult, 5.0); // cap at 5× to prevent exploits
+  }
+
+  private spawnBuffPickup(u: number, v: number) {
+    const pickup = new BuffPickupState();
+    pickup.id = `bp${this.nextBuffPickupId++}`;
+    pickup.surfaceU = u + (Math.random() - 0.5) * 0.04;
+    pickup.surfaceV = v + (Math.random() - 0.5) * 0.04;
+    pickup.buffType = BUFF_PICKUP_TYPES[Math.floor(Math.random() * BUFF_PICKUP_TYPES.length)];
+    pickup.active = true;
+    pickup.age = 0;
+    this.state.buffPickups.push(pickup);
+  }
+
+  private updateBuffPickups(dt: number) {
+    const toRemove: number[] = [];
+    this.state.buffPickups.forEach((pickup, index) => {
+      if (!pickup.active) {
+        toRemove.push(index);
+        return;
+      }
+      pickup.age += dt;
+      if (pickup.age > BUFF_PICKUP_LIFETIME) {
+        pickup.active = false;
+        toRemove.push(index);
+      }
+    });
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      this.state.buffPickups.splice(toRemove[i], 1);
+    }
   }
 
   /**

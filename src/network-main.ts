@@ -57,7 +57,7 @@ import { MatchUpgradeTracker } from './systems/MatchUpgradeTracker';
 import { UpgradeNotification } from './ui/UpgradeNotification';
 import { WeaponMasteryScreen } from './ui/WeaponMasteryScreen';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
-import { BuffManager } from './buffs/BuffManager';
+import { BuffManager, StackBuffType } from './buffs/BuffManager';
 import { BuffHUD } from './buffs/BuffHUD';
 import { BuffAuraRenderer } from './buffs/BuffAuraRenderer';
 import { BuffParticleAura } from './buffs/BuffParticleAura';
@@ -79,6 +79,7 @@ import {
   NetworkGeomState,
   NetworkWeaponPickupState,
   NetworkSuperPickupState,
+  NetworkBuffPickupState,
   NetworkGameState,
   ClientMetricsPayload,
 } from './network/NetworkClient';
@@ -858,10 +859,11 @@ async function main() {
   };
   localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
 
-  // -- Buff system: client-side buff collection + visual effects --
-  // Buffs are collected via client-side pickup drops (see localBuffPickups).
-  // Server does not send buff state; stats (damage bonus, fire rate) are NOT applied.
-  // Visual effects (ShockAura arcs, aura glow, particle cloud) ARE active via buffManager.update().
+  // -- Buff system: server-authoritative collection + client visual effects (Phase D) --
+  // Phase D: Server spawns buff pickups on enemy death and tracks buffStacks per player.
+  // Buff damage multipliers (HotHands, IncendiaryRounds, Volatile) are applied server-side.
+  // Client syncs buffStacks from player state → buffManager for HUD and visual effects.
+  // Visual effects (ShockAura arcs, aura glow, particle cloud) run via buffManager.update().
   const buffManager = new BuffManager();
   const buffHUD = new BuffHUD();
   buffManager.onBuffGained = (type, _stacks) => { buffHUD.highlightBuff(type); };
@@ -931,6 +933,12 @@ async function main() {
     spawnTime: number; // game clock time when spawned (for pulse animation)
   }
   const networkSuperPickups = new Map<string, SuperPickupVisual>();
+
+  // -- Server-synced buff pickup tracking (Phase D) --
+  // Each entry is a real BuffPickupNew instance (same as co-op), positioned from server state.
+  const networkBuffPickups = new Map<string, BuffPickupNew>();
+  // Track local player's buff stacks from last state update to detect new collections
+  const prevLocalBuffStacks = new Map<string, number>();
 
   // Shared geometries for super pickups (created once, never disposed)
   const superPickupGeometry = new THREE.SphereGeometry(0.25, 12, 8);
@@ -1911,11 +1919,16 @@ async function main() {
     });
     networkSuperPickups.clear();
 
-    // Clear local companion + buff pickups
+    // Clear local companion pickups
     for (const cp of localCompanionPickups) { scene.remove(cp.mesh); cp.dispose(); }
     localCompanionPickups.length = 0;
     for (const bp of localBuffPickups) { scene.remove(bp.mesh); bp.dispose(); }
     localBuffPickups.length = 0;
+
+    // Clear server-synced buff pickups
+    networkBuffPickups.forEach((bp) => { scene.remove(bp.mesh); bp.dispose(); });
+    networkBuffPickups.clear();
+    prevLocalBuffStacks.clear();
 
     // Reset buff stacks so new game starts from scratch
     buffManager.reset();
@@ -2243,7 +2256,9 @@ async function main() {
         if (surface) surface.applyForce(enemy.position, 0.2, 1.0);
         sound.play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
 
-        // Client-side companion + buff pickup drops (mirrors SP PickupSpawner.spawnPickupsOnEnemyDeath)
+        // Client-side companion pickup drops (~5% chance per kill — stays client-side)
+        // NOTE: Buff pickups are now server-authoritative (Phase D) and rendered via
+        // networkBuffPickups in onStateChange. Do NOT spawn localBuffPickups here.
         if (surface) {
           const deathUV = surface.worldToSurface(enemy.position);
           if (deathUV) {
@@ -2254,13 +2269,6 @@ async function main() {
               );
               scene.add(cPickup.mesh);
               localCompanionPickups.push(cPickup);
-            }
-            // Stackable buff pickup (HotHands, TriggerHappy, etc.)
-            const droppedBuff = BuffManager.rollBuffDrop();
-            if (droppedBuff) {
-              const bPickup = new BuffPickupNew(droppedBuff, deathUV.u, deathUV.v, currentMapSizeScaleFactor);
-              scene.add(bPickup.mesh);
-              localBuffPickups.push(bPickup);
             }
           }
         }
@@ -2624,6 +2632,57 @@ async function main() {
         networkWeaponPickups.delete(id);
       }
     });
+
+    // ----- Sync server-authoritative buff pickups (Phase D) -----
+    // Server spawns buff pickups on enemy death; client renders them using BuffPickupNew.
+    // Collection is server-authoritative — pickups disappear from state when collected.
+    const activeBuffPickupIds = new Set<string>();
+    state.buffPickups.forEach((netPickup: NetworkBuffPickupState) => {
+      if (!netPickup.active) return;
+      activeBuffPickupIds.add(netPickup.id);
+
+      let bp = networkBuffPickups.get(netPickup.id);
+      if (!bp) {
+        // Create visual using existing BuffPickupNew (same as co-op)
+        // StackBuffType enum values ARE the string values (e.g. StackBuffType.HotHands === 'hot_hands')
+        bp = new BuffPickupNew(netPickup.buffType as StackBuffType, netPickup.surfaceU, netPickup.surfaceV, currentMapSizeScaleFactor);
+        scene.add(bp.mesh);
+        networkBuffPickups.set(netPickup.id, bp);
+      }
+
+      // Update position from server
+      bp.surfaceU = netPickup.surfaceU;
+      bp.surfaceV = netPickup.surfaceV;
+      if (getTransform) {
+        bp.applySurfaceTransform(getTransform);
+      }
+    });
+    // Remove collected/expired buff pickups
+    networkBuffPickups.forEach((bp, id) => {
+      if (!activeBuffPickupIds.has(id)) {
+        scene.remove(bp.mesh);
+        bp.dispose();
+        networkBuffPickups.delete(id);
+      }
+    });
+
+    // ----- Sync local player buff stacks from server (Phase D) -----
+    // When server confirms a buff collection, reflect it in local buffManager
+    // so HUD and visual effects (ShockAura, aura glow) stay in sync.
+    const localPlayerForBuffs = state.players.get(localPlayerId);
+    if (localPlayerForBuffs?.buffStacks) {
+      localPlayerForBuffs.buffStacks.forEach((serverCount: number, buffType: string) => {
+        const prevCount = prevLocalBuffStacks.get(buffType) ?? 0;
+        if (serverCount > prevCount) {
+          // Server confirmed new stacks — add them to local buffManager
+          for (let i = prevCount; i < serverCount; i++) {
+            buffManager.addBuff(buffType as StackBuffType);
+          }
+          sound.play('weaponPickup', { volume: 0.4, pitch: 1.2 });
+        }
+        prevLocalBuffStacks.set(buffType, serverCount);
+      });
+    }
 
     // ----- Update UI -----
     const localPlayer = state.players.get(localPlayerId);
@@ -3712,6 +3771,15 @@ async function main() {
       });
     }
 
+    // Animate server-synced buff pickups (Phase D).
+    if (getTransform && networkBuffPickups.size > 0) {
+      const transform = getTransform;
+      networkBuffPickups.forEach((bp) => {
+        bp.update(dt, game.clock.totalTime, camera.up);
+        bp.applySurfaceTransform(transform);
+      });
+    }
+
     // Animate super pickups (pulse + bob along surface normal).
     if (getTransform && networkSuperPickups.size > 0) {
       const transform = getTransform;
@@ -4213,11 +4281,11 @@ async function main() {
     // they are not immediately reachable. Uses UV distance from local player
     // — same thresholds as single-player (NEAR=0.20, FAR=0.45, min=0.35).
     // The spawn-indicator ring is kept at full brightness.
-    // Covers: networkWeaponPickups, localCompanionPickups, localBuffPickups.
+    // Covers: networkWeaponPickups, networkBuffPickups, localCompanionPickups, localBuffPickups.
     // -----------------------------------------------------------------------
     {
       const lpPickup = networkPlayers.get(localPlayerId);
-      const hasAnyPickup = networkWeaponPickups.size > 0 || localCompanionPickups.length > 0 || localBuffPickups.length > 0;
+      const hasAnyPickup = networkWeaponPickups.size > 0 || networkBuffPickups.size > 0 || localCompanionPickups.length > 0 || localBuffPickups.length > 0;
       if (lpPickup && hasAnyPickup) {
         const PICKUP_NEAR_UV   = 0.20;
         const PICKUP_FAR_UV    = 0.45;
@@ -4262,6 +4330,7 @@ async function main() {
 
         networkWeaponPickups.forEach((pickup) => applyDimming(pickup.mesh, pickup.surfaceU, pickup.surfaceV));
         networkSuperPickups.forEach((visual) => applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV));
+        networkBuffPickups.forEach((bp) => applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV));
         for (const cp of localCompanionPickups) { if (cp.active) applyDimming(cp.mesh, cp.surfaceU, cp.surfaceV); }
         for (const bp of localBuffPickups)      { if (bp.active) applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV); }
       }

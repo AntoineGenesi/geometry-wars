@@ -27,6 +27,8 @@ export class PlayerState extends Schema {
   declare playerLevel: number;
   declare playerKills: number;
   declare ddaLevel: number;
+  /** Buff stack counts: maps buff type string (e.g. 'hot_hands') → stack count */
+  declare buffStacks: MapSchema<number>;
 
   constructor() {
     super();
@@ -47,6 +49,7 @@ export class PlayerState extends Schema {
     this.playerLevel = 0;
     this.playerKills = 0;
     this.ddaLevel = 0;
+    this.buffStacks = new MapSchema<number>();
   }
 }
 
@@ -68,6 +71,7 @@ defineTypes(PlayerState, {
   playerLevel: 'number',
   playerKills: 'number',
   ddaLevel: 'number',
+  buffStacks: { map: 'number' },
 });
 
 /**
@@ -231,6 +235,39 @@ defineTypes(SuperPickupState, {
 });
 
 /**
+ * Buff pickup state (server-authoritative — spawns on enemy death, collected by player proximity)
+ * Phase D: only the 4 damage-affecting buffs: hot_hands, trigger_happy, incendiary_rounds, volatile
+ */
+export class BuffPickupState extends Schema {
+  declare id: string;
+  declare surfaceU: number;
+  declare surfaceV: number;
+  /** Buff type string e.g. 'hot_hands', 'trigger_happy', 'incendiary_rounds', 'volatile' */
+  declare buffType: string;
+  declare active: boolean;
+  declare age: number;
+
+  constructor() {
+    super();
+    this.id = '';
+    this.surfaceU = 0.5;
+    this.surfaceV = 0.5;
+    this.buffType = 'hot_hands';
+    this.active = true;
+    this.age = 0;
+  }
+}
+
+defineTypes(BuffPickupState, {
+  id: 'string',
+  surfaceU: 'number',
+  surfaceV: 'number',
+  buffType: 'string',
+  active: 'boolean',
+  age: 'number',
+});
+
+/**
  * Main game state synced across all clients
  */
 export class GameState extends Schema {
@@ -240,6 +277,7 @@ export class GameState extends Schema {
   declare geoms: ArraySchema<GeomState>;
   declare weaponPickups: ArraySchema<WeaponPickupState>;
   declare superPickups: ArraySchema<SuperPickupState>;
+  declare buffPickups: ArraySchema<BuffPickupState>;
   declare surfaceType: string;
   declare waveNumber: number;
   declare gameTime: number;
@@ -274,6 +312,7 @@ export class GameState extends Schema {
     this.geoms = new ArraySchema<GeomState>();
     this.weaponPickups = new ArraySchema<WeaponPickupState>();
     this.superPickups = new ArraySchema<SuperPickupState>();
+    this.buffPickups = new ArraySchema<BuffPickupState>();
     this.surfaceType = 'sphere';
     this.waveNumber = 0;
     this.gameTime = 0;
@@ -301,6 +340,7 @@ defineTypes(GameState, {
   geoms: [GeomState],
   weaponPickups: [WeaponPickupState],
   superPickups: [SuperPickupState],
+  buffPickups: [BuffPickupState],
   surfaceType: 'string',
   waveNumber: 'number',
   gameTime: 'number',

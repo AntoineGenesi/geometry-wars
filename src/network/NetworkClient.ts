@@ -18,6 +18,8 @@ export interface NetworkPlayerState {
   weaponAmmo: number;
   playerLevel: number;
   playerKills: number;
+  /** Maps buff type → stack count. Present when server has Phase D enabled. */
+  buffStacks?: { get(key: string): number | undefined; forEach(cb: (val: number, key: string) => void): void };
 }
 
 /** Bullet state from server */
@@ -71,6 +73,17 @@ export interface NetworkSuperPickupState {
   age: number;
 }
 
+/** Buff pickup state from server (Phase D: damage-affecting buffs) */
+export interface NetworkBuffPickupState {
+  id: string;
+  surfaceU: number;
+  surfaceV: number;
+  /** e.g. 'hot_hands', 'trigger_happy', 'incendiary_rounds', 'volatile' */
+  buffType: string;
+  active: boolean;
+  age: number;
+}
+
 /**
  * An array-like collection that supports forEach iteration.
  * Colyseus ArraySchema<T> is NOT a plain T[] but supports .forEach().
@@ -90,6 +103,7 @@ export interface NetworkGameState {
   geoms: ForEachable<NetworkGeomState>;
   weaponPickups: ForEachable<NetworkWeaponPickupState>;
   superPickups: ForEachable<NetworkSuperPickupState>;
+  buffPickups: ForEachable<NetworkBuffPickupState>;
   surfaceType: string;
   waveNumber: number;
   gameTime: number;
@@ -490,6 +504,7 @@ export class NetworkClient {
       geoms: ForEachable<NetworkGeomState>;
       weaponPickups: ForEachable<NetworkWeaponPickupState>;
       superPickups: ForEachable<NetworkSuperPickupState>;
+      buffPickups: ForEachable<NetworkBuffPickupState>;
       surfaceType: string;
       waveNumber: number;
       gameTime: number;
@@ -524,6 +539,7 @@ export class NetworkClient {
       geoms: s.geoms || emptyArray,
       weaponPickups: s.weaponPickups || emptyArray,
       superPickups: s.superPickups || emptyArray,
+      buffPickups: s.buffPickups || emptyArray,
       surfaceType: s.surfaceType,
       waveNumber: s.waveNumber,
       gameTime: s.gameTime,
