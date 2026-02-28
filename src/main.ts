@@ -625,9 +625,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   game.scene.add(player.mesh);
   game.cameraTarget = player.mesh;
 
-  // Create MeshWalker for player (mesh-based movement, no UV pole singularity)
+  // Create MeshWalker for player (mesh-based movement, no UV pole singularity).
+  // Scale speed by mapSizeScaleFactor: larger maps (EPIC=2x) have bigger world-space geometry,
+  // so the player needs 2x world-speed to traverse them at the same apparent rate as MEDIUM maps.
   const initialPoint = surface.getPoint(0.5, 0.5);
-  const playerWalker = new MeshWalker(meshSurface, initialPoint.position, PLAYER_MOVE_SPEED);
+  const playerWalker = new MeshWalker(meshSurface, initialPoint.position, PLAYER_MOVE_SPEED * mapSizeScaleFactor);
 
   // Sync player position from walker
   player.mesh.position.copy(playerWalker.position);
@@ -924,7 +926,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   function applyStatMultipliers(): void {
     const perk = playerLevel.perk;
     const boostMult = player.boostActive ? BOOST_SPEED_MULTIPLIER : 1.0;
-    playerWalker.speed = PLAYER_MOVE_SPEED * perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier() * boostMult;
+    playerWalker.speed = PLAYER_MOVE_SPEED * mapSizeScaleFactor * perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier() * boostMult;
     // Fire rate: combine PlayerLevel + BuffManager + passive mastery for current weapon
     const currentWeapon = weaponManager.getCurrentWeapon();
     const passiveBonus = passiveMasteryBonuses.get(currentWeapon);
