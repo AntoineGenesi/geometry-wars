@@ -8,6 +8,28 @@
 
 ---
 
+## S43-06: Peanut Movement Speed — Perceptual Difference (Understanding Test)
+
+**Status:** Code confirmed correct — linear speed is constant. Perceptual difference is expected geometry behavior.
+
+**Root cause:** Peanut bulge radius (r≈16.8) vs. waist radius (r≈7.2) — 2.33× difference. At constant linear speed
+(6 m/s), angular traversal is 2.33× slower on the bulge. This is not a code bug but a consequence of the peanut's
+extreme geometry.
+
+**Regression test:** `src/test/s43-06-peanut-speed-uniform.regression.test.ts` — confirms all regions stay within
+10% of target speed (6.0 m/s).
+
+### Test: Peanut Speed Perception
+
+- [ ] Load SP game on Peanut map
+- [ ] Move around on the **bulge** (large rounded areas near poles) — note your speed
+- [ ] Move to the **waist** (narrow middle area) — compare speed feel
+- [ ] **Expected:** Linear speed is same, but waist WILL appear to "zoom" faster due to smaller circumference (2.33× angular difference — this is expected behavior from geometry, not a bug)
+- [ ] Verify no severe stutter or complete stops anywhere on peanut surface
+- [ ] SP peanut movement should feel smooth (no abrupt speed changes, just continuous gradual variation)
+
+---
+
 ## S42-04h: MP Parity Regression Tests (Phase H)
 
 **Status:** Regression tests written. Automated tests lock in parity guarantees. Human testing verifies the gameplay experience matches the numbers.
