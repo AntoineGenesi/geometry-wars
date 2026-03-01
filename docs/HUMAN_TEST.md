@@ -8,6 +8,49 @@
 
 ---
 
+## s44-EPIC: MeshWalker MP Port (ServerMeshWalker — s44-epic-05/06/07)
+
+**Status:** Regression tests written. Unit tests verify geodesic movement correctness. Human testing verifies the in-game feel on LAN.
+
+**What was changed:** Player movement on the LAN multiplayer server now uses the same geodesic MeshWalker as single-player, sending world-space position + tangent frame to clients. Previously used UV-based movement which caused speed variation and control inversion at poles.
+
+**Automated test coverage:** `server/rooms/GameRoom.geodesic-movement.test.ts` + `server/movement/ServerMeshWalker.test.ts`
+
+### Test: Sphere Surface — Pole Crossing
+
+- [ ] Start LAN multiplayer on sphere surface
+- [ ] Move player toward north pole (hold W key)
+- [ ] Camera does NOT invert when crossing the pole (was: camera does 180° flip)
+- [ ] After crossing the pole, W still moves "forward" (not backward)
+- [ ] Repeat: move through south pole — same behavior
+
+### Test: Peanut Surface — Constant Speed
+
+- [ ] Start LAN multiplayer on peanut surface
+- [ ] Hold W key and move around the entire peanut
+- [ ] Speed feels constant everywhere (was: slower at bulges, faster at waist)
+- [ ] Cross the top pole and bottom pole — controls not inverted after crossing
+
+### Test: Torus Surface — No Speed Variation
+
+- [ ] Start LAN multiplayer on torus surface
+- [ ] Move in circles — speed should feel constant throughout
+- [ ] No sudden speed changes when crossing the inner/outer sections
+
+### Test: Multi-Player Simultaneous Movement
+
+- [ ] Two players join LAN game on sphere surface
+- [ ] Player 1 moves north, Player 2 moves east simultaneously
+- [ ] Both players move to different positions (no position corruption)
+- [ ] Each player's camera tracks their own position correctly
+
+### Test: SP Unaffected (MeshWalker unchanged)
+
+- [ ] Single-player sphere: pole crossing works as before (no regression)
+- [ ] Single-player peanut: constant speed as before (no regression)
+
+---
+
 ## S43-07: MP Player-Enemy Collision Radius (Dying Too Early)
 
 **Status:** Changes made — user testing required. Level 5 (Puppeteer) not achievable for LAN MP collision without two connected clients.
