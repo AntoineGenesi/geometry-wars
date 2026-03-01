@@ -659,7 +659,7 @@ export class CompanionManager {
 // ---------------------------------------------------------------------------
 
 // World-space pickup collision radius. See WeaponPickup.ts for rationale.
-const COMPANION_PICKUP_WORLD_RADIUS = 0.6;
+const COMPANION_PICKUP_WORLD_RADIUS = 0.3;
 
 export class CompanionPickup {
   readonly mesh: THREE.Group;
