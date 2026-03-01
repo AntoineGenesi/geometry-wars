@@ -197,6 +197,11 @@ function injectStyles(): void {
       100% { transform: scale(1.0); }
     }
 
+    .mastery-bar-wrapper {
+      position: relative;
+      padding: 4px 0;
+    }
+
     .mastery-xp-bar-bg {
       height: 8px;
       border-radius: 4px;
@@ -210,6 +215,43 @@ function injectStyles(): void {
       border-radius: 4px;
       width: 0%;
       transition: width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+
+    /* Dotted progress markers: start (left) and end (right) */
+    .mastery-xp-marker {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      transform: translateX(-1px);
+      pointer-events: none;
+      z-index: 1;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 2px,
+        rgba(255, 255, 255, 0.7) 2px,
+        rgba(255, 255, 255, 0.7) 5px
+      );
+      box-shadow: 0 0 3px rgba(255, 255, 255, 0.3);
+    }
+
+    .mastery-xp-marker.marker-end {
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .mastery-xp-marker.marker-end.visible {
+      opacity: 1;
+    }
+
+    @keyframes masteryLevelUpBurst {
+      0%   { background: rgba(255, 240, 100, 0.35); box-shadow: 0 0 16px rgba(255, 200, 0, 0.6); }
+      100% { background: rgba(255, 200, 0, 0.07); box-shadow: 0 0 6px rgba(255,200,0,0.2); }
+    }
+
+    .mastery-weapon-row.levelup-burst {
+      animation: masteryLevelUpBurst 0.35s ease-out forwards !important;
     }
 
     .mastery-unlock-row {
@@ -324,6 +366,9 @@ export class MasteryProgressScreen {
       fillEl: HTMLDivElement;
       badgeEl: HTMLSpanElement;
       unlockEl: HTMLDivElement;
+      startMarkerEl: HTMLDivElement;
+      endMarkerEl: HTMLDivElement;
+      endPct: number;
       result: MasteryXPResult;
     }> = [];
 
@@ -357,13 +402,17 @@ export class MasteryProgressScreen {
 
       const badgeEl = document.createElement('span');
       badgeEl.className = `mastery-level-badge${result.leveledUp ? ' levelup' : ''}`;
-      const currentLevel = data.allLevels.get(result.weaponType) ?? result.levelAfter;
-      badgeEl.textContent = t('mastery.levelBadge', { level: currentLevel });
+      // For level-up, initially show the OLD level; it updates to new level after the burst animation
+      const initialBadgeLevel = result.leveledUp ? result.levelBefore : (data.allLevels.get(result.weaponType) ?? result.levelAfter);
+      badgeEl.textContent = t('mastery.levelBadge', { level: initialBadgeLevel });
       nameRow.appendChild(badgeEl);
 
       info.appendChild(nameRow);
 
-      // XP bar
+      // XP bar — wrapped to allow absolute-positioned dotted markers
+      const barWrapper = document.createElement('div');
+      barWrapper.className = 'mastery-bar-wrapper';
+
       const barBg = document.createElement('div');
       barBg.className = 'mastery-xp-bar-bg';
 
@@ -373,12 +422,27 @@ export class MasteryProgressScreen {
         ? 'linear-gradient(90deg, #cc8800, #ffcc00)'
         : `linear-gradient(90deg, ${cssColor}99, ${cssColor})`;
 
-      // Start fill at xpBefore position
+      // Start fill at xpBefore position within levelBefore
       const startPct = levelProgress(result.xpBefore, result.levelBefore);
       fillEl.style.width = `${startPct}%`;
 
       barBg.appendChild(fillEl);
-      info.appendChild(barBg);
+      barWrapper.appendChild(barBg);
+
+      // Start marker (dotted line at the starting XP position)
+      const startMarkerEl = document.createElement('div');
+      startMarkerEl.className = 'mastery-xp-marker marker-start';
+      startMarkerEl.style.left = `${startPct}%`;
+      barWrapper.appendChild(startMarkerEl);
+
+      // End marker (dotted line at the ending XP position — revealed after animation)
+      const endPct = levelProgress(result.xpAfter, result.levelAfter);
+      const endMarkerEl = document.createElement('div');
+      endMarkerEl.className = 'mastery-xp-marker marker-end';
+      endMarkerEl.style.left = `${endPct}%`;
+      barWrapper.appendChild(endMarkerEl);
+
+      info.appendChild(barWrapper);
 
       // Unlock text (shown after bar fills if leveled up)
       const unlockEl = document.createElement('div');
@@ -394,7 +458,7 @@ export class MasteryProgressScreen {
       row.appendChild(info);
       weaponList.appendChild(row);
 
-      rows.push({ row, fillEl, badgeEl, unlockEl, result });
+      rows.push({ row, fillEl, badgeEl, unlockEl, startMarkerEl, endMarkerEl, endPct, result });
     }
 
     content.appendChild(weaponList);
@@ -436,40 +500,73 @@ export class MasteryProgressScreen {
       this.container.classList.add('visible');
     });
 
-    // Play level-up sound if any weapon leveled up
-    if (hasLevelUp) {
-      const t = this._schedule(() => {
-        try { getSoundEngine().play('weaponPickup', { pitch: 1.8 }); } catch { /* ok */ }
-      }, 400);
-      this.animationTimers.push(t);
-    }
-
-    // Stagger weapon rows appearing
-    rows.forEach(({ row, fillEl, unlockEl, result }, i) => {
+    // Stagger weapon rows appearing — level-up rows have a multi-phase animation
+    rows.forEach(({ row, fillEl, badgeEl, unlockEl, startMarkerEl, endMarkerEl, endPct, result }, i) => {
       const appearDelay = 150 + i * 150;
       const barDelay = appearDelay + 100;
-      const unlockDelay = barDelay + 550; // after bar fills
 
       this.animationTimers.push(this._schedule(() => {
         row.classList.add('appeared');
       }, appearDelay));
 
-      this.animationTimers.push(this._schedule(() => {
-        const endPct = levelProgress(result.xpAfter, result.levelAfter);
-        fillEl.style.width = `${endPct}%`;
-      }, barDelay));
-
-      if (result.leveledUp && unlockEl.textContent) {
+      if (result.leveledUp) {
+        // Phase 1: fill bar from startPct → 100% (crossing the level boundary)
         this.animationTimers.push(this._schedule(() => {
-          unlockEl.classList.add('visible');
-        }, unlockDelay));
+          fillEl.style.width = '100%';
+        }, barDelay));
+
+        // Phase 2: burst flash + sound at level boundary
+        this.animationTimers.push(this._schedule(() => {
+          row.classList.add('levelup-burst');
+          try { getSoundEngine().play('weaponPickup', { pitch: 1.8 }); } catch { /* ok */ }
+        }, barDelay + 550));
+
+        // Phase 3: instant reset to 0% (transition disabled), move start marker, update badge
+        this.animationTimers.push(this._schedule(() => {
+          row.classList.remove('levelup-burst');
+          fillEl.style.transition = 'none';
+          fillEl.style.width = '0%';
+          startMarkerEl.style.left = '0%';
+          badgeEl.textContent = t('mastery.levelBadge', { level: result.levelAfter });
+          badgeEl.classList.add('levelup');
+        }, barDelay + 850));
+
+        // Phase 4: re-enable transition and fill to endPct within new level
+        this.animationTimers.push(this._schedule(() => {
+          fillEl.style.transition = 'width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+          fillEl.style.width = `${endPct}%`;
+        }, barDelay + 900));
+
+        // Phase 5: reveal end marker after bar fills
+        this.animationTimers.push(this._schedule(() => {
+          endMarkerEl.classList.add('visible');
+        }, barDelay + 1450));
+
+        // Phase 6: show unlock text
+        if (unlockEl.textContent) {
+          this.animationTimers.push(this._schedule(() => {
+            unlockEl.classList.add('visible');
+          }, barDelay + 1500));
+        }
+      } else {
+        // Normal case: fill from startPct → endPct
+        this.animationTimers.push(this._schedule(() => {
+          fillEl.style.width = `${endPct}%`;
+        }, barDelay));
+
+        // Reveal end marker after bar fills
+        this.animationTimers.push(this._schedule(() => {
+          endMarkerEl.classList.add('visible');
+        }, barDelay + 550));
       }
     });
 
-    // Show continue button after all animations
-    const totalAnimTime = rows.length > 0
-      ? 150 + (rows.length - 1) * 150 + 100 + 600
-      : 0;
+    // Show continue button after all rows are done
+    // Level-up rows take ~1500ms extra vs normal 550ms
+    const lastIdx = rows.length - 1;
+    const lastBarDelay = lastIdx >= 0 ? 150 + lastIdx * 150 + 100 : 0;
+    const lastRowExtraMs = (rows[lastIdx]?.result.leveledUp) ? 1500 : 550;
+    const totalAnimTime = rows.length > 0 ? lastBarDelay + lastRowExtraMs : 0;
     const btnDelay = Math.max(300, totalAnimTime + 200);
 
     this.animationTimers.push(this._schedule(() => {
