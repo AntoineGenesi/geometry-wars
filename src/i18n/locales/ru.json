@@ -233,7 +233,7 @@
     "subtitle": "ОБНОВЛЕНИЕ ПРОГРЕССА",
     "continueBtn": "ПРОДОЛЖИТЬ",
     "continueHint": "ENTER / ПРОБЕЛ / КЛИК",
-    "newPassiveUnlocked": "Разблокирован новый пассивный навык",
+    "newPassiveUnlocked": "Пассивный бонус получен!",
     "levelBadge": "Ур.{{level}}"
   }
 }

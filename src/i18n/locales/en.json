@@ -233,7 +233,7 @@
     "subtitle": "PROGRESS UPDATE",
     "continueBtn": "CONTINUE",
     "continueHint": "ENTER / SPACE / CLICK",
-    "newPassiveUnlocked": "New Passive Unlocked",
+    "newPassiveUnlocked": "Passive Bonus Earned!",
     "levelBadge": "Lv.{{level}}"
   }
 }

@@ -463,6 +463,61 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(html).toContain('Right-click to refund');
   });
 
+  // ── Passive bonuses panel tests ─────────────────────────────────────────────
+
+  it('show() HTML contains passive bonuses section for each weapon', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    expect(html).toContain('wms-passives');
+    expect(html).toContain('PASSIVE BONUSES');
+  });
+
+  it('show() passive panel shows 5 level rows per weapon', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    // Lv.1 through Lv.5 rows should appear for each weapon
+    expect(html).toContain('wms-passive-lv');
+    expect(html).toContain('Lv.1');
+    expect(html).toContain('Lv.5');
+  });
+
+  it('show() passive panel marks current level as current when mastery Level 1', () => {
+    seedMastery({ [WT.Standard]: 100 }); // Exactly Level 1
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    expect(html).toContain('wms-passive-row--current');
+  });
+
+  it('show() passive panel shows locked rows for future levels at Level 0', () => {
+    screen.show(); // No XP → Level 0
+    const html = mockBody.children[0].innerHTML;
+    expect(html).toContain('wms-passive-row--locked');
+  });
+
+  it('show() passive panel shows earned rows for past levels at Level 3', () => {
+    seedMastery({ [WT.Standard]: 500 }); // Level 3
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    expect(html).toContain('wms-passive-row--earned');
+    expect(html).toContain('wms-passive-row--current');
+    expect(html).toContain('wms-passive-row--locked');
+  });
+
+  it('show() passive panel shows XP threshold for locked levels', () => {
+    screen.show(); // Level 0 — all levels locked, should show XP costs
+    const html = mockBody.children[0].innerHTML;
+    expect(html).toContain('wms-passive-xp');
+    // Level 1 threshold is 100 XP
+    expect(html).toContain('100xp');
+  });
+
+  it('show() passive panel displays damage percentage bonus', () => {
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    // Standard Lv.1 = +10% dmg
+    expect(html).toContain('+10% dmg');
+  });
+
   // ── Prerequisite enforcement tests ─────────────────────────────────────────
 
   it('tier-1 root nodes are affordable when player has points (no prereq)', () => {

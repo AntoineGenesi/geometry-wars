@@ -15,7 +15,7 @@
  */
 
 import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
-import { MasteryStore } from '../systems/MasteryStore';
+import { MasteryStore, XP_THRESHOLDS } from '../systems/MasteryStore';
 import { MasteryPointStore, weaponTypeFromNodeId } from '../systems/MasteryPointStore';
 import {
   UPGRADE_TREES,
@@ -269,6 +269,51 @@ function injectStyles(): void {
       font-size: 9px;
       width: 50px;
       text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* ── Passive bonus table ── */
+    #weapon-mastery-screen .wms-passives {
+      margin: 5px 0 6px;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      padding-top: 5px;
+    }
+    #weapon-mastery-screen .wms-passives-title {
+      font-size: 8px;
+      letter-spacing: 2px;
+      color: #334;
+      text-transform: uppercase;
+      margin-bottom: 2px;
+    }
+    #weapon-mastery-screen .wms-passive-row {
+      display: flex;
+      align-items: baseline;
+      gap: 4px;
+      font-size: 9px;
+      line-height: 1.4;
+    }
+    #weapon-mastery-screen .wms-passive-row--earned {
+      color: #778;
+    }
+    #weapon-mastery-screen .wms-passive-row--current {
+      color: #ffdd88;
+      font-weight: bold;
+    }
+    #weapon-mastery-screen .wms-passive-row--locked {
+      color: #223;
+    }
+    #weapon-mastery-screen .wms-passive-lv {
+      width: 24px;
+      flex-shrink: 0;
+      letter-spacing: 0;
+    }
+    #weapon-mastery-screen .wms-passive-bonus {
+      flex: 1;
+    }
+    #weapon-mastery-screen .wms-passive-xp {
+      font-size: 8px;
+      color: #223;
+      margin-left: auto;
       flex-shrink: 0;
     }
 
@@ -667,6 +712,7 @@ export class WeaponMasteryScreen {
           </div>
           <span class="wms-xp-val">${xpLabel}</span>
         </div>
+        ${this._buildPassivesPanel(w.type, level)}
         ${tree.branchALName ? `
         <div class="wms-branch-labels wms-branch-labels--4">
           <span class="wms-branch-label">${tree.branchALName}</span>
@@ -679,6 +725,46 @@ export class WeaponMasteryScreen {
           <span class="wms-branch-label">${tree.branchBName}</span>
         </div>`}
         ${constellationHTML}
+      </div>
+    `;
+  }
+
+  /** Builds the passive bonuses table for a weapon card. Shows all 5 levels. */
+  private _buildPassivesPanel(weaponType: WeaponType, currentLevel: number): string {
+    const ms = this._masteryStore!;
+    const rows: string[] = [];
+
+    for (let lvl = 1; lvl <= 5; lvl++) {
+      const bonus = ms.getPassiveBonusAtLevel(weaponType, lvl);
+      const dmgPct = Math.round((bonus.damageMultiplier - 1) * 100);
+      const ratePct = Math.round((bonus.fireRateMultiplier - 1) * 100);
+      const isEarned = lvl <= currentLevel;
+      const isCurrent = lvl === currentLevel;
+
+      let bonusText = `+${dmgPct}% dmg`;
+      if (ratePct > 0) bonusText += `, +${ratePct}% rate`;
+      if (lvl === 5 && bonus.specialBonus) bonusText += `, ${this._esc(bonus.specialBonus)}`;
+
+      const xpNeeded = XP_THRESHOLDS[lvl];
+      const rowClass = isCurrent
+        ? 'wms-passive-row wms-passive-row--current'
+        : isEarned
+          ? 'wms-passive-row wms-passive-row--earned'
+          : 'wms-passive-row wms-passive-row--locked';
+
+      rows.push(`
+        <div class="${rowClass}">
+          <span class="wms-passive-lv">Lv.${lvl}</span>
+          <span class="wms-passive-bonus">${bonusText}</span>
+          ${!isEarned ? `<span class="wms-passive-xp">${xpNeeded}xp</span>` : ''}
+        </div>
+      `);
+    }
+
+    return `
+      <div class="wms-passives">
+        <div class="wms-passives-title">PASSIVE BONUSES</div>
+        ${rows.join('')}
       </div>
     `;
   }

@@ -204,6 +204,15 @@ export class MasteryStore {
     return result;
   }
 
+  /**
+   * Returns the passive bonus at a specific mastery level (1-5).
+   * Returns 1.0/1.0 baseline for level 0.
+   * Used by WeaponMasteryScreen to display the per-level passive bonus table.
+   */
+  getPassiveBonusAtLevel(weapon: WeaponType, level: number): PassiveMasteryBonus {
+    return computeBonus(weapon, level);
+  }
+
   // ── Award ──────────────────────────────────────────────────────────────────
 
   /**
