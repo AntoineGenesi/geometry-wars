@@ -25,6 +25,8 @@ import {
   ENEMY_HEALTH,
   LEVEL_THRESHOLDS,
   LEVEL_DAMAGE_MULTIPLIERS,
+  LEVEL_MOVE_SPEED_MULTIPLIERS,
+  // LEVEL_FIRE_RATE_MULTIPLIERS: not applied server-side; fire rate is client-enforced.
 } from '../shared/GameConstants';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
@@ -834,7 +836,9 @@ export class GameRoom extends Room<GameState> {
 
       // Tick boost timer and cooldown; apply speed multiplier while boost is active.
       const boostState = this.playerBoostStates.get(clientId);
-      let speedMultiplier = 1.0;
+      // Apply level-based speed multiplier (SP parity: PlayerLevel.ts LEVEL_MOVE_SPEED_MULTIPLIERS)
+      const levelSpeedMult = LEVEL_MOVE_SPEED_MULTIPLIERS[Math.min(player.playerLevel, LEVEL_MOVE_SPEED_MULTIPLIERS.length - 1)] ?? 1.0;
+      let speedMultiplier = levelSpeedMult;
       if (boostState) {
         if (boostState.active) {
           boostState.timer -= dt;
