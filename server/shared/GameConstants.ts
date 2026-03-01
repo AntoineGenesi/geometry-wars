@@ -36,6 +36,10 @@ export const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: nu
 // V direction arc = pi * 10 ≈ 31.4 world units. So 3.0 / (pi*10) ≈ 0.095 UV/s.
 export const PLAYER_SPEED = 0.095;
 
+// Player speed in world units/s — used by ServerMeshWalker (MeshWalker-based movement).
+// Matches SP MeshWalker speed. UV-based PLAYER_SPEED is kept for bullets/enemies.
+export const PLAYER_WORLD_SPEED = 3.0;
+
 // Bullet speed in UV/s. Co-op bullets move at 4.0 world units/s.
 // On a sphere of radius 10: 4.0 / (pi*10) ≈ 0.127 UV/s.
 export const BULLET_SPEED = 0.13;
