@@ -16,6 +16,7 @@ import { createHash } from 'crypto';
 import {
   WEAPON_CONFIGS,
   PLAYER_SPEED,
+  PLAYER_WORLD_SPEED,
   BULLET_SPEED,
   BULLET_LIFETIME,
   WEAPON_DROP_CHANCE,
@@ -28,6 +29,8 @@ import {
   LEVEL_MOVE_SPEED_MULTIPLIERS,
   // LEVEL_FIRE_RATE_MULTIPLIERS: not applied server-side; fire rate is client-enforced.
 } from '../shared/GameConstants';
+import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
+import type { ServerWalkerState } from '../movement/ServerMeshWalker';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -433,14 +436,8 @@ export class GameRoom extends Room<GameState> {
   /** Per-player boost (sprint) state: active, timer, cooldown, and prev key held. */
   private playerBoostStates: Map<string, { active: boolean; timer: number; cooldown: number; prevHeld: boolean }> = new Map();
 
-  /**
-   * Per-player V-axis direction flip state for pole traversal.
-   * Toggles each time a player crosses a sphere/capsule/peanut pole boundary.
-   * Without this, the player oscillates at the pole because the input direction
-   * (dy from W/S keys) doesn't automatically reverse after crossing a pole.
-   * The flip makes "W = forward" continue to mean "forward" past the pole.
-   */
-  private playerVFlip: Map<string, boolean> = new Map();
+  /** Server-side surface geometry + walker pool. Replaces UV-based player movement. */
+  private surfaceManager = new ServerSurfaceManager();
 
   // Server-side DDA state
   /** Rolling 30s kill/death window per player (keyed by sessionId) */
@@ -675,7 +672,16 @@ export class GameRoom extends Room<GameState> {
     // full config payload so the client can cache it for future sessions.
     client.send('startup_hash', { hash: STARTUP_CONFIG_HASH });
 
-    this.playerVFlip.set(client.sessionId, false);
+    // If game is already running, create a walker for this player immediately.
+    // (startGame() creates walkers for players present at game start; this handles
+    // players joining mid-game.)
+    if (this.state.roomPhase === 'playing' && this.surfaceManager.getMeshSurface()) {
+      const walker = this.surfaceManager.createWalker(client.sessionId, spawnPos.u, spawnPos.v);
+      if (walker) {
+        this.applyWalkerStateToPlayer(player, walker.getState());
+      }
+    }
+
     // Initialize DDA performance window for new player
     this.playerPerfWindows.set(client.sessionId, { kills: 0, deaths: 0, windowStart: 0 });
     this.logger.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
@@ -693,7 +699,7 @@ export class GameRoom extends Room<GameState> {
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
       this.playerBoostStates.delete(client.sessionId);
-      this.playerVFlip.delete(client.sessionId);
+      this.surfaceManager.removeWalker(client.sessionId);
       this.playerPerfWindows.delete(client.sessionId);
       this.ddaDecreaseCounters.delete(client.sessionId);
     }
@@ -765,6 +771,7 @@ export class GameRoom extends Room<GameState> {
         // Ignore errors on dispose
       }
     }
+    this.surfaceManager.dispose();
     this.logger.log('[GameRoom] Disposed');
   }
 
@@ -814,8 +821,11 @@ export class GameRoom extends Room<GameState> {
     this.waveElapsed = 0;
     this.nextWaveAt = WAVE_FIRST_AT;
     this.playerInvincibility.clear();
-    // Reset per-player V-flip state so all players start with unflipped direction
-    this.playerVFlip.forEach((_, id) => this.playerVFlip.set(id, false));
+
+    // Initialize surface geometry + walker pool for the new round.
+    // Must happen before creating walkers below.
+    const scaleFactor = getMapScaleFactor(this.state.mapSize);
+    this.surfaceManager.initSurface(this.state.surfaceType, scaleFactor);
 
     // Invalidate any pending spawn timeouts from the previous game.
     // Bumping spawnGeneration causes old setTimeouts to abort when they fire.
@@ -824,7 +834,7 @@ export class GameRoom extends Room<GameState> {
 
     // Reset all players
     let spawnIdx = 0;
-    this.state.players.forEach((player) => {
+    this.state.players.forEach((player, sessionId) => {
       player.lives = 3;
       player.bombs = 3;
       player.score = 0;
@@ -848,6 +858,13 @@ export class GameRoom extends Room<GameState> {
       player.surfaceU = spawnPos.u;
       player.surfaceV = spawnPos.v;
       player.ddaLevel = 0;
+
+      // Create walker at spawn position and sync initial world-space state
+      const walker = this.surfaceManager.createWalker(sessionId, spawnPos.u, spawnPos.v);
+      if (walker) {
+        this.applyWalkerStateToPlayer(player, walker.getState());
+      }
+
       spawnIdx++;
     });
 
@@ -916,16 +933,16 @@ export class GameRoom extends Room<GameState> {
 
   /**
    * Apply stored input as movement. Called once per tick (60Hz).
-   * This ensures movement speed is consistent regardless of client input rate.
+   * Uses ServerMeshWalker for geodesic movement on the actual mesh surface.
+   * Replaces UV-based metric corrections, pole V-flip hacks, and torus U-negation.
    */
   private applyPlayerMovement(dt: number) {
     this.playerInputs.forEach((input, clientId) => {
       const player = this.state.players.get(clientId);
       if (!player || !player.alive) return;
 
-      // Tick boost timer and cooldown; apply speed multiplier while boost is active.
+      // Tick boost timer and cooldown; compute speed multiplier.
       const boostState = this.playerBoostStates.get(clientId);
-      // Apply level-based speed multiplier (SP parity: PlayerLevel.ts LEVEL_MOVE_SPEED_MULTIPLIERS)
       const levelSpeedMult = LEVEL_MOVE_SPEED_MULTIPLIERS[Math.min(player.playerLevel, LEVEL_MOVE_SPEED_MULTIPLIERS.length - 1)] ?? 1.0;
       let speedMultiplier = levelSpeedMult;
       if (boostState) {
@@ -944,94 +961,65 @@ export class GameRoom extends Room<GameState> {
         }
       }
 
-      const dx = input.moveX * PLAYER_SPEED * speedMultiplier * dt;
-      const dy = input.moveY * PLAYER_SPEED * speedMultiplier * dt;
+      const walker = this.surfaceManager.getWalker(clientId);
+      if (!walker) return;
 
-      // Apply metric corrections for sphere-like and peanut surfaces
-      const surfaceType = this.state.surfaceType;
-      const isSphereLike = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
-        || surfaceType === 'icosahedron' || surfaceType === 'capsule';
+      // Apply speed (world units/s): base speed × level × boost multipliers
+      walker.speed = PLAYER_WORLD_SPEED * speedMultiplier;
 
-      let correctedDx = dx;
-      let correctedDy = dy;
-      if (isSphereLike) {
-        const phi = player.surfaceV * Math.PI;
-        const sinPhi = Math.sin(phi);
-        const clampedSinPhi = Math.max(sinPhi, 0.3);
-        correctedDx = dx / clampedSinPhi;
-      } else if (surfaceType === 'peanut') {
-        // Peanut: surface of revolution with r(phi) = R*(1 + waistDepth*cos(2*phi)).
-        // Both U and V need metric corrections to maintain constant world-space speed.
-        // U correction: dx / (rNorm * sinPhi)
-        // V correction: dy / sqrt(rNorm^2 + drNorm^2)  (arc length along meridian)
-        const PEANUT_WAIST_DEPTH = 0.4;
-        const phi = player.surfaceV * Math.PI;
-        const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
-        const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
-        const sinPhi = Math.sin(phi);
-        correctedDx = dx / Math.max(rNorm * sinPhi, 0.3);  // matches sphere clamp — prevents pole oscillation
-        correctedDy = dy / Math.max(Math.sqrt(rNorm * rNorm + drNorm * drNorm), 0.1);
-      }
-      // Torus: negate U-delta because TorusSurface uses negated tangentU for a right-handed
-      // frame. Increasing U moves toward the old (left-handed) tangentU = camera left.
-      // Negating corrects so moveX>0 (D key) moves player in camera-right direction.
-      if (surfaceType === 'torus') {
-        correctedDx = -correctedDx;
-      }
+      // Move using camera axes from client input (same projection logic as SP MeshWalker)
+      const camRX = input.camRightX ?? 1;
+      const camRY = input.camRightY ?? 0;
+      const camRZ = input.camRightZ ?? 0;
+      const camUX = input.camUpX ?? 0;
+      const camUY = input.camUpY ?? 1;
+      const camUZ = input.camUpZ ?? 0;
 
-      player.surfaceU = this.wrapCoord(player.surfaceU + correctedDx);
+      walker.moveWithCameraAxes(
+        input.moveX, input.moveY,
+        camRX, camRY, camRZ,
+        camUX, camUY, camUZ,
+        dt,
+      );
 
-      // Cube surface wraps U (around 4 side faces) but CLAMPS V (bottom-to-top).
-      // CubeSurface.moveOnSurface() clamps V to [epsilon, 1-epsilon] because
-      // V=0 is bottom face center and V=1 is top face center (not periodic).
-      // Previous code incorrectly listed 'cube' as wrapsInV, causing the player
-      // to teleport between top and bottom faces when moving past V boundaries
-      // (user reported as "stuck at origin" because player oscillates).
-      const wrapsInV = surfaceType === 'torus' || surfaceType === 'pipe'
-        || surfaceType === 'mobius' || surfaceType === 'cube-ring'
-        || surfaceType === 'cube-tunnel';
-      if (wrapsInV) {
-        player.surfaceV = this.wrapCoord(player.surfaceV + dy);
-      } else if (isSphereLike || surfaceType === 'peanut') {
-        // Sphere/capsule/icosahedron/peanut poles: allow pole traversal by reflecting V.
-        // When V goes below 0, the player crosses the north pole — reflect V and
-        // shift U by 0.5 (continue to the antipodal longitude on the other side).
-        // Same logic applies at the south pole (V > 1).
-        //
-        // Key fix for oscillation (s40-06): without vFlip, the player holds W
-        // (constant dy) and oscillates at the pole — dy pushes V past the pole,
-        // reflection puts them back, repeat. The vFlip flag tracks whether the
-        // player has crossed an odd number of poles, flipping the effective dy
-        // sign so "forward" continues to mean "forward" past each pole crossing.
-        const vFlip = this.playerVFlip.get(clientId) ?? false;
-        // Use correctedDy for peanut (metric-corrected), dy for sphere-like
-        const effectiveDy = (surfaceType === 'peanut' ? correctedDy : dy) * (vFlip ? -1 : 1);
-        let newV = player.surfaceV + effectiveDy;
-        let newU = player.surfaceU; // already wrapped above
-        if (newV < 0) {
-          newV = -newV;
-          newU = this.wrapCoord(newU + 0.5);
-          this.playerVFlip.set(clientId, !vFlip);
-        } else if (newV > 1) {
-          newV = 2 - newV;
-          newU = this.wrapCoord(newU + 0.5);
-          this.playerVFlip.set(clientId, !vFlip);
-        }
-        // Keep V strictly inside (0, 1) to avoid degenerate tangent at exact pole
-        player.surfaceV = Math.max(0.001, Math.min(0.999, newV));
-        player.surfaceU = newU;
-      } else {
-        // Clamp V for cube and other surfaces that don't have pole traversal.
-        const vMin = surfaceType === 'cube' ? 0.003 : 0.05;
-        const vMax = surfaceType === 'cube' ? 0.997 : 0.95;
-        player.surfaceV = Math.max(vMin, Math.min(vMax, player.surfaceV + correctedDy));
-      }
+      // Write world-space state to schema fields
+      const walkerState = walker.getState();
+      this.applyWalkerStateToPlayer(player, walkerState);
+
+      // Update surfaceU/V for backwards compat: collision detection and
+      // telemetry still use these. Approximate via sphere parameterization
+      // (exact for sphere/peanut; approximate for torus/cube-ring/others).
+      const approxUV = this._worldPosToApproxUV(walkerState.wx, walkerState.wy, walkerState.wz);
+      player.surfaceU = approxUV.u;
+      player.surfaceV = approxUV.v;
 
       // Handle shooting (continuous action, applied per tick)
       if (input.shooting) {
         this.tryShoot(player);
       }
     });
+  }
+
+  /** Write ServerMeshWalker state to PlayerState schema fields. */
+  private applyWalkerStateToPlayer(player: PlayerState, state: ServerWalkerState): void {
+    player.wx = state.wx; player.wy = state.wy; player.wz = state.wz;
+    player.nx = state.nx; player.ny = state.ny; player.nz = state.nz;
+    player.tx = state.tangentX; player.ty = state.tangentY; player.tz = state.tangentZ;
+    player.bx = state.bitangentX; player.by = state.bitangentY; player.bz = state.bitangentZ;
+    player.walkerFaceIndex = state.faceIndex;
+  }
+
+  /**
+   * Convert world-space position to approximate UV (sphere parameterization).
+   * Used to keep surfaceU/V populated for backwards-compat collision detection.
+   * Accurate for sphere/peanut (same SOR axis structure). Approximate for others.
+   */
+  private _worldPosToApproxUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    const r = Math.sqrt(wx * wx + wy * wy + wz * wz);
+    if (r < 0.001) return { u: 0.5, v: 0.5 };
+    const v = Math.acos(Math.max(-1, Math.min(1, wy / r))) / Math.PI;
+    const u = ((Math.atan2(wz, wx) / (2 * Math.PI)) + 1) % 1;
+    return { u, v };
   }
 
   private tryShoot(player: PlayerState) {
@@ -2458,6 +2446,12 @@ export class GameRoom extends Room<GameState> {
             const respawnPos = this.getPlayerRespawnPosition(deathU, deathV);
             player.surfaceU = respawnPos.u;
             player.surfaceV = respawnPos.v;
+            // Teleport walker to respawn position; sync world-space state to schema
+            this.surfaceManager.teleportWalkerToUV(player.id, respawnPos.u, respawnPos.v);
+            const respawnWalker = this.surfaceManager.getWalker(player.id);
+            if (respawnWalker) {
+              this.applyWalkerStateToPlayer(player, respawnWalker.getState());
+            }
             this.playerInvincibility.set(player.id, 2.0);
             this.logger.log(`[GameRoom] ${player.name} hit, ${player.lives} lives remaining — respawned at (${respawnPos.u.toFixed(2)}, ${respawnPos.v.toFixed(2)}) (invincible 2s)`);
           }

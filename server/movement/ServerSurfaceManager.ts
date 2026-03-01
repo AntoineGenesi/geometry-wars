@@ -76,6 +76,18 @@ export class ServerSurfaceManager {
   }
 
   /**
+   * Teleport a player's walker to the position corresponding to a UV spawn coord.
+   * Used for respawn: the BVH snap inside teleportToWorldPos corrects any
+   * approximation error from the UV→world conversion.
+   */
+  teleportWalkerToUV(sessionId: string, u: number, v: number): void {
+    const walker = this.walkers.get(sessionId);
+    if (!walker) return;
+    const worldPos = this._uvToApproxWorldPos(u, v);
+    walker.teleportToWorldPos(worldPos.x, worldPos.y, worldPos.z);
+  }
+
+  /**
    * Convert UV spawn offset to approximate world position.
    * Uses sphere parameterization as a universal approximation.
    * The actual snap-to-surface inside ServerMeshWalker constructor
