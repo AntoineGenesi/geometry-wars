@@ -251,7 +251,7 @@ describe('ServerMeshWalker', () => {
   });
 
   describe('surface adherence', () => {
-    test('stays on sphere surface (within 0.01) after 100 moves', () => {
+    test('stays on sphere surface (within 0.02) after 100 moves', () => {
       const walker = makeSphereWalker();
       const RADIUS = 10;
 
@@ -269,13 +269,15 @@ describe('ServerMeshWalker', () => {
 
       const pos = walker.getWorldPosition();
       const distFromCenter = pos.length();
-      expect(Math.abs(distFromCenter - RADIUS)).toBeLessThan(0.01);
+      // Tolerance increased from 0.01 to 0.02 due to 10% speed increase (S44b-09)
+      // Higher speed → larger movement per frame → slightly more surface cumulative error
+      expect(Math.abs(distFromCenter - RADIUS)).toBeLessThan(0.02);
     });
   });
 
   describe('PLAYER_WORLD_SPEED constant', () => {
-    test('PLAYER_WORLD_SPEED is 3.0 (matches SP MeshWalker speed)', () => {
-      expect(PLAYER_WORLD_SPEED).toBe(3.0);
+    test('PLAYER_WORLD_SPEED is 3.3 (matches SP MeshWalker speed, updated S44b-09)', () => {
+      expect(PLAYER_WORLD_SPEED).toBe(3.3);
     });
   });
 });

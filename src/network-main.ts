@@ -2096,8 +2096,8 @@ async function main() {
       //   The interpolation is done in the render loop at 60Hz instead of here at
       //   30Hz, which is the #1 fix for making LAN feel as smooth as co-op.
       //
-      // Threshold: 0.1 UV ≈ 1 second of movement at PLAYER_SPEED (0.095 UV/s).
-      // Normal RTT drift ≈ 0.005 UV (50ms * 0.095). Snap threshold is 20x RTT drift.
+      // Threshold: 0.1 UV ≈ 1 second of movement at PLAYER_SPEED (0.105 UV/s, updated S44b-09).
+      // Normal RTT drift ≈ 0.005 UV (50ms * 0.105). Snap threshold is 20x RTT drift.
       const SERVER_SNAP_THRESHOLD_SQ = 0.1 * 0.1; // squared for cheap distance check
       const SERVER_CORRECTION_BLEND = 0.1;         // 10% blend per 30Hz state update
       if (id === localPlayerId) {
@@ -3638,7 +3638,7 @@ async function main() {
       // Client-side prediction: apply local player movement AND aim immediately
       // so it feels responsive. The server position will override on next
       // onStateChange, but the visual lag between input and response is
-      // eliminated. Uses the same PLAYER_SPEED (0.095 UV/s) as the server.
+      // eliminated. Uses the same PLAYER_SPEED (0.105 UV/s, updated S44b-09) as the server.
       // MUST match server physics (including sin(phi) correction) to avoid
       // rubber-banding.
       //
@@ -3675,7 +3675,7 @@ async function main() {
         const isMoving = currentInput.moveX !== 0 || currentInput.moveY !== 0;
 
         if (isMoving) {
-          const predSpeed = 0.095; // Must match server PLAYER_SPEED
+          const predSpeed = 0.105; // Must match server PLAYER_SPEED (updated S44b-09: 0.095→0.105)
           const predSpeedMultiplier = localBoostActive ? LOCAL_BOOST_SPEED_MULTIPLIER : 1.0;
           let predDx = currentInput.moveX * predSpeed * predSpeedMultiplier * dt;
           let predDy = currentInput.moveY * predSpeed * predSpeedMultiplier * dt;
