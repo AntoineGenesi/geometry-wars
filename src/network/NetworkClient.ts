@@ -20,6 +20,15 @@ export interface NetworkPlayerState {
   playerKills: number;
   /** Maps buff type → stack count. Present when server has Phase D enabled. */
   buffStacks?: { get(key: string): number | undefined; forEach(cb: (val: number, key: string) => void): void };
+  // World-space position from ServerMeshWalker (Phase 4 — s44-epic-06)
+  wx?: number; wy?: number; wz?: number;
+  // Surface normal (world-space)
+  nx?: number; ny?: number; nz?: number;
+  // Tangent frame: tangent (surface "right") and bitangent (surface "forward"/camera upHint)
+  tx?: number; ty?: number; tz?: number;
+  bx?: number; by?: number; bz?: number;
+  /** Face index under the walker (for telemetry/debugging) */
+  walkerFaceIndex?: number;
 }
 
 /** Bullet state from server */

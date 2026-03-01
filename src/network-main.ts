@@ -190,6 +190,7 @@ function netMainLog(...args: unknown[]): void {
 const _netTempPos = new THREE.Vector3();
 const _netTempDir = new THREE.Vector3();
 const _netTempNormal = new THREE.Vector3();
+const _netTempTangent = new THREE.Vector3();
 const _bulletTmpColor = new THREE.Color();
 // Pre-allocated temp vectors for geodesic bullet rendering (dual-barrel offset)
 const _bulletRight = new THREE.Vector3();
@@ -568,6 +569,8 @@ async function main() {
     });
     enemyGlowTrails.clear();
     remotePlayerTargetUV.clear();
+    remotePlayerTargetWorldPos.clear();
+    _localServerFrameValid = false;
     bulletTargetUV.clear();
     bulletGeodesicState.clear();
     geomTargetUV.clear();
@@ -904,6 +907,26 @@ async function main() {
   // change (30Hz). This is the #1 reason co-op feels smooth and LAN doesn't.
   const enemyTargetUV = new Map<string, { u: number; v: number }>();
   const remotePlayerTargetUV = new Map<string, { u: number; v: number; aimAngle: number }>();
+
+  // -- World-space targets for remote players (s44-epic-06) --
+  // When the server sends wx/wy/wz + tangent frame, store here for direct world-space lerp.
+  // This avoids UV→world conversion via surface.getPoint() which can be unstable at poles.
+  interface RemotePlayerWorldTarget {
+    x: number; y: number; z: number;   // surface position (unscaled, add normal offset when rendering)
+    nx: number; ny: number; nz: number; // surface normal
+    tx: number; ty: number; tz: number; // surface tangent (for orientPlayerOnSurface)
+    aimAngle: number;
+  }
+  const remotePlayerTargetWorldPos = new Map<string, RemotePlayerWorldTarget>();
+
+  // -- Server tangent frame for local player camera (s44-epic-06) --
+  // The server's MeshWalker provides a stable continuous bitangent that doesn't
+  // flip sign at poles (unlike UV-derived tangentV from surface.getPoint()).
+  // Updated in onStateChange, consumed in onRender for camera upHint.
+  const _localServerTangent  = new THREE.Vector3(1, 0, 0);
+  const _localServerBitangent = new THREE.Vector3(0, 0, 1);
+  const _localServerNormal   = new THREE.Vector3(0, 1, 0);
+  let _localServerFrameValid = false; // false until first server frame arrives
   // Track previous health per enemy to detect damage and spawn damage number popups
   const enemyPrevHealth = new Map<string, number>();
 
@@ -2071,6 +2094,18 @@ async function main() {
         const justRespawned = !prevAlive && netPlayer.alive;
         const isDeadNow = !netPlayer.alive;
 
+        // Store server's tangent frame for stable camera upHint (s44-epic-06).
+        // The server's MeshWalker provides a continuous bitangent that doesn't
+        // flip sign at UV poles (unlike tangentV from surface.getPoint()).
+        const hasServerFrame = netPlayer.bx !== undefined
+          && (netPlayer.bx !== 0 || netPlayer.by !== 0 || netPlayer.bz !== 0);
+        if (hasServerFrame) {
+          _localServerTangent.set(netPlayer.tx!, netPlayer.ty!, netPlayer.tz!);
+          _localServerBitangent.set(netPlayer.bx!, netPlayer.by!, netPlayer.bz!);
+          _localServerNormal.set(netPlayer.nx!, netPlayer.ny!, netPlayer.nz!);
+          _localServerFrameValid = true;
+        }
+
         const du = netPlayer.surfaceU - player.surfaceU;
         const dv = netPlayer.surfaceV - player.surfaceV;
         const errSq = du * du + dv * dv;
@@ -2084,8 +2119,20 @@ async function main() {
           // Also update mesh position immediately for hard snaps so the mesh appears
           // at the correct location before the render loop runs (avoids 1-frame flash
           // at wrong position on respawn, especially visible when mesh becomes visible).
-          const snapSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
-          player.mesh.position.copy(snapSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(snapSp.normal, 0.15);
+          // Use server world-space position when available (s44-epic-06) — avoids getPoint().
+          const hasWorldPos = netPlayer.wx !== undefined
+            && (netPlayer.wx !== 0 || netPlayer.wy !== 0 || netPlayer.wz !== 0);
+          if (hasWorldPos) {
+            const nx = netPlayer.nx ?? 0; const ny = netPlayer.ny ?? 1; const nz = netPlayer.nz ?? 0;
+            player.mesh.position.set(
+              netPlayer.wx! * currentMapSizeScaleFactor + nx * 0.15,
+              netPlayer.wy! * currentMapSizeScaleFactor + ny * 0.15,
+              netPlayer.wz! * currentMapSizeScaleFactor + nz * 0.15,
+            );
+          } else {
+            const snapSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
+            player.mesh.position.copy(snapSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(snapSp.normal, 0.15);
+          }
         } else {
           // Small RTT-induced drift: gentle blend toward server position.
           // This corrects accumulated float error without reversing movement direction.
@@ -2094,7 +2141,7 @@ async function main() {
           // Mesh position updated by render loop (onRender) at 60Hz — no update needed here.
         }
       } else {
-        // Remote player: store target UV for smooth per-frame interpolation
+        // Remote player: store target UV for smooth per-frame interpolation (HUD/DDA/minimap)
         remotePlayerTargetUV.set(id, {
           u: netPlayer.surfaceU,
           v: netPlayer.surfaceV,
@@ -2103,6 +2150,18 @@ async function main() {
         // Also update the Player object's UV (used for HUD, DDA, etc.)
         player.surfaceU = netPlayer.surfaceU;
         player.surfaceV = netPlayer.surfaceV;
+        // Store world-space target for direct position lerp (s44-epic-06).
+        // Avoids UV→world conversion via surface.getPoint() which can be unstable at poles.
+        const hasWorldPos = netPlayer.wx !== undefined
+          && (netPlayer.wx !== 0 || netPlayer.wy !== 0 || netPlayer.wz !== 0);
+        if (hasWorldPos) {
+          remotePlayerTargetWorldPos.set(id, {
+            x: netPlayer.wx!, y: netPlayer.wy!, z: netPlayer.wz!,
+            nx: netPlayer.nx ?? 0, ny: netPlayer.ny ?? 1, nz: netPlayer.nz ?? 0,
+            tx: netPlayer.tx ?? 1, ty: netPlayer.ty ?? 0, tz: netPlayer.tz ?? 0,
+            aimAngle: netPlayer.aimAngle,
+          });
+        }
       }
 
       // Detect alive state transitions -> trigger effects
@@ -2113,8 +2172,18 @@ async function main() {
         // before spawning explosion particles. The interpolated mesh position may be
         // lagging behind the actual death UV (onRender hasn't run yet for this frame).
         if (id !== localPlayerId) {
-          const deathSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
-          player.mesh.position.copy(deathSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(deathSp.normal, 0.15);
+          // Snap to death position — prefer world-space from server (s44-epic-06)
+          const deathWorldPos = remotePlayerTargetWorldPos.get(id);
+          if (deathWorldPos) {
+            player.mesh.position.set(
+              deathWorldPos.x * currentMapSizeScaleFactor + deathWorldPos.nx * 0.15,
+              deathWorldPos.y * currentMapSizeScaleFactor + deathWorldPos.ny * 0.15,
+              deathWorldPos.z * currentMapSizeScaleFactor + deathWorldPos.nz * 0.15,
+            );
+          } else {
+            const deathSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
+            player.mesh.position.copy(deathSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(deathSp.normal, 0.15);
+          }
         }
         particles.playerDeath(player.mesh.position);
         screenShake.shake(0.5, 0.4);
@@ -2192,6 +2261,7 @@ async function main() {
         allyGlowManager.removeGlow(id);
         nameLabels.removeLabel(id);
         remotePlayerTargetUV.delete(id);
+        remotePlayerTargetWorldPos.delete(id);
         playerAliveState.delete(id);
       }
     });
@@ -3152,6 +3222,7 @@ async function main() {
         allyGlowManager.removeGlow(id);
         nameLabels.removeLabel(id);
         remotePlayerTargetUV.delete(id);
+        remotePlayerTargetWorldPos.delete(id);
         playerAliveState.delete(id);
         netMainLog(`[NetworkMain] Player ${id} entity removed immediately on disconnect`);
       },
@@ -3946,14 +4017,25 @@ async function main() {
       // Still update camera (so orbit controls work in pause) and debug overlay
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer) {
-        const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-        const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
-        cameraController.updateFromFrame(
-          cameraPos,
-          sp.normal,
-          { tangent: sp.tangentU, bitangent: sp.tangentV },
-          lastFixedDt,
-        );
+        // Use server's stable tangent frame when available (s44-epic-06).
+        // Avoids UV-derived tangentV which can flip sign at poles, causing camera inversion.
+        if (_localServerFrameValid) {
+          cameraController.updateFromFrame(
+            localPlayer.mesh.position,
+            _localServerNormal,
+            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            lastFixedDt,
+          );
+        } else {
+          const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+          const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+          cameraController.updateFromFrame(
+            cameraPos,
+            sp.normal,
+            { tangent: sp.tangentU, bitangent: sp.tangentV },
+            lastFixedDt,
+          );
+        }
       }
       debugOverlay.update();
       return;
@@ -4089,13 +4171,18 @@ async function main() {
     // Per-frame interpolation for remote players (60Hz lerp toward 30Hz targets)
     // Same principle as enemies. Co-op moves players every frame via MeshWalker;
     // LAN must interpolate between 30Hz state changes for equivalent smoothness.
+    //
+    // s44-epic-06: When the server sends world-space position (wx/wy/wz + normal +
+    // tangent), lerp the mesh position directly in world space — no getPoint() call.
+    // This avoids UV→world conversion which can be unstable at poles.
+    // UV is still lerped for HUD, DDA, minimap, and dimming calculations.
     // -----------------------------------------------------------------------
     const PLAYER_LERP = 0.2; // Slightly faster than enemies for responsiveness
     remotePlayerTargetUV.forEach((target, id) => {
       const player = networkPlayers.get(id);
       if (!player || id === localPlayerId) return;
 
-      // Lerp internal UV toward target
+      // Always lerp UV (used by HUD, DDA, dimming, minimap)
       const currentU = player.surfaceU;
       const currentV = player.surfaceV;
       const newU = currentU + (target.u - currentU) * PLAYER_LERP;
@@ -4103,10 +4190,25 @@ async function main() {
       player.surfaceU = newU;
       player.surfaceV = newV;
 
-      // Update 3D position from interpolated UV
-      const sp: SurfacePoint = surf.getPoint(newU, newV);
-      player.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
-      orientPlayerOnSurface(player, sp.normal, target.aimAngle, sp.tangentU);
+      // Update 3D position — use world-space target if available (s44-epic-06)
+      const worldTarget = remotePlayerTargetWorldPos.get(id);
+      if (worldTarget) {
+        // Lerp directly toward server world position (no getPoint() needed)
+        _netTempPos.set(
+          worldTarget.x * currentMapSizeScaleFactor + worldTarget.nx * 0.15,
+          worldTarget.y * currentMapSizeScaleFactor + worldTarget.ny * 0.15,
+          worldTarget.z * currentMapSizeScaleFactor + worldTarget.nz * 0.15,
+        );
+        player.mesh.position.lerp(_netTempPos, PLAYER_LERP);
+        _netTempNormal.set(worldTarget.nx, worldTarget.ny, worldTarget.nz);
+        _netTempTangent.set(worldTarget.tx, worldTarget.ty, worldTarget.tz);
+        orientPlayerOnSurface(player, _netTempNormal, target.aimAngle, _netTempTangent);
+      } else {
+        // Fallback: UV-based positioning (legacy server or before first world-pos arrives)
+        const sp: SurfacePoint = surf.getPoint(newU, newV);
+        player.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
+        orientPlayerOnSurface(player, sp.normal, target.aimAngle, sp.tangentU);
+      }
 
       // Update glow trail with interpolated position
       const trail = playerGlowTrails.get(id);
@@ -4281,27 +4383,61 @@ async function main() {
     const localPlayer = networkPlayers.get(localPlayerId);
     if (localPlayer) {
       const isLocalAlive = playerAliveState.get(localPlayerId) ?? true;
-      let cameraSourceU = localPlayer.surfaceU;
-      let cameraSourceV = localPlayer.surfaceV;
 
       if (!isLocalAlive) {
-        // Spectating: find the first alive remote player to follow
+        // Spectating: find the first alive remote player to follow.
+        // Use their world-space data if available; otherwise fall back to UV.
+        let spectateId = '';
         networkPlayers.forEach((player, id) => {
           if (id !== localPlayerId && (playerAliveState.get(id) ?? true)) {
-            cameraSourceU = player.surfaceU;
-            cameraSourceV = player.surfaceV;
+            spectateId = id;
           }
         });
+        if (spectateId) {
+          const spectateWorldPos = remotePlayerTargetWorldPos.get(spectateId);
+          if (spectateWorldPos) {
+            _netTempPos.set(
+              spectateWorldPos.x * currentMapSizeScaleFactor + spectateWorldPos.nx * 0.15,
+              spectateWorldPos.y * currentMapSizeScaleFactor + spectateWorldPos.ny * 0.15,
+              spectateWorldPos.z * currentMapSizeScaleFactor + spectateWorldPos.nz * 0.15,
+            );
+            _netTempNormal.set(spectateWorldPos.nx, spectateWorldPos.ny, spectateWorldPos.nz);
+            _netTempTangent.set(spectateWorldPos.tx, spectateWorldPos.ty, spectateWorldPos.tz);
+            cameraController.updateFromFrame(
+              _netTempPos,
+              _netTempNormal,
+              { tangent: _netTempTangent, bitangent: _netTempNormal }, // use normal as fallback bitangent
+              lastFixedDt,
+            );
+          } else {
+            const spectatePlayer = networkPlayers.get(spectateId)!;
+            const sp = surf.getPoint(spectatePlayer.surfaceU, spectatePlayer.surfaceV);
+            const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+            cameraController.updateFromFrame(
+              cameraPos, sp.normal, { tangent: sp.tangentU, bitangent: sp.tangentV }, lastFixedDt,
+            );
+          }
+        }
+      } else if (_localServerFrameValid) {
+        // Normal case: follow local player with server's stable tangent frame (s44-epic-06).
+        // Using _localServerBitangent avoids UV-derived tangentV which flips sign at poles.
+        cameraController.updateFromFrame(
+          localPlayer.mesh.position,
+          _localServerNormal,
+          { tangent: _localServerTangent, bitangent: _localServerBitangent },
+          lastFixedDt,
+        );
+      } else {
+        // Fallback: UV-based frame (legacy server or no server frame yet)
+        const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+        const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+        cameraController.updateFromFrame(
+          cameraPos,
+          sp.normal,
+          { tangent: sp.tangentU, bitangent: sp.tangentV },
+          lastFixedDt,
+        );
       }
-
-      const sp = surf.getPoint(cameraSourceU, cameraSourceV);
-      const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
-      cameraController.updateFromFrame(
-        cameraPos,
-        sp.normal,
-        { tangent: sp.tangentU, bitangent: sp.tangentV },
-        lastFixedDt,
-      );
     }
 
     // Apply surface projection for geoms and bullets (same as co-op)
