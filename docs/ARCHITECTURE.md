@@ -71,7 +71,7 @@ Server-authoritative multiplayer using Colyseus 0.15.x with Schema v2 binary sta
 - **LAN Hosting**: `vite-plugin-lan.ts` adds `/__lan/*` middleware to Vite dev server, spawning Colyseus as a child process. `src/network/LANClient.ts` provides the client-side API. Includes subnet scanning for server discovery.
 - **Interest Management**: `server/systems/InterestManager.ts` + `PriorityQueue.ts` provide per-client entity filtering based on UV-distance priority classification.
 
-For full details on connection flow, the ES2022 encoding bug, LAN architecture, and lessons learned, see **[LAN Multiplayer Architecture](./lan-multiplayer-architecture.md)**.
+For MP architecture, code path differences, and parity audit, see **[MP-ARCHITECTURE.md](./MP-ARCHITECTURE.md)** and **[mp-architecture-audit.md](./mp-architecture-audit.md)**. (Historical LAN deep-dive archived at `archive/docs/lan-multiplayer-architecture.md`.)
 
 ## Game Loop
 

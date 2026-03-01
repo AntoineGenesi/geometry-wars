@@ -116,7 +116,7 @@ Source: `src/multiplayer/AuraSystem.ts`
 
 ## Networking Architecture
 
-> For the full deep-dive see `docs/lan-multiplayer-architecture.md`.
+> For the full deep-dive see `docs/MP-ARCHITECTURE.md` and `docs/mp-architecture-audit.md`.
 
 The LAN mode uses a **server-authoritative** model:
 
