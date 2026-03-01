@@ -709,14 +709,33 @@ export class BuffManager {
    * @param playerPos - Player world position
    * @param enemies - All active enemies
    * @param scorePopups - Optional popup manager; when provided, damage numbers appear for ShockAura hits
+   * @returns Array of enemies that died from aura/burn damage this frame
    */
-  update(dt: number, playerPos: THREE.Vector3, enemies: BaseEnemy[], scorePopups?: ScorePopupManager): void {
+  update(dt: number, playerPos: THREE.Vector3, enemies: BaseEnemy[], scorePopups?: ScorePopupManager): BaseEnemy[] {
     // Reset per-frame volatile VFX budget so onEnemyDeath() can track this frame's count
     this._volatileVfxThisFrame = 0;
+
+    // Track enemies alive before update
+    const killedThisFrame: BaseEnemy[] = [];
+    const aliveBeforeUpdate = new Set<BaseEnemy>();
+    for (const enemy of enemies) {
+      if (enemy.alive) {
+        aliveBeforeUpdate.add(enemy);
+      }
+    }
 
     this.updateShockAura(dt, playerPos, enemies, scorePopups);
     this.updateBurning(dt);
     this.updateShockArcs(dt);
+
+    // Detect enemies that died from aura/burn this frame
+    for (const enemy of aliveBeforeUpdate) {
+      if (!enemy.alive) {
+        killedThisFrame.push(enemy);
+      }
+    }
+
+    return killedThisFrame;
   }
 
   // -----------------------------------------------------------------------

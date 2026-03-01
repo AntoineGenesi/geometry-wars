@@ -427,7 +427,13 @@ export class GameLoop {
 
     // Update buff system (shock aura, burning DOT, stat refresh)
     if (ctx.player.alive) {
-      ctx.buffManager.update(dt, ctx.playerWalker.position, ctx.enemySpawner.getEnemies(), ctx.scorePopups);
+      const auraKills = ctx.buffManager.update(dt, ctx.playerWalker.position, ctx.enemySpawner.getEnemies(), ctx.scorePopups);
+
+      // Red screen flash for enemies killed by aura/burn damage
+      if (auraKills.length > 0) {
+        UIHelpers.screenFlash('rgba(255, 60, 60, 0.4)', 200);
+      }
+
       ctx.shockArcRenderer.update(ctx.buffManager.shockArcs);
       // Update buff aura ring visuals (per-buff shader effects around player)
       const activeBuffsForAura = ctx.buffManager.getActiveBuffs().map(b => ({

@@ -12,6 +12,7 @@ import { ScorePopupManager } from '../effects/ScorePopup';
 import { EnemyInstanceManager } from '../rendering/EnemyInstanceManager';
 import { SpatialHash } from './SpatialHash';
 import type { BloomEffectManager } from '../effects/BloomEffectManager';
+import { UIHelpers } from '../ui/UIHelpers';
 
 /**
  * CollisionSystem
@@ -156,6 +157,8 @@ export class CollisionSystem {
             const jitterDuration = 0.15;
             screenShake.shake(jitterIntensity, jitterDuration);
             getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
+            // Red screen flash when enemy dies from bullet
+            UIHelpers.screenFlash('rgba(255, 60, 60, 0.4)', 200);
             onKillLog?.(enemyType, color.getHex());
 
             // Trigger bloom pulse for boss deaths only
