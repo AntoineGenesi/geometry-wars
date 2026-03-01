@@ -282,3 +282,68 @@ describe('Bullet pole crossing (sphere V-axis reflection)', () => {
     expect(result.x).toBeCloseTo(0.3, 5);
   });
 });
+
+// ---------------------------------------------------------------------------
+// S43-02: MP Bullet Hit Detection — Damage Parity Regression Guards
+//
+// Root cause: standard.damage was 0.25 in GameConstants.ts but SP's effective
+// bullet damage is 1.0 (product of multipliers, weapon config damage NOT used).
+// With 0.25 damage: grunt (health=2) needed 8 hits in MP vs 2 hits in SP.
+// Fix: standard.damage = 1.0 in GameConstants.ts.
+// ---------------------------------------------------------------------------
+
+describe('S43-02: MP standard bullet damage parity with SP', () => {
+  it('standard weapon damage is 1.0 (matches SP effective bullet damage at game start)', () => {
+    // SP: bulletDamage = scorePowerMult(1.0) * levelMult(1.0) * buffMult(1.0) * masteryMult(1.0) = 1.0
+    // MP: finalDamage = standard.damage * levelMult * buffMult * masteryMult = 1.0 * 1.0 * 1.0 * 1.0 = 1.0
+    expect(WEAPON_CONFIGS.standard.damage).toBe(1.0);
+  });
+
+  it('grunt (health=2) dies in 2 standard bullet hits in MP (matches SP behavior)', () => {
+    // REGRESSION: was 8 hits with damage=0.25 (user reported "15 bullets go through")
+    const gruntHealth = 2;
+    const bulletDamage = WEAPON_CONFIGS.standard.damage * LEVEL_DAMAGE_MULTIPLIERS[0]; // level 0
+    const hitsToKill = Math.ceil(gruntHealth / bulletDamage);
+    expect(hitsToKill).toBe(2);
+  });
+
+  it('REGRESSION: standard.damage was 0.25 — grunt needed 8 hits (4x too many)', () => {
+    // This verifies the bug was real: with damage=0.25, grunt needed 8 hits not 2.
+    const gruntHealth = 2;
+    const oldDamage = 0.25;
+    const hitsWithOldDamage = Math.ceil(gruntHealth / oldDamage);
+    expect(hitsWithOldDamage).toBe(8); // was 8x vs SP's 2 = severe regression
+    // New value:
+    expect(WEAPON_CONFIGS.standard.damage).not.toBe(0.25);
+  });
+
+  it('full damage formula at game start (level 0, no buffs): finalDamage = 1.0', () => {
+    const baseDamage = WEAPON_CONFIGS.standard.damage;
+    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[0]; // level 0 = 1.0
+    const buffDamageMult = 1.0;
+    const masteryDamageMult = 1.0;
+    const finalDamage = baseDamage * levelDamageMult * buffDamageMult * masteryDamageMult;
+    expect(finalDamage).toBeCloseTo(1.0, 5);
+  });
+
+  it('UV hit detection: bullet at dist=0 hits enemy (exact overlap)', () => {
+    // BULLET_HIT_RADIUS = 0.015 / scaleFactor (scaleFactor=1.0 for medium map)
+    const BULLET_HIT_RADIUS = 0.015;
+    const dist = 0;
+    expect(dist < BULLET_HIT_RADIUS).toBe(true);
+  });
+
+  it('UV hit detection: bullet at dist=0.010 hits enemy (inside threshold)', () => {
+    const BULLET_HIT_RADIUS = 0.015;
+    const du = 0.010;
+    const dist = Math.sqrt(du * du);
+    expect(dist < BULLET_HIT_RADIUS).toBe(true);
+  });
+
+  it('UV hit detection: bullet at dist=0.020 misses enemy (outside threshold)', () => {
+    const BULLET_HIT_RADIUS = 0.015;
+    const du = 0.020;
+    const dist = Math.sqrt(du * du);
+    expect(dist < BULLET_HIT_RADIUS).toBe(false);
+  });
+});

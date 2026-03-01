@@ -9,9 +9,13 @@
 
 // Mirrors src/weapons/WeaponTypes.ts WEAPON_CONFIGS.
 // damage values must stay in sync with SP so displayed damage numbers match.
-// standard uses 0.25 to match SP balance (S38c-05 fix: was 1, causing 4x damage in MP).
+// S43-02 fix: standard.damage = 1.0 to match SP parity.
+// SP's CollisionSystem receives bulletDamage = scorePowerMult * levelMult * buffMult * masteryMult * upgradeMult = 1.0 at game start.
+// The SP WeaponTypes.ts damage:0.25 is used only for UI display, NOT in the SP collision path.
+// Previous value of 0.25 (set in S38c-05) caused MP bullets to do 4x less damage than SP:
+//   grunt health=2, 0.25 damage/bullet → 8 hits needed vs SP's 2 hits. Root cause of user bug.
 export const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number; damage: number }> = {
-  standard:        { ammo: -1,  damageMultiplier: 1.0, damage: 0.25 },
+  standard:        { ammo: -1,  damageMultiplier: 1.0, damage: 1.0 },
   spread:          { ammo: 50,  damageMultiplier: 0.8, damage: 1   },
   piercing:        { ammo: 30,  damageMultiplier: 1.5, damage: 3   },
   homing:          { ammo: 20,  damageMultiplier: 1.2, damage: 6   },
