@@ -15,7 +15,7 @@ import { buildChevron3D } from '../utils/GeometryBuilder';
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLAYER_SPEED = 0.08; // units / sec in UV space - very slow for precise control
+const PLAYER_SPEED = 0.088; // units / sec in UV space - increased from 0.08 (10% faster) per S44b-09
 const FIRE_RATE = 10; // shots / sec
 const FIRE_INTERVAL = 1 / FIRE_RATE;
 const INVINCIBILITY_DURATION = 2; // seconds after respawn

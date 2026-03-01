@@ -32,13 +32,15 @@ export const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: nu
 // ---------------------------------------------------------------------------
 
 // Movement speed in UV units per second.
-// Co-op uses MeshWalker at 3.0 world units/s. Surface radius = 10 (DEFAULT_SURFACE_SCALE).
-// V direction arc = pi * 10 ≈ 31.4 world units. So 3.0 / (pi*10) ≈ 0.095 UV/s.
-export const PLAYER_SPEED = 0.095;
+// Co-op uses MeshWalker at 3.3 world units/s. Surface radius = 10 (DEFAULT_SURFACE_SCALE).
+// V direction arc = pi * 10 ≈ 31.4 world units. So 3.3 / (pi*10) ≈ 0.105 UV/s.
+// S44b-09: Increased from 0.095 to 0.105 (10% faster) per user feedback.
+export const PLAYER_SPEED = 0.105;
 
 // Player speed in world units/s — used by ServerMeshWalker (MeshWalker-based movement).
 // Matches SP MeshWalker speed. UV-based PLAYER_SPEED is kept for bullets/enemies.
-export const PLAYER_WORLD_SPEED = 3.0;
+// S44b-09: Increased from 3.0 to 3.3 (10% faster) per user feedback.
+export const PLAYER_WORLD_SPEED = 3.3;
 
 // Bullet speed in UV/s. Co-op bullets move at 4.0 world units/s.
 // On a sphere of radius 10: 4.0 / (pi*10) ≈ 0.127 UV/s.
