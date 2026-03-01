@@ -8,25 +8,36 @@
 
 ---
 
-## S43-06: Peanut Movement Speed — Perceptual Difference (Understanding Test)
+## S43-07: MP Player-Enemy Collision Radius (Dying Too Early)
 
-**Status:** Code confirmed correct — linear speed is constant. Perceptual difference is expected geometry behavior.
+**Status:** Changes made — user testing required. Level 5 (Puppeteer) not achievable for LAN MP collision without two connected clients.
 
-**Root cause:** Peanut bulge radius (r≈16.8) vs. waist radius (r≈7.2) — 2.33× difference. At constant linear speed
-(6 m/s), angular traversal is 2.33× slower on the bulge. This is not a code bug but a consequence of the peanut's
-extreme geometry.
+**What was fixed:** Players were dying too early in MP on sphere, peanut, cube ring, and torus because UV distance was being used instead of 3D world-space distance. The UV-to-world conversion is highly distorted on these surfaces (e.g. 0.04 UV ≈ 2.1 world units on peanut bulge). Fixed by adding exact 3D chord distance functions for all affected surfaces, and reducing the sphere threshold from 0.5 → 0.4 to match SP.
 
-**Regression test:** `src/test/s43-06-peanut-speed-uniform.regression.test.ts` — confirms all regions stay within
-10% of target speed (6.0 m/s).
+### Test: MP Collision Radius — Sphere
 
-### Test: Peanut Speed Perception
+- [ ] Play LAN MP on sphere map
+- [ ] Move player next to an enemy without touching visually → should NOT die
+- [ ] Move player INTO an enemy (visually overlapping) → should die immediately
+- [ ] Compare to SP on sphere: dying behavior should feel the same
 
-- [ ] Load SP game on Peanut map
-- [ ] Move around on the **bulge** (large rounded areas near poles) — note your speed
-- [ ] Move to the **waist** (narrow middle area) — compare speed feel
-- [ ] **Expected:** Linear speed is same, but waist WILL appear to "zoom" faster due to smaller circumference (2.33× angular difference — this is expected behavior from geometry, not a bug)
-- [ ] Verify no severe stutter or complete stops anywhere on peanut surface
-- [ ] SP peanut movement should feel smooth (no abrupt speed changes, just continuous gradual variation)
+### Test: MP Collision Radius — Peanut
+
+- [ ] Play LAN MP on peanut map
+- [ ] Move near an enemy without touching → should NOT die (was dying ~1-2 ship-widths away before fix)
+- [ ] Move into enemy visually → should die
+- [ ] Test both at the bulge and near the waist/neck area
+
+### Test: MP Collision Radius — Cube Ring
+
+- [ ] Play LAN MP on cube ring map
+- [ ] Verify enemy must visually touch player to deal damage
+- [ ] Move parallel to an enemy on the same face (same ring position, different cross-section position) → should not die until visually touching
+
+### Test: SP Unaffected
+
+- [ ] Play single-player on sphere, peanut, cube ring
+- [ ] Collision behavior should be unchanged (SP uses CollisionSystem.ts, not the server code)
 
 ---
 
