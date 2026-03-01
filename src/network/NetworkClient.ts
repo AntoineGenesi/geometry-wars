@@ -305,8 +305,22 @@ export class NetworkClient {
 
       console.log(`[Network] Connected as ${this.localPlayerId}`);
 
-      // Set up state change listeners
-      this.setupListeners();
+      // Set up state change listeners.
+      // IMPORTANT: If setupListeners() throws (e.g. state schema not yet decoded),
+      // we must call room.leave() BEFORE rethrowing. Without this, the server has
+      // already created a player in onJoin for this session. If connect() then retries
+      // with the fallback URL, a second joinOrCreate creates a SECOND player entry —
+      // the root cause of ghost spawns from one connection.
+      try {
+        this.setupListeners();
+      } catch (setupError) {
+        console.error('[Network] setupListeners failed — leaving room to prevent ghost player:', setupError);
+        this.room.leave();
+        this.room = null;
+        this.localPlayerId = '';
+        this.connected = false;
+        throw setupError;
+      }
 
       // The initial onStateChange fires DURING joinOrCreate (before our handler
       // is registered), and since the game hasn't started, the server tick does
