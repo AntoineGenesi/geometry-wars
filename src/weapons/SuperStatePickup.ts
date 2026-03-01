@@ -11,7 +11,7 @@ export interface SurfaceTransform {
 }
 
 // World-space pickup collision radius. See WeaponPickup.ts for rationale.
-const PICKUP_WORLD_RADIUS = 0.6;
+const PICKUP_WORLD_RADIUS = 0.3;
 
 export class SuperStatePickup {
   readonly mesh: THREE.Group;

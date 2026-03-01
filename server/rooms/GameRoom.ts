@@ -2414,7 +2414,9 @@ export class GameRoom extends Room<GameState> {
     // Entity sizes do NOT scale with map size, so these are fixed world-unit values.
     const ENEMY_HIT_WORLD   = 0.4;   // matches SP: player(0.1) + enemy(0.3) = 0.4
     const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
-    const PICKUP_WORLD      = 0.6;   // matches client-side PICKUP_WORLD_RADIUS
+    // S44b-06: match client-side PICKUP_WORLD_RADIUS (0.15) * mapSizeScaleFactor.
+    // Previous fixed 0.6 was 2x too large at MEDIUM (client uses 0.15*scale=0.15 at MEDIUM).
+    const PICKUP_WORLD      = 0.15 * scaleFactor;   // matches client WeaponPickup/BuffPickup radius
 
     // --- UV thresholds (remaining surfaces without exact 3D formula) ---
     // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin — unchanged.
