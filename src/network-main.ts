@@ -192,9 +192,6 @@ const _netTempDir = new THREE.Vector3();
 const _netTempNormal = new THREE.Vector3();
 const _netTempTangent = new THREE.Vector3();
 const _bulletTmpColor = new THREE.Color();
-// Pre-allocated temp vectors for geodesic bullet rendering (dual-barrel offset)
-const _bulletRight = new THREE.Vector3();
-const _bulletOffsetPos = new THREE.Vector3();
 
 // Pre-allocated temp vectors for camera-frame aim-angle correction (s40-03)
 const _aimCamRight = new THREE.Vector3();
@@ -4333,10 +4330,10 @@ async function main() {
     // Server sends b.surfaceU/V/dirX/dirY on each state patch (~20Hz) used for spawn init.
     // Client FaceWalker advances independently between patches for smooth geodesic rendering.
     // BulletInstanceManager provides GPU-instanced rendering.
-    // Standard weapon: renders 2 parallel visual bullets (matching SP dual-barrel).
+    // Server fires 2 separate bullets for Standard (dual-barrel) and 5 for Spread.
+    // Each server bullet renders as one visual bullet here.
     // -----------------------------------------------------------------------
     const BULLET_SPEED_WORLD = 4.0; // world units/sec — matches SP Bullet.ts speed
-    const DUAL_BARREL_OFFSET = 0.15;
     const nowRenderMs = performance.now();
     // Use actual frame time so bullet speed is correct at any display refresh rate.
     const renderDt = lastRenderTimestampMs > 0
@@ -4363,32 +4360,12 @@ async function main() {
         const weapColor = WEAPON_CONFIGS[weapType]?.color;
         const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
 
-        if (weapType === WeaponType.Standard) {
-          // Dual-barrel: render 2 parallel visual bullets offset perpendicular to direction.
-          // Matches SP fireStandard() which fires leftOrigin and rightOrigin ±0.15 from aim.
-          _bulletRight.crossVectors(_netTempDir, result.normal).normalize();
-
-          const lId = id + '_l';
-          const rId = id + '_r';
-          _bulletOffsetPos.copy(_netTempPos).addScaledVector(_bulletRight, -DUAL_BARREL_OFFSET);
-          if (!bulletInstanceIds.has(id)) {
-            bulletInstanceManager.addBullet(lId, bulletVisual, _bulletOffsetPos, _netTempDir, color);
-          } else {
-            bulletInstanceManager.updateBullet(lId, _bulletOffsetPos, _netTempDir);
-          }
-          _bulletOffsetPos.copy(_netTempPos).addScaledVector(_bulletRight, DUAL_BARREL_OFFSET);
-          if (!bulletInstanceIds.has(id)) {
-            bulletInstanceManager.addBullet(rId, bulletVisual, _bulletOffsetPos, _netTempDir, color);
-          } else {
-            bulletInstanceManager.updateBullet(rId, _bulletOffsetPos, _netTempDir);
-          }
+        // Server now fires 2 separate bullets for Standard (Blaster) and 5 for Spread,
+        // so each server bullet renders as a single visual (no client-side dual-barrel trick).
+        if (!bulletInstanceIds.has(id)) {
+          bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
         } else {
-          // Non-standard weapons: single visual bullet
-          if (!bulletInstanceIds.has(id)) {
-            bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
-          } else {
-            bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
-          }
+          bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
         }
         bulletInstanceIds.add(id);
       } else {

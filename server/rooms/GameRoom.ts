@@ -995,7 +995,11 @@ export class GameRoom extends Room<GameState> {
 
       // Handle shooting (continuous action, applied per tick)
       if (input.shooting) {
-        this.tryShoot(player);
+        if (player.weaponType === 'laser_beam') {
+          this.applyLaserDamage(player, dt);
+        } else {
+          this.tryShoot(player);
+        }
       }
     });
   }
@@ -1030,6 +1034,9 @@ export class GameRoom extends Room<GameState> {
 
     (player as unknown as { lastShotTime: number }).lastShotTime = now;
 
+    // Capture weapon type BEFORE ammo deduction so the last shot fires the correct pattern.
+    const weaponType = player.weaponType;
+
     // Deduct ammo per shot (not per tick). Standard weapon has infinite ammo (-1).
     if (player.weaponAmmo > 0) {
       player.weaponAmmo--;
@@ -1039,15 +1046,41 @@ export class GameRoom extends Room<GameState> {
       }
     }
 
-    // Create bullet
+    const angle = player.aimAngle;
+
+    if (weaponType === 'spread') {
+      // Spread shot: 5 bullets in a 30° fan pattern (matches SP fireSpread base config)
+      const bulletCount = 5;
+      const spreadAngle = Math.PI / 6; // 30° total spread
+      const centerIdx = Math.floor(bulletCount / 2); // = 2 (center bullet)
+      for (let i = 0; i < bulletCount; i++) {
+        const angleOffset = (i - centerIdx) * (spreadAngle / (bulletCount - 1));
+        this.spawnBullet(player, angle + angleOffset);
+      }
+    } else if (weaponType === 'standard') {
+      // Standard (Blaster): dual-barrel — fire 2 bullets aimed in same direction.
+      // Client renders each server bullet as-is; two bullets = two visible trails.
+      // Small perpendicular UV offset so bullets don't perfectly overlap at spawn.
+      const perpAngle = angle + Math.PI / 2;
+      const uvOffset = 0.003; // ~0.1 world units on sphere r=10
+      const duPerp = Math.cos(perpAngle) * uvOffset;
+      const dvPerp = Math.sin(perpAngle) * uvOffset;
+      this.spawnBullet(player, angle, -duPerp, -dvPerp);
+      this.spawnBullet(player, angle,  duPerp,  dvPerp);
+    } else {
+      // Default: single bullet for all other weapons
+      this.spawnBullet(player, angle);
+    }
+  }
+
+  /** Spawn a single bullet for a player at the given aim angle. */
+  private spawnBullet(player: PlayerState, angle: number, duOffset = 0, dvOffset = 0): void {
     const bullet = new BulletState();
     bullet.id = `b${this.nextBulletId++}`;
     bullet.ownerId = player.id;
 
-    // Position at player
-    const angle = player.aimAngle;
-    bullet.x = player.surfaceU;
-    bullet.y = player.surfaceV;
+    bullet.x = player.surfaceU + duOffset;
+    bullet.y = player.surfaceV + dvOffset;
     bullet.z = 0;
     bullet.dirX = Math.cos(angle);
     bullet.dirY = Math.sin(angle);
@@ -1062,6 +1095,85 @@ export class GameRoom extends Room<GameState> {
     bullet.age = 0;
 
     this.state.bullets.push(bullet);
+  }
+
+  /**
+   * Laser beam: apply continuous area damage each tick (no projectile bullet).
+   * Checks enemies within a cone in the aim direction and damages them directly.
+   * Mirrors SP WeaponManager.fireLaser() behaviour.
+   */
+  private applyLaserDamage(player: PlayerState, dt: number): void {
+    if (!player.alive) return;
+
+    // Deduct ammo per tick. Laser ammo=200 at 60 ticks/sec ≈ 3.3 seconds duration.
+    if (player.weaponAmmo > 0) {
+      player.weaponAmmo--;
+      if (player.weaponAmmo <= 0) {
+        player.weaponType = 'standard';
+        player.weaponAmmo = -1;
+      }
+    }
+
+    // Laser parameters — tuned to match SP damage feel
+    const LASER_RANGE = 0.45;         // UV reach (~half the surface from equator)
+    const LASER_DOT_THRESHOLD = 0.90; // cos(~26°) — moderately narrow cone
+    const LASER_DPS = 2.0;            // damage per second (matches WeaponConfig.damage)
+
+    const aimDirX = Math.cos(player.aimAngle);
+    const aimDirY = Math.sin(player.aimAngle);
+
+    const levelIdx = Math.min(player.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+    const buffDamageMult = this.calculateBuffDamageMult(player);
+    const damage = LASER_DPS * levelDamageMult * buffDamageMult * dt;
+
+    const enemiesToKill: number[] = [];
+
+    this.state.enemies.forEach((enemy, eIndex) => {
+      if (!enemy.alive) return;
+
+      // Vector from player to enemy (wrap-aware U axis)
+      let dU = enemy.surfaceU - player.surfaceU;
+      let dV = enemy.surfaceV - player.surfaceV;
+      if (dU > 0.5) dU -= 1; else if (dU < -0.5) dU += 1;
+
+      const dist = Math.sqrt(dU * dU + dV * dV);
+      if (dist > LASER_RANGE || dist < 0.001) return;
+
+      // Dot product: is enemy in the aim direction?
+      const dot = (dU / dist) * aimDirX + (dV / dist) * aimDirY;
+      if (dot < LASER_DOT_THRESHOLD) return;
+
+      // Apply continuous damage
+      enemy.health -= damage;
+
+      if (enemy.health <= 0) {
+        enemy.alive = false;
+        this.enemyAI.delete(enemy.id);
+        enemiesToKill.push(eIndex);
+
+        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
+        player.playerKills++;
+        const newLevel = this.getPlayerLevel(player.playerKills);
+        if (newLevel > player.playerLevel) {
+          player.playerLevel = newLevel;
+          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+        }
+        this.trackDDAKill(player.id);
+
+        if (Math.random() < WEAPON_DROP_CHANCE) {
+          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+      }
+    });
+
+    // Remove killed enemies in reverse order to preserve indices
+    for (let i = enemiesToKill.length - 1; i >= 0; i--) {
+      this.state.enemies.splice(enemiesToKill[i], 1);
+    }
   }
 
   private useBomb(player: PlayerState) {
