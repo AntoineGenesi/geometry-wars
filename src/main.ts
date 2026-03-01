@@ -44,6 +44,7 @@ import { EffectsPanel } from './ui/EffectsPanel';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { AnalyticsPanel } from './ui/AnalyticsPanel';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
+import { WeaponMasteryScreen } from './ui/WeaponMasteryScreen';
 import { MasteryStore, XP_THRESHOLDS } from './systems/MasteryStore';
 import { MasteryPointStore } from './systems/MasteryPointStore';
 import { MatchUpgradeTracker } from './systems/MatchUpgradeTracker';
@@ -1414,6 +1415,25 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
       // Show mastery progress screen if any XP was earned this game
       const anyXP = xpResults.some(r => r.xpAfter > r.xpBefore);
+      const anyLevelUp = xpResults.some(r => r.leveledUp);
+
+      const proceedAfterMastery = () => {
+        // If any weapon leveled up, show the upgrade tree so the player can see/spend new nodes
+        if (anyLevelUp) {
+          const upgradeScreen = new WeaponMasteryScreen();
+          upgradeScreen.setPointStore(masteryPointStore);
+          upgradeScreen.show(masteryStore);
+          upgradeScreen.onClose(() => {
+            upgradeScreen.dispose();
+            game.stop();
+            window.location.href = window.location.pathname;
+          });
+        } else {
+          game.stop();
+          window.location.href = window.location.pathname;
+        }
+      };
+
       if (anyXP) {
         const masteryScreen = new MasteryProgressScreen();
         masteryScreen.show(
@@ -1424,13 +1444,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
           },
           () => {
             masteryScreen.dispose();
-            game.stop();
-            window.location.href = window.location.pathname;
+            proceedAfterMastery();
           },
         );
       } else {
-        game.stop();
-        window.location.href = window.location.pathname;
+        proceedAfterMastery();
       }
     });
   });

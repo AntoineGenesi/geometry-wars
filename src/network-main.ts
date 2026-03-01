@@ -2787,6 +2787,31 @@ async function main() {
         masteryStore.save();
         latestVotingState = state; // seed with transition-time state; updated every onStateChange
         const anyXP = xpResults.some(r => r.xpAfter > r.xpBefore);
+        const anyLevelUp = xpResults.some(r => r.leveledUp);
+
+        const proceedToVoting = () => {
+          // Only show voting if still in voting phase
+          if (currentRoomPhase === 'voting') {
+            votingScreen.show(latestVotingState ?? state, isHost, localPlayerId);
+          }
+        };
+
+        const proceedAfterMastery = () => {
+          // If any weapon leveled up, show the upgrade tree before voting
+          if (anyLevelUp) {
+            const upgradeScreen = new WeaponMasteryScreen();
+            upgradeScreen.setPointStore(masteryPointStore);
+            upgradeScreen.show(MasteryStore.load());
+            const cleanup = () => {
+              upgradeScreen.dispose();
+              proceedToVoting();
+            };
+            upgradeScreen.onClose(cleanup);
+          } else {
+            proceedToVoting();
+          }
+        };
+
         if (anyXP) {
           const masteryScreen = new MasteryProgressScreen();
           activeMasteryScreen = masteryScreen;
@@ -2799,15 +2824,11 @@ async function main() {
             () => {
               activeMasteryScreen = null;
               masteryScreen.dispose();
-              // Only show voting if still in voting phase — if roomPhase already
-              // advanced to 'playing' (countdown expired during mastery), skip it.
-              if (currentRoomPhase === 'voting') {
-                votingScreen.show(latestVotingState ?? state, isHost, localPlayerId);
-              }
+              proceedAfterMastery();
             },
           );
         } else {
-          votingScreen.show(state, isHost, localPlayerId);
+          proceedAfterMastery();
         }
       } else if (newPhase === 'playing' && currentRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
