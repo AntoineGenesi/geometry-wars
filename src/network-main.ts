@@ -3484,6 +3484,9 @@ async function main() {
         shooting: inputState.shooting,
         bomb: inputState.bomb,
         boost: inputState.boost,
+        // Camera world-space axes (pre-allocated vectors, computed above from camera.matrixWorld)
+        camRightX: _aimCamRight.x, camRightY: _aimCamRight.y, camRightZ: _aimCamRight.z,
+        camUpX: _aimCamUp.x, camUpY: _aimCamUp.y, camUpZ: _aimCamUp.z,
       };
 
       const changed = !lastSentInput
