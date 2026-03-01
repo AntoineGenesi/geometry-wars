@@ -1657,3 +1657,31 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Repeat at start of game (level 0)** — Test with grunt at fresh game start to isolate level multipliers
 - [ ] **Test with other weapons** — Spread, Piercing, Homing should all feel responsive
 - [ ] **SP unaffected** — Start SP game, verify grunt still dies in 2 bullet hits (no regression)
+
+## s44-epic-08: MP Movement Glitch Fix — Client Fighting Server Positions
+
+**Fix:** Eliminated dual position sources for local player in LAN multiplayer.
+- Old: mesh position came from BOTH UV→surface.getPoint() AND server wx/wy/wz (competing, glitch)
+- New: mesh position comes EXCLUSIVELY from server world-space positions (lerped 60Hz from 30Hz server updates)
+- Also: aim angle + companions now use server tangent frame (avoids unstable UV-derived tangents at poles)
+
+### Test: MP — Local player movement smooth on sphere
+
+- [ ] **Start a LAN MP game** — Host + 1+ player on sphere surface
+- [ ] **Move in all directions** — W/A/S/D should feel responsive and smooth
+- [ ] **No "two versions of him"** — No ghost/shadow position offset from actual player
+- [ ] **Movement speed normal** — Not slow, not oscillating back and forth
+- [ ] **Cross the poles** — Go to north/south pole and back without jitter
+
+### Test: MP — Torus map movement
+
+- [ ] **Start a LAN MP game on torus** — Both host and client on torus
+- [ ] **Left/right movement works** — A/D should visibly move player left/right (was completely broken)
+- [ ] **Up/down movement works** — W/S should move around the torus tube
+- [ ] **Movement smooth** — No sudden teleports or oscillation
+
+### Test: MP — Bullet premature kills
+
+- [ ] **Bullets hit enemies where they visually are** — No enemies dying before bullet reaches them
+- [ ] **Note:** If premature kills persist, the underlying cause may be bullet UV vs visual geodesic path mismatch (separate follow-up task)
+
