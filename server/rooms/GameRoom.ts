@@ -187,20 +187,27 @@ export function sphereGreatCircleDist(
 // Problem: UV Euclidean distance is non-uniform on torus-like and peanut surfaces.
 //   - Torus V direction (around big ring, R=6): 0.04 UV ≈ 1.51 world units (3× too large)
 //   - Cube ring U direction (around big ring, R=6): 0.04 UV ≈ 1.51 world units (3× too large)
-//   - Peanut U direction (around bulge, r≈8.4): 0.04 UV ≈ 2.11 world units (5× too large)
+//   - Peanut U direction (near bulge at v=0.1, ring_r≈2.45): 0.04 UV ≈ 0.62 world units (too large)
 // Solution: Compute 3D Euclidean chord distance from UV coordinates — this matches
 // SP's CollisionSystem.ts which uses mesh.position.distanceTo(enemy.position).
 
-/** Peanut: surface of revolution. r(v) = B*(1 - W*cos(2*v*π)), v∈[0,1] = pole→pole. */
+/**
+ * Peanut: surface of revolution. r(phi) = B*(1 + W*cos(2*phi)), phi = v*π ∈ [0,π].
+ * MUST match PeanutSurface.ts profileRadius(): r = baseRadius*(1 + waistDepth*cos(2*phi))
+ *   At phi=0 and phi=π (poles): r = B*(1+W) = 8.4 — WIDE bulges
+ *   At phi=π/2 (equator):       r = B*(1-W) = 3.6 — NARROW waist
+ * S44b-07 fix: was (1 - W*cos(...)) — inverted sign caused server to compute pole positions
+ * at r≈3.6 instead of r≈8.4, making chord distances ~half actual, triggering false collisions.
+ */
 const PEANUT_BASE_RADIUS = 6;
 const PEANUT_WAIST_DEPTH = 0.4;
 function peanutChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
   const B = PEANUT_BASE_RADIUS * scaleFactor;
   const W = PEANUT_WAIST_DEPTH;
   const phi1 = v1 * Math.PI, theta1 = u1 * 2 * Math.PI;
-  const r1 = B * (1 - W * Math.cos(2 * phi1));
+  const r1 = B * (1 + W * Math.cos(2 * phi1));
   const phi2 = v2 * Math.PI, theta2 = u2 * 2 * Math.PI;
-  const r2 = B * (1 - W * Math.cos(2 * phi2));
+  const r2 = B * (1 + W * Math.cos(2 * phi2));
   const dx = r1 * Math.sin(phi1) * Math.cos(theta1) - r2 * Math.sin(phi2) * Math.cos(theta2);
   const dy = r1 * Math.cos(phi1) - r2 * Math.cos(phi2);
   const dz = r1 * Math.sin(phi1) * Math.sin(theta1) - r2 * Math.sin(phi2) * Math.sin(theta2);
