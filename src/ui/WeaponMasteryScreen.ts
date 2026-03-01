@@ -16,7 +16,7 @@
 
 import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
 import { MasteryStore } from '../systems/MasteryStore';
-import { MasteryPointStore } from '../systems/MasteryPointStore';
+import { MasteryPointStore, weaponTypeFromNodeId } from '../systems/MasteryPointStore';
 import {
   UPGRADE_TREES,
   UpgradeNode,
@@ -223,6 +223,18 @@ function injectStyles(): void {
       border: 1px solid rgba(255,200,50,0.3);
       padding: 2px 7px;
       flex-shrink: 0;
+    }
+
+    #weapon-mastery-screen .wms-pts-badge {
+      font-size: 10px;
+      font-weight: bold;
+      color: #88ffcc;
+      background: rgba(50,255,150,0.1);
+      border: 1px solid rgba(50,255,150,0.3);
+      padding: 2px 7px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-left: auto;
     }
 
     /* ── XP bar ── */
@@ -608,9 +620,9 @@ export class WeaponMasteryScreen {
           <button class="wms-close" data-action="close">&times;</button>
         </div>
         <div class="wms-points-bar">
-          <span class="wms-points-available" id="wms-points-display">${ps.availablePoints}</span>
-          <span class="wms-points-label">Available Points</span>
-          <span class="wms-points-secondary">Earned: ${ps.getTotalPoints()} &nbsp;|&nbsp; Spent: ${ps.getSpentPoints()}</span>
+          <span class="wms-points-available" id="wms-points-display">${ps.getTotalPoints()}</span>
+          <span class="wms-points-label">Total Points Earned</span>
+          <span class="wms-points-secondary">Points are per-weapon &mdash; spend in each weapon's tree</span>
         </div>
         <div class="wms-grid">
           ${cards}
@@ -646,6 +658,7 @@ export class WeaponMasteryScreen {
           <div class="wms-swatch" style="background: ${color}"></div>
           <span class="wms-weapon-name">${w.name}</span>
           <span class="wms-level-badge">Lv.${level} / 5</span>
+          <span class="wms-pts-badge" data-weapon-pts="${w.type}">${ps.getAvailablePoints(w.type)} pts</span>
         </div>
         <div class="wms-xp-row">
           <span class="wms-xp-label">XP</span>
@@ -676,7 +689,7 @@ export class WeaponMasteryScreen {
     color: string,
   ): string {
     const tree = UPGRADE_TREES[weaponType];
-    const hasPoints = ps.availablePoints > 0;
+    const hasPoints = ps.getAvailablePoints(weaponType) > 0;
 
     // Determine SVG height from tree config or infer from max nodeIndex
     const SVG_H = this._svgHeight(tree);
@@ -849,7 +862,9 @@ export class WeaponMasteryScreen {
 
     // Prerequisite met — check if player can afford this node's cost
     const cost = node.cost ?? 1;
-    if (ps.availablePoints >= cost) return 'affordable';
+    // Per-weapon affordability check
+    const nodeWeapon = weaponType ?? weaponTypeFromNodeId(node.id);
+    if (nodeWeapon !== null && ps.getAvailablePoints(nodeWeapon as WeaponType) >= cost) return 'affordable';
     return 'locked';
   }
 
@@ -863,29 +878,30 @@ export class WeaponMasteryScreen {
   /** Update the points counter in the header. */
   private _updatePointsDisplay(): void {
     const ps = this._pointStore!;
+    // Update global total points earned display
     const el = document.getElementById('wms-points-display');
     if (el) {
-      el.textContent = String(ps.availablePoints);
+      el.textContent = String(ps.getTotalPoints());
       el.classList.remove('bump');
       // Force reflow then add class for animation
       void el.offsetWidth;
       el.classList.add('bump');
       setTimeout(() => el.classList.remove('bump'), 200);
     }
-    // Update secondary counters
-    const bar = this.container.querySelector('.wms-points-secondary');
-    if (bar) {
-      bar.innerHTML = `Earned: ${ps.getTotalPoints()} &nbsp;|&nbsp; Spent: ${ps.getSpentPoints()}`;
-    }
+    // Update per-weapon available-points badges
+    this.container.querySelectorAll<HTMLElement>('[data-weapon-pts]').forEach(badge => {
+      const wt = badge.dataset.weaponPts as WeaponType;
+      badge.textContent = `${ps.getAvailablePoints(wt)} pts`;
+    });
   }
 
   /** Re-render a single node's class/label without full re-render. */
   private _updateNodeEl(nodeEl: HTMLElement): void {
     const ps = this._pointStore!;
     const nodeId = nodeEl.dataset.nodeId!;
-    const hasPoints = ps.availablePoints > 0;
-    // Extract weapon type from node id (format: "<weaponType>_<branch>_<index>")
-    const weaponType = nodeId.split('_')[0] as WeaponType | undefined;
+    // Extract weapon type from node id (format: "${weaponType}_${branch}_${index}")
+    const weaponType = weaponTypeFromNodeId(nodeId) ?? undefined;
+    const hasPoints = weaponType ? ps.getAvailablePoints(weaponType) > 0 : false;
     const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
     const cost = parseInt(nodeEl.dataset.cost ?? '1', 10);
 
@@ -1081,10 +1097,11 @@ export class WeaponMasteryScreen {
   /** Refresh all nodes' visual state (e.g. after points change). */
   private _refreshAllNodeStates(): void {
     const ps = this._pointStore!;
-    const hasPoints = ps.availablePoints > 0;
     this.container.querySelectorAll<HTMLElement>('.wms-node').forEach(nodeEl => {
       const nodeId = nodeEl.dataset.nodeId!;
-      const weaponType = nodeId.split('_')[0] as WeaponType | undefined;
+      // Use proper weapon extraction (supports multi-word types like chain_lightning)
+      const weaponType = weaponTypeFromNodeId(nodeId) ?? undefined;
+      const hasPoints = weaponType ? ps.getAvailablePoints(weaponType) > 0 : false;
       const maxPoints = parseInt(nodeEl.dataset.maxPoints ?? '1', 10);
       const cost = parseInt(nodeEl.dataset.cost ?? '1', 10);
       const fullNode = getNodeById(nodeId) ?? ({ id: nodeId, maxPoints, cost } as UpgradeNode);
@@ -1137,7 +1154,9 @@ export class WeaponMasteryScreen {
       costHtml = `<div class="wms-tt-prereq">&#x26A0; ${prereqText}</div>`;
     } else {
       const costStr = cost > 1 ? `${cost} points` : '1 point';
-      costHtml = `<div class="wms-tt-cost">Need ${costStr} to unlock &nbsp;(have: ${ps.availablePoints})</div>`;
+      const nodeWeapon = weaponTypeFromNodeId(nodeId);
+      const havePoints = nodeWeapon ? ps.getAvailablePoints(nodeWeapon) : 0;
+      costHtml = `<div class="wms-tt-cost">Need ${costStr} to unlock &nbsp;(have: ${havePoints})</div>`;
     }
 
     this.tooltip.innerHTML = `

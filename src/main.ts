@@ -946,9 +946,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     applyStatMultipliers();
   };
 
-  // Persist earned mastery points on every level-up, and notify the player
+  // Persist earned mastery points on every level-up, and notify the player.
+  // Points are credited to the currently equipped weapon (per-weapon XP system).
   playerLevel.onMasteryPointEarned = () => {
-    masteryPointStore.earnPoint();
+    masteryPointStore.earnPoint(weaponManager.getCurrentWeapon());
     upgradeNotification.showMasteryPointEarned();
   };
 
