@@ -596,6 +596,14 @@ export class GameRoom extends Room<GameState> {
   }
 
   onJoin(client: Client, options: { name?: string; requestHost?: boolean }) {
+    // Guard against duplicate session joins — Colyseus shouldn't call onJoin twice
+    // for the same sessionId, but a fallback-URL retry could sneak a second join
+    // through before the first connection's onLeave fires, creating ghost players.
+    if (this.state.players.has(client.sessionId)) {
+      this.logger.log(`[GameRoom] Duplicate join rejected for session ${client.sessionId}`);
+      return;
+    }
+
     const player = new PlayerState();
     player.id = client.sessionId;
 
