@@ -2227,10 +2227,17 @@ export class GameRoom extends Room<GameState> {
     // Bullet-enemy collisions
     const bulletsToRemove: number[] = [];
     const enemiesToRemove: number[] = [];
+    // S43-02: Track consumed bullets to prevent one bullet hitting multiple enemies.
+    // Without this, a bullet near two enemies applies damage to both AND pushes the
+    // same index twice into bulletsToRemove, causing an unrelated bullet to be removed.
+    const hitBullets = new Set<number>();
 
     this.state.bullets.forEach((bullet, bIndex) => {
+      if (hitBullets.has(bIndex)) return; // Already consumed by an earlier enemy hit
+
       this.state.enemies.forEach((enemy, eIndex) => {
         if (!enemy.alive) return;
+        if (hitBullets.has(bIndex)) return; // Already consumed within this bullet's loop
 
         // Use wrap-aware UV distance so bullets crossing the U or V seam
         // still hit enemies on the other side (critical on torus where both axes wrap).
@@ -2242,6 +2249,7 @@ export class GameRoom extends Room<GameState> {
         // Using 0.015 (up from 0.012) for anti-tunneling margin; scaled by map size.
         // Previous value 0.05 = ~1.57 world units = 6x visual size → enemies died from far away.
         if (dist < BULLET_HIT_RADIUS) {
+          hitBullets.add(bIndex);
           // Hit! Apply weapon damage with full damage formula:
           //   finalDamage = baseDamage × levelDamageMult × buffDamageMult × masteryDamageMult
           // NOTE: SP also multiplies by scorePowerMult (kill-streak multiplier) but in MP

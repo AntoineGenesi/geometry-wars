@@ -1566,3 +1566,18 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **LAN MP on sphere** — Host + join a LAN game on sphere surface
 - [ ] **Both players can cross poles** — Both host and client should be able to cross poles without camera inversion
 - [ ] **User testing required** — Claude can only test SP visually; MP pole crossing requires human LAN test
+
+## S43-02: MP Bullet Hit Detection Fix
+
+**Fix:** Two bugs fixed:
+1. `server/shared/GameConstants.ts`: standard bullet damage changed from 0.25 → 1.0 to match SP's effective bullet damage (1.0 per bullet at game start). SP's WeaponTypes.ts damage:0.25 is UI display only, not used in collision.
+2. `server/rooms/GameRoom.ts` `checkCollisions()`: Added `hitBullets` Set to prevent one bullet from hitting multiple enemies in the same tick (fixes wrong bullet removal corruption).
+
+### Test: MP — Bullet hit detection matches SP
+
+- [ ] **Start a LAN MP game** — Host + 1+ player on sphere surface
+- [ ] **Fire at a grunt (blue square)** — Standard weapon, aimed directly at grunt
+- [ ] **Grunt dies in ~2 bullets** — Should die quickly, similar to SP behavior (NOT 8-15 bullets)
+- [ ] **Repeat at start of game (level 0)** — Test with grunt at fresh game start to isolate level multipliers
+- [ ] **Test with other weapons** — Spread, Piercing, Homing should all feel responsive
+- [ ] **SP unaffected** — Start SP game, verify grunt still dies in 2 bullet hits (no regression)
