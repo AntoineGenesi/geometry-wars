@@ -268,6 +268,56 @@ export class CameraController {
     this.targetUp.set(0, 1, 0); // reset to neutral so first frame has no bias
   }
 
+  /**
+   * Whether the camera has been positioned at least once for the current surface.
+   * False after resetFrameForNewSurface() until updateFromFrame() or snapToFrame()
+   * is called. Use to detect first spawn where camera axes are at default position.
+   */
+  get hasBeenPositioned(): boolean {
+    return this._cameraFrameInitialized;
+  }
+
+  /**
+   * Immediately snap camera to the given frame without lerping.
+   *
+   * Call this on first spawn (before the game loop runs) so that
+   * computeCameraRelativeAimAngle uses correct camera axes from frame 0.
+   * Without snapping, the camera stays at its initial position (0,15,25) for
+   * ~20 frames (CAMERA_LERP_FACTOR=0.12), causing ~130° aim angle errors.
+   *
+   * s44b-01 fix: called from onStateChange when first server frame arrives.
+   */
+  snapToFrame(
+    position: THREE.Vector3,
+    normal: THREE.Vector3,
+    tangentFrame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 },
+  ): void {
+    // Same orientation math as updateFromFrame, but snap instead of lerp
+    this._camOffset.copy(normal).multiplyScalar(this.cameraDistance);
+    this._camUp.copy(tangentFrame.bitangent);
+
+    if (Math.abs(this.orbitYaw) > 0.001 || Math.abs(this.orbitPitch) > 0.001) {
+      this._yawQuat.setFromAxisAngle(normal, this.orbitYaw);
+      this._camOffset.applyQuaternion(this._yawQuat);
+      this._camUp.applyQuaternion(this._yawQuat);
+      this._rotatedTangent.copy(tangentFrame.tangent).applyQuaternion(this._yawQuat);
+      this._pitchQuat.setFromAxisAngle(this._rotatedTangent, this.orbitPitch);
+      this._camOffset.applyQuaternion(this._pitchQuat);
+      this._camUp.applyQuaternion(this._pitchQuat);
+    }
+
+    this._targetCamPos.copy(position).add(this._camOffset);
+    this.camera.position.copy(this._targetCamPos); // snap, no lerp
+
+    this._camUp.normalize();
+    this.targetUp.copy(this._camUp);
+    this._cameraFrameInitialized = true;
+
+    (this.camera as THREE.PerspectiveCamera).lookAt(position);
+    (this.camera as THREE.PerspectiveCamera).up.copy(this._camUp);
+    this.camera.updateMatrixWorld();
+  }
+
   /** Get current camera distance */
   getCameraDistance(): number {
     return this.cameraDistance;

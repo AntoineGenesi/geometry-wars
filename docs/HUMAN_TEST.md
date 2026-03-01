@@ -1685,3 +1685,16 @@ Claude will read this file at the start of each session and prioritize fixing re
 - [ ] **Bullets hit enemies where they visually are** — No enemies dying before bullet reaches them
 - [ ] **Note:** If premature kills persist, the underlying cause may be bullet UV vs visual geodesic path mismatch (separate follow-up task)
 
+## s44b-01: MP First-Spawn Gun Aim Direction Fix
+
+**Fix:** Camera is now snapped to player position on first server frame (before game loop runs).
+Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to reach the player's surface position. During those frames, `computeCameraRelativeAimAngle` read wrong camera axes, producing ~130° aim error on first spawn. After respawn, camera was already positioned correctly so aim worked fine.
+
+### Test: MP — Gun aim correct on first spawn
+
+- [ ] **Start a LAN MP game on Sphere** — Join as either host or client
+- [ ] **On first spawn (no respawn)** — Move mouse cursor to the right (→); gun should fire right
+- [ ] **Aim any direction from frame 0** — Gun should follow cursor immediately, no ~130° offset
+- [ ] **Repeat on Peanut map** — Aim should also be correct from first spawn
+- [ ] **Respawn after death** — Aim should still be correct (regression check)
+
