@@ -571,6 +571,7 @@ async function main() {
     remotePlayerTargetUV.clear();
     remotePlayerTargetWorldPos.clear();
     _localServerFrameValid = false;
+    _localPlayerWorldTarget.valid = false;
     bulletTargetUV.clear();
     bulletGeodesicState.clear();
     geomTargetUV.clear();
@@ -927,6 +928,19 @@ async function main() {
   const _localServerBitangent = new THREE.Vector3(0, 0, 1);
   const _localServerNormal   = new THREE.Vector3(0, 1, 0);
   let _localServerFrameValid = false; // false until first server frame arrives
+
+  // -- Server world-space position target for local player (s44-epic-08) --
+  // The server's ServerMeshWalker walks on actual mesh faces (geodesic), giving a
+  // different world position than the client's UV→surface.getPoint() conversion.
+  // This mismatch caused the "two versions of him" glitch — client UV prediction
+  // positioned the mesh at one place, server corrections snapped it to another.
+  // Fix: always store server wx/wy/wz here and use it for mesh placement in onFixedUpdate.
+  const _localPlayerWorldTarget = {
+    x: 0, y: 0, z: 0,
+    nx: 0, ny: 1, nz: 0,
+    tx: 1, ty: 0, tz: 0,
+    valid: false,
+  };
   // Track previous health per enemy to detect damage and spawn damage number popups
   const enemyPrevHealth = new Map<string, number>();
 
@@ -2104,6 +2118,26 @@ async function main() {
           _localServerBitangent.set(netPlayer.bx!, netPlayer.by!, netPlayer.bz!);
           _localServerNormal.set(netPlayer.nx!, netPlayer.ny!, netPlayer.nz!);
           _localServerFrameValid = true;
+        }
+
+        // s44-epic-08: Always store server world-space position for local player.
+        // Previously only used for hard snaps; now stored every frame so onFixedUpdate
+        // can use server wx/wy/wz for mesh placement instead of surface.getPoint().
+        // This eliminates the "two versions of him" glitch where UV→world conversion
+        // disagreed with the server's ServerMeshWalker geodesic position.
+        const hasWorldPos08 = netPlayer.wx !== undefined
+          && (netPlayer.wx !== 0 || netPlayer.wy !== 0 || netPlayer.wz !== 0);
+        if (hasWorldPos08) {
+          _localPlayerWorldTarget.x  = netPlayer.wx!;
+          _localPlayerWorldTarget.y  = netPlayer.wy!;
+          _localPlayerWorldTarget.z  = netPlayer.wz!;
+          _localPlayerWorldTarget.nx = netPlayer.nx ?? 0;
+          _localPlayerWorldTarget.ny = netPlayer.ny ?? 1;
+          _localPlayerWorldTarget.nz = netPlayer.nz ?? 0;
+          _localPlayerWorldTarget.tx = netPlayer.tx ?? 1;
+          _localPlayerWorldTarget.ty = netPlayer.ty ?? 0;
+          _localPlayerWorldTarget.tz = netPlayer.tz ?? 0;
+          _localPlayerWorldTarget.valid = true;
         }
 
         const du = netPlayer.surfaceU - player.surfaceU;
@@ -3529,15 +3563,25 @@ async function main() {
     {
       const _aimPlayer = networkPlayers.get(localPlayerId);
       if (_aimPlayer) {
-        const _aimSp = surface.getPoint(_aimPlayer.surfaceU, _aimPlayer.surfaceV);
         camera.updateMatrixWorld();
         _aimCamRight.setFromMatrixColumn(camera.matrixWorld, 0);
         _aimCamUp.setFromMatrixColumn(camera.matrixWorld, 1);
-        aimAngle = computeCameraRelativeAimAngle(
-          mouseX, mouseY,
-          _aimCamRight, _aimCamUp,
-          _aimSp.normal, _aimSp.tangentU, _aimSp.tangentV,
-        );
+        // s44-epic-08: Use server tangent frame for aim when available (avoids
+        // surface.getPoint() which can give unstable tangents at poles).
+        if (_localServerFrameValid) {
+          aimAngle = computeCameraRelativeAimAngle(
+            mouseX, mouseY,
+            _aimCamRight, _aimCamUp,
+            _localServerNormal, _localServerTangent, _localServerBitangent,
+          );
+        } else {
+          const _aimSp = surface.getPoint(_aimPlayer.surfaceU, _aimPlayer.surfaceV);
+          aimAngle = computeCameraRelativeAimAngle(
+            mouseX, mouseY,
+            _aimCamRight, _aimCamUp,
+            _aimSp.normal, _aimSp.tangentU, _aimSp.tangentV,
+          );
+        }
       }
     }
 
@@ -3685,11 +3729,31 @@ async function main() {
         }
 
         // ALWAYS update visual position + aim orientation (even when stationary).
-        // This ensures aim direction updates instantly without waiting for server.
-        const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-        localPlayer.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor);
-        localPlayer.mesh.position.addScaledVector(sp.normal, 0.15);
-        orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
+        // s44-epic-08: Use server world-space position for mesh placement instead of
+        // surface.getPoint(). The server's ServerMeshWalker (geodesic) gives a
+        // different world position than UV→surface.getPoint() conversion, causing
+        // the "two versions of him" glitch. We lerp toward the server target so
+        // the motion stays smooth at 60Hz despite server updates at 30Hz.
+        if (_localPlayerWorldTarget.valid) {
+          const tgt = _localPlayerWorldTarget;
+          _netTempPos.set(
+            tgt.x * currentMapSizeScaleFactor + tgt.nx * 0.15,
+            tgt.y * currentMapSizeScaleFactor + tgt.ny * 0.15,
+            tgt.z * currentMapSizeScaleFactor + tgt.nz * 0.15,
+          );
+          // Lerp toward server position each frame — converges in ~3 frames at 60Hz.
+          // On LAN the target updates every ~33ms so this keeps motion smooth.
+          localPlayer.mesh.position.lerp(_netTempPos, 0.5);
+          _netTempNormal.set(tgt.nx, tgt.ny, tgt.nz);
+          _netTempTangent.set(tgt.tx, tgt.ty, tgt.tz);
+          orientPlayerOnSurface(localPlayer, _netTempNormal, aimAngle, _netTempTangent);
+        } else {
+          // Fallback until first server world-space frame arrives.
+          const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+          localPlayer.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor);
+          localPlayer.mesh.position.addScaledVector(sp.normal, 0.15);
+          orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
+        }
 
         // Update glow trail (only meaningful when moving, but cheap to call always)
         if (isMoving) {
@@ -3719,15 +3783,28 @@ async function main() {
         && SPECIAL_VISUAL_WEAPONS.has(localPlayerWeaponType)) {
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer && surface) {
-        const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-        const origin = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.2);
-        // Compute world-space aim direction from aimAngle + surface tangent frame
+        // s44-epic-08: Use server tangent frame when available (avoids unstable getPoint() at poles)
+        let wpNormal: THREE.Vector3;
+        let wpTangentU: THREE.Vector3;
+        let wpTangentV: THREE.Vector3;
+        if (_localServerFrameValid) {
+          wpNormal   = _localServerNormal;
+          wpTangentU = _localServerTangent;
+          wpTangentV = _localServerBitangent;
+        } else {
+          const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+          wpNormal   = sp.normal;
+          wpTangentU = sp.tangentU;
+          wpTangentV = sp.tangentV;
+        }
+        // Use the already-computed mesh position (set from server world pos above)
+        const origin = localPlayer.mesh.position.clone().addScaledVector(wpNormal, 0.05);
         const aimDir = new THREE.Vector3()
-          .addScaledVector(sp.tangentU, Math.cos(aimAngle))
-          .addScaledVector(sp.tangentV, Math.sin(aimAngle))
+          .addScaledVector(wpTangentU, Math.cos(aimAngle))
+          .addScaledVector(wpTangentV, Math.sin(aimAngle))
           .normalize();
         localWeaponManager.playerPositionRef = origin;
-        localWeaponManager.fire(origin, aimDir, game.clock.totalTime, sp.normal);
+        localWeaponManager.fire(origin, aimDir, game.clock.totalTime, wpNormal);
       }
     }
     localWeaponManager.update(dt);
@@ -3760,9 +3837,13 @@ async function main() {
       geomPool.update(dt, localPlayer.surfaceU, localPlayer.surfaceV, game.clock.totalTime);
 
       // Update PlayerLevel aura ring (position + pulse animation each frame)
+      // auraPoint used by buffAura + companionManager below — keep it computed.
+      // s44-epic-08: Use mesh position (set from server world pos) for auraPos
+      // instead of auraPoint.position to avoid double UV→world conversion.
       const auraPoint = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-      const auraPos = auraPoint.position.clone().multiplyScalar(currentMapSizeScaleFactor);
-      playerLevel.update(dt, auraPos, auraPoint.normal);
+      const auraPos = localPlayer.mesh.position; // already positioned from server world pos
+      const auraNormal = _localServerFrameValid ? _localServerNormal : auraPoint.normal;
+      playerLevel.update(dt, auraPos, auraNormal);
 
       // Tick buff proc effects (ShockAura arcs, Burning DOT visuals).
       // Server is authoritative for enemy HP; local damage from ShockAura is a visual-side
@@ -3795,8 +3876,8 @@ async function main() {
         buffParticleAura.setDimmingFactor(0);
       }
 
-      buffAuraRenderer.update(dt, game.clock.totalTime, localPlayer.mesh.position, auraPoint.normal, activeBuffs);
-      buffParticleAura.update(dt, game.clock.totalTime, localPlayer.mesh.position, auraPoint.normal, activeBuffs);
+      buffAuraRenderer.update(dt, game.clock.totalTime, localPlayer.mesh.position, auraNormal, activeBuffs);
+      buffParticleAura.update(dt, game.clock.totalTime, localPlayer.mesh.position, auraNormal, activeBuffs);
 
       // Update companion + buff pickups, check collection
       if (getTransform) {
@@ -3842,9 +3923,12 @@ async function main() {
 
       // Update companions (orbit player, shoot enemies)
       if (getTransform) {
+        // s44-epic-08: Use server tangent frame when available (avoids getPoint() instability)
+        const cmpTangentU = _localServerFrameValid ? _localServerTangent   : auraPoint.tangentU;
+        const cmpTangentV = _localServerFrameValid ? _localServerBitangent : auraPoint.tangentV;
         const aimDir = new THREE.Vector3()
-          .addScaledVector(auraPoint.tangentU, Math.cos(aimAngle))
-          .addScaledVector(auraPoint.tangentV, Math.sin(aimAngle))
+          .addScaledVector(cmpTangentU, Math.cos(aimAngle))
+          .addScaledVector(cmpTangentV, Math.sin(aimAngle))
           .normalize();
         const enemiesArray = Array.from(networkEnemies.values());
         companionManager.update(
@@ -3856,7 +3940,7 @@ async function main() {
           enemiesArray,
           companionBulletPool,
           0,
-          auraPoint.normal,
+          auraNormal,
           getTransform,
         );
       }
