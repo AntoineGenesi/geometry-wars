@@ -40,7 +40,9 @@ export const PLAYER_SPEED = 0.095;
 // On a sphere of radius 10: 4.0 / (pi*10) ≈ 0.127 UV/s.
 export const BULLET_SPEED = 0.13;
 
-export const BULLET_LIFETIME = 3.0;
+// S43-11 parity fix: SP src/entities/Bullet.ts uses BULLET_LIFETIME=6s.
+// MP was 3.0s (2× shorter) — bullets traveled half as far, making MP harder.
+export const BULLET_LIFETIME = 6.0;
 
 // ---------------------------------------------------------------------------
 // Weapon pickup constants
