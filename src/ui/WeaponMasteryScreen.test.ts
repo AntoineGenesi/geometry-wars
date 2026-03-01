@@ -289,12 +289,12 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;
     expect(html).toContain('wms-points-available');
-    expect(html).toContain('Available Points');
+    expect(html).toContain('Total Points Earned');
   });
 
   it('show() with 5 available points shows 5 in points display', () => {
     const ps = new MasteryPointStore();
-    for (let i = 0; i < 5; i++) ps.earnPoint();
+    for (let i = 0; i < 5; i++) ps.earnPoint(WT.Standard);
     screen.setPointStore(ps);
     screen.show();
     const html = mockBody.children[0].innerHTML;
@@ -320,7 +320,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('show() HTML contains affordable nodes when points available', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint();
+    ps.earnPoint(WT.Standard);
     screen.setPointStore(ps);
     screen.show();
     const html = mockBody.children[0].innerHTML;
@@ -329,8 +329,8 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('show() HTML contains unlocked node state when node is unlocked', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint();
-    ps.earnPoint();
+    ps.earnPoint(WT.Standard);
+    ps.earnPoint(WT.Standard);
     ps.spendPoint(`${WT.Standard}_a_1`);
     screen.setPointStore(ps);
     screen.show();
@@ -391,7 +391,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('setPointStore() lets the screen use the provided store', () => {
     const ps = new MasteryPointStore();
-    for (let i = 0; i < 3; i++) ps.earnPoint();
+    for (let i = 0; i < 3; i++) ps.earnPoint(WT.Standard);
     screen.setPointStore(ps);
     screen.show();
     const html = mockBody.children[0].innerHTML;
@@ -400,25 +400,25 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('spendPoint correctly reduces availablePoints', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint();
-    ps.earnPoint();
+    ps.earnPoint(WT.Standard);
+    ps.earnPoint(WT.Standard);
     ps.spendPoint(`${WT.Standard}_a_1`);
-    expect(ps.availablePoints).toBe(1);
+    expect(ps.getAvailablePoints(WT.Standard)).toBe(1);
     expect(ps.isUnlocked(`${WT.Standard}_a_1`)).toBe(true);
   });
 
   it('refundPoint correctly restores availablePoints', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint();
+    ps.earnPoint(WT.Standard);
     ps.spendPoint(`${WT.Standard}_a_1`);
     ps.refundPoint(`${WT.Standard}_a_1`);
-    expect(ps.availablePoints).toBe(1);
+    expect(ps.getAvailablePoints(WT.Standard)).toBe(1);
     expect(ps.isUnlocked(`${WT.Standard}_a_1`)).toBe(false);
   });
 
   it('spending on already-unlocked node returns false', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint();
+    ps.earnPoint(WT.Standard);
     ps.spendPoint(`${WT.Standard}_a_1`);
     const result = ps.spendPoint(`${WT.Standard}_a_1`);
     expect(result).toBe(false);
@@ -429,20 +429,20 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('right-click on unlocked node triggers refund directly (no pending state)', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint();
+    ps.earnPoint(WT.Standard);
     ps.spendPoint(`${WT.Standard}_a_1`);
-    expect(ps.availablePoints).toBe(0);
+    expect(ps.getAvailablePoints(WT.Standard)).toBe(0);
     expect(ps.isUnlocked(`${WT.Standard}_a_1`)).toBe(true);
 
     // Simulate right-click by calling refundPoint directly
     ps.refundPoint(`${WT.Standard}_a_1`);
-    expect(ps.availablePoints).toBe(1);
+    expect(ps.getAvailablePoints(WT.Standard)).toBe(1);
     expect(ps.isUnlocked(`${WT.Standard}_a_1`)).toBe(false);
   });
 
   it('right-click on locked node does nothing', () => {
     const ps = new MasteryPointStore(); // No points
-    expect(ps.availablePoints).toBe(0);
+    expect(ps.getAvailablePoints(WT.Standard)).toBe(0);
     // Cannot refund a locked node
     const result = ps.refundPoint(`${WT.Standard}_a_1`);
     expect(result).toBe(false);
@@ -450,7 +450,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('right-click on affordable node does nothing', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint(); // 1 point available
+    ps.earnPoint(WT.Standard); // 1 point available
     expect(ps.isUnlocked(`${WT.Standard}_a_1`)).toBe(false);
     // Cannot refund an unspent node
     const result = ps.refundPoint(`${WT.Standard}_a_1`);
@@ -467,7 +467,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('tier-1 root nodes are affordable when player has points (no prereq)', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint();
+    ps.earnPoint(WT.Standard);
     screen.setPointStore(ps);
     screen.show();
     const html = mockBody.children[0].innerHTML;
@@ -477,7 +477,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('tier-2 nodes are prereq-locked when tier-1 is not unlocked', () => {
     const ps = new MasteryPointStore();
-    for (let i = 0; i < 5; i++) ps.earnPoint(); // Plenty of points but nothing unlocked
+    for (let i = 0; i < 5; i++) ps.earnPoint(WT.Standard); // Plenty of points but nothing unlocked
     screen.setPointStore(ps);
     screen.show();
     const html = mockBody.children[0].innerHTML;
@@ -489,7 +489,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('tier-2 node becomes affordable after tier-1 is fully unlocked', () => {
     const ps = new MasteryPointStore();
-    for (let i = 0; i < 5; i++) ps.earnPoint();
+    for (let i = 0; i < 5; i++) ps.earnPoint(WT.Spread);
     // Unlock Spread weapon tier 1 on branch A
     ps.spendPoint(`${WT.Spread}_a_1`);
     screen.setPointStore(ps);
@@ -522,7 +522,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('isPrerequisiteMet: tier-2 node passes when tier-1 is unlocked', () => {
     const ps = new MasteryPointStore();
-    ps.earnPoint();
+    ps.earnPoint(WT.Spread);
     ps.spendPoint(`${WT.Spread}_a_1`);
     const tree = UPGRADE_TREES[WT.Spread];
     const a2 = tree.nodes.find(n => n.id === `${WT.Spread}_a_2`)!;
@@ -532,7 +532,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
   it('isPrerequisiteMet: multi-point parent must be FULLY unlocked (all points spent)', () => {
     const ps = new MasteryPointStore();
     // BlackHole a_1 has maxPoints=3 — spending only 1 is not enough for a_2
-    for (let i = 0; i < 3; i++) ps.earnPoint();
+    for (let i = 0; i < 3; i++) ps.earnPoint(WT.BlackHole);
     ps.spendPoint(`${WT.BlackHole}_a_1`, 3); // Spend 1 of 3
     const tree = UPGRADE_TREES[WT.BlackHole];
     const a2 = tree.nodes.find(n => n.id === `${WT.BlackHole}_a_2`)!;
@@ -577,7 +577,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('skip connection allows accessing tier-3 from opposite branch tier-2', () => {
     const ps = new MasteryPointStore();
-    for (let i = 0; i < 5; i++) ps.earnPoint();
+    for (let i = 0; i < 5; i++) ps.earnPoint(WT.Standard);
     // Unlock Standard trunk A tier 1 and tier 2 (skip source)
     ps.spendPoint('standard_a_1');
     ps.spendPoint('standard_a_2');
@@ -592,7 +592,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('skip connection does NOT help if skip source is NOT unlocked', () => {
     const ps = new MasteryPointStore();
-    for (let i = 0; i < 5; i++) ps.earnPoint();
+    for (let i = 0; i < 5; i++) ps.earnPoint(WT.Standard);
     // Only unlock standard_a_1, NOT standard_a_2 (the skip source)
     ps.spendPoint('standard_a_1');
     const tree = UPGRADE_TREES[WT.Standard];
@@ -621,7 +621,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('activated paths (unlocked nodes) use high opacity colored stroke', () => {
     const ps = new MasteryPointStore();
-    for (let i = 0; i < 3; i++) ps.earnPoint();
+    for (let i = 0; i < 3; i++) ps.earnPoint(WT.Spread);
     ps.spendPoint(`${WT.Spread}_a_1`);
     screen.setPointStore(ps);
     screen.show();
@@ -632,7 +632,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   it('possible paths (prereq met, not yet unlocked) use low opacity colored stroke', () => {
     const ps = new MasteryPointStore();
-    for (let i = 0; i < 3; i++) ps.earnPoint();
+    for (let i = 0; i < 3; i++) ps.earnPoint(WT.Spread);
     ps.spendPoint(`${WT.Spread}_a_1`); // Now a_2 is possible
     screen.setPointStore(ps);
     screen.show();
