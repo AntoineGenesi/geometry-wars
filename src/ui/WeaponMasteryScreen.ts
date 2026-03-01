@@ -827,11 +827,11 @@ export class WeaponMasteryScreen {
         if (!fromPos || !toPos) continue;
         const fromUnlocked = ps.isUnlocked(skip.fromId);
         const toUnlocked = ps.isUnlocked(skip.toId);
-        const skipOpacity = fromUnlocked && toUnlocked ? '0.85' : fromUnlocked ? '0.45' : '0.12';
+        const skipOpacity = fromUnlocked && toUnlocked ? '0.95' : fromUnlocked ? '0.60' : '0.25';
         const skipFilter = fromUnlocked && toUnlocked ? ` filter="url(#glow-${weaponType})"` : '';
         skipLines.push(
           `<line data-skip="true" x1="${fromPos.x}" y1="${fromPos.y}" x2="${toPos.x}" y2="${toPos.y}"` +
-          ` stroke-width="1" stroke-dasharray="5,3" stroke="#d4aa40" stroke-opacity="${skipOpacity}"${skipFilter}/>`
+          ` stroke-width="1" stroke-dasharray="5,3" stroke="#ffffff" stroke-opacity="${skipOpacity}"${skipFilter}/>`
         );
       }
     }
