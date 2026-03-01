@@ -104,10 +104,11 @@ describe('Player level damage multiplier', () => {
     }
   });
 
-  it('finalDamage formula: standard bullet at level 5 = 0.25 × 1.45 ≈ 0.3625', () => {
-    const base = WEAPON_CONFIGS.standard.damage; // 0.25
+  it('finalDamage formula: standard bullet at level 5 = 1.0 × 1.45 = 1.45 (S43-02 parity fix)', () => {
+    // standard.damage was changed from 0.25 to 1.0 in S43-02 to match SP effective damage at game start.
+    const base = WEAPON_CONFIGS.standard.damage; // 1.0
     const levelMult = LEVEL_DAMAGE_MULTIPLIERS[5]; // 1.45
-    expect(base * levelMult).toBeCloseTo(0.3625, 5);
+    expect(base * levelMult).toBeCloseTo(1.45, 5);
   });
 });
 
