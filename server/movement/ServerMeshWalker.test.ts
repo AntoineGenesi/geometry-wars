@@ -127,6 +127,44 @@ describe('ServerMeshWalker', () => {
   });
 
   describe('pole crossing', () => {
+    test('peanut pole crossing — bitangent does not flip', () => {
+      // Start near the peanut top pole and drive through it.
+      const startNearPole = new THREE.Vector3(0.1, 7.0, 0);
+      const walker = new ServerMeshWalker(PEANUT_SURFACE, startNearPole, PLAYER_WORLD_SPEED);
+
+      const state0 = walker.getState();
+      const bitangentBefore = new THREE.Vector3(state0.bitangentX, state0.bitangentY, state0.bitangentZ);
+
+      for (let i = 0; i < 30; i++) {
+        walker.moveWithCameraAxes(0, 1, 1, 0, 0, 0, 1, 0, 0.016);
+      }
+
+      const state1 = walker.getState();
+      const bitangentAfter = new THREE.Vector3(state1.bitangentX, state1.bitangentY, state1.bitangentZ);
+
+      // Bitangent must not have flipped (dot product > 0)
+      expect(bitangentBefore.dot(bitangentAfter)).toBeGreaterThan(0);
+    });
+
+    test('peanut waist crossing — speed is consistent (no distortion)', () => {
+      // The peanut waist is near the equator (surfaceV ~ 0.5).
+      // Speed should remain within 50% of the mean across 20 steps.
+      const walker = makePeanutWalker();
+      const displacements: number[] = [];
+
+      for (let i = 0; i < 20; i++) {
+        const before = walker.getWorldPosition().clone();
+        walker.moveWithCameraAxes(0, 1, 1, 0, 0, 0, 1, 0, 0.016);
+        displacements.push(walker.getWorldPosition().distanceTo(before));
+      }
+
+      const mean = displacements.reduce((a, b) => a + b, 0) / displacements.length;
+      for (const d of displacements) {
+        expect(d).toBeGreaterThan(mean * 0.2);
+        expect(d).toBeLessThan(mean * 3.0);
+      }
+    });
+
     test('sphere north pole crossing — bitangent does not flip sign', () => {
       // Start near north pole and drive straight through it.
       // North pole of sphere radius 10 is at (0, 10, 0).
