@@ -242,8 +242,14 @@ export class CameraController {
     // Restored from bffc333: lerp position for smooth camera follow.
     this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
 
-    // Store target up for external reference (no sign-flip protection — matches bffc333).
-    this.targetUp.copy(this._camUp).normalize();
+    // Sign-flip protection: if the new camera up flipped >90° from the previous target,
+    // negate it to maintain continuity (same guard applied to MP path in updateFromFrame).
+    // This catches any residual frame inversion after pole crossing (s43-05).
+    this._camUp.normalize();
+    if (this.targetUp.dot(this._camUp) < 0) {
+      this._camUp.negate();
+    }
+    this.targetUp.copy(this._camUp);
 
     // Restored from bffc333 ORDER: lookAt FIRST, then lerp up-vector.
     // This matches the working reference implementation exactly.

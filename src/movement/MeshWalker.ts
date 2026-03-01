@@ -419,8 +419,12 @@ export class MeshWalker {
     // This prevents the "pole skip" bug: without this check, _tryPoleTraversal fires when
     // the player is still 0.7+ world units from the pole (inside a large cap triangle), and
     // the resulting teleport overshoots by up to 6x the expected step distance.
+    //
+    // The 0.2 minimum guarantees traversal fires for surfaces with larger cap triangles
+    // (e.g. peanut radius=6 has first ring at ~0.078, which exceeds distance*1.5≈0.075
+    // at 60fps, causing the traversal to silently fail and the frame reset to never run).
     const distToPole = toPole.length();
-    if (distToPole > distance * 1.5) return null;
+    if (distToPole > Math.max(distance * 1.5, 0.2)) return null;
 
     // Land just past the pole in the movement direction, then snap to surface.
     // Use the remaining distance after crossing the pole so the total movement is correct:

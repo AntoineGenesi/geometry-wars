@@ -1,18 +1,12 @@
 /**
- * S42-02: Pole Crossing Camera Inversion Test
- *
- * Simulates a player moving toward and across the north pole of a sphere.
- * Verifies camera does NOT invert after crossing.
- *
- * Run with: node tests/visual/s42-02-pole-crossing-camera-test.mjs
+ * S43-05: Peanut Pole Crossing Controls Test
+ * Tests that controls remain consistent after crossing peanut poles.
  */
 
 import puppeteer from 'puppeteer';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import fs from 'fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CHROME_PATH = '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome';
 const PORT = 3045;
 const BASE_URL = `http://localhost:${PORT}`;
@@ -24,40 +18,8 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-/**
- * Wait until the canvas is rendering non-black 3D content.
- * Samples multiple pixels across the canvas; passes when enough are non-black.
- */
-async function waitForRendering(page, timeout = 60000) {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    const hasContent = await page.evaluate(() => {
-      const canvas = document.querySelector('canvas');
-      if (!canvas) return false;
-      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-      if (!gl) return false;
-      // Sample pixels from the canvas
-      const pixels = new Uint8Array(4 * 16);
-      // Sample from center area
-      const w = canvas.width || 1280;
-      const h = canvas.height || 720;
-      gl.readPixels(w/2 - 50, h/2 - 50, 4, 4, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-      // Count non-black pixels
-      let nonBlack = 0;
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (pixels[i] > 10 || pixels[i+1] > 10 || pixels[i+2] > 10) nonBlack++;
-      }
-      return nonBlack >= 2;
-    });
-    if (hasContent) return true;
-    await sleep(1000);
-  }
-  return false; // timed out, but don't throw — take screenshot anyway
-}
-
 async function runTest() {
-  console.log('[S43-05] Starting pole crossing camera inversion test...');
-  console.log('[S43-05] Note: SwiftShader is slow (~7fps). Allowing up to 60s for load.');
+  console.log('[S43-05] Starting peanut pole crossing controls test...');
 
   const browser = await puppeteer.launch({
     executablePath: CHROME_PATH,
@@ -79,111 +41,153 @@ async function runTest() {
     await page.setViewport({ width: 1280, height: 720 });
 
     const errors = [];
+    const logs = [];
     page.on('console', msg => {
       if (msg.type() === 'error') errors.push(msg.text());
+      logs.push(`[${msg.type()}] ${msg.text()}`);
     });
     page.on('pageerror', err => errors.push(err.message));
 
-    // quickStart=true skips the start menu, starts sphere game directly
+    // Start peanut game with quickStart
     const url = `${BASE_URL}?quickStart=true&surface=peanut&seed=12345&debug=true`;
     console.log('[S43-05] Navigating to:', url);
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // In quickStart mode, StartMenu.ts is never shown, so the loading screen is never dismissed.
-    // Wait 3s for the game to init, then forcibly remove the loading screen overlay.
-    console.log('[S43-05] Waiting 3s for initial game load...');
     await sleep(3000);
+    // Dismiss loading screen
     await page.evaluate(() => {
       const ls = document.getElementById('loading-screen');
       if (ls) ls.remove();
     });
-    console.log('[S43-05] Loading screen dismissed. Waiting 8s for game to fully start...');
-    // Wait for game loop to start. SwiftShader ~7 FPS; 8s ≈ ~1 game second (safe before enemies arrive).
+    console.log('[S43-05] Loading screen dismissed. Waiting 8s for game to start...');
     await sleep(8000);
 
-    // Take baseline screenshot — player at starting position
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '01-baseline.png') });
-    console.log('[S43-05] 01-baseline.png taken');
+    // Baseline screenshot
+    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '01-peanut-baseline.png') });
+    console.log('[S43-05] 01-peanut-baseline.png taken');
 
-    // Focus and start moving toward north pole
+    // Get player position
+    const initialPos = await page.evaluate(() => {
+      const g = window;
+      if (g.__gameDebug) {
+        const walker = g.__gameDebug.playerWalker || g.__gameDebug.walker;
+        if (walker) return { x: walker.position.x, y: walker.position.y, z: walker.position.z };
+      }
+      return null;
+    });
+    console.log('[S43-05] Initial player position:', initialPos);
+
+    // Click canvas to focus
     const canvas = await page.$('canvas');
-    if (canvas) {
-      await canvas.click();
-    }
+    if (canvas) await canvas.click();
 
-    // Move toward north pole — hold W key
-    // On a sphere, the initial player position is at the equator (v≈0.5)
-    // The north pole is at v=0. Moving "forward" (W key) goes in the camera-relative
-    // up direction, which on a default sphere camera view is "northward" = toward pole.
-    console.log('[S43-05] Pressing W to move toward north pole (6 seconds)...');
+    // Press W to move toward the north pole
+    console.log('[S43-05] Pressing W for 15s to move toward peanut north pole...');
     await page.keyboard.down('w');
-    await sleep(2000);
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '02-approaching.png') });
-    console.log('[S43-05] 02-approaching.png taken');
+
+    await sleep(3000);
+    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '02-approaching-pole.png') });
+    console.log('[S43-05] 02-approaching-pole.png taken');
 
     await sleep(4000);
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '03-at-pole.png') });
-    console.log('[S43-05] 03-at-pole.png taken (near/at pole)');
+    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '03-near-pole.png') });
+    console.log('[S43-05] 03-near-pole.png taken');
 
     await sleep(4000);
     await page.keyboard.up('w');
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '04-post-crossing.png') });
-    console.log('[S43-05] 04-post-crossing.png taken (after pole crossing)');
 
-    // Check camera state if debug API provides it
-    const cameraInfo = await page.evaluate(() => {
+    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '04-post-crossing.png') });
+    console.log('[S43-05] 04-post-crossing.png taken');
+
+    // Get camera state after crossing
+    const cameraState = await page.evaluate(() => {
       const g = window;
       try {
-        if (g.__gameDebug && g.__gameDebug.getCameraState) {
-          return g.__gameDebug.getCameraState();
-        }
-        // Try to get camera from raw debug reference
         if (g.__gameDebug && g.__gameDebug.game && g.__gameDebug.game.camera) {
           const cam = g.__gameDebug.game.camera;
-          return {
-            upX: cam.up.x,
-            upY: cam.up.y,
-            upZ: cam.up.z,
-          };
+          return { upX: cam.up.x, upY: cam.up.y, upZ: cam.up.z };
         }
-        return null;
-      } catch (e) {
-        return { error: e.message };
-      }
+      } catch(e) { return { error: e.message }; }
+      return null;
     });
-    console.log('[S43-05] Camera state:', JSON.stringify(cameraInfo));
+    console.log('[S43-05] Camera up after crossing:', cameraState);
 
-    // Continue pressing W for more movement (verify player can still move normally)
-    console.log('[S43-05] Pressing W again (3s) to verify controls work post-crossing...');
+    // Now try pressing W again to verify controls are not inverted
+    console.log('[S43-05] Pressing W again for 5s to verify controls...');
+    const posBeforeW = await page.evaluate(() => {
+      const g = window;
+      if (g.__gameDebug) {
+        const walker = g.__gameDebug.playerWalker || g.__gameDebug.walker;
+        if (walker) return { x: walker.position.x, y: walker.position.y, z: walker.position.z };
+      }
+      return null;
+    });
+
     await page.keyboard.down('w');
     await sleep(3000);
     await page.keyboard.up('w');
 
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '05-continued-movement.png') });
-    console.log('[S43-05] 05-continued-movement.png taken');
+    await page.screenshot({ path: path.join(SCREENSHOT_DIR, '05-after-controls-test.png') });
+    console.log('[S43-05] 05-after-controls-test.png taken');
 
-    if (errors.length > 0) {
-      console.log('\n[S43-05] Browser errors:', errors.slice(0, 5));
+    const posAfterW = await page.evaluate(() => {
+      const g = window;
+      if (g.__gameDebug) {
+        const walker = g.__gameDebug.playerWalker || g.__gameDebug.walker;
+        if (walker) return { x: walker.position.x, y: walker.position.y, z: walker.position.z };
+      }
+      return null;
+    });
+
+    console.log('[S43-05] Position before W press:', posBeforeW);
+    console.log('[S43-05] Position after W press:', posAfterW);
+
+    if (posBeforeW && posAfterW) {
+      const dx = posAfterW.x - posBeforeW.x;
+      const dy = posAfterW.y - posBeforeW.y;
+      const dz = posAfterW.z - posBeforeW.z;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      console.log('[S43-05] Player moved distance:', dist.toFixed(3));
+      console.log('[S43-05] Movement direction:', { dx: dx.toFixed(3), dy: dy.toFixed(3), dz: dz.toFixed(3) });
     }
 
-    console.log('\n[S43-05] === VISUAL TEST COMPLETE ===');
-    console.log('Screenshots saved to:', SCREENSHOT_DIR);
-    console.log('\nReview checklist:');
-    console.log('  01-baseline.png       — sphere visible, player at start');
-    console.log('  02-approaching.png    — player moving toward north pole');
-    console.log('  03-at-pole.png        — player at/near pole (no stalling)');
-    console.log('  04-post-crossing.png  — player past pole, camera NOT inverted');
-    console.log('  05-continued.png      — player moving freely, controls normal');
-    console.log('\nPASS: Sphere visible in all shots, camera not flipped in 04-05');
-    console.log('FAIL: Sphere appears inside-out or camera flipped in 04-05');
+    // Now try pressing S to see if that moves backward correctly
+    console.log('[S43-05] Pressing S for 3s to test backward movement...');
+    const posBeforeS = await page.evaluate(() => {
+      const g = window;
+      if (g.__gameDebug) {
+        const walker = g.__gameDebug.playerWalker || g.__gameDebug.walker;
+        if (walker) return { x: walker.position.x, y: walker.position.y, z: walker.position.z };
+      }
+      return null;
+    });
+    await page.keyboard.down('s');
+    await sleep(3000);
+    await page.keyboard.up('s');
+    const posAfterS = await page.evaluate(() => {
+      const g = window;
+      if (g.__gameDebug) {
+        const walker = g.__gameDebug.playerWalker || g.__gameDebug.walker;
+        if (walker) return { x: walker.position.x, y: walker.position.y, z: walker.position.z };
+      }
+      return null;
+    });
+    console.log('[S43-05] Position before S press:', posBeforeS);
+    console.log('[S43-05] Position after S press:', posAfterS);
+
+    console.log('\n[S43-05] === TEST COMPLETE ===');
+    console.log('Screenshots in:', SCREENSHOT_DIR);
+
+    if (errors.length > 0) {
+      console.log('\nBrowser errors:', errors.slice(0, 5));
+    }
 
   } finally {
     await browser.close();
-    console.log('\n[S43-05] Browser closed.');
   }
 }
 
 runTest().catch(err => {
-  console.error('[S43-05] Test error:', err);
+  console.error('[S43-05] Error:', err);
   process.exit(1);
 });
