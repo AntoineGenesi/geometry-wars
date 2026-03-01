@@ -4879,6 +4879,11 @@ async function main() {
       }
 
       if (shouldShow && !diagOverlayEl) {
+        // Don't show diagnostic overlay on mobile screens (max-width: 600px)
+        if (window.innerWidth <= 600) {
+          return;
+        }
+
         diagOverlayEl = document.createElement('div');
         diagOverlayEl.style.cssText =
           'position:fixed;bottom:10px;left:10px;background:rgba(0,0,0,0.85);' +
