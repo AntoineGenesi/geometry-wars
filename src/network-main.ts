@@ -674,6 +674,10 @@ async function main() {
     lastCreatedSurfaceType = surfaceType;
     lastMapSize = mapSize ?? '';
     netMainLog(`[NetworkMain] Surface initialized: ${surfaceType} (mapSize: ${resolvedMapSize}, scale: ${mapSizeScaleFactor}x)`);
+
+    // Reset camera frame so the sign-flip continuity check doesn't fire on the
+    // first frame and invert controls (see CameraController.resetFrameForNewSurface).
+    cameraController.resetFrameForNewSurface();
   }
 
   // -- Shared visual systems (same as co-op) --
@@ -1967,6 +1971,11 @@ async function main() {
 
     // Reset per-round counters for telemetry
     localPlayerDeaths = 0;
+
+    // Reset camera frame so controls aren't inverted after round reset.
+    // Without this, targetUp may still hold the last surface's tangentV, which
+    // can mismatch the new spawn orientation and trigger the sign-flip protection.
+    cameraController.resetFrameForNewSurface();
 
     netMainLog('[NetworkMain] Game entities reset for new round');
   }

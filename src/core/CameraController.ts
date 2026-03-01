@@ -41,6 +41,15 @@ export class CameraController {
    */
   readonly targetUp = new THREE.Vector3(0, 1, 0);
 
+  /**
+   * Whether updateFromFrame() has been called at least once for the current surface.
+   * Used to skip the sign-flip continuity check on the very first frame — the check
+   * compares incoming tangentV against targetUp which is initialised to world-up (0,1,0),
+   * but on sphere/peanut tangentV at spawn is (0,-1,0), so the check immediately negates
+   * it, locking camera.up at (0,1,0) and causing both movement axes to appear inverted.
+   */
+  private _cameraFrameInitialized = false;
+
   constructor(camera: THREE.Camera) {
     this.camera = camera;
     this.setupEventListeners();
@@ -175,9 +184,14 @@ export class CameraController {
     // Compare the new target against the previous frame's target (this.targetUp);
     // if they are more than 90° apart, negate to maintain continuity.
     this._camUp.normalize();
-    if (this.targetUp.dot(this._camUp) < 0) {
+    // Only apply continuity sign-flip protection after the first frame.
+    // On the first frame, targetUp is (0,1,0) (world-up default) but sphere/peanut
+    // tangentV at spawn is often (0,-1,0) — the check would fire immediately and lock
+    // camera.up at world-up, inverting both movement axes.  Skip on frame 0.
+    if (this._cameraFrameInitialized && this.targetUp.dot(this._camUp) < 0) {
       this._camUp.negate();
     }
+    this._cameraFrameInitialized = true;
 
     // Store target up for external reference
     this.targetUp.copy(this._camUp);
@@ -235,6 +249,17 @@ export class CameraController {
     // This matches the working reference implementation exactly.
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
     (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, this.CAMERA_LERP_FACTOR).normalize();
+  }
+
+  /**
+   * Reset camera frame initialization state for a new surface.
+   * Call this when the player spawns on a new map so the sign-flip continuity
+   * check doesn't compare against stale targetUp from the previous surface.
+   * Also needed between rounds (resetGameEntities).
+   */
+  resetFrameForNewSurface(): void {
+    this._cameraFrameInitialized = false;
+    this.targetUp.set(0, 1, 0); // reset to neutral so first frame has no bias
   }
 
   /** Get current camera distance */
