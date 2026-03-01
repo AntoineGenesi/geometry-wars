@@ -2038,8 +2038,20 @@ export class StartMenu {
     const lanBackBtn = this.container.querySelector('#lan-back');
     lanBackBtn?.addEventListener('click', () => {
       this.stopAutoRefresh();
+      // If we were hosting, stop the server on exit (fire-and-forget — don't block UI).
+      // This prevents EADDRINUSE when the user tries to host again later.
+      if (hostedServerUrl) {
+        this.lanClient.stopHost().catch(() => {});
+        hostedServerUrl = '';
+        lanHostStatus.textContent = 'Starting server...';
+        lanHostUrl.textContent = '';
+        lanQRContainer.innerHTML = '';
+      }
       lanSection.classList.add('hidden');
       lanHostSurfacePick.classList.add('hidden');
+      lanHostInfo.classList.add('hidden');
+      lanEnterBtn.classList.add('hidden');
+      lanStopBtn.classList.add('hidden');
       lanHostBtn.style.display = '';
       mainButtonsContainer.classList.remove('hidden');
     });

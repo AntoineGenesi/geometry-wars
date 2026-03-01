@@ -196,12 +196,17 @@ export default function lanPlugin(): Plugin {
     }
 
     // Already hosting (we spawned this process ourselves)
-    if (serverProcess && serverReady) {
-      // Verify our own server is still healthy
-      if (await checkServerHealth()) {
-        return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses, portproxyConflict };
+    if (serverProcess) {
+      if (serverReady) {
+        // Verify our own server is still healthy
+        if (await checkServerHealth()) {
+          return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses, portproxyConflict };
+        }
       }
-      // Our server died, clean up
+      // Our server is either unhealthy or still starting — kill and restart fresh.
+      // (Race condition guard: if serverProcess exists but serverReady === false,
+      // a previous start attempt is still in progress. Kill it before spawning again.)
+      console.log('[LAN] Killing stale/starting serverProcess before fresh start...');
       serverProcess.kill();
       serverProcess = null;
       serverReady = false;
@@ -219,8 +224,10 @@ export default function lanPlugin(): Plugin {
     // If something is on the port but failed deep check, kill it
     if (await checkServerHealth()) {
       console.log('[LAN] Stale server detected on port ' + SERVER_PORT + ', killing...');
-      await killStaleServer();
     }
+    // Always attempt port cleanup before spawning — handles zombie processes,
+    // recent kills that haven't fully released the port, and EADDRINUSE races.
+    await killStaleServer();
 
     // Start the Colyseus server as child process
     // Use process.execPath (node) + tsx module for cross-platform compatibility.
@@ -233,6 +240,7 @@ export default function lanPlugin(): Plugin {
       SHUTDOWN_TIMEOUT: String(shutdownTimeout),
     };
 
+    let eaddrinuseDetected = false;
     serverProcess = spawn(process.execPath, [tsxPath, 'server/index.ts'], {
       cwd: process.cwd(),
       env,
@@ -248,7 +256,13 @@ export default function lanPlugin(): Plugin {
     });
 
     serverProcess.stderr?.on('data', (data: Buffer) => {
-      console.error('[LAN Server]', data.toString().trim());
+      const msg = data.toString().trim();
+      if (msg.includes('EADDRINUSE')) {
+        eaddrinuseDetected = true;
+        console.error('[LAN Server] Port ' + SERVER_PORT + ' already in use (EADDRINUSE). Another server is still running.');
+      } else {
+        console.error('[LAN Server]', msg);
+      }
     });
 
     serverProcess.on('exit', (code) => {
@@ -272,12 +286,17 @@ export default function lanPlugin(): Plugin {
         }
         return { ok: true, addresses, port: SERVER_PORT, isWSL2: wsl2, windowsAddresses, portproxyConflict };
       }
+      // If EADDRINUSE detected, no point waiting the full 15s
+      if (eaddrinuseDetected) break;
     }
 
     // Failed - cleanup
     serverProcess?.kill();
     serverProcess = null;
-    return { ok: false, addresses, port: SERVER_PORT, error: 'Server failed to start within 15s', isWSL2: wsl2, windowsAddresses, portproxyConflict };
+    const startError = eaddrinuseDetected
+      ? `Port ${SERVER_PORT} is already in use by another server. Use STOP SERVER to kill it, then try again.`
+      : 'Server failed to start within 15s';
+    return { ok: false, addresses, port: SERVER_PORT, error: startError, isWSL2: wsl2, windowsAddresses, portproxyConflict };
   }
 
   async function handleStop(): Promise<{ ok: boolean }> {
