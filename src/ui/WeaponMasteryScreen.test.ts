@@ -656,13 +656,13 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(isPrerequisiteMet(b3, tree, ps)).toBe(false);
   });
 
-  it('skip connection HTML contains dashed golden line markup', () => {
+  it('skip connection HTML contains dashed white line markup', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;
     // Skip lines should have data-skip attribute and dashed stroke
     expect(html).toContain('data-skip="true"');
     expect(html).toContain('stroke-dasharray');
-    expect(html).toContain('#d4aa40'); // golden color
+    expect(html).toContain('#ffffff'); // white color
   });
 
   // ── Path visualization tests ───────────────────────────────────────────────
