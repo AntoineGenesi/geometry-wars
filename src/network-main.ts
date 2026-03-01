@@ -2140,6 +2140,26 @@ async function main() {
           _localPlayerWorldTarget.valid = true;
         }
 
+        // s44b-01: Snap camera to player position on first server frame.
+        // Without this, the camera stays at its initial position (0,15,25) for
+        // ~20 frames (CAMERA_LERP_FACTOR=0.12), causing computeCameraRelativeAimAngle
+        // to use wrong camera axes and produce ~130° aim error on first spawn.
+        // After respawn the camera is already positioned, so it's correct — this
+        // snap only fires when hasBeenPositioned=false (i.e., after resetFrameForNewSurface).
+        if (!cameraController.hasBeenPositioned && _localServerFrameValid && _localPlayerWorldTarget.valid) {
+          const tgt = _localPlayerWorldTarget;
+          const snapPos = new THREE.Vector3(
+            tgt.x * currentMapSizeScaleFactor + _localServerNormal.x * 0.15,
+            tgt.y * currentMapSizeScaleFactor + _localServerNormal.y * 0.15,
+            tgt.z * currentMapSizeScaleFactor + _localServerNormal.z * 0.15,
+          );
+          cameraController.snapToFrame(
+            snapPos,
+            _localServerNormal,
+            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+          );
+        }
+
         const du = netPlayer.surfaceU - player.surfaceU;
         const dv = netPlayer.surfaceV - player.surfaceV;
         const errSq = du * du + dv * dv;
