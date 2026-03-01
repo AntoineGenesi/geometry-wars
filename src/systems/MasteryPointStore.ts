@@ -1,30 +1,78 @@
 // ---------------------------------------------------------------------------
 // MasteryPointStore
-// Persists earned/spent mastery points and permanent node unlocks to localStorage.
+// Persists earned/spent mastery points (per-weapon) and permanent node unlocks
+// to localStorage.
+//
+// Points are PER WEAPON: killing with Blaster earns Blaster points, which can
+// only be spent on Blaster upgrade nodes. Points from one weapon do NOT
+// transfer to another.
+//
 // Supports multi-level nodes (maxPoints > 1) — a node can be upgraded multiple times.
 // ---------------------------------------------------------------------------
 
+import { WeaponType } from '../weapons/WeaponTypes';
+
 const STORAGE_KEY = 'gw_mastery_points';
 
-interface StoredState {
-  totalPoints: number;
-  spentPoints: number;
+// ---------------------------------------------------------------------------
+// Storage format
+// ---------------------------------------------------------------------------
+
+interface WeaponPointEntry {
+  total: number;
+  spent: number;
+}
+
+/** v2 format — per-weapon point pools */
+interface StoredStateV2 {
+  version: 2;
+  /** Points earned/spent per weapon */
+  weaponPoints: { [weaponType: string]: WeaponPointEntry };
   /**
    * Points spent per node (value = how many points invested, 0 = not unlocked).
-   * Replaces the old `permanentUnlocks: Record<string, true>` format.
-   * Migration: if old format is detected on load, each entry is converted to 1 point.
    */
   nodePoints: Record<string, number>;
-  /**
-   * Legacy field — present in old saves. Migrated to nodePoints on load.
-   * @deprecated
-   */
+}
+
+/** v1 (legacy) format — global shared pool */
+interface StoredStateV1 {
+  version?: undefined | 1;
+  totalPoints: number;
+  spentPoints: number;
+  nodePoints?: Record<string, number>;
+  /** @deprecated migrated to nodePoints */
   permanentUnlocks?: Record<string, true>;
 }
 
+type StoredState = StoredStateV2 | StoredStateV1;
+
+// ---------------------------------------------------------------------------
+// Helper: extract WeaponType from a node ID
+// Node IDs have the format "${weaponType}_${branch}_${nodeIndex}".
+// WeaponType values may contain underscores (e.g. 'chain_lightning'), so we
+// check by prefix using all known weapon type strings.
+// ---------------------------------------------------------------------------
+
+// Sorted longest-first so that multi-word types ('chain_lightning') match
+// before shorter prefixes that share a start ('chain').
+const WEAPON_TYPE_VALUES = (Object.values(WeaponType) as string[]).sort(
+  (a, b) => b.length - a.length,
+);
+
+export function weaponTypeFromNodeId(nodeId: string): WeaponType | null {
+  for (const wt of WEAPON_TYPE_VALUES) {
+    if (nodeId.startsWith(wt + '_')) return wt as WeaponType;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// MasteryPointStore
+// ---------------------------------------------------------------------------
+
 export class MasteryPointStore {
-  private totalPoints: number = 0;
-  private spentPoints: number = 0;
+  /** Points earned/spent per weapon */
+  private weaponPoints: Map<WeaponType, WeaponPointEntry> = new Map();
   /** Points invested per node (0 = locked, ≥1 = at least partially unlocked). */
   private nodePoints: Record<string, number> = {};
 
@@ -36,45 +84,82 @@ export class MasteryPointStore {
   // Computed
   // -------------------------------------------------------------------------
 
-  get availablePoints(): number {
-    return this.totalPoints - this.spentPoints;
+  /** Available points for a specific weapon (total - spent). */
+  getAvailablePoints(weaponType: WeaponType): number {
+    const entry = this.weaponPoints.get(weaponType);
+    if (!entry) return 0;
+    return Math.max(0, entry.total - entry.spent);
+  }
+
+  /** Total points earned across all weapons (or for a specific weapon). */
+  getTotalPoints(weaponType?: WeaponType): number {
+    if (weaponType !== undefined) {
+      return this.weaponPoints.get(weaponType)?.total ?? 0;
+    }
+    let sum = 0;
+    for (const entry of this.weaponPoints.values()) sum += entry.total;
+    return sum;
+  }
+
+  /** Total points spent across all weapons (or for a specific weapon). */
+  getSpentPoints(weaponType?: WeaponType): number {
+    if (weaponType !== undefined) {
+      return this.weaponPoints.get(weaponType)?.spent ?? 0;
+    }
+    let sum = 0;
+    for (const entry of this.weaponPoints.values()) sum += entry.spent;
+    return sum;
   }
 
   // -------------------------------------------------------------------------
   // Mutations
   // -------------------------------------------------------------------------
 
-  /** Add 1 mastery point (call on player level-up). */
-  earnPoint(): void {
-    this.totalPoints = this.totalPoints + 1;
+  /**
+   * Add 1 mastery point to a specific weapon's pool.
+   * Called on player level-up using the currently equipped weapon.
+   */
+  earnPoint(weaponType: WeaponType): void {
+    const entry = this.weaponPoints.get(weaponType) ?? { total: 0, spent: 0 };
+    this.weaponPoints.set(weaponType, { ...entry, total: entry.total + 1 });
     this.save();
   }
 
   /**
    * Spend points in a node.
    * - `maxPoints` controls how many total points can be invested (default 1).
-   * - `cost` controls how many points are deducted from availablePoints (default 1).
-   *   Premium nodes may cost 2 points to initially unlock.
-   * - Returns true if the spend was successful; false if node is at max points
-   *   or insufficient points are available.
+   * - `cost` controls how many points are deducted from the weapon's available
+   *   points (default 1). Premium nodes may cost 2 points to initially unlock.
+   * - Points are drawn from the pool of the weapon that owns this node (derived
+   *   from the node ID prefix).
+   * - Returns true if the spend was successful; false if node is at max points,
+   *   insufficient weapon points are available, or nodeId has no weapon owner.
    */
   spendPoint(nodeId: string, maxPoints: number = 1, cost: number = 1): boolean {
+    const weaponType = weaponTypeFromNodeId(nodeId);
+    if (weaponType === null) return false;
+
     const current = this.nodePoints[nodeId] ?? 0;
     if (current >= maxPoints) return false;
-    if (this.availablePoints < cost) return false;
+    if (this.getAvailablePoints(weaponType) < cost) return false;
 
+    const entry = this.weaponPoints.get(weaponType) ?? { total: 0, spent: 0 };
+    this.weaponPoints.set(weaponType, { ...entry, spent: entry.spent + cost });
     this.nodePoints = { ...this.nodePoints, [nodeId]: current + 1 };
-    this.spentPoints = this.spentPoints + cost;
     this.save();
     return true;
   }
 
   /**
-   * Refund 1 point from a node.
+   * Refund 1 point from a node, returning it to the weapon's point pool.
    * For multi-level nodes, decrements by 1. If the count reaches 0, the node is locked.
-   * Returns true if a point was refunded; false if node has no points invested.
+   * Returns true if a point was refunded; false if node has no points invested
+   * or nodeId has no weapon owner.
    */
   refundPoint(nodeId: string): boolean {
+    const weaponType = weaponTypeFromNodeId(nodeId);
+    if (weaponType === null) return false;
+
     const current = this.nodePoints[nodeId] ?? 0;
     if (current <= 0) return false;
 
@@ -85,7 +170,8 @@ export class MasteryPointStore {
     } else {
       this.nodePoints = { ...this.nodePoints, [nodeId]: newCount };
     }
-    this.spentPoints = this.spentPoints - 1;
+    const entry = this.weaponPoints.get(weaponType) ?? { total: 0, spent: 0 };
+    this.weaponPoints.set(weaponType, { ...entry, spent: Math.max(0, entry.spent - 1) });
     this.save();
     return true;
   }
@@ -112,22 +198,18 @@ export class MasteryPointStore {
     return new Set(Object.keys(this.nodePoints).filter(id => (this.nodePoints[id] ?? 0) > 0));
   }
 
-  getTotalPoints(): number {
-    return this.totalPoints;
-  }
-
-  getSpentPoints(): number {
-    return this.spentPoints;
-  }
-
   // -------------------------------------------------------------------------
   // Persistence
   // -------------------------------------------------------------------------
 
   save(): void {
-    const state: StoredState = {
-      totalPoints: this.totalPoints,
-      spentPoints: this.spentPoints,
+    const weaponPointsObj: { [k: string]: WeaponPointEntry } = {};
+    for (const [wt, entry] of this.weaponPoints.entries()) {
+      weaponPointsObj[wt] = { ...entry };
+    }
+    const state: StoredStateV2 = {
+      version: 2,
+      weaponPoints: weaponPointsObj,
       nodePoints: { ...this.nodePoints },
     };
     try {
@@ -142,33 +224,61 @@ export class MasteryPointStore {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const state = JSON.parse(raw) as StoredState;
-      this.totalPoints = typeof state.totalPoints === 'number' ? state.totalPoints : 0;
-      this.spentPoints = typeof state.spentPoints === 'number' ? state.spentPoints : 0;
 
-      if (state.nodePoints && typeof state.nodePoints === 'object') {
-        // New format: node points map
-        this.nodePoints = { ...state.nodePoints };
-      } else if (state.permanentUnlocks && typeof state.permanentUnlocks === 'object') {
-        // Legacy format migration: convert boolean unlocks to 1 point each
-        this.nodePoints = {};
-        for (const nodeId of Object.keys(state.permanentUnlocks)) {
-          this.nodePoints[nodeId] = 1;
+      if ((state as StoredStateV2).version === 2) {
+        // Current v2 format
+        const s2 = state as StoredStateV2;
+        this.weaponPoints = new Map();
+        for (const [wt, entry] of Object.entries(s2.weaponPoints ?? {})) {
+          if (typeof entry.total === 'number' && typeof entry.spent === 'number') {
+            this.weaponPoints.set(wt as WeaponType, { total: entry.total, spent: entry.spent });
+          }
+        }
+        if (s2.nodePoints && typeof s2.nodePoints === 'object') {
+          this.nodePoints = { ...s2.nodePoints };
         }
       } else {
-        this.nodePoints = {};
+        // Legacy v1 format: global pool. Migrate.
+        // Keep node unlocks (they already have weapon prefixes). Discard global
+        // point totals — they can't be attributed to specific weapons. The user
+        // will re-earn per-weapon points going forward.
+        const s1 = state as StoredStateV1;
+        this.weaponPoints = new Map();
+
+        if (s1.nodePoints && typeof s1.nodePoints === 'object') {
+          this.nodePoints = { ...s1.nodePoints };
+          // Reconstruct spent counts per weapon from existing nodePoints
+          for (const [nodeId, pts] of Object.entries(this.nodePoints)) {
+            if (pts <= 0) continue;
+            const wt = weaponTypeFromNodeId(nodeId);
+            if (!wt) continue;
+            const entry = this.weaponPoints.get(wt) ?? { total: 0, spent: 0 };
+            // Set total = spent so available = 0 (can't attribute old unspent points)
+            const newSpent = entry.spent + pts;
+            this.weaponPoints.set(wt, { total: newSpent, spent: newSpent });
+          }
+        } else if (s1.permanentUnlocks && typeof s1.permanentUnlocks === 'object') {
+          // Very old format: boolean unlocks
+          this.nodePoints = {};
+          for (const nodeId of Object.keys(s1.permanentUnlocks)) {
+            this.nodePoints[nodeId] = 1;
+            const wt = weaponTypeFromNodeId(nodeId);
+            if (!wt) continue;
+            const entry = this.weaponPoints.get(wt) ?? { total: 0, spent: 0 };
+            this.weaponPoints.set(wt, { total: entry.total + 1, spent: entry.spent + 1 });
+          }
+        }
       }
     } catch {
       // Corrupt data — reset to defaults
-      this.totalPoints = 0;
-      this.spentPoints = 0;
+      this.weaponPoints = new Map();
       this.nodePoints = {};
     }
   }
 
   /** Hard-reset all stored data (for testing / debug). */
   reset(): void {
-    this.totalPoints = 0;
-    this.spentPoints = 0;
+    this.weaponPoints = new Map();
     this.nodePoints = {};
     try {
       localStorage.removeItem(STORAGE_KEY);
