@@ -22,13 +22,15 @@ import { describe, it, expect } from 'vitest';
 
 const PEANUT_BASE_RADIUS = 6;
 const PEANUT_WAIST_DEPTH = 0.4;
+// S44b-07 fix: must use (1 + W*cos(2*phi)) to match PeanutSurface.ts profileRadius().
+// Old code used (1 - W*cos(...)) — inverted, giving wrong positions near poles.
 function peanutChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor = 1): number {
   const B = PEANUT_BASE_RADIUS * scaleFactor;
   const W = PEANUT_WAIST_DEPTH;
   const phi1 = v1 * Math.PI, theta1 = u1 * 2 * Math.PI;
-  const r1 = B * (1 - W * Math.cos(2 * phi1));
+  const r1 = B * (1 + W * Math.cos(2 * phi1));
   const phi2 = v2 * Math.PI, theta2 = u2 * 2 * Math.PI;
-  const r2 = B * (1 - W * Math.cos(2 * phi2));
+  const r2 = B * (1 + W * Math.cos(2 * phi2));
   const dx = r1 * Math.sin(phi1) * Math.cos(theta1) - r2 * Math.sin(phi2) * Math.cos(theta2);
   const dy = r1 * Math.cos(phi1) - r2 * Math.cos(phi2);
   const dz = r1 * Math.sin(phi1) * Math.sin(theta1) - r2 * Math.sin(phi2) * Math.sin(theta2);
@@ -86,36 +88,47 @@ describe('S43-07: peanutChordDist', () => {
     expect(peanutChordDist(0.5, 0.5, 0.5, 0.5)).toBeCloseTo(0, 5);
   });
 
-  it('at bulge equator (v=0.5), small U separation gives ~correct world distance', () => {
-    // At bulge: r = 6*(1-0.4*cos(PI)) = 6*1.4 = 8.4
-    // Small U displacement at equator: world dist ≈ r * dTheta = 8.4 * (0.004 * 2π) ≈ 0.211
-    const dist = peanutChordDist(0.5, 0.5, 0.502, 0.5);
-    // Should be ~0.11 (0.002 * 2π * 8.4 ≈ 0.105)
-    expect(dist).toBeGreaterThan(0.05);
-    expect(dist).toBeLessThan(0.5); // Not the old UV inflated value
+  it('at bulge (near pole, v=0.1), small U separation gives ~correct world distance', () => {
+    // Peanut geometry (correct formula): r = 6*(1+0.4*cos(2*phi))
+    // At v=0.1 (phi=0.314 rad, near north bulge): r ≈ 7.94, ring_r = r*sin(phi) ≈ 2.45
+    // 0.002 UV in U → dTheta = 0.0126 rad → chord ≈ 2.45 * 0.0126 ≈ 0.031 world units
+    const dist = peanutChordDist(0.5, 0.1, 0.502, 0.1);
+    expect(dist).toBeGreaterThan(0.01);
+    expect(dist).toBeLessThan(0.5); // small separation → small distance
   });
 
-  it('REGRESSION: old UV distance 0.04 at bulge was ~2+ world units (5× too large)', () => {
-    // Old code: uvDistWrapped(0.5, 0.5, 0.54, 0.5) = 0.04 UV → triggers collision
-    // But actual chord distance at these UV coords is much larger than 0.4 world units
+  it('REGRESSION: old UV distance 0.04 at bulge was ~0.6 world units (too large)', () => {
+    // Old code: uvDistWrapped(0.5, 0.1, 0.54, 0.1) = 0.04 UV → triggers collision (< 0.04 threshold)
+    // But chord distance at these UV coords > 0.4 world units
     const uvDist = Math.abs(0.5 - 0.54); // 0.04 UV — would have triggered old collision
     expect(uvDist).toBeCloseTo(ENEMY_HIT_UV, 5); // Confirms old threshold would fire
 
-    // New check: chord distance at 0.04 UV separation in U direction at bulge
-    const chordDist = peanutChordDist(0.5, 0.5, 0.54, 0.5);
-    // At bulge (r≈8.4): 0.04 * 2π * 8.4 ≈ 2.11 world units
-    expect(chordDist).toBeGreaterThan(1.5); // Was triggering hit at >1.5 world units!
-    // New threshold of 0.4 world units correctly identifies this as NOT a hit
+    // New check: chord distance at 0.04 UV separation in U direction at bulge (v=0.1)
+    // ring_r ≈ 2.45 → 0.04 * 2π * 2.45 ≈ 0.615 world units
+    const chordDist = peanutChordDist(0.5, 0.1, 0.54, 0.1);
+    expect(chordDist).toBeGreaterThan(0.4); // Correctly > threshold: should NOT trigger hit
     expect(chordDist).toBeGreaterThan(ENEMY_HIT_WORLD);
   });
 
-  it('REGRESSION: contact at 0.4 world units triggers hit (was missed before)', () => {
-    // Find UV delta that gives ~0.4 world units at bulge
-    // At bulge r≈8.4: 0.4 / (2π * 8.4) ≈ 0.0076 UV
-    // So 0.0076 UV separation in U at bulge should give ~0.4 world units
-    const dist = peanutChordDist(0.5, 0.5, 0.5076, 0.5);
+  it('REGRESSION: contact at 0.4 world units at bulge correctly triggers hit', () => {
+    // At v=0.1 (near north bulge): ring_r ≈ 2.45
+    // 0.4 world units → theta_delta = 0.4/2.45 = 0.163 rad → 0.026 UV
+    const dist = peanutChordDist(0.5, 0.1, 0.526, 0.1);
     expect(dist).toBeCloseTo(0.4, 1); // ~0.4 world units
     expect(dist).toBeLessThanOrEqual(ENEMY_HIT_WORLD + 0.05);
+  });
+
+  it('S44b-07 REGRESSION: inverted formula caused false collisions near poles', () => {
+    // Bug: server used (1-W*cos(2*phi)) instead of (1+W*cos(2*phi)).
+    // Near pole (v=0.05): server computed r≈3.72 but actual r≈8.28.
+    // Result: chord distance computed at ~half the actual value → false hits.
+    //
+    // Player at (0.0, 0.05), Enemy at (0.1, 0.05) — 36° apart in azimuth near north pole.
+    // Correct chord dist ≈ 0.80 world units → NO collision (> 0.4 threshold).
+    // Wrong chord dist (old formula) ≈ 0.36 world units → FALSE collision (< 0.4 threshold)!
+    const dist = peanutChordDist(0.0, 0.05, 0.1, 0.05);
+    expect(dist).toBeGreaterThan(ENEMY_HIT_WORLD); // ~0.80 — should NOT be a hit
+    expect(dist).toBeGreaterThan(0.5); // Confirms it's clearly outside collision range
   });
 
   it('symmetry: dist(A,B) === dist(B,A)', () => {
