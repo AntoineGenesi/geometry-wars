@@ -21,7 +21,7 @@ export class Orbiter extends BaseEnemy {
   private orbitRadius: number;
   private readonly initialOrbitRadius: number = 0.35;
   private readonly minOrbitRadius: number = 0.04;
-  private readonly orbitSpeed: number = 2.5;        // radians/sec
+  private readonly orbitSpeed: number = 1.6;        // radians/sec (reduced from 2.5 — was too fast for early game)
   private readonly spiralInRate: number = 0.015;     // UV units/sec inward
   private orbitDirection: number = 1;                // 1 or -1
   private reverseTimer: number = 0;
