@@ -282,7 +282,7 @@ export interface ScaledWaveEntry {
  * The spawner picks from these based on wave number and difficulty level.
  */
 const BASIC_TYPES = ['grunt', 'wanderer', 'duck'];
-const MID_TYPES = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'orbiter', 'approach_glow'];
+const MID_TYPES = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'approach_glow'];
 const HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker', 'fractal_snake'];
 const ELITE_TYPES = ['gate', 'virus', 'painter'];
 const SPLITTING_TYPES = [
@@ -440,6 +440,17 @@ export function generateScaledEndlessWave(
       type: eliteType2,
       count: Math.min(Math.round((3 + Math.floor(difficultyLevel - 4)) * entityBrake), 6),
       tier: maxTier,
+    });
+  }
+
+  // -- Orbiter: late-game specialist that orbits the player (wave 8+, difficulty 1.5+) --
+  // Intentionally delayed: the Orbiter is very aggressive (spirals inward at high speed),
+  // which makes it disproportionately dangerous in early waves.
+  if (waveNum >= 8 && difficultyLevel >= 1.5) {
+    enemies.push({
+      type: 'orbiter',
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.5) * 0.5)) * entityBrake), 4),
+      tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
     });
   }
 

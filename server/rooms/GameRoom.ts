@@ -296,7 +296,7 @@ const STARTUP_CONFIG_HASH = computeStartupConfigHash(STARTUP_CONFIG_PAYLOAD);
 // any that are absent from network-main.ts SERVER_TO_SPAWNER_TYPE.
 // ---------------------------------------------------------------------------
 const BASIC_TYPES_WAVE = ['grunt', 'wanderer', 'duck'];
-const MID_TYPES_WAVE = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'orbiter', 'approach_glow'];
+const MID_TYPES_WAVE = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'approach_glow'];
 const HARD_TYPES_WAVE = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker'];
 const ELITE_TYPES_WAVE = ['gate', 'virus', 'painter'];
 const SPLITTING_TYPES_WAVE = ['giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron', 'titan_grunt', 'titan_spinner', 'titan_weaver', 'splitter'];
@@ -2760,6 +2760,15 @@ export class GameRoom extends Room<GameState> {
       entries.push({
         type: eliteType2,
         count: Math.min(Math.round((3 + Math.floor(difficultyLevel - 4)) * entityBrake), 6),
+      });
+    }
+
+    // Orbiter: late-game specialist (wave 8+, difficulty 1.5+)
+    // Removed from mid-wave rotation — orbits player at high speed, too dangerous early.
+    if (waveNum >= 8 && difficultyLevel >= 1.5) {
+      entries.push({
+        type: 'orbiter',
+        count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.5) * 0.5)) * entityBrake), 4),
       });
     }
 

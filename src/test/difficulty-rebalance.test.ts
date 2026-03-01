@@ -222,12 +222,27 @@ describe('Enemy Type Introduction', () => {
   it('wave 1 at difficulty 0 should only have basic + mid enemies', () => {
     const entries = generateScaledEndlessWave(1, 0);
     // Wave 1 should have no hard/elite/splitting (too early)
+    // Orbiter is intentionally excluded: it was moved to wave 8+ to prevent early-game danger
     const allBasicOrMid = entries.every(e =>
       ['grunt', 'wanderer', 'duck', 'weaver', 'spinner', 'rocket',
-       'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'orbiter',
+       'neutron', 'mayfly', 'helix', 'swarm', 'lurker',
        'approach_glow'].includes(e.type),
     );
     expect(allBasicOrMid).toBe(true);
+  });
+
+  it('orbiter should not appear in early waves (wave < 8)', () => {
+    for (let wave = 1; wave < 8; wave++) {
+      const entries = generateScaledEndlessWave(wave, 2.0);
+      const hasOrbiter = entries.some(e => e.type === 'orbiter');
+      expect(hasOrbiter).toBe(false);
+    }
+  });
+
+  it('orbiter should appear at wave 8+ with sufficient difficulty', () => {
+    const entries = generateScaledEndlessWave(8, 1.5);
+    const hasOrbiter = entries.some(e => e.type === 'orbiter');
+    expect(hasOrbiter).toBe(true);
   });
 
   it('high difficulty waves should have multiple enemy categories', () => {
