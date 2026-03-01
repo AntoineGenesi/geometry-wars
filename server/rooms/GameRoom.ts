@@ -42,6 +42,10 @@ interface PlayerInput {
   shooting: boolean;
   bomb: boolean;
   boost?: boolean;
+  // Camera axes (world space) for server-side camera-relative movement.
+  // Optional for backward compatibility with older clients.
+  camRightX?: number; camRightY?: number; camRightZ?: number;
+  camUpX?: number; camUpY?: number; camUpZ?: number;
 }
 
 /** Enemy spawn message (server-authoritative) */

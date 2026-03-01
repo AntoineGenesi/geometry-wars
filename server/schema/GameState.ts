@@ -29,6 +29,24 @@ export class PlayerState extends Schema {
   declare ddaLevel: number;
   /** Buff stack counts: maps buff type string (e.g. 'hot_hands') → stack count */
   declare buffStacks: MapSchema<number>;
+  // World-space position (from ServerMeshWalker)
+  declare wx: number;
+  declare wy: number;
+  declare wz: number;
+  // Surface normal (world-space)
+  declare nx: number;
+  declare ny: number;
+  declare nz: number;
+  // Tangent frame — tangent (surface "right")
+  declare tx: number;
+  declare ty: number;
+  declare tz: number;
+  // Tangent frame — bitangent (surface "forward", used as camera upHint)
+  declare bx: number;
+  declare by: number;
+  declare bz: number;
+  // Face index for debugging/telemetry
+  declare walkerFaceIndex: number;
 
   constructor() {
     super();
@@ -50,6 +68,14 @@ export class PlayerState extends Schema {
     this.playerKills = 0;
     this.ddaLevel = 0;
     this.buffStacks = new MapSchema<number>();
+    // World-space position: default to top of sphere (radius 10)
+    this.wx = 0; this.wy = 10; this.wz = 0;
+    // Surface normal: pointing up
+    this.nx = 0; this.ny = 1; this.nz = 0;
+    // Tangent frame defaults
+    this.tx = 1; this.ty = 0; this.tz = 0;
+    this.bx = 0; this.by = 0; this.bz = 1;
+    this.walkerFaceIndex = 0;
   }
 }
 
@@ -72,6 +98,11 @@ defineTypes(PlayerState, {
   playerKills: 'number',
   ddaLevel: 'number',
   buffStacks: { map: 'number' },
+  wx: 'number', wy: 'number', wz: 'number',
+  nx: 'number', ny: 'number', nz: 'number',
+  tx: 'number', ty: 'number', tz: 'number',
+  bx: 'number', by: 'number', bz: 'number',
+  walkerFaceIndex: 'number',
 });
 
 /**
