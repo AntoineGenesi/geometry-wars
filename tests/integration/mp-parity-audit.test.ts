@@ -49,7 +49,7 @@ const MP_WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number
 };
 
 const MP_WAVE_TIMING = {
-  WAVE_FIRST_AT: 6.0,       // seconds
+  WAVE_FIRST_AT: 3.0,       // seconds (reduced from 6.0 in s44-05 to speed up MP start)
   WAVE_INTERVAL_BASE: 7.0,  // seconds
   WAVE_INTERVAL_MIN: 2.0,   // seconds (hard floor)
   WAVE_INTERVAL_DECAY: 0.2, // seconds shorter per wave
@@ -199,8 +199,13 @@ describe(`MP Parity Audit (synced ${MP_SYNC_DATE})`, () => {
   // SP (WaveScheduler in main.ts) and MP (GameRoom.ts) must use identical timing.
   // =========================================================================
   describe('Wave Timing Constants (SP vs MP)', () => {
-    it('first wave at same time', () => {
-      expect(MP_WAVE_TIMING.WAVE_FIRST_AT).toBe(SP_WAVE_TIMING.WAVE_FIRST_AT);
+    it('first wave timing (MP optimized to 50% of SP for faster start — s44-05)', () => {
+      // MP first wave: 3.0s (optimized)
+      // SP first wave: 6.0s (unchanged)
+      // Intentional diff for performance
+      expect(MP_WAVE_TIMING.WAVE_FIRST_AT).toBe(3.0);
+      expect(SP_WAVE_TIMING.WAVE_FIRST_AT).toBe(6);
+      expect(MP_WAVE_TIMING.WAVE_FIRST_AT).toBe(SP_WAVE_TIMING.WAVE_FIRST_AT * 0.5);
     });
 
     it('base interval matches', () => {

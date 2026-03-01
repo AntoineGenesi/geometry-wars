@@ -80,7 +80,7 @@ const BOOST_COOLDOWN = 5.0;       // seconds between boosts
 const BOOST_SPEED_MULTIPLIER = 3.0; // speed multiplier during boost
 
 // Wave scheduling constants (mirrors WaveScheduler in src/core/)
-const WAVE_FIRST_AT = 6.0;       // first wave at 6s
+const WAVE_FIRST_AT = 3.0;       // first wave at 3s (reduced from 6s to speed up MP start, s44-05)
 const WAVE_INTERVAL_BASE = 7.0;  // base interval between waves
 const WAVE_INTERVAL_MIN = 2.0;   // minimum interval (hard floor)
 const WAVE_INTERVAL_DECAY = 0.2; // seconds shorter per wave
