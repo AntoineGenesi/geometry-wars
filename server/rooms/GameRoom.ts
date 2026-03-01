@@ -173,6 +173,91 @@ export function sphereGreatCircleDist(
 }
 
 // ---------------------------------------------------------------------------
+// S43-07: 3D chord distance helpers for surfaces with distorted UV mapping
+// ---------------------------------------------------------------------------
+// Problem: UV Euclidean distance is non-uniform on torus-like and peanut surfaces.
+//   - Torus V direction (around big ring, R=6): 0.04 UV ≈ 1.51 world units (3× too large)
+//   - Cube ring U direction (around big ring, R=6): 0.04 UV ≈ 1.51 world units (3× too large)
+//   - Peanut U direction (around bulge, r≈8.4): 0.04 UV ≈ 2.11 world units (5× too large)
+// Solution: Compute 3D Euclidean chord distance from UV coordinates — this matches
+// SP's CollisionSystem.ts which uses mesh.position.distanceTo(enemy.position).
+
+/** Peanut: surface of revolution. r(v) = B*(1 - W*cos(2*v*π)), v∈[0,1] = pole→pole. */
+const PEANUT_BASE_RADIUS = 6;
+const PEANUT_WAIST_DEPTH = 0.4;
+function peanutChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
+  const B = PEANUT_BASE_RADIUS * scaleFactor;
+  const W = PEANUT_WAIST_DEPTH;
+  const phi1 = v1 * Math.PI, theta1 = u1 * 2 * Math.PI;
+  const r1 = B * (1 - W * Math.cos(2 * phi1));
+  const phi2 = v2 * Math.PI, theta2 = u2 * 2 * Math.PI;
+  const r2 = B * (1 - W * Math.cos(2 * phi2));
+  const dx = r1 * Math.sin(phi1) * Math.cos(theta1) - r2 * Math.sin(phi2) * Math.cos(theta2);
+  const dy = r1 * Math.cos(phi1) - r2 * Math.cos(phi2);
+  const dz = r1 * Math.sin(phi1) * Math.sin(theta1) - r2 * Math.sin(phi2) * Math.sin(theta2);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/** Torus: U = around tube (minor, r=2), V = around ring (major, R=6). */
+const TORUS_MAJOR_R = 6;
+const TORUS_MINOR_R = 2;
+function torusChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
+  const R = TORUS_MAJOR_R * scaleFactor;
+  const r = TORUS_MINOR_R * scaleFactor;
+  const theta1 = u1 * 2 * Math.PI, phi1 = v1 * 2 * Math.PI;
+  const theta2 = u2 * 2 * Math.PI, phi2 = v2 * 2 * Math.PI;
+  const dx = (R + r * Math.cos(theta1)) * Math.cos(phi1) - (R + r * Math.cos(theta2)) * Math.cos(phi2);
+  const dy = r * Math.sin(theta1) - r * Math.sin(theta2); // sign irrelevant for distance
+  const dz = (R + r * Math.cos(theta1)) * Math.sin(phi1) - (R + r * Math.cos(theta2)) * Math.sin(phi2);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
+ * Cube ring: U = around big ring (major, R=6), V = around square cross-section.
+ * Profile approximates the 4 flat faces; ignores bevel arcs (error ≤ bevelRadius=0.4 world units
+ * at corners only — far better than the 1.5+ world unit error from UV distance).
+ * Face layout: v∈[0, 0.25) outer (r=+H), [0.25, 0.5) top (y=+H),
+ *              [0.5, 0.75) inner (r=-H), [0.75, 1.0) bottom (y=-H).
+ */
+const CUBE_RING_MAJOR_R = 6;
+const CUBE_RING_HALF_SIDE = 1.5; // crossSection/2 = 3/2
+function cubeRingChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
+  const R = CUBE_RING_MAJOR_R * scaleFactor;
+  const H = CUBE_RING_HALF_SIDE * scaleFactor;
+  function profile(v: number): { r: number; y: number } {
+    const t = ((v % 1) + 1) % 1;
+    const q = t * 4;
+    if (q < 1) return { r: H,  y: (q - 0.5) * 2 * H };   // outer face
+    if (q < 2) return { r: (1.5 - q) * 2 * H, y: H };     // top face
+    if (q < 3) return { r: -H, y: (2.5 - q) * 2 * H };    // inner face
+    return         { r: (q - 3.5) * 2 * H,    y: -H };     // bottom face
+  }
+  const phi1 = u1 * 2 * Math.PI;
+  const { r: r1, y: y1 } = profile(v1);
+  const phi2 = u2 * 2 * Math.PI;
+  const { r: r2, y: y2 } = profile(v2);
+  const dx = (R + r1) * Math.cos(phi1) - (R + r2) * Math.cos(phi2);
+  const dz = (R + r1) * Math.sin(phi1) - (R + r2) * Math.sin(phi2);
+  const dy = y1 - y2;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
+ * Dispatch to the appropriate world-space distance function for a given surface.
+ * Returns Euclidean 3D chord distance in world units — matches SP CollisionSystem.
+ */
+function surfaceWorldDist(
+  surfaceType: string,
+  u1: number, v1: number, u2: number, v2: number,
+  scaleFactor: number, sphereR: number,
+): number {
+  if (surfaceType === 'peanut')    return peanutChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'torus')     return torusChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'cube-ring') return cubeRingChordDist(u1, v1, u2, v2, scaleFactor);
+  return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron, sphere-tunnel
+}
+
+// ---------------------------------------------------------------------------
 // Startup config hash helpers
 // ---------------------------------------------------------------------------
 
@@ -2193,34 +2278,35 @@ export class GameRoom extends Room<GameState> {
     const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
     const surfaceType = this.state.surfaceType;
 
-    // Sphere-like surfaces (UV parameterisation = spherical coordinates) use
-    // great-circle arc distance for accurate world-space collision.  UV Euclidean
-    // distance is up to 3× too large on sphere because the U metric shrinks toward
-    // the poles (all longitudes converge) while V stays constant.
-    // Reference surface radius = 10; scales with map size.
+    // S43-07: Surfaces that use 3D world-space chord/arc distance for player-enemy collision.
+    // UV Euclidean distance is badly distorted on these:
+    //   - sphere/capsule/icosahedron: U metric shrinks at poles (up to 3× error)
+    //   - peanut: same spherical UV distortion as sphere (up to 5× error at bulge)
+    //   - torus: V direction (around big ring, R=6) → 0.04 UV ≈ 1.51 world units (3× error)
+    //   - cube-ring: U direction (around big ring, R=6) → 0.04 UV ≈ 1.51 world units (3× error)
     const isSphereLike = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
       || surfaceType === 'capsule' || surfaceType === 'icosahedron';
+    const usesWorldDist = isSphereLike
+      || surfaceType === 'peanut'
+      || surfaceType === 'torus'
+      || surfaceType === 'cube-ring';
     const sphereR = 10 * scaleFactor;
 
-    // --- World-space thresholds (sphere-like only, in world units) ---
-    // Player ship half-width 0.15 + default enemy radius 0.30 + small margin = 0.5.
+    // --- World-space thresholds (surfaces using 3D chord/arc distance, in world units) ---
+    // S43-07: Reduced ENEMY_HIT_WORLD from 0.5 → 0.4 to match SP CollisionSystem.ts:
+    //   hitRadius = player.mesh.scale.x * 0.1 + enemy.radius = 0.1 + 0.3 = 0.4 world units.
+    //   The previous 0.5 was ~25% too large, causing early deaths on sphere, peanut, etc.
     // Entity sizes do NOT scale with map size, so these are fixed world-unit values.
-    const ENEMY_HIT_WORLD   = 0.5;   // ≈ player(0.15) + enemy(0.30) + margin
+    const ENEMY_HIT_WORLD   = 0.4;   // matches SP: player(0.1) + enemy(0.3) = 0.4
     const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
     const PICKUP_WORLD      = 0.6;   // matches client-side PICKUP_WORLD_RADIUS
 
-    // --- UV thresholds (non-sphere surfaces, scaled inversely with map size) ---
+    // --- UV thresholds (remaining surfaces without exact 3D formula) ---
     // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin — unchanged.
-    // Enemy-player: restored from 0.02 → 0.04.
-    //   Rationale: sphere-like surfaces now use world-space great-circle distance
-    //   (ENEMY_HIT_WORLD = 0.5), so the sphere over-detection that motivated the
-    //   0.04→0.02 reduction no longer applies here.
-    //   For torus (majorRadius=6, minorRadius=2): 0.04 UV in the tube (U) direction
-    //   = 0.04 * 2π * 2 ≈ 0.50 world units — matches player(0.15) + enemy(0.30) = 0.45,
-    //   i.e. enemy visually touching player triggers damage. 0.02 was only 0.25 world
-    //   units — enemies had to overlap the player body halfway before registering.
+    // Enemy-player: 0.04 remains for surfaces not in usesWorldDist (cube, pill, mobius, etc.)
+    //   For torus and cube-ring, these are now handled by torusChordDist/cubeRingChordDist above.
     const BULLET_HIT_RADIUS = 0.015 / scaleFactor;
-    const ENEMY_HIT_RADIUS  = 0.04  / scaleFactor;  // restored from 0.02; sphere uses ENEMY_HIT_WORLD
+    const ENEMY_HIT_RADIUS  = 0.04  / scaleFactor;  // UV-space fallback for misc surfaces
     const GEOM_RADIUS       = 0.025 / scaleFactor;  // was 0.05
     const PICKUP_RADIUS     = 0.02  / scaleFactor;  // was 0.04
 
@@ -2324,14 +2410,14 @@ export class GameRoom extends Room<GameState> {
         if (wasHit) return; // Only one hit per player per tick
         if (hitEnemyIds.has(enemy.id)) return; // Each enemy hits at most one player per tick
 
-        // For sphere-like surfaces: use great-circle world-space distance (S38b fix).
-        // UV Euclidean distance on sphere was 3× too large (0.04 UV ≈ 1.26 world units
-        // in V direction on sphere R=10, vs correct ~0.5 world units).
-        // For other surfaces: wrap-aware UV distance unchanged.
-        const dist = isSphereLike
-          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, sphereR)
+        // S43-07: Use 3D world-space chord distance for surfaces with UV distortion.
+        // sphere/capsule/icosahedron: great-circle arc distance (S38b fix, spherical UV).
+        // peanut/torus/cube-ring: exact chord distance via parametric formula (S43-07 fix).
+        // Other surfaces: wrap-aware UV Euclidean distance unchanged.
+        const dist = usesWorldDist
+          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
-        const hitThreshold = isSphereLike ? ENEMY_HIT_WORLD : ENEMY_HIT_RADIUS;
+        const hitThreshold = usesWorldDist ? ENEMY_HIT_WORLD : ENEMY_HIT_RADIUS;
 
         if (dist < hitThreshold) {
           // Player hit!
@@ -2379,10 +2465,10 @@ export class GameRoom extends Room<GameState> {
       this.state.geoms.forEach((geom, index) => {
         if (!geom.active) return;
 
-        const dist = isSphereLike
-          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, geom.surfaceU, geom.surfaceV, sphereR)
+        const dist = usesWorldDist
+          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, geom.surfaceU, geom.surfaceV, scaleFactor, sphereR)
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, geom.surfaceU, geom.surfaceV);
-        const geomThreshold = isSphereLike ? GEOM_WORLD : GEOM_RADIUS;
+        const geomThreshold = usesWorldDist ? GEOM_WORLD : GEOM_RADIUS;
 
         if (dist < geomThreshold) {
           // Collect geom
@@ -2402,10 +2488,10 @@ export class GameRoom extends Room<GameState> {
       this.state.weaponPickups.forEach((pickup, index) => {
         if (!pickup.active) return;
 
-        const dist = isSphereLike
-          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, sphereR)
+        const dist = usesWorldDist
+          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
-        const pickupThreshold = isSphereLike ? PICKUP_WORLD : PICKUP_RADIUS;
+        const pickupThreshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
 
         if (dist < pickupThreshold) {
           pickup.active = false;
@@ -2426,10 +2512,10 @@ export class GameRoom extends Room<GameState> {
       this.state.buffPickups.forEach((pickup, index) => {
         if (!pickup.active) return;
 
-        const dist = isSphereLike
-          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, sphereR)
+        const dist = usesWorldDist
+          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
-        const threshold = isSphereLike ? PICKUP_WORLD : PICKUP_RADIUS;
+        const threshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
 
         if (dist < threshold) {
           pickup.active = false;
@@ -2450,10 +2536,10 @@ export class GameRoom extends Room<GameState> {
       this.state.superPickups.forEach((pickup, index) => {
         if (!pickup.active) return;
 
-        const dist = isSphereLike
-          ? sphereGreatCircleDist(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, sphereR)
+        const dist = usesWorldDist
+          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
-        const threshold = isSphereLike ? PICKUP_WORLD : PICKUP_RADIUS;
+        const threshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
 
         if (dist < threshold) {
           pickup.active = false;
