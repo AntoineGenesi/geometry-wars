@@ -60,7 +60,7 @@ function reconcile(
 describe('S34b regression: LAN position reconciliation', () => {
   describe('Normal RTT drift: small error → gentle blend', () => {
     it('does not hard-snap for small server correction (RTT drift)', () => {
-      // Client has moved ahead of server by 5ms * 0.095 UV/s = 0.000475 UV
+      // Client has moved ahead of server by 5ms * 0.105 UV/s = 0.000525 UV (updated S44b-09)
       // (much less than 0.1 threshold). Should blend, not snap.
       const client: PlayerUV = { surfaceU: 0.52, surfaceV: 0.50 };
       const serverU = 0.515; // server is 0.005 UV behind

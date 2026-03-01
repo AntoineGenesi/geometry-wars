@@ -59,7 +59,7 @@ export const WEAPON_PICKUP_LIFETIME = 20.0; // seconds before despawn
 // Enemy constants
 // ---------------------------------------------------------------------------
 
-// Enemy speeds in UV/s. Scaled to match PLAYER_SPEED = 0.095.
+// Enemy speeds in UV/s. Scaled to match PLAYER_SPEED = 0.105 (updated S44b-09).
 export const ENEMY_SPEEDS: Record<string, number> = {
   grunt:        0.035,
   arrow:        0.07,
