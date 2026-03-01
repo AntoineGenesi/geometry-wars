@@ -317,11 +317,12 @@ function injectStyles(): void {
     }
     #weapon-mastery-screen .wms-node:hover { transform: translate(-50%, -50%) scale(1.2); }
 
-    /* locked — very dim (no points or prereq not met) */
+    /* locked — very dim (no points or prereq not met), with faint glow to indicate visibility */
     #weapon-mastery-screen .wms-node--locked {
       background: rgba(255,255,255,0.04);
       border: 2px solid rgba(255,255,255,0.1);
       color: rgba(255,255,255,0.2);
+      box-shadow: 0 0 8px rgba(255,255,255,0.08), 0 0 16px rgba(255,255,255,0.05);
     }
 
     /* prereq-locked — prerequisite not met; slightly warmer tint to distinguish */
