@@ -572,6 +572,48 @@ describe('ClaustrophobiaMode', () => {
     mode.dispose(context);
     expect(context.scene.children.length).toBeLessThan(initialCount);
   });
+
+  it('REGRESSION: boundary ring vertices scale with map size (small=0.75, large=1.5)', () => {
+    // surface.getPoint() returns local-space (unscaled) coords.
+    // Boundary ring vertices must be multiplied by surface.group.scale.x
+    // to sit on the actual visible surface regardless of map size.
+    // Previously vertices were NOT scaled, so the ring appeared in the wrong
+    // world-space position on SMALL/LARGE/EPIC maps.
+
+    const fixedLocalPos = new THREE.Vector3(5, 0, 0);
+    const scaledSurface = {
+      wrapsU: false,
+      wrapsV: false,
+      getPoint: (_u: number, _v: number) => ({
+        position: fixedLocalPos.clone(),
+        normal: new THREE.Vector3(0, 0, 1),
+        tangentU: new THREE.Vector3(1, 0, 0),
+        tangentV: new THREE.Vector3(0, 1, 0),
+      }),
+      mesh: { geometry: { boundingSphere: null, computeBoundingSphere: vi.fn() } },
+      group: { scale: { x: 0.75 } }, // SMALL map
+    } as any;
+
+    // SMALL map (scale 0.75) — ring vertices should be at 5 * 0.75 = 3.75
+    const smallCtx: GameModeContext = { ...createMockContext(), surface: scaledSurface };
+    const smallMode = new ClaustrophobiaMode();
+    smallMode.onStart(smallCtx);
+    const smallLine = (smallMode as any).boundaryMesh as THREE.Line;
+    const smallPositions = smallLine.geometry.attributes.position;
+    expect(smallPositions.getX(0)).toBeCloseTo(3.75, 4);
+
+    // LARGE map (scale 1.5) — ring vertices should be at 5 * 1.5 = 7.5
+    const largeSurface = { ...scaledSurface, group: { scale: { x: 1.5 } } };
+    const largeCtx: GameModeContext = { ...smallCtx, surface: largeSurface };
+    const largeMode = new ClaustrophobiaMode();
+    largeMode.onStart(largeCtx);
+    const largeLine = (largeMode as any).boundaryMesh as THREE.Line;
+    const largePositions = largeLine.geometry.attributes.position;
+    expect(largePositions.getX(0)).toBeCloseTo(7.5, 4);
+
+    smallMode.dispose(smallCtx);
+    largeMode.dispose(largeCtx);
+  });
 });
 
 describe('createGameMode', () => {

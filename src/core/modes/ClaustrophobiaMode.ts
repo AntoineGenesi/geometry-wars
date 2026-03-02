@@ -39,7 +39,8 @@ export class ClaustrophobiaMode implements IGameMode {
     // Check if player is outside boundary
     const playerU = context.player.surfaceU;
     const playerV = context.player.surfaceV;
-    if (!this.isInsideBoundary(playerU, playerV)) {
+    const { wrapsU, wrapsV } = context.surface;
+    if (!this.isInsideBoundary(playerU, playerV, wrapsU, wrapsV)) {
       // Kill player instantly
       context.player.die();
     }
@@ -49,7 +50,7 @@ export class ClaustrophobiaMode implements IGameMode {
     for (const enemy of enemies) {
       const u = enemy.surfacePosition.u;
       const v = enemy.surfacePosition.v;
-      if (!this.isInsideBoundary(u, v)) {
+      if (!this.isInsideBoundary(u, v, wrapsU, wrapsV)) {
         enemy.takeDamage(enemy.health); // Instant kill
       }
     }
@@ -99,16 +100,22 @@ export class ClaustrophobiaMode implements IGameMode {
   // Private helpers
   // -----------------------------------------------------------------------
 
-  private isInsideBoundary(u: number, v: number): boolean {
-    // Simple circular boundary centered at (0.5, 0.5)
-    const du = u - 0.5;
-    const dv = v - 0.5;
-    const distSq = du * du + dv * dv;
-    return distSq <= this.boundaryRadius * this.boundaryRadius;
+  private isInsideBoundary(u: number, v: number, wrapsU: boolean, wrapsV: boolean): boolean {
+    // Circular boundary centered at (0.5, 0.5), respecting surface UV topology
+    const du = this.wrappedDistance(u, 0.5, wrapsU);
+    const dv = this.wrappedDistance(v, 0.5, wrapsV);
+    return (du * du + dv * dv) <= this.boundaryRadius * this.boundaryRadius;
+  }
+
+  private wrappedDistance(a: number, b: number, wraps: boolean): number {
+    if (!wraps) return Math.abs(a - b);
+    const d = Math.abs(a - b);
+    return Math.min(d, 1.0 - d);
   }
 
   private createBoundaryVisual(context: GameModeContext): void {
     // Create a ring at the boundary
+    const scaleFactor = context.surface.group.scale.x;
     const segments = 64;
     const points: THREE.Vector3[] = [];
     for (let i = 0; i <= segments; i++) {
@@ -116,7 +123,7 @@ export class ClaustrophobiaMode implements IGameMode {
       const u = 0.5 + Math.cos(angle) * this.boundaryRadius;
       const v = 0.5 + Math.sin(angle) * this.boundaryRadius;
       const point = context.surface.getPoint(u, v);
-      points.push(point.position.clone());
+      points.push(point.position.clone().multiplyScalar(scaleFactor));
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
@@ -133,7 +140,8 @@ export class ClaustrophobiaMode implements IGameMode {
   private updateBoundaryVisual(context: GameModeContext): void {
     if (!this.boundaryMesh) return;
 
-    // Rebuild boundary ring at new radius
+    // Rebuild boundary ring at new radius, scaled to world space
+    const scaleFactor = context.surface.group.scale.x;
     const segments = 64;
     const points: THREE.Vector3[] = [];
     for (let i = 0; i <= segments; i++) {
@@ -141,7 +149,7 @@ export class ClaustrophobiaMode implements IGameMode {
       const u = 0.5 + Math.cos(angle) * this.boundaryRadius;
       const v = 0.5 + Math.sin(angle) * this.boundaryRadius;
       const point = context.surface.getPoint(u, v);
-      points.push(point.position.clone());
+      points.push(point.position.clone().multiplyScalar(scaleFactor));
     }
 
     this.boundaryMesh.geometry.dispose();
