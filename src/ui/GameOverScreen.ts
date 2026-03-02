@@ -350,21 +350,22 @@ export class GameOverScreen {
    * Phase 1: name/note entry. Phase 2: leaderboard results.
    * @param mode 'solo' (default) = single-player; 'network' = auto-transition to voting after 4s.
    * @param scoreLabel Optional label override (e.g. "ZONE TIME" for KotH). Defaults to "SCORE".
+   * @param gameModeName Optional game mode name to display in the header (e.g. "CLAUSTROPHOBIA").
    */
-  show(score: number, surfaceType: string, mode: 'solo' | 'network' = 'solo', scoreLabel?: string): void {
+  show(score: number, surfaceType: string, mode: 'solo' | 'network' = 'solo', scoreLabel?: string, gameModeName?: string): void {
     this.finalScore = score;
     this.surfaceType = surfaceType;
     this.clearAutoTransition();
 
-    this.renderNameEntry(score, surfaceType, mode, scoreLabel ?? 'SCORE');
+    this.renderNameEntry(score, surfaceType, mode, scoreLabel ?? 'SCORE', gameModeName);
     this.container.classList.remove('hidden');
   }
 
   // ── Phase 1: name entry ──────────────────────────────────────────────────
 
-  private renderNameEntry(score: number, surfaceType: string, mode: 'solo' | 'network', scoreLabel: string): void {
+  private renderNameEntry(score: number, surfaceType: string, mode: 'solo' | 'network', scoreLabel: string, gameModeName?: string): void {
     const lastName = this.getLastName();
-    this.container.innerHTML = this.createNameEntryHTML(score, mode, scoreLabel, lastName);
+    this.container.innerHTML = this.createNameEntryHTML(score, mode, scoreLabel, lastName, gameModeName);
 
     const nameInput = this.container.querySelector<HTMLInputElement>('.name-input');
     const noteInput = this.container.querySelector<HTMLInputElement>('.note-input');
@@ -427,14 +428,19 @@ export class GameOverScreen {
     }
   }
 
-  private createNameEntryHTML(score: number, mode: 'solo' | 'network', scoreLabel: string, lastName: string): string {
+  private createNameEntryHTML(score: number, mode: 'solo' | 'network', scoreLabel: string, lastName: string, gameModeName?: string): string {
     const countdownHTML = mode === 'network'
       ? `<div class="auto-transition-countdown"></div>`
+      : '';
+
+    const modeSubtitleHTML = gameModeName
+      ? `<div class="mode-subtitle" style="color:#ff4444;font:bold 13px monospace;letter-spacing:3px;margin-top:-4px;margin-bottom:8px;text-shadow:0 0 8px #ff4444;">${gameModeName}</div>`
       : '';
 
     return `
       <div class="content">
         <h1 class="title">${t('gameOver.title')}</h1>
+        ${modeSubtitleHTML}
 
         <div class="final-score">
           ${scoreLabel}: <span>${score.toLocaleString()}</span>
