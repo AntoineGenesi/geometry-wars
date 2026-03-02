@@ -57,6 +57,13 @@ export interface PauseMenuGameData {
     /** CSS-compatible hex color for the icon */
     color: string;
   }>;
+  /** Lives remaining info */
+  livesInfo?: {
+    /** Current lives count (ignored when infinite) */
+    count: number;
+    /** When true, show "Infinite" instead of count */
+    infinite: boolean;
+  };
   /** Total kills across all enemy types */
   totalKills: number;
   /** Current weapon info */
@@ -174,6 +181,10 @@ export class PauseMenu {
             <div class="stats-qr-section hidden">
               <div class="stats-section-title">${t('pauseMenu.stats.joinThisGame')}</div>
               <div class="stats-qr-content"></div>
+            </div>
+            <div class="stats-lives-section hidden">
+              <div class="stats-section-title">LIVES</div>
+              <div class="stats-lives-display"></div>
             </div>
             <div class="stats-level-section hidden">
               <div class="stats-section-title">${t('pauseMenu.stats.playerLevel')}</div>
@@ -1131,12 +1142,34 @@ export class PauseMenu {
    * Call this before show() to display up-to-date buff, kill, and weapon info.
    */
   setGameData(data: PauseMenuGameData): void {
+    this.updateLivesInfo(data.livesInfo);
     this.updateLevelInfo(data.playerLevel);
     this.updateCompanionsList(data.companions);
     this.updateCumulativeBonuses(data.cumulativeBonuses);
     this.updateWeaponInfo(data.weapon);
     this.updateKillCount(data.totalKills);
     this.updateBuffsList(data.buffs);
+  }
+
+  private updateLivesInfo(livesInfo?: PauseMenuGameData['livesInfo']): void {
+    const section = this.container.querySelector('.stats-lives-section') as HTMLElement | null;
+    const displayEl = this.container.querySelector('.stats-lives-display');
+    if (!section || !displayEl) return;
+
+    if (!livesInfo) {
+      section.classList.add('hidden');
+      return;
+    }
+
+    section.classList.remove('hidden');
+    if (livesInfo.infinite) {
+      displayEl.innerHTML = '<span style="color:#0ff;font-size:18px;text-shadow:0 0 8px #0ff;">\u2665 \u221e INFINITE</span>';
+    } else {
+      const hearts = livesInfo.count <= 5
+        ? '\u2665'.repeat(Math.max(0, livesInfo.count))
+        : `\u2665 x${livesInfo.count}`;
+      displayEl.innerHTML = `<span style="color:#f55;font-size:16px;">${hearts}</span>`;
+    }
   }
 
   private updateLevelInfo(playerLevel?: PauseMenuGameData['playerLevel']): void {

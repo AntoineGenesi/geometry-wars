@@ -139,6 +139,10 @@ export interface NetworkGameState {
   readyMap: Map<string, boolean>;
   /** When true, host has paused the voting countdown */
   countdownPaused: boolean;
+  /** Number of lives each player starts with (1-9, default: 3) */
+  initialLives?: number;
+  /** When true, lives never deplete on death */
+  infiniteLives?: boolean;
 }
 
 /** Input to send to server */
@@ -550,6 +554,8 @@ export class NetworkClient {
       mapSize: string;
       readyMap: Map<string, boolean>;
       countdownPaused: boolean;
+      initialLives?: number;
+      infiniteLives?: boolean;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -585,6 +591,8 @@ export class NetworkClient {
       mapSize: s.mapSize || 'medium',
       readyMap: s.readyMap || emptyBoolMap,
       countdownPaused: s.countdownPaused ?? false,
+      initialLives: s.initialLives ?? 3,
+      infiniteLives: s.infiniteLives ?? false,
     };
   }
 

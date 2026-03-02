@@ -74,6 +74,8 @@ export class Player {
   score = 0;
   multiplier = 1;
   alive = true;
+  /** When true, lives never deplete on death (death penalties still apply). */
+  infiniteLives = false;
 
   // -- Invincibility --------------------------------------------------------
   private invincibilityTimer = INVINCIBILITY_DURATION;
@@ -300,11 +302,14 @@ export class Player {
 
     this.alive = false;
     this.mesh.visible = false;
-    this.lives -= 1;
+    // Infinite lives: skip lives decrement but still apply death penalties
+    if (!this.infiniteLives) {
+      this.lives -= 1;
+    }
     this.multiplier = 1;
     this.onDeath?.(this.mesh.position.clone());
 
-    if (this.lives > 0) {
+    if (this.lives > 0 || this.infiniteLives) {
       // Respawn will be triggered externally after the death animation.
       // The caller should invoke respawn() after a short delay.
     }
