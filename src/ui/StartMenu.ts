@@ -1591,6 +1591,19 @@ export class StartMenu {
       }
 
       /* ------------------------------------------------------------------- */
+      /* QR Code container — ensure proper sizing, no unwanted scroll        */
+      /* ------------------------------------------------------------------- */
+      #start-menu #lan-qr-container {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        flex-shrink: 0;
+      }
+
+      /* ------------------------------------------------------------------- */
       /* Language selector — bottom-right corner                              */
       /* ------------------------------------------------------------------- */
       #start-menu #start-lang-selector {
