@@ -811,9 +811,11 @@ async function main() {
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
 
   // Weapon HUD — same graphical inventory panel as single-player
-  // On mobile: position below the top HUD cluster (scoreEl/playersEl at top: 10px).
+  // Position weapon HUD at mid-left to avoid overlap with performance stats overlay.
+  // Use 25% of viewport height for both desktop and mobile (responsive).
+  // Minimum 100px on small screens to ensure reasonable spacing.
   const weaponHUD = new WeaponHUD();
-  const weaponHUDY = mobile ? Math.max(80, Math.round(window.innerHeight * 0.2)) : 60;
+  const weaponHUDY = Math.max(100, Math.round(window.innerHeight * 0.25));
   weaponHUD.setPosition(10, weaponHUDY);
 
   // Ally glow manager for remote player indicators
