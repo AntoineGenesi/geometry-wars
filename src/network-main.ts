@@ -2541,18 +2541,54 @@ async function main() {
 
           // Initialize geodesic face position for client-side geodesic rendering.
           // Server uses UV Christoffel stepping; client uses FaceWalker for true geodesics.
+          //
+          // s44c-09 FIX: Use owner's server world position (wx/wy/wz) instead of
+          // surface.getPoint(bullet.x, bullet.y). The server stores player.surfaceU/V via
+          // sphere parameterization (_worldPosToApproxUV), which is WRONG for torus (swaps
+          // u and v completely) and approximate for peanut. Using bullet.x/y → getPoint()
+          // placed bullets at a completely different location on the torus, creating the
+          // "ghost player" effect. Owner's wx/wy/wz is the geodesic world position (correct
+          // on all surfaces) and matches the player's visual position from s44-epic-08.
           if (meshSurface && surface) {
-            const sp = surface.getPoint(bullet.x, bullet.y);
-            const worldPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
-            const closest = meshSurface.closestPointOnSurface(worldPos);
+            let bulletWorldPos: THREE.Vector3;
+            let bulletTangentU: THREE.Vector3;
+            let bulletTangentV: THREE.Vector3;
+
+            const hasOwnerWorldPos = ownerPlayer
+              && ownerPlayer.wx !== undefined
+              && (ownerPlayer.wx !== 0 || ownerPlayer.wy !== 0 || ownerPlayer.wz !== 0);
+
+            if (hasOwnerWorldPos) {
+              // Owner's wx/wy/wz is the server geodesic position (accurate on all surfaces).
+              // Multiply by scale to match client rendering coordinates.
+              bulletWorldPos = new THREE.Vector3(
+                ownerPlayer!.wx! * currentMapSizeScaleFactor,
+                ownerPlayer!.wy! * currentMapSizeScaleFactor,
+                ownerPlayer!.wz! * currentMapSizeScaleFactor,
+              );
+              // worldToSurface internally divides by group.scale.x (= currentMapSizeScaleFactor)
+              // so passing the scaled world pos correctly recovers the unscaled UV coords.
+              const correctUV = surface.worldToSurface(bulletWorldPos);
+              const correctSp = surface.getPoint(correctUV.u, correctUV.v);
+              bulletTangentU = correctSp.tangentU;
+              bulletTangentV = correctSp.tangentV;
+            } else {
+              // Fallback until first server world-pos frame arrives (sphere approx — inaccurate on torus)
+              const sp = surface.getPoint(bullet.x, bullet.y);
+              bulletWorldPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+              bulletTangentU = sp.tangentU;
+              bulletTangentV = sp.tangentV;
+            }
+
+            const closest = meshSurface.closestPointOnSurface(bulletWorldPos);
             if (closest) {
               const facePos = meshSurface.initGeodesicPosition(closest.point, closest.faceIndex);
               // Convert UV-space direction to world-space using surface tangent frame.
               // Apply same torus dirX negation as rendering for consistency.
               const bDirX = lastCreatedSurfaceType === 'torus' ? -bullet.dirX : bullet.dirX;
               const dirWorld = new THREE.Vector3()
-                .addScaledVector(sp.tangentU, bDirX)
-                .addScaledVector(sp.tangentV, bullet.dirY)
+                .addScaledVector(bulletTangentU, bDirX)
+                .addScaledVector(bulletTangentV, bullet.dirY)
                 .normalize();
               bulletGeodesicState.set(bullet.id, { facePos, dirWorld });
             }
