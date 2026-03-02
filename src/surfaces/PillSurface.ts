@@ -134,10 +134,13 @@ export class PillSurface extends Surface {
           cosPhi,
           sinPhi * sinTheta
         ).normalize()
+        // Chain rule: dposition/dv = dposition/dphi * dphi/dlocalT * dlocalT/dv
+        // dphi/dlocalT = -PI/2 (phi decreases as localT increases)
+        // So tangentV direction = -1 * (dposition/dphi direction)
         tangentV = new THREE.Vector3(
-          cosPhi * cosTheta,
-          -sinPhi,
-          cosPhi * sinTheta
+          -cosPhi * cosTheta,
+          sinPhi,
+          -cosPhi * sinTheta
         ).normalize()
         break
       }

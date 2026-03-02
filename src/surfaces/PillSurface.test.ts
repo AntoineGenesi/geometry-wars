@@ -219,3 +219,85 @@ describe('PillSurface - moveFromInput all 8 directions (s44f-09 regression)', ()
     }
   });
 });
+
+describe('PillSurface - getPoint tangentV consistency (s44h-02 regression)', () => {
+  it('bottom cap tangentV should point in increasing-v direction (toward equator)', () => {
+    // REGRESSION: Bottom cap tangentV was inverted (missing chain-rule sign),
+    // which caused MP bullets to have wrong direction and entities to be mis-oriented
+    // on the bottom hemisphere of the pill surface.
+    const surface = SurfaceFactory.create('pill', {});
+    const cf = (surface as any).capFraction as number;
+
+    // Sample several points on the bottom cap
+    const uValues = [0, 0.25, 0.5, 0.75];
+    const vValues = [0.01, cf * 0.25, cf * 0.5, cf * 0.75]; // bottom cap: v in [0, cf]
+
+    for (const u of uValues) {
+      for (const v of vValues) {
+        const sp = surface.getPoint(u, v);
+        // tangentV should point in the direction of increasing v.
+        // A small step in +v should move the position in roughly the tangentV direction.
+        const epsilon = 0.001;
+        const spNext = surface.getPoint(u, v + epsilon);
+        const delta = spNext.position.clone().sub(sp.position);
+
+        // The dot product of tangentV with the position delta should be positive
+        // (tangentV points in the increasing-v direction)
+        const dot = sp.tangentV.dot(delta);
+        expect(dot, `tangentV at u=${u}, v=${v} should point in +v direction`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('tangentV direction should be continuous across bottom-cap/body boundary', () => {
+    // The tangentV at the body/bottom-cap boundary should be consistent from both sides.
+    const surface = SurfaceFactory.create('pill', {});
+    const cf = (surface as any).capFraction as number;
+
+    const u = 0.3;
+    const epsilon = 0.0001;
+    const capSide = surface.getPoint(u, cf - epsilon);  // just inside bottom cap
+    const bodySide = surface.getPoint(u, cf + epsilon);  // just inside body
+
+    // tangentV from both sides should roughly agree
+    const dot = capSide.tangentV.dot(bodySide.tangentV);
+    expect(dot, 'tangentV should be continuous at cap/body boundary').toBeGreaterThan(0.9);
+  });
+
+  it('tangentV direction should be continuous across body/top-cap boundary', () => {
+    const surface = SurfaceFactory.create('pill', {});
+    const cf = (surface as any).capFraction as number;
+
+    const u = 0.3;
+    const epsilon = 0.0001;
+    const bodySide = surface.getPoint(u, 1 - cf - epsilon);  // just inside body
+    const capSide = surface.getPoint(u, 1 - cf + epsilon);   // just inside top cap
+
+    const dot = bodySide.tangentV.dot(capSide.tangentV);
+    expect(dot, 'tangentV should be continuous at body/top-cap boundary').toBeGreaterThan(0.9);
+  });
+
+  it('tangentU x tangentV should agree with normal direction consistently', () => {
+    // tangentU cross tangentV should have consistent handedness across all regions
+    const surface = SurfaceFactory.create('pill', {});
+    const cf = (surface as any).capFraction as number;
+
+    const testPoints = [
+      { u: 0.25, v: cf * 0.5, label: 'bottom cap' },
+      { u: 0.25, v: 0.5, label: 'body center' },
+      { u: 0.25, v: 1 - cf * 0.5, label: 'top cap' },
+    ];
+
+    const signs: number[] = [];
+    for (const { u, v, label } of testPoints) {
+      const sp = surface.getPoint(u, v);
+      const cross = new THREE.Vector3().crossVectors(sp.tangentU, sp.tangentV);
+      const dot = cross.dot(sp.normal);
+      signs.push(Math.sign(dot));
+    }
+
+    // All regions should have the same handedness
+    expect(signs[0], 'bottom cap handedness should match body').toBe(signs[1]);
+    expect(signs[2], 'top cap handedness should match body').toBe(signs[1]);
+  });
+});
