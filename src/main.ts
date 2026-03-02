@@ -2142,6 +2142,7 @@ if (quickStartConfig.enabled) {
       if (selection.isCreator) params.creator = '1';
       if (selection.serverUrl) params.server = selection.serverUrl;
       if (selection.playerName) params.name = selection.playerName;
+      if (selection.mapSize) params.mapSize = selection.mapSize;
       window.history.replaceState({}, '', buildUrl(params));
       import('./network-main').then(() => {
         console.log('[Main] Loaded network multiplayer mode');

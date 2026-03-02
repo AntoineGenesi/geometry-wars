@@ -56,12 +56,13 @@ export class StartMenu {
   private pendingMode: 'single' | 'network' = 'single';
   private selectedQuickGameMode: QuickGameModeType = 'waves';
   private selectedMapSize: MapSize = MapSize.MEDIUM;
+  private lanSelectedMapSize: MapSize = MapSize.MEDIUM;
   private lanAutoRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private lanAutoRefreshEnabled = true;
   private lanScanning = false;
 
   // LAN name dialog state
-  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean } | null = null;
+  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean; mapSize: MapSize } | null = null;
 
   // Custom mesh support
   private customMeshFile: File | null = null;
@@ -193,6 +194,17 @@ export class StartMenu {
     return `<div class="map-size-selector">${buttons}</div>`;
   }
 
+  private createLanMapSizeSelectorHTML(): string {
+    const sizes: MapSize[] = [MapSize.SMALL, MapSize.MEDIUM, MapSize.LARGE, MapSize.EPIC];
+    const buttons = sizes.map((size) => `
+      <button class="lan-map-size-btn${size === this.lanSelectedMapSize ? ' selected' : ''}"
+              data-map-size="${size}">
+        <span class="map-size-label">${MAP_SIZE_LABELS[size]}</span>
+      </button>
+    `).join('');
+    return `<div class="map-size-selector">${buttons}</div>`;
+  }
+
   private createModeGridHTML(): string {
     const buttons = QUICK_GAME_MODES
       .map(
@@ -311,6 +323,8 @@ export class StartMenu {
               <div id="lan-host-surface-pick" class="hidden">
                 <h3>SELECT MAP</h3>
                 ${this.createSurfaceGridHTML('lan-surface-grid', this.lanSelectedSurface)}
+                <h3>MAP SIZE</h3>
+                ${this.createLanMapSizeSelectorHTML()}
                 <div class="lan-timeout-row">
                   <label class="lan-timeout-label" for="lan-timeout-input">Idle shutdown delay</label>
                   <div class="lan-timeout-input-wrap">
@@ -1831,6 +1845,23 @@ export class StartMenu {
         lanSurfaceBtns.forEach((b) => b.classList.remove('selected'));
         btn.classList.add('selected');
         this.lanSelectedSurface = (btn as HTMLElement).dataset.surface as SurfaceType;
+        // Auto-suggest map size based on surface
+        const suggested = getDefaultMapSizeForSurface(this.lanSelectedSurface);
+        this.lanSelectedMapSize = suggested;
+        const lanMapSizeBtns = this.container.querySelectorAll('.lan-map-size-btn');
+        lanMapSizeBtns.forEach((b) => {
+          (b as HTMLElement).classList.toggle('selected', (b as HTMLElement).dataset.mapSize === suggested);
+        });
+      });
+    });
+
+    // LAN map size selection buttons
+    const lanMapSizeBtns = this.container.querySelectorAll('.lan-map-size-btn');
+    lanMapSizeBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        lanMapSizeBtns.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.lanSelectedMapSize = (btn as HTMLElement).dataset.mapSize as MapSize;
       });
     });
 
@@ -1977,7 +2008,7 @@ export class StartMenu {
     // isCreator=true: this player started the server, so they should claim host status.
     lanEnterBtn?.addEventListener('click', () => {
       if (hostedServerUrl) {
-        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl, true);
+        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl, true, this.lanSelectedMapSize);
       }
     });
 
@@ -2173,8 +2204,8 @@ export class StartMenu {
    * @param isCreator - true only when this player hosted the server (clicked ENTER GAME after HOST GAME).
    *   LAN lobby joiners, QR code scanners, and manual IP joiners are NOT creators.
    */
-  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false): void {
-    this.pendingLanJoin = { surfaceType, serverUrl, isCreator };
+  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false, mapSize?: MapSize): void {
+    this.pendingLanJoin = { surfaceType, serverUrl, isCreator, mapSize: mapSize ?? MapSize.MEDIUM };
 
     const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
     const nameDialog = this.container.querySelector('#lan-name-dialog') as HTMLElement;
@@ -2229,6 +2260,7 @@ export class StartMenu {
       serverUrl: this.pendingLanJoin.serverUrl,
       playerName: name,
       isCreator: this.pendingLanJoin.isCreator,
+      mapSize: this.pendingLanJoin.mapSize,
     });
 
     this.pendingLanJoin = null;

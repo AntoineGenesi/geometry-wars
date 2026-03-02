@@ -211,6 +211,13 @@ function getUrlSurfaceType(): SurfaceType {
   return 'sphere';
 }
 
+function getUrlMapSize(): string | undefined {
+  const params = new URLSearchParams(window.location.search);
+  const mapSize = params.get('mapSize');
+  const validSizes = ['small', 'medium', 'large', 'epic'];
+  return (mapSize && validSizes.includes(mapSize)) ? mapSize : undefined;
+}
+
 function isValidSurfaceType(s: string): s is SurfaceType {
   return SurfaceFactory.getAvailableTypes().includes(s as SurfaceType);
 }
@@ -3211,6 +3218,7 @@ async function main() {
     name: playerName,
     surfaceType: urlSurfaceType,
     requestHost: isGameCreator(),
+    mapSize: getUrlMapSize(),
   }).then(() => {
     connectionResolved = true;
     clearTimeout(timeoutId);

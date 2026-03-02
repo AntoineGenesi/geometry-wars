@@ -461,9 +461,10 @@ export class GameRoom extends Room<GameState> {
    */
   private ddaDecreaseCounters: Map<string, number> = new Map();
 
-  onCreate(options: { surfaceType?: string }) {
+  onCreate(options: { surfaceType?: string; mapSize?: string }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
+    this.state.mapSize = options.mapSize || 'medium';
 
     // Set max clients (4 player co-op)
     this.maxClients = 4;

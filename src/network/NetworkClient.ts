@@ -271,11 +271,12 @@ export class NetworkClient {
    * Tries the primary URL first; if it fails and a fallback URL was provided,
    * retries once with the fallback (e.g. direct port 2567 if proxy fails).
    */
-  async connect(options: { name?: string; surfaceType?: string; requestHost?: boolean } = {}): Promise<void> {
+  async connect(options: { name?: string; surfaceType?: string; requestHost?: boolean; mapSize?: string } = {}): Promise<void> {
     const joinOpts = {
       name: options.name || `Player ${Math.floor(Math.random() * 1000)}`,
       surfaceType: options.surfaceType || 'sphere',
       requestHost: options.requestHost ?? false,
+      mapSize: options.mapSize || 'medium',
     };
 
     // Attempt 1: primary URL
@@ -296,7 +297,7 @@ export class NetworkClient {
     await this.attemptConnect(joinOpts);
   }
 
-  private async attemptConnect(joinOpts: { name: string; surfaceType: string; requestHost: boolean }): Promise<void> {
+  private async attemptConnect(joinOpts: { name: string; surfaceType: string; requestHost: boolean; mapSize: string }): Promise<void> {
     try {
       this.room = await this.client.joinOrCreate('game', joinOpts);
 
