@@ -2251,9 +2251,17 @@ async function main() {
         // DDA: track death event for this player
         const tracker = getOrCreateDDATracker(id);
         tracker.recordDeath();
-        // Show spectating overlay for the local player only
+        // Show spectating overlay for the local player only if there are
+        // alive remote players to spectate. For solo games (or last survivor),
+        // skip the overlay — voting screen will appear instead (s44d-03 fix).
         if (id === localPlayerId) {
-          deadOverlay.style.display = 'flex';
+          let hasAliveSpectateTarget = false;
+          state.players.forEach((p, pid) => {
+            if (pid !== id && p.alive) hasAliveSpectateTarget = true;
+          });
+          if (hasAliveSpectateTarget) {
+            deadOverlay.style.display = 'flex';
+          }
         }
       } else if (!wasAlive && netPlayer.alive) {
         // Player just respawned (alive transitioned false->true).
@@ -2940,9 +2948,17 @@ async function main() {
     const newPhase = state.roomPhase || 'lobby';
     if (newPhase !== currentRoomPhase) {
       netMainLog(`[NetworkMain] roomPhase: ${currentRoomPhase} → ${newPhase}`);
+      // Save old phase for else-if condition checks, then update immediately.
+      // CRITICAL: currentRoomPhase must be updated BEFORE any synchronous callbacks
+      // (e.g. proceedToVoting) that check it — otherwise the guard fires too early
+      // and the voting screen never shows when anyXP=false (s44d-03 fix).
+      const prevRoomPhase = currentRoomPhase;
+      currentRoomPhase = newPhase;
 
       if (newPhase === 'voting') {
         // Game ended — transition to voting screen.
+        // Hide spectating overlay — no longer relevant when voting starts.
+        deadOverlay.style.display = 'none';
         // Hide GameOverScreen if it snuck in (from the old gameOver bool path).
         gameOverScreen.hide();
         // Re-enable pass-through so mastery/voting screen buttons work on mobile.
@@ -2996,7 +3012,7 @@ async function main() {
         } else {
           proceedAfterMastery();
         }
-      } else if (newPhase === 'playing' && currentRoomPhase === 'voting') {
+      } else if (newPhase === 'playing' && prevRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
         votingScreen.hide();
         // Dismiss any open mastery overlay from the voting screen.
@@ -3031,7 +3047,7 @@ async function main() {
         // Fix: respect isPaused so joining mid-paused-game doesn't enable joystick
         // while pause menu is shown (which blocks scroll via preventDefault).
         if (input instanceof TouchInput) input.setGamePaused(isPaused);
-      } else if (newPhase === 'playing' && currentRoomPhase === 'lobby') {
+      } else if (newPhase === 'playing' && prevRoomPhase === 'lobby') {
         // Initial game start: lobby → playing.
         // Reset entities (safe to call even when empty — clears any stale state).
         // Reset per-match upgrade tracker for the first round.
@@ -3053,8 +3069,6 @@ async function main() {
         // Back to lobby — re-enable pass-through for lobby buttons.
         if (input instanceof TouchInput) input.setGamePaused(true);
       }
-
-      currentRoomPhase = newPhase;
     }
 
     // If currently in voting phase, keep VotingScreen updated with latest state.
