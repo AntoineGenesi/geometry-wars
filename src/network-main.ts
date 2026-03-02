@@ -1287,6 +1287,70 @@ async function main() {
     modeBtnsRow.appendChild(btn);
   }
   modeSelectorDiv.appendChild(modeBtnsRow);
+
+  // ---- Lives selector (host only, shown in lobby) ----
+  let selectedLives = 3;       // 1-9
+  let selectedInfiniteLives = false;
+
+  const livesRow = document.createElement('div');
+  livesRow.style.cssText = 'margin-top:14px;display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;';
+
+  const livesLabelEl = document.createElement('div');
+  livesLabelEl.textContent = 'LIVES';
+  livesLabelEl.style.cssText = 'color:#0ff;font:12px monospace;letter-spacing:3px;text-shadow:0 0 8px #0ff;';
+  livesRow.appendChild(livesLabelEl);
+
+  const livesBtnsRow = document.createElement('div');
+  livesBtnsRow.style.cssText = 'display:flex;gap:4px;';
+
+  const livesBtnEls: HTMLButtonElement[] = [];
+  for (let n = 1; n <= 9; n++) {
+    const btn = document.createElement('button');
+    btn.textContent = String(n);
+    btn.dataset.lives = String(n);
+    btn.style.cssText =
+      'width:30px;height:30px;font:bold 14px monospace;cursor:pointer;' +
+      'border:2px solid #444;background:#111;color:#aaa;';
+    btn.onclick = () => {
+      selectedLives = n;
+      selectedInfiniteLives = false;
+      updateLivesUI();
+    };
+    if (n === 3) {
+      btn.style.background = '#050';
+      btn.style.color = '#0f0';
+      btn.style.borderColor = '#0f0';
+    }
+    livesBtnEls.push(btn);
+    livesBtnsRow.appendChild(btn);
+  }
+  livesRow.appendChild(livesBtnsRow);
+
+  const infiniteBtn = document.createElement('button');
+  infiniteBtn.textContent = '∞';
+  infiniteBtn.style.cssText =
+    'padding:4px 10px;font:bold 16px monospace;cursor:pointer;' +
+    'border:2px solid #444;background:#111;color:#aaa;';
+  infiniteBtn.onclick = () => {
+    selectedInfiniteLives = !selectedInfiniteLives;
+    if (selectedInfiniteLives) selectedLives = 3;
+    updateLivesUI();
+  };
+  livesRow.appendChild(infiniteBtn);
+
+  function updateLivesUI(): void {
+    livesBtnEls.forEach((b, idx) => {
+      const active = !selectedInfiniteLives && idx + 1 === selectedLives;
+      b.style.background = active ? '#050' : '#111';
+      b.style.color = active ? '#0f0' : '#aaa';
+      b.style.borderColor = active ? '#0f0' : '#444';
+    });
+    infiniteBtn.style.background = selectedInfiniteLives ? '#050' : '#111';
+    infiniteBtn.style.color = selectedInfiniteLives ? '#0f0' : '#aaa';
+    infiniteBtn.style.borderColor = selectedInfiniteLives ? '#0f0' : '#444';
+  }
+
+  modeSelectorDiv.appendChild(livesRow);
   document.body.appendChild(modeSelectorDiv);
 
   // Start button
@@ -1307,9 +1371,10 @@ async function main() {
       statusEl.textContent = 'Only the host can start the game.';
       return;
     }
-    // Build choice string: use current server surface + selected mode + default size
-    // Surface is already set by server/URL; host selects mode here; size uses server default.
-    const choice = `${lastCreatedSurfaceType || 'sphere'}:${selectedLobbyMode}:medium`;
+    // Build choice string: surface:mode:size:lives
+    // lives param: number (1-9) or 'infinite'
+    const livesParam = selectedInfiniteLives ? 'infinite' : String(selectedLives);
+    const choice = `${lastCreatedSurfaceType || 'sphere'}:${selectedLobbyMode}:medium:${livesParam}`;
     network.startGame(choice);
     startBtn.style.display = 'none';
     modeSelectorDiv.style.display = 'none';
@@ -1459,7 +1524,15 @@ async function main() {
     const totalDamageBonus = Math.round((perk.damageMultiplier * buffManager.getDamageMultiplier() - 1) * 100);
     const totalFireRateBonus = Math.round((perk.fireRateMultiplier * buffManager.getFireRateMultiplier() - 1) * 100);
     const totalSpeedBonus = Math.round((perk.moveSpeedMultiplier * buffManager.getMoveSpeedMultiplier() - 1) * 100);
+
+    // Lives info from latest server state
+    const localPlayerState = latestGameState?.players.get(localPlayerId);
+    const livesInfo = localPlayerState
+      ? { count: Math.max(0, localPlayerState.lives), infinite: latestGameState?.infiniteLives === true }
+      : undefined;
+
     return {
+      livesInfo,
       playerLevel: {
         level: playerLevel.level,
         name: perk.name,
@@ -1969,6 +2042,9 @@ async function main() {
   // at transition time is stale by the time the player dismisses mastery).
   let latestVotingState: NetworkGameState | null = null;
 
+  // Latest full game state — used by buildPauseMenuGameData() for live state access.
+  let latestGameState: NetworkGameState | null = null;
+
   // Active mastery screen reference — allows the voting→playing transition to
   // forcefully dismiss it when the countdown expires while mastery is showing.
   let activeMasteryScreen: MasteryProgressScreen | null = null;
@@ -2243,6 +2319,9 @@ async function main() {
   // -----------------------------------------------------------------------
 
   function onStateChange(state: NetworkGameState) {
+    // Track latest full state for pause menu and other callbacks
+    latestGameState = state;
+
     // Track latest server state values for metrics logging
     latestGameTime = state.gameTime;
     latestWaveNumber = state.waveNumber;
@@ -3136,11 +3215,12 @@ async function main() {
       else if (m >= 20) mColor = '#ffff00';
       else if (m >= 5) mColor = '#00ff88';
 
-      // Lives display (hearts, same as single player)
+      // Lives display (hearts, same as single player; ∞ when infinite lives enabled)
+      const isInfiniteLives = state.infiniteLives === true;
       const lives = Math.max(0, localPlayer.lives);
-      const livesStr = lives <= 5
-        ? '\u2665'.repeat(lives)
-        : `\u2665 x${lives}`;
+      const livesStr = isInfiniteLives
+        ? '\u2665 \u221e'
+        : (lives <= 5 ? '\u2665'.repeat(lives) : `\u2665 x${lives}`);
 
       // Bombs display
       const bombs = Math.max(0, localPlayer.bombs);
@@ -3190,7 +3270,7 @@ async function main() {
       const you = p.id === localPlayerId ? ' (YOU)' : '';
       const lives = Math.max(0, p.lives);
       const livesHtml = p.alive
-        ? (lives <= 5 ? '\u2665'.repeat(lives) : `\u2665 x${lives}`)
+        ? (state.infiniteLives ? '\u2665 \u221e' : (lives <= 5 ? '\u2665'.repeat(lives) : `\u2665 x${lives}`))
         : '<span style="color:#ff5555">[DEAD]</span>';
       playerList += `${p.name}${you}: ${livesHtml} ${p.score.toLocaleString()}<br>`;
     });

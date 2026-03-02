@@ -928,6 +928,18 @@ export class GameRoom extends Room<GameState> {
     this.state.surfaceType = surface;
     this.state.gameMode = mode;
     this.state.mapSize = size;
+
+    // parts[3]: lives count (1-9) or 'infinite' — optional, defaults to 3
+    const livesParam = parts[3];
+    if (livesParam === 'infinite') {
+      this.state.infiniteLives = true;
+      this.state.initialLives = 3; // display value when infinite is on
+    } else {
+      this.state.infiniteLives = false;
+      const parsedLives = parseInt(livesParam, 10);
+      this.state.initialLives = (parsedLives >= 1 && parsedLives <= 9) ? parsedLives : 3;
+    }
+
     this.startGame();
   }
 
@@ -958,7 +970,7 @@ export class GameRoom extends Room<GameState> {
     // Reset all players
     let spawnIdx = 0;
     this.state.players.forEach((player, sessionId) => {
-      player.lives = 3;
+      player.lives = this.state.initialLives;
       player.bombs = 3;
       player.score = 0;
       player.multiplier = 1;
@@ -2713,7 +2725,11 @@ export class GameRoom extends Room<GameState> {
           // Player hit!
           wasHit = true;
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
-          player.lives--;
+
+          // Infinite lives: skip lives decrement but still apply death penalties
+          if (!this.state.infiniteLives) {
+            player.lives--;
+          }
 
           // If player had a meaningful multiplier, spawn a multiplier_boost pickup
           // at the death spot so surviving players can capitalize on it.
@@ -2728,7 +2744,7 @@ export class GameRoom extends Room<GameState> {
           // Reset buff stacks on any hit (lose buffs on death, same as SP)
           player.buffStacks.clear();
 
-          if (player.lives <= 0) {
+          if (!this.state.infiniteLives && player.lives <= 0) {
             player.alive = false;
             this.logger.log(`[GameRoom] ${player.name} died!`);
           } else {
@@ -2747,7 +2763,8 @@ export class GameRoom extends Room<GameState> {
               this.applyWalkerStateToPlayer(player, respawnWalker.getState());
             }
             this.playerInvincibility.set(player.id, 2.0);
-            this.logger.log(`[GameRoom] ${player.name} hit, ${player.lives} lives remaining — respawned at (${respawnPos.u.toFixed(2)}, ${respawnPos.v.toFixed(2)}) (invincible 2s)`);
+            const livesRemaining = this.state.infiniteLives ? '∞' : String(player.lives);
+            this.logger.log(`[GameRoom] ${player.name} hit, ${livesRemaining} lives remaining — respawned at (${respawnPos.u.toFixed(2)}, ${respawnPos.v.toFixed(2)}) (invincible 2s)`);
           }
         }
       });

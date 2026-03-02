@@ -338,6 +338,10 @@ export class GameState extends Schema {
   declare readyMap: MapSchema<boolean>;
   /** When true, host has paused the voting countdown */
   declare countdownPaused: boolean;
+  /** Number of lives each player starts with (1-9, default: 3) */
+  declare initialLives: number;
+  /** When true, lives never deplete on death */
+  declare infiniteLives: boolean;
 
   constructor() {
     super();
@@ -365,6 +369,10 @@ export class GameState extends Schema {
     this.mapSize = 'medium';
     this.readyMap = new MapSchema<boolean>();
     this.countdownPaused = false;
+
+    // Lives configuration
+    this.initialLives = 3;
+    this.infiniteLives = false;
   }
 }
 
@@ -391,4 +399,6 @@ defineTypes(GameState, {
   mapSize: 'string',
   readyMap: { map: 'boolean' },
   countdownPaused: 'boolean',
+  initialLives: 'number',
+  infiniteLives: 'boolean',
 });
