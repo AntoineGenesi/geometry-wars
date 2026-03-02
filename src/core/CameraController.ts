@@ -174,7 +174,12 @@ export class CameraController {
     }
 
     this._targetCamPos.copy(position).add(this._camOffset);
-    this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
+    // Framerate-independent lerp: normalise to 60 Hz so the camera converges
+    // at the same wall-clock speed regardless of display refresh rate.
+    // In onRender (MP) the actual frame dt varies; in fixedUpdate (SP) dt=1/60
+    // so the formula collapses to the original CAMERA_LERP_FACTOR unchanged.
+    const posLerp = 1 - Math.pow(1 - this.CAMERA_LERP_FACTOR, dt * 60);
+    this.camera.position.lerp(this._targetCamPos, posLerp);
 
     // Pole inversion protection for UV-based frames (multiplayer camera).
     // On sphere/peanut, tangentV (used as bitangent) can flip ~180° when the
@@ -198,7 +203,7 @@ export class CameraController {
 
     // lookAt FIRST, then lerp up-vector (same order as update())
     (this.camera as THREE.PerspectiveCamera).lookAt(position);
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, this.CAMERA_LERP_FACTOR).normalize();
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, posLerp).normalize();
   }
 
   /**
@@ -240,7 +245,12 @@ export class CameraController {
 
     this._targetCamPos.copy(playerWalker.position).add(this._camOffset);
     // Restored from bffc333: lerp position for smooth camera follow.
-    this.camera.position.lerp(this._targetCamPos, this.CAMERA_LERP_FACTOR);
+    // Framerate-independent: normalise dt to 60 Hz reference so the camera
+    // converges at the same wall-clock rate regardless of tick frequency.
+    // SP calls this from fixedUpdate (dt=1/60) so the formula gives 0.12
+    // unchanged; MP calls it from onRender where dt may vary.
+    const posLerp = 1 - Math.pow(1 - this.CAMERA_LERP_FACTOR, dt * 60);
+    this.camera.position.lerp(this._targetCamPos, posLerp);
 
     // Sign-flip protection: if the new camera up flipped >90° from the previous target,
     // negate it to maintain continuity (same guard applied to MP path in updateFromFrame).
@@ -254,7 +264,7 @@ export class CameraController {
     // Restored from bffc333 ORDER: lookAt FIRST, then lerp up-vector.
     // This matches the working reference implementation exactly.
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, this.CAMERA_LERP_FACTOR).normalize();
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, posLerp).normalize();
   }
 
   /**

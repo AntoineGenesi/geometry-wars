@@ -505,6 +505,11 @@ async function main() {
 
   // Frame-time tracker for depth-occlusion lerp in onRender (avoids per-frame allocation)
   let _lastNetRenderTime = performance.now();
+  // Separate tracker for camera lerp — ensures framerate-independent camera feel.
+  // Camera updateFromFrame() is called from onRender (display refresh rate, not fixed 60Hz).
+  // Using actual render-frame dt makes the lerp converge at the same wall-clock rate
+  // at any display framerate, matching SP's behaviour (fixed-update at 60Hz).
+  let _lastCameraRenderTime = performance.now();
 
   // Tunnel transparency: dynamic grid opacity when surface blocks camera-to-player view.
   // Same logic as SP's RenderLoop.ts — fades grid when player is behind the surface.
@@ -4223,6 +4228,12 @@ async function main() {
     if (!surfaceReady || !surface || !getTransform) return;
     if (!surfaceConfirmedFromServer) return; // Wait for server-confirmed surface type before rendering entities
 
+    // Actual render-frame delta for framerate-independent camera lerp.
+    // Clamped to avoid huge jumps after tab-hide/unhide (same cap as netRenderDt).
+    const _cameraRenderNow = performance.now();
+    const _cameraRenderDt = Math.min((_cameraRenderNow - _lastCameraRenderTime) / 1000, 0.1);
+    _lastCameraRenderTime = _cameraRenderNow;
+
     const surf = surface;
     const transform = getTransform;
 
@@ -4240,7 +4251,7 @@ async function main() {
             localPlayer.mesh.position,
             _localServerNormal,
             { tangent: _localServerTangent, bitangent: _localServerBitangent },
-            lastFixedDt,
+            _cameraRenderDt,
           );
         } else {
           const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
@@ -4249,7 +4260,7 @@ async function main() {
             cameraPos,
             sp.normal,
             { tangent: sp.tangentU, bitangent: sp.tangentV },
-            lastFixedDt,
+            _cameraRenderDt,
           );
         }
       }
@@ -4611,14 +4622,14 @@ async function main() {
               _netTempPos,
               _netTempNormal,
               { tangent: _netTempTangent, bitangent: _netTempNormal }, // use normal as fallback bitangent
-              lastFixedDt,
+              _cameraRenderDt,
             );
           } else {
             const spectatePlayer = networkPlayers.get(spectateId)!;
             const sp = surf.getPoint(spectatePlayer.surfaceU, spectatePlayer.surfaceV);
             const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
             cameraController.updateFromFrame(
-              cameraPos, sp.normal, { tangent: sp.tangentU, bitangent: sp.tangentV }, lastFixedDt,
+              cameraPos, sp.normal, { tangent: sp.tangentU, bitangent: sp.tangentV }, _cameraRenderDt,
             );
           }
         }
@@ -4639,14 +4650,14 @@ async function main() {
             _netTempPos,
             _localServerNormal,
             { tangent: _localServerTangent, bitangent: _localServerBitangent },
-            lastFixedDt,
+            _cameraRenderDt,
           );
         } else {
           cameraController.updateFromFrame(
             localPlayer.mesh.position,
             _localServerNormal,
             { tangent: _localServerTangent, bitangent: _localServerBitangent },
-            lastFixedDt,
+            _cameraRenderDt,
           );
         }
       } else {
@@ -4657,7 +4668,7 @@ async function main() {
           cameraPos,
           sp.normal,
           { tangent: sp.tangentU, bitangent: sp.tangentV },
-          lastFixedDt,
+          _cameraRenderDt,
         );
       }
     }
