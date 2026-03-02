@@ -3583,20 +3583,21 @@ async function main() {
         camera.updateMatrixWorld();
         _aimCamRight.setFromMatrixColumn(camera.matrixWorld, 0);
         _aimCamUp.setFromMatrixColumn(camera.matrixWorld, 1);
-        // s44-epic-08: Use server tangent frame for aim when available (avoids
-        // surface.getPoint() which can give unstable tangents at poles).
-        if (_localServerFrameValid) {
-          aimAngle = computeCameraRelativeAimAngle(
-            mouseX, mouseY,
-            _aimCamRight, _aimCamUp,
-            _localServerNormal, _localServerTangent, _localServerBitangent,
-          );
-        } else {
+        // s44c-08 FIX: Always use UV frame (surface.getPoint tangentU/V) for aimAngle.
+        // The server's bullet physics interprets dirX/Y as UV-space components (tangentU=East,
+        // tangentV=South on sphere). The server MeshWalker tangent frame is rotated 90° from
+        // the UV frame on the sphere (MeshWalker tangent=North, UV tangentU=East), causing
+        // a systematic 90° aim error. Using UV frame makes aimAngle consistent with server
+        // bullet physics AND client bullet reconstruction (both use sp.tangentU/V).
+        // The s44-epic-08 server-frame switch was the source of this 90° mismatch.
+        {
           const _aimSp = surface.getPoint(_aimPlayer.surfaceU, _aimPlayer.surfaceV);
+          // Use server normal when available (more stable), but UV tangentU/V for angle
+          const _aimNormal = _localServerFrameValid ? _localServerNormal : _aimSp.normal;
           aimAngle = computeCameraRelativeAimAngle(
             mouseX, mouseY,
             _aimCamRight, _aimCamUp,
-            _aimSp.normal, _aimSp.tangentU, _aimSp.tangentV,
+            _aimNormal, _aimSp.tangentU, _aimSp.tangentV,
           );
         }
       }
@@ -3763,7 +3764,15 @@ async function main() {
           localPlayer.mesh.position.lerp(_netTempPos, 0.5);
           _netTempNormal.set(tgt.nx, tgt.ny, tgt.nz);
           _netTempTangent.set(tgt.tx, tgt.ty, tgt.tz);
-          orientPlayerOnSurface(localPlayer, _netTempNormal, aimAngle, _netTempTangent);
+          // s44c-08 FIX: Use UV frame tangentU so player visual orientation matches
+          // bullet direction (both now use UV frame). Server tangent (_netTempTangent)
+          // is 90° off from UV tangentU on sphere.
+          {
+            const _orientSp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+            const _orientTangentU = _orientSp.tangentU.lengthSq() > 0.001
+              ? _orientSp.tangentU : _netTempTangent;
+            orientPlayerOnSurface(localPlayer, _netTempNormal, aimAngle, _orientTangentU);
+          }
         } else {
           // Fallback until first server world-space frame arrives.
           const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
@@ -3800,17 +3809,14 @@ async function main() {
         && SPECIAL_VISUAL_WEAPONS.has(localPlayerWeaponType)) {
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer && surface) {
-        // s44-epic-08: Use server tangent frame when available (avoids unstable getPoint() at poles)
+        // s44c-08 FIX: Use UV frame (sp.tangentU/V) for special weapon aim direction,
+        // consistent with aimAngle which is now also in UV frame.
         let wpNormal: THREE.Vector3;
         let wpTangentU: THREE.Vector3;
         let wpTangentV: THREE.Vector3;
-        if (_localServerFrameValid) {
-          wpNormal   = _localServerNormal;
-          wpTangentU = _localServerTangent;
-          wpTangentV = _localServerBitangent;
-        } else {
+        {
           const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-          wpNormal   = sp.normal;
+          wpNormal   = _localServerFrameValid ? _localServerNormal : sp.normal;
           wpTangentU = sp.tangentU;
           wpTangentV = sp.tangentV;
         }
@@ -3940,9 +3946,10 @@ async function main() {
 
       // Update companions (orbit player, shoot enemies)
       if (getTransform) {
-        // s44-epic-08: Use server tangent frame when available (avoids getPoint() instability)
-        const cmpTangentU = _localServerFrameValid ? _localServerTangent   : auraPoint.tangentU;
-        const cmpTangentV = _localServerFrameValid ? _localServerBitangent : auraPoint.tangentV;
+        // s44c-08 FIX: Use UV frame (auraPoint.tangentU/V) so companion aim direction
+        // matches aimAngle (now in UV frame). auraPoint is already from surface.getPoint().
+        const cmpTangentU = auraPoint.tangentU;
+        const cmpTangentV = auraPoint.tangentV;
         const aimDir = new THREE.Vector3()
           .addScaledVector(cmpTangentU, Math.cos(aimAngle))
           .addScaledVector(cmpTangentV, Math.sin(aimAngle))
