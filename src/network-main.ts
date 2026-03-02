@@ -582,6 +582,7 @@ async function main() {
     remotePlayerTargetWorldPos.clear();
     _localServerFrameValid = false;
     _localPlayerWorldTarget.valid = false;
+    _localPlayerQuatInitialized = false; // s44f-06: reset smoothed orientation on surface change
     bulletTargetUV.clear();
     bulletGeodesicState.clear();
     geomTargetUV.clear();
@@ -2247,6 +2248,9 @@ async function main() {
           // Hard snap on: respawn (always snap to spawn location), death/dead state
           // (client prediction may have drifted the UV while dead), large discrepancy
           // (round-start reset or genuine multi-second desync).
+          // s44f-06: Reset smoothed orientation so next frame snaps to new facing direction
+          // instead of slurring from the pre-respawn orientation.
+          _localPlayerQuatInitialized = false;
           player.surfaceU = netPlayer.surfaceU;
           player.surfaceV = netPlayer.surfaceV;
           // Also update mesh position immediately for hard snaps so the mesh appears
@@ -3707,6 +3711,16 @@ async function main() {
   // Cached dt from onFixedUpdate for use in onRender (which has no dt param).
   // Default to 1/60 so camera orbit reset works correctly on first frame.
   let lastFixedDt = 1 / 60;
+
+  // -- Smoothed orientation for local player (s44f-06) --
+  // sharedOrientPlayerOnSurface sets mesh.quaternion directly with no slerp,
+  // causing visual jitter from frame-to-frame variation in tangent/aimAngle.
+  // SP uses Player.applySurfaceTransform which has ROTATION_SMOOTHING=0.4 slerp.
+  // We mirror that smoothing here for the local player in LAN mode.
+  const _localPlayerSmoothedQuat = new THREE.Quaternion();
+  let _localPlayerQuatInitialized = false;
+  // Smoothing factor — matches Player.ts ROTATION_SMOOTHING (0.4)
+  const LOCAL_PLAYER_ROTATION_SMOOTHING = 0.4;
   // Actual wall-clock time of last render call (ms). Used for bullet UV stepping
   // so bullets advance at the correct rate regardless of display refresh rate.
   let lastRenderTimestampMs = 0;
@@ -3939,6 +3953,19 @@ async function main() {
           localPlayer.mesh.position.addScaledVector(sp.normal, 0.15);
           orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
         }
+
+        // s44f-06 FIX: Apply slerp smoothing to local player orientation.
+        // orientPlayerOnSurface (→ sharedOrientPlayerOnSurface) sets mesh.quaternion
+        // directly with no smoothing, causing visible jitter from frame-to-frame
+        // variation in tangent frame and aimAngle. SP uses Player.applySurfaceTransform
+        // which has ROTATION_SMOOTHING=0.4 slerp — mirror that here.
+        if (!_localPlayerQuatInitialized) {
+          _localPlayerSmoothedQuat.copy(localPlayer.mesh.quaternion);
+          _localPlayerQuatInitialized = true;
+        } else {
+          _localPlayerSmoothedQuat.slerp(localPlayer.mesh.quaternion, LOCAL_PLAYER_ROTATION_SMOOTHING);
+        }
+        localPlayer.mesh.quaternion.copy(_localPlayerSmoothedQuat);
 
         // Update glow trail (only meaningful when moving, but cheap to call always)
         if (isMoving) {
