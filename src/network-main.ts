@@ -2231,6 +2231,9 @@ async function main() {
         if (!cameraController.hasBeenPositioned && _localServerFrameValid && _localPlayerWorldTarget.valid) {
           const tgt = _localPlayerWorldTarget;
           const snapPos = new THREE.Vector3(
+            // s44g-05: Server wx/wy/wz are already in scaled world space (server mesh has
+            // scale baked into vertex positions via SurfaceGeometryBuilder). Don't multiply
+            // by currentMapSizeScaleFactor — that would double-scale positions on EPIC maps.
             tgt.x + _localServerNormal.x * 0.15,
             tgt.y + _localServerNormal.y * 0.15,
             tgt.z + _localServerNormal.z * 0.15,
@@ -2264,6 +2267,7 @@ async function main() {
           if (hasWorldPos) {
             const nx = netPlayer.nx ?? 0; const ny = netPlayer.ny ?? 1; const nz = netPlayer.nz ?? 0;
             player.mesh.position.set(
+              // s44g-05: server positions already in scaled world space, no extra multiply
               netPlayer.wx! + nx * 0.15,
               netPlayer.wy! + ny * 0.15,
               netPlayer.wz! + nz * 0.15,
@@ -2315,6 +2319,7 @@ async function main() {
           const deathWorldPos = remotePlayerTargetWorldPos.get(id);
           if (deathWorldPos) {
             player.mesh.position.set(
+              // s44g-05: server positions already in scaled world space
               deathWorldPos.x + deathWorldPos.nx * 0.15,
               deathWorldPos.y + deathWorldPos.ny * 0.15,
               deathWorldPos.z + deathWorldPos.nz * 0.15,
@@ -2664,6 +2669,8 @@ async function main() {
               // worldToSurface estimates scale via totalDist/maxProfileR, which is wrong
               // at the waist (where radius << maxProfileR). By passing the unscaled server
               // position directly, we bypass the faulty scale estimation entirely.
+              // s44g-05: server mesh has scale baked into vertex positions, so wx/wy/wz are
+              // already in scaled world space — no extra multiply by currentMapSizeScaleFactor.
               // getPoint() returns unscaled positions, so we scale AFTER to match rendering.
               const ownerWorldPosUnscaled = new THREE.Vector3(
                 ownerPlayer!.wx!,
@@ -3936,6 +3943,7 @@ async function main() {
         if (_localPlayerWorldTarget.valid) {
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
+            // s44g-05: server positions already in scaled world space, no extra multiply
             tgt.x + tgt.nx * 0.15,
             tgt.y + tgt.ny * 0.15,
             tgt.z + tgt.nz * 0.15,
@@ -4529,6 +4537,7 @@ async function main() {
       if (worldTarget) {
         // Lerp directly toward server world position (no getPoint() needed)
         _netTempPos.set(
+          // s44g-05: server positions already in scaled world space, no extra multiply
           worldTarget.x + worldTarget.nx * 0.15,
           worldTarget.y + worldTarget.ny * 0.15,
           worldTarget.z + worldTarget.nz * 0.15,
@@ -4729,6 +4738,7 @@ async function main() {
           const spectateWorldPos = remotePlayerTargetWorldPos.get(spectateId);
           if (spectateWorldPos) {
             _netTempPos.set(
+              // s44g-05: server positions already in scaled world space, no extra multiply
               spectateWorldPos.x + spectateWorldPos.nx * 0.15,
               spectateWorldPos.y + spectateWorldPos.ny * 0.15,
               spectateWorldPos.z + spectateWorldPos.nz * 0.15,
@@ -4759,6 +4769,7 @@ async function main() {
         // Using the server target directly means only one lerp (camera's own 0.12), matching SP.
         if (_localPlayerWorldTarget.valid) {
           _netTempPos.set(
+            // s44g-05: server positions already in scaled world space, no extra multiply
             _localPlayerWorldTarget.x + _localServerNormal.x * 0.15,
             _localPlayerWorldTarget.y + _localServerNormal.y * 0.15,
             _localPlayerWorldTarget.z + _localServerNormal.z * 0.15,
