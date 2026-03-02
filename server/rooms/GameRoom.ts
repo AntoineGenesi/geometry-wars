@@ -141,6 +141,7 @@ function getMapScaleFactor(mapSize: string): number {
     case 'medium': return 1.0;
     case 'large':  return 1.5;
     case 'huge':   return 2.0;
+    case 'epic':   return 2.0;
     default:       return 1.0;
   }
 }
@@ -2422,11 +2423,12 @@ export class GameRoom extends Room<GameState> {
     const sphereR = 10 * scaleFactor;
 
     // --- World-space thresholds (surfaces using 3D chord/arc distance, in world units) ---
-    // S43-07: Reduced ENEMY_HIT_WORLD from 0.5 → 0.4 to match SP CollisionSystem.ts:
+    // S43-07: Reduced ENEMY_HIT_WORLD from 0.5 → 0.4 to match SP CollisionSystem.ts.
+    // S44c-11: Restored to 0.5 — EPIC peanut has larger geometry; 0.4 caused enemies to pass through.
     //   hitRadius = player.mesh.scale.x * 0.1 + enemy.radius = 0.1 + 0.3 = 0.4 world units.
     //   The previous 0.5 was ~25% too large, causing early deaths on sphere, peanut, etc.
     // Entity sizes do NOT scale with map size, so these are fixed world-unit values.
-    const ENEMY_HIT_WORLD   = 0.4;   // matches SP: player(0.1) + enemy(0.3) = 0.4
+    const ENEMY_HIT_WORLD   = 0.5;   // player(0.1) + enemy(0.3) + margin; restored in s44c-11
     const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
     // S44b-06: match client-side PICKUP_WORLD_RADIUS (0.15) * mapSizeScaleFactor.
     // Previous fixed 0.6 was 2x too large at MEDIUM (client uses 0.15*scale=0.15 at MEDIUM).
