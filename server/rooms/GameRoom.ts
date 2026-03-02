@@ -630,6 +630,53 @@ export class GameRoom extends Room<GameState> {
       this.handleClientMetrics(client, data);
     });
 
+    // Companion bullet hit: client detects collision (guardian/hunter bullets are client-only),
+    // server applies 1 damage and kills the enemy if health reaches zero.
+    this.onMessage('companion_hit', (client, data: { enemyId: string }) => {
+      if (this.state.roomPhase !== 'playing') return;
+      const { enemyId } = data;
+      if (!enemyId || typeof enemyId !== 'string') return;
+
+      // Find enemy by ID in the ArraySchema
+      let targetIndex = -1;
+      this.state.enemies.forEach((enemy, index) => {
+        if (enemy.id === enemyId) targetIndex = index;
+      });
+      if (targetIndex < 0) return;
+
+      const enemy = this.state.enemies[targetIndex];
+      if (!enemy.alive) return;
+
+      enemy.health -= 1; // GUARDIAN_DAMAGE = 1
+
+      if (enemy.health <= 0) {
+        enemy.alive = false;
+        this.enemyAI.delete(enemy.id);
+        this.state.enemies.splice(targetIndex, 1);
+
+        // Award score/level to the shooting player
+        const player = this.state.players.get(client.sessionId);
+        if (player) {
+          player.score += this.getEnemyScore(enemy.type) * player.multiplier;
+          player.playerKills++;
+          const newLevel = this.getPlayerLevel(player.playerKills);
+          if (newLevel > player.playerLevel) {
+            player.playerLevel = newLevel;
+            this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+          }
+          this.trackDDAKill(client.sessionId);
+        }
+
+        // Chance to spawn pickups (same as bullet kills)
+        if (Math.random() < WEAPON_DROP_CHANCE) {
+          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+      }
+    });
+
     // Initialize session metrics log file
     try {
       const sessionDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD

@@ -4135,6 +4135,24 @@ async function main() {
         );
       }
       companionBulletPool.update(dt);
+
+      // Companion bullet → enemy collision detection.
+      // Companion bullets live only in the client-side companionBulletPool (never server-synced),
+      // so we detect hits here and send a companion_hit message for server-authoritative damage.
+      const COMPANION_HIT_RADIUS_SQ = 0.09; // 0.3 world units squared (matches SP CollisionSystem)
+      companionBulletPool.forEachActive((bulletIdx, bulletPos) => {
+        let bulletConsumed = false;
+        networkEnemies.forEach((enemy, enemyId) => {
+          if (bulletConsumed || !enemy.alive || !enemy.mesh) return;
+          if (bulletPos.distanceToSquared(enemy.position) < COMPANION_HIT_RADIUS_SQ) {
+            bulletConsumed = true;
+            companionBulletPool.kill(bulletIdx);
+            particles.bulletImpact(bulletPos);
+            network.sendCompanionHit(enemyId);
+          }
+        });
+      });
+
       companionHUD.update(companionManager.getCompanionCounts());
     }
 

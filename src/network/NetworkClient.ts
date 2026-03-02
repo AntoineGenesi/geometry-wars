@@ -630,6 +630,16 @@ export class NetworkClient {
   }
 
   /**
+   * Report a companion bullet hit on an enemy so the server can apply damage.
+   * Guardian/Hunter companions fire client-side bullets that never enter the
+   * server-synced bulletPool, so collision is detected client-side and forwarded here.
+   */
+  sendCompanionHit(enemyId: string): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('companion_hit', { enemyId });
+  }
+
+  /**
    * Send exit-to-voting command (host only).
    * Ends the current match and transitions all players to the voting screen.
    */
