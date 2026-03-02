@@ -41,7 +41,11 @@ export const SURFACES = [
 ];
 
 export const MODES = [
-  { id: 'waves', label: 'WAVES' },
+  { id: 'waves',          label: 'WAVES',          icon: '〰' },
+  { id: 'king',           label: 'KING',           icon: '👑' },
+  { id: 'sniper',         label: 'SNIPER',         icon: '🎯' },
+  { id: 'rainbow',        label: 'RAINBOW',        icon: '🌈' },
+  { id: 'claustrophobia', label: 'CLAUSTROPHOBIA', icon: '🔴' },
 ];
 
 const SIZES = [

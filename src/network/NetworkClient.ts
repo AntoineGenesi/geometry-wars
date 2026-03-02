@@ -607,10 +607,11 @@ export class NetworkClient {
 
   /**
    * Request game start
+   * @param choice Optional 'surface:mode:size' string (e.g. 'sphere:king:medium')
    */
-  startGame(): void {
+  startGame(choice?: string): void {
     if (!this.room || !this.connected) return;
-    this.room.send('start');
+    this.room.send('start', choice ? { choice } : undefined);
   }
 
   /**

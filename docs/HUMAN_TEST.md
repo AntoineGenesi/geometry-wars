@@ -1742,3 +1742,19 @@ Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to rea
 - [ ] **Camera stays outside** — Camera should not get stuck inside the surface
 - [ ] **All weapons work** — Fire bullets in all directions; no odd behavior near tunnel holes
 - [ ] **No regression on other maps** — Sphere, torus, cube, pill maps still work correctly
+
+
+## S44h-09: Host Game Mode Selection
+
+**Fix:** LAN host can now select game mode (Waves, King, Sniper, Rainbow, Claustrophobia) from the lobby before starting the game. Selection is sent to the server, which stores and syncs it to all clients. Client-side game mode logic (zones, ammo limits, color rules) activates on game start.
+
+### Test: Host lobby mode selector
+- [ ] **Start LAN host** — Open the game and create a LAN room (click Network/LAN in start menu)
+- [ ] **See mode selector** — Host should see 5 mode buttons (〰 WAVES, 👑 KING, 🎯 SNIPER, 🌈 RAINBOW, 🔴 CLAUSTROPHOBIA) above the START GAME button
+- [ ] **Select King mode** — Click KING button (should glow green/selected)
+- [ ] **Join as second player** — On a second device/tab, join the lobby. Status should show "Mode: KING"
+- [ ] **Start game** — Host clicks START GAME. Game begins in King of the Hill mode.
+- [ ] **King zone visible** — A zone ring/area should appear on the surface for King mode
+- [ ] **Test other modes** — Repeat for Sniper (limited ammo), Rainbow (enemy colors), Claustrophobia (shrinking zone)
+- [ ] **Voting screen shows all modes** — After a game ends, the voting screen should show all 5 mode options to vote on
+- [ ] **No UX conflicts** — Surface and size selectors (in voting screen) still work correctly
