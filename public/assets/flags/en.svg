@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 40">
+  <!-- UK Flag (Union Jack) -->
+  <rect width="60" height="40" fill="#012169"/>
+  <!-- White diagonals -->
+  <polygon points="0,0 6,0 30,16 54,0 60,0 60,5 36,20 60,35 60,40 54,40 30,24 6,40 0,40 0,35 24,20 0,5" fill="white"/>
+  <!-- Red diagonals -->
+  <polygon points="0,0 4,0 30,17.3 56,0 60,0 60,2.7 34,20 60,37.3 60,40 56,40 30,22.7 4,40 0,40 0,37.3 26,20 0,2.7" fill="#C8102E"/>
+  <!-- White cross -->
+  <rect x="24" y="0" width="12" height="40" fill="white"/>
+  <rect x="0" y="15" width="60" height="10" fill="white"/>
+  <!-- Red cross -->
+  <rect x="26" y="0" width="8" height="40" fill="#C8102E"/>
+  <rect x="0" y="17" width="60" height="6" fill="#C8102E"/>
+</svg>
