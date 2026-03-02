@@ -117,6 +117,7 @@ import type { NetworkStartupConfig } from './network/NetworkClient';
 import { LANClient } from './network/LANClient';
 import { initI18n } from './i18n';
 import { computeCameraRelativeAimAngle } from './utils/aimAngle';
+import { createGameMode, type IGameMode, type QuickGameModeType } from './core/modes';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -1123,6 +1124,8 @@ async function main() {
   let latestWaveNumber = 0;
   let latestMapSize = 'medium';
   let latestGameMode = 'waves';
+  // Active client-side game mode instance (KingMode, SniperMode, etc.)
+  let activeGameMode: IGameMode | null = null;
   let localPlayerDeaths = 0;
   let lastSentInput: {
     moveX: number; moveY: number; aimAngle: number;
@@ -1213,6 +1216,61 @@ async function main() {
     'color:#ff0;font:16px monospace;text-shadow:0 0 8px #ff0;z-index:100;';
   document.body.appendChild(weaponEl);
 
+  // ---- Game mode selector (host only, shown in lobby) ----
+  const LOBBY_MODES: Array<{ id: string; label: string; icon: string }> = [
+    { id: 'waves',          label: 'WAVES',          icon: '〰' },
+    { id: 'king',           label: 'KING',           icon: '👑' },
+    { id: 'sniper',         label: 'SNIPER',         icon: '🎯' },
+    { id: 'rainbow',        label: 'RAINBOW',        icon: '🌈' },
+    { id: 'claustrophobia', label: 'CLAUSTROPHOBIA', icon: '🔴' },
+  ];
+
+  let selectedLobbyMode = 'waves';
+
+  const modeSelectorDiv = document.createElement('div');
+  modeSelectorDiv.id = 'lobby-mode-selector';
+  modeSelectorDiv.style.cssText =
+    'position:fixed;top:38%;left:50%;transform:translateX(-50%);' +
+    'display:none;z-index:100;text-align:center;';
+
+  const modeLabelEl = document.createElement('div');
+  modeLabelEl.textContent = 'GAME MODE';
+  modeLabelEl.style.cssText =
+    'color:#0ff;font:12px monospace;letter-spacing:3px;margin-bottom:8px;' +
+    'text-shadow:0 0 8px #0ff;';
+  modeSelectorDiv.appendChild(modeLabelEl);
+
+  const modeBtnsRow = document.createElement('div');
+  modeBtnsRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;';
+
+  const modeBtnEls = new Map<string, HTMLButtonElement>();
+  for (const m of LOBBY_MODES) {
+    const btn = document.createElement('button');
+    btn.textContent = `${m.icon} ${m.label}`;
+    btn.style.cssText =
+      'padding:8px 14px;font:bold 12px monospace;cursor:pointer;' +
+      'border:2px solid #444;background:#111;color:#aaa;letter-spacing:1px;';
+    btn.onclick = () => {
+      selectedLobbyMode = m.id;
+      modeBtnEls.forEach((b, id) => {
+        b.style.background = id === selectedLobbyMode ? '#050' : '#111';
+        b.style.color = id === selectedLobbyMode ? '#0f0' : '#aaa';
+        b.style.borderColor = id === selectedLobbyMode ? '#0f0' : '#444';
+        b.style.textShadow = id === selectedLobbyMode ? '0 0 8px #0f0' : 'none';
+      });
+    };
+    if (m.id === 'waves') {
+      btn.style.background = '#050';
+      btn.style.color = '#0f0';
+      btn.style.borderColor = '#0f0';
+      btn.style.textShadow = '0 0 8px #0f0';
+    }
+    modeBtnEls.set(m.id, btn);
+    modeBtnsRow.appendChild(btn);
+  }
+  modeSelectorDiv.appendChild(modeBtnsRow);
+  document.body.appendChild(modeSelectorDiv);
+
   // Start button
   const startBtn = document.createElement('button');
   startBtn.textContent = 'START GAME';
@@ -1231,8 +1289,12 @@ async function main() {
       statusEl.textContent = 'Only the host can start the game.';
       return;
     }
-    network.startGame();
+    // Build choice string: use current server surface + selected mode + default size
+    // Surface is already set by server/URL; host selects mode here; size uses server default.
+    const choice = `${lastCreatedSurfaceType || 'sphere'}:${selectedLobbyMode}:medium`;
+    network.startGame(choice);
     startBtn.style.display = 'none';
+    modeSelectorDiv.style.display = 'none';
     statusEl.textContent = 'Starting...';
   };
   document.body.appendChild(startBtn);
@@ -2097,6 +2159,65 @@ async function main() {
     cameraController.resetFrameForNewSurface();
 
     netMainLog('[NetworkMain] Game entities reset for new round');
+  }
+
+  // -----------------------------------------------------------------------
+  // Client-side game mode lifecycle
+  // -----------------------------------------------------------------------
+
+  /** Whether onStart() has been called for the current activeGameMode. */
+  let gameModeStarted = false;
+
+  /**
+   * Build a GameModeContext using the local player and current scene objects.
+   * Returns null if the local player isn't ready yet.
+   */
+  function buildGameModeContext() {
+    const localPlayer = networkPlayers.get(localPlayerId);
+    if (!localPlayer || !surface || !enemySpawner) return null;
+    return {
+      player: localPlayer,
+      enemySpawner,
+      surface,
+      weaponManager: localWeaponManager,
+      buffManager,
+      game,
+      scene: game.scene,
+      camera: game.camera,
+    };
+  }
+
+  /**
+   * Instantiate and store the game mode from the current latestGameMode string.
+   * Called at the lobby → playing transition.
+   */
+  function startActiveGameMode(): void {
+    if (activeGameMode) {
+      const ctx = buildGameModeContext();
+      if (ctx) activeGameMode.dispose(ctx);
+      activeGameMode = null;
+    }
+    gameModeStarted = false;
+    const modeType = latestGameMode as QuickGameModeType;
+    if (modeType && modeType !== 'waves') {
+      activeGameMode = createGameMode(modeType);
+      // onStart() is deferred to the first onFixedUpdate tick where the local
+      // player exists — avoids a race with the initial state sync that creates
+      // the Player instance for localPlayerId.
+    }
+  }
+
+  /**
+   * Dispose the active game mode and clear state.
+   * Called when returning to lobby or voting.
+   */
+  function disposeActiveGameMode(): void {
+    if (activeGameMode) {
+      const ctx = buildGameModeContext();
+      if (ctx) activeGameMode.dispose(ctx);
+      activeGameMode = null;
+    }
+    gameModeStarted = false;
   }
 
   // -----------------------------------------------------------------------
@@ -3133,6 +3254,7 @@ async function main() {
         }
       } else if (newPhase === 'playing' && prevRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
+        startActiveGameMode();
         votingScreen.hide();
         // Dismiss any open mastery overlay from the voting screen.
         if (activeVotingMasteryScreen) {
@@ -3168,6 +3290,7 @@ async function main() {
         if (input instanceof TouchInput) input.setGamePaused(isPaused);
       } else if (newPhase === 'playing' && prevRoomPhase === 'lobby') {
         // Initial game start: lobby → playing.
+        startActiveGameMode();
         // Reset entities (safe to call even when empty — clears any stale state).
         // Reset per-match upgrade tracker for the first round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
@@ -3183,6 +3306,7 @@ async function main() {
         // while pause menu is shown (which blocks scroll via preventDefault).
         if (input instanceof TouchInput) input.setGamePaused(isPaused);
       } else if (newPhase === 'lobby') {
+        disposeActiveGameMode();
         votingScreen.hide();
         gameOverScreen.hide();
         // Back to lobby — re-enable pass-through for lobby buttons.
@@ -3201,13 +3325,16 @@ async function main() {
     if (currentRoomPhase === 'voting') {
       statusEl.textContent = 'VOTING';
       startBtn.style.display = 'none';
+      modeSelectorDiv.style.display = 'none';
     } else if (state.gameStarted && currentRoomPhase === 'playing') {
       statusEl.textContent = state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`;
       startBtn.style.display = 'none';
+      modeSelectorDiv.style.display = 'none';
     } else if (state.gameOver && currentRoomPhase !== 'voting') {
       // Legacy path: gameOver flag (pre-voting-state-machine servers or initial game)
       statusEl.textContent = 'GAME OVER';
       startBtn.style.display = 'none';
+      modeSelectorDiv.style.display = 'none';
       if (!gameOverShown) {
         gameOverShown = true;
         const localPlayer = state.players.get(localPlayerId);
@@ -3216,13 +3343,16 @@ async function main() {
       }
     } else if (currentRoomPhase === 'lobby' || (!state.gameStarted && !state.gameOver)) {
       if (isHost) {
-        // Host sees the Start Game button — only the host can trigger game start.
-        statusEl.textContent = 'Waiting for players... (Host: press START GAME)';
+        // Host sees the Start Game button and mode selector.
+        statusEl.textContent = 'Waiting for players... (Host: select mode + press START GAME)';
         startBtn.style.display = 'block';
+        modeSelectorDiv.style.display = 'block';
       } else {
-        // Non-host: show waiting message, no button (server-side guard rejects non-host starts).
-        statusEl.textContent = 'Waiting for host to start the game...';
+        // Non-host: show waiting message with current selected mode.
+        const modeLabel = LOBBY_MODES.find(m => m.id === state.gameMode)?.label ?? state.gameMode?.toUpperCase() ?? 'WAVES';
+        statusEl.textContent = `Waiting for host to start... Mode: ${modeLabel}`;
         startBtn.style.display = 'none';
+        modeSelectorDiv.style.display = 'none';
       }
     }
 
@@ -4340,6 +4470,18 @@ async function main() {
       network.sendMetrics(metrics);
     }
 
+    // -- Client-side game mode tick --
+    if (activeGameMode && currentRoomPhase === 'playing' && !isPaused) {
+      const ctx = buildGameModeContext();
+      if (ctx) {
+        if (!gameModeStarted) {
+          activeGameMode.onStart(ctx);
+          gameModeStarted = true;
+        }
+        activeGameMode.onFixedUpdate(dt, ctx);
+      }
+    }
+
     // Clear per-frame input
     input.endFrame();
   };
@@ -4956,6 +5098,12 @@ async function main() {
 
     // Update debug overlay HUD (throttled internally — no perf cost when F4 is hidden)
     debugOverlay.update();
+
+    // -- Client-side game mode render tick --
+    if (activeGameMode && gameModeStarted && currentRoomPhase === 'playing') {
+      const ctx = buildGameModeContext();
+      if (ctx) activeGameMode.onRender(_cameraRenderDt, ctx);
+    }
   };
 
   // Start the game loop

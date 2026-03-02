@@ -80,7 +80,11 @@
       "cubeTunnel": "КУБ-ТУННЕЛЬ"
     },
     "modes": {
-      "waves": "ВОЛНЫ"
+      "waves": "ВОЛНЫ",
+      "king": "КОРОЛЬ",
+      "sniper": "СНАЙПЕР",
+      "rainbow": "РАДУГА",
+      "claustrophobia": "КЛАУСТРОФОБИЯ"
     },
     "sizes": {
       "small": "МАЛЕНЬКИЙ",

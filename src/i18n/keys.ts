@@ -85,6 +85,10 @@ export const KEYS = {
     },
     modes: {
       waves: 'voting.modes.waves',
+      king: 'voting.modes.king',
+      sniper: 'voting.modes.sniper',
+      rainbow: 'voting.modes.rainbow',
+      claustrophobia: 'voting.modes.claustrophobia',
     },
     sizes: {
       small: 'voting.sizes.small',

@@ -80,7 +80,11 @@
       "cubeTunnel": "[ES] CUBE-TUNNEL"
     },
     "modes": {
-      "waves": "[ES] WAVES"
+      "waves": "[ES] WAVES",
+      "king": "[ES] KING",
+      "sniper": "[ES] SNIPER",
+      "rainbow": "[ES] RAINBOW",
+      "claustrophobia": "[ES] CLAUSTROPHOBIA"
     },
     "sizes": {
       "small": "[ES] SMALL",

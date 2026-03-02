@@ -534,7 +534,7 @@ export class GameRoom extends Room<GameState> {
       this.handleInput(client, input);
     });
 
-    this.onMessage('start', (client) => {
+    this.onMessage('start', (client, data?: { choice?: string }) => {
       // Only the host can start the game
       if (client.sessionId !== this.state.hostId) {
         this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to start game (host=${this.state.hostId})`);
@@ -542,7 +542,11 @@ export class GameRoom extends Room<GameState> {
       }
       // Initial game start: lobby → playing
       if (this.state.roomPhase === 'lobby') {
-        this.startGame();
+        if (data?.choice) {
+          this.startGameWithSettings(data.choice);
+        } else {
+          this.startGame();
+        }
       }
     });
 
@@ -918,7 +922,7 @@ export class GameRoom extends Room<GameState> {
     const parts = choice.split(':');
     const surface = parts[0] || this.state.surfaceType;
     // Safety guard: only accept implemented modes; fall back to 'waves' for unknown modes
-    const VALID_MODES = ['waves'];
+    const VALID_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia'];
     const mode = VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
     const size = parts[2] || 'medium';
     this.state.surfaceType = surface;
