@@ -2664,42 +2664,47 @@ async function main() {
               && (ownerPlayer.wx !== 0 || ownerPlayer.wy !== 0 || ownerPlayer.wz !== 0);
 
             if (hasOwnerWorldPos) {
-              // Owner's wx/wy/wz is the server geodesic position (accurate on all surfaces).
-              // s44f-08 FIX: Pass UNSCALED world pos to worldToSurface. PeanutSurface's
-              // worldToSurface estimates scale via totalDist/maxProfileR, which is wrong
-              // at the waist (where radius << maxProfileR). By passing the unscaled server
-              // position directly, we bypass the faulty scale estimation entirely.
+              // s44h-01 FIX: Use owner world position DIRECTLY as bullet spawn position.
+              // Previous approach (s44f-08/s44g-05) round-tripped through worldToSurface()
+              // → getPoint() to "correct" the UV, but PeanutSurface's worldToSurface had
+              // a broken scale estimation that caused bullet positions to drift away from
+              // the player — especially near the waist/poles. The server's wx/wy/wz IS the
+              // correct world position (computed via geodesic stepping). No UV round-trip needed.
+              //
               // s44g-05: server mesh has scale baked into vertex positions, so wx/wy/wz are
-              // already in scaled world space — no extra multiply by currentMapSizeScaleFactor.
-              // getPoint() returns unscaled positions, so we scale AFTER to match rendering.
-              const ownerWorldPosUnscaled = new THREE.Vector3(
+              // already in scaled world space. Do NOT multiply by currentMapSizeScaleFactor
+              // (that would double-scale). This matches how player.mesh.position is set at
+              // line ~2271 (netPlayer.wx directly, no scale multiply).
+              const ownerWorldPos = new THREE.Vector3(
                 ownerPlayer!.wx!,
                 ownerPlayer!.wy!,
                 ownerPlayer!.wz!,
               );
-              const correctUV = surface.worldToSurface(ownerWorldPosUnscaled);
+
+              // Get tangent vectors from owner's server UV for geodesic direction init.
+              // The server UV (sphere-approx) gives approximately correct tangent DIRECTIONS
+              // even on peanut — accurate enough for direction initialization.
+              const ownerSp = surface.getPoint(ownerPlayer!.surfaceU, ownerPlayer!.surfaceV);
 
               // s44e-01 FIX: For dual-barrel bullets (Standard/Blaster), both bullets share
               // the same owner world position but have slightly different UV spawn coords
-              // (perpendicular barrel offset ±0.003). Apply that UV delta to the corrected
-              // owner UV so each bullet starts at its own world position and renders as 2
-              // distinct bullets instead of overlapping as 1.
-              // ownerPlayer.surfaceU/V and bullet.x/y both use sphere-approx parameterization,
-              // so their difference (~±duPerp) is accurate regardless of actual surface shape.
+              // (perpendicular barrel offset ±0.003). Apply that UV delta as a small
+              // world-space offset using tangent vectors.
               const du = bullet.x - ownerPlayer!.surfaceU;
               const dv = bullet.y - ownerPlayer!.surfaceV;
               if (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001) {
-                const bulletSp = surface.getPoint(correctUV.u + du, correctUV.v + dv);
-                bulletWorldPos = bulletSp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
-                bulletTangentU = bulletSp.tangentU;
-                bulletTangentV = bulletSp.tangentV;
+                // Compute world-space offset from UV delta using tangent vectors.
+                // tangentU/V from getPoint() are in unscaled space, so scale them to match
+                // the server's scaled world coordinates.
+                const offsetWorld = ownerSp.tangentU.clone().multiplyScalar(du * Math.PI * 2)
+                  .addScaledVector(ownerSp.tangentV, dv * Math.PI);
+                offsetWorld.multiplyScalar(currentMapSizeScaleFactor);
+                bulletWorldPos = ownerWorldPos.clone().add(offsetWorld);
               } else {
-                // Scale the unscaled owner position for rendering coordinates
-                bulletWorldPos = ownerWorldPosUnscaled.clone().multiplyScalar(currentMapSizeScaleFactor);
-                const correctSp = surface.getPoint(correctUV.u, correctUV.v);
-                bulletTangentU = correctSp.tangentU;
-                bulletTangentV = correctSp.tangentV;
+                bulletWorldPos = ownerWorldPos;
               }
+              bulletTangentU = ownerSp.tangentU;
+              bulletTangentV = ownerSp.tangentV;
             } else {
               // Fallback until first server world-pos frame arrives (sphere approx — inaccurate on torus)
               const sp = surface.getPoint(bullet.x, bullet.y);
