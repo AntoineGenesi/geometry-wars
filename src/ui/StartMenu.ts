@@ -1219,7 +1219,7 @@ export class StartMenu {
         text-align: center;
       }
       #start-menu .lan-lobby-list {
-        max-height: 220px;
+        max-height: 100px;
         overflow-y: auto;
         margin: 0 0 10px;
         scrollbar-width: thin;
@@ -1238,8 +1238,9 @@ export class StartMenu {
       #start-menu .lan-lobby-entry {
         background: rgba(0, 60, 60, 0.35);
         border: 1px solid #005555;
-        padding: 10px 14px;
-        margin: 0 0 6px;
+        padding: 12px 14px;
+        margin: 0 0 8px;
+        min-height: 50px;
         cursor: pointer;
         transition: all 0.2s;
         display: flex;
@@ -1595,11 +1596,12 @@ export class StartMenu {
       /* ------------------------------------------------------------------- */
       #start-menu #lan-qr-container {
         width: 100%;
+        padding: 8px 0;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        overflow: hidden;
+        overflow: visible;
         flex-shrink: 0;
       }
 
