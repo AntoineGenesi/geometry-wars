@@ -160,61 +160,36 @@ export class PeanutSurface extends Surface {
   }
 
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
-    // Find closest phi by scanning the meridional profile, then compute theta.
+    // s44h-01 FIX: Scale-independent phi scan using angular comparison.
     //
-    // s44f-08 FIX: The old approach estimated scale via totalDist/maxProfileR, which
-    // was wrong at the peanut waist (radius << maxProfileR). This caused worldToSurface
-    // to return incorrect UV at the waist, making MP bullets spawn offset from the player.
+    // Previous approaches (s44f-08) tried to estimate a global scale factor,
+    // but that's a chicken-and-egg problem: you need the right phi to estimate
+    // scale, but you need the right scale to find phi.
     //
-    // New approach: compare the query point against SCALED profile rings directly.
-    // The scale is determined by comparing the query's radial extent against the profile
-    // at each phi. We scan using the RAW (y, xzDist) coordinates from the query point
-    // and compare against scaled profile rings. The scale factor is auto-detected by
-    // finding which (scale, phi) pair minimizes distance.
-    //
-    // For unscaled inputs (scale=1), this reduces to a direct profile comparison.
-    // For scaled inputs, the scale is estimated per-phi as queryDist/profileDist,
-    // giving correct results even at the narrow waist.
+    // New approach: Compare the ANGLE of the query point (atan2(xzDist, y)) against
+    // the angle of each profile ring point. The angle from origin is scale-invariant
+    // (scaling preserves direction), so this works regardless of whether the input
+    // is scaled or unscaled. We also compare the radial ratio to break ties.
     const xzDist = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z)
+    const queryAngle = Math.atan2(xzDist, worldPos.y)  // angle from +Y axis
 
     let bestPhi = 0
-    let bestDist = Infinity
-    const steps = 100
+    let bestScore = Infinity
+    const steps = 200  // higher resolution for better accuracy
 
-    // Estimate scale from the overall distance vs average profile radius.
-    // Use iterative refinement: first pass finds bestPhi assuming scale=1,
-    // second pass uses the bestPhi radius to refine scale.
-    // This converges in 2 passes because the peanut profile is smooth.
-    let scale = 1.0
-    for (let pass = 0; pass < 2; pass++) {
-      bestDist = Infinity
-      for (let i = 0; i <= steps; i++) {
-        const phi = (i / steps) * Math.PI
-        const r = this.profileRadius(phi)
-        const ringRadius = r * Math.sin(phi) * scale
-        const ringY = r * Math.cos(phi) * scale
+    for (let i = 0; i <= steps; i++) {
+      const phi = (i / steps) * Math.PI
+      const r = this.profileRadius(phi)
+      const ringXZ = r * Math.sin(phi)
+      const ringY = r * Math.cos(phi)
+      const ringAngle = Math.atan2(ringXZ, ringY)
 
-        const dist = Math.sqrt(
-          (xzDist - ringRadius) * (xzDist - ringRadius) +
-          (worldPos.y - ringY) * (worldPos.y - ringY)
-        )
+      // Primary: angular distance (scale-invariant)
+      const angleDiff = Math.abs(queryAngle - ringAngle)
 
-        if (dist < bestDist) {
-          bestDist = dist
-          bestPhi = phi
-        }
-      }
-      // Refine scale estimate using the best-fit phi's profile radius
-      if (pass === 0) {
-        const bestR = this.profileRadius(bestPhi)
-        if (bestR > 1e-6) {
-          // Compute the query's distance from origin projected onto the profile plane
-          const profileDist = Math.sqrt(
-            (bestR * Math.sin(bestPhi)) ** 2 + (bestR * Math.cos(bestPhi)) ** 2
-          )
-          const queryDist = Math.sqrt(xzDist * xzDist + worldPos.y * worldPos.y)
-          scale = queryDist > 1e-6 && profileDist > 1e-6 ? queryDist / profileDist : 1.0
-        }
+      if (angleDiff < bestScore) {
+        bestScore = angleDiff
+        bestPhi = phi
       }
     }
 
