@@ -1191,9 +1191,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Weapon HUD (inventory display) --
   const weaponHUD = new WeaponHUD();
-  // On mobile: position below the top HUD cluster (score at 8px, bombs at 28px, etc. extend to ~60px).
-  // Use viewport-relative value so it adapts to screen size. Minimum 80px on mobile.
-  const weaponHUDY = mobile ? Math.max(80, Math.round(window.innerHeight * 0.2)) : 60;
+  // Position weapon HUD at mid-left to avoid overlap with performance stats overlay.
+  // Use 25% of viewport height for both desktop and mobile (responsive).
+  // Minimum 100px on small screens to ensure reasonable spacing.
+  const weaponHUDY = Math.max(100, Math.round(window.innerHeight * 0.25));
   weaponHUD.setPosition(10, weaponHUDY);
 
   // Wire session level-up: show compact level toast after each pickup beyond the first
