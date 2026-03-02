@@ -29,6 +29,7 @@ import { Player } from './entities/Player';
 import { BulletPool } from './entities/Bullet';
 import { GeomPool } from './entities/Geom';
 import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
+import { waveComposer } from './entities/enemies/WaveComposer';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
@@ -1918,11 +1919,21 @@ async function main() {
     // Map server enemy type to spawner type
     const spawnerType = SERVER_TO_SPAWNER_TYPE[netEnemy.type] || 'wanderer';
 
+    // For snakes, derive max segments from wave number so late-game MP snakes
+    // scale to 50 segments just like single-player (no schema changes required).
+    let snakeMaxSegments: number | undefined;
+    if (spawnerType === 'snake' || spawnerType === 'giant_snake') {
+      snakeMaxSegments = waveComposer.getMaxSegmentsForWave(
+        latestWaveNumber,
+        spawnerType as 'snake' | 'giant_snake',
+      );
+    }
+
     // Use real EnemySpawner to create the enemy with proper mesh.
     // Pass skipSpawnWarning=true to avoid creating red ring indicators that
     // would never be cleaned up (enemySpawner.update() is not called in
     // network mode because the server is authoritative for enemy positions).
-    enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV, 0, true);
+    enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV, 0, true, undefined, snakeMaxSegments);
 
     networkEnemies.set(id, enemy);
     enemyPrevHealth.set(id, netEnemy.health);

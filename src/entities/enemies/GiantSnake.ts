@@ -5,14 +5,18 @@ import { buildCircle3D } from '../../utils/GeometryBuilder';
 // Pre-allocated temp — zero per-frame allocations
 const _gsSegMatrix = new THREE.Matrix4();
 
+/** Default segment count for GiantSnake. */
+const DEFAULT_GIANT_SEGMENT_COUNT = 7;
+
 /**
  * Giant Snake - oversized snake that breaks into 2 regular snakes on death.
  * Chases player with S-pattern movement, larger head and segments.
  * Visual: big bright-blue circles with trailing segments.
  */
+
 export class GiantSnake extends BaseEnemy {
   private segments: Array<{ u: number; v: number; mesh: THREE.Group }> = [];
-  private readonly segmentCount = 7;
+  private readonly segmentCount: number;
 
   /** All segment meshes in a shared root — added to scene by EnemySpawner, same pattern as Snake. */
   public readonly segmentRoot = new THREE.Group();
@@ -21,14 +25,22 @@ export class GiantSnake extends BaseEnemy {
   private sinePhase = 0;
   private positionHistory: Array<{ u: number; v: number }> = [];
   private positionHistoryWorld: Array<THREE.Vector3> = []; // For walker mode
-  private readonly historySize = 40;
+  private readonly historySize: number;
 
   /** Called when giant dies to spawn regular enemies */
   public static onDeathSpawn: ((u: number, v: number, count: number) => void) | null = null;
 
-  constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
+  /**
+   * @param surfaceU - Initial surface U coordinate
+   * @param surfaceV - Initial surface V coordinate
+   * @param segmentCount - Number of body segments (default 7; use 15-20 for late-game waves)
+   */
+  constructor(surfaceU: number = 0.5, surfaceV: number = 0.5, segmentCount: number = DEFAULT_GIANT_SEGMENT_COUNT) {
     // health=10, score=200, geoms=4, speed=0.04, radius=0.4
     super(surfaceU, surfaceV, 10, 200, 4, 0.04, 0.4);
+    this.segmentCount = segmentCount;
+    // Scale history to ensure all segments can trail the head properly
+    this.historySize = Math.max(40, (segmentCount + 2) * 5);
     this.createMesh();
     this.createSegments();
     // Register segmentRoot so generic cleanup code (network-main.ts) removes it from scene.

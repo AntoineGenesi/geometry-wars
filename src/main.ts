@@ -92,6 +92,7 @@ import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
+import { waveComposer } from './entities/enemies/WaveComposer';
 import { DDALogger } from './difficulty/DDALogger';
 import { EntityAudit } from './core/EntityAudit';
 import { PerformanceLogger } from './core/PerformanceLogger';
@@ -280,13 +281,21 @@ class WaveScheduler {
         2.0,
         this.endlessInterval - this.endlessWave * 0.2 - difficultySpeedBonus,
       ) + entityDelayBonus;
-      const scaledWave = generateScaledEndlessWave(
-        this.endlessWave,
-        this.currentDifficultyLevel,
-        activeCount,
-        this.playerCount,
-      );
-      spawner.spawnWave(scaledWave as any);
+      // Every 15 waves: spawn a breathing-room rest wave (WaveComposer "Rest" archetype).
+      // Only 4 enemies — player recovers resources. Otherwise use the standard scaled system.
+      if (this.endlessWave % 15 === 0) {
+        spawner.spawnComposedWave(this.endlessWave, this.playerCount);
+      } else {
+        const scaledWave = generateScaledEndlessWave(
+          this.endlessWave,
+          this.currentDifficultyLevel,
+          activeCount,
+          this.playerCount,
+        );
+        // ScaledWaveEntry is structurally compatible with WaveEnemy (same required fields,
+        // maxSegments now included). The cast is needed because type field is `string` vs `EnemyType`.
+        spawner.spawnWave(scaledWave as any);
+      }
     }
   }
 

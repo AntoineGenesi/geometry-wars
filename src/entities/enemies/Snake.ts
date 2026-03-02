@@ -11,11 +11,12 @@ interface SnakeSegData {
   mesh: THREE.Group;
 }
 
-const HISTORY_SIZE = 80;
+const DEFAULT_HISTORY_SIZE = 80;
 const SEGMENT_HISTORY_STEP = 8;  // frames between segments in history
 const INITIAL_SEGMENTS = 4;
 const GROW_INTERVAL = 7;         // seconds between new segment spawns
-const MAX_SEGMENTS = 14;
+/** Default max segments — overridable per-instance for late-game scaling (up to 50). */
+const DEFAULT_MAX_SEGMENTS = 14;
 const ORBIT_ANGULAR_SPEED = 0.7; // radians/sec — how fast it circles the player
 const ORBIT_RADIUS = 0.28;       // UV units from player
 const ORBIT_SHRINK_RATE = 0.002; // UV/sec — slowly tightens orbit
@@ -53,15 +54,36 @@ export class Snake extends BaseEnemy {
 
   private growTimer: number = 0;
 
+  /**
+   * Maximum segments this snake can grow to. Configurable per-instance for late-game
+   * wave scaling (e.g. wave 50 snakes grow to 50 segments — one snake = entire army).
+   */
+  private readonly maxSegments: number;
+
+  /**
+   * Position history buffer size — scales with maxSegments so all segments have
+   * enough history to trail behind the head without collapsing to the tail position.
+   * Formula: (maxSegments + 2) * SEGMENT_HISTORY_STEP
+   */
+  private readonly historySize: number;
+
   /** Fired when the head dies. Caller spawns Grunts at each segment position. */
   static onHeadDeath: ((segments: Array<{ u: number; v: number }>) => void) | null = null;
 
   /** Fired when a single tail segment is peeled off. Caller spawns one Grunt. */
   static onSegmentDeath: ((u: number, v: number) => void) | null = null;
 
-  constructor(u: number = 0.5, v: number = 0.5) {
+  /**
+   * @param u - Initial surface U coordinate
+   * @param v - Initial surface V coordinate
+   * @param maxSegments - Max body segments (default 14; use 30-50 for late-game waves)
+   */
+  constructor(u: number = 0.5, v: number = 0.5, maxSegments: number = DEFAULT_MAX_SEGMENTS) {
     // health=6, score=50, geoms=4, speed=0.03 (slow), radius=0.3
     super(u, v, 6, 50, 4, 0.03, 0.30);
+    this.maxSegments = maxSegments;
+    // Scale history buffer so the last segment always has a valid history entry
+    this.historySize = Math.max(DEFAULT_HISTORY_SIZE, (maxSegments + 2) * SEGMENT_HISTORY_STEP);
     this.orbitAngle = Math.random() * Math.PI * 2; // randomise starting arc
     this.createMesh();
     this.initSegments(INITIAL_SEGMENTS);
@@ -92,7 +114,7 @@ export class Snake extends BaseEnemy {
   }
 
   private addSegment(): void {
-    if (this.segs.length >= MAX_SEGMENTS) return;
+    if (this.segs.length >= this.maxSegments) return;
     const last = this.segs[this.segs.length - 1];
     const mesh = this.createSegmentMesh();
     this.segmentRoot.add(mesh);
@@ -187,7 +209,7 @@ export class Snake extends BaseEnemy {
 
     // Record position AFTER moving
     this.posHistory.unshift({ u: this.surfacePosition.u, v: this.surfacePosition.v });
-    if (this.posHistory.length > HISTORY_SIZE) this.posHistory.pop();
+    if (this.posHistory.length > this.historySize) this.posHistory.pop();
 
     this._updateSegmentsAndGrowth(dt);
   }
@@ -199,7 +221,7 @@ export class Snake extends BaseEnemy {
 
     // Record current UV position (bridged from last frame) to history
     this.posHistory.unshift({ u: this.surfacePosition.u, v: this.surfacePosition.v });
-    if (this.posHistory.length > HISTORY_SIZE) this.posHistory.pop();
+    if (this.posHistory.length > this.historySize) this.posHistory.pop();
 
     this._updateSegmentsAndGrowth(dt);
 
@@ -256,7 +278,7 @@ export class Snake extends BaseEnemy {
     const lastH = this.posHistory[0];
     if (!lastH || Math.abs(lastH.u - headU) > 0.0005 || Math.abs(lastH.v - headV) > 0.0005) {
       this.posHistory.unshift({ u: headU, v: headV });
-      if (this.posHistory.length > HISTORY_SIZE) this.posHistory.pop();
+      if (this.posHistory.length > this.historySize) this.posHistory.pop();
       // Update segment UV positions from history so they trail the head
       for (let i = 0; i < this.segs.length; i++) {
         const histIdx = Math.min((i + 1) * SEGMENT_HISTORY_STEP, this.posHistory.length - 1);

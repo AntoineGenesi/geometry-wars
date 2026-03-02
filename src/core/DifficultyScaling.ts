@@ -275,6 +275,12 @@ export interface ScaledWaveEntry {
   tier: number;
   /** Continuous difficulty level for super-tier stat scaling (only set when > MAX_TIER). */
   difficultyLevel?: number;
+  /**
+   * Max body segments for Snake/GiantSnake enemies.
+   * Grows with wave number: wave<10=14, wave10-29 up to 34, wave50+=50.
+   * Omit to use the default cap (14 for Snake, 7 for GiantSnake).
+   */
+  maxSegments?: number;
 }
 
 /**
@@ -487,6 +493,21 @@ export function generateScaledEndlessWave(
   if (difficultyLevel > MAX_TIER) {
     for (const entry of enemies) {
       entry.difficultyLevel = difficultyLevel;
+    }
+  }
+
+  // Snake segment scaling: inject maxSegments based on wave number.
+  // Snakes grow to 50 segments in late game (one snake = entire army).
+  // wave <10 = 14 (default), wave 10-29 grows 15→34, wave 30+ up to 50.
+  // GiantSnake uses ~half (its segments are larger).
+  const snakeMax = waveNum < 10 ? 14
+    : waveNum < 30 ? 14 + (waveNum - 9)
+    : Math.min(50, 34 + Math.floor((waveNum - 29) * 0.8));
+  for (const entry of enemies) {
+    if (entry.type === 'snake') {
+      entry.maxSegments = snakeMax;
+    } else if (entry.type === 'giant_snake') {
+      entry.maxSegments = Math.max(7, Math.floor(snakeMax * 0.5));
     }
   }
 
