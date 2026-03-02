@@ -778,9 +778,9 @@ export class StartMenu {
       }
 
       #start-menu .map-size-btn {
-        background: rgba(0, 60, 80, 0.4);
-        border: 2px solid #005566;
-        color: #88ddee;
+        background: rgba(0, 100, 100, 0.3);
+        border: 2px solid #006666;
+        color: #00ffff;
         padding: 10px 18px;
         font-size: 12px;
         font-weight: bold;
@@ -792,17 +792,16 @@ export class StartMenu {
       }
 
       #start-menu .map-size-btn:hover {
-        background: rgba(0, 100, 130, 0.5);
-        border-color: #00ccee;
-        color: #aaeeff;
+        background: rgba(0, 150, 150, 0.4);
+        border-color: #00ffff;
         transform: scale(1.05);
       }
 
       #start-menu .map-size-btn.selected {
-        background: rgba(0, 200, 255, 0.15);
-        border-color: #00ccee;
-        color: #00eeff;
-        box-shadow: 0 0 12px rgba(0, 200, 255, 0.4);
+        background: rgba(0, 255, 255, 0.2);
+        border-color: #00ffff;
+        color: #00ffff;
+        box-shadow: 0 0 15px #00ffff;
       }
 
       /* ------------------------------------------------------------------- */
