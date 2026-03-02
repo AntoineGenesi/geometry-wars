@@ -770,6 +770,9 @@ async function main() {
   const bulletInstanceIds = new Set<string>();
   // Track weapon type per bullet (populated from ownerId → player.weaponType in onStateChange)
   const bulletWeaponType = new Map<string, WeaponType>();
+  // Track owner ID per bullet — used to skip special-weapon server bullets for local player
+  // (whose visuals are handled by localWeaponManager instead)
+  const bulletOwnerIds = new Map<string, string>();
   // Hide the original line-based bullet visuals (BulletInstanceManager takes over)
   bulletPool.root.visible = false;
 
@@ -856,11 +859,10 @@ async function main() {
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
 
   // Weapon HUD — same graphical inventory panel as single-player
-  // Position weapon HUD at mid-left to avoid overlap with performance stats overlay.
-  // Use 25% of viewport height for both desktop and mobile (responsive).
-  // Minimum 100px on small screens to ensure reasonable spacing.
+  // s44g-04: Position at mid-left (50% height) so weapon icons appear at screen center,
+  // matching gameplay area and making equipped weapons easy to read during action.
   const weaponHUD = new WeaponHUD();
-  const weaponHUDY = Math.max(100, Math.round(window.innerHeight * 0.25));
+  const weaponHUDY = Math.max(100, Math.round(window.innerHeight * 0.50));
   weaponHUD.setPosition(10, weaponHUDY);
 
   // Ally glow manager for remote player indicators
@@ -2229,9 +2231,9 @@ async function main() {
         if (!cameraController.hasBeenPositioned && _localServerFrameValid && _localPlayerWorldTarget.valid) {
           const tgt = _localPlayerWorldTarget;
           const snapPos = new THREE.Vector3(
-            tgt.x * currentMapSizeScaleFactor + _localServerNormal.x * 0.15,
-            tgt.y * currentMapSizeScaleFactor + _localServerNormal.y * 0.15,
-            tgt.z * currentMapSizeScaleFactor + _localServerNormal.z * 0.15,
+            tgt.x + _localServerNormal.x * 0.15,
+            tgt.y + _localServerNormal.y * 0.15,
+            tgt.z + _localServerNormal.z * 0.15,
           );
           cameraController.snapToFrame(
             snapPos,
@@ -2262,9 +2264,9 @@ async function main() {
           if (hasWorldPos) {
             const nx = netPlayer.nx ?? 0; const ny = netPlayer.ny ?? 1; const nz = netPlayer.nz ?? 0;
             player.mesh.position.set(
-              netPlayer.wx! * currentMapSizeScaleFactor + nx * 0.15,
-              netPlayer.wy! * currentMapSizeScaleFactor + ny * 0.15,
-              netPlayer.wz! * currentMapSizeScaleFactor + nz * 0.15,
+              netPlayer.wx! + nx * 0.15,
+              netPlayer.wy! + ny * 0.15,
+              netPlayer.wz! + nz * 0.15,
             );
           } else {
             const snapSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
@@ -2313,9 +2315,9 @@ async function main() {
           const deathWorldPos = remotePlayerTargetWorldPos.get(id);
           if (deathWorldPos) {
             player.mesh.position.set(
-              deathWorldPos.x * currentMapSizeScaleFactor + deathWorldPos.nx * 0.15,
-              deathWorldPos.y * currentMapSizeScaleFactor + deathWorldPos.ny * 0.15,
-              deathWorldPos.z * currentMapSizeScaleFactor + deathWorldPos.nz * 0.15,
+              deathWorldPos.x + deathWorldPos.nx * 0.15,
+              deathWorldPos.y + deathWorldPos.ny * 0.15,
+              deathWorldPos.z + deathWorldPos.nz * 0.15,
             );
           } else {
             const deathSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
@@ -2633,6 +2635,9 @@ async function main() {
           const bulletWType = bullet.weaponType ?? ownerPlayer?.weaponType ?? 'standard';
           const ownerWeapon = SERVER_TO_WEAPON_TYPE[bulletWType] ?? WeaponType.Standard;
           bulletWeaponType.set(bullet.id, ownerWeapon);
+          // Track owner ID so we can skip special-weapon server bullets for the local player
+          // (whose visuals are handled by localWeaponManager — no flying bullet needed)
+          bulletOwnerIds.set(bullet.id, bullet.ownerId);
 
           // Initialize geodesic face position for client-side geodesic rendering.
           // Server uses UV Christoffel stepping; client uses FaceWalker for true geodesics.
@@ -2721,6 +2726,7 @@ async function main() {
         bulletTargetUV.delete(id);
         bulletGeodesicState.delete(id);
         bulletWeaponType.delete(id);
+        bulletOwnerIds.delete(id);
         // Remove from instanced rendering (standard weapon renders 2 visual bullets: _l and _r)
         bulletInstanceManager.removeBullet(id + '_l');
         bulletInstanceManager.removeBullet(id + '_r');
@@ -3930,9 +3936,9 @@ async function main() {
         if (_localPlayerWorldTarget.valid) {
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
-            tgt.x * currentMapSizeScaleFactor + tgt.nx * 0.15,
-            tgt.y * currentMapSizeScaleFactor + tgt.ny * 0.15,
-            tgt.z * currentMapSizeScaleFactor + tgt.nz * 0.15,
+            tgt.x + tgt.nx * 0.15,
+            tgt.y + tgt.ny * 0.15,
+            tgt.z + tgt.nz * 0.15,
           );
           localPlayer.mesh.position.copy(_netTempPos);
           _netTempNormal.set(tgt.nx, tgt.ny, tgt.nz);
@@ -4523,9 +4529,9 @@ async function main() {
       if (worldTarget) {
         // Lerp directly toward server world position (no getPoint() needed)
         _netTempPos.set(
-          worldTarget.x * currentMapSizeScaleFactor + worldTarget.nx * 0.15,
-          worldTarget.y * currentMapSizeScaleFactor + worldTarget.ny * 0.15,
-          worldTarget.z * currentMapSizeScaleFactor + worldTarget.nz * 0.15,
+          worldTarget.x + worldTarget.nx * 0.15,
+          worldTarget.y + worldTarget.ny * 0.15,
+          worldTarget.z + worldTarget.nz * 0.15,
         );
         player.mesh.position.lerp(_netTempPos, PLAYER_LERP);
         _netTempNormal.set(worldTarget.nx, worldTarget.ny, worldTarget.nz);
@@ -4584,9 +4590,16 @@ async function main() {
 
         const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
 
-        // GravityGun visuals are handled by WeaponManager (purple gravity-well projectile).
-        // Skip BulletInstanceManager to avoid a miscolored default-visual duplicate bullet.
-        if (weapType === WeaponType.GravityGun) return;
+        // s44g-04: Skip server bullets for the local player whose weapon visuals are handled
+        // by localWeaponManager (SPECIAL_VISUAL_WEAPONS). Without this skip, these weapons
+        // render a plain Standard-looking flying capsule alongside the proper effect, making
+        // all secondary weapons appear as "worse blaster" variants.
+        // - GravityGun: purple gravity-well projectile handled by WeaponManager
+        // - ChainLightning: instant arc effect — server bullet is a damage hitbox only
+        // - TeslaCoil: area aura effect — server bullet is a damage hitbox only
+        // Other players' special weapon bullets still render (no localWeaponManager for them).
+        const bulletOwner = bulletOwnerIds.get(id);
+        if (bulletOwner === localPlayerId && SPECIAL_VISUAL_WEAPONS.has(weapType)) return;
 
         const bulletVisual = weaponToBulletVisual(weapType);
         const weapColor = WEAPON_CONFIGS[weapType]?.color;
@@ -4626,8 +4639,11 @@ async function main() {
           .normalize();
 
         const fallbackWeapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
-        // GravityGun visuals handled by WeaponManager — skip BulletInstanceManager.
-        if (fallbackWeapType !== WeaponType.GravityGun) {
+        // Skip server bullets for local player's SPECIAL_VISUAL_WEAPONS — their visuals are
+        // handled by localWeaponManager. Other players' bullets still render (no localWeaponManager).
+        const fallbackOwner = bulletOwnerIds.get(id);
+        const skipFallback = fallbackOwner === localPlayerId && SPECIAL_VISUAL_WEAPONS.has(fallbackWeapType);
+        if (!skipFallback) {
           if (!bulletInstanceIds.has(id)) {
             const bulletVisual = weaponToBulletVisual(fallbackWeapType);
             const weapColor = WEAPON_CONFIGS[fallbackWeapType]?.color;
@@ -4713,9 +4729,9 @@ async function main() {
           const spectateWorldPos = remotePlayerTargetWorldPos.get(spectateId);
           if (spectateWorldPos) {
             _netTempPos.set(
-              spectateWorldPos.x * currentMapSizeScaleFactor + spectateWorldPos.nx * 0.15,
-              spectateWorldPos.y * currentMapSizeScaleFactor + spectateWorldPos.ny * 0.15,
-              spectateWorldPos.z * currentMapSizeScaleFactor + spectateWorldPos.nz * 0.15,
+              spectateWorldPos.x + spectateWorldPos.nx * 0.15,
+              spectateWorldPos.y + spectateWorldPos.ny * 0.15,
+              spectateWorldPos.z + spectateWorldPos.nz * 0.15,
             );
             _netTempNormal.set(spectateWorldPos.nx, spectateWorldPos.ny, spectateWorldPos.nz);
             _netTempTangent.set(spectateWorldPos.tx, spectateWorldPos.ty, spectateWorldPos.tz);
@@ -4743,9 +4759,9 @@ async function main() {
         // Using the server target directly means only one lerp (camera's own 0.12), matching SP.
         if (_localPlayerWorldTarget.valid) {
           _netTempPos.set(
-            _localPlayerWorldTarget.x * currentMapSizeScaleFactor + _localServerNormal.x * 0.15,
-            _localPlayerWorldTarget.y * currentMapSizeScaleFactor + _localServerNormal.y * 0.15,
-            _localPlayerWorldTarget.z * currentMapSizeScaleFactor + _localServerNormal.z * 0.15,
+            _localPlayerWorldTarget.x + _localServerNormal.x * 0.15,
+            _localPlayerWorldTarget.y + _localServerNormal.y * 0.15,
+            _localPlayerWorldTarget.z + _localServerNormal.z * 0.15,
           );
           cameraController.updateFromFrame(
             _netTempPos,

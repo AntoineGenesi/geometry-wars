@@ -2600,11 +2600,16 @@ export class GameRoom extends Room<GameState> {
           // player.multiplier is an integer used for SCORE only — it is NOT applied to damage here
           // to avoid wildly inflated damage at high multipliers.
           const owner = this.state.players.get(bullet.ownerId);
+          // s44g-04: Use bullet.weaponType for damage (not owner.weaponType).
+          // With dual-fire, blaster bullets always have weaponType='standard' and should deal
+          // standard damage, not the secondary weapon's damage. Secondary weapon bullets carry
+          // their own type and deal their own damage. This mirrors SP WeaponManager behaviour.
+          const bulletWeaponType = bullet.weaponType ?? owner?.weaponType ?? 'standard';
           // s44f-04: Record gravity gun hit position for AoE pull processing after this loop
-          if ((owner?.weaponType ?? 'standard') === 'gravity_gun') {
+          if (bulletWeaponType === 'gravity_gun') {
             gravityGunHits.push({ x: bullet.x, y: bullet.y });
           }
-          const weaponCfg = WEAPON_CONFIGS[owner?.weaponType ?? 'standard'] ?? WEAPON_CONFIGS.standard;
+          const weaponCfg = WEAPON_CONFIGS[bulletWeaponType] ?? WEAPON_CONFIGS.standard;
           const baseDamage = weaponCfg.damage;
           const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
           const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
