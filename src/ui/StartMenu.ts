@@ -51,7 +51,7 @@ export class StartMenu {
   private lanSelectedSurface: SurfaceType = 'sphere';
   private progress: LevelProgress;
   private lanClient: LANClient = new LANClient();
-  private menuBackground: MenuBackground;
+  private menuBackground: MenuBackground | null = null;
   private styleElement: HTMLStyleElement | null = null;
   private pendingMode: 'single' | 'network' = 'single';
   private selectedQuickGameMode: QuickGameModeType = 'waves';
@@ -129,9 +129,27 @@ export class StartMenu {
     // Debug OBJ panel — instantiate on demand (F4 key)
     // Lazy-init: created when user presses F4, not at startup
 
+    // Mark menu as open so rotate-overlay is suppressed
+    document.body.classList.add('menu-open');
+
+    // Dismiss loading screen now that menu is ready.
+    // IMPORTANT: do this BEFORE creating MenuBackground (which initialises WebGL and
+    // can throw on headless / no-GPU environments). If it ran after and MenuBackground
+    // threw, the loading-screen would stay on top (z-index 2000) blocking all clicks,
+    // including the WEAPON MASTERY button.
+    const loadingScreen = document.getElementById('loading-screen');
+    if (loadingScreen) {
+      loadingScreen.classList.add('fade-out');
+      loadingScreen.addEventListener('transitionend', () => loadingScreen.remove());
+    }
+
     // Animated 3D background behind the menu overlay
-    this.menuBackground = new MenuBackground();
-    this.menuBackground.start();
+    try {
+      this.menuBackground = new MenuBackground();
+      this.menuBackground?.start();
+    } catch (e) {
+      console.warn('[StartMenu] MenuBackground could not start (WebGL unavailable?):', e);
+    }
 
     // F4 key handler — toggle OBJ debug panel
     document.addEventListener('keydown', (e) => {
@@ -140,16 +158,6 @@ export class StartMenu {
         this.toggleDebugPanel();
       }
     });
-
-    // Mark menu as open so rotate-overlay is suppressed
-    document.body.classList.add('menu-open');
-
-    // Dismiss loading screen now that menu is ready
-    const loadingScreen = document.getElementById('loading-screen');
-    if (loadingScreen) {
-      loadingScreen.classList.add('fade-out');
-      loadingScreen.addEventListener('transitionend', () => loadingScreen.remove());
-    }
   }
 
   // -----------------------------------------------------------------------
@@ -2090,9 +2098,13 @@ export class StartMenu {
     // Weapon mastery
     const weaponMasteryBtn = this.container.querySelector('#weapon-mastery-btn');
     weaponMasteryBtn?.addEventListener('click', () => {
-      const masteryScreen = new WeaponMasteryScreen();
-      masteryScreen.show();
-      masteryScreen.onClose(() => masteryScreen.dispose());
+      try {
+        const masteryScreen = new WeaponMasteryScreen();
+        masteryScreen.show();
+        masteryScreen.onClose(() => masteryScreen.dispose());
+      } catch (e) {
+        console.error('[StartMenu] WeaponMasteryScreen failed to open:', e);
+      }
     });
 
     // Weapon database
@@ -2468,7 +2480,7 @@ export class StartMenu {
   hide(): void {
     this.stopAutoRefresh();
     this.container.classList.add('hidden');
-    this.menuBackground.stop();
+    this.menuBackground?.stop();
     document.body.classList.remove('menu-open');
   }
 
@@ -2477,7 +2489,7 @@ export class StartMenu {
    */
   show(): void {
     this.container.classList.remove('hidden');
-    this.menuBackground.start();
+    this.menuBackground?.start();
     document.body.classList.add('menu-open');
   }
 
@@ -2507,6 +2519,6 @@ export class StartMenu {
       this.objDebugPanel.dispose();
       this.objDebugPanel = null;
     }
-    this.menuBackground.dispose();
+    this.menuBackground?.dispose();
   }
 }
