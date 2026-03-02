@@ -1698,3 +1698,17 @@ Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to rea
 - [ ] **Repeat on Peanut map** — Aim should also be correct from first spawn
 - [ ] **Respawn after death** — Aim should still be correct (regression check)
 
+## S44h-01: Peanut Map Bullet Offset Regression
+
+**Fix:** Bullets in MP were spawning at wrong position on peanut surface (offset that grew when leaving the waist area). Two bugs: (1) double-scaling of server world positions for bullet spawn, (2) lossy worldToSurface UV round-trip on peanut. Fixed by using server's wx/wy/wz directly as bullet position (no UV conversion, no scale multiply).
+
+### Test: Peanut bullet position matches player in MP
+- [ ] **Start LAN MP game on Peanut** — Use EPIC map size if possible (scale=2 maximizes the bug)
+- [ ] **Fire at the waist** — Move to the narrow middle section, fire bullets. Bullets should come from player position.
+- [ ] **Fire at the bulges** — Move to top/bottom bulge areas, fire. Bullets should still originate from player.
+- [ ] **Fire near the poles** — Move near top/bottom poles, fire. No offset.
+- [ ] **Move up and down** — Fire continuously while moving from waist to pole. Bullet origin should NOT "stretch" away.
+- [ ] **Test all weapons** — Blaster, spread, mortar, gravity gun, etc. All should fire from correct position.
+- [ ] **Compare SP vs MP** — Single-player peanut bullets should match MP peanut bullets in position.
+- [ ] **Test other surfaces** — Sphere, torus, pill should NOT regress (bullets still from correct position).
+
