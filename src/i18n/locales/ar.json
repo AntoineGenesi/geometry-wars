@@ -1,0 +1,244 @@
+{
+  "common": {
+    "continue": "استمرار",
+    "menu": "القائمة",
+    "cancel": "إلغاء",
+    "ok": "موافق",
+    "done": "تم",
+    "loading": "جارٍ التحميل...",
+    "resume": "استئناف",
+    "settings": "الإعدادات",
+    "controls": "التحكم",
+    "score": "النقاط",
+    "available": "متاح",
+    "notAvailable": "غير متاح"
+  },
+  "gameOver": {
+    "title": "انتهت اللعبة",
+    "scoreLabel": "النقاط",
+    "newHighScore": "رقم قياسي جديد!",
+    "highScores": "أعلى النقاط",
+    "noScores": "لا توجد نقاط بعد",
+    "continueBtn": "استمرار",
+    "returnToMenu": "العودة إلى القائمة",
+    "hintContinue": "اضغط ENTER أو انقر للمتابعة",
+    "hintVote": "اضغط ENTER للتصويت · انقر على العودة إلى القائمة لقطع الاتصال",
+    "votingCountdown": "شاشة التصويت خلال {{count}}ث\u2026",
+    "recordScore": "سجّل نقاطك",
+    "recordScoreBtn": "تسجيل",
+    "namePlaceholder": "لاعب",
+    "nameLabelField": "الاسم",
+    "noteLabelField": "ملاحظة",
+    "noteOptional": "(اختياري)",
+    "notePlaceholder": "مثال: المحاولة الأولى، كومبو كامل...",
+    "nameHint": "ENTER للانتقال إلى الملاحظة \u00b7 ENTER مرة أخرى للإرسال",
+    "autoSubmitting": "إرسال تلقائي خلال {{count}}ث\u2026"
+  },
+  "levelComplete": {
+    "title": "اكتمل",
+    "nextStarAt": "النجمة التالية عند {{score}}",
+    "maxStars": "تم الحصول على أقصى عدد من النجوم!",
+    "nextLevel": "المستوى التالي",
+    "replay": "إعادة",
+    "menu": "القائمة"
+  },
+  "controls": {
+    "title": "التحكم",
+    "action": "الإجراء",
+    "aim": "التصويب",
+    "mouse": "الماوس",
+    "auto": "تلقائي",
+    "pressKey": "اضغط مفتاحاً...",
+    "conflicts": "تعارضات: {{list}}",
+    "resetDefaults": "استعادة الإعدادات الافتراضية",
+    "done": "تم",
+    "actions": {
+      "up": "أعلى",
+      "down": "أسفل",
+      "left": "يسار",
+      "right": "يمين",
+      "shoot": "إطلاق نار",
+      "bomb": "قنبلة"
+    }
+  },
+  "voting": {
+    "title": "اختر ساحة معركتك",
+    "mode": "الوضع:",
+    "size": "الحجم:",
+    "voting": "تصويت",
+    "hostPicks": "المضيف يختار",
+    "launchNow": "ابدأ الآن",
+    "returnToMenu": "العودة إلى القائمة",
+    "surfaces": {
+      "sphere": "كرة",
+      "torus": "طارة",
+      "cube": "مكعب",
+      "pill": "حبة",
+      "capsule": "كبسولة",
+      "icosahedron": "عشروني",
+      "peanut": "فول سوداني",
+      "cubeTunnel": "نفق مكعب"
+    },
+    "modes": {
+      "waves": "أمواج",
+      "king": "ملك",
+      "sniper": "قناص",
+      "rainbow": "قوس قزح",
+      "claustrophobia": "رهاب الأماكن المغلقة"
+    },
+    "sizes": {
+      "small": "صغير",
+      "medium": "متوسط",
+      "large": "كبير"
+    }
+  },
+  "menu": {
+    "surfaces": {
+      "sphere": "كرة",
+      "cube": "مكعب",
+      "torus": "طارة",
+      "pill": "حبة",
+      "pipe": "أنبوب",
+      "peanut": "فول سوداني",
+      "capsule": "كبسولة",
+      "icosahedron": "عشروني",
+      "mobius": "موبيوس",
+      "sphereTunnel": "نفق كروي",
+      "cubeRing": "حلقة مكعب",
+      "cubeTunnel": "نفق مكعب"
+    }
+  },
+  "languages": {
+    "title": "اللغة",
+    "en": "English",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch",
+    "ru": "Русский",
+    "ar": "العربية"
+  },
+  "pauseMenu": {
+    "title": "متوقف",
+    "resume": "استئناف",
+    "controls": "التحكم",
+    "weapons": "الأسلحة",
+    "settings": "الإعدادات",
+    "stylePixelated": "الأسلوب: بكسل",
+    "styleModern": "الأسلوب: حديث",
+    "performanceGraphs": "رسوم بيانية للأداء",
+    "music": "الموسيقى: {{name}}",
+    "exitToMenu": "خروج إلى القائمة",
+    "exitToVoting": "الانتقال إلى شاشة التصويت",
+    "endGameForAll": "إنهاء اللعبة للجميع",
+    "stopServer": "إيقاف الخادم",
+    "hint": "اضغط ESC للاستئناف | M للكتم | N لتغيير الموسيقى",
+    "stats": {
+      "joinThisGame": "الانضمام إلى هذه اللعبة",
+      "playerLevel": "مستوى اللاعب",
+      "companions": "الرفاق",
+      "cumulativeBonuses": "المكافآت التراكمية",
+      "weapon": "السلاح",
+      "totalKills": "إجمالي القتلى",
+      "activeBuffs": "التحسينات النشطة",
+      "noActiveBuffs": "لا توجد تحسينات نشطة",
+      "performance": "الأداء"
+    }
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "done": "تم",
+    "tabs": {
+      "gpuInfo": "معلومات GPU",
+      "graphics": "الرسومات",
+      "performance": "الأداء",
+      "audio": "الصوت",
+      "gameplay": "طريقة اللعب"
+    },
+    "gpu": {
+      "renderer": "المحرك",
+      "hardware": "الأجهزة",
+      "features": "الميزات",
+      "benchmark": "اختبار الأداء",
+      "activeRenderer": "المحرك النشط",
+      "gpuRenderer": "محرك GPU",
+      "gpuVendor": "مورد GPU",
+      "webgpuAdapter": "محول WebGPU",
+      "detectedTier": "المستوى المكتشف",
+      "maxTextureSize": "أقصى حجم للنسيج",
+      "webgpu": "WebGPU",
+      "webgl2": "WebGL2",
+      "sharedArrayBuffer": "SharedArrayBuffer",
+      "cpuCores": "أنوية CPU",
+      "runBenchmark": "تشغيل اختبار GPU",
+      "running": "جارٍ التشغيل...",
+      "runFullBenchmark": "اختبار اللعبة الكامل",
+      "benchmarkTier": "مستوى الاختبار: {{tier}}",
+      "maxAt60fps": "الحد الأقصى عند 60fps (متعدد النسخ)",
+      "maxAt30fps": "الحد الأقصى عند 30fps (متعدد النسخ)"
+    },
+    "graphics": {
+      "visualStyle": "الأسلوب المرئي",
+      "qualityPreset": "إعداد الجودة",
+      "visualEffects": "التأثيرات المرئية",
+      "limits": "الحدود",
+      "preset": "إعداد",
+      "bloom": "وهج",
+      "bloomStrength": "شدة الوهج",
+      "particles": "جسيمات",
+      "trailEffects": "تأثيرات الأثر",
+      "surfaceOpacity": "شفافية السطح",
+      "maxEnemies": "أقصى عدد أعداء",
+      "resolutionScale": "مقياس الدقة",
+      "resetToDefault": "استعادة الإعدادات الافتراضية",
+      "bloomHint": "قيم جيدة للبداية \u2014 حديث: 1.0 | بكسل: 0.4"
+    },
+    "performance": {
+      "liveStats": "إحصائيات مباشرة",
+      "adaptiveQuality": "جودة تكيفية",
+      "debug": "تصحيح",
+      "fps": "FPS",
+      "drawCalls": "استدعاءات الرسم",
+      "entities": "الكيانات",
+      "memoryMB": "الذاكرة (MB)",
+      "autoAdjustQuality": "ضبط الجودة تلقائياً",
+      "debugStatistics": "إحصائيات التصحيح",
+      "debugHint": "يعرض FPS وعدد الكيانات وطبقة الأداء. اختصار لوحة المفاتيح: F4."
+    },
+    "audio": {
+      "volume": "مستوى الصوت",
+      "musicStyle": "أسلوب الموسيقى",
+      "master": "رئيسي",
+      "sfx": "مؤثرات صوتية",
+      "music": "موسيقى",
+      "preset": "إعداد",
+      "presets": {
+        "electronic": "إلكتروني",
+        "ambient": "محيطي",
+        "synthwave": "سينث ويف",
+        "minimal": "بسيط"
+      }
+    },
+    "gameplay": {
+      "difficulty": "الصعوبة",
+      "dynamicDifficulty": "صعوبة ديناميكية",
+      "ddaHint": "تعدل تركيبة الأعداء بشكل خفي للاعبين الذين يعانون. تُعطَّل تلقائياً عند مستوى الكابوس."
+    }
+  },
+  "hud": {
+    "kills": "قتلى",
+    "mastered": "تمت إتقانه",
+    "killLog": {
+      "streak": "سلسلة",
+      "rampage": "إبادة",
+      "unstoppable": "لا يُوقف"
+    }
+  },
+  "mastery": {
+    "title": "إتقان الأسلحة",
+    "subtitle": "تحديث التقدم",
+    "continueBtn": "استمرار",
+    "continueHint": "ENTER / مسافة / نقر",
+    "newPassiveUnlocked": "تم فتح مكافأة سلبية!",
+    "levelBadge": "المستوى {{level}}"
+  }
+}
