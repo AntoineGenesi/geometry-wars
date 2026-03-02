@@ -2594,16 +2594,16 @@ export class GameRoom extends Room<GameState> {
 
         if (dist < (usesWorldDist ? BULLET_HIT_WORLD : BULLET_HIT_RADIUS)) {
           hitBullets.add(bIndex);
-          // s44f-04: Record gravity gun hit position for AoE pull processing after this loop
-          if ((owner?.weaponType ?? 'standard') === 'gravity_gun') {
-            gravityGunHits.push({ x: bullet.x, y: bullet.y });
-          }
           // Hit! Apply weapon damage with full damage formula:
           //   finalDamage = baseDamage × levelDamageMult × buffDamageMult × masteryDamageMult
           // NOTE: SP also multiplies by scorePowerMult (kill-streak multiplier) but in MP
           // player.multiplier is an integer used for SCORE only — it is NOT applied to damage here
           // to avoid wildly inflated damage at high multipliers.
           const owner = this.state.players.get(bullet.ownerId);
+          // s44f-04: Record gravity gun hit position for AoE pull processing after this loop
+          if ((owner?.weaponType ?? 'standard') === 'gravity_gun') {
+            gravityGunHits.push({ x: bullet.x, y: bullet.y });
+          }
           const weaponCfg = WEAPON_CONFIGS[owner?.weaponType ?? 'standard'] ?? WEAPON_CONFIGS.standard;
           const baseDamage = weaponCfg.damage;
           const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
