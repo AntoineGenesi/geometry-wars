@@ -819,6 +819,20 @@ export class GameLoop {
     ctx.surface.updateMeshDeformation(dt);
     ctx.surfaceShockwave.update(dt);
 
+    // Update plasma explosion rings (visual + damage sweep)
+    ctx.plasmaExplosionEffect.update(
+      dt,
+      ctx.enemySpawner.getEnemies(),
+      (enemy, damage) => {
+        if (!enemy.alive) return;
+        const scorePower =
+          ctx.scoreManager.getScorePowerMultiplier() *
+          ctx.playerLevel.damageMultiplier *
+          ctx.buffManager.getDamageMultiplier();
+        (enemy as BaseEnemy).takeDamage(damage * scorePower);
+      },
+    );
+
     // Scale music intensity with enemy count
     const enemyCount = ctx.enemySpawner.getActiveCount();
     if (this.bgMusic) {

@@ -44,6 +44,7 @@ import type { PerformanceLogger } from './PerformanceLogger';
 import type { ProfilingPersistence } from './ProfilingPersistence';
 import type { ShockwaveEffect } from '../effects/ShockwaveEffect';
 import type { SurfaceShockwave } from '../effects/SurfaceShockwave';
+import type { PlasmaExplosionEffect } from '../effects/PlasmaExplosionEffect';
 import type { Minimap } from '../ui/Minimap';
 import type { KillLog } from '../ui/KillLog';
 import type { TotalKillCounter } from '../ui/TotalKillCounter';
@@ -89,6 +90,7 @@ export interface GameContext {
   glowTrail: GlowTrail;
   shockwaveEffect: ShockwaveEffect;
   surfaceShockwave: SurfaceShockwave;
+  plasmaExplosionEffect: PlasmaExplosionEffect;
   scorePopups: ScorePopupManager;
 
   // Score and progression

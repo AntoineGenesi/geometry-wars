@@ -33,6 +33,7 @@ import { waveComposer } from './entities/enemies/WaveComposer';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
+import { PlasmaExplosionEffect } from './effects/PlasmaExplosionEffect';
 import { ScorePopupManager } from './effects/ScorePopup';
 import { GlowTrail } from './effects/GlowTrail';
 import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
@@ -821,6 +822,11 @@ async function main() {
         }
         particles.bulletImpact(position);
         screenShake.shake(0.08, 0.3);
+      } else if (wType === WeaponType.PlasmaMortar) {
+        particles.mortarExplosion(position);
+        screenShake.shake(0.5, 0.35);
+        // Visual shockwave ring (no gameplay damage — MP is server authoritative)
+        plasmaExplosionEffect.spawn(position);
       }
     },
   });
@@ -852,6 +858,10 @@ async function main() {
   scorePopups.setCamera(camera);
 
   const screenShake = new ScreenShake();
+
+  // -- Plasma explosion effect (visual-only in MP — damage is server authoritative) --
+  const plasmaExplosionEffect = new PlasmaExplosionEffect();
+  scene.add(plasmaExplosionEffect.root);
 
   // Kill log + total kill counter (same as co-op / single player)
   const killLog = new KillLog();
@@ -4052,6 +4062,8 @@ async function main() {
     scorePopups.update(dt);
     screenShake.update(dt);
     shockwaveEffect.update(dt, game.clock.totalTime);
+    // Visual-only ring update in MP (no damage callback — server is authoritative)
+    plasmaExplosionEffect.update(dt, [], () => {});
     surface.updateGrid(dt);
     killLog.update(dt);
     allyGlowManager.update(dt);

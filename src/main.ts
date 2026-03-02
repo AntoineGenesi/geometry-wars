@@ -11,6 +11,7 @@ import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
 import { SurfaceShockwave } from './effects/SurfaceShockwave';
+import { PlasmaExplosionEffect } from './effects/PlasmaExplosionEffect';
 import { GlowTrail } from './effects/GlowTrail';
 import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
 import { ScoreManager } from './core/ScoreManager';
@@ -973,6 +974,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Surface shockwave (propagating deformation ring) --
   const surfaceShockwave = new SurfaceShockwave(surface);
 
+  // -- Plasma explosion effect (expanding visual ring + enemy damage sweep) --
+  const plasmaExplosionEffect = new PlasmaExplosionEffect();
+  game.scene.add(plasmaExplosionEffect.root);
+
   // -- Score manager --
   const scoreManager = new ScoreManager();
   scoreManager.setPlayer(player);
@@ -1177,6 +1182,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         shockwaveEffect.spawnShockwave(position, 0.08, 1.2, 0.8, 0.1);
         shockwaveEffect.triggerWhiteFlash(0.3);
         shockwaveEffect.triggerChromatic(0.012);
+        // Spawn expanding shockwave ring (visual + secondary damage beyond blast radius)
+        plasmaExplosionEffect.spawn(position);
         // Knock back enemies within blast radius
         const KNOCKBACK_RADIUS = 3.0;
         const KNOCKBACK_SPEED = 0.15;
@@ -1711,6 +1718,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     particles,
     screenShake,
     surfaceShockwave,
+    plasmaExplosionEffect,
     glowTrail: playerGlowTrail,
     shockwaveEffect,
     scorePopups,
