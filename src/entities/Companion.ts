@@ -384,6 +384,7 @@ class Companion {
       this.surfaceV,
       aimAngle,
       ownerId,
+      true, // isCompanion = true for guardian/hunter/protector bullets
     );
 
     getSoundEngine().play('shoot', { volume: 0.15, pitch: 1.4 + Math.random() * 0.3 });
