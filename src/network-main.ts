@@ -583,6 +583,7 @@ async function main() {
     _localServerFrameValid = false;
     _localPlayerWorldTarget.valid = false;
     _localPlayerQuatInitialized = false; // s44f-06: reset smoothed orientation on surface change
+    _predictedPlayerVisualValid = false; // s44h-08: reset predicted position on surface change
     bulletTargetUV.clear();
     bulletGeodesicState.clear();
     geomTargetUV.clear();
@@ -3739,6 +3740,13 @@ async function main() {
   let _localPlayerQuatInitialized = false;
   // Smoothing factor — matches Player.ts ROTATION_SMOOTHING (0.4)
   const LOCAL_PLAYER_ROTATION_SMOOTHING = 0.4;
+  // s44h-08: Predicted world position for local player visual + camera.
+  // Updated in onFixedUpdate when client prediction moves the player.
+  // Used so the camera target (and mesh when moving) responds immediately to input,
+  // matching SP where MeshWalker updates position from input on the same tick (0 lag).
+  const _predictedPlayerVisualPos = new THREE.Vector3();
+  const _predictedPlayerVisualNormal = new THREE.Vector3(0, 1, 0);
+  let _predictedPlayerVisualValid = false;
   // Actual wall-clock time of last render call (ms). Used for bullet UV stepping
   // so bullets advance at the correct rate regardless of display refresh rate.
   let lastRenderTimestampMs = 0;
@@ -3936,19 +3944,30 @@ async function main() {
         }
 
         // ALWAYS update visual position + aim orientation (even when stationary).
-        // s44-epic-08: Use server world-space position for mesh placement instead of
-        // surface.getPoint(). The server's ServerMeshWalker (geodesic) gives a
-        // different world position than UV→surface.getPoint() conversion, causing
-        // the "two versions of him" glitch.
-        // s44e-04 FIX: Use copy() instead of lerp(0.5). Server patches at 60Hz (setPatchRate=16)
-        // and uses geodesic walking (smooth, no face-boundary jumps). The lerp introduced
-        // 1-3 frames of visual lag, making the local player character appear to trail the
-        // camera (which already follows _localPlayerWorldTarget directly). Matches SP where
-        // mesh.position.copy(playerWalker.position) is used — no lerp on the player mesh itself.
-        if (_localPlayerWorldTarget.valid) {
+        // s44h-08: When moving, use client-predicted UV position (surface.getPoint on the
+        // just-updated surfaceU/V) for zero-lag visual response — matching SP where
+        // MeshWalker.position updates from input on the same tick.
+        // When stationary, use server world-space position (authoritative, no drift).
+        // This eliminates the 1-tick (~16ms) input-to-visual lag that made MP feel less
+        // fluid than SP. The server corrects any small drift via SERVER_CORRECTION_BLEND
+        // and hard-snaps if UV error exceeds SERVER_SNAP_THRESHOLD_SQ.
+        if (isMoving) {
+          // Client-predicted path: surface.getPoint on the just-updated UV gives immediate
+          // visual response. surface.getPoint uses parametric formula (may differ slightly
+          // from server's geodesic walker) but server corrections every 16ms keep drift tiny.
+          const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+          _netTempPos.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
+          localPlayer.mesh.position.copy(_netTempPos);
+          orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
+          // Cache for camera use in onRender (camera follows predicted pos, not server pos)
+          _predictedPlayerVisualPos.copy(_netTempPos);
+          _predictedPlayerVisualNormal.copy(sp.normal);
+          _predictedPlayerVisualValid = true;
+        } else if (_localPlayerWorldTarget.valid) {
+          // Stationary: use server world-space position (authoritative, no drift accumulation).
+          // s44g-05: server positions already in scaled world space, no extra multiply.
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
-            // s44g-05: server positions already in scaled world space, no extra multiply
             tgt.x + tgt.nx * 0.15,
             tgt.y + tgt.ny * 0.15,
             tgt.z + tgt.nz * 0.15,
@@ -3965,12 +3984,19 @@ async function main() {
               ? _orientSp.tangentU : _netTempTangent;
             orientPlayerOnSurface(localPlayer, _netTempNormal, aimAngle, _orientTangentU);
           }
+          // Update predicted pos cache from server pos when stationary
+          _predictedPlayerVisualPos.copy(_netTempPos);
+          _predictedPlayerVisualNormal.copy(_netTempNormal);
+          _predictedPlayerVisualValid = true;
         } else {
           // Fallback until first server world-space frame arrives.
           const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
           localPlayer.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor);
           localPlayer.mesh.position.addScaledVector(sp.normal, 0.15);
           orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
+          _predictedPlayerVisualPos.copy(localPlayer.mesh.position);
+          _predictedPlayerVisualNormal.copy(sp.normal);
+          _predictedPlayerVisualValid = true;
         }
 
         // s44f-06 FIX: Apply slerp smoothing to local player orientation.
@@ -4768,11 +4794,18 @@ async function main() {
       } else if (_localServerFrameValid) {
         // Normal case: follow local player with server's stable tangent frame (s44-epic-06).
         // Using _localServerBitangent avoids UV-derived tangentV which flips sign at poles.
-        // s44c-02 FIX: use _localPlayerWorldTarget directly instead of localPlayer.mesh.position.
-        // mesh.position lerps toward the server target at 0.5/frame (30Hz), then the camera
-        // lerps toward mesh.position at 0.12/frame (60Hz) — double-lag vs SP's single lerp.
-        // Using the server target directly means only one lerp (camera's own 0.12), matching SP.
-        if (_localPlayerWorldTarget.valid) {
+        // s44h-08: Use predicted visual position as camera target when available.
+        // This gives the camera immediate response to input (matching SP where the camera
+        // always targets the current frame's player position from MeshWalker).
+        // Server tangent frame is still used for stability (no UV-pole flipping).
+        if (_predictedPlayerVisualValid) {
+          cameraController.updateFromFrame(
+            _predictedPlayerVisualPos,
+            _localServerNormal,
+            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            _cameraRenderDt,
+          );
+        } else if (_localPlayerWorldTarget.valid) {
           _netTempPos.set(
             // s44g-05: server positions already in scaled world space, no extra multiply
             _localPlayerWorldTarget.x + _localServerNormal.x * 0.15,
