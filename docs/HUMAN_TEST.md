@@ -4,6 +4,27 @@
 >
 > **Last updated:** 2026-03-03
 
+## s44h-11: Gravity Gun Visual Enhancement
+
+**Status:** Level 5 verified (Puppeteer). User testing recommended for full experience.
+
+**What was changed:** Gravity gun now has three distinct visual effects:
+1. `gravityExplosion()` — large 3-layer purple/violet implosion burst on impact (replaces generic bullet impact)
+2. `gravityPullTrail()` — purple streaks from each enemy toward the pull center, while enemies are being pulled
+3. Surface suction — `applyForce(-0.02, 0.6)` each tick on surface under projectile, causes subtle mesh deformation
+
+**How to test:**
+- [ ] Start single-player game on any surface
+- [ ] Pick up Gravity Gun pickup (purple ring icon)
+- [ ] Fire at a group of enemies — impact site should show large purple/violet burst (NOT the small yellow generic bullet burst)
+- [ ] When enemies are being pulled, short purple streaks should emanate from them toward the pull center
+- [ ] The surface mesh should subtly deform/suck inward around the gun's path
+- [ ] Test in MP — same effects should appear for all players
+
+**Expected result:** Gravity gun feels dramatically different — imposing, spatial, with visible pull force and surface distortion.
+
+---
+
 ## s44h-03: Phaser Ghost Kills Fix
 
 **Status:** Changes made — user testing required.
