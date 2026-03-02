@@ -1261,6 +1261,14 @@ async function main() {
   const modeBtnsRow = document.createElement('div');
   modeBtnsRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;';
 
+  // Claustrophobia mode note (created early so onclick handlers can reference it)
+  const claustrophobiaNoteEl = document.createElement('div');
+  claustrophobiaNoteEl.id = 'claustrophobia-note';
+  claustrophobiaNoteEl.style.cssText =
+    'display:none;margin-top:8px;color:#ff4444;font:11px monospace;letter-spacing:1px;' +
+    'text-shadow:0 0 6px #ff4444;';
+  claustrophobiaNoteEl.textContent = '🔴 Small surfaces only (sphere/torus/capsule/icosahedron)';
+
   const modeBtnEls = new Map<string, HTMLButtonElement>();
   for (const m of LOBBY_MODES) {
     const btn = document.createElement('button');
@@ -1276,6 +1284,8 @@ async function main() {
         b.style.borderColor = id === selectedLobbyMode ? '#0f0' : '#444';
         b.style.textShadow = id === selectedLobbyMode ? '0 0 8px #0f0' : 'none';
       });
+      // Show surface restriction note when Claustrophobia is selected
+      claustrophobiaNoteEl.style.display = selectedLobbyMode === 'claustrophobia' ? 'block' : 'none';
     };
     if (m.id === 'waves') {
       btn.style.background = '#050';
@@ -1287,6 +1297,8 @@ async function main() {
     modeBtnsRow.appendChild(btn);
   }
   modeSelectorDiv.appendChild(modeBtnsRow);
+  modeSelectorDiv.appendChild(claustrophobiaNoteEl);
+
   document.body.appendChild(modeSelectorDiv);
 
   // Start button
@@ -1309,7 +1321,13 @@ async function main() {
     }
     // Build choice string: use current server surface + selected mode + default size
     // Surface is already set by server/URL; host selects mode here; size uses server default.
-    const choice = `${lastCreatedSurfaceType || 'sphere'}:${selectedLobbyMode}:medium`;
+    // Claustrophobia: force a small surface if current surface is not in the allowed list
+    const CLAUSTROPHOBIA_ALLOWED = ['sphere', 'torus', 'capsule', 'icosahedron'];
+    let surfaceForChoice = lastCreatedSurfaceType || 'sphere';
+    if (selectedLobbyMode === 'claustrophobia' && !CLAUSTROPHOBIA_ALLOWED.includes(surfaceForChoice)) {
+      surfaceForChoice = 'sphere';
+    }
+    const choice = `${surfaceForChoice}:${selectedLobbyMode}:medium`;
     network.startGame(choice);
     startBtn.style.display = 'none';
     modeSelectorDiv.style.display = 'none';
@@ -3357,7 +3375,8 @@ async function main() {
         gameOverShown = true;
         const localPlayer = state.players.get(localPlayerId);
         const score = localPlayer?.score ?? 0;
-        gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network');
+        const modeDisplayName = latestGameMode ? latestGameMode.toUpperCase() : undefined;
+        gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network', undefined, modeDisplayName);
       }
     } else if (currentRoomPhase === 'lobby' || (!state.gameStarted && !state.gameOver)) {
       if (isHost) {
@@ -3555,7 +3574,8 @@ async function main() {
           gameOverShown = true;
           const localPlayer = networkPlayers.get(localPlayerId);
           const score = localPlayer?.score ?? 0;
-          gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network');
+          const modeDisplayName = latestGameMode ? latestGameMode.toUpperCase() : undefined;
+          gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network', undefined, modeDisplayName);
         }
         // Clear all pending warning rings when game ends
         for (const w of spawnWarningRings) {

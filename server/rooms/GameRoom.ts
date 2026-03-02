@@ -94,6 +94,13 @@ const WAVE_INTERVAL_BASE = 7.0;  // base interval between waves
 const WAVE_INTERVAL_MIN = 2.0;   // minimum interval (hard floor)
 const WAVE_INTERVAL_DECAY = 0.2; // seconds shorter per wave
 
+// Claustrophobia mode constants (s44h-15)
+const CLAUSTROPHOBIA_TIME_LIMIT_SECS = 1200;    // 20-minute time limit
+const CLAUSTROPHOBIA_SPAWN_MULTIPLIER = 1.5;    // 1.5x base enemy count per wave
+const CLAUSTROPHOBIA_DIFFICULTY_MULTIPLIER = 1.3; // 1.3x wave-number contribution to difficulty
+// Small/closed surfaces allowed in Claustrophobia (excludes cube, cube-tunnel, peanut, pill)
+const CLAUSTROPHOBIA_ALLOWED_SURFACES = ['sphere', 'torus', 'capsule', 'icosahedron'];
+
 // Inactivity tracking constants (auto-pause and shutdown)
 const INACTIVITY_PAUSE_THRESHOLD = 120;      // 2 minutes (120 seconds) before auto-pause
 const INACTIVITY_SHUTDOWN_THRESHOLD = 900;   // 15 minutes (900 seconds) before auto-shutdown
@@ -920,11 +927,16 @@ export class GameRoom extends Room<GameState> {
 
   private startGameWithSettings(choice: string) {
     const parts = choice.split(':');
-    const surface = parts[0] || this.state.surfaceType;
+    let surface = parts[0] || this.state.surfaceType;
     // Safety guard: only accept implemented modes; fall back to 'waves' for unknown modes
     const VALID_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia'];
     const mode = VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
     const size = parts[2] || 'medium';
+    // Claustrophobia: enforce small-surface restriction on server side
+    if (mode === 'claustrophobia' && !CLAUSTROPHOBIA_ALLOWED_SURFACES.includes(surface)) {
+      this.logger.log(`[GameRoom] Claustrophobia: surface '${surface}' not allowed, falling back to 'sphere'`);
+      surface = 'sphere';
+    }
     this.state.surfaceType = surface;
     this.state.gameMode = mode;
     this.state.mapSize = size;
@@ -1399,6 +1411,14 @@ export class GameRoom extends Room<GameState> {
 
     // Update server-side DDA (runs every 5s)
     this.updateDDA(dt);
+
+    // Claustrophobia: time limit — game ends when time limit is reached
+    if (this.state.gameMode === 'claustrophobia'
+        && this.state.gameTime >= CLAUSTROPHOBIA_TIME_LIMIT_SECS) {
+      this.logger.log(`[GameRoom] Claustrophobia time limit reached (${CLAUSTROPHOBIA_TIME_LIMIT_SECS}s)`);
+      this.transitionToVoting();
+      return;
+    }
 
     // Check game over
     this.checkGameOver();
@@ -2954,7 +2974,12 @@ export class GameRoom extends Room<GameState> {
     const timeContrib = this.state.gameTime / 600; // +1 level per 10 minutes
     const playerCount = Math.max(1, this.state.players.size);
     const playerCountBonus = (playerCount - 1) * 0.3; // matches DifficultyScaling.ts formula
-    return Math.min(8.0, waveContrib + timeContrib + playerCountBonus);
+    const base = waveContrib + timeContrib + playerCountBonus;
+    // Claustrophobia: escalate difficulty 1.3× faster (wave contribution only, not time/player bonus)
+    const claustrophobiaBonus = this.state.gameMode === 'claustrophobia'
+      ? waveContrib * (CLAUSTROPHOBIA_DIFFICULTY_MULTIPLIER - 1)
+      : 0;
+    return Math.min(8.0, base + claustrophobiaBonus);
   }
 
   /**
@@ -2967,6 +2992,7 @@ export class GameRoom extends Room<GameState> {
     const difficultyLevel = this.computeDifficultyLevel();
     const activeCount = this.state.enemies.length;
     const entries: WaveEntry[] = [];
+    const isClaustrophobia = this.state.gameMode === 'claustrophobia';
 
     // Entity count soft brake (mirrors DifficultyScaling entityBrake)
     const brakeFloor = difficultyLevel >= 8 ? 0.60 : 0.40;
@@ -2981,11 +3007,18 @@ export class GameRoom extends Room<GameState> {
       if (player.ddaLevel >= 2) ddaWaveMultiplier = 0.8;
     });
 
+    // Claustrophobia: increase spawn count 1.5× (capped at same ceiling)
+    const claustrophobiaCountMult = isClaustrophobia ? CLAUSTROPHOBIA_SPAWN_MULTIPLIER : 1.0;
+
     // Base count grows with wave number and difficulty
     const difficultyCountBonus = Math.floor(difficultyLevel * 2.0);
     const baseCountCap = difficultyLevel >= 6 ? 40 : 30;
     const baseCount = Math.min(baseCountCap,
-      Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake * ddaWaveMultiplier));
+      Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake * ddaWaveMultiplier * claustrophobiaCountMult));
+    // Wave thresholds for Claustrophobia are earlier (boss/elite arrive sooner)
+    const hardWaveThreshold     = isClaustrophobia ? 3 : 4;  // hard enemies from wave 3 (vs 4)
+    const splittingWaveThreshold = isClaustrophobia ? 4 : 5; // splitting from wave 4 (vs 5)
+    const eliteWaveThreshold    = isClaustrophobia ? 5 : 6;  // elite from wave 5 (vs 6)
 
     const maxTier = Math.min(4, Math.floor(difficultyLevel));
 
@@ -3001,24 +3034,24 @@ export class GameRoom extends Room<GameState> {
       entries.push({ type: midType, count: Math.min(Math.floor(baseCount * 0.7), 15) });
     }
 
-    // Hard enemies from wave 4+
-    if (waveNum >= 4) {
-      const hardType = HARD_TYPES_WAVE[(waveNum - 4) % HARD_TYPES_WAVE.length];
+    // Hard enemies (earlier in Claustrophobia: wave 3 vs 4)
+    if (waveNum >= hardWaveThreshold) {
+      const hardType = HARD_TYPES_WAVE[(waveNum - hardWaveThreshold) % HARD_TYPES_WAVE.length];
       entries.push({ type: hardType, count: Math.min(Math.floor(baseCount * 0.5), 10) });
     }
 
-    // Splitting enemies from wave 5+ and difficulty 0.8+
-    if (waveNum >= 5 && difficultyLevel >= 0.8) {
-      const splitType = SPLITTING_TYPES_WAVE[(waveNum - 5) % SPLITTING_TYPES_WAVE.length];
+    // Splitting enemies (earlier in Claustrophobia: wave 4 vs 5) and difficulty 0.8+
+    if (waveNum >= splittingWaveThreshold && difficultyLevel >= 0.8) {
+      const splitType = SPLITTING_TYPES_WAVE[(waveNum - splittingWaveThreshold) % SPLITTING_TYPES_WAVE.length];
       entries.push({
         type: splitType,
         count: Math.min(Math.round((1 + Math.floor(difficultyLevel * 0.7)) * entityBrake), 7),
       });
     }
 
-    // Elite enemies from wave 6+
-    if (waveNum >= 6) {
-      const eliteType = ELITE_TYPES_WAVE[(waveNum - 6) % ELITE_TYPES_WAVE.length];
+    // Elite enemies (earlier in Claustrophobia: wave 5 vs 6)
+    if (waveNum >= eliteWaveThreshold) {
+      const eliteType = ELITE_TYPES_WAVE[(waveNum - eliteWaveThreshold) % ELITE_TYPES_WAVE.length];
       entries.push({ type: eliteType, count: Math.min(Math.floor(baseCount * 0.4), 6) });
     }
 

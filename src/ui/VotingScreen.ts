@@ -40,6 +40,9 @@ export const SURFACES = [
   { id: 'cube-tunnel',  icon: '⬡',  label: 'CUBE-TUNNEL' },
 ];
 
+/** Surfaces allowed in Claustrophobia mode (small, enclosed). Matches server CLAUSTROPHOBIA_ALLOWED_SURFACES. */
+export const CLAUSTROPHOBIA_SURFACES = new Set(['sphere', 'torus', 'capsule', 'icosahedron']);
+
 export const MODES = [
   { id: 'waves',          label: 'WAVES',          icon: '〰' },
   { id: 'king',           label: 'KING',           icon: '👑' },
@@ -165,9 +168,15 @@ export class VotingScreen {
       if (sz)   sizeVotes.set(sz,   (sizeVotes.get(sz)   ?? 0) + 1);
     });
 
-    // Surface cards: update badge counts and selected highlight
+    // Surface cards: update badge counts, selected highlight, and Claustrophobia restriction
+    const isClaustrophobiaMode = this.selectedMode === 'claustrophobia';
     this.surfaceCards.forEach((card, id) => {
       card.classList.toggle('vs-selected', id === this.selectedSurface);
+      // Dim surfaces not allowed in Claustrophobia when that mode is selected
+      const isRestricted = isClaustrophobiaMode && !CLAUSTROPHOBIA_SURFACES.has(id);
+      card.style.opacity = isRestricted ? '0.35' : '';
+      card.style.pointerEvents = isRestricted ? 'none' : '';
+      (card as HTMLElement).title = isRestricted ? 'Not available in Claustrophobia mode' : '';
     });
     this.surfaceBadges.forEach((badge, id) => {
       badge.textContent = String(surfaceVotes.get(id) ?? 0);
@@ -306,6 +315,14 @@ export class VotingScreen {
       (id) => {
         this.selectedMode = id;
         this.modeButtons.forEach((btn, bid) => btn.classList.toggle('vs-selected', bid === id));
+        // Immediately refresh surface restrictions when mode changes
+        const isClaustr = id === 'claustrophobia';
+        this.surfaceCards.forEach((card, surfId) => {
+          const restricted = isClaustr && !CLAUSTROPHOBIA_SURFACES.has(surfId);
+          card.style.opacity = restricted ? '0.35' : '';
+          card.style.pointerEvents = restricted ? 'none' : '';
+          (card as HTMLElement).title = restricted ? 'Not available in Claustrophobia mode' : '';
+        });
         this.sendVote();
       },
       this.modeButtons, this.modeCounts
