@@ -26,6 +26,18 @@ export default defineConfig({
     port: parseInt(process.env.VITE_PORT || '3000'),
     host: true,
     open: false,
+    watch: {
+      // WSL2: Windows Node accessing files via \\wsl$ (Z: drive) causes EISDIR
+      // errors on chokidar file watchers. Exclude non-essential directories and
+      // use polling on Windows to avoid native watcher crashes on 9P filesystem.
+      usePolling: process.platform === 'win32',
+      ignored: [
+        '**/v3_LAN_working/**',
+        '**/.claude/worktrees/**',
+        '**/.claude/worker-logs/**',
+        '**/dist/**',
+      ],
+    },
     // COOP/COEP headers removed - they block cross-device LAN access
     // (Safari and mobile browsers refuse to load resources with these headers)
     // SharedArrayBuffer is not used, so these are unnecessary

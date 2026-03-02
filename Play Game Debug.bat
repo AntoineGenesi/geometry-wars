@@ -6,7 +6,7 @@ echo.
 echo  Script path: %~dp0
 echo  Current dir: %CD%
 echo.
-cd /d "%~dp0"
+pushd "%~dp0"
 echo  After cd: %CD%
 echo.
 echo  Checking node...

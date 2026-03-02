@@ -6,9 +6,10 @@ REM  stays open so the user can read what went wrong.
 REM ============================================================
 
 REM Force working directory to script location (fixes admin elevation changing CWD to System32)
+REM pushd handles UNC paths (\\wsl$\...) which cd /d cannot
 echo  [debug] Script location: %~dp0
 echo  [debug] Current dir before cd: %CD%
-cd /d "%~dp0"
+pushd "%~dp0"
 echo  [debug] Current dir after cd: %CD%
 echo.
 
@@ -47,7 +48,7 @@ REM Show versions
 for /f "tokens=*" %%i in ('node --version') do echo  Node.js: %%i
 
 REM Change to project directory (redundant with line 10, but safe)
-cd /d "%~dp0"
+pushd "%~dp0"
 echo  Directory: %CD%
 echo.
 
