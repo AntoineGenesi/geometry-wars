@@ -4,6 +4,31 @@
 >
 > **Last updated:** 2026-03-03
 
+## s44i-02: KotH / Claustrophobia Scoring (LAN MP)
+
+**Status:** Changes made — LAN multiplayer human testing required.
+
+**What was changed:** Server now tracks zone time instead of kill score for KotH and Claustrophobia modes. HUD displays zone time as primary score.
+
+**How to test (LAN required):**
+- [ ] Start a LAN multiplayer game in **King of the Hill** mode
+- [ ] Stand in the gold zone ring for 10 seconds
+- [ ] Score in top-right should show `👑 ZONE: 10.00s` (not kill points)
+- [ ] Kill some enemies — kill points should NOT change zone time score
+- [ ] Player list (left) shows zone time per player
+- [ ] Start a LAN multiplayer game in **Claustrophobia** mode
+- [ ] Stay inside the boundary — zone time should accumulate
+- [ ] Secondary display below zone time shows `PTS: [kill points]`
+- [ ] Die and respawn — zone time accumulation should continue from where it left off
+- [ ] Other game modes (Waves, Rainbow, Sniper) should still show kill-based score — **no regression**
+
+**Also test (single-player):**
+- [ ] SP Claustrophobia: score at game over should be zone time (centiseconds), not kill score
+- [ ] SP Claustrophobia HUD shows zone time as primary (red), kill points + boundary % as secondary
+- [ ] SP KotH: unchanged (was already correct)
+
+---
+
 ## s44h-11: Gravity Gun Visual Enhancement
 
 **Status:** Level 5 verified (Puppeteer). User testing recommended for full experience.

@@ -3245,11 +3245,34 @@ async function main() {
         ? '\u25cf'.repeat(bombs)
         : `\u25cf x${bombs}`;
 
-      scoreEl.innerHTML =
-        `Score: ${localPlayer.score.toLocaleString()}<br>` +
-        `<span style="color:${mColor}">x${localPlayer.multiplier}</span><br>` +
-        `${livesStr}<br>` +
-        `${bombsStr}`;
+      const isZoneTimeMode = latestGameMode === 'king' || latestGameMode === 'claustrophobia';
+      if (isZoneTimeMode) {
+        // Primary score = zone time (seconds inside zone/boundary)
+        const zt = localPlayer.zoneTime ?? 0;
+        const ztMins = Math.floor(zt / 60);
+        const ztSecs = Math.floor(zt % 60);
+        const ztCs = Math.floor((zt % 1) * 100);
+        const ztStr = ztMins > 0
+          ? `${ztMins}:${String(ztSecs).padStart(2, '0')}.${String(ztCs).padStart(2, '0')}`
+          : `${ztSecs}.${String(ztCs).padStart(2, '0')}s`;
+        const modeLabel = latestGameMode === 'king' ? '👑 ZONE' : '🔴 ZONE';
+        let primaryHtml = `${modeLabel}: ${ztStr}`;
+        if (latestGameMode === 'claustrophobia') {
+          // Secondary: kill points
+          primaryHtml += `<br><span style="font-size:0.75em;color:#aaa">PTS: ${localPlayer.score.toLocaleString()}</span>`;
+        }
+        scoreEl.innerHTML =
+          `${primaryHtml}<br>` +
+          `<span style="color:${mColor}">x${localPlayer.multiplier}</span><br>` +
+          `${livesStr}<br>` +
+          `${bombsStr}`;
+      } else {
+        scoreEl.innerHTML =
+          `Score: ${localPlayer.score.toLocaleString()}<br>` +
+          `<span style="color:${mColor}">x${localPlayer.multiplier}</span><br>` +
+          `${livesStr}<br>` +
+          `${bombsStr}`;
+      }
 
       // Weapon display (legacy text fallback)
       const wName = localPlayer.weaponType.replace(/_/g, ' ').toUpperCase();
@@ -3279,20 +3302,40 @@ async function main() {
     }
 
     // Player list
-    // Combined team score — sum of all player scores
+    // Combined team score — sum of all player scores (or zone time for KotH/Claustrophobia)
+    const isZoneTimeModeList = latestGameMode === 'king' || latestGameMode === 'claustrophobia';
     let combinedScore = 0;
     let playerList = '<b>Players:</b><br>';
     state.players.forEach((p: NetworkPlayerState) => {
-      combinedScore += p.score;
       const you = p.id === localPlayerId ? ' (YOU)' : '';
       const lives = Math.max(0, p.lives);
       const livesHtml = p.alive
         ? (state.infiniteLives ? '\u2665 \u221e' : (lives <= 5 ? '\u2665'.repeat(lives) : `\u2665 x${lives}`))
         : '<span style="color:#ff5555">[DEAD]</span>';
-      playerList += `${p.name}${you}: ${livesHtml} ${p.score.toLocaleString()}<br>`;
+      if (isZoneTimeModeList) {
+        const zt = p.zoneTime ?? 0;
+        combinedScore += zt;
+        const ztMins = Math.floor(zt / 60);
+        const ztSecs = Math.floor(zt % 60);
+        const ztStr = ztMins > 0
+          ? `${ztMins}:${String(ztSecs).padStart(2, '0')}s`
+          : `${ztSecs}s`;
+        playerList += `${p.name}${you}: ${livesHtml} ${ztStr}<br>`;
+      } else {
+        combinedScore += p.score;
+        playerList += `${p.name}${you}: ${livesHtml} ${p.score.toLocaleString()}<br>`;
+      }
     });
     playersEl.innerHTML = playerList;
-    if (teamScoreEl) teamScoreEl.textContent = combinedScore.toLocaleString();
+    if (teamScoreEl) {
+      if (isZoneTimeModeList) {
+        const ztMins = Math.floor(combinedScore / 60);
+        const ztSecs = Math.floor(combinedScore % 60);
+        teamScoreEl.textContent = ztMins > 0 ? `${ztMins}:${String(ztSecs).padStart(2, '0')}` : `${ztSecs}s`;
+      } else {
+        teamScoreEl.textContent = combinedScore.toLocaleString();
+      }
+    }
 
     // Sync pause state from server
     if (state.isPaused !== isPaused) {
@@ -3453,7 +3496,10 @@ async function main() {
       if (!gameOverShown) {
         gameOverShown = true;
         const localPlayer = state.players.get(localPlayerId);
-        const score = localPlayer?.score ?? 0;
+        const isZoneTimeMode = latestGameMode === 'king' || latestGameMode === 'claustrophobia';
+        const score = isZoneTimeMode
+          ? Math.round((localPlayer?.zoneTime ?? 0) * 100) // centiseconds, matches KingMode.getScore()
+          : (localPlayer?.score ?? 0);
         const modeDisplayName = latestGameMode ? latestGameMode.toUpperCase() : undefined;
         gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network', undefined, modeDisplayName);
       }
@@ -3651,8 +3697,11 @@ async function main() {
         // Show styled GameOverScreen instead of bare text
         if (!gameOverShown) {
           gameOverShown = true;
-          const localPlayer = networkPlayers.get(localPlayerId);
-          const score = localPlayer?.score ?? 0;
+          const localPlayerState = latestGameState?.players.get(localPlayerId);
+          const isZoneTimeMode = latestGameMode === 'king' || latestGameMode === 'claustrophobia';
+          const score = isZoneTimeMode
+            ? Math.round((localPlayerState?.zoneTime ?? 0) * 100)
+            : (localPlayerState?.score ?? networkPlayers.get(localPlayerId)?.score ?? 0);
           const modeDisplayName = latestGameMode ? latestGameMode.toUpperCase() : undefined;
           gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network', undefined, modeDisplayName);
         }

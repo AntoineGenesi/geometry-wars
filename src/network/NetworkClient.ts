@@ -18,6 +18,8 @@ export interface NetworkPlayerState {
   weaponAmmo: number;
   playerLevel: number;
   playerKills: number;
+  /** Zone time in seconds: KotH (time in zone) or Claustrophobia (time inside boundary). */
+  zoneTime?: number;
   /** Maps buff type → stack count. Present when server has Phase D enabled. */
   buffStacks?: { get(key: string): number | undefined; forEach(cb: (val: number, key: string) => void): void };
   // World-space position from ServerMeshWalker (Phase 4 — s44-epic-06)
