@@ -160,42 +160,61 @@ export class PeanutSurface extends Surface {
   }
 
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
-    // Approximate: find the closest phi by scanning, then compute theta.
-    // worldPos may be in scaled world space (e.g. EPIC map applies scale 2.0 to the
-    // surface group). Normalize by the apparent scale — compute the actual surface
-    // radius at the query point and compare against the unit profile to find phi.
-    // This gives correct UV even when the surface group is scaled.
+    // Find closest phi by scanning the meridional profile, then compute theta.
+    //
+    // s44f-08 FIX: The old approach estimated scale via totalDist/maxProfileR, which
+    // was wrong at the peanut waist (radius << maxProfileR). This caused worldToSurface
+    // to return incorrect UV at the waist, making MP bullets spawn offset from the player.
+    //
+    // New approach: compare the query point against SCALED profile rings directly.
+    // The scale is determined by comparing the query's radial extent against the profile
+    // at each phi. We scan using the RAW (y, xzDist) coordinates from the query point
+    // and compare against scaled profile rings. The scale factor is auto-detected by
+    // finding which (scale, phi) pair minimizes distance.
+    //
+    // For unscaled inputs (scale=1), this reduces to a direct profile comparison.
+    // For scaled inputs, the scale is estimated per-phi as queryDist/profileDist,
+    // giving correct results even at the narrow waist.
     const xzDist = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z)
-    const totalDist = Math.sqrt(xzDist * xzDist + worldPos.y * worldPos.y)
-
-    // Estimate the scale by comparing the query distance to the expected surface radius.
-    // We use the max profile radius (at phi=0, r = baseRadius*(1+waistDepth)) as reference.
-    const maxProfileR = this.baseRadius * (1 + this.waistDepth)
-    // Guard: if the query is very close to the origin, fallback to scale 1.
-    const estimatedScale = totalDist > 1e-3 ? totalDist / maxProfileR : 1
-
-    // Normalize the query position into local (unscaled) space for profile matching.
-    const localXZ = estimatedScale > 1e-6 ? xzDist / estimatedScale : xzDist
-    const localY  = estimatedScale > 1e-6 ? worldPos.y / estimatedScale : worldPos.y
 
     let bestPhi = 0
     let bestDist = Infinity
     const steps = 100
 
-    for (let i = 0; i <= steps; i++) {
-      const phi = (i / steps) * Math.PI
-      const r = this.profileRadius(phi)
-      const ringRadius = r * Math.sin(phi)
-      const ringY = r * Math.cos(phi)
+    // Estimate scale from the overall distance vs average profile radius.
+    // Use iterative refinement: first pass finds bestPhi assuming scale=1,
+    // second pass uses the bestPhi radius to refine scale.
+    // This converges in 2 passes because the peanut profile is smooth.
+    let scale = 1.0
+    for (let pass = 0; pass < 2; pass++) {
+      bestDist = Infinity
+      for (let i = 0; i <= steps; i++) {
+        const phi = (i / steps) * Math.PI
+        const r = this.profileRadius(phi)
+        const ringRadius = r * Math.sin(phi) * scale
+        const ringY = r * Math.cos(phi) * scale
 
-      const dist = Math.sqrt(
-        (localXZ - ringRadius) * (localXZ - ringRadius) +
-        (localY - ringY) * (localY - ringY)
-      )
+        const dist = Math.sqrt(
+          (xzDist - ringRadius) * (xzDist - ringRadius) +
+          (worldPos.y - ringY) * (worldPos.y - ringY)
+        )
 
-      if (dist < bestDist) {
-        bestDist = dist
-        bestPhi = phi
+        if (dist < bestDist) {
+          bestDist = dist
+          bestPhi = phi
+        }
+      }
+      // Refine scale estimate using the best-fit phi's profile radius
+      if (pass === 0) {
+        const bestR = this.profileRadius(bestPhi)
+        if (bestR > 1e-6) {
+          // Compute the query's distance from origin projected onto the profile plane
+          const profileDist = Math.sqrt(
+            (bestR * Math.sin(bestPhi)) ** 2 + (bestR * Math.cos(bestPhi)) ** 2
+          )
+          const queryDist = Math.sqrt(xzDist * xzDist + worldPos.y * worldPos.y)
+          scale = queryDist > 1e-6 && profileDist > 1e-6 ? queryDist / profileDist : 1.0
+        }
       }
     }
 

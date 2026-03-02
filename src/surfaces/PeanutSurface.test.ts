@@ -68,6 +68,54 @@ describe('PeanutSurface', () => {
       }
     })
 
+    it('worldToSurface round-trip is accurate at all V positions (s44f-08 regression)', () => {
+      // s44f-08: worldToSurface was inaccurate at the peanut waist because it
+      // estimated scale using totalDist/maxProfileR. At the waist, the radius is
+      // much smaller than maxProfileR, so the estimated scale was too low, causing
+      // the phi scan to find the wrong position (shifted toward the bulge).
+      // This manifested as MP bullets spawning offset from the player on peanut.
+      const testUV = [
+        { u: 0.25, v: 0.15 }, // near top bulge
+        { u: 0.5, v: 0.3 },   // between bulge and waist
+        { u: 0.75, v: 0.5 },  // at the waist (where the bug was worst)
+        { u: 0.1, v: 0.65 },  // between waist and bottom bulge
+        { u: 0.6, v: 0.85 },  // near bottom bulge
+      ]
+
+      for (const { u, v } of testUV) {
+        const pt = surface.getPoint(u, v)
+        const recovered = surface.worldToSurface(pt.position)
+        // V should be accurate within 0.02 (1 step of the 100-step scan)
+        const vErr = Math.abs(recovered.v - v)
+        expect(vErr, `worldToSurface V error at (${u},${v}): ${vErr}`).toBeLessThan(0.02)
+        // U should be accurate within 0.02
+        let uErr = Math.abs(recovered.u - u)
+        if (uErr > 0.5) uErr = 1 - uErr // wrap-aware
+        expect(uErr, `worldToSurface U error at (${u},${v}): ${uErr}`).toBeLessThan(0.02)
+      }
+    })
+
+    it('worldToSurface round-trip is accurate with scaled inputs (s44f-08 regression)', () => {
+      // Simulates MP scenario where worldPos is scaled by mapSizeScaleFactor (e.g., 2.0)
+      const scale = 2.0
+      const testUV = [
+        { u: 0.25, v: 0.15 },
+        { u: 0.5, v: 0.5 },   // waist — the critical failure point
+        { u: 0.75, v: 0.85 },
+      ]
+
+      for (const { u, v } of testUV) {
+        const pt = surface.getPoint(u, v)
+        const scaledPos = pt.position.clone().multiplyScalar(scale)
+        const recovered = surface.worldToSurface(scaledPos)
+        const vErr = Math.abs(recovered.v - v)
+        expect(vErr, `worldToSurface V error at scaled (${u},${v}): ${vErr}`).toBeLessThan(0.02)
+        let uErr = Math.abs(recovered.u - u)
+        if (uErr > 0.5) uErr = 1 - uErr
+        expect(uErr, `worldToSurface U error at scaled (${u},${v}): ${uErr}`).toBeLessThan(0.02)
+      }
+    })
+
     it('moveOnSurface wraps U and clamps V near poles', () => {
       // U wraps around
       const wrapResult = surface.moveOnSurface(0.99, 0.5, 0.1, 0)

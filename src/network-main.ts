@@ -2651,15 +2651,17 @@ async function main() {
 
             if (hasOwnerWorldPos) {
               // Owner's wx/wy/wz is the server geodesic position (accurate on all surfaces).
-              // Multiply by scale to match client rendering coordinates.
-              const ownerWorldPos = new THREE.Vector3(
-                ownerPlayer!.wx! * currentMapSizeScaleFactor,
-                ownerPlayer!.wy! * currentMapSizeScaleFactor,
-                ownerPlayer!.wz! * currentMapSizeScaleFactor,
+              // s44f-08 FIX: Pass UNSCALED world pos to worldToSurface. PeanutSurface's
+              // worldToSurface estimates scale via totalDist/maxProfileR, which is wrong
+              // at the waist (where radius << maxProfileR). By passing the unscaled server
+              // position directly, we bypass the faulty scale estimation entirely.
+              // getPoint() returns unscaled positions, so we scale AFTER to match rendering.
+              const ownerWorldPosUnscaled = new THREE.Vector3(
+                ownerPlayer!.wx!,
+                ownerPlayer!.wy!,
+                ownerPlayer!.wz!,
               );
-              // worldToSurface internally divides by group.scale.x (= currentMapSizeScaleFactor)
-              // so passing the scaled world pos correctly recovers the unscaled UV coords.
-              const correctUV = surface.worldToSurface(ownerWorldPos);
+              const correctUV = surface.worldToSurface(ownerWorldPosUnscaled);
 
               // s44e-01 FIX: For dual-barrel bullets (Standard/Blaster), both bullets share
               // the same owner world position but have slightly different UV spawn coords
@@ -2676,7 +2678,8 @@ async function main() {
                 bulletTangentU = bulletSp.tangentU;
                 bulletTangentV = bulletSp.tangentV;
               } else {
-                bulletWorldPos = ownerWorldPos;
+                // Scale the unscaled owner position for rendering coordinates
+                bulletWorldPos = ownerWorldPosUnscaled.clone().multiplyScalar(currentMapSizeScaleFactor);
                 const correctSp = surface.getPoint(correctUV.u, correctUV.v);
                 bulletTangentU = correctSp.tangentU;
                 bulletTangentV = correctSp.tangentV;
