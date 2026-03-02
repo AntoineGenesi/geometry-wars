@@ -3793,26 +3793,38 @@ async function main() {
         }
 
         // ALWAYS update visual position + aim orientation (even when stationary).
-        // s44c-03 FIX: Use UV-predicted position for mesh placement (same as SP).
-        // Previously lerped toward server world position, adding RTT delay to visual.
-        // Now uses surface.getPoint(surfaceU, surfaceV) — instant response like SP.
-        // The UV is already server-corrected via gentle 10% blend per patch (onStateChange),
-        // so the mesh naturally tracks the server position without visible snapping.
-        // Server tangent frame is still used for orientation (avoids pole-flip artifacts).
-        {
-          const _orientSp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-          // Position: UV-predicted for instant visual response
-          localPlayer.mesh.position.copy(_orientSp.position).multiplyScalar(currentMapSizeScaleFactor);
-          const hoverNormal = _localServerFrameValid ? _localServerNormal : _orientSp.normal;
-          localPlayer.mesh.position.addScaledVector(hoverNormal, 0.15);
-          // Orientation: server frame (stable at poles) when available, otherwise UV frame
-          if (_localServerFrameValid) {
+        // s44-epic-08: Use server world-space position for mesh placement instead of
+        // surface.getPoint(). The server's ServerMeshWalker (geodesic) gives a
+        // different world position than UV→surface.getPoint() conversion, causing
+        // the "two versions of him" glitch. We lerp toward the server target so
+        // the motion stays smooth at 60Hz despite server updates at 30Hz.
+        if (_localPlayerWorldTarget.valid) {
+          const tgt = _localPlayerWorldTarget;
+          _netTempPos.set(
+            tgt.x * currentMapSizeScaleFactor + tgt.nx * 0.15,
+            tgt.y * currentMapSizeScaleFactor + tgt.ny * 0.15,
+            tgt.z * currentMapSizeScaleFactor + tgt.nz * 0.15,
+          );
+          // Lerp toward server position each frame — converges in ~3 frames at 60Hz.
+          // On LAN the target updates every ~33ms so this keeps motion smooth.
+          localPlayer.mesh.position.lerp(_netTempPos, 0.5);
+          _netTempNormal.set(tgt.nx, tgt.ny, tgt.nz);
+          _netTempTangent.set(tgt.tx, tgt.ty, tgt.tz);
+          // s44c-08 FIX: Use UV frame tangentU so player visual orientation matches
+          // bullet direction (both now use UV frame). Server tangent (_netTempTangent)
+          // is 90° off from UV tangentU on sphere.
+          {
+            const _orientSp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
             const _orientTangentU = _orientSp.tangentU.lengthSq() > 0.001
-              ? _orientSp.tangentU : _localServerTangent;
-            orientPlayerOnSurface(localPlayer, _localServerNormal, aimAngle, _orientTangentU);
-          } else {
-            orientPlayerOnSurface(localPlayer, _orientSp.normal, aimAngle, _orientSp.tangentU);
+              ? _orientSp.tangentU : _netTempTangent;
+            orientPlayerOnSurface(localPlayer, _netTempNormal, aimAngle, _orientTangentU);
           }
+        } else {
+          // Fallback until first server world-space frame arrives.
+          const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+          localPlayer.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor);
+          localPlayer.mesh.position.addScaledVector(sp.normal, 0.15);
+          orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
         }
 
         // Update glow trail (only meaningful when moving, but cheap to call always)
@@ -4541,19 +4553,27 @@ async function main() {
           }
         }
       } else if (_localServerFrameValid) {
-        // Normal case: follow local player with server's stable tangent frame.
-        // s44c-03 FIX: use UV-predicted position for camera target (same as SP).
-        // Previously followed server world position (_localPlayerWorldTarget), which is
-        // RTT-delayed — camera chased a position already behind the player's intent.
-        // Now uses surface.getPoint(surfaceU, surfaceV) which follows client prediction,
-        // giving instant camera response identical to SP. Server tangent frame preserved
-        // for the up vector to avoid pole-flip artifacts (UV tangentV flips sign at poles).
-        {
-          const camSp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-          _netTempPos.copy(camSp.position).multiplyScalar(currentMapSizeScaleFactor)
-            .addScaledVector(_localServerNormal, 0.15);
+        // Normal case: follow local player with server's stable tangent frame (s44-epic-06).
+        // Using _localServerBitangent avoids UV-derived tangentV which flips sign at poles.
+        // s44c-02 FIX: use _localPlayerWorldTarget directly instead of localPlayer.mesh.position.
+        // mesh.position lerps toward the server target at 0.5/frame (30Hz), then the camera
+        // lerps toward mesh.position at 0.12/frame (60Hz) — double-lag vs SP's single lerp.
+        // Using the server target directly means only one lerp (camera's own 0.12), matching SP.
+        if (_localPlayerWorldTarget.valid) {
+          _netTempPos.set(
+            _localPlayerWorldTarget.x * currentMapSizeScaleFactor + _localServerNormal.x * 0.15,
+            _localPlayerWorldTarget.y * currentMapSizeScaleFactor + _localServerNormal.y * 0.15,
+            _localPlayerWorldTarget.z * currentMapSizeScaleFactor + _localServerNormal.z * 0.15,
+          );
           cameraController.updateFromFrame(
             _netTempPos,
+            _localServerNormal,
+            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            lastFixedDt,
+          );
+        } else {
+          cameraController.updateFromFrame(
+            localPlayer.mesh.position,
             _localServerNormal,
             { tangent: _localServerTangent, bitangent: _localServerBitangent },
             lastFixedDt,
