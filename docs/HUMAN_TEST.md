@@ -2,7 +2,23 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-03-01
+> **Last updated:** 2026-03-03
+
+## s44h-03: Phaser Ghost Kills Fix
+
+**Status:** Changes made — user testing required.
+
+**What was changed:** Phaser enemy now sets `isGhostForPlayer = true` during its invisible/fading phases. CollisionSystem skips these enemies for player-contact collision. Previously, Phaser could kill the player while completely invisible (opacity=0).
+
+**How to test:**
+- [ ] Play on any surface at higher difficulty (waves 6+) until Phaser enemies appear (6-pointed star shape, white-blue color)
+- [ ] Watch a Phaser cycle: it appears → charges at you → fades out → becomes invisible → fades back in
+- [ ] While the Phaser is invisible, move through where it is — you should NOT die
+- [ ] While the Phaser is fully visible and charging at you — you SHOULD die on contact
+- [ ] Test on: sphere, peanut, pill, torus, cube surfaces
+- [ ] Confirm: no more "died with nothing visible around me" experiences
+
+**Expected result:** Ghost kills from Phaser are eliminated. Phaser is dangerous only when visible.
 >
 > **Visual Test Results (2026-02-12, commit a722f6a):** Headless Puppeteer + SwiftShader testing completed. Items marked `[V5 PASS]` were verified visually at Level 5. Items marked `[V5 INCONCLUSIVE]` could not be tested headless (need real browser). See `tasks/visual-test-human-todos.md` and `tasks/lan-visual-testing.md` for full details.
 

@@ -207,6 +207,8 @@ export class CollisionSystem {
       if (!enemy.active) continue;
       // Skip enemies still spawning
       if (enemy.isMaterializing) continue;
+      // Skip phased/invisible enemies (e.g. Phaser cycling through invisible state)
+      if (enemy.isGhostForPlayer) continue;
 
       // Use distanceToSquared to avoid sqrt
       // S28c: require enemy to visibly push into player body.

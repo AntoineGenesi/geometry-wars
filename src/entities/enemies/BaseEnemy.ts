@@ -44,6 +44,13 @@ export abstract class BaseEnemy extends Entity {
   isMaterializing: boolean = false;
 
   /**
+   * When true, this enemy is invisible/phasing and must not deal contact damage to the player.
+   * Set by enemies like Phaser that cycle between visible and invisible states.
+   * Does NOT affect bullet collision — bullets are still blocked (takeDamage is overridden).
+   */
+  isGhostForPlayer: boolean = false;
+
+  /**
    * Surface speed normalization factor. Multiplied into ALL UV movement
    * automatically by the base update() method. Ensures consistent
    * perceived speed across surfaces of different sizes.
