@@ -262,6 +262,58 @@ function cubeRingChordDist(u1: number, v1: number, u2: number, v2: number, scale
 }
 
 /**
+ * Pill: cylinder with hemispherical caps on both ends.
+ * MUST match PillSurface.ts constructor defaults: radius=4, height=16.
+ * capFrac = (PI/2 * r) / (height + 2 * PI/2 * r) = capArc / totalVLen.
+ *
+ * S44c-12 fix: 'pill' was missing from usesWorldDist (same as capsule omission would have been).
+ * Near caps, U wraps a shrinking circumference: a large UV gap can map to tiny world distance,
+ * so UV threshold 0.04 can fail to detect hits. pillChordDist() gives exact chord distance.
+ */
+const PILL_RADIUS = 4;
+const PILL_HEIGHT = 16;
+const PILL_HALF_HEIGHT = PILL_HEIGHT / 2;
+const PILL_CAP_ARC = (Math.PI / 2) * PILL_RADIUS;                  // quarter-circle arc of cap
+const PILL_TOTAL_V_LEN = PILL_HEIGHT + 2 * PILL_CAP_ARC;           // total arc length
+const PILL_CAP_FRAC = PILL_CAP_ARC / PILL_TOTAL_V_LEN;             // ≈ 0.220
+
+function pillPoint3D(u: number, v: number, scaleFactor: number): [number, number, number] {
+  const r = PILL_RADIUS * scaleFactor;
+  const halfH = PILL_HALF_HEIGHT * scaleFactor;
+  const heightS = PILL_HEIGHT * scaleFactor;
+  const theta = u * 2 * Math.PI;
+  const cosT = Math.cos(theta);
+  const sinT = Math.sin(theta);
+  const cf = PILL_CAP_FRAC;
+  if (v <= cf) {
+    // Bottom cap: phi goes PI (pole) → PI/2 (equator) as localT 0→1
+    const localT = cf > 0 ? v / cf : 1;
+    const phi = Math.PI - localT * (Math.PI / 2);
+    const sinP = Math.sin(phi), cosP = Math.cos(phi);
+    return [r * sinP * cosT, -halfH + r * cosP, r * sinP * sinT];
+  }
+  if (v >= 1 - cf) {
+    // Top cap: phi goes PI/2 (equator) → 0 (pole) as localT 0→1
+    const localT = cf > 0 ? (v - (1 - cf)) / cf : 1;
+    const phi = (Math.PI / 2) * (1 - localT);
+    const sinP = Math.sin(phi), cosP = Math.cos(phi);
+    return [r * sinP * cosT, halfH + r * cosP, r * sinP * sinT];
+  }
+  // Cylinder body
+  const bodyRange = 1 - 2 * cf;
+  const localT = bodyRange > 0 ? (v - cf) / bodyRange : 0.5;
+  const y = -halfH + localT * heightS;
+  return [r * cosT, y, r * sinT];
+}
+
+function pillChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
+  const [x1, y1, z1] = pillPoint3D(u1, v1, scaleFactor);
+  const [x2, y2, z2] = pillPoint3D(u2, v2, scaleFactor);
+  const dx = x1 - x2, dy = y1 - y2, dz = z1 - z2;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
  * Dispatch to the appropriate world-space distance function for a given surface.
  * Returns Euclidean 3D chord distance in world units — matches SP CollisionSystem.
  */
@@ -273,6 +325,7 @@ function surfaceWorldDist(
   if (surfaceType === 'peanut')    return peanutChordDist(u1, v1, u2, v2, scaleFactor);
   if (surfaceType === 'torus')     return torusChordDist(u1, v1, u2, v2, scaleFactor);
   if (surfaceType === 'cube-ring') return cubeRingChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'pill')      return pillChordDist(u1, v1, u2, v2, scaleFactor);
   return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron, sphere-tunnel
 }
 
@@ -2412,15 +2465,18 @@ export class GameRoom extends Room<GameState> {
     // S43-07: Surfaces that use 3D world-space chord/arc distance for player-enemy collision.
     // UV Euclidean distance is badly distorted on these:
     //   - sphere/capsule/icosahedron: U metric shrinks at poles (up to 3× error)
+    //   - pill: same hemispherical caps as capsule → U compression at caps (same bug as capsule)
     //   - peanut: same spherical UV distortion as sphere (up to 5× error at bulge)
     //   - torus: V direction (around big ring, R=6) → 0.04 UV ≈ 1.51 world units (3× error)
     //   - cube-ring: U direction (around big ring, R=6) → 0.04 UV ≈ 1.51 world units (3× error)
+    // S44c-12: Added 'pill' — same UV cap compression as capsule, omitted by oversight.
     const isSphereLike = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
       || surfaceType === 'capsule' || surfaceType === 'icosahedron';
     const usesWorldDist = isSphereLike
       || surfaceType === 'peanut'
       || surfaceType === 'torus'
-      || surfaceType === 'cube-ring';
+      || surfaceType === 'cube-ring'
+      || surfaceType === 'pill';
     const sphereR = 10 * scaleFactor;
 
     // --- World-space thresholds (surfaces using 3D chord/arc distance, in world units) ---
@@ -2437,8 +2493,9 @@ export class GameRoom extends Room<GameState> {
 
     // --- UV thresholds (remaining surfaces without exact 3D formula) ---
     // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin — unchanged.
-    // Enemy-player: 0.04 remains for surfaces not in usesWorldDist (cube, pill, mobius, etc.)
+    // Enemy-player: 0.04 remains for surfaces not in usesWorldDist (cube, mobius, pipe, etc.)
     //   For torus and cube-ring, these are now handled by torusChordDist/cubeRingChordDist above.
+    //   S44c-12: pill moved to usesWorldDist — was accidentally left in UV fallback.
     const BULLET_HIT_RADIUS = 0.015 / scaleFactor;
     const ENEMY_HIT_RADIUS  = 0.04  / scaleFactor;  // UV-space fallback for misc surfaces
     const GEOM_RADIUS       = 0.025 / scaleFactor;  // was 0.05
