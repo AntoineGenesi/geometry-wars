@@ -3920,6 +3920,16 @@ async function main() {
     // Called here (after input is read) so visuals appear immediately on key-hold.
     // Uses inputState.shooting (available at outer scope) instead of currentInput
     // (which is only defined inside the network send block).
+
+    // Tesla coil: when not shooting, keep playerPositionRef live so the aura follows the player.
+    // Without this, playerPositionRef holds a stale clone from the last shot → sphere freezes.
+    if (!inputState.shooting && localPlayerWeaponType === WeaponType.TeslaCoil) {
+      const _teslaLocalPlayer = networkPlayers.get(localPlayerId);
+      if (_teslaLocalPlayer) {
+        localWeaponManager.playerPositionRef = _teslaLocalPlayer.mesh.position;
+      }
+    }
+
     if (inputState.shooting && !localMenuOpen && network.isConnected()
         && SPECIAL_VISUAL_WEAPONS.has(localPlayerWeaponType)) {
       const localPlayer = networkPlayers.get(localPlayerId);

@@ -801,6 +801,13 @@ export class WeaponManager {
       }
     }
 
+    // Tesla coil: maintain persistent aura while equipped so orbs always follow the player
+    if (this.currentWeapon === WeaponType.TeslaCoil && this.playerPositionRef !== null) {
+      if (!this.activeEffects.some(e => e.type === 'tesla')) {
+        this.fireTesla(this.playerPositionRef.clone());
+      }
+    }
+
     // Update active effects
     for (let i = this.activeEffects.length - 1; i >= 0; i--) {
       const effect = this.activeEffects[i];
