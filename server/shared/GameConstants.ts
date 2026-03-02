@@ -14,17 +14,20 @@
 // The SP WeaponTypes.ts damage:0.25 is used only for UI display, NOT in the SP collision path.
 // Previous value of 0.25 (set in S38c-05) caused MP bullets to do 4x less damage than SP:
 //   grunt health=2, 0.25 damage/bullet → 8 hits needed vs SP's 2 hits. Root cause of user bug.
-export const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number; damage: number }> = {
-  standard:        { ammo: -1,  damageMultiplier: 1.0, damage: 1.0 },
-  spread:          { ammo: 50,  damageMultiplier: 0.8, damage: 1   },
-  piercing:        { ammo: 30,  damageMultiplier: 1.5, damage: 3   },
-  homing:          { ammo: 20,  damageMultiplier: 1.2, damage: 6   },
-  chain_lightning: { ammo: 25,  damageMultiplier: 1.0, damage: 4   },
-  plasma_mortar:   { ammo: 15,  damageMultiplier: 2.0, damage: 20  },
-  gravity_gun:     { ammo: 20,  damageMultiplier: 0.5, damage: 1   },
-  laser_beam:      { ammo: 200, damageMultiplier: 0.6, damage: 2   }, // 200 ticks at 60Hz = 3.33s, matches SP WeaponTypes.ts ammo:200
-  black_hole:      { ammo: 5,   damageMultiplier: 5.0, damage: 999 },
-  tesla_coil:      { ammo: 30,  damageMultiplier: 0.7, damage: 1   },
+// fireRate: shots per second — must match src/weapons/WeaponTypes.ts WEAPON_CONFIGS.fireRate.
+// S44c-05 fix: previously tryShoot() hardcoded 0.1s (10/sec) for all weapons, causing
+// plasma_mortar (SP=1/sec), black_hole (SP=0.3/sec), and others to fire 3-33x too fast in MP.
+export const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: number; damage: number; fireRate: number }> = {
+  standard:        { ammo: -1,  damageMultiplier: 1.0, damage: 1.0, fireRate: 6   },
+  spread:          { ammo: 50,  damageMultiplier: 0.8, damage: 1,   fireRate: 6   },
+  piercing:        { ammo: 30,  damageMultiplier: 1.5, damage: 3,   fireRate: 3   },
+  homing:          { ammo: 20,  damageMultiplier: 1.2, damage: 6,   fireRate: 3   },
+  chain_lightning: { ammo: 25,  damageMultiplier: 1.0, damage: 4,   fireRate: 3   },
+  plasma_mortar:   { ammo: 15,  damageMultiplier: 2.0, damage: 20,  fireRate: 1.0 },
+  gravity_gun:     { ammo: 20,  damageMultiplier: 0.5, damage: 1,   fireRate: 1.0 },
+  laser_beam:      { ammo: 200, damageMultiplier: 0.6, damage: 2,   fireRate: 60  }, // continuous; handled by applyLaserDamage, not tryShoot
+  black_hole:      { ammo: 5,   damageMultiplier: 5.0, damage: 999, fireRate: 0.3 },
+  tesla_coil:      { ammo: 30,  damageMultiplier: 0.7, damage: 1,   fireRate: 30  },
 } as const;
 
 // ---------------------------------------------------------------------------
