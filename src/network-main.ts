@@ -2593,11 +2593,14 @@ async function main() {
             u: bullet.x, v: bullet.y,
             dirX: bullet.dirX, dirY: bullet.dirY,
           });
-          // Store owner's weapon type for visual assignment in the render loop.
-          // Look up ownerId → player.weaponType from current state snapshot.
-          // This replaces the UV proximity heuristic and works for ALL players.
+          // Store weapon type for visual assignment in the render loop.
+          // s44f-03: Use bullet.weaponType (server-set per-bullet field) when available.
+          // This enables dual-fire: blaster bullets are 'standard', secondary bullets carry
+          // their own type — both can coexist from the same owner in the same state delta.
+          // Falls back to ownerPlayer.weaponType for older server versions.
           const ownerPlayer = state.players.get(bullet.ownerId);
-          const ownerWeapon = SERVER_TO_WEAPON_TYPE[ownerPlayer?.weaponType ?? 'standard'] ?? WeaponType.Standard;
+          const bulletWType = bullet.weaponType ?? ownerPlayer?.weaponType ?? 'standard';
+          const ownerWeapon = SERVER_TO_WEAPON_TYPE[bulletWType] ?? WeaponType.Standard;
           bulletWeaponType.set(bullet.id, ownerWeapon);
 
           // Initialize geodesic face position for client-side geodesic rendering.

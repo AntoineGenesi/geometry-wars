@@ -42,6 +42,8 @@ export interface NetworkBulletState {
   dirY: number;
   dirZ: number;
   age: number;
+  /** Weapon type that fired this bullet — set by server for dual-fire visual routing. */
+  weaponType?: string;
 }
 
 /** Enemy state from server */

@@ -918,11 +918,12 @@ export class GameRoom extends Room<GameState> {
       player.playerKills = 0;
       // Reset buff stacks so each round starts clean
       player.buffStacks.clear();
-      // Reset lastShotTime so the player can shoot immediately in the new game.
-      // gameTime resets to 0 on new round; without this reset, lastShotTime from
+      // Reset shot timers so the player can shoot immediately in the new game.
+      // gameTime resets to 0 on new round; without this reset, timers from
       // the previous game (e.g. 45.6s) causes tryShoot() to block shots for the
       // entire duration of the new game (now - lastShot < 0 → never fires).
       (player as unknown as { lastShotTime?: number }).lastShotTime = undefined;
+      (player as unknown as { lastBlasterShotTime?: number }).lastBlasterShotTime = undefined;
       // Reset position to spawn offsets so players don't start a new round at
       // their final position from the previous game (which could be near enemies
       // or off-screen, causing apparent teleportation at round start).
@@ -1099,58 +1100,67 @@ export class GameRoom extends Room<GameState> {
   }
 
   private tryShoot(player: PlayerState) {
-    // Rate limit shooting using per-weapon fire rate from GameConstants.
-    // S44c-05: previously hardcoded 0.1s (10/sec) for all weapons — mismatch vs SP.
-    // SP WeaponManager uses WEAPON_CONFIGS[type].fireRate; server must match.
-    const weaponConfig = WEAPON_CONFIGS[player.weaponType];
-    const fireInterval = weaponConfig ? 1 / weaponConfig.fireRate : 0.1;
+    // s44f-03: Dual-fire system — blaster always fires at its own rate, and
+    // secondary weapon fires at its own independent rate when equipped.
+    // Mirrors SP WeaponManager.fire() which has two independent timers:
+    //   lastBlasterFireTime (always active) and lastFireTime (secondary only).
     const now = this.state.gameTime;
-    const lastShot = (player as unknown as { lastShotTime?: number }).lastShotTime || 0;
-    if (now - lastShot < fireInterval) return;
-
-    (player as unknown as { lastShotTime: number }).lastShotTime = now;
-
-    // Capture weapon type BEFORE ammo deduction so the last shot fires the correct pattern.
-    const weaponType = player.weaponType;
-
-    // Deduct ammo per shot (not per tick). Standard weapon has infinite ammo (-1).
-    if (player.weaponAmmo > 0) {
-      player.weaponAmmo--;
-      if (player.weaponAmmo <= 0) {
-        player.weaponType = 'standard';
-        player.weaponAmmo = -1;
-      }
-    }
-
     const angle = player.aimAngle;
 
-    if (weaponType === 'spread') {
-      // Spread shot: 5 bullets in a 30° fan pattern (matches SP fireSpread base config)
-      const bulletCount = 5;
-      const spreadAngle = Math.PI / 6; // 30° total spread
-      const centerIdx = Math.floor(bulletCount / 2); // = 2 (center bullet)
-      for (let i = 0; i < bulletCount; i++) {
-        const angleOffset = (i - centerIdx) * (spreadAngle / (bulletCount - 1));
-        this.spawnBullet(player, angle + angleOffset);
-      }
-    } else if (weaponType === 'standard') {
-      // Standard (Blaster): dual-barrel — fire 2 bullets aimed in same direction.
-      // Client renders each server bullet as-is; two bullets = two visible trails.
-      // Small perpendicular UV offset so bullets don't perfectly overlap at spawn.
+    // ── Blaster: always fires on its own independent cooldown ──
+    const blasterConfig = WEAPON_CONFIGS['standard'];
+    const blasterInterval = blasterConfig ? 1 / blasterConfig.fireRate : 1 / 6;
+    const lastBlasterShot = (player as unknown as { lastBlasterShotTime?: number }).lastBlasterShotTime ?? 0;
+    if (now - lastBlasterShot >= blasterInterval) {
+      (player as unknown as { lastBlasterShotTime: number }).lastBlasterShotTime = now;
+      // Dual-barrel: 2 bullets with small perpendicular UV offset
       const perpAngle = angle + Math.PI / 2;
       const uvOffset = 0.003; // ~0.1 world units on sphere r=10
       const duPerp = Math.cos(perpAngle) * uvOffset;
       const dvPerp = Math.sin(perpAngle) * uvOffset;
-      this.spawnBullet(player, angle, -duPerp, -dvPerp);
-      this.spawnBullet(player, angle,  duPerp,  dvPerp);
-    } else {
-      // Default: single bullet for all other weapons
-      this.spawnBullet(player, angle);
+      this.spawnBullet(player, angle, -duPerp, -dvPerp, 'standard');
+      this.spawnBullet(player, angle,  duPerp,  dvPerp, 'standard');
+    }
+
+    // ── Secondary weapon: fires on its own independent cooldown (if not standard) ──
+    if (player.weaponType !== 'standard') {
+      const weaponConfig = WEAPON_CONFIGS[player.weaponType];
+      const fireInterval = weaponConfig ? 1 / weaponConfig.fireRate : 0.1;
+      const lastShot = (player as unknown as { lastShotTime?: number }).lastShotTime ?? 0;
+      if (now - lastShot >= fireInterval) {
+        (player as unknown as { lastShotTime: number }).lastShotTime = now;
+
+        // Capture weapon type BEFORE ammo deduction so the last shot fires the correct pattern.
+        const weaponType = player.weaponType;
+
+        // Deduct ammo per shot (not per tick).
+        if (player.weaponAmmo > 0) {
+          player.weaponAmmo--;
+          if (player.weaponAmmo <= 0) {
+            player.weaponType = 'standard';
+            player.weaponAmmo = -1;
+          }
+        }
+
+        if (weaponType === 'spread') {
+          // Spread shot: 5 bullets in a 30° fan pattern (matches SP fireSpread base config)
+          const bulletCount = 5;
+          const spreadAngle = Math.PI / 6; // 30° total spread
+          const centerIdx = Math.floor(bulletCount / 2); // = 2 (center bullet)
+          for (let i = 0; i < bulletCount; i++) {
+            const angleOffset = (i - centerIdx) * (spreadAngle / (bulletCount - 1));
+            this.spawnBullet(player, angle + angleOffset, 0, 0, weaponType);
+          }
+        } else {
+          // Default: single bullet for secondary weapon
+          this.spawnBullet(player, angle, 0, 0, weaponType);
+        }
+      }
     }
   }
 
   /** Spawn a single bullet for a player at the given aim angle. */
-  private spawnBullet(player: PlayerState, angle: number, duOffset = 0, dvOffset = 0): void {
+  private spawnBullet(player: PlayerState, angle: number, duOffset = 0, dvOffset = 0, weaponType = 'standard'): void {
     const bullet = new BulletState();
     bullet.id = `b${this.nextBulletId++}`;
     bullet.ownerId = player.id;
@@ -1161,6 +1171,7 @@ export class GameRoom extends Room<GameState> {
     bullet.dirX = Math.cos(angle);
     bullet.dirY = Math.sin(angle);
     bullet.dirZ = 0;
+    bullet.weaponType = weaponType;
     // S35 negated tangentU in TorusSurface.ts and correctedDx for player movement,
     // but forgot to negate bullet.dirX. Server tracks bullets in UV-space using
     // +U = tangentU_natural (camera-left), but client renders using tangentU_negated

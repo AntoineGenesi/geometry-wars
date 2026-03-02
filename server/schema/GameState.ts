@@ -118,6 +118,8 @@ export class BulletState extends Schema {
   declare dirY: number;
   declare dirZ: number;
   declare age: number;
+  /** Weapon type that fired this bullet — used for client-side visual assignment in dual-fire. */
+  declare weaponType: string;
 
   constructor() {
     super();
@@ -130,6 +132,7 @@ export class BulletState extends Schema {
     this.dirY = 0;
     this.dirZ = 0;
     this.age = 0;
+    this.weaponType = 'standard';
   }
 }
 
@@ -143,6 +146,7 @@ defineTypes(BulletState, {
   dirY: 'number',
   dirZ: 'number',
   age: 'number',
+  weaponType: 'string',
 });
 
 /**
