@@ -2602,17 +2602,35 @@ async function main() {
             if (hasOwnerWorldPos) {
               // Owner's wx/wy/wz is the server geodesic position (accurate on all surfaces).
               // Multiply by scale to match client rendering coordinates.
-              bulletWorldPos = new THREE.Vector3(
+              const ownerWorldPos = new THREE.Vector3(
                 ownerPlayer!.wx! * currentMapSizeScaleFactor,
                 ownerPlayer!.wy! * currentMapSizeScaleFactor,
                 ownerPlayer!.wz! * currentMapSizeScaleFactor,
               );
               // worldToSurface internally divides by group.scale.x (= currentMapSizeScaleFactor)
               // so passing the scaled world pos correctly recovers the unscaled UV coords.
-              const correctUV = surface.worldToSurface(bulletWorldPos);
-              const correctSp = surface.getPoint(correctUV.u, correctUV.v);
-              bulletTangentU = correctSp.tangentU;
-              bulletTangentV = correctSp.tangentV;
+              const correctUV = surface.worldToSurface(ownerWorldPos);
+
+              // s44e-01 FIX: For dual-barrel bullets (Standard/Blaster), both bullets share
+              // the same owner world position but have slightly different UV spawn coords
+              // (perpendicular barrel offset ±0.003). Apply that UV delta to the corrected
+              // owner UV so each bullet starts at its own world position and renders as 2
+              // distinct bullets instead of overlapping as 1.
+              // ownerPlayer.surfaceU/V and bullet.x/y both use sphere-approx parameterization,
+              // so their difference (~±duPerp) is accurate regardless of actual surface shape.
+              const du = bullet.x - ownerPlayer!.surfaceU;
+              const dv = bullet.y - ownerPlayer!.surfaceV;
+              if (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001) {
+                const bulletSp = surface.getPoint(correctUV.u + du, correctUV.v + dv);
+                bulletWorldPos = bulletSp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+                bulletTangentU = bulletSp.tangentU;
+                bulletTangentV = bulletSp.tangentV;
+              } else {
+                bulletWorldPos = ownerWorldPos;
+                const correctSp = surface.getPoint(correctUV.u, correctUV.v);
+                bulletTangentU = correctSp.tangentU;
+                bulletTangentV = correctSp.tangentV;
+              }
             } else {
               // Fallback until first server world-pos frame arrives (sphere approx — inaccurate on torus)
               const sp = surface.getPoint(bullet.x, bullet.y);
