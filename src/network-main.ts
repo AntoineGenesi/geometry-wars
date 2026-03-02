@@ -1485,7 +1485,7 @@ async function main() {
   const localMenuEl = document.createElement('div');
   localMenuEl.style.cssText =
     'position:fixed;top:0;left:0;width:100%;height:100%;' +
-    'background:rgba(0,0,20,0.88);z-index:300;' +
+    'background:rgba(0,0,20,0.88);z-index:3200;' +
     'display:none;flex-direction:column;justify-content:center;align-items:center;' +
     'backdrop-filter:blur(4px);font-family:monospace;';
 
@@ -1578,6 +1578,7 @@ async function main() {
   function hideLocalMenu(): void {
     localMenuOpen = false;
     pauseMenu.hide();
+    localMenuEl.style.display = 'none'; // hide voting-phase localMenuEl if it was shown
     // Re-enable joystick touch capture when menu is dismissed —
     // but only during active gameplay; not in lobby/voting where buttons must work.
     if (input instanceof TouchInput && currentRoomPhase === 'playing') {
@@ -1598,6 +1599,19 @@ async function main() {
       }
 
       if (!network.isConnected()) return;
+
+      // During voting phase: ESC opens localMenuEl (z-index 3200, above VotingScreen)
+      // instead of pausing the server. Pausing server during voting is wrong — the
+      // voting countdown keeps running regardless of isPaused on the server.
+      if (currentRoomPhase === 'voting') {
+        if (localMenuOpen) {
+          hideLocalMenu();
+        } else {
+          localMenuOpen = true;
+          localMenuEl.style.display = 'flex';
+        }
+        return;
+      }
 
       if (localMenuOpen) {
         // Close the local menu
@@ -1648,6 +1662,18 @@ async function main() {
         return;
       }
       if (!network.isConnected()) return;
+
+      // During voting phase: pause button opens localMenuEl (z-index 3200, above VotingScreen)
+      // instead of pausing the server.
+      if (currentRoomPhase === 'voting') {
+        if (localMenuOpen) {
+          hideLocalMenu();
+        } else {
+          localMenuOpen = true;
+          localMenuEl.style.display = 'flex';
+        }
+        return;
+      }
 
       if (localMenuOpen) {
         hideLocalMenu();
