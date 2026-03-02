@@ -4239,27 +4239,15 @@ async function main() {
         }
 
         // ALWAYS update visual position + aim orientation (even when stationary).
-        // s44h-08: When moving, use client-predicted UV position (surface.getPoint on the
-        // just-updated surfaceU/V) for zero-lag visual response — matching SP where
-        // MeshWalker.position updates from input on the same tick.
-        // When stationary, use server world-space position (authoritative, no drift).
-        // This eliminates the 1-tick (~16ms) input-to-visual lag that made MP feel less
-        // fluid than SP. The server corrects any small drift via SERVER_CORRECTION_BLEND
-        // and hard-snaps if UV error exceeds SERVER_SNAP_THRESHOLD_SQ.
-        if (isMoving) {
-          // Client-predicted path: surface.getPoint on the just-updated UV gives immediate
-          // visual response. surface.getPoint uses parametric formula (may differ slightly
-          // from server's geodesic walker) but server corrections every 16ms keep drift tiny.
-          const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
-          _netTempPos.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
-          localPlayer.mesh.position.copy(_netTempPos);
-          orientPlayerOnSurface(localPlayer, sp.normal, aimAngle, sp.tangentU);
-          // Cache for camera use in onRender (camera follows predicted pos, not server pos)
-          _predictedPlayerVisualPos.copy(_netTempPos);
-          _predictedPlayerVisualNormal.copy(sp.normal);
-          _predictedPlayerVisualValid = true;
-        } else if (_localPlayerWorldTarget.valid) {
-          // Stationary: use server world-space position (authoritative, no drift accumulation).
+        // REGRESSION GUARD: s44i-01 reverted s44h-08's client-predicted movement path.
+        // s44h-08 used surface.getPoint() (LOCAL-space) when isMoving but server positions
+        // (WORLD-space) when stationary. Switching between local/world space caused
+        // teleporting, twitching, and wrong-direction movement on ALL maps.
+        // Always use server world-space position for visual placement. The 1-tick lag
+        // is acceptable; broken movement is not. DO NOT re-add client prediction
+        // without first transforming getPoint() output through group.matrixWorld.
+        if (_localPlayerWorldTarget.valid) {
+          // Use server world-space position (authoritative, correct space).
           // s44g-05: server positions already in scaled world space, no extra multiply.
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
@@ -4279,7 +4267,7 @@ async function main() {
               ? _orientSp.tangentU : _netTempTangent;
             orientPlayerOnSurface(localPlayer, _netTempNormal, aimAngle, _orientTangentU);
           }
-          // Update predicted pos cache from server pos when stationary
+          // Update predicted pos cache from server pos
           _predictedPlayerVisualPos.copy(_netTempPos);
           _predictedPlayerVisualNormal.copy(_netTempNormal);
           _predictedPlayerVisualValid = true;
@@ -5103,9 +5091,8 @@ async function main() {
       } else if (_localServerFrameValid) {
         // Normal case: follow local player with server's stable tangent frame (s44-epic-06).
         // Using _localServerBitangent avoids UV-derived tangentV which flips sign at poles.
-        // s44h-08: Use predicted visual position as camera target when available.
-        // This gives the camera immediate response to input (matching SP where the camera
-        // always targets the current frame's player position from MeshWalker).
+        // s44i-01: Use server world-space position for camera target (via
+        // _predictedPlayerVisualPos which now always holds server pos after s44h-08 revert).
         // Server tangent frame is still used for stability (no UV-pole flipping).
         if (_predictedPlayerVisualValid) {
           cameraController.updateFromFrame(
