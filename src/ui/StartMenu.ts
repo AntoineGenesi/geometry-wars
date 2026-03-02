@@ -804,6 +804,33 @@ export class StartMenu {
         box-shadow: 0 0 15px #00ffff;
       }
 
+      #start-menu .lan-map-size-btn {
+        background: rgba(0, 100, 100, 0.3);
+        border: 2px solid #006666;
+        color: #00ffff;
+        padding: 10px 18px;
+        font-size: 12px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 2px;
+        flex: 1;
+        text-align: center;
+      }
+
+      #start-menu .lan-map-size-btn:hover {
+        background: rgba(0, 150, 150, 0.4);
+        border-color: #00ffff;
+        transform: scale(1.05);
+      }
+
+      #start-menu .lan-map-size-btn.selected {
+        background: rgba(0, 255, 255, 0.2);
+        border-color: #00ffff;
+        color: #00ffff;
+        box-shadow: 0 0 15px #00ffff;
+      }
+
       /* ------------------------------------------------------------------- */
       /* Start button (inside sub-panels)                                     */
       /* ------------------------------------------------------------------- */
