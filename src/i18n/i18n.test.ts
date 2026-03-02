@@ -82,7 +82,7 @@ describe('i18n module', () => {
     await initI18n();
 
     await changeLanguage('es');
-    expect(t('gameOver.title')).toBe('[ES] GAME OVER');
+    expect(t('gameOver.title')).toBe('FIN DEL JUEGO');
   });
 
   it('changeLanguage() back to English returns original text', async () => {
@@ -94,20 +94,28 @@ describe('i18n module', () => {
     expect(t('gameOver.title')).toBe('GAME OVER');
   });
 
-  it('changeLanguage() works for French placeholder', async () => {
+  it('changeLanguage() works for French', async () => {
     const { initI18n, t, changeLanguage } = await import('./index');
     await initI18n();
 
     await changeLanguage('fr');
-    expect(t('gameOver.title')).toBe('[FR] GAME OVER');
+    expect(t('gameOver.title')).toBe('FIN DE PARTIE');
   });
 
-  it('changeLanguage() works for German placeholder', async () => {
+  it('changeLanguage() works for German', async () => {
     const { initI18n, t, changeLanguage } = await import('./index');
     await initI18n();
 
     await changeLanguage('de');
-    expect(t('gameOver.title')).toBe('[DE] GAME OVER');
+    expect(t('gameOver.title')).toBe('SPIEL VORBEI');
+  });
+
+  it('changeLanguage() works for Arabic', async () => {
+    const { initI18n, t, changeLanguage } = await import('./index');
+    await initI18n();
+
+    await changeLanguage('ar');
+    expect(t('gameOver.title')).toBe('انتهت اللعبة');
   });
 
   it('t() with interpolation returns interpolated string', async () => {

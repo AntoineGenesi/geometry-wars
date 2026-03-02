@@ -5,6 +5,7 @@ import es from './locales/es.json';
 import fr from './locales/fr.json';
 import de from './locales/de.json';
 import ru from './locales/ru.json';
+import ar from './locales/ar.json';
 
 export const STORAGE_KEY = 'gw_language';
 
@@ -18,13 +19,14 @@ export function initI18n(): Promise<void> {
     .use(LanguageDetector)
     .init({
       fallbackLng: 'en',
-      supportedLngs: ['en', 'es', 'fr', 'de', 'ru'],
+      supportedLngs: ['en', 'es', 'fr', 'de', 'ru', 'ar'],
       resources: {
         en: { translation: en },
         es: { translation: es },
         fr: { translation: fr },
         de: { translation: de },
         ru: { translation: ru },
+        ar: { translation: ar },
       },
       detection: {
         order: ['localStorage', 'navigator'],

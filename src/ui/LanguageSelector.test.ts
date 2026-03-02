@@ -24,6 +24,7 @@ vi.mock('../i18n', () => ({
       'languages.fr': 'Français',
       'languages.de': 'Deutsch',
       'languages.ru': 'Русский',
+      'languages.ar': 'العربية',
     };
     return map[key] ?? key;
   },
@@ -178,13 +179,13 @@ describe('LanguageSelector', () => {
     vi.unstubAllGlobals();
   });
 
-  it('renders 5 language buttons', async () => {
+  it('renders 6 language buttons', async () => {
     const { LanguageSelector } = await import('./LanguageSelector');
     const selector = new LanguageSelector(container as unknown as HTMLElement);
     selector.render();
 
     const buttons = container.querySelectorAll('.lang-btn');
-    expect(buttons).toHaveLength(5);
+    expect(buttons).toHaveLength(6);
   });
 
   it('buttons contain two-letter language code', async () => {
@@ -199,6 +200,7 @@ describe('LanguageSelector', () => {
     expect(texts).toContain('FR');
     expect(texts).toContain('DE');
     expect(texts).toContain('RU');
+    expect(texts).toContain('AR');
   });
 
   it('selected button matches current language', async () => {
