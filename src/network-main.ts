@@ -791,10 +791,14 @@ async function main() {
   // Special weapons that produce visual effects NOT represented in server bullet state.
   // Projectile weapons (Spread, Homing, Mortar, etc.) are already rendered by
   // BulletInstanceManager from server-sent bullet state — don't double-render them.
+  // GravityGun is included here: its purple gravity-well projectile is managed entirely
+  // by WeaponManager (with pull effect). Server also spawns a bullet for GravityGun,
+  // but we skip BulletInstanceManager for it to avoid a miscolored duplicate visual.
   const SPECIAL_VISUAL_WEAPONS = new Set<WeaponType>([
     WeaponType.LaserBeam,
     WeaponType.ChainLightning,
     WeaponType.TeslaCoil,
+    WeaponType.GravityGun,
   ]);
 
   // Current weapon type for the local player — synced from server state
@@ -4449,6 +4453,11 @@ async function main() {
         _netTempDir.copy(result.direction);
 
         const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
+
+        // GravityGun visuals are handled by WeaponManager (purple gravity-well projectile).
+        // Skip BulletInstanceManager to avoid a miscolored default-visual duplicate bullet.
+        if (weapType === WeaponType.GravityGun) return;
+
         const bulletVisual = weaponToBulletVisual(weapType);
         const weapColor = WEAPON_CONFIGS[weapType]?.color;
         const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
@@ -4486,15 +4495,18 @@ async function main() {
           .addScaledVector(bpt.bitangent, target.dirY)
           .normalize();
 
-        if (!bulletInstanceIds.has(id)) {
-          const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
-          const bulletVisual = weaponToBulletVisual(weapType);
-          const weapColor = WEAPON_CONFIGS[weapType]?.color;
-          const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
-          bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
-          bulletInstanceIds.add(id);
-        } else {
-          bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
+        const fallbackWeapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
+        // GravityGun visuals handled by WeaponManager — skip BulletInstanceManager.
+        if (fallbackWeapType !== WeaponType.GravityGun) {
+          if (!bulletInstanceIds.has(id)) {
+            const bulletVisual = weaponToBulletVisual(fallbackWeapType);
+            const weapColor = WEAPON_CONFIGS[fallbackWeapType]?.color;
+            const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
+            bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
+            bulletInstanceIds.add(id);
+          } else {
+            bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
+          }
         }
       }
     });
