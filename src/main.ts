@@ -1159,6 +1159,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         (dx / dist) * GRAVITY_PULL_FORCE * strength,
         (dz / dist) * GRAVITY_PULL_FORCE * strength,
       );
+      // Visual: purple streaks from enemy toward pull center
+      particles.gravityPullTrail(enemy.position, center);
     },
     spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {
       const { u, v } = surface.worldToSurface(origin);
@@ -1196,9 +1198,14 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         surface.applyMeshForce(position, -2.5, 1.5);
         // Also deform grid (visible ripple on grid lines)
         surface.applyForce(position, -0.15, 1.5);
-        particles.bulletImpact(position);
+        // Gravity implosion particles (replaces generic bulletImpact)
+        particles.gravityExplosion(position);
         screenShake.shake(0.08, 0.3);
       }
+    },
+    onGravityGunMove: (position: THREE.Vector3) => {
+      // Continuous surface suction as the projectile travels
+      surface.applyForce(position, -0.02, 0.6);
     },
   });
 

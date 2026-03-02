@@ -812,6 +812,8 @@ async function main() {
         (dx / dist) * GRAVITY_PULL_FORCE * strength,
         (dz / dist) * GRAVITY_PULL_FORCE * strength,
       );
+      // Visual: purple streaks from enemy toward pull center
+      particles.gravityPullTrail(enemy.position, center);
     },
     onProjectileExplosion: (position: THREE.Vector3, wType: WeaponType) => {
       if (wType === WeaponType.GravityGun) {
@@ -819,9 +821,14 @@ async function main() {
           surface.applyMeshForce(position, -2.5, 1.5);
           surface.applyForce(position, -0.15, 1.5);
         }
-        particles.bulletImpact(position);
+        // Gravity implosion particles (replaces generic bulletImpact)
+        particles.gravityExplosion(position);
         screenShake.shake(0.08, 0.3);
       }
+    },
+    onGravityGunMove: (position: THREE.Vector3) => {
+      // Continuous surface suction as the projectile travels
+      if (surface) surface.applyForce(position, -0.02, 0.6);
     },
   });
 

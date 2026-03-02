@@ -84,6 +84,8 @@ export interface WeaponCallbacks {
   spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
   /** Called when a projectile detonates (homing, mortar, etc.) for weapon-specific VFX */
   onProjectileExplosion?: (position: THREE.Vector3, weaponType: WeaponType) => void;
+  /** Called each update tick for each active gravity gun projectile (for surface suction VFX) */
+  onGravityGunMove?: (position: THREE.Vector3) => void;
 }
 
 /**
@@ -747,6 +749,11 @@ export class WeaponManager {
       const mesh = this.projectileMeshes.get(proj);
       if (mesh) {
         mesh.position.copy(proj.position);
+      }
+
+      // Notify surface VFX system of gravity gun projectile position each tick
+      if (proj.type === WeaponType.GravityGun) {
+        this.callbacks?.onGravityGunMove?.(proj.position);
       }
 
       // Check for spread pellet split (spawns child projectiles mid-flight)

@@ -52,6 +52,9 @@ const _white = new THREE.Color(1.0, 1.0, 1.0);
 const _dimColor = new THREE.Color();
 const _tempColor = new THREE.Color();
 
+// Pre-allocated for gravityPullTrail (called per-enemy on pull event, not per frame)
+const _gravPullDir = new THREE.Vector3();
+
 export class ParticleSystem {
   readonly root: THREE.Points;
   private particles: Particle[];
@@ -599,6 +602,69 @@ export class ParticleSystem {
     // NOTE: No fragments here — the AoE enemy deaths already produce
     // their own shatter effects. Adding fragments to the explosion
     // itself doubled the visual noise and draw calls for no benefit.
+  }
+
+  /**
+   * Gravity gun explosion — implosion-style burst in purple/violet.
+   * Replaces the generic bulletImpact for gravity gun detonations.
+   * Three layers: large slow core burst, fast outer ring, white core pop.
+   */
+  gravityExplosion(position: THREE.Vector3): void {
+    // Large slow core — lingering purple cloud
+    _tempColor.setHex(0xaa44ff);
+    this.emit({
+      position,
+      count: 20,
+      color: _tempColor,
+      speed: 5,
+      lifetime: 0.4,
+      size: 2.5,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+    // Fast outer ring — snappy violet sparks
+    _tempColor.setHex(0xdd88ff);
+    this.emit({
+      position,
+      count: 14,
+      color: _tempColor,
+      speed: 10,
+      lifetime: 0.2,
+      size: 1.2,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+    // Bright white core pop
+    this.emit({
+      position,
+      count: 3,
+      color: _white,
+      speed: 1,
+      lifetime: 0.08,
+      size: 3.5,
+      spread: Math.PI * 2,
+      gravity: 0,
+    });
+  }
+
+  /**
+   * Gravity pull trail — purple streaks emitted from an enemy position
+   * pointing toward the gravity gun center. Called once per enemy per pull event.
+   */
+  gravityPullTrail(enemyPos: THREE.Vector3, center: THREE.Vector3): void {
+    _gravPullDir.subVectors(center, enemyPos).normalize();
+    _tempColor.setHex(0x7733ee);
+    this.emit({
+      position: enemyPos,
+      count: 4,
+      color: _tempColor,
+      speed: 8,
+      lifetime: 0.15,
+      size: 1.0,
+      direction: _gravPullDir,
+      spread: 0.5,
+      gravity: 0,
+    });
   }
 
   /**
