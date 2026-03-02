@@ -2490,9 +2490,12 @@ export class GameRoom extends Room<GameState> {
     // S44b-06: match client-side PICKUP_WORLD_RADIUS (0.15) * mapSizeScaleFactor.
     // Previous fixed 0.6 was 2x too large at MEDIUM (client uses 0.15*scale=0.15 at MEDIUM).
     const PICKUP_WORLD      = 0.15 * scaleFactor;   // matches client WeaponPickup/BuffPickup radius
+    // s44e-06: World-space bullet-enemy threshold. SP CollisionSystem uses enemy.radius=0.3;
+    // 0.4 adds margin for network latency and chord-distance approximation.
+    const BULLET_HIT_WORLD  = 0.4;   // world units; matches SP enemy.radius(0.3) + latency margin
 
     // --- UV thresholds (remaining surfaces without exact 3D formula) ---
-    // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin — unchanged.
+    // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin — unchanged for non-distorted surfaces.
     // Enemy-player: 0.04 remains for surfaces not in usesWorldDist (cube, mobius, pipe, etc.)
     //   For torus and cube-ring, these are now handled by torusChordDist/cubeRingChordDist above.
     //   S44c-12: pill moved to usesWorldDist — was accidentally left in UV fallback.
@@ -2516,16 +2519,19 @@ export class GameRoom extends Room<GameState> {
         if (!enemy.alive) return;
         if (hitBullets.has(bIndex)) return; // Already consumed within this bullet's loop
 
-        // Use wrap-aware UV distance so bullets crossing the U or V seam
-        // still hit enemies on the other side (critical on torus where both axes wrap).
-        const dist = this.uvDistWrapped(bullet.x, bullet.y, enemy.surfaceU, enemy.surfaceV);
+        // s44e-06: Use world-space chord distance for surfaces with UV distortion, matching
+        // the same approach as player-enemy collision (usesWorldDist surfaces).
+        // UV-space distance fails on sphere/peanut/torus because UV is non-uniform:
+        //   - On sphere at V=0.95 (near north pole): 1 UV unit in U = 9.8 world units vs 62.8 at equator.
+        //   - A bullet within enemy's visual radius (0.3 world) can appear 0.031 UV away in U,
+        //     exceeding the 0.015 UV threshold → bullet misses enemy visually in front of it.
+        // surfaceWorldDist() returns Euclidean 3D chord distance, matching SP's CollisionSystem.ts.
+        // Wrapping is handled implicitly (3D positions are identical on either side of the UV seam).
+        const dist = usesWorldDist
+          ? surfaceWorldDist(surfaceType, bullet.x, bullet.y, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
+          : this.uvDistWrapped(bullet.x, bullet.y, enemy.surfaceU, enemy.surfaceV);
 
-        // S28b: UV-space hit threshold calibrated to match visual enemy size.
-        // Sphere radius=10 → V arc length = π*10 ≈ 31.4 world units per UV unit.
-        // Enemy visual radius ≈ 0.25 world units → 0.25 / 31.4 ≈ 0.008 UV.
-        // Using 0.015 (up from 0.012) for anti-tunneling margin; scaled by map size.
-        // Previous value 0.05 = ~1.57 world units = 6x visual size → enemies died from far away.
-        if (dist < BULLET_HIT_RADIUS) {
+        if (dist < (usesWorldDist ? BULLET_HIT_WORLD : BULLET_HIT_RADIUS)) {
           hitBullets.add(bIndex);
           // Hit! Apply weapon damage with full damage formula:
           //   finalDamage = baseDamage × levelDamageMult × buffDamageMult × masteryDamageMult
