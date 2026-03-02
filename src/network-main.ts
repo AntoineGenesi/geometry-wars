@@ -792,6 +792,33 @@ async function main() {
     },
     onEnemyDamage: () => {}, // Server is authoritative for damage in LAN mode
     spawnBullet: () => {},   // Server handles bullet creation; no local bullet meshes
+    onEnemyPull: (index: number, strength: number, center: THREE.Vector3) => {
+      // Client-side visual pull — server is authoritative but this gives immediate feedback
+      const enemyList: BaseEnemy[] = [];
+      networkEnemies.forEach((enemy) => enemyList.push(enemy));
+      const enemy = enemyList[index];
+      if (!enemy || !enemy.alive) return;
+      const dx = center.x - enemy.position.x;
+      const dz = center.z - enemy.position.z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < 0.0001) return;
+      const dist = Math.sqrt(distSq);
+      const GRAVITY_PULL_FORCE = 0.8;
+      enemy.applyKnockback(
+        (dx / dist) * GRAVITY_PULL_FORCE * strength,
+        (dz / dist) * GRAVITY_PULL_FORCE * strength,
+      );
+    },
+    onProjectileExplosion: (position: THREE.Vector3, wType: WeaponType) => {
+      if (wType === WeaponType.GravityGun) {
+        if (surface) {
+          surface.applyMeshForce(position, -2.5, 1.5);
+          surface.applyForce(position, -0.15, 1.5);
+        }
+        particles.bulletImpact(position);
+        screenShake.shake(0.08, 0.3);
+      }
+    },
   });
 
   // Special weapons that produce visual effects NOT represented in server bullet state.

@@ -2522,6 +2522,8 @@ export class GameRoom extends Room<GameState> {
     // Without this, a bullet near two enemies applies damage to both AND pushes the
     // same index twice into bulletsToRemove, causing an unrelated bullet to be removed.
     const hitBullets = new Set<number>();
+    // s44f-04: Track gravity gun hit positions to apply AoE pull after collision loop
+    const gravityGunHits: { x: number; y: number }[] = [];
 
     this.state.bullets.forEach((bullet, bIndex) => {
       if (hitBullets.has(bIndex)) return; // Already consumed by an earlier enemy hit
@@ -2544,6 +2546,10 @@ export class GameRoom extends Room<GameState> {
 
         if (dist < (usesWorldDist ? BULLET_HIT_WORLD : BULLET_HIT_RADIUS)) {
           hitBullets.add(bIndex);
+          // s44f-04: Record gravity gun hit position for AoE pull processing after this loop
+          if ((owner?.weaponType ?? 'standard') === 'gravity_gun') {
+            gravityGunHits.push({ x: bullet.x, y: bullet.y });
+          }
           // Hit! Apply weapon damage with full damage formula:
           //   finalDamage = baseDamage × levelDamageMult × buffDamageMult × masteryDamageMult
           // NOTE: SP also multiplies by scorePowerMult (kill-streak multiplier) but in MP
@@ -2593,6 +2599,25 @@ export class GameRoom extends Room<GameState> {
         }
       });
     });
+
+    // s44f-04: Gravity gun AoE pull — pull nearby enemies toward hit positions
+    if (gravityGunHits.length > 0) {
+      const GRAVITY_PULL_RADIUS = 0.18 / scaleFactor; // UV-space pull radius (~2 world units equivalent)
+      const GRAVITY_PULL_STRENGTH = 0.08; // UV displacement per hit
+      for (const hit of gravityGunHits) {
+        this.state.enemies.forEach((pullEnemy) => {
+          if (!pullEnemy.alive) return;
+          const dU = hit.x - pullEnemy.surfaceU;
+          const dV = hit.y - pullEnemy.surfaceV;
+          const uvDist = Math.sqrt(dU * dU + dV * dV);
+          if (uvDist < GRAVITY_PULL_RADIUS && uvDist > 0.001) {
+            const strength = 1 - uvDist / GRAVITY_PULL_RADIUS;
+            pullEnemy.surfaceU += (dU / uvDist) * GRAVITY_PULL_STRENGTH * strength;
+            pullEnemy.surfaceV += (dV / uvDist) * GRAVITY_PULL_STRENGTH * strength;
+          }
+        });
+      }
+    }
 
     // Player-enemy collisions (with invincibility check)
     // hitEnemyIds: prevents one enemy from draining lives from multiple players

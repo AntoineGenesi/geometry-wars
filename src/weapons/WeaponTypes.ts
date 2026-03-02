@@ -98,7 +98,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
     type: WeaponType.GravityGun,
     name: 'Gravity Gun',
     color: 0x8844ff,
-    damage: 1,
+    damage: 4,
     fireRate: 1,
     ammo: 20,
     projectileSpeed: 1.0,

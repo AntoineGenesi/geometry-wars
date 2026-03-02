@@ -1145,6 +1145,21 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         }
       }
     },
+    onEnemyPull: (index: number, strength: number, center: THREE.Vector3) => {
+      const aliveEnemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
+      const enemy = aliveEnemies[index];
+      if (!enemy) return;
+      const dx = center.x - enemy.position.x;
+      const dz = center.z - enemy.position.z;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < 0.0001) return;
+      const dist = Math.sqrt(distSq);
+      const GRAVITY_PULL_FORCE = 0.8;
+      enemy.applyKnockback(
+        (dx / dist) * GRAVITY_PULL_FORCE * strength,
+        (dz / dist) * GRAVITY_PULL_FORCE * strength,
+      );
+    },
     spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {
       const { u, v } = surface.worldToSurface(origin);
       const aimAngle = Math.atan2(direction.x, direction.z);
