@@ -29,6 +29,8 @@ export class PlayerState extends Schema {
   declare ddaLevel: number;
   /** Buff stack counts: maps buff type string (e.g. 'hot_hands') → stack count */
   declare buffStacks: MapSchema<number>;
+  /** Zone time in seconds (KotH: time in zone; Claustrophobia: time inside boundary). */
+  declare zoneTime: number;
   // World-space position (from ServerMeshWalker)
   declare wx: number;
   declare wy: number;
@@ -68,6 +70,7 @@ export class PlayerState extends Schema {
     this.playerKills = 0;
     this.ddaLevel = 0;
     this.buffStacks = new MapSchema<number>();
+    this.zoneTime = 0;
     // World-space position: default to top of sphere (radius 10)
     this.wx = 0; this.wy = 10; this.wz = 0;
     // Surface normal: pointing up
@@ -98,6 +101,7 @@ defineTypes(PlayerState, {
   playerKills: 'number',
   ddaLevel: 'number',
   buffStacks: { map: 'number' },
+  zoneTime: 'number',
   wx: 'number', wy: 'number', wz: 'number',
   nx: 'number', ny: 'number', nz: 'number',
   tx: 'number', ty: 'number', tz: 'number',

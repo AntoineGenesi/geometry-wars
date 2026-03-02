@@ -19,6 +19,9 @@ export class ClaustrophobiaMode implements IGameMode {
   private readonly shrinkDuration = 180; // 3 minutes to shrink completely
   private elapsedTime = 0;
 
+  // Scoring: primary = zone time (seconds inside boundary), secondary = kill points
+  private zoneTimeSeconds = 0;
+
   // Visual
   private boundaryMesh: THREE.Line | null = null;
   private readonly boundaryColor = new THREE.Color(0xff0000);
@@ -43,6 +46,9 @@ export class ClaustrophobiaMode implements IGameMode {
     if (!this.isInsideBoundary(playerU, playerV, wrapsU, wrapsV)) {
       // Kill player instantly
       context.player.die();
+    } else {
+      // Player is alive inside boundary — accumulate zone time
+      this.zoneTimeSeconds += dt;
     }
 
     // Kill enemies outside boundary
@@ -64,24 +70,46 @@ export class ClaustrophobiaMode implements IGameMode {
   }
 
   onEnemyKilled(_enemy: BaseEnemy, _context: GameModeContext): number {
-    return 1.0; // Normal score
+    return 1.0; // Normal score (kill points remain secondary)
   }
 
-  getScore(context: GameModeContext): number {
-    return context.player.score;
+  /**
+   * Primary Claustrophobia score = zone time in centiseconds.
+   * Matches the same scale as KingMode.getScore() so GameOverScreen displays correctly.
+   */
+  getScore(_context: GameModeContext): number {
+    return Math.round(this.zoneTimeSeconds * 100);
+  }
+
+  getScoreLabel(): string {
+    return 'ZONE TIME';
   }
 
   isGameOver(context: GameModeContext): boolean {
     return context.player.lives <= 0;
   }
 
-  getHUDOverlay(_context: GameModeContext): ModeHUDData | null {
+  getHUDOverlay(context: GameModeContext): ModeHUDData | null {
     const percent = Math.round((this.boundaryRadius / this.initialRadius) * 100);
     const warning = this.boundaryRadius < 0.15 ? 'DANGER ZONE!' : undefined;
 
+    // Primary: zone time (seconds inside boundary)
+    const zt = this.zoneTimeSeconds;
+    const mins = Math.floor(zt / 60);
+    const secs = Math.floor(zt % 60);
+    const cs = Math.floor((zt % 1) * 100);
+    const timeStr = mins > 0
+      ? `${mins}:${String(secs).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
+      : `${secs}.${String(cs).padStart(2, '0')}s`;
+
+    // Secondary: kill points + boundary size
+    const killPts = context.player.score;
+    const secondary = `PTS: ${killPts.toLocaleString()}  |  Area: ${percent}%`;
+
     return {
-      primary: `Play Area: ${percent}%`,
-      primaryColor: '#ff0000',
+      primary: `🔴 ${timeStr}`,
+      primaryColor: '#ff4444',
+      secondary,
       warning,
       warningColor: '#ff0000',
     };

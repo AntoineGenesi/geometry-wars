@@ -472,6 +472,15 @@ export class GameRoom extends Room<GameState> {
   private lastActivityTime = Date.now(); // Track last player activity (input, movement, etc.)
   private autoPausedTime: number | null = null; // Tracks when room was auto-paused for shutdown logic
 
+  // KotH zone state (server-authoritative — mirrors KingMode.ts client logic)
+  private kothZoneU = 0.5;
+  private kothZoneV = 0.5;
+  private kothZoneRadius = 0.12;
+  private kothZoneTimer = 15.0;
+  private readonly KOTH_ZONE_SHRINK_RATE = 0.0006; // UV/s — matches KingMode.ts
+  private readonly KOTH_ZONE_MIN_RADIUS = 0.04;    // matches KingMode.ts
+  private readonly KOTH_ZONE_DURATION = 15.0;       // seconds until zone moves
+
   /**
    * Count of enemies that have been warned to clients (pre_spawn sent) but
    * not yet added to this.state.enemies (their setTimeout hasn't fired yet).
@@ -969,6 +978,12 @@ export class GameRoom extends Room<GameState> {
     this.nextWaveAt = WAVE_FIRST_AT;
     this.playerInvincibility.clear();
 
+    // Reset KotH zone state for each new game
+    this.kothZoneU = Math.random();
+    this.kothZoneV = Math.random();
+    this.kothZoneRadius = 0.12;
+    this.kothZoneTimer = this.KOTH_ZONE_DURATION;
+
     // Initialize surface geometry + walker pool for the new round.
     // Must happen before creating walkers below.
     const scaleFactor = getMapScaleFactor(this.state.mapSize);
@@ -985,6 +1000,7 @@ export class GameRoom extends Room<GameState> {
       player.lives = this.state.initialLives;
       player.bombs = 3;
       player.score = 0;
+      player.zoneTime = 0;
       player.multiplier = 1;
       player.alive = true;
       player.weaponType = 'standard';
@@ -1423,6 +1439,9 @@ export class GameRoom extends Room<GameState> {
 
     // Update server-side DDA (runs every 5s)
     this.updateDDA(dt);
+
+    // KotH / Claustrophobia: update zone time scoring
+    this.updateZoneTimeScoring(dt);
 
     // Claustrophobia: time limit — game ends when time limit is reached
     if (this.state.gameMode === 'claustrophobia'
@@ -2911,6 +2930,66 @@ export class GameRoom extends Room<GameState> {
 
   private getEnemyScore(type: string): number {
     return ENEMY_SCORES[type] ?? 25;
+  }
+
+  /**
+   * Update zone-time scoring for KotH and Claustrophobia modes.
+   * Called every game tick. Increments player.zoneTime for players inside the zone/boundary.
+   *
+   * KotH: zone moves every 15s, shrinks over time. Player in zone earns zone-time seconds.
+   * Claustrophobia: shrinking circular boundary centered at UV (0.5, 0.5).
+   *   Player inside boundary earns zone-time seconds.
+   *
+   * Zone positions mirror the client-side KingMode.ts and ClaustrophobiaMode.ts logic
+   * so server tracking is consistent with the visual the player sees.
+   */
+  private updateZoneTimeScoring(dt: number): void {
+    const mode = this.state.gameMode;
+    if (mode !== 'king' && mode !== 'claustrophobia') return;
+
+    if (mode === 'king') {
+      // Shrink zone radius
+      this.kothZoneRadius = Math.max(
+        this.KOTH_ZONE_MIN_RADIUS,
+        this.kothZoneRadius - this.KOTH_ZONE_SHRINK_RATE * dt,
+      );
+      // Move zone periodically
+      this.kothZoneTimer -= dt;
+      if (this.kothZoneTimer <= 0) {
+        this.kothZoneU = Math.random();
+        this.kothZoneV = Math.random();
+        this.kothZoneTimer = this.KOTH_ZONE_DURATION;
+      }
+      // Award zone time to players inside the zone
+      const r2 = this.kothZoneRadius * this.kothZoneRadius;
+      this.state.players.forEach((player) => {
+        if (!player.alive) return;
+        const du = Math.abs(player.surfaceU - this.kothZoneU);
+        const dv = Math.abs(player.surfaceV - this.kothZoneV);
+        // Wrap-aware distance (handles surfaces where U or V wraps at 0/1)
+        const duW = Math.min(du, 1.0 - du);
+        const dvW = Math.min(dv, 1.0 - dv);
+        if (duW * duW + dvW * dvW <= r2) {
+          player.zoneTime += dt;
+        }
+      });
+    } else {
+      // Claustrophobia: shrinking boundary centered at (0.5, 0.5)
+      // Mirrors ClaustrophobiaMode.ts: initial=0.5, final=0.05, over 180s
+      const progress = Math.min(1.0, this.state.gameTime / 180.0);
+      const boundaryRadius = 0.5 - progress * (0.5 - 0.05);
+      const br2 = boundaryRadius * boundaryRadius;
+      this.state.players.forEach((player) => {
+        if (!player.alive) return;
+        const du = Math.abs(player.surfaceU - 0.5);
+        const dv = Math.abs(player.surfaceV - 0.5);
+        const duW = Math.min(du, 1.0 - du);
+        const dvW = Math.min(dv, 1.0 - dv);
+        if (duW * duW + dvW * dvW <= br2) {
+          player.zoneTime += dt;
+        }
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
