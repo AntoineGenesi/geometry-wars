@@ -3858,8 +3858,12 @@ async function main() {
         // s44-epic-08: Use server world-space position for mesh placement instead of
         // surface.getPoint(). The server's ServerMeshWalker (geodesic) gives a
         // different world position than UV→surface.getPoint() conversion, causing
-        // the "two versions of him" glitch. We lerp toward the server target so
-        // the motion stays smooth at 60Hz despite server updates at 30Hz.
+        // the "two versions of him" glitch.
+        // s44e-04 FIX: Use copy() instead of lerp(0.5). Server patches at 60Hz (setPatchRate=16)
+        // and uses geodesic walking (smooth, no face-boundary jumps). The lerp introduced
+        // 1-3 frames of visual lag, making the local player character appear to trail the
+        // camera (which already follows _localPlayerWorldTarget directly). Matches SP where
+        // mesh.position.copy(playerWalker.position) is used — no lerp on the player mesh itself.
         if (_localPlayerWorldTarget.valid) {
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
@@ -3867,9 +3871,7 @@ async function main() {
             tgt.y * currentMapSizeScaleFactor + tgt.ny * 0.15,
             tgt.z * currentMapSizeScaleFactor + tgt.nz * 0.15,
           );
-          // Lerp toward server position each frame — converges in ~3 frames at 60Hz.
-          // On LAN the target updates every ~33ms so this keeps motion smooth.
-          localPlayer.mesh.position.lerp(_netTempPos, 0.5);
+          localPlayer.mesh.position.copy(_netTempPos);
           _netTempNormal.set(tgt.nx, tgt.ny, tgt.nz);
           _netTempTangent.set(tgt.tx, tgt.ty, tgt.tz);
           // s44c-08 FIX: Use UV frame tangentU so player visual orientation matches
