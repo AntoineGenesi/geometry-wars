@@ -12,6 +12,7 @@ import { PerformanceTracker, PerfMoment } from '../core/PerformanceTracker';
 import type { RendererBackend } from '../rendering/RendererFactory';
 import type { PerformanceLogger, PerformanceDataPoint } from '../core/PerformanceLogger';
 import { ENEMY_COLORS } from './PerformanceGraphs';
+import { profiler } from '../core/PerformanceProfiler';
 
 // ---------------------------------------------------------------------------
 // DebugOverlay
@@ -578,7 +579,40 @@ export class DebugOverlay {
       html += `</div>`;
     }
 
+    // Add TOP FUNCTIONS section
+    html += this.renderTopFunctionsSection();
+
     this.topContent.innerHTML = html;
+  }
+
+  private renderTopFunctionsSection(): string {
+    const topScopes = profiler.getTopScopes(10);
+    let html = `<div class="debug-top-section">`;
+    html += `<div class="debug-top-title">TOP 10 FUNCTIONS</div>`;
+
+    if (topScopes.length === 0) {
+      html += `<div class="debug-top-empty">No profiling data yet</div>`;
+    } else {
+      html += `<table class="debug-top-table"><thead><tr>`;
+      html += `<th>#</th><th>Function</th><th>Time (ms)</th><th>Calls</th><th>Avg (ms)</th>`;
+      html += `</tr></thead><tbody>`;
+
+      for (let i = 0; i < topScopes.length; i++) {
+        const scope = topScopes[i];
+        html += `<tr>`;
+        html += `<td class="debug-rank">${i + 1}</td>`;
+        html += `<td class="debug-function-name" title="${scope.label}">${scope.label}</td>`;
+        html += `<td class="debug-function-time">${scope.totalMs.toFixed(2)}</td>`;
+        html += `<td class="debug-function-calls">${scope.callCount}</td>`;
+        html += `<td class="debug-function-avg">${scope.avgMs.toFixed(2)}</td>`;
+        html += `</tr>`;
+      }
+
+      html += `</tbody></table>`;
+    }
+
+    html += `</div>`;
+    return html;
   }
 
   private renderMomentRow(rank: number, m: PerfMoment, highlight: string): string {
@@ -797,6 +831,28 @@ export class DebugOverlay {
 
     #debug-overlay .debug-bul-cell {
       color: #44aaff;
+    }
+
+    /* Function profiling styles */
+    #debug-overlay .debug-function-name {
+      color: #88ccff;
+      text-align: left !important;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #debug-overlay .debug-function-time {
+      color: #ffaa44;
+    }
+
+    #debug-overlay .debug-function-calls {
+      color: #88ff88;
+    }
+
+    #debug-overlay .debug-function-avg {
+      color: #ffaa88;
     }
 
     /* Scrollbar styling for top panel */
