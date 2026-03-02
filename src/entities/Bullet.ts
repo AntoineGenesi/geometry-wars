@@ -50,6 +50,8 @@ interface BulletData {
   facePos: FacePosition | null;
   /** Face index on the mesh surface (for geodesic tracking). */
   faceIndex: number;
+  /** True if this is a companion bullet (guardian, hunter, etc.) - used for damage number display */
+  isCompanion: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,6 +125,7 @@ export class BulletPool {
         ownerId: -1,
         facePos: null,
         faceIndex: 0,
+        isCompanion: false,
       });
     }
   }
@@ -172,6 +175,7 @@ export class BulletPool {
     surfaceV: number,
     angle: number,
     ownerId: number = -1,
+    isCompanion: boolean = false,
   ): void {
     const idx = this.findInactive();
     if (idx < 0) return; // pool exhausted
@@ -187,6 +191,7 @@ export class BulletPool {
     b.dirZ = direction.z;
     b.sphereRadius = origin.length(); // Use spawn distance as radius
     b.ownerId = ownerId;
+    b.isCompanion = isCompanion;
 
     // Initialize geodesic face position for face-walking movement
     if (this.meshSurface) {
