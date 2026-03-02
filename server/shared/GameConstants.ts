@@ -22,7 +22,7 @@ export const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: nu
   chain_lightning: { ammo: 25,  damageMultiplier: 1.0, damage: 4   },
   plasma_mortar:   { ammo: 15,  damageMultiplier: 2.0, damage: 20  },
   gravity_gun:     { ammo: 20,  damageMultiplier: 0.5, damage: 1   },
-  laser_beam:      { ammo: 40,  damageMultiplier: 0.6, damage: 2   },
+  laser_beam:      { ammo: 200, damageMultiplier: 0.6, damage: 2   }, // 200 ticks at 60Hz = 3.33s, matches SP WeaponTypes.ts ammo:200
   black_hole:      { ammo: 5,   damageMultiplier: 5.0, damage: 999 },
   tesla_coil:      { ammo: 30,  damageMultiplier: 0.7, damage: 1   },
 } as const;
