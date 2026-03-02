@@ -4547,12 +4547,30 @@ async function main() {
       } else if (_localServerFrameValid) {
         // Normal case: follow local player with server's stable tangent frame (s44-epic-06).
         // Using _localServerBitangent avoids UV-derived tangentV which flips sign at poles.
-        cameraController.updateFromFrame(
-          localPlayer.mesh.position,
-          _localServerNormal,
-          { tangent: _localServerTangent, bitangent: _localServerBitangent },
-          lastFixedDt,
-        );
+        // s44c-02 FIX: use _localPlayerWorldTarget directly instead of localPlayer.mesh.position.
+        // mesh.position lerps toward the server target at 0.5/frame (30Hz), then the camera
+        // lerps toward mesh.position at 0.12/frame (60Hz) — double-lag vs SP's single lerp.
+        // Using the server target directly means only one lerp (camera's own 0.12), matching SP.
+        if (_localPlayerWorldTarget.valid) {
+          _netTempPos.set(
+            _localPlayerWorldTarget.x * currentMapSizeScaleFactor + _localServerNormal.x * 0.15,
+            _localPlayerWorldTarget.y * currentMapSizeScaleFactor + _localServerNormal.y * 0.15,
+            _localPlayerWorldTarget.z * currentMapSizeScaleFactor + _localServerNormal.z * 0.15,
+          );
+          cameraController.updateFromFrame(
+            _netTempPos,
+            _localServerNormal,
+            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            lastFixedDt,
+          );
+        } else {
+          cameraController.updateFromFrame(
+            localPlayer.mesh.position,
+            _localServerNormal,
+            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            lastFixedDt,
+          );
+        }
       } else {
         // Fallback: UV-based frame (legacy server or no server frame yet)
         const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
