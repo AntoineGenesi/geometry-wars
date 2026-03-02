@@ -2228,9 +2228,12 @@ async function main() {
         if (!cameraController.hasBeenPositioned && _localServerFrameValid && _localPlayerWorldTarget.valid) {
           const tgt = _localPlayerWorldTarget;
           const snapPos = new THREE.Vector3(
-            tgt.x * currentMapSizeScaleFactor + _localServerNormal.x * 0.15,
-            tgt.y * currentMapSizeScaleFactor + _localServerNormal.y * 0.15,
-            tgt.z * currentMapSizeScaleFactor + _localServerNormal.z * 0.15,
+            // s44g-05: Server wx/wy/wz are already in scaled world space (server mesh has
+            // scale baked into vertex positions via SurfaceGeometryBuilder). Don't multiply
+            // by currentMapSizeScaleFactor — that would double-scale positions on EPIC maps.
+            tgt.x + _localServerNormal.x * 0.15,
+            tgt.y + _localServerNormal.y * 0.15,
+            tgt.z + _localServerNormal.z * 0.15,
           );
           cameraController.snapToFrame(
             snapPos,
@@ -2258,9 +2261,10 @@ async function main() {
           if (hasWorldPos) {
             const nx = netPlayer.nx ?? 0; const ny = netPlayer.ny ?? 1; const nz = netPlayer.nz ?? 0;
             player.mesh.position.set(
-              netPlayer.wx! * currentMapSizeScaleFactor + nx * 0.15,
-              netPlayer.wy! * currentMapSizeScaleFactor + ny * 0.15,
-              netPlayer.wz! * currentMapSizeScaleFactor + nz * 0.15,
+              // s44g-05: server positions already in scaled world space, no extra multiply
+              netPlayer.wx! + nx * 0.15,
+              netPlayer.wy! + ny * 0.15,
+              netPlayer.wz! + nz * 0.15,
             );
           } else {
             const snapSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
@@ -2309,9 +2313,10 @@ async function main() {
           const deathWorldPos = remotePlayerTargetWorldPos.get(id);
           if (deathWorldPos) {
             player.mesh.position.set(
-              deathWorldPos.x * currentMapSizeScaleFactor + deathWorldPos.nx * 0.15,
-              deathWorldPos.y * currentMapSizeScaleFactor + deathWorldPos.ny * 0.15,
-              deathWorldPos.z * currentMapSizeScaleFactor + deathWorldPos.nz * 0.15,
+              // s44g-05: server positions already in scaled world space
+              deathWorldPos.x + deathWorldPos.nx * 0.15,
+              deathWorldPos.y + deathWorldPos.ny * 0.15,
+              deathWorldPos.z + deathWorldPos.nz * 0.15,
             );
           } else {
             const deathSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
@@ -2651,15 +2656,15 @@ async function main() {
 
             if (hasOwnerWorldPos) {
               // Owner's wx/wy/wz is the server geodesic position (accurate on all surfaces).
-              // Multiply by scale to match client rendering coordinates.
-              const ownerWorldPos = new THREE.Vector3(
-                ownerPlayer!.wx! * currentMapSizeScaleFactor,
-                ownerPlayer!.wy! * currentMapSizeScaleFactor,
-                ownerPlayer!.wz! * currentMapSizeScaleFactor,
+              // s44g-05: Pass UNSCALED (server world pos) to worldToSurface — server mesh has
+              // scale baked into vertex positions, so wx/wy/wz are already in scaled world space.
+              // getPoint() returns unscaled positions, so we scale AFTER to match rendering.
+              const ownerWorldPosUnscaled = new THREE.Vector3(
+                ownerPlayer!.wx!,
+                ownerPlayer!.wy!,
+                ownerPlayer!.wz!,
               );
-              // worldToSurface internally divides by group.scale.x (= currentMapSizeScaleFactor)
-              // so passing the scaled world pos correctly recovers the unscaled UV coords.
-              const correctUV = surface.worldToSurface(ownerWorldPos);
+              const correctUV = surface.worldToSurface(ownerWorldPosUnscaled);
 
               // s44e-01 FIX: For dual-barrel bullets (Standard/Blaster), both bullets share
               // the same owner world position but have slightly different UV spawn coords
@@ -2676,7 +2681,8 @@ async function main() {
                 bulletTangentU = bulletSp.tangentU;
                 bulletTangentV = bulletSp.tangentV;
               } else {
-                bulletWorldPos = ownerWorldPos;
+                // Scale the unscaled owner position for rendering coordinates
+                bulletWorldPos = ownerWorldPosUnscaled.clone().multiplyScalar(currentMapSizeScaleFactor);
                 const correctSp = surface.getPoint(correctUV.u, correctUV.v);
                 bulletTangentU = correctSp.tangentU;
                 bulletTangentV = correctSp.tangentV;
@@ -3913,9 +3919,10 @@ async function main() {
         if (_localPlayerWorldTarget.valid) {
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
-            tgt.x * currentMapSizeScaleFactor + tgt.nx * 0.15,
-            tgt.y * currentMapSizeScaleFactor + tgt.ny * 0.15,
-            tgt.z * currentMapSizeScaleFactor + tgt.nz * 0.15,
+            // s44g-05: server positions already in scaled world space, no extra multiply
+            tgt.x + tgt.nx * 0.15,
+            tgt.y + tgt.ny * 0.15,
+            tgt.z + tgt.nz * 0.15,
           );
           localPlayer.mesh.position.copy(_netTempPos);
           _netTempNormal.set(tgt.nx, tgt.ny, tgt.nz);
@@ -4493,9 +4500,10 @@ async function main() {
       if (worldTarget) {
         // Lerp directly toward server world position (no getPoint() needed)
         _netTempPos.set(
-          worldTarget.x * currentMapSizeScaleFactor + worldTarget.nx * 0.15,
-          worldTarget.y * currentMapSizeScaleFactor + worldTarget.ny * 0.15,
-          worldTarget.z * currentMapSizeScaleFactor + worldTarget.nz * 0.15,
+          // s44g-05: server positions already in scaled world space, no extra multiply
+          worldTarget.x + worldTarget.nx * 0.15,
+          worldTarget.y + worldTarget.ny * 0.15,
+          worldTarget.z + worldTarget.nz * 0.15,
         );
         player.mesh.position.lerp(_netTempPos, PLAYER_LERP);
         _netTempNormal.set(worldTarget.nx, worldTarget.ny, worldTarget.nz);
@@ -4683,9 +4691,10 @@ async function main() {
           const spectateWorldPos = remotePlayerTargetWorldPos.get(spectateId);
           if (spectateWorldPos) {
             _netTempPos.set(
-              spectateWorldPos.x * currentMapSizeScaleFactor + spectateWorldPos.nx * 0.15,
-              spectateWorldPos.y * currentMapSizeScaleFactor + spectateWorldPos.ny * 0.15,
-              spectateWorldPos.z * currentMapSizeScaleFactor + spectateWorldPos.nz * 0.15,
+              // s44g-05: server positions already in scaled world space, no extra multiply
+              spectateWorldPos.x + spectateWorldPos.nx * 0.15,
+              spectateWorldPos.y + spectateWorldPos.ny * 0.15,
+              spectateWorldPos.z + spectateWorldPos.nz * 0.15,
             );
             _netTempNormal.set(spectateWorldPos.nx, spectateWorldPos.ny, spectateWorldPos.nz);
             _netTempTangent.set(spectateWorldPos.tx, spectateWorldPos.ty, spectateWorldPos.tz);
@@ -4713,9 +4722,10 @@ async function main() {
         // Using the server target directly means only one lerp (camera's own 0.12), matching SP.
         if (_localPlayerWorldTarget.valid) {
           _netTempPos.set(
-            _localPlayerWorldTarget.x * currentMapSizeScaleFactor + _localServerNormal.x * 0.15,
-            _localPlayerWorldTarget.y * currentMapSizeScaleFactor + _localServerNormal.y * 0.15,
-            _localPlayerWorldTarget.z * currentMapSizeScaleFactor + _localServerNormal.z * 0.15,
+            // s44g-05: server positions already in scaled world space, no extra multiply
+            _localPlayerWorldTarget.x + _localServerNormal.x * 0.15,
+            _localPlayerWorldTarget.y + _localServerNormal.y * 0.15,
+            _localPlayerWorldTarget.z + _localServerNormal.z * 0.15,
           );
           cameraController.updateFromFrame(
             _netTempPos,
