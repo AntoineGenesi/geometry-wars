@@ -3,6 +3,7 @@ import type { BaseEnemy } from '../../entities/enemies/BaseEnemy';
 import type { IGameMode, GameModeContext, ModeHUDData } from './IGameMode';
 import type { EnemyType } from '../../entities/enemies/EnemySpawner';
 import { generateScaledEndlessWave } from '../DifficultyScaling';
+import { ZoneSurfaceMaterial } from '../../rendering/ZoneSurfaceMaterial';
 
 /**
  * King of the Hill mode — scoring overhaul.
@@ -25,7 +26,6 @@ export class KingMode implements IGameMode {
   private zoneU: number = 0.5;
   private zoneV: number = 0.5;
   private zoneRadiusUV: number = 0.12;       // UV-space radius (shrinks over time)
-  private zoneRadiusWorld: number = 2.5;     // World-space ring radius for visibility
   private zoneTimer: number = 15;            // seconds until zone moves
   private readonly zoneDuration = 15;
 
@@ -39,8 +39,14 @@ export class KingMode implements IGameMode {
   // ---------------------------------------------------------------------------
   // Visual
   // ---------------------------------------------------------------------------
+  /** Mesh overlay using the surface geometry — paints the zone directly on the surface. */
   private zoneMesh: THREE.Mesh | null = null;
-  private zoneColor = new THREE.Color(0x00ffff);
+  /** World-space zone center (updated each frame, pre-allocated). */
+  private readonly _zoneCenterWorld = new THREE.Vector3();
+  /** World-space zone radius at game start (used to scale the shrinking radius). */
+  private zoneWorldRadiusBase: number = 2.5;
+  /** Elapsed time for zone shader animations. */
+  private zoneTime: number = 0;
 
   // ---------------------------------------------------------------------------
   // Scoring
@@ -126,9 +132,6 @@ export class KingMode implements IGameMode {
    */
   private fractalSnakeShowcaseTimers: number[] = [10, 18, 26, 34];
 
-  // Pre-allocated temp vectors
-  private static readonly _tempVec3 = new THREE.Vector3();
-
   // ---------------------------------------------------------------------------
   // IGameMode interface
   // ---------------------------------------------------------------------------
@@ -139,7 +142,8 @@ export class KingMode implements IGameMode {
   }
 
   onFixedUpdate(dt: number, context: GameModeContext): void {
-    // 0. Tick elapsed time and fire timed waves
+    // 0. Tick elapsed time and zone animation timer
+    this.zoneTime += dt;
     this.kothElapsed += dt;
     this.kothWaveTimer -= dt;
     if (this.kothWaveTimer <= 0) {
@@ -265,8 +269,9 @@ export class KingMode implements IGameMode {
 
   dispose(context: GameModeContext): void {
     if (this.zoneMesh) {
-      context.scene.remove(this.zoneMesh);
-      this.zoneMesh.geometry.dispose();
+      context.surface.group.remove(this.zoneMesh);
+      // DO NOT dispose geometry — it is shared with surface.mesh.
+      // Only dispose our material.
       (this.zoneMesh.material as THREE.Material).dispose();
       this.zoneMesh = null;
     }
@@ -296,58 +301,48 @@ export class KingMode implements IGameMode {
     const geo = context.surface.mesh.geometry;
     if (!geo.boundingSphere) geo.computeBoundingSphere();
     if (geo.boundingSphere) {
-      // Apply map size scale factor so ring is sized relative to actual visible surface
+      // Base world radius = 25% of surface radius scaled by map size factor.
+      // This is the radius at zoneStartRadiusUV; we scale proportionally as zone shrinks.
       const scaleFactor = context.surface.group.scale.x;
-      this.zoneRadiusWorld = Math.max(0.5, geo.boundingSphere.radius * 0.25 * scaleFactor);
+      this.zoneWorldRadiusBase = Math.max(0.5, geo.boundingSphere.radius * 0.25 * scaleFactor);
     }
-    const geometry = new THREE.RingGeometry(this.zoneRadiusWorld * 0.75, this.zoneRadiusWorld, 48);
-    const material = new THREE.MeshBasicMaterial({
-      color: this.zoneColor,
-      transparent: true,
-      opacity: 0.5,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      depthTest: false,
-    });
-    this.zoneMesh = new THREE.Mesh(geometry, material);
-    this.zoneMesh.renderOrder = 10;
-    context.scene.add(this.zoneMesh);
+
+    // Create an overlay mesh that shares the surface geometry.
+    // It sits inside surface.group so it rotates with the surface automatically.
+    // Geometry is NOT cloned — sharing is intentional (zero extra memory, deforms correctly).
+    const material = new ZoneSurfaceMaterial();
+    this.zoneMesh = new THREE.Mesh(context.surface.mesh.geometry, material);
+    // renderOrder 2: above surface (0) and grid (1), below entities
+    this.zoneMesh.renderOrder = 2;
+    context.surface.group.add(this.zoneMesh);
   }
 
   private updateZoneVisual(context: GameModeContext): void {
     if (!this.zoneMesh) return;
+    const mat = this.zoneMesh.material as ZoneSurfaceMaterial;
 
-    // Get surface point at zone location.
-    // getPoint() returns local-space (unscaled) coords. Apply group scale so the
-    // zone sits on the actual visible surface regardless of map size (small=0.75,
-    // medium=1.0, large=1.5, epic=2.0). Matches makeSurfaceTransformFn pattern.
+    // Zone center in world space.
+    // surface.getPoint() applies worldRotation to the local-space surface point.
+    // Multiply by scaleFactor so the result matches the scaled group transform.
     const scaleFactor = context.surface.group.scale.x;
     const point = context.surface.getPoint(this.zoneU, this.zoneV);
-    this.zoneMesh.position.copy(point.position).multiplyScalar(scaleFactor);
+    this._zoneCenterWorld.copy(point.position).multiplyScalar(scaleFactor);
 
-    // Orient to surface
-    const up = KingMode._tempVec3.copy(point.normal);
-    this.zoneMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), up);
-
-    // Scale ring to reflect current zone radius (shrinks visually with UV radius)
+    // Current world-space zone radius, proportional to UV radius
     const radiusRatio = this.zoneRadiusUV / this.zoneStartRadiusUV;
-    const pulse = 1.0 + 0.15 * Math.sin(Date.now() * 0.003);
-    this.zoneMesh.scale.setScalar(radiusRatio * pulse);
+    const zoneWorldRadius = this.zoneWorldRadiusBase * radiusRatio;
 
-    // Color: cyan → red as zone shrinks
+    // Shrink progress: 0 = full size, 1 = at minimum (drives danger color)
     const shrinkProgress = 1 - (this.zoneRadiusUV - this.zoneMinRadiusUV) /
       (this.zoneStartRadiusUV - this.zoneMinRadiusUV);
-    const tAlarm = this.zoneTimer < 3 ? (Math.sin(Date.now() * 0.01) * 0.5 + 0.5) : 0;
-    const tShrink = Math.min(1, Math.max(0, shrinkProgress));
-    (this.zoneMesh.material as THREE.MeshBasicMaterial).color.lerpColors(
-      this.zoneColor,
-      new THREE.Color(0xff2200),
-      Math.max(tAlarm, tShrink * 0.6),
-    );
 
-    const opacity = this.inZone ? 0.6 : 0.4;
-    (this.zoneMesh.material as THREE.MeshBasicMaterial).opacity = opacity;
+    mat.updateZone(
+      this._zoneCenterWorld,
+      zoneWorldRadius,
+      this.zoneTime,
+      Math.min(1, Math.max(0, shrinkProgress)),
+      this.inZone,
+    );
   }
 
   /**

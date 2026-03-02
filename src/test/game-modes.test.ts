@@ -44,6 +44,8 @@ const mockSurface = {
   },
   group: {
     scale: { x: 1.0 },
+    add: vi.fn(),
+    remove: vi.fn(),
   },
 } as any;
 
@@ -128,8 +130,8 @@ describe('KingMode', () => {
   });
 
   it('should create zone visual on start', () => {
-    const childCount = context.scene.children.length;
-    expect(childCount).toBeGreaterThan(0);
+    // Zone overlay is added to surface.group (not scene), so it rotates with the surface
+    expect(mockSurface.group.add).toHaveBeenCalled();
   });
 
   it('should give bonus multiplier when player is in zone', () => {
@@ -179,9 +181,9 @@ describe('KingMode', () => {
   });
 
   it('should clean up zone visual on dispose', () => {
-    const initialCount = context.scene.children.length;
+    // Zone overlay is removed from surface.group on dispose
     mode.dispose(context);
-    expect(context.scene.children.length).toBeLessThan(initialCount);
+    expect(mockSurface.group.remove).toHaveBeenCalled();
   });
 
   // ---- New scoring overhaul tests ----
@@ -272,10 +274,11 @@ describe('KingMode', () => {
     expect(spawnWaveSpy).toHaveBeenCalled();
   });
 
-  it('REGRESSION: zone mesh position scales with map size (small=0.75, large=1.5)', () => {
+  it('REGRESSION: zone center world position scales with map size (small=0.75, large=1.5)', () => {
     // surface.getPoint() returns local-space (unscaled) coords.
-    // The zone mesh must multiply by surface.group.scale.x to sit on the
-    // actual visible surface regardless of map size.
+    // The zone center world position must multiply by surface.group.scale.x so the
+    // shader zone circle matches the actual visible surface regardless of map size.
+    // Zone center is stored in _zoneCenterWorld (passed as shader uniform uZoneCenter).
 
     // Use a surface that always returns a fixed predictable world position.
     const fixedLocalPos = new THREE.Vector3(10, 0, 0);
@@ -294,7 +297,7 @@ describe('KingMode', () => {
           computeBoundingSphere: vi.fn(),
         },
       },
-      group: { scale: { x: 0.75 } }, // SMALL map
+      group: { scale: { x: 0.75 }, add: vi.fn(), remove: vi.fn() }, // SMALL map
     } as any;
 
     const smallCtx: GameModeContext = {
@@ -306,21 +309,21 @@ describe('KingMode', () => {
     smallMode.onStart(smallCtx);
     smallMode.onFixedUpdate(0.016, smallCtx);
 
-    const zoneMesh = (smallMode as any).zoneMesh as THREE.Mesh;
-    // Position must be 10 * 0.75 = 7.5 (scaled), not 10 (local-space)
-    expect(zoneMesh.position.x).toBeCloseTo(7.5, 4);
+    // Zone center must be 10 * 0.75 = 7.5 (scaled), not 10 (local-space)
+    const smallCenter = (smallMode as any)._zoneCenterWorld as THREE.Vector3;
+    expect(smallCenter.x).toBeCloseTo(7.5, 4);
 
     // Now verify LARGE map (scale 1.5)
     const largeSurface = {
       ...scaledSurface,
-      group: { scale: { x: 1.5 } },
+      group: { scale: { x: 1.5 }, add: vi.fn(), remove: vi.fn() },
     };
     const largeCtx: GameModeContext = { ...smallCtx, surface: largeSurface };
     const largeMode = new KingMode();
     largeMode.onStart(largeCtx);
     largeMode.onFixedUpdate(0.016, largeCtx);
-    const largeMesh = (largeMode as any).zoneMesh as THREE.Mesh;
-    expect(largeMesh.position.x).toBeCloseTo(15.0, 4);
+    const largeCenter = (largeMode as any)._zoneCenterWorld as THREE.Vector3;
+    expect(largeCenter.x).toBeCloseTo(15.0, 4);
   });
 
   it('HUD overlay shows zone time and kill points', () => {
