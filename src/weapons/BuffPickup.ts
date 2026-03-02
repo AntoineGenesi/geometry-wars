@@ -65,7 +65,8 @@ export interface ActiveBuff {
 }
 
 // World-space pickup collision radius. See WeaponPickup.ts for rationale.
-const PICKUP_WORLD_RADIUS = 0.15;
+// S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
+const PICKUP_WORLD_RADIUS = 0.25;
 
 /**
  * Floating buff pickup on the surface

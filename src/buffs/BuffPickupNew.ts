@@ -17,7 +17,8 @@ const PICKUP_LIFETIME = 12; // seconds
 const FADE_START = 9;       // seconds before starting fade
 
 // World-space pickup collision radius. See WeaponPickup.ts for rationale.
-const PICKUP_WORLD_RADIUS = 0.15;
+// S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
+const PICKUP_WORLD_RADIUS = 0.25;
 
 export class BuffPickupNew {
   readonly mesh: THREE.Group;

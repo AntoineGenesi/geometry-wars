@@ -2545,9 +2545,10 @@ export class GameRoom extends Room<GameState> {
     // Entity sizes do NOT scale with map size, so these are fixed world-unit values.
     const ENEMY_HIT_WORLD   = 0.5;   // player(0.1) + enemy(0.3) + margin; restored in s44c-11
     const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
-    // S44b-06: match client-side PICKUP_WORLD_RADIUS (0.15) * mapSizeScaleFactor.
-    // Previous fixed 0.6 was 2x too large at MEDIUM (client uses 0.15*scale=0.15 at MEDIUM).
-    const PICKUP_WORLD      = 0.15 * scaleFactor;   // matches client WeaponPickup/BuffPickup radius
+    // S44b-06: match client-side PICKUP_WORLD_RADIUS * mapSizeScaleFactor.
+    // S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
+    // At MEDIUM (scale=1): 0.25 = ~0.8 player-widths. At EPIC (scale=2): 0.50 = 1.6 player-widths.
+    const PICKUP_WORLD      = 0.25 * scaleFactor;   // matches client WeaponPickup/BuffPickup radius
     // s44e-06: World-space bullet-enemy threshold. SP CollisionSystem uses enemy.radius=0.3;
     // 0.4 adds margin for network latency and chord-distance approximation.
     const BULLET_HIT_WORLD  = 0.4;   // world units; matches SP enemy.radius(0.3) + latency margin
