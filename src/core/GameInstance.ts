@@ -447,6 +447,8 @@ export class GameInstance {
       if (!enemy.alive || !enemy.mesh) continue;
       // Skip enemies still spawning/materializing
       if (enemy.isMaterializing) continue;
+      // Skip phased/invisible enemies (e.g. Phaser cycling through invisible state)
+      if (enemy.isGhostForPlayer) continue;
 
       // S28c: require enemy to visibly push into player body (same formula as CollisionSystem).
       const hitRadius = this.player.mesh.scale.x * 0.1 + enemy.radius;

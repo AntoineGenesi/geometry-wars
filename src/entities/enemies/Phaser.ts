@@ -108,7 +108,8 @@ export class Phaser extends BaseEnemy {
 
     switch (this.phase) {
       case PhaserPhase.FadingIn: {
-        // Fade in over fadeDuration
+        // Fade in over fadeDuration — still invisible/ghost until fully materialized
+        this.isGhostForPlayer = true;
         const progress = Math.min(1, this.phaseTimer / this.fadeDuration);
         this.setVisibility(progress);
 
@@ -123,6 +124,7 @@ export class Phaser extends BaseEnemy {
       case PhaserPhase.Visible: {
         // Charge at player
         this._invulnerable = false;
+        this.isGhostForPlayer = false;
         this.setVisibility(1.0);
         this.chargeToward(playerU, playerV, this.chargeSpeed, dt);
 
@@ -130,6 +132,7 @@ export class Phaser extends BaseEnemy {
           this.phase = PhaserPhase.FadingOut;
           this.phaseTimer = 0;
           this._invulnerable = true;
+          this.isGhostForPlayer = true;
 
           // Pick a flanking position: offset from player at a random angle
           const flankAngle = Math.random() * Math.PI * 2;
@@ -145,7 +148,8 @@ export class Phaser extends BaseEnemy {
       }
 
       case PhaserPhase.FadingOut: {
-        // Fade out
+        // Fade out — ghost for player once invulnerable
+        this.isGhostForPlayer = true;
         const progress = Math.min(1, this.phaseTimer / this.fadeDuration);
         this.setVisibility(1 - progress);
         this._invulnerable = true;
@@ -160,6 +164,7 @@ export class Phaser extends BaseEnemy {
       case PhaserPhase.Invisible: {
         // Invisible - reposition to flank
         this._invulnerable = true;
+        this.isGhostForPlayer = true;
         this.setVisibility(0);
         this.chargeToward(this.flankTargetU, this.flankTargetV, this.repositionSpeed, dt);
 
@@ -217,6 +222,7 @@ export class Phaser extends BaseEnemy {
 
     switch (this.phase) {
       case PhaserPhase.FadingIn: {
+        this.isGhostForPlayer = true;
         const progress = Math.min(1, this.phaseTimer / this.fadeDuration);
         this.setVisibility(progress);
 
@@ -230,12 +236,14 @@ export class Phaser extends BaseEnemy {
 
       case PhaserPhase.Visible: {
         this._invulnerable = false;
+        this.isGhostForPlayer = false;
         this.setVisibility(1.0);
 
         if (this.phaseTimer >= this.visibleDuration) {
           this.phase = PhaserPhase.FadingOut;
           this.phaseTimer = 0;
           this._invulnerable = true;
+          this.isGhostForPlayer = true;
 
           // Pick flanking position - offset from player at random angle
           const frame = this.walker!.getTangentFrame();
@@ -251,6 +259,7 @@ export class Phaser extends BaseEnemy {
       }
 
       case PhaserPhase.FadingOut: {
+        this.isGhostForPlayer = true;
         const progress = Math.min(1, this.phaseTimer / this.fadeDuration);
         this.setVisibility(1 - progress);
         this._invulnerable = true;
@@ -264,6 +273,7 @@ export class Phaser extends BaseEnemy {
 
       case PhaserPhase.Invisible: {
         this._invulnerable = true;
+        this.isGhostForPlayer = true;
         this.setVisibility(0);
 
         if (this.phaseTimer >= this.invisibleDuration) {
