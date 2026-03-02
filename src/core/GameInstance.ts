@@ -219,8 +219,8 @@ export class GameInstance {
     this._surfaceType = cfg.surface;
     this._surface = this.createSurface(cfg.surface, cfg.surfaceScale);
     this.game.scene.add(this._surface.group);
-    this._surface.mesh.updateMatrixWorld(true);
-    this._meshSurface = new MeshSurface(this._surface.mesh);
+    this._surface.group.updateMatrixWorld(true);
+    this._meshSurface = new MeshSurface(this._surface.walkableMesh);
 
     // Apply surface opacity setting from user preferences
     const graphicsSettings = loadGraphicsSettings();
@@ -694,8 +694,8 @@ export class GameInstance {
     this._surfaceType = type;
     this._surface = this.createSurface(type, scale ?? this.config.surfaceScale);
     this.game.scene.add(this._surface.group);
-    this._surface.mesh.updateMatrixWorld(true);
-    this._meshSurface = new MeshSurface(this._surface.mesh);
+    this._surface.group.updateMatrixWorld(true);
+    this._meshSurface = new MeshSurface(this._surface.walkableMesh);
 
     // Apply surface opacity setting from user preferences
     const graphicsSettings = loadGraphicsSettings();

@@ -577,8 +577,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Mesh-based movement system (BVH) --
   // Wraps the surface mesh for shape-agnostic movement queries.
   // Replaces UV-based movement for player; enemies/geoms still use UV as bridge.
-  surface.mesh.updateMatrixWorld(true);
-  const meshSurface = new MeshSurface(surface.mesh);
+  surface.group.updateMatrixWorld(true);
+  const meshSurface = new MeshSurface(surface.walkableMesh);
 
   // -- Depth occlusion (raycast-based) --
   // Raycasts from camera to enemies, counting surface intersections to determine
