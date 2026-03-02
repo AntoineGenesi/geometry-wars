@@ -1786,6 +1786,18 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     },
   };
 
+  // -- Snap camera to initial player position (s44f-09 fix) --
+  // Without this, the camera starts at default (0,0,0) with up (0,1,0) and lerps
+  // slowly toward the player over ~20 frames. During that convergence, camera axes
+  // extracted by moveFromInput are wrong, causing movement to be direction-locked
+  // on elongated surfaces like pill (where the camera "up" and "right" project to
+  // nearly parallel vectors on the surface tangent plane during convergence).
+  // MP already had snapToFrame via s44b-01; this adds it for SP.
+  {
+    const frame = playerWalker.getTangentFrame();
+    cameraController.snapToFrame(playerWalker.position, playerWalker.normal, frame);
+  }
+
   // -- Game Loop and Render Loop --
   const gameLoop = new GameLoop();
   const renderLoop = new RenderLoop();

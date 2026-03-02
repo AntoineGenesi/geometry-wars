@@ -255,11 +255,16 @@ export class CameraController {
     // Sign-flip protection: if the new camera up flipped >90° from the previous target,
     // negate it to maintain continuity (same guard applied to MP path in updateFromFrame).
     // This catches any residual frame inversion after pole crossing (s43-05).
+    // s44f-09: Skip on first frame (same guard as MP updateFromFrame line 196).
+    // On first frame, targetUp is still default (0,1,0) which may be >90° from the
+    // actual surface bitangent on pill/peanut, causing an incorrect negate that locks
+    // the camera up vector in the wrong direction.
     this._camUp.normalize();
-    if (this.targetUp.dot(this._camUp) < 0) {
+    if (this._cameraFrameInitialized && this.targetUp.dot(this._camUp) < 0) {
       this._camUp.negate();
     }
     this.targetUp.copy(this._camUp);
+    this._cameraFrameInitialized = true;
 
     // Restored from bffc333 ORDER: lookAt FIRST, then lerp up-vector.
     // This matches the working reference implementation exactly.
