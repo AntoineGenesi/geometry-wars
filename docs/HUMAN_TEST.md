@@ -1728,3 +1728,17 @@ Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to rea
 - [ ] **Compare SP vs MP** — Single-player peanut bullets should match MP peanut bullets in position.
 - [ ] **Test other surfaces** — Sphere, torus, pill should NOT regress (bullets still from correct position).
 
+
+## S44h-06: Sphere-Tunnel Map Clipping Fix
+
+**Fix:** Player was morphing through the outer sphere surface into the tunnel on the sphere-with-tunnel map. Root cause: the MeshSurface BVH contained both outer sphere faces AND inner tunnel faces. Near the tunnel hole edges, the BVH could snap the player to an inner tunnel face, placing them inside the tunnel. Fix: `SphereWithTunnelSurface` now exposes a `walkableMesh` (outer sphere only, invisible) that the MeshWalker uses for collision. Tunnel faces are excluded from walking. Player stops at the hole rim.
+
+### Test: Player stays on outer sphere, doesn't clip through
+- [ ] **Start SP game on Sphere-Tunnel map** — Select via start menu or `?quickStart=true&surface=sphere-tunnel`
+- [ ] **Walk around the equator** — Movement should be smooth, no clipping
+- [ ] **Walk toward the top of the sphere** — Walk toward the tunnel hole (top). Player should stop at or near the hole rim, NOT fall into the tunnel
+- [ ] **Walk toward the bottom of the sphere** — Same test on bottom hole. Player should stop at rim.
+- [ ] **Walk along the edge of the hole** — Player should slide along the rim without falling through
+- [ ] **Camera stays outside** — Camera should not get stuck inside the surface
+- [ ] **All weapons work** — Fire bullets in all directions; no odd behavior near tunnel holes
+- [ ] **No regression on other maps** — Sphere, torus, cube, pill maps still work correctly

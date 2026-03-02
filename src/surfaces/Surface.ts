@@ -41,6 +41,13 @@ export abstract class Surface {
   readonly group: THREE.Group
   protected readonly config: Required<SurfaceConfig>
 
+  /**
+   * Mesh to use for surface walking (MeshWalker / BVH collision).
+   * Defaults to the visual mesh. Override for surfaces where the walkable
+   * area is a subset of the visual mesh (e.g., sphere-with-tunnel outer surface).
+   */
+  get walkableMesh(): THREE.Mesh { return this.mesh }
+
   // Mesh deformation springs (lazy-initialized on first applyMeshForce call)
   private meshVertexSprings: SpringVertex[] = []
   private meshSpringsInitialized = false
