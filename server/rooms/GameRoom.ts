@@ -27,7 +27,9 @@ import {
   LEVEL_THRESHOLDS,
   LEVEL_DAMAGE_MULTIPLIERS,
   LEVEL_MOVE_SPEED_MULTIPLIERS,
-  // LEVEL_FIRE_RATE_MULTIPLIERS: not applied server-side; fire rate is client-enforced.
+  // LEVEL_FIRE_RATE_MULTIPLIERS: not applied server-side. In SP, PlayerLevel.perk.fireRateMultiplier
+  // affects Player.ts's call frequency, which is already faster than WeaponManager's per-weapon
+  // cooldowns — so level fire rate perks don't change effective weapon fire rates in SP either.
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import type { ServerWalkerState } from '../movement/ServerMeshWalker';
@@ -1042,10 +1044,14 @@ export class GameRoom extends Room<GameState> {
   }
 
   private tryShoot(player: PlayerState) {
-    // Rate limit shooting (every 0.1 seconds)
+    // Rate limit shooting using per-weapon fire rate from GameConstants.
+    // S44c-05: previously hardcoded 0.1s (10/sec) for all weapons — mismatch vs SP.
+    // SP WeaponManager uses WEAPON_CONFIGS[type].fireRate; server must match.
+    const weaponConfig = WEAPON_CONFIGS[player.weaponType];
+    const fireInterval = weaponConfig ? 1 / weaponConfig.fireRate : 0.1;
     const now = this.state.gameTime;
     const lastShot = (player as unknown as { lastShotTime?: number }).lastShotTime || 0;
-    if (now - lastShot < 0.1) return;
+    if (now - lastShot < fireInterval) return;
 
     (player as unknown as { lastShotTime: number }).lastShotTime = now;
 
