@@ -50,9 +50,13 @@ const SP_LEVEL_THRESHOLDS_EXPECTED = [0, 10, 25, 50, 80, 120, 175, 250, 350, 500
 
 describe('Weapon base damage: SP src/weapons/WeaponTypes.ts vs server/shared/GameConstants.ts', () => {
 
-  it('standard weapon: SP=0.25, server=0.25 (REGRESSION GUARD: was 1.0 before S38c-05 fix)', () => {
-    expect(SP_WEAPON_CONFIGS[WeaponType.Standard].damage).toBe(0.25);
-    expect(SERVER_WEAPON_CONFIGS.standard.damage).toBe(0.25);
+  it('standard weapon: SP raw config=0.25 (UI display only), server=1.0 (effective damage per bullet)', () => {
+    // SP WeaponTypes.ts damage:0.25 is used for UI display/comparison only — NOT in SP's collision path.
+    // SP's GameLoop passes bulletDamage = scorePowerMult * levelMult * buffMult * masteryMult * upgradeMult
+    // which equals 1.0 at game start (no multipliers active). The weapon's raw .damage is not in that formula.
+    // Server uses 1.0 to match SP's actual effective damage per bullet. (s43-02 fix)
+    expect(SP_WEAPON_CONFIGS[WeaponType.Standard].damage).toBe(0.25); // UI display value
+    expect(SERVER_WEAPON_CONFIGS.standard.damage).toBe(1.0);          // effective collision damage
   });
 
   it('spread weapon: SP=1, server=1', () => {
@@ -80,8 +84,11 @@ describe('Weapon base damage: SP src/weapons/WeaponTypes.ts vs server/shared/Gam
     expect(SERVER_WEAPON_CONFIGS.plasma_mortar.damage).toBe(20);
   });
 
-  it('all weapon types: SP damage matches server damage', () => {
+  it('all weapon types (except standard): SP damage matches server damage', () => {
+    // Standard weapon is intentionally excluded: SP raw config is 0.25 (UI display only),
+    // server uses 1.0 (effective SP collision damage at game start). See individual test above.
     for (const [spType, serverKey] of Object.entries(SP_TO_SERVER_KEY)) {
+      if (serverKey === 'standard') continue; // handled separately — semantic difference
       const weaponType = spType as WeaponType;
       const spDamage = SP_WEAPON_CONFIGS[weaponType].damage;
       const serverDamage = SERVER_WEAPON_CONFIGS[serverKey]?.damage;
