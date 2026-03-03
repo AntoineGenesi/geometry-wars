@@ -23,7 +23,7 @@
     "returnToMenu": "VOLVER AL MENÚ",
     "hintContinue": "Presiona INTRO o haz clic para continuar",
     "hintVote": "Presiona INTRO para votar · haz clic en VOLVER AL MENÚ para desconectarte",
-    "votingCountdown": "Pantalla de votación en {{count}}s\u2026",
+    "votingCountdown": "Pantalla de votación en {{count}}s…",
     "recordScore": "REGISTRA TU PUNTUACIÓN",
     "recordScoreBtn": "REGISTRAR",
     "namePlaceholder": "Jugador",
@@ -31,8 +31,8 @@
     "noteLabelField": "NOTA",
     "noteOptional": "(opcional)",
     "notePlaceholder": "p.ej. primer intento, combo completo...",
-    "nameHint": "INTRO para ir a la nota \u00b7 INTRO de nuevo para enviar",
-    "autoSubmitting": "Enviando automáticamente en {{count}}s\u2026"
+    "nameHint": "INTRO para ir a la nota · INTRO de nuevo para enviar",
+    "autoSubmitting": "Enviando automáticamente en {{count}}s…"
   },
   "levelComplete": {
     "title": "COMPLETADO",
@@ -84,7 +84,8 @@
       "king": "REY",
       "sniper": "FRANCOTIRADOR",
       "rainbow": "ARCOÍRIS",
-      "claustrophobia": "CLAUSTROFOBIA"
+      "claustrophobia": "CLAUSTROFOBIA",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "PEQUEÑO",
@@ -102,7 +103,7 @@
       "peanut": "Cacahuete",
       "capsule": "Cápsula",
       "icosahedron": "Icosaedro",
-      "mobius": "M\u00f6bius",
+      "mobius": "Möbius",
       "sphereTunnel": "Túnel Esférico",
       "cubeRing": "Anillo Cubo",
       "cubeTunnel": "Túnel Cubo"
@@ -233,7 +234,7 @@
       "maxEnemies": "Enemigos máx.",
       "resolutionScale": "Escala de resolución",
       "resetToDefault": "RESTABLECER",
-      "bloomHint": "Valores iniciales \u2014 Moderno: 1.0 | Pixelado: 0.4"
+      "bloomHint": "Valores iniciales — Moderno: 1.0 | Pixelado: 0.4"
     },
     "performance": {
       "liveStats": "ESTADÍSTICAS EN VIVO",

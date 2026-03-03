@@ -23,7 +23,7 @@
     "returnToMenu": "RETOUR AU MENU",
     "hintContinue": "Appuyez sur ENTRÉE ou cliquez pour continuer",
     "hintVote": "Appuyez sur ENTRÉE pour voter · cliquez sur RETOUR AU MENU pour vous déconnecter",
-    "votingCountdown": "Écran de vote dans {{count}}s\u2026",
+    "votingCountdown": "Écran de vote dans {{count}}s…",
     "recordScore": "ENREGISTRER VOTRE SCORE",
     "recordScoreBtn": "ENREGISTRER",
     "namePlaceholder": "Joueur",
@@ -31,8 +31,8 @@
     "noteLabelField": "NOTE",
     "noteOptional": "(facultatif)",
     "notePlaceholder": "ex. premier essai, combo complet...",
-    "nameHint": "ENTRÉE pour passer à la note \u00b7 ENTRÉE à nouveau pour envoyer",
-    "autoSubmitting": "Envoi automatique dans {{count}}s\u2026"
+    "nameHint": "ENTRÉE pour passer à la note · ENTRÉE à nouveau pour envoyer",
+    "autoSubmitting": "Envoi automatique dans {{count}}s…"
   },
   "levelComplete": {
     "title": "NIVEAU TERMINÉ",
@@ -84,7 +84,8 @@
       "king": "ROI",
       "sniper": "SNIPER",
       "rainbow": "ARC-EN-CIEL",
-      "claustrophobia": "CLAUSTROPHOBIE"
+      "claustrophobia": "CLAUSTROPHOBIE",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "PETIT",
@@ -102,7 +103,7 @@
       "peanut": "Cacahuète",
       "capsule": "Capsule",
       "icosahedron": "Icosaèdre",
-      "mobius": "M\u00f6bius",
+      "mobius": "Möbius",
       "sphereTunnel": "Tunnel Sphérique",
       "cubeRing": "Anneau Cube",
       "cubeTunnel": "Tunnel Cube"
@@ -233,7 +234,7 @@
       "maxEnemies": "Ennemis max",
       "resolutionScale": "Échelle de résolution",
       "resetToDefault": "RÉINITIALISER",
-      "bloomHint": "Valeurs de départ \u2014 Moderne : 1.0 | Pixelisé : 0.4"
+      "bloomHint": "Valeurs de départ — Moderne : 1.0 | Pixelisé : 0.4"
     },
     "performance": {
       "liveStats": "STATS EN DIRECT",

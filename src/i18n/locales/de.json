@@ -22,8 +22,8 @@
     "continueBtn": "WEITER",
     "returnToMenu": "ZURÜCK ZUM MENÜ",
     "hintContinue": "EINGABE drücken oder klicken zum Fortfahren",
-    "hintVote": "EINGABE für Abstimmung \u00b7 ZURÜCK ZUM MENÜ zum Trennen",
-    "votingCountdown": "Abstimmungsbildschirm in {{count}}s\u2026",
+    "hintVote": "EINGABE für Abstimmung · ZURÜCK ZUM MENÜ zum Trennen",
+    "votingCountdown": "Abstimmungsbildschirm in {{count}}s…",
     "recordScore": "DEIN ERGEBNIS SPEICHERN",
     "recordScoreBtn": "SPEICHERN",
     "namePlaceholder": "Spieler",
@@ -31,8 +31,8 @@
     "noteLabelField": "NOTIZ",
     "noteOptional": "(optional)",
     "notePlaceholder": "z.B. erster Versuch, volle Kombo...",
-    "nameHint": "EINGABE für Notiz \u00b7 EINGABE zum Absenden",
-    "autoSubmitting": "Automatisch in {{count}}s absenden\u2026"
+    "nameHint": "EINGABE für Notiz · EINGABE zum Absenden",
+    "autoSubmitting": "Automatisch in {{count}}s absenden…"
   },
   "levelComplete": {
     "title": "ABGESCHLOSSEN",
@@ -84,7 +84,8 @@
       "king": "KÖNIG",
       "sniper": "SCHARFSCHÜTZE",
       "rainbow": "REGENBOGEN",
-      "claustrophobia": "KLAUSTROPHOBIE"
+      "claustrophobia": "KLAUSTROPHOBIE",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "KLEIN",
@@ -102,7 +103,7 @@
       "peanut": "Erdnuss",
       "capsule": "Kapsel",
       "icosahedron": "Ikosaeder",
-      "mobius": "M\u00f6bius",
+      "mobius": "Möbius",
       "sphereTunnel": "Kugeltunnel",
       "cubeRing": "Würfelring",
       "cubeTunnel": "Würfeltunnel"
@@ -233,7 +234,7 @@
       "maxEnemies": "Max. Feinde",
       "resolutionScale": "Auflösungsskalierung",
       "resetToDefault": "STANDARD WIEDERHERSTELLEN",
-      "bloomHint": "Gute Startwerte \u2014 Modern: 1.0 | Pixeliert: 0.4"
+      "bloomHint": "Gute Startwerte — Modern: 1.0 | Pixeliert: 0.4"
     },
     "performance": {
       "liveStats": "LIVE-STATISTIKEN",

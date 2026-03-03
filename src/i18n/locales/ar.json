@@ -23,7 +23,7 @@
     "returnToMenu": "العودة إلى القائمة",
     "hintContinue": "اضغط ENTER أو انقر للمتابعة",
     "hintVote": "اضغط ENTER للتصويت · انقر على العودة إلى القائمة لقطع الاتصال",
-    "votingCountdown": "شاشة التصويت خلال {{count}}ث\u2026",
+    "votingCountdown": "شاشة التصويت خلال {{count}}ث…",
     "recordScore": "سجّل نقاطك",
     "recordScoreBtn": "تسجيل",
     "namePlaceholder": "لاعب",
@@ -31,8 +31,8 @@
     "noteLabelField": "ملاحظة",
     "noteOptional": "(اختياري)",
     "notePlaceholder": "مثال: المحاولة الأولى، كومبو كامل...",
-    "nameHint": "ENTER للانتقال إلى الملاحظة \u00b7 ENTER مرة أخرى للإرسال",
-    "autoSubmitting": "إرسال تلقائي خلال {{count}}ث\u2026"
+    "nameHint": "ENTER للانتقال إلى الملاحظة · ENTER مرة أخرى للإرسال",
+    "autoSubmitting": "إرسال تلقائي خلال {{count}}ث…"
   },
   "levelComplete": {
     "title": "اكتمل",
@@ -84,7 +84,8 @@
       "king": "ملك",
       "sniper": "قناص",
       "rainbow": "قوس قزح",
-      "claustrophobia": "رهاب الأماكن المغلقة"
+      "claustrophobia": "رهاب الأماكن المغلقة",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "صغير",
@@ -233,7 +234,7 @@
       "maxEnemies": "أقصى عدد أعداء",
       "resolutionScale": "مقياس الدقة",
       "resetToDefault": "استعادة الإعدادات الافتراضية",
-      "bloomHint": "قيم جيدة للبداية \u2014 حديث: 1.0 | بكسل: 0.4"
+      "bloomHint": "قيم جيدة للبداية — حديث: 1.0 | بكسل: 0.4"
     },
     "performance": {
       "liveStats": "إحصائيات مباشرة",

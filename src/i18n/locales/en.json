@@ -23,7 +23,7 @@
     "returnToMenu": "RETURN TO MENU",
     "hintContinue": "Press ENTER or click to continue",
     "hintVote": "Press ENTER to go to vote now · click RETURN TO MENU to disconnect",
-    "votingCountdown": "Voting screen in {{count}}s\u2026",
+    "votingCountdown": "Voting screen in {{count}}s…",
     "recordScore": "RECORD YOUR SCORE",
     "recordScoreBtn": "RECORD SCORE",
     "namePlaceholder": "Player",
@@ -31,8 +31,8 @@
     "noteLabelField": "NOTE",
     "noteOptional": "(optional)",
     "notePlaceholder": "e.g. first attempt, full combo...",
-    "nameHint": "ENTER to move to note \u00b7 ENTER again to submit",
-    "autoSubmitting": "Auto-submitting in {{count}}s\u2026"
+    "nameHint": "ENTER to move to note · ENTER again to submit",
+    "autoSubmitting": "Auto-submitting in {{count}}s…"
   },
   "levelComplete": {
     "title": "COMPLETE",
@@ -84,7 +84,8 @@
       "king": "KING",
       "sniper": "SNIPER",
       "rainbow": "RAINBOW",
-      "claustrophobia": "CLAUSTROPHOBIA"
+      "claustrophobia": "CLAUSTROPHOBIA",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "SMALL",
@@ -102,7 +103,7 @@
       "peanut": "Peanut",
       "capsule": "Capsule",
       "icosahedron": "Icosahedron",
-      "mobius": "M\u00f6bius",
+      "mobius": "Möbius",
       "sphereTunnel": "Sphere Tunnel",
       "cubeRing": "Cube Ring",
       "cubeTunnel": "Cube Tunnel"
@@ -233,7 +234,7 @@
       "maxEnemies": "Max Enemies",
       "resolutionScale": "Resolution Scale",
       "resetToDefault": "RESET TO DEFAULT",
-      "bloomHint": "Good starting values \u2014 Modern: 1.0 | Pixelated: 0.4"
+      "bloomHint": "Good starting values — Modern: 1.0 | Pixelated: 0.4"
     },
     "performance": {
       "liveStats": "LIVE STATS",
