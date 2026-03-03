@@ -4,6 +4,9 @@ import * as THREE from 'three';
  * Manages floating player name labels above ships using HTML overlay.
  * Labels are CSS-positioned divs that track 3D world positions via projection.
  * More performant than CSS2DRenderer for a small number of labels (1-4 players).
+ *
+ * Each label optionally shows a health bar above the player name (PvP mode only).
+ * Health bar color: green (100%) → yellow (50%) → red (0%).
  */
 
 // Reusable projection vector (zero per-frame allocation)
@@ -16,6 +19,7 @@ const LABEL_SCREEN_LERP = 0.3;
 
 interface NameLabel {
   element: HTMLDivElement;
+  healthBarEl: HTMLDivElement;
   color: number;
   // Smoothed screen position — lerped toward projected position each frame
   // to eliminate visual jitter from network corrections. Initialized on first
@@ -25,10 +29,20 @@ interface NameLabel {
   hasPosition: boolean;
 }
 
+/** Player data passed to update() each frame. */
+export interface PlayerLabelData {
+  worldPos: THREE.Vector3;
+  alive: boolean;
+  health?: number;
+  maxHealth?: number;
+}
+
 export class PlayerNameLabels {
   private container: HTMLDivElement;
   private styleElement: HTMLStyleElement;
   private labels: Map<string, NameLabel> = new Map();
+  /** When true, health bars are rendered above name labels. */
+  private showHealthBars = false;
 
   constructor() {
     // Create overlay container
@@ -55,6 +69,19 @@ export class PlayerNameLabels {
         pointer-events: none;
         transition: opacity 0.15s;
       }
+      .player-name-label .pnl-health-bar-wrap {
+        width: 100%;
+        height: 4px;
+        background: rgba(255,255,255,0.15);
+        border-radius: 2px;
+        margin-bottom: 2px;
+        overflow: hidden;
+      }
+      .player-name-label .pnl-health-bar {
+        height: 100%;
+        border-radius: 2px;
+        transition: width 0.1s, background-color 0.3s;
+      }
       @media (max-width: 900px) and (pointer: coarse) {
         .player-name-label {
           font: bold 9px monospace;
@@ -63,6 +90,20 @@ export class PlayerNameLabels {
       }
     `;
     document.head.appendChild(this.styleElement);
+  }
+
+  /**
+   * Enable or disable health bar rendering above name labels.
+   * Call this when PvP mode starts/ends.
+   */
+  setShowHealthBars(show: boolean): void {
+    if (this.showHealthBars === show) return;
+    this.showHealthBars = show;
+    // Show/hide all existing health bar wrappers immediately
+    this.labels.forEach((label) => {
+      const wrap = label.healthBarEl.parentElement;
+      if (wrap) wrap.style.display = show ? 'block' : 'none';
+    });
   }
 
   /**
@@ -76,13 +117,30 @@ export class PlayerNameLabels {
     if (!label) {
       const element = document.createElement('div');
       element.className = 'player-name-label';
+
+      // Health bar wrapper (only visible when showHealthBars is true)
+      const healthBarWrap = document.createElement('div');
+      healthBarWrap.className = 'pnl-health-bar-wrap';
+      healthBarWrap.style.display = this.showHealthBars ? 'block' : 'none';
+      const healthBarEl = document.createElement('div');
+      healthBarEl.className = 'pnl-health-bar';
+      healthBarEl.style.width = '100%';
+      healthBarEl.style.backgroundColor = '#00ff44';
+      healthBarWrap.appendChild(healthBarEl);
+      element.appendChild(healthBarWrap);
+
+      // Name text node
+      const nameSpan = document.createElement('span');
+      element.appendChild(nameSpan);
+
       this.container.appendChild(element);
-      label = { element, color, smoothX: 0, smoothY: 0, hasPosition: false };
+      label = { element, healthBarEl, color, smoothX: 0, smoothY: 0, hasPosition: false };
       this.labels.set(id, label);
     }
 
     // Update name text and color
-    label.element.textContent = name;
+    const nameSpan = label.element.querySelector('span');
+    if (nameSpan) nameSpan.textContent = name;
     label.color = color;
     const cssColor = '#' + color.toString(16).padStart(6, '0');
     label.element.style.color = cssColor;
@@ -104,11 +162,11 @@ export class PlayerNameLabels {
    * Call this once per frame after camera is updated.
    *
    * @param camera The active camera
-   * @param playerPositions Map of player ID -> { worldPos, alive }
+   * @param playerPositions Map of player ID -> PlayerLabelData
    */
   update(
     camera: THREE.Camera,
-    playerPositions: Map<string, { worldPos: THREE.Vector3; alive: boolean }>,
+    playerPositions: Map<string, PlayerLabelData>,
   ): void {
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -162,6 +220,15 @@ export class PlayerNameLabels {
       label.element.style.opacity = '1';
       label.element.style.left = `${label.smoothX}px`;
       label.element.style.top = `${label.smoothY}px`;
+
+      // Update health bar if PvP mode is active
+      if (this.showHealthBars) {
+        const health = playerInfo.health ?? 100;
+        const maxHealth = playerInfo.maxHealth ?? 100;
+        const pct = maxHealth > 0 ? Math.max(0, Math.min(1, health / maxHealth)) : 1;
+        label.healthBarEl.style.width = `${pct * 100}%`;
+        label.healthBarEl.style.backgroundColor = healthBarColor(pct);
+      }
     });
   }
 
@@ -173,5 +240,23 @@ export class PlayerNameLabels {
     this.labels.clear();
     this.container.remove();
     this.styleElement.remove();
+  }
+}
+
+/**
+ * Returns a CSS color string for a health percentage.
+ * green (1.0) → yellow (0.5) → red (0.0)
+ */
+function healthBarColor(pct: number): string {
+  if (pct >= 0.5) {
+    // green → yellow: pct 1.0→0.5
+    const t = (pct - 0.5) * 2; // 1→0
+    const r = Math.round((1 - t) * 255);
+    return `rgb(${r},255,0)`;
+  } else {
+    // yellow → red: pct 0.5→0.0
+    const t = pct * 2; // 1→0
+    const g = Math.round(t * 255);
+    return `rgb(255,${g},0)`;
   }
 }

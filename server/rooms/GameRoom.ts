@@ -657,7 +657,10 @@ export class GameRoom extends Room<GameState> {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
     this.state.mapSize = options.mapSize || 'medium';
-    if (options.pvpEnabled) this.pvpEnabled = true;
+    if (options.pvpEnabled) {
+      this.pvpEnabled = true;
+      this.state.pvpEnabled = true;
+    }
 
     // Set max clients (4 player co-op)
     this.maxClients = 4;
@@ -734,6 +737,17 @@ export class GameRoom extends Room<GameState> {
       if (client.sessionId !== this.state.hostId) return;
       this.state.isPaused = data.paused;
       this.logger.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by host`);
+    });
+
+    // Host can update settings (e.g. healthBarVisibility) at any time.
+    // Only the host's updates are accepted.
+    this.onMessage('update_settings', (client, data: { healthBarVisibility?: string }) => {
+      if (client.sessionId !== this.state.hostId) return;
+      const validVisibility = ['all', 'friendly', 'enemy', 'none'];
+      if (data.healthBarVisibility && validVisibility.includes(data.healthBarVisibility)) {
+        this.state.healthBarVisibility = data.healthBarVisibility;
+        this.logger.log(`[GameRoom] healthBarVisibility set to '${data.healthBarVisibility}' by host`);
+      }
     });
 
     this.onMessage('exit_to_voting', (client) => {
@@ -1116,7 +1130,10 @@ export class GameRoom extends Room<GameState> {
 
     // parts[4]: 'pvp' enables player-to-player damage (s44j-pvp-13a).
     // Only overrides to true here; once enabled per-room it stays for the session.
-    if (parts[4] === 'pvp') this.pvpEnabled = true;
+    if (parts[4] === 'pvp') {
+      this.pvpEnabled = true;
+      this.state.pvpEnabled = true;
+    }
 
     this.startGame();
   }

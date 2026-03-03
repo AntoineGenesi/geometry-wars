@@ -22,6 +22,10 @@ export interface NetworkPlayerState {
   kills?: number;
   /** PvP death count: times this player was killed by another player. */
   deaths?: number;
+  /** Current health in PvP mode (0–maxHealth). */
+  health?: number;
+  /** Maximum health in PvP mode (synced for HUD display). */
+  maxHealth?: number;
   /** Zone time in seconds: KotH (time in zone) or Claustrophobia (time inside boundary). */
   zoneTime?: number;
   /** Maps buff type → stack count. Present when server has Phase D enabled. */
@@ -149,6 +153,10 @@ export interface NetworkGameState {
   initialLives?: number;
   /** When true, lives never deplete on death */
   infiniteLives?: boolean;
+  /** When true, player-to-player bullet damage is active (PvP mode). */
+  pvpEnabled?: boolean;
+  /** Controls whose health bars are visible: 'all' | 'friendly' | 'enemy' | 'none' */
+  healthBarVisibility?: string;
 }
 
 /** Input to send to server */
@@ -632,6 +640,8 @@ export class NetworkClient {
       countdownPaused: boolean;
       initialLives?: number;
       infiniteLives?: boolean;
+      pvpEnabled?: boolean;
+      healthBarVisibility?: string;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -669,6 +679,8 @@ export class NetworkClient {
       countdownPaused: s.countdownPaused ?? false,
       initialLives: s.initialLives ?? 3,
       infiniteLives: s.infiniteLives ?? false,
+      pvpEnabled: s.pvpEnabled ?? false,
+      healthBarVisibility: s.healthBarVisibility ?? 'all',
     };
   }
 

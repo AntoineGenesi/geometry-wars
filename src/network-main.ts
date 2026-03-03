@@ -85,7 +85,7 @@ import {
   NetworkGameState,
   ClientMetricsPayload,
 } from './network/NetworkClient';
-import { PlayerNameLabels } from './ui/PlayerNameLabel';
+import { PlayerNameLabels, PlayerLabelData } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { VotingScreen } from './ui/VotingScreen';
@@ -1140,6 +1140,10 @@ async function main() {
   let latestWaveNumber = 0;
   let latestMapSize = 'medium';
   let latestGameMode = 'waves';
+  /** Whether PvP bullet-to-player damage is enabled this round. Synced from server state. */
+  let latestPvpEnabled = false;
+  /** Which players' health bars are visible: 'all' | 'friendly' | 'enemy' | 'none' */
+  let latestHealthBarVisibility = 'all';
   // Active client-side game mode instance (KingMode, SniperMode, etc.)
   let activeGameMode: IGameMode | null = null;
   let localPlayerDeaths = 0;
@@ -1198,6 +1202,46 @@ async function main() {
     `position:fixed;top:10px;left:10px;color:#ff0;font:${mobile ? '11px' : '16px'} monospace;` +
     'text-shadow:0 0 10px #ff0;z-index:100;';
   document.body.appendChild(playersEl);
+
+  // PvP HUD health bar — local player health, shown at the bottom-center of the screen.
+  // Only visible when pvpEnabled === true.  Color: green → yellow → red.
+  const pvpHudContainer = document.createElement('div');
+  pvpHudContainer.style.cssText =
+    'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
+    'display:none;flex-direction:column;align-items:center;gap:2px;' +
+    'z-index:100;pointer-events:none;';
+  const pvpHudLabel = document.createElement('div');
+  pvpHudLabel.style.cssText =
+    'color:#fff;font:10px monospace;letter-spacing:2px;opacity:0.7;text-align:center;';
+  pvpHudLabel.textContent = 'HP';
+  const pvpHudBarOuter = document.createElement('div');
+  pvpHudBarOuter.style.cssText =
+    'width:160px;height:8px;background:rgba(255,255,255,0.15);border-radius:4px;overflow:hidden;';
+  const pvpHudBarInner = document.createElement('div');
+  pvpHudBarInner.style.cssText =
+    'height:100%;width:100%;border-radius:4px;background:#00ff44;transition:width 0.1s,background-color 0.3s;';
+  pvpHudBarOuter.appendChild(pvpHudBarInner);
+  pvpHudContainer.appendChild(pvpHudLabel);
+  pvpHudContainer.appendChild(pvpHudBarOuter);
+  document.body.appendChild(pvpHudContainer);
+
+  /** Update the PvP HUD health bar fill and color. */
+  function updatePvpHud(health: number, maxHealth: number): void {
+    const pct = maxHealth > 0 ? Math.max(0, Math.min(1, health / maxHealth)) : 1;
+    pvpHudBarInner.style.width = `${pct * 100}%`;
+    pvpHudBarInner.style.backgroundColor = pvpHealthBarColor(pct);
+  }
+
+  /** green (1.0) → yellow (0.5) → red (0.0) */
+  function pvpHealthBarColor(pct: number): string {
+    if (pct >= 0.5) {
+      const r = Math.round((1 - (pct - 0.5) * 2) * 255);
+      return `rgb(${r},255,0)`;
+    } else {
+      const g = Math.round(pct * 2 * 255);
+      return `rgb(255,${g},0)`;
+    }
+  }
 
   // Life-loss notification: briefly shows which player lost a life.
   // Helps distinguish per-player life changes from shared lives.
@@ -2402,6 +2446,18 @@ async function main() {
     latestWaveNumber = state.waveNumber;
     latestMapSize = state.mapSize || 'medium';
     if (state.gameMode) latestGameMode = state.gameMode;
+
+    // Sync PvP settings from server state
+    const newPvpEnabled = state.pvpEnabled ?? false;
+    if (newPvpEnabled !== latestPvpEnabled) {
+      latestPvpEnabled = newPvpEnabled;
+      nameLabels.setShowHealthBars(latestPvpEnabled);
+      pvpHudContainer.style.display = latestPvpEnabled ? 'flex' : 'none';
+    }
+    const newHealthBarVis = state.healthBarVisibility ?? 'all';
+    if (newHealthBarVis !== latestHealthBarVisibility) {
+      latestHealthBarVisibility = newHealthBarVis;
+    }
 
     // Always try to init/update surface from authoritative server state.
     // This handles both initial creation AND correcting a wrong initial guess.
@@ -5404,12 +5460,42 @@ async function main() {
     particles.setEntityScaleFactor(entityScaleFactor);
 
     // Update floating name labels (project 3D -> screen)
-    const labelPositions = new Map<string, { worldPos: THREE.Vector3; alive: boolean }>();
+    const labelPositions = new Map<string, PlayerLabelData>();
     networkPlayers.forEach((player, id) => {
       const alive = playerAliveState.get(id) ?? true;
-      labelPositions.set(id, { worldPos: player.mesh.position, alive });
+      let health: number | undefined;
+      let maxHealth: number | undefined;
+      if (latestPvpEnabled && latestGameState) {
+        const ps = latestGameState.players.get(id);
+        if (ps) {
+          health = ps.health;
+          maxHealth = ps.maxHealth;
+        }
+      }
+      // Respect healthBarVisibility: show health bar only when this player
+      // matches the visibility filter relative to the local player.
+      // 'all' → show everyone; 'friendly' → show team-mates (not in solo PvP, so same as 'all');
+      // 'enemy' → show only non-local players; 'none' → hide all.
+      // For now we treat all remote players as "enemy" in solo PvP for simplicity.
+      const showThisBar = id === localPlayerId
+        ? latestPvpEnabled  // local player HUD is controlled separately; label bar always with others
+        : (latestHealthBarVisibility === 'all' || latestHealthBarVisibility === 'enemy');
+      labelPositions.set(id, {
+        worldPos: player.mesh.position,
+        alive,
+        health: showThisBar ? health : undefined,
+        maxHealth: showThisBar ? maxHealth : undefined,
+      });
     });
     nameLabels.update(camera, labelPositions);
+
+    // Update local player PvP HUD health bar
+    if (latestPvpEnabled && latestGameState && localPlayerId) {
+      const localPs = latestGameState.players.get(localPlayerId);
+      if (localPs) {
+        updatePvpHud(localPs.health ?? 100, localPs.maxHealth ?? 100);
+      }
+    }
 
     // Update minimap (same pattern as RenderLoop.ts in single-player).
     // Remote players are included in the geoms layer (green dots) since
@@ -5449,6 +5535,7 @@ async function main() {
     bgMusic.stop();
     allyGlowManager.dispose();
     nameLabels.dispose();
+    pvpHudContainer.remove();
     weaponHUD.dispose();
     minimap.dispose();
     meshSurface?.dispose();
