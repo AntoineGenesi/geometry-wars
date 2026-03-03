@@ -786,38 +786,8 @@ export class GameRoom extends Room<GameState> {
       this.broadcast('lobby_settings', { settings: data.settings });
     });
 
-    // Host changes settings mid-game: "Apply Next Round" stores them as pending.
-    // They are applied at the next wave boundary (s44j-settings-16d).
-    this.onMessage('applySettings', (client, data: { settings: unknown }) => {
-      if (client.sessionId !== this.state.hostId) {
-        this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to applySettings (rejected)`);
-        return;
-      }
-      if (this.state.roomPhase !== 'playing') return;
-      const settings = validateSettings(data.settings as Partial<GameSettings>);
-      this.pendingSettings = settings;
-      this.broadcast('settings_queued', { message: 'Settings will apply at the next wave.' });
-      this.logger.log('[GameRoom] Settings queued for next wave by host');
-    });
-
-    // Host restarts current round with new settings.
-    // Broadcasts a 5-second countdown to all players, then performs a soft restart.
-    this.onMessage('restartRound', (client, data: { settings: unknown }) => {
-      if (client.sessionId !== this.state.hostId) {
-        this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to restartRound (rejected)`);
-        return;
-      }
-      if (this.state.roomPhase !== 'playing') return;
-      const settings = validateSettings(data.settings as Partial<GameSettings>);
-      this.broadcast('round_restarting', {
-        countdown: 5,
-        message: 'Host is restarting round with new settings...',
-      });
-      this.logger.log('[GameRoom] Round restart scheduled in 5s by host');
-      this.clock.setTimeout(() => {
-        this.softRestartRound(settings);
-      }, 5000);
-    });
+    // Duplicate applySettings and restartRound handlers were removed here (s44k-07).
+    // The authoritative handlers are registered below (with hasPendingSettings flag + spawnGeneration guard).
 
     this.onMessage('pause', (client, data: { paused: boolean }) => {
       if (client.sessionId !== this.state.hostId) return;
@@ -3289,8 +3259,8 @@ export class GameRoom extends Room<GameState> {
     // PvP bullet-player collisions (only when pvpEnabled === true)
     // Player bullets deal health damage to other players.
     // Uses the same hitBullets set so bullets consumed by enemy hits are not reused.
-    // In PvPvE mode, friendlyFire must be explicitly enabled; in pure PvP it is always on.
-    // s44j-pvpve-14e: friendly fire gate — PvPvE is cooperative by default (no player damage).
+    // s44k-07: friendlyFire defaults to true for both pvp and pvpve modes so player damage works
+    // out of the box. The gate still allows cooperative PvPvE (friendlyFire=false in settings).
     const allowPlayerDamage = this.currentSettings.mode !== 'pvpve' || this.currentSettings.friendlyFire;
     if (this.pvpEnabled && allowPlayerDamage) {
       this.state.bullets.forEach((bullet, bIndex) => {
@@ -3320,6 +3290,7 @@ export class GameRoom extends Room<GameState> {
             const prevHealth = target.health;
             target.health = Math.max(0, target.health - damage);
             const actualDamage = prevHealth - target.health;
+            this.logger.log(`[GameRoom] PvP hit: ${owner?.name ?? bullet.ownerId} → ${target.name}, damage=${actualDamage.toFixed(1)}, health=${target.health.toFixed(1)}/${target.maxHealth}`);
             if (owner) {
               owner.totalDamageDealt += actualDamage;
             }
@@ -3839,6 +3810,11 @@ export class GameRoom extends Room<GameState> {
    */
   private tickWaves(dt: number) {
     this.waveElapsed += dt;
+
+    // s44k-07: Pure PvP mode has no enemies — skip wave spawning entirely.
+    // Without this guard, enemies spawn in PvP mode and consume player bullets before
+    // they can reach other players (hitBullets set is shared across both collision loops).
+    if (this.state.gameMode === 'pvp') return;
 
     // Only spawn a new wave when timer is due AND there's room for enemies.
     // Include pending (warned but not yet materialized) enemies in the count so

@@ -396,8 +396,13 @@ describe('PvPvE — enemy wave escalation', () => {
 // ---------------------------------------------------------------------------
 
 describe('PvPvE — validateSettings friendlyFire defaults', () => {
-  it('friendlyFire defaults to false in pvpve mode', () => {
+  it('friendlyFire defaults to true in pvpve mode (s44k-07: players can damage each other by default)', () => {
     const settings = validateSettings({ mode: 'pvpve' });
+    expect(settings.friendlyFire).toBe(true);
+  });
+
+  it('friendlyFire can be explicitly disabled in pvpve mode for cooperative play', () => {
+    const settings = validateSettings({ mode: 'pvpve', friendlyFire: false });
     expect(settings.friendlyFire).toBe(false);
   });
 

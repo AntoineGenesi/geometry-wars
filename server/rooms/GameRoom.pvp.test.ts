@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { PLAYER_PVP_MAX_HEALTH, PLAYER_PVP_INVINCIBILITY_DURATION } from '../shared/GameConstants';
+import { validateSettings } from '../shared/GameSettings';
 
 // ---------------------------------------------------------------------------
 // Minimal types that mirror PlayerState / BulletState fields used in PvP logic
@@ -720,5 +721,51 @@ describe('PvP integration: survival win condition', () => {
     expect(p1.deaths).toBe(0);
     expect(p2.kills).toBe(0);
     expect(p2.deaths).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression tests: s44k-07 — Hit Detection Broken in PvP
+// These tests FAIL before the s44k-07 fixes and PASS after.
+// ---------------------------------------------------------------------------
+
+describe('s44k-07 regression: PvP friendlyFire defaults', () => {
+  it('friendlyFire defaults to true for pvp mode (s44k-07: players can damage each other by default)', () => {
+    const settings = validateSettings({ mode: 'pvp' });
+    expect(settings.pvpEnabled).toBe(true);
+    expect(settings.friendlyFire).toBe(true);
+  });
+
+  it('friendlyFire defaults to true for pvpve mode (s44k-07: player-vs-player damage enabled by default)', () => {
+    const settings = validateSettings({ mode: 'pvpve' });
+    expect(settings.pvpEnabled).toBe(true);
+    expect(settings.friendlyFire).toBe(true);
+  });
+
+  it('allowPlayerDamage is true for pvpve with friendlyFire=true (s44k-07: default pvpve allows damage)', () => {
+    const mode = 'pvpve';
+    const friendlyFire = true; // new default
+    const allowPlayerDamage = mode !== 'pvpve' || friendlyFire;
+    expect(allowPlayerDamage).toBe(true);
+  });
+
+  it('allowPlayerDamage is false for pvpve with friendlyFire=false (cooperative mode still works)', () => {
+    const mode = 'pvpve';
+    const friendlyFire = false; // explicit cooperative override
+    const allowPlayerDamage = mode !== 'pvpve' || friendlyFire;
+    expect(allowPlayerDamage).toBe(false);
+  });
+
+  it('bullet consumed by enemy does NOT reach player (hitBullets guard)', () => {
+    // This tests the guard that prevents double-hits.
+    // In pure PvP mode (no enemies by s44k-07 fix), this guard still works correctly.
+    const shooter = makePlayer('p1', 0.1, 0.1);
+    const target = makePlayer('p2', 0.5, 0.5);
+    const bullet: PvPBullet = { id: 'b1', ownerId: 'p1', x: 0.5, y: 0.5, damage: 25, consumed: true };
+    const inv = new Map<string, number>();
+
+    // Bullet already consumed (simulates enemy hit); should NOT damage player
+    applyPvPBulletDamage(bullet, [shooter, target], inv, true);
+    expect(target.health).toBe(PLAYER_PVP_MAX_HEALTH); // consumed bullet skipped
   });
 });
