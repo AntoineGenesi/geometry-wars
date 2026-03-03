@@ -10,6 +10,8 @@ import { t, onLanguageChange } from '../i18n';
 import { LanguageSelector } from './LanguageSelector';
 import { MasteryPointStore } from '../systems/MasteryPointStore';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
+import { GameSettingsPanel } from './GameSettingsPanel';
+import type { GameSettings } from '../../server/shared/GameSettings';
 
 /**
  * Pause menu overlay.
@@ -23,6 +25,10 @@ export interface PauseMenuNetworkCallbacks {
   onExitToVoting?: () => void;
   onEndGame: () => void;
   onStopServer?: () => void;
+  /** Queue settings to apply at the next wave boundary (host only). */
+  onApplySettings?: (settings: GameSettings) => void;
+  /** Restart the round with new settings — server will broadcast a 5s countdown (host only). */
+  onRestartRound?: (settings: GameSettings) => void;
 }
 
 /** Data passed to the pause menu for the stats info panel */
@@ -100,6 +106,9 @@ export class PauseMenu {
   private masteryPointStore: MasteryPointStore | null = null;
   private matchUpgradeTracker: MatchUpgradeTracker | null = null;
   private onMasteryScreenCloseCallback: (() => void) | null = null;
+  // Server settings panel (host-only mid-game settings)
+  private settingsPanel: GameSettingsPanel | null = null;
+  private settingsPanelActions: HTMLElement | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -174,6 +183,10 @@ export class PauseMenu {
             <button class="pause-btn stop-server-btn hidden" data-action="stop-server">
               <span class="btn-icon">&#x23F9;</span>
               <span>${t('pauseMenu.stopServer')}</span>
+            </button>
+            <button class="pause-btn server-settings-btn hidden" data-action="server-settings">
+              <span class="btn-icon">&#x2699;</span>
+              <span>SERVER SETTINGS</span>
             </button>
           </div>
 
@@ -424,6 +437,20 @@ export class PauseMenu {
       }
 
       #pause-menu .stop-server-btn.hidden {
+        display: none;
+      }
+
+      #pause-menu .server-settings-btn {
+        background: linear-gradient(180deg, #224466 0%, #112233 100%);
+        border-color: #4499cc;
+      }
+
+      #pause-menu .server-settings-btn:hover {
+        background: linear-gradient(180deg, #336688 0%, #224455 100%);
+        box-shadow: 0 0 25px #4499cc;
+      }
+
+      #pause-menu .server-settings-btn.hidden {
         display: none;
       }
 
@@ -882,6 +909,11 @@ export class PauseMenu {
       this.networkCallbacks?.onStopServer?.();
     });
 
+    const serverSettingsBtn = this.container.querySelector('[data-action="server-settings"]');
+    serverSettingsBtn?.addEventListener('click', () => {
+      this.openServerSettings();
+    });
+
     // Mount language selector
     if (this._languageSelector) {
       this._languageSelector.dispose();
@@ -1049,6 +1081,7 @@ export class PauseMenu {
     const exitToVotingBtn = this.container.querySelector('.exit-to-voting-btn');
     const endGameBtn = this.container.querySelector('.end-game-btn');
     const stopServerBtn = this.container.querySelector('.stop-server-btn');
+    const serverSettingsBtn = this.container.querySelector('.server-settings-btn');
 
     if (exitToVotingBtn) {
       if (shouldShowNetworkButtons) {
@@ -1073,6 +1106,14 @@ export class PauseMenu {
         stopServerBtn.classList.add('hidden');
       }
     }
+
+    if (serverSettingsBtn) {
+      if (shouldShowNetworkButtons) {
+        serverSettingsBtn.classList.remove('hidden');
+      } else {
+        serverSettingsBtn.classList.add('hidden');
+      }
+    }
   }
 
   /**
@@ -1091,6 +1132,100 @@ export class PauseMenu {
    */
   setNetworkCallbacks(callbacks: PauseMenuNetworkCallbacks): void {
     this.networkCallbacks = callbacks;
+  }
+
+  /**
+   * Open the server settings panel (host-only).
+   * Hides the pause menu and shows the GameSettingsPanel with action buttons.
+   */
+  private openServerSettings(): void {
+    if (!this.settingsPanel) {
+      this.settingsPanel = new GameSettingsPanel({ showCloseButton: false });
+      this.settingsPanel.mount();
+      this.settingsPanelActions = this.createSettingsActionBar();
+      document.body.appendChild(this.settingsPanelActions);
+    }
+    // Hide pause menu while settings panel is open
+    this.container.classList.add('hidden');
+    this.settingsPanel.show();
+    this.settingsPanelActions!.style.display = 'flex';
+  }
+
+  private closeServerSettings(): void {
+    this.settingsPanel?.hide();
+    if (this.settingsPanelActions) this.settingsPanelActions.style.display = 'none';
+    this.container.classList.remove('hidden');
+  }
+
+  private createSettingsActionBar(): HTMLElement {
+    const bar = document.createElement('div');
+    bar.style.cssText = [
+      'position:fixed',
+      'bottom:0',
+      'left:0',
+      'right:0',
+      'z-index:5000',
+      'display:none',
+      'gap:12px',
+      'justify-content:center',
+      'align-items:center',
+      'padding:14px 22px',
+      'background:rgba(0,0,20,0.97)',
+      'border-top:1px solid rgba(0,255,255,0.2)',
+    ].join(';');
+
+    const btnBase = [
+      'padding:12px 28px',
+      'font-size:14px',
+      'font-weight:bold',
+      'letter-spacing:2px',
+      'cursor:pointer',
+      'font-family:inherit',
+      'border-radius:3px',
+      'transition:all 0.2s',
+    ].join(';');
+
+    // BACK button
+    const backBtn = document.createElement('button');
+    backBtn.textContent = '◀ BACK';
+    backBtn.style.cssText = `${btnBase};background:rgba(40,40,80,0.5);border:1px solid rgba(120,120,200,0.4);color:#aaaacc;`;
+    backBtn.addEventListener('mouseover', () => { backBtn.style.background = 'rgba(60,60,120,0.7)'; });
+    backBtn.addEventListener('mouseout', () => { backBtn.style.background = 'rgba(40,40,80,0.5)'; });
+    backBtn.addEventListener('click', () => { this.closeServerSettings(); });
+
+    // APPLY NEXT ROUND button
+    const applyBtn = document.createElement('button');
+    applyBtn.textContent = '✓ APPLY NEXT ROUND';
+    applyBtn.style.cssText = `${btnBase};background:rgba(0,80,0,0.4);border:1px solid rgba(0,200,0,0.5);color:#00ff88;`;
+    applyBtn.title = 'Settings will take effect at the start of the next wave';
+    applyBtn.addEventListener('mouseover', () => { applyBtn.style.background = 'rgba(0,120,0,0.5)'; });
+    applyBtn.addEventListener('mouseout', () => { applyBtn.style.background = 'rgba(0,80,0,0.4)'; });
+    applyBtn.addEventListener('click', () => {
+      if (!this.settingsPanel) return;
+      const settings = this.settingsPanel.getSettings();
+      this.networkCallbacks?.onApplySettings?.(settings);
+      this.closeServerSettings();
+    });
+
+    // RESTART ROUND button
+    const restartBtn = document.createElement('button');
+    restartBtn.textContent = '⟳ RESTART ROUND';
+    restartBtn.style.cssText = `${btnBase};background:rgba(100,0,0,0.4);border:1px solid rgba(255,80,0,0.5);color:#ff8844;`;
+    restartBtn.title = 'Restart round immediately — all players see a 5s countdown';
+    restartBtn.addEventListener('mouseover', () => { restartBtn.style.background = 'rgba(140,0,0,0.5)'; });
+    restartBtn.addEventListener('mouseout', () => { restartBtn.style.background = 'rgba(100,0,0,0.4)'; });
+    restartBtn.addEventListener('click', () => {
+      if (!this.settingsPanel) return;
+      const settings = this.settingsPanel.getSettings();
+      this.networkCallbacks?.onRestartRound?.(settings);
+      this.closeServerSettings();
+      this.hide(); // Hide pause menu — round restart is in progress
+    });
+
+    bar.appendChild(backBtn);
+    bar.appendChild(applyBtn);
+    bar.appendChild(restartBtn);
+    return bar;
   }
 
   /**

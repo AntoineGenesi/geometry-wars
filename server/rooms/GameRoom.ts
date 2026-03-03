@@ -41,6 +41,8 @@ import {
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import type { ServerWalkerState } from '../movement/ServerMeshWalker';
+import { validateSettings } from '../shared/GameSettings';
+import type { GameSettings } from '../shared/GameSettings';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -562,6 +564,9 @@ export class GameRoom extends Room<GameState> {
   private healthPickupHealAmount: number = HEALTH_PICKUP_HEAL_AMOUNT;
   private waveNumber = 0;
 
+  // Settings staged for "Apply Next Round" — applied at wave boundary
+  private pendingSettings: GameSettings | null = null;
+
   // Wave scheduling state
   private waveElapsed = 0;
   private nextWaveAt = WAVE_FIRST_AT;
@@ -751,6 +756,39 @@ export class GameRoom extends Room<GameState> {
       if (client.sessionId !== this.state.hostId) return;
       if (this.state.roomPhase !== 'lobby') return;
       this.broadcast('lobby_settings', data);
+    });
+
+    // Host changes settings mid-game: "Apply Next Round" stores them as pending.
+    // They are applied at the next wave boundary (s44j-settings-16d).
+    this.onMessage('applySettings', (client, data: { settings: unknown }) => {
+      if (client.sessionId !== this.state.hostId) {
+        this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to applySettings (rejected)`);
+        return;
+      }
+      if (this.state.roomPhase !== 'playing') return;
+      const settings = validateSettings(data.settings as Partial<GameSettings>);
+      this.pendingSettings = settings;
+      this.broadcast('settings_queued', { message: 'Settings will apply at the next wave.' });
+      this.logger.log('[GameRoom] Settings queued for next wave by host');
+    });
+
+    // Host restarts current round with new settings.
+    // Broadcasts a 5-second countdown to all players, then performs a soft restart.
+    this.onMessage('restartRound', (client, data: { settings: unknown }) => {
+      if (client.sessionId !== this.state.hostId) {
+        this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to restartRound (rejected)`);
+        return;
+      }
+      if (this.state.roomPhase !== 'playing') return;
+      const settings = validateSettings(data.settings as Partial<GameSettings>);
+      this.broadcast('round_restarting', {
+        countdown: 5,
+        message: 'Host is restarting round with new settings...',
+      });
+      this.logger.log('[GameRoom] Round restart scheduled in 5s by host');
+      this.clock.setTimeout(() => {
+        this.softRestartRound(settings);
+      }, 5000);
     });
 
     this.onMessage('pause', (client, data: { paused: boolean }) => {
@@ -1258,6 +1296,65 @@ export class GameRoom extends Room<GameState> {
     });
 
     this.logger.log('[GameRoom] Game started!');
+  }
+
+  /**
+   * Apply new settings and reset the wave without a full phase transition.
+   * Clears all enemies, bullets, and pickups; resets wave counter; keeps players
+   * connected with their current lives. Used for "Restart Round" from pause menu.
+   */
+  private softRestartRound(settings: GameSettings): void {
+    if (this.state.roomPhase !== 'playing') return;
+
+    // Apply configurable settings
+    this.state.surfaceType = settings.surface;
+    this.state.gameMode = settings.mode;
+    this.state.infiniteLives = settings.infiniteLives;
+    this.state.initialLives = settings.lives;
+    this.healthPickupFrequency = settings.healingFrequency;
+    this.healthPickupHealAmount = settings.healingAmount;
+
+    // Reset wave state
+    this.waveNumber = 0;
+    this.state.waveNumber = 0;
+    this.waveElapsed = 0;
+    this.nextWaveAt = WAVE_FIRST_AT;
+    this.spawnGeneration++;
+    this.pendingEnemyCount = 0;
+
+    // Clear all entities
+    this.state.bullets.clear();
+    this.state.enemies.clear();
+    this.enemyAI.clear();
+    this.state.geoms.clear();
+    this.state.weaponPickups.clear();
+    this.state.superPickups.clear();
+    this.state.buffPickups.clear();
+    this.state.healthPickups.clear();
+    this.lastHealthPickupSpawnTime.clear();
+
+    // Reset players' lives and position (keep score for context)
+    let spawnIdx = 0;
+    this.state.players.forEach((player, sessionId) => {
+      player.lives = this.state.initialLives;
+      player.alive = true;
+      player.health = PLAYER_PVP_MAX_HEALTH;
+      player.invincibilityTimer = 0;
+      const spawnPos = SPAWN_OFFSETS[spawnIdx % SPAWN_OFFSETS.length];
+      player.surfaceU = spawnPos.u;
+      player.surfaceV = spawnPos.v;
+      const walker = this.surfaceManager.createWalker(sessionId, spawnPos.u, spawnPos.v);
+      if (walker) {
+        this.applyWalkerStateToPlayer(player, walker.getState());
+      }
+      spawnIdx++;
+    });
+
+    // Clear any pending settings — they have now been applied
+    this.pendingSettings = null;
+
+    this.broadcast('round_restarted', {});
+    this.logger.log('[GameRoom] Round soft-restarted with new settings');
   }
 
   private handleInput(client: Client, input: PlayerInput) {
@@ -3570,6 +3667,16 @@ export class GameRoom extends Room<GameState> {
     // we don't fire a new wave whose warnings will all be phantom (no enemy).
     if (this.waveElapsed < this.nextWaveAt) return;
     if (this.state.enemies.length + this.pendingEnemyCount >= this.getMaxEnemies()) return;
+
+    // Apply settings queued by "Apply Next Round" before the new wave starts.
+    if (this.pendingSettings !== null) {
+      const s = this.pendingSettings;
+      this.pendingSettings = null;
+      this.healthPickupFrequency = s.healingFrequency;
+      this.healthPickupHealAmount = s.healingAmount;
+      this.broadcast('settings_applied', { message: 'New settings are now active.' });
+      this.logger.log('[GameRoom] Pending settings applied at wave boundary');
+    }
 
     this.waveNumber++;
     this.state.waveNumber = this.waveNumber;

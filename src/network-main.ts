@@ -1247,6 +1247,35 @@ async function main() {
     }, 2000);
   }
 
+  // Round restart notification (shown to all players when host restarts round)
+  const roundRestartEl = document.createElement('div');
+  roundRestartEl.style.cssText =
+    'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+    'color:#ff8844;font:bold 24px monospace;text-shadow:0 0 16px #ff8844;' +
+    'z-index:3000;text-align:center;pointer-events:none;opacity:0;' +
+    'transition:opacity 0.3s;white-space:nowrap;' +
+    'background:rgba(0,0,20,0.85);padding:20px 36px;border:1px solid rgba(255,136,68,0.4);';
+  document.body.appendChild(roundRestartEl);
+
+  let roundRestartInterval: ReturnType<typeof setInterval> | null = null;
+
+  function showRoundRestartingNotification(message: string, countdown: number): void {
+    if (roundRestartInterval) clearInterval(roundRestartInterval);
+    let remaining = countdown;
+    roundRestartEl.innerHTML = `${message}<br><span style="font-size:40px;">${remaining}s</span>`;
+    roundRestartEl.style.opacity = '1';
+    roundRestartInterval = setInterval(() => {
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(roundRestartInterval!);
+        roundRestartInterval = null;
+        roundRestartEl.style.opacity = '0';
+        return;
+      }
+      roundRestartEl.innerHTML = `${message}<br><span style="font-size:40px;">${remaining}s</span>`;
+    }, 1000);
+  }
+
   const weaponEl = document.createElement('div');
   weaponEl.style.cssText =
     'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);' +
@@ -1575,6 +1604,12 @@ async function main() {
       try { await fetch('/__lan/stop', { method: 'POST' }); } catch { /* ignore */ }
       network.disconnect();
       window.location.href = window.location.pathname;
+    },
+    onApplySettings: (settings) => {
+      network.sendApplySettings(settings);
+    },
+    onRestartRound: (settings) => {
+      network.sendRestartRound(settings);
     },
   });
   pauseMenu.onResume(() => {
@@ -4119,6 +4154,10 @@ async function main() {
             summaryEl.textContent = formatSettingsSummary(settings);
           }
         }
+      },
+      onRoundRestarting: (data: { countdown: number; message: string }) => {
+        // Show countdown notification to all players (s44j-settings-16d)
+        showRoundRestartingNotification(data.message, data.countdown);
       },
     });
 
