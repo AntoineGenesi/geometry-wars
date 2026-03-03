@@ -89,7 +89,7 @@ import {
 } from './network/NetworkClient';
 import { PlayerNameLabels, PlayerLabelData } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
-import { GameOverScreen, PvpPlayerStat } from './ui/GameOverScreen';
+import { GameOverScreen, PvpPlayerStat, PvpvePlayerStat } from './ui/GameOverScreen';
 import { VotingScreen } from './ui/VotingScreen';
 import { PauseMenu, PauseMenuGameData } from './ui/PauseMenu';
 import { UIHelpers } from './ui/UIHelpers';
@@ -3897,8 +3897,22 @@ async function main() {
       nonHostSettingsEl.style.display = 'none';
       if (!gameOverShown) {
         gameOverShown = true;
-        const isPvpMode = latestGameMode === 'pvp' || latestGameMode === 'pvpve';
-        if (isPvpMode) {
+        if (latestGameMode === 'pvpve') {
+          const pvpvePlayers: PvpvePlayerStat[] = [];
+          state.players.forEach((p) => {
+            pvpvePlayers.push({
+              id: p.id,
+              name: p.name || 'Player',
+              color: p.color ?? 0x00ffff,
+              kills: p.kills ?? 0,
+              enemyKills: p.enemyKills ?? 0,
+              deaths: p.deaths ?? 0,
+              totalDamageDealt: p.totalDamageDealt ?? 0,
+            });
+          });
+          pvpvePlayers.sort((a, b) => (b.enemyKills + b.kills) - (a.enemyKills + a.kills));
+          gameOverScreen.showPvPvE(pvpvePlayers, { isHost });
+        } else if (latestGameMode === 'pvp') {
           const pvpPlayers: PvpPlayerStat[] = [];
           state.players.forEach((p) => {
             pvpPlayers.push({
@@ -4133,8 +4147,22 @@ async function main() {
         // Show styled GameOverScreen instead of bare text
         if (!gameOverShown) {
           gameOverShown = true;
-          const isPvpMode = latestGameMode === 'pvp' || latestGameMode === 'pvpve';
-          if (isPvpMode && latestGameState) {
+          if (latestGameMode === 'pvpve' && latestGameState) {
+            const pvpvePlayers: PvpvePlayerStat[] = [];
+            latestGameState.players.forEach((p) => {
+              pvpvePlayers.push({
+                id: p.id,
+                name: p.name || 'Player',
+                color: p.color ?? 0x00ffff,
+                kills: p.kills ?? 0,
+                enemyKills: p.enemyKills ?? 0,
+                deaths: p.deaths ?? 0,
+                totalDamageDealt: p.totalDamageDealt ?? 0,
+              });
+            });
+            pvpvePlayers.sort((a, b) => (b.enemyKills + b.kills) - (a.enemyKills + a.kills));
+            gameOverScreen.showPvPvE(pvpvePlayers, { isHost });
+          } else if (latestGameMode === 'pvp' && latestGameState) {
             const pvpPlayers: PvpPlayerStat[] = [];
             latestGameState.players.forEach((p) => {
               pvpPlayers.push({

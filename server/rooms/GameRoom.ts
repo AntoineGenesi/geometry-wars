@@ -4385,6 +4385,35 @@ export class GameRoom extends Room<GameState> {
   }
 
   private checkGameOver() {
+    // PvPvE win conditions (handled separately — enemies AND players coexist)
+    if (this.state.gameMode === 'pvpve') {
+      // Time limit: most combined kills (enemy + player) wins when time runs out
+      if (this.currentSettings.timeLimit > 0 && this.state.gameTime >= this.currentSettings.timeLimit) {
+        this.logger.log(`[GameRoom] PvPvE: time limit reached (${this.currentSettings.timeLimit}s) — match over`);
+        this.transitionToVoting();
+        return;
+      }
+      // Last Standing / All Dead: count players still alive
+      // In PvPvE, player.alive = false means permanently eliminated (out of lives)
+      if (this.state.players.size > 0) {
+        let aliveCount = 0;
+        this.state.players.forEach(player => {
+          if (player.alive) aliveCount++;
+        });
+        if (aliveCount === 0) {
+          this.logger.log('[GameRoom] PvPvE: all players eliminated — match over');
+          this.transitionToVoting();
+          return;
+        }
+        if (aliveCount <= 1 && this.state.players.size > 1) {
+          this.logger.log('[GameRoom] PvPvE: last player standing — match over');
+          this.transitionToVoting();
+          return;
+        }
+      }
+      return; // Skip generic PvP and standard game-over checks for PvPvE
+    }
+
     // PvP win conditions (checked before standard game over)
     if (this.pvpEnabled && this.state.players.size > 1) {
       const winCondition = this.currentSettings.pvpWinCondition;
