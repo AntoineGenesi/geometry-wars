@@ -322,6 +322,40 @@ function pillChordDist(u1: number, v1: number, u2: number, v2: number, scaleFact
 }
 
 /**
+ * Mobius strip: majorRadius=8, stripWidth=3 (MUST match MobiusSurface.ts defaults).
+ * Standard Mobius parametric equations:
+ *   x = (R + s * cos(t/2)) * cos(t)
+ *   y = (R + s * cos(t/2)) * sin(t)
+ *   z = s * sin(t/2)
+ * where t = u * 2PI, s = (v - 0.5) * 2 * w.
+ *
+ * s44j-31: Added to usesWorldDist — UV fallback was too small and anisotropic on Mobius.
+ * The v-direction maps to ~12 world units at EPIC scale, making the UV threshold of
+ * 0.01 = only 0.12 world units in v-direction (vs the intended 0.25 * scaleFactor).
+ */
+const MOBIUS_MAJOR_R = 8;
+const MOBIUS_STRIP_W = 3;
+function mobiusPoint3D(u: number, v: number, scaleFactor: number): [number, number, number] {
+  const R = MOBIUS_MAJOR_R * scaleFactor;
+  const w = MOBIUS_STRIP_W * scaleFactor;
+  const t = u * 2 * Math.PI;
+  const s = (v - 0.5) * 2 * w;
+  const halfT = t / 2;
+  return [
+    (R + s * Math.cos(halfT)) * Math.cos(t),
+    (R + s * Math.cos(halfT)) * Math.sin(t),
+    s * Math.sin(halfT),
+  ];
+}
+
+function mobiusChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
+  const [x1, y1, z1] = mobiusPoint3D(u1, v1, scaleFactor);
+  const [x2, y2, z2] = mobiusPoint3D(u2, v2, scaleFactor);
+  const dx = x1 - x2, dy = y1 - y2, dz = z1 - z2;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
  * Dispatch to the appropriate world-space distance function for a given surface.
  * Returns Euclidean 3D chord distance in world units — matches SP CollisionSystem.
  */
@@ -334,6 +368,7 @@ function surfaceWorldDist(
   if (surfaceType === 'torus')     return torusChordDist(u1, v1, u2, v2, scaleFactor);
   if (surfaceType === 'cube-ring') return cubeRingChordDist(u1, v1, u2, v2, scaleFactor);
   if (surfaceType === 'pill')      return pillChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'mobius')    return mobiusChordDist(u1, v1, u2, v2, scaleFactor);
   return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron, sphere-tunnel
 }
 
@@ -2799,7 +2834,8 @@ export class GameRoom extends Room<GameState> {
       || surfaceType === 'peanut'
       || surfaceType === 'torus'
       || surfaceType === 'cube-ring'
-      || surfaceType === 'pill';
+      || surfaceType === 'pill'
+      || surfaceType === 'mobius'; // s44j-31: Mobius UV is anisotropic (v=12 vs u=100 world units at EPIC)
     const sphereR = 10 * scaleFactor;
 
     // --- World-space thresholds (surfaces using 3D chord/arc distance, in world units) ---
