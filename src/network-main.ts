@@ -2591,6 +2591,29 @@ async function main() {
       latestHealthBarVisibility = newHealthBarVis;
     }
 
+    // Sync game settings display for non-host clients (s44j-settings-16f)
+    // Build a GameSettings-like object from the room state fields.
+    if (state.difficultyMultiplier !== undefined) {
+      const displaySettings: GameSettings = {
+        ...currentGameSettings,
+        difficultyMultiplier: state.difficultyMultiplier ?? 1.0,
+        enemyCountCap: state.enemyCountCap ?? 50,
+        enemySpawnRateMultiplier: state.enemySpawnRateMultiplier ?? 1.0,
+        healingFrequency: state.healingFrequency ?? 30,
+        healingAmount: state.healingAmount ?? 25,
+        friendlyFire: state.friendlyFire ?? false,
+        pvpWinCondition: (state.pvpWinCondition ?? 'kills') as GameSettings['pvpWinCondition'],
+        startingWeapon: (state.startingWeapon ?? 'standard') as GameSettings['startingWeapon'],
+        timeLimit: state.timeLimit ?? 0,
+        pvpEnabled: state.pvpEnabled ?? false,
+        lives: state.initialLives ?? 3,
+        infiniteLives: state.infiniteLives ?? false,
+        mode: (state.gameMode ?? 'waves') as GameSettings['mode'],
+        surface: (state.surfaceType ?? 'sphere') as GameSettings['surface'],
+      };
+      pauseMenu.setGameSettingsDisplay(displaySettings, state.hasPendingSettings ?? false);
+    }
+
     // Always try to init/update surface from authoritative server state.
     // This handles both initial creation AND correcting a wrong initial guess.
     if (state.surfaceType) {
