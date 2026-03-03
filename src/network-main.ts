@@ -45,6 +45,7 @@ import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
 import { KillLog } from './ui/KillLog';
 import { TotalKillCounter } from './ui/TotalKillCounter';
+import { PvPvELeaderboard } from './ui/PvPvELeaderboard';
 import { WeaponPickup } from './weapons/WeaponPickup';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
 import { WeaponHUD } from './ui/WeaponHUD';
@@ -919,6 +920,10 @@ async function main() {
 
   // -- KillStreakAnnouncer: centered overlay for PvP kill streak announcements --
   const killStreakAnnouncer = new KillStreakAnnouncer(sound);
+
+  // -- PvPvE leaderboard: shows P/E/Total kill columns for all players --
+  // Only visible in pvpve mode; updated on each state change.
+  const pvpveLeaderboard = new PvPvELeaderboard();
 
   // -- Weapon mastery tracking + persistent XP store --
   // Tracks kills per weapon type for the local player (same as SP/co-op).
@@ -2587,6 +2592,24 @@ async function main() {
       latestPvpEnabled = newPvpEnabled;
       nameLabels.setShowHealthBars(latestPvpEnabled);
       pvpHudContainer.style.display = latestPvpEnabled ? 'flex' : 'none';
+    }
+
+    // PvPvE leaderboard: show only in pvpve mode, update every state change
+    const isPvpveMode = latestGameMode === 'pvpve';
+    if (isPvpveMode) {
+      pvpveLeaderboard.show();
+      const entries: { id: string; name: string; kills: number; enemyKills: number }[] = [];
+      state.players.forEach((p: NetworkPlayerState) => {
+        entries.push({
+          id: p.id,
+          name: p.name,
+          kills: p.kills ?? 0,
+          enemyKills: p.enemyKills ?? 0,
+        });
+      });
+      pvpveLeaderboard.update(entries, localPlayerId);
+    } else {
+      pvpveLeaderboard.hide();
     }
     const newHealthBarVis = state.healthBarVisibility ?? 'all';
     if (newHealthBarVis !== latestHealthBarVisibility) {
@@ -5864,6 +5887,7 @@ async function main() {
     lodManager.dispose();
     levelUpNotification.dispose();
     killStreakAnnouncer.dispose();
+    pvpveLeaderboard.dispose();
     playerLevel.dispose();
     buffManager.dispose();
     buffHUD.dispose();

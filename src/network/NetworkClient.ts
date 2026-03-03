@@ -23,6 +23,8 @@ export interface NetworkPlayerState {
   kills?: number;
   /** PvP death count: times this player was killed by another player. */
   deaths?: number;
+  /** PvPvE enemy kill count: enemies killed by this player (for leaderboard). */
+  enemyKills?: number;
   /** Current health in PvP mode (0–maxHealth). */
   health?: number;
   /** Maximum health in PvP mode (synced for HUD display). */
