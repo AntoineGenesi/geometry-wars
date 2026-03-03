@@ -85,7 +85,7 @@ export class PeanutSurface extends Surface {
     return this.baseRadius * (-2 * this.waistDepth * Math.sin(2 * phi))
   }
 
-  getPoint(u: number, v: number): SurfacePoint {
+  private getPointLocal(u: number, v: number): SurfacePoint {
     const theta = u * Math.PI * 2  // azimuthal angle
     const phi = v * Math.PI         // polar angle [0, PI]
 
@@ -123,6 +123,15 @@ export class PeanutSurface extends Surface {
     const normal = tangentU.clone().cross(tangentV).normalize()
 
     return { position, normal, tangentU, tangentV }
+  }
+
+  getPoint(u: number, v: number): SurfacePoint {
+    // s44j-11 FIX: Apply worldRotation so entity positions are in world space,
+    // consistent with bullet positions from MeshSurface (which use mesh.matrixWorld).
+    // Without this, enemy positions were in local surface space while bullets were
+    // in world space → collision check failed as the surface rotated with player movement.
+    // All other surfaces (Sphere, Torus, Cube, etc.) already call applyWorldRotation.
+    return this.applyWorldRotation(this.getPointLocal(u, v))
   }
 
   moveOnSurface(
