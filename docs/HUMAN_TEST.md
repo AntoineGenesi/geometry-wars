@@ -1928,3 +1928,29 @@ Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to rea
 - [ ] **ShockAura kills award score** — Pick up ShockAura buff; if aura kills an enemy, score should increment AND a score popup should appear
 - [ ] **No overlap spam** — Damage numbers stagger (slight random X/Z offset) so they don't all overlap on same position
 - [ ] **MP damage numbers** — In LAN game, shoot enemies; damage numbers appear (may all be default red in MP — color-coding by weapon is SP-only)
+
+
+## S44k-07: PvP Hit Detection Fix
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**What was changed:**
+1. `friendlyFire` now defaults to `true` for both PvP and PvPvE modes (was `false`)
+2. Pure PvP mode no longer spawns enemies (`tickWaves` skips when `gameMode === 'pvp'`)
+3. Removed duplicate `applySettings`/`restartRound` message handlers (merge artifact)
+
+**Root cause:** PvPvE damage was completely blocked (friendly fire disabled by default). Pure PvP had enemies consuming bullets before they could reach players.
+
+### Test: Player-vs-player damage in PvP
+- [ ] **Host a PvP game** — Select PvP mode from voting screen; have a second player join
+- [ ] **Shoot the other player** — Fire at them; their health bar should decrease
+- [ ] **Server log shows hit** — See `[GameRoom] PvP hit: PlayerA → PlayerB, damage=X` in console
+- [ ] **No enemies in PvP** — Pure PvP mode should have no enemy waves spawning
+- [ ] **Kill tracking works** — Kill the other player; kills counter increments
+
+### Test: Player-vs-player damage in PvPvE
+- [ ] **Host a PvPvE game** — Select PvPvE mode from voting screen
+- [ ] **Shoot the other player** — Fire at them; their health bar should decrease (previously broken!)
+- [ ] **Enemies also spawn** — Enemy waves continue to spawn alongside PvP combat
+- [ ] **Cooperative mode still possible** — In game settings, set `friendlyFire=false` to restore cooperative mode
+
