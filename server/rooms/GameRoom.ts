@@ -744,6 +744,15 @@ export class GameRoom extends Room<GameState> {
       this.logger.log(`[GameRoom] Countdown ${data.paused ? 'paused' : 'resumed'} by host`);
     });
 
+    // Lobby settings relay: host broadcasts current settings to all clients so
+    // non-host players can display them in read-only mode. Server does NOT apply
+    // settings yet — that is handled in s44j-settings-16e. (s44j-settings-16c)
+    this.onMessage('lobby_settings', (client, data: { settings: unknown }) => {
+      if (client.sessionId !== this.state.hostId) return;
+      if (this.state.roomPhase !== 'lobby') return;
+      this.broadcast('lobby_settings', data);
+    });
+
     this.onMessage('pause', (client, data: { paused: boolean }) => {
       if (client.sessionId !== this.state.hostId) return;
       this.state.isPaused = data.paused;

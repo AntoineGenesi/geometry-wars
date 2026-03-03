@@ -27,6 +27,8 @@ export interface VotingScreenCallbacks {
   onReadyUp?: () => void;
   /** Called when host pauses or resumes the countdown (host only) */
   onHostPauseCountdown?: (paused: boolean) => void;
+  /** Called when host clicks GAME SETTINGS (host only, s44j-settings-16c) */
+  onOpenSettings?: () => void;
 }
 
 export const SURFACES = [
@@ -413,6 +415,15 @@ export class VotingScreen {
     });
     this.pickModeToggle = checkbox;
     hostCtrl.appendChild(toggleWrap);
+
+    // GAME SETTINGS button (host only, s44j-settings-16c)
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'vs-settings-btn';
+    settingsBtn.textContent = '⚙ GAME SETTINGS';
+    settingsBtn.addEventListener('click', () => {
+      this.callbacks.onOpenSettings?.();
+    });
+    hostCtrl.appendChild(settingsBtn);
 
     // LAUNCH NOW button
     const launchBtn = document.createElement('button');
@@ -855,6 +866,26 @@ export class VotingScreen {
         border-color: #aa44ff;
         color: #cc88ff;
         box-shadow: 0 0 16px rgba(170, 68, 255, 0.5);
+      }
+
+      /* ---- Game Settings button (in host controls) ---- */
+      #voting-screen .vs-settings-btn {
+        background: rgba(0, 20, 60, 0.7);
+        border: 2px solid #0066cc;
+        color: #44aaff;
+        padding: 10px 20px;
+        font-size: 13px;
+        font-weight: bold;
+        cursor: pointer;
+        letter-spacing: 2px;
+        transition: all 0.2s;
+        font-family: inherit;
+        border-radius: 4px;
+      }
+      #voting-screen .vs-settings-btn:hover {
+        border-color: #00aaff;
+        color: #00ccff;
+        box-shadow: 0 0 16px rgba(0, 170, 255, 0.5);
       }
 
       /* ---- Pause countdown button (in host controls) ---- */

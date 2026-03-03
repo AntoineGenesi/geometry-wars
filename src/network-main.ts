@@ -123,6 +123,9 @@ import { computeCameraRelativeAimAngle } from './utils/aimAngle';
 import { createGameMode, type IGameMode, type QuickGameModeType } from './core/modes';
 import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
 import { runMobileOnboarding } from './ui/MobileOnboarding';
+import { GameSettingsPanel } from './ui/GameSettingsPanel';
+import { DEFAULT_GAME_SETTINGS } from '../server/shared/GameSettings';
+import type { GameSettings } from '../server/shared/GameSettings';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -1411,7 +1414,65 @@ async function main() {
   updateLivesUI();
 
   modeSelectorDiv.appendChild(livesRow);
+
+  // ---- Game Settings button (host only, s44j-settings-16c) ----
+  // Shown beneath the lives row; opens GameSettingsPanel as modal overlay.
+  let currentGameSettings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
+  let settingsBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const settingsBtn = document.createElement('button');
+  settingsBtn.id = 'lobby-settings-btn';
+  settingsBtn.textContent = '⚙ GAME SETTINGS';
+  settingsBtn.style.cssText =
+    'margin-top:14px;padding:8px 20px;font:bold 12px monospace;cursor:pointer;' +
+    'border:2px solid #0066cc;background:#001830;color:#44aaff;letter-spacing:2px;' +
+    'display:block;width:100%;text-shadow:0 0 6px #44aaff;transition:all 0.2s;';
+  modeSelectorDiv.appendChild(settingsBtn);
   document.body.appendChild(modeSelectorDiv);
+
+  // GameSettingsPanel instance — mounted lazily on first open
+  const lobbySettingsPanel = new GameSettingsPanel({
+    showCloseButton: true,
+    onChange: (s: GameSettings) => {
+      currentGameSettings = s;
+      // Debounce broadcast so we don't spam on every slider tick
+      if (settingsBroadcastTimer) clearTimeout(settingsBroadcastTimer);
+      settingsBroadcastTimer = setTimeout(() => {
+        if (network.isConnected()) {
+          network.sendLobbySettings(currentGameSettings);
+        }
+      }, 300);
+    },
+  });
+
+  settingsBtn.addEventListener('click', () => {
+    lobbySettingsPanel.show();
+  });
+
+  // ---- Non-host settings display (read-only, s44j-settings-16c) ----
+  // Shows a compact summary when the host has configured settings.
+  const nonHostSettingsEl = document.createElement('div');
+  nonHostSettingsEl.id = 'lobby-settings-display';
+  nonHostSettingsEl.style.cssText =
+    'position:fixed;top:42%;left:50%;transform:translateX(-50%);' +
+    'background:rgba(0,8,24,0.88);border:1px solid rgba(0,102,204,0.4);' +
+    'color:#44aaff;font:11px monospace;letter-spacing:1px;padding:10px 18px;' +
+    'border-radius:4px;z-index:90;display:none;text-align:center;max-width:360px;';
+  nonHostSettingsEl.innerHTML = '<span style="color:#0ff;font-weight:bold;letter-spacing:2px">HOST SETTINGS</span><br>' +
+    '<span id="lobby-settings-summary" style="color:#88ccee">Loading...</span>';
+  document.body.appendChild(nonHostSettingsEl);
+
+  function formatSettingsSummary(s: GameSettings): string {
+    const parts: string[] = [
+      `Mode: ${s.mode.toUpperCase()}`,
+      `Surface: ${s.surface.replace(/-/g, ' ').toUpperCase()}`,
+      `Lives: ${s.infiniteLives ? '∞' : s.lives}`,
+      `Difficulty: ${s.difficultyMultiplier.toFixed(1)}x`,
+    ];
+    if (s.pvpEnabled) parts.push('PvP: ON');
+    if (s.timeLimit > 0) parts.push(`Time: ${Math.round(s.timeLimit / 60)}min`);
+    return parts.join(' · ');
+  }
 
   // Start button
   const startBtn = document.createElement('button');
@@ -1441,7 +1502,7 @@ async function main() {
     // lives param: number (1-9) or 'infinite'
     const livesParam = selectedInfiniteLives ? 'infinite' : String(selectedLives);
     const choice = `${surfaceForChoice}:${selectedLobbyMode}:medium:${livesParam}`;
-    network.startGame(choice);
+    network.startGame(choice, currentGameSettings);
     startBtn.style.display = 'none';
     modeSelectorDiv.style.display = 'none';
     statusEl.textContent = 'Starting...';
@@ -2080,7 +2141,10 @@ async function main() {
       network.sendHostSetPickMode(pickMode);
     },
     onHostLaunch: (choice: string) => {
-      network.sendHostLaunch(choice);
+      network.sendHostLaunch(choice, currentGameSettings);
+    },
+    onOpenSettings: () => {
+      lobbySettingsPanel.show();
     },
     onReadyUp: () => {
       network.sendReadyUp();
@@ -3676,15 +3740,18 @@ async function main() {
       statusEl.textContent = 'VOTING';
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
+      nonHostSettingsEl.style.display = 'none';
     } else if (state.gameStarted && currentRoomPhase === 'playing') {
       statusEl.textContent = state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`;
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
+      nonHostSettingsEl.style.display = 'none';
     } else if (state.gameOver && currentRoomPhase !== 'voting') {
       // Legacy path: gameOver flag (pre-voting-state-machine servers or initial game)
       statusEl.textContent = 'GAME OVER';
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
+      nonHostSettingsEl.style.display = 'none';
       if (!gameOverShown) {
         gameOverShown = true;
         const localPlayer = state.players.get(localPlayerId);
@@ -3701,12 +3768,14 @@ async function main() {
         statusEl.textContent = 'Waiting for players... (Host: select mode + press START GAME)';
         startBtn.style.display = 'block';
         modeSelectorDiv.style.display = 'block';
+        nonHostSettingsEl.style.display = 'none';
       } else {
-        // Non-host: show waiting message with current selected mode.
+        // Non-host: show waiting message and read-only settings display.
         const modeLabel = LOBBY_MODES.find(m => m.id === state.gameMode)?.label ?? state.gameMode?.toUpperCase() ?? 'WAVES';
         statusEl.textContent = `Waiting for host to start... Mode: ${modeLabel}`;
         startBtn.style.display = 'none';
         modeSelectorDiv.style.display = 'none';
+        nonHostSettingsEl.style.display = 'block';
       }
     }
 
@@ -4034,6 +4103,16 @@ async function main() {
           // joining client sees the pause screen instead of a blank canvas. (s44j-21)
           if (data.isPaused && !isPaused) {
             showPauseOverlay(true);
+          }
+        }
+      },
+      onLobbySettings: (settings: GameSettings) => {
+        // Non-host: server relayed the host's settings — update read-only display.
+        // (s44j-settings-16c)
+        if (!isHost) {
+          const summaryEl = document.getElementById('lobby-settings-summary');
+          if (summaryEl) {
+            summaryEl.textContent = formatSettingsSummary(settings);
           }
         }
       },

@@ -1,4 +1,5 @@
 import { Client, Room } from 'colyseus.js';
+import type { GameSettings } from '../../server/shared/GameSettings';
 
 /** Player state from server */
 export interface NetworkPlayerState {
@@ -261,6 +262,11 @@ export interface NetworkCallbacks {
    * for the polling interval. (s44j-14)
    */
   onPhaseSync?: (data: { phase: string; isPaused: boolean }) => void;
+  /**
+   * Fired when the host broadcasts updated lobby settings to all clients.
+   * Non-host players use this to display read-only settings. (s44j-settings-16c)
+   */
+  onLobbySettings?: (settings: GameSettings) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -602,6 +608,12 @@ export class NetworkClient {
       this.callbacks.onPvpKill?.(data);
     });
 
+    // Lobby settings broadcast (host → server → all clients, s44j-settings-16c)
+    this.room.onMessage('lobby_settings', (data: { settings: GameSettings }) => {
+      netLog('[Network] Received lobby_settings update');
+      this.callbacks.onLobbySettings?.(data.settings);
+    });
+
     // Disconnection
     this.room.onLeave((code) => {
       netLog(`[Network] Left room with code: ${code}`);
@@ -704,10 +716,15 @@ export class NetworkClient {
   /**
    * Request game start
    * @param choice Optional 'surface:mode:size' string (e.g. 'sphere:king:medium')
+   * @param settings Optional game settings (s44j-settings-16c); server application in 16e
    */
-  startGame(choice?: string): void {
+  startGame(choice?: string, settings?: GameSettings): void {
     if (!this.room || !this.connected) return;
-    this.room.send('start', choice ? { choice } : undefined);
+    if (choice || settings) {
+      this.room.send('start', { ...(choice ? { choice } : {}), ...(settings ? { settings } : {}) });
+    } else {
+      this.room.send('start', undefined);
+    }
   }
 
   /**
@@ -766,10 +783,21 @@ export class NetworkClient {
   /**
    * Launch next game with a specific choice (host only, used in host pick mode).
    * choice format: 'surface:mode:size' e.g. 'sphere:waves:medium'
+   * @param settings Optional game settings (s44j-settings-16c); server application in 16e
    */
-  sendHostLaunch(choice: string): void {
+  sendHostLaunch(choice: string, settings?: GameSettings): void {
     if (!this.room || !this.connected) return;
-    this.room.send('host_launch', { choice });
+    this.room.send('host_launch', { choice, ...(settings ? { settings } : {}) });
+  }
+
+  /**
+   * Broadcast current lobby settings from host to all clients (display only).
+   * Server relays this to all connected clients so non-hosts can see settings.
+   * Settings are NOT applied by the server until 16e.
+   */
+  sendLobbySettings(settings: GameSettings): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('lobby_settings', { settings });
   }
 
   /**
