@@ -24,6 +24,28 @@ export class UIHelpers {
   private static boostEl = document.getElementById('boost-display')!;
 
   /**
+   * Activate death cam visual effect: grayscale + darkening on the game canvas.
+   * Fades in over 0.3s. Call on player death.
+   */
+  static showDeathCamEffect(): void {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+    (canvas as HTMLElement).style.transition = 'filter 0.3s ease';
+    (canvas as HTMLElement).style.filter = 'grayscale(0.7) brightness(0.55)';
+  }
+
+  /**
+   * Deactivate death cam visual effect: restore normal color on the game canvas.
+   * Fades out over 0.5s. Call on player respawn.
+   */
+  static hideDeathCamEffect(): void {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return;
+    (canvas as HTMLElement).style.transition = 'filter 0.5s ease';
+    (canvas as HTMLElement).style.filter = '';
+  }
+
+  /**
    * Flash the screen with a color for visual impact
    */
   static screenFlash(color: string, duration = 150): void {
