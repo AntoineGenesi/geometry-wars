@@ -2682,9 +2682,12 @@ async function main() {
         allyGlowManager.setPosition(id, player.mesh.position);
       }
 
-      // Update floating name label — show "(You)" for local player, actual name for remote
+      // Update floating name label — show "(You)" for local player, actual name for remote.
+      // In PvP mode, append kill count in "[3K]" format when kills > 0.
       const displayName = id === localPlayerId ? '(You)' : netPlayer.name;
-      nameLabels.setLabel(id, displayName, netPlayer.color);
+      const pvpKills = netPlayer.kills ?? 0;
+      const labelText = pvpKills > 0 ? `${displayName} [${pvpKills}K]` : displayName;
+      nameLabels.setLabel(id, labelText, netPlayer.color);
     });
 
     // Remove disconnected players
@@ -3863,6 +3866,10 @@ async function main() {
           levelUpNotification.show(data.newLevel, perk);
           sound.play('multiplierUp', { pitch: 1.2 + data.newLevel * 0.05 });
         }
+      },
+      onPvpKill: (data) => {
+        // Log PvP kill events to console for debugging; future task (13d) adds UI announcements.
+        netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
       },
       onDisconnected: (code: number) => {
         // Fired when the WebSocket closes for any reason (server crash, network

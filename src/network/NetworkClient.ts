@@ -18,6 +18,10 @@ export interface NetworkPlayerState {
   weaponAmmo: number;
   playerLevel: number;
   playerKills: number;
+  /** PvP kill count: times this player killed another player. */
+  kills?: number;
+  /** PvP death count: times this player was killed by another player. */
+  deaths?: number;
   /** Zone time in seconds: KotH (time in zone) or Claustrophobia (time inside boundary). */
   zoneTime?: number;
   /** Maps buff type → stack count. Present when server has Phase D enabled. */
@@ -236,6 +240,11 @@ export interface NetworkCallbacks {
   onStartupConfig?: (config: NetworkStartupConfig) => void;
   /** Fired when a player levels up (server-authoritative). */
   onPlayerLevelUp?: (data: { playerId: string; newLevel: number; playerName: string }) => void;
+  /**
+   * Fired when a PvP kill occurs. Broadcast to ALL clients.
+   * streakCount = consecutive kills the killer has made without dying.
+   */
+  onPvpKill?: (data: { killerId: string; killerName: string; victimId: string; victimName: string; streakCount: number }) => void;
   /**
    * Fired when the server explicitly tells the client the current game phase on join.
    * Allows immediate routing to the correct screen (e.g. voting) without waiting
@@ -575,6 +584,12 @@ export class NetworkClient {
     this.room.onMessage('player_level_up', (data: { playerId: string; newLevel: number; playerName: string }) => {
       netLog(`[Network] player_level_up: ${data.playerName} reached level ${data.newLevel}`);
       this.callbacks.onPlayerLevelUp?.(data);
+    });
+
+    // PvP kill event (broadcast to all clients)
+    this.room.onMessage('pvp_kill', (data: { killerId: string; killerName: string; victimId: string; victimName: string; streakCount: number }) => {
+      netLog(`[Network] pvp_kill: ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
+      this.callbacks.onPvpKill?.(data);
     });
 
     // Disconnection
