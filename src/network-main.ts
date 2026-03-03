@@ -126,6 +126,7 @@ import { runMobileOnboarding } from './ui/MobileOnboarding';
 import { GameSettingsPanel } from './ui/GameSettingsPanel';
 import { DEFAULT_GAME_SETTINGS } from '../server/shared/GameSettings';
 import type { GameSettings } from '../server/shared/GameSettings';
+import { KillStreakAnnouncer } from './ui/KillStreakAnnouncer';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -915,6 +916,9 @@ async function main() {
     levelUpNotification.show(level, perk);
     sound.play('multiplierUp', { pitch: 1.2 + level * 0.05 });
   };
+
+  // -- KillStreakAnnouncer: centered overlay for PvP kill streak announcements --
+  const killStreakAnnouncer = new KillStreakAnnouncer(sound);
 
   // -- Weapon mastery tracking + persistent XP store --
   // Tracks kills per weapon type for the local player (same as SP/co-op).
@@ -4055,8 +4059,8 @@ async function main() {
         }
       },
       onPvpKill: (data) => {
-        // Log PvP kill events to console for debugging; future task (13d) adds UI announcements.
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
+        killStreakAnnouncer.announce(data.killerName, data.streakCount);
       },
       onDisconnected: (code: number) => {
         // Fired when the WebSocket closes for any reason (server crash, network
@@ -4707,6 +4711,7 @@ async function main() {
     plasmaExplosionEffect.update(dt, [], () => {});
     surface.updateGrid(dt);
     killLog.update(dt);
+    killStreakAnnouncer.update(dt);
     allyGlowManager.update(dt);
     glowManager.update(dt);
 
@@ -5672,6 +5677,7 @@ async function main() {
     meshSurface?.dispose();
     lodManager.dispose();
     levelUpNotification.dispose();
+    killStreakAnnouncer.dispose();
     playerLevel.dispose();
     buffManager.dispose();
     buffHUD.dispose();
