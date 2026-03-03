@@ -1516,8 +1516,13 @@ async function main() {
     // Game remains paused globally, camera can move locally
   });
   pauseMenu.onExit(() => {
+    // Show loading indicator immediately so user sees feedback during disconnect
+    showGameLoading('RETURNING TO MENU...');
     network.disconnect();
-    window.location.href = window.location.pathname;
+    // Small delay to let the loading screen render, then reload
+    requestAnimationFrame(() => {
+      window.location.href = window.location.pathname;
+    });
   });
   pauseMenu.setMasteryPointStore(masteryPointStore);
   pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
@@ -2032,12 +2037,17 @@ async function main() {
   });
   // "RETURN TO MENU" button in network mode: end game (host only) then disconnect.
   gameOverScreen.onReturnToMenu(() => {
+    // Show loading indicator immediately so user sees feedback during disconnect
+    showGameLoading('RETURNING TO MENU...');
     if (isHost) {
       network.sendEndGame();
     } else {
       network.disconnect();
     }
-    window.location.href = window.location.pathname;
+    // Small delay to let the loading screen render, then reload
+    requestAnimationFrame(() => {
+      window.location.href = window.location.pathname;
+    });
   });
   let gameOverShown = false;
 
@@ -2077,12 +2087,17 @@ async function main() {
       screen.show(MasteryStore.load());
     },
     onReturnToMenu: () => {
+      // Show loading indicator immediately so user sees feedback during disconnect
+      showGameLoading('RETURNING TO MENU...');
       if (isHost) {
         network.sendEndGame();
       } else {
         network.disconnect();
       }
-      window.location.href = window.location.pathname;
+      // Small delay to let the loading screen render, then reload
+      requestAnimationFrame(() => {
+        window.location.href = window.location.pathname;
+      });
     },
   });
 
