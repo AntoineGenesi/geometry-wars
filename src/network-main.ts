@@ -2934,11 +2934,13 @@ async function main() {
               const dv = bullet.y - ownerPlayer!.surfaceV;
               if (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001) {
                 // Compute world-space offset from UV delta using tangent vectors.
-                // tangentU/V from getPoint() are in unscaled space, so scale them to match
-                // the server's scaled world coordinates.
+                // tangentU/V from getPoint() are NORMALIZED unit vectors (not scaled by sphere
+                // radius), so we must multiply by DEFAULT_SURFACE_SCALE (sphere radius = 10)
+                // in addition to currentMapSizeScaleFactor. Without this, the offset is 10x
+                // too small, making both bullets appear as a single bullet (s44j-02 fix).
                 const offsetWorld = ownerSp.tangentU.clone().multiplyScalar(du * Math.PI * 2)
                   .addScaledVector(ownerSp.tangentV, dv * Math.PI);
-                offsetWorld.multiplyScalar(currentMapSizeScaleFactor);
+                offsetWorld.multiplyScalar(currentMapSizeScaleFactor * DEFAULT_SURFACE_SCALE);
                 bulletWorldPos = ownerWorldPos.clone().add(offsetWorld);
               } else {
                 bulletWorldPos = ownerWorldPos;
