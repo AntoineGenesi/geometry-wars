@@ -1804,3 +1804,16 @@ Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to rea
 - [ ] **Test other modes** — Repeat for Sniper (limited ammo), Rainbow (enemy colors), Claustrophobia (shrinking zone)
 - [ ] **Voting screen shows all modes** — After a game ends, the voting screen should show all 5 mode options to vote on
 - [ ] **No UX conflicts** — Surface and size selectors (in voting screen) still work correctly
+
+
+## S44j-02: Blaster Dual-Barrel Bullet Separation in MP
+
+**Fix:** Both blaster bullets now spawn with correct visual separation (~0.19 world units per side) in MP. Previously, the UV-to-world offset formula was missing the sphere radius scale factor (`DEFAULT_SURFACE_SCALE = 10`), making both bullets appear as a single merged bullet.
+
+### Test: Blaster fires two distinct bullets in MP
+- [ ] **Start a LAN game** — Host + join as second player on sphere (or any map)
+- [ ] **Fire the blaster** — Hold the fire button; observe the bullets fired
+- [ ] **Two distinct bullets visible** — You should clearly see TWO separate yellow bullet capsules side-by-side, not one merged blob
+- [ ] **Compare to single-player** — SP blaster should look similar (also two parallel bullets)
+- [ ] **Try different aim directions** — Bullets should remain visually separated regardless of aim angle
+- [ ] **LAN client perspective** — Join as client (not host) and verify same separation visible from both sides
