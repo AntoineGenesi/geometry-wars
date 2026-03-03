@@ -3326,10 +3326,9 @@ async function main() {
         const zt = p.zoneTime ?? 0;
         combinedScore += zt;
         const ztMins = Math.floor(zt / 60);
-        const ztSecs = Math.floor(zt % 60);
         const ztStr = ztMins > 0
-          ? `${ztMins}:${String(ztSecs).padStart(2, '0')}s`
-          : `${ztSecs}s`;
+          ? `${ztMins}:${(zt % 60).toFixed(1).padStart(4, '0')}s`
+          : `${zt.toFixed(1)}s`;
         playerList += `${p.name}${you}: ${livesHtml} ${ztStr}<br>`;
       } else {
         combinedScore += p.score;
@@ -3340,8 +3339,7 @@ async function main() {
     if (teamScoreEl) {
       if (isZoneTimeModeList) {
         const ztMins = Math.floor(combinedScore / 60);
-        const ztSecs = Math.floor(combinedScore % 60);
-        teamScoreEl.textContent = ztMins > 0 ? `${ztMins}:${String(ztSecs).padStart(2, '0')}` : `${ztSecs}s`;
+        teamScoreEl.textContent = ztMins > 0 ? `${ztMins}:${(combinedScore % 60).toFixed(1).padStart(4, '0')}` : `${combinedScore.toFixed(1)}s`;
       } else {
         teamScoreEl.textContent = combinedScore.toLocaleString();
       }
