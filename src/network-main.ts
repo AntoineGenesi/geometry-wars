@@ -3199,7 +3199,41 @@ async function main() {
               && ownerPlayer.wx !== undefined
               && (ownerPlayer.wx !== 0 || ownerPlayer.wy !== 0 || ownerPlayer.wz !== 0);
 
-            if (hasOwnerWorldPos) {
+            // s44k-03 FIX: For LOCAL player bullets, use the client's current visual mesh
+            // position (client-predicted, 60Hz) instead of the server's lagged wx/wy/wz
+            // (server-authoritative, ~30Hz + 1 RTT behind). The server stores player UV via
+            // sphere-approx (_worldPosToApproxUV) which is wrong for non-sphere surfaces,
+            // causing client hard-snaps to wrong UV positions. When moving, the player MESH
+            // is at the client-predicted position while bullets spawned from server wx/wy/wz
+            // appear noticeably offset — the "bullets from wrong position" symptom.
+            // Using mesh.position ensures bullets always originate from the player's visual
+            // location. worldToSurface() recovers correct UV for tangent vector computation
+            // on all surfaces (no torus special-case needed).
+            const isLocalBullet = bullet.ownerId === localPlayerId;
+            const localPlayerObj = isLocalBullet ? networkPlayers.get(localPlayerId) : null;
+
+            if (localPlayerObj) {
+              // Client visual position — slightly above surface (0.15 normal offset) but
+              // worldToSurface handles off-surface points correctly for all surface types.
+              const visualWorldPos = localPlayerObj.mesh.position.clone();
+              const visualUV = surface.worldToSurface(visualWorldPos);
+              const visualSp = surface.getPoint(visualUV.u, visualUV.v);
+
+              // Apply barrel offset (du/dv = ±BARREL_OFFSET in UV space from server).
+              // du = bullet.x - ownerSphereApproxU isolates the offset regardless of UV accuracy.
+              const du = bullet.x - ownerPlayer!.surfaceU;
+              const dv = bullet.y - ownerPlayer!.surfaceV;
+              if (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001) {
+                const offsetWorld = visualSp.tangentU.clone().multiplyScalar(du * Math.PI * 2)
+                  .addScaledVector(visualSp.tangentV, dv * Math.PI);
+                offsetWorld.multiplyScalar(currentMapSizeScaleFactor * DEFAULT_SURFACE_SCALE);
+                bulletWorldPos = visualWorldPos.clone().add(offsetWorld);
+              } else {
+                bulletWorldPos = visualWorldPos;
+              }
+              bulletTangentU = visualSp.tangentU;
+              bulletTangentV = visualSp.tangentV;
+            } else if (hasOwnerWorldPos) {
               // s44h-01 FIX: Use owner world position DIRECTLY as bullet spawn position.
               // Previous approach (s44f-08/s44g-05) round-tripped through worldToSurface()
               // → getPoint() to "correct" the UV, but PeanutSurface's worldToSurface had

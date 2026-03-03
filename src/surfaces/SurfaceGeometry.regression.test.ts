@@ -147,6 +147,26 @@ function runGenericChecks(surface: Surface, name: string): void {
         expect(dist, `worldToSurface round-trip error=${dist.toFixed(2)} at (${u},${v})`).toBeLessThan(3);
       }
     });
+
+    it('worldToSurface: handles off-surface positions (0.15 normal offset)', () => {
+      // s44k-03 regression guard: MP player mesh.position is 0.15 units above the surface
+      // (normal offset for visual clearance). worldToSurface() is used to recover UV from
+      // mesh.position for bullet spawn tangent vectors. This test ensures that the small
+      // normal offset does not cause worldToSurface to return drastically wrong UV values.
+      const testUVs = [{ u: 0.1, v: 0.3 }, { u: 0.5, v: 0.5 }, { u: 0.75, v: 0.7 }];
+      for (const { u, v } of testUVs) {
+        const pt = surface.getPoint(u, v);
+        // Simulate mesh.position = surface point + 0.15 * normal (same as MP render code)
+        const meshPos = pt.position.clone().addScaledVector(pt.normal, 0.15);
+        const recovered = surface.worldToSurface(meshPos);
+        expect(Number.isFinite(recovered.u), `recovered.u NaN for off-surface (${u},${v})`).toBe(true);
+        expect(Number.isFinite(recovered.v), `recovered.v NaN for off-surface (${u},${v})`).toBe(true);
+        // Off-surface round-trip should still be within 3 world units of the original
+        const recoveredPt = surface.getPoint(recovered.u, recovered.v);
+        const dist = pt.position.distanceTo(recoveredPt.position);
+        expect(dist, `off-surface worldToSurface error=${dist.toFixed(2)} at (${u},${v})`).toBeLessThan(3);
+      }
+    });
   });
 }
 
