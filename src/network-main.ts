@@ -120,6 +120,7 @@ import { initI18n } from './i18n';
 import { computeCameraRelativeAimAngle } from './utils/aimAngle';
 import { createGameMode, type IGameMode, type QuickGameModeType } from './core/modes';
 import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
+import { runMobileOnboarding } from './ui/MobileOnboarding';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -3607,6 +3608,11 @@ async function main() {
   // Game engine and lobby UI are fully initialized — dismiss loading overlay so the
   // lobby (statusEl, player list, mode selector) is visible during connection.
   hideGameLoading();
+
+  // Mobile-only: show orientation prompt (portrait → landscape) and pinch-to-zoom hint.
+  if (mobile) {
+    runMobileOnboarding();
+  }
 
   // 30-second connection timeout: if Colyseus handshake hangs (server reachable
   // but not responding — common on mobile over Wi-Fi), reject with a clear error
