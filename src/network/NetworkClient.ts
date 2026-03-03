@@ -23,6 +23,8 @@ export interface NetworkPlayerState {
   kills?: number;
   /** PvP death count: times this player was killed by another player. */
   deaths?: number;
+  /** Total damage dealt to other players this match (PvP mode). */
+  totalDamageDealt?: number;
   /** Zone time in seconds: KotH (time in zone) or Claustrophobia (time inside boundary). */
   zoneTime?: number;
   /** Maps buff type → stack count. Present when server has Phase D enabled. */

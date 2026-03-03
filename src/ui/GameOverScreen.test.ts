@@ -549,4 +549,143 @@ describe('GameOverScreen', () => {
     screen.dispose();
     expect(bodyEl.children.length).toBe(before - 1);
   });
+
+  // ── PvP Stats — selectMvp ─────────────────────────────────────────────
+
+  it('selectMvp by kills returns player with most kills', () => {
+    const screen = new GameOverScreen();
+    const proto = Object.getPrototypeOf(screen) as {
+      selectMvp: (players: import('./GameOverScreen').PvpPlayerStat[], criteria: 'kills' | 'kd') => string | null;
+    };
+
+    const players: import('./GameOverScreen').PvpPlayerStat[] = [
+      { id: 'p1', name: 'Alice', color: 0x00ffff, kills: 5, deaths: 2, totalDamageDealt: 100 },
+      { id: 'p2', name: 'Bob',   color: 0xff00ff, kills: 8, deaths: 3, totalDamageDealt: 200 },
+      { id: 'p3', name: 'Carol', color: 0x00ff00, kills: 3, deaths: 1, totalDamageDealt:  80 },
+    ];
+
+    expect(proto.selectMvp.call(screen, players, 'kills')).toBe('p2');
+    screen.dispose();
+  });
+
+  it('selectMvp by kd returns player with highest K/D', () => {
+    const screen = new GameOverScreen();
+    const proto = Object.getPrototypeOf(screen) as {
+      selectMvp: (players: import('./GameOverScreen').PvpPlayerStat[], criteria: 'kills' | 'kd') => string | null;
+    };
+
+    const players: import('./GameOverScreen').PvpPlayerStat[] = [
+      // Alice: 5/2 = 2.5
+      { id: 'p1', name: 'Alice', color: 0x00ffff, kills: 5, deaths: 2, totalDamageDealt: 100 },
+      // Bob:   8/3 = 2.67  ← highest K/D
+      { id: 'p2', name: 'Bob',   color: 0xff00ff, kills: 8, deaths: 3, totalDamageDealt: 200 },
+      // Carol: 3/1 = 3.0 ← actually highest
+      { id: 'p3', name: 'Carol', color: 0x00ff00, kills: 3, deaths: 1, totalDamageDealt:  80 },
+    ];
+
+    // Carol has best K/D: 3/1 = 3.0
+    expect(proto.selectMvp.call(screen, players, 'kd')).toBe('p3');
+    screen.dispose();
+  });
+
+  it('selectMvp returns null when all kills = 0', () => {
+    const screen = new GameOverScreen();
+    const proto = Object.getPrototypeOf(screen) as {
+      selectMvp: (players: import('./GameOverScreen').PvpPlayerStat[], criteria: 'kills' | 'kd') => string | null;
+    };
+
+    const players: import('./GameOverScreen').PvpPlayerStat[] = [
+      { id: 'p1', name: 'Alice', color: 0x00ffff, kills: 0, deaths: 0, totalDamageDealt: 0 },
+      { id: 'p2', name: 'Bob',   color: 0xff00ff, kills: 0, deaths: 1, totalDamageDealt: 0 },
+    ];
+
+    expect(proto.selectMvp.call(screen, players, 'kills')).toBeNull();
+    expect(proto.selectMvp.call(screen, players, 'kd')).toBeNull();
+    screen.dispose();
+  });
+
+  it('selectMvp handles deaths = 0 (infinite K/D) for kd criteria', () => {
+    const screen = new GameOverScreen();
+    const proto = Object.getPrototypeOf(screen) as {
+      selectMvp: (players: import('./GameOverScreen').PvpPlayerStat[], criteria: 'kills' | 'kd') => string | null;
+    };
+
+    // p1 has 1 kill, 0 deaths → K/D = 1/1 = 1.0 (deaths clamped to 1)
+    // p2 has 5 kills, 0 deaths → K/D = 5/1 = 5.0 ← winner
+    const players: import('./GameOverScreen').PvpPlayerStat[] = [
+      { id: 'p1', name: 'Alice', color: 0x00ffff, kills: 1, deaths: 0, totalDamageDealt: 20 },
+      { id: 'p2', name: 'Bob',   color: 0xff00ff, kills: 5, deaths: 0, totalDamageDealt: 100 },
+    ];
+
+    expect(proto.selectMvp.call(screen, players, 'kd')).toBe('p2');
+    screen.dispose();
+  });
+
+  // ── PvP Stats — showPvP ───────────────────────────────────────────────
+
+  it('showPvP makes container visible', () => {
+    const screen = new GameOverScreen();
+    const container = (document.body as unknown as MockElement).children.at(-1)!;
+
+    const players: import('./GameOverScreen').PvpPlayerStat[] = [
+      { id: 'p1', name: 'Alice', color: 0x00ffff, kills: 5, deaths: 2, totalDamageDealt: 120 },
+      { id: 'p2', name: 'Bob',   color: 0xff00ff, kills: 3, deaths: 4, totalDamageDealt:  80 },
+    ];
+
+    screen.showPvP(players);
+    expect(container.classList.contains('hidden')).toBe(false);
+    screen.dispose();
+  });
+
+  it('showPvP renders player names in HTML', () => {
+    const screen = new GameOverScreen();
+    const container = (document.body as unknown as MockElement).children.at(-1)!;
+
+    const players: import('./GameOverScreen').PvpPlayerStat[] = [
+      { id: 'p1', name: 'Alice', color: 0x00ffff, kills: 5, deaths: 2, totalDamageDealt: 120 },
+      { id: 'p2', name: 'Bob',   color: 0xff00ff, kills: 3, deaths: 4, totalDamageDealt:  80 },
+    ];
+
+    screen.showPvP(players);
+    expect(container.innerHTML).toContain('Alice');
+    expect(container.innerHTML).toContain('Bob');
+    screen.dispose();
+  });
+
+  it('showPvP marks MVP player row with mvp class in HTML', () => {
+    const screen = new GameOverScreen();
+    const container = (document.body as unknown as MockElement).children.at(-1)!;
+
+    const players: import('./GameOverScreen').PvpPlayerStat[] = [
+      { id: 'p1', name: 'Alice', color: 0x00ffff, kills: 5, deaths: 2, totalDamageDealt: 120 },
+      { id: 'p2', name: 'Bob',   color: 0xff00ff, kills: 2, deaths: 4, totalDamageDealt:  80 },
+    ];
+
+    screen.showPvP(players, { mvpCriteria: 'kills' });
+    // Alice has most kills → should have mvp class
+    const html = container.innerHTML;
+    // The MVP row comes before the non-MVP row; check that mvp class precedes Alice's name
+    expect(html).toContain('pvp-player-row mvp');
+    expect(html).toContain('Alice');
+    screen.dispose();
+  });
+
+  it('showPvP onContinue fires when continue button is clicked', () => {
+    const screen = new GameOverScreen();
+    const cb = vi.fn();
+    screen.onContinue(cb);
+
+    const players: import('./GameOverScreen').PvpPlayerStat[] = [
+      { id: 'p1', name: 'Alice', color: 0x00ffff, kills: 5, deaths: 2, totalDamageDealt: 120 },
+    ];
+
+    screen.showPvP(players);
+
+    const container = (document.body as unknown as MockElement).children.at(-1)!;
+    const btn = container.querySelector<MockElement>('.pvp-continue-btn');
+    btn?.click();
+
+    expect(cb).toHaveBeenCalledOnce();
+    screen.dispose();
+  });
 });

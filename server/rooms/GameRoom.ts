@@ -1206,6 +1206,7 @@ export class GameRoom extends Room<GameState> {
       player.playerKills = 0;
       player.kills = 0;
       player.deaths = 0;
+      player.totalDamageDealt = 0;
       // Reset PvP kill streak for this player
       this.pvpKillStreaks.set(player.id, 0);
       // Clear secondary weapon inventory on round reset
@@ -3059,7 +3060,12 @@ export class GameRoom extends Room<GameState> {
             const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
             const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
 
+            const prevHealth = target.health;
             target.health = Math.max(0, target.health - damage);
+            const actualDamage = prevHealth - target.health;
+            if (owner) {
+              owner.totalDamageDealt += actualDamage;
+            }
 
             // Spawn health pickup near damaged player if health < threshold and cooldown elapsed
             if (

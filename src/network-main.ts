@@ -88,7 +88,7 @@ import {
 } from './network/NetworkClient';
 import { PlayerNameLabels } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
-import { GameOverScreen } from './ui/GameOverScreen';
+import { GameOverScreen, PvpPlayerStat } from './ui/GameOverScreen';
 import { VotingScreen } from './ui/VotingScreen';
 import { PauseMenu, PauseMenuGameData } from './ui/PauseMenu';
 import { UIHelpers } from './ui/UIHelpers';
@@ -3758,13 +3758,30 @@ async function main() {
       nonHostSettingsEl.style.display = 'none';
       if (!gameOverShown) {
         gameOverShown = true;
-        const localPlayer = state.players.get(localPlayerId);
-        const isZoneTimeMode = latestGameMode === 'king' || latestGameMode === 'claustrophobia';
-        const score = isZoneTimeMode
-          ? Math.round((localPlayer?.zoneTime ?? 0) * 100) // centiseconds, matches KingMode.getScore()
-          : (localPlayer?.score ?? 0);
-        const modeDisplayName = latestGameMode ? latestGameMode.toUpperCase() : undefined;
-        gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network', undefined, modeDisplayName);
+        const isPvpMode = latestGameMode === 'pvp' || latestGameMode === 'pvpve';
+        if (isPvpMode) {
+          const pvpPlayers: PvpPlayerStat[] = [];
+          state.players.forEach((p) => {
+            pvpPlayers.push({
+              id: p.id,
+              name: p.name || 'Player',
+              color: p.color ?? 0x00ffff,
+              kills: p.kills ?? 0,
+              deaths: p.deaths ?? 0,
+              totalDamageDealt: (p as { totalDamageDealt?: number }).totalDamageDealt ?? 0,
+            });
+          });
+          pvpPlayers.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+          gameOverScreen.showPvP(pvpPlayers, { isHost, mvpCriteria: 'kills' });
+        } else {
+          const localPlayer = state.players.get(localPlayerId);
+          const isZoneTimeMode = latestGameMode === 'king' || latestGameMode === 'claustrophobia';
+          const score = isZoneTimeMode
+            ? Math.round((localPlayer?.zoneTime ?? 0) * 100) // centiseconds, matches KingMode.getScore()
+            : (localPlayer?.score ?? 0);
+          const modeDisplayName = latestGameMode ? latestGameMode.toUpperCase() : undefined;
+          gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network', undefined, modeDisplayName);
+        }
       }
     } else if (currentRoomPhase === 'lobby' || (!state.gameStarted && !state.gameOver)) {
       if (isHost) {
@@ -3977,13 +3994,31 @@ async function main() {
         // Show styled GameOverScreen instead of bare text
         if (!gameOverShown) {
           gameOverShown = true;
-          const localPlayerState = latestGameState?.players.get(localPlayerId);
-          const isZoneTimeMode = latestGameMode === 'king' || latestGameMode === 'claustrophobia';
-          const score = isZoneTimeMode
-            ? Math.round((localPlayerState?.zoneTime ?? 0) * 100)
-            : (localPlayerState?.score ?? networkPlayers.get(localPlayerId)?.score ?? 0);
-          const modeDisplayName = latestGameMode ? latestGameMode.toUpperCase() : undefined;
-          gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network', undefined, modeDisplayName);
+          const isPvpMode = latestGameMode === 'pvp' || latestGameMode === 'pvpve';
+          if (isPvpMode && latestGameState) {
+            const pvpPlayers: PvpPlayerStat[] = [];
+            latestGameState.players.forEach((p) => {
+              pvpPlayers.push({
+                id: p.id,
+                name: p.name || 'Player',
+                color: p.color ?? 0x00ffff,
+                kills: p.kills ?? 0,
+                deaths: p.deaths ?? 0,
+                totalDamageDealt: (p as { totalDamageDealt?: number }).totalDamageDealt ?? 0,
+              });
+            });
+            // Sort by kills descending for readability
+            pvpPlayers.sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
+            gameOverScreen.showPvP(pvpPlayers, { isHost, mvpCriteria: 'kills' });
+          } else {
+            const localPlayerState = latestGameState?.players.get(localPlayerId);
+            const isZoneTimeMode = latestGameMode === 'king' || latestGameMode === 'claustrophobia';
+            const score = isZoneTimeMode
+              ? Math.round((localPlayerState?.zoneTime ?? 0) * 100)
+              : (localPlayerState?.score ?? networkPlayers.get(localPlayerId)?.score ?? 0);
+            const modeDisplayName = latestGameMode ? latestGameMode.toUpperCase() : undefined;
+            gameOverScreen.show(score, lastCreatedSurfaceType || 'sphere', 'network', undefined, modeDisplayName);
+          }
         }
         // Clear all pending warning rings when game ends
         for (const w of spawnWarningRings) {
