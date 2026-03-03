@@ -398,6 +398,10 @@ export class GameState extends Schema {
   declare initialLives: number;
   /** When true, lives never deplete on death */
   declare infiniteLives: boolean;
+  /** When true, player-to-player bullet damage is active (PvP mode). */
+  declare pvpEnabled: boolean;
+  /** Controls whose health bars are visible: 'all' | 'friendly' | 'enemy' | 'none' */
+  declare healthBarVisibility: string;
 
   constructor() {
     super();
@@ -430,6 +434,10 @@ export class GameState extends Schema {
     // Lives configuration
     this.initialLives = 3;
     this.infiniteLives = false;
+
+    // PvP / health bar settings
+    this.pvpEnabled = false;
+    this.healthBarVisibility = 'all';
   }
 }
 
@@ -459,4 +467,6 @@ defineTypes(GameState, {
   countdownPaused: 'boolean',
   initialLives: 'number',
   infiniteLives: 'boolean',
+  pvpEnabled: 'boolean',
+  healthBarVisibility: 'string',
 });

@@ -4,6 +4,25 @@
 >
 > **Last updated:** 2026-03-03
 
+## s44j-pvp-13e: PvP Health Bar HUD
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**What was changed:** Added health bar display for PvP mode. Local player health bar appears at bottom-center of screen (HP label + colored bar). Other players get a health bar above their floating name label. Color gradient: green → yellow → red. Only visible when pvpEnabled is true on server.
+
+**Files changed:** `server/schema/GameState.ts`, `server/rooms/GameRoom.ts`, `src/network/NetworkClient.ts`, `src/ui/PlayerNameLabel.ts`, `src/network-main.ts`
+
+**How to test (LAN required, PvP mode):**
+- [ ] Start a LAN game with `pvp` flag enabled (select PvP Damage in settings, or host_launch with pvp parameter)
+- [ ] Verify: Local player sees HP bar at bottom-center of screen (green when full health)
+- [ ] Verify: Other players have a colored health bar above their name labels
+- [ ] Verify: Health bar color changes from green → yellow → red as health decreases (take damage from enemies or other players)
+- [ ] Verify: Health bar updates in real-time (no lag between hit and bar update)
+- [ ] Verify: In non-PvP mode (normal waves), health bars are NOT visible
+- [ ] Verify: `healthBarVisibility` setting from GameSettingsPanel controls visibility (requires s44j-settings-16 integration — future task)
+
+---
+
 ## s44j-14: Rejoin During Voting Goes to Sphere
 
 **Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
