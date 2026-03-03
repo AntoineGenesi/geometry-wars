@@ -170,6 +170,18 @@ export interface NetworkGameState {
   pvpEnabled?: boolean;
   /** Controls whose health bars are visible: 'all' | 'friendly' | 'enemy' | 'none' */
   healthBarVisibility?: string;
+  // Full GameSettings fields synced for client display (s44j-settings-16f)
+  difficultyMultiplier?: number;
+  enemyCountCap?: number;
+  enemySpawnRateMultiplier?: number;
+  healingFrequency?: number;
+  healingAmount?: number;
+  friendlyFire?: boolean;
+  pvpWinCondition?: string;
+  startingWeapon?: string;
+  timeLimit?: number;
+  /** True when the host has queued settings to apply at the next wave boundary. */
+  hasPendingSettings?: boolean;
 }
 
 /** Input to send to server */
@@ -678,6 +690,16 @@ export class NetworkClient {
       infiniteLives?: boolean;
       pvpEnabled?: boolean;
       healthBarVisibility?: string;
+      difficultyMultiplier?: number;
+      enemyCountCap?: number;
+      enemySpawnRateMultiplier?: number;
+      healingFrequency?: number;
+      healingAmount?: number;
+      friendlyFire?: boolean;
+      pvpWinCondition?: string;
+      startingWeapon?: string;
+      timeLimit?: number;
+      hasPendingSettings?: boolean;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -718,6 +740,16 @@ export class NetworkClient {
       infiniteLives: s.infiniteLives ?? false,
       pvpEnabled: s.pvpEnabled ?? false,
       healthBarVisibility: s.healthBarVisibility ?? 'all',
+      difficultyMultiplier: s.difficultyMultiplier,
+      enemyCountCap: s.enemyCountCap,
+      enemySpawnRateMultiplier: s.enemySpawnRateMultiplier,
+      healingFrequency: s.healingFrequency,
+      healingAmount: s.healingAmount,
+      friendlyFire: s.friendlyFire,
+      pvpWinCondition: s.pvpWinCondition,
+      startingWeapon: s.startingWeapon,
+      timeLimit: s.timeLimit,
+      hasPendingSettings: s.hasPendingSettings ?? false,
     };
   }
 

@@ -844,6 +844,7 @@ export class GameRoom extends Room<GameState> {
       }
       if (this.state.roomPhase !== 'playing') return;
       this.pendingSettings = validateSettings(data.settings as Partial<GameSettings>);
+      this.state.hasPendingSettings = true;
       this.logger.log('[GameRoom] applySettings: pending settings stored, will apply on next wave');
       // Notify all clients that pending settings are queued
       this.broadcast('settings_pending', {});
@@ -1255,6 +1256,8 @@ export class GameRoom extends Room<GameState> {
     this.state.timeLimit = this.currentSettings.timeLimit;
     // Also sync pvpEnabled private field (used in tick() for damage checks)
     this.pvpEnabled = this.currentSettings.pvpEnabled;
+    // Sync pending indicator so clients can show "Apply Next Round" status
+    this.state.hasPendingSettings = this.pendingSettings !== null;
   }
 
   private startGameWithSettings(choice: string) {
@@ -4357,6 +4360,10 @@ export class GameRoom extends Room<GameState> {
     this.state.voteMap.clear();
     this.state.readyMap.clear();
     this.state.countdownPaused = false;
+    // Reset settings to defaults when game ends (s44j-settings-16f: no persistence across games)
+    this.currentSettings = { ...DEFAULT_GAME_SETTINGS };
+    this.pendingSettings = null;
+    this.syncSettingsToState(); // resets all settings fields + hasPendingSettings = false
     this.setMetadata({
       surface: this.state.surfaceType,
       status: 'voting',

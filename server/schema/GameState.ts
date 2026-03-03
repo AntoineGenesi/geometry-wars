@@ -426,6 +426,8 @@ export class GameState extends Schema {
   declare startingWeapon: string;
   /** Match time limit in seconds. 0 = unlimited (default 0). */
   declare timeLimit: number;
+  /** When true, the host has queued settings for the next wave boundary ("Apply Next Round"). */
+  declare hasPendingSettings: boolean;
 
   constructor() {
     super();
@@ -473,6 +475,7 @@ export class GameState extends Schema {
     this.pvpWinCondition = 'kills';
     this.startingWeapon = 'standard';
     this.timeLimit = 0;
+    this.hasPendingSettings = false;
   }
 }
 
@@ -513,4 +516,5 @@ defineTypes(GameState, {
   pvpWinCondition: 'string',
   startingWeapon: 'string',
   timeLimit: 'number',
+  hasPendingSettings: 'boolean',
 });

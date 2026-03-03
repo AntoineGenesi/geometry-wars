@@ -109,6 +109,9 @@ export class PauseMenu {
   // Server settings panel (host-only mid-game settings)
   private settingsPanel: GameSettingsPanel | null = null;
   private settingsPanelActions: HTMLElement | null = null;
+  // Non-host read-only settings display (s44j-settings-16f)
+  private gameSettingsDisplay: GameSettings | null = null;
+  private hasPendingSettingsDisplay: boolean = false;
 
   constructor() {
     this.container = document.createElement('div');
@@ -227,6 +230,11 @@ export class PauseMenu {
             <div class="stats-perf-section">
               <div class="stats-section-title">${t('pauseMenu.stats.performance')}</div>
               <div class="stats-perf-content"></div>
+            </div>
+            <div class="stats-game-settings-section hidden">
+              <div class="stats-section-title">GAME SETTINGS</div>
+              <div class="stats-game-settings-content"></div>
+              <div class="stats-pending-settings hidden" style="color:#ffaa44;margin-top:4px;font-size:10px;">⚡ New settings apply next wave</div>
             </div>
           </div>
         </div>
@@ -1071,6 +1079,52 @@ export class PauseMenu {
   setIsMultiplayer(isMultiplayer: boolean): void {
     this.isMultiplayer = isMultiplayer;
     this.updateNetworkButtonsVisibility();
+  }
+
+  /**
+   * Update the read-only game settings display for non-host multiplayer clients (s44j-settings-16f).
+   * Pass null to hide the section.
+   */
+  setGameSettingsDisplay(settings: GameSettings | null, hasPending: boolean): void {
+    this.gameSettingsDisplay = settings;
+    this.hasPendingSettingsDisplay = hasPending;
+    const section = this.container.querySelector('.stats-game-settings-section');
+    if (!section) return;
+    if (!settings || this.isHost) {
+      // Hide for hosts (they have the full settings panel) and when no settings
+      section.classList.add('hidden');
+      return;
+    }
+    section.classList.remove('hidden');
+    const content = section.querySelector('.stats-game-settings-content');
+    if (content) {
+      const lines: string[] = [
+        `Mode: <b>${settings.mode.toUpperCase()}</b>`,
+        `Lives: <b>${settings.infiniteLives ? '∞' : settings.lives}</b>`,
+        `Difficulty: <b>${settings.difficultyMultiplier.toFixed(1)}x</b>`,
+        `Spawn Rate: <b>${settings.enemySpawnRateMultiplier.toFixed(1)}x</b>`,
+        `Enemy Cap: <b>${settings.enemyCountCap}</b>`,
+      ];
+      if (settings.pvpEnabled) {
+        lines.push(`PvP: <b>ON</b>  (${settings.pvpWinCondition})`);
+        if (settings.friendlyFire) lines.push(`Friendly Fire: <b>ON</b>`);
+      }
+      if (settings.startingWeapon !== 'standard') {
+        lines.push(`Starting Weapon: <b>${settings.startingWeapon.replace(/_/g, ' ')}</b>`);
+      }
+      if (settings.timeLimit > 0) {
+        lines.push(`Time Limit: <b>${Math.round(settings.timeLimit / 60)}min</b>`);
+      }
+      content.innerHTML = lines.join('<br>');
+    }
+    const pendingEl = section.querySelector('.stats-pending-settings');
+    if (pendingEl) {
+      if (hasPending) {
+        pendingEl.classList.remove('hidden');
+      } else {
+        pendingEl.classList.add('hidden');
+      }
+    }
   }
 
   /**
