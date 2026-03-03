@@ -142,19 +142,23 @@ export class KingMode implements IGameMode {
   }
 
   onFixedUpdate(dt: number, context: GameModeContext): void {
+    // In network mode, spawn warning rings are never cleaned up (enemySpawner.update is not
+    // called client-side). Skip warnings for all wave spawns to prevent accumulation.
+    const skipWarning = context.isNetworkMode ?? false;
+
     // 0. Tick elapsed time and zone animation timer
     this.zoneTime += dt;
     this.kothElapsed += dt;
     this.kothWaveTimer -= dt;
     if (this.kothWaveTimer <= 0) {
-      this.spawnTimedKothWave(context);
+      this.spawnTimedKothWave(context, skipWarning);
     }
 
     // Staggered showcase: spawn one fractal_snake at each showcase timer threshold.
     // EnemySpawner cycles variants, so snakes at 10s/18s/26s/34s each show a different head.
     for (let i = this.fractalSnakeShowcaseTimers.length - 1; i >= 0; i--) {
       if (this.kothElapsed >= this.fractalSnakeShowcaseTimers[i]) {
-        context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }]);
+        context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }], skipWarning);
         this.fractalSnakeShowcaseTimers.splice(i, 1);
       }
     }
@@ -188,7 +192,7 @@ export class KingMode implements IGameMode {
     for (const event of this.shrinkEvents) {
       if (!event.spawned && this.zoneRadiusUV <= event.threshold) {
         event.spawned = true;
-        this.triggerShrinkWave(context, event.wave);
+        this.triggerShrinkWave(context, event.wave, skipWarning);
       }
     }
 
@@ -350,18 +354,18 @@ export class KingMode implements IGameMode {
    * Called every 5–10s throughout the match, creating continuous pressure
    * that increases in intensity over time.
    */
-  private spawnTimedKothWave(context: GameModeContext): void {
+  private spawnTimedKothWave(context: GameModeContext, skipWarning: boolean): void {
     this.kothWaveNumber++;
 
     // Difficulty ramps from 0 → 5 over 5 minutes (aggressive for KotH)
     const difficultyLevel = Math.min(5.0, this.kothElapsed / 60.0);
     const activeCount = context.enemySpawner.getActiveCount();
     const wave = generateScaledEndlessWave(this.kothWaveNumber, difficultyLevel, activeCount);
-    context.enemySpawner.spawnWave(wave as any);
+    context.enemySpawner.spawnWave(wave as any, skipWarning);
 
     // Every 3rd wave, add a fractal_snake to keep them appearing throughout the match
     if (this.kothWaveNumber % 3 === 0) {
-      context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }]);
+      context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }], skipWarning);
     }
 
     // Interval shrinks from 10s → 5s as waves accumulate (max every 5s)
@@ -376,6 +380,7 @@ export class KingMode implements IGameMode {
   private triggerShrinkWave(
     context: GameModeContext,
     wave: Array<{ type: EnemyType; count: number }>,
+    skipWarning: boolean = false,
   ): void {
     const spawner = context.enemySpawner;
     if (!spawner?.spawnWave) return;
@@ -385,6 +390,7 @@ export class KingMode implements IGameMode {
         type: entry.type,
         count: entry.count,
       })),
+      skipWarning,
     );
   }
 

@@ -326,6 +326,92 @@ describe('KingMode', () => {
     expect(largeCenter.x).toBeCloseTo(15.0, 4);
   });
 
+  it('REGRESSION s44j-07: spawnWave called with skipWarning=false in SP mode (rings clean up normally)', () => {
+    // In SP, enemySpawner.update() IS called, so warning rings are cleaned up.
+    // spawnWave must be called with false (default) so rings appear as intended.
+    const spawnWaveSpy = vi.spyOn(mockEnemySpawner, 'spawnWave');
+    spawnWaveSpy.mockClear();
+
+    const spCtx: GameModeContext = { ...createMockContext(), isNetworkMode: false };
+    const spMode = new KingMode();
+    spMode.onStart(spCtx);
+
+    // Advance past first wave timer (8s)
+    for (let i = 0; i < 9; i++) {
+      spMode.onFixedUpdate(1.0, spCtx);
+    }
+
+    expect(spawnWaveSpy).toHaveBeenCalled();
+    // In SP mode, all spawnWave calls should use skipWarning=false
+    for (const call of spawnWaveSpy.mock.calls) {
+      expect(call[1]).toBeFalsy(); // skipSpawnWarning should be false/undefined
+    }
+
+    spMode.dispose(spCtx);
+  });
+
+  it('REGRESSION s44j-07: spawnWave called with skipWarning=true in MP mode (rings never accumulate)', () => {
+    // Root cause: In MP, enemySpawner.update() is NOT called (server-authoritative).
+    // Without this fix, KingMode called spawnWave with skipSpawnWarning=false, creating
+    // red ring indicators that were never cleaned up, piling up on screen indefinitely.
+    const networkSpawner = {
+      getEnemies: () => [] as any[],
+      getActiveCount: () => 0,
+      spawnWave: vi.fn(),
+    } as any;
+    const spawnWaveSpy = vi.spyOn(networkSpawner, 'spawnWave');
+
+    const networkCtx: GameModeContext = {
+      ...createMockContext(),
+      enemySpawner: networkSpawner,
+      isNetworkMode: true,
+    };
+    const networkMode = new KingMode();
+    networkMode.onStart(networkCtx);
+
+    // Advance past first wave timer (8s) to trigger timed waves
+    for (let i = 0; i < 9; i++) {
+      networkMode.onFixedUpdate(1.0, networkCtx);
+    }
+
+    expect(spawnWaveSpy).toHaveBeenCalled();
+    // In MP mode, ALL spawnWave calls must pass skipSpawnWarning=true
+    for (const call of spawnWaveSpy.mock.calls) {
+      expect(call[1]).toBe(true);
+    }
+
+    networkMode.dispose(networkCtx);
+  });
+
+  it('REGRESSION s44j-07: shrink threshold waves also use skipWarning in MP mode', () => {
+    // Shrink events use triggerShrinkWave() — must also respect the network mode flag.
+    const networkSpawner = {
+      getEnemies: () => [] as any[],
+      getActiveCount: () => 0,
+      spawnWave: vi.fn(),
+    } as any;
+    const spawnWaveSpy = vi.spyOn(networkSpawner, 'spawnWave');
+
+    const networkCtx: GameModeContext = {
+      ...createMockContext(),
+      enemySpawner: networkSpawner,
+      isNetworkMode: true,
+    };
+    const networkMode = new KingMode();
+    networkMode.onStart(networkCtx);
+
+    // Force zone to just above the lowest threshold (0.05) and let it shrink past
+    (networkMode as any).zoneRadiusUV = 0.051;
+    networkMode.onFixedUpdate(10.0, networkCtx);
+
+    // All spawnWave calls — including shrink waves — must use skipSpawnWarning=true
+    for (const call of spawnWaveSpy.mock.calls) {
+      expect(call[1]).toBe(true);
+    }
+
+    networkMode.dispose(networkCtx);
+  });
+
   it('HUD overlay shows zone time and kill points', () => {
     // Place player in zone for 2 seconds
     const zoneU = (mode as any).zoneU;

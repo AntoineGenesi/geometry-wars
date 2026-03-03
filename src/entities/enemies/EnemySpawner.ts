@@ -701,7 +701,7 @@ export class EnemySpawner {
     return enemy;
   }
 
-  spawnWave(waveEnemies: WaveEnemy[]): void {
+  spawnWave(waveEnemies: WaveEnemy[], skipSpawnWarning: boolean = false): void {
     // Apply DDA modifications to the wave if modifier is set
     const modifiedWave = this.ddaModifier
       ? this.ddaModifier.modifyWave(waveEnemies, this.ddaPlayers)
@@ -725,7 +725,7 @@ export class EnemySpawner {
           const finalType = this.ddaModifier
             ? this.ddaModifier.modifySpawnType(waveEnemy.type, validPos.u, validPos.v, this.ddaPlayers)
             : waveEnemy.type;
-          this.spawn(finalType, validPos.u, validPos.v, tier, false, continuousDifficultyLevel, maxSegments);
+          this.spawn(finalType, validPos.u, validPos.v, tier, skipSpawnWarning, continuousDifficultyLevel, maxSegments);
         }
       }
     }
