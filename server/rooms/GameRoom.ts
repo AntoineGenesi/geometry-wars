@@ -39,6 +39,7 @@ import {
   HEALTH_PICKUP_LIFETIME,
   HEALTH_PICKUP_SPAWN_RADIUS,
   PVP_KILLS_TO_WIN,
+  DIFFICULTY_PER_PLAYER_FACTOR,
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import type { ServerWalkerState } from '../movement/ServerMeshWalker';
@@ -3868,8 +3869,11 @@ export class GameRoom extends Room<GameState> {
 
     // Decrease interval over time (same formula as WaveScheduler)
     // enemySpawnRateMultiplier shortens/lengthens the interval (higher = more frequent waves)
+    // playerCountMult adjusts spawn rate based on active player count (s44j-pvpve-14b)
     const baseInterval = Math.max(WAVE_INTERVAL_MIN, WAVE_INTERVAL_BASE - this.waveNumber * WAVE_INTERVAL_DECAY);
-    const scaledInterval = baseInterval / Math.max(0.01, this.currentSettings.enemySpawnRateMultiplier);
+    const playerCountMult = this.computePlayerCountDifficultyMultiplier();
+    const effectiveSpawnRate = this.currentSettings.enemySpawnRateMultiplier * playerCountMult;
+    const scaledInterval = baseInterval / Math.max(0.01, effectiveSpawnRate);
     this.nextWaveAt = this.waveElapsed + Math.max(WAVE_INTERVAL_MIN, scaledInterval);
   }
 
@@ -3910,6 +3914,30 @@ export class GameRoom extends Room<GameState> {
       : 0;
     // Apply host-configurable difficulty multiplier (0.5 = half speed, 2.0 = double speed)
     return Math.min(8.0, (base + claustrophobiaBonus) * this.currentSettings.difficultyMultiplier);
+  }
+
+  /**
+   * Compute a spawn-rate multiplier based on active player count (s44j-pvpve-14b).
+   *
+   * Formula: 1 + factor * (totalPlayers - activePlayers)
+   * where factor depends on enemyDifficultyPerPlayer tier:
+   *   - low:    -0.20 (spawn rate decreases as players are eliminated)
+   *   - medium:  0.00 (no change, returns 1.0)
+   *   - high:   +0.30 (spawn rate increases as players are eliminated)
+   *
+   * Result is clamped to [0.1, 10.0] to prevent division-by-zero edge cases.
+   */
+  private computePlayerCountDifficultyMultiplier(): number {
+    const tier = this.currentSettings.enemyDifficultyPerPlayer;
+    const factor = DIFFICULTY_PER_PLAYER_FACTOR[tier] ?? 0;
+    if (factor === 0) return 1.0;
+
+    const totalPlayers = this.state.players.size;
+    let activePlayers = 0;
+    this.state.players.forEach((p) => { if (p.alive) activePlayers++; });
+    const eliminated = totalPlayers - activePlayers;
+
+    return Math.max(0.1, Math.min(10.0, 1 + factor * eliminated));
   }
 
   /**
