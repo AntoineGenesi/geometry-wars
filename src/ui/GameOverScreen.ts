@@ -37,6 +37,41 @@ export interface PvpStatsOptions {
   mvpCriteria?: 'kills' | 'kd';
 }
 
+/** Per-player data for the PvPvE end-of-match statistics screen. */
+export interface PvpvePlayerStat {
+  id: string;
+  name: string;
+  /** Player colour as an RGB hex number (e.g. 0x00ffff). */
+  color: number;
+  /** PvP kills: times this player killed another player. */
+  kills: number;
+  /** Enemy kills: times this player killed an enemy. */
+  enemyKills: number;
+  deaths: number;
+  totalDamageDealt: number;
+}
+
+/** Options for showPvPvE(). */
+export interface PvpveStatsOptions {
+  /** Whether the local player is the host (can advance to lobby immediately). */
+  isHost?: boolean;
+  /**
+   * MVP selection criterion.
+   * 'total_kills' = most combined kills wins MVP; 'kd' = highest K/D wins MVP.
+   * Defaults to 'total_kills'.
+   */
+  mvpCriteria?: 'total_kills' | 'kd';
+  /**
+   * Score weight for enemy kills (default 1).
+   * Final Score = enemyKills * enemyKillWeight + kills * playerKillWeight.
+   */
+  enemyKillWeight?: number;
+  /**
+   * Score weight for player kills (default 1).
+   */
+  playerKillWeight?: number;
+}
+
 const STORAGE_KEY = 'geometry_wars_high_scores';
 const LAST_NAME_KEY = 'geometry_wars_last_name';
 const MAX_HIGH_SCORES = 10;
@@ -552,6 +587,70 @@ export class GameOverScreen {
         font-size: 11px;
         letter-spacing: 2px;
       }
+
+      /* ── PvPvE Stats Screen ──────────────────────────────────────────── */
+
+      #game-over-screen .pvpve-stats {
+        width: 100%;
+        max-width: 760px;
+        margin: 0 auto;
+      }
+
+      #game-over-screen .pvpve-subtitle {
+        font-size: 13px;
+        color: #88ff66;
+        letter-spacing: 4px;
+        margin: 0 0 24px;
+        text-shadow: 0 0 6px #44bb22;
+      }
+
+      /* PvPvE table uses 6 columns: color dot | name | PVP | ENEMY | K/D | SCORE */
+      #game-over-screen .pvpve-player-row {
+        display: grid;
+        grid-template-columns: 14px 1fr 56px 76px 56px 80px;
+        align-items: center;
+        gap: 0 12px;
+        padding: 10px 14px;
+        margin-bottom: 6px;
+        background: rgba(0, 30, 60, 0.5);
+        border: 1px solid rgba(0, 80, 120, 0.5);
+        border-radius: 6px;
+        transition: background 0.2s;
+      }
+
+      #game-over-screen .pvpve-player-row.mvp {
+        background: rgba(20, 30, 0, 0.7);
+        border-color: #88ff44;
+        box-shadow: 0 0 12px rgba(136, 255, 68, 0.3);
+      }
+
+      #game-over-screen .pvpve-player-row.mvp .pvp-player-name::before {
+        content: '★ ';
+        color: #88ff44;
+      }
+
+      #game-over-screen .pvpve-stat-headers {
+        display: grid;
+        grid-template-columns: 14px 1fr 56px 76px 56px 80px;
+        gap: 0 12px;
+        padding: 0 14px 6px;
+        color: #445566;
+        font-size: 10px;
+        letter-spacing: 2px;
+        text-align: right;
+      }
+
+      #game-over-screen .pvpve-stat-headers > :nth-child(2) {
+        text-align: left;
+      }
+
+      #game-over-screen .pvpve-score-note {
+        text-align: center;
+        font-size: 10px;
+        color: #336655;
+        letter-spacing: 1px;
+        margin: 6px 0 16px;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -953,6 +1052,148 @@ export class GameOverScreen {
         <div class="pvp-bar-section" style="margin-top:10px">
           <h3>DAMAGE DEALT</h3>
           ${damageBarsHTML}
+        </div>
+
+        <button class="pvp-continue-btn">${btnLabel}</button>
+        <div class="pvp-ready-hint">Press ENTER or click to continue</div>
+      </div>
+    `;
+  }
+
+  // ── PvPvE Stats Screen ───────────────────────────────────────────────────
+
+  /**
+   * Show the PvPvE end-of-match statistics screen.
+   * Displays combined player kills + enemy kills, K/D, and Final Score.
+   * @param players  Array of player stats from the server.
+   * @param options  Optional configuration (isHost, mvpCriteria, weights).
+   */
+  showPvPvE(players: PvpvePlayerStat[], options: PvpveStatsOptions = {}): void {
+    this.clearAutoTransition();
+    const { isHost = false, mvpCriteria = 'total_kills', enemyKillWeight = 1, playerKillWeight = 1 } = options;
+
+    this.container.innerHTML = this.createPvpveStatsHTML(players, mvpCriteria, isHost, enemyKillWeight, playerKillWeight);
+    this.container.classList.remove('hidden');
+
+    const continueBtn = this.container.querySelector<HTMLButtonElement>('.pvp-continue-btn');
+    continueBtn?.addEventListener('click', () => {
+      this.clearAutoTransition();
+      this.hide();
+      this.onContinueCallback?.();
+    });
+
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        document.removeEventListener('keydown', keyHandler);
+        this.clearAutoTransition();
+        this.hide();
+        this.onContinueCallback?.();
+      }
+    };
+    setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
+  }
+
+  private selectPvpveMvp(
+    players: PvpvePlayerStat[],
+    criteria: 'total_kills' | 'kd',
+    enemyKillWeight: number,
+    playerKillWeight: number,
+  ): string | null {
+    if (players.length === 0) return null;
+    if (criteria === 'total_kills') {
+      const scoreOf = (p: PvpvePlayerStat) => p.enemyKills * enemyKillWeight + p.kills * playerKillWeight;
+      const maxScore = Math.max(...players.map(scoreOf));
+      if (maxScore === 0) return null;
+      return players.find(p => scoreOf(p) === maxScore)?.id ?? null;
+    }
+    // K/D: (enemyKills + kills) / max(deaths, 1)
+    const kdOf = (p: PvpvePlayerStat) => (p.enemyKills + p.kills) / Math.max(p.deaths, 1);
+    const maxKd = Math.max(...players.map(kdOf));
+    if (maxKd === 0) return null;
+    return players.find(p => kdOf(p) === maxKd)?.id ?? null;
+  }
+
+  private createPvpveStatsHTML(
+    players: PvpvePlayerStat[],
+    mvpCriteria: 'total_kills' | 'kd',
+    isHost: boolean,
+    enemyKillWeight: number,
+    playerKillWeight: number,
+  ): string {
+    const mvpId = this.selectPvpveMvp(players, mvpCriteria, enemyKillWeight, playerKillWeight);
+    const maxTotal = Math.max(1, ...players.map(p => p.enemyKills + p.kills));
+    const scoreOf = (p: PvpvePlayerStat) => Math.round(p.enemyKills * enemyKillWeight + p.kills * playerKillWeight);
+    const kdOf = (p: PvpvePlayerStat) => {
+      const total = p.enemyKills + p.kills;
+      return p.deaths === 0 ? (total > 0 ? '∞' : '—') : (total / p.deaths).toFixed(2);
+    };
+
+    const rowsHTML = players.map(p => {
+      const isMvp = p.id === mvpId;
+      const colorCSS = this.colorToCSS(p.color);
+      const kd = kdOf(p);
+      const score = scoreOf(p);
+      const isScoreHighlight = mvpCriteria === 'total_kills';
+      const isKdHighlight = mvpCriteria === 'kd';
+      return `
+        <div class="pvpve-player-row${isMvp ? ' mvp' : ''}">
+          <div class="pvp-color-dot" style="background:${colorCSS};box-shadow:0 0 6px ${colorCSS}"></div>
+          <div class="pvp-player-name">${this.escapeHTML(p.name)}</div>
+          <div class="pvp-stat-col">${p.kills}</div>
+          <div class="pvp-stat-col">${p.enemyKills}</div>
+          <div class="pvp-stat-col${isKdHighlight ? ' highlight' : ''}">${kd}</div>
+          <div class="pvp-stat-col${isScoreHighlight ? ' highlight' : ''}">${score}</div>
+        </div>
+      `;
+    }).join('');
+
+    const totalBarsHTML = players.map(p => {
+      const total = p.enemyKills + p.kills;
+      const pct = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
+      const colorCSS = this.colorToCSS(p.color);
+      return `
+        <div class="pvp-bar-row">
+          <div class="pvp-bar-label">${this.escapeHTML(p.name)}</div>
+          <div class="pvp-bar-track">
+            <div class="pvp-bar-fill" style="width:${pct}%;background:${colorCSS}"></div>
+          </div>
+          <div class="pvp-bar-value">${total} kills</div>
+        </div>
+      `;
+    }).join('');
+
+    const mvpBadgeHTML = mvpId
+      ? `<div class="pvp-mvp-badge">★ MVP: ${this.escapeHTML(players.find(p => p.id === mvpId)?.name ?? '')} (${mvpCriteria === 'kd' ? 'K/D' : 'SCORE'})</div>`
+      : '';
+
+    const btnLabel = isHost ? 'BACK TO LOBBY' : 'CONTINUE TO LOBBY';
+    const weightsNote = (enemyKillWeight === 1 && playerKillWeight === 1)
+      ? 'Score = enemy kills + player kills'
+      : `Score = enemy kills × ${enemyKillWeight} + player kills × ${playerKillWeight}`;
+
+    return `
+      <div class="content pvpve-stats">
+        <h1 class="pvp-title">MATCH OVER</h1>
+        <div class="pvpve-subtitle">PvPvE RESULTS</div>
+
+        <div class="pvpve-stat-headers">
+          <div></div>
+          <div>PLAYER</div>
+          <div>PVP</div>
+          <div>ENEMY</div>
+          <div>K/D</div>
+          <div>SCORE</div>
+        </div>
+
+        ${rowsHTML}
+
+        <div class="pvpve-score-note">${weightsNote}</div>
+
+        ${mvpBadgeHTML}
+
+        <div class="pvp-bar-section">
+          <h3>TOTAL KILLS</h3>
+          ${totalBarsHTML}
         </div>
 
         <button class="pvp-continue-btn">${btnLabel}</button>
