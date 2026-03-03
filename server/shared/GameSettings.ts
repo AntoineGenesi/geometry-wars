@@ -206,7 +206,7 @@ export const DEFAULT_GAME_SETTINGS: Readonly<GameSettings> = {
   healingFrequency:        30,
   healingAmount:           25,
   healthBarVisibility:     'all',
-  friendlyFire:            false,
+  friendlyFire:            true,
   weaponSpawnFrequency:    1.0,
   buffSpawnFrequency:      1.0,
   startingWeapon:          'standard',
@@ -347,8 +347,11 @@ export function validateSettings(partial: Partial<GameSettings> = {}): GameSetti
         : DEFAULT_GAME_SETTINGS.pvpWinCondition)
     : DEFAULT_GAME_SETTINGS.pvpWinCondition;
 
+  // s44k-07: PvP and PvPvE modes default to friendlyFire=true so players can damage each other.
+  // The cooperative-by-default PvPvE behaviour (s44j-pvpve-14e friendlyFire=false) turned out
+  // to be confusing — users expect to shoot each other in both PvP modes.
   const friendlyFire = isPvpMode
-    ? (typeof partial.friendlyFire === 'boolean' ? partial.friendlyFire : DEFAULT_GAME_SETTINGS.friendlyFire)
+    ? (typeof partial.friendlyFire === 'boolean' ? partial.friendlyFire : true)
     : false;
 
   return {
