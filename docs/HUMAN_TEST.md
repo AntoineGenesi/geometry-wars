@@ -4,6 +4,28 @@
 >
 > **Last updated:** 2026-03-03
 
+## s44j-14: Rejoin During Voting Goes to Sphere
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**What was changed:** Fixed race condition where rejoining during the voting phase would show the sphere map instead of the voting screen. Three root causes fixed: (1) server now sends `phase_sync` message on join for non-lobby phases; (2) `listen('gameStarted')` guard prevents false `onGameStart()` trigger when `roomPhase === 'voting'`; (3) `triggerInitialSync()` fires `onStateChange` immediately after callbacks are set, instead of waiting 100ms.
+
+**Files changed:** `server/rooms/GameRoom.ts`, `src/network/NetworkClient.ts`, `src/network-main.ts`
+
+**How to test (LAN required):**
+- [ ] Start a LAN multiplayer game (host + at least 1 client)
+- [ ] Play a round until it ends and the voting screen appears
+- [ ] While the voting screen is showing, have the HOST disconnect and rejoin
+- [ ] Verify: rejoined host sees the **voting screen**, not the sphere/game map
+- [ ] Verify: rejoined host can see what maps other players have already voted for
+- [ ] Verify: rejoined host can cast or change their vote
+- [ ] Repeat with a NON-HOST client disconnecting and rejoining during voting
+- [ ] Verify same: voting screen shown, can see votes, can vote
+- [ ] Confirm no regression: normal join during lobby still shows lobby correctly
+- [ ] Confirm no regression: join during active game still routes to game correctly
+
+---
+
 ## s44j-10: Torus Map Bullet Position in LAN MP
 
 **Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).

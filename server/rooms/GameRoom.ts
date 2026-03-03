@@ -891,6 +891,14 @@ export class GameRoom extends Room<GameState> {
       }
     }
 
+    // Explicitly tell the client what phase the game is in when joining a non-lobby room.
+    // The Colyseus schema sync delivers roomPhase via polling (~100ms), but this explicit
+    // message allows the client to immediately route to the correct screen (e.g. voting)
+    // without showing a flash of lobby UI first. (s44j-14)
+    if (this.state.roomPhase !== 'lobby') {
+      client.send('phase_sync', { phase: this.state.roomPhase });
+    }
+
     // Initialize DDA performance window for new player
     this.playerPerfWindows.set(client.sessionId, { kills: 0, deaths: 0, windowStart: 0 });
     this.logger.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
