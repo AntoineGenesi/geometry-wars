@@ -97,10 +97,10 @@ export class ClaustrophobiaMode implements IGameMode {
     const zt = this.zoneTimeSeconds;
     const mins = Math.floor(zt / 60);
     const secs = Math.floor(zt % 60);
-    const cs = Math.floor((zt % 1) * 100);
+    const tenths = Math.floor((zt % 1) * 10);
     const timeStr = mins > 0
-      ? `${mins}:${String(secs).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
-      : `${secs}.${String(cs).padStart(2, '0')}s`;
+      ? `${mins}:${String(secs).padStart(2, '0')}.${tenths}`
+      : `${secs}.${tenths}s`;
 
     // Secondary: kill points + boundary size
     const killPts = context.player.score;
