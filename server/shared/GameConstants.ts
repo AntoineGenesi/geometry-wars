@@ -202,6 +202,24 @@ export const HEALTH_PICKUP_LIFETIME = 10.0;
 export const HEALTH_PICKUP_SPAWN_RADIUS = 0.04;
 
 // ---------------------------------------------------------------------------
+// PvPvE difficulty-per-player constants (s44j-pvpve-14b)
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawn-rate multiplier factor applied per eliminated player, by tier.
+ * Formula: multiplier = 1 + factor * (totalPlayers - activePlayers)
+ *
+ * - low:    -0.20 → spawn rate decreases 20% per eliminated player (game gets easier)
+ * - medium:  0.00 → no adjustment
+ * - high:   +0.30 → spawn rate increases 30% per eliminated player (game gets harder)
+ */
+export const DIFFICULTY_PER_PLAYER_FACTOR: Record<string, number> = {
+  low:    -0.20,
+  medium:  0.00,
+  high:    0.30,
+} as const;
+
+// ---------------------------------------------------------------------------
 // GameSettings — re-export defaults for convenience
 // ---------------------------------------------------------------------------
 // Full type definitions and validateSettings() live in GameSettings.ts.

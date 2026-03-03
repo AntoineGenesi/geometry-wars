@@ -34,6 +34,14 @@ export type GameSurface =
 
 export type PvpWinCondition = 'kills' | 'survival' | 'score';
 
+/**
+ * How enemy spawn rate adjusts as players are eliminated (PvPvE mode).
+ * - low:    spawn rate decreases (-20% per eliminated player) — game gets easier
+ * - medium: no adjustment (default)
+ * - high:   spawn rate increases (+30% per eliminated player) — game gets harder
+ */
+export type EnemyDifficultyPerPlayer = 'low' | 'medium' | 'high';
+
 export type HealthBarVisibility = 'all' | 'friendly' | 'enemy' | 'none';
 
 export type VisualQuality = 'low' | 'medium' | 'high' | 'auto';
@@ -151,6 +159,14 @@ export interface GameSettings {
 
   /** Rendering quality preset. Default: 'auto'. */
   visualQuality: VisualQuality;
+
+  /**
+   * How enemy spawn rate adjusts as players are eliminated (PvPvE).
+   * - low:    -20% spawn rate per eliminated player (game gets easier)
+   * - medium: no adjustment (default)
+   * - high:   +30% spawn rate per eliminated player (game gets harder)
+   */
+  enemyDifficultyPerPlayer: EnemyDifficultyPerPlayer;
 }
 
 // ---------------------------------------------------------------------------
@@ -198,6 +214,7 @@ export const DEFAULT_GAME_SETTINGS: Readonly<GameSettings> = {
   enemyCountCap:           50,
   bulletCountCap:          500,
   visualQuality:           'auto',
+  enemyDifficultyPerPlayer: 'medium',
 };
 
 // ---------------------------------------------------------------------------
@@ -310,6 +327,12 @@ export function validateSettings(partial: Partial<GameSettings> = {}): GameSetti
     ? (partial.visualQuality as VisualQuality)
     : DEFAULT_GAME_SETTINGS.visualQuality;
 
+  // enemyDifficultyPerPlayer
+  const validDifficultyPerPlayer: readonly EnemyDifficultyPerPlayer[] = ['low', 'medium', 'high'];
+  const enemyDifficultyPerPlayer: EnemyDifficultyPerPlayer = validDifficultyPerPlayer.includes(partial.enemyDifficultyPerPlayer as EnemyDifficultyPerPlayer)
+    ? (partial.enemyDifficultyPerPlayer as EnemyDifficultyPerPlayer)
+    : DEFAULT_GAME_SETTINGS.enemyDifficultyPerPlayer;
+
   // PvP settings — strip if mode is not a PvP mode
   const isPvpMode = (PVP_MODES as readonly string[]).includes(mode);
 
@@ -349,5 +372,6 @@ export function validateSettings(partial: Partial<GameSettings> = {}): GameSetti
     enemyCountCap,
     bulletCountCap,
     visualQuality,
+    enemyDifficultyPerPlayer,
   };
 }
