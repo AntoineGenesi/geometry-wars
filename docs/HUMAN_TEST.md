@@ -1928,3 +1928,20 @@ Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to rea
 - [ ] **ShockAura kills award score** — Pick up ShockAura buff; if aura kills an enemy, score should increment AND a score popup should appear
 - [ ] **No overlap spam** — Damage numbers stagger (slight random X/Z offset) so they don't all overlap on same position
 - [ ] **MP damage numbers** — In LAN game, shoot enemies; damage numbers appear (may all be default red in MP — color-coding by weapon is SP-only)
+
+
+## S44k-03: Bullets Spawn From Wrong Position in MP
+
+**Fix:** For LOCAL player bullets in LAN MP, bullet spawn origin now uses the client's visual mesh position (client-predicted, 60Hz) instead of the server's lagged wx/wy/wz (30Hz + RTT). The server stored player UV via sphere-approximation which is wrong for non-sphere surfaces, causing player mesh and bullet origin to diverge during movement. Using `mesh.position` + `worldToSurface()` for tangent vectors ensures bullets always originate at the player's visual location on all surfaces.
+
+### Test: Bullets originate from player position (LAN MP)
+
+Test with at least 2 players on the same LAN.
+
+- [ ] **Sphere map** — Move around and shoot; bullets should emerge from your player character, not from a separate location
+- [ ] **Torus map** — Move to the far half of the torus (opposite spawn), shoot; bullets should still come from your character
+- [ ] **Peanut map** — Move around; bullets should come from player, especially near the waist/poles where offset was most visible
+- [ ] **Pill map** — Move and shoot while moving; no lag between player visual position and bullet origin
+- [ ] **No "bullets come from spawn area"** — Move far from your spawn point and shoot; bullets should NOT appear near spawn
+- [ ] **No regression: dual-barrel separation** — Standard/Blaster weapon should still show two distinct barrel lines, not merged into one (s44e-01 regression check)
+- [ ] **Remote players unaffected** — Other player's bullets still appear to come from their characters (not your character)
