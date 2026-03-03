@@ -647,6 +647,12 @@ export class GameRoom extends Room<GameState> {
    */
   private pvpEnabled: boolean = false;
 
+  /**
+   * Consecutive PvP kill streak per player (keyed by player id, NOT sessionId).
+   * Incremented on each kill, reset to 0 on death.
+   */
+  private pvpKillStreaks: Map<string, number> = new Map();
+
   onCreate(options: { surfaceType?: string; mapSize?: string; pvpEnabled?: boolean }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
@@ -972,6 +978,7 @@ export class GameRoom extends Room<GameState> {
       this.playerPerfWindows.delete(client.sessionId);
       this.ddaDecreaseCounters.delete(client.sessionId);
       this.lastNearMissLogTime.delete(client.sessionId);
+      this.pvpKillStreaks.delete(player.id);
     }
     // Remove locality and creator-intent tracking for this session
     this.clientLocality.delete(client.sessionId);
@@ -1174,6 +1181,10 @@ export class GameRoom extends Room<GameState> {
       player.weaponAmmo = -1;
       player.playerLevel = 0;
       player.playerKills = 0;
+      player.kills = 0;
+      player.deaths = 0;
+      // Reset PvP kill streak for this player
+      this.pvpKillStreaks.set(player.id, 0);
       // Clear secondary weapon inventory on round reset
       this.playerSecondaryWeapon.delete(sessionId);
       // Reset buff stacks so each round starts clean
@@ -3026,6 +3037,10 @@ export class GameRoom extends Room<GameState> {
               target.multiplier = 1;
               target.buffStacks.clear();
 
+              // Track death on victim; reset their kill streak
+              target.deaths++;
+              this.pvpKillStreaks.set(target.id, 0);
+
               const deathU = target.surfaceU;
               const deathV = target.surfaceV;
               const respawnPos = this.getPlayerRespawnPosition(deathU, deathV);
@@ -3039,13 +3054,19 @@ export class GameRoom extends Room<GameState> {
               this.playerInvincibility.set(target.id, PLAYER_PVP_INVINCIBILITY_DURATION);
 
               if (owner) {
+                // Track kill on attacker; increment their kill streak
+                owner.kills++;
+                const streakCount = (this.pvpKillStreaks.get(owner.id) ?? 0) + 1;
+                this.pvpKillStreaks.set(owner.id, streakCount);
+
                 this.broadcast('pvp_kill', {
                   killerId: owner.id,
                   killerName: owner.name,
                   victimId: target.id,
                   victimName: target.name,
+                  streakCount,
                 });
-                this.logger.log(`[GameRoom] PvP: ${owner.name} killed ${target.name}`);
+                this.logger.log(`[GameRoom] PvP: ${owner.name} killed ${target.name} (streak: ${streakCount})`);
               }
             }
           }

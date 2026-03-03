@@ -38,6 +38,10 @@ export class PlayerState extends Schema {
   declare ddaLevel: number;
   /** Buff stack counts: maps buff type string (e.g. 'hot_hands') → stack count */
   declare buffStacks: MapSchema<number>;
+  /** PvP kill count: number of times this player killed another player. */
+  declare kills: number;
+  /** PvP death count: number of times this player was killed by another player. */
+  declare deaths: number;
   /** Zone time in seconds (KotH: time in zone; Claustrophobia: time inside boundary). */
   declare zoneTime: number;
   // World-space position (from ServerMeshWalker)
@@ -80,6 +84,8 @@ export class PlayerState extends Schema {
     this.weaponAmmo = -1; // -1 = infinite (standard)
     this.playerLevel = 0;
     this.playerKills = 0;
+    this.kills = 0;
+    this.deaths = 0;
     this.ddaLevel = 0;
     this.buffStacks = new MapSchema<number>();
     this.zoneTime = 0;
@@ -114,6 +120,8 @@ defineTypes(PlayerState, {
   weaponAmmo: 'number',
   playerLevel: 'number',
   playerKills: 'number',
+  kills: 'number',
+  deaths: 'number',
   ddaLevel: 'number',
   buffStacks: { map: 'number' },
   zoneTime: 'number',
