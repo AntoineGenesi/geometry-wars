@@ -574,7 +574,7 @@ export class VotingScreen {
 
       #voting-screen .vs-card-label {
         font-size: 10px;
-        color: #88ccdd;
+        color: #bbddff;
         letter-spacing: 2px;
         text-align: center;
       }
@@ -613,7 +613,7 @@ export class VotingScreen {
       }
 
       #voting-screen .vs-option-label {
-        color: #668888;
+        color: #aadddd;
         font-size: 13px;
         letter-spacing: 2px;
         min-width: 60px;
@@ -623,7 +623,7 @@ export class VotingScreen {
       #voting-screen .vs-option-btn {
         background: rgba(0, 20, 40, 0.7);
         border: 2px solid #004466;
-        color: #88ccdd;
+        color: #bbddff;
         padding: 10px 24px;
         font-size: 13px;
         font-weight: bold;
@@ -796,7 +796,7 @@ export class VotingScreen {
       #voting-screen .vs-ready-btn {
         background: rgba(0, 20, 40, 0.7);
         border: 2px solid #0066aa;
-        color: #88ccdd;
+        color: #bbddff;
         padding: 14px 40px;
         font-size: 16px;
         font-weight: bold;
@@ -823,7 +823,7 @@ export class VotingScreen {
       /* ---- Ready status display ---- */
       #voting-screen .vs-ready-status {
         font-size: 13px;
-        color: #668888;
+        color: #aadddd;
         letter-spacing: 2px;
         margin: 4px 0 8px;
         min-height: 20px;
