@@ -1219,7 +1219,7 @@ export class StartMenu {
         text-align: center;
       }
       #start-menu .lan-lobby-list {
-        max-height: 100px;
+        max-height: 180px;
         overflow-y: auto;
         margin: 0 0 10px;
         scrollbar-width: thin;
