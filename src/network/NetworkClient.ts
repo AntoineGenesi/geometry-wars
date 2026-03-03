@@ -241,7 +241,7 @@ export interface NetworkCallbacks {
    * Allows immediate routing to the correct screen (e.g. voting) without waiting
    * for the polling interval. (s44j-14)
    */
-  onPhaseSync?: (data: { phase: string }) => void;
+  onPhaseSync?: (data: { phase: string; isPaused: boolean }) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -500,9 +500,10 @@ export class NetworkClient {
 
     // Phase sync: server sends this on join when game is in voting/playing phase.
     // Allows the client to immediately route to the correct screen. (s44j-14)
-    this.room.onMessage('phase_sync', (data: { phase: string }) => {
-      netLog(`[Network] Received phase_sync: phase=${data.phase}`);
-      this.callbacks.onPhaseSync?.(data);
+    // isPaused added in s44j-21 so joining clients can show the pause overlay immediately.
+    this.room.onMessage('phase_sync', (data: { phase: string; isPaused?: boolean }) => {
+      netLog(`[Network] Received phase_sync: phase=${data.phase} isPaused=${data.isPaused}`);
+      this.callbacks.onPhaseSync?.({ phase: data.phase, isPaused: data.isPaused ?? false });
       // Also schedule a state refresh so onStateChange runs with fresh state
       this.scheduleStateChange();
     });

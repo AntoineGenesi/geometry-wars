@@ -899,8 +899,10 @@ export class GameRoom extends Room<GameState> {
     // The Colyseus schema sync delivers roomPhase via polling (~100ms), but this explicit
     // message allows the client to immediately route to the correct screen (e.g. voting)
     // without showing a flash of lobby UI first. (s44j-14)
+    // Also sends isPaused so a mobile client joining a paused game shows the pause screen
+    // immediately instead of a blank canvas. (s44j-21)
     if (this.state.roomPhase !== 'lobby') {
-      client.send('phase_sync', { phase: this.state.roomPhase });
+      client.send('phase_sync', { phase: this.state.roomPhase, isPaused: this.state.isPaused });
     }
 
     // Initialize DDA performance window for new player
