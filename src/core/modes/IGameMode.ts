@@ -20,6 +20,8 @@ export interface GameModeContext {
   game: Game;
   scene: THREE.Scene;
   camera: THREE.Camera;
+  /** True in network/MP mode — spawn warning rings should be skipped since server is authoritative */
+  isNetworkMode?: boolean;
 }
 
 /**

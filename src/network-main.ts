@@ -2300,6 +2300,9 @@ async function main() {
       game,
       scene: game.scene,
       camera: game.camera,
+      // Network mode: spawn warning rings are never cleaned up (enemySpawner.update is not
+      // called client-side since server is authoritative). Game modes must skip spawn warnings.
+      isNetworkMode: true,
     };
   }
 
