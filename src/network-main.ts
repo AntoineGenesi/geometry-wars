@@ -2254,6 +2254,11 @@ async function main() {
     // Reset local weapon type display so HUD shows the correct weapon next round
     localPlayerWeaponType = WeaponType.Standard;
 
+    // Clear all active weapon visuals and projectiles from the previous round.
+    // Without this, active effects (laser beams, tesla coil aura, black holes) and
+    // queued projectiles from the old round persist into the new round's update loop.
+    localWeaponManager.clear();
+
     // Clean up enemy glow trails from the previous round
     enemyGlowTrails.forEach((trail) => {
       scene.remove(trail.root);
