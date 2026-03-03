@@ -292,7 +292,7 @@ export class InputManager {
       shooting: this.mouseLeftDown,
       bomb: this.keysJustPressed.has(' '),
       boost: this.keysDown.has('shift'),
-      weaponSwap: this.keysJustPressed.has('q'),
+      weaponSwap: this.keysJustPressed.has('q') || this.keysJustPressed.has('e'),
     };
   }
 
