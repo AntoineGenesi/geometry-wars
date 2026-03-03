@@ -119,6 +119,7 @@ import { LANClient } from './network/LANClient';
 import { initI18n } from './i18n';
 import { computeCameraRelativeAimAngle } from './utils/aimAngle';
 import { createGameMode, type IGameMode, type QuickGameModeType } from './core/modes';
+import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -396,15 +397,9 @@ const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffaa00];
 
 async function main() {
   await initI18n();
-  // Dismiss loading screen. Normally the StartMenu dismisses it when it creates
-  // itself, but when navigating directly via QR code (?mode=network) or a shared
-  // link, the StartMenu is skipped entirely. Without this, the loading spinner
-  // stays visible forever, covering all connection UI (the core mobile bug).
-  const loadingScreen = document.getElementById('loading-screen');
-  if (loadingScreen) {
-    loadingScreen.classList.add('fade-out');
-    loadingScreen.addEventListener('transitionend', () => loadingScreen.remove(), { once: true });
-  }
+  // Show loading overlay during game initialization (covers both direct URL and StartMenu paths).
+  // We dismiss it just before network.connect() so the lobby UI is visible while connecting.
+  showGameLoading('CONNECTING TO SERVER...');
 
   // Detect mobile mode early — affects input, quality, and entity limits.
   const mobile = isMobile();
@@ -3608,6 +3603,10 @@ async function main() {
     checkHealth('Direct', directHealthUrl);
     checkMatchmake();
   }
+
+  // Game engine and lobby UI are fully initialized — dismiss loading overlay so the
+  // lobby (statusEl, player list, mode selector) is visible during connection.
+  hideGameLoading();
 
   // 30-second connection timeout: if Colyseus handshake hangs (server reachable
   // but not responding — common on mobile over Wi-Fi), reject with a clear error
