@@ -751,9 +751,14 @@ export class WeaponManager {
         mesh.position.copy(proj.position);
       }
 
-      // Notify surface VFX system of gravity gun projectile position each tick
+      // Notify surface VFX system and apply continuous enemy pull for gravity gun
       if (proj.type === WeaponType.GravityGun) {
         this.callbacks?.onGravityGunMove?.(proj.position);
+        // Continuously attract enemies toward the projectile while it travels.
+        // Pull radius slightly larger than detonation radius (3.0 vs 2.0) to create
+        // a "suction field" ahead of the projectile. Strength capped at 50% vs full
+        // detonation pull to avoid over-powering before the bullet arrives.
+        this.applyGravityPull(proj.position, 3.0, true);
       }
 
       // Check for spread pellet split (spawns child projectiles mid-flight)
@@ -1784,7 +1789,7 @@ export class WeaponManager {
     }
   }
 
-  private applyGravityPull(center: THREE.Vector3, baseRadius: number): void {
+  private applyGravityPull(center: THREE.Vector3, baseRadius: number, continuousPull: boolean = false): void {
     if (!this.callbacks?.onEnemyPull) return;
 
     // Pull radius upgrades (branch A): +30%, +60%, +100%
@@ -1798,7 +1803,8 @@ export class WeaponManager {
     const radius = baseRadius * (1.0 + radiusBonus);
 
     // Kinetic crush damage per detonation (branch B) — extended for b_4/b_5
-    const kineticDamage =
+    // Continuous pull mode skips kinetic damage (damage only on detonation impact)
+    const kineticDamage = continuousPull ? 0 :
       ggNodes.has('gravity_gun_b_5') ? 20.0 :
       ggNodes.has('gravity_gun_b_4') ? 15.0 :
       ggNodes.has('gravity_gun_b_3') ? 9.0 :
@@ -1813,9 +1819,12 @@ export class WeaponManager {
 
       const dist = center.distanceTo(enemy.position);
       if (dist < radius) {
-        const strength = 1 - dist / radius;
+        // Continuous in-flight pull uses 50% max strength (same as Black Hole per-frame pull).
+        // On-impact detonation uses full 100% strength.
+        const baseStrength = 1 - dist / radius;
+        const strength = continuousPull ? baseStrength * 0.5 : baseStrength;
         this.callbacks.onEnemyPull(enemy.index, strength, center);
-        // Kinetic crush: deal instant damage when pulled
+        // Kinetic crush: deal instant damage when pulled (detonation only)
         if (kineticDamage > 0) {
           this.callbacks.onEnemyDamage(enemy.index, kineticDamage * strength, WeaponType.GravityGun);
         }
