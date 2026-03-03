@@ -214,7 +214,7 @@ function injectStyles(): void {
       height: 100%;
       border-radius: 4px;
       width: 0%;
-      transition: width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      transition: width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     }
 
     /* Dotted progress markers: start (left) and end (right) */
@@ -501,8 +501,9 @@ export class MasteryProgressScreen {
     });
 
     // Stagger weapon rows appearing — level-up rows have a multi-phase animation
+    // Increased stagger to 800ms between rows to make sequential animations clearly distinct
     rows.forEach(({ row, fillEl, badgeEl, unlockEl, startMarkerEl, endMarkerEl, endPct, result }, i) => {
-      const appearDelay = 150 + i * 150;
+      const appearDelay = 150 + i * 800;
       const barDelay = appearDelay + 100;
 
       this.animationTimers.push(this._schedule(() => {
@@ -510,18 +511,19 @@ export class MasteryProgressScreen {
       }, appearDelay));
 
       if (result.leveledUp) {
-        // Phase 1: fill bar from startPct → 100% (crossing the level boundary)
+        // Phase 1: fill bar from startPct → 100% (crossing the level boundary) — 0.8s transition
         this.animationTimers.push(this._schedule(() => {
           fillEl.style.width = '100%';
         }, barDelay));
 
-        // Phase 2: burst flash + sound at level boundary
+        // Phase 2: burst flash + sound at level boundary (after bar fill completes)
         this.animationTimers.push(this._schedule(() => {
           row.classList.add('levelup-burst');
           try { getSoundEngine().play('weaponPickup', { pitch: 1.8 }); } catch { /* ok */ }
-        }, barDelay + 550));
+        }, barDelay + 850));
 
         // Phase 3: instant reset to 0% (transition disabled), move start marker, update badge
+        // Wait for burst animation (0.35s) to complete
         this.animationTimers.push(this._schedule(() => {
           row.classList.remove('levelup-burst');
           fillEl.style.transition = 'none';
@@ -529,27 +531,27 @@ export class MasteryProgressScreen {
           startMarkerEl.style.left = '0%';
           badgeEl.textContent = t('mastery.levelBadge', { level: result.levelAfter });
           badgeEl.classList.add('levelup');
-        }, barDelay + 850));
+        }, barDelay + 1200));
 
-        // Phase 4: re-enable transition and fill to endPct within new level
+        // Phase 4: re-enable transition and fill to endPct within new level — 0.8s transition
         this.animationTimers.push(this._schedule(() => {
-          fillEl.style.transition = 'width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+          fillEl.style.transition = 'width 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
           fillEl.style.width = `${endPct}%`;
-        }, barDelay + 900));
+        }, barDelay + 1250));
 
         // Phase 5: reveal end marker after bar fills
         this.animationTimers.push(this._schedule(() => {
           endMarkerEl.classList.add('visible');
-        }, barDelay + 1450));
+        }, barDelay + 2100));
 
         // Phase 6: show unlock text
         if (unlockEl.textContent) {
           this.animationTimers.push(this._schedule(() => {
             unlockEl.classList.add('visible');
-          }, barDelay + 1500));
+          }, barDelay + 2150));
         }
       } else {
-        // Normal case: fill from startPct → endPct
+        // Normal case: fill from startPct → endPct — 0.8s transition
         this.animationTimers.push(this._schedule(() => {
           fillEl.style.width = `${endPct}%`;
         }, barDelay));
@@ -557,15 +559,15 @@ export class MasteryProgressScreen {
         // Reveal end marker after bar fills
         this.animationTimers.push(this._schedule(() => {
           endMarkerEl.classList.add('visible');
-        }, barDelay + 550));
+        }, barDelay + 850));
       }
     });
 
     // Show continue button after all rows are done
-    // Level-up rows take ~1500ms extra vs normal 550ms
+    // With new timing: Level-up rows take ~2150ms, normal rows take ~850ms
     const lastIdx = rows.length - 1;
-    const lastBarDelay = lastIdx >= 0 ? 150 + lastIdx * 150 + 100 : 0;
-    const lastRowExtraMs = (rows[lastIdx]?.result.leveledUp) ? 1500 : 550;
+    const lastBarDelay = lastIdx >= 0 ? 150 + lastIdx * 800 + 100 : 0;
+    const lastRowExtraMs = (rows[lastIdx]?.result.leveledUp) ? 2150 : 850;
     const totalAnimTime = rows.length > 0 ? lastBarDelay + lastRowExtraMs : 0;
     const btnDelay = Math.max(300, totalAnimTime + 200);
 
