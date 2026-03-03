@@ -41,7 +41,10 @@ import {
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import type { ServerWalkerState } from '../movement/ServerMeshWalker';
-import { validateSettings } from '../shared/GameSettings';
+import {
+  validateSettings,
+  DEFAULT_GAME_SETTINGS,
+} from '../shared/GameSettings';
 import type { GameSettings } from '../shared/GameSettings';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
@@ -667,6 +670,18 @@ export class GameRoom extends Room<GameState> {
   private pvpEnabled: boolean = false;
 
   /**
+   * Current validated game settings. Applied at game start and stored in room.state
+   * so all clients can display them. Modified via lobby_settings and applySettings messages.
+   */
+  private currentSettings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
+
+  /**
+   * Settings queued mid-game (from applySettings message). Applied at the next wave
+   * transition so live gameplay is not disrupted mid-wave.
+   */
+  private pendingSettings: GameSettings | null = null;
+
+  /**
    * Consecutive PvP kill streak per player (keyed by player id, NOT sessionId).
    * Incremented on each kill, reset to 0 on death.
    */
@@ -696,7 +711,7 @@ export class GameRoom extends Room<GameState> {
       this.handleInput(client, input);
     });
 
-    this.onMessage('start', (client, data?: { choice?: string }) => {
+    this.onMessage('start', (client, data?: { choice?: string; settings?: Partial<GameSettings> }) => {
       // Only the host can start the game
       if (client.sessionId !== this.state.hostId) {
         this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to start game (host=${this.state.hostId})`);
@@ -704,6 +719,10 @@ export class GameRoom extends Room<GameState> {
       }
       // Initial game start: lobby → playing
       if (this.state.roomPhase === 'lobby') {
+        // Merge settings payload into currentSettings if provided
+        if (data?.settings) {
+          this.applyValidatedSettings(data.settings);
+        }
         if (data?.choice) {
           this.startGameWithSettings(data.choice);
         } else {
@@ -752,13 +771,17 @@ export class GameRoom extends Room<GameState> {
       this.logger.log(`[GameRoom] Countdown ${data.paused ? 'paused' : 'resumed'} by host`);
     });
 
-    // Lobby settings relay: host broadcasts current settings to all clients so
-    // non-host players can display them in read-only mode. Server does NOT apply
-    // settings yet — that is handled in s44j-settings-16e. (s44j-settings-16c)
+    // Lobby settings: host sends settings while in lobby. Server validates,
+    // stores them in currentSettings + syncs to room.state, then relays to all
+    // clients for non-host display. (s44j-settings-16c relay + s44j-settings-16e application)
     this.onMessage('lobby_settings', (client, data: { settings: unknown }) => {
-      if (client.sessionId !== this.state.hostId) return;
+      if (client.sessionId !== this.state.hostId) {
+        client.send('settings_error', { message: 'Only the host can change settings' });
+        return;
+      }
       if (this.state.roomPhase !== 'lobby') return;
-      this.broadcast('lobby_settings', data);
+      this.applyValidatedSettings(data.settings as Partial<GameSettings>);
+      this.broadcast('lobby_settings', { settings: data.settings });
     });
 
     // Host changes settings mid-game: "Apply Next Round" stores them as pending.
@@ -809,6 +832,46 @@ export class GameRoom extends Room<GameState> {
         this.state.healthBarVisibility = data.healthBarVisibility;
         this.logger.log(`[GameRoom] healthBarVisibility set to '${data.healthBarVisibility}' by host`);
       }
+    });
+
+    // Host sends updated settings mid-game (from pause menu → "Apply Next Round").
+    // Settings are validated and stored as pending; applied at the next wave transition.
+    this.onMessage('applySettings', (client, data: { settings: unknown }) => {
+      if (client.sessionId !== this.state.hostId) {
+        client.send('settings_error', { message: 'Only the host can change settings' });
+        this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to apply settings`);
+        return;
+      }
+      if (this.state.roomPhase !== 'playing') return;
+      this.pendingSettings = validateSettings(data.settings as Partial<GameSettings>);
+      this.logger.log('[GameRoom] applySettings: pending settings stored, will apply on next wave');
+      // Notify all clients that pending settings are queued
+      this.broadcast('settings_pending', {});
+    });
+
+    // Host triggers an immediate round restart with optional new settings.
+    // Validated, entities cleared, wave reset, and a countdown is broadcast to all clients.
+    this.onMessage('restartRound', (client, data: { settings?: unknown }) => {
+      if (client.sessionId !== this.state.hostId) {
+        client.send('settings_error', { message: 'Only the host can restart the round' });
+        this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to restart round`);
+        return;
+      }
+      if (this.state.roomPhase !== 'playing') return;
+      // Apply settings if provided
+      if (data?.settings) {
+        this.applyValidatedSettings(data.settings as Partial<GameSettings>);
+      }
+      const RESTART_COUNTDOWN_SECS = 5;
+      this.logger.log(`[GameRoom] restartRound: broadcasting ${RESTART_COUNTDOWN_SECS}s countdown`);
+      this.broadcast('round_restarting', { countdown: RESTART_COUNTDOWN_SECS });
+      // Use spawnGeneration to guard the deferred restart (same pattern as enemy spawns)
+      const gen = this.spawnGeneration;
+      setTimeout(() => {
+        if (this.spawnGeneration !== gen) return; // game restarted again — skip
+        this.logger.log('[GameRoom] restartRound: applying restart after countdown');
+        this.startGame();
+      }, RESTART_COUNTDOWN_SECS * 1000);
     });
 
     this.onMessage('exit_to_voting', (client) => {
@@ -1162,12 +1225,44 @@ export class GameRoom extends Room<GameState> {
     fs.appendFile(this.metricsLogPath, entry + '\n', (_err) => { /* suppress write errors */ });
   }
 
+  /**
+   * Validate a partial settings object, merge with currentSettings, and sync to room.state.
+   * Always safe to call — validateSettings() never throws.
+   */
+  private applyValidatedSettings(partial: Partial<GameSettings>): void {
+    this.currentSettings = validateSettings({ ...this.currentSettings, ...partial });
+    this.syncSettingsToState();
+    this.logger.log(`[GameRoom] Settings updated: mode=${this.currentSettings.mode} surface=${this.currentSettings.surface} lives=${this.currentSettings.lives} difficulty=${this.currentSettings.difficultyMultiplier}`);
+  }
+
+  /**
+   * Sync currentSettings fields to room.state schema so all clients receive them.
+   * Called after any settings change.
+   */
+  private syncSettingsToState(): void {
+    this.state.initialLives = this.currentSettings.lives;
+    this.state.infiniteLives = this.currentSettings.infiniteLives;
+    this.state.pvpEnabled = this.currentSettings.pvpEnabled;
+    this.state.healthBarVisibility = this.currentSettings.healthBarVisibility;
+    this.state.difficultyMultiplier = this.currentSettings.difficultyMultiplier;
+    this.state.enemyCountCap = this.currentSettings.enemyCountCap;
+    this.state.enemySpawnRateMultiplier = this.currentSettings.enemySpawnRateMultiplier;
+    this.state.healingFrequency = this.currentSettings.healingFrequency;
+    this.state.healingAmount = this.currentSettings.healingAmount;
+    this.state.friendlyFire = this.currentSettings.friendlyFire;
+    this.state.pvpWinCondition = this.currentSettings.pvpWinCondition;
+    this.state.startingWeapon = this.currentSettings.startingWeapon;
+    this.state.timeLimit = this.currentSettings.timeLimit;
+    // Also sync pvpEnabled private field (used in tick() for damage checks)
+    this.pvpEnabled = this.currentSettings.pvpEnabled;
+  }
+
   private startGameWithSettings(choice: string) {
     const parts = choice.split(':');
     let surface = parts[0] || this.state.surfaceType;
     // Safety guard: only accept implemented modes; fall back to 'waves' for unknown modes
-    const VALID_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia'];
-    const mode = VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
+    const CHOICE_VALID_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia'];
+    const mode = CHOICE_VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
     const size = parts[2] || 'medium';
     // Claustrophobia: enforce small-surface restriction on server side
     if (mode === 'claustrophobia' && !CLAUSTROPHOBIA_ALLOWED_SURFACES.includes(surface)) {
@@ -1178,24 +1273,36 @@ export class GameRoom extends Room<GameState> {
     this.state.gameMode = mode;
     this.state.mapSize = size;
 
-    // parts[3]: lives count (1-999) or 'infinite' — optional, defaults to 3
+    // Merge choice-parsed surface/mode into currentSettings so syncSettingsToState is consistent.
+    // We call validateSettings inline so we don't re-trigger the full applyValidatedSettings log.
+    this.currentSettings = validateSettings({
+      ...this.currentSettings,
+      surface: surface as GameSettings['surface'],
+      mode: mode as GameSettings['mode'],
+    });
+
+    // Legacy parts[3]: lives count or 'infinite' — applied only when currentSettings hasn't been
+    // explicitly set (still at default). If the host sent a full settings object via the start
+    // message before calling this, those values take precedence.
     const livesParam = parts[3];
-    if (livesParam === 'infinite') {
-      this.state.infiniteLives = true;
-      this.state.initialLives = 3; // display value when infinite is on
-    } else {
-      this.state.infiniteLives = false;
-      const parsedLives = parseInt(livesParam, 10);
-      this.state.initialLives = (parsedLives >= 1 && parsedLives <= 999) ? parsedLives : 3;
+    if (livesParam !== undefined && livesParam !== '') {
+      if (livesParam === 'infinite') {
+        this.currentSettings = validateSettings({ ...this.currentSettings, infiniteLives: true });
+      } else {
+        const parsedLives = parseInt(livesParam, 10);
+        if (!isNaN(parsedLives)) {
+          this.currentSettings = validateSettings({ ...this.currentSettings, lives: parsedLives });
+        }
+      }
     }
 
-    // parts[4]: 'pvp' enables player-to-player damage (s44j-pvp-13a).
+    // Legacy parts[4]: 'pvp' enables player-to-player damage (s44j-pvp-13a).
     // Only overrides to true here; once enabled per-room it stays for the session.
     if (parts[4] === 'pvp') {
-      this.pvpEnabled = true;
-      this.state.pvpEnabled = true;
+      this.currentSettings = validateSettings({ ...this.currentSettings, pvpEnabled: true });
     }
 
+    this.syncSettingsToState();
     this.startGame();
   }
 
@@ -1238,10 +1345,25 @@ export class GameRoom extends Room<GameState> {
     this.claustroZoneCenterZ = claustroCenter.z;
     this.claustroWorldRadiusBase = bsRadius * 2.0; // at UV radius 0.5 → 2x bsRadius → covers entire surface
 
+    // Apply currentSettings to room and internal state before resetting players.
+    // pendingSettings are consumed here if a mid-game apply was queued.
+    if (this.pendingSettings) {
+      this.currentSettings = this.pendingSettings;
+      this.pendingSettings = null;
+    }
+    this.syncSettingsToState();
+    // Apply health pickup configuration from settings
+    this.healthPickupFrequency = this.currentSettings.healingFrequency;
+    this.healthPickupHealAmount = this.currentSettings.healingAmount;
+
     // Invalidate any pending spawn timeouts from the previous game.
     // Bumping spawnGeneration causes old setTimeouts to abort when they fire.
     this.spawnGeneration++;
     this.pendingEnemyCount = 0;
+
+    // Determine starting weapon ammo from settings
+    const startWeapon = this.currentSettings.startingWeapon;
+    const startWeaponAmmo = startWeapon === 'standard' ? -1 : (WEAPON_CONFIGS[startWeapon]?.ammo ?? 30);
 
     // Reset all players
     let spawnIdx = 0;
@@ -1255,8 +1377,8 @@ export class GameRoom extends Room<GameState> {
       player.health = PLAYER_PVP_MAX_HEALTH;
       player.maxHealth = PLAYER_PVP_MAX_HEALTH;
       player.invincibilityTimer = 0;
-      player.weaponType = 'standard';
-      player.weaponAmmo = -1;
+      player.weaponType = startWeapon;
+      player.weaponAmmo = startWeaponAmmo;
       player.playerLevel = 0;
       player.playerKills = 0;
       player.kills = 0;
@@ -3675,7 +3797,9 @@ export class GameRoom extends Room<GameState> {
   private getMaxEnemies(): number {
     const playerCount = Math.max(1, this.state.players.size);
     const idx = Math.min(MAX_ENEMIES_BY_PLAYER_COUNT.length - 1, playerCount - 1);
-    return MAX_ENEMIES_BY_PLAYER_COUNT[idx];
+    const playerCap = MAX_ENEMIES_BY_PLAYER_COUNT[idx];
+    // Apply the host-configurable enemy count cap from settings
+    return Math.min(playerCap, this.currentSettings.enemyCountCap);
   }
 
   /**
@@ -3691,14 +3815,15 @@ export class GameRoom extends Room<GameState> {
     if (this.waveElapsed < this.nextWaveAt) return;
     if (this.state.enemies.length + this.pendingEnemyCount >= this.getMaxEnemies()) return;
 
-    // Apply settings queued by "Apply Next Round" before the new wave starts.
-    if (this.pendingSettings !== null) {
-      const s = this.pendingSettings;
+    // Apply pending settings at wave boundary (from "Apply Next Round" host action)
+    if (this.pendingSettings) {
+      this.currentSettings = this.pendingSettings;
       this.pendingSettings = null;
-      this.healthPickupFrequency = s.healingFrequency;
-      this.healthPickupHealAmount = s.healingAmount;
-      this.broadcast('settings_applied', { message: 'New settings are now active.' });
+      this.syncSettingsToState();
+      this.healthPickupFrequency = this.currentSettings.healingFrequency;
+      this.healthPickupHealAmount = this.currentSettings.healingAmount;
       this.logger.log('[GameRoom] Pending settings applied at wave boundary');
+      this.broadcast('settings_applied', {});
     }
 
     this.waveNumber++;
@@ -3721,8 +3846,10 @@ export class GameRoom extends Room<GameState> {
     }
 
     // Decrease interval over time (same formula as WaveScheduler)
-    const nextInterval = Math.max(WAVE_INTERVAL_MIN, WAVE_INTERVAL_BASE - this.waveNumber * WAVE_INTERVAL_DECAY);
-    this.nextWaveAt = this.waveElapsed + nextInterval;
+    // enemySpawnRateMultiplier shortens/lengthens the interval (higher = more frequent waves)
+    const baseInterval = Math.max(WAVE_INTERVAL_MIN, WAVE_INTERVAL_BASE - this.waveNumber * WAVE_INTERVAL_DECAY);
+    const scaledInterval = baseInterval / Math.max(0.01, this.currentSettings.enemySpawnRateMultiplier);
+    this.nextWaveAt = this.waveElapsed + Math.max(WAVE_INTERVAL_MIN, scaledInterval);
   }
 
   /**
@@ -3760,7 +3887,8 @@ export class GameRoom extends Room<GameState> {
     const claustrophobiaBonus = this.state.gameMode === 'claustrophobia'
       ? waveContrib * (CLAUSTROPHOBIA_DIFFICULTY_MULTIPLIER - 1)
       : 0;
-    return Math.min(8.0, base + claustrophobiaBonus);
+    // Apply host-configurable difficulty multiplier (0.5 = half speed, 2.0 = double speed)
+    return Math.min(8.0, (base + claustrophobiaBonus) * this.currentSettings.difficultyMultiplier);
   }
 
   /**

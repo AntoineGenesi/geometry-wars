@@ -407,6 +407,26 @@ export class GameState extends Schema {
   /** Controls whose health bars are visible: 'all' | 'friendly' | 'enemy' | 'none' */
   declare healthBarVisibility: string;
 
+  // --- Full GameSettings fields synced to clients for display ---
+  /** Global difficulty multiplier (0.5–2.0, default 1.0). */
+  declare difficultyMultiplier: number;
+  /** Max simultaneous enemies on-surface (10–100, default 50). */
+  declare enemyCountCap: number;
+  /** Enemy spawn rate multiplier (0.25–3.0, default 1.0). Higher = more frequent waves. */
+  declare enemySpawnRateMultiplier: number;
+  /** How often healing orbs spawn, in seconds (5–120, default 30). */
+  declare healingFrequency: number;
+  /** HP restored per healing pickup (5–100, default 25). */
+  declare healingAmount: number;
+  /** When true, bullets damage teammates (PvP only, default false). */
+  declare friendlyFire: boolean;
+  /** Win condition for PvP modes: 'kills' | 'survival' | 'score' (default 'kills'). */
+  declare pvpWinCondition: string;
+  /** Weapon all players start with (default 'standard'). */
+  declare startingWeapon: string;
+  /** Match time limit in seconds. 0 = unlimited (default 0). */
+  declare timeLimit: number;
+
   constructor() {
     super();
     this.players = new MapSchema<PlayerState>();
@@ -442,6 +462,17 @@ export class GameState extends Schema {
     // PvP / health bar settings
     this.pvpEnabled = false;
     this.healthBarVisibility = 'all';
+
+    // Full settings fields (synced for client display)
+    this.difficultyMultiplier = 1.0;
+    this.enemyCountCap = 50;
+    this.enemySpawnRateMultiplier = 1.0;
+    this.healingFrequency = 30;
+    this.healingAmount = 25;
+    this.friendlyFire = false;
+    this.pvpWinCondition = 'kills';
+    this.startingWeapon = 'standard';
+    this.timeLimit = 0;
   }
 }
 
@@ -473,4 +504,13 @@ defineTypes(GameState, {
   infiniteLives: 'boolean',
   pvpEnabled: 'boolean',
   healthBarVisibility: 'string',
+  difficultyMultiplier: 'number',
+  enemyCountCap: 'number',
+  enemySpawnRateMultiplier: 'number',
+  healingFrequency: 'number',
+  healingAmount: 'number',
+  friendlyFire: 'boolean',
+  pvpWinCondition: 'string',
+  startingWeapon: 'string',
+  timeLimit: 'number',
 });
