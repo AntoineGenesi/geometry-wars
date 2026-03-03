@@ -47,6 +47,8 @@ export class GameLoop {
   // DDA close call detection: tracks whether player was already "in" a close call episode
   // (avoids recording multiple close calls for one continuous proximity event)
   private _ddaInClosecall = false;
+  // Death cam state: true while player is dead and the grayscale overlay is active
+  private _deathCamActive = false;
   // Boost visual state tracking (only call setColor on state transition)
   private _prevBoostActive = false;
   // Camera aspect re-sync on countdown → playing transition (iOS URL bar may change
@@ -133,6 +135,11 @@ export class GameLoop {
         ctx.state.respawnTimer += dt;
         if (ctx.state.respawnTimer >= ctx.state.RESPAWN_DELAY) {
           ctx.state.respawnTimer = 0;
+          // Death cam end: restore normal colors when player respawns
+          if (this._deathCamActive) {
+            this._deathCamActive = false;
+            UIHelpers.hideDeathCamEffect();
+          }
           // Respawn at safe location (opposite side of surface from death location)
           const safePos = ctx.player.getSafeRespawnPosition();
           ctx.player.respawn(safePos.u, safePos.v);
@@ -148,7 +155,11 @@ export class GameLoop {
           ctx.player.mesh.position.copy(ctx.playerWalker.position);
         }
       } else if (!ctx.state.isGameOver) {
-        // Game over - no lives left
+        // Game over - no lives left; clear death cam effect before showing game over screen
+        if (this._deathCamActive) {
+          this._deathCamActive = false;
+          UIHelpers.hideDeathCamEffect();
+        }
         ctx.state.isGameOver = true;
         ctx.perfTracker.saveSession();
         ctx.perfLogger.saveSession();
@@ -684,6 +695,11 @@ export class GameLoop {
           ctx.shockwaveEffect.triggerFlash(new THREE.Color(1, 0.2, 0.2), 0.4);
           // Player death indicator: red floating text at player position
           ctx.scorePopups.spawn(ctx.player.mesh.position.clone(), '-LIFE', '#ff4444', 2.0, 1.2);
+          // Death cam: grayscale + darken while waiting to respawn
+          if (!this._deathCamActive) {
+            this._deathCamActive = true;
+            UIHelpers.showDeathCamEffect();
+          }
         }
         return saved;
       },
@@ -716,6 +732,11 @@ export class GameLoop {
                 ctx.screenShake.shake(0.5, 0.4);
                 getSoundEngine().play('playerDeath');
                 UIHelpers.screenFlash('rgba(255, 60, 60, 0.4)', 200);
+                // Death cam: grayscale + darken while waiting to respawn
+                if (!this._deathCamActive) {
+                  this._deathCamActive = true;
+                  UIHelpers.showDeathCamEffect();
+                }
               } else {
                 UIHelpers.screenFlash('rgba(68, 255, 68, 0.3)', 150);
               }

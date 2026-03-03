@@ -90,6 +90,7 @@ import { Minimap } from './ui/Minimap';
 import { GameOverScreen } from './ui/GameOverScreen';
 import { VotingScreen } from './ui/VotingScreen';
 import { PauseMenu, PauseMenuGameData } from './ui/PauseMenu';
+import { UIHelpers } from './ui/UIHelpers';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
@@ -2586,6 +2587,8 @@ async function main() {
           if (hasAliveSpectateTarget) {
             deadOverlay.style.display = 'flex';
           }
+          // Death cam: grayscale + darken canvas while player is dead
+          UIHelpers.showDeathCamEffect();
         }
       } else if (!wasAlive && netPlayer.alive) {
         // Player just respawned (alive transitioned false->true).
@@ -2606,6 +2609,8 @@ async function main() {
         // Hide spectating overlay when local player is revived (new round)
         if (id === localPlayerId) {
           deadOverlay.style.display = 'none';
+          // Death cam end: restore normal colors on respawn
+          UIHelpers.hideDeathCamEffect();
         }
       }
       playerAliveState.set(id, netPlayer.alive);
