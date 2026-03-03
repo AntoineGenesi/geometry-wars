@@ -129,4 +129,58 @@ describe('PeanutSurface', () => {
       expect(southResult.v).toBeLessThanOrEqual(0.99)
     })
   })
+
+  describe('getPlayerSpeedCorrectionAt — UV-aware speed normalization (s44j-12 regression)', () => {
+    const surface = new PeanutSurface()
+
+    it('returns > 1.0 on the bulge (wider areas, v ≈ 0.25 and 0.75)', () => {
+      // The peanut bulge is wider than average — player should move faster there
+      // to cover the same UV fraction per second as on the waist
+      const bulgeFactor = surface.getPlayerSpeedCorrectionAt(0.5, 0.25)
+      expect(bulgeFactor).toBeGreaterThan(1.0)
+    })
+
+    it('returns < 1.0 on the waist (narrower area, v ≈ 0.5)', () => {
+      // The waist is narrower than average — player should move slower to be consistent
+      const waistFactor = surface.getPlayerSpeedCorrectionAt(0.5, 0.5)
+      expect(waistFactor).toBeLessThan(1.0)
+    })
+
+    it('returns a value clamped within [0.4, 2.5]', () => {
+      const testVPositions = [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+      for (const v of testVPositions) {
+        const factor = surface.getPlayerSpeedCorrectionAt(0.5, v)
+        expect(factor, `factor at v=${v}`).toBeGreaterThanOrEqual(0.4)
+        expect(factor, `factor at v=${v}`).toBeLessThanOrEqual(2.5)
+      }
+    })
+
+    it('correction is U-independent (surface of revolution)', () => {
+      // The peanut is a surface of revolution — U should not affect the metric
+      const v = 0.3
+      const factorU0 = surface.getPlayerSpeedCorrectionAt(0.0, v)
+      const factorU5 = surface.getPlayerSpeedCorrectionAt(0.5, v)
+      const factorU9 = surface.getPlayerSpeedCorrectionAt(0.9, v)
+      expect(Math.abs(factorU0 - factorU5)).toBeLessThan(0.001)
+      expect(Math.abs(factorU0 - factorU9)).toBeLessThan(0.001)
+    })
+
+    it('area-weighted average correction is approximately 1.0', () => {
+      // The correction is designed to be area-averaged to 1.0, so average speed is preserved
+      const STEPS = 40
+      let totalWeight = 0
+      let totalFactor = 0
+      for (let i = 1; i < STEPS; i++) {
+        const v = i / STEPS
+        const phi = v * Math.PI
+        const weight = Math.sin(phi) // area element on surface of revolution
+        totalFactor += surface.getPlayerSpeedCorrectionAt(0.5, v) * weight
+        totalWeight += weight
+      }
+      const avgFactor = totalFactor / totalWeight
+      // Should be close to 1.0 (within 5% — clamping may shift it slightly)
+      expect(avgFactor).toBeGreaterThan(0.95)
+      expect(avgFactor).toBeLessThan(1.05)
+    })
+  })
 })

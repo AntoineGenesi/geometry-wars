@@ -111,6 +111,17 @@
 - [ ] Speed feels constant everywhere (was: slower at bulges, faster at waist)
 - [ ] Cross the top pole and bottom pole — controls not inverted after crossing
 
+### Test: s44j-12 — Peanut Movement No Longer Sluggish on Bulge
+
+**Status:** Changes made — user testing required (Level 5/LAN MP not achievable programmatically).
+
+**What was changed:** UV-aware speed normalization added to peanut surface. Player speed is now scaled by `localMetric / avgMetric` so traversal rate is consistent everywhere. Applied in both SP (GameLoop.ts) and MP server (GameRoom.ts).
+
+- [ ] **SP: Move around peanut** — Start single-player on peanut map. Move around all areas. Speed at the bulge (wide areas) feels the same as at the waist (narrow area).
+- [ ] **SP: No sluggish zones** — Previously the bulge felt 2x slower than the waist. Now traversal feels uniform.
+- [ ] **MP: Same fix applies** — Start LAN multiplayer on peanut map. Repeat speed check. Both players should feel consistent speed.
+- [ ] **No regression on other maps** — Switch to sphere, torus, pill. Movement feels normal (correction returns 1.0 on non-peanut surfaces).
+
 ### Test: Torus Surface — No Speed Variation
 
 - [ ] Start LAN multiplayer on torus surface
