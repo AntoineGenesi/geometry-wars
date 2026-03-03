@@ -310,7 +310,7 @@ export class VotingScreen {
     // ---- Mode row ----
     const modeRow = this.buildOptionRow(
       t('voting.mode'),
-      MODES.map(m => ({ id: m.id, label: t(`voting.modes.${m.id}`) })),
+      MODES.map(m => ({ id: m.id, label: t(`voting.modes.${m.id}`), icon: m.icon })),
       this.selectedMode,
       (id) => {
         this.selectedMode = id;
@@ -450,7 +450,7 @@ export class VotingScreen {
 
   private buildOptionRow(
     label: string,
-    options: Array<{ id: string; label: string }>,
+    options: Array<{ id: string; label: string; icon?: string }>,
     _initialSelected: string,
     onSelect: (id: string) => void,
     buttonMap: Map<string, HTMLElement>,
@@ -468,7 +468,8 @@ export class VotingScreen {
       const btn = document.createElement('button');
       btn.className = 'vs-option-btn';
       btn.setAttribute('data-id', opt.id);
-      btn.innerHTML = `${opt.label} <span class="vs-opt-count">0</span>`;
+      const iconHtml = opt.icon ? `<span class="vs-opt-icon">${opt.icon}</span>` : '';
+      btn.innerHTML = `${iconHtml}${opt.label} <span class="vs-opt-count">0</span>`;
       btn.addEventListener('click', () => onSelect(opt.id));
       row.appendChild(btn);
 
@@ -642,6 +643,11 @@ export class VotingScreen {
         color: #00ffff;
         box-shadow: 0 0 12px rgba(0, 255, 255, 0.5);
         background: rgba(0, 60, 80, 0.5);
+      }
+
+      #voting-screen .vs-opt-icon {
+        margin-right: 4px;
+        font-size: 15px;
       }
 
       #voting-screen .vs-opt-count {
