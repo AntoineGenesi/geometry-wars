@@ -234,6 +234,12 @@ export interface NetworkCallbacks {
   onStartupConfig?: (config: NetworkStartupConfig) => void;
   /** Fired when a player levels up (server-authoritative). */
   onPlayerLevelUp?: (data: { playerId: string; newLevel: number; playerName: string }) => void;
+  /**
+   * Fired when the server explicitly tells the client the current game phase on join.
+   * Allows immediate routing to the correct screen (e.g. voting) without waiting
+   * for the polling interval. (s44j-14)
+   */
+  onPhaseSync?: (data: { phase: string }) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -450,7 +456,14 @@ export class NetworkClient {
     this.room.state.listen('gameStarted', (value: boolean) => {
       netLog(`[Network] gameStarted changed to ${value}`);
       if (value) {
-        this.callbacks.onGameStart?.();
+        // Do NOT fire onGameStart when roomPhase is already 'voting'.
+        // During voting, gameStarted stays true from the previous game — this
+        // listen fires for the initial state sync on rejoin, not a real game start.
+        // Calling onGameStart() here would hide the voting screen. (s44j-14)
+        const curPhase = (this.room?.state as { roomPhase?: string })?.roomPhase ?? 'lobby';
+        if (curPhase !== 'voting') {
+          this.callbacks.onGameStart?.();
+        }
       }
       this.scheduleStateChange();
     });
@@ -481,6 +494,15 @@ export class NetworkClient {
     // Pre-spawn warning: server fires this 1.5s before adding an enemy to state
     this.room.onMessage('pre_spawn', (data: { type: string; u: number; v: number }) => {
       this.callbacks.onPreSpawn?.(data);
+    });
+
+    // Phase sync: server sends this on join when game is in voting/playing phase.
+    // Allows the client to immediately route to the correct screen. (s44j-14)
+    this.room.onMessage('phase_sync', (data: { phase: string }) => {
+      netLog(`[Network] Received phase_sync: phase=${data.phase}`);
+      this.callbacks.onPhaseSync?.(data);
+      // Also schedule a state refresh so onStateChange runs with fresh state
+      this.scheduleStateChange();
     });
 
     // Server lifecycle messages
@@ -730,6 +752,17 @@ export class NetworkClient {
   getServerSurfaceType(): string {
     if (!this.room?.state) return 'sphere';
     return (this.room.state as { surfaceType?: string }).surfaceType || 'sphere';
+  }
+
+  /**
+   * Fire onStateChange immediately with the current room state.
+   * Call after setCallbacks() to ensure the correct screen (lobby/voting/playing)
+   * is shown without waiting for the 100ms polling interval. (s44j-14)
+   */
+  triggerInitialSync(): void {
+    if (!this.room?.state || !this.callbacks.onStateChange) return;
+    const state = this.convertState(this.room.state);
+    this.callbacks.onStateChange(state);
   }
 
   /**

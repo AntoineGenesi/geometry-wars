@@ -3824,7 +3824,26 @@ async function main() {
         netMainLog(`[NetworkMain] startup_config cached (hash=${pendingStartupHash})`);
         pendingStartupHash = null;
       },
+      onPhaseSync: (data: { phase: string }) => {
+        // Server told us the current game phase on join. Hide lobby UI immediately
+        // and let onStateChange (triggered by the phase_sync handler) show the
+        // correct screen. Without this, lobby buttons flash briefly before voting
+        // screen appears via the 100ms polling interval. (s44j-14)
+        if (data.phase === 'voting') {
+          startBtn.style.display = 'none';
+          modeSelectorDiv.style.display = 'none';
+          statusEl.textContent = 'VOTING';
+        } else if (data.phase === 'playing') {
+          startBtn.style.display = 'none';
+          modeSelectorDiv.style.display = 'none';
+        }
+      },
     });
+
+    // Immediately sync state so the correct screen (lobby/voting/playing) is shown
+    // without waiting for the 100ms polling interval. This prevents the flash of
+    // lobby UI when rejoining during voting or mid-game. (s44j-14)
+    network.triggerInitialSync();
   }).catch((err) => {
     connectionResolved = true; // Prevent the timeout handler from also showing an error
     clearTimeout(timeoutId);
