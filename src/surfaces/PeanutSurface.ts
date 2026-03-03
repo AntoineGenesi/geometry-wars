@@ -19,6 +19,9 @@ export class PeanutSurface extends Surface {
   private readonly gridSegmentsU: number
   private readonly gridSegmentsV: number
 
+  /** Cached average metric scale for speed correction (lazy-initialized). */
+  private _avgMetricScale: number | null = null
+
   constructor(config?: PeanutConfig) {
     const baseRadius = config?.baseRadius ?? 6
     const waistDepth = config?.waistDepth ?? 0.4
@@ -83,6 +86,43 @@ export class PeanutSurface extends Surface {
 
   private profileRadiusDerivative(phi: number): number {
     return this.baseRadius * (-2 * this.waistDepth * Math.sin(2 * phi))
+  }
+
+  /**
+   * Compute the local UV metric scale at a given v (phi) position.
+   * Metric = sqrt(uScale * vScale), normalized by baseRadius (scale-invariant).
+   */
+  private _localMetricAt(v: number): number {
+    const phi = v * Math.PI
+    const sinPhi = Math.max(Math.abs(Math.sin(phi)), 0.001)
+    const rNorm = 1 + this.waistDepth * Math.cos(2 * phi)
+    const drNorm = -2 * this.waistDepth * Math.sin(2 * phi)
+    const uScale = rNorm * sinPhi
+    const vScale = Math.sqrt(rNorm * rNorm + drNorm * drNorm)
+    return Math.sqrt(uScale * vScale)
+  }
+
+  private _computeAvgMetricScale(): number {
+    const STEPS = 40
+    let totalWeight = 0
+    let totalMetric = 0
+    for (let i = 1; i < STEPS; i++) {
+      const v = i / STEPS
+      const phi = v * Math.PI
+      const weight = Math.sin(phi)
+      totalMetric += this._localMetricAt(v) * weight
+      totalWeight += weight
+    }
+    return totalWeight > 0 ? totalMetric / totalWeight : 1.0
+  }
+
+  override getPlayerSpeedCorrectionAt(_u: number, v: number): number {
+    if (this._avgMetricScale === null) {
+      this._avgMetricScale = this._computeAvgMetricScale()
+    }
+    const localMetric = this._localMetricAt(v)
+    const raw = localMetric / this._avgMetricScale
+    return Math.max(0.4, Math.min(2.5, raw))
   }
 
   private getPointLocal(u: number, v: number): SurfacePoint {
