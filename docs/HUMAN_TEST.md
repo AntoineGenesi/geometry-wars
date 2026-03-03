@@ -4,6 +4,24 @@
 >
 > **Last updated:** 2026-03-03
 
+## s44j-03: Weapon Cycling Q/E in LAN MP
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**What was changed:** Q and E keys now cycle weapons in LAN MP. Server tracks secondary weapon slot per player (ammo preserved on toggle). HUD and visual projectile type update via existing `onStateChange` path.
+
+**How to test (LAN required):**
+- [ ] Start a LAN multiplayer game (host + at least 1 client)
+- [ ] Walk over a weapon pickup (spread, homing, etc.)
+- [ ] Press **Q** — weapon should switch back to standard blaster
+- [ ] Press **Q** or **E** again — weapon should switch back to secondary (ammo preserved)
+- [ ] Confirm weapon HUD icon on left side changes correctly
+- [ ] Confirm projectile visual changes (e.g. spread fans vs single blaster)
+- [ ] Confirm OTHER player(s) see your projectile type change (server-authoritative)
+- [ ] Confirm this works for both host and joining client
+
+---
+
 ## s44i-02: KotH / Claustrophobia Scoring (LAN MP)
 
 **Status:** Changes made — LAN multiplayer human testing required.

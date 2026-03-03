@@ -47,6 +47,7 @@ interface PlayerInput {
   shooting: boolean;
   bomb: boolean;
   boost?: boolean;
+  weaponSwap?: boolean;
   // Camera axes (world space) for server-side camera-relative movement.
   // Optional for backward compatibility with older clients.
   camRightX?: number; camRightY?: number; camRightZ?: number;
@@ -515,6 +516,13 @@ export class GameRoom extends Room<GameState> {
   /** Per-player boost (sprint) state: active, timer, cooldown, and prev key held. */
   private playerBoostStates: Map<string, { active: boolean; timer: number; cooldown: number; prevHeld: boolean }> = new Map();
 
+  /**
+   * Secondary weapon inventory per player: the non-standard weapon they currently hold.
+   * When a player cycles weapons (Q/E), they toggle between this and standard.
+   * Ammo is preserved across the toggle so switching back restores remaining shots.
+   */
+  private playerSecondaryWeapon: Map<string, { type: string; ammo: number }> = new Map();
+
   /** Server-side surface geometry + walker pool. Replaces UV-based player movement. */
   private surfaceManager = new ServerSurfaceManager();
 
@@ -838,6 +846,7 @@ export class GameRoom extends Room<GameState> {
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
       this.playerBoostStates.delete(client.sessionId);
+      this.playerSecondaryWeapon.delete(client.sessionId);
       this.surfaceManager.removeWalker(client.sessionId);
       this.playerPerfWindows.delete(client.sessionId);
       this.ddaDecreaseCounters.delete(client.sessionId);
@@ -1007,6 +1016,8 @@ export class GameRoom extends Room<GameState> {
       player.weaponAmmo = -1;
       player.playerLevel = 0;
       player.playerKills = 0;
+      // Clear secondary weapon inventory on round reset
+      this.playerSecondaryWeapon.delete(sessionId);
       // Reset buff stacks so each round starts clean
       player.buffStacks.clear();
       // Reset shot timers so the player can shoot immediately in the new game.
@@ -1093,6 +1104,27 @@ export class GameRoom extends Room<GameState> {
       boostState.cooldown = BOOST_COOLDOWN;
     }
     this.playerBoostStates.set(client.sessionId, boostState);
+
+    // Weapon cycle (Q/E): toggle between standard and secondary weapon.
+    // The client sends weaponSwap=true for exactly one frame (wasKeyJustPressed).
+    // If on standard: switch to secondary (if one is held).
+    // If on secondary: switch to standard, preserving secondary ammo for later.
+    if (input.weaponSwap) {
+      const secondary = this.playerSecondaryWeapon.get(client.sessionId);
+      if (secondary && secondary.ammo > 0) {
+        if (player.weaponType === 'standard') {
+          // Switch to secondary weapon
+          player.weaponType = secondary.type;
+          player.weaponAmmo = secondary.ammo;
+        } else {
+          // Switch back to standard, save secondary ammo
+          secondary.ammo = player.weaponAmmo;
+          this.playerSecondaryWeapon.set(client.sessionId, secondary);
+          player.weaponType = 'standard';
+          player.weaponAmmo = -1;
+        }
+      }
+    }
   }
 
   /**
@@ -2834,7 +2866,7 @@ export class GameRoom extends Room<GameState> {
 
     // Player-weaponPickup collisions
     const pickupsToRemove: number[] = [];
-    this.state.players.forEach((player) => {
+    this.state.players.forEach((player, sessionId) => {
       if (!player.alive) return;
 
       this.state.weaponPickups.forEach((pickup, index) => {
@@ -2850,6 +2882,9 @@ export class GameRoom extends Room<GameState> {
           pickupsToRemove.push(index);
 
           const cfg = WEAPON_CONFIGS[pickup.weaponType] ?? WEAPON_CONFIGS.standard;
+          // Save to secondary weapon inventory so Q/E can cycle back to it.
+          // Always overwrites the previous secondary — MP supports one secondary slot.
+          this.playerSecondaryWeapon.set(sessionId, { type: pickup.weaponType, ammo: cfg.ammo });
           player.weaponType = pickup.weaponType;
           player.weaponAmmo = cfg.ammo;
         }

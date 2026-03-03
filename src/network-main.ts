@@ -4116,6 +4116,7 @@ async function main() {
         shooting: inputState.shooting,
         bomb: inputState.bomb,
         boost: inputState.boost,
+        weaponSwap: inputState.weaponSwap,
         // Camera world-space axes (pre-allocated vectors, computed above from camera.matrixWorld)
         camRightX: _aimCamRight.x, camRightY: _aimCamRight.y, camRightZ: _aimCamRight.z,
         camUpX: _aimCamUp.x, camUpY: _aimCamUp.y, camUpZ: _aimCamUp.z,
@@ -4127,7 +4128,8 @@ async function main() {
         || Math.abs(currentInput.aimAngle - lastSentInput.aimAngle) > 0.02
         || currentInput.shooting !== lastSentInput.shooting
         || currentInput.bomb !== lastSentInput.bomb
-        || currentInput.boost !== lastSentInput.boost;
+        || currentInput.boost !== lastSentInput.boost
+        || currentInput.weaponSwap;
 
       if (changed) {
         network.sendInput(currentInput);

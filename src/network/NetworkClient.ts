@@ -155,6 +155,7 @@ export interface NetworkInput {
   shooting: boolean;
   bomb: boolean;
   boost?: boolean;
+  weaponSwap?: boolean;
   // Camera axes (world space) for server-side camera-relative movement.
   // Optional for backward compatibility.
   camRightX?: number; camRightY?: number; camRightZ?: number;
