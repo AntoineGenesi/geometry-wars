@@ -19,6 +19,9 @@ export class PeanutSurface extends Surface {
   private readonly gridSegmentsU: number
   private readonly gridSegmentsV: number
 
+  /** Cached average metric scale for speed correction (lazy-initialized). */
+  private _avgMetricScale: number | null = null
+
   constructor(config?: PeanutConfig) {
     const baseRadius = config?.baseRadius ?? 6
     const waistDepth = config?.waistDepth ?? 0.4
@@ -83,6 +86,65 @@ export class PeanutSurface extends Surface {
 
   private profileRadiusDerivative(phi: number): number {
     return this.baseRadius * (-2 * this.waistDepth * Math.sin(2 * phi))
+  }
+
+  /**
+   * Compute the local UV metric scale at a given v (phi) position.
+   * Metric = sqrt(uScale * vScale), normalized by baseRadius (scale-invariant).
+   *
+   * uScale = rNorm * sinPhi  (circumferential arc per UV unit in U direction)
+   * vScale = sqrt(rNorm² + drNorm²)  (meridional arc per UV unit in V direction)
+   * where rNorm = r/baseRadius, drNorm = dr/dphi / baseRadius / π (chain rule of v→phi).
+   *
+   * Note: the actual world-space scales include a factor of baseRadius and 2π/π,
+   * but those cancel in the correction ratio (localMetric / avgMetric), so we
+   * work in normalized coordinates for simplicity.
+   */
+  private _localMetricAt(v: number): number {
+    const phi = v * Math.PI
+    const sinPhi = Math.max(Math.abs(Math.sin(phi)), 0.001)
+    const rNorm = 1 + this.waistDepth * Math.cos(2 * phi)
+    const drNorm = -2 * this.waistDepth * Math.sin(2 * phi)
+    const uScale = rNorm * sinPhi
+    const vScale = Math.sqrt(rNorm * rNorm + drNorm * drNorm)
+    return Math.sqrt(uScale * vScale)
+  }
+
+  /**
+   * Compute the surface-average metric scale (numerical integration over v).
+   * Cached after first call. Uses area-weighted sampling (sin(phi) weighting).
+   */
+  private _computeAvgMetricScale(): number {
+    const STEPS = 40
+    let totalWeight = 0
+    let totalMetric = 0
+    for (let i = 1; i < STEPS; i++) {
+      const v = i / STEPS
+      const phi = v * Math.PI
+      const weight = Math.sin(phi)  // area element on surface of revolution
+      totalMetric += this._localMetricAt(v) * weight
+      totalWeight += weight
+    }
+    return totalWeight > 0 ? totalMetric / totalWeight : 1.0
+  }
+
+  /**
+   * Returns a speed multiplier for the player at UV position (u, v).
+   *
+   * On the peanut's larger (wider) areas, the multiplier is > 1 so the player
+   * moves faster in world space, covering the same UV fraction per second
+   * everywhere. This eliminates the perceived "sluggishness" on the bulge areas
+   * where constant world-space speed traverses a smaller fraction of the surface.
+   *
+   * Clamped to [0.4, 2.5] to avoid extreme changes very near the poles.
+   */
+  override getPlayerSpeedCorrectionAt(_u: number, v: number): number {
+    if (this._avgMetricScale === null) {
+      this._avgMetricScale = this._computeAvgMetricScale()
+    }
+    const localMetric = this._localMetricAt(v)
+    const raw = localMetric / this._avgMetricScale
+    return Math.max(0.4, Math.min(2.5, raw))
   }
 
   getPoint(u: number, v: number): SurfacePoint {

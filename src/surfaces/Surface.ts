@@ -231,6 +231,25 @@ export abstract class Surface {
   abstract worldToSurface(worldPos: THREE.Vector3): { u: number; v: number }
 
   /**
+   * Get the player's speed correction factor at the given UV position.
+   *
+   * Returns a multiplier for the player's world-space speed so that traversal
+   * FEELS consistent across the surface, even if the underlying metric is non-uniform.
+   *
+   * On surfaces with non-uniform UV-to-world mapping (e.g. peanut), moving at
+   * constant world-space speed feels slower in "wider" areas (larger metric tensor)
+   * because the player covers a smaller fraction of the visible surface per second.
+   * This correction scales speed proportionally to the local metric, so the player
+   * always covers the same UV fraction per second regardless of location.
+   *
+   * Default: 1.0 (no correction — for surfaces with uniform or near-uniform metric).
+   * Override in subclasses for surfaces with strong non-uniformity (peanut, etc.).
+   */
+  getPlayerSpeedCorrectionAt(_u: number, _v: number): number {
+    return 1.0
+  }
+
+  /**
    * Get the local UV-to-world-space scale factors at a given UV position.
    *
    * Returns how many world units one UV unit covers in each direction.

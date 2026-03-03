@@ -208,7 +208,15 @@ export class GameLoop {
       // smoothed by the camera lerp. Passing targetUp created a feedback loop.
       // Restored from bffc333 (last user-confirmed working version).
       if (Math.abs(inputState.moveX) > 0.01 || Math.abs(inputState.moveY) > 0.01) {
+        // Apply UV-aware speed correction for surfaces with non-uniform metric (e.g. peanut).
+        // Scales world-space speed proportionally to the local surface metric so the player
+        // covers the same UV fraction per second everywhere, eliminating perceived sluggishness
+        // in wider/distorted areas. Uses previous-frame UV (one-frame lag, imperceptible).
+        const speedCorr = ctx.surface.getPlayerSpeedCorrectionAt(ctx.player.surfaceU, ctx.player.surfaceV);
+        const baseSpeed = ctx.playerWalker.speed;
+        ctx.playerWalker.speed = baseSpeed * speedCorr;
         ctx.playerWalker.moveFromInput(inputState.moveX, -inputState.moveY, ctx.game.camera, dt);
+        ctx.playerWalker.speed = baseSpeed;
       }
 
       // Sync player mesh position from walker
