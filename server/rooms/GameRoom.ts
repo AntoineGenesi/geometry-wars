@@ -1051,7 +1051,7 @@ export class GameRoom extends Room<GameState> {
     this.state.gameMode = mode;
     this.state.mapSize = size;
 
-    // parts[3]: lives count (1-9) or 'infinite' — optional, defaults to 3
+    // parts[3]: lives count (1-999) or 'infinite' — optional, defaults to 3
     const livesParam = parts[3];
     if (livesParam === 'infinite') {
       this.state.infiniteLives = true;
@@ -1059,7 +1059,7 @@ export class GameRoom extends Room<GameState> {
     } else {
       this.state.infiniteLives = false;
       const parsedLives = parseInt(livesParam, 10);
-      this.state.initialLives = (parsedLives >= 1 && parsedLives <= 9) ? parsedLives : 3;
+      this.state.initialLives = (parsedLives >= 1 && parsedLives <= 999) ? parsedLives : 3;
     }
 
     this.startGame();
