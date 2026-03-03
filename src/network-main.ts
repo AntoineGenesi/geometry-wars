@@ -3264,8 +3264,8 @@ async function main() {
           : `${ztSecs}.${String(ztCs).padStart(2, '0')}s`;
         const modeLabel = latestGameMode === 'king' ? '👑 ZONE' : '🔴 ZONE';
         let primaryHtml = `${modeLabel}: ${ztStr}`;
-        if (latestGameMode === 'claustrophobia') {
-          // Secondary: kill points
+        if (latestGameMode === 'claustrophobia' || latestGameMode === 'king') {
+          // Secondary: kill points (zone time is primary; kills shown below)
           primaryHtml += `<br><span style="font-size:0.75em;color:#aaa">PTS: ${localPlayer.score.toLocaleString()}</span>`;
         }
         scoreEl.innerHTML =

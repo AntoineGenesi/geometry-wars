@@ -481,6 +481,21 @@ export class GameRoom extends Room<GameState> {
   private readonly KOTH_ZONE_SHRINK_RATE = 0.0006; // UV/s — matches KingMode.ts
   private readonly KOTH_ZONE_MIN_RADIUS = 0.04;    // matches KingMode.ts
   private readonly KOTH_ZONE_DURATION = 15.0;       // seconds until zone moves
+  private readonly KOTH_ZONE_START_RADIUS = 0.12;  // initial UV radius
+
+  // World-space zone center (accurate for all surfaces, updated when zone moves)
+  private kothZoneWorldX = 0;
+  private kothZoneWorldY = 10;
+  private kothZoneWorldZ = 0;
+  /** World-space radius at full size (kothZoneRadius = KOTH_ZONE_START_RADIUS) */
+  private kothZoneWorldRadiusBase = 2.5;
+
+  // Claustrophobia world-space zone (center + base radius, computed at game start)
+  private claustroZoneCenterX = 0;
+  private claustroZoneCenterY = 0;
+  private claustroZoneCenterZ = 0;
+  /** 2x bounding sphere radius — at UV radius 0.5 this encompasses the entire surface */
+  private claustroWorldRadiusBase = 20;
 
   /**
    * Count of enemies that have been warned to clients (pre_spawn sent) but
@@ -997,6 +1012,19 @@ export class GameRoom extends Room<GameState> {
     // Must happen before creating walkers below.
     const scaleFactor = getMapScaleFactor(this.state.mapSize);
     this.surfaceManager.initSurface(this.state.surfaceType, scaleFactor);
+
+    // Compute world-space zone data AFTER initSurface (surface geometry must exist).
+    // KotH: zone center world pos, radius base scaled to this surface's size.
+    const bsRadius = this.surfaceManager.getBoundingSphereRadius();
+    this.kothZoneWorldRadiusBase = Math.max(0.5, bsRadius * 0.25);
+    this._updateKothZoneWorldPos();
+
+    // Claustrophobia: center at UV (0.5, 0.5), radius starts large enough to cover entire surface.
+    const claustroCenter = this.surfaceManager.getWorldPosForUV(0.5, 0.5);
+    this.claustroZoneCenterX = claustroCenter.x;
+    this.claustroZoneCenterY = claustroCenter.y;
+    this.claustroZoneCenterZ = claustroCenter.z;
+    this.claustroWorldRadiusBase = bsRadius * 2.0; // at UV radius 0.5 → 2x bsRadius → covers entire surface
 
     // Invalidate any pending spawn timeouts from the previous game.
     // Bumping spawnGeneration causes old setTimeouts to abort when they fire.
@@ -2968,15 +2996,25 @@ export class GameRoom extends Room<GameState> {
   }
 
   /**
+   * Recompute the KotH zone world-space center from current UV coordinates.
+   * Uses BVH snap so the result is accurate for ALL surface types (torus, cube, etc.),
+   * not just sphere. Call whenever kothZoneU/V change.
+   */
+  private _updateKothZoneWorldPos(): void {
+    const pos = this.surfaceManager.getWorldPosForUV(this.kothZoneU, this.kothZoneV);
+    this.kothZoneWorldX = pos.x;
+    this.kothZoneWorldY = pos.y;
+    this.kothZoneWorldZ = pos.z;
+  }
+
+  /**
    * Update zone-time scoring for KotH and Claustrophobia modes.
    * Called every game tick. Increments player.zoneTime for players inside the zone/boundary.
    *
-   * KotH: zone moves every 15s, shrinks over time. Player in zone earns zone-time seconds.
-   * Claustrophobia: shrinking circular boundary centered at UV (0.5, 0.5).
-   *   Player inside boundary earns zone-time seconds.
-   *
-   * Zone positions mirror the client-side KingMode.ts and ClaustrophobiaMode.ts logic
-   * so server tracking is consistent with the visual the player sees.
+   * Uses WORLD-SPACE distance (player.wx/wy/wz vs zone center world pos) so detection
+   * works correctly on ALL surface types. The old UV-space comparison was broken for
+   * torus and other non-sphere surfaces because player.surfaceU/V uses sphere
+   * parameterization which gives wrong V values for torus.
    */
   private updateZoneTimeScoring(dt: number): void {
     const mode = this.state.gameMode;
@@ -2988,39 +3026,43 @@ export class GameRoom extends Room<GameState> {
         this.KOTH_ZONE_MIN_RADIUS,
         this.kothZoneRadius - this.KOTH_ZONE_SHRINK_RATE * dt,
       );
-      // Move zone periodically
+      // Move zone periodically — update world pos when UV changes
       this.kothZoneTimer -= dt;
       if (this.kothZoneTimer <= 0) {
         this.kothZoneU = Math.random();
         this.kothZoneV = Math.random();
         this.kothZoneTimer = this.KOTH_ZONE_DURATION;
+        this._updateKothZoneWorldPos();
       }
-      // Award zone time to players inside the zone
-      const r2 = this.kothZoneRadius * this.kothZoneRadius;
+      // Award zone time to players inside the zone using world-space distance.
+      // World radius scales proportionally with UV radius.
+      const worldRadius = this.kothZoneWorldRadiusBase *
+        (this.kothZoneRadius / this.KOTH_ZONE_START_RADIUS);
+      const wr2 = worldRadius * worldRadius;
       this.state.players.forEach((player) => {
         if (!player.alive) return;
-        const du = Math.abs(player.surfaceU - this.kothZoneU);
-        const dv = Math.abs(player.surfaceV - this.kothZoneV);
-        // Wrap-aware distance (handles surfaces where U or V wraps at 0/1)
-        const duW = Math.min(du, 1.0 - du);
-        const dvW = Math.min(dv, 1.0 - dv);
-        if (duW * duW + dvW * dvW <= r2) {
+        const dx = player.wx - this.kothZoneWorldX;
+        const dy = player.wy - this.kothZoneWorldY;
+        const dz = player.wz - this.kothZoneWorldZ;
+        if (dx * dx + dy * dy + dz * dz <= wr2) {
           player.zoneTime += dt;
         }
       });
     } else {
-      // Claustrophobia: shrinking boundary centered at (0.5, 0.5)
-      // Mirrors ClaustrophobiaMode.ts: initial=0.5, final=0.05, over 180s
+      // Claustrophobia: shrinking boundary centered at world pos of UV (0.5, 0.5).
+      // Mirrors ClaustrophobiaMode.ts: UV radius shrinks from 0.5 → 0.05 over 180s.
+      // World radius: claustroWorldRadiusBase * (uvRadius / 0.5), so at full size
+      // (uvRadius=0.5) worldRadius = claustroWorldRadiusBase = 2x bsRadius → covers entire surface.
       const progress = Math.min(1.0, this.state.gameTime / 180.0);
-      const boundaryRadius = 0.5 - progress * (0.5 - 0.05);
-      const br2 = boundaryRadius * boundaryRadius;
+      const uvRadius = 0.5 - progress * (0.5 - 0.05);
+      const worldRadius = this.claustroWorldRadiusBase * (uvRadius / 0.5);
+      const wr2 = worldRadius * worldRadius;
       this.state.players.forEach((player) => {
         if (!player.alive) return;
-        const du = Math.abs(player.surfaceU - 0.5);
-        const dv = Math.abs(player.surfaceV - 0.5);
-        const duW = Math.min(du, 1.0 - du);
-        const dvW = Math.min(dv, 1.0 - dv);
-        if (duW * duW + dvW * dvW <= br2) {
+        const dx = player.wx - this.claustroZoneCenterX;
+        const dy = player.wy - this.claustroZoneCenterY;
+        const dz = player.wz - this.claustroZoneCenterZ;
+        if (dx * dx + dy * dy + dz * dz <= wr2) {
           player.zoneTime += dt;
         }
       });
