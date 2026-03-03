@@ -482,17 +482,17 @@ describe('GameRoom countdown → auto-launch (pickMostVoted)', () => {
     expect(countdown).toBe(0);
   });
 
-  it('auto-launches when all players have voted before countdown ends', () => {
-    // Mirrors tickVoting() early-exit logic: voteMap.size >= players.size → launch
+  it('voting does NOT auto-launch when all players have voted (s44j-13 fix)', () => {
+    // Before s44j-13 fix: voteMap.size >= playerCount triggered immediate launch,
+    // bypassing the Ready Up requirement entirely (solo host clicking a map = instant start).
+    // After fix: tickVoting() ONLY auto-launches on countdown expiry, NOT on vote count.
     const voteMap = new Map<string, string>();
-    const playerCount = 2;
+    const playerCount = 1; // solo host
 
     function tickVoting(voteMap: Map<string, string>, playerCount: number, countdown: number): { launched: boolean; countdown: number } {
       const DT = 1 / 60;
-      // All players voted → launch immediately
-      if (playerCount > 0 && voteMap.size >= playerCount) {
-        return { launched: true, countdown };
-      }
+      // s44j-13 fix: removed the "all voted → launch immediately" block.
+      // Only countdown expiry triggers auto-launch now.
       const newCountdown = Math.max(0, countdown - DT);
       if (newCountdown <= 0) {
         return { launched: true, countdown: 0 };
@@ -500,16 +500,95 @@ describe('GameRoom countdown → auto-launch (pickMostVoted)', () => {
       return { launched: false, countdown: newCountdown };
     }
 
-    // Before all players vote — no launch
+    // Even after the solo host votes, no launch — countdown still running
     voteMap.set('player1', 'sphere:waves:medium');
-    let result = tickVoting(voteMap, playerCount, 25);
+    const result = tickVoting(voteMap, playerCount, 25);
     expect(result.launched).toBe(false);
+    expect(result.countdown).toBeGreaterThan(0); // countdown still ticking
+  });
+});
 
-    // After all players vote — launch immediately
-    voteMap.set('player2', 'torus:waves:small');
-    result = tickVoting(voteMap, playerCount, 25);
+// ---------------------------------------------------------------------------
+// s44j-13: Ready Up — vote locking and launch trigger
+// ---------------------------------------------------------------------------
+
+describe('GameRoom ready_up mechanism (s44j-13)', () => {
+  /** Mirrors the server ready_up handler logic */
+  function handleReadyUp(
+    readyMap: Map<string, boolean>,
+    voteMap: Map<string, string>,
+    clientId: string,
+    playerCount: number,
+  ): { launched: boolean; choice: string | null } {
+    readyMap.set(clientId, true);
+    if (playerCount > 0 && readyMap.size >= playerCount) {
+      // All ready — pick winner
+      const counts = new Map<string, number>();
+      voteMap.forEach((choice) => counts.set(choice, (counts.get(choice) ?? 0) + 1));
+      let winner = 'sphere:waves:medium';
+      let best = 0;
+      counts.forEach((count, choice) => { if (count > best) { best = count; winner = choice; } });
+      return { launched: true, choice: winner };
+    }
+    return { launched: false, choice: null };
+  }
+
+  it('solo host: game launches when solo player clicks Ready Up', () => {
+    const readyMap = new Map<string, boolean>();
+    const voteMap = new Map<string, string>([['player1', 'torus:waves:large']]);
+    const result = handleReadyUp(readyMap, voteMap, 'player1', 1);
     expect(result.launched).toBe(true);
-    expect(result.countdown).toBe(25); // countdown not decremented (early exit)
+    expect(result.choice).toBe('torus:waves:large');
+  });
+
+  it('2 players: game does NOT launch after only 1 is ready', () => {
+    const readyMap = new Map<string, boolean>();
+    const voteMap = new Map<string, string>([
+      ['player1', 'sphere:waves:medium'],
+      ['player2', 'cube:waves:small'],
+    ]);
+    const result = handleReadyUp(readyMap, voteMap, 'player1', 2);
+    expect(result.launched).toBe(false);
+  });
+
+  it('2 players: game launches when both are ready', () => {
+    const readyMap = new Map<string, boolean>();
+    const voteMap = new Map<string, string>([
+      ['player1', 'sphere:waves:medium'],
+      ['player2', 'sphere:waves:medium'],
+    ]);
+    handleReadyUp(readyMap, voteMap, 'player1', 2);
+    const result = handleReadyUp(readyMap, voteMap, 'player2', 2);
+    expect(result.launched).toBe(true);
+    expect(result.choice).toBe('sphere:waves:medium'); // unanimous winner
+  });
+
+  it('vote locked after ready-up: vote handler ignores message when player is in readyMap', () => {
+    // Mirrors: if (this.state.readyMap.get(client.sessionId)) return;
+    const readyMap = new Map<string, boolean>([['player1', true]]);
+    const voteMap = new Map<string, string>([['player1', 'sphere:waves:medium']]);
+
+    // Attempt to change vote after ready-up — should be rejected
+    function handleVote(readyMap: Map<string, boolean>, voteMap: Map<string, string>, clientId: string, choice: string) {
+      if (readyMap.get(clientId)) return; // locked
+      voteMap.set(clientId, choice);
+    }
+
+    handleVote(readyMap, voteMap, 'player1', 'torus:waves:large');
+    expect(voteMap.get('player1')).toBe('sphere:waves:medium'); // unchanged
+  });
+
+  it('vote allowed before ready-up: player can change their vote', () => {
+    const readyMap = new Map<string, boolean>();
+    const voteMap = new Map<string, string>([['player1', 'sphere:waves:medium']]);
+
+    function handleVote(readyMap: Map<string, boolean>, voteMap: Map<string, string>, clientId: string, choice: string) {
+      if (readyMap.get(clientId)) return; // locked
+      voteMap.set(clientId, choice);
+    }
+
+    handleVote(readyMap, voteMap, 'player1', 'torus:waves:large');
+    expect(voteMap.get('player1')).toBe('torus:waves:large'); // updated
   });
 });
 

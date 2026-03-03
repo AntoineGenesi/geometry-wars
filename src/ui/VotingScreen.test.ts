@@ -79,6 +79,7 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
       geoms: { forEach() {} } as never,
       weaponPickups: { forEach() {} } as never,
       superPickups: { forEach() {} } as never,
+      buffPickups: { forEach() {} } as never,
       surfaceType: 'sphere',
       waveNumber: 0,
       gameTime: 0,
@@ -130,6 +131,64 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
 
     screen.dispose();
   });
+
+  it('vote is NOT sent after clicking Ready Up (vote locked)', () => {
+    // s44j-13: once player clicks Ready Up, their vote is locked.
+    // Clicking surface/mode/size after that must NOT call onVote.
+    const screen = new VotingScreen();
+    const votedChoices: string[] = [];
+    screen.setCallbacks({ onVote: (choice) => votedChoices.push(choice) });
+
+    screen.show(makeFakeState(), false, 'player1');
+
+    // Click a surface to cast initial vote
+    const torusCard = document.querySelector('[data-surface="torus"]') as HTMLElement;
+    torusCard?.click();
+    expect(votedChoices).toHaveLength(1);
+
+    // Click Ready Up
+    const readyBtn = document.querySelector('.vs-ready-btn') as HTMLElement;
+    readyBtn?.click();
+
+    // Now try to change vote — should NOT trigger onVote
+    const sphereCard = document.querySelector('[data-surface="sphere"]') as HTMLElement;
+    sphereCard?.click();
+
+    expect(votedChoices).toHaveLength(1); // still only the original vote
+
+    screen.dispose();
+  });
+
+  it('Ready Up button calls onReadyUp callback', () => {
+    const screen = new VotingScreen();
+    let readyUpCalled = false;
+    screen.setCallbacks({ onReadyUp: () => { readyUpCalled = true; } });
+
+    screen.show(makeFakeState(), false, 'player1');
+
+    const readyBtn = document.querySelector('.vs-ready-btn') as HTMLElement;
+    readyBtn?.click();
+
+    expect(readyUpCalled).toBe(true);
+
+    screen.dispose();
+  });
+
+  it('Ready Up button does not call onReadyUp twice if clicked again', () => {
+    const screen = new VotingScreen();
+    let callCount = 0;
+    screen.setCallbacks({ onReadyUp: () => { callCount++; } });
+
+    screen.show(makeFakeState(), false, 'player1');
+
+    const readyBtn = document.querySelector('.vs-ready-btn') as HTMLElement;
+    readyBtn?.click();
+    readyBtn?.click(); // second click should be ignored
+
+    expect(callCount).toBe(1);
+
+    screen.dispose();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -146,6 +205,7 @@ describe('VotingScreen — mastery desync regression (S34b)', () => {
       geoms: { forEach() {} } as never,
       weaponPickups: { forEach() {} } as never,
       superPickups: { forEach() {} } as never,
+      buffPickups: { forEach() {} } as never,
       surfaceType: 'sphere',
       waveNumber: 0,
       gameTime: 0,
