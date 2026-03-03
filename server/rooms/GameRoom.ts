@@ -8,6 +8,7 @@ import {
   WeaponPickupState,
   SuperPickupState,
   BuffPickupState,
+  HealthPickupState,
 } from '../schema/GameState';
 import fs from 'fs';
 import path from 'path';
@@ -32,6 +33,11 @@ import {
   // cooldowns — so level fire rate perks don't change effective weapon fire rates in SP either.
   PLAYER_PVP_MAX_HEALTH,
   PLAYER_PVP_INVINCIBILITY_DURATION,
+  HEALTH_PICKUP_THRESHOLD,
+  HEALTH_PICKUP_SPAWN_FREQUENCY,
+  HEALTH_PICKUP_HEAL_AMOUNT,
+  HEALTH_PICKUP_LIFETIME,
+  HEALTH_PICKUP_SPAWN_RADIUS,
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import type { ServerWalkerState } from '../movement/ServerMeshWalker';
@@ -546,6 +552,14 @@ export class GameRoom extends Room<GameState> {
   private nextPickupId = 0;
   private nextSuperPickupId = 0;
   private nextBuffPickupId = 0;
+  private nextHealthPickupId = 0;
+
+  // Per-player cooldown for health pickup spawning (gameTime of last spawn per player ID).
+  private lastHealthPickupSpawnTime: Map<string, number> = new Map();
+
+  // Configurable from RoomConfig (GameSettings.healingFrequency / healingAmount).
+  private healthPickupFrequency: number = HEALTH_PICKUP_SPAWN_FREQUENCY;
+  private healthPickupHealAmount: number = HEALTH_PICKUP_HEAL_AMOUNT;
   private waveNumber = 0;
 
   // Wave scheduling state
@@ -1214,6 +1228,8 @@ export class GameRoom extends Room<GameState> {
     this.state.weaponPickups.clear();
     this.state.superPickups.clear();
     this.state.buffPickups.clear();
+    this.state.healthPickups.clear();
+    this.lastHealthPickupSpawnTime.clear();
 
     this.setMetadata({
       surface: this.state.surfaceType,
@@ -1701,6 +1717,11 @@ export class GameRoom extends Room<GameState> {
 
     // Update buff pickups (age + despawn)
     this.updateBuffPickups(dt);
+
+    // Update health pickups (age + despawn) — only active in PvP mode
+    if (this.pvpEnabled) {
+      this.updateHealthPickups(dt);
+    }
 
     // Wave-based enemy spawning (replaces old per-2s individual spawn)
     this.tickWaves(dt);
@@ -3020,6 +3041,18 @@ export class GameRoom extends Room<GameState> {
 
             target.health = Math.max(0, target.health - damage);
 
+            // Spawn health pickup near damaged player if health < threshold and cooldown elapsed
+            if (
+              target.health > 0 &&
+              target.health / target.maxHealth < HEALTH_PICKUP_THRESHOLD
+            ) {
+              const lastSpawn = this.lastHealthPickupSpawnTime.get(target.id) ?? -Infinity;
+              if (this.state.gameTime - lastSpawn >= this.healthPickupFrequency) {
+                this.spawnHealthPickup(target.surfaceU, target.surfaceV);
+                this.lastHealthPickupSpawnTime.set(target.id, this.state.gameTime);
+              }
+            }
+
             if (target.health <= 0) {
               // PvP kill: respawn target with full health + invincibility
               target.health = target.maxHealth;
@@ -3308,6 +3341,32 @@ export class GameRoom extends Room<GameState> {
       });
     });
 
+    // Player-healthPickup collisions (PvP mode only)
+    const healthPickupsToRemove: number[] = [];
+    if (this.pvpEnabled) {
+      this.state.players.forEach((player) => {
+        if (!player.alive) return;
+
+        this.state.healthPickups.forEach((pickup, index) => {
+          if (!pickup.active) return;
+
+          const dist = usesWorldDist
+            ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
+            : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
+          const threshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
+
+          if (dist < threshold) {
+            pickup.active = false;
+            healthPickupsToRemove.push(index);
+
+            const newHealth = Math.min(player.health + this.healthPickupHealAmount, player.maxHealth);
+            player.health = newHealth;
+            this.logger.log(`[GameRoom] PvP: ${player.name} collected health pickup (+${this.healthPickupHealAmount} HP, now ${newHealth})`);
+          }
+        });
+      });
+    }
+
     // Remove entities (iterate in reverse)
     for (let i = bulletsToRemove.length - 1; i >= 0; i--) {
       this.state.bullets.splice(bulletsToRemove[i], 1);
@@ -3326,6 +3385,9 @@ export class GameRoom extends Room<GameState> {
     }
     for (let i = buffPickupsToRemove.length - 1; i >= 0; i--) {
       this.state.buffPickups.splice(buffPickupsToRemove[i], 1);
+    }
+    for (let i = healthPickupsToRemove.length - 1; i >= 0; i--) {
+      this.state.healthPickups.splice(healthPickupsToRemove[i], 1);
     }
   }
 
@@ -4045,6 +4107,39 @@ export class GameRoom extends Room<GameState> {
     pickup.active = true;
     pickup.age = 0;
     this.state.buffPickups.push(pickup);
+  }
+
+  /**
+   * Spawn a health pickup near the given UV position (PvP mode).
+   * Called when a player's health drops below HEALTH_PICKUP_THRESHOLD.
+   */
+  private spawnHealthPickup(u: number, v: number) {
+    const pickup = new HealthPickupState();
+    pickup.id = `hp${this.nextHealthPickupId++}`;
+    pickup.surfaceU = u + (Math.random() - 0.5) * HEALTH_PICKUP_SPAWN_RADIUS;
+    pickup.surfaceV = v + (Math.random() - 0.5) * HEALTH_PICKUP_SPAWN_RADIUS;
+    pickup.active = true;
+    pickup.age = 0;
+    this.state.healthPickups.push(pickup);
+    this.logger.log(`[GameRoom] PvP: spawned health pickup ${pickup.id} at (${pickup.surfaceU.toFixed(3)}, ${pickup.surfaceV.toFixed(3)})`);
+  }
+
+  private updateHealthPickups(dt: number) {
+    const toRemove: number[] = [];
+    this.state.healthPickups.forEach((pickup, index) => {
+      if (!pickup.active) {
+        toRemove.push(index);
+        return;
+      }
+      pickup.age += dt;
+      if (pickup.age > HEALTH_PICKUP_LIFETIME) {
+        pickup.active = false;
+        toRemove.push(index);
+      }
+    });
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      this.state.healthPickups.splice(toRemove[i], 1);
+    }
   }
 
   private updateBuffPickups(dt: number) {

@@ -183,6 +183,25 @@ export const PLAYER_PVP_MAX_HEALTH = 100;
 export const PLAYER_PVP_INVINCIBILITY_DURATION = 3.0;
 
 // ---------------------------------------------------------------------------
+// Health pickup constants (s44j-pvp-13c)
+// ---------------------------------------------------------------------------
+
+/** Player health threshold (0–1) below which a health pickup may spawn. */
+export const HEALTH_PICKUP_THRESHOLD = 0.70; // 70% of maxHealth
+
+/** Default cooldown (seconds) between health pickup spawns per player. Reads from RoomConfig. */
+export const HEALTH_PICKUP_SPAWN_FREQUENCY = 30;
+
+/** Default HP restored per health pickup. Reads from RoomConfig. */
+export const HEALTH_PICKUP_HEAL_AMOUNT = 20;
+
+/** Seconds before an uncollected health pickup expires and is removed. */
+export const HEALTH_PICKUP_LIFETIME = 10.0;
+
+/** UV-space spawn offset radius from the damaged player's position. */
+export const HEALTH_PICKUP_SPAWN_RADIUS = 0.04;
+
+// ---------------------------------------------------------------------------
 // GameSettings — re-export defaults for convenience
 // ---------------------------------------------------------------------------
 // Full type definitions and validateSettings() live in GameSettings.ts.

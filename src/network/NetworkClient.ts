@@ -97,6 +97,15 @@ export interface NetworkBuffPickupState {
   age: number;
 }
 
+/** Health pickup state from server (PvP mode — spawns near damaged players) */
+export interface NetworkHealthPickupState {
+  id: string;
+  surfaceU: number;
+  surfaceV: number;
+  active: boolean;
+  age: number;
+}
+
 /**
  * An array-like collection that supports forEach iteration.
  * Colyseus ArraySchema<T> is NOT a plain T[] but supports .forEach().
@@ -117,6 +126,7 @@ export interface NetworkGameState {
   weaponPickups: ForEachable<NetworkWeaponPickupState>;
   superPickups: ForEachable<NetworkSuperPickupState>;
   buffPickups: ForEachable<NetworkBuffPickupState>;
+  healthPickups: ForEachable<NetworkHealthPickupState>;
   surfaceType: string;
   waveNumber: number;
   gameTime: number;
@@ -600,6 +610,7 @@ export class NetworkClient {
       weaponPickups: ForEachable<NetworkWeaponPickupState>;
       superPickups: ForEachable<NetworkSuperPickupState>;
       buffPickups: ForEachable<NetworkBuffPickupState>;
+      healthPickups: ForEachable<NetworkHealthPickupState>;
       surfaceType: string;
       waveNumber: number;
       gameTime: number;
@@ -637,6 +648,7 @@ export class NetworkClient {
       weaponPickups: s.weaponPickups || emptyArray,
       superPickups: s.superPickups || emptyArray,
       buffPickups: s.buffPickups || emptyArray,
+      healthPickups: s.healthPickups || emptyArray,
       surfaceType: s.surfaceType,
       waveNumber: s.waveNumber,
       gameTime: s.gameTime,
