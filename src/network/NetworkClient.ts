@@ -287,8 +287,22 @@ export class NetworkClient {
    * Connect to the game server and join a room.
    * Tries the primary URL first; if it fails and a fallback URL was provided,
    * retries once with the fallback (e.g. direct port 2567 if proxy fails).
+   * After all URL attempts fail, automatically retries once after a brief delay
+   * to handle mobile network stabilization (screen-off/screen-on race condition).
+   *
+   * @param options.autoRetryDelayMs - Delay in ms before the automatic retry (default: 700).
+   * @param options.onRetrying - Called just before the auto-retry so the UI can show "Reconnecting...".
    */
-  async connect(options: { name?: string; surfaceType?: string; requestHost?: boolean; mapSize?: string } = {}): Promise<void> {
+  async connect(options: {
+    name?: string;
+    surfaceType?: string;
+    requestHost?: boolean;
+    mapSize?: string;
+    /** Delay before the automatic retry attempt. Default: 700ms. */
+    autoRetryDelayMs?: number;
+    /** Called immediately before the auto-retry so callers can update status UI. */
+    onRetrying?: () => void;
+  } = {}): Promise<void> {
     const joinOpts = {
       name: options.name || `Player ${Math.floor(Math.random() * 1000)}`,
       surfaceType: options.surfaceType || 'sphere',
@@ -303,15 +317,34 @@ export class NetworkClient {
       return;
     } catch (primaryError) {
       if (!this.fallbackUrl) {
-        throw primaryError;
+        // No fallback — fall through to auto-retry below
+        console.warn(`[Network] Primary URL failed (${this.serverUrl}), will auto-retry`);
+      } else {
+        console.warn(`[Network] Primary URL failed (${this.serverUrl}), trying fallback: ${this.fallbackUrl}`);
+
+        // Attempt 2: fallback URL (e.g. direct ws://host:2567)
+        this.client = new Client(this.fallbackUrl);
+        console.log(`[Network] Connecting to fallback: ${this.fallbackUrl}`);
+        try {
+          await this.attemptConnect(joinOpts);
+          return;
+        } catch {
+          // Fallback also failed — fall through to auto-retry below
+          console.warn(`[Network] Fallback URL also failed, will auto-retry`);
+        }
       }
-      console.warn(`[Network] Primary URL failed (${this.serverUrl}), trying fallback: ${this.fallbackUrl}`);
     }
 
-    // Attempt 2: fallback URL (e.g. direct ws://host:2567)
-    this.client = new Client(this.fallbackUrl);
-    console.log(`[Network] Connecting to fallback: ${this.fallbackUrl}`);
-    await this.attemptConnect(joinOpts);
+    // Auto-retry: wait briefly for the network to stabilize.
+    // On mobile, turning the screen back on can leave WiFi in a transitional
+    // state for ~500ms. The first connection attempt fails; the retry succeeds.
+    const retryDelayMs = options.autoRetryDelayMs ?? 700;
+    options.onRetrying?.();
+    console.log(`[Network] Auto-retrying in ${retryDelayMs}ms...`);
+    await new Promise<void>(resolve => setTimeout(resolve, retryDelayMs));
+    this.client = new Client(this.serverUrl);
+    console.log(`[Network] Auto-retry: connecting to ${this.serverUrl}`);
+    await this.attemptConnect(joinOpts); // Final attempt — throws on failure
   }
 
   private async attemptConnect(joinOpts: { name: string; surfaceType: string; requestHost: boolean; mapSize: string }): Promise<void> {
