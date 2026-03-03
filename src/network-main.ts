@@ -1129,9 +1129,10 @@ async function main() {
   const INPUT_SEND_INTERVAL = 0.016;
   let lastInputSendTime = 0;
 
-  // Metrics logging: send perf/DDA data to server every 500ms for persistent logging.
+  // Metrics logging: send perf/DDA data to server every ~10s for persistent logging.
   // Server saves to logs/mp-perf-{sessionId}-{date}.jsonl for post-match analysis.
-  const METRICS_SEND_INTERVAL = 0.5;
+  // ~10s interval keeps log size manageable while providing enough data points per session.
+  const METRICS_SEND_INTERVAL = 10.0;
   let metricsAccumulator = 0;
   let latestGameTime = 0;
   let latestWaveNumber = 0;
@@ -4684,9 +4685,11 @@ async function main() {
       const activeBuffsStr = activeBuffsList.length > 0
         ? activeBuffsList.map(b => `${b.type}:${b.stacks}`).join(',')
         : undefined;
+      const currentFps = Math.round(perfTracker.fps);
       const metrics: ClientMetricsPayload = {
         time: latestGameTime,
-        fps: Math.round(perfTracker.fps),
+        fps: currentFps,
+        frameTime: currentFps > 0 ? Math.round(1000 / currentFps * 100) / 100 : undefined,
         enemyCount: networkEnemies.size,
         bulletCount: bulletIdToIndex.size,
         score: localPlayerState?.score ?? 0,

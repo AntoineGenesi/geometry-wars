@@ -562,6 +562,10 @@ export class GameRoom extends Room<GameState> {
   // Per-player invincibility timers (sessionId → seconds remaining)
   private playerInvincibility: Map<string, number> = new Map();
 
+  // Throttle near-miss telemetry: last game time a near-miss was logged per player (playerId → gameTime)
+  private lastNearMissLogTime: Map<string, number> = new Map();
+  private readonly NEAR_MISS_LOG_THROTTLE = 5.0; // seconds between near-miss log entries per player
+
   // Per-enemy AI state (server-side only — not synced to clients)
   private enemyAI: Map<string, ServerEnemyAI> = new Map();
 
@@ -920,6 +924,7 @@ export class GameRoom extends Room<GameState> {
       this.surfaceManager.removeWalker(client.sessionId);
       this.playerPerfWindows.delete(client.sessionId);
       this.ddaDecreaseCounters.delete(client.sessionId);
+      this.lastNearMissLogTime.delete(client.sessionId);
     }
     // Remove locality and creator-intent tracking for this session
     this.clientLocality.delete(client.sessionId);
@@ -1013,6 +1018,21 @@ export class GameRoom extends Room<GameState> {
     }
   }
 
+  /**
+   * Log a structured gameplay event to the session JSONL log.
+   * Fire-and-forget — never throws. Works for any connected client (remote or local).
+   */
+  private logGameplayEvent(event: Record<string, unknown>): void {
+    if (!this.metricsLogPath) return;
+    const entry = JSON.stringify({
+      sessionId: this.roomId,
+      timestamp: new Date().toISOString(),
+      gameTime: this.state.gameTime,
+      ...event,
+    });
+    fs.appendFile(this.metricsLogPath, entry + '\n', (_err) => { /* suppress write errors */ });
+  }
+
   private startGameWithSettings(choice: string) {
     const parts = choice.split(':');
     let surface = parts[0] || this.state.surfaceType;
@@ -1056,6 +1076,7 @@ export class GameRoom extends Room<GameState> {
     this.waveElapsed = 0;
     this.nextWaveAt = WAVE_FIRST_AT;
     this.playerInvincibility.clear();
+    this.lastNearMissLogTime.clear();
 
     // Reset KotH zone state for each new game
     this.kothZoneU = Math.random();
@@ -2922,9 +2943,37 @@ export class GameRoom extends Room<GameState> {
     this.state.players.forEach((player) => {
       if (!player.alive) return;
 
-      // Skip player if currently invincible
+      // Skip player if currently invincible; log near-miss if enemy is in hit range
       const invincible = this.playerInvincibility.get(player.id) ?? 0;
-      if (invincible > 0) return;
+      if (invincible > 0) {
+        // Near-miss detection: enemy within hit threshold while player is invincible
+        // Throttled to at most once per NEAR_MISS_LOG_THROTTLE seconds per player
+        const lastLog = this.lastNearMissLogTime.get(player.id) ?? -Infinity;
+        if (this.state.gameTime - lastLog >= this.NEAR_MISS_LOG_THROTTLE) {
+          let nearMissLogged = false;
+          this.state.enemies.forEach((enemy) => {
+            if (nearMissLogged || !enemy.alive) return;
+            const dist = usesWorldDist
+              ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
+              : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
+            const hitThreshold = usesWorldDist ? ENEMY_HIT_WORLD : ENEMY_HIT_RADIUS;
+            if (dist < hitThreshold) {
+              nearMissLogged = true;
+              this.lastNearMissLogTime.set(player.id, this.state.gameTime);
+              this.logGameplayEvent({
+                _type: 'near_miss',
+                playerId: player.id,
+                playerName: player.name,
+                invincibleRemaining: Math.round(invincible * 100) / 100,
+                enemyType: enemy.type,
+                lives: player.lives,
+                score: player.score,
+              });
+            }
+          });
+        }
+        return;
+      }
 
       // Prevent multi-hit: only allow one enemy to hit this player per tick.
       // Without this flag, a player surrounded by enemies could lose all lives
@@ -2967,12 +3016,28 @@ export class GameRoom extends Room<GameState> {
           // DDA: track death event for this player
           this.trackDDADeath(player.id);
 
+          // Capture buff stacks before clearing (for telemetry)
+          const lostBuffs: string[] = [];
+          player.buffStacks.forEach((stacks, buffType) => {
+            if (stacks > 0) lostBuffs.push(`${buffType}:${stacks}`);
+          });
+
           // Reset buff stacks on any hit (lose buffs on death, same as SP)
           player.buffStacks.clear();
 
           if (!this.state.infiniteLives && player.lives <= 0) {
             player.alive = false;
             this.logger.log(`[GameRoom] ${player.name} died!`);
+            this.logGameplayEvent({
+              _type: 'player_death',
+              playerId: player.id,
+              playerName: player.name,
+              livesRemaining: 0,
+              score: player.score,
+              kills: player.playerKills,
+              enemyType: enemy.type,
+              lostBuffs: lostBuffs.length > 0 ? lostBuffs.join(',') : undefined,
+            });
           } else {
             // S41-03: Respawn at a random location away from death spot and enemies.
             // Old S31 fix kept player at hit location; user now explicitly wants
@@ -2991,6 +3056,16 @@ export class GameRoom extends Room<GameState> {
             this.playerInvincibility.set(player.id, 2.0);
             const livesRemaining = this.state.infiniteLives ? '∞' : String(player.lives);
             this.logger.log(`[GameRoom] ${player.name} hit, ${livesRemaining} lives remaining — respawned at (${respawnPos.u.toFixed(2)}, ${respawnPos.v.toFixed(2)}) (invincible 2s)`);
+            this.logGameplayEvent({
+              _type: 'player_hit',
+              playerId: player.id,
+              playerName: player.name,
+              livesRemaining: this.state.infiniteLives ? -1 : player.lives,
+              score: player.score,
+              kills: player.playerKills,
+              enemyType: enemy.type,
+              lostBuffs: lostBuffs.length > 0 ? lostBuffs.join(',') : undefined,
+            });
           }
         }
       });
@@ -3037,11 +3112,20 @@ export class GameRoom extends Room<GameState> {
           pickupsToRemove.push(index);
 
           const cfg = WEAPON_CONFIGS[pickup.weaponType] ?? WEAPON_CONFIGS.standard;
+          const prevWeapon = player.weaponType;
           // Save to secondary weapon inventory so Q/E can cycle back to it.
           // Always overwrites the previous secondary — MP supports one secondary slot.
           this.playerSecondaryWeapon.set(sessionId, { type: pickup.weaponType, ammo: cfg.ammo });
           player.weaponType = pickup.weaponType;
           player.weaponAmmo = cfg.ammo;
+          this.logGameplayEvent({
+            _type: 'weapon_pickup',
+            playerId: player.id,
+            playerName: player.name,
+            weaponType: pickup.weaponType,
+            prevWeapon,
+            score: player.score,
+          });
         }
       });
     });
@@ -3064,8 +3148,17 @@ export class GameRoom extends Room<GameState> {
           buffPickupsToRemove.push(index);
 
           const current = player.buffStacks.get(pickup.buffType) ?? 0;
-          player.buffStacks.set(pickup.buffType, Math.min(current + 1, BUFF_STACK_MAX));
-          this.logger.log(`[GameRoom] ${player.name} collected ${pickup.buffType} buff (now ${player.buffStacks.get(pickup.buffType)}×)`);
+          const newStacks = Math.min(current + 1, BUFF_STACK_MAX);
+          player.buffStacks.set(pickup.buffType, newStacks);
+          this.logger.log(`[GameRoom] ${player.name} collected ${pickup.buffType} buff (now ${newStacks}×)`);
+          this.logGameplayEvent({
+            _type: 'buff_applied',
+            playerId: player.id,
+            playerName: player.name,
+            buffType: pickup.buffType,
+            newStacks,
+            score: player.score,
+          });
         }
       });
     });

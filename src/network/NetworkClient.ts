@@ -162,12 +162,14 @@ export interface NetworkInput {
   camUpX?: number; camUpY?: number; camUpZ?: number;
 }
 
-/** Client performance/DDA metrics sent to server every 500ms for persistent logging */
+/** Client performance/DDA metrics sent to server every ~10s for persistent logging */
 export interface ClientMetricsPayload {
   /** Game time in seconds (from server state) */
   time: number;
   /** Current FPS */
   fps: number;
+  /** Average frame time in milliseconds (1000/fps, rounded to 2dp) */
+  frameTime?: number;
   /** Active enemy count */
   enemyCount: number;
   /** Active bullet count */
