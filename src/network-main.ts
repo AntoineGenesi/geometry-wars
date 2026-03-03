@@ -4776,32 +4776,22 @@ async function main() {
 
         // ALWAYS update visual position + aim orientation (even when stationary).
         //
-        // s44j-16 FIX: Client-side prediction for responsive MP movement.
-        // When MOVING: use client-predicted UV → world position (0-lag visual response).
-        // When STATIONARY: use server authoritative world-space position.
+        // REGRESSION GUARD: s44i-01 reverted s44h-08's client-predicted movement path.
+        // s44h-08 used surface.getPoint() (LOCAL-space) when isMoving but server positions
+        // (WORLD-space) when stationary. Switching between local/world space caused
+        // teleporting, twitching, and wrong-direction movement on ALL maps.
+        // s44j-16 tried to re-add prediction with "correct" scaling but still caused the
+        // same teleport-back-to-spawn symptoms (s44k-01). Root cause: client UV drifts from
+        // server UV during movement; when stopping, server snaps to its authoritative position,
+        // causing visible teleport. Always use server world-space position for visual placement.
+        // The 1-tick input-to-visual lag is acceptable; broken movement is not.
+        // DO NOT re-add client prediction without a full rollback/reconciliation system.
         //
-        // REGRESSION GUARD (s44h-08 lesson): getPoint() returns pre-scaled surface-local
-        // coords (worldRotation=identity in MP; no updateSurfaceRotation() called).
-        // Convert to world space: position * currentMapSizeScaleFactor (= applyMatrix4(group.matrixWorld)).
-        // s44h-08 bug: used getPoint() output WITHOUT scaling → unit-sphere coords vs scaled server
-        // positions → teleport snap at moving/stationary boundary. This implementation scales correctly.
-        //
-        // Compute surface point once from client-predicted UV; reuse in all branches.
+        // Compute surface point for orientation (tangentU needed for player facing).
         const _predSp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
         const _predTangentU = _predSp.tangentU.lengthSq() > 0.001 ? _predSp.tangentU : _predSp.tangentV;
-        if (isMoving) {
-          // 0-lag visual: client-predicted UV → scaled world position.
-          // getPoint().position * mapSizeScaleFactor matches server wx/wy/wz scale.
-          localPlayer.mesh.position.copy(_predSp.position).multiplyScalar(currentMapSizeScaleFactor);
-          localPlayer.mesh.position.addScaledVector(_predSp.normal, 0.15);
-          _netTempNormal.copy(_predSp.normal);
-          // s44c-08 FIX preserved: UV frame tangentU for orientation (server tangent is 90° off on sphere).
-          orientPlayerOnSurface(localPlayer, _netTempNormal, aimAngle, _predTangentU);
-          _predictedPlayerVisualPos.copy(localPlayer.mesh.position);
-          _predictedPlayerVisualNormal.copy(_netTempNormal);
-          _predictedPlayerVisualValid = true;
-        } else if (_localPlayerWorldTarget.valid) {
-          // Stationary: use server authoritative world-space position.
+        if (_localPlayerWorldTarget.valid) {
+          // Use server world-space position (authoritative, correct space).
           // s44g-05: server positions already in scaled world space, no extra multiply.
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
