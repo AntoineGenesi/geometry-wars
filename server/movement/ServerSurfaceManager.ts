@@ -107,6 +107,29 @@ export class ServerSurfaceManager {
   }
 
   /**
+   * Convert a surface UV coordinate to an accurate world-space position.
+   * Uses sphere approximation to seed the query, then BVH-snaps to the actual surface.
+   * Used for zone center positioning in KotH/Claustrophobia modes — works on all surfaces.
+   */
+  getWorldPosForUV(u: number, v: number): THREE.Vector3 {
+    const approxWorld = this._uvToApproxWorldPos(u, v);
+    if (!this.meshSurface) return approxWorld;
+    const result = this.meshSurface.closestPointOnSurface(approxWorld);
+    return result ? result.point.clone() : approxWorld;
+  }
+
+  /**
+   * Bounding sphere radius of the current surface geometry (scale already baked in).
+   * Used to compute world-space zone radii proportional to surface size.
+   */
+  getBoundingSphereRadius(): number {
+    if (!this.meshSurface) return 10 * this.scaleFactor;
+    const geo = this.meshSurface.mesh.geometry;
+    geo.computeBoundingSphere();
+    return geo.boundingSphere?.radius ?? 10 * this.scaleFactor;
+  }
+
+  /**
    * Dispose all walkers and surface BVH.
    * Call between game rounds, or when the room is destroyed.
    */
