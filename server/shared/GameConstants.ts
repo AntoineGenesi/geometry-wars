@@ -168,3 +168,11 @@ export const LEVEL_FIRE_RATE_MULTIPLIERS = [1.0, 1.0, 1.15, 1.15, 1.15, 1.15, 1.
 
 // Cumulative move speed multiplier per level.
 export const LEVEL_MOVE_SPEED_MULTIPLIERS = [1.0, 1.0, 1.0, 1.15, 1.15, 1.15, 1.15, 1.30, 1.30, 1.45];
+
+// ---------------------------------------------------------------------------
+// GameSettings — re-export defaults for convenience
+// ---------------------------------------------------------------------------
+// Full type definitions and validateSettings() live in GameSettings.ts.
+// Importing DEFAULT_GAME_SETTINGS from here avoids deep relative paths.
+export { DEFAULT_GAME_SETTINGS, validateSettings } from './GameSettings';
+export type { GameSettings, GameMode, GameSurface } from './GameSettings';
