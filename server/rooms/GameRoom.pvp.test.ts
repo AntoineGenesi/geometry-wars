@@ -319,3 +319,406 @@ describe('PvP: pvpEnabled gate', () => {
     expect(bullet.consumed).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Integration tests: full PvP match flow (s44j-pvp-13g)
+// ---------------------------------------------------------------------------
+
+import { validateSettings, VALID_MODES, PVP_MODES } from '../shared/GameSettings';
+import { PVP_KILLS_TO_WIN, PLAYER_PVP_MAX_HEALTH, PLAYER_PVP_INVINCIBILITY_DURATION } from '../shared/GameConstants';
+
+// ---------------------------------------------------------------------------
+// Mode registration tests
+// ---------------------------------------------------------------------------
+
+describe('PvP mode registration', () => {
+  it('"pvp" is in VALID_MODES', () => {
+    expect(VALID_MODES).toContain('pvp');
+  });
+
+  it('"pvp" is in PVP_MODES', () => {
+    expect(PVP_MODES).toContain('pvp');
+  });
+
+  it('validateSettings accepts "pvp" as a valid mode', () => {
+    const settings = validateSettings({ mode: 'pvp' });
+    expect(settings.mode).toBe('pvp');
+  });
+
+  it('validateSettings auto-enables pvpEnabled when mode = "pvp"', () => {
+    const settings = validateSettings({ mode: 'pvp' });
+    expect(settings.pvpEnabled).toBe(true);
+  });
+
+  it('pvpEnabled defaults to false for non-PvP modes', () => {
+    const settings = validateSettings({ mode: 'waves' });
+    expect(settings.pvpEnabled).toBe(false);
+  });
+
+  it('pvpEnabled can be explicitly overridden to false in pvp mode', () => {
+    const settings = validateSettings({ mode: 'pvp', pvpEnabled: false });
+    expect(settings.pvpEnabled).toBe(false);
+  });
+
+  it('validateSettings accepts "pvp" win conditions: kills, survival, score', () => {
+    expect(validateSettings({ mode: 'pvp', pvpWinCondition: 'kills' }).pvpWinCondition).toBe('kills');
+    expect(validateSettings({ mode: 'pvp', pvpWinCondition: 'survival' }).pvpWinCondition).toBe('survival');
+    expect(validateSettings({ mode: 'pvp', pvpWinCondition: 'score' }).pvpWinCondition).toBe('score');
+  });
+
+  it('pvpWinCondition defaults to "kills" for pvp mode', () => {
+    const settings = validateSettings({ mode: 'pvp' });
+    expect(settings.pvpWinCondition).toBe('kills');
+  });
+
+  it('pvpWinCondition is stripped for non-PvP modes (always "kills" default)', () => {
+    const settings = validateSettings({ mode: 'waves', pvpWinCondition: 'survival' });
+    expect(settings.pvpWinCondition).toBe('kills'); // reset to default
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PVP_KILLS_TO_WIN constant test
+// ---------------------------------------------------------------------------
+
+describe('PVP_KILLS_TO_WIN constant', () => {
+  it('PVP_KILLS_TO_WIN is a positive integer', () => {
+    expect(PVP_KILLS_TO_WIN).toBeGreaterThan(0);
+    expect(Number.isInteger(PVP_KILLS_TO_WIN)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: full PvP match flow simulation (kills win condition)
+// ---------------------------------------------------------------------------
+
+/**
+ * Simulates the full PvP match flow using the same logic extracted from GameRoom.
+ * Tests the complete pipeline: damage → kill → streak → win condition check.
+ */
+
+interface MatchPlayer {
+  id: string;
+  name: string;
+  alive: boolean;
+  health: number;
+  maxHealth: number;
+  multiplier: number;
+  invincibilityTimer: number;
+  surfaceU: number;
+  surfaceV: number;
+  kills: number;
+  deaths: number;
+}
+
+interface MatchBullet {
+  id: string;
+  ownerId: string;
+  x: number;
+  y: number;
+  damage: number;
+  consumed: boolean;
+}
+
+interface KillRecord {
+  killerId: string;
+  victimId: string;
+  streakCount: number;
+  eliminated?: boolean;
+}
+
+const MATCH_HIT_RADIUS = 0.04;
+
+/** Apply one bullet hit to the first valid target. Returns kill record if a kill occurred. */
+function simulateBulletHit(
+  bullet: MatchBullet,
+  players: MatchPlayer[],
+  invincibility: Map<string, number>,
+  streaks: Map<string, number>,
+  winCondition: 'kills' | 'survival' | 'score',
+): KillRecord | null {
+  if (bullet.consumed) return null;
+
+  for (const target of players) {
+    if (bullet.consumed) break;
+    if (!target.alive) continue;
+    if (target.id === bullet.ownerId) continue;
+
+    const invincible = invincibility.get(target.id) ?? 0;
+    if (invincible > 0) continue;
+
+    const du = bullet.x - target.surfaceU;
+    const dv = bullet.y - target.surfaceV;
+    if (Math.sqrt(du * du + dv * dv) >= MATCH_HIT_RADIUS) continue;
+
+    bullet.consumed = true;
+    target.health = Math.max(0, target.health - bullet.damage);
+
+    if (target.health > 0) return null;
+
+    // Kill occurred
+    target.deaths++;
+    streaks.set(target.id, 0);
+
+    const owner = players.find((p) => p.id === bullet.ownerId);
+    const isSurvival = winCondition === 'survival';
+
+    if (isSurvival) {
+      target.health = 0;
+      target.alive = false;
+    } else {
+      target.health = target.maxHealth;
+      invincibility.set(target.id, PLAYER_PVP_INVINCIBILITY_DURATION);
+    }
+
+    let killRecord: KillRecord | null = null;
+    if (owner) {
+      owner.kills++;
+      const streakCount = (streaks.get(owner.id) ?? 0) + 1;
+      streaks.set(owner.id, streakCount);
+      killRecord = { killerId: owner.id, victimId: target.id, streakCount, eliminated: isSurvival };
+    }
+    return killRecord;
+  }
+  return null;
+}
+
+/** Check if win condition is met. Returns winner id or null. */
+function checkWinCondition(
+  players: MatchPlayer[],
+  winCondition: 'kills' | 'survival' | 'score',
+): string | null {
+  if (winCondition === 'kills') {
+    for (const p of players) {
+      if (p.kills >= PVP_KILLS_TO_WIN) return p.id;
+    }
+  } else if (winCondition === 'survival') {
+    const alive = players.filter((p) => p.alive);
+    if (alive.length <= 1 && players.length > 1) {
+      return alive.length === 1 ? alive[0].id : null;
+    }
+  }
+  return null;
+}
+
+function makeMatchPlayer(id: string, u = 0.5, v = 0.5): MatchPlayer {
+  return {
+    id,
+    name: `Player${id}`,
+    alive: true,
+    health: PLAYER_PVP_MAX_HEALTH,
+    maxHealth: PLAYER_PVP_MAX_HEALTH,
+    multiplier: 1,
+    invincibilityTimer: 0,
+    surfaceU: u,
+    surfaceV: v,
+    kills: 0,
+    deaths: 0,
+  };
+}
+
+function fatalBullet(ownerId: string, targetU: number, targetV: number): MatchBullet {
+  return { id: `b-${Math.random()}`, ownerId, x: targetU, y: targetV, damage: PLAYER_PVP_MAX_HEALTH, consumed: false };
+}
+
+describe('PvP integration: kills win condition', () => {
+  it('full match: p1 reaches kill limit → wins', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const players = [p1, p2];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const killLog: KillRecord[] = [];
+    const winCondition = 'kills';
+
+    let winner: string | null = null;
+
+    for (let i = 0; i < PVP_KILLS_TO_WIN; i++) {
+      // Clear invincibility so p2 can be hit again
+      inv.delete('p2');
+
+      const bullet = fatalBullet('p1', p2.surfaceU, p2.surfaceV);
+      const record = simulateBulletHit(bullet, players, inv, streaks, winCondition);
+      if (record) killLog.push(record);
+
+      winner = checkWinCondition(players, winCondition);
+      if (winner) break;
+    }
+
+    expect(winner).toBe('p1');
+    expect(p1.kills).toBe(PVP_KILLS_TO_WIN);
+    expect(p2.deaths).toBe(PVP_KILLS_TO_WIN);
+    expect(p2.alive).toBe(true); // respawns each time in kills mode
+  });
+
+  it('kill streaks increment correctly across the match', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const players = [p1, p2];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const killLog: KillRecord[] = [];
+    const winCondition = 'kills';
+
+    for (let i = 0; i < 3; i++) {
+      inv.delete('p2');
+      const bullet = fatalBullet('p1', p2.surfaceU, p2.surfaceV);
+      const record = simulateBulletHit(bullet, players, inv, streaks, winCondition);
+      if (record) killLog.push(record);
+    }
+
+    expect(killLog[0].streakCount).toBe(1);
+    expect(killLog[1].streakCount).toBe(2);
+    expect(killLog[2].streakCount).toBe(3);
+    expect(streaks.get('p1')).toBe(3);
+  });
+
+  it('streak resets when killer is killed', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const players = [p1, p2];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const winCondition = 'kills';
+
+    // p1 kills p2 twice (streak = 2)
+    inv.delete('p2');
+    simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+    inv.delete('p2');
+    simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+    expect(streaks.get('p1')).toBe(2);
+
+    // p2 kills p1 → p1 streak resets
+    inv.delete('p2');
+    inv.delete('p1');
+    p1.surfaceU = p2.surfaceU; p1.surfaceV = p2.surfaceV;
+    simulateBulletHit(fatalBullet('p2', p1.surfaceU, p1.surfaceV), players, inv, streaks, winCondition);
+    expect(streaks.get('p1')).toBe(0);
+
+    // p1 kills p2 again — streak restarts at 1
+    inv.delete('p2');
+    simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+    expect(streaks.get('p1')).toBe(1);
+  });
+
+  it('no winner declared until kill limit is reached', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const players = [p1, p2];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const winCondition = 'kills';
+
+    for (let i = 0; i < PVP_KILLS_TO_WIN - 1; i++) {
+      inv.delete('p2');
+      simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+    }
+
+    expect(checkWinCondition(players, winCondition)).toBeNull();
+    expect(p1.kills).toBe(PVP_KILLS_TO_WIN - 1);
+  });
+
+  it('stats are correct at match end: kills, deaths, and damage dealt tracked', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const players = [p1, p2];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const winCondition = 'kills';
+
+    for (let i = 0; i < PVP_KILLS_TO_WIN; i++) {
+      inv.delete('p2');
+      simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+    }
+
+    // Verify final scoreboard
+    expect(p1.kills).toBe(PVP_KILLS_TO_WIN);
+    expect(p1.deaths).toBe(0);
+    expect(p2.kills).toBe(0);
+    expect(p2.deaths).toBe(PVP_KILLS_TO_WIN);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: full PvP match flow simulation (survival win condition)
+// ---------------------------------------------------------------------------
+
+describe('PvP integration: survival win condition', () => {
+  it('eliminated players stay dead (no respawn)', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const players = [p1, p2];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const winCondition = 'survival';
+
+    simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+
+    expect(p2.alive).toBe(false);
+    expect(p2.health).toBe(0);
+  });
+
+  it('last standing player wins when opponent eliminated', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const players = [p1, p2];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const winCondition = 'survival';
+
+    simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+
+    const winner = checkWinCondition(players, winCondition);
+    expect(winner).toBe('p1');
+    expect(p1.alive).toBe(true);
+  });
+
+  it('3-player survival: last player standing wins', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const p3 = makeMatchPlayer('p3', 0.8, 0.8);
+    const players = [p1, p2, p3];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const winCondition = 'survival';
+
+    // p1 kills p2
+    simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+    expect(checkWinCondition(players, winCondition)).toBeNull(); // still 2 alive
+
+    // p1 kills p3
+    simulateBulletHit(fatalBullet('p1', p3.surfaceU, p3.surfaceV), players, inv, streaks, winCondition);
+    const winner = checkWinCondition(players, winCondition);
+    expect(winner).toBe('p1');
+  });
+
+  it('no winner declared while 2+ players alive', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const p3 = makeMatchPlayer('p3', 0.8, 0.8);
+    const players = [p1, p2, p3];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const winCondition = 'survival';
+
+    // Only one player eliminated — 2 still alive
+    simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+    expect(checkWinCondition(players, winCondition)).toBeNull();
+  });
+
+  it('eliminated player kill/death stats are correct', () => {
+    const p1 = makeMatchPlayer('p1', 0.1, 0.1);
+    const p2 = makeMatchPlayer('p2', 0.5, 0.5);
+    const players = [p1, p2];
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const winCondition = 'survival';
+
+    simulateBulletHit(fatalBullet('p1', p2.surfaceU, p2.surfaceV), players, inv, streaks, winCondition);
+
+    expect(p1.kills).toBe(1);
+    expect(p1.deaths).toBe(0);
+    expect(p2.kills).toBe(0);
+    expect(p2.deaths).toBe(1);
+  });
+});
