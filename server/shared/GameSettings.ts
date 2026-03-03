@@ -314,7 +314,7 @@ export function validateSettings(partial: Partial<GameSettings> = {}): GameSetti
   const isPvpMode = (PVP_MODES as readonly string[]).includes(mode);
 
   const pvpEnabled = isPvpMode
-    ? (typeof partial.pvpEnabled === 'boolean' ? partial.pvpEnabled : DEFAULT_GAME_SETTINGS.pvpEnabled)
+    ? (typeof partial.pvpEnabled === 'boolean' ? partial.pvpEnabled : true) // auto-enable pvpEnabled for pvp/pvpve modes
     : false;
 
   const validWinConditions: readonly PvpWinCondition[] = ['kills', 'survival', 'score'];

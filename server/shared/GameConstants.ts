@@ -182,6 +182,12 @@ export const PLAYER_PVP_MAX_HEALTH = 100;
  */
 export const PLAYER_PVP_INVINCIBILITY_DURATION = 3.0;
 
+/**
+ * Number of kills required to win a PvP match with 'kills' win condition.
+ * First player to reach this count ends the match.
+ */
+export const PVP_KILLS_TO_WIN = 10;
+
 // ---------------------------------------------------------------------------
 // Health pickup constants (s44j-pvp-13c)
 // ---------------------------------------------------------------------------

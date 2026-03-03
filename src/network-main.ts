@@ -1333,6 +1333,7 @@ async function main() {
     { id: 'sniper',         label: 'SNIPER',         icon: '🎯' },
     { id: 'rainbow',        label: 'RAINBOW',        icon: '🌈' },
     { id: 'claustrophobia', label: 'CLAUSTROPHOBIA', icon: '🔴' },
+    { id: 'pvp',            label: 'PVP',            icon: '⚔' },
   ];
 
   let selectedLobbyMode = 'waves';

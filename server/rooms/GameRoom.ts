@@ -38,6 +38,7 @@ import {
   HEALTH_PICKUP_HEAL_AMOUNT,
   HEALTH_PICKUP_LIFETIME,
   HEALTH_PICKUP_SPAWN_RADIUS,
+  PVP_KILLS_TO_WIN,
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import type { ServerWalkerState } from '../movement/ServerMeshWalker';
@@ -1261,7 +1262,7 @@ export class GameRoom extends Room<GameState> {
     const parts = choice.split(':');
     let surface = parts[0] || this.state.surfaceType;
     // Safety guard: only accept implemented modes; fall back to 'waves' for unknown modes
-    const CHOICE_VALID_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia'];
+    const CHOICE_VALID_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia', 'pvp'];
     const mode = CHOICE_VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
     const size = parts[2] || 'medium';
     // Claustrophobia: enforce small-surface restriction on server side
@@ -3316,8 +3317,7 @@ export class GameRoom extends Room<GameState> {
             }
 
             if (target.health <= 0) {
-              // PvP kill: respawn target with full health + invincibility
-              target.health = target.maxHealth;
+              // PvP kill: track stats then respawn or eliminate based on win condition
               target.multiplier = 1;
               target.buffStacks.clear();
 
@@ -3325,17 +3325,27 @@ export class GameRoom extends Room<GameState> {
               target.deaths++;
               this.pvpKillStreaks.set(target.id, 0);
 
-              const deathU = target.surfaceU;
-              const deathV = target.surfaceV;
-              const respawnPos = this.getPlayerRespawnPosition(deathU, deathV);
-              target.surfaceU = respawnPos.u;
-              target.surfaceV = respawnPos.v;
-              this.surfaceManager.teleportWalkerToUV(target.id, respawnPos.u, respawnPos.v);
-              const respawnWalker = this.surfaceManager.getWalker(target.id);
-              if (respawnWalker) {
-                this.applyWalkerStateToPlayer(target, respawnWalker.getState());
+              const isSurvivalMode = this.currentSettings.pvpWinCondition === 'survival';
+              if (isSurvivalMode) {
+                // Survival (Last Standing): permanently eliminate the killed player
+                target.health = 0;
+                target.alive = false;
+                this.logger.log(`[GameRoom] PvP survival: ${target.name} eliminated`);
+              } else {
+                // Standard PvP: respawn with full health + invincibility
+                target.health = target.maxHealth;
+                const deathU = target.surfaceU;
+                const deathV = target.surfaceV;
+                const respawnPos = this.getPlayerRespawnPosition(deathU, deathV);
+                target.surfaceU = respawnPos.u;
+                target.surfaceV = respawnPos.v;
+                this.surfaceManager.teleportWalkerToUV(target.id, respawnPos.u, respawnPos.v);
+                const respawnWalker = this.surfaceManager.getWalker(target.id);
+                if (respawnWalker) {
+                  this.applyWalkerStateToPlayer(target, respawnWalker.getState());
+                }
+                this.playerInvincibility.set(target.id, PLAYER_PVP_INVINCIBILITY_DURATION);
               }
-              this.playerInvincibility.set(target.id, PLAYER_PVP_INVINCIBILITY_DURATION);
 
               if (owner) {
                 // Track kill on attacker; increment their kill streak
@@ -3349,8 +3359,9 @@ export class GameRoom extends Room<GameState> {
                   victimId: target.id,
                   victimName: target.name,
                   streakCount,
+                  eliminated: isSurvivalMode,
                 });
-                this.logger.log(`[GameRoom] PvP: ${owner.name} killed ${target.name} (streak: ${streakCount})`);
+                this.logger.log(`[GameRoom] PvP: ${owner.name} killed ${target.name} (streak: ${streakCount}${isSurvivalMode ? ', eliminated' : ', respawned'})`);
               }
             }
           }
@@ -4330,7 +4341,39 @@ export class GameRoom extends Room<GameState> {
   }
 
   private checkGameOver() {
-    // Game over if all players are dead
+    // PvP win conditions (checked before standard game over)
+    if (this.pvpEnabled && this.state.players.size > 1) {
+      const winCondition = this.currentSettings.pvpWinCondition;
+
+      if (winCondition === 'kills') {
+        // Most Kills: first player to reach PVP_KILLS_TO_WIN wins
+        let winner: string | null = null;
+        this.state.players.forEach((player) => {
+          if (player.kills >= PVP_KILLS_TO_WIN) {
+            if (winner === null) winner = player.name;
+          }
+        });
+        if (winner !== null) {
+          this.logger.log(`[GameRoom] PvP: ${winner} won with ${PVP_KILLS_TO_WIN} kills — match over`);
+          this.transitionToVoting();
+          return;
+        }
+      } else if (winCondition === 'survival') {
+        // Last Standing: count players still in the match (alive OR respawning)
+        // In survival mode, dead players are permanently eliminated (alive = false, health = 0)
+        let aliveCount = 0;
+        this.state.players.forEach((player) => {
+          if (player.alive) aliveCount++;
+        });
+        if (aliveCount <= 1) {
+          this.logger.log(`[GameRoom] PvP survival: last player standing — match over`);
+          this.transitionToVoting();
+          return;
+        }
+      }
+    }
+
+    // Standard game over: all players are dead (non-PvP or PvP without hit limit)
     let anyAlive = false;
     this.state.players.forEach((player) => {
       if (player.alive) anyAlive = true;
