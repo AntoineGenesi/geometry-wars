@@ -355,6 +355,15 @@
       0%, 100% { opacity: 0.3; transform: scale(0.8); }
       50% { opacity: 1; transform: scale(1.2); }
     }
+    .loading-status {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      font-size: 13px;
+      color: #446688;
+      letter-spacing: 3px;
+      margin-top: 20px;
+      min-height: 1em;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body class="menu-open">
@@ -372,6 +381,7 @@
       <div class="loading-dot"></div>
       <div class="loading-dot"></div>
     </div>
+    <div id="loading-status" class="loading-status"></div>
   </div>
   <div id="screen-flash"></div>
   <div id="ui-overlay">

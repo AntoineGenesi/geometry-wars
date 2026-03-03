@@ -114,6 +114,7 @@ import {
   makeSurfaceTransformFn as sharedMakeSurfaceTransformFn,
 } from './rendering/SharedGameSetup';
 import { initI18n } from './i18n';
+import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -372,6 +373,9 @@ async function waitForLandscape(sessionGameCount: number): Promise<void> {
 }
 
 async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File, mapSize?: MapSize, quickGameModeType?: QuickGameModeType): Promise<void> {
+  // Show loading overlay during game initialization (black screen phase after StartMenu)
+  showGameLoading('STARTING GAME...');
+
   // Detect mobile mode early -- affects quality, input, and UI decisions
   const mobile = isMobile();
 
@@ -2112,6 +2116,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   }
 
   // -- Start --
+  // Dismiss loading overlay — scene is fully initialized, first frame is about to render
+  hideGameLoading();
   game.start();
   profilingPersistence.start();
 }
