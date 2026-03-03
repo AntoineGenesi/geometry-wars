@@ -3064,8 +3064,56 @@ export class GameRoom extends Room<GameState> {
         const dz = player.wz - this.claustroZoneCenterZ;
         if (dx * dx + dy * dy + dz * dz <= wr2) {
           player.zoneTime += dt;
+        } else {
+          // Player is outside boundary — kill instantly (mirrors SP ClaustrophobiaMode.ts)
+          const invincible = this.playerInvincibility.get(player.id) ?? 0;
+          if (invincible <= 0) {
+            this.applyPlayerBoundaryDeath(player);
+          }
         }
       });
+    }
+  }
+
+  /**
+   * Kill a player who left the claustrophobia boundary.
+   * Mirrors enemy-collision death logic but triggered by zone boundary.
+   * Respawns inside the boundary (near center) rather than at a random position
+   * to avoid immediate re-death when the boundary is very small.
+   */
+  private applyPlayerBoundaryDeath(player: PlayerState): void {
+    if (!this.state.infiniteLives) {
+      player.lives--;
+    }
+    if (player.multiplier > 5) {
+      this.spawnSuperPickup('multiplier_boost');
+    }
+    player.multiplier = 1;
+    this.trackDDADeath(player.id);
+    player.buffStacks.clear();
+
+    if (!this.state.infiniteLives && player.lives <= 0) {
+      player.alive = false;
+      this.logger.log(`[GameRoom] ${player.name} died outside claustrophobia boundary!`);
+    } else {
+      // Respawn at the boundary center (0.5, 0.5) so the player is guaranteed inside.
+      // A small random offset prevents all players from stacking at the exact center.
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Math.random() * 0.02; // tiny offset, well inside any boundary size
+      const respawnU = 0.5 + Math.cos(angle) * dist;
+      const respawnV = 0.5 + Math.sin(angle) * dist;
+      player.surfaceU = respawnU;
+      player.surfaceV = respawnV;
+      this.surfaceManager.teleportWalkerToUV(player.id, respawnU, respawnV);
+      const respawnWalker = this.surfaceManager.getWalker(player.id);
+      if (respawnWalker) {
+        this.applyWalkerStateToPlayer(player, respawnWalker.getState());
+      }
+      this.playerInvincibility.set(player.id, 2.0);
+      const livesRemaining = this.state.infiniteLives ? '∞' : String(player.lives);
+      this.logger.log(
+        `[GameRoom] ${player.name} left claustrophobia boundary, ${livesRemaining} lives remaining — respawned at center (invincible 2s)`,
+      );
     }
   }
 
