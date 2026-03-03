@@ -987,3 +987,112 @@ describe('FaceWalker pole parallel transport', () => {
     expect(isOnSphere(finalPos, 8, 0.5)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Boundary Reflection Tests (s44j-30)
+// Verifies that FaceWalker reflects at true boundary edges instead of freezing.
+// ---------------------------------------------------------------------------
+
+describe('FaceWalker — boundary reflection (s44j-30)', () => {
+  it('should reflect at a boundary edge instead of stopping', () => {
+    // Simple 2-triangle quad with boundary edges on 3 sides.
+    // Walk from the interior toward a boundary edge.
+    // Bug: walker used to stop at boundary, making bullets freeze.
+    // Fix: walker now reflects direction and continues.
+    const geo = createSimpleQuad();
+    const hem = new HalfEdgeMesh(geo);
+    const walker = new FaceWalker(hem);
+
+    // Start near the bottom-left, walking toward the bottom edge (y=0 boundary)
+    const startPos = new THREE.Vector3(1.0, 0.5, 0);
+    const facePos = walker.locateOnMesh(startPos, 0);
+    const direction = new THREE.Vector3(0, -1, 0); // toward y=0 boundary
+
+    // Walk a large step — larger than the distance to the boundary
+    const result = walker.walk(facePos.faceIndex, facePos.bary, direction, 1.0);
+
+    // Should have traveled some distance (not stuck at zero)
+    expect(result.distanceTraveled).toBeGreaterThan(0.01);
+
+    // Final direction should have a +Y component (reflected away from boundary)
+    expect(result.direction.y).toBeGreaterThan(0);
+  });
+
+  it('should not freeze when walking repeatedly toward a boundary edge', () => {
+    // Simulate bullet update loop: walk toward boundary many times.
+    // Before fix: after first crossing, bullet would freeze (distanceTraveled=0 each frame).
+    // After fix: bullet bounces and moves position each frame.
+    const geo = createSimpleQuad();
+    const hem = new HalfEdgeMesh(geo);
+    const walker = new FaceWalker(hem);
+
+    // Start at top of quad, walking downward toward y=0 boundary
+    const startPos = new THREE.Vector3(1.0, 1.8, 0);
+    let facePos = walker.locateOnMesh(startPos, 0);
+    let dir = new THREE.Vector3(0, -1, 0);
+
+    let frozenFrames = 0;
+    let prevY = startPos.y;
+
+    for (let frame = 0; frame < 20; frame++) {
+      const result = walker.walk(facePos.faceIndex, facePos.bary, dir, 0.15);
+
+      // A frame is "frozen" if distanceTraveled < 1% of step
+      if (result.distanceTraveled < 0.15 * 0.01) {
+        frozenFrames++;
+      }
+
+      facePos = { faceIndex: result.faceIndex, bary: result.bary };
+      dir = result.direction;
+      prevY = result.position.y;
+    }
+
+    // Should never be frozen (distanceTraveled always > 1% of step)
+    expect(frozenFrames).toBe(0);
+  });
+
+  it('should bounce off boundary and continue moving (Mobius strip physical edge)', () => {
+    // Simulate the Mobius strip bullet-at-edge scenario using a simple open-ended
+    // strip mesh. This tests the core reflection mechanic.
+    // A 4-triangle strip with open top/bottom edges:
+    //   v0=(0,0,0)  v1=(1,0,0)  v2=(2,0,0)
+    //   v3=(0,1,0)  v4=(1,1,0)  v5=(2,1,0)
+    //   v6=(0,2,0)  v7=(1,2,0)  v8=(2,2,0)
+    const positions = new Float32Array([
+      0, 0, 0,  1, 0, 0,  2, 0, 0,
+      0, 1, 0,  1, 1, 0,  2, 1, 0,
+      0, 2, 0,  1, 2, 0,  2, 2, 0,
+    ]);
+    const indices = new Uint32Array([
+      0, 1, 3,  1, 4, 3,  // left column
+      1, 2, 4,  2, 5, 4,  // right column (v wraps only between rows, not columns)
+    ]);
+
+    const stripGeo = new THREE.BufferGeometry();
+    stripGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    stripGeo.setIndex(new THREE.BufferAttribute(indices, 1));
+    stripGeo.computeVertexNormals();
+
+    const hem = new HalfEdgeMesh(stripGeo);
+    const walker = new FaceWalker(hem);
+
+    // Start in the middle of the strip, walking toward y=0 boundary
+    const startPos = new THREE.Vector3(0.5, 0.8, 0);
+    let facePos = walker.locateOnMesh(startPos, 0);
+    let dir = new THREE.Vector3(0, -1, 0);
+
+    let totalDistanceTraveled = 0;
+
+    // Walk 10 frames of 0.2 units each — total 2.0 units
+    for (let i = 0; i < 10; i++) {
+      const result = walker.walk(facePos.faceIndex, facePos.bary, dir, 0.2);
+      totalDistanceTraveled += result.distanceTraveled;
+      facePos = { faceIndex: result.faceIndex, bary: result.bary };
+      dir = result.direction;
+    }
+
+    // All 10 frames should have traveled distance — no frozen frames
+    // If any frame froze (distanceTraveled=0), total would be well under 2.0
+    expect(totalDistanceTraveled).toBeGreaterThan(1.5);
+  });
+});
