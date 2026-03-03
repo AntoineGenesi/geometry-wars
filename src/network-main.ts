@@ -3272,10 +3272,10 @@ async function main() {
         const zt = localPlayer.zoneTime ?? 0;
         const ztMins = Math.floor(zt / 60);
         const ztSecs = Math.floor(zt % 60);
-        const ztCs = Math.floor((zt % 1) * 100);
+        const ztTenths = Math.floor((zt % 1) * 10);
         const ztStr = ztMins > 0
-          ? `${ztMins}:${String(ztSecs).padStart(2, '0')}.${String(ztCs).padStart(2, '0')}`
-          : `${ztSecs}.${String(ztCs).padStart(2, '0')}s`;
+          ? `${ztMins}:${String(ztSecs).padStart(2, '0')}.${ztTenths}`
+          : `${ztSecs}.${ztTenths}s`;
         const modeLabel = latestGameMode === 'king' ? '👑 ZONE' : '🔴 ZONE';
         let primaryHtml = `${modeLabel}: ${ztStr}`;
         if (latestGameMode === 'claustrophobia' || latestGameMode === 'king') {

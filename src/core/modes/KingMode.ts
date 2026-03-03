@@ -238,10 +238,10 @@ export class KingMode implements IGameMode {
     const zoneSeconds = this.zoneTimeSeconds;
     const mins = Math.floor(zoneSeconds / 60);
     const secs = Math.floor(zoneSeconds % 60);
-    const cs = Math.floor((zoneSeconds % 1) * 100);
+    const tenths = Math.floor((zoneSeconds % 1) * 10);
     const timeStr = mins > 0
-      ? `${mins}:${String(secs).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
-      : `${secs}.${String(cs).padStart(2, '0')}s`;
+      ? `${mins}:${String(secs).padStart(2, '0')}.${tenths}`
+      : `${secs}.${tenths}s`;
 
     // Radius shrink progress (0 = full, 1 = minimum)
     const shrinkProgress = 1 - (this.zoneRadiusUV - this.zoneMinRadiusUV) /
