@@ -27,7 +27,7 @@ export const WEAPON_CONFIGS: Record<string, { ammo: number; damageMultiplier: nu
   gravity_gun:     { ammo: 20,  damageMultiplier: 1.0, damage: 4,   fireRate: 1.0 },
   laser_beam:      { ammo: 200, damageMultiplier: 0.6, damage: 2,   fireRate: 60  }, // continuous; handled by applyLaserDamage, not tryShoot
   black_hole:      { ammo: 5,   damageMultiplier: 5.0, damage: 999, fireRate: 0.3 },
-  tesla_coil:      { ammo: 30,  damageMultiplier: 0.7, damage: 1,   fireRate: 30  },
+  tesla_coil:      { ammo: 150, damageMultiplier: 0.7, damage: 1,   fireRate: 30  }, // continuous; handled by applyTeslaDamage, not tryShoot (SP: 150 ticks = 5s)
 } as const;
 
 // ---------------------------------------------------------------------------

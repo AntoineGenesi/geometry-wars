@@ -1274,6 +1274,8 @@ export class GameRoom extends Room<GameState> {
       if (input.shooting) {
         if (player.weaponType === 'laser_beam') {
           this.applyLaserDamage(player, dt);
+        } else if (player.weaponType === 'tesla_coil') {
+          this.applyTeslaDamage(player, dt);
         } else {
           this.tryShoot(player);
         }
@@ -1436,6 +1438,79 @@ export class GameRoom extends Room<GameState> {
       if (dot < LASER_DOT_THRESHOLD) return;
 
       // Apply continuous damage
+      enemy.health -= damage;
+
+      if (enemy.health <= 0) {
+        enemy.alive = false;
+        this.enemyAI.delete(enemy.id);
+        enemiesToKill.push(eIndex);
+
+        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
+        player.playerKills++;
+        const newLevel = this.getPlayerLevel(player.playerKills);
+        if (newLevel > player.playerLevel) {
+          player.playerLevel = newLevel;
+          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+        }
+        this.trackDDAKill(player.id);
+
+        if (Math.random() < WEAPON_DROP_CHANCE) {
+          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+      }
+    });
+
+    // Remove killed enemies in reverse order to preserve indices
+    for (let i = enemiesToKill.length - 1; i >= 0; i--) {
+      this.state.enemies.splice(enemiesToKill[i], 1);
+    }
+  }
+
+  /**
+   * Tesla coil: apply continuous area damage each tick (no projectile bullet).
+   * Damages all enemies within a radial UV distance around the player.
+   * Mirrors SP WeaponManager 'tesla' effect behaviour.
+   */
+  private applyTeslaDamage(player: PlayerState, dt: number): void {
+    if (!player.alive) return;
+
+    // Deduct ammo per tick. ammo=150 at ~60 ticks/sec ≈ 2.5 seconds duration.
+    if (player.weaponAmmo > 0) {
+      player.weaponAmmo--;
+      if (player.weaponAmmo <= 0) {
+        player.weaponType = 'standard';
+        player.weaponAmmo = -1;
+      }
+    }
+
+    // Tesla parameters — tuned to match SP WeaponManager feel.
+    // SP uses world-space radius=3 on sphere R=10. In UV space: 0.04 UV ≈ 1.26 world units,
+    // so radius 3 ≈ 0.095 UV. Using 0.10 for a slight visual margin.
+    const TESLA_RADIUS = 0.10; // UV distance (~3 world units on sphere R=10)
+    const TESLA_DPS = 3.0;     // damage per second (matches SP WeaponManager: 3 * dt)
+
+    const levelIdx = Math.min(player.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+    const buffDamageMult = this.calculateBuffDamageMult(player);
+    const damage = TESLA_DPS * levelDamageMult * buffDamageMult * dt;
+
+    const enemiesToKill: number[] = [];
+
+    this.state.enemies.forEach((enemy, eIndex) => {
+      if (!enemy.alive) return;
+
+      // Vector from player to enemy (wrap-aware U axis)
+      let dU = enemy.surfaceU - player.surfaceU;
+      let dV = enemy.surfaceV - player.surfaceV;
+      if (dU > 0.5) dU -= 1; else if (dU < -0.5) dU += 1;
+
+      const dist = Math.sqrt(dU * dU + dV * dV);
+      if (dist > TESLA_RADIUS) return;
+
+      // Apply continuous area damage
       enemy.health -= damage;
 
       if (enemy.health <= 0) {
