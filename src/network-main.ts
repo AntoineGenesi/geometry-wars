@@ -3661,6 +3661,12 @@ async function main() {
     surfaceType: urlSurfaceType,
     requestHost: isGameCreator(),
     mapSize: getUrlMapSize(),
+    onRetrying: () => {
+      // First attempt failed — show reconnecting status while auto-retry is in progress.
+      // This fires on mobile when the network is still stabilizing after screen-on.
+      statusEl.textContent = 'Connection failed — reconnecting...';
+      console.log('[NetworkMain] Auto-retrying connection after initial failure...');
+    },
   }).then(() => {
     connectionResolved = true;
     clearTimeout(timeoutId);
@@ -3873,11 +3879,21 @@ async function main() {
     errPanel.appendChild(title);
 
     const reason = document.createElement('div');
-    reason.style.cssText = 'color:#faa;font-size:14px;margin-bottom:24px;max-width:600px;text-align:center;word-break:break-word;white-space:pre-wrap;';
+    reason.style.cssText = 'color:#faa;font-size:14px;margin-bottom:12px;max-width:600px;text-align:center;word-break:break-word;white-space:pre-wrap;';
     reason.textContent = isServerDown
       ? `Could not reach game server at ${serverUrl}`
       : `Error: ${msg}`;
     errPanel.appendChild(reason);
+
+    // Session-expiry hint — shown when the server is reachable but the session failed.
+    // This is the typical mobile screen-off scenario: screen off → WiFi drops →
+    // server cleans up the session → screen on → reconnect still fails after auto-retry.
+    const sessionHint = document.createElement('div');
+    sessionHint.style.cssText = 'color:#888;font-size:13px;margin-bottom:16px;max-width:520px;text-align:center;line-height:1.6;border:1px solid #333;padding:10px 16px;border-radius:4px;';
+    sessionHint.textContent = isServerDown
+      ? 'Your phone may have lost Wi-Fi when the screen turned off. Retrying once automatically — if it still fails, check the connection and try again.'
+      : 'If your screen turned off while in a game, your session may have expired. Tap RETRY — you will rejoin as a new player.';
+    errPanel.appendChild(sessionHint);
 
     // Possible-cause checklist (always visible)
     const healthUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
