@@ -106,6 +106,49 @@
       "sphereTunnel": "نفق كروي",
       "cubeRing": "حلقة مكعب",
       "cubeTunnel": "نفق مكعب"
+    },
+    "buttons": {
+      "adventure": "مغامرة",
+      "quickGame": "لعبة سريعة",
+      "lan": "شبكة محلية",
+      "online": "أونلاين",
+      "back": "رجوع",
+      "start": "ابدأ",
+      "hostGame": "استضافة",
+      "startHosting": "بدء الاستضافة",
+      "enterGame": "الدخول للعبة",
+      "stopServer": "إيقاف الخادم",
+      "refresh": "تحديث",
+      "connect": "اتصال",
+      "join": "انضمام",
+      "loadCustom": "تحميل مخصص",
+      "weaponMastery": "إتقان الأسلحة",
+      "weaponDatabase": "قاعدة بيانات الأسلحة",
+      "visualStyles": "الأنماط المرئية"
+    },
+    "headings": {
+      "adventureLevels": "مستويات المغامرة",
+      "lanGame": "لعبة شبكة محلية",
+      "selectMap": "اختر الخريطة",
+      "mapSize": "حجم الخريطة",
+      "availableGames": "الألعاب المتاحة",
+      "manualConnect": "اتصال يدوي",
+      "selectGameMode": "اختر وضع اللعبة",
+      "selectSurface": "اختر السطح",
+      "enterYourName": "أدخل اسمك"
+    },
+    "misc": {
+      "scanningForGames": "البحث عن ألعاب...",
+      "startingServer": "جارٍ بدء الخادم...",
+      "loadingMesh": "جارٍ تحميل النموذج...",
+      "controlsHint": "WASD - تحرك | الماوس - استهداف | نقر - اطلق | مسافة - قنبلة | M - صوت",
+      "autoRefreshOn": "تحديث تلقائي: تشغيل",
+      "autoRefreshOff": "تحديث تلقائي: إيقاف",
+      "idleShutdownDelay": "تأخير الإغلاق التلقائي",
+      "idleShutdownSec": "ث",
+      "idleShutdownHint": "يغلق الخادم عندما يغادر جميع اللاعبين (0 = أبداً)",
+      "hostIpPlaceholder": "IP المضيف (مثال: 192.168.1.15)",
+      "namePlaceholder": "أدخل اسمك..."
     }
   },
   "languages": {

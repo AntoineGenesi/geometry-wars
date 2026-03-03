@@ -106,6 +106,49 @@
       "sphereTunnel": "Сферический туннель",
       "cubeRing": "Кольцо куба",
       "cubeTunnel": "Туннель куба"
+    },
+    "buttons": {
+      "adventure": "ПРИКЛЮЧЕНИЕ",
+      "quickGame": "БЫСТРАЯ ИГРА",
+      "lan": "ЛАН",
+      "online": "ОНЛАЙН",
+      "back": "НАЗАД",
+      "start": "НАЧАТЬ",
+      "hostGame": "СОЗДАТЬ ИГРУ",
+      "startHosting": "НАЧАТЬ ХОСТИНГ",
+      "enterGame": "ВОЙТИ В ИГРУ",
+      "stopServer": "ОСТАНОВИТЬ СЕРВЕР",
+      "refresh": "ОБНОВИТЬ",
+      "connect": "ПОДКЛЮЧИТЬ",
+      "join": "ПРИСОЕДИНИТЬСЯ",
+      "loadCustom": "ЗАГРУЗИТЬ",
+      "weaponMastery": "МАСТЕРСТВО ОРУЖИЯ",
+      "weaponDatabase": "БАЗА ОРУЖИЯ",
+      "visualStyles": "ВИЗУАЛЬНЫЕ СТИЛИ"
+    },
+    "headings": {
+      "adventureLevels": "УРОВНИ ПРИКЛЮЧЕНИЯ",
+      "lanGame": "ЛАН-ИГРА",
+      "selectMap": "ВЫБРАТЬ КАРТУ",
+      "mapSize": "РАЗМЕР КАРТЫ",
+      "availableGames": "ДОСТУПНЫЕ ИГРЫ",
+      "manualConnect": "РУЧНОЕ ПОДКЛЮЧЕНИЕ",
+      "selectGameMode": "ВЫБРАТЬ РЕЖИМ",
+      "selectSurface": "ВЫБРАТЬ ПОВЕРХНОСТЬ",
+      "enterYourName": "ВВЕДИТЕ ИМЯ"
+    },
+    "misc": {
+      "scanningForGames": "Поиск игр...",
+      "startingServer": "Запуск сервера...",
+      "loadingMesh": "Загрузка модели...",
+      "controlsHint": "WASD - Движение | Мышь - Прицел | Клик - Стрельба | Пробел - Бомба | M - Звук",
+      "autoRefreshOn": "АВТООБНОВЛЕНИЕ: ВКЛ",
+      "autoRefreshOff": "АВТООБНОВЛЕНИЕ: ВЫКЛ",
+      "idleShutdownDelay": "Автозакрытие",
+      "idleShutdownSec": "сек",
+      "idleShutdownHint": "Сервер закроется когда все игроки уйдут (0 = никогда)",
+      "hostIpPlaceholder": "IP хоста (напр. 192.168.1.15)",
+      "namePlaceholder": "Введите ваше имя..."
     }
   },
   "languages": {

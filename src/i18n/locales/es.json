@@ -106,6 +106,49 @@
       "sphereTunnel": "Túnel Esférico",
       "cubeRing": "Anillo Cubo",
       "cubeTunnel": "Túnel Cubo"
+    },
+    "buttons": {
+      "adventure": "AVENTURA",
+      "quickGame": "PARTIDA RÁPIDA",
+      "lan": "LAN",
+      "online": "EN LÍNEA",
+      "back": "VOLVER",
+      "start": "INICIAR",
+      "hostGame": "HOSPEDAR",
+      "startHosting": "INICIAR HOSPEDAJE",
+      "enterGame": "ENTRAR AL JUEGO",
+      "stopServer": "DETENER SERVIDOR",
+      "refresh": "ACTUALIZAR",
+      "connect": "CONECTAR",
+      "join": "UNIRSE",
+      "loadCustom": "CARGAR CUSTOM",
+      "weaponMastery": "MAESTRÍA DE ARMAS",
+      "weaponDatabase": "BASE DE DATOS",
+      "visualStyles": "ESTILOS VISUALES"
+    },
+    "headings": {
+      "adventureLevels": "NIVELES DE AVENTURA",
+      "lanGame": "JUEGO LAN",
+      "selectMap": "SELECCIONAR MAPA",
+      "mapSize": "TAMAÑO DE MAPA",
+      "availableGames": "PARTIDAS DISPONIBLES",
+      "manualConnect": "CONEXIÓN MANUAL",
+      "selectGameMode": "SELECCIONAR MODO",
+      "selectSurface": "SELECCIONAR SUPERFICIE",
+      "enterYourName": "INGRESA TU NOMBRE"
+    },
+    "misc": {
+      "scanningForGames": "Buscando partidas...",
+      "startingServer": "Iniciando servidor...",
+      "loadingMesh": "Cargando modelo...",
+      "controlsHint": "WASD - Mover | Ratón - Apuntar | Clic - Disparar | Espacio - Bomba | M - Silencio",
+      "autoRefreshOn": "ACTUALIZACIÓN AUTO: ON",
+      "autoRefreshOff": "ACTUALIZACIÓN AUTO: OFF",
+      "idleShutdownDelay": "Tiempo de cierre automático",
+      "idleShutdownSec": "seg",
+      "idleShutdownHint": "El servidor se cierra cuando todos los jugadores se van (0 = nunca)",
+      "hostIpPlaceholder": "IP del host (ej. 192.168.1.15)",
+      "namePlaceholder": "Introduce tu nombre..."
     }
   },
   "languages": {

@@ -106,6 +106,49 @@
       "sphereTunnel": "Sphere Tunnel",
       "cubeRing": "Cube Ring",
       "cubeTunnel": "Cube Tunnel"
+    },
+    "buttons": {
+      "adventure": "ADVENTURE",
+      "quickGame": "QUICK GAME",
+      "lan": "LAN",
+      "online": "ONLINE",
+      "back": "BACK",
+      "start": "START",
+      "hostGame": "HOST GAME",
+      "startHosting": "START HOSTING",
+      "enterGame": "ENTER GAME",
+      "stopServer": "STOP SERVER",
+      "refresh": "REFRESH",
+      "connect": "CONNECT",
+      "join": "JOIN",
+      "loadCustom": "LOAD CUSTOM",
+      "weaponMastery": "WEAPON MASTERY",
+      "weaponDatabase": "WEAPON DATABASE",
+      "visualStyles": "VISUAL STYLES"
+    },
+    "headings": {
+      "adventureLevels": "ADVENTURE LEVELS",
+      "lanGame": "LAN GAME",
+      "selectMap": "SELECT MAP",
+      "mapSize": "MAP SIZE",
+      "availableGames": "AVAILABLE GAMES",
+      "manualConnect": "MANUAL CONNECT",
+      "selectGameMode": "SELECT GAME MODE",
+      "selectSurface": "SELECT SURFACE",
+      "enterYourName": "ENTER YOUR NAME"
+    },
+    "misc": {
+      "scanningForGames": "Scanning for games...",
+      "startingServer": "Starting server...",
+      "loadingMesh": "Loading mesh...",
+      "controlsHint": "WASD - Move | Mouse - Aim | Click - Shoot | Space - Bomb | M - Mute",
+      "autoRefreshOn": "AUTO-REFRESH: ON",
+      "autoRefreshOff": "AUTO-REFRESH: OFF",
+      "idleShutdownDelay": "Idle shutdown delay",
+      "idleShutdownSec": "sec",
+      "idleShutdownHint": "Server auto-closes when all players leave (0 = never)",
+      "hostIpPlaceholder": "Host IP (e.g. 192.168.1.15)",
+      "namePlaceholder": "Enter your name..."
     }
   },
   "languages": {

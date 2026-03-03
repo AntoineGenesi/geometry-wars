@@ -238,13 +238,16 @@ export class StartMenu {
   private createMenuHTML(): string {
     const surfaceButtons = this.surfaces
       .map(
-        (s) => `
-        <button class="surface-btn${s.type === this.selectedSurface ? ' selected' : ''}"
-                data-surface="${s.type}">
-          <span class="icon">${s.icon}</span>
-          <span class="name">${s.name}</span>
-        </button>
-      `
+        (s) => {
+          const i18nKey = s.type.replace(/-([a-z])/g, (_: string, c: string) => c.toUpperCase());
+          return `
+          <button class="surface-btn${s.type === this.selectedSurface ? ' selected' : ''}"
+                  data-surface="${s.type}">
+            <span class="icon">${s.icon}</span>
+            <span class="name">${t('menu.surfaces.' + i18nKey)}</span>
+          </button>
+        `;
+        }
       )
       .join('');
 
@@ -283,10 +286,10 @@ export class StartMenu {
 
     // Main menu button definitions for the oval layout
     const mainButtons = [
-      { mode: 'adventure', label: 'ADVENTURE', primary: true },
-      { mode: 'single', label: 'QUICK GAME', primary: false },
-      { mode: 'lan', label: 'LAN', primary: false },
-      { mode: 'network', label: 'ONLINE', primary: false },
+      { mode: 'adventure', label: t('menu.buttons.adventure'), primary: true },
+      { mode: 'single', label: t('menu.buttons.quickGame'), primary: false },
+      { mode: 'lan', label: t('menu.buttons.lan'), primary: false },
+      { mode: 'network', label: t('menu.buttons.online'), primary: false },
     ];
 
     // Generate menu buttons (flex column, no absolute positioning)
@@ -315,110 +318,110 @@ export class StartMenu {
         <!-- Sub-panels (hidden by default, shown when button clicked) -->
         <div class="sub-panel adventure-section hidden" id="adventure-levels">
           <div class="scrollable-content">
-            <h3>ADVENTURE LEVELS</h3>
+            <h3>${t('menu.headings.adventureLevels')}</h3>
             <div class="level-grid">
               ${levelGridHTML}
             </div>
           </div>
-          <button class="back-btn" id="adventure-back">BACK</button>
+          <button class="back-btn" id="adventure-back">${t('menu.buttons.back')}</button>
         </div>
 
         <div class="sub-panel lan-section hidden" id="lan-section">
           <div class="scrollable-content">
-            <h3>LAN GAME</h3>
+            <h3>${t('menu.headings.lanGame')}</h3>
             <div id="lan-host-panel">
-              <button class="lan-btn lan-host" id="lan-host-btn">HOST GAME</button>
+              <button class="lan-btn lan-host" id="lan-host-btn">${t('menu.buttons.hostGame')}</button>
               <div id="lan-host-surface-pick" class="hidden">
-                <h3>SELECT MAP</h3>
+                <h3>${t('menu.headings.selectMap')}</h3>
                 ${this.createSurfaceGridHTML('lan-surface-grid', this.lanSelectedSurface)}
-                <h3>MAP SIZE</h3>
+                <h3>${t('menu.headings.mapSize')}</h3>
                 ${this.createLanMapSizeSelectorHTML()}
                 <div class="lan-timeout-row">
-                  <label class="lan-timeout-label" for="lan-timeout-input">Idle shutdown delay</label>
+                  <label class="lan-timeout-label" for="lan-timeout-input">${t('menu.misc.idleShutdownDelay')}</label>
                   <div class="lan-timeout-input-wrap">
                     <input type="number" id="lan-timeout-input" min="0" max="3600" value="180" step="30" />
-                    <span class="lan-timeout-unit">sec</span>
+                    <span class="lan-timeout-unit">${t('menu.misc.idleShutdownSec')}</span>
                   </div>
-                  <span class="lan-timeout-hint">Server auto-closes when all players leave (0 = never)</span>
+                  <span class="lan-timeout-hint">${t('menu.misc.idleShutdownHint')}</span>
                 </div>
-                <button class="lan-btn lan-host" id="lan-start-host-btn">START HOSTING</button>
+                <button class="lan-btn lan-host" id="lan-start-host-btn">${t('menu.buttons.startHosting')}</button>
               </div>
               <div id="lan-host-info" class="hidden">
-                <p id="lan-host-status" class="lan-status">Starting server...</p>
+                <p id="lan-host-status" class="lan-status">${t('menu.misc.startingServer')}</p>
                 <p id="lan-host-url" class="lan-url"></p>
                 <div id="lan-qr-container"></div>
-                <button class="lan-btn lan-enter hidden" id="lan-enter-btn">ENTER GAME</button>
-                <button class="lan-btn lan-stop hidden" id="lan-stop-btn">STOP SERVER</button>
+                <button class="lan-btn lan-enter hidden" id="lan-enter-btn">${t('menu.buttons.enterGame')}</button>
+                <button class="lan-btn lan-stop hidden" id="lan-stop-btn">${t('menu.buttons.stopServer')}</button>
               </div>
             </div>
             <div class="lan-divider-line"></div>
-            <h3 class="lan-lobby-title">AVAILABLE GAMES</h3>
+            <h3 class="lan-lobby-title">${t('menu.headings.availableGames')}</h3>
             <div class="lan-lobby-list" id="lan-lobby-list">
               <div class="lan-lobby-empty" id="lan-lobby-empty">
-                <p>Scanning for games...</p>
+                <p>${t('menu.misc.scanningForGames')}</p>
               </div>
             </div>
             <div class="lan-refresh-bar">
-              <button class="lan-btn lan-refresh" id="lan-refresh-btn">REFRESH</button>
-              <button class="lan-btn lan-auto-toggle active" id="lan-auto-refresh-btn">AUTO-REFRESH: ON</button>
+              <button class="lan-btn lan-refresh" id="lan-refresh-btn">${t('menu.buttons.refresh')}</button>
+              <button class="lan-btn lan-auto-toggle active" id="lan-auto-refresh-btn">${t('menu.misc.autoRefreshOn')}</button>
             </div>
             <div class="lan-divider-line"></div>
-            <h3 class="lan-manual-title">MANUAL CONNECT</h3>
+            <h3 class="lan-manual-title">${t('menu.headings.manualConnect')}</h3>
             <div class="lan-input-row">
-              <input type="text" id="lan-ip-input" placeholder="Host IP (e.g. 192.168.1.15)" />
-              <button class="lan-btn lan-connect" id="lan-connect-btn">CONNECT</button>
+              <input type="text" id="lan-ip-input" placeholder="${t('menu.misc.hostIpPlaceholder')}" />
+              <button class="lan-btn lan-connect" id="lan-connect-btn">${t('menu.buttons.connect')}</button>
             </div>
           </div>
-          <button class="back-btn" id="lan-back">BACK</button>
+          <button class="back-btn" id="lan-back">${t('menu.buttons.back')}</button>
         </div>
 
         <div class="sub-panel surface-section hidden" id="surface-section">
           <div class="scrollable-content">
-            <h3>SELECT GAME MODE</h3>
+            <h3>${t('menu.headings.selectGameMode')}</h3>
             <div class="mode-grid">
               ${this.createModeGridHTML()}
             </div>
-            <h3>SELECT SURFACE</h3>
+            <h3>${t('menu.headings.selectSurface')}</h3>
             <div class="surface-grid">
               ${surfaceButtons}
               <button class="surface-btn custom-mesh-btn" data-grid-class="quick-game-surface-grid">
                 <span class="icon">📁</span>
-                <span class="name">Load Custom</span>
+                <span class="name">${t('menu.buttons.loadCustom')}</span>
               </button>
             </div>
-            <h3>MAP SIZE</h3>
+            <h3>${t('menu.headings.mapSize')}</h3>
             ${this.createMapSizeSelectorHTML()}
             <input type="file" id="custom-mesh-file-input" accept=".obj,.glb,.gltf" style="display: none;" />
             <div id="custom-mesh-loading" class="custom-mesh-loading hidden">
-              <p>Loading mesh...</p>
+              <p>${t('menu.misc.loadingMesh')}</p>
             </div>
             <button class="start-btn" id="surface-start-btn">
               <span class="btn-icon">\u25B6</span>
-              <span>START</span>
+              <span>${t('menu.buttons.start')}</span>
             </button>
           </div>
-          <button class="back-btn" id="surface-back">BACK</button>
+          <button class="back-btn" id="surface-back">${t('menu.buttons.back')}</button>
         </div>
 
         <!-- Name input dialog (shown before joining LAN) -->
         <div class="sub-panel lan-name-dialog hidden" id="lan-name-dialog">
-          <h3>ENTER YOUR NAME</h3>
+          <h3>${t('menu.headings.enterYourName')}</h3>
           <div class="lan-name-input-wrap">
-            <input type="text" id="lan-name-input" placeholder="Enter your name..." maxlength="20" />
+            <input type="text" id="lan-name-input" placeholder="${t('menu.misc.namePlaceholder')}" maxlength="20" />
           </div>
           <p class="lan-name-error hidden" id="lan-name-error"></p>
           <div class="lan-name-buttons">
-            <button class="lan-btn lan-name-join" id="lan-name-join-btn">JOIN</button>
-            <button class="back-btn" id="lan-name-cancel-btn">CANCEL</button>
+            <button class="lan-btn lan-name-join" id="lan-name-join-btn">${t('menu.buttons.join')}</button>
+            <button class="back-btn" id="lan-name-cancel-btn">${t('common.cancel')}</button>
           </div>
         </div>
 
         <div class="controls-hint">
-          <p>WASD - Move | Mouse - Aim | Click - Shoot | Space - Bomb | M - Mute</p>
-          <button class="weapon-info-btn" id="weapon-mastery-btn">WEAPON MASTERY</button>
-          <button class="weapon-info-btn" id="weapon-info-btn">WEAPON DATABASE</button>
-          <button class="weapon-info-btn" id="visual-styles-btn">VISUAL STYLES</button>
-          <button class="weapon-info-btn" id="settings-btn">SETTINGS</button>
+          <p>${t('menu.misc.controlsHint')}</p>
+          <button class="weapon-info-btn" id="weapon-mastery-btn">${t('menu.buttons.weaponMastery')}</button>
+          <button class="weapon-info-btn" id="weapon-info-btn">${t('menu.buttons.weaponDatabase')}</button>
+          <button class="weapon-info-btn" id="visual-styles-btn">${t('menu.buttons.visualStyles')}</button>
+          <button class="weapon-info-btn" id="settings-btn">${t('common.settings')}</button>
           ${this.isDebugMode ? '<button class="weapon-info-btn debug-obj-btn" id="debug-obj-btn" style="border-color:#ff8800;color:#ff8800;">DEBUG: LOAD MODELS</button>' : ''}
         </div>
 
@@ -2104,11 +2107,11 @@ export class StartMenu {
     lanAutoRefreshBtn?.addEventListener('click', () => {
       this.lanAutoRefreshEnabled = !this.lanAutoRefreshEnabled;
       if (this.lanAutoRefreshEnabled) {
-        lanAutoRefreshBtn.textContent = 'AUTO-REFRESH: ON';
+        lanAutoRefreshBtn.textContent = t('menu.misc.autoRefreshOn');
         lanAutoRefreshBtn.classList.add('active');
         this.startAutoRefresh();
       } else {
-        lanAutoRefreshBtn.textContent = 'AUTO-REFRESH: OFF';
+        lanAutoRefreshBtn.textContent = t('menu.misc.autoRefreshOff');
         lanAutoRefreshBtn.classList.remove('active');
         this.stopAutoRefresh();
       }
