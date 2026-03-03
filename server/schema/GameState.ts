@@ -330,6 +330,34 @@ defineTypes(BuffPickupState, {
 });
 
 /**
+ * Health pickup state (PvP mode — spawns near damaged players)
+ */
+export class HealthPickupState extends Schema {
+  declare id: string;
+  declare surfaceU: number;
+  declare surfaceV: number;
+  declare active: boolean;
+  declare age: number;
+
+  constructor() {
+    super();
+    this.id = '';
+    this.surfaceU = 0.5;
+    this.surfaceV = 0.5;
+    this.active = true;
+    this.age = 0;
+  }
+}
+
+defineTypes(HealthPickupState, {
+  id: 'string',
+  surfaceU: 'number',
+  surfaceV: 'number',
+  active: 'boolean',
+  age: 'number',
+});
+
+/**
  * Main game state synced across all clients
  */
 export class GameState extends Schema {
@@ -340,6 +368,7 @@ export class GameState extends Schema {
   declare weaponPickups: ArraySchema<WeaponPickupState>;
   declare superPickups: ArraySchema<SuperPickupState>;
   declare buffPickups: ArraySchema<BuffPickupState>;
+  declare healthPickups: ArraySchema<HealthPickupState>;
   declare surfaceType: string;
   declare waveNumber: number;
   declare gameTime: number;
@@ -379,6 +408,7 @@ export class GameState extends Schema {
     this.weaponPickups = new ArraySchema<WeaponPickupState>();
     this.superPickups = new ArraySchema<SuperPickupState>();
     this.buffPickups = new ArraySchema<BuffPickupState>();
+    this.healthPickups = new ArraySchema<HealthPickupState>();
     this.surfaceType = 'sphere';
     this.waveNumber = 0;
     this.gameTime = 0;
@@ -411,6 +441,7 @@ defineTypes(GameState, {
   weaponPickups: [WeaponPickupState],
   superPickups: [SuperPickupState],
   buffPickups: [BuffPickupState],
+  healthPickups: [HealthPickupState],
   surfaceType: 'string',
   waveNumber: 'number',
   gameTime: 'number',

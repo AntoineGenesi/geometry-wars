@@ -82,6 +82,7 @@ import {
   NetworkWeaponPickupState,
   NetworkSuperPickupState,
   NetworkBuffPickupState,
+  NetworkHealthPickupState,
   NetworkGameState,
   ClientMetricsPayload,
 } from './network/NetworkClient';
@@ -1042,6 +1043,19 @@ async function main() {
   const networkBuffPickups = new Map<string, BuffPickupNew>();
   // Track local player's buff stacks from last state update to detect new collections
   const prevLocalBuffStacks = new Map<string, number>();
+
+  // -- Health pickup tracking (PvP mode) --
+  // Green pulsing sphere spawned near damaged players.
+  interface HealthPickupVisual {
+    mesh: THREE.Group;
+    surfaceU: number;
+    surfaceV: number;
+    spawnTime: number; // for pulse animation
+  }
+  const networkHealthPickups = new Map<string, HealthPickupVisual>();
+
+  // Shared geometry for health pickups (created once)
+  const healthPickupGeometry = new THREE.SphereGeometry(0.22, 10, 7);
 
   // Shared geometries for super pickups (created once, never disposed)
   const superPickupGeometry = new THREE.SphereGeometry(0.25, 12, 8);
@@ -2276,6 +2290,21 @@ async function main() {
     networkBuffPickups.clear();
     prevLocalBuffStacks.clear();
 
+    // Clear health pickups
+    networkHealthPickups.forEach((visual) => {
+      scene.remove(visual.mesh);
+      visual.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.material instanceof THREE.Material && child.material.dispose();
+        }
+        if (child instanceof THREE.Sprite) {
+          child.material.map?.dispose();
+          child.material.dispose();
+        }
+      });
+    });
+    networkHealthPickups.clear();
+
     // Reset buff stacks so new game starts from scratch
     buffManager.reset();
 
@@ -3276,6 +3305,95 @@ async function main() {
         scene.remove(bp.mesh);
         bp.dispose();
         networkBuffPickups.delete(id);
+      }
+    });
+
+    // ----- Sync health pickups (PvP mode — green pulsing spheres) -----
+    const activeHealthPickupIds = new Set<string>();
+    state.healthPickups.forEach((netPickup: NetworkHealthPickupState) => {
+      if (!netPickup.active) return;
+      activeHealthPickupIds.add(netPickup.id);
+
+      if (!networkHealthPickups.has(netPickup.id)) {
+        // Create green pulsing sphere visual
+        const group = new THREE.Group();
+        group.name = `HealthPickup_${netPickup.id}`;
+
+        const color = new THREE.Color(0x00ff44); // bright green
+
+        const mat = new THREE.MeshBasicMaterial({
+          color,
+          transparent: true,
+          opacity: 0.85,
+        });
+        mat.userData.baseOpacity = 0.85;
+        const mesh = new THREE.Mesh(healthPickupGeometry, mat);
+        group.add(mesh);
+
+        // Wireframe outer shell
+        const outerMat = new THREE.MeshBasicMaterial({
+          color,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.5,
+        });
+        const outerMesh = new THREE.Mesh(healthPickupGeometry, outerMat);
+        outerMesh.scale.setScalar(1.35);
+        group.add(outerMesh);
+
+        // Glow sprite
+        const glowCanvas = document.createElement('canvas');
+        glowCanvas.width = 64; glowCanvas.height = 64;
+        const ctx = glowCanvas.getContext('2d')!;
+        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        grad.addColorStop(0, 'rgba(0,255,68,1)');
+        grad.addColorStop(0.4, 'rgba(0,255,68,0.4)');
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 64);
+        const glowTex = new THREE.CanvasTexture(glowCanvas);
+        const glowMat = new THREE.SpriteMaterial({
+          map: glowTex,
+          transparent: true,
+          opacity: 0.6,
+          blending: THREE.NormalBlending,
+          depthWrite: false,
+        });
+        glowMat.userData.baseOpacity = 0.6;
+        const glowSprite = new THREE.Sprite(glowMat);
+        glowSprite.scale.setScalar(2.0);
+        group.add(glowSprite);
+
+        scene.add(group);
+        networkHealthPickups.set(netPickup.id, {
+          mesh: group,
+          surfaceU: netPickup.surfaceU,
+          surfaceV: netPickup.surfaceV,
+          spawnTime: game.clock.totalTime,
+        });
+      } else {
+        // Update position from server
+        const visual = networkHealthPickups.get(netPickup.id)!;
+        visual.surfaceU = netPickup.surfaceU;
+        visual.surfaceV = netPickup.surfaceV;
+      }
+    });
+    // Remove collected/expired health pickups
+    networkHealthPickups.forEach((visual, id) => {
+      if (!activeHealthPickupIds.has(id)) {
+        particles.enemyDeath(visual.mesh.position, new THREE.Color(0x00ff44));
+        sound.play('multiplierUp', { volume: 0.5, pitch: 1.8 });
+        scene.remove(visual.mesh);
+        visual.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.material instanceof THREE.Material && child.material.dispose();
+          }
+          if (child instanceof THREE.Sprite) {
+            child.material.map?.dispose();
+            child.material.dispose();
+          }
+        });
+        networkHealthPickups.delete(id);
       }
     });
 
@@ -4712,6 +4830,26 @@ async function main() {
       });
     }
 
+    // Animate health pickups (pulse + bob along surface normal).
+    if (getTransform && networkHealthPickups.size > 0) {
+      const transform = getTransform;
+      const totalTime = game.clock.totalTime;
+      networkHealthPickups.forEach((visual) => {
+        const { position, normal } = transform(visual.surfaceU, visual.surfaceV);
+        const bob = Math.sin(totalTime * 4 + visual.spawnTime) * 0.07;
+        visual.mesh.position.copy(position).addScaledVector(normal, 0.45 + bob);
+        // Pulse opacity on core
+        const core = visual.mesh.children[0] as THREE.Mesh | undefined;
+        if (core && core.material instanceof THREE.Material && 'opacity' in core.material) {
+          const pulse = 0.7 + Math.sin(totalTime * 6) * 0.15;
+          (core.material as THREE.MeshBasicMaterial).opacity = pulse * (core.material.userData.baseOpacity ?? 0.85);
+        }
+        visual.mesh.userData.ageFactor = 1.0;
+        visual.mesh.userData.surfaceU = visual.surfaceU;
+        visual.mesh.userData.surfaceV = visual.surfaceV;
+      });
+    }
+
     shockArcRenderer.update(buffManager.shockArcs);
     buffHUD.update(buffManager.getActiveBuffs());
 
@@ -5342,6 +5480,7 @@ async function main() {
         networkWeaponPickups.forEach((pickup) => applyDimming(pickup.mesh, pickup.surfaceU, pickup.surfaceV));
         networkSuperPickups.forEach((visual) => applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV));
         networkBuffPickups.forEach((bp) => applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV));
+        networkHealthPickups.forEach((visual) => applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV));
         for (const cp of localCompanionPickups) { if (cp.active) applyDimming(cp.mesh, cp.surfaceU, cp.surfaceV); }
         for (const bp of localBuffPickups)      { if (bp.active) applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV); }
       }
