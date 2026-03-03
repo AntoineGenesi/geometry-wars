@@ -61,6 +61,10 @@ export interface BurningState {
   enemy: BaseEnemy;
   dps: number;
   remaining: number;
+  /** Accumulated damage since last popup (shown every BURN_TICK_INTERVAL seconds) */
+  damageAccumulator: number;
+  /** Timer for damage number throttle */
+  tickTimer: number;
 }
 
 /** Shock arc visual (line from player to enemy or enemy to enemy) */
@@ -622,7 +626,7 @@ export class BuffManager {
         existing.dps = Math.max(existing.dps, dps);
         existing.remaining = Math.max(existing.remaining, duration);
       } else {
-        this.burningEnemies.push({ enemy, dps, remaining: duration });
+        this.burningEnemies.push({ enemy, dps, remaining: duration, damageAccumulator: 0, tickTimer: 0 });
       }
 
       // Visual feedback: tint the enemy orange briefly
@@ -725,7 +729,7 @@ export class BuffManager {
     }
 
     this.updateShockAura(dt, playerPos, enemies, scorePopups);
-    this.updateBurning(dt);
+    this.updateBurning(dt, scorePopups);
     this.updateShockArcs(dt);
 
     // Detect enemies that died from aura/burn this frame
@@ -813,7 +817,9 @@ export class BuffManager {
   // Burning DOT logic
   // -----------------------------------------------------------------------
 
-  private updateBurning(dt: number): void {
+  private readonly BURN_TICK_INTERVAL = 0.5; // show damage number every 0.5s
+
+  private updateBurning(dt: number, scorePopups?: ScorePopupManager): void {
     for (let i = this.burningEnemies.length - 1; i >= 0; i--) {
       const burn = this.burningEnemies[i];
 
@@ -835,7 +841,17 @@ export class BuffManager {
       }
 
       // Apply DOT damage
-      burn.enemy.takeDamage(burn.dps * dt);
+      const tickDamage = burn.dps * dt;
+      burn.enemy.takeDamage(tickDamage);
+
+      // Accumulate damage for throttled popup (avoid per-frame spam)
+      burn.damageAccumulator += tickDamage;
+      burn.tickTimer += dt;
+      if (scorePopups && burn.tickTimer >= this.BURN_TICK_INTERVAL && burn.enemy.alive) {
+        scorePopups.spawnDamage(burn.enemy.position, burn.damageAccumulator, '#ff7700');
+        burn.damageAccumulator = 0;
+        burn.tickTimer -= this.BURN_TICK_INTERVAL;
+      }
 
       // Flicker emissive for burning visual
       if (burn.enemy.cachedMaterials) {

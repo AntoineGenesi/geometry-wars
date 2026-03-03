@@ -97,14 +97,16 @@ export class ScorePopupManager {
 
   /**
    * Spawn a floating damage number at an enemy position.
-   * Small red text, short lifetime, slight random offset to avoid stacking.
+   * Short lifetime, slight random offset to avoid stacking.
+   * @param color - Hex color string; defaults to red '#ff4444'. Use source-type colors:
+   *   '#ff4444' bullets, '#00aaff' tesla/electricity, '#ff7700' burning DOT, '#44ffaa' aoe/explosions
    */
-  spawnDamage(position: THREE.Vector3, damage: number): void {
+  spawnDamage(position: THREE.Vector3, damage: number, color = '#ff4444'): void {
     const text = damage >= 1 ? `-${Math.round(damage)}` : `-${damage.toFixed(1)}`;
     const offsetX = (Math.random() - 0.5) * 0.5;
     const offsetZ = (Math.random() - 0.5) * 0.5;
     const pos = position.clone().add(new THREE.Vector3(offsetX, 0, offsetZ));
-    this.spawn(pos, text, '#ff4444', 1.3, 0.7);
+    this.spawn(pos, text, color, 1.3, 0.7);
   }
 
   /**

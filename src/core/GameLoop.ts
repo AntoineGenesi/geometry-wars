@@ -437,6 +437,19 @@ export class GameLoop {
     if (ctx.player.alive) {
       const auraKills = ctx.buffManager.update(dt, ctx.playerWalker.position, ctx.enemySpawner.getEnemies(), ctx.scorePopups);
 
+      // Award score + show points popup for enemies killed by ShockAura / Burning DOT
+      for (const killed of auraKills) {
+        const enemyType = killed.constructor.name.toLowerCase();
+        const color = ctx.ENEMY_COLORS[enemyType] ?? ctx.ENEMY_COLOR_FALLBACK;
+        ctx.scoreManager.awardKill(killed.scoreValue, enemyType);
+        ctx.scorePopups.spawnScore(killed.position.clone(), killed.scoreValue);
+        ctx.killLog.addKill(enemyType, color.getHex());
+        ctx.playerLevel.addKill();
+        for (let g = 0; g < killed.geomCount; g++) {
+          ctx.scoreManager.collectGeom();
+        }
+      }
+
       ctx.shockArcRenderer.update(ctx.buffManager.shockArcs);
       // Update buff aura ring visuals (per-buff shader effects around player)
       const activeBuffsForAura = ctx.buffManager.getActiveBuffs().map(b => ({

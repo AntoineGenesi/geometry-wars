@@ -1892,3 +1892,20 @@ Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to rea
 - [ ] **Game world visible behind pause screen** — The 3D surface should be visible behind the pause overlay
 - [ ] **Host unpauses** — Host clicks Resume; all three clients (including the new joiner) should transition to active gameplay smoothly
 - [ ] **No regression: normal join** — Start a fresh game with two players joining a non-paused game; everything works as before
+
+
+## S44j-25: Damage Numbers for All Damage Sources
+
+**Fix:** Damage numbers (floating text) now appear for ALL damage sources, not just bullet hits. Tesla coil shows blue numbers, Burning DOT shows orange numbers every 0.5s, special weapon kills now show score popup, and ShockAura/burn kills now award score and show points value. Colors differentiate source type visually.
+
+### Test: Damage numbers appear for all sources
+- [ ] **Bullet hits** — Shoot an enemy; red `-X` damage numbers should appear (pre-existing, no regression)
+- [ ] **Tesla Coil** — Equip Tesla Coil weapon; blue (`#00aaff`) damage numbers should appear continuously near enemies in range
+- [ ] **Chain Lightning** — Fire chain lightning; cyan damage numbers on each hit enemy
+- [ ] **Plasma Mortar** — Fire mortar AoE; green damage numbers on enemies in blast radius
+- [ ] **Black Hole** — Deploy black hole; purple damage numbers as it draws enemies
+- [ ] **Burning DOT (IncendiaryRounds buff)** — Pick up Incendiary Rounds buff, shoot enemies to ignite; orange (`#ff7700`) numbers appear every ~0.5s while enemies burn
+- [ ] **Score popup on special weapon kill** — Kill an enemy with Tesla/Mortar/etc.; should see `+XX` score popup (same as bullet kills)
+- [ ] **ShockAura kills award score** — Pick up ShockAura buff; if aura kills an enemy, score should increment AND a score popup should appear
+- [ ] **No overlap spam** — Damage numbers stagger (slight random X/Z offset) so they don't all overlap on same position
+- [ ] **MP damage numbers** — In LAN game, shoot enemies; damage numbers appear (may all be default red in MP — color-coding by weapon is SP-only)

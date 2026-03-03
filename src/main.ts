@@ -1097,6 +1097,20 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   };
   const ENEMY_COLOR_FALLBACK = new THREE.Color(0xffffff);
 
+  // Damage number colors by weapon type — differentiates source type visually
+  const WEAPON_DAMAGE_COLORS: Partial<Record<WeaponType, string>> = {
+    [WeaponType.Standard]:       '#ff4444', // red — blaster bullets (handled by CollisionSystem)
+    [WeaponType.Spread]:         '#ff4444', // red — spread shot bullets
+    [WeaponType.Piercing]:       '#ffffff', // white — piercing beam
+    [WeaponType.ChainLightning]: '#aaffff', // cyan — chain lightning
+    [WeaponType.Homing]:         '#ff8844', // orange-red — homing missile
+    [WeaponType.PlasmaMortar]:   '#44ff44', // green — plasma mortar
+    [WeaponType.GravityGun]:     '#aa44ff', // purple — gravity gun
+    [WeaponType.LaserBeam]:      '#ff2222', // bright red — laser
+    [WeaponType.BlackHole]:      '#cc44ff', // purple — black hole
+    [WeaponType.TeslaCoil]:      '#00aaff', // blue — tesla coil
+  };
+
   // -- Weapon manager --
   const weaponManager = new WeaponManager();
   weaponManager.setMeshSurface(meshSurface);
@@ -1124,7 +1138,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       // Trigger on-hit procs (incendiary etc.) with reduced proc coefficient for weapon damage
       if (enemy.alive) {
         buffManager.onBulletHit(enemy, 0.3);
-        scorePopups.spawnDamage(enemy.position, damage * scorePower);
+        // Color-code by weapon source type
+        const dmgColor = WEAPON_DAMAGE_COLORS[weaponType] ?? '#ff4444';
+        scorePopups.spawnDamage(enemy.position, damage * scorePower, dmgColor);
       }
       if (!enemy.alive) {
         const enemyType = enemy.constructor.name.toLowerCase();
@@ -1138,6 +1154,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         }
 
         scoreManager.awardKill(enemy.scoreValue, enemyType);
+        // Show points value when enemy is killed by special weapon
+        scorePopups.spawnScore(enemy.position.clone(), enemy.scoreValue);
         screenShake.shake(0.15, 0.15);
         getSoundEngine().play('enemyDeath', { pitch: 0.8 + Math.random() * 0.4 });
         killLog.addKill(enemyType, color.getHex());
