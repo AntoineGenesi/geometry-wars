@@ -1297,8 +1297,9 @@ async function main() {
   modeSelectorDiv.appendChild(claustrophobiaNoteEl);
 
   // ---- Lives selector (host only, shown in lobby) ----
-  let selectedLives = 3;       // 1-9
+  let selectedLives = 3;          // 1-999
   let selectedInfiniteLives = false;
+  let livesFromButton = true;     // false when user typed a custom value directly
 
   const livesRow = document.createElement('div');
   livesRow.style.cssText = 'margin-top:14px;display:flex;align-items:center;gap:8px;justify-content:center;flex-wrap:wrap;';
@@ -1309,7 +1310,7 @@ async function main() {
   livesRow.appendChild(livesLabelEl);
 
   const livesBtnsRow = document.createElement('div');
-  livesBtnsRow.style.cssText = 'display:flex;gap:4px;';
+  livesBtnsRow.style.cssText = 'display:flex;gap:4px;align-items:center;';
 
   const livesBtnEls: HTMLButtonElement[] = [];
   for (let n = 1; n <= 9; n++) {
@@ -1322,41 +1323,77 @@ async function main() {
     btn.onclick = () => {
       selectedLives = n;
       selectedInfiniteLives = false;
+      livesFromButton = true;
+      livesInputEl.value = String(n);
       updateLivesUI();
     };
-    if (n === 3) {
-      btn.style.background = '#050';
-      btn.style.color = '#0f0';
-      btn.style.borderColor = '#0f0';
-    }
     livesBtnEls.push(btn);
     livesBtnsRow.appendChild(btn);
   }
-  livesRow.appendChild(livesBtnsRow);
 
   const infiniteBtn = document.createElement('button');
   infiniteBtn.textContent = '∞';
   infiniteBtn.style.cssText =
-    'padding:4px 10px;font:bold 16px monnet;cursor:pointer;' +
+    'padding:4px 10px;font:bold 16px monospace;cursor:pointer;' +
     'border:2px solid #444;background:#111;color:#aaa;';
   infiniteBtn.onclick = () => {
-    selectedInfiniteLives = !selectedInfiniteLives;
-    if (selectedInfiniteLives) selectedLives = 3;
+    selectedInfiniteLives = true;
+    livesFromButton = true;
+    livesInputEl.value = '∞';
     updateLivesUI();
   };
-  livesRow.appendChild(infiniteBtn);
+  livesBtnsRow.appendChild(infiniteBtn);
+
+  // Custom number input — for values beyond 9 (e.g. 12, 20)
+  const livesInputEl = document.createElement('input');
+  livesInputEl.type = 'text';
+  livesInputEl.value = '3';
+  livesInputEl.maxLength = 3;
+  livesInputEl.style.cssText =
+    'width:44px;height:30px;font:bold 14px monospace;text-align:center;' +
+    'border:2px solid #444;background:#111;color:#aaa;outline:none;';
+  livesInputEl.addEventListener('input', () => {
+    // Typing in the input deselects all buttons
+    livesFromButton = false;
+    selectedInfiniteLives = false;
+    const val = parseInt(livesInputEl.value, 10);
+    if (!isNaN(val) && val >= 1 && val <= 999) {
+      selectedLives = val;
+    }
+    updateLivesUI();
+  });
+  livesInputEl.addEventListener('blur', () => {
+    // On blur, sanitise: clamp to valid range, fall back to last valid value
+    const val = parseInt(livesInputEl.value, 10);
+    if (isNaN(val) || val < 1) {
+      livesInputEl.value = String(selectedLives);
+    } else if (val > 999) {
+      selectedLives = 999;
+      livesInputEl.value = '999';
+    }
+  });
+  livesBtnsRow.appendChild(livesInputEl);
+
+  livesRow.appendChild(livesBtnsRow);
 
   function updateLivesUI(): void {
     livesBtnEls.forEach((b, idx) => {
-      const active = !selectedInfiniteLives && idx + 1 === selectedLives;
+      const active = livesFromButton && !selectedInfiniteLives && idx + 1 === selectedLives;
       b.style.background = active ? '#050' : '#111';
       b.style.color = active ? '#0f0' : '#aaa';
       b.style.borderColor = active ? '#0f0' : '#444';
     });
-    infiniteBtn.style.background = selectedInfiniteLives ? '#050' : '#111';
-    infiniteBtn.style.color = selectedInfiniteLives ? '#0f0' : '#aaa';
-    infiniteBtn.style.borderColor = selectedInfiniteLives ? '#0f0' : '#444';
+    const infActive = livesFromButton && selectedInfiniteLives;
+    infiniteBtn.style.background = infActive ? '#050' : '#111';
+    infiniteBtn.style.color = infActive ? '#0f0' : '#aaa';
+    infiniteBtn.style.borderColor = infActive ? '#0f0' : '#444';
+    // Highlight input border when it's driving the selection
+    livesInputEl.style.borderColor = !livesFromButton ? '#0f0' : '#444';
+    livesInputEl.style.color = !livesFromButton ? '#0f0' : '#aaa';
   }
+
+  // Initialise with default (3 lives, button 3 highlighted)
+  updateLivesUI();
 
   modeSelectorDiv.appendChild(livesRow);
   document.body.appendChild(modeSelectorDiv);
