@@ -42,6 +42,8 @@ export class PlayerState extends Schema {
   declare kills: number;
   /** PvP death count: number of times this player was killed by another player. */
   declare deaths: number;
+  /** PvPvE enemy kill count: number of enemies killed by this player (for leaderboard). */
+  declare enemyKills: number;
   /** Total damage dealt to other players this match (PvP mode). */
   declare totalDamageDealt: number;
   /** Zone time in seconds (KotH: time in zone; Claustrophobia: time inside boundary). */
@@ -88,6 +90,7 @@ export class PlayerState extends Schema {
     this.playerKills = 0;
     this.kills = 0;
     this.deaths = 0;
+    this.enemyKills = 0;
     this.totalDamageDealt = 0;
     this.ddaLevel = 0;
     this.buffStacks = new MapSchema<number>();
@@ -125,6 +128,7 @@ defineTypes(PlayerState, {
   playerKills: 'number',
   kills: 'number',
   deaths: 'number',
+  enemyKills: 'number',
   totalDamageDealt: 'number',
   ddaLevel: 'number',
   buffStacks: { map: 'number' },

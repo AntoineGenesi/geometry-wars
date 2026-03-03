@@ -943,6 +943,7 @@ export class GameRoom extends Room<GameState> {
         if (player) {
           player.score += this.getEnemyScore(enemy.type) * player.multiplier;
           player.playerKills++;
+          player.enemyKills++;
           const newLevel = this.getPlayerLevel(player.playerKills);
           if (newLevel > player.playerLevel) {
             player.playerLevel = newLevel;
@@ -1391,6 +1392,7 @@ export class GameRoom extends Room<GameState> {
       player.weaponAmmo = startWeaponAmmo;
       player.playerLevel = 0;
       player.playerKills = 0;
+      player.enemyKills = 0;
       player.kills = 0;
       player.deaths = 0;
       player.totalDamageDealt = 0;
@@ -1813,6 +1815,7 @@ export class GameRoom extends Room<GameState> {
 
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
         player.playerKills++;
+        player.enemyKills++;
         const newLevel = this.getPlayerLevel(player.playerKills);
         if (newLevel > player.playerLevel) {
           player.playerLevel = newLevel;
@@ -1886,6 +1889,7 @@ export class GameRoom extends Room<GameState> {
 
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
         player.playerKills++;
+        player.enemyKills++;
         const newLevel = this.getPlayerLevel(player.playerKills);
         if (newLevel > player.playerLevel) {
           player.playerLevel = newLevel;
@@ -1938,6 +1942,7 @@ export class GameRoom extends Room<GameState> {
     // Track kills for level progression (bomb kills count)
     if (enemiesToRemove.length > 0) {
       player.playerKills += enemiesToRemove.length;
+      player.enemyKills += enemiesToRemove.length;
       const newLevel = this.getPlayerLevel(player.playerKills);
       if (newLevel > player.playerLevel) {
         player.playerLevel = newLevel;
@@ -3232,6 +3237,7 @@ export class GameRoom extends Room<GameState> {
             if (owner) {
               owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
               owner.playerKills++;
+              owner.enemyKills++;
               const newLevel = this.getPlayerLevel(owner.playerKills);
               if (newLevel > owner.playerLevel) {
                 owner.playerLevel = newLevel;
