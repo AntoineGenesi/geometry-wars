@@ -3282,7 +3282,10 @@ export class GameRoom extends Room<GameState> {
     // PvP bullet-player collisions (only when pvpEnabled === true)
     // Player bullets deal health damage to other players.
     // Uses the same hitBullets set so bullets consumed by enemy hits are not reused.
-    if (this.pvpEnabled) {
+    // In PvPvE mode, friendlyFire must be explicitly enabled; in pure PvP it is always on.
+    // s44j-pvpve-14e: friendly fire gate — PvPvE is cooperative by default (no player damage).
+    const allowPlayerDamage = this.currentSettings.mode !== 'pvpve' || this.currentSettings.friendlyFire;
+    if (this.pvpEnabled && allowPlayerDamage) {
       this.state.bullets.forEach((bullet, bIndex) => {
         if (hitBullets.has(bIndex)) return; // Already consumed by enemy hit
 
