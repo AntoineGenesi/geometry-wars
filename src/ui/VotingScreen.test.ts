@@ -42,26 +42,33 @@ describe('VotingScreen — SURFACES array', () => {
 });
 
 describe('VotingScreen — MODES array', () => {
-  const IMPLEMENTED_MODES = ['waves'];
+  // All 5 modes are now server-implemented (s44j-27):
+  // - waves: always been implemented
+  // - king/sniper/rainbow: added in host game mode selection (0e2e693)
+  // - claustrophobia: added in 8f90c2d
+  const IMPLEMENTED_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia'];
 
   it('every mode ID has a server implementation', () => {
     const unimplementedModes = MODES.filter(m => !IMPLEMENTED_MODES.includes(m.id));
     expect(unimplementedModes).toEqual([]);
   });
 
-  it('does not include king (no server implementation)', () => {
-    const ids = MODES.map(m => m.id);
-    expect(ids).not.toContain('king');
-  });
-
-  it('does not include rainbow (no server implementation)', () => {
-    const ids = MODES.map(m => m.id);
-    expect(ids).not.toContain('rainbow');
-  });
-
-  it('includes waves mode', () => {
+  it('includes all 5 game modes', () => {
     const ids = MODES.map(m => m.id);
     expect(ids).toContain('waves');
+    expect(ids).toContain('king');
+    expect(ids).toContain('sniper');
+    expect(ids).toContain('rainbow');
+    expect(ids).toContain('claustrophobia');
+  });
+
+  it('has exactly 5 modes', () => {
+    expect(MODES).toHaveLength(5);
+  });
+
+  it('each mode has an icon', () => {
+    const modesWithoutIcon = MODES.filter(m => !m.icon);
+    expect(modesWithoutIcon).toEqual([]);
   });
 });
 
