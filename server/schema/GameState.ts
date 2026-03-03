@@ -20,6 +20,15 @@ export class PlayerState extends Schema {
   declare score: number;
   declare multiplier: number;
   declare alive: boolean;
+  /** Current health in PvP mode (0–maxHealth). Non-PvP rounds: always maxHealth. */
+  declare health: number;
+  /** Maximum health in PvP mode (synced for HUD display). */
+  declare maxHealth: number;
+  /**
+   * Seconds of post-respawn invincibility remaining (synced so clients can
+   * flash / dim the player mesh). 0 when not invincible.
+   */
+  declare invincibilityTimer: number;
   declare shooting: boolean;
   declare color: number;
   declare weaponType: string;
@@ -62,6 +71,9 @@ export class PlayerState extends Schema {
     this.score = 0;
     this.multiplier = 1;
     this.alive = true;
+    this.health = 100;
+    this.maxHealth = 100;
+    this.invincibilityTimer = 0;
     this.shooting = false;
     this.color = 0x00ffff;
     this.weaponType = 'standard';
@@ -93,6 +105,9 @@ defineTypes(PlayerState, {
   score: 'number',
   multiplier: 'number',
   alive: 'boolean',
+  health: 'number',
+  maxHealth: 'number',
+  invincibilityTimer: 'number',
   shooting: 'boolean',
   color: 'number',
   weaponType: 'string',

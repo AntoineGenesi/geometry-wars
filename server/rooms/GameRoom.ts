@@ -30,6 +30,8 @@ import {
   // LEVEL_FIRE_RATE_MULTIPLIERS: not applied server-side. In SP, PlayerLevel.perk.fireRateMultiplier
   // affects Player.ts's call frequency, which is already faster than WeaponManager's per-weapon
   // cooldowns — so level fire rate perks don't change effective weapon fire rates in SP either.
+  PLAYER_PVP_MAX_HEALTH,
+  PLAYER_PVP_INVINCIBILITY_DURATION,
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import type { ServerWalkerState } from '../movement/ServerMeshWalker';
@@ -638,10 +640,18 @@ export class GameRoom extends Room<GameState> {
    */
   private ddaDecreaseCounters: Map<string, number> = new Map();
 
-  onCreate(options: { surfaceType?: string; mapSize?: string }) {
+  /**
+   * When true, player bullets deal damage to other players (PvP mode).
+   * Set via choice string parts[4] === 'pvp' or onCreate options.
+   * NEVER applied to SP code paths (GameRoom is server-only).
+   */
+  private pvpEnabled: boolean = false;
+
+  onCreate(options: { surfaceType?: string; mapSize?: string; pvpEnabled?: boolean }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
     this.state.mapSize = options.mapSize || 'medium';
+    if (options.pvpEnabled) this.pvpEnabled = true;
 
     // Set max clients (4 player co-op)
     this.maxClients = 4;
@@ -1097,6 +1107,10 @@ export class GameRoom extends Room<GameState> {
       this.state.initialLives = (parsedLives >= 1 && parsedLives <= 999) ? parsedLives : 3;
     }
 
+    // parts[4]: 'pvp' enables player-to-player damage (s44j-pvp-13a).
+    // Only overrides to true here; once enabled per-room it stays for the session.
+    if (parts[4] === 'pvp') this.pvpEnabled = true;
+
     this.startGame();
   }
 
@@ -1153,6 +1167,9 @@ export class GameRoom extends Room<GameState> {
       player.zoneTime = 0;
       player.multiplier = 1;
       player.alive = true;
+      player.health = PLAYER_PVP_MAX_HEALTH;
+      player.maxHealth = PLAYER_PVP_MAX_HEALTH;
+      player.invincibilityTimer = 0;
       player.weaponType = 'standard';
       player.weaponAmmo = -1;
       player.playerLevel = 0;
@@ -2973,6 +2990,69 @@ export class GameRoom extends Room<GameState> {
       }
     }
 
+    // PvP bullet-player collisions (only when pvpEnabled === true)
+    // Player bullets deal health damage to other players.
+    // Uses the same hitBullets set so bullets consumed by enemy hits are not reused.
+    if (this.pvpEnabled) {
+      this.state.bullets.forEach((bullet, bIndex) => {
+        if (hitBullets.has(bIndex)) return; // Already consumed by enemy hit
+
+        this.state.players.forEach((target) => {
+          if (hitBullets.has(bIndex)) return; // Consumed by an earlier target
+          if (!target.alive) return;
+          if (target.id === bullet.ownerId) return; // Can't shoot yourself
+
+          const invincible = this.playerInvincibility.get(target.id) ?? 0;
+          if (invincible > 0) return; // Post-respawn invincibility
+
+          const dist = usesWorldDist
+            ? surfaceWorldDist(surfaceType, bullet.x, bullet.y, target.surfaceU, target.surfaceV, scaleFactor, sphereR)
+            : this.uvDistWrapped(bullet.x, bullet.y, target.surfaceU, target.surfaceV);
+
+          if (dist < (usesWorldDist ? BULLET_HIT_WORLD : BULLET_HIT_RADIUS)) {
+            hitBullets.add(bIndex);
+            bulletsToRemove.push(bIndex);
+
+            const owner = this.state.players.get(bullet.ownerId);
+            const weaponCfg = WEAPON_CONFIGS[bullet.weaponType] ?? WEAPON_CONFIGS.standard;
+            const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+            const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+
+            target.health = Math.max(0, target.health - damage);
+
+            if (target.health <= 0) {
+              // PvP kill: respawn target with full health + invincibility
+              target.health = target.maxHealth;
+              target.multiplier = 1;
+              target.buffStacks.clear();
+
+              const deathU = target.surfaceU;
+              const deathV = target.surfaceV;
+              const respawnPos = this.getPlayerRespawnPosition(deathU, deathV);
+              target.surfaceU = respawnPos.u;
+              target.surfaceV = respawnPos.v;
+              this.surfaceManager.teleportWalkerToUV(target.id, respawnPos.u, respawnPos.v);
+              const respawnWalker = this.surfaceManager.getWalker(target.id);
+              if (respawnWalker) {
+                this.applyWalkerStateToPlayer(target, respawnWalker.getState());
+              }
+              this.playerInvincibility.set(target.id, PLAYER_PVP_INVINCIBILITY_DURATION);
+
+              if (owner) {
+                this.broadcast('pvp_kill', {
+                  killerId: owner.id,
+                  killerName: owner.name,
+                  victimId: target.id,
+                  victimName: target.name,
+                });
+                this.logger.log(`[GameRoom] PvP: ${owner.name} killed ${target.name}`);
+              }
+            }
+          }
+        });
+      });
+    }
+
     // Player-enemy collisions (with invincibility check)
     // hitEnemyIds: prevents one enemy from draining lives from multiple players
     // in the same tick. Each enemy can hit at most one player per tick.
@@ -3802,14 +3882,17 @@ export class GameRoom extends Room<GameState> {
     return ENEMY_HEALTH[type] ?? 1;
   }
 
-  /** Drain per-player invincibility timers by dt each tick. */
+  /** Drain per-player invincibility timers by dt each tick. Syncs invincibilityTimer to schema. */
   private drainInvincibility(dt: number) {
     this.playerInvincibility.forEach((remaining, id) => {
       const newRemaining = remaining - dt;
+      const player = this.state.players.get(id);
       if (newRemaining <= 0) {
         this.playerInvincibility.delete(id);
+        if (player) player.invincibilityTimer = 0;
       } else {
         this.playerInvincibility.set(id, newRemaining);
+        if (player) player.invincibilityTimer = newRemaining;
       }
     });
   }

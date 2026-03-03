@@ -168,3 +168,16 @@ export const LEVEL_FIRE_RATE_MULTIPLIERS = [1.0, 1.0, 1.15, 1.15, 1.15, 1.15, 1.
 
 // Cumulative move speed multiplier per level.
 export const LEVEL_MOVE_SPEED_MULTIPLIERS = [1.0, 1.0, 1.0, 1.15, 1.15, 1.15, 1.15, 1.30, 1.30, 1.45];
+
+// ---------------------------------------------------------------------------
+// PvP health constants (s44j-pvp-13a)
+// ---------------------------------------------------------------------------
+
+/** Starting and maximum health for all players in PvP mode. */
+export const PLAYER_PVP_MAX_HEALTH = 100;
+
+/**
+ * Seconds of invincibility granted after a PvP death + respawn.
+ * Long enough to orient/move away, short enough to not feel unfair.
+ */
+export const PLAYER_PVP_INVINCIBILITY_DURATION = 3.0;
