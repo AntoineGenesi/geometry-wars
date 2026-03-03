@@ -277,6 +277,11 @@ export interface NetworkCallbacks {
    * Non-host players use this to display read-only settings. (s44j-settings-16c)
    */
   onLobbySettings?: (settings: GameSettings) => void;
+  /**
+   * Fired when the host triggers "Restart Round". All players see the countdown.
+   * (s44j-settings-16d)
+   */
+  onRoundRestarting?: (data: { countdown: number; message: string }) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -624,6 +629,12 @@ export class NetworkClient {
       this.callbacks.onLobbySettings?.(data.settings);
     });
 
+    // Round restart countdown (host triggered, s44j-settings-16d)
+    this.room.onMessage('round_restarting', (data: { countdown: number; message: string }) => {
+      netLog(`[Network] Round restarting in ${data.countdown}s`);
+      this.callbacks.onRoundRestarting?.(data);
+    });
+
     // Disconnection
     this.room.onLeave((code) => {
       netLog(`[Network] Left room with code: ${code}`);
@@ -755,6 +766,23 @@ export class NetworkClient {
   sendEndGame(): void {
     if (!this.room || !this.connected) return;
     this.room.send('end_game');
+  }
+
+  /**
+   * Queue settings to apply at the next wave boundary (host only). (s44j-settings-16d)
+   */
+  sendApplySettings(settings: GameSettings): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('applySettings', { settings });
+  }
+
+  /**
+   * Restart the current round with new settings (host only). (s44j-settings-16d)
+   * Server broadcasts a 5s countdown then performs a soft restart.
+   */
+  sendRestartRound(settings: GameSettings): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('restartRound', { settings });
   }
 
   /**
