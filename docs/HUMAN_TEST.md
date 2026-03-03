@@ -1876,3 +1876,19 @@ Previously, `CameraController` started at `(0,15,25)` and took ~20 frames to rea
 - [ ] **Compare to single-player** — SP blaster should look similar (also two parallel bullets)
 - [ ] **Try different aim directions** — Bullets should remain visually separated regardless of aim angle
 - [ ] **LAN client perspective** — Join as client (not host) and verify same separation visible from both sides
+
+
+## S44j-21: Mobile Joins During Pause Shows Pause Screen
+
+**Fix:** When a mobile (or any) client joins a room while the host has the game paused, the `phase_sync` message now includes `isPaused: true`. The client immediately shows the pause overlay instead of a blank canvas.
+
+### Test: Join a paused game and see the pause screen
+- [ ] **Start a LAN host** — Create a LAN room, wait for players
+- [ ] **Join as a second player** — Join from a mobile device or second tab  
+- [ ] **Start the game** — Host clicks START GAME, game begins
+- [ ] **Host pauses the game** — Host presses ESC to pause (all players see the pause screen)
+- [ ] **Join as third player WHILE PAUSED** — On a third device, scan QR code or enter the join URL  
+- [ ] **New joiner sees pause screen** — The newly joined client should immediately see the pause overlay, not a blank canvas
+- [ ] **Game world visible behind pause screen** — The 3D surface should be visible behind the pause overlay
+- [ ] **Host unpauses** — Host clicks Resume; all three clients (including the new joiner) should transition to active gameplay smoothly
+- [ ] **No regression: normal join** — Start a fresh game with two players joining a non-paused game; everything works as before

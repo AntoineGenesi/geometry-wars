@@ -3823,7 +3823,7 @@ async function main() {
         netMainLog(`[NetworkMain] startup_config cached (hash=${pendingStartupHash})`);
         pendingStartupHash = null;
       },
-      onPhaseSync: (data: { phase: string }) => {
+      onPhaseSync: (data: { phase: string; isPaused: boolean }) => {
         // Server told us the current game phase on join. Hide lobby UI immediately
         // and let onStateChange (triggered by the phase_sync handler) show the
         // correct screen. Without this, lobby buttons flash briefly before voting
@@ -3835,6 +3835,11 @@ async function main() {
         } else if (data.phase === 'playing') {
           startBtn.style.display = 'none';
           modeSelectorDiv.style.display = 'none';
+          // If the game is currently paused, show the pause overlay immediately so the
+          // joining client sees the pause screen instead of a blank canvas. (s44j-21)
+          if (data.isPaused && !isPaused) {
+            showPauseOverlay(true);
+          }
         }
       },
     });
