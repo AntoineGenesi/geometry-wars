@@ -323,13 +323,33 @@ export class FaceWalker {
       const he = this.halfEdge.getHalfEdge(currentFace, heEdgeLocal);
 
       if (he.twin < 0) {
-        // Boundary edge - this is usually a parameterization artifact (e.g., the inner
-        // v=0/v=1 edges in the cube surface UV-grid mesh). Do NOT reflect: reflecting
-        // causes ping-pong oscillation that appears as bullets/player "stuck" at face
-        // corners. Instead, advance to the boundary and let the caller use BVH fallback
-        // for the remaining distance. BVH correctly projects onto the actual geometry.
-        currentBary = clampBarycentric(exitBary);
-        break;
+        // True boundary edge (e.g., Mobius strip physical edge at v=0/v=1).
+        // HalfEdgeMesh._linkSeamEdges now stitches false parameterization-artifact
+        // boundaries (cube UV seams, etc.), so remaining twin=-1 edges are genuine
+        // geometric boundaries. Reflect the direction so bullets/entities bounce off
+        // the strip edge rather than freezing there.
+        //
+        // REGRESSION GUARD: _linkSeamEdges tolerance=0.15 was widened to fix 18
+        // false boundaries on the cube top face. Do NOT revert that without re-testing
+        // bullet behavior on the cube and Mobius strip surfaces.
+        const reflectedDir = this._reflectAtBoundary(_dir3D, currentFace, heEdgeLocal);
+
+        // Advance to boundary, then nudge slightly inward to prevent immediate
+        // re-crossing the same edge on the next step.
+        // The zero bary component for heEdgeLocal: 0→w, 1→u, 2→v
+        const eps = 0.005;
+        const clamped = clampBarycentric(exitBary);
+        const zeroIdx = (heEdgeLocal + 2) % 3;
+        let nu = clamped.u, nv = clamped.v, nw = clamped.w;
+        if (zeroIdx === 0) nu = eps;
+        else if (zeroIdx === 1) nv = eps;
+        else nw = eps;
+        const sum = nu + nv + nw;
+        currentBary = { u: nu / sum, v: nv / sum, w: nw / sum };
+
+        currentDir.copy(reflectedDir);
+        crossings++;
+        continue;
       }
 
       // Get the adjacent face via the twin half-edge
