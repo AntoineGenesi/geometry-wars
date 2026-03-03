@@ -89,6 +89,7 @@ export const KEYS = {
       sniper: 'voting.modes.sniper',
       rainbow: 'voting.modes.rainbow',
       claustrophobia: 'voting.modes.claustrophobia',
+      pvpve: 'voting.modes.pvpve',
     },
     sizes: {
       small: 'voting.sizes.small',

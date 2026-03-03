@@ -1261,8 +1261,8 @@ export class GameRoom extends Room<GameState> {
     const parts = choice.split(':');
     let surface = parts[0] || this.state.surfaceType;
     // Safety guard: only accept implemented modes; fall back to 'waves' for unknown modes
-    const CHOICE_VALID_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia'];
-    const mode = CHOICE_VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
+    const VALID_MODES = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia', 'pvp', 'pvpve'];
+    const mode = VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
     const size = parts[2] || 'medium';
     // Claustrophobia: enforce small-surface restriction on server side
     if (mode === 'claustrophobia' && !CLAUSTROPHOBIA_ALLOWED_SURFACES.includes(surface)) {
@@ -1300,6 +1300,13 @@ export class GameRoom extends Room<GameState> {
     // Only overrides to true here; once enabled per-room it stays for the session.
     if (parts[4] === 'pvp') {
       this.currentSettings = validateSettings({ ...this.currentSettings, pvpEnabled: true });
+    }
+
+    // PvPvE mode: enable PvP damage AND wave spawner runs simultaneously (s44j-pvpve-14a).
+    // The wave spawner (tickWaves) always runs; pvpEnabled activates player-vs-player damage.
+    if (mode === 'pvpve') {
+      this.pvpEnabled = true;
+      this.state.pvpEnabled = true;
     }
 
     this.syncSettingsToState();
