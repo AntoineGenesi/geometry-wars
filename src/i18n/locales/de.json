@@ -106,6 +106,49 @@
       "sphereTunnel": "Kugeltunnel",
       "cubeRing": "Würfelring",
       "cubeTunnel": "Würfeltunnel"
+    },
+    "buttons": {
+      "adventure": "ABENTEUER",
+      "quickGame": "SCHNELLES SPIEL",
+      "lan": "LAN",
+      "online": "ONLINE",
+      "back": "ZURÜCK",
+      "start": "STARTEN",
+      "hostGame": "SPIEL HOSTEN",
+      "startHosting": "HOSTING STARTEN",
+      "enterGame": "SPIEL BETRETEN",
+      "stopServer": "SERVER STOPPEN",
+      "refresh": "AKTUALISIEREN",
+      "connect": "VERBINDEN",
+      "join": "BEITRETEN",
+      "loadCustom": "LADEN",
+      "weaponMastery": "WAFFEN-MEISTERSCHAFT",
+      "weaponDatabase": "WAFFEN-DATENBANK",
+      "visualStyles": "VISUELLE STILE"
+    },
+    "headings": {
+      "adventureLevels": "ABENTEUERLEVEL",
+      "lanGame": "LAN-SPIEL",
+      "selectMap": "KARTE WÄHLEN",
+      "mapSize": "KARTENGRÖSSE",
+      "availableGames": "VERFÜGBARE SPIELE",
+      "manualConnect": "MANUELL VERBINDEN",
+      "selectGameMode": "SPIELMODUS WÄHLEN",
+      "selectSurface": "OBERFLÄCHE WÄHLEN",
+      "enterYourName": "NAME EINGEBEN"
+    },
+    "misc": {
+      "scanningForGames": "Suche nach Spielen...",
+      "startingServer": "Server wird gestartet...",
+      "loadingMesh": "Modell wird geladen...",
+      "controlsHint": "WASD - Bewegen | Maus - Zielen | Klick - Schießen | Leertaste - Bombe | M - Stumm",
+      "autoRefreshOn": "AUTO-AKTUALISIERUNG: AN",
+      "autoRefreshOff": "AUTO-AKTUALISIERUNG: AUS",
+      "idleShutdownDelay": "Automatische Abschaltung",
+      "idleShutdownSec": "Sek",
+      "idleShutdownHint": "Server schließt wenn alle Spieler gehen (0 = nie)",
+      "hostIpPlaceholder": "Host-IP (z.B. 192.168.1.15)",
+      "namePlaceholder": "Name eingeben..."
     }
   },
   "languages": {

@@ -106,6 +106,49 @@
       "sphereTunnel": "Tunnel Sphérique",
       "cubeRing": "Anneau Cube",
       "cubeTunnel": "Tunnel Cube"
+    },
+    "buttons": {
+      "adventure": "AVENTURE",
+      "quickGame": "JEU RAPIDE",
+      "lan": "LAN",
+      "online": "EN LIGNE",
+      "back": "RETOUR",
+      "start": "DÉMARRER",
+      "hostGame": "HÉBERGER",
+      "startHosting": "LANCER L'HÉBERGEMENT",
+      "enterGame": "ENTRER DANS LA PARTIE",
+      "stopServer": "ARRÊTER LE SERVEUR",
+      "refresh": "RAFRAÎCHIR",
+      "connect": "CONNECTER",
+      "join": "REJOINDRE",
+      "loadCustom": "CHARGER CUSTOM",
+      "weaponMastery": "MAÎTRISE DES ARMES",
+      "weaponDatabase": "BASE DE DONNÉES",
+      "visualStyles": "STYLES VISUELS"
+    },
+    "headings": {
+      "adventureLevels": "NIVEAUX AVENTURE",
+      "lanGame": "JEU LAN",
+      "selectMap": "CHOISIR LA CARTE",
+      "mapSize": "TAILLE DE CARTE",
+      "availableGames": "PARTIES DISPONIBLES",
+      "manualConnect": "CONNEXION MANUELLE",
+      "selectGameMode": "MODE DE JEU",
+      "selectSurface": "CHOISIR LA SURFACE",
+      "enterYourName": "ENTREZ VOTRE NOM"
+    },
+    "misc": {
+      "scanningForGames": "Recherche de parties...",
+      "startingServer": "Démarrage du serveur...",
+      "loadingMesh": "Chargement du modèle...",
+      "controlsHint": "ZQSD - Déplacer | Souris - Viser | Clic - Tirer | Espace - Bombe | M - Muet",
+      "autoRefreshOn": "ACTUALISATION AUTO : ON",
+      "autoRefreshOff": "ACTUALISATION AUTO : OFF",
+      "idleShutdownDelay": "Délai d'arrêt automatique",
+      "idleShutdownSec": "sec",
+      "idleShutdownHint": "Le serveur se ferme quand tous les joueurs partent (0 = jamais)",
+      "hostIpPlaceholder": "IP de l'hôte (ex. 192.168.1.15)",
+      "namePlaceholder": "Entrez votre nom..."
     }
   },
   "languages": {
