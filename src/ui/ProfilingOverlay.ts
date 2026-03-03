@@ -4,7 +4,7 @@
  * DOM-based overlay showing top CPU consumers sorted by time.
  * Displays frame time, percentage of frame budget, and visual bars.
  *
- * Toggle with F5.
+ * Toggle with F9.
  */
 
 import { profiler, ScopeData } from '../core/PerformanceProfiler';
@@ -46,7 +46,7 @@ export class ProfilingOverlay {
     this.container.innerHTML = `
       <div class="profiling-header">
         <span class="profiling-title">PERFORMANCE PROFILER</span>
-        <span class="profiling-hotkey">[F5]</span>
+        <span class="profiling-hotkey">[F9]</span>
       </div>
       <div class="profiling-frame-budget" id="profiling-frame-budget">
         Frame: <span class="profiling-frame-time">--</span> / 16.67ms
@@ -75,9 +75,9 @@ export class ProfilingOverlay {
       this.updateProfilingStatus();
     });
 
-    // F5 toggle (moved from F4 to avoid conflict with debug menu)
+    // F9 toggle (F5 was browser refresh; F9 has no browser default action)
     this.keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'F5') {
+      if (e.key === 'F9') {
         e.preventDefault();
         this.toggle();
       }
@@ -97,7 +97,7 @@ export class ProfilingOverlay {
     if (this.frameCounter % ProfilingOverlay.UPDATE_EVERY_N_FRAMES !== 0) return;
 
     // Get profiling data
-    const topScopes = profiler.getTopScopes(8);
+    const topScopes = profiler.getTopScopes(10);
     const totalFrameTime = profiler.getTotalFrameTime();
 
     // Update frame budget display
