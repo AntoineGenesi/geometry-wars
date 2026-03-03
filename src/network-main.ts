@@ -2924,10 +2924,19 @@ async function main() {
                 ownerPlayer!.wz!,
               );
 
-              // Get tangent vectors from owner's server UV for geodesic direction init.
-              // The server UV (sphere-approx) gives approximately correct tangent DIRECTIONS
-              // even on peanut — accurate enough for direction initialization.
-              const ownerSp = surface.getPoint(ownerPlayer!.surfaceU, ownerPlayer!.surfaceV);
+              // s44j-10 FIX: For torus, sphere-approx surfaceU/V (server's _worldPosToApproxUV)
+              // has swapped axes: u_sphere ≈ ring angle but torus.getPoint uses u=tube, v=ring.
+              // This gives completely wrong tangent vectors — for the far half (ring angle ≈ 0),
+              // sphere-approx maps to spawn-side (ring angle π), so tangentV points toward spawn
+              // instead of away, sending bullets in the wrong direction.
+              // Use worldToSurface() to recover correct torus UV for tangent vector calculation.
+              // worldToSurface() divides by group.scale.x internally, so ownerWorldPos (already
+              // in scaled world space = wx/wy/wz) round-trips correctly.
+              // Other surfaces: keep sphere-approx (peanut worldToSurface waist issues, s44h-01).
+              const ownerSurfaceUV = lastCreatedSurfaceType === 'torus'
+                ? surface.worldToSurface(ownerWorldPos)
+                : { u: ownerPlayer!.surfaceU, v: ownerPlayer!.surfaceV };
+              const ownerSp = surface.getPoint(ownerSurfaceUV.u, ownerSurfaceUV.v);
 
               // s44e-01 FIX: For dual-barrel bullets (Standard/Blaster), both bullets share
               // the same owner world position but have slightly different UV spawn coords

@@ -4,6 +4,25 @@
 >
 > **Last updated:** 2026-03-03
 
+## s44j-10: Torus Map Bullet Position in LAN MP
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**What was changed:** Fixed bullet direction calculation in `src/network-main.ts`. Now uses `surface.worldToSurface(ownerWorldPos)` to get correct torus UV for tangent vectors, instead of the sphere-approx `surfaceU/V` which had swapped axes on the torus. Only affects torus map; other surfaces unchanged.
+
+**How to test (LAN required, torus map):**
+- [ ] Start a LAN multiplayer game (host + at least 1 client)
+- [ ] Select the **Torus** map
+- [ ] Move the player to the far half of the torus (away from spawn)
+- [ ] Shoot — bullets should come from the player's actual position and travel away from the player
+- [ ] Previously: bullets came from the spawn-side half even when player was on far half
+- [ ] Confirm bullets don't originate near spawn area when player is far from spawn
+- [ ] Confirm this works for both host and joining client
+- [ ] Confirm bullets still work correctly on near half (no regression)
+- [ ] Confirm no regression on sphere, peanut, or other map types
+
+---
+
 ## s44j-03: Weapon Cycling Q/E in LAN MP
 
 **Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
