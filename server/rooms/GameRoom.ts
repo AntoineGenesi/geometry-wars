@@ -591,6 +591,7 @@ export class GameRoom extends Room<GameState> {
 
     this.onMessage('vote', (client, data: { choice: string }) => {
       if (this.state.roomPhase !== 'voting') return;
+      if (this.state.readyMap.get(client.sessionId)) return; // vote locked after ready-up
       if (typeof data.choice === 'string' && data.choice.length > 0) {
         this.state.voteMap.set(client.sessionId, data.choice);
         this.logger.log(`[GameRoom] ${client.sessionId} voted: ${data.choice}`);
@@ -1517,15 +1518,6 @@ export class GameRoom extends Room<GameState> {
 
   private tickVoting() {
     const dt = 1 / TICK_RATE;
-
-    // Auto-launch immediately when all connected players have voted
-    const playerCount = this.state.players.size;
-    if (playerCount > 0 && this.state.voteMap.size >= playerCount) {
-      const choice = this.pickMostVoted();
-      this.logger.log(`[GameRoom] All ${playerCount} players voted — auto-launching with: ${choice}`);
-      this.startGameWithSettings(choice);
-      return;
-    }
 
     // Skip countdown decrement when host has paused it
     if (!this.state.countdownPaused) {

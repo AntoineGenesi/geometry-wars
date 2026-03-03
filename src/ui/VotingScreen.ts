@@ -485,6 +485,7 @@ export class VotingScreen {
   }
 
   private sendVote(): void {
+    if (this.localIsReady) return; // vote locked after ready-up
     this.callbacks.onVote?.(this.currentChoice());
   }
 
