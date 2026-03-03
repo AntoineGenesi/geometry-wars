@@ -14,6 +14,29 @@ interface HighScoreEntry {
   note?: string;
 }
 
+/** Per-player data for the PvP end-of-match statistics screen. */
+export interface PvpPlayerStat {
+  id: string;
+  name: string;
+  /** Player colour as an RGB hex number (e.g. 0x00ffff). */
+  color: number;
+  kills: number;
+  deaths: number;
+  totalDamageDealt: number;
+}
+
+/** Options for showPvP(). */
+export interface PvpStatsOptions {
+  /** Whether the local player is the host (can advance to lobby immediately). */
+  isHost?: boolean;
+  /**
+   * MVP selection criterion.
+   * 'kills' = most kills wins MVP; 'kd' = highest K/D ratio wins MVP.
+   * Defaults to 'kills'.
+   */
+  mvpCriteria?: 'kills' | 'kd';
+}
+
 const STORAGE_KEY = 'geometry_wars_high_scores';
 const LAST_NAME_KEY = 'geometry_wars_last_name';
 const MAX_HIGH_SCORES = 10;
@@ -341,6 +364,194 @@ export class GameOverScreen {
         font-size: 13px;
         letter-spacing: 1px;
       }
+
+      /* ── PvP Stats Screen ────────────────────────────────────────────── */
+
+      #game-over-screen .pvp-stats {
+        width: 100%;
+        max-width: 700px;
+        margin: 0 auto;
+      }
+
+      #game-over-screen .pvp-title {
+        font-size: 52px;
+        font-weight: bold;
+        color: #ff4444;
+        text-shadow:
+          0 0 10px #ff4444,
+          0 0 20px #ff0000,
+          0 0 40px #aa0000;
+        margin: 0 0 6px;
+        letter-spacing: 6px;
+      }
+
+      #game-over-screen .pvp-subtitle {
+        font-size: 13px;
+        color: #ff8844;
+        letter-spacing: 4px;
+        margin: 0 0 24px;
+        text-shadow: 0 0 6px #ff4422;
+      }
+
+      #game-over-screen .pvp-player-row {
+        display: grid;
+        grid-template-columns: 14px 1fr 56px 56px 56px 80px;
+        align-items: center;
+        gap: 0 12px;
+        padding: 10px 14px;
+        margin-bottom: 6px;
+        background: rgba(0, 30, 60, 0.5);
+        border: 1px solid rgba(0, 80, 120, 0.5);
+        border-radius: 6px;
+        transition: background 0.2s;
+      }
+
+      #game-over-screen .pvp-player-row.mvp {
+        background: rgba(30, 20, 0, 0.7);
+        border-color: #ffaa00;
+        box-shadow: 0 0 12px rgba(255, 170, 0, 0.3);
+      }
+
+      #game-over-screen .pvp-color-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      #game-over-screen .pvp-player-name {
+        font-size: 15px;
+        font-weight: bold;
+        color: #eef6ff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        text-align: left;
+      }
+
+      #game-over-screen .pvp-player-row.mvp .pvp-player-name::before {
+        content: '★ ';
+        color: #ffcc00;
+      }
+
+      #game-over-screen .pvp-stat-col {
+        text-align: right;
+        font-size: 14px;
+        color: #aaccee;
+      }
+
+      #game-over-screen .pvp-stat-col.highlight {
+        color: #00ffcc;
+        font-weight: bold;
+      }
+
+      #game-over-screen .pvp-stat-headers {
+        display: grid;
+        grid-template-columns: 14px 1fr 56px 56px 56px 80px;
+        gap: 0 12px;
+        padding: 0 14px 6px;
+        color: #445566;
+        font-size: 10px;
+        letter-spacing: 2px;
+        text-align: right;
+      }
+
+      #game-over-screen .pvp-stat-headers > :nth-child(2) {
+        text-align: left;
+      }
+
+      #game-over-screen .pvp-bar-section {
+        margin-top: 20px;
+        padding: 16px;
+        background: rgba(0, 20, 40, 0.4);
+        border: 1px solid rgba(0, 80, 120, 0.4);
+        border-radius: 6px;
+      }
+
+      #game-over-screen .pvp-bar-section h3 {
+        font-size: 11px;
+        color: #446688;
+        letter-spacing: 3px;
+        margin: 0 0 10px;
+        text-align: left;
+      }
+
+      #game-over-screen .pvp-bar-row {
+        display: flex;
+        align-items: center;
+        margin-bottom: 6px;
+        gap: 8px;
+      }
+
+      #game-over-screen .pvp-bar-label {
+        width: 100px;
+        font-size: 13px;
+        color: #aabbcc;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex-shrink: 0;
+        text-align: right;
+      }
+
+      #game-over-screen .pvp-bar-track {
+        flex: 1;
+        height: 14px;
+        background: rgba(0, 20, 40, 0.8);
+        border-radius: 3px;
+        overflow: hidden;
+      }
+
+      #game-over-screen .pvp-bar-fill {
+        height: 100%;
+        border-radius: 3px;
+        transition: width 0.4s ease-out;
+        min-width: 2px;
+      }
+
+      #game-over-screen .pvp-bar-value {
+        width: 50px;
+        font-size: 12px;
+        color: #88aacc;
+        text-align: left;
+        flex-shrink: 0;
+      }
+
+      #game-over-screen .pvp-mvp-badge {
+        text-align: center;
+        padding: 8px 0 4px;
+        font-size: 11px;
+        color: #ffaa00;
+        letter-spacing: 3px;
+      }
+
+      #game-over-screen .pvp-continue-btn {
+        background: linear-gradient(180deg, #005588 0%, #003355 100%);
+        border: 2px solid #0088cc;
+        color: #ffffff;
+        padding: 18px 48px;
+        font-size: 20px;
+        font-weight: bold;
+        cursor: pointer;
+        transition: all 0.2s;
+        letter-spacing: 4px;
+        margin-top: 24px;
+        width: 100%;
+        display: block;
+      }
+
+      #game-over-screen .pvp-continue-btn:hover {
+        background: linear-gradient(180deg, #0077bb 0%, #004477 100%);
+        transform: scale(1.02);
+        box-shadow: 0 0 24px #0088cc;
+      }
+
+      #game-over-screen .pvp-ready-hint {
+        margin-top: 12px;
+        color: #446688;
+        font-size: 11px;
+        letter-spacing: 2px;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -606,6 +817,146 @@ export class GameOverScreen {
         </div>
 
         ${buttonsHTML}
+      </div>
+    `;
+  }
+
+  // ── PvP Stats Screen ─────────────────────────────────────────────────────
+
+  /**
+   * Show the PvP end-of-match statistics screen.
+   * Displays per-player kills / deaths / K/D / damage with bar graphs and MVP.
+   * @param players  Array of player stats from the server.
+   * @param options  Optional configuration (isHost, mvpCriteria).
+   */
+  showPvP(players: PvpPlayerStat[], options: PvpStatsOptions = {}): void {
+    this.clearAutoTransition();
+    const { isHost = false, mvpCriteria = 'kills' } = options;
+
+    this.container.innerHTML = this.createPvpStatsHTML(players, mvpCriteria, isHost);
+    this.container.classList.remove('hidden');
+
+    const continueBtn = this.container.querySelector<HTMLButtonElement>('.pvp-continue-btn');
+    continueBtn?.addEventListener('click', () => {
+      this.clearAutoTransition();
+      this.hide();
+      this.onContinueCallback?.();
+    });
+
+    const keyHandler = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        document.removeEventListener('keydown', keyHandler);
+        this.clearAutoTransition();
+        this.hide();
+        this.onContinueCallback?.();
+      }
+    };
+    setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
+  }
+
+  private selectMvp(players: PvpPlayerStat[], criteria: 'kills' | 'kd'): string | null {
+    if (players.length === 0) return null;
+    if (criteria === 'kills') {
+      const maxKills = Math.max(...players.map(p => p.kills));
+      if (maxKills === 0) return null;
+      return players.find(p => p.kills === maxKills)?.id ?? null;
+    }
+    // K/D: kills / max(deaths, 1)
+    const kdOf = (p: PvpPlayerStat) => p.kills / Math.max(p.deaths, 1);
+    const maxKd = Math.max(...players.map(kdOf));
+    if (maxKd === 0) return null;
+    return players.find(p => kdOf(p) === maxKd)?.id ?? null;
+  }
+
+  private colorToCSS(color: number): string {
+    return `#${color.toString(16).padStart(6, '0')}`;
+  }
+
+  private createPvpStatsHTML(players: PvpPlayerStat[], mvpCriteria: 'kills' | 'kd', isHost: boolean): string {
+    const mvpId = this.selectMvp(players, mvpCriteria);
+    const maxKills = Math.max(1, ...players.map(p => p.kills));
+    const maxDamage = Math.max(1, ...players.map(p => p.totalDamageDealt));
+
+    const rowsHTML = players.map(p => {
+      const isMvp = p.id === mvpId;
+      const kd = p.deaths === 0 ? (p.kills > 0 ? '∞' : '—') : (p.kills / p.deaths).toFixed(2);
+      const colorCSS = this.colorToCSS(p.color);
+      return `
+        <div class="pvp-player-row${isMvp ? ' mvp' : ''}">
+          <div class="pvp-color-dot" style="background:${colorCSS};box-shadow:0 0 6px ${colorCSS}"></div>
+          <div class="pvp-player-name">${this.escapeHTML(p.name)}</div>
+          <div class="pvp-stat-col">${p.kills}</div>
+          <div class="pvp-stat-col">${p.deaths}</div>
+          <div class="pvp-stat-col${mvpCriteria === 'kd' ? ' highlight' : ''}">${kd}</div>
+          <div class="pvp-stat-col${mvpCriteria !== 'kd' ? ' highlight' : ''}">${Math.round(p.totalDamageDealt)}</div>
+        </div>
+      `;
+    }).join('');
+
+    const killBarsHTML = players.map(p => {
+      const pct = maxKills > 0 ? (p.kills / maxKills) * 100 : 0;
+      const colorCSS = this.colorToCSS(p.color);
+      return `
+        <div class="pvp-bar-row">
+          <div class="pvp-bar-label">${this.escapeHTML(p.name)}</div>
+          <div class="pvp-bar-track">
+            <div class="pvp-bar-fill" style="width:${pct}%;background:${colorCSS}"></div>
+          </div>
+          <div class="pvp-bar-value">${p.kills} kills</div>
+        </div>
+      `;
+    }).join('');
+
+    const damageBarsHTML = players.map(p => {
+      const pct = maxDamage > 0 ? (p.totalDamageDealt / maxDamage) * 100 : 0;
+      const colorCSS = this.colorToCSS(p.color);
+      return `
+        <div class="pvp-bar-row">
+          <div class="pvp-bar-label">${this.escapeHTML(p.name)}</div>
+          <div class="pvp-bar-track">
+            <div class="pvp-bar-fill" style="width:${pct}%;background:${colorCSS};opacity:0.75"></div>
+          </div>
+          <div class="pvp-bar-value">${Math.round(p.totalDamageDealt)} dmg</div>
+        </div>
+      `;
+    }).join('');
+
+    const mvpBadgeHTML = mvpId
+      ? `<div class="pvp-mvp-badge">★ MVP: ${this.escapeHTML(players.find(p => p.id === mvpId)?.name ?? '')} (${mvpCriteria === 'kd' ? 'K/D' : 'KILLS'})</div>`
+      : '';
+
+    const btnLabel = isHost ? 'BACK TO LOBBY' : 'CONTINUE TO LOBBY';
+
+    return `
+      <div class="content pvp-stats">
+        <h1 class="pvp-title">MATCH OVER</h1>
+        <div class="pvp-subtitle">PvP RESULTS</div>
+
+        <div class="pvp-stat-headers">
+          <div></div>
+          <div>PLAYER</div>
+          <div>KILLS</div>
+          <div>DEATHS</div>
+          <div>K/D</div>
+          <div>DAMAGE</div>
+        </div>
+
+        ${rowsHTML}
+
+        ${mvpBadgeHTML}
+
+        <div class="pvp-bar-section">
+          <h3>KILLS</h3>
+          ${killBarsHTML}
+        </div>
+
+        <div class="pvp-bar-section" style="margin-top:10px">
+          <h3>DAMAGE DEALT</h3>
+          ${damageBarsHTML}
+        </div>
+
+        <button class="pvp-continue-btn">${btnLabel}</button>
+        <div class="pvp-ready-hint">Press ENTER or click to continue</div>
       </div>
     `;
   }
