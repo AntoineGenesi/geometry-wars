@@ -4,6 +4,24 @@
 >
 > **Last updated:** 2026-03-03
 
+## s44m-07: Guardian Drones Activate + Damage Numbers
+
+**Status:** Changes made — human testing required (Level 5 max achievable by Claude).
+
+**What was changed:**
+1. Guardian/hunter companion bullets now marked `isCompanion=true` — damage numbers show even on killing blows
+2. Guardian targeting range now scales with `mapSizeScaleFactor` — drones activate on LARGE/EPIC maps (previously only worked on SMALL/MEDIUM maps because range was fixed at 3.0 world units)
+3. Fix applied to both single-player (`main.ts`) and multiplayer (`network-main.ts`)
+
+**Files changed:** `src/entities/Bullet.ts`, `src/entities/Companion.ts`, `src/core/CollisionSystem.ts`, `src/main.ts`, `src/network-main.ts`
+
+**Test:**
+- [ ] Pick up a blue (Guardian) or red (Hunter) companion drone
+- [ ] Stand near enemies (within ~3 world units on default maps, further on LARGE/EPIC)
+- [ ] Verify: drone fires at enemies and damage numbers appear (red `-1` text)
+- [ ] Verify: when drone kills enemy, score popup AND damage number both appear
+- [ ] On LARGE/EPIC map: verify guardian activates and fires (was broken before — range not scaled)
+
 ## s44j-pvp-13e: PvP Health Bar HUD
 
 **Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
