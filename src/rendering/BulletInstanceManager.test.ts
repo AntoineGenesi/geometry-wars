@@ -359,9 +359,18 @@ describe('BulletInstanceManager', () => {
       expect(config.color).toBe(0x88ffff);
     });
 
-    it('Spread type uses yellow color', () => {
+    it('Spread type uses cyan color matching SP WeaponManager appearance', () => {
       const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Spread];
-      expect(config.color).toBe(0xffff44);
+      // s44k-02 fix: changed from 0xffff44 (yellow) to 0x44ffff (light blue) to match SP
+      expect(config.color).toBe(0x44ffff);
+    });
+
+    it('Spread type scale gives ~0.08 effective radius matching SP SphereGeometry(0.08)', () => {
+      const config = BULLET_VISUAL_CONFIGS[BulletVisualType.Spread];
+      // SphereGeometry(0.5) × scale 0.16 = effective radius 0.08 (same as SP WeaponManager)
+      expect(config.scaleX).toBeCloseTo(0.16, 3);
+      expect(config.scaleY).toBeCloseTo(0.16, 3);
+      expect(config.scaleZ).toBeCloseTo(0.16, 3);
     });
 
     it('Piercing type uses red-white color', () => {
@@ -540,6 +549,32 @@ describe('BulletInstanceManager', () => {
       expect(readColor.r).toBeCloseTo(customColor.r, 2);
       expect(readColor.g).toBeCloseTo(customColor.g, 2);
       expect(readColor.b).toBeCloseTo(customColor.b, 2);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Material type (s44k-02 regression guard)
+  // -----------------------------------------------------------------------
+
+  describe('material', () => {
+    it('uses MeshBasicMaterial (not MeshStandardMaterial) so bullets are always bright', () => {
+      // s44k-02 fix: BulletInstanceManager must use MeshBasicMaterial.
+      // MeshStandardMaterial requires scene lighting — in poorly-lit conditions spread bullets
+      // appear nearly invisible. SP WeaponManager uses MeshBasicMaterial for all projectiles.
+      // This test guards against regression to MeshStandardMaterial.
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      manager.addBullet('b1', BulletVisualType.Spread, pos, dir);
+      manager.update();
+
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
+      expect(batchedMeshes.length).toBe(1);
+
+      const material = batchedMeshes[0].material;
+      expect(material).toBeInstanceOf(THREE.MeshBasicMaterial);
+      expect(material).not.toBeInstanceOf(THREE.MeshStandardMaterial);
     });
   });
 });
