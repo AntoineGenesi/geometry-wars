@@ -199,11 +199,13 @@ class Companion {
     const orbitBehavior = this.agent.getBehavior() as OrbitBehavior;
     const playerTransform = getTransform(playerU, playerV);
     orbitBehavior.center.copy(playerWorldPos);
-    // FIX: Compute guaranteed-perpendicular bitangent = normal × tangent.
+    // FIX: Compute guaranteed-perpendicular bitangent = tangent × normal.
     // The surface's tangentV can be parallel to tangentU on certain cube face strips
     // (e.g. top face strip 1 where faceRight=(0,0,-1) equals the world-axis override
     // tangentV=(0,0,-1)), collapsing the orbit to 1D "up/down" oscillation.
-    _tempOrbitBitangent.crossVectors(playerTransform.normal, playerTransform.tangent);
+    // Using tangent × normal maintains right-handed frame consistency with the mesh orientation
+    // computed below (line 224: tangent × normal for Z axis).
+    _tempOrbitBitangent.crossVectors(playerTransform.tangent, playerTransform.normal);
     orbitBehavior.setFrame(playerTransform.tangent, _tempOrbitBitangent);
     this.agent.update(dt);
     this.orbitAngle = orbitBehavior.angle; // sync for any code reading orbitAngle
