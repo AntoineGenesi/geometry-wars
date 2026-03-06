@@ -605,4 +605,142 @@ describe('EnemyInstanceManager', () => {
       expect(remaining.length).toBe(0);
     });
   });
+
+  // ====== Phase 1 entity culling tests ======
+
+  describe('updateInstancesWithLOD — player culling', () => {
+    let camera: THREE.PerspectiveCamera;
+
+    beforeEach(() => {
+      camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+      camera.position.set(0, 0, 15);
+      camera.lookAt(0, 0, 0);
+      camera.updateMatrixWorld(true);
+    });
+
+    function getInstanceMatrix(instancedMesh: THREE.InstancedMesh, index: number): THREE.Matrix4 {
+      const mat = new THREE.Matrix4();
+      instancedMesh.getMatrixAt(index, mat);
+      return mat;
+    }
+
+    function getScaleFromMatrix(mat: THREE.Matrix4): THREE.Vector3 {
+      const pos = new THREE.Vector3();
+      const quat = new THREE.Quaternion();
+      const scale = new THREE.Vector3();
+      mat.decompose(pos, quat, scale);
+      return scale;
+    }
+
+    function getGruntBatch(): THREE.InstancedMesh {
+      return scene.children.find(
+        c => c instanceof THREE.InstancedMesh && (c as THREE.InstancedMesh).name === 'instanced-Grunt'
+      ) as THREE.InstancedMesh;
+    }
+
+    it('renders enemy normally when no culling params given', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(0, 10, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.HIGH);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      const batch = getGruntBatch();
+      const scale = getScaleFromMatrix(getInstanceMatrix(batch, 0));
+      expect(scale.length()).toBeGreaterThan(0.01); // Non-zero scale = visible
+    });
+
+    it('zero-scales enemy that is >90° from player normal (behind surface)', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      // Enemy is at (0, -10, 0) — directly below player's surface normal
+      grunt.mesh!.position.set(0, -10, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.HIGH);
+
+      // Player is at (0, 5, 0) with upward normal — enemy is behind the surface
+      const playerPos = new THREE.Vector3(0, 5, 0);
+      const playerNormal = new THREE.Vector3(0, 1, 0);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+
+      const batch = getGruntBatch();
+      const scale = getScaleFromMatrix(getInstanceMatrix(batch, 0));
+      // Scale should be ~0 (culled)
+      expect(scale.length()).toBeLessThan(0.001);
+    });
+
+    it('renders enemy on same side as player normal', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      // Enemy is at (2, 5, 0) — beside player, same hemisphere
+      grunt.mesh!.position.set(2, 5, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.HIGH);
+
+      const playerPos = new THREE.Vector3(0, 5, 0);
+      const playerNormal = new THREE.Vector3(0, 1, 0);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+
+      const batch = getGruntBatch();
+      const scale = getScaleFromMatrix(getInstanceMatrix(batch, 0));
+      // Scale should be non-zero (visible)
+      expect(scale.length()).toBeGreaterThan(0.01);
+    });
+
+    it('culled enemy is removed from LOD placement', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(0, -10, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.MEDIUM); // Would go to LOD batch if not culled
+
+      const playerPos = new THREE.Vector3(0, 5, 0);
+      const playerNormal = new THREE.Vector3(0, 1, 0);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+
+      // Culled enemy should NOT be in LOD batch
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+    });
+
+    it('enemy transitions from culled to visible when position changes', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.HIGH);
+
+      const playerPos = new THREE.Vector3(0, 5, 0);
+      const playerNormal = new THREE.Vector3(0, 1, 0);
+
+      // Frame 1: enemy is behind surface (culled)
+      grunt.mesh!.position.set(0, -10, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+
+      const batch = getGruntBatch();
+      const scale1 = getScaleFromMatrix(getInstanceMatrix(batch, 0));
+      expect(scale1.length()).toBeLessThan(0.001); // Culled
+
+      // Frame 2: enemy moves to front (visible)
+      grunt.mesh!.position.set(1, 10, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+
+      const scale2 = getScaleFromMatrix(getInstanceMatrix(batch, 0));
+      expect(scale2.length()).toBeGreaterThan(0.01); // Visible again
+    });
+  });
 });
