@@ -1969,3 +1969,21 @@ Test with at least 2 players on the same LAN.
 - [ ] **Shoot the other player** — Fire at them; their health bar should decrease (previously broken!)
 - [ ] **Enemies also spawn** — Enemy waves continue to spawn alongside PvP combat
 - [ ] **Cooperative mode still possible** — In game settings, set `friendlyFire=false` to restore cooperative mode
+
+## s44l-16: Torus Map Bullet + Remote Player Fix
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**What was changed:**
+1. `aimAngle` computation now uses `worldToSurface(mesh.position)` for accurate torus UV on local player (fixes bullets from outer half)
+2. Remote player hard-snap fallback (no world pos) reconstructs sphere-approx world pos → `worldToSurface` → accurate UV (fixes player appearing at inner edge)
+3. Render-loop interpolation fallback applies same fix for remote player during lobby phase
+
+**Root cause:** Sphere-approx UV (from server) has ring/tube axes swapped vs torus UV. `getPoint(sphere_u, sphere_v)` was placing players at inner edge and computing wrong tangent frames for the outer half.
+
+### Test: Torus map bullet spawning
+- [ ] **Host a torus map LAN game** — Both players on the torus surface
+- [ ] **Shoot from outer half** — Move to the outside of the torus ring and fire; bullets should come from your character in the aimed direction
+- [ ] **Shoot from inner half** — Move to inside of the torus ring; bullets should still work correctly
+- [ ] **360° rotation test** — Rotate through all ring angles; bullets consistently spawn from player position
+- [ ] **Remote player position** — Second player should appear on the torus surface, not in the center/inner edge
