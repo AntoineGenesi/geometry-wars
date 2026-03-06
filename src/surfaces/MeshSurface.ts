@@ -54,6 +54,26 @@ export class MeshSurface {
   /** Extra scratch vectors for world↔local geodesic transforms (avoid allocations) */
   private readonly _tempDir = new THREE.Vector3();
   private readonly _normalMatrix = new THREE.Matrix3();
+  /** Pre-allocated output vectors for moveGeodesic — reused each call to avoid GC churn */
+  private readonly _geoWorldPos = new THREE.Vector3();
+  private readonly _geoWorldNormal = new THREE.Vector3();
+  private readonly _geoWorldDir = new THREE.Vector3();
+  /** Pre-allocated scratch vectors for closestPointOnSurface — avoid per-call allocations */
+  private readonly _cpsNormalMatrix = new THREE.Matrix3();
+  private readonly _cpsPa = new THREE.Vector3();
+  private readonly _cpsPb = new THREE.Vector3();
+  private readonly _cpsPc = new THREE.Vector3();
+  private readonly _cpsBary = new THREE.Vector3();
+  private readonly _cpsNa = new THREE.Vector3();
+  private readonly _cpsNb = new THREE.Vector3();
+  private readonly _cpsNc = new THREE.Vector3();
+  private readonly _cpsInterpNormal = new THREE.Vector3();
+  private readonly _cpsTri = new THREE.Triangle();
+  private readonly _cpsWorldPoint = new THREE.Vector3();
+  /** Pre-allocated scratch vectors for moveOnSurface */
+  private readonly _mosNormal = new THREE.Vector3();
+  private readonly _mosProjDir = new THREE.Vector3();
+  private readonly _mosNewPos = new THREE.Vector3();
 
   constructor(mesh: THREE.Mesh) {
     this.mesh = mesh;
@@ -82,13 +102,13 @@ export class MeshSurface {
     const result = this.bvh.closestPointToPoint(localPoint, this._closestTarget);
     if (!result) return null;
 
-    // Transform results back to world space
-    const worldSurfacePoint = this._closestTarget.point.clone()
-      .applyMatrix4(this.mesh.matrixWorld);
+    // Transform results back to world space — reuse pre-allocated vector (no allocation)
+    this._cpsWorldPoint.copy(this._closestTarget.point).applyMatrix4(this.mesh.matrixWorld);
 
     // Compute normal: prefer interpolated vertex normals (handles mixed-normal meshes
     // like ring surfaces with inward+outward facing walls). Fall back to face normal.
-    const normalMatrix = new THREE.Matrix3().getNormalMatrix(this.mesh.matrixWorld);
+    // Use pre-allocated _cpsNormalMatrix to avoid allocating Matrix3 each call.
+    this._cpsNormalMatrix.getNormalMatrix(this.mesh.matrixWorld);
     let worldNormal: THREE.Vector3;
 
     const normalAttr = this.mesh.geometry.getAttribute('normal') as THREE.BufferAttribute | null;
@@ -101,28 +121,29 @@ export class MeshSurface {
       const i1 = indexAttr.getX(fi * 3 + 1);
       const i2 = indexAttr.getX(fi * 3 + 2);
 
-      // Get triangle vertices
+      // Get triangle vertices — use pre-allocated scratch vectors (no allocation)
       const posAttr = this.mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const pA = new THREE.Vector3().fromBufferAttribute(posAttr, i0);
-      const pB = new THREE.Vector3().fromBufferAttribute(posAttr, i1);
-      const pC = new THREE.Vector3().fromBufferAttribute(posAttr, i2);
+      this._cpsPa.fromBufferAttribute(posAttr, i0);
+      this._cpsPb.fromBufferAttribute(posAttr, i1);
+      this._cpsPc.fromBufferAttribute(posAttr, i2);
 
-      // Compute barycentric coords of the closest point
-      const tri = new THREE.Triangle(pA, pB, pC);
-      const bary = new THREE.Vector3();
-      tri.getBarycoord(this._closestTarget.point, bary);
+      // Compute barycentric coords of the closest point — use pre-allocated Triangle + bary
+      this._cpsTri.set(this._cpsPa, this._cpsPb, this._cpsPc);
+      this._cpsTri.getBarycoord(this._closestTarget.point, this._cpsBary);
 
-      // Interpolate vertex normals
-      const nA = new THREE.Vector3().fromBufferAttribute(normalAttr, i0);
-      const nB = new THREE.Vector3().fromBufferAttribute(normalAttr, i1);
-      const nC = new THREE.Vector3().fromBufferAttribute(normalAttr, i2);
+      // Interpolate vertex normals — use pre-allocated scratch vectors
+      this._cpsNa.fromBufferAttribute(normalAttr, i0);
+      this._cpsNb.fromBufferAttribute(normalAttr, i1);
+      this._cpsNc.fromBufferAttribute(normalAttr, i2);
 
-      const interpolatedNormal = new THREE.Vector3()
-        .addScaledVector(nA, bary.x)
-        .addScaledVector(nB, bary.y)
-        .addScaledVector(nC, bary.z);
+      this._cpsInterpNormal.set(0, 0, 0)
+        .addScaledVector(this._cpsNa, this._cpsBary.x)
+        .addScaledVector(this._cpsNb, this._cpsBary.y)
+        .addScaledVector(this._cpsNc, this._cpsBary.z);
 
-      worldNormal = interpolatedNormal.applyMatrix3(normalMatrix).normalize();
+      // Apply matrix in-place (no allocation) — must clone for the returned result
+      // so the caller owns a stable reference not tied to our scratch buffer.
+      worldNormal = this._cpsInterpNormal.applyMatrix3(this._cpsNormalMatrix).normalize().clone();
     } else {
       // Fallback: use face normal from cross product
       getTriangleHitPointInfo(
@@ -132,12 +153,12 @@ export class MeshSurface {
         this._hitInfo,
       );
       worldNormal = this._hitInfo.face.normal.clone()
-        .applyMatrix3(normalMatrix)
+        .applyMatrix3(this._cpsNormalMatrix)
         .normalize();
     }
 
     return {
-      point: worldSurfacePoint,
+      point: this._cpsWorldPoint.clone(),
       normal: worldNormal,
       distance: this._closestTarget.distance,
       faceIndex: this._closestTarget.faceIndex,
@@ -165,11 +186,11 @@ export class MeshSurface {
       this._hitInfo,
     );
 
-    // Transform to world space
+    // Transform to world space — reuse pre-allocated normalMatrix to avoid allocation
     const worldPoint = hit.point.applyMatrix4(this.mesh.matrixWorld);
-    const normalMatrix = new THREE.Matrix3().getNormalMatrix(this.mesh.matrixWorld);
+    this._cpsNormalMatrix.getNormalMatrix(this.mesh.matrixWorld);
     const worldNormal = this._hitInfo.face.normal.clone()
-      .applyMatrix3(normalMatrix)
+      .applyMatrix3(this._cpsNormalMatrix)
       .normalize();
 
     return {
@@ -231,11 +252,12 @@ export class MeshSurface {
     }
 
     // Project movement direction onto tangent plane (remove normal component)
-    const normal = currentNormal.clone().normalize();
-    const projectedDir = moveDirWorld.clone();
-    projectedDir.sub(normal.clone().multiplyScalar(projectedDir.dot(normal)));
+    // Use pre-allocated scratch vectors to avoid GC allocations on hot path.
+    this._mosNormal.copy(currentNormal).normalize();
+    this._mosProjDir.copy(moveDirWorld);
+    this._mosProjDir.addScaledVector(this._mosNormal, -this._mosProjDir.dot(this._mosNormal));
 
-    const projLen = projectedDir.length();
+    const projLen = this._mosProjDir.length();
 
     // If projected direction is too small, the moveDir is parallel to the normal.
     // Return the current position (let the MeshWalker handle stuck recovery using
@@ -243,13 +265,13 @@ export class MeshSurface {
     if (projLen < 0.0001) {
       return this.closestPointOnSurface(currentPos);
     }
-    projectedDir.normalize();
+    this._mosProjDir.multiplyScalar(1 / projLen); // normalize without allocation
 
     // Move along the tangent plane
-    const newPos = currentPos.clone().add(projectedDir.clone().multiplyScalar(distance));
+    this._mosNewPos.copy(currentPos).addScaledVector(this._mosProjDir, distance);
 
     // Project back onto mesh surface
-    return this.closestPointOnSurface(newPos);
+    return this.closestPointOnSurface(this._mosNewPos);
   }
 
   /**
@@ -339,16 +361,19 @@ export class MeshSurface {
     const localResult = this.geodesic.moveGeodesic(facePos, this._tempDir, localDistance);
 
     // Transform position and directions back to world space.
-    const worldPos = localResult.position.clone().applyMatrix4(matrixWorld);
+    // Use pre-allocated vectors to avoid GC churn — called per bullet per frame.
+    // IMPORTANT: callers must copy values before the next call to moveGeodesic,
+    // as these vectors are overwritten each invocation.
+    this._geoWorldPos.copy(localResult.position).applyMatrix4(matrixWorld);
     this._normalMatrix.getNormalMatrix(matrixWorld);
-    const worldNormal = localResult.normal.clone().applyMatrix3(this._normalMatrix).normalize();
-    const worldDir = localResult.direction.clone().transformDirection(matrixWorld).normalize();
+    this._geoWorldNormal.copy(localResult.normal).applyMatrix3(this._normalMatrix).normalize();
+    this._geoWorldDir.copy(localResult.direction).transformDirection(matrixWorld).normalize();
 
     return {
       faceIndex: localResult.faceIndex,
-      position: worldPos,
-      normal: worldNormal,
-      direction: worldDir,
+      position: this._geoWorldPos,
+      normal: this._geoWorldNormal,
+      direction: this._geoWorldDir,
       facePosition: localResult.facePosition,
       distanceTraveled: localResult.distanceTraveled * scale,
     };
