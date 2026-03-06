@@ -901,6 +901,12 @@ export class NetworkClient {
     this.room.send('pause_countdown', { paused });
   }
 
+  /** Host: resume the game timer (starts countdown from paused state) */
+  sendResumeTimer(): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('resume_timer');
+  }
+
   /**
    * Set event callbacks
    */

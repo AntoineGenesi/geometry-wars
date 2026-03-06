@@ -773,6 +773,13 @@ export class GameRoom extends Room<GameState> {
       this.logger.log(`[GameRoom] Countdown ${data.paused ? 'paused' : 'resumed'} by host`);
     });
 
+    this.onMessage('resume_timer', (client) => {
+      if (client.sessionId !== this.state.hostId) return;
+      if (this.state.roomPhase !== 'playing') return;
+      this.state.countdownPaused = false;
+      this.logger.log(`[GameRoom] Game timer resumed by host`);
+    });
+
     // Lobby settings: host sends settings while in lobby. Server validates,
     // stores them in currentSettings + syncs to room.state, then relays to all
     // clients for non-host display. (s44j-settings-16c relay + s44j-settings-16e application)
@@ -1314,6 +1321,7 @@ export class GameRoom extends Room<GameState> {
     this.state.isPaused = false;     // always start unpaused (guards stale pause from previous round)
     this.state.waveNumber = 0;
     this.state.gameTime = 0;
+    this.state.countdownPaused = true;  // timer paused by default; host must resume to start countdown
     this.waveNumber = 0;
 
     // Reset wave scheduling state
@@ -1957,7 +1965,10 @@ export class GameRoom extends Room<GameState> {
 
   private tickGame() {
     const dt = 1 / TICK_RATE;
-    this.state.gameTime += dt;
+    // Increment game timer only if not paused
+    if (!this.state.countdownPaused) {
+      this.state.gameTime += dt;
+    }
 
     // Apply player movement from stored inputs (60Hz consistent)
     this.applyPlayerMovement(dt);

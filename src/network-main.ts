@@ -1325,6 +1325,20 @@ async function main() {
     }, 1000);
   }
 
+  // Resume button (shown when host pauses timer at game start)
+  const resumeTimerBtn = document.createElement('button');
+  resumeTimerBtn.textContent = '▶ RESUME';
+  resumeTimerBtn.style.cssText =
+    'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+    'padding:12px 24px;font:bold 18px monospace;cursor:pointer;' +
+    'background:#050;color:#0f0;border:2px solid #0f0;' +
+    'text-shadow:0 0 8px #0f0;z-index:200;display:none;' +
+    'letter-spacing:2px;box-shadow:0 0 20px rgba(0,255,0,0.5);';
+  resumeTimerBtn.onclick = () => {
+    network.sendResumeTimer();
+  };
+  document.body.appendChild(resumeTimerBtn);
+
   const weaponEl = document.createElement('div');
   weaponEl.style.cssText =
     'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);' +
@@ -3796,6 +3810,10 @@ async function main() {
     if (state.isPaused !== isPaused) {
       showPauseOverlay(state.isPaused);
     }
+
+    // Show Resume button if host and timer is paused at game start
+    const shouldShowResumeBtn = isHost && state.gameStarted && state.countdownPaused && state.roomPhase === 'playing';
+    resumeTimerBtn.style.display = shouldShowResumeBtn ? 'block' : 'none';
 
     // ---- Room phase handling (voting lobby state machine) ----
     const newPhase = state.roomPhase || 'lobby';
