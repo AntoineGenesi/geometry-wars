@@ -153,6 +153,18 @@ export class GameLoop {
             ctx.playerWalker.teleportTo(projected.point, projected.faceIndex, projected.normal);
           }
           ctx.player.mesh.position.copy(ctx.playerWalker.position);
+          // Snap camera to respawn position immediately.
+          // Without this, the camera is still at the death location when the player
+          // reappears (cameraController.update is skipped while dead). The first live
+          // frame calls lookAt(newPosition) from the wrong side of the surface,
+          // producing a surface-level side-angle view for ~1s while the camera lerps.
+          // snapToFrame teleports the camera directly above the new spawn point.
+          const respawnFrame = ctx.playerWalker.getTangentFrame();
+          ctx.cameraController.snapToFrame(
+            ctx.playerWalker.position,
+            ctx.playerWalker.normal,
+            respawnFrame,
+          );
         }
       } else if (!ctx.state.isGameOver) {
         // Game over - no lives left; clear death cam effect before showing game over screen
