@@ -122,7 +122,11 @@ export class PeanutSurface extends Surface {
 
     const normal = tangentU.clone().cross(tangentV).normalize()
 
-    return { position, normal, tangentU, tangentV }
+    const local = { position, normal, tangentU, tangentV }
+    // Apply world rotation so getPoint() output is consistent with other surfaces
+    // (e.g. SphereSurface). Without this, bullet positions and hit detection are
+    // computed in unrotated local space, breaking MP when the surface is rotated.
+    return this.applyWorldRotation(local)
   }
 
   moveOnSurface(
@@ -140,10 +144,14 @@ export class PeanutSurface extends Surface {
     // V (meridional) arc length scale: sqrt(r'^2 + r^2) → divide dv by sqrt(drNorm^2 + rNorm^2)
     const rNorm = 1 + this.waistDepth * Math.cos(2 * phi)
     const drNorm = -2 * this.waistDepth * Math.sin(2 * phi)
-    const uScale = rNorm * sinPhi
+    // Clamp uScale to prevent movement crawl near poles (sinPhi→0 as phi→0 or pi).
+    // Without the clamp the u-axis correction blows up and the player slows to a
+    // crawl / stalls completely at the top and bottom of the peanut.
+    // 0.3 matches the client-prediction clamp in network-main.ts (line ~3855).
+    const uScale = Math.max(rNorm * sinPhi, 0.3)
     const vScale = Math.sqrt(rNorm * rNorm + drNorm * drNorm)
 
-    const correctedDu = uScale > 0.001 ? du / uScale : 0
+    const correctedDu = du / uScale
     const correctedDv = vScale > 0.001 ? dv / vScale : 0
 
     let newU = u + correctedDu
@@ -165,8 +173,13 @@ export class PeanutSurface extends Surface {
     // surface group). Normalize by the apparent scale — compute the actual surface
     // radius at the query point and compare against the unit profile to find phi.
     // This gives correct UV even when the surface group is scaled.
-    const xzDist = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z)
-    const totalDist = Math.sqrt(xzDist * xzDist + worldPos.y * worldPos.y)
+    //
+    // Undo world rotation before computing local-space UV.
+    // getPoint() applies worldRotation outward; worldToSurface must invert it.
+    const inverseRot = this.worldRotation.clone().invert()
+    const localPos = worldPos.clone().applyQuaternion(inverseRot)
+    const xzDist = Math.sqrt(localPos.x * localPos.x + localPos.z * localPos.z)
+    const totalDist = Math.sqrt(xzDist * xzDist + localPos.y * localPos.y)
 
     // Estimate the scale by comparing the query distance to the expected surface radius.
     // We use the max profile radius (at phi=0, r = baseRadius*(1+waistDepth)) as reference.
@@ -175,8 +188,8 @@ export class PeanutSurface extends Surface {
     const estimatedScale = totalDist > 1e-3 ? totalDist / maxProfileR : 1
 
     // Normalize the query position into local (unscaled) space for profile matching.
-    const localXZ = estimatedScale > 1e-6 ? xzDist / estimatedScale : xzDist
-    const localY  = estimatedScale > 1e-6 ? worldPos.y / estimatedScale : worldPos.y
+    const localXZ2 = estimatedScale > 1e-6 ? xzDist / estimatedScale : xzDist
+    const localY2  = estimatedScale > 1e-6 ? localPos.y / estimatedScale : localPos.y
 
     let bestPhi = 0
     let bestDist = Infinity
@@ -189,8 +202,8 @@ export class PeanutSurface extends Surface {
       const ringY = r * Math.cos(phi)
 
       const dist = Math.sqrt(
-        (localXZ - ringRadius) * (localXZ - ringRadius) +
-        (localY - ringY) * (localY - ringY)
+        (localXZ2 - ringRadius) * (localXZ2 - ringRadius) +
+        (localY2 - ringY) * (localY2 - ringY)
       )
 
       if (dist < bestDist) {
@@ -199,7 +212,7 @@ export class PeanutSurface extends Surface {
       }
     }
 
-    let theta = Math.atan2(worldPos.z, worldPos.x)
+    let theta = Math.atan2(localPos.z, localPos.x)
     if (theta < 0) theta += Math.PI * 2
 
     return {

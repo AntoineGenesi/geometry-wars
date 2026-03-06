@@ -1470,7 +1470,10 @@ export class GameRoom extends Room<GameState> {
         const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
         const sinPhi = Math.sin(phi);
         const cosPhi = Math.cos(phi);
-        const metricU = Math.max(rNorm * sinPhi, 0.1);
+        // Clamp to 0.3 — matches client-prediction clamp in network-main.ts and
+        // PeanutSurface.moveOnSurface(). Lower clamp (0.1) caused bullets to
+        // accelerate excessively at the poles, breaking hit detection parity.
+        const metricU = Math.max(rNorm * sinPhi, 0.3);
         const metricV = Math.max(Math.sqrt(rNorm * rNorm + drNorm * drNorm), 0.1);
 
         // Parallel transport: rotate direction using Christoffel symbols for peanut
