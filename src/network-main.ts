@@ -2802,8 +2802,29 @@ async function main() {
               netPlayer.wz! + nz * 0.15,
             );
           } else {
-            const snapSp: SurfacePoint = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
-            player.mesh.position.copy(snapSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(snapSp.normal, 0.15);
+            // s44l-16 FIX: For torus, sphere-approx surfaceU/V is swapped vs torus UV,
+            // so getPoint(sphere_u, sphere_v) maps to the inner edge instead of the outer.
+            // Use worldToSurface on the sphere-approx world position to recover accurate UV.
+            let snapSp: SurfacePoint;
+            if (lastCreatedSurfaceType === 'torus') {
+              // Reconstruct approximate world position from sphere-approx UV (mirrors
+              // ServerSurfaceManager._uvToApproxWorldPos), then BVH-snap via worldToSurface.
+              const safeV = Math.max(0.02, Math.min(0.98, netPlayer.surfaceV));
+              const phi = safeV * Math.PI;
+              const theta = netPlayer.surfaceU * 2 * Math.PI;
+              const r = DEFAULT_SURFACE_SCALE * currentMapSizeScaleFactor;
+              const approxWorld = new THREE.Vector3(
+                r * Math.sin(phi) * Math.cos(theta),
+                r * Math.cos(phi),
+                r * Math.sin(phi) * Math.sin(theta),
+              );
+              const accurateUV = surf.worldToSurface(approxWorld);
+              snapSp = surf.getPoint(accurateUV.u, accurateUV.v);
+              player.mesh.position.copy(snapSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(snapSp.normal, 0.15);
+            } else {
+              snapSp = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
+              player.mesh.position.copy(snapSp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(snapSp.normal, 0.15);
+            }
           }
         } else {
           // Small RTT-induced drift: gentle blend toward server position.
@@ -4651,7 +4672,17 @@ async function main() {
         // bullet physics AND client bullet reconstruction (both use sp.tangentU/V).
         // The s44-epic-08 server-frame switch was the source of this 90° mismatch.
         {
-          const _aimSp = surface.getPoint(_aimPlayer.surfaceU, _aimPlayer.surfaceV);
+          // s44l-16 FIX: For torus, sphere-approx surfaceU/V has swapped axes
+          // (u_sphere=ring_angle/2π, v_sphere≈polar ≈ tube_angle) vs torus UV
+          // (u=tube_angle/2π, v=ring_angle/2π). getPoint(sphere_u, sphere_v) maps
+          // to the wrong position on the outer half, giving incorrect tangent vectors
+          // and causing bullets to fly in wrong directions from the outer half.
+          // Fix: use worldToSurface on the player's actual mesh position to get
+          // accurate torus UV for tangent frame computation.
+          const _aimUV = lastCreatedSurfaceType === 'torus'
+            ? surface.worldToSurface(_aimPlayer.mesh.position)
+            : { u: _aimPlayer.surfaceU, v: _aimPlayer.surfaceV };
+          const _aimSp = surface.getPoint(_aimUV.u, _aimUV.v);
           // Use server normal when available (more stable), but UV tangentU/V for angle
           const _aimNormal = _localServerFrameValid ? _localServerNormal : _aimSp.normal;
           aimAngle = computeCameraRelativeAimAngle(
@@ -5474,8 +5505,25 @@ async function main() {
         _netTempTangent.set(worldTarget.tx, worldTarget.ty, worldTarget.tz);
         orientPlayerOnSurface(player, _netTempNormal, target.aimAngle, _netTempTangent);
       } else {
-        // Fallback: UV-based positioning (legacy server or before first world-pos arrives)
-        const sp: SurfacePoint = surf.getPoint(newU, newV);
+        // Fallback: UV-based positioning (legacy server or before first world-pos arrives).
+        // s44l-16 FIX: For torus, sphere-approx UV (newU/newV) is swapped vs torus UV.
+        // Reconstruct sphere-approx world pos → worldToSurface → accurate torus UV.
+        let sp: SurfacePoint;
+        if (lastCreatedSurfaceType === 'torus') {
+          const safeV = Math.max(0.02, Math.min(0.98, newV));
+          const phi = safeV * Math.PI;
+          const theta = newU * 2 * Math.PI;
+          const r = DEFAULT_SURFACE_SCALE * currentMapSizeScaleFactor;
+          const approxWorld = new THREE.Vector3(
+            r * Math.sin(phi) * Math.cos(theta),
+            r * Math.cos(phi),
+            r * Math.sin(phi) * Math.sin(theta),
+          );
+          const accurateUV = surf.worldToSurface(approxWorld);
+          sp = surf.getPoint(accurateUV.u, accurateUV.v);
+        } else {
+          sp = surf.getPoint(newU, newV);
+        }
         player.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
         orientPlayerOnSurface(player, sp.normal, target.aimAngle, sp.tangentU);
       }
