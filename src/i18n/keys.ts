@@ -96,6 +96,7 @@ export const KEYS = {
       small: 'voting.sizes.small',
       medium: 'voting.sizes.medium',
       large: 'voting.sizes.large',
+      epic: 'voting.sizes.epic',
     },
   },
   menu: {
