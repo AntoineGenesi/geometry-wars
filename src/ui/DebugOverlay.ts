@@ -10,9 +10,6 @@
 
 import { PerformanceTracker, PerfMoment } from '../core/PerformanceTracker';
 import type { RendererBackend } from '../rendering/RendererFactory';
-import type { PerformanceLogger, PerformanceDataPoint } from '../core/PerformanceLogger';
-import { ENEMY_COLORS } from './PerformanceGraphs';
-import { profiler } from '../core/PerformanceProfiler';
 
 // ---------------------------------------------------------------------------
 // DebugOverlay
@@ -42,13 +39,6 @@ export class DebugOverlay {
   private readonly topPanel: HTMLDivElement;
   private readonly topContent: HTMLDivElement;
   private topPanelExpanded = false;
-
-  // Graphs panel (expandable mini-graphs)
-  private readonly graphsPanel: HTMLDivElement;
-  private readonly unifiedCanvas: HTMLCanvasElement;
-  private readonly stackedCanvas: HTMLCanvasElement;
-  private graphsPanelExpanded = false;
-  private perfLogger: PerformanceLogger | null = null;
 
   // State
   private visible = true;
@@ -101,17 +91,9 @@ export class DebugOverlay {
           <span class="debug-value" id="debug-tex" style="color:#aaccff">--</span>
         </div>
         <button class="debug-toggle-top" id="debug-toggle-top" title="Toggle top-10 moments">TOP 10</button>
-        <button class="debug-toggle-graphs" id="debug-toggle-graphs" title="Toggle live performance graphs">GRAPHS</button>
-        <button class="debug-export-logs" id="debug-export-logs" title="Export performance logs to disk">EXPORT</button>
       </div>
       <div class="debug-top-panel hidden" id="debug-top-panel">
         <div class="debug-top-content" id="debug-top-content"></div>
-      </div>
-      <div class="debug-graphs-panel hidden" id="debug-graphs-panel">
-        <div class="debug-graphs-subtitle">UNIFIED (FPS / ENT / BUL)</div>
-        <canvas id="debug-unified-canvas" width="280" height="100"></canvas>
-        <div class="debug-graphs-subtitle">ENEMY COMPOSITION</div>
-        <canvas id="debug-stacked-canvas" width="280" height="90"></canvas>
       </div>
     `;
     document.body.appendChild(this.container);
@@ -126,9 +108,6 @@ export class DebugOverlay {
     this.texEl = document.getElementById('debug-tex') as HTMLSpanElement;
     this.topPanel = document.getElementById('debug-top-panel') as HTMLDivElement;
     this.topContent = document.getElementById('debug-top-content') as HTMLDivElement;
-    this.graphsPanel = document.getElementById('debug-graphs-panel') as HTMLDivElement;
-    this.unifiedCanvas = document.getElementById('debug-unified-canvas') as HTMLCanvasElement;
-    this.stackedCanvas = document.getElementById('debug-stacked-canvas') as HTMLCanvasElement;
 
     // Top-10 toggle button
     const toggleBtn = document.getElementById('debug-toggle-top');
@@ -139,60 +118,6 @@ export class DebugOverlay {
         this.renderTopPanel();
       } else {
         this.topPanel.classList.add('hidden');
-      }
-    });
-
-    // Graphs toggle button
-    const graphsBtn = document.getElementById('debug-toggle-graphs');
-    graphsBtn?.addEventListener('click', () => {
-      this.graphsPanelExpanded = !this.graphsPanelExpanded;
-      if (this.graphsPanelExpanded) {
-        this.graphsPanel.classList.remove('hidden');
-        this.renderMiniGraphs();
-      } else {
-        this.graphsPanel.classList.add('hidden');
-      }
-    });
-
-    // Export logs button
-    const exportBtn = document.getElementById('debug-export-logs');
-    exportBtn?.addEventListener('click', async () => {
-      try {
-        // Dynamic import to avoid bundling in production if not needed
-        const { exportLogsToServer, downloadLogsAsFiles } = await import('../utils/PerformanceExporter');
-
-        // Try server export first
-        const serverUrl = process.env.NODE_ENV === 'production'
-          ? window.location.origin
-          : 'http://localhost:2567';
-
-        exportBtn.textContent = 'EXPORTING...';
-        exportBtn.setAttribute('disabled', 'true');
-
-        const result = await exportLogsToServer(serverUrl, true, true);
-
-        if (result.success) {
-          exportBtn.textContent = 'EXPORTED ✓';
-          console.log('[DebugOverlay] Logs exported to disk:', result.results);
-        } else {
-          // Fallback to browser download
-          console.warn('[DebugOverlay] Server export failed, downloading files instead');
-          downloadLogsAsFiles(true, true);
-          exportBtn.textContent = 'DOWNLOADED ✓';
-        }
-
-        // Reset button after 2 seconds
-        setTimeout(() => {
-          exportBtn.textContent = 'EXPORT';
-          exportBtn.removeAttribute('disabled');
-        }, 2000);
-      } catch (err) {
-        console.error('[DebugOverlay] Export error:', err);
-        exportBtn.textContent = 'ERROR';
-        setTimeout(() => {
-          exportBtn.textContent = 'EXPORT';
-          exportBtn.removeAttribute('disabled');
-        }, 2000);
       }
     });
 
@@ -226,11 +151,6 @@ export class DebugOverlay {
     const color = backend === 'webgpu' ? '#44ff88' : '#8888ff';
     this.rendererEl.textContent = label;
     this.rendererEl.style.color = color;
-  }
-
-  /** Provide access to the PerformanceLogger for live mini-graphs. */
-  setPerformanceLogger(logger: PerformanceLogger): void {
-    this.perfLogger = logger;
   }
 
   // -- Per-frame update (call from render loop) ----------------------------
@@ -275,11 +195,6 @@ export class DebugOverlay {
     // Update top panel if expanded (less frequently -- every 2nd update)
     if (this.topPanelExpanded && this.frameCounter % (DebugOverlay.UPDATE_EVERY_N_FRAMES * 8) === 0) {
       this.renderTopPanel();
-    }
-
-    // Update mini graphs if expanded (every ~4 seconds at 15Hz update rate)
-    if (this.graphsPanelExpanded && this.frameCounter % (DebugOverlay.UPDATE_EVERY_N_FRAMES * 60) === 0) {
-      this.renderMiniGraphs();
     }
   }
 
@@ -332,226 +247,6 @@ export class DebugOverlay {
 
   // -- Internal rendering --------------------------------------------------
 
-  private renderMiniGraphs(): void {
-    const data = this.perfLogger ? this.perfLogger.getDataPoints() : [];
-
-    // -- Unified canvas (FPS / ENT / BUL normalized) --
-    {
-      const canvas = this.unifiedCanvas;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const W = canvas.width;
-        const H = canvas.height;
-        const pad = { top: 8, right: 6, bottom: 18, left: 28 };
-        const pw = W - pad.left - pad.right;
-        const ph = H - pad.top - pad.bottom;
-
-        ctx.fillStyle = '#0a0a14';
-        ctx.fillRect(0, 0, W, H);
-
-        if (data.length < 2) {
-          ctx.fillStyle = '#445566';
-          ctx.font = '10px monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('No data', W / 2, H / 2);
-        } else {
-          // Compute maxes for normalization
-          let maxFps = 1, maxEnemies = 1, maxBullets = 1;
-          for (const p of data) {
-            if (p.fps > maxFps) maxFps = p.fps;
-            if (p.enemyCount > maxEnemies) maxEnemies = p.enemyCount;
-            if (p.bulletCount > maxBullets) maxBullets = p.bulletCount;
-          }
-
-          const minTime = data[0].time;
-          const maxTime = data[data.length - 1].time;
-          const timeRange = Math.max(maxTime - minTime, 0.001);
-
-          const tx = (t: number) => pad.left + ((t - minTime) / timeRange) * pw;
-          const ty = (v: number) => pad.top + ph * (1 - Math.min(1, Math.max(0, v)));
-
-          // Grid line at 50%
-          ctx.strokeStyle = '#1a1a2e';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(pad.left, pad.top + ph / 2);
-          ctx.lineTo(pad.left + pw, pad.top + ph / 2);
-          ctx.stroke();
-
-          // Axes
-          ctx.strokeStyle = '#3a3a5e';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(pad.left, pad.top);
-          ctx.lineTo(pad.left, pad.top + ph);
-          ctx.lineTo(pad.left + pw, pad.top + ph);
-          ctx.stroke();
-
-          // Y labels
-          ctx.fillStyle = '#556677';
-          ctx.font = '8px monospace';
-          ctx.textAlign = 'right';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('100%', pad.left - 2, pad.top);
-          ctx.fillText('0%', pad.left - 2, pad.top + ph);
-
-          // Draw lines (FPS=green, ENT=orange, BUL=blue)
-          const lines: Array<{ color: string; getValue: (p: { fps: number; enemyCount: number; bulletCount: number }) => number; max: number }> = [
-            { color: '#00ff88', getValue: p => p.fps, max: maxFps },
-            { color: '#ff6644', getValue: p => p.enemyCount, max: maxEnemies },
-            { color: '#44aaff', getValue: p => p.bulletCount, max: maxBullets },
-          ];
-
-          for (const line of lines) {
-            ctx.strokeStyle = line.color;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            for (let i = 0; i < data.length; i++) {
-              const x = tx(data[i].time);
-              const y = ty(line.getValue(data[i]) / line.max);
-              if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-          }
-
-          // Legend (bottom row)
-          const legendItems = [
-            { color: '#00ff88', label: 'FPS' },
-            { color: '#ff6644', label: 'ENT' },
-            { color: '#44aaff', label: 'BUL' },
-          ];
-          ctx.font = '8px monospace';
-          ctx.textBaseline = 'bottom';
-          let lx = pad.left;
-          for (const item of legendItems) {
-            ctx.fillStyle = item.color;
-            ctx.fillRect(lx, H - 1, 6, -6);
-            ctx.fillStyle = '#88aacc';
-            ctx.textAlign = 'left';
-            ctx.fillText(item.label, lx + 8, H - 1);
-            lx += 36;
-          }
-        }
-      }
-    }
-
-    // -- Stacked canvas (enemy composition) --
-    {
-      const canvas = this.stackedCanvas;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        const W = canvas.width;
-        const H = canvas.height;
-        const pad = { top: 6, right: 6, bottom: 14, left: 28 };
-        const pw = W - pad.left - pad.right;
-        const ph = H - pad.top - pad.bottom;
-
-        ctx.fillStyle = '#0a0a14';
-        ctx.fillRect(0, 0, W, H);
-
-        if (data.length < 2) {
-          ctx.fillStyle = '#445566';
-          ctx.font = '10px monospace';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText('No data', W / 2, H / 2);
-        } else {
-          // Collect enemy types
-          const typeTotals = new Map<string, number>();
-          for (const point of data) {
-            point.enemyTypes.forEach((count, type) => {
-              typeTotals.set(type, (typeTotals.get(type) || 0) + count);
-            });
-          }
-
-          const sortedTypes = Array.from(typeTotals.entries())
-            .sort((a, b) => b[1] - a[1])
-            .map(([type]) => type);
-
-          // Max cumulative enemy count
-          let maxTotal = 1;
-          for (const point of data) {
-            let total = 0;
-            point.enemyTypes.forEach(c => { total += c; });
-            if (total > maxTotal) maxTotal = total;
-          }
-          if (maxTotal < 1) maxTotal = 1;
-
-          const minTime = data[0].time;
-          const maxTime = data[data.length - 1].time;
-          const timeRange = Math.max(maxTime - minTime, 0.001);
-
-          const tx = (t: number) => pad.left + ((t - minTime) / timeRange) * pw;
-          const ty = (v: number) => pad.top + ph * (1 - Math.min(1, Math.max(0, v / maxTotal)));
-
-          // Axes
-          ctx.strokeStyle = '#3a3a5e';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(pad.left, pad.top);
-          ctx.lineTo(pad.left, pad.top + ph);
-          ctx.lineTo(pad.left + pw, pad.top + ph);
-          ctx.stroke();
-
-          if (sortedTypes.length === 0) {
-            // No type data — draw total enemy line
-            ctx.strokeStyle = '#ff6644';
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            for (let i = 0; i < data.length; i++) {
-              const x = tx(data[i].time);
-              const y = ty(data[i].enemyCount);
-              if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-          } else {
-            // Draw stacked bands
-            for (let ti = 0; ti < sortedTypes.length; ti++) {
-              const type = sortedTypes[ti];
-              const color = ENEMY_COLORS[type] || '#888888';
-
-              ctx.beginPath();
-              // Forward: top edge
-              for (let i = 0; i < data.length; i++) {
-                const point = data[i];
-                const x = tx(point.time);
-                let cumTop = 0;
-                for (let k = 0; k <= ti; k++) {
-                  cumTop += point.enemyTypes.get(sortedTypes[k] as any) || 0;
-                }
-                const y = ty(cumTop);
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-              }
-              // Backward: bottom edge
-              for (let i = data.length - 1; i >= 0; i--) {
-                const point = data[i];
-                const x = tx(point.time);
-                let cumBottom = 0;
-                for (let k = 0; k < ti; k++) {
-                  cumBottom += point.enemyTypes.get(sortedTypes[k] as any) || 0;
-                }
-                ctx.lineTo(x, ty(cumBottom));
-              }
-              ctx.closePath();
-              ctx.fillStyle = color + 'aa';
-              ctx.fill();
-            }
-          }
-
-          // Y label
-          ctx.fillStyle = '#556677';
-          ctx.font = '8px monospace';
-          ctx.textAlign = 'right';
-          ctx.textBaseline = 'top';
-          ctx.fillText(String(maxTotal), pad.left - 2, pad.top);
-          ctx.textBaseline = 'bottom';
-          ctx.fillText('0', pad.left - 2, pad.top + ph);
-        }
-      }
-    }
-  }
-
   private renderTopPanel(): void {
     const sections = [
       { title: 'HIGHEST FPS', data: this.tracker.highestFps, highlight: 'fps' },
@@ -579,40 +274,7 @@ export class DebugOverlay {
       html += `</div>`;
     }
 
-    // Add TOP FUNCTIONS section
-    html += this.renderTopFunctionsSection();
-
     this.topContent.innerHTML = html;
-  }
-
-  private renderTopFunctionsSection(): string {
-    const topScopes = profiler.getTopScopes(10);
-    let html = `<div class="debug-top-section">`;
-    html += `<div class="debug-top-title">TOP 10 FUNCTIONS</div>`;
-
-    if (topScopes.length === 0) {
-      html += `<div class="debug-top-empty">No profiling data yet</div>`;
-    } else {
-      html += `<table class="debug-top-table"><thead><tr>`;
-      html += `<th>#</th><th>Function</th><th>Time (ms)</th><th>Calls</th><th>Avg (ms)</th>`;
-      html += `</tr></thead><tbody>`;
-
-      for (let i = 0; i < topScopes.length; i++) {
-        const scope = topScopes[i];
-        html += `<tr>`;
-        html += `<td class="debug-rank">${i + 1}</td>`;
-        html += `<td class="debug-function-name" title="${scope.label}">${scope.label}</td>`;
-        html += `<td class="debug-function-time">${scope.totalMs.toFixed(2)}</td>`;
-        html += `<td class="debug-function-calls">${scope.callCount}</td>`;
-        html += `<td class="debug-function-avg">${scope.avgMs.toFixed(2)}</td>`;
-        html += `</tr>`;
-      }
-
-      html += `</tbody></table>`;
-    }
-
-    html += `</div>`;
-    return html;
   }
 
   private renderMomentRow(rank: number, m: PerfMoment, highlight: string): string {
@@ -717,33 +379,6 @@ export class DebugOverlay {
       color: #88aacc;
     }
 
-    #debug-overlay .debug-export-logs {
-      display: block;
-      width: 100%;
-      margin-top: 4px;
-      padding: 3px 0;
-      background: rgba(40, 100, 60, 0.5);
-      border: 1px solid rgba(60, 120, 80, 0.5);
-      border-radius: 3px;
-      color: #aaccaa;
-      font-size: 10px;
-      font-weight: bold;
-      letter-spacing: 1px;
-      cursor: pointer;
-      pointer-events: auto;
-      transition: background 0.15s;
-    }
-
-    #debug-overlay .debug-export-logs:hover {
-      background: rgba(40, 100, 60, 0.8);
-      color: #88cc88;
-    }
-
-    #debug-overlay .debug-export-logs:disabled {
-      cursor: not-allowed;
-      opacity: 0.6;
-    }
-
     #debug-overlay .debug-top-panel {
       margin-top: 4px;
       background: rgba(0, 0, 15, 0.85);
@@ -833,28 +468,6 @@ export class DebugOverlay {
       color: #44aaff;
     }
 
-    /* Function profiling styles */
-    #debug-overlay .debug-function-name {
-      color: #88ccff;
-      text-align: left !important;
-      max-width: 200px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    #debug-overlay .debug-function-time {
-      color: #ffaa44;
-    }
-
-    #debug-overlay .debug-function-calls {
-      color: #88ff88;
-    }
-
-    #debug-overlay .debug-function-avg {
-      color: #ffaa88;
-    }
-
     /* Scrollbar styling for top panel */
     #debug-overlay .debug-top-panel::-webkit-scrollbar {
       width: 4px;
@@ -897,9 +510,8 @@ export class DebugOverlay {
         display: none;
       }
 
-      /* Hide the TOP10 and EXPORT buttons on mobile (too big, no use on phone) */
-      #debug-overlay .debug-toggle-top,
-      #debug-overlay .debug-export-logs {
+      /* Hide the TOP10 button on mobile (too big, no use on phone) */
+      #debug-overlay .debug-toggle-top {
         display: none;
       }
 
