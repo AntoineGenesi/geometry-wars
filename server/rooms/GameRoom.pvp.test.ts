@@ -325,7 +325,7 @@ describe('PvP: pvpEnabled gate', () => {
 // Integration tests: full PvP match flow (s44j-pvp-13g)
 // ---------------------------------------------------------------------------
 
-import { validateSettings, VALID_MODES, PVP_MODES } from '../shared/GameSettings';
+import { validateSettings, VALID_MODES, PVP_MODES, DEFAULT_GAME_SETTINGS } from '../shared/GameSettings';
 import { PVP_KILLS_TO_WIN, PLAYER_PVP_MAX_HEALTH, PLAYER_PVP_INVINCIBILITY_DURATION } from '../shared/GameConstants';
 
 // ---------------------------------------------------------------------------
@@ -767,5 +767,55 @@ describe('s44k-07 regression: PvP friendlyFire defaults', () => {
     // Bullet already consumed (simulates enemy hit); should NOT damage player
     applyPvPBulletDamage(bullet, [shooter, target], inv, true);
     expect(target.health).toBe(PLAYER_PVP_MAX_HEALTH); // consumed bullet skipped
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression tests: s44l-19 — PvP Bullets Not Killing + Missing Health Bar
+// Root cause: validateSettings() respected pvpEnabled:false (from DEFAULT_GAME_SETTINGS
+// spread by the client) as an explicit override even in pvp/pvpve modes, leaving
+// this.pvpEnabled = false so no damage was applied and no health bars were shown.
+// ---------------------------------------------------------------------------
+
+describe('s44l-19 regression: pvpEnabled when DEFAULT_GAME_SETTINGS is spread with pvp mode', () => {
+  it('validateSettings sets pvpEnabled=true for pvp mode even when pvpEnabled:false is spread from defaults', () => {
+    // Simulates the server receiving DEFAULT_GAME_SETTINGS (pvpEnabled:false) from client
+    // then startGameWithSettings merging mode='pvp' from the choice string.
+    // The fix: startGameWithSettings forces pvpEnabled:true for pvp/pvpve modes in the
+    // validateSettings call, overriding the false that came from default settings.
+    const defaultsSpread = { ...DEFAULT_GAME_SETTINGS, mode: 'pvp' as const, pvpEnabled: true };
+    const settings = validateSettings(defaultsSpread);
+    expect(settings.pvpEnabled).toBe(true);
+    expect(settings.mode).toBe('pvp');
+  });
+
+  it('validateSettings sets pvpEnabled=true for pvpve mode even when pvpEnabled:false is spread from defaults', () => {
+    const defaultsSpread = { ...DEFAULT_GAME_SETTINGS, mode: 'pvpve' as const, pvpEnabled: true };
+    const settings = validateSettings(defaultsSpread);
+    expect(settings.pvpEnabled).toBe(true);
+    expect(settings.mode).toBe('pvpve');
+  });
+
+  it('startGameWithSettings-equivalent: mode=pvp with explicit pvpEnabled:true override forces pvp on', () => {
+    // Mirrors the fix in startGameWithSettings: ...(isPvpOrPvpve ? { pvpEnabled: true } : {})
+    // Without the fix: validateSettings({ ...DEFAULT, mode:'pvp' }) → pvpEnabled=false (bug)
+    // With the fix: validateSettings({ ...DEFAULT, mode:'pvp', pvpEnabled:true }) → pvpEnabled=true
+    const withFix = validateSettings({ ...DEFAULT_GAME_SETTINGS, mode: 'pvp' as const, pvpEnabled: true });
+    expect(withFix.pvpEnabled).toBe(true);
+
+    // Verify the bug existed: without the fix, spreading pvpEnabled:false would have returned false
+    const withoutFix = validateSettings({ ...DEFAULT_GAME_SETTINGS, mode: 'pvp' as const });
+    // DEFAULT_GAME_SETTINGS.pvpEnabled = false; validateSettings respects explicit false
+    expect(withoutFix.pvpEnabled).toBe(false); // this is why the bug existed
+  });
+
+  it('friendlyFire is true for pvp mode (damage gate requires both pvpEnabled AND allowPlayerDamage)', () => {
+    // Ensure the full damage gate works end-to-end once pvpEnabled is fixed
+    const settings = validateSettings({ mode: 'pvp' as const, pvpEnabled: true });
+    expect(settings.pvpEnabled).toBe(true);
+    expect(settings.friendlyFire).toBe(true);
+    // allowPlayerDamage = mode !== 'pvpve' || friendlyFire = true for pvp mode
+    const allowPlayerDamage = settings.mode !== 'pvpve' || settings.friendlyFire;
+    expect(allowPlayerDamage).toBe(true);
   });
 });

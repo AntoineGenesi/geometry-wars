@@ -1260,10 +1260,16 @@ export class GameRoom extends Room<GameState> {
 
     // Merge choice-parsed surface/mode into currentSettings so syncSettingsToState is consistent.
     // We call validateSettings inline so we don't re-trigger the full applyValidatedSettings log.
+    // s44l-19: For pvp/pvpve modes, force pvpEnabled=true regardless of what currentSettings has.
+    // The client sends DEFAULT_GAME_SETTINGS (pvpEnabled:false) as the settings object, and
+    // validateSettings() respects an explicit false as an override. The mode selection is the
+    // authoritative signal for pvp intent, so we override here to ensure damage works.
+    const isPvpOrPvpve = mode === 'pvp' || mode === 'pvpve';
     this.currentSettings = validateSettings({
       ...this.currentSettings,
       surface: surface as GameSettings['surface'],
       mode: mode as GameSettings['mode'],
+      ...(isPvpOrPvpve ? { pvpEnabled: true } : {}),
     });
 
     // Legacy parts[3]: lives count or 'infinite' — applied only when currentSettings hasn't been
@@ -1289,6 +1295,8 @@ export class GameRoom extends Room<GameState> {
 
     // PvPvE mode: enable PvP damage AND wave spawner runs simultaneously (s44j-pvpve-14a).
     // The wave spawner (tickWaves) always runs; pvpEnabled activates player-vs-player damage.
+    // Note: currentSettings.pvpEnabled is already true (set above), so syncSettingsToState()
+    // will correctly propagate it. These direct assignments are kept for clarity.
     if (mode === 'pvpve') {
       this.pvpEnabled = true;
       this.state.pvpEnabled = true;
