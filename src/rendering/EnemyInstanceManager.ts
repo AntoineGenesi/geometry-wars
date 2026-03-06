@@ -267,8 +267,10 @@ export class EnemyInstanceManager {
     enemies: BaseEnemy[],
     lodAssignments: Map<BaseEnemy, LODLevel>,
     camera: THREE.Camera,
-    /** Phase 1 culling: hide instanced enemies >90° from player's surface normal. */
+    /** Phase 1 culling: hide or dim instanced enemies >90° from player's surface normal. */
     playerCulling?: { position: THREE.Vector3; normal: THREE.Vector3 },
+    /** When true, entities >90° are fully hidden (zero-scaled). When false (default), they are dimmed to 0.3 opacity. */
+    hide90DegreeEntities: boolean = false,
   ): void {
     // Lazily create shared LOD batches on first use
     if (!this.lodMediumBatch) {
@@ -314,8 +316,7 @@ export class EnemyInstanceManager {
       // Skip materializing enemies (spawn warning in progress)
       if (enemy.isMaterializing) continue;
 
-      // Phase 1 culling: hide enemies >90° from player's surface normal hemisphere.
-      // Enemies behind the surface are invisible to the player — no need to render them.
+      // Phase 1 culling: hide or dim enemies >90° from player's surface normal hemisphere.
       if (playerCulling && enemy.mesh) {
         const visibility = getEntityVisibilityState(
           playerCulling.position,
@@ -323,14 +324,22 @@ export class EnemyInstanceManager {
           enemy.mesh.position,
         );
         if (visibility === EntityVisibilityState.HIDDEN) {
-          // Zero-scale the high-detail instance slot (hidden from this batch)
-          _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
-          batch.instancedMesh.setMatrixAt(highIndex, _tempMatrix);
-          // Remove from any LOD shared batch too
-          if (this.enemyLODPlacement.has(enemy)) {
-            this.removeLODPlacement(enemy);
+          if (hide90DegreeEntities) {
+            // Old behavior: zero-scale the high-detail instance slot (fully hidden)
+            _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
+            batch.instancedMesh.setMatrixAt(highIndex, _tempMatrix);
+            // Remove from any LOD shared batch too
+            if (this.enemyLODPlacement.has(enemy)) {
+              this.removeLODPlacement(enemy);
+            }
+            continue;
+          } else {
+            // Dim behavior: render at 0.3 opacity so the entity is visible but clearly on the far side
+            batch.opacityAttribute.setX(highIndex, 0.3);
           }
-          continue;
+        } else {
+          // Visible entity: restore full opacity
+          batch.opacityAttribute.setX(highIndex, 1.0);
         }
       }
 

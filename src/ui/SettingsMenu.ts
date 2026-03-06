@@ -35,6 +35,8 @@ export interface GraphicsSettings {
   maxEnemies: number;
   resolutionScale: number;
   surfaceOpaque: boolean;
+  /** When true, entities >90° from player are hidden (old behavior). When false (default), they are dimmed to 0.3 opacity. */
+  enable90DegreeHide: boolean;
 }
 
 export interface AudioSettings {
@@ -65,6 +67,7 @@ const DEFAULT_GRAPHICS: GraphicsSettings = {
   maxEnemies: 500,
   resolutionScale: 1.0,
   surfaceOpaque: false,
+  enable90DegreeHide: false,
 };
 
 const DEFAULT_AUDIO: AudioSettings = {
@@ -88,6 +91,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 5000,
     resolutionScale: 1.0,
     surfaceOpaque: false,
+    enable90DegreeHide: false,
   },
   high: {
     bloomEnabled: true,
@@ -97,6 +101,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 500,
     resolutionScale: 1.0,
     surfaceOpaque: false,
+    enable90DegreeHide: false,
   },
   medium: {
     bloomEnabled: true,
@@ -106,6 +111,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 200,
     resolutionScale: 0.75,
     surfaceOpaque: false,
+    enable90DegreeHide: false,
   },
   low: {
     bloomEnabled: false,
@@ -115,6 +121,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 100,
     resolutionScale: 0.5,
     surfaceOpaque: false,
+    enable90DegreeHide: false,
   },
   minimal: {
     bloomEnabled: false,
@@ -124,6 +131,7 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 50,
     resolutionScale: 0.25,
     surfaceOpaque: false,
+    enable90DegreeHide: false,
   },
 };
 
@@ -1042,6 +1050,10 @@ export class SettingsMenu {
         <span class="setting-label">${t('settings.graphics.surfaceOpacity')}</span>
         <div class="toggle ${g.surfaceOpaque ? 'on' : ''}" id="toggle-surface-opaque" data-setting="surfaceOpaque"></div>
       </div>
+      <div class="setting-row">
+        <span class="setting-label">Hide Far-Side Entities (90°)</span>
+        <div class="toggle ${g.enable90DegreeHide ? 'on' : ''}" id="toggle-90-degree-hide" data-setting="enable90DegreeHide"></div>
+      </div>
 
       <div class="section-heading">${t('settings.graphics.limits')}</div>
       <div class="setting-row">
@@ -1254,6 +1266,12 @@ export class SettingsMenu {
     // Surface opacity toggle
     this.attachToggle('toggle-surface-opaque', (on) => {
       this.graphicsSettings = { ...this.graphicsSettings, surfaceOpaque: on, qualityPreset: 'custom' };
+      this.saveAndNotifyGraphics();
+    });
+
+    // 90-degree hide toggle
+    this.attachToggle('toggle-90-degree-hide', (on) => {
+      this.graphicsSettings = { ...this.graphicsSettings, enable90DegreeHide: on, qualityPreset: 'custom' };
       this.saveAndNotifyGraphics();
     });
 

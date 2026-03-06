@@ -93,6 +93,8 @@ describe('GraphicsSettings', () => {
         trailEffects: false,
         maxEnemies: 250,
         resolutionScale: 0.75,
+        surfaceOpaque: false,
+        enable90DegreeHide: false,
       };
 
       saveGraphicsSettings(custom);
@@ -320,6 +322,8 @@ describe('Settings round-trip', () => {
       trailEffects: true,
       maxEnemies: 3000,
       resolutionScale: 0.9,
+      surfaceOpaque: false,
+      enable90DegreeHide: false,
     };
     saveGraphicsSettings(original);
     expect(loadGraphicsSettings()).toEqual(original);

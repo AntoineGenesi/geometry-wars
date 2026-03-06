@@ -14,6 +14,7 @@ import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { exportLogsToServer } from '../utils/PerformanceExporter';
 import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
 import { profiler } from './PerformanceProfiler';
+import { loadGraphicsSettings } from '../ui/SettingsMenu';
 
 /**
  * GameLoop — Fixed-timestep game update logic for the main game path.
@@ -55,6 +56,9 @@ export class GameLoop {
   // window.innerHeight during the 3-second countdown without firing a resize event).
   // Reset to false each countdown so the sync fires once per game start.
   private _cameraAspectSyncedForSession = false;
+  // Cached 90-degree hide setting — refreshed every 60 frames to avoid per-frame localStorage reads.
+  private _hide90DegreeEntities = false;
+  private _hide90DegreeFrameCounter = 0;
 
   /**
    * Wire in dependencies that are created in main.ts and can't be passed via GameContext
@@ -365,11 +369,17 @@ export class GameLoop {
     // instead of full-detail meshes (~200 tris), giving real triangle reduction.
     // Phase 1 culling: instanced enemies >90° from player's surface normal are hidden.
     profiler.begin('enemy_instance_update');
+    // Refresh 90-degree hide setting every 60 frames to avoid per-frame localStorage reads.
+    if (this._hide90DegreeFrameCounter++ >= 60) {
+      this._hide90DegreeFrameCounter = 0;
+      this._hide90DegreeEntities = loadGraphicsSettings().enable90DegreeHide ?? false;
+    }
     ctx.enemyInstanceManager.updateInstancesWithLOD(
       ctx.enemySpawner.getEnemies(),
       ctx.state.lodAssignments,
       ctx.game.camera,
       ctx.player.alive ? { position: ctx.playerWalker.position, normal: ctx.playerWalker.normal } : undefined,
+      this._hide90DegreeEntities,
     );
     profiler.end('enemy_instance_update');
     profiler.end('enemy_update');
