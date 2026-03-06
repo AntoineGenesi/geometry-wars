@@ -28,6 +28,25 @@ import {
 } from '../systems/UpgradeTreeData';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 
+// ── Synergy pairs ─────────────────────────────────────────────────────────────
+
+/**
+ * Maps a node ID to its contradictory partner's ID and the synergy description
+ * shown when BOTH nodes are unlocked simultaneously.
+ * Each pair is listed twice (A→B and B→A) for bidirectional lookup.
+ */
+const SYNERGY_PAIRS: Record<string, { partnerId: string; text: string }> = {
+  // Standard (Blaster): Quad burst (wide spread) + Quad lance (tight group)
+  'standard_a_3': {
+    partnerId: 'standard_b_3',
+    text: 'Synergy: 7 bolts — 3 tight + 4 wide spread',
+  },
+  'standard_b_3': {
+    partnerId: 'standard_a_3',
+    text: 'Synergy: 7 bolts — 3 tight + 4 wide spread',
+  },
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function hexColor(n: number): string {
@@ -514,6 +533,14 @@ function injectStyles(): void {
       color: #ff8855;
       margin-top: 6px;
       letter-spacing: 1px;
+    }
+    #wms-tooltip .wms-tt-synergy {
+      font-size: 0.8em;
+      color: #88ccff;
+      margin-top: 6px;
+      font-style: italic;
+      border-top: 1px solid rgba(136, 204, 255, 0.2);
+      padding-top: 5px;
     }
 
     /* ── Bottom hint ── */
@@ -1245,9 +1272,17 @@ export class WeaponMasteryScreen {
       costHtml = `<div class="wms-tt-cost">Need ${costStr} to unlock &nbsp;(have: ${havePoints})</div>`;
     }
 
+    // Check for synergy with a contradictory partner node
+    let synergyHtml = '';
+    const synergy = SYNERGY_PAIRS[nodeId];
+    if (synergy && ps.getNodePoints(synergy.partnerId) > 0) {
+      synergyHtml = `<div class="wms-tt-synergy">&#x2605; ${synergy.text}</div>`;
+    }
+
     this.tooltip.innerHTML = `
       <div class="wms-tt-name">${name}</div>
       <div class="wms-tt-effect">${effect}</div>
+      ${synergyHtml}
       ${costHtml}
     `;
     this.tooltip.classList.add('visible');
