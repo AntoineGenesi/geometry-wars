@@ -52,9 +52,10 @@ export function createSpawnIndicatorSprite(tint: THREE.Color = new THREE.Color(0
   const mat = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
-    opacity: 1.0,
+    opacity: 0.8,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
+    toneMapped: true,
   });
 
   const sprite = new THREE.Sprite(mat);
