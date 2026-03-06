@@ -271,6 +271,24 @@ export class DDASpawnModifier {
   getDDALevel(playerIndex: number): DDALevelValue {
     return this.engine.getDDALevel(playerIndex);
   }
+
+  /**
+   * Get the HP multiplier for enemies near a dominating player.
+   *
+   * When a player is performing very well, enemies get tougher HP to compensate.
+   * Returns 1.0 when performance is normal; up to 5.0 when fully dominating.
+   *
+   * @param playerIndex Player index (0-based).
+   * @param companionCount Active guardian/hunter companion count.
+   * @param isSmallMap Whether the current map is small (harder to escape → dominance boost).
+   */
+  getDominanceHpMultiplier(
+    playerIndex: number,
+    companionCount: number = 0,
+    isSmallMap: boolean = false,
+  ): number {
+    return this.engine.getDominanceHpMultiplier(playerIndex, companionCount, isSmallMap);
+  }
 }
 
 /**

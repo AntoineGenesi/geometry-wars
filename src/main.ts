@@ -1777,6 +1777,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     ddaSpawnModifier,
     ddaLogger,
     ddaPlayers,
+    mapSizeScaleFactor,
     persistentMasteryLevels,
     gameMode,
     waveScheduler,

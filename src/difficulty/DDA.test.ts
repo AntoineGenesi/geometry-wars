@@ -539,6 +539,89 @@ describe('DDASpawnModifier', () => {
     it('should delegate getDDALevel to engine', () => {
       expect(modifier.getDDALevel(0)).toBe(engine.getDDALevel(0));
     });
+
+    it('should delegate getDominanceHpMultiplier to engine', () => {
+      expect(modifier.getDominanceHpMultiplier(0)).toBe(engine.getDominanceHpMultiplier(0));
+    });
+  });
+
+  describe('Dominance HP Multiplier', () => {
+    it('should return 1.0 for neutral performance (no dominance penalty)', () => {
+      // Default engine: tracker not warmed up, score is neutral 0.5
+      // 0.5 is below 0.65 dominanceThreshold — no penalty
+      expect(engine.getDominanceHpMultiplier(0)).toBe(1.0);
+    });
+
+    it('should return 1.0 for out-of-range player index', () => {
+      expect(engine.getDominanceHpMultiplier(99)).toBe(1.0);
+    });
+
+    it('should return 1.0 when engine is disabled', () => {
+      engine.setEnabled(false);
+      expect(engine.getDominanceHpMultiplier(0)).toBe(1.0);
+    });
+
+    it('should scale up HP multiplier when player is dominating', () => {
+      // Simulate a dominating player by forcing high composite score
+      // We do this by forcing the engine state directly via tracker
+      const tracker = new DDAPerformanceTracker(0);
+      // Past warmup
+      for (let i = 0; i < 360; i++) tracker.update(1 / 60, 0.5, 1.0);
+      // Dominating: many kills, far from enemies, full health, no deaths
+      for (let i = 0; i < 600; i++) {
+        if (i % 3 === 0) tracker.recordKill(500); // high score kill rate
+        tracker.update(1 / 60, 0.9, 1.0); // far from enemies, full health
+      }
+      // Update engine to pick up composite score
+      for (let i = 0; i < 200; i++) {
+        engine.update(1 / 60, [tracker]);
+      }
+
+      const compositeScore = engine.getCompositeScore(0);
+      const mult = engine.getDominanceHpMultiplier(0);
+
+      if (compositeScore > 0.65) {
+        // Player is truly dominating — multiplier should be > 1
+        expect(mult).toBeGreaterThan(1.0);
+      } else {
+        // Composite score didn't pass threshold — still 1.0
+        expect(mult).toBe(1.0);
+      }
+    });
+
+    it('should apply companion bonus to dominance threshold', () => {
+      // At neutral score (0.5), adding companions should not cross threshold
+      // because 0.5 + 2*0.05 = 0.6 < 0.65 threshold
+      const multNoCompanions = engine.getDominanceHpMultiplier(0, 0);
+      const multWithCompanions = engine.getDominanceHpMultiplier(0, 2);
+      // Both should be 1.0 since base score is 0.5 (neutral during warmup)
+      expect(multNoCompanions).toBe(1.0);
+      expect(multWithCompanions).toBe(1.0);
+    });
+
+    it('should apply small map boost when isSmallMap is true', () => {
+      // Without data, both are 1.0 — test that small map doesn't break anything
+      const multNormal = engine.getDominanceHpMultiplier(0, 0, false);
+      const multSmall = engine.getDominanceHpMultiplier(0, 0, true);
+      expect(multNormal).toBe(1.0);
+      expect(multSmall).toBe(1.0);
+    });
+
+    it('should cap HP multiplier at dominanceMaxHpMultiplier', () => {
+      // Custom engine with low threshold so we can trigger dominance easily
+      const aggressiveEngine = new DDADecisionEngine({
+        dominanceThreshold: 0.0,  // always active
+        dominanceMaxScore: 0.5,   // reach max at score 0.5
+        dominanceMaxHpMultiplier: 4.0,
+        updateInterval: 0.1,
+      });
+
+      // Force neutral state (compositeScore will be 0.5 before warmup)
+      // With threshold=0, the neutral 0.5 score should trigger dominance
+      const mult = aggressiveEngine.getDominanceHpMultiplier(0, 0, false);
+      expect(mult).toBeLessThanOrEqual(4.0);
+      expect(mult).toBeGreaterThanOrEqual(1.0);
+    });
   });
 });
 

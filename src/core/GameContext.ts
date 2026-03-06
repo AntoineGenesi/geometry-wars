@@ -129,6 +129,8 @@ export interface GameContext {
   ddaSpawnModifier: DDASpawnModifier;
   ddaLogger: DDALogger;
   ddaPlayers: Array<{ index: number; u: number; v: number }>;
+  /** Map size scale factor (<1 = small map, 1 = medium, >1 = large). Used for dominance scaling. */
+  mapSizeScaleFactor: number;
 
   // Game mode
   gameMode: GameMode;
