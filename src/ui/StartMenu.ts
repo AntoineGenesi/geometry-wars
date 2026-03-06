@@ -1222,28 +1222,13 @@ export class StartMenu {
         text-align: center;
       }
       #start-menu .lan-lobby-list {
-        max-height: 180px;
-        overflow-y: auto;
         margin: 0 0 10px;
-        scrollbar-width: thin;
-        scrollbar-color: #006666 rgba(0,40,40,0.3);
-      }
-      #start-menu .lan-lobby-list::-webkit-scrollbar {
-        width: 6px;
-      }
-      #start-menu .lan-lobby-list::-webkit-scrollbar-track {
-        background: rgba(0,40,40,0.3);
-      }
-      #start-menu .lan-lobby-list::-webkit-scrollbar-thumb {
-        background: #006666;
-        border-radius: 3px;
       }
       #start-menu .lan-lobby-entry {
         background: rgba(0, 60, 60, 0.35);
         border: 1px solid #005555;
         padding: 12px 14px;
         margin: 0 0 8px;
-        min-height: 50px;
         cursor: pointer;
         transition: all 0.2s;
         display: flex;
