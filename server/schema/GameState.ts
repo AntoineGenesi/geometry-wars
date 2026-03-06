@@ -426,6 +426,8 @@ export class GameState extends Schema {
   declare friendlyFire: boolean;
   /** Win condition for PvP modes: 'kills' | 'survival' | 'score' (default 'kills'). */
   declare pvpWinCondition: string;
+  /** Kill count required to win when pvpWinCondition is 'kills' (1–50, default 10). */
+  declare pvpKillLimit: number;
   /** Weapon all players start with (default 'standard'). */
   declare startingWeapon: string;
   /** Match time limit in seconds. 0 = unlimited (default 0). */
@@ -477,6 +479,7 @@ export class GameState extends Schema {
     this.healingAmount = 25;
     this.friendlyFire = false;
     this.pvpWinCondition = 'kills';
+    this.pvpKillLimit = 10;
     this.startingWeapon = 'standard';
     this.timeLimit = 0;
     this.hasPendingSettings = false;
@@ -518,6 +521,7 @@ defineTypes(GameState, {
   healingAmount: 'number',
   friendlyFire: 'boolean',
   pvpWinCondition: 'string',
+  pvpKillLimit: 'number',
   startingWeapon: 'string',
   timeLimit: 'number',
   hasPendingSettings: 'boolean',

@@ -180,6 +180,7 @@ export interface NetworkGameState {
   healingAmount?: number;
   friendlyFire?: boolean;
   pvpWinCondition?: string;
+  pvpKillLimit?: number;
   startingWeapon?: string;
   timeLimit?: number;
   /** True when the host has queued settings to apply at the next wave boundary. */
@@ -699,6 +700,7 @@ export class NetworkClient {
       healingAmount?: number;
       friendlyFire?: boolean;
       pvpWinCondition?: string;
+      pvpKillLimit?: number;
       startingWeapon?: string;
       timeLimit?: number;
       hasPendingSettings?: boolean;
@@ -749,6 +751,7 @@ export class NetworkClient {
       healingAmount: s.healingAmount,
       friendlyFire: s.friendlyFire,
       pvpWinCondition: s.pvpWinCondition,
+      pvpKillLimit: s.pvpKillLimit,
       startingWeapon: s.startingWeapon,
       timeLimit: s.timeLimit,
       hasPendingSettings: s.hasPendingSettings ?? false,

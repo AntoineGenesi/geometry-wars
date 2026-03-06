@@ -2628,6 +2628,7 @@ async function main() {
         healingAmount: state.healingAmount ?? 25,
         friendlyFire: state.friendlyFire ?? false,
         pvpWinCondition: (state.pvpWinCondition ?? 'kills') as GameSettings['pvpWinCondition'],
+        pvpKillLimit: state.pvpKillLimit ?? 10,
         startingWeapon: (state.startingWeapon ?? 'standard') as GameSettings['startingWeapon'],
         timeLimit: state.timeLimit ?? 0,
         pvpEnabled: state.pvpEnabled ?? false,

@@ -301,6 +301,7 @@ export class GameSettingsPanel {
       ['kills', 'survival', 'score'] as PvpWinCondition[],
       (v) => v.toUpperCase(),
     ));
+    section.appendChild(this.buildSlider('pvpKillLimit', 'Kill Limit', 1, 50, 1, (v) => String(v)));
     return section;
   }
 
@@ -541,6 +542,7 @@ function formatSliderPreview(field: keyof GameSettings, value: number, _min: num
     case 'buffSpawnFrequency':  return `${value.toFixed(1)}x`;
     case 'enemyCountCap':       return String(value);
     case 'bulletCountCap':      return String(value);
+    case 'pvpKillLimit':        return String(value);
     default:                    return String(value);
   }
 }
