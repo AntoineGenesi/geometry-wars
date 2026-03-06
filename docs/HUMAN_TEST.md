@@ -1969,3 +1969,15 @@ Test with at least 2 players on the same LAN.
 - [ ] **Shoot the other player** — Fire at them; their health bar should decrease (previously broken!)
 - [ ] **Enemies also spawn** — Enemy waves continue to spawn alongside PvP combat
 - [ ] **Cooperative mode still possible** — In game settings, set `friendlyFire=false` to restore cooperative mode
+
+## S44L-20: Cube Tunnel Map — Shooting Direction + Hit Detection Fix
+
+**Root cause:** `MeshSurface.getTangentFrame` used Gram-Schmidt which set `bitangent` to a horizontal vector for cube tunnel walls → camera rotated 90° → aimed wrong direction.
+
+### Test: Cube Tunnel directional shooting
+- [ ] **Select Cube Tunnel map** — Start a SP game on the Cube Tunnel map
+- [ ] **Aim up** — Mouse/stick up should fire bullets upward (not sideways)
+- [ ] **Aim down** — Mouse/stick down should fire bullets downward (not sideways)  
+- [ ] **Aim all directions** — Can shoot freely in all 360° directions
+- [ ] **Bullets hit enemies** — Enemies at close range die when shot (not passing through)
+- [ ] **Works on all walls** — Move to another wall face; shooting directions still correct

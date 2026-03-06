@@ -191,6 +191,31 @@ describe('MeshSurface', () => {
         expect(Math.abs(frame.normal.dot(frame.tangent))).toBeLessThan(0.01);
       }
     });
+
+    // REGRESSION GUARD: Cube tunnel face normals must produce bitangent ≈ world-up.
+    // Old Gram-Schmidt code set tangent=(0,1,0) for horizontal normals, causing bitangent to be
+    // horizontal → 90° camera rotation → player could only shoot left/right, not up/down.
+    // Fix: use cross-product (tangent = ref × normal) so bitangent = normal × tangent ≈ (0,1,0).
+    it('should give bitangent ≈ world-up for cube tunnel face normals (horizontal normals)', () => {
+      const mesh = createSphere(8);
+      const surface = new MeshSurface(mesh);
+
+      // Cube tunnel outer wall normals: (0,0,1), (1,0,0), (0,0,-1), (-1,0,0)
+      const cubeFaceNormals = [
+        new THREE.Vector3(0, 0, 1),
+        new THREE.Vector3(1, 0, 0),
+        new THREE.Vector3(0, 0, -1),
+        new THREE.Vector3(-1, 0, 0),
+      ];
+
+      for (const normal of cubeFaceNormals) {
+        const frame = surface.getTangentFrame(normal);
+        // bitangent should be approximately (0,1,0) = world up
+        expect(frame.bitangent.y).toBeCloseTo(1, 3);
+        expect(Math.abs(frame.bitangent.x)).toBeLessThan(0.01);
+        expect(Math.abs(frame.bitangent.z)).toBeLessThan(0.01);
+      }
+    });
   });
 
   describe('getVisibility', () => {
