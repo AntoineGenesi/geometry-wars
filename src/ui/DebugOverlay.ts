@@ -407,11 +407,12 @@ export class DebugOverlay {
       return;
     }
 
-    // Sort by rolling avgMs descending, take top 8
-    const sorted = Array.from(this.rollingScopes.values())
+    // Sort by rolling avgMs descending, take top 10
+    const allScopes = Array.from(this.rollingScopes.values())
       .filter(rs => rs.avgMs > 0.01)
-      .sort((a, b) => b.avgMs - a.avgMs)
-      .slice(0, 8);
+      .sort((a, b) => b.avgMs - a.avgMs);
+
+    const sorted = allScopes.slice(0, 10);
 
     if (sorted.length === 0) {
       this.profilerContent.textContent = 'No data';
@@ -419,6 +420,7 @@ export class DebugOverlay {
     }
 
     let html = '<table class="debug-profiler-table">';
+    let topPctSum = 0;
     for (const rs of sorted) {
       const pct = rs.cpuPct.toFixed(1);
       const ms = rs.avgMs.toFixed(2);
@@ -431,7 +433,23 @@ export class DebugOverlay {
         `<td class="debug-pf-pct" style="color:${color}">${pct}%</td>` +
         `<td class="debug-pf-ms">${ms}ms</td>` +
         '</tr>';
+      topPctSum += rs.cpuPct;
     }
+
+    // Add "Other (X functions)" row if there are more scopes beyond top 10
+    const remainingScopes = allScopes.length - 10;
+    if (remainingScopes > 0) {
+      const otherPct = Math.max(0, 100 - topPctSum);
+      const otherColor = '#556677';
+      const otherLabel = `Other (${remainingScopes})`;
+      html += `<tr>` +
+        `<td class="debug-pf-name">${otherLabel}</td>` +
+        `<td class="debug-pf-bar"><div class="debug-pf-bar-fill" style="width:${otherPct.toFixed(1)}%;background:${otherColor}"></div></td>` +
+        `<td class="debug-pf-pct" style="color:${otherColor}">${otherPct.toFixed(1)}%</td>` +
+        `<td class="debug-pf-ms">–</td>` +
+        '</tr>';
+    }
+
     html += '</table>';
     this.profilerContent.innerHTML = html;
   }
