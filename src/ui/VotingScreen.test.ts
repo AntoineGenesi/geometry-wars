@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { SurfaceFactory } from '../surfaces/SurfaceFactory';
-import { SURFACES, MODES, VotingScreen, getUnavailableModesForSurface, CLAUSTROPHOBIA_SURFACES } from './VotingScreen';
+import { SURFACES, MODES, VotingScreen, getUnavailableModesForSurface, CLAUSTROPHOBIA_SURFACES, getUnavailableSizesForMode, CLAUSTROPHOBIA_ALLOWED_SIZES } from './VotingScreen';
 import type { NetworkGameState } from '../network/NetworkClient';
 
 describe('VotingScreen — SURFACES array', () => {
@@ -435,6 +435,199 @@ describe('VotingScreen — mode dimming UI (S44k-08)', () => {
 
     const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
     expect(clBtn.classList.contains('vs-mode-disabled')).toBe(true);
+
+    screen.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S44l-14: Epic size and Claustrophobia size restrictions
+// ---------------------------------------------------------------------------
+
+describe('getUnavailableSizesForMode()', () => {
+  it('returns empty set for waves (all sizes allowed)', () => {
+    const unavailable = getUnavailableSizesForMode('waves');
+    expect(unavailable.size).toBe(0);
+  });
+
+  it('returns empty set for king (all sizes allowed)', () => {
+    const unavailable = getUnavailableSizesForMode('king');
+    expect(unavailable.size).toBe(0);
+  });
+
+  it('returns empty set for pvp (all sizes allowed)', () => {
+    const unavailable = getUnavailableSizesForMode('pvp');
+    expect(unavailable.size).toBe(0);
+  });
+
+  it('claustrophobia blocks large size', () => {
+    const unavailable = getUnavailableSizesForMode('claustrophobia');
+    expect(unavailable.has('large')).toBe(true);
+  });
+
+  it('claustrophobia blocks epic size', () => {
+    const unavailable = getUnavailableSizesForMode('claustrophobia');
+    expect(unavailable.has('epic')).toBe(true);
+  });
+
+  it('claustrophobia allows small size', () => {
+    const unavailable = getUnavailableSizesForMode('claustrophobia');
+    expect(unavailable.has('small')).toBe(false);
+  });
+
+  it('claustrophobia allows medium size', () => {
+    const unavailable = getUnavailableSizesForMode('claustrophobia');
+    expect(unavailable.has('medium')).toBe(false);
+  });
+
+  it('CLAUSTROPHOBIA_ALLOWED_SIZES contains small and medium only', () => {
+    expect(CLAUSTROPHOBIA_ALLOWED_SIZES.has('small')).toBe(true);
+    expect(CLAUSTROPHOBIA_ALLOWED_SIZES.has('medium')).toBe(true);
+    expect(CLAUSTROPHOBIA_ALLOWED_SIZES.has('large')).toBe(false);
+    expect(CLAUSTROPHOBIA_ALLOWED_SIZES.has('epic')).toBe(false);
+  });
+});
+
+describe('VotingScreen — epic size and Claustrophobia size dimming (S44l-14)', () => {
+  function makeFakeState(overrides: Partial<NetworkGameState> = {}): NetworkGameState {
+    return {
+      players: new Map(),
+      bullets: { forEach() {} } as never,
+      enemies: { forEach() {} } as never,
+      geoms: { forEach() {} } as never,
+      weaponPickups: { forEach() {} } as never,
+      superPickups: { forEach() {} } as never,
+      buffPickups: { forEach() {} } as never,
+      healthPickups: { forEach() {} } as never,
+      surfaceType: 'sphere',
+      waveNumber: 0,
+      gameTime: 0,
+      gameStarted: false,
+      gameOver: true,
+      hostId: 'player1',
+      isPaused: false,
+      roomPhase: 'voting',
+      voteMap: new Map(),
+      votingCountdown: 30,
+      hostPickMode: false,
+      gameMode: 'waves',
+      mapSize: 'medium',
+      readyMap: new Map(),
+      countdownPaused: false,
+      ...overrides,
+    };
+  }
+
+  it('epic size button appears in the DOM', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState(), false, 'player1');
+
+    const epicBtn = document.querySelector('[data-id="epic"]') as HTMLElement;
+    expect(epicBtn).not.toBeNull();
+
+    screen.dispose();
+  });
+
+  it('large size button is NOT disabled in waves mode', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ gameMode: 'waves' }), false, 'player1');
+
+    const largeBtn = document.querySelector('[data-id="large"]') as HTMLElement;
+    expect(largeBtn).not.toBeNull();
+    expect(largeBtn.classList.contains('vs-mode-disabled')).toBe(false);
+
+    screen.dispose();
+  });
+
+  it('epic size button is NOT disabled in waves mode', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ gameMode: 'waves' }), false, 'player1');
+
+    const epicBtn = document.querySelector('[data-id="epic"]') as HTMLElement;
+    expect(epicBtn).not.toBeNull();
+    expect(epicBtn.classList.contains('vs-mode-disabled')).toBe(false);
+
+    screen.dispose();
+  });
+
+  it('large size button IS disabled when claustrophobia mode is selected', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere', gameMode: 'waves' }), false, 'player1');
+
+    // Select claustrophobia mode (available on sphere)
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    clBtn?.click();
+
+    const largeBtn = document.querySelector('[data-id="large"]') as HTMLElement;
+    expect(largeBtn.classList.contains('vs-mode-disabled')).toBe(true);
+
+    screen.dispose();
+  });
+
+  it('epic size button IS disabled when claustrophobia mode is selected', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere', gameMode: 'waves' }), false, 'player1');
+
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    clBtn?.click();
+
+    const epicBtn = document.querySelector('[data-id="epic"]') as HTMLElement;
+    expect(epicBtn).not.toBeNull();
+    expect(epicBtn.classList.contains('vs-mode-disabled')).toBe(true);
+
+    screen.dispose();
+  });
+
+  it('auto-switches from epic to medium when claustrophobia mode selected', () => {
+    const screen = new VotingScreen();
+    // Start with epic size pre-selected
+    screen.show(makeFakeState({ surfaceType: 'sphere', mapSize: 'epic' }), false, 'player1');
+
+    // Select claustrophobia (should auto-switch size to medium)
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    clBtn?.click();
+
+    // Medium should now be selected
+    const mediumBtn = document.querySelector('[data-id="medium"]') as HTMLElement;
+    expect(mediumBtn.classList.contains('vs-selected')).toBe(true);
+    // Epic should NOT be selected
+    const epicBtn = document.querySelector('[data-id="epic"]') as HTMLElement;
+    expect(epicBtn.classList.contains('vs-selected')).toBe(false);
+
+    screen.dispose();
+  });
+
+  it('size buttons re-enabled when switching back from claustrophobia to waves', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    // Select claustrophobia
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    clBtn?.click();
+
+    // Switch back to waves
+    const wavesBtn = document.querySelector('[data-id="waves"]') as HTMLElement;
+    wavesBtn?.click();
+
+    const largeBtn = document.querySelector('[data-id="large"]') as HTMLElement;
+    expect(largeBtn.classList.contains('vs-mode-disabled')).toBe(false);
+
+    screen.dispose();
+  });
+
+  it('update() applies size dimming based on current selectedMode', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    // Click claustrophobia to set selectedMode internally
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    clBtn?.click();
+
+    // Call update() — should maintain size dimming
+    screen.update(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    const largeBtn = document.querySelector('[data-id="large"]') as HTMLElement;
+    expect(largeBtn.classList.contains('vs-mode-disabled')).toBe(true);
 
     screen.dispose();
   });

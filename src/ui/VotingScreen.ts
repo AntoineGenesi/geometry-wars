@@ -81,7 +81,22 @@ const SIZES = [
   { id: 'small',  label: 'SMALL' },
   { id: 'medium', label: 'MEDIUM' },
   { id: 'large',  label: 'LARGE' },
+  { id: 'epic',   label: 'EPIC' },
 ];
+
+/** Sizes allowed in Claustrophobia mode (small/enclosed feel only). */
+export const CLAUSTROPHOBIA_ALLOWED_SIZES = new Set(['small', 'medium']);
+
+/**
+ * Returns the set of size IDs that are NOT available for the given mode.
+ * Currently: Claustrophobia blocks large/epic (defeats the enclosed feel).
+ */
+export function getUnavailableSizesForMode(modeId: string): Set<string> {
+  if (modeId === 'claustrophobia') {
+    return new Set(SIZES.map(s => s.id).filter(id => !CLAUSTROPHOBIA_ALLOWED_SIZES.has(id)));
+  }
+  return new Set();
+}
 
 export class VotingScreen {
   private container: HTMLDivElement;
@@ -229,6 +244,8 @@ export class VotingScreen {
       el.textContent = String(sizeVotes.get(id) ?? 0);
       el.style.visibility = state.hostPickMode ? 'hidden' : 'visible';
     });
+    // Dim size buttons that are unavailable for the currently selected mode
+    this.applySizeDimming(this.selectedMode);
 
     // Countdown: hide when countdown <= 0 or in host pick mode
     if (this.countdownArea && this.countdownEl && this.countdownPausedEl) {
@@ -358,6 +375,13 @@ export class VotingScreen {
           card.style.pointerEvents = restricted ? 'none' : '';
           (card as HTMLElement).title = restricted ? 'Not available in Claustrophobia mode' : '';
         });
+        // Auto-switch size if it's no longer valid for the new mode
+        const unavailableSizes = getUnavailableSizesForMode(id);
+        if (unavailableSizes.has(this.selectedSize)) {
+          this.selectedSize = 'medium';
+          this.sizeButtons.forEach((btn, bid) => btn.classList.toggle('vs-selected', bid === this.selectedSize));
+        }
+        this.applySizeDimming(id);
         this.sendVote();
       },
       this.modeButtons, this.modeCounts
@@ -493,6 +517,8 @@ export class VotingScreen {
 
     // Apply initial mode dimming based on pre-selected surface
     this.applyModeDimming(this.selectedSurface);
+    // Apply initial size dimming based on pre-selected mode
+    this.applySizeDimming(this.selectedMode);
   }
 
   private buildOptionRow(
@@ -536,6 +562,17 @@ export class VotingScreen {
       btn.classList.toggle('vs-mode-disabled', isUnavailable);
       btn.style.pointerEvents = isUnavailable ? 'none' : '';
       (btn as HTMLElement).title = isUnavailable ? 'Not available on this map' : '';
+    });
+  }
+
+  /** Apply or remove the disabled style on size buttons based on mode compatibility. */
+  private applySizeDimming(modeId: string): void {
+    const unavailable = getUnavailableSizesForMode(modeId);
+    this.sizeButtons.forEach((btn, id) => {
+      const isUnavailable = unavailable.has(id);
+      btn.classList.toggle('vs-mode-disabled', isUnavailable);
+      btn.style.pointerEvents = isUnavailable ? 'none' : '';
+      (btn as HTMLElement).title = isUnavailable ? 'Not available in this mode' : '';
     });
   }
 
