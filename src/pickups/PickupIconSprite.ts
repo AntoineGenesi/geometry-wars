@@ -8,7 +8,7 @@ import { StackBuffType, BuffCategory } from '../buffs/BuffManager';
  * Weapon pickups: white icon on subtle diamond background (category = diamond = weapon)
  * Buff pickups:   colored icon on subtle circle background (category = circle = buff)
  *
- * Sprites use AdditiveBlending so they glow when bloom is active.
+ * Sprites use NormalBlending to prevent whiteout/overbloom when bloom is active.
  * They face the camera (THREE.Sprite) so they're readable from any angle.
  */
 
