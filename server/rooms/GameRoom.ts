@@ -4384,8 +4384,12 @@ export class GameRoom extends Room<GameState> {
         this.transitionToVoting();
         return;
       }
-      // Last Standing / All Dead: count players still alive
-      // In PvPvE, player.alive = false means permanently eliminated (out of lives)
+      // All Dead: count players still alive.
+      // In PvPvE, player.alive = false means permanently eliminated (out of lives).
+      // NOTE: We do NOT end the game when "last player standing" — unlike pure PvP,
+      // PvPvE players have INDEPENDENT lives. When player A runs out of lives they
+      // become a spectator (alive=false), but player B continues with their own lives.
+      // Ending the game when one player dies would make lives appear "shared" (s44k-05).
       if (this.state.players.size > 0) {
         let aliveCount = 0;
         this.state.players.forEach(player => {
@@ -4393,11 +4397,6 @@ export class GameRoom extends Room<GameState> {
         });
         if (aliveCount === 0) {
           this.logger.log('[GameRoom] PvPvE: all players eliminated — match over');
-          this.transitionToVoting();
-          return;
-        }
-        if (aliveCount <= 1 && this.state.players.size > 1) {
-          this.logger.log('[GameRoom] PvPvE: last player standing — match over');
           this.transitionToVoting();
           return;
         }
