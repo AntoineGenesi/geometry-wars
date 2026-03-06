@@ -898,22 +898,23 @@ export class BuffManager {
 
   /**
    * Roll for a buff drop when an enemy is killed.
+   * @param multiplier - Drop rate multiplier from difficulty tapering (default 1.0 = full rate)
    * Returns the StackBuffType to drop, or null if no drop.
    */
-  static rollBuffDrop(): StackBuffType | null {
+  static rollBuffDrop(multiplier: number = 1.0): StackBuffType | null {
     // Roll for each rarity tier — mastery buffs are excluded (awarded by WeaponMasteryManager only)
     const allBuffs = Object.values(BUFF_DEFINITIONS)
       .filter(b => !b.type.startsWith('mastery_'));
 
     // Uncommon check first (lower chance, better buffs)
     const uncommonBuffs = allBuffs.filter(b => b.rarity === 'uncommon');
-    if (Math.random() < DROP_RATES.uncommon && uncommonBuffs.length > 0) {
+    if (Math.random() < DROP_RATES.uncommon * multiplier && uncommonBuffs.length > 0) {
       return uncommonBuffs[Math.floor(Math.random() * uncommonBuffs.length)].type;
     }
 
     // Common check
     const commonBuffs = allBuffs.filter(b => b.rarity === 'common');
-    if (Math.random() < DROP_RATES.common && commonBuffs.length > 0) {
+    if (Math.random() < DROP_RATES.common * multiplier && commonBuffs.length > 0) {
       return commonBuffs[Math.floor(Math.random() * commonBuffs.length)].type;
     }
 

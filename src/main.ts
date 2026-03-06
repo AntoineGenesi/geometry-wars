@@ -1867,6 +1867,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     // Called every frame (cheap — single number assignment, no allocation).
     enemySpawner.setMaxActiveEnemies(getDynamicMaxEnemies(resolvedMapSize, waveScheduler.currentDifficultyLevel));
 
+    // Taper pickup drop rates with difficulty (cheap — difficulty only changes per wave).
+    pickupSpawner.setDifficultyLevel(waveScheduler.currentDifficultyLevel);
+
     // Publish window._gameState for Puppeteer / automated tests
     if (_stateExporter) _stateExporter.update();
 

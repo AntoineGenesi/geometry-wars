@@ -24,11 +24,19 @@ export class PickupSpawner {
     SuperStateType.Shield,
   ];
 
-  // Drop rates (configurable)
+  // Base drop rates — never modified, represent intended early-game feel
+  private readonly BASE_SUPER_STATE_RATE = 0.05;
+  private readonly BASE_WEAPON_RATE = 0.08;
+  private readonly BASE_OLD_BUFF_RATE = 0.05;
+  private readonly BASE_COMPANION_RATE = 0.05;
+
+  // Effective drop rates — scaled by difficulty via setDifficultyLevel()
   superStateDropRate = 0.05; // 5% chance
   weaponDropRate = 0.08; // 8% chance
   oldBuffDropRate = 0.05; // 5% (legacy weapon-buff system)
   companionDropRate = 0.05; // 5% chance
+
+  private _dropRateMultiplier = 1.0;
 
   private scene: THREE.Scene;
   private readonly mapSizeScaleFactor: number;
@@ -78,8 +86,8 @@ export class PickupSpawner {
       this.buffPickups.push(bPickup);
     }
 
-    // Roll for new stackable buff pickup drop
-    const droppedBuff = BuffManager.rollBuffDrop();
+    // Roll for new stackable buff pickup drop (rate tapered by difficulty)
+    const droppedBuff = BuffManager.rollBuffDrop(this._dropRateMultiplier);
     if (droppedBuff) {
       const nbPickup = new BuffPickupNew(droppedBuff, u, v, this.mapSizeScaleFactor);
       this.scene.add(nbPickup.mesh);
@@ -93,6 +101,28 @@ export class PickupSpawner {
       this.scene.add(cPickup.mesh);
       this.companionPickups.push(cPickup);
     }
+  }
+
+  /**
+   * Taper drop rates based on difficulty level. Call each wave (or every frame — cheap).
+   * - difficulty 0-4:  multiplier = 1.0 (full rates)
+   * - difficulty 4-8:  linear taper 1.0 → 0.5
+   * - difficulty 8-12: linear taper 0.5 → 0.25
+   * - difficulty 12+:  floor at 0.20
+   */
+  setDifficultyLevel(level: number): void {
+    this._dropRateMultiplier = this.computeDropMultiplier(level);
+    this.superStateDropRate = this.BASE_SUPER_STATE_RATE * this._dropRateMultiplier;
+    this.weaponDropRate = this.BASE_WEAPON_RATE * this._dropRateMultiplier;
+    this.oldBuffDropRate = this.BASE_OLD_BUFF_RATE * this._dropRateMultiplier;
+    this.companionDropRate = this.BASE_COMPANION_RATE * this._dropRateMultiplier;
+  }
+
+  private computeDropMultiplier(level: number): number {
+    if (level <= 4) return 1.0;
+    if (level <= 8) return 1.0 - (level - 4) / 4 * 0.5;  // 1.0 → 0.5
+    if (level <= 12) return 0.5 - (level - 8) / 4 * 0.25; // 0.5 → 0.25
+    return 0.20;
   }
 
   /**
