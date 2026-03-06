@@ -21,18 +21,18 @@
     "noScores": "Noch keine Punkte",
     "continueBtn": "WEITER",
     "returnToMenu": "ZURÜCK ZUM MENÜ",
-    "hintContinue": "EINGABE drücken oder klicken zum Fortfahren",
-    "hintVote": "EINGABE für Abstimmung · ZURÜCK ZUM MENÜ zum Trennen",
+    "hintContinue": "Drücke ENTER oder klicke zum Fortfahren",
+    "hintVote": "Drücke ENTER zum Abstimmen · klicke ZURÜCK ZUM MENÜ zum Trennen",
     "votingCountdown": "Abstimmungsbildschirm in {{count}}s…",
-    "recordScore": "DEIN ERGEBNIS SPEICHERN",
-    "recordScoreBtn": "SPEICHERN",
+    "recordScore": "PUNKTE EINTRAGEN",
+    "recordScoreBtn": "EINTRAGEN",
     "namePlaceholder": "Spieler",
     "nameLabelField": "NAME",
     "noteLabelField": "NOTIZ",
     "noteOptional": "(optional)",
-    "notePlaceholder": "z.B. erster Versuch, volle Kombo...",
-    "nameHint": "EINGABE für Notiz · EINGABE zum Absenden",
-    "autoSubmitting": "Automatisch in {{count}}s absenden…"
+    "notePlaceholder": "z.B. erster Versuch, volles Kombo...",
+    "nameHint": "ENTER für Notiz · nochmal ENTER zum Absenden",
+    "autoSubmitting": "Automatisches Senden in {{count}}s…"
   },
   "levelComplete": {
     "title": "ABGESCHLOSSEN",
@@ -50,11 +50,11 @@
     "auto": "AUTO",
     "pressKey": "TASTE DRÜCKEN...",
     "conflicts": "Konflikte: {{list}}",
-    "resetDefaults": "STANDARD WIEDERHERSTELLEN",
+    "resetDefaults": "ZURÜCKSETZEN",
     "done": "FERTIG",
     "actions": {
-      "up": "OBEN",
-      "down": "UNTEN",
+      "up": "HOCH",
+      "down": "RUNTER",
       "left": "LINKS",
       "right": "RECHTS",
       "shoot": "SCHIESSEN",
@@ -77,22 +77,15 @@
       "capsule": "KAPSEL",
       "icosahedron": "IKOSAEDER",
       "peanut": "ERDNUSS",
-      "cubeTunnel": "WÜRFELTUNNEL"
+      "cubeTunnel": "WÜRFEL-TUNNEL"
     },
     "modes": {
-      "waves": "WELLEN",
-      "king": "KÖNIG",
-      "sniper": "SCHARFSCHÜTZE",
-      "rainbow": "REGENBOGEN",
-      "claustrophobia": "KLAUSTROPHOBIE",
-      "pvp": "PvP",
-      "pvpve": "PvPvE"
+      "waves": "WELLEN"
     },
     "sizes": {
       "small": "KLEIN",
       "medium": "MITTEL",
-      "large": "GROSS",
-      "epic": "EPISCH"
+      "large": "GROSS"
     }
   },
   "menu": {
@@ -109,49 +102,6 @@
       "sphereTunnel": "Kugeltunnel",
       "cubeRing": "Würfelring",
       "cubeTunnel": "Würfeltunnel"
-    },
-    "buttons": {
-      "adventure": "ABENTEUER",
-      "quickGame": "SCHNELLES SPIEL",
-      "lan": "LAN",
-      "online": "ONLINE",
-      "back": "ZURÜCK",
-      "start": "STARTEN",
-      "hostGame": "SPIEL HOSTEN",
-      "startHosting": "HOSTING STARTEN",
-      "enterGame": "SPIEL BETRETEN",
-      "stopServer": "SERVER STOPPEN",
-      "refresh": "AKTUALISIEREN",
-      "connect": "VERBINDEN",
-      "join": "BEITRETEN",
-      "loadCustom": "LADEN",
-      "weaponMastery": "WAFFEN-MEISTERSCHAFT",
-      "weaponDatabase": "WAFFEN-DATENBANK",
-      "visualStyles": "VISUELLE STILE"
-    },
-    "headings": {
-      "adventureLevels": "ABENTEUERLEVEL",
-      "lanGame": "LAN-SPIEL",
-      "selectMap": "KARTE WÄHLEN",
-      "mapSize": "KARTENGRÖSSE",
-      "availableGames": "VERFÜGBARE SPIELE",
-      "manualConnect": "MANUELL VERBINDEN",
-      "selectGameMode": "SPIELMODUS WÄHLEN",
-      "selectSurface": "OBERFLÄCHE WÄHLEN",
-      "enterYourName": "NAME EINGEBEN"
-    },
-    "misc": {
-      "scanningForGames": "Suche nach Spielen...",
-      "startingServer": "Server wird gestartet...",
-      "loadingMesh": "Modell wird geladen...",
-      "controlsHint": "WASD - Bewegen | Maus - Zielen | Klick - Schießen | Leertaste - Bombe | M - Stumm",
-      "autoRefreshOn": "AUTO-AKTUALISIERUNG: AN",
-      "autoRefreshOff": "AUTO-AKTUALISIERUNG: AUS",
-      "idleShutdownDelay": "Automatische Abschaltung",
-      "idleShutdownSec": "Sek",
-      "idleShutdownHint": "Server schließt wenn alle Spieler gehen (0 = nie)",
-      "hostIpPlaceholder": "Host-IP (z.B. 192.168.1.15)",
-      "namePlaceholder": "Name eingeben..."
     }
   },
   "languages": {
@@ -160,8 +110,7 @@
     "es": "Español",
     "fr": "Français",
     "de": "Deutsch",
-    "ru": "Русский",
-    "ar": "العربية"
+    "ru": "Русский"
   },
   "pauseMenu": {
     "title": "PAUSE",
@@ -169,15 +118,15 @@
     "controls": "STEUERUNG",
     "weapons": "WAFFEN",
     "settings": "EINSTELLUNGEN",
-    "stylePixelated": "STIL: PIXELIERT",
+    "stylePixelated": "STIL: PIXELIG",
     "styleModern": "STIL: MODERN",
     "performanceGraphs": "LEISTUNGSGRAPHEN",
     "music": "MUSIK: {{name}}",
-    "exitToMenu": "ZUM MENÜ BEENDEN",
+    "exitToMenu": "BEENDEN ZUM MENÜ",
     "exitToVoting": "ZUM ABSTIMMUNGSBILDSCHIRM",
     "endGameForAll": "SPIEL FÜR ALLE BEENDEN",
     "stopServer": "SERVER STOPPEN",
-    "hint": "ESC zum Fortsetzen | M zum Stummen | N für nächste Musik",
+    "hint": "ESC drücken zum Fortsetzen | M für Stummschaltung | N für nächste Musik",
     "stats": {
       "joinThisGame": "DIESEM SPIEL BEITRETEN",
       "playerLevel": "SPIELERLEVEL",
@@ -185,8 +134,8 @@
       "cumulativeBonuses": "KUMULATIVE BONI",
       "weapon": "WAFFE",
       "totalKills": "GESAMTABSCHÜSSE",
-      "activeBuffs": "AKTIVE VERBESSERUNGEN",
-      "noActiveBuffs": "Keine aktiven Verbesserungen",
+      "activeBuffs": "AKTIVE BUFFS",
+      "noActiveBuffs": "Keine aktiven Buffs",
       "performance": "LEISTUNG"
     }
   },
@@ -194,7 +143,7 @@
     "title": "EINSTELLUNGEN",
     "done": "FERTIG",
     "tabs": {
-      "gpuInfo": "GPU INFO",
+      "gpuInfo": "GPU-INFO",
       "graphics": "GRAFIK",
       "performance": "LEISTUNG",
       "audio": "AUDIO",
@@ -206,16 +155,16 @@
       "features": "FUNKTIONEN",
       "benchmark": "BENCHMARK",
       "activeRenderer": "Aktiver Renderer",
-      "gpuRenderer": "GPU Renderer",
-      "gpuVendor": "GPU Hersteller",
-      "webgpuAdapter": "WebGPU Adapter",
+      "gpuRenderer": "GPU-Renderer",
+      "gpuVendor": "GPU-Hersteller",
+      "webgpuAdapter": "WebGPU-Adapter",
       "detectedTier": "Erkannte Stufe",
       "maxTextureSize": "Max. Texturgröße",
       "webgpu": "WebGPU",
       "webgl2": "WebGL2",
       "sharedArrayBuffer": "SharedArrayBuffer",
       "cpuCores": "CPU-Kerne",
-      "runBenchmark": "GPU BENCHMARK STARTEN",
+      "runBenchmark": "GPU-BENCHMARK STARTEN",
       "running": "LÄUFT...",
       "runFullBenchmark": "VOLLSTÄNDIGEN SPIEL-BENCHMARK STARTEN",
       "benchmarkTier": "Benchmark-Stufe: {{tier}}",
@@ -224,31 +173,31 @@
     },
     "graphics": {
       "visualStyle": "VISUELLER STIL",
-      "qualityPreset": "QUALITÄTS-PRESET",
+      "qualityPreset": "QUALITÄTSVOREINSTELLUNG",
       "visualEffects": "VISUELLE EFFEKTE",
       "limits": "LIMITS",
-      "preset": "Preset",
+      "preset": "Voreinstellung",
       "bloom": "Bloom",
       "bloomStrength": "Bloom-Stärke",
       "particles": "Partikel",
-      "trailEffects": "Spur-Effekte",
-      "surfaceOpacity": "Oberflächen-Transparenz",
+      "trailEffects": "Spureffekte",
+      "surfaceOpacity": "Oberflächenopazität",
       "maxEnemies": "Max. Feinde",
       "resolutionScale": "Auflösungsskalierung",
-      "resetToDefault": "STANDARD WIEDERHERSTELLEN",
-      "bloomHint": "Gute Startwerte — Modern: 1.0 | Pixeliert: 0.4"
+      "resetToDefault": "ZURÜCKSETZEN",
+      "bloomHint": "Gute Startwerte — Modern: 1.0 | Pixelig: 0.4"
     },
     "performance": {
       "liveStats": "LIVE-STATISTIKEN",
       "adaptiveQuality": "ADAPTIVE QUALITÄT",
       "debug": "DEBUG",
       "fps": "FPS",
-      "drawCalls": "ZEICHENAUFRUFE",
+      "drawCalls": "DRAW CALLS",
       "entities": "ENTITÄTEN",
       "memoryMB": "SPEICHER (MB)",
       "autoAdjustQuality": "Qualität automatisch anpassen",
       "debugStatistics": "Debug-Statistiken",
-      "debugHint": "Zeigt FPS, Entitätenanzahl und Leistungsüberlagerung. Tastenkürzel: F4."
+      "debugHint": "Zeigt FPS, Entitätenanzahl und Leistungsoverlay. Tastenkürzel: F4."
     },
     "audio": {
       "volume": "LAUTSTÄRKE",
@@ -256,7 +205,7 @@
       "master": "Gesamt",
       "sfx": "Soundeffekte",
       "music": "Musik",
-      "preset": "Preset",
+      "preset": "Voreinstellung",
       "presets": {
         "electronic": "Elektronisch",
         "ambient": "Ambient",
@@ -267,7 +216,7 @@
     "gameplay": {
       "difficulty": "SCHWIERIGKEIT",
       "dynamicDifficulty": "Dynamische Schwierigkeit",
-      "ddaHint": "Passt die Feindkomposition für schwächelnde Spieler subtil an. Automatisch deaktiviert auf Albtraum-Schwierigkeit."
+      "ddaHint": "Passt die Feindkomposition für Spieler mit Schwierigkeiten subtil an. Wird bei Albtraum-Schwierigkeit automatisch deaktiviert."
     }
   },
   "hud": {
@@ -275,7 +224,7 @@
     "mastered": "GEMEISTERT",
     "killLog": {
       "streak": "SERIE",
-      "rampage": "RAMPAGE",
+      "rampage": "MASSAKER",
       "unstoppable": "UNAUFHALTBAR"
     }
   },
@@ -283,8 +232,8 @@
     "title": "WAFFENMEISTERSCHAFT",
     "subtitle": "FORTSCHRITTSUPDATE",
     "continueBtn": "WEITER",
-    "continueHint": "EINGABE / LEERTASTE / KLICK",
-    "newPassiveUnlocked": "Passiver Bonus freigeschaltet!",
+    "continueHint": "ENTER / LEERTASTE / KLICK",
+    "newPassiveUnlocked": "Passiver Bonus erhalten!",
     "levelBadge": "Lv.{{level}}"
   }
 }

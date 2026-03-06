@@ -3,11 +3,11 @@
     "continue": "CONTINUAR",
     "menu": "MENÚ",
     "cancel": "CANCELAR",
-    "ok": "OK",
+    "ok": "ACEPTAR",
     "done": "HECHO",
     "loading": "CARGANDO...",
     "resume": "REANUDAR",
-    "settings": "AJUSTES",
+    "settings": "CONFIGURACIÓN",
     "controls": "CONTROLES",
     "score": "PUNTUACIÓN",
     "available": "Disponible",
@@ -16,13 +16,13 @@
   "gameOver": {
     "title": "FIN DEL JUEGO",
     "scoreLabel": "PUNTUACIÓN",
-    "newHighScore": "¡NUEVA PUNTUACIÓN MÁXIMA!",
-    "highScores": "PUNTUACIONES MÁXIMAS",
-    "noScores": "Sin puntuaciones aún",
+    "newHighScore": "¡NUEVO RÉCORD!",
+    "highScores": "RÉCORDS",
+    "noScores": "Sin puntuaciones",
     "continueBtn": "CONTINUAR",
     "returnToMenu": "VOLVER AL MENÚ",
-    "hintContinue": "Presiona INTRO o haz clic para continuar",
-    "hintVote": "Presiona INTRO para votar · haz clic en VOLVER AL MENÚ para desconectarte",
+    "hintContinue": "Pulsa ENTER o haz clic para continuar",
+    "hintVote": "Pulsa ENTER para votar · haz clic en VOLVER AL MENÚ para desconectarte",
     "votingCountdown": "Pantalla de votación en {{count}}s…",
     "recordScore": "REGISTRA TU PUNTUACIÓN",
     "recordScoreBtn": "REGISTRAR",
@@ -30,14 +30,14 @@
     "nameLabelField": "NOMBRE",
     "noteLabelField": "NOTA",
     "noteOptional": "(opcional)",
-    "notePlaceholder": "p.ej. primer intento, combo completo...",
-    "nameHint": "INTRO para ir a la nota · INTRO de nuevo para enviar",
+    "notePlaceholder": "ej. primer intento, combo completo...",
+    "nameHint": "ENTER para pasar a la nota · ENTER de nuevo para enviar",
     "autoSubmitting": "Enviando automáticamente en {{count}}s…"
   },
   "levelComplete": {
     "title": "COMPLETADO",
-    "nextStarAt": "Próxima estrella a {{score}}",
-    "maxStars": "¡Estrellas máximas obtenidas!",
+    "nextStarAt": "Próxima estrella en {{score}}",
+    "maxStars": "¡Máximo de estrellas conseguido!",
     "nextLevel": "SIGUIENTE NIVEL",
     "replay": "REPETIR",
     "menu": "MENÚ"
@@ -48,7 +48,7 @@
     "aim": "APUNTAR",
     "mouse": "RATÓN",
     "auto": "AUTO",
-    "pressKey": "PRESIONA UNA TECLA...",
+    "pressKey": "PULSA TECLA...",
     "conflicts": "Conflictos: {{list}}",
     "resetDefaults": "RESTABLECER",
     "done": "HECHO",
@@ -66,7 +66,7 @@
     "mode": "MODO:",
     "size": "TAMAÑO:",
     "voting": "VOTACIÓN",
-    "hostPicks": "EL ANFITRIÓN ELIGE",
+    "hostPicks": "ELIGE EL HOST",
     "launchNow": "INICIAR AHORA",
     "returnToMenu": "VOLVER AL MENÚ",
     "surfaces": {
@@ -77,22 +77,15 @@
       "capsule": "CÁPSULA",
       "icosahedron": "ICOSAEDRO",
       "peanut": "CACAHUETE",
-      "cubeTunnel": "TÚNEL CUBO"
+      "cubeTunnel": "TÚNEL-CUBO"
     },
     "modes": {
-      "waves": "OLEADAS",
-      "king": "REY",
-      "sniper": "FRANCOTIRADOR",
-      "rainbow": "ARCOÍRIS",
-      "claustrophobia": "CLAUSTROFOBIA",
-      "pvp": "PvP",
-      "pvpve": "PvPvE"
+      "waves": "OLEADAS"
     },
     "sizes": {
       "small": "PEQUEÑO",
       "medium": "MEDIANO",
-      "large": "GRANDE",
-      "epic": "ÉPICO"
+      "large": "GRANDE"
     }
   },
   "menu": {
@@ -107,51 +100,8 @@
       "icosahedron": "Icosaedro",
       "mobius": "Möbius",
       "sphereTunnel": "Túnel Esférico",
-      "cubeRing": "Anillo Cubo",
-      "cubeTunnel": "Túnel Cubo"
-    },
-    "buttons": {
-      "adventure": "AVENTURA",
-      "quickGame": "PARTIDA RÁPIDA",
-      "lan": "LAN",
-      "online": "EN LÍNEA",
-      "back": "VOLVER",
-      "start": "INICIAR",
-      "hostGame": "HOSPEDAR",
-      "startHosting": "INICIAR HOSPEDAJE",
-      "enterGame": "ENTRAR AL JUEGO",
-      "stopServer": "DETENER SERVIDOR",
-      "refresh": "ACTUALIZAR",
-      "connect": "CONECTAR",
-      "join": "UNIRSE",
-      "loadCustom": "CARGAR CUSTOM",
-      "weaponMastery": "MAESTRÍA DE ARMAS",
-      "weaponDatabase": "BASE DE DATOS",
-      "visualStyles": "ESTILOS VISUALES"
-    },
-    "headings": {
-      "adventureLevels": "NIVELES DE AVENTURA",
-      "lanGame": "JUEGO LAN",
-      "selectMap": "SELECCIONAR MAPA",
-      "mapSize": "TAMAÑO DE MAPA",
-      "availableGames": "PARTIDAS DISPONIBLES",
-      "manualConnect": "CONEXIÓN MANUAL",
-      "selectGameMode": "SELECCIONAR MODO",
-      "selectSurface": "SELECCIONAR SUPERFICIE",
-      "enterYourName": "INGRESA TU NOMBRE"
-    },
-    "misc": {
-      "scanningForGames": "Buscando partidas...",
-      "startingServer": "Iniciando servidor...",
-      "loadingMesh": "Cargando modelo...",
-      "controlsHint": "WASD - Mover | Ratón - Apuntar | Clic - Disparar | Espacio - Bomba | M - Silencio",
-      "autoRefreshOn": "ACTUALIZACIÓN AUTO: ON",
-      "autoRefreshOff": "ACTUALIZACIÓN AUTO: OFF",
-      "idleShutdownDelay": "Tiempo de cierre automático",
-      "idleShutdownSec": "seg",
-      "idleShutdownHint": "El servidor se cierra cuando todos los jugadores se van (0 = nunca)",
-      "hostIpPlaceholder": "IP del host (ej. 192.168.1.15)",
-      "namePlaceholder": "Introduce tu nombre..."
+      "cubeRing": "Anillo de Cubo",
+      "cubeTunnel": "Túnel de Cubo"
     }
   },
   "languages": {
@@ -160,53 +110,52 @@
     "es": "Español",
     "fr": "Français",
     "de": "Deutsch",
-    "ru": "Русский",
-    "ar": "العربية"
+    "ru": "Русский"
   },
   "pauseMenu": {
-    "title": "PAUSA",
+    "title": "PAUSADO",
     "resume": "REANUDAR",
     "controls": "CONTROLES",
     "weapons": "ARMAS",
-    "settings": "AJUSTES",
+    "settings": "CONFIGURACIÓN",
     "stylePixelated": "ESTILO: PIXELADO",
     "styleModern": "ESTILO: MODERNO",
     "performanceGraphs": "GRÁFICOS DE RENDIMIENTO",
     "music": "MÚSICA: {{name}}",
     "exitToMenu": "SALIR AL MENÚ",
-    "exitToVoting": "IR A PANTALLA DE VOTACIÓN",
-    "endGameForAll": "TERMINAR PARTIDA PARA TODOS",
+    "exitToVoting": "PANTALLA DE VOTACIÓN",
+    "endGameForAll": "TERMINAR PARA TODOS",
     "stopServer": "DETENER SERVIDOR",
-    "hint": "Presiona ESC para reanudar | M para silenciar | N para cambiar música",
+    "hint": "Pulsa ESC para reanudar | M para silenciar | N para cambiar música",
     "stats": {
       "joinThisGame": "UNIRSE A ESTA PARTIDA",
       "playerLevel": "NIVEL DEL JUGADOR",
       "companions": "COMPAÑEROS",
       "cumulativeBonuses": "BONIFICACIONES ACUMULADAS",
       "weapon": "ARMA",
-      "totalKills": "BAJAS TOTALES",
+      "totalKills": "ELIMINACIONES TOTALES",
       "activeBuffs": "MEJORAS ACTIVAS",
       "noActiveBuffs": "Sin mejoras activas",
       "performance": "RENDIMIENTO"
     }
   },
   "settings": {
-    "title": "AJUSTES",
+    "title": "CONFIGURACIÓN",
     "done": "HECHO",
     "tabs": {
       "gpuInfo": "INFO GPU",
       "graphics": "GRÁFICOS",
       "performance": "RENDIMIENTO",
       "audio": "AUDIO",
-      "gameplay": "JUEGO"
+      "gameplay": "JUGABILIDAD"
     },
     "gpu": {
-      "renderer": "MOTOR",
+      "renderer": "RENDERIZADOR",
       "hardware": "HARDWARE",
-      "features": "CARACTERÍSTICAS",
-      "benchmark": "PRUEBA DE RENDIMIENTO",
-      "activeRenderer": "Motor activo",
-      "gpuRenderer": "Motor GPU",
+      "features": "FUNCIONES",
+      "benchmark": "PRUEBA",
+      "activeRenderer": "Renderizador activo",
+      "gpuRenderer": "Renderizador GPU",
       "gpuVendor": "Fabricante GPU",
       "webgpuAdapter": "Adaptador WebGPU",
       "detectedTier": "Nivel detectado",
@@ -228,8 +177,8 @@
       "visualEffects": "EFECTOS VISUALES",
       "limits": "LÍMITES",
       "preset": "Preset",
-      "bloom": "Bloom",
-      "bloomStrength": "Intensidad de Bloom",
+      "bloom": "Resplandor",
+      "bloomStrength": "Intensidad del resplandor",
       "particles": "Partículas",
       "trailEffects": "Efectos de estela",
       "surfaceOpacity": "Opacidad de superficie",
@@ -248,20 +197,20 @@
       "memoryMB": "MEMORIA (MB)",
       "autoAdjustQuality": "Ajuste automático de calidad",
       "debugStatistics": "Estadísticas de depuración",
-      "debugHint": "Muestra FPS, recuento de entidades y superposición de rendimiento. Atajo: F4."
+      "debugHint": "Muestra FPS, contador de entidades y overlay de rendimiento. Atajo: F4."
     },
     "audio": {
       "volume": "VOLUMEN",
-      "musicStyle": "ESTILO DE MÚSICA",
+      "musicStyle": "ESTILO MUSICAL",
       "master": "General",
-      "sfx": "Efectos de sonido",
+      "sfx": "Efectos",
       "music": "Música",
       "preset": "Preset",
       "presets": {
-        "electronic": "Electrónico",
+        "electronic": "Electrónica",
         "ambient": "Ambiental",
         "synthwave": "Synthwave",
-        "minimal": "Minimal"
+        "minimal": "Minimalista"
       }
     },
     "gameplay": {
@@ -271,11 +220,11 @@
     }
   },
   "hud": {
-    "kills": "BAJAS",
+    "kills": "ELIMINACIONES",
     "mastered": "DOMINADO",
     "killLog": {
       "streak": "RACHA",
-      "rampage": "DESTROZO",
+      "rampage": "MASACRE",
       "unstoppable": "IMPARABLE"
     }
   },
@@ -283,8 +232,8 @@
     "title": "MAESTRÍA DE ARMAS",
     "subtitle": "ACTUALIZACIÓN DE PROGRESO",
     "continueBtn": "CONTINUAR",
-    "continueHint": "INTRO / ESPACIO / CLIC",
-    "newPassiveUnlocked": "¡Bonificación pasiva desbloqueada!",
-    "levelBadge": "Niv.{{level}}"
+    "continueHint": "ENTER / ESPACIO / CLIC",
+    "newPassiveUnlocked": "¡Bonificación pasiva obtenida!",
+    "levelBadge": "Nv.{{level}}"
   }
 }

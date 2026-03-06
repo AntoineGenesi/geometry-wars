@@ -4,21 +4,34 @@
     "menu": "MENU",
     "cancel": "ANNULER",
     "ok": "OK",
+<<<<<<< HEAD
     "done": "TERMINER",
+=======
+    "done": "TERMINÉ",
+>>>>>>> worktree-agent-ad72047c
     "loading": "CHARGEMENT...",
     "resume": "REPRENDRE",
     "settings": "PARAMÈTRES",
     "controls": "CONTRÔLES",
     "score": "SCORE",
     "available": "Disponible",
+<<<<<<< HEAD
     "notAvailable": "Non disponible"
+=======
+    "notAvailable": "Indisponible"
+>>>>>>> worktree-agent-ad72047c
   },
   "gameOver": {
     "title": "FIN DE PARTIE",
     "scoreLabel": "SCORE",
     "newHighScore": "NOUVEAU RECORD !",
+<<<<<<< HEAD
     "highScores": "RECORDS",
     "noScores": "Pas encore de scores",
+=======
+    "highScores": "MEILLEURS SCORES",
+    "noScores": "Aucun score",
+>>>>>>> worktree-agent-ad72047c
     "continueBtn": "CONTINUER",
     "returnToMenu": "RETOUR AU MENU",
     "hintContinue": "Appuyez sur ENTRÉE ou cliquez pour continuer",
@@ -29,15 +42,25 @@
     "namePlaceholder": "Joueur",
     "nameLabelField": "NOM",
     "noteLabelField": "NOTE",
+<<<<<<< HEAD
     "noteOptional": "(facultatif)",
+=======
+    "noteOptional": "(optionnel)",
+>>>>>>> worktree-agent-ad72047c
     "notePlaceholder": "ex. premier essai, combo complet...",
     "nameHint": "ENTRÉE pour passer à la note · ENTRÉE à nouveau pour envoyer",
     "autoSubmitting": "Envoi automatique dans {{count}}s…"
   },
   "levelComplete": {
+<<<<<<< HEAD
     "title": "NIVEAU TERMINÉ",
     "nextStarAt": "Prochaine étoile à {{score}}",
     "maxStars": "Étoiles maximales obtenues !",
+=======
+    "title": "TERMINÉ",
+    "nextStarAt": "Prochaine étoile à {{score}}",
+    "maxStars": "Nombre maximum d'étoiles atteint !",
+>>>>>>> worktree-agent-ad72047c
     "nextLevel": "NIVEAU SUIVANT",
     "replay": "REJOUER",
     "menu": "MENU"
@@ -51,7 +74,11 @@
     "pressKey": "APPUYEZ SUR UNE TOUCHE...",
     "conflicts": "Conflits : {{list}}",
     "resetDefaults": "RÉINITIALISER",
+<<<<<<< HEAD
     "done": "TERMINER",
+=======
+    "done": "TERMINÉ",
+>>>>>>> worktree-agent-ad72047c
     "actions": {
       "up": "HAUT",
       "down": "BAS",
@@ -66,7 +93,11 @@
     "mode": "MODE :",
     "size": "TAILLE :",
     "voting": "VOTE",
+<<<<<<< HEAD
     "hostPicks": "L'HÔTE CHOISIT",
+=======
+    "hostPicks": "CHOIX DE L'HÔTE",
+>>>>>>> worktree-agent-ad72047c
     "launchNow": "LANCER MAINTENANT",
     "returnToMenu": "RETOUR AU MENU",
     "surfaces": {
@@ -77,6 +108,7 @@
       "capsule": "CAPSULE",
       "icosahedron": "ICOSAÈDRE",
       "peanut": "CACAHUÈTE",
+<<<<<<< HEAD
       "cubeTunnel": "TUNNEL CUBE"
     },
     "modes": {
@@ -87,12 +119,22 @@
       "claustrophobia": "CLAUSTROPHOBIE",
       "pvp": "PvP",
       "pvpve": "PvPvE"
+=======
+      "cubeTunnel": "TUNNEL-CUBE"
+    },
+    "modes": {
+      "waves": "VAGUES"
+>>>>>>> worktree-agent-ad72047c
     },
     "sizes": {
       "small": "PETIT",
       "medium": "MOYEN",
+<<<<<<< HEAD
       "large": "GRAND",
       "epic": "ÉPIQUE"
+=======
+      "large": "GRAND"
+>>>>>>> worktree-agent-ad72047c
     }
   },
   "menu": {
@@ -107,6 +149,7 @@
       "icosahedron": "Icosaèdre",
       "mobius": "Möbius",
       "sphereTunnel": "Tunnel Sphérique",
+<<<<<<< HEAD
       "cubeRing": "Anneau Cube",
       "cubeTunnel": "Tunnel Cube"
     },
@@ -152,6 +195,10 @@
       "idleShutdownHint": "Le serveur se ferme quand tous les joueurs partent (0 = jamais)",
       "hostIpPlaceholder": "IP de l'hôte (ex. 192.168.1.15)",
       "namePlaceholder": "Entrez votre nom..."
+=======
+      "cubeRing": "Anneau de Cube",
+      "cubeTunnel": "Tunnel de Cube"
+>>>>>>> worktree-agent-ad72047c
     }
   },
   "languages": {
@@ -169,6 +216,7 @@
     "controls": "CONTRÔLES",
     "weapons": "ARMES",
     "settings": "PARAMÈTRES",
+<<<<<<< HEAD
     "stylePixelated": "STYLE : PIXELISÉ",
     "styleModern": "STYLE : MODERNE",
     "performanceGraphs": "GRAPHIQUES DE PERFORMANCE",
@@ -178,6 +226,17 @@
     "endGameForAll": "TERMINER LA PARTIE POUR TOUS",
     "stopServer": "ARRÊTER LE SERVEUR",
     "hint": "Appuyez sur ÉCHAP pour reprendre | M pour couper | N pour changer la musique",
+=======
+    "stylePixelated": "STYLE : PIXÉLISÉ",
+    "styleModern": "STYLE : MODERNE",
+    "performanceGraphs": "GRAPHIQUES DE PERFORMANCES",
+    "music": "MUSIQUE : {{name}}",
+    "exitToMenu": "QUITTER VERS LE MENU",
+    "exitToVoting": "ÉCRAN DE VOTE",
+    "endGameForAll": "TERMINER POUR TOUS",
+    "stopServer": "ARRÊTER LE SERVEUR",
+    "hint": "Appuyez sur ÉCHAP pour reprendre | M pour muet | N pour changer de musique",
+>>>>>>> worktree-agent-ad72047c
     "stats": {
       "joinThisGame": "REJOINDRE CETTE PARTIE",
       "playerLevel": "NIVEAU DU JOUEUR",
@@ -185,13 +244,20 @@
       "cumulativeBonuses": "BONUS CUMULÉS",
       "weapon": "ARME",
       "totalKills": "ÉLIMINATIONS TOTALES",
+<<<<<<< HEAD
       "activeBuffs": "AMÉLIORATIONS ACTIVES",
       "noActiveBuffs": "Aucune amélioration active",
       "performance": "PERFORMANCE"
+=======
+      "activeBuffs": "BUFFS ACTIFS",
+      "noActiveBuffs": "Aucun buff actif",
+      "performance": "PERFORMANCES"
+>>>>>>> worktree-agent-ad72047c
     }
   },
   "settings": {
     "title": "PARAMÈTRES",
+<<<<<<< HEAD
     "done": "TERMINER",
     "tabs": {
       "gpuInfo": "INFO GPU",
@@ -211,6 +277,27 @@
       "webgpuAdapter": "Adaptateur WebGPU",
       "detectedTier": "Niveau détecté",
       "maxTextureSize": "Taille max de texture",
+=======
+    "done": "TERMINÉ",
+    "tabs": {
+      "gpuInfo": "INFO GPU",
+      "graphics": "GRAPHISMES",
+      "performance": "PERFORMANCES",
+      "audio": "AUDIO",
+      "gameplay": "GAMEPLAY"
+    },
+    "gpu": {
+      "renderer": "RENDU",
+      "hardware": "MATÉRIEL",
+      "features": "FONCTIONNALITÉS",
+      "benchmark": "TEST",
+      "activeRenderer": "Rendu actif",
+      "gpuRenderer": "Rendu GPU",
+      "gpuVendor": "Fabricant GPU",
+      "webgpuAdapter": "Adaptateur WebGPU",
+      "detectedTier": "Niveau détecté",
+      "maxTextureSize": "Taille max. de texture",
+>>>>>>> worktree-agent-ad72047c
       "webgpu": "WebGPU",
       "webgl2": "WebGL2",
       "sharedArrayBuffer": "SharedArrayBuffer",
@@ -219,8 +306,13 @@
       "running": "EN COURS...",
       "runFullBenchmark": "TEST COMPLET DU JEU",
       "benchmarkTier": "Niveau de test : {{tier}}",
+<<<<<<< HEAD
       "maxAt60fps": "Max à 60fps (instancié)",
       "maxAt30fps": "Max à 30fps (instancié)"
+=======
+      "maxAt60fps": "Max. à 60fps (instancié)",
+      "maxAt30fps": "Max. à 30fps (instancié)"
+>>>>>>> worktree-agent-ad72047c
     },
     "graphics": {
       "visualStyle": "STYLE VISUEL",
@@ -228,6 +320,7 @@
       "visualEffects": "EFFETS VISUELS",
       "limits": "LIMITES",
       "preset": "Préréglage",
+<<<<<<< HEAD
       "bloom": "Bloom",
       "bloomStrength": "Intensité du Bloom",
       "particles": "Particules",
@@ -244,30 +337,66 @@
       "debug": "DÉBOGAGE",
       "fps": "IPS",
       "drawCalls": "APPELS DE RENDU",
+=======
+      "bloom": "Lueur",
+      "bloomStrength": "Intensité de la lueur",
+      "particles": "Particules",
+      "trailEffects": "Effets de traînée",
+      "surfaceOpacity": "Opacité de la surface",
+      "maxEnemies": "Ennemis max.",
+      "resolutionScale": "Échelle de résolution",
+      "resetToDefault": "RÉINITIALISER",
+      "bloomHint": "Valeurs de départ — Moderne : 1.0 | Pixélisé : 0.4"
+    },
+    "performance": {
+      "liveStats": "STATISTIQUES EN DIRECT",
+      "adaptiveQuality": "QUALITÉ ADAPTATIVE",
+      "debug": "DÉBOGAGE",
+      "fps": "FPS",
+      "drawCalls": "APPELS DE DESSIN",
+>>>>>>> worktree-agent-ad72047c
       "entities": "ENTITÉS",
       "memoryMB": "MÉMOIRE (Mo)",
       "autoAdjustQuality": "Ajustement automatique de la qualité",
       "debugStatistics": "Statistiques de débogage",
+<<<<<<< HEAD
       "debugHint": "Affiche les IPS, le nombre d'entités et la superposition de performance. Raccourci : F4."
     },
     "audio": {
       "volume": "VOLUME",
       "musicStyle": "STYLE DE MUSIQUE",
+=======
+      "debugHint": "Affiche les FPS, le nombre d'entités et la superposition de performances. Raccourci : F4."
+    },
+    "audio": {
+      "volume": "VOLUME",
+      "musicStyle": "STYLE MUSICAL",
+>>>>>>> worktree-agent-ad72047c
       "master": "Général",
       "sfx": "Effets sonores",
       "music": "Musique",
       "preset": "Préréglage",
       "presets": {
         "electronic": "Électronique",
+<<<<<<< HEAD
         "ambient": "Ambient",
         "synthwave": "Synthwave",
         "minimal": "Minimal"
+=======
+        "ambient": "Ambiant",
+        "synthwave": "Synthwave",
+        "minimal": "Minimaliste"
+>>>>>>> worktree-agent-ad72047c
       }
     },
     "gameplay": {
       "difficulty": "DIFFICULTÉ",
       "dynamicDifficulty": "Difficulté dynamique",
+<<<<<<< HEAD
       "ddaHint": "Ajuste subtilement la composition des ennemis pour les joueurs en difficulté. Désactivé automatiquement en mode Cauchemar."
+=======
+      "ddaHint": "Ajuste subtilement la composition des ennemis pour les joueurs en difficulté. Désactivé automatiquement en difficulté Cauchemar."
+>>>>>>> worktree-agent-ad72047c
     }
   },
   "hud": {
@@ -275,16 +404,28 @@
     "mastered": "MAÎTRISÉ",
     "killLog": {
       "streak": "SÉRIE",
+<<<<<<< HEAD
       "rampage": "CARNAGE",
+=======
+      "rampage": "MASSACRE",
+>>>>>>> worktree-agent-ad72047c
       "unstoppable": "INARRÊTABLE"
     }
   },
   "mastery": {
     "title": "MAÎTRISE DES ARMES",
+<<<<<<< HEAD
     "subtitle": "MISE À JOUR DE PROGRESSION",
     "continueBtn": "CONTINUER",
     "continueHint": "ENTRÉE / ESPACE / CLIC",
     "newPassiveUnlocked": "Bonus passif débloqué !",
     "levelBadge": "Niv.{{level}}"
+=======
+    "subtitle": "MISE À JOUR DE LA PROGRESSION",
+    "continueBtn": "CONTINUER",
+    "continueHint": "ENTRÉE / ESPACE / CLIC",
+    "newPassiveUnlocked": "Bonus passif obtenu !",
+    "levelBadge": "Nv.{{level}}"
+>>>>>>> worktree-agent-ad72047c
   }
 }
