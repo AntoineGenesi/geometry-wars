@@ -3865,12 +3865,13 @@ export class GameRoom extends Room<GameState> {
     const wave = this.generateServerWave();
     this.spawnWave(wave);
 
+    // Bombs are disabled in multiplayer (user preference: bombs only in single-player)
     // Every SUPER_PICKUP_WAVE_INTERVAL waves, spawn a bomb resupply super pickup.
     // This gives players a periodic reward for surviving and adds MP tension (race to collect).
-    if (this.waveNumber % SUPER_PICKUP_WAVE_INTERVAL === 0) {
-      this.spawnSuperPickup('bomb_resupply');
-      this.logger.log(`[GameRoom] Spawned bomb_resupply super pickup at wave ${this.waveNumber}`);
-    }
+    // if (this.waveNumber % SUPER_PICKUP_WAVE_INTERVAL === 0) {
+    //   this.spawnSuperPickup('bomb_resupply');
+    //   this.logger.log(`[GameRoom] Spawned bomb_resupply super pickup at wave ${this.waveNumber}`);
+    // }
 
     // Decrease interval over time (same formula as WaveScheduler)
     // enemySpawnRateMultiplier shortens/lengthens the interval (higher = more frequent waves)
