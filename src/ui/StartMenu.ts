@@ -327,6 +327,7 @@ export class StartMenu {
         </div>
 
         <div class="sub-panel lan-section hidden" id="lan-section">
+          <button class="lan-troubleshoot-btn" id="lan-troubleshoot-btn" title="LAN Troubleshooting">? Troubleshooting</button>
           <div class="scrollable-content">
             <h3>${t('menu.headings.lanGame')}</h3>
             <div id="lan-host-panel">
@@ -413,6 +414,42 @@ export class StartMenu {
           <div class="lan-name-buttons">
             <button class="lan-btn lan-name-join" id="lan-name-join-btn">${t('menu.buttons.join')}</button>
             <button class="back-btn" id="lan-name-cancel-btn">${t('common.cancel')}</button>
+          </div>
+        </div>
+
+        <!-- LAN Troubleshooting Modal -->
+        <div class="lan-troubleshoot-modal-backdrop hidden" id="lan-troubleshoot-backdrop">
+          <div class="lan-troubleshoot-modal" role="dialog" aria-modal="true" aria-labelledby="lan-troubleshoot-title">
+            <button class="lan-troubleshoot-close" id="lan-troubleshoot-close" aria-label="Close">&times;</button>
+            <h3 id="lan-troubleshoot-title">Windows LAN Troubleshooting</h3>
+            <p class="lan-troubleshoot-intro">If you can't connect to the host, try these steps:</p>
+            <ol class="lan-troubleshoot-steps">
+              <li>
+                <strong>Open Command Prompt as Administrator</strong>
+                <span class="lan-troubleshoot-hint">Search "cmd" in Start Menu &rarr; right-click &rarr; "Run as administrator"</span>
+              </li>
+              <li>
+                <strong>Run the following command:</strong>
+                <code class="lan-troubleshoot-cmd">netsh winsock reset</code>
+              </li>
+              <li>
+                <strong>Restart your computer</strong>
+              </li>
+              <li>
+                <strong>Try connecting again</strong>
+              </li>
+            </ol>
+            <div class="lan-troubleshoot-warning">
+              <strong>&#9888; Warning:</strong> <code>netsh winsock reset</code> resets your Windows network stack.
+              It can affect other network applications. Only run this if you are having connection issues.
+            </div>
+            <p class="lan-troubleshoot-subhead">If that doesn't work:</p>
+            <ul class="lan-troubleshoot-extra">
+              <li>Check your firewall &mdash; allow Node.js through Windows Defender Firewall</li>
+              <li>Ensure both devices are on the <strong>same Wi-Fi network</strong></li>
+              <li>Ask the host for their local IP address (shown on the host screen)</li>
+            </ul>
+            <button class="lan-btn lan-troubleshoot-ok" id="lan-troubleshoot-ok">Got it</button>
           </div>
         </div>
 
@@ -1366,6 +1403,164 @@ export class StartMenu {
       }
 
       /* ------------------------------------------------------------------- */
+      /* LAN troubleshooting button                                           */
+      /* ------------------------------------------------------------------- */
+      #start-menu .lan-troubleshoot-btn {
+        position: absolute;
+        top: 12px;
+        right: 14px;
+        background: rgba(0, 30, 60, 0.6);
+        border: 1px solid rgba(0, 180, 255, 0.4);
+        color: #66ccff;
+        font-size: 11px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.2s;
+        z-index: 5;
+      }
+      #start-menu .lan-troubleshoot-btn:hover {
+        background: rgba(0, 60, 100, 0.7);
+        border-color: #00aaff;
+        color: #aaddff;
+        box-shadow: 0 0 8px rgba(0, 170, 255, 0.4);
+      }
+
+      /* ------------------------------------------------------------------- */
+      /* LAN troubleshooting modal                                            */
+      /* ------------------------------------------------------------------- */
+      #start-menu .lan-troubleshoot-modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.75);
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      #start-menu .lan-troubleshoot-modal-backdrop.hidden {
+        display: none !important;
+      }
+      #start-menu .lan-troubleshoot-modal {
+        position: relative;
+        background: rgba(6, 4, 20, 0.97);
+        border: 1px solid rgba(0, 200, 255, 0.3);
+        border-radius: 8px;
+        padding: 28px 32px 24px;
+        max-width: 520px;
+        width: 90vw;
+        max-height: 85vh;
+        overflow-y: auto;
+        box-shadow: 0 0 40px rgba(0, 150, 255, 0.2);
+        color: #ccddee;
+        font-family: 'Segoe UI', Arial, sans-serif;
+      }
+      #start-menu .lan-troubleshoot-modal h3 {
+        color: #00ccff;
+        font-size: 16px;
+        letter-spacing: 3px;
+        margin: 0 0 10px;
+        text-transform: uppercase;
+        text-shadow: 0 0 10px rgba(0, 200, 255, 0.5);
+      }
+      #start-menu .lan-troubleshoot-intro {
+        color: #aabbcc;
+        font-size: 13px;
+        margin: 0 0 14px;
+      }
+      #start-menu .lan-troubleshoot-steps {
+        margin: 0 0 16px;
+        padding-left: 22px;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #ccddee;
+      }
+      #start-menu .lan-troubleshoot-steps li {
+        margin-bottom: 10px;
+      }
+      #start-menu .lan-troubleshoot-steps li strong {
+        color: #eef4ff;
+        display: block;
+      }
+      #start-menu .lan-troubleshoot-hint {
+        color: #778899;
+        font-size: 11px;
+        display: block;
+        margin-top: 2px;
+      }
+      #start-menu .lan-troubleshoot-cmd {
+        display: inline-block;
+        background: rgba(0, 40, 60, 0.8);
+        border: 1px solid rgba(0, 200, 255, 0.35);
+        color: #00ffcc;
+        font: 13px monospace;
+        padding: 4px 10px;
+        border-radius: 3px;
+        margin-top: 4px;
+        letter-spacing: 1px;
+        user-select: all;
+      }
+      #start-menu .lan-troubleshoot-warning {
+        background: rgba(80, 40, 0, 0.35);
+        border: 1px solid rgba(255, 140, 0, 0.4);
+        border-radius: 4px;
+        padding: 10px 14px;
+        font-size: 12px;
+        color: #ffcc88;
+        margin: 0 0 14px;
+        line-height: 1.5;
+      }
+      #start-menu .lan-troubleshoot-warning strong {
+        color: #ffaa44;
+      }
+      #start-menu .lan-troubleshoot-warning code {
+        background: rgba(255, 100, 0, 0.15);
+        color: #ffbb66;
+        font: 12px monospace;
+        padding: 1px 5px;
+        border-radius: 2px;
+      }
+      #start-menu .lan-troubleshoot-subhead {
+        color: #aabbcc;
+        font-size: 13px;
+        font-weight: bold;
+        margin: 0 0 8px;
+      }
+      #start-menu .lan-troubleshoot-extra {
+        margin: 0 0 20px;
+        padding-left: 20px;
+        font-size: 12px;
+        color: #99aabb;
+        line-height: 1.7;
+      }
+      #start-menu .lan-troubleshoot-extra li strong {
+        color: #ccddee;
+      }
+      #start-menu .lan-troubleshoot-close {
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        background: transparent;
+        border: none;
+        color: #556677;
+        font-size: 22px;
+        cursor: pointer;
+        line-height: 1;
+        transition: color 0.15s;
+      }
+      #start-menu .lan-troubleshoot-close:hover {
+        color: #00ccff;
+      }
+      #start-menu .lan-troubleshoot-ok {
+        display: block;
+        margin: 0 auto;
+        padding: 10px 40px;
+        font-size: 13px;
+      }
+
+      /* ------------------------------------------------------------------- */
       /* LAN name input dialog                                                */
       /* ------------------------------------------------------------------- */
       #start-menu .lan-name-dialog {
@@ -2122,6 +2317,26 @@ export class StartMenu {
       lanStopBtn.classList.add('hidden');
       lanHostBtn.style.display = '';
       mainButtonsContainer.classList.remove('hidden');
+    });
+
+    // LAN Troubleshooting modal
+    const lanTroubleshootBtn = this.container.querySelector('#lan-troubleshoot-btn');
+    const lanTroubleshootBackdrop = this.container.querySelector('#lan-troubleshoot-backdrop');
+    const lanTroubleshootClose = this.container.querySelector('#lan-troubleshoot-close');
+    const lanTroubleshootOk = this.container.querySelector('#lan-troubleshoot-ok');
+
+    const openTroubleshootModal = (): void => {
+      lanTroubleshootBackdrop?.classList.remove('hidden');
+    };
+    const closeTroubleshootModal = (): void => {
+      lanTroubleshootBackdrop?.classList.add('hidden');
+    };
+
+    lanTroubleshootBtn?.addEventListener('click', openTroubleshootModal);
+    lanTroubleshootClose?.addEventListener('click', closeTroubleshootModal);
+    lanTroubleshootOk?.addEventListener('click', closeTroubleshootModal);
+    lanTroubleshootBackdrop?.addEventListener('click', (e) => {
+      if (e.target === lanTroubleshootBackdrop) closeTroubleshootModal();
     });
 
     // Weapon mastery
