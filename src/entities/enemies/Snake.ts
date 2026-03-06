@@ -13,7 +13,7 @@ interface SnakeSegData {
 
 const DEFAULT_HISTORY_SIZE = 80;
 const SEGMENT_HISTORY_STEP = 8;  // frames between segments in history
-const INITIAL_SEGMENTS = 4;
+const DEFAULT_INITIAL_SEGMENTS = 2;
 const GROW_INTERVAL = 7;         // seconds between new segment spawns
 /** Default max segments — overridable per-instance for late-game scaling (up to 50). */
 const DEFAULT_MAX_SEGMENTS = 14;
@@ -77,8 +77,9 @@ export class Snake extends BaseEnemy {
    * @param u - Initial surface U coordinate
    * @param v - Initial surface V coordinate
    * @param maxSegments - Max body segments (default 14; use 30-50 for late-game waves)
+   * @param initialSegments - Starting segment count (default 2; scales up to 10 with difficulty)
    */
-  constructor(u: number = 0.5, v: number = 0.5, maxSegments: number = DEFAULT_MAX_SEGMENTS) {
+  constructor(u: number = 0.5, v: number = 0.5, maxSegments: number = DEFAULT_MAX_SEGMENTS, initialSegments: number = DEFAULT_INITIAL_SEGMENTS) {
     // health=6, score=50, geoms=4, speed=0.03 (slow), radius=0.3
     super(u, v, 6, 50, 4, 0.03, 0.30);
     this.maxSegments = maxSegments;
@@ -86,7 +87,7 @@ export class Snake extends BaseEnemy {
     this.historySize = Math.max(DEFAULT_HISTORY_SIZE, (maxSegments + 2) * SEGMENT_HISTORY_STEP);
     this.orbitAngle = Math.random() * Math.PI * 2; // randomise starting arc
     this.createMesh();
-    this.initSegments(INITIAL_SEGMENTS);
+    this.initSegments(Math.min(initialSegments, maxSegments));
     // Register segmentRoot so generic cleanup code (network-main.ts) removes it from scene.
     this.auxiliaryObjects.push(this.segmentRoot);
   }

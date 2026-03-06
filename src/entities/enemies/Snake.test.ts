@@ -34,10 +34,23 @@ describe('Snake enemy', () => {
 
   // ──────────────────── construction ────────────────────
 
-  it('spawns with correct initial segment count', () => {
+  it('spawns with correct default initial segment count (2)', () => {
     const data = snake.getSegmentData();
-    // INITIAL_SEGMENTS = 4
-    expect(data.length).toBe(4);
+    // DEFAULT_INITIAL_SEGMENTS = 2 (lowest difficulty / early-game default)
+    expect(data.length).toBe(2);
+  });
+
+  it('spawns with custom initial segment count', () => {
+    const snake5 = new Snake(0.5, 0.5, 14, 5);
+    expect(snake5.getSegmentData().length).toBe(5);
+    snake5.destroy();
+  });
+
+  it('clamps initial segments to maxSegments', () => {
+    // initialSegments (10) > maxSegments (4) → clamped to 4
+    const snakeClamped = new Snake(0.5, 0.5, 4, 10);
+    expect(snakeClamped.getSegmentData().length).toBe(4);
+    snakeClamped.destroy();
   });
 
   it('head has non-zero radius', () => {
@@ -50,8 +63,8 @@ describe('Snake enemy', () => {
 
   it('segmentRoot is a THREE.Group', () => {
     expect(snake.segmentRoot).toBeDefined();
-    // segmentRoot has children for each segment
-    expect(snake.segmentRoot.children.length).toBe(4);
+    // segmentRoot has children for each segment (default 2)
+    expect(snake.segmentRoot.children.length).toBe(2);
   });
 
   it('starts alive', () => {
