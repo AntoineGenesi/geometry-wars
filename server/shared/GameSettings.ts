@@ -206,7 +206,7 @@ export const DEFAULT_GAME_SETTINGS: Readonly<GameSettings> = {
   healingFrequency:        30,
   healingAmount:           25,
   healthBarVisibility:     'all',
-  friendlyFire:            true,
+  friendlyFire:            false,
   weaponSpawnFrequency:    1.0,
   buffSpawnFrequency:      1.0,
   startingWeapon:          'standard',
@@ -243,7 +243,9 @@ function isFiniteNumber(value: unknown): value is number {
  *
  * @throws never — this function always returns a valid GameSettings.
  */
-export function validateSettings(partial: Partial<GameSettings> = {}): GameSettings {
+export function validateSettings(partial: Partial<GameSettings> | null | undefined = {}): GameSettings {
+  // Guard: treat null/non-object input as empty (returns all defaults)
+  if (!partial || typeof partial !== 'object') partial = {};
   // Mode — reject unknown values
   const mode: GameMode = (VALID_MODES as readonly string[]).includes(partial.mode as string)
     ? (partial.mode as GameMode)

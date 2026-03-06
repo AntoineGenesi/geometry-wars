@@ -1231,6 +1231,11 @@ export class GameRoom extends Room<GameState> {
     this.state.pvpWinCondition = this.currentSettings.pvpWinCondition;
     this.state.startingWeapon = this.currentSettings.startingWeapon;
     this.state.timeLimit = this.currentSettings.timeLimit;
+    // Sync surface/mode so startGame() (called by restartRound) uses the host's chosen values.
+    // These are NOT changed by wave-boundary pending-settings apply (no initSurface() there),
+    // but ARE used by startGame() which re-initialises the surface geometry.
+    this.state.surfaceType = this.currentSettings.surface;
+    this.state.gameMode = this.currentSettings.mode;
     // Also sync pvpEnabled private field (used in tick() for damage checks)
     this.pvpEnabled = this.currentSettings.pvpEnabled;
     // Sync pending indicator so clients can show "Apply Next Round" status
@@ -3815,6 +3820,20 @@ export class GameRoom extends Room<GameState> {
   private tickWaves(dt: number) {
     this.waveElapsed += dt;
 
+    // Apply pending settings at wave boundary (from "Apply Next Round" host action).
+    // Checked BEFORE the PvP early-return so "Apply Next Round" works in ALL game modes,
+    // including pure PvP where waves never spawn. In PvP, nextWaveAt stays at 3s so
+    // settings apply ~3s after the round starts (or immediately if already past that).
+    if (this.pendingSettings && this.waveElapsed >= this.nextWaveAt) {
+      this.currentSettings = this.pendingSettings;
+      this.pendingSettings = null;
+      this.syncSettingsToState();
+      this.healthPickupFrequency = this.currentSettings.healingFrequency;
+      this.healthPickupHealAmount = this.currentSettings.healingAmount;
+      this.logger.log('[GameRoom] Pending settings applied at wave boundary');
+      this.broadcast('settings_applied', {});
+    }
+
     // s44k-07: Pure PvP mode has no enemies — skip wave spawning entirely.
     // Without this guard, enemies spawn in PvP mode and consume player bullets before
     // they can reach other players (hitBullets set is shared across both collision loops).
@@ -3825,17 +3844,6 @@ export class GameRoom extends Room<GameState> {
     // we don't fire a new wave whose warnings will all be phantom (no enemy).
     if (this.waveElapsed < this.nextWaveAt) return;
     if (this.state.enemies.length + this.pendingEnemyCount >= this.getMaxEnemies()) return;
-
-    // Apply pending settings at wave boundary (from "Apply Next Round" host action)
-    if (this.pendingSettings) {
-      this.currentSettings = this.pendingSettings;
-      this.pendingSettings = null;
-      this.syncSettingsToState();
-      this.healthPickupFrequency = this.currentSettings.healingFrequency;
-      this.healthPickupHealAmount = this.currentSettings.healingAmount;
-      this.logger.log('[GameRoom] Pending settings applied at wave boundary');
-      this.broadcast('settings_applied', {});
-    }
 
     this.waveNumber++;
     this.state.waveNumber = this.waveNumber;
