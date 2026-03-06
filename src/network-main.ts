@@ -46,6 +46,7 @@ import { BackgroundMusic } from './audio/BackgroundMusic';
 import { KillLog } from './ui/KillLog';
 import { TotalKillCounter } from './ui/TotalKillCounter';
 import { PvPvELeaderboard } from './ui/PvPvELeaderboard';
+import { KillFeed } from './ui/KillFeed';
 import { WeaponPickup } from './weapons/WeaponPickup';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
 import { WeaponHUD } from './ui/WeaponHUD';
@@ -881,6 +882,17 @@ async function main() {
   const killLog = new KillLog();
   const totalKillCounter = new TotalKillCounter();
   killLog.onKill = (type, color) => totalKillCounter.addKill(type, color);
+
+  // PvP kill feed — top-right corner, shows "EnemyType → PlayerName" on player death
+  const killFeed = new KillFeed();
+  killFeed.onMultiKill = (event) => {
+    // For remote player multi-kills: show a small indicator in the kill feed area
+    // (local player multi-kills show the large center-screen banner automatically)
+    if (!event.isLocal) {
+      // The kill feed already shows the individual kills; the multi-kill is implicit.
+      // Could add a small badge here in a future enhancement.
+    }
+  };
 
   // Weapon HUD — same graphical inventory panel as single-player
   // s44g-04: Position at mid-left (50% height) so weapon icons appear at screen center,
@@ -4356,6 +4368,29 @@ async function main() {
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
         killStreakAnnouncer.announce(data.killerName, data.streakCount);
       },
+      onPlayerKilled: (data: { killer: string; victimId: string; victimName: string; timestamp: number }) => {
+        // Add kill feed entry: enemy type → player name
+        killFeed.addKill({
+          killerName: data.killer,
+          victimName: data.victimName,
+          isLocalKill: false, // enemies kill players in co-op — no local killer
+          isLocalDeath: data.victimId === localPlayerId,
+        });
+      },
+      onPlayerHit: (data: { victimId: string; victimName: string; enemyType: string; livesRemaining: number; timestamp: number }) => {
+        // Show damage number on the victim player's position
+        const player = networkPlayers.get(data.victimId);
+        if (player) {
+          // Spawn a bright red damage number distinct from yellow PvE numbers
+          scorePopups.spawn(
+            player.mesh.position.clone(),
+            '-1',
+            '#ff0044',
+            1.5,
+            0.8,
+          );
+        }
+      },
       onDisconnected: (code: number) => {
         // Fired when the WebSocket closes for any reason (server crash, network
         // drop, etc.). Only show the overlay if not already handled by a more
@@ -5010,6 +5045,7 @@ async function main() {
     surface.updateGrid(dt);
     killLog.update(dt);
     killStreakAnnouncer.update(dt);
+    killFeed.update(dt);
     allyGlowManager.update(dt);
     glowManager.update(dt);
 

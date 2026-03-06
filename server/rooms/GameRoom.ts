@@ -3463,6 +3463,15 @@ export class GameRoom extends Room<GameState> {
             player.lives--;
           }
 
+          // Broadcast player hit (damage) for kill feed damage numbers
+          this.broadcast('player_hit', {
+            victimId: player.id,
+            victimName: player.name,
+            enemyType: enemy.type,
+            livesRemaining: player.lives,
+            timestamp: Date.now(),
+          });
+
           // If player had a meaningful multiplier, spawn a multiplier_boost pickup
           // at the death spot so surviving players can capitalize on it.
           if (player.multiplier > 5) {
@@ -3494,6 +3503,13 @@ export class GameRoom extends Room<GameState> {
               kills: player.playerKills,
               enemyType: enemy.type,
               lostBuffs: lostBuffs.length > 0 ? lostBuffs.join(',') : undefined,
+            });
+            // Broadcast player kill for kill feed
+            this.broadcast('player_killed', {
+              killer: enemy.type,
+              victimId: player.id,
+              victimName: player.name,
+              timestamp: Date.now(),
             });
           } else {
             // S41-03: Respawn at a random location away from death spot and enemies.
