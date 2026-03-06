@@ -834,6 +834,10 @@ export class GameRoom extends Room<GameState> {
       // Apply settings if provided
       if (data?.settings) {
         this.applyValidatedSettings(data.settings as Partial<GameSettings>);
+        // Clear any pending settings from a prior applySettings call so startGame()
+        // uses the restartRound settings and doesn't override them with stale pending ones.
+        this.pendingSettings = null;
+        this.state.hasPendingSettings = false;
       }
       const RESTART_COUNTDOWN_SECS = 5;
       this.logger.log(`[GameRoom] restartRound: broadcasting ${RESTART_COUNTDOWN_SECS}s countdown`);
