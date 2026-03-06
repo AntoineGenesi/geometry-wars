@@ -733,6 +733,31 @@ export class GameRoom extends Room<GameState> {
       }
     });
 
+    this.onMessage('start_with_options', (client, data: {
+      pvpMode?: string;
+      winCondition?: string;
+      killTarget?: number;
+      timeLimit?: number;
+      livesCount?: number;
+    }) => {
+      if (client.sessionId !== this.state.hostId) {
+        this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to start with options`);
+        return;
+      }
+      if (this.state.roomPhase !== 'lobby') return;
+
+      // Apply win condition options from the lobby UI
+      const VALID_PVP_MODES = ['', 'pvp', 'pvpve'];
+      const VALID_WIN_CONDITIONS = ['none', 'kills', 'time', 'lives'];
+      this.state.pvpMode = VALID_PVP_MODES.includes(data.pvpMode ?? '') ? (data.pvpMode ?? '') : '';
+      this.state.winCondition = VALID_WIN_CONDITIONS.includes(data.winCondition ?? '') ? (data.winCondition ?? 'none') : 'none';
+      this.state.killTarget = Math.max(1, Math.min(500, data.killTarget ?? 10));
+      this.state.timeLimit = Math.max(30, Math.min(3600, data.timeLimit ?? 300));
+      this.state.livesCount = Math.max(1, Math.min(20, data.livesCount ?? 3));
+      this.logger.log(`[GameRoom] Host starting with options: pvpMode=${this.state.pvpMode} winCondition=${this.state.winCondition} killTarget=${this.state.killTarget} timeLimit=${this.state.timeLimit} livesCount=${this.state.livesCount}`);
+      this.startGame();
+    });
+
     this.onMessage('vote', (client, data: { choice: string }) => {
       if (this.state.roomPhase !== 'voting') return;
       if (this.state.readyMap.get(client.sessionId)) return; // vote locked after ready-up

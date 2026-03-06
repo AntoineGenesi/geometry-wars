@@ -107,6 +107,11 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
       mapSize: 'medium',
       readyMap: new Map(),
       countdownPaused: false,
+      pvpMode: '',
+      winCondition: 'none',
+      killTarget: 10,
+      timeLimit: 300,
+      livesCount: 3,
       ...overrides,
     };
   }
@@ -234,6 +239,11 @@ describe('VotingScreen — mastery desync regression (S34b)', () => {
       mapSize: 'medium',
       readyMap: new Map(),
       countdownPaused: false,
+      pvpMode: '',
+      winCondition: 'none',
+      killTarget: 10,
+      timeLimit: 300,
+      livesCount: 3,
       ...overrides,
     };
   }
@@ -353,6 +363,11 @@ describe('VotingScreen — mode dimming UI (S44k-08)', () => {
       mapSize: 'medium',
       readyMap: new Map(),
       countdownPaused: false,
+      pvpMode: '',
+      winCondition: 'none',
+      killTarget: 10,
+      timeLimit: 300,
+      livesCount: 3,
       ...overrides,
     };
   }
@@ -514,6 +529,11 @@ describe('VotingScreen — epic size and Claustrophobia size dimming (S44l-14)',
       mapSize: 'medium',
       readyMap: new Map(),
       countdownPaused: false,
+      pvpMode: '',
+      winCondition: 'none',
+      killTarget: 10,
+      timeLimit: 300,
+      livesCount: 3,
       ...overrides,
     };
   }
