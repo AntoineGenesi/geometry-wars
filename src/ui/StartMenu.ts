@@ -1685,6 +1685,8 @@ export class StartMenu {
           overflow-y: auto;
           padding: 16px;
           z-index: 20;
+          display: flex;
+          flex-direction: column;
         }
 
         /* Controls hint: hide keyboard text on mobile, but show action buttons */
