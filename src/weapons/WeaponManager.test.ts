@@ -1093,6 +1093,58 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.dispose();
     });
 
+    // ---- Blaster Branch B tight cluster bolt count ----
+
+    it('Blaster b_3 (Quad lance) only → 4 tight bolts spawned', () => {
+      const tracker = makeTracker(['standard_b_3']);
+      activateNodes(tracker, WeaponType.Standard, 50);
+      const wm2 = new WeaponManager();
+      wm2.setUpgradeTracker(tracker);
+      const { callbacks, bullets } = createMockCallbacks();
+      wm2.setCallbacks(callbacks);
+      wm2.fire(origin(), forward(), T, normal());
+      expect(bullets.length).toBe(4); // 3 extra + 1 center = 4 tight bolts
+      wm2.dispose();
+    });
+
+    it('Blaster b_1 (Focused pair) only → 2 tight bolts spawned', () => {
+      const tracker = makeTracker(['standard_b_1']);
+      activateNodes(tracker, WeaponType.Standard, 10);
+      const wm2 = new WeaponManager();
+      wm2.setUpgradeTracker(tracker);
+      const { callbacks, bullets } = createMockCallbacks();
+      wm2.setCallbacks(callbacks);
+      wm2.fire(origin(), forward(), T, normal());
+      expect(bullets.length).toBe(2);
+      wm2.dispose();
+    });
+
+    it('Blaster a_4 + b_3 combined (Rapid Quad Lance) → 9 bolts = 5 fan + 4 tight', () => {
+      const tracker = makeTracker(['standard_a_1', 'standard_a_2', 'standard_a_3', 'standard_a_4',
+                                   'standard_b_1', 'standard_b_2', 'standard_b_3']);
+      activateNodes(tracker, WeaponType.Standard, 80); // threshold for a_4 and b_3
+      const wm2 = new WeaponManager();
+      wm2.setUpgradeTracker(tracker);
+      const { callbacks, bullets } = createMockCallbacks();
+      wm2.setCallbacks(callbacks);
+      wm2.fire(origin(), forward(), T, normal());
+      // a_4: 5 fan bolts; b_3: 4 tight bolts — combined = 9
+      expect(bullets.length).toBe(9);
+      wm2.dispose();
+    });
+
+    it('Blaster a_4 only (Rapid burst) → 5 fan bolts (unchanged behavior)', () => {
+      const tracker = makeTracker(['standard_a_1', 'standard_a_2', 'standard_a_3', 'standard_a_4']);
+      activateNodes(tracker, WeaponType.Standard, 80);
+      const wm2 = new WeaponManager();
+      wm2.setUpgradeTracker(tracker);
+      const { callbacks, bullets } = createMockCallbacks();
+      wm2.setCallbacks(callbacks);
+      wm2.fire(origin(), forward(), T, normal());
+      expect(bullets.length).toBe(5); // a_4 = 4 extra + 1 center
+      wm2.dispose();
+    });
+
     // ---- Spread pellet count upgrades ----
 
     it('Spread: no upgrades → 5 projectiles created per fire', () => {

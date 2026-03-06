@@ -381,6 +381,33 @@ export class WeaponManager {
   }
 
   /**
+   * Returns extra tight-cluster bolts from Branch B (Damage theme).
+   * b_1 = 1 extra (2 total tight pair), b_2 = 2 extra (3 total needle), b_3 = 3 extra (4 total lance).
+   * These stack additively with Branch A fan bolts when both are active.
+   */
+  getBlasterBranchBExtraBolts(): number {
+    if (!this.upgradeTracker) return 0;
+    const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    if (active.has('standard_b_3')) return 3;  // Quad lance: 4 total tight bolts
+    if (active.has('standard_b_2')) return 2;  // Triple needle: 3 total tight bolts
+    if (active.has('standard_b_1')) return 1;  // Focused pair: 2 total tight bolts
+    return 0;
+  }
+
+  /**
+   * Returns the tight cone angle (radians) for Branch B bolt cluster.
+   * b_1 = 3° (focused pair), b_2 = 4° (triple needle), b_3 = 5° (quad lance).
+   */
+  getBlasterBranchBConeAngle(): number {
+    if (!this.upgradeTracker) return 0;
+    const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    if (active.has('standard_b_3')) return Math.PI / 36;  // 5° tight lance
+    if (active.has('standard_b_2')) return Math.PI / 45;  // 4° needle
+    if (active.has('standard_b_1')) return Math.PI / 60;  // 3° focused pair
+    return 0;
+  }
+
+  /**
    * Get the root group containing all weapon visuals (add to scene)
    */
   getVisualRoot(): THREE.Group {
@@ -855,23 +882,55 @@ export class WeaponManager {
     const leftOrigin = origin.clone().addScaledVector(right, -offset);
     const rightOrigin = origin.clone().addScaledVector(right, offset);
 
-    // Branch A fan-out: standard_a_1 through standard_a_5 add extra bolts in a spreading cone
-    const extraBolts = this.getBlasterExtraBolts();
+    // Branch A fan-out: standard_a_1 through standard_a_4 add extra bolts in a spreading cone
+    const extraBoltsA = this.getBlasterExtraBolts();
     const fanAngle = this.getBlasterSpreadAngle();
+    // Branch B tight cluster: standard_b_1 through standard_b_3 add bolts in a tight cone
+    const extraBoltsB = this.getBlasterBranchBExtraBolts();
+    const tightAngle = this.getBlasterBranchBConeAngle();
     const rotAxis = up.clone();
 
-    if (extraBolts > 0 && fanAngle > 0) {
-      // Fan mode: fire the center bolt + extraBolts side bolts spread across ±fanAngle/2
-      // The standard 2 parallel bolts are replaced by the fan for cleaner visuals
-      const totalBolts = extraBolts + 1; // center + sides
+    const hasBranchA = extraBoltsA > 0 && fanAngle > 0;
+    const hasBranchB = extraBoltsB > 0 && tightAngle > 0;
+
+    if (hasBranchA && hasBranchB) {
+      // COMBINED — Rapid Quad Lance: both branches active simultaneously.
+      // Branch A fan bolts fire from center; Branch B tight cluster fires as inner core.
+      // Total bolts = (extraBoltsA + 1) + (extraBoltsB + 1) — reward for investing both paths.
+      const totalFanBolts = extraBoltsA + 1;
+      for (let i = 0; i < totalFanBolts; i++) {
+        const t = totalFanBolts === 1 ? 0 : (i / (totalFanBolts - 1)) * 2 - 1;
+        const angle = t * (fanAngle / 2);
+        const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
+        this.callbacks?.spawnBullet(origin.clone(), boltDir);
+      }
+      const totalTightBolts = extraBoltsB + 1;
+      for (let i = 0; i < totalTightBolts; i++) {
+        const t = totalTightBolts === 1 ? 0 : (i / (totalTightBolts - 1)) * 2 - 1;
+        const angle = t * (tightAngle / 2);
+        const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
+        this.callbacks?.spawnBullet(origin.clone(), boltDir);
+      }
+    } else if (hasBranchA) {
+      // Fan mode only (Branch A): center bolt + extraBoltsA side bolts spread across ±fanAngle/2
+      const totalBolts = extraBoltsA + 1;
       for (let i = 0; i < totalBolts; i++) {
         const t = totalBolts === 1 ? 0 : (i / (totalBolts - 1)) * 2 - 1; // -1 to +1
         const angle = t * (fanAngle / 2);
         const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
         this.callbacks?.spawnBullet(origin.clone(), boltDir);
       }
+    } else if (hasBranchB) {
+      // Tight cluster only (Branch B): bolts fired in a tight cone from center
+      const totalBolts = extraBoltsB + 1;
+      for (let i = 0; i < totalBolts; i++) {
+        const t = totalBolts === 1 ? 0 : (i / (totalBolts - 1)) * 2 - 1;
+        const angle = t * (tightAngle / 2);
+        const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
+        this.callbacks?.spawnBullet(origin.clone(), boltDir);
+      }
     } else {
-      // Default: dual-barrel (no branch A upgrades)
+      // Default: dual-barrel (no branch A or B upgrades)
       this.callbacks?.spawnBullet(leftOrigin, direction);
       this.callbacks?.spawnBullet(rightOrigin, direction);
     }
