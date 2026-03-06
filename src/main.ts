@@ -2227,6 +2227,7 @@ if (quickStartConfig.enabled) {
       if (selection.serverUrl) params.server = selection.serverUrl;
       if (selection.playerName) params.name = selection.playerName;
       if (selection.mapSize) params.mapSize = selection.mapSize;
+      if (selection.quickGameMode && selection.quickGameMode !== 'waves') params.gameMode = selection.quickGameMode;
       window.history.replaceState({}, '', buildUrl(params));
       import('./network-main').then(() => {
         console.log('[Main] Loaded network multiplayer mode');

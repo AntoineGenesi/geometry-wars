@@ -1358,7 +1358,8 @@ async function main() {
     { id: 'pvpve',          label: 'PvPvE',          icon: '⚔🌊' },
   ];
 
-  let selectedLobbyMode = 'waves';
+  const urlGameMode = new URLSearchParams(window.location.search).get('gameMode') ?? 'waves';
+  let selectedLobbyMode = urlGameMode;
 
   const modeSelectorDiv = document.createElement('div');
   modeSelectorDiv.id = 'lobby-mode-selector';
@@ -1402,7 +1403,7 @@ async function main() {
       // Show surface restriction note when Claustrophobia is selected
       claustrophobiaNoteEl.style.display = selectedLobbyMode === 'claustrophobia' ? 'block' : 'none';
     };
-    if (m.id === 'waves') {
+    if (m.id === selectedLobbyMode) {
       btn.style.background = '#050';
       btn.style.color = '#0f0';
       btn.style.borderColor = '#0f0';
@@ -1412,6 +1413,8 @@ async function main() {
     modeBtnsRow.appendChild(btn);
   }
   modeSelectorDiv.appendChild(modeBtnsRow);
+  // Show claustrophobia note if pre-selected from URL
+  claustrophobiaNoteEl.style.display = selectedLobbyMode === 'claustrophobia' ? 'block' : 'none';
   modeSelectorDiv.appendChild(claustrophobiaNoteEl);
 
   // ---- Lives selector (host only, shown in lobby) ----

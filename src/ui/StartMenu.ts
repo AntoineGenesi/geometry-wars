@@ -57,12 +57,13 @@ export class StartMenu {
   private selectedQuickGameMode: QuickGameModeType = 'waves';
   private selectedMapSize: MapSize = MapSize.MEDIUM;
   private lanSelectedMapSize: MapSize = MapSize.MEDIUM;
+  private lanSelectedGameMode: QuickGameModeType = 'waves';
   private lanAutoRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private lanAutoRefreshEnabled = true;
   private lanScanning = false;
 
   // LAN name dialog state
-  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean; mapSize: MapSize } | null = null;
+  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean; mapSize: MapSize; gameMode?: QuickGameModeType } | null = null;
 
   // Custom mesh support
   private customMeshFile: File | null = null;
@@ -213,6 +214,17 @@ export class StartMenu {
     return `<div class="map-size-selector">${buttons}</div>`;
   }
 
+  private createLanGameModeSelectorHTML(): string {
+    const buttons = QUICK_GAME_MODES.map((mode) => `
+      <button class="lan-mode-btn${mode.type === this.lanSelectedGameMode ? ' selected' : ''}"
+              data-lan-mode="${mode.type}">
+        <span class="lan-mode-icon">${mode.icon}</span>
+        <span class="lan-mode-name">${mode.name}</span>
+      </button>
+    `).join('');
+    return `<div class="lan-mode-grid">${buttons}</div>`;
+  }
+
   private createModeGridHTML(): string {
     const buttons = QUICK_GAME_MODES
       .map(
@@ -337,6 +349,8 @@ export class StartMenu {
                 ${this.createSurfaceGridHTML('lan-surface-grid', this.lanSelectedSurface)}
                 <h3>${t('menu.headings.mapSize')}</h3>
                 ${this.createLanMapSizeSelectorHTML()}
+                <h3>GAME MODE</h3>
+                ${this.createLanGameModeSelectorHTML()}
                 <div class="lan-timeout-row">
                   <label class="lan-timeout-label" for="lan-timeout-input">${t('menu.misc.idleShutdownDelay')}</label>
                   <div class="lan-timeout-input-wrap">
@@ -1219,6 +1233,49 @@ export class StartMenu {
         user-select: all;
         word-break: break-all;
       }
+      /* ------------------------------------------------------------------- */
+      /* LAN game mode selector                                              */
+      /* ------------------------------------------------------------------- */
+      #start-menu .lan-mode-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        margin: 10px 0 16px;
+      }
+      #start-menu .lan-mode-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(0, 40, 80, 0.4);
+        border: 2px solid #224466;
+        color: #88aacc;
+        padding: 8px 14px;
+        cursor: pointer;
+        font: 12px monospace;
+        letter-spacing: 1px;
+        transition: all 0.2s;
+      }
+      #start-menu .lan-mode-btn:hover {
+        background: rgba(0, 80, 140, 0.5);
+        border-color: #4488cc;
+        color: #aaccee;
+      }
+      #start-menu .lan-mode-btn.selected {
+        background: rgba(0, 120, 200, 0.3);
+        border-color: #00aaff;
+        color: #00aaff;
+        box-shadow: 0 0 10px rgba(0, 170, 255, 0.4);
+      }
+      #start-menu .lan-mode-icon {
+        font-size: 16px;
+      }
+      #start-menu .lan-mode-name {
+        font-size: 11px;
+        font-weight: bold;
+        letter-spacing: 1px;
+      }
+
       #start-menu .lan-scan-item {
         background: rgba(0, 60, 60, 0.4);
         border: 1px solid #006666;
@@ -2099,6 +2156,16 @@ export class StartMenu {
       });
     });
 
+    // LAN game mode selection buttons
+    const lanModeBtns = this.container.querySelectorAll('.lan-mode-btn');
+    lanModeBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        lanModeBtns.forEach((b) => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.lanSelectedGameMode = (btn as HTMLElement).dataset.lanMode as QuickGameModeType;
+      });
+    });
+
     // HOST GAME - show surface selection first
     lanHostBtn?.addEventListener('click', () => {
       lanHostSurfacePick.classList.remove('hidden');
@@ -2242,7 +2309,7 @@ export class StartMenu {
     // isCreator=true: this player started the server, so they should claim host status.
     lanEnterBtn?.addEventListener('click', () => {
       if (hostedServerUrl) {
-        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl, true, this.lanSelectedMapSize);
+        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl, true, this.lanSelectedMapSize, this.lanSelectedGameMode);
       }
     });
 
@@ -2462,8 +2529,8 @@ export class StartMenu {
    * @param isCreator - true only when this player hosted the server (clicked ENTER GAME after HOST GAME).
    *   LAN lobby joiners, QR code scanners, and manual IP joiners are NOT creators.
    */
-  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false, mapSize?: MapSize): void {
-    this.pendingLanJoin = { surfaceType, serverUrl, isCreator, mapSize: mapSize ?? MapSize.MEDIUM };
+  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false, mapSize?: MapSize, gameMode?: QuickGameModeType): void {
+    this.pendingLanJoin = { surfaceType, serverUrl, isCreator, mapSize: mapSize ?? MapSize.MEDIUM, gameMode };
 
     const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
     const nameDialog = this.container.querySelector('#lan-name-dialog') as HTMLElement;
@@ -2519,6 +2586,7 @@ export class StartMenu {
       playerName: name,
       isCreator: this.pendingLanJoin.isCreator,
       mapSize: this.pendingLanJoin.mapSize,
+      quickGameMode: this.pendingLanJoin.gameMode,
     });
 
     this.pendingLanJoin = null;
