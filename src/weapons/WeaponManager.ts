@@ -1444,9 +1444,11 @@ export class WeaponManager {
       transparent: true,
       opacity: 0.2,
       wireframe: true,
+      depthTest: false,  // Don't use depth test so damage numbers render on top
     });
     const teslaMesh = new THREE.Mesh(SharedGeometries.teslaSphere(), teslaMat);
     teslaMesh.position.copy(origin);
+    teslaMesh.renderOrder = 50;  // Render before damage numbers (which have renderOrder = 999)
 
     this.projectileRoot.add(teslaMesh);
 
