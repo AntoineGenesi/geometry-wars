@@ -87,7 +87,7 @@ import {
   type DifficultyInput,
 } from './core/DifficultyScaling';
 import { isMobile } from './core/MobileDetector';
-import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies, getMapSizeScaleFactor } from './core/MapSize';
+import { MapSize, getDefaultMapSizeForSurface, getMaxActiveEnemies, getDynamicMaxEnemies, getMapSizeScaleFactor } from './core/MapSize';
 import { TouchInput } from './input/TouchInput';
 import { DDAPerformanceTracker } from './difficulty/DDAPerformanceTracker';
 import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
@@ -1862,6 +1862,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     if (input instanceof TouchInput) input.applyTilt(dt);
 
     gameLoop.update(ctx, dt);
+
+    // Dynamic enemy cap: escalate max active enemies with difficulty level.
+    // Called every frame (cheap — single number assignment, no allocation).
+    enemySpawner.setMaxActiveEnemies(getDynamicMaxEnemies(resolvedMapSize, waveScheduler.currentDifficultyLevel));
 
     // Publish window._gameState for Puppeteer / automated tests
     if (_stateExporter) _stateExporter.update();

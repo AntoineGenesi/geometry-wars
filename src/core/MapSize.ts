@@ -97,3 +97,26 @@ export function getDefaultMapSizeForSurface(surfaceType: SurfaceType): MapSize {
 export function getMaxActiveEnemies(size: MapSize): number {
   return MAP_SIZE_MAX_ENEMIES[size];
 }
+
+/**
+ * Caps for dynamic enemy count scaling at high difficulty.
+ * Above these limits, adding more enemies would tank performance.
+ */
+const DYNAMIC_ENEMY_CAPS: Record<MapSize, number> = {
+  [MapSize.SMALL]: 80,
+  [MapSize.MEDIUM]: 150,
+  [MapSize.LARGE]: 200,
+  [MapSize.EPIC]: 250,
+};
+
+/**
+ * Get the max simultaneous active enemies for a map size, scaled by difficulty.
+ * Below difficulty 6: returns the static base cap (unchanged from early/mid game).
+ * At difficulty 6+: adds +5 enemies per level above 6, capped per map size.
+ */
+export function getDynamicMaxEnemies(size: MapSize, difficultyLevel: number): number {
+  const base = MAP_SIZE_MAX_ENEMIES[size];
+  if (difficultyLevel <= 6) return base;
+  const bonus = Math.floor((difficultyLevel - 6) * 5);
+  return Math.min(base + bonus, DYNAMIC_ENEMY_CAPS[size]);
+}

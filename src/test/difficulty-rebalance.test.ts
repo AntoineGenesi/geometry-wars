@@ -22,6 +22,7 @@ import {
   type DifficultyInput,
 } from '../core/DifficultyScaling';
 import { BuffManager, StackBuffType } from '../buffs/BuffManager';
+import { getDynamicMaxEnemies, MapSize } from '../core/MapSize';
 
 // ============================================================================
 // Helper: compute total enemy count from a scaled wave
@@ -757,5 +758,68 @@ describe('BuffManager.reset() — buffs cleared on new game', () => {
     for (const type of Object.values(StackBuffType)) {
       expect(bm.getStacks(type)).toBe(0);
     }
+  });
+});
+
+// ============================================================================
+// Dynamic Enemy Cap (getDynamicMaxEnemies)
+// ============================================================================
+
+describe('getDynamicMaxEnemies', () => {
+  describe('SMALL map', () => {
+    it('returns base cap (30) at difficulty 0', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 0)).toBe(30);
+    });
+
+    it('returns base cap (30) at difficulty 6 (threshold is exclusive)', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 6)).toBe(30);
+    });
+
+    it('returns 50 at difficulty 10 (30 + (10-6)*5)', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 10)).toBe(50);
+    });
+
+    it('returns 75 at difficulty 15 (30 + (15-6)*5)', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 15)).toBe(75);
+    });
+
+    it('returns 80 (cap) at difficulty 100', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 100)).toBe(80);
+    });
+  });
+
+  describe('MEDIUM map', () => {
+    it('returns base cap (60) below difficulty 6', () => {
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 0)).toBe(60);
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 6)).toBe(60);
+    });
+
+    it('returns 80 at difficulty 10 (60 + (10-6)*5)', () => {
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 10)).toBe(80);
+    });
+
+    it('returns 150 (cap) at difficulty 100', () => {
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 100)).toBe(150);
+    });
+  });
+
+  describe('LARGE map', () => {
+    it('returns base cap (90) below difficulty 6', () => {
+      expect(getDynamicMaxEnemies(MapSize.LARGE, 0)).toBe(90);
+    });
+
+    it('returns 200 (cap) at difficulty 100', () => {
+      expect(getDynamicMaxEnemies(MapSize.LARGE, 100)).toBe(200);
+    });
+  });
+
+  describe('EPIC map', () => {
+    it('returns base cap (120) below difficulty 6', () => {
+      expect(getDynamicMaxEnemies(MapSize.EPIC, 0)).toBe(120);
+    });
+
+    it('returns 250 (cap) at difficulty 100', () => {
+      expect(getDynamicMaxEnemies(MapSize.EPIC, 100)).toBe(250);
+    });
   });
 });
