@@ -193,15 +193,16 @@ export class PauseMenu {
             </button>
           </div>
 
-          <div class="pause-stats-panel">
-            <div class="stats-qr-section hidden">
+          <div class="pause-stats-container">
+            <div class="pause-qr-section hidden">
               <div class="stats-section-title">${t('pauseMenu.stats.joinThisGame')}</div>
               <div class="stats-qr-content"></div>
             </div>
-            <div class="stats-lives-section hidden">
-              <div class="stats-section-title">LIVES</div>
-              <div class="stats-lives-display"></div>
-            </div>
+            <div class="pause-stats-panel">
+              <div class="stats-lives-section hidden">
+                <div class="stats-section-title">LIVES</div>
+                <div class="stats-lives-display"></div>
+              </div>
             <div class="stats-level-section hidden">
               <div class="stats-section-title">${t('pauseMenu.stats.playerLevel')}</div>
               <div class="stats-level-info"></div>
@@ -235,6 +236,7 @@ export class PauseMenu {
               <div class="stats-section-title">GAME SETTINGS</div>
               <div class="stats-game-settings-content"></div>
               <div class="stats-pending-settings hidden" style="color:#ffaa44;margin-top:4px;font-size:10px;">⚡ New settings apply next wave</div>
+            </div>
             </div>
           </div>
         </div>
@@ -473,8 +475,21 @@ export class PauseMenu {
         justify-content: center;
       }
 
-      #pause-menu .pause-stats-panel {
+      #pause-menu .pause-stats-container {
         width: 300px;
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
+
+      #pause-menu .pause-qr-section {
+        text-align: left;
+        flex-shrink: 0;
+        padding-right: 4px;
+      }
+
+      #pause-menu .pause-stats-panel {
+        width: 100%;
         text-align: left;
         display: flex;
         flex-direction: column;
@@ -497,7 +512,7 @@ export class PauseMenu {
         border-radius: 2px;
       }
 
-      #pause-menu .stats-qr-section.hidden {
+      #pause-menu .pause-qr-section.hidden {
         display: none;
       }
 
@@ -782,8 +797,12 @@ export class PauseMenu {
           font-size: 16px;
         }
 
-        #pause-menu .pause-stats-panel {
+        #pause-menu .pause-stats-container {
           width: 220px;
+        }
+
+        #pause-menu .pause-stats-panel {
+          width: 100%;
           max-height: none;
           gap: 10px;
         }
@@ -1303,7 +1322,7 @@ export class PauseMenu {
    */
   setJoinUrl(url: string | null): void {
     this.joinUrl = url;
-    const qrSection = this.container.querySelector('.stats-qr-section') as HTMLElement | null;
+    const qrSection = this.container.querySelector('.pause-qr-section') as HTMLElement | null;
     const qrContent = this.container.querySelector('.stats-qr-content') as HTMLElement | null;
     if (!qrSection || !qrContent) return;
 
