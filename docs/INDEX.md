@@ -21,19 +21,19 @@
 ### The Multiplayer Architecture
 1. `docs/MP-ARCHITECTURE.md` — Why MP ≠ SP, code path differences, entry points
 2. `docs/mp-architecture-audit.md` — Deep audit (S43-09): current state of MP vs SP parity, gap analysis
-3. `decisions/lan-deep-audit-2026-02-11.md` — LAN architecture analysis
-4. `decisions/lan-comprehensive-fix-2026-02-11.md` — What was fixed and why
+3. `archive/decisions/lan-deep-audit-2026-02-11.md` — LAN architecture analysis
+4. `archive/decisions/lan-comprehensive-fix-2026-02-11.md` — What was fixed and why
 
 ### Movement on Curved Surfaces
-1. `decisions/geodesic-face-walking-2026-02-07.md` — Face-walker design (geodesic great circles)
-2. `decisions/tangent-frame-dual-gram-schmidt.md` — Tangent frame continuity fix (pole crossing)
-3. `decisions/torus-tangent-frame-fix.md` — Torus-specific fix
-4. `decisions/surface-movement-fixes-2026-02-07.md` — General surface movement fixes
+1. `archive/decisions/geodesic-face-walking-2026-02-07.md` — Face-walker design (geodesic great circles)
+2. `archive/decisions/tangent-frame-dual-gram-schmidt.md` — Tangent frame continuity fix (pole crossing)
+3. `archive/decisions/torus-tangent-frame-fix.md` — Torus-specific fix
+4. `archive/decisions/surface-movement-fixes-2026-02-07.md` — General surface movement fixes
 
 ### Enemy AI & Rendering
 1. `decisions/enemy-meshwalker-migration.md` — How enemies walk on surfaces
-2. `decisions/instanced-enemy-rendering-2026-02-09.md` — GPU instanced rendering decision
-3. `decisions/enemy-difficulty-scaling-2026-02-09.md` — Difficulty scaling system
+2. `archive/decisions/instanced-enemy-rendering-2026-02-09.md` — GPU instanced rendering decision
+3. `archive/decisions/enemy-difficulty-scaling-2026-02-09.md` — Difficulty scaling system
 
 ### The Weapon Mastery System
 1. `decisions/buff-system-implementation.md` — Buff pickup architecture
@@ -43,22 +43,22 @@
 ### LAN Troubleshooting
 1. `docs/LAN-TROUBLESHOOTING.md` — End-user troubleshooting guide
 2. `decisions/lan-connectivity-wsl2-2026-02-21.md` — WSL2 LAN connection issues
-3. `decisions/lan-lag-out-fix-2026-02-10.md` — Lag-out fix analysis
+3. `archive/decisions/lan-lag-out-fix-2026-02-10.md` — Lag-out fix analysis
 
 ### Performance
-1. `decisions/instanced-enemy-rendering-2026-02-09.md` — GPU instancing (draw call reduction)
-2. `decisions/collision-optimization-2026-02-10.md` — SpatialHash collision system
-3. `decisions/opacity-audit-2026-02-10.md` — Opacity/LOD rendering audit
+1. `archive/decisions/instanced-enemy-rendering-2026-02-09.md` — GPU instancing (draw call reduction)
+2. `archive/decisions/collision-optimization-2026-02-10.md` — SpatialHash collision system
+3. `archive/decisions/opacity-audit-2026-02-10.md` — Opacity/LOD rendering audit
 4. `docs/performance-graphs-integration.md` — In-game performance graphs
 
 ### Camera System
-1. `decisions/camera-relative-movement-fix.md` — Camera-relative input fix
+1. `archive/decisions/camera-relative-movement-fix.md` — Camera-relative input fix
 2. `decisions/gameinstance-refactor-2026-02-17.md` — GameInstance refactor (PlaygroundGame unification)
 
 ### Why did a regression keep happening?
 1. `decisions/recurring-regressions-analysis.md` — Root cause analysis of repeated regressions
 2. `.claude/docs/regression-rules.md` — Rules to prevent future regressions
-3. `decisions/playground-spinning-fix.md` — Playground spinning camera fix (fixed 3 times!)
+3. `archive/decisions/playground-spinning-fix.md` — Playground spinning camera fix (fixed 3 times!)
 
 ### Custom Maps / Surfaces
 1. `docs/CUSTOM_MAPS.md` — Adding new map surfaces
@@ -84,9 +84,10 @@
 
 ## Current Active Work
 
-- Active tasks: `tasks/README.md`
+- Active tasks: `tasks/README.md` (s44j, s44k, s44l prefixes)
 - Task backlog: `TODO.md`
 - Session state: `.claude/state/pipeline-state.md`
+- Completed tasks: `COMPLETED-TASKS.md`
 
 ---
 
@@ -96,14 +97,14 @@
 
 | Topic | File |
 |-------|------|
-| Geodesic movement | `geodesic-face-walking-2026-02-07.md` |
+| Geodesic movement | `archive/decisions/geodesic-face-walking-2026-02-07.md` |
 | Half-edge mesh | `HalfEdgeMesh` (see ARCHITECTURE.md) |
-| Tangent frame fix | `tangent-frame-dual-gram-schmidt.md` |
-| GPU instancing | `instanced-enemy-rendering-2026-02-09.md` |
-| Collision system | `collision-optimization-2026-02-10.md` |
-| Bloom masking | `selective-bloom-masking-2026-02-19.md` |
-| MP rebuild plan | `mp-rebuild-s42-plan.md` |
-| False claim hooks | `false-claim-hooks-2026-02-10.md` — critical gotcha |
+| Tangent frame fix | `archive/decisions/tangent-frame-dual-gram-schmidt.md` |
+| GPU instancing | `archive/decisions/instanced-enemy-rendering-2026-02-09.md` |
+| Collision system | `archive/decisions/collision-optimization-2026-02-10.md` |
+| Bloom masking | `decisions/selective-bloom-masking-2026-02-19.md` |
+| MP rebuild plan | `decisions/mp-rebuild-s42-plan.md` |
+| False claim hooks | `decisions/false-claim-hooks-2026-02-10.md` — critical gotcha |
 
 ---
 
@@ -116,11 +117,23 @@ Located in `.claude/docs/`:
 
 ---
 
+## Failed Experiments
+
+Before starting any non-trivial approach, check `docs/FAILED-EXPERIMENTS.md` for dead ends:
+- PlaygroundGame.ts trap (Session 19) — main.ts never calls it
+- Rapier WASM collision — slower than JS SpatialHash at all entity counts
+- WebRTC P2P for AI offload — security risk + complexity, Node workers are better
+- Split-screen co-op — removed in S38a, LAN is the co-op path
+- LAN "quick-win" patches — 10+ attempts failed, need architectural fix
+
+---
+
 ## Archive
 
 Older files that have been superseded but preserved for reference:
 - `archive/tasks/` — Completed task files from sessions 1–42
-- `archive/decisions/` — Superseded decision logs
+- `archive/decisions/` — Decision logs older than 2 weeks (pre-Feb 21)
+- `archive/reports/` — Old HTML reports and autonomous session summaries
 - `archive/docs/` — Archived docs (superseded or research-only)
 - `archive/session-docs/` — Session execution plans and triage summaries
 - `archive/inbox/` — Old voice dump files
@@ -140,6 +153,7 @@ Root
 ├── docs/              — Human-readable guides
 │   ├── INDEX.md       — This file
 │   ├── ARCHITECTURE.md
+│   ├── FAILED-EXPERIMENTS.md  — Dead ends to avoid (read before new approaches)
 │   ├── MP-ARCHITECTURE.md
 │   ├── mp-architecture-audit.md   (S43-09 deep audit)
 │   ├── HUMAN_TEST.md  — Manual test checklist
@@ -147,7 +161,7 @@ Root
 │
 ├── decisions/         — Engineering decision logs
 ├── tasks/             — Active tasks (current + recent sessions)
-├── archive/           — Superseded/completed files
+├── archive/           — Superseded/completed files (tasks, decisions, reports, docs)
 │
 └── .claude/
     ├── rules/         — Agent rules (merge protocol, verification, etc.)
