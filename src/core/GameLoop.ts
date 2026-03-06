@@ -761,6 +761,11 @@ export class GameLoop {
       ctx.ddaLogger.update(dt);
       ctx.ddaPlayers[0].u = ctx.player.surfaceU;
       ctx.ddaPlayers[0].v = ctx.player.surfaceV;
+
+      // Update dominance HP scaling inputs so spawned enemies get tougher when player dominates.
+      // isSmallMap: scale factor < 1.0 means map is smaller than medium → player can dominate more easily.
+      const isSmallMap = ctx.mapSizeScaleFactor < 1.0;
+      ctx.enemySpawner.setDDADominanceInputs(ctx.companionManager.count, isSmallMap);
     }
     profiler.end('dda_system');
 

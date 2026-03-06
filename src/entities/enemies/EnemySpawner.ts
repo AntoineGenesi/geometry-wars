@@ -141,6 +141,12 @@ export class EnemySpawner {
   private ddaModifier: DDASpawnModifier | null = null;
   /** Player positions for DDA zone detection (updated externally). */
   private ddaPlayers: PlayerPosition[] = [];
+  /** Whether dominance HP scaling is active (set externally). */
+  private ddaDominanceEnabled: boolean = true;
+  /** Current companion count for dominance penalty calculation. */
+  private ddaCompanionCount: number = 0;
+  /** Whether the current map is small (affects dominance scaling). */
+  private ddaIsSmallMap: boolean = false;
 
   /**
    * Per-instance max active enemy cap, set by map size tier.
@@ -243,6 +249,17 @@ export class EnemySpawner {
   /** Update player positions for DDA zone detection. */
   setDDAPlayers(players: PlayerPosition[]): void {
     this.ddaPlayers = players;
+  }
+
+  /**
+   * Update dominance HP scaling inputs. Call every frame (or on state change).
+   *
+   * @param companionCount Number of active guardian/hunter companions the player has.
+   * @param isSmallMap Whether the current map is considered small.
+   */
+  setDDADominanceInputs(companionCount: number, isSmallMap: boolean): void {
+    this.ddaCompanionCount = companionCount;
+    this.ddaIsSmallMap = isSmallMap;
   }
 
   /**
@@ -608,6 +625,21 @@ export class EnemySpawner {
       enemy.applyDifficultyTierContinuous(continuousDifficultyLevel);
     } else if (tier > 0) {
       enemy.applyDifficultyTier(tier);
+    }
+
+    // Apply dominance HP multiplier: when player is dominating, enemies get tankier.
+    // Boss-type enemies are excluded (they already have their own scaling).
+    if (this.ddaModifier && this.ddaDominanceEnabled) {
+      const playerIdx = this.ddaPlayers.length > 0 ? 0 : 0; // single-player always index 0
+      const hpMult = this.ddaModifier.getDominanceHpMultiplier(
+        playerIdx,
+        this.ddaCompanionCount,
+        this.ddaIsSmallMap,
+      );
+      if (hpMult > 1.0) {
+        enemy.health = Math.ceil(enemy.health * hpMult);
+        enemy.maxHealth = Math.ceil(enemy.maxHealth * hpMult);
+      }
     }
 
     // Create MeshWalker for geodesic surface movement (if MeshSurface available).

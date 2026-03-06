@@ -51,6 +51,21 @@ export interface DDAConfig {
   updateInterval: number;
   /** Disable DDA when difficulty tier >= this value. */
   disableOnTier: number;
+
+  // ---------------------------------------------------------------------------
+  // Dominance penalty (punishes high-performing players)
+  // ---------------------------------------------------------------------------
+
+  /** Composite score above which dominance scaling begins (default 0.65). */
+  dominanceThreshold: number;
+  /** Composite score for max dominance HP multiplier (default 0.85). */
+  dominanceMaxScore: number;
+  /** Maximum HP multiplier at full dominance (default 5.0 = 5x enemy HP). */
+  dominanceMaxHpMultiplier: number;
+  /** Each guardian companion adds this to effective DDA dominance score (default 0.05). */
+  companionDominanceBonus: number;
+  /** Small-map difficulty multiplier applied on top of dominance scaling (default 1.5). */
+  smallMapDominanceBoost: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,6 +83,13 @@ const DEFAULT_CONFIG: DDAConfig = {
   rampDownTime: 20,
   updateInterval: 2.0,
   disableOnTier: 4, // Nightmare
+
+  // Dominance penalty defaults
+  dominanceThreshold: 0.65,
+  dominanceMaxScore: 0.85,
+  dominanceMaxHpMultiplier: 5.0,
+  companionDominanceBonus: 0.05,
+  smallMapDominanceBoost: 1.5,
 };
 
 /** Speed multipliers per DDA level (1.0 = no boost, higher = player moves faster).
@@ -197,6 +219,53 @@ export class DDADecisionEngine {
   getCompositeScore(playerIndex: number): number {
     if (playerIndex >= DDADecisionEngine.MAX_PLAYERS) return 0.5;
     return this.playerStates[playerIndex].compositeScore;
+  }
+
+  /**
+   * Get the HP multiplier to apply to spawned enemies for a given player.
+   *
+   * When a player is dominating (high composite score), this returns a value
+   * > 1.0 to make enemies significantly tankier, creating a "wall of difficulty"
+   * as the player gets stronger.
+   *
+   * @param playerIndex Player index (0-based).
+   * @param companionCount Number of active guardian/hunter companions this player has.
+   * @param isSmallMap Whether the current map is small (tighter = easier to dominate).
+   * @returns HP multiplier in range [1.0, dominanceMaxHpMultiplier].
+   */
+  getDominanceHpMultiplier(
+    playerIndex: number,
+    companionCount: number = 0,
+    isSmallMap: boolean = false,
+  ): number {
+    if (!this.enabled || playerIndex >= DDADecisionEngine.MAX_PLAYERS) return 1.0;
+
+    const state = this.playerStates[playerIndex];
+    if (!this.playerStates[playerIndex]) return 1.0;
+
+    // Adjust score upward for each companion (companions make player much stronger)
+    const companionBonus = companionCount * this.config.companionDominanceBonus;
+    const effectiveScore = Math.min(1.0, state.compositeScore + companionBonus);
+
+    const threshold = this.config.dominanceThreshold;
+    const maxScore = this.config.dominanceMaxScore;
+
+    if (effectiveScore <= threshold) return 1.0;
+
+    // Linear ramp from threshold to maxScore
+    const t = Math.min(1.0, (effectiveScore - threshold) / (maxScore - threshold));
+
+    // Exponential curve: t^2 makes it ramp steeply at high performance
+    const tSteep = t * t;
+
+    let multiplier = 1.0 + tSteep * (this.config.dominanceMaxHpMultiplier - 1.0);
+
+    // Small map boost: even harder on tight maps
+    if (isSmallMap) {
+      multiplier = 1.0 + (multiplier - 1.0) * this.config.smallMapDominanceBoost;
+    }
+
+    return Math.min(this.config.dominanceMaxHpMultiplier * (isSmallMap ? this.config.smallMapDominanceBoost : 1.0), multiplier);
   }
 
   /** Enable or disable the DDA system. */
