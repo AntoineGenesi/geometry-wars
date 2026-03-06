@@ -123,8 +123,10 @@ export class CollisionSystem {
             scorePopups.spawnDamage(enemy.position, bulletDamage);
           }
 
-          // Bullet impact particles
-          particles.bulletImpact(bulletPos);
+          // Bullet impact particles (skip for companion bullets — rapid fire creates too much noise)
+          if (!bulletData.isCompanion) {
+            particles.bulletImpact(bulletPos);
+          }
 
           // Grid deformation at impact point
           surface.applyForce(bulletPos, 0.08, 0.3);
@@ -151,7 +153,13 @@ export class CollisionSystem {
             if (debugFreeze) console.log('[CollisionSystem] Enemy died, starting death callback');
             const enemyType = enemy.constructor.name.toLowerCase();
             const color = CollisionSystem.ENEMY_COLORS[enemyType] ?? CollisionSystem.ENEMY_COLOR_FALLBACK;
-            particles.enemyDeath(enemy.position, color);
+            // Use lightweight effect for companion kills on normal enemies to avoid frame drops
+            // when many drones are killing rapidly. Boss kills always get the full effect.
+            if (bulletData.isCompanion && !(enemy instanceof Boss)) {
+              particles.aoeDeath(enemy.position, color);
+            } else {
+              particles.enemyDeath(enemy.position, color);
+            }
             if (debugFreeze) console.log('[CollisionSystem] Particles spawned');
             scoreManager.awardKill(enemy.scoreValue, enemyType);
             scorePopups?.spawnScore(enemy.position.clone(), enemy.scoreValue);
