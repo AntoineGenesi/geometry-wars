@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { SurfaceFactory } from '../surfaces/SurfaceFactory';
-import { SURFACES, MODES, VotingScreen } from './VotingScreen';
+import { SURFACES, MODES, VotingScreen, getUnavailableModesForSurface, CLAUSTROPHOBIA_SURFACES } from './VotingScreen';
 import type { NetworkGameState } from '../network/NetworkClient';
 
 describe('VotingScreen — SURFACES array', () => {
@@ -279,6 +279,162 @@ describe('VotingScreen — mastery desync regression (S34b)', () => {
     const cdEl = document.querySelector('.vs-countdown') as HTMLElement;
     expect(cdEl).not.toBeNull();
     expect(cdEl.textContent).toBe('12');
+
+    screen.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S44k-08: Mode dimming — unavailable modes grayed out based on selected map
+// ---------------------------------------------------------------------------
+
+describe('getUnavailableModesForSurface()', () => {
+  it('returns empty set for surfaces that support all modes (sphere)', () => {
+    expect(CLAUSTROPHOBIA_SURFACES.has('sphere')).toBe(true);
+    const unavailable = getUnavailableModesForSurface('sphere');
+    expect(unavailable.size).toBe(0);
+  });
+
+  it('returns claustrophobia as unavailable for cube (not in CLAUSTROPHOBIA_SURFACES)', () => {
+    const unavailable = getUnavailableModesForSurface('cube');
+    expect(unavailable.has('claustrophobia')).toBe(true);
+  });
+
+  it('returns claustrophobia as unavailable for peanut', () => {
+    const unavailable = getUnavailableModesForSurface('peanut');
+    expect(unavailable.has('claustrophobia')).toBe(true);
+  });
+
+  it('returns claustrophobia as unavailable for cube-tunnel', () => {
+    const unavailable = getUnavailableModesForSurface('cube-tunnel');
+    expect(unavailable.has('claustrophobia')).toBe(true);
+  });
+
+  it('does not mark waves/king/sniper/rainbow/pvp/pvpve as unavailable for any surface', () => {
+    const allModesExceptClaustrophobia = ['waves', 'king', 'sniper', 'rainbow', 'pvp', 'pvpve'];
+    for (const surf of SURFACES) {
+      const unavailable = getUnavailableModesForSurface(surf.id);
+      for (const mode of allModesExceptClaustrophobia) {
+        expect(unavailable.has(mode)).toBe(false);
+      }
+    }
+  });
+
+  it('returns empty set for torus (in CLAUSTROPHOBIA_SURFACES)', () => {
+    expect(CLAUSTROPHOBIA_SURFACES.has('torus')).toBe(true);
+    const unavailable = getUnavailableModesForSurface('torus');
+    expect(unavailable.size).toBe(0);
+  });
+});
+
+describe('VotingScreen — mode dimming UI (S44k-08)', () => {
+  function makeFakeState(overrides: Partial<NetworkGameState> = {}): NetworkGameState {
+    return {
+      players: new Map(),
+      bullets: { forEach() {} } as never,
+      enemies: { forEach() {} } as never,
+      geoms: { forEach() {} } as never,
+      weaponPickups: { forEach() {} } as never,
+      superPickups: { forEach() {} } as never,
+      buffPickups: { forEach() {} } as never,
+      healthPickups: { forEach() {} } as never,
+      surfaceType: 'sphere',
+      waveNumber: 0,
+      gameTime: 0,
+      gameStarted: false,
+      gameOver: true,
+      hostId: 'player1',
+      isPaused: false,
+      roomPhase: 'voting',
+      voteMap: new Map(),
+      votingCountdown: 30,
+      hostPickMode: false,
+      gameMode: 'waves',
+      mapSize: 'medium',
+      readyMap: new Map(),
+      countdownPaused: false,
+      ...overrides,
+    };
+  }
+
+  it('claustrophobia mode button is NOT disabled on sphere (compatible surface)', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    expect(clBtn).not.toBeNull();
+    expect(clBtn.classList.contains('vs-mode-disabled')).toBe(false);
+
+    screen.dispose();
+  });
+
+  it('claustrophobia mode button IS disabled when cube surface is selected', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    // Simulate user clicking the cube surface card
+    const cubeCard = document.querySelector('[data-surface="cube"]') as HTMLElement;
+    cubeCard?.click();
+
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    expect(clBtn).not.toBeNull();
+    expect(clBtn.classList.contains('vs-mode-disabled')).toBe(true);
+
+    screen.dispose();
+  });
+
+  it('claustrophobia mode button is re-enabled when switching back to torus', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    // Switch to cube (disables claustrophobia)
+    const cubeCard = document.querySelector('[data-surface="cube"]') as HTMLElement;
+    cubeCard?.click();
+
+    // Switch back to torus (claustrophobia compatible)
+    const torusCard = document.querySelector('[data-surface="torus"]') as HTMLElement;
+    torusCard?.click();
+
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    expect(clBtn.classList.contains('vs-mode-disabled')).toBe(false);
+
+    screen.dispose();
+  });
+
+  it('auto-switches from claustrophobia to waves when incompatible surface is clicked', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    // Select claustrophobia mode first
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    clBtn?.click();
+
+    // Now select cube (incompatible with claustrophobia)
+    const cubeCard = document.querySelector('[data-surface="cube"]') as HTMLElement;
+    cubeCard?.click();
+
+    // Waves button should now be selected (auto-switched)
+    const wavesBtn = document.querySelector('[data-id="waves"]') as HTMLElement;
+    expect(wavesBtn.classList.contains('vs-selected')).toBe(true);
+    // Claustrophobia should NOT be selected
+    expect(clBtn.classList.contains('vs-selected')).toBe(false);
+
+    screen.dispose();
+  });
+
+  it('update() applies mode dimming based on current selectedSurface', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    // Click cube to set selectedSurface to cube internally
+    const cubeCard = document.querySelector('[data-surface="cube"]') as HTMLElement;
+    cubeCard?.click();
+
+    // Call update() — should maintain dimming
+    screen.update(makeFakeState({ surfaceType: 'sphere' }), false, 'player1');
+
+    const clBtn = document.querySelector('[data-id="claustrophobia"]') as HTMLElement;
+    expect(clBtn.classList.contains('vs-mode-disabled')).toBe(true);
 
     screen.dispose();
   });
