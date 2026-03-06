@@ -188,6 +188,8 @@ export interface DifficultyInput {
    * This bonus stacks with the normal score/time/kill ramps.
    */
   playerCount?: number;
+  /** Total number of active companion drones. Optional — defaults to 0. */
+  companionCount?: number;
 }
 
 /**
@@ -253,8 +255,14 @@ export function computeDifficultyLevel(input: DifficultyInput): number {
   // Rationale: co-op groups kill enemies faster, so harder types arrive sooner.
   const playerCountBonus = ((input.playerCount ?? 1) - 1) * 0.3;
 
-  // Combine: score is dominant, time is moderate, combo/kills/buffs/player-count contribute
-  return scoreLevel + timeLevel * 0.5 + comboLevel + levelBonus + killBonus + buffBonus + playerCountBonus;
+  // Companion drone bonus: each companion adds 0.4 difficulty levels.
+  // 5 companions → +2.0 (significant but capped).
+  // Rationale: companions on small maps clear enemies autonomously.
+  // Cap at 2.0 so even extreme companion counts stay fair.
+  const companionBonus = Math.min(2.0, (input.companionCount ?? 0) * 0.4);
+
+  // Combine: score is dominant, time is moderate, combo/kills/buffs/player-count/companions contribute
+  return scoreLevel + timeLevel * 0.5 + comboLevel + levelBonus + killBonus + buffBonus + playerCountBonus + companionBonus;
 }
 
 /**

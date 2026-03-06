@@ -762,6 +762,65 @@ describe('BuffManager.reset() — buffs cleared on new game', () => {
 });
 
 // ============================================================================
+// 13. Companion Count Difficulty Bonus (s44l-08c)
+// ============================================================================
+
+describe('Companion Count Difficulty Bonus', () => {
+  const baseInput: DifficultyInput = {
+    score: 5_000_000,
+    elapsedTime: 900,
+    combo: 0,
+    totalKills: 500,
+    playerLevel: 5,
+  };
+
+  it('companionCount: 0 equals undefined (no change from baseline)', () => {
+    const withUndefined = computeDifficultyLevel({ ...baseInput });
+    const withZero = computeDifficultyLevel({ ...baseInput, companionCount: 0 });
+    expect(withUndefined).toBe(withZero);
+  });
+
+  it('companionCount: 1 adds exactly 0.4 difficulty levels', () => {
+    const base = computeDifficultyLevel({ ...baseInput, companionCount: 0 });
+    const with1 = computeDifficultyLevel({ ...baseInput, companionCount: 1 });
+    expect(with1 - base).toBeCloseTo(0.4, 10);
+  });
+
+  it('companionCount: 5 adds exactly 2.0 difficulty levels (cap)', () => {
+    const base = computeDifficultyLevel({ ...baseInput, companionCount: 0 });
+    const with5 = computeDifficultyLevel({ ...baseInput, companionCount: 5 });
+    expect(with5 - base).toBeCloseTo(2.0, 10);
+  });
+
+  it('companionCount: 10 still adds exactly 2.0 (cap holds)', () => {
+    const base = computeDifficultyLevel({ ...baseInput, companionCount: 0 });
+    const with10 = computeDifficultyLevel({ ...baseInput, companionCount: 10 });
+    expect(with10 - base).toBeCloseTo(2.0, 10);
+  });
+
+  it('regression: milestone tests still pass with no companionCount set', () => {
+    // These milestones don't set companionCount — should default to 0 (no change)
+    const milestone5M = computeDifficultyLevel({
+      score: 5_000_000, elapsedTime: 1200, combo: 0,
+      totalKills: 500, playerLevel: 9, buffPower: 3.0,
+    });
+    expect(milestone5M).toBeGreaterThanOrEqual(5.0);
+
+    const milestone50M = computeDifficultyLevel({
+      score: 50_000_000, elapsedTime: 2700, combo: 0,
+      totalKills: 800, playerLevel: 9, buffPower: 6.0,
+    });
+    expect(milestone50M).toBeGreaterThanOrEqual(8.0);
+
+    const milestone300M = computeDifficultyLevel({
+      score: 300_000_000, elapsedTime: 5400, combo: 0,
+      totalKills: 1295, playerLevel: 9, buffPower: 8.45,
+    });
+    expect(milestone300M).toBeGreaterThanOrEqual(12.0);
+  });
+});
+
+// ============================================================================
 // Dynamic Enemy Cap (getDynamicMaxEnemies)
 // ============================================================================
 
