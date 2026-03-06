@@ -125,6 +125,9 @@ class Companion {
   rechargeTimer = 0;
   isReady = true;
 
+  // Map scale factor — guardian range scales with map size
+  mapSizeScaleFactor = 1;
+
   // Glow trail data
   private glowMaterial: THREE.MeshStandardMaterial;
 
@@ -272,7 +275,8 @@ class Companion {
 
       _tempToEnemy.copy(enemy.position).sub(playerWorldPos);
       const dist = _tempToEnemy.length();
-      if (dist > GUARDIAN_RANGE || dist < 0.1) continue;
+      const effectiveRange = GUARDIAN_RANGE * this.mapSizeScaleFactor;
+      if (dist > effectiveRange || dist < 0.1) continue;
 
       _tempToEnemy.normalize();
 
@@ -282,7 +286,7 @@ class Companion {
       // Score: prefer enemies that are NOT in the player's forward arc
       // Behind (dot ~ -1) scores highest, directly ahead (dot ~ 1) scores lowest
       const blindSpotScore = 1.0 - dotAim; // 0 to 2, higher = more behind
-      const proximityScore = 1.0 - dist / GUARDIAN_RANGE; // closer = higher
+      const proximityScore = 1.0 - dist / effectiveRange; // closer = higher
 
       const score = blindSpotScore * 0.7 + proximityScore * 0.3;
       if (score > bestScore) {
@@ -426,9 +430,16 @@ export class CompanionManager {
   private shieldTimer = 0;
   private shieldActive = false;
 
-  constructor() {
+  private mapSizeScaleFactor = 1;
+
+  constructor(mapSizeScaleFactor = 1) {
     this.root = new THREE.Group();
     this.root.name = 'CompanionManager';
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
+  }
+
+  setMapSizeScaleFactor(factor: number): void {
+    this.mapSizeScaleFactor = factor;
   }
 
   /**
@@ -452,6 +463,7 @@ export class CompanionManager {
       }
     }
 
+    companion.mapSizeScaleFactor = this.mapSizeScaleFactor;
     companion.setMeshSurface(this.meshSurface);
     this.companions.push(companion);
     this.root.add(companion.mesh);
