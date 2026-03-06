@@ -48,11 +48,11 @@ export const BULLET_VISUAL_CONFIGS: Record<BulletVisualType, BulletVisualConfig>
     createGeometry: () => new THREE.CapsuleGeometry(0.5, 1.0, 4, 8),
   },
   [BulletVisualType.Spread]: {
-    color: 0xffff44,
-    scaleX: 0.07,
-    scaleY: 0.07,  // spherical — all axes equal
-    scaleZ: 0.07,
-    createGeometry: () => new THREE.SphereGeometry(0.5, 6, 6),
+    color: 0x44ffff,
+    scaleX: 0.16,
+    scaleY: 0.16,  // spherical — all axes equal; 0.5 * 0.16 = 0.08 matches SP SphereGeometry(0.08)
+    scaleZ: 0.16,
+    createGeometry: () => new THREE.SphereGeometry(0.5, 8, 8),
   },
   [BulletVisualType.Piercing]: {
     color: 0xff4444,
@@ -160,7 +160,7 @@ export class BulletInstanceManager {
   /** Shared BatchedMesh for all bullet types (null until first use). */
   private batchedMesh: THREE.BatchedMesh | null = null;
   /** Shared material for all bullet types. */
-  private material: THREE.MeshStandardMaterial | null = null;
+  private material: THREE.MeshBasicMaterial | null = null;
   /** Whether ensureInitialized() has run. */
   private initialized = false;
 
@@ -435,13 +435,11 @@ export class BulletInstanceManager {
     }
 
     // Create shared material — bullets are visually differentiated by per-instance color.
-    // A neutral emissive provides glow for all types uniformly.
-    this.material = new THREE.MeshStandardMaterial({
+    // MeshBasicMaterial: unlit, always renders at full brightness regardless of scene lighting.
+    // This matches how SP WeaponManager renders projectiles (also MeshBasicMaterial) — ensuring
+    // bullets look consistent and bright across all lighting conditions, including dark scenes.
+    this.material = new THREE.MeshBasicMaterial({
       color: 0xffffff,
-      emissive: new THREE.Color(0x888888),
-      emissiveIntensity: 0.5,
-      metalness: 0.2,
-      roughness: 0.3,
       transparent: true,
       opacity: 0.9,
       depthWrite: false,
