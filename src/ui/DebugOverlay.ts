@@ -131,9 +131,7 @@ export class DebugOverlay {
           <span class="debug-label">TEX</span>
           <span class="debug-value" id="debug-tex" style="color:#aaccff">--</span>
         </div>
-        <button class="debug-toggle-top" id="debug-toggle-top" title="Toggle top-10 moments">TOP 10</button>
         <button class="debug-toggle-graphs" id="debug-toggle-graphs" title="Toggle live performance graphs">GRAPHS</button>
-        <button class="debug-export-logs" id="debug-export-logs" title="Export performance logs to disk">EXPORT</button>
       </div>
       <div class="debug-profiler-panel" id="debug-profiler-panel">
         <div class="debug-profiler-title">CPU PROFILE</div>
@@ -167,18 +165,6 @@ export class DebugOverlay {
     this.profilerPanel = document.getElementById('debug-profiler-panel') as HTMLDivElement;
     this.profilerContent = document.getElementById('debug-profiler-content') as HTMLDivElement;
 
-    // Top-10 toggle button
-    const toggleBtn = document.getElementById('debug-toggle-top');
-    toggleBtn?.addEventListener('click', () => {
-      this.topPanelExpanded = !this.topPanelExpanded;
-      if (this.topPanelExpanded) {
-        this.topPanel.classList.remove('hidden');
-        this.renderTopPanel();
-      } else {
-        this.topPanel.classList.add('hidden');
-      }
-    });
-
     // Graphs toggle button
     const graphsBtn = document.getElementById('debug-toggle-graphs');
     graphsBtn?.addEventListener('click', () => {
@@ -188,48 +174,6 @@ export class DebugOverlay {
         this.renderMiniGraphs();
       } else {
         this.graphsPanel.classList.add('hidden');
-      }
-    });
-
-    // Export logs button
-    const exportBtn = document.getElementById('debug-export-logs');
-    exportBtn?.addEventListener('click', async () => {
-      try {
-        // Dynamic import to avoid bundling in production if not needed
-        const { exportLogsToServer, downloadLogsAsFiles } = await import('../utils/PerformanceExporter');
-
-        // Try server export first
-        const serverUrl = process.env.NODE_ENV === 'production'
-          ? window.location.origin
-          : 'http://localhost:2567';
-
-        exportBtn.textContent = 'EXPORTING...';
-        exportBtn.setAttribute('disabled', 'true');
-
-        const result = await exportLogsToServer(serverUrl, true, true);
-
-        if (result.success) {
-          exportBtn.textContent = 'EXPORTED ✓';
-          console.log('[DebugOverlay] Logs exported to disk:', result.results);
-        } else {
-          // Fallback to browser download
-          console.warn('[DebugOverlay] Server export failed, downloading files instead');
-          downloadLogsAsFiles(true, true);
-          exportBtn.textContent = 'DOWNLOADED ✓';
-        }
-
-        // Reset button after 2 seconds
-        setTimeout(() => {
-          exportBtn.textContent = 'EXPORT';
-          exportBtn.removeAttribute('disabled');
-        }, 2000);
-      } catch (err) {
-        console.error('[DebugOverlay] Export error:', err);
-        exportBtn.textContent = 'ERROR';
-        setTimeout(() => {
-          exportBtn.textContent = 'EXPORT';
-          exportBtn.removeAttribute('disabled');
-        }, 2000);
       }
     });
 
@@ -903,7 +847,7 @@ export class DebugOverlay {
       text-align: right;
     }
 
-    #debug-overlay .debug-toggle-top {
+    #debug-overlay .debug-toggle-graphs {
       display: block;
       width: 100%;
       margin-top: 4px;
@@ -921,36 +865,9 @@ export class DebugOverlay {
       transition: background 0.15s;
     }
 
-    #debug-overlay .debug-toggle-top:hover {
+    #debug-overlay .debug-toggle-graphs:hover {
       background: rgba(40, 60, 100, 0.8);
       color: #88aacc;
-    }
-
-    #debug-overlay .debug-export-logs {
-      display: block;
-      width: 100%;
-      margin-top: 4px;
-      padding: 3px 0;
-      background: rgba(40, 100, 60, 0.5);
-      border: 1px solid rgba(60, 120, 80, 0.5);
-      border-radius: 3px;
-      color: #aaccaa;
-      font-size: 10px;
-      font-weight: bold;
-      letter-spacing: 1px;
-      cursor: pointer;
-      pointer-events: auto;
-      transition: background 0.15s;
-    }
-
-    #debug-overlay .debug-export-logs:hover {
-      background: rgba(40, 100, 60, 0.8);
-      color: #88cc88;
-    }
-
-    #debug-overlay .debug-export-logs:disabled {
-      cursor: not-allowed;
-      opacity: 0.6;
     }
 
     /* CPU Profiler panel (always-visible, below live stats) */
@@ -1175,12 +1092,6 @@ export class DebugOverlay {
 
       /* Hide BUL (4th), GEO (5th), TEX (6th) rows — keep only REN, FPS, ENT */
       #debug-overlay .debug-live .debug-row:nth-child(n+4) {
-        display: none;
-      }
-
-      /* Hide the TOP10 and EXPORT buttons on mobile (too big, no use on phone) */
-      #debug-overlay .debug-toggle-top,
-      #debug-overlay .debug-export-logs {
         display: none;
       }
 
