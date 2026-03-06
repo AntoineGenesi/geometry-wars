@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { LODLevel, LODGeometryCache } from './LODManager';
 import { getEnemyShaderStyle, enhanceMaterialWithShaderEffect } from './EnemyShaderEffects';
+import { getEntityVisibilityState, EntityVisibilityState } from './EntityCulling';
 
 /**
  * EnemyInstanceManager - Replaces individual enemy meshes with InstancedMesh
@@ -266,6 +267,8 @@ export class EnemyInstanceManager {
     enemies: BaseEnemy[],
     lodAssignments: Map<BaseEnemy, LODLevel>,
     camera: THREE.Camera,
+    /** Phase 1 culling: hide instanced enemies >90° from player's surface normal. */
+    playerCulling?: { position: THREE.Vector3; normal: THREE.Vector3 },
   ): void {
     // Lazily create shared LOD batches on first use
     if (!this.lodMediumBatch) {
@@ -310,6 +313,26 @@ export class EnemyInstanceManager {
 
       // Skip materializing enemies (spawn warning in progress)
       if (enemy.isMaterializing) continue;
+
+      // Phase 1 culling: hide enemies >90° from player's surface normal hemisphere.
+      // Enemies behind the surface are invisible to the player — no need to render them.
+      if (playerCulling && enemy.mesh) {
+        const visibility = getEntityVisibilityState(
+          playerCulling.position,
+          playerCulling.normal,
+          enemy.mesh.position,
+        );
+        if (visibility === EntityVisibilityState.HIDDEN) {
+          // Zero-scale the high-detail instance slot (hidden from this batch)
+          _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
+          batch.instancedMesh.setMatrixAt(highIndex, _tempMatrix);
+          // Remove from any LOD shared batch too
+          if (this.enemyLODPlacement.has(enemy)) {
+            this.removeLODPlacement(enemy);
+          }
+          continue;
+        }
+      }
 
       const lodLevel = lodAssignments.get(enemy);
 

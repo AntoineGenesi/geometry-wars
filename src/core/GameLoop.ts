@@ -363,11 +363,13 @@ export class GameLoop {
     // Update GPU-instanced enemy rendering with LOD-aware geometry swapping.
     // Enemies at MEDIUM/LOW LOD are rendered with simplified geometry (20/2 tris)
     // instead of full-detail meshes (~200 tris), giving real triangle reduction.
+    // Phase 1 culling: instanced enemies >90° from player's surface normal are hidden.
     profiler.begin('enemy_instance_update');
     ctx.enemyInstanceManager.updateInstancesWithLOD(
       ctx.enemySpawner.getEnemies(),
       ctx.state.lodAssignments,
       ctx.game.camera,
+      ctx.player.alive ? { position: ctx.playerWalker.position, normal: ctx.playerWalker.normal } : undefined,
     );
     profiler.end('enemy_instance_update');
     profiler.end('enemy_update');
