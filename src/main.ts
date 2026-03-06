@@ -1292,9 +1292,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Camera controller (handles positioning, orbit, zoom) --
   const cameraController = new CameraController(game.camera);
-  // Start zoomed in closer on mobile for better visibility of the player
+  // Start zoomed in closer on mobile for better visibility of the player (2x more zoomed than desktop)
   if (mobile) {
-    cameraController.setCameraDistance(9);
+    cameraController.setCameraDistance(7.5);
   }
 
   // -- Wire up enemy death callbacks (now in EnemyDeathCallbacks module) --
