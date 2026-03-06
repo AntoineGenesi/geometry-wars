@@ -3,6 +3,12 @@ import { SuperStateType } from './SuperState';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 
+// Pre-allocated temps for applySurfaceTransform (zero per-call allocations)
+const _sspMat4 = new THREE.Matrix4();
+const _sspQSurface = new THREE.Quaternion();
+const _sspQSpin = new THREE.Quaternion();
+const _sspSpinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
+
 export interface SurfaceTransform {
   position: THREE.Vector3;
   normal: THREE.Vector3;
@@ -212,10 +218,6 @@ export class SuperStatePickup {
       dot.scale.set(scale, scale, scale);
     }
 
-    // Rotate the pattern slowly (applied before applySurfaceTransform overwrites quaternion,
-    // but kept here for visual variety — the quaternion is reset by applySurfaceTransform anyway)
-    this.mesh.rotation.y += dt * 0.5;
-
     // Store cameraUp for deferred use in applySurfaceTransform()
     if (cameraUp) {
       this._storedCameraUp.copy(cameraUp);
@@ -235,9 +237,12 @@ export class SuperStatePickup {
     const bob = Math.sin(this.animationTime * 2.5 + this._bobPhase) * 0.07;
     this.mesh.position.copy(transform.position).addScaledVector(transform.normal, 0.3 + bob);
 
-    // Orient consistently with other pickup types: local X = tangent, Y = normal, Z = bitangent.
-    const mat = new THREE.Matrix4().makeBasis(transform.tangent, transform.normal, transform.bitangent);
-    this.mesh.quaternion.setFromRotationMatrix(mat);
+    // Orient to surface, then spin around local Y (= surface normal) so the dot pattern
+    // visibly rotates rather than appearing as a static thin line edge-on to the camera.
+    _sspMat4.makeBasis(transform.tangent, transform.normal, transform.bitangent);
+    _sspQSurface.setFromRotationMatrix(_sspMat4);
+    _sspQSpin.setFromAxisAngle(_sspSpinAxis, this.animationTime * 0.5);
+    this.mesh.quaternion.copy(_sspQSurface).multiply(_sspQSpin);
 
     // Update spawn indicator after quaternion is set so cameraUp transforms correctly
     updateSpawnIndicator(this.mesh, this.animationTime, this.animationTime, this._hasCameraUp ? this._storedCameraUp : undefined);
