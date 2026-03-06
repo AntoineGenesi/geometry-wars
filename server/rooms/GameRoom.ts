@@ -2705,6 +2705,15 @@ export class GameRoom extends Room<GameState> {
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
           player.lives--;
 
+          // Broadcast player hit (damage) for kill feed damage numbers
+          this.broadcast('player_hit', {
+            victimId: player.id,
+            victimName: player.name,
+            enemyType: enemy.type,
+            livesRemaining: player.lives,
+            timestamp: Date.now(),
+          });
+
           // If player had a meaningful multiplier, spawn a multiplier_boost pickup
           // at the death spot so surviving players can capitalize on it.
           if (player.multiplier > 5) {
@@ -2721,6 +2730,13 @@ export class GameRoom extends Room<GameState> {
           if (player.lives <= 0) {
             player.alive = false;
             this.logger.log(`[GameRoom] ${player.name} died!`);
+            // Broadcast player kill for kill feed
+            this.broadcast('player_killed', {
+              killer: enemy.type,
+              victimId: player.id,
+              victimName: player.name,
+              timestamp: Date.now(),
+            });
           } else {
             // S41-03: Respawn at a random location away from death spot and enemies.
             // Old S31 fix kept player at hit location; user now explicitly wants

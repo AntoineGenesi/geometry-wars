@@ -227,6 +227,10 @@ export interface NetworkCallbacks {
   onStartupConfig?: (config: NetworkStartupConfig) => void;
   /** Fired when a player levels up (server-authoritative). */
   onPlayerLevelUp?: (data: { playerId: string; newLevel: number; playerName: string }) => void;
+  /** Fired when a player is killed (lives reached 0). */
+  onPlayerKilled?: (data: { killer: string; victimId: string; victimName: string; timestamp: number }) => void;
+  /** Fired when a player takes a hit (lives reduced but not 0). */
+  onPlayerHit?: (data: { victimId: string; victimName: string; enemyType: string; livesRemaining: number; timestamp: number }) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -510,6 +514,18 @@ export class NetworkClient {
     this.room.onMessage('player_level_up', (data: { playerId: string; newLevel: number; playerName: string }) => {
       netLog(`[Network] player_level_up: ${data.playerName} reached level ${data.newLevel}`);
       this.callbacks.onPlayerLevelUp?.(data);
+    });
+
+    // Player killed — lost all lives (for kill feed)
+    this.room.onMessage('player_killed', (data: { killer: string; victimId: string; victimName: string; timestamp: number }) => {
+      netLog(`[Network] player_killed: ${data.victimName} killed by ${data.killer}`);
+      this.callbacks.onPlayerKilled?.(data);
+    });
+
+    // Player hit — lost a life but still alive (for damage numbers)
+    this.room.onMessage('player_hit', (data: { victimId: string; victimName: string; enemyType: string; livesRemaining: number; timestamp: number }) => {
+      netLog(`[Network] player_hit: ${data.victimName} hit by ${data.enemyType}, ${data.livesRemaining} lives remaining`);
+      this.callbacks.onPlayerHit?.(data);
     });
 
     // Disconnection
