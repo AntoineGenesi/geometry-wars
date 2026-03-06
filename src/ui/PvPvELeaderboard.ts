@@ -23,6 +23,8 @@ export interface LeaderboardEntry {
   kills: number;
   /** Enemy kills. */
   enemyKills: number;
+  /** Game score (points from killing enemies with multiplier). */
+  score: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -35,6 +37,7 @@ interface RowCache {
   pvpKillsEl: HTMLTableCellElement;
   enemyKillsEl: HTMLTableCellElement;
   totalEl: HTMLTableCellElement;
+  scoreEl: HTMLTableCellElement;
 }
 
 export class PvPvELeaderboard {
@@ -140,6 +143,12 @@ export class PvPvELeaderboard {
         color: #88bbff;
       }
 
+      #pvpve-leaderboard .lb-score-col {
+        color: #ffdd88;
+        font-size: 9px;
+        opacity: 0.8;
+      }
+
       #pvpve-leaderboard .lb-local {
         color: #00ffcc;
         text-shadow: 0 0 5px rgba(0,255,200,0.5);
@@ -163,13 +172,14 @@ export class PvPvELeaderboard {
     // Header
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    const cols = ['Player', 'P', 'E', 'Total'];
+    const cols = ['Player', 'P', 'E', 'Total', 'Score'];
     for (const col of cols) {
       const th = document.createElement('th');
       th.textContent = col;
       if (col === 'Total') th.style.color = '#00ffcc';
       if (col === 'P') th.style.color = '#ff6688';
       if (col === 'E') th.style.color = '#88bbff';
+      if (col === 'Score') th.style.color = '#ffdd88';
       headerRow.appendChild(th);
     }
     thead.appendChild(headerRow);
@@ -188,12 +198,12 @@ export class PvPvELeaderboard {
    * @param localPlayerId  Session ID of the local player (highlighted).
    */
   update(entries: LeaderboardEntry[], localPlayerId: string): void {
-    // Sort by total kills desc, then enemy kills desc, then name asc
+    // Sort by total kills desc (primary), then score desc (secondary), then name asc
     const sorted = [...entries].sort((a, b) => {
       const totalA = a.kills + a.enemyKills;
       const totalB = b.kills + b.enemyKills;
       if (totalB !== totalA) return totalB - totalA;
-      if (b.enemyKills !== a.enemyKills) return b.enemyKills - a.enemyKills;
+      if (b.score !== a.score) return b.score - a.score;
       return a.name.localeCompare(b.name);
     });
 
@@ -227,6 +237,7 @@ export class PvPvELeaderboard {
       row.pvpKillsEl.textContent = String(entry.kills);
       row.enemyKillsEl.textContent = String(entry.enemyKills);
       row.totalEl.textContent = String(total);
+      row.scoreEl.textContent = entry.score >= 1000 ? `${Math.round(entry.score / 1000)}k` : String(entry.score);
     }
   }
 
@@ -263,11 +274,16 @@ export class PvPvELeaderboard {
     totalEl.className = 'lb-total-col';
     totalEl.textContent = '0';
 
+    const scoreEl = document.createElement('td');
+    scoreEl.className = 'lb-score-col';
+    scoreEl.textContent = '0';
+
     el.appendChild(nameEl);
     el.appendChild(pvpKillsEl);
     el.appendChild(enemyKillsEl);
     el.appendChild(totalEl);
+    el.appendChild(scoreEl);
 
-    return { el, nameEl, pvpKillsEl, enemyKillsEl, totalEl };
+    return { el, nameEl, pvpKillsEl, enemyKillsEl, totalEl, scoreEl };
   }
 }

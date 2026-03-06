@@ -49,6 +49,8 @@ export interface PvpvePlayerStat {
   enemyKills: number;
   deaths: number;
   totalDamageDealt: number;
+  /** Game score (points from killing enemies with multiplier). */
+  score?: number;
 }
 
 /** Options for showPvPvE(). */
@@ -1120,15 +1122,26 @@ export class GameOverScreen {
     enemyKillWeight: number,
     playerKillWeight: number,
   ): string {
-    const mvpId = this.selectPvpveMvp(players, mvpCriteria, enemyKillWeight, playerKillWeight);
-    const maxTotal = Math.max(1, ...players.map(p => p.enemyKills + p.kills));
-    const scoreOf = (p: PvpvePlayerStat) => Math.round(p.enemyKills * enemyKillWeight + p.kills * playerKillWeight);
+    // Sort by total kills desc (primary), then game score desc (secondary)
+    const sorted = [...players].sort((a, b) => {
+      const totalA = a.kills + a.enemyKills;
+      const totalB = b.kills + b.enemyKills;
+      if (totalB !== totalA) return totalB - totalA;
+      const scoreA = a.score ?? 0;
+      const scoreB = b.score ?? 0;
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return a.name.localeCompare(b.name);
+    });
+
+    const mvpId = this.selectPvpveMvp(sorted, mvpCriteria, enemyKillWeight, playerKillWeight);
+    const maxTotal = Math.max(1, ...sorted.map(p => p.enemyKills + p.kills));
+    const scoreOf = (p: PvpvePlayerStat) => p.score ?? Math.round(p.enemyKills * enemyKillWeight + p.kills * playerKillWeight);
     const kdOf = (p: PvpvePlayerStat) => {
       const total = p.enemyKills + p.kills;
       return p.deaths === 0 ? (total > 0 ? '∞' : '—') : (total / p.deaths).toFixed(2);
     };
 
-    const rowsHTML = players.map(p => {
+    const rowsHTML = sorted.map(p => {
       const isMvp = p.id === mvpId;
       const colorCSS = this.colorToCSS(p.color);
       const kd = kdOf(p);
@@ -1147,7 +1160,7 @@ export class GameOverScreen {
       `;
     }).join('');
 
-    const totalBarsHTML = players.map(p => {
+    const totalBarsHTML = sorted.map(p => {
       const total = p.enemyKills + p.kills;
       const pct = maxTotal > 0 ? (total / maxTotal) * 100 : 0;
       const colorCSS = this.colorToCSS(p.color);
@@ -1163,13 +1176,11 @@ export class GameOverScreen {
     }).join('');
 
     const mvpBadgeHTML = mvpId
-      ? `<div class="pvp-mvp-badge">★ MVP: ${this.escapeHTML(players.find(p => p.id === mvpId)?.name ?? '')} (${mvpCriteria === 'kd' ? 'K/D' : 'SCORE'})</div>`
+      ? `<div class="pvp-mvp-badge">★ MVP: ${this.escapeHTML(sorted.find(p => p.id === mvpId)?.name ?? '')} (${mvpCriteria === 'kd' ? 'K/D' : 'KILLS'})</div>`
       : '';
 
     const btnLabel = isHost ? 'BACK TO LOBBY' : 'CONTINUE TO LOBBY';
-    const weightsNote = (enemyKillWeight === 1 && playerKillWeight === 1)
-      ? 'Score = enemy kills + player kills'
-      : `Score = enemy kills × ${enemyKillWeight} + player kills × ${playerKillWeight}`;
+    const weightsNote = 'Ranked by kills (primary) · points (tiebreaker)';
 
     return `
       <div class="content pvpve-stats">
@@ -1182,7 +1193,7 @@ export class GameOverScreen {
           <div>PVP</div>
           <div>ENEMY</div>
           <div>K/D</div>
-          <div>SCORE</div>
+          <div>POINTS</div>
         </div>
 
         ${rowsHTML}

@@ -2612,13 +2612,14 @@ async function main() {
     const isPvpveMode = latestGameMode === 'pvpve';
     if (isPvpveMode) {
       pvpveLeaderboard.show();
-      const entries: { id: string; name: string; kills: number; enemyKills: number }[] = [];
+      const entries: { id: string; name: string; kills: number; enemyKills: number; score: number }[] = [];
       state.players.forEach((p: NetworkPlayerState) => {
         entries.push({
           id: p.id,
           name: p.name,
           kills: p.kills ?? 0,
           enemyKills: p.enemyKills ?? 0,
+          score: p.score ?? 0,
         });
       });
       pvpveLeaderboard.update(entries, localPlayerId);
@@ -3982,9 +3983,15 @@ async function main() {
               enemyKills: p.enemyKills ?? 0,
               deaths: p.deaths ?? 0,
               totalDamageDealt: p.totalDamageDealt ?? 0,
+              score: p.score ?? 0,
             });
           });
-          pvpvePlayers.sort((a, b) => (b.enemyKills + b.kills) - (a.enemyKills + a.kills));
+          // Sort by total kills desc (primary), then game score desc (tiebreaker)
+          pvpvePlayers.sort((a, b) => {
+            const totalDiff = (b.enemyKills + b.kills) - (a.enemyKills + a.kills);
+            if (totalDiff !== 0) return totalDiff;
+            return (b.score ?? 0) - (a.score ?? 0);
+          });
           gameOverScreen.showPvPvE(pvpvePlayers, { isHost });
         } else if (latestGameMode === 'pvp') {
           const pvpPlayers: PvpPlayerStat[] = [];
@@ -4232,9 +4239,15 @@ async function main() {
                 enemyKills: p.enemyKills ?? 0,
                 deaths: p.deaths ?? 0,
                 totalDamageDealt: p.totalDamageDealt ?? 0,
+                score: p.score ?? 0,
               });
             });
-            pvpvePlayers.sort((a, b) => (b.enemyKills + b.kills) - (a.enemyKills + a.kills));
+            // Sort by total kills desc (primary), then game score desc (tiebreaker)
+            pvpvePlayers.sort((a, b) => {
+              const totalDiff = (b.enemyKills + b.kills) - (a.enemyKills + a.kills);
+              if (totalDiff !== 0) return totalDiff;
+              return (b.score ?? 0) - (a.score ?? 0);
+            });
             gameOverScreen.showPvPvE(pvpvePlayers, { isHost });
           } else if (latestGameMode === 'pvp' && latestGameState) {
             const pvpPlayers: PvpPlayerStat[] = [];
