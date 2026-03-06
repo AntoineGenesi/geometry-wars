@@ -670,6 +670,8 @@ async function main() {
     companionBulletPool.setMeshSurface(meshSurface);
     companionManager.setMeshSurface(meshSurface);
     currentMapSizeScaleFactor = mapSizeScaleFactor;
+    // Scale companion targeting range with map size: larger maps need longer guardian range.
+    companionManager.setMapSizeScaleFactor(mapSizeScaleFactor);
     // Scale bullet range with map size: larger maps → bullets travel proportionally further.
     bulletPool.lifetimeMultiplier = mapSizeScaleFactor;
     // Wire depth occlusion to new surface mesh (BVH built internally for fast raycasting)

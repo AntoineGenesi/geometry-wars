@@ -218,6 +218,85 @@ describe('CompanionManager', () => {
 });
 
 describe('Guardian companion targeting', () => {
+  it('fires at enemies within scaled range on large maps (mapSizeScaleFactor regression)', () => {
+    // Regression: guardian GUARDIAN_RANGE=3.0 was not scaled by mapSizeScaleFactor.
+    // On LARGE (1.5x) or EPIC (2.0x) maps, enemies at 4+ world units were never targeted.
+    // Fix: range scales with mapSizeScaleFactor so companions work on all map sizes.
+    const largeMapScale = 2.0; // EPIC map
+    const manager = new CompanionManager(largeMapScale);
+    manager.addCompanion(CompanionType.Guardian);
+
+    const bulletPool = makeMockBulletPool();
+    // Enemy at 5 world units — out of range without scale (3.0), in range with scale (6.0)
+    const enemy = makeMockEnemy(5, 0, 10, 5);
+    const playerPos = new THREE.Vector3(0, 10, 0);
+    const playerAim = new THREE.Vector3(0, 0, 1);
+    const normal = new THREE.Vector3(0, 1, 0);
+
+    for (let i = 0; i < 30; i++) {
+      manager.update(
+        1 / 60, 0.5, 0.5, playerPos, playerAim,
+        [enemy], bulletPool, 0, normal, makeMockGetTransform(),
+      );
+    }
+
+    // With mapSizeScaleFactor=2.0, effective range=6.0, enemy at dist=5 should be targeted
+    expect(bulletPool.spawn).toHaveBeenCalled();
+  });
+
+  it('does NOT fire at enemies outside scaled range', () => {
+    // Guardian should NOT fire at enemies beyond GUARDIAN_RANGE * mapSizeScaleFactor
+    const manager = new CompanionManager(1.0); // default scale
+    manager.addCompanion(CompanionType.Guardian);
+
+    const bulletPool = makeMockBulletPool();
+    // Enemy at 10 world units — far outside default range (3.0)
+    const enemy = makeMockEnemy(5, 0, 10, 10);
+    const playerPos = new THREE.Vector3(0, 10, 0);
+    const playerAim = new THREE.Vector3(0, 0, 1);
+    const normal = new THREE.Vector3(0, 1, 0);
+
+    for (let i = 0; i < 30; i++) {
+      manager.update(
+        1 / 60, 0.5, 0.5, playerPos, playerAim,
+        [enemy], bulletPool, 0, normal, makeMockGetTransform(),
+      );
+    }
+
+    expect(bulletPool.spawn).not.toHaveBeenCalled();
+  });
+
+  it('companion bullets have isCompanion=true flag (damage numbers regression)', () => {
+    // Regression: companion bullets were not marked isCompanion=true,
+    // so damage numbers were not shown on killing blows.
+    const manager = new CompanionManager();
+    manager.addCompanion(CompanionType.Guardian);
+
+    // Use a real BulletPool to check isCompanion flag
+    let spawnedIsCompanion: boolean | undefined;
+    const bulletPool = {
+      ...makeMockBulletPool(),
+      spawn: vi.fn((_origin, _dir, _u, _v, _angle, _ownerId, isCompanion) => {
+        spawnedIsCompanion = isCompanion;
+      }),
+    } as any;
+
+    const enemy = makeMockEnemy(5, 0, 10, 2);
+    const playerPos = new THREE.Vector3(0, 10, 0);
+    const playerAim = new THREE.Vector3(0, 0, 1);
+    const normal = new THREE.Vector3(0, 1, 0);
+
+    for (let i = 0; i < 30; i++) {
+      manager.update(
+        1 / 60, 0.5, 0.5, playerPos, playerAim,
+        [enemy], bulletPool, 0, normal, makeMockGetTransform(),
+      );
+    }
+
+    expect(bulletPool.spawn).toHaveBeenCalled();
+    expect(spawnedIsCompanion).toBe(true);
+  });
+
   it('fires at enemies within range after cooldown', () => {
     const manager = new CompanionManager();
     manager.addCompanion(CompanionType.Guardian);
