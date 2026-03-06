@@ -79,6 +79,7 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
       geoms: { forEach() {} } as never,
       weaponPickups: { forEach() {} } as never,
       superPickups: { forEach() {} } as never,
+      buffPickups: { forEach() {} } as never,
       surfaceType: 'sphere',
       waveNumber: 0,
       gameTime: 0,
@@ -94,6 +95,11 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
       mapSize: 'medium',
       readyMap: new Map(),
       countdownPaused: false,
+      pvpMode: '',
+      winCondition: 'none',
+      killTarget: 10,
+      timeLimit: 300,
+      livesCount: 3,
       ...overrides,
     };
   }
@@ -146,6 +152,7 @@ describe('VotingScreen — mastery desync regression (S34b)', () => {
       geoms: { forEach() {} } as never,
       weaponPickups: { forEach() {} } as never,
       superPickups: { forEach() {} } as never,
+      buffPickups: { forEach() {} } as never,
       surfaceType: 'sphere',
       waveNumber: 0,
       gameTime: 0,
@@ -161,6 +168,11 @@ describe('VotingScreen — mastery desync regression (S34b)', () => {
       mapSize: 'medium',
       readyMap: new Map(),
       countdownPaused: false,
+      pvpMode: '',
+      winCondition: 'none',
+      killTarget: 10,
+      timeLimit: 300,
+      livesCount: 3,
       ...overrides,
     };
   }

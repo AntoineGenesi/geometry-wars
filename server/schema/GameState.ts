@@ -334,6 +334,16 @@ export class GameState extends Schema {
   declare gameMode: string;
   /** Current map size (default: 'medium') */
   declare mapSize: string;
+  /** PvP sub-mode: '' (none/co-op), 'pvp' (all vs all), 'pvpve' (players vs enemies + each other) */
+  declare pvpMode: string;
+  /** Win condition type: 'none', 'kills', 'time', 'lives' */
+  declare winCondition: string;
+  /** Target kill count for 'kills' win condition */
+  declare killTarget: number;
+  /** Time limit in seconds for 'time' win condition */
+  declare timeLimit: number;
+  /** Lives count per player for 'lives' win condition */
+  declare livesCount: number;
   /** Maps sessionId → ready boolean for ready-up system */
   declare readyMap: MapSchema<boolean>;
   /** When true, host has paused the voting countdown */
@@ -365,6 +375,11 @@ export class GameState extends Schema {
     this.mapSize = 'medium';
     this.readyMap = new MapSchema<boolean>();
     this.countdownPaused = false;
+    this.pvpMode = '';
+    this.winCondition = 'none';
+    this.killTarget = 10;
+    this.timeLimit = 300;
+    this.livesCount = 3;
   }
 }
 
@@ -391,4 +406,9 @@ defineTypes(GameState, {
   mapSize: 'string',
   readyMap: { map: 'boolean' },
   countdownPaused: 'boolean',
+  pvpMode: 'string',
+  winCondition: 'string',
+  killTarget: 'number',
+  timeLimit: 'number',
+  livesCount: 'number',
 });

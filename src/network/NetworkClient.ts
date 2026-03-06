@@ -139,6 +139,16 @@ export interface NetworkGameState {
   readyMap: Map<string, boolean>;
   /** When true, host has paused the voting countdown */
   countdownPaused: boolean;
+  /** PvP sub-mode: '' (co-op), 'pvp' (all vs all), 'pvpve' (players vs enemies + each other) */
+  pvpMode: string;
+  /** Win condition type: 'none', 'kills', 'time', 'lives' */
+  winCondition: string;
+  /** Target kill count for 'kills' win condition */
+  killTarget: number;
+  /** Time limit in seconds for 'time' win condition */
+  timeLimit: number;
+  /** Lives count per player for 'lives' win condition */
+  livesCount: number;
 }
 
 /** Input to send to server */
@@ -550,6 +560,11 @@ export class NetworkClient {
       mapSize: string;
       readyMap: Map<string, boolean>;
       countdownPaused: boolean;
+      pvpMode: string;
+      winCondition: string;
+      killTarget: number;
+      timeLimit: number;
+      livesCount: number;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -585,6 +600,11 @@ export class NetworkClient {
       mapSize: s.mapSize || 'medium',
       readyMap: s.readyMap || emptyBoolMap,
       countdownPaused: s.countdownPaused ?? false,
+      pvpMode: s.pvpMode || '',
+      winCondition: s.winCondition || 'none',
+      killTarget: s.killTarget ?? 10,
+      timeLimit: s.timeLimit ?? 300,
+      livesCount: s.livesCount ?? 3,
     };
   }
 
@@ -611,6 +631,20 @@ export class NetworkClient {
   startGame(): void {
     if (!this.room || !this.connected) return;
     this.room.send('start');
+  }
+
+  /**
+   * Request game start with win condition options (host only, lobby phase only).
+   */
+  startGameWithOptions(options: {
+    pvpMode: string;
+    winCondition: string;
+    killTarget: number;
+    timeLimit: number;
+    livesCount: number;
+  }): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('start_with_options', options);
   }
 
   /**
