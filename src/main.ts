@@ -1003,6 +1003,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     playerLevel: playerLevel.level,
     buffPower: buffManager.getTotalBuffPower(),
     playerCount: waveScheduler.playerCount, // always 1 for main.ts (single-player)
+    companionCount: companionManager.count,
   });
 
   // -- Game mode --
