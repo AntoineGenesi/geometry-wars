@@ -1249,7 +1249,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   });
 
   // -- Companion system --
-  const companionManager = new CompanionManager();
+  const companionManager = new CompanionManager(mapSizeScaleFactor);
   companionManager.setMeshSurface(meshSurface);
   game.scene.add(companionManager.root);
   const companionHUD = new CompanionHUD();

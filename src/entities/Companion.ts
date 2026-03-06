@@ -121,6 +121,9 @@ class Companion {
   private fireCooldown = 0;
   private readonly fireInterval: number;
 
+  // Map size scale factor — scales firing range so companions work on large maps
+  private mapSizeScaleFactor: number;
+
   // Protector-specific
   rechargeTimer = 0;
   isReady = true;
@@ -136,10 +139,11 @@ class Companion {
   // Surface-aware movement agent (orbit delegated to SurfaceAgent + OrbitBehavior)
   private agent: SurfaceAgent;
 
-  constructor(type: CompanionType, orbitPhase: number) {
+  constructor(type: CompanionType, orbitPhase: number, mapSizeScaleFactor: number = 1.0) {
     this.type = type;
     this.color = COMPANION_COLORS[type];
     this.orbitAngle = orbitPhase;
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
 
     // Vary orbit speeds slightly by type for visual interest
     switch (type) {
@@ -265,12 +269,13 @@ class Companion {
     let bestTarget: BaseEnemy | null = null;
     let bestScore = -Infinity;
 
+    const scaledGuardianRange = GUARDIAN_RANGE * this.mapSizeScaleFactor;
     for (const enemy of enemies) {
       if (!enemy.alive || !enemy.mesh) continue;
 
       _tempToEnemy.copy(enemy.position).sub(playerWorldPos);
       const dist = _tempToEnemy.length();
-      if (dist > GUARDIAN_RANGE || dist < 0.1) continue;
+      if (dist > scaledGuardianRange || dist < 0.1) continue;
 
       _tempToEnemy.normalize();
 
@@ -280,7 +285,7 @@ class Companion {
       // Score: prefer enemies that are NOT in the player's forward arc
       // Behind (dot ~ -1) scores highest, directly ahead (dot ~ 1) scores lowest
       const blindSpotScore = 1.0 - dotAim; // 0 to 2, higher = more behind
-      const proximityScore = 1.0 - dist / GUARDIAN_RANGE; // closer = higher
+      const proximityScore = 1.0 - dist / scaledGuardianRange; // closer = higher
 
       const score = blindSpotScore * 0.7 + proximityScore * 0.3;
       if (score > bestScore) {
@@ -384,6 +389,7 @@ class Companion {
       this.surfaceV,
       aimAngle,
       ownerId,
+      true, // isCompanion = true — enables damage numbers even on killing blows
     );
 
     getSoundEngine().play('shoot', { volume: 0.15, pitch: 1.4 + Math.random() * 0.3 });
@@ -391,6 +397,10 @@ class Companion {
 
   setMeshSurface(ms: MeshSurface | null): void {
     this.agent.setMeshSurface(ms);
+  }
+
+  setMapSizeScaleFactor(factor: number): void {
+    this.mapSizeScaleFactor = factor;
   }
 
   dispose(): void {
@@ -417,15 +427,27 @@ export class CompanionManager {
   readonly root: THREE.Group;
   private companions: Companion[] = [];
   private meshSurface: MeshSurface | null = null;
+  private mapSizeScaleFactor: number = 1.0;
 
   // Shield bubble for protector
   private shieldBubble: THREE.Mesh | null = null;
   private shieldTimer = 0;
   private shieldActive = false;
 
-  constructor() {
+  constructor(mapSizeScaleFactor: number = 1.0) {
     this.root = new THREE.Group();
     this.root.name = 'CompanionManager';
+    this.mapSizeScaleFactor = mapSizeScaleFactor;
+  }
+
+  /**
+   * Update the map size scale factor (call when map size changes).
+   */
+  setMapSizeScaleFactor(factor: number): void {
+    this.mapSizeScaleFactor = factor;
+    for (const companion of this.companions) {
+      companion.setMapSizeScaleFactor(factor);
+    }
   }
 
   /**
@@ -438,7 +460,7 @@ export class CompanionManager {
 
     // Redistribute orbit phases for all same-type companions
     const phase = (sameTypeCount / totalAfterAdd) * Math.PI * 2;
-    const companion = new Companion(type, phase);
+    const companion = new Companion(type, phase, this.mapSizeScaleFactor);
 
     // Redistribute existing same-type companions
     let idx = 0;

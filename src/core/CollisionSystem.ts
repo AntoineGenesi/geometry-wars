@@ -114,8 +114,13 @@ export class CollisionSystem {
             onBulletHit?.(enemy);
           }
 
-          // Damage number popup (skip on killing blow - score popup covers it)
-          if (showDamageNumbers && scorePopups && enemy.alive) {
+          // Damage number popup:
+          // - Non-lethal hits always show damage number
+          // - Companion bullet killing blows also show damage number (score popup alone
+          //   doesn't clearly indicate it was a companion kill, so both show)
+          const shouldShowDamage = showDamageNumbers && scorePopups &&
+            (enemy.alive || bulletData.isCompanion);
+          if (shouldShowDamage) {
             scorePopups.spawnDamage(enemy.position, bulletDamage);
           }
 
