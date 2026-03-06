@@ -1229,6 +1229,7 @@ export class GameRoom extends Room<GameState> {
     this.state.healingAmount = this.currentSettings.healingAmount;
     this.state.friendlyFire = this.currentSettings.friendlyFire;
     this.state.pvpWinCondition = this.currentSettings.pvpWinCondition;
+    this.state.pvpKillLimit = this.currentSettings.pvpKillLimit;
     this.state.startingWeapon = this.currentSettings.startingWeapon;
     this.state.timeLimit = this.currentSettings.timeLimit;
     // Sync surface/mode so startGame() (called by restartRound) uses the host's chosen values.
@@ -4416,17 +4417,18 @@ export class GameRoom extends Room<GameState> {
     // PvP win conditions (checked before standard game over)
     if (this.pvpEnabled && this.state.players.size > 1) {
       const winCondition = this.currentSettings.pvpWinCondition;
+      const killLimit = this.currentSettings.pvpKillLimit;
 
       if (winCondition === 'kills') {
-        // Most Kills: first player to reach PVP_KILLS_TO_WIN wins
+        // Most Kills: first player to reach pvpKillLimit wins
         let winner: string | null = null;
         this.state.players.forEach((player) => {
-          if (player.kills >= PVP_KILLS_TO_WIN) {
+          if (player.kills >= killLimit) {
             if (winner === null) winner = player.name;
           }
         });
         if (winner !== null) {
-          this.logger.log(`[GameRoom] PvP: ${winner} won with ${PVP_KILLS_TO_WIN} kills — match over`);
+          this.logger.log(`[GameRoom] PvP: ${winner} won with ${killLimit} kills — match over`);
           this.transitionToVoting();
           return;
         }
@@ -4439,6 +4441,13 @@ export class GameRoom extends Room<GameState> {
         });
         if (aliveCount <= 1) {
           this.logger.log(`[GameRoom] PvP survival: last player standing — match over`);
+          this.transitionToVoting();
+          return;
+        }
+      } else if (winCondition === 'score') {
+        // Time Limit: highest score when time expires wins
+        if (this.currentSettings.timeLimit > 0 && this.state.gameTime >= this.currentSettings.timeLimit) {
+          this.logger.log(`[GameRoom] PvP score: time limit reached (${this.currentSettings.timeLimit}s) — match over`);
           this.transitionToVoting();
           return;
         }

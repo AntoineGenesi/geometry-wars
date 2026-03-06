@@ -104,6 +104,12 @@ export interface GameSettings {
   pvpWinCondition: PvpWinCondition;
 
   /**
+   * Number of kills required to win when pvpWinCondition is 'kills'.
+   * Range: 1–50. Default: 10.
+   */
+  pvpKillLimit: number;
+
+  /**
    * How often passive healing orbs spawn, in seconds.
    * Range: 5–120. Default: 30.
    */
@@ -203,6 +209,7 @@ export const DEFAULT_GAME_SETTINGS: Readonly<GameSettings> = {
   bossFrequency:           0.5,
   pvpEnabled:              false,
   pvpWinCondition:         'kills',
+  pvpKillLimit:            10,
   healingFrequency:        30,
   healingAmount:           25,
   healthBarVisibility:     'all',
@@ -349,6 +356,10 @@ export function validateSettings(partial: Partial<GameSettings> | null | undefin
         : DEFAULT_GAME_SETTINGS.pvpWinCondition)
     : DEFAULT_GAME_SETTINGS.pvpWinCondition;
 
+  const pvpKillLimit = isFiniteNumber(partial.pvpKillLimit)
+    ? clamp(Math.round(partial.pvpKillLimit), 1, 50)
+    : DEFAULT_GAME_SETTINGS.pvpKillLimit;
+
   // s44k-07: PvP and PvPvE modes default to friendlyFire=true so players can damage each other.
   // The cooperative-by-default PvPvE behaviour (s44j-pvpve-14e friendlyFire=false) turned out
   // to be confusing — users expect to shoot each other in both PvP modes.
@@ -366,6 +377,7 @@ export function validateSettings(partial: Partial<GameSettings> | null | undefin
     bossFrequency,
     pvpEnabled,
     pvpWinCondition,
+    pvpKillLimit,
     healingFrequency,
     healingAmount,
     healthBarVisibility,
