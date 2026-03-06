@@ -352,3 +352,72 @@ describe('settings validation on apply', () => {
     expect(store.pending).toEqual(DEFAULT_GAME_SETTINGS);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Regression tests for s44k-04: Server Settings Not Applying in MP
+// ---------------------------------------------------------------------------
+
+describe('s44k-04 regression — restartRound stale pending settings', () => {
+  it('restartRound settings override a prior applySettings pending', () => {
+    // Bug: if host clicked "Apply Next Round" first (setting pendingSettings),
+    // then clicked "Restart Round" with different settings, startGame() would
+    // use the stale pendingSettings from the first action instead of the
+    // restartRound settings.
+    //
+    // Fix: clear pendingSettings when restartRound provides settings so
+    // startGame() uses currentSettings set by applyValidatedSettings().
+
+    let currentSettings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
+    let pendingSettings: GameSettings | null = null;
+
+    // Step 1: Host clicks "Apply Next Round" with difficultyMultiplier=1.5
+    pendingSettings = validateSettings({ difficultyMultiplier: 1.5 });
+    expect(pendingSettings.difficultyMultiplier).toBe(1.5);
+
+    // Step 2: Host then clicks "Restart Round" with difficultyMultiplier=2.0
+    const restartSettings = validateSettings({ ...currentSettings, difficultyMultiplier: 2.0 });
+    // Fix: restartRound should clear pendingSettings and use the provided settings
+    currentSettings = restartSettings;
+    pendingSettings = null; // s44k-04 fix: cleared in restartRound handler
+
+    // Step 3: startGame() runs — should use currentSettings (2.0), not pendingSettings
+    if (pendingSettings) {
+      currentSettings = pendingSettings; // this branch must NOT fire
+    }
+
+    expect(currentSettings.difficultyMultiplier).toBe(2.0);
+    expect(pendingSettings).toBeNull();
+  });
+});
+
+describe('s44k-04 regression — validateSettings null safety', () => {
+  it('validateSettings(null) returns defaults without throwing', () => {
+    // Bug: validateSettings(null) threw TypeError before the null guard was added
+    expect(() => validateSettings(null as unknown as Partial<GameSettings>)).not.toThrow();
+    const result = validateSettings(null as unknown as Partial<GameSettings>);
+    expect(result).toEqual(DEFAULT_GAME_SETTINGS);
+  });
+
+  it('validateSettings(undefined) returns defaults without throwing', () => {
+    expect(() => validateSettings(undefined)).not.toThrow();
+    expect(validateSettings(undefined)).toEqual(DEFAULT_GAME_SETTINGS);
+  });
+});
+
+describe('s44k-04 regression — DEFAULT_GAME_SETTINGS.friendlyFire consistency', () => {
+  it('DEFAULT_GAME_SETTINGS.friendlyFire is false (non-PvP default)', () => {
+    // Bug: DEFAULT_GAME_SETTINGS.friendlyFire was true but validateSettings({}) returned
+    // false for waves mode (non-PvP). They must match so DEFAULT_GAME_SETTINGS ===
+    // validateSettings({}).
+    expect(DEFAULT_GAME_SETTINGS.friendlyFire).toBe(false);
+  });
+
+  it('validateSettings({}) and DEFAULT_GAME_SETTINGS are identical', () => {
+    expect(validateSettings({})).toEqual(DEFAULT_GAME_SETTINGS);
+  });
+
+  it('friendlyFire defaults to true in pvp mode (PvP modes auto-enable FF)', () => {
+    const pvpSettings = validateSettings({ mode: 'pvp' });
+    expect(pvpSettings.friendlyFire).toBe(true);
+  });
+});

@@ -1088,6 +1088,15 @@ export class PauseMenu {
   setGameSettingsDisplay(settings: GameSettings | null, hasPending: boolean): void {
     this.gameSettingsDisplay = settings;
     this.hasPendingSettingsDisplay = hasPending;
+    // Update the host's server-settings button to show pending indicator.
+    // Non-hosts see the stats section below; the host uses the full settings panel.
+    if (this.isHost) {
+      const btn = this.container.querySelector('.server-settings-btn');
+      const textSpan = btn?.querySelector('span:last-child');
+      if (textSpan) {
+        textSpan.textContent = hasPending ? '⚡ SERVER SETTINGS' : 'SERVER SETTINGS';
+      }
+    }
     const section = this.container.querySelector('.stats-game-settings-section');
     if (!section) return;
     if (!settings || this.isHost) {
@@ -1198,6 +1207,11 @@ export class PauseMenu {
       this.settingsPanel.mount();
       this.settingsPanelActions = this.createSettingsActionBar();
       document.body.appendChild(this.settingsPanelActions);
+    }
+    // Pre-populate with current game settings so host sees actual state, not defaults.
+    // gameSettingsDisplay is kept in sync with room state for all clients (including host).
+    if (this.gameSettingsDisplay) {
+      this.settingsPanel.setSettings(this.gameSettingsDisplay);
     }
     // Hide pause menu while settings panel is open
     this.container.classList.add('hidden');
