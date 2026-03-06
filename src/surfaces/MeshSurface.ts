@@ -185,6 +185,13 @@ export class MeshSurface {
    * Returns orthonormal basis (normal, tangent, bitangent) for movement.
    *
    * The tangent/bitangent define the surface plane - entities move within this plane.
+   *
+   * Convention: tangent = cross(worldUp, normal), so bitangent = cross(normal, tangent) ≈ worldUp.
+   * For horizontal normals (cube walls, outer surfaces), this ensures:
+   *   - bitangent ≈ (0,1,0) = world up → camera.up = world up → camera is upright
+   *   - tangent = horizontal direction along the surface
+   * Previously used Gram-Schmidt which gave tangent ≈ (0,1,0) and bitangent = horizontal,
+   * rotating the camera 90° on cube tunnel walls and breaking up/down aiming.
    */
   getTangentFrame(surfaceNormal: THREE.Vector3): TangentFrame {
     const normal = surfaceNormal.clone().normalize();
@@ -194,8 +201,9 @@ export class MeshSurface {
       ? new THREE.Vector3(0, 1, 0)
       : new THREE.Vector3(1, 0, 0);
 
-    // Gram-Schmidt orthogonalization
-    const tangent = ref.clone().sub(normal.clone().multiplyScalar(ref.dot(normal))).normalize();
+    // Cross product: tangent = ref × normal → perpendicular to both ref and normal.
+    // For horizontal normals: bitangent = normal × tangent ≈ ref (world up).
+    const tangent = new THREE.Vector3().crossVectors(ref, normal).normalize();
     const bitangent = new THREE.Vector3().crossVectors(normal, tangent).normalize();
 
     return { normal, tangent, bitangent };
