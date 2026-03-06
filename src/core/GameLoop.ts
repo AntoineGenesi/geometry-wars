@@ -647,6 +647,59 @@ export class GameLoop {
     }
     profiler.end('companions_and_trails');
 
+    // -- Portal update and teleport collision --
+    if (ctx.portals && ctx.portals.length > 0) {
+      for (const portal of ctx.portals) {
+        portal.update(dt);
+        portal.applySurfaceTransform(ctx.getTransform);
+      }
+
+      // Check if player walks into a portal (only when alive and not invincible from recent teleport)
+      if (ctx.player.alive) {
+        for (const portal of ctx.portals) {
+          const target = portal.checkTeleport(ctx.playerWalker.position);
+          if (target) {
+            // Teleport player to exit portal UV position
+            const exitPos = ctx.surface.getPoint(target.u, target.v);
+            const projected = ctx.meshSurface.closestPointOnSurface(exitPos.position);
+            if (projected) {
+              ctx.playerWalker.teleportTo(projected.point, projected.faceIndex, projected.normal);
+            }
+            ctx.player.mesh.position.copy(ctx.playerWalker.position);
+
+            // Grant brief invincibility after teleport
+            // Access private invincibilityTimer via respawn-style reset — use player's existing startInvincibility if available,
+            // or directly grant invincibility by calling the respawn path with current UV.
+            // We use a lightweight approach: mark the player as briefly invincible.
+            ctx.player.grantTeleportInvincibility();
+
+            // Snap camera to new position
+            const newFrame = ctx.playerWalker.getTangentFrame();
+            ctx.cameraController.snapToFrame(
+              ctx.playerWalker.position,
+              ctx.playerWalker.normal,
+              newFrame,
+            );
+
+            // Update UV so enemies track correct position
+            const inverseRot = ctx.surface.worldRotation.clone().invert();
+            const localPos = ctx.playerWalker.position.clone().applyQuaternion(inverseRot);
+            const playerUV = ctx.surface.worldToSurface(localPos);
+            ctx.player.surfaceU = playerUV.u;
+            ctx.player.surfaceV = playerUV.v;
+
+            // Start cooldown on the exit portal so player doesn't immediately re-enter
+            if (portal.partner) {
+              portal.partner.startExitCooldown();
+            }
+
+            // Only teleport through one portal per frame
+            break;
+          }
+        }
+      }
+    }
+
     profiler.begin('collision_detection');
     // -- Collision checks --
 

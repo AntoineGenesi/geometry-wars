@@ -295,6 +295,16 @@ export class Player {
   }
 
   /**
+   * Grant brief invincibility after teleporting through a portal.
+   * Uses the existing invincibility system (shorter duration than respawn).
+   */
+  grantTeleportInvincibility(duration = 1.0): void {
+    this.isInvincible = true;
+    this.invincibilityTimer = Math.max(this.invincibilityTimer, duration);
+    this.mesh.visible = true;
+  }
+
+  /**
    * Kill the player.  Decrements lives and triggers respawn or game over.
    */
   die(): void {

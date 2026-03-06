@@ -58,6 +58,7 @@ import type { ScorePopupManager } from '../effects/ScorePopup';
 import type { GameOverScreen } from '../ui/GameOverScreen';
 import type { LevelCompleteScreen } from '../ui/LevelCompleteScreen';
 import type { PauseMenu } from '../ui/PauseMenu';
+import type { Portal } from '../entities/Portal';
 
 /**
  * GameContext bundles all the shared state needed by GameLoop and RenderLoop.
@@ -107,6 +108,9 @@ export interface GameContext {
   // Collision and pickups
   collisionSystem: CollisionSystem;
   pickupSpawner: PickupSpawner;
+
+  // Portals (teleportation)
+  portals: Portal[];
 
   // Camera
   cameraController: CameraController;
