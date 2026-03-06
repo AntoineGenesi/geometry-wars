@@ -176,7 +176,8 @@ export class PillSurface extends Surface {
       }
     }
 
-    return { position: position!, normal: normal!, tangentU, tangentV: tangentV! }
+    const local = { position: position!, normal: normal!, tangentU, tangentV: tangentV! }
+    return this.applyWorldRotation(local)
   }
 
   moveOnSurface(
