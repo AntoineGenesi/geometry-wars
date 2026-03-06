@@ -57,11 +57,11 @@ export function createWeaponIconSprite(type: WeaponType, color: THREE.Color): TH
   const mat = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
-    opacity: 0.95,
+    opacity: 0.9,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
   });
-  mat.userData.baseOpacity = 0.95;
+  mat.userData.baseOpacity = 0.9;
 
   const sprite = new THREE.Sprite(mat);
   sprite.name = 'pickup-icon';
@@ -109,11 +109,11 @@ export function createBuffIconSprite(
   const mat = new THREE.SpriteMaterial({
     map: texture,
     transparent: true,
-    opacity: 0.95,
+    opacity: 0.9,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
   });
-  mat.userData.baseOpacity = 0.95;
+  mat.userData.baseOpacity = 0.9;
 
   const sprite = new THREE.Sprite(mat);
   sprite.name = 'pickup-icon';
