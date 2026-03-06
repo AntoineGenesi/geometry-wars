@@ -477,9 +477,14 @@ export class EnemySpawner {
       case 'spinner':
         enemy = new Spinner(u, v);
         break;
-      case 'snake':
-        enemy = new Snake(u, v, maxSegments);
+      case 'snake': {
+        // Scale initial segments with difficulty: 2 at start, up to 10 at high difficulty
+        const snakeInitialSegs = continuousDifficultyLevel !== undefined
+          ? Math.min(10, 2 + Math.floor(continuousDifficultyLevel * 1.5))
+          : 2;
+        enemy = new Snake(u, v, maxSegments, snakeInitialSegs);
         break;
+      }
       case 'repulsor':
         enemy = new Repulsor(u, v);
         break;
