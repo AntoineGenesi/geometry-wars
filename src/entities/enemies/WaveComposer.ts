@@ -62,7 +62,7 @@ const ARCHETYPES: WaveArchetype[] = [
     entries: [
       { type: 'snake',       weight: 0.5 },
       { type: 'giant_snake', weight: 0.35, minWave: 10 },
-      { type: 'boss_ruby',   weight: 0.15, minWave: 30 },
+      { type: 'boss_ruby',   weight: 0.15, minWave: 20 },
     ],
     snakeScaling: true,
   },
