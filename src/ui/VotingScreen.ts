@@ -51,6 +51,7 @@ export const MODES = [
   { id: 'sniper',         label: 'SNIPER',         icon: '🎯' },
   { id: 'rainbow',        label: 'RAINBOW',        icon: '🌈' },
   { id: 'claustrophobia', label: 'CLAUSTROPHOBIA', icon: '🔴' },
+  { id: 'pvp',            label: 'PvP',            icon: '🗡' },
   { id: 'pvpve',          label: 'PvPvE',          icon: '⚔' },
 ];
 
