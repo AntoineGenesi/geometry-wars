@@ -89,17 +89,21 @@ export class PeanutSurface extends Surface {
   }
 
   /**
-   * Compute the local UV metric scale at a given v (phi) position.
-   * Metric = sqrt(uScale * vScale), normalized by baseRadius (scale-invariant).
+   * Compute the local speed-correction metric at a given v (phi) position.
+   *
+   * Uses the profile radius rNorm as the proxy for surface "width" at each latitude.
+   * A wider ring (larger rNorm) means the player covers more world distance for the
+   * same UV step, so we increase the MeshWalker speed to match.
+   *
+   * NOTE: The original formula used sqrt(sinPhi * rNorm * vScale), which collapsed
+   * to zero at the poles (sinPhi→0) → speedCorr hit the 0.4 floor → player moved at
+   * 40% speed at the poles. Using rNorm alone removes the sinPhi singularity:
+   *   poles (phi=0,π): rNorm=1+waistDepth=1.4 → speedCorr≈1.61 (faster in wide bulge)
+   *   waist (phi=π/2): rNorm=1−waistDepth=0.6 → speedCorr≈0.69 (slower at narrow neck)
    */
   private _localMetricAt(v: number): number {
     const phi = v * Math.PI
-    const sinPhi = Math.max(Math.abs(Math.sin(phi)), 0.001)
-    const rNorm = 1 + this.waistDepth * Math.cos(2 * phi)
-    const drNorm = -2 * this.waistDepth * Math.sin(2 * phi)
-    const uScale = rNorm * sinPhi
-    const vScale = Math.sqrt(rNorm * rNorm + drNorm * drNorm)
-    return Math.sqrt(uScale * vScale)
+    return 1 + this.waistDepth * Math.cos(2 * phi)
   }
 
   private _computeAvgMetricScale(): number {
