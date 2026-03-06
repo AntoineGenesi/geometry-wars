@@ -45,6 +45,28 @@ export const SURFACES = [
 /** Surfaces allowed in Claustrophobia mode (small, enclosed). Matches server CLAUSTROPHOBIA_ALLOWED_SURFACES. */
 export const CLAUSTROPHOBIA_SURFACES = new Set(['sphere', 'torus', 'capsule', 'icosahedron']);
 
+/**
+ * Map of mode ID → set of surface IDs where that mode is available.
+ * Modes NOT in this map are available on ALL surfaces.
+ */
+export const MODE_SURFACE_RESTRICTIONS = new Map<string, Set<string>>([
+  ['claustrophobia', CLAUSTROPHOBIA_SURFACES],
+]);
+
+/**
+ * Returns the set of mode IDs that are NOT available on the given surface.
+ * Used to dim/disable mode buttons when an incompatible map is selected.
+ */
+export function getUnavailableModesForSurface(surfaceId: string): Set<string> {
+  const unavailable = new Set<string>();
+  for (const [modeId, allowedSurfaces] of MODE_SURFACE_RESTRICTIONS) {
+    if (!allowedSurfaces.has(surfaceId)) {
+      unavailable.add(modeId);
+    }
+  }
+  return unavailable;
+}
+
 export const MODES = [
   { id: 'waves',          label: 'WAVES',          icon: '〰' },
   { id: 'king',           label: 'KING',           icon: '👑' },
@@ -196,6 +218,8 @@ export class VotingScreen {
       el.textContent = String(modeVotes.get(id) ?? 0);
       el.style.visibility = state.hostPickMode ? 'hidden' : 'visible';
     });
+    // Dim mode buttons that are unavailable on the currently selected surface
+    this.applyModeDimming(this.selectedSurface);
 
     // Size buttons: update vote counts and selected state
     this.sizeButtons.forEach((btn, id) => {
@@ -302,6 +326,13 @@ export class VotingScreen {
         this.surfaceCards.forEach((c, id) => {
           c.classList.toggle('vs-selected', id === this.selectedSurface);
         });
+        // If selected mode is no longer available on this surface, switch to waves
+        const unavailableModes = getUnavailableModesForSurface(surf.id);
+        if (unavailableModes.has(this.selectedMode)) {
+          this.selectedMode = 'waves';
+          this.modeButtons.forEach((btn, bid) => btn.classList.toggle('vs-selected', bid === this.selectedMode));
+        }
+        this.applyModeDimming(surf.id);
         this.sendVote();
       });
       grid.appendChild(card);
@@ -459,6 +490,9 @@ export class VotingScreen {
       this.callbacks.onReturnToMenu?.();
     });
     wrap.appendChild(returnBtn);
+
+    // Apply initial mode dimming based on pre-selected surface
+    this.applyModeDimming(this.selectedSurface);
   }
 
   private buildOptionRow(
@@ -492,6 +526,17 @@ export class VotingScreen {
     }
 
     return row;
+  }
+
+  /** Apply or remove the disabled style on mode buttons based on surface compatibility. */
+  private applyModeDimming(surfaceId: string): void {
+    const unavailable = getUnavailableModesForSurface(surfaceId);
+    this.modeButtons.forEach((btn, id) => {
+      const isUnavailable = unavailable.has(id);
+      btn.classList.toggle('vs-mode-disabled', isUnavailable);
+      btn.style.pointerEvents = isUnavailable ? 'none' : '';
+      (btn as HTMLElement).title = isUnavailable ? 'Not available on this map' : '';
+    });
   }
 
   private currentChoice(): string {
@@ -678,6 +723,17 @@ export class VotingScreen {
       #voting-screen .vs-option-btn.vs-selected .vs-opt-count {
         background: rgba(255, 255, 0, 0.2);
         color: #ffff00;
+      }
+      #voting-screen .vs-option-btn.vs-mode-disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+        border-color: #222244;
+        color: #445566;
+      }
+      #voting-screen .vs-option-btn.vs-mode-disabled:hover {
+        border-color: #222244;
+        box-shadow: none;
+        color: #445566;
       }
 
       /* ---- Countdown ---- */
