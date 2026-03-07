@@ -1710,7 +1710,7 @@ export class GameRoom extends Room<GameState> {
       const phi = Math.atan2(wz, wx);
       const v = ((phi / (2 * Math.PI)) + 1) % 1;
       const outward = wx * Math.cos(phi) + wz * Math.sin(phi) - R;
-      const theta = Math.atan2(wy, outward);
+      const theta = Math.atan2(-wy, outward);
       const u = ((theta / (2 * Math.PI)) + 1) % 1;
       return { u, v };
     }
