@@ -1956,6 +1956,11 @@ export class GameRoom extends Room<GameState> {
             const angleOffset = (i - centerIdx) * (spreadAngle / (bulletCount - 1));
             this.spawnBullet(player, angle + angleOffset, 0, 0, weaponType);
           }
+        } else if (weaponType === 'chain_lightning') {
+          // Chain lightning: instant area-effect (no UV projectile) — mirrors SP fireChainLightning().
+          // A UV-space bullet never reliably reaches enemies; the weapon is fundamentally area-based.
+          // Client-side visual arc is handled by localWeaponManager.fire() in network-main.ts.
+          this.fireChainLightningMP(player);
         } else {
           // Default: single bullet for secondary weapon
           this.spawnBullet(player, angle, 0, 0, weaponType);
@@ -2140,6 +2145,87 @@ export class GameRoom extends Room<GameState> {
     // Remove killed enemies in reverse order to preserve indices
     for (let i = enemiesToKill.length - 1; i >= 0; i--) {
       this.state.enemies.splice(enemiesToKill[i], 1);
+    }
+  }
+
+  /**
+   * Chain lightning: instant area-effect — mirrors SP WeaponManager.fireChainLightning().
+   * In SP, chain_lightning is NOT a projectile — it's an immediate area hit up to 5 enemies.
+   * In MP a UV-space bullet never reliably reaches enemies (UV-position mismatch on non-sphere
+   * surfaces), so we replicate SP's instant-damage model server-side.
+   *
+   * Range: 0.30 UV (~9-10 world units on sphere R=10, same as SP's 10-unit range).
+   * Targets: up to 5 nearest enemies (sorted by UV distance from player).
+   * Damage: WEAPON_CONFIGS.chain_lightning.damage × level × buff multipliers.
+   * Client arc visual: handled by localWeaponManager.fire() in network-main.ts (no change needed).
+   */
+  private fireChainLightningMP(player: PlayerState): void {
+    if (!player.alive) return;
+
+    // UV range: ~0.30 UV ≈ 9-10 world units on sphere R=10, matching SP's 10-unit range.
+    // Derived from tesla ratio: tesla TESLA_RADIUS=0.10 ≈ 3 world units → 10 units ≈ 0.33 UV.
+    const CHAIN_UV_RANGE = 0.30;
+    const MAX_TARGETS = 5;
+
+    const levelIdx = Math.min(player.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+    const buffDamageMult = this.calculateBuffDamageMult(player);
+    const weapConfig = WEAPON_CONFIGS['chain_lightning'];
+    const damage = weapConfig.damage * levelDamageMult * buffDamageMult;
+
+    // Collect all enemies in range, sorted by UV distance
+    const candidates: Array<{ eIndex: number; dist: number }> = [];
+    this.state.enemies.forEach((enemy, eIndex) => {
+      if (!enemy.alive) return;
+      let dU = enemy.surfaceU - player.surfaceU;
+      let dV = enemy.surfaceV - player.surfaceV;
+      if (dU > 0.5) dU -= 1; else if (dU < -0.5) dU += 1;
+      const dist = Math.sqrt(dU * dU + dV * dV);
+      if (dist <= CHAIN_UV_RANGE) {
+        candidates.push({ eIndex, dist });
+      }
+    });
+
+    if (candidates.length === 0) return;
+
+    candidates.sort((a, b) => a.dist - b.dist);
+    const hits = candidates.slice(0, MAX_TARGETS);
+
+    const enemiesToKill: number[] = [];
+    for (const { eIndex } of hits) {
+      const enemy = this.state.enemies[eIndex];
+      if (!enemy || !enemy.alive) continue;
+
+      enemy.health -= damage;
+
+      if (enemy.health <= 0) {
+        enemy.alive = false;
+        this.enemyAI.delete(enemy.id);
+        enemiesToKill.push(eIndex);
+
+        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
+        player.playerKills++;
+        player.enemyKills++;
+        const newLevel = this.getPlayerLevel(player.playerKills);
+        if (newLevel > player.playerLevel) {
+          player.playerLevel = newLevel;
+          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+        }
+        this.trackDDAKill(player.id);
+
+        if (Math.random() < WEAPON_DROP_CHANCE) {
+          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+      }
+    }
+
+    // Remove killed enemies in reverse index order to preserve earlier indices
+    enemiesToKill.sort((a, b) => b - a);
+    for (const idx of enemiesToKill) {
+      this.state.enemies.splice(idx, 1);
     }
   }
 
