@@ -42,7 +42,7 @@ describe('VotingScreen — SURFACES array', () => {
 });
 
 describe('VotingScreen — MODES array', () => {
-  const IMPLEMENTED_MODES = ['waves'];
+  const IMPLEMENTED_MODES = ['waves', 'pvp', 'pvpve'];
 
   it('every mode ID has a server implementation', () => {
     const unimplementedModes = MODES.filter(m => !IMPLEMENTED_MODES.includes(m.id));
