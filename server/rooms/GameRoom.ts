@@ -1689,11 +1689,66 @@ export class GameRoom extends Room<GameState> {
    * Accurate for sphere/peanut (same SOR axis structure). Approximate for others.
    */
   private _worldPosToApproxUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    // For Mobius surface, use accurate parametric inverse matching MobiusSurface.worldToSurface().
+    // Player world positions (from geodesic walker) are in scaled world space.
+    if (this.state.surfaceType === 'mobius') {
+      return this._mobiusWorldToUV(wx, wy, wz);
+    }
     const r = Math.sqrt(wx * wx + wy * wy + wz * wz);
     if (r < 0.001) return { u: 0.5, v: 0.5 };
     const v = Math.acos(Math.max(-1, Math.min(1, wy / r))) / Math.PI;
     const u = ((Math.atan2(wz, wx) / (2 * Math.PI)) + 1) % 1;
     return { u, v };
+  }
+
+  /**
+   * Accurate Mobius UV recovery from world position.
+   * Mirrors MobiusSurface.worldToSurface() on the client.
+   * scaleFactor is already baked into the world coords, so we un-scale first.
+   */
+  private _mobiusWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    const scaleFactor = this.state.mapSizeScaleFactor ?? 1;
+    const R = MOBIUS_MAJOR_R * scaleFactor;
+    const w = MOBIUS_STRIP_W * scaleFactor;
+
+    // Un-scale to local parametric space
+    const px = wx / scaleFactor;
+    const py = wy / scaleFactor;
+    const pz = wz / scaleFactor;
+
+    // Find angle t from XY projection
+    let t = Math.atan2(py, px);
+    if (t < 0) t += Math.PI * 2;
+
+    // Center of strip at this angle (using local MOBIUS_MAJOR_R, not scaled)
+    const centerX = MOBIUS_MAJOR_R * Math.cos(t);
+    const centerY = MOBIUS_MAJOR_R * Math.sin(t);
+
+    // Vector from center line to the point
+    const toPointX = px - centerX;
+    const toPointY = py - centerY;
+    const toPointZ = pz;
+
+    // Strip direction at angle t (the half-twist tangent across width)
+    const halfT = t / 2;
+    const stripDirX = Math.cos(halfT) * Math.cos(t);
+    const stripDirY = Math.cos(halfT) * Math.sin(t);
+    const stripDirZ = Math.sin(halfT);
+    const stripDirLen = Math.sqrt(stripDirX * stripDirX + stripDirY * stripDirY + stripDirZ * stripDirZ);
+    const stripDirNX = stripDirX / stripDirLen;
+    const stripDirNY = stripDirY / stripDirLen;
+    const stripDirNZ = stripDirZ / stripDirLen;
+
+    // Project onto strip direction to get s (position across width in local coords)
+    const s = toPointX * stripDirNX + toPointY * stripDirNY + toPointZ * stripDirNZ;
+
+    const u = t / (Math.PI * 2);
+    const v = (s / MOBIUS_STRIP_W + 1) / 2;  // Map [-w, w] to [0, 1] using local strip width
+
+    return {
+      u: Math.max(0, Math.min(1, u)),
+      v: Math.max(0, Math.min(1, v)),
+    };
   }
 
   private tryShoot(player: PlayerState) {
@@ -4738,7 +4793,9 @@ export class GameRoom extends Room<GameState> {
    */
   private surfaceWrapsV(): boolean {
     const st = this.state.surfaceType;
-    return st === 'torus' || st === 'pipe' || st === 'mobius'
+    // Mobius V does NOT wrap — it is physically bounded (the strip has real edges).
+    // When U wraps on Mobius, V is INVERTED (half-twist), not wrapped as modulo.
+    return st === 'torus' || st === 'pipe'
       || st === 'cube-ring' || st === 'cube-tunnel';
   }
 
