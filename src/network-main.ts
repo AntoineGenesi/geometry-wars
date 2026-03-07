@@ -1096,6 +1096,11 @@ async function main() {
   }
   const networkHealthPickups = new Map<string, HealthPickupVisual>();
 
+  // Track super/health pickup IDs sent to server via collect_pickup (no active flag on these visuals).
+  // Prevents double-sends while waiting for server state confirmation.
+  const pendingSuperCollections = new Set<string>();
+  const pendingHealthCollections = new Set<string>();
+
   // Shared geometry for health pickups (created once)
   const healthPickupGeometry = new THREE.SphereGeometry(0.22, 10, 7);
 
@@ -2800,6 +2805,8 @@ async function main() {
       });
     });
     networkHealthPickups.clear();
+    pendingSuperCollections.clear();
+    pendingHealthCollections.clear();
 
     // Reset buff stacks so new game starts from scratch
     buffManager.reset();
@@ -3899,6 +3906,7 @@ async function main() {
           }
         });
         networkSuperPickups.delete(id);
+        pendingSuperCollections.delete(id); // cleanup pending set
       }
     });
 
@@ -4054,6 +4062,7 @@ async function main() {
           }
         });
         networkHealthPickups.delete(id);
+        pendingHealthCollections.delete(id); // cleanup pending set
       }
     });
 
@@ -5631,6 +5640,55 @@ async function main() {
       });
 
       companionHUD.update(companionManager.getCompanionCounts());
+
+      // Client-authoritative pickup collection for server-synced pickups (s44r-04-03).
+      // Server UV-based collision is broken on non-sphere surfaces (sphere-approx UV error).
+      // Fix: client measures world-space distance between player mesh and pickup mesh,
+      // sends collect_pickup message. Server trusts it and applies the effect.
+      if (network.isConnected()) {
+        const PICKUP_COLLECT_RADIUS_SQ = Math.pow(0.3 * currentMapSizeScaleFactor, 2);
+        const pPos = localPlayer.mesh.position;
+
+        // Weapon pickups — WeaponPickup.active used as double-collect guard
+        networkWeaponPickups.forEach((pickup, pickupId) => {
+          if (!pickup.active || !pickup.mesh) return;
+          if (pPos.distanceToSquared(pickup.mesh.position) < PICKUP_COLLECT_RADIUS_SQ) {
+            pickup.active = false;
+            pickup.mesh.visible = false;
+            network.sendCollectPickup('weapon', pickupId);
+          }
+        });
+
+        // Server-synced buff pickups — BuffPickupNew.active used as double-collect guard
+        networkBuffPickups.forEach((bp, pickupId) => {
+          if (!bp.active || !bp.mesh) return;
+          if (pPos.distanceToSquared(bp.mesh.position) < PICKUP_COLLECT_RADIUS_SQ) {
+            bp.active = false;
+            bp.mesh.visible = false;
+            network.sendCollectPickup('buff', pickupId);
+          }
+        });
+
+        // Super pickups (bomb_resupply, multiplier_boost) — no active flag, use pending Set
+        networkSuperPickups.forEach((visual, pickupId) => {
+          if (pendingSuperCollections.has(pickupId) || !visual.mesh) return;
+          if (pPos.distanceToSquared(visual.mesh.position) < PICKUP_COLLECT_RADIUS_SQ) {
+            pendingSuperCollections.add(pickupId);
+            visual.mesh.visible = false;
+            network.sendCollectPickup('super', pickupId);
+          }
+        });
+
+        // Health pickups (PvP mode) — no active flag, use pending Set
+        networkHealthPickups.forEach((visual, pickupId) => {
+          if (pendingHealthCollections.has(pickupId) || !visual.mesh) return;
+          if (pPos.distanceToSquared(visual.mesh.position) < PICKUP_COLLECT_RADIUS_SQ) {
+            pendingHealthCollections.add(pickupId);
+            visual.mesh.visible = false;
+            network.sendCollectPickup('health', pickupId);
+          }
+        });
+      }
     }
 
     // ── Portals: animate (visuals only — teleportation is server-authoritative) ──

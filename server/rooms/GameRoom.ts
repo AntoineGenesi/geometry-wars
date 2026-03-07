@@ -1057,6 +1057,104 @@ export class GameRoom extends Room<GameState> {
       }
     });
 
+    // Client-authoritative pickup collection (s44r-04-03).
+    // Client detects proximity via world-space mesh distance (avoids sphere-approx UV errors).
+    // Server trusts the message and applies the pickup effect.
+    this.onMessage('collect_pickup', (client, data: {
+      pickupType: 'weapon' | 'buff' | 'super' | 'health';
+      pickupId: string;
+    }) => {
+      if (this.state.roomPhase !== 'playing') return;
+      if (!data.pickupId || typeof data.pickupId !== 'string') return;
+      const player = this.state.players.get(client.sessionId);
+      if (!player || !player.alive) return;
+
+      if (data.pickupType === 'weapon') {
+        let targetIndex = -1;
+        this.state.weaponPickups.forEach((pickup, index) => {
+          if (pickup.id === data.pickupId) targetIndex = index;
+        });
+        if (targetIndex < 0) return;
+        const pickup = this.state.weaponPickups[targetIndex];
+        if (!pickup.active) return; // already collected (double-send guard)
+
+        pickup.active = false;
+        this.state.weaponPickups.splice(targetIndex, 1);
+        const cfg = WEAPON_CONFIGS[pickup.weaponType] ?? WEAPON_CONFIGS.standard;
+        const prevWeapon = player.weaponType;
+        this.playerSecondaryWeapon.set(client.sessionId, { type: pickup.weaponType, ammo: cfg.ammo });
+        player.weaponType = pickup.weaponType;
+        player.weaponAmmo = cfg.ammo;
+        this.logger.log(`[GameRoom] ${player.name} collected weapon pickup: ${pickup.weaponType} (client-auth)`);
+        this.logGameplayEvent({
+          _type: 'weapon_pickup',
+          playerId: player.id,
+          playerName: player.name,
+          weaponType: pickup.weaponType,
+          prevWeapon,
+          score: player.score,
+        });
+
+      } else if (data.pickupType === 'buff') {
+        let targetIndex = -1;
+        this.state.buffPickups.forEach((pickup, index) => {
+          if (pickup.id === data.pickupId) targetIndex = index;
+        });
+        if (targetIndex < 0) return;
+        const pickup = this.state.buffPickups[targetIndex];
+        if (!pickup.active) return;
+
+        pickup.active = false;
+        this.state.buffPickups.splice(targetIndex, 1);
+        const current = player.buffStacks.get(pickup.buffType) ?? 0;
+        const newStacks = Math.min(current + 1, BUFF_STACK_MAX);
+        player.buffStacks.set(pickup.buffType, newStacks);
+        this.logger.log(`[GameRoom] ${player.name} collected ${pickup.buffType} buff (now ${newStacks}×) (client-auth)`);
+        this.logGameplayEvent({
+          _type: 'buff_applied',
+          playerId: player.id,
+          playerName: player.name,
+          buffType: pickup.buffType,
+          newStacks,
+          score: player.score,
+        });
+
+      } else if (data.pickupType === 'super') {
+        let targetIndex = -1;
+        this.state.superPickups.forEach((pickup, index) => {
+          if (pickup.id === data.pickupId) targetIndex = index;
+        });
+        if (targetIndex < 0) return;
+        const pickup = this.state.superPickups[targetIndex];
+        if (!pickup.active) return;
+
+        pickup.active = false;
+        this.state.superPickups.splice(targetIndex, 1);
+        if (pickup.pickupType === 'bomb_resupply') {
+          player.bombs = Math.min(player.bombs + 2, 5);
+        } else if (pickup.pickupType === 'multiplier_boost') {
+          player.multiplier = Math.min(player.multiplier + 10, 150);
+        }
+        this.logger.log(`[GameRoom] ${player.name} collected ${pickup.pickupType} super pickup (client-auth)`);
+
+      } else if (data.pickupType === 'health') {
+        if (!this.pvpEnabled) return;
+        let targetIndex = -1;
+        this.state.healthPickups.forEach((pickup, index) => {
+          if (pickup.id === data.pickupId) targetIndex = index;
+        });
+        if (targetIndex < 0) return;
+        const pickup = this.state.healthPickups[targetIndex];
+        if (!pickup.active) return;
+
+        pickup.active = false;
+        this.state.healthPickups.splice(targetIndex, 1);
+        const newHealth = Math.min(player.health + this.healthPickupHealAmount, player.maxHealth);
+        player.health = newHealth;
+        this.logger.log(`[GameRoom] PvP: ${player.name} collected health pickup (+${this.healthPickupHealAmount} HP, now ${newHealth}) (client-auth)`);
+      }
+    });
+
     // Initialize session metrics log file
     try {
       const sessionDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -3905,104 +4003,112 @@ export class GameRoom extends Room<GameState> {
     });
 
     // Player-weaponPickup collisions
+    // Gated by MP_SERVER_PICKUP_COLLISION=1. Default OFF: client-authoritative collection
+    // via collect_pickup message (s44r-04-03) handles this instead, fixing sphere-approx UV bug.
     const pickupsToRemove: number[] = [];
-    this.state.players.forEach((player, sessionId) => {
-      if (!player.alive) return;
+    if (process.env.MP_SERVER_PICKUP_COLLISION === '1') {
+      this.state.players.forEach((player, sessionId) => {
+        if (!player.alive) return;
 
-      this.state.weaponPickups.forEach((pickup, index) => {
-        if (!pickup.active) return;
+        this.state.weaponPickups.forEach((pickup, index) => {
+          if (!pickup.active) return;
 
-        const dist = usesWorldDist
-          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
-          : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
-        const pickupThreshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
+          const dist = usesWorldDist
+            ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
+            : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
+          const pickupThreshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
 
-        if (dist < pickupThreshold) {
-          pickup.active = false;
-          pickupsToRemove.push(index);
+          if (dist < pickupThreshold) {
+            pickup.active = false;
+            pickupsToRemove.push(index);
 
-          const cfg = WEAPON_CONFIGS[pickup.weaponType] ?? WEAPON_CONFIGS.standard;
-          const prevWeapon = player.weaponType;
-          // Save to secondary weapon inventory so Q/E can cycle back to it.
-          // Always overwrites the previous secondary — MP supports one secondary slot.
-          this.playerSecondaryWeapon.set(sessionId, { type: pickup.weaponType, ammo: cfg.ammo });
-          player.weaponType = pickup.weaponType;
-          player.weaponAmmo = cfg.ammo;
-          this.logGameplayEvent({
-            _type: 'weapon_pickup',
-            playerId: player.id,
-            playerName: player.name,
-            weaponType: pickup.weaponType,
-            prevWeapon,
-            score: player.score,
-          });
-        }
-      });
-    });
-
-    // Player-buffPickup collisions
-    const buffPickupsToRemove: number[] = [];
-    this.state.players.forEach((player) => {
-      if (!player.alive) return;
-
-      this.state.buffPickups.forEach((pickup, index) => {
-        if (!pickup.active) return;
-
-        const dist = usesWorldDist
-          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
-          : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
-        const threshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
-
-        if (dist < threshold) {
-          pickup.active = false;
-          buffPickupsToRemove.push(index);
-
-          const current = player.buffStacks.get(pickup.buffType) ?? 0;
-          const newStacks = Math.min(current + 1, BUFF_STACK_MAX);
-          player.buffStacks.set(pickup.buffType, newStacks);
-          this.logger.log(`[GameRoom] ${player.name} collected ${pickup.buffType} buff (now ${newStacks}×)`);
-          this.logGameplayEvent({
-            _type: 'buff_applied',
-            playerId: player.id,
-            playerName: player.name,
-            buffType: pickup.buffType,
-            newStacks,
-            score: player.score,
-          });
-        }
-      });
-    });
-
-    // Player-superPickup collisions
-    const superPickupsToRemove: number[] = [];
-    this.state.players.forEach((player) => {
-      if (!player.alive) return;
-
-      this.state.superPickups.forEach((pickup, index) => {
-        if (!pickup.active) return;
-
-        const dist = usesWorldDist
-          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
-          : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
-        const threshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
-
-        if (dist < threshold) {
-          pickup.active = false;
-          superPickupsToRemove.push(index);
-
-          if (pickup.pickupType === 'bomb_resupply') {
-            player.bombs = Math.min(player.bombs + 2, 5);
-          } else if (pickup.pickupType === 'multiplier_boost') {
-            player.multiplier = Math.min(player.multiplier + 10, 150);
+            const cfg = WEAPON_CONFIGS[pickup.weaponType] ?? WEAPON_CONFIGS.standard;
+            const prevWeapon = player.weaponType;
+            // Save to secondary weapon inventory so Q/E can cycle back to it.
+            // Always overwrites the previous secondary — MP supports one secondary slot.
+            this.playerSecondaryWeapon.set(sessionId, { type: pickup.weaponType, ammo: cfg.ammo });
+            player.weaponType = pickup.weaponType;
+            player.weaponAmmo = cfg.ammo;
+            this.logGameplayEvent({
+              _type: 'weapon_pickup',
+              playerId: player.id,
+              playerName: player.name,
+              weaponType: pickup.weaponType,
+              prevWeapon,
+              score: player.score,
+            });
           }
-          this.logger.log(`[GameRoom] Player ${player.id} collected ${pickup.pickupType} super pickup`);
-        }
+        });
       });
-    });
+    }
 
-    // Player-healthPickup collisions (PvP mode only)
+    // Player-buffPickup collisions (gated — client-authoritative by default)
+    const buffPickupsToRemove: number[] = [];
+    if (process.env.MP_SERVER_PICKUP_COLLISION === '1') {
+      this.state.players.forEach((player) => {
+        if (!player.alive) return;
+
+        this.state.buffPickups.forEach((pickup, index) => {
+          if (!pickup.active) return;
+
+          const dist = usesWorldDist
+            ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
+            : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
+          const threshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
+
+          if (dist < threshold) {
+            pickup.active = false;
+            buffPickupsToRemove.push(index);
+
+            const current = player.buffStacks.get(pickup.buffType) ?? 0;
+            const newStacks = Math.min(current + 1, BUFF_STACK_MAX);
+            player.buffStacks.set(pickup.buffType, newStacks);
+            this.logger.log(`[GameRoom] ${player.name} collected ${pickup.buffType} buff (now ${newStacks}×)`);
+            this.logGameplayEvent({
+              _type: 'buff_applied',
+              playerId: player.id,
+              playerName: player.name,
+              buffType: pickup.buffType,
+              newStacks,
+              score: player.score,
+            });
+          }
+        });
+      });
+    }
+
+    // Player-superPickup collisions (gated — client-authoritative by default)
+    const superPickupsToRemove: number[] = [];
+    if (process.env.MP_SERVER_PICKUP_COLLISION === '1') {
+      this.state.players.forEach((player) => {
+        if (!player.alive) return;
+
+        this.state.superPickups.forEach((pickup, index) => {
+          if (!pickup.active) return;
+
+          const dist = usesWorldDist
+            ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV, scaleFactor, sphereR)
+            : this.uvDistWrapped(player.surfaceU, player.surfaceV, pickup.surfaceU, pickup.surfaceV);
+          const threshold = usesWorldDist ? PICKUP_WORLD : PICKUP_RADIUS;
+
+          if (dist < threshold) {
+            pickup.active = false;
+            superPickupsToRemove.push(index);
+
+            if (pickup.pickupType === 'bomb_resupply') {
+              player.bombs = Math.min(player.bombs + 2, 5);
+            } else if (pickup.pickupType === 'multiplier_boost') {
+              player.multiplier = Math.min(player.multiplier + 10, 150);
+            }
+            this.logger.log(`[GameRoom] Player ${player.id} collected ${pickup.pickupType} super pickup`);
+          }
+        });
+      });
+    }
+
+    // Player-healthPickup collisions (PvP mode only, gated — client-authoritative by default)
     const healthPickupsToRemove: number[] = [];
-    if (this.pvpEnabled) {
+    if (this.pvpEnabled && process.env.MP_SERVER_PICKUP_COLLISION === '1') {
       this.state.players.forEach((player) => {
         if (!player.alive) return;
 
