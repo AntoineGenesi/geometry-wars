@@ -210,6 +210,42 @@ const _bulletTmpColor = new THREE.Color();
 const _aimCamRight = new THREE.Vector3();
 const _aimCamUp = new THREE.Vector3();
 
+// Pre-allocated temp vectors for stable camera frame computation (s44p-02)
+// Used to compute a world-Y-anchored tangent frame from just the surface normal.
+// This avoids using the server's movement-tracking bitangent (which tilts the camera
+// in the direction of movement on sphere) for the camera up hint.
+const _stableCamRef   = new THREE.Vector3();
+const _stableCamTangent   = new THREE.Vector3();
+const _stableCamBitangent = new THREE.Vector3();
+
+/**
+ * Compute a stable camera tangent frame from a surface normal.
+ *
+ * Uses world-Y (or world-X at poles) as reference to compute tangent/bitangent
+ * that are independent of movement history. This gives a consistent "north is up"
+ * camera orientation on sphere without the tilting caused by the MeshWalker's
+ * movement-tracking bitangent.
+ *
+ * Matches MeshSurface.getTangentFrame() convention:
+ *   tangent   = cross(ref, normal)   — surface "east" direction
+ *   bitangent = cross(normal, tangent) — surface "north" direction ≈ worldUp
+ *
+ * Results written to the pre-allocated _stableCamTangent / _stableCamBitangent
+ * module-level vectors. Returns { tangent, bitangent } referencing those vectors
+ * (zero allocation).
+ */
+function _computeStableCameraFrame(normal: THREE.Vector3): { tangent: THREE.Vector3; bitangent: THREE.Vector3 } {
+  // Choose a reference vector not parallel to normal
+  if (Math.abs(normal.y) < 0.99) {
+    _stableCamRef.set(0, 1, 0);
+  } else {
+    _stableCamRef.set(1, 0, 0);
+  }
+  _stableCamTangent.crossVectors(_stableCamRef, normal).normalize();
+  _stableCamBitangent.crossVectors(normal, _stableCamTangent).normalize();
+  return { tangent: _stableCamTangent, bitangent: _stableCamBitangent };
+}
+
 // ---------------------------------------------------------------------------
 // URL helpers
 // ---------------------------------------------------------------------------
@@ -3026,10 +3062,12 @@ async function main() {
             tgt.y + _localServerNormal.y * 0.15,
             tgt.z + _localServerNormal.z * 0.15,
           );
+          // s44p-02: Use stable world-Y-anchored camera frame instead of server's
+          // movement-tracking bitangent (which tilts camera in direction of movement).
           cameraController.snapToFrame(
             snapPos,
             _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            _computeStableCameraFrame(_localServerNormal),
           );
         }
 
@@ -5696,13 +5734,15 @@ async function main() {
       // Still update camera (so orbit controls work in pause) and debug overlay
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer) {
-        // Use server's stable tangent frame when available (s44-epic-06).
-        // Avoids UV-derived tangentV which can flip sign at poles, causing camera inversion.
+        // Use stable world-Y-anchored camera frame (s44p-02).
+        // Previously used server's movement-tracking bitangent which caused camera
+        // to tilt in direction of movement on sphere. Stable frame is independent
+        // of movement history — gives consistent "north is up" orientation.
         if (_localServerFrameValid) {
           cameraController.updateFromFrame(
             localPlayer.mesh.position,
             _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            _computeStableCameraFrame(_localServerNormal),
             _cameraRenderDt,
           );
         } else {
@@ -5711,7 +5751,7 @@ async function main() {
           cameraController.updateFromFrame(
             cameraPos,
             sp.normal,
-            { tangent: sp.tangentU, bitangent: sp.tangentV },
+            _computeStableCameraFrame(sp.normal),
             _cameraRenderDt,
           );
         }
@@ -6099,11 +6139,11 @@ async function main() {
               spectateWorldPos.z + spectateWorldPos.nz * 0.15,
             );
             _netTempNormal.set(spectateWorldPos.nx, spectateWorldPos.ny, spectateWorldPos.nz);
-            _netTempTangent.set(spectateWorldPos.tx, spectateWorldPos.ty, spectateWorldPos.tz);
+            // s44p-02: Use stable world-Y-anchored frame (avoids movement-tracking tilt)
             cameraController.updateFromFrame(
               _netTempPos,
               _netTempNormal,
-              { tangent: _netTempTangent, bitangent: _netTempNormal }, // use normal as fallback bitangent
+              _computeStableCameraFrame(_netTempNormal),
               _cameraRenderDt,
             );
           } else {
@@ -6111,21 +6151,23 @@ async function main() {
             const sp = surf.getPoint(spectatePlayer.surfaceU, spectatePlayer.surfaceV);
             const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
             cameraController.updateFromFrame(
-              cameraPos, sp.normal, { tangent: sp.tangentU, bitangent: sp.tangentV }, _cameraRenderDt,
+              cameraPos, sp.normal, _computeStableCameraFrame(sp.normal), _cameraRenderDt,
             );
           }
         }
       } else if (_localServerFrameValid) {
-        // Normal case: follow local player with server's stable tangent frame (s44-epic-06).
-        // Using _localServerBitangent avoids UV-derived tangentV which flips sign at poles.
-        // s44i-01: Use server world-space position for camera target (via
-        // _predictedPlayerVisualPos which now always holds server pos after s44h-08 revert).
-        // Server tangent frame is still used for stability (no UV-pole flipping).
+        // Normal case: follow local player using stable world-Y-anchored camera frame.
+        // s44p-02: Previously used server's movement-tracking bitangent (_localServerBitangent)
+        // which caused the camera to tilt sideways on sphere during movement.
+        // Fix: compute camera upHint from surface normal × worldY — independent of
+        // movement history, gives stable "north is up" orientation on all surfaces.
+        // Position still uses server world-space (s44i-01) for correct placement.
+        const _stableFrame = _computeStableCameraFrame(_localServerNormal);
         if (_predictedPlayerVisualValid) {
           cameraController.updateFromFrame(
             _predictedPlayerVisualPos,
             _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            _stableFrame,
             _cameraRenderDt,
           );
         } else if (_localPlayerWorldTarget.valid) {
@@ -6138,25 +6180,26 @@ async function main() {
           cameraController.updateFromFrame(
             _netTempPos,
             _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            _stableFrame,
             _cameraRenderDt,
           );
         } else {
           cameraController.updateFromFrame(
             localPlayer.mesh.position,
             _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
+            _stableFrame,
             _cameraRenderDt,
           );
         }
       } else {
-        // Fallback: UV-based frame (legacy server or no server frame yet)
+        // Fallback: UV-based frame (legacy server or no server frame yet).
+        // s44p-02: Use stable frame instead of UV tangentV which can flip at poles.
         const sp = surf.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
         const cameraPos = sp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
         cameraController.updateFromFrame(
           cameraPos,
           sp.normal,
-          { tangent: sp.tangentU, bitangent: sp.tangentV },
+          _computeStableCameraFrame(sp.normal),
           _cameraRenderDt,
         );
       }

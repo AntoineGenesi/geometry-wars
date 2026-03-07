@@ -2,7 +2,29 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-03-03
+> **Last updated:** 2026-03-07
+
+## s44p-02: Sphere MP Camera Fix — Camera Tilt, Stuck Player, Camera Reset
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**Root cause fixed:** The server's MeshWalker `bitangent` (used as camera `up` hint) tracks the player's movement direction due to parallel transport. When the player strafe-moves on the sphere, the bitangent rotates in the direction of movement, tilting the camera sideways. Additionally, the tilted camera axes were being sent to the server for movement calculations, causing the player to move in wrong directions and potentially get stuck. Camera reset (middle button double-press) couldn't fix the underlying tilt.
+
+**Fix:** Replaced server-bitangent-based camera orientation with a stable `worldY × normal` computed frame (same technique as `MeshSurface.getTangentFrame()`). This gives consistent "north is up" camera orientation independent of movement history. Applied to all `updateFromFrame()` and `snapToFrame()` calls in `network-main.ts`.
+
+**Files changed:** `src/network-main.ts`
+
+**Test in Sphere MP:**
+- [ ] Start a LAN game on Sphere map
+- [ ] Move sideways (hold A or D / left stick left/right) — camera should NOT tilt/lean in direction of movement
+- [ ] Move around the sphere freely — camera should maintain top-down orientation
+- [ ] Player should not get stuck on any region of the sphere
+- [ ] Double-press middle mouse button — camera should reset to clean top-down view
+- [ ] After camera reset, movement should work correctly in all directions
+
+**Regression check:**
+- [ ] SP sphere works normally (camera follows player without tilt)
+- [ ] Other MP surfaces (cube, torus) still work correctly
 
 ## s44m-07: Guardian Drones Activate + Damage Numbers
 
