@@ -1400,12 +1400,11 @@ async function main() {
     { id: 'sniper',         label: 'SNIPER',         icon: '🎯' },
     { id: 'rainbow',        label: 'RAINBOW',        icon: '🌈' },
     { id: 'claustrophobia', label: 'CLAUSTROPHOBIA', icon: '🔴' },
-    { id: 'pvp',            label: 'PVP',            icon: '⚔' },
-    { id: 'pvpve',          label: 'PvPvE',          icon: '⚔🌊' },
   ];
 
   const urlGameMode = new URLSearchParams(window.location.search).get('gameMode') ?? 'waves';
-  let selectedLobbyMode = urlGameMode;
+  // Default to 'waves' if URL had a legacy pvp/pvpve mode (now handled by Co-op/PvP/PvPvE buttons)
+  let selectedLobbyMode = (urlGameMode === 'pvp' || urlGameMode === 'pvpve') ? 'waves' : urlGameMode;
 
   const modeSelectorDiv = document.createElement('div');
   modeSelectorDiv.id = 'lobby-mode-selector';
@@ -1419,6 +1418,167 @@ async function main() {
     'color:#0ff;font:12px monospace;letter-spacing:3px;margin-bottom:8px;' +
     'text-shadow:0 0 8px #0ff;';
   modeSelectorDiv.appendChild(modeLabelEl);
+
+  // ---- Co-op / PvP / PvPvE — primary game mode selection ----
+  let lobbyPvpMode: '' | 'pvp' | 'pvpve' = '';
+  let lobbyWinCondition: 'none' | 'kills' | 'time' | 'lives' = 'none';
+  let lobbyKillTarget = 10;
+  let lobbyTimeLimit = 300; // seconds
+  let lobbyLivesCount = 3;
+
+  const gameModeRow = document.createElement('div');
+  gameModeRow.style.cssText = 'display:flex;gap:8px;margin-bottom:8px;margin-top:8px;';
+
+  function createModeBtn(label: string, value: '' | 'pvp' | 'pvpve'): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.dataset.pvpMode = value;
+    btn.style.cssText =
+      'flex:1;padding:8px 4px;font:bold 12px monospace;letter-spacing:1px;cursor:pointer;' +
+      'border:1px solid #444;background:#111;color:#777;transition:all 0.15s;';
+    btn.onclick = () => {
+      lobbyPvpMode = value;
+      updateLobbyUI();
+    };
+    return btn;
+  }
+
+  const coopBtn = createModeBtn('CO-OP', '');
+  const pvpBtn = createModeBtn('PvP', 'pvp');
+  const pvpveBtn = createModeBtn('PvPvE', 'pvpve');
+  gameModeRow.appendChild(coopBtn);
+  gameModeRow.appendChild(pvpBtn);
+  gameModeRow.appendChild(pvpveBtn);
+  modeSelectorDiv.appendChild(gameModeRow);
+
+  // Win condition section — shown inline when PvP or PvPvE is selected
+  const winConditionSection = document.createElement('div');
+  winConditionSection.id = 'pvp-win-conditions';
+  winConditionSection.style.cssText = 'display:none;border-top:1px solid #333;padding-top:12px;margin-bottom:8px;';
+
+  const winCondLabel = document.createElement('div');
+  winCondLabel.textContent = 'WIN CONDITION';
+  winCondLabel.style.cssText = 'font-size:11px;letter-spacing:2px;color:#555;margin-bottom:8px;';
+  winConditionSection.appendChild(winCondLabel);
+
+  const winCondRow = document.createElement('div');
+  winCondRow.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;';
+
+  function createWinCondBtn(label: string, value: 'kills' | 'time' | 'lives'): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.dataset.winCond = value;
+    btn.style.cssText =
+      'flex:1;padding:8px 4px;font:bold 12px monospace;letter-spacing:1px;cursor:pointer;' +
+      'border:1px solid #444;background:#111;color:#777;transition:all 0.15s;';
+    btn.onclick = () => {
+      lobbyWinCondition = value;
+      updateLobbyUI();
+    };
+    return btn;
+  }
+
+  const killsBtn = createWinCondBtn('KILLS', 'kills');
+  const timeBtn = createWinCondBtn('TIME', 'time');
+  const livesBtn = createWinCondBtn('LIVES', 'lives');
+  winCondRow.appendChild(killsBtn);
+  winCondRow.appendChild(timeBtn);
+  winCondRow.appendChild(livesBtn);
+  winConditionSection.appendChild(winCondRow);
+
+  const killsInput = document.createElement('div');
+  killsInput.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
+  killsInput.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">First to</span>';
+  const killsCount = document.createElement('input');
+  killsCount.type = 'number';
+  killsCount.min = '1';
+  killsCount.max = '500';
+  killsCount.value = String(lobbyKillTarget);
+  killsCount.style.cssText =
+    'width:70px;padding:4px 8px;font:14px monospace;background:#001;color:#0ff;' +
+    'border:1px solid #0af;outline:none;text-align:center;';
+  killsCount.oninput = () => { lobbyKillTarget = Math.max(1, parseInt(killsCount.value, 10) || 10); };
+  killsInput.appendChild(killsCount);
+  const killsUnit = document.createElement('span');
+  killsUnit.textContent = 'kills';
+  killsUnit.style.cssText = 'font-size:12px;color:#888;';
+  killsInput.appendChild(killsUnit);
+  winConditionSection.appendChild(killsInput);
+
+  const timeSelect = document.createElement('div');
+  timeSelect.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
+  timeSelect.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">Time limit</span>';
+  const timeDrop = document.createElement('select');
+  timeDrop.style.cssText =
+    'padding:4px 8px;font:14px monospace;background:#001;color:#0ff;' +
+    'border:1px solid #0af;outline:none;cursor:pointer;';
+  [['2 min', 120], ['5 min', 300], ['10 min', 600], ['15 min', 900]].forEach(([label, secs]) => {
+    const opt = document.createElement('option');
+    opt.value = String(secs);
+    opt.textContent = String(label);
+    if (Number(secs) === lobbyTimeLimit) opt.selected = true;
+    timeDrop.appendChild(opt);
+  });
+  timeDrop.onchange = () => { lobbyTimeLimit = parseInt(timeDrop.value, 10); };
+  timeSelect.appendChild(timeDrop);
+  winConditionSection.appendChild(timeSelect);
+
+  const livesInput = document.createElement('div');
+  livesInput.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
+  livesInput.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">Lives per player</span>';
+  const livesCount = document.createElement('input');
+  livesCount.type = 'number';
+  livesCount.min = '1';
+  livesCount.max = '20';
+  livesCount.value = String(lobbyLivesCount);
+  livesCount.style.cssText =
+    'width:70px;padding:4px 8px;font:14px monospace;background:#001;color:#0ff;' +
+    'border:1px solid #0af;outline:none;text-align:center;';
+  livesCount.oninput = () => { lobbyLivesCount = Math.max(1, parseInt(livesCount.value, 10) || 3); };
+  livesInput.appendChild(livesCount);
+  const livesHint = document.createElement('span');
+  livesHint.textContent = '(last standing wins)';
+  livesHint.style.cssText = 'font-size:11px;color:#555;';
+  livesInput.appendChild(livesHint);
+  winConditionSection.appendChild(livesInput);
+
+  modeSelectorDiv.appendChild(winConditionSection);
+
+  /** Sync all lobby option button styles + input visibility from current state */
+  function updateLobbyUI(): void {
+    for (const btn of [coopBtn, pvpBtn, pvpveBtn]) {
+      const active = btn.dataset.pvpMode === lobbyPvpMode;
+      btn.style.background = active ? '#003300' : '#111';
+      btn.style.color = active ? '#0f0' : '#777';
+      btn.style.borderColor = active ? '#0f0' : '#444';
+    }
+
+    const hasPvp = lobbyPvpMode === 'pvp' || lobbyPvpMode === 'pvpve';
+    winConditionSection.style.display = hasPvp ? 'block' : 'none';
+
+    if (hasPvp) {
+      for (const btn of [killsBtn, timeBtn, livesBtn]) {
+        const active = btn.dataset.winCond === lobbyWinCondition;
+        btn.style.background = active ? '#001133' : '#111';
+        btn.style.color = active ? '#0af' : '#777';
+        btn.style.borderColor = active ? '#0af' : '#444';
+      }
+      killsInput.style.display = lobbyWinCondition === 'kills' ? 'flex' : 'none';
+      timeSelect.style.display = lobbyWinCondition === 'time' ? 'flex' : 'none';
+      livesInput.style.display = lobbyWinCondition === 'lives' ? 'flex' : 'none';
+    }
+  }
+
+  // Initialize Co-op as selected by default
+  updateLobbyUI();
+
+  // ---- Wave type label (divider before map/wave selection) ----
+  const waveTypeLabelEl = document.createElement('div');
+  waveTypeLabelEl.textContent = 'WAVE TYPE';
+  waveTypeLabelEl.style.cssText =
+    'color:#0ff;font:12px monospace;letter-spacing:3px;margin:12px 0 8px;' +
+    'text-shadow:0 0 8px #0ff;border-top:1px solid #333;padding-top:12px;';
+  modeSelectorDiv.appendChild(waveTypeLabelEl);
 
   const modeBtnsRow = document.createElement('div');
   modeBtnsRow.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;justify-content:center;';
@@ -1623,186 +1783,6 @@ async function main() {
     return parts.join(' · ');
   }
 
-  // -----------------------------------------------------------------------
-  // Lobby options panel (host only) — game mode + win condition selection
-  // -----------------------------------------------------------------------
-
-  // Lobby state — game mode and win condition selections
-  let lobbyPvpMode: '' | 'pvp' | 'pvpve' = '';
-  let lobbyWinCondition: 'none' | 'kills' | 'time' | 'lives' = 'none';
-  let lobbyKillTarget = 10;
-  let lobbyTimeLimit = 300; // seconds
-  let lobbyLivesCount = 3;
-
-  // Lobby options panel — flows below the game mode buttons (no overlay)
-  const lobbyOptionsPanel = document.createElement('div');
-  lobbyOptionsPanel.id = 'pvp-lobby-options';
-  lobbyOptionsPanel.style.cssText =
-    'background:rgba(0,0,0,0.85);border:1px solid #333;padding:16px 20px;' +
-    'font-family:monospace;color:#aaa;display:none;margin-top:14px;' +
-    'min-width:340px;max-width:420px;box-sizing:border-box;';
-
-  // Section label
-  const gameModeLabel = document.createElement('div');
-  gameModeLabel.textContent = 'GAME MODE';
-  gameModeLabel.style.cssText = 'font-size:11px;letter-spacing:2px;color:#555;margin-bottom:8px;';
-  lobbyOptionsPanel.appendChild(gameModeLabel);
-
-  // Game mode buttons row: Co-op | PvP | PvPvE
-  const gameModeRow = document.createElement('div');
-  gameModeRow.style.cssText = 'display:flex;gap:8px;margin-bottom:16px;';
-
-  function createModeBtn(label: string, value: '' | 'pvp' | 'pvpve'): HTMLButtonElement {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.dataset.pvpMode = value;
-    btn.style.cssText =
-      'flex:1;padding:8px 4px;font:bold 12px monospace;letter-spacing:1px;cursor:pointer;' +
-      'border:1px solid #444;background:#111;color:#777;transition:all 0.15s;';
-    btn.onclick = () => {
-      lobbyPvpMode = value;
-      updateLobbyUI();
-    };
-    return btn;
-  }
-
-  const coopBtn = createModeBtn('CO-OP', '');
-  const pvpBtn = createModeBtn('PvP', 'pvp');
-  const pvpveBtn = createModeBtn('PvPvE', 'pvpve');
-  gameModeRow.appendChild(coopBtn);
-  gameModeRow.appendChild(pvpBtn);
-  gameModeRow.appendChild(pvpveBtn);
-  lobbyOptionsPanel.appendChild(gameModeRow);
-
-  // Win condition section — shown when PvP or PvPvE is selected
-  const winConditionSection = document.createElement('div');
-  winConditionSection.id = 'pvp-win-conditions';
-  winConditionSection.style.cssText = 'display:none;border-top:1px solid #333;padding-top:12px;';
-
-  const winCondLabel = document.createElement('div');
-  winCondLabel.textContent = 'WIN CONDITION';
-  winCondLabel.style.cssText = 'font-size:11px;letter-spacing:2px;color:#555;margin-bottom:8px;';
-  winConditionSection.appendChild(winCondLabel);
-
-  // Win condition buttons row: Kills | Time | Lives
-  const winCondRow = document.createElement('div');
-  winCondRow.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;';
-
-  function createWinCondBtn(label: string, value: 'kills' | 'time' | 'lives'): HTMLButtonElement {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.dataset.winCond = value;
-    btn.style.cssText =
-      'flex:1;padding:8px 4px;font:bold 12px monospace;letter-spacing:1px;cursor:pointer;' +
-      'border:1px solid #444;background:#111;color:#777;transition:all 0.15s;';
-    btn.onclick = () => {
-      lobbyWinCondition = value;
-      updateLobbyUI();
-    };
-    return btn;
-  }
-
-  const killsBtn = createWinCondBtn('KILLS', 'kills');
-  const timeBtn = createWinCondBtn('TIME', 'time');
-  const livesBtn = createWinCondBtn('LIVES', 'lives');
-  winCondRow.appendChild(killsBtn);
-  winCondRow.appendChild(timeBtn);
-  winCondRow.appendChild(livesBtn);
-  winConditionSection.appendChild(winCondRow);
-
-  // Win condition inputs (mutually exclusive visibility)
-  const killsInput = document.createElement('div');
-  killsInput.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
-  killsInput.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">First to</span>';
-  const killsCount = document.createElement('input');
-  killsCount.type = 'number';
-  killsCount.min = '1';
-  killsCount.max = '500';
-  killsCount.value = String(lobbyKillTarget);
-  killsCount.style.cssText =
-    'width:70px;padding:4px 8px;font:14px monospace;background:#001;color:#0ff;' +
-    'border:1px solid #0af;outline:none;text-align:center;';
-  killsCount.oninput = () => { lobbyKillTarget = Math.max(1, parseInt(killsCount.value, 10) || 10); };
-  killsInput.appendChild(killsCount);
-  const killsUnit = document.createElement('span');
-  killsUnit.textContent = 'kills';
-  killsUnit.style.cssText = 'font-size:12px;color:#888;';
-  killsInput.appendChild(killsUnit);
-  winConditionSection.appendChild(killsInput);
-
-  const timeSelect = document.createElement('div');
-  timeSelect.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
-  timeSelect.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">Time limit</span>';
-  const timeDrop = document.createElement('select');
-  timeDrop.style.cssText =
-    'padding:4px 8px;font:14px monospace;background:#001;color:#0ff;' +
-    'border:1px solid #0af;outline:none;cursor:pointer;';
-  [['2 min', 120], ['5 min', 300], ['10 min', 600], ['15 min', 900]].forEach(([label, secs]) => {
-    const opt = document.createElement('option');
-    opt.value = String(secs);
-    opt.textContent = String(label);
-    if (Number(secs) === lobbyTimeLimit) opt.selected = true;
-    timeDrop.appendChild(opt);
-  });
-  timeDrop.onchange = () => { lobbyTimeLimit = parseInt(timeDrop.value, 10); };
-  timeSelect.appendChild(timeDrop);
-  winConditionSection.appendChild(timeSelect);
-
-  const livesInput = document.createElement('div');
-  livesInput.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
-  livesInput.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">Lives per player</span>';
-  const livesCount = document.createElement('input');
-  livesCount.type = 'number';
-  livesCount.min = '1';
-  livesCount.max = '20';
-  livesCount.value = String(lobbyLivesCount);
-  livesCount.style.cssText =
-    'width:70px;padding:4px 8px;font:14px monospace;background:#001;color:#0ff;' +
-    'border:1px solid #0af;outline:none;text-align:center;';
-  livesCount.oninput = () => { lobbyLivesCount = Math.max(1, parseInt(livesCount.value, 10) || 3); };
-  livesInput.appendChild(livesCount);
-  const livesHint = document.createElement('span');
-  livesHint.textContent = '(last standing wins)';
-  livesHint.style.cssText = 'font-size:11px;color:#555;';
-  livesInput.appendChild(livesHint);
-  winConditionSection.appendChild(livesInput);
-
-  lobbyOptionsPanel.appendChild(winConditionSection);
-  modeSelectorDiv.appendChild(lobbyOptionsPanel);
-
-  /** Sync all lobby option button styles + input visibility from current state */
-  function updateLobbyUI(): void {
-    // Game mode button highlights
-    for (const btn of [coopBtn, pvpBtn, pvpveBtn]) {
-      const active = btn.dataset.pvpMode === lobbyPvpMode;
-      btn.style.background = active ? '#003300' : '#111';
-      btn.style.color = active ? '#0f0' : '#777';
-      btn.style.borderColor = active ? '#0f0' : '#444';
-    }
-
-    // Show win condition section only for PvP/PvPvE
-    const hasPvp = lobbyPvpMode === 'pvp' || lobbyPvpMode === 'pvpve';
-    winConditionSection.style.display = hasPvp ? 'block' : 'none';
-
-    if (hasPvp) {
-      // Win condition button highlights
-      for (const btn of [killsBtn, timeBtn, livesBtn]) {
-        const active = btn.dataset.winCond === lobbyWinCondition;
-        btn.style.background = active ? '#001133' : '#111';
-        btn.style.color = active ? '#0af' : '#777';
-        btn.style.borderColor = active ? '#0af' : '#444';
-      }
-
-      // Show/hide value inputs
-      killsInput.style.display = lobbyWinCondition === 'kills' ? 'flex' : 'none';
-      timeSelect.style.display = lobbyWinCondition === 'time' ? 'flex' : 'none';
-      livesInput.style.display = lobbyWinCondition === 'lives' ? 'flex' : 'none';
-    }
-  }
-
-  // Initialize button highlight state
-  updateLobbyUI();
-
   // Start button
   const startBtn = document.createElement('button');
   startBtn.textContent = 'START GAME';
@@ -1845,7 +1825,6 @@ async function main() {
     }
     startBtn.style.display = 'none';
     modeSelectorDiv.style.display = 'none';
-    lobbyOptionsPanel.style.display = 'none';
     statusEl.textContent = 'Starting...';
   };
   document.body.appendChild(startBtn);
@@ -4234,20 +4213,17 @@ async function main() {
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
-      lobbyOptionsPanel.style.display = 'none';
     } else if (state.gameStarted && currentRoomPhase === 'playing') {
       statusEl.textContent = state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`;
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
-      lobbyOptionsPanel.style.display = 'none';
     } else if (state.gameOver && currentRoomPhase !== 'voting') {
       // Legacy path: gameOver flag (pre-voting-state-machine servers or initial game)
       statusEl.textContent = 'GAME OVER';
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
-      lobbyOptionsPanel.style.display = 'none';
       if (!gameOverShown) {
         gameOverShown = true;
         if (latestGameMode === 'pvpve') {
@@ -4302,7 +4278,6 @@ async function main() {
         startBtn.style.display = 'block';
         modeSelectorDiv.style.display = 'block';
         nonHostSettingsEl.style.display = 'none';
-        lobbyOptionsPanel.style.display = 'block';
       } else {
         // Non-host: show waiting message and read-only settings display.
         const modeLabel = LOBBY_MODES.find(m => m.id === state.gameMode)?.label ?? state.gameMode?.toUpperCase() ?? 'WAVES';
@@ -4310,7 +4285,6 @@ async function main() {
         startBtn.style.display = 'none';
         modeSelectorDiv.style.display = 'none';
         nonHostSettingsEl.style.display = 'block';
-        lobbyOptionsPanel.style.display = 'none';
       }
     }
 
@@ -4481,11 +4455,10 @@ async function main() {
     if (isHost) {
       statusEl.textContent = 'Connected! You are the HOST — press START GAME.';
       startBtn.style.display = 'block';
-      lobbyOptionsPanel.style.display = 'block';
+      modeSelectorDiv.style.display = 'block';
     } else {
       statusEl.textContent = 'Connected! Waiting for host to start the game...';
       startBtn.style.display = 'none';
-      lobbyOptionsPanel.style.display = 'none';
     }
 
     network.setCallbacks({
@@ -4493,7 +4466,7 @@ async function main() {
       onGameStart: () => {
         statusEl.textContent = 'Game starting...';
         startBtn.style.display = 'none';
-        lobbyOptionsPanel.style.display = 'none';
+        modeSelectorDiv.style.display = 'none';
         gameOverShown = false; // Reset so GameOverScreen can show next game over
         gameOverScreen.hide(); // Dismiss any lingering game over screen
         votingScreen.hide();  // Dismiss voting screen (roomPhase → playing)
