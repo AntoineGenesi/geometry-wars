@@ -1056,6 +1056,9 @@ async function main() {
   // Server uses UV-based movement (Christoffel stepping) for authoritative hit detection.
   // Client uses FaceWalker geodesics so bullets visually follow great circles on every surface.
   const bulletGeodesicState = new Map<string, { facePos: FacePosition, dirWorld: THREE.Vector3 }>();
+  // s44r-04-02: Track bullets already reported to server via bullet_hit to prevent double-hits.
+  // Client is authoritative for bullet-enemy collisions (server UV collision disabled on non-sphere surfaces).
+  const bulletClientHitSent = new Set<string>();
 
   // -- Geom tracking --
   const geomIdToIndex = new Map<string, number>();
@@ -2726,6 +2729,7 @@ async function main() {
     bulletTargetUV.clear();
     bulletGeodesicState.clear();
     bulletInstanceIds.clear();
+    bulletClientHitSent.clear();
     // Safety: clear the entire bullet pool to ensure no orphaned alive slots.
     // This guards against any state desync between bulletIdToIndex and the pool.
     bulletPool.clear();
@@ -3734,6 +3738,7 @@ async function main() {
         bulletGeodesicState.delete(id);
         bulletWeaponType.delete(id);
         bulletOwnerIds.delete(id);
+        bulletClientHitSent.delete(id);
         // Remove from instanced rendering (standard weapon renders 2 visual bullets: _l and _r)
         bulletInstanceManager.removeBullet(id + '_l');
         bulletInstanceManager.removeBullet(id + '_r');
@@ -6087,6 +6092,21 @@ async function main() {
 
         const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
 
+        // s44r-04-02: Client-authoritative bullet-enemy hit detection.
+        // Only report hits for the local player's own bullets (server validates ownerId).
+        // Hit radius 0.4 world units (bulletRadius=0.1 + enemyRadius=0.3), matches SP CollisionSystem.
+        const bulletOwner = bulletOwnerIds.get(id);
+        if (bulletOwner === localPlayerId && !bulletClientHitSent.has(id)) {
+          const BULLET_ENEMY_HIT_RADIUS_SQ = 0.16; // 0.4² world units squared
+          networkEnemies.forEach((enemy, enemyId) => {
+            if (bulletClientHitSent.has(id) || !enemy.alive || !enemy.mesh) return;
+            if (_netTempPos.distanceToSquared(enemy.position) < BULLET_ENEMY_HIT_RADIUS_SQ) {
+              bulletClientHitSent.add(id);
+              network.sendBulletHit({ bulletId: id, enemyId, weaponType: weapType, ownerId: localPlayerId });
+            }
+          });
+        }
+
         // s44g-04: Skip server bullets for the local player whose weapon visuals are handled
         // by localWeaponManager (SPECIAL_VISUAL_WEAPONS). Without this skip, these weapons
         // render a plain Standard-looking flying capsule alongside the proper effect, making
@@ -6095,7 +6115,6 @@ async function main() {
         // - ChainLightning: instant arc effect — server bullet is a damage hitbox only
         // - TeslaCoil: area aura effect — server bullet is a damage hitbox only
         // Other players' special weapon bullets still render (no localWeaponManager for them).
-        const bulletOwner = bulletOwnerIds.get(id);
         if (bulletOwner === localPlayerId && SPECIAL_VISUAL_WEAPONS.has(weapType)) return;
 
         const bulletVisual = weaponToBulletVisual(weapType);

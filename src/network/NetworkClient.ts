@@ -910,6 +910,16 @@ export class NetworkClient {
   }
 
   /**
+   * Report a player bullet hit on an enemy (client-authoritative bullet-enemy collision).
+   * The client has exact world-space bullet positions; the server trusts this and applies damage.
+   * See s44r-04-02 for why server-side UV collision is disabled on non-sphere surfaces.
+   */
+  sendBulletHit(data: { bulletId: string; enemyId: string; weaponType: string; ownerId: string }): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('bullet_hit', data);
+  }
+
+  /**
    * Send exit-to-voting command (host only).
    * Ends the current match and transitions all players to the voting screen.
    */
