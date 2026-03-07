@@ -3685,7 +3685,8 @@ async function main() {
               // worldToSurface() divides by group.scale.x internally, so ownerWorldPos (already
               // in scaled world space = wx/wy/wz) round-trips correctly.
               // Other surfaces: keep sphere-approx (peanut worldToSurface waist issues, s44h-01).
-              const ownerSurfaceUV = lastCreatedSurfaceType === 'torus'
+              // s44r-07: pill uses worldToSurface same as torus fix (sphere-approx mismatch at body edges).
+              const ownerSurfaceUV = (lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pill')
                 ? surface.worldToSurface(ownerWorldPos)
                 : { u: ownerPlayer!.surfaceU, v: ownerPlayer!.surfaceV };
               const ownerSp = surface.getPoint(ownerSurfaceUV.u, ownerSurfaceUV.v);
@@ -5155,8 +5156,10 @@ async function main() {
           // to the wrong position on the outer half, giving incorrect tangent vectors
           // and causing bullets to fly in wrong directions from the outer half.
           // Fix: use worldToSurface on the player's actual mesh position to get
-          // accurate torus UV for tangent frame computation.
-          const _aimUV = lastCreatedSurfaceType === 'torus'
+          // accurate torus/pill UV for tangent frame computation.
+          // s44r-07: pill has same sphere-approx mismatch as torus — top/bottom 38% of body
+          // sphere_v < capFrac maps to cap region giving wrong tangentV.
+          const _aimUV = (lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pill')
             ? surface.worldToSurface(_aimPlayer.mesh.position)
             : { u: _aimPlayer.surfaceU, v: _aimPlayer.surfaceV };
           const _aimSp = surface.getPoint(_aimUV.u, _aimUV.v);
