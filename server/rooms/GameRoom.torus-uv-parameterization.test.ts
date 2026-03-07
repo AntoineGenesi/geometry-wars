@@ -20,8 +20,9 @@ import { describe, it, expect } from 'vitest';
 // Replicate the exact torus UV inversion from GameRoom._worldPosToApproxUV (corrected)
 // ---------------------------------------------------------------------------
 
-const TORUS_MAJOR_R = 6;
-const TORUS_MINOR_R = 2;
+// s44q-04: MUST match GameRoom's constants (8,3) which match client createStandardSurfaceConfig.
+const TORUS_MAJOR_R = 8;
+const TORUS_MINOR_R = 3;
 
 /**
  * Corrected worldToUV matching GameRoom._worldPosToApproxUV after s44p-04 fix.
@@ -67,7 +68,7 @@ describe('torus _worldPosToApproxUV — accurate parametric inversion (s44o-04b 
   it('outer edge at ring angle 0 → u=0, v=0', () => {
     // Outer edge (u=0): tube angle=0, sin(0)=0 → y=0, max outward
     // Ring angle 0 (v=0): along +x axis
-    const { x, y, z } = torusGetPoint(0, 0); // (8, 0, 0)
+    const { x, y, z } = torusGetPoint(0, 0); // (R+r, 0, 0) = (11, 0, 0)
     expect(y).toBeCloseTo(0, 4); // y=0 at outer edge (sinTheta=0)
     const uv = torusWorldToUV(x, y, z);
     expect(uv.u).toBeCloseTo(0, 4); // outer tube edge
@@ -76,7 +77,7 @@ describe('torus _worldPosToApproxUV — accurate parametric inversion (s44o-04b 
 
   it('inner edge at ring angle 0 → u=0.5, v=0', () => {
     // Inner edge (u=0.5): tube angle=π, sin(π)=0 → y=0, minimum outward
-    const { x, y, z } = torusGetPoint(0.5, 0); // (4, 0, 0)
+    const { x, y, z } = torusGetPoint(0.5, 0); // (R-r, 0, 0) = (5, 0, 0)
     expect(y).toBeCloseTo(0, 4); // y=0 at inner edge (sinTheta=0)
     const uv = torusWorldToUV(x, y, z);
     expect(uv.u).toBeCloseTo(0.5, 4); // inner tube edge
@@ -85,8 +86,8 @@ describe('torus _worldPosToApproxUV — accurate parametric inversion (s44o-04b 
 
   it('top of tube at ring angle 0 → u=0.25, v=0 [KEY: y=-r, not +r]', () => {
     // Top of tube (u=0.25): tube angle=π/2, cos(π/2)=0, sin(π/2)=1
-    // TorusSurface: y = -r*sin(π/2) = -r = -2 (NEGATIVE — matches rotateX(π/2))
-    const { x, y, z } = torusGetPoint(0.25, 0); // (6, -2, 0)
+    // TorusSurface: y = -r*sin(π/2) = -r = -3 (NEGATIVE — matches rotateX(π/2))
+    const { x, y, z } = torusGetPoint(0.25, 0); // (R, -r, 0) = (8, -3, 0)
     expect(x).toBeCloseTo(TORUS_MAJOR_R, 4); // x = R (tube center in xz plane)
     expect(y).toBeCloseTo(-TORUS_MINOR_R, 4); // y = -r (top of tube is BELOW in world coords)
     expect(z).toBeCloseTo(0, 4);
@@ -97,8 +98,8 @@ describe('torus _worldPosToApproxUV — accurate parametric inversion (s44o-04b 
 
   it('bottom of tube at ring angle 0 → u=0.75, v=0 [KEY: y=+r, not -r]', () => {
     // Bottom of tube (u=0.75): tube angle=3π/2, cos(3π/2)=0, sin(3π/2)=-1
-    // TorusSurface: y = -r*sin(3π/2) = -r*(-1) = +r = +2 (POSITIVE)
-    const { x, y, z } = torusGetPoint(0.75, 0); // (6, +2, 0)
+    // TorusSurface: y = -r*sin(3π/2) = -r*(-1) = +r = +3 (POSITIVE)
+    const { x, y, z } = torusGetPoint(0.75, 0); // (R, +r, 0) = (8, +3, 0)
     expect(x).toBeCloseTo(TORUS_MAJOR_R, 4); // x = R
     expect(y).toBeCloseTo(+TORUS_MINOR_R, 4); // y = +r (bottom of tube is ABOVE in world coords)
     expect(z).toBeCloseTo(0, 4);
@@ -108,14 +109,14 @@ describe('torus _worldPosToApproxUV — accurate parametric inversion (s44o-04b 
   });
 
   it('outer edge at ring angle 0.25 (along +z axis) → u=0, v=0.25', () => {
-    const { x, y, z } = torusGetPoint(0, 0.25); // (0, 0, 8)
+    const { x, y, z } = torusGetPoint(0, 0.25); // (0, 0, R+r) = (0, 0, 11)
     const uv = torusWorldToUV(x, y, z);
     expect(uv.u).toBeCloseTo(0, 4);    // outer tube edge
     expect(uv.v).toBeCloseTo(0.25, 4); // ring angle 0.25 (90°)
   });
 
   it('outer edge at ring angle 0.5 (along -x axis) → u=0, v=0.5', () => {
-    const { x, y, z } = torusGetPoint(0, 0.5); // (-8, 0, 0)
+    const { x, y, z } = torusGetPoint(0, 0.5); // (-(R+r), 0, 0) = (-11, 0, 0)
     const uv = torusWorldToUV(x, y, z);
     expect(uv.u).toBeCloseTo(0, 4);   // outer tube edge
     expect(uv.v).toBeCloseTo(0.5, 4); // ring angle 0.5 (180°)
@@ -147,11 +148,11 @@ describe('torus _worldPosToApproxUV — accurate parametric inversion (s44o-04b 
   });
 
   it('OLD sphere parameterization would give swapped axes for torus outer edge at ring angle 0', () => {
-    // World pos at outer edge (u=0), ring angle 0 (v=0): (8, 0, 0)
-    const wx = 8, wy = 0, wz = 0;
+    // World pos at outer edge (u=0), ring angle 0 (v=0): (R+r, 0, 0) = (11, 0, 0)
+    const wx = TORUS_MAJOR_R + TORUS_MINOR_R, wy = 0, wz = 0;
 
     // OLD sphere parameterization:
-    const r = Math.sqrt(wx * wx + wy * wy + wz * wz); // 8
+    const r = Math.sqrt(wx * wx + wy * wy + wz * wz); // R+r
     const sphereV = Math.acos(Math.max(-1, Math.min(1, wy / r))) / Math.PI; // 0.5 (equator)
     const sphereU = ((Math.atan2(wz, wx) / (2 * Math.PI)) + 1) % 1; // 0 (along +x)
 
@@ -167,21 +168,21 @@ describe('torus _worldPosToApproxUV — accurate parametric inversion (s44o-04b 
   });
 
   it('s44p-04: OLD s44o-04b fix had +wy bug — top of tube returned wrong u', () => {
-    // TorusSurface top of tube: u=0.25, y = -r = -2 (negative y)
-    // OLD (s44o-04b): Math.atan2(+wy, outward) = atan2(-2, 0) = -π/2 → u = 0.75 (WRONG: bottom)
-    // NEW (s44p-04): Math.atan2(-wy, outward) = atan2(+2, 0) = +π/2 → u = 0.25 (CORRECT: top)
-    const wx = TORUS_MAJOR_R; // 6 (tube center x at ring 0)
-    const wy = -TORUS_MINOR_R; // -2 (TorusSurface top-of-tube y is NEGATIVE)
+    // TorusSurface top of tube: u=0.25, y = -r = -3 (negative y)
+    // OLD (s44o-04b): Math.atan2(+wy, outward) = atan2(-3, 0) = -π/2 → u = 0.75 (WRONG: bottom)
+    // NEW (s44p-04): Math.atan2(-wy, outward) = atan2(+3, 0) = +π/2 → u = 0.25 (CORRECT: top)
+    const wx = TORUS_MAJOR_R; // 8 (tube center x at ring 0)
+    const wy = -TORUS_MINOR_R; // -3 (TorusSurface top-of-tube y is NEGATIVE)
     const wz = 0;
 
     // Old formula (bug): uses +wy
     const phi = Math.atan2(wz, wx);
     const outward = wx * Math.cos(phi) + wz * Math.sin(phi) - TORUS_MAJOR_R;
-    const thetaOld = Math.atan2(wy, outward);   // atan2(-2, 0) = -π/2
+    const thetaOld = Math.atan2(wy, outward);   // atan2(-3, 0) = -π/2
     const uOld = ((thetaOld / (2 * Math.PI)) + 1) % 1; // → 0.75 (bottom of tube, WRONG)
 
     // New formula (fix): uses -wy
-    const thetaNew = Math.atan2(-wy, outward);  // atan2(+2, 0) = +π/2
+    const thetaNew = Math.atan2(-wy, outward);  // atan2(+3, 0) = +π/2
     const uNew = ((thetaNew / (2 * Math.PI)) + 1) % 1; // → 0.25 (top of tube, CORRECT)
 
     expect(uOld).toBeCloseTo(0.75, 4); // OLD BUG: maps top-of-tube world pos to bottom-of-tube UV
@@ -223,7 +224,7 @@ describe('torus _worldPosToApproxUV — accurate parametric inversion (s44o-04b 
     // Player is at top of tube (u=0.25), shooting a bullet.
     // After fix: bullet has u=0.25.
     // Enemy is at bottom of tube (u=0.75) — same ring angle.
-    // True chord distance = 2*r = 4 world units (diameter of tube cross-section).
+    // True chord distance = 2*r = 6 world units (diameter of tube cross-section).
     const bulletU = 0.25, bulletV = 0;
     const enemyU = 0.75, enemyV = 0;
 
