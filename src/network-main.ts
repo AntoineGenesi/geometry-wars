@@ -2322,6 +2322,42 @@ async function main() {
         pauseMenu.enterLookMode();
       }
     }
+
+    // P key = pause game (similar to Escape, but dedicated pause key)
+    if (e.key === 'p' || e.key === 'P') {
+      if (connectionLost) {
+        return;
+      }
+
+      if (!network.isConnected()) return;
+
+      // During voting phase: P key does nothing (voting countdown keeps running)
+      if (currentRoomPhase === 'voting') {
+        return;
+      }
+
+      if (!isPaused) {
+        // Pause: only host can pause the server
+        if (!isHost) {
+          const serverHostId = network.getServerHostId();
+          if (serverHostId && serverHostId === localPlayerId) {
+            isHost = true;
+          }
+        }
+        if (isHost) {
+          // Host: pause the server — enemies freeze for ALL players
+          isPaused = true;
+          network.sendPause(true);
+          showPauseOverlay(true);
+        }
+        // Non-host: P key does nothing when game is running (can't pause server)
+      } else if (isHost) {
+        // Server is paused (by host) — host can resume with P
+        isPaused = false;
+        network.sendPause(false);
+        showPauseOverlay(false);
+      }
+    }
   });
 
   // -- Mobile: wire pause button in TouchInput (mirrors Escape key handler above) --
