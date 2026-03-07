@@ -657,9 +657,9 @@ export class GameLoop {
       // Check if player walks into a portal (only when alive and not invincible from recent teleport)
       if (ctx.player.alive) {
         for (const portal of ctx.portals) {
-          const target = portal.checkTeleport(ctx.playerWalker.position);
-          if (target) {
+          if (portal.isPlayerInside(ctx.playerWalker.position) && portal.partner) {
             // Teleport player to exit portal UV position
+            const target = { u: portal.partner.surfaceU, v: portal.partner.surfaceV };
             const exitPos = ctx.surface.getPoint(target.u, target.v);
             const projected = ctx.meshSurface.closestPointOnSurface(exitPos.position);
             if (projected) {
@@ -668,9 +668,6 @@ export class GameLoop {
             ctx.player.mesh.position.copy(ctx.playerWalker.position);
 
             // Grant brief invincibility after teleport
-            // Access private invincibilityTimer via respawn-style reset — use player's existing startInvincibility if available,
-            // or directly grant invincibility by calling the respawn path with current UV.
-            // We use a lightweight approach: mark the player as briefly invincible.
             ctx.player.grantTeleportInvincibility();
 
             // Snap camera to new position
@@ -688,10 +685,8 @@ export class GameLoop {
             ctx.player.surfaceU = playerUV.u;
             ctx.player.surfaceV = playerUV.v;
 
-            // Start cooldown on the exit portal so player doesn't immediately re-enter
-            if (portal.partner) {
-              portal.partner.startExitCooldown();
-            }
+            // Cooldown on the exit portal so player doesn't immediately re-enter
+            portal.partner.startClientCooldown();
 
             // Only teleport through one portal per frame
             break;

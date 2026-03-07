@@ -129,6 +129,7 @@ import { GameSettingsPanel } from './ui/GameSettingsPanel';
 import { DEFAULT_GAME_SETTINGS } from '../server/shared/GameSettings';
 import type { GameSettings } from '../server/shared/GameSettings';
 import { KillStreakAnnouncer } from './ui/KillStreakAnnouncer';
+import { Portal, createPortalPair } from './entities/Portal';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -593,6 +594,18 @@ async function main() {
     bulletTargetUV.clear();
     bulletGeodesicState.clear();
     geomTargetUV.clear();
+
+    // Dispose portals
+    if (networkPortals) {
+      networkPortals[0].dispose();
+      networkPortals[1].dispose();
+      scene.remove(networkPortals[0].mesh);
+      scene.remove(networkPortals[1].mesh);
+      networkPortals = null;
+    }
+    syncedPortalAU = -1; syncedPortalAV = -1;
+    syncedPortalBU = -1; syncedPortalBV = -1;
+
     surface = null;
     meshSurface = null;
     getTransform = null;
@@ -1182,6 +1195,13 @@ async function main() {
   let latestGameMode = 'waves';
   /** Whether PvP bullet-to-player damage is enabled this round. Synced from server state. */
   let latestPvpEnabled = false;
+
+  // ── Portals (PvP/PvPvE only) ──────────────────────────────────────────────
+  /** Live portal pair — null when portals are not active or surface not ready. */
+  let networkPortals: [Portal, Portal] | null = null;
+  /** UV positions of portals synced from server state. */
+  let syncedPortalAU = -1; let syncedPortalAV = -1;
+  let syncedPortalBU = -1; let syncedPortalBV = -1;
   /** Which players' health bars are visible: 'all' | 'friendly' | 'enemy' | 'none' */
   let latestHealthBarVisibility = 'all';
   // Active client-side game mode instance (KingMode, SniperMode, etc.)
@@ -2992,6 +3012,49 @@ async function main() {
     }
 
     const surf = surface;
+
+    // ── Portal sync: create/update portals when server broadcasts positions ──
+    {
+      const sPortalsActive = state.portalsActive ?? false;
+      if (sPortalsActive) {
+        const aU = state.portalAU ?? 0.25;
+        const aV = state.portalAV ?? 0.25;
+        const bU = state.portalBU ?? 0.75;
+        const bV = state.portalBV ?? 0.75;
+        // Create portal pair if not yet created or if positions changed
+        if (!networkPortals || aU !== syncedPortalAU || aV !== syncedPortalAV
+            || bU !== syncedPortalBU || bV !== syncedPortalBV) {
+          // Dispose old portals
+          if (networkPortals) {
+            networkPortals[0].dispose();
+            networkPortals[1].dispose();
+            scene.remove(networkPortals[0].mesh);
+            scene.remove(networkPortals[1].mesh);
+          }
+          // Portal color: inverse of grid color for contrast
+          const gridColor: THREE.Color = (surf as any).gridColor
+            ?? new THREE.Color(0x2a2aaa);
+          const invR = 1 - gridColor.r;
+          const invG = 1 - gridColor.g;
+          const invB = 1 - gridColor.b;
+          const portalColor = new THREE.Color(invR, invG, invB);
+          networkPortals = createPortalPair(portalColor, 0.25, aU, aV, bU, bV);
+          scene.add(networkPortals[0].mesh);
+          scene.add(networkPortals[1].mesh);
+          syncedPortalAU = aU; syncedPortalAV = aV;
+          syncedPortalBU = bU; syncedPortalBV = bV;
+        }
+      } else if (networkPortals) {
+        // Portals deactivated (e.g., new round with non-PvP mode)
+        networkPortals[0].dispose();
+        networkPortals[1].dispose();
+        scene.remove(networkPortals[0].mesh);
+        scene.remove(networkPortals[1].mesh);
+        networkPortals = null;
+        syncedPortalAU = -1; syncedPortalAV = -1;
+        syncedPortalBU = -1; syncedPortalBV = -1;
+      }
+    }
 
     // ----- Sync players -----
     state.players.forEach((netPlayer: NetworkPlayerState, id: string) => {
@@ -5563,6 +5626,15 @@ async function main() {
       });
 
       companionHUD.update(companionManager.getCompanionCounts());
+    }
+
+    // ── Portals: animate (visuals only — teleportation is server-authoritative) ──
+    if (getTransform && networkPortals) {
+      const transform = getTransform;
+      for (const portal of networkPortals) {
+        portal.update(dt);
+        portal.applySurfaceTransform(transform);
+      }
     }
 
     // Animate server-synced weapon pickups (spin, bob, spawn indicator).

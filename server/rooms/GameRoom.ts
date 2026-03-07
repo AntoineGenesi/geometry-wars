@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Room, Client } from 'colyseus';
 import {
   GameState,
@@ -692,6 +693,16 @@ export class GameRoom extends Room<GameState> {
    * Incremented on each kill, reset to 0 on death.
    */
   private pvpKillStreaks: Map<string, number> = new Map();
+
+  // ── Portals ───────────────────────────────────────────────────────────────
+  /** World-space center of portal A (computed from UV via surfaceManager). */
+  private _portalAWorld: THREE.Vector3 | null = null;
+  /** World-space center of portal B (computed from UV via surfaceManager). */
+  private _portalBWorld: THREE.Vector3 | null = null;
+  /** Per-sessionId cooldown timestamp (ms) — player cannot re-enter a portal until this time. */
+  private _portalCooldowns: Map<string, number> = new Map();
+  /** Portal trigger radius squared (world units). */
+  private static readonly PORTAL_RADIUS_SQ = 1.5 * 1.5;
 
   onCreate(options: { surfaceType?: string; mapSize?: string; pvpEnabled?: boolean }) {
     this.setState(new GameState());
@@ -1404,6 +1415,42 @@ export class GameRoom extends Room<GameState> {
     this.claustroZoneCenterY = claustroCenter.y;
     this.claustroZoneCenterZ = claustroCenter.z;
     this.claustroWorldRadiusBase = bsRadius * 2.0; // at UV radius 0.5 → 2x bsRadius → covers entire surface
+
+    // ── Portals: spawn for PvP / PvPvE modes ─────────────────────────────────
+    this._portalCooldowns.clear();
+    const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    if (isPvpOrPvpve) {
+      const margin = 0.12;
+      const minSep = 0.30; // minimum UV-space separation (seam-safe)
+      const uA = margin + Math.random() * (1 - 2 * margin);
+      const vA = margin + Math.random() * (1 - 2 * margin);
+      let uB = uA;
+      let vB = vA;
+      let attempts = 0;
+      do {
+        uB = margin + Math.random() * (1 - 2 * margin);
+        vB = margin + Math.random() * (1 - 2 * margin);
+        const du = Math.min(Math.abs(uB - uA), 1 - Math.abs(uB - uA));
+        const dv = Math.min(Math.abs(vB - vA), 1 - Math.abs(vB - vA));
+        if (Math.sqrt(du * du + dv * dv) >= minSep) break;
+      } while (++attempts < 100);
+
+      this.state.portalAU = uA;
+      this.state.portalAV = vA;
+      this.state.portalBU = uB;
+      this.state.portalBV = vB;
+      this.state.portalsActive = true;
+
+      // Compute accurate world-space positions for server-side collision detection.
+      // surfaceManager.initSurface() was called above so geometry is ready.
+      this._portalAWorld = this.surfaceManager.getWorldPosForUV(uA, vA);
+      this._portalBWorld = this.surfaceManager.getWorldPosForUV(uB, vB);
+      this.logger.log(`[Portals] Spawned: A=(${uA.toFixed(3)},${vA.toFixed(3)}) B=(${uB.toFixed(3)},${vB.toFixed(3)})`);
+    } else {
+      this.state.portalsActive = false;
+      this._portalAWorld = null;
+      this._portalBWorld = null;
+    }
 
     // Apply currentSettings to room and internal state before resetting players.
     // pendingSettings are consumed here if a mid-game apply was queued.
@@ -2129,6 +2176,11 @@ export class GameRoom extends Room<GameState> {
 
     // KotH / Claustrophobia: update zone time scoring
     this.updateZoneTimeScoring(dt);
+
+    // Portals: check if any player stepped into a portal (PvP/PvPvE only)
+    if (this.state.portalsActive) {
+      this.updatePortalCollision();
+    }
 
     // Claustrophobia: time limit — game ends when time limit is reached
     if (this.state.gameMode === 'claustrophobia'
@@ -4540,6 +4592,59 @@ export class GameRoom extends Room<GameState> {
     geom.surfaceV = v + (Math.random() - 0.5) * 0.05;
     geom.active = true;
     this.state.geoms.push(geom);
+  }
+
+  /**
+   * Check whether any player has stepped into a portal and teleport them.
+   * Called every tick when portalsActive === true.
+   * Uses server world-space positions (wx/wy/wz from ServerMeshWalker).
+   */
+  private updatePortalCollision(): void {
+    if (!this._portalAWorld || !this._portalBWorld) return;
+    const now = Date.now();
+
+    this.state.players.forEach((player, sessionId) => {
+      if (!player.alive) return;
+      // Per-player cooldown prevents bounce-back teleports
+      if ((this._portalCooldowns.get(sessionId) ?? 0) > now) return;
+
+      const playerPos = new THREE.Vector3(player.wx, player.wy, player.wz);
+
+      // Check portal A
+      if (playerPos.distanceToSquared(this._portalAWorld!) < GameRoom.PORTAL_RADIUS_SQ) {
+        this._teleportPlayerToPortal(sessionId, player, 'B');
+        return;
+      }
+      // Check portal B
+      if (playerPos.distanceToSquared(this._portalBWorld!) < GameRoom.PORTAL_RADIUS_SQ) {
+        this._teleportPlayerToPortal(sessionId, player, 'A');
+      }
+    });
+  }
+
+  /**
+   * Teleport a player to the specified portal's UV position.
+   * @param exit - 'A' or 'B' — which portal is the exit
+   */
+  private _teleportPlayerToPortal(
+    sessionId: string,
+    player: { surfaceU: number; surfaceV: number; name: string },
+    exit: 'A' | 'B',
+  ): void {
+    const exitU = exit === 'A' ? this.state.portalAU : this.state.portalBU;
+    const exitV = exit === 'A' ? this.state.portalAV : this.state.portalBV;
+
+    // Move walker to exit portal position
+    this.surfaceManager.teleportWalkerToUV(sessionId, exitU, exitV);
+
+    // Update authoritative UV on player state (clients will interpolate to this)
+    player.surfaceU = exitU;
+    player.surfaceV = exitV;
+
+    // Set cooldown: player cannot re-enter any portal for 2 seconds
+    this._portalCooldowns.set(sessionId, Date.now() + 2000);
+
+    this.logger.log(`[Portals] ${player.name} teleported to portal ${exit} (${exitU.toFixed(3)},${exitV.toFixed(3)})`);
   }
 
   private checkGameOver() {

@@ -199,6 +199,15 @@ export interface NetworkGameState {
   timeRemaining?: number;
   /** Kill goal for 'kills' win condition — s44p-06 */
   killGoal?: number;
+  // ── Portals (PvP/PvPvE only) ──────────────────────────────────────────────
+  /** When true, portals are active this match. */
+  portalsActive?: boolean;
+  /** Portal A UV position (0-1). */
+  portalAU?: number;
+  portalAV?: number;
+  /** Portal B UV position (0-1). */
+  portalBU?: number;
+  portalBV?: number;
 }
 
 /** Input to send to server */
@@ -741,6 +750,11 @@ export class NetworkClient {
       timeLimitSeconds?: number;
       timeRemaining?: number;
       killGoal?: number;
+      portalsActive?: boolean;
+      portalAU?: number;
+      portalAV?: number;
+      portalBU?: number;
+      portalBV?: number;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -799,6 +813,11 @@ export class NetworkClient {
       timeLimitSeconds: s.timeLimitSeconds ?? 0,
       timeRemaining: s.timeRemaining ?? 0,
       killGoal: s.killGoal ?? 0,
+      portalsActive: s.portalsActive ?? false,
+      portalAU: s.portalAU ?? 0.25,
+      portalAV: s.portalAV ?? 0.25,
+      portalBU: s.portalBU ?? 0.75,
+      portalBV: s.portalBV ?? 0.75,
     };
   }
 

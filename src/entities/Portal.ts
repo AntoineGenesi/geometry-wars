@@ -1,88 +1,236 @@
 /**
- * Portal — A teleportation portal placed on the game surface.
+ * Portal — A teleportation portal placed on the game surface (PvP/PvPvE only).
  *
- * Two portals are paired together. Walking into one teleports the player
- * to the other. After teleporting, a brief cooldown prevents re-entering.
- * Visually: a glowing torus ring with inverse theme color, pulsing.
+ * Two portals are paired together. Teleportation is server-authoritative:
+ * server detects collision and updates player UV, clients only render visuals.
+ *
+ * Visual design:
+ *  - Glowing torus rim that pulses and slowly spins
+ *  - Swirling vortex interior disc (ShaderMaterial)
+ *  - Floating particle dots that drift above the portal
  */
 import * as THREE from 'three';
 
 // Portal ring geometry dimensions
 const TORUS_RADIUS = 1.2;        // outer ring radius (world units)
-const TORUS_TUBE = 0.1;          // tube thickness
-const TORUS_RADIAL_SEG = 8;
-const TORUS_TUBULAR_SEG = 32;
+const TORUS_TUBE = 0.12;         // tube thickness (slightly thicker)
+const TORUS_RADIAL_SEG = 16;     // smooth rim
+const TORUS_TUBULAR_SEG = 48;
 
-// Portal collision radius in world space
+// Disc geometry
+const DISC_SEGMENTS = 48;
+
+// Portal collision radius in world space (used by server)
 export const PORTAL_WORLD_RADIUS = 1.5;
 
-// Cooldown: player cannot re-enter same portal for this many seconds after teleporting
-const ENTER_COOLDOWN = 2.0;
+// Cooldown after teleport: player cannot re-enter same portal for this many seconds
+export const PORTAL_COOLDOWN_MS = 2000; // milliseconds (server-side)
 
 // Invincibility granted after teleport (seconds)
 export const PORTAL_TELEPORT_INVINCIBILITY = 1.0;
 
 // Pulsing animation speed
 const PULSE_SPEED = 2.5;
-const PULSE_MIN = 0.55;
-const PULSE_MAX = 0.95;
+const PULSE_MIN = 0.5;
+const PULSE_MAX = 1.0;
+const RIM_SPIN_SPEED = 0.6; // radians per second
+
+// Particle config (floating dots above portal)
+const PARTICLE_COUNT = 12;
+const PARTICLE_RISE_SPEED = 0.35; // world units per second
+const PARTICLE_MAX_HEIGHT = 1.8;  // above portal surface
+const PARTICLE_SIZE = 0.08;
 
 // Pre-allocated temps (zero per-frame allocations)
 const _mat4 = new THREE.Matrix4();
 const _qSurface = new THREE.Quaternion();
+const _qSpin = new THREE.Quaternion();
+const _spinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
+
+// Vertex shader for the swirling disc interior
+const DISC_VERTEX = /* glsl */ `
+  varying vec2 vUv;
+  void main() {
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+// Fragment shader — rotating vortex in polar coordinates
+const DISC_FRAGMENT = /* glsl */ `
+  precision mediump float;
+  varying vec2 vUv;
+  uniform vec3 uColor;
+  uniform float uTime;
+
+  void main() {
+    vec2 center = vUv - 0.5;
+    float r = length(center) * 2.0; // 0=center, 1=disc edge
+    if (r > 1.0) discard;
+
+    float angle = atan(center.y, center.x);
+
+    // Outward swirl: angle rotates as r increases, also advances with time
+    float swirl = angle + uTime * 1.8 - r * 5.0;
+    float bands = 0.5 + 0.5 * sin(swirl * 5.0);
+
+    // Bright central glow
+    float centerGlow = smoothstep(0.25, 0.0, r);
+
+    // Fade near the rim
+    float edgeFade = 1.0 - smoothstep(0.55, 1.0, r);
+
+    float alpha = edgeFade * (0.25 + bands * 0.5) + centerGlow * 0.55;
+    alpha = clamp(alpha, 0.0, 0.88);
+
+    // Brighten based on bands — give it a colorful pop
+    vec3 bright = min(uColor * 2.2 + vec3(0.3), vec3(1.0));
+    vec3 col = mix(uColor * 1.2, bright, bands);
+
+    gl_FragColor = vec4(col, alpha);
+  }
+`;
 
 export class Portal {
   /** Surface UV position */
   surfaceU: number;
   surfaceV: number;
 
-  /** The THREE.Mesh representing the portal ring */
-  readonly mesh: THREE.Mesh;
+  /** The root THREE.Group to add to the scene */
+  readonly mesh: THREE.Group;
 
-  /** World-space position on the surface (updated each frame via applySurfaceTransform) */
+  /** Partner portal (set after construction) */
+  partner: Portal | null = null;
+
+  /** World-space position on the surface */
   private _surfaceWorldPos = new THREE.Vector3();
 
-  /** Timer tracking how long since THIS portal was last exited through (cooldown) */
+  /** Client-side enter cooldown (seconds) — prevents visual double-trigger */
   private _enterCooldown = 0;
 
-  /** Animation time accumulator */
+  /** Animation time */
   private _time = 0;
 
-  /** The paired partner portal (set after construction) */
-  partner: Portal | null = null;
+  // Visual sub-objects
+  private _rim: THREE.Mesh;
+  private _disc: THREE.Mesh;
+  private _discMat: THREE.ShaderMaterial;
+  private _particles: THREE.Points;
+  private _particlePositions: Float32Array;
+  private _particlePhases: Float32Array;
 
   constructor(u: number, v: number, color: THREE.Color) {
     this.surfaceU = u;
     this.surfaceV = v;
 
-    const geo = new THREE.TorusGeometry(TORUS_RADIUS, TORUS_TUBE, TORUS_RADIAL_SEG, TORUS_TUBULAR_SEG);
-    const mat = new THREE.MeshStandardMaterial({
+    // ── Root group ──────────────────────────────────────────────────────────
+    this.mesh = new THREE.Group();
+
+    // ── Rim (torus) ──────────────────────────────────────────────────────────
+    const rimGeo = new THREE.TorusGeometry(
+      TORUS_RADIUS, TORUS_TUBE, TORUS_RADIAL_SEG, TORUS_TUBULAR_SEG
+    );
+    const rimMat = new THREE.MeshStandardMaterial({
       color,
       emissive: color,
       emissiveIntensity: PULSE_MAX,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.92,
     });
-    this.mesh = new THREE.Mesh(geo, mat);
+    this._rim = new THREE.Mesh(rimGeo, rimMat);
+    this.mesh.add(this._rim);
+
+    // ── Swirling disc interior ────────────────────────────────────────────────
+    // Slightly smaller than torus inner edge so it sits inside the rim
+    const discGeo = new THREE.CircleGeometry(TORUS_RADIUS - TORUS_TUBE * 0.5, DISC_SEGMENTS);
+    this._discMat = new THREE.ShaderMaterial({
+      vertexShader: DISC_VERTEX,
+      fragmentShader: DISC_FRAGMENT,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uColor: { value: color.clone() },
+        uTime: { value: 0 },
+      },
+    });
+    this._disc = new THREE.Mesh(discGeo, this._discMat);
+    // Disc lies in the XZ plane (Y up) by default; since the group is oriented
+    // so Y = surface normal, the disc will be flat on the surface automatically.
+    this.mesh.add(this._disc);
+
+    // ── Floating particles ────────────────────────────────────────────────────
+    // Particles drift upward along the group's local Y (= surface normal).
+    this._particlePositions = new Float32Array(PARTICLE_COUNT * 3);
+    this._particlePhases = new Float32Array(PARTICLE_COUNT);
+    const spread = TORUS_RADIUS * 0.7;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const angle = (i / PARTICLE_COUNT) * Math.PI * 2;
+      const radius = spread * (0.3 + Math.random() * 0.7);
+      this._particlePositions[i * 3 + 0] = Math.cos(angle) * radius;
+      this._particlePositions[i * 3 + 1] = Math.random() * PARTICLE_MAX_HEIGHT; // initial height
+      this._particlePositions[i * 3 + 2] = Math.sin(angle) * radius;
+      this._particlePhases[i] = Math.random(); // 0-1 normalized phase (height / MAX_HEIGHT)
+    }
+    const pGeo = new THREE.BufferGeometry();
+    pGeo.setAttribute('position', new THREE.BufferAttribute(this._particlePositions, 3));
+    const pMat = new THREE.PointsMaterial({
+      color,
+      size: PARTICLE_SIZE,
+      transparent: true,
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true,
+    });
+    this._particles = new THREE.Points(pGeo, pMat);
+    this.mesh.add(this._particles);
   }
 
   /** Advance animation. Call each frame. */
   update(dt: number): void {
     this._time += dt;
 
-    // Pulse emissive intensity
-    const t = Math.sin(this._time * PULSE_SPEED) * 0.5 + 0.5; // 0–1
+    // ── Rim: pulse emissive ──────────────────────────────────────────────────
+    const t = Math.sin(this._time * PULSE_SPEED) * 0.5 + 0.5;
     const intensity = PULSE_MIN + t * (PULSE_MAX - PULSE_MIN);
-    (this.mesh.material as THREE.MeshStandardMaterial).emissiveIntensity = intensity;
+    (this._rim.material as THREE.MeshStandardMaterial).emissiveIntensity = intensity;
 
-    // Tick down cooldown
+    // ── Rim: slow spin around surface normal (local Y axis) ──────────────────
+    _qSpin.setFromAxisAngle(_spinAxis, this._time * RIM_SPIN_SPEED);
+    this._rim.quaternion.copy(_qSpin);
+
+    // ── Disc: advance swirl time ─────────────────────────────────────────────
+    this._discMat.uniforms.uTime.value = this._time;
+
+    // ── Particles: drift upward, reset at top ────────────────────────────────
+    const pBuf = this._particlePositions;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      this._particlePhases[i] += (dt * PARTICLE_RISE_SPEED) / PARTICLE_MAX_HEIGHT;
+      if (this._particlePhases[i] > 1.0) {
+        // Reset particle to random position near portal center
+        const angle = Math.random() * Math.PI * 2;
+        const radius = TORUS_RADIUS * 0.6 * Math.random();
+        pBuf[i * 3 + 0] = Math.cos(angle) * radius;
+        pBuf[i * 3 + 1] = 0;
+        pBuf[i * 3 + 2] = Math.sin(angle) * radius;
+        this._particlePhases[i] = 0;
+      } else {
+        pBuf[i * 3 + 1] = this._particlePhases[i] * PARTICLE_MAX_HEIGHT;
+      }
+    }
+    (this._particles.geometry as THREE.BufferGeometry)
+      .attributes.position.needsUpdate = true;
+
+    // Tick down client-side cooldown
     if (this._enterCooldown > 0) {
       this._enterCooldown = Math.max(0, this._enterCooldown - dt);
     }
   }
 
   /**
-   * Apply surface transform: positions and orients the ring flat on the surface.
+   * Apply surface transform: positions and orients the group flat on the surface.
    * Must be called after update() each frame.
    */
   applySurfaceTransform(
@@ -95,92 +243,83 @@ export class Portal {
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
 
-    // Store surface world position for collision detection
+    // Store for collision check (visual, not authoritative)
     this._surfaceWorldPos.copy(position);
 
-    // Place ring slightly above surface to avoid z-fighting
+    // Place group slightly above surface to avoid z-fighting
     this.mesh.position.copy(position).addScaledVector(normal, 0.12);
 
-    // Orient ring so its face aligns with the surface normal
-    // The torus lies in the XZ plane by default, so we set basis = (tangent, normal, bitangent)
+    // Orient group so local Y = surface normal.
+    // Torus default orientation: hole along Z; disc default: face along Y.
+    // We want them flat on the surface, so Y must point along the normal.
     _mat4.makeBasis(tangent, normal, bitangent);
     _qSurface.setFromRotationMatrix(_mat4);
     this.mesh.quaternion.copy(_qSurface);
   }
 
   /**
-   * Check whether a player at the given world position should be teleported.
-   * Returns the partner portal's UV position if teleport should occur, or null.
-   *
-   * @param playerWorldPos — player world-space position
-   * @returns { u, v } of the exit portal, or null
+   * Client-side entry check — for visual feedback only (server is authoritative for teleport).
+   * Returns true if player is within radius (so caller can play sound/effect).
    */
-  checkTeleport(playerWorldPos: THREE.Vector3): { u: number; v: number } | null {
-    if (!this.partner) return null;
-    if (this._enterCooldown > 0) return null;
-
-    const dist = playerWorldPos.distanceTo(this._surfaceWorldPos);
-    if (dist < PORTAL_WORLD_RADIUS) {
-      return { u: this.partner.surfaceU, v: this.partner.surfaceV };
-    }
-    return null;
+  isPlayerInside(playerWorldPos: THREE.Vector3): boolean {
+    if (this._enterCooldown > 0) return false;
+    return playerWorldPos.distanceTo(this._surfaceWorldPos) < PORTAL_WORLD_RADIUS;
   }
 
-  /**
-   * Called when this portal is used as the EXIT of a teleport.
-   * Starts the cooldown so the player doesn't instantly re-enter.
-   */
-  startExitCooldown(): void {
-    this._enterCooldown = ENTER_COOLDOWN;
+  /** Start client-side cooldown to prevent repeated visual triggers. */
+  startClientCooldown(): void {
+    this._enterCooldown = PORTAL_COOLDOWN_MS / 1000;
   }
 
-  /** Get the surface world position (for debug / external checks). */
   get worldPosition(): THREE.Vector3 {
     return this._surfaceWorldPos;
   }
 
   dispose(): void {
-    this.mesh.geometry.dispose();
-    (this.mesh.material as THREE.Material).dispose();
+    this._rim.geometry.dispose();
+    (this._rim.material as THREE.Material).dispose();
+    this._disc.geometry.dispose();
+    this._discMat.dispose();
+    this._particles.geometry.dispose();
+    (this._particles.material as THREE.Material).dispose();
   }
 }
 
 /**
  * Create a pair of portals at random UV positions with minimum separation.
- *
- * @param color — portal ring color
- * @param minUVSep — minimum UV-space separation between portals (default 0.25)
- * @returns [portalA, portalB]
+ * Note: In LAN MP, positions come from the server (GameState.portalAU/V etc.)
+ * and this factory is used by single-player fallback only.
  */
 export function createPortalPair(
   color: THREE.Color,
   minUVSep = 0.25,
+  uA?: number,
+  vA?: number,
+  uB?: number,
+  vB?: number,
 ): [Portal, Portal] {
-  // Choose first portal at a random UV position away from edges
+  // Use provided positions, or generate random ones
   const margin = 0.1;
 
-  const uA = margin + Math.random() * (1 - 2 * margin);
-  const vA = margin + Math.random() * (1 - 2 * margin);
+  if (uA === undefined) uA = margin + Math.random() * (1 - 2 * margin);
+  if (vA === undefined) vA = margin + Math.random() * (1 - 2 * margin);
 
-  // Choose second portal far enough away from the first
-  let uB: number, vB: number;
-  let attempts = 0;
-  do {
-    uB = margin + Math.random() * (1 - 2 * margin);
-    vB = margin + Math.random() * (1 - 2 * margin);
-    const du = Math.abs(uB - uA);
-    const dv = Math.abs(vB - vA);
-    // Seam-safe shortest path
-    const sdU = Math.min(du, 1 - du);
-    const sdV = Math.min(dv, 1 - dv);
-    if (Math.sqrt(sdU * sdU + sdV * sdV) >= minUVSep) break;
-    attempts++;
-  } while (attempts < 100);
+  if (uB === undefined || vB === undefined) {
+    let attempts = 0;
+    do {
+      uB = margin + Math.random() * (1 - 2 * margin);
+      vB = margin + Math.random() * (1 - 2 * margin);
+      const du = Math.abs(uB - uA);
+      const dv = Math.abs(vB - vA);
+      const sdU = Math.min(du, 1 - du);
+      const sdV = Math.min(dv, 1 - dv);
+      if (Math.sqrt(sdU * sdU + sdV * sdV) >= minUVSep) break;
+    } while (++attempts < 100);
+  }
 
-  const portalA = new Portal(uA, vA, color.clone());
-  const portalB = new Portal(uB, vB, color.clone());
+  const portalA = new Portal(uA!, vA!, color.clone());
+  const portalB = new Portal(uB!, vB!, color.clone());
 
-  // Link them
   portalA.partner = portalB;
   portalB.partner = portalA;
 
