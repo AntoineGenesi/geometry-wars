@@ -37,8 +37,9 @@ function peanutChordDist(u1: number, v1: number, u2: number, v2: number, scaleFa
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-const TORUS_MAJOR_R = 6;
-const TORUS_MINOR_R = 2;
+// s44q-04: MUST match GameRoom constants (8,3) which match client createStandardSurfaceConfig.
+const TORUS_MAJOR_R = 8;
+const TORUS_MINOR_R = 3;
 function torusChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor = 1): number {
   const R = TORUS_MAJOR_R * scaleFactor;
   const r = TORUS_MINOR_R * scaleFactor;
@@ -50,8 +51,9 @@ function torusChordDist(u1: number, v1: number, u2: number, v2: number, scaleFac
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-const CUBE_RING_MAJOR_R = 6;
-const CUBE_RING_HALF_SIDE = 1.5;
+// s44q-04: MUST match GameRoom constants (4, 1.0) which match client createStandardSurfaceConfig.
+const CUBE_RING_MAJOR_R = 4;
+const CUBE_RING_HALF_SIDE = 1.0;
 function cubeRingChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor = 1): number {
   const R = CUBE_RING_MAJOR_R * scaleFactor;
   const H = CUBE_RING_HALF_SIDE * scaleFactor;

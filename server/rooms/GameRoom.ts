@@ -240,9 +240,11 @@ function peanutChordDist(u1: number, v1: number, u2: number, v2: number, scaleFa
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-/** Torus: U = around tube (minor, r=2), V = around ring (major, R=6). */
-const TORUS_MAJOR_R = 6;
-const TORUS_MINOR_R = 2;
+/** Torus: U = around tube (minor, r=3), V = around ring (major, R=8).
+ *  MUST match createStandardSurfaceConfig(type, 10, null) → majorRadius=8, minorRadius=3.
+ *  s44q-04: was (6,2), now (8,3) to match client visual mesh dimensions. */
+const TORUS_MAJOR_R = 8;
+const TORUS_MINOR_R = 3;
 function torusChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
   const R = TORUS_MAJOR_R * scaleFactor;
   const r = TORUS_MINOR_R * scaleFactor;
@@ -261,8 +263,9 @@ function torusChordDist(u1: number, v1: number, u2: number, v2: number, scaleFac
  * Face layout: v∈[0, 0.25) outer (r=+H), [0.25, 0.5) top (y=+H),
  *              [0.5, 0.75) inner (r=-H), [0.75, 1.0) bottom (y=-H).
  */
-const CUBE_RING_MAJOR_R = 6;
-const CUBE_RING_HALF_SIDE = 1.5; // crossSection/2 = 3/2
+// s44q-04: MUST match createStandardSurfaceConfig cube-ring override: majorRadius=4, crossSection=2.
+const CUBE_RING_MAJOR_R = 4;
+const CUBE_RING_HALF_SIDE = 1.0; // crossSection/2 = 2/2
 function cubeRingChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
   const R = CUBE_RING_MAJOR_R * scaleFactor;
   const H = CUBE_RING_HALF_SIDE * scaleFactor;
@@ -293,8 +296,9 @@ function cubeRingChordDist(u1: number, v1: number, u2: number, v2: number, scale
  * Near caps, U wraps a shrinking circumference: a large UV gap can map to tiny world distance,
  * so UV threshold 0.04 can fail to detect hits. pillChordDist() gives exact chord distance.
  */
-const PILL_RADIUS = 4;
-const PILL_HEIGHT = 16;
+// s44q-04: MUST match createStandardSurfaceConfig(type, 10, null) → radius=10, height=20.
+const PILL_RADIUS = 10;
+const PILL_HEIGHT = 20;
 const PILL_HALF_HEIGHT = PILL_HEIGHT / 2;
 const PILL_CAP_ARC = (Math.PI / 2) * PILL_RADIUS;                  // quarter-circle arc of cap
 const PILL_TOTAL_V_LEN = PILL_HEIGHT + 2 * PILL_CAP_ARC;           // total arc length

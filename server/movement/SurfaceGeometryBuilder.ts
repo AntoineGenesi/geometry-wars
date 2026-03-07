@@ -158,11 +158,14 @@ function _buildSphereGeometry(radius = 10, segments = 40, rings = 40): THREE.Buf
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TORUS  (matches TorusSurface defaults: majorR=6, minorR=2, 48×24 segments)
+// TORUS  — dimensions MUST match createStandardSurfaceConfig(type, 10, null)
+// which passes majorRadius=10*0.8=8, minorRadius=10*0.3=3 to TorusSurface.
+// Previous hardcoded (6,2) caused server mesh to be smaller than client visual
+// mesh → player appeared inside the torus in MP (s44q-04 root cause).
 // Rotated so hole is along Y axis (matching TorusSurface.createMesh()).
 // ─────────────────────────────────────────────────────────────────────────────
 function _buildTorusGeometry(): THREE.BufferGeometry {
-  const geo = new THREE.TorusGeometry(6, 2, 48, 24);
+  const geo = new THREE.TorusGeometry(8, 3, 48, 36);
   geo.rotateX(Math.PI / 2);
   return geo;
 }
@@ -439,7 +442,9 @@ function _cubePointLocal(u: number, v: number, d: _CubeDerived): { pos: THREE.Ve
   return { pos, norm };
 }
 
-function _buildCubeGeometry(size = 18, bevelRadius = 18 * 0.15, gridSegments = 12): THREE.BufferGeometry {
+// s44q-04: size MUST match createStandardSurfaceConfig(type, 10, null) → size=10, bevelRadius=0.6.
+// Previous default (18, 2.7) was LARGER than client → player floated above cube.
+function _buildCubeGeometry(size = 10, bevelRadius = 0.6, gridSegments = 12): THREE.BufferGeometry {
   const d = _cubeDerived(size, bevelRadius);
   const segments = gridSegments * 4;
   const uSegments = segments;
@@ -504,17 +509,21 @@ function _buildCubeGeometry(size = 18, bevelRadius = 18 * 0.15, gridSegments = 1
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PILL  (matches PillSurface defaults: radius=4, height=16, 20 capSegs, 48 radialSegs)
+// PILL  — dimensions MUST match createStandardSurfaceConfig(type, 10, null)
+// which passes radius=10, height=20 to PillSurface.
+// Previous hardcoded (4,16) was smaller than client → player inside pill.
 // ─────────────────────────────────────────────────────────────────────────────
 function _buildPillGeometry(): THREE.BufferGeometry {
-  return new THREE.CapsuleGeometry(4, 16, 20, 48);
+  return new THREE.CapsuleGeometry(10, 20, 20, 48);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CAPSULE  (matches CapsuleSurface defaults: radius=4, cylinderHeight=12)
+// CAPSULE  — dimensions MUST match createStandardSurfaceConfig(type, 10, null)
+// which passes radius=10 to CapsuleSurface (cylinderHeight defaults to 12).
+// Previous hardcoded (4,12) was smaller than client → player inside capsule.
 // ─────────────────────────────────────────────────────────────────────────────
 function _buildCapsuleGeometry(): THREE.BufferGeometry {
-  return new THREE.CapsuleGeometry(4, 12, 16, 40);
+  return new THREE.CapsuleGeometry(10, 12, 16, 40);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -664,8 +673,11 @@ function _stProfileAt(t: number, R: number, tr: number, bR: number, bevel: _Sphe
   return { r: Cr + bR * Math.cos(a), y: -CyTop + bR * Math.sin(a) };
 }
 
+// s44q-04: dimensions MUST match createStandardSurfaceConfig(type, 10, null).
+// SphereWithTunnelSurface reads config?.radius→10, config?.tunnelRadius→3, config?.bevelRadius→0.6.
+// Previous hardcoded (R=8, tr=2) was smaller than client → player inside sphere-tunnel.
 function _buildSphereTunnelGeometry(): THREE.BufferGeometry {
-  const R = 8, tr = 2, bR = 0.8, gridSegmentsV = 32;
+  const R = 10, tr = 3, bR = 0.6, gridSegmentsV = 32;
   const bevel = _stComputeBevel(R, tr, bR);
 
   const radialSegs = Math.max(gridSegmentsV, 32);
@@ -705,8 +717,8 @@ function _buildSphereTunnelGeometry(): THREE.BufferGeometry {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CUBE-RING  (matches CubeRingSurface defaults: majorRadius=6, crossSection=3)
-// Exact port of CubeRingSurface.createMesh() + profileAt() logic.
+// CUBE-RING  — dimensions from createStandardSurfaceConfig cube-ring override:
+// majorRadius=4, crossSection=2. Port of CubeRingSurface.createMesh() + profileAt().
 // ─────────────────────────────────────────────────────────────────────────────
 function _crProfileAt(t: number, H: number, B: number): { r: number; y: number } {
   const flat = H - B;
@@ -761,9 +773,11 @@ function _crProfileAt(t: number, H: number, B: number): { r: number; y: number }
   return { r: flat + B * Math.cos(a), y: -flat + B * Math.sin(a) };
 }
 
+// s44q-04: dimensions MUST match createStandardSurfaceConfig(type, 10, null).
+// Cube-ring overrides: majorRadius=4, crossSection=2. Previous (6, 3) was bigger → player offset.
 function _buildCubeRingGeometry(): THREE.BufferGeometry {
-  const majorRadius = 6;
-  const halfSide = 1.5; // crossSection=3, halfSide = crossSection/2
+  const majorRadius = 4;
+  const halfSide = 1.0; // crossSection=2, halfSide = crossSection/2
   const bevelRadius = 0.4;
   const gridSegmentsV = 24;
 

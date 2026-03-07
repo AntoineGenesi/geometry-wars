@@ -82,18 +82,18 @@ describe('SurfaceGeometryBuilder', () => {
       expect(maxDist).toBeLessThan(11);
     });
 
-    test('torus majorRadius is ~6 (unscaled)', () => {
+    test('torus majorRadius is ~8 (unscaled, matches client config)', () => {
       const mesh = buildSurfaceGeometry('torus', 1.0);
       const pos = mesh.geometry.getAttribute('position') as THREE.BufferAttribute;
 
-      // Max distance from origin should be > 6 (majorR=6, minorR=2 → max = 8)
+      // Max distance from origin should be ~11 (majorR=8, minorR=3 → max = 11)
       let maxDist = 0;
       for (let i = 0; i < pos.count; i++) {
         const d = Math.sqrt(pos.getX(i) ** 2 + pos.getZ(i) ** 2); // radial in XZ plane
         maxDist = Math.max(maxDist, d);
       }
-      expect(maxDist).toBeGreaterThan(7);
-      expect(maxDist).toBeLessThan(9);
+      expect(maxDist).toBeGreaterThan(10);
+      expect(maxDist).toBeLessThan(12);
     });
   });
 

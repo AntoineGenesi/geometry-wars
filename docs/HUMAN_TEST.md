@@ -2,7 +2,49 @@
 
 > **What is this?** Everything Claude has changed that needs YOU to verify in a real browser. Items are grouped by system. Check them off as you go. If something fails, note what happened — Claude will read this file next session.
 >
-> **Last updated:** 2026-03-07
+> **Last updated:** 2026-03-08
+
+## s44q-04: ALL Surfaces MP — Player Inside Surface Fix (Server-Client Geometry Parity)
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**Root cause fixed:** Server's `SurfaceGeometryBuilder` used hardcoded Surface class defaults (e.g., torus majorR=6, minorR=2) while the client uses `createStandardSurfaceConfig` with scale-dependent dimensions (e.g., torus majorR=8, minorR=3). The server's physics mesh was smaller than the client's visual mesh, so server world positions placed players INSIDE the client's surface geometry.
+
+**Files changed:** `server/movement/SurfaceGeometryBuilder.ts`, `server/rooms/GameRoom.ts`, 3 test files updated, 1 regression test added.
+
+**Test on EVERY MP surface (CRITICAL — all were broken):**
+
+Torus:
+- [ ] Player appears ON the doughnut surface (not inside the bread)
+- [ ] Player can move smoothly around the torus
+- [ ] Bullets fire from the player's visible position
+- [ ] Hit detection matches visual player location
+
+Pill:
+- [ ] Player appears ON the pill surface (not floating inside)
+- [ ] Movement works in all directions
+
+Capsule:
+- [ ] Player on surface, movement works
+
+Cube:
+- [ ] Player on surface, movement works
+
+Sphere-tunnel:
+- [ ] Player on surface, movement works
+
+Cube-ring:
+- [ ] Player on surface, movement works
+
+Mobius:
+- [ ] Player on surface, movement works
+
+Peanut:
+- [ ] Player on surface, movement works
+
+**Regression check:**
+- [ ] SP works normally on all surfaces
+- [ ] Sphere MP still works (sphere was already correct at radius=10)
 
 ## s44p-02: Sphere MP Camera Fix — Camera Tilt, Stuck Player, Camera Reset
 
