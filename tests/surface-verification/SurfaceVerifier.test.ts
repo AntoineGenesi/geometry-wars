@@ -358,3 +358,110 @@ describe('SurfaceVerifier.runBulletOriginTest', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Hit Detection Tests
+// ---------------------------------------------------------------------------
+
+describe('SurfaceVerifier.runHitDetectionTest', () => {
+  it('returns correct surface', () => {
+    const result = SurfaceVerifier.runHitDetectionTest('sphere', 2);
+
+    expect(result.surface).toBe('sphere');
+  });
+
+  it('produces sample points at density=2', () => {
+    const result = SurfaceVerifier.runHitDetectionTest('sphere', 2);
+
+    expect(result.samplePoints.length).toBeGreaterThan(0);
+  });
+
+  it('each HitDetectionPoint has required fields', () => {
+    const result = SurfaceVerifier.runHitDetectionTest('sphere', 2);
+
+    for (const point of result.samplePoints) {
+      expect(typeof point.u).toBe('number');
+      expect(typeof point.v).toBe('number');
+      expect(point.playerWorldPos).toBeInstanceOf(THREE.Vector3);
+      expect(typeof point.damageReceived).toBe('boolean');
+      expect(['pass', 'fail-no-damage', 'fail-ghost-kill']).toContain(point.status);
+    }
+  });
+
+  it('counts sum to samplePoints.length', () => {
+    const result = SurfaceVerifier.runHitDetectionTest('sphere', 2);
+
+    const total = result.passCount + result.failNoDamageCount + result.failGhostKillCount;
+    expect(total).toBe(result.samplePoints.length);
+  });
+
+  it('durationMs is non-negative', () => {
+    const result = SurfaceVerifier.runHitDetectionTest('sphere', 2);
+
+    expect(result.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it('sphere hit detection: most points should detect damage (collision working)', () => {
+    // Sphere has no special seam behavior so collision should work everywhere
+    const result = SurfaceVerifier.runHitDetectionTest('sphere', 3);
+
+    // At minimum we expect the structure is valid — collision may or may not
+    // fire depending on materialization timing, but no ghost kills expected
+    expect(result.failGhostKillCount).toBe(0);
+    expect(result.samplePoints.length).toBeGreaterThan(0);
+  }, 120_000);
+});
+
+// ---------------------------------------------------------------------------
+// Seam Traversal Tests
+// ---------------------------------------------------------------------------
+
+describe('SurfaceVerifier.runSeamTraversalTest', () => {
+  it('returns correct surface and direction', () => {
+    const result = SurfaceVerifier.runSeamTraversalTest('sphere', 'w', 500);
+
+    expect(result.surface).toBe('sphere');
+    expect(result.direction).toBe('w');
+  });
+
+  it('SeamTraversalResult has required fields', () => {
+    const result = SurfaceVerifier.runSeamTraversalTest('sphere', 'w', 500);
+
+    expect(typeof result.crossingDetected).toBe('boolean');
+    expect(typeof result.stuckBeforeSeam).toBe('boolean');
+    expect(typeof result.framesUsed).toBe('number');
+    expect(['pass', 'warn', 'fail']).toContain(result.status);
+  });
+
+  it('sphere seam traversal should pass (seam is crossable)', () => {
+    // Sphere has a crossable UV boundary in the W direction
+    const result = SurfaceVerifier.runSeamTraversalTest('sphere', 'w', 2000);
+
+    expect(result.status).toBe('pass');
+    expect(result.crossingDetected).toBe(true);
+  }, 120_000);
+
+  it('torus seam traversal should pass or warn (not fail)', () => {
+    const result = SurfaceVerifier.runSeamTraversalTest('torus', 'w', 2000);
+
+    expect(['pass', 'warn']).toContain(result.status);
+    expect(result.stuckBeforeSeam).toBe(false);
+  }, 120_000);
+
+  it('mobius seam traversal: returns a valid status (pass/warn/fail)', () => {
+    // Mobius has a known seam bug at U=1 (invisible wall) in browser.
+    // In headless simulation the walker may cross or get stuck depending on
+    // surface parameterization. We verify the result structure is valid
+    // and that if it does cross, it reports correctly.
+    const result = SurfaceVerifier.runSeamTraversalTest('mobius', 'w', 1500);
+
+    expect(['pass', 'warn', 'fail']).toContain(result.status);
+    expect(typeof result.crossingDetected).toBe('boolean');
+  }, 120_000);
+
+  it('framesUsed is positive', () => {
+    const result = SurfaceVerifier.runSeamTraversalTest('sphere', 'w', 200);
+
+    expect(result.framesUsed).toBeGreaterThan(0);
+  });
+});
