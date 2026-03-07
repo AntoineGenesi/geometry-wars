@@ -1308,8 +1308,22 @@ export class GameRoom extends Room<GameState> {
     // Legacy parts[3]: lives count or 'infinite' — applied only when currentSettings hasn't been
     // explicitly set (still at default). If the host sent a full settings object via the start
     // message before calling this, those values take precedence.
+    // s44p-06: also handles win condition ('none'|'time'|'kills') at parts[3] with limit at parts[4].
     const livesParam = parts[3];
-    if (livesParam !== undefined && livesParam !== '') {
+    if (livesParam === 'time' || livesParam === 'kills') {
+      // s44p-06: win condition encoded as parts[3]=winCond, parts[4]=limitVal
+      const winCond = livesParam as 'time' | 'kills';
+      const limitVal = parseInt(parts[4] ?? '0', 10) || 0;
+      this.state.winCondition = winCond;
+      this.state.timeLimitSeconds = winCond === 'time' ? limitVal : 0;
+      this.state.timeRemaining = winCond === 'time' ? limitVal : 0;
+      this.state.killGoal = winCond === 'kills' ? limitVal : 0;
+    } else if (livesParam === 'none') {
+      this.state.winCondition = 'none';
+      this.state.timeLimitSeconds = 0;
+      this.state.timeRemaining = 0;
+      this.state.killGoal = 0;
+    } else if (livesParam !== undefined && livesParam !== '') {
       if (livesParam === 'infinite') {
         this.currentSettings = validateSettings({ ...this.currentSettings, infiniteLives: true });
       } else {
@@ -2105,6 +2119,11 @@ export class GameRoom extends Room<GameState> {
       this.logger.log(`[GameRoom] Claustrophobia time limit reached (${CLAUSTROPHOBIA_TIME_LIMIT_SECS}s)`);
       this.transitionToVoting();
       return;
+    }
+
+    // s44p-06: Decrement time-limit countdown for 'time' win condition
+    if (this.state.winCondition === 'time' && this.state.timeRemaining > 0) {
+      this.state.timeRemaining = Math.max(0, this.state.timeRemaining - dt);
     }
 
     // Check game over
@@ -4583,6 +4602,22 @@ export class GameRoom extends Room<GameState> {
 
     if (!anyAlive && this.state.players.size > 0) {
       this.transitionToVoting();
+      return;
+    }
+
+    // Time-limit win condition: time runs out
+    if (this.state.winCondition === 'time' && this.state.timeRemaining <= 0 && this.state.timeLimitSeconds > 0) {
+      this.transitionToVoting();
+      return;
+    }
+
+    // Kill-goal win condition: any player reaches kill goal
+    if (this.state.winCondition === 'kills' && this.state.killGoal > 0) {
+      this.state.players.forEach((player) => {
+        if (player.playerKills >= this.state.killGoal) {
+          this.transitionToVoting();
+        }
+      });
     }
   }
 

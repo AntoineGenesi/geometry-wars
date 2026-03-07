@@ -105,6 +105,7 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
       hostPickMode: false,
       gameMode: 'waves',
       mapSize: 'medium',
+      buffPickups: { forEach() {} } as never,
       readyMap: new Map(),
       countdownPaused: false,
       pvpMode: '',
@@ -112,6 +113,9 @@ describe('VotingScreen — show() auto-vote regression (S28a)', () => {
       killTarget: 10,
       timeLimit: 300,
       livesCount: 3,
+      timeLimitSeconds: 0,
+      timeRemaining: 0,
+      killGoal: 0,
       ...overrides,
     };
   }
@@ -237,6 +241,7 @@ describe('VotingScreen — mastery desync regression (S34b)', () => {
       hostPickMode: false,
       gameMode: 'waves',
       mapSize: 'medium',
+      buffPickups: { forEach() {} } as never,
       readyMap: new Map(),
       countdownPaused: false,
       pvpMode: '',
@@ -244,6 +249,9 @@ describe('VotingScreen — mastery desync regression (S34b)', () => {
       killTarget: 10,
       timeLimit: 300,
       livesCount: 3,
+      timeLimitSeconds: 0,
+      timeRemaining: 0,
+      killGoal: 0,
       ...overrides,
     };
   }

@@ -82,12 +82,19 @@
       "cubeTunnel": "WÜRFEL-TUNNEL"
     },
     "modes": {
-      "waves": "WELLEN"
+      "waves": "WELLEN",
+      "king": "KÖNIG",
+      "sniper": "SCHARFSCHÜTZE",
+      "rainbow": "REGENBOGEN",
+      "claustrophobia": "KLAUSTROPHOBIE",
+      "pvp": "PvP",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "KLEIN",
       "medium": "MITTEL",
-      "large": "GROSS"
+      "large": "GROSS",
+      "epic": "EPISCH"
     }
   },
   "menu": {

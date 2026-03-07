@@ -444,6 +444,12 @@ export class GameState extends Schema {
   declare timeLimit: number;
   /** When true, the host has queued settings for the next wave boundary ("Apply Next Round"). */
   declare hasPendingSettings: boolean;
+  /** Time limit in seconds for 'time' win condition (0 = no limit) — s44p-06 */
+  declare timeLimitSeconds: number;
+  /** Remaining seconds for time-limit countdown (server-authoritative) — s44p-06 */
+  declare timeRemaining: number;
+  /** Kill goal for 'kills' win condition (0 = no limit) — s44p-06 */
+  declare killGoal: number;
 
   constructor() {
     super();
@@ -499,6 +505,11 @@ export class GameState extends Schema {
     this.startingWeapon = 'standard';
     this.timeLimit = 0;
     this.hasPendingSettings = false;
+
+    // s44p-06: countdown timer fields
+    this.timeLimitSeconds = 0;
+    this.timeRemaining = 0;
+    this.killGoal = 0;
   }
 }
 
@@ -545,4 +556,7 @@ defineTypes(GameState, {
   startingWeapon: 'string',
   timeLimit: 'number',
   hasPendingSettings: 'boolean',
+  timeLimitSeconds: 'number',
+  timeRemaining: 'number',
+  killGoal: 'number',
 });

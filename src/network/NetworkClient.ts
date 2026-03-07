@@ -193,6 +193,12 @@ export interface NetworkGameState {
   timeLimit?: number;
   /** True when the host has queued settings to apply at the next wave boundary. */
   hasPendingSettings?: boolean;
+  /** Time limit in seconds for 'time' win condition — s44p-06 */
+  timeLimitSeconds?: number;
+  /** Remaining seconds for time-limit countdown — s44p-06 */
+  timeRemaining?: number;
+  /** Kill goal for 'kills' win condition — s44p-06 */
+  killGoal?: number;
 }
 
 /** Input to send to server */
@@ -732,6 +738,9 @@ export class NetworkClient {
       startingWeapon?: string;
       timeLimit?: number;
       hasPendingSettings?: boolean;
+      timeLimitSeconds?: number;
+      timeRemaining?: number;
+      killGoal?: number;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -787,6 +796,9 @@ export class NetworkClient {
       startingWeapon: s.startingWeapon,
       timeLimit: s.timeLimit,
       hasPendingSettings: s.hasPendingSettings ?? false,
+      timeLimitSeconds: s.timeLimitSeconds ?? 0,
+      timeRemaining: s.timeRemaining ?? 0,
+      killGoal: s.killGoal ?? 0,
     };
   }
 

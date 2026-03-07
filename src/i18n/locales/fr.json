@@ -82,12 +82,19 @@
       "cubeTunnel": "TUNNEL-CUBE"
     },
     "modes": {
-      "waves": "VAGUES"
+      "waves": "VAGUES",
+      "king": "ROI",
+      "sniper": "SNIPER",
+      "rainbow": "ARC-EN-CIEL",
+      "claustrophobia": "CLAUSTROPHOBIE",
+      "pvp": "PvP",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "PETIT",
       "medium": "MOYEN",
-      "large": "GRAND"
+      "large": "GRAND",
+      "epic": "ÉPIQUE"
     }
   },
   "menu": {

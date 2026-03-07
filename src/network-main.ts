@@ -1223,6 +1223,37 @@ async function main() {
   statusEl.textContent = 'Connecting...';
   document.body.appendChild(statusEl);
 
+  // Countdown timer HUD — shown during PvP/PvPvE games with a time limit
+  const countdownTimerEl = document.createElement('div');
+  countdownTimerEl.id = 'mp-countdown-timer';
+  countdownTimerEl.style.cssText =
+    'position:fixed;top:44px;left:50%;transform:translateX(-50%);' +
+    `font:bold ${mobile ? '18px' : '26px'} monospace;` +
+    'color:#00ffff;text-shadow:0 0 10px #00ffff;z-index:150;' +
+    'pointer-events:none;display:none;' +
+    'background:rgba(0,0,0,0.5);padding:4px 14px;border-radius:6px;' +
+    'letter-spacing:3px;transition:color 0.3s,text-shadow 0.3s;';
+  document.body.appendChild(countdownTimerEl);
+
+  // Add CSS transition animation for red glow
+  const countdownStyle = document.createElement('style');
+  countdownStyle.textContent = `
+    #mp-countdown-timer.glow-red {
+      color: #ff4444 !important;
+      text-shadow: 0 0 16px #ff0000, 0 0 32px #ff0000 !important;
+      animation: pulse-red 0.5s ease-in-out infinite alternate;
+    }
+    #mp-countdown-timer.glow-warn {
+      color: #ffaa00 !important;
+      text-shadow: 0 0 12px #ff8800, 0 0 24px #ff4400 !important;
+    }
+    @keyframes pulse-red {
+      from { text-shadow: 0 0 16px #ff0000, 0 0 32px #ff0000; }
+      to   { text-shadow: 0 0 24px #ff0000, 0 0 48px #ff4400; }
+    }
+  `;
+  document.head.appendChild(countdownStyle);
+
   const scoreEl = document.createElement('div');
   scoreEl.style.cssText =
     `position:fixed;top:10px;right:10px;color:#0f0;font:${mobile ? '14px' : '24px'} monospace;` +
@@ -4170,6 +4201,31 @@ async function main() {
     if (currentRoomPhase === 'voting') {
       latestVotingState = state;
       votingScreen.update(state, isHost, localPlayerId);
+    }
+
+    // Countdown timer HUD — visible during PvP/PvPvE with time win condition
+    const isPlayingWithTimer = currentRoomPhase === 'playing' &&
+      state.gameStarted &&
+      (state.winCondition === 'time') &&
+      state.timeLimitSeconds > 0;
+
+    if (isPlayingWithTimer) {
+      const remaining = Math.max(0, state.timeRemaining ?? 0);
+      const mins = Math.floor(remaining / 60);
+      const secs = Math.ceil(remaining % 60);
+      const mm = String(mins).padStart(2, '0');
+      const ss = String(secs === 60 ? 59 : secs).padStart(2, '0');
+      countdownTimerEl.textContent = `${mm}:${ss}`;
+      countdownTimerEl.style.display = 'block';
+
+      // Glow effects: red in last 10s, warn-orange in last quarter
+      const quarterMark = state.timeLimitSeconds / 4;
+      countdownTimerEl.classList.toggle('glow-red', remaining <= 10);
+      countdownTimerEl.classList.toggle('glow-warn', remaining > 10 && remaining <= quarterMark);
+      if (remaining <= 10) countdownTimerEl.classList.remove('glow-warn');
+    } else {
+      countdownTimerEl.style.display = 'none';
+      countdownTimerEl.classList.remove('glow-red', 'glow-warn');
     }
 
     // Game state — derive status text from roomPhase + legacy flags

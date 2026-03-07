@@ -82,12 +82,19 @@
       "cubeTunnel": "TÚNEL-CUBO"
     },
     "modes": {
-      "waves": "OLEADAS"
+      "waves": "OLEADAS",
+      "king": "REY",
+      "sniper": "FRANCOTIRADOR",
+      "rainbow": "ARCOÍRIS",
+      "claustrophobia": "CLAUSTROFOBIA",
+      "pvp": "PvP",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "PEQUEÑO",
       "medium": "MEDIANO",
-      "large": "GRANDE"
+      "large": "GRANDE",
+      "epic": "ÉPICO"
     }
   },
   "menu": {
