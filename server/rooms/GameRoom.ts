@@ -1684,11 +1684,31 @@ export class GameRoom extends Room<GameState> {
   }
 
   /**
-   * Convert world-space position to approximate UV (sphere parameterization).
-   * Used to keep surfaceU/V populated for backwards-compat collision detection.
-   * Accurate for sphere/peanut (same SOR axis structure). Approximate for others.
+   * Convert world-space position to UV coordinates.
+   * For torus: uses accurate torus parameterization (matches TorusSurface.worldToSurface).
+   * For sphere/peanut: sphere parameterization (accurate for SOR surfaces).
+   * For others: sphere approximation.
    */
   private _worldPosToApproxUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    // Torus: use accurate parametric inversion to avoid swapped-axis ghost kills.
+    // Torus UV: u = tube angle (minor), v = ring angle (major).
+    // x = (R + r*cos(theta)) * cos(phi), y = r*sin(theta), z = (R + r*cos(theta)) * sin(phi)
+    // where theta = u*2π, phi = v*2π.
+    if (this.state.surfaceType === 'torus') {
+      const R = TORUS_MAJOR_R;
+      // v = ring angle (phi) from xz-plane angle
+      const phi = Math.atan2(wz, wx);
+      const v = ((phi / (2 * Math.PI)) + 1) % 1;
+      // Tube center lies at (R*cos(phi), 0, R*sin(phi))
+      // outward component from tube center in xz-plane = r*cos(theta)
+      const outward = wx * Math.cos(phi) + wz * Math.sin(phi) - R;
+      // u = tube angle: atan2(y, outward_from_tube) / 2π
+      const theta = Math.atan2(wy, outward);
+      const u = ((theta / (2 * Math.PI)) + 1) % 1;
+      return { u, v };
+    }
+
+    // Sphere parameterization (accurate for sphere/peanut, approximate for others).
     const r = Math.sqrt(wx * wx + wy * wy + wz * wz);
     if (r < 0.001) return { u: 0.5, v: 0.5 };
     const v = Math.acos(Math.max(-1, Math.min(1, wy / r))) / Math.PI;
