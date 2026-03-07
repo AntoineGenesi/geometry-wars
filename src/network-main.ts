@@ -4245,7 +4245,7 @@ async function main() {
     const isPlayingWithTimer = currentRoomPhase === 'playing' &&
       state.gameStarted &&
       (state.winCondition === 'time') &&
-      state.timeLimitSeconds > 0;
+      (state.timeLimitSeconds ?? 0) > 0;
 
     if (isPlayingWithTimer) {
       const remaining = Math.max(0, state.timeRemaining ?? 0);
@@ -4257,7 +4257,7 @@ async function main() {
       countdownTimerEl.style.display = 'block';
 
       // Glow effects: red in last 10s, warn-orange in last quarter
-      const quarterMark = state.timeLimitSeconds / 4;
+      const quarterMark = (state.timeLimitSeconds ?? 0) / 4;
       countdownTimerEl.classList.toggle('glow-red', remaining <= 10);
       countdownTimerEl.classList.toggle('glow-warn', remaining > 10 && remaining <= quarterMark);
       if (remaining <= 10) countdownTimerEl.classList.remove('glow-warn');
