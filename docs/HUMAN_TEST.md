@@ -2017,3 +2017,60 @@ Test with at least 2 players on the same LAN.
 - [ ] **Shoot from inner half** — Move to inside of the torus ring; bullets should still work correctly
 - [ ] **360° rotation test** — Rotate through all ring angles; bullets consistently spawn from player position
 - [ ] **Remote player position** — Second player should appear on the torus surface, not in the center/inner edge
+
+## s44o-04: Surface Movement + Bullet Hit Detection Fixes (Torus, Peanut, Mobius, Pill)
+
+**Status:** Level 5 verified — Puppeteer screenshots taken. LAN multiplayer human testing required.
+
+**What was changed:**
+
+### 04b — Torus UV Parameterization (server _worldPosToApproxUV)
+Server was using sphere UV formula for all surfaces. For torus this swapped ring angle (v) and tube angle (u), causing ghost kills and bullets at wrong positions in MP.
+**Fix:** Added torus-specific branch using accurate parametric inversion (atan2 for ring/tube angles).
+
+### 04c — Peanut Pole Speed (client prediction)
+Client prediction used raw UV velocity for peanut movement, but server uses isotropic correction (`speed / (2π × radius(v))`). Near poles where radius is tiny, speed appeared to vary wildly.
+**Fix:** `network-main.ts` now applies the same isotropic formula as the server.
+
+### 04d — Mobius Seam Traversal + Half-Twist Topology
+Mobius strip has a half-twist — when crossing the seam at U≈0, V should be flipped. Client prediction was treating it as a flat rectangle. Server UV also needed `mobiusWorldToUV` inversion.
+**Fix:** Client prediction flips `localPlayerVFlip` on seam crossing. `wrapsInV` list no longer includes mobius (it wraps in U only). Server uses accurate `_mobiusWorldToUV`.
+
+### 04e — Pill Grid Lines + WorldToSurface Scale
+Three pill bugs fixed: (1) Grid fade logic was applied to pill (exterior surface) the same as tunnel surfaces (interior), permanently fading grid to ~0.8% opacity. (2) `worldToSurface` didn't divide by `group.scale.x`, misclassifying regions on EPIC maps. (3) `localPlayerVFlip` wasn't reset on respawn.
+
+### Test: Torus SP
+- [ ] **Start SP on torus** — Player visibly on torus surface, grid lines visible
+- [ ] **Move around** — Player walks smoothly around the torus ring
+- [ ] **Shoot** — Bullets originate from player position, visible on the surface
+
+### Test: Torus MP (LAN required)
+- [ ] **Host torus MP** — Both players appear on the torus surface
+- [ ] **Shoot an enemy** — Bullets from outer half hit enemies correctly (no ghost kills)
+- [ ] **Enemy hits player** — Damage registers correctly at all ring positions
+
+### Test: Peanut SP
+- [ ] **Start SP on peanut** — Player on peanut surface, can move to pole areas
+- [ ] **Speed at pole** — Movement speed near poles feels similar to speed at equator (within 50%)
+- [ ] **Grid visible** — Grid lines visible on peanut surface
+
+### Test: Peanut MP (LAN required)
+- [ ] **Move to pole** — Player near pole moves at reasonable speed (previously sluggish/fast)
+- [ ] **Bullets near pole** — Bullets originate from player position near pole
+
+### Test: Mobius SP
+- [ ] **Start SP on mobius** — Player on mobius strip, grid lines visible
+- [ ] **Traverse seam** — Move player so they cross U≈0 boundary; player appears on other side of strip correctly (V flipped)
+- [ ] **No teleport** — Crossing seam is smooth, no position jump
+
+### Test: Mobius MP (LAN required)
+- [ ] **Seam traversal in MP** — Player can cross the seam without bullet direction flipping unexpectedly
+
+### Test: Pill SP
+- [ ] **Start SP on pill** — Grid lines visible on pill body and caps (previously invisible/faded)
+- [ ] **Move around** — Player walks on pill body and cap transitions
+- [ ] **Shoot** — Bullets originate from player position on any part of the pill
+
+### Test: Pill MP (LAN required)  
+- [ ] **Bullets on EPIC map** — On EPIC-size pill map, bullets spawn from correct position (scale bug fixed)
+- [ ] **Grid visible in MP** — Grid lines visible on pill surface in multiplayer view
