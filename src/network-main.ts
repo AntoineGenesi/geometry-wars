@@ -1807,7 +1807,7 @@ async function main() {
   const startBtn = document.createElement('button');
   startBtn.textContent = 'START GAME';
   startBtn.style.cssText =
-    'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+    'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);' +
     'padding:20px 40px;font:bold 24px monospace;background:#0a0;color:#fff;' +
     'border:2px solid #0f0;cursor:pointer;z-index:100;display:none;';
   startBtn.onclick = () => {
@@ -1854,7 +1854,7 @@ async function main() {
   const backBtn = document.createElement('button');
   backBtn.textContent = 'BACK TO MENU';
   backBtn.style.cssText =
-    'position:fixed;top:60%;left:50%;transform:translate(-50%,-50%);' +
+    'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
     'padding:15px 30px;font:bold 18px monospace;background:#a00;color:#fff;' +
     'border:2px solid #f44;cursor:pointer;z-index:100;display:none;';
   backBtn.onclick = () => {
