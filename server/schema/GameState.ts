@@ -451,6 +451,16 @@ export class GameState extends Schema {
   /** Kill goal for 'kills' win condition (0 = no limit) — s44p-06 */
   declare killGoal: number;
 
+  // ── Portals (PvP/PvPvE only) ──────────────────────────────────────────────
+  /** When true, portals are active this match (pvp or pvpve mode). */
+  declare portalsActive: boolean;
+  /** Portal A UV position (surface parameterization, 0-1). */
+  declare portalAU: number;
+  declare portalAV: number;
+  /** Portal B UV position (surface parameterization, 0-1). */
+  declare portalBU: number;
+  declare portalBV: number;
+
   constructor() {
     super();
     this.players = new MapSchema<PlayerState>();
@@ -510,6 +520,13 @@ export class GameState extends Schema {
     this.timeLimitSeconds = 0;
     this.timeRemaining = 0;
     this.killGoal = 0;
+
+    // Portals (PvP/PvPvE) — inactive by default until startGame() sets them
+    this.portalsActive = false;
+    this.portalAU = 0.25;
+    this.portalAV = 0.25;
+    this.portalBU = 0.75;
+    this.portalBV = 0.75;
   }
 }
 
@@ -559,4 +576,9 @@ defineTypes(GameState, {
   timeLimitSeconds: 'number',
   timeRemaining: 'number',
   killGoal: 'number',
+  portalsActive: 'boolean',
+  portalAU: 'number',
+  portalAV: 'number',
+  portalBU: 'number',
+  portalBV: 'number',
 });
