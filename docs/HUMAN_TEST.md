@@ -26,6 +26,23 @@
 - [ ] SP sphere works normally (camera follows player without tilt)
 - [ ] Other MP surfaces (cube, torus) still work correctly
 
+## s44p-04: Ghost Kills Fixed — Torus MP Hit Detection
+
+**Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
+
+**What was changed:** Fixed `_worldPosToApproxUV` torus branch in `server/rooms/GameRoom.ts`. The UV tube angle was computed with wrong sign: `Math.atan2(wy, outward)` → `Math.atan2(-wy, outward)`. This caused players on the top of the torus tube (u≈0.25) to get server surfaceU=0.75 (bottom), so bullets would spawn from the wrong side — creating ghost kills when the server registered a hit that was visually far away.
+
+**Files changed:** `server/rooms/GameRoom.ts`, `server/rooms/GameRoom.torus-uv-parameterization.test.ts`
+
+**Test (requires MP on TORUS surface):**
+- [ ] Host a LAN game, select TORUS map
+- [ ] Player fires bullets from the TOP of the torus tube
+- [ ] Bullets should hit enemies near the player — NOT ghost-kill enemies on the opposite side of the tube
+- [ ] Move to different tube positions (inner ring, outer ring) and verify bullets land where you aim
+- [ ] No enemies should die when bullet visually misses them by multiple body-lengths
+
+**Note on sphere ghost kills:** User observed ghost kills on sphere map too. The sphere path in `_worldPosToApproxUV` appears mathematically correct. If sphere ghost kills persist after this fix, it may be a timing/latency effect or a different bug that needs further investigation.
+
 ## s44m-07: Guardian Drones Activate + Damage Numbers
 
 **Status:** Changes made — human testing required (Level 5 max achievable by Claude).
