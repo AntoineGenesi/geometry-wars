@@ -4529,6 +4529,23 @@ export class GameRoom extends Room<GameState> {
     this.state.voteMap.clear();
     this.state.readyMap.clear();
     this.state.countdownPaused = true;
+
+    // Clear all entities so clients don't see frozen enemies/pickups on the
+    // voting screen. Bumping spawnGeneration aborts any pending spawn timeouts
+    // (same pattern as startGame). Entities are also cleared in startGame(), so
+    // this is defence-in-depth to prevent the "stale bosses frozen on map" bug.
+    this.spawnGeneration++;
+    this.pendingEnemyCount = 0;
+    this.state.bullets.clear();
+    this.state.enemies.clear();
+    this.enemyAI.clear();
+    this.state.geoms.clear();
+    this.state.weaponPickups.clear();
+    this.state.superPickups.clear();
+    this.state.buffPickups.clear();
+    this.state.healthPickups.clear();
+    this.lastHealthPickupSpawnTime.clear();
+
     // Reset settings to defaults when game ends (s44j-settings-16f: no persistence across games)
     this.currentSettings = { ...DEFAULT_GAME_SETTINGS };
     this.pendingSettings = null;

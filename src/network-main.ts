@@ -4045,6 +4045,10 @@ async function main() {
         gameOverScreen.hide();
         // Re-enable pass-through so mastery/voting screen buttons work on mobile.
         if (input instanceof TouchInput) input.setGamePaused(true);
+        // Clear all game entities so frozen enemies/pickups from the previous game
+        // are removed from the scene immediately. Server also clears its state in
+        // transitionToVoting(), but client clears eagerly for instant visual cleanup.
+        resetGameEntities();
         // Show MasteryProgressScreen first (if any XP was earned), then VotingScreen.
         const killsByWeapon = weaponMastery.getKillsByWeapon();
         const xpResults = masteryStore.awardGameXP(killsByWeapon);
