@@ -1600,13 +1600,12 @@ async function main() {
   let lobbyTimeLimit = 300; // seconds
   let lobbyLivesCount = 3;
 
-  // Outer lobby panel — positioned above the start button
+  // Lobby options panel — flows below the game mode buttons (no overlay)
   const lobbyOptionsPanel = document.createElement('div');
   lobbyOptionsPanel.id = 'pvp-lobby-options';
   lobbyOptionsPanel.style.cssText =
-    'position:fixed;top:50%;left:50%;transform:translate(-50%,-200px);' +
     'background:rgba(0,0,0,0.85);border:1px solid #333;padding:16px 20px;' +
-    'font-family:monospace;color:#aaa;z-index:100;display:none;' +
+    'font-family:monospace;color:#aaa;display:none;margin-top:14px;' +
     'min-width:340px;max-width:420px;box-sizing:border-box;';
 
   // Section label
@@ -1735,7 +1734,7 @@ async function main() {
   winConditionSection.appendChild(livesInput);
 
   lobbyOptionsPanel.appendChild(winConditionSection);
-  document.body.appendChild(lobbyOptionsPanel);
+  modeSelectorDiv.appendChild(lobbyOptionsPanel);
 
   /** Sync all lobby option button styles + input visibility from current state */
   function updateLobbyUI(): void {

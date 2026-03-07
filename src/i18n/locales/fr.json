@@ -77,6 +77,8 @@
       "capsule": "CAPSULE",
       "icosahedron": "ICOSAÈDRE",
       "peanut": "CACAHUÈTE",
+      "mobius": "MÖBIUS",
+      "mobiusBevel": "MÖBIUS-BISEAU",
       "cubeTunnel": "TUNNEL-CUBE"
     },
     "modes": {
@@ -99,6 +101,7 @@
       "capsule": "Capsule",
       "icosahedron": "Icosaèdre",
       "mobius": "Möbius",
+      "mobiusBevel": "Möbius Biseau",
       "sphereTunnel": "Tunnel Sphérique",
       "cubeRing": "Anneau de Cube",
       "cubeTunnel": "Tunnel de Cube"

@@ -77,6 +77,8 @@
       "capsule": "KAPSEL",
       "icosahedron": "IKOSAEDER",
       "peanut": "ERDNUSS",
+      "mobius": "MÖBIUS",
+      "mobiusBevel": "MÖBIUS-FASE",
       "cubeTunnel": "WÜRFEL-TUNNEL"
     },
     "modes": {
@@ -99,6 +101,7 @@
       "capsule": "Kapsel",
       "icosahedron": "Ikosaeder",
       "mobius": "Möbius",
+      "mobiusBevel": "Möbius Fase",
       "sphereTunnel": "Kugeltunnel",
       "cubeRing": "Würfelring",
       "cubeTunnel": "Würfeltunnel"

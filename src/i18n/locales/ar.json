@@ -77,6 +77,8 @@
       "capsule": "كبسولة",
       "icosahedron": "عشروني",
       "peanut": "فول سوداني",
+      "mobius": "موبيوس",
+      "mobiusBevel": "موبيوس-شطبة",
       "cubeTunnel": "نفق مكعب"
     },
     "modes": {
@@ -106,6 +108,7 @@
       "capsule": "كبسولة",
       "icosahedron": "عشروني",
       "mobius": "موبيوس",
+      "mobiusBevel": "موبيوس شطبة",
       "sphereTunnel": "نفق كروي",
       "cubeRing": "حلقة مكعب",
       "cubeTunnel": "نفق مكعب"

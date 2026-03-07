@@ -39,6 +39,8 @@ export const SURFACES = [
   { id: 'capsule',      icon: '💉', label: 'CAPSULE' },
   { id: 'icosahedron',  icon: '🔷', label: 'ICOSAHEDRON' },
   { id: 'peanut',       icon: '🥜', label: 'PEANUT' },
+  { id: 'mobius',       icon: '♾',  label: 'MOBIUS' },
+  { id: 'mobius-bevel', icon: '⟲',  label: 'MOBIUS-BEVEL' },
   { id: 'cube-tunnel',  icon: '⬡',  label: 'CUBE-TUNNEL' },
 ];
 

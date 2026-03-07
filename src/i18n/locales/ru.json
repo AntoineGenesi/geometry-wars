@@ -77,6 +77,8 @@
       "capsule": "КАПСУЛА",
       "icosahedron": "ИКОСАЭДР",
       "peanut": "АРАХИС",
+      "mobius": "МЁБИУС",
+      "mobiusBevel": "МЁБИУС-СКОС",
       "cubeTunnel": "КУБ-ТУННЕЛЬ"
     },
     "modes": {
@@ -106,6 +108,7 @@
       "capsule": "Капсула",
       "icosahedron": "Икосаэдр",
       "mobius": "Лента Мёбиуса",
+      "mobiusBevel": "Мёбиус Скос",
       "sphereTunnel": "Сферический туннель",
       "cubeRing": "Кольцо куба",
       "cubeTunnel": "Туннель куба"
