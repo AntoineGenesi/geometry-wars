@@ -891,6 +891,19 @@ export class NetworkClient {
   }
 
   /**
+   * Client-authoritative pickup collection: player detects proximity in world space
+   * and notifies server to apply the effect and remove the pickup from state.
+   * Server trusts this message (no UV-based re-check) to avoid sphere-approx errors.
+   */
+  sendCollectPickup(
+    pickupType: 'weapon' | 'buff' | 'super' | 'health',
+    pickupId: string,
+  ): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('collect_pickup', { pickupType, pickupId });
+  }
+
+  /**
    * Send exit-to-voting command (host only).
    * Ends the current match and transitions all players to the voting screen.
    */
