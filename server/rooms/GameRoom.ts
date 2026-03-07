@@ -974,6 +974,70 @@ export class GameRoom extends Room<GameState> {
       }
     });
 
+    // s44r-04-02: Client-authoritative bullet-enemy hit detection.
+    // Server-side UV collision is disabled on non-sphere surfaces (see checkCollisions).
+    // The client has exact world-space bullet positions and reports hits here.
+    // Server trusts the client's hit report (validated: sender must own the bullet).
+    this.onMessage('bullet_hit', (client, data: {
+      bulletId: string;
+      enemyId: string;
+      weaponType: string;
+      ownerId: string;
+    }) => {
+      if (this.state.roomPhase !== 'playing') return;
+
+      // Sender must own the bullet — prevents cross-player kill injection
+      if (!data.ownerId || data.ownerId !== client.sessionId) return;
+      if (!data.enemyId || typeof data.enemyId !== 'string') return;
+
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+
+      // Find enemy by ID
+      let targetIndex = -1;
+      this.state.enemies.forEach((enemy, index) => {
+        if (enemy.id === data.enemyId) targetIndex = index;
+      });
+      if (targetIndex < 0) return;
+
+      const enemy = this.state.enemies[targetIndex];
+      if (!enemy.alive) return;
+
+      // Apply full damage formula (mirrors server-side bullet-enemy loop)
+      const weaponType = typeof data.weaponType === 'string' ? data.weaponType : 'standard';
+      const weaponCfg = WEAPON_CONFIGS[weaponType] ?? WEAPON_CONFIGS.standard;
+      const levelIdx = Math.min(player.playerLevel, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+      const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+      const buffDamageMult = this.calculateBuffDamageMult(player);
+      const finalDamage = weaponCfg.damage * levelDamageMult * buffDamageMult;
+      enemy.health -= finalDamage;
+
+      this.logger.log(`[GameRoom] bullet_hit: ${weaponType} dealt ${finalDamage.toFixed(1)} to ${enemy.type} (hp=${enemy.health.toFixed(1)})`);
+
+      if (enemy.health <= 0) {
+        enemy.alive = false;
+        this.enemyAI.delete(enemy.id);
+        this.state.enemies.splice(targetIndex, 1);
+
+        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
+        player.playerKills++;
+        player.enemyKills++;
+        const newLevel = this.getPlayerLevel(player.playerKills);
+        if (newLevel > player.playerLevel) {
+          player.playerLevel = newLevel;
+          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+        }
+        this.trackDDAKill(client.sessionId);
+
+        if (Math.random() < WEAPON_DROP_CHANCE) {
+          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+      }
+    });
+
     // Initialize session metrics log file
     try {
       const sessionDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
@@ -3307,6 +3371,13 @@ export class GameRoom extends Room<GameState> {
     // s44f-04: Track gravity gun hit positions to apply AoE pull after collision loop
     const gravityGunHits: { x: number; y: number }[] = [];
 
+    // s44r-04-02: Server-side bullet-enemy collision disabled — client is now authoritative.
+    // The client has exact world-space bullet positions (geodesic FaceWalker) and reports
+    // hits via 'bullet_hit' messages. Server UV collision was broken on non-sphere surfaces
+    // because bullet.x/y uses sphere-approx UV while enemies use actual surface UV.
+    // Set MP_SERVER_BULLET_COLLISION=1 env var to re-enable for future anti-cheat.
+    const USE_SERVER_BULLET_COLLISION = process.env.MP_SERVER_BULLET_COLLISION === '1';
+    if (USE_SERVER_BULLET_COLLISION) {
     this.state.bullets.forEach((bullet, bIndex) => {
       if (hitBullets.has(bIndex)) return; // Already consumed by an earlier enemy hit
 
@@ -3406,6 +3477,7 @@ export class GameRoom extends Room<GameState> {
         });
       }
     }
+    } // end if (USE_SERVER_BULLET_COLLISION)
 
     // PvP bullet-player collisions (only when pvpEnabled === true)
     // Player bullets deal health damage to other players.
