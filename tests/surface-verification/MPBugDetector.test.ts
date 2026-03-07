@@ -98,8 +98,8 @@ function gameRoomWorldPosToApproxUV_Torus(wx: number, wy: number, wz: number): {
   const phi = Math.atan2(wz, wx);
   const v = ((phi / (2 * Math.PI)) + 1) % 1;
   const outward = wx * Math.cos(phi) + wz * Math.sin(phi) - R;
-  // GameRoom.ts uses wy here — BUG if TorusSurface stores y = -r*sinTheta
-  const theta = Math.atan2(wy, outward);
+  // GameRoom.ts uses -wy here to match TorusSurface y = -r*sinTheta convention
+  const theta = Math.atan2(-wy, outward);
   const u = ((theta / (2 * Math.PI)) + 1) % 1;
   return { u, v };
 }
