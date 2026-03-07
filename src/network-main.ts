@@ -1459,6 +1459,10 @@ async function main() {
       'border:1px solid #444;background:#111;color:#777;transition:all 0.15s;';
     btn.onclick = () => {
       lobbyPvpMode = value;
+      // s44r-01: Default to TIME win condition when PvP/PvPvE selected so timer shows immediately
+      if (value !== '' && lobbyWinCondition === 'none') {
+        lobbyWinCondition = 'time';
+      }
       updateLobbyUI();
     };
     return btn;
@@ -1527,21 +1531,42 @@ async function main() {
   winConditionSection.appendChild(killsInput);
 
   const timeSelect = document.createElement('div');
-  timeSelect.style.cssText = 'display:none;align-items:center;gap:10px;margin-bottom:4px;';
+  timeSelect.style.cssText = 'display:none;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;';
   timeSelect.innerHTML = '<span style="font-size:12px;color:#888;flex:0 0 auto;">Time limit</span>';
-  const timeDrop = document.createElement('select');
-  timeDrop.style.cssText =
-    'padding:4px 8px;font:14px monospace;background:#001;color:#0ff;' +
-    'border:1px solid #0af;outline:none;cursor:pointer;';
-  [['2 min', 120], ['5 min', 300], ['10 min', 600], ['15 min', 900]].forEach(([label, secs]) => {
-    const opt = document.createElement('option');
-    opt.value = String(secs);
-    opt.textContent = String(label);
-    if (Number(secs) === lobbyTimeLimit) opt.selected = true;
-    timeDrop.appendChild(opt);
-  });
-  timeDrop.onchange = () => { lobbyTimeLimit = parseInt(timeDrop.value, 10); };
-  timeSelect.appendChild(timeDrop);
+  // s44r-01: Custom minutes+seconds input (replaced fixed dropdown)
+  const timeMinsInput = document.createElement('input');
+  timeMinsInput.type = 'number';
+  timeMinsInput.min = '0';
+  timeMinsInput.max = '59';
+  timeMinsInput.value = String(Math.floor(lobbyTimeLimit / 60));
+  timeMinsInput.style.cssText =
+    'width:52px;padding:4px 6px;font:14px monospace;background:#001;color:#0ff;' +
+    'border:1px solid #0af;outline:none;text-align:center;';
+  const timeMinsLabel = document.createElement('span');
+  timeMinsLabel.textContent = 'min';
+  timeMinsLabel.style.cssText = 'font-size:12px;color:#888;';
+  const timeSecsInput = document.createElement('input');
+  timeSecsInput.type = 'number';
+  timeSecsInput.min = '0';
+  timeSecsInput.max = '59';
+  timeSecsInput.value = String(lobbyTimeLimit % 60);
+  timeSecsInput.style.cssText =
+    'width:52px;padding:4px 6px;font:14px monospace;background:#001;color:#0ff;' +
+    'border:1px solid #0af;outline:none;text-align:center;';
+  const timeSecsLabel = document.createElement('span');
+  timeSecsLabel.textContent = 'sec';
+  timeSecsLabel.style.cssText = 'font-size:12px;color:#888;';
+  function updateTimeLimitFromInputs(): void {
+    const mins = Math.max(0, Math.min(59, parseInt(timeMinsInput.value, 10) || 0));
+    const secs = Math.max(0, Math.min(59, parseInt(timeSecsInput.value, 10) || 0));
+    lobbyTimeLimit = Math.max(30, mins * 60 + secs);
+  }
+  timeMinsInput.oninput = updateTimeLimitFromInputs;
+  timeSecsInput.oninput = updateTimeLimitFromInputs;
+  timeSelect.appendChild(timeMinsInput);
+  timeSelect.appendChild(timeMinsLabel);
+  timeSelect.appendChild(timeSecsInput);
+  timeSelect.appendChild(timeSecsLabel);
   winConditionSection.appendChild(timeSelect);
 
   const livesInput = document.createElement('div');

@@ -760,6 +760,14 @@ export class GameRoom extends Room<GameState> {
       this.state.livesCount = Math.max(1, Math.min(20, data.livesCount ?? 3));
       this.logger.log(`[GameRoom] Host starting with options: pvpMode=${this.state.pvpMode} winCondition=${this.state.winCondition} killTarget=${this.state.killTarget} timeLimit=${this.state.timeLimit} livesCount=${this.state.livesCount}`);
       this.startGame();
+      // s44r-01: startGame() → syncSettingsToState() overwrites state.timeLimit back to
+      // currentSettings.timeLimit (default=0) and never sets timeLimitSeconds/timeRemaining.
+      // Re-apply after startGame() so the client timer and server countdown both work.
+      if (this.state.winCondition === 'time') {
+        const timeLimit = Math.max(30, Math.min(3600, data.timeLimit ?? 300));
+        this.state.timeLimitSeconds = timeLimit;
+        this.state.timeRemaining = timeLimit;
+      }
     });
 
     this.onMessage('vote', (client, data: { choice: string }) => {
