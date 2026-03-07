@@ -1708,8 +1708,6 @@ export class GameRoom extends Room<GameState> {
    */
   private _mobiusWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {
     const scaleFactor = this.state.mapSizeScaleFactor ?? 1;
-    const R = MOBIUS_MAJOR_R * scaleFactor;
-    const w = MOBIUS_STRIP_W * scaleFactor;
 
     // Un-scale to local parametric space
     const px = wx / scaleFactor;
