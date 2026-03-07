@@ -115,7 +115,7 @@ import {
 } from './rendering/SharedGameSetup';
 import { initI18n } from './i18n';
 import { showGameLoading, hideGameLoading } from './ui/GameLoadingOverlay';
-import { createPortalPair } from './entities/Portal';
+// Portal import removed — portals are PvP-only and belong in network-main.ts
 
 // ---------------------------------------------------------------------------
 // URL Parameters
@@ -1075,14 +1075,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const pickupSpawner = new PickupSpawner(game.scene, mapSizeScaleFactor);
 
   // -- Portals (teleportation rings) --
-  // Color: bitwise inverse of grid color for visual contrast against the surface theme.
-  const gridColorHex = (surfaceConfig as any).gridColor ?? 0x2a2aaa;
-  const inverseColorHex = (~gridColorHex) & 0xffffff;
-  const portalColor = new THREE.Color(inverseColorHex);
-  const [portalA, portalB] = createPortalPair(portalColor, 0.3);
-  game.scene.add(portalA.mesh);
-  game.scene.add(portalB.mesh);
-  const portals = [portalA, portalB];
+  // Portals are a PvP/PvPvE-only feature. Single-player mode does NOT spawn portals.
+  // Portal creation is handled in network-main.ts for LAN multiplayer sessions.
+  const portals: never[] = [];
 
   // -- Enemy colors for particle effects (also in CollisionSystem, duplicated here for non-collision deaths like bombs/weapons) --
   const ENEMY_COLORS: Record<string, THREE.Color> = {
