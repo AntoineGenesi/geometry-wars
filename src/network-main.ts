@@ -1393,6 +1393,27 @@ async function main() {
     'color:#ff0;font:16px monospace;text-shadow:0 0 8px #ff0;z-index:100;';
   document.body.appendChild(weaponEl);
 
+  // ---- Game mode indicator (shown during gameplay) ----
+  const modeIndicatorEl = document.createElement('div');
+  modeIndicatorEl.id = 'game-mode-indicator';
+  modeIndicatorEl.style.cssText =
+    'position:fixed;top:50px;left:10px;' +
+    `color:#ff8;font:${mobile ? '12px' : '14px'} monospace;` +
+    'text-shadow:0 0 8px #ff8;z-index:100;' +
+    'background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:4px;' +
+    'border:1px solid rgba(255,255,136,0.3);display:none;' +
+    'letter-spacing:1px;';
+  document.body.appendChild(modeIndicatorEl);
+
+  /** Update the mode indicator with the current game mode. */
+  function updateModeIndicator(mode: string, isPvpEnabled: boolean): void {
+    let modeLabel = mode.toUpperCase();
+    if (isPvpEnabled) {
+      modeLabel = mode === 'pvpve' ? 'PvPvE MODE' : mode === 'pvp' ? 'PvP MODE' : modeLabel;
+    }
+    modeIndicatorEl.textContent = modeLabel;
+  }
+
   // ---- Game mode selector (host only, shown in lobby) ----
   const LOBBY_MODES: Array<{ id: string; label: string; icon: string }> = [
     { id: 'waves',          label: 'WAVES',          icon: '〰' },
@@ -2828,6 +2849,13 @@ async function main() {
       latestPvpEnabled = newPvpEnabled;
       nameLabels.setShowHealthBars(latestPvpEnabled);
       pvpHudContainer.style.display = latestPvpEnabled ? 'flex' : 'none';
+    }
+
+    // Update game mode indicator
+    if (state.gameMode && latestGameMode) {
+      updateModeIndicator(latestGameMode, latestPvpEnabled);
+      // Show mode indicator during gameplay
+      modeIndicatorEl.style.display = state.gameStarted ? 'block' : 'none';
     }
 
     // PvPvE leaderboard: show only in pvpve mode, update every state change
