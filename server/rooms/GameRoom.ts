@@ -4528,7 +4528,7 @@ export class GameRoom extends Room<GameState> {
     this.state.votingCountdown = VOTING_COUNTDOWN_SECS;
     this.state.voteMap.clear();
     this.state.readyMap.clear();
-    this.state.countdownPaused = false;
+    this.state.countdownPaused = true;
     // Reset settings to defaults when game ends (s44j-settings-16f: no persistence across games)
     this.currentSettings = { ...DEFAULT_GAME_SETTINGS };
     this.pendingSettings = null;
