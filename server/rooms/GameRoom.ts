@@ -1710,7 +1710,11 @@ export class GameRoom extends Room<GameState> {
       const phi = Math.atan2(wz, wx);
       const v = ((phi / (2 * Math.PI)) + 1) % 1;
       const outward = wx * Math.cos(phi) + wz * Math.sin(phi) - R;
-      const theta = Math.atan2(wy, outward);
+      // MUST negate wy: TorusSurface stores y = -r*sin(theta) (geometry.rotateX(π/2) orientation).
+      // Using +wy returns the mirror-image tube angle → bullets spawn from wrong side of tube,
+      // causing ghost kills when server UV doesn't match client-rendered position.
+      // s44p-04 fix: was Math.atan2(wy, outward), corrected to Math.atan2(-wy, outward).
+      const theta = Math.atan2(-wy, outward);
       const u = ((theta / (2 * Math.PI)) + 1) % 1;
       return { u, v };
     }
