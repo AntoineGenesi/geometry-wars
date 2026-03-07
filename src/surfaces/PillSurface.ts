@@ -217,19 +217,26 @@ export class PillSurface extends Surface {
   }
 
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
-    let theta = Math.atan2(worldPos.z, worldPos.x)
+    // Undo map-size scale so calculations use unit-space geometry dimensions.
+    // (Same fix as TorusSurface.worldToSurface — scale from group applied at render time.)
+    const scale = this.group.scale.x
+    const sx = worldPos.x / scale
+    const sy = worldPos.y / scale
+    const sz = worldPos.z / scale
+
+    let theta = Math.atan2(sz, sx)
     if (theta < 0) theta += Math.PI * 2
     const u = theta / (Math.PI * 2)
 
     const r = this.radius
     const cf = this.capFraction
 
-    if (worldPos.y < -this.halfHeight) {
+    if (sy < -this.halfHeight) {
       // Bottom hemisphere cap
       const localPos = new THREE.Vector3(
-        worldPos.x,
-        worldPos.y + this.halfHeight,
-        worldPos.z
+        sx,
+        sy + this.halfHeight,
+        sz
       )
       const phi = Math.atan2(
         Math.sqrt(localPos.x * localPos.x + localPos.z * localPos.z),
@@ -238,12 +245,12 @@ export class PillSurface extends Surface {
       // phi from PI (pole) to PI/2 (equator), localT = (PI - phi) / (PI/2)
       const localT = Math.max(0, Math.min(1, (Math.PI - phi) / (Math.PI / 2)))
       return { u, v: localT * cf }
-    } else if (worldPos.y > this.halfHeight) {
+    } else if (sy > this.halfHeight) {
       // Top hemisphere cap
       const localPos = new THREE.Vector3(
-        worldPos.x,
-        worldPos.y - this.halfHeight,
-        worldPos.z
+        sx,
+        sy - this.halfHeight,
+        sz
       )
       const phi = Math.atan2(
         Math.sqrt(localPos.x * localPos.x + localPos.z * localPos.z),
@@ -254,7 +261,7 @@ export class PillSurface extends Surface {
       return { u, v: (1 - cf) + localT * cf }
     } else {
       // Pill body
-      const localT = (worldPos.y + this.halfHeight) / this.height
+      const localT = (sy + this.halfHeight) / this.height
       const bodyRange = 1 - 2 * cf
       return { u, v: cf + Math.max(0, Math.min(1, localT)) * bodyRange }
     }

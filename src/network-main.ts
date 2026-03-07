@@ -3145,6 +3145,9 @@ async function main() {
           deadOverlay.style.display = 'none';
           // Death cam end: restore normal colors on respawn
           UIHelpers.hideDeathCamEffect();
+          // Reset vFlip state so client prediction doesn't diverge after respawn.
+          // Stale vFlip after death can cause bullets to fire in wrong direction.
+          localPlayerVFlip = false;
         }
       }
       playerAliveState.set(id, netPlayer.alive);
@@ -6129,24 +6132,43 @@ async function main() {
     // Tunnel transparency + dynamic grid opacity (same as SP's RenderLoop.ts).
     // When the surface blocks the camera-to-player view, fade the surface
     // and grid so the player remains visible inside tunnels/tubes.
+    //
+    // IMPORTANT: Only apply the blocked-ray fade for TRUE tunnel surfaces where
+    // the player is INSIDE the mesh (sphere-tunnel, cube-tunnel, torus-tunnel).
+    // For exterior surfaces (pill, peanut, torus, sphere, mobius, etc.) the
+    // camera-to-player ray will ALWAYS pass through the mesh by design, so
+    // applying the fade would make the grid permanently invisible.
     // -----------------------------------------------------------------------
     {
       const localPlayer = networkPlayers.get(localPlayerId);
       if (localPlayer) {
         const camPos = camera.position;
         const playerPos = localPlayer.mesh.position;
-        _tunnelToPlayer.copy(playerPos).sub(camPos);
-        const distToPlayer = _tunnelToPlayer.length();
-        _tunnelToPlayerDir.copy(_tunnelToPlayer).normalize();
-        _tunnelRaycaster.set(camPos, _tunnelToPlayerDir);
-        _tunnelRaycaster.far = distToPlayer;
-        const hits = _tunnelRaycaster.intersectObject(surf.mesh, false);
-        const isBlocked = hits.length > 0;
-
-        // Grid opacity: fade when blocked (matches SP behavior)
         const baseGridOpacity = (savedStyle?.gridOpacity ?? 0.10);
-        const targetGridOpacity = isBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
-        _currentGridOpacity += (targetGridOpacity - _currentGridOpacity) * Math.min(1, _gridFadeSpeed * netRenderDt);
+
+        // Only surfaces where the player is INSIDE the mesh need tunnel transparency.
+        const isTunnelSurface = lastCreatedSurfaceType === 'sphere-tunnel'
+          || lastCreatedSurfaceType === 'cube-tunnel'
+          || lastCreatedSurfaceType === 'torus-tunnel';
+
+        if (isTunnelSurface) {
+          _tunnelToPlayer.copy(playerPos).sub(camPos);
+          const distToPlayer = _tunnelToPlayer.length();
+          _tunnelToPlayerDir.copy(_tunnelToPlayer).normalize();
+          _tunnelRaycaster.set(camPos, _tunnelToPlayerDir);
+          _tunnelRaycaster.far = distToPlayer;
+          const hits = _tunnelRaycaster.intersectObject(surf.mesh, false);
+          const isBlocked = hits.length > 0;
+
+          // Grid opacity: fade when blocked (matches SP behavior)
+          const targetGridOpacity = isBlocked ? baseGridOpacity * 0.08 : baseGridOpacity;
+          _currentGridOpacity += (targetGridOpacity - _currentGridOpacity) * Math.min(1, _gridFadeSpeed * netRenderDt);
+        } else {
+          // Non-tunnel surfaces: player is on the OUTSIDE, always show grid at full opacity.
+          // Smooth transition back to full opacity in case surface type was recently changed.
+          _currentGridOpacity += (baseGridOpacity - _currentGridOpacity) * Math.min(1, _gridFadeSpeed * netRenderDt);
+        }
+
         const gridMat = surf.gridMesh?.material as THREE.LineBasicMaterial | undefined;
         if (gridMat) {
           gridMat.opacity = _currentGridOpacity;
