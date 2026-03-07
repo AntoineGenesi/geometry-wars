@@ -81,4 +81,62 @@ describe('PeanutSurface', () => {
       expect(southResult.v).toBeLessThanOrEqual(0.99)
     })
   })
+
+  describe('worldToSurface — UV roundtrip accuracy (s44o-05d regression)', () => {
+    const surface = new PeanutSurface()
+
+    /**
+     * Regression test for s44o-05d: worldToSurface was using totalDist/maxProfileR
+     * to estimate map scale, which is wrong because points off the poles have
+     * totalDist << maxProfileR. This caused V errors of 0.04-0.11 (1-2 world units).
+     * Fix: use group.scale.x like TorusSurface does.
+     *
+     * FAILS without fix: vErr = 0.04-0.11, posErr = 0.99-1.88
+     * PASSES with fix:   vErr ≈ 0-0.003, posErr ≈ 0-0.05
+     */
+    it('worldToSurface recovers accurate V from getPoint output', () => {
+      const testPoints = [
+        { u: 0.063, v: 0.583 },
+        { u: 0.25, v: 0.5 },
+        { u: 0.5, v: 0.3 },
+        { u: 0.25, v: 0.25 },
+        { u: 0.75, v: 0.75 },
+        { u: 0.0, v: 0.5 },
+        { u: 0.5, v: 0.7 },
+      ]
+
+      for (const p of testPoints) {
+        const worldPt = surface.getPoint(p.u, p.v)
+        const recovered = surface.worldToSurface(worldPt.position)
+
+        // Re-project recovered UV back to world space and check position error
+        const reWorldPt = surface.getPoint(recovered.u, recovered.v)
+        const posError = worldPt.position.distanceTo(reWorldPt.position)
+
+        // Position error should be < 0.1 world units (scan resolution artifact only)
+        // Without fix: error is 0.99-1.88 world units (wrong scale estimation bug)
+        expect(posError).toBeLessThan(0.1)
+      }
+    })
+
+    it('worldToSurface V error is < 0.01 for mid-surface points', () => {
+      // Interior points (away from poles) should have near-perfect V recovery
+      const interiorPoints = [
+        { u: 0.25, v: 0.5 },
+        { u: 0.5, v: 0.3 },
+        { u: 0.5, v: 0.7 },
+        { u: 0.75, v: 0.5 },
+      ]
+
+      for (const p of interiorPoints) {
+        const worldPt = surface.getPoint(p.u, p.v)
+        const recovered = surface.worldToSurface(worldPt.position)
+        const vError = Math.abs(recovered.v - p.v)
+
+        // Without fix: vError is 0.06-0.11
+        // With fix: vError is < 0.01 (limited by 100-step scan resolution)
+        expect(vError).toBeLessThan(0.01)
+      }
+    })
+  })
 })

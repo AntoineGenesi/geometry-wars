@@ -162,21 +162,11 @@ export class PeanutSurface extends Surface {
   worldToSurface(worldPos: THREE.Vector3): { u: number; v: number } {
     // Approximate: find the closest phi by scanning, then compute theta.
     // worldPos may be in scaled world space (e.g. EPIC map applies scale 2.0 to the
-    // surface group). Normalize by the apparent scale — compute the actual surface
-    // radius at the query point and compare against the unit profile to find phi.
-    // This gives correct UV even when the surface group is scaled.
-    const xzDist = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z)
-    const totalDist = Math.sqrt(xzDist * xzDist + worldPos.y * worldPos.y)
-
-    // Estimate the scale by comparing the query distance to the expected surface radius.
-    // We use the max profile radius (at phi=0, r = baseRadius*(1+waistDepth)) as reference.
-    const maxProfileR = this.baseRadius * (1 + this.waistDepth)
-    // Guard: if the query is very close to the origin, fallback to scale 1.
-    const estimatedScale = totalDist > 1e-3 ? totalDist / maxProfileR : 1
-
-    // Normalize the query position into local (unscaled) space for profile matching.
-    const localXZ = estimatedScale > 1e-6 ? xzDist / estimatedScale : xzDist
-    const localY  = estimatedScale > 1e-6 ? worldPos.y / estimatedScale : worldPos.y
+    // surface group). Normalize by the group scale to get local unscaled coordinates.
+    // Use group.scale.x (same approach as TorusSurface.worldToSurface).
+    const scale = this.group.scale.x
+    const localXZ = Math.sqrt(worldPos.x * worldPos.x + worldPos.z * worldPos.z) / scale
+    const localY  = worldPos.y / scale
 
     let bestPhi = 0
     let bestDist = Infinity
