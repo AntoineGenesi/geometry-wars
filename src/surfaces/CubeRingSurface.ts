@@ -153,7 +153,7 @@ export class CubeRingSurface extends Surface {
     return { r: flat + B * Math.cos(a), y: -flat + B * Math.sin(a), nr: Math.cos(a), ny: Math.sin(a) }
   }
 
-  getPoint(u: number, v: number): SurfacePoint {
+  private getPointLocal(u: number, v: number): SurfacePoint {
     const phi = u * Math.PI * 2 // Around ring
     const cosPhi = Math.cos(phi)
     const sinPhi = Math.sin(phi)
@@ -185,6 +185,12 @@ export class CubeRingSurface extends Surface {
     const tangentV = new THREE.Vector3(dr * cosPhi, dy, dr * sinPhi).normalize()
 
     return { position, normal, tangentU, tangentV }
+  }
+
+  getPoint(u: number, v: number): SurfacePoint {
+    // s44r-04-04 FIX: Apply worldRotation so entity positions are in world space,
+    // consistent with bullet positions from MeshWalker (which use mesh.matrixWorld).
+    return this.applyWorldRotation(this.getPointLocal(u, v))
   }
 
   moveOnSurface(

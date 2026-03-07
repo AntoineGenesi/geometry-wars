@@ -210,7 +210,7 @@ export class PipeSurface extends Surface {
     }
   }
 
-  getPoint(u: number, v: number): SurfacePoint {
+  private getPointLocal(u: number, v: number): SurfacePoint {
     const theta = u * Math.PI * 2
     const cosTheta = Math.cos(theta)
     const sinTheta = Math.sin(theta)
@@ -240,6 +240,12 @@ export class PipeSurface extends Surface {
     ).normalize()
 
     return { position, normal, tangentU, tangentV }
+  }
+
+  getPoint(u: number, v: number): SurfacePoint {
+    // s44r-04-04 FIX: Apply worldRotation so entity positions are in world space,
+    // consistent with bullet positions from MeshWalker (which use mesh.matrixWorld).
+    return this.applyWorldRotation(this.getPointLocal(u, v))
   }
 
   moveOnSurface(
