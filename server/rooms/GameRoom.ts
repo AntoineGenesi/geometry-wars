@@ -1691,21 +1691,19 @@ export class GameRoom extends Room<GameState> {
    */
   private _worldPosToApproxUV(wx: number, wy: number, wz: number): { u: number; v: number } {
     // Torus: use accurate parametric inversion to avoid swapped-axis ghost kills.
-    // Torus UV: u = tube angle (minor), v = ring angle (major).
-    // x = (R + r*cos(theta)) * cos(phi), y = r*sin(theta), z = (R + r*cos(theta)) * sin(phi)
-    // where theta = u*2π, phi = v*2π.
     if (this.state.surfaceType === 'torus') {
       const R = TORUS_MAJOR_R;
-      // v = ring angle (phi) from xz-plane angle
       const phi = Math.atan2(wz, wx);
       const v = ((phi / (2 * Math.PI)) + 1) % 1;
-      // Tube center lies at (R*cos(phi), 0, R*sin(phi))
-      // outward component from tube center in xz-plane = r*cos(theta)
       const outward = wx * Math.cos(phi) + wz * Math.sin(phi) - R;
-      // u = tube angle: atan2(y, outward_from_tube) / 2π
       const theta = Math.atan2(wy, outward);
       const u = ((theta / (2 * Math.PI)) + 1) % 1;
       return { u, v };
+    }
+
+    // Mobius: use accurate parametric inverse matching MobiusSurface.worldToSurface().
+    if (this.state.surfaceType === 'mobius') {
+      return this._mobiusWorldToUV(wx, wy, wz);
     }
 
     // Sphere parameterization (accurate for sphere/peanut, approximate for others).
@@ -1714,6 +1712,54 @@ export class GameRoom extends Room<GameState> {
     const v = Math.acos(Math.max(-1, Math.min(1, wy / r))) / Math.PI;
     const u = ((Math.atan2(wz, wx) / (2 * Math.PI)) + 1) % 1;
     return { u, v };
+  }
+
+  /**
+   * Accurate Mobius UV recovery from world position.
+   * Mirrors MobiusSurface.worldToSurface() on the client.
+   * scaleFactor is already baked into the world coords, so we un-scale first.
+   */
+  private _mobiusWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    const scaleFactor = this.state.mapSizeScaleFactor ?? 1;
+
+    // Un-scale to local parametric space
+    const px = wx / scaleFactor;
+    const py = wy / scaleFactor;
+    const pz = wz / scaleFactor;
+
+    // Find angle t from XY projection
+    let t = Math.atan2(py, px);
+    if (t < 0) t += Math.PI * 2;
+
+    // Center of strip at this angle (using local MOBIUS_MAJOR_R, not scaled)
+    const centerX = MOBIUS_MAJOR_R * Math.cos(t);
+    const centerY = MOBIUS_MAJOR_R * Math.sin(t);
+
+    // Vector from center line to the point
+    const toPointX = px - centerX;
+    const toPointY = py - centerY;
+    const toPointZ = pz;
+
+    // Strip direction at angle t (the half-twist tangent across width)
+    const halfT = t / 2;
+    const stripDirX = Math.cos(halfT) * Math.cos(t);
+    const stripDirY = Math.cos(halfT) * Math.sin(t);
+    const stripDirZ = Math.sin(halfT);
+    const stripDirLen = Math.sqrt(stripDirX * stripDirX + stripDirY * stripDirY + stripDirZ * stripDirZ);
+    const stripDirNX = stripDirX / stripDirLen;
+    const stripDirNY = stripDirY / stripDirLen;
+    const stripDirNZ = stripDirZ / stripDirLen;
+
+    // Project onto strip direction to get s (position across width in local coords)
+    const s = toPointX * stripDirNX + toPointY * stripDirNY + toPointZ * stripDirNZ;
+
+    const u = t / (Math.PI * 2);
+    const v = (s / MOBIUS_STRIP_W + 1) / 2;  // Map [-w, w] to [0, 1] using local strip width
+
+    return {
+      u: Math.max(0, Math.min(1, u)),
+      v: Math.max(0, Math.min(1, v)),
+    };
   }
 
   private tryShoot(player: PlayerState) {
@@ -4758,7 +4804,9 @@ export class GameRoom extends Room<GameState> {
    */
   private surfaceWrapsV(): boolean {
     const st = this.state.surfaceType;
-    return st === 'torus' || st === 'pipe' || st === 'mobius'
+    // Mobius V does NOT wrap — it is physically bounded (the strip has real edges).
+    // When U wraps on Mobius, V is INVERTED (half-twist), not wrapped as modulo.
+    return st === 'torus' || st === 'pipe'
       || st === 'cube-ring' || st === 'cube-tunnel';
   }
 

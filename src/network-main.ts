@@ -5119,10 +5119,24 @@ async function main() {
 
           // Wrap U, clamp/wrap V (matches server logic exactly).
           const wrapsInV = surfType === 'torus' || surfType === 'pipe'
-            || surfType === 'mobius' || surfType === 'cube-ring'
+            || surfType === 'cube-ring'
             || surfType === 'cube-tunnel';
           newU = ((newU % 1) + 1) % 1;
-          if (wrapsInV) {
+          if (surfType === 'mobius') {
+            // Mobius topology: U wraps [0,1), but each U-wrap inverts V (half-twist).
+            // V is physically bounded [epsilon, 1-epsilon] — NOT a modulo wrap.
+            // This matches MobiusSurface.moveOnSurface() exactly.
+            let mobiusWraps = 0;
+            let rawU = localPlayer.surfaceU + predDx;
+            while (rawU >= 1) { rawU -= 1; mobiusWraps++; }
+            while (rawU < 0) { rawU += 1; mobiusWraps++; }
+            newU = rawU;
+            if (mobiusWraps % 2 === 1) {
+              newV = 1 - newV;  // Mobius half-twist: invert V on each U-wrap
+            }
+            const mobiusEps = 0.02;
+            newV = Math.max(mobiusEps, Math.min(1 - mobiusEps, newV));
+          } else if (wrapsInV) {
             newV = ((newV % 1) + 1) % 1;
           } else if (isSphereLikePred || surfType === 'peanut') {
             // Pole traversal: reflect V through north/south pole (matches server).
@@ -5914,8 +5928,9 @@ async function main() {
         const BULLET_LERP = 0.5;
         let du = target.u - b.surfaceU;
         if (du > 0.5) du -= 1; else if (du < -0.5) du += 1;
+        // Mobius excluded: V is physically bounded on Mobius (strip has real edges), not modulo.
         const vWraps = lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pipe'
-          || lastCreatedSurfaceType === 'mobius' || lastCreatedSurfaceType === 'cube-ring'
+          || lastCreatedSurfaceType === 'cube-ring'
           || lastCreatedSurfaceType === 'cube-tunnel';
         let dv = target.v - b.surfaceV;
         if (vWraps) { if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1; }
