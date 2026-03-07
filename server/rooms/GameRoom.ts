@@ -1571,9 +1571,10 @@ export class GameRoom extends Room<GameState> {
     player.aimAngle = input.aimAngle;
 
     // Handle bomb immediately (one-shot action, not continuous)
-    if (input.bomb && player.bombs > 0) {
-      this.useBomb(player);
-    }
+    // DISABLED (s44r-02): Bombs are not allowed in multiplayer
+    // if (input.bomb && player.bombs > 0) {
+    //   this.useBomb(player);
+    // }
 
     // Boost: detect leading edge of Shift key and activate if cooldown ready.
     // Leading-edge detection prevents continuous activation while key is held.

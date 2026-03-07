@@ -75,7 +75,7 @@ export class PlayerState extends Schema {
     this.surfaceV = 0.5;
     this.aimAngle = 0;
     this.lives = 3;
-    this.bombs = 3;
+    this.bombs = 0; // Bombs disabled in MP (s44r-02)
     this.score = 0;
     this.multiplier = 1;
     this.alive = true;
