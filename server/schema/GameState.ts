@@ -338,6 +338,14 @@ export class GameState extends Schema {
   declare readyMap: MapSchema<boolean>;
   /** When true, host has paused the voting countdown */
   declare countdownPaused: boolean;
+  /** Win condition type: 'none' | 'time' | 'kills' */
+  declare winCondition: string;
+  /** Time limit in seconds for 'time' win condition (0 = no limit) */
+  declare timeLimitSeconds: number;
+  /** Remaining seconds for time-limit countdown (server-authoritative) */
+  declare timeRemaining: number;
+  /** Kill goal for 'kills' win condition (0 = no limit) */
+  declare killGoal: number;
 
   constructor() {
     super();
@@ -365,6 +373,10 @@ export class GameState extends Schema {
     this.mapSize = 'medium';
     this.readyMap = new MapSchema<boolean>();
     this.countdownPaused = false;
+    this.winCondition = 'none';
+    this.timeLimitSeconds = 0;
+    this.timeRemaining = 0;
+    this.killGoal = 0;
   }
 }
 
@@ -391,4 +403,8 @@ defineTypes(GameState, {
   mapSize: 'string',
   readyMap: { map: 'boolean' },
   countdownPaused: 'boolean',
+  winCondition: 'string',
+  timeLimitSeconds: 'number',
+  timeRemaining: 'number',
+  killGoal: 'number',
 });

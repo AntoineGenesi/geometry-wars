@@ -80,7 +80,9 @@
       "cubeTunnel": "[DE] CUBE-TUNNEL"
     },
     "modes": {
-      "waves": "[DE] WAVES"
+      "waves": "[DE] WAVES",
+      "pvp": "PvP",
+      "pvpve": "PvPvE"
     },
     "sizes": {
       "small": "[DE] SMALL",

@@ -139,6 +139,14 @@ export interface NetworkGameState {
   readyMap: Map<string, boolean>;
   /** When true, host has paused the voting countdown */
   countdownPaused: boolean;
+  /** Win condition type: 'none' | 'time' | 'kills' */
+  winCondition: string;
+  /** Time limit in seconds for 'time' win condition */
+  timeLimitSeconds: number;
+  /** Remaining seconds for time-limit countdown */
+  timeRemaining: number;
+  /** Kill goal for 'kills' win condition */
+  killGoal: number;
 }
 
 /** Input to send to server */
@@ -550,6 +558,10 @@ export class NetworkClient {
       mapSize: string;
       readyMap: Map<string, boolean>;
       countdownPaused: boolean;
+      winCondition: string;
+      timeLimitSeconds: number;
+      timeRemaining: number;
+      killGoal: number;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -585,6 +597,10 @@ export class NetworkClient {
       mapSize: s.mapSize || 'medium',
       readyMap: s.readyMap || emptyBoolMap,
       countdownPaused: s.countdownPaused ?? false,
+      winCondition: s.winCondition || 'none',
+      timeLimitSeconds: s.timeLimitSeconds ?? 0,
+      timeRemaining: s.timeRemaining ?? 0,
+      killGoal: s.killGoal ?? 0,
     };
   }
 

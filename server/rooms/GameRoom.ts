@@ -918,12 +918,19 @@ export class GameRoom extends Room<GameState> {
     const parts = choice.split(':');
     const surface = parts[0] || this.state.surfaceType;
     // Safety guard: only accept implemented modes; fall back to 'waves' for unknown modes
-    const VALID_MODES = ['waves'];
+    const VALID_MODES = ['waves', 'pvp', 'pvpve'];
     const mode = VALID_MODES.includes(parts[1]) ? parts[1] : 'waves';
     const size = parts[2] || 'medium';
+    // Win condition: parts[3] = winCondition ('none'|'time'|'kills'), parts[4] = limit value
+    const winCond = (parts[3] === 'time' || parts[3] === 'kills') ? parts[3] : 'none';
+    const limitVal = parseInt(parts[4] ?? '0', 10) || 0;
     this.state.surfaceType = surface;
     this.state.gameMode = mode;
     this.state.mapSize = size;
+    this.state.winCondition = winCond;
+    this.state.timeLimitSeconds = winCond === 'time' ? limitVal : 0;
+    this.state.timeRemaining = winCond === 'time' ? limitVal : 0;
+    this.state.killGoal = winCond === 'kills' ? limitVal : 0;
     this.startGame();
   }
 
@@ -1395,6 +1402,11 @@ export class GameRoom extends Room<GameState> {
 
     // Update server-side DDA (runs every 5s)
     this.updateDDA(dt);
+
+    // Decrement time-limit countdown
+    if (this.state.winCondition === 'time' && this.state.timeRemaining > 0) {
+      this.state.timeRemaining = Math.max(0, this.state.timeRemaining - dt);
+    }
 
     // Check game over
     this.checkGameOver();
@@ -3383,6 +3395,22 @@ export class GameRoom extends Room<GameState> {
 
     if (!anyAlive && this.state.players.size > 0) {
       this.transitionToVoting();
+      return;
+    }
+
+    // Time-limit win condition: time runs out
+    if (this.state.winCondition === 'time' && this.state.timeRemaining <= 0 && this.state.timeLimitSeconds > 0) {
+      this.transitionToVoting();
+      return;
+    }
+
+    // Kill-goal win condition: any player reaches kill goal
+    if (this.state.winCondition === 'kills' && this.state.killGoal > 0) {
+      this.state.players.forEach((player) => {
+        if (player.playerKills >= this.state.killGoal) {
+          this.transitionToVoting();
+        }
+      });
     }
   }
 

@@ -42,6 +42,8 @@ export const SURFACES = [
 
 export const MODES = [
   { id: 'waves', label: 'WAVES' },
+  { id: 'pvp', label: 'PvP' },
+  { id: 'pvpve', label: 'PvPvE' },
 ];
 
 const SIZES = [
@@ -81,6 +83,13 @@ export class VotingScreen {
   private isHost = false;
   private localPlayerId = '';
   private _langUnsub: (() => void) | null = null;
+
+  // Win condition state (for PvP / PvPvE modes)
+  private selectedWinCondition: 'none' | 'time' | 'kills' = 'none';
+  private timeLimitMinutes = 5;
+  private timeLimitSeconds = 0;
+  private killGoal = 10;
+  private winCondPanel: HTMLElement | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -252,6 +261,7 @@ export class VotingScreen {
     this.sizeButtons.clear();
     this.sizeCounts.clear();
     this.localIsReady = false;
+    this.winCondPanel = null;
 
     // ---- Layout wrapper ----
     const wrap = document.createElement('div');
@@ -302,11 +312,18 @@ export class VotingScreen {
       (id) => {
         this.selectedMode = id;
         this.modeButtons.forEach((btn, bid) => btn.classList.toggle('vs-selected', bid === id));
+        this.updateWinCondPanelVisibility();
         this.sendVote();
       },
       this.modeButtons, this.modeCounts
     );
     wrap.appendChild(modeRow);
+
+    // ---- Win Condition panel (PvP / PvPvE only) ----
+    const winCondPanel = this.buildWinCondPanel();
+    wrap.appendChild(winCondPanel);
+    this.winCondPanel = winCondPanel;
+    this.updateWinCondPanelVisibility();
 
     // ---- Size row ----
     const sizeRow = this.buildOptionRow(
@@ -460,7 +477,135 @@ export class VotingScreen {
   }
 
   private currentChoice(): string {
-    return `${this.selectedSurface}:${this.selectedMode}:${this.selectedSize}`;
+    const base = `${this.selectedSurface}:${this.selectedMode}:${this.selectedSize}`;
+    // Only append win condition for pvp/pvpve modes
+    if ((this.selectedMode === 'pvp' || this.selectedMode === 'pvpve') && this.selectedWinCondition !== 'none') {
+      const limitVal = this.selectedWinCondition === 'time'
+        ? (this.timeLimitMinutes * 60 + this.timeLimitSeconds)
+        : this.killGoal;
+      return `${base}:${this.selectedWinCondition}:${limitVal}`;
+    }
+    return base;
+  }
+
+  private updateWinCondPanelVisibility(): void {
+    if (!this.winCondPanel) return;
+    const isPvp = this.selectedMode === 'pvp' || this.selectedMode === 'pvpve';
+    this.winCondPanel.style.display = isPvp ? 'flex' : 'none';
+  }
+
+  private buildWinCondPanel(): HTMLElement {
+    const panel = document.createElement('div');
+    panel.className = 'vs-wincond-panel';
+
+    const title = document.createElement('div');
+    title.className = 'vs-wincond-title';
+    title.textContent = 'WIN CONDITION';
+    panel.appendChild(title);
+
+    // Win condition type selector row
+    const typeRow = document.createElement('div');
+    typeRow.className = 'vs-wincond-type-row';
+
+    const condTypes: Array<{ id: 'none' | 'time' | 'kills'; label: string }> = [
+      { id: 'none', label: 'NONE' },
+      { id: 'time', label: 'TIME LIMIT' },
+      { id: 'kills', label: 'KILL GOAL' },
+    ];
+
+    const condBtns = new Map<string, HTMLElement>();
+    for (const cond of condTypes) {
+      const btn = document.createElement('button');
+      btn.className = 'vs-option-btn' + (cond.id === this.selectedWinCondition ? ' vs-selected' : '');
+      btn.textContent = cond.label;
+      btn.setAttribute('data-cond', cond.id);
+      btn.addEventListener('click', () => {
+        this.selectedWinCondition = cond.id;
+        condBtns.forEach((b, bid) => b.classList.toggle('vs-selected', bid === cond.id));
+        timeInputRow.style.display = cond.id === 'time' ? 'flex' : 'none';
+        killInputRow.style.display = cond.id === 'kills' ? 'flex' : 'none';
+        this.sendVote();
+      });
+      typeRow.appendChild(btn);
+      condBtns.set(cond.id, btn);
+    }
+    panel.appendChild(typeRow);
+
+    // Time limit inputs (minutes + seconds)
+    const timeInputRow = document.createElement('div');
+    timeInputRow.className = 'vs-wincond-input-row';
+    timeInputRow.style.display = this.selectedWinCondition === 'time' ? 'flex' : 'none';
+
+    const timeLabel = document.createElement('span');
+    timeLabel.className = 'vs-wincond-input-label';
+    timeLabel.textContent = 'Duration:';
+    timeInputRow.appendChild(timeLabel);
+
+    const minInput = document.createElement('input');
+    minInput.type = 'number';
+    minInput.className = 'vs-wincond-num-input';
+    minInput.min = '0'; minInput.max = '59'; minInput.step = '1';
+    minInput.value = String(this.timeLimitMinutes);
+    minInput.title = 'Minutes';
+    const minLabel = document.createElement('span');
+    minLabel.className = 'vs-wincond-unit';
+    minLabel.textContent = 'min';
+
+    const secInput = document.createElement('input');
+    secInput.type = 'number';
+    secInput.className = 'vs-wincond-num-input';
+    secInput.min = '0'; secInput.max = '59'; secInput.step = '1';
+    secInput.value = String(this.timeLimitSeconds);
+    secInput.title = 'Seconds';
+    const secLabel = document.createElement('span');
+    secLabel.className = 'vs-wincond-unit';
+    secLabel.textContent = 'sec';
+
+    const onTimeChange = () => {
+      this.timeLimitMinutes = Math.max(0, Math.min(59, parseInt(minInput.value, 10) || 0));
+      this.timeLimitSeconds = Math.max(0, Math.min(59, parseInt(secInput.value, 10) || 0));
+      minInput.value = String(this.timeLimitMinutes);
+      secInput.value = String(this.timeLimitSeconds);
+      this.sendVote();
+    };
+    minInput.addEventListener('change', onTimeChange);
+    secInput.addEventListener('change', onTimeChange);
+
+    timeInputRow.appendChild(minInput);
+    timeInputRow.appendChild(minLabel);
+    timeInputRow.appendChild(secInput);
+    timeInputRow.appendChild(secLabel);
+    panel.appendChild(timeInputRow);
+
+    // Kill goal input
+    const killInputRow = document.createElement('div');
+    killInputRow.className = 'vs-wincond-input-row';
+    killInputRow.style.display = this.selectedWinCondition === 'kills' ? 'flex' : 'none';
+
+    const killLabel = document.createElement('span');
+    killLabel.className = 'vs-wincond-input-label';
+    killLabel.textContent = 'Kill goal:';
+    killInputRow.appendChild(killLabel);
+
+    const killInput = document.createElement('input');
+    killInput.type = 'number';
+    killInput.className = 'vs-wincond-num-input';
+    killInput.min = '1'; killInput.max = '999'; killInput.step = '1';
+    killInput.value = String(this.killGoal);
+    killInput.addEventListener('change', () => {
+      this.killGoal = Math.max(1, Math.min(999, parseInt(killInput.value, 10) || 10));
+      killInput.value = String(this.killGoal);
+      this.sendVote();
+    });
+    const killsLabel = document.createElement('span');
+    killsLabel.className = 'vs-wincond-unit';
+    killsLabel.textContent = 'kills';
+
+    killInputRow.appendChild(killInput);
+    killInputRow.appendChild(killsLabel);
+    panel.appendChild(killInputRow);
+
+    return panel;
   }
 
   private sendVote(): void {
@@ -847,6 +992,68 @@ export class VotingScreen {
         border-color: #ffaa00;
         color: #ffcc44;
         box-shadow: 0 0 16px rgba(255, 170, 0, 0.5);
+      }
+
+      /* ---- Win Condition panel ---- */
+      #voting-screen .vs-wincond-panel {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        background: rgba(0, 20, 40, 0.7);
+        border: 1px solid #00aaff44;
+        border-radius: 6px;
+        padding: 12px 20px;
+        margin: 4px 0 8px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      #voting-screen .vs-wincond-title {
+        color: #88ccff;
+        font-size: 11px;
+        font-weight: bold;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+      #voting-screen .vs-wincond-type-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      #voting-screen .vs-wincond-input-row {
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin-top: 4px;
+      }
+      #voting-screen .vs-wincond-input-label {
+        color: #aaa;
+        font-size: 13px;
+        letter-spacing: 1px;
+      }
+      #voting-screen .vs-wincond-num-input {
+        background: rgba(0, 30, 60, 0.9);
+        border: 1px solid #0066aa;
+        color: #00ccff;
+        font-family: inherit;
+        font-size: 15px;
+        font-weight: bold;
+        width: 60px;
+        padding: 6px 8px;
+        text-align: center;
+        border-radius: 4px;
+        outline: none;
+      }
+      #voting-screen .vs-wincond-num-input:focus {
+        border-color: #00aaff;
+        box-shadow: 0 0 8px rgba(0, 170, 255, 0.4);
+      }
+      #voting-screen .vs-wincond-unit {
+        color: #aaa;
+        font-size: 12px;
+        letter-spacing: 1px;
       }
     `;
     document.head.appendChild(style);
