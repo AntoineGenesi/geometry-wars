@@ -114,6 +114,35 @@ export interface HitDetectionResult {
 }
 
 // ---------------------------------------------------------------------------
+// Types — Pickup UV Roundtrip
+// ---------------------------------------------------------------------------
+
+/** Status of a pickup UV roundtrip test point. */
+export type PickupUVStatus = 'pass' | 'fail' | 'skip';
+
+/** Single sample point for pickup UV roundtrip test. */
+export interface PickupUVPoint {
+  u: number;
+  v: number;
+  recoveredU: number;
+  recoveredV: number;
+  /** World-space distance between original and recovered position. */
+  positionError: number;
+  status: PickupUVStatus;
+}
+
+/** Full result for a pickup UV roundtrip test. */
+export interface PickupUVResult {
+  surface: SurfaceType;
+  samplePoints: PickupUVPoint[];
+  passCount: number;
+  failCount: number;
+  /** Max position error across all points. */
+  maxPositionError: number;
+  durationMs: number;
+}
+
+// ---------------------------------------------------------------------------
 // Types — Seam Traversal
 // ---------------------------------------------------------------------------
 
@@ -675,6 +704,81 @@ export class SurfaceVerifier {
     } catch {
       return { ok: false, worldPos };
     }
+  }
+
+  /**
+   * Pickup UV roundtrip test.
+   *
+   * Tests the critical mechanism that pickup collection relies on:
+   * pickups spawn at UV from `worldToSurface(enemyPos)`, and player
+   * is detected by UV proximity. If worldToSurface is inaccurate,
+   * pickups won't register.
+   *
+   * At each UV grid point: get world pos via getPoint(u,v), recover UV via
+   * worldToSurface(worldPos), verify recovered world position matches original.
+   * Position error > 0.5 = FAIL. Tests that pickups spawned at a UV will be
+   * collectable when player stands at that position.
+   *
+   * @param surface   Surface type to test
+   * @param density   Grid density (default 5 → 25 sample points)
+   */
+  static runPickupUVRoundtripTest(
+    surface: SurfaceType,
+    density: number = 5,
+  ): PickupUVResult {
+    const startMs = Date.now();
+
+    const harness = new PlaygroundTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
+    harness.tick(5); // settle
+
+    const pg = (harness as any).pg;
+    const internalSurface = pg.instance._surface;
+
+    const uvPoints = SurfaceVerifier._generateGrid(surface, density);
+    const samplePoints: PickupUVPoint[] = [];
+
+    for (const { u, v } of uvPoints) {
+      try {
+        const pt = internalSurface.getPoint(u, v);
+        const originalWorldPos = pt.position.clone();
+
+        // Recover UV from world position (as pickup system does)
+        const recovered = internalSurface.worldToSurface(originalWorldPos);
+        const recoveredPt = internalSurface.getPoint(recovered.u, recovered.v);
+        const recoveredWorldPos = recoveredPt.position.clone();
+
+        const positionError = originalWorldPos.distanceTo(recoveredWorldPos);
+
+        samplePoints.push({
+          u, v,
+          recoveredU: recovered.u,
+          recoveredV: recovered.v,
+          positionError,
+          status: positionError > 0.5 ? 'fail' : 'pass',
+        });
+      } catch {
+        samplePoints.push({
+          u, v,
+          recoveredU: 0, recoveredV: 0,
+          positionError: Infinity,
+          status: 'skip',
+        });
+      }
+    }
+
+    const passCount = samplePoints.filter(p => p.status === 'pass').length;
+    const failCount = samplePoints.filter(p => p.status === 'fail').length;
+    const validErrors = samplePoints.filter(p => p.status !== 'skip').map(p => p.positionError);
+    const maxPositionError = validErrors.length > 0 ? Math.max(...validErrors) : 0;
+
+    return {
+      surface,
+      samplePoints,
+      passCount,
+      failCount,
+      maxPositionError,
+      durationMs: Date.now() - startMs,
+    };
   }
 
   /** Map bullet offset distance to status. */

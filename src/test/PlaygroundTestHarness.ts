@@ -229,6 +229,8 @@ export interface HarnessOptions {
   height?: number;
   seed?: number;
   enemyCount?: number;
+  /** Surface scale (radius/size). Default: 10. Use MapSize scale factors: SMALL=7.5, MEDIUM=10, LARGE=15, EPIC=20. */
+  surfaceScale?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +299,8 @@ export class PlaygroundTestHarness {
     let enemyCount: number;
     let seed: number | null = null;
 
+    let surfaceScale: number | undefined;
+
     if (typeof surfaceOrOptions === 'object' && surfaceOrOptions !== null) {
       const opts = surfaceOrOptions;
       surface = opts.surface ?? 'sphere';
@@ -305,6 +309,7 @@ export class PlaygroundTestHarness {
       height = height ?? opts.height ?? DEFAULT_HEIGHT;
       seed = opts.seed ?? null;
       enemyCount = opts.enemyCount ?? 0;
+      surfaceScale = opts.surfaceScale;
     } else {
       surface = (surfaceOrOptions as SurfaceType) ?? 'sphere';
       weapon = weapon ?? null;
@@ -332,6 +337,7 @@ export class PlaygroundTestHarness {
       weapon,
       enemyCount,
       lives: 99,
+      surfaceScale,
     });
 
     this.patchInputManager();
