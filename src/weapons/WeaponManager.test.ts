@@ -272,6 +272,28 @@ describe('WeaponManager', () => {
       expect(mock.bullets[1].direction.dot(forward())).toBeGreaterThan(0.99);
     });
 
+    it('should reduce barrel offset near pill/capsule surface poles', () => {
+      const T0 = 0;
+      const T1 = 0.11; // past blaster cooldown (0.1s)
+
+      // Body position: normal horizontal (pill cylindrical body)
+      const bodyNormal = new THREE.Vector3(1, 0, 0);
+      manager.fire(new THREE.Vector3(0, 0, 4), new THREE.Vector3(0, 0, 1), T0, bodyNormal);
+      expect(mock.bullets.length).toBe(2);
+      const bodyDiff = mock.bullets[0].origin.distanceTo(mock.bullets[1].origin);
+
+      // Pole position: normal pointing straight up (Y axis = pill top pole)
+      const poleNormal = new THREE.Vector3(0, 1, 0);
+      manager.fire(new THREE.Vector3(0, 4, 0), new THREE.Vector3(1, 0, 0), T1, poleNormal);
+      expect(mock.bullets.length).toBe(4);
+      const poleDiff = mock.bullets[2].origin.distanceTo(mock.bullets[3].origin);
+
+      // At body: barrels should be clearly separated (full 0.3 world units apart)
+      expect(bodyDiff).toBeGreaterThan(0.2);
+      // At pole: barrels should converge — metric factor collapses to ~0 near pole
+      expect(poleDiff).toBeLessThan(0.05);
+    });
+
     it('should have unlimited ammo', () => {
       for (let t = 0; t < 100; t++) {
         manager.fire(origin(), forward(), T + t);
