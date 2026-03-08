@@ -576,6 +576,8 @@ async function main() {
       if (enemy.mesh) scene.remove(enemy.mesh);
       // Remove auxiliary scene objects (e.g. Snake.segmentRoot, Painter.trailRoot)
       for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
+      // Mark inactive so activeCount stays accurate when enemySpawner is reused
+      enemy.active = false;
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
@@ -2814,6 +2816,8 @@ async function main() {
       if (enemy.mesh) scene.remove(enemy.mesh);
       // Remove auxiliary scene objects (e.g. Snake.segmentRoot, Painter.trailRoot)
       for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
+      // Mark inactive so EnemySpawner.activeCount stays accurate (s44r2-05)
+      enemy.active = false;
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
@@ -3636,6 +3640,10 @@ async function main() {
         // These are added to the scene by EnemySpawner but not children of enemy.mesh,
         // so they must be removed explicitly to prevent ghost entities.
         for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
+        // Mark inactive so EnemySpawner.activeCount is accurate — without this, dead
+        // enemies accumulate in enemySpawner.enemies[], hitting the 400-cap and causing
+        // all new spawns to return a dummy inactive Wanderer (invisible enemies).
+        enemy.active = false;
         networkEnemies.delete(id);
         enemyTargetUV.delete(id);
         enemyPrevHealth.delete(id);
@@ -6104,7 +6112,7 @@ async function main() {
       const target = enemyTargetUV.get(id);
       if (!target) return;
 
-      // s44r2-03 FIX: Wrap-aware UV lerp — takes the SHORTEST path across UV seams.
+      // s44r2-03 + s44r2-05: Wrap-aware UV lerp — takes the SHORTEST path across UV seams.
       // Without this, enemies crossing the U=0/1 seam (or V=0/1 on torus) rubber-band
       // across the entire surface: lerp goes 0.96 UV units backward instead of 0.04 forward.
       // U always wraps [0,1]. V wraps only on torus/torus-tunnel (surf.wrapsV=true).

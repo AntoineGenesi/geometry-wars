@@ -4,6 +4,30 @@
 >
 > **Last updated:** 2026-03-08
 
+## s44r2-05: Enemy Sync Broken — Selective Missing on Some Maps (Torus)
+
+**Status:** Changes made — LAN multiplayer human testing required.
+
+**What was fixed:**
+1. **PRIMARY (invisible enemies over time):** `enemy.active` was never set to `false` when enemies died in network-main.ts. Dead enemies accumulated in `EnemySpawner.enemies[]` with `active=true`, gradually hitting the 400-cap and causing all new spawns to return a dummy invisible Wanderer.
+2. **VISUAL:** Enemy UV lerp was not wrap-aware on torus — enemies crossing the seam rubber-banded.
+3. **SPAWN:** Server was clamping V to [0.05, 0.95] even on torus where V wraps fully.
+
+**Test in MP LAN session (2 players):**
+
+Torus map:
+- [ ] Both players see enemies on the torus surface
+- [ ] Enemies appear on BOTH screens (not just host)
+- [ ] Enemies don't disappear after a few waves
+- [ ] Enemy count stays consistent across many waves (doesn't drop to 0)
+- [ ] No obvious rubber-banding when enemies cross the 0/1 UV seam on torus
+
+Other maps:
+- [ ] Enemies appear normally on sphere, peanut, pill (regression check)
+- [ ] Enemies visible on BOTH screens
+
+---
+
 ## s44q-04: ALL Surfaces MP — Player Inside Surface Fix (Server-Client Geometry Parity)
 
 **Status:** Changes made — LAN multiplayer human testing required (Level 5 max achievable by Claude).
