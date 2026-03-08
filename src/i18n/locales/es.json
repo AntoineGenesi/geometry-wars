@@ -112,6 +112,49 @@
       "sphereTunnel": "Túnel Esférico",
       "cubeRing": "Anillo de Cubo",
       "cubeTunnel": "Túnel de Cubo"
+    },
+    "buttons": {
+      "adventure": "AVENTURA",
+      "quickGame": "JUEGO RÁPIDO",
+      "lan": "LAN",
+      "online": "EN LÍNEA",
+      "back": "ATRÁS",
+      "start": "COMENZAR",
+      "hostGame": "CREAR PARTIDA",
+      "startHosting": "INICIAR ALOJAMIENTO",
+      "enterGame": "ENTRAR AL JUEGO",
+      "stopServer": "DETENER SERVIDOR",
+      "refresh": "ACTUALIZAR",
+      "connect": "CONECTAR",
+      "join": "UNIRSE",
+      "loadCustom": "CARGAR PERSONALIZADO",
+      "weaponMastery": "MAESTRÍA DE ARMAS",
+      "weaponDatabase": "BASE DE DATOS DE ARMAS",
+      "visualStyles": "ESTILOS VISUALES"
+    },
+    "headings": {
+      "adventureLevels": "NIVELES DE AVENTURA",
+      "lanGame": "PARTIDA LAN",
+      "selectMap": "SELECCIONAR MAPA",
+      "mapSize": "TAMAÑO DEL MAPA",
+      "availableGames": "PARTIDAS DISPONIBLES",
+      "manualConnect": "CONEXIÓN MANUAL",
+      "selectGameMode": "SELECCIONAR MODO DE JUEGO",
+      "selectSurface": "SELECCIONAR SUPERFICIE",
+      "enterYourName": "INGRESA TU NOMBRE"
+    },
+    "misc": {
+      "scanningForGames": "Escaneando partidas...",
+      "startingServer": "Iniciando servidor...",
+      "loadingMesh": "Cargando malla...",
+      "controlsHint": "WASD - Movimiento | Ratón - Apuntar | Clic - Disparar | Espacio - Bomba | M - Silenciar",
+      "autoRefreshOn": "ACTUALIZACIÓN AUTO: ACTIVADA",
+      "autoRefreshOff": "ACTUALIZACIÓN AUTO: DESACTIVADA",
+      "idleShutdownDelay": "Retraso de apagado automático",
+      "idleShutdownSec": "seg",
+      "idleShutdownHint": "El servidor se cierra automáticamente cuando todos se van (0 = nunca)",
+      "hostIpPlaceholder": "IP del anfitrión (ej. 192.168.1.15)",
+      "namePlaceholder": "Ingresa tu nombre..."
     }
   },
   "languages": {
@@ -120,7 +163,8 @@
     "es": "Español",
     "fr": "Français",
     "de": "Deutsch",
-    "ru": "Русский"
+    "ru": "Русский",
+    "ar": "العربية"
   },
   "pauseMenu": {
     "title": "PAUSADO",

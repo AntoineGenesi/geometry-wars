@@ -112,6 +112,49 @@
       "sphereTunnel": "Kugeltunnel",
       "cubeRing": "Würfelring",
       "cubeTunnel": "Würfeltunnel"
+    },
+    "buttons": {
+      "adventure": "ABENTEUER",
+      "quickGame": "SCHNELLSPIEL",
+      "lan": "LAN",
+      "online": "ONLINE",
+      "back": "ZURÜCK",
+      "start": "START",
+      "hostGame": "SPIEL ERSTELLEN",
+      "startHosting": "HOSTING STARTEN",
+      "enterGame": "SPIEL BETRETEN",
+      "stopServer": "SERVER STOPPEN",
+      "refresh": "AKTUALISIEREN",
+      "connect": "VERBINDEN",
+      "join": "BEITRETEN",
+      "loadCustom": "BENUTZERDEFINIERT LADEN",
+      "weaponMastery": "WAFFENMEISTERSCHAFT",
+      "weaponDatabase": "WAFFENDATENBANK",
+      "visualStyles": "VISUELLE STILE"
+    },
+    "headings": {
+      "adventureLevels": "ABENTEUERSTUFEN",
+      "lanGame": "LAN-SPIEL",
+      "selectMap": "KARTE AUSWÄHLEN",
+      "mapSize": "KARTENGRÖSSE",
+      "availableGames": "VERFÜGBARE SPIELE",
+      "manualConnect": "MANUELLE VERBINDUNG",
+      "selectGameMode": "SPIELMODUS AUSWÄHLEN",
+      "selectSurface": "OBERFLÄCHE AUSWÄHLEN",
+      "enterYourName": "GEBEN SIE IHREN NAMEN EIN"
+    },
+    "misc": {
+      "scanningForGames": "Nach Spielen wird gesucht...",
+      "startingServer": "Server wird gestartet...",
+      "loadingMesh": "Netz wird geladen...",
+      "controlsHint": "WASD - Bewegung | Maus - Zielen | Klick - Schiessen | Leertaste - Bombe | M - Stumm",
+      "autoRefreshOn": "AUTOMATISCHES AKTUALISIEREN: AN",
+      "autoRefreshOff": "AUTOMATISCHES AKTUALISIEREN: AUS",
+      "idleShutdownDelay": "Verzögerung beim automatischen Herunterfahren",
+      "idleShutdownSec": "Sek",
+      "idleShutdownHint": "Der Server wird automatisch geschlossen, wenn alle Spieler gehen (0 = nie)",
+      "hostIpPlaceholder": "Host-IP (z.B. 192.168.1.15)",
+      "namePlaceholder": "Geben Sie Ihren Namen ein..."
     }
   },
   "languages": {
@@ -120,7 +163,8 @@
     "es": "Español",
     "fr": "Français",
     "de": "Deutsch",
-    "ru": "Русский"
+    "ru": "Русский",
+    "ar": "العربية"
   },
   "pauseMenu": {
     "title": "PAUSE",

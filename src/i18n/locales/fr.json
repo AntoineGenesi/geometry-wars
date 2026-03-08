@@ -112,6 +112,49 @@
       "sphereTunnel": "Tunnel Sphérique",
       "cubeRing": "Anneau de Cube",
       "cubeTunnel": "Tunnel de Cube"
+    },
+    "buttons": {
+      "adventure": "AVENTURE",
+      "quickGame": "JEU RAPIDE",
+      "lan": "LAN",
+      "online": "EN LIGNE",
+      "back": "RETOUR",
+      "start": "COMMENCER",
+      "hostGame": "CRÉER UNE PARTIE",
+      "startHosting": "DÉMARRER L'HÉBERGEMENT",
+      "enterGame": "ENTRER DANS LE JEU",
+      "stopServer": "ARRÊTER LE SERVEUR",
+      "refresh": "ACTUALISER",
+      "connect": "CONNECTER",
+      "join": "REJOINDRE",
+      "loadCustom": "CHARGER PERSONNALISÉ",
+      "weaponMastery": "MAÎTRISE DES ARMES",
+      "weaponDatabase": "BASE DE DONNÉES DES ARMES",
+      "visualStyles": "STYLES VISUELS"
+    },
+    "headings": {
+      "adventureLevels": "NIVEAUX D'AVENTURE",
+      "lanGame": "PARTIE LAN",
+      "selectMap": "SÉLECTIONNER LA CARTE",
+      "mapSize": "TAILLE DE LA CARTE",
+      "availableGames": "PARTIES DISPONIBLES",
+      "manualConnect": "CONNEXION MANUELLE",
+      "selectGameMode": "SÉLECTIONNER LE MODE DE JEU",
+      "selectSurface": "SÉLECTIONNER LA SURFACE",
+      "enterYourName": "ENTREZ VOTRE NOM"
+    },
+    "misc": {
+      "scanningForGames": "Recherche de parties...",
+      "startingServer": "Démarrage du serveur...",
+      "loadingMesh": "Chargement du maillage...",
+      "controlsHint": "ZQSD - Mouvement | Souris - Visée | Clic - Tir | Espace - Bombe | M - Muet",
+      "autoRefreshOn": "ACTUALISATION AUTO : ACTIVÉE",
+      "autoRefreshOff": "ACTUALISATION AUTO : DÉSACTIVÉE",
+      "idleShutdownDelay": "Délai d'arrêt automatique",
+      "idleShutdownSec": "sec",
+      "idleShutdownHint": "Le serveur se ferme automatiquement quand tous les joueurs partent (0 = jamais)",
+      "hostIpPlaceholder": "IP de l'hôte (ex. 192.168.1.15)",
+      "namePlaceholder": "Entrez votre nom..."
     }
   },
   "languages": {
@@ -120,7 +163,8 @@
     "es": "Español",
     "fr": "Français",
     "de": "Deutsch",
-    "ru": "Русский"
+    "ru": "Русский",
+    "ar": "العربية"
   },
   "pauseMenu": {
     "title": "PAUSE",
