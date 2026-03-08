@@ -703,6 +703,12 @@ export class GameRoom extends Room<GameState> {
   private _portalCooldowns: Map<string, number> = new Map();
   /** Portal trigger radius squared (world units). */
   private static readonly PORTAL_RADIUS_SQ = 1.5 * 1.5;
+  /** True once any player has dropped to ≤50% health this game (one-shot trigger). */
+  private _portalsTriggeredThisGame = false;
+  /** Timer handle for scheduled portal despawn. */
+  private _portalDespawnTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Timer handle for scheduled portal respawn after despawn. */
+  private _portalRespawnTimer: ReturnType<typeof setTimeout> | null = null;
 
   onCreate(options: { surfaceType?: string; mapSize?: string; pvpEnabled?: boolean }) {
     this.setState(new GameState());
@@ -1581,41 +1587,13 @@ export class GameRoom extends Room<GameState> {
     this.claustroZoneCenterZ = claustroCenter.z;
     this.claustroWorldRadiusBase = bsRadius * 2.0; // at UV radius 0.5 → 2x bsRadius → covers entire surface
 
-    // ── Portals: spawn for PvP / PvPvE modes ─────────────────────────────────
+    // ── Portals: deferred — spawn on first half-health event (PvP / PvPvE) ──
+    this._clearPortalTimers();
     this._portalCooldowns.clear();
-    const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
-    if (isPvpOrPvpve) {
-      const margin = 0.12;
-      const minSep = 0.30; // minimum UV-space separation (seam-safe)
-      const uA = margin + Math.random() * (1 - 2 * margin);
-      const vA = margin + Math.random() * (1 - 2 * margin);
-      let uB = uA;
-      let vB = vA;
-      let attempts = 0;
-      do {
-        uB = margin + Math.random() * (1 - 2 * margin);
-        vB = margin + Math.random() * (1 - 2 * margin);
-        const du = Math.min(Math.abs(uB - uA), 1 - Math.abs(uB - uA));
-        const dv = Math.min(Math.abs(vB - vA), 1 - Math.abs(vB - vA));
-        if (Math.sqrt(du * du + dv * dv) >= minSep) break;
-      } while (++attempts < 100);
-
-      this.state.portalAU = uA;
-      this.state.portalAV = vA;
-      this.state.portalBU = uB;
-      this.state.portalBV = vB;
-      this.state.portalsActive = true;
-
-      // Compute accurate world-space positions for server-side collision detection.
-      // surfaceManager.initSurface() was called above so geometry is ready.
-      this._portalAWorld = this.surfaceManager.getWorldPosForUV(uA, vA);
-      this._portalBWorld = this.surfaceManager.getWorldPosForUV(uB, vB);
-      this.logger.log(`[Portals] Spawned: A=(${uA.toFixed(3)},${vA.toFixed(3)}) B=(${uB.toFixed(3)},${vB.toFixed(3)})`);
-    } else {
-      this.state.portalsActive = false;
-      this._portalAWorld = null;
-      this._portalBWorld = null;
-    }
+    this._portalsTriggeredThisGame = false;
+    this.state.portalsActive = false;
+    this._portalAWorld = null;
+    this._portalBWorld = null;
 
     // Apply currentSettings to room and internal state before resetting players.
     // pendingSettings are consumed here if a mid-game apply was queued.
@@ -3765,6 +3743,11 @@ export class GameRoom extends Room<GameState> {
               owner.totalDamageDealt += actualDamage;
             }
 
+            // Portal half-health trigger: spawn portals when a player first drops to ≤50% HP
+            if (target.health > 0) {
+              this._checkHalfHealthPortalTrigger(target);
+            }
+
             // Broadcast PvP hit for client-side damage numbers (s44r2-07)
             // Fires on every hit (including lethal) so the client always sees the number.
             this.broadcast('pvp_hit', {
@@ -4872,6 +4855,107 @@ export class GameRoom extends Room<GameState> {
   }
 
   /**
+   * Called after each PvP damage event. Fires the one-shot portal trigger when any
+   * player first drops to ≤50% health, then starts the despawn/respawn cycle.
+   */
+  private _checkHalfHealthPortalTrigger(
+    player: { health: number; maxHealth: number; surfaceU: number; surfaceV: number; name: string },
+  ): void {
+    const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    if (!isPvpOrPvpve) return;
+    if (this._portalsTriggeredThisGame) return;
+    if (player.health > player.maxHealth * 0.5) return;
+
+    this._portalsTriggeredThisGame = true;
+    this.logger.log(`[Portals] Half-health trigger: ${player.name} at ${player.health}/${player.maxHealth} — spawning portals`);
+    this._spawnPortals(player.surfaceU, player.surfaceV);
+    this._schedulePortalCycle();
+  }
+
+  /**
+   * Spawn a portal pair. Portal A lands near the given UV (if provided), portal B far away.
+   * Positions are broadcast via portalsActive + portalAU/V/BU/V state fields.
+   */
+  private _spawnPortals(nearU?: number, nearV?: number): void {
+    const margin = 0.12;
+    let uA: number, vA: number;
+
+    if (nearU !== undefined && nearV !== undefined) {
+      // Place portal A near the damaged player (±0.15 UV jitter, clamped inside margins)
+      const jitter = 0.15;
+      uA = Math.max(margin, Math.min(1 - margin, nearU + (Math.random() - 0.5) * jitter * 2));
+      vA = Math.max(margin, Math.min(1 - margin, nearV + (Math.random() - 0.5) * jitter * 2));
+    } else {
+      uA = margin + Math.random() * (1 - 2 * margin);
+      vA = margin + Math.random() * (1 - 2 * margin);
+    }
+
+    // Portal B: require minimum UV-space separation of 0.35 (placed far from A)
+    const minSep = 0.35;
+    let uB = uA;
+    let vB = vA;
+    let attempts = 0;
+    do {
+      uB = margin + Math.random() * (1 - 2 * margin);
+      vB = margin + Math.random() * (1 - 2 * margin);
+      const du = Math.min(Math.abs(uB - uA), 1 - Math.abs(uB - uA));
+      const dv = Math.min(Math.abs(vB - vA), 1 - Math.abs(vB - vA));
+      if (Math.sqrt(du * du + dv * dv) >= minSep) break;
+    } while (++attempts < 100);
+
+    this.state.portalAU = uA;
+    this.state.portalAV = vA;
+    this.state.portalBU = uB;
+    this.state.portalBV = vB;
+    this.state.portalsActive = true;
+    this._portalAWorld = this.surfaceManager.getWorldPosForUV(uA, vA);
+    this._portalBWorld = this.surfaceManager.getWorldPosForUV(uB, vB);
+    this.logger.log(`[Portals] Spawned: A=(${uA.toFixed(3)},${vA.toFixed(3)}) B=(${uB.toFixed(3)},${vB.toFixed(3)})`);
+  }
+
+  /**
+   * Schedule the portal despawn after a random 15-60s window, then respawn 10-15s later.
+   * Runs indefinitely until the game ends (timers are cleared in transitionToVoting / startGame).
+   */
+  private _schedulePortalCycle(): void {
+    // Despawn after 15-60 seconds
+    const despawnMs = (15 + Math.random() * 45) * 1000;
+    this._portalDespawnTimer = setTimeout(() => {
+      this._portalDespawnTimer = null;
+      this._deactivatePortals();
+      this.logger.log('[Portals] Despawned — will respawn in 10-15s');
+
+      // Respawn at new random positions after 10-15 seconds
+      const respawnMs = (10 + Math.random() * 5) * 1000;
+      this._portalRespawnTimer = setTimeout(() => {
+        this._portalRespawnTimer = null;
+        this._spawnPortals(); // random positions (no nearU/V after initial trigger)
+        this._schedulePortalCycle(); // restart the cycle
+      }, respawnMs);
+    }, despawnMs);
+  }
+
+  /** Deactivate both portals and clear server-side world positions. */
+  private _deactivatePortals(): void {
+    this.state.portalsActive = false;
+    this._portalAWorld = null;
+    this._portalBWorld = null;
+    this._portalCooldowns.clear();
+  }
+
+  /** Cancel any pending despawn/respawn timers. */
+  private _clearPortalTimers(): void {
+    if (this._portalDespawnTimer !== null) {
+      clearTimeout(this._portalDespawnTimer);
+      this._portalDespawnTimer = null;
+    }
+    if (this._portalRespawnTimer !== null) {
+      clearTimeout(this._portalRespawnTimer);
+      this._portalRespawnTimer = null;
+    }
+  }
+
+  /**
    * Check whether any player has stepped into a portal and teleport them.
    * Called every tick when portalsActive === true.
    * Uses server world-space positions (wx/wy/wz from ServerMeshWalker).
@@ -5050,6 +5134,13 @@ export class GameRoom extends Room<GameState> {
     this.currentSettings = { ...DEFAULT_GAME_SETTINGS };
     this.pendingSettings = null;
     this.syncSettingsToState(); // resets all settings fields + hasPendingSettings = false
+
+    // Clear portal cycle timers so they don't fire into the voting/lobby phase
+    this._clearPortalTimers();
+    this.state.portalsActive = false;
+    this._portalAWorld = null;
+    this._portalBWorld = null;
+
     this.setMetadata({
       surface: this.state.surfaceType,
       status: 'voting',
