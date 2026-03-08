@@ -244,13 +244,18 @@ export class CollisionSystem {
       // Skip phased/invisible enemies (e.g. Phaser cycling through invisible state)
       if (enemy.isGhostForPlayer) continue;
 
-      // s44r3-09: Use enemy.mesh.position (visual) for player-enemy collision too.
-      // Player mesh is ON the surface; enemy mesh is ABOVE the surface by normal*radius.
-      // Inflate hitRadius² by enemy.radius² to account for the perpendicular offset.
-      const baseHitRadius = player.mesh.scale.x * 0.1 + enemy.radius;
-      const hitRadiusSq = baseHitRadius * baseHitRadius + enemy.radius * enemy.radius;
-      const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
-      const distSq = player.mesh.position.distanceToSquared(visualPos);
+      // s44r4-02: Compare on-surface positions directly.
+      // player.mesh.position = playerWalker.position (on surface, GameLoop.ts:250)
+      // enemy.position = walker.position (on surface, applySurfaceTransform)
+      // hitRadius = playerRadius + enemyRadius — the exact physical formula.
+      //
+      // s44r3-09 used enemy.mesh.position (elevated by normal*radius) which on curved
+      // surfaces like the pill body causes the 3D distance to differ from the surface
+      // distance in ways the inflation formula can't fully compensate — leading to
+      // misses when enemy approaches from the side (angular offset case).
+      const playerRadius = player.mesh.scale.x * 0.1;
+      const hitRadiusSq = (playerRadius + enemy.radius) * (playerRadius + enemy.radius);
+      const distSq = player.mesh.position.distanceToSquared(enemy.position);
       if (distSq < hitRadiusSq) {
         if (isShielded) {
           // Shield absorbs the hit and kills the enemy
