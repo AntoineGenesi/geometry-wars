@@ -2450,6 +2450,29 @@ export class GameRoom extends Room<GameState> {
       this.logger.log(`[GameRoom] Voting countdown ended — auto-launching with: ${choice}`);
       this.startGameWithSettings(choice);
     }
+
+    // Vote divergence timeout: 3-second countdown when votes are split
+    const uniqueVotes = this.getUniqueVotes();
+    if (uniqueVotes.size > 1) {
+      // Votes are diverging — start or continue the 3-second divergence timer
+      if (this.state.voteDivergenceCountdown === 0) {
+        this.state.voteDivergenceCountdown = 3.0;
+        this.logger.log('[GameRoom] Vote divergence detected — 3-second auto-select timer started');
+      }
+      // Decrement the divergence timer
+      if (!this.state.countdownPaused) {
+        this.state.voteDivergenceCountdown = Math.max(0, this.state.voteDivergenceCountdown - dt);
+      }
+      // When divergence timer expires, randomly pick from voted options
+      if (this.state.voteDivergenceCountdown <= 0) {
+        const choice = this.pickRandomFromVotes(uniqueVotes);
+        this.logger.log(`[GameRoom] Vote divergence timeout — auto-launching with random pick: ${choice}`);
+        this.startGameWithSettings(choice);
+      }
+    } else {
+      // All votes are unanimous or no votes — cancel divergence timer
+      this.state.voteDivergenceCountdown = 0;
+    }
   }
 
   /** Pick the most-voted choice from voteMap. Falls back to current surface:waves:medium. */
@@ -2472,6 +2495,25 @@ export class GameRoom extends Room<GameState> {
       }
     });
     return bestChoice;
+  }
+
+  /** Get the set of unique voted choices */
+  private getUniqueVotes(): Set<string> {
+    const unique = new Set<string>();
+    this.state.voteMap.forEach((choice) => {
+      unique.add(choice);
+    });
+    return unique;
+  }
+
+  /** Randomly pick one choice from a set of unique votes */
+  private pickRandomFromVotes(uniqueVotes: Set<string>): string {
+    if (uniqueVotes.size === 0) {
+      return `${this.state.surfaceType}:waves:medium`;
+    }
+    const choices = Array.from(uniqueVotes);
+    const randomIndex = Math.floor(Math.random() * choices.length);
+    return choices[randomIndex];
   }
 
   private updateBullets(dt: number) {
@@ -5122,6 +5164,7 @@ export class GameRoom extends Room<GameState> {
     this.state.gameOver = true;  // backward compat: existing client code reads gameOver
     this.state.isPaused = false; // clear any in-game pause so voting screen shows cleanly
     this.state.votingCountdown = VOTING_COUNTDOWN_SECS;
+    this.state.voteDivergenceCountdown = 0; // reset vote divergence timer for new voting phase
     this.state.voteMap.clear();
     this.state.readyMap.clear();
     this.state.countdownPaused = true;
