@@ -3874,6 +3874,10 @@ export class GameRoom extends Room<GameState> {
                 this.logger.log(`[GameRoom] PvP survival: ${target.name} eliminated`);
               } else {
                 // Standard PvP: mark dead, respawn after 3s at farthest location from others
+                // s44r3-10: Decrement lives so scoreboard shows correct heart count
+                if (!this.state.infiniteLives) {
+                  target.lives--;
+                }
                 target.alive = false;
                 target.health = 0;
                 this.pendingRespawns.set(target.id, this.state.gameTime + GameRoom.PVP_RESPAWN_DELAY);
