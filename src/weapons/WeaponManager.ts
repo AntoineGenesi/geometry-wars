@@ -879,8 +879,18 @@ export class WeaponManager {
     const right = new THREE.Vector3().crossVectors(direction, up).normalize();
     const offset = 0.15;
 
-    const leftOrigin = origin.clone().addScaledVector(right, -offset);
-    const rightOrigin = origin.clone().addScaledVector(right, offset);
+    // Scale barrel offset by the local surface metric to prevent tie-fighter spread at poles.
+    // Near poles of pill/capsule/sphere surfaces, the azimuthal circumference converges to zero.
+    // The metric factor is the magnitude of the normal's horizontal component (perpendicular to Y).
+    // At body (normal horizontal): factor = 1, full offset. At pole (normal = ±Y): factor = 0.
+    // This makes both barrels converge to a single point at the pole, matching the visual geometry.
+    const poleMetricFactor = surfaceNormal
+      ? Math.sqrt(Math.max(0, 1.0 - surfaceNormal.y * surfaceNormal.y))
+      : 1.0;
+    const scaledOffset = offset * poleMetricFactor;
+
+    const leftOrigin = origin.clone().addScaledVector(right, -scaledOffset);
+    const rightOrigin = origin.clone().addScaledVector(right, scaledOffset);
 
     // Branch A fan-out: standard_a_1 through standard_a_4 add extra bolts in a spreading cone
     const extraBoltsA = this.getBlasterExtraBolts();
