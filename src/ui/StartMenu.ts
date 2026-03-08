@@ -1,6 +1,7 @@
 import { SurfaceType } from '../surfaces/SurfaceFactory';
 import { t, onLanguageChange } from '../i18n';
 import { LanguageSelector } from './LanguageSelector';
+import { captureHiddenState, restoreHiddenState } from './panelState';
 import { MapSize, getDefaultMapSizeForSurface, MAP_SIZE_LABELS } from '../core/MapSize';
 import { ADVENTURE_LEVELS } from '../core/LevelData';
 import { LevelCompleteScreen, type LevelProgress } from './LevelCompleteScreen';
@@ -111,10 +112,35 @@ export class StartMenu {
       this._languageSelector.render();
     }
 
-    // Re-render menu text when language changes (same pattern as PauseMenu)
+    // Re-render menu text when language changes.
+    // IMPORTANT: preserve the current sub-panel visibility state so the user
+    // is not kicked back to the main menu when they click a language flag
+    // while the Quick Game / LAN / Adventure panel is open (s44r3-01).
     this._langUnsub = onLanguageChange(() => {
+      // Panels whose visibility state must survive the full HTML re-render
+      const panelIds = [
+        'main-buttons',
+        'adventure-levels',
+        'lan-section',
+        'surface-section',
+        'lan-name-dialog',
+        'lan-host-surface-pick',
+        'lan-host-info',
+        'lan-enter-btn',
+        'lan-stop-btn',
+        'lan-name-error',
+        'lan-troubleshoot-backdrop',
+        'custom-mesh-loading',
+      ];
+      const savedVisibility = captureHiddenState(this.container, panelIds);
+
       this.container.innerHTML = this.createMenuHTML();
       this.attachEventListeners();
+
+      // Restore sub-panel state — prevents language change from navigating
+      // the user back to the main menu
+      restoreHiddenState(this.container, savedVisibility);
+
       // Re-mount LanguageSelector into the new DOM
       if (this._languageSelector) {
         this._languageSelector.dispose();
