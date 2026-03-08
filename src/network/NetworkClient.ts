@@ -158,6 +158,8 @@ export interface NetworkGameState {
   voteMap: Map<string, string>;
   /** Voting countdown in seconds */
   votingCountdown: number;
+  /** Vote divergence countdown in seconds (3-sec timer when votes are split) */
+  voteDivergenceCountdown: number;
   /** When true, host picks directly via host_launch */
   hostPickMode: boolean;
   /** Current game mode (e.g. 'waves') */
@@ -738,6 +740,7 @@ export class NetworkClient {
       roomPhase: string;
       voteMap: Map<string, string>;
       votingCountdown: number;
+      voteDivergenceCountdown: number;
       hostPickMode: boolean;
       gameMode: string;
       mapSize: string;
@@ -801,6 +804,7 @@ export class NetworkClient {
       roomPhase: s.roomPhase || 'lobby',
       voteMap: s.voteMap || emptyMap,
       votingCountdown: s.votingCountdown ?? 0,
+      voteDivergenceCountdown: s.voteDivergenceCountdown ?? 0,
       hostPickMode: s.hostPickMode ?? false,
       gameMode: s.gameMode || 'waves',
       mapSize: s.mapSize || 'medium',

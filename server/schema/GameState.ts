@@ -404,6 +404,8 @@ export class GameState extends Schema {
   declare votingCountdown: number;
   /** When true, host picks directly via host_launch; when false, voting + countdown runs */
   declare hostPickMode: boolean;
+  /** Vote divergence countdown in seconds (3-sec timer when votes are split, auto-picks random voted map) */
+  declare voteDivergenceCountdown: number;
   /** Current game mode (default: 'waves') */
   declare gameMode: string;
   /** Current map size (default: 'medium') */
@@ -494,6 +496,7 @@ export class GameState extends Schema {
     this.voteMap = new MapSchema<string>();
     this.votingCountdown = 0;
     this.hostPickMode = false;
+    this.voteDivergenceCountdown = 0;
     this.gameMode = 'waves';
     this.mapSize = 'medium';
     this.readyMap = new MapSchema<boolean>();
@@ -559,6 +562,7 @@ defineTypes(GameState, {
   roomPhase: 'string',
   voteMap: { map: 'string' },
   votingCountdown: 'number',
+  voteDivergenceCountdown: 'number',
   hostPickMode: 'boolean',
   gameMode: 'string',
   mapSize: 'string',

@@ -119,6 +119,8 @@ export class VotingScreen {
   private countdownArea: HTMLElement | null = null;
   private countdownEl: HTMLElement | null = null;
   private countdownPausedEl: HTMLElement | null = null;
+  private voteDivergenceArea: HTMLElement | null = null;
+  private voteDivergenceEl: HTMLElement | null = null;
   private hostControls: HTMLElement | null = null;
   private pickModeToggle: HTMLInputElement | null = null;
   private launchBtn: HTMLElement | null = null;
@@ -271,6 +273,16 @@ export class VotingScreen {
         if (this.pauseCountdownBtn) {
           this.pauseCountdownBtn.textContent = isPaused ? '▶ RESUME TIMER' : '⏸ PAUSE TIMER';
         }
+      }
+    }
+
+    // Vote Divergence Countdown: show when votes are split (more than 1 unique vote)
+    if (this.voteDivergenceArea && this.voteDivergenceEl) {
+      const voteDivergenceCountdown = (state as { voteDivergenceCountdown?: number }).voteDivergenceCountdown ?? 0;
+      const showDivergence = voteDivergenceCountdown > 0 && !state.hostPickMode;
+      this.voteDivergenceArea.style.display = showDivergence ? 'block' : 'none';
+      if (showDivergence) {
+        this.voteDivergenceEl.textContent = String(Math.ceil(voteDivergenceCountdown));
       }
     }
 
@@ -436,6 +448,29 @@ export class VotingScreen {
     this.countdownArea = cdArea;
     this.countdownEl = cdEl;
     this.countdownPausedEl = cdPausedEl;
+
+    // ---- Vote Divergence Countdown (3-sec auto-select timer when votes split) ----
+    const voteDivArea = document.createElement('div');
+    voteDivArea.className = 'vs-vote-divergence-area';
+    voteDivArea.style.display = 'none';
+    voteDivArea.style.fontSize = '1.2em';
+    voteDivArea.style.color = '#ffcc00';
+    voteDivArea.style.fontWeight = 'bold';
+    voteDivArea.style.marginTop = '8px';
+    voteDivArea.style.textAlign = 'center';
+    const voteDivMsg = document.createElement('div');
+    voteDivMsg.textContent = 'Vote split — auto-selecting in:';
+    voteDivMsg.style.fontSize = '0.9em';
+    voteDivMsg.style.marginBottom = '4px';
+    voteDivArea.appendChild(voteDivMsg);
+    const voteDivEl = document.createElement('div');
+    voteDivEl.className = 'vs-vote-divergence';
+    voteDivEl.textContent = '3';
+    voteDivEl.style.fontSize = '1.6em';
+    voteDivArea.appendChild(voteDivEl);
+    wrap.appendChild(voteDivArea);
+    this.voteDivergenceArea = voteDivArea;
+    this.voteDivergenceEl = voteDivEl;
 
     // ---- Ready status row ----
     const readyRow = document.createElement('div');
