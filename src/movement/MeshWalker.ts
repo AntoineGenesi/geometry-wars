@@ -254,7 +254,12 @@ export class MeshWalker {
     // with the intended input direction — if they diverge by >~32°, use BVH.
     // Safe for smooth surfaces (sphere/torus): at per-frame distances (~0.08 units),
     // geodesic curvature on r≈10 surfaces produces <1° deflection.
-    if (geoResult.distanceTraveled > distance * 0.1) {
+    //
+    // EXEMPT non-orientable crossings (Mobius seam): the half-twist naturally causes
+    // >32° apparent displacement deflection on large steps, but the geodesic result
+    // is correct. Applying BVH fallback here treats the seam as a wall. Skip the
+    // deflection guard whenever FaceWalker reports a non-orientable edge was crossed.
+    if (geoResult.distanceTraveled > distance * 0.1 && !geoResult.crossedNonOrientable) {
       const dx = geoResult.position.x - this.position.x;
       const dy = geoResult.position.y - this.position.y;
       const dz = geoResult.position.z - this.position.z;
@@ -299,9 +304,41 @@ export class MeshWalker {
     this.position.copy(geoResult.position);
     this.faceIndex = geoResult.faceIndex;
 
-    // Update tangent frame using parallel-transported direction from geodesic
-    this._updateTangentFrame(geoResult.normal, geoResult.direction);
-    this.normal.copy(geoResult.normal);
+    // Update tangent frame.
+    // For Mobius seam crossings (crossedNonOrientable=true), use the parallel-transported
+    // direction from the geodesic walk directly. Gram-Schmidt from old tangent fails here
+    // because the initial _tangent (from getTangentFrame) may not track the circumferential
+    // direction, and stays wrong (e.g. +X) after seam crossing, causing the NEXT step to move
+    // in the strip-width direction, hit the strip boundary, reflect, and cross the seam back.
+    // Using geoResult.direction gives the correct "forward" direction on the new face.
+    //
+    // For normal crossings: keep Gram-Schmidt from old tangent (stable, avoids oscillation
+    // at diagonal movement angles — REGRESSION GUARD: do NOT switch non-orientable crossings
+    // to Gram-Schmidt, this will reintroduce the seam oscillation).
+    if (geoResult.crossedNonOrientable) {
+      const n = geoResult.normal.clone().normalize();
+      const transported = geoResult.direction.clone();
+      transported.addScaledVector(n, -transported.dot(n));
+      const transportedLen = transported.length();
+      if (transportedLen > 0.001) {
+        transported.multiplyScalar(1 / transportedLen);
+        // Guard against 180° transport error (degenerate case only — full reversal is wrong)
+        if (this._tangent.dot(transported) > -0.5) {
+          this._tangent.copy(transported);
+          this._bitangent.crossVectors(n, this._tangent).normalize();
+          this.normal.copy(n);
+        } else {
+          this._updateTangentFrame(geoResult.normal);
+          this.normal.copy(geoResult.normal);
+        }
+      } else {
+        this._updateTangentFrame(geoResult.normal);
+        this.normal.copy(geoResult.normal);
+      }
+    } else {
+      this._updateTangentFrame(geoResult.normal, geoResult.direction);
+      this.normal.copy(geoResult.normal);
+    }
 
     // If geodesic walk only covered part of the distance, use BVH for the remainder
     const remainingDist = distance - geoResult.distanceTraveled;

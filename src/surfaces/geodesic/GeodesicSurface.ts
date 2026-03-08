@@ -29,6 +29,8 @@ export interface GeodesicMoveResult {
   facePosition: FacePosition;
   /** Actual distance traveled */
   distanceTraveled: number;
+  /** True if a non-orientable edge (e.g. Mobius seam) was crossed during this walk */
+  crossedNonOrientable: boolean;
 }
 
 export class GeodesicSurface {
@@ -81,6 +83,7 @@ export class GeodesicSurface {
         bary: result.bary,
       },
       distanceTraveled: result.distanceTraveled,
+      crossedNonOrientable: result.crossedNonOrientable,
     };
   }
 
