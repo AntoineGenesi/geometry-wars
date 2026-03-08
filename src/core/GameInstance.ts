@@ -459,11 +459,11 @@ export class GameInstance {
       // Skip phased/invisible enemies (e.g. Phaser cycling through invisible state)
       if (enemy.isGhostForPlayer) continue;
 
-      // s44r3-09: Use visual position + inflated radius (same as CollisionSystem).
-      const baseHitRadius = this.player.mesh.scale.x * 0.1 + enemy.radius;
-      const hitRadiusSq = baseHitRadius * baseHitRadius + enemy.radius * enemy.radius;
-      const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
-      const distSq = this.player.mesh.position.distanceToSquared(visualPos);
+      // s44r4-02: Compare on-surface positions directly (same as CollisionSystem fix).
+      // player.mesh.position = walker position (on surface); enemy.position = on surface.
+      const playerRadius = this.player.mesh.scale.x * 0.1;
+      const hitRadiusSq = (playerRadius + enemy.radius) * (playerRadius + enemy.radius);
+      const distSq = this.player.mesh.position.distanceToSquared(enemy.position);
       if (distSq < hitRadiusSq) {
         this.player.die(); // player.die() checks canTakeDamage internally
         if (!this.player.alive) {
