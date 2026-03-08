@@ -4313,6 +4313,11 @@ async function main() {
           ? `${ztMins}:${(zt % 60).toFixed(1).padStart(4, '0')}s`
           : `${zt.toFixed(1)}s`;
         playerList += `${p.name}${you}: ${livesHtml} ${ztStr}<br>`;
+      } else if (latestPvpEnabled) {
+        // s44r3-10: In PvP/PvPvE mode, show fractional kill score (not enemy score)
+        const pvpKills = p.kills ?? 0;
+        combinedScore += pvpKills;
+        playerList += `${p.name}${you}: ${livesHtml} ${pvpKills.toFixed(2)}K<br>`;
       } else {
         combinedScore += p.score;
         playerList += `${p.name}${you}: ${livesHtml} ${p.score.toLocaleString()}<br>`;
@@ -4323,6 +4328,9 @@ async function main() {
       if (isZoneTimeModeList) {
         const ztMins = Math.floor(combinedScore / 60);
         teamScoreEl.textContent = ztMins > 0 ? `${ztMins}:${(combinedScore % 60).toFixed(1).padStart(4, '0')}` : `${combinedScore.toFixed(1)}s`;
+      } else if (latestPvpEnabled) {
+        // s44r3-10: Team total kills in PvP mode
+        teamScoreEl.textContent = `${combinedScore.toFixed(2)}K`;
       } else {
         teamScoreEl.textContent = combinedScore.toLocaleString();
       }
