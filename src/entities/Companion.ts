@@ -1019,3 +1019,135 @@ function createCompanionMesh(color: number): {
 
   return { group, material: mat, corePart, ring1, ring2 };
 }
+
+// ---------------------------------------------------------------------------
+// RemoteCompanionRenderer — visual-only orbit for OTHER players' drones (s44r2-04)
+// No AI, no shooting. Syncs companion counts from server and orbits meshes
+// around the remote player's world-space position using the server tangent frame.
+// ---------------------------------------------------------------------------
+
+// Pre-allocated temps for RemoteCompanionRenderer.update() (zero allocation)
+const _rcrBitangent = new THREE.Vector3();
+const _rcrOrientZ = new THREE.Vector3();
+const _rcrOrientMat = new THREE.Matrix4();
+const _rcrSpinX = new THREE.Vector3(1, 0, 0);
+const _rcrSpinY = new THREE.Vector3(0, 1, 0);
+const _rcrSpinZ = new THREE.Vector3(0, 0, 1);
+
+interface RemoteCompanionEntry {
+  mesh: THREE.Group;
+  corePart: THREE.Group;
+  ring1: THREE.Mesh;
+  ring2: THREE.Mesh;
+  orbitAngle: number;
+  orbitSpeed: number;
+  type: CompanionType;
+}
+
+/**
+ * Lightweight visual-only companion renderer for remote players in MP.
+ * Call `setCompanionCounts()` when server-synced counts change.
+ * Call `update()` every frame with the remote player's world position + tangent frame.
+ */
+export class RemoteCompanionRenderer {
+  readonly root: THREE.Group;
+  private companions: RemoteCompanionEntry[] = [];
+
+  constructor() {
+    this.root = new THREE.Group();
+    this.root.name = 'RemoteCompanions';
+  }
+
+  /**
+   * Adjust companion visuals to match server-reported counts.
+   * Adds or removes meshes as needed (no re-ordering of existing ones).
+   */
+  setCompanionCounts(guardianCount: number, hunterCount: number, protectorCount: number): void {
+    const desired: CompanionType[] = [
+      ...Array(Math.max(0, guardianCount)).fill(CompanionType.Guardian),
+      ...Array(Math.max(0, hunterCount)).fill(CompanionType.Hunter),
+      ...Array(Math.max(0, protectorCount)).fill(CompanionType.Protector),
+    ];
+
+    // Remove excess companions (from the end)
+    while (this.companions.length > desired.length) {
+      const entry = this.companions.pop()!;
+      this.root.remove(entry.mesh);
+      disposeCompanionMesh(entry.mesh);
+    }
+
+    // Add missing companions
+    for (let i = this.companions.length; i < desired.length; i++) {
+      const type = desired[i];
+      const color = COMPANION_COLORS[type];
+      const { group, corePart, ring1, ring2 } = createCompanionMesh(color);
+      // Phase offset per companion so they spread around the player
+      const orbitPhase = (i / Math.max(1, desired.length)) * Math.PI * 2;
+      const orbitSpeed = type === CompanionType.Guardian ? ORBIT_SPEED_BASE
+        : type === CompanionType.Hunter ? ORBIT_SPEED_BASE * 0.8
+        : ORBIT_SPEED_BASE * 1.2;
+      this.companions.push({ mesh: group, corePart, ring1, ring2, orbitAngle: orbitPhase, orbitSpeed, type });
+      this.root.add(group);
+    }
+  }
+
+  /**
+   * Update orbit positions each frame.
+   * @param dt - Frame delta time in seconds
+   * @param playerWorldPos - Remote player's world-space position
+   * @param surfaceNormal - Surface normal at the player (from server nx/ny/nz)
+   * @param tangent - Surface tangent at the player (from server tx/ty/tz)
+   */
+  update(dt: number, playerWorldPos: THREE.Vector3, surfaceNormal: THREE.Vector3, tangent: THREE.Vector3): void {
+    if (this.companions.length === 0) return;
+
+    // Compute bitangent = normal × tangent (guaranteed perpendicular, right-handed)
+    _rcrBitangent.crossVectors(surfaceNormal, tangent).normalize();
+
+    // Orientation matrix: align companion to surface (same math as Companion.update)
+    _rcrOrientZ.crossVectors(tangent, surfaceNormal);
+    _rcrOrientMat.makeBasis(tangent, surfaceNormal, _rcrOrientZ);
+
+    for (const entry of this.companions) {
+      entry.orbitAngle += entry.orbitSpeed * dt;
+
+      // Orbit position in tangent plane
+      entry.mesh.position
+        .copy(playerWorldPos)
+        .addScaledVector(tangent, Math.cos(entry.orbitAngle) * ORBIT_RADIUS)
+        .addScaledVector(_rcrBitangent, Math.sin(entry.orbitAngle) * ORBIT_RADIUS)
+        .addScaledVector(surfaceNormal, 0.2); // slightly above surface
+
+      // Orient to surface
+      entry.mesh.quaternion.setFromRotationMatrix(_rcrOrientMat);
+
+      // 3D gyroscope spin (same as Companion.update for visual parity)
+      entry.corePart.rotateOnAxis(_rcrSpinY, dt * 3.0);
+      entry.ring1.rotateOnAxis(_rcrSpinX, dt * 2.0);
+      entry.ring2.rotateOnAxis(_rcrSpinZ, dt * -1.5);
+    }
+  }
+
+  dispose(): void {
+    for (const entry of this.companions) {
+      disposeCompanionMesh(entry.mesh);
+    }
+    this.companions = [];
+  }
+}
+
+/**
+ * Dispose all geometries and materials in a companion mesh group.
+ */
+function disposeCompanionMesh(group: THREE.Group): void {
+  group.traverse((obj) => {
+    if (obj instanceof THREE.Mesh || obj instanceof THREE.Sprite) {
+      obj.geometry?.dispose();
+      if (Array.isArray(obj.material)) {
+        obj.material.forEach(m => m.dispose());
+      } else {
+        (obj.material as THREE.Material)?.dispose();
+      }
+    }
+  });
+}

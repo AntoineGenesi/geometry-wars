@@ -67,7 +67,7 @@ import { BuffAuraRenderer } from './buffs/BuffAuraRenderer';
 import { BuffParticleAura } from './buffs/BuffParticleAura';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
-import { CompanionManager, CompanionPickup, CompanionHUD, getRandomCompanionType } from './entities/Companion';
+import { CompanionManager, CompanionPickup, CompanionHUD, getRandomCompanionType, RemoteCompanionRenderer } from './entities/Companion';
 import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
@@ -987,11 +987,23 @@ async function main() {
   // -- Companion system: client-side drones/companions (not server-authoritative) --
   // Mirrors SP behavior: pickups spawn on enemy death, player collects them, companions orbit.
   // Server doesn't track companions; gameplay effects (shots, shield) are client-local only.
+  // Companion COUNTS are now server-synced (s44r2-04) so other clients can render
+  // visual-only companions around remote players (RemoteCompanionRenderer).
   const companionManager = new CompanionManager();
   scene.add(companionManager.root);
   const companionHUD = new CompanionHUD();
   const localCompanionPickups: CompanionPickup[] = [];
   const localBuffPickups: BuffPickupNew[] = [];
+  // Track last-sent companion counts to avoid spamming the server
+  let lastSentGuardian = 0;
+  let lastSentHunter = 0;
+  let lastSentProtector = 0;
+  // Remote companion renderers — one per remote player (visual-only orbit, s44r2-04)
+  const remoteCompanionRenderers = new Map<string, RemoteCompanionRenderer>();
+  // Remote buff particle auras — one per remote player (s44r2-04)
+  const remoteBuffParticleAuras = new Map<string, BuffParticleAura>();
+  // Cached remote player buff stacks (updated in onStateChange, consumed in onRender)
+  const remotePlayerBuffStacks = new Map<string, Array<{ type: StackBuffType; stacks: number }>>();
   // Separate bullet pool for companion shots — kept isolated from the network-synced
   // bulletPool so server bullet state sync never stomps on companion bullet slots.
   const companionBulletPool = new BulletPool();
@@ -2829,6 +2841,11 @@ async function main() {
 
     // Reset companions — drones must NOT carry over between rounds
     companionManager.reset();
+    lastSentGuardian = 0; lastSentHunter = 0; lastSentProtector = 0;
+    // Send immediate zero-count so other clients clear remote drones for us (s44r2-04)
+    if (network.isConnected()) network.sendCompanionUpdate(0, 0, 0);
+    // Clear all remote companion counts (they reset too next round)
+    remoteCompanionRenderers.forEach((rcr) => rcr.setCompanionCounts(0, 0, 0));
 
     // Reset player level — each round starts at level 0 with no aura stacks
     playerLevel.reset();
@@ -3256,6 +3273,34 @@ async function main() {
             aimAngle: netPlayer.aimAngle,
           });
         }
+
+        // Sync remote companion counts (s44r2-04): create/update visual-only drone renderers.
+        const rGuardian = netPlayer.guardianCount ?? 0;
+        const rHunter = netPlayer.hunterCount ?? 0;
+        const rProtector = netPlayer.protectorCount ?? 0;
+        let rcr = remoteCompanionRenderers.get(id);
+        if (!rcr) {
+          rcr = new RemoteCompanionRenderer();
+          scene.add(rcr.root);
+          remoteCompanionRenderers.set(id, rcr);
+        }
+        rcr.setCompanionCounts(rGuardian, rHunter, rProtector);
+
+        // Sync remote buff particle auras (s44r2-04): render fuzzy particles for other players.
+        // buffStacks is already server-synced — cache the active buffs for use in onRender.
+        if (!remoteBuffParticleAuras.has(id)) {
+          const aura = new BuffParticleAura();
+          scene.add(aura.root);
+          remoteBuffParticleAuras.set(id, aura);
+        }
+        const remoteActiveBuffs: Array<{ type: StackBuffType; stacks: number }> = [];
+        const bStacks = netPlayer.buffStacks;
+        if (bStacks) {
+          bStacks.forEach((count: number, buffType: string) => {
+            if (count > 0) remoteActiveBuffs.push({ type: buffType as StackBuffType, stacks: count });
+          });
+        }
+        remotePlayerBuffStacks.set(id, remoteActiveBuffs);
       }
 
       // Detect alive state transitions -> trigger effects
@@ -3376,6 +3421,21 @@ async function main() {
         remotePlayerTargetUV.delete(id);
         remotePlayerTargetWorldPos.delete(id);
         playerAliveState.delete(id);
+
+        // Cleanup remote companion renderer (s44r2-04)
+        const rcr = remoteCompanionRenderers.get(id);
+        if (rcr) {
+          scene.remove(rcr.root);
+          rcr.dispose();
+          remoteCompanionRenderers.delete(id);
+        }
+        // Cleanup remote buff particle aura (s44r2-04)
+        const remoteAura = remoteBuffParticleAuras.get(id);
+        if (remoteAura) {
+          scene.remove(remoteAura.root);
+          remoteAura.dispose();
+          remoteBuffParticleAuras.delete(id);
+        }
       }
     });
 
@@ -4742,6 +4802,11 @@ async function main() {
         remotePlayerTargetUV.delete(id);
         remotePlayerTargetWorldPos.delete(id);
         playerAliveState.delete(id);
+        // Cleanup remote companion renderer and buff aura (s44r2-04)
+        const rcrDisc = remoteCompanionRenderers.get(id);
+        if (rcrDisc) { scene.remove(rcrDisc.root); rcrDisc.dispose(); remoteCompanionRenderers.delete(id); }
+        const raDisc = remoteBuffParticleAuras.get(id);
+        if (raDisc) { scene.remove(raDisc.root); raDisc.dispose(); remoteBuffParticleAuras.delete(id); }
         netMainLog(`[NetworkMain] Player ${id} entity removed immediately on disconnect`);
       },
       onHostLeft: () => {
@@ -5644,6 +5709,18 @@ async function main() {
 
       companionHUD.update(companionManager.getCompanionCounts());
 
+      // Sync local companion counts to server so other players can see our drones (s44r2-04).
+      // Only send when counts change to avoid unnecessary messages.
+      {
+        const counts = companionManager.getCompanionCounts();
+        if (counts.guardian !== lastSentGuardian || counts.hunter !== lastSentHunter || counts.protector !== lastSentProtector) {
+          lastSentGuardian = counts.guardian;
+          lastSentHunter = counts.hunter;
+          lastSentProtector = counts.protector;
+          network.sendCompanionUpdate(counts.guardian, counts.hunter, counts.protector);
+        }
+      }
+
       // Client-authoritative pickup collection for server-synced pickups (s44r-04-03).
       // s44r2-02 fix: use analytical surface positions (from UV coords via getTransform) instead
       // of elevated mesh positions. The old code compared:
@@ -6122,6 +6199,28 @@ async function main() {
 
       // Update ally glow position
       allyGlowManager.setPosition(id, player.mesh.position);
+
+      // Update visual companions + buff auras for this remote player (s44r2-04).
+      const remoteWorldTarget = remotePlayerTargetWorldPos.get(id);
+      const remoteNormal = _netTempNormal.set(
+        remoteWorldTarget?.nx ?? 0, remoteWorldTarget?.ny ?? 1, remoteWorldTarget?.nz ?? 0,
+      );
+      const remoteTangent = _netTempTangent.set(
+        remoteWorldTarget?.tx ?? 1, remoteWorldTarget?.ty ?? 0, remoteWorldTarget?.tz ?? 0,
+      );
+
+      const rcr = remoteCompanionRenderers.get(id);
+      if (rcr) {
+        rcr.update(_cameraRenderDt, player.mesh.position, remoteNormal, remoteTangent);
+      }
+
+      // Update remote buff particle aura.
+      // Uses cached buff stacks from last onStateChange (updated at 30Hz, rendered at 60Hz).
+      const remoteAura = remoteBuffParticleAuras.get(id);
+      if (remoteAura) {
+        const cachedBuffs = remotePlayerBuffStacks.get(id) ?? [];
+        remoteAura.update(_cameraRenderDt, game.clock.totalTime, player.mesh.position, remoteNormal, cachedBuffs);
+      }
     });
 
     // -----------------------------------------------------------------------
@@ -6618,6 +6717,10 @@ async function main() {
     shockArcRenderer.dispose();
     companionHUD.dispose();
     companionManager.dispose();
+    remoteCompanionRenderers.forEach((rcr) => { scene.remove(rcr.root); rcr.dispose(); });
+    remoteCompanionRenderers.clear();
+    remoteBuffParticleAuras.forEach((aura) => { scene.remove(aura.root); aura.dispose(); });
+    remoteBuffParticleAuras.clear();
     debugOverlay.dispose();
   });
 

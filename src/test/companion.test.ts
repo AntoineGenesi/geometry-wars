@@ -6,6 +6,7 @@ import {
   CompanionPickup,
   CompanionHUD,
   getRandomCompanionType,
+  RemoteCompanionRenderer,
 } from '../entities/Companion';
 
 // ---------------------------------------------------------------------------
@@ -593,6 +594,104 @@ describe('Companion mesh orientation — right-handed basis regression', () => {
 
       expect(det).toBeCloseTo(1.0, 3);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression tests: s44r2-04 — RemoteCompanionRenderer (other players' drones)
+// ---------------------------------------------------------------------------
+
+describe('RemoteCompanionRenderer (s44r2-04 — other players drones visible in MP)', () => {
+  it('starts with zero meshes (no companions)', () => {
+    const renderer = new RemoteCompanionRenderer();
+    expect(renderer.root.children.length).toBe(0);
+    renderer.dispose();
+  });
+
+  it('setCompanionCounts creates correct number of meshes', () => {
+    const renderer = new RemoteCompanionRenderer();
+    renderer.setCompanionCounts(2, 1, 0); // 2 guardians, 1 hunter, 0 protectors
+    expect(renderer.root.children.length).toBe(3);
+    renderer.dispose();
+  });
+
+  it('setCompanionCounts removes excess meshes when count drops', () => {
+    const renderer = new RemoteCompanionRenderer();
+    renderer.setCompanionCounts(3, 0, 0);
+    expect(renderer.root.children.length).toBe(3);
+
+    renderer.setCompanionCounts(1, 0, 0);
+    expect(renderer.root.children.length).toBe(1);
+    renderer.dispose();
+  });
+
+  it('setCompanionCounts to zero removes all meshes', () => {
+    const renderer = new RemoteCompanionRenderer();
+    renderer.setCompanionCounts(2, 2, 2);
+    expect(renderer.root.children.length).toBe(6);
+
+    renderer.setCompanionCounts(0, 0, 0);
+    expect(renderer.root.children.length).toBe(0);
+    renderer.dispose();
+  });
+
+  it('update positions companions around the player world position', () => {
+    const renderer = new RemoteCompanionRenderer();
+    renderer.setCompanionCounts(1, 0, 0); // one guardian
+
+    const playerPos = new THREE.Vector3(5, 0, 0);
+    const normal = new THREE.Vector3(0, 1, 0);
+    const tangent = new THREE.Vector3(1, 0, 0);
+
+    // Run update — should not throw
+    expect(() => {
+      renderer.update(1 / 60, playerPos, normal, tangent);
+    }).not.toThrow();
+
+    // Companion should be positioned near the player (within orbit radius + normal offset)
+    const companionMesh = renderer.root.children[0];
+    expect(companionMesh).toBeTruthy();
+    const dist = companionMesh.position.distanceTo(playerPos);
+    // Orbit radius = 1.5, normal offset = 0.2 → max distance ≈ sqrt(1.5² + 0.2²) ≈ 1.51
+    expect(dist).toBeLessThan(2.0);
+    renderer.dispose();
+  });
+
+  it('update makes companions orbit (position changes over time)', () => {
+    const renderer = new RemoteCompanionRenderer();
+    renderer.setCompanionCounts(1, 0, 0);
+
+    const playerPos = new THREE.Vector3(0, 0, 0);
+    const normal = new THREE.Vector3(0, 1, 0);
+    const tangent = new THREE.Vector3(1, 0, 0);
+
+    renderer.update(1 / 60, playerPos, normal, tangent);
+    const pos1 = renderer.root.children[0].position.clone();
+
+    // Run many frames
+    for (let i = 0; i < 30; i++) {
+      renderer.update(1 / 60, playerPos, normal, tangent);
+    }
+    const pos2 = renderer.root.children[0].position.clone();
+
+    // Position should change as it orbits
+    expect(pos1.distanceTo(pos2)).toBeGreaterThan(0.01);
+    renderer.dispose();
+  });
+
+  it('update with zero companions does not throw', () => {
+    const renderer = new RemoteCompanionRenderer();
+    expect(() => {
+      renderer.update(1 / 60, new THREE.Vector3(), new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0));
+    }).not.toThrow();
+    renderer.dispose();
+  });
+
+  it('dispose cleans up without error', () => {
+    const renderer = new RemoteCompanionRenderer();
+    renderer.setCompanionCounts(2, 1, 1);
+    expect(() => renderer.dispose()).not.toThrow();
+    expect(renderer.root.children.length).toBe(0);
   });
 });
 
