@@ -114,7 +114,7 @@ export class PillSurface extends Surface {
     let normal: THREE.Vector3
     let tangentV: THREE.Vector3
 
-    const tangentU = new THREE.Vector3(-sinTheta, 0, cosTheta).normalize()
+    const tangentU = new THREE.Vector3(sinTheta, 0, -cosTheta).normalize()
 
     switch (region.type) {
       case 'bottomCap': {
