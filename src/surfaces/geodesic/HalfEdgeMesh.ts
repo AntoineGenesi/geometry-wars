@@ -38,6 +38,14 @@ export interface HalfEdge {
   edgeLocal: number;
   /** Index of the twin half-edge, or -1 for boundary */
   twin: number;
+  /**
+   * True when this edge and its twin go in the SAME direction (non-orientable seam).
+   * On orientable manifolds, twin edges always go in opposite directions (A→B / B→A).
+   * On non-orientable surfaces like the Mobius strip, some twin edges go in the same
+   * direction (A→B / A→B) because winding order can't be globally consistent.
+   * FaceWalker uses this flag to skip the alpha-flip when computing entry bary coords.
+   */
+  nonOrientable?: boolean;
 }
 
 export class HalfEdgeMesh {
@@ -290,6 +298,38 @@ export class HalfEdgeMesh {
             this.halfEdges[ej.idx].twin = ei.idx;
             linked++;
             break; // Move to next unmatched edge
+          }
+        }
+      }
+    }
+
+    // Second pass: match SAME-direction edges for non-orientable surfaces (Mobius strip).
+    // On a non-orientable surface, the winding order can't be globally consistent.
+    // At the seam where the twist occurs, adjacent faces share edges going in the
+    // SAME direction (A→B / A→B) rather than opposite (A→B / B→A).
+    // These edges remain unmatched after the opposite-direction pass above.
+    // We link them as "non-orientable" twins so FaceWalker can cross them
+    // (with alpha NOT flipped, since the edge parameterization matches directly).
+    for (let i = 0; i < edgeData.length; i++) {
+      const ei = edgeData[i];
+      if (this.halfEdges[ei.idx].twin >= 0) continue;
+
+      for (let j = i + 1; j < edgeData.length; j++) {
+        const ej = edgeData[j];
+        if (this.halfEdges[ej.idx].twin >= 0) continue;
+
+        // Check SAME direction: ei.from ≈ ej.from AND ei.to ≈ ej.to
+        if (
+          ei.from.distanceToSquared(ej.from) < SEAM_TOL_SQ &&
+          ei.to.distanceToSquared(ej.to) < SEAM_TOL_SQ
+        ) {
+          if (this.halfEdges[ei.idx].faceIndex !== this.halfEdges[ej.idx].faceIndex) {
+            this.halfEdges[ei.idx].twin = ej.idx;
+            this.halfEdges[ej.idx].twin = ei.idx;
+            this.halfEdges[ei.idx].nonOrientable = true;
+            this.halfEdges[ej.idx].nonOrientable = true;
+            linked++;
+            break;
           }
         }
       }

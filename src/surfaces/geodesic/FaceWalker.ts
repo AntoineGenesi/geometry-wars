@@ -367,7 +367,7 @@ export class FaceWalker {
       // Instead of converting via world position (which fails on sharp folds like cube edges),
       // we use the edge parametric position (alpha) and the twin half-edge's local edge index
       // to directly compute the entry point in the adjacent face's barycentric space.
-      const adjBary = this._computeEntryBary(twinHe.edgeLocal, exit.alpha);
+      const adjBary = this._computeEntryBary(twinHe.edgeLocal, exit.alpha, !!he.nonOrientable);
 
       currentFace = adjFace;
       currentBary = adjBary;
@@ -390,15 +390,16 @@ export class FaceWalker {
    *   1: vertices B->C (edge BC)
    *   2: vertices C->A (edge CA)
    *
-   * But the twin half-edge goes in the OPPOSITE direction along the same geometric edge.
-   * So alpha=0 on the source side corresponds to alpha=1 on the twin side.
+   * For orientable edges, the twin goes in the OPPOSITE direction along the same
+   * geometric edge, so alpha=0 on source corresponds to alpha=1 on twin.
    *
-   * For entry on edge `edgeLocal` at parameter `alpha` (where alpha is already
-   * from the SOURCE face's perspective), we flip it for the twin.
+   * For non-orientable edges (Mobius strip seam), the twin goes in the SAME direction,
+   * so alpha maps directly without flipping.
    */
-  private _computeEntryBary(twinEdgeLocal: number, alpha: number): BaryCoord {
-    // The twin half-edge goes the opposite direction, so flip alpha
-    const flippedAlpha = 1 - alpha;
+  private _computeEntryBary(twinEdgeLocal: number, alpha: number, nonOrientable: boolean = false): BaryCoord {
+    // For orientable edges: twin goes opposite direction → flip alpha
+    // For non-orientable edges: twin goes same direction → keep alpha
+    const flippedAlpha = nonOrientable ? alpha : 1 - alpha;
     // Nudge entry point away from the edge to avoid immediately re-crossing.
     // Must be larger than vertex detection epsilon (0.001) but small enough to not
     // add significant world displacement at each crossing (the displacement per crossing
