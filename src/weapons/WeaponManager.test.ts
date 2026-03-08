@@ -1384,3 +1384,62 @@ describe('WeaponManager LAN visual-only mode', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Homing missile visual orientation regression (s44r3-05)
+// ---------------------------------------------------------------------------
+
+describe('Homing missile visual orientation (s44r3-05 regression)', () => {
+  it('missile mesh quaternion aligns with direction of travel after update() (was always pointing world +Z)', () => {
+    // Bug: createProjectile() set mesh.position each frame but never mesh.quaternion.
+    // The cone geometry is baked with apex at local +Z (after rotateX(π/2)).
+    // Without the fix, the mesh always points world +Z regardless of travel direction —
+    // appearing as a "red line" from most camera angles instead of a distinct missile.
+    const wm2 = new WeaponManager();
+    wm2.setCallbacks({ getEnemies: () => [], onEnemyDamage: () => {}, spawnBullet: () => {} });
+    wm2.equipWeapon(WeaponType.Homing, 40);
+
+    // Fire in +Y direction (tangent to sphere at origin (8,0,0), NOT the cone's default +Z).
+    // Without fix: quaternion stays identity → mesh local +Z = world +Z (z≈1, y≈0).
+    // With fix:    quaternion updates → mesh local +Z = world +Y (y≈1, z≈0).
+    const fireOrigin = new THREE.Vector3(8, 0, 0);
+    const fireDir = new THREE.Vector3(0, 1, 0); // +Y is tangent to sphere at (8,0,0)
+    wm2.fire(fireOrigin, fireDir, T, new THREE.Vector3(1, 0, 0));
+
+    const projRoot = wm2.getVisualRoot().children[1];
+    expect(projRoot.children.length).toBe(1); // one homing missile mesh created
+
+    const missileMesh = projRoot.children[0];
+
+    wm2.update(0.016); // one frame — triggers mesh orientation update
+
+    // The cone's local +Z (apex) should now face approximately +Y (direction of travel).
+    const meshForward = new THREE.Vector3(0, 0, 1).applyQuaternion(missileMesh.quaternion);
+    expect(meshForward.y).toBeCloseTo(1, 1); // y ≈ 1: cone apex faces +Y (travel direction)
+    expect(Math.abs(meshForward.z)).toBeLessThan(0.2); // z ≈ 0: NOT stuck at world +Z
+
+    wm2.dispose();
+  });
+
+  it('homing missile creates a separate 3D mesh (not a blaster BulletPool bullet)', () => {
+    // Confirms the missile uses WeaponManager's projectileRoot, not spawnBullet callback.
+    let bulletCount = 0;
+    const wm2 = new WeaponManager();
+    wm2.setCallbacks({
+      getEnemies: () => [],
+      onEnemyDamage: () => {},
+      spawnBullet: () => { bulletCount++; }, // count blaster bullets only
+    });
+    wm2.equipWeapon(WeaponType.Homing, 40);
+    wm2.fire(new THREE.Vector3(8, 0, 0), new THREE.Vector3(0, 1, 0), T, new THREE.Vector3(1, 0, 0));
+
+    // Blaster fires alongside homing (spawnBullet called), but homing missile is NOT in bulletCount
+    const blasterBullets = bulletCount;
+    expect(blasterBullets).toBeGreaterThan(0); // blaster fires
+
+    const projRoot = wm2.getVisualRoot().children[1];
+    expect(projRoot.children.length).toBe(1); // homing missile in projectile root (separate from blaster)
+
+    wm2.dispose();
+  });
+});

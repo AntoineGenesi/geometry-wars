@@ -48,11 +48,11 @@ export const SharedGeometries = {
     return getCachedGeometry('sphere_0.08_8_8', () => new THREE.SphereGeometry(0.08, 8, 8));
   },
 
-  /** Homing projectile: cone */
+  /** Homing projectile: cone — larger for distinct visibility, apex at +Z (rotated by mesh each frame) */
   homingProjectile(): THREE.BufferGeometry {
-    const key = 'cone_0.1_0.3_6_rotX';
+    const key = 'cone_0.15_0.5_6_rotX';
     return getCachedGeometry(key, () => {
-      const geo = new THREE.ConeGeometry(0.1, 0.3, 6);
+      const geo = new THREE.ConeGeometry(0.15, 0.5, 6);
       geo.rotateX(Math.PI / 2);
       return geo;
     });
