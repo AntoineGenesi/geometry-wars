@@ -6097,13 +6097,26 @@ async function main() {
     // NOTE: Newly spawned enemies are SNAPPED (not lerped) in onStateChange,
     // so there is no visible rubber-band on first appearance.
     const ENEMY_LERP = 0.35; // Phase 3: was 0.15; 12-frame convergence at 60fps
+    // s44r2-03: UV wraps for all surfaces on U, and also on V for torus-like surfaces.
+    // Using surf.wrapsV here (same flag used by server enemy AI and UV dimming logic).
+    const _enemyLerpWrapsV = surf ? surf.wrapsV : false;
     networkEnemies.forEach((enemy, id) => {
       const target = enemyTargetUV.get(id);
       if (!target) return;
 
-      // Lerp UV position toward server target each render frame
-      enemy.surfacePosition.u += (target.u - enemy.surfacePosition.u) * ENEMY_LERP;
-      enemy.surfacePosition.v += (target.v - enemy.surfacePosition.v) * ENEMY_LERP;
+      // s44r2-03 FIX: Wrap-aware UV lerp — takes the SHORTEST path across UV seams.
+      // Without this, enemies crossing the U=0/1 seam (or V=0/1 on torus) rubber-band
+      // across the entire surface: lerp goes 0.96 UV units backward instead of 0.04 forward.
+      // U always wraps [0,1]. V wraps only on torus/torus-tunnel (surf.wrapsV=true).
+      let du = target.u - enemy.surfacePosition.u;
+      if (Math.abs(du) > 0.5) du -= Math.sign(du); // shortest path across U seam
+      let dv = target.v - enemy.surfacePosition.v;
+      if (_enemyLerpWrapsV && Math.abs(dv) > 0.5) dv -= Math.sign(dv); // shortest path across V seam
+      const newU = enemy.surfacePosition.u + du * ENEMY_LERP;
+      const newV = enemy.surfacePosition.v + dv * ENEMY_LERP;
+      // Keep UV in [0,1] after wrap-aware step
+      enemy.surfacePosition.u = ((newU % 1) + 1) % 1;
+      enemy.surfacePosition.v = _enemyLerpWrapsV ? ((newV % 1) + 1) % 1 : newV;
 
       // Apply surface transform to update 3D position from UV
       enemy.applySurfaceTransform(transform);
