@@ -2,8 +2,10 @@ import * as THREE from 'three';
 import { BaseEnemy } from './BaseEnemy';
 import { buildCircle3D } from '../../utils/GeometryBuilder';
 
-// Pre-allocated temp — zero per-frame allocations
+// Pre-allocated temps — zero per-frame allocations
 const _gsSegMatrix = new THREE.Matrix4();
+const _gsInvRot = new THREE.Quaternion();
+const _gsLocalPos = new THREE.Vector3();
 
 /** Default segment count for GiantSnake. */
 const DEFAULT_GIANT_SEGMENT_COUNT = 7;
@@ -58,7 +60,7 @@ export class GiantSnake extends BaseEnemy {
       const mesh = buildCircle3D(Math.max(segSize, 0.12), 12, 0x1144aa, 0.08, 0.02);
       this.segmentRoot.add(mesh);
       this.segments.push({
-        u: this.surfacePosition.u - (i + 1) * 0.12,
+        u: (((this.surfacePosition.u - (i + 1) * 0.12) % 1) + 1) % 1,
         v: this.surfacePosition.v,
         mesh,
       });
@@ -229,8 +231,12 @@ export class GiantSnake extends BaseEnemy {
             if (closest) {
               this.segments[i].mesh.position.copy(closest.point).addScaledVector(closest.normal, 0.3);
 
-              // Store UV for backward compatibility
-              const uv = this.surfaceRef.worldToSurface(closest.point);
+              // Store UV for backward compatibility.
+              // worldToSurface() expects local coordinates (before worldRotation).
+              // Apply inverse worldRotation first, same as BaseEnemy.update().
+              _gsInvRot.copy(this.surfaceRef.worldRotation).invert();
+              _gsLocalPos.copy(closest.point).applyQuaternion(_gsInvRot);
+              const uv = this.surfaceRef.worldToSurface(_gsLocalPos);
               this.segments[i].u = uv.u;
               this.segments[i].v = uv.v;
             }

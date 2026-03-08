@@ -795,6 +795,9 @@ export class EnemySpawner {
   }
 
   update(dt: number, playerU: number, playerV: number): void {
+    // Clear stale world-space transform cache each frame (surface rotates as player moves)
+    this.transformMap.clear();
+
     // Track player position for spawn calculations
     this.setPlayerPosition(playerU, playerV);
 

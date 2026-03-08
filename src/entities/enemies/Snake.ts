@@ -107,7 +107,7 @@ export class Snake extends BaseEnemy {
       const mesh = this.createSegmentMesh();
       this.segmentRoot.add(mesh);
       this.segs.push({
-        u: this.surfacePosition.u - (i + 1) * 0.09,
+        u: (((this.surfacePosition.u - (i + 1) * 0.09) % 1) + 1) % 1,
         v: this.surfacePosition.v,
         mesh,
       });
