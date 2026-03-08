@@ -35,6 +35,10 @@ export interface NetworkPlayerState {
   zoneTime?: number;
   /** Maps buff type → stack count. Present when server has Phase D enabled. */
   buffStacks?: { get(key: string): number | undefined; forEach(cb: (val: number, key: string) => void): void };
+  /** Companion drone counts — synced so all clients render other players' drones (s44r2-04). */
+  guardianCount?: number;
+  hunterCount?: number;
+  protectorCount?: number;
   // World-space position from ServerMeshWalker (Phase 4 — s44-epic-06)
   wx?: number; wy?: number; wz?: number;
   // Surface normal (world-space)
@@ -908,6 +912,15 @@ export class NetworkClient {
   sendRestartRound(settings: GameSettings): void {
     if (!this.room || !this.connected) return;
     this.room.send('restartRound', { settings });
+  }
+
+  /**
+   * Sync local player's companion drone counts to the server so all other clients
+   * can render visual companions around this player (s44r2-04).
+   */
+  sendCompanionUpdate(guardian: number, hunter: number, protector: number): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('companion_update', { guardian, hunter, protector });
   }
 
   /**

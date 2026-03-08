@@ -945,6 +945,16 @@ export class GameRoom extends Room<GameState> {
       this.handleClientMetrics(client, data);
     });
 
+    // Companion count sync: client reports how many drones it has so all clients
+    // can render visual-only companions for other players (s44r2-04).
+    this.onMessage('companion_update', (client, data: { guardian: number; hunter: number; protector: number }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player) return;
+      player.guardianCount = Math.max(0, Math.min(127, data.guardian | 0));
+      player.hunterCount = Math.max(0, Math.min(127, data.hunter | 0));
+      player.protectorCount = Math.max(0, Math.min(127, data.protector | 0));
+    });
+
     // Companion bullet hit: client detects collision (guardian/hunter bullets are client-only),
     // server applies 1 damage and kills the enemy if health reaches zero.
     this.onMessage('companion_hit', (client, data: { enemyId: string }) => {

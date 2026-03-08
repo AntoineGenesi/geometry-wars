@@ -66,6 +66,10 @@ export class PlayerState extends Schema {
   declare bz: number;
   // Face index for debugging/telemetry
   declare walkerFaceIndex: number;
+  // Companion counts — synced so all clients can render other players' drones (s44r2-04)
+  declare guardianCount: number;
+  declare hunterCount: number;
+  declare protectorCount: number;
 
   constructor() {
     super();
@@ -103,6 +107,9 @@ export class PlayerState extends Schema {
     this.tx = 1; this.ty = 0; this.tz = 0;
     this.bx = 0; this.by = 0; this.bz = 1;
     this.walkerFaceIndex = 0;
+    this.guardianCount = 0;
+    this.hunterCount = 0;
+    this.protectorCount = 0;
   }
 }
 
@@ -138,6 +145,9 @@ defineTypes(PlayerState, {
   tx: 'number', ty: 'number', tz: 'number',
   bx: 'number', by: 'number', bz: 'number',
   walkerFaceIndex: 'number',
+  guardianCount: 'int8',
+  hunterCount: 'int8',
+  protectorCount: 'int8',
 });
 
 /**
