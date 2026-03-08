@@ -39,8 +39,16 @@ const PROXIMITY_FADE_WORLD_SQ = PROXIMITY_FADE_WORLD * PROXIMITY_FADE_WORLD;
  * UV space is [0,1]×[0,1] for all surfaces. Distance ~0 = same position, ~0.5 = far.
  * Both U and V are treated as wrapping (correct for torus; slight over-correction for
  * non-wrapping surfaces is negligible at UV distances below 0.5).
+ *
+ * HYSTERESIS (anti-flicker): entities near the near-threshold oscillate between
+ * fully-bright and partially-dimmed states when their UV distance hovers around 0.15.
+ * Two separate thresholds prevent this: dimming starts only when crossing ENTER (0.17)
+ * and stops only when crossing EXIT (0.13). This eliminates flickering on compact
+ * surfaces like the small torus where enemies frequently orbit the threshold.
  */
-const SURFACE_NEAR_UV = 0.15;    // fully bright within 15% of surface
+const SURFACE_NEAR_UV = 0.15;        // midpoint of hysteresis band (kept for reference)
+const SURFACE_NEAR_UV_ENTER = 0.17;  // start dimming when uvDist exceeds this (from bright)
+const SURFACE_NEAR_UV_EXIT  = 0.13;  // stop dimming when uvDist drops below this (from dimmed)
 const SURFACE_FAR_UV  = 0.45;    // fully dim beyond 45% of surface
 const SURFACE_DIM_OPACITY = 0.08; // minimum opacity for far-away enemies
 
@@ -71,6 +79,12 @@ export class RenderLoop {
   // Hysteresis state for far-side entity culling.
   // Prevents flickering when enemy count oscillates around the activation threshold.
   private _farSideCullingActive = false;
+
+  // Per-entity dimmed state for UV-distance hysteresis.
+  // Tracks whether each entity was dimmed last frame so we can apply two separate
+  // thresholds for entering vs exiting the dimmed state. WeakMap ensures automatic
+  // cleanup when enemies are garbage-collected (no manual disposal needed).
+  private _entityDimmedState: WeakMap<object, boolean> = new WeakMap();
 
   render(ctx: GameContext, alpha: number): void {
     profiler.begin('surface_projection');
@@ -192,16 +206,25 @@ export class RenderLoop {
         const ev = wrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
         const uvDist = Math.sqrt(eu * eu + ev * ev);
 
-        // (a) Surface dimming: min-clamp visibility based on UV distance
+        // (a) Surface dimming: min-clamp visibility based on UV distance.
+        // Hysteresis prevents flickering when uvDist hovers near the near threshold:
+        //   - If entity was NOT dimmed last frame: only start dimming past ENTER (0.17)
+        //   - If entity WAS dimmed last frame:   only stop dimming below EXIT  (0.13)
+        // This ±0.02 deadband eliminates the bright↔dim oscillation on small torus.
         let surfaceVis: number;
-        if (uvDist <= SURFACE_NEAR_UV) {
+        const wasDimmed = this._entityDimmedState.get(enemy) ?? false;
+        const nearThreshold = wasDimmed ? SURFACE_NEAR_UV_EXIT : SURFACE_NEAR_UV_ENTER;
+        if (uvDist <= nearThreshold) {
           surfaceVis = 1.0;
+          this._entityDimmedState.set(enemy, false);
         } else if (uvDist >= SURFACE_FAR_UV) {
           surfaceVis = SURFACE_DIM_OPACITY;
+          this._entityDimmedState.set(enemy, true);
         } else {
           const uvT = (uvDist - SURFACE_NEAR_UV) / (SURFACE_FAR_UV - SURFACE_NEAR_UV);
           const uvSt = uvT * uvT * (3.0 - 2.0 * uvT);
           surfaceVis = 1.0 - uvSt * (1.0 - SURFACE_DIM_OPACITY);
+          this._entityDimmedState.set(enemy, true);
         }
         visibility = Math.min(visibility, surfaceVis);
 
