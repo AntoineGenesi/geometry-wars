@@ -2213,6 +2213,62 @@ async function main() {
   deadOverlay.appendChild(deadOverlayText);
   document.body.appendChild(deadOverlay);
 
+  // Death countdown overlay — shown only to the dying local player (not broadcast).
+  // Counts down 3→2→1 then disappears when server respawns the player.
+  const deathCountdownEl = document.createElement('div');
+  deathCountdownEl.style.cssText =
+    'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+    'display:none;flex-direction:column;align-items:center;gap:8px;' +
+    'pointer-events:none;z-index:51;font-family:monospace;';
+  const deathCountdownNumber = document.createElement('div');
+  deathCountdownNumber.style.cssText =
+    'font-size:96px;font-weight:bold;color:#ff4444;' +
+    'text-shadow:0 0 30px #ff0000,0 0 60px #ff0000;' +
+    'animation:death-count-pulse 0.9s ease-in-out infinite alternate;';
+  const deathCountdownLabel = document.createElement('div');
+  deathCountdownLabel.style.cssText =
+    'font-size:18px;color:rgba(255,80,80,0.8);letter-spacing:4px;' +
+    'text-shadow:0 0 10px #ff0000;';
+  deathCountdownLabel.textContent = 'RESPAWNING';
+  deathCountdownEl.appendChild(deathCountdownNumber);
+  deathCountdownEl.appendChild(deathCountdownLabel);
+  document.body.appendChild(deathCountdownEl);
+  // CSS animation for the countdown number
+  const deathCountdownStyle = document.createElement('style');
+  deathCountdownStyle.textContent = `
+    @keyframes death-count-pulse {
+      from { transform: scale(1.0); opacity: 1.0; }
+      to   { transform: scale(1.15); opacity: 0.7; }
+    }
+  `;
+  document.head.appendChild(deathCountdownStyle);
+
+  // State for the local death countdown
+  let deathCountdownInterval: ReturnType<typeof setInterval> | null = null;
+
+  function startDeathCountdown() {
+    let remaining = 3;
+    deathCountdownNumber.textContent = String(remaining);
+    deathCountdownEl.style.display = 'flex';
+    if (deathCountdownInterval !== null) clearInterval(deathCountdownInterval);
+    deathCountdownInterval = setInterval(() => {
+      remaining--;
+      if (remaining > 0) {
+        deathCountdownNumber.textContent = String(remaining);
+      } else {
+        stopDeathCountdown();
+      }
+    }, 1000);
+  }
+
+  function stopDeathCountdown() {
+    if (deathCountdownInterval !== null) {
+      clearInterval(deathCountdownInterval);
+      deathCountdownInterval = null;
+    }
+    deathCountdownEl.style.display = 'none';
+  }
+
   // -----------------------------------------------------------------------
   // Local player menu — opened by Escape, visible to ALL players.
   // Does NOT pause the server game. Each player manages their own menu.
@@ -3326,15 +3382,19 @@ async function main() {
           }
         }
         particles.playerDeath(player.mesh.position);
-        screenShake.shake(0.5, 0.4);
+        // Screen shake only for the local player's own death (not remote deaths)
+        if (id === localPlayerId) screenShake.shake(0.5, 0.4);
         sound.play('playerDeath');
         // DDA: track death event for this player
         const tracker = getOrCreateDDATracker(id);
         tracker.recordDeath();
-        // Show spectating overlay for the local player only if there are
-        // alive remote players to spectate. For solo games (or last survivor),
-        // skip the overlay — voting screen will appear instead (s44d-03 fix).
+        // Local player death: show countdown (3→2→1) + death cam
         if (id === localPlayerId) {
+          // Show 3-second respawn countdown (private to dying player)
+          startDeathCountdown();
+          // Death cam: grayscale + darken canvas while player is dead
+          UIHelpers.showDeathCamEffect();
+          // Show spectating overlay only if there are alive players to spectate
           let hasAliveSpectateTarget = false;
           state.players.forEach((p, pid) => {
             if (pid !== id && p.alive) hasAliveSpectateTarget = true;
@@ -3342,8 +3402,6 @@ async function main() {
           if (hasAliveSpectateTarget) {
             deadOverlay.style.display = 'flex';
           }
-          // Death cam: grayscale + darken canvas while player is dead
-          UIHelpers.showDeathCamEffect();
         }
       } else if (!wasAlive && netPlayer.alive) {
         // Player just respawned (alive transitioned false->true).
@@ -3363,6 +3421,7 @@ async function main() {
         netMainLog(`[NetworkMain] Player ${id} respawned, mesh visibility restored`);
         // Hide spectating overlay when local player is revived (new round)
         if (id === localPlayerId) {
+          stopDeathCountdown();
           deadOverlay.style.display = 'none';
           // Death cam end: restore normal colors on respawn
           UIHelpers.hideDeathCamEffect();
