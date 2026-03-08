@@ -3765,6 +3765,16 @@ export class GameRoom extends Room<GameState> {
               owner.totalDamageDealt += actualDamage;
             }
 
+            // Broadcast PvP hit for client-side damage numbers (s44r2-07)
+            // Fires on every hit (including lethal) so the client always sees the number.
+            this.broadcast('pvp_hit', {
+              killerId: owner?.id ?? bullet.ownerId,
+              killerName: owner?.name ?? '',
+              victimId: target.id,
+              victimName: target.name,
+              damage: Math.round(actualDamage),
+            });
+
             // Spawn health pickup near damaged player if health < threshold and cooldown elapsed
             if (
               target.health > 0 &&

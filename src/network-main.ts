@@ -4773,6 +4773,21 @@ async function main() {
       onPvpKill: (data) => {
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
         killStreakAnnouncer.announce(data.killerName, data.streakCount);
+        // Add to kill feed with correct local player flags (s44r2-07)
+        killFeed.addKill({
+          killerName: data.killerName,
+          victimName: data.victimName,
+          isLocalKill: data.killerId === localPlayerId,
+          isLocalDeath: data.victimId === localPlayerId,
+        });
+      },
+      onPvpHit: (data) => {
+        // Show actual damage number at victim's world position (s44r2-07)
+        // Uses bright red (#ff0044) to distinguish from enemy damage numbers (yellow/score)
+        const victim = networkPlayers.get(data.victimId);
+        if (victim) {
+          scorePopups.spawnDamage(victim.mesh.position.clone(), data.damage, '#ff0044');
+        }
       },
       onPlayerKilled: (data: { killer: string; victimId: string; victimName: string; timestamp: number }) => {
         // Add kill feed entry: enemy type → player name

@@ -324,6 +324,11 @@ export interface NetworkCallbacks {
   onPlayerKilled?: (data: { killer: string; victimId: string; victimName: string; timestamp: number }) => void;
   /** Fired when a player takes a hit (lives reduced but not 0). */
   onPlayerHit?: (data: { victimId: string; victimName: string; enemyType: string; livesRemaining: number; timestamp: number }) => void;
+  /**
+   * Fired when a PvP bullet hits a player (every hit, including lethal).
+   * Includes actual damage dealt so client can show correct damage numbers. (s44r2-07)
+   */
+  onPvpHit?: (data: { killerId: string; killerName: string; victimId: string; victimName: string; damage: number }) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -663,6 +668,12 @@ export class NetworkClient {
     this.room.onMessage('pvp_kill', (data: { killerId: string; killerName: string; victimId: string; victimName: string; streakCount: number }) => {
       netLog(`[Network] pvp_kill: ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
       this.callbacks.onPvpKill?.(data);
+    });
+
+    // PvP hit event — player bullet hit another player (s44r2-07)
+    this.room.onMessage('pvp_hit', (data: { killerId: string; killerName: string; victimId: string; victimName: string; damage: number }) => {
+      netLog(`[Network] pvp_hit: ${data.killerName} hit ${data.victimName} for ${data.damage}`);
+      this.callbacks.onPvpHit?.(data);
     });
 
     // Lobby settings broadcast (host → server → all clients, s44j-settings-16c)
