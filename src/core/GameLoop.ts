@@ -517,15 +517,23 @@ export class GameLoop {
     }
     profiler.end('effects_and_buffs');
 
-    // Use playerWalker.position directly for pickup collision checks.
-    // Both playerWalker.position and pickup._surfaceWorldPos are in the same world space
-    // (both include worldRotation and scaleFactor). The previous UV round-trip approach
-    // (playerWalker → worldToSurface → UV → getTransform → analytical pos) introduced
-    // errors on peanut (approximate 100-step phi scan) and cube (complex UV parameterization),
-    // causing inconsistent pickup detection across maps.
-    // REGRESSION GUARD: This fixes peanut/cube pickup detection. The UV round-trip was
-    // previously added to fix torus (s34b) but that fix was in getPointLocal y-flip, not here.
-    const playerPickupPos = ctx.player.alive ? ctx.playerWalker.position : null;
+    // s44r4-03: Use the player's ANALYTICAL surface position for pickup collision.
+    // Pickup._surfaceWorldPos comes from getTransform(pickupU, pickupV) — the analytical
+    // surface function. playerWalker.position is on the tessellated mesh, which diverges
+    // from the analytical surface on curved maps (pill, torus, peanut, etc.). This mismatch
+    // caused pickups to be uncollectable at their visual position — the player had to walk
+    // to a "weird other spot" where the mesh and analytical surfaces happened to align.
+    //
+    // By using getTransform(playerU, playerV) for the player too, both positions come from
+    // the same analytical surface, eliminating the coordinate space mismatch.
+    //
+    // Previous REGRESSION GUARD note: UV round-trip (walker → worldToSurface → UV → getTransform)
+    // introduced errors on peanut/cube. This is mitigated because: (1) the pickup UV also
+    // comes from enemy.surfacePosition which has the same UV precision, so errors cancel out,
+    // and (2) the collection radius (0.25 world units) provides tolerance for small UV errors.
+    const playerPickupPos = ctx.player.alive
+      ? ctx.getTransform(ctx.player.surfaceU, ctx.player.surfaceV).position
+      : null;
 
     // Update new buff pickups
     for (let i = ctx.pickupSpawner.newBuffPickups.length - 1; i >= 0; i--) {
