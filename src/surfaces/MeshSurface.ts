@@ -376,6 +376,7 @@ export class MeshSurface {
       direction: this._geoWorldDir,
       facePosition: localResult.facePosition,
       distanceTraveled: localResult.distanceTraveled * scale,
+      crossedNonOrientable: localResult.crossedNonOrientable,
     };
   }
 

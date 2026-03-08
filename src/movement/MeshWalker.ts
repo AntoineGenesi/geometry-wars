@@ -254,7 +254,12 @@ export class MeshWalker {
     // with the intended input direction — if they diverge by >~32°, use BVH.
     // Safe for smooth surfaces (sphere/torus): at per-frame distances (~0.08 units),
     // geodesic curvature on r≈10 surfaces produces <1° deflection.
-    if (geoResult.distanceTraveled > distance * 0.1) {
+    //
+    // EXEMPT non-orientable crossings (Mobius seam): the half-twist naturally causes
+    // >32° apparent displacement deflection on large steps, but the geodesic result
+    // is correct. Applying BVH fallback here treats the seam as a wall. Skip the
+    // deflection guard whenever FaceWalker reports a non-orientable edge was crossed.
+    if (geoResult.distanceTraveled > distance * 0.1 && !geoResult.crossedNonOrientable) {
       const dx = geoResult.position.x - this.position.x;
       const dy = geoResult.position.y - this.position.y;
       const dz = geoResult.position.z - this.position.z;

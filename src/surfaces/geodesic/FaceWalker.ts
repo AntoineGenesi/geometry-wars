@@ -50,6 +50,8 @@ export interface WalkResult {
   direction: THREE.Vector3;
   /** How much distance was actually traveled (may be less than requested if stuck) */
   distanceTraveled: number;
+  /** True if a non-orientable edge (e.g. Mobius seam) was crossed during this walk */
+  crossedNonOrientable: boolean;
 }
 
 const MAX_CROSSINGS = 200;
@@ -88,6 +90,7 @@ export class FaceWalker {
     let remaining = distance;
     let totalTraveled = 0;
     let crossings = 0;
+    let crossedNonOrientable = false;
 
     while (remaining > 1e-8 && crossings < MAX_CROSSINGS) {
       // Get current face vertices
@@ -369,13 +372,15 @@ export class FaceWalker {
       // to directly compute the entry point in the adjacent face's barycentric space.
       const adjBary = this._computeEntryBary(twinHe.edgeLocal, exit.alpha, !!he.nonOrientable);
 
+      if (he.nonOrientable) crossedNonOrientable = true;
+
       currentFace = adjFace;
       currentBary = adjBary;
       currentDir.copy(transportedDir);
       crossings++;
     }
 
-    return this._makeResult(currentFace, currentBary, currentDir, totalTraveled);
+    return this._makeResult(currentFace, currentBary, currentDir, totalTraveled, crossedNonOrientable);
   }
 
   /**
@@ -517,6 +522,7 @@ export class FaceWalker {
     bary: BaryCoord,
     direction: THREE.Vector3,
     distanceTraveled: number,
+    crossedNonOrientable = false,
   ): WalkResult {
     const [pA, pB, pC] = this.halfEdge.getFaceVertices(faceIndex);
     const position = barycentricToWorld(bary, pA, pB, pC);
@@ -529,6 +535,7 @@ export class FaceWalker {
       normal,
       direction: direction.clone(),
       distanceTraveled,
+      crossedNonOrientable,
     };
   }
 }
