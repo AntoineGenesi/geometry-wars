@@ -3651,11 +3651,14 @@ export class GameRoom extends Room<GameState> {
 
     // --- World-space thresholds (surfaces using 3D chord/arc distance, in world units) ---
     // S43-07: Reduced ENEMY_HIT_WORLD from 0.5 → 0.4 to match SP CollisionSystem.ts.
-    // S44c-11: Restored to 0.5 — EPIC peanut has larger geometry; 0.4 caused enemies to pass through.
-    //   hitRadius = player.mesh.scale.x * 0.1 + enemy.radius = 0.1 + 0.3 = 0.4 world units.
-    //   The previous 0.5 was ~25% too large, causing early deaths on sphere, peanut, etc.
+    // S44c-11: Restored to 0.5 — EPIC peanut had enemies passing through at 0.4.
+    //   Root cause: getMapScaleFactor() was missing 'epic' case, so entity positions were scaled
+    //   differently from collision radii. Enemies appeared closer than they were.
+    // S44r4-02: Reduced back to 0.4 — getMapScaleFactor() now includes 'epic' case (fix verified).
+    //   hitRadius = playerRadius(0.1) + enemyRadius(0.3) = 0.4 world units — exact physical formula.
+    //   Matches SP CollisionSystem.ts fix applied in s44r4-02.
     // Entity sizes do NOT scale with map size, so these are fixed world-unit values.
-    const ENEMY_HIT_WORLD   = 0.5;   // player(0.1) + enemy(0.3) + margin; restored in s44c-11
+    const ENEMY_HIT_WORLD   = 0.4;   // player(0.1) + enemy(0.3); s44r4-02: match SP CollisionSystem.ts
     const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
     // S44b-06: match client-side PICKUP_WORLD_RADIUS * mapSizeScaleFactor.
     // S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
