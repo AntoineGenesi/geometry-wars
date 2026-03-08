@@ -1070,9 +1070,11 @@ async function main() {
   // Server uses UV-based movement (Christoffel stepping) for authoritative hit detection.
   // Client uses FaceWalker geodesics so bullets visually follow great circles on every surface.
   const bulletGeodesicState = new Map<string, { facePos: FacePosition, dirWorld: THREE.Vector3 }>();
-  // s44r-04-02: Track bullets already reported to server via bullet_hit to prevent double-hits.
-  // Client is authoritative for bullet-enemy collisions (server UV collision disabled on non-sphere surfaces).
-  const bulletClientHitSent = new Set<string>();
+  // s44r-04-02 / s44r3-02: Track per-bullet, per-enemy hits to prevent double-hitting the same enemy.
+  // Using Map<bulletId, Set<enemyId>> instead of a flat Set<bulletId> so a bullet can hit
+  // multiple different enemies (penetration) while still deduplicating hits on the same enemy.
+  // Server enforces the damage budget via bulletDamageTracker (s44r3-02).
+  const bulletHitEnemies = new Map<string, Set<string>>();
 
   // -- Geom tracking --
   const geomIdToIndex = new Map<string, number>();
@@ -2804,7 +2806,7 @@ async function main() {
     bulletTargetUV.clear();
     bulletGeodesicState.clear();
     bulletInstanceIds.clear();
-    bulletClientHitSent.clear();
+    bulletHitEnemies.clear();
     // Safety: clear the entire bullet pool to ensure no orphaned alive slots.
     // This guards against any state desync between bulletIdToIndex and the pool.
     bulletPool.clear();
@@ -3873,7 +3875,7 @@ async function main() {
         bulletGeodesicState.delete(id);
         bulletWeaponType.delete(id);
         bulletOwnerIds.delete(id);
-        bulletClientHitSent.delete(id);
+        bulletHitEnemies.delete(id);
         // Remove from instanced rendering (standard weapon renders 2 visual bullets: _l and _r)
         bulletInstanceManager.removeBullet(id + '_l');
         bulletInstanceManager.removeBullet(id + '_r');
@@ -6356,16 +6358,24 @@ async function main() {
 
         const weapType = bulletWeaponType.get(id) ?? WeaponType.Standard;
 
-        // s44r-04-02: Client-authoritative bullet-enemy hit detection.
+        // s44r-04-02 / s44r3-02: Client-authoritative bullet-enemy hit detection with penetration.
         // Only report hits for the local player's own bullets (server validates ownerId).
         // Hit radius 0.4 world units (bulletRadius=0.1 + enemyRadius=0.3), matches SP CollisionSystem.
+        // Per-bullet, per-enemy tracking (bulletHitEnemies) allows the bullet to hit multiple
+        // different enemies (penetration) while preventing double-hits on the same enemy.
+        // The server enforces the damage budget and rejects hits from depleted bullets.
         const bulletOwner = bulletOwnerIds.get(id);
-        if (bulletOwner === localPlayerId && !bulletClientHitSent.has(id)) {
+        if (bulletOwner === localPlayerId) {
           const BULLET_ENEMY_HIT_RADIUS_SQ = 0.16; // 0.4² world units squared
           networkEnemies.forEach((enemy, enemyId) => {
-            if (bulletClientHitSent.has(id) || !enemy.alive || !enemy.mesh) return;
+            if (!enemy.alive || !enemy.mesh) return;
+            // Skip enemies already hit by this bullet (prevent same-frame double-hit)
+            const hitSet = bulletHitEnemies.get(id);
+            if (hitSet?.has(enemyId)) return;
             if (_netTempPos.distanceToSquared(enemy.position) < BULLET_ENEMY_HIT_RADIUS_SQ) {
-              bulletClientHitSent.add(id);
+              // Record this enemy as hit by this bullet
+              if (!bulletHitEnemies.has(id)) bulletHitEnemies.set(id, new Set());
+              bulletHitEnemies.get(id)!.add(enemyId);
               network.sendBulletHit({ bulletId: id, enemyId, weaponType: weapType, ownerId: localPlayerId });
             }
           });

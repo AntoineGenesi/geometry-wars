@@ -713,6 +713,12 @@ export class GameRoom extends Room<GameState> {
   private _portalDespawnTimer: ReturnType<typeof setTimeout> | null = null;
   /** Timer handle for scheduled portal respawn after despawn. */
   private _portalRespawnTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * s44r3-02: Per-bullet remaining damage budget for MP penetration.
+   * Tracks how much damage a bullet can still deal across multiple enemies.
+   * Initialized on first bullet_hit; depleted as damage is applied; deleted when bullet expires.
+   */
+  private bulletDamageTracker = new Map<string, number>();
 
   onCreate(options: { surfaceType?: string; mapSize?: string; pvpEnabled?: boolean }) {
     this.setState(new GameState());
@@ -1042,16 +1048,32 @@ export class GameRoom extends Room<GameState> {
       const enemy = this.state.enemies[targetIndex];
       if (!enemy.alive) return;
 
-      // Apply full damage formula (mirrors server-side bullet-enemy loop)
+      // Apply damage formula with penetration budget tracking (s44r3-02).
+      // A bullet's total damage budget equals finalDamage. Each hit consumes
+      // min(remaining, enemy.health) so over-damage carries over to the next enemy.
       const weaponType = typeof data.weaponType === 'string' ? data.weaponType : 'standard';
       const weaponCfg = WEAPON_CONFIGS[weaponType] ?? WEAPON_CONFIGS.standard;
       const levelIdx = Math.min(player.playerLevel, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
       const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
       const buffDamageMult = this.calculateBuffDamageMult(player);
       const finalDamage = weaponCfg.damage * levelDamageMult * buffDamageMult;
-      enemy.health -= finalDamage;
 
-      this.logger.log(`[GameRoom] bullet_hit: ${weaponType} dealt ${finalDamage.toFixed(1)} to ${enemy.type} (hp=${enemy.health.toFixed(1)})`);
+      // Get or initialize remaining damage budget for this bullet
+      const currentRemaining = this.bulletDamageTracker.has(data.bulletId)
+        ? this.bulletDamageTracker.get(data.bulletId)!
+        : finalDamage;
+
+      // Reject hit if bullet's damage budget is fully depleted
+      if (currentRemaining <= 0) return;
+
+      // Apply only up to remaining budget (enables penetration for high-damage bullets)
+      const actualDamage = Math.min(currentRemaining, enemy.health);
+      const newRemaining = currentRemaining - actualDamage;
+      this.bulletDamageTracker.set(data.bulletId, newRemaining);
+
+      enemy.health -= actualDamage;
+
+      this.logger.log(`[GameRoom] bullet_hit: ${weaponType} dealt ${actualDamage.toFixed(1)} to ${enemy.type} (hp=${enemy.health.toFixed(1)}, remaining=${newRemaining.toFixed(1)})`);
 
       if (enemy.health <= 0) {
         enemy.alive = false;
@@ -1686,6 +1708,7 @@ export class GameRoom extends Room<GameState> {
 
     // Clear entities
     this.state.bullets.clear();
+    this.bulletDamageTracker.clear(); // s44r3-02: reset penetration budgets
     this.state.enemies.clear();
     this.enemyAI.clear();
     this.state.geoms.clear();
@@ -1730,6 +1753,7 @@ export class GameRoom extends Room<GameState> {
 
     // Clear all entities
     this.state.bullets.clear();
+    this.bulletDamageTracker.clear(); // s44r3-02: reset penetration budgets
     this.state.enemies.clear();
     this.enemyAI.clear();
     this.state.geoms.clear();
@@ -2650,6 +2674,7 @@ export class GameRoom extends Room<GameState> {
       // Remove old bullets
       if (bullet.age > BULLET_LIFETIME) {
         bulletsToRemove.push(index);
+        this.bulletDamageTracker.delete(bullet.id); // s44r3-02: clean up budget tracker
       }
     });
 
@@ -5266,6 +5291,7 @@ export class GameRoom extends Room<GameState> {
     this.spawnGeneration++;
     this.pendingEnemyCount = 0;
     this.state.bullets.clear();
+    this.bulletDamageTracker.clear(); // s44r3-02: reset penetration budgets
     this.state.enemies.clear();
     this.enemyAI.clear();
     this.state.geoms.clear();
