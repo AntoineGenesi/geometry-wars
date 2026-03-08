@@ -304,9 +304,41 @@ export class MeshWalker {
     this.position.copy(geoResult.position);
     this.faceIndex = geoResult.faceIndex;
 
-    // Update tangent frame using parallel-transported direction from geodesic
-    this._updateTangentFrame(geoResult.normal, geoResult.direction);
-    this.normal.copy(geoResult.normal);
+    // Update tangent frame.
+    // For Mobius seam crossings (crossedNonOrientable=true), use the parallel-transported
+    // direction from the geodesic walk directly. Gram-Schmidt from old tangent fails here
+    // because the initial _tangent (from getTangentFrame) may not track the circumferential
+    // direction, and stays wrong (e.g. +X) after seam crossing, causing the NEXT step to move
+    // in the strip-width direction, hit the strip boundary, reflect, and cross the seam back.
+    // Using geoResult.direction gives the correct "forward" direction on the new face.
+    //
+    // For normal crossings: keep Gram-Schmidt from old tangent (stable, avoids oscillation
+    // at diagonal movement angles — REGRESSION GUARD: do NOT switch non-orientable crossings
+    // to Gram-Schmidt, this will reintroduce the seam oscillation).
+    if (geoResult.crossedNonOrientable) {
+      const n = geoResult.normal.clone().normalize();
+      const transported = geoResult.direction.clone();
+      transported.addScaledVector(n, -transported.dot(n));
+      const transportedLen = transported.length();
+      if (transportedLen > 0.001) {
+        transported.multiplyScalar(1 / transportedLen);
+        // Guard against 180° transport error (degenerate case only — full reversal is wrong)
+        if (this._tangent.dot(transported) > -0.5) {
+          this._tangent.copy(transported);
+          this._bitangent.crossVectors(n, this._tangent).normalize();
+          this.normal.copy(n);
+        } else {
+          this._updateTangentFrame(geoResult.normal);
+          this.normal.copy(geoResult.normal);
+        }
+      } else {
+        this._updateTangentFrame(geoResult.normal);
+        this.normal.copy(geoResult.normal);
+      }
+    } else {
+      this._updateTangentFrame(geoResult.normal, geoResult.direction);
+      this.normal.copy(geoResult.normal);
+    }
 
     // If geodesic walk only covered part of the distance, use BVH for the remainder
     const remainingDist = distance - geoResult.distanceTraveled;

@@ -77,9 +77,12 @@ export function transportAcrossEdge(
     direction.applyAxisAngle(_edgeDir, angle);
   }
 
-  // Project onto the destination face plane to remove any numerical drift
-  const dot = direction.dot(normalTo);
-  direction.addScaledVector(normalTo, -dot);
+  // Project onto the destination face plane to remove any numerical drift.
+  // Use effectiveNormalTo (which may be negated for non-orientable edges like Mobius seam)
+  // so the projection plane matches the actual transport plane, not the raw (possibly
+  // opposite-winding) destination normal.
+  const dot = direction.dot(effectiveNormalTo);
+  direction.addScaledVector(effectiveNormalTo, -dot);
 
   const len = direction.length();
   if (len > 1e-10) {
