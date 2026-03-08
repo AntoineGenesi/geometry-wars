@@ -428,10 +428,11 @@ export class GameInstance {
         mutableBullet.remainingDamage = 1; // GameInstance uses fixed damage=1
       }
       for (const enemy of enemies) {
-        // Use enemy.position (surface center, world space) not enemy.mesh.position (above surface).
-        // Zero bonus: S28a fix — hit zone matches visual radius exactly.
-        const distSq = bulletPos.distanceToSquared(enemy.position);
-        if (distSq < enemy.radius * enemy.radius) {
+        // s44r3-09: Use enemy.mesh.position (visual position above surface) for collision.
+        // Inflated hit radius accounts for bullet-on-surface to elevated-enemy offset.
+        const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
+        const distSq = bulletPos.distanceToSquared(visualPos);
+        if (distSq < 2 * enemy.radius * enemy.radius) {
           const actualDamage = Math.min(mutableBullet.remainingDamage, enemy.health);
           enemy.takeDamage(actualDamage);
           mutableBullet.remainingDamage -= actualDamage;
@@ -458,10 +459,12 @@ export class GameInstance {
       // Skip phased/invisible enemies (e.g. Phaser cycling through invisible state)
       if (enemy.isGhostForPlayer) continue;
 
-      // S28c: require enemy to visibly push into player body (same formula as CollisionSystem).
-      const hitRadius = this.player.mesh.scale.x * 0.1 + enemy.radius;
-      const distSq = this.player.mesh.position.distanceToSquared(enemy.position);
-      if (distSq < hitRadius * hitRadius) {
+      // s44r3-09: Use visual position + inflated radius (same as CollisionSystem).
+      const baseHitRadius = this.player.mesh.scale.x * 0.1 + enemy.radius;
+      const hitRadiusSq = baseHitRadius * baseHitRadius + enemy.radius * enemy.radius;
+      const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
+      const distSq = this.player.mesh.position.distanceToSquared(visualPos);
+      if (distSq < hitRadiusSq) {
         this.player.die(); // player.die() checks canTakeDamage internally
         if (!this.player.alive) {
           this.particles.playerDeath(this.player.mesh.position);

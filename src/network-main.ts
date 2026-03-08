@@ -5777,12 +5777,13 @@ async function main() {
       // Companion bullet → enemy collision detection.
       // Companion bullets live only in the client-side companionBulletPool (never server-synced),
       // so we detect hits here and send a companion_hit message for server-authoritative damage.
-      const COMPANION_HIT_RADIUS_SQ = 0.09; // 0.3 world units squared (matches SP CollisionSystem)
+      // s44r3-09: Use visual position (mesh.position) and inflated radius to match SP fix
+      const COMPANION_HIT_RADIUS_SQ = 0.18; // 2 * 0.3² — accounts for bullet-on-surface to elevated-enemy offset
       companionBulletPool.forEachActive((bulletIdx, bulletPos) => {
         let bulletConsumed = false;
         networkEnemies.forEach((enemy, enemyId) => {
           if (bulletConsumed || !enemy.alive || !enemy.mesh) return;
-          if (bulletPos.distanceToSquared(enemy.position) < COMPANION_HIT_RADIUS_SQ) {
+          if (bulletPos.distanceToSquared(enemy.mesh.position) < COMPANION_HIT_RADIUS_SQ) {
             bulletConsumed = true;
             companionBulletPool.kill(bulletIdx);
             particles.bulletImpact(bulletPos);
@@ -6366,13 +6367,14 @@ async function main() {
         // The server enforces the damage budget and rejects hits from depleted bullets.
         const bulletOwner = bulletOwnerIds.get(id);
         if (bulletOwner === localPlayerId) {
-          const BULLET_ENEMY_HIT_RADIUS_SQ = 0.16; // 0.4² world units squared
+          // s44r3-09: Use visual position (mesh.position) and inflated radius
+          const BULLET_ENEMY_HIT_RADIUS_SQ = 0.25; // 0.4² + 0.09 — accounts for surface-to-elevated offset
           networkEnemies.forEach((enemy, enemyId) => {
             if (!enemy.alive || !enemy.mesh) return;
             // Skip enemies already hit by this bullet (prevent same-frame double-hit)
             const hitSet = bulletHitEnemies.get(id);
             if (hitSet?.has(enemyId)) return;
-            if (_netTempPos.distanceToSquared(enemy.position) < BULLET_ENEMY_HIT_RADIUS_SQ) {
+            if (_netTempPos.distanceToSquared(enemy.mesh.position) < BULLET_ENEMY_HIT_RADIUS_SQ) {
               // Record this enemy as hit by this bullet
               if (!bulletHitEnemies.has(id)) bulletHitEnemies.set(id, new Set());
               bulletHitEnemies.get(id)!.add(enemyId);

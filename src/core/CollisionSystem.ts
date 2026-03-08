@@ -76,12 +76,17 @@ export class CollisionSystem {
     const debugFreeze = (window as any).__debugFreeze ?? false;
     if (debugFreeze) console.log('[CollisionSystem] checkBulletEnemyCollisions START');
 
-    // Rebuild spatial hash each frame
+    // Rebuild spatial hash each frame.
+    // s44r3-09: Use enemy.mesh.position (visual position, elevated above surface by
+    // normal * radius) instead of enemy.position (on-surface). This aligns collision
+    // with where the player SEES the enemy, fixing the "one body away" offset on
+    // curved surfaces like Mobius, torus, and peanut.
     this.enemySpatialHash.clear();
     for (const enemy of enemies) {
       if (!enemy.active || !enemy.alive) continue;
       if (enemy.isMaterializing) continue;
-      this.enemySpatialHash.insert(enemy.position.x, enemy.position.y, enemy.position.z, enemy);
+      const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
+      this.enemySpatialHash.insert(visualPos.x, visualPos.y, visualPos.z, enemy);
     }
     if (debugFreeze) console.log('[CollisionSystem] Spatial hash rebuilt');
 
@@ -106,11 +111,13 @@ export class CollisionSystem {
         const enemy = nearby[n];
         if (!enemy.active || !enemy.alive) continue;
 
-        // Use distanceToSquared to avoid sqrt
-        // S28a: zero bonus — hit zone equals visual mesh radius exactly.
-        // S27g reduced from +0.15 to +0.05; user still reported false positives.
-        const hitRadiusSq = enemy.radius * enemy.radius;
-        const distSq = bulletPos.distanceToSquared(enemy.position);
+        // s44r3-09: Compare bullet (ON surface) to enemy visual position (ABOVE surface).
+        // The perpendicular offset is enemy.radius, so inflate hit radius:
+        // hitRadiusSq = radius² (surface) + radius² (normal offset) = 2 * radius².
+        // This preserves the same effective surface hit zone as the old code.
+        const hitRadiusSq = 2 * enemy.radius * enemy.radius;
+        const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
+        const distSq = bulletPos.distanceToSquared(visualPos);
         if (distSq < hitRadiusSq) {
           // --- Damage persistence (s44r2-13) ---
           // Cap damage by remaining budget; budget consumed = HP actually destroyed.
@@ -237,15 +244,14 @@ export class CollisionSystem {
       // Skip phased/invisible enemies (e.g. Phaser cycling through invisible state)
       if (enemy.isGhostForPlayer) continue;
 
-      // Use distanceToSquared to avoid sqrt
-      // S28c: require enemy to visibly push into player body.
-      // Previously 0.3 (= SHIP_LENGTH) allowed hits when enemy was fully outside
-      // the player's visual extent (SHIP_HALF_W=0.15). Reduced to 0.1 so enemy must
-      // penetrate ~33% into the player's visual body before damage registers, creating
-      // real near-miss moments.
-      const hitRadius = player.mesh.scale.x * 0.1 + enemy.radius;
-      const distSq = player.mesh.position.distanceToSquared(enemy.position);
-      if (distSq < hitRadius * hitRadius) {
+      // s44r3-09: Use enemy.mesh.position (visual) for player-enemy collision too.
+      // Player mesh is ON the surface; enemy mesh is ABOVE the surface by normal*radius.
+      // Inflate hitRadius² by enemy.radius² to account for the perpendicular offset.
+      const baseHitRadius = player.mesh.scale.x * 0.1 + enemy.radius;
+      const hitRadiusSq = baseHitRadius * baseHitRadius + enemy.radius * enemy.radius;
+      const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
+      const distSq = player.mesh.position.distanceToSquared(visualPos);
+      if (distSq < hitRadiusSq) {
         if (isShielded) {
           // Shield absorbs the hit and kills the enemy
           enemy.takeDamage(999);
