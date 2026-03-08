@@ -5645,47 +5645,56 @@ async function main() {
       companionHUD.update(companionManager.getCompanionCounts());
 
       // Client-authoritative pickup collection for server-synced pickups (s44r-04-03).
-      // Server UV-based collision is broken on non-sphere surfaces (sphere-approx UV error).
-      // Fix: client measures world-space distance between player mesh and pickup mesh,
-      // sends collect_pickup message. Server trusts it and applies the effect.
-      if (network.isConnected()) {
-        const PICKUP_COLLECT_RADIUS_SQ = Math.pow(0.3 * currentMapSizeScaleFactor, 2);
-        const pPos = localPlayer.mesh.position;
+      // s44r2-02 fix: use analytical surface positions (from UV coords via getTransform) instead
+      // of elevated mesh positions. The old code compared:
+      //   player.mesh.position = surfacePos + normal * 0.15
+      //   pickup.mesh.position = surfacePos + normal * (0.5 + bob)
+      // This created a ~0.35 unit vertical gap that exceeded the 0.3 collection radius, making
+      // collection fail unless the bob animation happened to bring the pickup within range.
+      // Fix: compare surface positions (no elevation), consistent with SP companion pickup logic.
+      if (network.isConnected() && getTransform) {
+        const transform = getTransform; // capture for TS type narrowing in forEach callbacks
+        const playerSurfacePos = transform(localPlayer.surfaceU, localPlayer.surfaceV).position;
+        // Radius for super/health pickups that lack checkPlayerCollision()
+        const SUPER_COLLECT_RADIUS_SQ = Math.pow(0.3 * currentMapSizeScaleFactor, 2);
 
-        // Weapon pickups — WeaponPickup.active used as double-collect guard
+        // Weapon pickups — use WeaponPickup.checkPlayerCollision() which compares against
+        // _surfaceWorldPos (position without hover offset), radius = 0.25 * scaleFactor
         networkWeaponPickups.forEach((pickup, pickupId) => {
           if (!pickup.active || !pickup.mesh) return;
-          if (pPos.distanceToSquared(pickup.mesh.position) < PICKUP_COLLECT_RADIUS_SQ) {
+          if (pickup.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV, playerSurfacePos)) {
             pickup.active = false;
             pickup.mesh.visible = false;
             network.sendCollectPickup('weapon', pickupId);
           }
         });
 
-        // Server-synced buff pickups — BuffPickupNew.active used as double-collect guard
+        // Server-synced buff pickups — use checkPlayerCollision() for surface-position comparison
         networkBuffPickups.forEach((bp, pickupId) => {
           if (!bp.active || !bp.mesh) return;
-          if (pPos.distanceToSquared(bp.mesh.position) < PICKUP_COLLECT_RADIUS_SQ) {
+          if (bp.checkPlayerCollision(localPlayer.surfaceU, localPlayer.surfaceV, playerSurfacePos)) {
             bp.active = false;
             bp.mesh.visible = false;
             network.sendCollectPickup('buff', pickupId);
           }
         });
 
-        // Super pickups (bomb_resupply, multiplier_boost) — no active flag, use pending Set
+        // Super pickups (bomb_resupply, multiplier_boost) — compare surface positions
         networkSuperPickups.forEach((visual, pickupId) => {
           if (pendingSuperCollections.has(pickupId) || !visual.mesh) return;
-          if (pPos.distanceToSquared(visual.mesh.position) < PICKUP_COLLECT_RADIUS_SQ) {
+          const pickupSurfacePos = transform(visual.surfaceU, visual.surfaceV).position;
+          if (playerSurfacePos.distanceToSquared(pickupSurfacePos) < SUPER_COLLECT_RADIUS_SQ) {
             pendingSuperCollections.add(pickupId);
             visual.mesh.visible = false;
             network.sendCollectPickup('super', pickupId);
           }
         });
 
-        // Health pickups (PvP mode) — no active flag, use pending Set
+        // Health pickups (PvP mode) — compare surface positions
         networkHealthPickups.forEach((visual, pickupId) => {
           if (pendingHealthCollections.has(pickupId) || !visual.mesh) return;
-          if (pPos.distanceToSquared(visual.mesh.position) < PICKUP_COLLECT_RADIUS_SQ) {
+          const pickupSurfacePos = transform(visual.surfaceU, visual.surfaceV).position;
+          if (playerSurfacePos.distanceToSquared(pickupSurfacePos) < SUPER_COLLECT_RADIUS_SQ) {
             pendingHealthCollections.add(pickupId);
             visual.mesh.visible = false;
             network.sendCollectPickup('health', pickupId);
