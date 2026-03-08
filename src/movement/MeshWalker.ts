@@ -247,6 +247,27 @@ export class MeshWalker {
     // Walk geodesically
     const geoResult = this.surface.moveGeodesic(this._facePos, projDir, distance);
 
+    // Deflection guard: on cube bevel boundaries, UV-grid transition triangles
+    // (spanning both flat face and curved bevel) cause geodesic paths to deflect
+    // sideways instead of crossing the bevel. BVH snap-to-surface handles these
+    // transitions correctly. Detect deflection by comparing displacement direction
+    // with the intended input direction — if they diverge by >~32°, use BVH.
+    // Safe for smooth surfaces (sphere/torus): at per-frame distances (~0.08 units),
+    // geodesic curvature on r≈10 surfaces produces <1° deflection.
+    if (geoResult.distanceTraveled > distance * 0.1) {
+      const dx = geoResult.position.x - this.position.x;
+      const dy = geoResult.position.y - this.position.y;
+      const dz = geoResult.position.z - this.position.z;
+      const displLenSq = dx * dx + dy * dy + dz * dz;
+      if (displLenSq > 0.000001) {
+        const displLen = Math.sqrt(displLenSq);
+        const dirFidelity = (dx * projDir.x + dy * projDir.y + dz * projDir.z) / displLen;
+        if (dirFidelity < 0.85) {
+          return this._fallbackMove(moveDir, distance);
+        }
+      }
+    }
+
     if (geoResult.distanceTraveled < distance * 0.05) {
       // Geodesic walk made almost no progress (boundary, degenerate face, etc.)
       // Try pole traversal first: handles sphere N/S poles where many triangles
