@@ -679,11 +679,19 @@ export class MeshWalker {
 
     if (rightLen < 0.001 || upLen < 0.001) {
       // Degenerate projection (camera axis parallel to surface normal).
-      // Fall back to tangent frame.
+      // s44r2-16: Compute screen-aligned axes from surface normal + reference vector
+      // instead of using walker's tangent frame (which may not match screen axes,
+      // causing movement to go perpendicular to intended direction on cube top/bottom).
+      const n = this.normal;
+      const ref = Math.abs(n.y) < 0.9
+        ? new THREE.Vector3(0, 1, 0)
+        : new THREE.Vector3(0, 0, 1);
+      const stableRight = new THREE.Vector3().crossVectors(ref, n).normalize();
+      const stableUp = new THREE.Vector3().crossVectors(n, stableRight).normalize();
       const moveDir = this._moveDir
         .set(0, 0, 0)
-        .addScaledVector(this._tangent, inputX)
-        .addScaledVector(this._bitangent, inputY);
+        .addScaledVector(stableRight, inputX)
+        .addScaledVector(stableUp, inputY);
       if (moveDir.lengthSq() < 0.0001) return null;
       return this.move(moveDir, dt);
     }
@@ -743,10 +751,16 @@ export class MeshWalker {
     const upLen = camUp.length();
 
     if (rightLen < 0.001 || upLen < 0.001) {
-      // Degenerate projection: fall back to tangent frame
+      // Degenerate projection: compute screen-aligned axes from surface normal
+      // s44r2-16: Same fix as moveFromInput — use stable reference instead of tangent frame
+      const ref = Math.abs(n.y) < 0.9
+        ? new THREE.Vector3(0, 1, 0)
+        : new THREE.Vector3(0, 0, 1);
+      const stableRight = new THREE.Vector3().crossVectors(ref, n).normalize();
+      const stableUp = new THREE.Vector3().crossVectors(n, stableRight).normalize();
       const aimDir = new THREE.Vector3()
-        .addScaledVector(this._tangent, aimX)
-        .addScaledVector(this._bitangent, -aimY);
+        .addScaledVector(stableRight, aimX)
+        .addScaledVector(stableUp, -aimY);
       const len = aimDir.length();
       if (len < 0.0001) return this._bitangent.clone();
       return aimDir.multiplyScalar(1 / len);

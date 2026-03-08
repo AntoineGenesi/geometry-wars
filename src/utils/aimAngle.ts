@@ -35,9 +35,16 @@ export function computeCameraRelativeAimAngle(
   const right = camRight.clone().addScaledVector(normal, -camRight.dot(normal));
   const up = camUp.clone().addScaledVector(normal, -camUp.dot(normal));
 
-  // Degenerate guard: if camera is looking edge-on at surface, fall back to screen-space formula
+  // Degenerate guard: if camera is looking edge-on at surface, compute stable axes
+  // s44r2-16: On cube top/bottom faces (nearly vertical normal), camera up is parallel
+  // to normal during transition, making projected up near-zero. Compute screen-aligned
+  // axes from the surface normal + reference vector instead of using naive screen-space.
   if (right.lengthSq() < 0.01 || up.lengthSq() < 0.01) {
-    return Math.atan2(-mouseY, mouseX);
+    const ref = Math.abs(normal.y) < 0.9
+      ? new THREE.Vector3(0, 1, 0)
+      : new THREE.Vector3(0, 0, 1);
+    right.crossVectors(ref, normal).normalize();
+    up.crossVectors(normal, right).normalize();
   }
 
   right.normalize();

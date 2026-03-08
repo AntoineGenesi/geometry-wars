@@ -288,9 +288,23 @@ export class GameLoop {
         camRight.normalize();
         camUp.normalize();
       }
-      // Fallback to surface tangent frame if camera axes degenerate (e.g. camera parallel to surface)
-      const aimAxisX = useCameraAxes ? camRight : frame.tangent;
-      const aimAxisY = useCameraAxes ? camUp : frame.bitangent;
+      // Fallback to stable reference axes when camera axes are degenerate.
+      // s44r2-16: On cube top/bottom faces, camera up is parallel to surface normal during
+      // transition, making projected camUp near-zero. The walker's tangent frame might not
+      // match screen axes, so compute stable axes from the surface normal + a reference vector.
+      let aimAxisX: THREE.Vector3;
+      let aimAxisY: THREE.Vector3;
+      if (useCameraAxes) {
+        aimAxisX = camRight;
+        aimAxisY = camUp;
+      } else {
+        // Compute screen-aligned axes from surface normal
+        const ref = Math.abs(playerNormal.y) < 0.9
+          ? new THREE.Vector3(0, 1, 0)
+          : new THREE.Vector3(0, 0, 1);
+        aimAxisX = new THREE.Vector3().crossVectors(ref, playerNormal).normalize();
+        aimAxisY = new THREE.Vector3().crossVectors(playerNormal, aimAxisX).normalize();
+      }
 
       let aimDirection: THREE.Vector3;
       if (aimLen > 0.01) {

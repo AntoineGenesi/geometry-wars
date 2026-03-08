@@ -203,7 +203,10 @@ export class CameraController {
 
     // lookAt FIRST, then lerp up-vector (same order as update())
     (this.camera as THREE.PerspectiveCamera).lookAt(position);
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, posLerp).normalize();
+    // s44r2-16: Fast camera up convergence on vertical-normal surfaces (cube top/bottom)
+    const normalYAbs = Math.abs(normal.y);
+    const mpUpLerp = normalYAbs > 0.9 ? Math.min(posLerp * 5, 0.6) : posLerp;
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, mpUpLerp).normalize();
   }
 
   /**
@@ -269,7 +272,14 @@ export class CameraController {
     // Restored from bffc333 ORDER: lookAt FIRST, then lerp up-vector.
     // This matches the working reference implementation exactly.
     (this.camera as THREE.PerspectiveCamera).lookAt(playerWalker.position);
-    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, posLerp).normalize();
+    // s44r2-16: When the surface normal is nearly vertical (cube top/bottom faces),
+    // the camera up direction must NOT slowly lerp through (0,1,0) because that vector
+    // is parallel to the surface normal. Projecting it onto the surface gives near-zero
+    // length, making aim/movement degenerate for many frames during the transition.
+    // Use a fast lerp (0.6) on vertical faces so the camera converges in ~3 frames.
+    const normalY = Math.abs(playerNormal.y);
+    const upLerp = normalY > 0.9 ? Math.min(posLerp * 5, 0.6) : posLerp;
+    (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, upLerp).normalize();
   }
 
   /**
