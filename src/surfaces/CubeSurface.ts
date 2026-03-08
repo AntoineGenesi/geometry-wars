@@ -226,9 +226,13 @@ export class CubeSurface extends Surface {
         tangentU = faceRight.clone()
         tangentV = faceNorm.clone()
       }
-      // CONSISTENCY FIX: Use world-axis-aligned tangentV on bottom flat face to avoid
-      // 90° camera rotation when player crosses face strip boundaries (causes bouncing).
+      // CONSISTENCY FIX: Use world-axis-aligned tangentU AND tangentV on bottom flat face
+      // to avoid 90° camera rotation when player crosses face strip boundaries (causes bouncing).
       // tangentV = (0,0,1) is face-0's faceNorm direction, consistent for all face strips.
+      // tangentU = (1,0,0) must ALSO be consistent — otherwise face strips 1 and 3 have
+      // tangentU parallel/antiparallel to tangentV (faceRight[1]=(0,0,-1), faceRight[3]=(0,0,1)),
+      // creating a degenerate tangent frame that collapses MP aim to a single axis (s44r4-01).
+      tangentU = new THREE.Vector3(1, 0, 0)
       tangentV = new THREE.Vector3(0, 0, 1)
     } else if (vRegion.type === 'topFlat') {
       // Flat top face (+Y) with CARTESIAN grid parameterization.
@@ -285,9 +289,13 @@ export class CubeSurface extends Surface {
         tangentU = faceRight.clone()
         tangentV = faceNorm.clone().negate()
       }
-      // CONSISTENCY FIX: Use world-axis-aligned tangentV on top flat face to avoid
-      // 90° camera rotation when player crosses face strip boundaries (causes bouncing).
+      // CONSISTENCY FIX: Use world-axis-aligned tangentU AND tangentV on top flat face
+      // to avoid 90° camera rotation when player crosses face strip boundaries (causes bouncing).
       // tangentV = (0,0,-1) is face-0's faceNorm.negate() direction, consistent for all face strips.
+      // tangentU = (1,0,0) must ALSO be consistent — otherwise face strips 1 and 3 have
+      // tangentU parallel/antiparallel to tangentV (faceRight[1]=(0,0,-1), faceRight[3]=(0,0,1)),
+      // creating a degenerate tangent frame that collapses MP aim to a single axis (s44r4-01).
+      tangentU = new THREE.Vector3(1, 0, 0)
       tangentV = new THREE.Vector3(0, 0, -1)
     } else if (vRegion.type === 'middle') {
       // Middle belt: side faces and vertical bevels
