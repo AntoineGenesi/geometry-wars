@@ -88,6 +88,16 @@ export class CollisionSystem {
 
 
     bulletPool.forEachActive((bulletIdx, bulletPos, bulletData) => {
+      // Get mutable bullet data so we can update remainingDamage (forEachActive passes Readonly)
+      const mutableBullet = bulletPool.getBulletData(bulletIdx);
+
+      // Lazy-init damage budget on first hit: set to the effective bullet damage at impact time.
+      // This is frame-level damage (includes all multipliers) — slightly imprecise for long-lived
+      // bullets but indistinguishable in practice since bullets die quickly.
+      if (mutableBullet.remainingDamage < 0) {
+        mutableBullet.remainingDamage = bulletDamage;
+      }
+
       // Use spatial hash for broad-phase: only check nearby enemies
       const nearby = this.enemySpatialHash.getNearby(bulletPos.x, bulletPos.y, bulletPos.z);
       if (debugFreeze && nearby.length > 0) console.log(`[CollisionSystem] Checking ${nearby.length} nearby enemies`);
@@ -102,12 +112,12 @@ export class CollisionSystem {
         const hitRadiusSq = enemy.radius * enemy.radius;
         const distSq = bulletPos.distanceToSquared(enemy.position);
         if (distSq < hitRadiusSq) {
-          // Capture bullet angle BEFORE kill (data persists but capture for clarity)
-          const bulletAngle = bulletData.angle;
-
-          // Hit!
-          bulletPool.kill(bulletIdx);
-          enemy.takeDamage(bulletDamage);
+          // --- Damage persistence (s44r2-13) ---
+          // Cap damage by remaining budget; budget consumed = HP actually destroyed.
+          // This enables piercing for high-damage weapons (Piercing, high-level player).
+          const actualDamage = Math.min(mutableBullet.remainingDamage, enemy.health);
+          enemy.takeDamage(actualDamage);
+          mutableBullet.remainingDamage -= actualDamage;
 
           // Trigger on-hit procs (incendiary rounds, etc.)
           if (enemy.alive) {
@@ -120,7 +130,7 @@ export class CollisionSystem {
           // - Companion bullets even on killing blows (provides distinct visual feedback)
           const shouldShowDamage = showDamageNumbers && scorePopups && (enemy.alive || bulletData.isCompanion);
           if (shouldShowDamage) {
-            scorePopups.spawnDamage(enemy.position, bulletDamage);
+            scorePopups.spawnDamage(enemy.position, actualDamage);
           }
 
           // Bullet impact particles (skip for companion bullets — rapid fire creates too much noise)
@@ -194,7 +204,12 @@ export class CollisionSystem {
             if (debugFreeze) console.log('[CollisionSystem] Enemy death complete');
           }
 
-          break; // Each bullet hits one enemy
+          // Kill bullet if damage budget exhausted; otherwise let it continue (penetration).
+          if (mutableBullet.remainingDamage <= 0) {
+            bulletPool.kill(bulletIdx);
+            break; // Bullet is dead — stop checking more enemies this frame
+          }
+          // Bullet still has damage remaining: continue the loop to hit the next nearby enemy
         }
       }
     });

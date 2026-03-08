@@ -52,6 +52,13 @@ interface BulletData {
   faceIndex: number;
   /** True if this is a companion bullet (guardian, hunter, etc.) - used for damage number display */
   isCompanion: boolean;
+  /**
+   * Damage budget remaining for this bullet. Initialized to -1 (unset).
+   * Set lazily on first hit to the effective bulletDamage at collision time.
+   * Decremented by actual HP consumed on each hit.
+   * When <= 0, the bullet is killed. Enables penetration for high-damage weapons.
+   */
+  remainingDamage: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +133,7 @@ export class BulletPool {
         facePos: null,
         faceIndex: 0,
         isCompanion: false,
+        remainingDamage: -1,
       });
     }
   }
@@ -192,6 +200,7 @@ export class BulletPool {
     b.sphereRadius = origin.length(); // Use spawn distance as radius
     b.ownerId = ownerId;
     b.isCompanion = isCompanion;
+    b.remainingDamage = -1; // uninitialized; set lazily on first collision
 
     // Initialize geodesic face position for face-walking movement
     if (this.meshSurface) {
@@ -431,6 +440,7 @@ export class BulletPool {
    */
   kill(i: number): void {
     this.bullets[i].alive = false;
+    this.bullets[i].remainingDamage = -1;
     this.lines[i].visible = false;
   }
 

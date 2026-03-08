@@ -423,18 +423,26 @@ export class GameInstance {
     // making it appear as if the first 1-2 shots "miss" before the enemy visually appears.
     const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh && !e.isMaterializing);
     this.bulletPool.forEachActive((index, bulletPos, _data) => {
+      const mutableBullet = this.bulletPool.getBulletData(index);
+      if (mutableBullet.remainingDamage < 0) {
+        mutableBullet.remainingDamage = 1; // GameInstance uses fixed damage=1
+      }
       for (const enemy of enemies) {
         // Use enemy.position (surface center, world space) not enemy.mesh.position (above surface).
         // Zero bonus: S28a fix — hit zone matches visual radius exactly.
         const distSq = bulletPos.distanceToSquared(enemy.position);
         if (distSq < enemy.radius * enemy.radius) {
-          this.bulletPool.kill(index);
-          enemy.takeDamage(1);
+          const actualDamage = Math.min(mutableBullet.remainingDamage, enemy.health);
+          enemy.takeDamage(actualDamage);
+          mutableBullet.remainingDamage -= actualDamage;
           if (!enemy.alive) {
             this.particles.enemyDeath(enemy.mesh!.position, new THREE.Color(0xff4444));
             this.config.onEnemyKill(enemy.baseTypeName || 'unknown');
           }
-          break; // bullet hits at most one enemy
+          if (mutableBullet.remainingDamage <= 0) {
+            this.bulletPool.kill(index);
+            break; // bullet budget exhausted
+          }
         }
       }
     });
