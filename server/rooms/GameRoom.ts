@@ -694,6 +694,10 @@ export class GameRoom extends Room<GameState> {
    */
   private pvpKillStreaks: Map<string, number> = new Map();
 
+  /** PvP respawn delay: sessionId → gameTime when player should respawn (3s after death). */
+  private pendingRespawns: Map<string, number> = new Map();
+  private static readonly PVP_RESPAWN_DELAY = 3.0; // seconds
+
   // ── Portals ───────────────────────────────────────────────────────────────
   /** World-space center of portal A (computed from UV via surfaceManager). */
   private _portalAWorld: THREE.Vector3 | null = null;
@@ -1566,6 +1570,7 @@ export class GameRoom extends Room<GameState> {
     this.nextWaveAt = WAVE_FIRST_AT;
     this.playerInvincibility.clear();
     this.lastNearMissLogTime.clear();
+    this.pendingRespawns.clear();
 
     // Reset KotH zone state for each new game
     this.kothZoneU = Math.random();
@@ -2431,6 +2436,9 @@ export class GameRoom extends Room<GameState> {
 
     // Drain per-player invincibility timers
     this.drainInvincibility(dt);
+
+    // Process pending PvP respawns (3s delay after death)
+    this.drainRespawnTimers();
 
     // Update server-side DDA (runs every 5s)
     this.updateDDA(dt);
@@ -3813,19 +3821,10 @@ export class GameRoom extends Room<GameState> {
                 target.alive = false;
                 this.logger.log(`[GameRoom] PvP survival: ${target.name} eliminated`);
               } else {
-                // Standard PvP: respawn with full health + invincibility
-                target.health = target.maxHealth;
-                const deathU = target.surfaceU;
-                const deathV = target.surfaceV;
-                const respawnPos = this.getPlayerRespawnPosition(deathU, deathV);
-                target.surfaceU = respawnPos.u;
-                target.surfaceV = respawnPos.v;
-                this.surfaceManager.teleportWalkerToUV(target.id, respawnPos.u, respawnPos.v);
-                const respawnWalker = this.surfaceManager.getWalker(target.id);
-                if (respawnWalker) {
-                  this.applyWalkerStateToPlayer(target, respawnWalker.getState());
-                }
-                this.playerInvincibility.set(target.id, PLAYER_PVP_INVINCIBILITY_DURATION);
+                // Standard PvP: mark dead, respawn after 3s at farthest location from others
+                target.alive = false;
+                target.health = 0;
+                this.pendingRespawns.set(target.id, this.state.gameTime + GameRoom.PVP_RESPAWN_DELAY);
               }
 
               if (owner) {
@@ -4782,6 +4781,91 @@ export class GameRoom extends Room<GameState> {
 
   private getEnemyHealth(type: string): number {
     return ENEMY_HEALTH[type] ?? 1;
+  }
+
+  /** Process pending PvP respawns — respawns any player whose 3s delay has elapsed. */
+  private drainRespawnTimers() {
+    if (this.pendingRespawns.size === 0) return;
+    this.pendingRespawns.forEach((respawnAt, id) => {
+      if (this.state.gameTime < respawnAt) return;
+      this.pendingRespawns.delete(id);
+      const player = this.state.players.get(id);
+      if (!player) return;
+      const respawnPos = this.getPlayerRespawnPositionFarFromPlayers(id);
+      player.surfaceU = respawnPos.u;
+      player.surfaceV = respawnPos.v;
+      this.surfaceManager.teleportWalkerToUV(id, respawnPos.u, respawnPos.v);
+      const walker = this.surfaceManager.getWalker(id);
+      if (walker) this.applyWalkerStateToPlayer(player, walker.getState());
+      player.health = player.maxHealth;
+      player.alive = true;
+      this.playerInvincibility.set(id, PLAYER_PVP_INVINCIBILITY_DURATION);
+      this.logger.log(`[GameRoom] PvP respawn: ${player.name} at (${respawnPos.u.toFixed(2)}, ${respawnPos.v.toFixed(2)})`);
+    });
+  }
+
+  /**
+   * Find respawn position as far as possible from all alive players (excluding the respawning player).
+   * Falls back to random position if no alive players exist.
+   */
+  private getPlayerRespawnPositionFarFromPlayers(excludeId: string): { u: number; v: number } {
+    const vMin = 0.05;
+    const vMax = 0.95;
+    const ENEMY_CLEAR_DIST = 0.1;
+
+    // Collect alive players' positions (excluding the respawning player)
+    const alivePlayers: Array<{ u: number; v: number }> = [];
+    this.state.players.forEach((p, id) => {
+      if (id !== excludeId && p.alive) {
+        alivePlayers.push({ u: p.surfaceU, v: p.surfaceV });
+      }
+    });
+
+    // If no other alive players, fall back to original random-away logic
+    if (alivePlayers.length === 0) {
+      const deadPlayer = this.state.players.get(excludeId);
+      const deathU = deadPlayer?.surfaceU ?? 0.5;
+      const deathV = deadPlayer?.surfaceV ?? 0.5;
+      return this.getPlayerRespawnPosition(deathU, deathV);
+    }
+
+    let bestPos: { u: number; v: number } | null = null;
+    let bestMinDist = -1;
+
+    // Sample 30 candidates, pick the one with maximum min-distance to any alive player
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const u = 0.1 + Math.random() * 0.8;
+      const v = vMin + Math.random() * (vMax - vMin);
+
+      // Skip if too close to any enemy
+      let clearOfEnemies = true;
+      this.state.enemies.forEach((enemy) => {
+        if (!enemy.alive) return;
+        let edu = Math.abs(u - enemy.surfaceU);
+        if (edu > 0.5) edu = 1 - edu;
+        const edv = Math.abs(v - enemy.surfaceV);
+        if (Math.sqrt(edu * edu + edv * edv) < ENEMY_CLEAR_DIST) clearOfEnemies = false;
+      });
+      if (!clearOfEnemies) continue;
+
+      // Compute minimum UV distance to any alive player
+      let minDistToPlayer = Infinity;
+      for (const p of alivePlayers) {
+        let du = Math.abs(u - p.u);
+        if (du > 0.5) du = 1 - du;
+        const dv = Math.abs(v - p.v);
+        const dist = Math.sqrt(du * du + dv * dv);
+        if (dist < minDistToPlayer) minDistToPlayer = dist;
+      }
+
+      if (minDistToPlayer > bestMinDist) {
+        bestMinDist = minDistToPlayer;
+        bestPos = { u, v };
+      }
+    }
+
+    // Fallback if all candidates rejected by enemy check
+    return bestPos ?? { u: 0.1 + Math.random() * 0.8, v: vMin + Math.random() * (vMax - vMin) };
   }
 
   /** Drain per-player invincibility timers by dt each tick. Syncs invincibilityTimer to schema. */
