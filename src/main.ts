@@ -155,8 +155,8 @@ function weaponToBulletVisual(weapon: WeaponType): BulletVisualType {
       return BulletVisualType.Spread;
     case WeaponType.Piercing:
       return BulletVisualType.Piercing;
-    case WeaponType.Homing:
-      return BulletVisualType.Homing;
+    // Homing: missiles are rendered as 3D meshes by WeaponManager (not via BulletPool).
+    // Blaster bullets (always fired alongside) should remain Standard-looking.
     default:
       return BulletVisualType.Standard;
   }

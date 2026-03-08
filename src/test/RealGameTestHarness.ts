@@ -455,7 +455,7 @@ export class RealGameTestHarness {
       switch (weapon) {
         case WeaponType.Spread: return BulletVisualType.Spread;
         case WeaponType.Piercing: return BulletVisualType.Piercing;
-        case WeaponType.Homing: return BulletVisualType.Homing;
+        // Homing: missiles are 3D meshes from WeaponManager, blaster stays Standard
         default: return BulletVisualType.Standard;
       }
     }

@@ -23,6 +23,13 @@ const GAS_CLOUD_DAMAGE = 3.0;   // per tick
 const GAS_CLOUD_DURATION = 5.0; // seconds
 const GAS_CLOUD_TICK = 0.5;     // seconds between damage ticks
 
+// Pre-allocated constant for projectile mesh orientation.
+// Homing cone geometry apex is baked at local +Z (after geo.rotateX(π/2)).
+// We rotate the mesh each frame so its +Z aligns with the projectile's travel direction.
+const _PROJ_CONE_FWD = new THREE.Vector3(0, 0, 1);
+// Fallback up axis for degenerate cases (anti-parallel direction)
+const _PROJ_CONE_UP = new THREE.Vector3(0, 1, 0);
+
 /**
  * Projectile data for non-instant weapons
  */
@@ -772,10 +779,23 @@ export class WeaponManager {
       // Update position based on type
       this.updateProjectile(proj, dt);
 
-      // Update mesh position
+      // Update mesh position and orientation
       const mesh = this.projectileMeshes.get(proj);
       if (mesh) {
         mesh.position.copy(proj.position);
+        // Orient cone-shaped projectiles to face direction of travel.
+        // Without this, the cone always points world +Z (identity quaternion),
+        // appearing as a "red line" instead of a distinct missile shape.
+        if (proj.type === WeaponType.Homing && proj.direction.lengthSq() > 0.0001) {
+          const dir = proj.direction.clone().normalize();
+          const dot = _PROJ_CONE_FWD.dot(dir);
+          if (dot < -0.9999) {
+            // Anti-parallel: rotate 180° around up axis
+            mesh.quaternion.setFromAxisAngle(_PROJ_CONE_UP, Math.PI);
+          } else {
+            mesh.quaternion.setFromUnitVectors(_PROJ_CONE_FWD, dir);
+          }
+        }
       }
 
       // Notify surface VFX system and apply continuous enemy pull for gravity gun
