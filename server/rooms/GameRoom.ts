@@ -1528,6 +1528,10 @@ export class GameRoom extends Room<GameState> {
     // this.currentSettings (which starts with friendlyFire:false from DEFAULT_GAME_SETTINGS)
     // causes validateSettings() to see an explicit false and preserve it, disabling PvPvE damage.
     const isPvpOrPvpve = mode === 'pvp' || mode === 'pvpve';
+    // s44r3-11: Also sync pvpMode in state so portal trigger (_checkHalfHealthPortalTrigger)
+    // works when game is started via the voting system (startGameWithSettings).
+    // start_with_options sets pvpMode directly; this path must mirror it.
+    this.state.pvpMode = isPvpOrPvpve ? mode : '';
     this.currentSettings = validateSettings({
       ...this.currentSettings,
       surface: surface as GameSettings['surface'],
@@ -3830,10 +3834,11 @@ export class GameRoom extends Room<GameState> {
               owner.kills += actualDamage / target.maxHealth;
             }
 
-            // Portal half-health trigger: spawn portals when a player first drops to ≤50% HP
-            if (target.health > 0) {
-              this._checkHalfHealthPortalTrigger(target);
-            }
+            // Portal half-health trigger: spawn portals when a player first drops to ≤50% HP.
+            // Called on ALL hits including lethal (health=0 satisfies ≤50% threshold).
+            // s44r3-11: Removed `if (target.health > 0)` guard — lethal hits from above 50% HP
+            // must also trigger portals (guard was preventing trigger when one-shot killed).
+            this._checkHalfHealthPortalTrigger(target);
 
             // Broadcast PvP hit for client-side damage numbers (s44r2-07)
             // Fires on every hit (including lethal) so the client always sees the number.

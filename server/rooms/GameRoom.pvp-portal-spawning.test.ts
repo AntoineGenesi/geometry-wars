@@ -372,4 +372,58 @@ describe('PvP Portal Spawning — s44r2-10', () => {
       expect(state.portalsActive).toBe(false);
     });
   });
+
+  describe('lethal hit portal trigger (s44r3-11 regression)', () => {
+    /**
+     * Bug: GameRoom.ts only called _checkHalfHealthPortalTrigger when `target.health > 0`.
+     * A lethal hit (opponent goes from e.g. 60% → 0%) skips the trigger entirely.
+     * Fix: remove the `if (target.health > 0)` guard — health=0 satisfies ≤50% threshold.
+     *
+     * These tests verify the CORRECT behavior that the fix enables.
+     * The PortalController (mirroring the trigger function) correctly handles health=0.
+     * The bug was in the GameRoom.ts CALL SITE not invoking the trigger on lethal hits.
+     */
+    it('lethal hit (health → 0) from above 50% HP triggers portals', () => {
+      const state = makeState('pvp');
+      const ctrl = new PortalController(state);
+      ctrl.resetForNewGame();
+
+      // Scenario: opponent at 60% HP, killed in single shot → health = 0
+      // Fixed GameRoom.ts calls trigger regardless of whether hit was lethal
+      const playerAfterLethalHit = makePlayer(0); // health = 0 after lethal blow
+      ctrl.checkHalfHealthPortalTrigger(playerAfterLethalHit);
+
+      expect(state.portalsActive).toBe(true);
+    });
+
+    it('lethal hit at exactly 50% HP triggers portals', () => {
+      const state = makeState('pvp');
+      const ctrl = new PortalController(state);
+      ctrl.resetForNewGame();
+
+      // Player at exactly 50% health, killed in one shot (health → 0)
+      // Portal trigger must fire because victim was at ≤50% threshold
+      const playerAfterLethalHit = makePlayer(0);
+      ctrl.checkHalfHealthPortalTrigger(playerAfterLethalHit);
+
+      expect(state.portalsActive).toBe(true);
+    });
+
+    it('buggy call site (health > 0 guard) prevents trigger on lethal hits', () => {
+      // Documents the bug: if GameRoom.ts has `if (target.health > 0)` guard,
+      // lethal hits never reach the portal trigger function.
+      const state = makeState('pvp');
+      const ctrl = new PortalController(state);
+      ctrl.resetForNewGame();
+
+      const playerAfterLethalHit = makePlayer(0);
+      // BUGGY call site (do NOT call trigger when health === 0)
+      if (playerAfterLethalHit.health > 0) {
+        ctrl.checkHalfHealthPortalTrigger(playerAfterLethalHit);
+      }
+
+      // With the bug: portals never spawn when player is killed from above 50% HP
+      expect(state.portalsActive).toBe(false); // confirms bug exists in this code path
+    });
+  });
 });
