@@ -4661,9 +4661,13 @@ export class GameRoom extends Room<GameState> {
         const angle = Math.random() * 2 * Math.PI;
         const dist = MIN_DIST + Math.random() * (MAX_DIST - MIN_DIST);
 
-        // Wrap U, clamp V to avoid pole singularities
+        // Wrap U always; wrap V for surfaces where V is periodic (torus, pipe, etc.),
+        // clamp V for surfaces with poles (sphere, peanut, pill) to avoid singularities.
         const u = ((target.u + dist * Math.cos(angle)) % 1 + 1) % 1;
-        const v = Math.max(vMin, Math.min(vMax, target.v + dist * Math.sin(angle)));
+        const rawV = target.v + dist * Math.sin(angle);
+        const v = this.surfaceWrapsV()
+          ? ((rawV % 1) + 1) % 1
+          : Math.max(vMin, Math.min(vMax, rawV));
 
         // Confirm it is far enough from ALL players.
         // Normal players use MIN_DIST; struggling players use DDA_MIN_DIST.
@@ -4694,7 +4698,9 @@ export class GameRoom extends Room<GameState> {
 
     // Fallback: random safe position (no players alive yet, or 20 attempts exhausted)
     const u = 0.1 + Math.random() * 0.8;  // stay away from exact 0/1 seam
-    const v = vMin + Math.random() * (vMax - vMin);
+    const v = this.surfaceWrapsV()
+      ? Math.random()                          // full [0,1) range for wrapping surfaces
+      : vMin + Math.random() * (vMax - vMin); // clamped for surfaces with poles
     return { u, v };
   }
 

@@ -576,6 +576,8 @@ async function main() {
       if (enemy.mesh) scene.remove(enemy.mesh);
       // Remove auxiliary scene objects (e.g. Snake.segmentRoot, Painter.trailRoot)
       for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
+      // Mark inactive so activeCount stays accurate when enemySpawner is reused
+      enemy.active = false;
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
@@ -2814,6 +2816,8 @@ async function main() {
       if (enemy.mesh) scene.remove(enemy.mesh);
       // Remove auxiliary scene objects (e.g. Snake.segmentRoot, Painter.trailRoot)
       for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
+      // Mark inactive so EnemySpawner.activeCount stays accurate (s44r2-05)
+      enemy.active = false;
     });
     networkEnemies.clear();
     enemyTargetUV.clear();
@@ -3636,6 +3640,10 @@ async function main() {
         // These are added to the scene by EnemySpawner but not children of enemy.mesh,
         // so they must be removed explicitly to prevent ghost entities.
         for (const aux of enemy.auxiliaryObjects) scene.remove(aux);
+        // Mark inactive so EnemySpawner.activeCount is accurate — without this, dead
+        // enemies accumulate in enemySpawner.enemies[], hitting the 400-cap and causing
+        // all new spawns to return a dummy inactive Wanderer (invisible enemies).
+        enemy.active = false;
         networkEnemies.delete(id);
         enemyTargetUV.delete(id);
         enemyPrevHealth.delete(id);
@@ -6101,9 +6109,17 @@ async function main() {
       const target = enemyTargetUV.get(id);
       if (!target) return;
 
-      // Lerp UV position toward server target each render frame
-      enemy.surfacePosition.u += (target.u - enemy.surfacePosition.u) * ENEMY_LERP;
-      enemy.surfacePosition.v += (target.v - enemy.surfacePosition.v) * ENEMY_LERP;
+      // Lerp UV position toward server target each render frame.
+      // For wrapping axes (torus U and V both wrap), take the shortest arc so
+      // enemies crossing the 0/1 seam don't rubber-band the long way around.
+      const wrapsV = surface?.wrapsV ?? false;
+      let du = target.u - enemy.surfacePosition.u;
+      if (du > 0.5) du -= 1; else if (du < -0.5) du += 1; // U always wraps
+      let dv = target.v - enemy.surfacePosition.v;
+      if (wrapsV) { if (dv > 0.5) dv -= 1; else if (dv < -0.5) dv += 1; }
+      enemy.surfacePosition.u = ((enemy.surfacePosition.u + du * ENEMY_LERP) % 1 + 1) % 1;
+      enemy.surfacePosition.v += dv * ENEMY_LERP;
+      if (wrapsV) enemy.surfacePosition.v = ((enemy.surfacePosition.v) % 1 + 1) % 1;
 
       // Apply surface transform to update 3D position from UV
       enemy.applySurfaceTransform(transform);
