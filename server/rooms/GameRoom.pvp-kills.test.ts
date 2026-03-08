@@ -77,7 +77,15 @@ function applyPvPWithTracking(
 
     if (dist < HIT_RADIUS) {
       bullet.consumed = true;
+      const prevHealth = target.health;
       target.health = Math.max(0, target.health - bullet.damage);
+      const actualDamage = prevHealth - target.health;
+
+      // s44r2-09: Increment kills fractionally (2 damage = 0.02 kills)
+      const owner = players.find((p) => p.id === bullet.ownerId);
+      if (owner) {
+        owner.kills += actualDamage / target.maxHealth;
+      }
 
       if (target.health <= 0) {
         // PvP kill: reset health, invincibility, multiplier
@@ -90,10 +98,8 @@ function applyPvPWithTracking(
 
         invincibility.set(target.id, PLAYER_PVP_INVINCIBILITY_DURATION);
 
-        // Find owner and track their kill + streak
-        const owner = players.find((p) => p.id === bullet.ownerId);
+        // Find owner and track their kill streak (kills already incremented via damage above)
         if (owner) {
-          owner.kills++;
           const streakCount = (pvpKillStreaks.get(owner.id) ?? 0) + 1;
           pvpKillStreaks.set(owner.id, streakCount);
 
@@ -146,18 +152,18 @@ function fatalHit(shooter: TrackedPlayer, target: TrackedPlayer): { bullet: Trac
 // ---------------------------------------------------------------------------
 
 describe('PvP kill/death tracking: counters', () => {
-  it('increments killer kills by 1 on each kill', () => {
+  it('increments killer kills by 1.0 on a full (100 damage) kill', () => {
+    // s44r2-09: kills are fractional (damage/100), a full kill = 1.0
     const shooter = makePlayer('p1', 0.0, 0.0);
-    const target = makePlayer('p2', 0.5, 0.5);
-    target.health = 25;
-    const bullet = makeBullet('p1', 0.5, 0.5, 25);
+    const target = makePlayer('p2', 0.5, 0.5); // full health = PLAYER_PVP_MAX_HEALTH
+    const bullet = makeBullet('p1', 0.5, 0.5, PLAYER_PVP_MAX_HEALTH); // one-shot kill
     const inv = new Map<string, number>();
     const streaks = new Map<string, number>();
     const events: KillEvent[] = [];
 
     applyPvPWithTracking(bullet, [shooter, target], inv, streaks, events);
 
-    expect(shooter.kills).toBe(1);
+    expect(shooter.kills).toBeCloseTo(1.0, 5);
     expect(target.kills).toBe(0);
   });
 
@@ -176,28 +182,28 @@ describe('PvP kill/death tracking: counters', () => {
     expect(shooter.deaths).toBe(0);
   });
 
-  it('accumulates kills across multiple victims', () => {
+  it('accumulates kills across multiple victims (full kills = 2.0 total)', () => {
+    // s44r2-09: kills are fractional; two full (100hp) kills = 2.0
     const shooter = makePlayer('p1', 0.0, 0.0);
-    const t1 = makePlayer('p2', 0.5, 0.5);
-    const t2 = makePlayer('p3', 0.2, 0.2);
+    const t1 = makePlayer('p2', 0.5, 0.5); // full health
+    const t2 = makePlayer('p3', 0.2, 0.2); // full health
     const inv = new Map<string, number>();
     const streaks = new Map<string, number>();
     const events: KillEvent[] = [];
 
-    // Kill t1
-    t1.health = 1;
+    // Kill t1 (full hp → full damage → +1.0)
     const b1 = makeBullet('p1', 0.5, 0.5, PLAYER_PVP_MAX_HEALTH);
     applyPvPWithTracking(b1, [shooter, t1, t2], inv, streaks, events);
 
-    // Kill t2 (invincibility for t1 resets — just use new positions)
-    t2.health = 1;
+    // Kill t2 (full hp → full damage → +1.0)
     const b2 = makeBullet('p1', 0.2, 0.2, PLAYER_PVP_MAX_HEALTH);
     applyPvPWithTracking(b2, [shooter, t1, t2], inv, streaks, events);
 
-    expect(shooter.kills).toBe(2);
+    expect(shooter.kills).toBeCloseTo(2.0, 5);
   });
 
-  it('does not increment kills when bullet does not kill', () => {
+  it('increments kills fractionally for partial damage (10 damage → 0.10 kills, no death)', () => {
+    // s44r2-09: non-lethal hits still count toward kill score
     const shooter = makePlayer('p1', 0.0, 0.0);
     const target = makePlayer('p2', 0.5, 0.5);
     const bullet = makeBullet('p1', 0.5, 0.5, 10); // partial damage
@@ -207,8 +213,8 @@ describe('PvP kill/death tracking: counters', () => {
 
     applyPvPWithTracking(bullet, [shooter, target], inv, streaks, events);
 
-    expect(shooter.kills).toBe(0);
-    expect(target.deaths).toBe(0);
+    expect(shooter.kills).toBeCloseTo(0.10, 5);
+    expect(target.deaths).toBe(0); // no death for non-lethal hit
   });
 });
 
@@ -389,6 +395,71 @@ describe('PvP kill event broadcast', () => {
     applyPvPWithTracking(bullet, [shooter, target], inv, streaks, events);
 
     expect(events).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: incremental kill scoring (s44r2-09)
+// Kill score = damage_dealt / PLAYER_PVP_MAX_HEALTH (floats, not integer)
+// ---------------------------------------------------------------------------
+
+describe('PvP kill score: incremental damage tracking (s44r2-09)', () => {
+  it('kill score increments by damage/100 on partial hit (2 damage → 0.02 kills)', () => {
+    const shooter = makePlayer('p1', 0.0, 0.0);
+    const target = makePlayer('p2', 0.5, 0.5);
+    const bullet = makeBullet('p1', 0.5, 0.5, 2); // 2 damage, non-lethal
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const events: KillEvent[] = [];
+
+    applyPvPWithTracking(bullet, [shooter, target], inv, streaks, events);
+
+    expect(shooter.kills).toBeCloseTo(0.02, 5);
+  });
+
+  it('kill score is 1.00 after dealing full 100 damage to kill a player', () => {
+    const shooter = makePlayer('p1', 0.0, 0.0);
+    const target = makePlayer('p2', 0.5, 0.5);
+    // Damage target to exactly 100 health (which is their max = PLAYER_PVP_MAX_HEALTH)
+    const bullet = makeBullet('p1', 0.5, 0.5, PLAYER_PVP_MAX_HEALTH); // one-shot kill
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const events: KillEvent[] = [];
+
+    applyPvPWithTracking(bullet, [shooter, target], inv, streaks, events);
+
+    expect(shooter.kills).toBeCloseTo(1.0, 5);
+  });
+
+  it('kill score accumulates across multiple partial hits (50 + 50 = 1.0)', () => {
+    const shooter = makePlayer('p1', 0.0, 0.0);
+    const target = makePlayer('p2', 0.5, 0.5);
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const events: KillEvent[] = [];
+
+    // First hit: 50 damage → 0.5 kills
+    const b1 = makeBullet('p1', 0.5, 0.5, 50);
+    applyPvPWithTracking(b1, [shooter, target], inv, streaks, events);
+    expect(shooter.kills).toBeCloseTo(0.5, 5);
+
+    // Second hit (fatal): 50 more damage → total 1.0 kills
+    const b2 = makeBullet('p1', 0.5, 0.5, 50);
+    applyPvPWithTracking(b2, [shooter, target], inv, streaks, events);
+    expect(shooter.kills).toBeCloseTo(1.0, 5);
+  });
+
+  it('kill score does not increment when bullet misses', () => {
+    const shooter = makePlayer('p1', 0.0, 0.0);
+    const target = makePlayer('p2', 0.9, 0.9); // far from bullet
+    const bullet = makeBullet('p1', 0.5, 0.5, 10);
+    const inv = new Map<string, number>();
+    const streaks = new Map<string, number>();
+    const events: KillEvent[] = [];
+
+    applyPvPWithTracking(bullet, [shooter, target], inv, streaks, events);
+
+    expect(shooter.kills).toBe(0);
   });
 });
 

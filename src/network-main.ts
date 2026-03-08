@@ -3392,7 +3392,7 @@ async function main() {
       // In PvP mode, append kill count in "[3K]" format when kills > 0.
       const displayName = id === localPlayerId ? '(You)' : netPlayer.name;
       const pvpKills = netPlayer.kills ?? 0;
-      const labelText = pvpKills > 0 ? `${displayName} [${pvpKills}K]` : displayName;
+      const labelText = pvpKills > 0 ? `${displayName} [${pvpKills.toFixed(2)}K]` : displayName;
       nameLabels.setLabel(id, labelText, netPlayer.color);
     });
 
