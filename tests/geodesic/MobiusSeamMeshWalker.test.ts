@@ -316,10 +316,18 @@ describe('Mobius seam — MeshWalker full-stack test (s44r4-04)', () => {
     let anglesVisited = new Set<number>();
     let totalDist = 0;
 
+    // Use walker.tangent (updated after each step) as the movement direction.
+    // A constant world-space direction (tangent.clone()) can't complete circular loops
+    // because the "forward" direction changes as the walker moves around the strip.
+    // Using walker.tangent tracks the geodesic parallel transport correctly.
+    let currentDir = tangent.clone();
     while (totalDist < totalWalk) {
-      const result = walker.move(tangent.clone(), dt);
+      const result = walker.move(currentDir, dt);
       if (!result) break;
       totalDist += dt * walker.speed;
+
+      // Update direction to tracked walker tangent (parallel transport around the strip)
+      currentDir = walker.tangent.clone();
 
       const angle = getStripAngle(walker.position);
       anglesVisited.add(Math.floor(angle / (Math.PI / 4)));
