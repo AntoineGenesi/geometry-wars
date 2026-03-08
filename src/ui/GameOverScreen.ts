@@ -986,7 +986,7 @@ export class GameOverScreen {
         <div class="pvp-player-row${isMvp ? ' mvp' : ''}">
           <div class="pvp-color-dot" style="background:${colorCSS};box-shadow:0 0 6px ${colorCSS}"></div>
           <div class="pvp-player-name">${this.escapeHTML(p.name)}</div>
-          <div class="pvp-stat-col">${p.kills}</div>
+          <div class="pvp-stat-col">${p.kills.toFixed(2)}</div>
           <div class="pvp-stat-col">${p.deaths}</div>
           <div class="pvp-stat-col${mvpCriteria === 'kd' ? ' highlight' : ''}">${kd}</div>
           <div class="pvp-stat-col${mvpCriteria !== 'kd' ? ' highlight' : ''}">${Math.round(p.totalDamageDealt)}</div>
@@ -1003,7 +1003,7 @@ export class GameOverScreen {
           <div class="pvp-bar-track">
             <div class="pvp-bar-fill" style="width:${pct}%;background:${colorCSS}"></div>
           </div>
-          <div class="pvp-bar-value">${p.kills} kills</div>
+          <div class="pvp-bar-value">${p.kills.toFixed(2)} kills</div>
         </div>
       `;
     }).join('');

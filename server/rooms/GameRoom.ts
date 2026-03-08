@@ -3763,6 +3763,8 @@ export class GameRoom extends Room<GameState> {
             this.logger.log(`[GameRoom] PvP hit: ${owner?.name ?? bullet.ownerId} → ${target.name}, damage=${actualDamage.toFixed(1)}, health=${target.health.toFixed(1)}/${target.maxHealth}`);
             if (owner) {
               owner.totalDamageDealt += actualDamage;
+              // s44r2-09: Kill score increments fractionally per damage dealt (2 damage = 0.02 kills)
+              owner.kills += actualDamage / target.maxHealth;
             }
 
             // Broadcast PvP hit for client-side damage numbers (s44r2-07)
@@ -3820,7 +3822,7 @@ export class GameRoom extends Room<GameState> {
 
               if (owner) {
                 // Track kill on attacker; increment their kill streak
-                owner.kills++;
+                // Note: owner.kills already incremented fractionally via damage above (s44r2-09)
                 const streakCount = (this.pvpKillStreaks.get(owner.id) ?? 0) + 1;
                 this.pvpKillStreaks.set(owner.id, streakCount);
 
