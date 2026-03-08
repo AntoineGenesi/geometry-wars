@@ -1482,12 +1482,15 @@ export class GameRoom extends Room<GameState> {
     // The client sends DEFAULT_GAME_SETTINGS (pvpEnabled:false) as the settings object, and
     // validateSettings() respects an explicit false as an override. The mode selection is the
     // authoritative signal for pvp intent, so we override here to ensure damage works.
+    // s44r2-06: Also force friendlyFire:true for PvP modes. Without this, the spread of
+    // this.currentSettings (which starts with friendlyFire:false from DEFAULT_GAME_SETTINGS)
+    // causes validateSettings() to see an explicit false and preserve it, disabling PvPvE damage.
     const isPvpOrPvpve = mode === 'pvp' || mode === 'pvpve';
     this.currentSettings = validateSettings({
       ...this.currentSettings,
       surface: surface as GameSettings['surface'],
       mode: mode as GameSettings['mode'],
-      ...(isPvpOrPvpve ? { pvpEnabled: true } : {}),
+      ...(isPvpOrPvpve ? { pvpEnabled: true, friendlyFire: true } : {}),
     });
 
     // Legacy parts[3]: lives count or 'infinite' — applied only when currentSettings hasn't been
