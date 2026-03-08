@@ -6615,10 +6615,22 @@ async function main() {
           });
         };
 
-        networkWeaponPickups.forEach((pickup) => applyDimming(pickup.mesh, pickup.surfaceU, pickup.surfaceV));
-        networkSuperPickups.forEach((visual) => applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV));
-        networkBuffPickups.forEach((bp) => applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV));
-        networkHealthPickups.forEach((visual) => applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV));
+        networkWeaponPickups.forEach((pickup) => {
+          if (!pickup.active) { pickup.mesh.visible = false; return; }
+          applyDimming(pickup.mesh, pickup.surfaceU, pickup.surfaceV);
+        });
+        networkSuperPickups.forEach((visual) => {
+          if (!visual.mesh.visible) return;
+          applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV);
+        });
+        networkBuffPickups.forEach((bp) => {
+          if (!bp.active) { bp.mesh.visible = false; return; }
+          applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV);
+        });
+        networkHealthPickups.forEach((visual) => {
+          if (!visual.mesh.visible) return;
+          applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV);
+        });
         for (const cp of localCompanionPickups) { if (cp.active) applyDimming(cp.mesh, cp.surfaceU, cp.surfaceV); }
         for (const bp of localBuffPickups)      { if (bp.active) applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV); }
       }
