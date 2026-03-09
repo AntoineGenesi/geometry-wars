@@ -38,11 +38,6 @@ export class SphereWithTunnelSurface extends Surface {
   private readonly gridSegmentsU: number
   private readonly gridSegmentsV: number
 
-  /** Outer-sphere-only mesh for MeshWalker. Excludes tunnel faces. */
-  private _walkableMesh!: THREE.Mesh
-
-  override get walkableMesh(): THREE.Mesh { return this._walkableMesh }
-
   // Derived geometry
   private readonly holeAngle: number        // asin(tunnelRadius / radius)
   private readonly tunnelHalfLen: number     // radius * cos(holeAngle)
@@ -119,13 +114,6 @@ export class SphereWithTunnelSurface extends Surface {
 
     this.surfaceRadius = radius
     this.playerLocalPosition = new THREE.Vector3(radius, 0, 0)
-
-    // Create outer-sphere-only mesh for collision/walking.
-    // This prevents the BVH from snapping the player to tunnel faces when
-    // the player walks near the hole edges, which caused morphing/clipping.
-    this._walkableMesh = this._createOuterSphereMesh()
-    this._walkableMesh.visible = false
-    this.group.add(this._walkableMesh)
   }
 
   private static getInitData() {
@@ -356,61 +344,6 @@ export class SphereWithTunnelSurface extends Surface {
       axis: 'y',
       holeAngle: this.holeAngle,
     }
-  }
-
-  /**
-   * Create a mesh covering only the outer sphere + bevel arcs (no tunnel faces).
-   * Used as the walkable surface for MeshWalker to prevent players from being
-   * snapped to tunnel faces when near the hole edges.
-   */
-  private _createOuterSphereMesh(): THREE.Mesh {
-    const initData = SphereWithTunnelSurface.getInitData()
-    const R = initData.radius
-    const tr = Math.min(initData.tunnelRadius, R * 0.5)
-    const bR = initData.bevelRadius ?? 0
-    const { totalP, sArc, bArc } = SphereWithTunnelSurface.computeBevelGeometry(R, tr, bR)
-
-    const radialSegs = Math.max(initData.gridSegmentsV, 32)
-    const targetStep = totalP / radialSegs
-    const ringCircumference = 2 * Math.PI * R
-    const tubularSegs = Math.max(Math.round(ringCircumference / targetStep), 48)
-
-    // Outer sphere + both bevel arcs (no tunnel)
-    const outerFrac = (sArc + 2 * bArc) / totalP
-    const outerRadialSegs = Math.round(radialSegs * outerFrac)
-
-    const positions: number[] = []
-    const indices: number[] = []
-
-    for (let j = 0; j <= outerRadialSegs; j++) {
-      // Sample the profile at the same v-fractions used by the full mesh
-      const v = j / radialSegs
-      const { r: pr, y: py } = this.profileAt(v)
-
-      for (let i = 0; i <= tubularSegs; i++) {
-        const theta = (i / tubularSegs) * Math.PI * 2
-        positions.push(pr * Math.cos(theta), py, pr * Math.sin(theta))
-      }
-    }
-
-    for (let j = 0; j < outerRadialSegs; j++) {
-      for (let i = 0; i < tubularSegs; i++) {
-        const a = j * (tubularSegs + 1) + i
-        const b = a + 1
-        const c = (j + 1) * (tubularSegs + 1) + i
-        const d = c + 1
-
-        indices.push(a, c, b)
-        indices.push(b, c, d)
-      }
-    }
-
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-    geometry.setIndex(indices)
-    geometry.computeVertexNormals()
-
-    return new THREE.Mesh(geometry)
   }
 
   createMesh(): THREE.Mesh {
