@@ -10,12 +10,17 @@
  *  - Floating particle dots that drift above the portal
  */
 import * as THREE from 'three';
+import { PortalSurfaceMaterial } from '../rendering/PortalSurfaceMaterial';
 
 // Portal ring geometry dimensions
 const TORUS_RADIUS = 1.2;        // outer ring radius (world units)
 const TORUS_TUBE = 0.12;         // tube thickness (slightly thicker)
 const TORUS_RADIAL_SEG = 16;     // smooth rim
 const TORUS_TUBULAR_SEG = 48;
+
+// Surface-conforming ring band dimensions (world units, matches server detection radius)
+const SURFACE_RING_INNER = 0.85; // inner edge of surface ring
+const SURFACE_RING_OUTER = 1.55; // outer edge = just beyond PORTAL_WORLD_RADIUS
 
 // Disc geometry
 const DISC_SEGMENTS = 48;
@@ -123,6 +128,11 @@ export class Portal {
   private _particles: THREE.Points;
   private _particlePositions: Float32Array;
   private _particlePhases: Float32Array;
+
+  // Surface-conforming ring overlay (added to surface.group, curves along surface)
+  private _surfaceRingMesh: THREE.Mesh | null = null;
+  private _surfaceRingMat: PortalSurfaceMaterial | null = null;
+  private _surfaceGroup: THREE.Group | null = null;
 
   constructor(u: number, v: number, color: THREE.Color) {
     this.surfaceU = u;
@@ -301,7 +311,64 @@ export class Portal {
     return this._surfaceWorldPos;
   }
 
+  /**
+   * Attach a surface-conforming ring overlay to the surface geometry.
+   * The overlay mesh SHARES the surface geometry (zero extra memory, deforms correctly).
+   * Must be called after the surface is ready.
+   *
+   * @param geometry    surface.mesh.geometry — shared, NOT cloned
+   * @param surfaceGroup surface.group — the overlay is added here so it rotates with the surface
+   * @param color       portal color (defaults to the portal's own color)
+   */
+  attachToSurface(geometry: THREE.BufferGeometry, surfaceGroup: THREE.Group): void {
+    // Remove any previous overlay
+    this.detachFromSurface(this._surfaceGroup ?? surfaceGroup);
+
+    // Retrieve the portal's color from the rim material
+    const rimColor = (this._rim.material as THREE.MeshStandardMaterial).color;
+    this._surfaceRingMat = new PortalSurfaceMaterial(rimColor);
+    this._surfaceRingMesh = new THREE.Mesh(geometry, this._surfaceRingMat);
+    this._surfaceRingMesh.renderOrder = 2;
+
+    this._surfaceGroup = surfaceGroup;
+    surfaceGroup.add(this._surfaceRingMesh);
+  }
+
+  /**
+   * Remove the surface ring overlay from the surface group.
+   * Call before disposing the portal or before a surface change.
+   */
+  detachFromSurface(surfaceGroup: THREE.Group): void {
+    if (this._surfaceRingMesh) {
+      surfaceGroup.remove(this._surfaceRingMesh);
+      // Do NOT dispose geometry — it is shared with the surface mesh.
+      this._surfaceRingMat?.dispose();
+      this._surfaceRingMesh = null;
+      this._surfaceRingMat = null;
+    }
+    this._surfaceGroup = null;
+  }
+
+  /**
+   * Update the surface ring shader uniforms. Call each frame after applySurfaceTransform().
+   * worldPosition must be up-to-date (set by applySurfaceTransform).
+   */
+  updateSurfaceRing(): void {
+    if (!this._surfaceRingMat) return;
+    this._surfaceRingMat.update(
+      this._surfaceWorldPos,
+      SURFACE_RING_INNER,
+      SURFACE_RING_OUTER,
+      this._time,
+    );
+  }
+
   dispose(): void {
+    // Remove surface ring overlay from surface.group if still attached
+    if (this._surfaceRingMesh && this._surfaceGroup) {
+      this.detachFromSurface(this._surfaceGroup);
+    }
+
     this._rim.geometry.dispose();
     (this._rim.material as THREE.Material).dispose();
     this._disc.geometry.dispose();

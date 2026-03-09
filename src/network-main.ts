@@ -3247,6 +3247,11 @@ async function main() {
           networkPortals = createPortalPair(portalColor, 0.25, aU, aV, bU, bV);
           scene.add(networkPortals[0].mesh);
           scene.add(networkPortals[1].mesh);
+          // Attach surface-conforming ring overlays so rings curve along surface geometry
+          if (surface) {
+            networkPortals[0].attachToSurface(surface.mesh.geometry, surface.group);
+            networkPortals[1].attachToSurface(surface.mesh.geometry, surface.group);
+          }
           syncedPortalAU = aU; syncedPortalAV = aV;
           syncedPortalBU = bU; syncedPortalBV = bV;
         }
@@ -6071,6 +6076,7 @@ async function main() {
       for (const portal of networkPortals) {
         portal.update(dt);
         portal.applySurfaceTransform(transform);
+        portal.updateSurfaceRing();
       }
     }
 
