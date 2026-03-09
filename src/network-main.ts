@@ -1922,6 +1922,7 @@ async function main() {
         killTarget: lobbyKillTarget,
         timeLimit: lobbyTimeLimit,
         livesCount: lobbyLivesCount,
+        choice,
       });
     } else {
       network.startGame(choice, currentGameSettings);

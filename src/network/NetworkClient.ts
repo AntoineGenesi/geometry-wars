@@ -880,6 +880,7 @@ export class NetworkClient {
     killTarget: number;
     timeLimit: number;
     livesCount: number;
+    choice?: string;
   }): void {
     if (!this.room || !this.connected) return;
     this.room.send('start_with_options', options);

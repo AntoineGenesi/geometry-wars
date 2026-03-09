@@ -923,6 +923,7 @@ export class GameRoom extends Room<GameState> {
       killTarget?: number;
       timeLimit?: number;
       livesCount?: number;
+      choice?: string;
     }) => {
       if (client.sessionId !== this.state.hostId) {
         this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to start with options`);
@@ -939,7 +940,26 @@ export class GameRoom extends Room<GameState> {
       this.state.timeLimit = Math.max(30, Math.min(3600, data.timeLimit ?? 300));
       this.state.livesCount = Math.max(1, Math.min(20, data.livesCount ?? 3));
       this.logger.log(`[GameRoom] Host starting with options: pvpMode=${this.state.pvpMode} winCondition=${this.state.winCondition} killTarget=${this.state.killTarget} timeLimit=${this.state.timeLimit} livesCount=${this.state.livesCount}`);
-      this.startGame();
+
+      // s44r6b-01: Use startGameWithSettings() when choice is provided so pvpEnabled/friendlyFire
+      // are correctly forced for PvP/PvPvE modes. Previously called startGame() directly which
+      // bypassed the pvpEnabled logic in startGameWithSettings(), leaving pvpEnabled=false and
+      // breaking ALL PvP damage, health bars, and hit detection.
+      if (data.choice) {
+        this.startGameWithSettings(data.choice);
+      } else {
+        // Fallback: no choice string — force pvpEnabled/friendlyFire manually before startGame()
+        const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+        if (isPvpOrPvpve) {
+          this.currentSettings = validateSettings({
+            ...this.currentSettings,
+            pvpEnabled: true,
+            friendlyFire: true,
+          });
+        }
+        this.startGame();
+      }
+
       // s44r-01: startGame() → syncSettingsToState() overwrites state.timeLimit back to
       // currentSettings.timeLimit (default=0) and never sets timeLimitSeconds/timeRemaining.
       // Re-apply after startGame() so the client timer and server countdown both work.
