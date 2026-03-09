@@ -376,6 +376,151 @@ function mobiusChordDist(u1: number, v1: number, u2: number, v2: number, scaleFa
 }
 
 /**
+ * Cube: beveled cube with 6 traversable faces.
+ * MUST match createStandardSurfaceConfig(type, 10, null) → size=10, bevelRadius=0.6.
+ *
+ * s44r6-01: Cube was NOT in usesWorldDist — used UV distance which is wildly inaccurate
+ * because cube UV parameterization maps 6 faces into [0,1]×[0,1] with non-uniform density.
+ * On top/bottom flat faces, U converges at center (all U values = same point), so UV
+ * distance is meaningless. On side belt, 0.04 UV ≈ 2.7 world units — 7× too generous.
+ * This caused "invisible enemies killing player" on cube maps.
+ */
+const CUBE_BASE_SIZE = 10;
+const CUBE_BASE_BEVEL = 0.6;
+// Face normals: 0=+Z, 1=+X, 2=-Z, 3=-X (XZ components only — Y is always 0 for side normals)
+const _CUBE_FN: ReadonlyArray<readonly [number, number]> = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+const _CUBE_FR: ReadonlyArray<readonly [number, number]> = [[1, 0], [0, -1], [-1, 0], [0, 1]];
+
+function cubePoint3D(u: number, v: number, scaleFactor: number): [number, number, number] {
+  const size = CUBE_BASE_SIZE * scaleFactor;
+  const bevel = Math.min(CUBE_BASE_BEVEL * scaleFactor, size * 0.4);
+  const half = size / 2;
+  const flatHalf = half - bevel;
+
+  const bevelArc = (Math.PI / 2) * bevel;
+  const totalH = 4 * flatHalf + 2 * bevelArc; // 2*flatHalf (bottom+top faces) + 2*flatHalf (side height) + 2*bevelArc
+  const flatFrac = flatHalf / totalH;
+  const bevelFrac = bevelArc / totalH;
+
+  // V region: 0=bottomFlat, 1=bottomBevel, 2=middle, 3=topBevel, 4=topFlat
+  const bb = flatFrac + bevelFrac;
+  const tb = 1 - flatFrac - bevelFrac;
+  const tf = 1 - flatFrac;
+  let vType: number, localT: number;
+  if (v <= flatFrac)     { vType = 0; localT = flatFrac > 0 ? v / flatFrac : 0; }
+  else if (v <= bb)      { vType = 1; localT = bb > flatFrac ? (v - flatFrac) / (bb - flatFrac) : 0; }
+  else if (v <= tb)      { vType = 2; localT = tb > bb ? (v - bb) / (tb - bb) : 0.5; }
+  else if (v <= tf)      { vType = 3; localT = tf > tb ? (v - tb) / (tf - tb) : 0; }
+  else                   { vType = 4; localT = tf < 1 ? (v - tf) / (1 - tf) : 0; }
+
+  // U region
+  const faceW = 2 * flatHalf;
+  const bevelW = (Math.PI / 2) * bevel;
+  const segW = faceW + bevelW;
+  const totalW = 4 * segW;
+  const scaledU = ((u % 1) + 1) % 1;
+  const posInTotal = scaledU * totalW;
+  const segIdx = Math.min(3, Math.floor(posInTotal / segW));
+  const posInSeg = posInTotal - segIdx * segW;
+  const uIsFace = posInSeg < faceW;
+  const localS = uIsFace
+    ? (faceW > 0 ? posInSeg / faceW : 0)
+    : (bevelW > 0 ? (posInSeg - faceW) / bevelW : 0);
+
+  const fn = _CUBE_FN[segIdx]; // [fnX, fnZ]
+  const fr = _CUBE_FR[segIdx]; // [frX, frZ]
+  const nfn = _CUBE_FN[(segIdx + 1) % 4];
+  const nfr = _CUBE_FR[(segIdx + 1) % 4];
+
+  if (vType === 0) { // bottomFlat
+    const y = -half;
+    if (uIsFace) {
+      const tp = (localS - 0.5) * 2 * flatHalf;
+      const np = flatHalf * localT;
+      return [fr[0] * tp + fn[0] * np, y, fr[1] * tp + fn[1] * np];
+    }
+    const np = flatHalf * localT;
+    const x1 = fr[0] * flatHalf + fn[0] * np, z1 = fr[1] * flatHalf + fn[1] * np;
+    const x2 = nfr[0] * (-flatHalf) + nfn[0] * np, z2 = nfr[1] * (-flatHalf) + nfn[1] * np;
+    const bt = (1 - Math.cos(localS * Math.PI)) / 2;
+    return [x1 * (1 - bt) + x2 * bt, y, z1 * (1 - bt) + z2 * bt];
+  }
+
+  if (vType === 4) { // topFlat
+    const y = half;
+    if (uIsFace) {
+      const tp = (localS - 0.5) * 2 * flatHalf;
+      const np = flatHalf * (1 - localT);
+      return [fr[0] * tp + fn[0] * np, y, fr[1] * tp + fn[1] * np];
+    }
+    const np = flatHalf * (1 - localT);
+    const x1 = fr[0] * flatHalf + fn[0] * np, z1 = fr[1] * flatHalf + fn[1] * np;
+    const x2 = nfr[0] * (-flatHalf) + nfn[0] * np, z2 = nfr[1] * (-flatHalf) + nfn[1] * np;
+    const bt = (1 - Math.cos(localS * Math.PI)) / 2;
+    return [x1 * (1 - bt) + x2 * bt, y, z1 * (1 - bt) + z2 * bt];
+  }
+
+  if (vType === 2) { // middle (side faces)
+    const y = (localT - 0.5) * 2 * flatHalf;
+    if (uIsFace) {
+      const x = (localS - 0.5) * 2 * flatHalf;
+      return [fn[0] * half + fr[0] * x, y, fn[1] * half + fr[1] * x];
+    }
+    const angle = localS * (Math.PI / 2);
+    const cosA = Math.cos(angle), sinA = Math.sin(angle);
+    const bnx = fn[0] * cosA + nfn[0] * sinA;
+    const bnz = fn[1] * cosA + nfn[1] * sinA;
+    const ecx = fn[0] * flatHalf + nfn[0] * flatHalf;
+    const ecz = fn[1] * flatHalf + nfn[1] * flatHalf;
+    return [ecx + bnx * bevel, y, ecz + bnz * bevel];
+  }
+
+  if (vType === 1) { // bottomBevel
+    const bevelAngle = (1 - localT) * (Math.PI / 2);
+    const cosA = Math.cos(bevelAngle), sinA = Math.sin(bevelAngle);
+    const y = -flatHalf - bevel * sinA;
+    if (uIsFace) {
+      const x = (localS - 0.5) * 2 * flatHalf;
+      const dist = flatHalf + bevel * cosA;
+      return [fn[0] * dist + fr[0] * x, y, fn[1] * dist + fr[1] * x];
+    }
+    const hAngle = localS * (Math.PI / 2);
+    const cosH = Math.cos(hAngle), sinH = Math.sin(hAngle);
+    const bhx = fn[0] * cosH + nfn[0] * sinH;
+    const bhz = fn[1] * cosH + nfn[1] * sinH;
+    const bhLen = Math.sqrt(bhx * bhx + bhz * bhz) || 1;
+    const ccx = fn[0] * flatHalf + nfn[0] * flatHalf;
+    const ccz = fn[1] * flatHalf + nfn[1] * flatHalf;
+    return [ccx + (bhx / bhLen) * cosA * bevel, -flatHalf - sinA * bevel, ccz + (bhz / bhLen) * cosA * bevel];
+  }
+
+  // topBevel (vType === 3)
+  const bevelAngle = localT * (Math.PI / 2);
+  const cosA = Math.cos(bevelAngle), sinA = Math.sin(bevelAngle);
+  const y = flatHalf + bevel * sinA;
+  if (uIsFace) {
+    const x = (localS - 0.5) * 2 * flatHalf;
+    const dist = flatHalf + bevel * cosA;
+    return [fn[0] * dist + fr[0] * x, y, fn[1] * dist + fr[1] * x];
+  }
+  const hAngle = localS * (Math.PI / 2);
+  const cosH = Math.cos(hAngle), sinH = Math.sin(hAngle);
+  const bhx = fn[0] * cosH + nfn[0] * sinH;
+  const bhz = fn[1] * cosH + nfn[1] * sinH;
+  const bhLen = Math.sqrt(bhx * bhx + bhz * bhz) || 1;
+  const ccx = fn[0] * flatHalf + nfn[0] * flatHalf;
+  const ccz = fn[1] * flatHalf + nfn[1] * flatHalf;
+  return [ccx + (bhx / bhLen) * cosA * bevel, flatHalf + sinA * bevel, ccz + (bhz / bhLen) * cosA * bevel];
+}
+
+function cubeChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
+  const [x1, y1, z1] = cubePoint3D(u1, v1, scaleFactor);
+  const [x2, y2, z2] = cubePoint3D(u2, v2, scaleFactor);
+  const dx = x1 - x2, dy = y1 - y2, dz = z1 - z2;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
  * Dispatch to the appropriate world-space distance function for a given surface.
  * Returns Euclidean 3D chord distance in world units — matches SP CollisionSystem.
  */
@@ -389,6 +534,7 @@ function surfaceWorldDist(
   if (surfaceType === 'cube-ring') return cubeRingChordDist(u1, v1, u2, v2, scaleFactor);
   if (surfaceType === 'pill')      return pillChordDist(u1, v1, u2, v2, scaleFactor);
   if (surfaceType === 'mobius')    return mobiusChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'cube')      return cubeChordDist(u1, v1, u2, v2, scaleFactor);
   return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron, sphere-tunnel
 }
 
@@ -3646,7 +3792,8 @@ export class GameRoom extends Room<GameState> {
       || surfaceType === 'torus'
       || surfaceType === 'cube-ring'
       || surfaceType === 'pill'
-      || surfaceType === 'mobius'; // s44j-31: Mobius UV is anisotropic (v=12 vs u=100 world units at EPIC)
+      || surfaceType === 'mobius' // s44j-31: Mobius UV is anisotropic (v=12 vs u=100 world units at EPIC)
+      || surfaceType === 'cube'; // s44r6-01: Cube UV maps 6 faces into [0,1]² — UV distance wildly inaccurate
     const sphereR = 10 * scaleFactor;
 
     // --- World-space thresholds (surfaces using 3D chord/arc distance, in world units) ---
@@ -3670,7 +3817,7 @@ export class GameRoom extends Room<GameState> {
 
     // --- UV thresholds (remaining surfaces without exact 3D formula) ---
     // Bullet-enemy: 0.015 (up from 0.012) for anti-tunneling margin — unchanged for non-distorted surfaces.
-    // Enemy-player: 0.04 remains for surfaces not in usesWorldDist (cube, mobius, pipe, etc.)
+    // Enemy-player: 0.04 remains for surfaces not in usesWorldDist (pipe, etc.)
     //   For torus and cube-ring, these are now handled by torusChordDist/cubeRingChordDist above.
     //   S44c-12: pill moved to usesWorldDist — was accidentally left in UV fallback.
     const BULLET_HIT_RADIUS = 0.015 / scaleFactor;
