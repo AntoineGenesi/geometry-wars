@@ -223,7 +223,13 @@ export function runBenchmark(): void {
     const batchSize = target > 1000 ? SPAWN_BATCH_SIZE : need;
     const toSpawn = Math.min(need, batchSize);
 
-    const batchTypes = ['grunt', 'wanderer', 'duck', 'weaver'];
+    // Representative mix of enemy types currently in the game (30+ total).
+    // Balanced across basic, intermediate, and special types to match real gameplay.
+    const batchTypes = [
+      'grunt', 'wanderer', 'duck', 'weaver', // basic types
+      'mayfly', 'rocket', 'spinner', 'snake', // intermediate
+      'repulsor', 'painter', 'virus', 'swarm' // advanced/special
+    ];
     for (let i = 0; i < toSpawn; i++) {
       const type = batchTypes[i % batchTypes.length];
       const u = 0.05 + Math.random() * 0.9;
