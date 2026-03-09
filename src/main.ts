@@ -1068,6 +1068,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Collision system (handles all collision detection + enemy colors) --
   const collisionSystem = new CollisionSystem();
+  // s44r6b-02: Set surface type for cube-specific hit detection tuning
+  collisionSystem.surfaceType = surfaceType;
 
   // -- Pickup spawner (manages all pickup types) --
   // Pass mapSizeScaleFactor so pickups scale their UV collision radius inversely,

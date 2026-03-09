@@ -3986,6 +3986,11 @@ export class GameRoom extends Room<GameState> {
     //   Matches SP CollisionSystem.ts fix applied in s44r4-02.
     // Entity sizes do NOT scale with map size, so these are fixed world-unit values.
     const ENEMY_HIT_WORLD   = 0.4;   // player(0.1) + enemy(0.3); s44r4-02: match SP CollisionSystem.ts
+    // s44r6b-02: Cube-specific tighter threshold. On flat cube faces, chord distance = visual distance
+    // exactly — so 0.4 triggers the instant edges touch (zero overlap). But enemies approach from
+    // adjacent faces around beveled edges, invisible to the player. 0.3 requires 0.1 units of visual
+    // overlap before collision, eliminating "invisible enemy" kills around corners.
+    const ENEMY_HIT_WORLD_CUBE = 0.3;
     const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
     // S44b-06: match client-side PICKUP_WORLD_RADIUS * mapSizeScaleFactor.
     // S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
@@ -4305,7 +4310,10 @@ export class GameRoom extends Room<GameState> {
         const dist = usesWorldDist
           ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
-        const hitThreshold = usesWorldDist ? ENEMY_HIT_WORLD : ENEMY_HIT_RADIUS;
+        // s44r6b-02: Cube uses tighter threshold — enemies must visually overlap player, not just touch
+        const hitThreshold = usesWorldDist
+          ? (surfaceType === 'cube' ? ENEMY_HIT_WORLD_CUBE : ENEMY_HIT_WORLD)
+          : ENEMY_HIT_RADIUS;
 
         if (dist < hitThreshold) {
           // Player hit!
