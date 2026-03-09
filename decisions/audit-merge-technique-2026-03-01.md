@@ -132,7 +132,7 @@ These aren't "bugs" — they're **scope misses** where a requirement applies to 
 
 - **Protocol Document:** `.claude/rules/merge-protocol.md`
 - **S42-01 Example:** `tasks/s42-01-qr-code-pause-menu-short-code.md`
-- **MP Architecture Audit:** `docs/MP-ARCHITECTURE.md` + `reports/mp-architecture-audit.html` (from S41-13)
+- **MP Architecture Audit:** `docs/MP-ARCHITECTURE.md` + `reports/2026-03/2026-03-01-mp-architecture-audit.html` (from S41-13)
 - **This Decision:** This file
 
 ---

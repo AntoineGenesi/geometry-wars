@@ -1,15 +1,15 @@
 # Analytics Dashboard — Usage Guide
 
-The analytics dashboard (`reports/analytics-dashboard.html`) is a standalone HTML file that visualizes game performance, CPU profiling, DDA difficulty tuning, and commit regression data.
+The analytics dashboard (`reports/2026-03/2026-03-07-analytics-dashboard.html`) is a standalone HTML file that visualizes game performance, CPU profiling, DDA difficulty tuning, and commit regression data.
 
 ## Opening the Dashboard
 
-Open `reports/analytics-dashboard.html` directly in any browser. No server required.
+Open `reports/2026-03/2026-03-07-analytics-dashboard.html` directly in any browser. No server required.
 
 ```bash
 # From the project root:
-xdg-open reports/analytics-dashboard.html   # Linux
-open reports/analytics-dashboard.html        # macOS
+xdg-open reports/2026-03/2026-03-07-analytics-dashboard.html   # Linux
+open reports/2026-03/2026-03-07-analytics-dashboard.html        # macOS
 # Or just double-click the file in Windows Explorer
 ```
 

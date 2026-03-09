@@ -111,6 +111,6 @@ The root cause (`wy` sign) was there from the beginning. Six earlier fixes addre
 
 ## HTML Report
 
-Full visual report at: `reports/mp-failure-analysis.html`
+Full visual report at: `reports/2026-03/2026-03-08-mp-failure-analysis.html`
 
 Contains: full session timeline table, voice dump quotes, per-surface fix matrix, pattern cards, test analysis, current status table.

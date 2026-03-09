@@ -82,4 +82,4 @@
 **Tried:** Multiple sessions fixed gameplay bugs (weapon mastery, map size scaling, pickup dimming) in `GameLoop.ts` (SP path) but assumed MP was also covered.
 **Why it failed:** SP (`main.ts → GameLoop.ts`) and MP (`multiplayer-main.ts` / `network-main.ts`) are completely separate code paths. `GameLoop.ts` is NOT imported by MP. S41 audit found 3 critical SP features completely absent from MP.
 **What to do instead:** After any SP gameplay fix, explicitly check: "Does this also apply to multiplayer-main.ts and network-main.ts?" If yes, apply separately. See `.claude/rules/merge-protocol.md` for the full checklist.
-**Reference:** `docs/MP-ARCHITECTURE.md`, `reports/mp-architecture-audit.html`, `.claude/rules/merge-protocol.md`
+**Reference:** `docs/MP-ARCHITECTURE.md`, `reports/2026-03/2026-03-01-mp-architecture-audit.html`, `.claude/rules/merge-protocol.md`
