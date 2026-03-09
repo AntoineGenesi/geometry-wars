@@ -42,6 +42,16 @@ export class CameraController {
   readonly targetUp = new THREE.Vector3(0, 1, 0);
 
   /**
+   * The camera's preferred normal direction for offset computation.
+   * On non-orientable surfaces (Mobius strip), the surface normal flips when
+   * crossing the seam. Without this, the camera jumps to the opposite side
+   * of the strip, inverting the player's view and controls. By tracking the
+   * preferred normal and negating flips (>90° from previous), the camera
+   * stays on the same side of the surface across non-orientable seams.
+   */
+  private readonly _preferredNormal = new THREE.Vector3(0, 1, 0);
+
+  /**
    * Whether updateFromFrame() has been called at least once for the current surface.
    * Used to skip the sign-flip continuity check on the very first frame — the check
    * compares incoming tangentV against targetUp which is initialised to world-up (0,1,0),
@@ -156,13 +166,20 @@ export class CameraController {
       }
     }
 
-    // Build camera offset: start with surface normal, rotate by orbit angles
-    this._camOffset.copy(normal).multiplyScalar(this.cameraDistance);
+    // Non-orientable seam protection (same as update() — see comment there).
+    let cameraNormal = normal;
+    if (this._cameraFrameInitialized && this._preferredNormal.dot(normal) < 0) {
+      cameraNormal = normal.clone().negate();
+    }
+    this._preferredNormal.copy(cameraNormal);
+
+    // Build camera offset: start with camera-side normal, rotate by orbit angles
+    this._camOffset.copy(cameraNormal).multiplyScalar(this.cameraDistance);
     this._camUp.copy(tangentFrame.bitangent); // REGRESSION GUARD: use bitangent NOT normal
 
     if (Math.abs(this.orbitYaw) > 0.001 || Math.abs(this.orbitPitch) > 0.001) {
-      // Rotate around normal (yaw - left/right swing)
-      this._yawQuat.setFromAxisAngle(normal, this.orbitYaw);
+      // Rotate around camera normal (yaw - left/right swing)
+      this._yawQuat.setFromAxisAngle(cameraNormal, this.orbitYaw);
       this._camOffset.applyQuaternion(this._yawQuat);
       this._camUp.applyQuaternion(this._yawQuat);
 
@@ -204,7 +221,7 @@ export class CameraController {
     // lookAt FIRST, then lerp up-vector (same order as update())
     (this.camera as THREE.PerspectiveCamera).lookAt(position);
     // s44r2-16: Fast camera up convergence on vertical-normal surfaces (cube top/bottom)
-    const normalYAbs = Math.abs(normal.y);
+    const normalYAbs = Math.abs(cameraNormal.y);
     const mpUpLerp = normalYAbs > 0.9 ? Math.min(posLerp * 5, 0.6) : posLerp;
     (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, mpUpLerp).normalize();
   }
@@ -228,14 +245,29 @@ export class CameraController {
       }
     }
 
-    // Build camera offset: start with surface normal, rotate by orbit angles
+    // Non-orientable seam protection: on surfaces like the Mobius strip, crossing
+    // the seam flips the surface normal ~180°. Without this, the camera offset
+    // (normal * distance) jumps to the opposite side of the strip, inverting the
+    // player's view and controls. This makes the seam appear impassable because
+    // every crossing immediately inverts "forward", sending the player back.
+    //
+    // Fix: track a "preferred normal" direction. If the new normal is >90° from
+    // the preferred normal, negate it. This keeps the camera on the same side
+    // of the surface across non-orientable seams.
+    let cameraNormal = playerNormal;
+    if (this._cameraFrameInitialized && this._preferredNormal.dot(playerNormal) < 0) {
+      cameraNormal = playerNormal.clone().negate();
+    }
+    this._preferredNormal.copy(cameraNormal);
+
+    // Build camera offset: start with camera-side normal, rotate by orbit angles
     // Rotation is relative to the tangent frame (tangent, bitangent, normal)
-    this._camOffset.copy(playerNormal).multiplyScalar(this.cameraDistance);
+    this._camOffset.copy(cameraNormal).multiplyScalar(this.cameraDistance);
     this._camUp.copy(frame.bitangent);
 
     if (Math.abs(this.orbitYaw) > 0.001 || Math.abs(this.orbitPitch) > 0.001) {
-      // Rotate around normal (yaw - left/right swing)
-      this._yawQuat.setFromAxisAngle(playerNormal, this.orbitYaw);
+      // Rotate around camera normal (yaw - left/right swing)
+      this._yawQuat.setFromAxisAngle(cameraNormal, this.orbitYaw);
       this._camOffset.applyQuaternion(this._yawQuat);
       this._camUp.applyQuaternion(this._yawQuat);
 
@@ -277,7 +309,7 @@ export class CameraController {
     // is parallel to the surface normal. Projecting it onto the surface gives near-zero
     // length, making aim/movement degenerate for many frames during the transition.
     // Use a fast lerp (0.6) on vertical faces so the camera converges in ~3 frames.
-    const normalY = Math.abs(playerNormal.y);
+    const normalY = Math.abs(cameraNormal.y);
     const upLerp = normalY > 0.9 ? Math.min(posLerp * 5, 0.6) : posLerp;
     (this.camera as THREE.PerspectiveCamera).up.lerp(this._camUp, upLerp).normalize();
   }
@@ -291,6 +323,7 @@ export class CameraController {
   resetFrameForNewSurface(): void {
     this._cameraFrameInitialized = false;
     this.targetUp.set(0, 1, 0); // reset to neutral so first frame has no bias
+    this._preferredNormal.set(0, 1, 0); // reset so first frame picks up the actual normal
   }
 
   /**
@@ -317,12 +350,19 @@ export class CameraController {
     normal: THREE.Vector3,
     tangentFrame: { tangent: THREE.Vector3; bitangent: THREE.Vector3 },
   ): void {
-    // Same orientation math as updateFromFrame, but snap instead of lerp
-    this._camOffset.copy(normal).multiplyScalar(this.cameraDistance);
+    // Same orientation math as updateFromFrame, but snap instead of lerp.
+    // Apply non-orientable normal protection (same as update/updateFromFrame).
+    let cameraNormal = normal;
+    if (this._cameraFrameInitialized && this._preferredNormal.dot(normal) < 0) {
+      cameraNormal = normal.clone().negate();
+    }
+    this._preferredNormal.copy(cameraNormal);
+
+    this._camOffset.copy(cameraNormal).multiplyScalar(this.cameraDistance);
     this._camUp.copy(tangentFrame.bitangent);
 
     if (Math.abs(this.orbitYaw) > 0.001 || Math.abs(this.orbitPitch) > 0.001) {
-      this._yawQuat.setFromAxisAngle(normal, this.orbitYaw);
+      this._yawQuat.setFromAxisAngle(cameraNormal, this.orbitYaw);
       this._camOffset.applyQuaternion(this._yawQuat);
       this._camUp.applyQuaternion(this._yawQuat);
       this._rotatedTangent.copy(tangentFrame.tangent).applyQuaternion(this._yawQuat);

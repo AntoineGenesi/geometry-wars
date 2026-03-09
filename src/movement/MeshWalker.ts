@@ -322,15 +322,17 @@ export class MeshWalker {
       const transportedLen = transported.length();
       if (transportedLen > 0.001) {
         transported.multiplyScalar(1 / transportedLen);
-        // Guard against 180° transport error (degenerate case only — full reversal is wrong)
-        if (this._tangent.dot(transported) > -0.5) {
-          this._tangent.copy(transported);
-          this._bitangent.crossVectors(n, this._tangent).normalize();
-          this.normal.copy(n);
-        } else {
-          this._updateTangentFrame(geoResult.normal);
-          this.normal.copy(geoResult.normal);
-        }
+        // REGRESSION GUARD (s44r5-04): Always use the transported direction for
+        // non-orientable crossings. The previous guard (dot > -0.5) rejected valid
+        // transported directions when the tangent frame had drifted significantly
+        // from the movement direction (common after walking a quarter-circumference
+        // of the Mobius strip). The fallback to Gram-Schmidt from old tangent then
+        // preserved the wrong tangent orientation, causing oscillation at the seam.
+        // The transported direction from ParallelTransport is always correct for
+        // non-orientable edges (it uses effectiveNormalTo to handle the normal flip).
+        this._tangent.copy(transported);
+        this._bitangent.crossVectors(n, this._tangent).normalize();
+        this.normal.copy(n);
       } else {
         this._updateTangentFrame(geoResult.normal);
         this.normal.copy(geoResult.normal);
