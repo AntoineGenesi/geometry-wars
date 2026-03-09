@@ -1549,13 +1549,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     analyticsPanel.dispose();
-    // Release GPU geometry/material buffers before creating new surface next round.
-    // Without this, each call to main() accumulates geometry on the GPU → performance
-    // degrades with each replay (s44r5-06).
+    // Clear entity pools before disposing game to ensure scene graph is clean (s44r5-05).
+    enemySpawner.clear();
+    bulletPool.clear();
+    // Release GPU geometry/material buffers (s44r5-06).
     surface.dispose();
-    // Dispose WebGL renderer, EffectComposer, canvas DOM element, and event listeners.
-    // Without this, each main() call creates a new renderer while the old one stays
-    // alive — multiple WebGL contexts consuming memory.
+    // Dispose WebGL renderer, EffectComposer, canvas DOM element (s44r5-05 + s44r5-06).
     game.dispose();
     main(selectedSurface, levelIndex + 1);
   });
@@ -1582,13 +1581,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     analyticsPanel.dispose();
-    // Release GPU geometry/material buffers before creating new surface next round.
-    // Without this, each call to main() accumulates geometry on the GPU → performance
-    // degrades with each replay (s44r5-06).
+    // Clear entity pools and release GPU resources (same as onNext above).
+    enemySpawner.clear();
+    bulletPool.clear();
     surface.dispose();
-    // Dispose WebGL renderer, EffectComposer, canvas DOM element, and event listeners.
-    // Without this, each main() call creates a new renderer while the old one stays
-    // alive — multiple WebGL contexts consuming memory.
     game.dispose();
     main(selectedSurface, levelIndex);
   });
