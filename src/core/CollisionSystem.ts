@@ -118,7 +118,10 @@ export class CollisionSystem {
         const hitRadiusSq = 2 * enemy.radius * enemy.radius;
         const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
         const distSq = bulletPos.distanceToSquared(visualPos);
-        if (distSq < hitRadiusSq) {
+        // s44r6-04: On-surface fallback for non-orientable surfaces (Mobius)
+        const onSurfaceDistSq = bulletPos.distanceToSquared(enemy.position);
+        const onSurfaceHitRadiusSq = enemy.radius * enemy.radius;
+        if (distSq < hitRadiusSq || onSurfaceDistSq < onSurfaceHitRadiusSq) {
           // --- Damage persistence (s44r2-13) ---
           // Cap damage by remaining budget; budget consumed = HP actually destroyed.
           // This enables piercing for high-damage weapons (Piercing, high-level player).
@@ -261,12 +264,22 @@ export class CollisionSystem {
       // History: s44r3-09 used mesh position with inflation `2*eR²` — too generous.
       //          s44r4-02 reverted to on-surface — too sensitive on curved surfaces.
       //          s44r5-03 uses mesh position with derived `(pR+eR)²+eR²` — correct.
+      //          s44r6-04 adds on-surface fallback for non-orientable surfaces (Mobius).
       const playerRadius = player.mesh.scale.x * 0.1;
       const baseHitRadiusSq = (playerRadius + enemy.radius) * (playerRadius + enemy.radius);
       const hitRadiusSq = baseHitRadiusSq + enemy.radius * enemy.radius;
       const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
       const distSq = player.mesh.position.distanceToSquared(visualPos);
-      if (distSq < hitRadiusSq) {
+
+      // s44r6-04: On non-orientable surfaces (Mobius strip), the surface normal can
+      // point in different directions for nearby entities due to the half-twist. When
+      // the enemy's normal-based mesh elevation pushes it to the "wrong side" of the
+      // surface relative to the player, the visual-position distance inflates beyond
+      // hitRadiusSq even though the on-surface positions are adjacent. Add a fallback
+      // check using on-surface positions (enemy.position, no normal offset) with the
+      // base hit radius (no elevation correction needed since both are on-surface).
+      const onSurfaceDistSq = player.mesh.position.distanceToSquared(enemy.position);
+      if (distSq < hitRadiusSq || onSurfaceDistSq < baseHitRadiusSq) {
         if (isShielded) {
           // Shield absorbs the hit and kills the enemy
           enemy.takeDamage(999);

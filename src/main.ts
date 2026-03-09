@@ -1132,6 +1132,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         .filter(e => e.alive && e.mesh)
         .map((e, i) => ({
           position: e.position.clone(),
+          meshPosition: e.mesh ? e.mesh.position.clone() : undefined,
           index: i,
           alive: e.alive,
         }));

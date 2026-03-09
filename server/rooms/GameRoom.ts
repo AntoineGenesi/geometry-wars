@@ -2360,28 +2360,44 @@ export class GameRoom extends Room<GameState> {
     }
 
     // Tesla parameters — tuned to match SP WeaponManager feel.
-    // SP uses world-space radius=3 on sphere R=10. In UV space: 0.04 UV ≈ 1.26 world units,
-    // so radius 3 ≈ 0.095 UV. Using 0.10 for a slight visual margin.
-    const TESLA_RADIUS = 0.10; // UV distance (~3 world units on sphere R=10)
-    const TESLA_DPS = 3.0;     // damage per second (matches SP WeaponManager: 3 * dt)
+    // SP uses world-space radius=3. Server uses world-space distance on surfaces
+    // that support it (Mobius, peanut, torus), UV distance elsewhere.
+    const TESLA_RADIUS_WORLD = 3.0; // world units (matches SP WeaponManager tesla radius)
+    const TESLA_RADIUS_UV = 0.10;   // UV distance (~3 world units on sphere R=10)
+    const TESLA_DPS = 3.0;          // damage per second (matches SP WeaponManager: 3 * dt)
 
     const levelIdx = Math.min(player.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
     const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
     const buffDamageMult = this.calculateBuffDamageMult(player);
     const damage = TESLA_DPS * levelDamageMult * buffDamageMult * dt;
 
+    // s44r6-04: Use accurate chord distance for non-spherical surfaces (Mobius, peanut,
+    // torus, etc.) instead of UV distance, which is anisotropic on these surfaces.
+    const surfaceType = this.state.surfaceType;
+    const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
+    const useWorldDist = surfaceType === 'mobius' || surfaceType === 'peanut'
+      || surfaceType === 'torus' || surfaceType === 'cube-ring' || surfaceType === 'pill';
+    const sphereR = 10 * scaleFactor;
+
     const enemiesToKill: number[] = [];
 
     this.state.enemies.forEach((enemy, eIndex) => {
       if (!enemy.alive) return;
 
-      // Vector from player to enemy (wrap-aware U axis)
-      let dU = enemy.surfaceU - player.surfaceU;
-      let dV = enemy.surfaceV - player.surfaceV;
-      if (dU > 0.5) dU -= 1; else if (dU < -0.5) dU += 1;
-
-      const dist = Math.sqrt(dU * dU + dV * dV);
-      if (dist > TESLA_RADIUS) return;
+      let dist: number;
+      if (useWorldDist) {
+        // Use accurate world-space chord distance for surfaces with anisotropic UV
+        dist = surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV,
+          enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR);
+      } else {
+        // Simple UV distance for sphere-like surfaces
+        let dU = enemy.surfaceU - player.surfaceU;
+        let dV = enemy.surfaceV - player.surfaceV;
+        if (dU > 0.5) dU -= 1; else if (dU < -0.5) dU += 1;
+        dist = Math.sqrt(dU * dU + dV * dV);
+      }
+      const threshold = useWorldDist ? TESLA_RADIUS_WORLD : TESLA_RADIUS_UV;
+      if (dist > threshold) return;
 
       // Apply continuous area damage
       enemy.health -= damage;
