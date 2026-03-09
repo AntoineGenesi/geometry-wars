@@ -3440,6 +3440,11 @@ async function main() {
           // Reset vFlip state so client prediction doesn't diverge after respawn.
           // Stale vFlip after death can cause bullets to fire in wrong direction.
           localPlayerVFlip = false;
+          // s44r6-05: Reset camera frame so preferredNormal doesn't fight the respawn normal.
+          // On pill/torus/peanut, respawn on the opposite side has an outward normal that
+          // is >90° from the pre-death normal. Without reset, CameraController flips the
+          // normal → camera goes inside the surface → alternating inside/outside each death.
+          cameraController.resetFrameForNewSurface();
         }
       }
       playerAliveState.set(id, netPlayer.alive);
