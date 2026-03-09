@@ -66,8 +66,9 @@
 3. `decisions/arbitrary-mesh-loading.md` — Mesh loading decision
 
 ### Analytics / Telemetry
-1. `docs/analytics-guide.md` — Analytics system overview
-2. `docs/telemetry-schema.md` — DDA telemetry schema
+1. `docs/analytics-guide.md` — Data collection, localStorage schema, exporting JSON files
+2. `docs/ANALYTICS_GUIDE.md` — Using the analytics dashboard HTML (reports/2026-03/2026-03-07-analytics-dashboard.html)
+3. `docs/telemetry-schema.md` — DDA telemetry schema
 
 ---
 
@@ -84,7 +85,7 @@
 
 ## Current Active Work
 
-- Active tasks: `tasks/README.md` (s44j, s44k, s44l prefixes)
+- Active tasks: `TODO.md` (s44r6 prefix — current session 2026-03-10)
 - Task backlog: `TODO.md`
 - Session state: `.claude/state/pipeline-state.md`
 - Completed tasks: `COMPLETED-TASKS.md`
