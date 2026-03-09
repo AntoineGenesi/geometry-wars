@@ -85,7 +85,7 @@ interface ActiveEffect {
  * Callback types for weapon system
  */
 export interface WeaponCallbacks {
-  getEnemies: () => { position: THREE.Vector3; index: number; alive: boolean }[];
+  getEnemies: () => { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean }[];
   onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => void;
   onEnemyPull?: (index: number, pullStrength: number, pullCenter: THREE.Vector3) => void;
   spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
@@ -2088,7 +2088,15 @@ export class WeaponManager {
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
 
-            const dist = effect.position.distanceTo(enemy.position);
+            // s44r6-04: Use the minimum of on-surface distance and visual (mesh)
+            // distance. On non-orientable surfaces (Mobius), the normal-based mesh
+            // elevation can push enemies to unexpected positions, making one metric
+            // inaccurate while the other remains correct.
+            const onSurfaceDist = effect.position.distanceTo(enemy.position);
+            const visualDist = enemy.meshPosition
+              ? effect.position.distanceTo(enemy.meshPosition)
+              : onSurfaceDist;
+            const dist = Math.min(onSurfaceDist, visualDist);
             if (dist < radius) {
               this.callbacks.onEnemyDamage(enemy.index, 3 * dt * rapidTickMult * teslaMasteryMult * teslaSessionMult * teslaUpgradeDmgMult, WeaponType.TeslaCoil);
             } else if (arcRadius > 0 && dist < arcRadius) {
