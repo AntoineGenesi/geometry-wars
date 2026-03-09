@@ -611,6 +611,10 @@ async function main() {
     surface = null;
     meshSurface = null;
     getTransform = null;
+    // Clear spawner before nulling: removes spawn warning rings from scene
+    // (SpawnWarning meshes are added to scene by EnemySpawner but NOT tracked
+    // in networkEnemies, so they'd persist on the new map without this call).
+    enemySpawner?.clear();
     enemySpawner = null;
     surfaceReady = false;
     surfaceConfirmedFromServer = false;

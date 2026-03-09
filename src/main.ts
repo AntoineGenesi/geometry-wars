@@ -1549,6 +1549,17 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     analyticsPanel.dispose();
+    // Clear entity pools before disposing game to ensure scene graph is clean.
+    // enemySpawner.clear() removes enemy meshes from the old scene and unregisters
+    // instanced enemies. bulletPool root was scene.add'd so disposing game alone
+    // leaves it in the old (now unused) scene — explicit clear removes it cleanly.
+    enemySpawner.clear();
+    bulletPool.clear();
+    // dispose() stops RAF + removes old WebGL canvas from DOM (KEY: prevents
+    // the old canvas from staying visible when next main() appends a new one —
+    // CSS `canvas { height:100% }` with `body { overflow:hidden }` would otherwise
+    // hide the new canvas behind the viewport, showing the frozen old frame).
+    game.dispose();
     main(selectedSurface, levelIndex + 1);
   });
   levelCompleteScreen.onReplay(() => {
@@ -1574,6 +1585,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     analyticsPanel.dispose();
+    // Clear entity pools and remove old canvas from DOM (same as onNext above).
+    enemySpawner.clear();
+    bulletPool.clear();
+    game.dispose();
     main(selectedSurface, levelIndex);
   });
   levelCompleteScreen.onMenu(() => {
