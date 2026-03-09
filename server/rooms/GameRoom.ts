@@ -538,51 +538,9 @@ function surfaceWorldDist(
   return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron, sphere-tunnel
 }
 
-// ---------------------------------------------------------------------------
-// Peanut surface speed correction (mirrors PeanutSurface.getPlayerSpeedCorrectionAt)
-// PEANUT_WAIST_DEPTH is already declared above (used by peanutChordDist).
-// ---------------------------------------------------------------------------
-
-/**
- * Local UV metric at a given v coordinate on the peanut surface.
- * Computed analytically (no Three.js needed).
- */
-function _peanutLocalMetric(v: number): number {
-  const phi = v * Math.PI;
-  const sinPhi = Math.max(Math.abs(Math.sin(phi)), 0.001);
-  const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
-  const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
-  const uScale = rNorm * sinPhi;
-  const vScale = Math.sqrt(rNorm * rNorm + drNorm * drNorm);
-  return Math.sqrt(uScale * vScale);
-}
-
-/** Area-weighted average metric over the peanut surface (lazy-computed once). */
-let _peanutAvgMetric: number | null = null;
-function _getPeanutAvgMetric(): number {
-  if (_peanutAvgMetric !== null) return _peanutAvgMetric;
-  const STEPS = 40;
-  let totalWeight = 0, totalMetric = 0;
-  for (let i = 1; i < STEPS; i++) {
-    const v = i / STEPS;
-    const phi = v * Math.PI;
-    const weight = Math.sin(phi);
-    totalMetric += _peanutLocalMetric(v) * weight;
-    totalWeight += weight;
-  }
-  _peanutAvgMetric = totalWeight > 0 ? totalMetric / totalWeight : 1.0;
-  return _peanutAvgMetric;
-}
-
-/**
- * Speed correction for the player on the peanut surface.
- * Mirrors PeanutSurface.getPlayerSpeedCorrectionAt for the server path.
- */
-function peanutPlayerSpeedCorrection(v: number): number {
-  const local = _peanutLocalMetric(v);
-  const avg = _getPeanutAvgMetric();
-  return Math.max(0.4, Math.min(2.5, local / avg));
-}
+// Peanut player speed correction removed (s44r6-07): ServerMeshWalker moves in world
+// space at constant speed. UV-metric correction was causing 0.69x waist slowdown and
+// 1.62x pole speedup. PEANUT_WAIST_DEPTH remains above (used by peanutChordDist + bullets).
 
 // ---------------------------------------------------------------------------
 // Startup config hash helpers
@@ -2032,14 +1990,11 @@ export class GameRoom extends Room<GameState> {
       const walker = this.surfaceManager.getWalker(clientId);
       if (!walker) return;
 
-      // Apply speed (world units/s): base speed × level × boost × surface-metric multipliers.
-      // For peanut: apply UV-aware speed correction so traversal feels consistent everywhere.
-      // Uses previous-frame surfaceV (one-frame lag, imperceptible at 30Hz).
-      let effectiveSpeedMultiplier = speedMultiplier;
-      if (this.surfaceManager.getSurfaceType() === 'peanut') {
-        effectiveSpeedMultiplier *= peanutPlayerSpeedCorrection(player.surfaceV);
-      }
-      walker.speed = PLAYER_WORLD_SPEED * effectiveSpeedMultiplier;
+      // Apply speed (world units/s): base speed × level × boost multipliers.
+      // No peanut UV-metric correction: ServerMeshWalker moves in world space at
+      // constant speed via geodesic walking. UV-metric correction was causing
+      // 0.69x slowdown at waist and 1.62x speedup at poles (s44r6-07 root cause).
+      walker.speed = PLAYER_WORLD_SPEED * speedMultiplier;
 
       // Move using camera axes from client input (same projection logic as SP MeshWalker)
       const camRX = input.camRightX ?? 1;

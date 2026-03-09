@@ -19,8 +19,8 @@ export class PeanutSurface extends Surface {
   private readonly gridSegmentsU: number
   private readonly gridSegmentsV: number
 
-  /** Cached average metric scale for speed correction (lazy-initialized). */
-  private _avgMetricScale: number | null = null
+  // _avgMetricScale removed: MeshWalker moves in world space at constant speed,
+  // UV-metric-based correction was causing speed variation (0.69x at waist, 1.62x at poles).
 
   constructor(config?: PeanutConfig) {
     const baseRadius = config?.baseRadius ?? 6
@@ -89,44 +89,21 @@ export class PeanutSurface extends Surface {
   }
 
   /**
-   * Compute the local speed-correction metric at a given v (phi) position.
+   * Speed correction for the player on the peanut surface.
    *
-   * Uses the profile radius rNorm as the proxy for surface "width" at each latitude.
-   * A wider ring (larger rNorm) means the player covers more world distance for the
-   * same UV step, so we increase the MeshWalker speed to match.
+   * Returns 1.0 (no correction). MeshWalker moves in world space at constant speed
+   * via geodesic face walking — it does NOT use UV-based movement. The UV metric
+   * distortion (wider at poles, narrower at waist) is irrelevant for world-space walkers.
    *
-   * NOTE: The original formula used sqrt(sinPhi * rNorm * vScale), which collapsed
-   * to zero at the poles (sinPhi→0) → speedCorr hit the 0.4 floor → player moved at
-   * 40% speed at the poles. Using rNorm alone removes the sinPhi singularity:
-   *   poles (phi=0,π): rNorm=1+waistDepth=1.4 → speedCorr≈1.61 (faster in wide bulge)
-   *   waist (phi=π/2): rNorm=1−waistDepth=0.6 → speedCorr≈0.69 (slower at narrow neck)
+   * Previous versions applied UV-metric correction (rNorm / avg) which CAUSED speed
+   * variation: 0.69x at waist, 1.62x at poles — a 2.35x ratio. This was the root cause
+   * of the "player slows down at waist and poles" bug reported across s44j-s44r6.
+   *
+   * The UV metric corrections in moveOnSurface() (for enemy UV-based movement) remain
+   * correct and are not affected by this change.
    */
-  private _localMetricAt(v: number): number {
-    const phi = v * Math.PI
-    return 1 + this.waistDepth * Math.cos(2 * phi)
-  }
-
-  private _computeAvgMetricScale(): number {
-    const STEPS = 40
-    let totalWeight = 0
-    let totalMetric = 0
-    for (let i = 1; i < STEPS; i++) {
-      const v = i / STEPS
-      const phi = v * Math.PI
-      const weight = Math.sin(phi)
-      totalMetric += this._localMetricAt(v) * weight
-      totalWeight += weight
-    }
-    return totalWeight > 0 ? totalMetric / totalWeight : 1.0
-  }
-
-  override getPlayerSpeedCorrectionAt(_u: number, v: number): number {
-    if (this._avgMetricScale === null) {
-      this._avgMetricScale = this._computeAvgMetricScale()
-    }
-    const localMetric = this._localMetricAt(v)
-    const raw = localMetric / this._avgMetricScale
-    return Math.max(0.4, Math.min(2.5, raw))
+  override getPlayerSpeedCorrectionAt(_u: number, _v: number): number {
+    return 1.0
   }
 
   private getPointLocal(u: number, v: number): SurfacePoint {

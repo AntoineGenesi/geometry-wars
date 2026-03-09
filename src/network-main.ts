@@ -1242,9 +1242,6 @@ async function main() {
     shooting: boolean; bomb: boolean; boost: boolean;
   } | null = null;
 
-  // Lazy-computed average metric for peanut client prediction (mirrors _getPeanutAvgMetric in GameRoom.ts).
-  let _peanutClientAvgMetric: number | null = null;
-
   // Client-side boost state for prediction (mirrors server logic in GameRoom.ts).
   // Leading-edge detection ensures boost only triggers once per Shift press.
   let localBoostActive = false;
@@ -5429,43 +5426,10 @@ async function main() {
             const sinPhi = Math.sin(phi);
             const clampedSinPhi = Math.max(sinPhi, 0.3);
             predDx = predDx / clampedSinPhi;
-          } else if (surfType === 'peanut') {
-            // Peanut: apply the SAME isotropic speed correction the server uses
-            // (peanutPlayerSpeedCorrection in GameRoom.ts). Server multiplies world speed
-            // by local/avg; client must divide UV deltas by the same factor so prediction
-            // matches server and eliminates snap-back at poles.
-            const PEANUT_WAIST_DEPTH = 0.4;
-            const v = localPlayer.surfaceV;
-            const phi = v * Math.PI;
-            const sinPhi = Math.max(Math.abs(Math.sin(phi)), 0.001);
-            const rNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * phi);
-            const drNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * phi);
-            const uScale = rNorm * sinPhi;
-            const vScale = Math.sqrt(rNorm * rNorm + drNorm * drNorm);
-            const localMetric = Math.sqrt(uScale * vScale);
-            // Average metric (lazy-computed once; mirrors _getPeanutAvgMetric in GameRoom.ts)
-            if (_peanutClientAvgMetric === null) {
-              const STEPS = 40;
-              let totalWeight = 0, totalMetric = 0;
-              for (let i = 1; i < STEPS; i++) {
-                const sv = i / STEPS;
-                const sphi = sv * Math.PI;
-                const ssinPhi = Math.max(Math.abs(Math.sin(sphi)), 0.001);
-                const srNorm = 1 + PEANUT_WAIST_DEPTH * Math.cos(2 * sphi);
-                const sdrNorm = -2 * PEANUT_WAIST_DEPTH * Math.sin(2 * sphi);
-                const suScale = srNorm * ssinPhi;
-                const svScale = Math.sqrt(srNorm * srNorm + sdrNorm * sdrNorm);
-                const weight = Math.sin(sphi);
-                totalMetric += Math.sqrt(suScale * svScale) * weight;
-                totalWeight += weight;
-              }
-              _peanutClientAvgMetric = totalWeight > 0 ? totalMetric / totalWeight : 1.0;
-            }
-            const speedCorrection = Math.max(0.4, Math.min(2.5, localMetric / _peanutClientAvgMetric));
-            // Server multiplies world speed by speedCorrection; client divides UV deltas by it
-            predDx = predDx / speedCorrection;
-            predDy = predDy / speedCorrection;
           }
+          // Peanut: no UV-metric correction. Server uses ServerMeshWalker at constant
+          // world speed (s44r6-07 fix), so client prediction doesn't need to compensate
+          // for UV distortion either. The old correction caused 0.69x waist slowdown.
           // Torus: negate U-delta to match server-side fix (see GameRoom.ts + TorusSurface.ts).
           if (surfType === 'torus') {
             predDx = -predDx;
