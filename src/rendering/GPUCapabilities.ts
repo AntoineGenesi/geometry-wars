@@ -128,8 +128,6 @@ async function probeWebGPU(): Promise<WebGPUProbeResult> {
       console.warn('[WebGPU] Common fixes: update GPU driver, update Chrome, enable chrome://flags/#enable-unsafe-webgpu');
       return result;
     }
-    result.available = true;
-
     // Extract adapter info -- available in Chrome 113+, Firefox Nightly, etc.
     // The API has evolved: older versions used requestAdapterInfo(), newer use .info
     try {
@@ -152,6 +150,32 @@ async function probeWebGPU(): Promise<WebGPUProbeResult> {
       }
     } catch {
       // Adapter info not available -- adapter itself still works
+    }
+
+    // CRITICAL: Verify device creation works, not just adapter existence.
+    //
+    // requestAdapter() succeeding does NOT mean WebGPU is usable. The GPU driver
+    // must also be able to create a GPUDevice. Three.js WebGPUBackend.init()
+    // calls requestDevice() internally, and if it fails, Three.js silently falls
+    // back to WebGL2. To prevent the misleading "WebGPU detected" UI message when
+    // the game is actually running WebGL2, we must verify device creation here too.
+    //
+    // Common failure scenario (confirmed root cause of this bug):
+    //   - Chrome returns a valid adapter for the GPU
+    //   - requestDevice() fails due to outdated GPU driver or Chrome blocklist
+    //   - Three.js silently falls back to WebGL2
+    //   - Settings page shows "WebGPU: available" — incorrect and confusing
+    try {
+      const device = await adapter.requestDevice();
+      // Device creation succeeded — WebGPU is truly usable.
+      // Destroy immediately: we only needed this to verify support.
+      device.destroy();
+      result.available = true;
+    } catch (deviceErr) {
+      console.warn('[WebGPU] Adapter found but device creation failed — WebGPU is not usable:', deviceErr);
+      console.warn('[WebGPU] This usually means the GPU driver is too old or is on Chrome\'s blocklist.');
+      console.warn('[WebGPU] Check chrome://gpu and update your GPU driver.');
+      result.available = false;
     }
   } catch {
     // WebGPU not available

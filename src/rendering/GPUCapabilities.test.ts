@@ -81,4 +81,72 @@ describe('GPUCapabilities', () => {
       expect(report.webgpu).toBe(false);
     });
   });
+
+  // ------------------------------------------------------------------
+  // Regression test: adapter-exists-but-device-fails scenario
+  // This is the root cause of "WebGPU detected but always uses WebGL2":
+  // requestAdapter() can succeed while requestDevice() fails.
+  // GPUCapabilities must check both so the settings UI is not misleading.
+  // ------------------------------------------------------------------
+  describe('WebGPU adapter vs device verification', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.restoreAllMocks();
+    });
+
+    it('reports webgpu as false when adapter exists but requestDevice fails', async () => {
+      // Simulate: navigator.gpu exists, requestAdapter returns adapter,
+      // but requestDevice throws (GPU driver doesn't fully support WebGPU).
+      // This is the root cause bug: GPUCapabilities only checked requestAdapter()
+      // but Three.js also calls requestDevice() which can fail.
+      const mockAdapter = {
+        features: { has: () => false },
+        info: null,
+        requestAdapterInfo: undefined,
+        requestDevice: vi.fn().mockRejectedValue(new Error('Device lost: GPU driver crash')),
+      };
+      const mockGpu = {
+        requestAdapter: vi.fn().mockResolvedValue(mockAdapter),
+      };
+      vi.stubGlobal('navigator', { gpu: mockGpu, hardwareConcurrency: 4 });
+
+      const report = await detectGPUCapabilities();
+
+      // MUST be false — adapter exists but device creation fails
+      // This matches what Three.js WebGPURenderer.init() would experience
+      expect(report.webgpu).toBe(false);
+    });
+
+    it('reports webgpu as true when both adapter and device creation succeed', async () => {
+      const mockDevice = {
+        destroy: vi.fn(),
+      };
+      const mockAdapter = {
+        features: { has: () => false },
+        info: { vendor: 'NVIDIA', architecture: 'Ampere', device: '', description: 'RTX 3080' },
+        requestDevice: vi.fn().mockResolvedValue(mockDevice),
+      };
+      const mockGpu = {
+        requestAdapter: vi.fn().mockResolvedValue(mockAdapter),
+      };
+      vi.stubGlobal('navigator', { gpu: mockGpu, hardwareConcurrency: 8 });
+
+      const report = await detectGPUCapabilities();
+
+      // MUST be true — both adapter and device succeeded
+      expect(report.webgpu).toBe(true);
+      // Device must be destroyed after probe to release GPU resources
+      expect(mockDevice.destroy).toHaveBeenCalled();
+    });
+
+    it('reports webgpu as false when adapter returns null', async () => {
+      const mockGpu = {
+        requestAdapter: vi.fn().mockResolvedValue(null),
+      };
+      vi.stubGlobal('navigator', { gpu: mockGpu, hardwareConcurrency: 4 });
+
+      const report = await detectGPUCapabilities();
+      expect(report.webgpu).toBe(false);
+    });
+  });
 });
