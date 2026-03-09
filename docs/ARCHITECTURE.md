@@ -1,5 +1,7 @@
 # Architecture
 
+> **⚠ STALE — Last updated 2026-02-11.** This document reflects early architecture. For current architecture, see `PROJECT.md` (always up-to-date) and `docs/MP-ARCHITECTURE.md` (updated 2026-03-01). Some paths below (e.g., `src/experimental/`) may be outdated.
+
 ## Movement System
 
 Two movement systems coexist, bridged via coordinate conversion.

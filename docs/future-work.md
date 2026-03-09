@@ -1,5 +1,7 @@
 # Future Work
 
+> **⚠ STALE — Created 2026-02-11.** Many items here may have been fixed in subsequent sessions (s42–s44r6). Verify against current codebase before acting on any item. Check `COMPLETED-TASKS.md` and `git log` for what was fixed.
+
 Items discovered during the task verification audit (2026-02-11). These are improvements and fixes that are not critical blockers but would meaningfully improve the project.
 
 ---

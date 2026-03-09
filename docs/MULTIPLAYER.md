@@ -1,23 +1,14 @@
 # Multiplayer
 
-## Local Splitscreen
+> **⚠ NOTE — Last updated 2026-02-23.** Local Splitscreen section below is **OUTDATED** — splitscreen was removed in S38a (2026-02-27). LAN multiplayer is the only co-op mode. The `multiplayer-main.ts` entry point still exists but is the LAN lobby setup, not splitscreen.
 
-URL: `http://localhost:3000?mode=multiplayer`
+## ~~Local Splitscreen~~ (REMOVED — S38a, 2026-02-27)
 
-Two players share one screen on the same surface.
+~~URL: `http://localhost:3000?mode=multiplayer`~~
 
-### Controls
+~~Two players share one screen on the same surface.~~
 
-| Action | Player 1 | Player 2 |
-|--------|----------|----------|
-| Move | WASD | IJKL |
-| Aim | Mouse | Auto-aim (shoots in movement direction) |
-| Shoot | Left click | O |
-| Bomb | Space | P |
-
-Camera follows the midpoint of both players. Scoring is combined.
-
-Source: `src/multiplayer-main.ts`, `src/input/MultiplayerInput.ts`
+*Splitscreen co-op was added then removed. LAN multiplayer (below) is the only multiplayer mode.*
 
 ## Network Multiplayer (LAN)
 
