@@ -1595,7 +1595,10 @@ export class GameRoom extends Room<GameState> {
     const spawnOffsets = computeSpawnOffsets(this.maxClients);
     const spawnPos = spawnOffsets[this.state.players.size % this.maxClients];
     player.surfaceU = spawnPos.u;
-    player.surfaceV = spawnPos.v;
+    // s44r6b-03: Pill non-PvP modes restrict spawning to outside surface (v ≤ 0.48)
+    const isPvpLikeJoin = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    player.surfaceV = (this.state.surfaceType === 'pill' && !isPvpLikeJoin)
+      ? Math.min(spawnPos.v, 0.48) : spawnPos.v;
 
     this.state.players.set(client.sessionId, player);
 
@@ -1608,7 +1611,7 @@ export class GameRoom extends Room<GameState> {
     // (startGame() creates walkers for players present at game start; this handles
     // players joining mid-game.)
     if (this.state.roomPhase === 'playing' && this.surfaceManager.getMeshSurface()) {
-      const walker = this.surfaceManager.createWalker(client.sessionId, spawnPos.u, spawnPos.v);
+      const walker = this.surfaceManager.createWalker(client.sessionId, player.surfaceU, player.surfaceV);
       if (walker) {
         this.applyWalkerStateToPlayer(player, walker.getState());
       }
@@ -2003,11 +2006,14 @@ export class GameRoom extends Room<GameState> {
       const roundSpawnOffsets = computeSpawnOffsets(this.maxClients);
       const spawnPos = roundSpawnOffsets[spawnIdx % this.maxClients];
       player.surfaceU = spawnPos.u;
-      player.surfaceV = spawnPos.v;
+      // s44r6b-03: Pill non-PvP modes restrict spawning to outside surface (v ≤ 0.48)
+      const isPvpLikeRound = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+      player.surfaceV = (this.state.surfaceType === 'pill' && !isPvpLikeRound)
+        ? Math.min(spawnPos.v, 0.48) : spawnPos.v;
       player.ddaLevel = 0;
 
       // Create walker at spawn position and sync initial world-space state
-      const walker = this.surfaceManager.createWalker(sessionId, spawnPos.u, spawnPos.v);
+      const walker = this.surfaceManager.createWalker(sessionId, player.surfaceU, player.surfaceV);
       if (walker) {
         this.applyWalkerStateToPlayer(player, walker.getState());
       }
@@ -2087,8 +2093,11 @@ export class GameRoom extends Room<GameState> {
       player.invincibilityTimer = 0;
       const spawnPos = pvpSpawnOffsets[spawnIdx % this.maxClients];
       player.surfaceU = spawnPos.u;
-      player.surfaceV = spawnPos.v;
-      const walker = this.surfaceManager.createWalker(sessionId, spawnPos.u, spawnPos.v);
+      // s44r6b-03: Pill non-PvP modes restrict spawning to outside surface (v ≤ 0.48)
+      const isPvpLikeSoft = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+      player.surfaceV = (this.state.surfaceType === 'pill' && !isPvpLikeSoft)
+        ? Math.min(spawnPos.v, 0.48) : spawnPos.v;
+      const walker = this.surfaceManager.createWalker(sessionId, player.surfaceU, player.surfaceV);
       if (walker) {
         this.applyWalkerStateToPlayer(player, walker.getState());
       }
@@ -4011,6 +4020,11 @@ export class GameRoom extends Room<GameState> {
     // adjacent faces around beveled edges, invisible to the player. 0.3 requires 0.1 units of visual
     // overlap before collision, eliminating "invisible enemy" kills around corners.
     const ENEMY_HIT_WORLD_CUBE = 0.3;
+    // s44r6b-03: Pill-specific tighter threshold. On curved pill body, enemies are elevated by
+    // normal × radius, making 3D chord distance ~27% smaller than visual distance. The SP fix
+    // (s44r5-03) uses mesh.position (visual) directly; MP only has UV coords so we compensate
+    // by tightening the threshold by ~20% (0.4 → 0.32) to better match visual overlap.
+    const ENEMY_HIT_WORLD_PILL = 0.32;
     const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
     // S44b-06: match client-side PICKUP_WORLD_RADIUS * mapSizeScaleFactor.
     // S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
@@ -4292,7 +4306,7 @@ export class GameRoom extends Room<GameState> {
             const dist = usesWorldDist
               ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
               : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
-            const hitThreshold = usesWorldDist ? ENEMY_HIT_WORLD : ENEMY_HIT_RADIUS;
+            const hitThreshold = usesWorldDist ? (surfaceType === 'cube' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD) : ENEMY_HIT_RADIUS;
             if (dist < hitThreshold) {
               nearMissLogged = true;
               this.lastNearMissLogTime.set(player.id, this.state.gameTime);
@@ -4331,8 +4345,9 @@ export class GameRoom extends Room<GameState> {
           ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
         // s44r6b-02: Cube uses tighter threshold — enemies must visually overlap player, not just touch
+        // s44r6b-03: Pill uses tighter threshold — curved body makes chord dist ~27% smaller than visual
         const hitThreshold = usesWorldDist
-          ? (surfaceType === 'cube' ? ENEMY_HIT_WORLD_CUBE : ENEMY_HIT_WORLD)
+          ? (surfaceType === 'cube' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD)
           : ENEMY_HIT_RADIUS;
 
         if (dist < hitThreshold) {
@@ -5027,7 +5042,9 @@ export class GameRoom extends Room<GameState> {
    */
   private getSpawnPosition(): { u: number; v: number } {
     const vMin = 0.05;
-    const vMax = 0.95;
+    // s44r6b-03: Pill non-PvP modes: restrict enemy spawning to outside surface (v ≤ 0.48)
+    const isPvpLike = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    const vMax = (this.state.surfaceType === 'pill' && !isPvpLike) ? 0.48 : 0.95;
     const MIN_DIST = 0.25;
     const MAX_DIST = 0.45;
     // Struggling players (ddaLevel >= 2) get a larger exclusion zone so enemies
@@ -5109,7 +5126,11 @@ export class GameRoom extends Room<GameState> {
    */
   private getPlayerRespawnPosition(deathU: number, deathV: number): { u: number; v: number } {
     const vMin = 0.05;
-    const vMax = 0.95;
+    // s44r6b-03: Pill non-PvP/PvPvE modes: restrict spawning to outside surface (v ≤ 0.5).
+    // In PvP/PvPvE both sides are intentional gameplay; in waves/other modes inside spawning
+    // causes instant deaths because enemies on the outer surface register close chord distances.
+    const isPvpLike = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    const vMax = (this.state.surfaceType === 'pill' && !isPvpLike) ? 0.48 : 0.95;
     const MIN_RESPAWN_DIST = 0.3;  // at least 0.3 UV units from death position
     const ENEMY_CLEAR_DIST = 0.1;  // stay at least 0.1 UV units from enemies
 
@@ -5240,7 +5261,9 @@ export class GameRoom extends Room<GameState> {
    */
   private getPlayerRespawnPositionFarFromPlayers(excludeId: string): { u: number; v: number } {
     const vMin = 0.05;
-    const vMax = 0.95;
+    // s44r6b-03: Pill non-PvP modes restrict to outside surface (v ≤ 0.48)
+    const isPvpLike = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    const vMax = (this.state.surfaceType === 'pill' && !isPvpLike) ? 0.48 : 0.95;
     const ENEMY_CLEAR_DIST = 0.1;
 
     // Collect alive players' positions (excluding the respawning player)
