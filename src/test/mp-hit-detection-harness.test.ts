@@ -215,6 +215,80 @@ describe('mpSurfaceWorldDist — peanut', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tests: mpSurfaceWorldDist — cube (s44r6-01 regression)
+// ---------------------------------------------------------------------------
+
+describe('mpSurfaceWorldDist — cube (s44r6-01: invisible enemies killing player)', () => {
+  const scale = 1.0;
+
+  it('same point: distance = 0', () => {
+    expect(mpSurfaceWorldDist('cube', 0.5, 0.5, 0.5, 0.5, scale, 0)).toBeCloseTo(0, 5);
+  });
+
+  it('nearby on same side face: distance ≈ small world units', () => {
+    // Two points on the same side face, slightly apart in U
+    // Middle belt, face 0 center: u≈0.125, v=0.5
+    const d = mpSurfaceWorldDist('cube', 0.125, 0.5, 0.13, 0.5, scale, 0);
+    expect(d).toBeGreaterThan(0);
+    expect(d).toBeLessThan(2.0); // should be small, not wild
+  });
+
+  it('opposite faces: distance is large (NO false positive kill)', () => {
+    // Player on face 0 (+Z, u≈0.125), enemy on face 2 (-Z, u≈0.625)
+    // Both at middle belt (v=0.5). Should be ~10 world units apart (cube size = 10).
+    const d = mpSurfaceWorldDist('cube', 0.125, 0.5, 0.625, 0.5, scale, 0);
+    expect(d).toBeGreaterThan(5); // must be far away
+    expect(d).toBeGreaterThan(ENEMY_HIT_WORLD); // must NOT trigger hit
+  });
+
+  it('adjacent faces near edge: distance is moderate', () => {
+    // Player on face 0 (+Z) near the +X edge, enemy on face 1 (+X) near the +Z edge
+    // They're on adjacent faces near the shared edge — should be moderate distance
+    const d = mpSurfaceWorldDist('cube', 0.22, 0.5, 0.28, 0.5, scale, 0);
+    expect(d).toBeGreaterThan(0);
+    expect(isFinite(d)).toBe(true);
+  });
+
+  it('top face center: enemies at different U values but same V≈1 are close', () => {
+    // On the top flat face (v≈0.95+), all U values converge near center.
+    // Two points at the center (v≈0.99) should be close regardless of U.
+    const d = mpSurfaceWorldDist('cube', 0.1, 0.99, 0.6, 0.99, scale, 0);
+    // These are near the top face center — should be quite close
+    expect(d).toBeLessThan(3.0);
+  });
+
+  it('enemy on different face does NOT kill player (false positive guard)', () => {
+    // This is the core regression: player at (u=0.125, v=0.5) on +Z face,
+    // enemy at (u=0.375, v=0.5) on +X face. They're on different faces —
+    // 3D distance through cube is ~7 world units, far above hit threshold.
+    const d = mpSurfaceWorldDist('cube', 0.125, 0.5, 0.375, 0.5, scale, 0);
+    expect(d).toBeGreaterThan(ENEMY_HIT_WORLD);
+    expect(d).toBeGreaterThan(3.0); // at least 3 world units
+  });
+
+  it('symmetry: dist(A,B) = dist(B,A)', () => {
+    const d1 = mpSurfaceWorldDist('cube', 0.15, 0.4, 0.65, 0.7, scale, 0);
+    const d2 = mpSurfaceWorldDist('cube', 0.65, 0.7, 0.15, 0.4, scale, 0);
+    expect(d1).toBeCloseTo(d2, 8);
+  });
+
+  it('touching enemy on same face triggers hit', () => {
+    // Two points very close on the same face — should trigger
+    // On face 0 center (u=0.125), tiny offset in v
+    const d = mpSurfaceWorldDist('cube', 0.125, 0.5, 0.125, 0.503, scale, 0);
+    expect(d).toBeLessThan(ENEMY_HIT_WORLD);
+  });
+
+  it('small map scale: distances scale correctly', () => {
+    const smallScale = 0.75;
+    const d1 = mpSurfaceWorldDist('cube', 0.125, 0.5, 0.625, 0.5, 1.0, 0);
+    const d2 = mpSurfaceWorldDist('cube', 0.125, 0.5, 0.625, 0.5, smallScale, 0);
+    // Distance should scale linearly with map scale
+    expect(d2 / d1).toBeCloseTo(smallScale, 1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Tests: MPRealGameTestHarness.checkHit API
 // ---------------------------------------------------------------------------
 
