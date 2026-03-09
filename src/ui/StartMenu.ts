@@ -1892,6 +1892,67 @@ export class StartMenu {
         #start-menu .mode-btn .mode-desc {
           font-size: 10px;
         }
+
+        /* Name dialog: stack Join + Cancel vertically so join is always visible */
+        #start-menu .lan-name-buttons {
+          flex-direction: column;
+          gap: 8px;
+          align-items: stretch;
+        }
+        #start-menu .lan-btn.lan-name-join {
+          width: 100%;
+          padding: 14px 20px;
+        }
+        #start-menu .lan-name-dialog .back-btn {
+          width: 100%;
+          margin-top: 0;
+          margin-left: 0;
+          margin-right: 0;
+        }
+
+        /* Name input: responsive width instead of fixed 300px */
+        #start-menu #lan-name-input {
+          width: 100%;
+          max-width: 300px;
+          box-sizing: border-box;
+        }
+
+        /* Lobby list entries: hide per-entry QR on mobile (user is already on phone) */
+        #start-menu .lan-lobby-qr-container {
+          display: none;
+        }
+
+        /* LAN URL rows: allow text to wrap on narrow screens */
+        #start-menu .lan-url-row {
+          flex-wrap: wrap;
+          gap: 4px;
+        }
+        #start-menu .lan-url-text {
+          word-break: break-all;
+          flex: 1;
+          min-width: 0;
+        }
+
+        /* Host QR container: keep QR prominent and scrollable */
+        #start-menu #lan-host-info {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+        #start-menu #lan-qr-container {
+          width: 100%;
+          max-width: 260px;
+        }
+
+        /* Oval buttons: slightly more breathing room */
+        #start-menu .oval-buttons-container {
+          gap: 12px;
+          max-width: 340px;
+        }
+        #start-menu .oval-btn {
+          min-height: 48px;
+          letter-spacing: 2px;
+        }
       }
 
       /* ------------------------------------------------------------------- */

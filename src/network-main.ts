@@ -280,6 +280,96 @@ function getPlayerName(): string {
 }
 
 /**
+ * Returns the player's name, prompting with a UI overlay if no name is known.
+ * - URL ?name= param → use as-is (and save to localStorage)
+ * - localStorage gw3d_player_name → use saved name
+ * - Neither → show name entry overlay, wait for user input
+ */
+async function promptForNameIfNeeded(): Promise<string> {
+  const params = new URLSearchParams(window.location.search);
+  const urlName = params.get('name');
+  if (urlName) {
+    localStorage.setItem('gw3d_player_name', urlName);
+    return urlName;
+  }
+  const savedName = localStorage.getItem('gw3d_player_name');
+  if (savedName) return savedName;
+
+  // No name known — show a name entry overlay before connecting
+  return new Promise<string>((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText =
+      'position:fixed;top:0;left:0;width:100%;height:100%;' +
+      'background:rgba(0,0,16,0.95);z-index:999;' +
+      'display:flex;flex-direction:column;justify-content:center;align-items:center;' +
+      'font-family:monospace;padding:20px;box-sizing:border-box;gap:16px;';
+
+    const title = document.createElement('div');
+    title.style.cssText =
+      'color:#00ffff;font-size:20px;font-weight:bold;letter-spacing:4px;' +
+      'text-align:center;text-shadow:0 0 10px #00ffff;margin-bottom:8px;';
+    title.textContent = 'ENTER YOUR NAME';
+
+    const hint = document.createElement('div');
+    hint.style.cssText = 'color:#88aaaa;font-size:12px;text-align:center;margin-bottom:4px;';
+    hint.textContent = 'Choose a name to join the game';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 20;
+    input.placeholder = 'Your name...';
+    input.autocomplete = 'off';
+    input.style.cssText =
+      'background:rgba(0,40,40,0.8);border:2px solid #006666;color:#00ffff;' +
+      'padding:14px 20px;font:18px monospace;width:280px;max-width:90vw;' +
+      'outline:none;text-align:center;letter-spacing:2px;box-sizing:border-box;' +
+      'transition:border-color 0.2s,box-shadow 0.2s;';
+    input.addEventListener('focus', () => {
+      input.style.borderColor = '#00ffff';
+      input.style.boxShadow = '0 0 15px rgba(0,255,255,0.4)';
+    });
+    input.addEventListener('blur', () => {
+      input.style.borderColor = '#006666';
+      input.style.boxShadow = '';
+    });
+
+    const joinBtn = document.createElement('button');
+    joinBtn.textContent = 'JOIN GAME';
+    joinBtn.style.cssText =
+      'background:linear-gradient(180deg,#00aa00,#006600);border:2px solid #00ff00;' +
+      'color:#ffffff;padding:14px 40px;font:bold 16px monospace;cursor:pointer;' +
+      'letter-spacing:3px;width:280px;max-width:90vw;box-sizing:border-box;' +
+      'touch-action:manipulation;transition:all 0.2s;';
+    joinBtn.addEventListener('mouseenter', () => {
+      joinBtn.style.background = 'linear-gradient(180deg,#00cc00,#008800)';
+      joinBtn.style.boxShadow = '0 0 20px #00ff00';
+    });
+    joinBtn.addEventListener('mouseleave', () => {
+      joinBtn.style.background = 'linear-gradient(180deg,#00aa00,#006600)';
+      joinBtn.style.boxShadow = '';
+    });
+
+    const submit = () => {
+      const name = input.value.trim() || `Player ${Math.floor(Math.random() * 9000) + 1000}`;
+      localStorage.setItem('gw3d_player_name', name);
+      overlay.remove();
+      resolve(name);
+    };
+
+    joinBtn.addEventListener('click', submit);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+
+    overlay.appendChild(title);
+    overlay.appendChild(hint);
+    overlay.appendChild(input);
+    overlay.appendChild(joinBtn);
+    document.body.appendChild(overlay);
+    // Delay focus slightly so mobile keyboard doesn't jerk the layout
+    setTimeout(() => input.focus(), 150);
+  });
+}
+
+/**
  * Returns true when this player navigated here via the start menu's "Create Network Game" button.
  * The start menu sets creator=1 in the URL to signal creator intent so the server can assign host.
  * QR code joiners and direct URL users do NOT have this param and become non-host.
@@ -4715,7 +4805,9 @@ async function main() {
   // -----------------------------------------------------------------------
 
   const urlSurfaceType = getUrlSurfaceType();
-  const playerName = getPlayerName();
+  // promptForNameIfNeeded: shows a name-entry overlay if no name in URL or localStorage.
+  // This ensures QR/link joiners on mobile always get to enter their name.
+  const playerName = await promptForNameIfNeeded();
   const { primary: serverUrl, fallback: fallbackUrl } = getServerUrls();
 
   // Always log connection details — essential for LAN debugging
