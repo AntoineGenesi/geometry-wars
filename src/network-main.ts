@@ -3471,6 +3471,21 @@ async function main() {
           // is >90° from the pre-death normal. Without reset, CameraController flips the
           // normal → camera goes inside the surface → alternating inside/outside each death.
           cameraController.resetFrameForNewSurface();
+          // s44r6b-02: Snap camera to respawn position immediately (matching SP GameLoop.ts).
+          // Without this, camera lerps from death position on old face to respawn position
+          // on new face. On cube, this means the camera passes THROUGH the geometry, producing
+          // a "bottom-up through the cube" view that the user reported as completely broken.
+          // SP does resetFrameForNewSurface() + snapToFrame() (GameLoop.ts lines 166-178);
+          // MP was missing the snap, causing the camera to be stuck for ~20 frames while lerping.
+          if (surf) {
+            const respawnSp = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
+            const respawnPos = respawnSp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+            cameraController.snapToFrame(
+              respawnPos,
+              respawnSp.normal,
+              { tangent: respawnSp.tangentU, bitangent: respawnSp.tangentV },
+            );
+          }
         }
       }
       playerAliveState.set(id, netPlayer.alive);

@@ -24,6 +24,10 @@ import type { BloomEffectManager } from '../effects/BloomEffectManager';
  * Previously ~300 lines scattered across main.ts
  */
 export class CollisionSystem {
+  // s44r6b-02: Surface type for hit detection tuning. On cube, require visual overlap
+  // (tighter threshold) because enemies approach from around beveled corners invisibly.
+  surfaceType: string = '';
+
   private enemySpatialHash = new SpatialHash<BaseEnemy>(2.5);
 
   // Enemy color map (for particle death effects)
@@ -269,8 +273,16 @@ export class CollisionSystem {
       //          s44r4-02 reverted to on-surface — too sensitive on curved surfaces.
       //          s44r5-03 uses mesh position with derived `(pR+eR)²+eR²` — correct.
       //          s44r6-04 adds on-surface fallback for non-orientable surfaces (Mobius).
+      //          s44r6b-02: cube-specific tighter threshold — require 0.1 units visual overlap.
       const playerRadius = player.mesh.scale.x * 0.1;
-      const baseHitRadiusSq = (playerRadius + enemy.radius) * (playerRadius + enemy.radius);
+      // s44r6b-02: On cube flat faces, chord distance = visual distance exactly, so (pR+eR)
+      // triggers at the instant edges touch (zero overlap). Enemies approaching from adjacent
+      // faces around beveled edges are invisible to the player. Subtract CUBE_OVERLAP_MARGIN
+      // (0.1 = player radius) to require visible overlap before collision fires.
+      const contactRadius = this.surfaceType === 'cube'
+        ? Math.max(0, playerRadius + enemy.radius - 0.1)
+        : playerRadius + enemy.radius;
+      const baseHitRadiusSq = contactRadius * contactRadius;
       const hitRadiusSq = baseHitRadiusSq + enemy.radius * enemy.radius;
       const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
       const distSq = player.mesh.position.distanceToSquared(visualPos);
