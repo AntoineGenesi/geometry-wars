@@ -3287,6 +3287,15 @@ async function main() {
           // s44f-06: Reset smoothed orientation so next frame snaps to new facing direction
           // instead of slurring from the pre-respawn orientation.
           _localPlayerQuatInitialized = false;
+          // s44r6b-04: For large position snaps that aren't death/respawn (e.g. portal
+          // teleport), reset camera preferred normal so it correctly orients to the new
+          // surface region. On peanut, portal teleport to opposite lobe has a normal
+          // >90° from _preferredNormal — without reset, camera goes inside the surface.
+          // justRespawned is handled separately at line ~3473 (with its own reset).
+          // isDeadNow doesn't need camera reset (death cam takes over).
+          if (!justRespawned && !isDeadNow) {
+            cameraController.resetFrameForNewSurface();
+          }
           player.surfaceU = netPlayer.surfaceU;
           player.surfaceV = netPlayer.surfaceV;
           // Also update mesh position immediately for hard snaps so the mesh appears

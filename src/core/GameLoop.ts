@@ -699,6 +699,13 @@ export class GameLoop {
             // Grant brief invincibility after teleport
             ctx.player.grantTeleportInvincibility();
 
+            // s44r6b-04: Reset camera frame before snapping to teleport destination.
+            // On peanut (and other curved surfaces), the exit portal may be on the
+            // opposite side of the surface, where the outward normal is >90° from
+            // _preferredNormal. Without reset, CameraController's anti-flip logic
+            // negates the new normal → camera placed INSIDE the surface.
+            // Same fix as s44r6-05 respawn: clear _preferredNormal before snap.
+            ctx.cameraController.resetFrameForNewSurface();
             // Snap camera to new position
             const newFrame = ctx.playerWalker.getTangentFrame();
             ctx.cameraController.snapToFrame(
