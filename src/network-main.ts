@@ -2659,6 +2659,10 @@ async function main() {
 
   const votingScreen = new VotingScreen();
   let activeVotingMasteryScreen: WeaponMasteryScreen | null = null;
+  // Tracks the end-of-round upgrade tree screen shown after each game.
+  // Must be disposed when a new round starts (voting → playing transition)
+  // so players aren't stuck on a stale overlay.
+  let activeEndOfRoundUpgradeScreen: WeaponMasteryScreen | null = null;
 
   votingScreen.setCallbacks({
     onVote: (choice: string) => {
@@ -4451,9 +4455,11 @@ async function main() {
         // can review their mastery state and plan upgrades even with zero kills.
         const proceedAfterMastery = () => {
           const upgradeScreen = new WeaponMasteryScreen();
+          activeEndOfRoundUpgradeScreen = upgradeScreen;
           upgradeScreen.setPointStore(masteryPointStore);
           upgradeScreen.show(MasteryStore.load());
           const cleanup = () => {
+            activeEndOfRoundUpgradeScreen = null;
             upgradeScreen.dispose();
             proceedToVoting();
           };
@@ -4528,6 +4534,13 @@ async function main() {
         if (activeMasteryScreen) {
           activeMasteryScreen.dispose();
           activeMasteryScreen = null;
+        }
+        // Dismiss the end-of-round weapon upgrade tree if the countdown expired while
+        // a player was reviewing it (mobile or desktop). Without this, the player gets
+        // stuck on the overlay and cannot return to gameplay.
+        if (activeEndOfRoundUpgradeScreen) {
+          activeEndOfRoundUpgradeScreen.dispose();
+          activeEndOfRoundUpgradeScreen = null;
         }
         // Reset per-match upgrade tracker for the new round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());

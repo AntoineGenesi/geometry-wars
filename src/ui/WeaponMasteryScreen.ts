@@ -98,6 +98,11 @@ function injectStyles(): void {
       z-index: 2500;
       font-family: 'Segoe UI', Arial, sans-serif;
       overflow-y: auto;
+      /* Mobile scroll: allow touch-based vertical pan inside the fixed overlay */
+      touch-action: pan-y;
+      -webkit-overflow-scrolling: touch;
+      /* Prevent page scroll bleed-through on mobile when overlay is at scroll boundary */
+      overscroll-behavior: contain;
     }
     #weapon-mastery-screen.hidden { display: none; }
 
@@ -121,12 +126,19 @@ function injectStyles(): void {
       padding: 40px 24px 80px;
     }
 
-    /* ── Header ── */
+    /* ── Header — sticky so the X button is always visible while scrolling ── */
     #weapon-mastery-screen .wms-header {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
       margin-bottom: 8px;
+      position: sticky;
+      top: 0;
+      /* Semi-transparent background so header is readable when content scrolls behind it */
+      background: rgba(8, 8, 24, 0.95);
+      z-index: 10;
+      padding: 8px 0;
+      margin-top: -8px;
     }
     #weapon-mastery-screen .wms-title {
       color: #eef;

@@ -667,6 +667,33 @@ describe('WeaponMasteryScreen — constellation UI', () => {
 
   // ── Path visualization tests ───────────────────────────────────────────────
 
+  // ── Mobile scroll + close button visibility (regression: s44r6b-06) ─────────
+
+  it('CSS includes overscroll-behavior: contain to prevent page scroll on mobile', () => {
+    screen.show();
+    // injectStyles() sets style.textContent (not innerHTML); mock stores textContent directly
+    const styleEl = mockHead.children[0];
+    expect(styleEl?.textContent ?? '').toContain('overscroll-behavior');
+  });
+
+  it('CSS includes -webkit-overflow-scrolling: touch for iOS scroll in fixed overlay', () => {
+    screen.show();
+    const styleEl = mockHead.children[0];
+    expect(styleEl?.textContent ?? '').toContain('-webkit-overflow-scrolling');
+  });
+
+  it('CSS includes touch-action: pan-y on overlay for vertical touch scroll', () => {
+    screen.show();
+    const styleEl = mockHead.children[0];
+    expect(styleEl?.textContent ?? '').toContain('touch-action');
+  });
+
+  it('CSS makes .wms-header sticky so close button is always visible on mobile', () => {
+    screen.show();
+    const styleEl = mockHead.children[0];
+    expect(styleEl?.textContent ?? '').toContain('sticky');
+  });
+
   it('SVG uses preserveAspectRatio="none" for accurate node-line alignment', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;
