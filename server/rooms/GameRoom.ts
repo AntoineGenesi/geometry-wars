@@ -1201,6 +1201,125 @@ export class GameRoom extends Room<GameState> {
       }
     });
 
+    // s44r6-06: Client-authoritative PvP bullet-to-player hit detection.
+    // Same root cause as s44r-04-02 (bullet-enemy): server UV-space bullet positions
+    // diverge from true geodesic paths on non-spherical surfaces (peanut, torus, etc.),
+    // causing PvP damage to only register from one specific angle/position.
+    // Client FaceWalker has accurate world-space bullet positions, so client reports hits.
+    this.onMessage('pvp_bullet_hit', (client, data: {
+      bulletId: string;
+      targetId: string;
+      weaponType: string;
+      ownerId: string;
+    }) => {
+      if (this.state.roomPhase !== 'playing') return;
+      if (!this.pvpEnabled) return;
+
+      // Validate sender owns the bullet
+      if (!data.ownerId || data.ownerId !== client.sessionId) return;
+      if (!data.targetId || typeof data.targetId !== 'string') return;
+
+      const owner = this.state.players.get(client.sessionId);
+      if (!owner) return;
+
+      const target = this.state.players.get(data.targetId);
+      if (!target || !target.alive) return;
+      if (target.id === owner.id) return; // Can't hit yourself
+
+      // Check invincibility
+      const invincible = this.playerInvincibility.get(target.id) ?? 0;
+      if (invincible > 0) return;
+
+      // Use bullet damage tracker to prevent double-hits (same as bullet_hit for enemies).
+      // bulletId → remaining damage budget. First hit initializes the budget.
+      const weaponType = typeof data.weaponType === 'string' ? data.weaponType : 'standard';
+      const weaponCfg = WEAPON_CONFIGS[weaponType] ?? WEAPON_CONFIGS.standard;
+      const levelIdx = Math.min(owner.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+      const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+
+      // Get or initialize remaining damage budget for this bullet
+      const currentRemaining = this.bulletDamageTracker.has(data.bulletId)
+        ? this.bulletDamageTracker.get(data.bulletId)!
+        : damage;
+      if (currentRemaining <= 0) return; // Bullet already spent
+
+      // Apply only up to remaining budget (enables penetration for high-damage bullets)
+      // Matches bullet_hit handler pattern: min(remaining, target.health)
+      const actualDamage = Math.min(currentRemaining, target.health);
+      const newRemaining = currentRemaining - actualDamage;
+      this.bulletDamageTracker.set(data.bulletId, newRemaining);
+
+      target.health = Math.max(0, target.health - actualDamage);
+      const dealtDamage = actualDamage;
+      this.logger.log(`[GameRoom] PvP hit (client-auth): ${owner.name} → ${target.name}, damage=${dealtDamage.toFixed(1)}, health=${target.health.toFixed(1)}/${target.maxHealth}`);
+
+      if (owner) {
+        owner.totalDamageDealt += dealtDamage;
+        // s44r2-09: Kill score increments fractionally per damage dealt
+        owner.kills += dealtDamage / target.maxHealth;
+      }
+
+      // Portal half-health trigger
+      this._checkHalfHealthPortalTrigger(target);
+
+      // Broadcast PvP hit for client-side damage numbers
+      this.broadcast('pvp_hit', {
+        killerId: owner.id,
+        killerName: owner.name,
+        victimId: target.id,
+        victimName: target.name,
+        damage: Math.round(dealtDamage),
+      });
+
+      // Spawn health pickup near damaged player if health < threshold
+      if (
+        target.health > 0 &&
+        target.health / target.maxHealth < HEALTH_PICKUP_THRESHOLD
+      ) {
+        const lastSpawn = this.lastHealthPickupSpawnTime.get(target.id) ?? -Infinity;
+        if (this.state.gameTime - lastSpawn >= this.healthPickupFrequency) {
+          this.spawnHealthPickup(target.surfaceU, target.surfaceV);
+          this.lastHealthPickupSpawnTime.set(target.id, this.state.gameTime);
+        }
+      }
+
+      if (target.health <= 0) {
+        // PvP kill: same logic as server-side collision
+        target.multiplier = 1;
+        target.buffStacks.clear();
+        target.deaths++;
+        this.pvpKillStreaks.set(target.id, 0);
+
+        const isSurvivalMode = this.currentSettings.pvpWinCondition === 'survival';
+        if (isSurvivalMode) {
+          target.health = 0;
+          target.alive = false;
+          this.logger.log(`[GameRoom] PvP survival (client-auth): ${target.name} eliminated`);
+        } else {
+          if (!this.state.infiniteLives) {
+            target.lives--;
+          }
+          target.alive = false;
+          target.health = 0;
+          this.pendingRespawns.set(target.id, this.state.gameTime + GameRoom.PVP_RESPAWN_DELAY);
+        }
+
+        if (owner) {
+          const streakCount = (this.pvpKillStreaks.get(owner.id) ?? 0) + 1;
+          this.pvpKillStreaks.set(owner.id, streakCount);
+          this.broadcast('pvp_kill', {
+            killerId: owner.id,
+            killerName: owner.name,
+            victimId: target.id,
+            victimName: target.name,
+            streakCount,
+            eliminated: isSurvivalMode,
+          });
+          this.logger.log(`[GameRoom] PvP (client-auth): ${owner.name} killed ${target.name} (streak: ${streakCount}${isSurvivalMode ? ', eliminated' : ', respawned'})`);
+        }
+      }
+    });
+
     // Client-authoritative pickup collection (s44r-04-03).
     // Client detects proximity via world-space mesh distance (avoids sphere-approx UV errors).
     // Server trusts the message and applies the pickup effect.
@@ -3946,15 +4065,19 @@ export class GameRoom extends Room<GameState> {
     }
     } // end if (USE_SERVER_BULLET_COLLISION)
 
-    // PvP bullet-player collisions (only when pvpEnabled === true)
-    // Player bullets deal health damage to other players.
-    // Uses the same hitBullets set so bullets consumed by enemy hits are not reused.
-    // s44r6-05: Removed friendlyFire gate for PvPvE mode. Previous code checked
-    //   `mode !== 'pvpve' || friendlyFire` — but this kept breaking across sessions
-    //   (s44r2-06, s44k-07, s44l-19) because currentSettings.friendlyFire could revert
-    //   to false via DEFAULT_GAME_SETTINGS spread or settings re-sync. pvpEnabled is the
-    //   single authoritative flag: if it's true, player damage works. Period.
-    if (this.pvpEnabled) {
+    // PvP bullet-player collisions (server-side UV-based fallback).
+    // s44r6-06: DISABLED by default — now client-authoritative via 'pvp_bullet_hit' messages.
+    // Same root cause as s44r-04-02 (bullet-enemy): server UV-space bullet positions diverge
+    // from true geodesic paths on non-spherical surfaces (peanut, torus, etc.), causing PvP
+    // damage to only work from one specific angle/position. Client FaceWalker positions are
+    // accurate. Set MP_SERVER_PVP_COLLISION=1 to re-enable server-side fallback.
+    //
+    // Historical context:
+    // s44r6-05: Removed friendlyFire gate for PvPvE mode. pvpEnabled is the
+    //   single authoritative flag: if it's true, player damage works.
+    // s44r2-06, s44k-07, s44l-19: Previous recurring PvP damage failures.
+    const USE_SERVER_PVP_COLLISION = process.env.MP_SERVER_PVP_COLLISION === '1';
+    if (this.pvpEnabled && USE_SERVER_PVP_COLLISION) {
       this.state.bullets.forEach((bullet, bIndex) => {
         if (hitBullets.has(bIndex)) return; // Already consumed by enemy hit
 

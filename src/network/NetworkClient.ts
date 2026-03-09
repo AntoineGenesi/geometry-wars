@@ -948,6 +948,18 @@ export class NetworkClient {
   }
 
   /**
+   * Report a player bullet hit on another player (client-authoritative PvP collision).
+   * s44r6-06: Same pattern as bullet-enemy hit (s44r-04-02). Server UV-space bullet
+   * positions diverge from true geodesic paths on non-spherical surfaces (peanut, torus, etc.),
+   * causing PvP damage to only work from one specific spot. Client FaceWalker positions
+   * are accurate, so the client detects and reports PvP hits.
+   */
+  sendPvpBulletHit(data: { bulletId: string; targetId: string; weaponType: string; ownerId: string }): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('pvp_bullet_hit', data);
+  }
+
+  /**
    * Client-authoritative pickup collection: player detects proximity in world space
    * and notifies server to apply the effect and remove the pickup from state.
    * Server trusts this message (no UV-based re-check) to avoid sphere-approx errors.

@@ -1082,6 +1082,10 @@ async function main() {
   // Server enforces the damage budget via bulletDamageTracker (s44r3-02).
   const bulletHitEnemies = new Map<string, Set<string>>();
 
+  // s44r6-06: Per-bullet per-player PvP hit tracking (prevents double-hit on same player).
+  // Same pattern as bulletHitEnemies. Client-authoritative PvP collision.
+  const bulletHitPlayers = new Map<string, Set<string>>();
+
   // -- Geom tracking --
   const geomIdToIndex = new Map<string, number>();
   // Interpolation targets for geoms (same pattern)
@@ -2815,6 +2819,7 @@ async function main() {
     bulletGeodesicState.clear();
     bulletInstanceIds.clear();
     bulletHitEnemies.clear();
+    bulletHitPlayers.clear();
     // Safety: clear the entire bullet pool to ensure no orphaned alive slots.
     // This guards against any state desync between bulletIdToIndex and the pool.
     bulletPool.clear();
@@ -3908,6 +3913,7 @@ async function main() {
         bulletWeaponType.delete(id);
         bulletOwnerIds.delete(id);
         bulletHitEnemies.delete(id);
+        bulletHitPlayers.delete(id);
         // Remove from instanced rendering (standard weapon renders 2 visual bullets: _l and _r)
         bulletInstanceManager.removeBullet(id + '_l');
         bulletInstanceManager.removeBullet(id + '_r');
@@ -6437,6 +6443,29 @@ async function main() {
               if (!bulletHitEnemies.has(id)) bulletHitEnemies.set(id, new Set());
               bulletHitEnemies.get(id)!.add(enemyId);
               network.sendBulletHit({ bulletId: id, enemyId, weaponType: weapType, ownerId: localPlayerId });
+            }
+          });
+        }
+
+        // s44r6-06: Client-authoritative PvP bullet-to-player hit detection.
+        // Same pattern as bullet-enemy hit above: use accurate FaceWalker world-space bullet
+        // position vs server-reported player world-space position. Server UV-space collision
+        // was broken on non-spherical surfaces (peanut, torus, etc.) — bullets only hit from
+        // one specific angle because UV-space movement diverges from true geodesic paths.
+        if (bulletOwner === localPlayerId && latestPvpEnabled) {
+          // PvP hit radius: bullet(~0.1) + player(~0.1) + margin(0.2) = 0.4 world units
+          // Squared: 0.16. Using 0.20 for slightly generous hitbox (good for PvP feel).
+          const BULLET_PLAYER_HIT_RADIUS_SQ = 0.20;
+          networkPlayers.forEach((targetPlayer, targetId) => {
+            if (targetId === localPlayerId) return; // Can't hit yourself
+            if (!targetPlayer.mesh.visible) return; // Dead or not yet spawned
+            // Skip players already hit by this bullet
+            const pvpHitSet = bulletHitPlayers.get(id);
+            if (pvpHitSet?.has(targetId)) return;
+            if (_netTempPos.distanceToSquared(targetPlayer.mesh.position) < BULLET_PLAYER_HIT_RADIUS_SQ) {
+              if (!bulletHitPlayers.has(id)) bulletHitPlayers.set(id, new Set());
+              bulletHitPlayers.get(id)!.add(targetId);
+              network.sendPvpBulletHit({ bulletId: id, targetId, weaponType: weapType, ownerId: localPlayerId });
             }
           });
         }
