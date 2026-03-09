@@ -122,19 +122,69 @@ const CLAUSTROPHOBIA_ALLOWED_SURFACES = ['sphere', 'torus', 'capsule', 'icosahed
 const INACTIVITY_PAUSE_THRESHOLD = 120;      // 2 minutes (120 seconds) before auto-pause
 const INACTIVITY_SHUTDOWN_THRESHOLD = 900;   // 15 minutes (900 seconds) before auto-shutdown
 
-// Enemy-count limits (indexed by playerCount-1, capped at 4 players)
-const MAX_ENEMIES_BY_PLAYER_COUNT = [30, 50, 70, 90];
+/**
+ * Compute max enemies for a given player count.
+ * Formula: base 30 + 20 per additional player, capped at 150.
+ */
+function getMaxEnemiesForPlayerCount(playerCount: number): number {
+  return Math.min(30 + (playerCount - 1) * 20, 150);
+}
 
-// Player colors
-const PLAYER_COLORS = [0x00ffff, 0xff00ff, 0x00ff00, 0xffff00];
-
-// Spawn positions (shared between onJoin initial placement and startGame round reset)
-const SPAWN_OFFSETS = [
-  { u: 0.5, v: 0.5 },
-  { u: 0.6, v: 0.5 },
-  { u: 0.4, v: 0.5 },
-  { u: 0.5, v: 0.6 },
+// Player colors — 10 distinct colors for up to 10 players, HSL rotation beyond.
+const PLAYER_COLORS_BASE = [
+  0x00ffff, // cyan
+  0xff00ff, // magenta
+  0x00ff00, // green
+  0xffff00, // yellow
+  0xff6600, // orange
+  0xff0066, // rose
+  0x6600ff, // violet
+  0x00ccff, // sky blue
+  0x99ff00, // lime
+  0xff99cc, // pink
 ];
+
+/** Get a player color for the given 0-based index. */
+function getPlayerColor(index: number): number {
+  if (index < PLAYER_COLORS_BASE.length) return PLAYER_COLORS_BASE[index];
+  // HSL rotation for players beyond 10 (golden angle for good distribution)
+  const hue = (index * 137.508) % 360;
+  const h = hue / 360;
+  const s = 0.8;
+  const l = 0.6;
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const hue2rgb = (t: number) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1/6) return p + (q - p) * 6 * t;
+    if (t < 1/2) return q;
+    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    return p;
+  };
+  const r = Math.round(hue2rgb(h + 1/3) * 255);
+  const g = Math.round(hue2rgb(h) * 255);
+  const b = Math.round(hue2rgb(h - 1/3) * 255);
+  return (r << 16) | (g << 8) | b;
+}
+
+/**
+ * Compute evenly-distributed spawn UV positions for N players.
+ * Distributes players around a small circle centred at UV (0.5, 0.5).
+ */
+function computeSpawnOffsets(count: number): Array<{ u: number; v: number }> {
+  if (count <= 0) return [];
+  const offsets: Array<{ u: number; v: number }> = [];
+  for (let i = 0; i < count; i++) {
+    const angle = (2 * Math.PI * i) / count - Math.PI / 2;
+    const radius = 0.12;
+    offsets.push({
+      u: Math.round((0.5 + radius * Math.cos(angle)) * 1000) / 1000,
+      v: Math.round((0.5 + radius * Math.sin(angle)) * 1000) / 1000,
+    });
+  }
+  return offsets;
+}
 
 // WEAPON_CONFIGS, WEAPON_DROP_CHANCE, WEAPON_PICKUP_LIFETIME imported from ../shared/GameConstants
 const WEAPON_TYPES = Object.keys(WEAPON_CONFIGS).filter(t => t !== 'standard');
@@ -822,7 +872,7 @@ export class GameRoom extends Room<GameState> {
    */
   private bulletDamageTracker = new Map<string, number>();
 
-  onCreate(options: { surfaceType?: string; mapSize?: string; pvpEnabled?: boolean }) {
+  onCreate(options: { surfaceType?: string; mapSize?: string; pvpEnabled?: boolean; maxPlayers?: number }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
     this.state.mapSize = options.mapSize || 'medium';
@@ -831,8 +881,9 @@ export class GameRoom extends Room<GameState> {
       this.state.pvpEnabled = true;
     }
 
-    // Set max clients (4 player co-op)
-    this.maxClients = 4;
+    // Set max clients — host-configurable (default 10, range 2-20)
+    const requestedMax = typeof options.maxPlayers === 'number' ? options.maxPlayers : 10;
+    this.maxClients = Math.max(2, Math.min(20, Math.round(requestedMax)));
 
     // Set room metadata for lobby browser
     this.setMetadata({
@@ -1471,7 +1522,7 @@ export class GameRoom extends Room<GameState> {
     }
 
     player.name = finalName;
-    player.color = PLAYER_COLORS[this.state.players.size % PLAYER_COLORS.length];
+    player.color = getPlayerColor(this.state.players.size);
 
     // Determine if this client is connecting from localhost.
     // The server host always runs locally, so localhost clients should take
@@ -1520,8 +1571,9 @@ export class GameRoom extends Room<GameState> {
       }
     }
 
-    // Spawn at different positions based on player count
-    const spawnPos = SPAWN_OFFSETS[this.state.players.size % SPAWN_OFFSETS.length];
+    // Spawn at evenly-distributed positions based on player index
+    const spawnOffsets = computeSpawnOffsets(this.maxClients);
+    const spawnPos = spawnOffsets[this.state.players.size % this.maxClients];
     player.surfaceU = spawnPos.u;
     player.surfaceV = spawnPos.v;
 
@@ -1719,6 +1771,10 @@ export class GameRoom extends Room<GameState> {
     this.state.gameMode = this.currentSettings.mode;
     // Also sync pvpEnabled private field (used in tick() for damage checks)
     this.pvpEnabled = this.currentSettings.pvpEnabled;
+    // Sync maxClients so the lobby browser shows the updated cap.
+    // Only allow lowering the cap if it stays >= current player count.
+    const desiredMax = this.currentSettings.maxPlayers;
+    this.maxClients = Math.max(desiredMax, this.state.players.size);
     // Sync pending indicator so clients can show "Apply Next Round" status
     this.state.hasPendingSettings = this.pendingSettings !== null;
   }
@@ -1924,7 +1980,8 @@ export class GameRoom extends Room<GameState> {
       // Reset position to spawn offsets so players don't start a new round at
       // their final position from the previous game (which could be near enemies
       // or off-screen, causing apparent teleportation at round start).
-      const spawnPos = SPAWN_OFFSETS[spawnIdx % SPAWN_OFFSETS.length];
+      const roundSpawnOffsets = computeSpawnOffsets(this.maxClients);
+      const spawnPos = roundSpawnOffsets[spawnIdx % this.maxClients];
       player.surfaceU = spawnPos.u;
       player.surfaceV = spawnPos.v;
       player.ddaLevel = 0;
@@ -2001,13 +2058,14 @@ export class GameRoom extends Room<GameState> {
     this.lastHealthPickupSpawnTime.clear();
 
     // Reset players' lives and position (keep score for context)
+    const pvpSpawnOffsets = computeSpawnOffsets(this.maxClients);
     let spawnIdx = 0;
     this.state.players.forEach((player, sessionId) => {
       player.lives = this.state.initialLives;
       player.alive = true;
       player.health = PLAYER_PVP_MAX_HEALTH;
       player.invincibilityTimer = 0;
-      const spawnPos = SPAWN_OFFSETS[spawnIdx % SPAWN_OFFSETS.length];
+      const spawnPos = pvpSpawnOffsets[spawnIdx % this.maxClients];
       player.surfaceU = spawnPos.u;
       player.surfaceV = spawnPos.v;
       const walker = this.surfaceManager.createWalker(sessionId, spawnPos.u, spawnPos.v);
@@ -4650,8 +4708,7 @@ export class GameRoom extends Room<GameState> {
   /** Dynamic enemy cap: scales with player count to keep co-op fair. */
   private getMaxEnemies(): number {
     const playerCount = Math.max(1, this.state.players.size);
-    const idx = Math.min(MAX_ENEMIES_BY_PLAYER_COUNT.length - 1, playerCount - 1);
-    const playerCap = MAX_ENEMIES_BY_PLAYER_COUNT[idx];
+    const playerCap = getMaxEnemiesForPlayerCount(playerCount);
     // Apply the host-configurable enemy count cap from settings
     return Math.min(playerCap, this.currentSettings.enemyCountCap);
   }

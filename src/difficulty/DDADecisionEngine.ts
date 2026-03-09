@@ -110,16 +110,16 @@ export class DDADecisionEngine {
   private enabled = true;
   private updateAccumulator = 0;
 
-  /** Pre-allocated state per player (max 4 players). */
+  /** Pre-allocated state per player (max 20 players). */
   private readonly playerStates: PlayerDDAState[] = [];
 
   /** Maximum number of players supported. */
-  private static readonly MAX_PLAYERS = 4;
+  private static readonly MAX_PLAYERS = 20;
 
   constructor(config?: Partial<DDAConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
-    // Pre-allocate state for up to 4 players
+    // Pre-allocate state for up to 20 players
     for (let i = 0; i < DDADecisionEngine.MAX_PLAYERS; i++) {
       this.playerStates.push({
         targetLevel: 0,

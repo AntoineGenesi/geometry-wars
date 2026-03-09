@@ -34,6 +34,8 @@ export interface MenuSelection {
   /** True only when this player created/hosted the server (clicked HOST GAME → ENTER GAME).
    *  LAN lobby joiners and QR code scanners are NOT creators — they should not claim host. */
   isCreator?: boolean;
+  /** Host-configured max player cap (2-20, default 10). Only set by the server host. */
+  maxPlayers?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -64,7 +66,7 @@ export class StartMenu {
   private lanScanning = false;
 
   // LAN name dialog state
-  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean; mapSize: MapSize; gameMode?: QuickGameModeType } | null = null;
+  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean; mapSize: MapSize; gameMode?: QuickGameModeType; maxPlayers?: number } | null = null;
 
   // Custom mesh support
   private customMeshFile: File | null = null;
@@ -377,6 +379,24 @@ export class StartMenu {
                 ${this.createLanMapSizeSelectorHTML()}
                 <h3>GAME MODE</h3>
                 ${this.createLanGameModeSelectorHTML()}
+                <div class="lan-timeout-row">
+                  <label class="lan-timeout-label" for="lan-max-players-input">MAX PLAYERS</label>
+                  <div class="lan-timeout-input-wrap">
+                    <select id="lan-max-players-input" class="lan-select">
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                      <option value="5">5</option>
+                      <option value="6">6</option>
+                      <option value="8">8</option>
+                      <option value="10" selected>10</option>
+                      <option value="12">12</option>
+                      <option value="16">16</option>
+                      <option value="20">20</option>
+                    </select>
+                  </div>
+                  <span class="lan-timeout-hint">Host-configurable player cap (default 10)</span>
+                </div>
                 <div class="lan-timeout-row">
                   <label class="lan-timeout-label" for="lan-timeout-input">${t('menu.misc.idleShutdownDelay')}</label>
                   <div class="lan-timeout-input-wrap">
@@ -1019,6 +1039,21 @@ export class StartMenu {
         color: #557777;
         font: 11px monospace;
         text-align: center;
+      }
+      #start-menu .lan-select {
+        background: rgba(0, 40, 40, 0.6);
+        border: 1px solid #006666;
+        color: #00ffff;
+        padding: 6px 10px;
+        font: 14px monospace;
+        width: 80px;
+        outline: none;
+        text-align: center;
+        cursor: pointer;
+      }
+      #start-menu .lan-select:focus {
+        border-color: #00ffff;
+        box-shadow: 0 0 8px #00ffff;
       }
 
       /* ------------------------------------------------------------------- */
@@ -2335,7 +2370,9 @@ export class StartMenu {
     // isCreator=true: this player started the server, so they should claim host status.
     lanEnterBtn?.addEventListener('click', () => {
       if (hostedServerUrl) {
-        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl, true, this.lanSelectedMapSize, this.lanSelectedGameMode);
+        const maxPlayersInput = this.container.querySelector('#lan-max-players-input') as HTMLSelectElement | null;
+        const maxPlayers = maxPlayersInput ? parseInt(maxPlayersInput.value, 10) || 10 : 10;
+        this.showNameDialog(this.lanSelectedSurface, hostedServerUrl, true, this.lanSelectedMapSize, this.lanSelectedGameMode, maxPlayers);
       }
     });
 
@@ -2555,8 +2592,8 @@ export class StartMenu {
    * @param isCreator - true only when this player hosted the server (clicked ENTER GAME after HOST GAME).
    *   LAN lobby joiners, QR code scanners, and manual IP joiners are NOT creators.
    */
-  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false, mapSize?: MapSize, gameMode?: QuickGameModeType): void {
-    this.pendingLanJoin = { surfaceType, serverUrl, isCreator, mapSize: mapSize ?? MapSize.MEDIUM, gameMode };
+  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false, mapSize?: MapSize, gameMode?: QuickGameModeType, maxPlayers?: number): void {
+    this.pendingLanJoin = { surfaceType, serverUrl, isCreator, mapSize: mapSize ?? MapSize.MEDIUM, gameMode, maxPlayers };
 
     const lanSection = this.container.querySelector('#lan-section') as HTMLElement;
     const nameDialog = this.container.querySelector('#lan-name-dialog') as HTMLElement;
@@ -2613,6 +2650,7 @@ export class StartMenu {
       isCreator: this.pendingLanJoin.isCreator,
       mapSize: this.pendingLanJoin.mapSize,
       quickGameMode: this.pendingLanJoin.gameMode,
+      maxPlayers: this.pendingLanJoin.maxPlayers,
     });
 
     this.pendingLanJoin = null;

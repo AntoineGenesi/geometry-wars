@@ -1823,7 +1823,12 @@ async function main() {
 
   // ---- Game Settings button (host only, s44j-settings-16c) ----
   // Shown beneath the lives row; opens GameSettingsPanel as modal overlay.
-  let currentGameSettings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
+  // Initialise maxPlayers from the URL param set by StartMenu (host only).
+  const _initMaxPlayers = parseInt(new URLSearchParams(window.location.search).get('maxPlayers') ?? '', 10);
+  let currentGameSettings: GameSettings = {
+    ...DEFAULT_GAME_SETTINGS,
+    maxPlayers: (_initMaxPlayers >= 2 && _initMaxPlayers <= 20) ? _initMaxPlayers : DEFAULT_GAME_SETTINGS.maxPlayers,
+  };
   let settingsBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
 
   const settingsBtn = document.createElement('button');
@@ -1874,6 +1879,7 @@ async function main() {
       `Surface: ${s.surface.replace(/-/g, ' ').toUpperCase()}`,
       `Lives: ${s.infiniteLives ? '∞' : s.lives}`,
       `Difficulty: ${s.difficultyMultiplier.toFixed(1)}x`,
+      `Max Players: ${s.maxPlayers ?? 10}`,
     ];
     if (s.pvpEnabled) parts.push('PvP: ON');
     if (s.timeLimit > 0) parts.push(`Time: ${Math.round(s.timeLimit / 60)}min`);

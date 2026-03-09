@@ -2248,6 +2248,7 @@ if (quickStartConfig.enabled) {
       if (selection.playerName) params.name = selection.playerName;
       if (selection.mapSize) params.mapSize = selection.mapSize;
       if (selection.quickGameMode && selection.quickGameMode !== 'waves') params.gameMode = selection.quickGameMode;
+      if (selection.maxPlayers && selection.maxPlayers !== 10) params.maxPlayers = String(selection.maxPlayers);
       window.history.replaceState({}, '', buildUrl(params));
       import('./network-main').then(() => {
         console.log('[Main] Loaded network multiplayer mode');
