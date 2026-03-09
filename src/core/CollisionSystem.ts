@@ -244,18 +244,28 @@ export class CollisionSystem {
       // Skip phased/invisible enemies (e.g. Phaser cycling through invisible state)
       if (enemy.isGhostForPlayer) continue;
 
-      // s44r4-02: Compare on-surface positions directly.
-      // player.mesh.position = playerWalker.position (on surface, GameLoop.ts:250)
-      // enemy.position = walker.position (on surface, applySurfaceTransform)
-      // hitRadius = playerRadius + enemyRadius — the exact physical formula.
+      // s44r5-03: Compare player (on surface) to enemy VISUAL position (mesh.position,
+      // elevated by normal * radius). Use inflated threshold that accounts for the
+      // perpendicular elevation: hitRadiusSq = (pR + eR)² + eR².
       //
-      // s44r3-09 used enemy.mesh.position (elevated by normal*radius) which on curved
-      // surfaces like the pill body causes the 3D distance to differ from the surface
-      // distance in ways the inflation formula can't fully compensate — leading to
-      // misses when enemy approaches from the side (angular offset case).
+      // Why: On curved surfaces (pill, torus, peanut), the player is ON the surface but
+      // sees the enemy ABOVE the surface. The radial normal offset makes the 3D visual
+      // distance ~27% larger than the on-surface distance (pill body, R=10). Comparing
+      // on-surface distances (s44r4-02) made collision fire when enemies LOOK ~1 body
+      // width away. User reported: "dying when enemies are 2x body away."
+      //
+      // The inflated threshold = (pR + eR)² + eR² is exact on flat surfaces and within
+      // 1.25% on pill cylinder (R=10). It makes collision fire at the same VISUAL
+      // distance regardless of surface curvature.
+      //
+      // History: s44r3-09 used mesh position with inflation `2*eR²` — too generous.
+      //          s44r4-02 reverted to on-surface — too sensitive on curved surfaces.
+      //          s44r5-03 uses mesh position with derived `(pR+eR)²+eR²` — correct.
       const playerRadius = player.mesh.scale.x * 0.1;
-      const hitRadiusSq = (playerRadius + enemy.radius) * (playerRadius + enemy.radius);
-      const distSq = player.mesh.position.distanceToSquared(enemy.position);
+      const baseHitRadiusSq = (playerRadius + enemy.radius) * (playerRadius + enemy.radius);
+      const hitRadiusSq = baseHitRadiusSq + enemy.radius * enemy.radius;
+      const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
+      const distSq = player.mesh.position.distanceToSquared(visualPos);
       if (distSq < hitRadiusSq) {
         if (isShielded) {
           // Shield absorbs the hit and kills the enemy
