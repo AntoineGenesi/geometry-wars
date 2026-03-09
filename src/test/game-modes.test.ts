@@ -586,6 +586,42 @@ describe('RainbowMode', () => {
     // Restore
     mockEnemySpawner.getEnemies = () => [];
   });
+
+  it('should apply rainbow emissive color to enemy mesh in onFixedUpdate', () => {
+    const meshMaterial = new THREE.MeshStandardMaterial();
+    const mesh = new THREE.Mesh(new THREE.BufferGeometry(), meshMaterial);
+    const enemy = {
+      ...createMockEnemy(),
+      mesh,
+      isInstanced: false,
+    } as any;
+
+    mockEnemySpawner.getEnemies = () => [enemy];
+    mode.onFixedUpdate(0.016, context);
+
+    // After update, the enemy mesh should have a rainbow emissive color applied (non-black)
+    expect(meshMaterial.emissive.getHex()).not.toBe(0x000000);
+    expect(meshMaterial.emissiveIntensity).toBeGreaterThan(1.0);
+
+    // Restore
+    mockEnemySpawner.getEnemies = () => [];
+  });
+
+  it('should call player.setColor with current rainbow color in onFixedUpdate', () => {
+    const setColorSpy = vi.fn();
+    context.player.setColor = setColorSpy;
+
+    mode.onFixedUpdate(0.016, context);
+
+    expect(setColorSpy).toHaveBeenCalled();
+    // Color should be a valid non-zero hex value
+    const colorArg = setColorSpy.mock.calls[0][0];
+    expect(colorArg).toBeGreaterThan(0);
+  });
+
+  it('should cycle colors faster than 5 seconds (colorDuration <= 3s)', () => {
+    expect((mode as any).colorDuration).toBeLessThanOrEqual(3.0);
+  });
 });
 
 describe('ClaustrophobiaMode', () => {

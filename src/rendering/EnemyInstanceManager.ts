@@ -382,6 +382,24 @@ export class EnemyInstanceManager {
   }
 
   /**
+   * Set a custom color for a specific enemy instance.
+   * Used by Rainbow mode to tint instanced enemies with their assigned color.
+   * Call flushColors() after setting all colors for the frame.
+   */
+  setEnemyColor(enemy: BaseEnemy, color: THREE.Color): void {
+    const typeKey = (enemy as any)._instanceType as string | undefined;
+    if (!typeKey) return;
+
+    const batch = this.batches.get(typeKey);
+    if (!batch) return;
+
+    const index = batch.enemyToIndex.get(enemy);
+    if (index === undefined) return;
+
+    batch.instancedMesh.setColorAt(index, color);
+  }
+
+  /**
    * Flash an enemy's instance color for hit feedback.
    * Temporarily sets color to white, then restores after duration.
    */
