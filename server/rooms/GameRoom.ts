@@ -2562,6 +2562,7 @@ export class GameRoom extends Room<GameState> {
       || surfType === 'icosahedron' || surfType === 'capsule';
     const isPeanut = surfType === 'peanut';
     const isTorus = surfType === 'torus' || surfType === 'torus-tunnel';
+    const isPill = surfType === 'pill';
 
     this.state.bullets.forEach((bullet, index) => {
       bullet.age += dt;
@@ -2660,6 +2661,27 @@ export class GameRoom extends Room<GameState> {
         // Move bullet with metric correction (constant arc-length speed)
         bullet.x += (bullet.dirX / rho) * BULLET_SPEED * dt;
         bullet.y += (bullet.dirY / TORUS_r) * BULLET_SPEED * dt;
+      } else if (isPill) {
+        // s44r6-05: Pill-specific bullet movement with metric correction on hemispherical caps.
+        // The pill has three UV regions: bottom cap, cylindrical body, top cap.
+        // On the body, sinPhi=1 so metric correction is a no-op (same as flat).
+        // On the caps, sinPhi shrinks toward poles — without correction, bullets
+        // accelerate in u near poles, breaking hit detection on the caps.
+        const cf = PILL_CAP_FRAC;
+        let sinPhi = 1.0; // Default for body (phi=PI/2)
+        if (bullet.y <= cf) {
+          // Bottom cap: phi = PI - localT * PI/2
+          const localT = cf > 0 ? bullet.y / cf : 1;
+          const phi = Math.PI - localT * (Math.PI / 2);
+          sinPhi = Math.max(Math.abs(Math.sin(phi)), 0.1);
+        } else if (bullet.y >= 1 - cf) {
+          // Top cap: phi = (PI/2) * (1 - localT)
+          const localT = cf > 0 ? (bullet.y - (1 - cf)) / cf : 1;
+          const phi = (Math.PI / 2) * (1 - localT);
+          sinPhi = Math.max(Math.abs(Math.sin(phi)), 0.1);
+        }
+        bullet.x += (bullet.dirX / sinPhi) * BULLET_SPEED * dt;
+        bullet.y += bullet.dirY * BULLET_SPEED * dt;
       } else {
         // Flat / other surfaces (cube, plane, pipe, mobius) — straight-line UV motion.
         bullet.x += bullet.dirX * BULLET_SPEED * dt;
@@ -3799,10 +3821,12 @@ export class GameRoom extends Room<GameState> {
     // PvP bullet-player collisions (only when pvpEnabled === true)
     // Player bullets deal health damage to other players.
     // Uses the same hitBullets set so bullets consumed by enemy hits are not reused.
-    // s44k-07: friendlyFire defaults to true for both pvp and pvpve modes so player damage works
-    // out of the box. The gate still allows cooperative PvPvE (friendlyFire=false in settings).
-    const allowPlayerDamage = this.currentSettings.mode !== 'pvpve' || this.currentSettings.friendlyFire;
-    if (this.pvpEnabled && allowPlayerDamage) {
+    // s44r6-05: Removed friendlyFire gate for PvPvE mode. Previous code checked
+    //   `mode !== 'pvpve' || friendlyFire` — but this kept breaking across sessions
+    //   (s44r2-06, s44k-07, s44l-19) because currentSettings.friendlyFire could revert
+    //   to false via DEFAULT_GAME_SETTINGS spread or settings re-sync. pvpEnabled is the
+    //   single authoritative flag: if it's true, player damage works. Period.
+    if (this.pvpEnabled) {
       this.state.bullets.forEach((bullet, bIndex) => {
         if (hitBullets.has(bIndex)) return; // Already consumed by enemy hit
 

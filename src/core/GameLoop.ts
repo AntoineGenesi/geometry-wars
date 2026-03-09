@@ -157,6 +157,13 @@ export class GameLoop {
             ctx.playerWalker.teleportTo(projected.point, projected.faceIndex, projected.normal);
           }
           ctx.player.mesh.position.copy(ctx.playerWalker.position);
+          // s44r6-05: Reset camera frame before snapping to respawn position.
+          // On pill/torus/peanut, respawn lands on the opposite side of the surface where
+          // the outward normal points in the opposite direction from the pre-death normal.
+          // CameraController._preferredNormal flips the new normal (>90° dot product check),
+          // placing the camera INSIDE the surface. Each death flips again → alternating
+          // inside/outside. Resetting the frame prevents the flip check on the first snap.
+          ctx.cameraController.resetFrameForNewSurface();
           // Snap camera to respawn position immediately.
           // Without this, the camera is still at the death location when the player
           // reappears (cameraController.update is skipped while dead). The first live
