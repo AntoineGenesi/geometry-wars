@@ -210,6 +210,8 @@ const _bulletTmpColor = new THREE.Color();
 // Pre-allocated temp vectors for camera-frame aim-angle correction (s40-03)
 const _aimCamRight = new THREE.Vector3();
 const _aimCamUp = new THREE.Vector3();
+// s44r5-02: temp vector for un-scaling world position before worldToSurface
+const _aimUnscaledPos = new THREE.Vector3();
 
 // ---------------------------------------------------------------------------
 // URL helpers
@@ -5307,18 +5309,21 @@ async function main() {
         // bullet physics AND client bullet reconstruction (both use sp.tangentU/V).
         // The s44-epic-08 server-frame switch was the source of this 90° mismatch.
         {
-          // s44l-16 FIX: For torus, sphere-approx surfaceU/V has swapped axes
-          // (u_sphere=ring_angle/2π, v_sphere≈polar ≈ tube_angle) vs torus UV
-          // (u=tube_angle/2π, v=ring_angle/2π). getPoint(sphere_u, sphere_v) maps
-          // to the wrong position on the outer half, giving incorrect tangent vectors
-          // and causing bullets to fly in wrong directions from the outer half.
-          // Fix: use worldToSurface on the player's actual mesh position to get
-          // accurate torus/pill UV for tangent frame computation.
-          // s44r-07: pill has same sphere-approx mismatch as torus — top/bottom 38% of body
-          // sphere_v < capFrac maps to cap region giving wrong tangentV.
-          const _aimUV = (lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pill')
-            ? surface.worldToSurface(_aimPlayer.mesh.position)
-            : { u: _aimPlayer.surfaceU, v: _aimPlayer.surfaceV };
+          // s44r5-02 FIX: Use worldToSurface for ALL surfaces — not just torus/pill.
+          // The server sends surfaceU/V as a sphere-approximation
+          // (u=atan2(z,x)/2π, v=acos(y/r)/π) which is only accurate for sphere/peanut.
+          // For cube, this maps a top-face position (y=+9) to v≈0.1 (near bottom of cube UV),
+          // producing completely wrong tangentU/tangentV and breaking aim on every face.
+          // worldToSurface uses each surface's own parametric inversion → always correct.
+          //
+          // Server positions include map-size scaling (baked into geometry), but client
+          // surface.worldToSurface() expects unscaled coordinates. Un-scale first.
+          // Angle-based surfaces (torus, sphere) are scale-invariant so this is a no-op for them.
+          _aimUnscaledPos.copy(_aimPlayer.mesh.position);
+          if (currentMapSizeScaleFactor !== 1.0) {
+            _aimUnscaledPos.divideScalar(currentMapSizeScaleFactor);
+          }
+          const _aimUV = surface.worldToSurface(_aimUnscaledPos);
           const _aimSp = surface.getPoint(_aimUV.u, _aimUV.v);
           // Use server normal when available (more stable), but UV tangentU/V for angle
           const _aimNormal = _localServerFrameValid ? _localServerNormal : _aimSp.normal;
@@ -5530,7 +5535,14 @@ async function main() {
         // DO NOT re-add client prediction without a full rollback/reconciliation system.
         //
         // Compute surface point for orientation (tangentU needed for player facing).
-        const _predSp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+        // s44r5-02 FIX: Use worldToSurface-corrected UV (not sphere-approx surfaceU/V).
+        // Same fix as aim computation — sphere-approx UV gives wrong tangentU on cube/etc.
+        _aimUnscaledPos.copy(localPlayer.mesh.position);
+        if (currentMapSizeScaleFactor !== 1.0) {
+          _aimUnscaledPos.divideScalar(currentMapSizeScaleFactor);
+        }
+        const _predCorrectUV = surface.worldToSurface(_aimUnscaledPos);
+        const _predSp = surface.getPoint(_predCorrectUV.u, _predCorrectUV.v);
         const _predTangentU = _predSp.tangentU.lengthSq() > 0.001 ? _predSp.tangentU : _predSp.tangentV;
         if (_localPlayerWorldTarget.valid) {
           // Use server world-space position (authoritative, correct space).
@@ -5619,11 +5631,17 @@ async function main() {
       if (localPlayer && surface) {
         // s44c-08 FIX: Use UV frame (sp.tangentU/V) for special weapon aim direction,
         // consistent with aimAngle which is now also in UV frame.
+        // s44r5-02 FIX: Use worldToSurface-corrected UV (not sphere-approx surfaceU/V).
         let wpNormal: THREE.Vector3;
         let wpTangentU: THREE.Vector3;
         let wpTangentV: THREE.Vector3;
         {
-          const sp = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+          _aimUnscaledPos.copy(localPlayer.mesh.position);
+          if (currentMapSizeScaleFactor !== 1.0) {
+            _aimUnscaledPos.divideScalar(currentMapSizeScaleFactor);
+          }
+          const wpUV = surface.worldToSurface(_aimUnscaledPos);
+          const sp = surface.getPoint(wpUV.u, wpUV.v);
           wpNormal   = _localServerFrameValid ? _localServerNormal : sp.normal;
           wpTangentU = sp.tangentU;
           wpTangentV = sp.tangentV;
@@ -5675,7 +5693,13 @@ async function main() {
       // auraPoint used by buffAura + companionManager below — keep it computed.
       // s44-epic-08: Use mesh position (set from server world pos) for auraPos
       // instead of auraPoint.position to avoid double UV→world conversion.
-      const auraPoint = surface.getPoint(localPlayer.surfaceU, localPlayer.surfaceV);
+      // s44r5-02 FIX: Use worldToSurface-corrected UV for auraPoint tangent frame
+      _aimUnscaledPos.copy(localPlayer.mesh.position);
+      if (currentMapSizeScaleFactor !== 1.0) {
+        _aimUnscaledPos.divideScalar(currentMapSizeScaleFactor);
+      }
+      const _auraUV = surface.worldToSurface(_aimUnscaledPos);
+      const auraPoint = surface.getPoint(_auraUV.u, _auraUV.v);
       const auraPos = localPlayer.mesh.position; // already positioned from server world pos
       const auraNormal = _localServerFrameValid ? _localServerNormal : auraPoint.normal;
       playerLevel.update(dt, auraPos, auraNormal);
