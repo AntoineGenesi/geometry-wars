@@ -1549,6 +1549,14 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     analyticsPanel.dispose();
+    // Release GPU geometry/material buffers before creating new surface next round.
+    // Without this, each call to main() accumulates geometry on the GPU → performance
+    // degrades with each replay (s44r5-06).
+    surface.dispose();
+    // Dispose WebGL renderer, EffectComposer, canvas DOM element, and event listeners.
+    // Without this, each main() call creates a new renderer while the old one stays
+    // alive — multiple WebGL contexts consuming memory.
+    game.dispose();
     main(selectedSurface, levelIndex + 1);
   });
   levelCompleteScreen.onReplay(() => {
@@ -1574,6 +1582,14 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     analyticsPanel.dispose();
+    // Release GPU geometry/material buffers before creating new surface next round.
+    // Without this, each call to main() accumulates geometry on the GPU → performance
+    // degrades with each replay (s44r5-06).
+    surface.dispose();
+    // Dispose WebGL renderer, EffectComposer, canvas DOM element, and event listeners.
+    // Without this, each main() call creates a new renderer while the old one stays
+    // alive — multiple WebGL contexts consuming memory.
+    game.dispose();
     main(selectedSurface, levelIndex);
   });
   levelCompleteScreen.onMenu(() => {
