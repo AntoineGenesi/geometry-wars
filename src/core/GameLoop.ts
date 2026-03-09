@@ -772,6 +772,18 @@ export class GameLoop {
       },
       ctx.enemyInstanceManager,
       ctx.game.bloomEffectManager, // Pass bloom effect manager for boss death bloom pulses
+      ctx.quickGameMode ? (enemy: BaseEnemy) => {
+        return ctx.quickGameMode!.onEnemyKilled(enemy, {
+          player: ctx.player,
+          enemySpawner: ctx.enemySpawner,
+          surface: ctx.surface,
+          weaponManager: ctx.weaponManager,
+          buffManager: ctx.buffManager,
+          game: ctx.game,
+          scene: ctx.game.scene,
+          camera: ctx.game.camera,
+        });
+      } : undefined,
     );
 
     // Player vs enemies (immune if shielded OR tesla coil active OR companion shield active)

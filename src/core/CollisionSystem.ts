@@ -71,6 +71,8 @@ export class CollisionSystem {
     onEnemyDied?: (enemy: BaseEnemy, allEnemies: BaseEnemy[]) => void,
     instanceManager?: EnemyInstanceManager | null,
     bloomEffectManager?: BloomEffectManager | null,
+    /** Optional score multiplier callback (e.g. Rainbow mode: 3x for color match, 0.5x for mismatch). */
+    onScoreMultiplier?: (enemy: BaseEnemy) => number,
   ): void {
     // DIAGNOSTIC: Entry guard (remove after freeze investigation)
     const debugFreeze = (window as any).__debugFreeze ?? false;
@@ -181,8 +183,10 @@ export class CollisionSystem {
               particles.enemyDeath(enemy.position, color);
             }
             if (debugFreeze) console.log('[CollisionSystem] Particles spawned');
-            scoreManager.awardKill(enemy.scoreValue, enemyType);
-            scorePopups?.spawnScore(enemy.position.clone(), enemy.scoreValue);
+            const scoreMult = onScoreMultiplier ? onScoreMultiplier(enemy) : 1.0;
+            const adjustedScore = Math.round(enemy.scoreValue * scoreMult);
+            scoreManager.awardKill(adjustedScore, enemyType);
+            scorePopups?.spawnScore(enemy.position.clone(), adjustedScore);
             // Scale screen shake intensity based on enemy size: small enemies minimal jitter, large enemies pronounced
             const jitterIntensity = Math.max(0.05, Math.min(0.35, enemy.radius * 0.5));
             const jitterDuration = 0.15;

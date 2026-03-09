@@ -3624,8 +3624,15 @@ async function main() {
           scorePopups.spawnDamage(enemy.position.clone(), killingBlow);
         }
 
-        // Score popup at death position
-        scorePopups.spawnScore(enemy.position.clone(), enemy.scoreValue);
+        // Score popup at death position — apply mode score multiplier if active
+        let popupScore = enemy.scoreValue;
+        if (activeGameMode && gameModeStarted) {
+          const ctx = buildGameModeContext();
+          if (ctx) {
+            popupScore = Math.round(enemy.scoreValue * activeGameMode.onEnemyKilled(enemy, ctx));
+          }
+        }
+        scorePopups.spawnScore(enemy.position.clone(), popupScore);
 
         // Kill log entry (same as co-op)
         killLog.addKill(enemyType, color.getHex());
