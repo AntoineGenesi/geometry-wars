@@ -1724,7 +1724,10 @@ export class WeaponManager {
       let nearestEnemy: { position: THREE.Vector3; index: number } | null = null;
       for (const enemy of enemies) {
         if (!enemy.alive) continue;
-        const dist = proj.position.distanceTo(enemy.position);
+        // s44r6-04: Use min of on-surface and visual distance (Mobius normal divergence)
+        const onSurfaceDist = proj.position.distanceTo(enemy.position);
+        const visualDist = enemy.meshPosition ? proj.position.distanceTo(enemy.meshPosition) : onSurfaceDist;
+        const dist = Math.min(onSurfaceDist, visualDist);
         if (dist < nearestDist) {
           nearestDist = dist;
           nearestEnemy = enemy;
@@ -1751,7 +1754,10 @@ export class WeaponManager {
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
 
-      const dist = proj.position.distanceTo(enemy.position);
+      // s44r6-04: Use min of on-surface and visual distance (Mobius normal divergence)
+      const onSurfaceDist = proj.position.distanceTo(enemy.position);
+      const visualDist = enemy.meshPosition ? proj.position.distanceTo(enemy.meshPosition) : onSurfaceDist;
+      const dist = Math.min(onSurfaceDist, visualDist);
       if (dist < hitRadius) {
         this.callbacks.onEnemyDamage(enemy.index, proj.damage, proj.type);
 
@@ -1872,7 +1878,10 @@ export class WeaponManager {
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
 
-      const dist = center.distanceTo(enemy.position);
+      // s44r6-04: Use min of on-surface and visual distance (Mobius normal divergence)
+      const onSurfaceDist = center.distanceTo(enemy.position);
+      const visualDist = enemy.meshPosition ? center.distanceTo(enemy.meshPosition) : onSurfaceDist;
+      const dist = Math.min(onSurfaceDist, visualDist);
       if (dist < radius) {
         const falloff = 1 - dist / radius;
         this.callbacks.onEnemyDamage(enemy.index, damage * falloff, WeaponType.PlasmaMortar);
@@ -1908,7 +1917,10 @@ export class WeaponManager {
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
 
-      const dist = center.distanceTo(enemy.position);
+      // s44r6-04: Use min of on-surface and visual distance (Mobius normal divergence)
+      const onSurfaceDist = center.distanceTo(enemy.position);
+      const visualDist = enemy.meshPosition ? center.distanceTo(enemy.meshPosition) : onSurfaceDist;
+      const dist = Math.min(onSurfaceDist, visualDist);
       if (dist < radius) {
         // Continuous in-flight pull uses 50% max strength (same as Black Hole per-frame pull).
         // On-impact detonation uses full 100% strength.
@@ -2027,7 +2039,10 @@ export class WeaponManager {
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
 
-            const dist = effect.position.distanceTo(enemy.position);
+            // s44r6-04: Use min of on-surface and visual distance (Mobius normal divergence)
+            const onSurfaceDist = effect.position.distanceTo(enemy.position);
+            const visualDist = enemy.meshPosition ? effect.position.distanceTo(enemy.meshPosition) : onSurfaceDist;
+            const dist = Math.min(onSurfaceDist, visualDist);
             if (dist < radius) {
               // Instant kill in center
               if (dist < 0.5) {
