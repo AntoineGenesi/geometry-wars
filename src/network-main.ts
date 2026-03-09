@@ -2637,6 +2637,11 @@ async function main() {
   });
   let gameOverShown = false;
 
+  // Tracks the timestamp of the local player's FINAL death (last life lost, game over).
+  // Set when local player dies with no other players alive — triggers 3-second death
+  // camera hold before showing mastery/voting screens. Cleared on new game start.
+  let localPlayerFinalDeathTime: number | null = null;
+
   // -----------------------------------------------------------------------
   // Voting screen (Phase 3 stub — wired now, real UI in Phase 3)
   // -----------------------------------------------------------------------
@@ -2893,6 +2898,8 @@ async function main() {
 
     // Reset game-over flag so GameOverScreen can show again next game
     gameOverShown = false;
+    // Reset final-death timestamp so death cam hold doesn't carry over to next round
+    localPlayerFinalDeathTime = null;
 
     // Hide dead overlay — local player is alive again in the new round
     deadOverlay.style.display = 'none';
@@ -3399,15 +3406,25 @@ async function main() {
         tracker.recordDeath();
         // Local player death: show countdown (3→2→1) + death cam
         if (id === localPlayerId) {
-          // Show 3-second respawn countdown (private to dying player)
-          startDeathCountdown();
-          // Death cam: grayscale + darken canvas while player is dead
-          UIHelpers.showDeathCamEffect();
-          // Show spectating overlay only if there are alive players to spectate
+          // Check if this is the FINAL death (last player standing goes down = game over).
+          // If no other players are alive, skip the "RESPAWNING" countdown and instead
+          // hold the death camera for 3 seconds before showing mastery/voting screens.
           let hasAliveSpectateTarget = false;
           state.players.forEach((p, pid) => {
             if (pid !== id && p.alive) hasAliveSpectateTarget = true;
           });
+          const isFinalDeath = !hasAliveSpectateTarget;
+          if (isFinalDeath) {
+            // Final death: record timestamp for the 3-second death camera hold.
+            // Do NOT show the "RESPAWNING" countdown — player won't respawn.
+            localPlayerFinalDeathTime = Date.now();
+          } else {
+            // Normal mid-game death: show 3-second respawn countdown
+            startDeathCountdown();
+          }
+          // Death cam: grayscale + darken canvas while player is dead
+          UIHelpers.showDeathCamEffect();
+          // Show spectating overlay only if there are alive players to spectate
           if (hasAliveSpectateTarget) {
             deadOverlay.style.display = 'flex';
           }
@@ -4366,23 +4383,17 @@ async function main() {
 
       if (newPhase === 'voting') {
         // Game ended — transition to voting screen.
-        // Hide spectating overlay — no longer relevant when voting starts.
-        deadOverlay.style.display = 'none';
         // Hide GameOverScreen if it snuck in (from the old gameOver bool path).
         gameOverScreen.hide();
         // Re-enable pass-through so mastery/voting screen buttons work on mobile.
         if (input instanceof TouchInput) input.setGamePaused(true);
-        // Clear all game entities so frozen enemies/pickups from the previous game
-        // are removed from the scene immediately. Server also clears its state in
-        // transitionToVoting(), but client clears eagerly for instant visual cleanup.
-        resetGameEntities();
-        // Show MasteryProgressScreen first (if any XP was earned), then VotingScreen.
+
+        // Compute weapon XP now (before any delay) so the XP is attributed correctly.
         const killsByWeapon = weaponMastery.getKillsByWeapon();
         const xpResults = masteryStore.awardGameXP(killsByWeapon);
         masteryStore.save();
         latestVotingState = state; // seed with transition-time state; updated every onStateChange
         const anyXP = xpResults.some(r => r.xpAfter > r.xpBefore);
-        const anyLevelUp = xpResults.some(r => r.leveledUp);
 
         const proceedToVoting = () => {
           // Only show voting if still in voting phase
@@ -4391,39 +4402,73 @@ async function main() {
           }
         };
 
+        // Always show the weapon mastery upgrade tree after a game ends (s44r6-02).
+        // Previously only shown when a weapon leveled up — now always shown so players
+        // can review their mastery state and plan upgrades even with zero kills.
         const proceedAfterMastery = () => {
-          // If any weapon leveled up, show the upgrade tree before voting
-          if (anyLevelUp) {
-            const upgradeScreen = new WeaponMasteryScreen();
-            upgradeScreen.setPointStore(masteryPointStore);
-            upgradeScreen.show(MasteryStore.load());
-            const cleanup = () => {
-              upgradeScreen.dispose();
-              proceedToVoting();
-            };
-            upgradeScreen.onClose(cleanup);
-          } else {
+          const upgradeScreen = new WeaponMasteryScreen();
+          upgradeScreen.setPointStore(masteryPointStore);
+          upgradeScreen.show(MasteryStore.load());
+          const cleanup = () => {
+            upgradeScreen.dispose();
             proceedToVoting();
+          };
+          upgradeScreen.onClose(cleanup);
+        };
+
+        // The actual transition function: clear entities and show mastery/voting.
+        const executeVotingTransition = () => {
+          // Hide spectating overlay — no longer relevant when voting starts.
+          deadOverlay.style.display = 'none';
+          // Hide death cam effect (final death case: camera held here for 3s, now clear).
+          UIHelpers.hideDeathCamEffect();
+          // Clear all game entities so frozen enemies/pickups from the previous game
+          // are removed from the scene immediately. Server also clears its state in
+          // transitionToVoting(), but client clears eagerly for instant visual cleanup.
+          resetGameEntities();
+
+          if (anyXP) {
+            const masteryScreen = new MasteryProgressScreen();
+            activeMasteryScreen = masteryScreen;
+            masteryScreen.show(
+              {
+                results: xpResults,
+                allLevels: masteryStore.getAllLevels(),
+                getBonusDescription: (w, lv) => masteryStore.getBonusDescription(w, lv),
+              },
+              () => {
+                activeMasteryScreen = null;
+                masteryScreen.dispose();
+                proceedAfterMastery();
+              },
+            );
+          } else {
+            proceedAfterMastery();
           }
         };
 
-        if (anyXP) {
-          const masteryScreen = new MasteryProgressScreen();
-          activeMasteryScreen = masteryScreen;
-          masteryScreen.show(
-            {
-              results: xpResults,
-              allLevels: masteryStore.getAllLevels(),
-              getBonusDescription: (w, lv) => masteryStore.getBonusDescription(w, lv),
-            },
-            () => {
-              activeMasteryScreen = null;
-              masteryScreen.dispose();
-              proceedAfterMastery();
-            },
-          );
+        // If the local player's FINAL death just happened, hold the death camera
+        // for 3 seconds before transitioning to mastery/voting screens.
+        // This lets the explosion and death-location camera linger before clearing.
+        if (localPlayerFinalDeathTime !== null) {
+          const elapsed = Date.now() - localPlayerFinalDeathTime;
+          const DEATH_CAM_HOLD_MS = 3000;
+          const remaining = Math.max(0, DEATH_CAM_HOLD_MS - elapsed);
+          if (remaining > 0) {
+            setTimeout(() => {
+              if (currentRoomPhase === 'voting') {
+                executeVotingTransition();
+              }
+            }, remaining);
+          } else {
+            // Death happened more than 3s ago (e.g. spectator watching others die),
+            // proceed immediately.
+            executeVotingTransition();
+          }
         } else {
-          proceedAfterMastery();
+          // No local final death (e.g. time limit, kill limit, or player was spectating):
+          // transition immediately.
+          executeVotingTransition();
         }
       } else if (newPhase === 'playing' && prevRoomPhase === 'voting') {
         // New game starting after vote — reset and launch.
@@ -4780,6 +4825,7 @@ async function main() {
         startBtn.style.display = 'none';
         modeSelectorDiv.style.display = 'none';
         gameOverShown = false; // Reset so GameOverScreen can show next game over
+        localPlayerFinalDeathTime = null; // Reset final-death hold for new round
         gameOverScreen.hide(); // Dismiss any lingering game over screen
         votingScreen.hide();  // Dismiss voting screen (roomPhase → playing)
         // Game is now active — enable joystick touch capture.
