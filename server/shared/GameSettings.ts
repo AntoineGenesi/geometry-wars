@@ -173,6 +173,12 @@ export interface GameSettings {
    * - high:   +30% spawn rate per eliminated player (game gets harder)
    */
   enemyDifficultyPerPlayer: EnemyDifficultyPerPlayer;
+
+  /**
+   * Maximum number of players allowed in the room (host-configurable).
+   * Range: 2–20. Default: 10.
+   */
+  maxPlayers: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +228,7 @@ export const DEFAULT_GAME_SETTINGS: Readonly<GameSettings> = {
   bulletCountCap:          500,
   visualQuality:           'auto',
   enemyDifficultyPerPlayer: 'medium',
+  maxPlayers:              10,
 };
 
 // ---------------------------------------------------------------------------
@@ -342,6 +349,11 @@ export function validateSettings(partial: Partial<GameSettings> | null | undefin
     ? (partial.enemyDifficultyPerPlayer as EnemyDifficultyPerPlayer)
     : DEFAULT_GAME_SETTINGS.enemyDifficultyPerPlayer;
 
+  // maxPlayers — host-configurable player cap (2-20)
+  const maxPlayers = isFiniteNumber(partial.maxPlayers)
+    ? clamp(Math.round(partial.maxPlayers), 2, 20)
+    : DEFAULT_GAME_SETTINGS.maxPlayers;
+
   // PvP settings — strip if mode is not a PvP mode
   const isPvpMode = (PVP_MODES as readonly string[]).includes(mode);
 
@@ -390,5 +402,6 @@ export function validateSettings(partial: Partial<GameSettings> | null | undefin
     bulletCountCap,
     visualQuality,
     enemyDifficultyPerPlayer,
+    maxPlayers,
   };
 }

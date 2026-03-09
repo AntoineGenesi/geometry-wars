@@ -262,6 +262,7 @@ export class GameSettingsPanel {
 
   private buildEnemiesSection(): HTMLElement {
     const section = this.section('ENEMIES & BULLETS');
+    section.appendChild(this.buildSlider('maxPlayers', 'Max Players', 2, 20, 1, (v) => String(v)));
     section.appendChild(this.buildSlider('enemyCountCap', 'Max Enemies', 10, 100, 5, (v) => String(v)));
     section.appendChild(this.buildSlider('bulletCountCap', 'Max Bullets', 50, 1000, 50, (v) => String(v)));
     return section;
@@ -540,6 +541,7 @@ function formatSliderPreview(field: keyof GameSettings, value: number, _min: num
     case 'healingAmount':       return String(value);
     case 'weaponSpawnFrequency': return `${value.toFixed(1)}x`;
     case 'buffSpawnFrequency':  return `${value.toFixed(1)}x`;
+    case 'maxPlayers':          return String(value);
     case 'enemyCountCap':       return String(value);
     case 'bulletCountCap':      return String(value);
     case 'pvpKillLimit':        return String(value);
