@@ -23,6 +23,10 @@ const DISC_SEGMENTS = 48;
 // Portal collision radius in world space (used by server)
 export const PORTAL_WORLD_RADIUS = 1.5;
 
+// Flat surface disc (trigger zone indicator)
+const SURFACE_DISC_RADIUS = PORTAL_WORLD_RADIUS; // matches server detection radius exactly
+const SURFACE_DISC_SEGMENTS = 32;
+
 // Cooldown after teleport: player cannot re-enter same portal for this many seconds
 export const PORTAL_COOLDOWN_MS = 2000; // milliseconds (server-side)
 
@@ -115,6 +119,7 @@ export class Portal {
   private _rim: THREE.Mesh;
   private _disc: THREE.Mesh;
   private _discMat: THREE.ShaderMaterial;
+  private _surfaceDisc: THREE.Mesh; // flat trigger-zone indicator glued to surface
   private _particles: THREE.Points;
   private _particlePositions: Float32Array;
   private _particlePhases: Float32Array;
@@ -159,6 +164,27 @@ export class Portal {
     // Disc lies in the XZ plane (Y up) by default; since the group is oriented
     // so Y = surface normal, the disc will be flat on the surface automatically.
     this.mesh.add(this._disc);
+
+    // ── Surface trigger disc — flat ring showing the detection zone ───────────
+    // Matches server PORTAL_WORLD_RADIUS exactly so players know the exact entry area.
+    // Ring (donut) shape avoids obscuring the swirling interior effect.
+    const surfaceDiscGeo = new THREE.RingGeometry(
+      TORUS_RADIUS * 1.05,       // inner edge just outside the torus rim
+      SURFACE_DISC_RADIUS,       // outer edge = server detection radius
+      SURFACE_DISC_SEGMENTS,
+    );
+    const surfaceDiscMat = new THREE.MeshBasicMaterial({
+      color: color.clone(),
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this._surfaceDisc = new THREE.Mesh(surfaceDiscGeo, surfaceDiscMat);
+    // No Y-offset: sits flush at the group origin (on the surface).
+    // The group's Y axis is the surface normal, so this disc lies flat on the surface.
+    this.mesh.add(this._surfaceDisc);
 
     // ── Floating particles ────────────────────────────────────────────────────
     // Particles drift upward along the group's local Y (= surface normal).
@@ -280,6 +306,8 @@ export class Portal {
     (this._rim.material as THREE.Material).dispose();
     this._disc.geometry.dispose();
     this._discMat.dispose();
+    this._surfaceDisc.geometry.dispose();
+    (this._surfaceDisc.material as THREE.Material).dispose();
     this._particles.geometry.dispose();
     (this._particles.material as THREE.Material).dispose();
   }

@@ -803,20 +803,18 @@ export class GameRoom extends Room<GameState> {
   private static readonly PVP_RESPAWN_DELAY = 3.0; // seconds
 
   // ── Portals ───────────────────────────────────────────────────────────────
-  /** World-space center of portal A (computed from UV via surfaceManager). */
-  private _portalAWorld: THREE.Vector3 | null = null;
-  /** World-space center of portal B (computed from UV via surfaceManager). */
-  private _portalBWorld: THREE.Vector3 | null = null;
   /** Per-sessionId cooldown timestamp (ms) — player cannot re-enter a portal until this time. */
   private _portalCooldowns: Map<string, number> = new Map();
-  /** Portal trigger radius squared (world units). */
-  private static readonly PORTAL_RADIUS_SQ = 1.5 * 1.5;
+  /** Portal trigger radius in world units (used with surfaceWorldDist — consistent on all surfaces). */
+  private static readonly PORTAL_WORLD_RADIUS = 1.5;
   /** True once any player has dropped to ≤50% health this game (one-shot trigger). */
   private _portalsTriggeredThisGame = false;
   /** Timer handle for scheduled portal despawn. */
   private _portalDespawnTimer: ReturnType<typeof setTimeout> | null = null;
   /** Timer handle for scheduled portal respawn after despawn. */
   private _portalRespawnTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Timer handle for the 30-second initial portal spawn (PvP/PvPvE only). */
+  private _portalInitialSpawnTimer: ReturnType<typeof setTimeout> | null = null;
   /**
    * s44r3-02: Per-bullet remaining damage budget for MP penetration.
    * Tracks how much damage a bullet can still deal across multiple enemies.
@@ -1732,13 +1730,25 @@ export class GameRoom extends Room<GameState> {
     this.claustroZoneCenterZ = claustroCenter.z;
     this.claustroWorldRadiusBase = bsRadius * 2.0; // at UV radius 0.5 → 2x bsRadius → covers entire surface
 
-    // ── Portals: deferred — spawn on first half-health event (PvP / PvPvE) ──
+    // ── Portals: spawn 30s after game start in PvP/PvPvE; also triggered on half-health ──
     this._clearPortalTimers();
     this._portalCooldowns.clear();
     this._portalsTriggeredThisGame = false;
     this.state.portalsActive = false;
-    this._portalAWorld = null;
-    this._portalBWorld = null;
+    const isPvpForPortals = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    if (isPvpForPortals) {
+      // Guarantee portals appear within 30 seconds regardless of combat state.
+      // Half-health trigger may fire sooner and will cancel this timer.
+      this._portalInitialSpawnTimer = setTimeout(() => {
+        this._portalInitialSpawnTimer = null;
+        if (!this._portalsTriggeredThisGame) {
+          this._portalsTriggeredThisGame = true;
+          this.logger.log('[Portals] 30s initial spawn timer fired — spawning portals');
+          this._spawnPortals();
+          this._schedulePortalCycle();
+        }
+      }, 30_000);
+    }
 
     // Apply currentSettings to room and internal state before resetting players.
     // pendingSettings are consumed here if a mid-game apply was queued.
@@ -5190,6 +5200,11 @@ export class GameRoom extends Room<GameState> {
     if (player.health > player.maxHealth * 0.5) return;
 
     this._portalsTriggeredThisGame = true;
+    // Cancel the initial 30s timer — this half-health trigger fires portals sooner
+    if (this._portalInitialSpawnTimer !== null) {
+      clearTimeout(this._portalInitialSpawnTimer);
+      this._portalInitialSpawnTimer = null;
+    }
     this.logger.log(`[Portals] Half-health trigger: ${player.name} at ${player.health}/${player.maxHealth} — spawning portals`);
     this._spawnPortals(player.surfaceU, player.surfaceV);
     this._schedulePortalCycle();
@@ -5231,8 +5246,6 @@ export class GameRoom extends Room<GameState> {
     this.state.portalBU = uB;
     this.state.portalBV = vB;
     this.state.portalsActive = true;
-    this._portalAWorld = this.surfaceManager.getWorldPosForUV(uA, vA);
-    this._portalBWorld = this.surfaceManager.getWorldPosForUV(uB, vB);
     this.logger.log(`[Portals] Spawned: A=(${uA.toFixed(3)},${vA.toFixed(3)}) B=(${uB.toFixed(3)},${vB.toFixed(3)})`);
   }
 
@@ -5258,16 +5271,18 @@ export class GameRoom extends Room<GameState> {
     }, despawnMs);
   }
 
-  /** Deactivate both portals and clear server-side world positions. */
+  /** Deactivate portals. */
   private _deactivatePortals(): void {
     this.state.portalsActive = false;
-    this._portalAWorld = null;
-    this._portalBWorld = null;
     this._portalCooldowns.clear();
   }
 
   /** Cancel any pending despawn/respawn timers. */
   private _clearPortalTimers(): void {
+    if (this._portalInitialSpawnTimer !== null) {
+      clearTimeout(this._portalInitialSpawnTimer);
+      this._portalInitialSpawnTimer = null;
+    }
     if (this._portalDespawnTimer !== null) {
       clearTimeout(this._portalDespawnTimer);
       this._portalDespawnTimer = null;
@@ -5281,26 +5296,40 @@ export class GameRoom extends Room<GameState> {
   /**
    * Check whether any player has stepped into a portal and teleport them.
    * Called every tick when portalsActive === true.
-   * Uses server world-space positions (wx/wy/wz from ServerMeshWalker).
+   * Uses UV surface-space distance (surfaceWorldDist) for consistent detection on all surfaces —
+   * this avoids the 3D world-space inaccuracy from sphere-approx UV→world conversion.
    */
   private updatePortalCollision(): void {
-    if (!this._portalAWorld || !this._portalBWorld) return;
+    if (!this.state.portalsActive) return;
     const now = Date.now();
+    const surfaceType = this.state.surfaceType;
+    const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
+    const sphereR = this.surfaceManager.getBoundingSphereRadius();
+    const threshold = GameRoom.PORTAL_WORLD_RADIUS;
 
     this.state.players.forEach((player, sessionId) => {
       if (!player.alive) return;
       // Per-player cooldown prevents bounce-back teleports
       if ((this._portalCooldowns.get(sessionId) ?? 0) > now) return;
 
-      const playerPos = new THREE.Vector3(player.wx, player.wy, player.wz);
-
-      // Check portal A
-      if (playerPos.distanceToSquared(this._portalAWorld!) < GameRoom.PORTAL_RADIUS_SQ) {
+      // UV-based on-surface chord distance: consistent regardless of surface curvature
+      const distToA = surfaceWorldDist(
+        surfaceType,
+        player.surfaceU, player.surfaceV,
+        this.state.portalAU, this.state.portalAV,
+        scaleFactor, sphereR,
+      );
+      if (distToA < threshold) {
         this._teleportPlayerToPortal(sessionId, player, 'B');
         return;
       }
-      // Check portal B
-      if (playerPos.distanceToSquared(this._portalBWorld!) < GameRoom.PORTAL_RADIUS_SQ) {
+      const distToB = surfaceWorldDist(
+        surfaceType,
+        player.surfaceU, player.surfaceV,
+        this.state.portalBU, this.state.portalBV,
+        scaleFactor, sphereR,
+      );
+      if (distToB < threshold) {
         this._teleportPlayerToPortal(sessionId, player, 'A');
       }
     });
@@ -5463,8 +5492,6 @@ export class GameRoom extends Room<GameState> {
     // Clear portal cycle timers so they don't fire into the voting/lobby phase
     this._clearPortalTimers();
     this.state.portalsActive = false;
-    this._portalAWorld = null;
-    this._portalBWorld = null;
 
     this.setMetadata({
       surface: this.state.surfaceType,
