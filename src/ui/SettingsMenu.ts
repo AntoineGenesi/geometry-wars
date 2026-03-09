@@ -904,9 +904,37 @@ export class SettingsMenu {
 
     const activeRendererLabel = this.rendererIsWebGPU ? 'WebGPU' : 'WebGL2';
     const activeRendererClass = this.rendererIsWebGPU ? 'good' : '';
-    const webgpuHint = r?.webgpu && !this.rendererIsWebGPU
-      ? ' (add ?renderer=webgpu to URL to enable)'
-      : '';
+
+    // WebGPU toggle button section
+    const webgpuToggleSection = (() => {
+      if (r?.webgpu && !this.rendererIsWebGPU) {
+        // WebGPU is available but we're on WebGL2 — show Enable button
+        return `
+          <div style="margin-top:12px;padding:10px 12px;background:rgba(0,255,200,0.06);border:1px solid rgba(0,255,200,0.18);border-radius:6px;">
+            <button class="action-btn" id="enable-webgpu" style="background:linear-gradient(180deg,#006644 0%,#003322 100%);border-color:#00ffcc;margin-bottom:6px;">
+              Enable WebGPU Renderer
+            </button>
+            <div style="color:#668888;font-size:11px;line-height:1.4;">
+              Switches to the WebGPU rendering backend. Page will reload.
+              WebGPU provides better performance on supported hardware.
+            </div>
+          </div>`;
+      }
+      if (this.rendererIsWebGPU) {
+        // Already using WebGPU — show Switch to WebGL2 button
+        return `
+          <div style="margin-top:12px;padding:10px 12px;background:rgba(0,200,255,0.06);border:1px solid rgba(0,200,255,0.15);border-radius:6px;">
+            <button class="action-btn" id="switch-to-webgl" style="background:linear-gradient(180deg,#223344 0%,#111a22 100%);border-color:#4488aa;margin-bottom:6px;">
+              Switch to WebGL2 Renderer
+            </button>
+            <div style="color:#668888;font-size:11px;line-height:1.4;">
+              Switches back to the WebGL2 backend. Page will reload.
+            </div>
+          </div>`;
+      }
+      // WebGPU not available — no toggle shown
+      return '';
+    })();
 
     // WebGPU adapter info row (only if we have it)
     const adapterRow = r?.webgpuAdapter
@@ -930,6 +958,7 @@ export class SettingsMenu {
         <span class="info-label">${t('settings.gpu.activeRenderer')}</span>
         <span class="info-value ${activeRendererClass}">${activeRendererLabel}</span>
       </div>
+      ${webgpuToggleSection}
 
       <div class="section-heading">${t('settings.gpu.hardware')}</div>
       <div class="info-row">
@@ -954,7 +983,7 @@ export class SettingsMenu {
       <div class="section-heading">${t('settings.gpu.features')}</div>
       <div class="info-row">
         <span class="info-label">${t('settings.gpu.webgpu')}</span>
-        <span class="info-value ${r?.webgpu ? 'good' : ''}">${r?.webgpu ? t('common.available') : t('common.notAvailable')}${webgpuHint}</span>
+        <span class="info-value ${r?.webgpu ? 'good' : ''}">${r?.webgpu ? t('common.available') : t('common.notAvailable')}</span>
       </div>
       <div class="info-row">
         <span class="info-label">${t('settings.gpu.webgl2')}</span>
@@ -1210,6 +1239,22 @@ export class SettingsMenu {
     const fullBenchBtn = this.container.querySelector('#run-full-benchmark') as HTMLButtonElement | null;
     fullBenchBtn?.addEventListener('click', () => {
       this.launchFullBenchmark();
+    });
+
+    // WebGPU toggle: reload page with ?renderer=webgpu
+    const enableWebGPUBtn = this.container.querySelector('#enable-webgpu') as HTMLButtonElement | null;
+    enableWebGPUBtn?.addEventListener('click', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('renderer', 'webgpu');
+      window.location.href = url.toString();
+    });
+
+    // Switch back to WebGL2: remove ?renderer param and reload
+    const switchToWebGLBtn = this.container.querySelector('#switch-to-webgl') as HTMLButtonElement | null;
+    switchToWebGLBtn?.addEventListener('click', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('renderer');
+      window.location.href = url.toString();
     });
   }
 

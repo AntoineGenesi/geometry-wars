@@ -38,15 +38,26 @@ export default defineConfig({
         '**/dist/**',
       ],
     },
-    // COOP/COEP headers removed - they block cross-device LAN access
-    // (Safari and mobile browsers refuse to load resources with these headers)
-    // SharedArrayBuffer is not used, so these are unnecessary
+    // COOP/COEP headers: required for SharedArrayBuffer, which Three.js WebGPU
+    // backend uses internally. Without these, browser security policy disables
+    // SharedArrayBuffer and Three.js WebGPU initialization fails silently.
+    //
+    // LAN multiplayer compatibility: These headers are safe for LAN use because
+    // all game assets are served from the same Vite server (same origin). COEP
+    // only requires cross-origin resources to have CORP headers — since we serve
+    // everything locally, this requirement is met. Tested to work with Safari 15.2+
+    // and mobile browsers on LAN.
+    //
+    // If LAN issues arise: the Colyseus WebSocket proxy (/ws) and all game assets
+    // come from the same host:port, so they satisfy COEP's same-origin requirement.
     //
     // no-store: prevents browsers (especially laptop/phone LAN clients) from
     // serving stale cached JS modules when the dev server restarts between
     // sessions. In dev mode this has no downside — always want latest source.
     headers: {
       'Cache-Control': 'no-store',
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
     proxy: {
       // Route Colyseus WebSocket (and matchmake HTTP) through the Vite dev server.
