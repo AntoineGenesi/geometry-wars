@@ -1,9 +1,0 @@
-Merge commit: Merge s44j-pvpve-14a: PvPvE mode registration + initialization.
-
-This commit modifies 11 files (+73/-34 lines), spanning 6 other, 1 game server, 1 TypeScript source.
-This is a merge commit integrating work from s44j-pvpve-14a into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Additional context from the commit body:
-Resolved GameRoom.ts conflicts — added pvp/pvpve to valid modes, kept both syncSettingsToState and pvpve initialization.
-
-Key files: server/rooms/GameRoom.ts, src/i18n/keys.ts, src/i18n/locales/ar.json, src/i18n/locales/de.json, src/i18n/locales/en.json, and others.
