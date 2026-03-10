@@ -1,0 +1,8 @@
+Feature addition: PvP mode integration testing + wire-up.
+
+This commit modifies 7 files (+648/-17 lines), spanning 4 game server, 2 tests, 1 networking.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: server/rooms/GameRoom.pvp.test.ts, server/rooms/GameRoom.ts, server/shared/GameConstants.ts, server/shared/GameSettings.ts, src/network-main.ts, and others.
+
+Geometry Wars 3D supports 8 distinct map surfaces: sphere, torus, peanut, pill, cube, Möbius strip, sphere-tunnel (bevel), and a flat surface. Each surface requires specialized UV handling, tangent frame computation, and collision detection. New features must work correctly across all surfaces in both single-player (via GameLoop.ts) and multiplayer (via network-main.ts) code paths. SP and MP code paths are entirely separate — changes to one do not automatically apply to the other.
