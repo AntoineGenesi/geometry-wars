@@ -1,0 +1,6 @@
+Bug fix: MP dual-fire weapon system — blaster+secondary independent timers.
+
+This commit modifies 5 files (+97/-48 lines), spanning 2 game server, 2 networking, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: server/rooms/GameRoom.ts, server/schema/GameState.ts, src/network-main.ts, src/network/NetworkClient.ts, tasks/s44f-03-mp-weapon-switching-broken.md.
