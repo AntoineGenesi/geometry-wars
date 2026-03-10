@@ -1,0 +1,20 @@
+Feature addition: add weapon system to network multiplayer.
+
+This commit modifies 4 files (+213/-4 lines), spanning 2 game server, 2 networking.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Server:
+- PlayerState tracks weaponType and weaponAmmo
+- WeaponPickupState schema for synced weapon drops
+- 8% chance weapon pickup on enemy death
+- Weapon damage multipliers per type
+- Ammo depletion on shooting, reverts to standard when empty
+- Weapon pickup collection on player proximity
+
+Client:
+- Render weapon pickups as colored octahedrons on surface
+- Weapon HUD shows current weapon name and ammo count
+- Pickup fade effect when nearing expiry
+
+Key files: server/rooms/GameRoom.ts, server/schema/GameState.ts, src/network-main.ts, src/network/NetworkClient.ts.
