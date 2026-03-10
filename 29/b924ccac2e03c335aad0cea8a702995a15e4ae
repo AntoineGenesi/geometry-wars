@@ -1,5 +1,0 @@
-Merge commit: Merge s44-epic-03: ServerSurfaceManager — server surface lifecycle complete.
-
-This commit modifies 1 file (+25/-8 lines), touching 1 task/ops files file.
-This is a merge commit integrating work from s44-epic-03 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: server surface lifecycle complete.
