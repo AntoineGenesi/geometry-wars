@@ -1,4 +1,0 @@
-Feature addition: add hit detection and seam traversal test suites to SurfaceVerifier.
-
-This commit modifies 2 files (+385 lines), touching 2 tests files.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
