@@ -1,0 +1,4 @@
+Test addition: add enemy chase & movement behavior tests.
+
+This commit modifies 2 files (+417/-8 lines), touching 2 tests files.
+This commit adds or updates automated tests for the game. The project maintains 1270+ tests using vitest and a custom PlaygroundTestHarness that validates surface math, enemy AI, and gameplay mechanics programmatically.
