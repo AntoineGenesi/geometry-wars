@@ -1,0 +1,8 @@
+Bug fix: Mobius seam camera flip + movement blocking.
+
+This commit modifies 4 files (+343/-24 lines), spanning 1 core game loop, 1 TypeScript source, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: src/core/CameraController.ts, src/movement/MeshWalker.ts, ...obius-seam-blocks-all-directions-camera-flip.md, tests/geodesic/MobiusSeamCameraFix.test.ts.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
