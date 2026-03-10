@@ -7,6 +7,8 @@
  * - Auto-fires when the right joystick is active
  * - Tap top-center area for bomb / special ability
  *
+ * Also provides weapon swap and pause buttons.
+ *
  * Renders semi-transparent joystick circles as an HTML overlay.
  * Produces the same InputState interface as InputManager so it
  * can be used as a drop-in replacement.
@@ -70,22 +72,11 @@ export class TouchInput {
   private weaponSwapTriggered = false;
   private weaponSwapBtn: HTMLDivElement;
 
-  // -- Camera tilt buttons --
-  private tiltUpBtn: HTMLDivElement;
-  private tiltDownBtn: HTMLDivElement;
-  /** Tilt delta per second (radians). Applied while button is held. */
-  private tiltUpHeld = false;
-  private tiltDownHeld = false;
-  private readonly TILT_SPEED = 0.8; // radians per second
-
   // -- Pause button --
   private pauseBtn: HTMLDivElement;
 
   /** Called when the pause button is tapped. */
   onPause: (() => void) | null = null;
-
-  /** Called when camera tilt buttons are held. delta is radians/second to apply. */
-  onCameraTilt: ((delta: number) => void) | null = null;
 
   // -- Game paused flag (disables touch routing to joysticks when menu is open) --
   private gamePaused = false;
@@ -125,12 +116,6 @@ export class TouchInput {
     // Weapon swap button (top-left corner)
     this.weaponSwapBtn = this.createWeaponSwapButton();
     this.overlay.appendChild(this.weaponSwapBtn);
-
-    // Camera tilt buttons (right side, above aim joystick area)
-    this.tiltUpBtn = this.createTiltButton('▲', true);
-    this.tiltDownBtn = this.createTiltButton('▼', false);
-    this.overlay.appendChild(this.tiltUpBtn);
-    this.overlay.appendChild(this.tiltDownBtn);
 
     document.body.appendChild(this.overlay);
 
@@ -175,17 +160,6 @@ export class TouchInput {
   endFrame(): void {
     this.bombTriggered = false;
     this.weaponSwapTriggered = false;
-  }
-
-  /**
-   * Apply camera tilt based on held tilt buttons.
-   * Should be called once per frame with the frame delta time (seconds).
-   * No-op when the game is paused.
-   */
-  applyTilt(dt: number): void {
-    if (!this.onCameraTilt || this.gamePaused) return;
-    if (this.tiltUpHeld) this.onCameraTilt(-this.TILT_SPEED * dt);
-    if (this.tiltDownHeld) this.onCameraTilt(this.TILT_SPEED * dt);
   }
 
   /** Remove all listeners and DOM elements. */
@@ -233,8 +207,6 @@ export class TouchInput {
     this.rightBase.style.display = 'none';
 
     this.bombTouchId = null;
-    this.tiltUpHeld = false;
-    this.tiltDownHeld = false;
   }
 
   // -----------------------------------------------------------------------
@@ -506,47 +478,4 @@ export class TouchInput {
     return el;
   }
 
-  private createTiltButton(symbol: string, isUp: boolean): HTMLDivElement {
-    const el = document.createElement('div');
-    el.style.cssText = `
-      position: absolute;
-      right: 66px;
-      ${isUp ? 'bottom: 110px' : 'bottom: 60px'};
-      width: 40px;
-      height: 40px;
-      border-radius: 8px;
-      background: rgba(0, 0, 0, 0.45);
-      border: 1px solid rgba(0, 200, 255, 0.35);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: auto;
-      cursor: pointer;
-      z-index: 600;
-      font-size: 16px;
-      color: rgba(0, 200, 255, 0.75);
-      user-select: none;
-      -webkit-user-select: none;
-    `;
-    el.textContent = symbol;
-
-    el.addEventListener('touchstart', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      if (isUp) this.tiltUpHeld = true;
-      else this.tiltDownHeld = true;
-      el.style.background = 'rgba(0, 200, 255, 0.2)';
-    }, { passive: false });
-
-    const stopTilt = () => {
-      if (isUp) this.tiltUpHeld = false;
-      else this.tiltDownHeld = false;
-      el.style.background = 'rgba(0, 0, 0, 0.45)';
-    };
-
-    el.addEventListener('touchend', stopTilt, { passive: true });
-    el.addEventListener('touchcancel', stopTilt, { passive: true });
-
-    return el;
-  }
 }

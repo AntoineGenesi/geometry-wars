@@ -1619,11 +1619,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       }
     };
 
-    // Wire tilt buttons to camera controller
-    input.onCameraTilt = (delta: number) => {
-      cameraController.adjustPitch(delta);
-    };
-
     // Reset camera pitch on pause (tilt resets to 0, yaw preserved)
     const origOnPause = input.onPause;
     input.onPause = () => {
@@ -1884,9 +1879,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   game.onFixedUpdate = (dt: number) => {
     // Reset profiler at the start of each frame
     profiler.reset();
-
-    // Apply mobile camera tilt (must run before gameLoop so cameraController sees updated pitch)
-    if (input instanceof TouchInput) input.applyTilt(dt);
 
     gameLoop.update(ctx, dt);
 
