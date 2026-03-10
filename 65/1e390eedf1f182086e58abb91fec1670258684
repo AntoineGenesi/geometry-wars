@@ -1,0 +1,17 @@
+Feature addition: refactor weapon mastery to per-weapon XP system.
+
+This commit modifies 6 files (+492/-161 lines), spanning 2 TypeScript source, 2 UI/HUD, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- MasteryPointStore: per-weapon point pools (v2 format), earnPoint(weaponType)
+- weaponTypeFromNodeId() helper: robust prefix matching for multi-word types
+- main.ts: earnPoint now passes getCurrentWeapon() so credits correct weapon
+- WeaponMasteryScreen: per-weapon pts badges, affordability checks per weapon
+- Tests: MasteryPointStore 25/25 pass; WeaponMasteryScreen 46/49 pass (3 pre-existing)
+- v1→v2 migration: preserves unlocked nodes, reconstructs spent counts per weapon
+
+Paths touched: src/main.ts, src/systems/MasteryPointStore.ts,
+src/ui/WeaponMasteryScreen.ts (SP single-player path)
+
+Key files: src/main.ts, src/systems/MasteryPointStore.test.ts, src/systems/MasteryPointStore.ts, src/ui/WeaponMasteryScreen.test.ts, src/ui/WeaponMasteryScreen.ts, and others.
