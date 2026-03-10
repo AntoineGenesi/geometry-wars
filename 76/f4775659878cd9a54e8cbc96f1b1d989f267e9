@@ -1,4 +1,0 @@
-Documentation: phase 1 data audit for analytics dashboard — verified localStorage keys and log file schemas.
-
-This commit modifies 2 files (+669/-2 lines), touching 2 task/ops files files.
-This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
