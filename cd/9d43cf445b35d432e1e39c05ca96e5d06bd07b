@@ -1,6 +1,0 @@
-Feature addition: player count difficulty adjustment for PvPvE.
-
-This commit modifies 5 files (+321/-2 lines), spanning 4 game server, 1 Markdown docs.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
-
-Key files: server/rooms/GameRoom.pvpve-difficulty.test.ts, server/rooms/GameRoom.ts, server/shared/GameConstants.ts, server/shared/GameSettings.ts, ...pvpve-14b-player-count-difficulty-adjustment.md.
