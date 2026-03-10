@@ -1,0 +1,12 @@
+Bug fix: map size buttons styling to match UI consistency — StartMenu.ts.
+
+This commit modifies 1 file (+9/-10 lines), touching 1 UI/HUD file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Updated .map-size-btn CSS to match the .surface-btn style pattern:
+- background: rgba(0, 100, 100, 0.3) matching surface buttons
+- border: 2px solid #006666 (was dim #005566)
+- color: #00ffff (was dim #88ddee)
+- hover: rgba(0, 150, 150, 0.4) with #00ffff border
+- selected: rgba(0, 255, 255, 0.2) with #00ffff glow (0 0 15px)
