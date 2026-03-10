@@ -1,0 +1,4 @@
+Chore/maintenance: mark s44h-07 task as complete — guardian drone damage numbers now display on all hits.
+
+This commit modifies 1 file (+7/-7 lines), touching 1 task/ops files file.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
