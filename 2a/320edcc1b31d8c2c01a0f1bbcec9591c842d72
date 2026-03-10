@@ -1,0 +1,6 @@
+Session checkpoint: pre-inbox — MP surface bugs (torus/pill/mobius/peanut), game mode menu overlay, grid test v2, dashboard auto-load.
+
+This commit modifies 9 files (+10712/-98 lines), spanning 4 task/ops files, 2 other, 2 tests.
+Session checkpoint commits capture the current state of the game and pending work before starting a new inbox processing cycle. They record what is working, what is broken, and what tasks are queued for the next session.
+
+Key files: logs/mp-perf-6LabyKQ7s-2026-03-07.jsonl, logs/mp-perf-r_hqEU-i1-2026-03-07.jsonl, reports/grid-traversal-sp-latest.json, src/test/stress-test-results.json, tasks/s44m-05b-grid-traversal-sp-runner.md, and others.
