@@ -1,0 +1,19 @@
+Bug fix: ClaustrophobiaMode zone visual scaling — apply mapSizeScaleFactor to ring geometry.
+
+This commit modifies 3 files (+83/-13 lines), spanning 1 core game loop, 1 tests, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Fixes the red boundary ring appearing at wrong world-space position on
+SMALL/LARGE/EPIC maps. The ring is built from surface.getPoint() which
+returns local-space (unscaled) coords; must multiply by group.scale.x
+(mapSizeScaleFactor) to match the actual visible surface.
+
+Also adds wrappedDistance helper to isInsideBoundary, matching KingMode
+pattern for correctness on UV-wrapping surfaces.
+
+KingMode was already correct (scaleFactor applied in createZoneVisual +
+updateZoneVisual) — no changes needed there.
+
+Files: src/core/modes/ClaustrophobiaMode.ts, src/test/game-modes.test.ts
+Regression test: 'REGRESSION: boundary ring vertices scale with map size'
