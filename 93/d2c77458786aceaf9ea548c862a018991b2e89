@@ -1,0 +1,6 @@
+Merge commit: Merge s44-03: refactor weapon mastery to per-weapon XP system.
+
+This commit modifies 84 files (+2224/-318 lines), spanning 6 other, 2 task/ops files.
+This is a merge commit integrating work from s44-03 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: .claude/locks/port-registry, .../s34-demo-phase-2-surface-integration.lock, .../locks/s34-demo-phase-3-player-interaction.lock, .../locks/s34-demo-phase-4-attack-behaviors.lock, .../s34-demo-phase-5-performance-benchmarking.lock, and others.
