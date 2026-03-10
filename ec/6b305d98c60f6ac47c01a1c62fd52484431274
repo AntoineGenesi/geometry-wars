@@ -1,6 +1,0 @@
-Merge commit: Merge s43-10: documentation cleanup and reorganization.
-
-This commit modifies 52 files (+325/-161 lines), touching 8 Markdown docs files.
-This is a merge commit integrating work from s43-10 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: TODO.md, .../decisions}/lan-hosting-2026-02-08.md, .../lan-multiplayer-investigation-2026-02-09.md, .../decisions}/lan-rewrite-2026-02-09.md, .../multiplayer-playground-assessment.md, and others.
