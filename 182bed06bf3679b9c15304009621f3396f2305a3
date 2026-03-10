@@ -1,0 +1,22 @@
+Merge commit: Merge s44r6-19: MP player cap — remove 4-player hard cap, default 10, host-configurable.
+
+This commit modifies 9 files (+427/-31 lines), spanning 3 game server, 2 TypeScript source, 2 UI/HUD.
+This is a merge commit integrating work from s44r6-19 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: remove 4-player hard cap, default 10, host-configurable.
+
+Additional context from the commit body:
+No more hard 4-player limit. Host sets cap (dropdown 2-20, default 10).
+Server: maxClients from options, enemy formula min(30+(n-1)*20,150), 10 base colors
++ HSL rotation for 10+, dynamic spawn offsets in circle.
+Client: StartMenu dropdown, GameSettingsPanel slider, network-main URL param.
+DDA engine MAX_PLAYERS 4→20. 22 regression tests.
+
+Files: server/rooms/GameRoom.ts, server/shared/GameSettings.ts, src/main.ts,
+src/network-main.ts, src/ui/StartMenu.ts, src/ui/GameSettingsPanel.ts,
+src/difficulty/DDADecisionEngine.ts
+
+Reviewer: PARTIALLY_VERIFIED (Level 6 user testing needed with 5+ players).
+
+Game state: 14 tasks merged this session. All gameplay bugs + player cap addressed.
+
+Key files: server/rooms/GameRoom.player-cap.test.ts, server/rooms/GameRoom.ts, server/shared/GameSettings.ts, src/difficulty/DDADecisionEngine.ts, src/main.ts, and others.
