@@ -1,0 +1,14 @@
+Feature addition: add companionCount to DifficultyInput.
+
+This commit modifies 4 files (+82/-3 lines), spanning 1 core game loop, 1 TypeScript source, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- DifficultyInput.companionCount?: number (optional, defaults to 0)
+- Each companion adds 0.4 difficulty levels, capped at 2.0 (5 drones = full army)
+- main.ts wires companionManager.count into getDifficultyInput closure
+- 5 new tests: 0/1/5/10 companions, milestone regression — all 86 tests pass
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+Key files: src/core/DifficultyScaling.ts, src/main.ts, src/test/difficulty-rebalance.test.ts, tasks/s44l-08c-companion-count-in-difficulty.md.
