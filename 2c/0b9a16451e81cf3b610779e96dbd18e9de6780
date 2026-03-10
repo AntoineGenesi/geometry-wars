@@ -1,0 +1,6 @@
+Test addition: add s44-epic verification — regression tests + HUMAN_TEST checklist + Puppeteer pole-crossing screenshots.
+
+This commit modifies 3 files (+645 lines), spanning 1 documentation, 1 game server, 1 tests.
+This commit adds or updates automated tests for the game. The project maintains 1270+ tests using vitest and a custom PlaygroundTestHarness that validates surface math, enemy AI, and gameplay mechanics programmatically.
+
+The Geometry Wars 3D project maintains 1270+ automated tests using vitest and a custom PlaygroundTestHarness. Tests validate surface math, enemy AI, collision detection, and gameplay mechanics. Note that PlaygroundTestHarness tests PlaygroundGame via GameInstance, NOT the real game paths (GameLoop.ts for SP, network-main.ts for MP). Automated tests passing does not guarantee the actual game works; Puppeteer-level verification is required for real confidence.
