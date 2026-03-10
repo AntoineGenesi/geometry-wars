@@ -1,6 +1,0 @@
-Feature addition: PvP win condition UI in lobby (kills/time/lives).
-
-This commit modifies 5 files (+293/-1 lines), spanning 2 game server, 2 networking, 1 UI/HUD.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
-
-Key files: server/rooms/GameRoom.ts, server/schema/GameState.ts, src/network-main.ts, src/network/NetworkClient.ts, src/ui/VotingScreen.test.ts.
