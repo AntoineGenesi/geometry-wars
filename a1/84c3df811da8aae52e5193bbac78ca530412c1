@@ -1,0 +1,10 @@
+Bug fix: server crash — move owner declaration before use in checkCollisions.
+
+This commit modifies 1 file (+4/-4 lines), touching 1 game server file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+ReferenceError: Cannot access 'owner' before initialization at GameRoom.ts:2598.
+The s44f-04 gravity gun check used `owner` on line 2598 but `const owner` was
+declared on line 2606, causing a TDZ (Temporal Dead Zone) crash every game when
+bullets collided with enemies. Moved declaration above the gravity gun check.
