@@ -1,0 +1,15 @@
+Feature addition: WebGPU renderer foundation - GPU detection + intelligent fallback.
+
+This commit modifies 7 files (+680/-9 lines), spanning 3 tests, 3 TypeScript source, 1 core game loop.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- GPUCapabilities: detects GPU tier (high/medium/low/minimal) via
+  WebGL parameters, VRAM estimation, and feature detection
+- RendererFactory: creates WebGPU or WebGL renderer with automatic
+  fallback chain (WebGPU -> WebGL2 -> WebGL1)
+- EntityLimits: adaptive entity caps based on GPU tier
+  (high: 5000 enemies, medium: 2000, low: 500, minimal: 100)
+- Game.ts: integrated renderer factory for dynamic renderer selection
+
+Key files: src/core/Game.ts, src/rendering/EntityLimits.test.ts, src/rendering/EntityLimits.ts, src/rendering/GPUCapabilities.test.ts, src/rendering/GPUCapabilities.ts, and others.
