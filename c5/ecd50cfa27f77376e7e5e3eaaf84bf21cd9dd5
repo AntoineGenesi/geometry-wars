@@ -1,0 +1,17 @@
+Feature addition: geodesic face walking system + weapon manager improvements.
+
+This commit modifies 29 files (+5659/-216 lines), spanning 6 documentation, 1 Markdown docs, 1 other.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Replace BVH snap-to-surface movement with geodesic face walking
+(HalfEdgeMesh + FaceWalker + parallel transport). Gives true geodesic
+paths on all mesh surfaces. BVH kept as fallback for edge cases.
+
+- New geodesic/ directory: HalfEdgeMesh, BarycentricUtils, ParallelTransport, FaceWalker, GeodesicSurface
+- 46 new geodesic tests (all passing)
+- All 39 pre-existing tests still pass
+- MeshWalker/MeshSurface public API unchanged
+- Decision logs, research docs, architecture docs
+
+Key files: README.md, decisions/geodesic-face-walking-2026-02-07.md, decisions/project-cleanup-2026-02-07.md, decisions/surface-movement-fixes-2026-02-07.md, docs/ARCHITECTURE.md, and others.
