@@ -1,0 +1,14 @@
+Feature addition: create task files for real programmatic test system.
+
+This commit modifies 6 files (+360 lines), spanning 4 tests, 1 Markdown docs, 1 task/ops files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+5 tasks:
+1. game-debug-api — expose game state via window.__gameDebug
+2. programmatic-test-harness-v2 — Puppeteer + debug API browser harness
+3. comprehensive-behavior-tests — all 34 enemies, all surfaces, real behaviors
+4. update-skills-real-tests — update /verify and /visual-test skills
+5. session-report-programmatic-tests — HTML report for when user wakes up
+
+Key files: inbox/2026-02-12_2300.md, tasks/comprehensive-behavior-tests.md, tasks/game-debug-api.md, tasks/programmatic-test-harness-v2.md, tasks/session-report-programmatic-tests.md, and others.
