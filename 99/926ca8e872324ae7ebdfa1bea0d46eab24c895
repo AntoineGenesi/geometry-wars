@@ -1,0 +1,12 @@
+Feature addition: add pause/game-over to multiplayer, mute toggle.
+
+This commit modifies 2 files (+57/-2 lines), touching 2 TypeScript source files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Multiplayer mode now has:
+- ESC to pause/unpause (PauseMenu)
+- Game over when both players lose all lives (GameOverScreen)
+- Background music stops on game over
+
+Single-player gets M key mute toggle for sound and music.
