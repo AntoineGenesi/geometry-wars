@@ -1,0 +1,9 @@
+Session checkpoint: pre-inbox s44r6 — massive voice dump covering PlaygroundTestHarness removal, cube hit detection broken (invisible enemies killing player), pill inside/outside surface spawning glitch, MP last-death flow (weapon mastery screen missing), purple enemies on Mobius not killing, Tesla coil not doing damage, PvPvE can't kill opponent on pill, rainbow mode not working, WebGPU investigation, commit message enrichment, documentation cleanup, SP vs MP architecture report request.
+
+This commit modifies 1 file (+80 lines), touching 1 other file.
+Session checkpoint commits capture the current state of the game and pending work before starting a new inbox processing cycle. They record what is working, what is broken, and what tasks are queued for the next session.
+
+Additional context from the commit body:
+Game state: SP working on most maps. MP surfaces partially fixed (s44r5). Cube aim fixed
+but hit detection broken. Mobius movement good but enemies/weapons have issues. Pill
+bullet-hit works but enemy-hit too generous + inside surface spawning bug.
