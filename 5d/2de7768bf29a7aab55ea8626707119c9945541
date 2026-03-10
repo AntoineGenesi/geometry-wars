@@ -1,0 +1,9 @@
+Feature addition: add visual feedback effects.
+
+This commit modifies 2 files (+205/-1 lines), touching 2 TypeScript source files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- ScorePopupManager: floating score text at enemy death positions with color scaling
+- Enemy hit flash: white emissive pulse for 80ms on damage
+- Multiplier HUD color: scales through green/yellow/orange/magenta at thresholds
