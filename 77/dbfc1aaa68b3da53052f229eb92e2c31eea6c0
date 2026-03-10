@@ -1,7 +1,0 @@
-Merge commit: Merge s44l-21: Add settable PvP win conditions — kills/survival/score.
-
-This commit modifies 8 files (+351/-4 lines), spanning 4 game server, 2 networking, 1 UI/HUD.
-This is a merge commit integrating work from s44l-21 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: kills/survival/score.
-
-Key files: server/rooms/GameRoom.pvp-win-conditions.test.ts, server/rooms/GameRoom.ts, server/schema/GameState.ts, server/shared/GameSettings.ts, src/network-main.ts, and others.
