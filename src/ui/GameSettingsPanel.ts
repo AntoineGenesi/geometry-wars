@@ -297,6 +297,8 @@ export class GameSettingsPanel {
     const section = this.section('PvP SETTINGS');
     section.appendChild(this.buildToggle('pvpEnabled', 'PvP Damage'));
     section.appendChild(this.buildToggle('friendlyFire', 'Friendly Fire'));
+    section.appendChild(this.buildSlider('pvpDamageMultiplier', 'PvP Damage Multiplier', 0.1, 10, 0.1,
+      (v) => `${v.toFixed(1)}x`));
     section.appendChild(this.buildButtonGroup<PvpWinCondition>(
       'pvpWinCondition', 'Win Condition',
       ['kills', 'survival', 'score'] as PvpWinCondition[],
@@ -545,6 +547,7 @@ function formatSliderPreview(field: keyof GameSettings, value: number, _min: num
     case 'enemyCountCap':       return String(value);
     case 'bulletCountCap':      return String(value);
     case 'pvpKillLimit':        return String(value);
+    case 'pvpDamageMultiplier': return `${value.toFixed(1)}x`;
     default:                    return String(value);
   }
 }

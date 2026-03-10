@@ -1500,7 +1500,7 @@ export class GameRoom extends Room<GameState> {
       const weaponType = typeof data.weaponType === 'string' ? data.weaponType : 'standard';
       const weaponCfg = WEAPON_CONFIGS[weaponType] ?? WEAPON_CONFIGS.standard;
       const levelIdx = Math.min(owner.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-      const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+      const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx] * this.state.pvpDamageMultiplier;
 
       // Get or initialize remaining damage budget for this bullet
       const currentRemaining = this.bulletDamageTracker.has(data.bulletId)
@@ -1979,6 +1979,7 @@ export class GameRoom extends Room<GameState> {
     this.state.friendlyFire = this.currentSettings.friendlyFire;
     this.state.pvpWinCondition = this.currentSettings.pvpWinCondition;
     this.state.pvpKillLimit = this.currentSettings.pvpKillLimit;
+    this.state.pvpDamageMultiplier = this.currentSettings.pvpDamageMultiplier;
     this.state.startingWeapon = this.currentSettings.startingWeapon;
     this.state.timeLimit = this.currentSettings.timeLimit;
     // Sync surface/mode so startGame() (called by restartRound) uses the host's chosen values.
@@ -4468,7 +4469,7 @@ export class GameRoom extends Room<GameState> {
             const owner = this.state.players.get(bullet.ownerId);
             const weaponCfg = WEAPON_CONFIGS[bullet.weaponType] ?? WEAPON_CONFIGS.standard;
             const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-            const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+            const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx] * this.state.pvpDamageMultiplier;
 
             const prevHealth = target.health;
             target.health = Math.max(0, target.health - damage);

@@ -3186,6 +3186,7 @@ async function main() {
         friendlyFire: state.friendlyFire ?? false,
         pvpWinCondition: (state.pvpWinCondition ?? 'kills') as GameSettings['pvpWinCondition'],
         pvpKillLimit: state.pvpKillLimit ?? 10,
+        pvpDamageMultiplier: state.pvpDamageMultiplier ?? 1.0,
         startingWeapon: (state.startingWeapon ?? 'standard') as GameSettings['startingWeapon'],
         timeLimit: state.timeLimit ?? 0,
         pvpEnabled: state.pvpEnabled ?? false,
