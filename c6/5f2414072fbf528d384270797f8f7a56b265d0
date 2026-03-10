@@ -1,6 +1,0 @@
-Merge commit: Merge s44h-09: Host game mode selection in LAN lobby.
-
-This commit modifies 12 files (+242/-19 lines), spanning 5 other, 1 documentation, 1 game server.
-This is a merge commit integrating work from s44h-09 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: docs/HUMAN_TEST.md, server/rooms/GameRoom.ts, src/i18n/keys.ts, src/i18n/locales/de.json, src/i18n/locales/en.json, and others.
