@@ -1,0 +1,15 @@
+Feature addition: auto git checkpoint on /inbox + DISCOVERIES.md agent knowledge base.
+
+This commit modifies 6 files (+86/-5 lines), spanning 4 task/ops files, 2 Markdown docs.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Three additions:
+- /inbox now creates a git checkpoint commit before processing, referencing
+  what the user asked for (readable git log = audit trail of major changes)
+- DISCOVERIES.md: agents log test failures, tech debt, perf issues, bugs
+  found outside their task scope — builds a knowledge base for cleanup
+- All 3 workflow agents updated: implementer writes discoveries, reviewer
+  reads+writes them, triager checks existing discoveries during triage
+
+Key files: .claude/agents/implementer.md, .claude/agents/reviewer.md, .claude/agents/triager.md, .claude/skills/inbox/SKILL.md, DISCOVERIES.md, and others.
