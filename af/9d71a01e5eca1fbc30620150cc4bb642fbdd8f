@@ -1,6 +1,0 @@
-Chore/maintenance: add peanut review certificate + worker state.
-
-This commit modifies 7 files (+455/-3 lines), spanning 4 Markdown docs, 2 other, 1 task/ops files.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: .claude/locks/port-registry, ...s44r6-08-portal-hit-detection-surface-disc.lock, ...s44r6-07-peanut-pole-waist-movement-slowdown.md, .../s44r6-08-portal-hit-detection-surface-disc.md, ...4r6-08-portal-hit-detection-surface-disc.prompt, and others.
