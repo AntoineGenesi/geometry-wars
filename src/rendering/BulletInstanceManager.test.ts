@@ -577,4 +577,109 @@ describe('BulletInstanceManager', () => {
       expect(material).not.toBeInstanceOf(THREE.MeshStandardMaterial);
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Far-side bullet dimming (s44r7-05 regression guard)
+  // -----------------------------------------------------------------------
+
+  describe('setBulletOpacity — far-side depth dimming', () => {
+    it('setBulletOpacity is a no-op for unknown ids', () => {
+      // Should not throw
+      expect(() => manager.setBulletOpacity('nonexistent', 0.5)).not.toThrow();
+    });
+
+    it('full opacity (1.0) preserves original bullet color', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      const color = new THREE.Color(0x88ffff);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir, color);
+      manager.setBulletOpacity('b1', 1.0);
+      manager.update();
+
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
+      const readColor = new THREE.Color();
+      batchedMeshes[0].getColorAt(0, readColor);
+      expect(readColor.r).toBeCloseTo(color.r, 2);
+      expect(readColor.g).toBeCloseTo(color.g, 2);
+      expect(readColor.b).toBeCloseTo(color.b, 2);
+    });
+
+    it('zero opacity (0.0) dims bullet to black', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      const color = new THREE.Color(0x88ffff);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir, color);
+      manager.setBulletOpacity('b1', 0.0);
+      manager.update();
+
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
+      const readColor = new THREE.Color();
+      batchedMeshes[0].getColorAt(0, readColor);
+      expect(readColor.r).toBeCloseTo(0, 2);
+      expect(readColor.g).toBeCloseTo(0, 2);
+      expect(readColor.b).toBeCloseTo(0, 2);
+    });
+
+    it('partial opacity (0.1) dims bullet to 10% brightness', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      const color = new THREE.Color(1, 1, 1); // pure white for easy math
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir, color);
+      manager.setBulletOpacity('b1', 0.1);
+      manager.update();
+
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
+      const readColor = new THREE.Color();
+      batchedMeshes[0].getColorAt(0, readColor);
+      expect(readColor.r).toBeCloseTo(0.1, 2);
+      expect(readColor.g).toBeCloseTo(0.1, 2);
+      expect(readColor.b).toBeCloseTo(0.1, 2);
+    });
+
+    it('default opacityScale is 1.0 (bullet starts fully bright before any setBulletOpacity call)', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      const color = new THREE.Color(1, 1, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir, color);
+      // No setBulletOpacity call — should default to full brightness
+      manager.update();
+
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
+      const readColor = new THREE.Color();
+      batchedMeshes[0].getColorAt(0, readColor);
+      expect(readColor.r).toBeCloseTo(1.0, 2);
+      expect(readColor.g).toBeCloseTo(1.0, 2);
+      expect(readColor.b).toBeCloseTo(1.0, 2);
+    });
+
+    it('opacity can be updated between frames', () => {
+      const pos = new THREE.Vector3(0, 0, 0);
+      const dir = new THREE.Vector3(0, 0, 1);
+      const color = new THREE.Color(1, 1, 1);
+      manager.addBullet('b1', BulletVisualType.Standard, pos, dir, color);
+
+      // Frame 1: bright
+      manager.setBulletOpacity('b1', 1.0);
+      manager.update();
+
+      // Frame 2: dimmed (bullet moved to far side)
+      manager.setBulletOpacity('b1', 0.08);
+      manager.update();
+
+      const batchedMeshes = scene.children.filter(
+        (c) => c instanceof THREE.BatchedMesh,
+      ) as THREE.BatchedMesh[];
+      const readColor = new THREE.Color();
+      batchedMeshes[0].getColorAt(0, readColor);
+      expect(readColor.r).toBeCloseTo(0.08, 2);
+    });
+  });
 });
