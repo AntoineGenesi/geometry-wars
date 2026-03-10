@@ -11,10 +11,10 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "..",
     "declaration": true,
     "lib": ["ES2022"]
   },
-  "include": ["./**/*.ts"],
+  "include": ["./**/*.ts", "../src/shared/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

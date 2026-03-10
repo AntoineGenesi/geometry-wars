@@ -11,9 +11,10 @@
 
 import * as THREE from 'three';
 import { MeshSurface } from '../surfaces/MeshSurface';
+import { BULLET_SPEED_WORLD } from '../shared/GameBalanceConstants';
 
-const BULLET_SPEED = 4.0;       // world units per second
-const BULLET_LIFETIME = 4.0;    // seconds
+const BULLET_SPEED = BULLET_SPEED_WORLD;  // world units per second — from shared constants
+const BULLET_LIFETIME = 4.0;    // seconds (MeshBullet uses shorter lifetime than main Bullet)
 const BULLET_LENGTH = 0.25;     // visual line length
 const BULLET_COLOR = 0xffff44;  // bright yellow
 
