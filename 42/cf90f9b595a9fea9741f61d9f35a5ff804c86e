@@ -1,6 +1,0 @@
-Merge commit: Merge s44l-08b: Taper pickup drop rates by difficulty level.
-
-This commit modifies 5 files (+169/-7 lines), spanning 2 TypeScript source, 2 core game loop, 1 task/ops files.
-This is a merge commit integrating work from s44l-08b into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: src/buffs/BuffManager.ts, src/core/PickupSpawner.test.ts, src/core/PickupSpawner.ts, src/main.ts, tasks/s44l-08b-pickup-rate-tapering.md.
