@@ -1,0 +1,6 @@
+Merge commit: Merge s44l-20: Fix cube tunnel shooting direction + hit detection.
+
+This commit modifies 4 files (+80/-3 lines), spanning 2 surface geometry, 1 documentation, 1 Markdown docs.
+This is a merge commit integrating work from s44l-20 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: docs/HUMAN_TEST.md, src/surfaces/MeshSurface.test.ts, src/surfaces/MeshSurface.ts, ...4l-20-cube-tunnel-map-shooting-hit-detection.md.
