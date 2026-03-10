@@ -670,6 +670,94 @@ function cubeTunnelChordDist(u1: number, v1: number, u2: number, v2: number, sca
 }
 
 /**
+ * Sphere-tunnel: compound surface — outer sphere (radius 8) with bevel + inner tunnel (radius 2).
+ * MUST match SphereWithTunnelSurface.ts defaults: radius=8, tunnelRadius=2, bevelRadius=0.8.
+ *
+ * s44r7-04: Sphere-tunnel was falling through to sphereGreatCircleDist() — completely wrong
+ * because sphere-tunnel UV is an arc-length parameterization of a compound profile (outer
+ * sphere arc + bevel arcs + inner tunnel), NOT a latitude/longitude mapping.
+ *
+ * Critical failure mode: near v=0 or v=1 (the hole-edge seam), sphereGreatCircleDist()
+ * maps all u values to the "north/south pole" of its sphere model, returning near-zero
+ * distance between entities that are actually 6+ world units apart on the hole ring.
+ * This caused player deaths from enemies visually far away when either was near the tunnel entry.
+ *
+ * UV topology: torus (both u and v wrap). Profile cross-section (with bevel, 4 segments):
+ *   1. Outer sphere arc: bottom hole → equator → top hole (v≈0 to v≈0.53)
+ *   2. Top bevel arc: sphere → tunnel junction (v≈0.53 to v≈0.58)
+ *   3. Inner tunnel (straight): top → center → bottom (v≈0.58 to v≈0.95)
+ *   4. Bottom bevel arc: tunnel → sphere junction (v≈0.95 to v≈1.0, wraps to v=0)
+ */
+const SWT_SPHERE_R  = 8;    // outer sphere radius — must match SphereWithTunnelSurface radius default
+const SWT_TUNNEL_R  = 2;    // tunnel radius — must match SphereWithTunnelSurface tunnelRadius default
+const SWT_BEVEL_R   = 0.8;  // bevel radius — must match SphereWithTunnelSurface bevelRadius default
+
+function sphereTunnelPoint3D(u: number, v: number, scaleFactor: number): [number, number, number] {
+  const R  = SWT_SPHERE_R * scaleFactor;
+  const tr = SWT_TUNNEL_R * scaleFactor;
+  const bR = SWT_BEVEL_R  * scaleFactor;
+
+  // Mirror SphereWithTunnelSurface.computeBevelGeometry()
+  const sinPhiEnd = Math.min((tr + bR) / (R - bR), 0.99);
+  const pe        = Math.asin(sinPhiEnd);
+  const CyTop     = Math.cos(pe) * (R - bR);
+  const Cr        = tr + bR;
+  const bAngle    = Math.PI / 2 + pe;
+  const sArc      = (Math.PI - 2 * pe) * R;
+  const bArc      = bR * bAngle;
+  const tLen      = 2 * CyTop;
+  const totalP    = sArc + 2 * bArc + tLen;
+
+  // Mirror SphereWithTunnelSurface.profileAt() — arc-length parameterized profile
+  const pos = ((v % 1) + 1) % 1 * totalP;
+  let acc = 0;
+  let pr: number, py: number;
+
+  // Segment 1: Outer sphere arc
+  acc += sArc;
+  if (pos < acc) {
+    const localT = pos / sArc;
+    const phi = (Math.PI - pe) - localT * (Math.PI - 2 * pe);
+    pr = R * Math.sin(phi);
+    py = R * Math.cos(phi);
+  } else {
+    // Segment 2: Top bevel (sphere → tunnel)
+    acc += bArc;
+    if (pos < acc) {
+      const localT = (pos - (acc - bArc)) / bArc;
+      const a = (Math.PI / 2 - pe) + localT * bAngle;
+      pr = Cr + bR * Math.cos(a);
+      py = CyTop + bR * Math.sin(a);
+    } else {
+      // Segment 3: Tunnel (shortened between bevels)
+      acc += tLen;
+      if (pos < acc) {
+        const localT = (pos - (acc - tLen)) / tLen;
+        pr = tr;
+        py = CyTop * (1 - 2 * localT);
+      } else {
+        // Segment 4: Bottom bevel (tunnel → sphere)
+        const localT = (pos - acc) / bArc;
+        const a = Math.PI + localT * bAngle;
+        pr = Cr + bR * Math.cos(a);
+        py = -CyTop + bR * Math.sin(a);
+      }
+    }
+  }
+
+  const phi = ((u % 1) + 1) % 1 * Math.PI * 2;
+  return [pr * Math.cos(phi), py, pr * Math.sin(phi)];
+}
+
+/** Exported for unit testing. Returns 3D Euclidean chord distance in world units. */
+export function sphereTunnelChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
+  const [x1, y1, z1] = sphereTunnelPoint3D(u1, v1, scaleFactor);
+  const [x2, y2, z2] = sphereTunnelPoint3D(u2, v2, scaleFactor);
+  const dx = x1 - x2, dy = y1 - y2, dz = z1 - z2;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
  * Dispatch to the appropriate world-space distance function for a given surface.
  * Returns Euclidean 3D chord distance in world units — matches SP CollisionSystem.
  */
@@ -678,16 +766,20 @@ function surfaceWorldDist(
   u1: number, v1: number, u2: number, v2: number,
   scaleFactor: number, sphereR: number,
 ): number {
-  if (surfaceType === 'peanut')      return peanutChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'torus')       return torusChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'cube-ring')   return cubeRingChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'pill')        return pillChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'mobius')      return mobiusChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'cube')        return cubeChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'peanut')        return peanutChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'torus')         return torusChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'cube-ring')     return cubeRingChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'pill')          return pillChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'mobius')        return mobiusChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'cube')          return cubeChordDist(u1, v1, u2, v2, scaleFactor);
   // s44r6c-02: Cube-tunnel was falling through to sphereGreatCircleDist — completely wrong
   // for compound cube+tunnel UV. User reported enemies killing from AoE-weapon distance.
-  if (surfaceType === 'cube-tunnel') return cubeTunnelChordDist(u1, v1, u2, v2, scaleFactor);
-  return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron, sphere-tunnel
+  if (surfaceType === 'cube-tunnel')   return cubeTunnelChordDist(u1, v1, u2, v2, scaleFactor);
+  // s44r7-04: Sphere-tunnel was falling through to sphereGreatCircleDist — wrong because
+  // sphere-tunnel UV is arc-length parameterized (not lat/long). Near V=0/1 seam,
+  // sphereGreatCircleDist returns ~0 for entities on opposite sides of the hole ring.
+  if (surfaceType === 'sphere-tunnel') return sphereTunnelChordDist(u1, v1, u2, v2, scaleFactor);
+  return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron
 }
 
 // Peanut player speed correction removed (s44r6-07): ServerMeshWalker moves in world
