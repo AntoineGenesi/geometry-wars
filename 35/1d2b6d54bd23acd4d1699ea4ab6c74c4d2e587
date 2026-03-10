@@ -1,9 +1,0 @@
-Merge commit: Merge s44r2-15: Fix pill map tie-fighter bullet spread — pole metric factor scales barrel offset.
-
-This commit modifies 3 files (+107/-3 lines), spanning 1 tests, 1 TypeScript source, 1 Markdown docs.
-This is a merge commit integrating work from s44r2-15 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: pole metric factor scales barrel offset.
-
-Additional context from the commit body:
-Game state: All 6 tasks merged this session. SP all maps working. MP rubber banding, enemy sync,
-bullet penetration fixed. Cube top/bottom shooting fixed. Test harness (28 tests) operational.
