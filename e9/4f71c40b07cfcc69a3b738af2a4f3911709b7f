@@ -1,0 +1,4 @@
+Bug fix: pause menu QR code static positioning.
+
+This commit modifies 3 files (+142/-108 lines), spanning 1 tests, 1 UI/HUD, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
