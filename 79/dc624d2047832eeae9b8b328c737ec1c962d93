@@ -1,0 +1,6 @@
+Feature addition: surface opacity, dual-fire weapons, geom visibility, pause fix, LAN improvements, server lifecycle.
+
+This commit modifies 28 files (+3134/-1132 lines), spanning 3 game server, 1 Markdown docs, 1 documentation.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: TODO.md, reports/lan-research-report.html, server/index.ts, server/rooms/GameRoom.ts, server/schema/GameState.ts, and others.
