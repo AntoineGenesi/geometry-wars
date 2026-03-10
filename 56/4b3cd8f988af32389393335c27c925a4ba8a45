@@ -1,0 +1,10 @@
+Feature addition: add visual trail markers for Painter enemies.
+
+This commit modifies 2 files (+63/-1 lines), touching 2 enemy AI files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Magenta octahedron markers placed on surface at each trail point
+- Shared geometry/material for efficiency
+- Markers fade with age and are cleaned up on Painter death
+- Trail visuals positioned via applySurfaceTransform
