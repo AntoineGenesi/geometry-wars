@@ -1,0 +1,15 @@
+Feature addition: timestamped visual test sessions with RESULTS.md analysis logs.
+
+This commit modifies 4 files (+172/-2 lines), spanning 3 Markdown docs, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- test-screenshots/sessions/ stores timestamped session dirs with screenshots + RESULTS.md
+- play-game.mjs now accepts [task-slug] [commit-hash] args, auto-creates session dir
+- RESULTS.md skeleton auto-generated with screenshot list and console errors
+- Claude must fill in visual analysis after reading each screenshot
+- Two session logs saved: play-session (general), adventure-mode (targeted)
+- CLAUDE.md: added visual test session logging convention
+- PNGs gitignored, RESULTS.md files committed for historical analysis
+
+Key files: CLAUDE.md, .../2026-02-12_0015_adventure-mode/RESULTS.md, .../2026-02-12_0030_play-session/RESULTS.md, tests/visual/play-game.mjs.
