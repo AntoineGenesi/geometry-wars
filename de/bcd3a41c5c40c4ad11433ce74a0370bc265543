@@ -1,0 +1,14 @@
+Merge commit: Merge s44r4-09: Fix pill player orientation — negate tangentU for right-handed frame.
+
+This commit modifies 5 files (+331/-112 lines), spanning 3 tests, 1 surface geometry, 1 Markdown docs.
+This is a merge commit integrating work from s44r4-09 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: negate tangentU for right-handed frame.
+
+Additional context from the commit body:
+PillSurface.ts tangentU was left-handed (tangentU × tangentV = -normal). Negated
+tangentU so cross product agrees with normal. Player mesh now faces bullet direction.
+
+Game state: All 4 bug fixes merged (cube aim, pill hit detection, pickup collection,
+pill orientation). Mobius seam fix in progress. MP test harness built.
+
+Key files: reports/grid-traversal-sp-latest.json, src/surfaces/PillSurface.ts, .../pill-player-orientation.regression.test.ts, src/test/stress-test-results.json, .../s44r4-09-pill-player-facing-wrong-direction.md.
