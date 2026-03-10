@@ -1,0 +1,6 @@
+Merge commit: Merge s44j-06: localisation works on main menu.
+
+This commit modifies 8 files (+340/-57 lines), spanning 6 other, 1 UI/HUD, 1 Markdown docs.
+This is a merge commit integrating work from s44j-06 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: src/i18n/locales/ar.json, src/i18n/locales/de.json, src/i18n/locales/en.json, src/i18n/locales/es.json, src/i18n/locales/fr.json, and others.
