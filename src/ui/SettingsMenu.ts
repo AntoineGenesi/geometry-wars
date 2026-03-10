@@ -21,6 +21,7 @@ import { getActiveStyleName, getActiveStyleIndex, clearVisualStyle, saveVisualSt
 import { VISUAL_PRESETS } from './VisualPlayground';
 import { loadCustomStyles } from './VisualStyleEditor';
 import { isMobile } from '../core/MobileDetector';
+import { loadMobileGridBrightness, saveMobileGridBrightness } from '../core/MobileGridConfig';
 
 // ---------------------------------------------------------------------------
 // Exported settings interfaces
@@ -1113,6 +1114,18 @@ export class SettingsMenu {
         <div class="toggle ${g.enable90DegreeHide ? 'on' : ''}" id="toggle-90-degree-hide" data-setting="enable90DegreeHide"></div>
       </div>
 
+      ${isMobile() ? `
+      <div class="section-heading">Mobile Surface Grid</div>
+      <div class="setting-row">
+        <span class="setting-label">Surface Brightness</span>
+        <input type="range" id="mobile-grid-brightness" min="0.05" max="0.80" step="0.05" value="${loadMobileGridBrightness()}" />
+        <span class="setting-value" id="mobile-grid-brightness-val">${(loadMobileGridBrightness() * 100).toFixed(0)}%</span>
+      </div>
+      <div class="setting-hint">
+        <small>Grid lines are 4× denser on mobile. Brightness applies on next game start.</small>
+      </div>
+      ` : ''}
+
       <div class="section-heading">${t('settings.graphics.limits')}</div>
       <div class="setting-row">
         <span class="setting-label">${t('settings.graphics.maxEnemies')}</span>
@@ -1376,6 +1389,14 @@ export class SettingsMenu {
       this.saveAndNotifyGraphics();
       return `${(val * 100).toFixed(0)}%`;
     });
+
+    // Mobile-only: surface brightness slider
+    if (isMobile()) {
+      this.attachSlider('mobile-grid-brightness', 'mobile-grid-brightness-val', (val) => {
+        saveMobileGridBrightness(val);
+        return `${(val * 100).toFixed(0)}%`;
+      });
+    }
   }
 
   private attachPerformanceListeners(): void {
