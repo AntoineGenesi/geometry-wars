@@ -1,0 +1,9 @@
+Feature addition: add score popups, hit flash, and enemy callbacks to local multiplayer.
+
+This commit modifies 1 file (+63 lines), touching 1 TypeScript source file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- ScorePopupManager with floating score text on enemy death
+- Enemy hit flash (white emissive pulse) on damage
+- Wire Gate, Virus, Painter enemy callbacks for multiplayer parity
