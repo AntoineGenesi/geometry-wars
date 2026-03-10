@@ -1,6 +1,0 @@
-Bug fix: normalize pickup collection radius to world-space units.
-
-This commit modifies 8 files (+70/-34 lines), spanning 4 TypeScript source, 1 game server, 1 game entities.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
-
-Key files: server/rooms/GameRoom.ts, src/buffs/BuffPickupNew.ts, src/entities/Companion.ts, ...ickup-scale-invariant-radius.regression.test.ts, src/weapons/BuffPickup.ts, and others.
