@@ -1,0 +1,10 @@
+Documentation: buff/upgrade system design.
+
+This commit modifies 1 file (+661 lines), touching 1 documentation file.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+25 stackable buffs across 4 categories (offensive, defensive, utility,
+elemental). Stacking formulas, synergy combos, acquisition system,
+and prioritized implementation plan. Inspired by Muck chests and
+Risk of Rain item stacking.
