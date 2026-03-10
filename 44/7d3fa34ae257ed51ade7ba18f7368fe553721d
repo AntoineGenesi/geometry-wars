@@ -1,0 +1,6 @@
+Merge commit: Merge s44e-07: Snake body scaling + intelligent wave composition.
+
+This commit modifies 8 files (+333/-27 lines), spanning 4 enemy AI, 1 core game loop, 1 TypeScript source.
+This is a merge commit integrating work from s44e-07 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: src/core/DifficultyScaling.ts, src/entities/enemies/EnemySpawner.ts, src/entities/enemies/GiantSnake.ts, src/entities/enemies/Snake.ts, src/entities/enemies/WaveComposer.ts, and others.
