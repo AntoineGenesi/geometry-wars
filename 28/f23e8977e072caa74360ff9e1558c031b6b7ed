@@ -1,0 +1,16 @@
+Feature addition: add 6 missing enemy types.
+
+This commit modifies 8 files (+534/-1 lines), spanning 7 enemy AI, 1 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Painter: wanders randomly leaving hazard trail on surface
+- Virus: slow drift with pulsing effect, signals on death
+- Spawner: stationary structure that periodically spawns wanderers
+- TitanGrunt: tanky grunt, spawns 2 grunts on death
+- TitanSpinner: tanky spinner, spawns 3 spinners on death
+- TitanWeaver: tanky weaver with dodge, spawns 3 weavers on death
+- All registered in EnemySpawner with death callbacks in main.ts
+- Boss types added to EnemyType (fall back to Wanderer until implemented)
+
+Key files: src/entities/enemies/EnemySpawner.ts, src/entities/enemies/Painter.ts, src/entities/enemies/Spawner.ts, src/entities/enemies/TitanGrunt.ts, src/entities/enemies/TitanSpinner.ts, and others.
