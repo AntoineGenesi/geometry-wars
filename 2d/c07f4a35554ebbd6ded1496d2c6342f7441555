@@ -1,0 +1,16 @@
+Feature addition: add mobius and mobius-bevel to voting screen map selection.
+
+This commit modifies 16 files (+584/-4 lines), spanning 5 other, 2 Markdown docs, 1 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Added mobius (♾) and mobius-bevel (⟲) to SURFACES array in VotingScreen.ts
+- Added i18n key references for both maps in voting and menu sections
+- Added translations in all 6 languages (en, es, fr, de, ru, ar)
+- Maps now selectable in multiplayer voting screen
+- Both maps support all game modes (except claustrophobia restricts to sphere/torus/capsule/icosahedron)
+
+Files modified: VotingScreen.ts, keys.ts, and all locale JSON files
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+Key files: TODO.md, inbox/2026-03-07_1000.md, src/i18n/keys.ts, src/i18n/locales/ar.json, src/i18n/locales/de.json, and others.
