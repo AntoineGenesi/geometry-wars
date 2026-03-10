@@ -1,0 +1,10 @@
+Bug fix: balance PlasmaMortar - slow but devastating artillery.
+
+This commit modifies 2 files (+12/-12 lines), touching 2 TypeScript source files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- Damage 8→20 (highest per-shot), fire rate 1.5→1.0 (deliberate)
+- AoE radius 1.5→3.0, splash multiplier 0.5→0.75
+- Projectile speed 0.6→1.0, arc height 1.5→2.5, visual size 0.2→0.35
+- Ammo 30→18 (each shot matters)
