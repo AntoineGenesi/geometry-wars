@@ -1,0 +1,14 @@
+Feature addition: MP timer paused by default with Resume button for host.
+
+This commit modifies 4 files (+56/-2 lines), spanning 2 networking, 1 game server, 1 task/ops files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Timer starts paused at game beginning (countdownPaused = true in startGame)
+- tickGame() respects countdownPaused flag before incrementing gameTime
+- Added resume_timer message handler in GameRoom.ts (host-only, playing phase only)
+- Created Resume button UI in network-main.ts with green styling
+- Button shown only to host when timer is paused at game start
+- Added NetworkClient.sendResumeTimer() method for clean messaging pattern
+
+Key files: server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, tasks/s44m-18-mp-timer-paused-by-default.md.
