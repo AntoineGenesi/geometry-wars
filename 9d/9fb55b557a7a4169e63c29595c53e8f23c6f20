@@ -1,0 +1,9 @@
+Feature addition: main menu redesign - oval button layout + enhanced 3D background.
+
+This commit modifies 3 files (+559/-230 lines), spanning 2 UI/HUD, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- StartMenu: oval button layout on left, 3D model preview center/right
+- MenuBackground: enhanced with real game entity spawning and effects
+- Updated E2E tests for new menu structure
