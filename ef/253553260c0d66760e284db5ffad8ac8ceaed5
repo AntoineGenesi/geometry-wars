@@ -1,0 +1,11 @@
+Documentation: add terminology clarification to task.
+
+This commit modifies 1 file (+24/-2 lines), touching 1 Markdown docs file.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+- Clarified that task's 'Available (clickable, 0 points)' maps to code's 'locked' state
+- Verified glow was applied to correct CSS class
+- Documented state name differences between task and implementation
+
+Documentation in this project spans multiple formats: task files (tasks/*.md), decision logs (decisions/*.md), HTML reports (reports/), and architecture guides (docs/). Keeping documentation accurate after code changes is mandatory — stale docs cause wasted investigation time when future sessions rely on incorrect information. This project has strict rules against citing reports older than 7 days without verifying they still reflect current code.
