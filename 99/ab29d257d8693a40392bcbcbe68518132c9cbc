@@ -1,0 +1,4 @@
+Merge commit: Merge s44m-04: Fix pickup rotation to use surface normal axis.
+
+This commit modifies 2 files (+68/-64 lines), spanning 1 TypeScript source, 1 task/ops files.
+This is a merge commit integrating work from s44m-04 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
