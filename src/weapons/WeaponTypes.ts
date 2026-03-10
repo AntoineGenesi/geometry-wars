@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SHARED_WEAPON_CONFIGS } from '../shared/GameBalanceConstants';
 
 /**
  * Weapon type identifiers
@@ -30,110 +31,34 @@ export interface WeaponConfig {
   description: string;
 }
 
+// Helper to build a WeaponConfig from shared numeric values + visual properties
+function weaponConfig(
+  type: WeaponType,
+  name: string,
+  color: number,
+  projectileSpeed: number,
+  description: string,
+): WeaponConfig {
+  const shared = SHARED_WEAPON_CONFIGS[type];
+  return { type, name, color, damage: shared.damage, fireRate: shared.fireRate, ammo: shared.ammo, projectileSpeed, description };
+}
+
 /**
  * Weapon configurations
+ * Numeric values (damage, fireRate, ammo) come from src/shared/GameBalanceConstants.ts.
+ * Visual properties (color, name, description, projectileSpeed) are defined here.
  */
 export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
-  [WeaponType.Standard]: {
-    type: WeaponType.Standard,
-    name: 'Blaster',
-    color: 0xffff44,
-    damage: 0.25,
-    fireRate: 6,
-    ammo: -1,
-    projectileSpeed: 1.5,
-    description: 'Rapid-fire energy bolts (always fires alongside equipped weapon)',
-  },
-  [WeaponType.Spread]: {
-    type: WeaponType.Spread,
-    name: 'Spread Shot',
-    color: 0x44ffff,
-    damage: 1,
-    fireRate: 6,
-    ammo: 100,
-    projectileSpeed: 3.0,
-    description: '5 bullets in a fan pattern',
-  },
-  [WeaponType.Piercing]: {
-    type: WeaponType.Piercing,
-    name: 'Piercing Beam',
-    color: 0xffffff,
-    damage: 3,
-    fireRate: 3,
-    ammo: 50,
-    projectileSpeed: 0, // instant beam
-    description: 'Geodesic beam that hits all enemies in its path',
-  },
-  [WeaponType.ChainLightning]: {
-    type: WeaponType.ChainLightning,
-    name: 'Chain Lightning',
-    color: 0xaaffff,
-    damage: 4,
-    fireRate: 3,
-    ammo: 50,
-    projectileSpeed: 0, // instant
-    description: 'Arcs between up to 6 enemies',
-  },
-  [WeaponType.Homing]: {
-    type: WeaponType.Homing,
-    name: 'Homing Missiles',
-    color: 0xff4444,
-    damage: 6,
-    fireRate: 3,
-    ammo: 40,
-    projectileSpeed: 3.0,
-    description: 'Seeks nearest enemy with explosive impact',
-  },
-  [WeaponType.PlasmaMortar]: {
-    type: WeaponType.PlasmaMortar,
-    name: 'Plasma Mortar',
-    color: 0x44ff44,
-    damage: 20,
-    fireRate: 1.0,
-    ammo: 18,
-    projectileSpeed: 1.0,
-    description: 'Devastating AoE explosion on impact',
-  },
-  [WeaponType.GravityGun]: {
-    type: WeaponType.GravityGun,
-    name: 'Gravity Gun',
-    color: 0x8844ff,
-    damage: 8,
-    fireRate: 1,
-    ammo: 20,
-    projectileSpeed: 1.0,
-    description: 'Pulls enemies together',
-  },
-  [WeaponType.LaserBeam]: {
-    type: WeaponType.LaserBeam,
-    name: 'Laser Beam',
-    color: 0xff0000,
-    damage: 2, // per tick
-    fireRate: 60, // continuous
-    ammo: 200, // duration ticks
-    projectileSpeed: 0, // instant
-    description: 'Sustained high-damage beam',
-  },
-  [WeaponType.BlackHole]: {
-    type: WeaponType.BlackHole,
-    name: 'Black Hole',
-    color: 0x220044,
-    damage: 999,
-    fireRate: 0.3,
-    ammo: 6,
-    projectileSpeed: 0.4,
-    description: 'Vortex that destroys everything',
-  },
-  [WeaponType.TeslaCoil]: {
-    type: WeaponType.TeslaCoil,
-    name: 'Tesla Coil',
-    color: 0x88aaff,
-    damage: 1, // per tick
-    fireRate: 30, // ticks per second
-    ammo: 150, // duration ticks (5 seconds — nerfed from 10s; was too powerful with refills)
-    projectileSpeed: 0, // area effect
-    description: 'Damages all nearby enemies',
-  },
+  [WeaponType.Standard]: weaponConfig(WeaponType.Standard, 'Blaster', 0xffff44, 1.5, 'Rapid-fire energy bolts (always fires alongside equipped weapon)'),
+  [WeaponType.Spread]: weaponConfig(WeaponType.Spread, 'Spread Shot', 0x44ffff, 3.0, '5 bullets in a fan pattern'),
+  [WeaponType.Piercing]: weaponConfig(WeaponType.Piercing, 'Piercing Beam', 0xffffff, 0, 'Geodesic beam that hits all enemies in its path'),
+  [WeaponType.ChainLightning]: weaponConfig(WeaponType.ChainLightning, 'Chain Lightning', 0xaaffff, 0, 'Arcs between up to 6 enemies'),
+  [WeaponType.Homing]: weaponConfig(WeaponType.Homing, 'Homing Missiles', 0xff4444, 3.0, 'Seeks nearest enemy with explosive impact'),
+  [WeaponType.PlasmaMortar]: weaponConfig(WeaponType.PlasmaMortar, 'Plasma Mortar', 0x44ff44, 1.0, 'Devastating AoE explosion on impact'),
+  [WeaponType.GravityGun]: weaponConfig(WeaponType.GravityGun, 'Gravity Gun', 0x8844ff, 1.0, 'Pulls enemies together'),
+  [WeaponType.LaserBeam]: weaponConfig(WeaponType.LaserBeam, 'Laser Beam', 0xff0000, 0, 'Sustained high-damage beam'),
+  [WeaponType.BlackHole]: weaponConfig(WeaponType.BlackHole, 'Black Hole', 0x220044, 0.4, 'Vortex that destroys everything'),
+  [WeaponType.TeslaCoil]: weaponConfig(WeaponType.TeslaCoil, 'Tesla Coil', 0x88aaff, 0, 'Damages all nearby enemies'),
 };
 
 /**

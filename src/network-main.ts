@@ -49,6 +49,7 @@ import { PvPvELeaderboard } from './ui/PvPvELeaderboard';
 import { KillFeed } from './ui/KillFeed';
 import { WeaponPickup } from './weapons/WeaponPickup';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
+import { BULLET_SPEED_WORLD as SHARED_BULLET_SPEED_WORLD, PLAYER_SPEED_UV } from './shared/GameBalanceConstants';
 import { WeaponHUD } from './ui/WeaponHUD';
 import { WeaponManager } from './weapons/WeaponManager';
 import type { WeaponInventoryEntry } from './weapons/WeaponManager';
@@ -5618,7 +5619,7 @@ async function main() {
         const isMoving = currentInput.moveX !== 0 || currentInput.moveY !== 0;
 
         if (isMoving) {
-          const predSpeed = 0.105; // Must match server PLAYER_SPEED (updated S44b-09: 0.095→0.105)
+          const predSpeed = PLAYER_SPEED_UV; // from shared constants — must match server
           const predSpeedMultiplier = localBoostActive ? LOCAL_BOOST_SPEED_MULTIPLIER : 1.0;
           let predDx = currentInput.moveX * predSpeed * predSpeedMultiplier * dt;
           let predDy = currentInput.moveY * predSpeed * predSpeedMultiplier * dt;
@@ -6543,7 +6544,7 @@ async function main() {
     // Server fires 2 separate bullets for Standard (dual-barrel) and 5 for Spread.
     // Each server bullet renders as one visual bullet here.
     // -----------------------------------------------------------------------
-    const BULLET_SPEED_WORLD = 4.0; // world units/sec — matches SP Bullet.ts speed
+    const BULLET_SPEED_WORLD = SHARED_BULLET_SPEED_WORLD; // from shared constants
     const nowRenderMs = performance.now();
     // Use actual frame time so bullet speed is correct at any display refresh rate.
     const renderDt = lastRenderTimestampMs > 0

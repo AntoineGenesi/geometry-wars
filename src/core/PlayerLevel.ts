@@ -1,4 +1,10 @@
 import * as THREE from 'three';
+import {
+  LEVEL_THRESHOLDS,
+  LEVEL_DAMAGE_MULTIPLIERS,
+  LEVEL_FIRE_RATE_MULTIPLIERS,
+  LEVEL_MOVE_SPEED_MULTIPLIERS,
+} from '../shared/GameBalanceConstants';
 
 // Pre-allocated for zero-allocation orientation in update()
 // RingGeometry lies in XY plane with +Z as its face normal.
@@ -54,9 +60,8 @@ const LEVELS: LevelPerk[] = [
   { name: 'Apex', description: 'ALL +15%', damageMultiplier: 2.0, fireRateMultiplier: 1.55, moveSpeedMultiplier: 1.45, bulletSpeedMultiplier: 1.45, bonusBombs: 2, auraRadius: 6.0, auraColor: 0xffffff },
 ];
 
-// Kill thresholds lowered across the board so player levels up faster.
-// This creates the saw-tooth pattern: level up → dominate → difficulty catches up → level up again.
-const LEVEL_THRESHOLDS = [0, 10, 25, 50, 80, 120, 175, 250, 350, 500];
+// Kill thresholds imported from src/shared/GameBalanceConstants.ts — single source of truth.
+// Previously defined locally: [0, 10, 25, 50, 80, 120, 175, 250, 350, 500].
 
 // ---------------------------------------------------------------------------
 // Utility
