@@ -1,4 +1,0 @@
-Merge commit: Merge s44h-08: Eliminate 1-tick input-to-visual lag in MP.
-
-This commit modifies 2 files (+100/-19 lines), spanning 1 networking, 1 task/ops files.
-This is a merge commit integrating work from s44h-08 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
