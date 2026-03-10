@@ -1,0 +1,7 @@
+Merge commit: Merge s44m-05d: Grid traversal integration — npm script, full run, HTML report.
+
+This commit modifies 5 files (+4158/-1 lines), spanning 3 tests, 1 other, 1 documentation.
+This is a merge commit integrating work from s44m-05d into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: npm script, full run, HTML report.
+
+Key files: package.json, reports/grid-traversal-2026-03-07.html, tests/grid-traversal/run-full-grid-traversal.ts, tests/grid-traversal/three-mock-hook.mjs, tests/grid-traversal/three-node-preload.cjs.
