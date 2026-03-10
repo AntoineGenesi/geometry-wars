@@ -1,5 +1,0 @@
-Merge commit: Merge s44o-04c: Fix peanut pole speed — client prediction matches server isotropic formula.
-
-This commit modifies 2 files (+75/-95 lines), spanning 1 networking, 1 Markdown docs.
-This is a merge commit integrating work from s44o-04c into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: client prediction matches server isotropic formula.
