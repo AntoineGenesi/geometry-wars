@@ -1,0 +1,14 @@
+Feature addition: weapon wiki modal with stats, tactics, and SVG illustrations.
+
+This commit modifies 12 files (+1324/-7 lines), touching 8 other files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Click any weapon card to open detailed modal overlay
+- Stats table with color-coded bar graphs (damage, fire rate, range)
+- Tactical tips and how-it-works descriptions for all 10 weapons
+- SVG weapon illustrations (neon-styled placeholders, PNG fallback ready)
+- Close via X button, backdrop click, or ESC
+- Smooth fade-in/scale-in animations
+
+Key files: generate-weapon-screenshots.mjs, public/weapon-screenshots/black-hole.svg, public/weapon-screenshots/chain-lightning.svg, public/weapon-screenshots/gravity-gun.svg, public/weapon-screenshots/homing.svg, and others.
