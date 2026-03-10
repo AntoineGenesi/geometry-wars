@@ -1,0 +1,15 @@
+Feature addition: add 6 boss enemies with multi-phase health and shield mechanics.
+
+This commit modifies 4 files (+575 lines), spanning 2 enemy AI, 1 other, 1 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Boss base class with 5-phase health, crystal shield between phases
+- 6 boss variants: Sapphire, Ruby, Emerald, Topaz, Amethyst, Opal
+- Each has unique movement pattern (chase-spin, charge-retreat, sweep-arc, etc.)
+- Shield phase spawns enemy waves scaled by difficulty
+- Boss health bar UI with phase indicator
+- Phase transitions award bonus time in timed modes
+- Bosses spawn increasingly aggressive enemy waves each phase
+
+Key files: index.html, src/entities/enemies/Boss.ts, src/entities/enemies/EnemySpawner.ts, src/main.ts.
