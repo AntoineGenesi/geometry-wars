@@ -1,0 +1,4 @@
+Feature addition: lives selector — buttons 1-9, infinity, custom input.
+
+This commit modifies 3 files (+86/-20 lines), spanning 1 game server, 1 networking, 1 Markdown docs.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
