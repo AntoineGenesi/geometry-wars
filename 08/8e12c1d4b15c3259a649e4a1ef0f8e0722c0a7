@@ -1,0 +1,10 @@
+Feature addition: add minimap radar showing entity positions in UV space.
+
+This commit modifies 2 files (+133 lines), spanning 1 TypeScript source, 1 UI/HUD.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Canvas-based minimap in bottom-right corner
+- Player (cyan), enemies (red), geoms (green) as colored dots
+- Grid lines and boundary for spatial reference
+- Updated in render callback with live entity data
