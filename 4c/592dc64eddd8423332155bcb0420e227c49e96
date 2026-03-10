@@ -1,0 +1,15 @@
+Feature addition: localization final pass — fill missing translations for all 5 languages.
+
+This commit modifies 3 files (+549/-549 lines), touching 3 other files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Replace [ES]/[FR]/[DE] placeholder stubs with proper translations:
+- es.json: Spanish — all 80 keys translated
+- fr.json: French — all 80 keys translated
+- de.json: German — all 80 keys translated
+- ru.json: already had proper Russian translations, no changes needed
+- ar: not in supported languages list (en/es/fr/de/ru only), skipped
+
+Covers: common, gameOver, levelComplete, controls, voting, menu, languages,
+pauseMenu, settings (gpu/graphics/performance/audio/gameplay), hud, mastery
