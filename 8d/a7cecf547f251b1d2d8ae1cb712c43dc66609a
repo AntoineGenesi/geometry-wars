@@ -1,0 +1,9 @@
+Merge commit: Merge s44r-01: Fix PvP/PvPvE timer — timeLimitSeconds never set, countdown now visible.
+
+This commit modifies 4 files (+357/-15 lines), spanning 2 game server, 1 networking, 1 task/ops files.
+This is a merge commit integrating work from s44r-01 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: timeLimitSeconds never set, countdown now visible.
+
+Key files: server/rooms/GameRoom.pvp-timer-countdown.test.ts, server/rooms/GameRoom.ts, src/network-main.ts, tasks/s44r-01-pvp-pvpve-timer-countdown-broken.md.
+
+Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
