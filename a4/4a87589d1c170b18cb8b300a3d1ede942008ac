@@ -1,0 +1,6 @@
+Bug fix: Colyseus Schema state sync - ES2022 declare keyword fix.
+
+This commit modifies 7 files (+257/-62 lines), spanning 3 game server, 1 Markdown docs, 1 documentation.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: CLAUDE.md, decisions/colyseus-schema-es2022-fix.md, server/rooms/GameRoom.ts, server/schema/GameState.ts, server/tsconfig.json, and others.
