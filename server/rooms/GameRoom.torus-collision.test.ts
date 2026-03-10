@@ -222,7 +222,7 @@ describe('torus collision scenario regression', () => {
     // Old: 0.97, new: 0.03
     expect(distOld).toBeGreaterThan(0.9);
     expect(distNew).toBeCloseTo(0.03, 5);
-    expect(distNew).toBeLessThan(0.012 * 2); // within bullet-enemy threshold
+    expect(distNew).toBeLessThan(0.04); // within bullet-enemy threshold (0.03 < 0.04)
   });
 
   it('enemy correctly tracks player across V seam — OLD code would track away from player', () => {

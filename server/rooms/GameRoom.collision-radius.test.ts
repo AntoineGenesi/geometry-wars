@@ -158,17 +158,17 @@ describe('S43-07: torusChordDist', () => {
     expect(chordDist).toBeGreaterThan(ENEMY_HIT_WORLD); // Should NOT trigger hit with new threshold
   });
 
-  it('U direction (around tube, r=2): 0.04 UV ≈ 0.5 world units — slightly above threshold', () => {
-    // U = tube, r=2, circumference ≈ 12.6. 0.04 UV → 0.04 * 12.6 ≈ 0.50 world units
+  it('U direction (around tube, r=3): 0.04 UV ≈ 0.75 world units — slightly above threshold', () => {
+    // U = tube, r=3 (TORUS_MINOR_R=3), circumference ≈ 18.85. 0.04 UV → 0.04 * 18.85 ≈ 0.75 world units
     const dist = torusChordDist(0.0, 0.5, 0.04, 0.5);
     expect(dist).toBeGreaterThan(0.45);
-    expect(dist).toBeLessThan(0.6);
-    // 0.50 > 0.4 threshold → correct: no hit until actually closer
+    expect(dist).toBeLessThan(0.9);
+    // 0.75 > 0.4 threshold → correct: no hit until actually closer
   });
 
   it('contact at ~0.4 world units in U direction correctly registers', () => {
-    // U = tube: 0.4 / (2π * 2) ≈ 0.032 UV → should give ~0.4 world units
-    const dist = torusChordDist(0.0, 0.5, 0.032, 0.5);
+    // U = tube: 0.4 / (2π * 3) ≈ 0.021 UV → should give ~0.4 world units (r=3)
+    const dist = torusChordDist(0.0, 0.5, 0.021, 0.5);
     expect(dist).toBeCloseTo(0.4, 1);
     expect(dist).toBeLessThanOrEqual(ENEMY_HIT_WORLD + 0.05);
   });
@@ -198,9 +198,9 @@ describe('S43-07: cubeRingChordDist', () => {
   });
 
   it('contact at ~0.4 world units in U direction on outer face correctly registers', () => {
-    // On outer face (v=0): ring radius R+H = 7.5, circumference ≈ 47.1
-    // 0.4 / 47.1 ≈ 0.0085 UV → should give ~0.4 world units
-    const dist = cubeRingChordDist(0.5, 0.0, 0.5085, 0.0);
+    // On outer face (v=0): ring radius R+H = 5 (R=4,H=1), circumference ≈ 31.4
+    // 0.4 / 31.4 ≈ 0.0127 UV → should give ~0.4 world units
+    const dist = cubeRingChordDist(0.5, 0.0, 0.5127, 0.0);
     expect(dist).toBeCloseTo(0.4, 1);
     expect(dist).toBeLessThanOrEqual(ENEMY_HIT_WORLD + 0.05);
   });

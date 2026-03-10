@@ -782,6 +782,93 @@ function surfaceWorldDist(
   return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron
 }
 
+/**
+ * Convert surface UV coordinates to 3D world position.
+ * Mirrors the forward mapping of each surface's parametric definition.
+ * Used by playerEnemyDist3D to convert enemy UV → world pos for accurate collision.
+ *
+ * s44r8-02: Root cause fix for "player dying from far enemies on all maps."
+ * The OLD approach computed: surfaceWorldDist(player_UV, enemy_UV) where player_UV
+ * came from sphere-approximation in _worldPosToApproxUV. For non-spherical surfaces
+ * (cube, sphere-tunnel, cube-tunnel, etc.), this produced wildly wrong player 3D
+ * positions → wrong collision distances → false deaths.
+ * The NEW approach: use player.wx/wy/wz (exact world pos from ServerMeshWalker) and
+ * convert enemy UV to world pos, then compute direct 3D Euclidean distance.
+ */
+export function surfaceUVToWorld3D(
+  surfaceType: string,
+  u: number, v: number,
+  scaleFactor: number, sphereR: number,
+): [number, number, number] {
+  if (surfaceType === 'cube')          return cubePoint3D(u, v, scaleFactor);
+  if (surfaceType === 'cube-tunnel')   return cubeTunnelPoint3D(u, v, scaleFactor);
+  if (surfaceType === 'pill')          return pillPoint3D(u, v, scaleFactor);
+  if (surfaceType === 'mobius')        return mobiusPoint3D(u, v, scaleFactor);
+  if (surfaceType === 'sphere-tunnel') return sphereTunnelPoint3D(u, v, scaleFactor);
+
+  if (surfaceType === 'torus') {
+    const R = TORUS_MAJOR_R * scaleFactor, r = TORUS_MINOR_R * scaleFactor;
+    const theta = u * 2 * Math.PI, phi = v * 2 * Math.PI;
+    // y = -r*sin(theta): matches geometry.rotateX(π/2) orientation in SurfaceGeometryBuilder
+    return [
+      (R + r * Math.cos(theta)) * Math.cos(phi),
+      -r * Math.sin(theta),
+      (R + r * Math.cos(theta)) * Math.sin(phi),
+    ];
+  }
+
+  if (surfaceType === 'peanut') {
+    const B = PEANUT_BASE_RADIUS * scaleFactor, W = PEANUT_WAIST_DEPTH;
+    const phi = v * Math.PI, theta = u * 2 * Math.PI;
+    const r = B * (1 + W * Math.cos(2 * phi));
+    return [r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta)];
+  }
+
+  if (surfaceType === 'cube-ring') {
+    const R = CUBE_RING_MAJOR_R * scaleFactor, H = CUBE_RING_HALF_SIDE * scaleFactor;
+    const t = ((v % 1) + 1) % 1, q = t * 4;
+    let pr: number, py: number;
+    if (q < 1)      { pr = H;  py = (q - 0.5) * 2 * H; }
+    else if (q < 2) { pr = (1.5 - q) * 2 * H; py = H; }
+    else if (q < 3) { pr = -H; py = (2.5 - q) * 2 * H; }
+    else            { pr = (q - 3.5) * 2 * H; py = -H; }
+    const phi = u * 2 * Math.PI;
+    return [(R + pr) * Math.cos(phi), py, (R + pr) * Math.sin(phi)];
+  }
+
+  // sphere, capsule, icosahedron — sphere parameterization is accurate
+  const phi = v * Math.PI, theta = u * 2 * Math.PI;
+  return [
+    sphereR * Math.sin(phi) * Math.cos(theta),
+    sphereR * Math.cos(phi),
+    sphereR * Math.sin(phi) * Math.sin(theta),
+  ];
+}
+
+/**
+ * Compute player-enemy collision distance using player WORLD position (accurate) and
+ * enemy UV converted to world position (via parametric formula).
+ *
+ * This replaces surfaceWorldDist(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV)
+ * for player-enemy collision. The key improvement: player.surfaceU/V was derived from
+ * _worldPosToApproxUV which uses sphere approximation for cube, sphere-tunnel, peanut etc.,
+ * producing wrong player 3D positions. Using player.wx/wy/wz eliminates this error.
+ *
+ * s44r8-02: Fixes "player dying from far enemies" on cube, sphere-tunnel, cube-tunnel,
+ * cube-ring, and peanut maps. Also fixes torus at non-MEDIUM map sizes (where the old
+ * torus UV inversion ignored scaleFactor in the outward component).
+ */
+export function playerEnemyDist3D(
+  surfaceType: string,
+  playerWx: number, playerWy: number, playerWz: number,
+  enemyU: number, enemyV: number,
+  scaleFactor: number, sphereR: number,
+): number {
+  const [ex, ey, ez] = surfaceUVToWorld3D(surfaceType, enemyU, enemyV, scaleFactor, sphereR);
+  const dx = playerWx - ex, dy = playerWy - ey, dz = playerWz - ez;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
 // Peanut player speed correction removed (s44r6-07): ServerMeshWalker moves in world
 // space at constant speed. UV-metric correction was causing 0.69x waist slowdown and
 // 1.62x pole speedup. PEANUT_WAIST_DEPTH remains above (used by peanutChordDist + bullets).
@@ -2796,10 +2883,16 @@ export class GameRoom extends Room<GameState> {
 
     // s44r6-04: Use accurate chord distance for non-spherical surfaces (Mobius, peanut,
     // torus, etc.) instead of UV distance, which is anisotropic on these surfaces.
+    // s44r8-02: Updated to match main usesWorldDist list (was missing cube, cube-tunnel,
+    // sphere-tunnel, sphere, capsule, icosahedron).
     const surfaceType = this.state.surfaceType;
     const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
-    const useWorldDist = surfaceType === 'mobius' || surfaceType === 'peanut'
-      || surfaceType === 'torus' || surfaceType === 'cube-ring' || surfaceType === 'pill';
+    const isSphereLikeTesla = surfaceType === 'sphere' || surfaceType === 'sphere-tunnel'
+      || surfaceType === 'capsule' || surfaceType === 'icosahedron';
+    const useWorldDist = isSphereLikeTesla
+      || surfaceType === 'peanut' || surfaceType === 'torus' || surfaceType === 'cube-ring'
+      || surfaceType === 'pill' || surfaceType === 'mobius'
+      || surfaceType === 'cube' || surfaceType === 'cube-tunnel';
     const sphereR = 10 * scaleFactor;
 
     const enemiesToKill: number[] = [];
@@ -2809,8 +2902,9 @@ export class GameRoom extends Room<GameState> {
 
       let dist: number;
       if (useWorldDist) {
-        // Use accurate world-space chord distance for surfaces with anisotropic UV
-        dist = surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV,
+        // s44r8-02: Use player world position (exact from ServerMeshWalker) instead of
+        // player.surfaceU/V (sphere-approx on non-spherical surfaces → wrong distances).
+        dist = playerEnemyDist3D(surfaceType, player.wx, player.wy, player.wz,
           enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR);
       } else {
         // Simple UV distance for sphere-like surfaces
@@ -4458,8 +4552,10 @@ export class GameRoom extends Room<GameState> {
           const invincible = this.playerInvincibility.get(target.id) ?? 0;
           if (invincible > 0) return; // Post-respawn invincibility
 
+          // s44r8-02: Use target world position (accurate) instead of target.surfaceU/V
+          // (sphere-approx for non-spherical surfaces → wrong 3D pos → wrong hit distance).
           const dist = usesWorldDist
-            ? surfaceWorldDist(surfaceType, bullet.x, bullet.y, target.surfaceU, target.surfaceV, scaleFactor, sphereR)
+            ? playerEnemyDist3D(surfaceType, target.wx, target.wy, target.wz, bullet.x, bullet.y, scaleFactor, sphereR)
             : this.uvDistWrapped(bullet.x, bullet.y, target.surfaceU, target.surfaceV);
 
           if (dist < (usesWorldDist ? BULLET_HIT_WORLD : BULLET_HIT_RADIUS)) {
@@ -4575,8 +4671,10 @@ export class GameRoom extends Room<GameState> {
           let nearMissLogged = false;
           this.state.enemies.forEach((enemy) => {
             if (nearMissLogged || !enemy.alive) return;
+            // s44r8-02: Use player world position (accurate from ServerMeshWalker) instead of
+            // player.surfaceU/V (sphere-approx, wrong on cube/sphere-tunnel/peanut/cube-ring).
             const dist = usesWorldDist
-              ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
+              ? playerEnemyDist3D(surfaceType, player.wx, player.wy, player.wz, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
               : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
             const hitThreshold = usesWorldDist ? (surfaceType === 'cube' || surfaceType === 'cube-tunnel' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD) : ENEMY_HIT_RADIUS;
             if (dist < hitThreshold) {
@@ -4613,8 +4711,15 @@ export class GameRoom extends Room<GameState> {
         // sphere/capsule/icosahedron: great-circle arc distance (S38b fix, spherical UV).
         // peanut/torus/cube-ring: exact chord distance via parametric formula (S43-07 fix).
         // Other surfaces: wrap-aware UV Euclidean distance unchanged.
+        //
+        // s44r8-02: playerEnemyDist3D replaces surfaceWorldDist(player UV, enemy UV).
+        // Root cause of "player dying from far enemies on all maps":
+        // player.surfaceU/V came from _worldPosToApproxUV which used sphere approximation
+        // for non-spherical surfaces (cube, sphere-tunnel, cube-tunnel, peanut, cube-ring).
+        // The sphere-approx UV → wrong 3D player position → wrong chord distance → false kills.
+        // Fix: use player.wx/wy/wz (exact world pos from ServerMeshWalker) + enemy UV → world.
         const dist = usesWorldDist
-          ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
+          ? playerEnemyDist3D(surfaceType, player.wx, player.wy, player.wz, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
         // s44r6b-02: Cube uses tighter threshold — enemies must visually overlap player, not just touch
         // s44r6b-03: Pill uses tighter threshold — curved body makes chord dist ~27% smaller than visual
