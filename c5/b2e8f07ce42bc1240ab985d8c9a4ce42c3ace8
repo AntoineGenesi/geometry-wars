@@ -1,4 +1,0 @@
-Chore/maintenance: add PvP iteration 2 findings + review certificate + discoveries.
-
-This commit modifies 3 files (+287 lines), touching 3 Markdown docs files.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
