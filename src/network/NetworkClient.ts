@@ -195,6 +195,8 @@ export interface NetworkGameState {
   friendlyFire?: boolean;
   pvpWinCondition?: string;
   pvpKillLimit?: number;
+  /** Player-vs-player damage multiplier (1.0 = normal). Range: 0.1–10. */
+  pvpDamageMultiplier?: number;
   startingWeapon?: string;
   timeLimit?: number;
   /** True when the host has queued settings to apply at the next wave boundary. */
@@ -762,6 +764,7 @@ export class NetworkClient {
       friendlyFire?: boolean;
       pvpWinCondition?: string;
       pvpKillLimit?: number;
+      pvpDamageMultiplier?: number;
       startingWeapon?: string;
       timeLimit?: number;
       hasPendingSettings?: boolean;
@@ -826,6 +829,7 @@ export class NetworkClient {
       friendlyFire: s.friendlyFire,
       pvpWinCondition: s.pvpWinCondition,
       pvpKillLimit: s.pvpKillLimit,
+      pvpDamageMultiplier: s.pvpDamageMultiplier,
       startingWeapon: s.startingWeapon,
       timeLimit: s.timeLimit,
       hasPendingSettings: s.hasPendingSettings ?? false,

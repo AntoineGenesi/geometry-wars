@@ -456,6 +456,12 @@ export class GameState extends Schema {
   declare timeLimit: number;
   /** When true, the host has queued settings for the next wave boundary ("Apply Next Round"). */
   declare hasPendingSettings: boolean;
+  /**
+   * Player-vs-player damage multiplier (PvP/PvPvE only).
+   * Applied only to player bullet → player damage. Enemy damage is unaffected.
+   * Range: 0.1–10. Default: 1.0.
+   */
+  declare pvpDamageMultiplier: number;
   /** Time limit in seconds for 'time' win condition (0 = no limit) — s44p-06 */
   declare timeLimitSeconds: number;
   /** Remaining seconds for time-limit countdown (server-authoritative) — s44p-06 */
@@ -534,6 +540,9 @@ export class GameState extends Schema {
     this.timeRemaining = 0;
     this.killGoal = 0;
 
+    // PvP damage multiplier (player-to-player only)
+    this.pvpDamageMultiplier = 1.0;
+
     // Portals (PvP/PvPvE) — inactive by default until startGame() sets them
     this.portalsActive = false;
     this.portalAU = 0.25;
@@ -595,4 +604,5 @@ defineTypes(GameState, {
   portalAV: 'number',
   portalBU: 'number',
   portalBV: 'number',
+  pvpDamageMultiplier: 'number',
 });

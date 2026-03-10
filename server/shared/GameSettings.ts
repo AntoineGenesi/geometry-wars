@@ -179,6 +179,14 @@ export interface GameSettings {
    * Range: 2–20. Default: 10.
    */
   maxPlayers: number;
+
+  /**
+   * Damage multiplier applied only to player-vs-player bullet hits (PvP/PvPvE).
+   * 1.0 = normal, 2.0 = double damage, 0.5 = half damage.
+   * Does NOT affect enemy-vs-player or player-vs-enemy damage.
+   * Range: 0.1–10. Default: 1.0.
+   */
+  pvpDamageMultiplier: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,6 +237,7 @@ export const DEFAULT_GAME_SETTINGS: Readonly<GameSettings> = {
   visualQuality:           'auto',
   enemyDifficultyPerPlayer: 'medium',
   maxPlayers:              10,
+  pvpDamageMultiplier:     1.0,
 };
 
 // ---------------------------------------------------------------------------
@@ -354,6 +363,11 @@ export function validateSettings(partial: Partial<GameSettings> | null | undefin
     ? clamp(Math.round(partial.maxPlayers), 2, 20)
     : DEFAULT_GAME_SETTINGS.maxPlayers;
 
+  // pvpDamageMultiplier — player-to-player damage multiplier (0.1–10)
+  const pvpDamageMultiplier = isFiniteNumber(partial.pvpDamageMultiplier)
+    ? clamp(partial.pvpDamageMultiplier, 0.1, 10)
+    : DEFAULT_GAME_SETTINGS.pvpDamageMultiplier;
+
   // PvP settings — strip if mode is not a PvP mode
   const isPvpMode = (PVP_MODES as readonly string[]).includes(mode);
 
@@ -403,5 +417,6 @@ export function validateSettings(partial: Partial<GameSettings> | null | undefin
     visualQuality,
     enemyDifficultyPerPlayer,
     maxPlayers,
+    pvpDamageMultiplier,
   };
 }
