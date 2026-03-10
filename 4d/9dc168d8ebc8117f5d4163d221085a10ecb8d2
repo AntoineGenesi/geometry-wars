@@ -1,0 +1,17 @@
+Feature addition: taper pickup drop rates by difficulty level.
+
+This commit modifies 4 files (+154/-6 lines), spanning 2 TypeScript source, 2 core game loop.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- PickupSpawner: add setDifficultyLevel(level) + computeDropMultiplier()
+  - diff 0-4: multiplier = 1.0 (full rates)
+  - diff 4-8: linear taper 1.0 → 0.5
+  - diff 8-12: linear taper 0.5 → 0.25
+  - diff 12+: floor at 0.20
+  - Base rate constants stored separately; effective rates computed from them
+- BuffManager.rollBuffDrop(): add optional multiplier param (default 1.0)
+- main.ts: call pickupSpawner.setDifficultyLevel(waveScheduler.currentDifficultyLevel) each frame
+- Add unit tests: PickupSpawner.test.ts covering all acceptance criteria
+
+Key files: src/buffs/BuffManager.ts, src/core/PickupSpawner.test.ts, src/core/PickupSpawner.ts, src/main.ts.
