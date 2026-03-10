@@ -1,0 +1,5 @@
+Merge commit: Merge s44l-16: Fix torus bullet direction + remote player position — worldToSurface for accurate UV.
+
+This commit modifies 3 files (+116/-7 lines), spanning 1 documentation, 1 networking, 1 Markdown docs.
+This is a merge commit integrating work from s44l-16 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: worldToSurface for accurate UV.
