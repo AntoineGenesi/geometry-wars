@@ -1,0 +1,7 @@
+Merge commit: Merge s44r-04-03: Client-authoritative pickup collection — all 4 pickup types.
+
+This commit modifies 27 files (+2918/-198 lines), spanning 5 Markdown docs, 1 task/ops files, 1 other.
+This is a merge commit integrating work from s44r-04-03 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: all 4 pickup types.
+
+Key files: .claude/locks/port-registry, ...s44r-07-pill-map-bullet-direction-inverted.lock, .../s44r-08-verification-system-test-all-maps.lock, .../s44r-01-pvp-pvpve-timer-countdown-broken.md, .../s44r-04-01-audit-hit-detection-root-causes.md, and others.
