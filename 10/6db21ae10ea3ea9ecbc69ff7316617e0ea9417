@@ -1,0 +1,8 @@
+Bug fix: snap camera to player on first MP spawn to fix ~130° aim error.
+
+This commit modifies 5 files (+306/-1 lines), spanning 1 documentation, 1 core game loop, 1 networking.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: docs/HUMAN_TEST.md, src/core/CameraController.ts, src/network-main.ts, ...b-01-camera-snap-first-spawn.regression.test.ts, .../s44b-01-gun-aim-direction-wrong-first-spawn.md.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
