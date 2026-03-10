@@ -1,7 +1,0 @@
-Merge commit: Merge s43-09: deep MP audit — HTML report + AI reference docs.
-
-This commit modifies 4 files (+716/-5 lines), spanning 2 documentation, 1 Markdown docs, 1 task/ops files.
-This is a merge commit integrating work from s43-09 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: HTML report + AI reference docs.
-
-Key files: DISCOVERIES.md, docs/mp-architecture-audit.md, reports/mp-audit-s43.html, tasks/s43-09-epic-deep-mp-audit.md.
