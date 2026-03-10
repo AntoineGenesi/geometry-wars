@@ -1,0 +1,18 @@
+Feature addition: InstancedMesh enemy rendering - 94% draw call reduction.
+
+This commit modifies 6 files (+856/-25 lines), spanning 2 enemy AI, 2 TypeScript source, 1 documentation.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+GPU instanced rendering for 10 enemy types via EnemyInstanceManager.
+Merges child geometries into single BufferGeometry per type, renders
+all instances via one THREE.InstancedMesh per type.
+
+- src/rendering/EnemyInstanceManager.ts: Core instanced rendering system
+- src/rendering/EnemyInstanceManager.test.ts: 20 unit tests
+- src/entities/enemies/BaseEnemy.ts: isInstanced + isMaterializing flags
+- src/entities/enemies/EnemySpawner.ts: Instance manager integration
+- src/main.ts: Wired instance manager into game loop + collisions
+- Draw calls: ~2000 → ~110 at 100 enemies (94% reduction)
+
+Key files: decisions/instanced-enemy-rendering-2026-02-09.md, src/entities/enemies/BaseEnemy.ts, src/entities/enemies/EnemySpawner.ts, src/main.ts, src/rendering/EnemyInstanceManager.test.ts, and others.
