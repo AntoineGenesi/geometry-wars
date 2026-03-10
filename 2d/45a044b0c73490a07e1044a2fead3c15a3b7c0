@@ -1,0 +1,12 @@
+Bug fix: gate NetworkClient console.log behind ?debug URL flag.
+
+This commit modifies 1 file (+23/-10 lines), touching 1 networking file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+All 10 [Network] prefixed console.log calls in NetworkClient.ts are
+now gated behind a netLog() helper that only outputs when ?debug=true
+is in the URL. The LAN E2E test suite already uses ?debug=true, so
+these logs remain available for debugging. In production play, the
+console stays clean. console.error calls are left ungated since they
+report actual errors.
