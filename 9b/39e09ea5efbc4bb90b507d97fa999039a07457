@@ -1,0 +1,6 @@
+Merge commit: Merge s44k-04: Fix server settings not applying in MP.
+
+This commit modifies 5 files (+143/-14 lines), spanning 3 game server, 1 UI/HUD, 1 task/ops files.
+This is a merge commit integrating work from s44k-04 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: server/rooms/GameRoom.pause-menu-settings.test.ts, server/rooms/GameRoom.ts, server/shared/GameSettings.ts, src/ui/PauseMenu.ts, tasks/s44k-04-server-settings-not-applying-mp.md.
