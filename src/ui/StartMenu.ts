@@ -15,6 +15,20 @@ import { createQRCodeDisplay } from './QRCode';
 import { QUICK_GAME_MODES, type QuickGameModeType } from '../core/modes';
 import { OBJDebugPanel } from './OBJDebugPanel';
 
+/** LAN-specific game mode type: includes MP-only modes (pvp/pvpve) on top of SP modes. */
+export type LanGameMode = QuickGameModeType | 'pvp' | 'pvpve';
+
+/** All game modes available in the LAN lobby, including MP-only modes. */
+export const LAN_GAME_MODES: Array<{ type: LanGameMode; name: string; icon: string }> = [
+  { type: 'waves',          name: 'Waves',          icon: '〰️' },
+  { type: 'king',           name: 'King',           icon: '👑' },
+  { type: 'sniper',         name: 'Sniper',         icon: '🎯' },
+  { type: 'rainbow',        name: 'Rainbow',        icon: '🌈' },
+  { type: 'claustrophobia', name: 'Claustrophobia', icon: '🔴' },
+  { type: 'pvp',            name: 'PvP',            icon: '🗡️' },
+  { type: 'pvpve',          name: 'PvPvE',          icon: '⚔️' },
+];
+
 /**
  * Start menu UI for Geometry Wars.
  * Allows selecting game mode and surface type before starting.
@@ -28,7 +42,7 @@ export interface MenuSelection {
   levelIndex?: number;
   serverUrl?: string;
   playerName?: string;
-  quickGameMode?: QuickGameModeType; // For single player quick game
+  quickGameMode?: LanGameMode; // QuickGameModeType for SP; includes pvp/pvpve for LAN MP
   customMeshFile?: File; // For custom mesh loading
   mapSize?: MapSize; // Map size tier for enemy count scaling
   /** True only when this player created/hosted the server (clicked HOST GAME → ENTER GAME).
@@ -60,13 +74,13 @@ export class StartMenu {
   private selectedQuickGameMode: QuickGameModeType = 'waves';
   private selectedMapSize: MapSize = MapSize.MEDIUM;
   private lanSelectedMapSize: MapSize = MapSize.MEDIUM;
-  private lanSelectedGameMode: QuickGameModeType = 'waves';
+  private lanSelectedGameMode: LanGameMode = 'waves';
   private lanAutoRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private lanAutoRefreshEnabled = true;
   private lanScanning = false;
 
   // LAN name dialog state
-  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean; mapSize: MapSize; gameMode?: QuickGameModeType; maxPlayers?: number } | null = null;
+  private pendingLanJoin: { surfaceType: SurfaceType; serverUrl: string; isCreator: boolean; mapSize: MapSize; gameMode?: LanGameMode; maxPlayers?: number } | null = null;
 
   // Custom mesh support
   private customMeshFile: File | null = null;
@@ -243,7 +257,7 @@ export class StartMenu {
   }
 
   private createLanGameModeSelectorHTML(): string {
-    const buttons = QUICK_GAME_MODES.map((mode) => `
+    const buttons = LAN_GAME_MODES.map((mode) => `
       <button class="lan-mode-btn${mode.type === this.lanSelectedGameMode ? ' selected' : ''}"
               data-lan-mode="${mode.type}">
         <span class="lan-mode-icon">${mode.icon}</span>
@@ -2284,7 +2298,7 @@ export class StartMenu {
       btn.addEventListener('click', () => {
         lanModeBtns.forEach((b) => b.classList.remove('selected'));
         btn.classList.add('selected');
-        this.lanSelectedGameMode = (btn as HTMLElement).dataset.lanMode as QuickGameModeType;
+        this.lanSelectedGameMode = (btn as HTMLElement).dataset.lanMode as LanGameMode;
       });
     });
 
@@ -2653,7 +2667,7 @@ export class StartMenu {
    * @param isCreator - true only when this player hosted the server (clicked ENTER GAME after HOST GAME).
    *   LAN lobby joiners, QR code scanners, and manual IP joiners are NOT creators.
    */
-  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false, mapSize?: MapSize, gameMode?: QuickGameModeType, maxPlayers?: number): void {
+  private showNameDialog(surfaceType: SurfaceType, serverUrl: string, isCreator = false, mapSize?: MapSize, gameMode?: LanGameMode, maxPlayers?: number): void {
     this.pendingLanJoin = { surfaceType, serverUrl, isCreator, mapSize: mapSize ?? MapSize.MEDIUM, gameMode, maxPlayers };
 
     const lanSection = this.container.querySelector('#lan-section') as HTMLElement;

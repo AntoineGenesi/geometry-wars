@@ -39,7 +39,7 @@ import { Virus } from './entities/enemies/Virus';
 import { Painter } from './entities/enemies/Painter';
 import { Splitter } from './entities/enemies/Splitter';
 import { ScorePopupManager } from './effects/ScorePopup';
-import { StartMenu, MenuSelection } from './ui/StartMenu';
+import { StartMenu, MenuSelection, type LanGameMode } from './ui/StartMenu';
 import { PauseMenu } from './ui/PauseMenu';
 import { EffectsPanel } from './ui/EffectsPanel';
 import { GameOverScreen } from './ui/GameOverScreen';
@@ -373,7 +373,7 @@ async function waitForLandscape(sessionGameCount: number): Promise<void> {
   });
 }
 
-async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File, mapSize?: MapSize, quickGameModeType?: QuickGameModeType): Promise<void> {
+async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMeshFile?: File, mapSize?: MapSize, quickGameModeType?: LanGameMode): Promise<void> {
   // Show loading overlay during game initialization (black screen phase after StartMenu)
   showGameLoading('STARTING GAME...');
 
@@ -2149,8 +2149,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Quick Game Mode (KotH, Sniper, Rainbow, etc.) --
   // Create and start the IGameMode. onStart() adds visual elements to the scene.
-  const quickGameMode = (quickGameModeType && quickGameModeType !== 'waves')
-    ? createGameMode(quickGameModeType)
+  // pvp/pvpve are MP-only modes — SP falls back to waves
+  const spModeType = (quickGameModeType === 'pvp' || quickGameModeType === 'pvpve') ? undefined : quickGameModeType;
+  const quickGameMode = (spModeType && spModeType !== 'waves')
+    ? createGameMode(spModeType)
     : undefined;
   if (quickGameMode) {
     const gameModeContext = {
