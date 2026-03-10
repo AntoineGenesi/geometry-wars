@@ -1,0 +1,16 @@
+Feature addition: snake enemy segments scale with difficulty 2-10.
+
+This commit modifies 3 files (+29/-10 lines), touching 3 enemy AI files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Snake.ts: add `initialSegments` parameter (default 2, was hardcoded 4)
+- EnemySpawner.ts: calculate initial segments from continuousDifficultyLevel
+  Formula: min(10, 2 + floor(difficultyLevel * 1.5))
+  - Low difficulty: 2 segments
+  - Mid difficulty (~3): 6 segments
+  - High difficulty (5+): 10 segments
+- Snake.test.ts: update tests to expect new default of 2 segments, add
+  regression tests for custom initialSegments and clamping behavior
+
+Files touched: Snake.ts, EnemySpawner.ts, Snake.test.ts
