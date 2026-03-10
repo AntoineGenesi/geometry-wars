@@ -1,0 +1,4 @@
+Merge commit: Merge s44c-03: MP local player follows UV prediction instead of RTT-delayed server position.
+
+This commit modifies 2 files (+61/-50 lines), spanning 1 networking, 1 task/ops files.
+This is a merge commit integrating work from s44c-03 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
