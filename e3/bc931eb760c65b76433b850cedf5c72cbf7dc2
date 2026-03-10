@@ -1,6 +1,0 @@
-Chore/maintenance: stage before s44f-04 merge.
-
-This commit modifies 8 files (+195/-1 lines), spanning 7 other, 1 task/ops files.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: .claude/locks/port-registry, .../s44f-04-gravity-gun-too-weak.prompt, .../s44f-09-pill-map-movement-broken.prompt, logs/mp-perf-FrjuM0qzG-2026-03-02.jsonl, logs/mp-perf-UdlEUwAj0-2026-03-02.jsonl, and others.
