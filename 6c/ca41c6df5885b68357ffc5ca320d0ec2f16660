@@ -1,0 +1,4 @@
+Feature addition: companion entities - blue guardian, red hunter, green protector.
+
+This commit modifies 3 files (+1260/-9 lines), spanning 1 game entities, 1 TypeScript source, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
