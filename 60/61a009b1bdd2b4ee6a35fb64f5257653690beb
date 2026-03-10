@@ -1,0 +1,15 @@
+Bug fix: add public pool accessors, remove unsafe type casts in network sync.
+
+This commit modifies 3 files (+64/-32 lines), spanning 2 game entities, 1 networking.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Add findInactiveSlot(), getBulletData(), getLine(), getGeomData(),
+getMesh(), and poolSize to BulletPool and GeomPool. These expose
+the minimal interface needed by network-main.ts for server-authoritative
+entity sync (where spawn() cannot be used due to index mismatch).
+
+network-main.ts now uses these public methods instead of
+`as unknown as { ... }` casts to access private pool internals.
+All `eslint-disable-next-line @typescript-eslint/no-explicit-any`
+suppressions are removed.
