@@ -1,6 +1,0 @@
-Merge commit: Merge s44j-pvp-13e: PvP health bar HUD.
-
-This commit modifies 7 files (+268/-20 lines), spanning 2 game server, 2 networking, 1 documentation.
-This is a merge commit integrating work from s44j-pvp-13e into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: docs/HUMAN_TEST.md, server/rooms/GameRoom.ts, server/schema/GameState.ts, src/network-main.ts, src/network/NetworkClient.ts, and others.
