@@ -3383,8 +3383,26 @@ async function main() {
           );
         }
 
-        const du = netPlayer.surfaceU - player.surfaceU;
-        const dv = netPlayer.surfaceV - player.surfaceV;
+        // s44r8-03: For cube surfaces, sphere-approx UV diverges dramatically from CubeSurface UV.
+        // Top face: sphere v≈0 (north pole) vs cube v≈0.97. errSq≈0.94 fires snap every frame,
+        // calling resetFrameForNewSurface() continuously → camera permanently loses sign-flip
+        // protection → flips inside cube. Fix: convert server world-pos to accurate cube UV first.
+        const _isCubeForSnap = lastCreatedSurfaceType === 'cube'
+          || lastCreatedSurfaceType === 'cube-ring'
+          || lastCreatedSurfaceType === 'cube-tunnel';
+        const _hasServerWorldPos = netPlayer.wx !== undefined
+          && (netPlayer.wx !== 0 || netPlayer.wy !== 0 || netPlayer.wz !== 0);
+        let _serverSnapU = netPlayer.surfaceU;
+        let _serverSnapV = netPlayer.surfaceV;
+        if (_isCubeForSnap && _hasServerWorldPos) {
+          const _serverWorldPos = new THREE.Vector3(netPlayer.wx!, netPlayer.wy!, netPlayer.wz!);
+          const _accurateCubeUV = surf.worldToSurface(_serverWorldPos);
+          _serverSnapU = _accurateCubeUV.u;
+          _serverSnapV = _accurateCubeUV.v;
+        }
+
+        const du = _serverSnapU - player.surfaceU;
+        const dv = _serverSnapV - player.surfaceV;
         const errSq = du * du + dv * dv;
 
         if (justRespawned || isDeadNow || errSq > SERVER_SNAP_THRESHOLD_SQ) {
@@ -3403,8 +3421,10 @@ async function main() {
           if (!justRespawned && !isDeadNow) {
             cameraController.resetFrameForNewSurface();
           }
-          player.surfaceU = netPlayer.surfaceU;
-          player.surfaceV = netPlayer.surfaceV;
+          // s44r8-03: Use accurate cube UV (not sphere-approx) so surfaceU/V is correct for
+          // subsequent bullet tangent lookups and client prediction continuity on cube faces.
+          player.surfaceU = _serverSnapU;
+          player.surfaceV = _serverSnapV;
           // Also update mesh position immediately for hard snaps so the mesh appears
           // at the correct location before the render loop runs (avoids 1-frame flash
           // at wrong position on respawn, especially visible when mesh becomes visible).
@@ -3990,7 +4010,16 @@ async function main() {
               // in scaled world space = wx/wy/wz) round-trips correctly.
               // Other surfaces: keep sphere-approx (peanut worldToSurface waist issues, s44h-01).
               // s44r-07: pill uses worldToSurface same as torus fix (sphere-approx mismatch at body edges).
-              const ownerSurfaceUV = (lastCreatedSurfaceType === 'torus' || lastCreatedSurfaceType === 'pill')
+              // s44r8-03: cube uses worldToSurface — sphere-approx maps top face (y=+9) to v≈0 (north
+              // pole), but CubeSurface top-flat region uses v≈0.97. getPoint(0.97≈u,0≈v) lands on the
+              // BOTTOM face → bullets aimed "forward" on top face render inside the cube, invisible.
+              // Only U-direction bullets (azimuthal, horizontal) survive → appears as left/right only.
+              const isCubeSurface = lastCreatedSurfaceType === 'cube'
+                || lastCreatedSurfaceType === 'cube-ring'
+                || lastCreatedSurfaceType === 'cube-tunnel';
+              const ownerSurfaceUV = (lastCreatedSurfaceType === 'torus'
+                || lastCreatedSurfaceType === 'pill'
+                || isCubeSurface)
                 ? surface.worldToSurface(ownerWorldPos)
                 : { u: ownerPlayer!.surfaceU, v: ownerPlayer!.surfaceV };
               const ownerSp = surface.getPoint(ownerSurfaceUV.u, ownerSurfaceUV.v);
