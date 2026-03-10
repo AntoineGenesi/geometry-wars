@@ -1,0 +1,6 @@
+Merge commit: Merge s44b-06: normalize pickup collection radius to world-space units.
+
+This commit modifies 8 files (+70/-34 lines), spanning 4 TypeScript source, 1 game server, 1 game entities.
+This is a merge commit integrating work from s44b-06 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: server/rooms/GameRoom.ts, src/buffs/BuffPickupNew.ts, src/entities/Companion.ts, ...ickup-scale-invariant-radius.regression.test.ts, src/weapons/BuffPickup.ts, and others.
