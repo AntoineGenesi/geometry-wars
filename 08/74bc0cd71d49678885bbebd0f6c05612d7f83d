@@ -1,0 +1,6 @@
+Merge commit: Merge s44b-01: fix gun aim direction off by 130° on first MP spawn.
+
+This commit modifies 5 files (+306/-1 lines), spanning 1 documentation, 1 core game loop, 1 networking.
+This is a merge commit integrating work from s44b-01 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: docs/HUMAN_TEST.md, src/core/CameraController.ts, src/network-main.ts, ...b-01-camera-snap-first-spawn.regression.test.ts, .../s44b-01-gun-aim-direction-wrong-first-spawn.md.
