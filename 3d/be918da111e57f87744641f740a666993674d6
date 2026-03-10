@@ -1,6 +1,0 @@
-Chore/maintenance: s44f triage complete — 9 tasks, sequential execution.
-
-This commit modifies 11 files (+519 lines), spanning 6 task/ops files, 2 Markdown docs.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: TODO.md, inbox/2026-03-03_0001.md, tasks/s44f-01-map-size-buttons-wrong-style.md, tasks/s44f-02-language-flag-buttons-no-images.md, tasks/s44f-03-mp-weapon-switching-broken.md, and others.
