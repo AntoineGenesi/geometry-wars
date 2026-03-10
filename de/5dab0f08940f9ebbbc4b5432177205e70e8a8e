@@ -1,0 +1,12 @@
+Bug fix: improve progress logging hooks — duration tracking, dynamic paths, cleanup.
+
+This commit modifies 1 file (+69 lines), touching 1 task/ops files file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- Remove 4 dead hook scripts (agent-start/stop.sh, pre-compact.sh, post-compact-rehydrate.sh)
+- Add duration_ms calculation to track-subagent.sh and track-task-agent.sh
+- Replace hardcoded PROJECT_DIR with dynamic git detection in session-start-todos.sh and pre-compact-save.sh
+- Only create checkpoint stubs for long-running agent types
+- Remove duplicate hook registrations from hooks.json (already in settings.json)
+- Clean up 26 stale checkpoint stubs
