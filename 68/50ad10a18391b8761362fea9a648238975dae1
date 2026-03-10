@@ -1,0 +1,6 @@
+Merge commit: Merge s44e-02: Wire Gravity Gun rendering in MP.
+
+This commit modifies 13 files (+754/-43 lines), spanning 3 task/ops files, 2 other, 2 Markdown docs.
+This is a merge commit integrating work from s44e-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: .claude/locks/port-registry, .claude/state/pipeline-state.md, ...-blaster-fires-one-bullet-instead-of-two.prompt, .../s44e-02-gravity-gun-invisible.prompt, TODO.md, and others.
