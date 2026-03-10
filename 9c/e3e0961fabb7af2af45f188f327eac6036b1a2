@@ -1,6 +1,0 @@
-Feature addition: add ServerSurfaceManager — server surface lifecycle management.
-
-This commit modifies 4 files (+472 lines), touching 4 game server files.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
-
-Key files: server/movement/ServerMeshWalker.ts, server/movement/ServerSurfaceManager.test.ts, server/movement/ServerSurfaceManager.ts, server/shared/GameConstants.ts.
