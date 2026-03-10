@@ -1,0 +1,6 @@
+Merge commit: Merge s44j-14: rejoin during voting shows voting screen.
+
+This commit modifies 5 files (+129/-9 lines), spanning 2 networking, 1 documentation, 1 game server.
+This is a merge commit integrating work from s44j-14 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: docs/HUMAN_TEST.md, server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, .../s44j-14-rejoin-during-voting-goes-to-sphere.md.
