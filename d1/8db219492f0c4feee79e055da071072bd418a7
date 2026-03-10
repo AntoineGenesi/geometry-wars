@@ -1,0 +1,8 @@
+Merge commit: Merge s44l-08a: Dynamic enemy cap scales with difficulty on small maps.
+
+This commit modifies 4 files (+104/-2 lines), spanning 1 core game loop, 1 TypeScript source, 1 tests.
+This is a merge commit integrating work from s44l-08a into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: src/core/MapSize.ts, src/main.ts, src/test/difficulty-rebalance.test.ts, tasks/s44l-08a-dynamic-enemy-cap-small-maps.md.
+
+Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
