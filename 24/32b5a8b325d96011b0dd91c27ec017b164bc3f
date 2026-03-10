@@ -1,0 +1,5 @@
+Merge commit: Merge s44d-01: REVERT s44c-03 UV prediction — restore stable server-lerp MP movement.
+
+This commit modifies 3 files (+59/-62 lines), spanning 1 networking, 1 task/ops files, 1 Markdown docs.
+This is a merge commit integrating work from s44d-01 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: restore stable server-lerp MP movement.
