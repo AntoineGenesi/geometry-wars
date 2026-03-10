@@ -1,0 +1,16 @@
+Bug fix: peanut pole speed — match server isotropic correction in client prediction.
+
+This commit modifies 2 files (+98/-6 lines), spanning 1 networking, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Client prediction used per-axis metric corrections (rNorm*sinPhi floor 0.3) that diverged
+from server's isotropic peanutPlayerSpeedCorrection formula at poles (sinPhi→0). This caused
+client-server position mismatch → snap-back → perceived sluggishness at poles.
+
+Fix: replace per-axis corrections with server-matching formula:
+  speedCorrection = clamp(sqrt(uScale * vScale) / avg, 0.4, 2.5)
+Applied isotropically to both predDx and predDy. Average metric lazy-computed once
+with same 40-step area-weighted integration as GameRoom.ts _getPeanutAvgMetric.
+
+Files: src/network-main.ts (client prediction ~line 5065)
