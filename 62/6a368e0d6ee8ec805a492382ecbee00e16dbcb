@@ -1,0 +1,4 @@
+Merge commit: Merge s44e-03: Framerate-independent camera lerp in MP.
+
+This commit modifies 3 files (+46/-13 lines), spanning 1 core game loop, 1 networking, 1 task/ops files.
+This is a merge commit integrating work from s44e-03 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
