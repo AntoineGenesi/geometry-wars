@@ -1,6 +1,0 @@
-Chore/maintenance: clean up task backlog — mark 6 already-fixed tasks as Done, rewrite TODO.md.
-
-This commit modifies 9 files (+46/-112 lines), spanning 5 Markdown docs, 3 task/ops files.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: .claude/state/pipeline-state.md, TODO.md, ...3-mp-damage-still-low-despite-parity-rebuild.md, tasks/s43-11-mp-constant-parity-audit.md, tasks/s44-02-weapon-mastery-game-over-screen.md, and others.
