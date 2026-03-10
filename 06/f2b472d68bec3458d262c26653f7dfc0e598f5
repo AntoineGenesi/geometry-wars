@@ -1,0 +1,4 @@
+Chore/maintenance: comprehensive MP parity audit — updated report, GameConstants fixes.
+
+This commit modifies 3 files (+171/-60 lines), spanning 1 documentation, 1 game server, 1 task/ops files.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
