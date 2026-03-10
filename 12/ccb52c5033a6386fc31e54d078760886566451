@@ -1,0 +1,8 @@
+Documentation: TODO audit (144 tasks marked done) + docs fact-check.
+
+This commit modifies 6 files (+186/-177 lines), spanning 4 documentation, 1 Markdown docs, 1 task/ops files.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Key files: TODO.md, docs/ARCHITECTURE.md, docs/INDEX.md, docs/MULTIPLAYER.md, docs/future-work.md, and others.
+
+Documentation in this project spans multiple formats: task files (tasks/*.md), decision logs (decisions/*.md), HTML reports (reports/), and architecture guides (docs/). Keeping documentation accurate after code changes is mandatory — stale docs cause wasted investigation time when future sessions rely on incorrect information. This project has strict rules against citing reports older than 7 days without verifying they still reflect current code.
