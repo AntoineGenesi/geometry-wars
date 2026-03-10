@@ -1,6 +1,0 @@
-Merge commit: Merge s44h-07: Guardian drone damage numbers now display on all hits.
-
-This commit modifies 4 files (+39/-10 lines), spanning 2 game entities, 1 core game loop, 1 task/ops files.
-This is a merge commit integrating work from s44h-07 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: src/core/CollisionSystem.ts, src/entities/Bullet.ts, src/entities/Companion.ts, tasks/s44h-07-guardian-drone-damage-numbers.md.
