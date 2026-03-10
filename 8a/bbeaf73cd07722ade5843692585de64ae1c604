@@ -1,0 +1,18 @@
+Feature addition: add game mode indicator for PvP/PvPvE gameplay.
+
+This commit modifies 4 files (+232 lines), spanning 2 tests, 1 networking, 1 task/ops files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Added visible indicator during MP gameplay that displays current game mode:
+- Cyan/yellow label at top-left (top:50px, left:10px)
+- Shows mode name: "PvP MODE", "PvPvE MODE", "WAVES", etc.
+- Only visible during active gameplay (hidden during lobby/voting)
+- Doesn't interfere with critical UI elements
+
+Game state: MP surfaces mostly working from s44q fixes.
+User couldn't distinguish PvP vs PvPvE during gameplay.
+
+Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
+
+Key files: src/network-main.ts, src/test/game-mode-indicator.test.ts, src/test/game-mode-indicator.visual.test.ts, tasks/s44r-03-game-mode-indicator-pvp-pvpve.md.
