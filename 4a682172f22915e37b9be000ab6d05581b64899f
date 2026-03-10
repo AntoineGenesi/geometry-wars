@@ -1,0 +1,14 @@
+Merge commit: Merge s44r6-12: Documentation cleanup — TODO audit (144 marked done) + docs fact-check.
+
+This commit modifies 6 files (+186/-177 lines), spanning 4 documentation, 1 Markdown docs, 1 task/ops files.
+This is a merge commit integrating work from s44r6-12 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: TODO audit (144 marked done) + docs fact-check.
+
+Additional context from the commit body:
+TODO.md: 144 items marked [x] across s44r6/r4/r3/r2/q/p/o/n/l/k/i/h/j/g sessions.
+docs/: Added stale warnings to ARCHITECTURE.md and future-work.md, deprecated
+splitscreen section in MULTIPLAYER.md, updated INDEX.md session references.
+
+Game state: Docs-only — no game logic changed. 10 gameplay tasks merged this session.
+
+Key files: TODO.md, docs/ARCHITECTURE.md, docs/INDEX.md, docs/MULTIPLAYER.md, docs/future-work.md, and others.
