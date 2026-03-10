@@ -1,4 +1,0 @@
-Merge commit: Merge s44l-07: Ensure boss spawns on small cube map.
-
-This commit modifies 3 files (+135/-100 lines), spanning 1 enemy AI, 1 tests, 1 task/ops files.
-This is a merge commit integrating work from s44l-07 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
