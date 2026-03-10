@@ -1,0 +1,14 @@
+Feature addition: dim unavailable game mode buttons based on selected map.
+
+This commit modifies 3 files (+234/-2 lines), spanning 2 UI/HUD, 1 Markdown docs.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- VotingScreen.ts: add MODE_SURFACE_RESTRICTIONS map + getUnavailableModesForSurface() export
+- Claustrophobia mode dims on surfaces outside CLAUSTROPHOBIA_SURFACES (cube, pill, peanut, cube-tunnel)
+- Surface click handler: auto-switches mode to 'waves' if selected mode becomes unavailable
+- applyModeDimming() toggles vs-mode-disabled CSS class (opacity 0.35, cursor not-allowed)
+- update() and buildDOM() both call applyModeDimming for consistent state
+- VotingScreen.test.ts: 11 new tests covering dimming logic and UI behavior
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
