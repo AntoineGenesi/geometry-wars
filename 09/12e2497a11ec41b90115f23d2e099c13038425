@@ -1,6 +1,0 @@
-Bug fix: add missing flex layout to mobile sub-panel CSS.
-
-This commit modifies 10 files (+591/-1 lines), spanning 6 other, 1 UI/HUD, 1 task/ops files.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
-
-Key files: check-html.mjs, check-overlap.mjs, check-overlap2.mjs, check-overlap3.mjs, check-overlap4.mjs, and others.
