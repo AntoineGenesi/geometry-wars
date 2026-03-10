@@ -1,6 +1,0 @@
-Merge commit: Merge s44i-02-koth-claustrophobia-scoring-bug.
-
-This commit modifies 8 files (+516/-20 lines), spanning 3 game server, 2 networking, 1 documentation.
-This is a merge commit integrating work from s44i-02-koth-claustrophobia-scoring-bug into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: docs/HUMAN_TEST.md, server/rooms/GameRoom.ts, server/rooms/GameRoom.zone-scoring.test.ts, server/schema/GameState.ts, src/core/modes/ClaustrophobiaMode.ts, and others.
