@@ -1,0 +1,4 @@
+Feature addition: rewrite local multiplayer to use MeshWalker-based movement.
+
+This commit modifies 1 file (+282/-128 lines), touching 1 TypeScript source file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
