@@ -1,4 +1,0 @@
-Bug fix: performance profiler overlay not showing (s44j-18) — ProfilingOverlay.ts.
-
-This commit modifies 2 files (+23/-7 lines), spanning 1 UI/HUD, 1 Markdown docs.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
