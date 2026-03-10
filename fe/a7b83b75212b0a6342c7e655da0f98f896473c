@@ -1,0 +1,15 @@
+Merge commit: Merge s44r3-10: Fix PvP scoreboard — lives decrement + show kills score.
+
+This commit modifies 4 files (+406/-1 lines), spanning 2 game server, 1 networking, 1 Markdown docs.
+This is a merge commit integrating work from s44r3-10 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: lives decrement + show kills score.
+
+Additional context from the commit body:
+Game state: 6 of 11 s44r3 tasks merged. PvP scoreboard now shows kills (not wave score)
+and decrements lives on PvP kills. Remaining: hit detection offset (s44r3-09 in progress),
+portals (s44r3-11), lives check (s44r3-07), language selector (s44r3-01), verification report (s44r3-04).
+
+# Conflicts:
+#	tasks/s44r3-10-pvp-score-display-and-scoreboard-broken.md
+
+Key files: server/rooms/GameRoom.pvp-score-display.test.ts, server/rooms/GameRoom.ts, src/network-main.ts, ...3-10-pvp-score-display-and-scoreboard-broken.md.
