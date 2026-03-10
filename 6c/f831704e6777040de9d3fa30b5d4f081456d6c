@@ -1,0 +1,9 @@
+Merge commit: Merge s44j-pvpve-14b: Player count difficulty adjustment for PvPvE.
+
+This commit modifies 5 files (+321/-2 lines), spanning 4 game server, 1 Markdown docs.
+This is a merge commit integrating work from s44j-pvpve-14b into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Additional context from the commit body:
+Resolved import conflict — kept both PVP_KILLS_TO_WIN and DIFFICULTY_PER_PLAYER_FACTOR.
+
+Key files: server/rooms/GameRoom.pvpve-difficulty.test.ts, server/rooms/GameRoom.ts, server/shared/GameConstants.ts, server/shared/GameSettings.ts, ...pvpve-14b-player-count-difficulty-adjustment.md.
