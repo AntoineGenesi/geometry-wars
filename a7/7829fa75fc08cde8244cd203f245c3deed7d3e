@@ -1,0 +1,6 @@
+Merge commit: Merge s44j-settings-16d: Pause menu server settings for host.
+
+This commit modifies 7 files (+867 lines), spanning 2 game server, 2 networking, 1 UI/HUD.
+This is a merge commit integrating work from s44j-settings-16d into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: server/rooms/GameRoom.pause-menu-settings.test.ts, server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, src/ui/PauseMenu.ts, and others.
