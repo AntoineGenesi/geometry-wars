@@ -1,6 +1,0 @@
-Merge commit: Merge s44j-25: damage numbers for all damage sources.
-
-This commit modifies 7 files (+342/-10 lines), spanning 3 TypeScript source, 1 documentation, 1 tests.
-This is a merge commit integrating work from s44j-25 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: docs/HUMAN_TEST.md, src/buffs/BuffManager.ts, src/buffs/damage-numbers.regression.test.ts, src/core/GameLoop.ts, src/effects/ScorePopup.ts, and others.
