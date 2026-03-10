@@ -1,8 +1,0 @@
-Chore/maintenance: update outdated speed comments for S44b-09 consistency.
-
-This commit modifies 2 files (+2/-2 lines), spanning 1 game server, 1 tests.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Additional context from the commit body:
-- server/shared/GameConstants.ts: Update enemy speed comment from 0.095 to 0.105
-- src/test/s34b-lan-position-reconciliation.regression.test.ts: Update calculation comment to use 0.105
