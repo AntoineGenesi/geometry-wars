@@ -1,0 +1,7 @@
+Merge commit: Merge s44o-04d: Fix Mobius seam traversal + hit detection — half-twist topology in client prediction, accurate server UV.
+
+This commit modifies 14 files (+1147/-134 lines), spanning 4 Markdown docs, 2 tests, 1 game server.
+This is a merge commit integrating work from s44o-04d into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: half-twist topology in client prediction, accurate server UV.
+
+Key files: DISCOVERIES.md, reports/grid-traversal-sp-latest.json, server/rooms/GameRoom.ts, src/network-main.ts, src/test/stress-test-results.json, and others.
