@@ -1,0 +1,15 @@
+Feature addition: entity culling dims instead of hides, add 90-degree-hide setting.
+
+This commit modifies 4 files (+51/-10 lines), spanning 2 UI/HUD, 1 core game loop, 1 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- EnemyInstanceManager.updateInstancesWithLOD: when hide90DegreeEntities=false
+  (default), entities >90° from player are rendered at 0.3 opacity instead of
+  zero-scaled (hidden). Uses existing per-instance opacityAttribute.
+- Added enable90DegreeHide boolean to GraphicsSettings (default: false = dim mode)
+- SettingsMenu: added toggle UI row "Hide Far-Side Entities (90°)" in Graphics tab
+- GameLoop: loads enable90DegreeHide setting every 60 frames (cached), passes to
+  EnemyInstanceManager — code path: main.ts → GameLoop.ts → updateInstancesWithLOD
+
+Key files: src/core/GameLoop.ts, src/rendering/EnemyInstanceManager.ts, src/ui/SettingsMenu.test.ts, src/ui/SettingsMenu.ts.
