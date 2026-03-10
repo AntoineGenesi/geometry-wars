@@ -1,0 +1,13 @@
+Feature addition: comprehensive visual test suite.
+
+This commit modifies 5 files (+1912/-4 lines), spanning 4 tests, 1 other.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Add programmatic visual integration tests covering bullet origin/direction,
+surface following across bevels, camera centering, enemy positioning,
+mesh quality, collision geometry, depth opacity, and grid deformation.
+Also add Playwright E2E spec for rendered output verification.
+Total test count: 688 (all passing).
+
+Key files: decisions/visual-test-suite-2026-02-07.md, playwright.config.js, src/test/visual-integration.test.ts, src/weapons/WeaponManager.test.ts, tests/visual-e2e.spec.ts.
