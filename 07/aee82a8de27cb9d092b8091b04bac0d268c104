@@ -1,0 +1,16 @@
+Feature addition: difficulty scaling, sound limiter, surface speed normalization, various fixes.
+
+This commit modifies 33 files (+1086/-324 lines), spanning 4 TypeScript source, 2 core game loop, 1 Markdown docs.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- 5-tier difficulty (Normal→Nightmare), HP/speed/wave scaling
+- SoundEngine: DynamicsCompressor limiter, voice cap, priority system
+- Surface speedScale framework for consistent movement across surfaces
+- FaceWalker geodesic edge crossing improvements
+- Cube-tunnel size/speed normalization
+- Performance logger gameplay fields (score, kills, deaths, weapon)
+- ParticleSystem highWaterMark, GlowTrail pooling
+- Various playground and UI fixes
+
+Key files: CLAUDE.md, package.json, src/audio/BackgroundMusic.ts, src/audio/SoundEngine.ts, src/benchmark.ts, and others.
