@@ -1,0 +1,4 @@
+Feature addition: mode icons in voting screen + fix stale mode tests.
+
+This commit modifies 3 files (+57/-21 lines), spanning 2 UI/HUD, 1 task/ops files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
