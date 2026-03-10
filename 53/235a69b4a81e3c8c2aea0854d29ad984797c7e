@@ -1,4 +1,0 @@
-Merge commit: Merge s44e-01: Blaster fires 2 visible bullets in MP.
-
-This commit modifies 2 files (+36/-6 lines), spanning 1 networking, 1 Markdown docs.
-This is a merge commit integrating work from s44e-01 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
