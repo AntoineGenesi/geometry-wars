@@ -1,0 +1,18 @@
+Bug fix: LAN client prediction — apply aim orientation even when stationary.
+
+This commit modifies 1 file (+55/-44 lines), touching 1 networking file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Previously client-side prediction only ran when moveX/moveY were non-zero.
+This meant aim angle updates (turning while standing still, shooting while
+stationary) waited for server response = 16-33ms perceived input lag.
+
+Now prediction ALWAYS updates the local player's visual position and aim
+orientation every frame, matching how co-op updates instantly. Movement
+prediction still only applies delta when WASD is held.
+
+This was identified as Issue #1 (CRITICAL) in the LAN deep audit:
+decisions/lan-deep-audit-2026-02-11.md
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
