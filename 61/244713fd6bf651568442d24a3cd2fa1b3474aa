@@ -1,0 +1,11 @@
+Merge commit: Merge s44j-pvp-13g: PvP mode integration testing + wire-up.
+
+This commit modifies 7 files (+648/-17 lines), spanning 4 game server, 2 tests, 1 networking.
+This is a merge commit integrating work from s44j-pvp-13g into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Additional context from the commit body:
+Resolved conflicts — kept all mode entries (pvp + pvpve) in VALID_MODES and lobby mode selector.
+
+Key files: server/rooms/GameRoom.pvp.test.ts, server/rooms/GameRoom.ts, server/shared/GameConstants.ts, server/shared/GameSettings.ts, src/network-main.ts, and others.
+
+Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
