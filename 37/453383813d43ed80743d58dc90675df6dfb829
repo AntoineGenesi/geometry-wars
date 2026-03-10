@@ -1,0 +1,4 @@
+Bug fix: Taurus entity flickering — hysteresis dimming.
+
+This commit modifies 3 files (+275/-3 lines), spanning 2 core game loop, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
