@@ -1,0 +1,16 @@
+Feature addition: SurfaceAgent system, menu overhaul, perf tests, research docs.
+
+This commit modifies 13 files (+5373/-85 lines), spanning 3 TypeScript source, 2 Markdown docs, 1 documentation.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- SurfaceAgent with 5 composable behaviors (Idle, MoveTo, Follow, Orbit, Patrol)
+- Companions refactored to use SurfaceAgent + OrbitBehavior
+- Start menu: flexbox layout, surface selection after mode pick
+- Fix co-op killTally temporal dead zone crash
+- Fix LAN error handling (distinguish network vs other errors)
+- Performance load tests (45 tests) + benchmark data module
+- Interactive session report (reports/session-report.html)
+- Research: Web vs Unity/Godot, distributed compute architecture
+
+Key files: reports/session-report.html, research/distributed-compute-research.md, research/web-vs-engines-research.md, src/agents/SurfaceAgent.test.ts, src/agents/SurfaceAgent.ts, and others.
