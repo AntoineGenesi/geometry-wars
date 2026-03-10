@@ -1,0 +1,22 @@
+Bug fix: Phaser ghost kills — invisible enemy no longer kills player.
+
+This commit modifies 7 files (+289/-8 lines), spanning 2 core game loop, 2 enemy AI, 1 documentation.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Root cause: Phaser enemy cycles through FadingIn/Visible/FadingOut/Invisible phases.
+When invisible/fading, _invulnerable=true (blocks bullets) but isMaterializing=false
+(collision system still ran player-enemy check). Phaser killed player while opacity=0.
+
+Fix:
+- Added isGhostForPlayer:boolean=false to BaseEnemy
+- Phaser sets isGhostForPlayer=true during FadingIn/FadingOut/Invisible phases
+- Phaser sets isGhostForPlayer=false during Visible phase (only time it can kill)
+- CollisionSystem.checkPlayerEnemyCollisions() skips isGhostForPlayer enemies
+- GameInstance._checkEnemyPlayerCollisions() same fix (test harness path)
+
+Files: BaseEnemy.ts, Phaser.ts, CollisionSystem.ts, GameInstance.ts
+
+Regression test: src/test/s44h-03-phaser-ghost-kills.regression.test.ts
+
+Key files: docs/HUMAN_TEST.md, src/core/CollisionSystem.ts, src/core/GameInstance.ts, src/entities/enemies/BaseEnemy.ts, src/entities/enemies/Phaser.ts, and others.
