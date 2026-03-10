@@ -1,0 +1,4 @@
+Feature addition: add ServerMeshWalker — server-side geodesic face-walking.
+
+This commit modifies 3 files (+372 lines), touching 3 game server files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
