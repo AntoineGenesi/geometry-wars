@@ -4,7 +4,7 @@
  * When a user clicks a visual style thumbnail, this class creates a full-screen
  * playable mini-game with that visual style applied.
  *
- * DESIGN: Uses PlaygroundGame for the core game engine (scene, camera, player,
+ * DESIGN: Uses GameInstance for the core game engine (scene, camera, player,
  * enemies, collision, game loop). This class adds:
  * - Full-screen overlay container
  * - Visual preset application (grid material, surface material, bloom, Sektori shader)
@@ -14,7 +14,7 @@
  */
 
 import * as THREE from 'three';
-import { PlaygroundGame } from '../core/PlaygroundGame';
+import { GameInstance } from '../core/GameInstance';
 import { SurfaceType } from '../surfaces/SurfaceFactory';
 import {
   createSektoriGridMaterial,
@@ -38,7 +38,7 @@ const STARTING_LIVES = 0;
 // ---------------------------------------------------------------------------
 
 export class VisualPlaygroundDemo {
-  private playgroundGame: PlaygroundGame;
+  private gameInstance: GameInstance;
   private overlay: HTMLDivElement;
   private canvasContainer: HTMLDivElement;
 
@@ -134,7 +134,7 @@ export class VisualPlaygroundDemo {
     titleBar.appendChild(backBtn);
     this.overlay.appendChild(titleBar);
 
-    // -- Canvas container (PlaygroundGame renders into this) --
+    // -- Canvas container (GameInstance renders into this) --
     this.canvasContainer = document.createElement('div');
     this.canvasContainer.style.cssText =
       `position:relative;display:inline-block;width:${DEMO_WIDTH}px;height:${DEMO_HEIGHT}px;`;
@@ -174,21 +174,21 @@ export class VisualPlaygroundDemo {
     desc.textContent = preset.description;
     this.overlay.appendChild(desc);
 
-    // -- Add overlay to DOM BEFORE creating PlaygroundGame --
-    // CRITICAL: PlaygroundGame constructor calls input.setContainer(container),
+    // -- Add overlay to DOM BEFORE creating GameInstance --
+    // CRITICAL: GameInstance constructor calls input.setContainer(container),
     // which calls getBoundingClientRect(). The container MUST be in the DOM
     // for getBoundingClientRect() to return correct dimensions. Without this,
     // viewport width/height are 0, causing division-by-zero in aim calculation
     // (mouseX - cx) / halfMin = NaN, making mouse aim completely broken.
     document.body.appendChild(this.overlay);
 
-    // -- Create PlaygroundGame (container is now in the DOM) --
-    this.playgroundGame = new PlaygroundGame({
+    // -- Create GameInstance (container is now in the DOM) --
+    this.gameInstance = new GameInstance({
       container: this.canvasContainer,
       width: DEMO_WIDTH,
       height: DEMO_HEIGHT,
       surface: surfaceType,
-      weapon: null, // free weapon swaps
+      lockedWeapon: null, mode: 'demo' as any, // free weapon swaps
       enemyCount: ENEMY_COUNT,
       lives: STARTING_LIVES,
       surfaceScale: 10,
@@ -223,7 +223,7 @@ export class VisualPlaygroundDemo {
       if (key === 'escape') {
         if (this.paused) {
           this.paused = false;
-          this.playgroundGame.start();
+          this.gameInstance.start();
           this.hintOverlay.style.display = 'none';
         } else {
           this.close();
@@ -250,7 +250,7 @@ export class VisualPlaygroundDemo {
 
       if (this.paused) {
         this.paused = false;
-        this.playgroundGame.start();
+        this.gameInstance.start();
         this.hintOverlay.style.display = 'none';
         this.lastTime = performance.now();
         return;
@@ -259,7 +259,7 @@ export class VisualPlaygroundDemo {
       if (!this.focused) {
         this.focused = true;
         this.hintOverlay.style.display = 'none';
-        this.playgroundGame.start();
+        this.gameInstance.start();
         this.lastTime = performance.now();
       }
     };
@@ -275,10 +275,10 @@ export class VisualPlaygroundDemo {
     this.onWheelHandler = (e: WheelEvent) => {
       if (this.disposed || !this.focused || this.paused) return;
       e.preventDefault();
-      const currentDist = this.playgroundGame.getCameraDistance();
+      const currentDist = this.gameInstance.getCameraDistance();
       const zoomSpeed = 1.5;
       const delta = e.deltaY > 0 ? zoomSpeed : -zoomSpeed;
-      this.playgroundGame.setCameraDistance(currentDist + delta);
+      this.gameInstance.setCameraDistance(currentDist + delta);
     };
 
     window.addEventListener('keydown', this.onKeyDownHandler);
@@ -301,8 +301,8 @@ export class VisualPlaygroundDemo {
 
   private applyVisualPreset(): void {
     const preset = this.preset;
-    const surface = this.playgroundGame.surface;
-    const scene = this.playgroundGame.game.scene;
+    const surface = this.gameInstance.surface;
+    const scene = this.gameInstance.game.scene;
 
     // Set scene background
     scene.background = this.bgColor.clone();
@@ -358,13 +358,13 @@ export class VisualPlaygroundDemo {
     }
 
     // Apply bloom settings (works for both WebGL2 and WebGPU)
-    this.playgroundGame.game.setBloomSettings(
+    this.gameInstance.game.setBloomSettings(
       preset.bloomStrength,
       preset.bloomThreshold ?? 0.85
     );
     // Radius is WebGL2-only
-    if (this.playgroundGame.game.bloomPass && preset.bloomRadius !== undefined) {
-      this.playgroundGame.game.bloomPass.radius = preset.bloomRadius;
+    if (this.gameInstance.game.bloomPass && preset.bloomRadius !== undefined) {
+      this.gameInstance.game.bloomPass.radius = preset.bloomRadius;
     }
   }
 
@@ -374,7 +374,7 @@ export class VisualPlaygroundDemo {
 
   private updateSektoriGlow(_dt?: number): void {
     if (!this.sektoriMaterial || !this.sektoriTrail) return;
-    const playerPos = this.playgroundGame.player.mesh.position;
+    const playerPos = this.gameInstance.player.mesh.position;
     // elapsedTime is already incremented by the caller (uiLoop)
     updateSektoriUniforms(this.sektoriMaterial, playerPos, this.elapsedTime);
     this.sektoriTrail.recordPosition(playerPos);
@@ -387,7 +387,7 @@ export class VisualPlaygroundDemo {
 
   private handleGameOver(): void {
     this.gameOver = true;
-    this.playgroundGame.stop();
+    this.gameInstance.stop();
     this.showOverlay(
       'GAME OVER',
       `Kills: ${this.kills} | Time: ${this.elapsed.toFixed(1)}s<br>` +
@@ -406,19 +406,19 @@ export class VisualPlaygroundDemo {
     this.lives = STARTING_LIVES;
 
     // Free old WebGL context explicitly before creating new one
-    const gl = this.playgroundGame.game.renderer.getContext();
+    const gl = this.gameInstance.game.renderer.getContext();
     const loseExt = gl.getExtension('WEBGL_lose_context');
     if (loseExt) loseExt.loseContext();
 
-    // Dispose and recreate PlaygroundGame for clean state
-    this.playgroundGame.dispose();
+    // Dispose and recreate GameInstance for clean state
+    this.gameInstance.dispose();
 
-    this.playgroundGame = new PlaygroundGame({
+    this.gameInstance = new GameInstance({
       container: this.canvasContainer,
       width: DEMO_WIDTH,
       height: DEMO_HEIGHT,
       surface: this.surfaceType,
-      weapon: null,
+      lockedWeapon: null, mode: 'demo' as any,
       enemyCount: ENEMY_COUNT,
       lives: STARTING_LIVES,
       surfaceScale: 10,
@@ -445,7 +445,7 @@ export class VisualPlaygroundDemo {
     this.applyVisualPreset();
 
     // Sektori glow is handled by uiLoop (no game.onRender override needed)
-    this.playgroundGame.start();
+    this.gameInstance.start();
   }
 
   // -----------------------------------------------------------------------
@@ -462,7 +462,7 @@ export class VisualPlaygroundDemo {
 
   private releaseFocus(): void {
     this.focused = false;
-    this.playgroundGame.stop();
+    this.gameInstance.stop();
     this.showOverlay('CLICK TO PLAY', 'WASD: Move | Mouse: Aim | Click: Shoot | Scroll: Zoom | ESC: Back');
   }
 
@@ -495,7 +495,7 @@ export class VisualPlaygroundDemo {
     const killsEl = this.statsOverlay.querySelector('#vpd-kills');
     const timeEl = this.statsOverlay.querySelector('#vpd-time');
     // STARTING_LIVES === 0 means infinite respawns; always show ∞
-    if (livesEl) livesEl.textContent = STARTING_LIVES === 0 ? 'LIVES: ∞' : `LIVES: ${this.playgroundGame.getStats().lives}`;
+    if (livesEl) livesEl.textContent = STARTING_LIVES === 0 ? 'LIVES: ∞' : `LIVES: ${this.gameInstance.getStats().lives}`;
     if (killsEl) killsEl.textContent = `KILLS: ${this.kills}`;
     if (timeEl) timeEl.textContent = `${this.elapsed.toFixed(1)}s`;
   }
@@ -536,12 +536,12 @@ export class VisualPlaygroundDemo {
     // Explicitly lose WebGL context to free GPU resources immediately.
     // Without this, the browser may keep stale contexts alive until GC,
     // causing new demos to fail silently when the context limit is reached.
-    const gl = this.playgroundGame.game.renderer.getContext();
+    const gl = this.gameInstance.game.renderer.getContext();
     const ext = gl.getExtension('WEBGL_lose_context');
     if (ext) ext.loseContext();
 
     // Dispose game engine
-    this.playgroundGame.dispose();
+    this.gameInstance.dispose();
 
     // Remove DOM
     this.overlay.remove();

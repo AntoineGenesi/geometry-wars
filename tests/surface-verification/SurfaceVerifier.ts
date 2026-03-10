@@ -18,14 +18,14 @@
  *   const bulletResult = SurfaceVerifier.runBulletOriginTest('torus', 6);
  *
  * Design notes:
- *   - Uses PlaygroundTestHarness (headless, no browser required)
+ *   - Uses RealGameTestHarness (headless, no browser required)
  *   - Measures in WORLD SPACE (THREE.Vector3 distances)
  *   - Walker path: (this.pg as any).instance._walker (same as SurfaceGridWalker)
  *   - One harness per surface type (not per grid point — cheaper)
  */
 
 import * as THREE from 'three';
-import { PlaygroundTestHarness } from '../../src/test/PlaygroundTestHarness';
+import { RealGameTestHarness } from '../../src/test/RealGameTestHarness';
 import type { SurfaceType } from '../../src/surfaces/SurfaceFactory';
 
 // ---------------------------------------------------------------------------
@@ -210,10 +210,10 @@ export class SurfaceVerifier {
   ): SpeedVerificationResult {
     const startMs = Date.now();
 
-    const harness = new PlaygroundTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
+    const harness = new RealGameTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
     harness.tick(10); // settle
 
-    const pg = (harness as any).pg;
+    const pg = (harness as any);
     const instance = pg.instance as any;
     const walker = instance._walker;
     const meshSurface = instance._meshSurface;
@@ -307,11 +307,11 @@ export class SurfaceVerifier {
     const startMs = Date.now();
 
     // Aim mouse to the right so bullets fire in a consistent direction
-    const harness = new PlaygroundTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
+    const harness = new RealGameTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
     harness.setMousePosition(600, 300); // aim right
     harness.tick(10); // settle
 
-    const pg = (harness as any).pg;
+    const pg = (harness as any);
     const instance = pg.instance as any;
     const walker = instance._walker;
     const meshSurface = instance._meshSurface;
@@ -424,10 +424,10 @@ export class SurfaceVerifier {
   ): HitDetectionResult {
     const startMs = Date.now();
 
-    const harness = new PlaygroundTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
+    const harness = new RealGameTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
     harness.tick(10); // settle
 
-    const pg = (harness as any).pg;
+    const pg = (harness as any);
     const instance = pg.instance as any;
     const walker = instance._walker;
     const meshSurface = instance._meshSurface;
@@ -564,10 +564,10 @@ export class SurfaceVerifier {
   ): SeamTraversalResult {
     const startMs = Date.now();
 
-    const harness = new PlaygroundTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
+    const harness = new RealGameTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
     harness.tick(10); // settle
 
-    const pg = (harness as any).pg;
+    const pg = (harness as any);
     const instance = pg.instance as any;
     const walker = instance._walker;
     const meshSurface = instance._meshSurface;
@@ -599,10 +599,10 @@ export class SurfaceVerifier {
 
     // No crossing found — check if player got stuck
     // Reset and try walkUntilStuck as a secondary check
-    const harness2 = new PlaygroundTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
+    const harness2 = new RealGameTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
     harness2.tick(10);
 
-    const pg2 = (harness2 as any).pg;
+    const pg2 = (harness2 as any);
     const instance2 = pg2.instance as any;
     const walker2 = instance2._walker;
     const meshSurface2 = instance2._meshSurface;
@@ -667,7 +667,7 @@ export class SurfaceVerifier {
 
   /** Teleport player to a UV point. Returns ok=false if teleport fails. */
   private static _teleportPlayer(
-    harness: PlaygroundTestHarness,
+    harness: RealGameTestHarness,
     walker: any,
     meshSurface: any,
     internalSurface: any,
@@ -728,11 +728,11 @@ export class SurfaceVerifier {
   ): PickupUVResult {
     const startMs = Date.now();
 
-    const harness = new PlaygroundTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
+    const harness = new RealGameTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
     harness.tick(5); // settle
 
-    const pg = (harness as any).pg;
-    const internalSurface = pg.instance._surface;
+    const pg = (harness as any);
+    const internalSurface = pg.surface;
 
     const uvPoints = SurfaceVerifier._generateGrid(surface, density);
     const samplePoints: PickupUVPoint[] = [];

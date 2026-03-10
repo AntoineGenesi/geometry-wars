@@ -1,7 +1,7 @@
 /**
  * Cube UV-Based Movement Fallback Tests (Session 13 Phase 3B)
  *
- * Tests that PlaygroundGame uses UV-based movement instead of MeshWalker on cube
+ * Tests that GameInstance uses UV-based movement instead of MeshWalker on cube
  * surfaces to avoid the "player gets stuck" issue identified in walker-integration.
  *
  * Background: MeshWalker is incompatible with cube geometry (flat faces + sharp edges).
@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest'
-import { PlaygroundTestHarness } from './PlaygroundTestHarness'
+import { RealGameTestHarness } from './RealGameTestHarness'
 
 // ---------------------------------------------------------------------------
 // Mock setup for headless testing
@@ -160,7 +160,7 @@ vi.mock('three/examples/jsm/postprocessing/UnrealBloomPass.js', () => ({
 
 describe('Cube UV-Based Movement Fallback', () => {
   it('DIAGNOSTIC: Player can move on cube (not stuck)', () => {
-    const harness = new PlaygroundTestHarness('cube')
+    const harness = new RealGameTestHarness('cube')
     harness.tick(10) // Settle
 
     const startPos = harness.getPlayerWorldPos()
@@ -186,7 +186,7 @@ describe('Cube UV-Based Movement Fallback', () => {
   })
 
   it('should not produce NaN positions during movement', () => {
-    const harness = new PlaygroundTestHarness('cube')
+    const harness = new RealGameTestHarness('cube')
     harness.tick(10)
 
     // Aggressive random movement for 3 seconds
@@ -209,7 +209,7 @@ describe('Cube UV-Based Movement Fallback', () => {
   })
 
   it('regression: sphere should still use MeshWalker', () => {
-    const sphereHarness = new PlaygroundTestHarness('sphere')
+    const sphereHarness = new RealGameTestHarness('sphere')
     sphereHarness.tick(10)
 
     const startPos = sphereHarness.getPlayerWorldPos()

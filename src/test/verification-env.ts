@@ -2,7 +2,7 @@
  * Verification Environment — DOM/window shims for headless game testing.
  *
  * This file sets up the minimal browser environment needed to instantiate
- * PlaygroundGame in Node/vitest. It's designed to be used as a vitest
+ * GameInstance in Node/vitest. It's designed to be used as a vitest
  * setupFile OR imported directly at the top of a test file.
  *
  * WHAT THIS PROVIDES:

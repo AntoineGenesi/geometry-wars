@@ -216,7 +216,7 @@ vi.mock('three', async (importOriginal) => {
 // Import harness after mocks
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 import type { SurfaceType } from '../surfaces/SurfaceFactory';
 
 // ---------------------------------------------------------------------------
@@ -233,7 +233,7 @@ const ALL_SURFACES: SurfaceType[] = [
 // ---------------------------------------------------------------------------
 
 describe('All Surfaces Verification', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -246,7 +246,7 @@ describe('All Surfaces Verification', () => {
 
       // (a) Player position is valid (not NaN)
       it('player position is valid (not NaN)', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(10);
 
         const pos = harness.getPlayerWorldPos();
@@ -258,7 +258,7 @@ describe('All Surfaces Verification', () => {
 
       // (b) Movement works in all 4 directions (WASD)
       it('movement works in all 4 directions', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(10);
 
         const directions: Array<{ key: string; name: string }> = [
@@ -292,7 +292,7 @@ describe('All Surfaces Verification', () => {
 
       // (c) Camera doesn't spin wildly (max rotation delta < PI per frame)
       it('camera does not spin wildly during movement', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(30); // Let camera settle
 
         // Test forward movement
@@ -316,7 +316,7 @@ describe('All Surfaces Verification', () => {
 
       // (d) Player stays on screen during movement
       it('player stays on screen during movement', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(30); // Let camera settle
 
         const keys = ['w', 'a', 's', 'd'];
@@ -346,7 +346,7 @@ describe('All Surfaces Verification', () => {
 
       // (e) Full traversal test - can the player actually move across the surface?
       it('player can traverse surface', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(10);
 
         const result = harness.testFullTraversal(120);
@@ -364,7 +364,7 @@ describe('All Surfaces Verification', () => {
 
   describe('Mobius: seam traversal', () => {
     it('player can cross the Mobius seam without getting stuck or NaN', () => {
-      harness = new PlaygroundTestHarness('mobius');
+      harness = new RealGameTestHarness('mobius');
       harness.tick(10);
 
       // Record UV coordinates as we traverse in one direction for a long time
@@ -421,7 +421,7 @@ describe('All Surfaces Verification', () => {
     });
 
     it('player can traverse Mobius laterally without NaN', () => {
-      harness = new PlaygroundTestHarness('mobius');
+      harness = new RealGameTestHarness('mobius');
       harness.tick(10);
 
       let nanDetected = false;
@@ -442,7 +442,7 @@ describe('All Surfaces Verification', () => {
     });
 
     it('Mobius camera stays stable near seam area', () => {
-      harness = new PlaygroundTestHarness('mobius');
+      harness = new RealGameTestHarness('mobius');
       harness.tick(30); // Let camera settle
 
       // Move forward for a long time to potentially cross the seam

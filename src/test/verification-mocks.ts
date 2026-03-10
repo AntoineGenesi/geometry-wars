@@ -46,13 +46,13 @@
  *   });
  *
  *   // --- Now import the harness ---
- *   import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+ *   import { RealGameTestHarness } from './RealGameTestHarness';
  *
  * ═══════════════════════════════════════════════════════════════════════════
  * THAT'S IT! You now have full access to the verification framework.
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * See PlaygroundTestHarness.ts for the full API documentation.
+ * See RealGameTestHarness.ts for the full API documentation.
  * See playground-verification.test.ts for a complete working example.
  */
 

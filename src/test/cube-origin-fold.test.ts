@@ -145,7 +145,7 @@ vi.mock('three', async (importOriginal) => {
 });
 
 // Now import harness
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 import { CubeSurface } from '../surfaces/CubeSurface';
 
 // ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ function testRoundTrip(surface: CubeSurface, u: number, v: number, tolerance = 0
 // ---------------------------------------------------------------------------
 
 describe('Cube Origin Fold/Glitch Tests', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -285,7 +285,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should not teleport when walking left across u=0 boundary (600 frames)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10); // Settle
 
     harness.pressKey('a'); // Walk left
@@ -306,7 +306,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should not teleport when walking right across u=0 boundary (600 frames)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10);
 
     harness.pressKey('d'); // Walk right
@@ -321,7 +321,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should not teleport when walking forward toward top face (600 frames)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10);
 
     harness.pressKey('w'); // Walk forward/up
@@ -336,7 +336,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should not teleport when walking backward toward bottom face (600 frames)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10);
 
     harness.pressKey('s'); // Walk backward/down
@@ -351,7 +351,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should not teleport when walking diagonally (w+a for 600 frames)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10);
 
     harness.pressKey('w');
@@ -372,7 +372,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should not teleport when walking diagonally (w+d for 600 frames)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10);
 
     harness.pressKey('w');
@@ -389,7 +389,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should not teleport when walking diagonally (s+a for 600 frames)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10);
 
     harness.pressKey('s');
@@ -406,7 +406,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should not teleport when walking diagonally (s+d for 600 frames)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10);
 
     harness.pressKey('s');
@@ -513,7 +513,7 @@ describe('Cube Origin Fold/Glitch Tests', () => {
   });
 
   it('should detect the fold surface if it exists (extended walk test)', () => {
-    harness = new PlaygroundTestHarness('cube');
+    harness = new RealGameTestHarness('cube');
     harness.tick(10);
 
     // Walk left for a very long time to force multiple wraps

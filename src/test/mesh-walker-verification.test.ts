@@ -281,14 +281,14 @@ vi.mock('three', async (importOriginal) => {
 // Import harness after mocks
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 // ---------------------------------------------------------------------------
 // Test Suites
 // ---------------------------------------------------------------------------
 
 describe('Mesh Walker Verification', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -305,14 +305,14 @@ describe('Mesh Walker Verification', () => {
       const seed = 12345;
 
       // Run 1
-      harness = new PlaygroundTestHarness({ surface: 'sphere', seed, enemyCount: 0 });
+      harness = new RealGameTestHarness({ surface: 'sphere', seed, enemyCount: 0 });
       harness.spawnEnemies(5, 'wanderer');
       harness.tick(1); // Just one frame to spawn
       const positions1 = harness.getEnemyWorldPositions();
       harness.dispose();
 
       // Run 2
-      harness = new PlaygroundTestHarness({ surface: 'sphere', seed, enemyCount: 0 });
+      harness = new RealGameTestHarness({ surface: 'sphere', seed, enemyCount: 0 });
       harness.spawnEnemies(5, 'wanderer');
       harness.tick(1);
       const positions2 = harness.getEnemyWorldPositions();
@@ -333,14 +333,14 @@ describe('Mesh Walker Verification', () => {
 
     it('different seeds produce different enemy paths', () => {
       // Run with seed 1
-      harness = new PlaygroundTestHarness({ surface: 'sphere', seed: 11111, enemyCount: 0 });
+      harness = new RealGameTestHarness({ surface: 'sphere', seed: 11111, enemyCount: 0 });
       harness.spawnEnemies(3, 'wanderer');
       harness.waitForMaterialization();
       const timeline1 = harness.recordEntityTimeline(60, 1);
       harness.dispose();
 
       // Run with seed 2
-      harness = new PlaygroundTestHarness({ surface: 'sphere', seed: 22222, enemyCount: 0 });
+      harness = new RealGameTestHarness({ surface: 'sphere', seed: 22222, enemyCount: 0 });
       harness.spawnEnemies(3, 'wanderer');
       harness.waitForMaterialization();
       const timeline2 = harness.recordEntityTimeline(60, 1);
@@ -371,7 +371,7 @@ describe('Mesh Walker Verification', () => {
 
   describe('Enemy Movement — Sphere', () => {
     beforeEach(() => {
-      harness = new PlaygroundTestHarness({ surface: 'sphere', seed: 54321, enemyCount: 0 });
+      harness = new RealGameTestHarness({ surface: 'sphere', seed: 54321, enemyCount: 0 });
       harness.tick(10);
     });
 
@@ -445,13 +445,13 @@ describe('Mesh Walker Verification', () => {
   describe('Enemy Behaviors', () => {
     describe('Chase Enemies', () => {
       beforeEach(() => {
-        harness = new PlaygroundTestHarness({ surface: 'sphere', seed: 99999, enemyCount: 0 });
+        harness = new RealGameTestHarness({ surface: 'sphere', seed: 99999, enemyCount: 0 });
         harness.tick(10);
       });
 
       it('grunt moves toward player', () => {
         // Spawn grunt on opposite side of sphere from player
-        harness.pg.enemySpawner.spawn('grunt', 0.5, 0.0);
+        harness.enemySpawner.spawn('grunt', 0.5, 0.0);
         harness.waitForMaterialization();
 
         const playerPos = harness.getPlayerWorldPos();
@@ -469,7 +469,7 @@ describe('Mesh Walker Verification', () => {
       });
 
       it('swarm enemies move toward player', () => {
-        harness.pg.enemySpawner.spawn('swarm', 0.2, 0.2);
+        harness.enemySpawner.spawn('swarm', 0.2, 0.2);
         harness.waitForMaterialization();
 
         const playerPos = harness.getPlayerWorldPos();
@@ -486,7 +486,7 @@ describe('Mesh Walker Verification', () => {
       });
 
       it('approachglow moves toward player', () => {
-        harness.pg.enemySpawner.spawn('approachglow', 0.3, 0.7);
+        harness.enemySpawner.spawn('approachglow', 0.3, 0.7);
         harness.waitForMaterialization();
 
         const playerPos = harness.getPlayerWorldPos();
@@ -504,7 +504,7 @@ describe('Mesh Walker Verification', () => {
 
     describe('Random Walk Enemies', () => {
       beforeEach(() => {
-        harness = new PlaygroundTestHarness({ surface: 'sphere', seed: 77777, enemyCount: 0 });
+        harness = new RealGameTestHarness({ surface: 'sphere', seed: 77777, enemyCount: 0 });
         harness.tick(10);
       });
 
@@ -535,7 +535,7 @@ describe('Mesh Walker Verification', () => {
 
     describe('Special Pattern Enemies', () => {
       beforeEach(() => {
-        harness = new PlaygroundTestHarness({ surface: 'sphere', seed: 88888, enemyCount: 0 });
+        harness = new RealGameTestHarness({ surface: 'sphere', seed: 88888, enemyCount: 0 });
         harness.tick(10);
       });
 
@@ -604,7 +604,7 @@ describe('Mesh Walker Verification', () => {
     for (const surface of surfaces) {
       describe(`${surface}`, () => {
         beforeEach(() => {
-          harness = new PlaygroundTestHarness({ surface, seed: 11111, enemyCount: 0 });
+          harness = new RealGameTestHarness({ surface, seed: 11111, enemyCount: 0 });
           harness.tick(10);
         });
 
@@ -681,17 +681,17 @@ describe('Mesh Walker Verification', () => {
 
   describe('No NaN / No Stuck', () => {
     beforeEach(() => {
-      harness = new PlaygroundTestHarness({ surface: 'sphere', seed: 33333, enemyCount: 0 });
+      harness = new RealGameTestHarness({ surface: 'sphere', seed: 33333, enemyCount: 0 });
       harness.tick(10);
     });
 
     it('multiple enemy types running together produce no NaN', () => {
       // Spawn a mix of enemy types
-      harness.pg.enemySpawner.spawn('grunt', 0.2, 0.2);
-      harness.pg.enemySpawner.spawn('wanderer', 0.4, 0.4);
-      harness.pg.enemySpawner.spawn('rocket', 0.6, 0.6);
-      harness.pg.enemySpawner.spawn('snake', 0.8, 0.8);
-      harness.pg.enemySpawner.spawn('orbiter', 0.3, 0.7);
+      harness.enemySpawner.spawn('grunt', 0.2, 0.2);
+      harness.enemySpawner.spawn('wanderer', 0.4, 0.4);
+      harness.enemySpawner.spawn('rocket', 0.6, 0.6);
+      harness.enemySpawner.spawn('snake', 0.8, 0.8);
+      harness.enemySpawner.spawn('orbiter', 0.3, 0.7);
       harness.waitForMaterialization();
 
       // Run for extended time
@@ -736,7 +736,7 @@ describe('Mesh Walker Verification', () => {
     });
 
     it('boss enemy moves without NaN', () => {
-      harness.pg.enemySpawner.spawn('boss', 0.5, 0.3);
+      harness.enemySpawner.spawn('boss', 0.5, 0.3);
       harness.waitForMaterialization();
 
       const startPos = harness.getEnemyWorldPositions()[0];
@@ -760,8 +760,8 @@ describe('Mesh Walker Verification', () => {
     });
 
     it('giant enemies move without NaN', () => {
-      harness.pg.enemySpawner.spawn('giantneutron', 0.3, 0.3);
-      harness.pg.enemySpawner.spawn('giantwanderer', 0.7, 0.7);
+      harness.enemySpawner.spawn('giantneutron', 0.3, 0.3);
+      harness.enemySpawner.spawn('giantwanderer', 0.7, 0.7);
       harness.waitForMaterialization();
 
       for (let i = 0; i < 90; i++) {
@@ -777,8 +777,8 @@ describe('Mesh Walker Verification', () => {
     });
 
     it('titan enemies move without NaN', () => {
-      harness.pg.enemySpawner.spawn('titangrunt', 0.4, 0.4);
-      harness.pg.enemySpawner.spawn('titanweaver', 0.6, 0.6);
+      harness.enemySpawner.spawn('titangrunt', 0.4, 0.4);
+      harness.enemySpawner.spawn('titanweaver', 0.6, 0.6);
       harness.waitForMaterialization();
 
       for (let i = 0; i < 90; i++) {
@@ -794,10 +794,10 @@ describe('Mesh Walker Verification', () => {
     });
 
     it('special enemies move without NaN (virus, gate, spawner, painter)', () => {
-      harness.pg.enemySpawner.spawn('virus', 0.2, 0.3);
-      harness.pg.enemySpawner.spawn('gate', 0.4, 0.5);
-      harness.pg.enemySpawner.spawn('spawner', 0.6, 0.7);
-      harness.pg.enemySpawner.spawn('painter', 0.8, 0.9);
+      harness.enemySpawner.spawn('virus', 0.2, 0.3);
+      harness.enemySpawner.spawn('gate', 0.4, 0.5);
+      harness.enemySpawner.spawn('spawner', 0.6, 0.7);
+      harness.enemySpawner.spawn('painter', 0.8, 0.9);
       harness.waitForMaterialization();
 
       for (let i = 0; i < 90; i++) {
@@ -819,14 +819,14 @@ describe('Mesh Walker Verification', () => {
 
   describe('Player-Enemy Interaction', () => {
     beforeEach(() => {
-      harness = new PlaygroundTestHarness({ surface: 'sphere', seed: 55555, enemyCount: 0 });
+      harness = new RealGameTestHarness({ surface: 'sphere', seed: 55555, enemyCount: 0 });
       harness.tick(10);
     });
 
     it('grunt chases player when nearby', () => {
       // Spawn grunt near player
       const playerUV = harness.getPlayerSurfaceUV();
-      harness.pg.enemySpawner.spawn('grunt', playerUV.u + 0.1, playerUV.v);
+      harness.enemySpawner.spawn('grunt', playerUV.u + 0.1, playerUV.v);
       harness.waitForMaterialization();
 
       const playerPos = harness.getPlayerWorldPos();

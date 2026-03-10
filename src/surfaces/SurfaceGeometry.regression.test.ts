@@ -748,7 +748,7 @@ describe('Known issues documentation', () => {
   it('KNOWN ISSUE: Mobius camera glitch at seam — user reports camera sent back', () => {
     // The Mobius strip's v-inversion at the seam (u wrap) causes the player
     // orientation to flip. The moveOnSurface() correctly inverts v at the seam,
-    // but the camera/orientation system in PlaygroundGame.ts may not handle this
+    // but the camera/orientation system in GameInstance may not handle this
     // topology correctly, causing the "sent back the way you came" bug.
     //
     // Root cause hypothesis: applySurfaceTransform() uses the normal vector,

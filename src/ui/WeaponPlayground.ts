@@ -1,20 +1,20 @@
 /**
  * Interactive weapon demo/playground that runs inside the WeaponWiki modal.
  *
- * Uses PlaygroundGame for the core game engine (scene, camera, player movement,
+ * Uses GameInstance for the core game engine (scene, camera, player movement,
  * enemy spawning, collision, game loop) and adds playground-specific UI on top:
  * - Focus/pause management (click to play, ESC to pause)
  * - Stats overlay (DPS, kills, lives, time, surface name)
  * - Damage popups
  * - Hint overlay
  *
- * DESIGN: Uses the REAL game engine via PlaygroundGame, so weapon behavior,
+ * DESIGN: Uses the REAL game engine via GameInstance, so weapon behavior,
  * enemy AI, collision, and fire rates match the actual game exactly.
  */
 
 import * as THREE from 'three';
 import { WeaponType, WEAPON_CONFIGS } from '../weapons/WeaponTypes';
-import { PlaygroundGame } from '../core/PlaygroundGame';
+import { GameInstance } from '../core/GameInstance';
 import { SurfaceFactory, SurfaceType } from '../surfaces/SurfaceFactory';
 
 // ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ interface DamagePopup {
 // ---------------------------------------------------------------------------
 
 export class WeaponPlayground {
-  private playgroundGame: PlaygroundGame;
+  private gameInstance: GameInstance;
   private container: HTMLElement;
   private surfaceType: SurfaceType;
 
@@ -69,7 +69,7 @@ export class WeaponPlayground {
   private popupContainer: HTMLDivElement;
   private hintOverlay: HTMLDivElement;
 
-  // Loop supplement (stats/popup updates run on rAF since PlaygroundGame
+  // Loop supplement (stats/popup updates run on rAF since GameInstance
   // drives the core game loop internally)
   private rafId = 0;
   private lastTime = 0;
@@ -100,13 +100,13 @@ export class WeaponPlayground {
     const types = SurfaceFactory.getAvailableTypes();
     this.surfaceType = types[Math.floor(Math.random() * types.length)];
 
-    // Create the real game engine via PlaygroundGame
-    this.playgroundGame = new PlaygroundGame({
+    // Create the real game engine via GameInstance
+    this.gameInstance = new GameInstance({
       container,
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
       surface: this.surfaceType,
-      weapon: this.activeWeapon,
+      lockedWeapon: this.activeWeapon, mode: 'demo' as any,
       enemyCount: ENEMY_COUNT,
       lives: STARTING_LIVES,
       surfaceScale: 10,
@@ -165,7 +165,7 @@ export class WeaponPlayground {
     container.appendChild(this.hintOverlay);
 
     // -- Input handlers for focus/pause management --
-    // PlaygroundGame's InputManager handles WASD/mouse. We add our own
+    // GameInstance's InputManager handles WASD/mouse. We add our own
     // handlers ONLY for focus/pause gating and ESC.
     this.onKeyDown = (e: KeyboardEvent) => {
       if (!this.focused || this.disposed) return;
@@ -174,10 +174,10 @@ export class WeaponPlayground {
       if (key === 'escape') {
         this.paused = !this.paused;
         if (this.paused) {
-          this.playgroundGame.stop();
+          this.gameInstance.stop();
           this.showOverlay('PAUSED', 'Press ESC to resume or click outside to exit');
         } else {
-          this.playgroundGame.start();
+          this.gameInstance.start();
           this.hintOverlay.style.display = 'none';
         }
         e.preventDefault();
@@ -186,7 +186,7 @@ export class WeaponPlayground {
     };
 
     this.onKeyUp = () => {
-      // No-op; PlaygroundGame's InputManager handles key state
+      // No-op; GameInstance's InputManager handles key state
     };
 
     this.onCanvasClick = (e: MouseEvent) => {
@@ -200,7 +200,7 @@ export class WeaponPlayground {
 
       if (this.paused) {
         this.paused = false;
-        this.playgroundGame.start();
+        this.gameInstance.start();
         this.hintOverlay.style.display = 'none';
         return;
       }
@@ -208,7 +208,7 @@ export class WeaponPlayground {
       if (!this.focused) {
         this.focused = true;
         this.hintOverlay.style.display = 'none';
-        this.playgroundGame.start();
+        this.gameInstance.start();
         this.lastTime = performance.now();
       }
     };
@@ -225,10 +225,10 @@ export class WeaponPlayground {
     this.onWheel = (e: WheelEvent) => {
       if (this.disposed || !this.focused || this.paused) return;
       e.preventDefault();
-      const currentDist = this.playgroundGame.getCameraDistance();
+      const currentDist = this.gameInstance.getCameraDistance();
       const zoomSpeed = 1.5;
       const delta = e.deltaY > 0 ? zoomSpeed : -zoomSpeed;
-      this.playgroundGame.setCameraDistance(currentDist + delta);
+      this.gameInstance.setCameraDistance(currentDist + delta);
     };
 
     // Touch handlers for drag-to-orbit and pinch-to-zoom in WeaponDB
@@ -249,7 +249,7 @@ export class WeaponPlayground {
         if (!this.focused) {
           this.focused = true;
           this.hintOverlay.style.display = 'none';
-          this.playgroundGame.start();
+          this.gameInstance.start();
           this.lastTime = performance.now();
         }
       } else if (e.touches.length === 2) {
@@ -274,9 +274,9 @@ export class WeaponPlayground {
           const dy = t.clientY - this.touchOrbitLastY;
           this.touchOrbitLastX = t.clientX;
           this.touchOrbitLastY = t.clientY;
-          const { yaw, pitch } = this.playgroundGame.getOrbitAngles();
+          const { yaw, pitch } = this.gameInstance.getOrbitAngles();
           const PITCH_MAX = Math.PI * 0.4;
-          this.playgroundGame.setOrbitAngles(
+          this.gameInstance.setOrbitAngles(
             yaw + dx * this.TOUCH_ORBIT_SENSITIVITY,
             Math.max(-PITCH_MAX, Math.min(PITCH_MAX, pitch - dy * this.TOUCH_ORBIT_SENSITIVITY)),
           );
@@ -288,7 +288,7 @@ export class WeaponPlayground {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (this.touchPinchLastDist > 0) {
           const delta = (this.touchPinchLastDist - dist) * 0.05;
-          this.playgroundGame.setCameraDistance(this.playgroundGame.getCameraDistance() + delta);
+          this.gameInstance.setCameraDistance(this.gameInstance.getCameraDistance() + delta);
         }
         this.touchPinchLastDist = dist;
       }
@@ -332,7 +332,7 @@ export class WeaponPlayground {
 
   private releaseFocus(): void {
     this.focused = false;
-    this.playgroundGame.stop();
+    this.gameInstance.stop();
     this.showOverlay('CLICK TO PLAY', 'WASD: Move | Mouse: Aim | Click: Shoot | Scroll: Zoom | ESC: Pause');
   }
 
@@ -342,7 +342,7 @@ export class WeaponPlayground {
 
   private handleGameOver(): void {
     this.gameOver = true;
-    this.playgroundGame.stop();
+    this.gameInstance.stop();
     this.showOverlay(
       'GAME OVER',
       `Kills: ${this.kills} | Time: ${this.elapsed.toFixed(1)}s<br>` +
@@ -356,8 +356,8 @@ export class WeaponPlayground {
 
     // Spawn damage popup at the most recently killed enemy position
     // (approximate: use player position as fallback)
-    const stats = this.playgroundGame.getStats();
-    const playerPos = this.playgroundGame.player.mesh.position;
+    const stats = this.gameInstance.getStats();
+    const playerPos = this.gameInstance.player.mesh.position;
     this.spawnPopup(playerPos, 1);
   }
 
@@ -369,15 +369,15 @@ export class WeaponPlayground {
     this.damageAccum = 0;
     this.dpsTimer = 0;
 
-    // Dispose and recreate PlaygroundGame for clean state
-    this.playgroundGame.dispose();
+    // Dispose and recreate GameInstance for clean state
+    this.gameInstance.dispose();
 
-    this.playgroundGame = new PlaygroundGame({
+    this.gameInstance = new GameInstance({
       container: this.container,
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
       surface: this.surfaceType,
-      weapon: this.activeWeapon,
+      lockedWeapon: this.activeWeapon, mode: 'demo' as any,
       enemyCount: ENEMY_COUNT,
       lives: STARTING_LIVES,
       surfaceScale: 10,
@@ -396,7 +396,7 @@ export class WeaponPlayground {
       canvas.style.border = '1px solid rgba(255,255,255,0.1)';
     }
 
-    this.playgroundGame.start();
+    this.gameInstance.start();
   }
 
   // -----------------------------------------------------------------------
@@ -420,7 +420,7 @@ export class WeaponPlayground {
     this.hintOverlay.style.display = this.focused ? 'none' : 'flex';
 
     // Switch weapon in the real game engine
-    this.playgroundGame.setWeapon(wt);
+    this.gameInstance.setWeapon(wt);
   }
 
   dispose(): void {
@@ -448,7 +448,7 @@ export class WeaponPlayground {
     this.popups = [];
 
     // Dispose game engine
-    this.playgroundGame.dispose();
+    this.gameInstance.dispose();
 
     // Remove DOM elements
     this.statsOverlay.remove();
@@ -457,7 +457,7 @@ export class WeaponPlayground {
   }
 
   // -----------------------------------------------------------------------
-  // UI loop (updates stats + popups; game loop is driven by PlaygroundGame)
+  // UI loop (updates stats + popups; game loop is driven by GameInstance)
   // -----------------------------------------------------------------------
 
   private uiLoop = (now: number): void => {
@@ -490,7 +490,7 @@ export class WeaponPlayground {
 
   private spawnPopup(worldPos: THREE.Vector3, damage: number): void {
     _v1.copy(worldPos);
-    _v1.project(this.playgroundGame.game.camera);
+    _v1.project(this.gameInstance.game.camera);
     const screenX = ((_v1.x + 1) / 2) * CANVAS_WIDTH;
     const screenY = ((1 - _v1.y) / 2) * CANVAS_HEIGHT;
 
@@ -529,7 +529,7 @@ export class WeaponPlayground {
   // -----------------------------------------------------------------------
 
   private updateStats(): void {
-    const stats = this.playgroundGame.getStats();
+    const stats = this.gameInstance.getStats();
 
     const livesEl = this.statsOverlay.querySelector('#pg-lives');
     const dpsEl = this.statsOverlay.querySelector('#pg-dps');

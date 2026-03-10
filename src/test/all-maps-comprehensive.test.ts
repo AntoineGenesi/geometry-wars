@@ -2,7 +2,7 @@
  * All-Maps Comprehensive Test Suite — s44r-08
  *
  * Gameplay simulation tests for ALL 12 surface types at 3 size variants.
- * Uses SurfaceVerifier (which uses PlaygroundTestHarness) to test:
+ * Uses SurfaceVerifier (which uses RealGameTestHarness) to test:
  *   - Speed consistency (does movement slow down at poles/seams?)
  *   - Bullet origin accuracy (do bullets spawn from where the player is?)
  *   - Pickup UV roundtrip (can pickups be collected at all UV positions?)

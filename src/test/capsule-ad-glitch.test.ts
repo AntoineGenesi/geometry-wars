@@ -51,7 +51,7 @@ vi.mock('three', async (importOriginal) => {
   }};
 });
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 import type { SurfaceType } from '../surfaces/SurfaceFactory';
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ import type { SurfaceType } from '../surfaces/SurfaceFactory';
  * Measure position variance over N frames. High variance = oscillation/jitter.
  * Returns max displacement from the mean position.
  */
-function measureOscillation(harness: PlaygroundTestHarness, frames: number): {
+function measureOscillation(harness: RealGameTestHarness, frames: number): {
   maxDisplacement: number;
   positions: Array<{ x: number; y: number; z: number }>;
 } {
@@ -101,7 +101,7 @@ function measureOscillation(harness: PlaygroundTestHarness, frames: number): {
 /**
  * Check UV stability: no large jumps between consecutive frames.
  */
-function measureUVOscillation(harness: PlaygroundTestHarness, frames: number): {
+function measureUVOscillation(harness: RealGameTestHarness, frames: number): {
   maxUJump: number;
   maxVJump: number;
   uvs: Array<{ u: number; v: number }>;
@@ -132,14 +132,14 @@ function measureUVOscillation(harness: PlaygroundTestHarness, frames: number): {
 // ---------------------------------------------------------------------------
 
 describe('Pill map A+D simultaneous press', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) harness.dispose();
   });
 
   test('A+D simultaneously on pill = player stands still (no oscillation)', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10); // settle
 
     // Press A and D simultaneously
@@ -158,7 +158,7 @@ describe('Pill map A+D simultaneous press', () => {
   });
 
   test('A+D simultaneously on capsule = player stands still (no oscillation)', () => {
-    harness = new PlaygroundTestHarness('capsule');
+    harness = new RealGameTestHarness('capsule');
     harness.tick(10); // settle
 
     // Press A and D simultaneously
@@ -175,7 +175,7 @@ describe('Pill map A+D simultaneous press', () => {
   });
 
   test('A+D simultaneously on pill = UV stays stable', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10); // settle
 
     harness.pressKey('a');
@@ -192,7 +192,7 @@ describe('Pill map A+D simultaneous press', () => {
   });
 
   test('W+D simultaneously on pill = player moves diagonally (NOT loops in place)', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10); // settle
 
     const startPos = harness.getPlayerWorldPos().clone();
@@ -254,7 +254,7 @@ describe('Pill map A+D simultaneous press', () => {
   });
 
   test('W+A simultaneously on pill = player moves diagonally', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
     const startPos = harness.getPlayerWorldPos().clone();
@@ -276,7 +276,7 @@ describe('Pill map A+D simultaneous press', () => {
   });
 
   test('W+S simultaneously on pill = player stands still', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
     harness.pressKey('w');
@@ -295,7 +295,7 @@ describe('Pill map A+D simultaneous press', () => {
     // At speed 3.0, each direction covers 0.1 units in 2 frames, so the player
     // oscillates between 2 positions ~0.1 apart. This is correct physics, not a bug.
     // The user's "looping in place" bug was about W+D diagonal, not rapid A/D.
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
     const startPos = harness.getPlayerWorldPos().clone();
@@ -324,7 +324,7 @@ describe('Pill map A+D simultaneous press', () => {
   });
 
   test('after A+D release, single direction movement works normally on pill', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
     // Press A+D
@@ -358,9 +358,9 @@ describe('A+D simultaneous on all surfaces (regression check)', () => {
 
   for (const surfaceType of surfaces) {
     test(`A+D on ${surfaceType} = no oscillation`, () => {
-      let harness: PlaygroundTestHarness | null = null;
+      let harness: RealGameTestHarness | null = null;
       try {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(10);
 
         harness.pressKey('a');

@@ -196,7 +196,7 @@ vi.mock('three', async (importOriginal) => {
 // Imports (AFTER mocks)
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 import type { SurfaceType } from '../surfaces/SurfaceFactory';
 
 // ---------------------------------------------------------------------------
@@ -219,7 +219,7 @@ const SIZE_VARIANTS: Array<{ label: string; surfaceScale: number }> = [
 // ---------------------------------------------------------------------------
 
 describe('All Surfaces Size Variants', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -233,7 +233,7 @@ describe('All Surfaces Size Variants', () => {
         describe(`${surfaceType}`, () => {
 
           it('player position is valid at this size', () => {
-            harness = new PlaygroundTestHarness({
+            harness = new RealGameTestHarness({
               surface: surfaceType,
               surfaceScale: size.surfaceScale,
               width: 400,
@@ -250,7 +250,7 @@ describe('All Surfaces Size Variants', () => {
           });
 
           it('forward movement works at this size', () => {
-            harness = new PlaygroundTestHarness({
+            harness = new RealGameTestHarness({
               surface: surfaceType,
               surfaceScale: size.surfaceScale,
               width: 400,
