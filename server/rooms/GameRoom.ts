@@ -571,6 +571,105 @@ function cubeChordDist(u1: number, v1: number, u2: number, v2: number, scaleFact
 }
 
 /**
+ * Cube-tunnel: compound surface — beveled cube with through-tunnels.
+ * MUST match CubeWithTunnelSurface defaults: size=20, wallThickness=2.0.
+ *
+ * s44r6c-02: Cube-tunnel was NOT in usesWorldDist — used UV distance (0.04/scaleFactor)
+ * which is wildly inaccurate because the compound UV maps outer walls, lip curves, and
+ * inner walls into [0,1]². UV Euclidean distance produces hit radii 5-10× too large,
+ * causing "enemies killing from AoE-weapon distance" on cube-tunnel maps.
+ */
+const CT_BASE_SIZE = 20;
+const CT_WALL_THICKNESS = 2.0;
+// Face normals: 0=+Z, 1=+X, 2=-Z, 3=-X (same as CubeWithTunnelSurface)
+const _CT_FN: ReadonlyArray<readonly [number, number]> = [[0, 1], [1, 0], [0, -1], [-1, 0]];
+const _CT_FR: ReadonlyArray<readonly [number, number]> = [[1, 0], [0, -1], [-1, 0], [0, 1]];
+
+function cubeTunnelPoint3D(u: number, v: number, scaleFactor: number): [number, number, number] {
+  const size = CT_BASE_SIZE * scaleFactor;
+  const wallThickness = CT_WALL_THICKNESS * scaleFactor;
+  const lipRadius = wallThickness / 2;
+  const halfSize = size / 2;
+  const wallHeight = halfSize - lipRadius;
+  const minBevel = wallThickness / 2 + 0.1 * scaleFactor;
+  const bevelRadius = Math.max(size * 0.12, minBevel);
+  const spineHalfSize = halfSize - lipRadius;
+  const spineFlatHalfSize = spineHalfSize - bevelRadius;
+
+  // V region: outer wall, top lip, inner wall, bottom lip
+  const outerWallLen = 2 * wallHeight;
+  const lipLen = Math.PI * lipRadius;
+  const totalV = 2 * outerWallLen + 2 * lipLen;
+  const owf = outerWallLen / totalV;
+  const lf = lipLen / totalV;
+
+  const vw = ((v % 1) + 1) % 1;
+  let nOffset: number, yOffset: number;
+  if (vw < owf) {
+    const t = owf > 0 ? vw / owf : 0.5;
+    nOffset = lipRadius; yOffset = (2 * t - 1) * wallHeight;
+  } else if (vw < owf + lf) {
+    const t = lf > 0 ? (vw - owf) / lf : 0;
+    const a = t * Math.PI;
+    nOffset = lipRadius * Math.cos(a); yOffset = wallHeight + lipRadius * Math.sin(a);
+  } else if (vw < 2 * owf + lf) {
+    const t = owf > 0 ? (vw - owf - lf) / owf : 0.5;
+    nOffset = -lipRadius; yOffset = (1 - 2 * t) * wallHeight;
+  } else {
+    const t = lf > 0 ? (vw - 2 * owf - lf) / lf : 0;
+    const a = Math.PI + t * Math.PI;
+    nOffset = lipRadius * Math.cos(a); yOffset = -wallHeight + lipRadius * Math.sin(a);
+  }
+
+  // U region: face or bevel
+  const faceWidth = 2 * spineFlatHalfSize;
+  const bevelWidth = (Math.PI / 2) * bevelRadius;
+  const segmentWidth = faceWidth + bevelWidth;
+  const totalWidth = 4 * segmentWidth;
+  const scaledU = ((u % 1) + 1) % 1;
+  const posInTotal = scaledU * totalWidth;
+  const segIdx = Math.min(3, Math.floor(posInTotal / segmentWidth));
+  const posInSeg = posInTotal - segIdx * segmentWidth;
+  const uIsFace = posInSeg < faceWidth;
+  const localS = uIsFace
+    ? (faceWidth > 0 ? posInSeg / faceWidth : 0.5)
+    : (bevelWidth > 0 ? (posInSeg - faceWidth) / bevelWidth : 0);
+
+  // Spine point (center of cross-section profile)
+  let sx: number, sy: number, sz: number;
+  let ox: number, oz: number; // outward normal (XZ only)
+  const fn = _CT_FN[segIdx];
+  if (uIsFace) {
+    const fr = _CT_FR[segIdx];
+    const x = (localS - 0.5) * 2 * spineFlatHalfSize;
+    sx = fn[0] * spineHalfSize + fr[0] * x;
+    sy = 0;
+    sz = fn[1] * spineHalfSize + fr[1] * x;
+    ox = fn[0]; oz = fn[1];
+  } else {
+    const nextFn = _CT_FN[(segIdx + 1) % 4];
+    const a = localS * (Math.PI / 2);
+    const cosA = Math.cos(a), sinA = Math.sin(a);
+    const ccx = fn[0] * spineFlatHalfSize + nextFn[0] * spineFlatHalfSize;
+    const ccz = fn[1] * spineFlatHalfSize + nextFn[1] * spineFlatHalfSize;
+    ox = fn[0] * cosA + nextFn[0] * sinA;
+    oz = fn[1] * cosA + nextFn[1] * sinA;
+    sx = ccx + ox * bevelRadius;
+    sy = 0;
+    sz = ccz + oz * bevelRadius;
+  }
+
+  return [sx + ox * nOffset, yOffset, sz + oz * nOffset];
+}
+
+function cubeTunnelChordDist(u1: number, v1: number, u2: number, v2: number, scaleFactor: number): number {
+  const [x1, y1, z1] = cubeTunnelPoint3D(u1, v1, scaleFactor);
+  const [x2, y2, z2] = cubeTunnelPoint3D(u2, v2, scaleFactor);
+  const dx = x1 - x2, dy = y1 - y2, dz = z1 - z2;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
+}
+
+/**
  * Dispatch to the appropriate world-space distance function for a given surface.
  * Returns Euclidean 3D chord distance in world units — matches SP CollisionSystem.
  */
@@ -579,12 +678,15 @@ function surfaceWorldDist(
   u1: number, v1: number, u2: number, v2: number,
   scaleFactor: number, sphereR: number,
 ): number {
-  if (surfaceType === 'peanut')    return peanutChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'torus')     return torusChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'cube-ring') return cubeRingChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'pill')      return pillChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'mobius')    return mobiusChordDist(u1, v1, u2, v2, scaleFactor);
-  if (surfaceType === 'cube')      return cubeChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'peanut')      return peanutChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'torus')       return torusChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'cube-ring')   return cubeRingChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'pill')        return pillChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'mobius')      return mobiusChordDist(u1, v1, u2, v2, scaleFactor);
+  if (surfaceType === 'cube')        return cubeChordDist(u1, v1, u2, v2, scaleFactor);
+  // s44r6c-02: Cube-tunnel was falling through to sphereGreatCircleDist — completely wrong
+  // for compound cube+tunnel UV. User reported enemies killing from AoE-weapon distance.
+  if (surfaceType === 'cube-tunnel') return cubeTunnelChordDist(u1, v1, u2, v2, scaleFactor);
   return sphereGreatCircleDist(u1, v1, u2, v2, sphereR); // sphere, capsule, icosahedron, sphere-tunnel
 }
 
@@ -4002,7 +4104,8 @@ export class GameRoom extends Room<GameState> {
       || surfaceType === 'cube-ring'
       || surfaceType === 'pill'
       || surfaceType === 'mobius' // s44j-31: Mobius UV is anisotropic (v=12 vs u=100 world units at EPIC)
-      || surfaceType === 'cube'; // s44r6-01: Cube UV maps 6 faces into [0,1]² — UV distance wildly inaccurate
+      || surfaceType === 'cube' // s44r6-01: Cube UV maps 6 faces into [0,1]² — UV distance wildly inaccurate
+      || surfaceType === 'cube-tunnel'; // s44r6c-02: Compound cube+tunnel UV — UV distance produces 5-10× hit radius
     const sphereR = 10 * scaleFactor;
 
     // --- World-space thresholds (surfaces using 3D chord/arc distance, in world units) ---
@@ -4028,8 +4131,8 @@ export class GameRoom extends Room<GameState> {
     const GEOM_WORLD        = 0.7;   // geoms: generous collection radius
     // S44b-06: match client-side PICKUP_WORLD_RADIUS * mapSizeScaleFactor.
     // S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
-    // At MEDIUM (scale=1): 0.25 = ~0.8 player-widths. At EPIC (scale=2): 0.50 = 1.6 player-widths.
-    const PICKUP_WORLD      = 0.25 * scaleFactor;   // matches client WeaponPickup/BuffPickup radius
+    // s44r6c-02: Increased from 0.25 to 0.35 — matches client-side increase for curved surfaces.
+    const PICKUP_WORLD      = 0.35 * scaleFactor;   // matches client WeaponPickup/BuffPickup radius
     // s44e-06: World-space bullet-enemy threshold. SP CollisionSystem uses enemy.radius=0.3;
     // 0.4 adds margin for network latency and chord-distance approximation.
     const BULLET_HIT_WORLD  = 0.4;   // world units; matches SP enemy.radius(0.3) + latency margin
@@ -4306,7 +4409,7 @@ export class GameRoom extends Room<GameState> {
             const dist = usesWorldDist
               ? surfaceWorldDist(surfaceType, player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
               : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
-            const hitThreshold = usesWorldDist ? (surfaceType === 'cube' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD) : ENEMY_HIT_RADIUS;
+            const hitThreshold = usesWorldDist ? (surfaceType === 'cube' || surfaceType === 'cube-tunnel' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD) : ENEMY_HIT_RADIUS;
             if (dist < hitThreshold) {
               nearMissLogged = true;
               this.lastNearMissLogTime.set(player.id, this.state.gameTime);
@@ -4346,8 +4449,9 @@ export class GameRoom extends Room<GameState> {
           : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
         // s44r6b-02: Cube uses tighter threshold — enemies must visually overlap player, not just touch
         // s44r6b-03: Pill uses tighter threshold — curved body makes chord dist ~27% smaller than visual
+        // s44r6c-02: Cube-tunnel shares cube's corner visibility issue
         const hitThreshold = usesWorldDist
-          ? (surfaceType === 'cube' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD)
+          ? (surfaceType === 'cube' || surfaceType === 'cube-tunnel' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD)
           : ENEMY_HIT_RADIUS;
 
         if (dist < hitThreshold) {
@@ -5588,7 +5692,12 @@ export class GameRoom extends Room<GameState> {
     // Set cooldown: player cannot re-enter any portal for 2 seconds
     this._portalCooldowns.set(sessionId, Date.now() + 2000);
 
-    this.logger.log(`[Portals] ${player.name} teleported to portal ${exit} (${exitU.toFixed(3)},${exitV.toFixed(3)})`);
+    // s44r6c-02: Grant brief invincibility after portal teleport to prevent instant death
+    // from enemies near the exit portal. Without this, portal teleport on peanut/other maps
+    // with enemies (PvPvE mode) caused immediate death + double respawn.
+    this.playerInvincibility.set(sessionId, 1.0);
+
+    this.logger.log(`[Portals] ${player.name} teleported to portal ${exit} (${exitU.toFixed(3)},${exitV.toFixed(3)}) — 1s invincibility`);
   }
 
   private checkGameOver() {

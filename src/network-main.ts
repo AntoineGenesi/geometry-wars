@@ -6023,7 +6023,8 @@ async function main() {
         const transform = getTransform; // capture for TS type narrowing in forEach callbacks
         const playerSurfacePos = transform(localPlayer.surfaceU, localPlayer.surfaceV).position;
         // Radius for super/health pickups that lack checkPlayerCollision()
-        const SUPER_COLLECT_RADIUS_SQ = Math.pow(0.3 * currentMapSizeScaleFactor, 2);
+        // s44r6c-02: Increased from 0.3 to 0.4 — same curvature issue as weapon pickups
+        const SUPER_COLLECT_RADIUS_SQ = Math.pow(0.4 * currentMapSizeScaleFactor, 2);
 
         // Weapon pickups — use WeaponPickup.checkPlayerCollision() which compares against
         // _surfaceWorldPos (position without hover offset), radius = 0.25 * scaleFactor

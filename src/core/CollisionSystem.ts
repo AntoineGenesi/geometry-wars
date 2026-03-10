@@ -279,7 +279,10 @@ export class CollisionSystem {
       // triggers at the instant edges touch (zero overlap). Enemies approaching from adjacent
       // faces around beveled edges are invisible to the player. Subtract CUBE_OVERLAP_MARGIN
       // (0.1 = player radius) to require visible overlap before collision fires.
-      const contactRadius = this.surfaceType === 'cube'
+      // s44r6c-02: cube-tunnel shares cube's corner visibility issue (enemies approach from
+      // adjacent faces around beveled edges, invisible to the player)
+      const isCubeFamily = this.surfaceType === 'cube' || this.surfaceType === 'cube-tunnel';
+      const contactRadius = isCubeFamily
         ? Math.max(0, playerRadius + enemy.radius - 0.1)
         : playerRadius + enemy.radius;
       const baseHitRadiusSq = contactRadius * contactRadius;

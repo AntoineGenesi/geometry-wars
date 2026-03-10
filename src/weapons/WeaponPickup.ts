@@ -13,11 +13,14 @@ const _wpSpinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
 // World-space pickup collision radius (in world units).
 // Using world-space distance instead of UV-space because UV metric is non-uniform:
 // 0.01 UV = 0.63 world units at sphere equator but only 0.13 on torus tube direction.
-// Player visual radius ≈ 0.15 world units; increased to 0.25 for more forgiving collection.
+// Player visual radius ≈ 0.15 world units; increased to 0.35 for more forgiving collection.
 // Multiplied by mapSizeScaleFactor so UV-proximity feel is consistent across map sizes.
-// At MEDIUM (scale=1): 0.25 = ~0.8 player-widths. At EPIC (scale=2): 0.50 = 1.6 player-widths.
-// S44f-05: Increased from 0.15 to 0.25 for less strict collection (user was hitting pickups but not collecting).
-const PICKUP_WORLD_RADIUS = 0.25;
+// At MEDIUM (scale=1): 0.35 = ~1.1 player-widths. At EPIC (scale=2): 0.70 = 2.3 player-widths.
+// S44f-05: Increased from 0.15 to 0.25 for less strict collection.
+// s44r6c-02: Increased from 0.25 to 0.35 — user reported inconsistent pickup collection on
+// curved surfaces (peanut waist, mobius strip). On sharply curved regions, the 3D distance
+// between player and pickup can be larger than visual distance due to surface curvature.
+const PICKUP_WORLD_RADIUS = 0.35;
 
 /**
  * Floating weapon pickup that grants new weapons to player
