@@ -1,0 +1,4 @@
+Merge commit: Merge s44m-22: Snake enemy segments scale with difficulty 2-10.
+
+This commit modifies 3 files (+29/-10 lines), touching 3 enemy AI files.
+This is a merge commit integrating work from s44m-22 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
