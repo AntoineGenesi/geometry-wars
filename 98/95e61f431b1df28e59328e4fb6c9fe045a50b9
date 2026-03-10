@@ -1,6 +1,0 @@
-Chore/maintenance: triage user testing feedback into 9 tasks.
-
-This commit modifies 11 files (+403 lines), touching 8 Markdown docs files.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: TODO.md, inbox/2026-03-02_0445.md, .../s44b-01-gun-aim-direction-wrong-first-spawn.md, ...pons-not-working-mp-laser-spreadshot-blaster.md, ...b-03-weapon-mastery-screen-dashed-lines-dark.md, and others.
