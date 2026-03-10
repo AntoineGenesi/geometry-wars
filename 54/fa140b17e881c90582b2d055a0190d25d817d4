@@ -1,0 +1,6 @@
+Merge commit: Merge s44f-02: Language flag SVG images for selector buttons.
+
+This commit modifies 5 files (+37 lines), touching 5 other files.
+This is a merge commit integrating work from s44f-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: public/assets/flags/de.svg, public/assets/flags/en.svg, public/assets/flags/es.svg, public/assets/flags/fr.svg, public/assets/flags/ru.svg.
