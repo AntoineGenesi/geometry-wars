@@ -1,7 +1,0 @@
-Merge commit: Merge s44h-03: Phaser ghost kills — invisible enemy no longer kills player.
-
-This commit modifies 7 files (+289/-8 lines), spanning 2 core game loop, 2 enemy AI, 1 documentation.
-This is a merge commit integrating work from s44h-03 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: invisible enemy no longer kills player.
-
-Key files: docs/HUMAN_TEST.md, src/core/CollisionSystem.ts, src/core/GameInstance.ts, src/entities/enemies/BaseEnemy.ts, src/entities/enemies/Phaser.ts, and others.
