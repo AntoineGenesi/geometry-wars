@@ -1,0 +1,6 @@
+Bug fix: weapon cycling Q/E now works in LAN MP — InputManager.ts, NetworkClient.ts, network-main.ts, GameRoom.ts.
+
+This commit modifies 6 files (+92/-10 lines), spanning 2 networking, 1 documentation, 1 game server.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: docs/HUMAN_TEST.md, server/rooms/GameRoom.ts, src/input/InputManager.ts, src/network-main.ts, src/network/NetworkClient.ts, and others.
