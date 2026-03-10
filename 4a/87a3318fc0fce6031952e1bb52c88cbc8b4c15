@@ -1,0 +1,7 @@
+Merge commit: Merge s44k-07: Fix PvP hit detection — players can now damage each other.
+
+This commit modifies 15 files (+542/-159 lines), spanning 6 other, 2 task/ops files.
+This is a merge commit integrating work from s44k-07 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: players can now damage each other.
+
+Key files: .claude/locks/port-registry, ...k-01-movement-regression-all-maps-critical.lock, ...4k-03-bullets-spawn-from-wrong-position-mp.lock, .../s44k-07-hit-detection-broken-pvp-damage.lock, .claude/state/pipeline-state.md, and others.
