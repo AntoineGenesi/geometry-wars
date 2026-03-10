@@ -1,8 +1,0 @@
-Bug fix: replace symlink with actual file for surface-coverage-topological.test.ts.
-
-This commit modifies 1 file (+388/-1 lines), touching 1 tests file.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
-
-Additional context from the commit body:
-The merge of phase3 worktree left a symlink pointing to the now-deleted
-worktree directory, causing Vite to crash with EISDIR error on startup.
