@@ -1,0 +1,6 @@
+Feature addition: bullet damage persistence — penetrating shots for high-damage weapons.
+
+This commit modifies 5 files (+325/-13 lines), spanning 2 core game loop, 1 game entities, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: src/core/CollisionSystem.ts, src/core/GameInstance.ts, src/entities/Bullet.ts, ...13-bullet-damage-persistence.regression.test.ts, ...2-13-bullet-damage-system-damage-persistence.md.
