@@ -1,4 +1,0 @@
-Chore/maintenance: stage before s44e-07 merge.
-
-This commit modifies 3 files (+102/-10 lines), spanning 1 task/ops files, 1 other, 1 Markdown docs.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
