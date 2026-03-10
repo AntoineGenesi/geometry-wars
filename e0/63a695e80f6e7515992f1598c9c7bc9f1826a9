@@ -1,0 +1,5 @@
+Merge commit: Merge s44b-02: add server-side weapon patterns — spread, standard multi-bullet, laser beam support.
+
+This commit modifies 3 files (+161/-37 lines), spanning 1 game server, 1 networking, 1 Markdown docs.
+This is a merge commit integrating work from s44b-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: spread, standard multi-bullet, laser beam support.
