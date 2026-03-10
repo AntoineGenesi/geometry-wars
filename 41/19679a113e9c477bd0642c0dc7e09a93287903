@@ -1,0 +1,10 @@
+Feature addition: add combo system with rapid-kill tracking and HUD display.
+
+This commit modifies 3 files (+74/-3 lines), spanning 1 other, 1 core game loop, 1 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- ScoreManager tracks combo chains (1.5s window between kills)
+- Combo bonus: +10% score per combo level (up to 5x)
+- Combo counter appears at 3+ kills, color scales with level
+- Pop animation on combo increase, fades when chain breaks
