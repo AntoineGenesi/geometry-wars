@@ -1,0 +1,11 @@
+Feature addition: add enemy spawn warning indicators with scale-in animation.
+
+This commit modifies 2 files (+110/-2 lines), spanning 1 enemy AI, 1 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Pulsing red ring at spawn location for 0.8s before enemy materializes
+- Enemy mesh hidden during warning, invulnerable to bullets and player
+- Scale-in animation when enemy appears (0.01 -> 1.0 over 0.33s)
+- Warnings cleaned up on clear(), materials properly disposed
+- Collision checks skip spawning enemies (mesh not visible)
