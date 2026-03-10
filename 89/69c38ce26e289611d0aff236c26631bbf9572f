@@ -1,4 +1,0 @@
-Merge commit: Merge s44l-06: Fix companion orbit glitch on one cube face.
-
-This commit modifies 2 files (+57/-15 lines), spanning 1 game entities, 1 Markdown docs.
-This is a merge commit integrating work from s44l-06 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
