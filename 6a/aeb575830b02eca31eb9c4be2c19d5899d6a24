@@ -1,0 +1,9 @@
+Feature addition: add screen flash effects on player death and bomb use.
+
+This commit modifies 2 files (+27 lines), spanning 1 other, 1 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Red flash (rgba 255,60,60,0.4) on player death (200ms)
+- White flash (rgba 255,255,255,0.6) on bomb detonation (120ms)
+- CSS-based overlay with opacity transition for smooth fade
