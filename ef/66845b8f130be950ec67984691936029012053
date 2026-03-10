@@ -1,0 +1,15 @@
+Feature addition: LOD system, bullet instancing, adaptive quality, interest management.
+
+This commit modifies 12 files (+4713/-60 lines), spanning 3 game server, 3 tests, 2 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- LODManager: 3 LOD levels (full/icosahedron/billboard) with hysteresis
+- BulletInstanceManager: GPU-instanced bullets (5 visual types, 2000 pool)
+- AdaptiveQuality: auto-adjusts visual fidelity to maintain 60fps target
+- PerformanceMonitor: rolling-window FPS tracking with renderer stats
+- InterestManager: per-player AOI filtering for multiplayer sync optimization
+- PriorityQueue: sync priority system (CRITICAL/HIGH/MEDIUM/LOW/NONE)
+- 193 new tests passing (29 LOD + 38 bullet + 52 adaptive + 20 perf + 54 interest)
+
+Key files: server/systems/InterestManager.test.ts, server/systems/InterestManager.ts, server/systems/PriorityQueue.ts, src/rendering/AdaptiveQuality.test.ts, src/rendering/AdaptiveQuality.ts, and others.
