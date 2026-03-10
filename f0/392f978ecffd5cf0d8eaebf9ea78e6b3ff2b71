@@ -1,4 +1,0 @@
-Feature addition: PvP portal spawning — half-health trigger + despawn/respawn cycle.
-
-This commit modifies 3 files (+542/-34 lines), spanning 2 game server, 1 task/ops files.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
