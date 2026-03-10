@@ -1,4 +1,0 @@
-Merge commit: Merge s44j-32: mobius ghost kill regression tests.
-
-This commit modifies 2 files (+373/-2 lines), spanning 1 tests, 1 Markdown docs.
-This is a merge commit integrating work from s44j-32 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
