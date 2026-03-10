@@ -1,0 +1,13 @@
+Documentation: regression analysis + 10 new prevention rules in CLAUDE.md.
+
+This commit modifies 4 files (+598/-51 lines), spanning 2 Markdown docs, 1 documentation, 1 task/ops files.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+Analyzed why visual styles, weapon playground, and LAN fixes kept
+regressing. Identified 7 systemic patterns. Added 10 specific rules
+to CLAUDE.md Regression Prevention section.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+Key files: CLAUDE.md, TODO.md, decisions/recurring-regressions-analysis.md, tasks/recurring-fix-regression.md.
