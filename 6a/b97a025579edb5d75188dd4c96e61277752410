@@ -1,6 +1,0 @@
-Merge commit: Merge s44j-07: KotH spawn warning rings no longer accumulate in MP.
-
-This commit modifies 6 files (+140/-11 lines), spanning 2 core game loop, 1 enemy AI, 1 networking.
-This is a merge commit integrating work from s44j-07 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: src/core/modes/IGameMode.ts, src/core/modes/KingMode.ts, src/entities/enemies/EnemySpawner.ts, src/network-main.ts, src/test/game-modes.test.ts, and others.
