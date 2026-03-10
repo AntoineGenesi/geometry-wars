@@ -1,0 +1,10 @@
+Documentation: performance optimization research report.
+
+This commit modifies 1 file (+401 lines), touching 1 documentation file.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+Detailed analysis of bottlenecks at high entity counts.
+Primary: GPU draw calls (~20 per enemy from tube geometry).
+Secondary: ~6000 per-frame allocations causing GC stutters.
+Top fix: InstancedMesh could take capacity from ~100 to ~1500+ enemies.
