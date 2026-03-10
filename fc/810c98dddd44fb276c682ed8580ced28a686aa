@@ -1,0 +1,6 @@
+Feature addition: shockwave effects, buff aura shaders, LAN smoothness fixes.
+
+This commit modifies 14 files (+3421/-115 lines), spanning 2 Markdown docs, 2 tests, 2 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: TODO.md, decisions/lan-smoothness-fix-2026-02-11.md, research/aura-ring-effects.md, server/rooms/GameRoom.ts, src/buffs/BuffAuraRenderer.test.ts, and others.
