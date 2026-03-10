@@ -1,0 +1,13 @@
+Feature addition: extend schema and protocol for world-space positions.
+
+This commit modifies 5 files (+71 lines), spanning 2 game server, 2 networking, 1 task/ops files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- PlayerState: add 13 new fields (wx/wy/wz, nx/ny/nz, tx/ty/tz, bx/by/bz, walkerFaceIndex)
+- PlayerInput (GameRoom.ts): add optional camRightX/Y/Z, camUpX/Y/Z for camera-relative movement
+- NetworkInput (NetworkClient.ts): match PlayerInput with optional camera axis fields
+- network-main.ts: send camera axes in currentInput using pre-allocated _aimCamRight/_aimCamUp
+- surfaceU/surfaceV preserved for enemies, pickups, non-player entities
+
+Key files: server/rooms/GameRoom.ts, server/schema/GameState.ts, src/network-main.ts, src/network/NetworkClient.ts, tasks/s44-epic-04-schema-protocol-changes.md.
