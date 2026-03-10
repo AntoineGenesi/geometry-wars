@@ -1,0 +1,6 @@
+Feature addition: complete mesh walker migration — all 34 enemies + player + game integration.
+
+This commit modifies 43 files (+2364/-59 lines), spanning 4 enemy AI, 3 core game loop, 1 documentation.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: decisions/mesh-walker-migration-2026-02-12.md, src/core/GameLoop.ts, src/core/PlaygroundGame.ts, src/core/SeededRandom.ts, src/entities/enemies/ApproachGlow.ts, and others.
