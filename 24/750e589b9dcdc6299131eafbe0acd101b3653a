@@ -1,0 +1,15 @@
+Feature addition: add server cleanup discipline — no orphaned servers.
+
+This commit modifies 3 files (+80 lines), spanning 2 task/ops files, 1 Markdown docs.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Created .claude/rules/server-cleanup.md with port tracking, pre-exit
+  cleanup, and quick cleanup command
+- Updated CLAUDE.md: failure mode #17 (orphaned servers), expanded
+  critical gotchas, added rule reference
+- Updated orchestrator worker prompt with mandatory server cleanup
+  section before exit
+- Added auto-cleanup in tmux exit handler as safety net
+- Added orphaned server check to cmd_merge before merging task branches
+- Killed existing orphaned node server on port 3000
