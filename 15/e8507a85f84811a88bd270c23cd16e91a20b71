@@ -1,6 +1,0 @@
-Feature addition: gravity gun visual enhancement — pull trail, implosion burst, surface suction.
-
-This commit modifies 5 files (+103/-4 lines), spanning 3 TypeScript source, 1 networking, 1 task/ops files.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
-
-Key files: src/effects/ParticleSystem.ts, src/main.ts, src/network-main.ts, src/weapons/WeaponManager.ts, tasks/s44h-11-gravity-gun-visual-enhancement.md.
