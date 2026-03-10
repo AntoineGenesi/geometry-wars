@@ -1,0 +1,6 @@
+Feature addition: stackable buff system - 8 buffs with procs, HUD, and pickups.
+
+This commit modifies 6 files (+1254/-12 lines), spanning 5 TypeScript source, 1 documentation.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: decisions/buff-system-implementation.md, src/buffs/BuffHUD.ts, src/buffs/BuffManager.ts, src/buffs/BuffPickupNew.ts, src/buffs/ShockArcRenderer.ts, and others.
