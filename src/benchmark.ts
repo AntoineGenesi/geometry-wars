@@ -110,7 +110,6 @@ export function runBenchmark(): void {
     overflow-y: auto; white-space: pre;
   `;
   overlay.textContent = 'GEOMETRY WARS PERFORMANCE BENCHMARK\n' +
-    '====================================\n\n' +
     'Initializing...\n';
   document.body.appendChild(overlay);
 
@@ -225,6 +224,7 @@ export function runBenchmark(): void {
 
     // Representative mix of enemy types currently in the game (30+ total).
     // Balanced across basic, intermediate, and special types to match real gameplay.
+    // Balanced across basic, advanced, and special types to match real gameplay distribution.
     const batchTypes = [
       'grunt', 'wanderer', 'duck', 'weaver', // basic types
       'mayfly', 'rocket', 'spinner', 'snake', // intermediate
