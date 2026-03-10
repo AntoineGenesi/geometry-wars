@@ -1,0 +1,4 @@
+Merge commit: Merge s44l-02: CPU percentage breakdown analyzer.
+
+This commit modifies 2 files (+427/-8 lines), spanning 1 other, 1 task/ops files.
+This is a merge commit integrating work from s44l-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
