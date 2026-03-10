@@ -1,0 +1,6 @@
+Feature addition: KotH and Claustrophobia score displays show 1 decimal place — KingMode.ts, ClaustrophobiaMode.ts, network-main.ts.
+
+This commit modifies 3 files (+9/-9 lines), spanning 2 core game loop, 1 networking.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Geometry Wars 3D supports 8 distinct map surfaces: sphere, torus, peanut, pill, cube, Möbius strip, sphere-tunnel (bevel), and a flat surface. Each surface requires specialized UV handling, tangent frame computation, and collision detection. New features must work correctly across all surfaces in both single-player (via GameLoop.ts) and multiplayer (via network-main.ts) code paths. SP and MP code paths are entirely separate — changes to one do not automatically apply to the other.
