@@ -1,0 +1,20 @@
+Refactoring: rewrite LAN to reuse real game classes instead of crude reimplementation.
+
+This commit modifies 5 files (+617/-335 lines), spanning 1 documentation, 1 enemy AI, 1 TypeScript source.
+This refactoring improves code quality without changing external behavior. Refactors in this project are kept minimal and focused to avoid introducing regressions in the complex surface geometry and collision detection systems.
+
+Additional context from the commit body:
+The old network-main.ts was a separate implementation using primitive
+Three.js geometries (ConeGeometry, BoxGeometry) that looked nothing
+like the actual game. Now reuses:
+
+- Real Player class (buildChevron3D mesh)
+- Real enemy classes via EnemySpawner.spawn() (all GeometryBuilder meshes)
+- Real WeaponPickup class
+- Shared: ParticleSystem, ScreenShake, ScorePopups, GlowTrail,
+  KillLog, TotalKillCounter, AllyGlow, audio, BulletPool, GeomPool
+
+Also: wired Splitter.onSplitterDeath callback for cascading enemy splits,
+added _nextSplitterGen to EnemySpawner for generation-aware spawning.
+
+Key files: decisions/lan-rewrite-2026-02-09.md, src/entities/enemies/EnemySpawner.ts, src/main.ts, src/network-main.ts, tasks/lan-reuse-game-class.md.
