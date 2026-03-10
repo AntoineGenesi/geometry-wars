@@ -1,0 +1,6 @@
+Merge commit: Merge s44h-12: KotH zone painted on surface mesh via ZoneSurfaceMaterial.
+
+This commit modifies 5 files (+457/-71 lines), spanning 2 tests, 1 core game loop, 1 TypeScript source.
+This is a merge commit integrating work from s44h-12 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: src/core/modes/KingMode.ts, src/rendering/ZoneSurfaceMaterial.ts, src/test/game-modes.test.ts, tasks/s44h-12-zone-coloring-on-surface-mesh.md, tests/visual/test-zone-surface-coloring.ts.
