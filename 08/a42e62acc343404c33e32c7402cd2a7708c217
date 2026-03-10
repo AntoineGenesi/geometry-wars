@@ -1,0 +1,13 @@
+Bug fix: add red screen flash for enemy aura kills and bullet kills — GameLoop, CollisionSystem, BuffManager.
+
+This commit modifies 12 files (+431/-11 lines), spanning 7 other, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- BuffManager.update() now returns list of enemies killed by aura/burn damage
+- GameLoop triggers red screen flash (rgba(255, 60, 60, 0.4) for 200ms) when aura kills occur
+- CollisionSystem now also triggers red flash for bullet kills (was missing)
+- Fixes visual feedback parity between aura kills and bullet kills
+- Verification: Code compiles without errors in changed files
+
+Key files: .claude/locks/port-registry, ...s44b-05-ghost-spawns-multiple-mobile-hosts.lock, ...s44b-06-pickup-collection-radius-too-large.lock, ...b-08-enemy-aura-kills-no-red-damage-visual.lock, ...4b-05-ghost-spawns-multiple-mobile-hosts.prompt, and others.
