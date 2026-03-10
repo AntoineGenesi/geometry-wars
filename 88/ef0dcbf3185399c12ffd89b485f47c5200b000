@@ -1,9 +1,0 @@
-Merge commit: Merge s44j-settings-16e: Server-side settings application.
-
-This commit modifies 4 files (+739/-33 lines), spanning 3 game server, 1 task/ops files.
-This is a merge commit integrating work from s44j-settings-16e into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Additional context from the commit body:
-Resolved GameRoom.ts conflicts — used 16e's more complete settings application with syncSettingsToState.
-
-Key files: server/rooms/GameRoom.server-settings.test.ts, server/rooms/GameRoom.ts, server/schema/GameState.ts, tasks/s44j-settings-16e-server-side-application.md.
