@@ -1,0 +1,15 @@
+Feature addition: settings menu with GPU info, graphics, performance, audio tabs.
+
+This commit modifies 7 files (+1686 lines), spanning 5 UI/HUD, 2 other.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- SettingsMenu: 4-tab settings overlay (GPU Info, Graphics, Performance, Audio)
+- GPUBenchmark: entity count benchmark (100-5000) with FPS measurement
+- Quality presets: ultra/high/medium/low/minimal with per-knob tuning
+- Audio settings: master/SFX/music volume + music preset selection
+- All settings persist via localStorage
+- Accessible from both start menu and pause menu
+- 40 new tests covering defaults, save/load, presets, edge cases
+
+Key files: package-lock.json, package.json, src/ui/GPUBenchmark.ts, src/ui/PauseMenu.ts, src/ui/SettingsMenu.test.ts, and others.
