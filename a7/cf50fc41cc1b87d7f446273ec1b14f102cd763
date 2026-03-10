@@ -1,0 +1,12 @@
+Documentation: rewrite visual testing to iterative loop system.
+
+This commit modifies 1 file (+74/-73 lines), touching 1 Markdown docs file.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+Replace the old "write targeted verification" approach with a proper
+iterative loop: define goal → custom script → run → analyze → retry
+if needed (max 5 attempts) → log each attempt in RESULTS.md.
+
+Adds attempt-based session directory structure and RESULTS.md format
+with per-attempt analysis and verdicts.
