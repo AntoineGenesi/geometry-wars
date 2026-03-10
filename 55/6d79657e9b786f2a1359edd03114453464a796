@@ -1,0 +1,13 @@
+Feature addition: add full translations for French, German, Spanish, Arabic locales.
+
+This commit modifies 12 files (+881/-576 lines), spanning 6 other, 1 TypeScript source, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Created ar.json with complete Arabic translations
+- Updated fr.json, de.json, es.json with proper translations (not English stubs)
+- Added Arabic flag SVG and language selector support
+- Updated i18n config to register Arabic locale
+- All UI strings translated for each language
+
+Key files: public/assets/flags/ar.svg, src/i18n/config.ts, src/i18n/i18n.test.ts, src/i18n/locales/ar.json, src/i18n/locales/de.json, and others.
