@@ -1,0 +1,12 @@
+Feature addition: add drones and super abilities to local multiplayer.
+
+This commit modifies 1 file (+108/-5 lines), touching 1 TypeScript source file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Per-player drone companions (if level config has drone type)
+- Per-player SuperStateManager for independent super states
+- Super state pickups spawn on enemy death (5% chance)
+- Both players can independently collect super pickups
+- Shield super state protects player from enemy collisions
+- Drones follow their respective player and attack nearby enemies
