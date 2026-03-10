@@ -1,6 +1,0 @@
-Feature addition: plasma mortar shockwave ring — visual expanding ring + secondary damage sweep.
-
-This commit modifies 7 files (+545/-1 lines), spanning 2 core game loop, 2 TypeScript source, 1 networking.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
-
-Key files: src/core/GameContext.ts, src/core/GameLoop.ts, src/effects/PlasmaExplosionEffect.ts, src/main.ts, src/network-main.ts, and others.
