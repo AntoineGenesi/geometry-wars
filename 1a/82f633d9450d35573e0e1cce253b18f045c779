@@ -1,0 +1,11 @@
+Session checkpoint: pre-inbox — pill hit detection still broken, cube MP aim still broken, Mobius seam still broken, build MP test harness, verification improvements.
+
+This commit modifies 36 files (+2715/-525 lines), spanning 7 other, 1 task/ops files.
+Session checkpoint commits capture the current state of the game and pending work before starting a new inbox processing cycle. They record what is working, what is broken, and what tasks are queued for the next session.
+
+Additional context from the commit body:
+Game state: s44r3 all 11 tasks merged but user reports cube aim (s44r3-03),
+pill hit detection, and Mobius seam (s44r3-08) are STILL broken. Major
+verification system overhaul needed + MP RealGameTestHarness.
+
+Key files: .claude/locks/port-registry, ...44r3-01-language-selector-flag-exits-modal.lock, ...s44r3-02-bullet-penetration-not-working-mp.lock, .../locks/s44r3-03-cube-map-completely-broken.lock, .../locks/s44r3-04-verification-report-html.lock, and others.
