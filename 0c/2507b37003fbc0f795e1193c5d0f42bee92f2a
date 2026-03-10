@@ -1,5 +1,0 @@
-Merge commit: Merge s44r2-06: Fix PvPvE bullet hit detection — force friendlyFire=true at game start.
-
-This commit modifies 3 files (+212/-2 lines), spanning 2 game server, 1 Markdown docs.
-This is a merge commit integrating work from s44r2-06 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: force friendlyFire=true at game start.
