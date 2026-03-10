@@ -1,0 +1,13 @@
+Documentation: research reports viewer, performance breakthroughs, 10K roadmap.
+
+This commit modifies 6 files (+2847/-3 lines), spanning 2 Markdown docs, 1 documentation, 1 other.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+- research-viewer.html: Interactive HTML viewer for 40+ research reports
+- research/browser-performance-breakthroughs.md: WebGPU/WASM/Workers analysis
+- decisions/10k-entity-roadmap.md: 6-phase plan to 10K+ entities
+- src/network-main.ts: Minor cleanup
+- src/ui/StartMenu.ts: Minor cleanup
+
+Key files: TODO.md, decisions/10k-entity-roadmap.md, research-viewer.html, research/browser-performance-breakthroughs.md, src/network-main.ts, and others.
