@@ -1,0 +1,13 @@
+Feature addition: upgrade network multiplayer rendering with MeshSurface.
+
+This commit modifies 1 file (+51/-29 lines), touching 1 networking file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Camera now follows local player along surface normal (was using
+  hacky y-offset approach that breaks on non-spherical surfaces)
+- Add depth-based opacity for enemies on far side of surface
+- Scale up player/enemy meshes to world-space proportions
+- Proper player orientation on surface using tangent frame
+- game.disableBuiltInCameraUpdate for manual camera control
+- MeshSurface cleanup on page unload
