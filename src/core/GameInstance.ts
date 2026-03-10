@@ -1,7 +1,7 @@
 /**
  * GameInstance — Universal game orchestrator for all game modes.
  *
- * Consolidates PlaygroundGame.ts + GameLoop.ts into a single reusable class.
+ * Consolidates the old PlaygroundGame (removed) + GameLoop.ts into a single reusable class.
  * Prevents the "invisible fixes" problem where changes to one code path don't
  * apply to another (Session 19 failure).
  *
@@ -22,7 +22,7 @@
  *   });
  *
  * WHY THIS EXISTS:
- * Previously, main.ts and PlaygroundGame.ts had separate implementations of
+ * Previously, main.ts and the old PlaygroundGame (removed) had separate implementations of
  * player movement, camera control, and game loop logic. Fixes to one didn't
  * apply to the other. GameInstance consolidates both into a single source of truth.
  *

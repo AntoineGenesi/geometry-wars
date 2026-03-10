@@ -14,7 +14,7 @@
  */
 
 import * as THREE from 'three';
-import { PlaygroundTestHarness } from '../../src/test/PlaygroundTestHarness';
+import { RealGameTestHarness } from '../../src/test/RealGameTestHarness';
 import type { SurfaceType } from '../../src/surfaces/SurfaceFactory';
 
 // ---------------------------------------------------------------------------
@@ -79,13 +79,13 @@ export class SurfaceGridWalker {
     const startMs = Date.now();
 
     // One harness for the whole surface — cheaper than creating one per point
-    const harness = new PlaygroundTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
+    const harness = new RealGameTestHarness({ surface, width: 400, height: 300, enemyCount: 0 });
     harness.tick(10); // settle initial physics
 
-    // Access internal refs via pg.instance (GameInstance holds _walker, _meshSurface, _surface)
-    // PlaygroundTestHarness.buildScenario uses (this.pg as any)._walker but that only works
-    // if accessed via the instance. We go through pg.instance to be explicit.
-    const pg = (harness as any).pg;
+    // Access internal refs via RealGameTestHarness (exposes playerWalker, meshSurface, surface)
+    // RealGameTestHarness.buildScenario uses this.playerWalker but that only works
+    // if accessed via the instance. We go through the harness directly.
+    const pg = (harness as any);
     const instance = pg.instance as any;
     const walker = instance._walker;
     const meshSurface = instance._meshSurface;
@@ -163,7 +163,7 @@ export class SurfaceGridWalker {
    * Returns a new GridPoint object — no shared mutable state.
    */
   private static _testPoint(
-    harness: PlaygroundTestHarness,
+    harness: RealGameTestHarness,
     walker: any,
     meshSurface: any,
     internalSurface: any,

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { PlaygroundTestHarness } from './PlaygroundTestHarness'
+import { RealGameTestHarness } from './RealGameTestHarness'
 
 // ---------------------------------------------------------------------------
 // Mock setup for headless testing
@@ -163,10 +163,10 @@ vi.mock('three/examples/jsm/postprocessing/UnrealBloomPass.js', () => ({
 }))
 
 describe('Cube MeshWalker Integration (Session 13 Phase 3)', () => {
-  let harness: PlaygroundTestHarness
+  let harness: RealGameTestHarness
 
   beforeEach(() => {
-    harness = new PlaygroundTestHarness('cube')
+    harness = new RealGameTestHarness('cube')
     harness.tick(10) // Settle
   })
 
@@ -185,7 +185,7 @@ describe('Cube MeshWalker Integration (Session 13 Phase 3)', () => {
     console.log('Cube - Distance moved:', distance)
 
     // Compare with sphere
-    const sphereHarness = new PlaygroundTestHarness('sphere')
+    const sphereHarness = new RealGameTestHarness('sphere')
     sphereHarness.tick(10)
     const sphereStart = sphereHarness.getPlayerWorldPos()
     sphereHarness.pressKey('w')
@@ -382,7 +382,7 @@ describe('Cube MeshWalker Integration (Session 13 Phase 3)', () => {
     //
     // This test FAILS without the fix (minBitangentDot approaches -1 on edge crossings)
     // and PASSES with the fix (bitangent never flips sign between consecutive steps).
-    const walker = (harness as any).pg._walker
+    const walker = (harness as any).playerWalker
     harness.pressKey('w') // Walk forward continuously to cross face edges
 
     let minBitangentDot = 1

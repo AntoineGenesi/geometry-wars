@@ -4,17 +4,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { PlaygroundTestHarness } from '../test/PlaygroundTestHarness';
-import type { GameInstance } from '../core/GameInstance';
+import { RealGameTestHarness } from '../test/RealGameTestHarness';
 
 describe('Game Mode Indicator - Visual', () => {
-  let harness: PlaygroundTestHarness;
-  let game: GameInstance;
+  let harness: RealGameTestHarness;
 
   it('should display game mode indicator element in DOM', () => {
     // Create a test harness that simulates a game instance
-    harness = new PlaygroundTestHarness();
-    game = harness.getGameInstance();
+    harness = new RealGameTestHarness();
 
     // Check that the mode indicator element exists in the DOM
     const modeIndicator = document.getElementById('game-mode-indicator');

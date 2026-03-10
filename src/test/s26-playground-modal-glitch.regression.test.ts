@@ -192,7 +192,6 @@ vi.mock('three', async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 import { GameInstance } from '../core/GameInstance';
-import { PlaygroundGame } from '../core/PlaygroundGame';
 
 // ---------------------------------------------------------------------------
 // Helper: create a mock container
@@ -253,15 +252,15 @@ describe('S26 Regression: Playground Modal Glitch', () => {
       expect(mockRemoveCallCount).toBe(afterFirst); // No additional removes
     });
 
-    it('PlaygroundGame.dispose() delegates to GameInstance which removes canvas', () => {
+    it('GameInstance in demo mode dispose() removes canvas', () => {
       const container = createMockContainer();
-      const pg = new PlaygroundGame({ container, enemyCount: 0 });
+      const instance = new GameInstance({ container, mode: 'demo', enemyCount: 0 });
 
       expect(mockRemoveCallCount).toBe(0);
 
-      pg.dispose();
+      instance.dispose();
 
-      // PlaygroundGame.dispose() → GameInstance.dispose() → game.dispose() → canvas.remove()
+      // GameInstance.dispose() → game.dispose() → canvas.remove()
       expect(mockRemoveCallCount).toBe(1);
     });
   });
@@ -408,21 +407,20 @@ describe('S26 Regression: Playground Modal Glitch', () => {
       instance.dispose();
     });
 
-    it('PlaygroundGame passes gridSegmentsU/V through to GameInstance', () => {
+    it('GameInstance in demo mode preserves gridSegmentsU/V', () => {
       const container = createMockContainer();
-      const pg = new PlaygroundGame({
+      const instance = new GameInstance({
         container,
+        mode: 'demo',
         enemyCount: 0,
         gridSegmentsU: 24,
         gridSegmentsV: 12,
       });
 
-      // The underlying GameInstance should have received the grid segment values
-      const instanceConfig = (pg as any).instance.config;
-      expect(instanceConfig.gridSegmentsU).toBe(24);
-      expect(instanceConfig.gridSegmentsV).toBe(12);
+      expect((instance as any).config.gridSegmentsU).toBe(24);
+      expect((instance as any).config.gridSegmentsV).toBe(12);
 
-      pg.dispose();
+      instance.dispose();
     });
   });
 

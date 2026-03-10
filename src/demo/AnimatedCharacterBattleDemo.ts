@@ -2,7 +2,7 @@
  * AnimatedCharacterBattleDemo — Full-screen interactive demo: move, shoot, kill.
  *
  * Opens a full-screen overlay on top of the game that:
- *  - Runs a PlaygroundGame instance (player WASD movement, shooting, camera)
+ *  - Runs a GameInstance instance (player WASD movement, shooting, camera)
  *  - Spawns 4 GLBCharacterEnemy instances on the same sphere surface
  *  - Checks bullet ↔ character collisions each frame
  *  - Plays hit flashes, damage, death animations, and respawns enemies
@@ -14,7 +14,7 @@
  */
 
 import * as THREE from 'three';
-import { PlaygroundGame } from '../core/PlaygroundGame';
+import { GameInstance } from '../core/GameInstance';
 import { GLBCharacterEnemy } from './GLBCharacterEnemy';
 import { CharacterBehaviorSystem } from './CharacterBehaviorSystem';
 import { MeleeBehavior } from './behaviors/MeleeBehavior';
@@ -77,7 +77,7 @@ const SCREEN_FLASH_DURATION = 350;
 
 export class AnimatedCharacterBattleDemo {
   private readonly overlay: HTMLDivElement;
-  private readonly pg: PlaygroundGame;
+  private readonly pg: GameInstance;
   private readonly behaviorSystem: CharacterBehaviorSystem;
   private enemies: GLBCharacterEnemy[] = [];
   private rafId: number | null = null;
@@ -105,10 +105,10 @@ export class AnimatedCharacterBattleDemo {
       (damage, type) => this._onPlayerHit(damage, type),
     );
 
-    // Spawn enemies onto the same surface PlaygroundGame uses
+    // Spawn enemies onto the same surface GameInstance uses
     this._spawnAllEnemies();
 
-    // Our collision + AI loop (separate from PlaygroundGame's internal loop)
+    // Our collision + AI loop (separate from GameInstance's internal loop)
     this.clock.start();
     this._tick();
   }
@@ -227,15 +227,16 @@ export class AnimatedCharacterBattleDemo {
   }
 
   // -------------------------------------------------------------------------
-  // Create PlaygroundGame
+  // Create GameInstance
   // -------------------------------------------------------------------------
 
-  private _createPlayground(): PlaygroundGame {
-    return new PlaygroundGame({
+  private _createPlayground(): GameInstance {
+    return new GameInstance({
       container: this.overlay,
       width: window.innerWidth,
       height: window.innerHeight,
       surface: 'sphere',
+      mode: 'demo' as any,
       enemyCount: 0,   // we spawn our own enemies — no default enemy spawning
       lives: 0,        // infinite lives
     });

@@ -1,8 +1,7 @@
 /**
  * RealGameTestHarness — Tests the ACTUAL GameLoop.ts code path.
  *
- * Unlike PlaygroundTestHarness (which uses PlaygroundGame → GameInstance in demo mode),
- * this harness instantiates the real GameLoop with a full GameContext, identical to main.ts.
+ * This harness instantiates the real GameLoop with a full GameContext, identical to main.ts.
  *
  * This means:
  * - Player movement, shooting, aiming all go through GameLoop.update()
@@ -10,8 +9,8 @@
  * - Camera controller, weapon manager, buff system — all real
  * - Only rendering (WebGLRenderer, GPU instancing, bloom) is mocked
  *
- * Session 19 lesson: PlaygroundTestHarness tested demo mode while real game was broken.
- * This harness ensures we never repeat that — it tests what the user actually plays.
+ * This is the ONLY test harness. It replaces the old PlaygroundTestHarness which tested
+ * through PlaygroundGame → GameInstance (demo mode) instead of the real game.
  */
 
 import * as THREE from 'three';
@@ -66,6 +65,8 @@ import {
   makeSurfaceTransformFn,
 } from '../rendering/SharedGameSetup';
 import { getMapSizeScaleFactor, MapSize } from '../core/MapSize';
+import { setGameSeed, clearGameSeed } from '../core/SeededRandom';
+import { EffectDictionary } from '../core/EffectDictionary';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,15 +74,154 @@ import { getMapSizeScaleFactor, MapSize } from '../core/MapSize';
 
 export interface RealGameHarnessOptions {
   surface?: SurfaceType;
-  weapon?: WeaponType;
+  weapon?: WeaponType | null;
   mapSize?: MapSize;
   enemyCount?: number;
-  /** Seed for deterministic testing (future use) */
+  /** Seed for deterministic testing */
   seed?: number;
   /** Width for camera projection */
   width?: number;
   /** Height for camera projection */
   height?: number;
+  /** Surface scale (radius/size). Default: 10. */
+  surfaceScale?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Screen coordinate types & projection
+// ---------------------------------------------------------------------------
+
+export interface ScreenPos {
+  x: number;
+  y: number;
+  visible: boolean;
+}
+
+export interface ScreenPosWithWorld extends ScreenPos {
+  worldPos: THREE.Vector3;
+}
+
+/** A single frame snapshot for trace recording. */
+export interface TraceFrame {
+  frame: number;
+  u: number;
+  v: number;
+  worldPos: THREE.Vector3;
+  screenPos: ScreenPos;
+  cameraUp: THREE.Vector3;
+  cameraQuat: THREE.Quaternion;
+  distFromPrev: number;
+  hasNaN: boolean;
+}
+
+/** Result of a long simulation with trace recording. */
+export interface TraceResult {
+  frames: TraceFrame[];
+  totalDistance: number;
+  stuckFrames: number;
+  nanFrames: number;
+  uvRange: { minU: number; maxU: number; minV: number; maxV: number };
+  seamCrossings: number;
+}
+
+/** Result from walkUntilStuck(). */
+export interface StuckResult {
+  stuckAtFrame: number | null;
+  stuckAtUV: { u: number; v: number } | null;
+  stuckAtWorldPos: THREE.Vector3 | null;
+  totalFrames: number;
+  trace: TraceFrame[];
+}
+
+/** Result from findSeamCrossing(). */
+export interface SeamCrossingResult {
+  crossed: boolean;
+  crossedAtFrame: number | null;
+  crossedFromUV: { u: number; v: number } | null;
+  crossedToUV: { u: number; v: number } | null;
+  trace: TraceFrame[];
+}
+
+/** Standard verification report. */
+export interface VerificationReport {
+  surface: string;
+  movement: { forward: boolean; backward: boolean; left: boolean; right: boolean };
+  camera: { stable: boolean; maxRotationDelta: number; avgRotationDelta: number };
+  screen: { playerVisible: boolean; playerCentered: boolean };
+  traversal: { totalDistance: number; reachedQuadrants: number };
+  weapon: { fireHandlerConnected: boolean; currentWeapon: string };
+  overall: 'PASS' | 'FAIL';
+  failures: string[];
+}
+
+/** Entity state snapshot for timeline tracking. */
+export interface EntityState {
+  type: string;
+  position: THREE.Vector3;
+  alive: boolean;
+  health: number;
+  faceIndex?: number;
+}
+
+/** Single frame in an entity timeline. */
+export interface EntityTimelineFrame {
+  frame: number;
+  player: { position: THREE.Vector3; aimDirection: THREE.Vector3 };
+  enemies: Array<{ id: number; type: string; position: THREE.Vector3; alive: boolean }>;
+  bullets: THREE.Vector3[];
+}
+
+/** Full entity timeline recording. */
+export interface EntityTimeline {
+  frames: EntityTimelineFrame[];
+  seed: number;
+  surface: string;
+}
+
+/** Scenario configuration for deterministic testing. */
+export interface ScenarioConfig {
+  playerPosition?: { u: number; v: number };
+  enemies?: Array<{
+    type: EnemyType;
+    u: number;
+    v: number;
+    count?: number;
+  }>;
+  seed?: number;
+}
+
+/** Recorded input for a single frame. */
+export interface ReplayInput {
+  frame: number;
+  keys: string[];
+  mouseX: number;
+  mouseY: number;
+  mouseDown: boolean;
+}
+
+/** Complete replay data. */
+export interface ReplayData {
+  seed: number;
+  surface: string;
+  inputs: ReplayInput[];
+  totalFrames: number;
+}
+
+/**
+ * Projects a world-space position to screen pixel coordinates.
+ */
+export function projectToScreen(
+  worldPos: THREE.Vector3,
+  camera: THREE.PerspectiveCamera,
+  width: number,
+  height: number,
+): ScreenPos {
+  const v = worldPos.clone().project(camera);
+  return {
+    x: (v.x + 1) / 2 * width,
+    y: (1 - v.y) / 2 * height,
+    visible: v.z >= 0 && v.z <= 1,
+  };
 }
 
 /** Bullet spawn record for origin tracking */
@@ -177,9 +317,12 @@ export class RealGameTestHarness {
   readonly weaponManager: WeaponManager;
   readonly waveScheduler: TestWaveScheduler;
   readonly collisionSystem: CollisionSystem;
+  readonly particles: ParticleSystem;
+  readonly input: InputManager;
   readonly surfaceType: SurfaceType;
   readonly width: number;
   readonly height: number;
+  readonly seed: number | null;
 
   private readonly heldKeys = new Set<string>();
   private mouseX: number;
@@ -187,20 +330,51 @@ export class RealGameTestHarness {
   private mouseDown = false;
   private _totalFrames = 0;
 
+  // Recording state
+  private isRecording = false;
+  private recordedInputs: ReplayInput[] = [];
+  private recordingStartFrame = 0;
+
   /** Records of every bullet spawned, for origin verification */
   readonly bulletSpawnLog: BulletSpawnRecord[] = [];
 
-  constructor(options: RealGameHarnessOptions = {}) {
+  /** Overloaded constructors for backward compatibility with PlaygroundTestHarness */
+  constructor(surface?: SurfaceType, weapon?: WeaponType | null, width?: number, height?: number);
+  constructor(options: RealGameHarnessOptions);
+  constructor(
+    surfaceOrOptions: SurfaceType | RealGameHarnessOptions = 'sphere',
+    weapon?: WeaponType | null,
+    width?: number,
+    height?: number,
+  ) {
+    let options: RealGameHarnessOptions;
+    if (typeof surfaceOrOptions === 'object' && surfaceOrOptions !== null) {
+      options = surfaceOrOptions;
+    } else {
+      options = {
+        surface: surfaceOrOptions as SurfaceType,
+        weapon: weapon ?? undefined,
+        width,
+        height,
+      };
+    }
+
     const surfaceType = options.surface ?? 'sphere';
     const mapSize = options.mapSize ?? MapSize.MEDIUM;
-    const width = options.width ?? DEFAULT_WIDTH;
-    const height = options.height ?? DEFAULT_HEIGHT;
+    const resolvedWidth = options.width ?? DEFAULT_WIDTH;
+    const resolvedHeight = options.height ?? DEFAULT_HEIGHT;
+    const seed = options.seed ?? null;
+
+    this.seed = seed;
+    if (seed !== null) {
+      setGameSeed(seed);
+    }
 
     this.surfaceType = surfaceType;
-    this.width = width;
-    this.height = height;
-    this.mouseX = width / 2;
-    this.mouseY = height / 2;
+    this.width = resolvedWidth;
+    this.height = resolvedHeight;
+    this.mouseX = resolvedWidth / 2;
+    this.mouseY = resolvedHeight / 2;
 
     // -- Game engine (uses mocked renderer from vi.mock) --
     const game = new Game({
@@ -236,6 +410,7 @@ export class RealGameTestHarness {
 
     // -- Input (patched to use harness keys) --
     const input = new InputManager();
+    this.input = input;
     this.patchInputManager(input);
 
     // -- Surface transform --
@@ -331,6 +506,7 @@ export class RealGameTestHarness {
     // -- Particles --
     const particles = new ParticleSystem(5000);
     game.scene.add(particles.root);
+    this.particles = particles;
 
     // -- Score / popups --
     const scorePopups = new ScorePopupManager();
@@ -381,7 +557,7 @@ export class RealGameTestHarness {
     });
 
     // Set initial weapon
-    if (options.weapon) {
+    if (options.weapon != null) {
       weaponManager.forceSetWeapon(options.weapon);
     }
 
@@ -583,6 +759,15 @@ export class RealGameTestHarness {
   /** Advance N frames at fixed dt (default 1/60s). */
   tick(frames = 1, dt = 1 / 60): void {
     for (let i = 0; i < frames; i++) {
+      if (this.isRecording) {
+        this.recordedInputs.push({
+          frame: this._totalFrames - this.recordingStartFrame,
+          keys: Array.from(this.heldKeys),
+          mouseX: this.mouseX,
+          mouseY: this.mouseY,
+          mouseDown: this.mouseDown,
+        });
+      }
       (this.game.clock as any).totalTime += dt;
       this.gameLoop.update(this.ctx, dt);
       this._totalFrames++;
@@ -781,6 +966,557 @@ export class RealGameTestHarness {
       maxDistance,
       details,
     };
+  }
+
+  // =======================================================================
+  // Screen Coordinate Queries
+  // =======================================================================
+
+  getPlayerScreenPos(): ScreenPos {
+    return projectToScreen(this.player.mesh.position, this.game.camera, this.width, this.height);
+  }
+
+  getEnemyScreenPositions(): ScreenPosWithWorld[] {
+    return this.enemySpawner.getEnemies()
+      .filter(e => e.alive && e.active && e.mesh)
+      .map(e => {
+        const worldPos = e.position.clone();
+        const screen = projectToScreen(worldPos, this.game.camera, this.width, this.height);
+        return { ...screen, worldPos };
+      });
+  }
+
+  getBulletScreenPositions(): ScreenPos[] {
+    const positions: ScreenPos[] = [];
+    this.bulletPool.forEachActive((_idx, pos) => {
+      positions.push(projectToScreen(pos, this.game.camera, this.width, this.height));
+    });
+    return positions;
+  }
+
+  getAimScreenDirection(): { x: number; y: number } {
+    const cam = this.game.camera;
+    const playerWorldPos = this.player.mesh.position.clone();
+    const aimDir = this.player.getAimDirection();
+
+    const playerScreen = projectToScreen(playerWorldPos, cam, this.width, this.height);
+    const aimTarget = playerWorldPos.clone().add(aimDir.multiplyScalar(5));
+    const aimScreen = projectToScreen(aimTarget, cam, this.width, this.height);
+
+    const dx = aimScreen.x - playerScreen.x;
+    const dy = aimScreen.y - playerScreen.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.001) return { x: 0, y: 0 };
+    return { x: dx / len, y: dy / len };
+  }
+
+  getBulletScreenDirection(): { x: number; y: number } | null {
+    const positions: THREE.Vector3[] = [];
+    this.bulletPool.forEachActive((_idx, pos) => {
+      positions.push(pos.clone());
+    });
+    if (positions.length === 0) return null;
+
+    const lastBullet = positions[positions.length - 1];
+    const screenBullet = projectToScreen(lastBullet, this.game.camera, this.width, this.height);
+    const playerScreen = this.getPlayerScreenPos();
+    const dx = screenBullet.x - playerScreen.x;
+    const dy = screenBullet.y - playerScreen.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.001) return null;
+    return { x: dx / len, y: dy / len };
+  }
+
+  // =======================================================================
+  // Trace Recording
+  // =======================================================================
+
+  recordTrace(frames: number, sampleEvery: number = 1): TraceResult {
+    const samples: TraceFrame[] = [];
+    let totalDistance = 0;
+    let stuckFrames = 0;
+    let nanFrames = 0;
+    let seamCrossings = 0;
+    let prevPos = this.getPlayerWorldPos();
+    let prevUV = this.getPlayerSurfaceUV();
+
+    let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
+
+    for (let i = 0; i < frames; i++) {
+      this.tick(1);
+
+      if (i % sampleEvery === 0) {
+        const worldPos = this.getPlayerWorldPos();
+        const uv = this.getPlayerSurfaceUV();
+        const screenPos = this.getPlayerScreenPos();
+        const camState = this.getCameraState();
+
+        const dist = prevPos.distanceTo(worldPos);
+        totalDistance += dist;
+        const hasNaN = isNaN(worldPos.x) || isNaN(worldPos.y) || isNaN(worldPos.z)
+          || isNaN(uv.u) || isNaN(uv.v);
+
+        if (dist < 0.0001) stuckFrames++;
+        if (hasNaN) nanFrames++;
+
+        const uDelta = Math.abs(uv.u - prevUV.u);
+        const vDelta = Math.abs(uv.v - prevUV.v);
+        if (uDelta > 0.4 || vDelta > 0.4) seamCrossings++;
+
+        minU = Math.min(minU, uv.u);
+        maxU = Math.max(maxU, uv.u);
+        minV = Math.min(minV, uv.v);
+        maxV = Math.max(maxV, uv.v);
+
+        samples.push({
+          frame: this._totalFrames,
+          u: uv.u,
+          v: uv.v,
+          worldPos,
+          screenPos,
+          cameraUp: camState.up,
+          cameraQuat: camState.quaternion,
+          distFromPrev: dist,
+          hasNaN,
+        });
+
+        prevPos = worldPos;
+        prevUV = uv;
+      } else {
+        const wp = this.getPlayerWorldPos();
+        totalDistance += prevPos.distanceTo(wp);
+        prevPos = wp;
+        prevUV = this.getPlayerSurfaceUV();
+      }
+    }
+
+    return { frames: samples, totalDistance, stuckFrames, nanFrames, uvRange: { minU, maxU, minV, maxV }, seamCrossings };
+  }
+
+  // =======================================================================
+  // Long Simulation Helpers
+  // =======================================================================
+
+  walkUntilStuck(direction: string, maxFrames: number = 3000, stuckThreshold: number = 30): StuckResult {
+    const trace: TraceFrame[] = [];
+    let consecutiveStuck = 0;
+    let prevPos = this.getPlayerWorldPos();
+
+    this.pressKey(direction);
+
+    for (let i = 0; i < maxFrames; i++) {
+      this.tick(1);
+      const worldPos = this.getPlayerWorldPos();
+      const uv = this.getPlayerSurfaceUV();
+      const dist = prevPos.distanceTo(worldPos);
+
+      if (i % 5 === 0) {
+        trace.push({
+          frame: this._totalFrames,
+          u: uv.u, v: uv.v,
+          worldPos,
+          screenPos: this.getPlayerScreenPos(),
+          cameraUp: this.getCameraState().up,
+          cameraQuat: this.getCameraState().quaternion,
+          distFromPrev: dist,
+          hasNaN: isNaN(worldPos.x) || isNaN(uv.u),
+        });
+      }
+
+      if (dist < 0.0001) {
+        consecutiveStuck++;
+        if (consecutiveStuck >= stuckThreshold) {
+          this.releaseKey(direction);
+          return { stuckAtFrame: i, stuckAtUV: uv, stuckAtWorldPos: worldPos, totalFrames: i, trace };
+        }
+      } else {
+        consecutiveStuck = 0;
+      }
+      prevPos = worldPos;
+    }
+
+    this.releaseKey(direction);
+    return { stuckAtFrame: null, stuckAtUV: null, stuckAtWorldPos: null, totalFrames: maxFrames, trace };
+  }
+
+  findSeamCrossing(direction: string = 'w', maxFrames: number = 3000, uvAxis: 'u' | 'v' = 'u'): SeamCrossingResult {
+    const trace: TraceFrame[] = [];
+    let prevUV = this.getPlayerSurfaceUV();
+    let prevPos = this.getPlayerWorldPos();
+
+    this.pressKey(direction);
+
+    for (let i = 0; i < maxFrames; i++) {
+      this.tick(1);
+      const uv = this.getPlayerSurfaceUV();
+      const worldPos = this.getPlayerWorldPos();
+      const dist = prevPos.distanceTo(worldPos);
+
+      if (i % 3 === 0) {
+        trace.push({
+          frame: this._totalFrames,
+          u: uv.u, v: uv.v,
+          worldPos,
+          screenPos: this.getPlayerScreenPos(),
+          cameraUp: this.getCameraState().up,
+          cameraQuat: this.getCameraState().quaternion,
+          distFromPrev: dist,
+          hasNaN: isNaN(worldPos.x) || isNaN(uv.u),
+        });
+      }
+
+      const delta = Math.abs(uv[uvAxis] - prevUV[uvAxis]);
+      if (delta > 0.4 && i > 10) {
+        this.releaseKey(direction);
+        return { crossed: true, crossedAtFrame: i, crossedFromUV: prevUV, crossedToUV: uv, trace };
+      }
+
+      prevUV = uv;
+      prevPos = worldPos;
+    }
+
+    this.releaseKey(direction);
+    return { crossed: false, crossedAtFrame: null, crossedFromUV: null, crossedToUV: null, trace };
+  }
+
+  walkUntilUV(
+    predicate: (uv: { u: number; v: number }) => boolean,
+    direction: string = 'w',
+    maxFrames: number = 3000,
+  ): { reached: boolean; framesUsed: number; finalUV: { u: number; v: number } } {
+    this.pressKey(direction);
+    for (let i = 0; i < maxFrames; i++) {
+      this.tick(1);
+      const uv = this.getPlayerSurfaceUV();
+      if (predicate(uv)) {
+        this.releaseKey(direction);
+        return { reached: true, framesUsed: i, finalUV: uv };
+      }
+    }
+    this.releaseKey(direction);
+    return { reached: false, framesUsed: maxFrames, finalUV: this.getPlayerSurfaceUV() };
+  }
+
+  // =======================================================================
+  // Camera Stability
+  // =======================================================================
+
+  getCameraStability(frames: number): { maxRotationDelta: number; avgRotationDelta: number } {
+    let maxDelta = 0;
+    let totalDelta = 0;
+    let prevQuat = this.game.camera.quaternion.clone();
+
+    for (let i = 0; i < frames; i++) {
+      this.tick(1);
+      const currentQuat = this.game.camera.quaternion.clone();
+      const delta = prevQuat.angleTo(currentQuat);
+      maxDelta = Math.max(maxDelta, delta);
+      totalDelta += delta;
+      prevQuat = currentQuat;
+    }
+
+    return { maxRotationDelta: maxDelta, avgRotationDelta: totalDelta / frames };
+  }
+
+  // =======================================================================
+  // Traversal Helpers
+  // =======================================================================
+
+  canTraverse(direction: 'forward' | 'backward' | 'left' | 'right'): boolean {
+    const keyMap: Record<string, string> = { forward: 'w', backward: 's', left: 'a', right: 'd' };
+    const startPos = this.getPlayerWorldPos();
+    this.pressKey(keyMap[direction]);
+    this.tick(10);
+    this.releaseKey(keyMap[direction]);
+    return startPos.distanceTo(this.getPlayerWorldPos()) > 0.01;
+  }
+
+  testFullTraversal(framesPerDirection: number = 120): {
+    totalDistanceMoved: number;
+    visitedUVs: Array<{ u: number; v: number }>;
+    reachedAllQuadrants: boolean;
+  } {
+    const visitedUVs: Array<{ u: number; v: number }> = [];
+    let totalDistance = 0;
+    const quadrants = new Set<string>();
+
+    const recordUV = () => {
+      const uv = this.getPlayerSurfaceUV();
+      visitedUVs.push({ ...uv });
+      quadrants.add((uv.u < 0.5 ? 'L' : 'R') + (uv.v < 0.5 ? 'T' : 'B'));
+    };
+
+    for (const key of ['w', 'd', 's', 'a']) {
+      const startPos = this.getPlayerWorldPos();
+      this.pressKey(key);
+      for (let i = 0; i < framesPerDirection; i++) {
+        this.tick(1);
+        if (i % 10 === 0) recordUV();
+      }
+      this.releaseKey(key);
+      totalDistance += startPos.distanceTo(this.getPlayerWorldPos());
+    }
+
+    return { totalDistanceMoved: totalDistance, visitedUVs, reachedAllQuadrants: quadrants.size >= 3 };
+  }
+
+  // =======================================================================
+  // Spawn Helpers
+  // =======================================================================
+
+  spawnEnemies(count: number, type: string = 'wanderer'): void {
+    for (let i = 0; i < count; i++) {
+      const u = 0.2 + (i / count) * 0.6;
+      const v = 0.2 + (i / count) * 0.6;
+      this.enemySpawner.spawn(type as any, u, v);
+    }
+  }
+
+  waitForMaterialization(maxFrames: number = 120): void {
+    for (let i = 0; i < maxFrames; i++) {
+      this.tick(1);
+      const enemies = this.enemySpawner.getEnemies();
+      if (enemies.length > 0 && enemies.every(e => !e.isMaterializing)) return;
+    }
+  }
+
+  // =======================================================================
+  // Weapon Helper
+  // =======================================================================
+
+  setWeapon(weapon: WeaponType): void {
+    this.weaponManager.forceSetWeapon(weapon);
+  }
+
+  // =======================================================================
+  // Particle / Effect Queries
+  // =======================================================================
+
+  getActiveEffectCount(): number {
+    return this.particles.activeEffectCount;
+  }
+
+  isParticleSystemInScene(): boolean {
+    return this.particles.root.parent === this.game.scene;
+  }
+
+  isParticleSystemFrustumCullingDisabled(): boolean {
+    return !this.particles.root.frustumCulled;
+  }
+
+  // =======================================================================
+  // Standard Verification Report
+  // =======================================================================
+
+  runStandardChecks(): VerificationReport {
+    const failures: string[] = [];
+
+    const movement = { forward: false, backward: false, left: false, right: false };
+    for (const dir of ['forward', 'backward', 'left', 'right'] as const) {
+      const keyMap: Record<string, string> = { forward: 'w', backward: 's', left: 'a', right: 'd' };
+      const startPos = this.getPlayerWorldPos();
+      this.pressKey(keyMap[dir]);
+      this.tick(30);
+      this.releaseKey(keyMap[dir]);
+      const dist = startPos.distanceTo(this.getPlayerWorldPos());
+      movement[dir] = dist > 0.01;
+      if (!movement[dir]) failures.push(`movement.${dir}: only moved ${dist.toFixed(4)} units`);
+    }
+
+    this.pressKey('w');
+    const camera = this.getCameraStability(60);
+    this.releaseKey('w');
+    if (camera.maxRotationDelta > Math.PI) {
+      failures.push(`camera: max rotation ${(camera.maxRotationDelta * 180 / Math.PI).toFixed(1)}°/frame (>180°)`);
+    }
+
+    this.tick(30);
+    const screenPos = this.getPlayerScreenPos();
+    const playerVisible = screenPos.visible && !isNaN(screenPos.x) && !isNaN(screenPos.y);
+    const centerX = this.width / 2;
+    const centerY = this.height / 2;
+    const playerCentered = Math.abs(screenPos.x - centerX) < this.width * 0.35
+      && Math.abs(screenPos.y - centerY) < this.height * 0.35;
+    if (!playerVisible) failures.push('screen: player not visible');
+    if (!playerCentered) failures.push(`screen: player at (${screenPos.x.toFixed(0)}, ${screenPos.y.toFixed(0)}), not centered`);
+
+    const traversal = this.testFullTraversal(120);
+    if (traversal.totalDistanceMoved < 0.5) {
+      failures.push(`traversal: only ${traversal.totalDistanceMoved.toFixed(2)} total distance`);
+    }
+
+    const fireHandlerConnected = typeof this.player.weaponFireHandler === 'function';
+    const currentWeapon = this.weaponManager.getCurrentWeapon();
+    if (!fireHandlerConnected) failures.push('weapon: fireHandler not connected');
+
+    return {
+      surface: this.surfaceType,
+      movement,
+      camera: { stable: camera.maxRotationDelta < Math.PI, ...camera },
+      screen: { playerVisible, playerCentered },
+      traversal: { totalDistance: traversal.totalDistanceMoved, reachedQuadrants: traversal.visitedUVs.length },
+      weapon: { fireHandlerConnected, currentWeapon },
+      overall: failures.length === 0 ? 'PASS' : 'FAIL',
+      failures,
+    };
+  }
+
+  // =======================================================================
+  // Deterministic Testing
+  // =======================================================================
+
+  getEnemyStates(): EntityState[] {
+    return this.enemySpawner.getEnemies()
+      .map(e => ({
+        type: e.baseTypeName || 'unknown',
+        position: e.position.clone(),
+        alive: e.alive,
+        health: e.health,
+        faceIndex: (e as any).faceIndex,
+      }));
+  }
+
+  recordEntityTimeline(frames: number, sampleEvery: number = 1): EntityTimeline {
+    const timelineFrames: EntityTimelineFrame[] = [];
+
+    for (let i = 0; i < frames; i++) {
+      this.tick(1);
+
+      if (i % sampleEvery === 0) {
+        const enemies = this.enemySpawner.getEnemies();
+        const bullets: THREE.Vector3[] = [];
+        this.bulletPool.forEachActive((_idx, pos) => {
+          bullets.push(pos.clone());
+        });
+
+        timelineFrames.push({
+          frame: this._totalFrames,
+          player: {
+            position: this.getPlayerWorldPos(),
+            aimDirection: this.player.getAimDirection(),
+          },
+          enemies: enemies
+            .filter(e => e.alive && e.active)
+            .map((e, id) => ({
+              id,
+              type: e.baseTypeName || 'unknown',
+              position: e.position.clone(),
+              alive: e.alive,
+            })),
+          bullets,
+        });
+      }
+    }
+
+    return { frames: timelineFrames, seed: this.seed ?? 0, surface: this.surfaceType };
+  }
+
+  buildScenario(config: ScenarioConfig): void {
+    if (config.seed !== undefined) {
+      setGameSeed(config.seed);
+    }
+
+    if (config.playerPosition) {
+      const { u, v } = config.playerPosition;
+      this.player.respawn(u, v);
+      const point = this.surface.getPoint(u, v);
+      const projected = this.meshSurface.closestPointOnSurface(point.position);
+      if (projected) {
+        this.playerWalker.teleportTo(projected.point, projected.faceIndex, projected.normal);
+      } else {
+        this.playerWalker.teleportTo(point.position, 0, point.normal);
+      }
+      this.player.mesh.position.copy(this.playerWalker.position);
+    }
+
+    if (config.enemies) {
+      for (const enemyGroup of config.enemies) {
+        const count = enemyGroup.count ?? 1;
+        for (let i = 0; i < count; i++) {
+          this.enemySpawner.spawn(enemyGroup.type, enemyGroup.u, enemyGroup.v);
+        }
+      }
+    }
+
+    this.tick(10);
+  }
+
+  runScenario(config: ScenarioConfig, frames: number): EntityTimeline {
+    this.buildScenario(config);
+    return this.recordEntityTimeline(frames);
+  }
+
+  // =======================================================================
+  // Replay System
+  // =======================================================================
+
+  startRecording(): void {
+    this.isRecording = true;
+    this.recordedInputs = [];
+    this.recordingStartFrame = this._totalFrames;
+  }
+
+  stopRecording(): ReplayData {
+    this.isRecording = false;
+    return {
+      seed: this.seed ?? 0,
+      surface: this.surfaceType,
+      inputs: this.recordedInputs,
+      totalFrames: this._totalFrames - this.recordingStartFrame,
+    };
+  }
+
+  playReplay(replay: ReplayData): EntityTimeline {
+    if (replay.seed !== 0) {
+      setGameSeed(replay.seed);
+    }
+
+    this.releaseAllKeys();
+    this.player.respawn(0.5, 0.5);
+    this.enemySpawner.clear();
+
+    const timelineFrames: EntityTimelineFrame[] = [];
+    let inputIndex = 0;
+
+    for (let frame = 0; frame < replay.totalFrames; frame++) {
+      if (inputIndex < replay.inputs.length && replay.inputs[inputIndex].frame <= frame) {
+        const inp = replay.inputs[inputIndex];
+        this.releaseAllKeys();
+        for (const key of inp.keys) this.pressKey(key);
+        this.setMousePosition(inp.mouseX, inp.mouseY);
+        this.setMouseDown(inp.mouseDown);
+        inputIndex++;
+      }
+
+      this.tick(1);
+
+      const enemies = this.enemySpawner.getEnemies();
+      const bullets: THREE.Vector3[] = [];
+      this.bulletPool.forEachActive((_idx, pos) => { bullets.push(pos.clone()); });
+
+      timelineFrames.push({
+        frame: this._totalFrames,
+        player: { position: this.getPlayerWorldPos(), aimDirection: this.player.getAimDirection() },
+        enemies: enemies.filter(e => e.alive && e.active).map((e, id) => ({
+          id, type: e.baseTypeName || 'unknown', position: e.position.clone(), alive: e.alive,
+        })),
+        bullets,
+      });
+    }
+
+    return { frames: timelineFrames, seed: replay.seed, surface: replay.surface };
+  }
+
+  // =======================================================================
+  // Cleanup
+  // =======================================================================
+
+  dispose(): void {
+    this.releaseAllKeys();
+    if (this.seed !== null) {
+      clearGameSeed();
+    }
+    EffectDictionary.clear();
   }
 
   // =======================================================================

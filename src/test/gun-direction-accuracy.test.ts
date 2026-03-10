@@ -126,7 +126,7 @@ vi.mock('three/examples/jsm/postprocessing/UnrealBloomPass.js', () => ({
 // Tests
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 describe('Gun Direction Accuracy — Bug Reproduction', () => {
   afterEach(() => {
@@ -134,7 +134,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: aiming right (mouse right of center) should produce rightward bullet', () => {
-    const h = new PlaygroundTestHarness({
+    const h = new RealGameTestHarness({
       surface: 'sphere',
       seed: 77777,
       weapon: null, // Use standard weapon
@@ -177,7 +177,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: aiming left (mouse left of center) should produce leftward bullet', () => {
-    const h = new PlaygroundTestHarness({
+    const h = new RealGameTestHarness({
       surface: 'sphere',
       seed: 88888,
       weapon: null, // Use standard weapon
@@ -216,7 +216,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: aiming up (mouse above center) should produce upward bullet', () => {
-    const h = new PlaygroundTestHarness({
+    const h = new RealGameTestHarness({
       surface: 'sphere',
       seed: 99999,
       weapon: null, // Use standard weapon
@@ -255,7 +255,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: aiming down (mouse below center) should produce downward bullet', () => {
-    const h = new PlaygroundTestHarness({
+    const h = new RealGameTestHarness({
       surface: 'sphere',
       seed: 12121,
       weapon: null, // Use standard weapon
@@ -294,7 +294,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: diagonal aim (up-right) should produce up-right bullet', () => {
-    const h = new PlaygroundTestHarness({
+    const h = new RealGameTestHarness({
       surface: 'sphere',
       seed: 23232,
       weapon: null, // Use standard weapon
@@ -338,7 +338,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
 
   it('SHOULD FAIL: aim direction vector should match input direction', () => {
     // More direct test: use getAimScreenDirection() to verify the aim vector itself
-    const h = new PlaygroundTestHarness({
+    const h = new RealGameTestHarness({
       surface: 'sphere',
       seed: 34343,
       weapon: null, // Use standard weapon
@@ -380,7 +380,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
 
   it('SHOULD FAIL: bullet world velocity should align with aim direction', () => {
     // Test using world-space vectors instead of screen-space
-    const h = new PlaygroundTestHarness({
+    const h = new RealGameTestHarness({
       surface: 'sphere',
       seed: 45454,
       weapon: null, // Use standard weapon
@@ -411,7 +411,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
       const bulletWorldVel = new THREE.Vector3().subVectors(bulletAfter, bulletBefore);
 
       // Project bullet velocity to screen space for comparison
-      const cam = h.pg.game.camera;
+      const cam = h.game.camera;
       const bulletBeforeScreen = h.getPlayerScreenPos(); // This is wrong, should project bullet
 
       // Actually, let's verify using the player aim direction
@@ -432,7 +432,7 @@ describe('Gun Direction Accuracy — Bug Reproduction', () => {
 
   it('SHOULD FAIL: aim direction consistency during movement', () => {
     // Verify that aim direction remains correct even while moving
-    const h = new PlaygroundTestHarness({
+    const h = new RealGameTestHarness({
       surface: 'sphere',
       seed: 56565,
       weapon: null, // Use standard weapon

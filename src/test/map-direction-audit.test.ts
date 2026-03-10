@@ -219,7 +219,7 @@ vi.mock('three', async (importOriginal) => {
 // Import harness after mocks
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 import type { SurfaceType } from '../surfaces/SurfaceFactory';
 
 // ---------------------------------------------------------------------------
@@ -265,8 +265,8 @@ interface CameraAxes {
  * Extract camera screen axes projected onto the surface normal plane.
  * These are what moveFromInput() uses to compute movement direction.
  */
-function getCameraAxes(harness: PlaygroundTestHarness): CameraAxes {
-  const cam = harness.pg.game.camera;
+function getCameraAxes(harness: RealGameTestHarness): CameraAxes {
+  const cam = harness.game.camera;
   cam.updateMatrixWorld(true);
 
   // Camera X = right, Camera Y = up (in world space)
@@ -274,7 +274,7 @@ function getCameraAxes(harness: PlaygroundTestHarness): CameraAxes {
   const camUp = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
 
   // Approximate surface normal from player walker
-  const walker = (harness.pg as any)._walker;
+  const walker = harness.playerWalker;
   const normal = walker ? walker.normal.clone() : new THREE.Vector3(0, 1, 0);
 
   // Project camera axes onto surface tangent plane (same as moveFromInput does)
@@ -294,7 +294,7 @@ function getCameraAxes(harness: PlaygroundTestHarness): CameraAxes {
  * Positive = moving in expected direction. Negative = inverted.
  */
 function measureKeyAlignment(
-  harness: PlaygroundTestHarness,
+  harness: RealGameTestHarness,
   key: string,
   expectedAxis: THREE.Vector3,
 ): { alignment: number; displacement: THREE.Vector3; moved: boolean } {
@@ -320,7 +320,7 @@ function measureKeyAlignment(
 // ---------------------------------------------------------------------------
 
 describe('Map Direction Audit — Camera-Relative Controls', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -335,7 +335,7 @@ describe('Map Direction Audit — Camera-Relative Controls', () => {
       // W key: forward / screen up
       // -----------------------------------------------------------------------
       it('W key moves player toward screen top (not inverted)', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(SETTLE_FRAMES);
 
         const axes = getCameraAxes(harness);
@@ -355,7 +355,7 @@ describe('Map Direction Audit — Camera-Relative Controls', () => {
       // S key: backward / screen down
       // -----------------------------------------------------------------------
       it('S key moves player toward screen bottom (opposite of W)', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(SETTLE_FRAMES);
 
         const axes = getCameraAxes(harness);
@@ -376,7 +376,7 @@ describe('Map Direction Audit — Camera-Relative Controls', () => {
       // D key: strafe right / screen right
       // -----------------------------------------------------------------------
       it('D key moves player toward screen right (not inverted)', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(SETTLE_FRAMES);
 
         const axes = getCameraAxes(harness);
@@ -396,7 +396,7 @@ describe('Map Direction Audit — Camera-Relative Controls', () => {
       // A key: strafe left / screen left
       // -----------------------------------------------------------------------
       it('A key moves player toward screen left (opposite of D)', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(SETTLE_FRAMES);
 
         const axes = getCameraAxes(harness);
@@ -417,7 +417,7 @@ describe('Map Direction Audit — Camera-Relative Controls', () => {
       // W and S are opposite directions
       // -----------------------------------------------------------------------
       it('W and S produce opposing displacements', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(SETTLE_FRAMES);
 
         const startW = harness.getPlayerWorldPos();
@@ -456,7 +456,7 @@ describe('Map Direction Audit — Camera-Relative Controls', () => {
       // D and A are opposite directions
       // -----------------------------------------------------------------------
       it('D and A produce opposing displacements', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(SETTLE_FRAMES);
 
         const startD = harness.getPlayerWorldPos();
@@ -495,7 +495,7 @@ describe('Map Direction Audit — Camera-Relative Controls', () => {
       // W and D are roughly perpendicular (controls not collapsed to 1D)
       // -----------------------------------------------------------------------
       it('W and D produce perpendicular displacements (not same axis)', () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(SETTLE_FRAMES);
 
         const startW = harness.getPlayerWorldPos();
@@ -532,7 +532,7 @@ describe('Map Direction Audit — Camera-Relative Controls', () => {
   // ---------------------------------------------------------------------------
   describe('Mobius: orientation report', () => {
     it('initial controls are correct (not inverted at spawn)', () => {
-      harness = new PlaygroundTestHarness('mobius');
+      harness = new RealGameTestHarness('mobius');
       harness.tick(SETTLE_FRAMES);
 
       const axes = getCameraAxes(harness);

@@ -125,7 +125,7 @@ vi.mock('three/examples/jsm/postprocessing/UnrealBloomPass.js', () => ({
 // Tests
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 describe('Camera Stability — Bug Reproduction', () => {
   afterEach(() => {
@@ -133,7 +133,7 @@ describe('Camera Stability — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: camera.up should remain stable during straight-line movement on sphere', () => {
-    const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 22222 });
+    const h = new RealGameTestHarness({ surface: 'sphere', seed: 22222 });
     h.tick(10); // settle
 
     // Record camera.up vectors over 300 frames of movement
@@ -142,11 +142,11 @@ describe('Camera Stability — Bug Reproduction', () => {
     const upVectors: THREE.Vector3[] = [];
     const frameAngles: number[] = []; // angle between consecutive camera.up vectors
 
-    let prevUp = h.pg.game.camera.up.clone().normalize();
+    let prevUp = h.game.camera.up.clone().normalize();
 
     for (let i = 0; i < 300; i++) {
       h.tick(1);
-      const currentUp = h.pg.game.camera.up.clone().normalize();
+      const currentUp = h.game.camera.up.clone().normalize();
       upVectors.push(currentUp.clone());
 
       // Measure angle between this frame's up and previous frame's up
@@ -196,7 +196,7 @@ describe('Camera Stability — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: camera.up should not oscillate during diagonal movement', () => {
-    const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 33333 });
+    const h = new RealGameTestHarness({ surface: 'sphere', seed: 33333 });
     h.tick(10);
 
     // Diagonal movement (W+D) is particularly prone to triggering oscillation
@@ -205,11 +205,11 @@ describe('Camera Stability — Bug Reproduction', () => {
     h.pressKey('d');
 
     const upVectors: THREE.Vector3[] = [];
-    let prevUp = h.pg.game.camera.up.clone().normalize();
+    let prevUp = h.game.camera.up.clone().normalize();
 
     for (let i = 0; i < 120; i++) {
       h.tick(1);
-      const currentUp = h.pg.game.camera.up.clone().normalize();
+      const currentUp = h.game.camera.up.clone().normalize();
       upVectors.push(currentUp.clone());
       prevUp.copy(currentUp);
     }
@@ -236,17 +236,17 @@ describe('Camera Stability — Bug Reproduction', () => {
 
   it('SHOULD FAIL: camera.up stability during forward movement on torus', () => {
     // Torus has more complex curvature than sphere, making it a good test case
-    const h = new PlaygroundTestHarness({ surface: 'torus', seed: 44444 });
+    const h = new RealGameTestHarness({ surface: 'torus', seed: 44444 });
     h.tick(10);
 
     h.pressKey('w');
 
     const frameAngles: number[] = [];
-    let prevUp = h.pg.game.camera.up.clone().normalize();
+    let prevUp = h.game.camera.up.clone().normalize();
 
     for (let i = 0; i < 200; i++) {
       h.tick(1);
-      const currentUp = h.pg.game.camera.up.clone().normalize();
+      const currentUp = h.game.camera.up.clone().normalize();
       const angle = Math.acos(Math.max(-1, Math.min(1, currentUp.dot(prevUp))));
       frameAngles.push(angle);
       prevUp.copy(currentUp);
@@ -272,17 +272,17 @@ describe('Camera Stability — Bug Reproduction', () => {
 
   it('SHOULD FAIL: camera quaternion should also be stable (alternative measurement)', () => {
     // Test camera quaternion stability as an alternative metric
-    const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 55555 });
+    const h = new RealGameTestHarness({ surface: 'sphere', seed: 55555 });
     h.tick(10);
 
     h.pressKey('a'); // hold left
 
     const quatAngles: number[] = [];
-    let prevQuat = h.pg.game.camera.quaternion.clone();
+    let prevQuat = h.game.camera.quaternion.clone();
 
     for (let i = 0; i < 200; i++) {
       h.tick(1);
-      const currentQuat = h.pg.game.camera.quaternion.clone();
+      const currentQuat = h.game.camera.quaternion.clone();
       const angle = prevQuat.angleTo(currentQuat);
       quatAngles.push(angle);
       prevQuat.copy(currentQuat);
@@ -307,17 +307,17 @@ describe('Camera Stability — Bug Reproduction', () => {
   it('SHOULD FAIL: no periodic jitter pattern during extended movement', () => {
     // User reported "constant repeating lag/delay effect" — this suggests
     // a periodic jitter pattern, not just random noise
-    const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 66666 });
+    const h = new RealGameTestHarness({ surface: 'sphere', seed: 66666 });
     h.tick(10);
 
     h.pressKey('d');
 
     const frameAngles: number[] = [];
-    let prevUp = h.pg.game.camera.up.clone().normalize();
+    let prevUp = h.game.camera.up.clone().normalize();
 
     for (let i = 0; i < 360; i++) { // 6 seconds
       h.tick(1);
-      const currentUp = h.pg.game.camera.up.clone().normalize();
+      const currentUp = h.game.camera.up.clone().normalize();
       const angle = Math.acos(Math.max(-1, Math.min(1, currentUp.dot(prevUp))));
       frameAngles.push(angle);
       prevUp.copy(currentUp);

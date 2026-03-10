@@ -134,7 +134,7 @@ describe('Cube Tangent Frame Fix (Session 12)', () => {
 
       const currentBitangent = walker.getTangentFrame().bitangent;
 
-      // In PlaygroundGame.ts, camera.up = walker.bitangent (REGRESSION GUARD).
+      // In the game code, camera.up = walker.bitangent (REGRESSION GUARD).
       // A wild spin is a >90° rotation of camera.up in a single frame.
       const bitangentDot = prevBitangent.dot(currentBitangent);
       const rotationAngle = Math.abs(Math.acos(Math.max(-1, Math.min(1, bitangentDot))));

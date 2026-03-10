@@ -59,22 +59,21 @@ vi.mock('three', async (importOriginal) => {
 });
 
 import * as THREE from 'three';
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 describe('Capsule tangent frame debug', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) harness.dispose();
   });
 
   test('TANGENT FRAME: Print initial tangent/bitangent/normal at capsule start position', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
     // Access the walker's tangent frame
-    const pg = harness.pg as any;
-    const walker = pg._walker;
+    const walker = harness.playerWalker;
     const frame = walker.getTangentFrame();
 
     console.log('\n=== Capsule tangent frame at start position (u=0.5, v=0.5) ===');
@@ -105,7 +104,7 @@ describe('Capsule tangent frame debug', () => {
     console.log(`D key (positive tangent): moves player in direction (${frame.tangent.x.toFixed(3)}, ${frame.tangent.y.toFixed(3)}, ${frame.tangent.z.toFixed(3)})`);
     console.log(`W key (positive bitangent): moves player in direction (${frame.bitangent.x.toFixed(3)}, ${frame.bitangent.y.toFixed(3)}, ${frame.bitangent.z.toFixed(3)})`);
 
-    // Camera setup in PlaygroundGame:
+    // Camera setup in GameInstance:
     // camera.up = frame.bitangent  (screen up = bitangent)
     // camera.position = player + normal * distance  (looks from above along normal)
     // camera.lookAt(player)
@@ -116,17 +115,16 @@ describe('Capsule tangent frame debug', () => {
     //   W key = positive bitangent = screen up = forward on screen
 
     console.log('\nCamera orientation:');
-    const cam = harness.pg.game.camera;
+    const cam = harness.game.camera;
     console.log(`Camera position: (${cam.position.x.toFixed(3)}, ${cam.position.y.toFixed(3)}, ${cam.position.z.toFixed(3)})`);
     console.log(`Camera up: (${cam.up.x.toFixed(3)}, ${cam.up.y.toFixed(3)}, ${cam.up.z.toFixed(3)})`);
   });
 
   test('TANGENT FRAME DRIFT: Track tangent/bitangent rotation during W+D on capsule', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
-    const pg = harness.pg as any;
-    const walker = pg._walker;
+    const walker = harness.playerWalker;
 
     // Record initial tangent frame
     const initialFrame = walker.getTangentFrame();
@@ -178,11 +176,10 @@ describe('Capsule tangent frame debug', () => {
   });
 
   test('TANGENT FRAME DRIFT: Same test on SPHERE for comparison', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
-    const pg = harness.pg as any;
-    const walker = pg._walker;
+    const walker = harness.playerWalker;
 
     const initialFrame = walker.getTangentFrame();
     const initialTangent = initialFrame.tangent.clone();
@@ -224,7 +221,7 @@ describe('Capsule tangent frame debug', () => {
   });
 
   test('V OSCILLATION: Track V value frame-by-frame during W+D on capsule', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
     harness.pressKey('w');

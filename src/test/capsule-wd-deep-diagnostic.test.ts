@@ -52,18 +52,18 @@ vi.mock('three', async (importOriginal) => {
 });
 
 import * as THREE from 'three';
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 import type { SurfaceType } from '../surfaces/SurfaceFactory';
 
 describe('Capsule W+D deep diagnostic', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) harness.dispose();
   });
 
   test('DIAGNOSTIC: W+D on capsule - track tangent frame rotation and path curvature over 10 seconds', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10); // settle
 
     const startPos = harness.getPlayerWorldPos().clone();
@@ -80,8 +80,8 @@ describe('Capsule W+D deep diagnostic', () => {
     const positions: THREE.Vector3[] = [];
     const uvs: { u: number; v: number }[] = [];
 
-    // Access the walker's tangent frame through the PlaygroundGame
-    const pg = harness.pg;
+    // Access the walker's tangent frame through the GameInstance
+    const pg = harness;
 
     for (let i = 0; i < 600; i++) {
       harness.tick(1);
@@ -173,7 +173,7 @@ describe('Capsule W+D deep diagnostic', () => {
 
   test('DIAGNOSTIC: Compare W+D path on capsule vs sphere (10 sec each)', () => {
     // Capsule
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
     const capsuleStart = harness.getPlayerWorldPos().clone();
     harness.pressKey('w');
@@ -196,7 +196,7 @@ describe('Capsule W+D deep diagnostic', () => {
     harness.dispose();
 
     // Sphere
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
     const sphereStart = harness.getPlayerWorldPos().clone();
     harness.pressKey('w');
@@ -236,7 +236,7 @@ describe('Capsule W+D deep diagnostic', () => {
     ];
 
     for (const { name, v } of vPositions) {
-      harness = new PlaygroundTestHarness('pill');
+      harness = new RealGameTestHarness('pill');
       harness.tick(10);
 
       // Walk to the desired V position first
@@ -297,7 +297,7 @@ describe('Capsule W+D deep diagnostic', () => {
   });
 
   test('DIAGNOSTIC: Check if U wraps during W+D on capsule (azimuthal looping)', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
     const startUV = harness.getPlayerSurfaceUV();
@@ -354,7 +354,7 @@ describe('Capsule W+D deep diagnostic', () => {
 
   test('DIAGNOSTIC: D-only vs W-only vs W+D on capsule to isolate tangent frame drift', () => {
     // Test D-only
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
     const dStart = harness.getPlayerWorldPos().clone();
     const dStartUV = harness.getPlayerSurfaceUV();
@@ -369,7 +369,7 @@ describe('Capsule W+D deep diagnostic', () => {
     harness.dispose();
 
     // Test W-only
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
     const wStart = harness.getPlayerWorldPos().clone();
     const wStartUV = harness.getPlayerSurfaceUV();
@@ -384,7 +384,7 @@ describe('Capsule W+D deep diagnostic', () => {
     harness.dispose();
 
     // Test W+D
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
     const wdStart = harness.getPlayerWorldPos().clone();
     const wdStartUV = harness.getPlayerSurfaceUV();

@@ -4,8 +4,8 @@
  * Tests gameplay using BOTH world coordinates AND screen pixel coordinates.
  * Detects bugs like: broken mouse aim, camera spinning, wrong weapon, traversal walls.
  *
- * Runs headlessly in vitest (no browser needed). Uses PlaygroundTestHarness which
- * wraps the real PlaygroundGame with programmatic input injection.
+ * Runs headlessly in vitest (no browser needed). Uses RealGameTestHarness which
+ * wraps the real GameInstance with programmatic input injection.
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
@@ -293,15 +293,15 @@ vi.mock('three', async (importOriginal) => {
 // Now import the harness (after mocks are set up)
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness, projectToScreen } from './PlaygroundTestHarness';
+import { RealGameTestHarness, projectToScreen } from './RealGameTestHarness';
 import { WeaponType } from '../weapons/WeaponTypes';
 
 // ---------------------------------------------------------------------------
 // Test suites
 // ---------------------------------------------------------------------------
 
-describe('PlaygroundGame Verification', () => {
-  let harness: PlaygroundTestHarness;
+describe('GameInstance Verification', () => {
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -315,7 +315,7 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Movement', () => {
     beforeEach(() => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       // Let camera settle for a few frames
       harness.tick(10);
     });
@@ -412,7 +412,7 @@ describe('PlaygroundGame Verification', () => {
 
       // Reset
       harness.dispose();
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(10);
 
       // Measure diagonal speed (W + D)
@@ -439,7 +439,7 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Aim', () => {
     beforeEach(() => {
-      harness = new PlaygroundTestHarness('sphere', WeaponType.Standard);
+      harness = new RealGameTestHarness('sphere', WeaponType.Standard);
       harness.tick(10);
     });
 
@@ -502,12 +502,12 @@ describe('PlaygroundGame Verification', () => {
       // Aim right
       harness.setMousePosition(harness.width * 0.9, harness.height / 2);
       harness.tick(10);
-      const aimAngle1 = harness.pg.player.aimAngle;
+      const aimAngle1 = harness.player.aimAngle;
 
       // Aim left
       harness.setMousePosition(harness.width * 0.1, harness.height / 2);
       harness.tick(10);
-      const aimAngle2 = harness.pg.player.aimAngle;
+      const aimAngle2 = harness.player.aimAngle;
 
       // Aim angles should be different (the player responds to mouse input)
       const angleDiff = Math.abs(aimAngle1 - aimAngle2);
@@ -521,7 +521,7 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Camera', () => {
     beforeEach(() => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(30); // Let camera settle
     });
 
@@ -615,36 +615,36 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Weapons', () => {
     it('setWeapon changes the active weapon', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
 
-      expect(harness.pg.weaponManager.getCurrentWeapon()).toBe(WeaponType.Standard);
+      expect(harness.weaponManager.getCurrentWeapon()).toBe(WeaponType.Standard);
 
-      harness.pg.setWeapon(WeaponType.Spread);
-      expect(harness.pg.weaponManager.getCurrentWeapon()).toBe(WeaponType.Spread);
+      harness.setWeapon(WeaponType.Spread);
+      expect(harness.weaponManager.getCurrentWeapon()).toBe(WeaponType.Spread);
 
-      harness.pg.setWeapon(WeaponType.Homing);
-      expect(harness.pg.weaponManager.getCurrentWeapon()).toBe(WeaponType.Homing);
+      harness.setWeapon(WeaponType.Homing);
+      expect(harness.weaponManager.getCurrentWeapon()).toBe(WeaponType.Homing);
     });
 
     it('weaponFireHandler is connected (not null)', () => {
-      harness = new PlaygroundTestHarness('sphere', WeaponType.Standard);
+      harness = new RealGameTestHarness('sphere', WeaponType.Standard);
 
-      // The fire handler should be wired up by PlaygroundGame's constructor
-      expect(harness.pg.player.weaponFireHandler).toBeDefined();
-      expect(typeof harness.pg.player.weaponFireHandler).toBe('function');
+      // The fire handler should be wired up by GameInstance's constructor
+      expect(harness.player.weaponFireHandler).toBeDefined();
+      expect(typeof harness.player.weaponFireHandler).toBe('function');
     });
 
     it('equipped weapon matches WeaponManager state', () => {
-      harness = new PlaygroundTestHarness('sphere', WeaponType.Spread);
+      harness = new RealGameTestHarness('sphere', WeaponType.Spread);
 
-      // PlaygroundGame locks to the configured weapon
+      // GameInstance locks to the configured weapon
       harness.tick(5);
 
-      expect(harness.pg.weaponManager.getCurrentWeapon()).toBe(WeaponType.Spread);
+      expect(harness.weaponManager.getCurrentWeapon()).toBe(WeaponType.Spread);
     });
 
     it('firing produces bullets', () => {
-      harness = new PlaygroundTestHarness('sphere', WeaponType.Standard);
+      harness = new RealGameTestHarness('sphere', WeaponType.Standard);
       harness.tick(10); // Let game settle
 
       // Aim and fire
@@ -664,7 +664,7 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Traversal', () => {
     it('player can traverse in all 4 directions on sphere', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(10);
 
       expect(harness.canTraverse('forward')).toBe(true);
@@ -674,7 +674,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('player can traverse in all 4 directions on cube', () => {
-      harness = new PlaygroundTestHarness('cube');
+      harness = new RealGameTestHarness('cube');
       harness.tick(10);
 
       expect(harness.canTraverse('forward')).toBe(true);
@@ -684,7 +684,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('player can traverse in all 4 directions on torus', () => {
-      harness = new PlaygroundTestHarness('torus');
+      harness = new RealGameTestHarness('torus');
       harness.tick(10);
 
       expect(harness.canTraverse('forward')).toBe(true);
@@ -694,7 +694,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('player can traverse full sphere surface (covers multiple quadrants)', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(10);
 
       const result = harness.testFullTraversal(180);
@@ -704,7 +704,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('player can traverse full cube surface', () => {
-      harness = new PlaygroundTestHarness('cube');
+      harness = new RealGameTestHarness('cube');
       harness.tick(10);
 
       const result = harness.testFullTraversal(180);
@@ -713,7 +713,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('player can traverse full torus surface', () => {
-      harness = new PlaygroundTestHarness('torus');
+      harness = new RealGameTestHarness('torus');
       harness.tick(10);
 
       const result = harness.testFullTraversal(180);
@@ -728,7 +728,7 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Entity Visibility', () => {
     it('player has valid screen position', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(30);
 
       const screenPos = harness.getPlayerScreenPos();
@@ -744,7 +744,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('enemies have valid screen positions', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.spawnEnemies(5, 'wanderer');
       harness.waitForMaterialization();
       harness.tick(10);
@@ -763,7 +763,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('bullets have valid screen positions when fired', () => {
-      harness = new PlaygroundTestHarness('sphere', WeaponType.Standard);
+      harness = new RealGameTestHarness('sphere', WeaponType.Standard);
       harness.tick(10);
 
       harness.setMousePosition(harness.width * 0.8, harness.height / 2);
@@ -788,7 +788,7 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Screen Projection', () => {
     it('projectToScreen returns center for object at camera lookAt point', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(30);
 
       // The camera looks at the player, so player should be near screen center
@@ -803,7 +803,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('world position changes cause screen position changes', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(30);
 
       const screenBefore = harness.getPlayerScreenPos();
@@ -835,7 +835,7 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Bug Detection', () => {
     it('detects camera spinning (no individual frame > 180 degrees rotation)', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(30);
 
       // Normal movement should NOT cause wild 180+ degree flips per frame.
@@ -851,7 +851,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('detects broken aim (bullets go opposite to mouse direction)', () => {
-      harness = new PlaygroundTestHarness('sphere', WeaponType.Standard);
+      harness = new RealGameTestHarness('sphere', WeaponType.Standard);
       harness.tick(30);
 
       // Aim far right
@@ -877,7 +877,7 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('detects traversal walls (player gets stuck)', () => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(10);
 
       // Move in each direction for 60 frames and check distance
@@ -898,15 +898,15 @@ describe('PlaygroundGame Verification', () => {
     });
 
     it('detects wrong weapon (equipped weapon doesnt match config)', () => {
-      harness = new PlaygroundTestHarness('sphere', WeaponType.Spread);
+      harness = new RealGameTestHarness('sphere', WeaponType.Spread);
       harness.tick(10);
 
-      const currentWeapon = harness.pg.weaponManager.getCurrentWeapon();
+      const currentWeapon = harness.weaponManager.getCurrentWeapon();
       expect(currentWeapon).toBe(WeaponType.Spread);
 
       // The weapon lock should persist after ticking
       harness.tick(30);
-      const stillCorrect = harness.pg.weaponManager.getCurrentWeapon();
+      const stillCorrect = harness.weaponManager.getCurrentWeapon();
       expect(stillCorrect).toBe(WeaponType.Spread);
     });
   });
@@ -920,7 +920,7 @@ describe('PlaygroundGame Verification', () => {
 
     for (const surfaceType of surfaceTypes) {
       it(`player position is valid on ${surfaceType}`, () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(10);
 
         const pos = harness.getPlayerWorldPos();
@@ -931,7 +931,7 @@ describe('PlaygroundGame Verification', () => {
       });
 
       it(`player screen position is valid on ${surfaceType}`, () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(30);
 
         const screenPos = harness.getPlayerScreenPos();
@@ -941,7 +941,7 @@ describe('PlaygroundGame Verification', () => {
       });
 
       it(`movement works on ${surfaceType}`, () => {
-        harness = new PlaygroundTestHarness(surfaceType);
+        harness = new RealGameTestHarness(surfaceType);
         harness.tick(10);
 
         const startPos = harness.getPlayerWorldPos();
@@ -961,7 +961,7 @@ describe('PlaygroundGame Verification', () => {
 
   describe('Death Effects', () => {
     beforeEach(() => {
-      harness = new PlaygroundTestHarness('sphere');
+      harness = new RealGameTestHarness('sphere');
       harness.tick(10);
     });
 
@@ -983,7 +983,7 @@ describe('PlaygroundGame Verification', () => {
       harness.waitForMaterialization(120);
 
       // Verify enemy is alive
-      const enemies = harness.pg.enemySpawner.getEnemies().filter(e => e.alive);
+      const enemies = harness.enemySpawner.getEnemies().filter(e => e.alive);
       expect(enemies.length).toBeGreaterThan(0);
 
       // Kill the enemy directly via takeDamage
@@ -993,7 +993,7 @@ describe('PlaygroundGame Verification', () => {
       expect(enemy.alive).toBe(false);
 
       // Trigger particle death effect manually (same as collision code does)
-      harness.pg.particles.enemyDeath(deathPos, new THREE.Color(0x4444ff));
+      harness.particles.enemyDeath(deathPos, new THREE.Color(0x4444ff));
 
       // Advance one frame to process particles
       harness.tick(1);
@@ -1005,7 +1005,7 @@ describe('PlaygroundGame Verification', () => {
     it('particle effects fade out over time', () => {
       // Trigger a death effect
       const pos = harness.getPlayerWorldPos();
-      harness.pg.particles.enemyDeath(pos, new THREE.Color(0xff0000));
+      harness.particles.enemyDeath(pos, new THREE.Color(0xff0000));
 
       harness.tick(1);
       const activeAfterSpawn = harness.getActiveEffectCount();

@@ -2,7 +2,7 @@
  * Frame-by-Frame Diagnostic Test
  *
  * Purpose: Capture detailed per-frame data for movement analysis WITHOUT visual testing.
- * This allows workers to diagnose movement bugs programmatically using PlaygroundTestHarness.
+ * This allows workers to diagnose movement bugs programmatically using RealGameTestHarness.
  *
  * What This Captures:
  * - Player world position (x, y, z)
@@ -221,7 +221,7 @@ vi.mock('three', async (importOriginal) => {
   return { ...actual, WebGLRenderer: MockWebGLRenderer };
 });
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 // Output directory
 const OUTPUT_DIR = join(process.cwd(), 'test-data', 'diagnostics');
@@ -269,14 +269,14 @@ interface DiagnosticReport {
   };
 }
 
-function captureFrameData(harness: PlaygroundTestHarness, frameNumber: number, time: number, prevQuat?: THREE.Quaternion, prevPos?: THREE.Vector3): FrameData {
-  const player = harness.pg.player;
+function captureFrameData(harness: RealGameTestHarness, frameNumber: number, time: number, prevQuat?: THREE.Quaternion, prevPos?: THREE.Vector3): FrameData {
+  const player = harness.player;
   const pos = harness.getPlayerWorldPos();
   const quat = player.mesh.quaternion.clone();
   const euler = new THREE.Euler().setFromQuaternion(quat);
 
   // Get tangent frame
-  const frame = (harness.pg as any)._walker.getTangentFrame();
+  const frame = harness.playerWalker.getTangentFrame();
 
   // Calculate deltas
   const positionChange = prevPos ? pos.distanceTo(prevPos) : 0;
@@ -358,7 +358,7 @@ function analyzeFrames(frames: FrameData[]): DiagnosticReport['analysis'] {
 }
 
 describe('Frame-by-Frame Movement Diagnostics', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -367,7 +367,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
   });
 
   it('captures forward movement (W key) - 120 frames', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10); // Settle
 
     const frames: FrameData[] = [];
@@ -379,7 +379,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
     // Capture initial frame
     const initialFrame = captureFrameData(harness, 0, time, prevQuat, prevPos);
     frames.push(initialFrame);
-    prevQuat = harness.pg.player.mesh.quaternion.clone();
+    prevQuat = harness.player.mesh.quaternion.clone();
     prevPos = harness.getPlayerWorldPos().clone();
 
     // Press W and capture 120 frames
@@ -392,7 +392,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
       frame.input.moveY = -1; // W key
       frames.push(frame);
 
-      prevQuat = harness.pg.player.mesh.quaternion.clone();
+      prevQuat = harness.player.mesh.quaternion.clone();
       prevPos = harness.getPlayerWorldPos().clone();
     }
     harness.releaseKey('w');
@@ -427,7 +427,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
   });
 
   it('captures backward movement (S key) - 120 frames', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
     const frames: FrameData[] = [];
@@ -438,7 +438,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
 
     const initialFrame = captureFrameData(harness, 0, time, prevQuat, prevPos);
     frames.push(initialFrame);
-    prevQuat = harness.pg.player.mesh.quaternion.clone();
+    prevQuat = harness.player.mesh.quaternion.clone();
     prevPos = harness.getPlayerWorldPos().clone();
 
     harness.pressKey('s');
@@ -450,7 +450,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
       frame.input.moveY = 1; // S key
       frames.push(frame);
 
-      prevQuat = harness.pg.player.mesh.quaternion.clone();
+      prevQuat = harness.player.mesh.quaternion.clone();
       prevPos = harness.getPlayerWorldPos().clone();
     }
     harness.releaseKey('s');
@@ -478,7 +478,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
   });
 
   it('captures left movement (A key) - 120 frames for comparison', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
     const frames: FrameData[] = [];
@@ -489,7 +489,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
 
     const initialFrame = captureFrameData(harness, 0, time, prevQuat, prevPos);
     frames.push(initialFrame);
-    prevQuat = harness.pg.player.mesh.quaternion.clone();
+    prevQuat = harness.player.mesh.quaternion.clone();
     prevPos = harness.getPlayerWorldPos().clone();
 
     harness.pressKey('a');
@@ -501,7 +501,7 @@ describe('Frame-by-Frame Movement Diagnostics', () => {
       frame.input.moveX = -1; // A key
       frames.push(frame);
 
-      prevQuat = harness.pg.player.mesh.quaternion.clone();
+      prevQuat = harness.player.mesh.quaternion.clone();
       prevPos = harness.getPlayerWorldPos().clone();
     }
     harness.releaseKey('a');

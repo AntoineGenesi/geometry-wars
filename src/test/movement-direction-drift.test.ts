@@ -125,7 +125,7 @@ vi.mock('three/examples/jsm/postprocessing/UnrealBloomPass.js', () => ({
 // Tests
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 describe('Movement Direction Drift — Bug Reproduction', () => {
   afterEach(() => {
@@ -134,14 +134,14 @@ describe('Movement Direction Drift — Bug Reproduction', () => {
 
   it('SHOULD FAIL: holding right (D) for 300 frames should produce straight-line movement', () => {
     // Create harness on sphere
-    const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 12345 });
+    const h = new RealGameTestHarness({ surface: 'sphere', seed: 12345 });
     h.tick(10); // settle
 
     // Record initial position and determine the "right" direction
     const startPos = h.getPlayerWorldPos();
 
     // Get camera state to determine screen-right direction
-    const cam = h.pg.game.camera;
+    const cam = h.game.camera;
     const camWorldQuat = cam.getWorldQuaternion(new THREE.Quaternion());
     const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camWorldQuat);
 
@@ -218,11 +218,11 @@ describe('Movement Direction Drift — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: holding forward (W) for 300 frames should produce straight-line movement', () => {
-    const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 54321 });
+    const h = new RealGameTestHarness({ surface: 'sphere', seed: 54321 });
     h.tick(10);
 
     const startPos = h.getPlayerWorldPos();
-    const cam = h.pg.game.camera;
+    const cam = h.game.camera;
     const camWorldQuat = cam.getWorldQuaternion(new THREE.Quaternion());
     const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camWorldQuat);
     const initialDir = screenUp.clone().normalize();
@@ -261,7 +261,7 @@ describe('Movement Direction Drift — Bug Reproduction', () => {
   });
 
   it('SHOULD FAIL: diagonal movement (W+D) should not cause oscillation or stuck behavior', () => {
-    const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 99999 });
+    const h = new RealGameTestHarness({ surface: 'sphere', seed: 99999 });
     h.tick(10);
 
     const startPos = h.getPlayerWorldPos();
@@ -301,11 +301,11 @@ describe('Movement Direction Drift — Bug Reproduction', () => {
 
   it('SHOULD FAIL: movement on torus should also maintain straight-line direction', () => {
     // Test on a different surface to ensure the bug isn't sphere-specific
-    const h = new PlaygroundTestHarness({ surface: 'torus', seed: 11111 });
+    const h = new RealGameTestHarness({ surface: 'torus', seed: 11111 });
     h.tick(10);
 
     const startPos = h.getPlayerWorldPos();
-    const cam = h.pg.game.camera;
+    const cam = h.game.camera;
     const camWorldQuat = cam.getWorldQuaternion(new THREE.Quaternion());
     const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camWorldQuat);
     const initialDir = screenRight.clone().normalize();

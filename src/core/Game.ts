@@ -620,7 +620,7 @@ export class Game {
   // ---- Event handlers -------------------------------------------------
 
   /** When true, the built-in window resize handler is skipped.
-   *  Playground embeds manage their own canvas size via PlaygroundGame.resize(). */
+   *  Playground embeds manage their own canvas size via GameInstance.resize(). */
   disableBuiltInResize: boolean = false;
 
   private onResize = (): void => {

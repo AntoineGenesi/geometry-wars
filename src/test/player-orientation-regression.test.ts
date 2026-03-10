@@ -211,10 +211,10 @@ vi.mock('three', async (importOriginal) => {
   return { ...actual, WebGLRenderer: MockWebGLRenderer };
 });
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 describe('Player Orientation Regression (s15)', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -223,7 +223,7 @@ describe('Player Orientation Regression (s15)', () => {
   });
 
   it('forward movement produces consistent displacement (not jitter in place)', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
     const startPos = harness.getPlayerWorldPos();
@@ -242,7 +242,7 @@ describe('Player Orientation Regression (s15)', () => {
   });
 
   it('lateral movement works correctly (left and right produce different positions)', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
     const startPos = harness.getPlayerWorldPos();
@@ -255,7 +255,7 @@ describe('Player Orientation Regression (s15)', () => {
 
     // Reset to start area
     harness.dispose();
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
     const startPos2 = harness.getPlayerWorldPos();
 
@@ -274,7 +274,7 @@ describe('Player Orientation Regression (s15)', () => {
   });
 
   it('forward and backward movement both produce displacement (not stuck)', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
     const startPos = harness.getPlayerWorldPos();
@@ -301,7 +301,7 @@ describe('Player Orientation Regression (s15)', () => {
   });
 
   it('all four cardinal directions produce movement (no traversal walls)', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
     // Test all four cardinal directions
@@ -329,7 +329,7 @@ describe('Player Orientation Regression (s15)', () => {
   });
 
   it('diagonal movement works (not square fashion movement)', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
     const startPos = harness.getPlayerWorldPos();

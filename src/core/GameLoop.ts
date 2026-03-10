@@ -20,7 +20,7 @@ import { loadGraphicsSettings } from '../ui/SettingsMenu';
  * GameLoop — Fixed-timestep game update logic for the main game path.
  *
  * Called by main.ts (the user's entry point). State flows through GameContext.
- * ⚠ NOT called by GameInstance (used by tests/demos via PlaygroundGame).
+ * ⚠ NOT called by GameInstance (used by tests/demos via GameInstance).
  *   If you fix something here, the main game is affected. Tests may not see your fix.
  *   If you fix something in GameInstance.ts, the main game is NOT affected.
  * Contains multiple // REGRESSION GUARD: sections — read before editing.

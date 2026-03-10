@@ -12,7 +12,7 @@
  *   4. Mobius Seam — MeshWalker blocked at seam (HalfEdgeMesh edge linking)
  *   5. Mobius Camera — tangent frame flip at seam
  *
- * Tests use ACTUAL game code paths, not PlaygroundTestHarness.
+ * Tests use ACTUAL game code paths, not RealGameTestHarness.
  */
 
 import { describe, it, expect } from 'vitest';

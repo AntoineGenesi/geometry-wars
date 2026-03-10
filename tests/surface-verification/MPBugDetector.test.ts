@@ -3,7 +3,7 @@
  *
  * This test suite directly tests the server-side GameRoom functions that
  * implement MP gameplay. The existing SurfaceVerifier framework tests SP code
- * paths (PlaygroundTestHarness) but NOT the actual MP server logic.
+ * paths (RealGameTestHarness) but NOT the actual MP server logic.
  *
  * These tests are designed to CATCH THE REAL BUGS reported by the user:
  *

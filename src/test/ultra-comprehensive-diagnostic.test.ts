@@ -204,7 +204,7 @@ vi.mock('three', async (importOriginal) => {
   return { ...actual, WebGLRenderer: MockWebGLRenderer };
 });
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 const OUTPUT_DIR = join(process.cwd(), 'test-data', 'diagnostics');
 mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -268,7 +268,7 @@ interface UltraFrameData {
 }
 
 describe('Ultra-Comprehensive Diagnostic', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) {
@@ -277,14 +277,14 @@ describe('Ultra-Comprehensive Diagnostic', () => {
   });
 
   it('captures first 10 frames of forward movement with full detail', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10); // Settle
 
     const frames: UltraFrameData[] = [];
 
     harness.pressKey('w');
     for (let i = 0; i < 10; i++) {
-      const walker = (harness.pg as any)._walker;
+      const walker = harness.playerWalker;
 
       // Capture BEFORE tick
       const frameBefore = walker.getTangentFrame();
@@ -301,10 +301,10 @@ describe('Ultra-Comprehensive Diagnostic', () => {
       const bitangentAfter = frameAfter.bitangent.clone();
       const normalAfter = frameAfter.normal.clone();
 
-      // Get aim direction (from PlaygroundGame logic)
+      // Get aim direction (from GameInstance logic)
       const aimDirection = bitangentAfter.clone(); // Default aim (no mouse)
 
-      // Calculate player orientation (from PlaygroundGame logic)
+      // Calculate player orientation (from GameInstance logic)
       const playerNormal = normalAfter.clone();
       const playerRight = new THREE.Vector3().crossVectors(playerNormal, aimDirection).normalize();
       const playerForward = new THREE.Vector3().crossVectors(playerRight, playerNormal).normalize();

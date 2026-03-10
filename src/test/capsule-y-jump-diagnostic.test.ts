@@ -46,21 +46,20 @@ vi.mock('three', async (importOriginal) => {
 });
 
 import * as THREE from 'three';
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 
 describe('Capsule Y-jump diagnostic', () => {
-  let harness: PlaygroundTestHarness;
+  let harness: RealGameTestHarness;
 
   afterEach(() => {
     if (harness) harness.dispose();
   });
 
   test('Y JUMPS: Detect position jumps during W+D on pill', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
-    const pg = harness.pg as any;
-    const walker = pg._walker;
+    const walker = harness.playerWalker;
 
     harness.pressKey('w');
     harness.pressKey('d');
@@ -111,11 +110,10 @@ describe('Capsule Y-jump diagnostic', () => {
   });
 
   test('Y JUMPS: Same test on SPHERE for comparison', () => {
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
 
-    const pg = harness.pg as any;
-    const walker = pg._walker;
+    const walker = harness.playerWalker;
 
     harness.pressKey('w');
     harness.pressKey('d');
@@ -156,10 +154,9 @@ describe('Capsule Y-jump diagnostic', () => {
 
   test('FACE CROSSINGS: Count face boundary crossings during W+D on pill vs sphere', () => {
     // PILL
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
-    let pg = harness.pg as any;
-    let walker = pg._walker;
+    let walker = harness.playerWalker;
 
     harness.pressKey('w');
     harness.pressKey('d');
@@ -178,10 +175,9 @@ describe('Capsule Y-jump diagnostic', () => {
     harness.dispose();
 
     // SPHERE
-    harness = new PlaygroundTestHarness('sphere');
+    harness = new RealGameTestHarness('sphere');
     harness.tick(10);
-    pg = harness.pg as any;
-    walker = pg._walker;
+    walker = harness.playerWalker;
 
     harness.pressKey('w');
     harness.pressKey('d');
@@ -204,11 +200,10 @@ describe('Capsule Y-jump diagnostic', () => {
   });
 
   test('BVH FALLBACK: Check if geodesic walk triggers BVH fallback on pill during W+D', () => {
-    harness = new PlaygroundTestHarness('pill');
+    harness = new RealGameTestHarness('pill');
     harness.tick(10);
 
-    const pg = harness.pg as any;
-    const walker = pg._walker;
+    const walker = harness.playerWalker as any;
 
     // Monkey-patch the walker's _fallbackMove to count calls
     let fallbackCount = 0;

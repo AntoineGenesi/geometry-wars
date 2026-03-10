@@ -1,5 +1,5 @@
 /**
- * Deterministic Testing Suite for PlaygroundTestHarness
+ * Deterministic Testing Suite for RealGameTestHarness
  *
  * Tests that the enhanced harness provides deterministic, replayable gameplay testing.
  * Verifies that same seed + same inputs = same entity positions.
@@ -162,30 +162,30 @@ vi.mock('three/examples/jsm/postprocessing/UnrealBloomPass.js', () => ({
 // Tests
 // ---------------------------------------------------------------------------
 
-import { PlaygroundTestHarness } from './PlaygroundTestHarness';
+import { RealGameTestHarness } from './RealGameTestHarness';
 import { setGameSeed, clearGameSeed } from '../core/SeededRandom';
 
-describe('PlaygroundTestHarness — Deterministic Testing', () => {
+describe('RealGameTestHarness — Deterministic Testing', () => {
   afterEach(() => {
     clearGameSeed();
   });
 
   describe('Seed Support', () => {
     it('accepts seed in constructor options', () => {
-      const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 12345 });
+      const h = new RealGameTestHarness({ surface: 'sphere', seed: 12345 });
       expect(h.seed).toBe(12345);
       h.dispose();
     });
 
     it('produces deterministic enemy spawn positions with same seed', () => {
-      const h1 = new PlaygroundTestHarness({ surface: 'sphere', seed: 42, enemyCount: 5 });
+      const h1 = new RealGameTestHarness({ surface: 'sphere', seed: 42, enemyCount: 5 });
       h1.tick(60); // Let enemies spawn and settle
 
       const enemies1 = h1.getEnemyStates();
 
       h1.dispose();
 
-      const h2 = new PlaygroundTestHarness({ surface: 'sphere', seed: 42, enemyCount: 5 });
+      const h2 = new RealGameTestHarness({ surface: 'sphere', seed: 42, enemyCount: 5 });
       h2.tick(60);
 
       const enemies2 = h2.getEnemyStates();
@@ -201,12 +201,12 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
     });
 
     it('produces different positions with different seeds', () => {
-      const h1 = new PlaygroundTestHarness({ surface: 'sphere', seed: 100, enemyCount: 3 });
+      const h1 = new RealGameTestHarness({ surface: 'sphere', seed: 100, enemyCount: 3 });
       h1.tick(60);
       const enemies1 = h1.getEnemyStates();
       h1.dispose();
 
-      const h2 = new PlaygroundTestHarness({ surface: 'sphere', seed: 999, enemyCount: 3 });
+      const h2 = new RealGameTestHarness({ surface: 'sphere', seed: 999, enemyCount: 3 });
       h2.tick(60);
       const enemies2 = h2.getEnemyStates();
       h2.dispose();
@@ -229,7 +229,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
 
   describe('Entity State Tracking', () => {
     it('getEnemyStates returns enemy positions and metadata', () => {
-      const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 777 });
+      const h = new RealGameTestHarness({ surface: 'sphere', seed: 777 });
       h.spawnEnemies(3, 'wanderer');
       h.tick(60);
 
@@ -247,7 +247,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
     });
 
     it('recordEntityTimeline captures all entities over time', () => {
-      const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 555 });
+      const h = new RealGameTestHarness({ surface: 'sphere', seed: 555 });
       h.spawnEnemies(2, 'grunt');
       h.tick(10); // settle
 
@@ -278,7 +278,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
 
   describe('Scenario Builder', () => {
     it('buildScenario positions player at specified UV', () => {
-      const h = new PlaygroundTestHarness({ surface: 'sphere' });
+      const h = new RealGameTestHarness({ surface: 'sphere' });
 
       h.buildScenario({
         playerPosition: { u: 0.8, v: 0.3 },
@@ -292,7 +292,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
     });
 
     it('buildScenario spawns enemies at specified positions', () => {
-      const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 333 });
+      const h = new RealGameTestHarness({ surface: 'sphere', seed: 333 });
 
       h.buildScenario({
         enemies: [
@@ -313,7 +313,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
     });
 
     it('runScenario builds and records in one call', () => {
-      const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 999 });
+      const h = new RealGameTestHarness({ surface: 'sphere', seed: 999 });
 
       const timeline = h.runScenario({
         playerPosition: { u: 0.5, v: 0.5 },
@@ -329,7 +329,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
 
   describe('Replay System', () => {
     it('records and replays input sequences', () => {
-      const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 111 });
+      const h = new RealGameTestHarness({ surface: 'sphere', seed: 111 });
 
       // Record a simple movement sequence
       h.startRecording();
@@ -348,7 +348,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
     });
 
     it('replaying produces identical entity positions', () => {
-      const h1 = new PlaygroundTestHarness({ surface: 'sphere', seed: 222, enemyCount: 0 });
+      const h1 = new RealGameTestHarness({ surface: 'sphere', seed: 222, enemyCount: 0 });
       h1.tick(10); // settle
 
       // Record
@@ -362,7 +362,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
       h1.dispose();
 
       // Replay in new harness
-      const h2 = new PlaygroundTestHarness({ surface: 'sphere', seed: 222, enemyCount: 0 });
+      const h2 = new RealGameTestHarness({ surface: 'sphere', seed: 222, enemyCount: 0 });
       h2.tick(10); // settle
 
       const timeline2 = h2.playReplay(replay);
@@ -380,7 +380,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
     });
 
     it('replay restores original seed', () => {
-      const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 444 });
+      const h = new RealGameTestHarness({ surface: 'sphere', seed: 444 });
 
       h.startRecording();
       h.tick(10);
@@ -395,7 +395,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
   describe('Determinism Verification', () => {
     it('same seed + same inputs = same player trajectory', () => {
       const runTest = (seed: number) => {
-        const h = new PlaygroundTestHarness({ surface: 'sphere', seed });
+        const h = new RealGameTestHarness({ surface: 'sphere', seed });
         h.pressKey('w');
         h.setMousePosition(700, 400);
         h.tick(60);
@@ -414,7 +414,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
 
     it('timelines are reproducible across multiple runs', () => {
       const createTimeline = () => {
-        const h = new PlaygroundTestHarness({ surface: 'sphere', seed: 1234, enemyCount: 3 });
+        const h = new RealGameTestHarness({ surface: 'sphere', seed: 1234, enemyCount: 3 });
         h.tick(10); // settle
         h.pressKey('d');
         const timeline = h.recordEntityTimeline(60, 10);
@@ -438,7 +438,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
 
   describe('Backwards Compatibility', () => {
     it('old constructor signature still works', () => {
-      const h = new PlaygroundTestHarness('sphere', null, 800, 600);
+      const h = new RealGameTestHarness('sphere', null, 800, 600);
       expect(h.width).toBe(800);
       expect(h.height).toBe(600);
       expect(h.seed).toBe(null);
@@ -446,7 +446,7 @@ describe('PlaygroundTestHarness — Deterministic Testing', () => {
     });
 
     it('new options signature works', () => {
-      const h = new PlaygroundTestHarness({
+      const h = new RealGameTestHarness({
         surface: 'torus',
         weapon: null, // Use null for no weapon in test
         width: 1024,
