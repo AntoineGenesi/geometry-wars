@@ -1,8 +1,0 @@
-Chore/maintenance: remove unused R/w variables in _mobiusWorldToUV.
-
-This commit modifies 1 file (/-2 lines), touching 1 game server file.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Additional context from the commit body:
-Cleanup from s44o-04d — R and w were computed but not used since
-the strip width is used as the unscaled MOBIUS_STRIP_W constant.
