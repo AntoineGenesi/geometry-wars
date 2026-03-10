@@ -1,0 +1,21 @@
+Bug fix: add missing flag SVG images for language selector buttons.
+
+This commit modifies 5 files (+37 lines), touching 5 other files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Language selector buttons were showing white/grey boxes because the
+flag images referenced in LanguageSelector.ts did not exist.
+
+Created SVG flag images for all 5 supported languages:
+- public/assets/flags/en.svg (UK flag / Union Jack)
+- public/assets/flags/es.svg (Spain flag)
+- public/assets/flags/fr.svg (France flag / tricolor)
+- public/assets/flags/de.svg (Germany flag)
+- public/assets/flags/ru.svg (Russia flag)
+
+The code in LanguageSelector.ts already sets backgroundImage to
+/assets/flags/{code}.svg — the files just didn't exist. Vite serves
+public/ at root so the paths resolve correctly.
+
+Key files: public/assets/flags/de.svg, public/assets/flags/en.svg, public/assets/flags/es.svg, public/assets/flags/fr.svg, public/assets/flags/ru.svg.
