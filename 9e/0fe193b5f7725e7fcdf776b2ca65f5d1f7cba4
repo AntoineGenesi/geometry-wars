@@ -1,6 +1,0 @@
-Merge commit: Merge s44l-08c: Add companion count to difficulty scaling input.
-
-This commit modifies 4 files (+82/-3 lines), spanning 1 core game loop, 1 TypeScript source, 1 tests.
-This is a merge commit integrating work from s44l-08c into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: src/core/DifficultyScaling.ts, src/main.ts, src/test/difficulty-rebalance.test.ts, tasks/s44l-08c-companion-count-in-difficulty.md.
