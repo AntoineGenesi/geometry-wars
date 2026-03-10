@@ -1,0 +1,8 @@
+Bug fix: gravity gun pull effect + damage boost — main.ts, network-main.ts, GameRoom.ts.
+
+This commit modifies 6 files (+110/-3 lines), spanning 2 game server, 2 TypeScript source, 1 networking.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: server/rooms/GameRoom.ts, server/shared/GameConstants.ts, src/main.ts, src/network-main.ts, src/weapons/WeaponTypes.ts, and others.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
