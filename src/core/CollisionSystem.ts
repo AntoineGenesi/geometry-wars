@@ -13,6 +13,32 @@ import { EnemyInstanceManager } from '../rendering/EnemyInstanceManager';
 import { SpatialHash } from './SpatialHash';
 import type { BloomEffectManager } from '../effects/BloomEffectManager';
 
+// ---------------------------------------------------------------------------
+// Telemetry types — collision event logging for the verification framework
+// ---------------------------------------------------------------------------
+
+export interface CollisionEvent {
+  type: 'bullet-enemy' | 'player-enemy';
+  /** Frame number (set by caller) */
+  frame: number;
+  /** Squared distance that triggered the collision */
+  distanceSq: number;
+  /** Hit radius squared threshold used */
+  thresholdSq: number;
+  /** World positions at collision time */
+  entityAPos: THREE.Vector3;
+  entityBPos: THREE.Vector3;
+  /** Entity details */
+  entityAType: string;
+  entityBType: string;
+  /** Whether the collision resulted in a kill */
+  killed: boolean;
+  /** Surface type active during collision */
+  surfaceType: string;
+}
+
+export type CollisionEventCallback = (event: CollisionEvent) => void;
+
 /**
  * CollisionSystem
  *
@@ -27,6 +53,15 @@ export class CollisionSystem {
   // s44r6b-02: Surface type for hit detection tuning. On cube, require visual overlap
   // (tighter threshold) because enemies approach from around beveled corners invisibly.
   surfaceType: string = '';
+
+  // Telemetry: collision event callback (set by test harness)
+  onCollisionEvent: CollisionEventCallback | null = null;
+  private _telemetryFrame = 0;
+
+  /** Set the current frame number for telemetry timestamps */
+  setTelemetryFrame(frame: number): void {
+    this._telemetryFrame = frame;
+  }
 
   private enemySpatialHash = new SpatialHash<BaseEnemy>(2.5);
 
@@ -128,12 +163,33 @@ export class CollisionSystem {
         const onSurfaceDistSq = bulletPos.distanceToSquared(enemy.position);
         const onSurfaceHitRadiusSq = enemy.radius * enemy.radius;
         if (distSq < hitRadiusSq || onSurfaceDistSq < onSurfaceHitRadiusSq) {
+          // Telemetry: log bullet-enemy collision event
+          const enemyAliveBeforeHit = enemy.alive;
+
           // --- Damage persistence (s44r2-13) ---
           // Cap damage by remaining budget; budget consumed = HP actually destroyed.
           // This enables piercing for high-damage weapons (Piercing, high-level player).
           const actualDamage = Math.min(mutableBullet.remainingDamage, enemy.health);
           enemy.takeDamage(actualDamage);
           mutableBullet.remainingDamage -= actualDamage;
+
+          // Emit telemetry after damage applied
+          if (this.onCollisionEvent) {
+            const effectiveDistSq = distSq < hitRadiusSq ? distSq : onSurfaceDistSq;
+            const effectiveThreshold = distSq < hitRadiusSq ? hitRadiusSq : onSurfaceHitRadiusSq;
+            this.onCollisionEvent({
+              type: 'bullet-enemy',
+              frame: this._telemetryFrame,
+              distanceSq: effectiveDistSq,
+              thresholdSq: effectiveThreshold,
+              entityAPos: bulletPos.clone(),
+              entityBPos: visualPos.clone(),
+              entityAType: 'bullet',
+              entityBType: enemy.baseTypeName || enemy.constructor.name.toLowerCase(),
+              killed: enemyAliveBeforeHit && !enemy.alive,
+              surfaceType: this.surfaceType,
+            });
+          }
 
           // Trigger on-hit procs (incendiary rounds, etc.)
           if (enemy.alive) {
@@ -299,6 +355,23 @@ export class CollisionSystem {
       // base hit radius (no elevation correction needed since both are on-surface).
       const onSurfaceDistSq = player.mesh.position.distanceToSquared(enemy.position);
       if (distSq < hitRadiusSq || onSurfaceDistSq < baseHitRadiusSq) {
+        // Telemetry: log player-enemy collision event
+        if (this.onCollisionEvent) {
+          const effectiveDistSq = distSq < hitRadiusSq ? distSq : onSurfaceDistSq;
+          const effectiveThreshold = distSq < hitRadiusSq ? hitRadiusSq : baseHitRadiusSq;
+          this.onCollisionEvent({
+            type: 'player-enemy',
+            frame: this._telemetryFrame,
+            distanceSq: effectiveDistSq,
+            thresholdSq: effectiveThreshold,
+            entityAPos: player.mesh.position.clone(),
+            entityBPos: (enemy.mesh ? enemy.mesh.position : enemy.position).clone(),
+            entityAType: 'player',
+            entityBType: enemy.baseTypeName || enemy.constructor.name.toLowerCase(),
+            killed: false, // player collision doesn't kill the enemy (unless shielded)
+            surfaceType: this.surfaceType,
+          });
+        }
         if (isShielded) {
           // Shield absorbs the hit and kills the enemy
           enemy.takeDamage(999);
