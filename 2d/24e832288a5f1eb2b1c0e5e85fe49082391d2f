@@ -1,0 +1,11 @@
+Chore/maintenance: session s44r5 wrap-up — archive v3_LAN_working, promote learnings.
+
+This commit modifies 2 files (+13/-18 lines), spanning 1 task/ops files, 1 Markdown docs.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Additional context from the commit body:
+Promoted to CLAUDE.md:
+- Failure mode 20: sphere-approximation UV root cause (6 failed cube fixes)
+- Opus mandatory for surface/collision math (5+ sonnet failures)
+
+The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
