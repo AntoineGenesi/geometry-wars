@@ -1,0 +1,13 @@
+Bug fix: voting screen text contrast — brighten dark colors.
+
+This commit modifies 2 files (+16/-6 lines), spanning 1 UI/HUD, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- vs-option-label: #668888 → #aadddd
+- vs-ready-status: #668888 → #aadddd
+- vs-option-btn text: #88ccdd → #bbddff
+- vs-ready-btn text: #88ccdd → #bbddff
+- vs-card-label text: #88ccdd → #bbddff
+
+All button and label text now has improved contrast against dark backgrounds.
