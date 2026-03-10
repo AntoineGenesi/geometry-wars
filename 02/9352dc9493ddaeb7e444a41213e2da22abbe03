@@ -1,0 +1,13 @@
+Feature addition: aura follows surface contour via MeshSurface raycasting.
+
+This commit modifies 3 files (+767/-38 lines), spanning 2 TypeScript source, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+AuraManager now projects ring vertices onto the mesh surface using
+closestPointOnSurface() instead of rendering flat discs. On cube edges/
+vertices, the aura naturally wraps around surface contours. Added
+setMeshSurface() method, integrated in multiplayer-main.ts.
+20 new tests for surface projection across sphere/torus/cube.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
