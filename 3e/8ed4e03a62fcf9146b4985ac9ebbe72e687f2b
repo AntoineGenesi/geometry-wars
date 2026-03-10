@@ -1,0 +1,8 @@
+Documentation: archive old tasks/decisions/reports, create FAILED-EXPERIMENTS.md.
+
+This commit modifies 188 files (+284/-30 lines), spanning 7 Markdown docs, 1 documentation.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Key files: archive/README.md, archive/decisions/README.md, .../bullet-geodesic-walking-2026-02-09.md, .../decisions}/camera-relative-movement-fix.md, .../collision-optimization-2026-02-10.md, and others.
+
+Documentation in this project spans multiple formats: task files (tasks/*.md), decision logs (decisions/*.md), HTML reports (reports/), and architecture guides (docs/). Keeping documentation accurate after code changes is mandatory — stale docs cause wasted investigation time when future sessions rely on incorrect information. This project has strict rules against citing reports older than 7 days without verifying they still reflect current code.
