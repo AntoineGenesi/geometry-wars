@@ -1,0 +1,13 @@
+Chore/maintenance: s44h Wave 2 complete — QR lobby height, zone scaling, sphere-tunnel clipping, guardian damage numbers.
+
+This commit modifies 1 file (+202 lines), touching 1 tests file.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Additional context from the commit body:
+Wave 2 (4 HIGH priority fixes):
+- s44h-04: QR code lobby height — remove auto-scroll with CSS sizing
+- s44h-05: Claustrophobia zone scaling — apply mapSizeScaleFactor to ring geometry
+- s44h-06: Sphere-tunnel player clipping — outer-sphere-only walkable mesh
+- s44h-07: Guardian drone damage numbers — track companion bullets, display damage on all hits
+
+All merged to master. Launching Wave 3 next.
