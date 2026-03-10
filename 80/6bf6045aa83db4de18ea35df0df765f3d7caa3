@@ -1,0 +1,4 @@
+Bug fix: PvP bullet-player collision + health bar improvements.
+
+This commit modifies 3 files (+93/-2 lines), spanning 2 game server, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
