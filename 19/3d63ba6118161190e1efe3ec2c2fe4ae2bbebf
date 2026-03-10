@@ -1,6 +1,0 @@
-Chore/maintenance: add S44 task files and inbox transcript from triager.
-
-This commit modifies 7 files (+737 lines), spanning 4 task/ops files, 3 Markdown docs.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: inbox/2026-03-01_0841.md, tasks/s44-02-weapon-mastery-game-over-screen.md, .../s44-03-weapon-mastery-per-weapon-xp-system.md, ...04-weapon-mastery-passive-bonuses-visibility.md, tasks/s44-06-triangle-enemy-spawn-order-timing.md, and others.
