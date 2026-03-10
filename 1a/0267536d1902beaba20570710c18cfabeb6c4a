@@ -1,0 +1,6 @@
+Merge commit: Merge s44k-03: Fix bullets spawning from wrong position in MP.
+
+This commit modifies 4 files (+103/-2 lines), spanning 1 documentation, 1 networking, 1 surface geometry.
+This is a merge commit integrating work from s44k-03 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: docs/HUMAN_TEST.md, src/network-main.ts, src/surfaces/SurfaceGeometry.regression.test.ts, ...s44k-03-bullets-spawn-from-wrong-position-mp.md.
