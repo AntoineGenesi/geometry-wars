@@ -1,0 +1,6 @@
+Feature addition: add CubeRing surface + weapon integration + fix traversal tests.
+
+This commit modifies 7 files (+404/-29 lines), spanning 2 TypeScript source, 2 surface geometry, 1 core game loop.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: src/core/LevelData.ts, .../mesh-movement/MovementValidation.test.ts, src/main.ts, src/surfaces/CubeRingSurface.ts, src/surfaces/SurfaceFactory.ts, and others.
