@@ -1,0 +1,13 @@
+Bug fix: apply Mobius on-surface distance fallback to ALL weapons.
+
+This commit modifies 1 file (+20/-5 lines), touching 1 TypeScript source file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Extends the dual-distance check (min of on-surface, visual) to all weapon
+types that do distance-based enemy detection: homing missiles, projectile
+collision, AoE damage (plasma mortar), gravity pull (gravity gun), and
+black hole. Previously only Tesla was fixed — this ensures EVERY weapon
+kills on EVERY map including non-orientable surfaces like Mobius.
+
+Game state: All weapons now use consistent dual-distance check on Mobius.
