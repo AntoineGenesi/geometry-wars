@@ -1,0 +1,15 @@
+Merge commit: Merge s44r3-06: Fix snake segments spawning inside pill surface.
+
+This commit modifies 5 files (+281/-5 lines), spanning 3 enemy AI, 1 tests, 1 Markdown docs.
+This is a merge commit integrating work from s44r3-06 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Additional context from the commit body:
+Three root causes fixed:
+1. EnemySpawner stale transform cache (clear each frame)
+2. Snake/GiantSnake negative initial UV (wrap to [0,1))
+3. GiantSnake worldToSurface missing inverse worldRotation
+
+Regression tests: snake-pill-surface-spawn.test.ts
+Reviewer verdict: VERIFIED
+
+Key files: src/entities/enemies/EnemySpawner.ts, src/entities/enemies/GiantSnake.ts, src/entities/enemies/Snake.ts, .../enemies/snake-pill-surface-spawn.test.ts, ...-06-pill-map-enemies-spawning-inside-surface.md.
