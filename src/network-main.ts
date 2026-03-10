@@ -1567,7 +1567,7 @@ async function main() {
   ];
 
   const urlGameMode = new URLSearchParams(window.location.search).get('gameMode') ?? 'waves';
-  // Default to 'waves' if URL had a legacy pvp/pvpve mode (now handled by Co-op/PvP/PvPvE buttons)
+  // When host chose pvp/pvpve in the LAN lobby, pre-select that here; wave-style mode stays 'waves'
   let selectedLobbyMode = (urlGameMode === 'pvp' || urlGameMode === 'pvpve') ? 'waves' : urlGameMode;
 
   const modeSelectorDiv = document.createElement('div');
@@ -1584,7 +1584,10 @@ async function main() {
   modeSelectorDiv.appendChild(modeLabelEl);
 
   // ---- Co-op / PvP / PvPvE — primary game mode selection ----
-  let lobbyPvpMode: '' | 'pvp' | 'pvpve' = '';
+  // Pre-select from URL param if host chose pvp/pvpve in the LAN lobby
+  let lobbyPvpMode: '' | 'pvp' | 'pvpve' = (urlGameMode === 'pvp' || urlGameMode === 'pvpve')
+    ? (urlGameMode as 'pvp' | 'pvpve')
+    : '';
   let lobbyWinCondition: 'none' | 'kills' | 'time' | 'lives' = 'none';
   let lobbyKillTarget = 10;
   let lobbyTimeLimit = 300; // seconds
