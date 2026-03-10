@@ -1,0 +1,13 @@
+Bug fix: KotH/Claustrophobia scoring tracks zone-time instead of kills in MP.
+
+This commit modifies 8 files (+516/-20 lines), spanning 3 game server, 2 networking, 1 documentation.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- Server tracks zone occupancy time for KotH scoring
+- Claustrophobia tracks survival time (seconds alive)
+- NetworkClient receives and displays correct score type
+- Secondary kill score shown underneath primary score
+- GameRoom.ts, GameState.ts, ClaustrophobiaMode.ts, network-main.ts updated
+
+Key files: docs/HUMAN_TEST.md, server/rooms/GameRoom.ts, server/rooms/GameRoom.zone-scoring.test.ts, server/schema/GameState.ts, src/core/modes/ClaustrophobiaMode.ts, and others.
