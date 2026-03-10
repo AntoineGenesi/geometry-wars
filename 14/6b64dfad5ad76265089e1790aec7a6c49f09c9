@@ -1,0 +1,8 @@
+Chore/maintenance: add PvP/PvPvE/Settings task files to repo.
+
+This commit modifies 16 files (+1136 lines), spanning 5 task/ops files, 2 Markdown docs, 1 tests.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Key files: tasks/s44j-pvp-13b-kill-death-tracking.md, tasks/s44j-pvp-13c-health-pickups.md, tasks/s44j-pvp-13d-kill-streak-announcements.md, tasks/s44j-pvp-13e-health-bar-hud.md, .../s44j-pvp-13f-end-of-match-statistics-screen.md, and others.
+
+The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
