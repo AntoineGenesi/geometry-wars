@@ -1,0 +1,19 @@
+Performance improvement: LAN quick wins — disable depth opacity, 60Hz patches, bullet/geom interpolation.
+
+This commit modifies 5 files (+598/-53 lines), spanning 1 Markdown docs, 1 documentation, 1 game server.
+This performance commit improves runtime efficiency. The game targets 60fps on typical hardware with complex enemy AI, instanced mesh rendering, and real-time physics on non-Euclidean surfaces.
+
+Additional context from the commit body:
+4 fixes from deep LAN audit (decisions/lan-deep-audit-2026-02-11.md):
+
+1. Disabled depth-based opacity in network mode (was 250+ material
+   updates/frame for 50 enemies = massive GPU state churn)
+2. Increased server patch rate from 30Hz to 60Hz (setPatchRate 33→16)
+3. Added bullet + geom interpolation in onRender (same smooth lerp
+   pattern as enemies/players, eliminates 30Hz stutter)
+4. Gated diagnostic API behind ?debug URL parameter (200ms polling
+   interval no longer runs in production play)
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+Key files: TODO.md, decisions/lan-deep-audit-2026-02-11.md, server/rooms/GameRoom.ts, src/network-main.ts, tasks/lan-quick-wins-audit.md.
