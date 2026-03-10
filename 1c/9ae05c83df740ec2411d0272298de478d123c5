@@ -1,0 +1,17 @@
+Feature addition: mesh walker verification tests (56 tests) + update verify/visual-test skills.
+
+This commit modifies 7 files (+1858 lines), spanning 3 tests, 2 core game loop, 1 task/ops files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Add mesh-walker-verification.test.ts: 56 tests covering deterministic seeds,
+  enemy movement on sphere, enemy behaviors (chase/random/special), multi-surface
+  testing (sphere/torus/cube/pipe), no NaN/stuck, player-enemy interaction
+- Add SeededRandom tests and example
+- Add PlaygroundTestHarness deterministic test suite
+- Update /verify skill with deterministic testing section (seed APIs, scenario
+  builder, replay system, reference test)
+- Update /visual-test skill with deterministic visual testing, existing suite
+  reference, and programmatic pre-visual verification guidance
+
+Key files: .claude/commands/verify.md, .claude/commands/visual-test.md, inbox/2026-02-12_2130.md, src/core/SeededRandom.example.ts, src/core/SeededRandom.test.ts, and others.
