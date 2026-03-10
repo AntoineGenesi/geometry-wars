@@ -1,6 +1,0 @@
-Bug fix: pill player orientation — negate tangentU for right-handed frame.
-
-This commit modifies 5 files (+331/-112 lines), spanning 3 tests, 1 surface geometry, 1 Markdown docs.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
-
-Key files: reports/grid-traversal-sp-latest.json, src/surfaces/PillSurface.ts, .../pill-player-orientation.regression.test.ts, src/test/stress-test-results.json, .../s44r4-09-pill-player-facing-wrong-direction.md.
