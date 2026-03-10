@@ -1,0 +1,10 @@
+Bug fix: define GameDebugAPI interface for window.__gameDebug.
+
+This commit modifies 1 file (+83/-19 lines), touching 1 networking file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Replace `(window as any).__gameDebug` with a properly typed
+GameDebugAPI interface and `declare global` Window extension.
+This provides type safety for the debug API used by the LAN
+E2E test suite (tests/lan/run-lan-tests.mjs).
