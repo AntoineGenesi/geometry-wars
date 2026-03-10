@@ -1,0 +1,5 @@
+Merge commit: Merge s44-epic-02: ServerMeshWalker — complete server-side geodesic face-walking.
+
+This commit modifies 2 files (+50 lines), spanning 1 game server, 1 task/ops files.
+This is a merge commit integrating work from s44-epic-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: complete server-side geodesic face-walking.
