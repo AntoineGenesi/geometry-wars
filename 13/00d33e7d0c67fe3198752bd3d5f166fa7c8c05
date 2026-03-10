@@ -1,0 +1,11 @@
+Feature addition: 4 soundtrack presets - Electronic, Ambient, Synthwave, Minimal.
+
+This commit modifies 3 files (+824/-92 lines), spanning 2 TypeScript source, 1 UI/HUD.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Ambient: dreamy pad drones, gentle arpeggios, delay reverb, no drums
+- Synthwave: retro 80s saw pads, Dm7 chord progression, driving bass
+- Minimal: deep sub-bass, sparse clicks, melodic fragments, hypnotic
+- Press N to cycle presets, or click MUSIC in pause menu
+- Selection saved to localStorage
