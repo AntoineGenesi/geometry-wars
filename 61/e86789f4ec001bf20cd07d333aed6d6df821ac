@@ -1,0 +1,7 @@
+Merge commit: Merge s44-epic-07: verification — regression tests + HUMAN_TEST checklist + Puppeteer screenshots.
+
+This commit modifies 3 files (+645 lines), spanning 1 documentation, 1 game server, 1 tests.
+This is a merge commit integrating work from s44-epic-07 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: regression tests + HUMAN_TEST checklist + Puppeteer screenshots.
+
+Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
