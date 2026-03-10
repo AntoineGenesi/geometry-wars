@@ -1,6 +1,0 @@
-Chore/maintenance: add EPIC MeshWalker-to-MP port plan.
-
-This commit modifies 8 files (+1347 lines), spanning 7 task/ops files, 1 tests.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: tasks/s44-epic-00-meshwalker-mp-port-plan.md, tasks/s44-epic-01-surface-geometry-builder.md, tasks/s44-epic-02-server-mesh-walker.md, tasks/s44-epic-03-server-surface-manager.md, tasks/s44-epic-04-schema-protocol-changes.md, and others.
