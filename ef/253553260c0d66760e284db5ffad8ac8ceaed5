@@ -1,0 +1,9 @@
+Documentation: add terminology clarification to task.
+
+This commit modifies 1 file (+24/-2 lines), touching 1 Markdown docs file.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+- Clarified that task's 'Available (clickable, 0 points)' maps to code's 'locked' state
+- Verified glow was applied to correct CSS class
+- Documented state name differences between task and implementation
