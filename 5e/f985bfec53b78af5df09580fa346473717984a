@@ -1,0 +1,5 @@
+Merge commit: Merge s44r2-02: Fix MP pickup hit detection — use surface positions instead of elevated mesh positions.
+
+This commit modifies 3 files (+346/-16 lines), spanning 1 networking, 1 tests, 1 Markdown docs.
+This is a merge commit integrating work from s44r2-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: use surface positions instead of elevated mesh positions.
