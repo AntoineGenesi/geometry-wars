@@ -1,0 +1,4 @@
+Merge commit: Merge s44j-23: mobile reconnection auto-retry on screen-off.
+
+This commit modifies 3 files (+79/-10 lines), spanning 2 networking, 1 Markdown docs.
+This is a merge commit integrating work from s44j-23 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
