@@ -362,6 +362,10 @@ export class Game {
     // -- Window events --
     window.addEventListener('resize', this.onResize);
     window.addEventListener('visibilitychange', this.onVisibilityChange);
+
+    // -- WebGL context loss (iOS Safari loses context when backgrounding) --
+    this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
   }
 
   /**
@@ -490,6 +494,21 @@ export class Game {
     if (this._state === GameState.Paused) {
       this._state = GameState.Playing;
       this.clock.resync(); // avoid large dt spike without resetting totalTime
+      // Kick-start the rAF loop if it was stopped (e.g., WebGL context loss/restore)
+      if (this.running && !this.rafId) {
+        this.rafId = requestAnimationFrame(this.loop);
+      }
+    }
+  }
+
+  /**
+   * Ensure the animation loop is running.
+   * Call when the tab becomes visible after backgrounding on mobile — iOS may
+   * throttle or suspend requestAnimationFrame while the tab is hidden.
+   */
+  kickStart(): void {
+    if (this.running && !this.rafId) {
+      this.rafId = requestAnimationFrame(this.loop);
     }
   }
 
@@ -649,6 +668,31 @@ export class Game {
   private onVisibilityChange = (): void => {
     if (document.hidden && this._state === GameState.Playing) {
       this.pause();
+    } else if (!document.hidden) {
+      // Tab became visible — restart the rAF loop if it was killed by the browser
+      this.kickStart();
+    }
+  };
+
+  /**
+   * WebGL context was lost (iOS Safari does this when backgrounding).
+   * Stop the rAF loop to avoid spinning with no output.
+   */
+  private onContextLost = (event: Event): void => {
+    event.preventDefault(); // allow context restoration
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = 0;
+    }
+  };
+
+  /**
+   * WebGL context was restored after being lost.
+   * Restart the rAF loop — Three.js automatically re-uploads GPU resources.
+   */
+  private onContextRestored = (): void => {
+    if (this.running) {
+      this.rafId = requestAnimationFrame(this.loop);
     }
   };
 
@@ -660,6 +704,8 @@ export class Game {
 
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('visibilitychange', this.onVisibilityChange);
+    this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
 
     this.entityManager.clear();
     if (this.composer) {
