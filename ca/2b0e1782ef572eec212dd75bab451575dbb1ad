@@ -1,0 +1,4 @@
+Merge commit: Merge s44j-22: mobile pinch-to-zoom prompt and portrait/landscape flow.
+
+This commit modifies 3 files (+256/-2 lines), spanning 1 networking, 1 UI/HUD, 1 Markdown docs.
+This is a merge commit integrating work from s44j-22 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
