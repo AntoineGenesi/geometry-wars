@@ -1,0 +1,17 @@
+Feature addition: add SPGridRunner — runs all 13 surfaces in grid traversal suite.
+
+This commit modifies 4 files (+976 lines), touching 4 tests files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- tests/grid-traversal/SPGridRunner.ts: runSPGrid(density, framesPerPoint) runs
+  SurfaceGridWalker.runGrid() across all 13 surface types, returns SPGridReport
+- tests/grid-traversal/SPGridRunner.integration.test.ts: CI integration test at
+  density 8 (64 pts/surface, ~17s), asserts 0 stuck on known-good surfaces,
+  logs fragile surfaces without failing
+- tests/grid-traversal/SurfaceGridWalker.ts: copied from s44m-05a (dependency)
+- tests/grid-traversal/SurfaceGridWalker.test.ts: copied from s44m-05a (dependency)
+- Writes results to reports/grid-traversal-sp-latest.json after each run
+- Test result: 832 points across 13 surfaces, 0 stuck, passes in ~17s
+
+Key files: .../SPGridRunner.integration.test.ts, tests/grid-traversal/SPGridRunner.ts, tests/grid-traversal/SurfaceGridWalker.test.ts, tests/grid-traversal/SurfaceGridWalker.ts.
