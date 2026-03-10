@@ -1,0 +1,4 @@
+Merge commit: Merge s44r-04-05: Fix chain lightning / electric spark instant area-effect in MP.
+
+This commit modifies 3 files (+385/-8 lines), spanning 2 game server, 1 Markdown docs.
+This is a merge commit integrating work from s44r-04-05 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
