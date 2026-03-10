@@ -1,0 +1,6 @@
+Chore/maintenance: hit detection root causes — all surfaces + chain_lightning + pickups.
+
+This commit modifies 2 files (+332/-1 lines), spanning 1 Markdown docs, 1 task/ops files.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
