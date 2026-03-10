@@ -1,0 +1,6 @@
+Documentation: MP failure analysis — git history deep dive.
+
+This commit modifies 3 files (+1090 lines), spanning 2 documentation, 1 task/ops files.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Documentation in this project spans multiple formats: task files (tasks/*.md), decision logs (decisions/*.md), HTML reports (reports/), and architecture guides (docs/). Keeping documentation accurate after code changes is mandatory — stale docs cause wasted investigation time when future sessions rely on incorrect information. This project has strict rules against citing reports older than 7 days without verifying they still reflect current code.
