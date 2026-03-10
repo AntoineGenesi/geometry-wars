@@ -94,6 +94,20 @@ export const DEPTH_OPACITY_PRESETS: Record<string, DepthOpacityCurve> = {
 export const DEFAULT_DEPTH_CURVE: DepthOpacityCurve = DEPTH_OPACITY_PRESETS.steep;
 
 /**
+ * Depth opacity curve tuned specifically for bullets.
+ * More aggressive than the enemy curve: bullets on the far side should be nearly
+ * invisible so the player never mistakes them for nearby threats.
+ * farSideMin=0.08 → 8% brightness on far side (faint ghost, not solid glow).
+ * fadeStartThreshold=0.05 → dimming begins just past the equator.
+ */
+export const BULLET_DEPTH_CURVE: DepthOpacityCurve = {
+  farSideMin: 0.08,
+  nearSideMax: 1.0,
+  exponent: 3.0,
+  fadeStartThreshold: 0.05,
+};
+
+/**
  * Compute the visibility (opacity) of an entity based on its position relative
  * to the camera and its surface normal.
  *

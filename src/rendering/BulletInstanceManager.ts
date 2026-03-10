@@ -99,6 +99,12 @@ interface BulletSlot {
   colorR: number;
   colorG: number;
   colorB: number;
+  /**
+   * Depth-based opacity scale in [0, 1]. Applied as a multiplier on the slot's base color
+   * each frame when flushing to the GPU. 1.0 = fully bright (near side), 0.0 = invisible.
+   * Set per-frame by the render loop via setBulletOpacity().
+   */
+  opacityScale: number;
 }
 
 /**
@@ -230,6 +236,22 @@ export class BulletInstanceManager {
   }
 
   /**
+   * Set the depth-based opacity scale for a bullet.
+   * 1.0 = full brightness (near side of surface), 0.0 = invisible (far side).
+   * Called each frame by the render loop before update().
+   * No-op if the id doesn't exist.
+   */
+  setBulletOpacity(id: string, opacity: number): void {
+    const type = this.idToBatchType.get(id);
+    if (type === undefined) return;
+    const batch = this.batches.get(type);
+    if (!batch) return;
+    const slotIndex = batch.idToIndex.get(id);
+    if (slotIndex === undefined) return;
+    batch.slots[slotIndex].opacityScale = opacity;
+  }
+
+  /**
    * Update an existing bullet's position and direction.
    * No-op if the id doesn't exist.
    */
@@ -324,8 +346,10 @@ export class BulletInstanceManager {
         _tmpMatrix.compose(_tmpPos, _tmpQuat, _tmpScale);
         this.batchedMesh.setMatrixAt(instanceId, _tmpMatrix);
 
-        // Set color
-        _tmpColor.setRGB(slot.colorR, slot.colorG, slot.colorB);
+        // Set color, scaled by depth-based opacity (far-side dimming).
+        // opacityScale is set each frame by the render loop via setBulletOpacity().
+        const osc = slot.opacityScale;
+        _tmpColor.setRGB(slot.colorR * osc, slot.colorG * osc, slot.colorB * osc);
         this.batchedMesh.setColorAt(instanceId, _tmpColor);
 
         // Make visible (no-op if already visible)
@@ -489,6 +513,7 @@ export class BulletInstanceManager {
           colorR: defaultColor.r,
           colorG: defaultColor.g,
           colorB: defaultColor.b,
+          opacityScale: 1.0,
         });
       }
 

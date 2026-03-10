@@ -15,6 +15,7 @@ import { exportLogsToServer } from '../utils/PerformanceExporter';
 import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
 import { profiler } from './PerformanceProfiler';
 import { loadGraphicsSettings } from '../ui/SettingsMenu';
+import { computeDepthVisibility, BULLET_DEPTH_CURVE } from '../rendering/DepthOpacity';
 
 /**
  * GameLoop — Fixed-timestep game update logic for the main game path.
@@ -33,6 +34,8 @@ export class GameLoop {
   // Pre-allocated to avoid per-frame heap churn (used in bullet sync loop)
   private readonly _bulletSyncDir = new THREE.Vector3();
   private readonly _bulletSeenIds = new Set<string>();
+  // Pre-allocated for bullet depth dimming (approximated surface normal = pos.normalize())
+  private readonly _bulletNormal = new THREE.Vector3();
   private FAST_ENEMY_TYPES = ['Mayfly', 'Rocket', 'Duck'];
   private ENEMY_TRAIL_COLORS: Record<string, number> = {
     Mayfly: 0xddddff,
@@ -413,6 +416,7 @@ export class GameLoop {
     // Register new bullets and update positions; unregister killed bullets
     const currentVisualType = ctx.weaponToBulletVisual(ctx.weaponManager.getCurrentWeapon());
     // Use pre-allocated class members to avoid creating new Set/Vector3 every frame
+    const camPos = ctx.game.camera.position;
     this._bulletSeenIds.clear();
     ctx.bulletPool.forEachActive((index: number, position: THREE.Vector3, data: any) => {
       const id = `b${index}`;
@@ -426,6 +430,16 @@ export class GameLoop {
         // Existing bullet: update position/direction
         ctx.bulletInstanceManager.updateBullet(id, position, this._bulletSyncDir);
       }
+      // Depth-based dimming: approximate surface normal as bullet-position-normalized.
+      // Bullets on the far side of the surface (normal facing away from camera) get dimmed.
+      const posLen = position.length();
+      if (posLen > 0.001) {
+        this._bulletNormal.copy(position).multiplyScalar(1 / posLen);
+      } else {
+        this._bulletNormal.set(0, 1, 0);
+      }
+      const bulletOpacity = computeDepthVisibility(position, this._bulletNormal, camPos, BULLET_DEPTH_CURVE);
+      ctx.bulletInstanceManager.setBulletOpacity(id, bulletOpacity);
     });
     // Remove bullets that were killed this frame
     for (const id of ctx.bulletInstanceIds) {
