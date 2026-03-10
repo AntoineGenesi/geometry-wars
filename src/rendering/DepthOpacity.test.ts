@@ -5,6 +5,7 @@ import {
   computeDepthVisibility,
   DEFAULT_DEPTH_CURVE,
   DEPTH_OPACITY_PRESETS,
+  BULLET_DEPTH_CURVE,
   DepthOcclusionSystem,
   type OccludableEntity,
   DEFAULT_OCCLUSION_CONFIG,
@@ -440,5 +441,56 @@ describe('DepthOcclusionSystem', () => {
     expect(customSystem.getOpacity(entityVisible)).toBeCloseTo(0.9, 2);
     // Occluded entity: behind box (1-2 face crossings) -> opacity1 = 0.5
     expect(customSystem.getOpacity(entityOccluded)).toBeCloseTo(0.5, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// REGRESSION s44r8-01: bullet depth dimming inverted on non-sphere surfaces
+// ---------------------------------------------------------------------------
+// Bug: the old approach used normalize(bulletPos) as the surface normal, which
+// is only correct for sphere surfaces. On a torus, the inner-ring bullet has
+// normalize(pos) pointing in the same direction as the camera → dot > 0 → appears
+// BRIGHT even though it's on the far side of the surface.
+//
+// Fix: computeDepthVisibility(playerPos, playerNormal, bulletPos, curve)
+// computes playerNormal.dot(normalize(bulletPos - playerPos)).
+// This is positive when the bullet is on the outward side (near side → bright),
+// negative when on the inward side (far side → dim).
+// Works correctly for ALL surface types: sphere, torus, cube, pill, tunnels.
+// ---------------------------------------------------------------------------
+describe('REGRESSION s44r8-01: bullet depth dimming inverted on non-sphere surfaces', () => {
+  // Torus-like setup: player is at the outer ring at x=2.5, normal pointing outward (+x).
+  // Camera is also along +x (following player's surface normal as expected in-game).
+  const playerPos = new THREE.Vector3(2.5, 0, 0);
+  const playerNormal = new THREE.Vector3(1, 0, 0); // outward radial on outer ring
+  const cameraPos = new THREE.Vector3(5, 0, 0);    // above player along surface normal
+
+  // Bullet on the inner ring of the torus: far side from player + camera
+  const farBulletPos = new THREE.Vector3(0.5, 0, 0);
+  // Bullet directly outward from player: near side (same side as camera)
+  const nearBulletPos = new THREE.Vector3(3.5, 0, 0);
+
+  it('OLD approach (buggy): far-side inner-torus bullet incorrectly appears BRIGHT', () => {
+    // normalize(bulletPos) = (1, 0, 0); camera - bullet = (4.5, 0, 0) → (1, 0, 0); dot = 1.0
+    const fakeFarNormal = farBulletPos.clone().normalize();
+    const opacity = computeDepthVisibility(farBulletPos, fakeFarNormal, cameraPos, BULLET_DEPTH_CURVE);
+    // The OLD approach gives full brightness for a far-side bullet — this is the BUG.
+    expect(opacity).toBeCloseTo(BULLET_DEPTH_CURVE.nearSideMax, 2);
+  });
+
+  it('NEW approach: far-side inner-torus bullet correctly appears DIM', () => {
+    // computeDepthVisibility(playerPos, playerNormal, farBulletPos):
+    //   _toCamera = farBulletPos - playerPos = (-2, 0, 0) → normalized = (-1, 0, 0)
+    //   dot = playerNormal . (-1, 0, 0) = -1.0 → far side → farSideMin
+    const opacity = computeDepthVisibility(playerPos, playerNormal, farBulletPos, BULLET_DEPTH_CURVE);
+    expect(opacity).toBeCloseTo(BULLET_DEPTH_CURVE.farSideMin, 2);
+  });
+
+  it('NEW approach: near-side bullet (outward from surface) correctly appears BRIGHT', () => {
+    // computeDepthVisibility(playerPos, playerNormal, nearBulletPos):
+    //   _toCamera = nearBulletPos - playerPos = (1, 0, 0) → normalized = (1, 0, 0)
+    //   dot = playerNormal . (1, 0, 0) = 1.0 → near side → nearSideMax
+    const opacity = computeDepthVisibility(playerPos, playerNormal, nearBulletPos, BULLET_DEPTH_CURVE);
+    expect(opacity).toBeCloseTo(BULLET_DEPTH_CURVE.nearSideMax, 2);
   });
 });

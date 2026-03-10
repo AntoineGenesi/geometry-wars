@@ -430,15 +430,16 @@ export class GameLoop {
         // Existing bullet: update position/direction
         ctx.bulletInstanceManager.updateBullet(id, position, this._bulletSyncDir);
       }
-      // Depth-based dimming: approximate surface normal as bullet-position-normalized.
-      // Bullets on the far side of the surface (normal facing away from camera) get dimmed.
-      const posLen = position.length();
-      if (posLen > 0.001) {
-        this._bulletNormal.copy(position).multiplyScalar(1 / posLen);
-      } else {
-        this._bulletNormal.set(0, 1, 0);
-      }
-      const bulletOpacity = computeDepthVisibility(position, this._bulletNormal, camPos, BULLET_DEPTH_CURVE);
+      // Depth-based dimming: use player's surface normal to determine which side of the
+      // surface each bullet is on. computeDepthVisibility(playerPos, playerNormal, bulletPos)
+      // computes playerNormal.dot(normalize(bulletPos − playerPos)):
+      //   > 0 → bullet is on the outward side (same side as camera) → bright
+      //   < 0 → bullet is on the far side (behind surface) → dim
+      // This works correctly for ALL surfaces (sphere, torus, cube, pill, tunnels).
+      // Old approach (normalize(bulletPos) as normal) was only correct for sphere surfaces.
+      const bulletOpacity = computeDepthVisibility(
+        ctx.playerWalker.position, ctx.playerWalker.normal, position, BULLET_DEPTH_CURVE,
+      );
       ctx.bulletInstanceManager.setBulletOpacity(id, bulletOpacity);
     });
     // Remove bullets that were killed this frame

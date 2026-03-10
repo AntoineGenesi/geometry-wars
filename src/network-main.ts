@@ -6644,17 +6644,14 @@ async function main() {
         }
         bulletInstanceIds.add(id);
 
-        // Depth-based dimming: bullets on the far side of the surface are dimmed so the
-        // player can distinguish near-side threats from far-side bullets clearly.
-        // Approximated surface normal = bullet_pos.normalize() (exact for sphere, close for tube/pipe).
-        { const posLen = _netTempPos.length();
-          if (posLen > 0.001) {
-            _netBulletNormal.copy(_netTempPos).multiplyScalar(1 / posLen);
-          } else {
-            _netBulletNormal.set(0, 1, 0);
-          }
-          bulletInstanceManager.setBulletOpacity(id, computeDepthVisibility(_netTempPos, _netBulletNormal, camera.position, BULLET_DEPTH_CURVE));
-        }
+        // Depth-based dimming: use player's surface normal as reference.
+        // computeDepthVisibility(playerPos, playerNormal, bulletPos) computes
+        // playerNormal.dot(normalize(bulletPos − playerPos)): positive = near side (bright),
+        // negative = far side (dim). Correct for all surfaces; old normalize(bulletPos)
+        // approach only worked on sphere.
+        bulletInstanceManager.setBulletOpacity(id, computeDepthVisibility(
+          _predictedPlayerVisualPos, _predictedPlayerVisualNormal, _netTempPos, BULLET_DEPTH_CURVE,
+        ));
       } else {
         // Fallback: UV lerp (for bullets without geodesic state — should not normally occur)
         const target = bulletTargetUV.get(id);
@@ -6696,15 +6693,10 @@ async function main() {
           } else {
             bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
           }
-          // Depth-based dimming for fallback path (same as geodesic path above)
-          { const posLen = _netTempPos.length();
-            if (posLen > 0.001) {
-              _netBulletNormal.copy(_netTempPos).multiplyScalar(1 / posLen);
-            } else {
-              _netBulletNormal.set(0, 1, 0);
-            }
-            bulletInstanceManager.setBulletOpacity(id, computeDepthVisibility(_netTempPos, _netBulletNormal, camera.position, BULLET_DEPTH_CURVE));
-          }
+          // Depth-based dimming for fallback path (same player-normal approach as geodesic path)
+          bulletInstanceManager.setBulletOpacity(id, computeDepthVisibility(
+            _predictedPlayerVisualPos, _predictedPlayerVisualNormal, _netTempPos, BULLET_DEPTH_CURVE,
+          ));
         }
       }
     });
