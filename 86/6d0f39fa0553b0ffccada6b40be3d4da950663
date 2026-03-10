@@ -1,0 +1,14 @@
+Test addition: real game aim verification on cube faces — all 4 pass.
+
+This commit modifies 2 files (+454/-3 lines), spanning 1 tests, 1 task/ops files.
+This commit adds or updates automated tests for the game. The project maintains 1270+ tests using vitest and a custom PlaygroundTestHarness that validates surface math, enemy AI, and gameplay mechanics programmatically.
+
+Additional context from the commit body:
+Fires ACTUAL bullets through GameLoop.update() on front/top/bottom/right
+cube faces using RealGameTestHarness. All produce unique directions with
+perfect antiparallel opposites (dot=-1.000). No directional locking on
+any face. This proves the aim system works correctly through the real
+game code path, not just mathematical analysis.
+
+Game state: Cube movement fix (deflection guard) committed. Aim verified
+working on all tested faces. User testing still needed for final confirm.
