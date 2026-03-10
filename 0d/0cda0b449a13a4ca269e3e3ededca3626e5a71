@@ -1,0 +1,9 @@
+Merge commit: Merge s44m-08: Aggressive difficulty scaling — harder DDA, enemy HP, companion factor.
+
+This commit modifies 19 files (+957/-67 lines), spanning 7 other, 1 task/ops files.
+This is a merge commit integrating work from s44m-08 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: harder DDA, enemy HP, companion factor.
+
+Key files: .claude/locks/s44m-13-cpu-profiler-fix-top-10.lock, .../s44m-16-start-button-overlapping-lives.lock, .../locks/s44m-18-mp-timer-paused-by-default.lock, ...4m-01-entity-culling-dim-instead-of-hide.prompt, .../s44m-04-pickup-rotation-axis-bug.prompt, and others.
+
+Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
