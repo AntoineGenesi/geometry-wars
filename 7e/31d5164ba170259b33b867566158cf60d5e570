@@ -1,0 +1,12 @@
+Chore/maintenance: add task files for new batch + progress journaling in CLAUDE.md.
+
+This commit modifies 9 files (+424/-1 lines), spanning 6 task/ops files, 1 Markdown docs, 1 documentation.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Additional context from the commit body:
+- 7 new task files with full user context preserved
+- CLAUDE.md: added progress journaling rule for complex tasks
+- CLAUDE.md: added failure modes #15-16 for re-research prevention
+- WebRTC migration plan: Section 12 hybrid approach added
+
+Key files: CLAUDE.md, docs/webrtc-migration-plan.md, tasks/coop-mouse-aiming-broken.md, tasks/cylinder-pill-pipe-surfaces.md, tasks/geckos-io-integration.md, and others.
