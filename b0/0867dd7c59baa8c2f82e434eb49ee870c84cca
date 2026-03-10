@@ -1,0 +1,4 @@
+Merge commit: Merge s44m-03: Fix peanut map pole movement, MP hit detection, bullet position.
+
+This commit modifies 2 files (+43/-71 lines), spanning 1 game server, 1 Markdown docs.
+This is a merge commit integrating work from s44m-03 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
