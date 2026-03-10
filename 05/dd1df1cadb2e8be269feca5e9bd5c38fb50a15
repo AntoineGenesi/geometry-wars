@@ -1,0 +1,15 @@
+Merge commit: Merge s44r2-05: Fix enemy sync — activeCount leak, V-wrap lerp, spawn area on torus.
+
+This commit modifies 66 files (+5127/-181 lines), spanning 7 other, 1 task/ops files.
+This is a merge commit integrating work from s44r2-05 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: activeCount leak, V-wrap lerp, spawn area on torus.
+
+Additional context from the commit body:
+Three bugs causing selective enemy missing on torus:
+1. activeCount leak — dead enemies not marked inactive, hitting 400-cap
+2. V-wrap enemy lerp — kept s44r2-03's version (already verified), both identical
+3. Spawn restriction — getSpawnPosition() uses modulo wrap for torus surfaces
+
+Game state: MP enemy sync fixed on torus. All surfaces benefit from activeCount fix.
+
+Key files: .claude/locks/port-registry, ...4r2-01-taurus-entity-flickering-dimming-sp.lock, ...pickup-hit-detection-inconsistent-surfaces.lock, ...s44r2-03-rubber-banding-client-auth-desync.lock, .../s44r2-04-player-upgrades-not-syncing-mp.lock, and others.
