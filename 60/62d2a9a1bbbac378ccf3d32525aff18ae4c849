@@ -1,0 +1,13 @@
+Chore/maintenance: s44j triage complete — 33 tasks from post-s44i testing feedback.
+
+This commit modifies 37 files (+1577 lines), spanning 5 Markdown docs, 2 other, 1 task/ops files.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Additional context from the commit body:
+Wave 1 (CRITICAL): gravity gun, blaster bullets, weapon swap, mastery carryover
+Wave 2 (HIGH): QR lobby, localisation, KotH rendering, scoring, torus bullets, peanut, voting
+Wave 3 (MEDIUM): loading screen, movement, tesla coil, profiler, telemetry, mobile, damage numbers
+Wave 4 (FEATURES): mode selection, lives UI, decimal scores
+Wave 2.5: mobius surface bugs (bullets, pickups, ghost kills)
+
+Key files: TODO.md, inbox/2026-03-03_0900.md, logs/mp-perf-gO7ifh_Ct-2026-03-03.jsonl, logs/mp-perf-osF5BRysA-2026-03-03.jsonl, ...1-gravity-gun-bullets-not-attracting-enemies.md, and others.
