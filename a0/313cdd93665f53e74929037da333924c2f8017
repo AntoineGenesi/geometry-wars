@@ -1,0 +1,12 @@
+Feature addition: COOP/COEP headers + documentation protocol updates.
+
+This commit modifies 5 files (+104/-21 lines), spanning 2 other, 1 Markdown docs, 1 game server.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Added COOP/COEP headers to Vite dev server and Colyseus Express
+  for SharedArrayBuffer support
+- Added Brotli compression (vite-plugin-compression2)
+- Updated CLAUDE.md with selective research documentation protocol
+
+Key files: CLAUDE.md, package-lock.json, package.json, server/index.ts, vite.config.ts.
