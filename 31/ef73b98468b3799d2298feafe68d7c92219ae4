@@ -1,0 +1,11 @@
+Bug fix: wire Gate, Virus, Painter enemy behaviors and remove Arrow reference.
+
+This commit modifies 1 file (+72/-2 lines), touching 1 TypeScript source file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- Gate: onDetonate kills nearby enemies, awards score, particles, screen shake
+- Virus: onInfectKill spawns new virus at death position (20% chance)
+- Painter: hazard trail damages player on contact (with shield immunity)
+- Track player previous UV for gate pass-through detection
+- Remove non-existent 'Arrow' from FAST_ENEMY_TYPES
