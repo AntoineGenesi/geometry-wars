@@ -1,0 +1,4 @@
+Test addition: update VotingScreen MODES test to include pvp/pvpve as implemented modes.
+
+This commit modifies 1 file (+1/-1 lines), touching 1 UI/HUD file.
+This commit adds or updates automated tests for the game. The project maintains 1270+ tests using vitest and a custom PlaygroundTestHarness that validates surface math, enemy AI, and gameplay mechanics programmatically.
