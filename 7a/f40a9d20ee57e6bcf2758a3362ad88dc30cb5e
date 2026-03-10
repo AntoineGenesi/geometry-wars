@@ -1,0 +1,13 @@
+Test addition: Add Puppeteer visual test for QR code lobby height.
+
+This commit modifies 2 files (+193/-7 lines), spanning 1 task/ops files, 1 tests.
+This commit adds or updates automated tests for the game. The project maintains 1270+ tests using vitest and a custom PlaygroundTestHarness that validates surface math, enemy AI, and gameplay mechanics programmatically.
+
+Additional context from the commit body:
+- Created tests/visual/test-qr-code-lobby.ts
+- Tests QR container sizing and overflow properties
+- Verifies QR canvas renders with valid dimensions
+- Takes screenshot for visual verification
+- Updated task file with completion status and acceptance criteria
+
+The Geometry Wars 3D project maintains 1270+ automated tests using vitest and a custom PlaygroundTestHarness. Tests validate surface math, enemy AI, collision detection, and gameplay mechanics. Note that PlaygroundTestHarness tests PlaygroundGame via GameInstance, NOT the real game paths (GameLoop.ts for SP, network-main.ts for MP). Automated tests passing does not guarantee the actual game works; Puppeteer-level verification is required for real confidence.
