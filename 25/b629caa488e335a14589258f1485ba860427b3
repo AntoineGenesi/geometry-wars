@@ -1,0 +1,19 @@
+Feature addition: dynamic enemy cap scales with difficulty on small maps.
+
+This commit modifies 4 files (+104/-2 lines), spanning 1 core game loop, 1 TypeScript source, 1 tests.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Added getDynamicMaxEnemies(size, difficultyLevel) to MapSize.ts
+  - Below diff 6: returns static base cap (unchanged)
+  - Diff 6+: adds floor((level-6)*5) per level, capped per map size
+  - Caps: SMALL=80, MEDIUM=150, LARGE=200, EPIC=250
+- main.ts: calls setMaxActiveEnemies() every frame with dynamic cap
+  (was called once at startup; now tracks waveScheduler.currentDifficultyLevel)
+- 12 unit tests added to difficulty-rebalance.test.ts covering all criteria
+
+Files: src/core/MapSize.ts, src/main.ts, src/test/difficulty-rebalance.test.ts
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+
+Key files: src/core/MapSize.ts, src/main.ts, src/test/difficulty-rebalance.test.ts, tasks/s44l-08a-dynamic-enemy-cap-small-maps.md.
