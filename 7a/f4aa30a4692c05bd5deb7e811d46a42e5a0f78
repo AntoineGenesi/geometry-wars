@@ -1,4 +1,0 @@
-Bug fix: orchestrator.sh auto-detect project dir for WSL2 native path.
-
-This commit modifies 1 file (+6/-1 lines), touching 1 task/ops files file.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
