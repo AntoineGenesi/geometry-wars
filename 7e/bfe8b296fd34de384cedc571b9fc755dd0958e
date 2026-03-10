@@ -1,0 +1,19 @@
+Session checkpoint: pre-orchestration-overhaul — sessions 1-8 complete.
+
+This commit modifies 52 files (+12104/-171 lines), spanning 3 Markdown docs, 3 documentation, 2 task/ops files.
+Session checkpoint commits capture the current state of the game and pending work before starting a new inbox processing cycle. They record what is working, what is broken, and what tasks are queued for the next session.
+
+Additional context from the commit body:
+BEFORE implementing new orchestration system (normalizer/triage pipeline,
+interactive workers, model tiering, slimmed CLAUDE.md, skills).
+
+This commit captures the state after 8 development sessions:
+- 170+ source files, 1270+ tests, 12 surfaces, 30 enemies, 10 weapons
+- Visual testing infrastructure (Puppeteer + SwiftShader)
+- Architecture research (6 parallel agents, HTML report)
+- WebGPU feasibility research
+- All session 8 visual test results and screenshots
+- Autonomous/im-back slash commands
+- 4 custom subagents (code-reviewer, frame-budget-sheriff, state-adversary, market-researcher)
+
+Key files: .claude/commands/autonomous.md, .claude/commands/im-back.md, TODO.md, docs/HUMAN_TEST.md, reports/architecture-deep-research.html, and others.
