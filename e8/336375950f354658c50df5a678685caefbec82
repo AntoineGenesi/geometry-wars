@@ -1,0 +1,19 @@
+Feature addition: enable bloom with high threshold for neon glow effect.
+
+This commit modifies 7 files (+13/-13 lines), spanning 5 TypeScript source, 1 game entities, 1 networking.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Fix the white-out issue by raising bloom threshold to 0.85 so only
+bright entity pixels bloom (not the grid at ~0.64 brightness).
+Switch persistent additive effects to NormalBlending to prevent
+accumulated brightness from exceeding threshold:
+- GlowTrail: 4 layered lines were the worst offender
+- EntityGlow: sprite halos
+- Geom glow lines
+- WeaponPickup glow sprites
+
+Bloom params: strength=1.0, radius=0.4, threshold=0.85
+Enabled across all three entry points (main, multiplayer, network).
+
+Key files: src/effects/EntityGlow.ts, src/effects/GlowTrail.ts, src/entities/Geom.ts, src/main.ts, src/multiplayer-main.ts, and others.
