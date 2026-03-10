@@ -1,0 +1,17 @@
+Feature addition: weapon swap system - cycle collected weapons with E key + HUD.
+
+This commit modifies 7 files (+480/-68 lines), spanning 6 TypeScript source, 1 UI/HUD.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- WeaponManager: inventory tracking, cycleWeapon(), auto-switch on
+  ammo depletion, pruneDepletedWeapons()
+- WeaponHUD: compact DOM overlay showing weapon icons, ammo, active
+  weapon highlighted with glow
+- Input: weaponSwap added to InputManager (E key / Y button),
+  MultiplayerInput (E/U), ConfigurableInput (E/U/Period/NumpadEnter)
+- Standard weapon always available with infinite ammo
+- Same weapon pickup stacks ammo instead of replacing
+- Works in both single-player and split-screen co-op
+
+Key files: src/input/ConfigurableInput.ts, src/input/InputManager.ts, src/input/MultiplayerInput.ts, src/main.ts, src/multiplayer-main.ts, and others.
