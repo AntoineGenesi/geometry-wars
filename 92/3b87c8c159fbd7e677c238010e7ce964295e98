@@ -1,4 +1,0 @@
-Bug fix: eliminate double-lerp on MP camera — use server target directly.
-
-This commit modifies 2 files (+41/-7 lines), spanning 1 networking, 1 task/ops files.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
