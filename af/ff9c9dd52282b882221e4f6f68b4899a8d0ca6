@@ -1,0 +1,14 @@
+Bug fix: wire weapon mastery button in StartMenu — create screen with point store and show on click.
+
+This commit modifies 2 files (+111/-19 lines), spanning 1 UI/HUD, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Root cause: StartMenu.ts created a WEAPON MASTERY button but the click handler
+either never created the WeaponMasteryScreen, or created it without calling
+setPointStore(). The screen silently failed to open.
+
+Fix: Ensure WeaponMasteryScreen is properly instantiated with MasteryPointStore.load()
+and show() is called on button click.
+
+Files: src/ui/StartMenu.ts
