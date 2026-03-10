@@ -662,3 +662,94 @@ describe('VotingScreen — epic size and Claustrophobia size dimming (S44l-14)',
     screen.dispose();
   });
 });
+
+// ---------------------------------------------------------------------------
+// s44r6c-10 regression: mobile carousel DOM structure
+// ---------------------------------------------------------------------------
+describe('VotingScreen — mobile carousel DOM structure (s44r6c-10)', () => {
+  function makeFakeState(overrides: Partial<NetworkGameState> = {}): NetworkGameState {
+    return {
+      players: new Map(),
+      bullets: { forEach() {} } as never,
+      enemies: { forEach() {} } as never,
+      geoms: { forEach() {} } as never,
+      weaponPickups: { forEach() {} } as never,
+      superPickups: { forEach() {} } as never,
+      buffPickups: { forEach() {} } as never,
+      healthPickups: { forEach() {} } as never,
+      surfaceType: 'sphere',
+      waveNumber: 0,
+      gameTime: 0,
+      gameStarted: false,
+      gameOver: true,
+      hostId: 'player1',
+      ...overrides,
+    } as NetworkGameState;
+  }
+
+  it('mode buttons are inside a vs-btn-scroll container (not direct children of row)', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState(), false, 'player1');
+
+    const wavesBtn = document.querySelector('[data-id="waves"]') as HTMLElement;
+    expect(wavesBtn).toBeTruthy();
+
+    // Button must be inside a vs-btn-scroll, not a direct child of vs-option-row
+    const parent = wavesBtn.parentElement;
+    expect(parent?.classList.contains('vs-btn-scroll')).toBe(true);
+    expect(parent?.classList.contains('vs-option-row')).toBe(false);
+
+    screen.dispose();
+  });
+
+  it('mode row has vs-mode-row class for carousel targeting', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState(), false, 'player1');
+
+    const wavesBtn = document.querySelector('[data-id="waves"]') as HTMLElement;
+    // Walk up: btn → vs-btn-scroll → vs-option-row.vs-mode-row
+    const modeRow = wavesBtn.parentElement?.parentElement;
+    expect(modeRow?.classList.contains('vs-mode-row')).toBe(true);
+
+    screen.dispose();
+  });
+
+  it('size buttons are also inside a vs-btn-scroll container', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState(), false, 'player1');
+
+    const mediumBtn = document.querySelector('[data-id="medium"]') as HTMLElement;
+    expect(mediumBtn).toBeTruthy();
+
+    const parent = mediumBtn.parentElement;
+    expect(parent?.classList.contains('vs-btn-scroll')).toBe(true);
+
+    screen.dispose();
+  });
+
+  it('size row does NOT have vs-mode-row class', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState(), false, 'player1');
+
+    const mediumBtn = document.querySelector('[data-id="medium"]') as HTMLElement;
+    const sizeRow = mediumBtn.parentElement?.parentElement;
+    expect(sizeRow?.classList.contains('vs-mode-row')).toBe(false);
+    expect(sizeRow?.classList.contains('vs-option-row')).toBe(true);
+
+    screen.dispose();
+  });
+
+  it('all 7 game mode buttons are still accessible by data-id after carousel restructure', () => {
+    const screen = new VotingScreen();
+    screen.show(makeFakeState(), false, 'player1');
+
+    const modeIds = ['waves', 'king', 'sniper', 'rainbow', 'claustrophobia', 'pvp', 'pvpve'];
+    for (const id of modeIds) {
+      const btn = document.querySelector(`[data-id="${id}"]`) as HTMLElement;
+      expect(btn).toBeTruthy();
+      expect(btn.tagName).toBe('BUTTON');
+    }
+
+    screen.dispose();
+  });
+});
