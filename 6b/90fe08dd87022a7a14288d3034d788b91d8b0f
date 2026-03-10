@@ -1,0 +1,10 @@
+Feature addition: add faint glow to available weapon mastery nodes.
+
+This commit modifies 2 files (+57/-1 lines), spanning 1 UI/HUD, 1 Markdown docs.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Added subtle box-shadow to .wms-node--locked state
+- Provides visual indication of locked nodes (available to click)
+- Uses very dim opacity (0.08, 0.05) for subtle appearance
+- Improves UX when player has 0 points (nodes no longer appear 'blacked out')
