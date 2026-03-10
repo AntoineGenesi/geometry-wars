@@ -1,0 +1,17 @@
+Bug fix: add pill surface to world-space collision — pillChordDist() for hemispherical caps.
+
+This commit modifies 2 files (+141/-2 lines), spanning 1 game server, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Audit found pill was missing from usesWorldDist in GameRoom.ts. Near hemispherical
+caps, UV U-coordinate compresses (same as capsule/sphere poles), causing UV distance
+to underestimate world distance by up to 3×. Enemies near caps could pass through.
+
+Added pillChordDist() with exact 3D chord distance for pill geometry (cylinder body +
+hemispherical caps). Constants match PillSurface.ts (radius=4, height=16).
+
+Worker OOM-killed mid-audit. Remaining surfaces (mobius, cylinder, cube, plane, klein)
+still use UV fallback — may need future audit.
+
+Files: server/rooms/GameRoom.ts
