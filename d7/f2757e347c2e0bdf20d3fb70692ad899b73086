@@ -1,0 +1,7 @@
+Merge commit: Merge s44h-06: Sphere-tunnel player clipping — outer-sphere-only walkable mesh.
+
+This commit modifies 6 files (+126/-9 lines), spanning 2 surface geometry, 1 documentation, 1 core game loop.
+This is a merge commit integrating work from s44h-06 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: outer-sphere-only walkable mesh.
+
+Key files: docs/HUMAN_TEST.md, src/core/GameInstance.ts, src/main.ts, src/surfaces/SphereWithTunnelSurface.ts, src/surfaces/Surface.ts, and others.
