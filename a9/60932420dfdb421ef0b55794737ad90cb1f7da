@@ -1,0 +1,17 @@
+Feature addition: analytics system, visual effects, tests, and task tracking.
+
+This commit modifies 40 files (+7780 lines), spanning 4 core game loop, 2 tests, 1 other.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- GameAnalytics + EffectDictionary for kill/death attribution
+- BuffParticleAura (3 styles), EnemyShaderEffects (5 styles)
+- EnemyDecorators (orbiting motes, pulsing cores)
+- EnemySurfaceGlow (instanced, 1 draw call)
+- Cube geodesic edge tests, surface speed normalization tests
+- UV movement correction tests
+- Colyseus schema lint script
+- LAN cross-computer testing guide
+- Task tracking files for all 25+ completed tasks
+
+Key files: reports/lan-cross-computer-testing-guide.html, scripts/lint-colyseus-schema.mjs, src/buffs/BuffParticleAura.test.ts, src/buffs/BuffParticleAura.ts, src/core/EffectDictionary.test.ts, and others.
