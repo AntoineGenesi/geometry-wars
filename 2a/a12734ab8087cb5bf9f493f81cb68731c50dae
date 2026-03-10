@@ -1,0 +1,6 @@
+Session checkpoint: all 9 s44b tasks merged — launching s43-11 MP parity audit.
+
+This commit modifies 2 files (+96/-97 lines), spanning 1 other, 1 tests.
+Session checkpoint commits capture the current state of the game and pending work before starting a new inbox processing cycle. They record what is working, what is broken, and what tasks are queued for the next session.
+
+Session checkpoint commits serve as restore points. When the user starts a new voice-dump processing cycle (/inbox), a checkpoint captures the full current game state, lists pending tasks, and documents known bugs. The checkpoint commit body describes what is working and broken at that moment. This information is invaluable for understanding the game's history and for diagnosing when a regression was introduced by examining which commits fall between a "working" and "broken" checkpoint.
