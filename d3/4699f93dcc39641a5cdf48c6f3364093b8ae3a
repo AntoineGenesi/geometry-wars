@@ -1,6 +1,0 @@
-Merge commit: Merge s44l-23: Archive old docs, create FAILED-EXPERIMENTS.md.
-
-This commit modifies 188 files (+284/-30 lines), spanning 7 Markdown docs, 1 documentation.
-This is a merge commit integrating work from s44l-23 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: archive/README.md, archive/decisions/README.md, .../bullet-geodesic-walking-2026-02-09.md, .../decisions}/camera-relative-movement-fix.md, .../collision-optimization-2026-02-10.md, and others.
