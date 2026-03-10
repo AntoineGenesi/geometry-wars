@@ -1,6 +1,0 @@
-Merge commit: Merge s44j-12: peanut UV-aware speed normalization.
-
-This commit modifies 5 files (+137/-3 lines), spanning 2 surface geometry, 1 game server, 1 core game loop.
-This is a merge commit integrating work from s44j-12 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: server/rooms/GameRoom.ts, src/core/GameLoop.ts, src/surfaces/PeanutSurface.ts, src/surfaces/Surface.ts, ...4j-12-peanut-movement-sluggish-uv-wide-areas.md.
