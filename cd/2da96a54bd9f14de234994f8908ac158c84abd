@@ -1,0 +1,14 @@
+Feature addition: add game state context requirement for commit messages.
+
+This commit modifies 2 files (+36/-1 lines), spanning 1 task/ops files, 1 Markdown docs.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Commit messages now must include a "Game state:" line describing what's
+working/broken at that point. Invaluable for looking back through git log.
+
+Game state: S44P complete — all 6 tasks done. SP working on all maps.
+MP sphere camera fixed (stable frame), torus UV fixed (atan2 sign),
+ghost kills fixed. PvP/PvPvE timer UI added. Orchestration system
+hardened with Implemented→Verified state machine, mandatory review
+artifacts, bug-fix TDD, and concurrency groups.
