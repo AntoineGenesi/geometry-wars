@@ -1,6 +1,0 @@
-Bug fix: language flag click no longer exits Quick Game / LAN modal.
-
-This commit modifies 4 files (+317/-1 lines), spanning 3 UI/HUD, 1 Markdown docs.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
-
-Key files: src/ui/StartMenu.language-panel-state.test.ts, src/ui/StartMenu.ts, src/ui/panelState.ts, .../s44r3-01-language-selector-flag-exits-modal.md.
