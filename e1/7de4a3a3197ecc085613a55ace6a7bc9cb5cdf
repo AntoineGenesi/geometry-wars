@@ -1,0 +1,15 @@
+Feature addition: WASM Rapier.js collision detection with SpatialHash fallback.
+
+This commit modifies 6 files (+1658 lines), spanning 3 TypeScript source, 2 tests, 1 documentation.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+RapierWorld (389 lines) + CollisionBridge (205 lines) + CollisionGroups.
+Async WASM init with automatic SpatialHash fallback. Benchmarks show
+SpatialHash faster at current entity counts (1K: 0.86ms vs 1.56ms),
+but Rapier enables collision group filtering and future non-sphere shapes.
+54 tests passing including 1K/5K/10K entity benchmarks.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+Key files: decisions/rapier-collision-system-2026-02-09.md, src/physics/CollisionBridge.test.ts, src/physics/CollisionBridge.ts, src/physics/CollisionGroups.ts, src/physics/RapierWorld.test.ts, and others.
