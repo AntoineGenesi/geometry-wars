@@ -1,0 +1,15 @@
+Merge commit: Merge s44r5-02: Cube MP aim — use worldToSurface for UV recovery on all faces.
+
+This commit modifies 18 files (+1468/-16 lines), spanning 4 Markdown docs, 3 other, 1 tests.
+This is a merge commit integrating work from s44r5-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: use worldToSurface for UV recovery on all faces.
+
+Additional context from the commit body:
+Root cause: server sends sphere-approximation UVs. worldToSurface() was applied
+for torus/pill but NOT cube. Fixed all 4 aim pipeline locations in network-main.ts.
+
+Game state: SP all maps working. MP aim fixed for cube (worldToSurface), entity
+contamination fixed (s44r5-05), pill perf degradation fixed (s44r5-06).
+Still pending: pill hit detection (s44r5-03), Mobius seam (s44r5-04).
+
+Key files: ...2-cube-mp-aim-broken-all-faces-7th-attempt.lock, .../s44r5-05-cross-map-entity-contamination.lock, ...6-pill-performance-degradation-second-play.lock, ...-02-cube-mp-aim-broken-all-faces-7th-attempt.md, .../s44r5-05-cross-map-entity-contamination.md, and others.
