@@ -1,0 +1,12 @@
+Feature addition: middle mouse orbit camera around player.
+
+This commit modifies 1 file (+83/-6 lines), touching 1 TypeScript source file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Hold middle mouse button + drag to orbit camera around player
+- Yaw (left/right) rotates around surface normal
+- Pitch (up/down) tilts camera, clamped to 72 degrees
+- Double-click middle mouse resets orbit to default position
+- Orbit uses tangent frame so it works correctly on all surfaces
+- Smooth lerp transitions, prevents auto-scroll on middle click
