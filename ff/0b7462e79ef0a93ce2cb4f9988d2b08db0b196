@@ -1,0 +1,11 @@
+Feature addition: add loading indicator when returning to main menu in network mode — s44j-33.
+
+This commit modifies 2 files (+43/-3 lines), spanning 1 networking, 1 Markdown docs.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Show GameLoadingOverlay immediately when player clicks 'return to menu'
+- Fixes brief unresponsive pause by providing visual feedback during network disconnect
+- Applied to pauseMenu.onExit, gameOverScreen.onReturnToMenu, and votingScreen.onReturnToMenu
+- Uses requestAnimationFrame to ensure loading screen renders before page reload
+- Improves UX on slower devices or networks where disconnect delay is noticeable
