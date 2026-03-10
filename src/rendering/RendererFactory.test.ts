@@ -225,4 +225,65 @@ describe('RendererFactory', () => {
       result.renderer.dispose();
     });
   });
+
+  // ------------------------------------------------------------------
+  // Regression: s44r6c-07 — "Enable WebGPU" button did nothing
+  //
+  // Root cause: main.ts called `new Game()` (synchronous constructor) instead
+  // of `await Game.create()` (async factory). The constructor always creates a
+  // WebGL2 renderer; only Game.create() calls detectGPUCapabilities() and
+  // createRenderer() which checks ?renderer=webgpu.
+  //
+  // This test documents the expected behavior of resolveRendererPreference()
+  // that MUST be called for the fix to work.
+  // ------------------------------------------------------------------
+  describe('s44r6c-07 regression — WebGPU button fix', () => {
+    it('returns webgpu when ?renderer=webgpu in URL and capabilities say webgpu available', () => {
+      const mockLocation = { search: '?renderer=webgpu' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+
+      const caps = mockCapabilities({ webgpu: true });
+      // This is the code path that MUST run for the button to work.
+      // If main.ts uses `new Game()` instead of `await Game.create()`,
+      // this function is never called and WebGL2 is always used.
+      const result = resolveRendererPreference(caps);
+      expect(result).toBe('webgpu');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('auto-selects webgpu even without URL param when capabilities.webgpu is true', () => {
+      const mockLocation = { search: '' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+
+      const caps = mockCapabilities({ webgpu: true });
+      const result = resolveRendererPreference(caps);
+      // WebGPU should be auto-selected when available, no URL param needed
+      expect(result).toBe('webgpu');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('verbose logging is emitted during createRenderer', async () => {
+      if (typeof document === 'undefined') return;
+
+      const { createRenderer } = await import('./RendererFactory');
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(console, 'groupCollapsed').mockImplementation(() => {});
+      vi.spyOn(console, 'groupEnd').mockImplementation(() => {});
+
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const caps = mockCapabilities();
+      const result = await createRenderer(container, caps);
+
+      // Verify the verbose renderer selection log is emitted
+      const allCalls = logSpy.mock.calls.flat().join(' ');
+      expect(allCalls).toMatch(/RendererFactory.*Renderer selection/);
+
+      result.renderer.dispose();
+      vi.restoreAllMocks();
+    });
+  });
 });

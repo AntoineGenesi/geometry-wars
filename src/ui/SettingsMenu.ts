@@ -906,7 +906,36 @@ export class SettingsMenu {
     const activeRendererClass = this.rendererIsWebGPU ? 'good' : '';
 
     // WebGPU toggle button section
+    // Detect: did the user explicitly request WebGPU (via button click) but it failed?
+    const requestedWebGPU = typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('renderer') === 'webgpu';
+
     const webgpuToggleSection = (() => {
+      if (r?.webgpu && !this.rendererIsWebGPU && requestedWebGPU) {
+        // User already clicked Enable WebGPU and page reloaded with ?renderer=webgpu,
+        // but the renderer is still WebGL2. WebGPU initialization failed silently.
+        // Show a diagnostic message and a retry/fallback option.
+        return `
+          <div style="margin-top:12px;padding:10px 12px;background:rgba(255,100,50,0.08);border:1px solid rgba(255,100,50,0.35);border-radius:6px;">
+            <div style="color:#ff8866;font-weight:bold;margin-bottom:6px;font-size:12px;">
+              ⚠ WebGPU initialization failed
+            </div>
+            <div style="color:#886655;font-size:11px;line-height:1.5;margin-bottom:8px;">
+              WebGPU was detected as available but the renderer failed to initialize.
+              Check the browser console (F12) for detailed error logs tagged [RendererFactory].
+              <br><br>
+              Common causes: outdated GPU driver, browser GPU blocklist, or driver bug.
+              <br>
+              Try: update GPU driver → restart Chrome → retry.
+            </div>
+            <button class="action-btn" id="enable-webgpu" style="background:linear-gradient(180deg,#006644 0%,#003322 100%);border-color:#00ffcc;margin-bottom:4px;">
+              Retry WebGPU
+            </button>
+            <button class="action-btn" id="switch-to-webgl" style="background:linear-gradient(180deg,#332211 0%,#1a1108 100%);border-color:#664422;margin-left:8px;">
+              Stay on WebGL2
+            </button>
+          </div>`;
+      }
       if (r?.webgpu && !this.rendererIsWebGPU) {
         // WebGPU is available but we're on WebGL2 — show Enable button
         return `

@@ -70,6 +70,18 @@ export async function createRenderer(
 
   const preference = resolveRendererPreference(capabilities);
 
+  // Verbose logging: show exactly what renderer will be selected and why.
+  // This is the key diagnostic for "why isn't WebGPU activating?" questions.
+  const urlRendererParam = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('renderer')
+    : null;
+  console.log(
+    '[RendererFactory] Renderer selection:',
+    'preference=' + preference,
+    '| URL ?renderer=' + (urlRendererParam ?? '(none)'),
+    '| WebGPU capable:', capabilities.webgpu,
+  );
+
   // When ?testMode=true is in the URL, enable preserveDrawingBuffer
   // so automated tests can read canvas pixels via getImageData/toDataURL.
   const isTestMode = typeof window !== 'undefined' &&
@@ -77,14 +89,21 @@ export async function createRenderer(
 
   // ---- Attempt WebGPU if requested ----
   if (preference === 'webgpu') {
+    console.log('[RendererFactory] Attempting WebGPU renderer initialization...');
     try {
       const result = await createWebGPURenderer(container, capabilities, isTestMode);
-      if (result) return result;
+      if (result) {
+        console.log('[RendererFactory] ✓ WebGPU renderer ACTIVE (backend:', result.backend, ')');
+        return result;
+      }
+      console.warn('[RendererFactory] createWebGPURenderer returned null — silent fallback to WebGL2');
+      console.warn('[RendererFactory] Check the logs above for the specific failure reason.');
     } catch (err) {
-      console.warn('[RendererFactory] WebGPU initialization failed, falling back to WebGL2:', err);
+      console.warn('[RendererFactory] WebGPU initialization threw, falling back to WebGL2:', err);
     }
+  } else {
+    console.log('[RendererFactory] WebGPU not selected (preference=' + preference + '). Using WebGL2.');
   }
-
   // ---- Default: WebGL2 ----
   return createWebGLRenderer(container, capabilities, isTestMode);
 }
