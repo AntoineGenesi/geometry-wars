@@ -1,0 +1,4 @@
+Bug fix: reduce companion kill puff effect — only show for bosses, throttle for normal enemies.
+
+This commit modifies 3 files (+123/-100 lines), spanning 1 core game loop, 1 tests, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
