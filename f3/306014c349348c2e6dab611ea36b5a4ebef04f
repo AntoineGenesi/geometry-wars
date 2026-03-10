@@ -1,4 +1,0 @@
-Merge commit: Merge s44-epic-06: migrate client to world-space positions from server.
-
-This commit modifies 3 files (+210/-32 lines), spanning 2 networking, 1 task/ops files.
-This is a merge commit integrating work from s44-epic-06 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
