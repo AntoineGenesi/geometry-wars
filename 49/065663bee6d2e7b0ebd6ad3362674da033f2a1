@@ -1,0 +1,16 @@
+Merge commit: Merge s44r4-02: Fix pill hit detection — revert to on-surface collision + MP server parity.
+
+This commit modifies 5 files (+337/-17 lines), spanning 2 core game loop, 1 game server, 1 tests.
+This is a merge commit integrating work from s44r4-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: revert to on-surface collision + MP server parity.
+
+Additional context from the commit body:
+Game state: Player-enemy collision reverted to on-surface position comparison
+(no elevation inflation). MP server ENEMY_HIT_WORLD reduced 0.5→0.4 to match SP.
+Peanut regression verified (6/6 pass). Cube MP aim (s44r4-01) merged.
+Mobius seam (s44r4-04) in progress. 2 of 3 Wave 1 bugs fixed.
+
+# Conflicts:
+#	tasks/s44r4-02-pill-hit-detection-enemies-killing-from-far.md
+
+Key files: server/rooms/GameRoom.ts, src/core/CollisionSystem.ts, src/core/GameInstance.ts, ...l-player-enemy-hit-detection.regression.test.ts, ...-pill-hit-detection-enemies-killing-from-far.md.
