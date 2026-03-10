@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
+import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 // Pre-allocated temps for applySurfaceTransform
 const _bufpMat4 = new THREE.Matrix4();
@@ -64,10 +65,7 @@ export interface ActiveBuff {
   multiplier: number;
 }
 
-// World-space pickup collision radius. See WeaponPickup.ts for rationale.
-// S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
-// s44r6c-02: Increased from 0.25 to 0.35 — inconsistent pickup on curved surfaces.
-const PICKUP_WORLD_RADIUS = 0.35;
+// PICKUP_WORLD_RADIUS imported from src/shared/GameBalanceConstants.ts (s44r8-06).
 
 /**
  * Floating buff pickup on the surface

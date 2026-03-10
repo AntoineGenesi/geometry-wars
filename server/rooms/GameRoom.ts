@@ -3243,6 +3243,12 @@ export class GameRoom extends Room<GameState> {
     const isTorus = surfType === 'torus' || surfType === 'torus-tunnel';
     const isPill = surfType === 'pill';
 
+    // s44r8-06: Scale bullet lifetime by map size, matching SP main.ts:
+    //   bulletPool.lifetimeMultiplier = mapSizeScaleFactor
+    // On LARGE (1.5x) maps bullets live 9s; EPIC (2x) → 12s; SMALL (0.75x) → 4.5s.
+    // Without scaling, MP bullets expire too quickly on large maps.
+    const bulletLifetime = BULLET_LIFETIME * getMapScaleFactor(this.state.mapSize || 'medium');
+
     this.state.bullets.forEach((bullet, index) => {
       bullet.age += dt;
 
@@ -3376,8 +3382,8 @@ export class GameRoom extends Room<GameState> {
         bullet.y = this.clampCoord(bullet.y);
       }
 
-      // Remove old bullets
-      if (bullet.age > BULLET_LIFETIME) {
+      // Remove old bullets (scaled by map size — see bulletLifetime above)
+      if (bullet.age > bulletLifetime) {
         bulletsToRemove.push(index);
         this.bulletDamageTracker.delete(bullet.id); // s44r3-02: clean up budget tracker
       }

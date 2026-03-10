@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { StackBuffType, BUFF_DEFINITIONS, BuffDefinition } from './BuffManager';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from '../weapons/SpawnIndicator';
 import { createBuffIconSprite } from '../pickups/PickupIconSprite';
+import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 // Pre-allocated temps for applySurfaceTransform (zero per-call allocations)
 const _bpMat4 = new THREE.Matrix4();
@@ -16,9 +17,8 @@ const _bpSpinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
 const PICKUP_LIFETIME = 12; // seconds
 const FADE_START = 9;       // seconds before starting fade
 
-// World-space pickup collision radius. See WeaponPickup.ts for rationale.
-// S44f-05: Increased from 0.15 to 0.25 for less strict collection in MP.
-const PICKUP_WORLD_RADIUS = 0.25;
+// PICKUP_WORLD_RADIUS imported from src/shared/GameBalanceConstants.ts (s44r8-06).
+// Was 0.25 — corrected to 0.35 to match WeaponPickup.ts, BuffPickup.ts, and server.
 
 export class BuffPickupNew {
   readonly mesh: THREE.Group;
