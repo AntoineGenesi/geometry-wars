@@ -1,0 +1,7 @@
+Bug fix: increase gravity gun damage from 4 to 8.
+
+This commit modifies 1 file (+1/-1 lines), touching 1 TypeScript source file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+User reported gravity gun is too weak. Doubled base damage.
