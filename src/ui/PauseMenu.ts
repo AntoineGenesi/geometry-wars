@@ -284,180 +284,108 @@ export class PauseMenu {
       }
 
       #pause-menu .pause-title {
-        font-size: 72px;
+        font-size: 52px;
         font-weight: bold;
-        color: #ffff00;
+        color: #ffffff;
         text-shadow:
-          0 0 10px #ffff00,
-          0 0 20px #ffaa00,
-          0 0 40px #ff8800;
-        margin: 0 0 50px;
-        letter-spacing: 12px;
+          0 0 8px rgba(0, 200, 255, 0.6),
+          0 0 24px rgba(0, 150, 200, 0.3);
+        margin: 0 0 32px;
+        letter-spacing: 8px;
       }
 
       #pause-menu .pause-buttons {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 8px;
         align-items: center;
       }
 
+      /* ── Unified button system ─────────────────────────────────────────── */
+      /* Standard: dark navy, subtle blue-grey border                        */
+      /* Primary (resume): green CTA                                         */
+      /* Danger (end game / stop server): dark red                           */
+      /* ─────────────────────────────────────────────────────────────────── */
+
       #pause-menu .pause-btn {
-        background: linear-gradient(180deg, #333366 0%, #222244 100%);
-        border: 2px solid #6666aa;
-        color: #ffffff;
-        padding: 20px 50px;
-        font-size: 20px;
+        background: rgba(20, 22, 48, 0.9);
+        border: 1px solid rgba(100, 110, 180, 0.45);
+        color: #c8ccf0;
+        padding: 13px 40px;
+        font-size: 14px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
         display: flex;
         align-items: center;
-        gap: 15px;
-        letter-spacing: 3px;
-        min-width: 280px;
+        gap: 12px;
+        letter-spacing: 2px;
+        min-width: 240px;
         justify-content: center;
+        border-radius: 3px;
       }
 
       #pause-menu .pause-btn:hover {
-        transform: scale(1.05);
+        background: rgba(30, 34, 70, 0.95);
+        border-color: rgba(140, 155, 220, 0.7);
+        color: #ffffff;
+        box-shadow: 0 0 12px rgba(120, 140, 220, 0.25);
       }
 
+      /* Primary: RESUME */
       #pause-menu .resume-btn {
-        background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
-        border-color: #00ff00;
+        background: rgba(0, 80, 30, 0.85);
+        border-color: rgba(0, 200, 80, 0.6);
+        color: #ffffff;
       }
 
       #pause-menu .resume-btn:hover {
-        background: linear-gradient(180deg, #00cc00 0%, #008800 100%);
-        box-shadow: 0 0 25px #00ff00;
+        background: rgba(0, 110, 45, 0.95);
+        border-color: rgba(0, 230, 100, 0.85);
+        box-shadow: 0 0 18px rgba(0, 200, 80, 0.4);
+        color: #ffffff;
       }
 
-      #pause-menu .controls-btn {
-        background: linear-gradient(180deg, #336688 0%, #224466 100%);
-        border-color: #44aaff;
+      /* Danger: END GAME / STOP SERVER */
+      #pause-menu .end-game-btn,
+      #pause-menu .stop-server-btn {
+        background: rgba(80, 18, 18, 0.85);
+        border-color: rgba(220, 60, 60, 0.55);
+        color: #ffbbbb;
       }
 
-      #pause-menu .controls-btn:hover {
-        background: linear-gradient(180deg, #4488aa 0%, #336688 100%);
-        box-shadow: 0 0 20px #44aaff;
+      #pause-menu .end-game-btn:hover,
+      #pause-menu .stop-server-btn:hover {
+        background: rgba(110, 25, 25, 0.95);
+        border-color: rgba(255, 80, 80, 0.8);
+        box-shadow: 0 0 16px rgba(220, 60, 60, 0.4);
+        color: #ffffff;
       }
 
-      #pause-menu .weapons-btn {
-        background: linear-gradient(180deg, #886633 0%, #664422 100%);
-        border-color: #ffaa44;
-      }
-
-      #pause-menu .weapons-btn:hover {
-        background: linear-gradient(180deg, #aa8844 0%, #886633 100%);
-        box-shadow: 0 0 20px #ffaa44;
-      }
-
-      #pause-menu .mastery-btn {
-        background: linear-gradient(180deg, #336644 0%, #224433 100%);
-        border-color: #44cc66;
-      }
-
-      #pause-menu .mastery-btn:hover {
-        background: linear-gradient(180deg, #448855 0%, #336644 100%);
-        box-shadow: 0 0 20px #44cc66;
-      }
-
-      #pause-menu .settings-btn {
-        background: linear-gradient(180deg, #335566 0%, #223344 100%);
-        border-color: #44aacc;
-      }
-
-      #pause-menu .settings-btn:hover {
-        background: linear-gradient(180deg, #447788 0%, #335566 100%);
-        box-shadow: 0 0 20px #44aacc;
-      }
-
-      #pause-menu .visual-mode-btn {
-        background: linear-gradient(180deg, #336655 0%, #224433 100%);
-        border-color: #44ffaa;
-      }
-
-      #pause-menu .visual-mode-btn:hover {
-        background: linear-gradient(180deg, #448866 0%, #336644 100%);
-        box-shadow: 0 0 20px #44ffaa;
-      }
-
-      #pause-menu .perf-graphs-btn {
-        background: linear-gradient(180deg, #556633 0%, #443322 100%);
-        border-color: #ccaa44;
-      }
-
-      #pause-menu .perf-graphs-btn:hover {
-        background: linear-gradient(180deg, #778844 0%, #665533 100%);
-        box-shadow: 0 0 20px #ccaa44;
-      }
-
-      #pause-menu .music-btn {
-        background: linear-gradient(180deg, #663366 0%, #442244 100%);
-        border-color: #cc44ff;
-      }
-
-      #pause-menu .music-btn:hover {
-        background: linear-gradient(180deg, #884488 0%, #663366 100%);
-        box-shadow: 0 0 20px #cc44ff;
-      }
-
-      #pause-menu .exit-btn:hover {
-        background: linear-gradient(180deg, #444488 0%, #333366 100%);
-        box-shadow: 0 0 20px #8888ff;
-      }
-
+      /* Exit to voting — muted green, secondary action */
       #pause-menu .exit-to-voting-btn {
-        background: linear-gradient(180deg, #226622 0%, #114411 100%);
-        border-color: #44ff44;
+        background: rgba(15, 55, 20, 0.85);
+        border-color: rgba(60, 180, 80, 0.5);
+        color: #aaddbb;
       }
 
       #pause-menu .exit-to-voting-btn:hover {
-        background: linear-gradient(180deg, #338833 0%, #225522 100%);
-        box-shadow: 0 0 25px #44ff44;
+        background: rgba(20, 75, 28, 0.95);
+        border-color: rgba(80, 210, 110, 0.75);
+        box-shadow: 0 0 14px rgba(60, 180, 80, 0.35);
+        color: #ffffff;
       }
 
       #pause-menu .exit-to-voting-btn.hidden {
         display: none;
       }
 
-      #pause-menu .end-game-btn {
-        background: linear-gradient(180deg, #aa2222 0%, #661111 100%);
-        border-color: #ff4444;
-      }
-
-      #pause-menu .end-game-btn:hover {
-        background: linear-gradient(180deg, #cc3333 0%, #882222 100%);
-        box-shadow: 0 0 25px #ff4444;
-      }
-
       #pause-menu .end-game-btn.hidden {
         display: none;
       }
 
-      #pause-menu .stop-server-btn {
-        background: linear-gradient(180deg, #884422 0%, #662211 100%);
-        border-color: #ff6633;
-      }
-
-      #pause-menu .stop-server-btn:hover {
-        background: linear-gradient(180deg, #aa5533 0%, #883322 100%);
-        box-shadow: 0 0 25px #ff6633;
-      }
-
       #pause-menu .stop-server-btn.hidden {
         display: none;
-      }
-
-      #pause-menu .server-settings-btn {
-        background: linear-gradient(180deg, #224466 0%, #112233 100%);
-        border-color: #4499cc;
-      }
-
-      #pause-menu .server-settings-btn:hover {
-        background: linear-gradient(180deg, #336688 0%, #224455 100%);
-        box-shadow: 0 0 25px #4499cc;
       }
 
       #pause-menu .server-settings-btn.hidden {
@@ -465,7 +393,8 @@ export class PauseMenu {
       }
 
       #pause-menu .btn-icon {
-        font-size: 24px;
+        font-size: 18px;
+        opacity: 0.8;
       }
 
       #pause-menu .pause-layout {
@@ -771,9 +700,9 @@ export class PauseMenu {
         }
 
         #pause-menu .pause-title {
-          font-size: 28px;
+          font-size: 24px;
           margin: 0 0 12px;
-          letter-spacing: 6px;
+          letter-spacing: 4px;
         }
 
         #pause-menu .pause-layout {
@@ -782,19 +711,19 @@ export class PauseMenu {
         }
 
         #pause-menu .pause-buttons {
-          gap: 8px;
+          gap: 6px;
         }
 
         #pause-menu .pause-btn {
           padding: 8px 16px;
-          font-size: 13px;
+          font-size: 12px;
           min-width: 180px;
           gap: 8px;
           letter-spacing: 1px;
         }
 
         #pause-menu .btn-icon {
-          font-size: 16px;
+          font-size: 14px;
         }
 
         #pause-menu .pause-stats-container {

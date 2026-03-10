@@ -611,78 +611,62 @@ export class StartMenu {
       }
 
       #start-menu .oval-btn {
-        background: linear-gradient(180deg, rgba(40,40,90,0.85) 0%, rgba(20,20,50,0.9) 100%);
-        border: 2px solid rgba(136,136,255,0.6);
-        color: #ccccff;
-        padding: 14px 32px;
-        font-size: 15px;
+        background: rgba(18, 18, 45, 0.88);
+        border: 1px solid rgba(100, 110, 180, 0.45);
+        color: #b8bce0;
+        padding: 13px 32px;
+        font-size: 14px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.3s ease;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         display: flex;
         align-items: center;
         gap: 10px;
-        letter-spacing: 3px;
+        letter-spacing: 2px;
         white-space: nowrap;
         min-width: 200px;
         justify-content: center;
-        border-radius: 4px;
-        box-shadow: 0 0 8px rgba(136,136,255,0.15);
+        border-radius: 3px;
       }
 
       #start-menu .oval-btn:hover {
-        background: linear-gradient(180deg, rgba(60,60,140,0.95) 0%, rgba(30,30,80,0.95) 100%);
-        border-color: #aaaaff;
+        background: rgba(28, 30, 70, 0.95);
+        border-color: rgba(140, 155, 220, 0.7);
         color: #ffffff;
-        transform: scale(1.05);
-        box-shadow:
-          0 0 20px rgba(136,136,255,0.4),
-          0 0 40px rgba(136,136,255,0.15);
       }
 
       #start-menu .oval-btn-primary {
-        background: linear-gradient(180deg, rgba(0,140,0,0.85) 0%, rgba(0,80,0,0.9) 100%);
-        border-color: rgba(0,255,0,0.6);
+        background: rgba(0, 80, 30, 0.85);
+        border: 1px solid rgba(0, 200, 75, 0.65);
         color: #ffffff;
-        padding: 16px 40px;
-        font-size: 17px;
-        box-shadow: 0 0 12px rgba(0,255,0,0.2);
+        padding: 15px 40px;
+        font-size: 15px;
       }
 
       #start-menu .oval-btn-primary:hover {
-        background: linear-gradient(180deg, rgba(0,180,0,0.95) 0%, rgba(0,100,0,0.95) 100%);
-        border-color: #00ff00;
-        box-shadow:
-          0 0 25px rgba(0,255,0,0.5),
-          0 0 50px rgba(0,255,0,0.2);
+        background: rgba(0, 110, 42, 0.95);
+        border-color: rgba(0, 230, 95, 0.85);
+        box-shadow: 0 0 18px rgba(0, 200, 70, 0.35);
       }
 
       #start-menu .oval-btn-icon {
-        font-size: 16px;
-        opacity: 0.7;
-        transition: opacity 0.3s;
+        font-size: 14px;
+        opacity: 0.6;
+        transition: opacity 0.2s;
       }
       #start-menu .oval-btn:hover .oval-btn-icon {
-        opacity: 1;
+        opacity: 0.9;
       }
 
-      /* Glow pulse animation on buttons */
-      @keyframes menuGlowPulse {
-        0%, 100% { box-shadow: 0 0 8px rgba(136,136,255,0.15); }
-        50% { box-shadow: 0 0 16px rgba(136,136,255,0.3); }
-      }
+      /* Subtle glow pulse on primary button only */
       @keyframes menuGlowPulsePrimary {
-        0%, 100% { box-shadow: 0 0 12px rgba(0,255,0,0.2); }
-        50% { box-shadow: 0 0 24px rgba(0,255,0,0.4); }
+        0%, 100% { box-shadow: 0 0 12px rgba(0,200,60,0.2), inset 0 1px 0 rgba(255,255,255,0.05); }
+        50% { box-shadow: 0 0 22px rgba(0,220,80,0.35), inset 0 1px 0 rgba(255,255,255,0.05); }
       }
 
-      #start-menu .oval-btn {
-        animation: menuGlowPulse 3s ease-in-out infinite;
-      }
       #start-menu .oval-btn-primary {
         animation: menuGlowPulsePrimary 2.5s ease-in-out infinite;
       }
-      #start-menu .oval-btn:hover,
       #start-menu .oval-btn-primary:hover {
         animation: none;
       }
@@ -699,11 +683,12 @@ export class StartMenu {
         max-width: 700px;
         max-height: 75%;
         z-index: 20;
-        background: rgba(8,4,24,0.92);
-        border: 1px solid rgba(0,255,255,0.15);
-        border-radius: 6px;
+        background: rgba(6, 4, 18, 0.96);
+        border: 1px solid rgba(80, 100, 160, 0.3);
+        border-top: 2px solid rgba(0, 180, 220, 0.4);
+        border-radius: 4px;
         padding: 24px;
-        box-shadow: 0 0 30px rgba(0,0,0,0.6);
+        box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,0,0,0.3);
         display: flex;
         flex-direction: column;
       }
@@ -730,11 +715,18 @@ export class StartMenu {
       }
 
       #start-menu h3 {
-        color: #88ffff;
-        font-size: 16px;
-        letter-spacing: 4px;
-        margin-bottom: 15px;
+        color: #7ab8d0;
+        font-size: 11px;
+        letter-spacing: 3px;
+        margin-bottom: 10px;
+        margin-top: 16px;
         text-align: center;
+        text-transform: uppercase;
+        opacity: 0.85;
+      }
+
+      #start-menu h3:first-child {
+        margin-top: 0;
       }
 
       /* ------------------------------------------------------------------- */
@@ -743,62 +735,69 @@ export class StartMenu {
       #start-menu .mode-grid {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        margin: 20px 0;
+        gap: 6px;
+        margin: 16px 0;
         max-width: 600px;
         margin-left: auto;
         margin-right: auto;
       }
 
       #start-menu .mode-btn {
-        background: rgba(100, 0, 100, 0.3);
-        border: 2px solid #660066;
-        color: #ff00ff;
-        padding: 12px 16px;
+        background: rgba(0, 30, 55, 0.5);
+        border: 1px solid rgba(0, 160, 200, 0.35);
+        color: #99ccee;
+        padding: 10px 16px;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background 0.15s ease, border-color 0.15s ease;
         display: flex;
         align-items: center;
         gap: 12px;
         text-align: left;
+        border-radius: 3px;
       }
 
       #start-menu .mode-btn:hover {
-        background: rgba(150, 0, 150, 0.4);
-        border-color: #ff00ff;
-        transform: translateX(5px);
+        background: rgba(0, 50, 80, 0.65);
+        border-color: rgba(0, 200, 240, 0.6);
+        color: #cceeFF;
       }
 
       #start-menu .mode-btn.selected {
-        background: rgba(255, 0, 255, 0.2);
-        border-color: #ff00ff;
-        box-shadow: 0 0 15px #ff00ff;
+        background: rgba(0, 70, 110, 0.5);
+        border-color: rgba(0, 210, 255, 0.8);
+        color: #00d4ff;
+        box-shadow: 0 0 10px rgba(0, 200, 255, 0.2);
       }
 
       #start-menu .mode-btn .mode-icon {
-        font-size: 32px;
-        min-width: 40px;
+        font-size: 28px;
+        min-width: 36px;
         text-align: center;
+        opacity: 0.85;
       }
 
       #start-menu .mode-btn .mode-info {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 3px;
         flex: 1;
       }
 
       #start-menu .mode-btn .mode-name {
-        font-size: 14px;
+        font-size: 13px;
         font-weight: bold;
         letter-spacing: 2px;
-        color: #ff88ff;
+        color: inherit;
       }
 
       #start-menu .mode-btn .mode-desc {
         font-size: 11px;
-        color: #cc88cc;
+        color: rgba(150, 200, 230, 0.7);
         letter-spacing: 0.5px;
+      }
+
+      #start-menu .mode-btn.selected .mode-desc {
+        color: rgba(0, 210, 255, 0.7);
       }
 
       /* ------------------------------------------------------------------- */
@@ -812,53 +811,59 @@ export class StartMenu {
       }
 
       #start-menu .surface-btn {
-        background: rgba(0, 100, 100, 0.3);
-        border: 2px solid #006666;
-        color: #00ffff;
-        padding: 15px 10px;
+        background: rgba(0, 30, 50, 0.55);
+        border: 1px solid rgba(0, 140, 170, 0.3);
+        color: #88c8d8;
+        padding: 12px 8px;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         display: flex;
         flex-direction: column;
         align-items: center;
         gap: 5px;
+        border-radius: 3px;
       }
 
       #start-menu .surface-btn:hover {
-        background: rgba(0, 150, 150, 0.4);
-        border-color: #00ffff;
-        transform: scale(1.05);
+        background: rgba(0, 55, 80, 0.7);
+        border-color: rgba(0, 200, 230, 0.55);
+        color: #c0eef8;
       }
 
       #start-menu .surface-btn.selected {
-        background: rgba(0, 255, 255, 0.2);
-        border-color: #00ffff;
-        box-shadow: 0 0 15px #00ffff;
+        background: rgba(0, 80, 110, 0.5);
+        border-color: rgba(0, 210, 240, 0.8);
+        color: #00d8f0;
+        box-shadow: 0 0 8px rgba(0, 200, 230, 0.2);
       }
 
       #start-menu .surface-btn .icon {
-        font-size: 28px;
+        font-size: 24px;
+        opacity: 0.85;
       }
 
       #start-menu .surface-btn .name {
-        font-size: 11px;
-        letter-spacing: 1px;
+        font-size: 10px;
+        letter-spacing: 0.5px;
       }
 
       #start-menu .custom-mesh-btn {
-        background: rgba(100, 50, 100, 0.3);
-        border-color: #aa66ff;
+        background: rgba(30, 15, 55, 0.55);
+        border-color: rgba(130, 80, 200, 0.35);
+        color: #aa88dd;
       }
 
       #start-menu .custom-mesh-btn:hover {
-        background: rgba(150, 75, 150, 0.4);
-        border-color: #cc88ff;
+        background: rgba(50, 25, 85, 0.7);
+        border-color: rgba(170, 110, 240, 0.6);
+        color: #cc99ff;
       }
 
       #start-menu .custom-mesh-btn.selected {
-        background: rgba(170, 102, 255, 0.2);
-        border-color: #cc88ff;
-        box-shadow: 0 0 15px #aa66ff;
+        background: rgba(70, 35, 110, 0.5);
+        border-color: rgba(180, 120, 255, 0.8);
+        color: #cc99ff;
+        box-shadow: 0 0 8px rgba(150, 80, 220, 0.25);
       }
 
       #start-menu .custom-mesh-loading {
@@ -892,82 +897,85 @@ export class StartMenu {
       }
 
       #start-menu .map-size-btn {
-        background: rgba(0, 100, 100, 0.3);
-        border: 2px solid #006666;
-        color: #00ffff;
-        padding: 10px 18px;
-        font-size: 12px;
+        background: rgba(0, 30, 50, 0.55);
+        border: 1px solid rgba(0, 140, 170, 0.3);
+        color: #88c8d8;
+        padding: 9px 16px;
+        font-size: 11px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         letter-spacing: 2px;
         flex: 1;
         text-align: center;
+        border-radius: 3px;
       }
 
       #start-menu .map-size-btn:hover {
-        background: rgba(0, 150, 150, 0.4);
-        border-color: #00ffff;
-        transform: scale(1.05);
+        background: rgba(0, 55, 80, 0.7);
+        border-color: rgba(0, 200, 230, 0.55);
+        color: #c0eef8;
       }
 
       #start-menu .map-size-btn.selected {
-        background: rgba(0, 255, 255, 0.2);
-        border-color: #00ffff;
-        color: #00ffff;
-        box-shadow: 0 0 15px #00ffff;
+        background: rgba(0, 80, 110, 0.5);
+        border-color: rgba(0, 210, 240, 0.8);
+        color: #00d8f0;
+        box-shadow: 0 0 8px rgba(0, 200, 230, 0.2);
       }
 
       #start-menu .lan-map-size-btn {
-        background: rgba(0, 100, 100, 0.3);
-        border: 2px solid #006666;
-        color: #00ffff;
-        padding: 10px 18px;
-        font-size: 12px;
+        background: rgba(0, 30, 50, 0.55);
+        border: 1px solid rgba(0, 140, 170, 0.3);
+        color: #88c8d8;
+        padding: 9px 16px;
+        font-size: 11px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         letter-spacing: 2px;
         flex: 1;
         text-align: center;
+        border-radius: 3px;
       }
 
       #start-menu .lan-map-size-btn:hover {
-        background: rgba(0, 150, 150, 0.4);
-        border-color: #00ffff;
-        transform: scale(1.05);
+        background: rgba(0, 55, 80, 0.7);
+        border-color: rgba(0, 200, 230, 0.55);
+        color: #c0eef8;
       }
 
       #start-menu .lan-map-size-btn.selected {
-        background: rgba(0, 255, 255, 0.2);
-        border-color: #00ffff;
-        color: #00ffff;
-        box-shadow: 0 0 15px #00ffff;
+        background: rgba(0, 80, 110, 0.5);
+        border-color: rgba(0, 210, 240, 0.8);
+        color: #00d8f0;
+        box-shadow: 0 0 8px rgba(0, 200, 230, 0.2);
       }
 
       /* ------------------------------------------------------------------- */
       /* Start button (inside sub-panels)                                     */
       /* ------------------------------------------------------------------- */
       #start-menu .start-btn {
-        background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
-        border: 2px solid #00ff00;
+        background: rgba(0, 80, 30, 0.85);
+        border: 1px solid rgba(0, 200, 75, 0.65);
         color: #ffffff;
-        padding: 16px 36px;
-        font-size: 16px;
+        padding: 14px 36px;
+        font-size: 14px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
         display: flex;
         align-items: center;
         gap: 10px;
         letter-spacing: 2px;
         justify-content: center;
+        border-radius: 3px;
       }
 
       #start-menu .start-btn:hover {
-        background: linear-gradient(180deg, #00cc00 0%, #008800 100%);
-        transform: scale(1.05);
-        box-shadow: 0 0 20px #00ff00;
+        background: rgba(0, 110, 42, 0.95);
+        border-color: rgba(0, 230, 95, 0.85);
+        box-shadow: 0 0 16px rgba(0, 200, 70, 0.35);
       }
 
       #start-menu .btn-icon {
@@ -1097,23 +1105,25 @@ export class StartMenu {
       /* Back button                                                          */
       /* ------------------------------------------------------------------- */
       #start-menu .back-btn {
-        background: rgba(80, 40, 0, 0.4);
-        border: 1px solid #884400;
-        color: #ff8800;
-        padding: 10px 30px;
-        font-size: 14px;
+        background: rgba(18, 18, 45, 0.7);
+        border: 1px solid rgba(100, 110, 180, 0.35);
+        color: #8890b8;
+        padding: 9px 28px;
+        font-size: 12px;
         cursor: pointer;
         margin-top: 12px;
-        letter-spacing: 3px;
-        transition: all 0.2s;
+        letter-spacing: 2px;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         display: block;
         margin-left: auto;
         margin-right: auto;
         flex-shrink: 0;
+        border-radius: 3px;
       }
       #start-menu .back-btn:hover {
-        background: rgba(120, 60, 0, 0.5);
-        box-shadow: 0 0 15px #ff8800;
+        background: rgba(28, 30, 70, 0.9);
+        border-color: rgba(140, 155, 220, 0.6);
+        color: #c8ccf0;
       }
 
       /* ------------------------------------------------------------------- */
@@ -1183,29 +1193,53 @@ export class StartMenu {
       #start-menu .lan-section { text-align: center; }
 
       #start-menu .lan-btn {
-        background: linear-gradient(180deg, #336644 0%, #224422 100%);
-        border: 2px solid #44ff66;
-        color: #ffffff;
-        padding: 14px 30px;
-        font-size: 15px;
+        background: rgba(18, 18, 45, 0.88);
+        border: 1px solid rgba(100, 110, 180, 0.45);
+        color: #b8bce0;
+        padding: 11px 26px;
+        font-size: 13px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.2s;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
         letter-spacing: 2px;
-        margin: 5px;
+        margin: 4px;
+        border-radius: 3px;
       }
       #start-menu .lan-btn:hover {
-        background: linear-gradient(180deg, #448855 0%, #336633 100%);
-        transform: scale(1.05);
-        box-shadow: 0 0 15px #44ff66;
+        background: rgba(28, 30, 70, 0.95);
+        border-color: rgba(140, 155, 220, 0.7);
+        color: #ffffff;
+      }
+      #start-menu .lan-btn.lan-host {
+        background: rgba(0, 55, 25, 0.8);
+        border-color: rgba(0, 190, 80, 0.55);
+        color: #cceecc;
+      }
+      #start-menu .lan-btn.lan-host:hover {
+        background: rgba(0, 75, 35, 0.92);
+        border-color: rgba(0, 220, 100, 0.75);
+        color: #ffffff;
       }
       #start-menu .lan-btn.lan-enter {
-        background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
-        border-color: #00ff00;
+        background: rgba(0, 80, 30, 0.85);
+        border-color: rgba(0, 200, 75, 0.65);
+        color: #ffffff;
+      }
+      #start-menu .lan-btn.lan-enter:hover {
+        background: rgba(0, 110, 42, 0.95);
+        border-color: rgba(0, 230, 95, 0.85);
+        box-shadow: 0 0 14px rgba(0, 200, 70, 0.3);
       }
       #start-menu .lan-btn.lan-stop {
-        background: linear-gradient(180deg, #884422 0%, #662211 100%);
-        border-color: #ff6633;
+        background: rgba(80, 18, 18, 0.85);
+        border-color: rgba(220, 60, 60, 0.55);
+        color: #ffbbbb;
+      }
+      #start-menu .lan-btn.lan-stop:hover {
+        background: rgba(110, 25, 25, 0.95);
+        border-color: rgba(255, 80, 80, 0.8);
+        box-shadow: 0 0 12px rgba(220, 60, 60, 0.35);
+        color: #ffffff;
       }
       #start-menu .lan-divider {
         color: #556666;
@@ -1314,36 +1348,38 @@ export class StartMenu {
       #start-menu .lan-mode-grid {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 6px;
         justify-content: center;
-        margin: 10px 0 16px;
+        margin: 8px 0 14px;
       }
       #start-menu .lan-mode-btn {
         display: flex;
         align-items: center;
         gap: 6px;
-        background: rgba(0, 40, 80, 0.4);
-        border: 2px solid #224466;
-        color: #88aacc;
-        padding: 8px 14px;
+        background: rgba(0, 25, 50, 0.55);
+        border: 1px solid rgba(0, 130, 190, 0.35);
+        color: #88aabf;
+        padding: 7px 13px;
         cursor: pointer;
-        font: 12px monospace;
+        font-size: 12px;
+        font-family: 'Segoe UI', Arial, sans-serif;
         letter-spacing: 1px;
-        transition: all 0.2s;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        border-radius: 3px;
       }
       #start-menu .lan-mode-btn:hover {
-        background: rgba(0, 80, 140, 0.5);
-        border-color: #4488cc;
-        color: #aaccee;
+        background: rgba(0, 50, 90, 0.7);
+        border-color: rgba(0, 180, 240, 0.55);
+        color: #aaccde;
       }
       #start-menu .lan-mode-btn.selected {
-        background: rgba(0, 120, 200, 0.3);
-        border-color: #00aaff;
-        color: #00aaff;
-        box-shadow: 0 0 10px rgba(0, 170, 255, 0.4);
+        background: rgba(0, 70, 120, 0.5);
+        border-color: rgba(0, 190, 255, 0.75);
+        color: #00c8ff;
+        box-shadow: 0 0 8px rgba(0, 180, 255, 0.2);
       }
       #start-menu .lan-mode-icon {
-        font-size: 16px;
+        font-size: 15px;
       }
       #start-menu .lan-mode-name {
         font-size: 11px;
