@@ -1,0 +1,6 @@
+Merge commit: Merge s44r4-06-07-phase3-topological-surfaces: Surface coverage + hit detection tests.
+
+This commit modifies 2 files (+526 lines), spanning 1 tests, 1 task/ops files.
+This is a merge commit integrating work from s44r4-06-07-phase3-topological-surfaces into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
