@@ -1,6 +1,0 @@
-Chore/maintenance: triage user testing round 2 into 11 tasks.
-
-This commit modifies 14 files (+775 lines), spanning 6 task/ops files, 2 Markdown docs.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: .claude/state/s44c-execution-plan.md, TODO.md, inbox/2026-03-02_0830.md, tasks/s44c-01-sp-red-screen-flash-regression.md, tasks/s44c-02-mp-camera-lerp-laggy.md, and others.
