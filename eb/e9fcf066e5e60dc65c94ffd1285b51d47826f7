@@ -1,0 +1,8 @@
+Merge commit: Merge s44r6-08: Portal hit detection + spawn rate + surface disc trigger.
+
+This commit modifies 4 files (+247/-27 lines), spanning 2 game server, 1 game entities, 1 Markdown docs.
+This is a merge commit integrating work from s44r6-08 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: server/rooms/GameRoom.pvp-portal-spawning.test.ts, server/rooms/GameRoom.ts, src/entities/Portal.ts, .../s44r6-08-portal-hit-detection-surface-disc.md.
+
+Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
