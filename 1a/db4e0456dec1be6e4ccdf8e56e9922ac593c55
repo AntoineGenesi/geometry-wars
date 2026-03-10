@@ -1,0 +1,15 @@
+Feature addition: kill streaks in kill log + persistent total kill counter.
+
+This commit modifies 6 files (+1032/-185 lines), spanning 5 UI/HUD, 1 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+KillLog enhanced with tiered streak visuals (x2 bigger text, x3 STREAK
+label, x5 RAMPAGE, x10 UNSTOPPABLE with neon glow). New TotalKillCounter
+component at bottom-right shows cumulative kills per enemy type with
+SVG icons. Extracted shared KillIcons module eliminating 70+ lines of
+duplication between KillLog/KillTally. 27 new tests.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+
+Key files: src/main.ts, src/ui/KillIcons.ts, src/ui/KillLog.test.ts, src/ui/KillLog.ts, src/ui/KillTally.ts, and others.
