@@ -1,0 +1,9 @@
+Feature addition: add sound effects and music to local multiplayer mode.
+
+This commit modifies 1 file (+22 lines), touching 1 TypeScript source file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Wire SoundEngine and BackgroundMusic into multiplayer-main.ts:
+- Shoot, enemy death, player death, bomb, geom pickup sounds
+- Background music with intensity scaling based on enemy count
