@@ -1,0 +1,9 @@
+Merge commit: Merge s44r6-07: Peanut movement — remove incorrect UV-metric speed correction.
+
+This commit modifies 5 files (+137/-130 lines), spanning 1 game server, 1 networking, 1 surface geometry.
+This is a merge commit integrating work from s44r6-07 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: remove incorrect UV-metric speed correction.
+
+Key files: server/rooms/GameRoom.ts, src/network-main.ts, src/surfaces/PeanutSurface.ts, ...s44r6-07-peanut-pole-waist-movement-slowdown.md, tests/surfaces/PeanutSpeedCorrection.test.ts.
+
+Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
