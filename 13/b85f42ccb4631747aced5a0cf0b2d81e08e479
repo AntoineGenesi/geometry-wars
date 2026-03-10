@@ -1,0 +1,8 @@
+Bug fix: aggressive difficulty scaling — harder DDA, enemy HP, companion factor.
+
+This commit modifies 7 files (+210 lines), spanning 3 TypeScript source, 2 core game loop, 1 tests.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: src/core/GameContext.ts, src/core/GameLoop.ts, src/difficulty/DDA.test.ts, src/difficulty/DDADecisionEngine.ts, src/difficulty/DDASpawnModifier.ts, and others.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
