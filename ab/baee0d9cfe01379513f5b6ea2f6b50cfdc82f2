@@ -1,0 +1,11 @@
+Feature addition: wire enemy callbacks and improve wave diversity in multiplayer.
+
+This commit modifies 1 file (+66/-6 lines), touching 1 TypeScript source file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Wire Spawner, Titan, and Boss callbacks in multiplayer-main.ts
+- Add missing enemy colors (painter, virus, spawner, titans, boss)
+- Progressive wave diversity: introduce harder enemies over time
+- Rockets at wave 4, weavers at 5, spinners at 7, snakes at 9
+- Spawners at wave 10, titan grunts at 12, boss every 5th from wave 15
