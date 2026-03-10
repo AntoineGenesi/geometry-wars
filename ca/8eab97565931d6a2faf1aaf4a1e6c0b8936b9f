@@ -1,0 +1,6 @@
+Merge commit: Merge s44-02: weapon mastery game over screen with progress bar and level-up animation.
+
+This commit modifies 4 files (+201/-39 lines), spanning 1 TypeScript source, 1 networking, 1 UI/HUD.
+This is a merge commit integrating work from s44-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: src/main.ts, src/network-main.ts, src/ui/MasteryProgressScreen.ts, tasks/s44-02-weapon-mastery-game-over-screen.md.
