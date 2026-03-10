@@ -1,0 +1,6 @@
+Merge commit: Merge s44r-04-04: Add applyWorldRotation to Capsule, CubeRing, Pipe, SphereWithTunnel surfaces.
+
+This commit modifies 6 files (+126/-5 lines), spanning 5 surface geometry, 1 task/ops files.
+This is a merge commit integrating work from s44r-04-04 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: src/surfaces/CapsuleSurface.ts, src/surfaces/CubeRingSurface.ts, src/surfaces/PipeSurface.ts, src/surfaces/SphereWithTunnelSurface.ts, src/surfaces/applyWorldRotation.regression.test.ts, and others.
