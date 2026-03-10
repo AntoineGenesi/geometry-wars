@@ -1,0 +1,14 @@
+Merge commit: Merge s44r2-13: Bullet damage persistence — penetrating shots for high-damage weapons.
+
+This commit modifies 5 files (+325/-13 lines), spanning 2 core game loop, 1 game entities, 1 tests.
+This is a merge commit integrating work from s44r2-13 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: penetrating shots for high-damage weapons.
+
+Additional context from the commit body:
+Bullets now track remaining damage budget. High-damage bullets (Piercing=3)
+pierce through low-HP enemies (1 HP) and continue traveling. Budget decrements
+per hit. Bullet dies when budget <= 0.
+
+Game state: SP penetration working. MP requires server protocol changes (follow-up).
+
+Key files: src/core/CollisionSystem.ts, src/core/GameInstance.ts, src/entities/Bullet.ts, ...13-bullet-damage-persistence.regression.test.ts, ...2-13-bullet-damage-system-damage-persistence.md.
