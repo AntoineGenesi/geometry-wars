@@ -1,0 +1,6 @@
+Merge commit: Merge s44i-03-localisation-system-expansion.
+
+This commit modifies 12 files (+881/-576 lines), spanning 6 other, 1 TypeScript source, 1 tests.
+This is a merge commit integrating work from s44i-03-localisation-system-expansion into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: public/assets/flags/ar.svg, src/i18n/config.ts, src/i18n/i18n.test.ts, src/i18n/locales/ar.json, src/i18n/locales/de.json, and others.
