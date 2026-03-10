@@ -1,0 +1,14 @@
+Merge commit: Merge s44r4-01: Fix cube MP aim — degenerate tangent frame on top/bottom faces.
+
+This commit modifies 3 files (+191/-5 lines), spanning 2 surface geometry, 1 Markdown docs.
+This is a merge commit integrating work from s44r4-01 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: degenerate tangent frame on top/bottom faces.
+
+Additional context from the commit body:
+Game state: 6th attempt at cube aim. This time fix is in CubeSurface.ts tangent
+frame (shared by SP+MP), verified in MP code path (network-main.ts → getPoint →
+tangentU/tangentV → computeCameraRelativeAimAngle). PARTIALLY_VERIFIED — Level 3
+max for MP, user testing required.
+
+# Conflicts:
+#	tasks/s44r4-01-cube-mp-aim-shooting-left-right-only.md
