@@ -1,0 +1,6 @@
+Feature addition: PvP mode integration testing + wire-up.
+
+This commit modifies 7 files (+648/-17 lines), spanning 4 game server, 2 tests, 1 networking.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: server/rooms/GameRoom.pvp.test.ts, server/rooms/GameRoom.ts, server/shared/GameConstants.ts, server/shared/GameSettings.ts, src/network-main.ts, and others.
