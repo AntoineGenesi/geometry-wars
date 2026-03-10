@@ -1,0 +1,6 @@
+Chore/maintenance: add s44l-22 (file metadata), s44l-23 (docs cleanup) task files + update TODO.
+
+This commit modifies 4 files (+281/-5 lines), spanning 2 Markdown docs, 2 task/ops files.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Key files: TODO.md, tasks/s44l-18-no-bombs-in-pvp-multiplayer.md, tasks/s44l-22-copy-file-metadata-from-c-drive.md, ...4l-23-documentation-cleanup-and-organization.md.
