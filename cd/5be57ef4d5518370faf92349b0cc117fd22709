@@ -1,0 +1,6 @@
+Merge commit: Merge s44j-pvpve-14c: PvPvE unified kill leaderboard.
+
+This commit modifies 7 files (+697/-2 lines), spanning 3 game server, 2 networking, 1 UI/HUD.
+This is a merge commit integrating work from s44j-pvpve-14c into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: server/rooms/GameRoom.pvpve-enemy-kills.test.ts, server/rooms/GameRoom.ts, server/schema/GameState.ts, src/network-main.ts, src/network/NetworkClient.ts, and others.
