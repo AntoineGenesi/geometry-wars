@@ -1,0 +1,14 @@
+Feature addition: migrate client to world-space positions from server.
+
+This commit modifies 3 files (+210/-32 lines), spanning 2 networking, 1 task/ops files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- NetworkPlayerState: add wx/wy/wz, nx/ny/nz, tx/ty/tz, bx/by/bz optional fields
+- network-main: store server tangent frame (_localServerBitangent) for camera upHint
+- Camera now uses server bitangent instead of UV-derived tangentV (fixes pole inversion)
+- Remote players lerp world position directly when server sends wx/wy/wz
+- Hard snaps use world-space position when available (fallback to getPoint)
+- remotePlayerTargetWorldPos map: stores world-space targets for remote players
+- All paths have UV fallback for backward compat with legacy server
+- Files: src/network/NetworkClient.ts, src/network-main.ts
