@@ -1,4 +1,0 @@
-Chore/maintenance: s44i-01 amended (sphere map broken), s44i-04 QR lobby height regression task created.
-
-This commit modifies 2 files (+78/-1 lines), spanning 1 Markdown docs, 1 task/ops files.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
