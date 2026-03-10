@@ -430,22 +430,64 @@ export class PipeSurface extends Surface {
     const iR = radius - 2 * bevelRadius
     const hH = height / 2
 
-    // --- Ring lines (constant v, varying u/theta) ---
-    // Sample rings at evenly spaced v values through all 4 regions
+    // Compute v-space boundary fractions locally.
+    // IMPORTANT: createGrid() is called from super(config) before instance properties
+    // (this.innerFrac, this.radius, etc.) are assigned by the subclass constructor.
+    // Therefore we MUST NOT call this.getRegion() / this.getProfile() here —
+    // those methods access undefined instance properties and produce NaN positions.
+    // Instead we replicate the region/profile math using local variables from getInitData().
+    const bevelArc = (Math.PI / 2) * bevelRadius
+    const totalLength = height + height + 2 * bevelArc
+    const innerFrac   = height / totalLength
+    const topBevelEnd = (height + bevelArc) / totalLength
+    const outerEnd    = (height + bevelArc + height) / totalLength
 
+    /**
+     * Compute the (radial, y) profile point at normalized v ∈ [0, 1).
+     * Mirrors the region+profile logic in getRegion()/getProfile() but uses
+     * only local variables — safe to call before instance fields are set.
+     */
+    const getProfileAt = (v: number): { r: number; y: number } => {
+      const vn = ((v % 1) + 1) % 1
+      if (vn < innerFrac) {
+        const localT = innerFrac > 0 ? vn / innerFrac : 0
+        return { r: iR, y: -hH + localT * height }
+      } else if (vn < topBevelEnd) {
+        const range  = topBevelEnd - innerFrac
+        const localT = range > 0 ? (vn - innerFrac) / range : 0
+        const angle  = Math.PI - localT * (Math.PI / 2)
+        return {
+          r: (radius - bevelRadius) + bevelRadius * Math.cos(angle),
+          y: hH + bevelRadius * Math.sin(angle),
+        }
+      } else if (vn < outerEnd) {
+        const range  = outerEnd - topBevelEnd
+        const localT = range > 0 ? (vn - topBevelEnd) / range : 0
+        return { r: radius, y: hH - localT * height }
+      } else {
+        const range  = 1 - outerEnd
+        const localT = range > 0 ? (vn - outerEnd) / range : 0
+        const angle  = (Math.PI / 2) * (1 - localT)
+        return {
+          r: (radius - bevelRadius) + bevelRadius * Math.cos(angle),
+          y: -hH - bevelRadius * Math.sin(angle),
+        }
+      }
+    }
+
+    // --- Ring lines (constant v, varying u/theta) ---
     const totalRings = gridSegmentsV
     for (let j = 0; j < totalRings; j++) {
       const v = j / totalRings
-      const region = this.getRegion(v)
-      const profile = this.getProfile(region)
+      const { r, y } = getProfileAt(v)
 
       for (let i = 0; i < lineDetail; i++) {
         const theta0 = (i / lineDetail) * Math.PI * 2
         const theta1 = ((i + 1) / lineDetail) * Math.PI * 2
 
         vertices.push(
-          profile.r * Math.cos(theta0), profile.y, profile.r * Math.sin(theta0),
-          profile.r * Math.cos(theta1), profile.y, profile.r * Math.sin(theta1)
+          r * Math.cos(theta0), y, r * Math.sin(theta0),
+          r * Math.cos(theta1), y, r * Math.sin(theta1)
         )
       }
     }
@@ -462,11 +504,8 @@ export class PipeSurface extends Surface {
       for (let j = 0; j < vSteps; j++) {
         const v0 = j / vSteps
         const v1 = (j + 1) / vSteps
-
-        const region0 = this.getRegion(v0)
-        const region1 = this.getRegion(v1)
-        const p0 = this.getProfile(region0)
-        const p1 = this.getProfile(region1)
+        const p0 = getProfileAt(v0)
+        const p1 = getProfileAt(v1)
 
         vertices.push(
           p0.r * cosTheta, p0.y, p0.r * sinTheta,
