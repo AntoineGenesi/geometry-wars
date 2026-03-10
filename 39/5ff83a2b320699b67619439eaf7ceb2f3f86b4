@@ -1,0 +1,11 @@
+Feature addition: interactive session recap slides — 13 neon-themed slides.
+
+This commit modifies 1 file (+1143 lines), touching 1 documentation file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+48-hour work recap with impact scores, honest failure analysis,
+stats, roadmap, and process improvements. Neon dark theme matching
+Geometry Wars aesthetic.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
