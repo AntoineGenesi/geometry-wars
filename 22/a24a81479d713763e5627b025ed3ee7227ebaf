@@ -1,0 +1,6 @@
+Merge commit: Merge branch 'task/fix-broken-tests'.
+
+This commit modifies 4 files (+97/-13 lines), spanning 3 tests, 1 game entities.
+This is a merge commit integrating work from branch into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: src/entities/Companion.ts, src/test/performance-benchmark.test.ts, src/test/visual-integration.test.ts, tasks/fix-broken-tests.md.
