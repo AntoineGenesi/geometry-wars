@@ -43,6 +43,18 @@ export interface Projectile {
   speed: number;
   // For homing
   targetIndex?: number;
+  /**
+   * Homing bias for Seeking blaster bolts (Standard BL sub-branch).
+   * 0 = straight, 1 = tight homing. Applied in updateProjectile for Standard type.
+   */
+  homingBias?: number;
+  /**
+   * True for Apex hunter (bl_10): bolt reverses toward nearest enemy on first expiry
+   * instead of disappearing, then expires normally on the return pass.
+   */
+  loopBackOnMiss?: boolean;
+  /** Set when the bolt has already looped back — prevents infinite looping */
+  hasLoopedBack?: boolean;
   // For mortar
   startPos?: THREE.Vector3;
   endPos?: THREE.Vector3;
@@ -324,7 +336,8 @@ export class WeaponManager {
       if (active.has('standard_b_1')) bonus += 0.15;
       if (active.has('standard_b_2')) bonus += 0.30;
       if (active.has('standard_b_3')) bonus += 0.50;
-      // standard_b_4/b_5 = homing on bolts (handled via getBlasterHomingStrength), no fire rate change
+      // standard_b_4 (Heavy bolt) = damage bonus, no fire rate change
+      // standard_bl_5..bl_10 (Seeking/BL sub-branch) = seeking bolts handled in fireSeekingBlasterBolts, no fire rate change
     } else if (weaponType === WeaponType.Piercing) {
       if (active.has('piercing_b_1')) bonus += 0.20;
       if (active.has('piercing_b_2')) bonus += 0.40;
@@ -375,16 +388,37 @@ export class WeaponManager {
   }
 
   /**
-   * Returns whether blaster bolts have homing bias (Branch B nodes 4+5).
-   * 0 = no homing; 0.8 = strong homing.
-   * The caller lerps bullet direction toward nearest enemy each frame by this factor.
+   * Returns the homing bias for Seeking (BL sub-branch) blaster bolts.
+   * 0 = no homing; 0.95 = near-perfect homing (bl_10 Apex hunter).
+   * Returns 0 if no BL nodes are active.
    */
   getBlasterHomingStrength(): number {
     if (!this.upgradeTracker) return 0;
     const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
-    if (active.has('standard_b_5')) return 0.8;  // strong homing
-    if (active.has('standard_b_4')) return 0.4;  // mild homing
+    // BL sub-branch: bl_5 (mild) through bl_10 (near-perfect)
+    if (active.has('standard_bl_10')) return 0.95; // Apex hunter: near-perfect homing
+    if (active.has('standard_bl_9'))  return 0.85; // Guided cluster
+    if (active.has('standard_bl_8'))  return 0.80; // Lock-on volley
+    if (active.has('standard_bl_7'))  return 0.75; // Precision burst
+    if (active.has('standard_bl_6'))  return 0.60; // Smart swarm
+    if (active.has('standard_bl_5'))  return 0.30; // Seeking bolts: mild homing
     return 0;
+  }
+
+  /**
+   * Returns BL seeking bolt count and whether loop-back is active.
+   * Used by fireStandard to spawn the correct number of seeking projectiles.
+   */
+  private getBlasterBLSeekingConfig(): { boltCount: number; loopBack: boolean; splitTargets: number } {
+    if (!this.upgradeTracker) return { boltCount: 0, loopBack: false, splitTargets: 1 };
+    const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    if (active.has('standard_bl_10')) return { boltCount: 6,  loopBack: true,  splitTargets: 1 };
+    if (active.has('standard_bl_9'))  return { boltCount: 6,  loopBack: false, splitTargets: 1 };
+    if (active.has('standard_bl_8'))  return { boltCount: 8,  loopBack: false, splitTargets: 2 };
+    if (active.has('standard_bl_7'))  return { boltCount: 6,  loopBack: false, splitTargets: 1 };
+    if (active.has('standard_bl_6'))  return { boltCount: 5,  loopBack: false, splitTargets: 1 };
+    if (active.has('standard_bl_5'))  return { boltCount: 4,  loopBack: false, splitTargets: 1 };
+    return { boltCount: 0, loopBack: false, splitTargets: 1 };
   }
 
   /**
@@ -459,6 +493,13 @@ export class WeaponManager {
       color: WEAPON_CONFIGS[WeaponType.GravityGun].color,
       transparent: true,
       opacity: 0.8,
+    }));
+
+    // Standard (seeking bolts) - yellow-gold, visually distinct from BulletPool bolts
+    this.projectileMaterials.set(WeaponType.Standard, new THREE.MeshBasicMaterial({
+      color: WEAPON_CONFIGS[WeaponType.Standard].color,
+      transparent: true,
+      opacity: 0.85,
     }));
   }
 
@@ -772,6 +813,25 @@ export class WeaponManager {
         if (proj.type === WeaponType.GravityGun) {
           this.callbacks?.onProjectileExplosion?.(proj.position.clone(), WeaponType.GravityGun);
         }
+        // Apex hunter (bl_10): loop back once on miss — reverse toward nearest enemy instead of expiring
+        if (proj.type === WeaponType.Standard && proj.loopBackOnMiss && !proj.hasLoopedBack && this.callbacks) {
+          const enemies = this.callbacks.getEnemies();
+          let nearestEnemy: { position: THREE.Vector3; index: number } | null = null;
+          let nearestDist = Infinity;
+          for (const e of enemies) {
+            if (!e.alive) continue;
+            const d = proj.position.distanceTo(e.position);
+            if (d < nearestDist) { nearestDist = d; nearestEnemy = e; }
+          }
+          if (nearestEnemy) {
+            // Reverse direction toward nearest enemy and give another life (same duration)
+            proj.direction.copy(nearestEnemy.position.clone().sub(proj.position).normalize());
+            proj.targetIndex = nearestEnemy.index;
+            proj.age = 0; // reset age for the return pass
+            proj.hasLoopedBack = true; // prevent looping again
+            continue; // don't remove — let it continue
+          }
+        }
         this.removeProjectile(i);
         continue;
       }
@@ -973,6 +1033,75 @@ export class WeaponManager {
       const rightDir = direction.clone().applyAxisAngle(rotAxis, spreadAngle).normalize();
       this.callbacks?.spawnBullet(leftOrigin, leftDir);
       this.callbacks?.spawnBullet(rightOrigin, rightDir);
+    }
+
+    // BL Sub-branch: Seeking bolts (standard_bl_5 through standard_bl_10)
+    // When any BL node is active, spawn Projectile-based homing bolts that track enemies.
+    // These supplement the normal dual-barrel bolts (they do not replace them).
+    const blConfig = this.getBlasterBLSeekingConfig();
+    if (blConfig.boltCount > 0) {
+      this.fireSeekingBlasterBolts(origin, direction, rotAxis, blConfig);
+    }
+  }
+
+  /**
+   * Fires seeking blaster bolts as Projectile objects (not BulletPool bullets).
+   * Called by fireStandard when BL sub-branch nodes are active.
+   * Bolts use the existing Projectile homing update path via the homingBias field.
+   */
+  private fireSeekingBlasterBolts(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    rotAxis: THREE.Vector3,
+    config: { boltCount: number; loopBack: boolean; splitTargets: number },
+  ): void {
+    const homingBias = this.getBlasterHomingStrength();
+    const blasterConfig = WEAPON_CONFIGS[WeaponType.Standard];
+    // Seeking bolts get a slight speed boost vs normal bolts
+    const hasSpeedNode = this.upgradeTracker?.getActiveUpgrades(WeaponType.Standard).has('standard_bl_7') ?? false;
+    const speedMult = hasSpeedNode ? 1.1 : 1.0;
+    const speed = blasterConfig.projectileSpeed * speedMult;
+
+    // Find target enemies (up to splitTargets for lock-on volley)
+    const enemies = this.callbacks?.getEnemies().filter(e => e.alive) ?? [];
+    const targets: Array<{ position: THREE.Vector3; index: number }> = [];
+    if (config.splitTargets > 1 && enemies.length >= 2) {
+      // Lock-on volley (bl_8): split bolts between 2 nearest enemies
+      const sorted = enemies.slice().sort((a, b) =>
+        a.position.distanceTo(origin) - b.position.distanceTo(origin),
+      );
+      targets.push(sorted[0], sorted[1]);
+    } else if (enemies.length > 0) {
+      const nearest = enemies.reduce((best, e) =>
+        e.position.distanceTo(origin) < best.position.distanceTo(origin) ? e : best,
+      );
+      targets.push(nearest);
+    }
+
+    // Spread bolts in a fan; each bolt independently homes toward its target
+    const fanCount = config.boltCount;
+    const fanHalfAngle = Math.PI / 12; // ±15° spread for visual separation
+    for (let i = 0; i < fanCount; i++) {
+      const t = fanCount === 1 ? 0 : (i / (fanCount - 1)) * 2 - 1; // -1..+1
+      const angle = t * fanHalfAngle;
+      const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
+
+      // Pick target: alternate between targets for split-target mode
+      const target = targets.length > 0 ? targets[i % targets.length] : undefined;
+
+      const proj = this.createProjectile(
+        WeaponType.Standard,
+        origin.clone(),
+        boltDir,
+        blasterConfig.damage,
+        speed,
+        5.0, // seeking bolts have shorter range than homing missiles
+      );
+      proj.homingBias = homingBias;
+      proj.loopBackOnMiss = config.loopBack;
+      if (target) {
+        proj.targetIndex = target.index;
+      }
     }
   }
 
@@ -1626,6 +1755,10 @@ export class WeaponManager {
 
     // Geometries are shared via GeometryCache — no allocation per projectile.
     switch (type) {
+      case WeaponType.Standard:
+        // Seeking bolts: use small sphere (similar to spread pellets) in yellow-gold color
+        return new THREE.Mesh(SharedGeometries.spreadProjectile(), material);
+
       case WeaponType.Spread:
         return new THREE.Mesh(SharedGeometries.spreadProjectile(), material);
 
@@ -1669,6 +1802,39 @@ export class WeaponManager {
             proj.position.y += Math.sin(t * Math.PI) * 2.5;
           }
         }
+        break;
+
+      case WeaponType.Standard:
+        // Seeking blaster bolts (BL sub-branch): apply homing if homingBias is set
+        if (proj.homingBias && proj.homingBias > 0 && this.callbacks) {
+          const enemies = this.callbacks.getEnemies();
+          let nearestEnemy: { position: THREE.Vector3; index: number } | null = null;
+
+          // Prefer the locked target; fall back to nearest alive enemy
+          if (proj.targetIndex !== undefined) {
+            const locked = enemies.find(e => e.index === proj.targetIndex && e.alive);
+            if (locked) {
+              nearestEnemy = locked;
+            }
+          }
+          if (!nearestEnemy) {
+            let nearestDist = Infinity;
+            for (const e of enemies) {
+              if (!e.alive) continue;
+              const d = proj.position.distanceTo(e.position);
+              if (d < nearestDist) { nearestDist = d; nearestEnemy = e; }
+            }
+            if (nearestEnemy) proj.targetIndex = nearestEnemy.index;
+          }
+
+          if (nearestEnemy) {
+            const toTarget = nearestEnemy.position.clone().sub(proj.position).normalize();
+            const turnRate = Math.min(proj.homingBias, 8.0 * dt * proj.homingBias);
+            proj.direction.lerp(toTarget, turnRate).normalize();
+          }
+        }
+        // Linear movement
+        proj.position.add(proj.direction.clone().multiplyScalar(proj.speed * dt));
         break;
 
       default:
@@ -1855,6 +2021,24 @@ export class WeaponManager {
           // Pull enemies together
           this.applyGravityPull(proj.position, 2.0);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.GravityGun);
+          this.removeProjectile(index);
+          return;
+        } else if (proj.type === WeaponType.Standard && proj.homingBias) {
+          // Seeking blaster bolt (BL sub-branch) hit an enemy
+          // bl_9 (Guided cluster): spawn a secondary seeker on impact
+          if (this.upgradeTracker?.getActiveUpgrades(WeaponType.Standard).has('standard_bl_9')) {
+            const localUp = proj.position.clone().normalize();
+            const seekerDir = proj.direction.clone().applyAxisAngle(localUp, (Math.random() - 0.5) * 0.5).normalize();
+            const seeker = this.createProjectile(
+              WeaponType.Standard,
+              proj.position.clone(),
+              seekerDir,
+              proj.damage * 0.5, // secondary seeker deals half damage
+              proj.speed,
+              3.0,
+            );
+            seeker.homingBias = proj.homingBias;
+          }
           this.removeProjectile(index);
           return;
         } else {
