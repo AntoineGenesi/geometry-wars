@@ -1,0 +1,7 @@
+Merge commit: Merge s44m-11: Localization final pass — proper translations for ES/FR/DE.
+
+This commit modifies 4 files (+322/-283 lines), spanning 3 other, 1 tests.
+This is a merge commit integrating work from s44m-11 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: proper translations for ES/FR/DE.
+
+Key files: src/i18n/locales/de.json, src/i18n/locales/es.json, src/i18n/locales/fr.json, src/test/stress-test-results.json.
