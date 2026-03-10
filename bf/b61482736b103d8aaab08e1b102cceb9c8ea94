@@ -1,0 +1,15 @@
+Feature addition: Browser Test Harness — real Puppeteer-based game testing.
+
+This commit modifies 5 files (+943/-1 lines), touching 5 tests files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- BrowserTestHarness.mjs: launches Chrome, connects to debug API, queries real game state
+- smoke-test.mjs: 8-step verification, all passing (state queries, input sim, screenshots)
+- demo-deep-gameplay.mjs: wave progression, enemy types, 5 screenshots captured
+- README.md: full API documentation
+- Supports: waitForWave(n), waitForEnemyType(type), fastForward(seconds),
+  screenshotWhenEnemyAppears(type), deep gameplay verification
+- Level 5 verification achieved: real browser + programmatic state + screenshots
+
+Key files: tasks/programmatic-test-harness-v2.md, tests/programmatic/BrowserTestHarness.mjs, tests/programmatic/README.md, tests/programmatic/demo-deep-gameplay.mjs, tests/programmatic/smoke-test.mjs.
