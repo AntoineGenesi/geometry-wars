@@ -1,6 +1,0 @@
-Bug fix: localisation now works on main menu (s44j-06) — StartMenu.ts, all locale files.
-
-This commit modifies 8 files (+340/-57 lines), spanning 6 other, 1 UI/HUD, 1 Markdown docs.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
-
-Key files: src/i18n/locales/ar.json, src/i18n/locales/de.json, src/i18n/locales/en.json, src/i18n/locales/es.json, src/i18n/locales/fr.json, and others.
