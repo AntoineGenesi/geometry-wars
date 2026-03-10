@@ -1,0 +1,12 @@
+Feature addition: add countdown display, timer HUD, and adventure level selection.
+
+This commit modifies 3 files (+273/-34 lines), spanning 1 other, 1 TypeScript source, 1 UI/HUD.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- 3-2-1-GO countdown overlay blocks gameplay during countdown phase
+- Timer display for Deadline mode levels with urgent pulse when <=10s
+- Level name shown in HUD below multiplier
+- Adventure mode with level grid grouped by section
+- Level buttons show star ratings and lock states
+- Progress-gated level unlocking from localStorage
