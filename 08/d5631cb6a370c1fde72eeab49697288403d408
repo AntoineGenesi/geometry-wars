@@ -1,6 +1,0 @@
-Merge commit: Merge s44j-pvp-13c: PvP health pickup system.
-
-This commit modifies 8 files (+663/-1 lines), spanning 4 game server, 2 networking, 1 UI/HUD.
-This is a merge commit integrating work from s44j-pvp-13c into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: server/rooms/GameRoom.pvp-health-pickups.test.ts, server/rooms/GameRoom.ts, server/schema/GameState.ts, server/shared/GameConstants.ts, src/network-main.ts, and others.
