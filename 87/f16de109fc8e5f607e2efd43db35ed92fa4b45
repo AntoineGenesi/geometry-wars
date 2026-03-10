@@ -1,4 +1,0 @@
-Feature addition: KotH and Claustrophobia score displays show 1 decimal place — KingMode.ts, ClaustrophobiaMode.ts, network-main.ts.
-
-This commit modifies 3 files (+9/-9 lines), spanning 2 core game loop, 1 networking.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
