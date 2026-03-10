@@ -1,4 +1,0 @@
-Merge commit: Merge s44m-02: Fix pickup brightness whiteout.
-
-This commit modifies 2 files (+6/-3 lines), touching 2 TypeScript source files.
-This is a merge commit integrating work from s44m-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
