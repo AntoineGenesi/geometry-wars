@@ -1,0 +1,4 @@
+Merge commit: Merge s44m-13: CPU profiler shows top 10 + Other category.
+
+This commit modifies 2 files (+51/-12 lines), spanning 1 UI/HUD, 1 task/ops files.
+This is a merge commit integrating work from s44m-13 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
