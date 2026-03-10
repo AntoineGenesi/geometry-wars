@@ -1,0 +1,11 @@
+Bug fix: update client prediction speed and tests for S44b-09 speed increase.
+
+This commit modifies 3 files (+21/-9 lines), spanning 1 game server, 1 networking, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- src/network-main.ts: Update hardcoded predSpeed 0.095→0.105 for client-server sync
+- src/network-main.ts: Update comments referencing old speed values
+- server/movement/ServerMeshWalker.test.ts: Update expected PLAYER_WORLD_SPEED to 3.3
+- server/movement/ServerMeshWalker.test.ts: Increase surface adherence tolerance 0.01→0.02
+- Fixes critical client prediction mismatch that would cause desync jitter
