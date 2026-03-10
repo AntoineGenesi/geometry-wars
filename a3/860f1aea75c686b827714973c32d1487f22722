@@ -1,0 +1,5 @@
+Merge commit: Merge s44l-05: Blaster upgrade stacking — combined branch effects.
+
+This commit modifies 3 files (+144/-8 lines), spanning 1 tests, 1 TypeScript source, 1 Markdown docs.
+This is a merge commit integrating work from s44l-05 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: combined branch effects.
