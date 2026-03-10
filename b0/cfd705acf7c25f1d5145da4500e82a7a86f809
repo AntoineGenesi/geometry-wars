@@ -1,0 +1,12 @@
+Merge commit: Merge s44r3-02: MP bullet penetration — per-bullet damage budget tracking.
+
+This commit modifies 4 files (+387/-13 lines), spanning 2 game server, 1 networking, 1 Markdown docs.
+This is a merge commit integrating work from s44r3-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: per-bullet damage budget tracking.
+
+Additional context from the commit body:
+Game state: SP penetration fixed in s44r2-13, MP was missing. Now bullets in MP
+track remaining damage and continue through enemies until budget depleted.
+Both client (network-main.ts) and server (GameRoom.ts) updated.
+
+Key files: server/rooms/GameRoom.bullet-penetration.test.ts, server/rooms/GameRoom.ts, src/network-main.ts, .../s44r3-02-bullet-penetration-not-working-mp.md.
