@@ -1,5 +1,7 @@
 # Failed Experiments & Known Dead Ends
 
+**Last updated:** 2026-03-10
+
 > Short-form reference for workers. Before starting a new approach, check here to avoid re-traveling dead ends.
 > **Format:** What was tried → Why it failed → What to do instead.
 

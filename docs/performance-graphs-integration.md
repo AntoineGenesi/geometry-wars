@@ -1,5 +1,7 @@
 # Performance Graphs Integration Guide
 
+**Last updated:** 2026-02-25
+
 ## Overview
 
 This document explains how to integrate the new performance logging and graphing system into the game. The system provides:

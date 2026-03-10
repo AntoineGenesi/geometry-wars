@@ -1,5 +1,8 @@
 # Ad Monetization Research: .io Game Models, Hosting Costs, Unit Economics
 
+**Date:** 2026-02-11
+**Status:** Strategic research — no code references, remains relevant.
+
 ## How .io Games Make Money
 
 ### agar.io

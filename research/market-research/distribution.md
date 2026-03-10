@@ -1,5 +1,8 @@
 # Distribution Channels Analysis
 
+**Date:** 2026-02-10
+**Status:** Strategic research — no code references, remains relevant.
+
 ## 1. Browser-First (Primary Launch Channel)
 
 ### Direct Web (Own Domain)

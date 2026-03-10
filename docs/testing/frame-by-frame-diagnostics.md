@@ -1,5 +1,6 @@
 # Frame-by-Frame Diagnostic Testing Methodology
 
+**Last updated:** 2026-02-13
 **Purpose:** Diagnose movement bugs WITHOUT visual testing by capturing detailed per-frame gameplay data programmatically.
 
 **Status:** ✅ PROVEN - Successfully identified s15 player movement bug (90° orientation flipping every frame)

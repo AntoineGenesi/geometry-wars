@@ -2,7 +2,8 @@
 
 > **Last updated:** 2026-02-07
 > **Project context:** Geometry Wars 3D Dimensions browser clone (Three.js + TypeScript + Vite)
-> **Current approach:** UV-based parametric surfaces + three-mesh-bvh for BVH queries
+> **Approach at time of writing (2026-02-07):** UV-based parametric surfaces + three-mesh-bvh for BVH queries
+> **Current approach (as of 2026-03-10):** MeshWalker (BVH mesh-walking) for player/bullets; UV parameterization still used for enemies/geoms.
 > **Known pain points:** Camera-relative input mapping, surface normal computation, direction consistency across different surface topologies
 
 ---

@@ -1,12 +1,15 @@
 # 3D Surface Movement Research
 
+**Date:** 2026-02-06
+**Status:** Historical research — describes early UV-based approach. The project has since migrated to BVH mesh-walking (MeshWalker). See `docs/ISSUES-AND-SOLUTIONS.md` for current architecture.
+
 ## Overview
 
 This document summarizes research on approaches for moving entities along 3D surfaces in games like Geometry Wars 3: Dimensions.
 
 ## Approaches Evaluated
 
-### 1. UV-Based Surface Parameterization (CURRENT)
+### 1. UV-Based Surface Parameterization (HISTORICAL — superseded by MeshWalker)
 
 **How it works:**
 - Surface is parameterized with U,V coordinates (0-1 range)
@@ -116,7 +119,9 @@ This document summarizes research on approaches for moving entities along 3D sur
 
 ## Recommendation for Geometry Wars Clone
 
-**Primary:** UV-Based Parameterization (current implementation)
+> **HISTORICAL NOTE (added 2026-03-10):** The project has since implemented Mesh Walking (MeshWalker) using `three-mesh-bvh` as the primary movement system for player and bullets. UV-based parameterization is still used for enemies and geoms. The recommendation below was written 2026-02-06 before the migration.
+
+**Primary (at time of research):** UV-Based Parameterization
 - Works for all predefined shapes (sphere, torus, cube, cylinder, peanut, capsule)
 - Simple and performant
 - Clean code architecture

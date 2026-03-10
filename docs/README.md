@@ -1,5 +1,7 @@
 # Documentation
 
+**Last updated:** 2026-03-01
+
 Human-readable guides for the Geometry Wars 3D project.
 
 > **New here?** See `INDEX.md` for a "where to find what" guide.
