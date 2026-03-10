@@ -1,0 +1,10 @@
+Feature addition: add game mode rules.
+
+This commit modifies 1 file (+29/-4 lines), touching 1 TypeScript source file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Use MODE_DEFAULTS for canShoot instead of hardcoding true
+- Pacifism mode blocks shooting input
+- Checkpoint mode detects wave clears and awards +15s time bonus
+- Time bonus popup shows "+Xs" at player position
