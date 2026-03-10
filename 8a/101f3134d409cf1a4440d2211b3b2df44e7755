@@ -1,0 +1,9 @@
+Feature addition: add grid deformation on enemy death.
+
+This commit modifies 2 files (+4 lines), touching 2 TypeScript source files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Surface grid ripples outward from enemy death position
+- Force 0.2 strength, 1.0 radius for satisfying visual feedback
+- Applied in both single player and local multiplayer
