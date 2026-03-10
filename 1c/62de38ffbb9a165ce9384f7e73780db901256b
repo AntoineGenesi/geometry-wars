@@ -1,4 +1,0 @@
-Feature addition: show damage numbers for guardian drone bullets — track companion bullets and display damage numbers even on killing blows.
-
-This commit modifies 3 files (+12/-2 lines), spanning 2 game entities, 1 core game loop.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
