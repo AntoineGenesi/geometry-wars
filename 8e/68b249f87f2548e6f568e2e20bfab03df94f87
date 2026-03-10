@@ -1,0 +1,6 @@
+Feature addition: add procedural sound engine and background music.
+
+This commit modifies 4 files (+754 lines), spanning 3 TypeScript source, 1 documentation.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: decisions/enemy-meshwalker-migration.md, src/audio/BackgroundMusic.ts, src/audio/SoundEngine.ts, src/main.ts.
