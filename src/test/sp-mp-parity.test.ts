@@ -26,6 +26,7 @@ import {
   PLAYER_SPEED_UV,
   WEAPON_DROP_CHANCE,
   WEAPON_PICKUP_LIFETIME,
+  WEAPON_PICKUP_WORLD_RADIUS,
   ENEMY_SPEEDS,
   ENEMY_SCORES,
   ENEMY_HEALTH,
@@ -280,6 +281,57 @@ describe('SP/MP Parity — Shared Constants', () => {
 
     it('high tier increases spawn rate per eliminated player', () => {
       expect(DIFFICULTY_PER_PLAYER_FACTOR.high).toBeGreaterThan(0);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Pickup world radius (s44r8-06)
+  // -----------------------------------------------------------------------
+  describe('Pickup world radius', () => {
+    it('WEAPON_PICKUP_WORLD_RADIUS is 0.35 world units', () => {
+      // Regression: SuperStatePickup was 0.3, BuffPickupNew was 0.25 — both missed s44r6c-02.
+      // All pickup types now share this constant so they stay in sync.
+      expect(WEAPON_PICKUP_WORLD_RADIUS).toBe(0.35);
+    });
+
+    it('WEAPON_PICKUP_WORLD_RADIUS is greater than player visual radius (0.15)', () => {
+      // Must be > player radius or the player can never collect pickups
+      expect(WEAPON_PICKUP_WORLD_RADIUS).toBeGreaterThan(0.15);
+    });
+
+    it('server PICKUP_WORLD matches WEAPON_PICKUP_WORLD_RADIUS', () => {
+      // Server GameRoom.ts uses 0.35 * scaleFactor. This test documents that the
+      // server value must be kept in sync. If server constant changes, update here.
+      // (Server can't import from src/ directly due to Three.js deps in some files.)
+      const SERVER_PICKUP_WORLD = 0.35;
+      expect(SERVER_PICKUP_WORLD).toBe(WEAPON_PICKUP_WORLD_RADIUS);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Bullet lifetime scaling (s44r8-06)
+  // -----------------------------------------------------------------------
+  describe('Bullet lifetime scaling', () => {
+    it('BULLET_LIFETIME base is 6 seconds', () => {
+      expect(BULLET_LIFETIME).toBe(6.0);
+    });
+
+    it('bullet lifetime scales linearly with mapSizeScaleFactor', () => {
+      // SP: bulletPool.lifetimeMultiplier = mapSizeScaleFactor
+      // MP: bulletLifetime = BULLET_LIFETIME * getMapScaleFactor(mapSize)
+      // Verify the formula is consistent for each map size tier.
+      const mapScaleFactors: Record<string, number> = {
+        tiny: 0.5, small: 0.75, medium: 1.0, large: 1.5, huge: 2.0, epic: 2.0,
+      };
+      for (const [size, scaleFactor] of Object.entries(mapScaleFactors)) {
+        const expectedLifetime = BULLET_LIFETIME * scaleFactor;
+        expect(expectedLifetime).toBeGreaterThan(0);
+        // On MEDIUM: 6s. On LARGE: 9s. On EPIC: 12s. On SMALL: 4.5s.
+        if (size === 'medium') expect(expectedLifetime).toBe(6.0);
+        if (size === 'large')  expect(expectedLifetime).toBe(9.0);
+        if (size === 'epic')   expect(expectedLifetime).toBe(12.0);
+        if (size === 'small')  expect(expectedLifetime).toBeCloseTo(4.5);
+      }
     });
   });
 

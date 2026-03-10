@@ -113,6 +113,10 @@ export const PLAYER_SPEED_UV = 0.105;
 // ---------------------------------------------------------------------------
 export const WEAPON_DROP_CHANCE = 0.08;      // 8% on enemy death
 export const WEAPON_PICKUP_LIFETIME = 20.0;  // seconds before despawn
+// World-space pickup collision radius. Applies to all pickup types (weapon, buff, super-state).
+// s44r6c-02: Increased from 0.25 to 0.35 — inconsistent pickup collection on curved surfaces.
+// s44r8-06: Centralized here so all pickup classes stay in sync (was scattered across 4 files).
+export const WEAPON_PICKUP_WORLD_RADIUS = 0.35;
 
 // ---------------------------------------------------------------------------
 // Enemy constants

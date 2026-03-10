@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { SuperStateType } from './SuperState';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
+import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 // Pre-allocated temps for applySurfaceTransform (zero per-call allocations)
 const _sspMat4 = new THREE.Matrix4();
@@ -16,8 +17,8 @@ export interface SurfaceTransform {
   bitangent: THREE.Vector3;
 }
 
-// World-space pickup collision radius. See WeaponPickup.ts for rationale.
-const PICKUP_WORLD_RADIUS = 0.3;
+// PICKUP_WORLD_RADIUS imported from src/shared/GameBalanceConstants.ts (s44r8-06).
+// Was 0.3 — corrected to 0.35 to match WeaponPickup.ts and BuffPickup.ts.
 
 export class SuperStatePickup {
   readonly mesh: THREE.Group;
