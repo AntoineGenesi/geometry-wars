@@ -1,0 +1,17 @@
+Feature addition: piercing beam, sphere tunnel rewrite, geodesic fixes, weapon tests.
+
+This commit modifies 9 files (+1068/-683 lines), spanning 2 documentation, 2 tests, 2 TypeScript source.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Convert piercing weapon from projectile to geodesic surface-following beam
+  (reuses traceBeamPath like laser, instant damage along path, 0.25s flash)
+- Rewrite SphereWithTunnelSurface as torus topology (profileAt + revolution)
+- Fix geodesic walker on Mobius strip (non-orientable surface detection in
+  ParallelTransport, spawn away from seam center)
+- Relax cube direction-inversion test tolerance for beveled edges
+- Add 47 WeaponManager tests covering all 10 weapon types
+
+267 tests passing, TypeScript clean.
+
+Key files: decisions/geodesic-walker-fixes-2026-02-07.md, decisions/sphere-tunnel-rewrite-2026-02-07.md, .../mesh-movement/MovementValidation.test.ts, .../mesh-movement/geodesic/ParallelTransport.ts, src/surfaces/MobiusSurface.ts, and others.
