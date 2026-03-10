@@ -693,6 +693,15 @@ export class StartMenu {
         flex-direction: column;
       }
 
+      /* Smooth fade-in when sub-panel becomes visible */
+      @keyframes subPanelFadeIn {
+        from { opacity: 0; transform: translate(-50%, -48%); }
+        to   { opacity: 1; transform: translate(-50%, -50%); }
+      }
+      #start-menu .sub-panel:not(.hidden) {
+        animation: subPanelFadeIn 0.18s ease-out forwards;
+      }
+
       #start-menu .scrollable-content {
         overflow-y: auto;
         flex: 1;
@@ -1856,6 +1865,14 @@ export class StartMenu {
           display: flex;
           flex-direction: column;
         }
+        /* Mobile: override fade-in to use correct fixed transform */
+        @keyframes subPanelFadeInMobile {
+          from { opacity: 0; transform: translate(-50%, -47%); }
+          to   { opacity: 1; transform: translate(-50%, -50%); }
+        }
+        #start-menu .sub-panel:not(.hidden) {
+          animation: subPanelFadeInMobile 0.18s ease-out forwards;
+        }
 
         /* Controls hint: hide keyboard text on mobile, but show action buttons */
         #start-menu .controls-hint p {
@@ -2002,6 +2019,48 @@ export class StartMenu {
         #start-menu .oval-btn {
           min-height: 48px;
           letter-spacing: 2px;
+        }
+
+        /* Map size buttons: min 44px touch target */
+        #start-menu .map-size-btn,
+        #start-menu .lan-map-size-btn {
+          min-height: 44px;
+          padding: 10px 8px;
+          font-size: 12px;
+        }
+
+        /* LAN mode buttons: min 44px touch target, stacked */
+        #start-menu .lan-mode-btn {
+          min-height: 44px;
+          padding: 10px 12px;
+          font-size: 13px;
+        }
+        #start-menu .lan-mode-icon {
+          font-size: 18px;
+        }
+
+        /* Mode buttons: min 44px touch target */
+        #start-menu .mode-btn {
+          min-height: 56px;
+          padding: 12px 16px;
+        }
+
+        /* LAN buttons: min 44px */
+        #start-menu .lan-btn {
+          min-height: 44px;
+          padding: 12px 20px;
+        }
+
+        /* LAN scan items: min 44px */
+        #start-menu .lan-scan-item {
+          min-height: 44px;
+          padding: 12px 20px;
+        }
+
+        /* LAN lobby entries: min 44px */
+        #start-menu .lan-lobby-entry {
+          min-height: 44px;
+          padding: 12px 14px;
         }
       }
 
