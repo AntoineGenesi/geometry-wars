@@ -1401,7 +1401,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   });
   pauseMenu.onResume(() => {
     isPaused = false;
+    ctx.state.isPaused = false; // mobile pause button sets this; reset it here too
     if (input instanceof TouchInput) input.setGamePaused(false);
+    sound.resume(); // iOS: AudioContext may be suspended after backgrounding
     game.resume(); // resync clock to avoid massive dt after long pause
     // Force respawn if player died during pause
     if (!player.alive && player.lives > 0) {
@@ -1679,7 +1681,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     if (e.key === 'Escape' && !isGameOver) {
       if (isPaused) {
         isPaused = false;
+        ctx.state.isPaused = false; // mobile pause button sets this; reset it here too
         if (input instanceof TouchInput) input.setGamePaused(false);
+        sound.resume(); // iOS: AudioContext may be suspended after backgrounding
         game.resume(); // resync clock to avoid massive dt after long pause
         pauseMenu.hide();
       } else {
@@ -1737,6 +1741,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       game.pause(); // stop clock ticking while tab is hidden
       updatePauseMenuData();
       pauseMenu.show();
+    } else if (!document.hidden) {
+      // Tab became visible — iOS suspends AudioContext and may freeze the rAF loop.
+      sound.resume(); // wake AudioContext after backgrounding
+      game.kickStart(); // restart rAF loop if it was frozen/stopped by the browser
     }
   });
 
