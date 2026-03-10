@@ -1,0 +1,6 @@
+Merge commit: Merge s44j-settings-16c: Lobby settings integration.
+
+This commit modifies 5 files (+185/-8 lines), spanning 2 networking, 1 game server, 1 UI/HUD.
+This is a merge commit integrating work from s44j-settings-16c into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, src/ui/VotingScreen.ts, tasks/s44j-settings-16c-lobby-integration.md.
