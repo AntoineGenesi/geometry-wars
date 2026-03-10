@@ -1,0 +1,15 @@
+Chore/maintenance: mark s44d-01 done — revert s44c-03 UV prediction regression.
+
+This commit modifies 1 file (+89 lines), touching 1 Markdown docs file.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Additional context from the commit body:
+Reverted commit 0149066 which introduced UV-predicted mesh placement
+in network-main.ts. The UV getPoint() approach caused position jumps
+at face boundaries (different UV coordinate systems per face).
+
+Restored server-lerp mesh placement: mesh.position.lerp(serverTarget, 0.5).
+s44c-02 camera fix (923b87c) preserved — camera still follows server target
+directly, not mesh.position (no double-lerp).
+
+Files changed: src/network-main.ts (via git revert), tasks/s44d-01.md
