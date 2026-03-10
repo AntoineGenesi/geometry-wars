@@ -1,0 +1,15 @@
+Bug fix: improve agent registry data quality and hook reliability.
+
+This commit modifies 2 files (+100 lines), spanning 1 Markdown docs, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Audited 48 agents in registry — found 87.5% with useless descriptions,
+62.5% missing agent_type, 33% missing started_at. Root causes: SubagentStop
+not handling missing SubagentStart, no transcript-based description extraction,
+PostToolUse enrichment limited to Task tool only.
+
+Fixed track-subagent.sh: graceful handling of missing SubagentStart entries,
+transcript-based description extraction on SubagentStop, agent_type preservation.
+Added cleanup-agent-registry.sh utility for manual maintenance.
+Improved session-start-todos.sh with started_at in agent display.
