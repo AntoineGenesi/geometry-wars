@@ -1,0 +1,17 @@
+Feature addition: Game Debug API + browser test task decomposition.
+
+This commit modifies 13 files (+1331/-13 lines), spanning 5 tests, 2 TypeScript source, 1 documentation.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- GameDebugAPI.ts: programmatic access to running game via window.__gameDebug
+  - State getters: enemies, player, bullets, game, camera (all JSON-serializable)
+  - Input sim: sendInput, setMousePosition, setMouseDown
+  - Game control: spawnEnemy, setSeed, pause/resume
+  - quickStart URL param: ?quickStart=true&surface=sphere&seed=42
+  - 10 tests, all passing
+- main.ts: conditional debug API loading, zero overhead when disabled
+- 6 behavior test sub-tasks from planner decomposition
+- Decision log for autonomous session
+
+Key files: decisions/autonomous-session-2026-02-12.md, src/debug/GameDebugAPI.test.ts, src/debug/GameDebugAPI.ts, src/main.ts, tasks/behavior-tests-chase.md, and others.
