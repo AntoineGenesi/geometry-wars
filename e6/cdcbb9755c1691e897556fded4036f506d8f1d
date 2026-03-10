@@ -1,0 +1,8 @@
+Bug fix: snap SP camera on game start + add init guard for pill movement.
+
+This commit modifies 4 files (+294/-2 lines), spanning 1 core game loop, 1 TypeScript source, 1 surface geometry.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: src/core/CameraController.ts, src/main.ts, src/surfaces/PillSurface.test.ts, tasks/s44f-09-pill-map-movement-broken.md.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
