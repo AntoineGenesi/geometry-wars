@@ -1,0 +1,8 @@
+Bug fix: KotH spawn warning rings no longer accumulate in MP mode.
+
+This commit modifies 5 files (+105/-8 lines), spanning 2 core game loop, 1 enemy AI, 1 networking.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: src/core/modes/IGameMode.ts, src/core/modes/KingMode.ts, src/entities/enemies/EnemySpawner.ts, src/network-main.ts, src/test/game-modes.test.ts.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
