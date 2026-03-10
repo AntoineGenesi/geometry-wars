@@ -1,0 +1,6 @@
+Merge commit: Merge s44m-09: PvP kill feed, player damage numbers, multi-kill indicators.
+
+This commit modifies 5 files (+505/-50 lines), spanning 2 networking, 1 game server, 1 UI/HUD.
+This is a merge commit integrating work from s44m-09 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, src/ui/KillFeed.ts, tasks/s44m-09-pvp-kill-feed-damage-numbers.md.
