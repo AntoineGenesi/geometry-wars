@@ -409,6 +409,7 @@ export class VotingScreen {
       },
       this.modeButtons, this.modeCounts
     );
+    modeRow.classList.add('vs-mode-row');
     wrap.appendChild(modeRow);
 
     // ---- Win Condition panel (PvP / PvPvE only) ----
@@ -589,6 +590,11 @@ export class VotingScreen {
     lbl.textContent = label;
     row.appendChild(lbl);
 
+    // Inner scroll container — enables carousel on mobile without affecting desktop
+    const btnScroll = document.createElement('div');
+    btnScroll.className = 'vs-btn-scroll';
+    row.appendChild(btnScroll);
+
     for (const opt of options) {
       const btn = document.createElement('button');
       btn.className = 'vs-option-btn';
@@ -596,7 +602,7 @@ export class VotingScreen {
       const iconHtml = opt.icon ? `<span class="vs-opt-icon">${opt.icon}</span>` : '';
       btn.innerHTML = `${iconHtml}${opt.label} <span class="vs-opt-count">0</span>`;
       btn.addEventListener('click', () => onSelect(opt.id));
-      row.appendChild(btn);
+      btnScroll.appendChild(btn);
 
       buttonMap.set(opt.id, btn);
       const countEl = btn.querySelector('.vs-opt-count') as HTMLElement;
@@ -885,6 +891,15 @@ export class VotingScreen {
         gap: 10px;
         margin-bottom: 12px;
         width: 100%;
+        justify-content: center;
+      }
+
+      /* ---- Button scroll inner container (carousel on mobile) ---- */
+      #voting-screen .vs-btn-scroll {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
         justify-content: center;
       }
 
@@ -1243,6 +1258,118 @@ export class VotingScreen {
         color: #aaa;
         font-size: 12px;
         letter-spacing: 1px;
+      }
+
+      /* ===================================================================
+         MOBILE RESPONSIVE STYLES (max-width: 768px)
+         =================================================================== */
+      @media (max-width: 768px) {
+
+        /* ---- Outer padding ---- */
+        #voting-screen {
+          padding: 12px 0 80px;
+        }
+        #voting-screen .vs-wrap {
+          padding: 0 12px;
+        }
+
+        /* ---- Title scale ---- */
+        #voting-screen .vs-title {
+          font-size: 26px;
+          letter-spacing: 4px;
+          margin-bottom: 16px;
+        }
+
+        /* ---- Surface grid: 2 columns portrait ---- */
+        #voting-screen .vs-grid {
+          grid-template-columns: repeat(2, 1fr);
+          gap: 8px;
+        }
+
+        /* ---- Mode carousel: horizontal scroll-snap ---- */
+        #voting-screen .vs-option-row.vs-mode-row {
+          flex-direction: column;
+          align-items: flex-start;
+          position: relative;
+        }
+
+        #voting-screen .vs-option-row.vs-mode-row .vs-option-label {
+          margin-bottom: 8px;
+          text-align: left;
+          min-width: unset;
+        }
+
+        #voting-screen .vs-option-row.vs-mode-row .vs-btn-scroll {
+          /* Carousel: horizontal scroll with snap */
+          display: flex;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          scroll-snap-type: x mandatory;
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+          gap: 8px;
+          width: 100%;
+          padding: 4px 0 8px;
+          /* Fade edges to hint at scrollability */
+          mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+          -webkit-mask-image: linear-gradient(to right, transparent, black 8%, black 92%, transparent);
+        }
+
+        #voting-screen .vs-option-row.vs-mode-row .vs-btn-scroll::-webkit-scrollbar {
+          display: none;
+        }
+
+        #voting-screen .vs-option-row.vs-mode-row .vs-btn-scroll .vs-option-btn {
+          scroll-snap-align: start;
+          flex-shrink: 0;
+        }
+
+        /* ---- Button size reduction on mobile ---- */
+        #voting-screen .vs-option-btn {
+          padding: 8px 14px;
+          font-size: 11px;
+          letter-spacing: 1px;
+        }
+
+        /* ---- Win condition panel: narrower padding ---- */
+        #voting-screen .vs-wincond-panel {
+          padding: 10px 12px;
+        }
+        #voting-screen .vs-wincond-type-row {
+          gap: 6px;
+        }
+
+        /* ---- Host controls: wrap on mobile ---- */
+        #voting-screen .vs-host-controls {
+          flex-wrap: wrap;
+          gap: 10px;
+          padding: 12px 14px;
+          justify-content: center;
+        }
+
+        /* ---- Countdown ---- */
+        #voting-screen .vs-countdown {
+          font-size: 52px;
+        }
+
+        /* ---- Return button: smaller on mobile ---- */
+        #voting-screen .vs-return-btn {
+          bottom: 12px;
+          right: 12px;
+          padding: 8px 16px;
+          font-size: 11px;
+        }
+      }
+
+      /* ---- Landscape mobile: 3 columns ---- */
+      @media (max-width: 768px) and (orientation: landscape) {
+        #voting-screen .vs-grid {
+          grid-template-columns: repeat(3, 1fr);
+        }
+        #voting-screen .vs-title {
+          font-size: 22px;
+          margin-bottom: 10px;
+        }
       }
     `;
     document.head.appendChild(style);
