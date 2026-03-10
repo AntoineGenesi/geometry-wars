@@ -1,0 +1,13 @@
+Merge commit: Merge s44r3-01: Fix language flag click exiting Quick Game / LAN modal.
+
+This commit modifies 4 files (+279/-2 lines), spanning 3 UI/HUD, 1 Markdown docs.
+This is a merge commit integrating work from s44r3-01 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Additional context from the commit body:
+Game state: ALL 11 s44r3 tasks merged. Panel visibility state is now captured
+before language re-render and restored after, preventing navigation reset.
+
+# Conflicts:
+#	tasks/s44r3-01-language-selector-flag-exits-modal.md
+
+Key files: src/ui/StartMenu.language-panel-state.test.ts, src/ui/StartMenu.ts, src/ui/panelState.ts, .../s44r3-01-language-selector-flag-exits-modal.md.
