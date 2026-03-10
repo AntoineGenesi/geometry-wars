@@ -1,0 +1,10 @@
+Chore/maintenance: add play-game visual test script + screenshot best practices.
+
+This commit modifies 2 files (+228/-1 lines), spanning 1 Markdown docs, 1 tests.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Additional context from the commit body:
+- New tests/visual/play-game.mjs: full play session (start menu → mode
+  select → gameplay → pause → debug overlay → bomb)
+- CLAUDE.md: added screenshot best practices (viewport size, never
+  fullPage, know the menu flow, SwiftShader FPS caveat, log console errors)
