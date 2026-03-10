@@ -1,5 +1,0 @@
-Merge commit: Merge s44c-09: fix bullet origin offset on torus/peanut — use player world-space position.
-
-This commit modifies 2 files (+56/-6 lines), spanning 1 networking, 1 Markdown docs.
-This is a merge commit integrating work from s44c-09 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: use player world-space position.
