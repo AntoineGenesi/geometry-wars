@@ -1,0 +1,16 @@
+Bug fix: 5 LAN multiplayer bugs — focus, spawn rings, visibility, bullets, cube origin.
+
+This commit modifies 11 files (+1126/-86 lines), spanning 2 tests, 2 task/ops files, 1 game server.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Bug #7: Window focus — InputManager.onBlur clears keysDown/mouseLeftDown
+Bug #8: Spawn rings — skipSpawnWarning parameter for network enemies
+Bug #9: Respawn invisible — alive state transition + force mesh visibility
+Bug #10: Bullet angle — surface tangent frame instead of raw UV direction
+Bug #11: Origin blocks cube — removed cube from wrapsInV, V clamping 0.003-0.997
+
+10 regression tests in lan-fixes.test.ts. All pass.
+Level 2 verified, user testing required for Level 4.
+
+Key files: server/rooms/GameRoom.ts, src/entities/enemies/EnemySpawner.ts, src/input/InputManager.ts, src/network-main.ts, src/test/lan-fixes.test.ts, and others.
