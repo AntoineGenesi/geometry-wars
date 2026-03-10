@@ -1,0 +1,18 @@
+Bug fix: position Start Game button below settings bar in MP lobby.
+
+This commit modifies 10 files (+582/-5 lines), spanning 6 Markdown docs, 2 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+The Start Game button was overlapping the lives counter and player list
+at the top of the lobby. Moved button from top:50% (centered vertically)
+to top:180px, positioning it safely below the player information.
+Also adjusted Back button from top:60% to top:260px to maintain spacing.
+
+- Changed startBtn positioning from translate(-50%,-50%) to translateX(-50%)
+- Changed backBtn positioning from translate(-50%,-50%) to translateX(-50%)
+- Both buttons now have fixed top positions instead of percentage-based
+
+Fixes s44p-05: UI layout issue in MP lobby.
+
+Key files: TODO.md, inbox/2026-03-07_0900.md, inbox/s44p-execution-plan.md, ...p-01-improve-verification-framework-critical.md, .../s44p-02-fix-sphere-mp-movement-camera-bugs.md, and others.
