@@ -1,0 +1,8 @@
+Bug fix: voting screen no longer auto-starts on vote — requires Ready Up.
+
+This commit modifies 5 files (+169/-24 lines), spanning 2 game server, 2 UI/HUD, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: server/rooms/GameRoom.test.ts, server/rooms/GameRoom.ts, src/ui/VotingScreen.test.ts, src/ui/VotingScreen.ts, ...3-voting-screen-auto-starts-without-ready-up.md.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
