@@ -535,7 +535,8 @@ async function main() {
   const savedStyle = loadVisualStyle();
 
   // -- Game engine (same config as co-op, mobile reduces bloom) --
-  const game = new Game({
+  // Use Game.create() so WebGPU capability detection and ?renderer=webgpu URL param work.
+  const game = await Game.create({
     bloom: {
       strength: savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7),
       radius: savedStyle?.bloomRadius ?? (mobile ? 0.3 : 0.5),

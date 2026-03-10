@@ -439,7 +439,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // On mobile: reduce bloom, cap pixel ratio, apply mobile entity limits
   const defaultBloomStrength = mobile ? 0.4 : 0.7;
   const bloomStrength = savedStyle ? savedStyle.bloomStrength : defaultBloomStrength;
-  const game = new Game({
+  // Use Game.create() (async factory) so GPU capability detection and renderer
+  // selection run properly. The synchronous new Game() path skips detectGPUCapabilities()
+  // and createRenderer(), meaning WebGPU is never tried and ?renderer=webgpu is ignored.
+  const game = await Game.create({
     bloom: {
       strength: bloomStrength,
       radius: savedStyle?.bloomRadius ?? (mobile ? 0.3 : 0.5),
