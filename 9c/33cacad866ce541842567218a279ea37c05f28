@@ -1,0 +1,9 @@
+Documentation: comprehensive LAN multiplayer architecture documentation.
+
+This commit modifies 2 files (+738 lines), touching 2 documentation files.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+500+ line document covering connection flow, Schema v2 state sync,
+ES2022 encoding bug root cause analysis, LAN hosting architecture,
+and 8 lessons learned. Added Network Multiplayer section to ARCHITECTURE.md.
