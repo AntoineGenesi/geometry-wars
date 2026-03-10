@@ -1,6 +1,0 @@
-Chore/maintenance: review certificates + worker state s44r6 wave 1.
-
-This commit modifies 12 files (+978/-169 lines), spanning 3 other, 3 Markdown docs, 2 task/ops files.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: .claude/locks/port-registry, ...s44r6-02-mp-last-death-flow-weapon-mastery.lock, .claude/locks/s44r6-03-rainbow-mode-overhaul.lock, .../s44r6-02-mp-last-death-flow-weapon-mastery.md, .../s44r6-08-portal-hit-detection-surface-disc.md, and others.
