@@ -1,0 +1,16 @@
+Bug fix: lobby Co-op/PvP/PvPvE panel no longer overlays mode buttons.
+
+This commit modifies 1 file (+32/-1 lines), touching 1 task/ops files file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Root cause: lobbyOptionsPanel (Co-op/PvP/PvPvE + win conditions) was
+position:fixed at top:50% -200px, overlapping modeSelectorDiv (Waves/
+King/etc.) at top:38%. The two fixed panels occupied the same screen area.
+
+Fix in src/network-main.ts:
+- Removed position:fixed, top/left/transform/z-index from lobbyOptionsPanel
+- Changed document.body.appendChild to modeSelectorDiv.appendChild
+- Added margin-top:14px for visual separation
+
+Panel now flows naturally below game mode buttons instead of overlaying.
