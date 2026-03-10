@@ -1,0 +1,9 @@
+Documentation: visual loop step 2 must use auto-generation pattern.
+
+This commit modifies 1 file (+4/-3 lines), touching 1 Markdown docs file.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+Custom scripts should use the same pattern as play-game.mjs: accept
+task-slug/commit CLI args, auto-create timestamped session directory,
+write RESULTS.md skeleton. Don't manually create directories.
