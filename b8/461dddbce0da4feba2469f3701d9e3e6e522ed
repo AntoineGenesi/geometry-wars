@@ -1,6 +1,0 @@
-Merge commit: Merge s44j-13: voting requires Ready Up, no auto-start on vote.
-
-This commit modifies 5 files (+169/-24 lines), spanning 2 game server, 2 UI/HUD, 1 Markdown docs.
-This is a merge commit integrating work from s44j-13 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: server/rooms/GameRoom.test.ts, server/rooms/GameRoom.ts, src/ui/VotingScreen.test.ts, src/ui/VotingScreen.ts, ...3-voting-screen-auto-starts-without-ready-up.md.
