@@ -1,0 +1,4 @@
+Merge commit: Merge s44j-settings-16b: GameSettingsPanel UI component.
+
+This commit modifies 3 files (+1246/-1 lines), spanning 2 UI/HUD, 1 task/ops files.
+This is a merge commit integrating work from s44j-settings-16b into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
