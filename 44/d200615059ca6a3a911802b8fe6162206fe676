@@ -1,0 +1,4 @@
+Merge commit: Merge s44-05: reduce MP first wave spawn delay to 3.0s.
+
+This commit modifies 3 files (+85/-4 lines), spanning 1 game server, 1 task/ops files, 1 tests.
+This is a merge commit integrating work from s44-05 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
