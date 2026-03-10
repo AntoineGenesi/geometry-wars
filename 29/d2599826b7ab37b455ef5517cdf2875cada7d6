@@ -1,6 +1,0 @@
-Merge commit: Merge s44j-settings-16a: GameSettings data model + validation.
-
-This commit modifies 4 files (+783 lines), spanning 3 game server, 1 task/ops files.
-This is a merge commit integrating work from s44j-settings-16a into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: server/rooms/GameRoom.settings.test.ts, server/shared/GameConstants.ts, server/shared/GameSettings.ts, tasks/s44j-settings-16a-data-model-validation.md.
