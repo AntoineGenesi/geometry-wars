@@ -1,4 +1,0 @@
-Feature addition: CPU profiler shows top 10 functions with 'Other' category.
-
-This commit modifies 2 files (+45/-6 lines), spanning 1 UI/HUD, 1 task/ops files.
-This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
