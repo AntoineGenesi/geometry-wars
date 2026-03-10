@@ -1,0 +1,8 @@
+Chore/maintenance: MP constant parity audit — s43-11.
+
+This commit modifies 4 files (+707/-5 lines), spanning 2 game server, 1 documentation, 1 task/ops files.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Key files: reports/mp-constant-parity-audit-s43-11.html, server/rooms/GameRoom.parity.test.ts, server/rooms/GameRoom.ts, tasks/s43-11-mp-constant-parity-audit.md.
+
+The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
