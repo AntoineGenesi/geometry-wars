@@ -1,0 +1,15 @@
+Bug fix: hook RainbowMode.onEnemyKilled() into kill scoring.
+
+This commit modifies 3 files (+27/-4 lines), spanning 2 core game loop, 1 networking.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+The 3x/0.5x score multiplier was dead code — onEnemyKilled() was never called.
+
+SP fix: Added onScoreMultiplier callback to CollisionSystem.checkBulletEnemyCollisions().
+GameLoop.ts passes ctx.quickGameMode.onEnemyKilled() when a quick mode is active,
+adjusting scoreManager.awardKill() and the score popup value.
+
+MP fix: Applied multiplier to scorePopups.spawnScore() in network-main.ts onStateChange
+kill processing. Score is server-authoritative so the total won't reflect it, but the
+floating point popup shows the correct multiplied value as visual feedback.
