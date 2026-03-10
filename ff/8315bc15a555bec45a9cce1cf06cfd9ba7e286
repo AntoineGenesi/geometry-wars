@@ -1,0 +1,6 @@
+Feature addition: GameSettings data model + validation.
+
+This commit modifies 4 files (+783 lines), spanning 3 game server, 1 task/ops files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Key files: server/rooms/GameRoom.settings.test.ts, server/shared/GameConstants.ts, server/shared/GameSettings.ts, tasks/s44j-settings-16a-data-model-validation.md.
