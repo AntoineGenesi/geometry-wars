@@ -1,0 +1,4 @@
+Bug fix: enemy hit detection on EPIC peanut — add 'epic' to getMapScaleFactor, restore ENEMY_HIT_WORLD 0.4→0.5.
+
+This commit modifies 1 file (+4/-2 lines), touching 1 game server file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
