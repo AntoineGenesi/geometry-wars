@@ -1,0 +1,8 @@
+Bug fix: peanut movement speed normalization — UV-aware speed correction for uniform visual traversal.
+
+This commit modifies 5 files (+159/-3 lines), spanning 2 surface geometry, 1 game server, 1 core game loop.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: server/rooms/GameRoom.ts, src/core/GameLoop.ts, src/surfaces/PeanutSurface.ts, src/surfaces/Surface.ts, ...4j-12-peanut-movement-sluggish-uv-wide-areas.md.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
