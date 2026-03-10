@@ -1,5 +1,7 @@
 # MP Architecture Reference — Why MP != SP
 
+**Last updated:** 2026-03-01
+
 > **Purpose:** Permanent reference for AI agents and developers working on multiplayer features. Read this BEFORE touching any MP code.
 
 ## The Three Code Paths

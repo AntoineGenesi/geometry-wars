@@ -1,5 +1,8 @@
 # Console Porting Feasibility Assessment
 
+**Date:** 2026-02-10
+**Status:** Strategic research — no code references, remains relevant.
+
 ## Core Question
 Can a Three.js / TypeScript browser game be commercially deployed on consoles (Switch, Xbox, PlayStation)?
 

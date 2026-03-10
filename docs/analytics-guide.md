@@ -1,5 +1,7 @@
 # GW3D Analytics Guide
 
+**Last updated:** 2026-02-25
+
 How to collect, query, and analyze DDA difficulty + performance data for beta testing.
 
 ## Where the Data Lives

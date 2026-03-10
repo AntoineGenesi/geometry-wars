@@ -1,5 +1,8 @@
 # Marketing Strategy & Influencer Analysis
 
+**Date:** 2026-02-10
+**Status:** Strategic research — no code references, remains relevant.
+
 ## Budget Framework
 
 ### Indie Game Marketing Spend Benchmarks

@@ -1,5 +1,7 @@
 # Custom Map Loading Guide
 
+**Last updated:** 2026-02-25
+
 > **New feature!** Load your own 3D models as playable surfaces in Geometry Wars 3D. Create epic battles on custom meshes, or download ready-made maps from the community.
 
 ## What are Custom Maps?

@@ -1,5 +1,7 @@
 # Documentation Index — Where to Find What
 
+**Last updated:** 2026-03-10
+
 > One-stop guide for navigating Geometry Wars 3D documentation.
 
 ---

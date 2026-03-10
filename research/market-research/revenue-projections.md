@@ -1,5 +1,8 @@
 # Revenue Projections
 
+**Date:** 2026-02-10
+**Status:** Strategic research — no code references, remains relevant.
+
 ## Methodology
 Projections based on:
 1. Comparable title performance (Geometry Wars franchise, Vampire Survivors, Brotato, etc.)

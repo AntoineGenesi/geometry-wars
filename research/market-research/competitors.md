@@ -1,5 +1,8 @@
 # Competitor Analysis — Twin-Stick Shooter Market
 
+**Date:** 2026-02-10
+**Status:** Strategic research — no code references, remains relevant.
+
 ## The Geometry Wars Franchise
 
 ### Geometry Wars: Retro Evolved (2005)

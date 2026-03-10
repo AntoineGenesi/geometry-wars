@@ -1,5 +1,7 @@
 # Developer Guide: Custom Mesh System Architecture
 
+**Last updated:** 2026-02-13
+
 > This guide explains how the custom mesh system works, how to extend it, and how to debug issues. Audience: developers extending the codebase.
 
 ## Architecture Overview

@@ -1,14 +1,18 @@
 # Issues and Solutions Log
 
+**Last updated:** 2026-02-11
+
 ## Current Architecture
 
 Player and bullets use **MeshWalker** (BVH-based surface walking via `three-mesh-bvh`). This system works on any mesh geometry with constant world-space speed and no singularities. Enemies and geoms still use UV-parameterized surfaces, bridged to world space via `surface.worldToSurface()`.
 
 Key files:
-- `src/experimental/mesh-movement/MeshSurface.ts` - BVH wrapper (closestPointOnSurface, moveOnSurface, raycast)
-- `src/experimental/mesh-movement/MeshWalker.ts` - Persistent tangent frame movement
+- `src/surfaces/MeshSurface.ts` - BVH wrapper (closestPointOnSurface, moveOnSurface, raycast)
+- `src/movement/MeshWalker.ts` - Persistent tangent frame movement
 - `src/entities/Bullet.ts` - Modified to use MeshSurface when available
 - `src/main.ts` - Integration: player uses MeshWalker, bullets use MeshSurface
+
+> **Note:** Paths updated 2026-03-10 — files were originally at `src/experimental/mesh-movement/` but moved to `src/surfaces/` and `src/movement/`.
 
 24 automated tests verify pole traversal, speed constancy, and multi-shape support. Visual verification done on sphere, torus, cube, knot, and pill via Puppeteer screenshots.
 

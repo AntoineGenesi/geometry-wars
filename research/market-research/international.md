@@ -1,5 +1,8 @@
 # International Market Opportunities
 
+**Date:** 2026-02-10
+**Status:** Strategic research — no code references, remains relevant.
+
 ## Global Gaming Market Context (2025)
 - Global gaming market: ~$200B+
 - Mobile gaming: ~$95B (largest segment)

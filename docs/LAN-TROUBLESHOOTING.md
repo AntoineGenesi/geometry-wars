@@ -1,5 +1,7 @@
 # LAN Troubleshooting Guide — Geometry Wars 3D
 
+**Last updated:** 2026-02-28
+
 ## Quick Checklist
 
 1. Both devices on the same WiFi network

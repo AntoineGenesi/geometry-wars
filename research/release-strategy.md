@@ -1,5 +1,8 @@
 # Release Strategy: Big Bang Launch vs Gradual Rollout
 
+**Date:** 2026-02-11
+**Status:** Strategic research — no code references, remains relevant.
+
 ## The User's Core Concern
 
 > "I don't want to slowly release because I'm scared if I slowly release, people are gonna steal my s___. So how do I do a big release at once?"

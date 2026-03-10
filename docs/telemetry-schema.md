@@ -1,5 +1,7 @@
 # Telemetry Schema
 
+**Last updated:** 2026-02-19
+
 Geometry Wars 3D collects session telemetry for performance regression detection and DDA balance analysis. All data is correlated with the git commit hash to answer "when did X break or change?"
 
 ## Storage

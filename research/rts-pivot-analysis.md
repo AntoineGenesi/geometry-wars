@@ -1,5 +1,8 @@
 # RTS Pivot Analysis + Kid-Friendly Version + Marketing Pipeline + Code Protection
 
+**Date:** 2026-02-11
+**Code reference status:** Code references verified current as of 2026-03-10 — `behaviors.ts`, `SurfaceAgent.ts`, `FollowTargetBehavior`, `OrbitBehavior`, `PatrolBehavior`, `EnemySpawner` all still exist in `src/agents/`.
+
 ## Table of Contents
 1. [RTS Pivot Feasibility](#1-rts-pivot-feasibility)
 2. [Kid-Friendly Version](#2-kid-friendly-version)

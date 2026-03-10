@@ -1,5 +1,8 @@
 # Geometry Wars 3: Dimensions - Boss Research
 
+**Date:** 2026-02-08
+**Status:** Reference research — game mechanics analysis, no code references.
+
 ## Summary
 
 Geometry Wars 3 features **6 main bosses in Adventure Mode**, plus additional bosses in Ultimate and Hardcore modes, for a total of **11 boss encounters**. Each boss is named after a gemstone and features themed colors matching that gem.
