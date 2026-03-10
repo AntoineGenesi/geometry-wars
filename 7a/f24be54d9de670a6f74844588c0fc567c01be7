@@ -1,0 +1,17 @@
+Refactoring: remove dead interest management code from GameRoom.
+
+This commit modifies 1 file (+5/-104 lines), touching 1 game server file.
+This refactoring improves code quality without changing external behavior. Refactors in this project are kept minimal and focused to avoid introducing regressions in the complex surface geometry and collision detection systems.
+
+Additional context from the commit body:
+InterestManager was instantiated but updateInterestManagement() was never
+called in tick() — the comment said "disabled" and the shouldSyncEntity()
+results were never consumed by Colyseus's state patching. Removed ~100
+lines of dead code (899→801 lines).
+
+The InterestManager and PriorityQueue modules still exist in server/systems/
+and can be restored from git if Colyseus filter integration is implemented.
+
+See decisions/lan-deep-audit-2026-02-11.md #11.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
