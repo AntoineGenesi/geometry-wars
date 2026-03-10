@@ -1,0 +1,16 @@
+Session checkpoint: pre-inbox — mesh walker migration research, deterministic testing framework, surface architecture overhaul.
+
+This commit modifies 3 files (+899 lines), spanning 2 Markdown docs, 1 task/ops files.
+Session checkpoint commits capture the current state of the game and pending work before starting a new inbox processing cycle. They record what is working, what is broken, and what tasks are queued for the next session.
+
+Additional context from the commit body:
+Research completed:
+- research/uv-vs-mesh-walking-comparison.md (comprehensive analysis)
+- research/alternative-engines-comparison.md
+- research/browser-3d-games-landscape.md
+- research/networking-options-analysis.md
+- tasks/mesh-walking-research.md
+
+Next: Full mesh walker migration + deterministic testing framework
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
