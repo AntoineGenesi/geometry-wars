@@ -1,0 +1,6 @@
+Session checkpoint: pre-inbox — MP pickup/hit detection still broken, enemy sync, PvP damage, portals, bullet penetration, localization, cube/pill aim bugs.
+
+This commit modifies 5 files (+215/-2 lines), spanning 3 other, 1 tests, 1 Markdown docs.
+Session checkpoint commits capture the current state of the game and pending work before starting a new inbox processing cycle. They record what is working, what is broken, and what tasks are queued for the next session.
+
+Key files: ...s44r-07-pill-map-bullet-direction-inverted.lock, .../s44r-08-verification-system-test-all-maps.lock, inbox/2026-03-08_1300.md, logs/mp-perf-EWC0KN7oQ-2026-03-08.jsonl, logs/mp-perf-nNSvzWTMB-2026-03-08.jsonl.
