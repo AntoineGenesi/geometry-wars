@@ -1,0 +1,14 @@
+Merge commit: Merge s44r6b-10: Benchmark accuracy update — 12 enemy types instead of 4.
+
+This commit modifies 5 files (+310/-232 lines), spanning 2 tests, 1 other, 1 TypeScript source.
+This is a merge commit integrating work from s44r6b-10 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: 12 enemy types instead of 4.
+
+Additional context from the commit body:
+- benchmark.ts: expanded to test 12 representative enemy types
+- Regenerated benchmark results
+- GPU + character animation benchmarks verified current
+
+Game state: Benchmarks were testing only 4 enemy types, not representative.
+
+Key files: .claude-worker-state.json, reports/grid-traversal-sp-latest.json, src/benchmark.ts, src/test/stress-test-results.json, tasks/s44r6b-10-benchmarks-outdated-update.md.
