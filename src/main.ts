@@ -544,15 +544,18 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     document.body.appendChild(loadingDiv);
 
     try {
+      // Use createStandardSurfaceConfig to get the same mobile-aware defaults
+      // (4× segment density, brightness floor) as built-in surfaces.
+      const customSurfaceConfig = createStandardSurfaceConfig('sphere', level.surfaceScale || 8, savedStyle);
       surface = await SurfaceFactory.createCustom({
         meshSource: customMeshFile,
         targetRadius: level.surfaceScale || 8,
-        gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
-        surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
-        surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.05,
-        gridOpacity: savedStyle?.gridOpacity ?? 0.10,
-        gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
-        gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
+        gridColor: (customSurfaceConfig.gridColor as number) ?? 0x2a2aaa,
+        surfaceColor: (customSurfaceConfig.surfaceColor as number) ?? 0x141440,
+        surfaceOpacity: (customSurfaceConfig.surfaceOpacity as number) ?? 0.05,
+        gridOpacity: (customSurfaceConfig.gridOpacity as number) ?? 0.10,
+        gridSegmentsU: (customSurfaceConfig.gridSegmentsU as number) ?? 24,
+        gridSegmentsV: (customSurfaceConfig.gridSegmentsV as number) ?? 18,
       });
     } catch (err) {
       document.body.removeChild(loadingDiv);

@@ -17,6 +17,13 @@ import type { Game } from '../core/Game';
 import type { Surface, SurfacePoint } from '../surfaces/Surface';
 import type { SurfaceType } from '../surfaces/SurfaceFactory';
 import { ShockwaveEffect } from '../effects/ShockwaveEffect';
+import { isMobile } from '../core/MobileDetector';
+import {
+  loadMobileGridBrightness,
+  MOBILE_GRID_SEGMENTS_MULTIPLIER,
+  MOBILE_GRID_MAX_SEGMENTS_U,
+  MOBILE_GRID_MAX_SEGMENTS_V,
+} from '../core/MobileGridConfig';
 
 // ---------------------------------------------------------------------------
 // Visual style type (loaded from user settings)
@@ -53,15 +60,35 @@ export function createStandardSurfaceConfig(
   scale: number,
   savedStyle: SavedVisualStyle | null,
 ): Record<string, unknown> {
+  const mobile = isMobile();
+  const baseSegmentsU = savedStyle?.gridSegmentsU ?? 24;
+  const baseSegmentsV = savedStyle?.gridSegmentsV ?? 18;
+  const baseOpacity = savedStyle?.gridOpacity ?? 0.10;
+
+  // Mobile: 4× grid line density for visibility on small screens.
+  // Capped so that high-density presets don't create excessive geometry.
+  const gridSegmentsU = mobile
+    ? Math.min(baseSegmentsU * MOBILE_GRID_SEGMENTS_MULTIPLIER, MOBILE_GRID_MAX_SEGMENTS_U)
+    : baseSegmentsU;
+  const gridSegmentsV = mobile
+    ? Math.min(baseSegmentsV * MOBILE_GRID_SEGMENTS_MULTIPLIER, MOBILE_GRID_MAX_SEGMENTS_V)
+    : baseSegmentsV;
+
+  // Mobile: raise brightness floor so lines are visible in varied lighting.
+  // Uses the user-configurable mobile brightness (default 35% vs desktop 10%).
+  const gridOpacity = mobile
+    ? Math.max(baseOpacity, loadMobileGridBrightness())
+    : baseOpacity;
+
   const config: Record<string, unknown> = {
     // Visual appearance
     gridColor: savedStyle?.gridColor ?? 0x2a2aaa,
     surfaceColor: savedStyle?.surfaceColor ?? 0x141440,
     surfaceOpacity: savedStyle?.surfaceOpacity ?? 0.05,
-    gridOpacity: savedStyle?.gridOpacity ?? 0.10,
+    gridOpacity,
     wireframeOnly: savedStyle?.wireframeOnly ?? false,
-    gridSegmentsU: savedStyle?.gridSegmentsU ?? 24,
-    gridSegmentsV: savedStyle?.gridSegmentsV ?? 18,
+    gridSegmentsU,
+    gridSegmentsV,
 
     // Type-specific geometric configs (all derived from scale)
     radius: scale,
