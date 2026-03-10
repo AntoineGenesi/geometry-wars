@@ -2287,6 +2287,14 @@ export class GameRoom extends Room<GameState> {
       return this._mobiusWorldToUV(wx, wy, wz);
     }
 
+    // s44r6c-03: Pill — accurate parametric inversion matching PillSurface.worldToSurface().
+    // Sphere approximation was producing wrong player UVs on the capsule body/caps,
+    // causing enemies to spawn at visually wrong positions relative to the player
+    // (user: "multiples of my body lower and to the right").
+    if (this.state.surfaceType === 'pill') {
+      return this._pillWorldToUV(wx, wy, wz);
+    }
+
     // Sphere parameterization (accurate for sphere/peanut, approximate for others).
     const r = Math.sqrt(wx * wx + wy * wy + wz * wz);
     if (r < 0.001) return { u: 0.5, v: 0.5 };
@@ -2341,6 +2349,55 @@ export class GameRoom extends Room<GameState> {
       u: Math.max(0, Math.min(1, u)),
       v: Math.max(0, Math.min(1, v)),
     };
+  }
+
+  /**
+   * Accurate pill UV recovery from world position.
+   * Mirrors PillSurface.worldToSurface() on the client.
+   * s44r6c-03: Without this, sphere-approximation UV made player.surfaceU/V wrong
+   * on the capsule body, causing enemies to spawn at visually wrong positions.
+   */
+  private _pillWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    const scaleFactor = this.state.mapSizeScaleFactor ?? 1;
+
+    // Un-scale to local parametric space (same as PillSurface.worldToSurface)
+    const sx = wx / scaleFactor;
+    const sy = wy / scaleFactor;
+    const sz = wz / scaleFactor;
+
+    // U from azimuthal angle (same for all regions)
+    let theta = Math.atan2(sz, sx);
+    if (theta < 0) theta += Math.PI * 2;
+    const u = theta / (Math.PI * 2);
+
+    const r = PILL_RADIUS;     // un-scaled radius
+    const halfH = PILL_HALF_HEIGHT;
+    const cf = PILL_CAP_FRAC;
+
+    if (sy < -halfH) {
+      // Bottom hemisphere cap
+      const phi = Math.atan2(
+        Math.sqrt(sx * sx + sz * sz),
+        sy + halfH,
+      );
+      // phi: PI (pole) → PI/2 (equator); localT = (PI - phi) / (PI/2)
+      const localT = Math.max(0, Math.min(1, (Math.PI - phi) / (Math.PI / 2)));
+      return { u, v: localT * cf };
+    } else if (sy > halfH) {
+      // Top hemisphere cap
+      const phi = Math.atan2(
+        Math.sqrt(sx * sx + sz * sz),
+        sy - halfH,
+      );
+      // phi: PI/2 (equator) → 0 (pole); localT = 1 - phi / (PI/2)
+      const localT = Math.max(0, Math.min(1, 1 - phi / (Math.PI / 2)));
+      return { u, v: (1 - cf) + localT * cf };
+    } else {
+      // Cylindrical body
+      const localT = (sy + halfH) / PILL_HEIGHT;
+      const bodyRange = 1 - 2 * cf;
+      return { u, v: cf + Math.max(0, Math.min(1, localT)) * bodyRange };
+    }
   }
 
   private tryShoot(player: PlayerState) {
@@ -3197,7 +3254,9 @@ export class GameRoom extends Room<GameState> {
     if (wrapsV) {
       enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
     } else if (surfType === 'sphere' || surfType === 'sphere-tunnel'
-        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut') {
+        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut'
+        || surfType === 'pill') {
+      // s44r6c-03: Added 'pill' — hemisphere caps have poles, same as capsule.
       // Sphere-like: reflect through poles (continuous traversal instead of hard bounce)
       if (enemy.surfaceV < 0) {
         enemy.surfaceV = -enemy.surfaceV;
@@ -3208,7 +3267,9 @@ export class GameRoom extends Room<GameState> {
         enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
         ai.directionV = -Math.abs(ai.directionV ?? 0);
       }
-      enemy.surfaceV = Math.max(0.001, Math.min(0.999, enemy.surfaceV));
+      // s44r6c-03: Pill enemies must stay on outside surface (v ≤ 0.48) in all modes.
+      const wandererPillVMax = surfType === 'pill' ? 0.48 : 0.999;
+      enemy.surfaceV = Math.max(0.001, Math.min(wandererPillVMax, enemy.surfaceV));
     } else {
       if (enemy.surfaceV <= 0) {
         enemy.surfaceV = 0;
@@ -3242,7 +3303,9 @@ export class GameRoom extends Room<GameState> {
     if (wrapsV) {
       enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
     } else if (surfType === 'sphere' || surfType === 'sphere-tunnel'
-        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut') {
+        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut'
+        || surfType === 'pill') {
+      // s44r6c-03: Added 'pill' — hemisphere caps have poles, same as capsule.
       // Sphere-like: reflect through poles instead of bouncing with random direction
       if (enemy.surfaceV < 0) {
         enemy.surfaceV = -enemy.surfaceV;
@@ -3253,7 +3316,9 @@ export class GameRoom extends Room<GameState> {
         enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
         ai.directionV = -Math.abs(ai.directionV ?? 0);
       }
-      enemy.surfaceV = Math.max(0.001, Math.min(0.999, enemy.surfaceV));
+      // s44r6c-03: Pill enemies must stay on outside surface (v ≤ 0.48) in all modes.
+      const neutronPillVMax = surfType === 'pill' ? 0.48 : 0.999;
+      enemy.surfaceV = Math.max(0.001, Math.min(neutronPillVMax, enemy.surfaceV));
     } else {
       if (enemy.surfaceV <= 0) { enemy.surfaceV = 0; bounced = true; }
       else if (enemy.surfaceV >= 1) { enemy.surfaceV = 1; bounced = true; }
@@ -3292,7 +3357,9 @@ export class GameRoom extends Room<GameState> {
     if (wrapsV) {
       enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
     } else if (surfType === 'sphere' || surfType === 'sphere-tunnel'
-        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut') {
+        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut'
+        || surfType === 'pill') {
+      // s44r6c-03: Added 'pill' — hemisphere caps have poles, same as capsule.
       // Sphere-like: reflect through poles (continuous traversal)
       if (enemy.surfaceV < 0) {
         enemy.surfaceV = -enemy.surfaceV;
@@ -3303,7 +3370,9 @@ export class GameRoom extends Room<GameState> {
         enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
         ai.rocketDirV = -Math.abs(ai.rocketDirV ?? 0);
       }
-      enemy.surfaceV = Math.max(0.001, Math.min(0.999, enemy.surfaceV));
+      // s44r6c-03: Pill enemies must stay on outside surface (v ≤ 0.48) in all modes.
+      const rocketPillVMax = surfType === 'pill' ? 0.48 : 0.999;
+      enemy.surfaceV = Math.max(0.001, Math.min(rocketPillVMax, enemy.surfaceV));
     } else {
       if (enemy.surfaceV <= 0) {
         enemy.surfaceV = 0;
@@ -3857,7 +3926,10 @@ export class GameRoom extends Room<GameState> {
     if (wrapsV) {
       enemy.surfaceV = this.wrapCoord(enemy.surfaceV);
     } else if (surfType === 'sphere' || surfType === 'sphere-tunnel'
-        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut') {
+        || surfType === 'icosahedron' || surfType === 'capsule' || surfType === 'peanut'
+        || surfType === 'pill') {
+      // s44r6c-03: Added 'pill' — it has hemisphere caps with poles at V=0/1, same as capsule.
+      // Without this, pill enemies use generic V clamping and can't cross poles.
       // Sphere-like surfaces have poles at V=0 and V=1. Reflect through them
       // instead of clamping so enemies can cross poles to chase players.
       // Without this, enemies cluster at the pole boundary (V=0.05/0.95)
@@ -3869,7 +3941,11 @@ export class GameRoom extends Room<GameState> {
         enemy.surfaceV = 2 - enemy.surfaceV;
         enemy.surfaceU = this.wrapCoord(enemy.surfaceU + 0.5);
       }
-      enemy.surfaceV = Math.max(0.001, Math.min(0.999, enemy.surfaceV));
+      // s44r6c-03: On pill, enforce outside-surface restriction (vMax=0.48) for ALL modes.
+      // User explicitly confirmed enemies should never spawn/move inside the pill,
+      // even in PvP/PvPvE. Previous code exempted PvP modes which made the bug worse.
+      const pillVMax = surfType === 'pill' ? 0.48 : 0.999;
+      enemy.surfaceV = Math.max(0.001, Math.min(pillVMax, enemy.surfaceV));
     } else {
       const enemyVMin = surfType === 'cube' ? 0.003 : 0.05;
       const enemyVMax = surfType === 'cube' ? 0.997 : 0.95;
@@ -5042,9 +5118,10 @@ export class GameRoom extends Room<GameState> {
    */
   private getSpawnPosition(): { u: number; v: number } {
     const vMin = 0.05;
-    // s44r6b-03: Pill non-PvP modes: restrict enemy spawning to outside surface (v ≤ 0.48)
-    const isPvpLike = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
-    const vMax = (this.state.surfaceType === 'pill' && !isPvpLike) ? 0.48 : 0.95;
+    // s44r6c-03: Pill: restrict enemy spawning to outside surface (v ≤ 0.48) in ALL modes.
+    // Previously exempted PvP/PvPvE (s44r6b-03), but user confirmed enemies should never
+    // spawn inside the pill regardless of game mode — the exemption made the bug worse.
+    const vMax = this.state.surfaceType === 'pill' ? 0.48 : 0.95;
     const MIN_DIST = 0.25;
     const MAX_DIST = 0.45;
     // Struggling players (ddaLevel >= 2) get a larger exclusion zone so enemies
