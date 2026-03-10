@@ -1,6 +1,0 @@
-Bug fix: add PvP mode to voting screen — VotingScreen.ts, i18n/keys.ts, all locale files.
-
-This commit modifies 10 files (+42/-5 lines), spanning 6 other, 1 TypeScript source, 1 UI/HUD.
-This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
-
-Key files: src/i18n/keys.ts, src/i18n/locales/ar.json, src/i18n/locales/de.json, src/i18n/locales/en.json, src/i18n/locales/es.json, and others.
