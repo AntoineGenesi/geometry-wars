@@ -1,0 +1,11 @@
+Bug fix: use env vars for Chrome and Node paths in test files.
+
+This commit modifies 2 files (+11/-3 lines), touching 2 tests files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Replace hardcoded Chrome path with CHROME_PATH / PUPPETEER_EXECUTABLE_PATH
+env var fallback in both LAN and visual E2E test files. Replace hardcoded
+NVM path with NVM_BIN / process.execPath detection in LAN test file.
+All fall back to the original hardcoded paths if env vars are not set,
+preserving backward compatibility on the current dev machine.
