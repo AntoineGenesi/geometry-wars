@@ -656,6 +656,130 @@ export class GameOverScreen {
         letter-spacing: 1px;
         margin: 6px 0 16px;
       }
+
+      /* ── Mobile responsive styles ────────────────────────────────────── */
+      @media (max-width: 768px) {
+        #game-over-screen {
+          align-items: flex-start;
+          overflow-y: auto;
+        }
+
+        #game-over-screen .content {
+          padding: 20px 16px 32px;
+          max-width: 100%;
+        }
+
+        /* Scale down main title */
+        #game-over-screen .title {
+          font-size: clamp(36px, 10vw, 56px);
+          letter-spacing: 4px;
+          margin: 0 0 16px;
+        }
+
+        /* Scale down PvP/PvPvE titles */
+        #game-over-screen .pvp-title {
+          font-size: clamp(30px, 9vw, 48px);
+          letter-spacing: 4px;
+          margin: 0 0 4px;
+        }
+
+        /* Scale down final score */
+        #game-over-screen .final-score {
+          font-size: clamp(28px, 8vw, 40px);
+          margin: 12px 0;
+        }
+        #game-over-screen .final-score span {
+          font-size: clamp(40px, 12vw, 64px);
+        }
+
+        /* Make buttons full-width with proper touch targets */
+        #game-over-screen .continue-btn,
+        #game-over-screen .pvp-continue-btn {
+          width: 100%;
+          min-height: 52px;
+          padding: 14px 20px;
+          font-size: 16px;
+          letter-spacing: 2px;
+          box-sizing: border-box;
+        }
+
+        #game-over-screen .return-to-menu-btn {
+          min-height: 44px;
+          padding: 12px 16px;
+          font-size: 14px;
+        }
+
+        #game-over-screen .submit-score-btn {
+          min-height: 52px;
+          font-size: 16px;
+          padding: 14px 20px;
+        }
+
+        /* Name entry: full width inputs */
+        #game-over-screen .name-entry {
+          padding: 16px;
+        }
+        #game-over-screen .name-input,
+        #game-over-screen .note-input {
+          font-size: 16px; /* prevents iOS zoom on focus */
+        }
+
+        /* PvP stats: simplified grid for small screens */
+        #game-over-screen .pvp-stats,
+        #game-over-screen .pvpve-stats {
+          max-width: 100%;
+        }
+
+        #game-over-screen .pvp-player-row {
+          grid-template-columns: 8px 1fr 44px 44px 44px 60px;
+          gap: 0 6px;
+          padding: 8px 10px;
+        }
+        #game-over-screen .pvp-stat-headers {
+          grid-template-columns: 8px 1fr 44px 44px 44px 60px;
+          gap: 0 6px;
+          padding: 0 10px 4px;
+          font-size: 9px;
+        }
+        #game-over-screen .pvp-player-name {
+          font-size: 13px;
+        }
+        #game-over-screen .pvp-stat-col {
+          font-size: 12px;
+        }
+
+        #game-over-screen .pvpve-player-row {
+          grid-template-columns: 8px 1fr 44px 52px 44px 60px;
+          gap: 0 6px;
+          padding: 8px 10px;
+        }
+        #game-over-screen .pvpve-stat-headers {
+          grid-template-columns: 8px 1fr 44px 52px 44px 60px;
+          gap: 0 6px;
+          padding: 0 10px 4px;
+          font-size: 9px;
+        }
+
+        /* Bar section: compact on mobile */
+        #game-over-screen .pvp-bar-label {
+          width: 70px;
+          font-size: 11px;
+        }
+        #game-over-screen .pvp-bar-value {
+          width: 36px;
+          font-size: 11px;
+        }
+
+        /* Score list: more compact */
+        #game-over-screen .high-scores {
+          padding: 12px;
+          margin: 16px 0;
+        }
+        #game-over-screen .score-list li {
+          font-size: 13px;
+          padding: 6px 0;
+        }
+      }
     `;
     document.head.appendChild(style);
   }

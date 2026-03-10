@@ -693,6 +693,84 @@ export class PauseMenu {
         box-shadow: 0 0 12px rgba(68, 136, 255, 0.5);
       }
 
+      /* ------------------------------------------------------------------- */
+      /* Mobile portrait — full redesign for small touchscreens             */
+      /* ------------------------------------------------------------------- */
+      @media (max-width: 768px) {
+        #pause-menu {
+          align-items: flex-start;
+          overflow-y: auto;
+        }
+
+        #pause-menu .pause-content {
+          padding: 16px 12px 32px;
+          width: 100%;
+        }
+
+        #pause-menu .pause-title {
+          font-size: 32px;
+          margin: 0 0 16px;
+          letter-spacing: 4px;
+        }
+
+        /* Stack layout: buttons on top, stats below */
+        #pause-menu .pause-layout {
+          flex-direction: column;
+          gap: 20px;
+          align-items: stretch;
+        }
+
+        /* Buttons: full-width, min 44px touch target */
+        #pause-menu .pause-buttons {
+          gap: 8px;
+        }
+        #pause-menu .pause-btn {
+          width: 100%;
+          min-width: unset;
+          min-height: 48px;
+          padding: 12px 16px;
+          font-size: 14px;
+          letter-spacing: 1px;
+          justify-content: flex-start;
+          gap: 12px;
+        }
+        #pause-menu .btn-icon {
+          font-size: 16px;
+          min-width: 20px;
+          text-align: center;
+        }
+
+        /* Stats container: full width */
+        #pause-menu .pause-stats-container {
+          width: 100%;
+        }
+        #pause-menu .pause-stats-panel {
+          max-height: none;
+          overflow-y: visible;
+        }
+
+        /* QR section: centered on mobile */
+        #pause-menu .pause-qr-section {
+          padding-right: 0;
+          text-align: center;
+        }
+        #pause-menu .stats-qr-content {
+          justify-content: center;
+        }
+
+        /* Hint: hide keyboard hint on touch devices */
+        #pause-menu .pause-hint {
+          display: none;
+        }
+
+        /* Language selector: larger touch targets */
+        #pause-menu .lang-btn {
+          width: 44px;
+          height: 44px;
+          font-size: 13px;
+        }
+      }
+
       /* Mobile landscape: compact layout to fit small viewport height */
       @media (max-height: 500px) {
         #pause-menu .pause-content {
