@@ -1,0 +1,4 @@
+Merge commit: Merge s44l-11: Pause menu QR code static positioning.
+
+This commit modifies 3 files (+142/-108 lines), spanning 1 tests, 1 UI/HUD, 1 Markdown docs.
+This is a merge commit integrating work from s44l-11 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
