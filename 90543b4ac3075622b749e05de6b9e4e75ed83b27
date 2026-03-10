@@ -1,0 +1,14 @@
+Merge commit: Merge s44r4-05: MPRealGameTestHarness — MP code path test infrastructure.
+
+This commit modifies 5 files (+1541 lines), touching 5 tests files.
+This is a merge commit integrating work from s44r4-05 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: MP code path test infrastructure.
+
+Additional context from the commit body:
+560-line harness + 9 test files testing network-main.ts code paths (aim, hit detection, movement).
+Prevents false positives from SP-only testing that caused s44r3 failures.
+
+Game state: SP fixes merged (cube aim, pill hit detection). Mobius seam fix in progress.
+Pickup collection fix pending merge. This adds MP testing infrastructure.
+
+Key files: src/test/MPRealGameTestHarness.ts, src/test/mp-cube-aim-real-game.test.ts, src/test/mp-hit-detection-harness.test.ts, src/test/mp-movement-surfaces.test.ts, tasks/s44r4-05-mp-real-game-test-harness.md.
