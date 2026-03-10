@@ -1,0 +1,12 @@
+Chore/maintenance: s44i Wave 1 complete — all 4 tasks merged and verified.
+
+This commit modifies 6 files (+12/-13 lines), spanning 3 task/ops files, 3 other.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Additional context from the commit body:
+- s44i-01: CRITICAL movement regression FIXED (reverted s44h-08 client-predicted path)
+- s44i-02: KotH/Claustrophobia scoring tracks zone-time in MP
+- s44i-03: Full translations for French, German, Spanish, Arabic
+- s44i-04: QR lobby height regression fixed
+
+Key files: .claude/locks/port-registry, .../s44i-02-koth-claustrophobia-scoring-bug.lock, .../locks/s44i-03-localisation-system-expansion.lock, .../locks/s44i-04-qr-lobby-height-regression.lock, .claude/scripts/orchestrator.sh, and others.
