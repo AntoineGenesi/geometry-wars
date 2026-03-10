@@ -1,0 +1,13 @@
+Bug fix: eliminate surface flickering + lighten surface colors.
+
+This commit modifies 3 files (+26/-11 lines), spanning 2 surface geometry, 1 TypeScript source.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Root cause: z-fighting between surface mesh and grid overlay due to
+identical depth positions. Fixed with depthWrite:false on transparent
+surface, polygonOffset to push surface back, and explicit renderOrder
+(surface=0, grid=1). Lightened surface colors from near-black to
+visible dark blue-purple. Frame-rate-independent opacity transitions.
+
+Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
