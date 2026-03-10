@@ -1,0 +1,4 @@
+Merge commit: Merge s44c-08: fix 90-degree aim offset by using proper tangent frame in MP.
+
+This commit modifies 2 files (+71/-22 lines), spanning 1 networking, 1 Markdown docs.
+This is a merge commit integrating work from s44c-08 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
