@@ -1,7 +1,0 @@
-Merge commit: Merge s44r2-04: Sync player upgrades in MP — companions + buff auras visible to all players.
-
-This commit modifies 6 files (+368/-1 lines), spanning 2 game server, 2 networking, 1 game entities.
-This is a merge commit integrating work from s44r2-04 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: companions + buff auras visible to all players.
-
-Key files: server/rooms/GameRoom.ts, server/schema/GameState.ts, src/entities/Companion.ts, src/network-main.ts, src/network/NetworkClient.ts, and others.
