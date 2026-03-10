@@ -1,0 +1,10 @@
+Bug fix: ensure boss spawns on small cube map.
+
+This commit modifies 3 files (+118/-98 lines), spanning 1 enemy AI, 1 tests, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- Lowered minWave threshold for boss_ruby from 30 to 20 in WaveComposer.ts
+- Allows bosses to spawn earlier on small maps (e.g., small cube)
+- Small cube maps (MapSize.SMALL, 30 max enemies) can now naturally reach wave 20
+- Maintains progression: snake (wave 1), giant_snake (wave 10), boss (wave 20)
