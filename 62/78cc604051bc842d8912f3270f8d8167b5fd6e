@@ -1,0 +1,13 @@
+Bug fix: co-op crash, cylinder traversal, damage number visibility.
+
+This commit modifies 3 files (+170/-257 lines), spanning 2 TypeScript source, 1 surface geometry.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+- Co-op: dispose start menu (not just hide) so MenuBackground canvas
+  doesn't cover the game at z-index 999
+- Cylinder: replace open bevel arcs with full hemisphere caps so player
+  can traverse between ends (capsule-style geometry)
+- Damage numbers: increase size (0.9→1.3) and lifetime (0.5→0.7s),
+  set initial opacity to 1.0, only show on non-killing hits to avoid
+  being hidden behind score popups
