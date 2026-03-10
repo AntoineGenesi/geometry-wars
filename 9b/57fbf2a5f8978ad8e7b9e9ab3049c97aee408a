@@ -1,0 +1,6 @@
+Merge commit: Merge s43-05: fix peanut pole crossing control inversion.
+
+This commit modifies 4 files (+136/-106 lines), spanning 1 core game loop, 1 TypeScript source, 1 Markdown docs.
+This is a merge commit integrating work from s43-05 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: src/core/CameraController.ts, src/movement/MeshWalker.ts, ...s43-05-peanut-pole-crossing-inverts-controls.md, tests/visual/s43-05-peanut-pole-test.mjs.
