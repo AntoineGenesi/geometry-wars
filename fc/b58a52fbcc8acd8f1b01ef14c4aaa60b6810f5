@@ -1,0 +1,4 @@
+Test addition: add peanut pole crossing visual test + update task status.
+
+This commit modifies 2 files (+285 lines), spanning 1 Markdown docs, 1 tests.
+This commit adds or updates automated tests for the game. The project maintains 1270+ tests using vitest and a custom PlaygroundTestHarness that validates surface math, enemy AI, and gameplay mechanics programmatically.
