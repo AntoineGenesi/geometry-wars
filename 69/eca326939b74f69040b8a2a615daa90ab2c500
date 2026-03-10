@@ -1,0 +1,12 @@
+Feature addition: weapon mastery synergy text for contradictory upgrade pairs.
+
+This commit modifies 1 file (+35 lines), touching 1 UI/HUD file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Add SYNERGY_PAIRS map: node ID → { partnerId, synergy text }
+- In tooltip, detect if partner is unlocked (getNodePoints > 0)
+- When both nodes active, show light blue synergy text below effect
+- Add .wms-tt-synergy CSS: #88ccff, 0.8em, italic, with separator
+- Initial pair: standard_a_3 (Quad burst) + standard_b_3 (Quad lance)
+  → "Synergy: 7 bolts — 3 tight + 4 wide spread"
