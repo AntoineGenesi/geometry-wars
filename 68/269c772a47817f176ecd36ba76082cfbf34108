@@ -1,0 +1,17 @@
+Documentation: performance telemetry research report HTML.
+
+This commit modifies 2 files (+1268/-10 lines), spanning 1 other, 1 task/ops files.
+This documentation update keeps the project knowledge base current. The project uses a rich documentation structure including task files, decision logs, HTML reports, and architecture docs to preserve institutional knowledge across sessions.
+
+Additional context from the commit body:
+Comprehensive interactive report covering:
+- All 34 PerformanceLogger telemetry fields with localStorage key mapping
+- DDALogger data model (samples, events, session summary)
+- AdaptiveQuality system — all 5 tiers with settings comparison table
+- CPU breakdown analysis tool documentation
+- Performance bottleneck analysis (bloom, GC pressure, SpatialHash, InstancedMesh)
+- Priority recommendations with expected impact
+- Browser console code examples for querying all localStorage keys
+- Analytics dashboard + regression testing roadmap
+
+Files: reports/performance-telemetry-research-2026-03-07.html, tasks/s44m-12-performance-research-report.md
