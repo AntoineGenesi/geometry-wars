@@ -1,4 +1,0 @@
-Chore/maintenance: Revert "fix: MP local player mesh+camera now follow UV prediction instead of RTT-delayed server position (s44c-03)".
-
-This commit modifies 2 files (+49/-60 lines), spanning 1 networking, 1 task/ops files.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
