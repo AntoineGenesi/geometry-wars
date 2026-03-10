@@ -1,0 +1,10 @@
+Bug fix: gate network-main.ts console.log behind ?debug URL flag.
+
+This commit modifies 1 file (+13/-4 lines), touching 1 networking file.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+All 4 [NetworkMain] prefixed console.log calls are now gated behind
+a netMainLog() helper, consistent with the NetworkClient.ts approach.
+Logs remain available when ?debug=true is in the URL (used by LAN E2E
+tests). console.error for connection failure is left ungated.
