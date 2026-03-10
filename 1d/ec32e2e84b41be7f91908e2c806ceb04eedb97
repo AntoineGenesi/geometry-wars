@@ -1,0 +1,11 @@
+Feature addition: damage numbers on enemy hit + mouse wheel zoom.
+
+This commit modifies 2 files (+32/-3 lines), touching 2 TypeScript source files.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Red floating damage numbers appear at enemy position on every hit
+  (bullets and special weapons), using ScorePopupManager with smaller
+  scale (0.9) and shorter lifetime (0.5s)
+- Mouse wheel zooms camera in/out (range 6-35 units, default 15)
+- Both features single-player only
