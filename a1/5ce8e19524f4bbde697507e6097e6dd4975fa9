@@ -1,0 +1,6 @@
+Merge commit: Merge s44-06: move Orbiter to late-game spawn (wave 8+), reduce speed.
+
+This commit modifies 5 files (+64/-6 lines), spanning 1 game server, 1 core game loop, 1 enemy AI.
+This is a merge commit integrating work from s44-06 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+
+Key files: server/rooms/GameRoom.ts, src/core/DifficultyScaling.ts, src/entities/enemies/Orbiter.ts, src/test/difficulty-rebalance.test.ts, tasks/s44-06-triangle-enemy-spawn-order-timing.md.
