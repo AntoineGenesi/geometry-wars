@@ -1,0 +1,6 @@
+Chore/maintenance: triage s44k — 9 tasks from voice dump.
+
+This commit modifies 11 files (+537 lines), spanning 5 Markdown docs, 3 task/ops files.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Key files: TODO.md, inbox/2026-03-03_1300.md, ...44k-01-movement-regression-all-maps-critical.md, tasks/s44k-02-weapon-spread-shot-broken-mp.md, ...s44k-03-bullets-spawn-from-wrong-position-mp.md, and others.
