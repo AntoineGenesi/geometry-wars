@@ -1,0 +1,18 @@
+Feature addition: fix torus movement + add multiplayer aura/kill attribution system.
+
+This commit modifies 8 files (+652/-60 lines), spanning 5 TypeScript source, 1 documentation, 1 game entities.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+Torus fix: MeshWalker now maintains a persistent tangent frame that
+smoothly rotates with the surface, eliminating the camera flip/mirror
+issue caused by discontinuous Gram-Schmidt reference vector switching.
+Camera position and up vector are now lerped for smooth transitions.
+
+Aura system: Added KillTracker (kill/assist attribution via bullet
+ownerId + enemy damage tracking) and AuraManager (5-tier proximity
+buff system with damage multipliers and healing). Players near allies
+get buffs that grow with kills+assists, showing satisfying "+N ASSIST"
+popups for co-op kills.
+
+Key files: decisions/torus-tangent-frame-fix.md, src/entities/Bullet.ts, src/entities/enemies/BaseEnemy.ts, src/experimental/mesh-movement/MeshWalker.ts, src/main.ts, and others.
