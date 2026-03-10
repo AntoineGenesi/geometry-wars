@@ -1,0 +1,11 @@
+Feature addition: reduce MP first wave spawn delay to 3.0s.
+
+This commit modifies 1 file (+49 lines), touching 1 task/ops files file.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- Changed WAVE_FIRST_AT from 6.0s to 3.0s in server/rooms/GameRoom.ts
+- Updated mp-parity-audit.test.ts to reflect the intentional 50% reduction
+- MP now spawns first enemies at 3s instead of 6s
+- Single-player unaffected (uses separate WaveScheduler)
+- Test verifies MP first wave is exactly 50% of SP timing
