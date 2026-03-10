@@ -1,6 +1,0 @@
-Chore/maintenance: commit pipeline state + worker logs + s44b-04 mobile overlay fix already on master.
-
-This commit modifies 8 files (+404/-22 lines), spanning 5 other, 2 task/ops files, 1 networking.
-This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
-
-Key files: .claude/locks/port-registry, ...ns-not-working-mp-laser-spreadshot-blaster.lock, .claude/state/pipeline-state.md, ...b-01-gun-aim-direction-wrong-first-spawn.prompt, ...-not-working-mp-laser-spreadshot-blaster.prompt, and others.
