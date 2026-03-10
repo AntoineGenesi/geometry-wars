@@ -1,0 +1,18 @@
+Merge commit: Merge s44r6b-01: PvPvE/PvP damage regression fix — pvpEnabled never set via start_with_options.
+
+This commit modifies 5 files (+68/-2 lines), spanning 2 networking, 1 other, 1 game server.
+This is a merge commit integrating work from s44r6b-01 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: pvpEnabled never set via start_with_options.
+
+Additional context from the commit body:
+Root cause: start_with_options handler called startGame() directly, bypassing
+startGameWithSettings() — the only place that forces pvpEnabled/friendlyFire
+for PvP modes. Client now sends choice string, server uses startGameWithSettings().
+
+Files: GameRoom.ts (server handler), network-main.ts (client sends choice), NetworkClient.ts (type)
+
+Game state: PvPvE/PvP damage was completely broken after s44r6-06 merge.
+This restores damage + health bars for all PvP/PvPvE modes on all maps.
+User testing required (Level 3 verification — LAN MP).
+
+Key files: .claude-worker-state.json, server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, ...vpve-pvp-damage-completely-broken-regression.md.
