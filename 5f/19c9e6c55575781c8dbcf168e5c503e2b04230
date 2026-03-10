@@ -1,0 +1,8 @@
+Chore/maintenance: s44i triage complete — movement regression BLOCKER, KotH scoring, localisation + Arabic.
+
+This commit modifies 6 files (+376 lines), spanning 3 Markdown docs, 2 task/ops files, 1 other.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Key files: TODO.md, inbox/2026-03-03_0730.md, logs/mp-perf-Yh46zB55a-2026-03-02.jsonl, .../s44i-01-player-movement-regression-all-maps.md, tasks/s44i-02-koth-claustrophobia-scoring-bug.md, and others.
+
+The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
