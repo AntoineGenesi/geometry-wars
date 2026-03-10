@@ -1,5 +1,0 @@
-Merge commit: Merge s44l-04: Reduce companion puff effect — boss-only full effect, throttled for normal enemies.
-
-This commit modifies 3 files (+123/-100 lines), spanning 1 core game loop, 1 tests, 1 task/ops files.
-This is a merge commit integrating work from s44l-04 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-The merged work covers: boss-only full effect, throttled for normal enemies.
