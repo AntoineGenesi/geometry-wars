@@ -1,6 +1,0 @@
-Merge commit: Merge s43-11: MP constant parity audit.
-
-This commit modifies 4 files (+707/-5 lines), spanning 2 game server, 1 documentation, 1 task/ops files.
-This is a merge commit integrating work from s43-11 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: reports/mp-constant-parity-audit-s43-11.html, server/rooms/GameRoom.parity.test.ts, server/rooms/GameRoom.ts, tasks/s43-11-mp-constant-parity-audit.md.
