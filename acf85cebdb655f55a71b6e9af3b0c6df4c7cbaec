@@ -1,0 +1,4 @@
+Test addition: pill hit detection regression tests.
+
+This commit modifies 1 file (+174/-136 lines), touching 1 tests file.
+This commit adds or updates automated tests for the game. The project maintains 1270+ tests using vitest and a custom PlaygroundTestHarness that validates surface math, enemy AI, and gameplay mechanics programmatically.
