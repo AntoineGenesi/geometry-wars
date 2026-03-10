@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:visual": "node tests/visual/run-visual-tests.mjs",
     "test:lan": "node tests/lan/run-lan-tests.mjs",
+    "test:mp": "node tests/mp/mp-test-harness.mjs",
     "lint:schema": "node scripts/lint-colyseus-schema.mjs",
     "parity": "tsx scripts/generate-mp-parity-report.ts",
     "test:grid-traversal": "npx tsx tests/grid-traversal/run-full-grid-traversal.ts",
