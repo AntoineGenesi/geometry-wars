@@ -1,0 +1,4 @@
+Session checkpoint: pre-inbox — fix portals in SP, pause timer default, entity cleanup on restart.
+
+This commit modifies 2 files (+93 lines), touching 2 other files.
+Session checkpoint commits capture the current state of the game and pending work before starting a new inbox processing cycle. They record what is working, what is broken, and what tasks are queued for the next session.
