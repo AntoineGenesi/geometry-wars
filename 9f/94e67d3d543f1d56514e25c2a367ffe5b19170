@@ -1,0 +1,13 @@
+Bug fix: remove spurious red screen flashes on enemy death.
+
+This commit modifies 3 files (+20/-9 lines), spanning 2 core game loop, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+s44b-08 incorrectly added red screen flashes when ENEMIES die, not the player:
+- GameLoop.ts: removed flash on aura/burn kills (auraKills.length > 0)
+- CollisionSystem.ts: removed flash on bullet kills + unused UIHelpers import
+
+Correct red flashes remain (player death only):
+- GameLoop.ts: shockwaveEffect.triggerFlash when enemy collision kills player
+- GameLoop.ts: screenFlash when painter trail kills player
