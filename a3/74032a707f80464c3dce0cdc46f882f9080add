@@ -1,0 +1,15 @@
+Bug fix: remove portals from single-player entry point.
+
+This commit modifies 2 files (+34/-10 lines), spanning 1 TypeScript source, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Portals (PvP teleportation rings) were unconditionally spawned in
+src/main.ts (the SP entry point) by the s44m-10 implementer, causing
+two glowing torus rings to appear in all single-player wave sessions.
+
+Fix: replace portal creation with an empty array in main.ts. Portals
+are a PvP-only feature; they belong in network-main.ts (LAN MP entry).
+The GameLoop already gates on `portals.length > 0` so empty array is safe.
+
+Files: src/main.ts
