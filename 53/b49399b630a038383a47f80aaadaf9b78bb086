@@ -1,0 +1,16 @@
+Feature addition: PvPvE scoreboard ranks by kills first then points.
+
+This commit modifies 4 files (+71/-17 lines), spanning 2 UI/HUD, 1 Markdown docs, 1 networking.
+This feature extends the Geometry Wars 3D codebase with new functionality. The implementation follows the project's established patterns and maintains compatibility with both single-player and multiplayer code paths where applicable.
+
+Additional context from the commit body:
+- PvPvELeaderboard (in-game HUD): sort by total kills desc, then score desc as tiebreaker
+- PvPvELeaderboard: add Score column showing game points (abbreviated)
+- GameOverScreen.showPvPvE: sort players by total kills desc, then game score desc
+- GameOverScreen: SCORE column now shows actual game points (player.score), not combined kill weight
+- GameOverScreen: score note updated to 'Ranked by kills (primary) · points (tiebreaker)'
+- network-main.ts: pass player.score to both PvPvELeaderboard entries and PvpvePlayerStat
+
+Files: src/ui/PvPvELeaderboard.ts, src/ui/GameOverScreen.ts, src/network-main.ts
+
+Key files: DISCOVERIES.md, src/network-main.ts, src/ui/GameOverScreen.ts, src/ui/PvPvELeaderboard.ts.
