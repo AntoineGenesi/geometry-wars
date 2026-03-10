@@ -227,24 +227,25 @@ export class GameOverScreen {
       }
 
       #game-over-screen .submit-score-btn {
-        background: linear-gradient(180deg, #0066aa 0%, #004477 100%);
-        border: 2px solid #00aaff;
+        background: rgba(0, 55, 100, 0.85);
+        border: 1px solid rgba(0, 160, 220, 0.6);
         color: #ffffff;
-        padding: 16px 48px;
-        font-size: 20px;
+        padding: 13px 40px;
+        font-size: 15px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.2s;
-        letter-spacing: 4px;
+        transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+        letter-spacing: 2px;
         margin-top: 20px;
         width: 100%;
         display: block;
+        border-radius: 3px;
       }
 
       #game-over-screen .submit-score-btn:hover {
-        background: linear-gradient(180deg, #0088cc 0%, #005599 100%);
-        transform: scale(1.03);
-        box-shadow: 0 0 24px #00aaff;
+        background: rgba(0, 80, 140, 0.95);
+        border-color: rgba(0, 200, 255, 0.8);
+        box-shadow: 0 0 16px rgba(0, 170, 255, 0.3);
       }
 
       /* ── Results / leaderboard phase ─────────────────────────────────── */
@@ -349,22 +350,23 @@ export class GameOverScreen {
       }
 
       #game-over-screen .continue-btn {
-        background: linear-gradient(180deg, #00aa00 0%, #006600 100%);
-        border: 2px solid #00ff00;
+        background: rgba(0, 80, 30, 0.85);
+        border: 1px solid rgba(0, 200, 75, 0.65);
         color: #ffffff;
-        padding: 20px 60px;
-        font-size: 24px;
+        padding: 14px 52px;
+        font-size: 16px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.2s;
-        letter-spacing: 4px;
-        margin-top: 30px;
+        transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+        letter-spacing: 3px;
+        margin-top: 28px;
+        border-radius: 3px;
       }
 
       #game-over-screen .continue-btn:hover {
-        background: linear-gradient(180deg, #00cc00 0%, #008800 100%);
-        transform: scale(1.05);
-        box-shadow: 0 0 30px #00ff00;
+        background: rgba(0, 110, 42, 0.95);
+        border-color: rgba(0, 230, 95, 0.85);
+        box-shadow: 0 0 18px rgba(0, 200, 70, 0.35);
       }
 
       #game-over-screen .hint {
@@ -375,24 +377,25 @@ export class GameOverScreen {
       }
 
       #game-over-screen .return-to-menu-btn {
-        background: linear-gradient(180deg, #880000 0%, #550000 100%);
-        border: 2px solid #ff4444;
-        color: #ffffff;
-        padding: 14px 40px;
-        font-size: 18px;
+        background: rgba(18, 18, 45, 0.7);
+        border: 1px solid rgba(100, 110, 180, 0.35);
+        color: #8890b8;
+        padding: 11px 36px;
+        font-size: 13px;
         font-weight: bold;
         cursor: pointer;
-        transition: all 0.2s;
-        letter-spacing: 3px;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        letter-spacing: 2px;
         margin-top: 12px;
         display: block;
         width: 100%;
+        border-radius: 3px;
       }
 
       #game-over-screen .return-to-menu-btn:hover {
-        background: linear-gradient(180deg, #aa0000 0%, #770000 100%);
-        transform: scale(1.03);
-        box-shadow: 0 0 20px #ff4444;
+        background: rgba(28, 30, 70, 0.9);
+        border-color: rgba(140, 155, 220, 0.6);
+        color: #c8ccf0;
       }
 
       #game-over-screen .auto-transition-countdown {
