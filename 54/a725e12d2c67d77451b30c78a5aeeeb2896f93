@@ -1,0 +1,7 @@
+Merge commit: Merge s44q-02: Fix start button overlap — moved to bottom:100px, was editing wrong file before.
+
+This commit modifies 4 files (+210/-113 lines), spanning 2 tests, 1 networking, 1 task/ops files.
+This is a merge commit integrating work from s44q-02 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
+The merged work covers: moved to bottom:100px, was editing wrong file before.
+
+Key files: reports/grid-traversal-sp-latest.json, src/network-main.ts, src/test/stress-test-results.json, tasks/s44q-02-fix-start-button-overlap-for-real.md.
