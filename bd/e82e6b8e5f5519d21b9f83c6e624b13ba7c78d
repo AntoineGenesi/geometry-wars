@@ -1,0 +1,17 @@
+Bug fix: move skills to .claude/commands/.
+
+This commit modifies 6 files (+279/-15 lines), spanning 3 task/ops files, 1 tests, 1 Markdown docs.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Additional context from the commit body:
+Skills in .claude/skills/ were not recognized by Claude Code — the correct
+location is .claude/commands/<name>.md (same as /autonomous and /im-back).
+
+Also fixed:
+- Updated sub-agents.md to document workflow agents as prompt templates,
+  not Task tool subagent_types (custom agents aren't available as types)
+- Fixed HTML report file tree (removed deleted agents, skills/ → commands/)
+- Added DISCOVERIES.md to CLAUDE.md file organization table
+- Cleaned all stale .claude/skills references across docs and memory
+
+Key files: .claude/commands/inbox.md, .claude/commands/verify.md, .claude/commands/visual-test.md, .claude/rules/sub-agents.md, CLAUDE.md, and others.
