@@ -1,0 +1,12 @@
+Chore/maintenance: s44j Wave 1 partial — merged s44j-01 (gravity gun), s44j-04 (weapon carryover), s44j-05.
+
+This commit modifies 14 files (+607/-145 lines), spanning 6 other, 2 task/ops files.
+This maintenance commit handles housekeeping work such as task tracking, lock files, worker state, or minor configuration updates that keep the development workflow functioning correctly.
+
+Additional context from the commit body:
+- s44j-01: Gravity gun bullets now attract enemies during flight (continuous pull)
+- s44j-04: Weapon visuals/projectiles cleared on round reset
+- s44j-05: QR lobby height increased from 100px to 180px
+- s44j-02 (blaster bullets) and s44j-03 (weapon switch) need relaunch — workers died without progress
+
+Key files: .claude/locks/port-registry, ...gravity-gun-bullets-not-attracting-enemies.lock, ...j-02-blaster-bullets-too-close-together-mp.lock, .../s44j-03-cant-change-weapons-qe-lan-mp.lock, ...n-mastery-previous-weapon-firing-new-round.lock, and others.
