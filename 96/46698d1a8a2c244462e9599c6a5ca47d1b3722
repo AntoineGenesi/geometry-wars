@@ -1,0 +1,8 @@
+Bug fix: cube bevel edge movement blocking — geodesic deflection guard.
+
+This commit modifies 5 files (+615 lines), spanning 3 tests, 1 TypeScript source, 1 task/ops files.
+This fix addresses a reported bug or regression in the game. Bug fixes in this project follow the TDD protocol: a failing test was written first to reproduce the issue, then the fix was applied to make the test pass, ensuring the defect cannot silently regress.
+
+Key files: src/movement/MeshWalker.ts, src/test/cube-aim-direction.test.ts, src/test/cube-bevel-crossing.regression.test.ts, src/test/cube-realistic-sim.test.ts, tasks/s44r3-03-cube-map-completely-broken.md.
+
+Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
