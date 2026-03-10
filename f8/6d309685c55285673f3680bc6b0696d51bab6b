@@ -1,6 +1,0 @@
-Merge commit: Merge s44j-11: peanut hit detection worldRotation fix.
-
-This commit modifies 4 files (+181/-3 lines), spanning 1 Markdown docs, 1 surface geometry, 1 tests.
-This is a merge commit integrating work from s44j-11 into the main branch. The merged changes have been independently reviewed and verified before integration, following the project's review-gate protocol.
-
-Key files: DISCOVERIES.md, src/surfaces/PeanutSurface.ts, ...hit-detection-world-rotation.regression.test.ts, tasks/s44j-11-peanut-map-hit-detection-bad.md.
