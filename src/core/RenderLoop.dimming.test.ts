@@ -19,7 +19,7 @@ const SURFACE_NEAR_UV_ENTER = 0.17;
 const SURFACE_NEAR_UV_EXIT  = 0.13;
 const SURFACE_NEAR_UV       = 0.15;
 const SURFACE_FAR_UV        = 0.45;
-const SURFACE_DIM_OPACITY   = 0.08;
+const SURFACE_DIM_OPACITY   = 0.15; // s44r8-04: raised from 0.08
 
 /**
  * Pure implementation of the hysteresis dimming logic from RenderLoop.ts.

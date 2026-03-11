@@ -6410,7 +6410,7 @@ async function main() {
     // for enemies on the far side, leaving them fully bright without UV-distance clamping.
     const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
     const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
-    const NET_SURFACE_DIM_OPC  = 0.08;   // minimum opacity for far-away enemies
+    const NET_SURFACE_DIM_OPC  = 0.15;   // minimum opacity for far-away enemies (s44r8-04: raised from 0.08)
     // World-space proximity override constants (SP parity — RenderLoop.ts PROXIMITY_*).
     const NET_PROXIMITY_NEAR_WORLD    = 2.0;
     const NET_PROXIMITY_NEAR_WORLD_SQ = NET_PROXIMITY_NEAR_WORLD * NET_PROXIMITY_NEAR_WORLD;

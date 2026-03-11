@@ -16,7 +16,7 @@
  *
  *   const NET_SURFACE_NEAR_UV  = 0.15;  // fully bright within 15% UV distance
  *   const NET_SURFACE_FAR_UV   = 0.45;  // fully dim beyond 45% UV distance
- *   const NET_SURFACE_DIM_OPC  = 0.08;  // 8% opacity for far-away enemies
+ *   const NET_SURFACE_DIM_OPC  = 0.15;  // 15% opacity for far-away enemies (s44r8-04: raised from 0.08)
  *
  *   const uvDist = sqrt(eu² + ev²)  // wrap-corrected UV distance
  *   surfaceVis = 1.0               if uvDist <= NEAR_UV
@@ -44,7 +44,7 @@ import { describe, it, expect } from 'vitest';
 
 const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within this UV distance
 const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond this UV distance
-const NET_SURFACE_DIM_OPC  = 0.08;   // minimum opacity for far-away enemies
+const NET_SURFACE_DIM_OPC  = 0.15;   // minimum opacity for far-away enemies (s44r8-04: raised from 0.08)
 
 /**
  * Compute the surface-UV-based visibility for an enemy, given wrap-corrected
@@ -122,8 +122,8 @@ describe('computeSurfaceUVVisibility — basic cases (sphere-style, wrapsV=false
     expect(vis).toBe(1.0);
   });
 
-  it('enemy beyond FAR_UV (0.5 apart, far side): surfaceVis = NET_SURFACE_DIM_OPC = 0.08', () => {
-    // Enemy on opposite side of the map: should appear at 8% opacity
+  it('enemy beyond FAR_UV (0.5 apart, far side): surfaceVis = NET_SURFACE_DIM_OPC = 0.15', () => {
+    // Enemy on opposite side of the map: should appear at 15% opacity (s44r8-04: raised from 8%)
     const vis = computeSurfaceUVVisibility(0.5, 0.5, 0.0, 0.5, false);
     expect(vis).toBeCloseTo(NET_SURFACE_DIM_OPC, 5);
   });
@@ -165,9 +165,9 @@ describe('computeSurfaceUVVisibility — torus (wrapsV=true)', () => {
     // Simulates old code that didn't wrap V: enemy at V=0.02 vs player at V=0.98
     // Raw dvRaw = 0.96 → uvDist = 0.96 → FAR_UV → surfaceVis = 0.08 → invisible!
     const visNoWrap = computeSurfaceUVVisibility(0.5, 0.02, 0.5, 0.98, false);
-    // With wrapsV=false, the raw distance 0.96 is used → far → 8%
+    // With wrapsV=false, the raw distance 0.96 is used → far → 15% (was 8% before s44r8-04)
     expect(visNoWrap).toBeCloseTo(NET_SURFACE_DIM_OPC, 5);
-    // This is the BUG: enemy physically next to player is invisible at 8%
+    // This is the BUG: enemy physically next to player appears dimmed
   });
 });
 
@@ -222,7 +222,7 @@ describe('REGRESSION: sphere-approx UV causes nearby enemies to appear at 8% opa
     // The sphere-approx UV gives (u≈0, v=0.5) for the player's actual position (u=0.5, v=0.0).
     // Enemy is at (0.5, 0.0). UV distance is large → surfaceVis = 0.08.
     // Despite being at the SAME physical position, the enemy appears at 8% opacity!
-    expect(vis).toBeCloseTo(NET_SURFACE_DIM_OPC, 1); // 8% = the bug
+    expect(vis).toBeCloseTo(NET_SURFACE_DIM_OPC, 1); // 15% = the dimming floor (shader fix makes this actually visible now)
 
     // Sanity check: the sphere-approx UV is indeed wrong (different from actual)
     expect(playerU_sphereApprox).not.toBeCloseTo(0.5, 1); // u ≈ 0, not 0.5
@@ -275,8 +275,8 @@ describe('enemy world position validity', () => {
 // ---------------------------------------------------------------------------
 
 describe('NET_SURFACE_* constants — sanity checks', () => {
-  it('NET_SURFACE_DIM_OPC is the documented 8% value', () => {
-    expect(NET_SURFACE_DIM_OPC).toBe(0.08);
+  it('NET_SURFACE_DIM_OPC is the documented 15% value (s44r8-04: raised from 8%)', () => {
+    expect(NET_SURFACE_DIM_OPC).toBe(0.15);
   });
 
   it('NET_SURFACE_NEAR_UV < NET_SURFACE_FAR_UV', () => {

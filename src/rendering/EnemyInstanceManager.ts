@@ -569,6 +569,9 @@ export class EnemyInstanceManager {
     });
 
     // Inject per-instance opacity (same shader injection as type batches)
+    // FIX (s44r8-04): Only multiply alpha, not RGB. Multiplying both causes opacity^2
+    // visual brightness (premultiplied alpha fed to unpremultiplied blending), making
+    // enemies at 8% opacity appear 0.6% visible = completely invisible.
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace(
         'void main() {',
@@ -580,7 +583,7 @@ export class EnemyInstanceManager {
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
+        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
 
@@ -865,6 +868,9 @@ export class EnemyInstanceManager {
     // Inject per-instance opacity into the shader via onBeforeCompile.
     // This reads a custom `instanceOpacity` attribute and multiplies the
     // fragment alpha by it, producing real per-instance transparency.
+    // FIX (s44r8-04): Only multiply alpha, not RGB. Multiplying both causes opacity^2
+    // visual brightness (premultiplied alpha fed to unpremultiplied blending), making
+    // enemies at 8% opacity appear 0.6% visible = completely invisible.
     material.onBeforeCompile = (shader) => {
       // Declare the attribute + varying in the vertex shader
       shader.vertexShader = shader.vertexShader.replace(
@@ -878,7 +884,7 @@ export class EnemyInstanceManager {
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
+        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
 
