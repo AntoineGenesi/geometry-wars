@@ -1361,11 +1361,51 @@ async function main() {
   // UI elements (network-specific HUD)
   // -----------------------------------------------------------------------
 
+  // Create a container for status + spinner during connecting phase
   const statusEl = document.createElement('div');
   statusEl.style.cssText =
-    'position:fixed;top:10px;left:50%;transform:translateX(-50%);' +
+    'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
     'color:#0ff;font:20px monospace;text-shadow:0 0 10px #0ff;z-index:100;';
-  statusEl.textContent = 'Connecting...';
+
+  // Add spinner container (shown during connecting phase)
+  const spinnerEl = document.createElement('div');
+  spinnerEl.style.cssText =
+    'display:flex;flex-direction:column;align-items:center;';
+  statusEl.appendChild(spinnerEl);
+
+  // Add animated spinner circle
+  const spinnerCircle = document.createElement('div');
+  spinnerCircle.style.cssText =
+    'width:48px;height:48px;' +
+    'border:4px solid rgba(0,255,255,0.2);' +
+    'border-top-color:#0ff;border-right-color:#0ff;' +
+    'border-radius:50%;' +
+    'animation:gw-connecting-spin 0.8s linear infinite;' +
+    'margin-bottom:20px;';
+  spinnerEl.appendChild(spinnerCircle);
+
+  // Add text label
+  const statusText = document.createElement('div');
+  statusText.textContent = 'Connecting to the server';
+  spinnerEl.appendChild(statusText);
+
+  // Add spinner animation
+  const spinnerStyle = document.createElement('style');
+  spinnerStyle.textContent = `
+    @keyframes gw-connecting-spin {
+      to { transform: rotate(360deg); }
+    }
+  `;
+  document.head.appendChild(spinnerStyle);
+
+  // Helper to update status text (hides spinner, just shows text)
+  function updateStatusText(text: string) {
+    spinnerEl.style.display = 'none';
+    statusEl.textContent = text;
+    statusEl.style.top = '10px';
+    statusEl.style.transform = 'translateX(-50%)';
+  }
+
   document.body.appendChild(statusEl);
 
   // Countdown timer HUD — shown during PvP/PvPvE games with a time limit
@@ -1992,13 +2032,13 @@ async function main() {
     'border:2px solid #0f0;cursor:pointer;z-index:100;display:none;';
   startBtn.onclick = () => {
     if (!network.isConnected()) {
-      statusEl.textContent = 'Not connected to server!';
+      updateStatusText('Not connected to server!');
       statusEl.style.color = '#f44';
       return;
     }
     if (!isHost) {
       // Should not happen (button is hidden for non-hosts) but guard just in case.
-      statusEl.textContent = 'Only the host can start the game.';
+      updateStatusText('Only the host can start the game.');
       return;
     }
     // Build choice string: surface:mode:size:lives
@@ -2026,7 +2066,7 @@ async function main() {
     }
     startBtn.style.display = 'none';
     modeSelectorDiv.style.display = 'none';
-    statusEl.textContent = 'Starting...';
+    updateStatusText('Starting...');
   };
   document.body.appendChild(startBtn);
 
@@ -4755,18 +4795,18 @@ async function main() {
 
     // Game state — derive status text from roomPhase + legacy flags
     if (currentRoomPhase === 'voting') {
-      statusEl.textContent = 'VOTING';
+      updateStatusText('VOTING');
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
     } else if (state.gameStarted && currentRoomPhase === 'playing') {
-      statusEl.textContent = state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`;
+      updateStatusText(state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`);
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
     } else if (state.gameOver && currentRoomPhase !== 'voting') {
       // Legacy path: gameOver flag (pre-voting-state-machine servers or initial game)
-      statusEl.textContent = 'GAME OVER';
+      updateStatusText('GAME OVER');
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
@@ -4820,14 +4860,14 @@ async function main() {
     } else if (currentRoomPhase === 'lobby' || (!state.gameStarted && !state.gameOver)) {
       if (isHost) {
         // Host sees the Start Game button and mode selector.
-        statusEl.textContent = 'Waiting for players... (Host: select mode + press START GAME)';
+        updateStatusText('Waiting for players... (Host: select mode + press START GAME)');
         startBtn.style.display = 'block';
         modeSelectorDiv.style.display = 'block';
         nonHostSettingsEl.style.display = 'none';
       } else {
         // Non-host: show waiting message and read-only settings display.
         const modeLabel = LOBBY_MODES.find(m => m.id === state.gameMode)?.label ?? state.gameMode?.toUpperCase() ?? 'WAVES';
-        statusEl.textContent = `Waiting for host to start... Mode: ${modeLabel}`;
+        updateStatusText(`Waiting for host to start... Mode: ${modeLabel}`);
         startBtn.style.display = 'none';
         modeSelectorDiv.style.display = 'none';
         nonHostSettingsEl.style.display = 'block';
@@ -4974,7 +5014,7 @@ async function main() {
     onRetrying: () => {
       // First attempt failed — show reconnecting status while auto-retry is in progress.
       // This fires on mobile when the network is still stabilizing after screen-on.
-      statusEl.textContent = 'Connection failed — reconnecting...';
+      updateStatusText('Connection failed — reconnecting...');
       console.log('[NetworkMain] Auto-retrying connection after initial failure...');
     },
   }).then(() => {
@@ -5001,18 +5041,18 @@ async function main() {
     // Show Start Game button immediately if we're the host; onStateChange will
     // re-evaluate this on every state update with the authoritative isHost value.
     if (isHost) {
-      statusEl.textContent = 'Connected! You are the HOST — press START GAME.';
+      updateStatusText('Connected! You are the HOST — press START GAME.');
       startBtn.style.display = 'block';
       modeSelectorDiv.style.display = 'block';
     } else {
-      statusEl.textContent = 'Connected! Waiting for host to start the game...';
+      updateStatusText('Connected! Waiting for host to start the game...');
       startBtn.style.display = 'none';
     }
 
     network.setCallbacks({
       onStateChange,
       onGameStart: () => {
-        statusEl.textContent = 'Game starting...';
+        updateStatusText('Game starting...');
         startBtn.style.display = 'none';
         modeSelectorDiv.style.display = 'none';
         gameOverShown = false; // Reset so GameOverScreen can show next game over
@@ -5099,7 +5139,7 @@ async function main() {
         spawnWarningRings.push({ mesh, u: data.u, v: data.v, spawnedAt: performance.now() });
       },
       onError: (err) => {
-        statusEl.textContent = `Error: ${err.message}`;
+        updateStatusText(`Error: ${err.message}`);
       },
       onPlayerLeave: (id: string) => {
         // Immediately remove the entity when the server removes this player from
@@ -5141,7 +5181,7 @@ async function main() {
           isHost = true;
           // Stop server is only in the pause menu — never shown in the HUD.
           stopServerBtn.style.display = 'none';
-          statusEl.textContent = 'You are now the host!';
+          updateStatusText('You are now the host!');
           statusEl.style.color = '#0ff';
           netMainLog('[NetworkMain] Host role transferred to this client');
         }
@@ -5236,7 +5276,7 @@ async function main() {
         if (data.phase === 'voting') {
           startBtn.style.display = 'none';
           modeSelectorDiv.style.display = 'none';
-          statusEl.textContent = 'VOTING';
+          updateStatusText('VOTING');
         } else if (data.phase === 'playing') {
           startBtn.style.display = 'none';
           modeSelectorDiv.style.display = 'none';
