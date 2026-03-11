@@ -278,6 +278,7 @@ export class CubeRingSurface extends Surface {
     // seams (u and v), no index-buffer modulo wrapping.
     // This is the topology pattern proven to work with the geodesic walker.
     const positions: number[] = []
+    const normals: number[] = []
     const indices: number[] = []
 
     // j = radial (around cross-section), i = tubular (around ring)
@@ -288,12 +289,24 @@ export class CubeRingSurface extends Surface {
 
       for (let i = 0; i <= tubularSegs; i++) {
         const phi = (i / tubularSegs) * Math.PI * 2
+        const cosPhi = Math.cos(phi)
+        const sinPhi = Math.sin(phi)
 
         positions.push(
-          (R + profile.r) * Math.cos(phi),
+          (R + profile.r) * cosPhi,
           profile.y,
-          (R + profile.r) * Math.sin(phi)
+          (R + profile.r) * sinPhi
         )
+
+        // Analytical normals from the profile (same as getPointLocal).
+        // Using explicit normals instead of computeVertexNormals() avoids
+        // incorrect averaged normals at bevel/flat boundaries that cause
+        // the MeshWalker tangent frame to be rotated 90° on cube-ring.
+        const nx = profile.nr * cosPhi
+        const ny = profile.ny
+        const nz = profile.nr * sinPhi
+        const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz)
+        normals.push(nx / nLen, ny / nLen, nz / nLen)
       }
     }
 
@@ -312,8 +325,8 @@ export class CubeRingSurface extends Surface {
 
     const geometry = new THREE.BufferGeometry()
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3))
     geometry.setIndex(indices)
-    geometry.computeVertexNormals()
 
     return new THREE.Mesh(geometry, this.createSurfaceMaterial())
   }
