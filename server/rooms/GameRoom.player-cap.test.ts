@@ -18,8 +18,9 @@ import { validateSettings, DEFAULT_GAME_SETTINGS } from '../shared/GameSettings'
 // Mirror the helper functions from GameRoom.ts for testing
 // ---------------------------------------------------------------------------
 
+// s44r9-02: Raised base from 30 to 60, per-player from 20 to 30, cap from 150 to 200
 function getMaxEnemiesForPlayerCount(playerCount: number): number {
-  return Math.min(30 + (playerCount - 1) * 20, 150);
+  return Math.min(60 + (playerCount - 1) * 30, 200);
 }
 
 const PLAYER_COLORS_BASE = [
@@ -103,37 +104,38 @@ describe('Player cap — s44r6-19 regression', () => {
   });
 
   describe('getMaxEnemiesForPlayerCount', () => {
-    it('1 player → 30 enemies (base)', () => {
-      expect(getMaxEnemiesForPlayerCount(1)).toBe(30);
+    // s44r9-02: Base raised to 60, per-player 30, cap 200
+    it('1 player → 60 enemies (base)', () => {
+      expect(getMaxEnemiesForPlayerCount(1)).toBe(60);
     });
 
-    it('2 players → 50 enemies', () => {
-      expect(getMaxEnemiesForPlayerCount(2)).toBe(50);
+    it('2 players → 90 enemies', () => {
+      expect(getMaxEnemiesForPlayerCount(2)).toBe(90);
     });
 
-    it('3 players → 70 enemies', () => {
-      expect(getMaxEnemiesForPlayerCount(3)).toBe(70);
+    it('3 players → 120 enemies', () => {
+      expect(getMaxEnemiesForPlayerCount(3)).toBe(120);
     });
 
-    it('4 players → 90 enemies (original cap)', () => {
-      expect(getMaxEnemiesForPlayerCount(4)).toBe(90);
+    it('4 players → 150 enemies', () => {
+      expect(getMaxEnemiesForPlayerCount(4)).toBe(150);
     });
 
-    it('5 players → 110 enemies (beyond old cap)', () => {
-      expect(getMaxEnemiesForPlayerCount(5)).toBe(110);
+    it('5 players → 180 enemies', () => {
+      expect(getMaxEnemiesForPlayerCount(5)).toBe(180);
     });
 
-    it('8 players → 170 → capped at 150', () => {
-      // 30 + 7*20 = 170, capped at 150
-      expect(getMaxEnemiesForPlayerCount(8)).toBe(150);
+    it('6 players → 210 → capped at 200', () => {
+      // 60 + 5*30 = 210, capped at 200
+      expect(getMaxEnemiesForPlayerCount(6)).toBe(200);
     });
 
-    it('10 players → capped at 150', () => {
-      expect(getMaxEnemiesForPlayerCount(10)).toBe(150);
+    it('10 players → capped at 200', () => {
+      expect(getMaxEnemiesForPlayerCount(10)).toBe(200);
     });
 
-    it('20 players → capped at 150', () => {
-      expect(getMaxEnemiesForPlayerCount(20)).toBe(150);
+    it('20 players → capped at 200', () => {
+      expect(getMaxEnemiesForPlayerCount(20)).toBe(200);
     });
   });
 

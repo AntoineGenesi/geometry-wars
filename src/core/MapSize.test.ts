@@ -7,25 +7,26 @@ import {
   getDefaultMapSizeForSurface,
   getMaxActiveEnemies,
   getMapSizeScaleFactor,
+  getDynamicMaxEnemies,
 } from './MapSize';
 
 describe('MapSize', () => {
   describe('MAP_SIZE_MAX_ENEMIES', () => {
-    // Spec: SMALL=50%, MEDIUM=100% (baseline=60), LARGE=150%, EPIC=200%
-    it('SMALL has 30 max active enemies (50% of 60)', () => {
-      expect(MAP_SIZE_MAX_ENEMIES[MapSize.SMALL]).toBe(30);
+    // s44r9-02: Raised caps. New baseline MEDIUM = 100.
+    it('SMALL has 50 max active enemies', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.SMALL]).toBe(50);
     });
 
-    it('MEDIUM has 60 max active enemies (100% baseline)', () => {
-      expect(MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM]).toBe(60);
+    it('MEDIUM has 100 max active enemies (baseline)', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM]).toBe(100);
     });
 
-    it('LARGE has 90 max active enemies (150% of 60)', () => {
-      expect(MAP_SIZE_MAX_ENEMIES[MapSize.LARGE]).toBe(90);
+    it('LARGE has 150 max active enemies', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.LARGE]).toBe(150);
     });
 
-    it('EPIC has 120 max active enemies (200% of 60)', () => {
-      expect(MAP_SIZE_MAX_ENEMIES[MapSize.EPIC]).toBe(120);
+    it('EPIC has 200 max active enemies', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.EPIC]).toBe(200);
     });
 
     it('enemy counts scale up with size tier', () => {
@@ -37,7 +38,7 @@ describe('MapSize', () => {
         .toBeLessThan(MAP_SIZE_MAX_ENEMIES[MapSize.EPIC]);
     });
 
-    it('SMALL is ~50% of MEDIUM', () => {
+    it('SMALL is 50% of MEDIUM', () => {
       const ratio = MAP_SIZE_MAX_ENEMIES[MapSize.SMALL] / MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM];
       expect(ratio).toBeCloseTo(0.5, 1);
     });
@@ -50,6 +51,16 @@ describe('MapSize', () => {
     it('EPIC is ~200% of MEDIUM', () => {
       const ratio = MAP_SIZE_MAX_ENEMIES[MapSize.EPIC] / MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM];
       expect(ratio).toBeCloseTo(2.0, 1);
+    });
+
+    // s44r9-02 regression guard: MEDIUM cap must be >= 80 to prevent
+    // endless wave spawns from silently hitting the cap after 3-4 waves
+    it('MEDIUM cap is high enough for endless waves (>= 80)', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.MEDIUM]).toBeGreaterThanOrEqual(80);
+    });
+
+    it('SMALL cap is high enough for early game (>= 40)', () => {
+      expect(MAP_SIZE_MAX_ENEMIES[MapSize.SMALL]).toBeGreaterThanOrEqual(40);
     });
   });
 
@@ -168,20 +179,37 @@ describe('MapSize', () => {
   });
 
   describe('getMaxActiveEnemies', () => {
-    it('returns 30 for SMALL (50% of baseline)', () => {
-      expect(getMaxActiveEnemies(MapSize.SMALL)).toBe(30);
+    it('returns 50 for SMALL', () => {
+      expect(getMaxActiveEnemies(MapSize.SMALL)).toBe(50);
     });
 
-    it('returns 60 for MEDIUM (100% baseline)', () => {
-      expect(getMaxActiveEnemies(MapSize.MEDIUM)).toBe(60);
+    it('returns 100 for MEDIUM (baseline)', () => {
+      expect(getMaxActiveEnemies(MapSize.MEDIUM)).toBe(100);
     });
 
-    it('returns 90 for LARGE (150% of baseline)', () => {
-      expect(getMaxActiveEnemies(MapSize.LARGE)).toBe(90);
+    it('returns 150 for LARGE', () => {
+      expect(getMaxActiveEnemies(MapSize.LARGE)).toBe(150);
     });
 
-    it('returns 120 for EPIC (200% of baseline)', () => {
-      expect(getMaxActiveEnemies(MapSize.EPIC)).toBe(120);
+    it('returns 200 for EPIC', () => {
+      expect(getMaxActiveEnemies(MapSize.EPIC)).toBe(200);
+    });
+  });
+
+  describe('getDynamicMaxEnemies', () => {
+    it('returns base cap at difficulty <= 6', () => {
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 0)).toBe(100);
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 6)).toBe(100);
+    });
+
+    it('scales up at difficulty > 6', () => {
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 7)).toBe(105);
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 8)).toBe(110);
+    });
+
+    it('caps at DYNAMIC_ENEMY_CAPS', () => {
+      // At very high difficulty, should not exceed the dynamic cap (200 for MEDIUM)
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 50)).toBe(200);
     });
   });
 

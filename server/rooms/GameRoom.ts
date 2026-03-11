@@ -124,10 +124,11 @@ const INACTIVITY_SHUTDOWN_THRESHOLD = 900;   // 15 minutes (900 seconds) before 
 
 /**
  * Compute max enemies for a given player count.
- * Formula: base 30 + 20 per additional player, capped at 150.
+ * s44r9-02: Raised base from 30 to 60 — at 30, waves hit the cap by wave 3-4
+ * and silently stopped spawning new enemies. Also raised per-player bonus and cap.
  */
 function getMaxEnemiesForPlayerCount(playerCount: number): number {
-  return Math.min(30 + (playerCount - 1) * 20, 150);
+  return Math.min(60 + (playerCount - 1) * 30, 200);
 }
 
 // Player colors — 10 distinct colors for up to 10 players, HSL rotation beyond.
