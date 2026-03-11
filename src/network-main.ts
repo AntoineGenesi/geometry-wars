@@ -3653,14 +3653,43 @@ async function main() {
           // a "bottom-up through the cube" view that the user reported as completely broken.
           // SP does resetFrameForNewSurface() + snapToFrame() (GameLoop.ts lines 166-178);
           // MP was missing the snap, causing the camera to be stuck for ~20 frames while lerping.
+          //
+          // s44r8-03 Attempt 2: Use server world-space position + tangent frame for snap.
+          // Previous code used surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV) where
+          // netPlayer.surfaceU/V is sphere-approx UV. For cube face 1 (+X): sphere-approx
+          // u≈0 maps to face 0 (+Z). Camera snaps to face 0's normal/position while player
+          // is on face 1 → camera inside cube from wrong direction. Since snapToFrame() also
+          // sets hasBeenPositioned=true, the !hasBeenPositioned correction path never fires →
+          // camera stays wrong for the entire time on that face.
+          // Fix: use _localServerNormal/Tangent/Bitangent (same as the hasBeenPositioned path
+          // which already works correctly). For surfaces without world-space data, fall back
+          // to player.surfaceU/V (already accurate via the UV snap code above).
           if (surf) {
-            const respawnSp = surf.getPoint(netPlayer.surfaceU, netPlayer.surfaceV);
-            const respawnPos = respawnSp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
-            cameraController.snapToFrame(
-              respawnPos,
-              respawnSp.normal,
-              { tangent: respawnSp.tangentU, bitangent: respawnSp.tangentV },
-            );
+            const hasRespawnWorldPos = _localPlayerWorldTarget.valid
+              && (_localPlayerWorldTarget.x !== 0 || _localPlayerWorldTarget.y !== 0 || _localPlayerWorldTarget.z !== 0);
+            if (hasRespawnWorldPos && _localServerFrameValid) {
+              // Preferred: server world-space position + server tangent frame (accurate for all surfaces)
+              const tgt = _localPlayerWorldTarget;
+              const respawnPos = new THREE.Vector3(
+                tgt.x + _localServerNormal.x * 0.15,
+                tgt.y + _localServerNormal.y * 0.15,
+                tgt.z + _localServerNormal.z * 0.15,
+              );
+              cameraController.snapToFrame(
+                respawnPos,
+                _localServerNormal,
+                { tangent: _localServerTangent, bitangent: _localServerBitangent },
+              );
+            } else {
+              // Fallback: use player.surfaceU/V (already set to accurate UV by snap code above)
+              const respawnSp = surf.getPoint(player.surfaceU, player.surfaceV);
+              const respawnPos = respawnSp.position.clone().multiplyScalar(currentMapSizeScaleFactor);
+              cameraController.snapToFrame(
+                respawnPos,
+                respawnSp.normal,
+                { tangent: respawnSp.tangentU, bitangent: respawnSp.tangentV },
+              );
+            }
           }
         }
       }
