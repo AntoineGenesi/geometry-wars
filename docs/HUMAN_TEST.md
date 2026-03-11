@@ -2176,6 +2176,30 @@ Three pill bugs fixed: (1) Grid fade logic was applied to pill (exterior surface
 - [ ] **Move around** — Player walks on pill body and cap transitions
 - [ ] **Shoot** — Bullets originate from player position on any part of the pill
 
-### Test: Pill MP (LAN required)  
+### Test: Pill MP (LAN required)
 - [ ] **Bullets on EPIC map** — On EPIC-size pill map, bullets spawn from correct position (scale bug fixed)
 - [ ] **Grid visible in MP** — Grid lines visible on pill surface in multiplayer view
+
+## s44r9-04: MP Pickup Collection Fix
+
+**Fix:** In MP, the pickup collection check used `localPlayer.surfaceU/V` (sphere-approximation UV from server, 30Hz lag) to compute the player's surface position. On sphere maps, UV lag of ~0.02 units creates ~0.75 world-unit offset >> 0.35 collection threshold → player had to be nearly stopped to accidentally collect. On non-spherical surfaces (cube, pill, torus, peanut), sphere-approx UV gives completely wrong world positions → collection essentially never worked.
+
+**Root cause:** Server sends sphere-approx UVs for all surfaces. At typical movement speed, UV lags 33ms = 0.02 UV units = 0.75 world units offset.
+
+**Fix:** Use `localPlayer.mesh.position` (accurate, from server wx/wy/wz) → `surface.worldToSurface()` → `getTransform(u,v).position` for correct player surface position on any map.
+
+### Test: MP Pickup Collection (LAN required)
+
+**Requires:** Two devices on same LAN. Start server with `npm run server`.
+
+- [ ] **Start LAN game on sphere** — Both players connect, select Sphere map
+- [ ] **Kill enemy to spawn pickup** — Enemy death has chance to drop weapon pickup (rotating octahedron)
+- [ ] **Walk over pickup** — Player should collect it ON CONTACT, not having to stand still on top of it
+- [ ] **Weapon changes after collection** — Player's weapon should switch to the collected weapon
+- [ ] **Pickup disappears after collection** — The pickup visual should vanish immediately on collection
+
+- [ ] **Repeat on pill map** — Same test: walk over weapon pickup → should collect reliably
+- [ ] **Repeat on cube map** — Same test: walk over weapon pickup → should collect reliably (was completely broken on non-spherical surfaces before fix)
+- [ ] **Repeat on torus map** — Same test: walk over weapon pickup → should collect reliably
+
+**Previously broken:** On sphere, player had to nearly stop over pickup. On non-spherical maps, collection was essentially impossible. After fix, collection should work reliably as player walks over pickups at normal movement speed.
