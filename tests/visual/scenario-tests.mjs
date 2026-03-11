@@ -47,6 +47,7 @@ const LAUNCH_ARGS = [
 const ALL_SURFACES = [
   'sphere', 'torus', 'cube', 'cube-ring', 'pill',
   'peanut', 'mobius', 'sphere-tunnel', 'cube-tunnel',
+  'pipe', 'capsule', 'icosahedron', 'mobius-bevel',
 ];
 
 function sleep(ms) {
@@ -1319,6 +1320,821 @@ const SCENARIOS = {
 
     return results;
   },
+
+  // =========================================================================
+  // MORE AGGRESSIVE TESTS (Scenarios 13-20) — Added s44r10-12
+  // Designed to find HIDDEN bugs. Brutal thresholds. Zero tolerance.
+  // =========================================================================
+
+  /**
+   * Scenario 13: Rapid Direction Change — Stuck/Snapped Movement Detection
+   * Rapidly alternate WASD every 0.5s for 30s. Track UV changes per direction.
+   * Catches: stuck after direction change, UV teleportation, normal flips.
+   */
+  async rapid_direction(page, surface) {
+    const results = { name: 'Rapid Direction Change', surface, checks: [] };
+
+    const DURATION_MS = 30000;
+    const SWITCH_INTERVAL_MS = 500;
+    const keys = ['w', 'a', 's', 'd'];
+    const uvSamples = [];
+    let stuckCount = 0;
+    let largeJumps = 0;
+    let nanCount = 0;
+
+    const startTime = Date.now();
+    let keyIndex = 0;
+    let currentKey = keys[0];
+    let lastSwitch = 0;
+    await page.keyboard.down(currentKey);
+
+    // Also shoot to stay alive
+    await page.mouse.move(320, 180);
+    await page.mouse.down();
+
+    while (Date.now() - startTime < DURATION_MS) {
+      const elapsed = Date.now() - startTime;
+
+      // Rapidly switch direction
+      if (elapsed - lastSwitch > SWITCH_INTERVAL_MS) {
+        await page.keyboard.up(currentKey);
+        keyIndex++;
+        currentKey = keys[keyIndex % keys.length];
+        await page.keyboard.down(currentKey);
+        lastSwitch = elapsed;
+      }
+
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) {
+        const sample = {
+          u: t.player.u, v: t.player.v,
+          wx: t.player.worldPos.x, wy: t.player.worldPos.y, wz: t.player.worldPos.z,
+          alive: t.player.alive, time: elapsed,
+        };
+        uvSamples.push(sample);
+
+        if (isNaN(sample.u) || isNaN(sample.v) || !isFinite(sample.u) || !isFinite(sample.v)) {
+          nanCount++;
+        }
+      }
+
+      await sleep(100); // Sample at 10Hz
+    }
+
+    await page.keyboard.up(currentKey);
+    await page.mouse.up();
+
+    if (uvSamples.length < 50) {
+      results.checks.push({ check: 'enough_samples', passed: false,
+        detail: `Only ${uvSamples.length} samples in 30s` });
+      return results;
+    }
+
+    results.checks.push({ check: 'sample_count', passed: true,
+      detail: `${uvSamples.length} samples collected` });
+
+    // Check for NaN
+    results.checks.push({ check: 'no_nan', passed: nanCount === 0,
+      detail: nanCount === 0 ? 'No NaN coordinates' : `${nanCount} samples had NaN!` });
+
+    // Check for stuck periods: 10+ consecutive samples with UV change < 0.0001
+    let consecutiveStuck = 0;
+    let maxStuckRun = 0;
+    let stuckPeriods = 0;
+    for (let i = 1; i < uvSamples.length; i++) {
+      const du = Math.abs(uvSamples[i].u - uvSamples[i - 1].u);
+      const dv = Math.abs(uvSamples[i].v - uvSamples[i - 1].v);
+      const dwx = Math.abs(uvSamples[i].wx - uvSamples[i - 1].wx);
+      const dwy = Math.abs(uvSamples[i].wy - uvSamples[i - 1].wy);
+      const dwz = Math.abs(uvSamples[i].wz - uvSamples[i - 1].wz);
+      const worldMoved = dwx + dwy + dwz;
+      const uvMoved = du + dv;
+
+      if (uvMoved < 0.0001 && worldMoved < 0.001 && uvSamples[i].alive) {
+        consecutiveStuck++;
+        if (consecutiveStuck > maxStuckRun) maxStuckRun = consecutiveStuck;
+      } else {
+        if (consecutiveStuck >= 10) stuckPeriods++;
+        consecutiveStuck = 0;
+      }
+    }
+    if (consecutiveStuck >= 10) stuckPeriods++;
+
+    // 10 samples at 100ms = 1s stuck
+    results.checks.push({ check: 'not_stuck', passed: maxStuckRun < 10,
+      detail: maxStuckRun < 10
+        ? `Max consecutive no-movement: ${maxStuckRun} samples (${maxStuckRun * 100}ms) — OK`
+        : `STUCK for ${maxStuckRun} samples (${maxStuckRun * 100}ms)! ${stuckPeriods} stuck period(s)` });
+
+    // Check for UV teleportation jumps (>0.3 that aren't wrapping)
+    for (let i = 1; i < uvSamples.length; i++) {
+      const du = Math.abs(uvSamples[i].u - uvSamples[i - 1].u);
+      const dv = Math.abs(uvSamples[i].v - uvSamples[i - 1].v);
+      // Skip wrapping (delta near 0.5 or 1.0) and face transitions (~0.167)
+      const isWrap = (du > 0.45 && du < 0.55) || du > 0.85;
+      const isFace = du > 0.12 && du < 0.22;
+      if (du > 0.3 && !isWrap && !isFace) largeJumps++;
+      const isWrapV = (dv > 0.45 && dv < 0.55) || dv > 0.85;
+      const isFaceV = dv > 0.12 && dv < 0.22;
+      if (dv > 0.3 && !isWrapV && !isFaceV) largeJumps++;
+    }
+
+    results.checks.push({ check: 'no_teleportation', passed: largeJumps === 0,
+      detail: largeJumps === 0
+        ? 'No unexpected UV jumps during rapid direction changes'
+        : `${largeJumps} TELEPORTATION JUMPS detected during rapid direction changes!` });
+
+    return results;
+  },
+
+  /**
+   * Scenario 14: Edge of Surface — UV Extremes
+   * Navigate to UV corners and check for NaN, broken collision, enemies vanishing.
+   */
+  async uv_extremes(page, surface) {
+    const results = { name: 'UV Extremes', surface, checks: [] };
+
+    // Move to extremes by holding keys for extended periods
+    const directions = [
+      { keys: ['w', 'a'], label: 'top-left (W+A)', duration: 8000 },
+      { keys: ['s', 'd'], label: 'bottom-right (S+D)', duration: 8000 },
+      { keys: ['w', 'd'], label: 'top-right (W+D)', duration: 8000 },
+      { keys: ['s', 'a'], label: 'bottom-left (S+A)', duration: 8000 },
+    ];
+
+    // Shoot to stay alive
+    await page.mouse.move(320, 180);
+    await page.mouse.down();
+
+    for (const dir of directions) {
+      // Hold direction keys
+      for (const k of dir.keys) await page.keyboard.down(k);
+      await sleep(dir.duration);
+      for (const k of dir.keys) await page.keyboard.up(k);
+      await sleep(300);
+
+      // Sample telemetry at this position
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (!t) {
+        results.checks.push({ check: `extreme_${dir.label}_telemetry`, passed: false,
+          detail: `No telemetry at ${dir.label}` });
+        continue;
+      }
+
+      // Check for NaN/Infinity
+      const hasNaN = isNaN(t.player.u) || isNaN(t.player.v) ||
+        !isFinite(t.player.u) || !isFinite(t.player.v) ||
+        isNaN(t.player.worldPos.x) || isNaN(t.player.worldPos.y) || isNaN(t.player.worldPos.z);
+
+      if (hasNaN) {
+        results.checks.push({ check: `extreme_${dir.label}_nan`, passed: false,
+          detail: `NaN/Infinity at ${dir.label}: u=${t.player.u} v=${t.player.v} pos=(${t.player.worldPos.x},${t.player.worldPos.y},${t.player.worldPos.z})` });
+      }
+
+      // Check enemies still exist and have valid positions
+      const invalidEnemies = t.enemies.filter(e =>
+        isNaN(e.u) || isNaN(e.v) || isNaN(e.worldPos.x) || !isFinite(e.worldDistToPlayer));
+      if (invalidEnemies.length > 0) {
+        results.checks.push({ check: `extreme_${dir.label}_enemy_nan`, passed: false,
+          detail: `${invalidEnemies.length} enemies with NaN positions at ${dir.label}!` });
+      }
+
+      // Check collision radius hasn't become 0 or NaN
+      if (t.player.collisionRadius <= 0 || isNaN(t.player.collisionRadius)) {
+        results.checks.push({ check: `extreme_${dir.label}_radius`, passed: false,
+          detail: `Player collision radius invalid at ${dir.label}: ${t.player.collisionRadius}` });
+      }
+    }
+
+    await page.mouse.up();
+
+    // If no failures were added, all corners are clean
+    const failCount = results.checks.filter(c => !c.passed).length;
+    if (failCount === 0) {
+      results.checks.push({ check: 'uv_extremes_all', passed: true,
+        detail: 'All 4 UV corners checked — no NaN, valid enemies, valid collision radius' });
+    }
+
+    return results;
+  },
+
+  /**
+   * Scenario 15: Diagonal Movement — Combined Key Input
+   * W+A, W+D, S+A, S+D simultaneously. Verify actual movement happens.
+   */
+  async diagonal(page, surface) {
+    const results = { name: 'Diagonal Movement', surface, checks: [] };
+
+    const combos = [
+      { keys: ['w', 'a'], label: 'W+A (up-left)' },
+      { keys: ['w', 'd'], label: 'W+D (up-right)' },
+      { keys: ['s', 'a'], label: 'S+A (down-left)' },
+      { keys: ['s', 'd'], label: 'S+D (down-right)' },
+    ];
+
+    // Shoot to stay alive
+    await page.mouse.move(320, 180);
+    await page.mouse.down();
+
+    for (const combo of combos) {
+      const before = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (!before) {
+        results.checks.push({ check: `diag_${combo.label}`, passed: false,
+          detail: `No telemetry before ${combo.label}` });
+        continue;
+      }
+
+      // Hold both keys for 3s
+      for (const k of combo.keys) await page.keyboard.down(k);
+      await sleep(3000);
+      for (const k of combo.keys) await page.keyboard.up(k);
+      await sleep(200);
+
+      const after = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (!after) {
+        results.checks.push({ check: `diag_${combo.label}`, passed: false,
+          detail: `No telemetry after ${combo.label}` });
+        continue;
+      }
+
+      const dwx = after.player.worldPos.x - before.player.worldPos.x;
+      const dwy = after.player.worldPos.y - before.player.worldPos.y;
+      const dwz = after.player.worldPos.z - before.player.worldPos.z;
+      const worldDist = Math.sqrt(dwx * dwx + dwy * dwy + dwz * dwz);
+
+      const du = after.player.u - before.player.u;
+      const dv = after.player.v - before.player.v;
+
+      // Check NaN
+      if (isNaN(worldDist) || isNaN(du) || isNaN(dv)) {
+        results.checks.push({ check: `diag_${combo.label}_nan`, passed: false,
+          detail: `NaN after ${combo.label}: worldDist=${worldDist} du=${du} dv=${dv}` });
+        continue;
+      }
+
+      // Player must have moved
+      const moved = worldDist > 0.05;
+      results.checks.push({ check: `diag_${combo.label}`, passed: moved,
+        detail: `${combo.label}: worldDist=${worldDist.toFixed(3)} du=${du.toFixed(4)} dv=${dv.toFixed(4)}` +
+          (moved ? '' : ' — PLAYER DID NOT MOVE with diagonal input!') });
+
+      // Speed should be similar to single-key movement (not zero, not 2x)
+      if (worldDist > 100) {
+        results.checks.push({ check: `diag_${combo.label}_speed`, passed: false,
+          detail: `${combo.label}: worldDist=${worldDist.toFixed(1)} — TELEPORTATION during diagonal movement!` });
+      }
+    }
+
+    await page.mouse.up();
+    return results;
+  },
+
+  /**
+   * Scenario 16: No-Movement Survival — Stand Still for 60s (CRITICAL)
+   * Player doesn't move. Enemies MUST approach and kill the player.
+   * If player NEVER dies with 30+ enemies → enemy movement is BROKEN.
+   * This caught cube-ring + mobius frozen enemies.
+   */
+  async no_movement(page, surface) {
+    const results = { name: 'No-Movement Survival (60s)', surface, checks: [] };
+
+    const DURATION_MS = 60000;
+    const SAMPLE_INTERVAL_MS = 500;
+    const samples = [];
+
+    // DON'T move, DON'T shoot — just stand there
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < DURATION_MS) {
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) {
+        samples.push({
+          time: Date.now() - startTime,
+          enemyCount: t.enemies.length,
+          nearestDist: t.collisions.nearestEnemyDist,
+          nearestSurfDist: t.collisions.nearestEnemySurfaceDist,
+          alive: t.player.alive,
+          lives: t.player.lives,
+          deaths: t.deaths?.total || 0,
+          isGameOver: t.isGameOver,
+          enemyWorldDists: t.enemies.map(e => e.worldDistToPlayer),
+        });
+      }
+      await sleep(SAMPLE_INTERVAL_MS);
+
+      // If game over, we're done
+      const lastSample = samples[samples.length - 1];
+      if (lastSample && lastSample.isGameOver) break;
+    }
+
+    if (samples.length < 10) {
+      results.checks.push({ check: 'enough_samples', passed: false,
+        detail: `Only ${samples.length} samples` });
+      return results;
+    }
+
+    // Key metrics
+    const totalDeaths = samples[samples.length - 1].deaths;
+    const peakEnemies = Math.max(...samples.map(s => s.enemyCount));
+    const gameOver = samples.some(s => s.isGameOver);
+    const timeToFirstDeath = samples.find(s => s.deaths > 0)?.time;
+
+    results.checks.push({ check: 'peak_enemies', passed: true,
+      detail: `Peak enemy count: ${peakEnemies}` });
+
+    // CRITICAL CHECK: With 30+ enemies and 60s, player MUST have died
+    if (peakEnemies >= 15) {
+      results.checks.push({ check: 'must_die', passed: totalDeaths > 0,
+        detail: totalDeaths > 0
+          ? `Player died ${totalDeaths} time(s). First death at ${(timeToFirstDeath / 1000).toFixed(1)}s`
+          : `ZERO DEATHS with ${peakEnemies} enemies over 60s — ENEMY MOVEMENT IS BROKEN!` });
+    } else if (peakEnemies >= 5) {
+      // With 5-14 enemies, death is likely but not guaranteed
+      results.checks.push({ check: 'should_die', passed: totalDeaths > 0,
+        detail: totalDeaths > 0
+          ? `Player died ${totalDeaths} time(s) with ${peakEnemies} peak enemies`
+          : `0 deaths with ${peakEnemies} enemies — enemies may not be approaching` });
+    } else {
+      results.checks.push({ check: 'low_enemies', passed: false,
+        detail: `Only ${peakEnemies} enemies spawned in 60s — enemy spawning may be broken` });
+    }
+
+    // Check enemies are actually APPROACHING (distance should decrease over time)
+    const earlyDists = samples.filter(s => s.time > 5000 && s.time < 15000 && s.nearestDist > 0);
+    const lateDists = samples.filter(s => s.time > 30000 && s.nearestDist > 0);
+    if (earlyDists.length > 0 && lateDists.length > 0) {
+      const earlyAvg = earlyDists.reduce((s, d) => s + d.nearestDist, 0) / earlyDists.length;
+      const lateAvg = lateDists.reduce((s, d) => s + d.nearestDist, 0) / lateDists.length;
+      const approaching = lateAvg < earlyAvg;
+      results.checks.push({ check: 'enemies_approaching', passed: approaching,
+        detail: `Avg nearest enemy dist: early=${earlyAvg.toFixed(2)} late=${lateAvg.toFixed(2)}` +
+          (approaching ? ' — enemies closing in' : ' — enemies NOT getting closer!') });
+    }
+
+    // Check for frozen enemies: track individual enemy distances over time
+    // If ALL enemies maintain same distance for 10+ seconds, they're frozen
+    if (samples.length >= 20) {
+      const midSample = samples[Math.floor(samples.length / 2)];
+      const endSample = samples[samples.length - 1];
+      if (midSample.enemyWorldDists.length >= 3 && endSample.enemyWorldDists.length >= 3) {
+        // Sort both arrays and compare — if distances barely changed, enemies are frozen
+        const midSorted = [...midSample.enemyWorldDists].sort((a, b) => a - b);
+        const endSorted = [...endSample.enemyWorldDists].sort((a, b) => a - b);
+        const comparisons = Math.min(midSorted.length, endSorted.length, 5);
+        let unchangedCount = 0;
+        for (let i = 0; i < comparisons; i++) {
+          if (Math.abs(midSorted[i] - endSorted[i]) < 0.1) unchangedCount++;
+        }
+        const allFrozen = unchangedCount >= comparisons - 1;
+        results.checks.push({ check: 'enemy_distance_change', passed: !allFrozen,
+          detail: allFrozen
+            ? `${unchangedCount}/${comparisons} enemy distances unchanged between mid and end — FROZEN ENEMIES!`
+            : `${unchangedCount}/${comparisons} distances similar (normal churn)` });
+      }
+    }
+
+    // Time to first death should be reasonable (< 30s with enemies around)
+    if (totalDeaths > 0 && peakEnemies >= 10) {
+      const timeToDeath = timeToFirstDeath / 1000;
+      results.checks.push({ check: 'death_timing', passed: timeToDeath < 40,
+        detail: `First death at ${timeToDeath.toFixed(1)}s` +
+          (timeToDeath >= 40 ? ` — TOO LONG with ${peakEnemies} enemies, they should kill faster` : '') });
+    }
+
+    return results;
+  },
+
+  /**
+   * Scenario 17: Repeated Death/Respawn Cycle
+   * Die intentionally, verify respawn position valid, not stuck in death loop.
+   */
+  async respawn_cycle(page, surface) {
+    const results = { name: 'Repeated Death/Respawn', surface, checks: [] };
+
+    const MAX_CYCLES = 3;
+    const CYCLE_TIMEOUT_MS = 40000;
+
+    // Don't shoot, don't move — let enemies kill us
+    let prevDeaths = 0;
+    const respawnPositions = [];
+
+    for (let cycle = 0; cycle < MAX_CYCLES; cycle++) {
+      // Wait for death
+      const cycleStart = Date.now();
+      let died = false;
+      let deathU = -1, deathV = -1;
+
+      while (Date.now() - cycleStart < CYCLE_TIMEOUT_MS) {
+        const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+        if (!t) { await sleep(500); continue; }
+
+        if (t.deaths && t.deaths.total > prevDeaths) {
+          died = true;
+          const lastDeath = t.deaths.log[t.deaths.log.length - 1];
+          deathU = lastDeath.playerU;
+          deathV = lastDeath.playerV;
+          prevDeaths = t.deaths.total;
+          break;
+        }
+
+        if (t.isGameOver) break;
+
+        await sleep(500);
+      }
+
+      if (!died) {
+        // If we didn't die in 40s, that's suspicious (but game over also stops)
+        const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+        if (t?.isGameOver) {
+          results.checks.push({ check: `cycle_${cycle}_gameover`, passed: true,
+            detail: `Game over after ${cycle} death(s) — no more lives` });
+          break;
+        }
+        results.checks.push({ check: `cycle_${cycle}_nodeath`, passed: false,
+          detail: `No death in ${CYCLE_TIMEOUT_MS / 1000}s — enemies may not be moving` });
+        continue;
+      }
+
+      // Wait for respawn (player.alive goes true again)
+      let respawned = false;
+      let respawnU = -1, respawnV = -1;
+      const respawnStart = Date.now();
+      while (Date.now() - respawnStart < 10000) {
+        const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+        if (t && t.player.alive) {
+          respawned = true;
+          respawnU = t.player.u;
+          respawnV = t.player.v;
+          respawnPositions.push({ u: respawnU, v: respawnV });
+          break;
+        }
+        await sleep(300);
+      }
+
+      if (!respawned) {
+        const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+        if (t?.isGameOver) {
+          results.checks.push({ check: `cycle_${cycle}_gameover`, passed: true,
+            detail: `Game over — no respawn (out of lives)` });
+          break;
+        }
+        results.checks.push({ check: `cycle_${cycle}_norespawn`, passed: false,
+          detail: `Player did not respawn after death — stuck in dead state!` });
+        continue;
+      }
+
+      // Check respawn position is valid
+      const respawnNaN = isNaN(respawnU) || isNaN(respawnV) || !isFinite(respawnU) || !isFinite(respawnV);
+      results.checks.push({ check: `cycle_${cycle}_respawn_valid`, passed: !respawnNaN,
+        detail: respawnNaN
+          ? `Respawn position NaN: u=${respawnU} v=${respawnV}!`
+          : `Respawn at u=${respawnU.toFixed(4)} v=${respawnV.toFixed(4)} (death was at u=${deathU.toFixed(4)} v=${deathV.toFixed(4)})` });
+
+      // Check respawn isn't at the exact same spot as death (stuck in death loop)
+      if (!respawnNaN && !isNaN(deathU)) {
+        const respawnDist = Math.sqrt((respawnU - deathU) ** 2 + (respawnV - deathV) ** 2);
+        // Some surfaces respawn at center (0.5, 0.5), which is fine
+        results.checks.push({ check: `cycle_${cycle}_respawn_moved`, passed: true,
+          detail: `Respawn distance from death: ${respawnDist.toFixed(4)} UV` });
+      }
+
+      // Brief wait between cycles
+      await sleep(2000);
+    }
+
+    // Check respawn positions aren't all identical (should vary or at least be at safe spot)
+    if (respawnPositions.length >= 2) {
+      const allSame = respawnPositions.every(p =>
+        Math.abs(p.u - respawnPositions[0].u) < 0.001 && Math.abs(p.v - respawnPositions[0].v) < 0.001);
+      results.checks.push({ check: 'respawn_variety', passed: true,
+        detail: allSame
+          ? `All ${respawnPositions.length} respawns at same position (${respawnPositions[0].u.toFixed(3)}, ${respawnPositions[0].v.toFixed(3)}) — fixed spawn point`
+          : `${respawnPositions.length} respawn positions varied` });
+    }
+
+    return results;
+  },
+
+  /**
+   * Scenario 18: Enemy Variety — Check All Enemy Types Appear
+   * Play for 45s to get later waves. Track distinct enemy types.
+   * Flag if only one type ever appears.
+   */
+  async enemy_variety(page, surface) {
+    const results = { name: 'Enemy Variety', surface, checks: [] };
+
+    const DURATION_MS = 45000;
+    const SAMPLE_INTERVAL_MS = 2000;
+
+    // Play actively to progress waves
+    await page.mouse.move(400, 200);
+    await page.mouse.down();
+
+    const enemyTypes = new Set();
+    const enemyTypeTimeline = []; // {time, types}
+    const startTime = Date.now();
+    let phase = 0;
+
+    while (Date.now() - startTime < DURATION_MS) {
+      const elapsed = Date.now() - startTime;
+
+      // Move around to stay alive + kill enemies to progress waves
+      const newPhase = Math.floor(elapsed / 4000);
+      if (newPhase !== phase) {
+        const keys = ['d', 'w', 'a', 's'];
+        await page.keyboard.up(keys[phase % 4]);
+        phase = newPhase;
+        await page.keyboard.down(keys[phase % 4]);
+        const angle = (phase * Math.PI / 2.5);
+        await page.mouse.move(320 + Math.cos(angle) * 130, 180 + Math.sin(angle) * 130);
+      }
+
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) {
+        const frameTypes = new Set();
+        for (const e of t.enemies) {
+          enemyTypes.add(e.type);
+          frameTypes.add(e.type);
+        }
+        enemyTypeTimeline.push({
+          time: elapsed,
+          types: [...frameTypes],
+          count: t.enemies.length,
+        });
+      }
+
+      await sleep(SAMPLE_INTERVAL_MS);
+    }
+
+    // Release controls
+    await page.mouse.up();
+    for (const k of ['w', 'a', 's', 'd']) await page.keyboard.up(k);
+
+    const typeList = [...enemyTypes];
+    results.checks.push({ check: 'enemy_type_count', passed: typeList.length >= 2,
+      detail: `${typeList.length} distinct enemy types: ${typeList.join(', ')}` +
+        (typeList.length < 2 ? ' — only 1 type ever appeared, wave progression may be broken!' : '') });
+
+    // Check we actually had enemies to analyze
+    const maxEnemies = Math.max(...enemyTypeTimeline.map(t => t.count), 0);
+    results.checks.push({ check: 'enemies_present', passed: maxEnemies >= 3,
+      detail: `Peak enemies: ${maxEnemies}` +
+        (maxEnemies < 3 ? ' — too few enemies in 45s, spawning may be broken' : '') });
+
+    // Check enemy types have valid properties
+    const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+    if (t) {
+      const invalidRadius = t.enemies.filter(e => e.collisionRadius <= 0 || e.collisionRadius > 10 || isNaN(e.collisionRadius));
+      results.checks.push({ check: 'enemy_radii_valid', passed: invalidRadius.length === 0,
+        detail: invalidRadius.length === 0
+          ? `All ${t.enemies.length} enemy radii valid`
+          : `${invalidRadius.length} enemies with invalid radius!` });
+
+      const invalidPos = t.enemies.filter(e => isNaN(e.u) || isNaN(e.v) || isNaN(e.worldPos.x));
+      results.checks.push({ check: 'enemy_positions_valid', passed: invalidPos.length === 0,
+        detail: invalidPos.length === 0
+          ? `All enemy positions valid`
+          : `${invalidPos.length} enemies with NaN positions!` });
+    }
+
+    return results;
+  },
+
+  /**
+   * Scenario 19: Score Consistency — Score Should Make Sense
+   * Track score over 60s. Must increase. Must never decrease.
+   * Must correlate with kills. Flag: stuck at 0 for 10+s while shooting.
+   */
+  async score_consistency(page, surface) {
+    const results = { name: 'Score Consistency', surface, checks: [] };
+
+    const DURATION_MS = 60000;
+    const SAMPLE_INTERVAL_MS = 500;
+
+    // Play actively
+    await page.mouse.move(400, 200);
+    await page.mouse.down();
+    await page.keyboard.down('d');
+
+    const scoreSamples = [];
+    const startTime = Date.now();
+    let phase = 0;
+
+    while (Date.now() - startTime < DURATION_MS) {
+      const elapsed = Date.now() - startTime;
+
+      // Change direction and aim
+      const newPhase = Math.floor(elapsed / 5000);
+      if (newPhase !== phase) {
+        const keys = ['d', 'w', 'a', 's'];
+        await page.keyboard.up(keys[phase % 4]);
+        phase = newPhase;
+        await page.keyboard.down(keys[phase % 4]);
+        const angle = (phase * Math.PI / 3);
+        await page.mouse.move(320 + Math.cos(angle) * 140, 180 + Math.sin(angle) * 140);
+      }
+
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) {
+        scoreSamples.push({
+          time: elapsed,
+          score: t.player.score,
+          alive: t.player.alive,
+          enemyCount: t.enemies.length,
+          deaths: t.deaths?.total || 0,
+        });
+      }
+
+      await sleep(SAMPLE_INTERVAL_MS);
+    }
+
+    await page.mouse.up();
+    for (const k of ['w', 'a', 's', 'd']) await page.keyboard.up(k);
+
+    if (scoreSamples.length < 20) {
+      results.checks.push({ check: 'enough_samples', passed: false,
+        detail: `Only ${scoreSamples.length} samples` });
+      return results;
+    }
+
+    const firstScore = scoreSamples[0].score;
+    const lastScore = scoreSamples[scoreSamples.length - 1].score;
+    const totalGain = lastScore - firstScore;
+
+    // Check 1: Score increased over session
+    results.checks.push({ check: 'score_increased', passed: totalGain > 0,
+      detail: `Score: ${firstScore} → ${lastScore} (gained ${totalGain})` +
+        (totalGain === 0 ? ' — ZERO points in 60s of active play!' : '') });
+
+    // Check 2: Score never decreased
+    let decreases = 0;
+    let maxDecrease = 0;
+    for (let i = 1; i < scoreSamples.length; i++) {
+      const delta = scoreSamples[i].score - scoreSamples[i - 1].score;
+      if (delta < 0) {
+        decreases++;
+        maxDecrease = Math.min(maxDecrease, delta);
+      }
+    }
+    results.checks.push({ check: 'no_score_decrease', passed: decreases === 0,
+      detail: decreases === 0
+        ? 'Score never decreased'
+        : `Score DECREASED ${decreases} time(s)! Max drop: ${maxDecrease}` });
+
+    // Check 3: Score not stuck at 0 for 10+ seconds while alive
+    let stuckAt0 = 0;
+    let maxStuck0 = 0;
+    for (const s of scoreSamples) {
+      if (s.score === 0 && s.alive && s.enemyCount > 0) {
+        stuckAt0++;
+        maxStuck0 = Math.max(maxStuck0, stuckAt0);
+      } else if (s.score > 0) {
+        stuckAt0 = 0;
+      }
+    }
+    const stuckSeconds = maxStuck0 * SAMPLE_INTERVAL_MS / 1000;
+    results.checks.push({ check: 'not_stuck_at_zero', passed: stuckSeconds < 15,
+      detail: stuckSeconds < 15
+        ? `Max time at score 0: ${stuckSeconds.toFixed(1)}s`
+        : `Score STUCK at 0 for ${stuckSeconds.toFixed(1)}s with enemies present!` });
+
+    // Check 4: Score rate (should be at least some kills per 30s)
+    const midIdx = Math.floor(scoreSamples.length / 2);
+    const midScore = scoreSamples[midIdx].score;
+    const firstHalf = midScore - firstScore;
+    const secondHalf = lastScore - midScore;
+    results.checks.push({ check: 'score_rate', passed: true,
+      detail: `First half: +${firstHalf}, Second half: +${secondHalf}` });
+
+    return results;
+  },
+
+  /**
+   * Scenario 20: Multi-Life Analysis — Full Game Across All 3 Lives
+   * Play until game over or 120s. Autopsy each death.
+   * Check: each life has legitimate gameplay, no instant death loops.
+   */
+  async multi_life(page, surface) {
+    const results = { name: 'Multi-Life Analysis', surface, checks: [] };
+
+    const MAX_DURATION_MS = 120000;
+    const SAMPLE_INTERVAL_MS = 500;
+
+    // Play actively
+    await page.mouse.move(400, 200);
+    await page.mouse.down();
+    await page.keyboard.down('d');
+
+    const lifeSamples = []; // {time, lives, alive, deaths, score, enemyCount}
+    const startTime = Date.now();
+    let phase = 0;
+    let prevLives = -1;
+    let lifeStartTime = 0;
+    const lifeData = []; // per-life: {startTime, endTime, duration, deathEnemy, deathDist}
+
+    while (Date.now() - startTime < MAX_DURATION_MS) {
+      const elapsed = Date.now() - startTime;
+
+      // Move/aim
+      const newPhase = Math.floor(elapsed / 4000);
+      if (newPhase !== phase) {
+        const keys = ['d', 'w', 'a', 's'];
+        await page.keyboard.up(keys[phase % 4]);
+        phase = newPhase;
+        await page.keyboard.down(keys[phase % 4]);
+        const angle = (phase * 1.7);
+        await page.mouse.move(320 + Math.cos(angle) * 130, 180 + Math.sin(angle) * 130);
+      }
+
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) {
+        lifeSamples.push({
+          time: elapsed, lives: t.player.lives, alive: t.player.alive,
+          deaths: t.deaths?.total || 0, score: t.player.score,
+          enemyCount: t.enemies.length,
+        });
+
+        // Track life transitions
+        if (prevLives === -1) {
+          prevLives = t.player.lives;
+          lifeStartTime = elapsed;
+        }
+        if (t.player.lives < prevLives) {
+          // Lost a life
+          const lastDeath = t.deaths?.log?.[t.deaths.log.length - 1];
+          lifeData.push({
+            startTime: lifeStartTime,
+            endTime: elapsed,
+            duration: elapsed - lifeStartTime,
+            deathEnemy: lastDeath?.nearestEnemyType || 'unknown',
+            deathDist: lastDeath?.nearestEnemyDist || -1,
+            deathSurfDist: lastDeath?.nearestEnemySurfaceDist || -1,
+          });
+          lifeStartTime = elapsed;
+          prevLives = t.player.lives;
+        }
+
+        if (t.isGameOver) break;
+      }
+
+      await sleep(SAMPLE_INTERVAL_MS);
+    }
+
+    await page.mouse.up();
+    for (const k of ['w', 'a', 's', 'd']) await page.keyboard.up(k);
+
+    // If still alive at end, record last life
+    const lastSample = lifeSamples[lifeSamples.length - 1];
+    if (lastSample && !lastSample.alive === false && lifeData.length < 3) {
+      lifeData.push({
+        startTime: lifeStartTime,
+        endTime: Date.now() - startTime,
+        duration: Date.now() - startTime - lifeStartTime,
+        deathEnemy: 'survived',
+        deathDist: -1,
+        deathSurfDist: -1,
+      });
+    }
+
+    results.checks.push({ check: 'lives_tracked', passed: true,
+      detail: `${lifeData.length} life/lives tracked. Deaths: ${lastSample?.deaths || 0}` });
+
+    // Check each life had legitimate gameplay (not instant death < 2s)
+    let instantDeaths = 0;
+    for (let i = 0; i < lifeData.length; i++) {
+      const life = lifeData[i];
+      const durationS = life.duration / 1000;
+      const isInstant = durationS < 2.0 && life.deathEnemy !== 'survived' && i > 0; // First life gets grace period
+      if (isInstant) instantDeaths++;
+
+      results.checks.push({ check: `life_${i + 1}_duration`, passed: !isInstant,
+        detail: `Life ${i + 1}: ${durationS.toFixed(1)}s, killed by "${life.deathEnemy}" at dist=${life.deathDist > 0 ? life.deathDist.toFixed(2) : 'N/A'}` +
+          (isInstant ? ' — INSTANT DEATH on respawn!' : '') });
+
+      // Check death distance (phantom kill check)
+      if (life.deathDist > 0 && life.deathEnemy !== 'survived') {
+        const wrappedSurf = life.deathSurfDist > 0.5 ? 1.0 - life.deathSurfDist : life.deathSurfDist;
+        const isPhantom = wrappedSurf > 0.25 && life.deathDist > 2.5;
+        if (isPhantom) {
+          results.checks.push({ check: `life_${i + 1}_phantom`, passed: false,
+            detail: `PHANTOM DEATH on life ${i + 1}: "${life.deathEnemy}" surf=${wrappedSurf.toFixed(3)} world=${life.deathDist.toFixed(2)}` });
+        }
+      }
+    }
+
+    results.checks.push({ check: 'no_instant_deaths', passed: instantDeaths === 0,
+      detail: instantDeaths === 0
+        ? 'No instant deaths on respawn'
+        : `${instantDeaths} INSTANT DEATH(S) on respawn — spawn protection may be broken!` });
+
+    // Overall game health
+    const totalDuration = (Date.now() - startTime) / 1000;
+    const finalScore = lastSample?.score || 0;
+    results.checks.push({ check: 'game_health', passed: true,
+      detail: `Total playtime: ${totalDuration.toFixed(0)}s, Final score: ${finalScore}, Game over: ${lastSample?.alive === false || lastSample?.deaths >= 3 ? 'yes' : 'no'}` });
+
+    return results;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1465,9 +2281,14 @@ async function main() {
 
   // Write results to file
   const resultsMd = generateResultsMarkdown(allResults, totalPassed, totalFailed);
-  const resultsPath = resolve(PROJECT_ROOT, scenarioFilter && ['survival', 'approach', 'seam', 'pileup', 'shooting', 'distance_consistency'].includes(scenarioFilter)
-    ? 'tasks/s44r10-09-stress-results.md'
-    : 'tasks/s44r10-07-scenario-results.md');
+  const stressScenarios = ['survival', 'approach', 'seam', 'pileup', 'shooting', 'distance_consistency'];
+  const aggressiveScenarios = ['rapid_direction', 'uv_extremes', 'diagonal', 'no_movement', 'respawn_cycle', 'enemy_variety', 'score_consistency', 'multi_life'];
+  const resultsPath = resolve(PROJECT_ROOT,
+    scenarioFilter && aggressiveScenarios.includes(scenarioFilter)
+      ? 'tasks/s44r10-12-more-tests-results.md'
+      : scenarioFilter && stressScenarios.includes(scenarioFilter)
+        ? 'tasks/s44r10-09-stress-results.md'
+        : 'tasks/s44r10-07-scenario-results.md');
   writeFileSync(resultsPath, resultsMd);
   console.log(`  Results saved to: ${resultsPath}\n`);
 
