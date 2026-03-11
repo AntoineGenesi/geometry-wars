@@ -24,11 +24,7 @@ function getOrCreateOverlay(): HTMLElement {
   el.id = 'loading-screen';
   el.innerHTML = `
     <div class="loading-title">GEOMETRY WARS 3D</div>
-    <div class="loading-dots">
-      <div class="loading-dot"></div>
-      <div class="loading-dot"></div>
-      <div class="loading-dot"></div>
-    </div>
+    <div class="loading-spinner"></div>
     <div id="loading-status" class="loading-status"></div>
   `;
   document.body.appendChild(el);
