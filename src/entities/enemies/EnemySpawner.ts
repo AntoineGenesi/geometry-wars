@@ -435,10 +435,21 @@ export class EnemySpawner {
       }
     }
 
-    // Fallback: spawn at edge of region away from player
-    const fallbackU = this.playerU < 0.5 ? maxU : minU;
-    const fallbackV = this.playerV < 0.5 ? maxV : minV;
-    return { u: fallbackU, v: fallbackV };
+    // Fallback: spawn as far from player as possible in UV space.
+    // s44r10-02 FIX: The old logic (maxU if playerU<0.5) doesn't account for toroidal
+    // UV wrapping. On surfaces where wrapsU=true (ALL surfaces), u=1.0 ≡ u=0.0, so
+    // playerU=0.05 → fallbackU=1.0 → toroidal distance only 0.05 (spawns near player!).
+    // Fix: for wrapping axes, use "opposite side" = playerU+0.5 mod 1.0 (max distance).
+    const fallbackU = (this.surface?.wrapsU ?? true)
+      ? (this.playerU + 0.5) % 1.0
+      : (this.playerU < 0.5 ? maxU : minU);
+    const fallbackV = (this.surface?.wrapsV ?? false)
+      ? (this.playerV + 0.5) % 1.0
+      : (this.playerV < 0.5 ? maxV : minV);
+    return {
+      u: Math.min(maxU, Math.max(minU, fallbackU)),
+      v: Math.min(maxV, Math.max(minV, fallbackV)),
+    };
   }
 
   spawn(type: EnemyType, surfaceU?: number, surfaceV?: number, tier: number = 0, skipSpawnWarning: boolean = false, continuousDifficultyLevel?: number, maxSegments?: number): BaseEnemy {
