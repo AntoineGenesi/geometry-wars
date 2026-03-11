@@ -5584,6 +5584,18 @@ async function main() {
   // so bullets advance at the correct rate regardless of display refresh rate.
   let lastRenderTimestampMs = 0;
 
+  // -- MP Telemetry state (for window.__GAME_TELEMETRY, active when ?debug=true) --
+  let _mpTelFrameCount = 0;
+  let _mpTelPrevAlive = true;
+  let _mpTelTotalDeaths = 0;
+  const _mpTelDeathLog: Array<{
+    frame: number; time: number;
+    playerU: number; playerV: number;
+    playerWorldPos: { x: number; y: number; z: number };
+    nearestEnemyDist: number; nearestEnemySurfaceDist: number;
+    nearestEnemyType: string; livesRemaining: number;
+  }> = [];
+
   game.onFixedUpdate = (dt: number) => {
     if (!surfaceReady || !surface) return;
     lastFixedDt = dt;
@@ -6358,6 +6370,156 @@ async function main() {
         }
         activeGameMode.onFixedUpdate(dt, ctx);
       }
+    }
+
+    // -- MP Telemetry: expose window.__GAME_TELEMETRY for visual test harness --
+    // Mirrors SP GameTelemetryExporter but adapted for MP's data structures.
+    // Only active when ?debug=true. Updated every fixed-update frame.
+    if (_netMainDebug) {
+      const localPlayer = networkPlayers.get(localPlayerId);
+      const pPos = localPlayer?.mesh?.position;
+
+      // Build enemy array with distances and opacity
+      const telEnemies: Array<{
+        type: string; u: number; v: number;
+        worldPos: { x: number; y: number; z: number };
+        surfaceDistToPlayer: number; worldDistToPlayer: number;
+        collisionRadius: number; isAlive: boolean; opacity: number;
+      }> = [];
+      let nearestEnemyWorldDist = Infinity;
+      let nearestEnemySurfaceDist = Infinity;
+      let enemiesInPlayerRadius = 0;
+      const playerRadius = localPlayer ? localPlayer.mesh.scale.x * 0.1 : 0.1;
+
+      networkEnemies.forEach((enemy) => {
+        if (!enemy.active) return;
+        const ePos = enemy.mesh ? enemy.mesh.position : enemy.position;
+        const worldDist = pPos ? pPos.distanceTo(ePos) : Infinity;
+
+        // UV-based surface distance (wrapping-aware)
+        let du = (localPlayer?.surfaceU ?? 0) - enemy.surfacePosition.u;
+        let dv = (localPlayer?.surfaceV ?? 0) - enemy.surfacePosition.v;
+        if (du > 0.5) du -= 1.0; else if (du < -0.5) du += 1.0;
+        if (dv > 0.5) dv -= 1.0; else if (dv < -0.5) dv += 1.0;
+        const surfaceDist = Math.sqrt(du * du + dv * dv);
+
+        if (worldDist < nearestEnemyWorldDist) nearestEnemyWorldDist = worldDist;
+        if (surfaceDist < nearestEnemySurfaceDist) nearestEnemySurfaceDist = surfaceDist;
+
+        // Collision radius check
+        if (pPos) {
+          const contactRadius = playerRadius + enemy.radius;
+          const hitRadiusSq = contactRadius * contactRadius + enemy.radius * enemy.radius;
+          if (pPos.distanceToSquared(ePos) < hitRadiusSq) enemiesInPlayerRadius++;
+        }
+
+        // Read opacity from EnemyInstanceManager
+        let opacity = 1.0;
+        const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
+        const instanceType = (enemy as any)._instanceType as string | undefined;
+        if (instanceIndex !== undefined && instanceType) {
+          const batch = (enemyInstanceManager as any).batches?.get(instanceType);
+          if (batch?.opacityAttribute) {
+            opacity = batch.opacityAttribute.getX(instanceIndex);
+          }
+        }
+
+        telEnemies.push({
+          type: enemy.baseTypeName || enemy.constructor.name,
+          u: enemy.surfacePosition.u,
+          v: enemy.surfacePosition.v,
+          worldPos: { x: ePos.x, y: ePos.y, z: ePos.z },
+          surfaceDistToPlayer: surfaceDist,
+          worldDistToPlayer: worldDist,
+          collisionRadius: enemy.radius,
+          isAlive: enemy.alive,
+          opacity,
+        });
+      });
+
+      // Build other-players array
+      const otherPlayers: Array<{
+        id: string; u: number; v: number;
+        worldPos: { x: number; y: number; z: number };
+        alive: boolean; score: number; isLocal: boolean;
+      }> = [];
+      networkPlayers.forEach((p, id) => {
+        const pp = p.mesh?.position;
+        otherPlayers.push({
+          id,
+          u: p.surfaceU,
+          v: p.surfaceV,
+          worldPos: pp ? { x: pp.x, y: pp.y, z: pp.z } : { x: 0, y: 0, z: 0 },
+          alive: playerAliveState.get(id) ?? true,
+          score: p.score,
+          isLocal: id === localPlayerId,
+        });
+      });
+
+      // Death tracking (alive→dead transitions)
+      const localAlive = localPlayer?.alive ?? true;
+      if (_mpTelPrevAlive && !localAlive) {
+        _mpTelTotalDeaths++;
+        let nearestType = 'unknown';
+        let nearestWDist = Infinity;
+        let nearestSDist = Infinity;
+        for (const ed of telEnemies) {
+          if (ed.worldDistToPlayer < nearestWDist) {
+            nearestWDist = ed.worldDistToPlayer;
+            nearestSDist = ed.surfaceDistToPlayer;
+            nearestType = ed.type;
+          }
+        }
+        _mpTelDeathLog.push({
+          frame: _mpTelFrameCount,
+          time: game.clock.totalTime,
+          playerU: localPlayer?.surfaceU ?? 0,
+          playerV: localPlayer?.surfaceV ?? 0,
+          playerWorldPos: pPos ? { x: pPos.x, y: pPos.y, z: pPos.z } : { x: 0, y: 0, z: 0 },
+          nearestEnemyDist: nearestWDist === Infinity ? -1 : nearestWDist,
+          nearestEnemySurfaceDist: nearestSDist === Infinity ? -1 : nearestSDist,
+          nearestEnemyType: nearestType,
+          livesRemaining: localPlayer?.lives ?? 0,
+        });
+      }
+      _mpTelPrevAlive = localAlive;
+      _mpTelFrameCount++;
+
+      (window as any).__GAME_TELEMETRY = {
+        player: {
+          u: localPlayer?.surfaceU ?? 0,
+          v: localPlayer?.surfaceV ?? 0,
+          worldPos: pPos ? { x: pPos.x, y: pPos.y, z: pPos.z } : { x: 0, y: 0, z: 0 },
+          lives: localPlayer?.lives ?? 0,
+          score: localPlayer?.score ?? 0,
+          alive: localAlive,
+          collisionRadius: playerRadius,
+        },
+        players: otherPlayers,
+        enemies: telEnemies,
+        bullets: { count: bulletIdToIndex.size },
+        surface: { type: String(lastCreatedSurfaceType) },
+        collisions: {
+          enemiesInPlayerRadius,
+          nearestEnemyDist: nearestEnemyWorldDist === Infinity ? -1 : nearestEnemyWorldDist,
+          nearestEnemySurfaceDist: nearestEnemySurfaceDist === Infinity ? -1 : nearestEnemySurfaceDist,
+        },
+        network: {
+          connected: network.isConnected(),
+          playerCount: networkPlayers.size,
+          isHost,
+          localPlayerId,
+        },
+        frame: _mpTelFrameCount,
+        time: game.clock.totalTime,
+        deaths: {
+          total: _mpTelTotalDeaths,
+          log: _mpTelDeathLog,
+          lastDeath: _mpTelDeathLog.length > 0 ? _mpTelDeathLog[_mpTelDeathLog.length - 1] : null,
+        },
+        isPaused,
+        isGameOver: currentRoomPhase === 'gameover',
+      };
     }
 
     // Clear per-frame input
