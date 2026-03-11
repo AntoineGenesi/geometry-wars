@@ -47,6 +47,12 @@ interface InstanceBatch {
   activeCount: number;
   /** Base color for this enemy type (for resetting after hit flash). */
   baseColor: THREE.Color;
+  /** Per-instance "intended" color before dimming (RGB, 3 floats per instance).
+   *  Tracks the undimmed color so setInstanceVisibility can modulate instanceColor
+   *  correctly even when rainbow mode or other color overrides are active.
+   *  This enables RGB-based dimming that works on BOTH WebGL and WebGPU
+   *  (onBeforeCompile-based alpha dimming is WebGL-only). */
+  perInstanceColors: Float32Array;
 }
 
 /**
@@ -171,6 +177,11 @@ export class EnemyInstanceManager {
     batch.instancedMesh.setMatrixAt(index, _tempMatrix);
     batch.instancedMesh.setColorAt(index, batch.baseColor);
     batch.opacityAttribute.setX(index, 1.0);
+    // Initialize per-instance intended color to base color
+    const ci = index * 3;
+    batch.perInstanceColors[ci] = batch.baseColor.r;
+    batch.perInstanceColors[ci + 1] = batch.baseColor.g;
+    batch.perInstanceColors[ci + 2] = batch.baseColor.b;
 
     // Track the instance index on the enemy for external reference
     (enemy as any)._instanceIndex = index;
@@ -336,10 +347,25 @@ export class EnemyInstanceManager {
           } else {
             // Dim behavior: render at 0.3 opacity so the entity is visible but clearly on the far side
             batch.opacityAttribute.setX(highIndex, 0.3);
+            // RGB dimming for WebGPU compatibility
+            const ci = highIndex * 3;
+            _tempColor.setRGB(
+              batch.perInstanceColors[ci] * 0.3,
+              batch.perInstanceColors[ci + 1] * 0.3,
+              batch.perInstanceColors[ci + 2] * 0.3,
+            );
+            batch.instancedMesh.setColorAt(highIndex, _tempColor);
           }
         } else {
-          // Visible entity: restore full opacity
+          // Visible entity: restore full opacity and color
           batch.opacityAttribute.setX(highIndex, 1.0);
+          const ci = highIndex * 3;
+          _tempColor.setRGB(
+            batch.perInstanceColors[ci],
+            batch.perInstanceColors[ci + 1],
+            batch.perInstanceColors[ci + 2],
+          );
+          batch.instancedMesh.setColorAt(highIndex, _tempColor);
         }
       }
 
@@ -397,6 +423,11 @@ export class EnemyInstanceManager {
     if (index === undefined) return;
 
     batch.instancedMesh.setColorAt(index, color);
+    // Track intended color for RGB dimming (so setInstanceVisibility can modulate correctly)
+    const ci = index * 3;
+    batch.perInstanceColors[ci] = color.r;
+    batch.perInstanceColors[ci + 1] = color.g;
+    batch.perInstanceColors[ci + 2] = color.b;
   }
 
   /**
@@ -447,8 +478,20 @@ export class EnemyInstanceManager {
     const index = batch.enemyToIndex.get(enemy);
     if (index === undefined) return;
 
-    // Write to the per-instance opacity attribute (read by fragment shader)
+    // Write to the per-instance opacity attribute (read by fragment shader on WebGL)
     batch.opacityAttribute.setX(index, visibility);
+
+    // RGB-based dimming: modulate instanceColor by visibility.
+    // This works on BOTH WebGL and WebGPU (onBeforeCompile alpha is WebGL-only).
+    // Reads the per-instance intended color (set by register/setEnemyColor) and
+    // multiplies by visibility, so dimmed enemies have darker colors.
+    const ci = index * 3;
+    _tempColor.setRGB(
+      batch.perInstanceColors[ci] * visibility,
+      batch.perInstanceColors[ci + 1] * visibility,
+      batch.perInstanceColors[ci + 2] * visibility,
+    );
+    batch.instancedMesh.setColorAt(index, _tempColor);
   }
 
   /**
@@ -590,6 +633,8 @@ export class EnemyInstanceManager {
         '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
+    // Unique cache key to prevent sharing program with type-specific batches
+    material.customProgramCacheKey = () => `lod-${name}`;
 
     const instancedMesh = new THREE.InstancedMesh(
       geometry,
@@ -779,6 +824,15 @@ export class EnemyInstanceManager {
     if (slotIndex === undefined) return;
 
     lodBatch.opacityAttribute.setX(slotIndex, visibility);
+
+    // RGB-based dimming for LOD batches (WebGPU compatibility).
+    // Use the enemy type's base color since LOD batches are shared across types.
+    const typeKey = (enemy as any)._instanceType as string | undefined;
+    const baseColor = typeKey ? this.typeBaseColors.get(typeKey) : null;
+    if (baseColor) {
+      _tempColor.copy(baseColor).multiplyScalar(visibility);
+      lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
+    }
   }
 
   /**
@@ -901,6 +955,12 @@ export class EnemyInstanceManager {
     const shaderStyle = getEnemyShaderStyle(typeKey);
     enhanceMaterialWithShaderEffect(material, shaderStyle, baseColor);
 
+    // Set unique program cache key per enemy type + shader style.
+    // Without this, Three.js may reuse the compiled shader program from the first
+    // enemy type for all types (since onBeforeCompile closures have the same toString()).
+    // Different styles inject different GLSL code, so each needs its own program.
+    material.customProgramCacheKey = () => `enemy-${typeKey}-${shaderStyle}`;
+
     // Create InstancedMesh
     const instancedMesh = new THREE.InstancedMesh(mergedGeometry, material, this.maxInstances);
     instancedMesh.count = 0; // Start with 0 visible instances
@@ -928,11 +988,22 @@ export class EnemyInstanceManager {
     const opacityAttribute = new THREE.InstancedBufferAttribute(opacityArray, 1);
     instancedMesh.geometry.setAttribute('instanceOpacity', opacityAttribute);
 
+    // Create per-instance intended color array (RGB, 3 floats per instance).
+    // Tracks the undimmed color for each instance so setInstanceVisibility can
+    // modulate instanceColor correctly. Initialized to baseColor.
+    const perInstanceColors = new Float32Array(this.maxInstances * 3);
+    for (let i = 0; i < this.maxInstances; i++) {
+      perInstanceColors[i * 3] = baseColor.r;
+      perInstanceColors[i * 3 + 1] = baseColor.g;
+      perInstanceColors[i * 3 + 2] = baseColor.b;
+    }
+
     return {
       geometry: mergedGeometry,
       material,
       instancedMesh,
       opacityAttribute,
+      perInstanceColors,
       enemyToIndex: new Map(),
       indexToEnemy: new Array(this.maxInstances).fill(null),
       nextFreeIndex: 0,

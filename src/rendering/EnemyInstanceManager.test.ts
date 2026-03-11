@@ -222,6 +222,70 @@ describe('EnemyInstanceManager', () => {
       manager.setInstanceVisibility(grunt, 0.5);
       manager.flushColors();
     });
+
+    it('two enemies of same type get DIFFERENT instanceColor when given different visibility', () => {
+      // Regression test for s44r10-01: user reported all instances of the same
+      // enemy type sharing one brightness. This test verifies that RGB-based
+      // dimming (via instanceColor) produces different colors per instance.
+      const nearGrunt = new TestGrunt(0.5, 0.5);
+      const farGrunt = new TestGrunt(0.9, 0.9);
+      manager.register(nearGrunt);
+      manager.register(farGrunt);
+
+      // Simulate dimming: near enemy is bright, far enemy is dim
+      manager.setInstanceVisibility(nearGrunt, 1.0);
+      manager.setInstanceVisibility(farGrunt, 0.15);
+      manager.flushColors();
+
+      // Read back instanceColor for each enemy
+      const batch = (manager as any).batches.get('Grunt');
+      expect(batch).toBeDefined();
+
+      const nearIndex = batch.enemyToIndex.get(nearGrunt);
+      const farIndex = batch.enemyToIndex.get(farGrunt);
+      expect(nearIndex).toBeDefined();
+      expect(farIndex).toBeDefined();
+
+      const nearColor = new THREE.Color();
+      const farColor = new THREE.Color();
+      batch.instancedMesh.getColorAt(nearIndex!, nearColor);
+      batch.instancedMesh.getColorAt(farIndex!, farColor);
+
+      // Near enemy should be significantly brighter than far enemy
+      const nearBrightness = nearColor.r + nearColor.g + nearColor.b;
+      const farBrightness = farColor.r + farColor.g + farColor.b;
+      expect(nearBrightness).toBeGreaterThan(farBrightness * 2);
+
+      // Far enemy should NOT be zero (still visible at SURFACE_DIM_OPACITY)
+      expect(farBrightness).toBeGreaterThan(0);
+
+      // Opacity attribute should also differ (WebGL path)
+      expect(batch.opacityAttribute.getX(nearIndex!)).toBeCloseTo(1.0, 5);
+      expect(batch.opacityAttribute.getX(farIndex!)).toBeCloseTo(0.15, 5);
+    });
+
+    it('preserves rainbow mode colors when dimming', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+
+      // Set rainbow color
+      const rainbowColor = new THREE.Color(1.0, 0.0, 0.5);
+      manager.setEnemyColor(grunt, rainbowColor);
+
+      // Apply dimming
+      manager.setInstanceVisibility(grunt, 0.5);
+      manager.flushColors();
+
+      // Read back instanceColor — should be rainbow color * 0.5
+      const batch = (manager as any).batches.get('Grunt');
+      const index = batch.enemyToIndex.get(grunt);
+      const color = new THREE.Color();
+      batch.instancedMesh.getColorAt(index!, color);
+
+      expect(color.r).toBeCloseTo(0.5, 2);   // 1.0 * 0.5
+      expect(color.g).toBeCloseTo(0.0, 2);   // 0.0 * 0.5
+      expect(color.b).toBeCloseTo(0.25, 2);  // 0.5 * 0.5
+    });
   });
 
   describe('getStats', () => {
