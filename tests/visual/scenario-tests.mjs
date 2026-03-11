@@ -608,6 +608,717 @@ const SCENARIOS = {
 
     return results;
   },
+
+  // =========================================================================
+  // BRUTAL STRESS TESTS (Scenarios 7-12) — Added s44r10-09
+  // These are HARSH. 30-60s active play, strict thresholds, zero tolerance
+  // for phantom kills, NaN, or distance mismatches.
+  // =========================================================================
+
+  /**
+   * Scenario 7: Extended Survival — 60s Active Gameplay
+   * Player moves randomly + shoots continuously.
+   * Every death gets a full autopsy. Phantom kills = FAIL.
+   */
+  async survival(page, surface) {
+    const results = { name: 'Extended Survival (60s)', surface, checks: [] };
+
+    // Movement pattern: alternate WASD every 2-3s with continuous shooting
+    const DURATION_MS = 60000;
+    const MOVE_INTERVAL_MS = 2500;
+    const SAMPLE_INTERVAL_MS = 500;
+    const keys = ['w', 'a', 's', 'd'];
+
+    // Start shooting — click center of canvas and hold mouse
+    await page.mouse.move(320, 180);
+    await page.mouse.down();
+
+    // Collect telemetry samples while playing
+    const samples = [];
+    const startTime = Date.now();
+    let currentKey = null;
+    let lastKeyChange = 0;
+    let keyIndex = 0;
+
+    while (Date.now() - startTime < DURATION_MS) {
+      const elapsed = Date.now() - startTime;
+
+      // Change movement direction every MOVE_INTERVAL_MS
+      if (elapsed - lastKeyChange > MOVE_INTERVAL_MS) {
+        if (currentKey) await page.keyboard.up(currentKey);
+        currentKey = keys[keyIndex % keys.length];
+        keyIndex++;
+        await page.keyboard.down(currentKey);
+        lastKeyChange = elapsed;
+
+        // Also move mouse to a random-ish spot for shooting direction
+        const angle = (keyIndex * 1.3) % (2 * Math.PI);
+        await page.mouse.move(320 + Math.cos(angle) * 100, 180 + Math.sin(angle) * 100);
+      }
+
+      // Sample telemetry
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) samples.push({ ...t, wallTime: elapsed });
+
+      await sleep(SAMPLE_INTERVAL_MS);
+    }
+
+    // Release controls
+    if (currentKey) await page.keyboard.up(currentKey);
+    await page.mouse.up();
+
+    if (samples.length < 20) {
+      results.checks.push({ check: 'telemetry_samples', passed: false,
+        detail: `Only ${samples.length} samples in 60s — game may have crashed` });
+      return results;
+    }
+
+    results.checks.push({ check: 'telemetry_samples', passed: true,
+      detail: `${samples.length} samples over 60s` });
+
+    // Check game didn't crash (should still have frames advancing)
+    const firstFrame = samples[0].frame;
+    const lastFrame = samples[samples.length - 1].frame;
+    const frameAdvancement = lastFrame - firstFrame;
+    results.checks.push({ check: 'game_running', passed: frameAdvancement > 100,
+      detail: `Frames advanced: ${firstFrame} → ${lastFrame} (${frameAdvancement} frames)` +
+        (frameAdvancement <= 100 ? ' — GAME MAY HAVE FROZEN' : '') });
+
+    // === DEATH AUTOPSY ===
+    const lastSample = samples[samples.length - 1];
+    const deaths = lastSample.deaths;
+
+    if (!deaths || !deaths.log) {
+      results.checks.push({ check: 'death_tracking', passed: false,
+        detail: 'No death log in telemetry' });
+      return results;
+    }
+
+    results.checks.push({ check: 'total_deaths', passed: true,
+      detail: `${deaths.total} deaths in 60s` });
+
+    // Analyze EVERY death
+    let phantomDeaths = 0;
+    let spawnKills = 0;
+    let legitimateDeaths = 0;
+    const deathDetails = [];
+
+    for (const d of deaths.log) {
+      const wrappedSurfDist = d.nearestEnemySurfaceDist > 0.5
+        ? 1.0 - d.nearestEnemySurfaceDist : d.nearestEnemySurfaceDist;
+
+      // Phantom: surface says far AND world says far
+      const isPhantom = wrappedSurfDist > 0.25 && d.nearestEnemyDist > 2.5;
+      // Spawn kill: death within first 2s of a life
+      const isSpawnKill = d.time < 2.0 && d.nearestEnemySurfaceDist < 0.05;
+
+      if (isPhantom) {
+        phantomDeaths++;
+        deathDetails.push(`PHANTOM t=${d.time.toFixed(1)}s: "${d.nearestEnemyType}" surf=${wrappedSurfDist.toFixed(3)} world=${d.nearestEnemyDist.toFixed(2)}`);
+      } else if (isSpawnKill) {
+        spawnKills++;
+        deathDetails.push(`SPAWN_KILL t=${d.time.toFixed(1)}s: "${d.nearestEnemyType}" surf=${wrappedSurfDist.toFixed(3)}`);
+      } else {
+        legitimateDeaths++;
+      }
+    }
+
+    results.checks.push({ check: 'phantom_deaths', passed: phantomDeaths === 0,
+      detail: phantomDeaths === 0
+        ? `0 phantom deaths out of ${deaths.total} total — hit detection clean`
+        : `${phantomDeaths} PHANTOM DEATHS: ${deathDetails.filter(d => d.startsWith('PHANTOM')).join('; ')}` });
+
+    results.checks.push({ check: 'spawn_kills', passed: spawnKills === 0,
+      detail: spawnKills === 0
+        ? `0 spawn kills`
+        : `${spawnKills} SPAWN KILLS: ${deathDetails.filter(d => d.startsWith('SPAWN')).join('; ')}` });
+
+    // Check score increased (player was actually playing, not stuck)
+    const firstScore = samples[0].player?.score || 0;
+    const lastScore = lastSample.player?.score || 0;
+    results.checks.push({ check: 'score_progress', passed: lastScore > firstScore,
+      detail: `Score: ${firstScore} → ${lastScore}` +
+        (lastScore <= firstScore ? ' — player never scored, shooting may be broken' : '') });
+
+    // Check NaN in any sample
+    const nanSamples = samples.filter(s =>
+      isNaN(s.player.u) || isNaN(s.player.v) ||
+      isNaN(s.player.worldPos.x) || isNaN(s.player.worldPos.y) || isNaN(s.player.worldPos.z));
+    results.checks.push({ check: 'no_nan', passed: nanSamples.length === 0,
+      detail: nanSamples.length === 0
+        ? 'No NaN coordinates in any sample'
+        : `${nanSamples.length} samples had NaN player coordinates!` });
+
+    return results;
+  },
+
+  /**
+   * Scenario 8: Deliberate Enemy Approach — Walk INTO Enemies
+   * Move toward nearest enemy, verify death at correct distance.
+   * Repeat 3 times per surface.
+   */
+  async approach(page, surface) {
+    const results = { name: 'Deliberate Enemy Approach', surface, checks: [] };
+
+    const MAX_ATTEMPTS = 3;
+    const APPROACH_TIMEOUT_MS = 20000; // max 20s per attempt
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      // Wait for enemies to exist
+      let t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      let waitCount = 0;
+      while ((!t || t.enemies.length === 0) && waitCount < 20) {
+        await sleep(500);
+        t = await page.evaluate(() => window.__GAME_TELEMETRY);
+        waitCount++;
+      }
+
+      if (!t || t.enemies.length === 0) {
+        results.checks.push({ check: `approach_${attempt}_enemies`, passed: false,
+          detail: `No enemies found after ${waitCount * 500}ms wait` });
+        continue;
+      }
+
+      // Find nearest enemy
+      const sorted = [...t.enemies].sort((a, b) => a.worldDistToPlayer - b.worldDistToPlayer);
+      const target = sorted[0];
+      const initialDist = target.worldDistToPlayer;
+
+      // Determine which key to press to move toward enemy
+      // Compare player UV with enemy UV
+      const du = target.u - t.player.u;
+      const dv = target.v - t.player.v;
+      // Wrap-aware
+      const wdu = du > 0.5 ? du - 1 : (du < -0.5 ? du + 1 : du);
+      const wdv = dv > 0.5 ? dv - 1 : (dv < -0.5 ? dv + 1 : dv);
+
+      // Map UV deltas to WASD (a=u-, d=u+, w=v+, s=v-)
+      const horizontalKey = wdu > 0 ? 'd' : 'a';
+      const verticalKey = wdv > 0 ? 'w' : 's';
+      const primaryKey = Math.abs(wdu) > Math.abs(wdv) ? horizontalKey : verticalKey;
+
+      // Press both keys to move diagonally toward enemy
+      await page.keyboard.down(horizontalKey);
+      await page.keyboard.down(verticalKey);
+
+      // Track distance over time — wait for death or timeout
+      const approachStart = Date.now();
+      let died = false;
+      let lastDist = initialDist;
+      let distAtDeath = -1;
+      const prevDeaths = t.deaths?.total || 0;
+      let distHistory = [];
+
+      while (Date.now() - approachStart < APPROACH_TIMEOUT_MS) {
+        await sleep(300);
+        const curr = await page.evaluate(() => window.__GAME_TELEMETRY);
+        if (!curr) continue;
+
+        // Track nearest enemy distance
+        const nearestDist = curr.collisions.nearestEnemyDist;
+        if (nearestDist > 0) {
+          distHistory.push(nearestDist);
+          lastDist = nearestDist;
+        }
+
+        // Check if we died
+        if (curr.deaths && curr.deaths.total > prevDeaths) {
+          died = true;
+          const deathEntry = curr.deaths.log[curr.deaths.log.length - 1];
+          distAtDeath = deathEntry?.nearestEnemyDist || lastDist;
+          break;
+        }
+      }
+
+      await page.keyboard.up(horizontalKey);
+      await page.keyboard.up(verticalKey);
+
+      if (died) {
+        // Verify death happened at reasonable distance (world dist < 3.0 = within collision range)
+        const deathDistOk = distAtDeath < 3.0;
+        results.checks.push({ check: `approach_${attempt}_death_dist`, passed: deathDistOk,
+          detail: `Death at world dist=${distAtDeath.toFixed(3)} ` +
+            `(initial=${initialDist.toFixed(2)}, target="${target.type}")` +
+            (deathDistOk ? '' : ` — DIED TOO FAR FROM ENEMY (phantom kill?)`) });
+      } else {
+        // No death in 20s — either player got lucky or hit detection failed
+        // Check if distance decreased (player was actually approaching)
+        const distDecreased = distHistory.length > 2 &&
+          distHistory[distHistory.length - 1] < distHistory[0] * 0.8;
+        results.checks.push({ check: `approach_${attempt}_nodeath`, passed: true,
+          detail: `No death after ${APPROACH_TIMEOUT_MS / 1000}s approach. ` +
+            `Last dist=${lastDist.toFixed(2)}, dist decreased=${distDecreased}` });
+      }
+
+      // Wait for respawn before next attempt
+      await sleep(3000);
+    }
+
+    return results;
+  },
+
+  /**
+   * Scenario 9: Seam Crossing — Move to UV Boundaries
+   * Move in one direction for 15s, track UV continuity.
+   * Any NaN, large UV jump, or phantom death at seam = FAIL.
+   */
+  async seam(page, surface) {
+    const results = { name: 'Seam Crossing', surface, checks: [] };
+
+    // Test both U-axis (press 'd' for 15s) and V-axis (press 'w' for 15s)
+    for (const axis of [{ key: 'd', label: 'U-axis (right)', coord: 'u' }, { key: 'w', label: 'V-axis (forward)', coord: 'v' }]) {
+      const uvHistory = [];
+      const worldHistory = [];
+      let nanDetected = false;
+      let largeJump = false;
+      let jumpDetails = '';
+
+      // Get initial state
+      const prevDeaths = (await page.evaluate(() => window.__GAME_TELEMETRY))?.deaths?.total || 0;
+
+      // Hold key for 15s, sample frequently
+      await page.keyboard.down(axis.key);
+
+      for (let i = 0; i < 75; i++) { // 75 * 200ms = 15s
+        await sleep(200);
+        const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+        if (!t) continue;
+
+        const uv = axis.coord === 'u' ? t.player.u : t.player.v;
+        const worldPos = t.player.worldPos;
+
+        if (isNaN(uv) || !isFinite(uv)) {
+          nanDetected = true;
+        }
+
+        uvHistory.push(uv);
+        worldHistory.push({ x: worldPos.x, y: worldPos.y, z: worldPos.z });
+
+        // Check for large UV jumps (not wrapping 0↔1, not face transitions)
+        if (uvHistory.length >= 2) {
+          const prev = uvHistory[uvHistory.length - 2];
+          const curr = uvHistory[uvHistory.length - 1];
+          const delta = Math.abs(curr - prev);
+          // Expected non-bugs:
+          // - UV wrapping: delta ≈ 0.5 (half-revolution) or ≈ 1.0 (full wrap) — normal on closed surfaces
+          // - Face transitions: delta ≈ 0.167 (1/6) on cubes — crossing between 6 faces
+          // - Mobius half-twist: delta ≈ 0.2-0.3 — non-orientable topology
+          // True discontinuity: unexpected delta NOT near any of these values
+          const isWrap = delta > 0.45 && delta < 0.55; // ~0.5 wrap (half revolution)
+          const isFullWrap = delta > 0.85; // ~1.0 full wrap
+          const isFaceTransition = delta > 0.12 && delta < 0.22; // cube face change (~0.167)
+          const isMobiusTwist = delta > 0.18 && delta < 0.35; // mobius topology
+          const isExpected = isWrap || isFullWrap || isFaceTransition || isMobiusTwist;
+
+          if (delta > 0.1 && !isExpected) {
+            largeJump = true;
+            jumpDetails = `UV jump at sample ${i}: ${prev.toFixed(4)} → ${curr.toFixed(4)} (delta=${delta.toFixed(4)})`;
+          }
+        }
+      }
+
+      await page.keyboard.up(axis.key);
+
+      results.checks.push({ check: `seam_${axis.coord}_nan`, passed: !nanDetected,
+        detail: nanDetected ? `NaN detected in ${axis.label} during seam crossing!` :
+          `No NaN in ${axis.label} (${uvHistory.length} samples)` });
+
+      results.checks.push({ check: `seam_${axis.coord}_jump`, passed: !largeJump,
+        detail: largeJump ? `Discontinuous jump in ${axis.label}: ${jumpDetails}` :
+          `UV continuity OK in ${axis.label}` });
+
+      // Check if UV actually wrapped (moved enough to cross a seam)
+      const uvRange = Math.max(...uvHistory) - Math.min(...uvHistory);
+      const crossedSeam = uvRange > 0.7; // If range > 0.7, likely wrapped
+      results.checks.push({ check: `seam_${axis.coord}_wrap`, passed: true,
+        detail: `${axis.label} UV range: ${Math.min(...uvHistory).toFixed(3)} - ${Math.max(...uvHistory).toFixed(3)} ` +
+          `(${crossedSeam ? 'CROSSED SEAM' : 'did not reach seam'})` });
+
+      // Check for deaths during seam crossing (phantom deaths at boundaries)
+      const postDeaths = (await page.evaluate(() => window.__GAME_TELEMETRY))?.deaths?.total || 0;
+      const seamDeaths = postDeaths - prevDeaths;
+      if (seamDeaths > 0) {
+        // Get the death details
+        const deathLog = (await page.evaluate(() => window.__GAME_TELEMETRY))?.deaths?.log || [];
+        const recentDeaths = deathLog.slice(-seamDeaths);
+        for (const d of recentDeaths) {
+          const wrappedDist = d.nearestEnemySurfaceDist > 0.5
+            ? 1.0 - d.nearestEnemySurfaceDist : d.nearestEnemySurfaceDist;
+          const isPhantom = wrappedDist > 0.25 && d.nearestEnemyDist > 2.5;
+          if (isPhantom) {
+            results.checks.push({ check: `seam_${axis.coord}_phantom_death`, passed: false,
+              detail: `PHANTOM death during ${axis.label} seam crossing: ` +
+                `"${d.nearestEnemyType}" surf=${wrappedDist.toFixed(3)} world=${d.nearestEnemyDist.toFixed(2)}` });
+          }
+        }
+      }
+
+      await sleep(1000); // Brief pause between axes
+    }
+
+    // Also check enemy positions near seam — are distances consistent?
+    const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+    if (t && t.enemies.length > 0) {
+      const seamEnemies = t.enemies.filter(e => {
+        const nearUSeam = e.u < 0.05 || e.u > 0.95;
+        const nearVSeam = e.v < 0.05 || e.v > 0.95;
+        return nearUSeam || nearVSeam;
+      });
+      if (seamEnemies.length > 0) {
+        // Check distance consistency for seam-adjacent enemies
+        for (const e of seamEnemies.slice(0, 3)) {
+          const surfFar = e.surfaceDistToPlayer > 0.4;
+          const worldClose = e.worldDistToPlayer < 1.5;
+          const mismatch = surfFar && worldClose;
+          results.checks.push({ check: `seam_enemy_dist`, passed: !mismatch,
+            detail: `Seam enemy "${e.type}" at UV(${e.u.toFixed(3)},${e.v.toFixed(3)}): ` +
+              `surf=${e.surfaceDistToPlayer.toFixed(3)} world=${e.worldDistToPlayer.toFixed(2)}` +
+              (mismatch ? ' — DISTANCE MISMATCH at seam!' : '') });
+        }
+      }
+    }
+
+    return results;
+  },
+
+  /**
+   * Scenario 10: Enemy Pile-Up — Wait for 30+ Enemies
+   * Let enemies accumulate, check for frozen/overlapping enemies.
+   */
+  async pileup(page, surface) {
+    const results = { name: 'Enemy Pile-Up', surface, checks: [] };
+
+    // Wait 30s for enemies to accumulate (don't shoot — let them pile up)
+    // Move slightly to stay alive but don't engage
+    const WAIT_MS = 30000;
+    const SAMPLE_INTERVAL_MS = 1000;
+    const enemySnapshots = []; // per-sample: array of {type, u, v, worldDist}
+
+    const startTime = Date.now();
+    let moveDir = 'a';
+    let lastDirChange = 0;
+    await page.keyboard.down(moveDir);
+
+    while (Date.now() - startTime < WAIT_MS) {
+      const elapsed = Date.now() - startTime;
+
+      // Alternate direction every 5s (dodge enemies, don't die too fast)
+      if (elapsed - lastDirChange > 5000) {
+        await page.keyboard.up(moveDir);
+        moveDir = moveDir === 'a' ? 'd' : 'a';
+        await page.keyboard.down(moveDir);
+        lastDirChange = elapsed;
+      }
+
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) {
+        enemySnapshots.push(t.enemies.map(e => ({
+          type: e.type, u: e.u, v: e.v,
+          worldDist: e.worldDistToPlayer,
+          worldPos: e.worldPos,
+        })));
+      }
+
+      await sleep(SAMPLE_INTERVAL_MS);
+    }
+
+    await page.keyboard.up(moveDir);
+
+    if (enemySnapshots.length < 10) {
+      results.checks.push({ check: 'enough_snapshots', passed: false,
+        detail: `Only ${enemySnapshots.length} snapshots` });
+      return results;
+    }
+
+    // Peak enemy count
+    const peakEnemies = Math.max(...enemySnapshots.map(s => s.length));
+    results.checks.push({ check: 'enemy_accumulation', passed: peakEnemies >= 5,
+      detail: `Peak enemy count: ${peakEnemies}` +
+        (peakEnemies < 5 ? ' — too few enemies spawned in 30s' : '') });
+
+    // Check for FROZEN enemies (same UV for 5+ consecutive samples = 5s)
+    const lastSnapshot = enemySnapshots[enemySnapshots.length - 1];
+    if (lastSnapshot.length > 0 && enemySnapshots.length >= 6) {
+      let frozenCount = 0;
+      // Track each enemy by approximate position across snapshots
+      for (const enemy of lastSnapshot) {
+        let consecutiveSame = 0;
+        for (let i = enemySnapshots.length - 2; i >= Math.max(0, enemySnapshots.length - 8); i--) {
+          const prevSnap = enemySnapshots[i];
+          const match = prevSnap.find(e =>
+            Math.abs(e.u - enemy.u) < 0.001 && Math.abs(e.v - enemy.v) < 0.001 && e.type === enemy.type);
+          if (match) consecutiveSame++;
+          else break;
+        }
+        if (consecutiveSame >= 5) frozenCount++;
+      }
+
+      results.checks.push({ check: 'frozen_enemies', passed: frozenCount === 0,
+        detail: frozenCount === 0
+          ? `No frozen enemies detected (checked ${lastSnapshot.length} enemies)`
+          : `${frozenCount} FROZEN enemies (same UV for 5+ seconds) — stuck/not moving!` });
+    }
+
+    // Check for OVERLAPPING enemies (two enemies with UV distance < 0.005)
+    if (lastSnapshot.length >= 2) {
+      let overlaps = 0;
+      for (let i = 0; i < lastSnapshot.length; i++) {
+        for (let j = i + 1; j < lastSnapshot.length; j++) {
+          const du = lastSnapshot[i].u - lastSnapshot[j].u;
+          const dv = lastSnapshot[i].v - lastSnapshot[j].v;
+          const dist = Math.sqrt(du * du + dv * dv);
+          if (dist < 0.005) overlaps++;
+        }
+      }
+
+      results.checks.push({ check: 'overlapping_enemies', passed: overlaps <= 1,
+        detail: overlaps <= 1
+          ? `${overlaps} enemy overlap(s) — acceptable`
+          : `${overlaps} OVERLAPPING enemy pairs (UV dist < 0.005) — clumping bug` });
+    }
+
+    // Check enemies are APPROACHING player (at least some should have decreasing distance)
+    if (enemySnapshots.length >= 10) {
+      const earlyDists = enemySnapshots[5].map(e => e.worldDist).filter(d => d > 0);
+      const lateDists = enemySnapshots[enemySnapshots.length - 1].map(e => e.worldDist).filter(d => d > 0);
+
+      if (earlyDists.length > 0 && lateDists.length > 0) {
+        const earlyAvg = earlyDists.reduce((s, d) => s + d, 0) / earlyDists.length;
+        const lateAvg = lateDists.reduce((s, d) => s + d, 0) / lateDists.length;
+        // At least SOME enemies should be getting closer (avg dist should decrease or stay similar)
+        const approaching = lateAvg < earlyAvg * 1.5;
+        results.checks.push({ check: 'enemies_approaching', passed: approaching,
+          detail: `Avg enemy dist: early=${earlyAvg.toFixed(2)} late=${lateAvg.toFixed(2)} ` +
+            (approaching ? '— enemies closing in' : '— enemies NOT approaching (stuck?)') });
+      }
+    }
+
+    return results;
+  },
+
+  /**
+   * Scenario 11: Shooting Accuracy — Bullets Kill Enemies
+   * Shoot continuously for 30s, verify score increases (kills happening).
+   */
+  async shooting(page, surface) {
+    const results = { name: 'Shooting Accuracy', surface, checks: [] };
+
+    const DURATION_MS = 30000;
+    const SAMPLE_INTERVAL_MS = 500;
+
+    // Get initial state
+    const initial = await page.evaluate(() => window.__GAME_TELEMETRY);
+    if (!initial) {
+      results.checks.push({ check: 'telemetry', passed: false, detail: 'No initial telemetry' });
+      return results;
+    }
+    const initialScore = initial.player.score;
+    const initialFrame = initial.frame;
+
+    // Start shooting + slight movement (so bullets go different directions)
+    await page.mouse.move(420, 180); // aim right
+    await page.mouse.down();
+    await page.keyboard.down('d'); // move right
+
+    const scoreSamples = [];
+    const bulletCountSamples = [];
+    const killTimestamps = [];
+    let prevScore = initialScore;
+
+    const startTime = Date.now();
+    let phase = 0;
+
+    while (Date.now() - startTime < DURATION_MS) {
+      const elapsed = Date.now() - startTime;
+
+      // Change aim direction every 5s to sweep bullets around
+      const newPhase = Math.floor(elapsed / 5000);
+      if (newPhase !== phase) {
+        phase = newPhase;
+        const angle = (phase * Math.PI / 3); // sweep in 60-degree increments
+        await page.mouse.move(320 + Math.cos(angle) * 150, 180 + Math.sin(angle) * 150);
+        // Also change movement direction
+        const moveKeys = ['d', 'w', 'a', 's'];
+        const prevKey = moveKeys[(phase - 1) % 4];
+        const newKey = moveKeys[phase % 4];
+        await page.keyboard.up(prevKey);
+        await page.keyboard.down(newKey);
+      }
+
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) {
+        scoreSamples.push(t.player.score);
+        bulletCountSamples.push(t.bullets?.length || 0);
+
+        if (t.player.score > prevScore) {
+          killTimestamps.push(elapsed);
+          prevScore = t.player.score;
+        }
+      }
+
+      await sleep(SAMPLE_INTERVAL_MS);
+    }
+
+    // Release controls
+    await page.mouse.up();
+    for (const k of ['w', 'a', 's', 'd']) await page.keyboard.up(k);
+
+    // Final state
+    const final = await page.evaluate(() => window.__GAME_TELEMETRY);
+    const finalScore = final?.player?.score || 0;
+    const totalKills = finalScore - initialScore;
+
+    // Check 1: Score increased (player actually killed enemies)
+    results.checks.push({ check: 'kills_happened', passed: totalKills > 0,
+      detail: `Score: ${initialScore} → ${finalScore} (${totalKills} points gained in 30s)` +
+        (totalKills === 0 ? ' — ZERO KILLS, bullets may not be hitting enemies!' : '') });
+
+    // Check 2: Bullets were present (guns actually firing)
+    const avgBullets = bulletCountSamples.length > 0
+      ? bulletCountSamples.reduce((s, b) => s + b, 0) / bulletCountSamples.length : 0;
+    const maxBullets = Math.max(...bulletCountSamples, 0);
+    results.checks.push({ check: 'bullets_firing', passed: maxBullets > 0,
+      detail: `Avg bullets on screen: ${avgBullets.toFixed(1)}, max: ${maxBullets}` +
+        (maxBullets === 0 ? ' — NO BULLETS DETECTED, shooting broken?' : '') });
+
+    // Check 3: Kill rate is reasonable (at least 1 kill every 10s on average)
+    const minKillRate = DURATION_MS / 10000; // 3 kills in 30s minimum
+    results.checks.push({ check: 'kill_rate', passed: totalKills >= minKillRate,
+      detail: `Kill rate: ${(totalKills / (DURATION_MS / 1000) * 60).toFixed(1)} per min ` +
+        `(need ≥${(minKillRate / (DURATION_MS / 1000) * 60).toFixed(1)}/min)` +
+        (totalKills < minKillRate ? ' — kill rate too low, hits may not register' : '') });
+
+    // Check 4: Bullet-enemy overlaps detected (telemetry tracks this)
+    const lastSample = final;
+    if (lastSample) {
+      const bulletsHitting = lastSample.collisions?.bulletsHittingEnemies || 0;
+      results.checks.push({ check: 'bullet_enemy_overlap', passed: true,
+        detail: `Current bullet-enemy overlaps: ${bulletsHitting}` });
+    }
+
+    // Check 5: Kills happened across the duration (not just at start)
+    if (killTimestamps.length >= 2) {
+      const firstKill = killTimestamps[0];
+      const lastKill = killTimestamps[killTimestamps.length - 1];
+      const killSpan = lastKill - firstKill;
+      results.checks.push({ check: 'kill_consistency', passed: killSpan > DURATION_MS * 0.3,
+        detail: `Kills from ${(firstKill / 1000).toFixed(1)}s to ${(lastKill / 1000).toFixed(1)}s ` +
+          `(span: ${(killSpan / 1000).toFixed(1)}s)` +
+          (killSpan <= DURATION_MS * 0.3 ? ' — kills clustered, may have stopped working' : '') });
+    }
+
+    return results;
+  },
+
+  /**
+   * Scenario 12: Surface vs World Distance Consistency
+   * For every enemy, every sample: compare surfaceDist and worldDist.
+   * Flag cases where they disagree (surface says far, world says close, or vice versa).
+   * This is the EXACT bug class that killed players on cube-ring.
+   */
+  async distance_consistency(page, surface) {
+    const results = { name: 'Surface vs World Distance Consistency', surface, checks: [] };
+
+    const DURATION_MS = 30000;
+    const SAMPLE_INTERVAL_MS = 400;
+
+    // Move around while sampling (so we get diverse positions)
+    await page.keyboard.down('d');
+    await page.mouse.move(320, 180);
+    await page.mouse.down(); // shoot to stay alive
+
+    let totalComparisons = 0;
+    let mismatches = 0;
+    const mismatchDetails = [];
+    let maxRatio = 0;
+    let maxRatioEnemy = '';
+
+    const startTime = Date.now();
+    let phase = 0;
+
+    while (Date.now() - startTime < DURATION_MS) {
+      const elapsed = Date.now() - startTime;
+
+      // Change direction every 5s
+      const newPhase = Math.floor(elapsed / 5000);
+      if (newPhase !== phase) {
+        const keys = ['d', 'w', 'a', 's'];
+        await page.keyboard.up(keys[phase % 4]);
+        phase = newPhase;
+        await page.keyboard.down(keys[phase % 4]);
+      }
+
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (!t || !t.enemies) { await sleep(SAMPLE_INTERVAL_MS); continue; }
+
+      for (const e of t.enemies) {
+        if (e.surfaceDistToPlayer <= 0 || e.worldDistToPlayer <= 0) continue;
+        totalComparisons++;
+
+        const surfDist = e.surfaceDistToPlayer;
+        const worldDist = e.worldDistToPlayer;
+
+        // Normalize surface dist: on wrapping surfaces, max meaningful dist is ~0.5 UV
+        // World dist depends on surface size but typically 1-30 range
+
+        // The key mismatch: surface says "far" (>0.3 UV) but world says "close" (<2.0 world units)
+        // This means the surface distance formula is WRONG for this surface
+        const surfFarWorldClose = surfDist > 0.3 && worldDist < 2.0;
+
+        // The reverse: surface says "close" (<0.05 UV) but world says "far" (>5.0)
+        // This means an enemy that SHOULD be hitting player is calculated as far away
+        const surfCloseWorldFar = surfDist < 0.05 && worldDist > 5.0;
+
+        if (surfFarWorldClose || surfCloseWorldFar) {
+          mismatches++;
+          if (mismatchDetails.length < 10) { // cap details at 10
+            mismatchDetails.push(
+              `"${e.type}" UV(${e.u.toFixed(3)},${e.v.toFixed(3)}): ` +
+              `surf=${surfDist.toFixed(4)} world=${worldDist.toFixed(2)} ` +
+              `(${surfFarWorldClose ? 'SURF_FAR+WORLD_CLOSE' : 'SURF_CLOSE+WORLD_FAR'})`);
+          }
+        }
+
+        // Track the worst ratio
+        // Normalize: surfDist * surfaceScale ≈ worldDist for a well-behaved surface
+        // We can't know surfaceScale exactly, but we can track the ratio
+        if (worldDist > 0.1) { // avoid div-by-tiny
+          const ratio = surfDist / worldDist;
+          if (ratio > maxRatio) {
+            maxRatio = ratio;
+            maxRatioEnemy = `"${e.type}" surf=${surfDist.toFixed(4)} world=${worldDist.toFixed(2)}`;
+          }
+        }
+      }
+
+      await sleep(SAMPLE_INTERVAL_MS);
+    }
+
+    // Release controls
+    for (const k of ['w', 'a', 's', 'd']) await page.keyboard.up(k);
+    await page.mouse.up();
+
+    results.checks.push({ check: 'total_comparisons', passed: totalComparisons > 100,
+      detail: `${totalComparisons} enemy-distance comparisons over 30s` });
+
+    // STRICT threshold: any mismatch is a problem
+    const mismatchRate = totalComparisons > 0 ? mismatches / totalComparisons : 0;
+    results.checks.push({ check: 'distance_mismatches', passed: mismatches === 0,
+      detail: mismatches === 0
+        ? `0 distance mismatches out of ${totalComparisons} comparisons — distances consistent`
+        : `${mismatches} MISMATCHES (${(mismatchRate * 100).toFixed(2)}%): ${mismatchDetails.join('; ')}` });
+
+    results.checks.push({ check: 'worst_ratio', passed: true,
+      detail: `Worst surf/world ratio: ${maxRatio.toFixed(4)} (${maxRatioEnemy || 'N/A'})` });
+
+    // Per-enemy type breakdown of mismatches
+    if (mismatches > 0) {
+      results.checks.push({ check: 'mismatch_severity', passed: false,
+        detail: `Distance inconsistency detected — this surface may have hit detection bugs at certain positions` });
+    }
+
+    return results;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -754,7 +1465,9 @@ async function main() {
 
   // Write results to file
   const resultsMd = generateResultsMarkdown(allResults, totalPassed, totalFailed);
-  const resultsPath = resolve(PROJECT_ROOT, 'tasks/s44r10-07-scenario-results.md');
+  const resultsPath = resolve(PROJECT_ROOT, scenarioFilter && ['survival', 'approach', 'seam', 'pileup', 'shooting', 'distance_consistency'].includes(scenarioFilter)
+    ? 'tasks/s44r10-09-stress-results.md'
+    : 'tasks/s44r10-07-scenario-results.md');
   writeFileSync(resultsPath, resultsMd);
   console.log(`  Results saved to: ${resultsPath}\n`);
 
