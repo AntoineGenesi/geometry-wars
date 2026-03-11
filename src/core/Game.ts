@@ -534,11 +534,11 @@ export class Game {
     this.bloomResolutionScale = mode === 'modern' ? 1.0 : 0.5;
 
     if (this.isWebGPU) {
-      // WebGPU path: simulate pixelated mode by halving the pixel ratio so the
-      // canvas renders at 50% of the CSS display size. The browser upscales this
-      // half-res buffer to fill the screen, producing the chunky/pixelated look.
+      // WebGPU path: simulate pixelated mode by reducing the pixel ratio so the
+      // canvas renders at 25% of the CSS display size. The browser upscales this
+      // quarter-res buffer to fill the screen, producing the chunky/pixelated look.
       // Modern mode restores the original pixel ratio for full-res rendering.
-      const targetRatio = mode === 'pixelated' ? 0.5 : this._basePixelRatio;
+      const targetRatio = mode === 'pixelated' ? 0.25 : this._basePixelRatio;
       this.renderer.setPixelRatio(targetRatio);
       // Reapply canvas buffer size with the new ratio; keep CSS dimensions unchanged
       // so the canvas still fills the screen (upscaled = pixelated, or 1:1 = modern).
