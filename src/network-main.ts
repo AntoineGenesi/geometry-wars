@@ -6049,16 +6049,20 @@ async function main() {
       }
 
       // Client-authoritative pickup collection for server-synced pickups (s44r-04-03).
-      // s44r2-02 fix: use analytical surface positions (from UV coords via getTransform) instead
-      // of elevated mesh positions. The old code compared:
-      //   player.mesh.position = surfacePos + normal * 0.15
-      //   pickup.mesh.position = surfacePos + normal * (0.5 + bob)
-      // This created a ~0.35 unit vertical gap that exceeded the 0.3 collection radius, making
-      // collection fail unless the bob animation happened to bring the pickup within range.
-      // Fix: compare surface positions (no elevation), consistent with SP companion pickup logic.
+      // s44r2-02 fix: use surface positions instead of elevated mesh positions.
+      // s44r9-04 fix: use mesh.position → worldToSurface for accurate player UV.
+      //   localPlayer.surfaceU/V comes from server (sphere-approx UV, 30Hz lag).
+      //   On non-spherical surfaces (cube, pill, peanut, etc.) it gives wrong world pos.
+      //   On sphere it lags ~33ms behind the player's actual visual position.
+      //   mesh.position is the exact player world pos (from server wx/wy/wz), updated
+      //   every frame via prediction. worldToSurface() recovers the true UV for any surface.
       if (network.isConnected() && getTransform) {
         const transform = getTransform; // capture for TS type narrowing in forEach callbacks
-        const playerSurfacePos = transform(localPlayer.surfaceU, localPlayer.surfaceV).position;
+        // Compute accurate player surface position from mesh pos (de-scaled for worldToSurface).
+        _aimUnscaledPos.copy(localPlayer.mesh.position);
+        if (currentMapSizeScaleFactor !== 1.0) _aimUnscaledPos.divideScalar(currentMapSizeScaleFactor);
+        const _pcUV = surface!.worldToSurface(_aimUnscaledPos);
+        const playerSurfacePos = transform(_pcUV.u, _pcUV.v).position;
         // Radius for super/health pickups that lack checkPlayerCollision()
         // s44r6c-02: Increased from 0.3 to 0.4 — same curvature issue as weapon pickups
         const SUPER_COLLECT_RADIUS_SQ = Math.pow(0.4 * currentMapSizeScaleFactor, 2);
