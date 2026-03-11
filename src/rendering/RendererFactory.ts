@@ -96,10 +96,10 @@ export async function createRenderer(
         console.log('[RendererFactory] ✓ WebGPU renderer ACTIVE (backend:', result.backend, ')');
         return result;
       }
-      console.warn('[RendererFactory] createWebGPURenderer returned null — silent fallback to WebGL2');
-      console.warn('[RendererFactory] Check the logs above for the specific failure reason.');
+      console.error('[RendererFactory] createWebGPURenderer returned null — silent fallback to WebGL2');
+      console.error('[RendererFactory] Check the logs above for the specific failure reason.');
     } catch (err) {
-      console.warn('[RendererFactory] WebGPU initialization threw, falling back to WebGL2:', err);
+      console.error('[RendererFactory] WebGPU initialization threw, falling back to WebGL2:', err);
     }
   } else {
     console.log('[RendererFactory] WebGPU not selected (preference=' + preference + '). Using WebGL2.');
@@ -159,7 +159,7 @@ async function createWebGPURenderer(
     const WebGPURenderer = WebGPUModule.WebGPURenderer;
 
     if (!WebGPURenderer) {
-      console.warn('[RendererFactory] three/webgpu module found but WebGPURenderer not exported');
+      console.error('[RendererFactory] three/webgpu module found but WebGPURenderer not exported');
       return null;
     }
 
@@ -189,19 +189,19 @@ async function createWebGPURenderer(
     const actuallyUsingWebGPU = backendName === 'WebGPUBackend';
 
     if (!actuallyUsingWebGPU) {
-      console.warn(
+      console.error(
         `[RendererFactory] WebGPURenderer created but fell back to ${backendName} internally.`
       );
-      console.warn(
+      console.error(
         '[RendererFactory] This means WebGPU device creation failed at the GPU driver level.'
       );
-      console.warn(
+      console.error(
         '[RendererFactory] Discarding WebGPU renderer and using clean WebGL2 instead.'
       );
-      console.warn(
+      console.error(
         '[RendererFactory] To diagnose: open chrome://gpu and check "WebGPU" line.'
       );
-      console.warn(
+      console.error(
         '[RendererFactory] Common fixes: update GPU driver, update Chrome, enable chrome://flags/#enable-unsafe-webgpu'
       );
 
@@ -221,10 +221,10 @@ async function createWebGPURenderer(
       backend: 'webgpu',
     };
   } catch (err) {
-    console.warn('[RendererFactory] WebGPU initialization failed:', err);
-    console.warn('[RendererFactory] Falling back to WebGL2. To diagnose WebGPU issues:');
-    console.warn('[RendererFactory]   1. Open chrome://gpu → check "WebGPU" status');
-    console.warn('[RendererFactory]   2. Run __webgpuDiagnostic() in the browser console');
+    console.error('[RendererFactory] WebGPU initialization failed:', err);
+    console.error('[RendererFactory] Falling back to WebGL2. To diagnose WebGPU issues:');
+    console.error('[RendererFactory]   1. Open chrome://gpu → check "WebGPU" status');
+    console.error('[RendererFactory]   2. Run __webgpuDiagnostic() in the browser console');
     return null;
   }
 }
