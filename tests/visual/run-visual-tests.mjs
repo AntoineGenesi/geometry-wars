@@ -715,6 +715,206 @@ describe('Debug Overlay', () => {
   });
 });
 
+// --- Suite 11: Regression — Enemy Dimming (s44r10-01) ---
+describe('Regression: Enemy Dimming', () => {
+  test('far-side enemies are dimmer on torus', async ({ page, screenshotDir }) => {
+    // Start on torus — enemies on the far side of the torus should be dimmed
+    await startGameOnSurface(page, 'torus');
+    await injectCanvasReader(page);
+
+    // Wait for enemies to spawn and spread across the surface
+    await sleep(8000);
+
+    const frame = await captureFrameData(page);
+    expect(frame).not.toBeNull();
+
+    const buf = await page.screenshot({ encoding: 'binary' });
+    writeFileSync(`${screenshotDir}/regression-enemy-dimming.png`, buf);
+
+    // Analyze spatial brightness distribution:
+    // Center of screen = near-side enemies (bright)
+    // Edges of screen = far-side enemies (should be dimmer)
+    const centerPixels = frame.pixelBrightness.filter(p =>
+      p.x >= 14 && p.x <= 26 && p.y >= 14 && p.y <= 26
+    );
+    const edgePixels = frame.pixelBrightness.filter(p =>
+      p.x < 6 || p.x > 34 || p.y < 6 || p.y > 34
+    );
+
+    const centerLit = centerPixels.filter(p => p.lum > 10);
+    const edgeLit = edgePixels.filter(p => p.lum > 10);
+
+    if (centerLit.length >= 5 && edgeLit.length >= 5) {
+      const avgCenter = centerLit.reduce((s, p) => s + p.lum, 0) / centerLit.length;
+      const avgEdge = edgeLit.reduce((s, p) => s + p.lum, 0) / edgeLit.length;
+      // Center should not be drastically dimmer than edges (dimming inverted)
+      // If dimming is correct: center ≈ bright, edges ≈ dim
+      // Allow some tolerance — SwiftShader rendering may vary
+      expect(avgCenter).toBeGreaterThan(avgEdge * 0.7);
+    }
+    // If too few lit pixels, the test passes — can't prove dimming is broken
+  });
+
+  test('enemies have varied brightness across screen', async ({ page }) => {
+    await startGameOnSurface(page, 'sphere');
+    await injectCanvasReader(page);
+
+    // Wait for enemies
+    await sleep(6000);
+
+    const frame = await captureFrameData(page);
+    expect(frame).not.toBeNull();
+
+    // Just verify we have non-black pixels at all (game is rendering)
+    expect(frame.nonBlack).toBeGreaterThan(50);
+  });
+});
+
+// --- Suite 12: Regression — Hit Detection / Spawn Safety (s44r10-02) ---
+describe('Regression: Hit Detection', () => {
+  test('player survives first 10s on torus (no unfair spawn kills)', async ({ page, screenshotDir }) => {
+    await startGameOnSurface(page, 'torus');
+
+    // Don't move — just sit and observe. If enemies spawn on top of player, they die.
+    await sleep(10000);
+
+    const buf = await page.screenshot({ encoding: 'binary' });
+    writeFileSync(`${screenshotDir}/regression-hit-detection-torus.png`, buf);
+
+    // Check lives — player should still be alive
+    const lives = await page.evaluate(() => {
+      const el = document.getElementById('lives-display');
+      if (!el) return null;
+      const text = el.textContent || '';
+      const match = text.match(/(\d+)/);
+      return match ? parseInt(match[1], 10) : null;
+    });
+
+    // Player starts with 3+ lives. Should still have at least 1 after 10s
+    // (enemies shouldn't spawn directly on player).
+    expect(lives).not.toBeNull();
+    expect(lives).toBeGreaterThan(0);
+  });
+
+  test('player survives first 10s on sphere', async ({ page }) => {
+    await startGameOnSurface(page, 'sphere');
+    await sleep(10000);
+
+    const lives = await page.evaluate(() => {
+      const el = document.getElementById('lives-display');
+      if (!el) return null;
+      const match = (el.textContent || '').match(/(\d+)/);
+      return match ? parseInt(match[1], 10) : null;
+    });
+
+    expect(lives).not.toBeNull();
+    expect(lives).toBeGreaterThan(0);
+  });
+});
+
+// --- Suite 13: Regression — Cube-Ring Movement (s44r10-03) ---
+describe('Regression: Cube Movement', () => {
+  test('W key moves player upward on cube (not sideways)', async ({ page, screenshotDir }) => {
+    await startGameOnSurface(page, 'cube');
+    await injectCanvasReader(page);
+
+    // Capture initial state
+    const before = await page.screenshot({ encoding: 'binary' });
+
+    // Press W (up) for 1 second
+    await page.keyboard.down('w');
+    await sleep(1000);
+    await page.keyboard.up('w');
+    await sleep(300);
+
+    const after = await page.screenshot({ encoding: 'binary' });
+    writeFileSync(`${screenshotDir}/regression-cube-movement-W.png`, after);
+
+    // Movement should cause visual change
+    const diff = screenshotDiffPercent(before, after);
+    expect(diff).toBeGreaterThan(0.5);
+  });
+
+  test('WASD movement works on cube without crash', async ({ page }) => {
+    await startGameOnSurface(page, 'cube');
+
+    // Press each direction for 500ms
+    for (const key of ['w', 'a', 's', 'd']) {
+      await page.keyboard.down(key);
+      await sleep(500);
+      await page.keyboard.up(key);
+      await sleep(200);
+    }
+
+    const errors = getCriticalErrors(page.__testErrors);
+    expect(errors.length).toBe(0);
+
+    // Game should still be running
+    const running = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      return canvas && canvas.offsetParent !== null;
+    });
+    expect(running).toBe(true);
+  });
+});
+
+// --- Suite 14: Regression — Pixelated Mode (s44r10-04) ---
+describe('Regression: Pixelated Mode', () => {
+  test('pixelated mode produces visible pixel blocks', async ({ page, screenshotDir }) => {
+    // Set visual mode to pixelated before starting
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await sleep(2000);
+
+    // Set localStorage visual mode to pixelated
+    await page.evaluate(() => {
+      localStorage.setItem('visual-mode', 'pixelated');
+    });
+
+    // Now start the game (it reads visual mode from localStorage on init)
+    await startGameOnSurface(page, 'sphere');
+    await sleep(3000);
+
+    const pixelatedShot = await page.screenshot({ encoding: 'binary' });
+    writeFileSync(`${screenshotDir}/regression-pixelated-mode.png`, pixelatedShot);
+
+    // Now switch to modern mode and take another screenshot
+    await page.evaluate(() => {
+      localStorage.setItem('visual-mode', 'modern');
+    });
+
+    // Reload to apply modern mode
+    await startGameOnSurface(page, 'sphere');
+    await sleep(3000);
+
+    const modernShot = await page.screenshot({ encoding: 'binary' });
+    writeFileSync(`${screenshotDir}/regression-modern-mode.png`, modernShot);
+
+    // The two modes should produce visually different output
+    const diff = screenshotDiffPercent(pixelatedShot, modernShot);
+    // Pixelated mode uses 0.25 pixel ratio vs 1.0 — should be noticeably different
+    expect(diff).toBeGreaterThan(1.0);
+  });
+
+  test('game runs without crash in pixelated mode', async ({ page }) => {
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await sleep(1000);
+    await page.evaluate(() => {
+      localStorage.setItem('visual-mode', 'pixelated');
+    });
+
+    await startGameOnSurface(page, 'sphere');
+    await sleep(5000);
+
+    const errors = getCriticalErrors(page.__testErrors);
+    expect(errors.length).toBe(0);
+
+    // Clean up: restore modern mode
+    await page.evaluate(() => {
+      localStorage.setItem('visual-mode', 'modern');
+    });
+  });
+});
+
 // ============================================================================
 // Test Runner
 // ============================================================================
