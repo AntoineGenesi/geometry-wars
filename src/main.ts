@@ -267,8 +267,15 @@ class WaveScheduler {
 
     // Endless scaling waves (now with difficulty-based tiers)
     if (this.endless && this.elapsed >= this.endlessNextSpawn) {
-      this.endlessWave++;
       const activeCount = spawner.getActiveCount();
+      // s44r9-02: Skip wave if at 90% of max enemy cap — prevents silently
+      // dropping spawns via dummy inactive enemies. The wave timer doesn't
+      // advance, so the wave fires as soon as enemies die and count drops.
+      const maxEnemies = spawner.getMaxActiveEnemies();
+      if (activeCount >= maxEnemies * 0.9) {
+        return; // Don't advance wave timer — retry next frame
+      }
+      this.endlessWave++;
       // Spawn interval decreases with wave number AND difficulty level
       // At high difficulty (4+), waves come every 2s — relentless pressure
       const difficultySpeedBonus = Math.min(3.0, this.currentDifficultyLevel * 0.4);

@@ -13,13 +13,15 @@ export enum MapSize {
 
 /**
  * Maximum simultaneous active enemies per map size tier.
- * Scales at 50% / 100% / 150% / 200% relative to MEDIUM baseline (60).
+ * s44r9-02: Raised all caps. At 60 (old MEDIUM), endless wave spawns hit the cap
+ * by wave 3-4 and silently stopped producing visible enemies — EnemySpawner.spawn()
+ * returned dummy inactive enemies that were cleaned up next frame. New baseline: 100.
  */
 export const MAP_SIZE_MAX_ENEMIES: Record<MapSize, number> = {
-  [MapSize.SMALL]: 30,  // 50% of 60
-  [MapSize.MEDIUM]: 60, // 100% baseline
-  [MapSize.LARGE]: 90,  // 150% of 60
-  [MapSize.EPIC]: 120,  // 200% of 60
+  [MapSize.SMALL]: 50,   // was 30 — hit cap almost immediately in endless
+  [MapSize.MEDIUM]: 100, // was 60 — root cause of s44r9-02 (enemies stop spawning)
+  [MapSize.LARGE]: 150,  // was 90
+  [MapSize.EPIC]: 200,   // was 120
 };
 
 /**
@@ -103,10 +105,10 @@ export function getMaxActiveEnemies(size: MapSize): number {
  * Above these limits, adding more enemies would tank performance.
  */
 const DYNAMIC_ENEMY_CAPS: Record<MapSize, number> = {
-  [MapSize.SMALL]: 80,
-  [MapSize.MEDIUM]: 150,
-  [MapSize.LARGE]: 200,
-  [MapSize.EPIC]: 250,
+  [MapSize.SMALL]: 120,
+  [MapSize.MEDIUM]: 200,
+  [MapSize.LARGE]: 300,
+  [MapSize.EPIC]: 400,
 };
 
 /**

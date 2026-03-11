@@ -824,61 +824,63 @@ describe('Companion Count Difficulty Bonus', () => {
 // Dynamic Enemy Cap (getDynamicMaxEnemies)
 // ============================================================================
 
+// s44r9-02: Raised all caps (SMALL 50, MEDIUM 100, LARGE 150, EPIC 200)
+// and dynamic caps (SMALL 120, MEDIUM 200, LARGE 300, EPIC 400)
 describe('getDynamicMaxEnemies', () => {
   describe('SMALL map', () => {
-    it('returns base cap (30) at difficulty 0', () => {
-      expect(getDynamicMaxEnemies(MapSize.SMALL, 0)).toBe(30);
+    it('returns base cap (50) at difficulty 0', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 0)).toBe(50);
     });
 
-    it('returns base cap (30) at difficulty 6 (threshold is exclusive)', () => {
-      expect(getDynamicMaxEnemies(MapSize.SMALL, 6)).toBe(30);
+    it('returns base cap (50) at difficulty 6 (threshold is exclusive)', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 6)).toBe(50);
     });
 
-    it('returns 50 at difficulty 10 (30 + (10-6)*5)', () => {
-      expect(getDynamicMaxEnemies(MapSize.SMALL, 10)).toBe(50);
+    it('returns 70 at difficulty 10 (50 + (10-6)*5)', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 10)).toBe(70);
     });
 
-    it('returns 75 at difficulty 15 (30 + (15-6)*5)', () => {
-      expect(getDynamicMaxEnemies(MapSize.SMALL, 15)).toBe(75);
+    it('returns 95 at difficulty 15 (50 + (15-6)*5)', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 15)).toBe(95);
     });
 
-    it('returns 80 (cap) at difficulty 100', () => {
-      expect(getDynamicMaxEnemies(MapSize.SMALL, 100)).toBe(80);
+    it('returns 120 (cap) at difficulty 100', () => {
+      expect(getDynamicMaxEnemies(MapSize.SMALL, 100)).toBe(120);
     });
   });
 
   describe('MEDIUM map', () => {
-    it('returns base cap (60) below difficulty 6', () => {
-      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 0)).toBe(60);
-      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 6)).toBe(60);
+    it('returns base cap (100) below difficulty 6', () => {
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 0)).toBe(100);
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 6)).toBe(100);
     });
 
-    it('returns 80 at difficulty 10 (60 + (10-6)*5)', () => {
-      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 10)).toBe(80);
+    it('returns 120 at difficulty 10 (100 + (10-6)*5)', () => {
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 10)).toBe(120);
     });
 
-    it('returns 150 (cap) at difficulty 100', () => {
-      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 100)).toBe(150);
+    it('returns 200 (cap) at difficulty 100', () => {
+      expect(getDynamicMaxEnemies(MapSize.MEDIUM, 100)).toBe(200);
     });
   });
 
   describe('LARGE map', () => {
-    it('returns base cap (90) below difficulty 6', () => {
-      expect(getDynamicMaxEnemies(MapSize.LARGE, 0)).toBe(90);
+    it('returns base cap (150) below difficulty 6', () => {
+      expect(getDynamicMaxEnemies(MapSize.LARGE, 0)).toBe(150);
     });
 
-    it('returns 200 (cap) at difficulty 100', () => {
-      expect(getDynamicMaxEnemies(MapSize.LARGE, 100)).toBe(200);
+    it('returns 300 (cap) at difficulty 100', () => {
+      expect(getDynamicMaxEnemies(MapSize.LARGE, 100)).toBe(300);
     });
   });
 
   describe('EPIC map', () => {
-    it('returns base cap (120) below difficulty 6', () => {
-      expect(getDynamicMaxEnemies(MapSize.EPIC, 0)).toBe(120);
+    it('returns base cap (200) below difficulty 6', () => {
+      expect(getDynamicMaxEnemies(MapSize.EPIC, 0)).toBe(200);
     });
 
-    it('returns 250 (cap) at difficulty 100', () => {
-      expect(getDynamicMaxEnemies(MapSize.EPIC, 100)).toBe(250);
+    it('returns 400 (cap) at difficulty 100', () => {
+      expect(getDynamicMaxEnemies(MapSize.EPIC, 100)).toBe(400);
     });
   });
 });
