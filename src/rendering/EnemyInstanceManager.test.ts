@@ -718,7 +718,7 @@ describe('EnemyInstanceManager', () => {
       expect(scale.length()).toBeGreaterThan(0.01); // Non-zero scale = visible
     });
 
-    it('zero-scales enemy that is >90° from player normal (behind surface)', () => {
+    it('zero-scales enemy that is >90° from player normal when hide90DegreeEntities=true', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
       // Enemy is at (0, -10, 0) — directly below player's surface normal
@@ -732,12 +732,34 @@ describe('EnemyInstanceManager', () => {
       const playerPos = new THREE.Vector3(0, 5, 0);
       const playerNormal = new THREE.Vector3(0, 1, 0);
 
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+      // hide90DegreeEntities=true → zero-scale hidden enemies
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal }, true);
 
       const batch = getGruntBatch();
       const scale = getScaleFromMatrix(getInstanceMatrix(batch, 0));
       // Scale should be ~0 (culled)
       expect(scale.length()).toBeLessThan(0.001);
+    });
+
+    it('dims enemy that is >90° from player normal when hide90DegreeEntities=false (default)', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(0, -10, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.HIGH);
+
+      const playerPos = new THREE.Vector3(0, 5, 0);
+      const playerNormal = new THREE.Vector3(0, 1, 0);
+
+      // Default (false) → dim to 0.3, NOT zero-scale
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+
+      const batch = getGruntBatch();
+      const scale = getScaleFromMatrix(getInstanceMatrix(batch, 0));
+      // Scale should be non-zero (dimmed, not hidden)
+      expect(scale.length()).toBeGreaterThan(0.01);
     });
 
     it('renders enemy on same side as player normal', () => {
@@ -761,7 +783,7 @@ describe('EnemyInstanceManager', () => {
       expect(scale.length()).toBeGreaterThan(0.01);
     });
 
-    it('culled enemy is removed from LOD placement', () => {
+    it('culled enemy is removed from LOD placement when hide90DegreeEntities=true', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
       grunt.mesh!.position.set(0, -10, 0);
@@ -773,13 +795,14 @@ describe('EnemyInstanceManager', () => {
       const playerPos = new THREE.Vector3(0, 5, 0);
       const playerNormal = new THREE.Vector3(0, 1, 0);
 
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+      // hide90DegreeEntities=true → fully cull hidden enemies
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal }, true);
 
       // Culled enemy should NOT be in LOD batch
       expect(manager.isInLODBatch(grunt)).toBe(false);
     });
 
-    it('enemy transitions from culled to visible when position changes', () => {
+    it('enemy transitions from culled to visible when position changes (hide90DegreeEntities=true)', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
 
@@ -792,7 +815,7 @@ describe('EnemyInstanceManager', () => {
       // Frame 1: enemy is behind surface (culled)
       grunt.mesh!.position.set(0, -10, 0);
       grunt.mesh!.updateMatrixWorld(true);
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal }, true);
 
       const batch = getGruntBatch();
       const scale1 = getScaleFromMatrix(getInstanceMatrix(batch, 0));
@@ -801,7 +824,7 @@ describe('EnemyInstanceManager', () => {
       // Frame 2: enemy moves to front (visible)
       grunt.mesh!.position.set(1, 10, 0);
       grunt.mesh!.updateMatrixWorld(true);
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal }, true);
 
       const scale2 = getScaleFromMatrix(getInstanceMatrix(batch, 0));
       expect(scale2.length()).toBeGreaterThan(0.01); // Visible again

@@ -494,3 +494,44 @@ describe('REGRESSION s44r8-01: bullet depth dimming inverted on non-sphere surfa
     expect(opacity).toBeCloseTo(BULLET_DEPTH_CURVE.nearSideMax, 2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// REGRESSION s44r11-01: tangential bullets near player should be BRIGHT
+// ---------------------------------------------------------------------------
+// Bug: bullets travel along the surface tangent, perpendicular to the player's
+// outward normal. The dot product playerNormal.dot(normalize(bulletPos - playerPos))
+// is ~0 for nearby bullets. With fadeStartThreshold=0.05 and exponent=3.0, dot=0
+// mapped to nearly farSideMin (8%) — ALL bullets near the player appeared very dim.
+//
+// Fix: fadeStartThreshold=-0.3 ensures bullets are only dimmed when clearly on the
+// far side (dot < -0.3). Tangential bullets (dot~0) remain bright.
+// ---------------------------------------------------------------------------
+describe('REGRESSION s44r11-01: tangential bullets near player should be BRIGHT', () => {
+  const playerPos = new THREE.Vector3(0, 5, 0);
+  const playerNormal = new THREE.Vector3(0, 1, 0); // surface normal pointing up
+
+  it('bullet traveling tangentially (perpendicular to normal) should be bright, not dim', () => {
+    // Bullet 1 unit ahead along surface tangent (X axis): direction is (1,0,0), dot with (0,1,0) = 0
+    const tangentialBulletPos = new THREE.Vector3(1, 5, 0);
+    const opacity = computeDepthVisibility(playerPos, playerNormal, tangentialBulletPos, BULLET_DEPTH_CURVE);
+    // With old fadeStartThreshold=0.05, dot=0 would give ~8% opacity (BUG)
+    // With new fadeStartThreshold=-0.3, dot=0 is well above threshold → near bright
+    expect(opacity).toBeGreaterThan(0.7);
+  });
+
+  it('bullet slightly below equator (dot=-0.1) should still be mostly bright', () => {
+    // Bullet slightly below the equator: direction to bullet has negative Y component
+    const slightlyBelowPos = new THREE.Vector3(1, 4.8, 0);
+    const opacity = computeDepthVisibility(playerPos, playerNormal, slightlyBelowPos, BULLET_DEPTH_CURVE);
+    // dot ≈ -0.1 (slightly below), which is above fadeStartThreshold=-0.3 → still visible
+    expect(opacity).toBeGreaterThan(0.4);
+  });
+
+  it('bullet clearly behind surface (dot < -0.5) should be dim', () => {
+    // Bullet behind the surface: direction has strong negative Y component
+    const farBehindPos = new THREE.Vector3(0, 2, 0);
+    const opacity = computeDepthVisibility(playerPos, playerNormal, farBehindPos, BULLET_DEPTH_CURVE);
+    // dot = -1.0 → well below fadeStartThreshold → minimum opacity
+    expect(opacity).toBeCloseTo(BULLET_DEPTH_CURVE.farSideMin, 2);
+  });
+});

@@ -95,16 +95,24 @@ export const DEFAULT_DEPTH_CURVE: DepthOpacityCurve = DEPTH_OPACITY_PRESETS.stee
 
 /**
  * Depth opacity curve tuned specifically for bullets.
- * More aggressive than the enemy curve: bullets on the far side should be nearly
- * invisible so the player never mistakes them for nearby threats.
- * farSideMin=0.08 → 8% brightness on far side (faint ghost, not solid glow).
- * fadeStartThreshold=0.05 → dimming begins just past the equator.
+ *
+ * s44r11-01: Bullets travel ALONG the surface tangent, so the dot product
+ * playerNormal.dot(normalize(bulletPos - playerPos)) is ~0 for nearby bullets
+ * (tangent is perpendicular to normal). The previous fadeStartThreshold=0.05
+ * and exponent=3.0 mapped dot~0 to nearly minimum opacity, making ALL bullets
+ * near the player appear very dim.
+ *
+ * Fix: fadeStartThreshold=-0.7 pushes the "all dim" point far behind the
+ * surface. exponent=0.5 (sqrt curve) compresses the dim end and expands the
+ * bright end — so dot=0 (equator/tangent) maps to ~0.8 opacity (bright).
+ * Only bullets with dot < -0.3 get noticeably dim.
+ * farSideMin=0.1 → faint glow for far-side bullets (still visible as a cue).
  */
 export const BULLET_DEPTH_CURVE: DepthOpacityCurve = {
-  farSideMin: 0.08,
+  farSideMin: 0.1,
   nearSideMax: 1.0,
-  exponent: 3.0,
-  fadeStartThreshold: 0.05,
+  exponent: 0.5,
+  fadeStartThreshold: -0.8,
 };
 
 /**

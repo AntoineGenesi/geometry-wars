@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { LODLevel, LODGeometryCache } from './LODManager';
-import { getEnemyShaderStyle, enhanceMaterialWithShaderEffect } from './EnemyShaderEffects';
+// s44r11-01: shader effects (lava, crystal, etc.) removed — incompatible with MeshBasicMaterial.
+// import { getEnemyShaderStyle, enhanceMaterialWithShaderEffect } from './EnemyShaderEffects';
 import { getEntityVisibilityState, EntityVisibilityState } from './EntityCulling';
 
 /**
@@ -30,8 +31,8 @@ type EnemyTypeKey = string;
 interface InstanceBatch {
   /** The merged geometry for this enemy type. */
   geometry: THREE.BufferGeometry;
-  /** Shared material (MeshStandardMaterial clone). */
-  material: THREE.MeshStandardMaterial;
+  /** Shared material (MeshBasicMaterial — unlit, instanceColor-driven). */
+  material: THREE.Material;
   /** The InstancedMesh object added to the scene. */
   instancedMesh: THREE.InstancedMesh;
   /** Per-instance opacity attribute (float, 0..1). Used by the custom shader
@@ -63,7 +64,7 @@ interface InstanceBatch {
  */
 interface LODSharedBatch {
   geometry: THREE.BufferGeometry;
-  material: THREE.MeshStandardMaterial;
+  material: THREE.Material;
   instancedMesh: THREE.InstancedMesh;
   opacityAttribute: THREE.InstancedBufferAttribute;
   /** Map from enemy reference to its slot index in this LOD batch. */
@@ -399,6 +400,10 @@ export class EnemyInstanceManager {
       if (batch.instancedMesh.instanceColor) {
         batch.instancedMesh.instanceColor.needsUpdate = true;
       }
+      // Flush per-instance opacity attribute so the shader reads updated values.
+      // Without this, opacityAttribute.setX() changes in the culling loop above
+      // are never uploaded to the GPU, making shader-based dimming invisible.
+      batch.opacityAttribute.needsUpdate = true;
       batch.instancedMesh.count = this.getMaxUsedIndex(batch) + 1;
     }
 
@@ -601,12 +606,10 @@ export class EnemyInstanceManager {
     name: string,
     geometry: THREE.BufferGeometry,
   ): LODSharedBatch {
-    const material = new THREE.MeshStandardMaterial({
+    // s44r11-01: Switched to MeshBasicMaterial (see createBatch() comment for rationale).
+    // LOD batches must match type batches' dimming behavior.
+    const material = new THREE.MeshBasicMaterial({
       color: 0xffffff,
-      emissive: new THREE.Color(0xffffff),
-      emissiveIntensity: 2.5,
-      metalness: 0.1,
-      roughness: 0.3,
       transparent: true,
       depthWrite: false,
     });
@@ -852,7 +855,6 @@ export class EnemyInstanceManager {
     // Collect all child mesh geometries, applying their local transforms
     const geometries: THREE.BufferGeometry[] = [];
     let baseColor = new THREE.Color(0xffffff);
-    let templateMaterial: THREE.MeshStandardMaterial | null = null;
 
     prototypeMesh.traverse((child) => {
       if (child instanceof THREE.Mesh && child.geometry) {
@@ -891,12 +893,11 @@ export class EnemyInstanceManager {
 
         geometries.push(stripped);
 
-        // Extract color from the first valid material
-        if (!templateMaterial && child.material) {
+        // Extract base color from the first valid material
+        if (baseColor.getHex() === 0xffffff && child.material) {
           const mat = child.material as THREE.MeshStandardMaterial;
           if (mat.color) {
             baseColor = mat.color.clone();
-            templateMaterial = mat;
           }
         }
       }
@@ -913,12 +914,19 @@ export class EnemyInstanceManager {
     }
 
     // Create shared material (one per enemy type)
-    const material = new THREE.MeshStandardMaterial({
+    // s44r11-01: Switched from MeshStandardMaterial to MeshBasicMaterial.
+    // MeshStandardMaterial had emissive at 2.0× baseColor which dominated visual output.
+    // Since the main game has NO scene lights (main.ts adds none), MeshStandardMaterial's
+    // diffuse channel contributed nothing — enemies were lit entirely by emissive.
+    // Three.js instanceColor only modulates diffuse, NOT emissive, so RGB dimming
+    // (per-instance color × 0.3 for far-side enemies) was invisible.
+    //
+    // MeshBasicMaterial is unlit: output = material.color × instanceColor. No emissive
+    // channel to fight with. Per-instance RGB dimming directly controls visual brightness.
+    // The bloom post-processing effect provides the glow halo (unchanged).
+    // The onBeforeCompile shader injection still works for additional alpha dimming on WebGL.
+    const material = new THREE.MeshBasicMaterial({
       color: 0xffffff, // White - actual color comes from instanceColor
-      emissive: baseColor.clone(),
-      emissiveIntensity: templateMaterial ? Math.max((templateMaterial as THREE.MeshStandardMaterial).emissiveIntensity, 2.0) : 2.0,
-      metalness: templateMaterial ? (templateMaterial as THREE.MeshStandardMaterial).metalness : 0.3,
-      roughness: templateMaterial ? (templateMaterial as THREE.MeshStandardMaterial).roughness : 0.4,
       transparent: true,
       depthWrite: false, // Transparent objects should not write to depth buffer
     });
@@ -950,16 +958,14 @@ export class EnemyInstanceManager {
       );
     };
 
-    // Enhance material with per-type shader effects (lava, crystal, pulse, nebula)
-    // This wraps the existing onBeforeCompile to add vertex displacement + fragment color mods
-    const shaderStyle = getEnemyShaderStyle(typeKey);
-    enhanceMaterialWithShaderEffect(material, shaderStyle, baseColor);
+    // s44r11-01: Shader effects (lava, crystal, pulse, nebula) are skipped with MeshBasicMaterial.
+    // The effects use `objectNormal` and `modelMatrix` which are only available in
+    // MeshStandardMaterial's shader. MeshBasicMaterial doesn't compute normals.
+    // The bloom post-processing and per-instance color provide sufficient visual variety.
+    // If shader effects are needed in the future, they should be rewritten for basic shaders.
 
-    // Set unique program cache key per enemy type + shader style.
-    // Without this, Three.js may reuse the compiled shader program from the first
-    // enemy type for all types (since onBeforeCompile closures have the same toString()).
-    // Different styles inject different GLSL code, so each needs its own program.
-    material.customProgramCacheKey = () => `enemy-${typeKey}-${shaderStyle}`;
+    // Set unique program cache key per enemy type.
+    material.customProgramCacheKey = () => `enemy-${typeKey}`;
 
     // Create InstancedMesh
     const instancedMesh = new THREE.InstancedMesh(mergedGeometry, material, this.maxInstances);
