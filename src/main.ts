@@ -1892,6 +1892,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Test mode: game state exporter for programmatic tests (?testMode=true) --
   // Declared before onFixedUpdate so the closure captures the reference.
   let _stateExporter: { update(): void } | null = null;
+  // -- Deep telemetry exporter for visual test harness (?debug=true) --
+  let _telemetryExporter: { update(): void } | null = null;
 
   // -- Fixed timestep game logic --
   game.onFixedUpdate = (dt: number) => {
@@ -1909,6 +1911,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
     // Publish window._gameState for Puppeteer / automated tests
     if (_stateExporter) _stateExporter.update();
+    // Publish window.__GAME_TELEMETRY for visual test harness
+    if (_telemetryExporter) _telemetryExporter.update();
 
     // Update aura renderer with current player state and active buffs
     const activeBuffs = buffManager.getActiveBuffs().map(b => ({
@@ -2093,6 +2097,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     import('./debug/GameStateExporter').then(({ GameStateExporter }) => {
       _stateExporter = new GameStateExporter(ctx);
       console.log('[GameStateExporter] Active. window._gameState and window._rendererState are live.');
+    });
+  }
+
+  // -- Deep telemetry exporter: live window.__GAME_TELEMETRY --
+  // Activated when ?debug=true (visual test harness). Zero overhead when not active.
+  if (debugMode) {
+    import('./debug/GameTelemetryExporter').then(({ GameTelemetryExporter }) => {
+      _telemetryExporter = new GameTelemetryExporter(ctx);
+      console.log('[GameTelemetryExporter] Active. window.__GAME_TELEMETRY is live.');
     });
   }
 

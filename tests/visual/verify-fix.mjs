@@ -348,6 +348,104 @@ const CHECK_REGISTRY = {
   },
 
   /**
+   * hit_detection_sane: Using telemetry, verify that no enemy sits within collision
+   * radius for >2 seconds without killing the player (proves hit detection works).
+   */
+  async hit_detection_sane(page, _opts) {
+    // Sample telemetry over 3 seconds
+    const samples = [];
+    for (let i = 0; i < 15; i++) {
+      const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+      if (t) samples.push(t);
+      await sleep(200);
+    }
+
+    if (samples.length < 5) {
+      return { passed: false, reason: `Only ${samples.length} telemetry samples (need ≥5). Is ?debug=true set?` };
+    }
+
+    // Check: if enemies are consistently within collision radius, player should die
+    let framesWithEnemyInRadius = 0;
+    for (const s of samples) {
+      if (s.collisions.enemiesInPlayerRadius > 0 && s.player.alive) {
+        framesWithEnemyInRadius++;
+      }
+    }
+
+    // If enemy was in radius for >60% of samples and player still alive, hit detection is broken
+    const ratio = framesWithEnemyInRadius / samples.length;
+    if (ratio > 0.6) {
+      return { passed: false, reason: `Enemy in collision radius for ${(ratio * 100).toFixed(0)}% of samples but player alive — hit detection may be broken` };
+    }
+
+    return { passed: true, reason: `${framesWithEnemyInRadius}/${samples.length} samples with enemy in radius (${(ratio * 100).toFixed(0)}%)` };
+  },
+
+  /**
+   * enemy_distances: Enemies should spawn at reasonable distances from the player,
+   * not on top of them.
+   */
+  async enemy_distances(page, _opts) {
+    const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+    if (!t) return { passed: false, reason: 'No telemetry data. Is ?debug=true set?' };
+    if (t.enemies.length === 0) return { passed: true, reason: 'No enemies yet — too early to check' };
+
+    // Enemies move toward player during gameplay, so some will be close.
+    // This check detects the SPAWN BUG where enemies spawn AT the player (dist ≈ 0).
+    // Threshold: >3 enemies within 0.005 UV = likely spawned on player (not just attacking).
+    const spawnedOnPlayer = t.enemies.filter(e => e.surfaceDistToPlayer < 0.005 && e.isAlive);
+    const avgDist = t.enemies.reduce((s, e) => s + e.surfaceDistToPlayer, 0) / t.enemies.length;
+
+    if (spawnedOnPlayer.length > 3) {
+      return { passed: false, reason: `${spawnedOnPlayer.length} enemies within 0.005 UV of player — likely spawn bug (avg dist: ${avgDist.toFixed(3)})` };
+    }
+    return { passed: true, reason: `${t.enemies.length} enemies, avg surface dist ${avgDist.toFixed(3)}, ${spawnedOnPlayer.length} very close (attacking, not spawn bug)` };
+  },
+
+  /**
+   * collision_radii: All collision radii should be positive and reasonable.
+   */
+  async collision_radii(page, _opts) {
+    const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+    if (!t) return { passed: false, reason: 'No telemetry data. Is ?debug=true set?' };
+
+    if (t.player.collisionRadius <= 0 || t.player.collisionRadius > 5) {
+      return { passed: false, reason: `Player collision radius ${t.player.collisionRadius} is out of range (expected 0-5)` };
+    }
+
+    const badEnemies = t.enemies.filter(e => e.collisionRadius <= 0 || e.collisionRadius > 5);
+    if (badEnemies.length > 0) {
+      return { passed: false, reason: `${badEnemies.length} enemies with bad collision radius: ${badEnemies.map(e => `${e.type}=${e.collisionRadius}`).join(', ')}` };
+    }
+
+    return { passed: true, reason: `Player radius=${t.player.collisionRadius.toFixed(3)}, ${t.enemies.length} enemies all have valid radii` };
+  },
+
+  /**
+   * enemy_spread: Enemies should be distributed across the surface, not all clumped
+   * at one point.
+   */
+  async enemy_spread(page, _opts) {
+    const t = await page.evaluate(() => window.__GAME_TELEMETRY);
+    if (!t) return { passed: false, reason: 'No telemetry data. Is ?debug=true set?' };
+    if (t.enemies.length < 3) return { passed: true, reason: `Only ${t.enemies.length} enemies — too few to check spread` };
+
+    // Check UV variance — if all enemies have nearly identical UVs, they're clumped
+    const uValues = t.enemies.map(e => e.u);
+    const vValues = t.enemies.map(e => e.v);
+    const uMean = uValues.reduce((s, u) => s + u, 0) / uValues.length;
+    const vMean = vValues.reduce((s, v) => s + v, 0) / vValues.length;
+    const uVariance = uValues.reduce((s, u) => s + (u - uMean) ** 2, 0) / uValues.length;
+    const vVariance = vValues.reduce((s, v) => s + (v - vMean) ** 2, 0) / vValues.length;
+    const totalVariance = uVariance + vVariance;
+
+    if (totalVariance < 0.001) {
+      return { passed: false, reason: `Enemy UV variance ${totalVariance.toFixed(6)} — enemies are all clumped together` };
+    }
+    return { passed: true, reason: `${t.enemies.length} enemies with UV variance ${totalVariance.toFixed(4)} (spread OK)` };
+  },
+
+  /**
    * score_increasing: Score should increase during gameplay (enemies killed by bullets).
    */
   async score_increasing(page, opts) {
