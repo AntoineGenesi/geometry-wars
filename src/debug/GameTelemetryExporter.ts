@@ -15,6 +15,19 @@ import type { GameContext } from '../core/GameContext';
 export class GameTelemetryExporter {
   private frameCount = 0;
   private ctx: GameContext;
+  private deathLog: Array<{
+    frame: number;
+    time: number;
+    playerU: number;
+    playerV: number;
+    playerWorldPos: { x: number; y: number; z: number };
+    nearestEnemyDist: number;
+    nearestEnemySurfaceDist: number;
+    nearestEnemyType: string;
+    livesRemaining: number;
+  }> = [];
+  private prevAlive = true;
+  private totalDeaths = 0;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
@@ -52,9 +65,14 @@ export class GameTelemetryExporter {
       const ePos = enemy.mesh ? enemy.mesh.position : enemy.position;
       const worldDist = pPos.distanceTo(ePos);
 
-      // Surface distance (UV-based, same as DDA system)
-      const du = player.surfaceU - enemy.surfacePosition.u;
-      const dv = player.surfaceV - enemy.surfacePosition.v;
+      // Surface distance (UV-based, wrapping-aware for closed surfaces)
+      let du = player.surfaceU - enemy.surfacePosition.u;
+      let dv = player.surfaceV - enemy.surfacePosition.v;
+      // Handle UV wrapping: if |delta| > 0.5, use wrapped distance
+      if (du > 0.5) du -= 1.0;
+      else if (du < -0.5) du += 1.0;
+      if (dv > 0.5) dv -= 1.0;
+      else if (dv < -0.5) dv += 1.0;
       const surfaceDist = Math.sqrt(du * du + dv * dv);
 
       if (worldDist < nearestEnemyWorldDist) nearestEnemyWorldDist = worldDist;
@@ -67,6 +85,17 @@ export class GameTelemetryExporter {
         enemiesInPlayerRadius++;
       }
 
+      // Read actual opacity from EnemyInstanceManager if available
+      let opacity = 1.0;
+      const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
+      const instanceType = (enemy as any)._instanceType as string | undefined;
+      if (instanceIndex !== undefined && instanceType && ctx.enemyInstanceManager) {
+        const batch = (ctx.enemyInstanceManager as any).batches?.get(instanceType);
+        if (batch?.opacityAttribute) {
+          opacity = batch.opacityAttribute.getX(instanceIndex);
+        }
+      }
+
       enemyData.push({
         type: enemy.baseTypeName || enemy.constructor.name,
         u: enemy.surfacePosition.u,
@@ -76,7 +105,7 @@ export class GameTelemetryExporter {
         worldDistToPlayer: worldDist,
         collisionRadius: enemy.radius,
         isAlive: enemy.alive,
-        opacity: 1.0, // actual opacity tracked by EnemyInstanceManager, not directly accessible here
+        opacity,
       });
     }
 
@@ -143,6 +172,35 @@ export class GameTelemetryExporter {
 
     this.frameCount++;
 
+    // Death detection: track alive→dead transitions
+    const currentlyAlive = player.alive;
+    if (this.prevAlive && !currentlyAlive) {
+      // Find nearest enemy at time of death
+      let nearestType = 'unknown';
+      let nearestWorldDist = Infinity;
+      let nearestSurfDist = Infinity;
+      for (const ed of enemyData) {
+        if (ed.worldDistToPlayer < nearestWorldDist) {
+          nearestWorldDist = ed.worldDistToPlayer;
+          nearestSurfDist = ed.surfaceDistToPlayer;
+          nearestType = ed.type;
+        }
+      }
+      this.totalDeaths++;
+      this.deathLog.push({
+        frame: this.frameCount,
+        time: game.clock.totalTime,
+        playerU: player.surfaceU,
+        playerV: player.surfaceV,
+        playerWorldPos: { x: pPos.x, y: pPos.y, z: pPos.z },
+        nearestEnemyDist: nearestWorldDist === Infinity ? -1 : nearestWorldDist,
+        nearestEnemySurfaceDist: nearestSurfDist === Infinity ? -1 : nearestSurfDist,
+        nearestEnemyType: nearestType,
+        livesRemaining: player.lives,
+      });
+    }
+    this.prevAlive = currentlyAlive;
+
     (window as any).__GAME_TELEMETRY = {
       player: {
         u: player.surfaceU,
@@ -168,6 +226,11 @@ export class GameTelemetryExporter {
       frame: this.frameCount,
       time: game.clock.totalTime,
       fps: 1 / game.clock.fixedDeltaTime,
+      deaths: {
+        total: this.totalDeaths,
+        log: this.deathLog,
+        lastDeath: this.deathLog.length > 0 ? this.deathLog[this.deathLog.length - 1] : null,
+      },
       isPaused: state.isPaused,
       isGameOver: state.isGameOver,
     };
