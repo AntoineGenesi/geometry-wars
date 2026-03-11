@@ -137,7 +137,13 @@ vi.mock('three', async (importOriginal) => {
     private pixelRatio: number = 1;
 
     constructor(_opts?: any) {
-      this.domElement = { style: {}, width: 1920, height: 1080 };
+      this.domElement = {
+        style: {},
+        width: 1920,
+        height: 1080,
+        addEventListener: _noopEvent,
+        removeEventListener: _noopEvent,
+      };
       this.toneMapping = 0;
       this.toneMappingExposure = 1;
       this.shadowMap = { enabled: false };
@@ -237,6 +243,60 @@ describe('Game.setVisualMode', () => {
     game.setVisualMode('modern');
     expect(game.bloomResolutionScale).toBe(1.0);
 
+    game.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WebGPU path tests — setVisualMode must adjust pixel ratio (not composer)
+// Regression: before fix, setVisualMode was a no-op on WebGPU (composer = null)
+// ---------------------------------------------------------------------------
+
+describe('Game.setVisualMode — WebGPU path', () => {
+  beforeEach(() => {
+    composerSetSizeCalls.length = 0;
+    globalThis.window.innerWidth = 1920;
+    globalThis.window.innerHeight = 1080;
+  });
+
+  function makeWebGPUGame(): Game {
+    // Inject _isWebGPU=true so Game skips EffectComposer and uses WebGPU path
+    return new Game({ bloom: { strength: 1.0 }, _isWebGPU: true });
+  }
+
+  it('setVisualMode("pixelated") sets pixelRatio to 0.5 on WebGPU', () => {
+    const game = makeWebGPUGame();
+    const renderer = game.renderer as any;
+    game.setVisualMode('pixelated');
+    expect(renderer.getPixelRatio()).toBe(0.5);
+    game.stop();
+  });
+
+  it('setVisualMode("modern") restores base pixelRatio on WebGPU', () => {
+    const game = makeWebGPUGame();
+    const renderer = game.renderer as any;
+    const baseRatio = renderer.getPixelRatio();
+    game.setVisualMode('pixelated');
+    game.setVisualMode('modern');
+    expect(renderer.getPixelRatio()).toBe(baseRatio);
+    game.stop();
+  });
+
+  it('does NOT resize composer on WebGPU (composer is null)', () => {
+    const game = makeWebGPUGame();
+    composerSetSizeCalls.length = 0;
+    game.setVisualMode('pixelated');
+    game.setVisualMode('modern');
+    expect(composerSetSizeCalls.length).toBe(0);
+    game.stop();
+  });
+
+  it('sets bloomResolutionScale correctly on WebGPU', () => {
+    const game = makeWebGPUGame();
+    game.setVisualMode('modern');
+    expect(game.bloomResolutionScale).toBe(1.0);
+    game.setVisualMode('pixelated');
+    expect(game.bloomResolutionScale).toBe(0.5);
     game.stop();
   });
 });
