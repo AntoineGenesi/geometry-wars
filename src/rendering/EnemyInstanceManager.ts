@@ -569,9 +569,13 @@ export class EnemyInstanceManager {
     });
 
     // Inject per-instance opacity (same shader injection as type batches)
-    // FIX (s44r8-04): Only multiply alpha, not RGB. Multiplying both causes opacity^2
-    // visual brightness (premultiplied alpha fed to unpremultiplied blending), making
-    // enemies at 8% opacity appear 0.6% visible = completely invisible.
+    // Premultiplied alpha: WebGLRenderer defaults to premultipliedAlpha=true, so
+    // NormalBlending uses gl.ONE for src factor (not gl.SRC_ALPHA). We must multiply
+    // BOTH rgb and alpha by opacity for correct blending:
+    //   blend = src.rgb + dst.rgb * (1 - src.a) → needs src.rgb pre-multiplied.
+    // REGRESSION GUARD: s44r8-04 removed rgb multiply (claimed opacity^2), but that
+    // analysis assumed unpremultiplied blending. With premultiplied alpha, removing
+    // rgb multiply makes enemies appear at full brightness regardless of opacity.
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace(
         'void main() {',
@@ -583,7 +587,7 @@ export class EnemyInstanceManager {
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
+        '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
 
@@ -867,24 +871,28 @@ export class EnemyInstanceManager {
 
     // Inject per-instance opacity into the shader via onBeforeCompile.
     // This reads a custom `instanceOpacity` attribute and multiplies the
-    // fragment alpha by it, producing real per-instance transparency.
-    // FIX (s44r8-04): Only multiply alpha, not RGB. Multiplying both causes opacity^2
-    // visual brightness (premultiplied alpha fed to unpremultiplied blending), making
-    // enemies at 8% opacity appear 0.6% visible = completely invisible.
+    // fragment output by it, producing real per-instance transparency.
+    // Premultiplied alpha: WebGLRenderer defaults to premultipliedAlpha=true, so
+    // NormalBlending uses gl.ONE for src factor (not gl.SRC_ALPHA). We must multiply
+    // BOTH rgb and alpha by opacity for correct blending:
+    //   blend = src.rgb + dst.rgb * (1 - src.a) → needs src.rgb pre-multiplied.
+    // REGRESSION GUARD: s44r8-04 removed rgb multiply (claimed opacity^2), but that
+    // analysis assumed unpremultiplied blending. With premultiplied alpha, removing
+    // rgb multiply makes enemies appear at full brightness regardless of opacity.
     material.onBeforeCompile = (shader) => {
       // Declare the attribute + varying in the vertex shader
       shader.vertexShader = shader.vertexShader.replace(
         'void main() {',
         'attribute float instanceOpacity;\nvarying float vInstanceOpacity;\nvoid main() {\n  vInstanceOpacity = instanceOpacity;',
       );
-      // Multiply the fragment output alpha by the per-instance opacity
+      // Multiply the fragment output by the per-instance opacity (premultiplied alpha)
       shader.fragmentShader = shader.fragmentShader.replace(
         'void main() {',
         'varying float vInstanceOpacity;\nvoid main() {',
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
+        '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
 
