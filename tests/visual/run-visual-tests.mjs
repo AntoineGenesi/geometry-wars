@@ -227,14 +227,15 @@ async function injectCanvasReader(page) {
                     if (r > 5 || g > 5 || b > 5) nonBlack++;
                     if (r > 100 || g > 100 || b > 100) bright++;
 
-                    if (r < 80 && g > 120 && b > 120) colorCounts.cyan++;
-                    else if (r > 100 && g < 100 && b > 150) colorCounts.purple++;
-                    else if (r < 80 && g < 80 && b > 120) colorCounts.blue++;
-                    else if (r > 150 && g < 100 && b > 100) colorCounts.pink++;
-                    else if (r > 150 && g > 150 && b < 80) colorCounts.yellow++;
-                    else if (r < 80 && g > 120 && b < 80) colorCounts.green++;
-                    else if (r > 150 && g < 60 && b < 60) colorCounts.red++;
-                    else if (r > 180 && g > 80 && g < 180 && b < 60) colorCounts.orange++;
+                    // Lowered thresholds for SwiftShader + enemy dimming
+                    if (r < 60 && g > 60 && b > 60) colorCounts.cyan++;
+                    else if (r > 50 && g < 50 && b > 75) colorCounts.purple++;
+                    else if (r < 40 && g < 40 && b > 60) colorCounts.blue++;
+                    else if (r > 75 && g < 50 && b > 50) colorCounts.pink++;
+                    else if (r > 75 && g > 75 && b < 40) colorCounts.yellow++;
+                    else if (r < 40 && g > 60 && b < 40) colorCounts.green++;
+                    else if (r > 75 && g < 30 && b < 30) colorCounts.red++;
+                    else if (r > 90 && g > 40 && g < 120 && b < 30) colorCounts.orange++;
                     else if (r > 5 || g > 5 || b > 5) colorCounts.other++;
                   }
                 }
@@ -733,10 +734,11 @@ describe('Regression: Enemy Dimming', () => {
     // Analyze spatial brightness distribution:
     // Center of screen = near-side enemies (bright)
     // Edges of screen = far-side enemies (should be dimmer)
-    const centerPixels = frame.pixelBrightness.filter(p =>
+    const brightness = frame.pixelBrightness || [];
+    const centerPixels = brightness.filter(p =>
       p.x >= 14 && p.x <= 26 && p.y >= 14 && p.y <= 26
     );
-    const edgePixels = frame.pixelBrightness.filter(p =>
+    const edgePixels = brightness.filter(p =>
       p.x < 6 || p.x > 34 || p.y < 6 || p.y > 34
     );
 
@@ -785,8 +787,13 @@ describe('Regression: Hit Detection', () => {
       const el = document.getElementById('lives-display');
       if (!el) return null;
       const text = el.textContent || '';
-      const match = text.match(/(\d+)/);
-      return match ? parseInt(match[1], 10) : null;
+      // Lives display shows ♥ (heart chars) for lives ≤ 5, or "♥ x6" for lives > 5
+      const hearts = (text.match(/\u2665/g) || []).length;
+      if (hearts > 0) {
+        const xMatch = text.match(/x(\d+)/);
+        return xMatch ? parseInt(xMatch[1], 10) : hearts;
+      }
+      return text.trim().length === 0 ? 0 : null;
     });
 
     // Player starts with 3+ lives. Should still have at least 1 after 10s

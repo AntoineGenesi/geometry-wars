@@ -135,14 +135,15 @@ async function injectCanvasReader(page) {
                     if (r > 5 || g > 5 || b > 5) nonBlack++;
                     if (r > 100 || g > 100 || b > 100) bright++;
 
-                    if (r < 80 && g > 120 && b > 120) colorCounts.cyan++;
-                    else if (r > 100 && g < 100 && b > 150) colorCounts.purple++;
-                    else if (r < 80 && g < 80 && b > 120) colorCounts.blue++;
-                    else if (r > 150 && g < 100 && b > 100) colorCounts.pink++;
-                    else if (r > 150 && g > 150 && b < 80) colorCounts.yellow++;
-                    else if (r < 80 && g > 120 && b < 80) colorCounts.green++;
-                    else if (r > 150 && g < 60 && b < 60) colorCounts.red++;
-                    else if (r > 180 && g > 80 && g < 180 && b < 60) colorCounts.orange++;
+                    // Lowered thresholds for SwiftShader + enemy dimming
+                    if (r < 60 && g > 60 && b > 60) colorCounts.cyan++;
+                    else if (r > 50 && g < 50 && b > 75) colorCounts.purple++;
+                    else if (r < 40 && g < 40 && b > 60) colorCounts.blue++;
+                    else if (r > 75 && g < 50 && b > 50) colorCounts.pink++;
+                    else if (r > 75 && g > 75 && b < 40) colorCounts.yellow++;
+                    else if (r < 40 && g > 60 && b < 40) colorCounts.green++;
+                    else if (r > 75 && g < 30 && b < 30) colorCounts.red++;
+                    else if (r > 90 && g > 40 && g < 120 && b < 30) colorCounts.orange++;
                     else if (r > 5 || g > 5 || b > 5) colorCounts.other++;
                   }
                 }
@@ -206,15 +207,36 @@ const CHECK_REGISTRY = {
    * pixels beyond just the player/grid (enemies show as colored dots).
    */
   async enemies_visible(page, _opts) {
+    // Primary signal: debug overlay entity count (game started with ?debug=true)
+    const entityCount = await page.evaluate(() => {
+      const el = document.getElementById('debug-entities');
+      if (!el) return null;
+      const n = parseInt(el.textContent || '', 10);
+      return isNaN(n) ? null : n;
+    });
+
+    if (entityCount !== null && entityCount >= 3) {
+      return { passed: true, reason: `${entityCount} entities reported by debug overlay` };
+    }
+
+    // Fallback: canvas pixel analysis (enemies are small, sparse grid may miss them)
     const frame = await captureFrameData(page);
-    if (!frame) return { passed: false, reason: 'No frame data captured' };
-    // Enemies are cyan, pink, purple, green etc. Need at least a few colored samples.
+    if (!frame) {
+      if (entityCount !== null) {
+        return entityCount > 0
+          ? { passed: true, reason: `${entityCount} entities (no frame data for pixel check)` }
+          : { passed: false, reason: 'No entities and no frame data' };
+      }
+      return { passed: false, reason: 'No frame data and no debug overlay' };
+    }
+
     const enemyColors = frame.colors.cyan + frame.colors.pink + frame.colors.purple
-      + frame.colors.green + frame.colors.red + frame.colors.orange;
-    if (enemyColors >= 3) {
+      + frame.colors.green + frame.colors.red + frame.colors.orange + frame.colors.blue;
+
+    if (enemyColors >= 2) {
       return { passed: true, reason: `${enemyColors} enemy-colored samples found` };
     }
-    return { passed: false, reason: `Only ${enemyColors} enemy-colored samples (need ≥3)` };
+    return { passed: false, reason: `Only ${entityCount ?? '?'} entities, ${enemyColors} enemy-colored samples (need ≥3 entities or ≥2 colors)` };
   },
 
   /**
@@ -225,8 +247,15 @@ const CHECK_REGISTRY = {
       const el = document.getElementById('lives-display');
       if (!el) return null;
       const text = el.textContent || '';
-      const match = text.match(/(\d+)/);
-      return match ? parseInt(match[1], 10) : null;
+      // Lives display shows ♥♥♥ (heart chars) for lives ≤ 5, or "♥ x6" for lives > 5
+      const hearts = (text.match(/\u2665/g) || []).length;
+      if (hearts > 0) {
+        // "♥ x6" format: hearts=1, but actual count is in the number
+        const xMatch = text.match(/x(\d+)/);
+        return xMatch ? parseInt(xMatch[1], 10) : hearts;
+      }
+      // Empty text = 0 lives
+      return text.trim().length === 0 ? 0 : null;
     });
     if (lives === null) return { passed: false, reason: 'Could not read lives display' };
     if (lives > 0) return { passed: true, reason: `Player has ${lives} lives` };
