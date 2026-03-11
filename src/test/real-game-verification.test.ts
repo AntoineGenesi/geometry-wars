@@ -326,10 +326,11 @@ describe('Category B: Hit Detection', () => {
     h.tick(120); // fire for 2 seconds
     h.setMouseDown(false);
 
-    // Check if any enemies died
-    const enemiesAfter = h.getEnemies();
     // At least expect some bullets were fired
     expect(h.bulletSpawnLog.length).toBeGreaterThan(0);
+    // At least one enemy should have died from sustained fire
+    const enemiesAfter = h.getEnemies();
+    expect(enemiesAfter.length).toBeLessThan(initialEnemyCount);
   });
 
   it('no ghost kills — distant enemies survive', () => {

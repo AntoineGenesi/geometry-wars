@@ -157,28 +157,23 @@ async function createPage(browser) {
 
 /** Navigate to the game and start on a specific surface */
 async function startGameOnSurface(page, surface = 'sphere') {
-  await page.goto(`${BASE_URL}?surface=${surface}`, {
+  // Navigate first to get access to localStorage, then clear mastery overlays
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.evaluate(() => {
+    localStorage.removeItem('masteryOverlayShown');
+    localStorage.removeItem('weaponMastery');
+  });
+
+  // Now navigate with quickStart to bypass menu entirely
+  await page.goto(`${BASE_URL}?quickStart=true&surface=${surface}&debug=true`, {
     waitUntil: 'domcontentloaded',
     timeout: 30000,
   });
-  await sleep(2000);
 
-  // Click Quick Game
-  await page.click('[data-mode="single"]');
-  await sleep(800);
+  // Wait for game canvas to appear
+  await page.waitForSelector('canvas', { timeout: 15000 });
 
-  // Click the Start button in the surface panel
-  await page.evaluate(() => {
-    const btns = document.querySelectorAll('button, .btn, [class*="btn"]');
-    for (const btn of btns) {
-      if (btn.textContent?.trim().toUpperCase().includes('START')) {
-        btn.click();
-        return;
-      }
-    }
-  });
-
-  // Wait for countdown (3...2...1...) + first render
+  // Wait for gameplay to start (countdown finishes)
   await sleep(3000);
 }
 
@@ -218,6 +213,7 @@ async function injectCanvasReader(page) {
                 let nonBlack = 0;
                 let bright = 0;
                 const colorCounts = { cyan: 0, purple: 0, blue: 0, pink: 0, yellow: 0, green: 0, red: 0, orange: 0, other: 0 };
+                const pixelBrightness = []; // brightness per sample point
 
                 for (let gx = 0; gx < gridSize; gx++) {
                   for (let gy = 0; gy < gridSize; gy++) {
@@ -225,6 +221,8 @@ async function injectCanvasReader(page) {
                     const py = Math.floor((gy / gridSize) * canvas.height);
                     const p = ctx.getImageData(px, py, 1, 1).data;
                     const [r, g, b] = [p[0], p[1], p[2]];
+                    const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+                    pixelBrightness.push({ x: gx, y: gy, r, g, b, lum });
 
                     if (r > 5 || g > 5 || b > 5) nonBlack++;
                     if (r > 100 || g > 100 || b > 100) bright++;
@@ -252,6 +250,7 @@ async function injectCanvasReader(page) {
                   total: gridSize * gridSize,
                   center: { r: cp[0], g: cp[1], b: cp[2] },
                   colors: colorCounts,
+                  pixelBrightness, // full grid for spatial analysis
                 };
               }
             } catch (e) { /* security */ }

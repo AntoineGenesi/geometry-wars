@@ -77,28 +77,23 @@ async function createPage(browser) {
 }
 
 async function startGameOnSurface(page, surface = 'sphere') {
-  await page.goto(`${BASE_URL}?surface=${surface}&debug=true`, {
+  // Navigate first to get access to localStorage, then clear mastery overlays
+  await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.evaluate(() => {
+    localStorage.removeItem('masteryOverlayShown');
+    localStorage.removeItem('weaponMastery');
+  });
+
+  // Now navigate with quickStart to bypass menu entirely
+  await page.goto(`${BASE_URL}?quickStart=true&surface=${surface}&debug=true`, {
     waitUntil: 'domcontentloaded',
     timeout: 30000,
   });
-  await sleep(2000);
 
-  // Click Quick Game
-  await page.click('[data-mode="single"]');
-  await sleep(800);
+  // Wait for game canvas to appear
+  await page.waitForSelector('canvas', { timeout: 15000 });
 
-  // Click Start
-  await page.evaluate(() => {
-    const btns = document.querySelectorAll('button, .btn, [class*="btn"]');
-    for (const btn of btns) {
-      if (btn.textContent?.trim().toUpperCase().includes('START')) {
-        btn.click();
-        return;
-      }
-    }
-  });
-
-  // Wait for countdown + first render
+  // Wait for gameplay to start (countdown finishes)
   await sleep(3000);
 }
 
