@@ -191,6 +191,12 @@ export class Game {
    */
   bloomResolutionScale: number = 0.5;
 
+  /**
+   * Original pixel ratio captured at renderer creation (WebGPU path only).
+   * Used by setVisualMode to restore full-res mode after pixelated mode.
+   */
+  private _basePixelRatio: number = 1;
+
   /** Base (design-reference) vertical FOV in degrees, used to recompute the
    *  actual vertical FOV on resize via computeVerticalFOV(). */
   private readonly baseFov: number;
@@ -283,6 +289,9 @@ export class Game {
       this.renderer.toneMappingExposure = 1.0;
       container.appendChild(this.renderer.domElement);
     }
+
+    // Store base pixel ratio for WebGPU visual mode toggling (pixelated = half-res).
+    this._basePixelRatio = this.renderer.getPixelRatio();
 
     // -- Post-processing --
     if (this.isWebGPU) {
@@ -523,7 +532,21 @@ export class Game {
    */
   setVisualMode(mode: 'pixelated' | 'modern'): void {
     this.bloomResolutionScale = mode === 'modern' ? 1.0 : 0.5;
-    if (this.composer || this.bloomPass) {
+
+    if (this.isWebGPU) {
+      // WebGPU path: simulate pixelated mode by halving the pixel ratio so the
+      // canvas renders at 50% of the CSS display size. The browser upscales this
+      // half-res buffer to fill the screen, producing the chunky/pixelated look.
+      // Modern mode restores the original pixel ratio for full-res rendering.
+      const targetRatio = mode === 'pixelated' ? 0.5 : this._basePixelRatio;
+      this.renderer.setPixelRatio(targetRatio);
+      // Reapply canvas buffer size with the new ratio; keep CSS dimensions unchanged
+      // so the canvas still fills the screen (upscaled = pixelated, or 1:1 = modern).
+      this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+    } else if (this.composer || this.bloomPass) {
+      // WebGL2 path: resize the EffectComposer and bloom pass render targets.
+      // Half-res bloom is rendered at 50% then upscaled = larger/blurrier glow (pixelated).
+      // Full-res bloom renders sharply at 100% (modern).
       const w = window.innerWidth;
       const h = window.innerHeight;
       const scale = this.bloomResolutionScale;
