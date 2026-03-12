@@ -58,6 +58,8 @@ export interface GameEvent {
   type: 'death' | 'damage' | 'pickup_collected' | 'weapon_change' | 'enemy_killed' | 'enemy_spawned' | 'bomb_used' | 'level_up';
   frame: number;
   time: number;
+  /** Sub-millisecond timestamp from performance.now() at event creation. */
+  preciseTime: number;
   details: Record<string, unknown>;
 }
 
@@ -84,6 +86,12 @@ export interface FrameDiff {
   enemiesDelta: number;
   scoreGained: number;
   eventsInRange: GameEvent[];
+}
+
+export interface FullRecording {
+  frames: FrameRecord[];
+  events: GameEvent[];
+  summary: StateSummary;
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +152,7 @@ export class StateRecorder {
 
     // Death
     if (this.prevAlive && !currentAlive) {
-      const ev: GameEvent = { type: 'death', frame, time, details: {
+      const ev: GameEvent = { type: 'death', frame, time, preciseTime: performance.now(), details: {
         u: player.surfaceU, v: player.surfaceV, livesRemaining: currentLives,
       }};
       frameEvents.push(ev);
@@ -158,7 +166,7 @@ export class StateRecorder {
 
     // Weapon change
     if (this.prevWeapon !== '' && this.prevWeapon !== currentWeapon) {
-      const ev: GameEvent = { type: 'weapon_change', frame, time, details: {
+      const ev: GameEvent = { type: 'weapon_change', frame, time, preciseTime: performance.now(), details: {
         from: this.prevWeapon, to: currentWeapon,
       }};
       frameEvents.push(ev);
@@ -167,7 +175,7 @@ export class StateRecorder {
 
     // Bomb used (bomb count decreases)
     if (this.prevBombs > 0 && currentBombs < this.prevBombs) {
-      const ev: GameEvent = { type: 'bomb_used', frame, time, details: {
+      const ev: GameEvent = { type: 'bomb_used', frame, time, preciseTime: performance.now(), details: {
         bombsRemaining: currentBombs,
       }};
       frameEvents.push(ev);
@@ -177,7 +185,7 @@ export class StateRecorder {
     // Enemy killed (enemy count dropped — approximate, may include clear)
     if (currentEnemyCount < this.prevEnemyCount) {
       const killed = this.prevEnemyCount - currentEnemyCount;
-      const ev: GameEvent = { type: 'enemy_killed', frame, time, details: {
+      const ev: GameEvent = { type: 'enemy_killed', frame, time, preciseTime: performance.now(), details: {
         count: killed, scoreGained: currentScore - this.prevScore,
       }};
       frameEvents.push(ev);
@@ -187,7 +195,7 @@ export class StateRecorder {
     // Enemy spawned
     if (currentEnemyCount > this.prevEnemyCount) {
       const spawned = currentEnemyCount - this.prevEnemyCount;
-      const ev: GameEvent = { type: 'enemy_spawned', frame, time, details: { count: spawned }};
+      const ev: GameEvent = { type: 'enemy_spawned', frame, time, preciseTime: performance.now(), details: { count: spawned }};
       frameEvents.push(ev);
       this.events.push(ev);
     }
@@ -293,6 +301,60 @@ export class StateRecorder {
     });
   }
 
+  /**
+   * Get events whose preciseTime falls within [startTime, endTime].
+   * @param startTime performance.now()-based timestamp (inclusive)
+   * @param endTime   performance.now()-based timestamp (inclusive)
+   */
+  getEventsBetween(startTime: number, endTime: number): GameEvent[] {
+    return this.events.filter(e => e.preciseTime >= startTime && e.preciseTime <= endTime);
+  }
+
+  /**
+   * Get events that have UV position data within a given UV-space radius.
+   * Checks `details.u` / `details.v` (death/damage events) and
+   * `details.playerPos` / `details.enemyPos` (collision events).
+   * @param u      Target U coordinate in [0,1]
+   * @param v      Target V coordinate in [0,1]
+   * @param radius Max UV distance from (u, v) to include
+   */
+  getEventsNear(u: number, v: number, radius: number): GameEvent[] {
+    return this.events.filter(e => {
+      const evDetails = e.details;
+
+      // Direct u/v on event (death events)
+      const eu = evDetails.u as number | undefined;
+      const ev = evDetails.v as number | undefined;
+      if (eu !== undefined && ev !== undefined) {
+        const du = eu - u; const dv = ev - v;
+        if (Math.sqrt(du * du + dv * dv) <= radius) return true;
+      }
+
+      // playerPos from collision events
+      const pp = evDetails.playerPos as { u: number; v: number } | undefined;
+      if (pp) {
+        const du = pp.u - u; const dv = pp.v - v;
+        if (Math.sqrt(du * du + dv * dv) <= radius) return true;
+      }
+
+      // enemyPos from collision events
+      const ep = evDetails.enemyPos as { u: number; v: number } | undefined;
+      if (ep) {
+        const du = ep.u - u; const dv = ep.v - v;
+        if (Math.sqrt(du * du + dv * dv) <= radius) return true;
+      }
+
+      // bulletPos from bullet-enemy hit events
+      const bp = evDetails.bulletPos as { u: number; v: number } | undefined;
+      if (bp) {
+        const du = bp.u - u; const dv = bp.v - v;
+        if (Math.sqrt(du * du + dv * dv) <= radius) return true;
+      }
+
+      return false;
+    });
+  }
+
   /** Compute diff between two frames (by frame number). */
   getDiff(frameA: number, frameB: number): FrameDiff | null {
     const recA = this.getHistory(frameA, frameA)[0];
@@ -337,6 +399,18 @@ export class StateRecorder {
     };
   }
 
+  /**
+   * Return the complete recording as a single serializable object.
+   * Used by Puppeteer: page.evaluate(() => window.__STATE_RECORDER.getFullRecording())
+   */
+  getFullRecording(): FullRecording {
+    return {
+      frames: this.getHistory(),
+      events: [...this.events],
+      summary: this.getSummary(),
+    };
+  }
+
   /** Clear recording. */
   clear(): void {
     this.buffer.fill(null);
@@ -350,4 +424,6 @@ export class StateRecorder {
     this.prevEnemyCount = 0;
     this.prevAlive = true;
   }
+
 }
+

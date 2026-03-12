@@ -27,20 +27,45 @@ export interface UV { u: number; v: number }
 export interface DamageEvent {
   time: number;
   frame: number;
+  /** Sub-millisecond timestamp from performance.now() at event creation. */
+  preciseTime: number;
   source: string;       // 'enemy' | 'bullet' | 'tesla' | 'bomb' | 'companion'
   target: string;       // enemy type or 'player'
   targetId: string;
   position: Vec3;
+  /** For bullet-enemy hits: bullet UV position at impact. */
+  bulletPos?: UV;
+  /** For collision events: the colliding entity's UV position. */
+  enemyPos?: UV;
+  /** Exact UV distance between entities at collision moment. */
+  distance?: number;
+  /** Collision radius threshold used. */
+  collisionRadius?: number;
+  /** What triggered the collision check (e.g., "CollisionSystem.checkPlayerEnemyCollisions"). */
+  collisionSource?: string;
+  /** How long the bullet has been alive (bullet-enemy hits only). */
+  bulletAge?: number;
+  /** Weapon type that fired the bullet (bullet-enemy hits only). */
+  weaponType?: string;
 }
 
 export interface DeathEvent {
   time: number;
   frame: number;
+  /** Sub-millisecond timestamp from performance.now() at event creation. */
+  preciseTime: number;
   playerU: number;
   playerV: number;
   playerWorldPos: Vec3;
   nearestEnemyDist: number;
   nearestEnemyType: string;
+  /** UV position of the nearest enemy at death moment. */
+  nearestEnemyU: number;
+  nearestEnemyV: number;
+  /** UV-space distance to the nearest enemy. */
+  uvDistance: number;
+  /** Collision radius that was used (from CollisionSystem). */
+  collisionRadius: number;
   livesRemaining: number;
 }
 
@@ -430,6 +455,41 @@ export class TestHarnessAPI {
     return this.stateRecorder;
   }
 
+  /**
+   * Query recorded game events between two precise timestamps.
+   * @param startTime performance.now()-based timestamp (inclusive)
+   * @param endTime   performance.now()-based timestamp (inclusive)
+   */
+  getEventsBetween(startTime: number, endTime: number) {
+    return this.stateRecorder.getEventsBetween(startTime, endTime);
+  }
+
+  /**
+   * Query recorded game events by type.
+   * @param type Event type to filter for
+   */
+  getEventsOfType(type: string) {
+    return this.stateRecorder.getEvents(type);
+  }
+
+  /**
+   * Query recorded game events near a UV position.
+   * @param u Target U in [0,1]
+   * @param v Target V in [0,1]
+   * @param radius Max UV distance
+   */
+  getEventsNear(u: number, v: number, radius: number) {
+    return this.stateRecorder.getEventsNear(u, v, radius);
+  }
+
+  /**
+   * Get the complete recording snapshot for embedding in HTML reports.
+   * Returns frames + events + summary as a single JSON-serializable object.
+   */
+  getFullRecording() {
+    return this.stateRecorder.getFullRecording();
+  }
+
   /** Get the ScenarioEngine instance. */
   getScenarioEngine(): ScenarioEngine {
     return this.scenarioEngine;
@@ -499,22 +559,39 @@ export class TestHarnessAPI {
       const pPos = player.mesh.position;
       let nearestType = 'unknown';
       let nearestDist = Infinity;
+      let nearestEnemyU = 0;
+      let nearestEnemyV = 0;
       for (const e of enemySpawner.getEnemies()) {
         if (!e.active || !e.mesh) continue;
         const d = pPos.distanceTo(e.mesh.position);
         if (d < nearestDist) {
           nearestDist = d;
           nearestType = e.baseTypeName || e.constructor.name;
+          nearestEnemyU = e.surfacePosition.u;
+          nearestEnemyV = e.surfacePosition.v;
         }
       }
+      // UV-space distance to nearest enemy
+      const dU = nearestEnemyU - player.surfaceU;
+      const dV = nearestEnemyV - player.surfaceV;
+      const uvDist = Math.sqrt(dU * dU + dV * dV);
+      // Collision radius from collision system (if available)
+      const collisionSystem = (this.ctx as any).collisionSystem;
+      const collisionRadius = collisionSystem?.playerRadius ?? -1;
+
       this.deathLog.push({
         time,
         frame: this.frameCount,
+        preciseTime: performance.now(),
         playerU: player.surfaceU,
         playerV: player.surfaceV,
         playerWorldPos: { x: pPos.x, y: pPos.y, z: pPos.z },
         nearestEnemyDist: nearestDist === Infinity ? -1 : nearestDist,
         nearestEnemyType: nearestType,
+        nearestEnemyU,
+        nearestEnemyV,
+        uvDistance: uvDist,
+        collisionRadius,
         livesRemaining: player.lives,
       });
     }
@@ -546,15 +623,24 @@ export class TestHarnessAPI {
   /**
    * Record a damage event (called externally from collision system hooks).
    * In test mode, the collision system pushes events here.
+   * @param extra Optional extended collision data (positions, distances, etc.)
    */
-  recordDamage(source: string, target: string, targetId: string, position: Vec3): void {
+  recordDamage(
+    source: string,
+    target: string,
+    targetId: string,
+    position: Vec3,
+    extra?: Partial<Pick<DamageEvent, 'bulletPos' | 'enemyPos' | 'distance' | 'collisionRadius' | 'collisionSource' | 'bulletAge' | 'weaponType'>>,
+  ): void {
     this.damageLog.push({
       time: this.ctx.game.clock.totalTime,
       frame: this.frameCount,
+      preciseTime: performance.now(),
       source,
       target,
       targetId,
       position,
+      ...extra,
     });
   }
 }
