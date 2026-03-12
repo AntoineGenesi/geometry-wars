@@ -100,7 +100,7 @@ import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
-import { SettingsMenu, loadDebugSettings } from './ui/SettingsMenu';
+import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
 import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
@@ -779,6 +779,13 @@ async function main() {
     console.log(`[MapSize] ${surfaceType} → ${resolvedMapSize} (scale: ${mapSizeScaleFactor}x)`);
 
     scene.add(surface.group);
+
+    // Apply surface appearance from graphics settings (overrides visual style defaults).
+    {
+      const gfxSettings = loadGraphicsSettings();
+      surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
+      surface.setSurfaceColor(gfxSettings.surfaceColor);
+    }
 
     // CRITICAL: updateMatrixWorld before MeshSurface construction so the BVH
     // bakes correctly-scaled world-space coordinates (not unscaled local coords).
@@ -2176,6 +2183,14 @@ async function main() {
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
+  });
+
+  // Apply surface appearance live when user changes settings in the pause menu.
+  pauseMenu.onGraphicsChange((gfxSettings) => {
+    if (surface) {
+      surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
+      surface.setSurfaceColor(gfxSettings.surfaceColor);
+    }
   });
 
   // Show short code QR in pause menu — 5-digit code is smaller and more reliable than full URL.

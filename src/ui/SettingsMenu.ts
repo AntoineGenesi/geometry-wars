@@ -36,6 +36,10 @@ export interface GraphicsSettings {
   maxEnemies: number;
   resolutionScale: number;
   surfaceOpaque: boolean;
+  /** Surface fill opacity (0 = invisible, 1 = fully opaque). Overrides surfaceOpaque when set. */
+  surfaceOpacity: number;
+  /** Surface fill color as a 24-bit hex number (e.g. 0xa8d8f0 for Ice Blue). */
+  surfaceColor: number;
   /** When true, entities >90° from player are hidden (old behavior). When false (default), they are dimmed to 0.3 opacity. */
   enable90DegreeHide: boolean;
 }
@@ -68,6 +72,8 @@ const DEFAULT_GRAPHICS: GraphicsSettings = {
   maxEnemies: 500,
   resolutionScale: 1.0,
   surfaceOpaque: false,
+  surfaceOpacity: 0.05,
+  surfaceColor: 0x141440,
   enable90DegreeHide: false,
 };
 
@@ -92,6 +98,8 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 5000,
     resolutionScale: 1.0,
     surfaceOpaque: false,
+    surfaceOpacity: 0.05,
+    surfaceColor: 0x141440,
     enable90DegreeHide: false,
   },
   high: {
@@ -102,6 +110,8 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 500,
     resolutionScale: 1.0,
     surfaceOpaque: false,
+    surfaceOpacity: 0.05,
+    surfaceColor: 0x141440,
     enable90DegreeHide: false,
   },
   medium: {
@@ -112,6 +122,8 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 200,
     resolutionScale: 0.75,
     surfaceOpaque: false,
+    surfaceOpacity: 0.05,
+    surfaceColor: 0x141440,
     enable90DegreeHide: false,
   },
   low: {
@@ -122,6 +134,8 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 100,
     resolutionScale: 0.5,
     surfaceOpaque: false,
+    surfaceOpacity: 0.05,
+    surfaceColor: 0x141440,
     enable90DegreeHide: false,
   },
   minimal: {
@@ -132,6 +146,8 @@ const QUALITY_PRESET_VALUES: Record<string, Omit<GraphicsSettings, 'qualityPrese
     maxEnemies: 50,
     resolutionScale: 0.25,
     surfaceOpaque: false,
+    surfaceOpacity: 0.05,
+    surfaceColor: 0x141440,
     enable90DegreeHide: false,
   },
 };
@@ -223,6 +239,26 @@ export function applyQualityPreset(preset: string): GraphicsSettings {
     ...values,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Surface appearance presets
+// ---------------------------------------------------------------------------
+
+export const SURFACE_OPACITY_PRESETS = [
+  { label: 'Invisible', value: 0 },
+  { label: 'Ghost', value: 0.15 },
+  { label: 'Default', value: 0.05 },
+  { label: 'Semi', value: 0.60 },
+  { label: 'Solid', value: 1.0 },
+] as const;
+
+export const SURFACE_COLOR_PRESETS = [
+  { label: 'Default (Dark Blue)', value: 0x141440 },
+  { label: 'Ice Blue',            value: 0xa8d8f0 },
+  { label: 'Warm White',          value: 0xf0ece0 },
+  { label: 'Soft Purple',         value: 0xc8a8f0 },
+  { label: 'Neon Teal',           value: 0x80f0e0 },
+] as const;
 
 // ---------------------------------------------------------------------------
 // SettingsMenu class
@@ -551,6 +587,48 @@ export class SettingsMenu {
         font-size: 12px;
         margin: -8px 0 8px 0;
         padding-left: 0;
+      }
+      #settings-menu .inline-preset-btn {
+        background: rgba(0, 40, 60, 0.5);
+        border: 1px solid rgba(0, 200, 255, 0.2);
+        color: #88aacc;
+        font-size: 11px;
+        padding: 3px 8px;
+        cursor: pointer;
+        font-family: inherit;
+        border-radius: 3px;
+        margin-right: 4px;
+        transition: all 0.15s;
+      }
+      #settings-menu .inline-preset-btn:hover,
+      #settings-menu .inline-preset-btn.active {
+        background: rgba(0, 200, 255, 0.15);
+        border-color: rgba(0, 200, 255, 0.5);
+        color: #00ccff;
+      }
+      #settings-menu .surface-color-swatches {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      #settings-menu .color-swatch {
+        width: 28px;
+        height: 28px;
+        border-radius: 4px;
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        cursor: pointer;
+        transition: all 0.15s;
+        padding: 0;
+      }
+      #settings-menu .color-swatch:hover {
+        border-color: rgba(255, 255, 255, 0.7);
+        transform: scale(1.15);
+      }
+      #settings-menu .color-swatch.active {
+        border-color: #00ffff;
+        box-shadow: 0 0 8px #00ffff;
+        transform: scale(1.1);
       }
 
       /* Info rows (GPU tab) */
@@ -1126,6 +1204,30 @@ export class SettingsMenu {
       </div>
       ` : ''}
 
+      <div class="section-heading">Surface Appearance</div>
+      <div class="setting-row">
+        <span class="setting-label">Opacity</span>
+        <input type="range" id="surface-opacity" min="0" max="1" step="0.05" value="${g.surfaceOpacity}" />
+        <span class="setting-value" id="surface-opacity-val">${(g.surfaceOpacity * 100).toFixed(0)}%</span>
+      </div>
+      <div class="setting-hint">
+        <small>Quick: </small>
+        ${SURFACE_OPACITY_PRESETS.map(p =>
+          `<button class="inline-preset-btn${g.surfaceOpacity === p.value ? ' active' : ''}" data-surface-opacity="${p.value}">${p.label}</button>`
+        ).join('')}
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">Color</span>
+        <div class="surface-color-swatches">
+          ${SURFACE_COLOR_PRESETS.map(p =>
+            `<button class="color-swatch${g.surfaceColor === p.value ? ' active' : ''}" data-surface-color="${p.value}" title="${p.label}" style="background:#${p.value.toString(16).padStart(6,'0')}"></button>`
+          ).join('')}
+        </div>
+      </div>
+      <div class="setting-hint">
+        <small>Color applies immediately. Light colors reflect enemy/bullet glow best.</small>
+      </div>
+
       <div class="section-heading">${t('settings.graphics.limits')}</div>
       <div class="setting-row">
         <span class="setting-label">${t('settings.graphics.maxEnemies')}</span>
@@ -1397,6 +1499,42 @@ export class SettingsMenu {
         return `${(val * 100).toFixed(0)}%`;
       });
     }
+
+    // Surface opacity slider
+    this.attachSlider('surface-opacity', 'surface-opacity-val', (val) => {
+      this.graphicsSettings = { ...this.graphicsSettings, surfaceOpacity: val, qualityPreset: 'custom' };
+      this.saveAndNotifyGraphics();
+      return `${(val * 100).toFixed(0)}%`;
+    });
+
+    // Surface opacity quick-preset buttons
+    this.container.querySelectorAll('.inline-preset-btn[data-surface-opacity]').forEach(btn => {
+      (btn as HTMLElement).addEventListener('click', () => {
+        const val = parseFloat((btn as HTMLElement).dataset.surfaceOpacity ?? '0.05');
+        this.graphicsSettings = { ...this.graphicsSettings, surfaceOpacity: val, qualityPreset: 'custom' };
+        this.saveAndNotifyGraphics();
+        // Sync slider value
+        const slider = this.container.querySelector('#surface-opacity') as HTMLInputElement | null;
+        if (slider) slider.value = String(val);
+        const valEl = this.container.querySelector('#surface-opacity-val');
+        if (valEl) valEl.textContent = `${(val * 100).toFixed(0)}%`;
+        // Update active button state
+        this.container.querySelectorAll('.inline-preset-btn[data-surface-opacity]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    // Surface color swatch buttons
+    this.container.querySelectorAll('.color-swatch[data-surface-color]').forEach(btn => {
+      (btn as HTMLElement).addEventListener('click', () => {
+        const val = parseInt((btn as HTMLElement).dataset.surfaceColor ?? '0x141440', 10);
+        this.graphicsSettings = { ...this.graphicsSettings, surfaceColor: val, qualityPreset: 'custom' };
+        this.saveAndNotifyGraphics();
+        // Update active swatch state
+        this.container.querySelectorAll('.color-swatch[data-surface-color]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
   }
 
   private attachPerformanceListeners(): void {

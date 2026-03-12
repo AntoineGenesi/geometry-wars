@@ -206,6 +206,13 @@ export abstract class Surface {
     }
   }
 
+  /** Update the surface material color. */
+  setSurfaceColor(color: number): void {
+    if (this.mesh.material && typeof (this.mesh.material as any).color === 'object') {
+      (this.mesh.material as any).color.set(color)
+    }
+  }
+
   /**
    * Apply world rotation to a local surface point.
    * Used by getPoint() implementations to transform local coords to world coords.
