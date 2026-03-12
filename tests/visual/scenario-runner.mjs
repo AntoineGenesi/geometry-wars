@@ -84,6 +84,28 @@ const listOnly = argMap['list'] === true;
 const runMode = argMap['mode'] ?? 'sp';  // 'sp' | 'mp' | 'both'
 const allSurfaces = argMap['all-surfaces'] === true;
 
+// Mobile viewport configuration
+// --mobile            → landscape (default)
+// --mobile=portrait   → portrait
+// --mobile=both       → run landscape then portrait
+// (no --mobile flag)  → desktop, skip mobileOnly scenarios
+const mobileFlag = argMap['mobile'] ?? null;  // null | true | 'landscape' | 'portrait' | 'both'
+
+const MOBILE_VIEWPORTS = {
+  landscape: { width: 932, height: 430, deviceScaleFactor: 2, isMobile: true, hasTouch: true, label: 'mobile-landscape-932x430' },
+  portrait:  { width: 430, height: 932, deviceScaleFactor: 2, isMobile: true, hasTouch: true, label: 'mobile-portrait-430x932' },
+};
+
+const MOBILE_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
+
+/** Returns array of viewport configs to test. Empty = desktop only. */
+function getMobileViewports() {
+  if (!mobileFlag) return [];
+  if (mobileFlag === 'portrait') return [MOBILE_VIEWPORTS.portrait];
+  if (mobileFlag === 'both') return [MOBILE_VIEWPORTS.landscape, MOBILE_VIEWPORTS.portrait];
+  return [MOBILE_VIEWPORTS.landscape]; // true or 'landscape'
+}
+
 // ---------------------------------------------------------------------------
 // Colyseus server management (MP mode)
 // ---------------------------------------------------------------------------
@@ -168,9 +190,13 @@ async function launchBrowser() {
   });
 }
 
-async function createPage(browser) {
+async function createPage(browser, viewportOverride = null) {
   const page = await browser.newPage();
-  await page.setViewport({ width: 640, height: 360 });
+  const vp = viewportOverride ?? { width: 640, height: 360 };
+  await page.setViewport(vp);
+  if (vp.isMobile) {
+    await page.setUserAgent(MOBILE_UA);
+  }
   const pageErrors = [];
   page.on('pageerror', err => pageErrors.push(err.message));
   page.on('console', msg => {
@@ -259,7 +285,9 @@ async function runScenario(page, scenario, surface) {
   try {
     mkdirSync(SCREENSHOT_DIR, { recursive: true });
     const safeName = `${scenario.name.replace(/[^a-z0-9_-]/gi, '_')}_${surface}`;
-    screenshotPath = resolve(SCREENSHOT_DIR, `${safeName}.png`);
+    const viewport = await page.viewport();
+    const viewportSuffix = (viewport && viewport.width !== 640) ? `_${viewport.width}x${viewport.height}` : '';
+    screenshotPath = resolve(SCREENSHOT_DIR, `${safeName}${viewportSuffix}.png`);
     await page.screenshot({ path: screenshotPath });
   } catch { /* screenshot is best-effort */ }
 
@@ -270,8 +298,8 @@ async function runScenario(page, scenario, surface) {
 // Run all scenarios on a surface
 // ---------------------------------------------------------------------------
 
-async function runScenariosOnSurface(browser, scenarios, surface) {
-  const { page, pageErrors } = await createPage(browser);
+async function runScenariosOnSurface(browser, scenarios, surface, viewportOverride = null) {
+  const { page, pageErrors } = await createPage(browser, viewportOverride);
   const surfaceResults = [];
 
   try {
@@ -300,6 +328,205 @@ async function runScenariosOnSurface(browser, scenarios, surface) {
   }
 
   return surfaceResults;
+}
+
+// ---------------------------------------------------------------------------
+// Mobile UI scenario runner (DOM-based checks — no TestHarnessAPI)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run a single DOM check for a mobile-ui scenario.
+ * Returns { label, assertionPassed, assertionError, frame: 0 }
+ */
+async function runDomCheck(page, check, screenshotDir, scenarioName, viewport) {
+  const result = { label: check.label ?? check.type, assertionPassed: null, assertionError: null, frame: 0 };
+
+  if (check.type === 'screenshot') {
+    try {
+      mkdirSync(screenshotDir, { recursive: true });
+      const safeName = `${scenarioName.replace(/[^a-z0-9_-]/gi, '_')}_${viewport.label}`;
+      const path = resolve(screenshotDir, `${check.label.replace(/[^a-z0-9_-]/gi, '_')}_${safeName}.png`);
+      await page.screenshot({ path });
+      result.assertionPassed = true;
+    } catch (e) {
+      result.assertionPassed = null; // screenshot is best-effort
+    }
+    return result;
+  }
+
+  if (check.type === 'dom_visible') {
+    const info = await page.evaluate((selector) => {
+      const el = document.querySelector(selector);
+      if (!el) return { found: false };
+      const rect = el.getBoundingClientRect();
+      const visible = rect.width > 0 && rect.height > 0
+        && rect.top >= 0 && rect.left >= 0
+        && rect.bottom <= window.innerHeight + 2
+        && rect.right <= window.innerWidth + 2;
+      return { found: true, visible, w: Math.round(rect.width), h: Math.round(rect.height),
+        top: Math.round(rect.top), left: Math.round(rect.left),
+        bottom: Math.round(rect.bottom), right: Math.round(rect.right) };
+    }, check.selector);
+
+    if (!info.found) {
+      result.assertionPassed = false;
+      result.assertionError = `Element not found: ${check.selector}`;
+    } else if (!info.visible) {
+      result.assertionPassed = false;
+      result.assertionError = `Element outside viewport or zero-size: ${JSON.stringify(info)}`;
+    } else {
+      result.assertionPassed = true;
+    }
+    return result;
+  }
+
+  if (check.type === 'no_overflow') {
+    const overflowing = await page.evaluate(() => {
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const all = Array.from(document.querySelectorAll('*'));
+      const bad = [];
+      for (const el of all) {
+        if (el.offsetParent === null && el.tagName !== 'BODY') continue; // hidden
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        if (r.right > vw + 4 || r.bottom > vh + 4) {
+          bad.push({ tag: el.tagName, id: el.id.slice(0, 20), right: Math.round(r.right), bottom: Math.round(r.bottom) });
+        }
+      }
+      return bad.slice(0, 5);
+    });
+
+    if (overflowing.length > 0) {
+      result.assertionPassed = false;
+      result.assertionError = `${overflowing.length} elements overflow viewport: ${JSON.stringify(overflowing)}`;
+    } else {
+      result.assertionPassed = true;
+    }
+    return result;
+  }
+
+  if (check.type === 'touch_targets') {
+    const minSize = check.minSize ?? 44;
+    const violations = await page.evaluate((min) => {
+      const candidates = Array.from(document.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"], .oval-btn, .lan-btn, .back-btn'));
+      const bad = [];
+      for (const el of candidates) {
+        if (el.offsetParent === null) continue; // not visible
+        const r = el.getBoundingClientRect();
+        if (r.width < min || r.height < min) {
+          bad.push({ text: el.textContent.trim().slice(0, 30), w: Math.round(r.width), h: Math.round(r.height) });
+        }
+      }
+      return bad.slice(0, 10);
+    }, minSize);
+
+    if (violations.length > 0) {
+      result.assertionPassed = false;
+      result.assertionError = `${violations.length} buttons below ${minSize}px: ${JSON.stringify(violations.slice(0, 3))}`;
+    } else {
+      result.assertionPassed = true;
+    }
+    return result;
+  }
+
+  if (check.type === 'canvas_coverage') {
+    const minPercent = check.minPercent ?? 70;
+    const coverage = await page.evaluate((min) => {
+      const canvas = document.querySelector('canvas');
+      if (!canvas) return { found: false, percent: 0 };
+      const r = canvas.getBoundingClientRect();
+      const vpArea = window.innerWidth * window.innerHeight;
+      const canvasArea = r.width * r.height;
+      const percent = (canvasArea / vpArea) * 100;
+      return { found: true, percent: Math.round(percent), vpW: window.innerWidth, vpH: window.innerHeight, cW: Math.round(r.width), cH: Math.round(r.height) };
+    }, minPercent);
+
+    if (!coverage.found) {
+      result.assertionPassed = false;
+      result.assertionError = 'Game canvas not found in DOM';
+    } else if (coverage.percent < minPercent) {
+      result.assertionPassed = false;
+      result.assertionError = `Canvas covers ${coverage.percent}% of viewport (min ${minPercent}%): ${JSON.stringify(coverage)}`;
+    } else {
+      result.assertionPassed = true;
+    }
+    return result;
+  }
+
+  // Unknown check type — skip but don't fail
+  result.assertionPassed = null;
+  result.assertionError = `Unknown domCheck type: ${check.type}`;
+  return result;
+}
+
+/**
+ * Run a mobile UI scenario (pageMode-based, DOM checks).
+ * These scenarios navigate to specific pages and run DOM-based assertions.
+ */
+async function runMobileUIScenario(browser, scenario, viewport) {
+  const { page, pageErrors } = await createPage(browser, viewport);
+  const surface = 'sphere'; // UI scenarios use sphere (simplest to load)
+
+  let passed = true;
+  const stepResults = [];
+  let screenshotPath = null;
+  const startTime = Date.now();
+
+  try {
+    // Navigate based on pageMode
+    const pageMode = scenario.pageMode ?? 'gameplay';
+
+    if (pageMode === 'start_menu') {
+      // Navigate to start menu (no quickStart)
+      const url = `${BASE_URL}?testMode=true`;
+      await page.goto(url, { waitUntil: 'networkidle0', timeout: 15_000 });
+      await sleep(3000); // Wait for start menu to render
+    } else if (pageMode === 'gameplay_pause') {
+      // Navigate to game, then pause it
+      await navigateToGame(page, surface, { testMode: 'true' });
+      await sleep(1000);
+      // Trigger pause via Escape key
+      await page.keyboard.press('Escape');
+      await sleep(1000);
+    } else {
+      // Default: load game (quickStart)
+      await navigateToGame(page, surface);
+    }
+
+    console.log(`  [mobile-ui] ${scenario.name}: page loaded (${pageMode})`);
+
+    // Run all domChecks
+    const screenshotDir = resolve(SCREENSHOT_DIR, 'mobile-ui');
+    for (const check of (scenario.domChecks || [])) {
+      const checkResult = await runDomCheck(page, check, screenshotDir, scenario.name, viewport);
+      if (checkResult.assertionPassed === false) passed = false;
+      stepResults.push(checkResult);
+    }
+
+  } catch (err) {
+    passed = false;
+    stepResults.push({ label: 'error', assertionPassed: false, assertionError: err.message, frame: 0 });
+  } finally {
+    page.close().catch(() => {});
+  }
+
+  const endTime = Date.now();
+  const failedChecks = stepResults.filter(s => s.assertionPassed === false).map(s => s.label);
+  return {
+    result: {
+      scenarioName: scenario.name,
+      passed,
+      totalSteps: stepResults.length,
+      stepResults,
+      startFrame: 0, endFrame: 0, startTime, endTime,
+      summary: passed
+        ? `All ${stepResults.length} mobile UI checks passed`
+        : `Mobile UI check failed: ${failedChecks.join(', ')}`,
+    },
+    screenshotPath,
+    recording: null,
+    pageErrors: [...pageErrors],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -728,13 +955,16 @@ function generatePerfGraphHtml(perfProfile) {
 function generateHtmlReport(allResults, timestamp) {
   const passed = allResults.filter(r => r.result.passed).length;
   const failed = allResults.filter(r => !r.result.passed).length;
-  const spCount = allResults.filter(r => r.mode !== 'mp').length;
+  const spCount = allResults.filter(r => r.mode !== 'mp' && !r.mobileViewport).length;
   const mpCount = allResults.filter(r => r.mode === 'mp').length;
+  const mobileCount = allResults.filter(r => r.mobileViewport).length;
 
   // Generate per-scenario sections with replay canvas
   const sections = allResults.map((r, idx) => {
     const status = r.result.passed ? 'pass' : 'fail';
     const modeTag = r.mode === 'mp' ? '<span class="mode-mp">[MP]</span>' : '<span class="mode-sp">[SP]</span>';
+    const mobileTag = r.mobileViewport
+      ? `<span class="mode-mobile">[${r.mobileViewport.label}]</span>` : '';
     const screenshotCell = r.screenshotPath
       ? `<a href="${r.screenshotPath}" target="_blank">screenshot</a>` : '—';
     const stepList = r.result.stepResults.map(s => {
@@ -771,9 +1001,10 @@ function generateHtmlReport(allResults, timestamp) {
 
     return `
       <section class="scenario ${status}">
-        <h2>${modeTag} ${r.scenario.name} — ${r.surface} — <span class="${status}">${r.result.passed ? 'PASS' : 'FAIL'}</span></h2>
+        <h2>${modeTag}${mobileTag} ${r.scenario.name} — ${r.surface} — <span class="${status}">${r.result.passed ? 'PASS' : 'FAIL'}</span></h2>
         <div class="scenario-meta">
           <span>${r.result.summary}</span>
+          <span>${r.mobileViewport ? `<span class="viewport-badge">${r.mobileViewport.width}×${r.mobileViewport.height}@${r.mobileViewport.deviceScaleFactor}x</span>` : ''}</span>
           <span>${screenshotCell}</span>
         </div>
         <ul class="steps">${stepList}</ul>
@@ -805,6 +1036,8 @@ function generateHtmlReport(allResults, timestamp) {
   a { color: #68f; }
   .mode-sp { color: #68f; font-size: 0.85em; }
   .mode-mp { color: #fa8; font-size: 0.85em; }
+  .mode-mobile { color: #4df; font-size: 0.85em; }
+  .viewport-badge { background: #1a2a3a; color: #4df; border: 1px solid #2a4a6a; border-radius: 3px; padding: 1px 6px; font-size: 0.8em; }
   .perf-section { margin-top: 8px; border: 1px solid #1a2a2a; padding: 8px; background: #050910; border-radius: 3px; }
   .perf-title { color: #4af; font-size: 0.85em; margin-bottom: 4px; }
   .perf-section table { border-collapse: collapse; }
@@ -819,6 +1052,7 @@ function generateHtmlReport(allResults, timestamp) {
   / ${allResults.length} total
   ${spCount > 0 ? `&nbsp; <span class="mode-sp">[SP: ${spCount}]</span>` : ''}
   ${mpCount > 0 ? `&nbsp; <span class="mode-mp">[MP: ${mpCount}]</span>` : ''}
+  ${mobileCount > 0 ? `&nbsp; <span class="mode-mobile">[Mobile: ${mobileCount}]</span>` : ''}
 </div>
 <script>${REPLAY_RENDERER_JS}</script>
 ${sections}
@@ -833,22 +1067,46 @@ async function main() {
   const allScenarios = loadScenarios();
 
   if (listOnly) {
-    for (const sc of allScenarios) console.log(`  ${sc.name}: ${sc.description}`);
+    for (const sc of allScenarios) {
+      const tags = [];
+      if (sc.mobileOnly) tags.push('[mobile-only]');
+      if (sc.pageMode) tags.push(`[${sc.pageMode}]`);
+      if (sc.mpSkip) tags.push('[mp-skip]');
+      console.log(`  ${sc.name}${tags.length ? ' ' + tags.join(' ') : ''}: ${sc.description}`);
+    }
     return;
   }
 
-  const scenarios = allScenarios.filter(sc => !filterScenario || sc.name === filterScenario);
-  const surfaces = filterSurface ? [filterSurface] : allSurfaces ? ALL_SURFACES : ['sphere'];
+  const mobileViewports = getMobileViewports(); // [] in desktop mode, [landscape] or [landscape, portrait] in mobile mode
 
-  if (scenarios.length === 0) {
+  // Separate mobileOnly scenarios from general scenarios
+  // mobileOnly scenarios only run when --mobile is active
+  // pageMode scenarios (mobile-ui) run via DOM checks, not TestHarnessAPI
+  const allNonMobileScenarios = allScenarios.filter(sc => !sc.mobileOnly);
+  const allMobileScenarios = allScenarios.filter(sc => sc.mobileOnly);
+  const mobileUIScenarios = allMobileScenarios.filter(sc => sc.pageMode);
+  const mobileGameplayScenarios = allMobileScenarios.filter(sc => !sc.pageMode);
+
+  const baseScenarios = allNonMobileScenarios.filter(sc => !filterScenario || sc.name === filterScenario);
+  const mobileGameplayScenariosFiltered = mobileGameplayScenarios.filter(sc => !filterScenario || sc.name === filterScenario);
+  const mobileUIScenariosFiltered = mobileUIScenarios.filter(sc => !filterScenario || sc.name === filterScenario);
+
+  const allFilteredScenarios = [...baseScenarios, ...(mobileFlag ? mobileGameplayScenariosFiltered : []), ...(mobileFlag ? mobileUIScenariosFiltered : [])];
+
+  if (allFilteredScenarios.length === 0 && !filterScenario) {
     console.error('[scenario-runner] No scenarios found. Check tests/visual/scenarios/*.json');
     process.exit(1);
   }
 
+  const surfaces = filterSurface ? [filterSurface] : allSurfaces ? ALL_SURFACES : ['sphere'];
   const runSP = runMode === 'sp' || runMode === 'both';
   const runMP = runMode === 'mp' || runMode === 'both';
 
-  console.log(`[scenario-runner] Running ${scenarios.length} scenario(s) on ${surfaces.length} surface(s) [mode: ${runMode}]`);
+  const mobileSuffix = mobileFlag ? ` [mobile: ${mobileViewports.map(v => v.label).join(', ')}]` : '';
+  console.log(`[scenario-runner] Running ${allFilteredScenarios.length} scenario(s) on ${surfaces.length} surface(s) [mode: ${runMode}]${mobileSuffix}`);
+  if (mobileFlag) {
+    console.log(`  Desktop gameplay: ${baseScenarios.length} | Mobile gameplay: ${mobileGameplayScenariosFiltered.length} | Mobile UI: ${mobileUIScenariosFiltered.length}`);
+  }
 
   const browser = await launchBrowser();
   const allResults = [];
@@ -858,19 +1116,40 @@ async function main() {
       console.log(`\n[scenario-runner] Surface: ${surface}`);
 
       if (runSP) {
-        const surfaceResults = await runScenariosOnSurface(browser, scenarios, surface);
-        allResults.push(...surfaceResults.map(r => ({ ...r, mode: 'sp' })));
+        // Desktop scenarios (no mobile viewport)
+        if (baseScenarios.length > 0) {
+          const surfaceResults = await runScenariosOnSurface(browser, baseScenarios, surface);
+          allResults.push(...surfaceResults.map(r => ({ ...r, mode: 'sp' })));
+        }
+
+        // Mobile gameplay scenarios — run for each mobile viewport
+        for (const vp of mobileViewports) {
+          if (mobileGameplayScenariosFiltered.length > 0) {
+            console.log(`\n[scenario-runner] Mobile gameplay (${vp.label}) on ${surface}`);
+            const mobileResults = await runScenariosOnSurface(browser, mobileGameplayScenariosFiltered, surface, vp);
+            allResults.push(...mobileResults.map(r => ({ ...r, mode: 'sp', mobileViewport: vp })));
+          }
+        }
       }
 
       if (runMP) {
         console.log(`\n[scenario-runner] MP mode: ${surface}`);
-        const mpScenarios = scenarios.filter(sc => {
-          // Skip SP-only scenarios in MP (e.g. heavy perf tests that take too long)
-          // All scenarios run in MP unless tagged mp_skip
-          return !sc.mpSkip;
-        });
+        const mpScenarios = baseScenarios.filter(sc => !sc.mpSkip);
         const mpResults = await runScenariosOnSurfaceMP(browser, mpScenarios, surface);
         allResults.push(...mpResults);
+      }
+    }
+
+    // Mobile UI scenarios (DOM-based, surface-agnostic) — run once per mobile viewport
+    for (const vp of mobileViewports) {
+      if (mobileUIScenariosFiltered.length > 0) {
+        console.log(`\n[scenario-runner] Mobile UI checks (${vp.label})`);
+        for (const sc of mobileUIScenariosFiltered) {
+          const { result, screenshotPath, recording, pageErrors } = await runMobileUIScenario(browser, sc, vp);
+          const status = result.passed ? '✓ PASS' : '✗ FAIL';
+          console.log(`    ${status}  ${sc.name}: ${result.summary}`);
+          allResults.push({ scenario: sc, surface: 'ui', mode: 'sp', mobileViewport: vp, result, screenshotPath, recording, pageErrors });
+        }
       }
     }
   } finally {
@@ -895,6 +1174,8 @@ async function main() {
   writeFileSync(resultsPath, JSON.stringify(allResults.map(r => ({
     scenario: r.scenario.name, surface: r.surface,
     passed: r.result.passed, summary: r.result.summary,
+    mode: r.mode ?? 'sp',
+    viewport: r.mobileViewport ? `${r.mobileViewport.width}x${r.mobileViewport.height}` : '640x360',
     recordingFrames: r.recording?.frames?.length ?? 0,
     recordingEvents: r.recording?.events?.length ?? 0,
   })), null, 2), 'utf-8');

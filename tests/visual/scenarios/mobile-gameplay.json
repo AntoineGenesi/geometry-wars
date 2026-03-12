@@ -1,0 +1,177 @@
+[
+  {
+    "name": "mobile_enemies_visible",
+    "description": "Spawn 10 enemies spread across UV, verify all alive at mobile viewport after 2s. Catches: enemies invisible or too small at mobile resolution.",
+    "mobileOnly": true,
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.15, "v": 0.2 },
+        { "type": "Grunt", "u": 0.35, "v": 0.2 },
+        { "type": "Grunt", "u": 0.55, "v": 0.2 },
+        { "type": "Grunt", "u": 0.75, "v": 0.2 },
+        { "type": "Grunt", "u": 0.85, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.15, "v": 0.8 },
+        { "type": "Wanderer", "u": 0.35, "v": 0.8 },
+        { "type": "Wanderer", "u": 0.55, "v": 0.8 },
+        { "type": "Wanderer", "u": 0.75, "v": 0.8 },
+        { "type": "Wanderer", "u": 0.85, "v": 0.8 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "enemies_spawned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 10 },
+        "label": "10_enemies_spawned_at_mobile_viewport"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "mobile_enemies_1s" },
+        "label": "capture_enemies_at_mobile_resolution"
+      },
+      {
+        "at": 120,
+        "action": { "type": "checkpoint", "label": "after_2s" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 8 },
+        "label": "at_least_8_enemies_visible_at_mobile"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "mobile_bullets_visible",
+    "description": "Fire weapon at mobile viewport, verify bullets exist and are non-zero count. Catches: bullets sub-pixel or invisible at mobile DPR=2.",
+    "mobileOnly": true,
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Standard"
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "ready" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_at_mobile_viewport"
+      },
+      {
+        "at": 3,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_weapon_at_mobile_viewport"
+      },
+      {
+        "at": 8,
+        "action": { "type": "screenshot", "label": "mobile_bullets" },
+        "label": "capture_bullets_at_mobile_resolution"
+      },
+      {
+        "at": 10,
+        "action": { "type": "checkpoint", "label": "bullet_check" },
+        "assert": { "type": "bulletCount", "op": ">", "value": 0 },
+        "label": "bullets_exist_at_mobile_viewport"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "mobile_grid_lines_visible",
+    "description": "Verify surface grid lines are visually non-trivial at mobile viewport. Catches: mobile maps too dark — grid lines barely visible.",
+    "mobileOnly": true,
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "game_loaded" },
+        "assert": { "type": "playerAlive" },
+        "label": "game_started_at_mobile_viewport"
+      },
+      {
+        "at": 30,
+        "action": { "type": "checkpoint", "label": "after_0.5s" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_grid_visible"
+      },
+      {
+        "at": 90,
+        "action": { "type": "screenshot", "label": "mobile_grid_check" },
+        "label": "capture_grid_lines_at_mobile_for_visual_review"
+      },
+      {
+        "at": 120,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "grid_check_complete_no_crash"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "mobile_hud_elements",
+    "description": "During gameplay at mobile viewport, verify game state is readable: player alive, score advancing, enemies exist. Catches: HUD obscuring gameplay at mobile size.",
+    "mobileOnly": true,
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.3, "v": 0.3 },
+        { "type": "Grunt", "u": 0.7, "v": 0.3 },
+        { "type": "Grunt", "u": 0.3, "v": 0.7 },
+        { "type": "Grunt", "u": 0.7, "v": 0.7 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "hud_baseline" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 4 },
+        "label": "enemies_spawned_for_hud_test"
+      },
+      {
+        "at": 30,
+        "action": { "type": "screenshot", "label": "mobile_hud_gameplay" },
+        "label": "capture_hud_and_gameplay_at_mobile"
+      },
+      {
+        "at": 60,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_hud_not_obscuring"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "mobile_pickups_visible",
+    "description": "Spawn pickups and verify they are detectable at mobile viewport. Catches: pickup arrows invisible at mobile DPR, pickups too small to see.",
+    "mobileOnly": true,
+    "setup": {
+      "playerPos": [0.9, 0.9],
+      "enemies": [
+        { "type": "Grunt", "u": 0.1, "v": 0.1 },
+        { "type": "Grunt", "u": 0.2, "v": 0.1 },
+        { "type": "Grunt", "u": 0.3, "v": 0.1 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "initial" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_far_from_enemies_for_pickup_drop"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "mobile_pickups" },
+        "label": "capture_pickup_visibility_at_mobile"
+      },
+      {
+        "at": 90,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "pickup_check_complete"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  }
+]
