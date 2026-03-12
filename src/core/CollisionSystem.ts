@@ -159,10 +159,19 @@ export class CollisionSystem {
         const hitRadiusSq = 2 * enemy.radius * enemy.radius;
         const visualPos = enemy.mesh ? enemy.mesh.position : enemy.position;
         const distSq = bulletPos.distanceToSquared(visualPos);
-        // s44r6-04: On-surface fallback for non-orientable surfaces (Mobius)
-        const onSurfaceDistSq = bulletPos.distanceToSquared(enemy.position);
-        const onSurfaceHitRadiusSq = enemy.radius * enemy.radius;
-        if (distSq < hitRadiusSq || onSurfaceDistSq < onSurfaceHitRadiusSq) {
+        // s44r6-04: On-surface fallback for non-orientable surfaces (Mobius).
+        // s44r12-01: Gate to Mobius-only — the OR fallback was firing on ALL surfaces,
+        // causing premature hits where on-surface distance was small but visual distance
+        // was still large (enemies not visually touching yet). User reported "hit detection
+        // completely f___ up" on every map.
+        const isMobiusLike = this.surfaceType === 'mobius' || this.surfaceType === 'mobius-bevel';
+        let bulletHit = distSq < hitRadiusSq;
+        if (!bulletHit && isMobiusLike) {
+          const onSurfaceDistSq = bulletPos.distanceToSquared(enemy.position);
+          const onSurfaceHitRadiusSq = enemy.radius * enemy.radius;
+          bulletHit = onSurfaceDistSq < onSurfaceHitRadiusSq;
+        }
+        if (bulletHit) {
           // Telemetry: log bullet-enemy collision event
           const enemyAliveBeforeHit = enemy.alive;
 
@@ -175,13 +184,11 @@ export class CollisionSystem {
 
           // Emit telemetry after damage applied
           if (this.onCollisionEvent) {
-            const effectiveDistSq = distSq < hitRadiusSq ? distSq : onSurfaceDistSq;
-            const effectiveThreshold = distSq < hitRadiusSq ? hitRadiusSq : onSurfaceHitRadiusSq;
             this.onCollisionEvent({
               type: 'bullet-enemy',
               frame: this._telemetryFrame,
-              distanceSq: effectiveDistSq,
-              thresholdSq: effectiveThreshold,
+              distanceSq: distSq,
+              thresholdSq: hitRadiusSq,
               entityAPos: bulletPos.clone(),
               entityBPos: visualPos.clone(),
               entityAType: 'bullet',
@@ -330,7 +337,10 @@ export class CollisionSystem {
       //          s44r5-03 uses mesh position with derived `(pR+eR)²+eR²` — correct.
       //          s44r6-04 adds on-surface fallback for non-orientable surfaces (Mobius).
       //          s44r6b-02: cube-specific tighter threshold — require 0.1 units visual overlap.
-      const playerRadius = player.mesh.scale.x * 0.1;
+      // s44r12-01: Reduced from 0.1 to 0.06 — the chevron ship visual body is narrower
+      // than 0.1 radius. At 0.1 the player died when enemies were visibly not touching.
+      // At 0.06 collision fires when the enemy edge overlaps the ship's core body.
+      const playerRadius = player.mesh.scale.x * 0.06;
       // s44r6b-02: On cube flat faces, chord distance = visual distance exactly, so (pR+eR)
       // triggers at the instant edges touch (zero overlap). Enemies approaching from adjacent
       // faces around beveled edges are invisible to the player. Subtract CUBE_OVERLAP_MARGIN
@@ -350,20 +360,25 @@ export class CollisionSystem {
       // point in different directions for nearby entities due to the half-twist. When
       // the enemy's normal-based mesh elevation pushes it to the "wrong side" of the
       // surface relative to the player, the visual-position distance inflates beyond
-      // hitRadiusSq even though the on-surface positions are adjacent. Add a fallback
-      // check using on-surface positions (enemy.position, no normal offset) with the
-      // base hit radius (no elevation correction needed since both are on-surface).
-      const onSurfaceDistSq = player.mesh.position.distanceToSquared(enemy.position);
-      if (distSq < hitRadiusSq || onSurfaceDistSq < baseHitRadiusSq) {
+      // hitRadiusSq even though the on-surface positions are adjacent.
+      // s44r12-01: Gate on-surface fallback to Mobius-only. The OR condition was firing
+      // on ALL surfaces, causing premature player deaths where on-surface distance was
+      // small but visual distance was still large. User reported dying "a body width
+      // away" from enemies on every map.
+      const isMobiusLike = this.surfaceType === 'mobius' || this.surfaceType === 'mobius-bevel';
+      let playerHit = distSq < hitRadiusSq;
+      if (!playerHit && isMobiusLike) {
+        const onSurfaceDistSq = player.mesh.position.distanceToSquared(enemy.position);
+        playerHit = onSurfaceDistSq < baseHitRadiusSq;
+      }
+      if (playerHit) {
         // Telemetry: log player-enemy collision event
         if (this.onCollisionEvent) {
-          const effectiveDistSq = distSq < hitRadiusSq ? distSq : onSurfaceDistSq;
-          const effectiveThreshold = distSq < hitRadiusSq ? hitRadiusSq : baseHitRadiusSq;
           this.onCollisionEvent({
             type: 'player-enemy',
             frame: this._telemetryFrame,
-            distanceSq: effectiveDistSq,
-            thresholdSq: effectiveThreshold,
+            distanceSq: distSq,
+            thresholdSq: hitRadiusSq,
             entityAPos: player.mesh.position.clone(),
             entityBPos: (enemy.mesh ? enemy.mesh.position : enemy.position).clone(),
             entityAType: 'player',

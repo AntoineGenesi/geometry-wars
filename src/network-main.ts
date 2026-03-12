@@ -6389,7 +6389,8 @@ async function main() {
       let nearestEnemyWorldDist = Infinity;
       let nearestEnemySurfaceDist = Infinity;
       let enemiesInPlayerRadius = 0;
-      const playerRadius = localPlayer ? localPlayer.mesh.scale.x * 0.1 : 0.1;
+      // s44r12-01: Keep in sync with CollisionSystem.ts playerRadius (0.06)
+      const playerRadius = localPlayer ? localPlayer.mesh.scale.x * 0.06 : 0.06;
 
       networkEnemies.forEach((enemy) => {
         if (!enemy.active) return;
