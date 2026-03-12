@@ -6946,13 +6946,16 @@ async function main() {
         if (bulletOwner === localPlayerId && SPECIAL_VISUAL_WEAPONS.has(weapType)) return;
 
         const bulletVisual = weaponToBulletVisual(weapType);
-        const weapColor = WEAPON_CONFIGS[weapType]?.color;
-        const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
+        // Use BulletInstanceManager's built-in default colors (not WEAPON_CONFIGS colors).
+        // SP (GameLoop.ts) adds bullets without explicit color → uses BulletInstanceManager
+        // defaults. Passing WEAPON_CONFIGS colors here made MP bullets visually different
+        // from SP (e.g. Standard: 0xffff44 yellow in MP vs 0x88ffff cyan in SP).
+        // Omitting the color parameter makes MP match SP exactly.
 
         // Server now fires 2 separate bullets for Standard (Blaster) and 5 for Spread,
         // so each server bullet renders as a single visual (no client-side dual-barrel trick).
         if (!bulletInstanceIds.has(id)) {
-          bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
+          bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir);
         } else {
           bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
         }
@@ -7000,9 +7003,8 @@ async function main() {
         if (!skipFallback) {
           if (!bulletInstanceIds.has(id)) {
             const bulletVisual = weaponToBulletVisual(fallbackWeapType);
-            const weapColor = WEAPON_CONFIGS[fallbackWeapType]?.color;
-            const color = weapColor !== undefined ? _bulletTmpColor.setHex(weapColor) : undefined;
-            bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir, color);
+            // No explicit color — use BulletInstanceManager defaults to match SP behavior.
+            bulletInstanceManager.addBullet(id, bulletVisual, _netTempPos, _netTempDir);
             bulletInstanceIds.add(id);
           } else {
             bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
