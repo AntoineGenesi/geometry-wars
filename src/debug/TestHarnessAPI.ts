@@ -519,6 +519,65 @@ export class TestHarnessAPI {
     this.performanceProfiler.reset();
   }
 
+  // -----------------------------------------------------------------------
+  // KOTH mode API (s44r13-07)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Get the current KOTH (King Mode) zone state.
+   * Returns null if the game is not in KOTH/King mode.
+   */
+  getKOTHZoneState(): {
+    zoneU: number;
+    zoneV: number;
+    zoneRadiusUV: number;
+    zoneTimeSeconds: number;
+    inZone: boolean;
+    zoneTimer: number;
+  } | null {
+    const mode = this.ctx.quickGameMode as any;
+    if (!mode || typeof mode.zoneU === 'undefined') return null;
+    return {
+      zoneU: mode.zoneU,
+      zoneV: mode.zoneV,
+      zoneRadiusUV: mode.zoneRadiusUV,
+      zoneTimeSeconds: mode.zoneTimeSeconds,
+      inZone: mode.inZone,
+      zoneTimer: mode.zoneTimer,
+    };
+  }
+
+  /** Returns whether the local player is currently inside the KOTH capture zone. */
+  isPlayerInZone(): boolean {
+    const mode = this.ctx.quickGameMode as any;
+    if (!mode || typeof mode.inZone === 'undefined') return false;
+    return mode.inZone;
+  }
+
+  /**
+   * Force-set the KOTH zone position (for deterministic testing).
+   * Resets the zone move timer to a large value so the zone won't move during the test.
+   * Only works when in KOTH/King mode.
+   */
+  setKOTHZonePosition(u: number, v: number): void {
+    const mode = this.ctx.quickGameMode as any;
+    if (!mode || typeof mode.zoneU === 'undefined') return;
+    mode.zoneU = u;
+    mode.zoneV = v;
+    // Prevent zone from moving for 60 seconds during test
+    mode.zoneTimer = 60;
+  }
+
+  /**
+   * Get the current KOTH zone score (zone time in centiseconds, matching getScore() output).
+   * Returns -1 if not in KOTH mode.
+   */
+  getKOTHScore(): number {
+    const mode = this.ctx.quickGameMode as any;
+    if (!mode || typeof mode.zoneTimeSeconds === 'undefined') return -1;
+    return Math.round(mode.zoneTimeSeconds * 100);
+  }
+
   /**
    * Get current camera state (position, up, quaternion, distance to player).
    * Returns null if camera not available.

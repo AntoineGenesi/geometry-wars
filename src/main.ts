@@ -2225,7 +2225,7 @@ function isBenchmarkMode(): boolean {
   return params.get('mode') === 'benchmark';
 }
 
-function isQuickStartMode(): { enabled: boolean; surface?: SurfaceType; seed?: number } {
+function isQuickStartMode(): { enabled: boolean; surface?: SurfaceType; seed?: number; gameMode?: LanGameMode } {
   const params = new URLSearchParams(window.location.search);
   const quickStart = params.get('quickStart') === 'true';
   if (!quickStart) return { enabled: false };
@@ -2233,8 +2233,9 @@ function isQuickStartMode(): { enabled: boolean; surface?: SurfaceType; seed?: n
   const surface = params.get('surface') as SurfaceType || 'sphere';
   const seedParam = params.get('seed');
   const seed = seedParam ? parseInt(seedParam, 10) : undefined;
+  const gameMode = (params.get('gameMode') ?? undefined) as LanGameMode | undefined;
 
-  return { enabled: true, surface, seed };
+  return { enabled: true, surface, seed, gameMode };
 }
 
 (async () => {
@@ -2244,14 +2245,14 @@ const quickStartConfig = isQuickStartMode();
 
 if (quickStartConfig.enabled) {
   // Quick start mode: skip menu, start game immediately with seed
-  console.log(`[Main] Quick start mode: ${quickStartConfig.surface}, seed=${quickStartConfig.seed ?? 'random'}`);
+  console.log(`[Main] Quick start mode: ${quickStartConfig.surface}, mode=${quickStartConfig.gameMode ?? 'waves'}, seed=${quickStartConfig.seed ?? 'random'}`);
   if (quickStartConfig.seed !== undefined) {
     import('./core/SeededRandom').then(({ setGameSeed }) => {
       setGameSeed(quickStartConfig.seed!);
-      main(quickStartConfig.surface, -1); // -1 = endless mode
+      main(quickStartConfig.surface, -1, undefined, undefined, quickStartConfig.gameMode); // -1 = endless mode
     });
   } else {
-    main(quickStartConfig.surface, -1);
+    main(quickStartConfig.surface, -1, undefined, undefined, quickStartConfig.gameMode);
   }
 } else if (isBenchmarkMode()) {
   import('./benchmark').then(({ runBenchmark }) => {
