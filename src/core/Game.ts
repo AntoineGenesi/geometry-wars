@@ -538,7 +538,7 @@ export class Game {
       // canvas renders at 25% of the CSS display size. The browser upscales this
       // quarter-res buffer to fill the screen, producing the chunky/pixelated look.
       // Modern mode restores the original pixel ratio for full-res rendering.
-      const targetRatio = mode === 'pixelated' ? 0.25 : this._basePixelRatio;
+      const targetRatio = mode === 'pixelated' ? 0.375 : this._basePixelRatio;
       this.renderer.setPixelRatio(targetRatio);
       // Reapply canvas buffer size with the new ratio; keep CSS dimensions unchanged
       // so the canvas still fills the screen (upscaled = pixelated, or 1:1 = modern).
