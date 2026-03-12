@@ -6572,6 +6572,21 @@ async function main() {
         },
         isPaused,
         isGameOver: currentRoomPhase === 'gameover',
+        portals: {
+          active: networkPortals !== null,
+          aU: syncedPortalAU,
+          aV: syncedPortalAV,
+          bU: syncedPortalBU,
+          bV: syncedPortalBV,
+        },
+        cameraUp: (() => {
+          try {
+            const u = game.camera.up;
+            return { x: u.x, y: u.y, z: u.z };
+          } catch { return { x: 0, y: 1, z: 0 }; }
+        })(),
+        gameMode: latestGameMode ?? 'waves',
+        pvpEnabled: latestPvpEnabled,
       };
     }
 
