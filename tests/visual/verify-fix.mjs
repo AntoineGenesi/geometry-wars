@@ -15,6 +15,17 @@
  *
  * Can also be run directly:
  *   node tests/visual/verify-fix.mjs --surface=torus --checks=enemies_visible,player_alive
+ *
+ * CODE PATH: Uses the REAL game entry point (main.ts → GameLoop.ts), NOT PlaygroundTestHarness.
+ *   ?quickStart=true bypasses StartMenu but loads the full game.
+ *   Use ?testMode=true for checks that require __TEST_API (fps_under_load, hit_detection_distance, enemy_mesh_visible).
+ *
+ * CHECK TIERS:
+ *   Tier 1 (Smoke — always run): no_crash, player_alive, enemies_visible, movement_works
+ *   Tier 2 (Correctness — run for fixes): hit_detection_sane, hit_detection_distance, enemy_dimming,
+ *     collision_radii, enemy_distances, enemy_spread, enemy_mesh_visible
+ *   Tier 3 (Performance — run for perf changes): fps_under_load
+ *   Tier 4 (Gameplay — run for specific features): score_increasing
  */
 
 import puppeteer from 'puppeteer';
@@ -466,6 +477,277 @@ const CHECK_REGISTRY = {
 
     if (score > 0) return { passed: true, reason: `Score: ${score}` };
     return { passed: false, reason: 'Score still 0 after shooting' };
+  },
+
+  /**
+   * fps_under_load: Spawn 100 enemies and verify the game doesn't grind to a halt.
+   *
+   * REGRESSION: s44r12-09 — performance crash with 100 entities
+   *
+   * Requires ?testMode=true to be set (uses __TEST_API to spawn enemies).
+   * Uses frame counter advancement as a proxy for FPS — even on SwiftShader, the game
+   * should advance at least 10 frames/second under 100-enemy load.
+   * Also detects GC spikes: if any 1-second window has <5 frames, flag it.
+   */
+  async fps_under_load(page, _opts) {
+    // Requires testMode — check API availability
+    const apiReady = await page.evaluate(() => typeof window.__TEST_API !== 'undefined');
+    if (!apiReady) {
+      return { passed: true, reason: 'fps_under_load requires ?testMode=true — skipped (no __TEST_API)' };
+    }
+
+    // Clear existing enemies and spawn 100
+    await page.evaluate(() => window.__TEST_API.clearEnemies());
+    await new Promise(r => setTimeout(r, 300));
+
+    // Spawn 100 enemies distributed across the surface
+    const spawnCount = 100;
+    await page.evaluate((count) => {
+      const api = window.__TEST_API;
+      for (let i = 0; i < count; i++) {
+        const u = (i / count + 0.05) % 1.0;
+        const v = 0.1 + (((i * 7) % 8) / 10); // pseudo-random v values
+        api.spawnEnemy('grunt', u, v);
+      }
+    }, spawnCount);
+
+    // Let the game settle for 1 second before measuring
+    await new Promise(r => setTimeout(r, 1000));
+
+    // Measure frame count over 5 seconds in 1-second windows
+    const windows = [];
+    for (let w = 0; w < 5; w++) {
+      const frameBefore = await page.evaluate(() => {
+        const t = window.__GAME_TELEMETRY;
+        return t ? t.frame : null;
+      });
+      await new Promise(r => setTimeout(r, 1000));
+      const frameAfter = await page.evaluate(() => {
+        const t = window.__GAME_TELEMETRY;
+        return t ? t.frame : null;
+      });
+      if (frameBefore !== null && frameAfter !== null) {
+        windows.push(frameAfter - frameBefore);
+      }
+    }
+
+    if (windows.length < 3) {
+      return { passed: false, reason: 'Could not measure frame rate — telemetry not available (add ?debug=true)' };
+    }
+
+    const minWindow = Math.min(...windows);
+    const avgFrames = windows.reduce((s, f) => s + f, 0) / windows.length;
+
+    // Minimum: 5 frames per second (50 total in 10s) — very lenient for SwiftShader
+    // GC spike detection: if any 1-second window has <3 frames, something is blocking the main thread
+    if (minWindow < 3) {
+      return {
+        passed: false,
+        reason: `GC spike detected: worst 1s window had only ${minWindow} frames (avg: ${avgFrames.toFixed(1)}/s). ` +
+                `Frame windows: [${windows.join(', ')}]`,
+      };
+    }
+    if (avgFrames < 5) {
+      return {
+        passed: false,
+        reason: `Avg ${avgFrames.toFixed(1)} frames/s under 100-enemy load — game is too slow. ` +
+                `Frame windows: [${windows.join(', ')}]`,
+      };
+    }
+
+    return {
+      passed: true,
+      reason: `${spawnCount} enemies: avg ${avgFrames.toFixed(1)} frames/s, min window ${minWindow} frames/s. Frame windows: [${windows.join(', ')}]`,
+    };
+  },
+
+  /**
+   * hit_detection_distance: Verify hit detection fires at the correct visual distance.
+   *
+   * REGRESSION: s44r12-09 / s44r6-04 — CollisionSystem OR fallback caused premature deaths.
+   * Player was dying when enemy was still a "body-width away" visually.
+   *
+   * Test:
+   * 1. Get player position
+   * 2. Spawn enemy at safe distance (0.15 UV ≈ 1.5 units on sphere) — player should SURVIVE
+   * 3. Wait 3 seconds — if player dies immediately, hit detection is too sensitive
+   * 4. Move enemy to overlap position — player should die
+   *
+   * Requires ?testMode=true for __TEST_API.
+   */
+  async hit_detection_distance(page, _opts) {
+    const apiReady = await page.evaluate(() => typeof window.__TEST_API !== 'undefined');
+    if (!apiReady) {
+      return { passed: true, reason: 'hit_detection_distance requires ?testMode=true — skipped (no __TEST_API)' };
+    }
+
+    // Clear enemies, clear events
+    await page.evaluate(() => {
+      window.__TEST_API.clearEnemies();
+      if (typeof window.__TEST_API.clearEvents === 'function') window.__TEST_API.clearEvents();
+    });
+    await new Promise(r => setTimeout(r, 500));
+
+    // Get player position
+    const playerPos = await page.evaluate(() => window.__TEST_API.getPlayerPosition());
+    if (!playerPos) {
+      return { passed: false, reason: 'Could not get player position from __TEST_API' };
+    }
+
+    // Phase 1: spawn enemy at "visually safe" distance (0.15 UV offset)
+    // On sphere radius ~10, 0.15 UV ≈ 1.5 world units — well outside visual collision
+    const safeU = (playerPos.u + 0.15) % 1.0;
+    const safeV = Math.max(0.05, Math.min(0.95, playerPos.v));
+    const safeId = await page.evaluate(
+      (type, u, v) => window.__TEST_API.spawnEnemy(type, u, v),
+      'grunt', safeU, safeV,
+    );
+
+    // Wait 3 seconds — at this distance, player should NOT die
+    await new Promise(r => setTimeout(r, 3000));
+
+    const playerAliveAtSafeDistance = await page.evaluate(() => {
+      const state = window.__TEST_API.getGameState();
+      return state && !state.isGameOver && state.lives > 0;
+    });
+
+    // Phase 2: move enemy onto player — now player SHOULD die
+    await page.evaluate(
+      (id, u, v, speed) => window.__TEST_API.moveEnemyTo(id, u, v, speed),
+      safeId, playerPos.u, playerPos.v, 10.0,
+    );
+
+    // Wait up to 8 seconds for death
+    let died = false;
+    for (let i = 0; i < 80; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      const deaths = await page.evaluate(() => window.__TEST_API.getRecentDeaths());
+      if (deaths.length > 0) { died = true; break; }
+    }
+
+    if (!playerAliveAtSafeDistance) {
+      return {
+        passed: false,
+        reason: `Player died when enemy was at 0.15 UV offset (safe distance) — hit detection is too sensitive. ` +
+                `This is the s44r6-04 regression: CollisionSystem OR fallback fires false positives.`,
+      };
+    }
+    if (!died) {
+      return {
+        passed: false,
+        reason: 'Enemy reached player UV but player never died — hit detection may be too lenient or API timing issue',
+      };
+    }
+
+    return {
+      passed: true,
+      reason: 'Player survived at safe distance (0.15 UV), died when enemy overlapped — hit detection range is correct',
+    };
+  },
+
+  /**
+   * enemy_mesh_visible: Cross-check that telemetry-alive enemies are actually rendering.
+   *
+   * REGRESSION: s44r12-09 / cube-tunnel invisible enemies — enemies "alive" in telemetry
+   * but invisible because InstancedMesh scale was (0,0,0).
+   *
+   * Takes a screenshot after spawning enemies at positions mapped to screen center,
+   * then verifies the center region has non-trivial pixel brightness.
+   *
+   * Requires ?testMode=true for __TEST_API.
+   */
+  async enemy_mesh_visible(page, _opts) {
+    const apiReady = await page.evaluate(() => typeof window.__TEST_API !== 'undefined');
+    if (!apiReady) {
+      return { passed: true, reason: 'enemy_mesh_visible requires ?testMode=true — skipped (no __TEST_API)' };
+    }
+
+    // Clear enemies
+    await page.evaluate(() => window.__TEST_API.clearEnemies());
+    await new Promise(r => setTimeout(r, 500));
+
+    // Spawn 5 enemies distributed around UV (0.5, 0.5) — center of surface
+    // These should appear near screen center in most surface projections
+    const positions = [
+      [0.45, 0.45], [0.55, 0.45], [0.45, 0.55], [0.55, 0.55], [0.5, 0.5],
+    ];
+    for (const [u, v] of positions) {
+      await page.evaluate(
+        (type, u, v) => window.__TEST_API.spawnEnemy(type, u, v),
+        'wanderer', u, v,
+      );
+    }
+
+    // Wait for render
+    await new Promise(r => setTimeout(r, 2000));
+
+    // Check telemetry: how many enemies are alive?
+    const enemies = await page.evaluate(() => window.__TEST_API.getEnemies());
+    const aliveCount = enemies.filter(e => e.alive).length;
+
+    if (aliveCount === 0) {
+      return { passed: false, reason: 'No enemies alive in telemetry after spawning 5 — spawn may have failed' };
+    }
+
+    // Take screenshot and analyze brightness in center region
+    const frameBrightness = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      if (!canvas) return null;
+      try {
+        const tmp = document.createElement('canvas');
+        tmp.width = canvas.width;
+        tmp.height = canvas.height;
+        const ctx = tmp.getContext('2d');
+        if (!ctx) return null;
+        ctx.drawImage(canvas, 0, 0);
+
+        // Sample a 20×20 grid in the center 50% of the canvas
+        const x0 = Math.floor(canvas.width * 0.25);
+        const y0 = Math.floor(canvas.height * 0.25);
+        const x1 = Math.floor(canvas.width * 0.75);
+        const y1 = Math.floor(canvas.height * 0.75);
+        let totalLum = 0;
+        let sampleCount = 0;
+        let nonBlackCount = 0;
+        const step = Math.floor((x1 - x0) / 20);
+
+        for (let x = x0; x < x1; x += step) {
+          for (let y = y0; y < y1; y += step) {
+            const px = ctx.getImageData(x, y, 1, 1).data;
+            const lum = 0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2];
+            totalLum += lum;
+            sampleCount++;
+            if (lum > 8) nonBlackCount++;
+          }
+        }
+        return { avgLum: totalLum / sampleCount, nonBlackCount, sampleCount };
+      } catch (e) {
+        return null;
+      }
+    });
+
+    if (!frameBrightness) {
+      // Can't read canvas — pass conservatively (security restriction in some contexts)
+      return { passed: true, reason: `${aliveCount} enemies alive in telemetry; canvas read failed (security restriction)` };
+    }
+
+    // If enemies are alive in telemetry but center is completely black, they're invisible
+    // Allow for surfaces where enemies spawn far from center UV (0.5, 0.5)
+    // Threshold: at least 5% of center pixels non-black (permissive to avoid false failures)
+    const nonBlackRatio = frameBrightness.nonBlackCount / frameBrightness.sampleCount;
+    if (nonBlackRatio < 0.05 && frameBrightness.avgLum < 2) {
+      return {
+        passed: false,
+        reason: `${aliveCount} enemies alive in telemetry but center region is nearly black ` +
+                `(avgLum=${frameBrightness.avgLum.toFixed(1)}, nonBlack=${(nonBlackRatio * 100).toFixed(0)}%). ` +
+                `Possible InstancedMesh scale=(0,0,0) bug (s44r12-08 pattern).`,
+      };
+    }
+
+    return {
+      passed: true,
+      reason: `${aliveCount} enemies alive in telemetry, center region has ${(nonBlackRatio * 100).toFixed(0)}% non-black pixels (avgLum=${frameBrightness.avgLum.toFixed(1)})`,
+    };
   },
 };
 

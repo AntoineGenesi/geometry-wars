@@ -5,6 +5,11 @@
  * Uses window.__TEST_API (TestHarnessAPI) to CONTROL the game:
  * spawn enemies, direct movement, trigger weapons, verify outcomes.
  *
+ * CODE PATH: This harness uses the REAL game code path.
+ *   ?quickStart=true → src/main.ts → src/core/GameLoop.ts
+ *   NOT PlaygroundTestHarness / GameInstance (vitest). Those test demos only.
+ *   Any bug in GameLoop.ts, EnemySpawner.ts, CollisionSystem.ts IS detected here.
+ *
  * Usage:
  *   node tests/visual/scenario-harness.mjs                         # Run all
  *   node tests/visual/scenario-harness.mjs --surface=sphere         # Single surface
@@ -521,6 +526,140 @@ const SCENARIOS = {
         details: {
           deathCount: deaths.length,
           firstDeath: deaths[0] ?? null,
+          surface,
+        },
+      };
+    },
+  },
+
+  // ---- Scenario 11: FPS Under Load ----
+  // REGRESSION: s44r12-09 — performance crash with 100 entities on sphere
+  fps_under_load: {
+    name: 'FPS Under Load (100 enemies)',
+    description: 'Spawn 100 enemies, measure frame advancement over 5s, assert no GC freeze',
+    async run(page, surface) {
+      // Clear enemies and spawn 100 distributed across the surface
+      await page.evaluate(() => window.__TEST_API.clearEnemies());
+      await sleep(300);
+
+      await page.evaluate((count) => {
+        const api = window.__TEST_API;
+        for (let i = 0; i < count; i++) {
+          const u = ((i * 0.37 + 0.05) % 0.9) + 0.05; // pseudo-random u in [0.05, 0.95]
+          const v = ((i * 0.23 + 0.1) % 0.8) + 0.1;   // pseudo-random v in [0.1, 0.9]
+          api.spawnEnemy('grunt', u, v);
+        }
+      }, 100);
+
+      // Settle for 1 second
+      await sleep(1000);
+
+      // Measure frame count in 1-second windows over 5 seconds
+      const frameWindows = [];
+      for (let w = 0; w < 5; w++) {
+        const before = await page.evaluate(() => {
+          const t = window.__GAME_TELEMETRY;
+          return t ? t.frame : null;
+        });
+        await sleep(1000);
+        const after = await page.evaluate(() => {
+          const t = window.__GAME_TELEMETRY;
+          return t ? t.frame : null;
+        });
+        if (before !== null && after !== null) {
+          frameWindows.push(after - before);
+        }
+      }
+
+      if (frameWindows.length < 3) {
+        return {
+          passed: false,
+          details: {
+            error: 'Could not read frame counters — telemetry unavailable (requires ?debug=true)',
+            surface,
+          },
+        };
+      }
+
+      const minWindow = Math.min(...frameWindows);
+      const avgFrames = frameWindows.reduce((s, f) => s + f, 0) / frameWindows.length;
+
+      // SwiftShader is very slow — 5 FPS minimum under load is still meaningful as a freeze detector
+      // GC spike: any 1-second window with <3 frames = main thread blocked >333ms
+      const passed = minWindow >= 3 && avgFrames >= 5;
+
+      return {
+        passed,
+        details: {
+          enemyCount: 100,
+          avgFramesPerSecond: parseFloat(avgFrames.toFixed(1)),
+          minWindowFrames: minWindow,
+          allWindows: frameWindows,
+          gcSpikeDetected: minWindow < 3,
+          surface,
+        },
+      };
+    },
+  },
+
+  // ---- Scenario 12: Hit Detection Distance Sanity ----
+  // REGRESSION: s44r12-09 / s44r6-04 — premature player deaths from CollisionSystem OR fallback
+  hit_detection_distance: {
+    name: 'Hit Detection Distance Sanity',
+    description: 'Player survives enemy at 0.15 UV distance; dies when enemy overlaps — checks for s44r6-04 regression',
+    async run(page, surface) {
+      await page.evaluate(() => {
+        window.__TEST_API.clearEnemies();
+        if (typeof window.__TEST_API.clearEvents === 'function') window.__TEST_API.clearEvents();
+      });
+      await sleep(500);
+
+      const playerPos = await page.evaluate(() => window.__TEST_API.getPlayerPosition());
+      if (!playerPos) {
+        return {
+          passed: false,
+          details: { error: 'Could not get player position', surface },
+        };
+      }
+
+      // Spawn enemy at "safe" distance: 0.15 UV offset on U axis
+      const safeU = (playerPos.u + 0.15) % 1.0;
+      const safeV = Math.max(0.05, Math.min(0.95, playerPos.v));
+      const safeId = await page.evaluate(
+        (type, u, v) => window.__TEST_API.spawnEnemy(type, u, v),
+        'grunt', safeU, safeV,
+      );
+
+      // Wait 3 seconds — at safe distance, player should NOT die
+      await sleep(3000);
+
+      const survivedSafeDistance = await page.evaluate(() => {
+        const state = window.__TEST_API.getGameState();
+        return state && !state.isGameOver && state.lives > 0;
+      });
+
+      // Move enemy to player position
+      await page.evaluate(
+        (id, u, v, speed) => window.__TEST_API.moveEnemyTo(id, u, v, speed),
+        safeId, playerPos.u, playerPos.v, 10.0,
+      );
+
+      // Wait for death
+      let died = false;
+      for (let i = 0; i < 60; i++) {
+        await sleep(100);
+        const deaths = await page.evaluate(() => window.__TEST_API.getRecentDeaths());
+        if (deaths.length > 0) { died = true; break; }
+      }
+
+      return {
+        passed: survivedSafeDistance, // Primary check: survived at safe distance
+        details: {
+          survivedSafeDistance,
+          diedOnOverlap: died,
+          note: survivedSafeDistance
+            ? (died ? 'Hit detection range is correct' : 'Survived safe dist, but enemy overlap did not kill — may need more time')
+            : 'REGRESSION: died at 0.15 UV offset — CollisionSystem OR fallback likely (s44r6-04 pattern)',
           surface,
         },
       };
