@@ -1,0 +1,105 @@
+[
+  {
+    "name": "surface_traversal",
+    "description": "Move player across UV range via key presses. Assert position advances.",
+    "setup": {
+      "playerPos": [0.1, 0.1]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start" },
+        "assert": { "type": "playerAt", "u": 0.1, "v": 0.1, "tolerance": 0.05 },
+        "label": "verify_start_pos"
+      },
+      {
+        "at": 2,
+        "action": { "type": "pressKey", "key": "d", "duration": 2.0 },
+        "label": "move_right"
+      },
+      {
+        "at": "t:2.5",
+        "action": { "type": "checkpoint", "label": "after_right" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_mid"
+      },
+      {
+        "at": "t:3.5",
+        "action": { "type": "pressKey", "key": "s", "duration": 1.5 },
+        "label": "move_down"
+      },
+      {
+        "at": "t:5.5",
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_traverse"
+      }
+    ]
+  },
+  {
+    "name": "pole_behavior",
+    "description": "Move player near UV poles (0,0) and (0,1). Assert no crash, player stays alive.",
+    "setup": {
+      "playerPos": [0.5, 0.02]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "near_top_pole" },
+        "assert": { "type": "playerAlive" },
+        "label": "alive_near_top_pole"
+      },
+      {
+        "at": 5,
+        "action": { "type": "setPlayerPos", "u": 0.5, "v": 0.98 },
+        "assert": { "type": "playerAlive" },
+        "label": "alive_near_bottom_pole"
+      },
+      {
+        "at": 10,
+        "action": { "type": "setPlayerPos", "u": 0.02, "v": 0.5 },
+        "assert": { "type": "playerAlive" },
+        "label": "alive_near_left_edge"
+      },
+      {
+        "at": 15,
+        "action": { "type": "setPlayerPos", "u": 0.98, "v": 0.5 },
+        "assert": { "type": "playerAlive" },
+        "label": "alive_near_right_edge"
+      },
+      {
+        "at": 20,
+        "action": { "type": "setPlayerPos", "u": 0.5, "v": 0.5 },
+        "assert": { "type": "playerAlive" },
+        "label": "return_to_center"
+      }
+    ]
+  },
+  {
+    "name": "seam_crossing",
+    "description": "Move player from u=0.95 to u=0.05 (wrapping seam). Assert smooth transition, player alive.",
+    "setup": {
+      "playerPos": [0.95, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_seam" },
+        "assert": { "type": "playerAlive" },
+        "label": "alive_before_seam"
+      },
+      {
+        "at": 5,
+        "action": { "type": "setPlayerPos", "u": 0.05, "v": 0.5 },
+        "assert": { "type": "playerAlive" },
+        "label": "alive_after_seam"
+      },
+      {
+        "at": 10,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "noDeathsSince", "label": "before_seam" },
+        "label": "no_deaths_from_seam"
+      }
+    ]
+  }
+]

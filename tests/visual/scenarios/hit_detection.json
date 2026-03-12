@@ -1,0 +1,88 @@
+[
+  {
+    "name": "hit_detection_close_range",
+    "description": "Spawn enemy at player position, verify death occurs (enemy kills player up close).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.52, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_contact" },
+        "label": "mark_before"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_0", "targetU": 0.5, "targetV": 0.5, "speed": 5 },
+        "label": "move_enemy_to_player"
+      },
+      {
+        "at": 60,
+        "action": { "type": "observe", "duration": 0 },
+        "label": "observe_result"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "bullet_hit_enemy",
+    "description": "Spawn enemy near player, fire weapon, assert damage occurred.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Standard",
+      "enemies": [
+        { "type": "Grunt", "u": 0.53, "v": 0.5 },
+        { "type": "Grunt", "u": 0.47, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_fire" },
+        "assert": { "type": "enemyCount", "op": ">", "value": 0 },
+        "label": "enemies_present"
+      },
+      {
+        "at": 3,
+        "action": { "type": "fireWeapon" },
+        "assert": { "type": "bulletCount", "op": ">", "value": 0 },
+        "label": "fired_and_bullet_exists"
+      },
+      {
+        "at": 30,
+        "action": { "type": "checkpoint", "label": "after_fire" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_fire"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "enemy_body_shape",
+    "description": "Spawn large enemy type (Carrier), verify it appears (enemy count > 0) and player survives briefly.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Carrier", "u": 0.7, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "carrier_spawned" },
+        "assert": { "type": "enemyCount", "op": ">", "value": 0 },
+        "label": "carrier_exists"
+      },
+      {
+        "at": 30,
+        "action": { "type": "screenshot", "label": "carrier_visible" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_near_carrier"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  }
+]

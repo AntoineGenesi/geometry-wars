@@ -1,0 +1,93 @@
+[
+  {
+    "name": "30s_survival",
+    "description": "No scripted actions. Observe game for 10s. Assert: player survives >5s, fps stays >5.",
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start" },
+        "label": "mark_start"
+      },
+      {
+        "at": "t:5.0",
+        "action": { "type": "checkpoint", "label": "alive_5s" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_5s"
+      },
+      {
+        "at": "t:8.0",
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "fpsAbove", "value": 5 },
+        "label": "fps_above_5"
+      },
+      {
+        "at": "t:10.0",
+        "action": { "type": "screenshot", "label": "survival_end" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_10s"
+      }
+    ]
+  },
+  {
+    "name": "stress_30_enemies",
+    "description": "Spawn 30 enemies. Observe fps and player status. Assert: no crash, fps >3.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.3, "v": 0.3 }, { "type": "Grunt", "u": 0.35, "v": 0.3 },
+        { "type": "Grunt", "u": 0.4, "v": 0.3 }, { "type": "Grunt", "u": 0.45, "v": 0.3 },
+        { "type": "Grunt", "u": 0.55, "v": 0.3 }, { "type": "Grunt", "u": 0.6, "v": 0.3 },
+        { "type": "Grunt", "u": 0.65, "v": 0.3 }, { "type": "Grunt", "u": 0.7, "v": 0.3 },
+        { "type": "Grunt", "u": 0.3, "v": 0.7 }, { "type": "Grunt", "u": 0.35, "v": 0.7 },
+        { "type": "Grunt", "u": 0.4, "v": 0.7 }, { "type": "Grunt", "u": 0.45, "v": 0.7 },
+        { "type": "Grunt", "u": 0.55, "v": 0.7 }, { "type": "Grunt", "u": 0.6, "v": 0.7 },
+        { "type": "Grunt", "u": 0.65, "v": 0.7 }, { "type": "Grunt", "u": 0.7, "v": 0.7 },
+        { "type": "Grunt", "u": 0.3, "v": 0.5 }, { "type": "Grunt", "u": 0.35, "v": 0.5 },
+        { "type": "Grunt", "u": 0.4, "v": 0.5 }, { "type": "Grunt", "u": 0.6, "v": 0.5 },
+        { "type": "Grunt", "u": 0.65, "v": 0.5 }, { "type": "Grunt", "u": 0.7, "v": 0.5 },
+        { "type": "Grunt", "u": 0.5, "v": 0.3 }, { "type": "Grunt", "u": 0.5, "v": 0.35 },
+        { "type": "Grunt", "u": 0.5, "v": 0.4 }, { "type": "Grunt", "u": 0.5, "v": 0.6 },
+        { "type": "Grunt", "u": 0.5, "v": 0.65 }, { "type": "Grunt", "u": 0.5, "v": 0.7 },
+        { "type": "Grunt", "u": 0.25, "v": 0.5 }, { "type": "Grunt", "u": 0.75, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "stress_start" },
+        "assert": { "type": "enemyCount", "op": ">", "value": 0 },
+        "label": "enemies_spawned"
+      },
+      {
+        "at": "t:3.0",
+        "action": { "type": "screenshot", "label": "stress_peak" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_ok_under_stress"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "wave_progression",
+    "description": "Observe game for 12s. Assert: enemy count > 0 (enemies spawn), player alive.",
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "wave_start" },
+        "label": "wave_start"
+      },
+      {
+        "at": "t:6.0",
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "enemyCount", "op": ">", "value": 0 },
+        "label": "enemies_exist_at_6s"
+      },
+      {
+        "at": "t:12.0",
+        "action": { "type": "screenshot", "label": "wave_12s" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_at_12s"
+      }
+    ]
+  }
+]

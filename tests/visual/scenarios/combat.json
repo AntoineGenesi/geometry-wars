@@ -1,0 +1,161 @@
+[
+  {
+    "name": "tesla_continuous_damage",
+    "description": "Equip tesla coil, spawn 3 enemies in range, observe damage ticks over 3s. Assert each enemy takes damage.",
+    "setup": {
+      "weapon": "TeslaCoil",
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.52, "v": 0.5 },
+        { "type": "Grunt", "u": 0.48, "v": 0.5 },
+        { "type": "Grunt", "u": 0.5, "v": 0.52 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start" },
+        "label": "mark_start"
+      },
+      {
+        "at": "t:0.1",
+        "action": { "type": "fireWeapon" },
+        "label": "fire_tesla"
+      },
+      {
+        "at": "t:2.0",
+        "action": { "type": "checkpoint", "label": "after_tesla" },
+        "assert": { "type": "damageOccurred" },
+        "label": "verify_damage_occurred"
+      },
+      {
+        "at": "t:3.0",
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_survived"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "weapon_switching",
+    "description": "Cycle through several weapons, fire each. Assert bullets exist after each fire.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "equipWeapon", "weapon": "Standard" },
+        "assert": { "type": "weaponIs", "weapon": "Standard" },
+        "label": "equip_standard"
+      },
+      {
+        "at": 2,
+        "action": { "type": "fireWeapon" },
+        "assert": { "type": "bulletCount", "op": ">", "value": 0 },
+        "label": "fire_standard"
+      },
+      {
+        "at": 10,
+        "action": { "type": "equipWeapon", "weapon": "Spread" },
+        "assert": { "type": "weaponIs", "weapon": "Spread" },
+        "label": "equip_spread"
+      },
+      {
+        "at": 12,
+        "action": { "type": "fireWeapon" },
+        "assert": { "type": "bulletCount", "op": ">", "value": 0 },
+        "label": "fire_spread"
+      },
+      {
+        "at": 20,
+        "action": { "type": "equipWeapon", "weapon": "Homing" },
+        "assert": { "type": "weaponIs", "weapon": "Homing" },
+        "label": "equip_homing"
+      },
+      {
+        "at": 22,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_homing"
+      },
+      {
+        "at": 30,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_still_alive"
+      }
+    ]
+  },
+  {
+    "name": "bomb_clear",
+    "description": "Spawn 10 enemies, use bomb (press E), assert enemy count drops significantly.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.4, "v": 0.4 },
+        { "type": "Grunt", "u": 0.45, "v": 0.4 },
+        { "type": "Grunt", "u": 0.5, "v": 0.4 },
+        { "type": "Grunt", "u": 0.55, "v": 0.4 },
+        { "type": "Grunt", "u": 0.6, "v": 0.4 },
+        { "type": "Grunt", "u": 0.4, "v": 0.6 },
+        { "type": "Grunt", "u": 0.45, "v": 0.6 },
+        { "type": "Grunt", "u": 0.5, "v": 0.6 },
+        { "type": "Grunt", "u": 0.55, "v": 0.6 },
+        { "type": "Grunt", "u": 0.6, "v": 0.6 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_bomb" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 5 },
+        "label": "verify_enemies_spawned"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "e", "duration": 0.1 },
+        "label": "press_bomb"
+      },
+      {
+        "at": 15,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_survived_bomb"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "bullet_penetration",
+    "description": "Line up 3 enemies, fire piercing weapon, verify hits.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Piercing",
+      "enemies": [
+        { "type": "Grunt", "u": 0.55, "v": 0.5 },
+        { "type": "Grunt", "u": 0.6, "v": 0.5 },
+        { "type": "Grunt", "u": 0.65, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start" },
+        "label": "mark_start"
+      },
+      {
+        "at": 3,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_piercing"
+      },
+      {
+        "at": 30,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  }
+]

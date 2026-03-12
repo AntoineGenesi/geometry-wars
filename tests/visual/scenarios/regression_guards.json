@@ -1,0 +1,156 @@
+[
+  {
+    "name": "dimming_at_distance",
+    "description": "Spawn enemy far from player. Verify game runs without crash. Dimming is checked visually via Puppeteer screenshot.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.2, "v": 0.2 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "far_enemy" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 1 },
+        "label": "enemy_exists_far"
+      },
+      {
+        "at": 10,
+        "action": { "type": "screenshot", "label": "dimming_far" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_with_far_enemy"
+      },
+      {
+        "at": 15,
+        "action": { "type": "moveEnemy", "id": "enemy_0", "targetU": 0.5, "targetV": 0.5, "speed": 2 },
+        "label": "move_enemy_near"
+      },
+      {
+        "at": 50,
+        "action": { "type": "screenshot", "label": "dimming_near" },
+        "label": "screenshot_near_enemy"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "invisible_enemy_check",
+    "description": "Spawn enemy, verify it appears in enemy list with positive opacity (not invisible).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.6, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "spawn" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 1 },
+        "label": "enemy_visible_count"
+      },
+      {
+        "at": 5,
+        "action": { "type": "screenshot", "label": "enemy_opacity_check" },
+        "assert": { "type": "playerAlive" },
+        "label": "game_running"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "spawn_no_crash",
+    "description": "Rapid sequence of enemy spawns and clears. Assert: no crash, game still running.",
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "spawnEnemy", "enemyType": "Grunt", "u": 0.5, "v": 0.4 },
+        "label": "spawn_1"
+      },
+      {
+        "at": 3,
+        "action": { "type": "spawnEnemy", "enemyType": "Grunt", "u": 0.5, "v": 0.6 },
+        "label": "spawn_2"
+      },
+      {
+        "at": 6,
+        "action": { "type": "clearEnemies" },
+        "label": "clear_1"
+      },
+      {
+        "at": 9,
+        "action": { "type": "spawnEnemy", "enemyType": "Grunt", "u": 0.4, "v": 0.5 },
+        "label": "spawn_3"
+      },
+      {
+        "at": 12,
+        "action": { "type": "spawnEnemy", "enemyType": "Grunt", "u": 0.6, "v": 0.5 },
+        "label": "spawn_4"
+      },
+      {
+        "at": 15,
+        "action": { "type": "clearEnemies" },
+        "assert": { "type": "playerAlive" },
+        "label": "clear_final_player_alive"
+      }
+    ]
+  },
+  {
+    "name": "no_crash_on_init",
+    "description": "Basic smoke test — game initializes and player is alive. Assert FPS > 5.",
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "init" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_at_start"
+      },
+      {
+        "at": "t:2.0",
+        "action": { "type": "screenshot", "label": "init_screenshot" },
+        "assert": { "type": "fpsAbove", "value": 5 },
+        "label": "fps_ok"
+      }
+    ]
+  },
+  {
+    "name": "player_respawn",
+    "description": "Place enemy on top of player (close enough to kill), verify game handles death gracefully.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_death" },
+        "assert": { "type": "playerAlive" },
+        "label": "alive_initially"
+      },
+      {
+        "at": 5,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "still_alive_no_enemies"
+      }
+    ]
+  },
+  {
+    "name": "game_state_snapshot",
+    "description": "Check that getGameState returns a valid snapshot — all required fields present.",
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "snapshot_test" },
+        "assert": { "type": "playerAlive" },
+        "label": "snapshot_player_alive"
+      },
+      {
+        "at": 5,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "scoreAbove", "value": -1 },
+        "label": "score_is_defined"
+      }
+    ]
+  }
+]

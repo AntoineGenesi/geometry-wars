@@ -11,8 +11,11 @@
 import * as THREE from 'three';
 import type { GameContext } from '../core/GameContext';
 import type { EnemyType } from '../entities/enemies/EnemySpawner';
-import type { WeaponType } from '../weapons/WeaponTypes';
+import { WeaponType } from '../weapons/WeaponTypes';
 import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
+import { StateRecorder } from './StateRecorder';
+import { ScenarioEngine } from './ScenarioEngine';
+import type { Scenario, ScenarioResult } from './ScenarioEngine';
 
 // ---------------------------------------------------------------------------
 // Serializable types (JSON-safe, no THREE objects)
@@ -79,6 +82,23 @@ export interface GameStateSnapshot {
 // TestHarnessAPI
 // ---------------------------------------------------------------------------
 
+/** Weapon mastery state for all weapons. */
+export interface WeaponMasteryState {
+  weapon: string;
+  level: number;
+  isMaxed: boolean;
+}
+
+/** Recent bullet trajectory info. */
+export interface BulletTrajectory {
+  u: number;
+  v: number;
+  dirX: number;
+  dirY: number;
+  dirZ: number;
+  age: number;
+}
+
 export class TestHarnessAPI {
   private ctx: GameContext;
   private frameCount = 0;
@@ -90,8 +110,14 @@ export class TestHarnessAPI {
   private deathLog: DeathEvent[] = [];
   private prevAlive = true;
 
+  // Integrated sub-systems
+  private readonly stateRecorder: StateRecorder;
+  private readonly scenarioEngine: ScenarioEngine;
+
   constructor(ctx: GameContext) {
     this.ctx = ctx;
+    this.stateRecorder = new StateRecorder(ctx);
+    this.scenarioEngine = new ScenarioEngine(this, this.stateRecorder);
   }
 
   // -----------------------------------------------------------------------
@@ -329,6 +355,87 @@ export class TestHarnessAPI {
   }
 
   // -----------------------------------------------------------------------
+  // New API methods — s44r13-01
+  // -----------------------------------------------------------------------
+
+  /** Get weapon mastery level for all weapons. */
+  getWeaponMasteryState(): WeaponMasteryState[] {
+    const results: WeaponMasteryState[] = [];
+    const weaponTypes = Object.values(WeaponType).filter(v => typeof v === 'string') as string[];
+    for (const weapon of weaponTypes) {
+      const level = (this.ctx.weaponManager as any).masteryLevelFn?.(weapon) ?? 0;
+      results.push({ weapon, level, isMaxed: level >= 5 });
+    }
+    return results;
+  }
+
+  /** Get recent bullet spawn positions + directions (UV + direction vector). */
+  getBulletTrajectories(): BulletTrajectory[] {
+    const result: BulletTrajectory[] = [];
+    this.ctx.bulletPool.forEachActive((_idx, _pos, data) => {
+      result.push({
+        u: data.surfaceU,
+        v: data.surfaceV,
+        dirX: data.dirX,
+        dirY: data.dirY,
+        dirZ: data.dirZ,
+        age: data.age,
+      });
+    });
+    return result;
+  }
+
+  /** Simulate a key press (and optional release after duration ms). */
+  simulateInput(key: string, durationMs?: number): void {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    if (durationMs && durationMs > 0) {
+      setTimeout(() => {
+        document.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true, cancelable: true }));
+      }, durationMs);
+    }
+  }
+
+  /** Change game difficulty level. Sets waveScheduler.currentDifficultyLevel if accessible. */
+  setDifficulty(level: number): void {
+    const waveScheduler = (this.ctx as any).waveScheduler;
+    if (waveScheduler) waveScheduler.currentDifficultyLevel = level;
+  }
+
+  /** Get collision mesh info — player/enemy hit radii from collision system. */
+  getCollisionMeshInfo(): { playerRadius: number; enemyRadius: number; surfaceType: string } {
+    const collisionSystem = (this.ctx as any).collisionSystem;
+    return {
+      playerRadius: collisionSystem?.playerRadius ?? -1,
+      enemyRadius: collisionSystem?.enemyRadius ?? -1,
+      surfaceType: String(this.ctx.surfaceType),
+    };
+  }
+
+  /** Run a full scenario and return its result. */
+  async runScenario(scenario: Scenario): Promise<ScenarioResult> {
+    return this.scenarioEngine.runScenario(scenario);
+  }
+
+  /** Get recorded frame history from StateRecorder. */
+  getRecordedHistory(lastNFrames?: number) {
+    const all = this.stateRecorder.getHistory();
+    if (lastNFrames !== undefined && lastNFrames > 0) {
+      return all.slice(-lastNFrames);
+    }
+    return all;
+  }
+
+  /** Get the StateRecorder instance directly (for Puppeteer proxy access). */
+  getStateRecorder(): StateRecorder {
+    return this.stateRecorder;
+  }
+
+  /** Get the ScenarioEngine instance. */
+  getScenarioEngine(): ScenarioEngine {
+    return this.scenarioEngine;
+  }
+
+  // -----------------------------------------------------------------------
   // Frame update — called every game tick when testMode=true
   // -----------------------------------------------------------------------
 
@@ -413,8 +520,16 @@ export class TestHarnessAPI {
     }
     this.prevAlive = currentlyAlive;
 
+    // --- Tick StateRecorder (frame-by-frame state capture) ---
+    this.stateRecorder.update();
+
+    // --- Tick ScenarioEngine (timeline-based scenario execution) ---
+    this.scenarioEngine.tick(this.frameCount, time);
+
     // --- Expose on window for Puppeteer access ---
     (window as any).__TEST_API = this;
+    (window as any).__STATE_RECORDER = this.stateRecorder;
+    (window as any).__SCENARIO_ENGINE = this.scenarioEngine;
   }
 
   // -----------------------------------------------------------------------

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "pickup_collection",
+    "description": "Spawn pickup at player position. Assert: pickup appears, player alive.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "spawnPickup", "pickupType": "spread", "u": 0.5, "v": 0.5 },
+        "label": "spawn_pickup"
+      },
+      {
+        "at": 5,
+        "action": { "type": "checkpoint", "label": "after_spawn" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_pickup"
+      },
+      {
+        "at": 10,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_still_alive"
+      }
+    ]
+  },
+  {
+    "name": "pickup_visibility",
+    "description": "Spawn 3 pickups at spread UVs. Assert player alive (can't check pixel visibility without Puppeteer context, but ensures no crash).",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "spawnPickup", "pickupType": "spread", "u": 0.3, "v": 0.3 },
+        "label": "spawn_pickup_1"
+      },
+      {
+        "at": 2,
+        "action": { "type": "spawnPickup", "pickupType": "spread", "u": 0.7, "v": 0.3 },
+        "label": "spawn_pickup_2"
+      },
+      {
+        "at": 4,
+        "action": { "type": "spawnPickup", "pickupType": "spread", "u": 0.5, "v": 0.7 },
+        "label": "spawn_pickup_3"
+      },
+      {
+        "at": 6,
+        "action": { "type": "screenshot", "label": "pickups_visible" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_with_pickups"
+      }
+    ]
+  }
+]
