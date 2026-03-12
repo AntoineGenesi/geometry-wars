@@ -79,7 +79,7 @@ import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { ProfilingOverlay } from './ui/ProfilingOverlay';
 import { ProfilingPersistence } from './core/ProfilingPersistence';
-import { SettingsMenu, loadDebugSettings } from './ui/SettingsMenu';
+import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
 import {
   computeDifficultyLevel,
   generateScaledEndlessWave,
@@ -589,6 +589,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   console.log(`[MapSize] ${surfaceType} → ${resolvedMapSize} (scale: ${mapSizeScaleFactor}x)`);
 
   game.scene.add(surface.group);
+
+  // Apply surface appearance from graphics settings (overrides visual style defaults).
+  {
+    const gfxSettings = loadGraphicsSettings();
+    surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
+    surface.setSurfaceColor(gfxSettings.surfaceColor);
+  }
 
   // Log which surface/level is being used
   console.log(`[Geometry Wars] Level ${levelIndex + 1}: ${level.name} (${surfaceType})`);
@@ -1440,6 +1447,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     // Reduce particle brightness in pixelated mode to prevent additive stacking
     // from creating a bright patch that hides the player
     particles.setPixelatedMode(mode === 'pixelated');
+  });
+
+  // Apply surface appearance live when user changes settings in the pause menu
+  pauseMenu.onGraphicsChange((gfxSettings) => {
+    surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
+    surface.setSurfaceColor(gfxSettings.surfaceColor);
   });
 
   /** Build current game data snapshot for pause menu stats panel */

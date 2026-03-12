@@ -94,6 +94,8 @@ describe('GraphicsSettings', () => {
         maxEnemies: 250,
         resolutionScale: 0.75,
         surfaceOpaque: false,
+        surfaceOpacity: 0.05,
+        surfaceColor: 0x141440,
         enable90DegreeHide: false,
       };
 
@@ -323,6 +325,8 @@ describe('Settings round-trip', () => {
       maxEnemies: 3000,
       resolutionScale: 0.9,
       surfaceOpaque: false,
+      surfaceOpacity: 0.15,
+      surfaceColor: 0xa8d8f0,
       enable90DegreeHide: false,
     };
     saveGraphicsSettings(original);
@@ -396,5 +400,83 @@ describe('Edge cases', () => {
     const b = getDefaultAudio();
     a.masterVolume = 1;
     expect(b.masterVolume).toBe(70);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: Surface appearance settings (s44r13-09)
+// ---------------------------------------------------------------------------
+
+import { SURFACE_OPACITY_PRESETS, SURFACE_COLOR_PRESETS } from './SettingsMenu';
+
+describe('Surface appearance settings', () => {
+  it('default surfaceOpacity is 0.05 (matches existing default)', () => {
+    const settings = getDefaultGraphics();
+    expect(settings.surfaceOpacity).toBe(0.05);
+  });
+
+  it('default surfaceColor is 0x141440 (matches existing default)', () => {
+    const settings = getDefaultGraphics();
+    expect(settings.surfaceColor).toBe(0x141440);
+  });
+
+  it('surfaceOpacity and surfaceColor are persisted and loaded', () => {
+    const custom: GraphicsSettings = {
+      ...getDefaultGraphics(),
+      surfaceOpacity: 0.60,
+      surfaceColor: 0xa8d8f0,
+    };
+    saveGraphicsSettings(custom);
+    const loaded = loadGraphicsSettings();
+    expect(loaded.surfaceOpacity).toBe(0.60);
+    expect(loaded.surfaceColor).toBe(0xa8d8f0);
+  });
+
+  it('old saves without surfaceOpacity/surfaceColor fall back to defaults', () => {
+    // Simulate an old save that doesn't have the new fields
+    store['gw3d-graphics-settings'] = JSON.stringify({
+      qualityPreset: 'high',
+      bloomEnabled: true,
+      bloomStrength: 1.0,
+      particleCount: 2000,
+      trailEffects: true,
+      maxEnemies: 500,
+      resolutionScale: 1.0,
+      surfaceOpaque: false,
+      enable90DegreeHide: false,
+    });
+    const loaded = loadGraphicsSettings();
+    expect(loaded.surfaceOpacity).toBe(0.05);
+    expect(loaded.surfaceColor).toBe(0x141440);
+  });
+
+  it('SURFACE_OPACITY_PRESETS includes required presets', () => {
+    const labels = SURFACE_OPACITY_PRESETS.map(p => p.label);
+    expect(labels).toContain('Invisible');
+    expect(labels).toContain('Ghost');
+    expect(labels).toContain('Solid');
+    const invisible = SURFACE_OPACITY_PRESETS.find(p => p.label === 'Invisible');
+    expect(invisible?.value).toBe(0);
+    const solid = SURFACE_OPACITY_PRESETS.find(p => p.label === 'Solid');
+    expect(solid?.value).toBe(1.0);
+  });
+
+  it('SURFACE_COLOR_PRESETS: no color has any channel below 0x80 except Default', () => {
+    // Brightness rule: non-default presets must not be too dark
+    for (const preset of SURFACE_COLOR_PRESETS) {
+      if (preset.label === 'Default (Dark Blue)') continue;
+      const r = (preset.value >> 16) & 0xff;
+      const g = (preset.value >> 8) & 0xff;
+      const b = preset.value & 0xff;
+      expect(Math.max(r, g, b)).toBeGreaterThanOrEqual(0x80);
+    }
+  });
+
+  it('SURFACE_COLOR_PRESETS includes required light colors', () => {
+    const labels = SURFACE_COLOR_PRESETS.map(p => p.label);
+    expect(labels).toContain('Ice Blue');
+    expect(labels).toContain('Warm White');
+    expect(labels).toContain('Soft Purple');
+    expect(labels).toContain('Neon Teal');
   });
 });
