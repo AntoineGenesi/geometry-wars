@@ -6127,7 +6127,10 @@ async function main() {
         // SP (GameLoop.ts) passes this to checkPlayerCollision() so it uses the 0.3 world-unit
         // radius instead of the UV fallback (0.01/scaleFactor). Without this, peanut (2x scale)
         // uses a UV threshold of 0.005 ≈ 0.11 world units — much too small to feel responsive.
-        const playerAnalyticalPos = getTransform(localPlayer.surfaceU, localPlayer.surfaceV).position;
+        // s44r13-11 FIX: Use _auraUV (computed above via worldToSurface) instead of sphere-approx
+        // localPlayer.surfaceU/V. On cube/torus/pill/peanut the server UV is sphere-approximate
+        // and gives wrong world positions; _auraUV is accurate for all surface types.
+        const playerAnalyticalPos = getTransform(_auraUV.u, _auraUV.v).position;
 
         for (let i = localCompanionPickups.length - 1; i >= 0; i--) {
           const cp = localCompanionPickups[i];
