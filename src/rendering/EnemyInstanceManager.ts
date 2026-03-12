@@ -614,14 +614,9 @@ export class EnemyInstanceManager {
       depthWrite: false,
     });
 
-    // Inject per-instance opacity (same shader injection as type batches)
-    // Premultiplied alpha: WebGLRenderer defaults to premultipliedAlpha=true, so
-    // NormalBlending uses gl.ONE for src factor (not gl.SRC_ALPHA). We must multiply
-    // BOTH rgb and alpha by opacity for correct blending:
-    //   blend = src.rgb + dst.rgb * (1 - src.a) → needs src.rgb pre-multiplied.
-    // REGRESSION GUARD: s44r8-04 removed rgb multiply (claimed opacity^2), but that
-    // analysis assumed unpremultiplied blending. With premultiplied alpha, removing
-    // rgb multiply makes enemies appear at full brightness regardless of opacity.
+    // Inject per-instance opacity (same shader injection as type batches).
+    // Only multiply alpha — RGB is already premultiplied via instanceColor dimming.
+    // See createBatch() REGRESSION GUARD (s44r12-03) for full explanation.
     material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader.replace(
         'void main() {',
@@ -633,7 +628,7 @@ export class EnemyInstanceManager {
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
+        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
     // Unique cache key to prevent sharing program with type-specific batches
@@ -933,28 +928,39 @@ export class EnemyInstanceManager {
 
     // Inject per-instance opacity into the shader via onBeforeCompile.
     // This reads a custom `instanceOpacity` attribute and multiplies the
-    // fragment output by it, producing real per-instance transparency.
-    // Premultiplied alpha: WebGLRenderer defaults to premultipliedAlpha=true, so
-    // NormalBlending uses gl.ONE for src factor (not gl.SRC_ALPHA). We must multiply
-    // BOTH rgb and alpha by opacity for correct blending:
-    //   blend = src.rgb + dst.rgb * (1 - src.a) → needs src.rgb pre-multiplied.
-    // REGRESSION GUARD: s44r8-04 removed rgb multiply (claimed opacity^2), but that
-    // analysis assumed unpremultiplied blending. With premultiplied alpha, removing
-    // rgb multiply makes enemies appear at full brightness regardless of opacity.
+    // fragment ALPHA by it, producing real per-instance transparency.
+    //
+    // Premultiplied alpha blending (WebGLRenderer default):
+    //   blend = src.rgb * 1 + dst.rgb * (1 - src.a)
+    //   For correct blending at opacity V: src.rgb = color * V, src.a = V
+    //
+    // With MeshBasicMaterial: gl_FragColor.rgb = material.color(white) × instanceColor
+    // setInstanceVisibility() sets instanceColor = baseColor × V, so RGB is already
+    // premultiplied by visibility. The shader only needs to set alpha = V.
+    //
+    // REGRESSION GUARD (s44r12-03): The old code multiplied BOTH rgb AND alpha by
+    // instanceOpacity, but instanceColor already carries the RGB dimming (baseColor × V).
+    // This caused vis² double-dimming: final RGB = baseColor × V × V. At V=0.15 (far side),
+    // brightness was 2.25% instead of 15% — enemies appeared invisible rather than dimmed.
+    //
+    // History: s44r8-04 originally removed rgb multiply but that was with MeshStandardMaterial
+    // where emissive dominated and instanceColor had no visible effect. s44r11-01 switched to
+    // MeshBasicMaterial where instanceColor directly controls output, making the shader rgb
+    // multiply redundant and harmful.
     material.onBeforeCompile = (shader) => {
       // Declare the attribute + varying in the vertex shader
       shader.vertexShader = shader.vertexShader.replace(
         'void main() {',
         'attribute float instanceOpacity;\nvarying float vInstanceOpacity;\nvoid main() {\n  vInstanceOpacity = instanceOpacity;',
       );
-      // Multiply the fragment output by the per-instance opacity (premultiplied alpha)
+      // Only multiply alpha by per-instance opacity (RGB already premultiplied via instanceColor)
       shader.fragmentShader = shader.fragmentShader.replace(
         'void main() {',
         'varying float vInstanceOpacity;\nvoid main() {',
       );
       shader.fragmentShader = shader.fragmentShader.replace(
         '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.rgb *= vInstanceOpacity;\n  gl_FragColor.a *= vInstanceOpacity;',
+        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
       );
     };
 
