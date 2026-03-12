@@ -1,0 +1,73 @@
+[
+  {
+    "name": "mobile_start_menu_visible",
+    "description": "Load start menu at mobile viewport, verify main button container exists and is within viewport. Catches: start menu buttons cut off or off-screen at mobile size.",
+    "mobileOnly": true,
+    "pageMode": "start_menu",
+    "domChecks": [
+      {
+        "type": "dom_visible",
+        "selector": "#main-buttons, .oval-buttons-container, .menu-container",
+        "label": "main_buttons_visible"
+      },
+      {
+        "type": "no_overflow",
+        "label": "no_elements_overflow_viewport"
+      },
+      {
+        "type": "screenshot",
+        "label": "mobile_start_menu_screenshot"
+      }
+    ]
+  },
+  {
+    "name": "mobile_pause_menu_accessible",
+    "description": "Start game at mobile viewport, trigger pause, verify pause menu elements are within viewport. Catches: pause menu options cut off at mobile size.",
+    "mobileOnly": true,
+    "pageMode": "gameplay_pause",
+    "domChecks": [
+      {
+        "type": "screenshot",
+        "label": "mobile_pause_menu_screenshot"
+      },
+      {
+        "type": "no_overflow",
+        "label": "pause_menu_within_viewport"
+      }
+    ]
+  },
+  {
+    "name": "mobile_touch_targets",
+    "description": "Check all visible interactive buttons meet minimum touch target size (44x44px per Apple HIG). Catches: buttons too small to tap on mobile.",
+    "mobileOnly": true,
+    "pageMode": "gameplay",
+    "domChecks": [
+      {
+        "type": "touch_targets",
+        "minSize": 44,
+        "label": "all_buttons_at_least_44px"
+      },
+      {
+        "type": "screenshot",
+        "label": "mobile_touch_targets_screenshot"
+      }
+    ]
+  },
+  {
+    "name": "mobile_canvas_covers_viewport",
+    "description": "Verify game canvas covers >70% of mobile viewport (game area not obscured by HUD/overlays). Catches: HUD overlay too large, gameplay area too small at mobile.",
+    "mobileOnly": true,
+    "pageMode": "gameplay",
+    "domChecks": [
+      {
+        "type": "canvas_coverage",
+        "minPercent": 70,
+        "label": "game_canvas_covers_70pct_viewport"
+      },
+      {
+        "type": "screenshot",
+        "label": "mobile_canvas_coverage_screenshot"
+      }
+    ]
+  }
+]
