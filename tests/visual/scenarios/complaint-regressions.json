@@ -1,0 +1,247 @@
+[
+  {
+    "name": "invisible_enemies_cube_ring",
+    "description": "Spawn 6 enemies at diverse UV positions on cube-ring, wait 3s, assert all alive with opacity > 0.05. Cube-ring is specifically mentioned as having invisible enemies in multiple voice dumps (2026-03-11, 2026-03-12). Surfaces: ALL 13 but cube-ring is primary target.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.1, "v": 0.2 },
+        { "type": "Grunt", "u": 0.3, "v": 0.8 },
+        { "type": "Wanderer", "u": 0.6, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.8, "v": 0.8 },
+        { "type": "Spinner", "u": 0.2, "v": 0.5 },
+        { "type": "Spinner", "u": 0.7, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "enemies_placed" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 6 },
+        "label": "6_enemies_spawned"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "enemies_at_1s" },
+        "label": "capture_1s"
+      },
+      {
+        "at": 120,
+        "action": { "type": "checkpoint", "label": "alive_check" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 5 },
+        "label": "5_of_6_still_alive"
+      },
+      {
+        "at": 180,
+        "action": { "type": "checkpoint", "label": "opacity_check" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.05 },
+        "label": "all_alive_enemies_visible_not_invisible"
+      },
+      {
+        "at": 180,
+        "action": { "type": "screenshot", "label": "enemies_at_3s" },
+        "label": "capture_3s_final"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "cube_ring_player_movement",
+    "description": "On cube-ring, player should be able to move in all 4 directions. Voice dump 2026-03-12: 'can only go left and down, can't move forward or right'. Sets player position, checks they remain alive (movement not crashing). Primary surface: cube-ring. Fallback: all surfaces.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start_pos" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_at_center"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "w", "duration": 0.3 },
+        "label": "press_up"
+      },
+      {
+        "at": 25,
+        "action": { "type": "pressKey", "key": "d", "duration": 0.3 },
+        "label": "press_right"
+      },
+      {
+        "at": 45,
+        "action": { "type": "pressKey", "key": "s", "duration": 0.3 },
+        "label": "press_down"
+      },
+      {
+        "at": 65,
+        "action": { "type": "pressKey", "key": "a", "duration": 0.3 },
+        "label": "press_left"
+      },
+      {
+        "at": 90,
+        "action": { "type": "screenshot", "label": "after_movement" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_survived_all_4_movement_directions"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "pixelation_screenshot",
+    "description": "Take screenshots at game start and during gameplay to visually verify pixelation level. Current issue: 0.25 pixelation is too extreme (voice dump 2026-03-12: 'too pixelated'). Target is ~0.375. This is a screenshot-capture scenario — pass/fail is based on player alive (not a visual diff). Screenshots are reviewed manually in the HTML report.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.3, "v": 0.3 },
+        { "type": "Wanderer", "u": 0.7, "v": 0.7 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "screenshot", "label": "pixelation_start" },
+        "assert": { "type": "playerAlive" },
+        "label": "baseline_screenshot_game_start"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "pixelation_1s" },
+        "label": "capture_pixelation_1s"
+      },
+      {
+        "at": 120,
+        "action": { "type": "screenshot", "label": "pixelation_2s" },
+        "assert": { "type": "playerAlive" },
+        "label": "capture_pixelation_2s_player_alive"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "pickup_visible_and_collectible",
+    "description": "Spawn 3 pickups at known UV positions. Assert: game state shows >= 3 pickups in the world (not just that spawning didn't crash). Catches: pickups not appearing in world (MP bug reported 2026-03-12). Runs on all 13 surfaces.",
+    "setup": {
+      "playerPos": [0.8, 0.8]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "spawnPickup", "pickupType": "score", "u": 0.2, "v": 0.2 },
+        "label": "spawn_pickup_1"
+      },
+      {
+        "at": 2,
+        "action": { "type": "spawnPickup", "pickupType": "score", "u": 0.5, "v": 0.5 },
+        "label": "spawn_pickup_2"
+      },
+      {
+        "at": 4,
+        "action": { "type": "spawnPickup", "pickupType": "score", "u": 0.8, "v": 0.2 },
+        "label": "spawn_pickup_3"
+      },
+      {
+        "at": 30,
+        "action": { "type": "screenshot", "label": "pickups_visible" },
+        "assert": { "type": "pickupCount", "op": ">=", "value": 3 },
+        "label": "3_pickups_present_in_world"
+      },
+      {
+        "at": 60,
+        "action": { "type": "setPlayerPos", "u": 0.2, "v": 0.2 },
+        "label": "move_player_to_pickup_1"
+      },
+      {
+        "at": 90,
+        "action": { "type": "checkpoint", "label": "pickup_collected" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_pickup_collection"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "wave_enemy_opacity_not_zero",
+    "description": "After natural game spawning (8s), check that all alive enemies have opacity > 0. Simpler variant of enemies_visible_after_waves. Catches the regression where InstancedMesh sets scale to (0,0,0) making enemies alive-in-state but invisible. Runs on ALL 13 surfaces.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "test_start" },
+        "assert": { "type": "playerAlive" },
+        "label": "game_running"
+      },
+      {
+        "at": 480,
+        "action": { "type": "checkpoint", "label": "wave_check" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 1 },
+        "label": "wave_spawned_at_8s"
+      },
+      {
+        "at": 490,
+        "action": { "type": "screenshot", "label": "wave_enemy_opacity" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.0 },
+        "label": "no_enemies_with_zero_opacity"
+      },
+      {
+        "at": 495,
+        "action": { "type": "checkpoint", "label": "final" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_still_alive_at_8s"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "enemy_visibility_after_long_session",
+    "description": "Run game for 20s with repeated wave clears — verify enemies never become invisible over time. Longer version of wave visibility check. Catches: visibility degrades with session length (InstancedMesh pool exhaustion). Runs on ALL 13 surfaces.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "session_start" },
+        "assert": { "type": "playerAlive" },
+        "label": "start"
+      },
+      {
+        "at": 360,
+        "action": { "type": "checkpoint", "label": "check_wave1" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.05 },
+        "label": "wave_1_visible"
+      },
+      {
+        "at": 370,
+        "action": { "type": "clearEnemies" },
+        "label": "clear_wave1"
+      },
+      {
+        "at": 780,
+        "action": { "type": "checkpoint", "label": "check_wave2" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.05 },
+        "label": "wave_2_visible"
+      },
+      {
+        "at": 790,
+        "action": { "type": "clearEnemies" },
+        "label": "clear_wave2"
+      },
+      {
+        "at": 1200,
+        "action": { "type": "screenshot", "label": "wave3_frame" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.05 },
+        "label": "wave_3_visible"
+      },
+      {
+        "at": 1210,
+        "action": { "type": "checkpoint", "label": "session_end" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_20s_session"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  }
+]

@@ -71,11 +71,18 @@ for (const arg of args) {
   if (m) argMap[m[1]] = m[2] ?? true;
 }
 
+const ALL_SURFACES = [
+  'sphere', 'torus', 'cube', 'cube-ring', 'pill',
+  'peanut', 'mobius', 'sphere-tunnel', 'cube-tunnel',
+  'pipe', 'capsule', 'icosahedron', 'mobius-bevel',
+];
+
 const filterSurface = argMap['surface'] ?? null;
 const filterScenario = argMap['scenario'] ?? null;
 const reportOnly = argMap['report'] === true;
 const listOnly = argMap['list'] === true;
 const runMode = argMap['mode'] ?? 'sp';  // 'sp' | 'mp' | 'both'
+const allSurfaces = argMap['all-surfaces'] === true;
 
 // ---------------------------------------------------------------------------
 // Colyseus server management (MP mode)
@@ -831,7 +838,7 @@ async function main() {
   }
 
   const scenarios = allScenarios.filter(sc => !filterScenario || sc.name === filterScenario);
-  const surfaces = filterSurface ? [filterSurface] : ['sphere'];
+  const surfaces = filterSurface ? [filterSurface] : allSurfaces ? ALL_SURFACES : ['sphere'];
 
   if (scenarios.length === 0) {
     console.error('[scenario-runner] No scenarios found. Check tests/visual/scenarios/*.json');
