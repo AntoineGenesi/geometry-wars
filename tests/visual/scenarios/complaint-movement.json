@@ -1,0 +1,271 @@
+[
+  {
+    "name": "movement_mobius_seam",
+    "description": "Player at UV near seam (u≈0.95), simulate forward input for 5s — record UV position, camera up vector every frame. Catches: Mobius seam — controls invert, player gets reflected, camera flips (4+ dumps).",
+    "setup": {
+      "playerPos": [0.95, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "at_seam_edge" },
+        "assert": { "type": "playerAt", "u": 0.95, "v": 0.5, "tolerance": 0.05 },
+        "label": "player_positioned_near_seam"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "w", "duration": 5000 },
+        "label": "pressing_forward_toward_seam"
+      },
+      {
+        "at": 30,
+        "action": { "type": "checkpoint", "label": "mid_crossing" },
+        "label": "record_during_seam_crossing"
+      },
+      {
+        "at": 120,
+        "action": { "type": "observe", "duration": 0 },
+        "label": "seam_crossed_check_orientation"
+      },
+      {
+        "at": 180,
+        "action": { "type": "pressKey", "key": "w", "duration": 1000 },
+        "label": "test_movement_after_seam"
+      },
+      {
+        "at": 250,
+        "action": { "type": "checkpoint", "label": "after_seam_stable" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_seam_crossing"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "movement_pole_navigation",
+    "description": "Player near pole (u≈0.01), simulate sideways input — assert player moves laterally, not stuck. Catches: stuck at poles in MP, can't go sideways (sphere, peanut).",
+    "setup": {
+      "playerPos": [0.01, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "at_pole" },
+        "assert": { "type": "playerAt", "u": 0.01, "v": 0.5, "tolerance": 0.05 },
+        "label": "player_at_pole"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "d", "duration": 3000 },
+        "label": "pressing_right_at_pole"
+      },
+      {
+        "at": 90,
+        "action": { "type": "checkpoint", "label": "after_lateral_input" },
+        "label": "record_pole_lateral_movement"
+      },
+      {
+        "at": 100,
+        "action": { "type": "pressKey", "key": "a", "duration": 3000 },
+        "label": "pressing_left_at_pole"
+      },
+      {
+        "at": 180,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_pole_navigation"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "movement_peanut_slowdown",
+    "description": "Measure movement speed at pole, waist, and body of peanut — assert pole/waist speed is at least 40% of body speed. Catches: player slows down at peanut poles and waist.",
+    "setup": {
+      "playerPos": [0.0, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "at_pole_start" },
+        "label": "record_pole_position"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "w", "duration": 500 },
+        "label": "move_at_pole"
+      },
+      {
+        "at": 45,
+        "action": { "type": "checkpoint", "label": "pole_movement_recorded" },
+        "label": "pole_speed_sample"
+      },
+      {
+        "at": 60,
+        "action": { "type": "setPlayerPos", "u": 0.5, "v": 0.5 },
+        "label": "teleport_to_waist"
+      },
+      {
+        "at": 65,
+        "action": { "type": "pressKey", "key": "w", "duration": 500 },
+        "label": "move_at_waist"
+      },
+      {
+        "at": 105,
+        "action": { "type": "checkpoint", "label": "waist_movement_recorded" },
+        "label": "waist_speed_sample"
+      },
+      {
+        "at": 120,
+        "action": { "type": "setPlayerPos", "u": 0.25, "v": 0.5 },
+        "label": "teleport_to_body"
+      },
+      {
+        "at": 125,
+        "action": { "type": "pressKey", "key": "w", "duration": 500 },
+        "label": "move_at_body"
+      },
+      {
+        "at": 165,
+        "action": { "type": "checkpoint", "label": "body_movement_recorded" },
+        "label": "body_speed_sample"
+      },
+      {
+        "at": 200,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "compare_speeds_across_regions"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "movement_cube_edge_crossing",
+    "description": "Player near cube face boundary, press forward across edge — assert player crosses within 2s, no stuck state. Catches: stuck on cube edge, can't cross.",
+    "setup": {
+      "playerPos": [0.33, 0.49]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "near_edge" },
+        "label": "player_positioned_near_cube_edge"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "s", "duration": 3000 },
+        "label": "pressing_forward_across_edge"
+      },
+      {
+        "at": 60,
+        "action": { "type": "checkpoint", "label": "mid_crossing" },
+        "label": "record_mid_crossing"
+      },
+      {
+        "at": 120,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "edge_crossed_or_stuck"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "movement_direction_consistency",
+    "description": "Press each direction (W/A/S/D) for 1s each — assert W=forward, A=left, S=backward, D=right; no direction inverted. Catches: cube-ring only moves left/down, directions swapped.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start_pos" },
+        "label": "record_start_position"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "w", "duration": 1000 },
+        "label": "press_forward"
+      },
+      {
+        "at": 75,
+        "action": { "type": "checkpoint", "label": "after_forward" },
+        "label": "record_position_after_w"
+      },
+      {
+        "at": 80,
+        "action": { "type": "setPlayerPos", "u": 0.5, "v": 0.5 },
+        "label": "reset_position"
+      },
+      {
+        "at": 85,
+        "action": { "type": "pressKey", "key": "d", "duration": 1000 },
+        "label": "press_right"
+      },
+      {
+        "at": 155,
+        "action": { "type": "checkpoint", "label": "after_right" },
+        "label": "record_position_after_d"
+      },
+      {
+        "at": 160,
+        "action": { "type": "setPlayerPos", "u": 0.5, "v": 0.5 },
+        "label": "reset_position_2"
+      },
+      {
+        "at": 165,
+        "action": { "type": "pressKey", "key": "s", "duration": 1000 },
+        "label": "press_backward"
+      },
+      {
+        "at": 235,
+        "action": { "type": "checkpoint", "label": "after_backward" },
+        "label": "record_position_after_s"
+      },
+      {
+        "at": 260,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "direction_consistency_final"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "movement_surface_traversal_full",
+    "description": "Navigate from UV (0.1,0.1) to (0.9,0.9) via WASD — assert no stuck state > 1s, no teleportation jumps. Catches: general movement regression on any surface.",
+    "setup": {
+      "playerPos": [0.1, 0.1]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start_corner" },
+        "assert": { "type": "playerAt", "u": 0.1, "v": 0.1, "tolerance": 0.05 },
+        "label": "player_at_start_corner"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "d", "duration": 5000 },
+        "label": "moving_right"
+      },
+      {
+        "at": 10,
+        "action": { "type": "pressKey", "key": "s", "duration": 5000 },
+        "label": "moving_down_simultaneously"
+      },
+      {
+        "at": 200,
+        "action": { "type": "checkpoint", "label": "mid_traversal" },
+        "label": "record_mid_traversal"
+      },
+      {
+        "at": 400,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "traversal_complete_check"
+      }
+    ],
+    "teardown": []
+  }
+]

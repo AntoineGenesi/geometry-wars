@@ -131,6 +131,7 @@ import { DEFAULT_GAME_SETTINGS } from '../server/shared/GameSettings';
 import type { GameSettings } from '../server/shared/GameSettings';
 import { KillStreakAnnouncer } from './ui/KillStreakAnnouncer';
 import { Portal, createPortalPair } from './entities/Portal';
+import { PerformanceProfiler as DebugPerformanceProfiler } from './debug/PerformanceProfiler';
 
 // ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
@@ -195,6 +196,7 @@ declare global {
 // Debug logging: gated behind ?debug=true URL flag, same as NetworkClient.
 // The LAN E2E test suite uses these [NetworkMain] logs for diagnostics.
 const _netMainDebug = new URLSearchParams(window.location.search).has('debug');
+const _netMainTestMode = new URLSearchParams(window.location.search).has('testMode');
 function netMainLog(...args: unknown[]): void {
   if (_netMainDebug) {
     console.log(...args);
@@ -5621,8 +5623,16 @@ async function main() {
     distToPlayer: number;
   }> = [];
 
+  // MP performance profiler — only active in testMode. Exposed on window.__PERF_PROFILER.
+  let _mpPerfProfiler: DebugPerformanceProfiler | null = null;
+  if (_netMainTestMode) {
+    _mpPerfProfiler = new DebugPerformanceProfiler();
+    (window as any).__PERF_PROFILER = _mpPerfProfiler;
+  }
+
   game.onFixedUpdate = (dt: number) => {
-    if (!surfaceReady || !surface) return;
+    if (_mpPerfProfiler) _mpPerfProfiler.beginFrame();
+    if (!surfaceReady || !surface) { if (_mpPerfProfiler) _mpPerfProfiler.endFrame(); return; }
     lastFixedDt = dt;
 
     // Update adaptive quality system (FPS monitoring + quality level adjustment).
@@ -6567,6 +6577,9 @@ async function main() {
 
     // Clear per-frame input
     input.endFrame();
+
+    // End MP performance profiler frame
+    if (_mpPerfProfiler) _mpPerfProfiler.endFrame();
   };
 
   game.onRender = () => {

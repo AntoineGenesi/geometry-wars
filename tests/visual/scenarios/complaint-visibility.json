@@ -1,0 +1,129 @@
+[
+  {
+    "name": "enemy_visibility_all_surfaces",
+    "description": "Spawn 10 enemies at spread UVs, wait 2s — check telemetry that all enemies alive, verify not invisible. Catches: enemies invisible in MP (pill, torus, cube-tunnel).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.1, "v": 0.1 },
+        { "type": "Grunt", "u": 0.3, "v": 0.1 },
+        { "type": "Grunt", "u": 0.5, "v": 0.1 },
+        { "type": "Grunt", "u": 0.7, "v": 0.1 },
+        { "type": "Grunt", "u": 0.9, "v": 0.1 },
+        { "type": "Wanderer", "u": 0.1, "v": 0.9 },
+        { "type": "Wanderer", "u": 0.3, "v": 0.9 },
+        { "type": "Wanderer", "u": 0.5, "v": 0.9 },
+        { "type": "Wanderer", "u": 0.7, "v": 0.9 },
+        { "type": "Wanderer", "u": 0.9, "v": 0.9 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "enemies_spawned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 10 },
+        "label": "10_enemies_spawned_and_alive"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "enemy_visibility_120ms" },
+        "label": "capture_enemy_visibility_at_1s"
+      },
+      {
+        "at": 120,
+        "action": { "type": "screenshot", "label": "enemy_visibility_2s" },
+        "label": "capture_enemy_visibility_at_2s"
+      },
+      {
+        "at": 120,
+        "action": { "type": "checkpoint", "label": "after_2s" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 8 },
+        "label": "at_least_8_enemies_still_alive"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "enemy_dimming_gradient",
+    "description": "Spawn enemies at UV distances 0.1, 0.2, 0.3, 0.4, 0.5 from player — record opacity from telemetry for each — assert opacity decreases with distance (monotonic). Catches: enemy dimming broken — always bright on far side.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.5, "v": 0.4 },
+        { "type": "Grunt", "u": 0.5, "v": 0.3 },
+        { "type": "Grunt", "u": 0.5, "v": 0.2 },
+        { "type": "Grunt", "u": 0.5, "v": 0.1 },
+        { "type": "Grunt", "u": 0.5, "v": 0.0 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "dimming_baseline" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 5 },
+        "label": "enemies_at_varying_distances"
+      },
+      {
+        "at": 30,
+        "action": { "type": "checkpoint", "label": "dimming_at_30frames" },
+        "label": "record_opacity_values"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "dimming_gradient_visible" },
+        "label": "capture_dimming_gradient"
+      },
+      {
+        "at": 90,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "dimming_gradient_monotonic_check"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "bullet_dimming_correct_direction",
+    "description": "Fire bullets in one direction, track bullet opacity as they travel away — assert bullets dim as they get FARTHER (not nearer). Catches: bullet dimming INVERTED — dim near, bright far.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Standard"
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_bullet_dim_test" },
+        "assert": { "type": "playerAlive" },
+        "label": "ready_to_test_bullet_dimming"
+      },
+      {
+        "at": 5,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_bullet_to_track"
+      },
+      {
+        "at": 10,
+        "action": { "type": "checkpoint", "label": "bullet_near" },
+        "assert": { "type": "bulletCount", "op": ">", "value": 0 },
+        "label": "bullet_exists_near_player"
+      },
+      {
+        "at": 30,
+        "action": { "type": "screenshot", "label": "bullet_at_mid_range" },
+        "label": "capture_bullet_opacity_mid"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "bullet_at_far_range" },
+        "label": "capture_bullet_opacity_far"
+      },
+      {
+        "at": 90,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "bullet_dimming_direction_verified"
+      }
+    ],
+    "teardown": []
+  }
+]

@@ -43,6 +43,22 @@ export interface FramePickupState {
   v: number;
 }
 
+export interface FrameCameraState {
+  position: { x: number; y: number; z: number };
+  up: { x: number; y: number; z: number };
+  quaternion: { x: number; y: number; z: number; w: number };
+  target: { x: number; y: number; z: number };
+  distanceToPlayer: number;
+  /** dot(camera_to_player, surface_normal): >0 means above surface, <0 means inside */
+  dotWithSurfaceNormal: number;
+}
+
+export interface FrameInputState {
+  keysDown: string[];
+  mouseX: number;
+  mouseY: number;
+}
+
 export interface FrameRecord {
   frame: number;
   time: number;
@@ -52,6 +68,8 @@ export interface FrameRecord {
   pickups: FramePickupState[];
   events: GameEvent[];
   fps: number;
+  camera?: FrameCameraState;
+  inputState?: FrameInputState;
 }
 
 export interface GameEvent {
@@ -250,6 +268,47 @@ export class StateRecorder {
       if (bp.active) pickups.push({ type: `buff_${(bp as any).buffType ?? 'unknown'}`, u: bp.surfaceU ?? 0, v: bp.surfaceV ?? 0 });
     }
 
+    // --- Capture camera state ---
+    let cameraState: FrameCameraState | undefined;
+    try {
+      const cam = this.ctx.game.camera;
+      const cc = this.ctx.cameraController;
+      const playerPos = this.ctx.player.mesh?.position;
+      const camPos = cam.position;
+      let distToPlayer = -1;
+      let dotWithNormal = 0;
+      if (playerPos) {
+        distToPlayer = camPos.distanceTo(playerPos);
+        // dot(cam→player direction, approximate surface normal at player)
+        const toPlayer = playerPos.clone().sub(camPos).normalize();
+        const sp = this.ctx.surface.getPoint(this.ctx.player.surfaceU, this.ctx.player.surfaceV);
+        const normalWorld = sp.normal.clone().applyQuaternion(this.ctx.surface.worldRotation);
+        dotWithNormal = toPlayer.dot(normalWorld);
+      }
+      // camera target: what the camera looks at (player mesh position, approximately)
+      const target = playerPos ? { x: playerPos.x, y: playerPos.y, z: playerPos.z } : { x: 0, y: 0, z: 0 };
+      const q = (cam as any).quaternion;
+      cameraState = {
+        position: { x: camPos.x, y: camPos.y, z: camPos.z },
+        up: { x: cam.up.x, y: cam.up.y, z: cam.up.z },
+        quaternion: q ? { x: q.x, y: q.y, z: q.z, w: q.w } : { x: 0, y: 0, z: 0, w: 1 },
+        target,
+        distanceToPlayer: distToPlayer,
+        dotWithSurfaceNormal: dotWithNormal,
+      };
+    } catch { /* best-effort — camera capture never breaks recording */ }
+
+    // --- Capture input state (pressed keys from DOM) ---
+    let inputState: FrameInputState | undefined;
+    try {
+      const pressedKeys = (window as any).__pressedKeys as Set<string> | undefined;
+      inputState = {
+        keysDown: pressedKeys ? [...pressedKeys] : [],
+        mouseX: (window as any).__mouseX ?? 0,
+        mouseY: (window as any).__mouseY ?? 0,
+      };
+    } catch { /* best-effort */ }
+
     // --- Write to ring buffer ---
     const record: FrameRecord = {
       frame,
@@ -264,6 +323,8 @@ export class StateRecorder {
       pickups,
       events: frameEvents,
       fps: this.currentFps,
+      camera: cameraState,
+      inputState,
     };
 
     this.buffer[this.head % RING_BUFFER_SIZE] = record;

@@ -1,0 +1,275 @@
+[
+  {
+    "name": "hit_detection_distance_sweep",
+    "description": "Enemy starts at UV 0.3 from player, moves inward — record EXACT frame+distance when death occurs. Catches: player dying from enemies that are far away (17 voice dumps).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.5, "v": 0.8 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_sweep" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_at_start"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_0", "targetU": 0.5, "targetV": 0.5, "speed": 2 },
+        "label": "enemy_moving_toward_player"
+      },
+      {
+        "at": 30,
+        "action": { "type": "observe", "duration": 0 },
+        "label": "observe_at_mid_approach"
+      },
+      {
+        "at": 90,
+        "action": { "type": "checkpoint", "label": "after_approach" },
+        "label": "record_final_state"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "hit_detection_ghost_kills",
+    "description": "Enemy at UV 0.5 from player — fire bullets, record frame when enemy dies vs when bullet reaches enemy. Catches: enemies dying before bullet reaches (torus, peanut, pill).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Standard",
+      "enemies": [
+        { "type": "Grunt", "u": 0.5, "v": 0.2 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_fire" },
+        "assert": { "type": "enemyCount", "op": ">", "value": 0 },
+        "label": "enemy_present"
+      },
+      {
+        "at": 5,
+        "action": { "type": "fireWeapon" },
+        "assert": { "type": "bulletCount", "op": ">", "value": 0 },
+        "label": "bullet_fired"
+      },
+      {
+        "at": 10,
+        "action": { "type": "fireWeapon" },
+        "label": "second_shot"
+      },
+      {
+        "at": 15,
+        "action": { "type": "fireWeapon" },
+        "label": "third_shot"
+      },
+      {
+        "at": 60,
+        "action": { "type": "checkpoint", "label": "after_shots" },
+        "label": "observe_hit_timing"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "hit_detection_pass_through",
+    "description": "Enemy directly in front of player at distance 0.05 — fire 10 bullets, assert at least 8 register. Catches: bullets passing through enemies with no damage.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Standard",
+      "enemies": [
+        { "type": "Grunt", "u": 0.5, "v": 0.45 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_fire" },
+        "assert": { "type": "enemyCount", "op": ">", "value": 0 },
+        "label": "enemy_at_close_range"
+      },
+      {
+        "at": 2,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_1"
+      },
+      {
+        "at": 4,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_2"
+      },
+      {
+        "at": 6,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_3"
+      },
+      {
+        "at": 8,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_4"
+      },
+      {
+        "at": 10,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_5"
+      },
+      {
+        "at": 12,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_6"
+      },
+      {
+        "at": 14,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_7"
+      },
+      {
+        "at": 16,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_8"
+      },
+      {
+        "at": 18,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_9"
+      },
+      {
+        "at": 20,
+        "action": { "type": "fireWeapon" },
+        "label": "shot_10"
+      },
+      {
+        "at": 60,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "damageOccurred", "source": "bullet" },
+        "label": "bullets_registered_damage"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "hit_detection_body_shape",
+    "description": "Large enemy (Carrier) moves toward player — record death distance vs visual size. Catches: green enemies not registering until halfway inside.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Carrier", "u": 0.5, "v": 0.7 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "carrier_spawned" },
+        "assert": { "type": "enemyCount", "op": ">", "value": 0 },
+        "label": "carrier_exists"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_0", "targetU": 0.5, "targetV": 0.5, "speed": 1.5 },
+        "label": "carrier_approaching"
+      },
+      {
+        "at": 60,
+        "action": { "type": "checkpoint", "label": "carrier_close" },
+        "label": "record_contact_distance"
+      },
+      {
+        "at": 120,
+        "action": { "type": "observe", "duration": 0 },
+        "label": "observe_collision"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "hit_detection_by_enemy_type",
+    "description": "Spawn one of each common enemy type at same distance, move all toward player simultaneously. Catches: purple enemies kill on contact but green/pink pass through.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.5, "v": 0.8 },
+        { "type": "Wanderer", "u": 0.6, "v": 0.8 },
+        { "type": "Spinner", "u": 0.4, "v": 0.8 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "all_spawned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 3 },
+        "label": "three_enemy_types_present"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_0", "targetU": 0.5, "targetV": 0.5, "speed": 2 },
+        "label": "grunt_moving"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_1", "targetU": 0.5, "targetV": 0.5, "speed": 2 },
+        "label": "wanderer_moving"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_2", "targetU": 0.5, "targetV": 0.5, "speed": 2 },
+        "label": "spinner_moving"
+      },
+      {
+        "at": 120,
+        "action": { "type": "observe", "duration": 0 },
+        "label": "observe_which_types_trigger_death"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "hit_detection_angle_offset",
+    "description": "Spawn 4 enemies in cardinal directions at equal distances, move all inward. Catches: hit detection offset depends on approach angle (pill surface).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.5, "v": 0.3 },
+        { "type": "Grunt", "u": 0.5, "v": 0.7 },
+        { "type": "Grunt", "u": 0.3, "v": 0.5 },
+        { "type": "Grunt", "u": 0.7, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "all_spawned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 4 },
+        "label": "four_directions_covered"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_0", "targetU": 0.5, "targetV": 0.5, "speed": 1 },
+        "label": "north_moving"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_1", "targetU": 0.5, "targetV": 0.5, "speed": 1 },
+        "label": "south_moving"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_2", "targetU": 0.5, "targetV": 0.5, "speed": 1 },
+        "label": "west_moving"
+      },
+      {
+        "at": 5,
+        "action": { "type": "moveEnemy", "id": "enemy_3", "targetU": 0.5, "targetV": 0.5, "speed": 1 },
+        "label": "east_moving"
+      },
+      {
+        "at": 90,
+        "action": { "type": "observe", "duration": 0 },
+        "label": "record_death_distances_per_direction"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  }
+]

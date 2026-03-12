@@ -1,0 +1,257 @@
+[
+  {
+    "name": "bullet_origin_position",
+    "description": "Fire weapon, record bullet spawn position vs player position — assert bullet spawn within 0.02 UV of player. Catches: bullets not originating from player (10+ dumps, worst on peanut/torus).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Standard"
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_fire" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_ready_to_fire"
+      },
+      {
+        "at": 5,
+        "action": { "type": "fireWeapon" },
+        "assert": { "type": "bulletCount", "op": ">", "value": 0 },
+        "label": "bullet_fired_check_origin"
+      },
+      {
+        "at": 6,
+        "action": { "type": "fireWeapon" },
+        "label": "second_bullet"
+      },
+      {
+        "at": 7,
+        "action": { "type": "fireWeapon" },
+        "label": "third_bullet"
+      },
+      {
+        "at": 30,
+        "action": { "type": "checkpoint", "label": "bullets_in_flight" },
+        "label": "record_bullet_trajectories"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "bullet_direction_360",
+    "description": "Player on different cube faces — aim in 8 directions, fire — assert bullets travel in aimed direction within 20 degrees on ALL faces. Catches: cube shooting locked to left/right on face 2 (6+ failed fixes).",
+    "setup": {
+      "playerPos": [0.16, 0.5],
+      "weapon": "Standard"
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "face_0_shooting" },
+        "assert": { "type": "playerAlive" },
+        "label": "face_0_fire_test"
+      },
+      {
+        "at": 5,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_face_0_dir_1"
+      },
+      {
+        "at": 10,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_face_0_dir_2"
+      },
+      {
+        "at": 15,
+        "action": { "type": "checkpoint", "label": "face_0_done" },
+        "label": "record_face_0_bullets"
+      },
+      {
+        "at": 20,
+        "action": { "type": "setPlayerPos", "u": 0.5, "v": 0.5 },
+        "label": "move_to_face_1"
+      },
+      {
+        "at": 25,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_face_1_dir_1"
+      },
+      {
+        "at": 30,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_face_1_dir_2"
+      },
+      {
+        "at": 35,
+        "action": { "type": "checkpoint", "label": "face_1_done" },
+        "label": "record_face_1_bullets"
+      },
+      {
+        "at": 40,
+        "action": { "type": "setPlayerPos", "u": 0.82, "v": 0.5 },
+        "label": "move_to_face_2"
+      },
+      {
+        "at": 45,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_face_2_dir_1"
+      },
+      {
+        "at": 50,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_face_2_dir_2"
+      },
+      {
+        "at": 90,
+        "action": { "type": "checkpoint", "label": "face_2_done" },
+        "label": "record_face_2_bullets_critical"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "bullet_direction_matches_aim",
+    "description": "Fire in 4 compass directions — record aim direction vs actual bullet travel — assert deviation < 20°. Catches: bullets shooting in wrong/inverted direction.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Standard"
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start_aim_test" },
+        "assert": { "type": "playerAlive" },
+        "label": "ready_to_test_aim"
+      },
+      {
+        "at": 5,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_north_ish"
+      },
+      {
+        "at": 20,
+        "action": { "type": "checkpoint", "label": "north_bullet_recorded" },
+        "label": "north_trajectory_captured"
+      },
+      {
+        "at": 30,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_again"
+      },
+      {
+        "at": 60,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "aim_direction_test_complete"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "tesla_continuous_damage",
+    "description": "Equip tesla, spawn 3 enemies in range, observe 5s — assert each enemy receives damage at least 3 times (continuous, not one-shot), interval consistent. Catches: tesla only damages once in MP (3+ dumps).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "TeslaCoil",
+      "enemies": [
+        { "type": "Grunt", "u": 0.55, "v": 0.5 },
+        { "type": "Grunt", "u": 0.5, "v": 0.55 },
+        { "type": "Grunt", "u": 0.45, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "tesla_ready" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 3 },
+        "label": "3_enemies_in_tesla_range"
+      },
+      {
+        "at": 5,
+        "action": { "type": "fireWeapon" },
+        "label": "activate_tesla"
+      },
+      {
+        "at": 10,
+        "action": { "type": "fireWeapon" },
+        "label": "tesla_tick_2"
+      },
+      {
+        "at": 15,
+        "action": { "type": "fireWeapon" },
+        "label": "tesla_tick_3"
+      },
+      {
+        "at": 30,
+        "action": { "type": "fireWeapon" },
+        "label": "tesla_tick_4"
+      },
+      {
+        "at": 45,
+        "action": { "type": "fireWeapon" },
+        "label": "tesla_tick_5"
+      },
+      {
+        "at": 60,
+        "action": { "type": "checkpoint", "label": "tesla_damage_check" },
+        "assert": { "type": "damageOccurred", "source": "tesla" },
+        "label": "tesla_damage_occurred"
+      },
+      {
+        "at": 180,
+        "action": { "type": "observe", "duration": 0 },
+        "label": "observe_continuous_damage"
+      },
+      {
+        "at": 300,
+        "action": { "type": "checkpoint", "label": "tesla_continuous_verified" },
+        "assert": { "type": "playerAlive" },
+        "label": "tesla_continuous_damage_verified"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "bullet_penetration",
+    "description": "Line up 3 enemies at distances 0.05, 0.10, 0.15, fire weapon with penetration — assert all 3 take damage. Catches: bullet penetration not working in MP.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Spread",
+      "enemies": [
+        { "type": "Grunt", "u": 0.5, "v": 0.45 },
+        { "type": "Grunt", "u": 0.5, "v": 0.40 },
+        { "type": "Grunt", "u": 0.5, "v": 0.35 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "3_enemies_aligned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 3 },
+        "label": "enemies_in_line"
+      },
+      {
+        "at": 5,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_penetrating_shot"
+      },
+      {
+        "at": 10,
+        "action": { "type": "fireWeapon" },
+        "label": "second_penetrating_shot"
+      },
+      {
+        "at": 15,
+        "action": { "type": "fireWeapon" },
+        "label": "third_penetrating_shot"
+      },
+      {
+        "at": 90,
+        "action": { "type": "checkpoint", "label": "penetration_result" },
+        "assert": { "type": "damageOccurred" },
+        "label": "at_least_one_enemy_damaged"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  }
+]
