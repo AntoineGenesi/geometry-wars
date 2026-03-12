@@ -4056,8 +4056,18 @@ async function main() {
 
               // Apply barrel offset (du/dv = ±BARREL_OFFSET in UV space from server).
               // du = bullet.x - ownerSphereApproxU isolates the offset regardless of UV accuracy.
-              const du = bullet.x - ownerPlayer!.surfaceU;
-              const dv = bullet.y - ownerPlayer!.surfaceV;
+              // s44r13-12 FIX: Near sphere poles (and torus inner ring, peanut waist), surfaceU
+              // (longitude) is degenerate — small player movement causes large UV jumps (0.999→0.001).
+              // The bullet.x was computed at fire-time, ownerPlayer.surfaceU is the current state.
+              // Without wrapping correction, du can be ~1.0 instead of ~0.003, displacing the
+              // bullet spawn ~30 world units away from the player. Wrap to [-0.5, 0.5] (valid
+              // barrel offsets are always < 0.01 UV units).
+              let du = bullet.x - ownerPlayer!.surfaceU;
+              let dv = bullet.y - ownerPlayer!.surfaceV;
+              if (du > 0.5) du -= 1.0;
+              if (du < -0.5) du += 1.0;
+              if (dv > 0.5) dv -= 1.0;
+              if (dv < -0.5) dv += 1.0;
               if (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001) {
                 const offsetWorld = visualSp.tangentU.clone().multiplyScalar(du * Math.PI * 2)
                   .addScaledVector(visualSp.tangentV, dv * Math.PI);
@@ -4114,8 +4124,15 @@ async function main() {
               // the same owner world position but have slightly different UV spawn coords
               // (perpendicular barrel offset ±0.003). Apply that UV delta as a small
               // world-space offset using tangent vectors.
-              const du = bullet.x - ownerPlayer!.surfaceU;
-              const dv = bullet.y - ownerPlayer!.surfaceV;
+              // s44r13-12 FIX: Wrap du/dv to [-0.5, 0.5] — same pole singularity fix as
+              // local player path above. Barrel offset is always < 0.01; any |du| > 0.5
+              // is a UV longitude wrap caused by pole instability.
+              let du = bullet.x - ownerPlayer!.surfaceU;
+              let dv = bullet.y - ownerPlayer!.surfaceV;
+              if (du > 0.5) du -= 1.0;
+              if (du < -0.5) du += 1.0;
+              if (dv > 0.5) dv -= 1.0;
+              if (dv < -0.5) dv += 1.0;
               if (Math.abs(du) > 0.0001 || Math.abs(dv) > 0.0001) {
                 // Compute world-space offset from UV delta using tangent vectors.
                 // tangentU/V from getPoint() are NORMALIZED unit vectors (not scaled by sphere

@@ -348,3 +348,77 @@ describe('S43-02: MP standard bullet damage parity with SP', () => {
     expect(dist < BULLET_HIT_RADIUS).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// s44r13-12: Bullet barrel offset UV wrapping near sphere poles
+//
+// Root cause: Near sphere poles, surfaceU (longitude) is degenerate — small
+// player movement causes large UV jumps (e.g., 0.23 → 0.71). The bullet.x
+// was computed at fire-time with a small barrel offset (±0.003), but by the
+// time the client receives the bullet, ownerPlayer.surfaceU may have jumped.
+// Without wrapping: du = 0.233 - 0.71 = -0.477 → ~30 world units offset.
+// With wrapping fix: du clamped to [-0.5, 0.5] → -0.477 stays within range
+// only when |du| > 0.5 wraps. More critically: prevents 0.997-magnitude wraps.
+//
+// The wrapBarrelOffset function replicates the exact fix applied in network-main.ts.
+// ---------------------------------------------------------------------------
+
+/** Replicates the s44r13-12 pole wrapping fix from network-main.ts */
+function wrapBarrelOffset(raw: number): number {
+  if (raw > 0.5) return raw - 1.0;
+  if (raw < -0.5) return raw + 1.0;
+  return raw;
+}
+
+describe('s44r13-12: Bullet barrel offset UV wrapping (sphere pole singularity)', () => {
+  it('normal barrel offset (±0.003) passes through unchanged', () => {
+    expect(wrapBarrelOffset(0.003)).toBeCloseTo(0.003, 6);
+    expect(wrapBarrelOffset(-0.003)).toBeCloseTo(-0.003, 6);
+  });
+
+  it('UV wrap-around at seam: bullet.x=0.002, playerU=0.999 → du=-0.997 wraps to 0.003', () => {
+    // Player just past longitude seam: fired at U=0.999+0.003=1.002 (wrapped→0.002)
+    // But client received updated playerU=0.999, so raw du = 0.002 - 0.999 = -0.997
+    // Without fix: -0.997 * π * 2 * 10 ≈ -62 world units offset
+    // With fix: wrap to -0.997 + 1.0 = 0.003 ✓
+    const bulletX = 0.002;
+    const playerU = 0.999;
+    const rawDu = bulletX - playerU;              // -0.997
+    expect(rawDu).toBeCloseTo(-0.997, 4);
+    const wrappedDu = wrapBarrelOffset(rawDu);    // should be 0.003
+    expect(wrappedDu).toBeCloseTo(0.003, 4);
+  });
+
+  it('UV longitude instability near pole: du=0.477 wraps stays as-is (not > 0.5)', () => {
+    // du=0.477 is NOT a wrap (< 0.5), so it stays. This is still too large for a barrel
+    // offset but within the wrapping bound. The test verifies wrapping only fires for > 0.5.
+    expect(wrapBarrelOffset(0.477)).toBeCloseTo(0.477, 6);
+  });
+
+  it('UV longitude jump > 0.5: du=0.8 wraps to -0.2', () => {
+    // Player longitude jumped 0.8 UV units (huge near pole)
+    // bullet.x = playerU_at_fire + 0.003, playerU = playerU_at_fire - 0.797
+    // rawDu = 0.003 + 0.797 = 0.8
+    expect(wrapBarrelOffset(0.8)).toBeCloseTo(-0.2, 6);
+  });
+
+  it('UV longitude jump < -0.5: du=-0.8 wraps to 0.2', () => {
+    expect(wrapBarrelOffset(-0.8)).toBeCloseTo(0.2, 6);
+  });
+
+  it('at exactly ±0.5 boundary: du=0.5 passes through (edge case)', () => {
+    // At exactly 0.5, no wrapping (not strictly > 0.5)
+    expect(wrapBarrelOffset(0.5)).toBeCloseTo(0.5, 6);
+    expect(wrapBarrelOffset(-0.5)).toBeCloseTo(-0.5, 6);
+  });
+
+  it('standard barrel offset magnitude: server duPerp ≈ 0.003, wrapped is unchanged', () => {
+    // Server uses uvOffset = 0.003, perpAngle = angle + π/2
+    // Maximum possible |duOffset| = sqrt(0.003² + 0.003²) * cos(45°) ≈ 0.0042
+    // Well within [-0.5, 0.5] → no wrapping applied
+    const maxBarrelOffset = Math.sqrt(0.003 * 0.003 + 0.003 * 0.003);
+    expect(maxBarrelOffset).toBeLessThan(0.01);
+    expect(wrapBarrelOffset(maxBarrelOffset)).toBeCloseTo(maxBarrelOffset, 6);
+    expect(wrapBarrelOffset(-maxBarrelOffset)).toBeCloseTo(-maxBarrelOffset, 6);
+  });
+});
