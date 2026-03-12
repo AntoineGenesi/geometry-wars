@@ -4134,6 +4134,23 @@ async function main() {
                 .normalize();
               bulletGeodesicState.set(bullet.id, { facePos, dirWorld });
             }
+
+            // Track bullet spawn origin for telemetry (bullet_origin_check)
+            if (_netMainDebug && bullet.ownerId === localPlayerId) {
+              const ownerMesh = networkPlayers.get(localPlayerId)?.mesh;
+              if (ownerMesh) {
+                const dist = bulletWorldPos.distanceTo(ownerMesh.position);
+                _mpTelBulletSpawns.push({
+                  frame: _mpTelFrameCount,
+                  ownerId: bullet.ownerId,
+                  origin: { x: bulletWorldPos.x, y: bulletWorldPos.y, z: bulletWorldPos.z },
+                  playerPos: { x: ownerMesh.position.x, y: ownerMesh.position.y, z: ownerMesh.position.z },
+                  distToPlayer: dist,
+                });
+                // Keep only last 50 spawns to avoid memory growth
+                if (_mpTelBulletSpawns.length > 50) _mpTelBulletSpawns.splice(0, _mpTelBulletSpawns.length - 50);
+              }
+            }
           }
         }
       }
@@ -5595,6 +5612,14 @@ async function main() {
     nearestEnemyDist: number; nearestEnemySurfaceDist: number;
     nearestEnemyType: string; livesRemaining: number;
   }> = [];
+  // Track recent bullet spawn origins for bullet_origin_check scenario
+  const _mpTelBulletSpawns: Array<{
+    frame: number;
+    ownerId: string;
+    origin: { x: number; y: number; z: number };
+    playerPos: { x: number; y: number; z: number };
+    distToPlayer: number;
+  }> = [];
 
   game.onFixedUpdate = (dt: number) => {
     if (!surfaceReady || !surface) return;
@@ -6498,7 +6523,24 @@ async function main() {
         },
         players: otherPlayers,
         enemies: telEnemies,
-        bullets: { count: bulletIdToIndex.size },
+        bullets: {
+          count: bulletIdToIndex.size,
+          recentSpawns: _mpTelBulletSpawns.slice(-20),
+        },
+        pickups: {
+          weaponCount: networkWeaponPickups.size,
+          superCount: networkSuperPickups.size,
+          weapons: Array.from(networkWeaponPickups.entries()).map(([id, p]) => ({
+            id,
+            type: String((p as any).type ?? 'unknown'),
+            visible: p.mesh?.visible ?? false,
+          })),
+          supers: Array.from(networkSuperPickups.entries()).map(([id, s]) => ({
+            id,
+            type: s.pickupType,
+            visible: s.mesh?.visible ?? false,
+          })),
+        },
         surface: { type: String(lastCreatedSurfaceType) },
         collisions: {
           enemiesInPlayerRadius,
