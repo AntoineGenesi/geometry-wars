@@ -461,7 +461,8 @@ export class GameInstance {
 
       // s44r4-02: Compare on-surface positions directly (same as CollisionSystem fix).
       // player.mesh.position = walker position (on surface); enemy.position = on surface.
-      const playerRadius = this.player.mesh.scale.x * 0.1;
+      // s44r12-01: Keep in sync with CollisionSystem.ts playerRadius (0.06)
+      const playerRadius = this.player.mesh.scale.x * 0.06;
       const hitRadiusSq = (playerRadius + enemy.radius) * (playerRadius + enemy.radius);
       const distSq = this.player.mesh.position.distanceToSquared(enemy.position);
       if (distSq < hitRadiusSq) {

@@ -39,7 +39,8 @@ export class GameTelemetryExporter {
     const { player, enemySpawner, bulletPool, surface, surfaceType, playerWalker, game, state } = ctx;
 
     const pPos = player.mesh.position;
-    const playerRadius = player.mesh.scale.x * 0.1;
+    // s44r12-01: Keep in sync with CollisionSystem.ts playerRadius (0.06)
+    const playerRadius = player.mesh.scale.x * 0.06;
 
     // Build enemy array (only active enemies)
     const enemies = enemySpawner.getEnemies();
