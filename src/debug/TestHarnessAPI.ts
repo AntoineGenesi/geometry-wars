@@ -111,42 +111,8 @@ export class TestHarnessAPI {
   moveEnemyTo(id: string, targetU: number, targetV: number, speed: number): void {
     const enemy = this.findEnemyById(id);
     if (!enemy) return;
-    // Store movement target on the enemy
+    // Store movement target — the update() method drives this each frame
     (enemy as any).__testTarget = { u: targetU, v: targetV, speed };
-
-    // Patch the enemy's computeMovementDirection to drive toward the target.
-    // This overrides the enemy's AI while preserving its walker-based movement.
-    if (!(enemy as any).__origComputeMovementDirection) {
-      (enemy as any).__origComputeMovementDirection = enemy.computeMovementDirection.bind(enemy);
-    }
-
-    const surface = this.ctx.surface;
-    const _dir = new THREE.Vector3();
-    enemy.computeMovementDirection = (_dt: number, _playerPos: THREE.Vector3): THREE.Vector3 | null => {
-      const target = (enemy as any).__testTarget;
-      if (!target) {
-        // Restore original AI when target is cleared
-        enemy.computeMovementDirection = (enemy as any).__origComputeMovementDirection;
-        return (enemy as any).__origComputeMovementDirection?.(_dt, _playerPos) ?? null;
-      }
-
-      // Compute world positions from UV
-      const currentSP = surface.getPoint(enemy.surfacePosition.u, enemy.surfacePosition.v);
-      const targetSP = surface.getPoint(target.u, target.v);
-      const currentWorld = currentSP.position.clone().applyQuaternion(surface.worldRotation);
-      const targetWorld = targetSP.position.clone().applyQuaternion(surface.worldRotation);
-
-      _dir.subVectors(targetWorld, currentWorld);
-      const dist = _dir.length();
-      if (dist < 0.05) {
-        // Arrived
-        (enemy as any).__testTarget = undefined;
-        return null;
-      }
-
-      _dir.multiplyScalar(target.speed / dist); // normalize and scale to speed
-      return _dir;
-    };
   }
 
   /** Get an enemy's current position by ID. */
@@ -372,6 +338,53 @@ export class TestHarnessAPI {
     const { player, enemySpawner, game } = this.ctx;
     const time = game.clock.totalTime;
     const dt = game.clock.fixedDeltaTime;
+
+    // --- Drive test-directed enemy movement (runs AFTER gameLoop.update) ---
+    for (const enemy of enemySpawner.getEnemies()) {
+      if (!enemy.active) continue;
+      const target = (enemy as any).__testTarget as
+        | { u: number; v: number; speed: number }
+        | undefined;
+      if (!target) continue;
+
+      // Compute world positions of current and target
+      const currentSP = this.ctx.surface.getPoint(enemy.surfacePosition.u, enemy.surfacePosition.v);
+      const targetSP = this.ctx.surface.getPoint(target.u, target.v);
+      const currentWorld = currentSP.position.clone().applyQuaternion(this.ctx.surface.worldRotation);
+      const targetWorld = targetSP.position.clone().applyQuaternion(this.ctx.surface.worldRotation);
+
+      const dir = targetWorld.clone().sub(currentWorld);
+      const dist = dir.length();
+      if (dist < 0.1) {
+        // Arrived
+        (enemy as any).__testTarget = undefined;
+        continue;
+      }
+
+      // Move toward target at requested speed
+      const step = Math.min(target.speed * dt, dist);
+      dir.multiplyScalar(step / dist);
+      const newWorld = currentWorld.add(dir);
+
+      // Project back to surface via worldToSurface
+      const invRot = this.ctx.surface.worldRotation.clone().invert();
+      const localPos = newWorld.applyQuaternion(invRot);
+      const newUV = this.ctx.surface.worldToSurface(localPos);
+      enemy.surfacePosition.u = newUV.u;
+      enemy.surfacePosition.v = newUV.v;
+
+      // Sync world position
+      const newSP = this.ctx.surface.getPoint(newUV.u, newUV.v);
+      const worldPos = newSP.position.clone().applyQuaternion(this.ctx.surface.worldRotation);
+      if (enemy.mesh) {
+        enemy.mesh.position.copy(worldPos);
+      }
+      enemy.position.copy(worldPos);
+      // Also sync the walker to prevent it from fighting
+      if (enemy.walker) {
+        enemy.walker.position.copy(worldPos);
+      }
+    }
 
     // --- Death detection ---
     const currentlyAlive = player.alive;

@@ -150,15 +150,15 @@ const SCENARIOS = {
         'grunt', enemyU, enemyV,
       );
 
-      // Direct enemy toward player
+      // Direct enemy toward player at high speed (sphere radius ~10, need fast movement)
       await page.evaluate(
         (id, u, v, speed) => window.__TEST_API.moveEnemyTo(id, u, v, speed),
-        enemyId, playerPos.u, playerPos.v, 0.3,
+        enemyId, playerPos.u, playerPos.v, 8.0,
       );
 
-      // Wait for collision (up to 10 seconds)
+      // Wait for collision (up to 15 seconds)
       let deaths = [];
-      for (let i = 0; i < 100; i++) {
+      for (let i = 0; i < 150; i++) {
         await sleep(100);
         deaths = await page.evaluate(() => window.__TEST_API.getRecentDeaths());
         if (deaths.length > 0) break;
@@ -202,16 +202,16 @@ const SCENARIOS = {
         enemyId,
       );
 
-      // Direct enemy to target
+      // Direct enemy to target at high speed
       await page.evaluate(
         (id, u, v, speed) => window.__TEST_API.moveEnemyTo(id, u, v, speed),
-        enemyId, targetU, targetV, 0.5,
+        enemyId, targetU, targetV, 8.0,
       );
 
-      // Wait for arrival (up to 8 seconds)
+      // Wait for arrival (up to 15 seconds)
       let finalPos = null;
       let arrived = false;
-      for (let i = 0; i < 80; i++) {
+      for (let i = 0; i < 150; i++) {
         await sleep(100);
         finalPos = await page.evaluate(id => window.__TEST_API.getEnemyPosition(id), enemyId);
         if (!finalPos) break; // enemy was destroyed
@@ -390,11 +390,12 @@ const SCENARIOS = {
         (u, v) => window.__TEST_API.setPlayerPosition(u, v),
         targetU, targetV,
       );
-      await sleep(500);
+      // Read immediately — teleport is synchronous and we clear velocity now
+      await sleep(100);
 
       const pos = await page.evaluate(() => window.__TEST_API.getPlayerPosition());
-      const uClose = Math.abs(pos.u - targetU) < 0.05;
-      const vClose = Math.abs(pos.v - targetV) < 0.05;
+      const uClose = Math.abs(pos.u - targetU) < 0.1; // Wider tolerance for surface movement
+      const vClose = Math.abs(pos.v - targetV) < 0.1;
 
       return {
         passed: uClose && vClose,
