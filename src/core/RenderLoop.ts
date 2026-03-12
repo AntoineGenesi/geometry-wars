@@ -86,6 +86,9 @@ export class RenderLoop {
   // cleanup when enemies are garbage-collected (no manual disposal needed).
   private _entityDimmedState: WeakMap<object, boolean> = new WeakMap();
 
+  // Pre-allocated minimap enemy array — reused each frame to avoid per-frame heap churn
+  private _minimapEnemies: Array<{ u: number; v: number; alive: boolean }> = [];
+
   render(ctx: GameContext, alpha: number): void {
     profiler.begin('surface_projection');
     // Project bullets onto surface
@@ -421,11 +424,24 @@ export class RenderLoop {
       UIHelpers.updatePlayerLevelDisplay(0, '', 0, killsNeeded);
     }
 
-    // Update minimap
-    const minimapEnemies = ctx.enemySpawner.getEnemies()
-      .filter(e => e.mesh && !e.isMaterializing)
-      .map(e => ({ u: e.surfacePosition.u, v: e.surfacePosition.v, alive: e.alive }));
-    ctx.minimap.update(ctx.player.surfaceU, ctx.player.surfaceV, minimapEnemies, []);
+    // Update minimap — reuse pre-allocated array to avoid per-frame heap churn
+    const allEnemiesForMinimap = ctx.enemySpawner.getEnemies();
+    let minimapCount = 0;
+    for (let i = 0; i < allEnemiesForMinimap.length; i++) {
+      const e = allEnemiesForMinimap[i];
+      if (!e.mesh || e.isMaterializing) continue;
+      if (minimapCount < this._minimapEnemies.length) {
+        const entry = this._minimapEnemies[minimapCount];
+        entry.u = e.surfacePosition.u;
+        entry.v = e.surfacePosition.v;
+        entry.alive = e.alive;
+      } else {
+        this._minimapEnemies.push({ u: e.surfacePosition.u, v: e.surfacePosition.v, alive: e.alive });
+      }
+      minimapCount++;
+    }
+    this._minimapEnemies.length = minimapCount;
+    ctx.minimap.update(ctx.player.surfaceU, ctx.player.surfaceV, this._minimapEnemies, []);
     profiler.end('camera_and_ui');
 
     profiler.begin('perf_tracking');
@@ -539,7 +555,8 @@ export class RenderLoop {
 
     // Dynamic particle budget scaling based on active entity count
     // Reduces particle emission when many entities are on screen to maintain FPS
-    const activeEnemyCount = enemies.filter(e => e.active && e.alive).length;
+    // Use getActiveCount() — avoids allocating a filtered array just to count
+    const activeEnemyCount = ctx.enemySpawner.getActiveCount();
     const totalEntityCount = activeEnemyCount + visibleBullets;
 
     // Scale factor calculation:
