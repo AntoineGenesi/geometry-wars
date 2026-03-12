@@ -1,0 +1,111 @@
+[
+  {
+    "name": "pickup_collection_all_areas",
+    "description": "Spawn pickups at center, near poles, and edge areas — move player to each — assert collected within 0.5s of reaching. Catches: pickups not collectable (6+ dumps).",
+    "setup": {
+      "playerPos": [0.1, 0.5],
+      "pickups": [
+        { "type": "weapon", "u": 0.5, "v": 0.5 },
+        { "type": "weapon", "u": 0.1, "v": 0.5 },
+        { "type": "weapon", "u": 0.9, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "pickups_spawned" },
+        "assert": { "type": "pickupCount", "op": ">=", "value": 1 },
+        "label": "at_least_one_pickup_visible"
+      },
+      {
+        "at": 5,
+        "action": { "type": "setPlayerPos", "u": 0.5, "v": 0.5 },
+        "label": "move_to_center_pickup"
+      },
+      {
+        "at": 30,
+        "action": { "type": "checkpoint", "label": "center_pickup_check" },
+        "label": "check_center_collection"
+      },
+      {
+        "at": 45,
+        "action": { "type": "setPlayerPos", "u": 0.1, "v": 0.5 },
+        "label": "move_to_pole_pickup"
+      },
+      {
+        "at": 75,
+        "action": { "type": "checkpoint", "label": "pole_pickup_check" },
+        "label": "check_pole_collection"
+      },
+      {
+        "at": 90,
+        "action": { "type": "setPlayerPos", "u": 0.9, "v": 0.5 },
+        "label": "move_to_far_pickup"
+      },
+      {
+        "at": 120,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "pickup_collection_across_areas_verified"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "pickup_collection_consistency",
+    "description": "Spawn 4 pickups at different curvature regions — move player to each — record collection distances — assert max variance < 2x. Catches: pickup too easy in some spots, impossible in others.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "pickups": [
+        { "type": "weapon", "u": 0.5, "v": 0.45 },
+        { "type": "weapon", "u": 0.2, "v": 0.5 },
+        { "type": "weapon", "u": 0.8, "v": 0.5 },
+        { "type": "weapon", "u": 0.5, "v": 0.8 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "pickups_at_regions" },
+        "label": "pickups_at_varying_curvature"
+      },
+      {
+        "at": 5,
+        "action": { "type": "setPlayerPos", "u": 0.5, "v": 0.45 },
+        "label": "test_inner_ring"
+      },
+      {
+        "at": 30,
+        "action": { "type": "checkpoint", "label": "inner_ring_result" },
+        "label": "inner_ring_collection_check"
+      },
+      {
+        "at": 40,
+        "action": { "type": "setPlayerPos", "u": 0.2, "v": 0.5 },
+        "label": "test_top"
+      },
+      {
+        "at": 70,
+        "action": { "type": "checkpoint", "label": "top_result" },
+        "label": "top_collection_check"
+      },
+      {
+        "at": 80,
+        "action": { "type": "setPlayerPos", "u": 0.8, "v": 0.5 },
+        "label": "test_bottom"
+      },
+      {
+        "at": 110,
+        "action": { "type": "checkpoint", "label": "bottom_result" },
+        "label": "bottom_collection_check"
+      },
+      {
+        "at": 120,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "pickup_consistency_across_curvature"
+      }
+    ],
+    "teardown": []
+  }
+]

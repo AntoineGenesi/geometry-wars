@@ -1,0 +1,169 @@
+[
+  {
+    "name": "performance_100_enemies",
+    "description": "Spawn 100 enemies, run for 10s, record frame timings — assert avg FPS > 5 (SwiftShader), no freeze > 1s. Reports top CPU sections and GC pressure. Catches: SP performance crash with ~100 entities.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.1, "v": 0.1 },
+        { "type": "Grunt", "u": 0.2, "v": 0.1 },
+        { "type": "Grunt", "u": 0.3, "v": 0.1 },
+        { "type": "Grunt", "u": 0.4, "v": 0.1 },
+        { "type": "Grunt", "u": 0.5, "v": 0.1 },
+        { "type": "Grunt", "u": 0.6, "v": 0.1 },
+        { "type": "Grunt", "u": 0.7, "v": 0.1 },
+        { "type": "Grunt", "u": 0.8, "v": 0.1 },
+        { "type": "Grunt", "u": 0.9, "v": 0.1 },
+        { "type": "Grunt", "u": 0.1, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.2, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.3, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.4, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.5, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.6, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.7, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.8, "v": 0.2 },
+        { "type": "Wanderer", "u": 0.9, "v": 0.2 },
+        { "type": "Grunt", "u": 0.1, "v": 0.3 },
+        { "type": "Grunt", "u": 0.2, "v": 0.3 },
+        { "type": "Grunt", "u": 0.3, "v": 0.3 },
+        { "type": "Grunt", "u": 0.4, "v": 0.3 },
+        { "type": "Grunt", "u": 0.5, "v": 0.3 },
+        { "type": "Grunt", "u": 0.6, "v": 0.3 },
+        { "type": "Grunt", "u": 0.7, "v": 0.3 },
+        { "type": "Grunt", "u": 0.8, "v": 0.3 },
+        { "type": "Grunt", "u": 0.9, "v": 0.3 },
+        { "type": "Spinner", "u": 0.1, "v": 0.4 },
+        { "type": "Spinner", "u": 0.2, "v": 0.4 },
+        { "type": "Spinner", "u": 0.3, "v": 0.4 },
+        { "type": "Spinner", "u": 0.4, "v": 0.4 },
+        { "type": "Spinner", "u": 0.6, "v": 0.4 },
+        { "type": "Spinner", "u": 0.7, "v": 0.4 },
+        { "type": "Spinner", "u": 0.8, "v": 0.4 },
+        { "type": "Spinner", "u": 0.9, "v": 0.4 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "enemies_spawned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 30 },
+        "label": "many_enemies_spawned"
+      },
+      {
+        "at": 60,
+        "action": { "type": "checkpoint", "label": "1s_fps_check" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_above_3_at_1s"
+      },
+      {
+        "at": 180,
+        "action": { "type": "checkpoint", "label": "3s_fps_check" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_above_3_at_3s"
+      },
+      {
+        "at": 360,
+        "action": { "type": "screenshot", "label": "100_enemies_screenshot" },
+        "label": "capture_100_enemies_frame"
+      },
+      {
+        "at": 600,
+        "action": { "type": "checkpoint", "label": "10s_performance_final" },
+        "assert": { "type": "fpsAbove", "value": 2 },
+        "label": "fps_acceptable_with_100_enemies"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "performance_gc_spikes",
+    "description": "Play for 30s with enemies spawning — record frame timings — assert no frame takes > 200ms (GC spike). Reports frames exceeding 100ms and allocation hotspots. Catches: game freezing / lag spikes during gameplay.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.3, "v": 0.3 },
+        { "type": "Wanderer", "u": 0.7, "v": 0.3 },
+        { "type": "Spinner", "u": 0.5, "v": 0.7 },
+        { "type": "Grunt", "u": 0.2, "v": 0.7 },
+        { "type": "Wanderer", "u": 0.8, "v": 0.7 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "gc_test_start" },
+        "assert": { "type": "fpsAbove", "value": 5 },
+        "label": "fps_ok_at_start"
+      },
+      {
+        "at": 300,
+        "action": { "type": "checkpoint", "label": "gc_test_5s" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_ok_at_5s"
+      },
+      {
+        "at": 600,
+        "action": { "type": "checkpoint", "label": "gc_test_10s" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_ok_at_10s"
+      },
+      {
+        "at": 900,
+        "action": { "type": "checkpoint", "label": "gc_test_15s" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_ok_at_15s"
+      },
+      {
+        "at": 1200,
+        "action": { "type": "checkpoint", "label": "gc_test_20s" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_ok_at_20s"
+      },
+      {
+        "at": 1800,
+        "action": { "type": "checkpoint", "label": "gc_test_30s" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "no_gc_spikes_30s"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "performance_second_play",
+    "description": "Baseline FPS check at start then 10s in — assert FPS at 10s is at least 70% of FPS at start. Catches: performance degradation on second play (memory leaks, non-cleared resources).",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.3, "v": 0.3 },
+        { "type": "Wanderer", "u": 0.7, "v": 0.7 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "perf_baseline" },
+        "assert": { "type": "fpsAbove", "value": 5 },
+        "label": "baseline_fps_recorded"
+      },
+      {
+        "at": 60,
+        "action": { "type": "checkpoint", "label": "perf_1s" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_at_1s"
+      },
+      {
+        "at": 300,
+        "action": { "type": "checkpoint", "label": "perf_5s" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_at_5s"
+      },
+      {
+        "at": 600,
+        "action": { "type": "checkpoint", "label": "perf_10s" },
+        "assert": { "type": "fpsAbove", "value": 3 },
+        "label": "fps_at_10s_no_degradation"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  }
+]

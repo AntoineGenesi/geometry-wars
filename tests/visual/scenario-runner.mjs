@@ -21,6 +21,7 @@ import puppeteer from 'puppeteer';
 import { writeFileSync, readFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
 import { resolve, dirname, basename, extname } from 'path';
 import { fileURLToPath } from 'url';
+import { spawn, execSync } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, '../..');
@@ -36,6 +37,10 @@ const CHROME_PATH = process.env.CHROME_PATH
   || process.env.PUPPETEER_EXECUTABLE_PATH
   || '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const COLYSEUS_PORT = 2567;
+const NVM_PATH = process.env.NVM_BIN
+  || dirname(process.execPath)
+  || '/home/antoine/.nvm/versions/node/v20.19.5/bin';
 
 const LAUNCH_ARGS = [
   '--enable-webgl',
@@ -70,6 +75,53 @@ const filterSurface = argMap['surface'] ?? null;
 const filterScenario = argMap['scenario'] ?? null;
 const reportOnly = argMap['report'] === true;
 const listOnly = argMap['list'] === true;
+const runMode = argMap['mode'] ?? 'sp';  // 'sp' | 'mp' | 'both'
+
+// ---------------------------------------------------------------------------
+// Colyseus server management (MP mode)
+// ---------------------------------------------------------------------------
+
+function startColyseusServer() {
+  return new Promise((resolve, reject) => {
+    const env = {
+      ...process.env,
+      PATH: `${NVM_PATH}:/usr/bin:/bin`,
+      PORT: String(COLYSEUS_PORT),
+      SHUTDOWN_TIMEOUT: '0',
+    };
+    const proc = spawn(`${NVM_PATH}/npx`, ['tsx', 'server/index.ts'], {
+      cwd: PROJECT_ROOT, env, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let started = false;
+    let output = '';
+    const onData = (data) => {
+      const text = data.toString();
+      output += text;
+      if (!started && (text.includes('MULTIPLAYER SERVER') || text.includes(`localhost:${COLYSEUS_PORT}`))) {
+        started = true;
+        resolve(proc);
+      }
+    };
+    proc.stdout.on('data', onData);
+    proc.stderr.on('data', onData);
+    proc.on('error', (err) => { if (!started) reject(new Error(`Colyseus failed: ${err.message}`)); });
+    proc.on('exit', (code) => { if (!started) reject(new Error(`Colyseus exited ${code}. Output: ${output.slice(0, 400)}`)); });
+    setTimeout(() => {
+      if (!started) { proc.kill(); reject(new Error(`Colyseus timeout. Output: ${output.slice(0, 400)}`)); }
+    }, 20000);
+  });
+}
+
+function killColyseusServer(proc) {
+  if (proc) {
+    try { proc.kill('SIGTERM'); } catch { /* ignore */ }
+  }
+  // Best-effort port cleanup
+  try {
+    const remaining = execSync(`ss -tlnp 2>/dev/null | grep -E ":${COLYSEUS_PORT}\\b"`, { encoding: 'utf-8' });
+    if (remaining.trim()) console.log(`  [scenario-runner] WARNING: Port ${COLYSEUS_PORT} still occupied`);
+  } catch { /* ignore */ }
+}
 
 // ---------------------------------------------------------------------------
 // Scenario loading
@@ -241,6 +293,94 @@ async function runScenariosOnSurface(browser, scenarios, surface) {
   }
 
   return surfaceResults;
+}
+
+// ---------------------------------------------------------------------------
+// MP scenario runner (server + 2 clients)
+// ---------------------------------------------------------------------------
+
+/**
+ * Navigate an MP client to the game with testMode=true.
+ * Uses the network mode (network-main.ts) with Colyseus connection.
+ */
+async function navigateToMPGame(page, surface, label = 'Host') {
+  await page.evaluate(() => { try { localStorage.clear(); } catch {} });
+  const url = `${BASE_URL}?mode=network&surface=${surface}&server=${encodeURIComponent(`ws://localhost:${COLYSEUS_PORT}`)}&testMode=true&debug=true&name=${encodeURIComponent(label)}`;
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await sleep(8000);
+}
+
+/**
+ * Run scenarios in MP mode: starts server, launches 2 clients, runs on host.
+ * Returns results with an extra 'mode: mp' tag.
+ */
+async function runScenariosOnSurfaceMP(browser, scenarios, surface) {
+  let colyseusProc = null;
+  let hostPage = null;
+  let guestPage = null;
+  const mpResults = [];
+
+  try {
+    console.log(`  [mp-runner] Starting Colyseus server...`);
+
+    // Kill any stale Colyseus
+    try {
+      execSync(`ss -tlnp 2>/dev/null | grep -E ":${COLYSEUS_PORT}\\b" | awk '{print $NF}' | grep -oP 'pid=\\K[0-9]+' | xargs -r kill -15`, { encoding: 'utf-8' });
+      await sleep(1000);
+    } catch { /* ignore */ }
+
+    colyseusProc = await startColyseusServer();
+    console.log(`  [mp-runner] Colyseus ready`);
+
+    // Launch host and guest clients
+    const hostCtx = await createPage(browser);
+    const guestCtx = await createPage(browser);
+    hostPage = hostCtx.page;
+    guestPage = guestCtx.page;
+
+    await navigateToMPGame(hostPage, surface, 'Host');
+    await navigateToMPGame(guestPage, surface, 'Guest');
+
+    // Wait for host's TestHarnessAPI
+    const hostReady = await waitForTestAPI(hostPage, 10000);
+    if (!hostReady) {
+      console.warn(`  [mp-runner] Host TestHarnessAPI not ready on ${surface} — skipping MP scenarios`);
+      return scenarios.map(sc => ({
+        scenario: sc, surface, mode: 'mp',
+        result: { scenarioName: sc.name, passed: false, totalSteps: 0, stepResults: [], startFrame: 0, endFrame: 0, startTime: 0, endTime: 0, summary: 'MP: host TestHarnessAPI not ready' },
+        screenshotPath: null, recording: null, pageErrors: [],
+      }));
+    }
+
+    console.log(`  [mp-runner] Both clients connected on ${surface}`);
+
+    // Run scenarios via host's TestHarnessAPI
+    for (const scenario of scenarios) {
+      const { result, screenshotPath, recording } = await runScenario(hostPage, scenario, surface);
+      const status = result.passed ? '✓ PASS' : '✗ FAIL';
+      console.log(`    ${status}  [MP] ${scenario.name}: ${result.summary}`);
+      mpResults.push({ scenario, surface, mode: 'mp', result, screenshotPath, recording, pageErrors: [...hostCtx.pageErrors] });
+      hostCtx.pageErrors.length = 0;
+    }
+
+  } catch (err) {
+    console.error(`  [mp-runner] Error on ${surface}: ${err.message}`);
+    for (const scenario of scenarios) {
+      if (!mpResults.find(r => r.scenario.name === scenario.name)) {
+        mpResults.push({
+          scenario, surface, mode: 'mp',
+          result: { scenarioName: scenario.name, passed: false, totalSteps: 0, stepResults: [], startFrame: 0, endFrame: 0, startTime: 0, endTime: 0, summary: `MP error: ${err.message}` },
+          screenshotPath: null, recording: null, pageErrors: [],
+        });
+      }
+    }
+  } finally {
+    if (hostPage) hostPage.close().catch(() => {});
+    if (guestPage) guestPage.close().catch(() => {});
+    if (colyseusProc) killColyseusServer(colyseusProc);
+  }
+
+  return mpResults;
 }
 
 // ---------------------------------------------------------------------------
@@ -549,13 +689,45 @@ const REPLAY_RENDERER_JS = `
 })();
 `;
 
+function generatePerfGraphHtml(perfProfile) {
+  if (!perfProfile || !perfProfile.frameTimings || perfProfile.frameTimings.length === 0) return '';
+
+  const timings = perfProfile.frameTimings;
+  const maxMs = Math.max(...timings.map(t => t.totalMs), 33);
+  const W = 600, H = 120;
+  const points = timings.map((t, i) => {
+    const x = (i / (timings.length - 1)) * W;
+    const y = H - Math.min(t.totalMs / maxMs, 1) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+
+  const gcStats = perfProfile.gcPressure || {};
+  const topCPU = (perfProfile.topCPU || []).slice(0, 5).map(s =>
+    `<tr><td>${s.name}</td><td>${s.avgMs.toFixed(2)}ms</td><td>${s.maxMs.toFixed(2)}ms</td><td>${s.callsPerFrame.toFixed(1)}/f</td></tr>`
+  ).join('');
+
+  return `<div class="perf-section">
+    <div class="perf-title">Performance Profile</div>
+    <div>Avg: ${(gcStats.avgFrameTime||0).toFixed(1)}ms &nbsp; P99: ${(gcStats.p99FrameTime||0).toFixed(1)}ms &nbsp; Spikes>100ms: ${gcStats.spikes||0} &nbsp; Allocs/frame: ${(gcStats.totalAllocsPerFrame||0).toFixed(1)}</div>
+    <svg width="${W}" height="${H+10}" style="display:block;background:#0a0a12;border:1px solid #222;margin:4px 0">
+      <line x1="0" y1="${(H - 16.67/maxMs*H).toFixed(1)}" x2="${W}" y2="${(H - 16.67/maxMs*H).toFixed(1)}" stroke="#1a4a1a" stroke-width="1" stroke-dasharray="4,4"/>
+      <polyline points="${points}" fill="none" stroke="#4af" stroke-width="1.5"/>
+      <text x="4" y="12" fill="#1a4a1a" font-size="9" font-family="monospace">60fps</text>
+    </svg>
+    ${topCPU ? `<table style="font-size:0.8em;color:#888;width:100%"><tr><th>Section</th><th>Avg</th><th>Max</th><th>Calls/f</th></tr>${topCPU}</table>` : ''}
+  </div>`;
+}
+
 function generateHtmlReport(allResults, timestamp) {
   const passed = allResults.filter(r => r.result.passed).length;
   const failed = allResults.filter(r => !r.result.passed).length;
+  const spCount = allResults.filter(r => r.mode !== 'mp').length;
+  const mpCount = allResults.filter(r => r.mode === 'mp').length;
 
   // Generate per-scenario sections with replay canvas
   const sections = allResults.map((r, idx) => {
     const status = r.result.passed ? 'pass' : 'fail';
+    const modeTag = r.mode === 'mp' ? '<span class="mode-mp">[MP]</span>' : '<span class="mode-sp">[SP]</span>';
     const screenshotCell = r.screenshotPath
       ? `<a href="${r.screenshotPath}" target="_blank">screenshot</a>` : '—';
     const stepList = r.result.stepResults.map(s => {
@@ -586,14 +758,19 @@ function generateHtmlReport(allResults, timestamp) {
         </script>
       </div>`;
 
+    // Performance graph from recording (if available)
+    const perfProfile = r.recording?.summary?.perfProfile ?? null;
+    const perfGraphHtml = generatePerfGraphHtml(perfProfile);
+
     return `
       <section class="scenario ${status}">
-        <h2>${r.scenario.name} — ${r.surface} — <span class="${status}">${r.result.passed ? 'PASS' : 'FAIL'}</span></h2>
+        <h2>${modeTag} ${r.scenario.name} — ${r.surface} — <span class="${status}">${r.result.passed ? 'PASS' : 'FAIL'}</span></h2>
         <div class="scenario-meta">
           <span>${r.result.summary}</span>
           <span>${screenshotCell}</span>
         </div>
         <ul class="steps">${stepList}</ul>
+        ${perfGraphHtml}
         ${replaySectionHtml}
       </section>`;
   }).join('\n');
@@ -619,6 +796,12 @@ function generateHtmlReport(allResults, timestamp) {
   .replay-info { color: #555; margin-left: 8px; }
   .replay-container { display: inline-block; }
   a { color: #68f; }
+  .mode-sp { color: #68f; font-size: 0.85em; }
+  .mode-mp { color: #fa8; font-size: 0.85em; }
+  .perf-section { margin-top: 8px; border: 1px solid #1a2a2a; padding: 8px; background: #050910; border-radius: 3px; }
+  .perf-title { color: #4af; font-size: 0.85em; margin-bottom: 4px; }
+  .perf-section table { border-collapse: collapse; }
+  .perf-section th, .perf-section td { padding: 2px 8px; text-align: left; border-bottom: 1px solid #111; }
 </style>
 </head><body>
 <h1>Scenario Runner Report</h1>
@@ -627,6 +810,8 @@ function generateHtmlReport(allResults, timestamp) {
   <span class="pass">✓ ${passed} passed</span> &nbsp;
   <span class="fail">✗ ${failed} failed</span> &nbsp;
   / ${allResults.length} total
+  ${spCount > 0 ? `&nbsp; <span class="mode-sp">[SP: ${spCount}]</span>` : ''}
+  ${mpCount > 0 ? `&nbsp; <span class="mode-mp">[MP: ${mpCount}]</span>` : ''}
 </div>
 <script>${REPLAY_RENDERER_JS}</script>
 ${sections}
@@ -653,7 +838,10 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`[scenario-runner] Running ${scenarios.length} scenario(s) on ${surfaces.length} surface(s)`);
+  const runSP = runMode === 'sp' || runMode === 'both';
+  const runMP = runMode === 'mp' || runMode === 'both';
+
+  console.log(`[scenario-runner] Running ${scenarios.length} scenario(s) on ${surfaces.length} surface(s) [mode: ${runMode}]`);
 
   const browser = await launchBrowser();
   const allResults = [];
@@ -661,8 +849,22 @@ async function main() {
   try {
     for (const surface of surfaces) {
       console.log(`\n[scenario-runner] Surface: ${surface}`);
-      const surfaceResults = await runScenariosOnSurface(browser, scenarios, surface);
-      allResults.push(...surfaceResults);
+
+      if (runSP) {
+        const surfaceResults = await runScenariosOnSurface(browser, scenarios, surface);
+        allResults.push(...surfaceResults.map(r => ({ ...r, mode: 'sp' })));
+      }
+
+      if (runMP) {
+        console.log(`\n[scenario-runner] MP mode: ${surface}`);
+        const mpScenarios = scenarios.filter(sc => {
+          // Skip SP-only scenarios in MP (e.g. heavy perf tests that take too long)
+          // All scenarios run in MP unless tagged mp_skip
+          return !sc.mpSkip;
+        });
+        const mpResults = await runScenariosOnSurfaceMP(browser, mpScenarios, surface);
+        allResults.push(...mpResults);
+      }
     }
   } finally {
     await browser.close();

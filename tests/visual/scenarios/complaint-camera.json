@@ -1,0 +1,224 @@
+[
+  {
+    "name": "camera_orientation_after_seam",
+    "description": "Cross Mobius seam while recording camera.position, camera.up, camera.quaternion — assert camera stays above player, up doesn't flip. Catches: camera flips when crossing Mobius seam.",
+    "setup": {
+      "playerPos": [0.93, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_seam" },
+        "assert": { "type": "playerAlive" },
+        "label": "positioned_near_seam"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "w", "duration": 4000 },
+        "label": "crossing_seam_forward"
+      },
+      {
+        "at": 30,
+        "action": { "type": "screenshot", "label": "mid_seam_crossing" },
+        "label": "capture_seam_crossing"
+      },
+      {
+        "at": 120,
+        "action": { "type": "checkpoint", "label": "after_seam" },
+        "assert": { "type": "playerAlive" },
+        "label": "camera_stable_after_seam"
+      },
+      {
+        "at": 180,
+        "action": { "type": "screenshot", "label": "post_seam_camera" },
+        "label": "verify_camera_orientation_post_seam"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "camera_cube_face_transition",
+    "description": "Walk from face 0 to face 1 to face 2 on cube — record camera orientation at each face, assert camera is always top-down, never inside cube. Catches: camera inside cube looking from bottom after face 3.",
+    "setup": {
+      "playerPos": [0.16, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "face_0_start" },
+        "assert": { "type": "playerAlive" },
+        "label": "positioned_on_face_0"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "d", "duration": 2500 },
+        "label": "moving_to_face_1"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "face_1_camera" },
+        "label": "capture_face_1_camera"
+      },
+      {
+        "at": 70,
+        "action": { "type": "checkpoint", "label": "at_face_1" },
+        "label": "record_face_1_state"
+      },
+      {
+        "at": 80,
+        "action": { "type": "pressKey", "key": "d", "duration": 2500 },
+        "label": "moving_to_face_2"
+      },
+      {
+        "at": 140,
+        "action": { "type": "screenshot", "label": "face_2_camera" },
+        "label": "capture_face_2_camera"
+      },
+      {
+        "at": 150,
+        "action": { "type": "checkpoint", "label": "at_face_2" },
+        "label": "record_face_2_state"
+      },
+      {
+        "at": 160,
+        "action": { "type": "pressKey", "key": "d", "duration": 2500 },
+        "label": "moving_to_face_3"
+      },
+      {
+        "at": 220,
+        "action": { "type": "screenshot", "label": "face_3_camera" },
+        "label": "capture_face_3_camera"
+      },
+      {
+        "at": 250,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "camera_orientation_across_all_faces"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "camera_after_respawn",
+    "description": "Let player die by spawning enemy on top, after respawn record camera orientation — assert camera is top-down on new spawn, not bottom-up. Catches: camera stuck looking from bottom up after respawn.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "enemies": [
+        { "type": "Grunt", "u": 0.5, "v": 0.5 }
+      ]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_death" },
+        "label": "player_about_to_die"
+      },
+      {
+        "at": 30,
+        "action": { "type": "observe", "duration": 0 },
+        "label": "wait_for_death"
+      },
+      {
+        "at": 90,
+        "action": { "type": "checkpoint", "label": "after_respawn" },
+        "label": "camera_after_respawn_recorded"
+      },
+      {
+        "at": 150,
+        "action": { "type": "screenshot", "label": "respawn_camera" },
+        "label": "capture_respawn_camera_orientation"
+      },
+      {
+        "at": 180,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_respawn"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "camera_tilt_during_movement",
+    "description": "Move player in circles for 5s on sphere — record camera up vector every frame, assert stays within 10° of surface normal. Catches: camera tilting sideways when moving on sphere.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start_circle" },
+        "assert": { "type": "playerAlive" },
+        "label": "positioned_for_circle_movement"
+      },
+      {
+        "at": 5,
+        "action": { "type": "pressKey", "key": "w", "duration": 1000 },
+        "label": "moving_north"
+      },
+      {
+        "at": 70,
+        "action": { "type": "pressKey", "key": "d", "duration": 1000 },
+        "label": "moving_east"
+      },
+      {
+        "at": 135,
+        "action": { "type": "pressKey", "key": "s", "duration": 1000 },
+        "label": "moving_south"
+      },
+      {
+        "at": 200,
+        "action": { "type": "pressKey", "key": "a", "duration": 1000 },
+        "label": "moving_west"
+      },
+      {
+        "at": 270,
+        "action": { "type": "screenshot", "label": "camera_after_circle" },
+        "label": "capture_camera_after_full_circle"
+      },
+      {
+        "at": 300,
+        "action": { "type": "checkpoint", "label": "circle_complete" },
+        "assert": { "type": "playerAlive" },
+        "label": "camera_tilt_measured_across_movement"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "camera_after_teleporter",
+    "description": "Teleport player via setPlayerPos to opposite UV — record camera before/after, assert reorients top-down within 30 frames. Catches: camera broken after teleporter on peanut.",
+    "setup": {
+      "playerPos": [0.2, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "before_teleport" },
+        "assert": { "type": "playerAlive" },
+        "label": "pre_teleport_camera_recorded"
+      },
+      {
+        "at": 30,
+        "action": { "type": "setPlayerPos", "u": 0.8, "v": 0.5 },
+        "label": "teleport_to_opposite_side"
+      },
+      {
+        "at": 35,
+        "action": { "type": "screenshot", "label": "post_teleport_immediate" },
+        "label": "camera_immediately_after_teleport"
+      },
+      {
+        "at": 60,
+        "action": { "type": "screenshot", "label": "post_teleport_30frames" },
+        "label": "camera_after_30_frames_reorientation"
+      },
+      {
+        "at": 90,
+        "action": { "type": "checkpoint", "label": "post_teleport_stable" },
+        "assert": { "type": "playerAlive" },
+        "label": "camera_stable_after_teleport"
+      }
+    ],
+    "teardown": []
+  }
+]

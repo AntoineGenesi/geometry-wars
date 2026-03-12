@@ -16,6 +16,9 @@ import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { StateRecorder } from './StateRecorder';
 import { ScenarioEngine } from './ScenarioEngine';
 import type { Scenario, ScenarioResult } from './ScenarioEngine';
+import { PerformanceProfiler } from './PerformanceProfiler';
+import type { PerformanceProfile } from './PerformanceProfiler';
+import { profiler as coreProfiler } from '../core/PerformanceProfiler';
 
 // ---------------------------------------------------------------------------
 // Serializable types (JSON-safe, no THREE objects)
@@ -138,11 +141,15 @@ export class TestHarnessAPI {
   // Integrated sub-systems
   private readonly stateRecorder: StateRecorder;
   private readonly scenarioEngine: ScenarioEngine;
+  private readonly performanceProfiler: PerformanceProfiler;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
     this.stateRecorder = new StateRecorder(ctx);
     this.scenarioEngine = new ScenarioEngine(this, this.stateRecorder);
+    this.performanceProfiler = new PerformanceProfiler();
+    // Expose profiler globally so GameLoop wrappers can call it
+    (window as any).__PERF_PROFILER = this.performanceProfiler;
   }
 
   // -----------------------------------------------------------------------
@@ -496,11 +503,52 @@ export class TestHarnessAPI {
   }
 
   // -----------------------------------------------------------------------
+  // Performance profiling (s44r13-03)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Get performance profile: top CPU sections, GC pressure, and frame timings.
+   * Only meaningful after at least a few seconds of gameplay.
+   */
+  getPerformanceProfile(): PerformanceProfile {
+    return this.performanceProfiler.getProfile();
+  }
+
+  /** Reset the performance profiler (call before starting a perf measurement window). */
+  resetPerformanceProfile(): void {
+    this.performanceProfiler.reset();
+  }
+
+  /**
+   * Get current camera state (position, up, quaternion, distance to player).
+   * Returns null if camera not available.
+   */
+  getCameraState(): { position: { x: number; y: number; z: number }; up: { x: number; y: number; z: number }; quaternion: { x: number; y: number; z: number; w: number }; distanceToPlayer: number } | null {
+    try {
+      const cam = this.ctx.game.camera;
+      const playerPos = this.ctx.player.mesh?.position;
+      const dist = playerPos ? cam.position.distanceTo(playerPos) : -1;
+      const q = (cam as any).quaternion;
+      return {
+        position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+        up: { x: cam.up.x, y: cam.up.y, z: cam.up.z },
+        quaternion: q ? { x: q.x, y: q.y, z: q.z, w: q.w } : { x: 0, y: 0, z: 0, w: 1 },
+        distanceToPlayer: dist,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  // -----------------------------------------------------------------------
   // Frame update — called every game tick when testMode=true
   // -----------------------------------------------------------------------
 
   /** Called every fixed-update frame. Drives test-directed enemy movement + event tracking. */
   update(): void {
+    // --- Begin performance frame ---
+    this.performanceProfiler.beginFrame();
+
     this.frameCount++;
     const { player, enemySpawner, game } = this.ctx;
     const time = game.clock.totalTime;
@@ -602,6 +650,15 @@ export class TestHarnessAPI {
 
     // --- Tick ScenarioEngine (timeline-based scenario execution) ---
     this.scenarioEngine.tick(this.frameCount, time);
+
+    // --- Tick PerformanceProfiler (commit frame, harvest core profiler section data) ---
+    // The core profiler (src/core/PerformanceProfiler) already wraps ALL GameLoop sections.
+    // Record each section's totalMs for this frame in the debug profiler via direct feed.
+    const coreFrameData = coreProfiler.getFrameData();
+    for (const scope of coreFrameData) {
+      this.performanceProfiler.recordSection(scope.label, scope.totalMs);
+    }
+    this.performanceProfiler.endFrame();
 
     // --- Expose on window for Puppeteer access ---
     (window as any).__TEST_API = this;

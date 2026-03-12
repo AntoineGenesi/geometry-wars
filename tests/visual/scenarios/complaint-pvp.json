@@ -1,0 +1,86 @@
+[
+  {
+    "name": "pvp_damage_works",
+    "description": "MP PvPvE mode — player 1 fires at player 2 position — assert damage event registered on player 2. Catches: PvPvE — no damage to other players (4+ dumps). NOTE: full MP test requires --mode mp.",
+    "setup": {
+      "playerPos": [0.5, 0.5],
+      "weapon": "Standard",
+      "enemies": []
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "pvp_setup" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_1_ready"
+      },
+      {
+        "at": 5,
+        "action": { "type": "fireWeapon" },
+        "label": "fire_toward_player_2"
+      },
+      {
+        "at": 10,
+        "action": { "type": "fireWeapon" },
+        "label": "second_shot"
+      },
+      {
+        "at": 15,
+        "action": { "type": "fireWeapon" },
+        "label": "third_shot"
+      },
+      {
+        "at": 60,
+        "action": { "type": "checkpoint", "label": "pvp_damage_check" },
+        "assert": { "type": "playerAlive" },
+        "label": "damage_events_recorded"
+      }
+    ],
+    "teardown": []
+  },
+  {
+    "name": "pvp_portal_safety",
+    "description": "Teleport player through portal (setPlayerPos to opposite UV) — assert player alive after teleportation, no death within 2s. Catches: portal kills the player on entry.",
+    "setup": {
+      "playerPos": [0.2, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "pre_portal" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_before_portal"
+      },
+      {
+        "at": 15,
+        "action": { "type": "setPlayerPos", "u": 0.8, "v": 0.5 },
+        "label": "teleport_through_portal"
+      },
+      {
+        "at": 20,
+        "action": { "type": "checkpoint", "label": "immediately_after_portal" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_immediately_after_portal"
+      },
+      {
+        "at": 45,
+        "action": { "type": "checkpoint", "label": "1s_after_portal" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_1s_after_portal"
+      },
+      {
+        "at": 120,
+        "action": { "type": "checkpoint", "label": "2s_after_portal" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_2s_after_portal_no_instant_death"
+      },
+      {
+        "at": 150,
+        "action": { "type": "observe", "duration": 0 },
+        "assert": { "type": "playerAlive" },
+        "label": "portal_safety_confirmed"
+      }
+    ],
+    "teardown": []
+  }
+]
