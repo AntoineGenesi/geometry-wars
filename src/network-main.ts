@@ -986,6 +986,14 @@ async function main() {
   // Current weapon type for the local player — synced from server state
   let localPlayerWeaponType: WeaponType = WeaponType.Standard;
 
+  // Weapon inventory collected this round — tracks ALL weapons picked up (SP parity).
+  // In SP, WeaponManager.getInventory() returns the full collected set.
+  // In MP, the server only sends the active weapon type; we accumulate locally.
+  // Key = WeaponType, Value = ammo (-1 for Standard = infinite).
+  const localCollectedWeapons: Map<WeaponType, number> = new Map([
+    [WeaponType.Standard, -1],
+  ]);
+
   const particles = new ParticleSystem(5000);
   scene.add(particles.root);
   if (mobile) {
@@ -3094,6 +3102,9 @@ async function main() {
 
     // Reset local weapon type display so HUD shows the correct weapon next round
     localPlayerWeaponType = WeaponType.Standard;
+    // Reset collected weapon inventory for the new round (SP parity)
+    localCollectedWeapons.clear();
+    localCollectedWeapons.set(WeaponType.Standard, -1);
 
     // Clear all active weapon visuals and projectiles from the previous round.
     // Without this, active effects (laser beams, tesla coil aura, black holes) and
@@ -4597,11 +4608,25 @@ async function main() {
       const ammoStr = localPlayer.weaponAmmo < 0 ? '' : ` [${localPlayer.weaponAmmo}]`;
       weaponEl.textContent = wName === 'STANDARD' ? '' : `${wName}${ammoStr}`;
 
-      // WeaponHUD — graphical weapon panel (same as single-player)
+      // WeaponHUD — graphical weapon panel (SP parity: show ALL collected weapons)
+      // SP: weaponManager.getInventory() returns full collected set.
+      // MP: server only sends active weapon; we accumulate picked-up weapons locally.
       const activeWeaponType = SERVER_TO_WEAPON_TYPE[localPlayer.weaponType] ?? WeaponType.Standard;
-      const hudInventory: WeaponInventoryEntry[] = [{ type: WeaponType.Standard, ammo: -1, stacks: 1 }];
+
+      // Add new weapon to collection when player picks one up (weapon type changed)
+      if (!localCollectedWeapons.has(activeWeaponType)) {
+        localCollectedWeapons.set(activeWeaponType, localPlayer.weaponAmmo);
+        weaponHUD.showPickupNotification(`${WEAPON_CONFIGS[activeWeaponType].name} added to inventory`);
+      }
+      // Keep ammo up to date for the active weapon
       if (activeWeaponType !== WeaponType.Standard) {
-        hudInventory.push({ type: activeWeaponType, ammo: localPlayer.weaponAmmo, stacks: 1 });
+        localCollectedWeapons.set(activeWeaponType, localPlayer.weaponAmmo);
+      }
+
+      // Build hudInventory from full collection (Standard always first)
+      const hudInventory: WeaponInventoryEntry[] = [];
+      for (const [wt, ammo] of localCollectedWeapons.entries()) {
+        hudInventory.push({ type: wt, ammo, stacks: 1 });
       }
       weaponHUD.update(hudInventory, activeWeaponType);
 
