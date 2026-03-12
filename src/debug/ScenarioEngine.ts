@@ -44,6 +44,7 @@ export type AssertionType =
   | { type: 'deathOccurred' }
   | { type: 'damageOccurred'; source?: string }
   | { type: 'weaponIs'; weapon: string }
+  | { type: 'enemyOpacityAllAbove'; threshold: number }
   | { type: 'custom'; fn: string };
 
 export interface ScenarioStep {
@@ -360,6 +361,13 @@ export class ScenarioEngine {
       }
       case 'weaponIs':
         return state.currentWeapon === assertion.weapon;
+      case 'enemyOpacityAllAbove': {
+        const enemies = this.api.getEnemies();
+        const alive = enemies.filter(e => e.alive);
+        if (alive.length === 0) return false; // no enemies = can't verify visibility
+        const invisibleCount = alive.filter(e => e.opacity < assertion.threshold).length;
+        return invisibleCount === 0;
+      }
       case 'playerAt': {
         const pPos = this.api.getPlayerPosition();
         const du = Math.abs(pPos.u - assertion.u);

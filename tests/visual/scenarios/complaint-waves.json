@@ -1,0 +1,104 @@
+[
+  {
+    "name": "enemies_visible_after_waves",
+    "description": "Let natural wave spawner fire 3 wave cycles. After each wave spawns, verify: enemies alive AND opacity > 0.05 (not invisible). Catches: enemies invisible after wave 2-3 due to InstancedMesh scale (0,0,0) or opacity dimming bug. Surfaces: ALL 13.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "wave_test_start" },
+        "assert": { "type": "playerAlive" },
+        "label": "game_started_player_alive"
+      },
+      {
+        "at": 360,
+        "action": { "type": "screenshot", "label": "wave1_spawned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 1 },
+        "label": "wave_1_enemies_spawned_at_6s"
+      },
+      {
+        "at": 370,
+        "action": { "type": "checkpoint", "label": "wave1_opacity_check" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.05 },
+        "label": "wave_1_enemies_not_invisible"
+      },
+      {
+        "at": 380,
+        "action": { "type": "clearEnemies" },
+        "label": "clear_wave_1_trigger_wave_2"
+      },
+      {
+        "at": 780,
+        "action": { "type": "screenshot", "label": "wave2_spawned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 1 },
+        "label": "wave_2_enemies_spawned_at_13s"
+      },
+      {
+        "at": 790,
+        "action": { "type": "checkpoint", "label": "wave2_opacity_check" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.05 },
+        "label": "wave_2_enemies_not_invisible"
+      },
+      {
+        "at": 800,
+        "action": { "type": "clearEnemies" },
+        "label": "clear_wave_2_trigger_wave_3"
+      },
+      {
+        "at": 1200,
+        "action": { "type": "screenshot", "label": "wave3_spawned" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 1 },
+        "label": "wave_3_enemies_spawned_at_20s"
+      },
+      {
+        "at": 1210,
+        "action": { "type": "checkpoint", "label": "wave3_opacity_check" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.05 },
+        "label": "wave_3_enemies_not_invisible"
+      },
+      {
+        "at": 1210,
+        "action": { "type": "checkpoint", "label": "wave3_count_check" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 1 },
+        "label": "wave_3_at_least_1_enemy_alive"
+      },
+      {
+        "at": 1220,
+        "action": { "type": "checkpoint", "label": "player_survived_3_waves" },
+        "assert": { "type": "playerAlive" },
+        "label": "player_alive_after_3_wave_cycles"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  },
+  {
+    "name": "enemies_visible_wave1_only",
+    "description": "Focused wave-1 check: wait 8s for wave 1 enemies to appear (6s), assert they are alive and not invisible (opacity > 0.05). Fast version of enemies_visible_after_waves for quick surface sweeps.",
+    "setup": {
+      "playerPos": [0.5, 0.5]
+    },
+    "steps": [
+      {
+        "at": 0,
+        "action": { "type": "checkpoint", "label": "start" },
+        "assert": { "type": "playerAlive" },
+        "label": "game_running"
+      },
+      {
+        "at": 420,
+        "action": { "type": "screenshot", "label": "wave1_check" },
+        "assert": { "type": "enemyCount", "op": ">=", "value": 1 },
+        "label": "wave_1_enemies_present_at_7s"
+      },
+      {
+        "at": 430,
+        "action": { "type": "checkpoint", "label": "opacity_check" },
+        "assert": { "type": "enemyOpacityAllAbove", "threshold": 0.05 },
+        "label": "wave_1_enemies_visible_not_invisible"
+      }
+    ],
+    "teardown": [{ "type": "clearEnemies" }]
+  }
+]

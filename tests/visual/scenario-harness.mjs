@@ -602,6 +602,88 @@ const SCENARIOS = {
     },
   },
 
+  // ---- Scenario 13: Enemies Visible After Waves ----
+  // REGRESSION: s44r13 — enemies become invisible after wave 2-3 due to InstancedMesh
+  // scale(0,0,0) or dimming bug. Runs natural wave spawner (endless mode at 6s/13s/20s).
+  enemies_visible_after_waves: {
+    name: 'Enemies Visible After Waves',
+    description: 'Let game wave spawner fire 3 cycles. After each wave spawns, assert enemies alive AND opacity > 0.05 (not invisible). Catches InstancedMesh scale(0,0,0) and dimming regressions.',
+    async run(page, surface) {
+      // Don't spawn enemies manually — let the natural wave scheduler do it
+      await page.evaluate(() => window.__TEST_API.clearEnemies());
+      await sleep(500);
+
+      /**
+       * Helper: wait until enemy count >= minCount OR timeout.
+       * Returns { count, opacities } where opacities is the array of alive enemy opacities.
+       */
+      const waitForWave = async (timeoutMs) => {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+          const data = await page.evaluate(() => {
+            const enemies = window.__TEST_API.getEnemies();
+            const alive = enemies.filter(e => e.alive);
+            return { count: alive.length, opacities: alive.map(e => e.opacity) };
+          });
+          if (data.count >= 1) return data;
+          await sleep(200);
+        }
+        // Return last state even if empty
+        return await page.evaluate(() => {
+          const enemies = window.__TEST_API.getEnemies();
+          const alive = enemies.filter(e => e.alive);
+          return { count: alive.length, opacities: alive.map(e => e.opacity) };
+        });
+      };
+
+      const waveResults = [];
+
+      // Wave 1: spawns at ~6s, wait up to 10s
+      const wave1 = await waitForWave(10000);
+      const wave1Visible = wave1.count > 0 && wave1.opacities.every(op => op > 0.05);
+      waveResults.push({ wave: 1, count: wave1.count, opacities: wave1.opacities, visible: wave1Visible });
+
+      // Take screenshot after wave 1
+      await takeScreenshot(page, `enemies_visible_after_waves_w1_${surface}`);
+
+      // Clear wave 1 to trigger wave 2 sooner
+      await page.evaluate(() => window.__TEST_API.clearEnemies());
+
+      // Wave 2: ~7s after clearing
+      const wave2 = await waitForWave(10000);
+      const wave2Visible = wave2.count > 0 && wave2.opacities.every(op => op > 0.05);
+      waveResults.push({ wave: 2, count: wave2.count, opacities: wave2.opacities, visible: wave2Visible });
+
+      await takeScreenshot(page, `enemies_visible_after_waves_w2_${surface}`);
+
+      // Clear wave 2 to trigger wave 3
+      await page.evaluate(() => window.__TEST_API.clearEnemies());
+
+      // Wave 3: ~7s after clearing
+      const wave3 = await waitForWave(10000);
+      const wave3Visible = wave3.count > 0 && wave3.opacities.every(op => op > 0.05);
+      waveResults.push({ wave: 3, count: wave3.count, opacities: wave3.opacities, visible: wave3Visible });
+
+      await takeScreenshot(page, `enemies_visible_after_waves_w3_${surface}`);
+
+      // Pass if ALL 3 waves had visible enemies
+      const passed = waveResults.every(w => w.visible);
+      const failedWaves = waveResults.filter(w => !w.visible).map(w => `wave${w.wave}(count=${w.count})`);
+
+      return {
+        passed,
+        details: {
+          waveResults,
+          failedWaves,
+          note: passed
+            ? 'All 3 wave cycles had visible enemies'
+            : `Invisible or missing enemies in: ${failedWaves.join(', ')}`,
+          surface,
+        },
+      };
+    },
+  },
+
   // ---- Scenario 12: Hit Detection Distance Sanity ----
   // REGRESSION: s44r12-09 / s44r6-04 — premature player deaths from CollisionSystem OR fallback
   hit_detection_distance: {
