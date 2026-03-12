@@ -36,6 +36,16 @@ export class GameLoop {
   private readonly _bulletSeenIds = new Set<string>();
   // Pre-allocated for bullet depth dimming (approximated surface normal = pos.normalize())
   private readonly _bulletNormal = new THREE.Vector3();
+  // Pre-allocated temp vectors for aim calculation (avoid per-frame GC pressure)
+  private readonly _camRight = new THREE.Vector3();
+  private readonly _camUp = new THREE.Vector3();
+  private readonly _aimAxisFallbackRef = new THREE.Vector3();
+  private readonly _aimAxisX = new THREE.Vector3();
+  private readonly _aimAxisY = new THREE.Vector3();
+  private readonly _aimDirection = new THREE.Vector3();
+  private readonly _playerRight = new THREE.Vector3();
+  private readonly _playerForward = new THREE.Vector3();
+  private readonly _orientMat = new THREE.Matrix4();
   private FAST_ENEMY_TYPES = ['Mayfly', 'Rocket', 'Duck'];
   private ENEMY_TRAIL_COLORS: Record<string, number> = {
     Mayfly: 0xddddff,
@@ -288,15 +298,15 @@ export class GameLoop {
       // Note: Three.js lookAt() sets camera.quaternion but doesn't update matrixWorld immediately.
       // We call updateMatrixWorld() to ensure the matrix reflects the current orientation.
       ctx.game.camera.updateMatrixWorld();
-      const camRight = new THREE.Vector3().setFromMatrixColumn(ctx.game.camera.matrixWorld, 0);
-      const camUp = new THREE.Vector3().setFromMatrixColumn(ctx.game.camera.matrixWorld, 1);
+      this._camRight.setFromMatrixColumn(ctx.game.camera.matrixWorld, 0);
+      this._camUp.setFromMatrixColumn(ctx.game.camera.matrixWorld, 1);
       // Remove normal component so the axes lie on the surface plane
-      camRight.addScaledVector(playerNormal, -camRight.dot(playerNormal));
-      camUp.addScaledVector(playerNormal, -camUp.dot(playerNormal));
-      const useCameraAxes = camRight.lengthSq() > 0.01 && camUp.lengthSq() > 0.01;
+      this._camRight.addScaledVector(playerNormal, -this._camRight.dot(playerNormal));
+      this._camUp.addScaledVector(playerNormal, -this._camUp.dot(playerNormal));
+      const useCameraAxes = this._camRight.lengthSq() > 0.01 && this._camUp.lengthSq() > 0.01;
       if (useCameraAxes) {
-        camRight.normalize();
-        camUp.normalize();
+        this._camRight.normalize();
+        this._camUp.normalize();
       }
       // Fallback to stable reference axes when camera axes are degenerate.
       // s44r2-16: On cube top/bottom faces, camera up is parallel to surface normal during
@@ -305,36 +315,39 @@ export class GameLoop {
       let aimAxisX: THREE.Vector3;
       let aimAxisY: THREE.Vector3;
       if (useCameraAxes) {
-        aimAxisX = camRight;
-        aimAxisY = camUp;
+        aimAxisX = this._camRight;
+        aimAxisY = this._camUp;
       } else {
         // Compute screen-aligned axes from surface normal
-        const ref = Math.abs(playerNormal.y) < 0.9
-          ? new THREE.Vector3(0, 1, 0)
-          : new THREE.Vector3(0, 0, 1);
-        aimAxisX = new THREE.Vector3().crossVectors(ref, playerNormal).normalize();
-        aimAxisY = new THREE.Vector3().crossVectors(playerNormal, aimAxisX).normalize();
+        if (Math.abs(playerNormal.y) < 0.9) {
+          this._aimAxisFallbackRef.set(0, 1, 0);
+        } else {
+          this._aimAxisFallbackRef.set(0, 0, 1);
+        }
+        aimAxisX = this._aimAxisX.crossVectors(this._aimAxisFallbackRef, playerNormal).normalize();
+        aimAxisY = this._aimAxisY.crossVectors(playerNormal, aimAxisX).normalize();
       }
 
       let aimDirection: THREE.Vector3;
       if (aimLen > 0.01) {
-        aimDirection = new THREE.Vector3()
+        this._aimDirection.set(0, 0, 0)
           .addScaledVector(aimAxisX, aimX)
           .addScaledVector(aimAxisY, -aimY)
           .normalize();
+        aimDirection = this._aimDirection;
         this.lastAimDirection = aimDirection.clone();
       } else if (this.lastAimDirection !== null) {
         // Mouse near center or briefly dropped — hold last known aim direction
         aimDirection = this.lastAimDirection.clone();
       } else {
         // No prior aim — default to forward (camera up on surface)
-        aimDirection = aimAxisY.clone();
+        aimDirection = this._aimDirection.copy(aimAxisY);
       }
 
       // Orient player mesh
-      const playerRight = new THREE.Vector3().crossVectors(playerNormal, aimDirection).normalize();
-      const playerForward = new THREE.Vector3().crossVectors(playerRight, playerNormal).normalize();
-      const orientMat = new THREE.Matrix4().makeBasis(playerRight, playerNormal, playerForward);
+      const playerRight = this._playerRight.crossVectors(playerNormal, aimDirection).normalize();
+      const playerForward = this._playerForward.crossVectors(playerRight, playerNormal).normalize();
+      const orientMat = this._orientMat.makeBasis(playerRight, playerNormal, playerForward);
       ctx.player.mesh.quaternion.setFromRotationMatrix(orientMat);
 
       // Store aim angle for bullets
@@ -522,16 +535,8 @@ export class GameLoop {
       }
 
       ctx.shockArcRenderer.update(ctx.buffManager.shockArcs);
-      // Update buff aura ring visuals (per-buff shader effects around player)
-      const activeBuffsForAura = ctx.buffManager.getActiveBuffs().map(b => ({
-        type: b.type,
-        stacks: b.stacks,
-      }));
-      ctx.buffAuraRenderer.update(
-        dt, ctx.game.clock.totalTime,
-        ctx.playerWalker.position, ctx.playerWalker.normal,
-        activeBuffsForAura,
-      );
+      // Note: buffAuraRenderer.update() is called in main.ts onFixedUpdate (after dimming factor
+      // is computed). Only shockArcRenderer needs updating here.
       // Refresh stat multipliers each frame (buffs can change any time)
       if (this.applyStatMultipliers) {
         this.applyStatMultipliers();
@@ -583,12 +588,13 @@ export class GameLoop {
     }
 
     // Update enemy glow trails (for fast-moving enemies)
+    // Note: getEnemies() returns the raw array — enemies stay in it forever (just become inactive).
+    // Checking Set membership is always true, so we only need the alive check.
     const currentEnemies = ctx.enemySpawner.getEnemies();
-    const activeEnemySet = new Set(currentEnemies);
 
-    // Remove trails for dead/removed enemies
+    // Remove trails for dead enemies
     this.enemyGlowTrails.forEach((trail, enemy) => {
-      if (!activeEnemySet.has(enemy) || !enemy.alive) {
+      if (!enemy.alive) {
         trail.dispose();
         ctx.game.scene.remove(trail.root);
         this.enemyGlowTrails.delete(enemy);
