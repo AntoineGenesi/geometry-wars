@@ -106,6 +106,7 @@ export class StartMenu {
     { type: 'capsule', name: 'Capsule', icon: '\u2B2C' },
     { type: 'icosahedron', name: 'Icosahedron', icon: '\u2B21' },
     { type: 'mobius', name: 'M\u00F6bius', icon: '\u223F' },
+    { type: 'mobius-bevel', name: 'M\u00F6bius Bevel', icon: '\u29B6' },
     { type: 'sphere-tunnel', name: 'Sphere Tunnel', icon: '\u2295' },
     { type: 'cube-ring', name: 'Cube Ring', icon: '\u25A3' },
     { type: 'cube-tunnel', name: 'Cube Tunnel', icon: '\u25A7' },
