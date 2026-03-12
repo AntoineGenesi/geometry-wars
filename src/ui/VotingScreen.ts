@@ -32,16 +32,19 @@ export interface VotingScreenCallbacks {
 }
 
 export const SURFACES = [
-  { id: 'sphere',       icon: '🔵', label: 'SPHERE' },
-  { id: 'torus',        icon: '🍩', label: 'TORUS' },
-  { id: 'cube',         icon: '📦', label: 'CUBE' },
-  { id: 'pill',         icon: '💊', label: 'PILL' },
-  { id: 'capsule',      icon: '💉', label: 'CAPSULE' },
-  { id: 'icosahedron',  icon: '🔷', label: 'ICOSAHEDRON' },
-  { id: 'peanut',       icon: '🥜', label: 'PEANUT' },
-  { id: 'mobius',       icon: '♾',  label: 'MOBIUS' },
-  { id: 'mobius-bevel', icon: '⟲',  label: 'MOBIUS-BEVEL' },
-  { id: 'cube-tunnel',  icon: '⬡',  label: 'CUBE-TUNNEL' },
+  { id: 'sphere',        icon: '🔵', label: 'SPHERE' },
+  { id: 'torus',         icon: '🍩', label: 'TORUS' },
+  { id: 'cube',          icon: '📦', label: 'CUBE' },
+  { id: 'pill',          icon: '💊', label: 'PILL' },
+  { id: 'pipe',          icon: '🔧', label: 'PIPE' },
+  { id: 'capsule',       icon: '💉', label: 'CAPSULE' },
+  { id: 'icosahedron',   icon: '🔷', label: 'ICOSAHEDRON' },
+  { id: 'peanut',        icon: '🥜', label: 'PEANUT' },
+  { id: 'mobius',        icon: '♾',  label: 'MOBIUS' },
+  { id: 'mobius-bevel',  icon: '⟲',  label: 'MOBIUS-BEVEL' },
+  { id: 'sphere-tunnel', icon: '⊕',  label: 'SPHERE-TUNNEL' },
+  { id: 'cube-ring',     icon: '⬡',  label: 'CUBE-RING' },
+  { id: 'cube-tunnel',   icon: '⬜', label: 'CUBE-TUNNEL' },
 ];
 
 /** Surfaces allowed in Claustrophobia mode (small, enclosed). Matches server CLAUSTROPHOBIA_ALLOWED_SURFACES. */
