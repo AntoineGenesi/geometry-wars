@@ -2521,13 +2521,19 @@ export class GameRoom extends Room<GameState> {
       player.surfaceU = approxUV.u;
       player.surfaceV = approxUV.v;
 
+      // Tesla coil: always-active aura (like SP WeaponManager — no shooting required).
+      // Applies continuous damage to enemies in range regardless of fire button state.
+      // Mirrors SP behavior where the Tesla sphere auto-maintains while weapon is equipped.
+      if (player.weaponType === 'tesla_coil') {
+        this.applyTeslaDamage(player, dt);
+      }
+
       // Handle shooting (continuous action, applied per tick)
       if (input.shooting) {
         if (player.weaponType === 'laser_beam') {
           this.applyLaserDamage(player, dt);
-        } else if (player.weaponType === 'tesla_coil') {
-          this.applyTeslaDamage(player, dt);
-        } else {
+        } else if (player.weaponType !== 'tesla_coil') {
+          // Tesla is handled above (always-active); all other weapons require shooting input
           this.tryShoot(player);
         }
       }
@@ -2861,9 +2867,11 @@ export class GameRoom extends Room<GameState> {
   private applyTeslaDamage(player: PlayerState, dt: number): void {
     if (!player.alive) return;
 
-    // Deduct ammo per tick. ammo=150 at ~60 ticks/sec ≈ 2.5 seconds duration.
+    // Deduct ammo at SP fire rate (30Hz equivalent) instead of per-tick (60Hz).
+    // SP: ammo=150 at 30 ticks/sec = 5 seconds duration. Server ticks at ~60Hz,
+    // so deduct dt*30 ammo per tick: 150 / (30/sec) = 5 seconds at any tick rate.
     if (player.weaponAmmo > 0) {
-      player.weaponAmmo--;
+      player.weaponAmmo -= dt * 30;
       if (player.weaponAmmo <= 0) {
         player.weaponType = 'standard';
         player.weaponAmmo = -1;
