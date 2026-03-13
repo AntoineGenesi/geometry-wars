@@ -34,6 +34,8 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const SCREENSHOT_DIR = resolve(PROJECT_ROOT, 'test-screenshots/koth-scenarios');
 const REPORT_DIR = resolve(PROJECT_ROOT, 'reports');
 
+// Light mode: smaller window, SwiftShader still needed for WebGL init.
+// CPU throttled via CDP after game loads to reduce SwiftShader overhead.
 const LAUNCH_ARGS = [
   '--enable-webgl',
   '--use-gl=swiftshader',
@@ -42,9 +44,7 @@ const LAUNCH_ARGS = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
-  '--window-size=640,360',
-  '--disable-frame-rate-limit',
-  '--disable-gpu-vsync',
+  '--window-size=320,180',
 ];
 
 const ALL_SURFACES = [
@@ -74,7 +74,7 @@ async function launchBrowser() {
 
 async function createPage(browser) {
   const page = await browser.newPage();
-  await page.setViewport({ width: 640, height: 360 });
+  await page.setViewport({ width: 320, height: 180 });
   const errors = [];
   page.on('pageerror', err => errors.push(err.message));
   page.on('console', msg => {
@@ -82,6 +82,19 @@ async function createPage(browser) {
   });
   page.__testErrors = errors;
   return page;
+}
+
+/** Throttle CPU via CDP — reduces SwiftShader rendering load for state-only tests. */
+async function throttleCPU(page, rate = 6) {
+  const client = await page.createCDPSession();
+  await client.send('Emulation.setCPUThrottlingRate', { rate });
+  return client;
+}
+
+async function unthrottleCPU(cdpSession) {
+  if (cdpSession) {
+    try { await cdpSession.send('Emulation.setCPUThrottlingRate', { rate: 1 }); } catch {}
+  }
 }
 
 async function startGameInKOTHMode(page, surface = 'sphere') {
@@ -860,10 +873,13 @@ async function runAllKOTHScenarios(requestedSurfaces, scenarioFilter) {
 
     for (const surface of scenarioSurfaces) {
       let page;
+      let cdpSession;
       try {
         process.stdout.write(`  [${surface}]... `);
         page = await createPage(browser);
         await startGameInKOTHMode(page, surface);
+        // Throttle CPU after game loads — most KOTH scenarios are state-only
+        cdpSession = await throttleCPU(page, 6);
         const result = await runScenario(page, scenarioKey, scenario, surface);
         results.push(result);
         console.log(result.passed ? 'PASS' : `FAIL${result.error ? ` (${result.error})` : ''}`);
@@ -880,6 +896,7 @@ async function runAllKOTHScenarios(requestedSurfaces, scenarioFilter) {
           durationMs: 0,
         });
       } finally {
+        if (cdpSession) await unthrottleCPU(cdpSession);
         if (page) await page.close().catch(() => {});
       }
     }

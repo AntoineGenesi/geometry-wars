@@ -80,8 +80,6 @@ const LAUNCH_ARGS = [
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
   '--window-size=390,844',
-  '--disable-frame-rate-limit',
-  '--disable-gpu-vsync',
 ];
 
 // ---------------------------------------------------------------------------

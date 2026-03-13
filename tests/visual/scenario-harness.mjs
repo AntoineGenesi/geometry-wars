@@ -37,7 +37,8 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const SCREENSHOT_DIR = resolve(PROJECT_ROOT, 'test-screenshots/scenario-harness');
 const REPORT_DIR = resolve(PROJECT_ROOT, 'reports');
 
-const LAUNCH_ARGS = [
+// Visual mode: SwiftShader for screenshots (higher CPU but renders correctly)
+const LAUNCH_ARGS_VISUAL = [
   '--enable-webgl',
   '--use-gl=swiftshader',
   '--use-angle=swiftshader',
@@ -46,9 +47,24 @@ const LAUNCH_ARGS = [
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
   '--window-size=640,360',
-  '--disable-frame-rate-limit',
-  '--disable-gpu-vsync',
 ];
+
+// Light mode: SwiftShader still needed for WebGL init, but smaller window + throttled
+// Three.js requires WebGL context — can't disable SwiftShader entirely.
+// CPU savings come from: (1) tiny viewport, (2) CDP emulation throttle after load.
+const LAUNCH_ARGS_LIGHT = [
+  '--enable-webgl',
+  '--use-gl=swiftshader',
+  '--use-angle=swiftshader',
+  '--enable-unsafe-swiftshader',
+  '--no-sandbox',
+  '--disable-setuid-sandbox',
+  '--disable-dev-shm-usage',
+  '--window-size=320,180',
+];
+
+// Backwards compat
+const LAUNCH_ARGS = LAUNCH_ARGS_VISUAL;
 
 const ALL_SURFACES = [
   'sphere', 'torus', 'cube', 'cube-ring', 'pill',
@@ -159,12 +175,30 @@ async function clickStartGame(page) {
 // Browser helpers
 // ---------------------------------------------------------------------------
 
-async function launchBrowser() {
+async function launchBrowser(visual = true) {
   return puppeteer.launch({
     executablePath: CHROME_PATH,
     headless: 'new',
-    args: LAUNCH_ARGS,
+    args: visual ? LAUNCH_ARGS_VISUAL : LAUNCH_ARGS_LIGHT,
   });
+}
+
+/**
+ * Throttle CPU for state-only tests. Uses CDP to slow the virtual clock,
+ * which makes SwiftShader render fewer frames (saving real CPU).
+ * rate=1 is normal, rate=4 means "pretend CPU is 4x slower" → Chrome renders ~1/4 frames.
+ */
+async function throttleCPU(page, rate = 4) {
+  const client = await page.createCDPSession();
+  await client.send('Emulation.setCPUThrottlingRate', { rate });
+  return client;
+}
+
+/** Remove CPU throttle (restore normal speed, e.g. before taking a screenshot). */
+async function unthrottleCPU(cdpSession) {
+  if (cdpSession) {
+    try { await cdpSession.send('Emulation.setCPUThrottlingRate', { rate: 1 }); } catch {}
+  }
 }
 
 async function createPage(browser) {
@@ -233,6 +267,7 @@ const SCENARIOS = {
   // ---- Scenario 1: Hit Detection Precision (DEEPENED — s44r13-07) ----
   hit_detection: {
     name: 'Hit Detection Precision',
+    needsRendering: false,
     description: 'Spawn enemy, move toward player, verify death at correct distance; also checks bullet travel and tolerance band',
     async run(page, surface) {
       // Clear existing enemies
@@ -303,6 +338,7 @@ const SCENARIOS = {
   // ---- Scenario 2: Enemy Movement Validation ----
   enemy_movement: {
     name: 'Enemy Movement Validation',
+    needsRendering: false,
     description: 'Spawn enemy, direct to target, verify arrival',
     async run(page, surface) {
       await page.evaluate(() => window.__TEST_API.clearEnemies());
@@ -359,6 +395,7 @@ const SCENARIOS = {
   // ---- Scenario 3: Enemy Visibility (DEEPENED — s44r13-07) ----
   enemy_visibility: {
     name: 'Enemy Visibility',
+    needsRendering: true,
     description: 'Spawn 5 enemies; verify all active with opacity 0.8–1.0 (not just > 0); stable across 3 frames (no flicker)',
     async run(page, surface) {
       await page.evaluate(() => window.__TEST_API.clearEnemies());
@@ -430,6 +467,7 @@ const SCENARIOS = {
   // ---- Scenario 4: Weapon Fire (DEEPENED — s44r13-07) ----
   weapon_fire: {
     name: 'Weapon Fire',
+    needsRendering: false,
     description: 'Fire weapon; verify bullet count increases by ≥1; bullet origin near player; bullets not immortal (expire after lifetime)',
     async run(page, surface) {
       // Clear enemies so bullets can travel without hitting anything
@@ -492,6 +530,7 @@ const SCENARIOS = {
   // ---- Scenario 5: Game State Snapshot ----
   game_state: {
     name: 'Game State Snapshot',
+    needsRendering: false,
     description: 'Verify game state is accessible and valid',
     async run(page, surface) {
       const state = await page.evaluate(() => window.__TEST_API.getGameState());
@@ -521,6 +560,7 @@ const SCENARIOS = {
   // ---- Scenario 6: Spawn and Clear ----
   spawn_clear: {
     name: 'Spawn and Clear Enemies',
+    needsRendering: false,
     description: 'Spawn enemies, verify count, clear, verify zero',
     async run(page, surface) {
       await page.evaluate(() => window.__TEST_API.clearEnemies());
@@ -561,6 +601,7 @@ const SCENARIOS = {
   // ---- Scenario 7: Player Teleport ----
   player_teleport: {
     name: 'Player Teleport',
+    needsRendering: false,
     description: 'Teleport player to specific UV, verify position',
     async run(page, surface) {
       const targetU = 0.7;
@@ -593,6 +634,7 @@ const SCENARIOS = {
   // ---- Scenario 8: Visual Regression — Enemy Count via Screenshot ----
   visual_enemy_count: {
     name: 'Visual Regression — Enemy Pixel Check',
+    needsRendering: true,
     description: 'Spawn enemies, take screenshot, verify non-black pixels exist at enemy locations',
     async run(page, surface) {
       await page.evaluate(() => window.__TEST_API.clearEnemies());
@@ -629,6 +671,7 @@ const SCENARIOS = {
   // ---- Scenario 9: Telemetry Frame Rate ----
   telemetry_frame_rate: {
     name: 'Telemetry Frame Rate (Test Mode)',
+    needsRendering: false,
     description: 'Verify telemetry updates every frame, not 500ms',
     async run(page, surface) {
       // Sample telemetry frames over 1 second
@@ -675,6 +718,7 @@ const SCENARIOS = {
   // ---- Scenario 10: Damage Event Tracking ----
   damage_tracking: {
     name: 'Damage Event Tracking',
+    needsRendering: false,
     description: 'Spawn enemy near player, verify death events are recorded',
     async run(page, surface) {
       await page.evaluate(() => {
@@ -711,6 +755,7 @@ const SCENARIOS = {
   // REGRESSION: s44r12-09 — performance crash with 100 entities on sphere
   fps_under_load: {
     name: 'FPS Under Load (100 enemies)',
+    needsRendering: false,
     description: 'Spawn 100 enemies, measure frame advancement over 5s, assert no GC freeze',
     async run(page, surface) {
       // Clear enemies and spawn 100 distributed across the surface
@@ -782,6 +827,7 @@ const SCENARIOS = {
   // scale(0,0,0) or dimming bug. Runs natural wave spawner (endless mode at 6s/13s/20s).
   enemies_visible_after_waves: {
     name: 'Enemies Visible After Waves',
+    needsRendering: true,
     description: 'Let game wave spawner fire 3 cycles. After each wave spawns, assert enemies alive AND opacity > 0.05 (not invisible). Catches InstancedMesh scale(0,0,0) and dimming regressions.',
     async run(page, surface) {
       // Don't spawn enemies manually — let the natural wave scheduler do it
@@ -862,6 +908,7 @@ const SCENARIOS = {
   // ---- Scenario 13: Pickup Collection (NEW — s44r13-07) ----
   pickup_collection: {
     name: 'Pickup Collection',
+    needsRendering: false,
     description: 'Spawn pickup at player position — assert collection within 2s; spawn far away — assert no collection',
     async run(page, surface) {
       await page.evaluate(() => window.__TEST_API.clearEnemies());
@@ -929,6 +976,7 @@ const SCENARIOS = {
   // Detects: respawn invincibility timer missing or too short
   respawn_invincibility: {
     name: 'Respawn Invincibility',
+    needsRendering: false,
     description: 'Kill player, verify respawn within 3s; spawn enemy on respawn point; verify player NOT killed again immediately',
     async run(page, surface) {
       await page.evaluate(() => {
@@ -1046,6 +1094,7 @@ const SCENARIOS = {
   // REGRESSION: s44r12-09 / s44r6-04 — premature player deaths from CollisionSystem OR fallback
   hit_detection_distance: {
     name: 'Hit Detection Distance Sanity',
+    needsRendering: false,
     description: 'Player survives enemy at 0.15 UV distance; dies when enemy overlaps — checks for s44r6-04 regression',
     async run(page, surface) {
       await page.evaluate(() => {
@@ -1118,6 +1167,7 @@ const SCENARIOS = {
   // REGRESSION GUARD: s44r13-08 — SP respawn must place player on outer surface (not inside)
   inner_surface_spawn_sphere: {
     name: 'Inner Surface Spawn — Sphere',
+    needsRendering: true,
     description: 'Kill player, wait for respawn, verify position is on OUTER sphere surface (dist > 8.5)',
     modes: ['pvp', 'pvpve'],
     async run(page, surface) {
@@ -1209,6 +1259,7 @@ const SCENARIOS = {
   // ---- Scenario 14: Inner Surface Spawn — Pill (PvP/PvPvE) ----
   inner_surface_spawn_pill: {
     name: 'Inner Surface Spawn — Pill',
+    needsRendering: true,
     description: 'Kill player on pill map, verify respawn is on outer surface (not inside pill)',
     modes: ['pvp', 'pvpve'],
     async run(page, surface) {
@@ -1294,6 +1345,7 @@ const SCENARIOS = {
   // ---- Scenario 15: Enemy Spawn Not Inside Surface (PvP/PvPvE) ----
   enemy_spawn_not_inside: {
     name: 'Enemy Spawn Not Inside Surface',
+    needsRendering: true,
     description: 'Spawn 5 enemies, verify each is on outer surface (not inside mesh)',
     modes: ['pvp', 'pvpve'],
     async run(page, surface) {
@@ -1350,6 +1402,7 @@ const SCENARIOS = {
   // Tests vis² shader fix (s44r12-03) — enemies behind surface must have opacity < 0.3
   enemy_dimming_pvp: {
     name: 'Enemy Dimming — Behind Surface (PvP/PvPvE)',
+    needsRendering: true,
     description: 'Enemies on far side of sphere have opacity < 0.3; near side > 0.5',
     modes: ['pvp', 'pvpve'],
     async run(page, surface) {
@@ -1433,6 +1486,7 @@ const SCENARIOS = {
   // Tests: portals appear in PvP mode; positioned on surface (not inside)
   portal_pvp_teleport: {
     name: 'Portal — PvP Mode Activation',
+    needsRendering: true,
     description: 'In PvP mode, portals appear within 35s. Verify portals are active and on surface.',
     modes: ['pvp'],
     requiresMP: true,
@@ -1508,6 +1562,7 @@ const SCENARIOS = {
   // ---- Scenario 18: Portal PvPvE Teleport (MP only) ----
   portal_pvpve_teleport: {
     name: 'Portal — PvPvE Mode Activation',
+    needsRendering: true,
     description: 'In PvPvE mode, portals appear AND enemies remain spawning after portal activation.',
     modes: ['pvpve'],
     requiresMP: true,
@@ -1578,6 +1633,7 @@ const SCENARIOS = {
   // ---- Scenario 19: Portal Exit Orientation (MP only) ----
   portal_exit_orientation: {
     name: 'Portal Exit — Camera Orientation',
+    needsRendering: true,
     description: 'After portals appear on cube map, camera up-vector is sane (not pointing into surface).',
     modes: ['pvp', 'pvpve'],
     requiresMP: true,
@@ -1813,7 +1869,6 @@ async function runMPScenariosOnSurface(browser, mpScenarios, surface, pvpMode) {
 }
 
 async function runAllScenarios(surfaces, scenarioNames, mode = 'sp') {
-  const browser = await launchBrowser();
   const results = [];
 
   // Separate SP and MP scenarios
@@ -1821,42 +1876,100 @@ async function runAllScenarios(surfaces, scenarioNames, mode = 'sp') {
   const spScenarios = allFiltered.filter(([, sc]) => !sc.requiresMP);
   const mpScenarios = allFiltered.filter(([, sc]) => sc.requiresMP);
 
-  console.log(`Mode: ${mode} | SP scenarios: ${spScenarios.length} | MP scenarios: ${mpScenarios.length}`);
+  // Split SP scenarios into state-only (light) and visual (needs rendering)
+  const spStateOnly = spScenarios.filter(([, sc]) => !sc.needsRendering);
+  const spVisual = spScenarios.filter(([, sc]) => sc.needsRendering);
 
-  // Run SP scenarios on each surface
-  for (const surface of surfaces) {
-    console.log(`\n--- Surface: ${surface} (SP) ---`);
-    let page;
-    try {
-      page = await createPage(browser);
-      await startGameOnSurface(page, surface);
+  console.log(`Mode: ${mode} | SP state-only: ${spStateOnly.length} | SP visual: ${spVisual.length} | MP: ${mpScenarios.length}`);
 
-      for (const [, scenario] of spScenarios) {
-        process.stdout.write(`  ${scenario.name}... `);
-        const result = await runScenario(page, scenario, surface);
-        results.push(result);
-        console.log(result.passed ? 'PASS' : `FAIL${result.error ? ` (${result.error})` : ''}`);
+  // --- Phase 1: State-only scenarios (light browser, CPU-throttled) ---
+  if (spStateOnly.length > 0) {
+    console.log(`\n=== Phase 1: State-Only Scenarios (CPU-throttled, ${spStateOnly.length} scenarios) ===`);
+    const lightBrowser = await launchBrowser(false);
+
+    for (const surface of surfaces) {
+      console.log(`\n--- Surface: ${surface} (SP/state-only) ---`);
+      let page;
+      let cdpSession;
+      try {
+        page = await createPage(lightBrowser);
+        await page.setViewport({ width: 320, height: 180 });
+        await startGameOnSurface(page, surface);
+        // Throttle CPU after game loads — SwiftShader renders fewer frames
+        cdpSession = await throttleCPU(page, 6);
+
+        for (const [, scenario] of spStateOnly) {
+          process.stdout.write(`  ${scenario.name}... `);
+          const result = await runScenario(page, scenario, surface);
+          results.push(result);
+          console.log(result.passed ? 'PASS' : `FAIL${result.error ? ` (${result.error})` : ''}`);
+        }
+      } catch (err) {
+        console.error(`  Surface ${surface} failed to load: ${err.message}`);
+        for (const [, scenario] of spStateOnly) {
+          results.push({
+            name: scenario.name,
+            description: scenario.description,
+            surface,
+            passed: false,
+            details: null,
+            error: `Surface failed to load: ${err.message}`,
+            durationMs: 0,
+          });
+        }
+      } finally {
+        if (cdpSession) await unthrottleCPU(cdpSession);
+        if (page) await page.close().catch(() => {});
       }
-    } catch (err) {
-      console.error(`  Surface ${surface} failed to load: ${err.message}`);
-      for (const [, scenario] of spScenarios) {
-        results.push({
-          name: scenario.name,
-          description: scenario.description,
-          surface,
-          passed: false,
-          details: null,
-          error: `Surface failed to load: ${err.message}`,
-          durationMs: 0,
-        });
-      }
-    } finally {
-      if (page) await page.close().catch(() => {});
     }
+
+    await lightBrowser.close();
+    console.log(`\n=== Phase 1 complete ===`);
   }
 
-  // Run MP scenarios if any — on PvP surfaces only
+  // --- Phase 2: Visual scenarios (full SwiftShader rendering) ---
+  if (spVisual.length > 0) {
+    console.log(`\n=== Phase 2: Visual Scenarios (SwiftShader, ${spVisual.length} scenarios) ===`);
+    const visualBrowser = await launchBrowser(true);
+
+    for (const surface of surfaces) {
+      console.log(`\n--- Surface: ${surface} (SP/visual) ---`);
+      let page;
+      try {
+        page = await createPage(visualBrowser);
+        await startGameOnSurface(page, surface);
+
+        for (const [, scenario] of spVisual) {
+          process.stdout.write(`  ${scenario.name}... `);
+          const result = await runScenario(page, scenario, surface);
+          results.push(result);
+          console.log(result.passed ? 'PASS' : `FAIL${result.error ? ` (${result.error})` : ''}`);
+        }
+      } catch (err) {
+        console.error(`  Surface ${surface} failed to load: ${err.message}`);
+        for (const [, scenario] of spVisual) {
+          results.push({
+            name: scenario.name,
+            description: scenario.description,
+            surface,
+            passed: false,
+            details: null,
+            error: `Surface failed to load: ${err.message}`,
+            durationMs: 0,
+          });
+        }
+      } finally {
+        if (page) await page.close().catch(() => {});
+      }
+    }
+
+    await visualBrowser.close();
+    console.log(`\n=== Phase 2 complete ===`);
+  }
+
+  // --- Phase 3: MP scenarios (visual browser, Colyseus + 2 clients) ---
   if (mpScenarios.length > 0) {
+    console.log(`\n=== Phase 3: MP Scenarios (${mpScenarios.length} scenarios) ===`);
     const mpSurfaces = surfaces.filter(s => PVP_SURFACES.includes(s));
     if (mpSurfaces.length === 0) {
       // No PvP-compatible surfaces in the run set — report as skipped
@@ -1874,17 +1987,19 @@ async function runAllScenarios(surfaces, scenarioNames, mode = 'sp') {
         }
       }
     } else {
+      const mpBrowser = await launchBrowser(true);
       // Determine pvpMode from the run mode
       const pvpMode = mode === 'pvpve' ? 'pvpve' : 'pvp';
       for (const surface of mpSurfaces) {
         console.log(`\n--- Surface: ${surface} (MP/${pvpMode}) ---`);
-        const mpResults = await runMPScenariosOnSurface(browser, mpScenarios, surface, pvpMode);
+        const mpResults = await runMPScenariosOnSurface(mpBrowser, mpScenarios, surface, pvpMode);
         results.push(...mpResults);
       }
+      await mpBrowser.close();
     }
+    console.log(`\n=== Phase 3 complete ===`);
   }
 
-  await browser.close();
   return results;
 }
 

@@ -12,8 +12,6 @@ const LAUNCH_ARGS = [
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
   '--window-size=640,360',
-  '--disable-frame-rate-limit',
-  '--disable-gpu-vsync',
 ];
 
 const browser = await puppeteer.launch({

@@ -36,8 +36,6 @@ async function run() {
       '--enable-unsafe-swiftshader',
       '--window-size=1280,720',
       '--disable-dev-shm-usage',
-      '--disable-frame-rate-limit',
-      '--disable-gpu-vsync',
     ],
   });
 

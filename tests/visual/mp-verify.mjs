@@ -93,8 +93,6 @@ const LAUNCH_ARGS = [
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
   '--window-size=640,360',
-  '--disable-frame-rate-limit',
-  '--disable-gpu-vsync',
   '--disable-background-timer-throttling',
   '--disable-backgrounding-occluded-windows',
   '--disable-renderer-backgrounding',
@@ -992,11 +990,9 @@ async function main() {
     console.log('  Colyseus: health OK');
 
     const launchOpts = { executablePath: CHROME_PATH, headless: 'new', args: LAUNCH_ARGS };
-    [hostBrowser, joinBrowser] = await Promise.all([
-      puppeteer.launch(launchOpts),
-      puppeteer.launch(launchOpts),
-    ]);
-    console.log('  Two browser instances launched');
+    hostBrowser = await puppeteer.launch(launchOpts);
+    joinBrowser = await puppeteer.launch(launchOpts);
+    console.log('  Two browser instances launched (sequential to reduce CPU spike)');
 
     for (const surface of SURFACES_TO_TEST) {
       console.log(`\n${'='.repeat(60)}`);

@@ -55,8 +55,6 @@ const LAUNCH_ARGS = [
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
   '--window-size=800,600',
-  '--disable-frame-rate-limit',
-  '--disable-gpu-vsync',
 ];
 
 // SwiftShader is slow, so timeouts are generous
