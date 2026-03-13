@@ -43,6 +43,13 @@ export class KingMode implements IGameMode {
   private zoneMesh: THREE.Mesh | null = null;
   /** World-space zone center (updated each frame, pre-allocated). */
   private readonly _zoneCenterWorld = new THREE.Vector3();
+  /**
+   * Zone center in the same coordinate space as player.mesh.position
+   * (local surface space with worldRotation applied, no scale).
+   * Used for the inZone proximity check — avoids worldToSurface UV round-trip
+   * errors on surfaces like cube, mobius, cube-tunnel, mobius-bevel.
+   */
+  private readonly _zoneCenterPlayerSpace = new THREE.Vector3();
   /** World-space zone radius at game start (used to scale the shrinking radius). */
   private zoneWorldRadiusBase: number = 2.5;
   /** Elapsed time for zone shader animations. */
@@ -176,12 +183,25 @@ export class KingMode implements IGameMode {
       this.zoneTimer = this.zoneDuration;
     }
 
-    // 3. Check if player is in zone
-    const playerU = context.player.surfaceU;
-    const playerV = context.player.surfaceV;
-    const distU = this.wrappedDistance(playerU, this.zoneU, context.surface.wrapsU);
-    const distV = this.wrappedDistance(playerV, this.zoneV, context.surface.wrapsV);
-    this.inZone = (distU * distU + distV * distV) <= this.zoneRadiusUV * this.zoneRadiusUV;
+    // 3. Check if player is in zone using world-space distance.
+    // Rationale: UV-space checks fail on surfaces where worldToSurface(getPoint(u,v)) ≠ (u,v)
+    // (cube, mobius, cube-tunnel, mobius-bevel have UV parameterization discontinuities).
+    // Using getPoint() → worldRotation gives a coordinate space consistent with
+    // player.mesh.position, which is set by playerWalker walking on the surface mesh.
+    const zonePoint = context.surface.getPoint(this.zoneU, this.zoneV);
+    this._zoneCenterPlayerSpace.copy(zonePoint.position)
+      .applyQuaternion(context.surface.worldRotation);
+    const scaleFactor = context.surface.group.scale.x;
+    // Zone radius in player-coordinate space: base radius cancels scaleFactor.
+    // zoneWorldRadiusBase = boundingSphere.radius * 0.25 * scaleFactor (from onStart)
+    // → localRadius = zoneWorldRadiusBase / scaleFactor * (zoneRadiusUV / zoneStartRadiusUV)
+    const localZoneRadius = (this.zoneWorldRadiusBase / scaleFactor)
+      * (this.zoneRadiusUV / this.zoneStartRadiusUV);
+    const px = context.player.mesh.position;
+    const dx = px.x - this._zoneCenterPlayerSpace.x;
+    const dy = px.y - this._zoneCenterPlayerSpace.y;
+    const dz = px.z - this._zoneCenterPlayerSpace.z;
+    this.inZone = (dx * dx + dy * dy + dz * dz) <= localZoneRadius * localZoneRadius;
 
     // 4. Accumulate zone time (primary score)
     if (this.inZone) {
@@ -394,12 +414,4 @@ export class KingMode implements IGameMode {
     );
   }
 
-  /**
-   * Calculate wrapped UV distance respecting surface topology.
-   */
-  private wrappedDistance(a: number, b: number, wraps: boolean): number {
-    if (!wraps) return Math.abs(a - b);
-    const d = Math.abs(a - b);
-    return Math.min(d, 1.0 - d);
-  }
 }

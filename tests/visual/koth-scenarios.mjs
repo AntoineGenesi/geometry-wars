@@ -490,12 +490,14 @@ const KOTH_SCENARIOS = {
    */
   koth_cube_corner: {
     name: 'KOTH Cube Corner Zone',
-    description: 'Zone at cube corner (UV ~0.05, 0.05); player at corner is inside; slightly moved in 3 face directions still inside',
+    description: 'Zone near cube face corner (UV ~0.12, 0.12 — min valid zone position); player at center is inside; slightly moved in face directions still inside',
     surfaces: ['cube'],
     async run(page, surface) {
-      // Corner of cube in UV space
-      const zoneU = 0.05;
-      const zoneV = 0.05;
+      // Zone near face corner — use 0.12 (just above the 0.1 clamp in moveZone).
+      // Note: KingMode.moveZone() clamps UV to [0.1, 0.9] on non-wrapping surfaces,
+      // so (0.05, 0.05) is an impossible zone position in real gameplay.
+      const zoneU = 0.12;
+      const zoneV = 0.12;
       await page.evaluate(
         (u, v) => window.__TEST_API.setKOTHZonePosition(u, v),
         zoneU, zoneV,
@@ -719,7 +721,9 @@ const KOTH_SCENARIOS = {
         (u, v) => window.__TEST_API.setPlayerPosition(u, v),
         playerU, playerV,
       );
-      await sleep(500);
+      // Extra wait to ensure game loop updates inZone after setPlayerPosition.
+      // Needed in suite context where prior tests may leave timed state.
+      await sleep(800);
 
       // Check zone state
       const zoneState = await page.evaluate(() => window.__TEST_API.getKOTHZoneState());
@@ -756,13 +760,14 @@ const KOTH_SCENARIOS = {
   },
 
   /**
-   * Scenario: KOTH Basic (all core surfaces) — zone appears, player enters and exits.
-   * Run on sphere + torus + cube as the baseline KOTH sanity check.
+   * Scenario: KOTH Basic (all 13 surfaces) — zone appears, player enters and exits.
+   * Run on all surfaces as the baseline KOTH sanity check.
+   * Acceptance criterion: zone appears + scoring works on every supported surface.
    */
   koth_basic: {
-    name: 'KOTH Basic Zone (Core Surfaces)',
+    name: 'KOTH Basic Zone (All Surfaces)',
     description: 'Zone appears and player entering it accumulates score; exiting stops score',
-    surfaces: CORE_SURFACES,
+    surfaces: ALL_SURFACES,
     async run(page, surface) {
       // Get zone state (it starts at some random position)
       const zoneState = await page.evaluate(() => window.__TEST_API.getKOTHZoneState());
@@ -780,9 +785,17 @@ const KOTH_SCENARIOS = {
         (u, v) => window.__TEST_API.setPlayerPosition(u, v),
         zoneU, zoneV,
       );
-      await sleep(400);
 
-      const inZone = await page.evaluate(() => window.__TEST_API.isPlayerInZone());
+      // Poll until inZone becomes true (up to 5s) — robust against SwiftShader slowdowns.
+      // Fixed sleeps are unreliable after 20+ prior test pages accumulate CPU pressure.
+      let inZone = false;
+      const inZoneDeadline = Date.now() + 5000;
+      while (Date.now() < inZoneDeadline) {
+        inZone = await page.evaluate(() => window.__TEST_API.isPlayerInZone());
+        if (inZone) break;
+        await sleep(100);
+      }
+
       const scoreBefore = await page.evaluate(() => window.__TEST_API.getKOTHScore());
       await sleep(1000);
       const scoreAfterInside = await page.evaluate(() => window.__TEST_API.getKOTHScore());
@@ -794,9 +807,14 @@ const KOTH_SCENARIOS = {
         (u, v) => window.__TEST_API.setPlayerPosition(u, v),
         outsideU, zoneV,
       );
-      await sleep(300);
-
-      const outsideZone = await page.evaluate(() => window.__TEST_API.isPlayerInZone());
+      // Poll until outsideZone becomes false (up to 2s)
+      let outsideZone = true;
+      const outsideDeadline = Date.now() + 2000;
+      while (Date.now() < outsideDeadline) {
+        outsideZone = await page.evaluate(() => window.__TEST_API.isPlayerInZone());
+        if (!outsideZone) break;
+        await sleep(100);
+      }
       const scoreFrozen1 = await page.evaluate(() => window.__TEST_API.getKOTHScore());
       await sleep(1000);
       const scoreFrozen2 = await page.evaluate(() => window.__TEST_API.getKOTHScore());
