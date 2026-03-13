@@ -140,6 +140,28 @@ describe('s44q-04 REGRESSION: Server-Client Surface Dimension Parity', () => {
     expect(maxR).toBeLessThan(5.5);
   });
 
+  // Pipe: client config radius=scale=10, height=scale*2=20, bevelRadius=0.6
+  // Outer cylinder radius = 10, inner = 10 - 2*0.6 = 8.8, height = 20
+  test('pipe: outer radius=10, height=20', () => {
+    const mesh = buildSurfaceGeometry('pipe', 1.0);
+    const maxR = maxRadialXZ(mesh);
+    expect(maxR).toBeGreaterThan(9.5);
+    expect(maxR).toBeLessThan(10.5);
+    const ext = yExtent(mesh);
+    const totalHeight = ext.max - ext.min;
+    expect(totalHeight).toBeGreaterThan(19.0);
+    expect(totalHeight).toBeLessThan(21.0);
+  });
+
+  // Mobius-bevel: client config majorRadius=scale*0.8=8, tubeRadius=2 (class default)
+  // Outer extent = majorRadius + tubeRadius = 8 + 2 = 10
+  test('mobius-bevel: outer extent = majorR(8) + tubeR(2) = 10', () => {
+    const mesh = buildSurfaceGeometry('mobius-bevel', 1.0);
+    const maxR = maxRadius3D(mesh);
+    expect(maxR).toBeGreaterThan(9.5);
+    expect(maxR).toBeLessThan(10.5);
+  });
+
   // Scale factor test: all surfaces should scale proportionally
   test('torus with scaleFactor=1.5: outer edge at ~16.5', () => {
     const mesh = buildSurfaceGeometry('torus', 1.5);

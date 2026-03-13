@@ -28,6 +28,8 @@ const ALL_SURFACES: SupportedSurface[] = [
   'sphere-tunnel',
   'cube-ring',
   'cube-tunnel',
+  'pipe',
+  'mobius-bevel',
 ];
 
 describe('SurfaceGeometryBuilder', () => {
