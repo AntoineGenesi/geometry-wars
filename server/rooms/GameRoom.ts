@@ -6313,8 +6313,10 @@ export class GameRoom extends Room<GameState> {
     const st = this.state.surfaceType;
     // Mobius V does NOT wrap — it is physically bounded (the strip has real edges).
     // When U wraps on Mobius, V is INVERTED (half-twist), not wrapped as modulo.
+    // Mobius-bevel V DOES wrap — it is a tube cross-section, continuously periodic.
     return st === 'torus' || st === 'pipe'
-      || st === 'cube-ring' || st === 'cube-tunnel';
+      || st === 'cube-ring' || st === 'cube-tunnel'
+      || st === 'mobius-bevel';
   }
 
   /**

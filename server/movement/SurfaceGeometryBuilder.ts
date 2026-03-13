@@ -24,7 +24,9 @@ export type SupportedSurface =
   | 'icosahedron'
   | 'sphere-tunnel'
   | 'cube-ring'
-  | 'cube-tunnel';
+  | 'cube-tunnel'
+  | 'pipe'
+  | 'mobius-bevel';
 
 /**
  * Build a THREE.Mesh for the given surface type with optional scale factor.
@@ -69,6 +71,8 @@ function _createGeometry(surfaceType: SupportedSurface): THREE.BufferGeometry {
     case 'sphere-tunnel': return _buildSphereTunnelGeometry();
     case 'cube-ring':   return _buildCubeRingGeometry();
     case 'cube-tunnel': return _buildCubeTunnelGeometry();
+    case 'pipe':        return _buildPipeGeometry();
+    case 'mobius-bevel': return _buildMobiusBevelGeometry();
   }
 }
 
@@ -1009,5 +1013,163 @@ function _buildCubeTunnelGeometry(): THREE.BufferGeometry {
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(indices);
   geo.computeVertexNormals(); // recompute accurate normals from positions
+  return geo;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PIPE  (matches PipeSurface when created via createStandardSurfaceConfig(type, 10, null))
+// radius=10 (scale), height=20 (scale*2), bevelRadius=0.6 (general config default).
+// Exact port of PipeSurface.createMesh() via LatheGeometry.
+// s44q-04: dimensions MUST match createStandardSurfaceConfig at scale=10.
+// ─────────────────────────────────────────────────────────────────────────────
+function _buildPipeGeometry(
+  radius = 10,
+  height = 20,
+  bevelRadius = 0.6,
+  gridSegmentsU = 24,
+  gridSegmentsV = 18,
+): THREE.BufferGeometry {
+  const iR = radius - 2 * bevelRadius;
+  const hH = height / 2;
+  const profileSegments = gridSegmentsV * 2;
+
+  const points: THREE.Vector2[] = [];
+
+  // 1. Inner cylinder bottom to top
+  const innerSegs = Math.floor(profileSegments * 0.3);
+  for (let i = 0; i <= innerSegs; i++) {
+    const t = i / innerSegs;
+    points.push(new THREE.Vector2(iR, -hH + t * height));
+  }
+
+  // 2. Top bevel (inner to outer, quarter-circle arc)
+  const bevelSegs = Math.floor(profileSegments * 0.1);
+  for (let i = 1; i <= bevelSegs; i++) {
+    const t = i / bevelSegs;
+    const angle = Math.PI - t * (Math.PI / 2);
+    const cx = radius - bevelRadius;
+    const cy = hH;
+    points.push(new THREE.Vector2(
+      cx + bevelRadius * Math.cos(angle),
+      cy + bevelRadius * Math.sin(angle),
+    ));
+  }
+
+  // 3. Outer cylinder top to bottom
+  const outerSegs = Math.floor(profileSegments * 0.3);
+  for (let i = 1; i <= outerSegs; i++) {
+    const t = i / outerSegs;
+    points.push(new THREE.Vector2(radius, hH - t * height));
+  }
+
+  // 4. Bottom bevel (outer to inner, quarter-circle arc)
+  for (let i = 1; i <= bevelSegs; i++) {
+    const t = i / bevelSegs;
+    const angle = (Math.PI / 2) * (1 - t);
+    const cx = radius - bevelRadius;
+    const cy = -hH;
+    points.push(new THREE.Vector2(
+      cx + bevelRadius * Math.cos(angle),
+      cy - bevelRadius * Math.sin(angle),
+    ));
+  }
+
+  return new THREE.LatheGeometry(points, gridSegmentsU * 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MOBIUS-BEVEL  (matches MobiusBevelSurface when created via createStandardSurfaceConfig(type, 10, null))
+// majorRadius=8 (scale*0.8), tubeRadius=2 (class default — not in createStandardSurfaceConfig).
+// Exact port of MobiusBevelSurface.createMesh() — tube bent into Mobius loop with half-twist seam.
+// s44q-04: dimensions MUST match createStandardSurfaceConfig at scale=10.
+// ─────────────────────────────────────────────────────────────────────────────
+function _buildMobiusBevelGeometry(
+  majorRadius = 8,
+  tubeRadius = 2,
+  segU = 64,
+  segV = 16,
+): THREE.BufferGeometry {
+  const R = majorRadius;
+  const r = tubeRadius;
+
+  const vertices: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  // Generate vertices: segU rows around the Mobius loop, segV columns around tube.
+  // NO duplicate last row — Mobius twist seam uses index remapping.
+  for (let i = 0; i < segU; i++) {
+    const t = (i / segU) * Math.PI * 2;
+    const cosT = Math.cos(t);
+    const sinT = Math.sin(t);
+    const halfT = t / 2;
+    const cosHalfT = Math.cos(halfT);
+    const sinHalfT = Math.sin(halfT);
+
+    // Tube center on the Mobius loop circle
+    const cx = R * cosT;
+    const cy = R * sinT;
+
+    // Frame vectors (with half-twist)
+    const radX = cosHalfT * cosT;
+    const radY = cosHalfT * sinT;
+    const radZ = sinHalfT;
+
+    const vertX = -sinHalfT * cosT;
+    const vertY = -sinHalfT * sinT;
+    const vertZ = cosHalfT;
+
+    for (let j = 0; j < segV; j++) {
+      const phi = (j / segV) * Math.PI * 2;
+      const cosPhi = Math.cos(phi);
+      const sinPhi = Math.sin(phi);
+
+      vertices.push(
+        cx + r * cosPhi * radX + r * sinPhi * vertX,
+        cy + r * cosPhi * radY + r * sinPhi * vertY,
+        r * cosPhi * radZ + r * sinPhi * vertZ,
+      );
+
+      const nx = cosPhi * radX + sinPhi * vertX;
+      const ny = cosPhi * radY + sinPhi * vertY;
+      const nz = cosPhi * radZ + sinPhi * vertZ;
+      const nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      normals.push(nx / nLen, ny / nLen, nz / nLen);
+
+      uvs.push(i / segU, j / segV);
+    }
+  }
+
+  // Main body triangles: rows 0 through segU-2
+  for (let i = 0; i < segU - 1; i++) {
+    for (let j = 0; j < segV; j++) {
+      const a = i * segV + j;
+      const b = (i + 1) * segV + j;
+      const c = i * segV + ((j + 1) % segV);
+      const d = (i + 1) * segV + ((j + 1) % segV);
+      indices.push(a, b, c);
+      indices.push(b, d, c);
+    }
+  }
+
+  // Mobius twist seam: last row (segU-1) connects to first row (0) with V shift by segV/2.
+  // At t=2π the frame has rotated 180°, so tube angle phi maps to phi+π = j+segV/2.
+  const lastRow = (segU - 1) * segV;
+  const halfV = Math.floor(segV / 2);
+  for (let j = 0; j < segV; j++) {
+    const a = lastRow + j;
+    const b = (j + halfV) % segV;
+    const c = lastRow + ((j + 1) % segV);
+    const d = ((j + 1 + halfV) % segV);
+    indices.push(a, b, c);
+    indices.push(b, d, c);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.setIndex(indices);
   return geo;
 }
