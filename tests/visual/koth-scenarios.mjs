@@ -797,7 +797,7 @@ const KOTH_SCENARIOS = {
       }
 
       const scoreBefore = await page.evaluate(() => window.__TEST_API.getKOTHScore());
-      await sleep(1000);
+      await sleep(2000);
       const scoreAfterInside = await page.evaluate(() => window.__TEST_API.getKOTHScore());
       const scoreIncremented = scoreAfterInside > scoreBefore;
 

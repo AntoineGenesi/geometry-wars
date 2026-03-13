@@ -189,13 +189,14 @@ export class KingMode implements IGameMode {
     // Using getPoint() → worldRotation gives a coordinate space consistent with
     // player.mesh.position, which is set by playerWalker walking on the surface mesh.
     const zonePoint = context.surface.getPoint(this.zoneU, this.zoneV);
-    this._zoneCenterPlayerSpace.copy(zonePoint.position)
-      .applyQuaternion(context.surface.worldRotation);
     const scaleFactor = context.surface.group.scale.x;
-    // Zone radius in player-coordinate space: base radius cancels scaleFactor.
-    // zoneWorldRadiusBase = boundingSphere.radius * 0.25 * scaleFactor (from onStart)
-    // → localRadius = zoneWorldRadiusBase / scaleFactor * (zoneRadiusUV / zoneStartRadiusUV)
-    const localZoneRadius = (this.zoneWorldRadiusBase / scaleFactor)
+    // Zone center in world space: getPoint() returns unscaled (rotation only), multiply by
+    // scaleFactor to match player.mesh.position which comes from matrixWorld (includes scale).
+    this._zoneCenterPlayerSpace.copy(zonePoint.position)
+      .applyQuaternion(context.surface.worldRotation)
+      .multiplyScalar(scaleFactor);
+    // Zone radius in world space: zoneWorldRadiusBase already includes scaleFactor (set in onStart).
+    const localZoneRadius = this.zoneWorldRadiusBase
       * (this.zoneRadiusUV / this.zoneStartRadiusUV);
     const px = context.player.mesh.position;
     const dx = px.x - this._zoneCenterPlayerSpace.x;

@@ -244,7 +244,10 @@ export class TestHarnessAPI {
     player.velocityU = 0;
     player.velocityV = 0;
     const sp = surface.getPoint(u, v);
-    const worldPos = sp.position.clone().applyQuaternion(surface.worldRotation);
+    const scaleFactor = surface.group.scale.x;
+    // Multiply by scaleFactor to match real game: player.mesh.position comes from matrixWorld
+    // which includes surface.group.scale. Without this, zone check (world-space) mismatches.
+    const worldPos = sp.position.clone().applyQuaternion(surface.worldRotation).multiplyScalar(scaleFactor);
     playerWalker.position.copy(worldPos);
     player.mesh.position.copy(worldPos);
   }
