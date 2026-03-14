@@ -267,11 +267,11 @@ describe('Game.setVisualMode — WebGPU path', () => {
     return new Game({ bloom: { strength: 1.0 }, _isWebGPU: true });
   }
 
-  it('setVisualMode("pixelated") sets pixelRatio to 0.5 on WebGPU', () => {
+  it('setVisualMode("pixelated") sets pixelRatio to 0.375 on WebGPU', () => {
     const game = makeWebGPUGame();
     const renderer = game.renderer as any;
     game.setVisualMode('pixelated');
-    expect(renderer.getPixelRatio()).toBe(0.5);
+    expect(renderer.getPixelRatio()).toBe(0.375);
     game.stop();
   });
 
