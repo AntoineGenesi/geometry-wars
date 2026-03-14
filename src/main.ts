@@ -711,7 +711,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   enemySpawner.setMaxActiveEnemies(getMaxActiveEnemies(resolvedMapSize));
 
   // -- GPU instanced rendering for enemies (reduces draw calls from ~2000 to ~15) --
-  const enemyInstanceManager = new EnemyInstanceManager(game.scene);
+  const enemyInstanceManager = new EnemyInstanceManager(game.scene, undefined, game.isWebGPU);
   enemySpawner.setInstanceManager(enemyInstanceManager);
 
   // -- Dynamic Difficulty Adjustment (DDA) system --
