@@ -1,0 +1,410 @@
+{
+  "audit_meta": {
+    "date": "2026-03-13T21:00:00+11:00",
+    "session": "s44r12",
+    "auditor": "Claude (process compliance auditor)",
+    "scope": "All s44r12 tasks including s44r12-01 through s44r12-10",
+    "rules_checked": [
+      "CLAUDE.md",
+      ".claude/rules/verification-protocol.md",
+      ".claude/rules/sub-agents.md",
+      ".claude/rules/server-cleanup.md",
+      ".claude/rules/checkpoints.md",
+      ".claude/rules/workflow.md",
+      ".claude/rules/worker-progress-watchdog.md",
+      ".claude/rules/merge-protocol.md"
+    ]
+  },
+  "summary": {
+    "tasks_audited": 10,
+    "certificates_present": 9,
+    "certificates_missing": 1,
+    "verdicts": {
+      "VERIFIED": 4,
+      "PARTIALLY_VERIFIED": 5,
+      "FAILED": 0,
+      "MISSING": 1
+    },
+    "merge_blocked_field_present": 0,
+    "compliant_merges": 5,
+    "non_compliant_merges": 5,
+    "violations": {
+      "CRITICAL": 4,
+      "HIGH": 5,
+      "MEDIUM": 4,
+      "INFORMATIONAL": 3
+    },
+    "overall_compliance_rate": "50%",
+    "orphaned_servers": false,
+    "orphaned_tmux_sessions": false
+  },
+  "tasks": [
+    {
+      "slug": "s44r12-04",
+      "title": "Pixelation Intensity — Midway",
+      "complexity": "QUICK",
+      "certificate_present": false,
+      "certificate_path": null,
+      "verdict": null,
+      "merge_blocked_field": false,
+      "verification_level_stated": null,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "dedaf0fd",
+      "follow_up_tasks_created": false,
+      "compliant": false,
+      "violations": [
+        {
+          "severity": "CRITICAL",
+          "rule": "verification-protocol.md: NEVER merge without reviewer certificate",
+          "detail": "Task merged without any review certificate existing at .claude/state/reviews/s44r12-04*.md. Merge commit dedaf0fd. The merge-gate-hook.sh had bugs making it a no-op at time of merge."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-01",
+      "title": "SP Hit Detection Regression — Player Dying Too Early ALL Maps",
+      "complexity": "COMPLEX",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-01-sp-hit-detection-regression-all-maps.md",
+      "verdict": "PARTIALLY_VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 3,
+      "verification_level_minimum": 5,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "e95cf0a5",
+      "follow_up_tasks_created": true,
+      "follow_up_note": "s44r12-01-verify task spawned and completed with VERIFIED result on all 13 surfaces",
+      "compliant": false,
+      "violations": [
+        {
+          "severity": "CRITICAL",
+          "rule": "verification-protocol.md: Recommendation section said 'DO NOT MERGE YET'",
+          "detail": "Certificate .claude/state/reviews/s44r12-01-sp-hit-detection-regression-all-maps.md Recommendation section explicitly says 'DO NOT MERGE YET.' Task was merged anyway at commit e95cf0a5. MITIGATING: s44r12-01-verify subsequently confirmed fix at Level 5 (all 13 surfaces)."
+        },
+        {
+          "severity": "HIGH",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field required on line 4 of certificate",
+          "detail": "No MERGE_BLOCKED field present in certificate. Field was introduced in s44r14 after this certificate was written."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-01-verify",
+      "title": "Re-verify SP Hit Detection Fix Through Harness",
+      "complexity": "STANDARD",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-01-sp-hit-detection-regression-all-maps.md",
+      "verdict": "VERIFIED",
+      "merged": true,
+      "merge_commit": "9614ebfb",
+      "compliant": true,
+      "violations": []
+    },
+    {
+      "slug": "s44r12-02",
+      "title": "SP Performance Degradation",
+      "complexity": "COMPLEX",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-02-sp-performance-degradation-investigate.md",
+      "verdict": "PARTIALLY_VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 2,
+      "verification_level_minimum": 5,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "f51f4668",
+      "follow_up_tasks_created": false,
+      "follow_up_note": "Certificate recommended creating s44r12-02-verify task. Not created. Not in TODO.md.",
+      "compliant": false,
+      "violations": [
+        {
+          "severity": "CRITICAL",
+          "rule": "verification-protocol.md: PARTIALLY_VERIFIED merge policy — conditions not met",
+          "detail": "Certificate required EITHER user confirmation of smooth gameplay OR Puppeteer test showing 60fps. Neither was done before merge commit f51f4668. Certificate states: 'MERGE ONLY IF: User confirms...OR Worker creates + runs a Puppeteer test harness.'"
+        },
+        {
+          "severity": "HIGH",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field required",
+          "detail": "No MERGE_BLOCKED field in certificate."
+        },
+        {
+          "severity": "MEDIUM",
+          "rule": "workflow.md: follow-up tasks must be created for PARTIALLY_VERIFIED merges",
+          "detail": "Certificate recommends creating s44r12-02-verify task. No such task exists in TODO.md."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-03",
+      "title": "Enemy Dimming + Bullet Brightness Regression",
+      "complexity": "COMPLEX",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-03-enemy-dimming-and-bullet-brightness-regression.md",
+      "verdict": "VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 5,
+      "verification_level_minimum": 5,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "1efe55c3",
+      "compliant": true,
+      "violations": [
+        {
+          "severity": "INFORMATIONAL",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field format",
+          "detail": "MERGE_BLOCKED field absent. Functionally irrelevant since verdict is VERIFIED, but format non-compliant."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-05",
+      "title": "Regression Audit — Find Best Version",
+      "complexity": "COMPLEX",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-05-regression-audit-find-best-version.md",
+      "verdict": "PARTIALLY_VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 4,
+      "verification_level_minimum": 3,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "2595690b",
+      "compliant": true,
+      "violations": [
+        {
+          "severity": "MEDIUM",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field required",
+          "detail": "No MERGE_BLOCKED field. Certificate is PARTIALLY_VERIFIED. However the single unmet criterion (task file notifications for -01/-02/-03) was moot since those tasks were already in progress."
+        },
+        {
+          "severity": "INFORMATIONAL",
+          "rule": "Certificate format: duplicate VERDICT lines",
+          "detail": "Certificate has both '**VERDICT: PARTIALLY_VERIFIED**' and 'verdict: PARTIALLY_VERIFIED' on separate lines. Minor inconsistency."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-06",
+      "title": "MP Harness — Full Scenarios All Surfaces",
+      "complexity": "EPIC",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-06-mp-harness-full-scenarios-and-coverage.md",
+      "verdict": "PARTIALLY_VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 2,
+      "verification_level_minimum": 5,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "see git log",
+      "follow_up_tasks_created": false,
+      "follow_up_note": "Harness was indirectly exercised by s44r12-01-verify. No explicit s44r12-06-verify task created.",
+      "compliant": false,
+      "violations": [
+        {
+          "severity": "HIGH",
+          "rule": "verification-protocol.md: Recommendation section said 'DO NOT MERGE'",
+          "detail": "Certificate says 'DO NOT MERGE this branch without executing the harness and showing results.' Merged without executing harness. MITIGATING: s44r12-01-verify subsequently ran the scenario harness confirming harness code was functional."
+        },
+        {
+          "severity": "HIGH",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field required",
+          "detail": "No MERGE_BLOCKED field in certificate."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-07",
+      "title": "MP Bugs — Tesla, Upgrades, Pickups, Bullets",
+      "complexity": "COMPLEX",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-07-mp-bugs-tesla-upgrades-pickups-bullets.md",
+      "verdict": "PARTIALLY_VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 2,
+      "verification_level_minimum": 5,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "46c08d64",
+      "follow_up_tasks_created": false,
+      "follow_up_note": "Certificate required: (1) follow-up task s44r12-07b in TODO.md, (2) merge commit explicitly listing unverified items. Neither done. 3/5 bugs have no tracking.",
+      "compliant": false,
+      "violations": [
+        {
+          "severity": "CRITICAL",
+          "rule": "verification-protocol.md: PARTIALLY_VERIFIED merge policy",
+          "detail": "Certificate required: follow-up task s44r12-07b created in TODO.md AND merge commit message listing unverified items. Neither condition was met. Merge commit 46c08d64 says only 'tesla coil continuous damage + MP bullet color parity' — does not list unverified items. s44r12-07b not in TODO.md. 3 bugs (upgrades green squares, pickups not visible, bullet origin at poles) now have no tracking."
+        },
+        {
+          "severity": "HIGH",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field required",
+          "detail": "No MERGE_BLOCKED field in certificate."
+        },
+        {
+          "severity": "MEDIUM",
+          "rule": "workflow.md: TODO.md must accurately reflect task status",
+          "detail": "TODO.md shows s44r12-07 as '(RUNNING)' — not updated to (MERGED). Original entry still present, not moved or updated."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-08",
+      "title": "MP Cube Tunnel Invisible Enemies + Voting Screen",
+      "complexity": "STANDARD",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-08-mp-invisible-enemies-cube-tunnel-voting-screen.md",
+      "verdict": "VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 5,
+      "verification_level_minimum": 5,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "3374a0e4",
+      "compliant": true,
+      "violations": [
+        {
+          "severity": "INFORMATIONAL",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field format",
+          "detail": "MERGE_BLOCKED field absent. Functionally irrelevant since verdict is VERIFIED."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-09",
+      "title": "Regression Prevention — Harness Quality Audit",
+      "complexity": "COMPLEX",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-09-regression-prevention-harness-quality-audit.md",
+      "verdict": "VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 5,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "a5bb41ab",
+      "compliant": true,
+      "violations": [
+        {
+          "severity": "INFORMATIONAL",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field format",
+          "detail": "MERGE_BLOCKED field absent. Functionally irrelevant since verdict is VERIFIED."
+        }
+      ]
+    },
+    {
+      "slug": "s44r12-10",
+      "title": "Programmable Scenario Harness",
+      "complexity": "EPIC",
+      "certificate_present": true,
+      "certificate_path": ".claude/state/reviews/s44r12-10-programmable-scenario-harness.md",
+      "verdict": "VERIFIED",
+      "merge_blocked_field": false,
+      "verification_level_stated": 5,
+      "reviewer_model_stated": null,
+      "merged": true,
+      "merge_commit": "f911319c",
+      "compliant": true,
+      "violations": [
+        {
+          "severity": "INFORMATIONAL",
+          "rule": "verification-protocol.md: MERGE_BLOCKED field format",
+          "detail": "MERGE_BLOCKED field absent. Functionally irrelevant since verdict is VERIFIED."
+        }
+      ]
+    }
+  ],
+  "infrastructure_checks": {
+    "merge_gate_hook": {
+      "installed": true,
+      "path": "~/.claude/settings.json PreToolUse hook",
+      "status_during_s44r12": "BROKEN — 3 bugs (verdict parsing, follow-up check, no MERGE_BLOCKED support). Fixed in s44r14.",
+      "violation_severity": "HIGH"
+    },
+    "git_pre_merge_commit_hook": {
+      "installed": true,
+      "path": ".git/hooks/pre-merge-commit",
+      "status_during_s44r12": "NOT YET INSTALLED — added in s44r14 after s44r12 completed",
+      "violation_severity": "INFORMATIONAL"
+    },
+    "worker_session_registry": {
+      "file_exists": true,
+      "path": "~/.claude/state/worker-sessions.json",
+      "entries_count": 0,
+      "expected_entries": 268,
+      "violation": "Registry empty despite retroactive indexer claimed to process 268 sessions. Possible path mismatch.",
+      "violation_severity": "MEDIUM"
+    },
+    "scratch_stale_metric": {
+      "status": "BROKEN",
+      "symptom": "All workers showing scratch_stale=29554995 to 29555463 minutes (approximately 56 years)",
+      "impact": "Scratch file staleness monitoring was completely non-functional for all s44r12 workers",
+      "known_bug": true,
+      "violation_severity": "HIGH"
+    },
+    "force_shutdown_script": {
+      "status": "SCRIPT_ERROR",
+      "error": "checkpoint-monitor.sh line 301: local: can only be used in a function",
+      "impact": "Force shutdown may not cleanly terminate workers",
+      "violation_severity": "MEDIUM"
+    }
+  },
+  "server_discipline": {
+    "orphaned_servers": false,
+    "orphaned_tmux": false,
+    "compliant": true
+  },
+  "pipeline_process": {
+    "pipeline_state_maintained": true,
+    "main_context_coordinator_only": true,
+    "triple_write_rule": "COMPLIANT — all 10 tasks have task files, TODO.md entries",
+    "compliant": true
+  },
+  "research_phase": {
+    "applicable": false,
+    "reason": "Two-phase model introduced in s44r14, after s44r12 completed. Not retroactively applicable."
+  },
+  "improvement_effectiveness": [
+    {
+      "name": "Merge Gate PreToolUse Hook",
+      "during_s44r12": "NOT WORKING — 3 bugs made it a no-op",
+      "fixed_in": "s44r14",
+      "review_date": "2026-03-20"
+    },
+    {
+      "name": "Worker Progress Watchdog",
+      "during_s44r12": "PARTIAL — src_diff tracked, scratch_stale metric broken, interventions not sent during ongoing monitoring phase",
+      "known_bugs": ["scratch_stale calculation broken", "force shutdown bash error on line 301", "ongoing monitoring phase does not send phase-forcing messages"],
+      "review_date": "2026-03-16"
+    },
+    {
+      "name": "Verification Protocol",
+      "during_s44r12": "PARTIAL — reviewers wrote accurate certs with 'DO NOT MERGE' recommendations, but coordinator ignored them in 4 cases",
+      "review_date": "2026-03-20"
+    },
+    {
+      "name": "Git pre-merge-commit hook",
+      "during_s44r12": "NOT INSTALLED — added in s44r14",
+      "review_date": "2026-03-20"
+    }
+  ],
+  "prose_only_rules_lacking_automation": [
+    {
+      "rule": "Quote the Recommendation section in merge decision reasoning",
+      "source": "verification-protocol.md Certificate Reading Rules #3",
+      "enforcement": "prose-only",
+      "suggestion": "Add grep check in merge gate for certificate Recommendation section read confirmation"
+    },
+    {
+      "rule": "NEVER use limit parameter when reading review certificates",
+      "source": "verification-protocol.md Certificate Reading Rules #1",
+      "enforcement": "prose-only",
+      "suggestion": "Hard to automate; consider requiring certificate word count in merge gate"
+    },
+    {
+      "rule": "Follow-up task creation for PARTIALLY_VERIFIED merges required BEFORE merge",
+      "source": "verification-protocol.md PARTIALLY_VERIFIED Merge Policy",
+      "enforcement": "hook checks existence but not timing",
+      "suggestion": "Merge gate should block if PARTIALLY_VERIFIED and no follow-up task exists yet (not just check TODO.md retroactively)"
+    }
+  ]
+}
