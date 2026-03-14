@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { GameContext } from './GameContext';
 import { OcclusionSurfaceMaterial } from '../rendering/OcclusionSurfaceMaterial';
-import { LODLevel } from '../rendering/LODManager';
 import { EnemyType } from '../entities/enemies/EnemySpawner';
 import { Boss } from '../entities/enemies/Boss';
 import { UIHelpers } from '../ui/UIHelpers';
@@ -271,14 +270,22 @@ export class RenderLoop {
         }
       }
 
-      // LOD-based visibility reduction: subtle fade for distant enemies
-      // Keep enemies visible enough to see (previous values of 0.6/0.85 were too aggressive)
-      const lodLevel = ctx.state.lodAssignments.get(enemy);
-      if (lodLevel === LODLevel.LOW) {
-        visibility *= 0.85;
-      } else if (lodLevel === LODLevel.MEDIUM) {
-        visibility *= 0.95;
-      }
+      // s44r17-01: LOD-based visibility reduction REMOVED.
+      // LOD already uses simplified geometry (icosahedron for MEDIUM, billboard for LOW).
+      // Multiplying visibility by 0.85/0.95 on top of depth-occlusion and surface-UV
+      // dimming caused compound dimming: e.g., depth=0.12 × LOD=0.85 = 0.102,
+      // which with RGB × alpha double-path → <1% effective visibility → invisible.
+      // This was the root cause of "progressive invisible enemies after waves" — as
+      // wave count increases, more enemies push to MEDIUM/LOW LOD, triggering the
+      // compound dimming that made them disappear.
+
+      // s44r17-01: Floor compound visibility BEFORE far-side culling.
+      // Depth-occlusion (0.40 behind 1 surface) and UV-dimming (0.40 at max
+      // distance) apply independently via Math.min. Their compound result can
+      // still be 0.40 × 0.40 = 0.16 when setInstanceVisibility does RGB × alpha.
+      // The floor prevents any compound path from dropping below SURFACE_DIM_OPACITY.
+      // Far-side culling (below) can still force visibility to 0 intentionally.
+      visibility = Math.max(visibility, SURFACE_DIM_OPACITY);
 
       // Far-side culling at high entity counts (150+): hide regular enemies on the back half
       // of the surface to reduce visual clutter. Bosses are exempt (threat cue preserved).
