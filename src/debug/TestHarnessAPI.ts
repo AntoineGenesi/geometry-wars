@@ -178,9 +178,14 @@ export class TestHarnessAPI {
     const enemy = this.findEnemyById(id);
     if (!enemy) return null;
     const pos = enemy.mesh ? enemy.mesh.position : enemy.position;
+    // When under test control (__testUV set by moveEnemyTo), prefer the test-tracked UV.
+    // surfacePosition gets overwritten by the game loop's worldToSurface each frame,
+    // so reading it at an arbitrary time (page.evaluate) may return the game-loop value
+    // rather than the test harness's intended position.
+    const testUV = (enemy as any).__testUV as { u: number; v: number } | undefined;
     return {
-      u: enemy.surfacePosition.u,
-      v: enemy.surfacePosition.v,
+      u: testUV ? testUV.u : enemy.surfacePosition.u,
+      v: testUV ? testUV.v : enemy.surfacePosition.v,
       worldPos: { x: pos.x, y: pos.y, z: pos.z },
     };
   }
@@ -624,42 +629,99 @@ export class TestHarnessAPI {
         | undefined;
       if (!target) continue;
 
-      // Compute world positions of current and target
-      const currentSP = this.ctx.surface.getPoint(enemy.surfacePosition.u, enemy.surfacePosition.v);
-      const targetSP = this.ctx.surface.getPoint(target.u, target.v);
-      const currentWorld = currentSP.position.clone().applyQuaternion(this.ctx.surface.worldRotation);
-      const targetWorld = targetSP.position.clone().applyQuaternion(this.ctx.surface.worldRotation);
+      // Move in UV space toward target, then compute world position from UV.
+      // Previous approach (world-space straight-line) fails on tube-like surfaces
+      // (cube-ring, torus) where the target is on the other side of the cross-section:
+      // the straight line goes through empty space and projects back to the same point.
+      // UV interpolation follows the surface correctly on all geometries.
+      //
+      // CRITICAL: Track our own UV position independently of surfacePosition.
+      // The game loop's enemy AI (walker.move toward player) runs BEFORE this update,
+      // overwriting surfacePosition. If we read surfacePosition, we get the game-loop's
+      // position (moved toward player), not our last-set position. This creates a
+      // tug-of-war where the game fights the harness. By tracking __testUV separately,
+      // we interpolate from OUR last position, ignoring the game loop's interference.
+      const tracked = (enemy as any).__testUV as { u: number; v: number } | undefined;
+      const curU = tracked ? tracked.u : enemy.surfacePosition.u;
+      const curV = tracked ? tracked.v : enemy.surfacePosition.v;
+      let du = target.u - curU;
+      let dv = target.v - curV;
 
-      const dir = targetWorld.clone().sub(currentWorld);
-      const dist = dir.length();
-      if (dist < 0.1) {
-        // Arrived
-        (enemy as any).__testTarget = undefined;
+      // Handle wrapping for surfaces that wrap in U (torus, cube-ring, Mobius, etc.)
+      const surface = this.ctx.surface;
+      if (surface.wrapsU) {
+        if (du > 0.5) du -= 1;
+        else if (du < -0.5) du += 1;
+      }
+      if (surface.wrapsV) {
+        if (dv > 0.5) dv -= 1;
+        else if (dv < -0.5) dv += 1;
+      }
+
+      const uvDist = Math.sqrt(du * du + dv * dv);
+      if (uvDist < 0.01) {
+        // Arrived — snap to exact target and HOLD there.
+        // Don't clear __testTarget: clearing would let the game loop's AI
+        // immediately move the enemy away from the target before the scenario
+        // harness polls getEnemyPosition (100ms later = 6 frames of drift).
+        (enemy as any).__testUV = { u: target.u, v: target.v };
+        enemy.surfacePosition.u = target.u;
+        enemy.surfacePosition.v = target.v;
+        const snapSP = surface.getPoint(target.u, target.v);
+        const snapWorld = snapSP.position.clone().applyQuaternion(surface.worldRotation);
+        if (enemy.mesh) enemy.mesh.position.copy(snapWorld);
+        enemy.position.copy(snapWorld);
+        if (enemy.walker) {
+          const closest = this.ctx.meshSurface.closestPointOnSurface(snapWorld);
+          if (closest) enemy.walker.teleportTo(closest.point, closest.faceIndex, closest.normal);
+        }
         continue;
       }
 
-      // Move toward target at requested speed
-      const step = Math.min(target.speed * dt, dist);
-      dir.multiplyScalar(step / dist);
-      const newWorld = currentWorld.add(dir);
+      // Compute world-space distance for speed scaling.
+      // Use the UV Jacobian to estimate world-space step from UV step.
+      // Use a large step to move quickly — the game loop's own AI fights us each frame,
+      // so we need to overwhelm it by converging in a few frames rather than many.
+      const uvStep = Math.min(target.speed * dt * 2.0, uvDist);
+      const ratio = uvStep / uvDist;
+      let newU = curU + du * ratio;
+      let newV = curV + dv * ratio;
 
-      // Project back to surface via worldToSurface
-      const invRot = this.ctx.surface.worldRotation.clone().invert();
-      const localPos = newWorld.applyQuaternion(invRot);
-      const newUV = this.ctx.surface.worldToSurface(localPos);
-      enemy.surfacePosition.u = newUV.u;
-      enemy.surfacePosition.v = newUV.v;
+      // Wrap UV coordinates
+      if (surface.wrapsU) {
+        newU = ((newU % 1) + 1) % 1;
+      } else {
+        newU = Math.max(0, Math.min(1, newU));
+      }
+      if (surface.wrapsV) {
+        newV = ((newV % 1) + 1) % 1;
+      } else {
+        newV = Math.max(0, Math.min(1, newV));
+      }
 
-      // Sync world position
-      const newSP = this.ctx.surface.getPoint(newUV.u, newUV.v);
-      const worldPos = newSP.position.clone().applyQuaternion(this.ctx.surface.worldRotation);
+      // Store our tracked UV for next frame (independent of game loop)
+      (enemy as any).__testUV = { u: newU, v: newV };
+      enemy.surfacePosition.u = newU;
+      enemy.surfacePosition.v = newV;
+
+      // Sync world position from UV
+      const newSP = surface.getPoint(newU, newV);
+      const worldPos = newSP.position.clone().applyQuaternion(surface.worldRotation);
       if (enemy.mesh) {
         enemy.mesh.position.copy(worldPos);
       }
       enemy.position.copy(worldPos);
-      // Also sync the walker to prevent it from fighting
+      // Sync the walker's full geodesic state (position + facePos + normal).
+      // Just copying walker.position leaves _facePos stale — on the next frame,
+      // walker.move() starts from the old _facePos and snaps back, undoing the
+      // test harness's position override. teleportTo() resets ALL internal state.
       if (enemy.walker) {
-        enemy.walker.position.copy(worldPos);
+        const closest = this.ctx.meshSurface.closestPointOnSurface(worldPos);
+        if (closest) {
+          enemy.walker.teleportTo(closest.point, closest.faceIndex, closest.normal);
+        } else {
+          enemy.walker.position.copy(worldPos);
+        }
       }
     }
 
