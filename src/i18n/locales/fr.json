@@ -79,7 +79,10 @@
       "peanut": "CACAHUÈTE",
       "mobius": "MÖBIUS",
       "mobiusBevel": "MÖBIUS-BISEAU",
-      "cubeTunnel": "TUNNEL-CUBE"
+      "cubeTunnel": "TUNNEL-CUBE",
+      "pipe": "TUYAU",
+      "sphereTunnel": "TUNNEL-SPHÉRIQUE",
+      "cubeRing": "ANNEAU-CUBE"
     },
     "modes": {
       "waves": "VAGUES",

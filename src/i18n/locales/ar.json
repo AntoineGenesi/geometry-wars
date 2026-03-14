@@ -79,7 +79,10 @@
       "peanut": "فول سوداني",
       "mobius": "موبيوس",
       "mobiusBevel": "موبيوس-شطبة",
-      "cubeTunnel": "نفق مكعب"
+      "cubeTunnel": "نفق مكعب",
+      "pipe": "أنبوب",
+      "sphereTunnel": "نفق كروي",
+      "cubeRing": "حلقة مكعب"
     },
     "modes": {
       "waves": "أمواج",

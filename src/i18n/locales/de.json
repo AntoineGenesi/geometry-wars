@@ -79,7 +79,10 @@
       "peanut": "ERDNUSS",
       "mobius": "MÖBIUS",
       "mobiusBevel": "MÖBIUS-FASE",
-      "cubeTunnel": "WÜRFEL-TUNNEL"
+      "cubeTunnel": "WÜRFEL-TUNNEL",
+      "pipe": "ROHR",
+      "sphereTunnel": "KUGEL-TUNNEL",
+      "cubeRing": "WÜRFEL-RING"
     },
     "modes": {
       "waves": "WELLEN",
