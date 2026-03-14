@@ -6544,7 +6544,7 @@ async function main() {
       const otherPlayers: Array<{
         id: string; u: number; v: number;
         worldPos: { x: number; y: number; z: number };
-        alive: boolean; score: number; isLocal: boolean;
+        alive: boolean; score: number; kills: number; zoneTime: number; enemyKills: number; isLocal: boolean;
       }> = [];
       networkPlayers.forEach((p, id) => {
         const pp = p.mesh?.position;
@@ -6555,6 +6555,9 @@ async function main() {
           worldPos: pp ? { x: pp.x, y: pp.y, z: pp.z } : { x: 0, y: 0, z: 0 },
           alive: playerAliveState.get(id) ?? true,
           score: p.score,
+          kills: p.kills ?? 0,
+          zoneTime: p.zoneTime ?? 0,
+          enemyKills: p.enemyKills ?? 0,
           isLocal: id === localPlayerId,
         });
       });
@@ -6595,6 +6598,9 @@ async function main() {
           worldPos: pPos ? { x: pPos.x, y: pPos.y, z: pPos.z } : { x: 0, y: 0, z: 0 },
           lives: localPlayer?.lives ?? 0,
           score: localPlayer?.score ?? 0,
+          kills: localPlayer?.kills ?? 0,
+          zoneTime: localPlayer?.zoneTime ?? 0,
+          enemyKills: localPlayer?.enemyKills ?? 0,
           alive: localAlive,
           collisionRadius: playerRadius,
         },

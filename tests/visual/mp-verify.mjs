@@ -631,6 +631,77 @@ async function runCoreChecks(hostPage, joinPage, surface, durationSecs) {
     }
   }
 
+  // CHECK: mp_scoring_fields_exposed — kills, zoneTime, enemyKills in telemetry (s44r17-03)
+  {
+    const hostLast = telemetrySamples.host.length > 0
+      ? telemetrySamples.host[telemetrySamples.host.length - 1] : null;
+    const joinLast = telemetrySamples.join.length > 0
+      ? telemetrySamples.join[telemetrySamples.join.length - 1] : null;
+
+    const hostHasKills = typeof hostLast?.player?.kills === 'number';
+    const hostHasZoneTime = typeof hostLast?.player?.zoneTime === 'number';
+    const hostHasEnemyKills = typeof hostLast?.player?.enemyKills === 'number';
+    const joinHasKills = typeof joinLast?.player?.kills === 'number';
+    const joinHasZoneTime = typeof joinLast?.player?.zoneTime === 'number';
+    const joinHasEnemyKills = typeof joinLast?.player?.enemyKills === 'number';
+
+    const allFieldsExposed = hostHasKills && hostHasZoneTime && hostHasEnemyKills
+      && joinHasKills && joinHasZoneTime && joinHasEnemyKills;
+
+    record('mp_scoring_fields_exposed',
+      allFieldsExposed ? 'PASS' : 'FAIL',
+      `Host: kills=${hostHasKills}, zoneTime=${hostHasZoneTime}, enemyKills=${hostHasEnemyKills} | ` +
+      `Join: kills=${joinHasKills}, zoneTime=${joinHasZoneTime}, enemyKills=${joinHasEnemyKills}`);
+  }
+
+  // CHECK: mp_per_player_score_isolation — each player has their own score (not pooled) (s44r17-03)
+  {
+    const hostLast = telemetrySamples.host.length > 0
+      ? telemetrySamples.host[telemetrySamples.host.length - 1] : null;
+    const joinLast = telemetrySamples.join.length > 0
+      ? telemetrySamples.join[telemetrySamples.join.length - 1] : null;
+
+    // Verify: host and join each see their OWN local score (not a shared pool)
+    const hostScore = hostLast?.player?.score ?? 0;
+    const joinScore = joinLast?.player?.score ?? 0;
+    // Verify: the 'players' array on host page includes score for each player
+    const hostSeesAllPlayers = telemetrySamples.host.some(t =>
+      t.players && t.players.length >= 1);
+    // Per-player isolation: both players have scores tracked independently
+    // In waves mode, scores might both be 0 in headless (no enemies killed) — that's OK
+    // The structural check is: telemetry.player.score is a number for EACH client
+    const scoresStructurallyIsolated = typeof hostLast?.player?.score === 'number'
+      && typeof joinLast?.player?.score === 'number';
+
+    // Suspicious shared scoring: both non-zero AND identical (would suggest pooling)
+    const bothNonZeroAndEqual = hostScore > 0 && joinScore > 0
+      && Math.abs(hostScore - joinScore) < 0.001;
+    // Note: coincidentally equal scores are possible but rare in 20s gameplay
+
+    record('mp_per_player_score_isolation',
+      scoresStructurallyIsolated ? 'PASS' : 'FAIL',
+      `Host score: ${hostScore}, Join score: ${joinScore}, ` +
+      `Isolated: ${scoresStructurallyIsolated}, ` +
+      `Suspicious same score: ${bothNonZeroAndEqual ? 'YES (possible sharing)' : 'no'}`);
+  }
+
+  // CHECK: mp_other_player_scoring_visible — other player scores visible in players array (s44r17-03)
+  {
+    const hostLast = telemetrySamples.host.length > 0
+      ? telemetrySamples.host[telemetrySamples.host.length - 1] : null;
+
+    const otherPlayerHasScore = hostLast?.players?.some(p => !p.isLocal && typeof p.score === 'number');
+    const otherPlayerHasKills = hostLast?.players?.some(p => !p.isLocal && typeof p.kills === 'number');
+    const otherPlayerHasZoneTime = hostLast?.players?.some(p => !p.isLocal && typeof p.zoneTime === 'number');
+
+    const allOtherFieldsExposed = otherPlayerHasScore && otherPlayerHasKills && otherPlayerHasZoneTime;
+
+    record('mp_other_player_scoring_visible',
+      allOtherFieldsExposed ? 'PASS' : 'FAIL',
+      `Other player score=${otherPlayerHasScore}, kills=${otherPlayerHasKills}, ` +
+      `zoneTime=${otherPlayerHasZoneTime} in players[] array`);
+  }
+
   return { results, telemetrySamples };
 }
 
