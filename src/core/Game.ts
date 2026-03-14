@@ -531,14 +531,18 @@ export class Game {
    * Immediately resizes the EffectComposer and bloom pass render targets.
    */
   setVisualMode(mode: 'pixelated' | 'modern'): void {
-    this.bloomResolutionScale = mode === 'modern' ? 1.0 : 0.5;
+    // s44r17-05 experiment: 0.40 (was 0.50) — chunkier pixel "bundles".
+    // Revert: change 0.40 back to 0.50 if user prefers original.
+    this.bloomResolutionScale = mode === 'modern' ? 1.0 : 0.40;
 
     if (this.isWebGPU) {
       // WebGPU path: simulate pixelated mode by reducing the pixel ratio so the
-      // canvas renders at 25% of the CSS display size. The browser upscales this
-      // quarter-res buffer to fill the screen, producing the chunky/pixelated look.
+      // canvas renders at low resolution. The browser upscales this buffer to fill
+      // the screen, producing the chunky/pixelated look.
       // Modern mode restores the original pixel ratio for full-res rendering.
-      const targetRatio = mode === 'pixelated' ? 0.375 : this._basePixelRatio;
+      // s44r17-05 experiment: 0.30 (was 0.375) — larger pixel "bundles" per user request.
+      // Revert: change 0.30 back to 0.375 if user prefers original.
+      const targetRatio = mode === 'pixelated' ? 0.30 : this._basePixelRatio;
       this.renderer.setPixelRatio(targetRatio);
       // Reapply canvas buffer size with the new ratio; keep CSS dimensions unchanged
       // so the canvas still fills the screen (upscaled = pixelated, or 1:1 = modern).
@@ -549,7 +553,7 @@ export class Game {
       this.renderer.domElement.style.imageRendering = mode === 'pixelated' ? 'pixelated' : '';
     } else if (this.composer || this.bloomPass) {
       // WebGL2 path: resize the EffectComposer and bloom pass render targets.
-      // Half-res bloom is rendered at 50% then upscaled = larger/blurrier glow (pixelated).
+      // 40%-res (was 50%) = chunkier pixels upscaled with NearestFilter (pixelated).
       // Full-res bloom renders sharply at 100% (modern).
       const w = window.innerWidth;
       const h = window.innerHeight;
