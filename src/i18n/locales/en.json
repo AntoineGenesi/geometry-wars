@@ -79,7 +79,10 @@
       "peanut": "PEANUT",
       "mobius": "MÖBIUS",
       "mobiusBevel": "MÖBIUS-BEVEL",
-      "cubeTunnel": "CUBE-TUNNEL"
+      "cubeTunnel": "CUBE-TUNNEL",
+      "pipe": "PIPE",
+      "sphereTunnel": "SPHERE-TUNNEL",
+      "cubeRing": "CUBE-RING"
     },
     "modes": {
       "waves": "WAVES",

@@ -79,7 +79,10 @@
       "peanut": "АРАХИС",
       "mobius": "МЁБИУС",
       "mobiusBevel": "МЁБИУС-СКОС",
-      "cubeTunnel": "КУБ-ТУННЕЛЬ"
+      "cubeTunnel": "КУБ-ТУННЕЛЬ",
+      "pipe": "ТРУБА",
+      "sphereTunnel": "СФЕР-ТУННЕЛЬ",
+      "cubeRing": "КОЛЬЦО-КУБА"
     },
     "modes": {
       "waves": "ВОЛНЫ",
