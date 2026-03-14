@@ -12,15 +12,18 @@
  */
 
 function getOrCreateOverlay(): HTMLElement {
-  let el = document.getElementById('loading-screen');
-  if (el) {
-    // Already exists — remove fade-out so it's visible again
-    el.classList.remove('fade-out');
-    return el;
+  const existing = document.getElementById('loading-screen');
+  if (existing) {
+    if (!existing.classList.contains('fade-out')) {
+      // Already fully visible — reuse as-is
+      return existing;
+    }
+    // Mid-fade-out: remove and recreate to avoid semi-transparent flash
+    existing.remove();
   }
 
-  // Re-create if removed by StartMenu (.remove() after fade-out)
-  el = document.createElement('div');
+  // Create fresh overlay (no transition in progress, starts at full opacity)
+  const el = document.createElement('div');
   el.id = 'loading-screen';
   el.innerHTML = `
     <div class="loading-title">GEOMETRY WARS 3D</div>
