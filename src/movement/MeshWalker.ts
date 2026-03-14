@@ -94,6 +94,15 @@ export class MeshWalker {
   }
 
   /**
+   * Maximum allowed BVH snap distance for a given step size.
+   * Prevents teleportation when closestPointOnSurface snaps to a distant face
+   * at seams, poles, and high-curvature regions.
+   */
+  private _maxBvhDistance(stepDistance: number): number {
+    return Math.max(stepDistance * 5.0, 0.5);
+  }
+
+  /**
    * Teleport the walker to a new position on the mesh surface.
    * Resets ALL internal state (position, normal, faceIndex, _facePos, tangent frame)
    * so that the next moveFromInput() call starts from the new location.
@@ -299,6 +308,13 @@ export class MeshWalker {
       return this._fallbackMove(moveDir, distance);
     }
 
+    // Safety net: reject geodesic result if displacement is unreasonably large
+    // (indicates a degenerate walk that jumped across the mesh)
+    const geoDisplacement = this.position.distanceTo(geoResult.position);
+    if (geoDisplacement > this._maxBvhDistance(distance)) {
+      return null; // Stay in place rather than teleport
+    }
+
     // Apply geodesic result
     this._facePos = geoResult.facePosition;
     this.position.copy(geoResult.position);
@@ -351,12 +367,16 @@ export class MeshWalker {
         geoResult.direction,
         remainingDist,
       );
-      if (bvhResult && this.position.distanceTo(bvhResult.point) > remainingDist * 0.05) {
-        this.position.copy(bvhResult.point);
-        this._updateTangentFrame(bvhResult.normal);
-        this.normal.copy(bvhResult.normal);
-        this.faceIndex = bvhResult.faceIndex;
-        this._facePos = this.surface.initGeodesicPosition(bvhResult.point, bvhResult.faceIndex);
+      if (bvhResult) {
+        const bvhMovedDist = this.position.distanceTo(bvhResult.point);
+        // Accept only if moved enough AND didn't teleport to a distant face
+        if (bvhMovedDist > remainingDist * 0.05 && bvhMovedDist < this._maxBvhDistance(remainingDist)) {
+          this.position.copy(bvhResult.point);
+          this._updateTangentFrame(bvhResult.normal);
+          this.normal.copy(bvhResult.normal);
+          this.faceIndex = bvhResult.faceIndex;
+          this._facePos = this.surface.initGeodesicPosition(bvhResult.point, bvhResult.faceIndex);
+        }
       }
     }
 
@@ -496,7 +516,10 @@ export class MeshWalker {
     if (!result) return null;
 
     // Confirm we actually moved past the pole (not snapped back to same position)
-    if (this.position.distanceTo(result.point) < distance * 0.05) return null;
+    // and didn't teleport to a distant face
+    const poleDist = this.position.distanceTo(result.point);
+    if (poleDist < distance * 0.05) return null;
+    if (poleDist > this._maxBvhDistance(distance)) return null;
 
     // Apply position/normal/face — same as _applyBvhResult but with explicit frame reset.
     this.position.copy(result.point);
@@ -543,6 +566,8 @@ export class MeshWalker {
    * Tries multiple strategies: direct BVH, tangent-frame decomposition, then fallback axes.
    */
   private _fallbackMove(moveDir: THREE.Vector3, distance: number): SurfaceQueryResult | null {
+    const maxAllowed = this._maxBvhDistance(distance);
+
     // Strategy 1: Direct BVH snap-to-surface
     const result = this.surface.moveOnSurface(
       this.position,
@@ -551,8 +576,11 @@ export class MeshWalker {
       distance,
     );
 
-    if (result && this.position.distanceTo(result.point) > distance * 0.05) {
-      return this._applyBvhResult(result);
+    if (result) {
+      const movedDist = this.position.distanceTo(result.point);
+      if (movedDist > distance * 0.05 && movedDist < maxAllowed) {
+        return this._applyBvhResult(result);
+      }
     }
 
     // Strategy 2: Decompose into tangent frame (helps when moveDir is nearly parallel to normal)
@@ -572,8 +600,11 @@ export class MeshWalker {
         distance,
       );
 
-      if (retryResult && this.position.distanceTo(retryResult.point) > distance * 0.05) {
-        return this._applyBvhResult(retryResult);
+      if (retryResult) {
+        const movedDist = this.position.distanceTo(retryResult.point);
+        if (movedDist > distance * 0.05 && movedDist < maxAllowed) {
+          return this._applyBvhResult(retryResult);
+        }
       }
     }
 
@@ -584,8 +615,11 @@ export class MeshWalker {
       this._tangent,
       distance,
     );
-    if (tangentResult && this.position.distanceTo(tangentResult.point) > distance * 0.05) {
-      return this._applyBvhResult(tangentResult);
+    if (tangentResult) {
+      const movedDist = this.position.distanceTo(tangentResult.point);
+      if (movedDist > distance * 0.05 && movedDist < maxAllowed) {
+        return this._applyBvhResult(tangentResult);
+      }
     }
 
     const bitangentResult = this.surface.moveOnSurface(
@@ -594,14 +628,16 @@ export class MeshWalker {
       this._bitangent,
       distance,
     );
-    if (bitangentResult && this.position.distanceTo(bitangentResult.point) > distance * 0.05) {
-      return this._applyBvhResult(bitangentResult);
+    if (bitangentResult) {
+      const movedDist = this.position.distanceTo(bitangentResult.point);
+      if (movedDist > distance * 0.05 && movedDist < maxAllowed) {
+        return this._applyBvhResult(bitangentResult);
+      }
     }
 
-    // If nothing worked, just apply whatever result we got
-    if (result) {
-      return this._applyBvhResult(result);
-    }
+    // If nothing worked within safe distance, stay in place rather than teleport.
+    // Previously this unconditionally applied the first result, which could snap
+    // to a distant face at seams/poles/high-curvature regions.
     return null;
   }
 
