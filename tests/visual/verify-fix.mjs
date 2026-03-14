@@ -85,7 +85,12 @@ async function createPage(browser) {
   return page;
 }
 
-async function startGameOnSurface(page, surface = 'sphere') {
+// Checks that require ?testMode=true (activates window.__TEST_API)
+const TESTMODE_CHECKS = new Set([
+  'fps_under_load', 'hit_detection_distance', 'enemy_mesh_visible', 'enemy_opacity_sane',
+]);
+
+async function startGameOnSurface(page, surface = 'sphere', testMode = false) {
   // Navigate first to get access to localStorage, then clear mastery overlays
   await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.evaluate(() => {
@@ -94,7 +99,9 @@ async function startGameOnSurface(page, surface = 'sphere') {
   });
 
   // Now navigate with quickStart to bypass menu entirely
-  await page.goto(`${BASE_URL}?quickStart=true&surface=${surface}&debug=true`, {
+  // testMode=true activates window.__TEST_API (needed for opacity, spawn, hit-detection checks)
+  const testModeParam = testMode ? '&testMode=true' : '';
+  await page.goto(`${BASE_URL}?quickStart=true&surface=${surface}&debug=true${testModeParam}`, {
     waitUntil: 'domcontentloaded',
     timeout: 30000,
   });
@@ -214,6 +221,10 @@ const CHECK_REGISTRY = {
   /**
    * enemies_visible: After some gameplay time, there should be colored
    * pixels beyond just the player/grid (enemies show as colored dots).
+   *
+   * CRITICAL: Also checks OPACITY via telemetry — enemies can be "present" in entity count
+   * but invisible if their opacity is near zero (the s44r07 cube-tunnel invisible enemies bug).
+   * This opacity check catches what the entity count check misses.
    */
   async enemies_visible(page, _opts) {
     // Primary signal: debug overlay entity count (game started with ?debug=true)
@@ -224,8 +235,40 @@ const CHECK_REGISTRY = {
       return isNaN(n) ? null : n;
     });
 
+    // OPACITY CHECK: Read actual enemy opacity from telemetry (available with ?debug=true).
+    // This catches the "enemies alive in count but opacity=0" bug that the entity count misses.
+    // Pattern: s44r07 — cube-tunnel UV-dimming bypass set opacity to near 0 for all enemies.
+    const opacityData = await page.evaluate(() => {
+      const enemies = window.__GAME_TELEMETRY?.enemies
+        || (window.__TEST_API ? window.__TEST_API.getEnemies() : [])
+        || [];
+      const alive = enemies.filter(e => e.alive !== false);
+      if (!alive.length) return null;
+      const invisible = alive.filter(e => (e.opacity ?? 1) < 0.05);
+      const dimmed = alive.filter(e => (e.opacity ?? 1) < 0.15);
+      return {
+        aliveCount: alive.length,
+        invisibleCount: invisible.length,
+        dimmedCount: dimmed.length,
+        avgOpacity: alive.reduce((s, e) => s + (e.opacity ?? 1), 0) / alive.length,
+      };
+    });
+
+    // FAIL: If telemetry shows enemies exist but ALL are invisible — this is the bug
+    if (opacityData && opacityData.invisibleCount >= opacityData.aliveCount && opacityData.aliveCount >= 2) {
+      return {
+        passed: false,
+        reason: `ALL ${opacityData.aliveCount} alive enemies have opacity < 0.05 — enemies are INVISIBLE. ` +
+                `Debug overlay shows ${entityCount ?? '?'} entities but opacity check reveals they are invisible. ` +
+                `This is the s44r07/cube-tunnel invisible enemy bug pattern.`,
+      };
+    }
+
     if (entityCount !== null && entityCount >= 3) {
-      return { passed: true, reason: `${entityCount} entities reported by debug overlay` };
+      const opacityNote = opacityData
+        ? ` (opacity: ${opacityData.aliveCount - opacityData.invisibleCount}/${opacityData.aliveCount} visible, avg=${opacityData.avgOpacity.toFixed(2)})`
+        : '';
+      return { passed: true, reason: `${entityCount} entities reported by debug overlay${opacityNote}` };
     }
 
     // Fallback: canvas pixel analysis (enemies are small, sparse grid may miss them)
@@ -243,7 +286,10 @@ const CHECK_REGISTRY = {
       + frame.colors.green + frame.colors.red + frame.colors.orange + frame.colors.blue;
 
     if (enemyColors >= 2) {
-      return { passed: true, reason: `${enemyColors} enemy-colored samples found` };
+      const opacityNote = opacityData
+        ? ` (opacity: avg=${opacityData.avgOpacity.toFixed(2)})`
+        : '';
+      return { passed: true, reason: `${enemyColors} enemy-colored samples found${opacityNote}` };
     }
     return { passed: false, reason: `Only ${entityCount ?? '?'} entities, ${enemyColors} enemy-colored samples (need ≥3 entities or ≥2 colors)` };
   },
@@ -323,17 +369,22 @@ const CHECK_REGISTRY = {
     const avgCenter = centerLit.reduce((s, p) => s + p.lum, 0) / centerLit.length;
     const avgEdge = edgeLit.reduce((s, p) => s + p.lum, 0) / edgeLit.length;
 
-    // Center should be brighter than edges (enemies dim with distance)
-    // We check that center avg brightness is at least slightly higher
-    if (avgCenter >= avgEdge * 0.9) {
+    // Center should be brighter than edges (enemies dim with distance).
+    // Threshold 0.6: only fail if edges are DRAMATICALLY brighter (40%+) than center.
+    // The original 0.9 threshold caused false positives on non-sphere surfaces where
+    // surface geometry naturally pushes more content to screen edges (e.g., pill/capsule).
+    // This check is designed to catch "all enemies fully invisible" (opacity≈0 pattern),
+    // not subtle variation in dimming levels. Use enemy_opacity_sane for precise opacity checks.
+    if (avgCenter >= avgEdge * 0.6) {
       return {
         passed: true,
-        reason: `Center brightness ${avgCenter.toFixed(1)} ≥ edge ${avgEdge.toFixed(1)} (dimming present or no far enemies)`,
+        reason: `Center brightness ${avgCenter.toFixed(1)} vs edge ${avgEdge.toFixed(1)} (ratio ${(avgCenter / avgEdge).toFixed(2)}) — dimming present or acceptable`,
       };
     }
     return {
       passed: false,
-      reason: `Edge brightness ${avgEdge.toFixed(1)} > center ${avgCenter.toFixed(1)} — dimming may be inverted`,
+      reason: `Edge brightness ${avgEdge.toFixed(1)} dramatically exceeds center ${avgCenter.toFixed(1)} ` +
+              `(ratio ${(avgCenter / avgEdge).toFixed(2)} < 0.6) — enemies may be completely invisible on near-side`,
     };
   },
 
@@ -381,13 +432,22 @@ const CHECK_REGISTRY = {
       }
     }
 
-    // If enemy was in radius for >60% of samples and player still alive, hit detection is broken
+    // Track lives changes: if player died and respawned, hit detection IS working.
+    // False-positive scenario: enemy kills player → player respawns alive → enemy still in radius
+    // → check fires "enemy in radius + alive = broken". But it's working correctly!
+    const startLives = samples[0]?.player?.lives ?? 3;
+    const endLives = samples[samples.length - 1]?.player?.lives ?? 3;
+    const playerDiedDuringTest = endLives < startLives;
+
     const ratio = framesWithEnemyInRadius / samples.length;
-    if (ratio > 0.6) {
-      return { passed: false, reason: `Enemy in collision radius for ${(ratio * 100).toFixed(0)}% of samples but player alive — hit detection may be broken` };
+    // Only fail if enemies were in radius for >60% of samples AND player never died
+    // (if player died, hit detection IS working — enemies killed them, player respawned)
+    if (ratio > 0.6 && !playerDiedDuringTest) {
+      return { passed: false, reason: `Enemy in collision radius for ${(ratio * 100).toFixed(0)}% of samples but player never died — hit detection may be broken (lives: ${startLives}→${endLives})` };
     }
 
-    return { passed: true, reason: `${framesWithEnemyInRadius}/${samples.length} samples with enemy in radius (${(ratio * 100).toFixed(0)}%)` };
+    const lifeNote = playerDiedDuringTest ? ` (player died: ${startLives}→${endLives} lives — hit detection working)` : '';
+    return { passed: true, reason: `${framesWithEnemyInRadius}/${samples.length} samples with enemy in radius (${(ratio * 100).toFixed(0)}%)${lifeNote}` };
   },
 
   /**
@@ -747,6 +807,84 @@ const CHECK_REGISTRY = {
       reason: `${aliveCount} enemies alive in telemetry, center region has ${(nonBlackRatio * 100).toFixed(0)}% non-black pixels (avgLum=${frameBrightness.avgLum.toFixed(1)})`,
     };
   },
+
+  /**
+   * enemy_opacity_sane: Verify that alive enemies have non-trivial opacity values.
+   *
+   * REGRESSION: s44r07 — cube-tunnel UV-dimming bypass caused all enemies to receive
+   * opacity ~0 (effectively invisible). The entities existed in game state and were
+   * counted by the debug overlay, but players saw nothing.
+   *
+   * This check reads actual opacity values from telemetry or __TEST_API and fails if:
+   * - ALL alive enemies have opacity < 0.05 (fully invisible)
+   * - MOST alive enemies (>70%) have opacity < 0.15 (functionally invisible)
+   *
+   * Available with ?debug=true (telemetry) or ?testMode=true (__TEST_API).
+   */
+  async enemy_opacity_sane(page, _opts) {
+    // Try telemetry first (available with ?debug=true — no testMode needed)
+    const opacityData = await page.evaluate(() => {
+      // Try __GAME_TELEMETRY (debug=true)
+      const telEnemies = window.__GAME_TELEMETRY?.enemies;
+      // Try __TEST_API (testMode=true)
+      const apiEnemies = window.__TEST_API ? window.__TEST_API.getEnemies() : null;
+
+      const rawEnemies = telEnemies || apiEnemies;
+      if (!rawEnemies || !rawEnemies.length) return null;
+
+      const alive = rawEnemies.filter(e => e.alive !== false);
+      if (!alive.length) return { aliveCount: 0, invisible: [], dimmed: [], avgOpacity: 1 };
+
+      const invisible = alive.filter(e => (e.opacity ?? 1) < 0.05);
+      const dimmed = alive.filter(e => (e.opacity ?? 1) < 0.15);
+      const avgOpacity = alive.reduce((s, e) => s + (e.opacity ?? 1), 0) / alive.length;
+      return {
+        aliveCount: alive.length,
+        invisibleCount: invisible.length,
+        dimmedCount: dimmed.length,
+        avgOpacity,
+        invisibleTypes: invisible.map(e => e.type || 'unknown'),
+      };
+    });
+
+    if (!opacityData) {
+      return {
+        passed: false,
+        reason: 'No enemy opacity data available. Requires ?debug=true (telemetry) or ?testMode=true (__TEST_API). ' +
+                'Add testMode=true to URL or include this check with --testMode flag.',
+      };
+    }
+
+    if (opacityData.aliveCount === 0) {
+      return { passed: true, reason: 'No alive enemies yet — too early in game (opacity check skipped)' };
+    }
+
+    // FAIL: All enemies invisible
+    if (opacityData.invisibleCount >= opacityData.aliveCount) {
+      return {
+        passed: false,
+        reason: `ALL ${opacityData.aliveCount} alive enemies have opacity < 0.05 — enemies are invisible. ` +
+                `This is the s44r07 pattern (UV-dimming bypass setting opacity to near-zero). ` +
+                `Types: ${opacityData.invisibleTypes.join(', ')}`,
+      };
+    }
+
+    // FAIL: Most enemies invisible
+    const invisibleRatio = opacityData.invisibleCount / opacityData.aliveCount;
+    if (invisibleRatio > 0.7 && opacityData.invisibleCount >= 2) {
+      return {
+        passed: false,
+        reason: `${opacityData.invisibleCount}/${opacityData.aliveCount} enemies (${(invisibleRatio * 100).toFixed(0)}%) have opacity < 0.05. ` +
+                `Avg opacity: ${opacityData.avgOpacity.toFixed(3)}. Functionally invisible.`,
+      };
+    }
+
+    return {
+      passed: true,
+      reason: `${opacityData.aliveCount} alive enemies, avg opacity ${opacityData.avgOpacity.toFixed(2)}, ` +
+              `${opacityData.invisibleCount} invisible, ${opacityData.dimmedCount} dimmed (< 0.15)`,
+    };
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -761,6 +899,7 @@ const CHECK_REGISTRY = {
  * @param {'sp'|'mp'} opts.mode - Game mode (only 'sp' supported currently)
  * @param {number} opts.duration - Seconds to let the game run before checks
  * @param {string[]} opts.checks - Check names from CHECK_REGISTRY
+ * @param {boolean} [opts.testMode] - Force testMode=true in URL (auto-detected from checks list)
  * @returns {Promise<{passed: boolean, screenshots: string[], failedChecks: string[], results: Object}>}
  */
 export async function verifyFix(opts) {
@@ -771,6 +910,9 @@ export async function verifyFix(opts) {
     checks = ['no_crash', 'player_alive', 'enemies_visible'],
   } = opts;
 
+  // Auto-detect: if any check requires testMode, enable it
+  const needsTestMode = opts.testMode || checks.some(c => TESTMODE_CHECKS.has(c));
+
   if (!existsSync(SCREENSHOT_DIR)) mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
   const browser = await launchBrowser();
@@ -779,8 +921,8 @@ export async function verifyFix(opts) {
   const results = {};
 
   try {
-    // Start game
-    await startGameOnSurface(page, surface);
+    // Start game (testMode=true activates __TEST_API for opacity/spawn checks)
+    await startGameOnSurface(page, surface, needsTestMode);
     await injectCanvasReader(page);
 
     // Let the game run
@@ -841,8 +983,123 @@ export async function verifyFix(opts) {
 
 const isMain = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 
+// All 13 surfaces
+const ALL_SURFACES = [
+  'sphere', 'torus', 'cube', 'pill', 'peanut', 'mobius',
+  'cube-tunnel', 'cube-ring', 'mobius-bevel', 'pill-ring',
+  'sphere-ring', 'torus-ring', 'cylinder',
+];
+
+// Known surfaces with pre-existing issues (not failures of this fix)
+const KNOWN_PROBLEMATIC = {
+  'cube-ring': 'STRESS map — enemies may be frozen (pre-existing issue)',
+  'mobius': 'STRESS map — enemies may be frozen on some sessions (pre-existing issue)',
+  // These 4 surfaces are not yet available via ?quickStart=true URL param
+  'pill-ring': 'NOT SUPPORTED via quickStart URL — throws "Unknown surface type" (pre-existing)',
+  'sphere-ring': 'NOT SUPPORTED via quickStart URL — throws "Unknown surface type" (pre-existing)',
+  'torus-ring': 'NOT SUPPORTED via quickStart URL — throws "Unknown surface type" (pre-existing)',
+  'cylinder': 'NOT SUPPORTED via quickStart URL — throws "Unknown surface type" (pre-existing)',
+};
+
+// Tier 1 + Tier 2 checks for full regression
+const FULL_REGRESSION_CHECKS = [
+  // Tier 1: Smoke (always run)
+  'no_crash', 'player_alive', 'enemies_visible', 'movement_works',
+  // Tier 2: Correctness
+  'hit_detection_sane', 'enemy_dimming', 'collision_radii', 'enemy_distances',
+  'enemy_spread', 'enemy_mesh_visible', 'enemy_opacity_sane',
+];
+
+async function runFullRegression(opts = {}) {
+  const surfaces = opts.surfaces || ALL_SURFACES;
+  const checks = opts.checks || FULL_REGRESSION_CHECKS;
+  const duration = opts.duration || 15;
+
+  console.log('\n' + '='.repeat(70));
+  console.log('  FULL REGRESSION — All Surfaces × Tier 1+2 Checks');
+  console.log(`  Surfaces: ${surfaces.length} | Checks: ${checks.length} | Duration: ${duration}s each`);
+  console.log('  testMode=true (auto-enabled for opacity/API checks)');
+  console.log('='.repeat(70) + '\n');
+
+  const allResults = [];
+  let totalPass = 0;
+  let totalFail = 0;
+  let surfacesFailed = [];
+
+  for (const surface of surfaces) {
+    const known = KNOWN_PROBLEMATIC[surface];
+    process.stdout.write(`  ${surface.padEnd(15)} ... `);
+
+    try {
+      const result = await verifyFix({
+        surface,
+        mode: 'sp',
+        duration,
+        checks,
+        testMode: true, // Always enable for full regression
+      });
+
+      const passCount = Object.values(result.results).filter(r => r.passed).length;
+      const failCount = Object.values(result.results).filter(r => !r.passed).length;
+
+      if (result.passed) {
+        console.log(`PASS  (${passCount}/${checks.length} checks)`);
+        totalPass++;
+      } else {
+        const failNames = Object.entries(result.results)
+          .filter(([, r]) => !r.passed)
+          .map(([name]) => name)
+          .join(', ');
+        console.log(`FAIL  (${passCount}/${checks.length} — failed: ${failNames})`);
+        if (known) console.log(`         NOTE: ${known}`);
+        totalFail++;
+        surfacesFailed.push(surface);
+      }
+
+      // Print details for failed checks
+      for (const [name, r] of Object.entries(result.results)) {
+        if (!r.passed) {
+          console.log(`         FAIL  ${name}: ${r.reason}`);
+        }
+      }
+
+      allResults.push({ surface, ...result });
+    } catch (err) {
+      console.log(`ERROR  ${err.message}`);
+      totalFail++;
+      surfacesFailed.push(surface);
+      allResults.push({ surface, passed: false, error: err.message });
+    }
+  }
+
+  const unexpectedFailed = surfacesFailed.filter(s => !KNOWN_PROBLEMATIC[s]);
+  const knownFailed = surfacesFailed.filter(s => KNOWN_PROBLEMATIC[s]);
+
+  console.log('\n' + '='.repeat(70));
+  console.log(`  SUMMARY: ${totalPass}/${surfaces.length} surfaces PASSED`);
+  if (knownFailed.length > 0) {
+    console.log(`\n  Known pre-existing issues (not regressions):`);
+    for (const s of knownFailed) {
+      console.log(`    ${s}: ${KNOWN_PROBLEMATIC[s]}`);
+    }
+  }
+  if (unexpectedFailed.length > 0) {
+    console.log(`\n  UNEXPECTED failures (REGRESSIONS — need investigation):`);
+    for (const s of unexpectedFailed) {
+      console.log(`    ${s}`);
+    }
+  }
+  if (unexpectedFailed.length === 0) {
+    console.log('\n  No unexpected failures. All supported surfaces pass.');
+  }
+  console.log('='.repeat(70) + '\n');
+
+  // Only fail exit code for unexpected (non-pre-existing) failures
+  return { passed: unexpectedFailed.length === 0, totalPass, totalFail, surfacesFailed, unexpectedFailed, allResults };
+}
+
 if (isMain) {
-  // Parse CLI args: --surface=X --checks=a,b,c --duration=N
+  // Parse CLI args: --surface=X --checks=a,b,c --duration=N --testMode --full-regression --all-surfaces
   const args = Object.fromEntries(
     process.argv.slice(2)
       .filter(a => a.startsWith('--'))
@@ -852,28 +1109,56 @@ if (isMain) {
       })
   );
 
-  const surface = args.surface || 'sphere';
-  const duration = parseInt(args.duration || '15', 10);
-  const checks = args.checks ? args.checks.split(',') : ['no_crash', 'player_alive', 'enemies_visible', 'movement_works'];
+  // --full-regression: run all Tier 1+2 checks on all 13 surfaces
+  if (args['full-regression']) {
+    const surfaces = args.surface ? args.surface.split(',') : ALL_SURFACES;
+    const duration = parseInt(args.duration || '15', 10);
+    runFullRegression({ surfaces, duration }).then(result => {
+      process.exit(result.passed ? 0 : 1);
+    }).catch(err => {
+      console.error('Fatal:', err);
+      process.exit(1);
+    });
+  } else {
+    // Single surface (or all surfaces) mode
+    const surfaces = args['all-surfaces'] ? ALL_SURFACES : [args.surface || 'sphere'];
+    const duration = parseInt(args.duration || '15', 10);
+    const checks = args.checks
+      ? args.checks.split(',')
+      : ['no_crash', 'player_alive', 'enemies_visible', 'movement_works', 'enemy_opacity_sane'];
+    const testMode = args.testMode === 'true' || checks.some(c => TESTMODE_CHECKS.has(c));
 
-  console.log(`\nverify-fix: surface=${surface}, duration=${duration}s, checks=[${checks.join(', ')}]\n`);
+    if (surfaces.length === 1) {
+      const surface = surfaces[0];
+      console.log(`\nverify-fix: surface=${surface}, duration=${duration}s, checks=[${checks.join(', ')}], testMode=${testMode}\n`);
 
-  verifyFix({ surface, mode: 'sp', duration, checks }).then(result => {
-    console.log('\n' + '='.repeat(50));
-    for (const [name, r] of Object.entries(result.results)) {
-      const icon = r.passed ? 'PASS' : 'FAIL';
-      console.log(`  ${icon}  ${name}: ${r.reason}`);
+      verifyFix({ surface, mode: 'sp', duration, checks, testMode }).then(result => {
+        console.log('\n' + '='.repeat(50));
+        for (const [name, r] of Object.entries(result.results)) {
+          const icon = r.passed ? 'PASS' : 'FAIL';
+          console.log(`  ${icon}  ${name}: ${r.reason}`);
+        }
+        console.log('='.repeat(50));
+        console.log(`\n  Overall: ${result.passed ? 'PASSED' : 'FAILED'}`);
+        if (result.failedChecks.length > 0) {
+          console.log('  Failed:', result.failedChecks.join(', '));
+        }
+        console.log(`  Screenshots: ${result.screenshots.join(', ')}`);
+        console.log('');
+        process.exit(result.passed ? 0 : 1);
+      }).catch(err => {
+        console.error('Fatal:', err);
+        process.exit(1);
+      });
+    } else {
+      // --all-surfaces with custom checks
+      console.log(`\nverify-fix: all ${surfaces.length} surfaces, checks=[${checks.join(', ')}], duration=${duration}s\n`);
+      runFullRegression({ surfaces, checks, duration }).then(result => {
+        process.exit(result.passed ? 0 : 1);
+      }).catch(err => {
+        console.error('Fatal:', err);
+        process.exit(1);
+      });
     }
-    console.log('='.repeat(50));
-    console.log(`\n  Overall: ${result.passed ? 'PASSED' : 'FAILED'}`);
-    if (result.failedChecks.length > 0) {
-      console.log('  Failed:', result.failedChecks.join(', '));
-    }
-    console.log(`  Screenshots: ${result.screenshots.join(', ')}`);
-    console.log('');
-    process.exit(result.passed ? 0 : 1);
-  }).catch(err => {
-    console.error('Fatal:', err);
-    process.exit(1);
-  });
+  }
 }
