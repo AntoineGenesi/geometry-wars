@@ -28,7 +28,7 @@ export class GiantRocket extends BaseEnemy {
 
   private createMesh(): void {
     // Oversized arrow in bright orange
-    this.mesh = buildArrow3D(0.5, 0xff6600, 0.18, 0.035);
+    this.mesh = buildArrow3D(0.5, 0xff6600, 0.32, 0.035);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

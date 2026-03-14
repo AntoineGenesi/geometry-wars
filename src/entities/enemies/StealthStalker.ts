@@ -46,7 +46,7 @@ export class StealthStalker extends BaseEnemy {
 
   private createMesh(): void {
     // Chevron/arrow shape -- stealthy predator, cold violet-blue
-    this.mesh = buildChevron3D(0.3, 0.18, 0x6633cc, 0.03, 0.02);
+    this.mesh = buildChevron3D(0.3, 0.18, 0x6633cc, 0.18, 0.02);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

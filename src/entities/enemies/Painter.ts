@@ -53,7 +53,7 @@ export class Painter extends BaseEnemy {
 
   private createMesh(): void {
     // Flat square shape in magenta-pink
-    this.mesh = buildSquare3D(0.28, 0xff44aa, 0.12, 0.02);
+    this.mesh = buildSquare3D(0.28, 0xff44aa, 0.19, 0.02);
   }
 
   updateBehavior(dt: number, _playerU: number, _playerV: number): void {

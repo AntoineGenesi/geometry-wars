@@ -51,7 +51,7 @@ export class Lurker extends BaseEnemy {
 
   private createMesh(): void {
     // Flat chevron/arrow shape - stingray-like ambush predator
-    this.mesh = buildChevron3D(0.35, 0.2, 0x880000, 0.03, 0.02);
+    this.mesh = buildChevron3D(0.35, 0.2, 0x880000, 0.20, 0.02);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

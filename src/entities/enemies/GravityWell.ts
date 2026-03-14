@@ -38,7 +38,7 @@ export class GravityWell extends BaseEnemy {
     // Create concentric 3D circles/rings with depth
     const rings = [0.4, 0.3, 0.2, 0.1];
     for (const radius of rings) {
-      const ring = buildCircle3D(radius, 24, coreColor, 0.04, 0.012);
+      const ring = buildCircle3D(radius, 24, coreColor, radius * 0.25, 0.012);
       group.add(ring);
     }
 

@@ -27,7 +27,7 @@ export class TitanWeaver extends BaseEnemy {
 
   private createMesh(): void {
     // Large diamond in bright green
-    this.mesh = buildDiamond3D(0.45, 0x22ff44, 0.18, 0.03);
+    this.mesh = buildDiamond3D(0.45, 0x22ff44, 0.30, 0.03);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

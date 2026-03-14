@@ -27,11 +27,11 @@ export class Spawner extends BaseEnemy {
     const group = new THREE.Group();
 
     // Large outer cage (red when invulnerable)
-    const outer = buildSquare3D(0.5, 0xff2222, 0.08, 0.015);
+    const outer = buildSquare3D(0.5, 0xff2222, 0.32, 0.015);
     group.add(outer);
 
     // Inner rotating core (green when vulnerable)
-    const inner = buildSquare3D(0.25, 0x00ff44, 0.06, 0.015);
+    const inner = buildSquare3D(0.25, 0x00ff44, 0.16, 0.015);
     inner.name = 'inner-core';
     group.add(inner);
 

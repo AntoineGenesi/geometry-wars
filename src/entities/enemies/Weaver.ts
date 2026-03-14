@@ -20,7 +20,7 @@ export class Weaver extends BaseEnemy {
   private createMesh(): void {
     // Create 3D diamond prism shape with green color
     const size = 0.3;
-    this.mesh = buildDiamond3D(size, 0x00ff44, 0.15, 0.025);
+    this.mesh = buildDiamond3D(size, 0x00ff44, size * 0.7, 0.025);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

@@ -21,7 +21,7 @@ export class TitanGrunt extends BaseEnemy {
 
   private createMesh(): void {
     // Large cube with deep blue color
-    this.mesh = buildSquare3D(0.5, 0x2244cc, 0.2, 0.03);
+    this.mesh = buildSquare3D(0.5, 0x2244cc, 0.32, 0.03);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

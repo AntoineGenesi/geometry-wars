@@ -66,14 +66,14 @@ export class Fractal extends BaseEnemy {
     const satColor = 0xccaa00; // gold
 
     // Central shape: diamond with depth
-    const central = buildDiamond3D(0.15, coreColor, 0.12, 0.022);
+    const central = buildDiamond3D(0.15, coreColor, 0.10, 0.022);
     this.centralMesh = central;
     group.add(central);
 
     // Orbiting smaller copies (triangles to look like "fractal children")
     for (let i = 0; i < SATELLITE_COUNT; i++) {
       const config = SATELLITE_CONFIGS[i];
-      const sat = buildTriangle3D(0.08 * config.scale, satColor, 0.06 * config.scale, 0.015);
+      const sat = buildTriangle3D(0.08 * config.scale, satColor, 0.06 * config.scale * 1.2, 0.015);
 
       // Start at initial orbital position
       this.orbitalAngles.push(config.phaseOffset);

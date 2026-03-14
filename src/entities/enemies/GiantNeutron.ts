@@ -29,7 +29,7 @@ export class GiantNeutron extends BaseEnemy {
 
   private createMesh(): void {
     // Oversized heptagon in bright teal
-    this.mesh = buildPolygon3D(7, 0.45, 0x22aaaa, 0.18, 0.035);
+    this.mesh = buildPolygon3D(7, 0.45, 0x22aaaa, 0.30, 0.035);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

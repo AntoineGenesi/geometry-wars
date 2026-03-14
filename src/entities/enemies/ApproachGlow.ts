@@ -44,7 +44,7 @@ export class ApproachGlow extends BaseEnemy {
   private createMesh(): void {
     // Diamond shape, warm amber color -- starts dim
     const size = 0.25;
-    this.mesh = buildDiamond3D(size, 0xffaa22, 0.14, 0.022);
+    this.mesh = buildDiamond3D(size, 0xffaa22, size * 0.7, 0.022);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

@@ -51,13 +51,13 @@ export class GiantSnake extends BaseEnemy {
 
   private createMesh(): void {
     // Large head circle in bright blue
-    this.mesh = buildCircle3D(0.35, 16, 0x2266ff, 0.1, 0.025);
+    this.mesh = buildCircle3D(0.35, 16, 0x2266ff, 0.22, 0.025);
   }
 
   private createSegments(): void {
     for (let i = 0; i < this.segmentCount; i++) {
       const segSize = 0.28 - i * 0.02;
-      const mesh = buildCircle3D(Math.max(segSize, 0.12), 12, 0x1144aa, 0.08, 0.02);
+      const mesh = buildCircle3D(Math.max(segSize, 0.12), 12, 0x1144aa, Math.max(segSize, 0.12) * 0.6, 0.02);
       this.segmentRoot.add(mesh);
       this.segments.push({
         u: (((this.surfacePosition.u - (i + 1) * 0.12) % 1) + 1) % 1,
