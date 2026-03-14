@@ -150,7 +150,7 @@ describe('s44q-04 REGRESSION: Server-Client Surface Dimension Parity', () => {
     const ext = yExtent(mesh);
     const totalHeight = ext.max - ext.min;
     expect(totalHeight).toBeGreaterThan(19.0);
-    expect(totalHeight).toBeLessThan(21.0);
+    expect(totalHeight).toBeLessThan(21.5); // bevel arcs extend bevelRadius=0.6 at each end → 20 + 1.2 = 21.2
   });
 
   // Mobius-bevel: client config majorRadius=scale*0.8=8, tubeRadius=2 (class default)
