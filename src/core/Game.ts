@@ -543,6 +543,10 @@ export class Game {
       // Reapply canvas buffer size with the new ratio; keep CSS dimensions unchanged
       // so the canvas still fills the screen (upscaled = pixelated, or 1:1 = modern).
       this.renderer.setSize(window.innerWidth, window.innerHeight, false);
+      // Nearest-neighbor CSS scaling: prevents browser bilinear blur when upscaling
+      // the low-res canvas to fill the screen. Without this, the browser smooths the
+      // pixels, defeating the pixelated look entirely.
+      this.renderer.domElement.style.imageRendering = mode === 'pixelated' ? 'pixelated' : '';
     } else if (this.composer || this.bloomPass) {
       // WebGL2 path: resize the EffectComposer and bloom pass render targets.
       // Half-res bloom is rendered at 50% then upscaled = larger/blurrier glow (pixelated).
@@ -552,7 +556,17 @@ export class Game {
       const scale = this.bloomResolutionScale;
       const sw = Math.floor(w * scale);
       const sh = Math.floor(h * scale);
-      if (this.composer) this.composer.setSize(sw, sh);
+      if (this.composer) {
+        this.composer.setSize(sw, sh);
+        // NearestFilter = sharp pixel edges when EffectComposer upscales the 50%-res
+        // render target to fill the screen. LinearFilter (default) blurs pixel boundaries.
+        // Both read/write buffers need updating — EffectComposer swaps them between passes.
+        const filter = mode === 'pixelated' ? THREE.NearestFilter : THREE.LinearFilter;
+        this.composer.readBuffer.texture.magFilter = filter;
+        this.composer.readBuffer.texture.needsUpdate = true;
+        this.composer.writeBuffer.texture.magFilter = filter;
+        this.composer.writeBuffer.texture.needsUpdate = true;
+      }
       if (this.bloomPass) this.bloomPass.resolution.set(sw, sh);
     }
   }

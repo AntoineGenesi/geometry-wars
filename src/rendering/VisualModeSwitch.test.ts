@@ -9,6 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Game } from '../core/Game';
+import { NearestFilter, LinearFilter } from 'three';
 
 // ---------------------------------------------------------------------------
 // DOM shims (same pattern as BloomResolution.test.ts)
@@ -80,6 +81,8 @@ const composerSetSizeCalls: Array<[number, number]> = [];
 vi.mock('three/addons/postprocessing/EffectComposer.js', () => ({
   EffectComposer: class MockEffectComposer {
     passes: any[] = [];
+    readBuffer = { texture: { magFilter: 1006, needsUpdate: false } }; // 1006 = LinearFilter
+    writeBuffer = { texture: { magFilter: 1006, needsUpdate: false } };
     addPass(pass: any) { this.passes.push(pass); }
     render() {}
     setSize(w: number, h: number) { composerSetSizeCalls.push([w, h]); }
@@ -264,11 +267,11 @@ describe('Game.setVisualMode — WebGPU path', () => {
     return new Game({ bloom: { strength: 1.0 }, _isWebGPU: true });
   }
 
-  it('setVisualMode("pixelated") sets pixelRatio to 0.5 on WebGPU', () => {
+  it('setVisualMode("pixelated") sets pixelRatio to 0.375 on WebGPU', () => {
     const game = makeWebGPUGame();
     const renderer = game.renderer as any;
     game.setVisualMode('pixelated');
-    expect(renderer.getPixelRatio()).toBe(0.5);
+    expect(renderer.getPixelRatio()).toBe(0.375);
     game.stop();
   });
 
@@ -297,6 +300,66 @@ describe('Game.setVisualMode — WebGPU path', () => {
     expect(game.bloomResolutionScale).toBe(1.0);
     game.setVisualMode('pixelated');
     expect(game.bloomResolutionScale).toBe(0.5);
+    game.stop();
+  });
+
+  it('sets imageRendering = "pixelated" on canvas in pixelated mode', () => {
+    const game = makeWebGPUGame();
+    game.setVisualMode('pixelated');
+    expect((game.renderer as any).domElement.style.imageRendering).toBe('pixelated');
+    game.stop();
+  });
+
+  it('clears imageRendering on canvas when switching to modern mode', () => {
+    const game = makeWebGPUGame();
+    game.setVisualMode('pixelated');
+    game.setVisualMode('modern');
+    expect((game.renderer as any).domElement.style.imageRendering).toBe('');
+    game.stop();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NearestFilter tests — WebGL2 composer render target filter switching
+// Regression: pixelated mode must set NearestFilter to prevent bilinear blur
+// ---------------------------------------------------------------------------
+
+describe('Game.setVisualMode — NearestFilter for pixelated mode (WebGL2)', () => {
+  beforeEach(() => {
+    composerSetSizeCalls.length = 0;
+    globalThis.window.innerWidth = 1920;
+    globalThis.window.innerHeight = 1080;
+  });
+
+  it('sets NearestFilter on readBuffer and writeBuffer in pixelated mode', () => {
+    const game = new Game({ bloom: { strength: 1.0 } });
+    game.setVisualMode('pixelated');
+    const composer = (game as any).composer;
+    expect(composer.readBuffer.texture.magFilter).toBe(NearestFilter);
+    expect(composer.writeBuffer.texture.magFilter).toBe(NearestFilter);
+    game.stop();
+  });
+
+  it('restores LinearFilter on readBuffer and writeBuffer in modern mode', () => {
+    const game = new Game({ bloom: { strength: 1.0 } });
+    game.setVisualMode('pixelated');
+    game.setVisualMode('modern');
+    const composer = (game as any).composer;
+    expect(composer.readBuffer.texture.magFilter).toBe(LinearFilter);
+    expect(composer.writeBuffer.texture.magFilter).toBe(LinearFilter);
+    game.stop();
+  });
+
+  it('sets needsUpdate = true on both textures when changing filter', () => {
+    const game = new Game({ bloom: { strength: 1.0 } });
+    // Reset to known state
+    const composer = (game as any).composer;
+    composer.readBuffer.texture.needsUpdate = false;
+    composer.writeBuffer.texture.needsUpdate = false;
+
+    game.setVisualMode('pixelated');
+    expect(composer.readBuffer.texture.needsUpdate).toBe(true);
+    expect(composer.writeBuffer.texture.needsUpdate).toBe(true);
     game.stop();
   });
 });
