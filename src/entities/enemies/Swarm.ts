@@ -82,7 +82,7 @@ export class Swarm extends BaseEnemy {
       const seed = PARTICLE_SEEDS[i];
       // Tiny triangle particle
       const size = 0.04 + (i % 3) * 0.01;
-      const particle = buildTriangle3D(size, color, 0.03, 0.012);
+      const particle = buildTriangle3D(size, color, size * 0.7, 0.012);
 
       particle.position.set(seed.baseX, seed.baseY, seed.baseZ);
       // Random initial rotation for variety

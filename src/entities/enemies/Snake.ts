@@ -94,12 +94,12 @@ export class Snake extends BaseEnemy {
 
   private createMesh(): void {
     // Large yellow-green triangle head
-    this.mesh = buildTriangle3D(0.40, 0xffdd00, 0.12, 0.025);
+    this.mesh = buildTriangle3D(0.40, 0xffdd00, 0.26, 0.025);
   }
 
   private createSegmentMesh(): THREE.Group {
     // Slightly smaller green diamond body segment
-    return buildDiamond3D(0.16, 0x44ff88, 0.09, 0.016);
+    return buildDiamond3D(0.16, 0x44ff88, 0.11, 0.016);
   }
 
   private initSegments(count: number): void {

@@ -42,7 +42,7 @@ export class Orbiter extends BaseEnemy {
 
   private createMesh(): void {
     // Ring/torus shape made of tube segments - teal color
-    this.mesh = buildCircle3D(0.18, 12, 0x00ccaa, 0.06, 0.022);
+    this.mesh = buildCircle3D(0.18, 12, 0x00ccaa, 0.12, 0.022);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

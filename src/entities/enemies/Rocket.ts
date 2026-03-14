@@ -20,7 +20,7 @@ export class Rocket extends BaseEnemy {
   private createMesh(): void {
     // Create 3D arrow/rocket shape with orange color
     const size = 0.3;
-    this.mesh = buildArrow3D(size, 0xff8800, 0.12, 0.025);
+    this.mesh = buildArrow3D(size, 0xff8800, size * 0.6, 0.025);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

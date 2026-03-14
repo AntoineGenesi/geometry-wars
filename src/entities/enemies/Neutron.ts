@@ -22,7 +22,7 @@ export class Neutron extends BaseEnemy {
     // Create 3D heptagon (7-sided) prism with yellow-green color
     const sides = 7;
     const radius = 0.25;
-    this.mesh = buildPolygon3D(sides, radius, 0x44dddd, 0.12, 0.025);
+    this.mesh = buildPolygon3D(sides, radius, 0x44dddd, radius * 0.65, 0.025);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

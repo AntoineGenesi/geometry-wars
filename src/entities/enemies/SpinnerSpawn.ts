@@ -28,7 +28,7 @@ export class SpinnerSpawn extends BaseEnemy {
   private createMesh(): void {
     // Create small 3D triangle prism with light pink color
     const size = 0.15;
-    this.mesh = buildTriangle3D(size, 0xff88cc, 0.08, 0.018);
+    this.mesh = buildTriangle3D(size, 0xff88cc, size * 0.65, 0.018);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

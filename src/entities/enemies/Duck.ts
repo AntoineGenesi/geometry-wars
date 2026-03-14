@@ -19,7 +19,7 @@ export class Duck extends BaseEnemy {
   private createMesh(): void {
     // Create 3D square/box frame with pink color
     const size = 0.22;
-    this.mesh = buildSquare3D(size, 0xff44aa, 0.12, 0.025);
+    this.mesh = buildSquare3D(size, 0xff44aa, size * 0.7, 0.025);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

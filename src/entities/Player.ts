@@ -106,7 +106,7 @@ export class Player {
     this.bulletPool = bulletPool;
 
     // -- Build the 3D ship mesh (chevron prism with depth) ------------------
-    this.mesh = buildChevron3D(SHIP_LENGTH, SHIP_HALF_W, SHIP_COLOR, 0.1, 0.025);
+    this.mesh = buildChevron3D(SHIP_LENGTH, SHIP_HALF_W, SHIP_COLOR, 0.18, 0.025);
   }
 
   // -----------------------------------------------------------------------

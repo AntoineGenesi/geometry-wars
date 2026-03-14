@@ -55,7 +55,7 @@ export class Cluster extends BaseEnemy {
     for (let i = 0; i < CUBE_COUNT; i++) {
       const offset = CUBE_OFFSETS[i];
       const cubeSize = 0.1 * offset.scale;
-      const depth = 0.08 * offset.scale;
+      const depth = cubeSize * 0.7;
       const cube = buildSquare3D(cubeSize, baseColor, depth, 0.018);
 
       cube.position.set(offset.x, offset.y, offset.z);

@@ -134,10 +134,10 @@ export class FractalSnake extends BaseEnemy {
     switch (variant) {
       case 'triple_inner': {
         // Cyan outer + 3 inner triangles spinning in 3-way alternating directions
-        const headGroup = buildTriangle3D(0.55, 0x00ffee, 0.14, 0.030);
+        const headGroup = buildTriangle3D(0.55, 0x00ffee, 0.36, 0.030);
         const innerSizes = [0.30, 0.20, 0.12];
         for (let i = 0; i < innerSizes.length; i++) {
-          const inner = buildTriangle3D(innerSizes[i], 0xffffff, 0.08, 0.018);
+          const inner = buildTriangle3D(innerSizes[i], 0xffffff, innerSizes[i] * 0.65, 0.018);
           inner.rotation.z = (i * Math.PI * 2) / 3;
           headGroup.add(inner);
           this.innerTriangles.push(inner);
@@ -148,11 +148,11 @@ export class FractalSnake extends BaseEnemy {
       case 'double_outer': {
         // Magenta outer + cyan middle + 1 white inner
         const headGroup = new THREE.Group();
-        const outer1 = buildTriangle3D(0.68, 0xff00ff, 0.10, 0.028);
-        const outer2 = buildTriangle3D(0.52, 0x00ffee, 0.14, 0.026);
+        const outer1 = buildTriangle3D(0.68, 0xff00ff, 0.44, 0.028);
+        const outer2 = buildTriangle3D(0.52, 0x00ffee, 0.34, 0.026);
         headGroup.add(outer1);
         headGroup.add(outer2);
-        const inner = buildTriangle3D(0.28, 0xffffff, 0.08, 0.018);
+        const inner = buildTriangle3D(0.28, 0xffffff, 0.18, 0.018);
         headGroup.add(inner);
         this.innerTriangles.push(inner);
         this.mesh = headGroup;
@@ -160,17 +160,17 @@ export class FractalSnake extends BaseEnemy {
       }
       case 'pulsing': {
         // Orange outer triangle, no inner triangles — head pulses in size
-        const headGroup = buildTriangle3D(0.58, 0xff8800, 0.14, 0.030);
+        const headGroup = buildTriangle3D(0.58, 0xff8800, 0.38, 0.030);
         this.mesh = headGroup;
         break;
       }
       case 'standard':
       default: {
         // Large outer triangle — bright cyan/teal + 2 inner spinning triangles
-        const headGroup = buildTriangle3D(0.55, 0x00ffee, 0.14, 0.030);
+        const headGroup = buildTriangle3D(0.55, 0x00ffee, 0.36, 0.030);
         const innerSizes = [0.30, 0.18];
         for (let i = 0; i < innerSizes.length; i++) {
-          const inner = buildTriangle3D(innerSizes[i], 0xffffff, 0.08, 0.018);
+          const inner = buildTriangle3D(innerSizes[i], 0xffffff, innerSizes[i] * 0.65, 0.018);
           inner.rotation.z = (i * Math.PI) / 2;
           headGroup.add(inner);
           this.innerTriangles.push(inner);
@@ -185,23 +185,23 @@ export class FractalSnake extends BaseEnemy {
     switch (enemyType) {
       case 'titan_grunt':
         // Large red diamond — visually big follower
-        return buildDiamond3D(0.28, 0xff4444, 0.10, 0.020);
+        return buildDiamond3D(0.28, 0xff4444, 0.18, 0.020);
       case 'spinner':
         // Cyan ring — matches Spinner's color
-        return buildCircle3D(0.18, 12, 0x44ffff, 0.07, 0.018);
+        return buildCircle3D(0.18, 12, 0x44ffff, 0.12, 0.018);
       case 'rocket':
         // Small red chevron — recognizable rocket shape
-        return buildChevron3D(0.22, 0.10, 0xff2200, 0.06, 0.016);
+        return buildChevron3D(0.22, 0.10, 0xff2200, 0.14, 0.016);
       case 'neutron':
         // Blue pentagon — matches Neutron's blue theme
-        return buildPolygon3D(5, 0.16, 0x4488ff, 0.07, 0.016);
+        return buildPolygon3D(5, 0.16, 0x4488ff, 0.10, 0.016);
       case 'wanderer':
         // Orange ring/circle — matches Wanderer's color scheme
-        return buildCircle3D(0.15, 8, 0xff8800, 0.07, 0.016);
+        return buildCircle3D(0.15, 8, 0xff8800, 0.10, 0.016);
       case 'grunt':
       default:
         // Small green diamond — matches Grunt's color
-        return buildDiamond3D(0.16, 0x44ff88, 0.09, 0.016);
+        return buildDiamond3D(0.16, 0x44ff88, 0.11, 0.016);
     }
   }
 

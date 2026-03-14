@@ -26,7 +26,7 @@ export class Wanderer extends BaseEnemy {
   private createMesh(): void {
     // Create 3D pinwheel shape with depth
     const bladeLength = 0.3;
-    this.mesh = buildPinwheel3D(bladeLength, 0xaa44ff, 0.1, 0.02);
+    this.mesh = buildPinwheel3D(bladeLength, 0xaa44ff, 0.20, 0.02);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

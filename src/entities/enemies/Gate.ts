@@ -56,8 +56,8 @@ export class Gate extends BaseEnemy {
 
   private createEndpoints(): void {
     // Create 3D circle endpoints with orange color
-    this.leftEndpoint = buildCircle3D(0.1, 16, 0xff8800, 0.04, 0.012);
-    this.rightEndpoint = buildCircle3D(0.1, 16, 0xff8800, 0.04, 0.012);
+    this.leftEndpoint = buildCircle3D(0.1, 16, 0xff8800, 0.07, 0.012);
+    this.rightEndpoint = buildCircle3D(0.1, 16, 0xff8800, 0.07, 0.012);
 
     // Position endpoints
     this.leftEndpoint.position.x = -this.width / 2;

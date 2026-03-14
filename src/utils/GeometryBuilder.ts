@@ -133,7 +133,7 @@ export function buildPrismFrame(
 export function buildDiamond3D(
   size: number,
   color: THREE.ColorRepresentation,
-  depth: number = 0.08,
+  depth: number = size * 0.65,
   tubeRadius: number = DEFAULT_TUBE_RADIUS
 ): THREE.Group {
   const halfDepth = depth / 2;
@@ -168,7 +168,7 @@ export function buildDiamond3D(
 export function buildSquare3D(
   size: number,
   color: THREE.ColorRepresentation,
-  depth: number = 0.08,
+  depth: number = size * 0.65,
   tubeRadius: number = DEFAULT_TUBE_RADIUS
 ): THREE.Group {
   const halfDepth = depth / 2;
@@ -203,7 +203,7 @@ export function buildSquare3D(
 export function buildTriangle3D(
   size: number,
   color: THREE.ColorRepresentation,
-  depth: number = 0.08,
+  depth: number = size * 0.65,
   tubeRadius: number = DEFAULT_TUBE_RADIUS
 ): THREE.Group {
   const halfDepth = depth / 2;
@@ -238,7 +238,7 @@ export function buildPolygon3D(
   sides: number,
   radius: number,
   color: THREE.ColorRepresentation,
-  depth: number = 0.08,
+  depth: number = radius * 0.65,
   tubeRadius: number = DEFAULT_TUBE_RADIUS
 ): THREE.Group {
   const halfDepth = depth / 2;
@@ -300,7 +300,7 @@ export function buildOctahedron3D(
 export function buildPinwheel3D(
   bladeLength: number,
   color: THREE.ColorRepresentation,
-  depth: number = 0.04,
+  depth: number = bladeLength * 0.6,
   tubeRadius: number = DEFAULT_TUBE_RADIUS * 0.8
 ): THREE.Group {
   const halfDepth = depth / 2;
@@ -344,7 +344,7 @@ export function buildChevron3D(
   length: number,
   halfWidth: number,
   color: THREE.ColorRepresentation,
-  depth: number = 0.06,
+  depth: number = length * 0.55,
   tubeRadius: number = DEFAULT_TUBE_RADIUS
 ): THREE.Group {
   const halfDepth = depth / 2;
@@ -381,7 +381,7 @@ export function buildCircle3D(
   radius: number,
   segments: number,
   color: THREE.ColorRepresentation,
-  depth: number = 0.04,
+  depth: number = radius * 0.6,
   tubeRadius: number = DEFAULT_TUBE_RADIUS * 0.8
 ): THREE.Group {
   const halfDepth = depth / 2;
@@ -418,7 +418,7 @@ export function buildCircle3D(
 export function buildArrow3D(
   size: number,
   color: THREE.ColorRepresentation,
-  depth: number = 0.06,
+  depth: number = size * 0.6,
   tubeRadius: number = DEFAULT_TUBE_RADIUS
 ): THREE.Group {
   const halfDepth = depth / 2;

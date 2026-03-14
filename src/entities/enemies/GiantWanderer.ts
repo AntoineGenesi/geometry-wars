@@ -32,7 +32,7 @@ export class GiantWanderer extends BaseEnemy {
 
   private createMesh(): void {
     // Oversized pinwheel in deeper purple with glow
-    this.mesh = buildPinwheel3D(0.55, 0x7722cc, 0.15, 0.03);
+    this.mesh = buildPinwheel3D(0.55, 0x7722cc, 0.35, 0.03);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

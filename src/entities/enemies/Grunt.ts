@@ -18,7 +18,7 @@ export class Grunt extends BaseEnemy {
   private createMesh(): void {
     // Create 3D diamond prism shape with depth
     const size = 0.25;
-    this.mesh = buildDiamond3D(size, 0x4444ff, 0.15, 0.025);
+    this.mesh = buildDiamond3D(size, 0x4444ff, size * 0.7, 0.025);
   }
 
   updateBehavior(dt: number, playerU: number, playerV: number): void {

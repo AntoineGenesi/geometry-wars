@@ -68,7 +68,7 @@ export class Splitter extends BaseEnemy {
     // Hexagonal tube-frame - yellow-green
     const sizeByGen = [0.3, 0.18, 0.1];
     const size = sizeByGen[this.generation];
-    this.mesh = buildPolygon3D(6, size, 0xaaff00, 0.06, 0.02);
+    this.mesh = buildPolygon3D(6, size, 0xaaff00, size * 0.6, 0.02);
 
     if (this.mesh) {
       this.mesh.scale.setScalar(this.baseMeshScale);
