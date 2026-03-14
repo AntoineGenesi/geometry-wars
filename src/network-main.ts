@@ -834,7 +834,7 @@ async function main() {
 
   // -- GPU instanced enemy rendering (reduces draw calls from ~2000 to ~15) --
   // Created before initSurface() so it can be wired into the enemySpawner.
-  const enemyInstanceManager = new EnemyInstanceManager(scene);
+  const enemyInstanceManager = new EnemyInstanceManager(scene, undefined, game.isWebGPU);
 
   // -- Depth-based occlusion: dims enemies behind the surface (view-based, not proximity-based) --
   // S27b: replaces the disabled proximity-based depth opacity with raycast-based occlusion.

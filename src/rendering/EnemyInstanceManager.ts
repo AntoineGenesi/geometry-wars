@@ -103,6 +103,10 @@ export class EnemyInstanceManager {
   private batches: Map<EnemyTypeKey, InstanceBatch> = new Map();
   private maxInstances: number;
 
+  /** Whether the renderer is WebGPU. When true, onBeforeCompile doesn't work
+   *  so we use TSL opacityNode for per-instance alpha instead. */
+  private isWebGPU: boolean;
+
   /** Shared LOD batches for reduced-detail rendering. */
   private lodMediumBatch: LODSharedBatch | null = null;
   private lodLowBatch: LODSharedBatch | null = null;
@@ -115,9 +119,58 @@ export class EnemyInstanceManager {
   /** Per-type base colors extracted during batch creation, used to color LOD instances. */
   private typeBaseColors: Map<EnemyTypeKey, THREE.Color> = new Map();
 
-  constructor(scene: THREE.Scene, maxInstances = DEFAULT_MAX_INSTANCES) {
+  constructor(scene: THREE.Scene, maxInstances = DEFAULT_MAX_INSTANCES, isWebGPU = false) {
     this.scene = scene;
     this.maxInstances = maxInstances;
+    this.isWebGPU = isWebGPU;
+  }
+
+  /**
+   * Apply per-instance opacity to a material. Two paths:
+   *
+   * - **WebGL2:** onBeforeCompile injects `instanceOpacity` attribute into the GLSL shader.
+   *   This multiplies fragment alpha by the per-instance value.
+   *
+   * - **WebGPU:** onBeforeCompile doesn't work (WebGPU uses TSL node materials).
+   *   Instead, set material.opacityNode to read the `instanceOpacity` attribute via TSL.
+   *   This is dynamically imported to avoid bundling WebGPU-only code when not needed.
+   *
+   * Both paths only affect ALPHA. RGB is already premultiplied via instanceColor dimming.
+   * REGRESSION GUARD (s44r12-03): never multiply rgb by instanceOpacity.
+   */
+  private _applyInstanceOpacity(material: THREE.MeshBasicMaterial, cacheKey: string): void {
+    if (this.isWebGPU) {
+      // WebGPU path: use TSL opacityNode to read the instanceOpacity attribute.
+      // Dynamic import avoids breaking WebGL2-only builds.
+      import('three/tsl').then((tsl: any) => {
+        const { attribute: tslAttribute } = tsl;
+        if (tslAttribute) {
+          // material.opacityNode reads the per-instance attribute each fragment
+          (material as any).opacityNode = tslAttribute('instanceOpacity');
+        }
+      }).catch(() => {
+        // TSL module unavailable — fall back to RGB-only dimming (no alpha).
+        // Enemies will be slightly more visible on far side but not invisible.
+        console.warn('[EnemyInstanceManager] three/tsl not available — WebGPU per-instance alpha disabled');
+      });
+    } else {
+      // WebGL2 path: inject instanceOpacity attribute via onBeforeCompile.
+      material.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader.replace(
+          'void main() {',
+          'attribute float instanceOpacity;\nvarying float vInstanceOpacity;\nvoid main() {\n  vInstanceOpacity = instanceOpacity;',
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          'void main() {',
+          'varying float vInstanceOpacity;\nvoid main() {',
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <dithering_fragment>',
+          '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
+        );
+      };
+    }
+    material.customProgramCacheKey = () => cacheKey;
   }
 
   /**
@@ -614,25 +667,8 @@ export class EnemyInstanceManager {
       depthWrite: false,
     });
 
-    // Inject per-instance opacity (same shader injection as type batches).
-    // Only multiply alpha — RGB is already premultiplied via instanceColor dimming.
-    // See createBatch() REGRESSION GUARD (s44r12-03) for full explanation.
-    material.onBeforeCompile = (shader) => {
-      shader.vertexShader = shader.vertexShader.replace(
-        'void main() {',
-        'attribute float instanceOpacity;\nvarying float vInstanceOpacity;\nvoid main() {\n  vInstanceOpacity = instanceOpacity;',
-      );
-      shader.fragmentShader = shader.fragmentShader.replace(
-        'void main() {',
-        'varying float vInstanceOpacity;\nvoid main() {',
-      );
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
-      );
-    };
-    // Unique cache key to prevent sharing program with type-specific batches
-    material.customProgramCacheKey = () => `lod-${name}`;
+    // Per-instance alpha (same as type batches). See createBatch() REGRESSION GUARD (s44r12-03).
+    this._applyInstanceOpacity(material, `lod-${name}`);
 
     const instancedMesh = new THREE.InstancedMesh(
       geometry,
@@ -926,52 +962,18 @@ export class EnemyInstanceManager {
       depthWrite: false, // Transparent objects should not write to depth buffer
     });
 
-    // Inject per-instance opacity into the shader via onBeforeCompile.
-    // This reads a custom `instanceOpacity` attribute and multiplies the
-    // fragment ALPHA by it, producing real per-instance transparency.
+    // Per-instance alpha transparency: two paths depending on renderer backend.
     //
-    // Premultiplied alpha blending (WebGLRenderer default):
-    //   blend = src.rgb * 1 + dst.rgb * (1 - src.a)
-    //   For correct blending at opacity V: src.rgb = color * V, src.a = V
-    //
-    // With MeshBasicMaterial: gl_FragColor.rgb = material.color(white) × instanceColor
-    // setInstanceVisibility() sets instanceColor = baseColor × V, so RGB is already
-    // premultiplied by visibility. The shader only needs to set alpha = V.
-    //
-    // REGRESSION GUARD (s44r12-03): The old code multiplied BOTH rgb AND alpha by
-    // instanceOpacity, but instanceColor already carries the RGB dimming (baseColor × V).
-    // This caused vis² double-dimming: final RGB = baseColor × V × V. At V=0.15 (far side),
-    // brightness was 2.25% instead of 15% — enemies appeared invisible rather than dimmed.
-    //
-    // History: s44r8-04 originally removed rgb multiply but that was with MeshStandardMaterial
-    // where emissive dominated and instanceColor had no visible effect. s44r11-01 switched to
-    // MeshBasicMaterial where instanceColor directly controls output, making the shader rgb
-    // multiply redundant and harmful.
-    material.onBeforeCompile = (shader) => {
-      // Declare the attribute + varying in the vertex shader
-      shader.vertexShader = shader.vertexShader.replace(
-        'void main() {',
-        'attribute float instanceOpacity;\nvarying float vInstanceOpacity;\nvoid main() {\n  vInstanceOpacity = instanceOpacity;',
-      );
-      // Only multiply alpha by per-instance opacity (RGB already premultiplied via instanceColor)
-      shader.fragmentShader = shader.fragmentShader.replace(
-        'void main() {',
-        'varying float vInstanceOpacity;\nvoid main() {',
-      );
-      shader.fragmentShader = shader.fragmentShader.replace(
-        '#include <dithering_fragment>',
-        '#include <dithering_fragment>\n  gl_FragColor.a *= vInstanceOpacity;',
-      );
-    };
+    // REGRESSION GUARD (s44r12-03): Only multiply ALPHA by instanceOpacity, NOT rgb.
+    // instanceColor already carries RGB dimming (baseColor × V). Multiplying rgb too
+    // causes vis² double-dimming (V=0.15 → 2.25% brightness → invisible).
+    this._applyInstanceOpacity(material, `enemy-${typeKey}`);
 
     // s44r11-01: Shader effects (lava, crystal, pulse, nebula) are skipped with MeshBasicMaterial.
     // The effects use `objectNormal` and `modelMatrix` which are only available in
     // MeshStandardMaterial's shader. MeshBasicMaterial doesn't compute normals.
     // The bloom post-processing and per-instance color provide sufficient visual variety.
     // If shader effects are needed in the future, they should be rewritten for basic shaders.
-
-    // Set unique program cache key per enemy type.
-    material.customProgramCacheKey = () => `enemy-${typeKey}`;
 
     // Create InstancedMesh
     const instancedMesh = new THREE.InstancedMesh(mergedGeometry, material, this.maxInstances);
