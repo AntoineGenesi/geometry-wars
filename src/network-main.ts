@@ -6776,7 +6776,7 @@ async function main() {
     // for enemies on the far side, leaving them fully bright without UV-distance clamping.
     const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
     const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
-    const NET_SURFACE_DIM_OPC  = 0.15;   // minimum opacity for far-away enemies (s44r8-04: raised from 0.08)
+    const NET_SURFACE_DIM_OPC  = 0.40;   // minimum opacity for far-away enemies (s44r16-07: raised from 0.15; at 0.15 double-dimming = 2.25% invisible)
     // World-space proximity override constants (SP parity — RenderLoop.ts PROXIMITY_*).
     const NET_PROXIMITY_NEAR_WORLD    = 2.0;
     const NET_PROXIMITY_NEAR_WORLD_SQ = NET_PROXIMITY_NEAR_WORLD * NET_PROXIMITY_NEAR_WORLD;
@@ -6788,13 +6788,18 @@ async function main() {
     const _lpV = _lpForDim?.surfaceV ?? 0;
     const _netWrapsV = surf.wrapsV;
 
-    // For tunnel surfaces (cube-tunnel, sphere-tunnel), skip depth occlusion.
-    // MP camera distance (20) places the camera OUTSIDE the tunnel mesh, causing the
-    // raycast to cross 2 wall faces for every enemy → opacity2Plus=0.15 (nearly invisible).
-    // SP camera distance (15) stays INSIDE the tunnel, giving 0 intersections → full visibility.
-    // Bypass depth occlusion so tunnel enemies are visible; UV-distance dimming still applies.
+    // For tunnel surfaces (cube-tunnel, sphere-tunnel, torus-tunnel), skip depth occlusion
+    // AND UV-distance dimming entirely. Both systems produce false-positives on tunnel geometry:
+    //   - Depth occlusion: MP camera (distance 20) is OUTSIDE the tunnel, so raycasts cross
+    //     2 wall faces for every enemy → opacity2Plus=0.15 → essentially invisible.
+    //   - UV-distance dimming: tunnel UV space is elongated, so enemies in the tunnel appear
+    //     "far" in UV coordinates even when physically nearby (sphere-approx UV mismatch).
+    // Bypass both so all tunnel enemies are fully visible.
+    // s44r12-08: original bypass for cube-tunnel/sphere-tunnel (depth occlusion only).
+    // s44r16-07: extended to torus-tunnel, also bypasses UV dimming for all tunnel surfaces.
     const _isTunnelSurface = lastCreatedSurfaceType === 'cube-tunnel'
-      || lastCreatedSurfaceType === 'sphere-tunnel';
+      || lastCreatedSurfaceType === 'sphere-tunnel'
+      || lastCreatedSurfaceType === 'torus-tunnel';
     depthOcclusion.update(enemyArray, camera.position, netRenderDt);
     for (const enemy of enemyArray) {
       if (!enemy.alive || !enemy.mesh) continue;
@@ -6802,7 +6807,8 @@ async function main() {
 
       // UV-distance surface dimming (LAN parity with SP RenderLoop.ts).
       // Catches flat/open-surface cases where raycasts register 0 intersections.
-      if (_lpForDim) {
+      // Skipped for tunnel surfaces — UV space is unreliable for proximity on tunnels.
+      if (_lpForDim && !_isTunnelSurface) {
         const euRaw = Math.abs(enemy.surfacePosition.u - _lpU);
         const evRaw = Math.abs(enemy.surfacePosition.v - _lpV);
         const eu = Math.min(euRaw, 1.0 - euRaw);

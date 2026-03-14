@@ -50,7 +50,7 @@ const SURFACE_NEAR_UV = 0.15;        // midpoint of hysteresis band (kept for re
 const SURFACE_NEAR_UV_ENTER = 0.17;  // start dimming when uvDist exceeds this (from bright)
 const SURFACE_NEAR_UV_EXIT  = 0.13;  // stop dimming when uvDist drops below this (from dimmed)
 const SURFACE_FAR_UV  = 0.45;    // fully dim beyond 45% of surface
-const SURFACE_DIM_OPACITY = 0.15; // minimum opacity for far-away enemies (s44r8-04: raised from 0.08)
+const SURFACE_DIM_OPACITY = 0.40; // minimum opacity for far-away enemies (s44r16-07: raised from 0.15; at 0.15 double-dimming = 2.25% invisible on dark bg)
 
 /**
  * RenderLoop contains the render callback logic, extracted from main.ts onRender.
