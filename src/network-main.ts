@@ -839,7 +839,14 @@ async function main() {
   // -- Depth-based occlusion: dims enemies behind the surface (view-based, not proximity-based) --
   // S27b: replaces the disabled proximity-based depth opacity with raycast-based occlusion.
   // Uses EnemyInstanceManager for performance-friendly instanced visibility updates.
-  const depthOcclusion = new DepthOcclusionSystem();
+  // s44r17-01: Config aligned with SP — raised opacity1/2Plus to prevent compound dimming
+  // with UV-distance and LOD systems from pushing visibility below perceptible levels.
+  const depthOcclusion = new DepthOcclusionSystem({
+    opacity0: 1.0,
+    opacity1: 0.40,
+    opacity2Plus: 0.12,
+    lerpSpeed: 10.0,
+  });
 
   // -- LOD: reduce triangle count for distant enemies (same as single-player) --
   const lodManager = new LODManager();
@@ -6842,6 +6849,12 @@ async function main() {
             }
           }
         }
+      }
+
+      // s44r17-01: Floor compound visibility to prevent multiple dimming systems
+      // from pushing enemies below perceptible levels (SP parity).
+      if (vis > 0) {
+        vis = Math.max(vis, NET_SURFACE_DIM_OPC);
       }
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {

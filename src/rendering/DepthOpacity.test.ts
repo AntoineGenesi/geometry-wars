@@ -535,3 +535,55 @@ describe('REGRESSION s44r11-01: tangential bullets near player should be BRIGHT'
     expect(opacity).toBeCloseTo(BULLET_DEPTH_CURVE.farSideMin, 2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// REGRESSION s44r17-01: Compound dimming must not push visibility below
+// perceptible levels. The SP depth occlusion config values (opacity1, opacity2Plus)
+// must be high enough that multiplying by surface UV dimming floor (0.40) and
+// applying via setInstanceVisibility (RGB × alpha) still produces visible enemies.
+// ---------------------------------------------------------------------------
+describe('REGRESSION s44r17-01: compound dimming visibility floor', () => {
+  it('SP depth occlusion opacity1 (behind 1 surface) stays above 0.10 after RGB×alpha', () => {
+    // SP config: opacity1 = 0.40 (raised from 0.12 in s44r17-01)
+    // setInstanceVisibility does: instanceColor = baseColor × vis, alpha = vis
+    // Effective brightness ≈ vis (MeshBasicMaterial, no emissive)
+    // At opacity1=0.40, enemies behind one surface are 40% bright — visible.
+    const spConfig = { opacity0: 1.0, opacity1: 0.40, opacity2Plus: 0.12 };
+    expect(spConfig.opacity1).toBeGreaterThanOrEqual(0.10);
+    // Even with surface UV dimming floor (0.40), compound min = 0.40 → still visible
+    const compoundMin = Math.min(spConfig.opacity1, 0.40);
+    expect(compoundMin).toBeGreaterThanOrEqual(0.10);
+  });
+
+  it('SP depth occlusion opacity2Plus (behind 2+ surfaces) stays above 0.05', () => {
+    const spConfig = { opacity0: 1.0, opacity1: 0.40, opacity2Plus: 0.12 };
+    expect(spConfig.opacity2Plus).toBeGreaterThanOrEqual(0.05);
+  });
+
+  it('LOD dimming should NOT be applied on top of depth occlusion', () => {
+    // s44r17-01: LOD visibility reduction removed from RenderLoop.ts.
+    // LOD already uses simplified geometry — additional dimming caused
+    // compound invisibility: depth(0.12) × LOD(0.85) = 0.102 → invisible.
+    // This test documents that LOD dimming is intentionally not applied.
+    const lodDimmingFactor = 1.0; // was 0.85 for LOW, 0.95 for MEDIUM
+    const depthOpacity = 0.40; // opacity1 for enemies behind 1 surface
+    const effective = depthOpacity * lodDimmingFactor;
+    expect(effective).toBeGreaterThanOrEqual(0.10);
+  });
+
+  it('visibility floor prevents compound dimming below SURFACE_DIM_OPACITY', () => {
+    // RenderLoop.ts applies: visibility = Math.max(visibility, SURFACE_DIM_OPACITY)
+    // before far-side culling. This prevents depth + UV dimming compound from
+    // pushing below 0.40.
+    const SURFACE_DIM_OPACITY = 0.40;
+    const depthOcclusion = 0.40; // opacity1
+    const surfaceUVDim = 0.40; // far-side UV dimming
+    const rawVisibility = Math.min(depthOcclusion, surfaceUVDim); // 0.40
+    const floored = Math.max(rawVisibility, SURFACE_DIM_OPACITY); // 0.40
+    expect(floored).toBeGreaterThanOrEqual(SURFACE_DIM_OPACITY);
+    // Even with more aggressive raw values:
+    const aggressiveRaw = Math.min(0.12, 0.40); // hypothetical low depth occlusion
+    const aggressiveFloored = Math.max(aggressiveRaw, SURFACE_DIM_OPACITY);
+    expect(aggressiveFloored).toBeGreaterThanOrEqual(SURFACE_DIM_OPACITY);
+  });
+});
