@@ -243,7 +243,12 @@ export function orientPlayerOnSurface(
   const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
   const rotMatrix = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
   mesh.quaternion.setFromRotationMatrix(rotMatrix);
-  mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), aimAngle);
+  // s44r17-06 FIX: Negate aimAngle to match SP behavior.
+  // SP uses setFromAxisAngle(normal, -aimAngle) — the negative sign is critical.
+  // After makeBasis sets local Y = surface normal, rotateOnAxis(Y, angle) rotates
+  // around the normal. Using positive aimAngle caused the player to spin in the
+  // wrong direction on all surfaces (inverted/rotated aim vs mouse movement).
+  mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), -aimAngle);
 }
 
 // ---------------------------------------------------------------------------
