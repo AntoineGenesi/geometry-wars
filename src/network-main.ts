@@ -4717,13 +4717,41 @@ async function main() {
     });
     playersEl.innerHTML = playerList;
     if (teamScoreEl) {
-      if (isZoneTimeModeList) {
+      const isCompetitiveMode = latestPvpEnabled || isZoneTimeModeList;
+      if (isCompetitiveMode && localPlayer) {
+        // s44r18-04: Competitive mode — show local player's own score + live rank indicator
+        let myScoreStr: string;
+        if (isZoneTimeModeList) {
+          const myZt = localPlayer.zoneTime ?? 0;
+          const myZtMins = Math.floor(myZt / 60);
+          myScoreStr = myZtMins > 0
+            ? `${myZtMins}:${(myZt % 60).toFixed(1).padStart(4, '0')}`
+            : `${myZt.toFixed(1)}s`;
+        } else {
+          myScoreStr = `${(localPlayer.kills ?? 0).toFixed(2)}K`;
+        }
+        // Compute rank by sorting all players by their metric descending
+        const allPlayers: NetworkPlayerState[] = [];
+        state.players.forEach((p: NetworkPlayerState) => allPlayers.push(p));
+        allPlayers.sort((a: NetworkPlayerState, b: NetworkPlayerState) => {
+          if (isZoneTimeModeList) return (b.zoneTime ?? 0) - (a.zoneTime ?? 0);
+          return (b.kills ?? 0) - (a.kills ?? 0);
+        });
+        const rank = allPlayers.findIndex((p: NetworkPlayerState) => p.id === localPlayerId) + 1;
+        const total = allPlayers.length;
+        const suffix = rank === 1 ? 'st' : rank === 2 ? 'nd' : rank === 3 ? 'rd' : 'th';
+        teamScoreEl.innerHTML =
+          `${myScoreStr}<br>` +
+          `<span style="font-size:0.55em;color:#aaa;letter-spacing:1px">${rank}${suffix} of ${total}</span>`;
+      } else if (isZoneTimeModeList) {
+        // Co-op zone-time fallback (localPlayer not found)
         const ztMins = Math.floor(combinedScore / 60);
         teamScoreEl.textContent = ztMins > 0 ? `${ztMins}:${(combinedScore % 60).toFixed(1).padStart(4, '0')}` : `${combinedScore.toFixed(1)}s`;
       } else if (latestPvpEnabled) {
-        // s44r3-10: Team total kills in PvP mode
+        // Co-op PvP fallback (localPlayer not found)
         teamScoreEl.textContent = `${combinedScore.toFixed(2)}K`;
       } else {
+        // Co-op: combined team score (Waves, Rainbow)
         teamScoreEl.textContent = combinedScore.toLocaleString();
       }
     }
