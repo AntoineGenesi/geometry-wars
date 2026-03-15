@@ -9,3 +9,4 @@ Additional context from the commit body:
 - MP now spawns first enemies at 3s instead of 6s
 - Single-player unaffected (uses separate WaveScheduler in src/main.ts)
 - Test documents intentional 50% reduction for performance optimization
+TOPICS: enemies,multiplayer
