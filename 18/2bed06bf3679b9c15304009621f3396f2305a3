@@ -20,3 +20,4 @@ Reviewer: PARTIALLY_VERIFIED (Level 6 user testing needed with 5+ players).
 Game state: 14 tasks merged this session. All gameplay bugs + player cap addressed.
 
 Key files: server/rooms/GameRoom.player-cap.test.ts, server/rooms/GameRoom.ts, server/shared/GameSettings.ts, src/difficulty/DDADecisionEngine.ts, src/main.ts, and others.
+TOPICS: multiplayer
