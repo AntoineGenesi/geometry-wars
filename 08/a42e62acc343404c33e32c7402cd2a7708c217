@@ -11,3 +11,4 @@ Additional context from the commit body:
 - Verification: Code compiles without errors in changed files
 
 Key files: .claude/locks/port-registry, ...s44b-05-ghost-spawns-multiple-mobile-hosts.lock, ...s44b-06-pickup-collection-radius-too-large.lock, ...b-08-enemy-aura-kills-no-red-damage-visual.lock, ...4b-05-ghost-spawns-multiple-mobile-hosts.prompt, and others.
+TOPICS: bullet,enemies
