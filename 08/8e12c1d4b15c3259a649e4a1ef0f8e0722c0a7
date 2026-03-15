@@ -8,3 +8,4 @@ Additional context from the commit body:
 - Player (cyan), enemies (red), geoms (green) as colored dots
 - Grid lines and boundary for spatial reference
 - Updated in render callback with live entity data
+TOPICS: feature,surfaces
