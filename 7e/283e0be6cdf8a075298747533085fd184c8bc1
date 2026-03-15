@@ -13,3 +13,4 @@ s44c-02 camera fix (923b87c) preserved — camera still follows server target
 directly, not mesh.position (no double-lerp).
 
 Files changed: src/network-main.ts (via git revert), tasks/s44d-01.md
+TOPICS: regression
