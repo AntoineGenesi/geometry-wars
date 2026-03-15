@@ -15,3 +15,4 @@ Additional context from the commit body:
 267 tests passing, TypeScript clean.
 
 Key files: decisions/geodesic-walker-fixes-2026-02-07.md, decisions/sphere-tunnel-rewrite-2026-02-07.md, .../mesh-movement/MovementValidation.test.ts, .../mesh-movement/geodesic/ParallelTransport.ts, src/surfaces/MobiusSurface.ts, and others.
+TOPICS: aim,feature,surfaces,testing
