@@ -12,3 +12,4 @@ splitscreen section in MULTIPLAYER.md, updated INDEX.md session references.
 Game state: Docs-only — no game logic changed. 10 gameplay tasks merged this session.
 
 Key files: TODO.md, docs/ARCHITECTURE.md, docs/INDEX.md, docs/MULTIPLAYER.md, docs/future-work.md, and others.
+TOPICS: regression
