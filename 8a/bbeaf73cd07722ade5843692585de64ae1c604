@@ -16,3 +16,4 @@ User couldn't distinguish PvP vs PvPvE during gameplay.
 Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
 
 Key files: src/network-main.ts, src/test/game-mode-indicator.test.ts, src/test/game-mode-indicator.visual.test.ts, tasks/s44r-03-game-mode-indicator-pvp-pvpve.md.
+TOPICS: feature,game-modes
