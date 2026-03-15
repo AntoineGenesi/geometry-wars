@@ -11,3 +11,4 @@ to CLAUDE.md Regression Prevention section.
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 
 Key files: CLAUDE.md, TODO.md, decisions/recurring-regressions-analysis.md, tasks/recurring-fix-regression.md.
+TOPICS: regression
