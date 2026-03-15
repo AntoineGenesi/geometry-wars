@@ -14,3 +14,4 @@ MP code path already correct. 8 regression tests.
 
 Game state: Cube aim fixed (s44r4-01), pill hit detection fixed (s44r4-02),
 MP test harness built (s44r4-05). Mobius seam fix in progress (s44r4-04).
+TOPICS: surfaces
