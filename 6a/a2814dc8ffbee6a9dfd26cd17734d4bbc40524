@@ -13,3 +13,4 @@ Added CSS for .lan-map-size-btn matching .map-size-btn exactly:
 - Selected state: cyan glow (box-shadow: 0 0 15px #00ffff), highlighted bg
 
 File touched: src/ui/StartMenu.ts (LAN lobby CSS only)
+TOPICS: multiplayer
