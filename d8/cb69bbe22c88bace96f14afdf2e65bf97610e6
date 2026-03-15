@@ -12,3 +12,4 @@ Additional context from the commit body:
 - VotingScreen.test.ts: 11 new tests covering dimming logic and UI behavior
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+TOPICS: feature,game-modes
