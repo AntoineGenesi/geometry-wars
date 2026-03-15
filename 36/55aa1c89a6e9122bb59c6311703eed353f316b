@@ -11,3 +11,4 @@ Additional context from the commit body:
 - Root causes: dual code paths (9× code ratio), UV vs world-space mismatch, no MP integration tests
 
 Key files: DISCOVERIES.md, docs/mp-architecture-audit.md, reports/mp-audit-s43.html, tasks/s43-09-epic-deep-mp-audit.md.
+TOPICS: multiplayer,regression
