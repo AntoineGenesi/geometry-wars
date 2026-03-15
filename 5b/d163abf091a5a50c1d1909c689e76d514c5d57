@@ -10,3 +10,4 @@ This reverses walking direction after seam crossing, causing oscillation.
 
 Fix: change final projection to use effectiveNormalTo in transportAcrossEdge().
 See task file for exact lines to change.
+TOPICS: ops
