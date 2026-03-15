@@ -11,3 +11,4 @@ RealGameTestHarness — all 8 directions work on all 4 tested faces, no locking,
 no inversion. Both SP and MP paths use MeshWalker.moveFromInput().
 
 Key files: src/movement/MeshWalker.ts, src/test/cube-aim-direction.test.ts, src/test/cube-aim-real-game.test.ts, src/test/cube-bevel-crossing.regression.test.ts, src/test/cube-realistic-sim.test.ts, and others.
+TOPICS: aim
