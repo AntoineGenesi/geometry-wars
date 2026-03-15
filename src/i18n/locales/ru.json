@@ -193,6 +193,7 @@
       "totalKills": "ВСЕГО УБИЙСТВ",
       "activeBuffs": "АКТИВНЫЕ БАФФЫ",
       "noActiveBuffs": "Нет активных баффов",
+      "currentScore": "СЧЁТ",
       "performance": "ПРОИЗВОДИТЕЛЬНОСТЬ"
     }
   },
