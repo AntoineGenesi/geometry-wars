@@ -72,6 +72,8 @@ export interface PauseMenuGameData {
   };
   /** Current player score */
   currentScore?: number;
+  /** Current game mode display label (e.g., '👑 KING', '〰️ WAVES') */
+  currentMode?: string;
   /** Total kills across all enemy types */
   totalKills: number;
   /** Current weapon info */
@@ -220,6 +222,10 @@ export class PauseMenu {
             <div class="stats-weapon-section">
               <div class="stats-section-title">${t('pauseMenu.stats.weapon')}</div>
               <div class="stats-weapon-info"></div>
+            </div>
+            <div class="stats-mode-section" style="display:none">
+              <div class="stats-section-title">GAME MODE</div>
+              <div class="stats-mode-name"></div>
             </div>
             <div class="stats-score-section">
               <div class="stats-section-title">${t('pauseMenu.stats.currentScore')}</div>
@@ -494,6 +500,15 @@ export class PauseMenu {
         color: #44ff44;
         font-size: 11px;
         margin-left: 6px;
+      }
+
+      #pause-menu .stats-mode-name {
+        font-size: 20px;
+        font-weight: bold;
+        color: #ff8;
+        text-shadow: 0 0 8px rgba(255, 255, 136, 0.5);
+        letter-spacing: 2px;
+        font-family: monospace;
       }
 
       #pause-menu .stats-score-count {
@@ -1395,6 +1410,7 @@ export class PauseMenu {
     this.updateCumulativeBonuses(data.cumulativeBonuses);
     this.updateWeaponInfo(data.weapon);
     this.updateScore(data.currentScore);
+    this.updateMode(data.currentMode);
     this.updateKillCount(data.totalKills);
     this.updateBuffsList(data.buffs);
   }
@@ -1521,6 +1537,18 @@ export class PauseMenu {
     const scoreEl = this.container.querySelector('.stats-score-count');
     if (scoreEl) {
       scoreEl.textContent = score !== undefined ? score.toLocaleString() : '0';
+    }
+  }
+
+  private updateMode(mode?: string): void {
+    const section = this.container.querySelector('.stats-mode-section') as HTMLElement | null;
+    const nameEl = this.container.querySelector('.stats-mode-name');
+    if (!section || !nameEl) return;
+    if (mode) {
+      nameEl.textContent = mode;
+      section.style.display = '';
+    } else {
+      section.style.display = 'none';
     }
   }
 

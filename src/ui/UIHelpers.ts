@@ -22,6 +22,7 @@ export class UIHelpers {
   private static playerLevelEl = document.getElementById('player-level-display')!;
   private static comboEl = document.getElementById('combo-display')!;
   private static boostEl = document.getElementById('boost-display')!;
+  private static gameModeEl = document.getElementById('game-mode-display') as HTMLElement | null;;
 
   /**
    * Activate death cam visual effect: grayscale + darkening on the game canvas.
@@ -209,6 +210,20 @@ export class UIHelpers {
    */
   static setLevelName(name: string): void {
     this.levelNameEl.textContent = name;
+  }
+
+  /**
+   * Set the game mode indicator in the HUD (top-left badge).
+   * Pass empty string to hide it.
+   */
+  static setGameMode(modeName: string): void {
+    if (!this.gameModeEl) return;
+    if (modeName) {
+      this.gameModeEl.textContent = modeName;
+      this.gameModeEl.style.display = 'block';
+    } else {
+      this.gameModeEl.style.display = 'none';
+    }
   }
 
   /**
