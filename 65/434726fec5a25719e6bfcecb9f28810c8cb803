@@ -12,3 +12,4 @@ Game state: WebGPU detected but never activated. Headers + toggle now enable it.
 User testing required for runtime verification + LAN MP with COOP/COEP.
 
 Key files: src/ui/SettingsMenu.ts, src/ui/SettingsMenu.webgpu.test.ts, ...s44r6b-05-webgpu-not-working-settings-button.md, vite.config.ts.
+TOPICS: webgpu
