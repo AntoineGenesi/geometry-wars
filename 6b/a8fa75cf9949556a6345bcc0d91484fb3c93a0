@@ -17,3 +17,4 @@ Files: .claude/scripts/orchestrator.sh, .claude/agents/implementer.md, .claude/r
 Game state: Tooling improvement only — no game logic. All active workers (PvP, docs) unaffected.
 
 Key files: .claude/agents/implementer.md, .claude/rules/checkpoints.md, .claude/scripts/orchestrator.sh, tasks/s44r6-18-worker-compaction-resilience.md.
+TOPICS: ops,orchestration
