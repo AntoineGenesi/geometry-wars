@@ -8,3 +8,4 @@ Additional context from the commit body:
 - Pacifism mode blocks shooting input
 - Checkpoint mode detects wave clears and awards +15s time bonus
 - Time bonus popup shows "+Xs" at player position
+TOPICS: enemies
