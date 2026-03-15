@@ -11,3 +11,4 @@ Additional context from the commit body:
 - src/network-main.ts: import + call runMobileOnboarding() after hideGameLoading() when mobile=true
 
 Both prompts are no-ops on desktop clients (gated by isMobile()).
+TOPICS: feature
