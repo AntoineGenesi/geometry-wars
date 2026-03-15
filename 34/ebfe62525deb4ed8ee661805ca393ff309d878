@@ -9,3 +9,4 @@ Additional context from the commit body:
 - server/movement/ServerMeshWalker.test.ts: Update expected PLAYER_WORLD_SPEED to 3.3
 - server/movement/ServerMeshWalker.test.ts: Increase surface adherence tolerance 0.01→0.02
 - Fixes critical client prediction mismatch that would cause desync jitter
+TOPICS: bugfix,testing
