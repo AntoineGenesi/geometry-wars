@@ -12,3 +12,4 @@ Wave 1 (3 CRITICAL fixes):
 All merged to master. Launching Wave 2 next.
 
 Key files: .claude/locks/port-registry, ...s44h-03-hit-detection-ghost-kills-all-maps.lock, .claude/state/pipeline-state.md, ...h-01-peanut-map-bullet-offset-regression.prompt, ...44h-02-pill-map-bullet-offset-regression.prompt, and others.
+TOPICS: bullet,surfaces
