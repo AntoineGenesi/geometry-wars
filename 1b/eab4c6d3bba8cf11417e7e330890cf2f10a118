@@ -10,3 +10,4 @@ Additional context from the commit body:
 - 41 pass / 1 warn / 0 fail across 5 surfaces
 
 Key files: reports/surface-verification.html, src/surfaces/PeanutSurface.test.ts, tasks/s44o-05d-run-and-verify.md, .../investigate-peanut-worldtosurface.ts, tests/surface-verification/investigate-peanut.ts, and others.
+TOPICS: regression,surfaces,testing
