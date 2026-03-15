@@ -12,3 +12,4 @@ Fix: Ensure WeaponMasteryScreen is properly instantiated with MasteryPointStore.
 and show() is called on button click.
 
 Files: src/ui/StartMenu.ts
+TOPICS: upgrades
