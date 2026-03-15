@@ -15,3 +15,4 @@ Additional context from the commit body:
   reference, and programmatic pre-visual verification guidance
 
 Key files: .claude/commands/verify.md, .claude/commands/visual-test.md, inbox/2026-02-12_2130.md, src/core/SeededRandom.example.ts, src/core/SeededRandom.test.ts, and others.
+TOPICS: feature,regression,testing
