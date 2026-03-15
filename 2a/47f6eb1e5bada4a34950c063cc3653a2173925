@@ -9,3 +9,4 @@ on mobile screens. The overlay was creating a large black text box at
 the bottom consuming 20-30% of mobile screen space.
 
 This ensures the mobile game screen takes up full usable space.
+TOPICS: bugfix,ops
