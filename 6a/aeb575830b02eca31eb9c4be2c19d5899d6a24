@@ -7,3 +7,4 @@ Additional context from the commit body:
 - Red flash (rgba 255,60,60,0.4) on player death (200ms)
 - White flash (rgba 255,255,255,0.6) on bomb detonation (120ms)
 - CSS-based overlay with opacity transition for smooth fade
+TOPICS: feature
