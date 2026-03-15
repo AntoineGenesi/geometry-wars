@@ -9,3 +9,4 @@ Additional context from the commit body:
 - Applied to pauseMenu.onExit, gameOverScreen.onReturnToMenu, and votingScreen.onReturnToMenu
 - Uses requestAnimationFrame to ensure loading screen renders before page reload
 - Improves UX on slower devices or networks where disconnect delay is noticeable
+TOPICS: feature
