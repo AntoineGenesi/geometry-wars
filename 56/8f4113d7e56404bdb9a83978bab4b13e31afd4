@@ -8,3 +8,4 @@ Additional context from the commit body:
 - Allows bosses to spawn earlier on small maps (e.g., small cube)
 - Small cube maps (MapSize.SMALL, 30 max enemies) can now naturally reach wave 20
 - Maintains progression: snake (wave 1), giant_snake (wave 10), boss (wave 20)
+TOPICS: enemies
