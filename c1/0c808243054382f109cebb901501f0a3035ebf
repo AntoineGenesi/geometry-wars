@@ -20,3 +20,4 @@ Files: BaseEnemy.ts, Phaser.ts, CollisionSystem.ts, GameInstance.ts
 Regression test: src/test/s44h-03-phaser-ghost-kills.regression.test.ts
 
 Key files: docs/HUMAN_TEST.md, src/core/CollisionSystem.ts, src/core/GameInstance.ts, src/entities/enemies/BaseEnemy.ts, src/entities/enemies/Phaser.ts, and others.
+TOPICS: dimming,enemies invisible-enemies,opacity
