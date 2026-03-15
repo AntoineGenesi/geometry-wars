@@ -18,3 +18,4 @@ body width on curved surfaces (Mobius, torus, peanut) due to parallax
 between surface-level collision and elevated visual rendering.
 
 Key files: src/core/CollisionSystem.ts, src/core/GameInstance.ts, src/network-main.ts, ...n-visual-collision-alignment.regression.test.ts, ...9-hit-detection-offset-mobius-and-other-maps.md.
+TOPICS: enemies,hit-detection
