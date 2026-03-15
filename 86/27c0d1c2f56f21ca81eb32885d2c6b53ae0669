@@ -9,3 +9,4 @@ Additional context from the commit body:
 - MP now spawns first enemies at 3s instead of 6s
 - Single-player unaffected (uses separate WaveScheduler)
 - Test verifies MP first wave is exactly 50% of SP timing
+TOPICS: enemies,multiplayer
