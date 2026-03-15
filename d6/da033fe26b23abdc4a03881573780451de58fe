@@ -9,3 +9,4 @@ Interactive HTML report summarizing the full autonomous session:
 - GameDebugAPI, BrowserTestHarness, 4 behavior test suites
 - 2 bugs discovered (UV frozen in walker mode, mass spawn freeze)
 - Architecture diagram, test results, how-to-run, decision log
+TOPICS: docs,testing
