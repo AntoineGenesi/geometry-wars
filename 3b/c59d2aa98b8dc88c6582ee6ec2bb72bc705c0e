@@ -11,3 +11,4 @@ Additional context from the commit body:
 
 Game state: Pill hit detection too sensitive in MP, inside surface spawning in waves.
 User testing required.
+TOPICS: hit-detection,surfaces
