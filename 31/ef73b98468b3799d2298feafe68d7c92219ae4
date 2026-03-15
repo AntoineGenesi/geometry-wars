@@ -9,3 +9,4 @@ Additional context from the commit body:
 - Painter: hazard trail damages player on contact (with shield immunity)
 - Track player previous UV for gate pass-through detection
 - Remove non-existent 'Arrow' from FAST_ENEMY_TYPES
+TOPICS: enemies
