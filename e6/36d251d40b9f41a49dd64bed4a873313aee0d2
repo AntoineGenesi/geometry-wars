@@ -9,3 +9,4 @@ Conflict resolution: combined s44r5-05 (enemySpawner.clear, bulletPool.clear) wi
 s44r5-06 (surface.dispose, game.dispose) in both onNext and onReplay handlers.
 
 Key files: src/core/Game.map-transition.test.ts, src/main.ts, src/network-main.ts, ...-02-cube-mp-aim-broken-all-faces-7th-attempt.md, ...pill-hit-detection-enemies-inside-stationary.md, and others.
+TOPICS: ops
