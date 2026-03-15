@@ -15,3 +15,4 @@ Changes:
 - system-operations-log.md: noted upgrade with reason
 
 Key files: .claude/agents/triager.md, .claude/commands/add-task.md, .claude/commands/inbox.md, .claude/docs/system-operations-log.md, .claude/rules/sub-agents.md.
+TOPICS: upgrades
