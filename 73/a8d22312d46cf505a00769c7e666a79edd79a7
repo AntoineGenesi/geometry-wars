@@ -13,3 +13,4 @@ Fixed track-subagent.sh: graceful handling of missing SubagentStart entries,
 transcript-based description extraction on SubagentStop, agent_type preservation.
 Added cleanup-agent-registry.sh utility for manual maintenance.
 Improved session-start-todos.sh with started_at in agent display.
+TOPICS: bugfix,orchestration
