@@ -15,3 +15,4 @@ Paths touched: src/main.ts, src/systems/MasteryPointStore.ts,
 src/ui/WeaponMasteryScreen.ts (SP single-player path)
 
 Key files: src/main.ts, src/systems/MasteryPointStore.test.ts, src/systems/MasteryPointStore.ts, src/ui/WeaponMasteryScreen.test.ts, src/ui/WeaponMasteryScreen.ts, and others.
+TOPICS: upgrades
