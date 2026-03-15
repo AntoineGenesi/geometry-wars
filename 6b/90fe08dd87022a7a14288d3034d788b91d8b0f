@@ -8,3 +8,4 @@ Additional context from the commit body:
 - Provides visual indication of locked nodes (available to click)
 - Uses very dim opacity (0.08, 0.05) for subtle appearance
 - Improves UX when player has 0 points (nodes no longer appear 'blacked out')
+TOPICS: bloom,upgrades
