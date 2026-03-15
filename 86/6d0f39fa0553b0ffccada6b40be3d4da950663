@@ -12,3 +12,4 @@ game code path, not just mathematical analysis.
 
 Game state: Cube movement fix (deflection guard) committed. Aim verified
 working on all tested faces. User testing still needed for final confirm.
+TOPICS: aim
