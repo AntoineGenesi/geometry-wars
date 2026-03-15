@@ -1323,6 +1323,73 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   game.scene.add(companionManager.root);
   const companionHUD = new CompanionHUD();
 
+  // -- SP Health & Shield HUD --
+  const spHealthHUD = (() => {
+    const container = document.createElement('div');
+    container.id = 'sp-health-hud';
+    container.style.cssText = [
+      'position:fixed',
+      'bottom:18px',
+      'left:50%',
+      'transform:translateX(-50%)',
+      'display:flex',
+      'flex-direction:column',
+      'align-items:center',
+      'gap:3px',
+      'z-index:100',
+      'pointer-events:none',
+    ].join(';');
+
+    // HP bar background
+    const barBg = document.createElement('div');
+    barBg.style.cssText = [
+      'width:120px',
+      'height:6px',
+      'background:rgba(255,0,0,0.3)',
+      'border-radius:3px',
+      'overflow:hidden',
+    ].join(';');
+
+    const barFill = document.createElement('div');
+    barFill.style.cssText = [
+      'width:100%',
+      'height:100%',
+      'background:#00ff44',
+      'border-radius:3px',
+      'transition:width 0.15s',
+    ].join(';');
+    barBg.appendChild(barFill);
+    container.appendChild(barBg);
+
+    // Shield count label
+    const shieldLabel = document.createElement('div');
+    shieldLabel.style.cssText = [
+      'color:#4488ff',
+      'font:bold 11px monospace',
+      'letter-spacing:1px',
+      'text-shadow:0 0 6px #4488ff',
+      'min-height:14px',
+    ].join(';');
+    container.appendChild(shieldLabel);
+
+    document.body.appendChild(container);
+
+    return {
+      update(health: number, maxHealth: number, shields: number) {
+        const pct = Math.max(0, Math.min(100, (health / maxHealth) * 100));
+        barFill.style.width = `${pct}%`;
+        // Colour: green → yellow → red as HP drops
+        const r = pct < 50 ? 255 : Math.round((1 - (pct - 50) / 50) * 255);
+        const g = pct > 50 ? 255 : Math.round((pct / 50) * 255);
+        barFill.style.background = `rgb(${r},${g},0)`;
+        shieldLabel.textContent = shields > 0 ? `\u{1F6E1} ${shields}` : '';
+      },
+      dispose() {
+        container.remove();
+      },
+    };
+  })();
+
   // -- Camera controller (handles positioning, orbit, zoom) --
   const cameraController = new CameraController(game.camera);
   // Start zoomed in closer on mobile for better visibility of the player (3x more zoomed than desktop)
@@ -1574,6 +1641,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     weaponHUD.dispose();
     companionManager.dispose();
     companionHUD.dispose();
+    spHealthHUD.dispose();
     buffManager.dispose();
     buffHUD.dispose();
     shockArcRenderer.dispose();
@@ -1606,6 +1674,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     weaponHUD.dispose();
     companionManager.dispose();
     companionHUD.dispose();
+    spHealthHUD.dispose();
     buffManager.dispose();
     buffHUD.dispose();
     shockArcRenderer.dispose();
@@ -1986,6 +2055,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       playerWalker.normal,
       activeBuffs,
     );
+
+    // Update SP health/shield HUD
+    spHealthHUD.update(player.health, player.maxHealth, player.shieldCount);
 
     // Sync mutable state back from ctx.state to local variables
     isPaused = ctx.state.isPaused;

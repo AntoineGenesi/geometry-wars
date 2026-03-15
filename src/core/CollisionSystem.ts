@@ -404,11 +404,17 @@ export class CollisionSystem {
             // Screen flash handled by caller
             break;
           }
-          player.die();
-          particles.playerDeath(player.mesh.position);
-          screenShake.shake(0.5, 0.4);
-          getSoundEngine().play('playerDeath');
-          // Screen flash handled by caller
+          // Check player health/shield system before triggering death
+          const killed = player.takeDamage(25);
+          if (killed) {
+            player.die();
+            particles.playerDeath(player.mesh.position);
+            screenShake.shake(0.5, 0.4);
+            getSoundEngine().play('playerDeath');
+            // Screen flash handled by caller
+          }
+          // Whether killed or just damaged, we break so the player doesn't
+          // take multiple enemy hits in the same frame
           break;
         }
       }

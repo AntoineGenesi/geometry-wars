@@ -671,6 +671,61 @@ export class GameLoop {
       }
     }
 
+    // Update heal drop rate based on player HP (spawn more heals when player is hurt)
+    ctx.pickupSpawner.updateDropRatesForPlayerHealth(
+      ctx.player.health / ctx.player.maxHealth
+    );
+
+    // Update heal pickups (green orbs)
+    for (let i = ctx.pickupSpawner.healPickups.length - 1; i >= 0; i--) {
+      const hp = ctx.pickupSpawner.healPickups[i];
+      if (!hp.active) {
+        ctx.game.scene.remove(hp.mesh);
+        hp.dispose();
+        ctx.pickupSpawner.healPickups.splice(i, 1);
+        continue;
+      }
+      hp.update(dt, ctx.game.clock.totalTime);
+      hp.applySurfaceTransform(ctx.getTransform);
+
+      if (ctx.player.alive && hp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerPickupPos ?? ctx.playerWalker.position)) {
+        ctx.player.heal(25);
+        this.sound.play('weaponPickup', { volume: 0.6, pitch: 1.4 });
+        ctx.scorePopups.spawn(
+          ctx.player.mesh.position.clone(),
+          '+HP',
+          '#00ff44',
+          1.2,
+        );
+        hp.active = false;
+      }
+    }
+
+    // Update shield pickups (blue diamonds)
+    for (let i = ctx.pickupSpawner.shieldPickups.length - 1; i >= 0; i--) {
+      const sp = ctx.pickupSpawner.shieldPickups[i];
+      if (!sp.active) {
+        ctx.game.scene.remove(sp.mesh);
+        sp.dispose();
+        ctx.pickupSpawner.shieldPickups.splice(i, 1);
+        continue;
+      }
+      sp.update(dt, ctx.game.clock.totalTime);
+      sp.applySurfaceTransform(ctx.getTransform);
+
+      if (ctx.player.alive && sp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerPickupPos ?? ctx.playerWalker.position)) {
+        ctx.player.shieldCount++;
+        this.sound.play('weaponPickup', { volume: 0.6, pitch: 2.0 });
+        ctx.scorePopups.spawn(
+          ctx.player.mesh.position.clone(),
+          '+Shield',
+          '#4488ff',
+          1.2,
+        );
+        sp.active = false;
+      }
+    }
+
     // Update super state manager
     ctx.superManager.update(dt);
 

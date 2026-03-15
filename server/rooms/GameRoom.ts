@@ -10,6 +10,7 @@ import {
   SuperPickupState,
   BuffPickupState,
   HealthPickupState,
+  ShieldPickupState,
 } from '../schema/GameState';
 import fs from 'fs';
 import path from 'path';
@@ -1471,6 +1472,9 @@ export class GameRoom extends Room<GameState> {
         if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
           this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
         }
+        if (Math.random() < 0.05) {
+          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
+        }
       }
     });
 
@@ -1551,6 +1555,9 @@ export class GameRoom extends Room<GameState> {
         if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
           this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
         }
+        if (Math.random() < 0.05) {
+          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
+        }
       }
     });
 
@@ -1595,6 +1602,13 @@ export class GameRoom extends Room<GameState> {
         ? this.bulletDamageTracker.get(data.bulletId)!
         : damage;
       if (currentRemaining <= 0) return; // Bullet already spent
+
+      // Shield absorbs the bullet hit entirely (s44r18-09)
+      if (target.shieldCount > 0) {
+        target.shieldCount--;
+        this.broadcast('player_shield_absorbed', { playerId: target.id });
+        return; // Bullet consumed by shield
+      }
 
       // Apply only up to remaining budget (enables penetration for high-damage bullets)
       // Matches bullet_hit handler pattern: min(remaining, target.health)
@@ -1677,7 +1691,7 @@ export class GameRoom extends Room<GameState> {
     // Client detects proximity via world-space mesh distance (avoids sphere-approx UV errors).
     // Server trusts the message and applies the pickup effect.
     this.onMessage('collect_pickup', (client, data: {
-      pickupType: 'weapon' | 'buff' | 'super' | 'health';
+      pickupType: 'weapon' | 'buff' | 'super' | 'health' | 'shield';
       pickupId: string;
     }) => {
       if (this.state.roomPhase !== 'playing') return;
@@ -1754,7 +1768,7 @@ export class GameRoom extends Room<GameState> {
         this.logger.log(`[GameRoom] ${player.name} collected ${pickup.pickupType} super pickup (client-auth)`);
 
       } else if (data.pickupType === 'health') {
-        if (!this.pvpEnabled) return;
+        // Health pickups work in all modes (s44r18-09 — removed pvpEnabled gate)
         let targetIndex = -1;
         this.state.healthPickups.forEach((pickup, index) => {
           if (pickup.id === data.pickupId) targetIndex = index;
@@ -1767,7 +1781,21 @@ export class GameRoom extends Room<GameState> {
         this.state.healthPickups.splice(targetIndex, 1);
         const newHealth = Math.min(player.health + this.healthPickupHealAmount, player.maxHealth);
         player.health = newHealth;
-        this.logger.log(`[GameRoom] PvP: ${player.name} collected health pickup (+${this.healthPickupHealAmount} HP, now ${newHealth}) (client-auth)`);
+        this.logger.log(`[GameRoom] ${player.name} collected health pickup (+${this.healthPickupHealAmount} HP, now ${newHealth}) (client-auth)`);
+
+      } else if (data.pickupType === 'shield') {
+        let targetIndex = -1;
+        this.state.shieldPickups.forEach((pickup, index) => {
+          if (pickup.id === data.pickupId) targetIndex = index;
+        });
+        if (targetIndex < 0) return;
+        const pickup = this.state.shieldPickups[targetIndex];
+        if (!pickup.active) return;
+
+        pickup.active = false;
+        this.state.shieldPickups.splice(targetIndex, 1);
+        player.shieldCount++;
+        this.logger.log(`[GameRoom] ${player.name} collected shield pickup (now ${player.shieldCount} shields) (client-auth)`);
       }
     });
 
@@ -2262,6 +2290,7 @@ export class GameRoom extends Room<GameState> {
       player.alive = true;
       player.health = PLAYER_PVP_MAX_HEALTH;
       player.maxHealth = PLAYER_PVP_MAX_HEALTH;
+      player.shieldCount = 0;
       player.invincibilityTimer = 0;
       player.weaponType = startWeapon;
       player.weaponAmmo = startWeaponAmmo;
@@ -2850,6 +2879,9 @@ export class GameRoom extends Room<GameState> {
         if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
           this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
         }
+        if (Math.random() < 0.05) {
+          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
+        }
       }
     });
 
@@ -2949,6 +2981,9 @@ export class GameRoom extends Room<GameState> {
         if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
           this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
         }
+        if (Math.random() < 0.05) {
+          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
+        }
       }
     });
 
@@ -3028,6 +3063,9 @@ export class GameRoom extends Room<GameState> {
         }
         if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
           this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
+        }
+        if (Math.random() < 0.05) {
+          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
         }
       }
     }
@@ -3120,10 +3158,11 @@ export class GameRoom extends Room<GameState> {
     // Update buff pickups (age + despawn)
     this.updateBuffPickups(dt);
 
-    // Update health pickups (age + despawn) — only active in PvP mode
-    if (this.pvpEnabled) {
-      this.updateHealthPickups(dt);
-    }
+    // Update health pickups (age + despawn) — active in all modes since enemies deal HP damage
+    this.updateHealthPickups(dt);
+
+    // Update shield pickups (age + despawn)
+    this.updateShieldPickups(dt);
 
     // Wave-based enemy spawning (replaces old per-2s individual spawn)
     this.tickWaves(dt);
@@ -4748,18 +4787,39 @@ export class GameRoom extends Room<GameState> {
           wasHit = true;
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
 
-          // s44r18-05: In PvP/PvPvE modes, enemy body collision reduces the health bar.
-          // Without this, player.lives-- is invisible on the health bar — enemies appear harmless.
+          // Enemy body collision reduces the health bar in ALL modes (s44r18-09).
           // 25 HP per touch: 4 hits depletes a full health bar before a life is lost.
-          if (this.pvpEnabled) {
-            const ENEMY_PVP_BODY_DAMAGE = 25;
-            player.health = Math.max(0, player.health - ENEMY_PVP_BODY_DAMAGE);
-            this._checkHalfHealthPortalTrigger(player);
-            if (player.health <= 0) {
-              // Reset health for the next life — actual life loss handled below
-              player.health = player.maxHealth;
+          // Shield absorbs the hit entirely (no HP damage, no life loss).
+          {
+            const ENEMY_BODY_DAMAGE = 25;
+            if (player.shieldCount > 0) {
+              // Shield absorbed — player survives, no life loss
+              player.shieldCount--;
+              this.broadcast('player_shield_absorbed', { playerId: player.id });
+              wasHit = false; // Don't proceed to life loss below
+            } else {
+              player.health = Math.max(0, player.health - ENEMY_BODY_DAMAGE);
+              this._checkHalfHealthPortalTrigger(player);
+              // Spawn health pickup near hurt player if below threshold
+              if (
+                player.health > 0 &&
+                player.health / player.maxHealth < HEALTH_PICKUP_THRESHOLD
+              ) {
+                const lastSpawn = this.lastHealthPickupSpawnTime.get(player.id) ?? -Infinity;
+                if (this.state.gameTime - lastSpawn >= this.healthPickupFrequency) {
+                  this.spawnHealthPickup(player.surfaceU, player.surfaceV);
+                  this.lastHealthPickupSpawnTime.set(player.id, this.state.gameTime);
+                }
+              }
+              if (player.health <= 0) {
+                // Reset health for the next life — actual life loss handled below
+                player.health = player.maxHealth;
+              }
             }
           }
+
+          // If a shield absorbed the hit, skip all life-loss logic
+          if (!wasHit) break;
 
           // Infinite lives: skip lives decrement but still apply death penalties
           if (!this.state.infiniteLives) {
@@ -5656,6 +5716,7 @@ export class GameRoom extends Room<GameState> {
       const walker = this.surfaceManager.getWalker(id);
       if (walker) this.applyWalkerStateToPlayer(player, walker.getState());
       player.health = player.maxHealth;
+      player.shieldCount = 0; // Reset shields on respawn
       player.alive = true;
       this.playerInvincibility.set(id, PLAYER_PVP_INVINCIBILITY_DURATION);
       this.logger.log(`[GameRoom] PvP respawn: ${player.name} at (${respawnPos.u.toFixed(2)}, ${respawnPos.v.toFixed(2)})`);
@@ -6213,6 +6274,41 @@ export class GameRoom extends Room<GameState> {
     });
     for (let i = toRemove.length - 1; i >= 0; i--) {
       this.state.healthPickups.splice(toRemove[i], 1);
+    }
+  }
+
+  private nextShieldPickupId = 0;
+
+  private spawnShieldPickup(u: number, v: number) {
+    const pickup = new ShieldPickupState();
+    pickup.id = `sh${this.nextShieldPickupId++}`;
+    pickup.surfaceU = u + (Math.random() - 0.5) * HEALTH_PICKUP_SPAWN_RADIUS;
+    pickup.surfaceV = v + (Math.random() - 0.5) * HEALTH_PICKUP_SPAWN_RADIUS;
+    // Clamp away from poles
+    pickup.surfaceU = Math.max(0.02, Math.min(0.98, pickup.surfaceU));
+    pickup.surfaceV = Math.max(0.02, Math.min(0.98, pickup.surfaceV));
+    pickup.active = true;
+    pickup.age = 0;
+    this.state.shieldPickups.push(pickup);
+    this.logger.log(`[GameRoom] spawned shield pickup ${pickup.id} at (${pickup.surfaceU.toFixed(3)}, ${pickup.surfaceV.toFixed(3)})`);
+  }
+
+  private updateShieldPickups(dt: number) {
+    const SHIELD_PICKUP_LIFETIME = 12; // seconds
+    const toRemove: number[] = [];
+    this.state.shieldPickups.forEach((pickup, index) => {
+      if (!pickup.active) {
+        toRemove.push(index);
+        return;
+      }
+      pickup.age += dt;
+      if (pickup.age > SHIELD_PICKUP_LIFETIME) {
+        pickup.active = false;
+        toRemove.push(index);
+      }
+    });
+    for (let i = toRemove.length - 1; i >= 0; i--) {
+      this.state.shieldPickups.splice(toRemove[i], 1);
     }
   }
 
