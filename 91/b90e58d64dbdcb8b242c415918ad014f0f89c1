@@ -13,3 +13,4 @@ Fix: probe requestDevice() after adapter. If it fails, webgpu=false (accurate).
 3 regression tests. User testing needed to confirm WebGPU activates on hardware.
 
 Game state: 12 tasks merged this session. PvP peanut still in progress (iteration 3).
+TOPICS: webgpu
