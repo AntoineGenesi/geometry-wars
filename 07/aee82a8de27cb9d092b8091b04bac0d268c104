@@ -14,3 +14,4 @@ Additional context from the commit body:
 - Various playground and UI fixes
 
 Key files: CLAUDE.md, package.json, src/audio/BackgroundMusic.ts, src/audio/SoundEngine.ts, src/benchmark.ts, and others.
+TOPICS: surfaces
