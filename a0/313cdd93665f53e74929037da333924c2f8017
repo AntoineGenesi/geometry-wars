@@ -10,3 +10,4 @@ Additional context from the commit body:
 - Updated CLAUDE.md with selective research documentation protocol
 
 Key files: CLAUDE.md, package-lock.json, package.json, server/index.ts, vite.config.ts.
+TOPICS: docs,feature
