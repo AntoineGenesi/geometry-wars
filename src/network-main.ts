@@ -695,7 +695,7 @@ async function main() {
     bulletGeodesicState.clear();
     geomTargetUV.clear();
 
-    // Dispose portals
+    // Dispose portals (immediate — surface is changing, skip animation)
     if (networkPortals) {
       networkPortals[0].dispose();
       networkPortals[1].dispose();
@@ -703,6 +703,11 @@ async function main() {
       scene.remove(networkPortals[1].mesh);
       networkPortals = null;
     }
+    for (const p of dyingPortals) {
+      p.dispose();
+      scene.remove(p.mesh);
+    }
+    dyingPortals = [];
     syncedPortalAU = -1; syncedPortalAV = -1;
     syncedPortalBU = -1; syncedPortalBV = -1;
 
@@ -1351,6 +1356,8 @@ async function main() {
   // ── Portals (PvP/PvPvE only) ──────────────────────────────────────────────
   /** Live portal pair — null when portals are not active or surface not ready. */
   let networkPortals: [Portal, Portal] | null = null;
+  /** Portals running their despawn animation before being disposed. */
+  let dyingPortals: Portal[] = [];
   /** UV positions of portals synced from server state. */
   let syncedPortalAU = -1; let syncedPortalAV = -1;
   let syncedPortalBU = -1; let syncedPortalBV = -1;
@@ -3355,12 +3362,12 @@ async function main() {
         // Create portal pair if not yet created or if positions changed
         if (!networkPortals || aU !== syncedPortalAU || aV !== syncedPortalAV
             || bU !== syncedPortalBU || bV !== syncedPortalBV) {
-          // Dispose old portals
+          // Animate out old portals before replacing them
           if (networkPortals) {
-            networkPortals[0].dispose();
-            networkPortals[1].dispose();
-            scene.remove(networkPortals[0].mesh);
-            scene.remove(networkPortals[1].mesh);
+            for (const p of networkPortals) {
+              p.startDespawn();
+              dyingPortals.push(p);
+            }
           }
           // Portal color: inverse of grid color for contrast
           const gridColor: THREE.Color = (surf as any).gridColor
@@ -3381,11 +3388,11 @@ async function main() {
           syncedPortalBU = bU; syncedPortalBV = bV;
         }
       } else if (networkPortals) {
-        // Portals deactivated (e.g., new round with non-PvP mode)
-        networkPortals[0].dispose();
-        networkPortals[1].dispose();
-        scene.remove(networkPortals[0].mesh);
-        scene.remove(networkPortals[1].mesh);
+        // Portals deactivated — animate out instead of instant remove
+        for (const p of networkPortals) {
+          p.startDespawn();
+          dyingPortals.push(p);
+        }
         networkPortals = null;
         syncedPortalAU = -1; syncedPortalAV = -1;
         syncedPortalBU = -1; syncedPortalBV = -1;
@@ -6373,6 +6380,26 @@ async function main() {
         portal.applySurfaceTransform(transform);
         portal.updateSurfaceRing();
       }
+    }
+
+    // ── Dying portals: finish despawn animation then dispose ─────────────────
+    if (dyingPortals.length > 0) {
+      if (getTransform) {
+        const transform = getTransform;
+        for (const portal of dyingPortals) {
+          portal.update(dt);
+          portal.applySurfaceTransform(transform);
+          portal.updateSurfaceRing();
+        }
+      }
+      dyingPortals = dyingPortals.filter((portal) => {
+        if (portal.isDespawnComplete) {
+          portal.dispose();
+          scene.remove(portal.mesh);
+          return false;
+        }
+        return true;
+      });
     }
 
     // Animate server-synced weapon pickups (spin, bob, spawn indicator).
