@@ -11,3 +11,4 @@ Additional context from the commit body:
 - vs-card-label text: #88ccdd → #bbddff
 
 All button and label text now has improved contrast against dark backgrounds.
+TOPICS: bugfix
