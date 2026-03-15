@@ -11,3 +11,4 @@ Fix: Add all-players-dead check in network-main.ts death handler and server
 game loop. When detected, immediately trigger voting phase transition.
 
 Files: src/network-main.ts
+TOPICS: multiplayer
