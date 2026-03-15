@@ -16,7 +16,7 @@ import { GlowTrail } from './effects/GlowTrail';
 import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
 import { ScoreManager } from './core/ScoreManager';
 import { GameMode, GameModeType, ModePhase, MODE_DEFAULTS } from './core/GameMode';
-import { createGameMode, type QuickGameModeType } from './core/modes';
+import { createGameMode, type QuickGameModeType, QUICK_GAME_MODES } from './core/modes';
 import type { WaveDefinition, LevelDefinition } from './core/LevelData';
 import { ADVENTURE_LEVELS } from './core/LevelData';
 import { SuperStateManager, SuperStateType } from './weapons/SuperState';
@@ -1501,6 +1501,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         effectiveDamage: damageMultiplier !== 1 ? weaponConfig.damage * damageMultiplier : undefined,
         effectiveFireRate: fireRateMultiplier !== 1 ? weaponConfig.fireRate * fireRateMultiplier : undefined,
       },
+      currentMode: (() => {
+        const spMode = (quickGameModeType === 'pvp' || quickGameModeType === 'pvpve') ? undefined : quickGameModeType;
+        const entry = QUICK_GAME_MODES.find(m => m.type === spMode);
+        return entry ? `${entry.icon} ${entry.name.toUpperCase()}` : undefined;
+      })(),
     });
     pauseMenu.setPerformanceHTML(debugOverlay.getSummaryHTML());
   }
@@ -2223,6 +2228,22 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     };
     quickGameMode.onStart(gameModeContext);
     ctx.quickGameMode = quickGameMode;
+  }
+
+  // -- Game mode HUD indicator --
+  // Show current mode in the top-left badge so the player always knows what mode they're in.
+  const modeEntry = QUICK_GAME_MODES.find(m => m.type === spModeType);
+  if (modeEntry) {
+    UIHelpers.setGameMode(`${modeEntry.icon} ${modeEntry.name.toUpperCase()}`);
+  } else {
+    // Campaign level — show the level's mode type (e.g., SURVIVAL, CHECKPOINT)
+    // For plain 'waves' campaign levels, use the waves entry from QUICK_GAME_MODES for consistent display
+    const wavesEntry = QUICK_GAME_MODES.find(m => m.type === 'waves');
+    const campaignMode = (level.mode || 'waves').replace(/_/g, ' ').toUpperCase();
+    const modeLabel = campaignMode === 'WAVES' && wavesEntry
+      ? `${wavesEntry.icon} ${wavesEntry.name.toUpperCase()}`
+      : campaignMode;
+    UIHelpers.setGameMode(modeLabel);
   }
 
   // -- Start --

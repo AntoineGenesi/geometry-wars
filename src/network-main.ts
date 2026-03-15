@@ -637,7 +637,7 @@ async function main() {
   // Note: #multiplier-display is hidden separately below.
   ['lives-display', 'bombs-display', 'weapon-display', 'combo-display',
    'boost-display', 'timer-display', 'level-name-display', 'player-level-display',
-   'boss-health-bar'].forEach(id => {
+   'game-mode-display', 'boss-health-bar'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
@@ -1606,7 +1606,7 @@ async function main() {
   const modeIndicatorEl = document.createElement('div');
   modeIndicatorEl.id = 'game-mode-indicator';
   modeIndicatorEl.style.cssText =
-    'position:fixed;top:50px;left:10px;' +
+    'position:fixed;bottom:80px;left:10px;' +
     `color:#ff8;font:${mobile ? '12px' : '14px'} monospace;` +
     'text-shadow:0 0 8px #ff8;z-index:100;' +
     'background:rgba(0,0,0,0.4);padding:4px 10px;border-radius:4px;' +
@@ -1614,13 +1614,19 @@ async function main() {
     'letter-spacing:1px;';
   document.body.appendChild(modeIndicatorEl);
 
+  const MODE_DISPLAY_LABELS: Record<string, string> = {
+    waves: '〰️ WAVES',
+    king: '👑 KING',
+    sniper: '🎯 SNIPER',
+    rainbow: '🌈 RAINBOW',
+    claustrophobia: '🔴 CLAUSTROPHOBIA',
+    pvp: '🔫 PvP',
+    pvpve: '🌊 PvPvE',
+  };
+
   /** Update the mode indicator with the current game mode. */
-  function updateModeIndicator(mode: string, isPvpEnabled: boolean): void {
-    let modeLabel = mode.toUpperCase();
-    if (isPvpEnabled) {
-      modeLabel = mode === 'pvpve' ? 'PvPvE MODE' : mode === 'pvp' ? 'PvP MODE' : modeLabel;
-    }
-    modeIndicatorEl.textContent = modeLabel;
+  function updateModeIndicator(mode: string): void {
+    modeIndicatorEl.textContent = MODE_DISPLAY_LABELS[mode] ?? mode.toUpperCase();
   }
 
   // ---- Game mode selector (host only, shown in lobby) ----
@@ -2277,6 +2283,7 @@ async function main() {
       },
       buffs,
       currentScore: localPlayerState?.score ?? 0,
+      currentMode: MODE_DISPLAY_LABELS[latestGameMode] ?? latestGameMode.toUpperCase(),
       totalKills: totalKillCounter.getTotalKills(),
       weapon: {
         name: weaponConfig?.name ?? 'Standard',
@@ -3223,7 +3230,7 @@ async function main() {
 
     // Update game mode indicator
     if (state.gameMode && latestGameMode) {
-      updateModeIndicator(latestGameMode, latestPvpEnabled);
+      updateModeIndicator(latestGameMode);
       // Show mode indicator during gameplay
       modeIndicatorEl.style.display = state.gameStarted ? 'block' : 'none';
     }
