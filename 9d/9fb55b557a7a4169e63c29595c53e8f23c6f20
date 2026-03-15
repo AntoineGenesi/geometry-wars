@@ -7,3 +7,4 @@ Additional context from the commit body:
 - StartMenu: oval button layout on left, 3D model preview center/right
 - MenuBackground: enhanced with real game entity spawning and effects
 - Updated E2E tests for new menu structure
+TOPICS: feature
