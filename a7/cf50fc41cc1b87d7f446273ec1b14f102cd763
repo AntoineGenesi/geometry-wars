@@ -10,3 +10,4 @@ if needed (max 5 attempts) → log each attempt in RESULTS.md.
 
 Adds attempt-based session directory structure and RESULTS.md format
 with per-attempt analysis and verdicts.
+TOPICS: docs,testing
