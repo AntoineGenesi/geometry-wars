@@ -13,3 +13,4 @@ Additional context from the commit body:
 - 193 new tests passing (29 LOD + 38 bullet + 52 adaptive + 20 perf + 54 interest)
 
 Key files: server/systems/InterestManager.test.ts, server/systems/InterestManager.ts, server/systems/PriorityQueue.ts, src/rendering/AdaptiveQuality.test.ts, src/rendering/AdaptiveQuality.ts, and others.
+TOPICS: bullet
