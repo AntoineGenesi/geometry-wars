@@ -14,3 +14,4 @@ Additional context from the commit body:
   regression tests for custom initialSegments and clamping behavior
 
 Files touched: Snake.ts, EnemySpawner.ts, Snake.test.ts
+TOPICS: enemies
