@@ -1275,6 +1275,12 @@ async function main() {
   const _spQSpin = new THREE.Quaternion();
   const _spSpinAxis = new THREE.Vector3(0, 1, 0);
 
+  // Pre-allocated temps for shield pickup animation (zero per-frame allocations — s44r19-01 fix)
+  const _shMat4 = new THREE.Matrix4();
+  const _shQSurface = new THREE.Quaternion();
+  const _shQSpin = new THREE.Quaternion();
+  const _shSpinAxis = new THREE.Vector3(0, 1, 0);
+
   // -- Spawn warning rings (LAN visual parity) --
   // Created when 'pre_spawn' message arrives; cleaned up when enemy appears or times out.
   interface SpawnWarningRing {
@@ -6604,11 +6610,11 @@ async function main() {
         const { position, normal, tangent, bitangent } = transform(visual.surfaceU, visual.surfaceV);
         const bob = Math.sin(totalTime * 3 + visual.spawnTime * 0.7) * 0.06;
         visual.mesh.position.copy(position).addScaledVector(normal, 0.42 + bob);
-        // Spin the octahedron
-        const mat4 = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
-        const qSurface = new THREE.Quaternion().setFromRotationMatrix(mat4);
-        const qSpin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -totalTime * 1.5);
-        visual.mesh.quaternion.copy(qSurface).multiply(qSpin);
+        // Spin the octahedron — reuse pre-allocated temp objects (no GC pressure, s44r19-01 fix)
+        _shMat4.makeBasis(tangent, normal, bitangent);
+        _shQSurface.setFromRotationMatrix(_shMat4);
+        _shQSpin.setFromAxisAngle(_shSpinAxis, -totalTime * 1.5);
+        visual.mesh.quaternion.copy(_shQSurface).multiply(_shQSpin);
         visual.mesh.userData.ageFactor = 1.0;
         visual.mesh.userData.surfaceU = visual.surfaceU;
         visual.mesh.userData.surfaceV = visual.surfaceV;
