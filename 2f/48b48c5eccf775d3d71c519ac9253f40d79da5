@@ -13,3 +13,4 @@ Additional context from the commit body:
 - 40 new tests covering defaults, save/load, presets, edge cases
 
 Key files: package-lock.json, package.json, src/ui/GPUBenchmark.ts, src/ui/PauseMenu.ts, src/ui/SettingsMenu.test.ts, and others.
+TOPICS: feature,performance,rendering,settings,webgpu
