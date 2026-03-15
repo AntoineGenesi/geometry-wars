@@ -13,3 +13,4 @@ Additional context from the commit body:
   EnemyInstanceManager — code path: main.ts → GameLoop.ts → updateInstancesWithLOD
 
 Key files: src/core/GameLoop.ts, src/rendering/EnemyInstanceManager.ts, src/ui/SettingsMenu.test.ts, src/ui/SettingsMenu.ts.
+TOPICS: feature
