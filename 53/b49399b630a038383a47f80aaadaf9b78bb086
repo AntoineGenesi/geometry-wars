@@ -14,3 +14,4 @@ Additional context from the commit body:
 Files: src/ui/PvPvELeaderboard.ts, src/ui/GameOverScreen.ts, src/network-main.ts
 
 Key files: DISCOVERIES.md, src/network-main.ts, src/ui/GameOverScreen.ts, src/ui/PvPvELeaderboard.ts.
+TOPICS: scoring
