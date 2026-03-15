@@ -8,3 +8,4 @@ Weapon playground spinning fix verified by user testing (Level 4).
 Includes test harnesses, verification suites, and misc tooling.
 
 Key files: .claude/rules/verification-protocol.md, .claude/scripts/orchestrator.sh, Play Game.bat, src/entities/enemies/ApproachGlow.ts, src/entities/enemies/BrightnessVariants.test.ts, and others.
+TOPICS: aim,ops
