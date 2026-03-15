@@ -13,3 +13,4 @@ Three additions:
   reads+writes them, triager checks existing discoveries during triage
 
 Key files: .claude/agents/implementer.md, .claude/agents/reviewer.md, .claude/agents/triager.md, .claude/skills/inbox/SKILL.md, DISCOVERIES.md, and others.
+TOPICS: feature,orchestration
