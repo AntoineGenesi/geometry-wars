@@ -4,3 +4,4 @@ This commit modifies 1 file (+68/-43 lines), touching 1 surface geometry file.
 This performance commit improves runtime efficiency. The game targets 60fps on typical hardware with complex enemy AI, instanced mesh rendering, and real-time physics on non-Euclidean surfaces.
 
 Performance is critical in this game: it targets 60fps with complex enemy AI (12+ enemy types), instanced mesh rendering via Three.js InstancedMesh, and real-time physics calculations for non-Euclidean surfaces. The project has a dedicated GPU benchmark and full-game stress-test benchmark that measures frame time, draw calls, and enemy count scaling. Performance changes are validated against these benchmarks to ensure regressions are caught.
+TOPICS: hit-detection
