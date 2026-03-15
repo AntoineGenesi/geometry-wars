@@ -13,3 +13,4 @@ adjusting scoreManager.awardKill() and the score popup value.
 MP fix: Applied multiplier to scorePopups.spawnScore() in network-main.ts onStateChange
 kill processing. Score is server-authoritative so the total won't reflect it, but the
 floating point popup shows the correct multiplied value as visual feedback.
+TOPICS: scoring
