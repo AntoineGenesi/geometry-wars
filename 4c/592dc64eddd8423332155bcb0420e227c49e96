@@ -13,3 +13,4 @@ Replace [ES]/[FR]/[DE] placeholder stubs with proper translations:
 
 Covers: common, gameOver, levelComplete, controls, voting, menu, languages,
 pauseMenu, settings (gpu/graphics/performance/audio/gameplay), hud, mastery
+TOPICS: feature
