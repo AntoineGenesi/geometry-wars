@@ -10,3 +10,4 @@ s44g-04: Weapons in MP — special weapon bullets rendering as blaster, HUD mids
 s44g-05: EPIC map spawn — removed double-scaling of server world positions
 
 Key files: .claude/locks/s44f-05-pickup-radius-too-small.lock, .../s44f-08-peanut-map-bullet-origin-offset.lock, .../locks/s44f-09-pill-map-movement-broken.lock, .../s44f-05-pickup-radius-too-small.prompt, .../s44f-08-peanut-map-bullet-origin-offset.prompt, and others.
+TOPICS: enemies
