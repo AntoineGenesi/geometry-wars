@@ -15,3 +15,4 @@ Additional context from the commit body:
 - Test result: 832 points across 13 surfaces, 0 stuck, passes in ~17s
 
 Key files: .../SPGridRunner.integration.test.ts, tests/grid-traversal/SPGridRunner.ts, tests/grid-traversal/SurfaceGridWalker.test.ts, tests/grid-traversal/SurfaceGridWalker.ts.
+TOPICS: surfaces
