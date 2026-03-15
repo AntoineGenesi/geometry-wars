@@ -14,3 +14,4 @@ Additional context from the commit body:
   20% to 50% for distanceToSquared vs distanceTo micro-benchmark (flaky failure)
 
 Key files: src/entities/Companion.ts, src/test/performance-benchmark.test.ts, src/test/visual-integration.test.ts, tasks/fix-broken-tests.md.
+TOPICS: bugfix,performance,regression,testing
