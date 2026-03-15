@@ -11,3 +11,4 @@ Additional context from the commit body:
 - hideLocalMenu() now also clears localMenuEl display
 
 Files: src/network-main.ts
+TOPICS: bugfix
