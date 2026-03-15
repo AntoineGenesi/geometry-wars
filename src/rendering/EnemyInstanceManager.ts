@@ -400,7 +400,8 @@ export class EnemyInstanceManager {
             continue;
           } else {
             // Dim behavior: render at 0.3 opacity so the entity is visible but clearly on the far side
-            batch.opacityAttribute.setX(highIndex, 0.3);
+            // s44r18-20: opacityAttribute stays 1.0 to avoid visibility² darkening (see setInstanceVisibility).
+            batch.opacityAttribute.setX(highIndex, 1.0);
             // RGB dimming for WebGPU compatibility
             const ci = highIndex * 3;
             _tempColor.setRGB(
@@ -536,8 +537,12 @@ export class EnemyInstanceManager {
     const index = batch.enemyToIndex.get(enemy);
     if (index === undefined) return;
 
-    // Write to the per-instance opacity attribute (read by fragment shader on WebGL)
-    batch.opacityAttribute.setX(index, visibility);
+    // s44r18-20: RGB-only dimming — set opacityAttribute to binary (1.0 visible / 0.0 hidden).
+    // Previous code: opacityAttribute=visibility AND instanceColor=baseColor×visibility → output=baseColor×visibility²
+    // At visibility=0.40: 0.40²=16% effective brightness → near-invisible on dark background.
+    // Fix: opacityAttribute is binary; only instanceColor provides dimming (linear, not squared).
+    // At visibility=0.40: output=baseColor×0.40 = 40% brightness — dim but clearly visible.
+    batch.opacityAttribute.setX(index, visibility > 0 ? 1.0 : 0.0);
 
     // RGB-based dimming: modulate instanceColor by visibility.
     // This works on BOTH WebGL and WebGPU (onBeforeCompile alpha is WebGL-only).
@@ -857,7 +862,9 @@ export class EnemyInstanceManager {
     const slotIndex = lodBatch.enemyToIndex.get(enemy);
     if (slotIndex === undefined) return;
 
-    lodBatch.opacityAttribute.setX(slotIndex, visibility);
+    // s44r18-20: RGB-only dimming — binary opacityAttribute to avoid visibility² darkening.
+    // See setInstanceVisibility for full rationale.
+    lodBatch.opacityAttribute.setX(slotIndex, visibility > 0 ? 1.0 : 0.0);
 
     // RGB-based dimming for LOD batches (WebGPU compatibility).
     // Use the enemy type's base color since LOD batches are shared across types.
