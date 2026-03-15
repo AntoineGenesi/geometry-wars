@@ -13,3 +13,4 @@ Regression tests: snake-pill-surface-spawn.test.ts
 Reviewer verdict: VERIFIED
 
 Key files: src/entities/enemies/EnemySpawner.ts, src/entities/enemies/GiantSnake.ts, src/entities/enemies/Snake.ts, .../enemies/snake-pill-surface-spawn.test.ts, ...-06-pill-map-enemies-spawning-inside-surface.md.
+TOPICS: surfaces
