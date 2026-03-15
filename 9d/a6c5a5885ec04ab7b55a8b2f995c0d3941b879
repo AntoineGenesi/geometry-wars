@@ -17,3 +17,4 @@ Additional context from the commit body:
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 
 Key files: TODO.md, decisions/lan-deep-audit-2026-02-11.md, server/rooms/GameRoom.ts, src/network-main.ts, tasks/lan-quick-wins-audit.md.
+TOPICS: bullet,dimming multiplayer,opacity
