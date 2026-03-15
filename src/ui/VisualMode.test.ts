@@ -1,7 +1,7 @@
 /**
  * Tests for VisualMode persistence (pixelated vs modern).
  *
- * Regression test: loadVisualMode defaults to 'pixelated', saveVisualMode persists.
+ * Regression test: loadVisualMode defaults to 'modern', saveVisualMode persists.
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -35,8 +35,8 @@ afterEach(() => {
 
 describe('VisualMode persistence', () => {
   describe('loadVisualMode', () => {
-    it('returns pixelated by default when nothing is saved', () => {
-      expect(loadVisualMode()).toBe('pixelated');
+    it('returns modern by default when nothing is saved', () => {
+      expect(loadVisualMode()).toBe('modern');
     });
 
     it('returns pixelated when explicitly saved as pixelated', () => {
@@ -49,12 +49,12 @@ describe('VisualMode persistence', () => {
       expect(loadVisualMode()).toBe('modern');
     });
 
-    it('falls back to pixelated for unknown stored values', () => {
+    it('falls back to modern for unknown stored values', () => {
       store['gw3d-visual-mode'] = 'legacy';
-      expect(loadVisualMode()).toBe('pixelated');
+      expect(loadVisualMode()).toBe('modern');
     });
 
-    it('falls back to pixelated when localStorage throws', () => {
+    it('falls back to modern when localStorage throws', () => {
       vi.stubGlobal('localStorage', {
         getItem: () => { throw new Error('unavailable'); },
         setItem: () => {},
@@ -63,7 +63,7 @@ describe('VisualMode persistence', () => {
         length: 0,
         key: () => null,
       });
-      expect(loadVisualMode()).toBe('pixelated');
+      expect(loadVisualMode()).toBe('modern');
     });
   });
 

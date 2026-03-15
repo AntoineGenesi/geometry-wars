@@ -98,7 +98,7 @@ const VISUAL_MODE_KEY = 'gw3d-visual-mode';
 /** Pixelated = half-res bloom (retro look). Modern = full-res bloom (crisp). */
 export type VisualMode = 'pixelated' | 'modern';
 
-/** Load the saved visual mode. Defaults to 'pixelated' (current behaviour). */
+/** Load the saved visual mode. Defaults to 'modern' (non-pixelated high-graphics). */
 export function loadVisualMode(): VisualMode {
   try {
     const raw = localStorage.getItem(VISUAL_MODE_KEY);
@@ -106,7 +106,7 @@ export function loadVisualMode(): VisualMode {
   } catch {
     // localStorage unavailable
   }
-  return 'pixelated';
+  return 'modern';
 }
 
 /** Persist the chosen visual mode. */
