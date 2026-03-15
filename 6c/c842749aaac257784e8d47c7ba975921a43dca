@@ -12,3 +12,4 @@ Additional context from the commit body:
 5. session-report-programmatic-tests — HTML report for when user wakes up
 
 Key files: inbox/2026-02-12_2300.md, tasks/comprehensive-behavior-tests.md, tasks/game-debug-api.md, tasks/programmatic-test-harness-v2.md, tasks/session-report-programmatic-tests.md, and others.
+TOPICS: feature,testing
