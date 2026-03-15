@@ -11,3 +11,4 @@ Additional context from the commit body:
 Game state: Portal ring now conforms to surface like King of the Hill zones.
 
 Key files: ...44r6b-09-pvpve-portal-ring-curved-on-surface.md, src/entities/Portal.ts, src/network-main.ts, src/rendering/PortalSurfaceMaterial.ts, ...44r6b-09-pvpve-portal-ring-curved-on-surface.md.
+TOPICS: portals,surfaces
