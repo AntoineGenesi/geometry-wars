@@ -8,3 +8,4 @@ HUMAN_TEST.md: single file for user to verify all pending changes (LAN,
 refactor, game modes, sound, perf, visuals, difficulty, WebGPU).
 CLAUDE.md: two new mandatory rules — update HUMAN_TEST.md on task
 completion, write completion summaries to task files for audit trail.
+TOPICS: docs,orchestration
