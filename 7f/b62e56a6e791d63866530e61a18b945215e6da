@@ -13,3 +13,4 @@ Additional context from the commit body:
 - PNGs gitignored, RESULTS.md files committed for historical analysis
 
 Key files: CLAUDE.md, .../2026-02-12_0015_adventure-mode/RESULTS.md, .../2026-02-12_0030_play-session/RESULTS.md, tests/visual/play-game.mjs.
+TOPICS: feature,testing
