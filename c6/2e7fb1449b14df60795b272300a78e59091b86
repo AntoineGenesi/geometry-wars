@@ -8,3 +8,4 @@ Additional context from the commit body:
 - Peanut waist speed: 20 steps across waist, each displacement within 20%-300% of mean
 - These were required by acceptance criteria but missing from initial commit
 - Mark task s44-epic-02 as Done
+TOPICS: player-movement,surfaces
