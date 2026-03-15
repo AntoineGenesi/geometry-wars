@@ -13,3 +13,4 @@ Additional context from the commit body:
 - Level 5 verification achieved: real browser + programmatic state + screenshots
 
 Key files: tasks/programmatic-test-harness-v2.md, tests/programmatic/BrowserTestHarness.mjs, tests/programmatic/README.md, tests/programmatic/demo-deep-gameplay.mjs, tests/programmatic/smoke-test.mjs.
+TOPICS: testing
