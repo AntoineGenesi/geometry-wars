@@ -12,3 +12,4 @@ Game state: SP fixes merged (cube aim, pill hit detection). Mobius seam fix in p
 Pickup collection fix pending merge. This adds MP testing infrastructure.
 
 Key files: src/test/MPRealGameTestHarness.ts, src/test/mp-cube-aim-real-game.test.ts, src/test/mp-hit-detection-harness.test.ts, src/test/mp-movement-surfaces.test.ts, tasks/s44r4-05-mp-real-game-test-harness.md.
+TOPICS: multiplayer,testing
