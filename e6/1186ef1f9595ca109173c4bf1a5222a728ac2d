@@ -19,3 +19,4 @@ Tests: server/rooms/GameRoom.pvp-win-conditions.test.ts (27 tests)
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 
 Key files: server/rooms/GameRoom.pvp-win-conditions.test.ts, server/rooms/GameRoom.ts, server/schema/GameState.ts, server/shared/GameSettings.ts, src/network-main.ts, and others.
+TOPICS: scoring
