@@ -10,3 +10,4 @@ ForEachable<T> interface that captures the actual usage pattern. This
 eliminates all unsafe casts in convertState() while preserving the
 performance optimization of passing ArraySchema objects directly
 (avoiding Array.from() copies at 30Hz).
+TOPICS: bugfix
