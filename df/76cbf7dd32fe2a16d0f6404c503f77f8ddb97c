@@ -14,3 +14,4 @@ Additional context from the commit body:
 - Research: Web vs Unity/Godot, distributed compute architecture
 
 Key files: reports/session-report.html, research/distributed-compute-research.md, research/web-vs-engines-research.md, src/agents/SurfaceAgent.test.ts, src/agents/SurfaceAgent.ts, and others.
+TOPICS: docs,feature,performance,research,testing
