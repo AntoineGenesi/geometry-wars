@@ -7,3 +7,4 @@ The merged work covers: client uses server world-space positions exclusively.
 Key files: docs/HUMAN_TEST.md, src/network-main.ts, ...4-epic-08-mp-movement-glitch.regression.test.ts, tasks/s44-epic-08-fix-mp-movement-glitch.md.
 
 Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
+TOPICS: multiplayer
