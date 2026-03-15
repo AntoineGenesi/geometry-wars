@@ -7,3 +7,4 @@ The merged work covers: pole metric factor scales barrel offset.
 Additional context from the commit body:
 Game state: All 6 tasks merged this session. SP all maps working. MP rubber banding, enemy sync,
 bullet penetration fixed. Cube top/bottom shooting fixed. Test harness (28 tests) operational.
+TOPICS: bullet,surfaces
