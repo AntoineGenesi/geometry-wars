@@ -20,13 +20,15 @@ const TORUS_TUBULAR_SEG = 48;
 
 // Surface-conforming ring band dimensions (world units, matches server detection radius)
 const SURFACE_RING_INNER = 0.85; // inner edge of surface ring
-const SURFACE_RING_OUTER = 1.55; // outer edge = just beyond PORTAL_WORLD_RADIUS
+const SURFACE_RING_OUTER = 1.32; // outer edge = torus outer edge (TORUS_RADIUS + TORUS_TUBE)
 
 // Disc geometry
 const DISC_SEGMENTS = 48;
 
-// Portal collision radius in world space (used by server)
-export const PORTAL_WORLD_RADIUS = 1.5;
+// Portal collision radius in world space (used by server).
+// Must be inside the visible torus ring so players walk INTO the portal before teleporting.
+// Torus inner edge ≈ 1.08, outer edge ≈ 1.32 — trigger at 0.8 is well inside the ring.
+export const PORTAL_WORLD_RADIUS = 0.8;
 
 // Flat surface disc (trigger zone indicator)
 const SURFACE_DISC_RADIUS = PORTAL_WORLD_RADIUS; // matches server detection radius exactly
@@ -175,12 +177,11 @@ export class Portal {
     // so Y = surface normal, the disc will be flat on the surface automatically.
     this.mesh.add(this._disc);
 
-    // ── Surface trigger disc — flat ring showing the detection zone ───────────
-    // Matches server PORTAL_WORLD_RADIUS exactly so players know the exact entry area.
-    // Ring (donut) shape avoids obscuring the swirling interior effect.
-    const surfaceDiscGeo = new THREE.RingGeometry(
-      TORUS_RADIUS * 1.05,       // inner edge just outside the torus rim
-      SURFACE_DISC_RADIUS,       // outer edge = server detection radius
+    // ── Surface trigger disc — soft glow showing the detection zone ──────────
+    // Filled circle inside the portal ring. With PORTAL_WORLD_RADIUS = 0.8 (< TORUS_RADIUS = 1.2)
+    // this sits entirely within the torus, so it adds to the interior glow without extending outside.
+    const surfaceDiscGeo = new THREE.CircleGeometry(
+      SURFACE_DISC_RADIUS,       // filled circle = trigger zone inside torus ring
       SURFACE_DISC_SEGMENTS,
     );
     const surfaceDiscMat = new THREE.MeshBasicMaterial({

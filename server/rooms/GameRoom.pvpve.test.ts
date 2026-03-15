@@ -297,6 +297,19 @@ describe('PvPvE — enemy damage to players (unaffected by friendlyFire)', () =>
     expect(p1.health).toBe(PLAYER_PVP_MAX_HEALTH - 1);
     expect(p2.health).toBe(PLAYER_PVP_MAX_HEALTH - 1);
   });
+
+  it('s44r18-05 regression: enemy touch reduces player.health (not just player.lives)', () => {
+    // Bug: GameRoom.checkCollisions() only decremented player.lives on enemy collision,
+    // so health bar always stayed at 100% in PvPvE — enemies appeared to deal no damage.
+    // Fix: pvpEnabled path now reduces player.health by ENEMY_PVP_BODY_DAMAGE (25 HP).
+    const player = makePlayer('p1', 0.3, 0.3);
+    const enemy = makeEnemy('e1', 'grunt', 0.3, 0.3);
+
+    applyEnemyToPlayer(enemy, player, 25); // mirrors ENEMY_PVP_BODY_DAMAGE constant
+
+    expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH - 25);
+    expect(player.health).toBeLessThan(PLAYER_PVP_MAX_HEALTH); // health bar must decrease
+  });
 });
 
 // ---------------------------------------------------------------------------
