@@ -13,3 +13,4 @@ Camera was stuck bottom-up after respawning on opposite cube face.
 User testing required (Level 1 verification).
 
 Key files: server/rooms/GameRoom.ts, src/core/CollisionSystem.ts, src/main.ts, src/network-main.ts, ...-hit-detection-still-sensitive-camera-broken.md.
+TOPICS: camera,hit-detection multiplayer
