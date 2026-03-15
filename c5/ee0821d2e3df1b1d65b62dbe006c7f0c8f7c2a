@@ -7,3 +7,4 @@ Additional context from the commit body:
 Game state: SP working on most maps. MP surfaces partially fixed (s44r5). Cube aim fixed
 but hit detection broken. Mobius movement good but enemies/weapons have issues. Pill
 bullet-hit works but enemy-hit too generous + inside surface spawning bug.
+TOPICS: dimming,enemies hit-detection,invisible-enemies multiplayer,opacity surfaces,testing upgrades,webgpu
