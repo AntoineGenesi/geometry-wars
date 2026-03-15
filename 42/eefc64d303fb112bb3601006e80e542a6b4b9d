@@ -8,3 +8,4 @@ Additional context from the commit body:
 - src/test/s34b-lan-position-reconciliation.regression.test.ts: Update calculation comment to use 0.105
 
 The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
+TOPICS: ops
