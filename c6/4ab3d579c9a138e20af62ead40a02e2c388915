@@ -17,3 +17,4 @@ updateZoneVisual) — no changes needed there.
 
 Files: src/core/modes/ClaustrophobiaMode.ts, src/test/game-modes.test.ts
 Regression test: 'REGRESSION: boundary ring vertices scale with map size'
+TOPICS: bugfix,surfaces
