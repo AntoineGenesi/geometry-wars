@@ -8,3 +8,4 @@ Additional context from the commit body:
 - SP client-side (Player.ts): PLAYER_SPEED 0.08→0.088 UV/s
 - Addresses user feedback: 'movement is still a bit slow' (s44b-09)
 - Change is noticeable but not overpowering (10% increase)
+TOPICS: bugfix,single-player
