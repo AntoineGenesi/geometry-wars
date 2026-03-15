@@ -7,3 +7,4 @@ Additional context from the commit body:
 - ScorePopupManager: floating score text at enemy death positions with color scaling
 - Enemy hit flash: white emissive pulse for 80ms on damage
 - Multiplier HUD color: scales through green/yellow/orange/magenta at thresholds
+TOPICS: scoring
