@@ -18,3 +18,4 @@ Also: wired Splitter.onSplitterDeath callback for cascading enemy splits,
 added _nextSplitterGen to EnemySpawner for generation-aware spawning.
 
 Key files: decisions/lan-rewrite-2026-02-09.md, src/entities/enemies/EnemySpawner.ts, src/main.ts, src/network-main.ts, tasks/lan-reuse-game-class.md.
+TOPICS: multiplayer
