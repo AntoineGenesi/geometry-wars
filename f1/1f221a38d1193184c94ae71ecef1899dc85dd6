@@ -11,3 +11,4 @@ Deep trace of collision pipeline:
 - All positions confirmed world-space
 - Most likely fix: revert player-enemy to enemy.position (on surface) comparison
 - Dead ends documented to avoid re-investigation
+TOPICS: hit-detection,surfaces
