@@ -6,3 +6,4 @@ Session checkpoint commits capture the current state of the game and pending wor
 Key files: .claude/locks/port-registry, .../s43-02-mp-bullet-hit-detection-broken.lock, .../s44-epic-01-surface-geometry-builder.lock, .../locks/s44-epic-04-schema-protocol-changes.lock, .../locks/s44-epic-08-fix-mp-movement-glitch.lock, and others.
 
 Session checkpoint commits serve as restore points. When the user starts a new voice-dump processing cycle (/inbox), a checkpoint captures the full current game state, lists pending tasks, and documents known bugs. The checkpoint commit body describes what is working and broken at that moment. This information is invaluable for understanding the game's history and for diagnosing when a regression was introduced by examining which commits fall between a "working" and "broken" checkpoint.
+TOPICS: multiplayer
