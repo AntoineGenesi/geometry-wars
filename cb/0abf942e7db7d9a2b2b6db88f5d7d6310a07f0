@@ -15,3 +15,4 @@ Additional context from the commit body:
 - Decision log for autonomous session
 
 Key files: decisions/autonomous-session-2026-02-12.md, src/debug/GameDebugAPI.test.ts, src/debug/GameDebugAPI.ts, src/main.ts, tasks/behavior-tests-chase.md, and others.
+TOPICS: feature,testing
