@@ -13,3 +13,4 @@ Additional context from the commit body:
 - Added auto-cleanup in tmux exit handler as safety net
 - Added orphaned server check to cmd_merge before merging task branches
 - Killed existing orphaned node server on port 3000
+TOPICS: feature
