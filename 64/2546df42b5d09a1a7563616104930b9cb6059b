@@ -6,3 +6,4 @@ Session checkpoint commits capture the current state of the game and pending wor
 Key files: .../s44q-01-revert-sphere-mp-camera-s44p02.md, .../reviews/s44q-03-fix-game-mode-ui-two-panels.md, .../s44q-05-git-history-mp-failure-analysis.md, .../s44q-01-revert-sphere-mp-camera-s44p02.prompt, ...44q-02-fix-start-button-overlap-for-real.prompt, and others.
 
 Session checkpoint commits serve as restore points. When the user starts a new voice-dump processing cycle (/inbox), a checkpoint captures the full current game state, lists pending tasks, and documents known bugs. The checkpoint commit body describes what is working and broken at that moment. This information is invaluable for understanding the game's history and for diagnosing when a regression was introduced by examining which commits fall between a "working" and "broken" checkpoint.
+TOPICS: checkpoint,ops,orchestration
