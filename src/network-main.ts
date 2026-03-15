@@ -3583,6 +3583,24 @@ async function main() {
           // isDeadNow doesn't need camera reset (death cam takes over).
           if (!justRespawned && !isDeadNow) {
             cameraController.resetFrameForNewSurface();
+            // s44r19-02: Snap camera to new face immediately after reset.
+            // Without this, camera lerps from old face through cube geometry (5-15 frames
+            // "inside cube" view). Wrong camera axes during lerp corrupt
+            // computeCameraRelativeAimAngle() → bullets snap to wrong directions.
+            // Mirrors the respawn snap at line ~3793 which already works correctly.
+            if (_localServerFrameValid && _localPlayerWorldTarget.valid) {
+              const tgt = _localPlayerWorldTarget;
+              const snapPos = new THREE.Vector3(
+                tgt.x + _localServerNormal.x * 0.15,
+                tgt.y + _localServerNormal.y * 0.15,
+                tgt.z + _localServerNormal.z * 0.15,
+              );
+              cameraController.snapToFrame(
+                snapPos,
+                _localServerNormal,
+                { tangent: _localServerTangent, bitangent: _localServerBitangent },
+              );
+            }
           }
           // s44r8-03: Use accurate cube UV (not sphere-approx) so surfaceU/V is correct for
           // subsequent bullet tangent lookups and client prediction continuity on cube faces.
