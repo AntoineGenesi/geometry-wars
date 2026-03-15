@@ -19,7 +19,9 @@ import type { SurfaceType } from '../surfaces/SurfaceFactory';
 import { ShockwaveEffect } from '../effects/ShockwaveEffect';
 import { isMobile } from '../core/MobileDetector';
 import {
-  loadMobileGridBrightness,
+  loadGridBrightness,
+  loadGridDensity,
+  GRID_DENSITY_PRESETS,
   MOBILE_GRID_SEGMENTS_MULTIPLIER,
   MOBILE_GRID_MAX_SEGMENTS_U,
   MOBILE_GRID_MAX_SEGMENTS_V,
@@ -61,9 +63,11 @@ export function createStandardSurfaceConfig(
   savedStyle: SavedVisualStyle | null,
 ): Record<string, unknown> {
   const mobile = isMobile();
-  const baseSegmentsU = savedStyle?.gridSegmentsU ?? 24;
-  const baseSegmentsV = savedStyle?.gridSegmentsV ?? 18;
-  const baseOpacity = savedStyle?.gridOpacity ?? 0.10;
+
+  // Visual style overrides density/brightness. Without a style, use user preferences.
+  const densityPreset = GRID_DENSITY_PRESETS[loadGridDensity()];
+  const baseSegmentsU = savedStyle?.gridSegmentsU ?? densityPreset.segmentsU;
+  const baseSegmentsV = savedStyle?.gridSegmentsV ?? densityPreset.segmentsV;
 
   // Mobile: 4× grid line density for visibility on small screens.
   // Capped so that high-density presets don't create excessive geometry.
@@ -74,11 +78,9 @@ export function createStandardSurfaceConfig(
     ? Math.min(baseSegmentsV * MOBILE_GRID_SEGMENTS_MULTIPLIER, MOBILE_GRID_MAX_SEGMENTS_V)
     : baseSegmentsV;
 
-  // Mobile: raise brightness floor so lines are visible in varied lighting.
-  // Uses the user-configurable mobile brightness (default 35% vs desktop 10%).
-  const gridOpacity = mobile
-    ? Math.max(baseOpacity, loadMobileGridBrightness())
-    : baseOpacity;
+  // Grid brightness: visual style overrides take precedence, then user preference.
+  // loadGridBrightness handles platform defaults (0.35 mobile, 0.10 desktop).
+  const gridOpacity = savedStyle?.gridOpacity ?? loadGridBrightness(mobile);
 
   const config: Record<string, unknown> = {
     // Visual appearance
