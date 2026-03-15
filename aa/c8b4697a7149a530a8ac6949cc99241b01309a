@@ -10,3 +10,4 @@ DPS/kills/timer stats overlay, damage popups.
 
 - src/ui/WeaponPlayground.ts: Self-contained 3D playground scene
 - src/ui/WeaponWiki.ts: "TRY IT" button integration per weapon card
+TOPICS: aim,feature
