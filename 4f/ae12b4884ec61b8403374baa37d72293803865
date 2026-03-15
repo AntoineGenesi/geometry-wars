@@ -12,3 +12,4 @@ Hit detection: same-UV hit, far-UV no-hit, distance symmetry, monotone, bullet t
 
 Game state: s44r4 session. MP surface geometry tests expanding coverage of server-side
 collision math (MPRealGameTestHarness). SP/MP gameplay unaffected — test-only change.
+TOPICS: hit-detection,surfaces
