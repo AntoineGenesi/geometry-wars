@@ -9,3 +9,4 @@ Additional context from the commit body:
 - Damage numbers already had renderOrder = 999 and depthTest: false configured
 
 Fixes issue where Tesla coil damage numbers were obscured by the wireframe sphere effect.
+TOPICS: bugfix,hit-detection
