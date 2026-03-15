@@ -8,3 +8,4 @@ Additional context from the commit body:
 - Combo bonus: +10% score per combo level (up to 5x)
 - Combo counter appears at 3+ kills, color scales with level
 - Pop animation on combo increase, fades when chain breaks
+TOPICS: feature,loading,ui
