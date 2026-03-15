@@ -17,3 +17,4 @@ This commit captures the state after 8 development sessions:
 - 4 custom subagents (code-reviewer, frame-budget-sheriff, state-adversary, market-researcher)
 
 Key files: .claude/commands/autonomous.md, .claude/commands/im-back.md, TODO.md, docs/HUMAN_TEST.md, reports/architecture-deep-research.html, and others.
+TOPICS: checkpoint,ops,orchestration
