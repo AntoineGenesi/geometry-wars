@@ -3,3 +3,4 @@ Revert: undo s44p-02 sphere MP camera stable frame fix.
 This commit modifies 2 files (+109/-61 lines), spanning 1 networking, 1 task/ops files.
 
 The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
+TOPICS: camera,multiplayer
