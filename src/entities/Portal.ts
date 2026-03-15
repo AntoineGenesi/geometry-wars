@@ -68,8 +68,12 @@ const DISC_VERTEX = /* glsl */ `
 `;
 
 // Fragment shader — rotating vortex in polar coordinates
+// REGRESSION GUARD: Do NOT add 'precision mediump float;' here.
+// Three.js WebGPU backend (used on desktop) translates GLSL to WGSL.
+// An explicit precision qualifier conflicts with the translator's injected
+// preamble, causing silent shader compilation failure on WebGPU systems
+// (spiral invisible on desktop, fine on WebGL2/laptop). s44r18-06.
 const DISC_FRAGMENT = /* glsl */ `
-  precision mediump float;
   varying vec2 vUv;
   uniform vec3 uColor;
   uniform float uTime;
@@ -165,6 +169,7 @@ export class Portal {
       fragmentShader: DISC_FRAGMENT,
       transparent: true,
       depthWrite: false,
+      depthTest: false,
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       uniforms: {
