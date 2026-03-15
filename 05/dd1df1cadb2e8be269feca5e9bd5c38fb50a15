@@ -13,3 +13,4 @@ Three bugs causing selective enemy missing on torus:
 Game state: MP enemy sync fixed on torus. All surfaces benefit from activeCount fix.
 
 Key files: .claude/locks/port-registry, ...4r2-01-taurus-entity-flickering-dimming-sp.lock, ...pickup-hit-detection-inconsistent-surfaces.lock, ...s44r2-03-rubber-banding-client-auth-desync.lock, .../s44r2-04-player-upgrades-not-syncing-mp.lock, and others.
+TOPICS: enemies,surfaces
