@@ -10,3 +10,4 @@ Additional context from the commit body:
 - Set overflow: hidden to prevent scrollbars
 - Set flex-shrink: 0 to prevent flex compression
 - QR code now displays fully visible without triggering parent scroll
+TOPICS: bugfix
