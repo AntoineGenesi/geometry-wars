@@ -14,3 +14,4 @@ Fix in src/network-main.ts:
 - Added margin-top:14px for visual separation
 
 Panel now flows naturally below game mode buttons instead of overlaying.
+TOPICS: bugfix,game-modes
