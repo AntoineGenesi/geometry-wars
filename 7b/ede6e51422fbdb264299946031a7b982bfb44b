@@ -11,3 +11,4 @@ Additional context from the commit body:
 - GameRoom.ts, GameState.ts, ClaustrophobiaMode.ts, network-main.ts updated
 
 Key files: docs/HUMAN_TEST.md, server/rooms/GameRoom.ts, server/rooms/GameRoom.zone-scoring.test.ts, server/schema/GameState.ts, src/core/modes/ClaustrophobiaMode.ts, and others.
+TOPICS: scoring
