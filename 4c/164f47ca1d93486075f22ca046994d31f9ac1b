@@ -15,3 +15,4 @@ Game state: MP pause menu exists, server pause handling works,
 this adds the missing P key input binding for pause initiation.
 
 Key files: reports/grid-traversal-sp-latest.json, src/network-main.ts, src/test/stress-test-results.json, tasks/s44r-06-p-key-pause-game.md.
+TOPICS: multiplayer
