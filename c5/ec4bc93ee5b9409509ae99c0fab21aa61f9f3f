@@ -6,3 +6,4 @@ This maintenance commit handles housekeeping work such as task tracking, lock fi
 Key files: TODO.md, inbox/2026-03-03_1300.md, ...44k-01-movement-regression-all-maps-critical.md, tasks/s44k-02-weapon-spread-shot-broken-mp.md, ...s44k-03-bullets-spawn-from-wrong-position-mp.md, and others.
 
 The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
+TOPICS: regression
