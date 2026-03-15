@@ -20,3 +20,4 @@ User testing needed to confirm improvement.
 #	tasks/s44r4-04-mobius-seam-still-blocking-movement.md
 
 Key files: src/movement/MeshWalker.ts, src/surfaces/MeshSurface.ts, src/surfaces/geodesic/FaceWalker.ts, src/surfaces/geodesic/GeodesicSurface.ts, src/surfaces/geodesic/ParallelTransport.ts, and others.
+TOPICS: surfaces
