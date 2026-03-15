@@ -6,3 +6,4 @@ This documentation update keeps the project knowledge base current. The project 
 Key files: TODO.md, docs/ARCHITECTURE.md, docs/INDEX.md, docs/MULTIPLAYER.md, docs/future-work.md, and others.
 
 Documentation in this project spans multiple formats: task files (tasks/*.md), decision logs (decisions/*.md), HTML reports (reports/), and architecture guides (docs/). Keeping documentation accurate after code changes is mandatory — stale docs cause wasted investigation time when future sessions rely on incorrect information. This project has strict rules against citing reports older than 7 days without verifying they still reflect current code.
+TOPICS: regression
