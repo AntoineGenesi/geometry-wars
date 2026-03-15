@@ -11,3 +11,4 @@ Also add Playwright E2E spec for rendered output verification.
 Total test count: 688 (all passing).
 
 Key files: decisions/visual-test-suite-2026-02-07.md, playwright.config.js, src/test/visual-integration.test.ts, src/weapons/WeaponManager.test.ts, tests/visual-e2e.spec.ts.
+TOPICS: feature,testing
