@@ -6,3 +6,4 @@ This maintenance commit handles housekeeping work such as task tracking, lock fi
 Key files: .claude/locks/port-registry, ...b-08-enemy-aura-kills-no-red-damage-visual.lock, .../s44b-09-movement-speed-still-slow-mp.lock, .../s44b-09-movement-speed-still-slow-mp.prompt.
 
 The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
+TOPICS: enemies
