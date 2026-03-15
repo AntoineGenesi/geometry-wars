@@ -6,3 +6,4 @@ This maintenance commit handles housekeeping work such as task tracking, lock fi
 Key files: .claude/state/s44c-execution-plan.md, TODO.md, inbox/2026-03-02_0830.md, tasks/s44c-01-sp-red-screen-flash-regression.md, tasks/s44c-02-mp-camera-lerp-laggy.md, and others.
 
 The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
+TOPICS: orchestration,testing
