@@ -11,3 +11,4 @@ s44b-08 incorrectly added red screen flashes when ENEMIES die, not the player:
 Correct red flashes remain (player death only):
 - GameLoop.ts: shockwaveEffect.triggerFlash when enemy collision kills player
 - GameLoop.ts: screenFlash when painter trail kills player
+TOPICS: enemies
