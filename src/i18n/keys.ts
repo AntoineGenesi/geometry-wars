@@ -142,6 +142,7 @@ export const KEYS = {
       totalKills: 'pauseMenu.stats.totalKills',
       activeBuffs: 'pauseMenu.stats.activeBuffs',
       noActiveBuffs: 'pauseMenu.stats.noActiveBuffs',
+      currentScore: 'pauseMenu.stats.currentScore',
       performance: 'pauseMenu.stats.performance',
     },
   },

@@ -70,6 +70,8 @@ export interface PauseMenuGameData {
     /** When true, show "Infinite" instead of count */
     infinite: boolean;
   };
+  /** Current player score */
+  currentScore?: number;
   /** Total kills across all enemy types */
   totalKills: number;
   /** Current weapon info */
@@ -218,6 +220,10 @@ export class PauseMenu {
             <div class="stats-weapon-section">
               <div class="stats-section-title">${t('pauseMenu.stats.weapon')}</div>
               <div class="stats-weapon-info"></div>
+            </div>
+            <div class="stats-score-section">
+              <div class="stats-section-title">${t('pauseMenu.stats.currentScore')}</div>
+              <div class="stats-score-count">0</div>
             </div>
             <div class="stats-kills-section">
               <div class="stats-section-title">${t('pauseMenu.stats.totalKills')}</div>
@@ -488,6 +494,14 @@ export class PauseMenu {
         color: #44ff44;
         font-size: 11px;
         margin-left: 6px;
+      }
+
+      #pause-menu .stats-score-count {
+        font-size: 36px;
+        font-weight: bold;
+        color: #ffdd44;
+        text-shadow: 0 0 10px rgba(255, 221, 68, 0.6);
+        letter-spacing: 2px;
       }
 
       #pause-menu .stats-kills-count {
@@ -817,6 +831,10 @@ export class PauseMenu {
         #pause-menu .pause-hint {
           margin-top: 12px;
           font-size: 11px;
+        }
+
+        #pause-menu .stats-score-count {
+          font-size: 24px;
         }
 
         #pause-menu .stats-kills-count {
@@ -1376,6 +1394,7 @@ export class PauseMenu {
     this.updateCompanionsList(data.companions);
     this.updateCumulativeBonuses(data.cumulativeBonuses);
     this.updateWeaponInfo(data.weapon);
+    this.updateScore(data.currentScore);
     this.updateKillCount(data.totalKills);
     this.updateBuffsList(data.buffs);
   }
@@ -1496,6 +1515,13 @@ export class PauseMenu {
         <span><span class="stat-value">${weapon.fireRate}/s</span>${effectiveRateHtml}</span>
       </div>
     `;
+  }
+
+  private updateScore(score?: number): void {
+    const scoreEl = this.container.querySelector('.stats-score-count');
+    if (scoreEl) {
+      scoreEl.textContent = score !== undefined ? score.toLocaleString() : '0';
+    }
   }
 
   private updateKillCount(totalKills: number): void {

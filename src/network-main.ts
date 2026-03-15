@@ -2276,6 +2276,7 @@ async function main() {
         speedBonus: totalSpeedBonus,
       },
       buffs,
+      currentScore: localPlayerState?.score ?? 0,
       totalKills: totalKillCounter.getTotalKills(),
       weapon: {
         name: weaponConfig?.name ?? 'Standard',

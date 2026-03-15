@@ -1492,6 +1492,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         currentValue: b.def.formatValue(b.stacks),
         color: '#' + b.def.iconColor.toString(16).padStart(6, '0'),
       })),
+      currentScore: player.score,
       totalKills: totalKillCounter.getTotalKills(),
       weapon: {
         name: weaponConfig.name,

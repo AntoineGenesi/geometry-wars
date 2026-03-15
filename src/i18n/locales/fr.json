@@ -193,6 +193,7 @@
       "totalKills": "ÉLIMINATIONS TOTALES",
       "activeBuffs": "BUFFS ACTIFS",
       "noActiveBuffs": "Aucun buff actif",
+      "currentScore": "SCORE",
       "performance": "PERFORMANCES"
     }
   },

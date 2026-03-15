@@ -193,6 +193,7 @@
       "totalKills": "TOTAL KILLS",
       "activeBuffs": "ACTIVE BUFFS",
       "noActiveBuffs": "No active buffs",
+      "currentScore": "SCORE",
       "performance": "PERFORMANCE"
     }
   },
