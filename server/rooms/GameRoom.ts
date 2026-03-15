@@ -1138,7 +1138,7 @@ export class GameRoom extends Room<GameState> {
   /** Per-sessionId cooldown timestamp (ms) — player cannot re-enter a portal until this time. */
   private _portalCooldowns: Map<string, number> = new Map();
   /** Portal trigger radius in world units (used with surfaceWorldDist — consistent on all surfaces). */
-  private static readonly PORTAL_WORLD_RADIUS = 1.5;
+  private static readonly PORTAL_WORLD_RADIUS = 0.8; // s44r18-05: reduced so player must step INTO ring
   /** True once any player has dropped to ≤50% health this game (one-shot trigger). */
   private _portalsTriggeredThisGame = false;
   /** Timer handle for scheduled portal despawn. */
@@ -4747,6 +4747,19 @@ export class GameRoom extends Room<GameState> {
           // Player hit!
           wasHit = true;
           hitEnemyIds.add(enemy.id); // Mark enemy as spent for this tick
+
+          // s44r18-05: In PvP/PvPvE modes, enemy body collision reduces the health bar.
+          // Without this, player.lives-- is invisible on the health bar — enemies appear harmless.
+          // 25 HP per touch: 4 hits depletes a full health bar before a life is lost.
+          if (this.pvpEnabled) {
+            const ENEMY_PVP_BODY_DAMAGE = 25;
+            player.health = Math.max(0, player.health - ENEMY_PVP_BODY_DAMAGE);
+            this._checkHalfHealthPortalTrigger(player);
+            if (player.health <= 0) {
+              // Reset health for the next life — actual life loss handled below
+              player.health = player.maxHealth;
+            }
+          }
 
           // Infinite lives: skip lives decrement but still apply death penalties
           if (!this.state.infiniteLives) {

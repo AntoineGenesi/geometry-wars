@@ -46,10 +46,15 @@ function peanutChordDist(
 // Minimal portal collision simulation — mirrors GameRoom private methods
 // ---------------------------------------------------------------------------
 
-const PORTAL_WORLD_RADIUS = 1.5;   // trigger radius (world units)
+const PORTAL_WORLD_RADIUS = 0.8;   // trigger radius (world units) — s44r18-05: reduced to inside ring
 const ENEMY_HIT_WORLD = 2.5;       // enemy hit threshold on peanut (world units)
 const PORTAL_INVINCIBILITY_S = 1.0; // granted after teleport (s44r6c-02 fix)
 const PORTAL_COOLDOWN_MS = 2000;
+
+// s44r18-05: match ENEMY_PVP_BODY_DAMAGE constant from GameRoom.ts
+const ENEMY_PVP_BODY_DAMAGE = 25;
+// s44r18-05: match PLAYER_PVP_MAX_HEALTH from GameBalanceConstants
+const PLAYER_PVP_MAX_HEALTH = 100;
 
 interface SimPlayer {
   id: string;
@@ -57,6 +62,8 @@ interface SimPlayer {
   surfaceV: number;
   alive: boolean;
   lives: number;
+  health: number;
+  maxHealth: number;
 }
 
 interface SimEnemy {
@@ -126,7 +133,7 @@ class PortalCollisionSim {
   }
 
   /** Mirrors GameRoom.checkCollisions() — simplified enemy hit check. */
-  checkEnemyCollisions(players: SimPlayer[], enemies: SimEnemy[]): SimPlayer[] {
+  checkEnemyCollisions(players: SimPlayer[], enemies: SimEnemy[], pvpEnabled = false): SimPlayer[] {
     const killed: SimPlayer[] = [];
 
     for (const player of players) {
@@ -140,6 +147,14 @@ class PortalCollisionSim {
         if (!enemy.alive) continue;
         const dist = peanutChordDist(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
         if (dist < ENEMY_HIT_WORLD) {
+          // s44r18-05: mirrors GameRoom.checkCollisions() pvpEnabled health damage path.
+          // Without this, enemy body collision only decrements player.lives (invisible on health bar).
+          if (pvpEnabled) {
+            player.health = Math.max(0, player.health - ENEMY_PVP_BODY_DAMAGE);
+            if (player.health <= 0) {
+              player.health = player.maxHealth; // reset for next life
+            }
+          }
           player.lives--;
           if (player.lives <= 0) {
             player.alive = false;
@@ -193,7 +208,7 @@ describe('portal-kills-player regression (s44r6c-04)', () => {
   };
 
   function makePlayer(u: number, v: number, lives = 3): SimPlayer {
-    return { id: 'p1', surfaceU: u, surfaceV: v, alive: true, lives };
+    return { id: 'p1', surfaceU: u, surfaceV: v, alive: true, lives, health: PLAYER_PVP_MAX_HEALTH, maxHealth: PLAYER_PVP_MAX_HEALTH };
   }
 
   function makeEnemy(u: number, v: number): SimEnemy {
@@ -215,9 +230,15 @@ describe('portal-kills-player regression (s44r6c-04)', () => {
     it('player 2 world units from portal A is outside trigger radius', () => {
       // Offset player slightly from portal A in V direction
       // On peanut bulge, 0.03 dV ≈ 1.5 world units in worst case
-      // Use 0.06 dV to ensure > 1.5 world units
+      // Use 0.06 dV to ensure > 0.8 world units (s44r18-05: was 1.5, now 0.8)
       const dist = peanutChordDist(PORTAL_A.u, PORTAL_A.v + 0.06, PORTAL_A.u, PORTAL_A.v);
       expect(dist).toBeGreaterThan(PORTAL_WORLD_RADIUS);
+    });
+
+    it('s44r18-05 regression: PORTAL_WORLD_RADIUS must be ≤ 0.8 so players step INTO the ring before teleporting', () => {
+      // Torus ring outer edge ≈ 1.32, inner edge ≈ 1.08.
+      // Trigger radius must be inside the ring, not outside it (old bug: 1.5 exceeded outer edge).
+      expect(PORTAL_WORLD_RADIUS).toBeLessThanOrEqual(0.8);
     });
   });
 
@@ -405,6 +426,58 @@ describe('portal-kills-player regression (s44r6c-04)', () => {
       sim.updatePortalCollision([player], t0 + 2001); // just after cooldown expires
 
       expect(player.surfaceU).toBeCloseTo(PORTAL_B.u); // re-teleported to B
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // s44r18-05 regression: enemy body damage in PvP/PvPvE reduces player.health
+  // ---------------------------------------------------------------------------
+
+  describe('s44r18-05: enemy body damage in pvpEnabled mode reduces player.health', () => {
+    let sim: PortalCollisionSim;
+
+    beforeEach(() => {
+      sim = new PortalCollisionSim(basePortalState, true);
+    });
+
+    it('enemy collision in PvPvE reduces player.health by ENEMY_PVP_BODY_DAMAGE (25 HP)', () => {
+      // Bug: only player.lives-- was called, leaving health bar at 100% (damage invisible).
+      // Fix: pvpEnabled path now reduces player.health before the lives check.
+      const player = makePlayer(PORTAL_A.u, PORTAL_A.v, 3);
+      const enemy = makeEnemy(PORTAL_A.u, PORTAL_A.v); // same position as player → guaranteed hit
+
+      sim.checkEnemyCollisions([player], [enemy], /* pvpEnabled */ true);
+
+      expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH - ENEMY_PVP_BODY_DAMAGE); // 75
+      expect(player.lives).toBe(2); // life also lost (same as before)
+    });
+
+    it('enemy collision without pvpEnabled does NOT reduce player.health (Waves/KOTH unaffected)', () => {
+      const player = makePlayer(PORTAL_A.u, PORTAL_A.v, 3);
+      const enemy = makeEnemy(PORTAL_A.u, PORTAL_A.v);
+
+      sim.checkEnemyCollisions([player], [enemy], /* pvpEnabled */ false);
+
+      expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH); // health unchanged in non-pvp modes
+      expect(player.lives).toBe(2); // lives still decrement
+    });
+
+    it('4 enemy hits in PvPvE deplete health bar (100 → 75 → 50 → 25 → 0, reset to 100)', () => {
+      // Verify 4 hits = 100 HP = effectively one life cycle visible on health bar.
+      const player = makePlayer(PORTAL_A.u, PORTAL_A.v, 10); // many lives so we track health
+      const enemy = makeEnemy(PORTAL_A.u, PORTAL_A.v);
+
+      // Hits 1-3: health decrements, no reset
+      sim.checkEnemyCollisions([player], [enemy], true);
+      expect(player.health).toBe(75);
+      sim.checkEnemyCollisions([player], [enemy], true);
+      expect(player.health).toBe(50);
+      sim.checkEnemyCollisions([player], [enemy], true);
+      expect(player.health).toBe(25);
+
+      // Hit 4: health reaches 0 → resets to maxHealth for next life
+      sim.checkEnemyCollisions([player], [enemy], true);
+      expect(player.health).toBe(PLAYER_PVP_MAX_HEALTH); // reset after depletion
     });
   });
 });
