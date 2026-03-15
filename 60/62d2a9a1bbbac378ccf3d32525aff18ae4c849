@@ -11,3 +11,4 @@ Wave 4 (FEATURES): mode selection, lives UI, decimal scores
 Wave 2.5: mobius surface bugs (bullets, pickups, ghost kills)
 
 Key files: TODO.md, inbox/2026-03-03_0900.md, logs/mp-perf-gO7ifh_Ct-2026-03-03.jsonl, logs/mp-perf-osF5BRysA-2026-03-03.jsonl, ...1-gravity-gun-bullets-not-attracting-enemies.md, and others.
+TOPICS: orchestration,testing
