@@ -11,3 +11,4 @@ Additional context from the commit body:
 - Updated task file with completion status and acceptance criteria
 
 The Geometry Wars 3D project maintains 1270+ automated tests using vitest and a custom PlaygroundTestHarness. Tests validate surface math, enemy AI, collision detection, and gameplay mechanics. Note that PlaygroundTestHarness tests PlaygroundGame via GameInstance, NOT the real game paths (GameLoop.ts for SP, network-main.ts for MP). Automated tests passing does not guarantee the actual game works; Puppeteer-level verification is required for real confidence.
+TOPICS: testing
