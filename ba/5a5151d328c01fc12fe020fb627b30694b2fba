@@ -16,3 +16,4 @@ Additional context from the commit body:
 - package.json: Added 'test:surface-verification' npm script.
 
 Key files: package.json, tasks/s44o-05c-cli-runner-and-report.md, .../SurfaceVerificationReport.ts, .../run-surface-verification.ts.
+TOPICS: surfaces
