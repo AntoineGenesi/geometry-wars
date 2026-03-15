@@ -4,3 +4,4 @@ This commit modifies 13 files (+1659/-72 lines), spanning 3 TypeScript source, 2
 This performance commit improves runtime efficiency. The game targets 60fps on typical hardware with complex enemy AI, instanced mesh rendering, and real-time physics on non-Euclidean surfaces.
 
 Key files: decisions/performance-benchmark-results.md, scripts/run-benchmark.mjs, src/benchmark.ts, src/core/SpatialHash.ts, src/effects/GlowTrail.ts, and others.
+TOPICS: hit-detection
