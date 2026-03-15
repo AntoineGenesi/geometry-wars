@@ -7,3 +7,4 @@ The merged work covers: players can now damage each other.
 Key files: .claude/locks/port-registry, ...k-01-movement-regression-all-maps-critical.lock, ...4k-03-bullets-spawn-from-wrong-position-mp.lock, .../s44k-07-hit-detection-broken-pvp-damage.lock, .claude/state/pipeline-state.md, and others.
 
 Merge commits in this project integrate worker branch results into master after independent review. The review-gate protocol requires a reviewer agent to write a VERIFIED certificate to .claude/state/reviews/<task-slug>.md before any merge is allowed. This protocol was established after session s44r2 merged 4 tasks without review after context compaction. Each merge commit represents a fully verified, atomic unit of work that has been tested and reviewed independently.
+TOPICS: hit-detection
