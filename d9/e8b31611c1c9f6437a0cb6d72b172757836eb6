@@ -12,3 +12,4 @@ Additional context from the commit body:
   hideGameLoading() placed just before network.connect() so lobby UI is immediately visible
 
 Key files: index.html, src/main.ts, src/network-main.ts, src/ui/GameLoadingOverlay.ts, tasks/s44j-15-loading-screen-spinner-game-load.md.
+TOPICS: multiplayer
