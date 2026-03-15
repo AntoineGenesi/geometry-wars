@@ -13,3 +13,4 @@ are a PvP-only feature; they belong in network-main.ts (LAN MP entry).
 The GameLoop already gates on `portals.length > 0` so empty array is safe.
 
 Files: src/main.ts
+TOPICS: portals
