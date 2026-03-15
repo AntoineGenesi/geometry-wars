@@ -16,3 +16,4 @@ get buffs that grow with kills+assists, showing satisfying "+N ASSIST"
 popups for co-op kills.
 
 Key files: decisions/torus-tangent-frame-fix.md, src/entities/Bullet.ts, src/entities/enemies/BaseEnemy.ts, src/experimental/mesh-movement/MeshWalker.ts, src/main.ts, and others.
+TOPICS: multiplayer,surfaces
