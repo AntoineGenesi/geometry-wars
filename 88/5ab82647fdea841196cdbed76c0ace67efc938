@@ -11,3 +11,4 @@ Additional context from the commit body:
 - WeaponManager handles the purple gravity-well projectile visual internally
 - WeaponHUD icon ('G') already rendered correctly from server state (pre-existing)
 - Note: onEnemyPull visual effect limited in MP (enemies are server-authoritative)
+TOPICS: multiplayer
