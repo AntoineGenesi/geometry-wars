@@ -13,3 +13,4 @@ strip seam traversal — player/bullets/enemies can now cross the UV seam.
 #	tasks/s44r3-08-mobius-uv-wall-blocking-movement.md
 
 Key files: src/surfaces/geodesic/FaceWalker.ts, src/surfaces/geodesic/HalfEdgeMesh.ts, tasks/s44r3-08-mobius-uv-wall-blocking-movement.md, tests/geodesic/MobiusSeamTraversal.test.ts.
+TOPICS: surfaces
