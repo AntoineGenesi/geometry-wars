@@ -16,3 +16,4 @@ Also adjusted Back button from top:60% to top:260px to maintain spacing.
 Fixes s44p-05: UI layout issue in MP lobby.
 
 Key files: TODO.md, inbox/2026-03-07_0900.md, inbox/s44p-execution-plan.md, ...p-01-improve-verification-framework-critical.md, .../s44p-02-fix-sphere-mp-movement-camera-bugs.md, and others.
+TOPICS: multiplayer
