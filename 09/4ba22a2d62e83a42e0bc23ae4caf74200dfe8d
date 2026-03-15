@@ -8,3 +8,4 @@ All 4 [NetworkMain] prefixed console.log calls are now gated behind
 a netMainLog() helper, consistent with the NetworkClient.ts approach.
 Logs remain available when ?debug=true is in the URL (used by LAN E2E
 tests). console.error for connection failure is left ungated.
+TOPICS: multiplayer
