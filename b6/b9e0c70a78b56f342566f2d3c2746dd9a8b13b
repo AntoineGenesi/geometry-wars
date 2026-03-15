@@ -10,3 +10,4 @@ pill hit detection (visual positions), entity contamination (cleanup), pill perf
 All fixes need Level 6 user testing.
 
 Key files: .claude/locks/port-registry, ...ll-hit-detection-enemies-inside-stationary.lock, ...ius-seam-blocks-all-directions-camera-flip.lock, .claude/state/pipeline-state.md, ...pill-hit-detection-enemies-inside-stationary.md, and others.
+TOPICS: documentation,ops
