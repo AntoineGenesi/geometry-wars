@@ -4,3 +4,4 @@ This commit modifies 10 files (+1728/-25 lines), spanning 6 tests, 1 Markdown do
 This commit adds or updates automated tests for the game. The project maintains 1270+ tests using vitest and a custom PlaygroundTestHarness that validates surface math, enemy AI, and gameplay mechanics programmatically.
 
 Key files: DISCOVERIES.md, src/debug/GameDebugAPI.ts, tasks/behavior-tests-patterns.md, tasks/behavior-tests-special.md, tasks/behavior-tests-state-machines.md, and others.
+TOPICS: enemies
