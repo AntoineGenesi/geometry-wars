@@ -9,3 +9,4 @@ Resolved merge conflict in network-main.ts: kept both claustrophobia surface
 check from s44h-15 AND lives selector UI + lives param in choice string from s44h-17.
 
 Key files: server/rooms/GameRoom.lives-enhancement.test.ts, server/rooms/GameRoom.ts, server/schema/GameState.ts, src/entities/Player.ts, src/network-main.ts, and others.
+TOPICS: health,ops,player-movement
