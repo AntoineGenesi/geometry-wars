@@ -12,3 +12,4 @@ Additional context from the commit body:
 - remotePlayerTargetWorldPos map: stores world-space targets for remote players
 - All paths have UV fallback for backward compat with legacy server
 - Files: src/network/NetworkClient.ts, src/network-main.ts
+TOPICS: feature
