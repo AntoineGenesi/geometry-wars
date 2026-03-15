@@ -10,3 +10,4 @@ client-side surfaces. Players appeared inside geometry because server computed
 positions on wrong-sized surface. 9 new regression tests added.
 
 Key files: docs/HUMAN_TEST.md, ...aceGeometryBuilder.server-client-parity.test.ts, server/movement/SurfaceGeometryBuilder.test.ts, server/movement/SurfaceGeometryBuilder.ts, server/rooms/GameRoom.collision-radius.test.ts, and others.
+TOPICS: multiplayer,surfaces
