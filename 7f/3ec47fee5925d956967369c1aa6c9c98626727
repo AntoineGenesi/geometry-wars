@@ -10,3 +10,4 @@ has ammo:200. Server applyLaserDamage() decrements 1 ammo/tick at TICK_RATE=60Hz
   After:  200/60 = 3.33s (matches SP duration)
 
 Files changed: server/shared/GameConstants.ts
+TOPICS: multiplayer
