@@ -10,3 +10,4 @@ Updated .map-size-btn CSS to match the .surface-btn style pattern:
 - color: #00ffff (was dim #88ddee)
 - hover: rgba(0, 150, 150, 0.4) with #00ffff border
 - selected: rgba(0, 255, 255, 0.2) with #00ffff glow (0 0 15px)
+TOPICS: bugfix,loading,typescript,ui
