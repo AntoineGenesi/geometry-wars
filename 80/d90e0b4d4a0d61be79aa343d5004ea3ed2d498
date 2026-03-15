@@ -16,3 +16,4 @@ Game state: Player was stuck in bevel, couldn't enter tunnel (previously worked)
 User testing required.
 
 Key files: .claude-worker-state.json, src/surfaces/SphereWithTunnelSurface.ts, .../SphereWithTunnelSurface.tunnel-entry.test.ts, tasks/s44r6b-08-sphere-tunnel-stuck-in-bevel.md.
+TOPICS: ops,surfaces
