@@ -8,3 +8,4 @@ Detailed analysis of bottlenecks at high entity counts.
 Primary: GPU draw calls (~20 per enemy from tube geometry).
 Secondary: ~6000 per-frame allocations causing GC stutters.
 Top fix: InstancedMesh could take capacity from ~100 to ~1500+ enemies.
+TOPICS: docs,performance,research
