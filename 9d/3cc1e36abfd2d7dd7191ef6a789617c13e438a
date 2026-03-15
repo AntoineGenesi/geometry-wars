@@ -12,3 +12,4 @@ Additional context from the commit body:
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 
 Key files: src/core/DifficultyScaling.ts, src/main.ts, src/test/difficulty-rebalance.test.ts, tasks/s44l-08c-companion-count-in-difficulty.md.
+TOPICS: feature
