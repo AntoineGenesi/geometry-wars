@@ -11,3 +11,4 @@ setMeshSurface() method, integrated in multiplayer-main.ts.
 20 new tests for surface projection across sphere/torus/cube.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+TOPICS: surfaces
