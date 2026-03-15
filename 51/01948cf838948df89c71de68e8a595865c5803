@@ -9,3 +9,4 @@ Root cause: Enemy UV lerp crossed U=0/1 seam, interpolating 0.96 units backward
 instead of 0.04 forward. Fix adds wrap-aware delta calculation.
 
 Game state: MP enemy rubber-banding on torus/all surfaces fixed. SP unaffected.
+TOPICS: enemies,multiplayer
