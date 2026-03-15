@@ -16,3 +16,4 @@ all instances via one THREE.InstancedMesh per type.
 - Draw calls: ~2000 → ~110 at 100 enemies (94% reduction)
 
 Key files: decisions/instanced-enemy-rendering-2026-02-09.md, src/entities/enemies/BaseEnemy.ts, src/entities/enemies/EnemySpawner.ts, src/main.ts, src/rendering/EnemyInstanceManager.test.ts, and others.
+TOPICS: enemies
