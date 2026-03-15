@@ -14,3 +14,4 @@ Status: VERIFIED by independent reviewer agent
 Certificate: .claude/state/reviews/s44r5-08-markdown-reports-to-html.md
 
 Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
+TOPICS: docs,regression,testing
