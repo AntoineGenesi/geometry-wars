@@ -11,3 +11,4 @@ Additional context from the commit body:
 - Fixes issue where users were hitting pickups but not collecting them in MP
 
 Key files: server/rooms/GameRoom.ts, src/buffs/BuffPickupNew.ts, src/weapons/BuffPickup.ts, src/weapons/WeaponPickup.ts, tasks/s44f-05-pickup-radius-too-small.md.
+TOPICS: bugfix
