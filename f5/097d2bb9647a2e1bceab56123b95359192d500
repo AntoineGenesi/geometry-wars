@@ -8,3 +8,4 @@ Additional context from the commit body:
 - Ensures consistency with mesh orientation frame (line 224)
 - Fixes potential orbit glitch on cube face strip 1 where surface bitangent is parallel to tangent
 - Both use right-handed coordinate system: tangent × normal = bitangent
+TOPICS: bugfix,surfaces
