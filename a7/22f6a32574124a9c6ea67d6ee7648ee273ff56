@@ -7,3 +7,4 @@ Additional context from the commit body:
 Custom scripts should use the same pattern as play-game.mjs: accept
 task-slug/commit CLI args, auto-create timestamped session directory,
 write RESULTS.md skeleton. Don't manually create directories.
+TOPICS: docs
