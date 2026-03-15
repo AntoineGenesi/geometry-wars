@@ -46,6 +46,10 @@ const PULSE_MIN = 0.5;
 const PULSE_MAX = 1.0;
 const RIM_SPIN_SPEED = 0.6; // radians per second
 
+// Spawn / despawn animation durations (seconds)
+const SPAWN_DURATION = 0.8;
+const DESPAWN_DURATION = 0.6;
+
 // Particle config (floating dots above portal)
 const PARTICLE_COUNT = 12;
 const PARTICLE_RISE_SPEED = 0.35; // world units per second
@@ -77,6 +81,7 @@ const DISC_FRAGMENT = /* glsl */ `
   varying vec2 vUv;
   uniform vec3 uColor;
   uniform float uTime;
+  uniform float uOpacity;
 
   void main() {
     vec2 center = vUv - 0.5;
@@ -96,7 +101,7 @@ const DISC_FRAGMENT = /* glsl */ `
     float edgeFade = 1.0 - smoothstep(0.55, 1.0, r);
 
     float alpha = edgeFade * (0.25 + bands * 0.5) + centerGlow * 0.55;
-    alpha = clamp(alpha, 0.0, 0.88);
+    alpha = clamp(alpha, 0.0, 0.88) * uOpacity;
 
     // Brighten based on bands — give it a colorful pop
     vec3 bright = min(uColor * 2.2 + vec3(0.3), vec3(1.0));
@@ -134,6 +139,12 @@ export class Portal {
   private _particles: THREE.Points;
   private _particlePositions: Float32Array;
   private _particlePhases: Float32Array;
+
+  // Spawn / despawn animation state
+  private _spawnT = 0;           // 0→1: spawn progress (1 = fully visible)
+  private _isDespawning = false;
+  private _despawnT = 0;         // 0→1: despawn progress (1 = fully gone)
+  private _currentAnimProgress = 0; // smoothstep-eased value of current animation phase
 
   // Surface-conforming ring overlay (added to surface.group, curves along surface)
   private _surfaceRingMesh: THREE.Mesh | null = null;
@@ -173,8 +184,9 @@ export class Portal {
       blending: THREE.AdditiveBlending,
       side: THREE.DoubleSide,
       uniforms: {
-        uColor: { value: color.clone() },
-        uTime: { value: 0 },
+        uColor:   { value: color.clone() },
+        uTime:    { value: 0 },
+        uOpacity: { value: 0 },  // starts invisible; driven by spawn animation
       },
     });
     this._disc = new THREE.Mesh(discGeo, this._discMat);
@@ -228,10 +240,60 @@ export class Portal {
     });
     this._particles = new THREE.Points(pGeo, pMat);
     this.mesh.add(this._particles);
+
+    // Start invisible — spawn animation drives from 0 to 1
+    this._applyAnimProgress(0);
+  }
+
+  // ── Spawn / despawn public API ────────────────────────────────────────────
+
+  /** Begin despawn animation. Portal will hide over DESPAWN_DURATION seconds. */
+  startDespawn(): void {
+    this._isDespawning = true;
+    this._despawnT = 0;
+  }
+
+  /** True once the despawn animation has completed and the portal can be removed. */
+  get isDespawnComplete(): boolean {
+    return this._isDespawning && this._despawnT >= 1.0;
+  }
+
+  // ── Internal: apply eased progress [0,1] to all visual materials ─────────
+
+  private _applyAnimProgress(p: number): void {
+    // Smoothstep easing: slow start, fast middle, slow finish
+    const ease = p * p * (3 - 2 * p);
+
+    // Scale the whole group (rim, disc, particles, surfaceDisc)
+    // 0.001 avoids degenerate matrix warnings when fully collapsed
+    this.mesh.scale.setScalar(ease < 0.001 ? 0.001 : ease);
+
+    const rimMat = this._rim.material as THREE.MeshStandardMaterial;
+    rimMat.opacity = 0.92 * ease;
+
+    this._discMat.uniforms.uOpacity.value = ease;
+
+    const surfMat = this._surfaceDisc.material as THREE.MeshBasicMaterial;
+    surfMat.opacity = 0.18 * ease;
+
+    const ptMat = this._particles.material as THREE.PointsMaterial;
+    ptMat.opacity = 0.85 * ease;
+
+    this._currentAnimProgress = ease;
   }
 
   /** Advance animation. Call each frame. */
   update(dt: number): void {
+    // ── Spawn / despawn animation ────────────────────────────────────────────
+    if (this._isDespawning) {
+      this._despawnT = Math.min(1.0, this._despawnT + dt / DESPAWN_DURATION);
+      this._applyAnimProgress(1.0 - this._despawnT);
+      if (this._despawnT >= 1.0) return; // fully gone — skip visual updates
+    } else if (this._spawnT < 1.0) {
+      this._spawnT = Math.min(1.0, this._spawnT + dt / SPAWN_DURATION);
+      this._applyAnimProgress(this._spawnT);
+    }
+
     this._time += dt;
 
     // ── Rim: pulse emissive ──────────────────────────────────────────────────
@@ -366,6 +428,7 @@ export class Portal {
       SURFACE_RING_INNER,
       SURFACE_RING_OUTER,
       this._time,
+      this._currentAnimProgress,
     );
   }
 

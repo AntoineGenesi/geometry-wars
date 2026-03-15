@@ -33,6 +33,7 @@ const fragmentShader = /* glsl */ `
   uniform float uOuterRadius;
   uniform vec3 uColor;
   uniform float uTime;
+  uniform float uOpacity;
 
   varying vec3 vWorldPos;
 
@@ -55,7 +56,7 @@ const fragmentShader = /* glsl */ `
     // Gentle pulse
     float pulse = 0.75 + 0.25 * sin(uTime * 2.8);
 
-    float alpha = ringT * ringT * 0.90 * pulse * inRing;
+    float alpha = ringT * ringT * 0.90 * pulse * inRing * uOpacity;
 
     if (alpha < 0.005) discard;
 
@@ -82,6 +83,7 @@ export class PortalSurfaceMaterial extends THREE.ShaderMaterial {
         uOuterRadius: { value: 1.5 },
         uColor:       { value: color.clone() },
         uTime:        { value: 0 },
+        uOpacity:     { value: 1.0 },
       },
     });
 
@@ -101,10 +103,12 @@ export class PortalSurfaceMaterial extends THREE.ShaderMaterial {
     innerRadius: number,
     outerRadius: number,
     time: number,
+    opacity = 1.0,
   ): void {
     this.uniforms.uCenter.value.copy(center);
     this.uniforms.uInnerRadius.value = innerRadius;
     this.uniforms.uOuterRadius.value = outerRadius;
     this.uniforms.uTime.value = time;
+    this.uniforms.uOpacity.value = opacity;
   }
 }
