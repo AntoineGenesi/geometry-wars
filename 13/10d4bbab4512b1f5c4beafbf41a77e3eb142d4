@@ -12,3 +12,4 @@ Additional context from the commit body:
 - Smooth fade-in/scale-in animations
 
 Key files: generate-weapon-screenshots.mjs, public/weapon-screenshots/black-hole.svg, public/weapon-screenshots/chain-lightning.svg, public/weapon-screenshots/gravity-gun.svg, public/weapon-screenshots/homing.svg, and others.
+TOPICS: aim,feature
