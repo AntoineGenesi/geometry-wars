@@ -11,3 +11,4 @@ Additional context from the commit body:
 - surfaceU/surfaceV preserved for enemies, pickups, non-player entities
 
 Key files: server/rooms/GameRoom.ts, server/schema/GameState.ts, src/network-main.ts, src/network/NetworkClient.ts, tasks/s44-epic-04-schema-protocol-changes.md.
+TOPICS: feature
