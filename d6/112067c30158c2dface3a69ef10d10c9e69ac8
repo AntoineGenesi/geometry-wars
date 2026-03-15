@@ -10,3 +10,4 @@ Additional context from the commit body:
 - s44j-02 (blaster bullets) and s44j-03 (weapon switch) need relaunch — workers died without progress
 
 Key files: .claude/locks/port-registry, ...gravity-gun-bullets-not-attracting-enemies.lock, ...j-02-blaster-bullets-too-close-together-mp.lock, .../s44j-03-cant-change-weapons-qe-lan-mp.lock, ...n-mastery-previous-weapon-firing-new-round.lock, and others.
+TOPICS: aim,ops
