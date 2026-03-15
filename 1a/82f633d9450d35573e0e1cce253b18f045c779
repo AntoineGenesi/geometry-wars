@@ -9,3 +9,4 @@ pill hit detection, and Mobius seam (s44r3-08) are STILL broken. Major
 verification system overhaul needed + MP RealGameTestHarness.
 
 Key files: .claude/locks/port-registry, ...44r3-01-language-selector-flag-exits-modal.lock, ...s44r3-02-bullet-penetration-not-working-mp.lock, .../locks/s44r3-03-cube-map-completely-broken.lock, .../locks/s44r3-04-verification-report-html.lock, and others.
+TOPICS: aim,hit-detection multiplayer,surfaces testing
