@@ -11,3 +11,4 @@ surface, polygonOffset to push surface back, and explicit renderOrder
 visible dark blue-purple. Frame-rate-independent opacity transitions.
 
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
+TOPICS: surfaces
