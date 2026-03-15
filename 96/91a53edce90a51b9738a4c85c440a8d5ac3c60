@@ -10,3 +10,4 @@ Additional context from the commit body:
 - Increased to 180px to show 2-3 rows without internal scrolling
 - Maintains proper layout balance (available space ~359px, used ~340px after fix)
 - Fixes acceptance criteria: at least one full row visible without scrolling
+TOPICS: regression
