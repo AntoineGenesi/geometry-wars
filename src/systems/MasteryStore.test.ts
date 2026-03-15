@@ -187,7 +187,7 @@ describe('MasteryStore — passive multipliers', () => {
     const bonus = store.getPassiveMultipliers().get(WeaponType.Standard)!;
     expect(bonus.damageMultiplier).toBeCloseTo(1.50, 5);
     expect(bonus.fireRateMultiplier).toBeCloseTo(1.20, 5);
-    expect(bonus.specialBonus).toBe('+1 extra bullet');
+    expect(bonus.specialBonus).toBe('+2 extra bullets (twin stream)');
   });
 
   it('level 3 interpolated correctly (midpoint between L1 and L5)', () => {
@@ -355,17 +355,23 @@ describe('MasteryStore — getBonusDescription()', () => {
     expect(desc).toContain('+20%');
   });
 
-  it('level 5 Plasma Mortar: returns special bonus', () => {
+  it('level 5 Plasma Mortar: shows damage + fire rate (no unimplemented special)', () => {
     const store = freshStore();
+    // PlasmaMortar level 5: t=1, dmg=1.60 (+60%), rate=1.10 (+10%)
     const desc = store.getBonusDescription(WeaponType.PlasmaMortar, 5);
     expect(desc).toContain('Plasma Mortar');
-    expect(desc).toContain('+50% AoE radius');
+    expect(desc).toContain('+60% damage');
+    expect(desc).toContain('+10% fire rate');
+    expect(desc).not.toContain('AoE radius'); // unimplemented — removed from display
   });
 
-  it('level 5 Blaster: returns special bonus (not damage %)', () => {
+  it('level 5 Blaster: shows damage + fire rate + accurate special', () => {
     const store = freshStore();
+    // Standard level 5: t=1, dmg=1.50 (+50%), rate=1.20 (+20%), special = twin stream
     const desc = store.getBonusDescription(WeaponType.Standard, 5);
-    expect(desc).toContain('+1 extra bullet');
+    expect(desc).toContain('+50% damage');
+    expect(desc).toContain('+20% fire rate');
+    expect(desc).toContain('+2 extra bullets (twin stream)');
   });
 
   it('level 1 returns a non-empty description', () => {
