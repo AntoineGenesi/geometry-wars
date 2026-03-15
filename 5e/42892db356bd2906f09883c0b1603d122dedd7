@@ -13,3 +13,4 @@ Additional context from the commit body:
 - Game.ts: integrated renderer factory for dynamic renderer selection
 
 Key files: src/core/Game.ts, src/rendering/EntityLimits.test.ts, src/rendering/EntityLimits.ts, src/rendering/GPUCapabilities.test.ts, src/rendering/GPUCapabilities.ts, and others.
+TOPICS: webgpu
