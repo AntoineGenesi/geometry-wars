@@ -15,3 +15,4 @@ Additional context from the commit body:
 - Task tracking files for all 25+ completed tasks
 
 Key files: reports/lan-cross-computer-testing-guide.html, scripts/lint-colyseus-schema.mjs, src/buffs/BuffParticleAura.test.ts, src/buffs/BuffParticleAura.ts, src/core/EffectDictionary.test.ts, and others.
+TOPICS: feature,testing
