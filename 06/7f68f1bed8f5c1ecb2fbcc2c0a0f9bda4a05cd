@@ -8,3 +8,4 @@ Additional context from the commit body:
   select → gameplay → pause → debug overlay → bomb)
 - CLAUDE.md: added screenshot best practices (viewport size, never
   fullPage, know the menu flow, SwiftShader FPS caveat, log console errors)
+TOPICS: ops,testing
