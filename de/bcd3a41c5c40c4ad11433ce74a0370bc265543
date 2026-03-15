@@ -12,3 +12,4 @@ Game state: All 4 bug fixes merged (cube aim, pill hit detection, pickup collect
 pill orientation). Mobius seam fix in progress. MP test harness built.
 
 Key files: reports/grid-traversal-sp-latest.json, src/surfaces/PillSurface.ts, .../pill-player-orientation.regression.test.ts, src/test/stress-test-results.json, .../s44r4-09-pill-player-facing-wrong-direction.md.
+TOPICS: surfaces
