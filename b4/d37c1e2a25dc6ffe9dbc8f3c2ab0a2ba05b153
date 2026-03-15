@@ -10,3 +10,4 @@ Additional context from the commit body:
 - Double-click middle mouse resets orbit to default position
 - Orbit uses tangent frame so it works correctly on all surfaces
 - Smooth lerp transitions, prevents auto-scroll on middle click
+TOPICS: camera
