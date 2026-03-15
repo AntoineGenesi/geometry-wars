@@ -11,3 +11,4 @@ Additional context from the commit body:
 - src/ui/StartMenu.ts: Minor cleanup
 
 Key files: TODO.md, decisions/10k-entity-roadmap.md, research-viewer.html, research/browser-performance-breakthroughs.md, src/network-main.ts, and others.
+TOPICS: docs,performance,research
