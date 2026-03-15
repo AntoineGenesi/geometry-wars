@@ -11,3 +11,4 @@ archives/ folder exists.
 
 This prevents confusion about where voice history is kept and helps
 future agents know to search inbox/*.md for context about user feedback.
+TOPICS: docs,orchestration
