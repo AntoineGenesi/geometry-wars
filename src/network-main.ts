@@ -1499,7 +1499,7 @@ async function main() {
   pvpHudLabel.textContent = 'HP';
   const pvpHudBarOuter = document.createElement('div');
   pvpHudBarOuter.style.cssText =
-    'width:160px;height:8px;background:rgba(255,255,255,0.15);border-radius:4px;overflow:hidden;';
+    'width:160px;height:8px;background:rgba(180,0,0,0.85);border-radius:4px;overflow:hidden;';
   const pvpHudBarInner = document.createElement('div');
   pvpHudBarInner.style.cssText =
     'height:100%;width:100%;border-radius:4px;background:#00ff44;transition:width 0.1s,background-color 0.3s;';
