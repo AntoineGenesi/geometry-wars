@@ -8,3 +8,4 @@ Additional context from the commit body:
 - AoE radius 1.5→3.0, splash multiplier 0.5→0.75
 - Projectile speed 0.6→1.0, arc height 1.5→2.5, visual size 0.2→0.35
 - Ammo 30→18 (each shot matters)
+TOPICS: bugfix
