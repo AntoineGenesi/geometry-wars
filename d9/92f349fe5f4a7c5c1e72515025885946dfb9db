@@ -12,3 +12,4 @@ Additional context from the commit body:
 - Added NetworkClient.sendResumeTimer() method for clean messaging pattern
 
 Key files: server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, tasks/s44m-18-mp-timer-paused-by-default.md.
+TOPICS: multiplayer
