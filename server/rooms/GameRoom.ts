@@ -4819,7 +4819,7 @@ export class GameRoom extends Room<GameState> {
           }
 
           // If a shield absorbed the hit, skip all life-loss logic
-          if (!wasHit) break;
+          if (!wasHit) return;
 
           // Infinite lives: skip lives decrement but still apply death penalties
           if (!this.state.infiniteLives) {
