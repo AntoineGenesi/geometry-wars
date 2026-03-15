@@ -14,3 +14,4 @@ Game state: PvP hit detection fixed in s44r2-06. This adds the missing
 damage number display and kill feed for PvP/PvPvE modes.
 
 Key files: server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, src/ui/KillFeed.pvp-damage.regression.test.ts, tasks/s44r2-07-pvp-damage-numbers-missing.md.
+TOPICS: feature,game-modes,hit-detection
