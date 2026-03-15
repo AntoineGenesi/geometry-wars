@@ -15,3 +15,4 @@ Peanut movement is good (s44r6-07). This fixes the camera orientation post-telep
 User testing required.
 
 Key files: .claude-worker-state.json, src/core/CameraController.teleporter.test.ts, src/core/GameLoop.ts, src/network-main.ts, ...r6b-04-peanut-camera-broken-after-teleporter.md.
+TOPICS: camera,portals
