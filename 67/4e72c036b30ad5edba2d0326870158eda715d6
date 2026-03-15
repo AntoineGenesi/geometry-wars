@@ -13,3 +13,4 @@ fixed (s44r5-05), pill perf fixed (s44r5-06), Mobius seam/camera fixed (this).
 Still pending: pill hit detection (s44r5-03). User testing required for all MP fixes.
 
 Key files: src/core/CameraController.ts, src/movement/MeshWalker.ts, ...obius-seam-blocks-all-directions-camera-flip.md, tests/geodesic/MobiusSeamCameraFix.test.ts.
+TOPICS: camera,surfaces
