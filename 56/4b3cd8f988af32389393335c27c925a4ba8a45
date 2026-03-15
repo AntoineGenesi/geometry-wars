@@ -8,3 +8,4 @@ Additional context from the commit body:
 - Shared geometry/material for efficiency
 - Markers fade with age and are cleaned up on Painter death
 - Trail visuals positioned via applySurfaceTransform
+TOPICS: enemies
