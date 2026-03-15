@@ -9,3 +9,4 @@ Additional context from the commit body:
 - Scale-in animation when enemy appears (0.01 -> 1.0 over 0.33s)
 - Warnings cleaned up on clear(), materials properly disposed
 - Collision checks skip spawning enemies (mesh not visible)
+TOPICS: enemies
