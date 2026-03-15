@@ -9,3 +9,4 @@ env var fallback in both LAN and visual E2E test files. Replace hardcoded
 NVM path with NVM_BIN / process.execPath detection in LAN test file.
 All fall back to the original hardcoded paths if env vars are not set,
 preserving backward compatibility on the current dev machine.
+TOPICS: bugfix,testing
