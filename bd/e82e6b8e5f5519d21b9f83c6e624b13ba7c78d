@@ -15,3 +15,4 @@ Also fixed:
 - Cleaned all stale .claude/skills references across docs and memory
 
 Key files: .claude/commands/inbox.md, .claude/commands/verify.md, .claude/commands/visual-test.md, .claude/rules/sub-agents.md, CLAUDE.md, and others.
+TOPICS: bugfix
