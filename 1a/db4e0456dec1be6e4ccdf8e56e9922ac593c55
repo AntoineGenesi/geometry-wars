@@ -13,3 +13,4 @@ duplication between KillLog/KillTally. 27 new tests.
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 
 Key files: src/main.ts, src/ui/KillIcons.ts, src/ui/KillLog.test.ts, src/ui/KillLog.ts, src/ui/KillTally.ts, and others.
+TOPICS: feature
