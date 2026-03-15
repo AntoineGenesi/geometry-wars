@@ -13,3 +13,4 @@ integer-only (0 until full kill). Now tracks incrementally as damage is
 dealt across both PvP and PvPvE modes.
 
 Key files: server/rooms/GameRoom.pvp-kills.test.ts, server/rooms/GameRoom.ts, src/network-main.ts, src/ui/GameOverScreen.ts, tasks/s44r2-09-pvp-kill-scoring-incremental.md.
+TOPICS: scoring
