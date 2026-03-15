@@ -15,3 +15,4 @@ paths on all mesh surfaces. BVH kept as fallback for edge cases.
 - Decision logs, research docs, architecture docs
 
 Key files: README.md, decisions/geodesic-face-walking-2026-02-07.md, decisions/project-cleanup-2026-02-07.md, decisions/surface-movement-fixes-2026-02-07.md, docs/ARCHITECTURE.md, and others.
+TOPICS: aim,feature
