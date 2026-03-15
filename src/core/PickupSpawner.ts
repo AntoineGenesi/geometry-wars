@@ -6,6 +6,8 @@ import { BuffPickup, getRandomBuffType } from '../weapons/BuffPickup';
 import { BuffPickupNew } from '../buffs/BuffPickupNew';
 import { BuffManager } from '../buffs/BuffManager';
 import { CompanionPickup, getRandomCompanionType } from '../entities/Companion';
+import { HealPickup } from '../pickups/HealPickup';
+import { ShieldPickup } from '../pickups/ShieldPickup';
 
 /**
  * PickupSpawner
@@ -29,12 +31,16 @@ export class PickupSpawner {
   private readonly BASE_WEAPON_RATE = 0.08;
   private readonly BASE_OLD_BUFF_RATE = 0.05;
   private readonly BASE_COMPANION_RATE = 0.05;
+  private readonly BASE_HEAL_RATE = 0.08; // 8% chance — slightly common, players need healing
+  private readonly BASE_SHIELD_RATE = 0.05; // 5% chance — rarer than heal
 
   // Effective drop rates — scaled by difficulty via setDifficultyLevel()
   superStateDropRate = 0.05; // 5% chance
   weaponDropRate = 0.08; // 8% chance
   oldBuffDropRate = 0.05; // 5% (legacy weapon-buff system)
   companionDropRate = 0.05; // 5% chance
+  healDropRate = 0.08; // 8% base chance (increases when player HP is low)
+  shieldDropRate = 0.05; // 5% base chance
 
   private _dropRateMultiplier = 1.0;
 
@@ -47,6 +53,8 @@ export class PickupSpawner {
   buffPickups: BuffPickup[] = [];
   newBuffPickups: BuffPickupNew[] = [];
   companionPickups: CompanionPickup[] = [];
+  healPickups: HealPickup[] = [];
+  shieldPickups: ShieldPickup[] = [];
 
   constructor(scene: THREE.Scene, mapSizeScaleFactor: number = 1.0) {
     this.scene = scene;
@@ -101,6 +109,32 @@ export class PickupSpawner {
       this.scene.add(cPickup.mesh);
       this.companionPickups.push(cPickup);
     }
+
+    // Heal and shield pickups (green/blue)
+    if (Math.random() < this.healDropRate) {
+      const hp = new HealPickup(u, v, this.mapSizeScaleFactor);
+      this.scene.add(hp.mesh);
+      this.healPickups.push(hp);
+    }
+
+    if (Math.random() < this.shieldDropRate) {
+      const sp = new ShieldPickup(u, v, this.mapSizeScaleFactor);
+      this.scene.add(sp.mesh);
+      this.shieldPickups.push(sp);
+    }
+  }
+
+  /**
+   * Dynamically adjust heal/shield drop rates based on player HP ratio.
+   * Call every frame (or on each enemy death) — cheap float ops.
+   * At full HP: base rates. At 0 HP: 2× heal rate.
+   */
+  updateDropRatesForPlayerHealth(healthRatio: number): void {
+    // healthRatio = player.health / player.maxHealth, 0.0–1.0
+    const urgency = Math.max(0, 1 - healthRatio); // 0 at full health, 1 at 0 HP
+    this.healDropRate = this.BASE_HEAL_RATE * (1 + urgency); // up to 2× base
+    // Shield rate mildly increases when hurt too
+    this.shieldDropRate = this.BASE_SHIELD_RATE * (1 + urgency * 0.5);
   }
 
   /**
@@ -116,6 +150,11 @@ export class PickupSpawner {
     this.weaponDropRate = this.BASE_WEAPON_RATE * this._dropRateMultiplier;
     this.oldBuffDropRate = this.BASE_OLD_BUFF_RATE * this._dropRateMultiplier;
     this.companionDropRate = this.BASE_COMPANION_RATE * this._dropRateMultiplier;
+    // Heal/shield rates are also tapered at high difficulty, but less aggressively
+    // (players need more help at high difficulty — only taper to 0.5 floor)
+    const healMult = Math.max(0.5, this._dropRateMultiplier);
+    this.healDropRate = this.BASE_HEAL_RATE * healMult;
+    this.shieldDropRate = this.BASE_SHIELD_RATE * healMult;
   }
 
   private computeDropMultiplier(level: number): number {
@@ -135,6 +174,8 @@ export class PickupSpawner {
       buffs: this.buffPickups,
       newBuffs: this.newBuffPickups,
       companions: this.companionPickups,
+      heals: this.healPickups,
+      shields: this.shieldPickups,
     };
   }
 
@@ -164,11 +205,21 @@ export class PickupSpawner {
       if (p.mesh) this.scene.remove(p.mesh);
       p.dispose();
     }
+    for (const p of all.heals) {
+      if (p.mesh) this.scene.remove(p.mesh);
+      p.dispose();
+    }
+    for (const p of all.shields) {
+      if (p.mesh) this.scene.remove(p.mesh);
+      p.dispose();
+    }
 
     this.superPickups = [];
     this.weaponPickups = [];
     this.buffPickups = [];
     this.newBuffPickups = [];
     this.companionPickups = [];
+    this.healPickups = [];
+    this.shieldPickups = [];
   }
 }

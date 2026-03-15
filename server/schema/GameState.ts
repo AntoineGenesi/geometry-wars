@@ -70,6 +70,8 @@ export class PlayerState extends Schema {
   declare guardianCount: number;
   declare hunterCount: number;
   declare protectorCount: number;
+  /** Stackable shield layers (absorb one hit each). */
+  declare shieldCount: number;
 
   constructor() {
     super();
@@ -110,6 +112,7 @@ export class PlayerState extends Schema {
     this.guardianCount = 0;
     this.hunterCount = 0;
     this.protectorCount = 0;
+    this.shieldCount = 0;
   }
 }
 
@@ -148,6 +151,7 @@ defineTypes(PlayerState, {
   guardianCount: 'int8',
   hunterCount: 'int8',
   protectorCount: 'int8',
+  shieldCount: 'int8',
 });
 
 /**
@@ -376,6 +380,34 @@ defineTypes(HealthPickupState, {
 });
 
 /**
+ * Shield pickup state — blue diamond that grants one stackable shield layer
+ */
+export class ShieldPickupState extends Schema {
+  declare id: string;
+  declare surfaceU: number;
+  declare surfaceV: number;
+  declare active: boolean;
+  declare age: number;
+
+  constructor() {
+    super();
+    this.id = '';
+    this.surfaceU = 0.5;
+    this.surfaceV = 0.5;
+    this.active = true;
+    this.age = 0;
+  }
+}
+
+defineTypes(ShieldPickupState, {
+  id: 'string',
+  surfaceU: 'number',
+  surfaceV: 'number',
+  active: 'boolean',
+  age: 'number',
+});
+
+/**
  * Main game state synced across all clients
  */
 export class GameState extends Schema {
@@ -387,6 +419,7 @@ export class GameState extends Schema {
   declare superPickups: ArraySchema<SuperPickupState>;
   declare buffPickups: ArraySchema<BuffPickupState>;
   declare healthPickups: ArraySchema<HealthPickupState>;
+  declare shieldPickups: ArraySchema<ShieldPickupState>;
   declare surfaceType: string;
   declare waveNumber: number;
   declare gameTime: number;
@@ -489,6 +522,7 @@ export class GameState extends Schema {
     this.superPickups = new ArraySchema<SuperPickupState>();
     this.buffPickups = new ArraySchema<BuffPickupState>();
     this.healthPickups = new ArraySchema<HealthPickupState>();
+    this.shieldPickups = new ArraySchema<ShieldPickupState>();
     this.surfaceType = 'sphere';
     this.waveNumber = 0;
     this.gameTime = 0;
@@ -561,6 +595,7 @@ defineTypes(GameState, {
   superPickups: [SuperPickupState],
   buffPickups: [BuffPickupState],
   healthPickups: [HealthPickupState],
+  shieldPickups: [ShieldPickupState],
   surfaceType: 'string',
   waveNumber: 'number',
   gameTime: 'number',

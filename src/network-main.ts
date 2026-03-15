@@ -1245,6 +1245,16 @@ async function main() {
   }
   const networkHealthPickups = new Map<string, HealthPickupVisual>();
 
+  // -- Shield pickup tracking --
+  interface ShieldPickupVisual {
+    mesh: THREE.Group;
+    surfaceU: number;
+    surfaceV: number;
+    spawnTime: number;
+  }
+  const networkShieldPickups = new Map<string, ShieldPickupVisual>();
+  const pendingShieldCollections = new Set<string>();
+
   // Track super/health pickup IDs sent to server via collect_pickup (no active flag on these visuals).
   // Prevents double-sends while waiting for server state confirmation.
   const pendingSuperCollections = new Set<string>();
@@ -1252,6 +1262,9 @@ async function main() {
 
   // Shared geometry for health pickups (created once)
   const healthPickupGeometry = new THREE.SphereGeometry(0.22, 10, 7);
+
+  // Shared geometry for shield pickups (octahedron = blue diamond shape)
+  const shieldPickupGeometry = new THREE.OctahedronGeometry(0.18, 0);
 
   // Shared geometries for super pickups (created once, never disposed)
   const superPickupGeometry = new THREE.SphereGeometry(0.25, 12, 8);
@@ -1513,13 +1526,22 @@ async function main() {
   pvpHudBarOuter.appendChild(pvpHudBarInner);
   pvpHudContainer.appendChild(pvpHudLabel);
   pvpHudContainer.appendChild(pvpHudBarOuter);
+
+  // Shield count label (shown when player has shields)
+  const pvpShieldLabel = document.createElement('div');
+  pvpShieldLabel.style.cssText =
+    'color:#4488ff;font:bold 11px monospace;letter-spacing:1px;' +
+    'text-shadow:0 0 6px #4488ff;text-align:center;min-height:14px;';
+  pvpHudContainer.appendChild(pvpShieldLabel);
+
   document.body.appendChild(pvpHudContainer);
 
-  /** Update the PvP HUD health bar fill and color. */
-  function updatePvpHud(health: number, maxHealth: number): void {
+  /** Update the PvP HUD health bar fill, color, and shield count. */
+  function updatePvpHud(health: number, maxHealth: number, shields = 0): void {
     const pct = maxHealth > 0 ? Math.max(0, Math.min(1, health / maxHealth)) : 1;
     pvpHudBarInner.style.width = `${pct * 100}%`;
     pvpHudBarInner.style.backgroundColor = pvpHealthBarColor(pct);
+    pvpShieldLabel.textContent = shields > 0 ? `\u{1F6E1} ${shields}` : '';
   }
 
   /** green (1.0) → yellow (0.5) → red (0.0) */
@@ -3124,6 +3146,22 @@ async function main() {
     pendingSuperCollections.clear();
     pendingHealthCollections.clear();
 
+    // Clear shield pickups
+    networkShieldPickups.forEach((visual) => {
+      scene.remove(visual.mesh);
+      visual.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          (child.material as THREE.Material)?.dispose();
+        }
+        if (child instanceof THREE.Sprite) {
+          child.material.map?.dispose();
+          child.material.dispose();
+        }
+      });
+    });
+    networkShieldPickups.clear();
+    pendingShieldCollections.clear();
+
     // Reset buff stacks so new game starts from scratch
     buffManager.reset();
 
@@ -3266,8 +3304,9 @@ async function main() {
     if (newPvpEnabled !== latestPvpEnabled) {
       latestPvpEnabled = newPvpEnabled;
       nameLabels.setShowHealthBars(latestPvpEnabled);
-      pvpHudContainer.style.display = latestPvpEnabled ? 'flex' : 'none';
     }
+    // Health HUD shows in all modes (enemies deal HP damage in waves/pvpve too)
+    pvpHudContainer.style.display = state.gameStarted ? 'flex' : 'none';
 
     // Update game mode indicator
     if (state.gameMode && latestGameMode) {
@@ -4585,6 +4624,79 @@ async function main() {
         });
         networkHealthPickups.delete(id);
         pendingHealthCollections.delete(id); // cleanup pending set
+      }
+    });
+
+    // ----- Sync shield pickups (blue diamond orbs) -----
+    const activeShieldPickupIds = new Set<string>();
+    if ((state as any).shieldPickups) {
+      (state as any).shieldPickups.forEach((netPickup: { id: string; surfaceU: number; surfaceV: number; active: boolean }) => {
+        if (!netPickup.active) return;
+        activeShieldPickupIds.add(netPickup.id);
+
+        if (!networkShieldPickups.has(netPickup.id)) {
+          const group = new THREE.Group();
+          group.name = `ShieldPickup_${netPickup.id}`;
+
+          const color = new THREE.Color(0x4488ff); // blue
+
+          const innerMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+          innerMat.userData.baseOpacity = 0.9;
+          group.add(new THREE.Mesh(shieldPickupGeometry, innerMat));
+
+          const outerMat = new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity: 0.4 });
+          const outerMesh = new THREE.Mesh(shieldPickupGeometry, outerMat);
+          outerMesh.scale.setScalar(1.4);
+          group.add(outerMesh);
+
+          // Blue glow sprite
+          const glowCanvas = document.createElement('canvas');
+          glowCanvas.width = 64; glowCanvas.height = 64;
+          const gCtx = glowCanvas.getContext('2d')!;
+          const grad = gCtx.createRadialGradient(32, 32, 0, 32, 32, 32);
+          grad.addColorStop(0, 'rgba(68,136,255,1)');
+          grad.addColorStop(0.4, 'rgba(68,136,255,0.4)');
+          grad.addColorStop(1, 'rgba(0,0,0,0)');
+          gCtx.fillStyle = grad;
+          gCtx.fillRect(0, 0, 64, 64);
+          const glowTex = new THREE.CanvasTexture(glowCanvas);
+          const glowMat = new THREE.SpriteMaterial({ map: glowTex, transparent: true, opacity: 0.6, blending: THREE.NormalBlending, depthWrite: false });
+          glowMat.userData.baseOpacity = 0.6;
+          const glowSprite = new THREE.Sprite(glowMat);
+          glowSprite.scale.setScalar(2.0);
+          group.add(glowSprite);
+
+          scene.add(group);
+          networkShieldPickups.set(netPickup.id, {
+            mesh: group,
+            surfaceU: netPickup.surfaceU,
+            surfaceV: netPickup.surfaceV,
+            spawnTime: game.clock.totalTime,
+          });
+        } else {
+          const visual = networkShieldPickups.get(netPickup.id)!;
+          visual.surfaceU = netPickup.surfaceU;
+          visual.surfaceV = netPickup.surfaceV;
+        }
+      });
+    }
+    // Remove collected/expired shield pickups
+    networkShieldPickups.forEach((visual, id) => {
+      if (!activeShieldPickupIds.has(id)) {
+        particles.enemyDeath(visual.mesh.position, new THREE.Color(0x4488ff));
+        sound.play('multiplierUp', { volume: 0.5, pitch: 2.2 });
+        scene.remove(visual.mesh);
+        visual.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            (child.material as THREE.Material)?.dispose();
+          }
+          if (child instanceof THREE.Sprite) {
+            child.material.map?.dispose();
+            child.material.dispose();
+          }
+        });
+        networkShieldPickups.delete(id);
+        pendingShieldCollections.delete(id);
       }
     });
 
@@ -6359,7 +6471,7 @@ async function main() {
           }
         });
 
-        // Health pickups (PvP mode) — compare surface positions
+        // Health pickups — all modes (s44r18-09 removed pvpEnabled gate)
         networkHealthPickups.forEach((visual, pickupId) => {
           if (pendingHealthCollections.has(pickupId) || !visual.mesh) return;
           const pickupSurfacePos = transform(visual.surfaceU, visual.surfaceV).position;
@@ -6367,6 +6479,17 @@ async function main() {
             pendingHealthCollections.add(pickupId);
             visual.mesh.visible = false;
             network.sendCollectPickup('health', pickupId);
+          }
+        });
+
+        // Shield pickups — blue diamonds
+        networkShieldPickups.forEach((visual, pickupId) => {
+          if (pendingShieldCollections.has(pickupId) || !visual.mesh) return;
+          const pickupSurfacePos = transform(visual.surfaceU, visual.surfaceV).position;
+          if (playerSurfacePos.distanceToSquared(pickupSurfacePos) < SUPER_COLLECT_RADIUS_SQ) {
+            pendingShieldCollections.add(pickupId);
+            visual.mesh.visible = false;
+            network.sendCollectPickup('shield' as any, pickupId);
           }
         });
       }
@@ -6467,6 +6590,25 @@ async function main() {
           const pulse = 0.7 + Math.sin(totalTime * 6) * 0.15;
           (core.material as THREE.MeshBasicMaterial).opacity = pulse * (core.material.userData.baseOpacity ?? 0.85);
         }
+        visual.mesh.userData.ageFactor = 1.0;
+        visual.mesh.userData.surfaceU = visual.surfaceU;
+        visual.mesh.userData.surfaceV = visual.surfaceV;
+      });
+    }
+
+    // Animate shield pickups (counter-spin + bob).
+    if (getTransform && networkShieldPickups.size > 0) {
+      const transform = getTransform;
+      const totalTime = game.clock.totalTime;
+      networkShieldPickups.forEach((visual) => {
+        const { position, normal, tangent, bitangent } = transform(visual.surfaceU, visual.surfaceV);
+        const bob = Math.sin(totalTime * 3 + visual.spawnTime * 0.7) * 0.06;
+        visual.mesh.position.copy(position).addScaledVector(normal, 0.42 + bob);
+        // Spin the octahedron
+        const mat4 = new THREE.Matrix4().makeBasis(tangent, normal, bitangent);
+        const qSurface = new THREE.Quaternion().setFromRotationMatrix(mat4);
+        const qSpin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -totalTime * 1.5);
+        visual.mesh.quaternion.copy(qSurface).multiply(qSpin);
         visual.mesh.userData.ageFactor = 1.0;
         visual.mesh.userData.surfaceU = visual.surfaceU;
         visual.mesh.userData.surfaceV = visual.surfaceV;
@@ -7441,6 +7583,10 @@ async function main() {
           if (!visual.mesh.visible) return;
           applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV);
         });
+        networkShieldPickups.forEach((visual) => {
+          if (!visual.mesh.visible) return;
+          applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV);
+        });
         for (const cp of localCompanionPickups) { if (cp.active) applyDimming(cp.mesh, cp.surfaceU, cp.surfaceV); }
         for (const bp of localBuffPickups)      { if (bp.active) applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV); }
       }
@@ -7551,11 +7697,11 @@ async function main() {
     });
     nameLabels.update(camera, labelPositions);
 
-    // Update local player PvP HUD health bar
-    if (latestPvpEnabled && latestGameState && localPlayerId) {
+    // Update local player HP/shield HUD (shown in all modes)
+    if (latestGameState && localPlayerId) {
       const localPs = latestGameState.players.get(localPlayerId);
       if (localPs) {
-        updatePvpHud(localPs.health ?? 100, localPs.maxHealth ?? 100);
+        updatePvpHud(localPs.health ?? 100, localPs.maxHealth ?? 100, localPs.shieldCount ?? 0);
       }
     }
 

@@ -77,6 +77,12 @@ export class Player {
   /** When true, lives never deplete on death (death penalties still apply). */
   infiniteLives = false;
 
+  // -- Health & Shield system -----------------------------------------------
+  health = 100;
+  maxHealth = 100;
+  /** Stackable shield layers. Each layer absorbs one hit entirely. */
+  shieldCount = 0;
+
   // -- Invincibility --------------------------------------------------------
   private invincibilityTimer = INVINCIBILITY_DURATION;
   private isInvincible = true;
@@ -130,6 +136,35 @@ export class Player {
     this.boostTimer = 0;
     this.prevBoostHeld = false;
     this.mesh.visible = true;
+    // Reset health/shields on respawn
+    this.health = this.maxHealth;
+    this.shieldCount = 0;
+  }
+
+  /**
+   * Apply damage to the player. Shields absorb first; if shields are
+   * exhausted, HP is reduced. Returns true if the hit kills the player
+   * (HP reached 0 and caller should invoke die()).
+   */
+  takeDamage(amount: number): boolean {
+    if (!this.canTakeDamage) return false;
+    if (this.shieldCount > 0) {
+      this.shieldCount--;
+      return false; // shield absorbed — player survives
+    }
+    this.health -= amount;
+    if (this.health <= 0) {
+      this.health = this.maxHealth; // reset for next life
+      return true; // caller should call die()
+    }
+    return false;
+  }
+
+  /**
+   * Restore HP, capped at maxHealth.
+   */
+  heal(amount: number): void {
+    this.health = Math.min(this.maxHealth, this.health + amount);
   }
 
   /**
