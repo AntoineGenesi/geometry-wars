@@ -45,16 +45,17 @@ interface BonusConfig {
 }
 
 const BONUS_TABLE: Record<WeaponType, BonusConfig> = {
-  [WeaponType.Standard]:       { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.05, rateL5: 1.20, special: '+1 extra bullet' },
-  [WeaponType.Spread]:         { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.05, rateL5: 1.15, special: '+2 extra pellets' },
-  [WeaponType.Piercing]:       { dmgL1: 1.15, dmgL5: 1.60, rateL1: 1.05, rateL5: 1.20, special: '+50% beam length' },
-  [WeaponType.ChainLightning]: { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.05, rateL5: 1.15, special: '+2 chain targets' },
-  [WeaponType.Homing]:         { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.05, rateL5: 1.20, special: 'Tighter tracking' },
-  [WeaponType.PlasmaMortar]:   { dmgL1: 1.15, dmgL5: 1.60, rateL1: 1.00, rateL5: 1.10, special: '+50% AoE radius' },
-  [WeaponType.GravityGun]:     { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.00, rateL5: 1.10, special: '+50% pull radius' },
-  [WeaponType.LaserBeam]:      { dmgL1: 1.20, dmgL5: 1.70, rateL1: 1.00, rateL5: 1.15, special: 'Continuous ramp' },
-  [WeaponType.BlackHole]:      { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.00, rateL5: 1.10, special: '+duration +shots' },
-  [WeaponType.TeslaCoil]:      { dmgL1: 1.15, dmgL5: 1.60, rateL1: 1.00, rateL5: 1.10, special: '+radius +DPS' },
+  // special only set when WeaponManager.isMasteryMaxLevel() code actually implements the behavior
+  [WeaponType.Standard]:       { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.05, rateL5: 1.20, special: '+2 extra bullets (twin stream)' },
+  [WeaponType.Spread]:         { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.05, rateL5: 1.15, special: '9-pellet mega fan' },
+  [WeaponType.Piercing]:       { dmgL1: 1.15, dmgL5: 1.60, rateL1: 1.05, rateL5: 1.20 },
+  [WeaponType.ChainLightning]: { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.05, rateL5: 1.15 },
+  [WeaponType.Homing]:         { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.05, rateL5: 1.20, special: 'Seeking Swarm: 3 simultaneous missiles' },
+  [WeaponType.PlasmaMortar]:   { dmgL1: 1.15, dmgL5: 1.60, rateL1: 1.00, rateL5: 1.10 },
+  [WeaponType.GravityGun]:     { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.00, rateL5: 1.10 },
+  [WeaponType.LaserBeam]:      { dmgL1: 1.20, dmgL5: 1.70, rateL1: 1.00, rateL5: 1.15 },
+  [WeaponType.BlackHole]:      { dmgL1: 1.10, dmgL5: 1.50, rateL1: 1.00, rateL5: 1.10, special: 'Event Horizon: longer duration + AoE explosion' },
+  [WeaponType.TeslaCoil]:      { dmgL1: 1.15, dmgL5: 1.60, rateL1: 1.00, rateL5: 1.10 },
 };
 
 // ── Public interfaces ─────────────────────────────────────────────────────────
@@ -181,19 +182,21 @@ export class MasteryStore {
 
   /**
    * Returns a human-readable description of the passive bonus unlocked at the given level.
-   * e.g. "Blaster: +20% damage always" or "Plasma Mortar: +50% AoE radius" at level 5.
+   * Always shows the real damage %, plus fire rate % when non-zero, plus special when present.
+   * e.g. "Blaster: +20% damage, +10% fire rate" or "Blaster: +50% damage, +20% fire rate, +2 extra bullets (twin stream)" at level 5.
    * Returns empty string for level 0.
    */
   getBonusDescription(weapon: WeaponType, level: number): string {
     if (level === 0) return '';
     const cfg = BONUS_TABLE[weapon];
     const name = WEAPON_CONFIGS[weapon].name;
-    if (level === 5 && cfg.special) {
-      return `${name}: ${cfg.special}`;
-    }
     const t = (level - 1) / 4;
     const dmgPct = Math.round((cfg.dmgL1 + t * (cfg.dmgL5 - cfg.dmgL1) - 1) * 100);
-    return `${name}: +${dmgPct}% damage always`;
+    const ratePct = Math.round((cfg.rateL1 + t * (cfg.rateL5 - cfg.rateL1) - 1) * 100);
+    let desc = `${name}: +${dmgPct}% damage`;
+    if (ratePct > 0) desc += `, +${ratePct}% fire rate`;
+    if (level === 5 && cfg.special) desc += `, ${cfg.special}`;
+    return desc;
   }
 
   getPassiveMultipliers(): Map<WeaponType, PassiveMasteryBonus> {
