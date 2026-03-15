@@ -10,3 +10,4 @@ is in the URL. The LAN E2E test suite already uses ?debug=true, so
 these logs remain available for debugging. In production play, the
 console stays clean. console.error calls are left ungated since they
 report actual errors.
+TOPICS: bugfix
