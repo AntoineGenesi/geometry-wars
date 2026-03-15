@@ -14,3 +14,4 @@ Mobius seam (s44r4-04) in progress. 2 of 3 Wave 1 bugs fixed.
 #	tasks/s44r4-02-pill-hit-detection-enemies-killing-from-far.md
 
 Key files: server/rooms/GameRoom.ts, src/core/CollisionSystem.ts, src/core/GameInstance.ts, ...l-player-enemy-hit-detection.regression.test.ts, ...-pill-hit-detection-enemies-killing-from-far.md.
+TOPICS: hit-detection,multiplayer surfaces
