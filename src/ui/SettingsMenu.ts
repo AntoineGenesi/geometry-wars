@@ -21,7 +21,13 @@ import { getActiveStyleName, getActiveStyleIndex, clearVisualStyle, saveVisualSt
 import { VISUAL_PRESETS } from './VisualPlayground';
 import { loadCustomStyles } from './VisualStyleEditor';
 import { isMobile } from '../core/MobileDetector';
-import { loadMobileGridBrightness, saveMobileGridBrightness } from '../core/MobileGridConfig';
+import {
+  loadGridBrightness,
+  saveGridBrightness,
+  loadGridDensity,
+  saveGridDensity,
+  type GridDensityPreset,
+} from '../core/MobileGridConfig';
 
 // ---------------------------------------------------------------------------
 // Exported settings interfaces
@@ -1192,17 +1198,26 @@ export class SettingsMenu {
         <div class="toggle ${g.enable90DegreeHide ? 'on' : ''}" id="toggle-90-degree-hide" data-setting="enable90DegreeHide"></div>
       </div>
 
-      ${isMobile() ? `
-      <div class="section-heading">Mobile Surface Grid</div>
+      <div class="section-heading">Grid Lines</div>
       <div class="setting-row">
-        <span class="setting-label">Surface Brightness</span>
-        <input type="range" id="mobile-grid-brightness" min="0.05" max="0.80" step="0.05" value="${loadMobileGridBrightness()}" />
-        <span class="setting-value" id="mobile-grid-brightness-val">${(loadMobileGridBrightness() * 100).toFixed(0)}%</span>
+        <span class="setting-label">Brightness</span>
+        <input type="range" id="grid-brightness" min="0" max="1" step="0.05" value="${loadGridBrightness(isMobile())}" />
+        <span class="setting-value" id="grid-brightness-val">${(loadGridBrightness(isMobile()) * 100).toFixed(0)}%</span>
       </div>
       <div class="setting-hint">
-        <small>Grid lines are 4× denser on mobile. Brightness applies on next game start.</small>
+        <small>0% = invisible, 100% = maximum. Applies on next game start.</small>
       </div>
-      ` : ''}
+      <div class="setting-row">
+        <span class="setting-label">Density</span>
+        <div>
+          ${(['low', 'medium', 'high'] as GridDensityPreset[]).map(p =>
+            `<button class="inline-preset-btn${loadGridDensity() === p ? ' active' : ''}" data-grid-density="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</button>`
+          ).join('')}
+        </div>
+      </div>
+      <div class="setting-hint">
+        <small>Grid line count. Mobile is 4× denser by default. Applies on next game start.</small>
+      </div>
 
       <div class="section-heading">Surface Appearance</div>
       <div class="setting-row">
@@ -1492,13 +1507,21 @@ export class SettingsMenu {
       return `${(val * 100).toFixed(0)}%`;
     });
 
-    // Mobile-only: surface brightness slider
-    if (isMobile()) {
-      this.attachSlider('mobile-grid-brightness', 'mobile-grid-brightness-val', (val) => {
-        saveMobileGridBrightness(val);
-        return `${(val * 100).toFixed(0)}%`;
+    // Grid brightness slider (all users)
+    this.attachSlider('grid-brightness', 'grid-brightness-val', (val) => {
+      saveGridBrightness(val);
+      return `${(val * 100).toFixed(0)}%`;
+    });
+
+    // Grid density preset buttons
+    this.container.querySelectorAll('.inline-preset-btn[data-grid-density]').forEach(btn => {
+      (btn as HTMLElement).addEventListener('click', () => {
+        const preset = (btn as HTMLElement).dataset.gridDensity as GridDensityPreset;
+        saveGridDensity(preset);
+        this.container.querySelectorAll('.inline-preset-btn[data-grid-density]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
       });
-    }
+    });
 
     // Surface opacity slider
     this.attachSlider('surface-opacity', 'surface-opacity-val', (val) => {
