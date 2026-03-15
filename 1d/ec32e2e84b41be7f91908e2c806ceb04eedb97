@@ -9,3 +9,4 @@ Additional context from the commit body:
   scale (0.9) and shorter lifetime (0.5s)
 - Mouse wheel zooms camera in/out (range 6-35 units, default 15)
 - Both features single-player only
+TOPICS: enemies
