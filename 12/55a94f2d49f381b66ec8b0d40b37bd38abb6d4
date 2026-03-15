@@ -8,3 +8,4 @@ The merge of phase3 worktree left a symlink pointing to the now-deleted
 worktree directory, causing Vite to crash with EISDIR error on startup.
 
 Bugs in this game are often surface-specific or code-path-specific. A fix that works in single-player may not apply to multiplayer because SP uses GameLoop.ts while MP uses network-main.ts. The project tracks false-positive verified claims in .claude/state/false-positives.md. Bug fixes require a minimum of Level 5 verification (Puppeteer screenshot) before being declared complete, as unit tests alone cannot prove gameplay issues are resolved.
+TOPICS: surfaces
