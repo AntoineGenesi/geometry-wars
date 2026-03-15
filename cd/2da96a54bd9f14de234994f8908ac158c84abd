@@ -12,3 +12,4 @@ MP sphere camera fixed (stable frame), torus UV fixed (atan2 sign),
 ghost kills fixed. PvP/PvPvE timer UI added. Orchestration system
 hardened with Implemented→Verified state machine, mandatory review
 artifacts, bug-fix TDD, and concurrency groups.
+TOPICS: feature
