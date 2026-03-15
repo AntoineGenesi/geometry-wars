@@ -14,3 +14,4 @@ Applied isotropically to both predDx and predDy. Average metric lazy-computed on
 with same 40-step area-weighted integration as GameRoom.ts _getPeanutAvgMetric.
 
 Files: src/network-main.ts (client prediction ~line 5065)
+TOPICS: multiplayer,surfaces
