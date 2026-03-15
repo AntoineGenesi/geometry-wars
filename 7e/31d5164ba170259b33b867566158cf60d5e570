@@ -10,3 +10,4 @@ Additional context from the commit body:
 - WebRTC migration plan: Section 12 hybrid approach added
 
 Key files: CLAUDE.md, docs/webrtc-migration-plan.md, tasks/coop-mouse-aiming-broken.md, tasks/cylinder-pill-pipe-surfaces.md, tasks/geckos-io-integration.md, and others.
+TOPICS: docs,ops
