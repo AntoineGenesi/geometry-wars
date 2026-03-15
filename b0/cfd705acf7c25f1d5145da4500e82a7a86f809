@@ -10,3 +10,4 @@ track remaining damage and continue through enemies until budget depleted.
 Both client (network-main.ts) and server (GameRoom.ts) updated.
 
 Key files: server/rooms/GameRoom.bullet-penetration.test.ts, server/rooms/GameRoom.ts, src/network-main.ts, .../s44r3-02-bullet-penetration-not-working-mp.md.
+TOPICS: bullet,multiplayer
