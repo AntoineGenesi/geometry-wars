@@ -12,3 +12,4 @@ per hit. Bullet dies when budget <= 0.
 Game state: SP penetration working. MP requires server protocol changes (follow-up).
 
 Key files: src/core/CollisionSystem.ts, src/core/GameInstance.ts, src/entities/Bullet.ts, ...13-bullet-damage-persistence.regression.test.ts, ...2-13-bullet-damage-system-damage-persistence.md.
+TOPICS: hit-detection,ops
