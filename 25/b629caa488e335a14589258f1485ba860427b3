@@ -17,3 +17,4 @@ Files: src/core/MapSize.ts, src/main.ts, src/test/difficulty-rebalance.test.ts
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
 
 Key files: src/core/MapSize.ts, src/main.ts, src/test/difficulty-rebalance.test.ts, tasks/s44l-08a-dynamic-enemy-cap-small-maps.md.
+TOPICS: enemies
