@@ -15,3 +15,4 @@ Additional context from the commit body:
 - Add unit tests: PickupSpawner.test.ts covering all acceptance criteria
 
 Key files: src/buffs/BuffManager.ts, src/core/PickupSpawner.test.ts, src/core/PickupSpawner.ts, src/main.ts.
+TOPICS: feature
