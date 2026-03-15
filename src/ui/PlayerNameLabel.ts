@@ -72,7 +72,7 @@ export class PlayerNameLabels {
       .player-name-label .pnl-health-bar-wrap {
         width: 100%;
         height: 4px;
-        background: rgba(255,255,255,0.15);
+        background: rgba(180,0,0,0.85);
         border-radius: 2px;
         margin-bottom: 2px;
         overflow: hidden;
