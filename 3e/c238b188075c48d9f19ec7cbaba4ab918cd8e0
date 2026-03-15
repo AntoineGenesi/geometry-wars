@@ -8,3 +8,4 @@ Replace `(window as any).__gameDebug` with a properly typed
 GameDebugAPI interface and `declare global` Window extension.
 This provides type safety for the debug API used by the LAN
 E2E test suite (tests/lan/run-lan-tests.mjs).
+TOPICS: bugfix
