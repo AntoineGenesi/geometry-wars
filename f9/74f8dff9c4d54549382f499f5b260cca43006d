@@ -9,3 +9,4 @@ rotates to face travel direction. Previously appeared as thin red line due to
 identity quaternion. Fix applies to both SP and MP paths.
 
 Key files: src/main.ts, src/rendering/GeometryCache.ts, src/test/RealGameTestHarness.ts, src/weapons/WeaponManager.test.ts, src/weapons/WeaponManager.ts, and others.
+TOPICS: ops
