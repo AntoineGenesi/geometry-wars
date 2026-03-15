@@ -19,3 +19,4 @@ The code in LanguageSelector.ts already sets backgroundImage to
 public/ at root so the paths resolve correctly.
 
 Key files: public/assets/flags/de.svg, public/assets/flags/en.svg, public/assets/flags/es.svg, public/assets/flags/fr.svg, public/assets/flags/ru.svg.
+TOPICS: bugfix,i18n
