@@ -2960,11 +2960,45 @@ async function main() {
       );
     }
 
+    // Purge dead enemies from the spawner's internal array before spawning.
+    // In network mode, enemySpawner.update() is NOT called, so dead enemies
+    // (active=false) accumulate in spawner.enemies[] across rounds. Without
+    // periodic cleanup, the O(n) activeCount scan in spawn() gets stale entries.
+    // More critically: if inactive enemies are mistakenly counted as active
+    // (e.g. an edge case where active was never set to false), the 400-cap
+    // fires prematurely and spawn() returns a dummy inactive Wanderer.
+    // Cleaning up before spawn prevents the array from growing unboundedly
+    // and ensures the activeCount reflects only truly live enemies.
+    enemySpawner.cleanupInactiveEnemies();
+
     // Use real EnemySpawner to create the enemy with proper mesh.
     // Pass skipSpawnWarning=true to avoid creating red ring indicators that
     // would never be cleaned up (enemySpawner.update() is not called in
     // network mode because the server is authoritative for enemy positions).
     enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV, 0, true, undefined, snakeMaxSegments);
+
+    // Guard: if spawn() returned a dummy inactive enemy (400-cap hit), do NOT
+    // store it in networkEnemies. Storing a dummy permanently poisons the slot:
+    // subsequent getOrCreateEnemy calls for this ID return the dummy early
+    // (enemy already in map), so the REAL enemy is never created → invisible.
+    // By returning null here, the next onStateChange will retry spawning.
+    // s44r18-01: this was the root cause of progressive MP invisible enemies.
+    if (!enemy.active) {
+      // Dispose the dummy mesh to prevent memory leak (it was never added to scene)
+      if (enemy.mesh) {
+        enemy.mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            child.geometry?.dispose();
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => m.dispose());
+            } else {
+              child.material?.dispose();
+            }
+          }
+        });
+      }
+      return null;
+    }
 
     networkEnemies.set(id, enemy);
     enemyPrevHealth.set(id, netEnemy.health);

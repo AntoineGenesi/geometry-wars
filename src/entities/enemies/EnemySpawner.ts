@@ -292,6 +292,25 @@ export class EnemySpawner {
   }
 
   /**
+   * Remove inactive (dead) enemies from the internal enemies[] array.
+   * In network mode, enemySpawner.update() is NOT called, so dead enemies
+   * accumulate in enemies[] across rounds. This method allows the network
+   * code to periodically compact the array and prevent O(n) cap checks
+   * from growing unboundedly.
+   *
+   * s44r18-01: Added for network mode cleanup. In SP, update() handles this.
+   */
+  cleanupInactiveEnemies(): void {
+    let writeIdx = 0;
+    for (let readIdx = 0; readIdx < this.enemies.length; readIdx++) {
+      if (this.enemies[readIdx].active) {
+        this.enemies[writeIdx++] = this.enemies[readIdx];
+      }
+    }
+    this.enemies.length = writeIdx;
+  }
+
+  /**
    * Set the surface reference for UV-aware enemy movement.
    * This enables per-position speed correction (UV Jacobian),
    * proper UV wrapping, and topology-aware separation forces.
