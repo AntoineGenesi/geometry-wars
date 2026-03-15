@@ -6,3 +6,4 @@ This maintenance commit handles housekeeping work such as task tracking, lock fi
 Key files: tasks/s44-epic-00-meshwalker-mp-port-plan.md, tasks/s44-epic-01-surface-geometry-builder.md, tasks/s44-epic-02-server-mesh-walker.md, tasks/s44-epic-03-server-surface-manager.md, tasks/s44-epic-04-schema-protocol-changes.md, and others.
 
 The Geometry Wars 3D project uses an orchestration system where tasks are processed through worker agents. Each worker operates in its own git worktree, allowing parallel task execution without file conflicts. Chore commits typically track task completion status, worker state files, review certificates, or pipeline coordination metadata. These commits are essential for maintaining the multi-session workflow where context may be compacted and recovered across sessions.
+TOPICS: player-movement
