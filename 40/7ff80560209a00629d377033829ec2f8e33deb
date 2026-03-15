@@ -12,3 +12,4 @@ created. Verification report updated with FP section.
 #	tasks/s44r4-08-false-positive-tracking-verdict-calibration.md
 
 Key files: .claude/agents/reviewer.md, .claude/state/false-positives.md, .../reviews/s44r3-03-cube-map-completely-broken.md, .../s44r3-08-mobius-uv-wall-blocking-movement.md, ...9-hit-detection-offset-mobius-and-other-maps.md, and others.
+TOPICS: ops,orchestration
