@@ -13,3 +13,4 @@ but Rapier enables collision group filtering and future non-sphere shapes.
 Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
 
 Key files: decisions/rapier-collision-system-2026-02-09.md, src/physics/CollisionBridge.test.ts, src/physics/CollisionBridge.ts, src/physics/CollisionGroups.ts, src/physics/RapierWorld.test.ts, and others.
+TOPICS: hit-detection
