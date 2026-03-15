@@ -25,8 +25,6 @@ export class HealPickup {
   private readonly mapSizeScaleFactor: number;
   private _currentTotalTime = 0;
   private readonly _surfaceWorldPos = new THREE.Vector3();
-  /** Cached opacity multiplier — only call traverse() when this changes (s44r18-19 fix). */
-  private _lastOpacityMultiplier = 1.0;
 
   constructor(u: number, v: number, mapSizeScaleFactor = 1.0) {
     this.surfaceU = u;
@@ -83,22 +81,18 @@ export class HealPickup {
     }
     this._currentTotalTime = totalTime;
 
-    // Fade near end of life.
-    // Only call traverse() when opacity actually changes — avoids per-frame mesh walks (s44r18-19 fix).
+    // Fade near end of life
     if (this.age > HEAL_PICKUP_FADE_START) {
       const fadeProgress = (this.age - HEAL_PICKUP_FADE_START) / (HEAL_PICKUP_LIFETIME - HEAL_PICKUP_FADE_START);
       const opacity = Math.max(0, 1 - fadeProgress);
-      if (Math.abs(opacity - this._lastOpacityMultiplier) > 0.005) {
-        this._lastOpacityMultiplier = opacity;
-        this.mesh.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            const mat = child.material as THREE.MeshBasicMaterial;
-            if (mat.transparent && mat.userData.baseOpacity != null) {
-              mat.opacity = opacity * mat.userData.baseOpacity;
-            }
+      this.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const mat = child.material as THREE.MeshBasicMaterial;
+          if (mat.transparent && mat.userData.baseOpacity != null) {
+            mat.opacity = opacity * mat.userData.baseOpacity;
           }
-        });
-      }
+        }
+      });
     }
   }
 
