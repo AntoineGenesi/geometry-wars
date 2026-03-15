@@ -14,3 +14,4 @@ Host can resume via the RESUME TIMER button.
 Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>
 
 Key files: TODO.md, inbox/2026-03-07_0900.md, logs/mp-perf-r_WgLr4n8-2026-03-07.jsonl, server/rooms/GameRoom.ts, ...s44n-01-king-of-the-hill-zones-single-player.md, and others.
+TOPICS: bugfix
