@@ -12,3 +12,4 @@ Additional context from the commit body:
 Game state: Mobile users couldn't exit weapon mastery screen. Now auto-dismisses on game start.
 
 Key files: .claude-worker-state.json, src/network-main.ts, src/ui/WeaponMasteryScreen.test.ts, src/ui/WeaponMasteryScreen.ts, ...s44r6b-06-mobile-weapon-mastery-screen-stuck.md.
+TOPICS: upgrades
