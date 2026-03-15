@@ -6,3 +6,4 @@ This feature extends the Geometry Wars 3D codebase with new functionality. The i
 Key files: src/core/modes/KingMode.ts, src/rendering/ZoneSurfaceMaterial.ts, src/test/game-modes.test.ts, tasks/s44h-12-zone-coloring-on-surface-mesh.md, tests/visual/test-zone-surface-coloring.ts.
 
 Geometry Wars 3D supports 8 distinct map surfaces: sphere, torus, peanut, pill, cube, Möbius strip, sphere-tunnel (bevel), and a flat surface. Each surface requires specialized UV handling, tangent frame computation, and collision detection. New features must work correctly across all surfaces in both single-player (via GameLoop.ts) and multiplayer (via network-main.ts) code paths. SP and MP code paths are entirely separate — changes to one do not automatically apply to the other.
+TOPICS: surfaces
