@@ -16,3 +16,4 @@ This restores damage + health bars for all PvP/PvPvE modes on all maps.
 User testing required (Level 3 verification — LAN MP).
 
 Key files: .claude-worker-state.json, server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, ...vpve-pvp-damage-completely-broken-regression.md.
+TOPICS: regression
