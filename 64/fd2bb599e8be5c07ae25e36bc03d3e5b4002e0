@@ -6,3 +6,4 @@ Session checkpoint commits capture the current state of the game and pending wor
 Key files: .claude/locks/port-registry, .../s44k-02-weapon-spread-shot-broken-mp.lock, .../s44k-04-server-settings-not-applying-mp.lock, .../s44k-05-lives-system-shared-pvpve-broken.lock, ...-game-mode-voting-broken-pvp-pvpve-missing.lock, and others.
 
 Session checkpoint commits serve as restore points. When the user starts a new voice-dump processing cycle (/inbox), a checkpoint captures the full current game state, lists pending tasks, and documents known bugs. The checkpoint commit body describes what is working and broken at that moment. This information is invaluable for understanding the game's history and for diagnosing when a regression was introduced by examining which commits fall between a "working" and "broken" checkpoint.
+TOPICS: bullet,multiplayer surfaces,upgrades
