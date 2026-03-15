@@ -19,3 +19,4 @@ Game state: All s44r6 gameplay bugs addressed. 13 tasks merged this session.
 #	tasks/s44r6-06-pvp-damage-broken-peanut-all-maps.md
 
 Key files: .../s44r6-06-pvp-damage-broken-peanut-all-maps.md, server/rooms/GameRoom.ts, src/network-main.ts, src/network/NetworkClient.ts, .../s44r6-06-pvp-damage-broken-peanut-all-maps.md.
+TOPICS: hit-detection
