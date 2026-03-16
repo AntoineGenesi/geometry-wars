@@ -186,6 +186,28 @@ export interface StoredSession {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Game Event Log (ephemeral — not persisted to localStorage)
+// ---------------------------------------------------------------------------
+
+/** Types of discrete game events recorded for the post-game score graph. */
+export type GameEventType = 'kill' | 'wave_start' | 'buff_pickup' | 'weapon_pickup' | 'player_death' | 'kill_streak';
+
+/** A discrete game event with timestamp. Used for score graph markers. */
+export interface GameEvent {
+  /** Elapsed game time in seconds since session start. */
+  time: number;
+  /** Event type — determines marker style on the graph. */
+  type: GameEventType;
+  /** Human-readable label, e.g. "Tracker", "Wave 5", "Hot Hands", "Death". */
+  label: string;
+  /** Optional numeric value: streak count, wave number, etc. */
+  value?: number;
+}
+
+/** Maximum number of game events stored per session (FIFO overflow). */
+const MAX_GAME_EVENTS = 2000;
+
 /** Legacy format for backwards compatibility. */
 interface LegacyDataPoint {
   time: number;
@@ -268,6 +290,9 @@ export class PerformanceLogger {
   private _stuckLastV = 0;
   private _stuckLastFace = 0;
   private _stuckLastChangeMs = 0; // initialized in constructor
+
+  // Game event log (for post-game score graph, ephemeral)
+  private readonly gameEvents: GameEvent[] = [];
 
   // Frame spike tracking
   private readonly spikeEvents: FrameSpikeEvent[] = [];
@@ -670,6 +695,28 @@ export class PerformanceLogger {
     return this.spikeEvents;
   }
 
+  /**
+   * Record a discrete game event (kill, wave start, death, pickup, streak).
+   * Used to populate score graph markers on the post-game screen.
+   * Events are ephemeral — not persisted to localStorage.
+   * Overflow: drops the oldest event when cap of 2000 is reached.
+   */
+  recordEvent(type: GameEventType, label: string, value?: number): void {
+    const elapsed = (Date.now() - this.sessionStart) / 1000;
+    if (this.gameEvents.length >= MAX_GAME_EVENTS) {
+      this.gameEvents.shift(); // drop oldest (FIFO)
+    }
+    this.gameEvents.push({ time: elapsed, type, label, value });
+  }
+
+  /**
+   * Get all recorded game events in chronological order.
+   * Returns readonly view — do not mutate.
+   */
+  getEvents(): ReadonlyArray<GameEvent> {
+    return this.gameEvents;
+  }
+
   /** Get session summary (for export and display). */
   getSessionSummary(): StoredSession['summary'] {
     const weaponAnalytics = this.getWeaponAnalytics();
@@ -953,6 +1000,11 @@ export class PerformanceLogger {
     const killsDelta = this.currentKills - this.lastSampleKills;
     point.killsThisSample = killsDelta;
     this.lastSampleKills = this.currentKills;
+
+    // Detect kill streak: 5+ kills in a single 500ms sample window
+    if (killsDelta >= 5) {
+      this.recordEvent('kill_streak', `${killsDelta}-kill streak`, killsDelta);
+    }
 
     // Track gameplay peaks
     if (killsDelta > this.peakKillRate) this.peakKillRate = killsDelta;

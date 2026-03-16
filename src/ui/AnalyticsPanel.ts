@@ -10,6 +10,7 @@
  */
 
 import type { PerformanceLogger } from '../core/PerformanceLogger';
+import { ScoreGraphPanel, injectScoreGraphStyles } from './ScoreGraphPanel';
 
 // Weapon display names (matches WeaponType enum values)
 const WEAPON_DISPLAY: Record<string, string> = {
@@ -65,6 +66,7 @@ const BUFF_COLORS: Record<string, string> = {
 export class AnalyticsPanel {
   private container: HTMLDivElement;
   private onCloseCallback: (() => void) | null = null;
+  private scoreGraphPanel: ScoreGraphPanel | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -188,6 +190,39 @@ export class AnalyticsPanel {
         background: linear-gradient(180deg, #006688 0%, #003344 100%);
         box-shadow: 0 0 20px #0088aa;
       }
+      #analytics-panel .ap-tab-bar {
+        display: flex;
+        gap: 2px;
+        margin-bottom: 24px;
+        border-bottom: 2px solid #112233;
+      }
+      #analytics-panel .ap-tab {
+        padding: 10px 24px;
+        font-size: 12px;
+        font-weight: bold;
+        letter-spacing: 2px;
+        color: #446688;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        transition: color 0.15s, border-color 0.15s;
+        margin-bottom: -2px;
+      }
+      #analytics-panel .ap-tab:hover {
+        color: #88aacc;
+      }
+      #analytics-panel .ap-tab.active {
+        color: #00ffff;
+        border-bottom: 2px solid #00ffff;
+        text-shadow: 0 0 8px rgba(0, 255, 255, 0.5);
+      }
+      #analytics-panel .ap-tab-panel {
+        display: none;
+      }
+      #analytics-panel .ap-tab-panel.active {
+        display: block;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -197,8 +232,14 @@ export class AnalyticsPanel {
    */
   show(perfLogger: PerformanceLogger): void {
     const analytics = perfLogger.getWeaponAnalytics();
+    injectScoreGraphStyles();
+
+    // Dispose previous score graph if any
+    this.scoreGraphPanel?.dispose();
+    this.scoreGraphPanel = new ScoreGraphPanel();
+
     this.container.innerHTML = '';
-    this.container.appendChild(this.buildContent(analytics));
+    this.container.appendChild(this.buildTabContent(analytics, perfLogger));
     this.container.classList.remove('hidden');
 
     // keyHandler declared first so doClose can reference it (avoids TDZ issue)
@@ -240,17 +281,75 @@ export class AnalyticsPanel {
   }
 
   dispose(): void {
+    this.scoreGraphPanel?.dispose();
+    this.scoreGraphPanel = null;
     this.container.remove();
   }
 
-  private buildContent(analytics: ReturnType<PerformanceLogger['getWeaponAnalytics']>): HTMLElement {
+  private buildTabContent(
+    analytics: ReturnType<PerformanceLogger['getWeaponAnalytics']>,
+    perfLogger: PerformanceLogger,
+  ): HTMLElement {
     const content = document.createElement('div');
     content.className = 'ap-content';
 
     content.innerHTML = `
-      <h1>WEAPON ANALYTICS</h1>
-      <div class="ap-subtitle">POST-GAME SESSION REVIEW</div>
+      <h1>SESSION REVIEW</h1>
+      <div class="ap-subtitle">POST-GAME ANALYTICS</div>
     `;
+
+    // Tab bar
+    const tabBar = document.createElement('div');
+    tabBar.className = 'ap-tab-bar';
+    const tabScore = document.createElement('button');
+    tabScore.className = 'ap-tab active';
+    tabScore.textContent = 'SCORE GRAPH';
+    const tabWeapons = document.createElement('button');
+    tabWeapons.className = 'ap-tab';
+    tabWeapons.textContent = 'WEAPONS';
+    tabBar.appendChild(tabScore);
+    tabBar.appendChild(tabWeapons);
+    content.appendChild(tabBar);
+
+    // Score Graph panel
+    const scorePanel = document.createElement('div');
+    scorePanel.className = 'ap-tab-panel active';
+    scorePanel.id = 'ap-tab-score';
+    scorePanel.appendChild(this.scoreGraphPanel!.show(perfLogger));
+    content.appendChild(scorePanel);
+
+    // Weapons panel (existing content)
+    const weaponsPanel = document.createElement('div');
+    weaponsPanel.className = 'ap-tab-panel';
+    weaponsPanel.id = 'ap-tab-weapons';
+    weaponsPanel.appendChild(this.buildWeaponsContent(analytics));
+    content.appendChild(weaponsPanel);
+
+    // Tab switching
+    tabScore.addEventListener('click', () => {
+      tabScore.classList.add('active');
+      tabWeapons.classList.remove('active');
+      scorePanel.classList.add('active');
+      weaponsPanel.classList.remove('active');
+    });
+    tabWeapons.addEventListener('click', () => {
+      tabWeapons.classList.add('active');
+      tabScore.classList.remove('active');
+      weaponsPanel.classList.add('active');
+      scorePanel.classList.remove('active');
+    });
+
+    // CLOSE button (appended after tabs)
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'ap-close-btn';
+    closeBtn.textContent = 'CLOSE';
+    content.appendChild(closeBtn);
+
+    return content;
+  }
+
+  private buildWeaponsContent(analytics: ReturnType<PerformanceLogger['getWeaponAnalytics']>): HTMLElement {
+    const content = document.createElement('div');
 
     // --- Section 1: Weapon Usage Timeline ---
     content.appendChild(this.buildSection(
@@ -293,8 +392,6 @@ export class AnalyticsPanel {
         color: BUFF_COLORS[buff] ?? '#88aacc',
       }),
     ));
-
-    content.innerHTML += `<button class="ap-close-btn">CLOSE</button>`;
 
     return content;
   }

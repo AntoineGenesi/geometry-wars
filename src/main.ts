@@ -224,6 +224,9 @@ class WaveScheduler {
   /** External provider for player state (set by main after construction). */
   getDifficultyInput: (() => DifficultyInput) | null = null;
 
+  /** Called when a wave starts (scripted or endless). Set by main.ts. */
+  onWaveStart: ((waveNum: number, elapsed: number) => void) | null = null;
+
   /** Detects rapid score growth and applies a temporary difficulty surge. */
   private readonly scoreExplosion = new ScoreExplosionDetector();
 
@@ -262,6 +265,7 @@ class WaveScheduler {
             tier: 0, // scripted waves always tier 0 (early game)
           })),
         );
+        this.onWaveStart?.(i + 1, this.elapsed); // score graph: wave start event
       }
     }
 
@@ -276,6 +280,7 @@ class WaveScheduler {
         return; // Don't advance wave timer — retry next frame
       }
       this.endlessWave++;
+      this.onWaveStart?.(this.endlessWave, this.elapsed); // score graph: endless wave event
       // Spawn interval decreases with wave number AND difficulty level
       // At high difficulty (4+), waves come every 2s — relentless pressure
       const difficultySpeedBonus = Math.min(3.0, this.currentDifficultyLevel * 0.4);
@@ -1018,6 +1023,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Wave scheduler --
   const waveScheduler = new WaveScheduler(level.waves, isEndless);
+
+  // Wire wave start events into perfLogger for score graph markers
+  waveScheduler.onWaveStart = (waveNum: number, _elapsed: number) => {
+    perfLogger.recordEvent('wave_start', `Wave ${waveNum}`, waveNum);
+  };
 
   // Wire difficulty scaling into wave scheduler (reads player state each wave)
   waveScheduler.getDifficultyInput = () => ({

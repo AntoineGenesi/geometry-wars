@@ -863,6 +863,7 @@ export class GameLoop {
         ctx.ddaTracker.recordKill(1); // DDA: track kill event
         ctx.ddaLogger.recordKill(0, type); // DDA logger: log kill with enemy type
         ctx.perfLogger.recordWeaponKill(ctx.weaponManager.getCurrentWeapon(), ctx.state.perfBuffString); // weapon analytics
+        ctx.perfLogger.recordEvent('kill', type); // score graph: kill event marker
       },
       true, // showDamageNumbers
       (enemy: BaseEnemy) => { ctx.buffManager.onBulletHit(enemy); },
@@ -916,6 +917,8 @@ export class GameLoop {
           ctx.shockwaveEffect.triggerFlash(new THREE.Color(1, 0.2, 0.2), 0.4);
           // Player death indicator: red floating text at player position
           ctx.scorePopups.spawn(ctx.player.mesh.position.clone(), '-LIFE', '#ff4444', 2.0, 1.2);
+          // Score graph: record death event marker
+          ctx.perfLogger.recordEvent('player_death', 'Death');
           // Death cam: grayscale + darken while waiting to respawn
           if (!this._deathCamActive) {
             this._deathCamActive = true;
@@ -948,6 +951,7 @@ export class GameLoop {
               // Try companion protector shield before dying
               const saved = ctx.companionManager.onPlayerHit();
               if (!saved) {
+                ctx.perfLogger.recordEvent('player_death', 'Death'); // score graph
                 ctx.player.die();
                 ctx.particles.playerDeath(ctx.player.mesh.position);
                 ctx.screenShake.shake(0.5, 0.4);
@@ -1056,6 +1060,7 @@ export class GameLoop {
           // Weapon was added to inventory without switching — notify player
           ctx.weaponHUD.showPickupNotification(`${WEAPON_CONFIGS[wp.type].name} added to inventory  \u2022  [E] to cycle`);
         }
+        ctx.perfLogger.recordEvent('weapon_pickup', WEAPON_CONFIGS[wp.type]?.name ?? wp.type); // score graph
         wp.active = false;
       }
     }
@@ -1076,6 +1081,7 @@ export class GameLoop {
       if (ctx.player.alive && bp.checkPlayerCollision(ctx.player.surfaceU, ctx.player.surfaceV, playerPickupPos ?? ctx.playerWalker.position)) {
         ctx.weaponManager.applyBuff(bp.buffType);
         this.sound.play('weaponPickup', { volume: 0.3, pitch: 1.5 });
+        ctx.perfLogger.recordEvent('buff_pickup', bp.buffType); // score graph
         bp.active = false;
       }
     }
