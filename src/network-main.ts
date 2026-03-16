@@ -844,12 +844,13 @@ async function main() {
   // -- Depth-based occlusion: dims enemies behind the surface (view-based, not proximity-based) --
   // S27b: replaces the disabled proximity-based depth opacity with raycast-based occlusion.
   // Uses EnemyInstanceManager for performance-friendly instanced visibility updates.
-  // s44r17-01: Config aligned with SP — raised opacity1/2Plus to prevent compound dimming
-  // with UV-distance and LOD systems from pushing visibility below perceptible levels.
+  // s44r17-01: Config aligned with SP — raised opacity1/2Plus to prevent compound dimming.
+  // s44r22-01: Lowered opacity1/2Plus back down — double-dimming fixed in s44r12-03,
+  // NaN guard fixed in s44r21-01. User wants enemies "super dim" when behind surfaces.
   const depthOcclusion = new DepthOcclusionSystem({
     opacity0: 1.0,
-    opacity1: 0.40,
-    opacity2Plus: 0.12,
+    opacity1: 0.08,    // Behind one surface: super dim (s44r22-01)
+    opacity2Plus: 0.04, // Behind multiple surfaces: almost invisible (s44r22-01)
     lerpSpeed: 10.0,
   });
 
@@ -7077,7 +7078,7 @@ async function main() {
     // for enemies on the far side, leaving them fully bright without UV-distance clamping.
     const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
     const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
-    const NET_SURFACE_DIM_OPC  = 0.40;   // minimum opacity for far-away enemies (s44r16-07: raised from 0.15; at 0.15 double-dimming = 2.25% invisible)
+    const NET_SURFACE_DIM_OPC  = 0.08;   // minimum opacity for far-away enemies (s44r22-01: lowered from 0.40 to 0.08 — double-dimming fixed in s44r12-03, 0.40 floor made enemies too visible through surfaces)
     // World-space proximity override constants (SP parity — RenderLoop.ts PROXIMITY_*).
     const NET_PROXIMITY_NEAR_WORLD    = 2.0;
     const NET_PROXIMITY_NEAR_WORLD_SQ = NET_PROXIMITY_NEAR_WORLD * NET_PROXIMITY_NEAR_WORLD;
@@ -7153,7 +7154,7 @@ async function main() {
       // from pushing enemies below perceptible levels (SP parity).
       // s44r21-01: Remove `if (vis > 0)` guard — matches SP RenderLoop.ts line 288
       // which applies the floor unconditionally. In MP, vis is never intentionally 0
-      // (min depthOcclusion value is 0.12), and the guard allowed NaN to slip through:
+      // (min depthOcclusion value is 0.04), and the guard allowed NaN to slip through:
       // if surfacePosition.u/v is NaN → uvDist is NaN → surfaceVis stays undefined →
       // Math.min(vis, undefined) = NaN → NaN > 0 is false → floor skipped → invisible.
       // Also add isFinite guard as defense-in-depth against any NaN propagation path.

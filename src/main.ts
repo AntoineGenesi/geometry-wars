@@ -611,12 +611,13 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // opacity. Enemies behind walls are dimmed/hidden. Batched for performance.
   const depthOcclusion = new DepthOcclusionSystem({
     opacity0: 1.0,     // Clear line of sight: fully bright
-    opacity1: 0.40,    // Behind one surface: visibly dimmed but still visible
-    opacity2Plus: 0.12, // Behind multiple surfaces: faint but not invisible
+    opacity1: 0.08,    // Behind one surface: super dim (s44r22-01: lowered from 0.40; user wants enemies barely visible through surfaces)
+    opacity2Plus: 0.04, // Behind multiple surfaces: almost invisible (s44r22-01: lowered from 0.12)
     lerpSpeed: 10.0,   // Faster transitions for snappy feel
-    // s44r17-01: Previous values (0.12/0.04) caused compound dimming with LOD
-    // and surface-UV systems, pushing effective visibility to <1% → invisible.
-    // Raised to ensure enemies remain visible even with multiple dimming layers.
+    // s44r17-01: Previous values (0.12/0.04) caused compound dimming with LOD.
+    // s44r16-07: Raised to 0.40/0.12 to fix invisible enemies.
+    // s44r22-01: Lowered back to 0.08/0.04 — double-dimming fixed in s44r12-03,
+    // NaN guard in s44r21-01. Floor of 0.08 in SURFACE_DIM_OPACITY prevents full invisibility.
   });
   depthOcclusion.setSurfaceMesh(surface.mesh);
 
