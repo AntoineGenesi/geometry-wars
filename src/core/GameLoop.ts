@@ -159,6 +159,9 @@ export class GameLoop {
 
     // Handle respawn or game over
     if (!ctx.player.alive) {
+      // Block all input while player is dead (death cam active / waiting to respawn).
+      // Prevents stale held keys from firing on the frame the player respawns.
+      ctx.input.blockInput();
       if (ctx.player.lives > 0) {
         ctx.state.respawnTimer += dt;
         if (ctx.state.respawnTimer >= ctx.state.RESPAWN_DELAY) {

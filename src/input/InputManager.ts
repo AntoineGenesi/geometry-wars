@@ -192,6 +192,18 @@ export class InputManager {
   }
 
   /**
+   * Block all input — clears held keys and mouse state.
+   * Call when the game enters a state where player input must be suppressed
+   * (e.g. death screen, game over overlay, weapon mastery screen).
+   * Input remains blocked until keys are physically released and re-pressed.
+   */
+  blockInput(): void {
+    this.keysDown.clear();
+    this.keysJustPressed.clear();
+    this.mouseLeftDown = false;
+  }
+
+  /**
    * Sample all input sources and return a unified InputState.
    * Should be called once per frame.
    */
