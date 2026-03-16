@@ -3386,14 +3386,15 @@ async function main() {
     }
     if (!surface || !meshSurface || !getTransform) return;
 
-    // Always sync isHost from the server's authoritative hostId.
-    // Previously used `&& !isHost` guard, which meant isHost could only ever
-    // go from false→true, never true→false. This prevented correct updates when:
-    //   1. Initial state arrived before localPlayerId was set (timing race)
-    //   2. Host was transferred to another player (new host needed to be reflected)
-    // Now we always re-evaluate so isHost stays in sync with the server.
-    if (localPlayerId) {
-      const nowIsHost = state.hostId !== '' && state.hostId === localPlayerId;
+    // Sync isHost from the server's authoritative hostId.
+    // Guard: only update when state.hostId is non-empty. An empty hostId means
+    // the server state hasn't propagated the host assignment yet (s44r22-07:
+    // race condition where first onStateChange arrives before the server sets
+    // hostId, causing the host to briefly see "waiting for host" UI).
+    // When hostId IS non-empty, always re-evaluate so host transfers are reflected
+    // (e.g., original host disconnects, new host is assigned).
+    if (localPlayerId && state.hostId !== '') {
+      const nowIsHost = state.hostId === localPlayerId;
       if (nowIsHost !== isHost) {
         isHost = nowIsHost;
         // Stop server is only accessible from the pause menu, never the main HUD.
