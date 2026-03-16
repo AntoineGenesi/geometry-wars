@@ -3956,7 +3956,12 @@ async function main() {
       // Visibility is set based on alive state. Depth-based opacity is
       // applied in the render loop (onRender) instead of here, to avoid
       // expensive mesh.traverse() calls on every 30Hz state update.
-      if (enemy.mesh) {
+      // s44r21-01: Only set mesh.visible for NON-instanced enemies.
+      // Instanced enemies have mesh.visible=false (set by register()) because
+      // InstancedMesh handles their rendering. Setting mesh.visible=true here
+      // caused double-rendering (individual mesh at full brightness + instanced
+      // mesh with dimming), wasting GPU and masking dimming bugs.
+      if (enemy.mesh && !enemy.isInstanced) {
         enemy.mesh.visible = netEnemy.alive;
       }
 
@@ -7110,7 +7115,11 @@ async function main() {
         const eu = Math.min(euRaw, 1.0 - euRaw);
         const ev = _netWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
         const uvDist = Math.sqrt(eu * eu + ev * ev);
-        let surfaceVis: number;
+        // s44r21-01: Initialize to 1.0 (fully visible) instead of leaving uninitialized.
+        // If uvDist is NaN (from NaN surfacePosition.u/v), all comparisons return false,
+        // surfaceVis stays at its initial value. Previously it was `undefined`, causing
+        // Math.min(vis, undefined) = NaN → invisible enemies at late waves.
+        let surfaceVis: number = 1.0;
         if (uvDist <= NET_SURFACE_NEAR_UV) {
           surfaceVis = 1.0;
         } else if (uvDist >= NET_SURFACE_FAR_UV) {
@@ -7142,9 +7151,14 @@ async function main() {
 
       // s44r17-01: Floor compound visibility to prevent multiple dimming systems
       // from pushing enemies below perceptible levels (SP parity).
-      if (vis > 0) {
-        vis = Math.max(vis, NET_SURFACE_DIM_OPC);
-      }
+      // s44r21-01: Remove `if (vis > 0)` guard — matches SP RenderLoop.ts line 288
+      // which applies the floor unconditionally. In MP, vis is never intentionally 0
+      // (min depthOcclusion value is 0.12), and the guard allowed NaN to slip through:
+      // if surfacePosition.u/v is NaN → uvDist is NaN → surfaceVis stays undefined →
+      // Math.min(vis, undefined) = NaN → NaN > 0 is false → floor skipped → invisible.
+      // Also add isFinite guard as defense-in-depth against any NaN propagation path.
+      if (!isFinite(vis)) vis = 1.0;
+      vis = Math.max(vis, NET_SURFACE_DIM_OPC);
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {
         enemyInstanceManager.setLODInstanceVisibility(enemy, vis);

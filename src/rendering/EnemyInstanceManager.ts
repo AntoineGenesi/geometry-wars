@@ -537,6 +537,11 @@ export class EnemyInstanceManager {
     const index = batch.enemyToIndex.get(enemy);
     if (index === undefined) return;
 
+    // s44r21-01: Defense-in-depth NaN guard. If visibility is NaN (from surfacePosition
+    // NaN propagation), treat as fully visible rather than hiding the enemy.
+    // NaN > 0 = false → opacityAttribute would be 0.0 (hidden). NaN * color = NaN → black.
+    if (!isFinite(visibility) || visibility < 0) visibility = 1.0;
+
     // s44r18-20: RGB-only dimming — set opacityAttribute to binary (1.0 visible / 0.0 hidden).
     // Previous code: opacityAttribute=visibility AND instanceColor=baseColor×visibility → output=baseColor×visibility²
     // At visibility=0.40: 0.40²=16% effective brightness → near-invisible on dark background.
@@ -861,6 +866,9 @@ export class EnemyInstanceManager {
 
     const slotIndex = lodBatch.enemyToIndex.get(enemy);
     if (slotIndex === undefined) return;
+
+    // s44r21-01: NaN guard (same as setInstanceVisibility)
+    if (!isFinite(visibility) || visibility < 0) visibility = 1.0;
 
     // s44r18-20: RGB-only dimming — binary opacityAttribute to avoid visibility² darkening.
     // See setInstanceVisibility for full rationale.
