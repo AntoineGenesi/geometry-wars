@@ -97,7 +97,7 @@ interface ActiveEffect {
  * Callback types for weapon system
  */
 export interface WeaponCallbacks {
-  getEnemies: () => { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean }[];
+  getEnemies: () => { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean; maxHealth?: number }[];
   onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => void;
   onEnemyPull?: (index: number, pullStrength: number, pullCenter: THREE.Vector3) => void;
   spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
@@ -177,6 +177,11 @@ export class WeaponManager {
 
   // Spread cone alternation state (for spread_b_3)
   private spreadConeToggle = false;
+
+  // Per-frame deduplication: tracks which enemy indices have already been hit by a homing missile
+  // this frame. Cleared at the start of each update(). Prevents multiple missiles from all
+  // exploding on the same weak enemy in the same frame — only the first hit counts, others retarget.
+  private missileHitThisFrame = new Set<number>();
 
   // Pending delayed shots: used for piercing double/triple tap, mortar carpet bomb, chain blast secondary
   private pendingShots: Array<{
@@ -792,6 +797,9 @@ export class WeaponManager {
    * Update all projectiles and effects
    */
   update(dt: number): void {
+    // Clear per-frame missile hit deduplication set
+    this.missileHitThisFrame.clear();
+
     // Tick down active buffs
     for (let i = this.activeBuffs.length - 1; i >= 0; i--) {
       this.activeBuffs[i].remaining -= dt;
@@ -1421,6 +1429,10 @@ export class WeaponManager {
     // the actual turn tightening would require a dedicated turnRate field (future enhancement).
     // TODO: add turnRate field to Projectile for proper turn tightening.
 
+    // Homing missiles persist until they hit a target — 60s safety cap prevents infinite missiles
+    // (e.g., if target dies before missile arrives, missile will eventually time out)
+    const MISSILE_MAX_AGE = 60.0;
+
     // LEVEL 5 FINAL FORM — Seeking Swarm: fire 3 missiles simultaneously in V-formation
     // Each missile tracks independently — spectacular when all 3 converge on one target
     if (this.isMasteryMaxLevel(WeaponType.Homing)) {
@@ -1434,7 +1446,7 @@ export class WeaponManager {
           missileDir,
           config.damage,
           upgradeSpeed,
-          20.0,
+          MISSILE_MAX_AGE,
         );
         proj.targetIndex = targetIndex;
       }
@@ -1445,7 +1457,7 @@ export class WeaponManager {
         direction.clone(),
         config.damage,
         upgradeSpeed,
-        20.0,
+        MISSILE_MAX_AGE,
       );
       proj.targetIndex = targetIndex;
     }
@@ -1453,7 +1465,30 @@ export class WeaponManager {
 
   private fireMortar(origin: THREE.Vector3, direction: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.PlasmaMortar];
-    const range = 10;
+    // Mortar travels to nearest enemy — persists until it hits rather than expiring at fixed range.
+    // 30s safety cap prevents infinite mortars if all enemies die before impact.
+    const MORTAR_MAX_TRAVEL_TIME = 30.0;
+    const MORTAR_FALLBACK_RANGE = 10; // used when no enemies are present
+
+    let endPos: THREE.Vector3;
+    let travelTime: number;
+
+    const enemies = this.callbacks?.getEnemies().filter(e => e.alive) ?? [];
+    if (enemies.length > 0) {
+      // Find nearest enemy
+      let nearest = enemies[0];
+      let minDist = origin.distanceTo(nearest.position);
+      for (let i = 1; i < enemies.length; i++) {
+        const d = origin.distanceTo(enemies[i].position);
+        if (d < minDist) { minDist = d; nearest = enemies[i]; }
+      }
+      endPos = nearest.position.clone();
+      travelTime = Math.min(minDist / config.projectileSpeed, MORTAR_MAX_TRAVEL_TIME);
+    } else {
+      // No enemies — fire in aimed direction with fallback range
+      endPos = origin.clone().add(direction.clone().multiplyScalar(MORTAR_FALLBACK_RANGE));
+      travelTime = MORTAR_FALLBACK_RANGE / config.projectileSpeed;
+    }
 
     const proj = this.createProjectile(
       WeaponType.PlasmaMortar,
@@ -1461,10 +1496,10 @@ export class WeaponManager {
       direction.clone(),
       config.damage,
       config.projectileSpeed,
-      range / config.projectileSpeed,
+      travelTime,
     );
     proj.startPos = origin.clone();
-    proj.endPos = origin.clone().add(direction.clone().multiplyScalar(range));
+    proj.endPos = endPos;
   }
 
   private fireGravityGun(origin: THREE.Vector3, direction: THREE.Vector3): void {
@@ -1977,6 +2012,21 @@ export class WeaponManager {
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.Homing) {
+          // Deduplication: prevent multiple missiles from simultaneously hitting the same weak enemy.
+          // Boss/high-health enemies (maxHealth >= 15) accept multiple simultaneous hits.
+          // For weak enemies, only the first missile to hit detonates; others retarget.
+          const MISSILE_BOSS_THRESHOLD = 15;
+          const isBoss = (enemy.maxHealth ?? 0) >= MISSILE_BOSS_THRESHOLD;
+          if (!isBoss && this.missileHitThisFrame.has(enemy.index)) {
+            // Another missile already hit this enemy this frame — retarget to next nearest enemy
+            proj.targetIndex = undefined; // clear target so it picks a new one next frame
+            return;
+          }
+          // Mark this enemy as hit by a homing missile this frame
+          if (!isBoss) {
+            this.missileHitThisFrame.add(enemy.index);
+          }
+
           // Explosion radius upgrades (branch B): +30%, +60%
           const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);
           const homingRadiusBonus =
