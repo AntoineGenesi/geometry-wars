@@ -122,6 +122,108 @@ describe('enemy UV lerp wrap-aware (s44r2-03)', () => {
     });
   });
 
+  describe('Mobius half-twist snap (s44r22-19)', () => {
+    // On Mobius, crossing the U=0/1 seam inverts V (the half-twist).
+    // When dv > 0.3 on Mobius, we SNAP V instead of lerping to avoid
+    // intermediate V values that place enemies inside the surface geometry,
+    // causing depth occlusion to dim them to near-invisible.
+
+    /**
+     * Mobius-aware lerp step. Mirrors the fix in network-main.ts.
+     * @param currentU Current U
+     * @param currentV Current V
+     * @param targetU Target U
+     * @param targetV Target V
+     * @param lerp Lerp factor (0-1)
+     * @param isMobius Whether this is a Mobius surface
+     * @param wrapsV Whether V wraps (false for Mobius)
+     */
+    function mobiusLerpStep(
+      currentU: number, currentV: number,
+      targetU: number, targetV: number,
+      lerp: number,
+      isMobius: boolean,
+      wrapsV: boolean
+    ): { u: number; v: number } {
+      let du = targetU - currentU;
+      if (Math.abs(du) > 0.5) du -= Math.sign(du);
+      let dv = targetV - currentV;
+      if (wrapsV && Math.abs(dv) > 0.5) dv -= Math.sign(dv);
+
+      let snapV = false;
+      if (isMobius && Math.abs(dv) > 0.3) {
+        snapV = true;
+      }
+
+      const newU = currentU + du * lerp;
+      const newV = snapV ? targetV : (currentV + dv * lerp);
+
+      const u = ((newU % 1) + 1) % 1;
+      let v: number;
+      if (isMobius) {
+        v = Math.max(0.02, Math.min(0.98, newV));
+      } else {
+        v = wrapsV ? ((newV % 1) + 1) % 1 : newV;
+      }
+      return { u, v };
+    }
+
+    it('snaps V when dv > 0.3 on Mobius (half-twist crossing)', () => {
+      // Enemy at (u=0.98, v=0.3), server sends (u=0.02, v=0.7) — crossed U seam, V inverted
+      const result = mobiusLerpStep(0.98, 0.3, 0.02, 0.7, 0.35, true, false);
+      // V should SNAP to target (0.7), not lerp through intermediate values
+      expect(result.v).toBe(0.7);
+    });
+
+    it('does NOT snap V for small dv on Mobius (normal movement)', () => {
+      // Enemy moving normally on Mobius (small V change)
+      const result = mobiusLerpStep(0.5, 0.4, 0.52, 0.42, 0.35, true, false);
+      // V should lerp normally: 0.4 + 0.02 * 0.35 = 0.407
+      expect(result.v).toBeCloseTo(0.407, 3);
+      expect(result.v).not.toBe(0.42); // NOT snapped
+    });
+
+    it('clamps V to [0.02, 0.98] on Mobius (strip edges)', () => {
+      // V drifting past 1.0 edge
+      const result = mobiusLerpStep(0.5, 0.97, 0.52, 1.05, 0.35, true, false);
+      expect(result.v).toBeLessThanOrEqual(0.98);
+      expect(result.v).toBeGreaterThanOrEqual(0.02);
+    });
+
+    it('clamps V to [0.02, 0.98] on Mobius (negative edge)', () => {
+      // V drifting below 0.0 edge
+      const result = mobiusLerpStep(0.5, 0.03, 0.52, -0.05, 0.35, true, false);
+      expect(result.v).toBeGreaterThanOrEqual(0.02);
+    });
+
+    it('does NOT snap V on non-Mobius surface even with large dv', () => {
+      // On sphere (non-Mobius), large V delta is just normal lerp
+      const result = mobiusLerpStep(0.5, 0.2, 0.52, 0.8, 0.35, false, false);
+      // V should lerp: 0.2 + 0.6 * 0.35 = 0.41
+      expect(result.v).toBeCloseTo(0.41, 3);
+      expect(result.v).not.toBe(0.8); // NOT snapped
+    });
+
+    it('prevents invisible enemies: V stays within valid range after twist', () => {
+      // Simulate multiple frames of an enemy crossing the Mobius twist
+      let u = 0.96, v = 0.3;
+      const targetU = 0.04, targetV = 0.7; // Post-twist target
+      const lerp = 0.35;
+
+      for (let i = 0; i < 10; i++) {
+        const result = mobiusLerpStep(u, v, targetU, targetV, lerp, true, false);
+        // V must ALWAYS be in valid range (never inside surface)
+        expect(result.v).toBeGreaterThanOrEqual(0.02);
+        expect(result.v).toBeLessThanOrEqual(0.98);
+        u = result.u;
+        v = result.v;
+      }
+      // After 10 frames, should have converged near target
+      expect(u).toBeCloseTo(targetU, 1);
+      expect(v).toBeCloseTo(targetV, 1);
+    });
+  });
+
   describe('no-op cases', () => {
     it('returns 0 delta when already at target', () => {
       expect(wrapAwareDelta(0.5, 0.5, true)).toBe(0);

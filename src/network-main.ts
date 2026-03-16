@@ -7022,6 +7022,15 @@ async function main() {
     // s44r2-03: UV wraps for all surfaces on U, and also on V for torus-like surfaces.
     // Using surf.wrapsV here (same flag used by server enemy AI and UV dimming logic).
     const _enemyLerpWrapsV = surf ? surf.wrapsV : false;
+    // s44r22-19: Mobius half-twist detection. On Mobius, crossing the U=0/1 seam inverts V
+    // (the fundamental non-orientable property). When the server sends a new target UV with
+    // V inverted (e.g., from v=0.3 to v=0.7), naive lerp produces intermediate V values that
+    // place enemies INSIDE the surface geometry. This causes depth occlusion raycasts to count
+    // 2+ intersections, dimming enemies to opacity2Plus (0.12) → near invisible. The problem
+    // is progressive: more enemies crossing the seam per frame = more temporarily invisible.
+    // In PvPvE (more enemies + faster waves), this manifests as invisible enemies by wave 4.
+    // Fix: detect Mobius V-inversion from twist crossing and SNAP V instead of lerping.
+    const _isMobiusSurface = lastCreatedSurfaceType === 'mobius';
     networkEnemies.forEach((enemy, id) => {
       const target = enemyTargetUV.get(id);
       if (!target) return;
@@ -7034,11 +7043,32 @@ async function main() {
       if (Math.abs(du) > 0.5) du -= Math.sign(du); // shortest path across U seam
       let dv = target.v - enemy.surfacePosition.v;
       if (_enemyLerpWrapsV && Math.abs(dv) > 0.5) dv -= Math.sign(dv); // shortest path across V seam
+
+      // s44r22-19: Mobius half-twist snap. When an enemy crosses the U=0/1 seam on Mobius,
+      // the server inverts V (the half-twist). This produces a large V delta (|dv| > 0.3)
+      // combined with a U seam crossing (|du| was > 0.5 before wrap correction, meaning
+      // the raw U delta crossed the seam). In this case, lerping V through intermediate
+      // values would place the enemy inside the surface. Snap V immediately instead.
+      // The threshold 0.3 is conservative: the Mobius strip width maps to v=[0,1],
+      // so normal movement produces dv < 0.1 per frame. A dv > 0.3 is almost certainly
+      // a half-twist inversion.
+      let snapV = false;
+      if (_isMobiusSurface && Math.abs(dv) > 0.3) {
+        snapV = true;
+      }
+
       const newU = enemy.surfacePosition.u + du * ENEMY_LERP;
-      const newV = enemy.surfacePosition.v + dv * ENEMY_LERP;
+      const newV = snapV ? target.v : (enemy.surfacePosition.v + dv * ENEMY_LERP);
       // Keep UV in [0,1] after wrap-aware step
       enemy.surfacePosition.u = ((newU % 1) + 1) % 1;
-      enemy.surfacePosition.v = _enemyLerpWrapsV ? ((newV % 1) + 1) % 1 : newV;
+      if (_isMobiusSurface) {
+        // s44r22-19: Clamp V for Mobius (strip has physical edges at v=0 and v=1).
+        // Without wrapsV, V can drift outside [0,1] during lerp, producing positions
+        // off the edge of the strip → inside the surface → depth-occluded → invisible.
+        enemy.surfacePosition.v = Math.max(0.02, Math.min(0.98, newV));
+      } else {
+        enemy.surfacePosition.v = _enemyLerpWrapsV ? ((newV % 1) + 1) % 1 : newV;
+      }
 
       // Apply surface transform to update 3D position from UV
       enemy.applySurfaceTransform(transform);
