@@ -1085,11 +1085,14 @@ export class GameRoom extends Room<GameState> {
   private playerBoostStates: Map<string, { active: boolean; timer: number; cooldown: number; prevHeld: boolean }> = new Map();
 
   /**
-   * Secondary weapon inventory per player: the non-standard weapon they currently hold.
-   * When a player cycles weapons (Q/E), they toggle between this and standard.
-   * Ammo is preserved across the toggle so switching back restores remaining shots.
+   * Full weapon inventory per player: ordered list starting with standard.
+   * Each entry holds {type, ammo}. When a player cycles weapons (Q/E),
+   * playerWeaponIndex advances through this array.
+   * Ammo is preserved in the inventory entry when cycling away from a weapon.
    */
-  private playerSecondaryWeapon: Map<string, { type: string; ammo: number }> = new Map();
+  private playerWeaponInventory: Map<string, Array<{ type: string; ammo: number }>> = new Map();
+  /** Current inventory index per player (0 = standard). */
+  private playerWeaponIndex: Map<string, number> = new Map();
 
   /** Server-side surface geometry + walker pool. Replaces UV-based player movement. */
   private surfaceManager = new ServerSurfaceManager();
@@ -1712,7 +1715,7 @@ export class GameRoom extends Room<GameState> {
         this.state.weaponPickups.splice(targetIndex, 1);
         const cfg = WEAPON_CONFIGS[pickup.weaponType] ?? WEAPON_CONFIGS.standard;
         const prevWeapon = player.weaponType;
-        this.playerSecondaryWeapon.set(client.sessionId, { type: pickup.weaponType, ammo: cfg.ammo });
+        this._addWeaponToInventory(client.sessionId, pickup.weaponType, cfg.ammo);
         player.weaponType = pickup.weaponType;
         player.weaponAmmo = cfg.ammo;
         this.logger.log(`[GameRoom] ${player.name} collected weapon pickup: ${pickup.weaponType} (client-auth)`);
@@ -1954,7 +1957,8 @@ export class GameRoom extends Room<GameState> {
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
       this.playerBoostStates.delete(client.sessionId);
-      this.playerSecondaryWeapon.delete(client.sessionId);
+      this.playerWeaponInventory.delete(client.sessionId);
+      this.playerWeaponIndex.delete(client.sessionId);
       this.surfaceManager.removeWalker(client.sessionId);
       this.playerPerfWindows.delete(client.sessionId);
       this.ddaDecreaseCounters.delete(client.sessionId);
@@ -2302,8 +2306,9 @@ export class GameRoom extends Room<GameState> {
       player.totalDamageDealt = 0;
       // Reset PvP kill streak for this player
       this.pvpKillStreaks.set(player.id, 0);
-      // Clear secondary weapon inventory on round reset
-      this.playerSecondaryWeapon.delete(sessionId);
+      // Clear weapon inventory on round reset
+      this.playerWeaponInventory.delete(sessionId);
+      this.playerWeaponIndex.delete(sessionId);
       // Reset buff stacks so each round starts clean
       player.buffStacks.clear();
       // Reset shot timers so the player can shoot immediately in the new game.
@@ -2463,23 +2468,47 @@ export class GameRoom extends Room<GameState> {
     }
     this.playerBoostStates.set(client.sessionId, boostState);
 
-    // Weapon cycle (Q/E): toggle between standard and secondary weapon.
+    // Weapon cycle (Q/E): advance through full weapon inventory.
     // The client sends weaponSwap=true for exactly one frame (wasKeyJustPressed).
-    // If on standard: switch to secondary (if one is held).
-    // If on secondary: switch to standard, preserving secondary ammo for later.
+    // Inventory = [standard, weapon1, weapon2, ...]. playerWeaponIndex tracks position.
+    // Depleted weapons (ammo=0) are pruned before cycling.
     if (input.weaponSwap) {
-      const secondary = this.playerSecondaryWeapon.get(client.sessionId);
-      if (secondary && secondary.ammo > 0) {
-        if (player.weaponType === 'standard') {
-          // Switch to secondary weapon
-          player.weaponType = secondary.type;
-          player.weaponAmmo = secondary.ammo;
-        } else {
-          // Switch back to standard, save secondary ammo
-          secondary.ammo = player.weaponAmmo;
-          this.playerSecondaryWeapon.set(client.sessionId, secondary);
+      const inv = this.playerWeaponInventory.get(client.sessionId);
+      if (inv && inv.length > 1) {
+        // Save current ammo back into inventory before cycling away.
+        // Match by weapon type (not just index) in case auto-depletion already switched us.
+        const currentIdx = this.playerWeaponIndex.get(client.sessionId) ?? 0;
+        if (currentIdx < inv.length) {
+          const invEntry = inv[currentIdx];
+          if (invEntry.type === player.weaponType) {
+            // Still on the expected weapon — save current ammo.
+            invEntry.ammo = player.weaponType === 'standard' ? -1 : player.weaponAmmo;
+          } else if (player.weaponType === 'standard' && invEntry.type !== 'standard') {
+            // Auto-depletion occurred — mark that weapon as depleted (ammo=0) so it gets pruned.
+            invEntry.ammo = 0;
+          }
+        }
+
+        // Prune depleted non-standard weapons from inventory.
+        for (let i = inv.length - 1; i >= 1; i--) {
+          if (inv[i].ammo <= 0) {
+            inv.splice(i, 1);
+          }
+        }
+
+        if (inv.length <= 1) {
+          // All special weapons depleted — stay on standard.
           player.weaponType = 'standard';
           player.weaponAmmo = -1;
+          this.playerWeaponIndex.set(client.sessionId, 0);
+        } else {
+          // Advance to next weapon (wrap around).
+          const clampedIdx = Math.min(currentIdx, inv.length - 1);
+          const nextIdx = (clampedIdx + 1) % inv.length;
+          this.playerWeaponIndex.set(client.sessionId, nextIdx);
+          const next = inv[nextIdx];
+          player.weaponType = next.type;
+          player.weaponAmmo = next.type === 'standard' ? -1 : next.ammo;
         }
       }
     }
@@ -4952,9 +4981,8 @@ export class GameRoom extends Room<GameState> {
 
             const cfg = WEAPON_CONFIGS[pickup.weaponType] ?? WEAPON_CONFIGS.standard;
             const prevWeapon = player.weaponType;
-            // Save to secondary weapon inventory so Q/E can cycle back to it.
-            // Always overwrites the previous secondary — MP supports one secondary slot.
-            this.playerSecondaryWeapon.set(sessionId, { type: pickup.weaponType, ammo: cfg.ammo });
+            // Add to weapon inventory so Q/E can cycle through all collected weapons.
+            this._addWeaponToInventory(sessionId, pickup.weaponType, cfg.ammo);
             player.weaponType = pickup.weaponType;
             player.weaponAmmo = cfg.ammo;
             this.logGameplayEvent({
@@ -6440,6 +6468,31 @@ export class GameRoom extends Room<GameState> {
       else if (d < -0.5) d += 1;
     }
     return d;
+  }
+
+  /**
+   * Add a weapon to a player's inventory.
+   * If standard inventory doesn't exist yet, create it with standard at index 0.
+   * If the weapon type is already in inventory, stack its ammo.
+   * Otherwise append a new entry and jump the player to that weapon (auto-equip).
+   * Also updates playerWeaponIndex to point at the newly added (or stacked) weapon.
+   */
+  private _addWeaponToInventory(sessionId: string, weaponType: string, ammo: number): void {
+    let inv = this.playerWeaponInventory.get(sessionId);
+    if (!inv) {
+      inv = [{ type: 'standard', ammo: -1 }];
+      this.playerWeaponInventory.set(sessionId, inv);
+    }
+
+    // Check if weapon already in inventory — stack ammo.
+    const existing = inv.findIndex(e => e.type === weaponType);
+    if (existing >= 0) {
+      inv[existing].ammo += ammo;
+      this.playerWeaponIndex.set(sessionId, existing);
+    } else {
+      inv.push({ type: weaponType, ammo });
+      this.playerWeaponIndex.set(sessionId, inv.length - 1);
+    }
   }
 
   /**
