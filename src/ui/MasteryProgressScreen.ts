@@ -481,7 +481,7 @@ export class MasteryProgressScreen {
 
     // Keyboard handler (active immediately so impatient players can skip)
     this.keyListener = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') {
         e.preventDefault();
         this._continue();
       }

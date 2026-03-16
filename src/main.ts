@@ -1600,12 +1600,16 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
           upgradeScreen.setPointStore(masteryPointStore);
           upgradeScreen.show(masteryStore);
           upgradeScreen.onClose(() => {
-            upgradeScreen.dispose();
-            game.stop();
+            try {
+              upgradeScreen.dispose();
+              game.stop();
+            } catch (e) {
+              console.error('[main] post-game cleanup error:', e);
+            }
             window.location.href = window.location.pathname;
           });
         } else {
-          game.stop();
+          try { game.stop(); } catch { /* ensure redirect always fires */ }
           window.location.href = window.location.pathname;
         }
       };

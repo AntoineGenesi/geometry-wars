@@ -930,17 +930,6 @@ export class GameOverScreen {
   ): void {
     this.container.innerHTML = this.createResultsHTML(score, isNewHighScore, rank, highScores, mode, scoreLabel);
 
-    const continueBtn = this.container.querySelector('.continue-btn');
-    continueBtn?.addEventListener('click', () => {
-      this.clearAutoTransition();
-      this.hide();
-      if (mode === 'network') {
-        this.onReturnToMenuCallback?.();
-      } else {
-        this.onContinueCallback?.();
-      }
-    });
-
     if (mode === 'network') {
       const AUTO_TRANSITION_MS = 4000;
       const countdownEl = this.container.querySelector('.auto-transition-countdown');
@@ -953,32 +942,66 @@ export class GameOverScreen {
       tick();
       const tickInterval = setInterval(tick, 1000);
 
-      this.autoTransitionTimeout = setTimeout(() => {
+      // keyHandler declared before doClose to avoid TDZ when doClose references it
+      let keyHandler: (e: KeyboardEvent) => void;
+      let keyHandlerTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      const doClose = () => {
+        if (keyHandlerTimeoutId !== null) {
+          clearTimeout(keyHandlerTimeoutId);
+          keyHandlerTimeoutId = null;
+        }
+        document.removeEventListener('keydown', keyHandler);
         clearInterval(tickInterval);
-        this.autoTransitionTimeout = null;
+        this.clearAutoTransition();
         this.hide();
-        this.onContinueCallback?.();
+        const cb = this.onContinueCallback;
+        this.onContinueCallback = null; // prevent double-fire
+        cb?.();
+      };
+
+      keyHandler = (e: KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          doClose();
+        }
+      };
+
+      this.autoTransitionTimeout = setTimeout(() => {
+        this.autoTransitionTimeout = null;
+        doClose();
       }, AUTO_TRANSITION_MS);
 
-      const keyHandler = (e: KeyboardEvent) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          document.removeEventListener('keydown', keyHandler);
-          clearInterval(tickInterval);
-          this.clearAutoTransition();
-          this.hide();
-          this.onContinueCallback?.();
-        }
-      };
-      setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
+      keyHandlerTimeoutId = setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
+
+      const continueBtn = this.container.querySelector('.continue-btn');
+      continueBtn?.addEventListener('click', () => doClose());
     } else {
-      const keyHandler = (e: KeyboardEvent) => {
+      // keyHandler declared before doClose to avoid TDZ when doClose references it
+      let keyHandler: (e: KeyboardEvent) => void;
+      let keyHandlerTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      const doClose = () => {
+        if (keyHandlerTimeoutId !== null) {
+          clearTimeout(keyHandlerTimeoutId);
+          keyHandlerTimeoutId = null;
+        }
+        document.removeEventListener('keydown', keyHandler);
+        this.hide();
+        const cb = this.onContinueCallback;
+        this.onContinueCallback = null; // prevent double-fire
+        cb?.();
+      };
+
+      keyHandler = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          document.removeEventListener('keydown', keyHandler);
-          this.hide();
-          this.onContinueCallback?.();
+          doClose();
         }
       };
-      setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
+
+      keyHandlerTimeoutId = setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
+
+      const continueBtn = this.container.querySelector('.continue-btn');
+      continueBtn?.addEventListener('click', () => doClose());
     }
   }
 
