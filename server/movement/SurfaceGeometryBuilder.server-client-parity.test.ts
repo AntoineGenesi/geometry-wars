@@ -132,12 +132,13 @@ describe('s44q-04 REGRESSION: Server-Client Surface Dimension Parity', () => {
     expect(maxR).toBeLessThan(11.0);
   });
 
-  // Cube-ring: client config majorRadius=scale*0.4=4, crossSection=scale*0.2=2 → halfSide=1.0
-  test('cube-ring: max radial extent = majorR(4) + halfSide(1) = 5', () => {
+  // Cube-ring: client config majorRadius=8, crossSection=4 → halfSide=2.0
+  // s44r22-06: Increased from (4,1.0) — the small variant was "absolutely tiny" at 0.75 group scale.
+  test('cube-ring: max radial extent = majorR(8) + halfSide(2) = 10', () => {
     const mesh = buildSurfaceGeometry('cube-ring', 1.0);
     const maxR = maxRadialXZ(mesh);
-    expect(maxR).toBeGreaterThan(4.5);
-    expect(maxR).toBeLessThan(5.5);
+    expect(maxR).toBeGreaterThan(9.5);
+    expect(maxR).toBeLessThan(10.5);
   });
 
   // Pipe: client config radius=scale=10, height=scale*2=20, bevelRadius=0.6
