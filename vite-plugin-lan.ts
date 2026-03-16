@@ -299,7 +299,23 @@ export default function lanPlugin(): Plugin {
     return { ok: false, addresses, port: SERVER_PORT, error: startError, isWSL2: wsl2, windowsAddresses, portproxyConflict };
   }
 
-  async function handleStop(): Promise<{ ok: boolean }> {
+  async function handleStop(force = false): Promise<{ ok: boolean; blocked?: boolean; reason?: string }> {
+    // Check stop protection unless forced (s44r22-08)
+    if (!force) {
+      try {
+        const protectionData = await fetchWithTimeout(
+          `http://localhost:${SERVER_PORT}/api/stop-protection`,
+          1500
+        );
+        const protection = JSON.parse(protectionData) as { protected: boolean; reason?: string };
+        if (protection.protected) {
+          return { ok: false, blocked: true, reason: protection.reason ?? 'Players are actively playing' };
+        }
+      } catch {
+        // Server unreachable — allow stop (server may already be dead)
+      }
+    }
+
     if (serverProcess) {
       serverProcess.kill();
       serverProcess = null;
@@ -455,9 +471,20 @@ export default function lanPlugin(): Plugin {
         }
 
         if (route === 'stop' && req.method === 'POST') {
-          handleStop()
-            .then((data) => sendJson(res, data))
+          // Parse optional ?force=true query param (s44r22-08)
+          const urlObj = new URL(url, 'http://localhost');
+          const force = urlObj.searchParams.get('force') === 'true';
+          handleStop(force)
+            .then((data) => sendJson(res, data, data.blocked ? 423 : 200))
             .catch((err) => sendJson(res, { ok: false, error: (err as Error).message }, 500));
+          return;
+        }
+
+        if (route === 'stop-protection' && req.method === 'GET') {
+          // Proxy to Colyseus /api/stop-protection (s44r22-08)
+          fetchWithTimeout(`http://localhost:${SERVER_PORT}/api/stop-protection`, 1500)
+            .then((data) => sendJson(res, JSON.parse(data)))
+            .catch(() => sendJson(res, { protected: false })); // fail open
           return;
         }
 

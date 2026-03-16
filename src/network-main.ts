@@ -2283,6 +2283,41 @@ async function main() {
     })();
   }
 
+  // Stop-protection polling: periodically check if server can be stopped (s44r22-08).
+  // Only the host sees the stop button, so only poll when isHost.
+  // Poll every 15s — protection window is 60s, so 15s gives adequate freshness.
+  {
+    const stopProtectionInterval = setInterval(async () => {
+      if (!isHost) return;
+      try {
+        const resp = await fetch('/__lan/stop-protection', { signal: AbortSignal.timeout(2000) });
+        if (resp.ok) {
+          const data = await resp.json() as { protected: boolean; reason?: string };
+          pauseMenu.setStopProtected(data.protected, data.reason);
+        }
+      } catch {
+        // LAN plugin unavailable or request failed — don't block the button
+        pauseMenu.setStopProtected(false);
+      }
+    }, 15_000);
+
+    // Also do an immediate poll
+    (async () => {
+      if (!isHost) return;
+      try {
+        const resp = await fetch('/__lan/stop-protection', { signal: AbortSignal.timeout(2000) });
+        if (resp.ok) {
+          const data = await resp.json() as { protected: boolean; reason?: string };
+          pauseMenu.setStopProtected(data.protected, data.reason);
+        }
+      } catch {
+        pauseMenu.setStopProtected(false);
+      }
+    })();
+
+    window.addEventListener('unload', () => clearInterval(stopProtectionInterval));
+  }
+
   /** Build PauseMenuGameData from current local player state (buffs, weapon, kills). */
   function buildPauseMenuGameData(): PauseMenuGameData {
     const weaponConfig = WEAPON_CONFIGS[localPlayerWeaponType];
