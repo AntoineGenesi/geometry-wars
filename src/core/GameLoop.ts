@@ -29,7 +29,8 @@ import { computeDepthVisibility, BULLET_DEPTH_CURVE } from '../rendering/DepthOp
 export class GameLoop {
   // Local variables that need to be shared across multiple local scopes
   private enemyGlowTrails: Map<BaseEnemy, any> = new Map();
-  // Last valid aim direction — used to hold aim when mouse input drops below threshold
+  // Last valid aim direction — pre-allocated vector (never cloned, _hasLastAimDir tracks validity)
+  // s44r22-02: was `THREE.Vector3 | null` causing per-frame clone() GC pressure
   private lastAimDirection: THREE.Vector3 | null = null;
   // Pre-allocated to avoid per-frame heap churn (used in bullet sync loop)
   private readonly _bulletSyncDir = new THREE.Vector3();
@@ -46,6 +47,16 @@ export class GameLoop {
   private readonly _playerRight = new THREE.Vector3();
   private readonly _playerForward = new THREE.Vector3();
   private readonly _orientMat = new THREE.Matrix4();
+  // Pre-allocated for UV bridge (worldRotation.clone().invert() + position.clone() avoided)
+  private readonly _uvBridgeInvRot = new THREE.Quaternion();
+  private readonly _uvBridgeLocalPos = new THREE.Vector3();
+  // Pre-allocated temp vector for glow trail position offset (avoids clone() per frame)
+  private readonly _trailTempPos = new THREE.Vector3();
+  // Pre-allocated last aim direction to avoid clone() each frame
+  private readonly _lastAimDirVec = new THREE.Vector3();
+  private _hasLastAimDir = false;
+  // Pre-allocated reusable alive-enemies array for companion update (avoids .filter() alloc)
+  private readonly _aliveEnemiesCache: BaseEnemy[] = [];
   private FAST_ENEMY_TYPES = ['Mayfly', 'Rocket', 'Duck'];
   private ENEMY_TRAIL_COLORS: Record<string, number> = {
     Mayfly: 0xddddff,
@@ -271,9 +282,10 @@ export class GameLoop {
 
       // Bridge: convert world position to UV for enemies/geoms that still use UV
       // CRITICAL: worldToSurface expects local coordinates, so apply inverse rotation first
-      const inverseRot = ctx.surface.worldRotation.clone().invert();
-      const localPos = ctx.playerWalker.position.clone().applyQuaternion(inverseRot);
-      const playerUV = ctx.surface.worldToSurface(localPos);
+      // s44r22-02: pre-allocated quaternion/vector to avoid two clone() calls per frame
+      this._uvBridgeInvRot.copy(ctx.surface.worldRotation).invert();
+      this._uvBridgeLocalPos.copy(ctx.playerWalker.position).applyQuaternion(this._uvBridgeInvRot);
+      const playerUV = ctx.surface.worldToSurface(this._uvBridgeLocalPos);
       ctx.player.surfaceU = playerUV.u;
       ctx.player.surfaceV = playerUV.v;
 
@@ -335,10 +347,13 @@ export class GameLoop {
           .addScaledVector(aimAxisY, -aimY)
           .normalize();
         aimDirection = this._aimDirection;
-        this.lastAimDirection = aimDirection.clone();
-      } else if (this.lastAimDirection !== null) {
-        // Mouse near center or briefly dropped — hold last known aim direction
-        aimDirection = this.lastAimDirection.clone();
+        // s44r22-02: copy into pre-allocated vector instead of clone() each frame
+        this._lastAimDirVec.copy(aimDirection);
+        this._hasLastAimDir = true;
+        this.lastAimDirection = this._lastAimDirVec; // keep reference in sync for external code
+      } else if (this._hasLastAimDir) {
+        // Mouse near center or briefly dropped — hold last known aim direction (no clone)
+        aimDirection = this._lastAimDirVec;
       } else {
         // No prior aim — default to forward (camera up on surface)
         aimDirection = this._aimDirection.copy(aimAxisY);
@@ -480,13 +495,12 @@ export class GameLoop {
     profiler.begin('effects_and_buffs');
     // Update player glow trail (add point at player position, offset slightly backward)
     if (ctx.player.alive && this.playerGlowTrail) {
-      const trailPos = ctx.player.mesh.position.clone();
-      // Offset trail points slightly behind the player in their local space
-      // This improves visual appearance on curved surfaces like torus
+      // s44r22-02: use pre-allocated temp vector instead of clone() each frame.
+      // GlowTrail.addPoint() copies the value internally — no need for a unique object.
       const aimDir = ctx.player.getAimDirection();
       const TRAIL_OFFSET = 0.15; // Keep trails close to player
-      trailPos.addScaledVector(aimDir, -TRAIL_OFFSET);
-      this.playerGlowTrail.addPoint(trailPos);
+      this._trailTempPos.copy(ctx.player.mesh.position).addScaledVector(aimDir, -TRAIL_OFFSET);
+      this.playerGlowTrail.addPoint(this._trailTempPos);
     }
     if (this.playerGlowTrail) {
       this.playerGlowTrail.update(dt);
@@ -620,8 +634,9 @@ export class GameLoop {
         }
 
         // Add point at enemy position
+        // s44r22-02: pass position directly — GlowTrail.addPoint() copies values internally
         if (enemy.mesh) {
-          trail.addPoint(enemy.mesh.position.clone());
+          trail.addPoint(enemy.mesh.position);
         }
         trail.update(dt);
       }
@@ -637,13 +652,19 @@ export class GameLoop {
     // Update companions
     if (ctx.player.alive) {
       const aimDir = ctx.player.getAimDirection();
+      // s44r22-02: avoid .filter() per-frame allocation — fill pre-allocated array instead
+      const allEnemiesForCompanion = ctx.enemySpawner.getEnemies();
+      this._aliveEnemiesCache.length = 0;
+      for (let ci = 0; ci < allEnemiesForCompanion.length; ci++) {
+        if (allEnemiesForCompanion[ci].alive) this._aliveEnemiesCache.push(allEnemiesForCompanion[ci]);
+      }
       ctx.companionManager.update(
         dt,
         ctx.player.surfaceU,
         ctx.player.surfaceV,
         ctx.playerWalker.position,
         aimDir,
-        ctx.enemySpawner.getEnemies().filter(e => e.alive),
+        this._aliveEnemiesCache,
         ctx.bulletPool,
         0, // ownerId = P1
         ctx.playerWalker.normal,
@@ -791,9 +812,10 @@ export class GameLoop {
             );
 
             // Update UV so enemies track correct position
-            const inverseRot = ctx.surface.worldRotation.clone().invert();
-            const localPos = ctx.playerWalker.position.clone().applyQuaternion(inverseRot);
-            const playerUV = ctx.surface.worldToSurface(localPos);
+            // s44r22-02: reuse pre-allocated vectors (portal teleport is infrequent but still no-alloc)
+            this._uvBridgeInvRot.copy(ctx.surface.worldRotation).invert();
+            this._uvBridgeLocalPos.copy(ctx.playerWalker.position).applyQuaternion(this._uvBridgeInvRot);
+            const playerUV = ctx.surface.worldToSurface(this._uvBridgeLocalPos);
             ctx.player.surfaceU = playerUV.u;
             ctx.player.surfaceV = playerUV.v;
 
