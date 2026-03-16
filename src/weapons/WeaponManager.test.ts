@@ -1655,4 +1655,124 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
       wm2.dispose();
     });
   });
+
+  // =========================================================================
+  // s44r22-11: Homing missile lifetime and deduplication
+  // =========================================================================
+
+  describe('s44r22-11: Homing missile lifetime and deduplication', () => {
+    it('homing missile reaches nearby enemy within 60s (was capped at 20s)', () => {
+      // Enemy right in front of origin — missile should hit well before 60s
+      const nearbyEnemy = { position: new THREE.Vector3(0, 0, 8), index: 0, alive: true, maxHealth: 5 };
+      const damages: number[] = [];
+      const wm = new WeaponManager();
+      wm.setCallbacks({
+        getEnemies: () => [nearbyEnemy],
+        onEnemyDamage: (_, dmg) => damages.push(dmg),
+        spawnBullet: () => {},
+      });
+      wm.equipWeapon(WeaponType.Homing);
+      wm.fire(origin(), new THREE.Vector3(0, 0, 1), T);
+
+      // Simulate up to 60s (new max age)
+      for (let step = 0; step < 2000 && damages.length === 0; step++) {
+        wm.update(0.016);
+      }
+
+      expect(damages.length).toBeGreaterThan(0);
+      wm.dispose();
+    });
+
+    it('only one missile detonates per weak enemy per frame — others retarget', () => {
+      // Three missiles heading for same weak enemy (maxHealth=5)
+      // Only the first to hit should detonate; the others should retarget
+      const weakEnemy = { position: new THREE.Vector3(0, 0, 8), index: 0, alive: true, maxHealth: 5 };
+      const explosionsPerFrame: number[] = [];
+      let currentFrameExplosions = 0;
+      const wm = new WeaponManager();
+      wm.setCallbacks({
+        getEnemies: () => [weakEnemy],
+        onEnemyDamage: () => {},
+        spawnBullet: () => {},
+        onProjectileExplosion: () => { currentFrameExplosions++; },
+      });
+      wm.equipWeapon(WeaponType.Homing);
+      // Fire 3 missiles with staggered times to bypass cooldown (fireRate=3 shots/s = 0.333s cooldown)
+      wm.fire(origin(), new THREE.Vector3(0, 0, 1), T);
+      wm.fire(origin(), new THREE.Vector3(0, 0, 1), T + 0.5);
+      wm.fire(origin(), new THREE.Vector3(0, 0, 1), T + 1.0);
+
+      for (let step = 0; step < 300; step++) {
+        currentFrameExplosions = 0;
+        wm.update(0.016);
+        if (currentFrameExplosions > 0) {
+          explosionsPerFrame.push(currentFrameExplosions);
+        }
+      }
+
+      // Deduplication: at most 1 missile should detonate on the same weak enemy per frame
+      const maxExplosionsInOneFrame = Math.max(...explosionsPerFrame, 0);
+      expect(maxExplosionsInOneFrame).toBeLessThanOrEqual(1);
+      wm.dispose();
+    });
+
+    it('boss (maxHealth >= 15) accepts hits from multiple missiles (not deduplicated)', () => {
+      // Boss enemy with high health — should accept simultaneous hits from all 3 missiles
+      const bossEnemy = { position: new THREE.Vector3(0, 0, 8), index: 0, alive: true, maxHealth: 40 };
+      const explosions: number[] = [];
+      const wm = new WeaponManager();
+      wm.setCallbacks({
+        getEnemies: () => [bossEnemy],
+        onEnemyDamage: () => {},
+        spawnBullet: () => {},
+        onProjectileExplosion: (_pos, type) => {
+          if (type === WeaponType.Homing) explosions.push(1);
+        },
+      });
+      wm.equipWeapon(WeaponType.Homing);
+      // Fire 3 missiles with staggered game times to bypass fireRate cooldown
+      wm.fire(origin(), new THREE.Vector3(0, 0, 1), T);
+      wm.fire(origin(), new THREE.Vector3(0, 0, 1), T + 1.0);
+      wm.fire(origin(), new THREE.Vector3(0, 0, 1), T + 2.0);
+
+      for (let step = 0; step < 400; step++) {
+        wm.update(0.016);
+      }
+
+      // All 3 missiles should have detonated (boss doesn't deduplicate)
+      expect(explosions.length).toBeGreaterThanOrEqual(3);
+      wm.dispose();
+    });
+  });
+
+  // =========================================================================
+  // s44r22-11: Mortar targets nearest enemy (not fixed range)
+  // =========================================================================
+
+  describe('s44r22-11: Mortar targets nearest enemy (not fixed range)', () => {
+    it('mortar travels to nearest enemy position when enemies are present', () => {
+      // Enemy close to player — mortar should travel there and detonate
+      // Origin at (8,0,0), enemy at (8, 0, 1) = only 1 unit away
+      const targetEnemy = { position: new THREE.Vector3(8, 0, 1), index: 0, alive: true, maxHealth: 5 };
+      const damages: Array<{ index: number; dmg: number }> = [];
+      const explosionsFired: number[] = [];
+      const wm = new WeaponManager();
+      wm.setCallbacks({
+        getEnemies: () => [targetEnemy],
+        onEnemyDamage: (idx, dmg) => damages.push({ index: idx, dmg }),
+        spawnBullet: () => {},
+        onProjectileExplosion: () => explosionsFired.push(1),
+      });
+      wm.equipWeapon(WeaponType.PlasmaMortar);
+      wm.fire(origin(), new THREE.Vector3(0, 0, 1), T);
+
+      for (let i = 0; i < 600; i++) {
+        wm.update(0.016);
+      }
+
+      // Mortar should have hit (either direct hit or AoE damage)
+      expect(damages.length + explosionsFired.length).toBeGreaterThan(0);
+      wm.dispose();
+    });
+  });
 });

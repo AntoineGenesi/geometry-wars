@@ -933,10 +933,10 @@ async function main() {
   scene.add(localWeaponManager.getVisualRoot());
   localWeaponManager.setCallbacks({
     getEnemies: () => {
-      const result: { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean }[] = [];
+      const result: { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean; maxHealth?: number }[] = [];
       let idx = 0;
       networkEnemies.forEach((enemy) => {
-        result.push({ position: enemy.position, meshPosition: enemy.mesh?.position, index: idx++, alive: enemy.alive });
+        result.push({ position: enemy.position, meshPosition: enemy.mesh?.position, index: idx++, alive: enemy.alive, maxHealth: enemy.maxHealth });
       });
       return result;
     },
