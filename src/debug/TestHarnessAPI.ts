@@ -81,6 +81,10 @@ export interface EnemyInfo {
   alive: boolean;
   health: number;
   opacity: number;
+  /** Average brightness of the actual rendered instanceColor (0..1).
+   *  After s44r18-20 fix, opacity is binary; all dimming is in instanceColor only.
+   *  Use this (not opacity) to detect invisible enemies post-fix. */
+  instanceColorBrightness: number;
 }
 
 export interface PickupInfo {
@@ -203,14 +207,22 @@ export class TestHarnessAPI {
         (enemy as any).__testId = id;
       }
 
-      // Read opacity from instance manager if available
+      // Read opacity and instanceColor brightness from instance manager if available
       let opacity = 1.0;
+      let instanceColorBrightness = 1.0;
       const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
       const instanceType = (enemy as any)._instanceType as string | undefined;
       if (instanceIndex !== undefined && instanceType && this.ctx.enemyInstanceManager) {
         const batch = (this.ctx.enemyInstanceManager as any).batches?.get(instanceType);
         if (batch?.opacityAttribute) {
           opacity = batch.opacityAttribute.getX(instanceIndex);
+        }
+        // After s44r18-20, actual dimming is in instanceColor (RGB), not opacity.
+        // Read instanceColor brightness to detect truly invisible enemies.
+        if (batch?.instancedMesh?.instanceColor) {
+          const _c = new THREE.Color();
+          batch.instancedMesh.getColorAt(instanceIndex, _c);
+          instanceColorBrightness = (_c.r + _c.g + _c.b) / 3;
         }
       }
 
@@ -223,6 +235,7 @@ export class TestHarnessAPI {
         alive: enemy.alive,
         health: enemy.health,
         opacity,
+        instanceColorBrightness,
       });
     }
     return result;
