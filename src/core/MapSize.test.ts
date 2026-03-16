@@ -136,10 +136,6 @@ describe('MapSize', () => {
       expect(SURFACE_DEFAULT_MAP_SIZES.mobius).toBe(MapSize.EPIC);
     });
 
-    it('mobius-bevel (Klein) is EPIC', () => {
-      expect(SURFACE_DEFAULT_MAP_SIZES['mobius-bevel']).toBe(MapSize.EPIC);
-    });
-
     it('peanut is EPIC', () => {
       expect(SURFACE_DEFAULT_MAP_SIZES.peanut).toBe(MapSize.EPIC);
     });
@@ -152,7 +148,7 @@ describe('MapSize', () => {
       const definedSurfaces = [
         'sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut',
         'capsule', 'icosahedron', 'mobius', 'sphere-tunnel',
-        'cube-ring', 'cube-tunnel', 'mobius-bevel', 'custom',
+        'cube-ring', 'cube-tunnel', 'custom',
       ] as const;
 
       for (const surface of definedSurfaces) {

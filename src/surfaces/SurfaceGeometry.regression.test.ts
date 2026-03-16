@@ -27,7 +27,6 @@ import { CubeWithTunnelSurface } from './CubeWithTunnelSurface';
 import { PeanutSurface } from './PeanutSurface';
 import { IcosahedronSurface } from './IcosahedronSurface';
 import { CubeRingSurface } from './CubeRingSurface';
-import { MobiusBevelSurface } from './MobiusBevelSurface';
 import type { Surface } from './Surface';
 
 // ---------------------------------------------------------------------------
@@ -461,31 +460,6 @@ describe('Mobius surface', () => {
 });
 
 // ===========================================================================
-// MOBIUS BEVEL
-// Similar to Mobius but tube cross-section (fully enclosing, no edges)
-// ===========================================================================
-describe('MobiusBevel surface', () => {
-  const surface = new MobiusBevelSurface({ majorRadius: 8, tubeRadius: 2 });
-
-  runGenericChecks(surface, 'MobiusBevel');
-
-  describe('MobiusBevel — seam hazards', () => {
-    it('moveOnSurface: UV stays in bounds through full loop traversal', () => {
-      let u = 0.0, v = 0.5;
-      for (let step = 0; step < 110; step++) {
-        const result = surface.moveOnSurface(u, v, 0.01, 0.005);
-        expect(result.u).toBeGreaterThanOrEqual(0);
-        expect(result.u).toBeLessThanOrEqual(1);
-        expect(result.v).toBeGreaterThanOrEqual(0);
-        expect(result.v).toBeLessThanOrEqual(1);
-        u = result.u;
-        v = result.v;
-      }
-    });
-  });
-});
-
-// ===========================================================================
 // CAPSULE
 // Known hazards: hemisphere cap transitions (v≈0.25 and v≈0.75)
 // ===========================================================================
@@ -727,7 +701,6 @@ describe('speedScale invariant — all surfaces', () => {
     { name: 'peanut', surface: new PeanutSurface() },
     { name: 'icosahedron', surface: new IcosahedronSurface() },
     { name: 'cube-ring', surface: new CubeRingSurface() },
-    { name: 'mobius-bevel', surface: new MobiusBevelSurface() },
     { name: 'sphere-tunnel', surface: new SphereWithTunnelSurface() },
   ];
 
@@ -773,8 +746,7 @@ describe('Known issues documentation', () => {
 
   it('NOTE: Klein bottle surface not in SurfaceFactory', () => {
     // User requested "klein" surface testing, but SurfaceFactory has no Klein bottle.
-    // Available non-orientable surfaces: MobiusSurface, MobiusBevelSurface.
-    // The MobiusBevel is the closest to a Klein bottle concept (tube Mobius).
+    // Available non-orientable surfaces: MobiusSurface.
     // If a KleinSurface is added, add tests here.
     expect(true).toBe(true);
   });
@@ -782,7 +754,7 @@ describe('Known issues documentation', () => {
   it('NOTE: Knot surface not in SurfaceFactory', () => {
     // User requested "knot" surface testing, but SurfaceFactory has no knot.
     // Available surfaces: sphere, torus, cube, capsule, pill, mobius, pipe,
-    // sphere-tunnel, cube-tunnel, peanut, icosahedron, cube-ring, mobius-bevel.
+    // sphere-tunnel, cube-tunnel, peanut, icosahedron, cube-ring.
     // If a KnotSurface is added, add tests here.
     expect(true).toBe(true);
   });

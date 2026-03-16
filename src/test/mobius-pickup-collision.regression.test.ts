@@ -15,7 +15,6 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
 import { MobiusSurface } from '../surfaces/MobiusSurface';
-import { MobiusBevelSurface } from '../surfaces/MobiusBevelSurface';
 
 describe('Mobius strip worldToSurface scale invariance (S28b regression)', () => {
   const SCALES = [1.0, 1.5, 2.0]; // SMALL=0.75, MEDIUM=1.0, LARGE=1.5, EPIC=2.0
@@ -102,27 +101,6 @@ describe('Mobius strip worldToSurface scale invariance (S28b regression)', () =>
     });
   });
 
-  describe('MobiusBevelSurface', () => {
-    it('worldToSurface is scale-invariant at EPIC scale', () => {
-      const surface = new MobiusBevelSurface();
-      surface.group.scale.setScalar(2.0);
-
-      const testPoints = [
-        { u: 0.25, v: 0.25 },
-        { u: 0.5, v: 0.5 },
-        { u: 0.75, v: 0.75 },
-      ];
-
-      for (const { u, v } of testPoints) {
-        const pt = surface.getPoint(u, v);
-        const scaledPos = pt.position.clone().multiplyScalar(2.0);
-        const recovered = surface.worldToSurface(scaledPos);
-
-        expect(recovered.u).toBeCloseTo(u, 1);
-        expect(recovered.v).toBeCloseTo(v, 1);
-      }
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------

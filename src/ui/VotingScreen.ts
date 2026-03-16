@@ -41,7 +41,6 @@ export const SURFACES = [
   { id: 'icosahedron',   icon: '🔷', label: 'ICOSAHEDRON' },
   { id: 'peanut',        icon: '🥜', label: 'PEANUT' },
   { id: 'mobius',        icon: '♾',  label: 'MOBIUS' },
-  { id: 'mobius-bevel',  icon: '⟲',  label: 'MOBIUS-BEVEL' },
   { id: 'sphere-tunnel', icon: '⊕',  label: 'SPHERE-TUNNEL' },
   { id: 'cube-ring',     icon: '⬡',  label: 'CUBE-RING' },
   { id: 'cube-tunnel',   icon: '⬜', label: 'CUBE-TUNNEL' },

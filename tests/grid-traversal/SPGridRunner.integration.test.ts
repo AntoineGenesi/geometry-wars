@@ -223,7 +223,7 @@ import { runSPGrid, writeGridReport, ALL_SURFACES } from './SPGridRunner';
 // ---------------------------------------------------------------------------
 
 /** Surfaces with known geometry fragility — flag but do not fail. */
-const KNOWN_FRAGILE = ['peanut', 'pill', 'cube-tunnel', 'mobius', 'mobius-bevel'];
+const KNOWN_FRAGILE = ['peanut', 'pill', 'cube-tunnel', 'mobius'];
 
 /** Surfaces that must always report 0 stuck points at density 8. */
 const KNOWN_GOOD = ALL_SURFACES.filter(s => !KNOWN_FRAGILE.includes(s));

@@ -82,7 +82,6 @@ export const KEYS = {
       icosahedron: 'voting.surfaces.icosahedron',
       peanut: 'voting.surfaces.peanut',
       mobius: 'voting.surfaces.mobius',
-      mobiusBevel: 'voting.surfaces.mobiusBevel',
       cubeTunnel: 'voting.surfaces.cubeTunnel',
     },
     modes: {
@@ -112,7 +111,6 @@ export const KEYS = {
       capsule: 'menu.surfaces.capsule',
       icosahedron: 'menu.surfaces.icosahedron',
       mobius: 'menu.surfaces.mobius',
-      mobiusBevel: 'menu.surfaces.mobiusBevel',
       sphereTunnel: 'menu.surfaces.sphereTunnel',
       cubeRing: 'menu.surfaces.cubeRing',
       cubeTunnel: 'menu.surfaces.cubeTunnel',

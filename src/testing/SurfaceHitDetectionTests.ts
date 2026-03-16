@@ -21,7 +21,7 @@ import { GameTelemetry, journey, type JourneyResult } from './GameTelemetry';
 export const ALL_SURFACES: SurfaceType[] = [
   'sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut',
   'capsule', 'icosahedron', 'mobius', 'sphere-tunnel',
-  'cube-ring', 'cube-tunnel', 'mobius-bevel',
+  'cube-ring', 'cube-tunnel',
 ];
 
 // ---------------------------------------------------------------------------

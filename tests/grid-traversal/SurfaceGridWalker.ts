@@ -47,7 +47,7 @@ export interface SurfaceGridResult {
 const POLE_SURFACES = new Set<SurfaceType>(['sphere', 'pill', 'peanut', 'capsule']);
 
 /** Non-orientable surfaces — restrict u to avoid seam artifacts. */
-const MOBIUS_SURFACES = new Set<SurfaceType>(['mobius', 'mobius-bevel']);
+const MOBIUS_SURFACES = new Set<SurfaceType>(['mobius']);
 
 /** Movement threshold: must move at least this far to be considered "not stuck". */
 const STUCK_THRESHOLD = 0.05;

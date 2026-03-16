@@ -29,8 +29,7 @@ export type GameSurface =
   | 'mobius'
   | 'sphere-tunnel'
   | 'cube-ring'
-  | 'cube-tunnel'
-  | 'mobius-bevel';
+  | 'cube-tunnel';
 
 export type PvpWinCondition = 'kills' | 'survival' | 'score';
 
@@ -199,7 +198,7 @@ export const VALID_MODES: readonly GameMode[] = [
 
 export const VALID_SURFACES: readonly GameSurface[] = [
   'sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut', 'capsule',
-  'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel', 'mobius-bevel',
+  'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel',
 ] as const;
 
 export const VALID_STARTING_WEAPONS: readonly StartingWeapon[] = [

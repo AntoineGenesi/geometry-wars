@@ -78,7 +78,6 @@
       "icosahedron": "ICOSAHEDRON",
       "peanut": "PEANUT",
       "mobius": "MÖBIUS",
-      "mobiusBevel": "MÖBIUS-BEVEL",
       "cubeTunnel": "CUBE-TUNNEL",
       "pipe": "PIPE",
       "sphereTunnel": "SPHERE-TUNNEL",
@@ -111,7 +110,6 @@
       "capsule": "Capsule",
       "icosahedron": "Icosahedron",
       "mobius": "Möbius",
-      "mobiusBevel": "Möbius Bevel",
       "sphereTunnel": "Sphere Tunnel",
       "cubeRing": "Cube Ring",
       "cubeTunnel": "Cube Tunnel"
