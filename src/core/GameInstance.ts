@@ -356,6 +356,7 @@ export class GameInstance {
             position: e.position.clone(),
             index: i,
             alive: e.alive,
+            maxHealth: e.maxHealth,
           }));
       },
       onEnemyDamage: (index: number, damage: number) => {

@@ -1161,6 +1161,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
           meshPosition: e.mesh ? e.mesh.position.clone() : undefined,
           index: i,
           alive: e.alive,
+          maxHealth: e.maxHealth,
         }));
     },
     onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => {
