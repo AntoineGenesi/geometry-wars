@@ -123,6 +123,9 @@ const CLAUSTROPHOBIA_ALLOWED_SURFACES = ['sphere', 'torus', 'capsule', 'icosahed
 const INACTIVITY_PAUSE_THRESHOLD = 120;      // 2 minutes (120 seconds) before auto-pause
 const INACTIVITY_SHUTDOWN_THRESHOLD = 900;   // 15 minutes (900 seconds) before auto-shutdown
 
+// Stop protection: block server stop if any player has been active within this window
+const STOP_PROTECTION_WINDOW_MS = 60_000;    // 60 seconds
+
 /**
  * Compute max enemies for a given player count.
  * s44r9-02: Raised base from 30 to 60 — at 30, waves hit the cap by wave 3-4
@@ -1021,6 +1024,15 @@ export class GameRoom extends Room<GameState> {
   // Inactivity tracking state (auto-pause and shutdown)
   private lastActivityTime = Date.now(); // Track last player activity (input, movement, etc.)
   private autoPausedTime: number | null = null; // Tracks when room was auto-paused for shutdown logic
+
+  // Per-player stop-protection activity tracking (s44r22-08)
+  // Records the last time each player moved, rotated, or shot.
+  // Used by isProtectedFromStop() to block server stop when players are active.
+  private playerLastMoveTime: Map<string, number> = new Map();
+  private playerLastRotateTime: Map<string, number> = new Map();
+  private playerLastShotTime: Map<string, number> = new Map();
+  /** Last aimAngle per player — used to detect rotation delta in handleInput. */
+  private playerLastAimAngle: Map<string, number> = new Map();
 
   // KotH zone state (server-authoritative — mirrors KingMode.ts client logic)
   private kothZoneU = 0.5;
@@ -1964,6 +1976,11 @@ export class GameRoom extends Room<GameState> {
       this.ddaDecreaseCounters.delete(client.sessionId);
       this.lastNearMissLogTime.delete(client.sessionId);
       this.pvpKillStreaks.delete(player.id);
+      // Stop-protection activity tracking cleanup (s44r22-08)
+      this.playerLastMoveTime.delete(client.sessionId);
+      this.playerLastRotateTime.delete(client.sessionId);
+      this.playerLastShotTime.delete(client.sessionId);
+      this.playerLastAimAngle.delete(client.sessionId);
     }
     // Remove locality and creator-intent tracking for this session
     this.clientLocality.delete(client.sessionId);
@@ -2432,13 +2449,29 @@ export class GameRoom extends Room<GameState> {
     const player = this.state.players.get(client.sessionId);
     if (!player || !player.alive) return;
 
+    const now = Date.now();
+
     // Update last activity timestamp — player provided input
-    this.lastActivityTime = Date.now();
+    this.lastActivityTime = now;
     // Clear auto-paused flag and resume game if it was auto-paused
     if (this.autoPausedTime !== null) {
       this.autoPausedTime = null;
       this.state.isPaused = false;
       this.logger.log('[GameRoom] Game resumed — player activity detected after auto-pause');
+    }
+
+    // Per-player stop-protection activity tracking (s44r22-08)
+    const sid = client.sessionId;
+    if (input.moveX !== 0 || input.moveY !== 0) {
+      this.playerLastMoveTime.set(sid, now);
+    }
+    const prevAim = this.playerLastAimAngle.get(sid);
+    if (prevAim === undefined || prevAim !== input.aimAngle) {
+      this.playerLastRotateTime.set(sid, now);
+      this.playerLastAimAngle.set(sid, input.aimAngle);
+    }
+    if (input.shooting) {
+      this.playerLastShotTime.set(sid, now);
     }
 
     // Store the latest input. Movement will be applied in tick() at a
@@ -6603,6 +6636,42 @@ export class GameRoom extends Room<GameState> {
     let dv = Math.abs(v1 - v2);
     if (wrapsV && dv > 0.5) dv = 1 - dv;
     return Math.sqrt(du * du + dv * dv);
+  }
+
+  /**
+   * Returns whether the server should be blocked from stopping due to active players.
+   * A player is "active" if they have moved, rotated, or shot within the last 60 seconds.
+   * Returns an object with `protected` boolean and optional `reason` string.
+   * (s44r22-08)
+   */
+  isProtectedFromStop(): { protected: boolean; reason?: string } {
+    // Empty room — allow stop
+    if (this.state.players.size === 0) {
+      return { protected: false };
+    }
+
+    const now = Date.now();
+    const threshold = STOP_PROTECTION_WINDOW_MS;
+
+    for (const [sessionId] of this.state.players) {
+      const lastMove = this.playerLastMoveTime.get(sessionId) ?? 0;
+      const lastRotate = this.playerLastRotateTime.get(sessionId) ?? 0;
+      const lastShot = this.playerLastShotTime.get(sessionId) ?? 0;
+      const lastActive = Math.max(lastMove, lastRotate, lastShot);
+
+      if (now - lastActive < threshold) {
+        const player = this.state.players.get(sessionId);
+        const name = player?.name ?? sessionId;
+        const secsAgo = Math.floor((now - lastActive) / 1000);
+        return {
+          protected: true,
+          reason: `Player "${name}" was active ${secsAgo}s ago (limit: ${threshold / 1000}s)`,
+        };
+      }
+    }
+
+    // All players inactive for 60+ seconds
+    return { protected: false };
   }
 
   /**

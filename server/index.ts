@@ -121,6 +121,35 @@ app.get('/api/rooms', async (_req, res) => {
   }
 });
 
+// Stop protection endpoint — returns whether any active player would be interrupted (s44r22-08)
+// The Vite LAN plugin queries this before killing the server process.
+app.get('/api/stop-protection', async (_req, res) => {
+  try {
+    if (!gameServer.matchMaker) {
+      res.json({ protected: false });
+      return;
+    }
+    const rooms = await gameServer.matchMaker.query({});
+    for (const room of rooms) {
+      // Access the live room instance to call isProtectedFromStop()
+      const roomInstance = gameServer.matchMaker.getRoomById(room.roomId) as { isProtectedFromStop?: () => { protected: boolean; reason?: string } } | null;
+      if (roomInstance && typeof roomInstance.isProtectedFromStop === 'function') {
+        const result = roomInstance.isProtectedFromStop();
+        if (result.protected) {
+          res.json({ protected: true, reason: result.reason });
+          return;
+        }
+      }
+    }
+    res.json({ protected: false });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    // On error, fail open (allow stop) so a bug here doesn't brick the stop button
+    logger.error('[Server] stop-protection check failed:', message);
+    res.json({ protected: false, error: message });
+  }
+});
+
 // Performance log export endpoint
 app.post('/api/export-perf-logs', (req, res) => {
   try {

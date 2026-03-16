@@ -400,6 +400,21 @@ export class PauseMenu {
         display: none;
       }
 
+      /* Stop protection: dimmed and non-interactive when players are active (s44r22-08) */
+      #pause-menu .stop-server-btn.stop-protected,
+      #pause-menu .stop-server-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+      #pause-menu .stop-server-btn.stop-protected:hover,
+      #pause-menu .stop-server-btn:disabled:hover {
+        background: rgba(80, 18, 18, 0.85);
+        border-color: rgba(220, 60, 60, 0.55);
+        box-shadow: none;
+        color: #ffbbbb;
+      }
+
       #pause-menu .server-settings-btn.hidden {
         display: none;
       }
@@ -1254,6 +1269,26 @@ export class PauseMenu {
    */
   setNetworkCallbacks(callbacks: PauseMenuNetworkCallbacks): void {
     this.networkCallbacks = callbacks;
+  }
+
+  /**
+   * Update the stop-server button state based on server stop protection.
+   * When protected=true, the button is visually disabled and shows a tooltip.
+   * (s44r22-08)
+   */
+  setStopProtected(protected_: boolean, reason?: string): void {
+    const stopServerBtn = this.container?.querySelector<HTMLButtonElement>('.stop-server-btn');
+    if (!stopServerBtn) return;
+
+    if (protected_) {
+      stopServerBtn.disabled = true;
+      stopServerBtn.classList.add('stop-protected');
+      stopServerBtn.title = reason ?? 'Cannot stop — players are actively playing';
+    } else {
+      stopServerBtn.disabled = false;
+      stopServerBtn.classList.remove('stop-protected');
+      stopServerBtn.title = '';
+    }
   }
 
   /**
