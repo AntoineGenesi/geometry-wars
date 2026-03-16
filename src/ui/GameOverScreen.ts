@@ -946,7 +946,8 @@ export class GameOverScreen {
       let keyHandler: (e: KeyboardEvent) => void;
       let keyHandlerTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-      const doClose = () => {
+      // cancelPending: cancels timer + removes key listener (shared cleanup)
+      const cancelPending = () => {
         if (keyHandlerTimeoutId !== null) {
           clearTimeout(keyHandlerTimeoutId);
           keyHandlerTimeoutId = null;
@@ -955,26 +956,35 @@ export class GameOverScreen {
         clearInterval(tickInterval);
         this.clearAutoTransition();
         this.hide();
-        const cb = this.onContinueCallback;
-        this.onContinueCallback = null; // prevent double-fire
-        cb?.();
       };
 
       keyHandler = (e: KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          doClose();
+          cancelPending();
+          const cb = this.onContinueCallback;
+          this.onContinueCallback = null;
+          cb?.();
         }
       };
 
       this.autoTransitionTimeout = setTimeout(() => {
         this.autoTransitionTimeout = null;
-        doClose();
+        cancelPending();
+        const cb = this.onContinueCallback;
+        this.onContinueCallback = null;
+        cb?.();
       }, AUTO_TRANSITION_MS);
 
       keyHandlerTimeoutId = setTimeout(() => document.addEventListener('keydown', keyHandler), 500);
 
+      // Button click in MP triggers onReturnToMenuCallback (not onContinue)
       const continueBtn = this.container.querySelector('.continue-btn');
-      continueBtn?.addEventListener('click', () => doClose());
+      continueBtn?.addEventListener('click', () => {
+        cancelPending();
+        const cb = this.onReturnToMenuCallback;
+        this.onReturnToMenuCallback = null;
+        cb?.();
+      });
     } else {
       // keyHandler declared before doClose to avoid TDZ when doClose references it
       let keyHandler: (e: KeyboardEvent) => void;
