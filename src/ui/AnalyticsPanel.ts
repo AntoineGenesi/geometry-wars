@@ -201,21 +201,34 @@ export class AnalyticsPanel {
     this.container.appendChild(this.buildContent(analytics));
     this.container.classList.remove('hidden');
 
-    const closeBtn = this.container.querySelector('.ap-close-btn');
-    closeBtn?.addEventListener('click', () => {
-      this.hide();
-      this.onCloseCallback?.();
-    });
+    // keyHandler declared first so doClose can reference it (avoids TDZ issue)
+    let keyHandler: (e: KeyboardEvent) => void;
+    let keyHandlerTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    // Keyboard close
-    const keyHandler = (e: KeyboardEvent) => {
+    // Unified close: cancels pending timer, removes key listener, fires callback once
+    const doClose = () => {
+      if (keyHandlerTimeoutId !== null) {
+        clearTimeout(keyHandlerTimeoutId);
+        keyHandlerTimeoutId = null;
+      }
+      document.removeEventListener('keydown', keyHandler);
+      this.hide();
+      const cb = this.onCloseCallback;
+      this.onCloseCallback = null; // prevent double-fire if called again
+      cb?.();
+    };
+
+    keyHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
-        document.removeEventListener('keydown', keyHandler);
-        this.hide();
-        this.onCloseCallback?.();
+        doClose();
       }
     };
-    setTimeout(() => document.addEventListener('keydown', keyHandler), 400);
+
+    const closeBtn = this.container.querySelector('.ap-close-btn');
+    closeBtn?.addEventListener('click', doClose);
+
+    // Delay key listener to avoid capturing the Enter/Space that opened the previous screen
+    keyHandlerTimeoutId = setTimeout(() => document.addEventListener('keydown', keyHandler), 400);
   }
 
   onClose(callback: () => void): void {

@@ -669,7 +669,9 @@ export class WeaponMasteryScreen {
   hide(): void {
     this._hideTooltip();
     this.container.classList.add('hidden');
-    this.onCloseCallback?.();
+    const cb = this.onCloseCallback;
+    this.onCloseCallback = null; // prevent double-fire on rapid keypresses
+    cb?.();
   }
 
   dispose(): void {
