@@ -5625,6 +5625,17 @@ async function main() {
       onRoundRestarting: (data: { countdown: number; message: string }) => {
         // Show countdown notification to all players (s44j-settings-16d)
         showRoundRestartingNotification(data.message ?? 'Restarting round...', data.countdown);
+        // Force-close any open menus so the countdown is visible and input is not blocked.
+        // Non-host: local menu may be open (game still running); close it now.
+        if (localMenuOpen) {
+          hideLocalMenu();
+        }
+        // All players: pause menu may be showing (server was paused before restart);
+        // hide the UI immediately. isPaused flag resets via onStateChange when
+        // startGame() sets state.isPaused=false after the countdown completes.
+        if (isPaused) {
+          pauseMenu.hide();
+        }
       },
     });
 
