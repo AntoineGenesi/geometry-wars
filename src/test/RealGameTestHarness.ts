@@ -1563,7 +1563,6 @@ export class RealGameTestHarness {
         return 'peanut-lobe';
       }
       case 'mobius':
-      case 'mobius-bevel':
         return 'mobius-strip';
       case 'pipe':
         return 'pipe-body';

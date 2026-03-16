@@ -153,15 +153,6 @@ describe('s44q-04 REGRESSION: Server-Client Surface Dimension Parity', () => {
     expect(totalHeight).toBeLessThan(21.5); // bevel arcs extend bevelRadius=0.6 at each end → 20 + 1.2 = 21.2
   });
 
-  // Mobius-bevel: client config majorRadius=scale*0.8=8, tubeRadius=2 (class default)
-  // Outer extent = majorRadius + tubeRadius = 8 + 2 = 10
-  test('mobius-bevel: outer extent = majorR(8) + tubeR(2) = 10', () => {
-    const mesh = buildSurfaceGeometry('mobius-bevel', 1.0);
-    const maxR = maxRadius3D(mesh);
-    expect(maxR).toBeGreaterThan(9.5);
-    expect(maxR).toBeLessThan(10.5);
-  });
-
   // Scale factor test: all surfaces should scale proportionally
   test('torus with scaleFactor=1.5: outer edge at ~16.5', () => {
     const mesh = buildSurfaceGeometry('torus', 1.5);

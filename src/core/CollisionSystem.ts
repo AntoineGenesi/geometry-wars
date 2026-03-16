@@ -164,7 +164,7 @@ export class CollisionSystem {
         // causing premature hits where on-surface distance was small but visual distance
         // was still large (enemies not visually touching yet). User reported "hit detection
         // completely f___ up" on every map.
-        const isMobiusLike = this.surfaceType === 'mobius' || this.surfaceType === 'mobius-bevel';
+        const isMobiusLike = this.surfaceType === 'mobius';
         let bulletHit = distSq < hitRadiusSq;
         if (!bulletHit && isMobiusLike) {
           const onSurfaceDistSq = bulletPos.distanceToSquared(enemy.position);
@@ -365,7 +365,7 @@ export class CollisionSystem {
       // on ALL surfaces, causing premature player deaths where on-surface distance was
       // small but visual distance was still large. User reported dying "a body width
       // away" from enemies on every map.
-      const isMobiusLike = this.surfaceType === 'mobius' || this.surfaceType === 'mobius-bevel';
+      const isMobiusLike = this.surfaceType === 'mobius';
       let playerHit = distSq < hitRadiusSq;
       if (!playerHit && isMobiusLike) {
         const onSurfaceDistSq = player.mesh.position.distanceToSquared(enemy.position);

@@ -11,7 +11,6 @@ import { MobiusSurface, MobiusConfig } from './MobiusSurface'
 import { SphereWithTunnelSurface, SphereWithTunnelConfig } from './SphereWithTunnelSurface'
 import { CubeRingSurface, CubeRingConfig } from './CubeRingSurface'
 import { CubeWithTunnelSurface, CubeWithTunnelConfig } from './CubeWithTunnelSurface'
-import { MobiusBevelSurface, MobiusBevelConfig } from './MobiusBevelSurface'
 import { LoadedMeshSurface, LoadedMeshConfig } from './LoadedMeshSurface'
 import { loadMeshFromURL, loadMeshFromFile } from '../loaders/MeshLoader'
 
@@ -28,7 +27,6 @@ export type SurfaceType =
   | 'sphere-tunnel'
   | 'cube-ring'
   | 'cube-tunnel'
-  | 'mobius-bevel'
   | 'custom'
 
 export interface CustomMeshConfig extends LoadedMeshConfig {
@@ -51,7 +49,6 @@ export type SurfaceConfigMap = {
   'sphere-tunnel': SphereWithTunnelConfig
   'cube-ring': CubeRingConfig
   'cube-tunnel': CubeWithTunnelConfig
-  'mobius-bevel': MobiusBevelConfig
   custom: CustomMeshConfig
 }
 
@@ -85,15 +82,13 @@ export class SurfaceFactory {
         return new CubeRingSurface(config as CubeRingConfig)
       case 'cube-tunnel':
         return new CubeWithTunnelSurface(config as CubeWithTunnelConfig)
-      case 'mobius-bevel':
-        return new MobiusBevelSurface(config as MobiusBevelConfig)
       default:
         throw new Error(`Unknown surface type: ${type}`)
     }
   }
 
   static getAvailableTypes(): SurfaceType[] {
-    return ['sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel', 'mobius-bevel']
+    return ['sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut', 'capsule', 'icosahedron', 'mobius', 'sphere-tunnel', 'cube-ring', 'cube-tunnel']
   }
 
   /**

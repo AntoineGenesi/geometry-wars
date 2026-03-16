@@ -42,7 +42,6 @@ export const ALL_SURFACES: SurfaceType[] = [
   'sphere-tunnel',
   'cube-ring',
   'cube-tunnel',
-  'mobius-bevel',
 ];
 
 /** Default density for CI runs. Full density (15) is used for manual runs only. */

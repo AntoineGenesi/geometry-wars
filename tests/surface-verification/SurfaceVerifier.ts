@@ -167,7 +167,7 @@ export interface SeamTraversalResult {
 const POLE_SURFACES = new Set<SurfaceType>(['sphere', 'pill', 'peanut', 'capsule']);
 
 /** Non-orientable surfaces — restrict u to avoid seam artifacts. */
-const MOBIUS_SURFACES = new Set<SurfaceType>(['mobius', 'mobius-bevel']);
+const MOBIUS_SURFACES = new Set<SurfaceType>(['mobius']);
 
 /** Pole avoidance margin (fraction of v range). */
 const POLE_MARGIN = 0.04;
@@ -574,7 +574,7 @@ export class SurfaceVerifier {
     const internalSurface = instance._surface;
 
     // For Mobius, start near the seam to explicitly test it
-    const isMobius = (surface === 'mobius' || surface === 'mobius-bevel');
+    const isMobius = (surface === 'mobius');
     if (isMobius) {
       SurfaceVerifier._teleportPlayer(
         harness, walker, meshSurface, internalSurface, pg, 0.8, 0.5,

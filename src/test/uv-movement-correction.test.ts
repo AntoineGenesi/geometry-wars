@@ -58,11 +58,11 @@ describe('Surface UV Topology', () => {
   const ALL_SURFACES: SurfaceType[] = [
     'sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut',
     'capsule', 'icosahedron', 'mobius', 'sphere-tunnel',
-    'cube-ring', 'cube-tunnel', 'mobius-bevel',
+    'cube-ring', 'cube-tunnel',
   ];
 
   const WRAPS_V_SURFACES: SurfaceType[] = [
-    'torus', 'pipe', 'sphere-tunnel', 'cube-ring', 'cube-tunnel', 'mobius-bevel',
+    'torus', 'pipe', 'sphere-tunnel', 'cube-ring', 'cube-tunnel',
   ];
 
   const CLAMPS_V_SURFACES: SurfaceType[] = [

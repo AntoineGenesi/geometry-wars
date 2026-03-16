@@ -47,7 +47,7 @@ export class KingMode implements IGameMode {
    * Zone center in the same coordinate space as player.mesh.position
    * (local surface space with worldRotation applied, no scale).
    * Used for the inZone proximity check — avoids worldToSurface UV round-trip
-   * errors on surfaces like cube, mobius, cube-tunnel, mobius-bevel.
+   * errors on surfaces like cube, mobius, cube-tunnel.
    */
   private readonly _zoneCenterPlayerSpace = new THREE.Vector3();
   /** World-space zone radius at game start (used to scale the shrinking radius). */
@@ -185,7 +185,7 @@ export class KingMode implements IGameMode {
 
     // 3. Check if player is in zone using world-space distance.
     // Rationale: UV-space checks fail on surfaces where worldToSurface(getPoint(u,v)) ≠ (u,v)
-    // (cube, mobius, cube-tunnel, mobius-bevel have UV parameterization discontinuities).
+    // (cube, mobius, cube-tunnel have UV parameterization discontinuities).
     // Using getPoint() → worldRotation gives a coordinate space consistent with
     // player.mesh.position, which is set by playerWalker walking on the surface mesh.
     const zonePoint = context.surface.getPoint(this.zoneU, this.zoneV);

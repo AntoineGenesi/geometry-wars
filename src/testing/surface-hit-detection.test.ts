@@ -25,7 +25,7 @@ import type { SurfaceType } from '../surfaces/SurfaceFactory';
 const ALL_SURFACES: SurfaceType[] = [
   'sphere', 'cube', 'pill', 'pipe', 'torus', 'peanut',
   'capsule', 'icosahedron', 'mobius', 'sphere-tunnel',
-  'cube-ring', 'cube-tunnel', 'mobius-bevel',
+  'cube-ring', 'cube-tunnel',
 ];
 
 let telemetry: GameTelemetry | null = null;

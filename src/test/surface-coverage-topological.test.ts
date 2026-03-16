@@ -1,5 +1,5 @@
 /**
- * Surface Coverage — Phase 3: Topological Surfaces (mobius, mobius-bevel, pipe)
+ * Surface Coverage — Phase 3: Topological Surfaces (mobius, pipe)
  *
  * Tests movement grid-walk AND hit detection for non-orientable / tube surfaces.
  *
@@ -91,13 +91,6 @@ import { SurfaceType } from '../surfaces/SurfaceFactory';
 // ---------------------------------------------------------------------------
 
 const MOBIUS_GRID = [
-  { u: 0.1, v: 0.3 },
-  { u: 0.3, v: 0.5 },
-  { u: 0.6, v: 0.5 },
-  { u: 0.9, v: 0.7 },
-];
-
-const MOBIUS_BEVEL_GRID = [
   { u: 0.1, v: 0.3 },
   { u: 0.3, v: 0.5 },
   { u: 0.6, v: 0.5 },
@@ -240,63 +233,6 @@ describe('mobius: hit detection', () => {
 
   it('symmetry: dist(A,B) == dist(B,A) within 0.001', () => {
     const h = new MPRealGameTestHarness({ surface: 'mobius' });
-    const pairs: [number, number, number, number][] = [
-      [0.1, 0.5, 0.3, 0.5],
-      [0.3, 0.4, 0.7, 0.6],
-      [0.5, 0.5, 0.9, 0.3],
-    ];
-    for (const [u1, v1, u2, v2] of pairs) {
-      const dAB = h.worldDist(u1, v1, u2, v2);
-      const dBA = h.worldDist(u2, v2, u1, v1);
-      expect(Math.abs(dAB - dBA)).toBeLessThan(0.001);
-    }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Mobius-bevel — movement grid-walk
-// ---------------------------------------------------------------------------
-
-describe('mobius-bevel: movement grid-walk', () => {
-  it('moves in +U and -V directions at 4 grid positions', () => {
-    runGridWalkTest('mobius-bevel', MOBIUS_BEVEL_GRID);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Mobius-bevel — hit detection
-// ---------------------------------------------------------------------------
-
-describe('mobius-bevel: hit detection', () => {
-  it('same-position: dist ≈ 0 → hit', () => {
-    const h = new MPRealGameTestHarness({ surface: 'mobius-bevel' });
-    for (const u of HIT_POSITIONS) {
-      const result = h.checkHit(u, 0.5, u, 0.5);
-      expect(result.worldDist).toBeCloseTo(0, 3);
-      expect(result.hit).toBe(true);
-    }
-  });
-
-  it('near enemy: dist < ENEMY_HIT_WORLD → hit', () => {
-    const h = new MPRealGameTestHarness({ surface: 'mobius-bevel' });
-    // mobius-bevel uses sphere great-circle approx (sphereR=10). With a 0.02 v-offset,
-    // distance ≈ 0.63 > ENEMY_HIT_WORLD=0.5. Use 0.005 offset → ≈0.16 which hits.
-    for (const u of HIT_POSITIONS) {
-      const result = h.checkHit(u, 0.5, u, 0.505);
-      expect(result.worldDist).toBeLessThan(ENEMY_HIT_WORLD);
-      expect(result.hit).toBe(true);
-    }
-  });
-
-  it('far enemy: opposite pole → dist > 2.0 → no hit', () => {
-    const h = new MPRealGameTestHarness({ surface: 'mobius-bevel' });
-    const result = h.checkHit(0.1, 0.5, 0.6, 0.5);
-    expect(result.worldDist).toBeGreaterThan(2.0);
-    expect(result.hit).toBe(false);
-  });
-
-  it('symmetry: dist(A,B) == dist(B,A) within 0.001', () => {
-    const h = new MPRealGameTestHarness({ surface: 'mobius-bevel' });
     const pairs: [number, number, number, number][] = [
       [0.1, 0.5, 0.3, 0.5],
       [0.3, 0.4, 0.7, 0.6],

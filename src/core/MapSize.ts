@@ -78,7 +78,6 @@ export const SURFACE_DEFAULT_MAP_SIZES: Record<SurfaceType, MapSize> = {
   // LARGE — cube-tunnel at scale*2 is comparable to other surfaces; MEDIUM default
   'cube-tunnel': MapSize.MEDIUM,
   mobius: MapSize.EPIC,
-  'mobius-bevel': MapSize.EPIC,  // Klein bottle variant
   peanut: MapSize.EPIC,
 
   // Custom mesh — neutral default
