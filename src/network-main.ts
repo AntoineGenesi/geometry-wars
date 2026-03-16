@@ -7338,13 +7338,17 @@ async function main() {
         const bulletOwner = bulletOwnerIds.get(id);
         if (bulletOwner === localPlayerId) {
           // s44r3-09: Use visual position (mesh.position) and inflated radius
-          const BULLET_ENEMY_HIT_RADIUS_SQ = 0.25; // 0.4² + 0.09 — accounts for surface-to-elevated offset
+          // s44r22-09: Use per-enemy 2*r² formula (matches SP CollisionSystem.ts) instead of
+          // a fixed constant. The old constant 0.25 was designed for r~0.3 enemies — it was
+          // too small for large enemies like TitanGrunt (r=0.6, visual square half-width=0.5).
+          // Bullets passing through the corners of large enemies would not register.
           networkEnemies.forEach((enemy, enemyId) => {
             if (!enemy.alive || !enemy.mesh) return;
             // Skip enemies already hit by this bullet (prevent same-frame double-hit)
             const hitSet = bulletHitEnemies.get(id);
             if (hitSet?.has(enemyId)) return;
-            if (_netTempPos.distanceToSquared(enemy.mesh.position) < BULLET_ENEMY_HIT_RADIUS_SQ) {
+            const hitRadiusSq = 2 * enemy.radius * enemy.radius; // matches SP CollisionSystem formula
+            if (_netTempPos.distanceToSquared(enemy.mesh.position) < hitRadiusSq) {
               // Record this enemy as hit by this bullet
               if (!bulletHitEnemies.has(id)) bulletHitEnemies.set(id, new Set());
               bulletHitEnemies.get(id)!.add(enemyId);

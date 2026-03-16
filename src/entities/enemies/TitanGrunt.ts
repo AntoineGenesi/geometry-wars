@@ -14,8 +14,13 @@ export class TitanGrunt extends BaseEnemy {
   public static onDeathSpawn: ((u: number, v: number, count: number) => void) | null = null;
 
   constructor(surfaceU: number = 0.5, surfaceV: number = 0.5) {
-    // health=10, score=200, geoms=3, speed=0.025, radius=0.5
-    super(surfaceU, surfaceV, 10, 200, 3, 0.025, 0.5);
+    // health=10, score=200, geoms=3, speed=0.025, radius=0.6
+    // radius=0.6 is midpoint of square flat-side(0.5) and corner(0.707) (s44r22-09 hitbox fix)
+    // buildSquare3D(0.5) creates a square with half-width 0.5; corners are at sqrt(0.5²+0.5²)=0.707.
+    // CollisionSystem uses hitRadiusSq = 2*r², meaning surface-level hit radius = r exactly.
+    // With r=0.5, corners are outside the hitbox — bullets only register near the center face.
+    // r=0.6 covers the full flat face (0.5) and the corners (0.707) reasonably.
+    super(surfaceU, surfaceV, 10, 200, 3, 0.025, 0.6);
     this.createMesh();
   }
 
