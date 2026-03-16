@@ -119,10 +119,13 @@ export function createStandardSurfaceConfig(
     config.gridSegments = 20;
   }
 
-  // Cube-ring: reduce to compact feel
+  // Cube-ring: use scale-proportional dimensions matching other ring surfaces (torus: 8,3).
+  // Previous values (4, 2) produced a tiny ring (outer radius 5), especially cramped at
+  // small map scale (0.75 × outer radius 5 = 3.75). Now matches torus proportions: majorR=8,
+  // crossSection=4 → outer radius 10, small variant outer radius ~7.5 — playable.
   if (surfaceType === 'cube-ring') {
-    config.majorRadius = 4;
-    config.crossSection = 2;
+    config.majorRadius = 8;
+    config.crossSection = 4;
   }
 
   return config;
