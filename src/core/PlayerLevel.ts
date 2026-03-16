@@ -89,6 +89,12 @@ export class PlayerLevel {
   private readonly auraGeometry: THREE.RingGeometry;
   private pulseTime = 0;
 
+  /**
+   * When true, aura opacity is clamped to ≤0.10 for multiplayer where the ring
+   * should be near-invisible (just a subtle indicator, not a distracting glow).
+   */
+  private _isMultiplayerMode = false;
+
   /** Callback when player levels up */
   onLevelUp: ((level: number, perk: LevelPerk) => void) | null = null;
 
@@ -103,10 +109,23 @@ export class PlayerLevel {
       opacity: 0,
       side: THREE.DoubleSide,
       depthWrite: false,
+      // depthTest: false so the ring is always visible against the surface even when
+      // the surface geometry is coplanar (avoids z-fighting on perfectly flat maps).
+      depthTest: false,
       blending: THREE.NormalBlending,
     });
     this.auraRing = new THREE.Mesh(this.auraGeometry, this.auraMaterial);
     this.auraRing.renderOrder = 100;
+  }
+
+  /**
+   * Switch the aura ring into multiplayer mode.
+   * In MP: opacity is capped to ≤0.10 so the ring is near-invisible (subtle indicator only).
+   * The ring also hugs the surface more tightly (smaller normal offset).
+   * SP mode (default): full opacity range + normal 0.06 offset.
+   */
+  setMultiplayerMode(isMP: boolean): void {
+    this._isMultiplayerMode = isMP;
   }
 
   /**
@@ -195,8 +214,13 @@ export class PlayerLevel {
     this.auraRing.visible = true;
     const perk = LEVELS[this.currentLevel];
 
+    // Surface projection offset:
+    //   MP: 0.01 — ring hugs the surface (near-zero lift = "projected onto" the surface).
+    //   SP: 0.06 — slight lift to avoid z-fighting on opaque surfaces.
+    const normalOffset = this._isMultiplayerMode ? 0.01 : 0.06;
+
     // Position on surface
-    this.auraRing.position.copy(position).addScaledVector(normal, 0.06);
+    this.auraRing.position.copy(position).addScaledVector(normal, normalOffset);
     // Orient ring to lie flat on the surface (face perpendicular to surface normal).
     // setFromUnitVectors is robust for all normal directions, including (0,1,0)
     // which breaks lookAt() (degenerate when look-direction == world-up).
@@ -207,8 +231,14 @@ export class PlayerLevel {
     const pulse = 1.0 + Math.sin(this.pulseTime * 1.8) * 0.05;
     this.auraRing.scale.setScalar(perk.auraRadius * pulse);
 
-    // Breathing opacity
-    this.auraMaterial.opacity = 0.12 + Math.sin(this.pulseTime * 1.2) * 0.05;
+    // Breathing opacity:
+    //   SP: 0.12 ± 0.05 → range [0.07, 0.17]  (visible glow)
+    //   MP: 0.05 ± 0.03 → range [0.02, 0.08]  (near-invisible, always ≤ 0.10)
+    if (this._isMultiplayerMode) {
+      this.auraMaterial.opacity = 0.05 + Math.sin(this.pulseTime * 1.2) * 0.03;
+    } else {
+      this.auraMaterial.opacity = 0.12 + Math.sin(this.pulseTime * 1.2) * 0.05;
+    }
   }
 
   /**
