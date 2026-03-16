@@ -4427,7 +4427,13 @@ export class GameRoom extends Room<GameState> {
   }
 
   private getEnemySpeed(type: string): number {
-    return ENEMY_SPEEDS[type] ?? 0.035;
+    const base = ENEMY_SPEEDS[type] ?? 0.035;
+    // s44r22-14: Scale enemy speed with difficulty beyond 8.0. Enemies gradually get faster
+    // so the player can't outlast the game by pure evasion. Capped at 2.5x to stay playable.
+    const diff = this.computeDifficultyLevel();
+    if (diff <= 8) return base;
+    const speedMult = Math.min(2.5, 1.0 + (diff - 8) * 0.05); // +5% per difficulty level above 8
+    return base * speedMult;
   }
 
   private checkCollisions() {
@@ -5330,7 +5336,11 @@ export class GameRoom extends Room<GameState> {
    * Avoids dependency on score/kills/combo (not reliably aggregated server-side).
    *
    * Calibration (1 player):
-   *   wave 1 = 0.0, wave 10 ≈ 2.7, wave 20 ≈ 5.4, wave 27+ = 8.0 cap
+   *   wave 1 = 0.0, wave 10 ≈ 2.7, wave 20 ≈ 5.4, wave 30 ≈ 8.7, wave 50 ≈ 14.7, wave 100 ≈ 29.7
+   *
+   * NOTE (s44r22-14): Removed the 8.0 hard cap — difficulty now scales continuously with wave
+   * number so the game gets progressively harder beyond wave 27. Wave 103 should be dramatically
+   * harder than wave 27, not identical.
    *
    * Player count bonus: each additional player adds +0.3 difficulty levels.
    *   1p → +0.0, 2p → +0.3, 3p → +0.6, 4p → +0.9
@@ -5348,7 +5358,8 @@ export class GameRoom extends Room<GameState> {
       ? waveContrib * (CLAUSTROPHOBIA_DIFFICULTY_MULTIPLIER - 1)
       : 0;
     // Apply host-configurable difficulty multiplier (0.5 = half speed, 2.0 = double speed)
-    return Math.min(8.0, (base + claustrophobiaBonus) * this.currentSettings.difficultyMultiplier);
+    // No hard cap — difficulty scales continuously so high waves remain challenging (s44r22-14).
+    return (base + claustrophobiaBonus) * this.currentSettings.difficultyMultiplier;
   }
 
   /**
@@ -5403,9 +5414,14 @@ export class GameRoom extends Room<GameState> {
     // Claustrophobia: increase spawn count 1.5× (capped at same ceiling)
     const claustrophobiaCountMult = isClaustrophobia ? CLAUSTROPHOBIA_SPAWN_MULTIPLIER : 1.0;
 
-    // Base count grows with wave number and difficulty
+    // Base count grows with wave number and difficulty.
+    // s44r22-14: Raised cap at high difficulty so waves get larger past the old 8.0 ceiling.
     const difficultyCountBonus = Math.floor(difficultyLevel * 2.0);
-    const baseCountCap = difficultyLevel >= 6 ? 40 : 30;
+    const baseCountCap = difficultyLevel >= 20 ? 80
+                       : difficultyLevel >= 15 ? 65
+                       : difficultyLevel >= 10 ? 55
+                       : difficultyLevel >= 6  ? 40
+                       : 30;
     const baseCount = Math.min(baseCountCap,
       Math.round((4 + Math.floor(Math.sqrt(waveNum) * 2) + difficultyCountBonus) * entityBrake * ddaWaveMultiplier * claustrophobiaCountMult));
     // Wave thresholds for Claustrophobia are earlier (boss/elite arrive sooner)
@@ -5496,6 +5512,69 @@ export class GameRoom extends Room<GameState> {
       entries.push({ type: hardType3, count: Math.min(Math.round((4 + Math.floor(difficultyLevel - 6)) * entityBrake), 8) });
       const megaSplit = SPLITTING_TYPES_WAVE[(waveNum + 4) % SPLITTING_TYPES_WAVE.length];
       entries.push({ type: megaSplit, count: Math.min(Math.round(Math.floor(difficultyLevel - 5) * entityBrake), 5) });
+    }
+
+    // s44r22-14: HIGH-WAVE ESCALATION — new brackets that only unlock past the old 8.0 cap.
+    // These ensure wave 50, 100, 150+ are dramatically harder than wave 27.
+
+    // At difficulty 8.0+: elite swarm + extra orbiters
+    if (difficultyLevel >= 8.0) {
+      const eliteSwarm = ELITE_TYPES_WAVE[(waveNum + 2) % ELITE_TYPES_WAVE.length];
+      entries.push({
+        type: eliteSwarm,
+        count: Math.min(Math.round((2 + Math.floor((difficultyLevel - 8) * 0.5)) * entityBrake), 8),
+      });
+      // Extra orbiters — fast and aggressive
+      entries.push({
+        type: 'orbiter',
+        count: Math.min(Math.round((2 + Math.floor((difficultyLevel - 8) * 0.3)) * entityBrake), 6),
+      });
+    }
+
+    // At difficulty 12.0+: massive splitting wave + hard reinforcement
+    if (difficultyLevel >= 12.0) {
+      const splitType2 = SPLITTING_TYPES_WAVE[(waveNum + 6) % SPLITTING_TYPES_WAVE.length];
+      entries.push({
+        type: splitType2,
+        count: Math.min(Math.round((4 + Math.floor((difficultyLevel - 12) * 0.6)) * entityBrake), 12),
+      });
+      const hardReinforce = HARD_TYPES_WAVE[(waveNum + 7) % HARD_TYPES_WAVE.length];
+      entries.push({
+        type: hardReinforce,
+        count: Math.min(Math.round((5 + Math.floor((difficultyLevel - 12) * 0.4)) * entityBrake), 10),
+      });
+    }
+
+    // At difficulty 16.0+: elite flood + third splitting group
+    if (difficultyLevel >= 16.0) {
+      const eliteFlood = ELITE_TYPES_WAVE[(waveNum + 3) % ELITE_TYPES_WAVE.length];
+      entries.push({
+        type: eliteFlood,
+        count: Math.min(Math.round((4 + Math.floor((difficultyLevel - 16) * 0.5)) * entityBrake), 10),
+      });
+      const splitFlood = SPLITTING_TYPES_WAVE[(waveNum + 8) % SPLITTING_TYPES_WAVE.length];
+      entries.push({
+        type: splitFlood,
+        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 16) * 0.4)) * entityBrake), 8),
+      });
+    }
+
+    // At difficulty 20.0+: maximum pressure — all hard/elite types, orbiters overwhelm
+    if (difficultyLevel >= 20.0) {
+      const hardMax = HARD_TYPES_WAVE[(waveNum + 9) % HARD_TYPES_WAVE.length];
+      entries.push({
+        type: hardMax,
+        count: Math.min(Math.round((6 + Math.floor((difficultyLevel - 20) * 0.5)) * entityBrake), 12),
+      });
+      entries.push({
+        type: 'orbiter',
+        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 20) * 0.3)) * entityBrake), 8),
+      });
+      const eliteMax = ELITE_TYPES_WAVE[(waveNum + 4) % ELITE_TYPES_WAVE.length];
+      entries.push({
+        type: eliteMax,
+        count: Math.min(Math.round((3 + Math.floor((difficultyLevel - 20) * 0.4)) * entityBrake), 8),
+      });
     }
 
     return entries;
@@ -5726,7 +5805,25 @@ export class GameRoom extends Room<GameState> {
   }
 
   private getEnemyHealth(type: string): number {
-    return ENEMY_HEALTH[type] ?? 1;
+    const base = ENEMY_HEALTH[type] ?? 1;
+    // s44r22-14: Scale enemy HP with difficulty beyond 8.0 so high-wave enemies are genuinely
+    // harder to kill. Each bracket adds a linear multiplier:
+    //   difficulty  8–12: 1.0x → 1.5x (enemies 50% tankier)
+    //   difficulty 12–16: 1.5x → 2.5x
+    //   difficulty 16–20: 2.5x → 4.0x
+    //   difficulty 20+:   4.0x + 0.2 per level (no hard cap — should be scary)
+    const diff = this.computeDifficultyLevel();
+    let healthMult = 1.0;
+    if (diff >= 20) {
+      healthMult = 4.0 + (diff - 20) * 0.2;
+    } else if (diff >= 16) {
+      healthMult = 2.5 + (diff - 16) * 0.375; // 2.5 → 4.0 over 4 levels
+    } else if (diff >= 12) {
+      healthMult = 1.5 + (diff - 12) * 0.25;  // 1.5 → 2.5 over 4 levels
+    } else if (diff >= 8) {
+      healthMult = 1.0 + (diff - 8) * 0.125;  // 1.0 → 1.5 over 4 levels
+    }
+    return base * healthMult;
   }
 
   /** Process pending PvP respawns — respawns any player whose 3s delay has elapsed. */

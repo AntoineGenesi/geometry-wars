@@ -32,7 +32,8 @@ function computeDifficultyLevel(waveNumber: number, gameTime: number, playerCoun
   const claustrophobiaBonus = gameMode === 'claustrophobia'
     ? waveContrib * (CLAUSTROPHOBIA_DIFFICULTY_MULTIPLIER - 1)
     : 0;
-  return Math.min(8.0, base + claustrophobiaBonus);
+  // s44r22-14: Removed Math.min(8.0, ...) cap — difficulty scales continuously with wave number.
+  return base + claustrophobiaBonus;
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +42,12 @@ function computeDifficultyLevel(waveNumber: number, gameTime: number, playerCoun
 
 function computeBaseCount(waveNumber: number, difficultyLevel: number, gameMode: string): number {
   const difficultyCountBonus = Math.floor(difficultyLevel * 2.0);
-  const baseCountCap = difficultyLevel >= 6 ? 40 : 30;
+  // s44r22-14: Raised caps at high difficulty to match GameRoom.ts changes
+  const baseCountCap = difficultyLevel >= 20 ? 80
+                     : difficultyLevel >= 15 ? 65
+                     : difficultyLevel >= 10 ? 55
+                     : difficultyLevel >= 6  ? 40
+                     : 30;
   const claustrophobiaCountMult = gameMode === 'claustrophobia' ? CLAUSTROPHOBIA_SPAWN_MULTIPLIER : 1.0;
   return Math.min(baseCountCap,
     Math.round((4 + Math.floor(Math.sqrt(waveNumber) * 2) + difficultyCountBonus) * claustrophobiaCountMult));
@@ -115,9 +121,11 @@ describe('Claustrophobia MP — difficulty escalation', () => {
     expect(claustrophobiaDifficulty).toBeCloseTo(normalDifficulty + 2.7 * 0.3, 5);
   });
 
-  it('caps difficulty at 8.0 even with Claustrophobia multiplier', () => {
-    const highWave = 50;
-    expect(computeDifficultyLevel(highWave, 6000, 4, 'claustrophobia')).toBe(8.0);
+  it('difficulty continues to scale beyond 8.0 at high waves (s44r22-14: cap removed)', () => {
+    // Wave 50, 1 player, waves mode: (50-1)*0.3 = 14.7 — should exceed old 8.0 cap
+    const difficulty = computeDifficultyLevel(50, 0, 1, 'waves');
+    expect(difficulty).toBeGreaterThan(8.0);
+    expect(difficulty).toBeCloseTo(14.7, 1);
   });
 
   it('does not apply multiplier for other modes', () => {
@@ -142,11 +150,13 @@ describe('Claustrophobia MP — spawn count multiplier', () => {
     }
   });
 
-  it('respects the base count cap (30 for low difficulty, 40 for high)', () => {
-    // At high difficulty, cap kicks in
-    const highDifficulty = 7.0;
-    const count = computeBaseCount(20, highDifficulty, 'claustrophobia');
-    expect(count).toBeLessThanOrEqual(40);
+  it('respects the base count cap (30 for low, 40 for mid, 55/65/80 for high difficulty)', () => {
+    // At difficulty 7: cap is 40
+    expect(computeBaseCount(20, 7.0, 'claustrophobia')).toBeLessThanOrEqual(40);
+    // At difficulty 10: cap is 55
+    expect(computeBaseCount(20, 10.0, 'waves')).toBeLessThanOrEqual(55);
+    // At difficulty 20: cap is 80
+    expect(computeBaseCount(20, 20.0, 'waves')).toBeLessThanOrEqual(80);
   });
 });
 
