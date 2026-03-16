@@ -1071,6 +1071,8 @@ async function main() {
   // Stat multipliers (damage, fireRate, etc.) are NOT applied — server controls those.
   // Only the visual aura ring and level-up notification are active.
   const playerLevel = new PlayerLevel();
+  // MP: aura ring near-invisible (≤0.10 opacity) and surface-projected (minimal normal offset).
+  playerLevel.setMultiplayerMode(true);
   const levelUpNotification = new LevelUpNotification();
   playerLevel.onLevelUp = (level, perk) => {
     levelUpNotification.show(level, perk);
