@@ -18,7 +18,9 @@ class MockElement {
   id = '';
   style: Record<string, string> = {};
   children: MockElement[] = [];
-  private touchListeners: Map<string, ((e: Event) => void)[]> = new Map();
+  textContent = '';
+  title = '';
+  private _listeners: Map<string, ((e: Event) => void)[]> = new Map();
 
   appendChild(child: MockElement): MockElement {
     this.children.push(child);
@@ -31,6 +33,18 @@ class MockElement {
   querySelector(): null { return null; }
   querySelectorAll(): MockElement[] { return []; }
   contains(): boolean { return false; }
+
+  addEventListener(type: string, fn: (e: Event) => void, _opts?: unknown): void {
+    if (!this._listeners.has(type)) this._listeners.set(type, []);
+    this._listeners.get(type)!.push(fn);
+  }
+
+  /** Fire an event on this element (for tests). */
+  simulateEvent(type: string, event: object): void {
+    for (const fn of (this._listeners.get(type) ?? [])) {
+      fn(event as Event);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -110,10 +124,20 @@ let savedDocument: typeof document;
 let savedWindow: Partial<Window & typeof globalThis>;
 let performanceNowMock: ReturnType<typeof vi.spyOn> | null = null;
 
+// Minimal localStorage mock
+const _localStorageData: Record<string, string> = {};
+const MockLocalStorage = {
+  getItem: (key: string): string | null => _localStorageData[key] ?? null,
+  setItem: (key: string, value: string): void => { _localStorageData[key] = value; },
+  removeItem: (key: string): void => { delete _localStorageData[key]; },
+  clear: (): void => { Object.keys(_localStorageData).forEach(k => delete _localStorageData[k]); },
+};
+
 beforeEach(() => {
   // Clear state
   _bodyChildren.length = 0;
   _windowListeners.clear();
+  MockLocalStorage.clear();
 
   // Stub globals
   vi.stubGlobal('document', MockDocument);
@@ -126,6 +150,7 @@ beforeEach(() => {
   vi.stubGlobal('performance', {
     now: () => Date.now(),
   });
+  vi.stubGlobal('localStorage', MockLocalStorage);
 });
 
 afterEach(() => {
@@ -425,7 +450,7 @@ describe('TouchInput', () => {
     input.dispose();
   });
 
-  it('boost and weaponSwap are always false (not supported via touch)', () => {
+  it('boost is always false; weaponSwap is false initially (before button tap)', () => {
     const input = new TouchInput();
     const state = input.getState();
     expect(state.boost).toBe(false);
@@ -498,5 +523,156 @@ describe('TouchInput', () => {
     expect(state.moveX).toBe(0);
     expect(state.moveY).toBe(0);
     input.dispose();
+  });
+
+  // -------------------------------------------------------------------------
+  // Weapon change button — tap, drag, localStorage
+  // -------------------------------------------------------------------------
+
+  function getWeaponBtn(): MockElement | undefined {
+    return _bodyChildren.find(el => el.id === 'touch-weapon-btn') as MockElement | undefined;
+  }
+
+  function simulateWeaponBtnTouchStart(touchId: number, x: number, y: number): void {
+    const btn = getWeaponBtn();
+    if (!btn) return;
+    const event = {
+      changedTouches: { 0: touch(touchId, x, y), length: 1 },
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    };
+    btn.simulateEvent('touchstart', event);
+  }
+
+  it('weapon button appended to document body as direct child', () => {
+    const input = new TouchInput();
+    const btn = getWeaponBtn();
+    expect(btn).toBeDefined();
+    input.dispose();
+  });
+
+  it('weapon button tap: weaponSwap is true for one frame then cleared by endFrame', () => {
+    const input = new TouchInput();
+    const btn = getWeaponBtn();
+    expect(btn).toBeDefined();
+
+    const touchId = 42;
+    const x = 28; // within button bounds
+    const y = H / 2;
+
+    // Simulate touchstart on the button
+    simulateWeaponBtnTouchStart(touchId, x, y);
+
+    // No movement — touchend without drag
+    fireWindowEvent('touchend', [touch(touchId, x, y)]);
+
+    expect(input.getState().weaponSwap).toBe(true);
+    input.endFrame();
+    expect(input.getState().weaponSwap).toBe(false);
+    input.dispose();
+  });
+
+  it('weapon button drag: does NOT trigger weaponSwap when drag distance exceeds threshold', () => {
+    const input = new TouchInput();
+    const touchId = 43;
+    const startX = 28;
+    const startY = H / 2;
+
+    simulateWeaponBtnTouchStart(touchId, startX, startY);
+
+    // Drag 20px — exceeds WEAPON_BTN_DRAG_THRESHOLD (8px)
+    fireWindowEvent('touchmove', [touch(touchId, startX + 20, startY)]);
+    fireWindowEvent('touchend', [touch(touchId, startX + 20, startY)]);
+
+    expect(input.getState().weaponSwap).toBe(false);
+    input.dispose();
+  });
+
+  it('weapon button drag: repositions button element', () => {
+    const input = new TouchInput();
+    const btn = getWeaponBtn();
+    const touchId = 44;
+    const startX = 28;
+    const startY = H / 2;
+
+    simulateWeaponBtnTouchStart(touchId, startX, startY);
+
+    // Drag 40px to the right
+    fireWindowEvent('touchmove', [touch(touchId, startX + 40, startY)]);
+
+    const newLeft = parseFloat(btn!.style.left ?? '0');
+    expect(newLeft).toBeGreaterThan(startX); // button moved right
+    input.dispose();
+  });
+
+  it('weapon button drag: saves position to localStorage on touchend', () => {
+    const input = new TouchInput();
+    const touchId = 45;
+    const startX = 28;
+    const startY = H / 2;
+
+    simulateWeaponBtnTouchStart(touchId, startX, startY);
+    fireWindowEvent('touchmove', [touch(touchId, startX + 40, startY)]);
+    fireWindowEvent('touchend', [touch(touchId, startX + 40, startY)]);
+
+    const stored = MockLocalStorage.getItem('gw-weapon-btn-pos');
+    expect(stored).not.toBeNull();
+    const parsed = JSON.parse(stored!);
+    expect(typeof parsed.pctX).toBe('number');
+    expect(typeof parsed.pctY).toBe('number');
+    input.dispose();
+  });
+
+  it('weapon button: loads position from localStorage on init', () => {
+    // Pre-seed localStorage with a saved position (25% from left, 75% from top)
+    MockLocalStorage.setItem('gw-weapon-btn-pos', JSON.stringify({ pctX: 0.25, pctY: 0.75 }));
+
+    const input = new TouchInput();
+    const btn = getWeaponBtn();
+    const left = parseFloat(btn?.style.left ?? '0');
+    const top = parseFloat(btn?.style.top ?? '0');
+
+    // Expected: (0.25 * W) - WEAPON_BTN_SIZE/2 = 0.25*800 - 28 = 172
+    expect(left).toBeCloseTo(0.25 * W - 28, 0);
+    // Expected: (0.75 * H) - WEAPON_BTN_SIZE/2 = 0.75*400 - 28 = 272
+    expect(top).toBeCloseTo(0.75 * H - 28, 0);
+    input.dispose();
+  });
+
+  it('weapon button: defaults to left side center when no saved position', () => {
+    const input = new TouchInput();
+    const btn = getWeaponBtn();
+    const left = parseFloat(btn?.style.left ?? '-1');
+    const top = parseFloat(btn?.style.top ?? '-1');
+
+    // Default left = 16px
+    expect(left).toBe(16);
+    // Default top = center: H/2 - WEAPON_BTN_SIZE/2 = 200 - 28 = 172
+    expect(top).toBeCloseTo(H / 2 - 28, 0);
+    input.dispose();
+  });
+
+  it('setVisible(false) hides weapon button', () => {
+    const input = new TouchInput();
+    input.setVisible(false);
+    const btn = getWeaponBtn();
+    expect(btn?.style.display).toBe('none');
+    input.dispose();
+  });
+
+  it('setVisible(true) shows weapon button', () => {
+    const input = new TouchInput();
+    input.setVisible(false);
+    input.setVisible(true);
+    const btn = getWeaponBtn();
+    expect(btn?.style.display).toBe('flex');
+    input.dispose();
+  });
+
+  it('dispose removes weapon button from body', () => {
+    const input = new TouchInput();
+    expect(getWeaponBtn()).toBeDefined();
+    input.dispose();
+    expect(getWeaponBtn()).toBeUndefined();
   });
 });

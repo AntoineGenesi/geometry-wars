@@ -7,7 +7,10 @@
  * - Auto-fires when the right joystick is active
  * - Tap top-center area for bomb / special ability
  *
- * Also provides weapon swap and pause buttons.
+ * Also provides weapon change and pause buttons:
+ * - Weapon change button: draggable, persists position in localStorage
+ *   Tap → cycle weapon. Drag → reposition the button.
+ * - Pause button: fixed top-right corner.
  *
  * Renders semi-transparent joystick circles as an HTML overlay.
  * Produces the same InputState interface as InputManager so it
@@ -34,6 +37,15 @@ const THUMB_SIZE = 50;
 
 /** Duration to register a bomb tap (ms). */
 const BOMB_TAP_DURATION = 300;
+
+/** Touch move distance (px) above which we treat a weapon-button touch as a drag rather than a tap. */
+const WEAPON_BTN_DRAG_THRESHOLD = 8;
+
+/** localStorage key for persisted weapon-button position. */
+const WEAPON_BTN_STORAGE_KEY = 'gw-weapon-btn-pos';
+
+/** Size of the weapon change button (px). Must be ≥ 44px per Apple HIG. */
+const WEAPON_BTN_SIZE = 56;
 
 // ---------------------------------------------------------------------------
 // TouchInput
@@ -68,9 +80,21 @@ export class TouchInput {
   private bombTapStart = 0;
   private bombTouchId: number | null = null;
 
-  // -- Weapon swap button --
+  // -- Weapon change button (draggable, persists position) --
   private weaponSwapTriggered = false;
   private weaponSwapBtn: HTMLDivElement;
+  /** Touch id currently tracked for weapon-button interaction (drag or tap). */
+  private weaponBtnTouchId: number | null = null;
+  /** Viewport-space X where the weapon-button touch started. */
+  private weaponBtnTouchStartX = 0;
+  /** Viewport-space Y where the weapon-button touch started. */
+  private weaponBtnTouchStartY = 0;
+  /** Whether the current weapon-button touch has exceeded the drag threshold. */
+  private weaponBtnDragging = false;
+  /** Button left position at the moment dragging started (px). */
+  private weaponBtnDragOriginLeft = 0;
+  /** Button top position at the moment dragging started (px). */
+  private weaponBtnDragOriginTop = 0;
 
   // -- Pause button --
   private pauseBtn: HTMLDivElement;
@@ -113,9 +137,10 @@ export class TouchInput {
     this.pauseBtn = this.createPauseButton();
     document.body.appendChild(this.pauseBtn);
 
-    // Weapon swap button (top-left corner)
+    // Weapon change button — also a direct body child for the same reason.
+    // Draggable: tap cycles weapon, drag repositions.
     this.weaponSwapBtn = this.createWeaponSwapButton();
-    this.overlay.appendChild(this.weaponSwapBtn);
+    document.body.appendChild(this.weaponSwapBtn);
 
     document.body.appendChild(this.overlay);
 
@@ -169,15 +194,17 @@ export class TouchInput {
     window.removeEventListener('touchend', this.onTouchEnd);
     window.removeEventListener('touchcancel', this.onTouchEnd);
     this.overlay.remove();
-    // pauseBtn is a direct body child (not inside overlay) — remove separately.
+    // pauseBtn and weaponSwapBtn are direct body children — remove separately.
     this.pauseBtn.remove();
+    this.weaponSwapBtn.remove();
   }
 
   /** Show/hide the touch overlay. */
   setVisible(visible: boolean): void {
     this.overlay.style.display = visible ? 'block' : 'none';
-    // Keep pause button in sync with overlay visibility.
+    // Keep pause button and weapon button in sync with overlay visibility.
     this.pauseBtn.style.display = visible ? 'flex' : 'none';
+    this.weaponSwapBtn.style.display = visible ? 'flex' : 'none';
   }
 
   /**
@@ -288,6 +315,35 @@ export class TouchInput {
         this.rightDeltaY = dy;
         this.updateJoystickVisual(this.rightBase, this.rightThumb, this.rightOriginX, this.rightOriginY, dx, dy);
       }
+
+      // Weapon button drag handling
+      if (touch.identifier === this.weaponBtnTouchId) {
+        const dx = touch.clientX - this.weaponBtnTouchStartX;
+        const dy = touch.clientY - this.weaponBtnTouchStartY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (!this.weaponBtnDragging && dist > WEAPON_BTN_DRAG_THRESHOLD) {
+          this.weaponBtnDragging = true;
+          // Visual feedback: slightly scale up during drag
+          this.weaponSwapBtn.style.transform = 'scale(1.1)';
+          this.weaponSwapBtn.style.opacity = '0.8';
+        }
+
+        if (this.weaponBtnDragging) {
+          const newLeft = this.clamp(
+            this.weaponBtnDragOriginLeft + dx,
+            0,
+            window.innerWidth - WEAPON_BTN_SIZE,
+          );
+          const newTop = this.clamp(
+            this.weaponBtnDragOriginTop + dy,
+            0,
+            window.innerHeight - WEAPON_BTN_SIZE,
+          );
+          this.weaponSwapBtn.style.left = `${newLeft}px`;
+          this.weaponSwapBtn.style.top = `${newTop}px`;
+        }
+      }
     }
   }
 
@@ -318,6 +374,27 @@ export class TouchInput {
           this.bombTriggered = true;
         }
         this.bombTouchId = null;
+      }
+
+      // Weapon button: tap triggers swap; drag just repositions
+      if (touch.identifier === this.weaponBtnTouchId) {
+        if (!this.weaponBtnDragging) {
+          // It was a tap — cycle weapon
+          this.weaponSwapTriggered = true;
+          // Brief visual tap feedback
+          this.weaponSwapBtn.style.background = 'rgba(255, 200, 0, 0.4)';
+          setTimeout(() => {
+            this.weaponSwapBtn.style.background = 'rgba(0, 0, 0, 0.6)';
+          }, 150);
+        } else {
+          // Drag ended — persist new position
+          this.saveWeaponBtnPosition();
+        }
+        // Restore visual
+        this.weaponSwapBtn.style.transform = 'scale(1)';
+        this.weaponSwapBtn.style.opacity = '1';
+        this.weaponBtnTouchId = null;
+        this.weaponBtnDragging = false;
       }
     }
   }
@@ -442,39 +519,127 @@ export class TouchInput {
     return el;
   }
 
+  // ---------------------------------------------------------------------------
+  // Weapon button position helpers
+  // ---------------------------------------------------------------------------
+
+  /** Returns the weapon-button's current {left, top} pixel position. */
+  private getWeaponBtnCurrentPos(): { left: number; top: number } {
+    const left = parseFloat(this.weaponSwapBtn.style.left) || 0;
+    const top = parseFloat(this.weaponSwapBtn.style.top) || 0;
+    return { left, top };
+  }
+
+  /** Saves current button position as viewport percentages to localStorage. */
+  private saveWeaponBtnPosition(): void {
+    const { left, top } = this.getWeaponBtnCurrentPos();
+    const pctX = (left + WEAPON_BTN_SIZE / 2) / window.innerWidth;
+    const pctY = (top + WEAPON_BTN_SIZE / 2) / window.innerHeight;
+    try {
+      localStorage.setItem(WEAPON_BTN_STORAGE_KEY, JSON.stringify({ pctX, pctY }));
+    } catch {
+      // localStorage may be unavailable (private browsing etc.) — ignore silently
+    }
+  }
+
+  /**
+   * Returns the initial {left, top} pixel position for the weapon button.
+   * Loads from localStorage if available; otherwise defaults to left-side center.
+   */
+  private loadWeaponBtnPosition(): { left: number; top: number } {
+    try {
+      const raw = localStorage.getItem(WEAPON_BTN_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { pctX: number; pctY: number };
+        if (
+          typeof parsed.pctX === 'number' && parsed.pctX >= 0 && parsed.pctX <= 1 &&
+          typeof parsed.pctY === 'number' && parsed.pctY >= 0 && parsed.pctY <= 1
+        ) {
+          return {
+            left: this.clamp(
+              parsed.pctX * window.innerWidth - WEAPON_BTN_SIZE / 2,
+              0,
+              window.innerWidth - WEAPON_BTN_SIZE,
+            ),
+            top: this.clamp(
+              parsed.pctY * window.innerHeight - WEAPON_BTN_SIZE / 2,
+              0,
+              window.innerHeight - WEAPON_BTN_SIZE,
+            ),
+          };
+        }
+      }
+    } catch {
+      // Ignore parse/storage errors
+    }
+    // Default: left side, vertically centered
+    return {
+      left: 16,
+      top: this.clamp(
+        Math.round(window.innerHeight / 2) - WEAPON_BTN_SIZE / 2,
+        0,
+        window.innerHeight - WEAPON_BTN_SIZE,
+      ),
+    };
+  }
+
   private createWeaponSwapButton(): HTMLDivElement {
+    const { left, top } = this.loadWeaponBtnPosition();
     const el = document.createElement('div');
+    el.id = 'touch-weapon-btn';
     el.style.cssText = `
-      position: absolute;
-      top: 12px;
-      left: 12px;
-      width: 44px;
-      height: 44px;
-      border-radius: 8px;
-      background: rgba(0, 0, 0, 0.55);
-      border: 1px solid rgba(255, 200, 0, 0.5);
+      position: fixed;
+      left: ${left}px;
+      top: ${top}px;
+      width: ${WEAPON_BTN_SIZE}px;
+      height: ${WEAPON_BTN_SIZE}px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 200, 0, 0.55);
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 2px;
       pointer-events: auto;
       cursor: pointer;
       z-index: 600;
-      font-size: 18px;
-      color: rgba(255, 200, 0, 0.9);
+      color: rgba(255, 200, 0, 0.95);
       text-shadow: 0 0 8px rgba(255, 200, 0, 0.5);
       user-select: none;
       -webkit-user-select: none;
+      touch-action: none;
+      transition: transform 100ms ease-out, opacity 100ms ease-out;
     `;
-    el.textContent = '⇄';
-    el.title = 'Swap Weapon';
+    // Icon
+    const icon = document.createElement('span');
+    icon.style.cssText = 'font-size: 20px; line-height: 1; pointer-events: none;';
+    icon.textContent = '⇄';
+    // Label
+    const label = document.createElement('span');
+    label.style.cssText = 'font-size: 9px; letter-spacing: 0.04em; opacity: 0.85; pointer-events: none; font-family: sans-serif;';
+    label.textContent = 'WEAPON';
+    el.appendChild(icon);
+    el.appendChild(label);
+
+    // Touchstart: begin tracking for tap-vs-drag discrimination
     el.addEventListener('touchstart', (e) => {
       e.stopPropagation();
       e.preventDefault();
-      this.weaponSwapTriggered = true;
-      // Brief visual feedback
-      el.style.background = 'rgba(255, 200, 0, 0.3)';
-      setTimeout(() => { el.style.background = 'rgba(0, 0, 0, 0.55)'; }, 150);
+      if (this.weaponBtnTouchId !== null) return; // already tracking a touch
+      const touch = e.changedTouches[0];
+      this.weaponBtnTouchId = touch.identifier;
+      this.weaponBtnTouchStartX = touch.clientX;
+      this.weaponBtnTouchStartY = touch.clientY;
+      this.weaponBtnDragging = false;
+      const pos = this.getWeaponBtnCurrentPos();
+      this.weaponBtnDragOriginLeft = pos.left;
+      this.weaponBtnDragOriginTop = pos.top;
     }, { passive: false });
+
+    // Touchmove and touchend are handled by the global handlers in handleTouchMove /
+    // handleTouchEnd so that drag continues even if the finger leaves the button element.
+
     return el;
   }
 
