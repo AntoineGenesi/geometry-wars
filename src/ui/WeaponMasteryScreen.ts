@@ -708,7 +708,7 @@ export class WeaponMasteryScreen {
         <div class="wms-points-bar">
           <span class="wms-points-available" id="wms-points-display">${ps.getTotalPoints()}</span>
           <span class="wms-points-label">Total Points Earned</span>
-          <span class="wms-points-secondary">Points are per-weapon &mdash; spend in each weapon's tree</span>
+          <span class="wms-points-secondary">Earn 1 point per player level-up (while using that weapon) &mdash; spend in each weapon's upgrade tree</span>
         </div>
         <div class="wms-grid">
           ${cards}
@@ -743,8 +743,8 @@ export class WeaponMasteryScreen {
         <div class="wms-card-head">
           <div class="wms-swatch" style="background: ${color}"></div>
           <span class="wms-weapon-name">${w.name}</span>
-          <span class="wms-level-badge">Lv.${level} / 5</span>
-          <span class="wms-pts-badge" data-weapon-pts="${w.type}">${ps.getAvailablePoints(w.type)} pts</span>
+          <span class="wms-level-badge" title="Weapon Level (1–5): earned by getting kills with this weapon. Grants passive bonuses.">Lv.${level} / 5</span>
+          <span class="wms-pts-badge" title="Available mastery points for this weapon. Earn 1 point each time you reach a new player level while this weapon is equipped." data-weapon-pts="${w.type}">${ps.getAvailablePoints(w.type)} pts</span>
         </div>
         <div class="wms-xp-row">
           <span class="wms-xp-label">XP</span>
