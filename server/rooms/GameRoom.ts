@@ -1368,7 +1368,7 @@ export class GameRoom extends Room<GameState> {
       }
       const RESTART_COUNTDOWN_SECS = 5;
       this.logger.log(`[GameRoom] restartRound: broadcasting ${RESTART_COUNTDOWN_SECS}s countdown`);
-      this.broadcast('round_restarting', { countdown: RESTART_COUNTDOWN_SECS });
+      this.broadcast('round_restarting', { countdown: RESTART_COUNTDOWN_SECS, message: 'Restarting with new settings...' });
       // Use spawnGeneration to guard the deferred restart (same pattern as enemy spawns)
       const gen = this.spawnGeneration;
       setTimeout(() => {
