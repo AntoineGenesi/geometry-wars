@@ -3020,6 +3020,15 @@ async function main() {
     // network mode because the server is authoritative for enemy positions).
     enemy = enemySpawner.spawn(spawnerType, netEnemy.surfaceU, netEnemy.surfaceV, 0, true, undefined, snakeMaxSegments);
 
+    // s44r20-01: Disable MeshWalker for network enemies. The spawner creates
+    // a MeshWalker (geodesic surface movement) for each enemy, but in MP the
+    // server is authoritative for enemy positions — the client interpolates
+    // server UVs in the render loop. When walker exists, applySurfaceTransform()
+    // uses walker.position (frozen at spawn point) instead of UV-based transform,
+    // causing enemies to appear stationary. Nulling the walker forces UV mode,
+    // which correctly tracks the interpolated surfacePosition.u/v.
+    enemy.walker = null;
+
     // Guard: if spawn() returned a dummy inactive enemy (400-cap hit), do NOT
     // store it in networkEnemies. Storing a dummy permanently poisons the slot:
     // subsequent getOrCreateEnemy calls for this ID return the dummy early
