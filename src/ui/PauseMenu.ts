@@ -815,8 +815,13 @@ export class PauseMenu {
         }
       }
 
-      /* Mobile landscape: compact layout to fit small viewport height */
+      /* Mobile landscape: compact two-column layout to fit small viewport height */
       @media (max-height: 500px) {
+        #pause-menu {
+          align-items: flex-start;
+          overflow-y: auto;
+        }
+
         #pause-menu .pause-content {
           padding: 12px 16px;
         }
@@ -827,40 +832,56 @@ export class PauseMenu {
           letter-spacing: 4px;
         }
 
+        /* Two-column layout: buttons left, stats right.
+           Override portrait stacking (flex-direction: column) if both queries fire. */
         #pause-menu .pause-layout {
+          flex-direction: row;
           gap: 16px;
           align-items: flex-start;
+          justify-content: center;
         }
 
+        /* Buttons column: fixed width, scrollable if needed */
         #pause-menu .pause-buttons {
+          flex: 0 0 auto;
           gap: 6px;
+          align-items: stretch;
+          overflow-y: auto;
+          max-height: calc(100vh - 80px);
         }
 
         #pause-menu .pause-btn {
           padding: 8px 16px;
           font-size: 12px;
           min-width: 180px;
+          width: 180px;
+          min-height: 40px;
           gap: 8px;
           letter-spacing: 1px;
+          justify-content: flex-start;
         }
 
         #pause-menu .btn-icon {
           font-size: 14px;
         }
 
+        /* Stats column: flexible, fills remaining space, scrollable */
         #pause-menu .pause-stats-container {
-          width: 220px;
+          flex: 1 1 auto;
+          min-width: 180px;
+          max-width: 280px;
+          width: auto;
         }
 
         #pause-menu .pause-stats-panel {
           width: 100%;
-          max-height: none;
+          max-height: calc(100vh - 80px);
+          overflow-y: auto;
           gap: 10px;
         }
 
         #pause-menu .pause-hint {
-          margin-top: 12px;
-          font-size: 11px;
+          display: none;
         }
 
         #pause-menu .stats-score-count {
