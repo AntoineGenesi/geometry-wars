@@ -3702,8 +3702,31 @@ async function main() {
         } else {
           // Small RTT-induced drift: gentle blend toward server position.
           // This corrects accumulated float error without reversing movement direction.
-          player.surfaceU += du * SERVER_CORRECTION_BLEND;
-          player.surfaceV += dv * SERVER_CORRECTION_BLEND;
+          //
+          // s44r22-16: Direction-aware blend to prevent mobile direction reversal.
+          // Problem: server state arrives ~100-200ms late. When the player reverses
+          // direction, the server correction vector points BACKWARDS (opposing current
+          // movement). A naive 10% blend drags the player backward = visible snap-back.
+          //
+          // Fix: if the correction vector opposes current movement direction (dot < 0),
+          // reduce the blend to 1% (near-zero). This suppresses backward corrections
+          // during direction changes while still applying gentle correction when the
+          // server agrees with the direction of travel.
+          //
+          // Hard snaps (justRespawned, large desync) still work unchanged — they take
+          // the branch above before reaching here.
+          let correctionBlend = SERVER_CORRECTION_BLEND;
+          if (lastSentInput && (lastSentInput.moveX !== 0 || lastSentInput.moveY !== 0)) {
+            // Dot product of (du, dv) with current movement direction (moveY already
+            // negated when sent to server, so use raw server-side sign: moveY as sent).
+            const moveDot = du * lastSentInput.moveX + dv * lastSentInput.moveY;
+            if (moveDot < 0) {
+              // Server correction opposes movement — heavily suppress to avoid reversal.
+              correctionBlend = SERVER_CORRECTION_BLEND * 0.1;
+            }
+          }
+          player.surfaceU += du * correctionBlend;
+          player.surfaceV += dv * correctionBlend;
           // Mesh position updated by render loop (onRender) at 60Hz — no update needed here.
         }
       } else {
