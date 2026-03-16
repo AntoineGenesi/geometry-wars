@@ -20,3 +20,7 @@ logs/game-state/
 logs/profiling/
 sessions/
 v3_LAN_working.tar.gz
+
+# Worker JSONL conversation transcripts — large (10-100MB each), not tracked in git.
+# Kept locally in .claude/worker-logs/ for post-mortem analysis and debugging.
+.claude/worker-logs/*.jsonl
