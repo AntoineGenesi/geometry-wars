@@ -648,12 +648,17 @@ export class ParticleSystem {
   }
 
   /**
-   * Gravity pull trail — purple streaks emitted from an enemy position
-   * pointing toward the gravity gun center. Called once per enemy per pull event.
+   * Gravity pull trail — streaks emitted from an entity position
+   * pointing toward the gravity gun center. Called once per entity per pull event.
+   * @param entityColor - The entity's color. Defaults to purple if not provided.
    */
-  gravityPullTrail(enemyPos: THREE.Vector3, center: THREE.Vector3): void {
+  gravityPullTrail(enemyPos: THREE.Vector3, center: THREE.Vector3, entityColor?: THREE.Color): void {
     _gravPullDir.subVectors(center, enemyPos).normalize();
-    _tempColor.setHex(0x7733ee);
+    if (entityColor) {
+      _tempColor.copy(entityColor);
+    } else {
+      _tempColor.setHex(0x7733ee);
+    }
     this.emit({
       position: enemyPos,
       count: 4,

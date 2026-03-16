@@ -1221,8 +1221,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         (dx / dist) * GRAVITY_PULL_FORCE * strength,
         (dz / dist) * GRAVITY_PULL_FORCE * strength,
       );
-      // Visual: purple streaks from enemy toward pull center
-      particles.gravityPullTrail(enemy.position, center);
+      // Visual: streaks from enemy toward pull center, colored to match the entity
+      const enemyColor = enemy.cachedMaterials?.[0]?.color;
+      particles.gravityPullTrail(enemy.position, center, enemyColor);
     },
     spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {
       const { u, v } = surface.worldToSurface(origin);

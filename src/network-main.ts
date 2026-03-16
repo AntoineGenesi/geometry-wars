@@ -958,8 +958,9 @@ async function main() {
         (dx / dist) * GRAVITY_PULL_FORCE * strength,
         (dz / dist) * GRAVITY_PULL_FORCE * strength,
       );
-      // Visual: purple streaks from enemy toward pull center
-      particles.gravityPullTrail(enemy.position, center);
+      // Visual: streaks from enemy toward pull center, colored to match the entity
+      const enemyColor = enemy.cachedMaterials?.[0]?.color;
+      particles.gravityPullTrail(enemy.position, center, enemyColor);
     },
     onProjectileExplosion: (position: THREE.Vector3, wType: WeaponType) => {
       if (wType === WeaponType.GravityGun) {
