@@ -28,9 +28,7 @@ Open http://localhost:3000
 | Mode | URL | Notes |
 |------|-----|-------|
 | Single player | http://localhost:3000 | Default mode |
-| Local co-op | http://localhost:3000?mode=multiplayer | 2-player same screen |
 | LAN multiplayer | Start menu > LAN > Host Game | Up to 4 players, same WiFi |
-| Network multiplayer | http://localhost:3000?mode=network | Up to 4 players, needs server |
 
 ### LAN Multiplayer
 
@@ -39,25 +37,17 @@ Open http://localhost:3000
 3. Share the displayed URL with friends on the same WiFi
 4. Click **ENTER GAME** to join your own server
 
-### Network Multiplayer
-
-```bash
-npm run server    # Colyseus on port 2567
-```
-
-Then open http://localhost:3000?mode=network (or `?mode=network&server=ws://hostname:2567` for remote).
-
 ## Controls
 
-| Action | Single Player | P1 (Co-op) | P2 (Co-op) |
-|--------|--------------|-------------|-------------|
-| Move | WASD | WASD | IJKL |
-| Aim | Mouse | Mouse | Auto-aim |
-| Shoot | Click | Click | O |
-| Bomb | Space | Space | P |
-| Pause | ESC | ESC | - |
-| Mute | M | M | - |
-| Debug overlay | F3 | F3 | - |
+| Action | Key/Input |
+|--------|-----------|
+| Move | WASD |
+| Aim | Mouse |
+| Shoot | Click |
+| Bomb | Space |
+| Pause | ESC |
+| Mute | M |
+| Debug overlay | F3 |
 
 ## Surface Shapes (12)
 
@@ -71,7 +61,7 @@ sphere, cube, pill, pipe, torus, peanut, capsule, icosahedron, mobius, sphere-tu
 - **Super states**: 7 types (QuadFire, SplitFire, ReverseFire, Missile, Magnet, TrailBomb, Shield)
 - **Buffs**: 8 buff types with visual auras and pickup system
 - **Companions**: SurfaceAgent system with composable behaviors (Idle, MoveTo, Follow, Orbit, Patrol)
-- **Multiplayer**: Local co-op + LAN via Colyseus with interest management, kill attribution, and proximity aura buffs
+- **Multiplayer**: LAN via Colyseus with interest management, kill attribution, and proximity aura buffs
 - **Effects**: GPU particle system (5000 pool), screen shake, trails, glow, chain lightning, score popups
 - **Audio**: SoundEngine (11 procedural synth sounds) + BackgroundMusic (4 presets, 128bpm procedural beat)
 - **UI**: Start menu, weapon wiki + playground, settings, kill log, minimap, pause menu with stats, debug overlay (F3)
@@ -84,7 +74,7 @@ sphere, cube, pill, pipe, torus, peanut, capsule, icosahedron, mobius, sphere-tu
 - **Movement**: Player and bullets use MeshWalker (geodesic face walking); enemies use UV bridge
 - **Enemies**: 30 types managed by EnemySpawner with 5-tier difficulty scaling
 - **Weapons**: 10 weapon types + WeaponManager + timed pickups + super states
-- **Multiplayer**: Local co-op + Colyseus network; kill attribution + proximity aura buffs + interest management
+- **Multiplayer**: LAN + Colyseus network; kill attribution + proximity aura buffs + interest management
 - **Effects**: GPU particle system, screen shake, trails, glow, chain lightning, score popups, ally glow
 - **Audio**: SoundEngine (11 procedural synth sounds) + BackgroundMusic (128bpm procedural beat)
 - **Rendering**: InstancedMesh enemies + bullets, LOD system, adaptive quality, WebGPU with WebGL2 fallback, depth opacity
@@ -99,6 +89,8 @@ research/      Game research data, surface movement analysis, market research
 docs/          Architecture docs, multiplayer docs, WebRTC migration plan
 tasks/         Task tracking files with full context
 reports/       Interactive HTML reports and presentations
+archive/       Archived files (old HTML test pages, session docs)
+experiments/   Experimental projects (distributed-compute, etc.)
 ```
 
 ## Tests
@@ -118,3 +110,7 @@ npm run test:lan    # Programmatic LAN multiplayer tests
 - `docs/lan-multiplayer-architecture.md` - Detailed LAN/network architecture
 - `docs/webrtc-migration-plan.md` - WebRTC migration research
 - `decisions/` - All architectural decision records
+
+---
+
+*Last updated: 2026-03-16*
