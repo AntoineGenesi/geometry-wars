@@ -5624,7 +5624,7 @@ async function main() {
       },
       onRoundRestarting: (data: { countdown: number; message: string }) => {
         // Show countdown notification to all players (s44j-settings-16d)
-        showRoundRestartingNotification(data.message, data.countdown);
+        showRoundRestartingNotification(data.message ?? 'Restarting round...', data.countdown);
       },
     });
 
