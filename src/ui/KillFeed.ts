@@ -1,5 +1,5 @@
 /**
- * PvP Kill Feed — CS:GO style, top-right corner.
+ * PvP Kill Feed — CS:GO style, vertically centered on the right side.
  *
  * Shows "PlayerA → PlayerB" entries that fade out after 5 seconds.
  * Max 5 visible entries. Semi-transparent dark background, white text.
@@ -63,15 +63,25 @@ export class KillFeed {
     this.styleEl.textContent = `
       #pvp-kill-feed {
         position: fixed;
-        top: 16px;
+        top: 50%;
+        transform: translateY(-50%);
         right: 16px;
         width: 260px;
+        max-height: 60vh;
+        overflow: hidden;
         pointer-events: none;
         z-index: 110;
         font-family: 'Segoe UI', Arial, sans-serif;
         display: flex;
         flex-direction: column;
         gap: 3px;
+      }
+
+      @media (max-width: 480px) {
+        #pvp-kill-feed {
+          width: 180px;
+          right: 10px;
+        }
       }
 
       .pvp-feed-entry {
@@ -86,7 +96,8 @@ export class KillFeed {
         letter-spacing: 0.3px;
         white-space: nowrap;
         overflow: hidden;
-        transition: opacity 0.3s;
+        max-height: 40px;
+        transition: opacity 0.3s, max-height 0.28s ease-out, padding-top 0.28s ease-out, padding-bottom 0.28s ease-out, margin-bottom 0.28s ease-out;
         border-left: 2px solid rgba(255,255,255,0.15);
       }
 
@@ -243,10 +254,18 @@ export class KillFeed {
       el.classList.remove('new-entry');
     }, { once: true });
 
-    // Enforce max entries — remove oldest if over limit
+    // Enforce max entries — animate oldest out before removing from DOM
     while (this.entries.length >= MAX_ENTRIES) {
       const oldest = this.entries.shift();
-      if (oldest) oldest.el.remove();
+      if (oldest) {
+        const el = oldest.el;
+        el.style.opacity = '0';
+        el.style.maxHeight = '0';
+        el.style.paddingTop = '0';
+        el.style.paddingBottom = '0';
+        el.style.marginBottom = '0';
+        setTimeout(() => el.remove(), 300);
+      }
     }
 
     this.container.appendChild(el);
@@ -268,8 +287,14 @@ export class KillFeed {
       if (entry.age > FADE_AFTER) {
         const fadeProgress = (entry.age - FADE_AFTER) / FADE_DURATION;
         if (fadeProgress >= 1) {
-          entry.el.remove();
+          // Collapse height smoothly before removing from DOM
+          const el = entry.el;
+          el.style.maxHeight = '0';
+          el.style.paddingTop = '0';
+          el.style.paddingBottom = '0';
+          el.style.marginBottom = '0';
           this.entries.splice(i, 1);
+          setTimeout(() => el.remove(), 300);
         } else {
           entry.el.style.opacity = String(Math.max(0, 1 - fadeProgress));
         }
