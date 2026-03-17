@@ -12,6 +12,7 @@ import { MasteryPointStore } from '../systems/MasteryPointStore';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { GameSettingsPanel } from './GameSettingsPanel';
 import type { GameSettings } from '../../server/shared/GameSettings';
+import { type VisualMode } from './VisualStyleSettings';
 
 /**
  * Pause menu overlay.
@@ -92,7 +93,7 @@ export class PauseMenu {
   private container: HTMLDivElement;
   private onResumeCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
-  private onVisualModeChangeCallback: ((mode: 'pixelated' | 'modern') => void) | null = null;
+  private onVisualModeChangeCallback: ((mode: VisualMode) => void) | null = null;
   private onGraphicsChangeCallback: ((settings: GraphicsSettings) => void) | null = null;
   private onLookModeCallback: (() => void) | null = null;
   private isPaused: boolean = false;
@@ -102,7 +103,7 @@ export class PauseMenu {
   private serverPaused: boolean = true;
   private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
   private perfLogger: PerformanceLogger | null = null;
-  private visualMode: 'pixelated' | 'modern' = 'pixelated';
+  private visualMode: VisualMode = 'pixelated';
   private joinUrl: string | null = null;
   private isInLookMode: boolean = false;
   private _langUnsub: (() => void) | null = null;
@@ -969,7 +970,9 @@ export class PauseMenu {
 
     const visualModeBtn = this.container.querySelector('[data-action="visual-mode"]');
     visualModeBtn?.addEventListener('click', () => {
-      this.visualMode = this.visualMode === 'pixelated' ? 'modern' : 'pixelated';
+      const modes: VisualMode[] = ['modern', 'pixelated', 'desktop-defender'];
+      const idx = modes.indexOf(this.visualMode);
+      this.visualMode = modes[(idx + 1) % modes.length];
       this.updateVisualModeLabel();
       this.onVisualModeChangeCallback?.(this.visualMode);
     });
@@ -1133,27 +1136,31 @@ export class PauseMenu {
    * Set the current visual mode. Updates the button label.
    * Call this on startup to sync with the saved mode.
    */
-  setVisualMode(mode: 'pixelated' | 'modern'): void {
+  setVisualMode(mode: VisualMode): void {
     this.visualMode = mode;
     this.updateVisualModeLabel();
   }
 
   /** Get the current visual mode. */
-  getVisualMode(): 'pixelated' | 'modern' {
+  getVisualMode(): VisualMode {
     return this.visualMode;
   }
 
   /** Register callback for when the user toggles the visual mode. */
-  onVisualModeChange(callback: (mode: 'pixelated' | 'modern') => void): void {
+  onVisualModeChange(callback: (mode: VisualMode) => void): void {
     this.onVisualModeChangeCallback = callback;
   }
 
   private updateVisualModeLabel(): void {
     const label = this.container.querySelector('.visual-mode-label');
     if (label) {
-      label.textContent = this.visualMode === 'pixelated'
-        ? t('pauseMenu.stylePixelated')
-        : t('pauseMenu.styleModern');
+      if (this.visualMode === 'pixelated') {
+        label.textContent = t('pauseMenu.stylePixelated');
+      } else if (this.visualMode === 'desktop-defender') {
+        label.textContent = t('pauseMenu.styleDesktopDefender');
+      } else {
+        label.textContent = t('pauseMenu.styleModern');
+      }
     }
   }
 

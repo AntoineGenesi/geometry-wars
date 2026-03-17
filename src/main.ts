@@ -97,7 +97,7 @@ import { waveComposer } from './entities/enemies/WaveComposer';
 import { DDALogger } from './difficulty/DDALogger';
 import { EntityAudit } from './core/EntityAudit';
 import { PerformanceLogger } from './core/PerformanceLogger';
-import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
+import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
 import { UIHelpers } from './ui/UIHelpers';
 import { CollisionSystem } from './core/CollisionSystem';
 import { PickupSpawner } from './core/PickupSpawner';
@@ -174,11 +174,15 @@ const _bulletSyncDir = new THREE.Vector3();
  * Pixelated mode (half-res bloom) needs reduced strength to prevent oversaturation.
  * Modern mode uses full-res bloom and benefits from normal strength values.
  */
-function getAdjustedBloomStrength(baseStrength: number, visualMode: 'pixelated' | 'modern'): number {
+function getAdjustedBloomStrength(baseStrength: number, visualMode: VisualMode): number {
   if (visualMode === 'pixelated') {
     // Recommended pixelated bloom strength: ~0.4
     // Scale base strength down proportionally: multiply by 0.4 / 1.0 = 0.4x
     return Math.max(0, baseStrength * 0.4);
+  }
+  if (visualMode === 'desktop-defender') {
+    // Minimal bloom on light background — bright particles don't need glow to stand out.
+    return Math.max(0, baseStrength * 0.25);
   }
   return baseStrength; // Modern mode uses full strength
 }
@@ -896,7 +900,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // In pixelated mode, half-res bloom enlarges bloom spots for each particle.
   // Reduce per-particle brightness so additive stacking doesn't create a white
   // patch that obscures the player (the savedVisualMode was read at game startup).
-  particles.setPixelatedMode(savedVisualMode === 'pixelated');
+  particles.setVisualMode(savedVisualMode);
 
   // -- Score popups --
   const scorePopups = new ScorePopupManager();
@@ -1533,9 +1537,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     // Re-apply bloom settings adjusted for new visual mode
     const adjustedStrength = getAdjustedBloomStrength(bloomStrength, mode);
     game.setBloomSettings(adjustedStrength, 0.6);
-    // Reduce particle brightness in pixelated mode to prevent additive stacking
-    // from creating a bright patch that hides the player
-    particles.setPixelatedMode(mode === 'pixelated');
+    // Adjust particle brightness per visual mode:
+    // - pixelated: 0.5× (prevents additive stacking from hiding the player)
+    // - desktop-defender: 0.3× (dark particles visible on light background)
+    // - modern: 1.0× (full brightness)
+    particles.setVisualMode(mode);
   });
 
   // Apply surface appearance live when user changes settings in the pause menu

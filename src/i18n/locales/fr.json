@@ -175,6 +175,7 @@
     "settings": "PARAMÈTRES",
     "stylePixelated": "STYLE : PIXÉLISÉ",
     "styleModern": "STYLE : MODERNE",
+    "styleDesktopDefender": "STYLE : DESKTOP DEF.",
     "performanceGraphs": "GRAPHIQUES DE PERFORMANCES",
     "music": "MUSIQUE : {{name}}",
     "exitToMenu": "QUITTER VERS LE MENU",

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { type VisualMode } from './VisualStyleSettings';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -251,6 +252,11 @@ export class MenuBackground {
   // -----------------------------------------------------------------------
   // Public API
   // -----------------------------------------------------------------------
+
+  /** Apply visual mode — changes scene background for Desktop Defender light theme. */
+  setVisualMode(mode: VisualMode): void {
+    this.scene.background = new THREE.Color(mode === 'desktop-defender' ? 0xf0f0e8 : 0x050510);
+  }
 
   /** Start the animation loop. */
   start(): void {

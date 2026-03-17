@@ -14,6 +14,7 @@ import { MenuBackground } from './MenuBackground';
 import { createQRCodeDisplay } from './QRCode';
 import { QUICK_GAME_MODES, type QuickGameModeType } from '../core/modes';
 import { OBJDebugPanel } from './OBJDebugPanel';
+import { loadVisualMode } from './VisualStyleSettings';
 
 /** LAN-specific game mode type: includes MP-only modes (pvp/pvpve) on top of SP modes. */
 export type LanGameMode = QuickGameModeType | 'pvp' | 'pvpve';
@@ -189,6 +190,7 @@ export class StartMenu {
     // Animated 3D background behind the menu overlay
     try {
       this.menuBackground = new MenuBackground();
+      this.menuBackground.setVisualMode(loadVisualMode());
       this.menuBackground?.start();
     } catch (e) {
       console.warn('[StartMenu] MenuBackground could not start (WebGL unavailable?):', e);

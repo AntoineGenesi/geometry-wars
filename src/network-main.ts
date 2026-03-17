@@ -101,7 +101,7 @@ import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
-import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
+import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { MapSize, getDefaultMapSizeForSurface, getMapSizeScaleFactor } from './core/MapSize';
@@ -2247,9 +2247,11 @@ async function main() {
 
   // Sync pause menu with saved visual mode; wire the toggle
   pauseMenu.setVisualMode(savedVisualMode);
+  particles.setVisualMode(savedVisualMode);
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
+    particles.setVisualMode(mode);
   });
 
   // Apply surface appearance live when user changes settings in the pause menu.

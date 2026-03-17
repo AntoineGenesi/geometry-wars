@@ -363,3 +363,40 @@ describe('Game.setVisualMode — NearestFilter for pixelated mode (WebGL2)', () 
     game.stop();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Desktop Defender mode — regression tests for DD bloom resolution + LinearFilter
+// ---------------------------------------------------------------------------
+
+describe('Game.setVisualMode — desktop-defender mode (WebGL2)', () => {
+  beforeEach(() => {
+    composerSetSizeCalls.length = 0;
+    globalThis.window.innerWidth = 1920;
+    globalThis.window.innerHeight = 1080;
+  });
+
+  it('setVisualMode("desktop-defender") sets bloomResolutionScale to 0.5 (same as modern)', () => {
+    const game = new Game({ bloom: { strength: 1.0 } });
+    game.setVisualMode('desktop-defender');
+    expect(game.bloomResolutionScale).toBe(0.5);
+    game.stop();
+  });
+
+  it('setVisualMode("desktop-defender") uses LinearFilter (not pixelated)', () => {
+    const game = new Game({ bloom: { strength: 1.0 } });
+    game.setVisualMode('desktop-defender');
+    const composer = (game as any).composer;
+    expect(composer.readBuffer.texture.magFilter).toBe(LinearFilter);
+    expect(composer.writeBuffer.texture.magFilter).toBe(LinearFilter);
+    game.stop();
+  });
+
+  it('restores LinearFilter after desktop-defender -> pixelated -> desktop-defender', () => {
+    const game = new Game({ bloom: { strength: 1.0 } });
+    game.setVisualMode('pixelated');
+    game.setVisualMode('desktop-defender');
+    const composer = (game as any).composer;
+    expect(composer.readBuffer.texture.magFilter).toBe(LinearFilter);
+    game.stop();
+  });
+});

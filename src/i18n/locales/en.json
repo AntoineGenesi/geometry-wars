@@ -175,6 +175,7 @@
     "settings": "SETTINGS",
     "stylePixelated": "STYLE: PIXELATED",
     "styleModern": "STYLE: MODERN",
+    "styleDesktopDefender": "STYLE: DESKTOP DEF.",
     "performanceGraphs": "PERFORMANCE GRAPHS",
     "music": "MUSIC: {{name}}",
     "exitToMenu": "EXIT TO MENU",

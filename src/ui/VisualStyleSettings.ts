@@ -95,14 +95,14 @@ export function clearVisualStyle(): void {
 
 const VISUAL_MODE_KEY = 'gw3d-visual-mode';
 
-/** Pixelated = half-res bloom (retro look). Modern = full-res bloom (crisp). */
-export type VisualMode = 'pixelated' | 'modern';
+/** Pixelated = half-res bloom (retro look). Modern = full-res bloom (crisp). Desktop Defender = light background, minimal glow. */
+export type VisualMode = 'pixelated' | 'modern' | 'desktop-defender';
 
 /** Load the saved visual mode. Defaults to 'modern' (non-pixelated high-graphics). */
 export function loadVisualMode(): VisualMode {
   try {
     const raw = localStorage.getItem(VISUAL_MODE_KEY);
-    if (raw === 'modern' || raw === 'pixelated') return raw;
+    if (raw === 'modern' || raw === 'pixelated' || raw === 'desktop-defender') return raw;
   } catch {
     // localStorage unavailable
   }

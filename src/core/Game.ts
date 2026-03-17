@@ -20,6 +20,7 @@ import { GPUCapabilityReport, detectGPUCapabilities } from '../rendering/GPUCapa
 import { createRenderer, RendererBackend, installWebGPUDiagnostic } from '../rendering/RendererFactory';
 import { EntityLimits, getEntityLimits } from '../rendering/EntityLimits';
 import { BloomEffectManager } from '../effects/BloomEffectManager';
+import { type VisualMode } from '../ui/VisualStyleSettings';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -534,7 +535,7 @@ export class Game {
    * by nature, so upscaling is visually imperceptible but avoids expensive full-res passes.
    * Immediately resizes the EffectComposer and bloom pass render targets.
    */
-  setVisualMode(mode: 'pixelated' | 'modern'): void {
+  setVisualMode(mode: VisualMode): void {
     // s44r17-05 experiment: 0.40 (was 0.50) — chunkier pixel "bundles".
     // Revert: change 0.40 back to 0.50 if user prefers original.
     //
@@ -544,7 +545,13 @@ export class Game {
     // Bloom is blurry by definition — upscaling from 50% is visually imperceptible
     // but 4× cheaper. Restored to 0.5 (constructor default) for modern mode.
     // This matches the initial constructor setup (halfW, halfH at lines ~311-313).
-    this.bloomResolutionScale = mode === 'modern' ? 0.5 : 0.40;
+    // Desktop Defender: full-res bloom like modern, but caller applies 0.25× strength multiplier.
+    this.bloomResolutionScale = (mode === 'modern' || mode === 'desktop-defender') ? 0.5 : 0.40;
+
+    // Scene background: light paper for Desktop Defender, dark neon for other modes.
+    this.scene.background = new THREE.Color(
+      mode === 'desktop-defender' ? 0xf0f0e8 : 0x050510
+    );
 
     if (this.isWebGPU) {
       // WebGPU path: simulate pixelated mode by reducing the pixel ratio so the
