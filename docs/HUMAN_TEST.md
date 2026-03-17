@@ -157,6 +157,14 @@ These were implemented in s44r22 and need user confirmation they work as expecte
 - [ ] Should show a **2-column layout**: buttons on the left, info/buffs on the right
 - [ ] Menu should not be skewed to one side
 
+### Mobile MP: Start Zoomed In + Smoother Performance (s44r25-06)
+
+- [ ] Scan the QR code with your phone to join a multiplayer game
+- [ ] On joining, the camera should be **clearly zoomed in** — player ship should be easily visible, not tiny dots
+- [ ] Gameplay should be **noticeably smoother** at game start (no initial lag spike from quality dropping)
+- [ ] Pinch-to-zoom should still work normally after the automatic zoom
+- [ ] At 30-50 enemies, framerate should feel playable (30+ fps)
+
 ### Mobile Movement: No Direction Reversal (s44r22-16)
 
 - [ ] On mobile MP, use the joystick to move
