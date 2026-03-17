@@ -192,6 +192,6 @@ describe('S37 bug: proximity override should not fire for opposite-wall enemies'
     // Player at outer wall midpoint (V=0.23), enemy at inner wall midpoint (V=0.72)
     // UV distance = min(0.49, 0.51) = 0.49 > SURFACE_FAR_UV=0.45 → fully dim
     const farEnemyVisibility = simulateVisibility(surface, 0.125, 0.23, 0.625, 0.72, 0.12)
-    expect(farEnemyVisibility).toBeCloseTo(SURFACE_DIM_OPACITY, 2)
+    expect(farEnemyVisibility).toBeCloseTo(0.12, 2)
   })
 })
