@@ -128,11 +128,14 @@ export class RenderLoop {
     // Raycast-based: counts surface intersections between camera and each enemy.
     // Batched across frames for performance (100 raycasts/frame).
     const allEnemies = ctx.enemySpawner.getEnemies();
-    // s44r24-01: On tunnel surfaces, the camera is outside the tunnel → raycasts always hit 2 walls
+    // s44r24-01: On cube-tunnel, the camera is outside the tunnel → raycasts always hit 2 walls
     // → targetOpacity=0.04 for ALL enemies. Since the result is discarded below (tunnel bypass),
     // skip the update entirely to avoid wasted raycasts and EMA state accumulation.
-    const _isTunnelSurface = ctx.surfaceType === 'cube-tunnel'
-      || ctx.surfaceType === 'sphere-tunnel';
+    // s44r25-01: sphere-tunnel removed from bypass — SP camera is INSIDE the sphere shell,
+    // so depth occlusion gives correct results: 0 intersections for near-side enemies (clear),
+    // 1 intersection for far-side enemies (behind sphere wall → dim). The bypass was only needed
+    // for MP where the camera sits outside the sphere.
+    const _isTunnelSurface = ctx.surfaceType === 'cube-tunnel';
     if (!_isTunnelSurface) {
       ctx.depthOcclusion.update(allEnemies, camPos, frameDt);
     }

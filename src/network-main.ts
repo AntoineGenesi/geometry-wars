@@ -7204,6 +7204,10 @@ async function main() {
     const _isTunnelSurface = lastCreatedSurfaceType === 'cube-tunnel'
       || lastCreatedSurfaceType === 'sphere-tunnel'
       || lastCreatedSurfaceType === 'torus-tunnel';
+    // s44r25-01: sphere-tunnel gets UV-based dimming instead of the full vis=1.0 bypass.
+    // Depth occlusion update is still skipped (camera outside → 2 intersections = broken),
+    // but UV distance is used to determine front/behind-surface for dimming.
+    const _isSphereTunnel = lastCreatedSurfaceType === 'sphere-tunnel';
     if (!_isTunnelSurface) {
       depthOcclusion.update(enemyArray, camera.position, netRenderDt);
     }
@@ -7215,17 +7219,26 @@ async function main() {
       // s44r24-01: lowered threshold from 0.9 → 0.7 to handle cases where DepthOcclusionSystem
       // EMA hasn't fully stabilized (lerpSpeed=10, so enemies raycasted every ~50 frames may
       // transiently return values in the 0.7-0.9 range before converging to opacity0=1.0).
-      const netIsFrontSide = netDepthOpacity >= 0.7;
+      let netIsFrontSide = netDepthOpacity >= 0.7;
 
       // UV-distance surface dimming (LAN parity with SP RenderLoop.ts).
       // Catches flat/open-surface cases where raycasts register 0 intersections.
-      // Skipped for tunnel surfaces — UV space is unreliable for proximity on tunnels.
-      if (_lpForDim && !_isTunnelSurface) {
+      // Skipped for most tunnel surfaces — UV space is unreliable for proximity on tunnels.
+      // s44r25-01: sphere-tunnel is re-enabled — UV distance reliably indicates front vs back
+      // hemisphere since the sphere UV wraps normally (unlike cube-tunnel which has seam artifacts).
+      if (_lpForDim && (!_isTunnelSurface || _isSphereTunnel)) {
         const euRaw = Math.abs(enemy.surfacePosition.u - _lpU);
         const evRaw = Math.abs(enemy.surfacePosition.v - _lpV);
         const eu = Math.min(euRaw, 1.0 - euRaw);
         const ev = _netWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
         const uvDist = Math.sqrt(eu * eu + ev * ev);
+        // s44r25-01: For sphere-tunnel, UV distance determines front vs behind-surface.
+        // Depth occlusion is unavailable in MP (camera outside → 2 intersections for all),
+        // so we use UV distance as a proxy: enemies beyond NET_SURFACE_NEAR_UV are likely
+        // on the far hemisphere → apply the behind-surface floor (0.08) instead of front-side (0.70).
+        if (_isSphereTunnel && uvDist > NET_SURFACE_NEAR_UV) {
+          netIsFrontSide = false;
+        }
         // s44r21-01: Initialize to 1.0 (fully visible) instead of leaving uninitialized.
         // If uvDist is NaN (from NaN surfacePosition.u/v), all comparisons return false,
         // surfaceVis stays at its initial value. Previously it was `undefined`, causing
@@ -7279,7 +7292,8 @@ async function main() {
       // a future code path or EMA state leaks could inadvertently dim tunnel enemies.
       // Host-only invisible enemies on sphere-tunnel were caused by some such state difference
       // between host (localhost) and client (LAN) connections — this guard prevents it.
-      if (_isTunnelSurface) vis = 1.0;
+      // s44r25-01: sphere-tunnel excluded — it gets UV-based dimming instead of forced vis=1.0.
+      if (_isTunnelSurface && !_isSphereTunnel) vis = 1.0;
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {
         enemyInstanceManager.setLODInstanceVisibility(enemy, vis);
