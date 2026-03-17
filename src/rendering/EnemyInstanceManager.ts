@@ -54,6 +54,9 @@ interface InstanceBatch {
    *  This enables RGB-based dimming that works on BOTH WebGL and WebGPU
    *  (onBeforeCompile-based alpha dimming is WebGL-only). */
   perInstanceColors: Float32Array;
+  /** Highest slot index ever allocated (inclusive). Maintained by allocateSlot/unregister.
+   *  Used as a cheap O(1) substitute for getMaxUsedIndex() when setting instancedMesh.count. */
+  highWaterMark: number;
 }
 
 /**
@@ -74,6 +77,8 @@ interface LODSharedBatch {
   nextFreeIndex: number;
   /** Number of slots currently occupied. */
   usedCount: number;
+  /** Highest slot index ever allocated (inclusive). O(1) substitute for getMaxUsedLODIndex(). */
+  highWaterMark: number;
 }
 
 /** Temporary objects reused per-frame to avoid GC pressure. */
@@ -264,6 +269,15 @@ export class EnemyInstanceManager {
     batch.enemyToIndex.delete(enemy);
     batch.indexToEnemy[index] = null;
 
+    // Update highWaterMark if we just freed the highest slot
+    if (index >= batch.highWaterMark) {
+      let newMax = -1;
+      for (let i = index - 1; i >= 0; i--) {
+        if (batch.indexToEnemy[i] !== null) { newMax = i; break; }
+      }
+      batch.highWaterMark = newMax;
+    }
+
     // Also remove from any LOD shared batch
     this.removeLODPlacement(enemy);
 
@@ -314,7 +328,8 @@ export class EnemyInstanceManager {
       }
       // Set count to max registered index + 1 to avoid rendering garbage
       // (InstancedMesh renders indices 0..count-1, so we need count >= max used index)
-      batch.instancedMesh.count = this.getMaxUsedIndex(batch) + 1;
+      // highWaterMark is O(1) — maintained incrementally in allocateSlot/unregister.
+      batch.instancedMesh.count = batch.highWaterMark + 1;
     }
   }
 
@@ -458,7 +473,8 @@ export class EnemyInstanceManager {
       // Without this, opacityAttribute.setX() changes in the culling loop above
       // are never uploaded to the GPU, making shader-based dimming invisible.
       batch.opacityAttribute.needsUpdate = true;
-      batch.instancedMesh.count = this.getMaxUsedIndex(batch) + 1;
+      // highWaterMark is O(1) — maintained incrementally in allocateSlot/unregister.
+      batch.instancedMesh.count = batch.highWaterMark + 1;
     }
 
     // Finalize LOD batches
@@ -714,6 +730,7 @@ export class EnemyInstanceManager {
       indexToEnemy: new Array(LOD_BATCH_MAX_INSTANCES).fill(null),
       nextFreeIndex: 0,
       usedCount: 0,
+      highWaterMark: -1,
     };
   }
 
@@ -792,6 +809,15 @@ export class EnemyInstanceManager {
       lodBatch.enemyToIndex.delete(enemy);
       lodBatch.indexToEnemy[slotIndex] = null;
       lodBatch.usedCount = Math.max(0, lodBatch.usedCount - 1);
+
+      // Update highWaterMark if we just freed the highest slot
+      if (slotIndex >= lodBatch.highWaterMark) {
+        let newMax = -1;
+        for (let i = slotIndex - 1; i >= 0; i--) {
+          if (lodBatch.indexToEnemy[i] !== null) { newMax = i; break; }
+        }
+        lodBatch.highWaterMark = newMax;
+      }
     }
 
     this.enemyLODPlacement.delete(enemy);
@@ -816,6 +842,7 @@ export class EnemyInstanceManager {
       if (lodBatch.indexToEnemy[i] === null) {
         lodBatch.nextFreeIndex = i + 1;
         lodBatch.usedCount++;
+        if (i > lodBatch.highWaterMark) lodBatch.highWaterMark = i;
         return i;
       }
     }
@@ -823,6 +850,7 @@ export class EnemyInstanceManager {
       if (lodBatch.indexToEnemy[i] === null) {
         lodBatch.nextFreeIndex = i + 1;
         lodBatch.usedCount++;
+        if (i > lodBatch.highWaterMark) lodBatch.highWaterMark = i;
         return i;
       }
     }
@@ -850,7 +878,8 @@ export class EnemyInstanceManager {
       lodBatch.instancedMesh.instanceColor.needsUpdate = true;
     }
     lodBatch.opacityAttribute.needsUpdate = true;
-    lodBatch.instancedMesh.count = this.getMaxUsedLODIndex(lodBatch) + 1;
+    // highWaterMark is O(1) — maintained incrementally in allocateLODSlot/removeLODPlacement.
+    lodBatch.instancedMesh.count = lodBatch.highWaterMark + 1;
   }
 
   /**
@@ -1038,6 +1067,7 @@ export class EnemyInstanceManager {
       nextFreeIndex: 0,
       activeCount: 0,
       baseColor,
+      highWaterMark: -1,
     };
   }
 
@@ -1050,6 +1080,7 @@ export class EnemyInstanceManager {
     for (let i = batch.nextFreeIndex; i < this.maxInstances; i++) {
       if (batch.indexToEnemy[i] === null) {
         batch.nextFreeIndex = i + 1;
+        if (i > batch.highWaterMark) batch.highWaterMark = i;
         return i;
       }
     }
@@ -1057,6 +1088,7 @@ export class EnemyInstanceManager {
     for (let i = 0; i < batch.nextFreeIndex; i++) {
       if (batch.indexToEnemy[i] === null) {
         batch.nextFreeIndex = i + 1;
+        if (i > batch.highWaterMark) batch.highWaterMark = i;
         return i;
       }
     }

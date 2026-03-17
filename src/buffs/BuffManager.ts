@@ -407,6 +407,11 @@ export class BuffManager {
   private _volatileVfxThisFrame = 0;
   private static readonly MAX_VOLATILE_VFX_PER_FRAME = 6;
 
+  /** Pre-allocated Set reused each update() call to track enemies alive before
+   *  the buff tick. Avoids allocating `new Set<BaseEnemy>()` every fixed update
+   *  (was 9,000 Set objects/minute at 150 enemies × 60fps → steady GC pressure). */
+  private readonly _aliveBeforeUpdate: Set<BaseEnemy> = new Set();
+
   /** Callback when buff is gained (for HUD animation) */
   onBuffGained: ((type: StackBuffType, newStacks: number) => void) | null = null;
 
@@ -719,12 +724,12 @@ export class BuffManager {
     // Reset per-frame volatile VFX budget so onEnemyDeath() can track this frame's count
     this._volatileVfxThisFrame = 0;
 
-    // Track enemies alive before update
+    // Track enemies alive before update (reuse pre-allocated Set to avoid GC)
     const killedThisFrame: BaseEnemy[] = [];
-    const aliveBeforeUpdate = new Set<BaseEnemy>();
+    this._aliveBeforeUpdate.clear();
     for (const enemy of enemies) {
       if (enemy.alive) {
-        aliveBeforeUpdate.add(enemy);
+        this._aliveBeforeUpdate.add(enemy);
       }
     }
 
@@ -733,11 +738,13 @@ export class BuffManager {
     this.updateShockArcs(dt);
 
     // Detect enemies that died from aura/burn this frame
-    for (const enemy of aliveBeforeUpdate) {
+    for (const enemy of this._aliveBeforeUpdate) {
       if (!enemy.alive) {
         killedThisFrame.push(enemy);
       }
     }
+    // Clear references so dead enemies can be GC'd between frames
+    this._aliveBeforeUpdate.clear();
 
     return killedThisFrame;
   }
