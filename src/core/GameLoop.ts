@@ -911,23 +911,25 @@ export class GameLoop {
         // Then try companion protector
         const saved = ctx.companionManager.onPlayerHit();
         if (!saved) {
-          // Player is about to die — strong chromatic + flash + shockwave
+          // Player is taking damage — strong chromatic + flash + shockwave
           ctx.shockwaveEffect.triggerChromatic(0.025);
           ctx.shockwaveEffect.spawnShockwave(ctx.player.mesh.position, 0.06, 1.0, 0.7, 0.08);
           ctx.shockwaveEffect.triggerFlash(new THREE.Color(1, 0.2, 0.2), 0.4);
-          // Player death indicator: red floating text at player position
-          ctx.scorePopups.spawn(ctx.player.mesh.position.clone(), '-LIFE', '#ff4444', 2.0, 1.2);
-          // Score graph: record death event marker
-          ctx.perfLogger.recordEvent('player_death', 'Death');
-          // Death cam: grayscale + darken while waiting to respawn
-          if (!this._deathCamActive) {
-            this._deathCamActive = true;
-            UIHelpers.showDeathCamEffect();
-          }
         }
         return saved;
       },
     );
+    // Death cam, -LIFE popup, and death event fire only when the player actually dies
+    // (not on every hit — player has 100 HP and takes 25 per hit, so 4 hits needed).
+    // s44r23-03: moved from the onPlayerHit callback which fired prematurely on non-lethal hits.
+    if (!ctx.player.alive && !this._deathCamActive) {
+      this._deathCamActive = true;
+      UIHelpers.showDeathCamEffect();
+      // Player death indicator: red floating text at player position
+      ctx.scorePopups.spawn(ctx.player.mesh.position.clone(), '-LIFE', '#ff4444', 2.0, 1.2);
+      // Score graph: record death event marker
+      ctx.perfLogger.recordEvent('player_death', 'Death');
+    }
 
     // Gate pass-through detection (Pacifism mode mechanic)
     if (ctx.player.alive && ctx.player.canTakeDamage) {
