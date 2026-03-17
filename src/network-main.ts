@@ -7177,7 +7177,9 @@ async function main() {
     // for enemies on the far side, leaving them fully bright without UV-distance clamping.
     const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
     const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
-    const NET_SURFACE_DIM_OPC  = 0.08;   // minimum opacity for far-away enemies (s44r22-01: lowered from 0.40 to 0.08 — double-dimming fixed in s44r12-03, 0.40 floor made enemies too visible through surfaces)
+    const NET_SURFACE_DIM_OPC  = 0.15;   // minimum opacity for far-away/behind-surface enemies.
+    // s44r22-01: lowered from 0.40→0.08. s44r25-02: raised 0.08→0.15 (parity with RenderLoop.ts SURFACE_DIM_OPACITY).
+    // 0.08 was perceptually invisible on dark torus backgrounds at 150 entities — see RenderLoop.ts comment.
     // World-space proximity override constants (SP parity — RenderLoop.ts PROXIMITY_*).
     const NET_PROXIMITY_NEAR_WORLD    = 2.0;
     const NET_PROXIMITY_NEAR_WORLD_SQ = NET_PROXIMITY_NEAR_WORLD * NET_PROXIMITY_NEAR_WORLD;
@@ -7284,7 +7286,7 @@ async function main() {
       if (!isFinite(vis)) vis = 1.0;
       // s44r23-01: Two-tier floor (SP parity — see RenderLoop.ts).
       // Front-side enemies (netIsFrontSide=true) must never fall below 0.70.
-      // Behind-surface enemies use the low floor (NET_SURFACE_DIM_OPC=0.08).
+      // Behind-surface enemies use the low floor (NET_SURFACE_DIM_OPC=0.15, raised from 0.08 in s44r25-02).
       const netVisibilityFloor = netIsFrontSide ? 0.70 : NET_SURFACE_DIM_OPC;
       vis = Math.max(vis, netVisibilityFloor);
       // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming

@@ -40,7 +40,7 @@ const ALL_SP_SURFACES = [
 const MP_SURFACES = ['sphere', 'cube', 'torus', 'pill', 'peanut'];
 
 // Visibility thresholds
-const INVISIBLE_THRESHOLD = 0.05;  // instanceColorBrightness below this = bug
+const INVISIBLE_THRESHOLD = 0.10;  // instanceColorBrightness below this = bug (s44r25-02: raised 0.05→0.10; SURFACE_DIM_OPACITY floor is now 0.15, so anything <0.10 is a regression)
 const DIM_THRESHOLD = 0.15;        // below this = warn (far-side expected)
 const BRIGHT_THRESHOLD = 0.30;     // above this = clearly visible (near-side)
 
