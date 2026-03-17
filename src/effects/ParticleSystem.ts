@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { type VisualMode } from '../ui/VisualStyleSettings';
 
 interface ParticleConfig {
   position: THREE.Vector3;
@@ -245,6 +246,21 @@ export class ParticleSystem {
 
     // Also reduce opacity on pre-pooled fragment meshes
     const fragmentOpacity = isPixelated ? 0.2 : 0.4;
+    for (const fragment of this.fragments) {
+      (fragment.mesh.material as THREE.MeshBasicMaterial).opacity = fragmentOpacity;
+    }
+  }
+
+  /**
+   * Set particle brightness based on visual mode.
+   * Desktop Defender: 0.3× brightness — dark particles visible on light background.
+   * Pixelated: 0.5× — prevents additive stacking from hiding the player under half-res bloom.
+   * Modern: 1.0× — full brightness.
+   */
+  setVisualMode(mode: VisualMode): void {
+    const colorScale = mode === 'desktop-defender' ? 0.3 : mode === 'pixelated' ? 0.5 : 1.0;
+    this.material.uniforms.colorScale.value = colorScale;
+    const fragmentOpacity = mode === 'desktop-defender' ? 0.15 : mode === 'pixelated' ? 0.2 : 0.4;
     for (const fragment of this.fragments) {
       (fragment.mesh.material as THREE.MeshBasicMaterial).opacity = fragmentOpacity;
     }

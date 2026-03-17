@@ -97,5 +97,30 @@ describe('VisualMode persistence', () => {
         expect(loadVisualMode()).toBe(mode);
       }
     });
+
+    it('persists desktop-defender', () => {
+      saveVisualMode('desktop-defender');
+      expect(store['gw3d-visual-mode']).toBe('desktop-defender');
+    });
+
+    it('round-trips all three modes including desktop-defender', () => {
+      const modes: VisualMode[] = ['pixelated', 'modern', 'desktop-defender'];
+      for (const mode of modes) {
+        saveVisualMode(mode);
+        expect(loadVisualMode()).toBe(mode);
+      }
+    });
+  });
+});
+
+describe('desktop-defender mode', () => {
+  it('loadVisualMode returns desktop-defender when saved', () => {
+    saveVisualMode('desktop-defender');
+    expect(loadVisualMode()).toBe('desktop-defender');
+  });
+
+  it('falls back to modern if unknown value stored (not desktop-defender)', () => {
+    store['gw3d-visual-mode'] = 'desktop';
+    expect(loadVisualMode()).toBe('modern');
   });
 });

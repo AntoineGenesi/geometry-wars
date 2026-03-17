@@ -53,7 +53,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const GRID_COLS = 4;
-const GRID_ROWS = 10;
+const GRID_ROWS = 12;
 const CELL_SIZE = 180;
 const CELL_PADDING = 8;
 const CANVAS_WIDTH = GRID_COLS * (CELL_SIZE + CELL_PADDING) + CELL_PADDING;
@@ -786,6 +786,66 @@ export const VISUAL_PRESETS: VisualPreset[] = [
     depthCurve: 'moderate',
     description: 'Green-to-blue gradient with lighter surface. Northern lights.',
     sektoriConfig: SEKTORI_AURORA_PRESET,
+  },
+
+  // -- Desktop Defender presets (light background, minimal bloom) --
+  {
+    name: 'Paper Grid',
+    gridColor: 0x888888,
+    surfaceColor: 0xe8e8e0,
+    surfaceOpacity: 0.6,
+    gridOpacity: 0.5,
+    wireframeOnly: false,
+    bloomStrength: 0.2,
+    bloomRadius: 0.2,
+    bloomThreshold: 0.95,
+    gridSegmentsU: 32,
+    gridSegmentsV: 24,
+    depthCurve: 'gentle',
+    description: 'Light gray grid on near-white surface. DTD classic look.',
+  },
+  {
+    name: 'Blueprint DD',
+    gridColor: 0xffffff,
+    surfaceColor: 0xc8dce8,
+    surfaceOpacity: 0.55,
+    gridOpacity: 0.6,
+    wireframeOnly: false,
+    bloomStrength: 0.15,
+    bloomRadius: 0.15,
+    bloomThreshold: 0.95,
+    gridSegmentsU: 28,
+    gridSegmentsV: 20,
+    depthCurve: 'gentle',
+    description: 'White grid on light blue. Technical blueprint on light field.',
+  },
+  {
+    name: 'Sketch Pad',
+    gridColor: 0x444444,
+    surfaceColor: 0xfafafa,
+    surfaceOpacity: 0.5,
+    gridOpacity: 0.55,
+    wireframeOnly: true,
+    bloomStrength: 0.0,
+    gridSegmentsU: 24,
+    gridSegmentsV: 18,
+    depthCurve: 'moderate',
+    description: 'Dark wireframe on near-white. Pencil sketch on blank paper.',
+  },
+  {
+    name: 'Graph Paper',
+    gridColor: 0x22aa44,
+    surfaceColor: 0xf5f0e0,
+    surfaceOpacity: 0.6,
+    gridOpacity: 0.4,
+    wireframeOnly: false,
+    bloomStrength: 0.1,
+    bloomRadius: 0.15,
+    bloomThreshold: 0.95,
+    gridSegmentsU: 36,
+    gridSegmentsV: 28,
+    depthCurve: 'gentle',
+    description: 'Green grid on cream. Classic graph paper for engineering.',
   },
 ];
 
