@@ -128,7 +128,14 @@ export class RenderLoop {
     // Raycast-based: counts surface intersections between camera and each enemy.
     // Batched across frames for performance (100 raycasts/frame).
     const allEnemies = ctx.enemySpawner.getEnemies();
-    ctx.depthOcclusion.update(allEnemies, camPos, frameDt);
+    // s44r24-01: On tunnel surfaces, the camera is outside the tunnel → raycasts always hit 2 walls
+    // → targetOpacity=0.04 for ALL enemies. Since the result is discarded below (tunnel bypass),
+    // skip the update entirely to avoid wasted raycasts and EMA state accumulation.
+    const _isTunnelSurface = ctx.surfaceType === 'cube-tunnel'
+      || ctx.surfaceType === 'sphere-tunnel';
+    if (!_isTunnelSurface) {
+      ctx.depthOcclusion.update(allEnemies, camPos, frameDt);
+    }
 
     profiler.end('transparency_and_occlusion');
 
@@ -187,14 +194,18 @@ export class RenderLoop {
 
       // Raycast-based occlusion: opacity based on how many surface layers are
       // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
-      const depthOpacity = ctx.depthOcclusion.getOpacity(enemy);
+      // s44r24-01: For tunnel surfaces, bypass depth occlusion entirely (always 1.0).
+      // The camera is outside the tunnel → raycasts always count 2 wall intersections → 0.04 opacity.
+      // That's wrong for enemies that are physically visible to the player inside the tunnel.
+      const depthOpacity = _isTunnelSurface ? 1.0 : ctx.depthOcclusion.getOpacity(enemy);
       let visibility = depthOpacity;
       // s44r23-01: track whether this enemy is front-side (no surface between camera and enemy).
       // Front-side enemies must never go invisible from far-side culling or UV-dimming compound.
       // The DepthOcclusionSystem returns opacity0 (1.0) for clear line-of-sight enemies.
-      // We use 0.9 as the threshold to handle lerp-in-progress states (new enemies start at 1.0
+      // We use 0.7 as the threshold to handle lerp-in-progress states (new enemies start at 1.0
       // and lerp toward their target over ~0.1s — while lerping, they're still "front-side").
-      const isFrontSide = depthOpacity >= 0.9;
+      // s44r24-01: lowered from 0.9 → 0.7 to handle cases where EMA hasn't fully stabilized.
+      const isFrontSide = depthOpacity >= 0.7;
 
       // Surface UV-distance visibility + world-space proximity override.
       // UV distance is computed for:
@@ -320,6 +331,11 @@ export class RenderLoop {
       // This is the "different floors for front-side vs behind-surface" fix requested in s44r23-01.
       const visibilityFloor = isFrontSide ? 0.70 : SURFACE_DIM_OPACITY;
       visibility = Math.max(visibility, visibilityFloor);
+
+      // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
+      // are both bypassed for tunnels, so enemies MUST be fully visible.
+      // This catches any edge case where some other code path inadvertently dims tunnel enemies.
+      if (_isTunnelSurface) visibility = 1.0;
 
       visibleEnemyCount++;
 

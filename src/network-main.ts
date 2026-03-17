@@ -7185,22 +7185,30 @@ async function main() {
     // For tunnel surfaces (cube-tunnel, sphere-tunnel, torus-tunnel), skip depth occlusion
     // AND UV-distance dimming entirely. Both systems produce false-positives on tunnel geometry:
     //   - Depth occlusion: MP camera (distance 20) is OUTSIDE the tunnel, so raycasts cross
-    //     2 wall faces for every enemy → opacity2Plus=0.15 → essentially invisible.
+    //     2 wall faces for every enemy → opacity2Plus=0.04 → essentially invisible.
     //   - UV-distance dimming: tunnel UV space is elongated, so enemies in the tunnel appear
     //     "far" in UV coordinates even when physically nearby (sphere-approx UV mismatch).
     // Bypass both so all tunnel enemies are fully visible.
     // s44r12-08: original bypass for cube-tunnel/sphere-tunnel (depth occlusion only).
     // s44r16-07: extended to torus-tunnel, also bypasses UV dimming for all tunnel surfaces.
+    // s44r24-01: also skip depthOcclusion.update() for tunnel surfaces — raycasts are wasted
+    // (results are discarded) and accumulating "2 wall intersections" in the EMA weakmap
+    // can interfere with other surfaces if the surface type changes mid-session.
     const _isTunnelSurface = lastCreatedSurfaceType === 'cube-tunnel'
       || lastCreatedSurfaceType === 'sphere-tunnel'
       || lastCreatedSurfaceType === 'torus-tunnel';
-    depthOcclusion.update(enemyArray, camera.position, netRenderDt);
+    if (!_isTunnelSurface) {
+      depthOcclusion.update(enemyArray, camera.position, netRenderDt);
+    }
     for (const enemy of enemyArray) {
       if (!enemy.alive || !enemy.mesh) continue;
       const netDepthOpacity = _isTunnelSurface ? 1.0 : depthOcclusion.getOpacity(enemy);
       let vis = netDepthOpacity;
-      // s44r23-01: track front-side status for two-tier floor (MP parity with SP RenderLoop.ts)
-      const netIsFrontSide = netDepthOpacity >= 0.9;
+      // s44r23-01: track front-side status for two-tier floor (MP parity with SP RenderLoop.ts).
+      // s44r24-01: lowered threshold from 0.9 → 0.7 to handle cases where DepthOcclusionSystem
+      // EMA hasn't fully stabilized (lerpSpeed=10, so enemies raycasted every ~50 frames may
+      // transiently return values in the 0.7-0.9 range before converging to opacity0=1.0).
+      const netIsFrontSide = netDepthOpacity >= 0.7;
 
       // UV-distance surface dimming (LAN parity with SP RenderLoop.ts).
       // Catches flat/open-surface cases where raycasts register 0 intersections.
@@ -7259,6 +7267,12 @@ async function main() {
       // Behind-surface enemies use the low floor (NET_SURFACE_DIM_OPC=0.08).
       const netVisibilityFloor = netIsFrontSide ? 0.70 : NET_SURFACE_DIM_OPC;
       vis = Math.max(vis, netVisibilityFloor);
+      // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
+      // are both bypassed, so enemies MUST be fully visible. This catches any edge case where
+      // a future code path or EMA state leaks could inadvertently dim tunnel enemies.
+      // Host-only invisible enemies on sphere-tunnel were caused by some such state difference
+      // between host (localhost) and client (LAN) connections — this guard prevents it.
+      if (_isTunnelSurface) vis = 1.0;
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {
         enemyInstanceManager.setLODInstanceVisibility(enemy, vis);
