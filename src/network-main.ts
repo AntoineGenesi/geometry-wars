@@ -539,6 +539,13 @@ async function main() {
   // -- Visual style (user-selected from Visual Styles playground) --
   const savedStyle = loadVisualStyle();
 
+  /** Adjust bloom strength for visual mode — mirrors the same function in main.ts. */
+  function getAdjustedBloomStrength(baseStrength: number, mode: VisualMode): number {
+    if (mode === 'pixelated') return Math.max(0, baseStrength * 0.4);
+    if (mode === 'desktop-defender') return Math.max(0, baseStrength * 0.25);
+    return baseStrength;
+  }
+
   // -- Game engine (same config as co-op, mobile reduces bloom) --
   // Use Game.create() so WebGPU capability detection and ?renderer=webgpu URL param work.
   const game = await Game.create({
@@ -602,9 +609,14 @@ async function main() {
     }
   });
 
-  // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
+  // Apply saved visual mode (bloom resolution, scene background, bloom multiplier)
   const savedVisualMode = loadVisualMode();
   game.setVisualMode(savedVisualMode);
+  {
+    const defaultStrength = mobile ? 0.4 : 0.7;
+    const baseStrength = savedStyle?.bloomStrength ?? defaultStrength;
+    game.setBloomSettings(getAdjustedBloomStrength(baseStrength, savedVisualMode), 0.6);
+  }
 
   const scene = game.scene;
   const camera = game.camera;
@@ -2251,6 +2263,9 @@ async function main() {
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
+    const defaultStrength = mobile ? 0.4 : 0.7;
+    const baseStrength = savedStyle?.bloomStrength ?? defaultStrength;
+    game.setBloomSettings(getAdjustedBloomStrength(baseStrength, mode), 0.6);
     particles.setVisualMode(mode);
   });
 
