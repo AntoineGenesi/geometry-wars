@@ -101,7 +101,7 @@ import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
-import { loadVisualStyle, loadVisualMode, saveVisualMode } from './ui/VisualStyleSettings';
+import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { MapSize, getDefaultMapSizeForSurface, getMapSizeScaleFactor } from './core/MapSize';
@@ -1328,6 +1328,8 @@ async function main() {
   // Key: player server ID, Value: lives count from last onStateChange call.
   const prevLivesMap = new Map<string, number>();
   let isPaused = false;
+  let allowAllPlayersPause = false;
+  let pausedByName = '';
   let isInLookMode = false;
   // Holds the startup config hash received from the server so onStartupConfig
   // can store it in localStorage along with the cached data.
@@ -2247,9 +2249,11 @@ async function main() {
 
   // Sync pause menu with saved visual mode; wire the toggle
   pauseMenu.setVisualMode(savedVisualMode);
+  particles.setVisualMode(savedVisualMode);
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
+    particles.setVisualMode(mode);
   });
 
   // Apply surface appearance live when user changes settings in the pause menu.
@@ -2258,6 +2262,10 @@ async function main() {
       surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
       surface.setSurfaceColor(gfxSettings.surfaceColor);
     }
+  });
+
+  pauseMenu.onAllowAllPauseToggle((allowed: boolean) => {
+    network.sendSetAllowAllPause(allowed);
   });
 
   // Show short code QR in pause menu — 5-digit code is smaller and more reliable than full URL.
@@ -2620,6 +2628,9 @@ async function main() {
 
   function showLocalMenu(): void {
     localMenuOpen = true;
+    localMenuWarning.textContent = allowAllPlayersPause
+      ? '⚠  Press Escape to pause the game for everyone'
+      : '⚠  Game continues — only the host can pause the server';
     // Allow touch events to reach menu buttons while local menu is open.
     if (input instanceof TouchInput) input.setGamePaused(true);
     // Send zero input immediately so the server stops moving this player
@@ -2694,8 +2705,8 @@ async function main() {
             netMainLog('[NetworkMain] Host status confirmed on ESC press');
           }
         }
-        if (isHost) {
-          // Host: pause the server — enemies freeze for ALL players
+        if (isHost || allowAllPlayersPause) {
+          // Host or allowed player: pause the server — enemies freeze for ALL players
           isPaused = true;
           network.sendPause(true);
           showPauseOverlay(true);
@@ -2703,8 +2714,8 @@ async function main() {
           // Non-host: open local menu (only host can pause the server)
           showLocalMenu();
         }
-      } else if (isHost) {
-        // Server is paused (by host) — host can resume with Escape
+      } else if (isHost || allowAllPlayersPause) {
+        // Server is paused — host or allowed player can resume with Escape
         isPaused = false;
         network.sendPause(false);
         showPauseOverlay(false);
@@ -2734,22 +2745,22 @@ async function main() {
       }
 
       if (!isPaused) {
-        // Pause: only host can pause the server
+        // Pause: host or allowed player can pause the server
         if (!isHost) {
           const serverHostId = network.getServerHostId();
           if (serverHostId && serverHostId === localPlayerId) {
             isHost = true;
           }
         }
-        if (isHost) {
-          // Host: pause the server — enemies freeze for ALL players
+        if (isHost || allowAllPlayersPause) {
+          // Host or allowed player: pause the server — enemies freeze for ALL players
           isPaused = true;
           network.sendPause(true);
           showPauseOverlay(true);
         }
-        // Non-host: P key does nothing when game is running (can't pause server)
-      } else if (isHost) {
-        // Server is paused (by host) — host can resume with P
+        // Non-host without permission: P key does nothing when game is running
+      } else if (isHost || allowAllPlayersPause) {
+        // Server is paused — host or allowed player can resume with P
         isPaused = false;
         network.sendPause(false);
         showPauseOverlay(false);
@@ -2790,8 +2801,8 @@ async function main() {
             isHost = true;
           }
         }
-        if (isHost) {
-          // Host: pause the server — enemies freeze for ALL players
+        if (isHost || allowAllPlayersPause) {
+          // Host or allowed player: pause the server — enemies freeze for ALL players
           isPaused = true;
           network.sendPause(true);
           showPauseOverlay(true);
@@ -2799,8 +2810,8 @@ async function main() {
           // Non-host: open local menu (only host can pause the server)
           showLocalMenu();
         }
-      } else if (isHost) {
-        // Server is paused by host — tap pause again to resume
+      } else if (isHost || allowAllPlayersPause) {
+        // Server is paused — host or allowed player can resume
         isPaused = false;
         network.sendPause(false);
         showPauseOverlay(false);
@@ -4991,6 +5002,14 @@ async function main() {
     }
 
     // Sync pause state from server
+    allowAllPlayersPause = state.allowAllPlayersPause ?? false;
+    if (state.pausedById && state.players) {
+      const pauser = state.players.get(state.pausedById);
+      pausedByName = pauser?.name ?? '';
+    } else {
+      pausedByName = '';
+    }
+    pauseMenu.setAllowAllPlayersPause(allowAllPlayersPause);
     if (state.isPaused !== isPaused) {
       showPauseOverlay(state.isPaused);
     }
@@ -5209,7 +5228,7 @@ async function main() {
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
     } else if (state.gameStarted && currentRoomPhase === 'playing') {
-      updateStatusText(state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`);
+      updateStatusText(state.isPaused ? (pausedByName ? `PAUSED by ${pausedByName}` : 'PAUSED') : `Wave ${state.waveNumber}`);
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';

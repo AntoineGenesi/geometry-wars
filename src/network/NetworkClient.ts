@@ -216,6 +216,10 @@ export interface NetworkGameState {
   /** Portal B UV position (0-1). */
   portalBU?: number;
   portalBV?: number;
+  /** When true, any player can pause for all — set by host via set_allow_all_pause message. */
+  allowAllPlayersPause?: boolean;
+  /** Session ID of the player who triggered the current pause (empty when not paused). */
+  pausedById?: string;
 }
 
 /** Input to send to server */
@@ -776,6 +780,8 @@ export class NetworkClient {
       portalAV?: number;
       portalBU?: number;
       portalBV?: number;
+      allowAllPlayersPause?: boolean;
+      pausedById?: string;
     };
 
     // Pass Colyseus ArraySchema/MapSchema objects directly instead of creating
@@ -841,6 +847,8 @@ export class NetworkClient {
       portalAV: s.portalAV ?? 0.25,
       portalBU: s.portalBU ?? 0.75,
       portalBV: s.portalBV ?? 0.75,
+      allowAllPlayersPause: s.allowAllPlayersPause ?? false,
+      pausedById: s.pausedById ?? '',
     };
   }
 
@@ -891,11 +899,19 @@ export class NetworkClient {
   }
 
   /**
-   * Send pause/resume command (host only)
+   * Send pause/resume command (host only, or any player when allowAllPlayersPause is enabled)
    */
   sendPause(paused: boolean): void {
     if (!this.room || !this.connected) return;
     this.room.send('pause', { paused });
+  }
+
+  /**
+   * Host toggle: allow/disallow non-host players to pause.
+   */
+  sendSetAllowAllPause(allowed: boolean): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('set_allow_all_pause', { allowed });
   }
 
   /**

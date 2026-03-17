@@ -116,6 +116,8 @@ export class PauseMenu {
   // Non-host read-only settings display (s44j-settings-16f)
   private gameSettingsDisplay: GameSettings | null = null;
   private hasPendingSettingsDisplay: boolean = false;
+  private allowAllPlayersPauseValue: boolean = false;
+  private onAllowAllPauseChangeCallback: ((allowed: boolean) => void) | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -195,6 +197,10 @@ export class PauseMenu {
               <span class="btn-icon">&#x2699;</span>
               <span>SERVER SETTINGS</span>
             </button>
+            <label class="allow-pause-toggle hidden">
+              <input type="checkbox" class="allow-pause-checkbox" />
+              <span>Allow all players to pause</span>
+            </label>
           </div>
 
           <div class="pause-stats-container">
@@ -417,6 +423,28 @@ export class PauseMenu {
 
       #pause-menu .server-settings-btn.hidden {
         display: none;
+      }
+
+      #pause-menu .allow-pause-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        padding: 6px 10px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 4px;
+        color: #aaa;
+        font-size: 11px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      #pause-menu .allow-pause-toggle.hidden {
+        display: none;
+      }
+
+      #pause-menu .allow-pause-checkbox {
+        cursor: pointer;
       }
 
       #pause-menu .btn-icon {
@@ -1017,6 +1045,14 @@ export class PauseMenu {
       this.openServerSettings();
     });
 
+    const allowPauseCheckbox = this.container.querySelector<HTMLInputElement>('.allow-pause-checkbox');
+    if (allowPauseCheckbox) {
+      allowPauseCheckbox.addEventListener('change', () => {
+        this.allowAllPlayersPauseValue = allowPauseCheckbox.checked;
+        this.onAllowAllPauseChangeCallback?.(allowPauseCheckbox.checked);
+      });
+    }
+
     // Mount language selector
     if (this._languageSelector) {
       this._languageSelector.dispose();
@@ -1272,6 +1308,25 @@ export class PauseMenu {
         serverSettingsBtn.classList.add('hidden');
       }
     }
+
+    const allowPauseToggle = this.container.querySelector('.allow-pause-toggle');
+    if (allowPauseToggle) {
+      if (shouldShowNetworkButtons) {
+        allowPauseToggle.classList.remove('hidden');
+      } else {
+        allowPauseToggle.classList.add('hidden');
+      }
+    }
+  }
+
+  setAllowAllPlayersPause(allowed: boolean): void {
+    this.allowAllPlayersPauseValue = allowed;
+    const cb = this.container.querySelector<HTMLInputElement>('.allow-pause-checkbox');
+    if (cb) cb.checked = allowed;
+  }
+
+  onAllowAllPauseToggle(cb: (allowed: boolean) => void): void {
+    this.onAllowAllPauseChangeCallback = cb;
   }
 
   /**
