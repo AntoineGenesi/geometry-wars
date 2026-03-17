@@ -106,10 +106,16 @@ export const DEFAULT_DEPTH_CURVE: DepthOpacityCurve = DEPTH_OPACITY_PRESETS.stee
  * surface. exponent=0.5 (sqrt curve) compresses the dim end and expands the
  * bright end — so dot=0 (equator/tangent) maps to ~0.8 opacity (bright).
  * Only bullets with dot < -0.3 get noticeably dim.
- * farSideMin=0.1 → faint glow for far-side bullets (still visible as a cue).
+ *
+ * s44r25-04: farSideMin raised from 0.1 to 0.25. With the new bullet-normal
+ * approach (computeDepthVisibility(bulletPos, bulletNormal, cameraPos)), the
+ * "far side" case should rarely fire for normal gameplay (it only fires when
+ * bullets are physically on the back face of the surface relative to camera).
+ * The higher floor ensures bullets are never completely invisible even in
+ * edge cases (e.g. surface seam crossings, brief normal artifacts).
  */
 export const BULLET_DEPTH_CURVE: DepthOpacityCurve = {
-  farSideMin: 0.1,
+  farSideMin: 0.25,
   nearSideMax: 1.0,
   exponent: 0.5,
   fadeStartThreshold: -0.8,

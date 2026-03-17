@@ -461,15 +461,17 @@ export class GameLoop {
         // Existing bullet: update position/direction
         ctx.bulletInstanceManager.updateBullet(id, position, this._bulletSyncDir);
       }
-      // Depth-based dimming: use player's surface normal to determine which side of the
-      // surface each bullet is on. computeDepthVisibility(playerPos, playerNormal, bulletPos)
-      // computes playerNormal.dot(normalize(bulletPos − playerPos)):
-      //   > 0 → bullet is on the outward side (same side as camera) → bright
-      //   < 0 → bullet is on the far side (behind surface) → dim
-      // This works correctly for ALL surfaces (sphere, torus, cube, pill, tunnels).
-      // Old approach (normalize(bulletPos) as normal) was only correct for sphere surfaces.
+      // Depth-based dimming: use the bullet's OWN surface normal + camera position.
+      // Old approach (playerPos, playerNormal, bulletPos) fails on concave surfaces:
+      // on the torus inner ring, player normal points outward while bullet travels
+      // inward → dot ≈ -1 → farSideMin → invisible bullets (s44r25-04).
+      // New: computeDepthVisibility(bulletPos, bulletNormal, cameraPos)
+      //   > 0 → camera is on the "front face" side of bullet's surface → bright
+      //   < 0 → camera is behind the surface → dim
+      // Correct for ALL surfaces including concave (torus inner ring, tunnels, cube faces).
+      this._bulletNormal.set(data.normalX, data.normalY, data.normalZ);
       const bulletOpacity = computeDepthVisibility(
-        ctx.playerWalker.position, ctx.playerWalker.normal, position, BULLET_DEPTH_CURVE,
+        position, this._bulletNormal, camPos, BULLET_DEPTH_CURVE,
       );
       ctx.bulletInstanceManager.setBulletOpacity(id, bulletOpacity);
     });

@@ -46,6 +46,12 @@ interface BulletData {
   sphereRadius: number;
   /** Player who fired this bullet (-1 = unowned, 0 = P1, 1 = P2, etc.) */
   ownerId: number;
+  /** Current outward surface normal at bullet position (updated each frame).
+   *  Used for depth-based opacity: computeDepthVisibility(bulletPos, bulletNormal, cameraPos)
+   *  instead of player-relative approach which fails on concave surfaces (torus inner ring etc.). */
+  normalX: number;
+  normalY: number;
+  normalZ: number;
   /** Geodesic face position for face-walking movement (avoids BVH vertex attraction). */
   facePos: FacePosition | null;
   /** Face index on the mesh surface (for geodesic tracking). */
@@ -130,6 +136,9 @@ export class BulletPool {
         dirZ: 0,
         sphereRadius: DEFAULT_SPHERE_RADIUS,
         ownerId: -1,
+        normalX: 0,
+        normalY: 1,
+        normalZ: 0,
         facePos: null,
         faceIndex: 0,
         isCompanion: false,
@@ -208,13 +217,19 @@ export class BulletPool {
       if (closest) {
         b.facePos = this.meshSurface.initGeodesicPosition(closest.point, closest.faceIndex);
         b.faceIndex = closest.faceIndex;
+        // Initialize surface normal for depth-based opacity computation
+        b.normalX = closest.normal.x;
+        b.normalY = closest.normal.y;
+        b.normalZ = closest.normal.z;
       } else {
         b.facePos = null;
         b.faceIndex = 0;
+        b.normalX = 0; b.normalY = 1; b.normalZ = 0;
       }
     } else {
       b.facePos = null;
       b.faceIndex = 0;
+      b.normalX = 0; b.normalY = 1; b.normalZ = 0;
     }
 
     const line = this.lines[idx];
@@ -306,6 +321,10 @@ export class BulletPool {
           b.dirX = _tempDir.x;
           b.dirY = _tempDir.y;
           b.dirZ = _tempDir.z;
+          // Update surface normal from BVH fallback
+          b.normalX = normal.x;
+          b.normalY = normal.y;
+          b.normalZ = normal.z;
         } else {
           // Geodesic walk succeeded
           line.position.copy(geoResult.position);
@@ -323,6 +342,10 @@ export class BulletPool {
             this.kill(i);
             continue;
           }
+          // Update surface normal for depth-based opacity computation
+          b.normalX = geoResult.normal.x;
+          b.normalY = geoResult.normal.y;
+          b.normalZ = geoResult.normal.z;
 
           // If geodesic only covered part of the distance, use BVH for remainder
           const remaining = dist - geoResult.distanceTraveled;
@@ -383,6 +406,10 @@ export class BulletPool {
         b.dirX = _tempDir.x;
         b.dirY = _tempDir.y;
         b.dirZ = _tempDir.z;
+        // Update surface normal from BVH-only path
+        b.normalX = normal.x;
+        b.normalY = normal.y;
+        b.normalZ = normal.z;
       } else {
         // -- Legacy sphere projection (fallback) --
         const currentDist = line.position.length();
@@ -403,6 +430,10 @@ export class BulletPool {
         b.dirX = _tempDir.x;
         b.dirY = _tempDir.y;
         b.dirZ = _tempDir.z;
+        // Update surface normal from sphere projection (normal = normalized position)
+        b.normalX = _tempNormal.x;
+        b.normalY = _tempNormal.y;
+        b.normalZ = _tempNormal.z;
       }
 
       // Orient the line visual to match direction (reuse temp vector)
