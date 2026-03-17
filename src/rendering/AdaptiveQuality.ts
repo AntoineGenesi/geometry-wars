@@ -126,7 +126,7 @@ const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualitySettings>> = {
     bloomEnabled: false,
     trailDetail: TrailDetail.DISABLED,
     enemyDetail: EnemyDetail.BILLBOARD,
-    maxVisibleEnemies: 50,
+    maxVisibleEnemies: 0, // s44r26-01: was 50 — cap made enemies 51+ completely invisible (opacity=0). LOD handles perf.
     shadowsEnabled: false,
     postProcessingEnabled: false,
   },
@@ -136,7 +136,7 @@ const QUALITY_PRESETS: Readonly<Record<QualityLevel, QualitySettings>> = {
     bloomEnabled: false,
     trailDetail: TrailDetail.DISABLED,
     enemyDetail: EnemyDetail.BILLBOARD,
-    maxVisibleEnemies: 50,
+    maxVisibleEnemies: 0, // s44r26-01: was 50 — cap made enemies 51+ completely invisible (opacity=0). LOD handles perf.
     shadowsEnabled: false,
     postProcessingEnabled: false,
   },

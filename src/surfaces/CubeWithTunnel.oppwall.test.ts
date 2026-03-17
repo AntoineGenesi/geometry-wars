@@ -23,7 +23,7 @@ const PROXIMITY_NEAR_UV = 0.08
 const PROXIMITY_FADE_UV = 0.15
 const SURFACE_NEAR_UV = 0.15
 const SURFACE_FAR_UV = 0.45
-const SURFACE_DIM_OPACITY = 0.08
+const SURFACE_DIM_OPACITY = 0.25 // s44r26-01: raised from 0.08→0.15→0.25 (parity with RenderLoop.ts)
 
 /**
  * Simulates RenderLoop's per-enemy visibility computation with the S37 fix applied.
