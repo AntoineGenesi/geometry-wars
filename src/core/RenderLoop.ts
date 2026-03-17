@@ -460,6 +460,7 @@ export class RenderLoop {
       this._lastHudUpdateTime = hudNow;
       UIHelpers.updateUI(ctx.player, ctx.weaponManager);
       UIHelpers.updateBoostDisplay(ctx.player.boostActive, ctx.player.boostCooldown);
+      UIHelpers.updateWaveDisplay(ctx.waveScheduler.getCurrentWave());
 
       // Update weapon inventory HUD
       ctx.weaponHUD.update(ctx.weaponManager.getInventory(), ctx.weaponManager.getCurrentWeapon(), ctx.weaponMastery.getAllProgress(), ctx.weaponManager.getSessionLevels(), ctx.persistentMasteryLevels);

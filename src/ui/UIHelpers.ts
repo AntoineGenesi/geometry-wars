@@ -23,6 +23,7 @@ export class UIHelpers {
   private static comboEl = document.getElementById('combo-display')!;
   private static boostEl = document.getElementById('boost-display')!;
   private static gameModeEl = document.getElementById('game-mode-display') as HTMLElement | null;;
+  private static waveEl = document.getElementById('wave-display') as HTMLElement | null;
 
   /**
    * Activate death cam visual effect: grayscale + darkening on the game canvas.
@@ -224,6 +225,15 @@ export class UIHelpers {
     } else {
       this.gameModeEl.style.display = 'none';
     }
+  }
+
+  /**
+   * Update wave number display (SP only).
+   * Pass 0 to hide (before first wave).
+   */
+  static updateWaveDisplay(waveNum: number): void {
+    if (!this.waveEl) return;
+    this.waveEl.textContent = waveNum > 0 ? `WAVE ${waveNum}` : '';
   }
 
   /**
