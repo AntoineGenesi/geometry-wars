@@ -12,7 +12,6 @@ import { MasteryPointStore } from '../systems/MasteryPointStore';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { GameSettingsPanel } from './GameSettingsPanel';
 import type { GameSettings } from '../../server/shared/GameSettings';
-import { type VisualMode } from './VisualStyleSettings';
 
 /**
  * Pause menu overlay.
@@ -93,7 +92,7 @@ export class PauseMenu {
   private container: HTMLDivElement;
   private onResumeCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
-  private onVisualModeChangeCallback: ((mode: VisualMode) => void) | null = null;
+  private onVisualModeChangeCallback: ((mode: 'pixelated' | 'modern') => void) | null = null;
   private onGraphicsChangeCallback: ((settings: GraphicsSettings) => void) | null = null;
   private onLookModeCallback: (() => void) | null = null;
   private isPaused: boolean = false;
@@ -103,7 +102,7 @@ export class PauseMenu {
   private serverPaused: boolean = true;
   private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
   private perfLogger: PerformanceLogger | null = null;
-  private visualMode: VisualMode = 'pixelated';
+  private visualMode: 'pixelated' | 'modern' = 'pixelated';
   private joinUrl: string | null = null;
   private isInLookMode: boolean = false;
   private _langUnsub: (() => void) | null = null;
@@ -117,6 +116,8 @@ export class PauseMenu {
   // Non-host read-only settings display (s44j-settings-16f)
   private gameSettingsDisplay: GameSettings | null = null;
   private hasPendingSettingsDisplay: boolean = false;
+  private allowAllPlayersPauseValue: boolean = false;
+  private onAllowAllPauseChangeCallback: ((allowed: boolean) => void) | null = null;
 
   constructor() {
     this.container = document.createElement('div');
@@ -196,6 +197,10 @@ export class PauseMenu {
               <span class="btn-icon">&#x2699;</span>
               <span>SERVER SETTINGS</span>
             </button>
+            <label class="allow-pause-toggle hidden">
+              <input type="checkbox" class="allow-pause-checkbox" />
+              <span>Allow all players to pause</span>
+            </label>
           </div>
 
           <div class="pause-stats-container">
@@ -418,6 +423,28 @@ export class PauseMenu {
 
       #pause-menu .server-settings-btn.hidden {
         display: none;
+      }
+
+      #pause-menu .allow-pause-toggle {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 4px;
+        padding: 6px 10px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 4px;
+        color: #aaa;
+        font-size: 11px;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      #pause-menu .allow-pause-toggle.hidden {
+        display: none;
+      }
+
+      #pause-menu .allow-pause-checkbox {
+        cursor: pointer;
       }
 
       #pause-menu .btn-icon {
@@ -970,9 +997,7 @@ export class PauseMenu {
 
     const visualModeBtn = this.container.querySelector('[data-action="visual-mode"]');
     visualModeBtn?.addEventListener('click', () => {
-      const modes: VisualMode[] = ['modern', 'pixelated', 'desktop-defender'];
-      const idx = modes.indexOf(this.visualMode);
-      this.visualMode = modes[(idx + 1) % modes.length];
+      this.visualMode = this.visualMode === 'pixelated' ? 'modern' : 'pixelated';
       this.updateVisualModeLabel();
       this.onVisualModeChangeCallback?.(this.visualMode);
     });
@@ -1019,6 +1044,14 @@ export class PauseMenu {
     serverSettingsBtn?.addEventListener('click', () => {
       this.openServerSettings();
     });
+
+    const allowPauseCheckbox = this.container.querySelector<HTMLInputElement>('.allow-pause-checkbox');
+    if (allowPauseCheckbox) {
+      allowPauseCheckbox.addEventListener('change', () => {
+        this.allowAllPlayersPauseValue = allowPauseCheckbox.checked;
+        this.onAllowAllPauseChangeCallback?.(allowPauseCheckbox.checked);
+      });
+    }
 
     // Mount language selector
     if (this._languageSelector) {
@@ -1136,31 +1169,27 @@ export class PauseMenu {
    * Set the current visual mode. Updates the button label.
    * Call this on startup to sync with the saved mode.
    */
-  setVisualMode(mode: VisualMode): void {
+  setVisualMode(mode: 'pixelated' | 'modern'): void {
     this.visualMode = mode;
     this.updateVisualModeLabel();
   }
 
   /** Get the current visual mode. */
-  getVisualMode(): VisualMode {
+  getVisualMode(): 'pixelated' | 'modern' {
     return this.visualMode;
   }
 
   /** Register callback for when the user toggles the visual mode. */
-  onVisualModeChange(callback: (mode: VisualMode) => void): void {
+  onVisualModeChange(callback: (mode: 'pixelated' | 'modern') => void): void {
     this.onVisualModeChangeCallback = callback;
   }
 
   private updateVisualModeLabel(): void {
     const label = this.container.querySelector('.visual-mode-label');
     if (label) {
-      if (this.visualMode === 'pixelated') {
-        label.textContent = t('pauseMenu.stylePixelated');
-      } else if (this.visualMode === 'desktop-defender') {
-        label.textContent = t('pauseMenu.styleDesktopDefender');
-      } else {
-        label.textContent = t('pauseMenu.styleModern');
-      }
+      label.textContent = this.visualMode === 'pixelated'
+        ? t('pauseMenu.stylePixelated')
+        : t('pauseMenu.styleModern');
     }
   }
 
@@ -1279,6 +1308,25 @@ export class PauseMenu {
         serverSettingsBtn.classList.add('hidden');
       }
     }
+
+    const allowPauseToggle = this.container.querySelector('.allow-pause-toggle');
+    if (allowPauseToggle) {
+      if (shouldShowNetworkButtons) {
+        allowPauseToggle.classList.remove('hidden');
+      } else {
+        allowPauseToggle.classList.add('hidden');
+      }
+    }
+  }
+
+  setAllowAllPlayersPause(allowed: boolean): void {
+    this.allowAllPlayersPauseValue = allowed;
+    const cb = this.container.querySelector<HTMLInputElement>('.allow-pause-checkbox');
+    if (cb) cb.checked = allowed;
+  }
+
+  onAllowAllPauseToggle(cb: (allowed: boolean) => void): void {
+    this.onAllowAllPauseChangeCallback = cb;
   }
 
   /**

@@ -539,13 +539,6 @@ async function main() {
   // -- Visual style (user-selected from Visual Styles playground) --
   const savedStyle = loadVisualStyle();
 
-  /** Adjust bloom strength for visual mode — mirrors the same function in main.ts. */
-  function getAdjustedBloomStrength(baseStrength: number, mode: VisualMode): number {
-    if (mode === 'pixelated') return Math.max(0, baseStrength * 0.4);
-    if (mode === 'desktop-defender') return Math.max(0, baseStrength * 0.25);
-    return baseStrength;
-  }
-
   // -- Game engine (same config as co-op, mobile reduces bloom) --
   // Use Game.create() so WebGPU capability detection and ?renderer=webgpu URL param work.
   const game = await Game.create({
@@ -609,14 +602,9 @@ async function main() {
     }
   });
 
-  // Apply saved visual mode (bloom resolution, scene background, bloom multiplier)
+  // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
   const savedVisualMode = loadVisualMode();
   game.setVisualMode(savedVisualMode);
-  {
-    const defaultStrength = mobile ? 0.4 : 0.7;
-    const baseStrength = savedStyle?.bloomStrength ?? defaultStrength;
-    game.setBloomSettings(getAdjustedBloomStrength(baseStrength, savedVisualMode), 0.6);
-  }
 
   const scene = game.scene;
   const camera = game.camera;
@@ -1340,6 +1328,8 @@ async function main() {
   // Key: player server ID, Value: lives count from last onStateChange call.
   const prevLivesMap = new Map<string, number>();
   let isPaused = false;
+  let allowAllPlayersPause = false;
+  let pausedByName = '';
   let isInLookMode = false;
   // Holds the startup config hash received from the server so onStartupConfig
   // can store it in localStorage along with the cached data.
@@ -2263,9 +2253,6 @@ async function main() {
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
-    const defaultStrength = mobile ? 0.4 : 0.7;
-    const baseStrength = savedStyle?.bloomStrength ?? defaultStrength;
-    game.setBloomSettings(getAdjustedBloomStrength(baseStrength, mode), 0.6);
     particles.setVisualMode(mode);
   });
 
@@ -2275,6 +2262,10 @@ async function main() {
       surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
       surface.setSurfaceColor(gfxSettings.surfaceColor);
     }
+  });
+
+  pauseMenu.onAllowAllPauseToggle((allowed: boolean) => {
+    network.sendSetAllowAllPause(allowed);
   });
 
   // Show short code QR in pause menu — 5-digit code is smaller and more reliable than full URL.
@@ -2637,6 +2628,9 @@ async function main() {
 
   function showLocalMenu(): void {
     localMenuOpen = true;
+    localMenuWarning.textContent = allowAllPlayersPause
+      ? '⚠  Press Escape to pause the game for everyone'
+      : '⚠  Game continues — only the host can pause the server';
     // Allow touch events to reach menu buttons while local menu is open.
     if (input instanceof TouchInput) input.setGamePaused(true);
     // Send zero input immediately so the server stops moving this player
@@ -2711,8 +2705,8 @@ async function main() {
             netMainLog('[NetworkMain] Host status confirmed on ESC press');
           }
         }
-        if (isHost) {
-          // Host: pause the server — enemies freeze for ALL players
+        if (isHost || allowAllPlayersPause) {
+          // Host or allowed player: pause the server — enemies freeze for ALL players
           isPaused = true;
           network.sendPause(true);
           showPauseOverlay(true);
@@ -2720,8 +2714,8 @@ async function main() {
           // Non-host: open local menu (only host can pause the server)
           showLocalMenu();
         }
-      } else if (isHost) {
-        // Server is paused (by host) — host can resume with Escape
+      } else if (isHost || allowAllPlayersPause) {
+        // Server is paused — host or allowed player can resume with Escape
         isPaused = false;
         network.sendPause(false);
         showPauseOverlay(false);
@@ -2751,22 +2745,22 @@ async function main() {
       }
 
       if (!isPaused) {
-        // Pause: only host can pause the server
+        // Pause: host or allowed player can pause the server
         if (!isHost) {
           const serverHostId = network.getServerHostId();
           if (serverHostId && serverHostId === localPlayerId) {
             isHost = true;
           }
         }
-        if (isHost) {
-          // Host: pause the server — enemies freeze for ALL players
+        if (isHost || allowAllPlayersPause) {
+          // Host or allowed player: pause the server — enemies freeze for ALL players
           isPaused = true;
           network.sendPause(true);
           showPauseOverlay(true);
         }
-        // Non-host: P key does nothing when game is running (can't pause server)
-      } else if (isHost) {
-        // Server is paused (by host) — host can resume with P
+        // Non-host without permission: P key does nothing when game is running
+      } else if (isHost || allowAllPlayersPause) {
+        // Server is paused — host or allowed player can resume with P
         isPaused = false;
         network.sendPause(false);
         showPauseOverlay(false);
@@ -2807,8 +2801,8 @@ async function main() {
             isHost = true;
           }
         }
-        if (isHost) {
-          // Host: pause the server — enemies freeze for ALL players
+        if (isHost || allowAllPlayersPause) {
+          // Host or allowed player: pause the server — enemies freeze for ALL players
           isPaused = true;
           network.sendPause(true);
           showPauseOverlay(true);
@@ -2816,8 +2810,8 @@ async function main() {
           // Non-host: open local menu (only host can pause the server)
           showLocalMenu();
         }
-      } else if (isHost) {
-        // Server is paused by host — tap pause again to resume
+      } else if (isHost || allowAllPlayersPause) {
+        // Server is paused — host or allowed player can resume
         isPaused = false;
         network.sendPause(false);
         showPauseOverlay(false);
@@ -5008,6 +5002,14 @@ async function main() {
     }
 
     // Sync pause state from server
+    allowAllPlayersPause = state.allowAllPlayersPause ?? false;
+    if (state.pausedById && state.players) {
+      const pauser = state.players.get(state.pausedById);
+      pausedByName = pauser?.name ?? '';
+    } else {
+      pausedByName = '';
+    }
+    pauseMenu.setAllowAllPlayersPause(allowAllPlayersPause);
     if (state.isPaused !== isPaused) {
       showPauseOverlay(state.isPaused);
     }
@@ -5226,7 +5228,7 @@ async function main() {
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
     } else if (state.gameStarted && currentRoomPhase === 'playing') {
-      updateStatusText(state.isPaused ? 'PAUSED' : `Wave ${state.waveNumber}`);
+      updateStatusText(state.isPaused ? (pausedByName ? `PAUSED by ${pausedByName}` : 'PAUSED') : `Wave ${state.waveNumber}`);
       startBtn.style.display = 'none';
       modeSelectorDiv.style.display = 'none';
       nonHostSettingsEl.style.display = 'none';
@@ -7194,9 +7196,9 @@ async function main() {
     // for enemies on the far side, leaving them fully bright without UV-distance clamping.
     const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
     const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
-    const NET_SURFACE_DIM_OPC  = 0.25;   // minimum opacity for far-away/behind-surface enemies.
-    // s44r22-01: lowered from 0.40→0.08. s44r25-02: raised 0.08→0.15. s44r26-01: raised 0.15→0.25.
-    // 0.15 was still perceptually invisible on sphere-tunnel dark background at 90+ entities.
+    const NET_SURFACE_DIM_OPC  = 0.15;   // minimum opacity for far-away/behind-surface enemies.
+    // s44r22-01: lowered from 0.40→0.08. s44r25-02: raised 0.08→0.15 (parity with RenderLoop.ts SURFACE_DIM_OPACITY).
+    // 0.08 was perceptually invisible on dark torus backgrounds at 150 entities — see RenderLoop.ts comment.
     // World-space proximity override constants (SP parity — RenderLoop.ts PROXIMITY_*).
     const NET_PROXIMITY_NEAR_WORLD    = 2.0;
     const NET_PROXIMITY_NEAR_WORLD_SQ = NET_PROXIMITY_NEAR_WORLD * NET_PROXIMITY_NEAR_WORLD;
