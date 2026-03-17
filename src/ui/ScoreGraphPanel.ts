@@ -2,14 +2,17 @@
  * ScoreGraphPanel — AoE2-style post-game score/kill timeline graph.
  *
  * Renders to a <canvas> element using Canvas 2D (NO Three.js).
- * Shows score-over-time as a gradient area chart with event markers.
+ * Shows score-over-time (or kills-over-time) as a gradient area chart with event markers.
  *
  * Features:
- * - Smooth Catmull-Rom spline through score data points (sampled every 500ms)
+ * - Smooth Catmull-Rom spline through score/kills data points (sampled every 500ms)
  * - Gradient area fill: neon cyan at curve → dark navy at bottom
  * - Event markers: wave starts, player deaths, kill streaks, pickups
  * - Draw-in animation (~1.2s left-to-right reveal)
  * - Summary stats row below graph
+ * - Toggle between score view and kills view
+ * - Scroll wheel zoom on X axis (zoom in/out centered on cursor)
+ * - Mouse hover: vertical crosshair + tooltip with score, kills, wave, nearby events
  */
 
 import type { PerformanceLogger, GameEvent } from '../core/PerformanceLogger';
@@ -24,12 +27,20 @@ const GRAPH_PADDING = { top: 20, right: 20, bottom: 48, left: 56 };
 const DRAW_ANIMATION_DURATION = 1200; // ms for left-to-right reveal
 const MIN_DATA_POINTS = 3;
 
+// Zoom constraints
+const MIN_ZOOM_FRACTION = 0.05; // can zoom to as little as 5% of total time
+const ZOOM_FACTOR = 0.85;       // each wheel step zooms by this factor
+
 // Neon palette (matches existing GW UI)
 const COLOR_SCORE_LINE = '#00ffff';
 const COLOR_SCORE_GLOW = 'rgba(0, 255, 255, 0.5)';
+const COLOR_KILLS_LINE = '#ff44aa';
+const COLOR_KILLS_GLOW = 'rgba(255, 68, 170, 0.5)';
 const COLOR_GRID = 'rgba(0, 60, 80, 0.4)';
 const COLOR_AXIS = 'rgba(0, 150, 180, 0.6)';
 const COLOR_AXIS_LABEL = '#446688';
+const COLOR_CROSSHAIR = 'rgba(255, 255, 255, 0.4)';
+const COLOR_CROSSHAIR_DOT = '#ffffff';
 
 // Event marker colors
 const EVENT_COLORS: Record<string, string> = {
@@ -56,7 +67,6 @@ const EVENT_ICONS: Record<string, string> = {
 /**
  * Compute a Catmull-Rom spline path for a canvas 2D context.
  * pts: array of {x, y} control points.
- * tension: 0 = standard CR, 0.5 = uniform
  */
 function catmullRomPath(ctx: CanvasRenderingContext2D, pts: Array<{x: number; y: number}>): void {
   if (pts.length < 2) return;
@@ -86,8 +96,12 @@ export class ScoreGraphPanel {
   private animFrameId: number | null = null;
   private animStart: number | null = null;
   private canvas: HTMLCanvasElement | null = null;
+  private tooltipEl: HTMLElement | null = null;
+  private wrapper: HTMLElement | null = null;
+
   private dataPoints: PerformanceDataPoint[] = [];
   private events: ReadonlyArray<GameEvent> = [];
+
   private summary: {
     peakScore: number;
     totalKills: number;
@@ -95,6 +109,21 @@ export class ScoreGraphPanel {
     peakWave: number;
     duration: number;
   } | null = null;
+
+  // View state
+  private viewMode: 'score' | 'kills' = 'score';
+
+  // Zoom state (normalized fractions of total time, 0..1)
+  private zoomStart = 0;
+  private zoomEnd   = 1;
+
+  // Hover state
+  private hoverFraction: number | null = null; // fraction of visible range
+
+  // Bound event handlers (for cleanup)
+  private _onWheel: ((e: WheelEvent) => void) | null = null;
+  private _onMouseMove: ((e: MouseEvent) => void) | null = null;
+  private _onMouseLeave: (() => void) | null = null;
 
   /**
    * Build and return an HTMLElement containing the score graph canvas + stats.
@@ -122,12 +151,19 @@ export class ScoreGraphPanel {
         : 0,
     };
 
+    // Reset zoom/hover
+    this.zoomStart = 0;
+    this.zoomEnd   = 1;
+    this.hoverFraction = null;
+    this.viewMode = 'score';
+
     const container = this.buildContainer();
     return container;
   }
 
   dispose(): void {
     this.cancelAnimation();
+    this.detachCanvasListeners();
   }
 
   // ---------------------------------------------------------------------------
@@ -137,6 +173,7 @@ export class ScoreGraphPanel {
   private buildContainer(): HTMLElement {
     const wrapper = document.createElement('div');
     wrapper.className = 'sgp-wrapper';
+    this.wrapper = wrapper;
 
     if (this.dataPoints.length < MIN_DATA_POINTS) {
       const msg = document.createElement('div');
@@ -146,12 +183,27 @@ export class ScoreGraphPanel {
       return wrapper;
     }
 
-    // Canvas for the graph
+    // Controls row: toggle + zoom reset
+    wrapper.appendChild(this.buildControlsRow());
+
+    // Canvas container (position: relative for tooltip overlay)
+    const canvasContainer = document.createElement('div');
+    canvasContainer.className = 'sgp-canvas-container';
+    canvasContainer.style.position = 'relative';
+
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'sgp-canvas';
     this.canvas.style.width = '100%';
     this.canvas.style.height = `${GRAPH_HEIGHT}px`;
-    wrapper.appendChild(this.canvas);
+    canvasContainer.appendChild(this.canvas);
+
+    // Tooltip
+    this.tooltipEl = document.createElement('div');
+    this.tooltipEl.className = 'sgp-tooltip';
+    this.tooltipEl.style.display = 'none';
+    canvasContainer.appendChild(this.tooltipEl);
+
+    wrapper.appendChild(canvasContainer);
 
     // Stats row
     wrapper.appendChild(this.buildStatsRow());
@@ -165,6 +217,62 @@ export class ScoreGraphPanel {
     return wrapper;
   }
 
+  private buildControlsRow(): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'sgp-controls-row';
+
+    // View toggle
+    const toggleGroup = document.createElement('div');
+    toggleGroup.className = 'sgp-toggle-group';
+
+    const scoreBtn = document.createElement('button');
+    scoreBtn.className = 'sgp-toggle-btn sgp-toggle-active';
+    scoreBtn.textContent = 'SCORE';
+    scoreBtn.dataset.mode = 'score';
+
+    const killsBtn = document.createElement('button');
+    killsBtn.className = 'sgp-toggle-btn';
+    killsBtn.textContent = 'KILLS';
+    killsBtn.dataset.mode = 'kills';
+
+    const setMode = (mode: 'score' | 'kills') => {
+      this.viewMode = mode;
+      scoreBtn.classList.toggle('sgp-toggle-active', mode === 'score');
+      killsBtn.classList.toggle('sgp-toggle-active', mode === 'kills');
+      this.redraw();
+    };
+
+    scoreBtn.addEventListener('click', () => setMode('score'));
+    killsBtn.addEventListener('click', () => setMode('kills'));
+
+    toggleGroup.appendChild(scoreBtn);
+    toggleGroup.appendChild(killsBtn);
+    row.appendChild(toggleGroup);
+
+    // Zoom reset button (shown only when zoomed)
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'sgp-zoom-reset';
+    resetBtn.textContent = '⟳ RESET ZOOM';
+    resetBtn.style.display = 'none';
+    resetBtn.addEventListener('click', () => {
+      this.zoomStart = 0;
+      this.zoomEnd   = 1;
+      this.updateZoomResetVisibility(resetBtn);
+      this.redraw();
+    });
+    row.appendChild(resetBtn);
+
+    // Store ref to reset button so we can show/hide it on zoom events
+    (row as HTMLElement & { _zoomResetBtn?: HTMLButtonElement })._zoomResetBtn = resetBtn;
+
+    return row;
+  }
+
+  private updateZoomResetVisibility(btn: HTMLElement): void {
+    const isZoomed = this.zoomStart > 0.001 || this.zoomEnd < 0.999;
+    btn.style.display = isZoomed ? 'inline-flex' : 'none';
+  }
+
   private initCanvas(): void {
     if (!this.canvas) return;
     const rect = this.canvas.getBoundingClientRect();
@@ -172,6 +280,7 @@ export class ScoreGraphPanel {
     const w = rect.width || this.canvas.offsetWidth || 600;
     this.canvas.width = Math.round(w * dpr);
     this.canvas.height = Math.round(GRAPH_HEIGHT * dpr);
+    this.attachCanvasListeners();
     this.startAnimation();
   }
 
@@ -215,6 +324,128 @@ export class ScoreGraphPanel {
   }
 
   // ---------------------------------------------------------------------------
+  // Private: canvas event listeners
+  // ---------------------------------------------------------------------------
+
+  private attachCanvasListeners(): void {
+    if (!this.canvas) return;
+
+    this._onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = this.canvas!.getBoundingClientRect();
+      const mouseXFraction = (e.clientX - rect.left) / rect.width;
+      this.handleZoom(e.deltaY > 0 ? 1 / ZOOM_FACTOR : ZOOM_FACTOR, mouseXFraction);
+    };
+
+    this._onMouseMove = (e: MouseEvent) => {
+      const rect = this.canvas!.getBoundingClientRect();
+      // Fraction within visible plot area
+      const logW = rect.width;
+      const plotX = GRAPH_PADDING.left;
+      const plotW = logW - GRAPH_PADDING.left - GRAPH_PADDING.right;
+      const relX = e.clientX - rect.left - plotX;
+      const plotFraction = Math.max(0, Math.min(1, relX / plotW));
+      this.hoverFraction = plotFraction;
+      this.redraw();
+      this.updateTooltip(e.clientX - rect.left, e.clientY - rect.top, plotFraction, rect);
+    };
+
+    this._onMouseLeave = () => {
+      this.hoverFraction = null;
+      if (this.tooltipEl) this.tooltipEl.style.display = 'none';
+      this.redraw();
+    };
+
+    this.canvas.addEventListener('wheel', this._onWheel, { passive: false });
+    this.canvas.addEventListener('mousemove', this._onMouseMove);
+    this.canvas.addEventListener('mouseleave', this._onMouseLeave);
+  }
+
+  private detachCanvasListeners(): void {
+    if (!this.canvas) return;
+    if (this._onWheel) this.canvas.removeEventListener('wheel', this._onWheel);
+    if (this._onMouseMove) this.canvas.removeEventListener('mousemove', this._onMouseMove);
+    if (this._onMouseLeave) this.canvas.removeEventListener('mouseleave', this._onMouseLeave);
+  }
+
+  private handleZoom(factor: number, centerFraction: number): void {
+    const range = this.zoomEnd - this.zoomStart;
+    const newRange = Math.max(MIN_ZOOM_FRACTION, Math.min(1, range * factor));
+    const center = this.zoomStart + centerFraction * range;
+    let newStart = center - centerFraction * newRange;
+    let newEnd   = center + (1 - centerFraction) * newRange;
+
+    // Clamp to [0, 1]
+    if (newStart < 0) { newEnd -= newStart; newStart = 0; }
+    if (newEnd > 1)   { newStart -= (newEnd - 1); newEnd = 1; }
+    newStart = Math.max(0, newStart);
+    newEnd   = Math.min(1, newEnd);
+
+    this.zoomStart = newStart;
+    this.zoomEnd   = newEnd;
+
+    // Update reset button visibility
+    const controlsRow = this.wrapper?.querySelector('.sgp-controls-row') as (HTMLElement & { _zoomResetBtn?: HTMLButtonElement }) | null;
+    if (controlsRow?._zoomResetBtn) {
+      this.updateZoomResetVisibility(controlsRow._zoomResetBtn);
+    }
+
+    this.redraw();
+  }
+
+  private updateTooltip(mouseX: number, mouseY: number, plotFraction: number, rect: DOMRect): void {
+    if (!this.tooltipEl) return;
+    const pts = this.dataPoints;
+    if (pts.length < MIN_DATA_POINTS) return;
+
+    const maxTime = pts[pts.length - 1].time;
+    const visibleStart = this.zoomStart * maxTime;
+    const visibleEnd   = this.zoomEnd   * maxTime;
+    const hoveredTime  = visibleStart + plotFraction * (visibleEnd - visibleStart);
+
+    // Interpolate score and kills at hovered time
+    const score = interpolateAtTime(pts, hoveredTime, 'score');
+    const kills = interpolateAtTime(pts, hoveredTime, 'kills');
+
+    // Current wave at this time
+    const waveAtTime = getWaveAtTime(this.events, hoveredTime);
+
+    // Nearby events (within ±3s)
+    const nearbyEvents = this.getFilteredEvents(maxTime)
+      .filter(e => Math.abs(e.time - hoveredTime) < 3)
+      .slice(0, 3);
+
+    // Format tooltip HTML
+    let html = `
+      <div class="sgp-tt-time">${formatDuration(hoveredTime)}</div>
+      <div class="sgp-tt-row"><span class="sgp-tt-label">SCORE</span><span class="sgp-tt-val">${Math.round(score).toLocaleString()}</span></div>
+      <div class="sgp-tt-row"><span class="sgp-tt-label">KILLS</span><span class="sgp-tt-val">${Math.round(kills)}</span></div>
+    `;
+    if (waveAtTime > 0) {
+      html += `<div class="sgp-tt-row"><span class="sgp-tt-label">WAVE</span><span class="sgp-tt-val">${waveAtTime}</span></div>`;
+    }
+    if (nearbyEvents.length > 0) {
+      html += `<div class="sgp-tt-divider"></div>`;
+      for (const ev of nearbyEvents) {
+        const icon = EVENT_ICONS[ev.type] ?? '•';
+        const color = EVENT_COLORS[ev.type] ?? '#ffffff';
+        const label = getEventLabel(ev);
+        html += `<div class="sgp-tt-event" style="color:${color}">${icon} ${label}</div>`;
+      }
+    }
+    this.tooltipEl.innerHTML = html;
+
+    // Position tooltip: right of cursor when space available, else left
+    const tooltipW = 160;
+    const tooltipX = mouseX + 12 + tooltipW > rect.width ? mouseX - tooltipW - 12 : mouseX + 12;
+    const tooltipY = Math.max(4, mouseY - 40);
+
+    this.tooltipEl.style.left = `${tooltipX}px`;
+    this.tooltipEl.style.top  = `${tooltipY}px`;
+    this.tooltipEl.style.display = 'block';
+  }
+
+  // ---------------------------------------------------------------------------
   // Private: animation + drawing
   // ---------------------------------------------------------------------------
 
@@ -230,12 +461,13 @@ export class ScoreGraphPanel {
     }
   }
 
+  /** Called each frame during draw-in animation */
   private drawFrame(timestamp: number): void {
     if (this.animStart === null) this.animStart = timestamp;
     const elapsed = timestamp - this.animStart;
     const progress = Math.min(1, elapsed / DRAW_ANIMATION_DURATION);
 
-    this.render(progress);
+    this.renderWithProgress(progress);
 
     if (progress < 1) {
       this.animFrameId = requestAnimationFrame((ts) => this.drawFrame(ts));
@@ -244,7 +476,13 @@ export class ScoreGraphPanel {
     }
   }
 
-  private render(progress: number): void {
+  /** Re-render at full progress (for interaction updates) */
+  private redraw(): void {
+    if (this.animFrameId !== null) return; // still animating — will pick up changes
+    this.renderWithProgress(1);
+  }
+
+  private renderWithProgress(progress: number): void {
     if (!this.canvas) return;
     const ctx = this.canvas.getContext('2d');
     if (!ctx) return;
@@ -272,14 +510,33 @@ export class ScoreGraphPanel {
       return;
     }
 
-    // --- Compute domain ---
+    // --- Compute domain (full) ---
     const maxTime = pts[pts.length - 1].time;
-    const maxScore = Math.max(1, ...pts.map(p => p.score));
 
-    const toX = (t: number) => plotX + (t / maxTime) * plotW;
-    const toY = (s: number) => plotY + plotH - (s / maxScore) * plotH;
+    // Zoom window (in time units)
+    const visibleStart = this.zoomStart * maxTime;
+    const visibleEnd   = this.zoomEnd   * maxTime;
+    const visibleRange = visibleEnd - visibleStart;
 
-    // Clip to animated progress (left-to-right reveal)
+    // Choose data series
+    const isKills = this.viewMode === 'kills';
+    // Use kills or score from data points directly
+    const seriesValues: number[] = isKills
+      ? pts.map(p => p.kills ?? 0)
+      : pts.map(p => p.score);
+
+    // Compute max within visible window for Y scaling
+    const inRangeValues = pts
+      .map((p, i) => ({ time: p.time, val: seriesValues[i] ?? 0 }))
+      .filter(pv => pv.time >= visibleStart && pv.time <= visibleEnd)
+      .map(pv => pv.val);
+    const maxVal = Math.max(1, ...inRangeValues);
+
+    // Map helpers
+    const toX = (t: number) => plotX + ((t - visibleStart) / visibleRange) * plotW;
+    const toY = (v: number) => plotY + plotH - (v / maxVal) * plotH;
+
+    // Clip to animated progress (left-to-right reveal during draw-in)
     const clipRight = plotX + plotW * progress;
     ctx.save();
     ctx.beginPath();
@@ -298,55 +555,75 @@ export class ScoreGraphPanel {
       ctx.stroke();
     }
 
-    // --- Build spline control points ---
-    // Downsample if too many points (keep up to 200 for performance)
+    // --- Build spline control points (only points in visible window + 1 outside each side) ---
     const maxPoints = 200;
     const step = pts.length > maxPoints ? Math.ceil(pts.length / maxPoints) : 1;
+
+    // Include one point before and one after the visible range for smooth edge splines
+    const firstIdx = Math.max(0, pts.findIndex((p: PerformanceDataPoint) => p.time >= visibleStart) - 1);
+    // findLastIndex is ES2023+; use a manual reverse search for compatibility
+    let lastRawIdx = pts.length - 1;
+    for (let i = pts.length - 1; i >= 0; i--) {
+      if (pts[i].time <= visibleEnd) { lastRawIdx = i; break; }
+    }
+    const lastIdx = Math.min(pts.length - 1, lastRawIdx + 1);
+
     const sampled: Array<{x: number; y: number}> = [];
-    for (let i = 0; i < pts.length; i += step) {
-      sampled.push({ x: toX(pts[i].time), y: toY(pts[i].score) });
+    for (let i = firstIdx; i <= lastIdx; i += step) {
+      sampled.push({ x: toX(pts[i].time), y: toY(seriesValues[i] ?? 0) });
     }
-    // Always include last point
-    const last = pts[pts.length - 1];
-    if (sampled[sampled.length - 1].x !== toX(last.time)) {
-      sampled.push({ x: toX(last.time), y: toY(last.score) });
+    // Always include last visible point
+    const lastP = pts[lastIdx];
+    if (sampled.length > 0 && sampled[sampled.length - 1].x !== toX(lastP.time)) {
+      sampled.push({ x: toX(lastP.time), y: toY(seriesValues[lastIdx] ?? 0) });
     }
+
+    if (sampled.length < 2) {
+      ctx.restore();
+      ctx.restore();
+      return;
+    }
+
+    // Colors depending on view mode
+    const lineColor = isKills ? COLOR_KILLS_LINE : COLOR_SCORE_LINE;
+    const glowColor = isKills ? COLOR_KILLS_GLOW : COLOR_SCORE_GLOW;
+    const gradTop   = isKills ? 'rgba(255, 68, 170, 0.35)' : 'rgba(0, 255, 255, 0.35)';
+    const gradMid   = isKills ? 'rgba(80, 0, 60, 0.2)'     : 'rgba(0, 80, 120, 0.2)';
+    const gradBot   = 'rgba(0, 0, 30, 0.05)';
 
     // --- Area fill (gradient) ---
     const grad = ctx.createLinearGradient(0, plotY, 0, plotY + plotH);
-    grad.addColorStop(0, 'rgba(0, 255, 255, 0.35)');
-    grad.addColorStop(0.6, 'rgba(0, 80, 120, 0.2)');
-    grad.addColorStop(1, 'rgba(0, 0, 30, 0.05)');
+    grad.addColorStop(0, gradTop);
+    grad.addColorStop(0.6, gradMid);
+    grad.addColorStop(1, gradBot);
 
     ctx.beginPath();
     catmullRomPath(ctx, sampled);
     ctx.lineTo(sampled[sampled.length - 1].x, plotY + plotH);
-    ctx.lineTo(plotX, plotY + plotH);
+    ctx.lineTo(Math.max(plotX, sampled[0].x), plotY + plotH);
     ctx.closePath();
     ctx.fillStyle = grad;
     ctx.fill();
 
-    // --- Score line (glow + solid) ---
-    // Glow pass
+    // --- Line (glow + solid) ---
     ctx.beginPath();
     catmullRomPath(ctx, sampled);
-    ctx.strokeStyle = COLOR_SCORE_GLOW;
+    ctx.strokeStyle = glowColor;
     ctx.lineWidth = 6;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.stroke();
 
-    // Crisp line
     ctx.beginPath();
     catmullRomPath(ctx, sampled);
-    ctx.strokeStyle = COLOR_SCORE_LINE;
+    ctx.strokeStyle = lineColor;
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // --- Event markers (vertical ticks + icons) ---
-    // Only show events that fall within the animated region
+    // --- Event markers (only within visible window) ---
     const animatedTime = maxTime * progress;
-    const visibleEvents = this.getFilteredEvents(maxTime);
+    const visibleEvents = this.getFilteredEvents(maxTime)
+      .filter(e => e.time >= visibleStart && e.time <= visibleEnd);
 
     for (const ev of visibleEvents) {
       if (ev.time > animatedTime) continue;
@@ -383,40 +660,74 @@ export class ScoreGraphPanel {
       }
     }
 
+    // --- Hover crosshair ---
+    if (this.hoverFraction !== null && progress >= 1) {
+      const hoverX = plotX + this.hoverFraction * plotW;
+      const hoveredTime = visibleStart + this.hoverFraction * visibleRange;
+
+      // Vertical crosshair line
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(hoverX, plotY);
+      ctx.lineTo(hoverX, plotY + plotH);
+      ctx.strokeStyle = COLOR_CROSSHAIR;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Dot on the curve at hover position
+      const hoveredVal = isKills
+        ? interpolateAtTime(pts, hoveredTime, 'kills')
+        : interpolateAtTime(pts, hoveredTime, 'score');
+      const dotY = toY(hoveredVal);
+
+      ctx.beginPath();
+      ctx.arc(hoverX, dotY, 5, 0, Math.PI * 2);
+      ctx.fillStyle = COLOR_CROSSHAIR_DOT;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(hoverX, dotY, 5, 0, Math.PI * 2);
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
     ctx.restore(); // pop clip
 
     // --- Axes ---
     ctx.strokeStyle = COLOR_AXIS;
     ctx.lineWidth = 1;
-    // Y axis
     ctx.beginPath();
     ctx.moveTo(plotX, plotY);
     ctx.lineTo(plotX, plotY + plotH);
     ctx.stroke();
-    // X axis
     ctx.beginPath();
     ctx.moveTo(plotX, plotY + plotH);
     ctx.lineTo(plotX + plotW, plotY + plotH);
     ctx.stroke();
 
-    // --- Axis labels ---
+    // --- Y axis labels ---
     ctx.fillStyle = COLOR_AXIS_LABEL;
     ctx.font = '10px Arial';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     for (let i = 0; i <= gridLines; i++) {
       const y = plotY + (plotH / gridLines) * i;
-      const val = maxScore - (maxScore / gridLines) * i;
-      ctx.fillText(formatScore(val), plotX - 6, y);
+      const val = maxVal - (maxVal / gridLines) * i;
+      const label = isKills ? String(Math.round(val)) : formatScore(val);
+      ctx.fillText(label, plotX - 6, y);
     }
 
-    // X axis time labels
+    // --- X axis time labels (based on visible window) ---
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     const timeLabels = 5;
     for (let i = 0; i <= timeLabels; i++) {
-      const t = (maxTime / timeLabels) * i;
+      const t = visibleStart + (visibleRange / timeLabels) * i;
       const x = toX(t);
+      ctx.fillStyle = COLOR_AXIS_LABEL;
       ctx.fillText(formatDuration(t), x, plotY + plotH + 16);
     }
 
@@ -429,11 +740,11 @@ export class ScoreGraphPanel {
    */
   private getFilteredEvents(maxTime: number): ReadonlyArray<GameEvent> {
     const shown: GameEvent[] = [];
-    const DEDUPE_WAVE_GAP = 2.0; // don't show two wave markers < 2s apart
+    const DEDUPE_WAVE_GAP = 2.0;
     let lastWaveTime = -Infinity;
 
     for (const ev of this.events) {
-      if (ev.type === 'kill') continue; // too noisy — only show streaks
+      if (ev.type === 'kill') continue;
       if (ev.time > maxTime) continue;
 
       if (ev.type === 'wave_start') {
@@ -448,8 +759,46 @@ export class ScoreGraphPanel {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Helper utilities
 // ---------------------------------------------------------------------------
+
+function interpolateAtTime(pts: ReadonlyArray<PerformanceDataPoint>, time: number, field: 'score' | 'kills'): number {
+  if (pts.length === 0) return 0;
+  if (time <= pts[0].time) return pts[0][field];
+  if (time >= pts[pts.length - 1].time) return pts[pts.length - 1][field];
+
+  // Binary search for surrounding points
+  let lo = 0, hi = pts.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (pts[mid].time <= time) lo = mid; else hi = mid;
+  }
+  const t0 = pts[lo].time, t1 = pts[hi].time;
+  const v0 = pts[lo][field], v1 = pts[hi][field];
+  const alpha = t1 > t0 ? (time - t0) / (t1 - t0) : 0;
+  return v0 + alpha * (v1 - v0);
+}
+
+function getWaveAtTime(events: ReadonlyArray<GameEvent>, time: number): number {
+  let wave = 0;
+  for (const ev of events) {
+    if (ev.type === 'wave_start' && ev.time <= time && ev.value) {
+      wave = Math.max(wave, ev.value);
+    }
+  }
+  return wave;
+}
+
+function getEventLabel(ev: GameEvent): string {
+  switch (ev.type) {
+    case 'wave_start':   return `Wave ${ev.value ?? '?'} started`;
+    case 'player_death': return 'Player died';
+    case 'kill_streak':  return `Kill streak ×${ev.value ?? ''}`;
+    case 'buff_pickup':  return 'Buff picked up';
+    case 'weapon_pickup':return 'Weapon picked up';
+    default:             return ev.type;
+  }
+}
 
 function formatScore(val: number): string {
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M`;
@@ -478,6 +827,10 @@ export function injectScoreGraphStyles(): void {
       width: 100%;
       box-sizing: border-box;
     }
+    .sgp-canvas-container {
+      width: 100%;
+      position: relative;
+    }
     .sgp-canvas {
       display: block;
       width: 100%;
@@ -485,6 +838,7 @@ export function injectScoreGraphStyles(): void {
       background: rgba(0, 5, 20, 0.6);
       border-radius: 4px;
       border: 1px solid rgba(0, 80, 100, 0.4);
+      cursor: crosshair;
     }
     .sgp-insufficient {
       text-align: center;
@@ -493,6 +847,113 @@ export function injectScoreGraphStyles(): void {
       font-style: italic;
       padding: 40px 20px;
     }
+
+    /* Controls row */
+    .sgp-controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      gap: 8px;
+    }
+    .sgp-toggle-group {
+      display: flex;
+      gap: 2px;
+      background: rgba(0, 20, 40, 0.6);
+      border: 1px solid rgba(0, 80, 100, 0.4);
+      border-radius: 4px;
+      padding: 2px;
+    }
+    .sgp-toggle-btn {
+      padding: 4px 14px;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 2px;
+      font-weight: bold;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+      background: transparent;
+      color: #446688;
+      transition: background 150ms ease-out, color 150ms ease-out;
+    }
+    .sgp-toggle-btn.sgp-toggle-active {
+      background: rgba(0, 180, 220, 0.15);
+      color: #00ffff;
+      text-shadow: 0 0 8px rgba(0, 255, 255, 0.4);
+    }
+    .sgp-toggle-btn:hover:not(.sgp-toggle-active) {
+      color: #88aacc;
+      background: rgba(0, 80, 120, 0.2);
+    }
+    .sgp-zoom-reset {
+      padding: 4px 10px;
+      font-size: 10px;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 1px;
+      border: 1px solid rgba(0, 180, 220, 0.3);
+      border-radius: 3px;
+      cursor: pointer;
+      background: rgba(0, 40, 60, 0.5);
+      color: #00aacc;
+      transition: background 150ms ease-out, color 150ms ease-out;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .sgp-zoom-reset:hover {
+      background: rgba(0, 80, 120, 0.4);
+      color: #00ffff;
+    }
+
+    /* Tooltip */
+    .sgp-tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(0, 8, 24, 0.92);
+      border: 1px solid rgba(0, 140, 180, 0.5);
+      border-radius: 4px;
+      padding: 8px 10px;
+      min-width: 140px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #aaccdd;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+      z-index: 10;
+    }
+    .sgp-tt-time {
+      font-size: 13px;
+      font-weight: bold;
+      color: #00ffff;
+      margin-bottom: 6px;
+      letter-spacing: 1px;
+    }
+    .sgp-tt-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 2px;
+    }
+    .sgp-tt-label {
+      color: #446688;
+      font-size: 10px;
+      letter-spacing: 1px;
+    }
+    .sgp-tt-val {
+      color: #88ccee;
+      font-weight: bold;
+    }
+    .sgp-tt-divider {
+      border-top: 1px solid rgba(0, 80, 100, 0.4);
+      margin: 5px 0;
+    }
+    .sgp-tt-event {
+      font-size: 10px;
+      margin-bottom: 2px;
+      white-space: nowrap;
+    }
+
+    /* Stats row */
     .sgp-stats-row {
       display: flex;
       justify-content: space-around;
@@ -518,6 +979,8 @@ export function injectScoreGraphStyles(): void {
       color: #446688;
       letter-spacing: 2px;
     }
+
+    /* Legend */
     .sgp-legend {
       display: flex;
       justify-content: center;
