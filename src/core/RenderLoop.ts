@@ -187,7 +187,14 @@ export class RenderLoop {
 
       // Raycast-based occlusion: opacity based on how many surface layers are
       // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
-      let visibility = ctx.depthOcclusion.getOpacity(enemy);
+      const depthOpacity = ctx.depthOcclusion.getOpacity(enemy);
+      let visibility = depthOpacity;
+      // s44r23-01: track whether this enemy is front-side (no surface between camera and enemy).
+      // Front-side enemies must never go invisible from far-side culling or UV-dimming compound.
+      // The DepthOcclusionSystem returns opacity0 (1.0) for clear line-of-sight enemies.
+      // We use 0.9 as the threshold to handle lerp-in-progress states (new enemies start at 1.0
+      // and lerp toward their target over ~0.1s — while lerping, they're still "front-side").
+      const isFrontSide = depthOpacity >= 0.9;
 
       // Surface UV-distance visibility + world-space proximity override.
       // UV distance is computed for:
@@ -303,6 +310,16 @@ export class RenderLoop {
         const farFactor = Math.max(0, Math.min(1, (farSideDot - FAR_SIDE_FAR_DOT) / farSideRange));
         visibility = Math.min(visibility, farFactor);
       }
+
+      // s44r23-01: Two-tier floor AFTER far-side culling.
+      // Far-side culling can legitimately drive behind-surface enemies to 0 (visual clutter reduction).
+      // But it must NEVER hide front-side enemies (enemies the player can directly see).
+      // Two-tier floor prevents the 0.08 floor from allowing front-side enemies to be zeroed:
+      //   - Front-side (isFrontSide=true): floor 0.70 — always clearly visible to the player
+      //   - Behind-surface (isFrontSide=false): floor 0.08 — dim glow preserved (s44r22-01)
+      // This is the "different floors for front-side vs behind-surface" fix requested in s44r23-01.
+      const visibilityFloor = isFrontSide ? 0.70 : SURFACE_DIM_OPACITY;
+      visibility = Math.max(visibility, visibilityFloor);
 
       visibleEnemyCount++;
 
