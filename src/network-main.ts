@@ -7217,10 +7217,9 @@ async function main() {
       if (!enemy.alive || !enemy.mesh) continue;
       const netDepthOpacity = _isTunnelSurface ? 1.0 : depthOcclusion.getOpacity(enemy);
       let vis = netDepthOpacity;
-      // s44r23-01: track front-side status for two-tier floor (MP parity with SP RenderLoop.ts).
-      // s44r24-01: lowered threshold from 0.9 → 0.7 to handle cases where DepthOcclusionSystem
-      // EMA hasn't fully stabilized (lerpSpeed=10, so enemies raycasted every ~50 frames may
-      // transiently return values in the 0.7-0.9 range before converging to opacity0=1.0).
+      // s44r25-03: removed binary netIsFrontSide threshold (netDepthOpacity >= 0.7) — replaced
+      // with smooth blend below (SP parity). The binary caused a jarring visibility cliff at
+      // higher FPS. netIsFrontSide is still set for the sphere-tunnel UV-distance override.
       let netIsFrontSide = netDepthOpacity >= 0.7;
 
       // UV-distance surface dimming (LAN parity with SP RenderLoop.ts).
@@ -7284,10 +7283,20 @@ async function main() {
       // Math.min(vis, undefined) = NaN → NaN > 0 is false → floor skipped → invisible.
       // Also add isFinite guard as defense-in-depth against any NaN propagation path.
       if (!isFinite(vis)) vis = 1.0;
-      // s44r23-01: Two-tier floor (SP parity — see RenderLoop.ts).
-      // Front-side enemies (netIsFrontSide=true) must never fall below 0.70.
-      // Behind-surface enemies use the low floor (NET_SURFACE_DIM_OPC=0.15, raised from 0.08 in s44r25-02).
-      const netVisibilityFloor = netIsFrontSide ? 0.70 : NET_SURFACE_DIM_OPC;
+      // s44r25-03: Smooth visibility floor (SP parity — see RenderLoop.ts).
+      // Replaced binary netIsFrontSide floor (0.70 ↔ 0.15 cliff) with smooth blend
+      // based on netDepthOpacity. Eliminates single-frame 55% brightness drops.
+      // For sphere-tunnel where netIsFrontSide is set by UV distance (not depth EMA),
+      // we still respect it: if UV says behind-surface, depthOpacity is 1.0 (tunnel bypass)
+      // but netIsFrontSide is false → we force depthOpacity to 0.0 for the blend so floor = NET_SURFACE_DIM_OPC.
+      const NET_FRONT_SIDE_FLOOR = 0.70;
+      const NET_FRONT_BLEND_HIGH = 0.90;
+      const NET_FRONT_BLEND_LOW  = 0.50;
+      const effectiveDepthOpc = (!netIsFrontSide && _isSphereTunnel) ? 0.0 : netDepthOpacity;
+      const netFrontBlend = Math.max(0.0, Math.min(1.0,
+        (effectiveDepthOpc - NET_FRONT_BLEND_LOW) / (NET_FRONT_BLEND_HIGH - NET_FRONT_BLEND_LOW)
+      ));
+      const netVisibilityFloor = NET_SURFACE_DIM_OPC + netFrontBlend * (NET_FRONT_SIDE_FLOOR - NET_SURFACE_DIM_OPC);
       vis = Math.max(vis, netVisibilityFloor);
       // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
       // are both bypassed, so enemies MUST be fully visible. This catches any edge case where
