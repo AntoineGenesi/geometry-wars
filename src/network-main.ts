@@ -72,7 +72,7 @@ import { CompanionManager, CompanionPickup, CompanionHUD, getRandomCompanionType
 import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
-import { LODManager } from './rendering/LODManager';
+import { LODManager, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
 import { DepthOcclusionSystem, computeDepthVisibility, BULLET_DEPTH_CURVE } from './rendering/DepthOpacity';
 import { OcclusionSurfaceMaterial } from './rendering/OcclusionSurfaceMaterial';
 import { AdaptiveQuality, QualityLevel } from './rendering/AdaptiveQuality';
@@ -628,6 +628,10 @@ async function main() {
   // -- CameraController: orbit (middle mouse), zoom (scroll wheel), follow (same as single-player) --
   const cameraController = new CameraController(camera);
   cameraController.setCameraDistance(20); // Match existing LAN camera distance
+  // Start zoomed in closer on mobile for better visibility of the player (3× closer than desktop, matching SP parity)
+  if (mobile) {
+    cameraController.setCameraDistance(5);
+  }
 
   // -- ShockwaveEffect (shared with single-player via SharedGameSetup) --
   const shockwaveEffect = setupShockwaveEffect(game, camera);
@@ -855,10 +859,12 @@ async function main() {
   });
 
   // -- LOD: reduce triangle count for distant enemies (same as single-player) --
-  const lodManager = new LODManager();
+  const lodManager = new LODManager(
+    mobile ? { highDistance: 30, mediumDistance: 60, hysteresis: DEFAULT_LOD_CONFIG.hysteresis } : undefined,
+  );
 
   // -- Adaptive quality: FPS-based auto quality adjustment (same as single-player) --
-  const adaptiveQuality = new AdaptiveQuality({ initialLevel: QualityLevel.ULTRA });
+  const adaptiveQuality = new AdaptiveQuality({ initialLevel: mobile ? QualityLevel.MEDIUM : QualityLevel.ULTRA });
 
   // Wire quality change callback: adjusts bloom, particle budget, LOD distances
   adaptiveQuality.onQualityChange = (_oldLevel, newLevel) => {
@@ -1149,7 +1155,8 @@ async function main() {
   const networkEnemies = new Map<string, BaseEnemy>();
   // Maps fast enemy ID -> GlowTrail (Mayfly/Rocket/Duck only, same as single-player)
   const enemyGlowTrails = new Map<string, GlowTrail>();
-  const FAST_ENEMY_TYPES = new Set<string>(['mayfly', 'rocket', 'duck']);
+  // On mobile: skip glow trails for fast enemies — extra draw calls hurt fill-rate-limited mobile GPUs (parity with SP main.ts)
+  const FAST_ENEMY_TYPES = mobile ? new Set<string>() : new Set<string>(['mayfly', 'rocket', 'duck']);
 
   // -- Interpolation targets (updated at 30Hz from server, consumed at 60Hz in render) --
   // Store target UV positions for enemies and remote players so we can
