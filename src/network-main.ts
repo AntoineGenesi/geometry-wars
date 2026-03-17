@@ -7197,7 +7197,10 @@ async function main() {
     depthOcclusion.update(enemyArray, camera.position, netRenderDt);
     for (const enemy of enemyArray) {
       if (!enemy.alive || !enemy.mesh) continue;
-      let vis = _isTunnelSurface ? 1.0 : depthOcclusion.getOpacity(enemy);
+      const netDepthOpacity = _isTunnelSurface ? 1.0 : depthOcclusion.getOpacity(enemy);
+      let vis = netDepthOpacity;
+      // s44r23-01: track front-side status for two-tier floor (MP parity with SP RenderLoop.ts)
+      const netIsFrontSide = netDepthOpacity >= 0.9;
 
       // UV-distance surface dimming (LAN parity with SP RenderLoop.ts).
       // Catches flat/open-surface cases where raycasts register 0 intersections.
@@ -7251,7 +7254,11 @@ async function main() {
       // Math.min(vis, undefined) = NaN → NaN > 0 is false → floor skipped → invisible.
       // Also add isFinite guard as defense-in-depth against any NaN propagation path.
       if (!isFinite(vis)) vis = 1.0;
-      vis = Math.max(vis, NET_SURFACE_DIM_OPC);
+      // s44r23-01: Two-tier floor (SP parity — see RenderLoop.ts).
+      // Front-side enemies (netIsFrontSide=true) must never fall below 0.70.
+      // Behind-surface enemies use the low floor (NET_SURFACE_DIM_OPC=0.08).
+      const netVisibilityFloor = netIsFrontSide ? 0.70 : NET_SURFACE_DIM_OPC;
+      vis = Math.max(vis, netVisibilityFloor);
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {
         enemyInstanceManager.setLODInstanceVisibility(enemy, vis);
