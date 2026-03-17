@@ -120,11 +120,14 @@ export function createStandardSurfaceConfig(
   }
 
   // Cube-ring: use scale-proportional dimensions matching other ring surfaces (torus: 8,3).
-  // Previous values (4, 2) produced a tiny ring (outer radius 5), especially cramped at
-  // small map scale (0.75 × outer radius 5 = 3.75). Now matches torus proportions: majorR=8,
-  // crossSection=4 → outer radius 10, small variant outer radius ~7.5 — playable.
+  // s44r22-06: majorR=4→8, crossSection=2→4 (outer radius 5→10). Fixed "small was tiny".
+  // s44r23-05: majorR=8→11 (outer radius 10→13). User tested MEDIUM (scale=1.0) after s44r22-06
+  // and said it felt like what the small should be. New sizes:
+  //   SMALL (×0.75): outer radius ~9.75  (≈ old MEDIUM = 10 — user said current medium ≈ small)
+  //   MEDIUM (×1.0): outer radius 13     — comfortable medium arena
+  //   LARGE (×1.5):  outer radius 19.5   — spacious large arena
   if (surfaceType === 'cube-ring') {
-    config.majorRadius = 8;
+    config.majorRadius = 11;
     config.crossSection = 4;
   }
 

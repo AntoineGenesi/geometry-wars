@@ -776,11 +776,12 @@ function _crProfileAt(t: number, H: number, B: number): { r: number; y: number }
 }
 
 // s44q-04: dimensions MUST match createStandardSurfaceConfig(type, 10, null).
-// Cube-ring overrides: majorRadius=8, crossSection=4 (halfSide=2).
+// Cube-ring overrides: majorRadius=11, crossSection=4 (halfSide=2).
 // s44r22-06: Increased from (4,1.0) — the small variant was "absolutely tiny" at 0.75 group scale.
-// Now matches torus proportions: majorR=8 → outer radius 10, small variant ~7.5 (playable).
+// s44r23-05: majorR increased 8→11. User tested MEDIUM after s44r22-06 and said it felt like
+// what the small should be. Now: MEDIUM outer radius 13, SMALL ~9.75, LARGE ~19.5.
 function _buildCubeRingGeometry(): THREE.BufferGeometry {
-  const majorRadius = 8;
+  const majorRadius = 11;
   const halfSide = 2.0; // crossSection=4, halfSide = crossSection/2
   const bevelRadius = 0.4;
   const gridSegmentsV = 24;
