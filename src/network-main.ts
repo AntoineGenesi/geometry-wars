@@ -7512,13 +7512,12 @@ async function main() {
         }
         bulletInstanceIds.add(id);
 
-        // Depth-based dimming: use player's surface normal as reference.
-        // computeDepthVisibility(playerPos, playerNormal, bulletPos) computes
-        // playerNormal.dot(normalize(bulletPos − playerPos)): positive = near side (bright),
-        // negative = far side (dim). Correct for all surfaces; old normalize(bulletPos)
-        // approach only worked on sphere.
+        // Depth-based dimming: use the bullet's OWN surface normal + camera position (s44r25-04).
+        // Old approach (playerPos, playerNormal, bulletPos) fails on concave surfaces:
+        // torus inner ring → player normal outward, bullet inward → dot ≈ -1 → invisible.
+        // result.normal is already computed above (used for the 0.02 surface offset).
         bulletInstanceManager.setBulletOpacity(id, computeDepthVisibility(
-          _predictedPlayerVisualPos, _predictedPlayerVisualNormal, _netTempPos, BULLET_DEPTH_CURVE,
+          _netTempPos, result.normal, camera.position, BULLET_DEPTH_CURVE,
         ));
       } else {
         // Fallback: UV lerp (for bullets without geodesic state — should not normally occur)
@@ -7560,9 +7559,10 @@ async function main() {
           } else {
             bulletInstanceManager.updateBullet(id, _netTempPos, _netTempDir);
           }
-          // Depth-based dimming for fallback path (same player-normal approach as geodesic path)
+          // Depth-based dimming for fallback path — use bullet's OWN surface normal (s44r25-04).
+          // bpt.normal is already computed above (used for the 0.02 surface offset).
           bulletInstanceManager.setBulletOpacity(id, computeDepthVisibility(
-            _predictedPlayerVisualPos, _predictedPlayerVisualNormal, _netTempPos, BULLET_DEPTH_CURVE,
+            _netTempPos, bpt.normal, camera.position, BULLET_DEPTH_CURVE,
           ));
         }
       }

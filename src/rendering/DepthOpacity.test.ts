@@ -587,3 +587,65 @@ describe('REGRESSION s44r17-01: compound dimming visibility floor', () => {
     expect(aggressiveFloored).toBeGreaterThanOrEqual(SURFACE_DIM_OPACITY);
   });
 });
+
+// ---------------------------------------------------------------------------
+// REGRESSION s44r25-04: bullet-normal approach — torus inner ring bullets
+// must remain visible (not invisible at farSideMin).
+// ---------------------------------------------------------------------------
+// Root cause: computeDepthVisibility was called with (playerPos, playerNormal, bulletPos)
+// — treating the player as the "entity" and the bullet as the "camera target."
+// On concave surfaces, the player's outward normal can point AWAY from the inner ring
+// where bullets travel, giving dot ≈ -1.0 → farSideMin (10%) → near-invisible bullets.
+//
+// Fix: call computeDepthVisibility(bulletPos, bulletNormal, cameraPos).
+//   The bullet's OWN surface normal determines which side of the surface the bullet is on
+//   relative to the camera. Positive dot = camera sees the bullet's front face = bright.
+//   This is correct for ALL surfaces, including concave ones (torus inner ring, tunnels).
+// ---------------------------------------------------------------------------
+describe('REGRESSION s44r25-04: bullet-normal approach for depth dimming', () => {
+  // Torus scenario:
+  // Player at outer ring (2.5, 0, 0), camera above at (0, 0, 4).
+  // Bullet on inner ring (1.5, 0, 0), inner ring bullet normal = (-1, 0, 0) (inward).
+  const cameraPos = new THREE.Vector3(0, 0, 4);
+
+  it('torus inner-ring bullet: OLD player-normal approach makes it INVISIBLE (this was the bug)', () => {
+    // Old call: (playerPos, playerNormal, bulletPos)
+    // playerNormal = (+1, 0, 0), bulletPos - playerPos = (-1, 0, 0) → dot = -1.0 → farSideMin
+    const playerPos = new THREE.Vector3(2.5, 0, 0);
+    const playerNormal = new THREE.Vector3(1, 0, 0);
+    const bulletPos = new THREE.Vector3(1.5, 0, 0);
+    const opacityOld = computeDepthVisibility(playerPos, playerNormal, bulletPos, BULLET_DEPTH_CURVE);
+    // BUG: inner-ring bullet was invisible (at minimum brightness floor)
+    expect(opacityOld).toBeCloseTo(BULLET_DEPTH_CURVE.farSideMin, 2);
+  });
+
+  it('torus inner-ring bullet: NEW bullet-normal approach correctly VISIBLE', () => {
+    // New call: (bulletPos, bulletNormal, cameraPos)
+    // Inner ring bullet normal = (-1, 0, 0) (inward toward torus axis)
+    // Direction bullet→camera: normalize(cameraPos - bulletPos) ≈ (-0.35, 0, 0.94)
+    // dot = (-1) * (-0.35) + 0 + 0 = +0.35 → positive → camera sees front face → BRIGHT
+    const bulletPos = new THREE.Vector3(1.5, 0, 0);
+    const bulletNormal = new THREE.Vector3(-1, 0, 0); // inner ring points inward
+    const opacityNew = computeDepthVisibility(bulletPos, bulletNormal, cameraPos, BULLET_DEPTH_CURVE);
+    // FIX: inner-ring bullet should be clearly visible (above farSideMin by significant margin)
+    expect(opacityNew).toBeGreaterThan(BULLET_DEPTH_CURVE.farSideMin);
+    expect(opacityNew).toBeGreaterThan(0.5); // clearly visible
+  });
+
+  it('outer-ring bullet (behind surface from camera) should still be DIM', () => {
+    // Bullet on far side of torus — physically behind the surface from camera's perspective.
+    // Camera at (0, 0, 4), bullet at (0, 0, -1.5), bullet normal points away from camera.
+    // This tests that the fix doesn't make ALL bullets fully bright.
+    const bulletPos = new THREE.Vector3(0, 0, -1.5);
+    const bulletNormal = new THREE.Vector3(0, 0, -1); // pointing away from camera
+    const opacity = computeDepthVisibility(bulletPos, bulletNormal, cameraPos, BULLET_DEPTH_CURVE);
+    // dot = (-1) * (direction to camera) — camera is in +z, bullet normal points -z → dot < 0 → dim
+    expect(opacity).toBeCloseTo(BULLET_DEPTH_CURVE.farSideMin, 2);
+  });
+
+  it('BULLET_DEPTH_CURVE farSideMin is at least 0.25 (raised from 0.1 for safety)', () => {
+    // s44r25-04: raised to 0.25 as a safety floor to prevent bullets ever going
+    // completely invisible even in edge cases (seam crossings, brief normal artifacts).
+    expect(BULLET_DEPTH_CURVE.farSideMin).toBeGreaterThanOrEqual(0.25);
+  });
+});
