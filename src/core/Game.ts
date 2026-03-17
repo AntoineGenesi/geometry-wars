@@ -185,8 +185,10 @@ export class Game {
   // ---- Adaptive quality -----------------------------------------------
 
   /**
-   * Current bloom render-target scale (1.0 = full-res, 0.5 = half-res, etc.).
-   * Updated by the adaptive quality system via onQualityChange.
+   * Current bloom render-target scale (0.5 = half-res default, 0.40 = pixelated, etc.).
+   * 0.5 is the intended production value for modern mode — bloom is blurry by nature
+   * so upscaling from 50% is visually imperceptible but 4× cheaper (half W × half H).
+   * Updated by the adaptive quality system via onQualityChange and setVisualMode.
    * Persisted here so window resize can re-apply the correct scale.
    */
   bloomResolutionScale: number = 0.5;
@@ -527,13 +529,22 @@ export class Game {
   }
 
   /**
-   * Switch between Pixelated (half-res bloom) and Modern (full-res bloom).
+   * Switch between Pixelated (40%-res bloom) and Modern (50%-res bloom).
+   * Both modes run bloom below full resolution for performance — bloom is blurry
+   * by nature, so upscaling is visually imperceptible but avoids expensive full-res passes.
    * Immediately resizes the EffectComposer and bloom pass render targets.
    */
   setVisualMode(mode: 'pixelated' | 'modern'): void {
     // s44r17-05 experiment: 0.40 (was 0.50) — chunkier pixel "bundles".
     // Revert: change 0.40 back to 0.50 if user prefers original.
-    this.bloomResolutionScale = mode === 'modern' ? 1.0 : 0.40;
+    //
+    // s44r23-02 perf fix: modern mode was 1.0 (100% res bloom) — catastrophically
+    // expensive on real GPUs. UnrealBloomPass does 5+ full-screen blur passes;
+    // at 1920×1080 with 2× DPR that's ~33M pixel operations per frame.
+    // Bloom is blurry by definition — upscaling from 50% is visually imperceptible
+    // but 4× cheaper. Restored to 0.5 (constructor default) for modern mode.
+    // This matches the initial constructor setup (halfW, halfH at lines ~311-313).
+    this.bloomResolutionScale = mode === 'modern' ? 0.5 : 0.40;
 
     if (this.isWebGPU) {
       // WebGPU path: simulate pixelated mode by reducing the pixel ratio so the
@@ -553,8 +564,8 @@ export class Game {
       this.renderer.domElement.style.imageRendering = mode === 'pixelated' ? 'pixelated' : '';
     } else if (this.composer || this.bloomPass) {
       // WebGL2 path: resize the EffectComposer and bloom pass render targets.
-      // 40%-res (was 50%) = chunkier pixels upscaled with NearestFilter (pixelated).
-      // Full-res bloom renders sharply at 100% (modern).
+      // Pixelated: 40%-res bloom upscaled with NearestFilter = chunky pixel look.
+      // Modern: 50%-res bloom (s44r23-02 perf fix — was 100%, now 4× cheaper, same visual quality).
       const w = window.innerWidth;
       const h = window.innerHeight;
       const scale = this.bloomResolutionScale;
