@@ -95,6 +95,17 @@
       from { opacity: 0.7; }
       to { opacity: 1; }
     }
+    #wave-display {
+      position: absolute;
+      top: 50px;
+      left: 30px;
+      font-size: 14px;
+      font-family: monospace;
+      color: #0ff;
+      text-shadow: 0 0 8px #0ff;
+      letter-spacing: 2px;
+      transition: top 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94), left 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
     #level-name-display {
       position: absolute;
       top: 95px;
@@ -240,6 +251,11 @@
         font-size: 16px;
         top: 8px;
         left: 12px;
+      }
+      #wave-display {
+        top: 28px;
+        left: 12px;
+        font-size: 11px;
       }
       #weapon-display {
         bottom: 60px; /* higher, above joystick zone */
@@ -395,6 +411,7 @@
     <div id="score-display"></div>
     <div id="multiplier-display"></div>
     <div id="timer-display"></div>
+    <div id="wave-display"></div>
     <div id="lives-display"></div>
     <div id="bombs-display"></div>
     <div id="weapon-display"></div>

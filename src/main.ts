@@ -322,6 +322,12 @@ class WaveScheduler {
   getElapsed(): number {
     return this.elapsed;
   }
+
+  /** Returns the current wave number (1-based). Returns 0 before first wave. */
+  getCurrentWave(): number {
+    if (this.endless) return this.endlessWave;
+    return this.waveSpawned.filter(s => s).length;
+  }
 }
 
 // ---------------------------------------------------------------------------
