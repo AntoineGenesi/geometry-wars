@@ -206,13 +206,10 @@ export class RenderLoop {
       // That's wrong for enemies that are physically visible to the player inside the tunnel.
       const depthOpacity = _isTunnelSurface ? 1.0 : ctx.depthOcclusion.getOpacity(enemy);
       let visibility = depthOpacity;
-      // s44r23-01: track whether this enemy is front-side (no surface between camera and enemy).
-      // Front-side enemies must never go invisible from far-side culling or UV-dimming compound.
-      // The DepthOcclusionSystem returns opacity0 (1.0) for clear line-of-sight enemies.
-      // We use 0.7 as the threshold to handle lerp-in-progress states (new enemies start at 1.0
-      // and lerp toward their target over ~0.1s — while lerping, they're still "front-side").
-      // s44r24-01: lowered from 0.9 → 0.7 to handle cases where EMA hasn't fully stabilized.
-      const isFrontSide = depthOpacity >= 0.7;
+      // s44r23-01: depthOpacity used below for smooth visibility floor blend.
+      // s44r25-03: removed binary isFrontSide threshold (depthOpacity >= 0.7) — it caused a
+      // jarring visibility cliff where enemies jumped from floor 0.70 to 0.15 in a single frame
+      // when the EMA crossed the threshold. At higher FPS (host PC), the cliff was more noticeable.
 
       // Surface UV-distance visibility + world-space proximity override.
       // UV distance is computed for:
@@ -329,14 +326,26 @@ export class RenderLoop {
         visibility = Math.min(visibility, farFactor);
       }
 
-      // s44r23-01: Two-tier floor AFTER far-side culling.
+      // s44r23-01: Visibility floor AFTER far-side culling.
       // Far-side culling can legitimately drive behind-surface enemies to 0 (visual clutter reduction).
       // But it must NEVER hide front-side enemies (enemies the player can directly see).
-      // Two-tier floor prevents the 0.08 floor from allowing front-side enemies to be zeroed:
-      //   - Front-side (isFrontSide=true): floor 0.70 — always clearly visible to the player
-      //   - Behind-surface (isFrontSide=false): floor 0.15 — dim glow preserved (s44r22-01; raised 0.08→0.15 in s44r25-02)
-      // This is the "different floors for front-side vs behind-surface" fix requested in s44r23-01.
-      const visibilityFloor = isFrontSide ? 0.70 : SURFACE_DIM_OPACITY;
+      //
+      // s44r25-03: Replaced binary isFrontSide threshold (depthOpacity >= 0.7 → floor jumps
+      // 0.70 ↔ 0.15 in one frame) with smooth blend based on depthOpacity.
+      // The binary caused a jarring visibility cliff: enemies spawned at depthOpacity=1.0 (floor=0.70),
+      // then as EMA converged the currentOpacity crossed 0.70 and floor instantly dropped to 0.15 —
+      // a 55% brightness drop in one frame. At higher FPS (host PC), smaller lerpFactor per frame
+      // kept enemies visibly at 0.70 for longer before the cliff hit, making it more noticeable.
+      //   depthOpacity >= 0.90 → floor = 0.70 (clearly front-side)
+      //   depthOpacity 0.50..0.90 → floor smoothly interpolates 0.15 → 0.70
+      //   depthOpacity <= 0.50 → floor = SURFACE_DIM_OPACITY (behind surface)
+      const FRONT_SIDE_FLOOR = 0.70;
+      const FRONT_BLEND_HIGH = 0.90;
+      const FRONT_BLEND_LOW  = 0.50;
+      const frontBlend = Math.max(0.0, Math.min(1.0,
+        (depthOpacity - FRONT_BLEND_LOW) / (FRONT_BLEND_HIGH - FRONT_BLEND_LOW)
+      ));
+      const visibilityFloor = SURFACE_DIM_OPACITY + frontBlend * (FRONT_SIDE_FLOOR - SURFACE_DIM_OPACITY);
       visibility = Math.max(visibility, visibilityFloor);
 
       // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
