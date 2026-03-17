@@ -175,13 +175,12 @@ export class WeaponManager {
   // Active gas clouds (Homing branch B node 3)
   private gasClouds: GasCloudInstance[] = [];
 
+  // Per-frame deduplication for homing missiles: tracks enemy indices hit this frame.
+  // Prevents multiple missiles targeting the same weak enemy from all detonating simultaneously.
+  private missileHitThisFrame = new Set<number>();
+
   // Spread cone alternation state (for spread_b_3)
   private spreadConeToggle = false;
-
-  // Per-frame deduplication: tracks which enemy indices have already been hit by a homing missile
-  // this frame. Cleared at the start of each update(). Prevents multiple missiles from all
-  // exploding on the same weak enemy in the same frame — only the first hit counts, others retarget.
-  private missileHitThisFrame = new Set<number>();
 
   // Pending delayed shots: used for piercing double/triple tap, mortar carpet bomb, chain blast secondary
   private pendingShots: Array<{
@@ -797,9 +796,6 @@ export class WeaponManager {
    * Update all projectiles and effects
    */
   update(dt: number): void {
-    // Clear per-frame missile hit deduplication set
-    this.missileHitThisFrame.clear();
-
     // Tick down active buffs
     for (let i = this.activeBuffs.length - 1; i >= 0; i--) {
       this.activeBuffs[i].remaining -= dt;
@@ -812,6 +808,8 @@ export class WeaponManager {
     this.chainLightning.update(dt);
 
     // Update projectiles
+    // Clear per-frame missile deduplication set before processing this frame's projectiles
+    this.missileHitThisFrame.clear();
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const proj = this.projectiles[i];
       proj.age += dt;
@@ -1429,8 +1427,8 @@ export class WeaponManager {
     // the actual turn tightening would require a dedicated turnRate field (future enhancement).
     // TODO: add turnRate field to Projectile for proper turn tightening.
 
-    // Homing missiles persist until they hit a target — 60s safety cap prevents infinite missiles
-    // (e.g., if target dies before missile arrives, missile will eventually time out)
+    // Missiles persist until they hit something; 60s hard cap prevents infinite missiles
+    // (e.g. if the last enemy dies before being reached).
     const MISSILE_MAX_AGE = 60.0;
 
     // LEVEL 5 FINAL FORM — Seeking Swarm: fire 3 missiles simultaneously in V-formation
@@ -1465,29 +1463,36 @@ export class WeaponManager {
 
   private fireMortar(origin: THREE.Vector3, direction: THREE.Vector3): void {
     const config = WEAPON_CONFIGS[WeaponType.PlasmaMortar];
-    // Mortar travels to nearest enemy — persists until it hits rather than expiring at fixed range.
-    // 30s safety cap prevents infinite mortars if all enemies die before impact.
-    const MORTAR_MAX_TRAVEL_TIME = 30.0;
-    const MORTAR_FALLBACK_RANGE = 10; // used when no enemies are present
+    // Hard cap: 30s max travel time prevents infinite projectiles if no enemy is reachable.
+    const MORTAR_MAX_TRAVEL = 30.0;
 
+    // Find nearest enemy to target — mortar should travel TO an enemy, not past them.
+    // Falls back to a fixed range of 10 if no enemies are alive.
+    let targetPos: THREE.Vector3 | null = null;
+    if (this.callbacks) {
+      const enemies = this.callbacks.getEnemies().filter(e => e.alive);
+      let minDist = Infinity;
+      for (const enemy of enemies) {
+        const dist = origin.distanceTo(enemy.position);
+        if (dist < minDist) {
+          minDist = dist;
+          targetPos = enemy.position.clone();
+        }
+      }
+    }
+
+    // Compute end position and travel time
     let endPos: THREE.Vector3;
     let travelTime: number;
-
-    const enemies = this.callbacks?.getEnemies().filter(e => e.alive) ?? [];
-    if (enemies.length > 0) {
-      // Find nearest enemy
-      let nearest = enemies[0];
-      let minDist = origin.distanceTo(nearest.position);
-      for (let i = 1; i < enemies.length; i++) {
-        const d = origin.distanceTo(enemies[i].position);
-        if (d < minDist) { minDist = d; nearest = enemies[i]; }
-      }
-      endPos = nearest.position.clone();
-      travelTime = Math.min(minDist / config.projectileSpeed, MORTAR_MAX_TRAVEL_TIME);
+    if (targetPos) {
+      endPos = targetPos;
+      const dist = origin.distanceTo(endPos);
+      travelTime = Math.min(dist / config.projectileSpeed, MORTAR_MAX_TRAVEL);
     } else {
-      // No enemies — fire in aimed direction with fallback range
-      endPos = origin.clone().add(direction.clone().multiplyScalar(MORTAR_FALLBACK_RANGE));
-      travelTime = MORTAR_FALLBACK_RANGE / config.projectileSpeed;
+      // No enemies: fire in aimed direction to default range
+      const range = 10;
+      endPos = origin.clone().add(direction.clone().multiplyScalar(range));
+      travelTime = range / config.projectileSpeed;
     }
 
     const proj = this.createProjectile(
@@ -1952,6 +1957,11 @@ export class WeaponManager {
     const enemies = this.callbacks.getEnemies();
     const hitRadius = 0.3;
 
+    // Enemies with maxHealth at or above this threshold are considered "strong targets"
+    // (bosses, titans, etc.) that can absorb multiple simultaneous missile hits.
+    // Below this threshold, only the first missile to hit detonates; others retarget.
+    const MISSILE_BOSS_THRESHOLD = 15;
+
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
 
@@ -1960,6 +1970,18 @@ export class WeaponManager {
       const visualDist = enemy.meshPosition ? proj.position.distanceTo(enemy.meshPosition) : onSurfaceDist;
       const dist = Math.min(onSurfaceDist, visualDist);
       if (dist < hitRadius) {
+        // Homing missile deduplication: if another missile already hit this (weak) enemy
+        // this frame, retarget instead of detonating. Strong enemies (bosses, titans)
+        // skip this check and accept multiple hits simultaneously.
+        if (proj.type === WeaponType.Homing) {
+          const isBoss = (enemy.maxHealth ?? 0) >= MISSILE_BOSS_THRESHOLD;
+          if (!isBoss && this.missileHitThisFrame.has(enemy.index)) {
+            // Target already struck this frame — retarget to a different enemy
+            proj.targetIndex = undefined; // force re-acquisition next frame
+            return; // skip detonation, missile keeps flying
+          }
+        }
+
         this.callbacks.onEnemyDamage(enemy.index, proj.damage, proj.type);
 
         if (proj.type === WeaponType.PlasmaMortar) {
@@ -2012,20 +2034,9 @@ export class WeaponManager {
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.Homing) {
-          // Deduplication: prevent multiple missiles from simultaneously hitting the same weak enemy.
-          // Boss/high-health enemies (maxHealth >= 15) accept multiple simultaneous hits.
-          // For weak enemies, only the first missile to hit detonates; others retarget.
-          const MISSILE_BOSS_THRESHOLD = 15;
-          const isBoss = (enemy.maxHealth ?? 0) >= MISSILE_BOSS_THRESHOLD;
-          if (!isBoss && this.missileHitThisFrame.has(enemy.index)) {
-            // Another missile already hit this enemy this frame — retarget to next nearest enemy
-            proj.targetIndex = undefined; // clear target so it picks a new one next frame
-            return;
-          }
-          // Mark this enemy as hit by a homing missile this frame
-          if (!isBoss) {
-            this.missileHitThisFrame.add(enemy.index);
-          }
+          // Mark this enemy as hit this frame — other missiles targeting same enemy
+          // will retarget to a different target (unless the enemy is a boss).
+          this.missileHitThisFrame.add(enemy.index);
 
           // Explosion radius upgrades (branch B): +30%, +60%
           const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);

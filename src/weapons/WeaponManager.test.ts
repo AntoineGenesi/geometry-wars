@@ -1656,3 +1656,117 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// s44r22-11: Mortar and homing missile lifetime + multi-target deduplication
+// ---------------------------------------------------------------------------
+describe('s44r22-11: Homing missile lifetime and deduplication', () => {
+  let manager: WeaponManager;
+  let mock: ReturnType<typeof createMockCallbacks>;
+
+  beforeEach(() => {
+    manager = new WeaponManager();
+    const enemies: MockEnemy[] = [];
+    mock = createMockCallbacks(enemies);
+    manager.setCallbacks(mock.callbacks);
+    manager.equipWeapon(WeaponType.Homing, 99);
+  });
+
+  it('homing missile reaches nearby enemy within 60s (was capped at 20s)', () => {
+    const enemy: MockEnemy = { position: new THREE.Vector3(8, 2, 0), index: 0, alive: true };
+    mock = createMockCallbacks([enemy]);
+    manager.setCallbacks(mock.callbacks);
+    manager.fire(origin(), forward(), T);
+
+    // Advance to 25s — old 20s cap would have killed this missile
+    for (let i = 0; i < Math.ceil(25 / 0.016); i++) manager.update(0.016);
+
+    // Missile should have hit the enemy (it's only ~2 units away and tracks it)
+    expect(mock.damages.length).toBeGreaterThan(0);
+  });
+
+  it('only one missile detonates per weak enemy per frame — others retarget', () => {
+    // Weak enemy (below MISSILE_BOSS_THRESHOLD=15) — on sphere surface at radius 8
+    const weakEnemy: MockEnemy = { position: new THREE.Vector3(0, 0, 8), index: 0, alive: true };
+    const explosions: { type: WeaponType }[] = [];
+    manager.setCallbacks({
+      getEnemies: () => [weakEnemy],
+      onEnemyDamage: () => {},
+      spawnBullet: () => {},
+      onProjectileExplosion: (_pos, type) => { explosions.push({ type }); },
+    });
+
+    // Fire 3 missiles toward the same target in the same frame
+    manager.fire(origin(), new THREE.Vector3(0, 0, 1), T);
+    manager.fire(origin(), new THREE.Vector3(0, 0, 1), T);
+    manager.fire(origin(), new THREE.Vector3(0, 0, 1), T);
+
+    // Run enough steps for missiles to converge on the enemy
+    let maxExplosionsInOneFrame = 0;
+    for (let step = 0; step < 300; step++) {
+      const beforeLen = explosions.length;
+      manager.update(0.016);
+      const thisFrame = explosions.length - beforeLen;
+      if (thisFrame > maxExplosionsInOneFrame) maxExplosionsInOneFrame = thisFrame;
+    }
+
+    // Key assertion: deduplication ensures at most 1 missile detonates per frame on same weak enemy
+    expect(maxExplosionsInOneFrame).toBeLessThanOrEqual(1);
+  });
+
+  it('boss (maxHealth >= 15) accepts hits from multiple missiles (not retargeted)', () => {
+    // Boss enemy with high maxHealth — on sphere surface
+    const bossEnemy = { position: new THREE.Vector3(0, 0, 8), index: 0, alive: true, maxHealth: 40 };
+    const explosions: { type: WeaponType }[] = [];
+    manager.setCallbacks({
+      getEnemies: () => [bossEnemy],
+      onEnemyDamage: () => {},
+      spawnBullet: () => {},
+      onProjectileExplosion: (_pos, type) => { explosions.push({ type }); },
+    });
+
+    // Fire 3 missiles with staggered game times to bypass fireRate cooldown
+    // (Homing fireRate=3 shots/s → cooldown=0.333s; same T would block 2nd/3rd)
+    manager.fire(origin(), new THREE.Vector3(0, 0, 1), T);
+    manager.fire(origin(), new THREE.Vector3(0, 0, 1), T + 0.5);
+    manager.fire(origin(), new THREE.Vector3(0, 0, 1), T + 1.0);
+
+    // Run until missiles hit (boss is at radius 8, missiles start at radius 8 — close range)
+    for (let step = 0; step < 400; step++) manager.update(0.016);
+
+    // Boss accepts multiple hits — all 3 missiles should detonate (not retargeted)
+    const bossExplosions = explosions.filter(e => e.type === WeaponType.Homing).length;
+    expect(bossExplosions).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('s44r22-11: Mortar targets nearest enemy (not fixed range)', () => {
+  it('mortar travels to nearest enemy position when enemies are present', () => {
+    const wm = new WeaponManager();
+
+    // Enemy close to player origin — mortar targets nearest enemy so travel time is short.
+    // Origin (8,0,0), enemy (8,0,2): distance = 2 units, speed = 1.0 → travelTime = 2s.
+    // Arc Y offset approaches 0 near t=1, so mortar lands within hitRadius of enemy.
+    const targetEnemy: MockEnemy = { position: new THREE.Vector3(8, 0, 2), index: 0, alive: true };
+    const dmgRecord: { index: number; damage: number }[] = [];
+    const explosionsFired: THREE.Vector3[] = [];
+    wm.setCallbacks({
+      getEnemies: () => [targetEnemy],
+      onEnemyDamage: (i, d) => dmgRecord.push({ index: i, damage: d }),
+      spawnBullet: () => {},
+      onProjectileExplosion: (pos) => explosionsFired.push(pos.clone()),
+    });
+
+    wm.equipWeapon(WeaponType.PlasmaMortar, 5);
+    // Fire from (8, 0, 0) — mortar targets nearest enemy at (8, 0, 2), 2 units away.
+    // Use T (10.0) as gameTime: mortar cooldown is 1.0s; T=0.016 would fail cooldown check.
+    wm.fire(new THREE.Vector3(8, 0, 0), new THREE.Vector3(0, 0, 1), T);
+
+    // Advance 9.6s (600 frames) — mortar reaches target in ~2s, well within limit
+    for (let i = 0; i < 600; i++) wm.update(0.016);
+
+    // Mortar should have detonated at the enemy (either direct hit or AoE)
+    expect(dmgRecord.length + explosionsFired.length).toBeGreaterThan(0);
+    wm.dispose();
+  });
+});
