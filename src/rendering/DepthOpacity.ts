@@ -213,6 +213,8 @@ const _occDir = new THREE.Vector3();
 const _occInvMatrix = new THREE.Matrix4();
 /** Pre-allocated vector for entity position in local (mesh) space. */
 const _occLocalEntityPos = new THREE.Vector3();
+/** Pre-allocated array for hit distances per raycast call (zero per-call GC). s44r26-01. */
+const _validHits: number[] = [];
 
 /** Internal per-entity state for the occlusion system. */
 interface OcclusionEntry {
@@ -415,8 +417,9 @@ export class DepthOcclusionSystem {
     const minHitDist = localDist * 0.92; // ignore hits within 8% of entity distance
     const DEDUP_EPSILON = 0.01; // merge hits within 1cm of each other
 
-    // Sort hits by distance for deduplication
-    const validHits: number[] = [];
+    // Sort hits by distance for deduplication (reuse module-level array — zero per-call GC)
+    const validHits = _validHits;
+    validHits.length = 0;
     for (let i = 0; i < hits.length; i++) {
       if (hits[i].distance < minHitDist) {
         validHits.push(hits[i].distance);
