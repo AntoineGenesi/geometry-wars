@@ -310,7 +310,7 @@ export class MenuBackground {
       gridColor: 0x1e1e8b,
       surfaceColor: 0x0a0a2a,
       surfaceOpacity: 0.25,
-      gridOpacity: 0.3,
+      gridOpacity: 0.4,
       radius: scale,
       size: scale,
       height: scale * 2,
@@ -322,6 +322,8 @@ export class MenuBackground {
       width: scale,
       tunnelRadius: scale * 0.3,
       bevelRadius: 0.8,
+      crossSection: scale * 0.4,
+      gridSegments: 20,
       gridSegmentsU: 20,
       gridSegmentsV: 16,
     };
