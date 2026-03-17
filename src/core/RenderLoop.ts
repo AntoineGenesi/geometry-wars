@@ -49,7 +49,11 @@ const SURFACE_NEAR_UV = 0.15;        // midpoint of hysteresis band (kept for re
 const SURFACE_NEAR_UV_ENTER = 0.17;  // start dimming when uvDist exceeds this (from bright)
 const SURFACE_NEAR_UV_EXIT  = 0.13;  // stop dimming when uvDist drops below this (from dimmed)
 const SURFACE_FAR_UV  = 0.45;    // fully dim beyond 45% of surface
-const SURFACE_DIM_OPACITY = 0.08; // minimum opacity for far-away enemies (s44r22-01: lowered from 0.40 to 0.08 — double-dimming fixed in s44r12-03, 0.40 floor made enemies too visible through surfaces)
+const SURFACE_DIM_OPACITY = 0.15; // minimum opacity for far-away/behind-surface enemies.
+// s44r22-01: lowered from 0.40→0.08 (double-dimming fixed in s44r12-03, 0.40 was too visible through surfaces).
+// s44r25-02: raised 0.08→0.15. 0.08 is mathematically correct but perceptually invisible on dark
+// torus/sphere backgrounds — user confirmed enemies at 0.08 appear completely invisible at 150 entities.
+// 0.15 provides a visible "ghost" (faint but perceptible) without approaching the too-bright 0.40 level.
 
 /**
  * RenderLoop contains the render callback logic, extracted from main.ts onRender.
@@ -330,7 +334,7 @@ export class RenderLoop {
       // But it must NEVER hide front-side enemies (enemies the player can directly see).
       // Two-tier floor prevents the 0.08 floor from allowing front-side enemies to be zeroed:
       //   - Front-side (isFrontSide=true): floor 0.70 — always clearly visible to the player
-      //   - Behind-surface (isFrontSide=false): floor 0.08 — dim glow preserved (s44r22-01)
+      //   - Behind-surface (isFrontSide=false): floor 0.15 — dim glow preserved (s44r22-01; raised 0.08→0.15 in s44r25-02)
       // This is the "different floors for front-side vs behind-surface" fix requested in s44r23-01.
       const visibilityFloor = isFrontSide ? 0.70 : SURFACE_DIM_OPACITY;
       visibility = Math.max(visibility, visibilityFloor);
