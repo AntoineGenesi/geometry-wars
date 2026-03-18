@@ -136,6 +136,27 @@ import { Portal, createPortalPair } from './entities/Portal';
 import { PerformanceProfiler as DebugPerformanceProfiler } from './debug/PerformanceProfiler';
 
 // ---------------------------------------------------------------------------
+// Bloom helper — mirrors main.ts (not exported; each entry point owns its bloom state)
+// ---------------------------------------------------------------------------
+
+/**
+ * Adjust bloom strength based on visual mode.
+ * Pixelated mode (half-res bloom) needs reduced strength to prevent oversaturation.
+ * Desktop Defender uses minimal bloom on a light background.
+ * Modern mode uses full-res bloom and benefits from normal strength values.
+ */
+function getAdjustedBloomStrength(baseStrength: number, visualMode: VisualMode): number {
+  if (visualMode === 'pixelated') {
+    return Math.max(0, baseStrength * 0.4);
+  }
+  if (visualMode === 'desktop-defender') {
+    // Minimal bloom on light background — bright particles don't need glow to stand out.
+    return Math.max(0, baseStrength * 0.25);
+  }
+  return baseStrength; // Modern mode uses full strength
+}
+
+// ---------------------------------------------------------------------------
 // Bullet visual type helper (mirrors main.ts — no server weapon type in state)
 // ---------------------------------------------------------------------------
 
@@ -607,6 +628,16 @@ async function main() {
   // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
   const savedVisualMode = loadVisualMode();
   game.setVisualMode(savedVisualMode);
+  // Apply visual mode bloom strength multiplier at startup.
+  // game.setVisualMode() resizes the render target but does not adjust bloom strength.
+  // Desktop Defender needs 0.25× multiplier; pixelated needs 0.4× (matches main.ts behaviour).
+  {
+    const baseBloomStrength = savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7);
+    const adjustedStrength = getAdjustedBloomStrength(baseBloomStrength, savedVisualMode);
+    if (adjustedStrength !== baseBloomStrength) {
+      game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
+    }
+  }
 
   const scene = game.scene;
   const camera = game.camera;
@@ -2261,6 +2292,11 @@ async function main() {
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
+    // Re-apply bloom strength adjusted for the new visual mode.
+    // desktop-defender: 0.25× (light bg, minimal glow); pixelated: 0.4×; modern: 1.0×
+    const baseBloomStrength = savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7);
+    const adjustedStrength = getAdjustedBloomStrength(baseBloomStrength, mode);
+    game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
     particles.setVisualMode(mode);
   });
 

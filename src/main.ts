@@ -520,6 +520,15 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Apply saved visual mode (pixelated = half-res bloom, modern = full-res bloom)
   const savedVisualMode = loadVisualMode();
   game.setVisualMode(savedVisualMode);
+  // Apply visual mode bloom strength multiplier at startup.
+  // game.setVisualMode() resizes the render target but does not adjust bloom strength.
+  // Desktop Defender needs 0.25× multiplier; pixelated needs 0.4×.
+  {
+    const adjustedStrength = getAdjustedBloomStrength(bloomStrength, savedVisualMode);
+    if (adjustedStrength !== bloomStrength) {
+      game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
+    }
+  }
 
   // Apply visual style changes in real-time when user selects a style in Settings
   SettingsMenu.setGlobalVisualStyleChangeCallback((preset) => {
