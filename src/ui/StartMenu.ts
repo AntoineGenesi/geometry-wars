@@ -1789,6 +1789,9 @@ export class StartMenu {
         background: linear-gradient(180deg, #00cc00 0%, #008800 100%);
         box-shadow: 0 0 20px #00ff00;
       }
+      #start-menu .lan-name-buttons .back-btn {
+        margin: 0;
+      }
 
       /* ------------------------------------------------------------------- */
       /* Hidden utility                                                       */
