@@ -933,8 +933,11 @@ export class PauseMenu {
 
     resumeBtn?.addEventListener('click', () => {
       if (!this.isHost) {
-        if (this.serverPaused) {
-          // Server is paused: enter look mode (camera can move, game stays frozen globally)
+        if (this.serverPaused && this.allowAllPlayersPauseValue) {
+          // Non-host with allowAllPlayersPause ON: send server resume just like host does
+          this.resume();
+        } else if (this.serverPaused) {
+          // Server is paused but non-host can't resume: enter look mode (camera can move, game stays frozen globally)
           this.enterLookMode();
         } else {
           // Local menu only (game still running): just close the menu
@@ -1091,7 +1094,7 @@ export class PauseMenu {
    * Resume the game.
    */
   resume(): void {
-    if (this.isHost) {
+    if (this.isHost || this.allowAllPlayersPauseValue) {
       this.networkCallbacks?.onPause(false);
     }
     this.hide();
