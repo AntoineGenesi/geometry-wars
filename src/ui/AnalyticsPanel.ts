@@ -9,7 +9,7 @@
  * Reads data from PerformanceLogger after the session is saved.
  */
 
-import type { PerformanceLogger } from '../core/PerformanceLogger';
+import type { PerformanceLogger, GameEvent } from '../core/PerformanceLogger';
 import { ScoreGraphPanel, injectScoreGraphStyles } from './ScoreGraphPanel';
 
 // Weapon display names (matches WeaponType enum values)
@@ -62,6 +62,15 @@ const BUFF_COLORS: Record<string, string> = {
   incendiary_rounds: '#ff6622',
   volatile: '#ff44ff',
 };
+
+// Kill streak tier definitions (ascending order)
+const STREAK_TIERS: Array<{ min: number; name: string; color: string }> = [
+  { min: 5,  name: 'Killing Spree',  color: '#44ff44' },
+  { min: 8,  name: 'Rampage',        color: '#ffff44' },
+  { min: 12, name: 'Unstoppable',    color: '#ff8844' },
+  { min: 16, name: 'God-like',       color: '#ff4444' },
+  { min: 20, name: 'Beyond God-like', color: '#cc44ff' },
+];
 
 export class AnalyticsPanel {
   private container: HTMLDivElement;
@@ -171,6 +180,47 @@ export class AnalyticsPanel {
         text-align: center;
         padding: 12px 0;
         font-style: italic;
+      }
+      #analytics-panel .ap-streak-best {
+        text-align: center;
+        margin-bottom: 20px;
+        padding: 16px;
+        background: rgba(0, 40, 60, 0.4);
+        border: 1px solid #223344;
+        border-radius: 4px;
+      }
+      #analytics-panel .ap-streak-best-label {
+        font-size: 11px;
+        color: #446688;
+        letter-spacing: 2px;
+        margin-bottom: 6px;
+      }
+      #analytics-panel .ap-streak-best-value {
+        font-size: 24px;
+        font-weight: bold;
+        letter-spacing: 2px;
+      }
+      #analytics-panel .ap-streak-best-name {
+        font-size: 13px;
+        margin-top: 4px;
+        letter-spacing: 1px;
+      }
+      #analytics-panel .ap-streak-tier-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 12px;
+        margin-bottom: 4px;
+        background: rgba(0, 20, 40, 0.3);
+        border-radius: 3px;
+      }
+      #analytics-panel .ap-streak-tier-name {
+        font-size: 13px;
+        font-weight: bold;
+      }
+      #analytics-panel .ap-streak-tier-count {
+        font-size: 13px;
+        color: #88aacc;
       }
       #analytics-panel .ap-close-btn {
         display: block;
@@ -301,43 +351,42 @@ export class AnalyticsPanel {
     // Tab bar
     const tabBar = document.createElement('div');
     tabBar.className = 'ap-tab-bar';
-    const tabScore = document.createElement('button');
-    tabScore.className = 'ap-tab active';
-    tabScore.textContent = 'SCORE GRAPH';
-    const tabWeapons = document.createElement('button');
-    tabWeapons.className = 'ap-tab';
-    tabWeapons.textContent = 'WEAPONS';
-    tabBar.appendChild(tabScore);
-    tabBar.appendChild(tabWeapons);
+
+    const tabs: Array<{ btn: HTMLButtonElement; panel: HTMLDivElement }> = [];
+
+    const addTab = (label: string, panelContent: HTMLElement, active = false): void => {
+      const btn = document.createElement('button');
+      btn.className = active ? 'ap-tab active' : 'ap-tab';
+      btn.textContent = label;
+      tabBar.appendChild(btn);
+
+      const panel = document.createElement('div');
+      panel.className = active ? 'ap-tab-panel active' : 'ap-tab-panel';
+      panel.appendChild(panelContent);
+
+      tabs.push({ btn, panel });
+
+      btn.addEventListener('click', () => {
+        for (const t of tabs) {
+          t.btn.classList.remove('active');
+          t.panel.classList.remove('active');
+        }
+        btn.classList.add('active');
+        panel.classList.add('active');
+      });
+    };
+
+    // Score Graph tab (default active)
+    addTab('SCORE GRAPH', this.scoreGraphPanel!.show(perfLogger), true);
+    // Weapons tab
+    addTab('WEAPONS', this.buildWeaponsContent(analytics));
+    // Streaks tab
+    addTab('STREAKS', this.buildStreaksContent(perfLogger));
+
     content.appendChild(tabBar);
-
-    // Score Graph panel
-    const scorePanel = document.createElement('div');
-    scorePanel.className = 'ap-tab-panel active';
-    scorePanel.id = 'ap-tab-score';
-    scorePanel.appendChild(this.scoreGraphPanel!.show(perfLogger));
-    content.appendChild(scorePanel);
-
-    // Weapons panel (existing content)
-    const weaponsPanel = document.createElement('div');
-    weaponsPanel.className = 'ap-tab-panel';
-    weaponsPanel.id = 'ap-tab-weapons';
-    weaponsPanel.appendChild(this.buildWeaponsContent(analytics));
-    content.appendChild(weaponsPanel);
-
-    // Tab switching
-    tabScore.addEventListener('click', () => {
-      tabScore.classList.add('active');
-      tabWeapons.classList.remove('active');
-      scorePanel.classList.add('active');
-      weaponsPanel.classList.remove('active');
-    });
-    tabWeapons.addEventListener('click', () => {
-      tabWeapons.classList.add('active');
-      tabScore.classList.remove('active');
-      weaponsPanel.classList.add('active');
-      scorePanel.classList.remove('active');
-    });
+    for (const t of tabs) {
+      content.appendChild(t.panel);
+    }
 
     // CLOSE button (appended after tabs)
     const closeBtn = document.createElement('button');
@@ -392,6 +441,103 @@ export class AnalyticsPanel {
         color: BUFF_COLORS[buff] ?? '#88aacc',
       }),
     ));
+
+    return content;
+  }
+
+  private buildStreaksContent(perfLogger: PerformanceLogger): HTMLElement {
+    const content = document.createElement('div');
+    const events = perfLogger.getEvents();
+    const streakEvents = events.filter(
+      (e: GameEvent) => e.type === 'kill_streak' && e.value != null,
+    );
+
+    if (streakEvents.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'ap-empty';
+      empty.textContent = 'No kill streaks achieved this session';
+      content.appendChild(empty);
+      return content;
+    }
+
+    // Find best streak
+    let bestStreak: GameEvent = streakEvents[0];
+    for (const e of streakEvents) {
+      if ((e.value ?? 0) > (bestStreak.value ?? 0)) bestStreak = e;
+    }
+    const bestCount = bestStreak.value ?? 0;
+
+    // Determine tier name and color for the best streak
+    let bestTierName = `${bestCount}-kill streak`;
+    let bestTierColor = '#44ff44';
+    for (const tier of STREAK_TIERS) {
+      if (bestCount >= tier.min) {
+        bestTierName = tier.name;
+        bestTierColor = tier.color;
+      }
+    }
+
+    // Best streak hero section
+    const heroEl = document.createElement('div');
+    heroEl.className = 'ap-streak-best';
+    heroEl.innerHTML = `
+      <div class="ap-streak-best-label">BEST STREAK</div>
+      <div class="ap-streak-best-value" style="color: ${bestTierColor}; text-shadow: 0 0 12px ${bestTierColor};">${bestCount} KILLS</div>
+      <div class="ap-streak-best-name" style="color: ${bestTierColor};">${bestTierName}</div>
+    `;
+    content.appendChild(heroEl);
+
+    // Tier breakdown section
+    const sectionTitle = document.createElement('div');
+    sectionTitle.className = 'ap-section-title';
+    sectionTitle.textContent = 'STREAK BREAKDOWN';
+    content.appendChild(sectionTitle);
+
+    // Count streaks per tier (reverse order — highest tier first)
+    const tierCounts: Array<{ name: string; color: string; count: number }> = [];
+    for (let i = STREAK_TIERS.length - 1; i >= 0; i--) {
+      const tier = STREAK_TIERS[i];
+      const nextMin = i < STREAK_TIERS.length - 1 ? STREAK_TIERS[i + 1].min : Infinity;
+      const count = streakEvents.filter(
+        (e: GameEvent) => (e.value ?? 0) >= tier.min && (e.value ?? 0) < nextMin,
+      ).length;
+      if (count > 0) {
+        tierCounts.push({ name: tier.name, color: tier.color, count });
+      }
+    }
+
+    if (tierCounts.length === 0) {
+      // All streaks below named tiers — show raw count
+      const row = document.createElement('div');
+      row.className = 'ap-streak-tier-row';
+      row.innerHTML = `
+        <span class="ap-streak-tier-name" style="color: #44ff44;">Kill Streaks</span>
+        <span class="ap-streak-tier-count">${streakEvents.length}×</span>
+      `;
+      content.appendChild(row);
+    } else {
+      for (const tc of tierCounts) {
+        const row = document.createElement('div');
+        row.className = 'ap-streak-tier-row';
+        row.innerHTML = `
+          <span class="ap-streak-tier-name" style="color: ${tc.color};">${tc.name}</span>
+          <span class="ap-streak-tier-count">${tc.count}×</span>
+        `;
+        content.appendChild(row);
+      }
+    }
+
+    // Total streaks summary
+    const totalRow = document.createElement('div');
+    totalRow.className = 'ap-streak-tier-row';
+    totalRow.style.marginTop = '12px';
+    totalRow.style.borderTop = '1px solid #223344';
+    totalRow.style.paddingTop = '10px';
+    totalRow.innerHTML = `
+      <span class="ap-streak-tier-name" style="color: #88aacc;">Total Streaks</span>
+      <span class="ap-streak-tier-count">${streakEvents.length}</span>
+    `;
+    content.appendChild(totalRow);
 
     return content;
   }

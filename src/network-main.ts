@@ -103,6 +103,8 @@ import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
 import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
+import { PerformanceLogger } from './core/PerformanceLogger';
+import { AnalyticsPanel } from './ui/AnalyticsPanel';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { MapSize, getDefaultMapSizeForSurface, getMapSizeScaleFactor } from './core/MapSize';
 import {
@@ -1029,6 +1031,10 @@ async function main() {
   // -- Plasma explosion effect (visual-only in MP — damage is server authoritative) --
   const plasmaExplosionEffect = new PlasmaExplosionEffect();
   scene.add(plasmaExplosionEffect.root);
+
+  // Performance logger for post-game score graph + analytics panel
+  let mpPerfLogger = new PerformanceLogger('mp');
+  const analyticsPanel = new AnalyticsPanel();
 
   // Kill log + total kill counter (same as co-op / single player)
   const killLog = new KillLog();
@@ -3287,6 +3293,9 @@ async function main() {
     // Reset per-round counters for telemetry
     localPlayerDeaths = 0;
 
+    // Reset performance logger for the new round (fresh score graph)
+    mpPerfLogger = new PerformanceLogger(lastCreatedSurfaceType || 'mp');
+
     // Reset camera frame so controls aren't inverted after round reset.
     // Without this, targetUp may still hold the last surface's tangentV, which
     // can mismatch the new spawn orientation and trigger the sign-flip protection.
@@ -3367,6 +3376,9 @@ async function main() {
 
     // Track latest server state values for metrics logging
     latestGameTime = state.gameTime;
+    if (state.waveNumber > latestWaveNumber && state.waveNumber > 0) {
+      mpPerfLogger.recordEvent('wave_start', `Wave ${state.waveNumber}`, state.waveNumber);
+    }
     latestWaveNumber = state.waveNumber;
     latestMapSize = state.mapSize || 'medium';
     if (state.gameMode) latestGameMode = state.gameMode;
@@ -3537,6 +3549,7 @@ async function main() {
           // Track deaths for local player telemetry
           if (id === localPlayerId) {
             localPlayerDeaths++;
+            mpPerfLogger.recordEvent('player_death', 'Death');
           }
         }
       }
@@ -4136,6 +4149,14 @@ async function main() {
             const killedWithWeapon = localWeaponManager.getCurrentWeapon();
             weaponMastery.recordKill(killedWithWeapon);
             matchUpgradeTracker.recordKill(killedWithWeapon);
+            // Record kill in perf logger for score graph + weapon analytics
+            const enemyName = enemy.baseTypeName || enemy.constructor.name || 'Unknown';
+            mpPerfLogger.recordEvent('kill', enemyName);
+            const activeBuffsList = buffManager.getActiveBuffs();
+            const activeBuffsStr = activeBuffsList.length > 0
+              ? activeBuffsList.map(b => `${b.type}:${b.stacks}`).join(',')
+              : '';
+            mpPerfLogger.recordWeaponKill(killedWithWeapon, activeBuffsStr);
           }
         }
 
@@ -4904,6 +4925,7 @@ async function main() {
       if (!localCollectedWeapons.has(activeWeaponType)) {
         localCollectedWeapons.set(activeWeaponType, localPlayer.weaponAmmo);
         weaponHUD.showPickupNotification(`${WEAPON_CONFIGS[activeWeaponType].name} added to inventory`);
+        mpPerfLogger.recordEvent('weapon_pickup', WEAPON_CONFIGS[activeWeaponType].name);
       }
       // Keep ammo up to date for the active weapon
       if (activeWeaponType !== WeaponType.Standard) {
@@ -5061,7 +5083,11 @@ async function main() {
           const cleanup = () => {
             activeEndOfRoundUpgradeScreen = null;
             upgradeScreen.dispose();
-            proceedToVoting();
+            // Show session review (score graph + analytics) before voting screen
+            analyticsPanel.show(mpPerfLogger);
+            analyticsPanel.onClose(() => {
+              proceedToVoting();
+            });
           };
           upgradeScreen.onClose(cleanup);
         };
@@ -5142,6 +5168,8 @@ async function main() {
           activeEndOfRoundUpgradeScreen.dispose();
           activeEndOfRoundUpgradeScreen = null;
         }
+        // Dismiss analytics panel if countdown expired while reviewing
+        analyticsPanel.hide();
         // Reset per-match upgrade tracker for the new round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
         matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
@@ -6837,6 +6865,26 @@ async function main() {
         gameMode: latestGameMode || undefined,
       };
       network.sendMetrics(metrics);
+    }
+
+    // -- Feed MP PerformanceLogger (for post-game score graph + analytics) --
+    if (currentRoomPhase === 'playing') {
+      const localPlayerState = networkPlayers.get(localPlayerId);
+      const currentFps = Math.round(perfTracker.fps);
+      mpPerfLogger.setFrameData(currentFps, networkEnemies.size, bulletIdToIndex.size);
+      const activeBuffsList = buffManager.getActiveBuffs();
+      const activeBuffsStr = activeBuffsList.length > 0
+        ? activeBuffsList.map(b => `${b.type}:${b.stacks}`).join(',')
+        : '';
+      mpPerfLogger.setGameplayData(
+        localPlayerState?.score ?? 0,
+        totalKillCounter.getTotalKills(),
+        localPlayerDeaths,
+        localPlayerWeaponType,
+        activeBuffsStr,
+        activeBuffsList.length,
+      );
+      mpPerfLogger.recordFrame(dt);
     }
 
     // -- Client-side game mode tick --
