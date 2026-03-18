@@ -15,6 +15,7 @@
  */
 
 import { SoundEngine } from '../audio/SoundEngine';
+import { KillStreakVoice } from '../audio/KillStreakVoice';
 
 // ---------------------------------------------------------------------------
 // Streak configuration
@@ -52,12 +53,14 @@ export class KillStreakAnnouncer {
   private readonly container: HTMLDivElement;
   private readonly styleEl: HTMLStyleElement;
   private readonly sound: SoundEngine;
+  private readonly voice: KillStreakVoice;
 
   /** Time remaining for the current announcement (seconds). Negative = idle. */
   private timeRemaining = -1;
 
   constructor(sound: SoundEngine) {
     this.sound = sound;
+    this.voice = new KillStreakVoice(sound);
 
     this.styleEl = document.createElement('style');
     this.styleEl.id = 'kill-streak-announcer-style';
@@ -118,6 +121,14 @@ export class KillStreakAnnouncer {
   // ---------------------------------------------------------------------------
 
   /**
+   * Preload voice clips. Call once after SoundEngine.init().
+   * Non-blocking — the announcer works without voice clips.
+   */
+  preloadVoice(): Promise<void> {
+    return this.voice.preload();
+  }
+
+  /**
    * Show an announcement for the given kill streak.
    * If streakCount < 2 no announcement is shown (single kill = no streak).
    *
@@ -152,6 +163,9 @@ export class KillStreakAnnouncer {
     this.timeRemaining = VISIBLE_DURATION + FADE_DURATION;
 
     this.sound.play('multiplierUp', { pitch: tier.pitch, volume: 0.7 });
+
+    // Play voice announcement clip
+    this.voice.playMultiKill(streakCount);
   }
 
   /**
@@ -175,10 +189,11 @@ export class KillStreakAnnouncer {
     }
   }
 
-  /** Remove DOM elements and style tags. */
+  /** Remove DOM elements, style tags, and release audio resources. */
   dispose(): void {
     this.container.remove();
     this.styleEl.remove();
+    this.voice.dispose();
   }
 
   // ---------------------------------------------------------------------------
