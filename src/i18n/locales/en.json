@@ -176,6 +176,7 @@
     "stylePixelated": "STYLE: PIXELATED",
     "styleModern": "STYLE: MODERN",
     "styleDesktopDefender": "STYLE: DESKTOP DEF.",
+    "visualStyles": "VISUAL STYLES",
     "performanceGraphs": "PERFORMANCE GRAPHS",
     "music": "MUSIC: {{name}}",
     "exitToMenu": "EXIT TO MENU",

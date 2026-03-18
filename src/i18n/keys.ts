@@ -125,6 +125,7 @@ export const KEYS = {
     stylePixelated: 'pauseMenu.stylePixelated',
     styleModern: 'pauseMenu.styleModern',
     styleDesktopDefender: 'pauseMenu.styleDesktopDefender',
+    visualStyles: 'pauseMenu.visualStyles',
     performanceGraphs: 'pauseMenu.performanceGraphs',
     music: 'pauseMenu.music',
     exitToMenu: 'pauseMenu.exitToMenu',
