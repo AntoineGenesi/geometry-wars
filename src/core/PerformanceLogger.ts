@@ -1001,9 +1001,13 @@ export class PerformanceLogger {
     point.killsThisSample = killsDelta;
     this.lastSampleKills = this.currentKills;
 
-    // Detect kill streak: 5+ kills in a single 500ms sample window
-    if (killsDelta >= 5) {
-      this.recordEvent('kill_streak', `${killsDelta}-kill streak`, killsDelta);
+    // Detect multi-kills: 2+ kills in a single 500ms sample window
+    if (killsDelta >= 2) {
+      const streakLabel = killsDelta === 2 ? 'Double Kill'
+        : killsDelta === 3 ? 'Triple Kill'
+        : killsDelta === 4 ? 'Quad Kill'
+        : `${killsDelta}-Kill Streak`;
+      this.recordEvent('kill_streak', streakLabel, killsDelta);
     }
 
     // Track gameplay peaks
