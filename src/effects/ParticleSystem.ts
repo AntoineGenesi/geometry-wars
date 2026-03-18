@@ -167,6 +167,9 @@ export class ParticleSystem {
 
     this.root = new THREE.Points(this.geometry, this.material);
     this.root.frustumCulled = false;
+    // s44r28-01: Render above surface (0), grid (1), and entities (3) so particle
+    // effects (explosions, trails) are always visible on top.
+    this.root.renderOrder = 5;
 
     // Initialize fragment container and geometries
     this.fragmentContainer = new THREE.Group();

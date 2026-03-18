@@ -480,6 +480,9 @@ export class BulletInstanceManager {
     );
     this.batchedMesh.frustumCulled = false;
     this.batchedMesh.name = 'batched-bullets';
+    // s44r28-01: Render above surface (0) and grid (1) to prevent surface alpha-blending
+    // over bullets. Same rationale as EnemyInstanceManager.renderOrder = 3.
+    this.batchedMesh.renderOrder = 3;
 
     // Register each geometry and pre-allocate all instance slots.
     for (let t = 0; t < allTypes.length; t++) {
