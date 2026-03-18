@@ -149,24 +149,29 @@ export class KingMode implements IGameMode {
   }
 
   onFixedUpdate(dt: number, context: GameModeContext): void {
-    // In network mode, spawn warning rings are never cleaned up (enemySpawner.update is not
-    // called client-side). Skip warnings for all wave spawns to prevent accumulation.
-    const skipWarning = context.isNetworkMode ?? false;
+    const isNetwork = context.isNetworkMode ?? false;
 
     // 0. Tick elapsed time and zone animation timer
     this.zoneTime += dt;
     this.kothElapsed += dt;
-    this.kothWaveTimer -= dt;
-    if (this.kothWaveTimer <= 0) {
-      this.spawnTimedKothWave(context, skipWarning);
-    }
 
-    // Staggered showcase: spawn one fractal_snake at each showcase timer threshold.
-    // EnemySpawner cycles variants, so snakes at 10s/18s/26s/34s each show a different head.
-    for (let i = this.fractalSnakeShowcaseTimers.length - 1; i >= 0; i--) {
-      if (this.kothElapsed >= this.fractalSnakeShowcaseTimers[i]) {
-        context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }], skipWarning);
-        this.fractalSnakeShowcaseTimers.splice(i, 1);
+    // In network mode, the SERVER handles all enemy spawning. Spawning enemies client-side
+    // would create ghost enemies (not tracked by networkEnemies), accumulating in the local
+    // enemySpawner.enemies[] array and potentially hitting the 400-cap, which then causes
+    // server-tracked enemies to fail to spawn (invisible enemies). Skip ALL client-side spawns.
+    if (!isNetwork) {
+      this.kothWaveTimer -= dt;
+      if (this.kothWaveTimer <= 0) {
+        this.spawnTimedKothWave(context, false);
+      }
+
+      // Staggered showcase: spawn one fractal_snake at each showcase timer threshold.
+      // EnemySpawner cycles variants, so snakes at 10s/18s/26s/34s each show a different head.
+      for (let i = this.fractalSnakeShowcaseTimers.length - 1; i >= 0; i--) {
+        if (this.kothElapsed >= this.fractalSnakeShowcaseTimers[i]) {
+          context.enemySpawner.spawnWave([{ type: 'fractal_snake', count: 1 }], false);
+          this.fractalSnakeShowcaseTimers.splice(i, 1);
+        }
       }
     }
 
@@ -209,11 +214,13 @@ export class KingMode implements IGameMode {
       this.zoneTimeSeconds += dt;
     }
 
-    // 5. Fire pre-planned dramatic waves at shrink thresholds
-    for (const event of this.shrinkEvents) {
-      if (!event.spawned && this.zoneRadiusUV <= event.threshold) {
-        event.spawned = true;
-        this.triggerShrinkWave(context, event.wave, skipWarning);
+    // 5. Fire pre-planned dramatic waves at shrink thresholds (SP only — server handles MP spawns)
+    if (!isNetwork) {
+      for (const event of this.shrinkEvents) {
+        if (!event.spawned && this.zoneRadiusUV <= event.threshold) {
+          event.spawned = true;
+          this.triggerShrinkWave(context, event.wave, false);
+        }
       }
     }
 

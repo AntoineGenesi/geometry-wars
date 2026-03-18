@@ -603,6 +603,20 @@ export class FractalSnake extends BaseEnemy {
     // Update head mesh position/orientation via base class
     super.applySurfaceTransform(getTransform);
 
+    // In MP mode, updateBehavior is not called (server is authoritative for positions),
+    // so posHistory never gets filled and followers would stay at their initial spawn positions.
+    // Detect this by checking if head has moved since the last history entry.
+    // In SP, updateBehavior already recorded the same position -> no duplicate added.
+    const headU = this.surfacePosition.u;
+    const headV = this.surfacePosition.v;
+    const lastH = this.posHistory[0];
+    if (!lastH || Math.abs(lastH.u - headU) > 0.0005 || Math.abs(lastH.v - headV) > 0.0005) {
+      this.posHistory.unshift({ u: headU, v: headV });
+      if (this.posHistory.length > HISTORY_SIZE) this.posHistory.pop();
+      // Update follower positions from history so they trail the head
+      this._updateFollowerPositions();
+    }
+
     // Animate inner spinning triangles (counter-rotate in head's local space)
     const rotSpeed = 1.5; // rad/s
     this._innerAngle += this._lastDt * rotSpeed;
