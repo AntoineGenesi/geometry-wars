@@ -598,6 +598,59 @@ describe('EnemyInstanceManager', () => {
       expect(manager.isInLODBatch(grunt)).toBe(false);
     });
 
+    it('s44r29-08: materializing enemies get zero-scale matrix (not stale registration matrix)', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.isMaterializing = true;
+      grunt.mesh!.position.set(5, 5, 5);
+      grunt.mesh!.scale.setScalar(1);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+      lodAssignments.set(grunt, LODLevel.HIGH);
+
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+
+      // Matrix should be zero-scale (enemy invisible during materialization)
+      const batch = (manager as any).batches.get('Grunt');
+      const index = batch.enemyToIndex.get(grunt);
+      const matrix = new THREE.Matrix4();
+      batch.instancedMesh.getMatrixAt(index, matrix);
+      const scale = new THREE.Vector3();
+      scale.setFromMatrixScale(matrix);
+      expect(scale.x).toBe(0);
+      expect(scale.y).toBe(0);
+      expect(scale.z).toBe(0);
+    });
+
+    it('s44r29-08: syncInstanceMatrix immediately updates InstancedMesh from mesh', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.isMaterializing = false;
+      grunt.mesh!.position.set(3, 4, 5);
+      grunt.mesh!.scale.setScalar(0.5);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      // Before sync, matrix is zero-scale (from registration)
+      const batch = (manager as any).batches.get('Grunt');
+      const index = batch.enemyToIndex.get(grunt);
+      const matrix = new THREE.Matrix4();
+      batch.instancedMesh.getMatrixAt(index, matrix);
+      const scaleBefore = new THREE.Vector3();
+      scaleBefore.setFromMatrixScale(matrix);
+      expect(scaleBefore.x).toBe(0);
+
+      // After sync, matrix should match mesh
+      manager.syncInstanceMatrix(grunt);
+
+      batch.instancedMesh.getMatrixAt(index, matrix);
+      const scaleAfter = new THREE.Vector3();
+      scaleAfter.setFromMatrixScale(matrix);
+      expect(scaleAfter.x).toBeCloseTo(0.5, 2);
+      expect(scaleAfter.y).toBeCloseTo(0.5, 2);
+      expect(scaleAfter.z).toBeCloseTo(0.5, 2);
+    });
+
     it('unregistering enemy also clears LOD placement', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
