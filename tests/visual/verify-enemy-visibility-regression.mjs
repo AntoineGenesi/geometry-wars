@@ -6,6 +6,11 @@
  * FAILS if ANY enemy has brightness < 0.10 (perceptually invisible).
  * WARNS if any enemy has brightness < 0.20 (nearly invisible).
  *
+ * Also performs screenshot-based pixel analysis (belt AND suspenders):
+ * - Takes baseline screenshot after clearEnemies()
+ * - Takes with-enemies screenshot after 4s wait
+ * - Computes brightRatio delta; FAILS if delta < SCREENSHOT_DELTA_THRESHOLD
+ *
  * Designed to catch RC1–RC8 regressions WITHOUT the user finding it at wave 7.
  * Known root causes caught by this test:
  *   RC1: vis² double-multiply in shader (s44r12-03)
@@ -53,6 +58,11 @@ const CRITICAL_PCT = 0.10;         // >10% invisible = CRITICAL FAIL
 // Must be > 50 to catch RC8-A's 50-enemy AdaptiveQuality cap bug
 const SPAWN_COUNT = 70;
 
+// Minimum increase in brightRatio (any channel > 60) after spawning 70 enemies.
+// Background in SwiftShader headless is mostly < 30 on all channels.
+// 0.02 = 2% of 800×600 pixels must brighten — 70 enemies should comfortably exceed this.
+const SCREENSHOT_DELTA_THRESHOLD = 0.02;
+
 // Simple enemy types (no snake segments or bosses that have complex teardown)
 const ENEMY_TYPES = ['wanderer', 'grunt', 'duck', 'mayfly'];
 
@@ -72,6 +82,38 @@ const LAUNCH_ARGS = [
 ];
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------------------------------------------------------------------------
+// Canvas pixel analysis — independent of instanceColorBrightness API
+// ---------------------------------------------------------------------------
+
+/**
+ * Count pixels with any RGB channel > 60 (neon enemy colors).
+ * Background surfaces in SwiftShader headless are mostly < 30 on all channels.
+ * Returns brightRatio = brightCount / totalPixels.
+ */
+async function analyzeCanvasForEnemies(page) {
+  return page.evaluate(() => {
+    const canvas = document.querySelector('canvas');
+    if (!canvas) return { brightCount: 0, totalCount: 0, brightRatio: 0 };
+    try {
+      const tmp = document.createElement('canvas');
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      const ctx = tmp.getContext('2d');
+      ctx.drawImage(canvas, 0, 0);
+      const data = ctx.getImageData(0, 0, tmp.width, tmp.height).data;
+      let brightCount = 0;
+      const totalCount = tmp.width * tmp.height;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 60 || data[i + 1] > 60 || data[i + 2] > 60) brightCount++;
+      }
+      return { brightCount, totalCount, brightRatio: brightCount / totalCount };
+    } catch (e) {
+      return { error: e.message, brightCount: 0, totalCount: 0, brightRatio: 0 };
+    }
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Test one surface
@@ -121,12 +163,24 @@ async function testSurface(surface) {
       };
     }
 
-    // Clear any natural spawns, then force-spawn 70 enemies distributed across UV space
+    // Ensure screenshot directory exists before taking any screenshots
+    mkdirSync(SCREENSHOT_DIR, { recursive: true });
+
+    // Clear any natural spawns
+    await page.evaluate(() => window.__TEST_API.clearEnemies());
+
+    // Short wait for render to clear enemy pixels before baseline snapshot
+    await sleep(500);
+
+    // Baseline screenshot (enemies cleared — measures ambient surface brightness only)
+    const baselineScreenshotPath = resolve(SCREENSHOT_DIR, `${surface}-baseline.png`);
+    await page.screenshot({ path: baselineScreenshotPath, fullPage: false });
+    const baselinePixels = await analyzeCanvasForEnemies(page);
+
+    // Force-spawn 70 enemies distributed across UV space
     // 7 rows × 10 cols = 70 enemies, offset to avoid exact U=0 or V=0 edges
     await page.evaluate((spawnCount, enemyTypes) => {
       const api = window.__TEST_API;
-      api.clearEnemies();
-
       const cols = 10;
       const rows = Math.ceil(spawnCount / cols);
       for (let i = 0; i < spawnCount; i++) {
@@ -144,10 +198,21 @@ async function testSurface(surface) {
     // 4s = ~240 frames at 60fps, more than enough.
     await sleep(4000);
 
-    // Screenshot for visual inspection on failure
-    mkdirSync(SCREENSHOT_DIR, { recursive: true });
+    // Screenshot with enemies (for visual inspection + pixel analysis)
     const screenshotPath = resolve(SCREENSHOT_DIR, `${surface}.png`);
     await page.screenshot({ path: screenshotPath, fullPage: false });
+    const withEnemiesPixels = await analyzeCanvasForEnemies(page);
+
+    // Compute brightRatio delta: how much brighter is the scene with enemies vs without?
+    const pixelDelta = (withEnemiesPixels?.brightRatio ?? 0) - (baselinePixels?.brightRatio ?? 0);
+    const screenshotPassed = pixelDelta >= SCREENSHOT_DELTA_THRESHOLD;
+    const screenshotAnalysis = {
+      baseline: baselinePixels,
+      withEnemies: withEnemiesPixels,
+      pixelDelta: parseFloat(pixelDelta.toFixed(4)),
+      screenshotPassed,
+      baselineScreenshotPath,
+    };
 
     // Read all active enemies and their instanceColorBrightness
     const enemies = await page.evaluate(() => {
@@ -162,6 +227,7 @@ async function testSurface(surface) {
         reason: 'getEnemies() returned null after spawn',
         duration: Date.now() - start,
         screenshotPath,
+        screenshotAnalysis,
       };
     }
 
@@ -182,8 +248,8 @@ async function testSurface(surface) {
       ? alive.reduce((s, e) => s + e.instanceColorBrightness, 0) / alive.length
       : 1.0;
 
-    // FAIL if: any enemy invisible, OR alive count suspiciously low (enemies not spawning)
-    const passed = alive.length >= 10 && invisible.length === 0;
+    // FAIL if: any enemy invisible, OR alive count suspiciously low, OR screenshot pixel delta too low
+    const passed = alive.length >= 10 && invisible.length === 0 && screenshotPassed;
     const isCritical = invisiblePct > CRITICAL_PCT;
 
     return {
@@ -199,6 +265,7 @@ async function testSurface(surface) {
       minBrightness: minBrightness.toFixed(4),
       avgBrightness: avgBrightness.toFixed(4),
       screenshotPath,
+      screenshotAnalysis,
       duration: Date.now() - start,
       // Sample of failing enemies for debugging — includes UV position and brightness
       invisibleSample: invisible.slice(0, 5).map(e => ({
@@ -232,6 +299,7 @@ async function main() {
   console.log(`Spawn count: ${SPAWN_COUNT} enemies per surface (> 50 catches RC8-A cap bug)`);
   console.log(`Invisible threshold: instanceColorBrightness < ${INVISIBLE_THRESHOLD}`);
   console.log(`Warning threshold:   instanceColorBrightness < ${DIM_THRESHOLD}`);
+  console.log(`Screenshot delta:    brightRatio increase >= ${SCREENSHOT_DELTA_THRESHOLD} required`);
   console.log('');
 
   const results = [];
@@ -246,12 +314,19 @@ async function main() {
         console.log(`SKIP  ${result.reason}`);
       } else if (result.passed) {
         const dimNote = result.dimCount > 0 ? ` warn_dim=${result.dimCount}` : '';
-        console.log(`PASS  alive=${result.aliveCount}/${result.spawnedCount} invisible=0 min_icb=${result.minBrightness} avg_icb=${result.avgBrightness}${dimNote} (${result.duration}ms)`);
+        const pxNote = result.screenshotAnalysis
+          ? ` px_delta=+${result.screenshotAnalysis.pixelDelta}` : '';
+        console.log(`PASS  alive=${result.aliveCount}/${result.spawnedCount} invisible=0 min_icb=${result.minBrightness} avg_icb=${result.avgBrightness}${dimNote}${pxNote} (${result.duration}ms)`);
       } else {
         const criticalFlag = result.isCritical ? ' [CRITICAL]' : '';
         console.log(`FAIL${criticalFlag}  alive=${result.aliveCount}/${result.spawnedCount} invisible=${result.invisibleCount} (${result.invisiblePct}%) min_icb=${result.minBrightness}`);
         for (const e of (result.invisibleSample || [])) {
           console.log(`         ${e.type} id=${e.id} u=${e.u} v=${e.v} icb=${e.icb}`);
+        }
+        if (result.screenshotAnalysis && !result.screenshotAnalysis.screenshotPassed) {
+          console.log(`         [SCREENSHOT] pixel delta too low: ${result.screenshotAnalysis.pixelDelta} < ${SCREENSHOT_DELTA_THRESHOLD} (enemies not visible in render output)`);
+          console.log(`         baseline:     ${result.screenshotAnalysis.baselineScreenshotPath}`);
+          console.log(`         with-enemies: ${result.screenshotPath}`);
         }
       }
     } catch (err) {
@@ -280,7 +355,9 @@ async function main() {
     console.log('\nFAILED surfaces:');
     for (const f of failed) {
       const critical = f.isCritical ? ' [CRITICAL — >10% invisible]' : '';
-      console.log(`  [SP] ${f.surface}${critical}: ${f.invisibleCount ?? '?'} invisible enemies`);
+      const screenshotFail = f.screenshotAnalysis && !f.screenshotAnalysis.screenshotPassed
+        ? ` [SCREENSHOT px_delta=${f.screenshotAnalysis.pixelDelta}]` : '';
+      console.log(`  [SP] ${f.surface}${critical}${screenshotFail}: ${f.invisibleCount ?? '?'} invisible enemies`);
     }
     console.log('\nACTION REQUIRED: Invisible enemy regression detected.');
     console.log('Root cause checklist:');
@@ -308,6 +385,7 @@ async function main() {
       dim: DIM_THRESHOLD,
       criticalPct: CRITICAL_PCT,
       spawnCount: SPAWN_COUNT,
+      screenshotDelta: SCREENSHOT_DELTA_THRESHOLD,
     },
   }, null, 2));
   console.log(`\nReport: ${reportPath}`);
