@@ -12,6 +12,8 @@ import { MasteryPointStore } from '../systems/MasteryPointStore';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { GameSettingsPanel } from './GameSettingsPanel';
 import type { GameSettings } from '../../server/shared/GameSettings';
+import type { VisualMode } from './VisualStyleSettings';
+import { VisualPlayground } from './VisualPlayground';
 
 /**
  * Pause menu overlay.
@@ -92,7 +94,7 @@ export class PauseMenu {
   private container: HTMLDivElement;
   private onResumeCallback: (() => void) | null = null;
   private onExitCallback: (() => void) | null = null;
-  private onVisualModeChangeCallback: ((mode: 'pixelated' | 'modern') => void) | null = null;
+  private onVisualModeChangeCallback: ((mode: VisualMode) => void) | null = null;
   private onGraphicsChangeCallback: ((settings: GraphicsSettings) => void) | null = null;
   private onLookModeCallback: (() => void) | null = null;
   private isPaused: boolean = false;
@@ -102,7 +104,7 @@ export class PauseMenu {
   private serverPaused: boolean = true;
   private networkCallbacks: PauseMenuNetworkCallbacks | null = null;
   private perfLogger: PerformanceLogger | null = null;
-  private visualMode: 'pixelated' | 'modern' = 'pixelated';
+  private visualMode: VisualMode = 'pixelated';
   private joinUrl: string | null = null;
   private isInLookMode: boolean = false;
   private _langUnsub: (() => void) | null = null;
@@ -168,6 +170,10 @@ export class PauseMenu {
             <button class="pause-btn visual-mode-btn" data-action="visual-mode">
               <span class="btn-icon">🎨</span>
               <span class="visual-mode-label">${t('pauseMenu.stylePixelated')}</span>
+            </button>
+            <button class="pause-btn" data-action="open-styles-gallery">
+              <span class="btn-icon">🖼</span>
+              <span>${t('pauseMenu.visualStyles')}</span>
             </button>
             <button class="pause-btn perf-graphs-btn" data-action="perf-graphs">
               <span class="btn-icon">📊</span>
@@ -1000,9 +1006,18 @@ export class PauseMenu {
 
     const visualModeBtn = this.container.querySelector('[data-action="visual-mode"]');
     visualModeBtn?.addEventListener('click', () => {
-      this.visualMode = this.visualMode === 'pixelated' ? 'modern' : 'pixelated';
+      if (this.visualMode === 'pixelated') this.visualMode = 'modern';
+      else if (this.visualMode === 'modern') this.visualMode = 'desktop-defender';
+      else this.visualMode = 'pixelated';
       this.updateVisualModeLabel();
       this.onVisualModeChangeCallback?.(this.visualMode);
+    });
+
+    const stylesGalleryBtn = this.container.querySelector('[data-action="open-styles-gallery"]');
+    stylesGalleryBtn?.addEventListener('click', () => {
+      const playground = new VisualPlayground();
+      playground.show();
+      playground.onClose(() => { playground.dispose(); });
     });
 
     const perfGraphsBtn = this.container.querySelector('[data-action="perf-graphs"]');
@@ -1172,27 +1187,27 @@ export class PauseMenu {
    * Set the current visual mode. Updates the button label.
    * Call this on startup to sync with the saved mode.
    */
-  setVisualMode(mode: 'pixelated' | 'modern'): void {
+  setVisualMode(mode: VisualMode): void {
     this.visualMode = mode;
     this.updateVisualModeLabel();
   }
 
   /** Get the current visual mode. */
-  getVisualMode(): 'pixelated' | 'modern' {
+  getVisualMode(): VisualMode {
     return this.visualMode;
   }
 
   /** Register callback for when the user toggles the visual mode. */
-  onVisualModeChange(callback: (mode: 'pixelated' | 'modern') => void): void {
+  onVisualModeChange(callback: (mode: VisualMode) => void): void {
     this.onVisualModeChangeCallback = callback;
   }
 
   private updateVisualModeLabel(): void {
     const label = this.container.querySelector('.visual-mode-label');
     if (label) {
-      label.textContent = this.visualMode === 'pixelated'
-        ? t('pauseMenu.stylePixelated')
-        : t('pauseMenu.styleModern');
+      if (this.visualMode === 'pixelated') label.textContent = t('pauseMenu.stylePixelated');
+      else if (this.visualMode === 'modern') label.textContent = t('pauseMenu.styleModern');
+      else label.textContent = t('pauseMenu.styleDesktopDefender');
     }
   }
 
