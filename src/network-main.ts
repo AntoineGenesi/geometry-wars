@@ -1094,6 +1094,8 @@ async function main() {
 
   // -- KillStreakAnnouncer: centered overlay for PvP kill streak announcements --
   const killStreakAnnouncer = new KillStreakAnnouncer(sound);
+  // Preload voice clips in background (non-blocking — game works without them)
+  killStreakAnnouncer.preloadVoice();
 
   // -- PvPvE leaderboard: shows P/E/Total kill columns for all players --
   // Only visible in pvpve mode; updated on each state change.
