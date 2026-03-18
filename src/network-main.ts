@@ -5077,7 +5077,7 @@ async function main() {
         // Always show the weapon mastery upgrade tree after a game ends (s44r6-02).
         // Previously only shown when a weapon leveled up — now always shown so players
         // can review their mastery state and plan upgrades even with zero kills.
-        const proceedAfterMastery = () => {
+        const proceedAfterMastery = (sessionLogger: PerformanceLogger) => {
           const upgradeScreen = new WeaponMasteryScreen();
           activeEndOfRoundUpgradeScreen = upgradeScreen;
           upgradeScreen.setPointStore(masteryPointStore);
@@ -5085,8 +5085,11 @@ async function main() {
           const cleanup = () => {
             activeEndOfRoundUpgradeScreen = null;
             upgradeScreen.dispose();
-            // Show session review (score graph + analytics) before voting screen
-            analyticsPanel.show(mpPerfLogger);
+            // Show session review (score graph + analytics) before voting screen.
+            // Use the captured logger from before resetGameEntities() — the shared
+            // mpPerfLogger variable is reassigned to a fresh instance inside
+            // resetGameEntities(), so we must use the saved reference here.
+            analyticsPanel.show(sessionLogger);
             analyticsPanel.onClose(() => {
               proceedToVoting();
             });
@@ -5100,6 +5103,10 @@ async function main() {
           deadOverlay.style.display = 'none';
           // Hide death cam effect (final death case: camera held here for 3s, now clear).
           UIHelpers.hideDeathCamEffect();
+          // Capture the completed session's performance logger BEFORE resetGameEntities()
+          // reassigns mpPerfLogger to a fresh empty instance. This reference keeps the
+          // session data alive so analyticsPanel.show() receives the real game data.
+          const sessionPerfLogger = mpPerfLogger;
           // Clear all game entities so frozen enemies/pickups from the previous game
           // are removed from the scene immediately. Server also clears its state in
           // transitionToVoting(), but client clears eagerly for instant visual cleanup.
@@ -5117,11 +5124,11 @@ async function main() {
               () => {
                 activeMasteryScreen = null;
                 masteryScreen.dispose();
-                proceedAfterMastery();
+                proceedAfterMastery(sessionPerfLogger);
               },
             );
           } else {
-            proceedAfterMastery();
+            proceedAfterMastery(sessionPerfLogger);
           }
         };
 
