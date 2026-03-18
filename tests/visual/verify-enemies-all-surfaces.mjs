@@ -43,6 +43,9 @@ const MP_SURFACES = ['sphere', 'cube', 'torus', 'pill', 'peanut'];
 const INVISIBLE_THRESHOLD = 0.10;  // instanceColorBrightness below this = bug (s44r25-02: raised 0.05→0.10; SURFACE_DIM_OPACITY floor is now 0.15, so anything <0.10 is a regression)
 const DIM_THRESHOLD = 0.15;        // below this = warn (far-side expected)
 const BRIGHT_THRESHOLD = 0.30;     // above this = clearly visible (near-side)
+// s44r29-05: Matrix scale threshold — enemies with zero-scale matrix are invisible
+// regardless of ICB. This was the RC12 root cause: ICB check passed but matrix was zero.
+const MIN_MATRIX_SCALE = 0.01;     // below this = invisible (zero-scale matrix)
 
 // Wave time checkpoints (ms from game start)
 const SP_CHECKPOINTS_MS = [5000, 15000, 30000]; // t=5s (wave 1), 15s (wave 2-3), 30s (wave 3-5)
@@ -139,6 +142,12 @@ async function checkEnemiesAtCheckpoint(page, surface, tMs, screenshotName) {
   const invisible = alive.filter(e => e.instanceColorBrightness < INVISIBLE_THRESHOLD);
   const dim = alive.filter(e => e.instanceColorBrightness < DIM_THRESHOLD);
   const bright = alive.filter(e => e.instanceColorBrightness >= BRIGHT_THRESHOLD);
+  // s44r29-05: Also check for zero-scale matrix enemies (invisible despite good ICB).
+  // Exclude materializing enemies — they're expected to have zero-scale (spawn warning phase).
+  const zeroScale = alive.filter(e =>
+    !e.isMaterializing &&
+    e.instanceMatrixScale !== undefined && e.instanceMatrixScale < MIN_MATRIX_SCALE
+  );
 
   // Compute min/max/avg brightness of alive enemies
   let minBrightness = 1.0, maxBrightness = 0.0, avgBrightness = 1.0;
@@ -148,7 +157,8 @@ async function checkEnemiesAtCheckpoint(page, surface, tMs, screenshotName) {
     avgBrightness = alive.reduce((s, e) => s + e.instanceColorBrightness, 0) / alive.length;
   }
 
-  const passed = invisible.length === 0 && alive.length > 0;
+  // s44r29-05: Fail if ANY alive enemy has zero-scale matrix (invisible on screen)
+  const passed = invisible.length === 0 && zeroScale.length === 0 && alive.length > 0;
 
   return {
     t: tMs,
@@ -159,6 +169,7 @@ async function checkEnemiesAtCheckpoint(page, surface, tMs, screenshotName) {
     invisibleCount: invisible.length,
     dimCount: dim.length,
     brightCount: bright.length,
+    zeroScaleCount: zeroScale.length,
     minBrightness,
     maxBrightness,
     avgBrightness,
@@ -169,6 +180,14 @@ async function checkEnemiesAtCheckpoint(page, surface, tMs, screenshotName) {
     invisibleSample: invisible.slice(0, 3).map(e => ({
       type: e.type, u: e.u.toFixed(3), v: e.v.toFixed(3),
       instanceColorBrightness: e.instanceColorBrightness.toFixed(4),
+      renderBatch: e.renderBatch,
+    })),
+    // s44r29-05: Sample of zero-scale enemies
+    zeroScaleSample: zeroScale.slice(0, 3).map(e => ({
+      type: e.type, u: e.u.toFixed(3), v: e.v.toFixed(3),
+      instanceColorBrightness: e.instanceColorBrightness.toFixed(4),
+      instanceMatrixScale: e.instanceMatrixScale?.toFixed(6),
+      renderBatch: e.renderBatch,
     })),
   };
 }
@@ -490,10 +509,18 @@ async function main() {
       console.log(` ${icon}  (${detail})`);
 
       // Print invisible enemy details for failures
-      for (const cp of result.checkpoints.filter(c => c.invisibleCount > 0)) {
-        console.log(`    FAIL at t=${cp.t/1000}s: ${cp.invisibleCount} invisible`);
-        for (const e of cp.invisibleSample) {
-          console.log(`      enemy ${e.type} u=${e.u} v=${e.v} icb=${e.instanceColorBrightness}`);
+      for (const cp of result.checkpoints.filter(c => c.invisibleCount > 0 || c.zeroScaleCount > 0)) {
+        if (cp.invisibleCount > 0) {
+          console.log(`    FAIL at t=${cp.t/1000}s: ${cp.invisibleCount} invisible (low ICB)`);
+          for (const e of cp.invisibleSample) {
+            console.log(`      enemy ${e.type} u=${e.u} v=${e.v} icb=${e.instanceColorBrightness} batch=${e.renderBatch}`);
+          }
+        }
+        if (cp.zeroScaleCount > 0) {
+          console.log(`    FAIL at t=${cp.t/1000}s: ${cp.zeroScaleCount} zero-scale (matrix invisible)`);
+          for (const e of (cp.zeroScaleSample || [])) {
+            console.log(`      enemy ${e.type} u=${e.u} v=${e.v} icb=${e.instanceColorBrightness} scale=${e.instanceMatrixScale} batch=${e.renderBatch}`);
+          }
         }
       }
 

@@ -85,6 +85,17 @@ export interface EnemyInfo {
    *  After s44r18-20 fix, opacity is binary; all dimming is in instanceColor only.
    *  Use this (not opacity) to detect invisible enemies post-fix. */
   instanceColorBrightness: number;
+  /** s44r29-05: Whether the enemy is still materializing (spawn warning phase).
+   *  Materializing enemies are expected to have zero-scale — they're not visible yet. */
+  isMaterializing: boolean;
+  /** s44r29-05: Max component of the instance matrix scale vector.
+   *  An enemy with high ICB but zero matrixScale is invisible — the matrix
+   *  makes it zero-sized even though the color is correct. This catches
+   *  enemies stuck at zero-scale from registration or LOD transitions. */
+  instanceMatrixScale: number;
+  /** s44r29-05: Which batch the enemy is actually rendered from.
+   *  'high' = type-specific batch, 'lod-medium'/'lod-low' = shared LOD batch. */
+  renderBatch: 'high' | 'lod-medium' | 'lod-low';
 }
 
 export interface PickupInfo {
@@ -207,22 +218,61 @@ export class TestHarnessAPI {
         (enemy as any).__testId = id;
       }
 
-      // Read opacity and instanceColor brightness from instance manager if available
+      // Read opacity and instanceColor brightness from instance manager if available.
+      // s44r29-05: Read from the CORRECT batch — if enemy is in a LOD batch,
+      // read from LOD batch (where it actually renders), not the HIGH batch
+      // (which has a stale zero-scale matrix for LOD enemies).
       let opacity = 1.0;
       let instanceColorBrightness = 1.0;
+      let instanceMatrixScale = 1.0;
+      let renderBatch: 'high' | 'lod-medium' | 'lod-low' = 'high';
       const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
       const instanceType = (enemy as any)._instanceType as string | undefined;
       if (instanceIndex !== undefined && instanceType && this.ctx.enemyInstanceManager) {
-        const batch = (this.ctx.enemyInstanceManager as any).batches?.get(instanceType);
-        if (batch?.opacityAttribute) {
-          opacity = batch.opacityAttribute.getX(instanceIndex);
-        }
-        // After s44r18-20, actual dimming is in instanceColor (RGB), not opacity.
-        // Read instanceColor brightness to detect truly invisible enemies.
-        if (batch?.instancedMesh?.instanceColor) {
-          const _c = new THREE.Color();
-          batch.instancedMesh.getColorAt(instanceIndex, _c);
-          instanceColorBrightness = (_c.r + _c.g + _c.b) / 3;
+        const mgr = this.ctx.enemyInstanceManager as any;
+        const isInLOD = mgr.enemyLODPlacement?.has(enemy);
+        const lodLevel = isInLOD ? mgr.enemyLODPlacement.get(enemy) : undefined;
+
+        if (isInLOD) {
+          // Enemy renders from a LOD batch — read ICB and matrix from there
+          const lodBatch = lodLevel === 1 /* MEDIUM */ ? mgr.lodMediumBatch : mgr.lodLowBatch;
+          const lodSlot = lodBatch?.enemyToIndex?.get(enemy);
+          renderBatch = lodLevel === 1 ? 'lod-medium' : 'lod-low';
+          if (lodSlot !== undefined && lodBatch) {
+            if (lodBatch.opacityAttribute) {
+              opacity = lodBatch.opacityAttribute.getX(lodSlot);
+            }
+            if (lodBatch.instancedMesh?.instanceColor) {
+              const _c = new THREE.Color();
+              lodBatch.instancedMesh.getColorAt(lodSlot, _c);
+              instanceColorBrightness = (_c.r + _c.g + _c.b) / 3;
+            }
+            // Matrix scale from the LOD batch
+            const _m = new THREE.Matrix4();
+            const _s = new THREE.Vector3();
+            lodBatch.instancedMesh.getMatrixAt(lodSlot, _m);
+            _s.setFromMatrixScale(_m);
+            instanceMatrixScale = Math.max(_s.x, _s.y, _s.z);
+          }
+        } else {
+          // Enemy renders from the HIGH (type-specific) batch
+          const batch = mgr.batches?.get(instanceType);
+          if (batch?.opacityAttribute) {
+            opacity = batch.opacityAttribute.getX(instanceIndex);
+          }
+          if (batch?.instancedMesh?.instanceColor) {
+            const _c = new THREE.Color();
+            batch.instancedMesh.getColorAt(instanceIndex, _c);
+            instanceColorBrightness = (_c.r + _c.g + _c.b) / 3;
+          }
+          // Matrix scale from the HIGH batch
+          if (batch?.instancedMesh) {
+            const _m = new THREE.Matrix4();
+            const _s = new THREE.Vector3();
+            batch.instancedMesh.getMatrixAt(instanceIndex, _m);
+            _s.setFromMatrixScale(_m);
+            instanceMatrixScale = Math.max(_s.x, _s.y, _s.z);
+          }
         }
       }
 
@@ -235,7 +285,10 @@ export class TestHarnessAPI {
         alive: enemy.alive,
         health: enemy.health,
         opacity,
+        isMaterializing: enemy.isMaterializing ?? false,
         instanceColorBrightness,
+        instanceMatrixScale,
+        renderBatch,
       });
     }
     return result;
