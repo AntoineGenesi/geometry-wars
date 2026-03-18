@@ -89,6 +89,7 @@ const _tempColor = new THREE.Color();
 const _zeroScale = new THREE.Vector3(0, 0, 0);
 const _lodScale = new THREE.Vector3();
 const _lodBillboardUp = new THREE.Vector3(0, 1, 0);
+const _tempScale = new THREE.Vector3();
 
 /**
  * Enemy types that support instancing.
@@ -651,14 +652,22 @@ export class EnemyInstanceManager {
    * bypasses the per-enemy visibility loop (LOD transitions, race conditions,
    * enemies skipped by the loop due to missing mesh/alive state, etc.).
    *
+   * s44r29-05: Also checks matrix scale. An enemy with correct ICB but
+   * zero-scale matrix is invisible. This catches enemies stuck at zero-scale
+   * from registration, LOD transitions, or materialization timing gaps.
+   * The test (verify-enemies-all-surfaces.mjs) only checked ICB, missing
+   * zero-scale matrix invisibility entirely — RC12 root cause.
+   *
    * Call AFTER the per-enemy visibility loop and BEFORE flushColors().
    */
   ensureMinimumVisibility(): void {
     const MIN_ICB = 0.15;
+    const MIN_SCALE = 0.001; // Below this, the instance is effectively invisible
 
     for (const batch of this.batches.values()) {
       if (!batch.instancedMesh.instanceColor) continue;
-      for (const [, index] of batch.enemyToIndex) {
+      for (const [enemy, index] of batch.enemyToIndex) {
+        // --- Color check (existing) ---
         batch.instancedMesh.getColorAt(index, _tempColor);
         const avg = (_tempColor.r + _tempColor.g + _tempColor.b) / 3;
         if (avg < MIN_ICB && avg >= 0) {
@@ -676,6 +685,23 @@ export class EnemyInstanceManager {
             batch.instancedMesh.setColorAt(index, _tempColor);
           }
         }
+
+        // --- Matrix scale check (s44r29-05) ---
+        // Skip enemies that are intentionally in a LOD batch (their HIGH slot
+        // is zero-scaled by design — they render from the LOD batch instead).
+        if (this.enemyLODPlacement.has(enemy)) continue;
+        // Skip enemies that are dead, inactive, materializing, or have no mesh
+        if (!enemy.active || !enemy.alive || enemy.isMaterializing || !enemy.mesh) continue;
+
+        batch.instancedMesh.getMatrixAt(index, _tempMatrix);
+        _tempScale.setFromMatrixScale(_tempMatrix);
+        const maxScale = Math.max(_tempScale.x, _tempScale.y, _tempScale.z);
+        if (maxScale < MIN_SCALE) {
+          // Enemy should be visible but has zero-scale matrix — restore from mesh
+          enemy.mesh.updateWorldMatrix(false, false);
+          batch.instancedMesh.setMatrixAt(index, enemy.mesh.matrixWorld);
+          batch.instancedMesh.instanceMatrix.needsUpdate = true;
+        }
       }
     }
 
@@ -683,7 +709,8 @@ export class EnemyInstanceManager {
     const lodBatches = [this.lodMediumBatch, this.lodLowBatch];
     for (const lodBatch of lodBatches) {
       if (!lodBatch?.instancedMesh.instanceColor) continue;
-      for (const [, slotIndex] of lodBatch.enemyToIndex) {
+      for (const [enemy, slotIndex] of lodBatch.enemyToIndex) {
+        // --- Color check ---
         lodBatch.instancedMesh.getColorAt(slotIndex, _tempColor);
         const avg = (_tempColor.r + _tempColor.g + _tempColor.b) / 3;
         if (avg < MIN_ICB && avg >= 0) {
@@ -699,6 +726,26 @@ export class EnemyInstanceManager {
             }
             lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
           }
+        }
+
+        // --- Matrix scale check (s44r29-05) ---
+        if (!enemy.active || !enemy.alive || enemy.isMaterializing || !enemy.mesh) continue;
+
+        lodBatch.instancedMesh.getMatrixAt(slotIndex, _tempMatrix);
+        _tempScale.setFromMatrixScale(_tempMatrix);
+        const maxScale = Math.max(_tempScale.x, _tempScale.y, _tempScale.z);
+        if (maxScale < MIN_SCALE) {
+          // LOD slot has zero-scale but enemy is alive — restore placement.
+          // This catches enemies that were zero-scaled by hideAllLODInstances()
+          // but not re-placed by placeLODInstance() due to timing gaps.
+          enemy.mesh.updateWorldMatrix(false, false);
+          _tempPosition.setFromMatrixPosition(enemy.mesh.matrixWorld);
+          const lodLevel = this.enemyLODPlacement.get(enemy);
+          const s = enemy.radius * (lodLevel === LODLevel.LOW ? 2 : 1.5);
+          _lodScale.set(s, s, s);
+          _tempMatrix.compose(_tempPosition, _tempQuaternion.identity(), _lodScale);
+          lodBatch.instancedMesh.setMatrixAt(slotIndex, _tempMatrix);
+          lodBatch.instancedMesh.instanceMatrix.needsUpdate = true;
         }
       }
     }
