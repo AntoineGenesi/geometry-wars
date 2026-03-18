@@ -259,9 +259,10 @@ describe('EnemyInstanceManager', () => {
       // Far enemy should NOT be zero (still visible at SURFACE_DIM_OPACITY)
       expect(farBrightness).toBeGreaterThan(0);
 
-      // Opacity attribute should also differ (WebGL path)
+      // Opacity attribute is binary (1.0 visible / 0.0 dead) — s44r18-20 fix.
+      // RGB dimming via instanceColor is the sole visibility control.
       expect(batch.opacityAttribute.getX(nearIndex!)).toBeCloseTo(1.0, 5);
-      expect(batch.opacityAttribute.getX(farIndex!)).toBeCloseTo(0.15, 5);
+      expect(batch.opacityAttribute.getX(farIndex!)).toBeCloseTo(1.0, 5);
     });
 
     it('preserves rainbow mode colors when dimming', () => {

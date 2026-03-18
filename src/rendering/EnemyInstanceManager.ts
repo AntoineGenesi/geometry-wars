@@ -112,6 +112,15 @@ export class EnemyInstanceManager {
    *  so we use TSL opacityNode for per-instance alpha instead. */
   private isWebGPU: boolean;
 
+  /** Cached TSL attribute function (WebGPU only). Loaded once via dynamic import,
+   *  then used synchronously for all subsequent batch creations. */
+  private static _tslAttribute: ((name: string) => any) | null = null;
+  /** Whether the TSL import has been attempted (prevents repeated import attempts). */
+  private static _tslImportDone: boolean = false;
+  /** Materials awaiting TSL import resolution (WebGPU only). Once the import resolves,
+   *  these materials get opacityNode set and are marked needsUpdate. */
+  private static _pendingTslMaterials: THREE.MeshBasicMaterial[] = [];
+
   /** Shared LOD batches for reduced-detail rendering. */
   private lodMediumBatch: LODSharedBatch | null = null;
   private lodLowBatch: LODSharedBatch | null = null;
@@ -146,18 +155,46 @@ export class EnemyInstanceManager {
   private _applyInstanceOpacity(material: THREE.MeshBasicMaterial, cacheKey: string): void {
     if (this.isWebGPU) {
       // WebGPU path: use TSL opacityNode to read the instanceOpacity attribute.
-      // Dynamic import avoids breaking WebGL2-only builds.
-      import('three/tsl').then((tsl: any) => {
-        const { attribute: tslAttribute } = tsl;
-        if (tslAttribute) {
-          // material.opacityNode reads the per-instance attribute each fragment
-          (material as any).opacityNode = tslAttribute('instanceOpacity');
+      //
+      // s44r28-01 fix: The original code used a fire-and-forget dynamic import:
+      //   import('three/tsl').then(tsl => { material.opacityNode = ... })
+      // In Vite dev mode, dynamic imports are async HTTP requests. The .then()
+      // resolved AFTER the material was first compiled by the WebGPU renderer,
+      // so the opacityNode was never included in the compiled shader. Without
+      // material.needsUpdate = true, the shader wasn't recompiled.
+      //
+      // Fix: Cache the TSL attribute function at the class level. First batch
+      // triggers the async import; subsequent batches use the cached function
+      // synchronously. All materials created before the import resolves are
+      // queued in _pendingTslMaterials and patched+recompiled when it arrives.
+      if (EnemyInstanceManager._tslAttribute) {
+        // TSL already loaded — apply synchronously (no race)
+        (material as any).opacityNode = EnemyInstanceManager._tslAttribute('instanceOpacity');
+      } else {
+        // Queue this material for patching when the import resolves
+        EnemyInstanceManager._pendingTslMaterials.push(material);
+
+        if (!EnemyInstanceManager._tslImportDone) {
+          EnemyInstanceManager._tslImportDone = true;
+          import('three/tsl').then((tsl: any) => {
+            const { attribute: tslAttribute } = tsl;
+            if (tslAttribute) {
+              EnemyInstanceManager._tslAttribute = tslAttribute;
+              // Patch all queued materials and trigger recompilation
+              for (const mat of EnemyInstanceManager._pendingTslMaterials) {
+                (mat as any).opacityNode = tslAttribute('instanceOpacity');
+                mat.needsUpdate = true;
+              }
+              EnemyInstanceManager._pendingTslMaterials = [];
+            }
+          }).catch(() => {
+            // TSL module unavailable — fall back to RGB-only dimming (no alpha).
+            // Enemies will be slightly more visible on far side but not invisible.
+            console.warn('[EnemyInstanceManager] three/tsl not available — WebGPU per-instance alpha disabled');
+            EnemyInstanceManager._pendingTslMaterials = [];
+          });
         }
-      }).catch(() => {
-        // TSL module unavailable — fall back to RGB-only dimming (no alpha).
-        // Enemies will be slightly more visible on far side but not invisible.
-        console.warn('[EnemyInstanceManager] three/tsl not available — WebGPU per-instance alpha disabled');
-      });
+      }
     } else {
       // WebGL2 path: inject instanceOpacity attribute via onBeforeCompile.
       material.onBeforeCompile = (shader) => {
@@ -704,6 +741,8 @@ export class EnemyInstanceManager {
     instancedMesh.count = 0;
     instancedMesh.frustumCulled = false;
     instancedMesh.name = name;
+    // s44r28-01: Same renderOrder as type batches (above surface/grid/zones)
+    instancedMesh.renderOrder = 3;
 
     // Initialize all slots to zero-scale
     for (let i = 0; i < LOD_BATCH_MAX_INSTANCES; i++) {
@@ -1024,6 +1063,12 @@ export class EnemyInstanceManager {
     instancedMesh.count = 0; // Start with 0 visible instances
     instancedMesh.frustumCulled = false; // Enemies are on curved surfaces; bbox culling is unreliable
     instancedMesh.name = `instanced-${typeKey}`;
+    // s44r28-01: Explicit renderOrder ensures enemies render AFTER the surface mesh (0)
+    // and grid (1). Without this, transparent objects with equal renderOrder are sorted
+    // by distance — but InstancedMesh and Surface are both at origin, so the sort is
+    // unstable across renderers. On WebGPU, the surface could render after enemies,
+    // alpha-blending on top and making enemies invisible (surface opacity ~0.92 covers them).
+    instancedMesh.renderOrder = 3;
 
     // Initialize all instance matrices to zero-scale (hidden)
     for (let i = 0; i < this.maxInstances; i++) {
