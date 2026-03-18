@@ -7196,9 +7196,14 @@ async function main() {
     // for enemies on the far side, leaving them fully bright without UV-distance clamping.
     const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
     const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
-    const NET_SURFACE_DIM_OPC  = 0.15;   // minimum opacity for far-away/behind-surface enemies.
+    const NET_SURFACE_DIM_OPC  = 0.25;   // minimum opacity for far-away/behind-surface enemies.
     // s44r22-01: lowered from 0.40→0.08. s44r25-02: raised 0.08→0.15 (parity with RenderLoop.ts SURFACE_DIM_OPACITY).
-    // 0.08 was perceptually invisible on dark torus backgrounds at 150 entities — see RenderLoop.ts comment.
+    // s44r26-01: raised 0.15→0.25 (parity with RenderLoop.ts). Accidentally reverted by 7c86d822.
+    // s44r27-02: restored to 0.25. 0.15 was perceptually invisible on sphere-tunnel dark backgrounds.
+    // Sphere-tunnel uses a higher floor (NET_SPHERE_TUNNEL_DIM_OPC) — see below.
+    const NET_SPHERE_TUNNEL_DIM_OPC = 0.35; // s44r27-02: sphere-tunnel needs higher floor than other maps.
+    // The sphere-tunnel background is very dark and enemies at 0.25 are still perceptually invisible
+    // at wave 4+ (~60-80 enemies). 0.35 ensures far-hemisphere enemies remain visible.
     // World-space proximity override constants (SP parity — RenderLoop.ts PROXIMITY_*).
     const NET_PROXIMITY_NEAR_WORLD    = 2.0;
     const NET_PROXIMITY_NEAR_WORLD_SQ = NET_PROXIMITY_NEAR_WORLD * NET_PROXIMITY_NEAR_WORLD;
@@ -7252,6 +7257,9 @@ async function main() {
         const eu = Math.min(euRaw, 1.0 - euRaw);
         const ev = _netWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
         const uvDist = Math.sqrt(eu * eu + ev * ev);
+        // s44r27-02: sphere-tunnel uses a higher dim floor than other surfaces — its dark
+        // background makes enemies at 0.25 perceptually invisible at wave 4+.
+        const dimOpc = _isSphereTunnel ? NET_SPHERE_TUNNEL_DIM_OPC : NET_SURFACE_DIM_OPC;
         // s44r25-01: For sphere-tunnel, UV distance determines front vs behind-surface.
         // Depth occlusion is unavailable in MP (camera outside → 2 intersections for all),
         // so we use UV distance as a proxy: enemies beyond NET_SURFACE_NEAR_UV are likely
@@ -7267,11 +7275,11 @@ async function main() {
         if (uvDist <= NET_SURFACE_NEAR_UV) {
           surfaceVis = 1.0;
         } else if (uvDist >= NET_SURFACE_FAR_UV) {
-          surfaceVis = NET_SURFACE_DIM_OPC;
+          surfaceVis = dimOpc;
         } else {
           const uvT = (uvDist - NET_SURFACE_NEAR_UV) / (NET_SURFACE_FAR_UV - NET_SURFACE_NEAR_UV);
           const uvSt = uvT * uvT * (3.0 - 2.0 * uvT);
-          surfaceVis = 1.0 - uvSt * (1.0 - NET_SURFACE_DIM_OPC);
+          surfaceVis = 1.0 - uvSt * (1.0 - dimOpc);
         }
         vis = Math.min(vis, surfaceVis);
 
@@ -7307,7 +7315,7 @@ async function main() {
       // based on netDepthOpacity. Eliminates single-frame 55% brightness drops.
       // For sphere-tunnel where netIsFrontSide is set by UV distance (not depth EMA),
       // we still respect it: if UV says behind-surface, depthOpacity is 1.0 (tunnel bypass)
-      // but netIsFrontSide is false → we force depthOpacity to 0.0 for the blend so floor = NET_SURFACE_DIM_OPC.
+      // but netIsFrontSide is false → we force depthOpacity to 0.0 for the blend so floor = dimFloor.
       const NET_FRONT_SIDE_FLOOR = 0.70;
       const NET_FRONT_BLEND_HIGH = 0.90;
       const NET_FRONT_BLEND_LOW  = 0.50;
@@ -7315,7 +7323,11 @@ async function main() {
       const netFrontBlend = Math.max(0.0, Math.min(1.0,
         (effectiveDepthOpc - NET_FRONT_BLEND_LOW) / (NET_FRONT_BLEND_HIGH - NET_FRONT_BLEND_LOW)
       ));
-      const netVisibilityFloor = NET_SURFACE_DIM_OPC + netFrontBlend * (NET_FRONT_SIDE_FLOOR - NET_SURFACE_DIM_OPC);
+      // s44r27-02: sphere-tunnel uses NET_SPHERE_TUNNEL_DIM_OPC (0.35) as its floor base,
+      // other surfaces use NET_SURFACE_DIM_OPC (0.25). This ensures sphere-tunnel far-hemisphere
+      // enemies remain visible against the dark tunnel background at wave 4+.
+      const dimFloor = _isSphereTunnel ? NET_SPHERE_TUNNEL_DIM_OPC : NET_SURFACE_DIM_OPC;
+      const netVisibilityFloor = dimFloor + netFrontBlend * (NET_FRONT_SIDE_FLOOR - dimFloor);
       vis = Math.max(vis, netVisibilityFloor);
       // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
       // are both bypassed, so enemies MUST be fully visible. This catches any edge case where
