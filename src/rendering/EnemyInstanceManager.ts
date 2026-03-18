@@ -607,11 +607,30 @@ export class EnemyInstanceManager {
     // Reads the per-instance intended color (set by register/setEnemyColor) and
     // multiplies by visibility, so dimmed enemies have darker colors.
     const ci = index * 3;
-    _tempColor.setRGB(
-      batch.perInstanceColors[ci] * visibility,
-      batch.perInstanceColors[ci + 1] * visibility,
-      batch.perInstanceColors[ci + 2] * visibility,
-    );
+    let r = batch.perInstanceColors[ci] * visibility;
+    let g = batch.perInstanceColors[ci + 1] * visibility;
+    let b = batch.perInstanceColors[ci + 2] * visibility;
+
+    // s44r29-01: Minimum ICB floor. SURFACE_DIM_OPACITY=0.25 × dark baseColor (~0.37) = icb≈0.093
+    // which is below INVISIBLE_THRESHOLD (0.10) — enemies appear invisible on dark backgrounds.
+    // When visibility > 0 (enemy should be dim, not hidden), scale all channels proportionally
+    // so avg(r,g,b) >= MIN_ICB (0.15). Proportional scaling preserves hue.
+    if (visibility > 0) {
+      const avg = (r + g + b) / 3;
+      const MIN_ICB = 0.15;
+      if (avg > 0 && avg < MIN_ICB) {
+        const scale = MIN_ICB / avg;
+        r *= scale;
+        g *= scale;
+        b *= scale;
+      } else if (avg === 0) {
+        r = MIN_ICB;
+        g = MIN_ICB;
+        b = MIN_ICB;
+      }
+    }
+
+    _tempColor.setRGB(r, g, b);
     batch.instancedMesh.setColorAt(index, _tempColor);
   }
 
@@ -947,7 +966,27 @@ export class EnemyInstanceManager {
     const typeKey = (enemy as any)._instanceType as string | undefined;
     const baseColor = typeKey ? this.typeBaseColors.get(typeKey) : null;
     if (baseColor) {
-      _tempColor.copy(baseColor).multiplyScalar(visibility);
+      let r = baseColor.r * visibility;
+      let g = baseColor.g * visibility;
+      let b = baseColor.b * visibility;
+
+      // s44r29-01: Same minimum ICB floor as setInstanceVisibility (see comment there).
+      if (visibility > 0) {
+        const avg = (r + g + b) / 3;
+        const MIN_ICB = 0.15;
+        if (avg > 0 && avg < MIN_ICB) {
+          const scale = MIN_ICB / avg;
+          r *= scale;
+          g *= scale;
+          b *= scale;
+        } else if (avg === 0) {
+          r = MIN_ICB;
+          g = MIN_ICB;
+          b = MIN_ICB;
+        }
+      }
+
+      _tempColor.setRGB(r, g, b);
       lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
     }
   }

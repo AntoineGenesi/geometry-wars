@@ -265,6 +265,73 @@ describe('EnemyInstanceManager', () => {
       expect(batch.opacityAttribute.getX(farIndex!)).toBeCloseTo(1.0, 5);
     });
 
+    it('minimum ICB floor prevents near-invisible enemies at SURFACE_DIM_OPACITY (s44r29-01 regression)', () => {
+      // Root cause: dark-colored enemies (avg base color ~0.37) at visibility=0.25 (SURFACE_DIM_OPACITY floor)
+      // produce icb = 0.37 × 0.25 = 0.093, which is below the 0.10 INVISIBLE_THRESHOLD.
+      // Fix: scale up instanceColor uniformly to achieve minimum icb=0.15 when visibility > 0.
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+
+      // Set a dark base color (avg brightness ≈ 0.37 — matches real enemy color brightness)
+      const darkColor = new THREE.Color(0.40, 0.37, 0.34);
+      manager.setEnemyColor(grunt, darkColor);
+
+      // Apply SURFACE_DIM_OPACITY floor value (enemies on far side of surface)
+      manager.setInstanceVisibility(grunt, 0.25);
+      manager.flushColors();
+
+      const batch = (manager as any).batches.get('Grunt');
+      const index = batch.enemyToIndex.get(grunt);
+      const color = new THREE.Color();
+      batch.instancedMesh.getColorAt(index!, color);
+
+      const icb = (color.r + color.g + color.b) / 3;
+      // Must be above INVISIBLE_THRESHOLD (0.10) — this FAILS before the s44r29-01 fix
+      expect(icb).toBeGreaterThanOrEqual(0.10);
+      // Must be perceptibly visible (0.15) — dim glow on dark background
+      expect(icb).toBeGreaterThanOrEqual(0.15);
+
+      // Enemy must still be rendered (opacityAttribute = 1.0 for visibility > 0)
+      expect(batch.opacityAttribute.getX(index!)).toBeCloseTo(1.0, 5);
+    });
+
+    it('minimum ICB floor does NOT affect explicitly-hidden enemies (visibility=0)', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      manager.setEnemyColor(grunt, new THREE.Color(0.40, 0.37, 0.34));
+
+      // Explicitly hidden (adaptive quality cap or dead)
+      manager.setInstanceVisibility(grunt, 0.0);
+      manager.flushColors();
+
+      const batch = (manager as any).batches.get('Grunt');
+      const index = batch.enemyToIndex.get(grunt);
+      // opacityAttribute MUST be 0 (enemy is hidden)
+      expect(batch.opacityAttribute.getX(index!)).toBeCloseTo(0.0, 5);
+    });
+
+    it('minimum ICB floor preserves color hue when scaling up brightness', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+
+      // Saturated color: only blue channel (high ratio difference between channels)
+      const blueColor = new THREE.Color(0.05, 0.05, 0.40);
+      manager.setEnemyColor(grunt, blueColor);
+
+      manager.setInstanceVisibility(grunt, 0.25);
+      manager.flushColors();
+
+      const batch = (manager as any).batches.get('Grunt');
+      const index = batch.enemyToIndex.get(grunt);
+      const color = new THREE.Color();
+      batch.instancedMesh.getColorAt(index!, color);
+
+      const icb = (color.r + color.g + color.b) / 3;
+      expect(icb).toBeGreaterThanOrEqual(0.10);
+      // Hue preserved: blue channel is still dominant (4x the r/g channels)
+      expect(color.b).toBeGreaterThan(color.r * 3);
+    });
+
     it('preserves rainbow mode colors when dimming', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
