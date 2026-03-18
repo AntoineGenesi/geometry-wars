@@ -981,6 +981,9 @@ export class StartMenu {
         letter-spacing: 2px;
         justify-content: center;
         border-radius: 3px;
+        width: fit-content;
+        margin-left: auto;
+        margin-right: auto;
       }
 
       #start-menu .start-btn:hover {
