@@ -427,6 +427,8 @@ export class GameState extends Schema {
   declare gameOver: boolean;
   declare hostId: string;
   declare isPaused: boolean;
+  declare allowAllPlayersPause: boolean;
+  declare pausedById: string;
 
   // Lobby voting state machine
   /** Canonical room phase: 'lobby' | 'playing' | 'voting' */
@@ -530,6 +532,8 @@ export class GameState extends Schema {
     this.gameOver = false;
     this.hostId = '';
     this.isPaused = false;
+    this.allowAllPlayersPause = false;
+    this.pausedById = '';
 
     // Lobby voting state machine defaults
     this.roomPhase = 'lobby';
@@ -603,6 +607,8 @@ defineTypes(GameState, {
   gameOver: 'boolean',
   hostId: 'string',
   isPaused: 'boolean',
+  allowAllPlayersPause: 'boolean',
+  pausedById: 'string',
   roomPhase: 'string',
   voteMap: { map: 'string' },
   votingCountdown: 'number',

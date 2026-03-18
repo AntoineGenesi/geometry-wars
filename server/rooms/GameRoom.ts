@@ -1332,9 +1332,18 @@ export class GameRoom extends Room<GameState> {
     // The authoritative handlers are registered below (with hasPendingSettings flag + spawnGeneration guard).
 
     this.onMessage('pause', (client, data: { paused: boolean }) => {
-      if (client.sessionId !== this.state.hostId) return;
+      const isHost = client.sessionId === this.state.hostId;
+      if (!isHost && !this.state.allowAllPlayersPause) return;
       this.state.isPaused = data.paused;
-      this.logger.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by host`);
+      this.state.pausedById = data.paused ? client.sessionId : '';
+      const playerName = this.state.players.get(client.sessionId)?.name ?? 'Unknown';
+      this.logger.log(`[GameRoom] Game ${data.paused ? 'paused' : 'resumed'} by ${playerName}`);
+    });
+
+    this.onMessage('set_allow_all_pause', (client, data: { allowed: boolean }) => {
+      if (client.sessionId !== this.state.hostId) return;
+      this.state.allowAllPlayersPause = data.allowed;
+      this.logger.log(`[GameRoom] allowAllPlayersPause set to ${data.allowed} by host`);
     });
 
     // Host can update settings (e.g. healthBarVisibility) at any time.
