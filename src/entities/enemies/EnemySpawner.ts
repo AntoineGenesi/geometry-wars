@@ -857,6 +857,16 @@ export class EnemySpawner {
               }
               // Scale-in effect
               enemy.mesh.scale.setScalar(0.01);
+
+              // s44r29-08: Immediately sync instance matrix so the enemy is visible
+              // on the very first frame. Previously, the InstancedMesh slot stayed at
+              // zero-scale until updateInstancesWithLOD ran — causing a timing gap
+              // where the enemy was invisible after materialization ended.
+              if (enemy.isInstanced && this.instanceManager) {
+                // Apply surface transform first so position/rotation are current
+                enemy.applySurfaceTransform((u: number, v: number) => this.getCachedTransform(u, v));
+                this.instanceManager.syncInstanceMatrix(enemy);
+              }
             }
             break;
           }

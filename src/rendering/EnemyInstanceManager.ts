@@ -349,8 +349,16 @@ export class EnemyInstanceManager {
 
       if (!enemy.mesh) continue;
 
-      // Skip materializing enemies (spawn warning in progress) - keep at zero scale
-      if (enemy.isMaterializing) continue;
+      // s44r29-08: Materializing enemies (spawn warning in progress) — keep at zero scale
+      // but at correct position/rotation so the matrix is ready when materialization ends.
+      // Previously, materializing enemies were skipped entirely (continue), leaving their
+      // InstancedMesh slot at whatever state registration set (zero-scale at origin).
+      // This caused a 1-frame gap where the enemy was invisible after materialization ended.
+      if (enemy.isMaterializing) {
+        _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
+        batch.instancedMesh.setMatrixAt(index, _tempMatrix);
+        continue;
+      }
 
       // Extract world matrix from the enemy's mesh (includes surface transform + behavior rotation/scale)
       enemy.mesh.updateWorldMatrix(false, false);
@@ -431,8 +439,13 @@ export class EnemyInstanceManager {
 
       if (!enemy.mesh) continue;
 
-      // Skip materializing enemies (spawn warning in progress)
-      if (enemy.isMaterializing) continue;
+      // s44r29-08: Materializing enemies — zero-scale in HIGH batch, skip LOD/culling.
+      // Previously skipped entirely (continue), leaving stale registration matrix.
+      if (enemy.isMaterializing) {
+        _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
+        batch.instancedMesh.setMatrixAt(highIndex, _tempMatrix);
+        continue;
+      }
 
       // Phase 1 culling: hide or dim enemies >90° from player's surface normal hemisphere.
       if (playerCulling && enemy.mesh) {
@@ -552,6 +565,29 @@ export class EnemyInstanceManager {
     batch.perInstanceColors[ci] = color.r;
     batch.perInstanceColors[ci + 1] = color.g;
     batch.perInstanceColors[ci + 2] = color.b;
+  }
+
+  /**
+   * s44r29-08: Immediately sync an enemy's mesh world matrix to its InstancedMesh slot.
+   * Called by EnemySpawner when materialization ends so the enemy is visible on the
+   * very first frame — eliminates the 1-frame gap where updateInstancesWithLOD hasn't
+   * run yet but the enemy is no longer materializing.
+   */
+  syncInstanceMatrix(enemy: BaseEnemy): void {
+    const typeKey = (enemy as any)._instanceType as string | undefined;
+    if (!typeKey) return;
+
+    const batch = this.batches.get(typeKey);
+    if (!batch) return;
+
+    const index = batch.enemyToIndex.get(enemy);
+    if (index === undefined) return;
+
+    if (!enemy.mesh) return;
+
+    enemy.mesh.updateWorldMatrix(false, false);
+    batch.instancedMesh.setMatrixAt(index, enemy.mesh.matrixWorld);
+    batch.instancedMesh.instanceMatrix.needsUpdate = true;
   }
 
   /**
