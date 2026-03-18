@@ -3169,6 +3169,11 @@ async function main() {
     enemyTargetUV.clear();
     enemyPrevHealth.clear();
 
+    // s44r29-02: Clear depth occlusion EMA state between rounds.
+    // Without this, EMA opacity values from the old surface/enemy layout can
+    // carry over to new enemies on the new map, causing stale dimming at wave 1.
+    depthOcclusion.clear();
+
     // Clear all geoms
     geomIdToIndex.forEach((idx) => {
       geomPool.kill(idx);
@@ -7401,6 +7406,10 @@ async function main() {
       }
     }
 
+    // s44r29-02: Universal safety net — catch any enemy that slipped through
+    // the per-enemy visibility loop with ICB below minimum (LOD transitions,
+    // race conditions, skipped enemies, etc.).
+    enemyInstanceManager.ensureMinimumVisibility();
     enemyInstanceManager.flushColors();
 
     // -----------------------------------------------------------------------

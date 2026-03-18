@@ -479,14 +479,25 @@ export class EnemyInstanceManager {
       const lodLevel = lodAssignments.get(enemy);
 
       if (lodLevel === LODLevel.MEDIUM || lodLevel === LODLevel.LOW) {
-        // Hide in the HIGH-detail type batch
-        _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
-        batch.instancedMesh.setMatrixAt(highIndex, _tempMatrix);
-
         // Show in the shared LOD batch
         const lodBatch = lodLevel === LODLevel.MEDIUM ? this.lodMediumBatch : this.lodLowBatch;
         enemy.mesh.updateWorldMatrix(false, false);
         this.placeLODInstance(enemy, typeKey, lodBatch, lodLevel, cameraPos);
+
+        // s44r29-02: Only hide HIGH batch if LOD placement succeeded.
+        // If LOD slot allocation failed (batch full), fall back to HIGH batch
+        // so the enemy remains visible. Previously, the HIGH batch was zero-scaled
+        // BEFORE LOD placement — if placement failed, the enemy was invisible in
+        // both batches (zero-scale HIGH + not in LOD = rendered nowhere).
+        if (this.enemyLODPlacement.has(enemy)) {
+          // LOD placement succeeded — hide in HIGH batch
+          _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
+          batch.instancedMesh.setMatrixAt(highIndex, _tempMatrix);
+        } else {
+          // LOD placement failed — keep in HIGH batch as fallback
+          batch.instancedMesh.setMatrixAt(highIndex, enemy.mesh.matrixWorld);
+          batch.activeCount++;
+        }
       } else {
         // HIGH LOD: render in the type-specific batch (normal path)
         enemy.mesh.updateWorldMatrix(false, false);
@@ -632,6 +643,65 @@ export class EnemyInstanceManager {
 
     _tempColor.setRGB(r, g, b);
     batch.instancedMesh.setColorAt(index, _tempColor);
+  }
+
+  /**
+   * s44r29-02: Universal safety net — ensure ALL occupied batch slots have
+   * instanceColorBrightness >= MIN_ICB. This catches any code path that
+   * bypasses the per-enemy visibility loop (LOD transitions, race conditions,
+   * enemies skipped by the loop due to missing mesh/alive state, etc.).
+   *
+   * Call AFTER the per-enemy visibility loop and BEFORE flushColors().
+   */
+  ensureMinimumVisibility(): void {
+    const MIN_ICB = 0.15;
+
+    for (const batch of this.batches.values()) {
+      if (!batch.instancedMesh.instanceColor) continue;
+      for (const [, index] of batch.enemyToIndex) {
+        batch.instancedMesh.getColorAt(index, _tempColor);
+        const avg = (_tempColor.r + _tempColor.g + _tempColor.b) / 3;
+        if (avg < MIN_ICB && avg >= 0) {
+          // Only fix if opacity indicates visible (not intentionally hidden)
+          const opacity = batch.opacityAttribute.getX(index);
+          if (opacity > 0) {
+            if (avg > 0) {
+              const scale = MIN_ICB / avg;
+              _tempColor.r *= scale;
+              _tempColor.g *= scale;
+              _tempColor.b *= scale;
+            } else {
+              _tempColor.setRGB(MIN_ICB, MIN_ICB, MIN_ICB);
+            }
+            batch.instancedMesh.setColorAt(index, _tempColor);
+          }
+        }
+      }
+    }
+
+    // Also check LOD batches
+    const lodBatches = [this.lodMediumBatch, this.lodLowBatch];
+    for (const lodBatch of lodBatches) {
+      if (!lodBatch?.instancedMesh.instanceColor) continue;
+      for (const [, slotIndex] of lodBatch.enemyToIndex) {
+        lodBatch.instancedMesh.getColorAt(slotIndex, _tempColor);
+        const avg = (_tempColor.r + _tempColor.g + _tempColor.b) / 3;
+        if (avg < MIN_ICB && avg >= 0) {
+          const opacity = lodBatch.opacityAttribute.getX(slotIndex);
+          if (opacity > 0) {
+            if (avg > 0) {
+              const scale = MIN_ICB / avg;
+              _tempColor.r *= scale;
+              _tempColor.g *= scale;
+              _tempColor.b *= scale;
+            } else {
+              _tempColor.setRGB(MIN_ICB, MIN_ICB, MIN_ICB);
+            }
+            lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
+          }
+        }
+      }
+    }
   }
 
   /**

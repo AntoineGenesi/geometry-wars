@@ -386,6 +386,10 @@ export class RenderLoop {
         });
       }
     }
+    // s44r29-02: Universal safety net — catch any enemy that slipped through
+    // the per-enemy visibility loop with ICB below minimum (LOD transitions,
+    // race conditions, skipped enemies, etc.).
+    ctx.enemyInstanceManager.ensureMinimumVisibility();
     // Flush all instanced color/opacity changes for this frame
     ctx.enemyInstanceManager.flushColors();
 
