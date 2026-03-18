@@ -5238,6 +5238,18 @@ async function main() {
         if (state.surfaceType) {
           initSurface(state.surfaceType, true, state.mapSize || undefined);
         }
+        // After surface rebuild, immediately try to start the active game mode.
+        // The deferred onFixedUpdate path handles the normal case, but an immediate
+        // start here ensures the zone visual is created before the first rendered frame.
+        // This guards against any timing edge where buildGameModeContext() might fail
+        // on the first tick (e.g., player not yet in networkPlayers after reset).
+        if (activeGameMode && !gameModeStarted) {
+          const ctx = buildGameModeContext();
+          if (ctx) {
+            activeGameMode.onStart(ctx);
+            gameModeStarted = true;
+          }
+        }
         // Fix: respect isPaused so joining mid-paused-game doesn't enable joystick
         // while pause menu is shown (which blocks scroll via preventDefault).
         if (input instanceof TouchInput) input.setGamePaused(isPaused);
@@ -5255,6 +5267,16 @@ async function main() {
         resetGameEntities();
         gameOverScreen.hide();
         votingScreen.hide();
+        // Immediately try to start the active game mode (lobby→playing keeps the same
+        // surface, so context is immediately available). This ensures zone visuals appear
+        // on the very first frame instead of waiting for the next onFixedUpdate tick.
+        if (activeGameMode && !gameModeStarted) {
+          const ctx = buildGameModeContext();
+          if (ctx) {
+            activeGameMode.onStart(ctx);
+            gameModeStarted = true;
+          }
+        }
         // Fix: respect isPaused so joining mid-paused-game doesn't enable joystick
         // while pause menu is shown (which blocks scroll via preventDefault).
         if (input instanceof TouchInput) input.setGamePaused(isPaused);

@@ -146,6 +146,10 @@ export class KingMode implements IGameMode {
   onStart(context: GameModeContext): void {
     this.moveZone(context);
     this.createZoneVisual(context);
+    // Immediately push correct uniforms so the zone is visible on the very first frame.
+    // Without this, the zone uses default uZoneRadius=1.0 and uZoneCenter=(0,0,0) until
+    // onFixedUpdate runs at the end of the same tick — potentially a 1-frame invisible flash.
+    this.updateZoneVisual(context);
   }
 
   onFixedUpdate(dt: number, context: GameModeContext): void {
