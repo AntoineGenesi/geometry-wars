@@ -486,6 +486,79 @@ export class PerformanceLogger {
   }
 
   /**
+   * Get kill counts aggregated by enemy type from game events.
+   * Returns sorted descending by count.
+   */
+  getKillsByEnemyType(): Array<{ enemyType: string; kills: number }> {
+    const counts = new Map<string, number>();
+    for (const ev of this.gameEvents) {
+      if (ev.type === 'kill') {
+        counts.set(ev.label, (counts.get(ev.label) ?? 0) + 1);
+      }
+    }
+    return Array.from(counts.entries())
+      .map(([enemyType, kills]) => ({ enemyType, kills }))
+      .sort((a, b) => b.kills - a.kills);
+  }
+
+  /**
+   * Get cumulative kill timeline by enemy type for stacked area chart.
+   * Returns time-series data: for each data point time, cumulative kills per enemy type.
+   * Only includes top N types; remainder lumped as "other".
+   */
+  getKillTimelineByEnemyType(topN = 6): {
+    times: number[];
+    types: string[];
+    series: number[][];  // series[typeIndex][timeIndex] = cumulative kills
+  } {
+    // Get top N enemy types by total kills
+    const allTypes = this.getKillsByEnemyType();
+    const topTypes = allTypes.slice(0, topN).map(t => t.enemyType);
+    const hasOther = allTypes.length > topN;
+    const types = hasOther ? [...topTypes, 'other'] : [...topTypes];
+
+    // Build cumulative counts at each data point time
+    const dataPoints = this.getDataPoints();
+    const times: number[] = dataPoints.map(p => p.time);
+
+    // Pre-compute kill events sorted by time
+    const killEvents = this.gameEvents
+      .filter(e => e.type === 'kill')
+      .sort((a, b) => a.time - b.time);
+
+    // For each time, count cumulative kills per type up to that time
+    const series: number[][] = types.map(() => new Array(times.length).fill(0));
+    const typeIndexMap = new Map<string, number>();
+    for (let i = 0; i < types.length; i++) {
+      typeIndexMap.set(types[i], i);
+    }
+    const otherIdx = hasOther ? types.length - 1 : -1;
+
+    let eventIdx = 0;
+    const cumulative = new Array(types.length).fill(0);
+
+    for (let ti = 0; ti < times.length; ti++) {
+      const t = times[ti];
+      // Advance through kill events up to this time
+      while (eventIdx < killEvents.length && killEvents[eventIdx].time <= t) {
+        const ev = killEvents[eventIdx];
+        const idx = typeIndexMap.get(ev.label);
+        if (idx !== undefined) {
+          cumulative[idx]++;
+        } else if (otherIdx >= 0) {
+          cumulative[otherIdx]++;
+        }
+        eventIdx++;
+      }
+      for (let i = 0; i < types.length; i++) {
+        series[i][ti] = cumulative[i];
+      }
+    }
+
+    return { times, types, series };
+  }
+
+  /**
    * Compute weapon usage analytics from accumulated sample data.
    * Returns:
    * - weaponTimeline: % of samples each weapon was active (proxy for time spent)

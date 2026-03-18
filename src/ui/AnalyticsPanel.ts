@@ -63,6 +63,95 @@ const BUFF_COLORS: Record<string, string> = {
   volatile: '#ff44ff',
 };
 
+// Enemy type display names (keys match EnemyType from EnemySpawner)
+const ENEMY_DISPLAY: Record<string, string> = {
+  wanderer: 'Wanderer',
+  grunt: 'Grunt',
+  duck: 'Duck',
+  mayfly: 'Mayfly',
+  rocket: 'Rocket',
+  neutron: 'Neutron',
+  weaver: 'Weaver',
+  spinner: 'Spinner',
+  snake: 'Snake',
+  repulsor: 'Repulsor',
+  gravity_well: 'Gravity Well',
+  gravity_well_red: 'Red Gravity Well',
+  gate: 'Gate',
+  painter: 'Painter',
+  virus: 'Virus',
+  spawner: 'Spawner',
+  titan_grunt: 'Titan Grunt',
+  titan_spinner: 'Titan Spinner',
+  titan_weaver: 'Titan Weaver',
+  giant_wanderer: 'Giant Wanderer',
+  giant_rocket: 'Giant Rocket',
+  giant_snake: 'Giant Snake',
+  giant_neutron: 'Giant Neutron',
+  cluster: 'Cluster',
+  helix: 'Helix',
+  fractal: 'Fractal',
+  swarm: 'Swarm',
+  lurker: 'Lurker',
+  orbiter: 'Orbiter',
+  splitter: 'Splitter',
+  phaser: 'Phaser',
+  approach_glow: 'Approach Glow',
+  stealth_stalker: 'Stealth Stalker',
+  fractal_snake: 'Fractal Snake',
+  boss_sapphire: 'Sapphire Boss',
+  boss_ruby: 'Ruby Boss',
+  boss_emerald: 'Emerald Boss',
+  boss_topaz: 'Topaz Boss',
+  boss_amethyst: 'Amethyst Boss',
+  boss_opal: 'Opal Boss',
+};
+
+// Enemy type colors (from ENEMY_VISUAL_DEFS in MenuBackground.ts + extended)
+export const ENEMY_TYPE_COLORS: Record<string, string> = {
+  wanderer: '#aa44ff',
+  grunt: '#4444ff',
+  duck: '#ff44aa',
+  mayfly: '#aaff00',
+  rocket: '#ff8800',
+  neutron: '#44dddd',
+  weaver: '#00ff44',
+  spinner: '#ff44ff',
+  snake: '#4488ff',
+  repulsor: '#ff6644',
+  gravity_well: '#4488ff',
+  gravity_well_red: '#ff4444',
+  gate: '#ffcc00',
+  painter: '#ffaa00',
+  virus: '#00cc00',
+  spawner: '#ff2222',
+  titan_grunt: '#6666ff',
+  titan_spinner: '#ff66ff',
+  titan_weaver: '#44ff88',
+  giant_wanderer: '#cc66ff',
+  giant_rocket: '#ffaa44',
+  giant_snake: '#66aaff',
+  giant_neutron: '#66eeee',
+  cluster: '#ffdd44',
+  helix: '#ff66aa',
+  fractal: '#88ff88',
+  swarm: '#ddff44',
+  lurker: '#886644',
+  orbiter: '#44ccff',
+  splitter: '#ff8866',
+  phaser: '#aaaaff',
+  approach_glow: '#ffff88',
+  stealth_stalker: '#666688',
+  fractal_snake: '#66ff66',
+  boss_sapphire: '#4488ff',
+  boss_ruby: '#ff2244',
+  boss_emerald: '#22ff44',
+  boss_topaz: '#ffcc22',
+  boss_amethyst: '#aa44ff',
+  boss_opal: '#ffffff',
+  other: '#666688',
+};
+
 // Kill streak tier definitions (ascending order)
 const STREAK_TIERS: Array<{ min: number; name: string; color: string }> = [
   { min: 5,  name: 'Killing Spree',  color: '#44ff44' },
@@ -378,6 +467,8 @@ export class AnalyticsPanel {
 
     // Score Graph tab (default active)
     addTab('SCORE GRAPH', this.scoreGraphPanel!.show(perfLogger), true);
+    // Kills tab
+    addTab('KILLS', this.buildKillsContent(perfLogger));
     // Weapons tab
     addTab('WEAPONS', this.buildWeaponsContent(analytics));
     // Streaks tab
@@ -441,6 +532,59 @@ export class AnalyticsPanel {
         color: BUFF_COLORS[buff] ?? '#88aacc',
       }),
     ));
+
+    return content;
+  }
+
+  private buildKillsContent(perfLogger: PerformanceLogger): HTMLElement {
+    const content = document.createElement('div');
+    const killsByType = perfLogger.getKillsByEnemyType();
+    const totalKills = killsByType.reduce((sum, t) => sum + t.kills, 0);
+
+    if (killsByType.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'ap-empty';
+      empty.textContent = 'No kills recorded this session';
+      content.appendChild(empty);
+      return content;
+    }
+
+    // Summary header
+    const summary = document.createElement('div');
+    summary.className = 'ap-streak-best';
+    summary.innerHTML = `
+      <div class="ap-streak-best-label">TOTAL KILLS</div>
+      <div class="ap-streak-best-value" style="color: #ff44aa; text-shadow: 0 0 12px #ff44aa;">${totalKills.toLocaleString()}</div>
+      <div class="ap-streak-best-name" style="color: #88aacc;">${killsByType.length} enemy type${killsByType.length !== 1 ? 's' : ''} encountered</div>
+    `;
+    content.appendChild(summary);
+
+    // Per-type breakdown with bars
+    const maxKills = killsByType[0].kills;
+    content.appendChild(this.buildSection(
+      'KILLS BY ENEMY TYPE',
+      killsByType,
+      ({ enemyType, kills }) => ({
+        label: ENEMY_DISPLAY[enemyType] ?? enemyType,
+        value: `${kills} (${totalKills > 0 ? ((kills / totalKills) * 100).toFixed(1) : '0'}%)`,
+        pct: (kills / maxKills) * 100,
+        color: ENEMY_TYPE_COLORS[enemyType] ?? '#666688',
+      }),
+    ));
+
+    // Smart summary text
+    if (killsByType.length >= 2) {
+      const top = killsByType[0];
+      const topPct = totalKills > 0 ? ((top.kills / totalKills) * 100).toFixed(0) : '0';
+      const summaryText = document.createElement('div');
+      summaryText.style.cssText = 'color: #446688; font-size: 12px; text-align: center; padding: 8px 0; font-style: italic;';
+      if (parseInt(topPct) >= 50) {
+        summaryText.textContent = `${ENEMY_DISPLAY[top.enemyType] ?? top.enemyType}s dominated your kills at ${topPct}% of all enemies defeated.`;
+      } else {
+        summaryText.textContent = `Kill distribution was balanced — ${ENEMY_DISPLAY[top.enemyType] ?? top.enemyType}s led with ${topPct}%.`;
+      }
+      content.appendChild(summaryText);
+    }
 
     return content;
   }

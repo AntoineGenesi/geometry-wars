@@ -529,4 +529,88 @@ describe('PerformanceLogger', () => {
       expect(summary?.buffKillContrib).toBeDefined();
     });
   });
+
+  describe('Kill Breakdown by Enemy Type', () => {
+    it('should aggregate kills by enemy type from events', () => {
+      logger.recordEvent('kill', 'wanderer');
+      logger.recordEvent('kill', 'wanderer');
+      logger.recordEvent('kill', 'grunt');
+      logger.recordEvent('kill', 'wanderer');
+      logger.recordEvent('kill', 'spinner');
+
+      const breakdown = logger.getKillsByEnemyType();
+      expect(breakdown.length).toBe(3);
+      // Sorted descending by count
+      expect(breakdown[0]).toEqual({ enemyType: 'wanderer', kills: 3 });
+      expect(breakdown[1]).toEqual({ enemyType: 'grunt', kills: 1 });
+      expect(breakdown[2]).toEqual({ enemyType: 'spinner', kills: 1 });
+    });
+
+    it('should return empty array when no kills', () => {
+      const breakdown = logger.getKillsByEnemyType();
+      expect(breakdown).toEqual([]);
+    });
+
+    it('should not count non-kill events', () => {
+      logger.recordEvent('wave_start', 'Wave 1', 1);
+      logger.recordEvent('player_death', 'Death');
+      logger.recordEvent('kill', 'wanderer');
+
+      const breakdown = logger.getKillsByEnemyType();
+      expect(breakdown.length).toBe(1);
+      expect(breakdown[0].enemyType).toBe('wanderer');
+    });
+
+    it('should compute kill timeline by enemy type', () => {
+      // Record some data points first (needed for timeline times)
+      logger.setFrameData(60, 10, 5);
+      logger.recordFrame(0.5);
+      // Record kills between first and second data point
+      logger.recordEvent('kill', 'wanderer');
+      logger.recordEvent('kill', 'wanderer');
+      logger.recordEvent('kill', 'grunt');
+      logger.setFrameData(60, 10, 5);
+      logger.recordFrame(0.5);
+      // More kills
+      logger.recordEvent('kill', 'wanderer');
+      logger.recordEvent('kill', 'spinner');
+      logger.setFrameData(60, 10, 5);
+      logger.recordFrame(0.5);
+
+      const timeline = logger.getKillTimelineByEnemyType(3);
+      expect(timeline.types.length).toBeGreaterThan(0);
+      expect(timeline.times.length).toBe(3);
+      expect(timeline.series.length).toBe(timeline.types.length);
+
+      // Wanderer should be the first type (most kills)
+      expect(timeline.types[0]).toBe('wanderer');
+
+      // At the last time point, wanderer should have 3 cumulative kills
+      const wandererSeries = timeline.series[0];
+      expect(wandererSeries[wandererSeries.length - 1]).toBe(3);
+    });
+
+    it('should lump excess types as "other" in timeline', () => {
+      // Create kills for 4 different types, use topN=2
+      logger.setFrameData(60, 10, 5);
+      logger.recordFrame(0.5);
+      logger.recordEvent('kill', 'wanderer');
+      logger.recordEvent('kill', 'wanderer');
+      logger.recordEvent('kill', 'grunt');
+      logger.recordEvent('kill', 'spinner');
+      logger.recordEvent('kill', 'rocket');
+      logger.setFrameData(60, 10, 5);
+      logger.recordFrame(0.5);
+
+      const timeline = logger.getKillTimelineByEnemyType(2);
+      // Should have top 2 types + "other"
+      expect(timeline.types.length).toBe(3);
+      expect(timeline.types[0]).toBe('wanderer');
+      expect(timeline.types[timeline.types.length - 1]).toBe('other');
+
+      // "other" should include spinner + rocket = 2
+      const otherSeries = timeline.series[timeline.types.length - 1];
+      expect(otherSeries[otherSeries.length - 1]).toBe(2);
+    });
+  });
 });

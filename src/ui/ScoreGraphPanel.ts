@@ -17,6 +17,7 @@
 
 import type { PerformanceLogger, GameEvent } from '../core/PerformanceLogger';
 import type { PerformanceDataPoint } from '../core/PerformanceLogger';
+import { ENEMY_TYPE_COLORS } from './AnalyticsPanel';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -112,6 +113,15 @@ export class ScoreGraphPanel {
 
   // View state
   private viewMode: 'score' | 'kills' = 'score';
+  private killsSubMode: 'total' | 'byType' = 'total';
+  private perfLoggerRef: PerformanceLogger | null = null;
+
+  // Cached kill timeline data (computed once per show())
+  private killTimeline: {
+    times: number[];
+    types: string[];
+    series: number[][];
+  } | null = null;
 
   // Zoom state (normalized fractions of total time, 0..1)
   private zoomStart = 0;
@@ -124,6 +134,9 @@ export class ScoreGraphPanel {
   private _onWheel: ((e: WheelEvent) => void) | null = null;
   private _onMouseMove: ((e: MouseEvent) => void) | null = null;
   private _onMouseLeave: (() => void) | null = null;
+
+  // Legend element ref for dynamic updates
+  private legendEl: HTMLElement | null = null;
 
   /**
    * Build and return an HTMLElement containing the score graph canvas + stats.
@@ -151,11 +164,16 @@ export class ScoreGraphPanel {
         : 0,
     };
 
+    // Store reference for kill timeline computation
+    this.perfLoggerRef = perfLogger;
+    this.killTimeline = perfLogger.getKillTimelineByEnemyType(6);
+
     // Reset zoom/hover
     this.zoomStart = 0;
     this.zoomEnd   = 1;
     this.hoverFraction = null;
     this.viewMode = 'score';
+    this.killsSubMode = 'total';
 
     const container = this.buildContainer();
     return container;
@@ -209,7 +227,8 @@ export class ScoreGraphPanel {
     wrapper.appendChild(this.buildStatsRow());
 
     // Legend
-    wrapper.appendChild(this.buildLegend());
+    this.legendEl = this.buildLegend();
+    wrapper.appendChild(this.legendEl);
 
     // Start draw animation once the canvas is in DOM
     requestAnimationFrame(() => this.initCanvas());
@@ -235,11 +254,44 @@ export class ScoreGraphPanel {
     killsBtn.textContent = 'KILLS';
     killsBtn.dataset.mode = 'kills';
 
+    // Kills sub-toggle group (TOTAL / BY TYPE)
+    const killsSubGroup = document.createElement('div');
+    killsSubGroup.className = 'sgp-toggle-group';
+    killsSubGroup.style.display = 'none';  // hidden until kills mode active
+
+    const totalBtn = document.createElement('button');
+    totalBtn.className = 'sgp-toggle-btn sgp-toggle-active';
+    totalBtn.textContent = 'TOTAL';
+    totalBtn.dataset.mode = 'total';
+
+    const byTypeBtn = document.createElement('button');
+    byTypeBtn.className = 'sgp-toggle-btn';
+    byTypeBtn.textContent = 'BY TYPE';
+    byTypeBtn.dataset.mode = 'byType';
+
+    const setKillsSub = (sub: 'total' | 'byType') => {
+      this.killsSubMode = sub;
+      totalBtn.classList.toggle('sgp-toggle-active', sub === 'total');
+      byTypeBtn.classList.toggle('sgp-toggle-active', sub === 'byType');
+      this.redraw();
+      // Update legend
+      this.updateByTypeLegend();
+    };
+
+    totalBtn.addEventListener('click', () => setKillsSub('total'));
+    byTypeBtn.addEventListener('click', () => setKillsSub('byType'));
+
+    killsSubGroup.appendChild(totalBtn);
+    killsSubGroup.appendChild(byTypeBtn);
+
     const setMode = (mode: 'score' | 'kills') => {
       this.viewMode = mode;
       scoreBtn.classList.toggle('sgp-toggle-active', mode === 'score');
       killsBtn.classList.toggle('sgp-toggle-active', mode === 'kills');
+      killsSubGroup.style.display = mode === 'kills' ? 'flex' : 'none';
+      if (mode === 'score') this.killsSubMode = 'total';
       this.redraw();
+      this.updateByTypeLegend();
     };
 
     scoreBtn.addEventListener('click', () => setMode('score'));
@@ -248,6 +300,7 @@ export class ScoreGraphPanel {
     toggleGroup.appendChild(scoreBtn);
     toggleGroup.appendChild(killsBtn);
     row.appendChild(toggleGroup);
+    row.appendChild(killsSubGroup);
 
     // Zoom reset button (shown only when zoomed)
     const resetBtn = document.createElement('button');
@@ -321,6 +374,41 @@ export class ScoreGraphPanel {
       legend.appendChild(entry);
     }
     return legend;
+  }
+
+  /**
+   * Update legend to show enemy type colors when in "BY TYPE" kills sub-mode,
+   * or revert to event legend otherwise.
+   */
+  private updateByTypeLegend(): void {
+    if (!this.legendEl) return;
+    this.legendEl.innerHTML = '';
+
+    if (this.viewMode === 'kills' && this.killsSubMode === 'byType' && this.killTimeline) {
+      for (const typeName of this.killTimeline.types) {
+        const color = ENEMY_TYPE_COLORS[typeName] ?? '#666688';
+        const displayName = typeName === 'other' ? 'Other' : (typeName.charAt(0).toUpperCase() + typeName.slice(1).replace(/_/g, ' '));
+        const entry = document.createElement('div');
+        entry.className = 'sgp-legend-entry';
+        entry.innerHTML = `<span class="sgp-legend-icon" style="color: ${color}; font-size: 16px;">■</span><span class="sgp-legend-text">${displayName}</span>`;
+        this.legendEl.appendChild(entry);
+      }
+    } else {
+      // Default event legend
+      const shown: Array<{ type: string; icon: string; label: string }> = [
+        { type: 'wave_start',   icon: EVENT_ICONS.wave_start,   label: 'Wave' },
+        { type: 'player_death', icon: EVENT_ICONS.player_death, label: 'Death' },
+        { type: 'kill_streak',  icon: EVENT_ICONS.kill_streak,  label: 'Kill Streak (5+)' },
+        { type: 'buff_pickup',  icon: EVENT_ICONS.buff_pickup,  label: 'Buff Pickup' },
+        { type: 'weapon_pickup',icon: EVENT_ICONS.weapon_pickup,label: 'Weapon Pickup' },
+      ];
+      for (const item of shown) {
+        const entry = document.createElement('div');
+        entry.className = 'sgp-legend-entry';
+        entry.innerHTML = `<span class="sgp-legend-icon" style="color: ${EVENT_COLORS[item.type]}">${item.icon}</span><span class="sgp-legend-text">${item.label}</span>`;
+        this.legendEl.appendChild(entry);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -584,41 +672,46 @@ export class ScoreGraphPanel {
       return;
     }
 
-    // Colors depending on view mode
-    const lineColor = isKills ? COLOR_KILLS_LINE : COLOR_SCORE_LINE;
-    const glowColor = isKills ? COLOR_KILLS_GLOW : COLOR_SCORE_GLOW;
-    const gradTop   = isKills ? 'rgba(255, 68, 170, 0.35)' : 'rgba(0, 255, 255, 0.35)';
-    const gradMid   = isKills ? 'rgba(80, 0, 60, 0.2)'     : 'rgba(0, 80, 120, 0.2)';
-    const gradBot   = 'rgba(0, 0, 30, 0.05)';
+    // --- Stacked area chart for kills BY TYPE mode ---
+    if (isKills && this.killsSubMode === 'byType' && this.killTimeline && this.killTimeline.types.length > 0) {
+      this.renderStackedArea(ctx, plotX, plotY, plotW, plotH, visibleStart, visibleEnd, visibleRange, progress, maxTime);
+    } else {
+      // --- Single-line mode (score or total kills) ---
+      const lineColor = isKills ? COLOR_KILLS_LINE : COLOR_SCORE_LINE;
+      const glowColor = isKills ? COLOR_KILLS_GLOW : COLOR_SCORE_GLOW;
+      const gradTop   = isKills ? 'rgba(255, 68, 170, 0.35)' : 'rgba(0, 255, 255, 0.35)';
+      const gradMid   = isKills ? 'rgba(80, 0, 60, 0.2)'     : 'rgba(0, 80, 120, 0.2)';
+      const gradBot   = 'rgba(0, 0, 30, 0.05)';
 
-    // --- Area fill (gradient) ---
-    const grad = ctx.createLinearGradient(0, plotY, 0, plotY + plotH);
-    grad.addColorStop(0, gradTop);
-    grad.addColorStop(0.6, gradMid);
-    grad.addColorStop(1, gradBot);
+      // Area fill (gradient)
+      const grad = ctx.createLinearGradient(0, plotY, 0, plotY + plotH);
+      grad.addColorStop(0, gradTop);
+      grad.addColorStop(0.6, gradMid);
+      grad.addColorStop(1, gradBot);
 
-    ctx.beginPath();
-    catmullRomPath(ctx, sampled);
-    ctx.lineTo(sampled[sampled.length - 1].x, plotY + plotH);
-    ctx.lineTo(Math.max(plotX, sampled[0].x), plotY + plotH);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
+      ctx.beginPath();
+      catmullRomPath(ctx, sampled);
+      ctx.lineTo(sampled[sampled.length - 1].x, plotY + plotH);
+      ctx.lineTo(Math.max(plotX, sampled[0].x), plotY + plotH);
+      ctx.closePath();
+      ctx.fillStyle = grad;
+      ctx.fill();
 
-    // --- Line (glow + solid) ---
-    ctx.beginPath();
-    catmullRomPath(ctx, sampled);
-    ctx.strokeStyle = glowColor;
-    ctx.lineWidth = 6;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.stroke();
+      // Line (glow + solid)
+      ctx.beginPath();
+      catmullRomPath(ctx, sampled);
+      ctx.strokeStyle = glowColor;
+      ctx.lineWidth = 6;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.stroke();
 
-    ctx.beginPath();
-    catmullRomPath(ctx, sampled);
-    ctx.strokeStyle = lineColor;
-    ctx.lineWidth = 2;
-    ctx.stroke();
+      ctx.beginPath();
+      catmullRomPath(ctx, sampled);
+      ctx.strokeStyle = lineColor;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
 
     // --- Event markers (only within visible window) ---
     const animatedTime = maxTime * progress;
@@ -677,21 +770,24 @@ export class ScoreGraphPanel {
       ctx.setLineDash([]);
       ctx.restore();
 
-      // Dot on the curve at hover position
-      const hoveredVal = isKills
-        ? interpolateAtTime(pts, hoveredTime, 'kills')
-        : interpolateAtTime(pts, hoveredTime, 'score');
-      const dotY = toY(hoveredVal);
+      // Dot on the curve at hover position (skip for byType stacked mode)
+      if (!(isKills && this.killsSubMode === 'byType')) {
+        const hoveredVal = isKills
+          ? interpolateAtTime(pts, hoveredTime, 'kills')
+          : interpolateAtTime(pts, hoveredTime, 'score');
+        const dotY = toY(hoveredVal);
+        const dotLineColor = isKills ? COLOR_KILLS_LINE : COLOR_SCORE_LINE;
 
-      ctx.beginPath();
-      ctx.arc(hoverX, dotY, 5, 0, Math.PI * 2);
-      ctx.fillStyle = COLOR_CROSSHAIR_DOT;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(hoverX, dotY, 5, 0, Math.PI * 2);
-      ctx.strokeStyle = lineColor;
-      ctx.lineWidth = 2;
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(hoverX, dotY, 5, 0, Math.PI * 2);
+        ctx.fillStyle = COLOR_CROSSHAIR_DOT;
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(hoverX, dotY, 5, 0, Math.PI * 2);
+        ctx.strokeStyle = dotLineColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
     }
 
     ctx.restore(); // pop clip
@@ -732,6 +828,115 @@ export class ScoreGraphPanel {
     }
 
     ctx.restore();
+  }
+
+  /**
+   * Render stacked area chart for kills-by-enemy-type mode.
+   * Each enemy type gets its own colored band, stacked from bottom to top.
+   */
+  private renderStackedArea(
+    ctx: CanvasRenderingContext2D,
+    plotX: number, plotY: number, plotW: number, plotH: number,
+    visibleStart: number, visibleEnd: number, visibleRange: number,
+    progress: number, _maxTime: number,
+  ): void {
+    const kt = this.killTimeline!;
+    if (kt.times.length < 2 || kt.types.length === 0) return;
+
+    const toX = (t: number) => plotX + ((t - visibleStart) / visibleRange) * plotW;
+
+    // Compute total (sum of all types) at each time point
+    const totals = new Array(kt.times.length).fill(0);
+    for (let ti = 0; ti < kt.times.length; ti++) {
+      for (let si = 0; si < kt.types.length; si++) {
+        totals[ti] += kt.series[si][ti];
+      }
+    }
+
+    // Max total in visible range for Y scaling
+    let maxTotal = 1;
+    for (let ti = 0; ti < kt.times.length; ti++) {
+      if (kt.times[ti] >= visibleStart && kt.times[ti] <= visibleEnd) {
+        if (totals[ti] > maxTotal) maxTotal = totals[ti];
+      }
+    }
+
+    const toY = (v: number) => plotY + plotH - (v / maxTotal) * plotH;
+
+    // Sample points in visible range
+    const maxPoints = 200;
+    const step = kt.times.length > maxPoints ? Math.ceil(kt.times.length / maxPoints) : 1;
+
+    const firstIdx = Math.max(0, kt.times.findIndex(t => t >= visibleStart) - 1);
+    let lastRawIdx = kt.times.length - 1;
+    for (let i = kt.times.length - 1; i >= 0; i--) {
+      if (kt.times[i] <= visibleEnd) { lastRawIdx = i; break; }
+    }
+    const lastIdx = Math.min(kt.times.length - 1, lastRawIdx + 1);
+
+    // Build sampled indices
+    const indices: number[] = [];
+    for (let i = firstIdx; i <= lastIdx; i += step) {
+      indices.push(i);
+    }
+    if (indices.length > 0 && indices[indices.length - 1] !== lastIdx) {
+      indices.push(lastIdx);
+    }
+    if (indices.length < 2) return;
+
+    // Draw stacked areas bottom-to-top (reverse type order so first type is on top visually)
+    // Compute cumulative baselines
+    const baselineBelow = new Array(indices.length).fill(0);
+
+    for (let si = kt.types.length - 1; si >= 0; si--) {
+      const typeName = kt.types[si];
+      const color = ENEMY_TYPE_COLORS[typeName] ?? '#666688';
+
+      // Build top points (baseline + this type's value)
+      const topPts: Array<{x: number; y: number}> = [];
+      const botPts: Array<{x: number; y: number}> = [];
+
+      for (let ii = 0; ii < indices.length; ii++) {
+        const ti = indices[ii];
+        const x = toX(kt.times[ti]);
+        const val = kt.series[si][ti];
+        const topVal = baselineBelow[ii] + val;
+        topPts.push({ x, y: toY(topVal) });
+        botPts.push({ x, y: toY(baselineBelow[ii]) });
+      }
+
+      // Fill the band between top and bottom
+      ctx.beginPath();
+      // Top edge (left to right)
+      ctx.moveTo(topPts[0].x, topPts[0].y);
+      for (let i = 1; i < topPts.length; i++) {
+        ctx.lineTo(topPts[i].x, topPts[i].y);
+      }
+      // Bottom edge (right to left)
+      for (let i = botPts.length - 1; i >= 0; i--) {
+        ctx.lineTo(botPts[i].x, botPts[i].y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.55;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Thin line on top edge
+      ctx.beginPath();
+      ctx.moveTo(topPts[0].x, topPts[0].y);
+      for (let i = 1; i < topPts.length; i++) {
+        ctx.lineTo(topPts[i].x, topPts[i].y);
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Update baseline for next layer
+      for (let ii = 0; ii < indices.length; ii++) {
+        baselineBelow[ii] += kt.series[si][indices[ii]];
+      }
+    }
   }
 
   /**
