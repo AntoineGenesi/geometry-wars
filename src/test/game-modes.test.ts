@@ -27,6 +27,10 @@ function createMockEnemy(u = 0.5, v = 0.5, health = 10, scoreValue = 100) {
   } as any;
 }
 
+// Build a real BufferGeometry so THREE.Mesh constructor succeeds (needs morphAttributes).
+const _mockGeo = new THREE.BufferGeometry();
+_mockGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 10);
+
 const mockSurface = {
   wrapsU: true,
   wrapsV: true,
@@ -37,11 +41,9 @@ const mockSurface = {
     tangentV: new THREE.Vector3(0, 1, 0),
   }),
   mesh: {
-    geometry: {
-      boundingSphere: { radius: 10 },
-      computeBoundingSphere: vi.fn(),
-    },
+    geometry: _mockGeo,
   },
+  worldRotation: new THREE.Quaternion(),
   group: {
     scale: { x: 1.0 },
     add: vi.fn(),
@@ -282,6 +284,8 @@ describe('KingMode', () => {
 
     // Use a surface that always returns a fixed predictable world position.
     const fixedLocalPos = new THREE.Vector3(10, 0, 0);
+    const scaledGeo = new THREE.BufferGeometry();
+    scaledGeo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 10);
     const scaledSurface = {
       wrapsU: false,
       wrapsV: false,
@@ -291,12 +295,8 @@ describe('KingMode', () => {
         tangentU: new THREE.Vector3(1, 0, 0),
         tangentV: new THREE.Vector3(0, 0, 1),
       }),
-      mesh: {
-        geometry: {
-          boundingSphere: { radius: 10 },
-          computeBoundingSphere: vi.fn(),
-        },
-      },
+      mesh: { geometry: scaledGeo },
+      worldRotation: new THREE.Quaternion(),
       group: { scale: { x: 0.75 }, add: vi.fn(), remove: vi.fn() }, // SMALL map
     } as any;
 
@@ -350,10 +350,11 @@ describe('KingMode', () => {
     spMode.dispose(spCtx);
   });
 
-  it('REGRESSION s44j-07: spawnWave called with skipWarning=true in MP mode (rings never accumulate)', () => {
-    // Root cause: In MP, enemySpawner.update() is NOT called (server-authoritative).
-    // Without this fix, KingMode called spawnWave with skipSpawnWarning=false, creating
-    // red ring indicators that were never cleaned up, piling up on screen indefinitely.
+  it('REGRESSION s44r30-01: spawnWave NOT called in MP mode (server handles spawning)', () => {
+    // Root cause: In MP, the SERVER handles all enemy spawning. Previously KingMode
+    // spawned enemies client-side in MP, creating ghost enemies that accumulated in the
+    // local enemySpawner.enemies[] array, potentially hitting the 400-cap and causing
+    // server-tracked enemies to fail to spawn (invisible enemies).
     const networkSpawner = {
       getEnemies: () => [] as any[],
       getActiveCount: () => 0,
@@ -374,17 +375,14 @@ describe('KingMode', () => {
       networkMode.onFixedUpdate(1.0, networkCtx);
     }
 
-    expect(spawnWaveSpy).toHaveBeenCalled();
-    // In MP mode, ALL spawnWave calls must pass skipSpawnWarning=true
-    for (const call of spawnWaveSpy.mock.calls) {
-      expect(call[1]).toBe(true);
-    }
+    // In MP mode, NO spawnWave calls should happen — server handles all spawning
+    expect(spawnWaveSpy).not.toHaveBeenCalled();
 
     networkMode.dispose(networkCtx);
   });
 
-  it('REGRESSION s44j-07: shrink threshold waves also use skipWarning in MP mode', () => {
-    // Shrink events use triggerShrinkWave() — must also respect the network mode flag.
+  it('REGRESSION s44r30-01: shrink threshold waves also skipped in MP mode', () => {
+    // Shrink events use triggerShrinkWave() — must also be skipped in MP.
     const networkSpawner = {
       getEnemies: () => [] as any[],
       getActiveCount: () => 0,
@@ -404,10 +402,8 @@ describe('KingMode', () => {
     (networkMode as any).zoneRadiusUV = 0.051;
     networkMode.onFixedUpdate(10.0, networkCtx);
 
-    // All spawnWave calls — including shrink waves — must use skipSpawnWarning=true
-    for (const call of spawnWaveSpy.mock.calls) {
-      expect(call[1]).toBe(true);
-    }
+    // In MP mode, NO spawnWave calls should happen — including shrink threshold waves
+    expect(spawnWaveSpy).not.toHaveBeenCalled();
 
     networkMode.dispose(networkCtx);
   });
