@@ -981,7 +981,7 @@ export class StartMenu {
         letter-spacing: 2px;
         justify-content: center;
         border-radius: 3px;
-        width: fit-content;
+        width: 100%;
         margin-left: auto;
         margin-right: auto;
       }
@@ -1225,6 +1225,8 @@ export class StartMenu {
         color: #ffffff;
       }
       #start-menu .lan-btn.lan-host {
+        display: block;
+        margin: 8px auto;
         background: rgba(0, 55, 25, 0.8);
         border-color: rgba(0, 190, 80, 0.55);
         color: #cceecc;
