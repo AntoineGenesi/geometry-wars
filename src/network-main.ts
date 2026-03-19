@@ -132,6 +132,7 @@ import { GameSettingsPanel } from './ui/GameSettingsPanel';
 import { DEFAULT_GAME_SETTINGS } from '../server/shared/GameSettings';
 import type { GameSettings } from '../server/shared/GameSettings';
 import { KillStreakAnnouncer } from './ui/KillStreakAnnouncer';
+import { EnemyKillStreakAnnouncer } from './ui/EnemyKillStreakAnnouncer';
 import { Portal, createPortalPair } from './entities/Portal';
 import { PerformanceProfiler as DebugPerformanceProfiler } from './debug/PerformanceProfiler';
 
@@ -1195,6 +1196,8 @@ async function main() {
   const killStreakAnnouncer = new KillStreakAnnouncer(sound);
   // Preload voice clips in background (non-blocking — game works without them)
   killStreakAnnouncer.preloadVoice();
+  // -- EnemyKillStreakAnnouncer: consecutive enemy kills overlay (client-local, MP) --
+  const enemyStreakAnnouncer = new EnemyKillStreakAnnouncer(sound);
 
   // -- PvPvE leaderboard: shows P/E/Total kill columns for all players --
   // Only visible in pvpve mode; updated on each state change.
@@ -3955,6 +3958,7 @@ async function main() {
         tracker.recordDeath();
         // Local player death: show countdown (3→2→1) + death cam
         if (id === localPlayerId) {
+          enemyStreakAnnouncer.resetStreak();
           // Check if this is the FINAL death (last player standing goes down = game over).
           // If no other players are alive, skip the "RESPAWNING" countdown and instead
           // hold the death camera for 3 seconds before showing mastery/voting screens.
@@ -4257,6 +4261,7 @@ async function main() {
           // PlayerLevel + weapon mastery kill attribution for local player
           if (nearestId === localPlayerId) {
             playerLevel.addKill();
+            enemyStreakAnnouncer.recordKill();
             const killedWithWeapon = localWeaponManager.getCurrentWeapon();
             weaponMastery.recordKill(killedWithWeapon);
             matchUpgradeTracker.recordKill(killedWithWeapon);
@@ -6544,6 +6549,7 @@ async function main() {
     surface.updateGrid(dt);
     killLog.update(dt);
     killStreakAnnouncer.update(dt);
+    enemyStreakAnnouncer.update(dt);
     killFeed.update(dt);
     allyGlowManager.update(dt);
     glowManager.update(dt);
@@ -8172,6 +8178,7 @@ async function main() {
     lodManager.dispose();
     levelUpNotification.dispose();
     killStreakAnnouncer.dispose();
+    enemyStreakAnnouncer.dispose();
     pvpveLeaderboard.dispose();
     playerLevel.dispose();
     buffManager.dispose();
