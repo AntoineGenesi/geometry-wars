@@ -101,6 +101,7 @@ import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
+import { VisualPlayground } from './ui/VisualPlayground';
 import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { PerformanceLogger } from './core/PerformanceLogger';
@@ -2363,11 +2364,20 @@ async function main() {
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
-    // Re-apply bloom strength adjusted for the new visual mode.
-    // desktop-defender: 0.25× (light bg, minimal glow); pixelated: 0.4×; modern: 1.0×
-    const baseBloomStrength = savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7);
-    const adjustedStrength = getAdjustedBloomStrength(baseBloomStrength, mode);
-    game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
+    if (mode === 'crt') {
+      // CRT mode: apply CRT Arcade preset (green bloom, dark surface)
+      game.setBloomSettings(1.4, 0.82);
+      if (game.bloomPass) game.bloomPass.radius = 0.8;
+      if (surface) {
+        surface.setSurfaceOpacity(0.3);
+        surface.setSurfaceColor(0x001a08);
+      }
+    } else {
+      // Re-apply bloom strength adjusted for the new visual mode.
+      const baseBloomStrength = savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7);
+      const adjustedStrength = getAdjustedBloomStrength(baseBloomStrength, mode);
+      game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
+    }
     particles.setVisualMode(mode);
   });
 
@@ -2381,6 +2391,21 @@ async function main() {
 
   pauseMenu.onAllowAllPauseToggle((allowed: boolean) => {
     network.sendSetAllowAllPause(allowed);
+  });
+
+  // Live-apply visual preset when user selects from VisualPlayground gallery (pause menu)
+  VisualPlayground.setGlobalPresetApplyCallback((preset) => {
+    if (!preset) return;
+    const currentVisualMode = loadVisualMode();
+    const adjustedStrength = getAdjustedBloomStrength(preset.bloomStrength, currentVisualMode);
+    game.setBloomSettings(adjustedStrength, preset.bloomThreshold ?? 0.85);
+    if (game.bloomPass && preset.bloomRadius !== undefined) {
+      game.bloomPass.radius = preset.bloomRadius;
+    }
+    if (surface) {
+      surface.setSurfaceOpacity(preset.surfaceOpacity);
+      surface.setSurfaceColor(preset.surfaceColor);
+    }
   });
 
   // Show short code QR in pause menu — 5-digit code is smaller and more reliable than full URL.
