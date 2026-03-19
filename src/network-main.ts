@@ -5060,8 +5060,12 @@ async function main() {
       } else if (latestPvpEnabled) {
         // Co-op PvP fallback (localPlayer not found)
         teamScoreEl.textContent = `${combinedScore.toFixed(2)}K`;
+      } else if (localPlayer) {
+        // s44r31-02: Co-op Waves — show local player's own score, not combined.
+        // Combined ≈ host's score when host dominates, so clients saw "wrong" score.
+        teamScoreEl.textContent = localPlayer.score.toLocaleString();
       } else {
-        // Co-op: combined team score (Waves, Rainbow)
+        // Fallback: combined score when localPlayer not yet resolved (connect race).
         teamScoreEl.textContent = combinedScore.toLocaleString();
       }
     }
