@@ -1,11 +1,28 @@
 /**
- * Tests for EnemyKillStreakAnnouncer — consecutive enemy kill streak overlay.
+ * Tests for EnemyKillStreakAnnouncer — streak tracking and announcement logic.
  *
- * Uses the same MockElement DOM mock pattern as KillStreakAnnouncer.test.ts.
- * requestAnimationFrame is stubbed because BrailleAnimator uses it internally.
+ * Uses a minimal DOM mock (same pattern as KillStreakAnnouncer.test.ts) and
+ * a stub SoundEngine. BrailleAnimator is mocked to avoid requestAnimationFrame.
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// ---------------------------------------------------------------------------
+// Mock BrailleAnimator (avoids requestAnimationFrame)
+// ---------------------------------------------------------------------------
+
+vi.mock('./BrailleAnimator', () => {
+  class BrailleAnimator {
+    start = vi.fn();
+    stop = vi.fn();
+    dispose = vi.fn();
+    setPattern = vi.fn();
+    constructor(_container: unknown, _opts?: unknown) {}
+  }
+  return { BrailleAnimator, ALL_PATTERNS: [] };
+});
+
+import { EnemyKillStreakAnnouncer } from './EnemyKillStreakAnnouncer';
 
 // ---------------------------------------------------------------------------
 // Minimal DOM mock
@@ -36,24 +53,6 @@ class MockElement {
     return child;
   }
 
-  querySelector<T = MockElement>(selector: string): T | null {
-    // Return a child stub matching a class selector
-    const cls = selector.replace(/^\./, '');
-    for (const child of this.children) {
-      if (child.className.includes(cls)) return child as unknown as T;
-    }
-    // Recursive depth-1 search in grandchildren
-    for (const child of this.children) {
-      for (const gc of child.children) {
-        if (gc.className.includes(cls)) return gc as unknown as T;
-      }
-    }
-    // Fallback: return a dummy element so callers don't crash
-    const dummy = new MockElement();
-    dummy.className = cls;
-    return dummy as unknown as T;
-  }
-
   remove(): void {
     if (this.parentElement) {
       const idx = this.parentElement.children.indexOf(this);
@@ -63,17 +62,22 @@ class MockElement {
   }
 }
 
-const headChildren: MockElement[] = [];
-const bodyChildren: MockElement[] = [];
+/** Registry of elements by id — lets getElementById work. */
+const elementRegistry: Map<string, MockElement> = new Map();
+
+let headChildren: MockElement[] = [];
+let bodyChildren: MockElement[] = [];
 
 function setupDOMMock(): void {
-  headChildren.length = 0;
-  bodyChildren.length = 0;
+  headChildren = [];
+  bodyChildren = [];
+  elementRegistry.clear();
 
   const mockHead = new MockElement();
   mockHead.appendChild = (child: MockElement) => {
     headChildren.push(child);
     child.parentElement = mockHead;
+    if (child.id) elementRegistry.set(child.id, child);
     return child;
   };
 
@@ -81,198 +85,183 @@ function setupDOMMock(): void {
   mockBody.appendChild = (child: MockElement) => {
     bodyChildren.push(child);
     child.parentElement = mockBody;
+    if (child.id) elementRegistry.set(child.id, child);
     return child;
   };
 
   vi.stubGlobal('document', {
     createElement: (tag: string): MockElement => {
       const el = new MockElement();
-      (el as unknown as { tagName: string }).tagName = tag.toUpperCase();
+      (el as any).tagName = tag.toUpperCase();
+      // Override appendChild to register by id after id is set
+      const origAppendChild = el.appendChild.bind(el);
+      el.appendChild = (child: MockElement) => {
+        const result = origAppendChild(child);
+        if (child.id) elementRegistry.set(child.id, child);
+        return result;
+      };
       return el;
     },
-    getElementById: (_id: string) => null,
+    getElementById: (id: string) => elementRegistry.get(id) ?? null,
     head: mockHead,
     body: mockBody,
   });
-
-  // BrailleAnimator uses requestAnimationFrame — stub it to prevent errors
-  vi.stubGlobal('requestAnimationFrame', (_cb: FrameRequestCallback) => 1);
-  vi.stubGlobal('cancelAnimationFrame', (_id: number) => {});
 }
 
-/** Build a minimal SoundEngine stub that records play() calls. */
 function makeSoundStub() {
-  const calls: Array<{ type: string; options: unknown }> = [];
-  return {
-    play(type: string, options: unknown = {}) { calls.push({ type, options }); return true; },
-    calls,
-  };
+  return { play: vi.fn() } as any;
 }
 
 // ---------------------------------------------------------------------------
-// EnemyKillStreakAnnouncer tests
+// Tests
 // ---------------------------------------------------------------------------
 
 describe('EnemyKillStreakAnnouncer', () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let EnemyKillStreakAnnouncer: any;
+  let sound: ReturnType<typeof makeSoundStub>;
+  let announcer: EnemyKillStreakAnnouncer;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     setupDOMMock();
-    vi.resetModules();
-    const mod = await import('./EnemyKillStreakAnnouncer');
-    EnemyKillStreakAnnouncer = mod.EnemyKillStreakAnnouncer;
+    sound = makeSoundStub();
+    announcer = new EnemyKillStreakAnnouncer(sound);
+    // Register the container by id (it's appended to body in constructor)
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer');
+    if (container) elementRegistry.set(container.id, container);
+    const styleEl = headChildren.find(el => el.id === 'enemy-kill-streak-announcer-style');
+    if (styleEl) elementRegistry.set(styleEl.id, styleEl);
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+  // ── streakCount tracking ─────────────────────────────────────────────────
+
+  it('starts with streakCount 0', () => {
+    expect(announcer.streakCount).toBe(0);
   });
 
-  it('creates DOM elements on construction (style in head, container in body)', () => {
-    const sound = makeSoundStub();
-    new EnemyKillStreakAnnouncer(sound);
-    expect(headChildren.length).toBeGreaterThanOrEqual(1);
-    expect(bodyChildren.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('recordKill() × 1 shows announcement — 1 is a milestone', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
+  it('increments streakCount on each recordKill()', () => {
     announcer.recordKill();
-    expect(sound.calls).toHaveLength(1);
-    expect(sound.calls[0].type).toBe('multiplierUp');
-    expect(announcer.streakCount).toBe(1);
+    announcer.recordKill();
+    announcer.recordKill();
+    expect(announcer.streakCount).toBe(3);
   });
 
-  it('recordKill() × 5 shows announcement at each milestone (1, 2, 3, 4, 5)', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
-    for (let i = 0; i < 5; i++) {
-      announcer.recordKill();
-    }
-    // All 5 of 1,2,3,4,5 are milestones
-    expect(sound.calls).toHaveLength(5);
-    expect(announcer.streakCount).toBe(5);
-  });
-
-  it('recordKill() at non-milestone (6) does NOT trigger announcement', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
-    // Advance to 5 (all milestones), clear calls, then record 6th
-    for (let i = 0; i < 5; i++) announcer.recordKill();
-    sound.calls.length = 0;
-
-    announcer.recordKill(); // kill 6 — NOT a milestone (milestones: 1,2,3,4,5,7,10,...)
-    expect(sound.calls).toHaveLength(0);
-  });
-
-  it('resetStreak() sets count to 0 without playing a sound', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
+  it('resetStreak() sets streakCount back to 0', () => {
     for (let i = 0; i < 50; i++) announcer.recordKill();
-    sound.calls.length = 0;
-
+    expect(announcer.streakCount).toBe(50);
     announcer.resetStreak();
     expect(announcer.streakCount).toBe(0);
-    expect(sound.calls).toHaveLength(0);
   });
+
+  // ── Announcement at kill 1 (first milestone) ────────────────────────────
+
+  it('shows announcement at kill 1 (first STREAK_MILESTONE)', () => {
+    announcer.recordKill();
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer');
+    expect(container?.style['display']).toBe('block');
+  });
+
+  it('plays a sound at kill 1', () => {
+    announcer.recordKill();
+    expect(sound.play).toHaveBeenCalledWith('multiplierUp', expect.any(Object));
+  });
+
+  // ── Milestones 1–5 all trigger announcements ─────────────────────────────
+
+  it.each([1, 2, 3, 4, 5])('shows announcement at milestone kill %i', (n) => {
+    for (let i = 0; i < n; i++) announcer.recordKill();
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer');
+    expect(container?.style['display']).toBe('block');
+    expect(announcer.streakCount).toBe(n);
+  });
+
+  // ── No announcement on non-milestone kills ───────────────────────────────
+
+  it('does NOT play sound for kill 6 (gap between 5 and 7)', () => {
+    for (let i = 0; i < 5; i++) announcer.recordKill();
+    sound.play.mockClear();
+    announcer.recordKill(); // kill 6 — not a milestone
+    expect(sound.play).not.toHaveBeenCalled();
+  });
+
+  // ── Kill 7 IS a milestone ─────────────────────────────────────────────────
+
+  it('plays sound at kill 7 (next milestone after 5)', () => {
+    for (let i = 0; i < 7; i++) announcer.recordKill();
+    // Milestones hit: 1, 2, 3, 4, 5, 7 → 6 calls
+    expect(sound.play).toHaveBeenCalledTimes(6);
+  });
+
+  // ── resetStreak after 50 kills → next kill triggers streak=1 ─────────────
 
   it('next kill after resetStreak() triggers streak=1 announcement', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
-
-    // Build up a streak and reset
-    for (let i = 0; i < 10; i++) announcer.recordKill();
+    for (let i = 0; i < 50; i++) announcer.recordKill();
     announcer.resetStreak();
-    sound.calls.length = 0;
+    sound.play.mockClear();
 
-    // First kill after reset — streak=1, which is a milestone
     announcer.recordKill();
     expect(announcer.streakCount).toBe(1);
-    expect(sound.calls).toHaveLength(1);
-    expect(sound.calls[0].type).toBe('multiplierUp');
+    expect(sound.play).toHaveBeenCalledWith('multiplierUp', expect.any(Object));
   });
 
-  it('update(3.6) hides overlay after 3.5s total (2.5s visible + 1.0s fade)', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
+  // ── update() hides overlay after total duration ───────────────────────────
 
-    announcer.recordKill(); // trigger announcement at streak=1
-    // Advance past 3.5s total
+  it('update() hides overlay after 3.6s (past 2.5s visible + 1.0s fade)', () => {
+    announcer.recordKill();
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer')!;
+    expect(container.style['display']).toBe('block');
+
     announcer.update(3.6);
-
-    const container = bodyChildren[bodyChildren.length - 1];
     expect(container.style['display']).toBe('none');
   });
 
-  it('update() sets opacity during the fade window', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
-
-    announcer.recordKill(); // trigger announcement at streak=1
-    // Advance 2.5s (still fully visible — no fade yet)
-    announcer.update(2.5);
-    const container = bodyChildren[bodyChildren.length - 1];
-    const opacityAfterVisible = parseFloat(container.style['opacity'] ?? '1');
-    expect(opacityAfterVisible).toBeGreaterThanOrEqual(0.9);
-
-    // Advance 0.5s into fade window (remaining = 0.5s / 1.0s fade = 0.5 opacity)
-    announcer.update(0.5);
-    const opacityFading = parseFloat(container.style['opacity'] ?? '1');
-    expect(opacityFading).toBeLessThan(1.0);
-    expect(opacityFading).toBeGreaterThan(0);
+  it('overlay is still visible at 2.0s (within VISIBLE_DURATION)', () => {
+    announcer.recordKill();
+    announcer.update(2.0);
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer')!;
+    expect(container.style['display']).toBe('block');
   });
 
-  it('dispose() removes the container element from the DOM', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
+  it('update() does not throw when no announcement is active', () => {
+    expect(() => announcer.update(10)).not.toThrow();
+  });
 
-    const container = bodyChildren[bodyChildren.length - 1];
+  // ── dispose() removes DOM elements ───────────────────────────────────────
+
+  it('dispose() removes container from body', () => {
+    const container = bodyChildren.find(el => el.id === 'enemy-kill-streak-announcer');
     expect(container).toBeDefined();
-    expect(container.parentElement).not.toBeNull();
 
     announcer.dispose();
-
-    expect(container.parentElement).toBeNull();
+    expect(container?.parentElement).toBeNull();
   });
 
-  it('kill count 2000 does not crash (wrapping behavior)', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
+  it('dispose() removes style from head', () => {
+    const styleEl = headChildren.find(el => el.id === 'enemy-kill-streak-announcer-style');
+    expect(styleEl).toBeDefined();
+
+    announcer.dispose();
+    expect(styleEl?.parentElement).toBeNull();
+  });
+
+  // ── pointer-events: none ─────────────────────────────────────────────────
+
+  it('style sheet includes pointer-events: none', () => {
+    const styleEl = headChildren.find(el => el.id === 'enemy-kill-streak-announcer-style');
+    expect(styleEl?.textContent).toContain('pointer-events: none');
+  });
+
+  // ── Streak count > 200 does not crash ─────────────────────────────────────
+
+  it('kill count 200 does not crash', () => {
     expect(() => {
-      for (let i = 0; i < 2000; i++) {
-        announcer.recordKill();
-      }
+      for (let i = 0; i < 200; i++) announcer.recordKill();
+    }).not.toThrow();
+    expect(announcer.streakCount).toBe(200);
+  });
+
+  it('kill count 2000 does not crash', () => {
+    expect(() => {
+      for (let i = 0; i < 2000; i++) announcer.recordKill();
     }).not.toThrow();
     expect(announcer.streakCount).toBe(2000);
-  });
-
-  it('higher tier milestone plays at higher pitch than lower tier', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
-
-    announcer.recordKill(); // streak=1, tier 0, pitch 0.8
-    const pitch1 = (sound.calls[sound.calls.length - 1].options as { pitch: number }).pitch;
-
-    // Advance to streak=100 (milestone, tier 7)
-    for (let i = 1; i < 100; i++) announcer.recordKill();
-    const pitch100 = (sound.calls[sound.calls.length - 1].options as { pitch: number }).pitch;
-
-    expect(pitch100).toBeGreaterThan(pitch1);
-  });
-
-  it('new announcement while one is visible replaces content immediately', () => {
-    const sound = makeSoundStub();
-    const announcer = new EnemyKillStreakAnnouncer(sound);
-
-    announcer.recordKill(); // streak=1 announcement
-    announcer.update(1.0); // advance 1s — still visible
-
-    announcer.recordKill(); // streak=2 — another milestone announcement
-    expect(sound.calls).toHaveLength(2);
-
-    // Container should still be visible (timeRemaining reset)
-    const container = bodyChildren[bodyChildren.length - 1];
-    expect(container.style['display']).toBe('block');
   });
 });

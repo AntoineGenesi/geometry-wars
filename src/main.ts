@@ -1695,6 +1695,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     analyticsPanel.dispose();
+    gameLoop.dispose();
     // Clear entity pools before disposing game to ensure scene graph is clean (s44r5-05).
     enemySpawner.clear();
     bulletPool.clear();
@@ -1728,6 +1729,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     levelCompleteScreen.dispose();
     gameOverScreen.dispose();
     analyticsPanel.dispose();
+    gameLoop.dispose();
     // Clear entity pools and release GPU resources (same as onNext above).
     enemySpawner.clear();
     bulletPool.clear();

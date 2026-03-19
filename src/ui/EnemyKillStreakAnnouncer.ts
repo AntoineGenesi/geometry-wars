@@ -1,47 +1,54 @@
 /**
- * EnemyKillStreakAnnouncer — tracks consecutive enemy kills and shows
- * an announcement overlay at each milestone.
+ * EnemyKillStreakAnnouncer — SP enemy kill streak announcement overlay.
  *
- * Intentionally separate from KillStreakAnnouncer (PvP multi-kills in 4s window).
- * This class tracks kills without dying — reset on player death via resetStreak().
+ * Tracks consecutive enemy kills without dying. Shows Halo-style announcements
+ * at milestone counts (1, 2, 3, 4, 5, 7, 10, 13, ...) with a Braille animation
+ * background and tier-based colors/sounds.
+ *
+ * Completely separate from KillStreakAnnouncer (PvP multi-kills in a time window).
+ * This class tracks enemy kills across the entire session until the player dies.
+ *
+ * API:
+ *   recordKill()           — call on each enemy kill
+ *   resetStreak()          — call on player death (silent, no animation)
+ *   update(dt: number)     — call each frame
+ *   get streakCount()      — current consecutive kill count
+ *   dispose()              — remove DOM elements
  */
 
 import { SoundEngine } from '../audio/SoundEngine';
-import { BrailleAnimator, BraillePattern } from './BrailleAnimator';
+import { BrailleAnimator } from './BrailleAnimator';
+import type { BraillePattern } from './BrailleAnimator';
 import {
   getStreakName,
   getStreakTier,
   STREAK_MILESTONES,
-  STREAK_TIERS,
 } from './killStreakNames';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Seconds the announcement stays fully visible. */
+/** Seconds announcement stays fully visible before fading. */
 const VISIBLE_DURATION = 2.5;
-/** Seconds over which the announcement fades out. */
+/** Seconds to fade from full opacity to zero. */
 const FADE_DURATION = 1.0;
 
-/** Milestone set for O(1) lookup. */
-const MILESTONE_SET = new Set<number>(STREAK_MILESTONES);
-
 /**
- * Placeholder tier-to-pattern mapping. One pattern per tier index (0–9).
- * Finalized in phase 5A — for now uses a progression of patterns.
+ * Map streak tier minStreak → Braille animation pattern.
+ * Tiers are ordered ascending (1, 6, 11, 16, 21, 31, 51, 76, 101, 151).
  */
 const TIER_PATTERNS: BraillePattern[] = [
-  'orbit',      // tier 0: Casual         (1–5)
-  'wave',       // tier 1: Military       (6–10)
-  'ripple',     // tier 2: Professional   (11–15)
-  'vortex',     // tier 3: Supernatural   (16–20)
-  'spiral',     // tier 4: Godlike        (21–30)
-  'fireworks',  // tier 5: Cosmic         (31–50)
-  'helix',      // tier 6: Eldritch       (51–75)
-  'rose',       // tier 7: Mythological   (76–100)
-  'static',     // tier 8: Transcendent   (101–150)
-  'binary',     // tier 9: Incomprehensible (151+)
+  'breathing',      // tier 0 (minStreak 1)
+  'wave',           // tier 1 (minStreak 6)
+  'columns',        // tier 2 (minStreak 11)
+  'orbit',          // tier 3 (minStreak 16)
+  'vortex',         // tier 4 (minStreak 21)
+  'spiral',         // tier 5 (minStreak 31)
+  'fireworks',      // tier 6 (minStreak 51)
+  'helix',          // tier 7 (minStreak 76)
+  'ripple',         // tier 8 (minStreak 101)
+  'static',         // tier 9 (minStreak 151)
 ];
 
 // ---------------------------------------------------------------------------
@@ -49,22 +56,24 @@ const TIER_PATTERNS: BraillePattern[] = [
 // ---------------------------------------------------------------------------
 
 export class EnemyKillStreakAnnouncer {
-  private readonly container: HTMLDivElement;
   private readonly styleEl: HTMLStyleElement;
-  private readonly sound: SoundEngine;
+  private readonly container: HTMLDivElement;
   private readonly brailleEl: HTMLPreElement;
-  private readonly animator: BrailleAnimator;
+  private readonly nameEl: HTMLDivElement;
+  private readonly countEl: HTMLDivElement;
+
+  private readonly sound: SoundEngine;
+  private brailleAnimator: BrailleAnimator;
 
   private _streakCount = 0;
-
-  /** Time remaining for the current announcement (seconds). Negative = idle. */
+  /** Time remaining on the current announcement. Negative = idle. */
   private timeRemaining = -1;
 
   constructor(sound: SoundEngine) {
     this.sound = sound;
 
-    // ── Style ──────────────────────────────────────────────────────────────
-    this.styleEl = document.createElement('style') as HTMLStyleElement;
+    // ── Styles ──────────────────────────────────────────────────────────────
+    this.styleEl = document.createElement('style');
     this.styleEl.id = 'enemy-kill-streak-announcer-style';
     this.styleEl.textContent = `
       #enemy-kill-streak-announcer {
@@ -72,77 +81,78 @@ export class EnemyKillStreakAnnouncer {
         top: 30%;
         left: 50%;
         transform: translate(-50%, -50%);
-        z-index: 600;
+        z-index: 610;
         pointer-events: none;
         text-align: center;
         display: none;
+        user-select: none;
       }
 
       #enemy-kill-streak-announcer .eksa-braille {
-        display: block;
         font-family: monospace;
-        font-size: 12px;
+        font-size: 14px;
         line-height: 1.1;
-        margin-bottom: 8px;
+        color: rgba(255,255,255,0.25);
+        margin-bottom: 6px;
+        letter-spacing: 0;
         white-space: pre;
-        /* color set dynamically per tier */
       }
 
-      #enemy-kill-streak-announcer .eksa-label {
+      #enemy-kill-streak-announcer .eksa-name {
         font-size: 52px;
         font-weight: 900;
-        font-family: monospace;
-        letter-spacing: 8px;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 6px;
         text-transform: uppercase;
         /* color and text-shadow set dynamically per tier */
       }
 
-      #enemy-kill-streak-announcer .eksa-subtitle {
+      #enemy-kill-streak-announcer .eksa-count {
         font-size: 20px;
         font-weight: 600;
-        font-family: monospace;
+        font-family: 'Courier New', monospace;
         color: #ffffff;
-        letter-spacing: 3px;
-        text-transform: uppercase;
-        margin-top: 6px;
         text-shadow: 0 0 8px #ffffff;
+        letter-spacing: 4px;
+        text-transform: uppercase;
+        margin-top: 4px;
       }
 
       @keyframes eksa-pop-in {
         0%   { transform: scale(0.4); opacity: 0; }
-        60%  { transform: scale(1.15); opacity: 1; }
+        60%  { transform: scale(1.12); opacity: 1; }
         100% { transform: scale(1.0); opacity: 1; }
       }
 
-      #enemy-kill-streak-announcer.eksa-active .eksa-label {
+      #enemy-kill-streak-announcer.eksa-active .eksa-name {
         animation: eksa-pop-in 0.35s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
       }
     `;
     document.head.appendChild(this.styleEl);
 
-    // ── Container ──────────────────────────────────────────────────────────
-    this.container = document.createElement('div') as HTMLDivElement;
+    // ── DOM ─────────────────────────────────────────────────────────────────
+    this.container = document.createElement('div');
     this.container.id = 'enemy-kill-streak-announcer';
 
-    this.brailleEl = document.createElement('pre') as HTMLPreElement;
+    this.brailleEl = document.createElement('pre');
     this.brailleEl.className = 'eksa-braille';
+
+    this.nameEl = document.createElement('div');
+    this.nameEl.className = 'eksa-name';
+
+    this.countEl = document.createElement('div');
+    this.countEl.className = 'eksa-count';
+
     this.container.appendChild(this.brailleEl);
-
-    const labelEl = document.createElement('div');
-    labelEl.className = 'eksa-label';
-    this.container.appendChild(labelEl);
-
-    const subtitleEl = document.createElement('div');
-    subtitleEl.className = 'eksa-subtitle';
-    this.container.appendChild(subtitleEl);
-
+    this.container.appendChild(this.nameEl);
+    this.container.appendChild(this.countEl);
     document.body.appendChild(this.container);
 
-    // ── Animator ───────────────────────────────────────────────────────────
-    this.animator = new BrailleAnimator(this.brailleEl, {
+    // ── Braille animator (starts stopped, started on each announce) ─────────
+    this.brailleAnimator = new BrailleAnimator(this.brailleEl, {
       cols: 24,
       rows: 4,
-      pattern: 'orbit',
+      pattern: 'breathing',
     });
   }
 
@@ -150,113 +160,100 @@ export class EnemyKillStreakAnnouncer {
   // Public API
   // ---------------------------------------------------------------------------
 
-  /**
-   * Record an enemy kill. Increments streak counter and shows announcement
-   * at milestone counts (as defined in STREAK_MILESTONES).
-   */
+  /** Current consecutive kill count (0 after reset). */
+  get streakCount(): number {
+    return this._streakCount;
+  }
+
+  /** Call on each enemy kill. Shows announcement at milestone counts. */
   recordKill(): void {
     this._streakCount++;
-    if (MILESTONE_SET.has(this._streakCount)) {
-      this._showAnnouncement(this._streakCount);
+    if (STREAK_MILESTONES.includes(this._streakCount)) {
+      this._announce(this._streakCount);
     }
   }
 
-  /**
-   * Reset the streak counter to 0 without showing any announcement.
-   * Call on player death.
-   */
+  /** Call on player death. Resets counter silently (no announcement). */
   resetStreak(): void {
     this._streakCount = 0;
+    this._hide();
   }
 
-  /**
-   * Advance the fade-out timer. Call once per frame.
-   * @param dt Delta time in seconds.
-   */
+  /** Advance fade-out timer. Call once per frame with delta time in seconds. */
   update(dt: number): void {
     if (this.timeRemaining < 0) return;
 
     this.timeRemaining -= dt;
 
     if (this.timeRemaining <= 0) {
-      // Fully expired
-      this.container.style.display = 'none';
-      this.container.classList.remove('eksa-active');
-      this.timeRemaining = -1;
-      this.animator.stop();
+      this._hide();
     } else if (this.timeRemaining < FADE_DURATION) {
-      // In fade-out window
       const opacity = this.timeRemaining / FADE_DURATION;
       this.container.style.opacity = String(opacity);
     }
   }
 
-  /** Current consecutive kill count. */
-  get streakCount(): number {
-    return this._streakCount;
-  }
-
-  /** Remove DOM elements and release resources. */
+  /** Remove DOM elements and release animator resources. */
   dispose(): void {
-    this.animator.dispose();
+    this.brailleAnimator.dispose();
     this.container.remove();
     this.styleEl.remove();
   }
 
   // ---------------------------------------------------------------------------
-  // Private
+  // Internals
   // ---------------------------------------------------------------------------
 
-  private _showAnnouncement(count: number): void {
+  private _announce(count: number): void {
     const tier = getStreakTier(count);
-    const name = getStreakName(count);
-    const tierIndex = this._getTierIndex(count);
+    const tiers = this._getTierIndex(tier.minStreak);
+    const pattern = TIER_PATTERNS[Math.min(tiers, TIER_PATTERNS.length - 1)];
 
-    const labelEl = this.container.querySelector<HTMLElement>('.eksa-label');
-    const subtitleEl = this.container.querySelector<HTMLElement>('.eksa-subtitle');
+    // Update text content
+    this.nameEl.textContent = getStreakName(count);
+    this.nameEl.style.color = tier.color;
+    this.nameEl.style.textShadow = [
+      `0 0 10px ${tier.glowColor}`,
+      `0 0 25px ${tier.glowColor}`,
+      `0 0 50px ${tier.glowColor}`,
+    ].join(', ');
 
-    if (labelEl) {
-      labelEl.textContent = name;
-      labelEl.style.color = tier.color;
-      labelEl.style.textShadow = [
-        `0 0 10px ${tier.glowColor}`,
-        `0 0 25px ${tier.glowColor}`,
-        `0 0 50px ${tier.glowColor}`,
-      ].join(', ');
-    }
+    this.countEl.textContent = `${count} KILL${count === 1 ? '' : 'S'} IN A ROW`;
 
-    this.brailleEl.style.color = tier.glowColor;
+    // Restart Braille animation with new pattern
+    this.brailleAnimator.stop();
+    this.brailleAnimator.setPattern(pattern);
+    this.brailleAnimator.start();
 
-    if (subtitleEl) {
-      subtitleEl.textContent = `${count} KILLS IN A ROW`;
-    }
-
-    // Update animator pattern and intensity for this tier
-    this.animator.stop();
-    this.animator.setPattern(TIER_PATTERNS[tierIndex] ?? 'orbit');
-    this.animator.setIntensity(0.3 + tierIndex * 0.07);
-    this.animator.start();
-
-    // Reset animation: remove and re-add active class to restart keyframe
+    // Reset animation via class removal/re-add trick
     this.container.classList.remove('eksa-active');
     this.container.style.display = 'block';
     this.container.style.opacity = '1';
     this.container.style.transition = '';
-    // Force reflow so the animation restarts cleanly
+    // Force reflow so animation restarts cleanly
     void this.container.offsetWidth;
     this.container.classList.add('eksa-active');
 
     this.timeRemaining = VISIBLE_DURATION + FADE_DURATION;
 
+    // Play sound (pitch escalates with tier)
     this.sound.play('multiplierUp', { pitch: tier.pitch, volume: 0.8 });
   }
 
-  /** Returns 0-based index of the tier for the given count. */
-  private _getTierIndex(count: number): number {
-    let idx = 0;
-    for (let i = 0; i < STREAK_TIERS.length; i++) {
-      if (count >= STREAK_TIERS[i].minStreak) idx = i;
-    }
-    return idx;
+  private _hide(): void {
+    this.container.style.display = 'none';
+    this.container.classList.remove('eksa-active');
+    this.brailleAnimator.stop();
+    this.timeRemaining = -1;
+  }
+
+  /**
+   * Returns the index of the tier whose minStreak matches the given value.
+   * Used to pick a Braille pattern from TIER_PATTERNS.
+   */
+  private _getTierIndex(minStreak: number): number {
+    const TIER_MIN_STREAKS = [1, 6, 11, 16, 21, 31, 51, 76, 101, 151];
+    const idx = TIER_MIN_STREAKS.indexOf(minStreak);
+    return idx >= 0 ? idx : 0;
   }
 }
