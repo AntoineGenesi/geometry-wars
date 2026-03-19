@@ -353,6 +353,9 @@ export class RenderLoop {
       // This catches any edge case where some other code path inadvertently dims tunnel enemies.
       if (_isTunnelSurface) visibility = 1.0;
 
+      // Debug: ?noDim=true disables ALL enemy dimming (forces full brightness)
+      if ((globalThis as any).__NO_DIM) visibility = 1.0;
+
       visibleEnemyCount++;
 
       // Instanced enemies: set visibility on the correct batch (type-specific or LOD shared)

@@ -43,13 +43,15 @@ const CHROME_PATH = process.env.CHROME_PATH
   || process.env.PUPPETEER_EXECUTABLE_PATH
   || '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome';
 
-const LAUNCH_ARGS = [
-  '--enable-webgl', '--use-gl=swiftshader', '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader', '--no-sandbox', '--disable-setuid-sandbox',
-  '--disable-dev-shm-usage', '--window-size=800,600',
-];
+const REAL_BROWSER = process.argv.includes('--real-browser');
+const LAUNCH_ARGS = REAL_BROWSER
+  ? ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=1280,900',
+     '--enable-features=Vulkan,UseSkiaRenderer', '--enable-webgpu']
+  : ['--enable-webgl', '--use-gl=swiftshader', '--use-angle=swiftshader',
+     '--enable-unsafe-swiftshader', '--no-sandbox', '--disable-setuid-sandbox',
+     '--disable-dev-shm-usage', '--window-size=800,600'];
 
-const VIEWPORT = { width: 800, height: 600 };
+const VIEWPORT = REAL_BROWSER ? { width: 1280, height: 900 } : { width: 800, height: 600 };
 
 // Thresholds
 const ICB_THRESHOLD = 0.10;        // below this = invisible bug
@@ -425,8 +427,11 @@ function analyzeVisibility(pixelData) {
 // ---------------------------------------------------------------------------
 
 async function waitForTestApi(page) {
-  for (let attempt = 0; attempt < 8; attempt++) {
-    await sleep(attempt === 0 ? 4000 : 2000);
+  const maxAttempts = REAL_BROWSER ? 30 : 8;
+  const firstWait = REAL_BROWSER ? 8000 : 4000;
+  const retryWait = REAL_BROWSER ? 3000 : 2000;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await sleep(attempt === 0 ? firstWait : retryWait);
     const ready = await page.evaluate(() => typeof window.__TEST_API !== 'undefined');
     if (ready) return true;
   }
@@ -486,8 +491,35 @@ async function waitForWave(page, targetWave, maxMs, scenarioName, dodgeEnabled) 
 // ---------------------------------------------------------------------------
 
 async function captureCheckpoint(page, label, scenarioId, tickNum, pixelCheckEnabled) {
-  const state = await checkEnemyVisibility(page);
+  let state = await checkEnemyVisibility(page);
   if (!state) return { error: 'No TEST_API', label, tickNum };
+
+  // If stuck materializing enemies found, distinguish PERSISTENT bugs from TRANSIENT
+  // spawn-window occupants using entity IDs.
+  //
+  // In high-spawn-rate modes (KotH), there are ALWAYS 10-20 enemies in their 0.8s
+  // materialization window at any given time — "stuck" count never reaches 0 via polling.
+  // The real bug (RC14-style) is enemies whose isMaterializing NEVER clears (same entity
+  // ID still stuck after > SPAWN_WARNING_DURATION has passed).
+  //
+  // Algorithm:
+  //   1. Record IDs of currently-stuck enemies
+  //   2. Wait SPAWN_WARNING_BUFFER_MS (2s > 0.8s SPAWN_WARNING_DURATION)
+  //   3. Recheck — any of the ORIGINAL enemy IDs still stuck? That's the real bug count.
+  //   4. Newly-stuck IDs in the recheck are freshly-spawned transients → not bugs.
+  if (state.stuckMaterializingCount > 0) {
+    const firstStuckIds = new Set(
+      (state.allEnemies || []).filter(e => e.isMat).map(e => e.id)
+    );
+    await sleep(SPAWN_WARNING_BUFFER_MS);
+    const recheckState = await checkEnemyVisibility(page);
+    if (recheckState) {
+      // Count how many of the ORIGINAL stuck enemies are STILL stuck (persistent)
+      const persistentStuck = (recheckState.allEnemies || []).filter(e => e.isMat && firstStuckIds.has(e.id));
+      // Overwrite stuckMaterializingCount with only the persistent count
+      state = { ...recheckState, stuckMaterializingCount: persistentStuck.length };
+    }
+  }
 
   const screenshotPath = resolve(SCREENSHOT_DIR, `s${scenarioId}-tick${tickNum}-${label}.png`);
   await page.screenshot({ path: screenshotPath });
@@ -580,9 +612,9 @@ async function runScenario(scenario) {
 
   const browser = await puppeteer.launch({
     executablePath: CHROME_PATH,
-    headless: 'new',
+    headless: REAL_BROWSER ? false : 'new',
     args: LAUNCH_ARGS,
-    timeout: 30000,
+    timeout: REAL_BROWSER ? 60000 : 30000,
   });
 
   try {
@@ -590,7 +622,7 @@ async function runScenario(scenario) {
     await page.setViewport(VIEWPORT);
 
     // Clear mastery overlay
-    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.goto(BASE_URL, { waitUntil: 'domcontentloaded', timeout: REAL_BROWSER ? 60000 : 15000 });
     await page.evaluate(() => {
       try { localStorage.removeItem('masteryOverlayShown'); } catch {}
       try { localStorage.removeItem('weaponMastery'); } catch {}
@@ -603,8 +635,8 @@ async function runScenario(scenario) {
     const url = `${BASE_URL}?${params.toString()}`;
     console.log(`  URL: ${url}`);
 
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForSelector('canvas', { timeout: 15000 });
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: REAL_BROWSER ? 90000 : 30000 });
+    await page.waitForSelector('canvas', { timeout: REAL_BROWSER ? 60000 : 15000 });
 
     // Wait for TestHarnessAPI
     const apiReady = await waitForTestApi(page);
@@ -812,6 +844,9 @@ async function runScenario(scenario) {
       // Stress mode: pause at peak for full audit
       if (scenario.stressMode && result.reachedWave >= scenario.targetWave) {
         console.log(`  Stress pause audit at wave ${result.reachedWave}...`);
+        // Wait for all spawn warnings to expire BEFORE pausing — otherwise
+        // paused enemies stay isMaterializing=true forever (no dt advances).
+        await sleep(SPAWN_WARNING_BUFFER_MS);
         await page.evaluate(() => { try { window.__TEST_API.pauseGame(); } catch {} });
         await sleep(500);
         const stressCp = await captureCheckpoint(page, 'stress-pause', scenario.id, 99, threeReady);

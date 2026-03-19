@@ -2266,6 +2266,16 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Visibility debug overlay: live on-screen enemy visibility stats (?debugVisibility=true) --
   // Reads directly from EnemySpawner + EnemyInstanceManager — no TestHarnessAPI required.
   // Updates every 500ms (internal throttle). Dispose is wired into game teardown below.
+  // -- God mode (?godMode=true) — player can't die, for testing visibility at deep waves --
+  if (urlParams.get('godMode') === 'true') {
+    (globalThis as any).__GOD_MODE = true;
+    console.log('[GodMode] Active — player cannot die');
+  }
+  if (urlParams.get('noDim') === 'true') {
+    (globalThis as any).__NO_DIM = true;
+    console.log('[NoDim] Active — ALL enemies at full brightness');
+  }
+
   const debugVisibility = urlParams.get('debugVisibility') === 'true';
   if (debugVisibility) {
     import('./debug/VisibilityDebugOverlay').then(({ VisibilityDebugOverlay }) => {

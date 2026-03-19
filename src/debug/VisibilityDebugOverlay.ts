@@ -40,7 +40,7 @@ function readEnemyICB(enemy: any, enemyInstanceManager: any): { icb: number; mat
   const instanceType = enemy._instanceType as string | undefined;
 
   if (instanceIndex === undefined || !instanceType || !enemyInstanceManager) {
-    return { icb: 1.0, matScale: 1.0 };
+    return { icb: -1, matScale: -1 }; // -1 = NOT REGISTERED in any InstancedMesh
   }
 
   const mgr = enemyInstanceManager as any;
@@ -151,6 +151,7 @@ export class VisibilityDebugOverlay {
     let invisibleCount = 0;
     let stuckMaterializingCount = 0;
     let zeroScaleCount = 0;
+    let unregisteredCount = 0;
     let minICB = 1.0;
     const invisibleSamples: EnemySample[] = [];
 
@@ -163,6 +164,12 @@ export class VisibilityDebugOverlay {
       const aliveMs = now - spawnTime;
 
       const { icb, matScale } = readEnemyICB(enemy, this.enemyInstanceManager);
+
+      // Enemy not registered in any InstancedMesh = WILL NOT RENDER
+      if (icb < 0) {
+        unregisteredCount++;
+        continue;
+      }
 
       if (icb < minICB) minICB = icb;
 
@@ -194,7 +201,7 @@ export class VisibilityDebugOverlay {
     // Determine color status
     let statusColor: string;
     let statusLabel: string;
-    if (invisibleCount > 0 || zeroScaleCount > 0) {
+    if (unregisteredCount > 0 || invisibleCount > 0 || zeroScaleCount > 0) {
       statusColor = '#ff3333';
       statusLabel = 'BUG';
     } else if (stuckMaterializingCount > 0 || (totalAlive > 0 && minICB < 0.25)) {
@@ -205,15 +212,66 @@ export class VisibilityDebugOverlay {
       statusLabel = 'OK';
     }
 
+    // LOD batch diagnostics — how many enemies in each rendering batch
+    const mgr = this.enemyInstanceManager as any;
+    let lodInfo = '';
+    let highCount = 0;
+    let lodMedCount = 0;
+    let lodLowCount = 0;
+    if (mgr) {
+      // Count enemies in LOD placement
+      if (mgr.enemyLODPlacement) {
+        for (const [, level] of mgr.enemyLODPlacement) {
+          if (level === 1) lodMedCount++;
+          else lodLowCount++;
+        }
+      }
+      highCount = totalAlive - lodMedCount - lodLowCount;
+      // Per-batch detail: registered vs mesh.count (if count < max registered index, enemies are CLIPPED)
+      let batchLines: string[] = [];
+      let totalRegistered = 0;
+      let totalMeshCount = 0;
+      let clippedCount = 0;
+      if (mgr.batches) {
+        for (const [typeName, batch] of mgr.batches) {
+          const registered = batch.enemyToIndex?.size ?? 0;
+          const meshCount = batch.instancedMesh?.count ?? 0;
+          const hwm = batch.highWaterMark ?? -1;
+          totalRegistered += registered;
+          totalMeshCount += meshCount;
+          // Check if any registered enemy has index >= meshCount (would be clipped/invisible)
+          if (batch.enemyToIndex) {
+            for (const [, idx] of batch.enemyToIndex) {
+              if (idx >= meshCount) clippedCount++;
+            }
+          }
+          if (registered > 0) {
+            batchLines.push(`  ${typeName}: reg=${registered} cnt=${meshCount} hwm=${hwm}${meshCount <= hwm ? ' !!CLIPPEDo' : ''}`);
+          }
+        }
+      }
+      const lodMedMeshCount = mgr.lodMediumBatch?.instancedMesh?.count ?? 0;
+      const lodLowMeshCount = mgr.lodLowBatch?.instancedMesh?.count ?? 0;
+      lodInfo = `HIGH:${highCount} MED:${lodMedCount}/${lodMedMeshCount} LOW:${lodLowCount}/${lodLowMeshCount} CLIP:${clippedCount}`;
+    }
+
     // Build display text
     const minICBStr = totalAlive > 0 ? minICB.toFixed(3) : 'n/a';
     let lines = [
       `[VIS DBG] ${statusLabel}  wave:${wave}`,
       `alive:${totalAlive}  invisible:${invisibleCount}`,
-      `stuck-mat:${stuckMaterializingCount}  zero-scale:${zeroScaleCount}`,
+      `stuck-mat:${stuckMaterializingCount}  zero-scale:${zeroScaleCount}  NO-MESH:${unregisteredCount}`,
       `min ICB: ${minICBStr}`,
+      lodInfo,
     ];
 
+    if (clippedCount > 0) {
+      lines.push(`!! ${clippedCount} CLIPPED (idx>=count) !!`);
+    }
+    if (batchLines.length > 0 && batchLines.length <= 8) {
+      lines.push('─ batches ─');
+      lines.push(...batchLines);
+    }
     if (invisibleCount > 0 && invisibleSamples.length > 0) {
       lines.push('─ invisible enemies ─');
       for (const s of invisibleSamples) {

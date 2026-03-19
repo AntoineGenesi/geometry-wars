@@ -307,10 +307,15 @@ export class EnemyInstanceManager {
     batch.enemyToIndex.delete(enemy);
     batch.indexToEnemy[index] = null;
 
-    // Update highWaterMark if we just freed the highest slot
+    // Recompute highWaterMark correctly — scan from the TOP of the array, not from
+    // the freed index downward. The old code scanned downward from index-1, which missed
+    // occupied slots ABOVE the freed index (e.g., index 30 freed, highWaterMark drops to 25,
+    // but index 28 was re-allocated via wrap-around — now index 28 is above highWaterMark
+    // and count=26 means it won't render). This was RC15: the root cause of invisible
+    // enemies despite correct game state, ICB, and matrix.
     if (index >= batch.highWaterMark) {
       let newMax = -1;
-      for (let i = index - 1; i >= 0; i--) {
+      for (let i = this.maxInstances - 1; i >= 0; i--) {
         if (batch.indexToEnemy[i] !== null) { newMax = i; break; }
       }
       batch.highWaterMark = newMax;
@@ -665,7 +670,7 @@ export class EnemyInstanceManager {
     // so avg(r,g,b) >= MIN_ICB (0.15). Proportional scaling preserves hue.
     if (visibility > 0) {
       const avg = (r + g + b) / 3;
-      const MIN_ICB = 0.15;
+      const MIN_ICB = 0.50;
       if (avg > 0 && avg < MIN_ICB) {
         const scale = MIN_ICB / avg;
         r *= scale;
@@ -1126,7 +1131,7 @@ export class EnemyInstanceManager {
       // s44r29-01: Same minimum ICB floor as setInstanceVisibility (see comment there).
       if (visibility > 0) {
         const avg = (r + g + b) / 3;
-        const MIN_ICB = 0.15;
+        const MIN_ICB = 0.50;
         if (avg > 0 && avg < MIN_ICB) {
           const scale = MIN_ICB / avg;
           r *= scale;

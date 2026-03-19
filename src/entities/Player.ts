@@ -321,6 +321,7 @@ export class Player {
 
   /** Whether the player can currently take damage. */
   get canTakeDamage(): boolean {
+    if ((globalThis as any).__GOD_MODE) return false;
     return this.alive && !this.isInvincible;
   }
 
