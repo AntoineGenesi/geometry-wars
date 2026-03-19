@@ -346,6 +346,7 @@ export class KingMode implements IGameMode {
     this.zoneMesh = new THREE.Mesh(context.surface.mesh.geometry, material);
     // renderOrder 2: above surface (0) and grid (1), below entities
     this.zoneMesh.renderOrder = 2;
+    this.zoneMesh.frustumCulled = false; // Zone is on curved surface; bbox culling unreliable
     context.surface.group.add(this.zoneMesh);
   }
 
