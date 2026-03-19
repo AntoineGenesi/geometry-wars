@@ -546,7 +546,7 @@ export class Game {
     // but 4× cheaper. Restored to 0.5 (constructor default) for modern mode.
     // This matches the initial constructor setup (halfW, halfH at lines ~311-313).
     // Desktop Defender: full-res bloom like modern, but caller applies 0.25× strength multiplier.
-    this.bloomResolutionScale = (mode === 'modern' || mode === 'desktop-defender') ? 0.5 : 0.40;
+    this.bloomResolutionScale = (mode === 'modern' || mode === 'desktop-defender' || mode === 'crt') ? 0.5 : 0.40;
 
     // Scene background: light paper for Desktop Defender, dark neon for other modes.
     this.scene.background = new THREE.Color(

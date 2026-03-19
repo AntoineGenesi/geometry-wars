@@ -1557,13 +1557,21 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
-    // Re-apply bloom settings adjusted for new visual mode
-    const adjustedStrength = getAdjustedBloomStrength(bloomStrength, mode);
-    game.setBloomSettings(adjustedStrength, 0.6);
+    if (mode === 'crt') {
+      // CRT mode: apply CRT Arcade preset (green bloom, dark surface)
+      game.setBloomSettings(1.4, 0.82);
+      if (game.bloomPass) game.bloomPass.radius = 0.8;
+      surface.setSurfaceOpacity(0.3);
+      surface.setSurfaceColor(0x001a08);
+    } else {
+      // Re-apply bloom settings adjusted for new visual mode
+      const adjustedStrength = getAdjustedBloomStrength(bloomStrength, mode);
+      game.setBloomSettings(adjustedStrength, 0.6);
+    }
     // Adjust particle brightness per visual mode:
     // - pixelated: 0.5× (prevents additive stacking from hiding the player)
     // - desktop-defender: 0.3× (dark particles visible on light background)
-    // - modern: 1.0× (full brightness)
+    // - modern/crt: 1.0× (full brightness)
     particles.setVisualMode(mode);
   });
 

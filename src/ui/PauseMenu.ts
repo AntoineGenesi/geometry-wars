@@ -1007,7 +1007,8 @@ export class PauseMenu {
     const visualModeBtn = this.container.querySelector('[data-action="visual-mode"]');
     visualModeBtn?.addEventListener('click', () => {
       if (this.visualMode === 'pixelated') this.visualMode = 'modern';
-      else if (this.visualMode === 'modern') this.visualMode = 'desktop-defender';
+      else if (this.visualMode === 'modern') this.visualMode = 'crt';
+      else if (this.visualMode === 'crt') this.visualMode = 'desktop-defender';
       else this.visualMode = 'pixelated';
       this.updateVisualModeLabel();
       this.onVisualModeChangeCallback?.(this.visualMode);
@@ -1207,6 +1208,7 @@ export class PauseMenu {
     if (label) {
       if (this.visualMode === 'pixelated') label.textContent = t('pauseMenu.stylePixelated');
       else if (this.visualMode === 'modern') label.textContent = t('pauseMenu.styleModern');
+      else if (this.visualMode === 'crt') label.textContent = 'CRT';
       else label.textContent = t('pauseMenu.styleDesktopDefender');
     }
   }

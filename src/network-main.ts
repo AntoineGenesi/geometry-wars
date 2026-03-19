@@ -2364,11 +2364,20 @@ async function main() {
   pauseMenu.onVisualModeChange((mode) => {
     saveVisualMode(mode);
     game.setVisualMode(mode);
-    // Re-apply bloom strength adjusted for the new visual mode.
-    // desktop-defender: 0.25× (light bg, minimal glow); pixelated: 0.4×; modern: 1.0×
-    const baseBloomStrength = savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7);
-    const adjustedStrength = getAdjustedBloomStrength(baseBloomStrength, mode);
-    game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
+    if (mode === 'crt') {
+      // CRT mode: apply CRT Arcade preset (green bloom, dark surface)
+      game.setBloomSettings(1.4, 0.82);
+      if (game.bloomPass) game.bloomPass.radius = 0.8;
+      if (surface) {
+        surface.setSurfaceOpacity(0.3);
+        surface.setSurfaceColor(0x001a08);
+      }
+    } else {
+      // Re-apply bloom strength adjusted for the new visual mode.
+      const baseBloomStrength = savedStyle?.bloomStrength ?? (mobile ? 0.4 : 0.7);
+      const adjustedStrength = getAdjustedBloomStrength(baseBloomStrength, mode);
+      game.setBloomSettings(adjustedStrength, savedStyle?.bloomThreshold ?? 0.6);
+    }
     particles.setVisualMode(mode);
   });
 
