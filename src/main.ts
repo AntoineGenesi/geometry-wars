@@ -2189,16 +2189,20 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     ddaLogger.recordDeath(0); // DDA logger: log death event
   };
 
-  // -- Start background music --
+  // -- Parse URL parameters early (needed for audio/debug decisions) --
+  const urlParams = new URLSearchParams(window.location.search);
+  const debugMode = urlParams.get('debug') === 'true';
+  const testMode = urlParams.get('testMode') === 'true';
+
+  // -- Start background music (muted in debug/test modes) --
   const audioCtx = sound.getAudioContext();
-  if (audioCtx) {
+  const musicEnabled = (!debugMode && !testMode) || urlParams.get('music') === 'true';
+  if (audioCtx && musicEnabled) {
     bgMusic.start(audioCtx);
   }
 
   // -- Expose debug API for programmatic tests and console access --
   // Full programmatic API when ?debug=true, otherwise minimal API for compatibility
-  const urlParams = new URLSearchParams(window.location.search);
-  const debugMode = urlParams.get('debug') === 'true';
 
   if (debugMode) {
     // Import and initialize GameDebugAPI for full programmatic access
@@ -2235,7 +2239,6 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // -- Game state exporter: live window._gameState + window._rendererState --
   // Activated when ?testMode=true. Zero overhead when not active.
-  const testMode = urlParams.get('testMode') === 'true';
   if (testMode) {
     import('./debug/GameStateExporter').then(({ GameStateExporter }) => {
       _stateExporter = new GameStateExporter(ctx);
