@@ -32,12 +32,12 @@ function makeContainer(): HTMLElement {
 }
 
 describe('BrailleAnimator — ALL_PATTERNS', () => {
-  it('has exactly 25 patterns', () => {
-    expect(ALL_PATTERNS).toHaveLength(25);
+  it('has exactly 50 patterns', () => {
+    expect(ALL_PATTERNS).toHaveLength(50);
   });
 
   it('all pattern names are unique', () => {
-    expect(new Set(ALL_PATTERNS).size).toBe(25);
+    expect(new Set(ALL_PATTERNS).size).toBe(50);
   });
 
   it('includes all required pattern names', () => {
@@ -47,6 +47,11 @@ describe('BrailleAnimator — ALL_PATTERNS', () => {
       'sparkle', 'wave', 'rose', 'helix', 'diagonalSwipe',
       'vortex', 'bouncing', 'ripple', 'fireworks', 'crosshatch',
       'diamonds', 'zigzag', 'spiral', 'binary', 'static',
+      'clockwise', 'counterClockwise', 'hourglass', 'pendulum', 'meteor',
+      'lightning', 'aurora', 'matrix', 'heartbeat', 'explosion',
+      'shatter', 'wormhole', 'nebula', 'blackhole', 'quantumFlux',
+      'pixelSort', 'scanlines', 'dataStream', 'glitch', 'neon',
+      'tide', 'constellation', 'tornado', 'earthquake', 'supernova',
     ];
     for (const name of required) {
       expect(ALL_PATTERNS).toContain(name);
