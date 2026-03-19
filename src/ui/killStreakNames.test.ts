@@ -5,6 +5,7 @@ import {
   STREAK_TIERS,
   getStreakName,
   getStreakTier,
+  getAnimationForStreak,
 } from './killStreakNames';
 
 describe('STREAK_NAMES', () => {
@@ -138,5 +139,50 @@ describe('getStreakTier', () => {
   it('does not crash for 0 or negative', () => {
     expect(() => getStreakTier(0)).not.toThrow();
     expect(() => getStreakTier(-5)).not.toThrow();
+  });
+});
+
+describe('getAnimationForStreak', () => {
+  it('returns a valid pattern and intensity for kill 1', () => {
+    const { pattern, intensity } = getAnimationForStreak(1);
+    expect(typeof pattern).toBe('string');
+    expect(pattern.length).toBeGreaterThan(0);
+    expect(intensity).toBeGreaterThanOrEqual(0);
+    expect(intensity).toBeLessThanOrEqual(1);
+  });
+
+  it('20 unique patterns across kills 1, 10, 20, ... 190 (one per tier, no repeats)', () => {
+    const kills = [1, 10, 20, 30, 40, 50, 60, 70, 80, 90,
+                   100, 110, 120, 130, 140, 150, 160, 170, 180, 190];
+    const patterns = kills.map(k => getAnimationForStreak(k).pattern);
+    const unique = new Set(patterns);
+    expect(unique.size).toBe(20);
+  });
+
+  it('intensity rises within a tier: kill 85 → 0.5', () => {
+    const { intensity } = getAnimationForStreak(85);
+    expect(intensity).toBeCloseTo(0.5, 5);
+  });
+
+  it('intensity at tier boundary (kill 10) is 0', () => {
+    const { intensity } = getAnimationForStreak(10);
+    expect(intensity).toBeCloseTo(0.0, 5);
+  });
+
+  it('getAnimationForStreak(201) returns valid pattern and intensity >= 0.8 (wraps above 200)', () => {
+    const { pattern, intensity } = getAnimationForStreak(201);
+    expect(typeof pattern).toBe('string');
+    expect(pattern.length).toBeGreaterThan(0);
+    expect(intensity).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('getAnimationForStreak(2000) returns intensity >= 0.8', () => {
+    const { intensity } = getAnimationForStreak(2000);
+    expect(intensity).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it('does not crash for extreme values', () => {
+    expect(() => getAnimationForStreak(0)).not.toThrow();
+    expect(() => getAnimationForStreak(999999)).not.toThrow();
   });
 });
