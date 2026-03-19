@@ -18,11 +18,11 @@
 
 import { SoundEngine } from '../audio/SoundEngine';
 import { BrailleAnimator } from './BrailleAnimator';
+import type { BraillePattern } from './BrailleAnimator';
 import {
   getStreakName,
   getStreakTier,
   STREAK_MILESTONES,
-  getAnimationForStreak,
 } from './killStreakNames';
 
 // ---------------------------------------------------------------------------
@@ -34,6 +34,22 @@ const VISIBLE_DURATION = 2.5;
 /** Seconds to fade from full opacity to zero. */
 const FADE_DURATION = 1.0;
 
+/**
+ * Map streak tier minStreak → Braille animation pattern.
+ * Tiers are ordered ascending (1, 6, 11, 16, 21, 31, 51, 76, 101, 151).
+ */
+const TIER_PATTERNS: BraillePattern[] = [
+  'breathing',      // tier 0 (minStreak 1)
+  'wave',           // tier 1 (minStreak 6)
+  'columns',        // tier 2 (minStreak 11)
+  'orbit',          // tier 3 (minStreak 16)
+  'vortex',         // tier 4 (minStreak 21)
+  'spiral',         // tier 5 (minStreak 31)
+  'fireworks',      // tier 6 (minStreak 51)
+  'helix',          // tier 7 (minStreak 76)
+  'ripple',         // tier 8 (minStreak 101)
+  'static',         // tier 9 (minStreak 151)
+];
 
 // ---------------------------------------------------------------------------
 // EnemyKillStreakAnnouncer
@@ -73,7 +89,7 @@ export class EnemyKillStreakAnnouncer {
       }
 
       #enemy-kill-streak-announcer .eksa-braille {
-        font-family: monospace;
+        font-family: Consolas, 'Courier New', monospace;
         font-size: 14px;
         line-height: 1.1;
         color: rgba(255,255,255,0.25);
@@ -92,7 +108,7 @@ export class EnemyKillStreakAnnouncer {
       }
 
       #enemy-kill-streak-announcer .eksa-count {
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 600;
         font-family: 'Courier New', monospace;
         color: #ffffff;
@@ -189,8 +205,14 @@ export class EnemyKillStreakAnnouncer {
   // ---------------------------------------------------------------------------
 
   private _announce(count: number): void {
+    // Rapid consecutive kills: immediately replace previous announcement
+    if (this.timeRemaining > 0) {
+      this._hide();
+    }
+
     const tier = getStreakTier(count);
-    const { pattern, intensity } = getAnimationForStreak(count);
+    const tiers = this._getTierIndex(tier.minStreak);
+    const pattern = TIER_PATTERNS[Math.min(tiers, TIER_PATTERNS.length - 1)];
 
     // Update text content
     this.nameEl.textContent = getStreakName(count);
@@ -203,10 +225,13 @@ export class EnemyKillStreakAnnouncer {
 
     this.countEl.textContent = `${count} KILL${count === 1 ? '' : 'S'} IN A ROW`;
 
-    // Restart Braille animation with new pattern and intensity
+    // Braille color matches tier's glow (neon effect)
+    this.brailleEl.style.color = tier.glowColor;
+    this.brailleEl.style.textShadow = `0 0 8px ${tier.glowColor}`;
+
+    // Restart Braille animation with new pattern
     this.brailleAnimator.stop();
     this.brailleAnimator.setPattern(pattern);
-    this.brailleAnimator.setIntensity(intensity);
     this.brailleAnimator.start();
 
     // Reset animation via class removal/re-add trick
@@ -231,5 +256,13 @@ export class EnemyKillStreakAnnouncer {
     this.timeRemaining = -1;
   }
 
+  /**
+   * Returns the index of the tier whose minStreak matches the given value.
+   * Used to pick a Braille pattern from TIER_PATTERNS.
+   */
+  private _getTierIndex(minStreak: number): number {
+    const TIER_MIN_STREAKS = [1, 6, 11, 16, 21, 31, 51, 76, 101, 151];
+    const idx = TIER_MIN_STREAKS.indexOf(minStreak);
+    return idx >= 0 ? idx : 0;
+  }
 }
-
