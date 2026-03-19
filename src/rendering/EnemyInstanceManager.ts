@@ -134,6 +134,11 @@ export class EnemyInstanceManager {
   /** Per-type base colors extracted during batch creation, used to color LOD instances. */
   private typeBaseColors: Map<EnemyTypeKey, THREE.Color> = new Map();
 
+  /** Frame counter for periodic highWaterMark revalidation (RC16 defense). */
+  private _hwmRevalidateCounter = 0;
+  /** How often to revalidate highWaterMark (every N frames). */
+  private static readonly HWM_REVALIDATE_INTERVAL = 60; // ~1s at 60fps
+
   constructor(scene: THREE.Scene, maxInstances = DEFAULT_MAX_INSTANCES, isWebGPU = false) {
     this.scene = scene;
     this.maxInstances = maxInstances;
@@ -530,6 +535,15 @@ export class EnemyInstanceManager {
       }
     }
 
+    // RC16: Periodic full revalidation of highWaterMark to catch any drift between
+    // the incrementally-maintained value and the actual maximum used index.
+    // The incremental tracking in allocateSlot/unregister SHOULD be correct, but
+    // if any code path modifies indexToEnemy without updating highWaterMark, the
+    // count would be wrong and instances beyond count wouldn't render.
+    // Cost: O(maxInstances) per batch every ~1s — negligible vs per-frame work.
+    const doFullRevalidation = ++this._hwmRevalidateCounter >= EnemyInstanceManager.HWM_REVALIDATE_INTERVAL;
+    if (doFullRevalidation) this._hwmRevalidateCounter = 0;
+
     // Finalize HIGH-detail batches
     for (const batch of this.batches.values()) {
       batch.instancedMesh.instanceMatrix.needsUpdate = true;
@@ -540,6 +554,16 @@ export class EnemyInstanceManager {
       // Without this, opacityAttribute.setX() changes in the culling loop above
       // are never uploaded to the GPU, making shader-based dimming invisible.
       batch.opacityAttribute.needsUpdate = true;
+
+      if (doFullRevalidation) {
+        // Full scan: recompute highWaterMark from scratch
+        const trueMax = this.getMaxUsedIndex(batch);
+        if (trueMax !== batch.highWaterMark) {
+          console.warn(`[EnemyInstanceManager] HWM drift detected for batch: incremental=${batch.highWaterMark}, actual=${trueMax}. Correcting.`);
+          batch.highWaterMark = trueMax;
+        }
+      }
+
       // highWaterMark is O(1) — maintained incrementally in allocateSlot/unregister.
       batch.instancedMesh.count = batch.highWaterMark + 1;
     }
@@ -707,6 +731,17 @@ export class EnemyInstanceManager {
 
     for (const batch of this.batches.values()) {
       if (!batch.instancedMesh.instanceColor) continue;
+
+      // RC16: Ensure count covers all registered enemies. If an enemy was registered
+      // at an index above the current count, it would never be drawn regardless of
+      // correct ICB/scale/matrix — the GPU simply doesn't draw instances past count.
+      for (const [, index] of batch.enemyToIndex) {
+        if (index >= batch.instancedMesh.count) {
+          // Enemy registered above current draw count — fix immediately
+          batch.highWaterMark = Math.max(batch.highWaterMark, index);
+          batch.instancedMesh.count = batch.highWaterMark + 1;
+        }
+      }
       for (const [enemy, index] of batch.enemyToIndex) {
         // --- Color check (existing) ---
         batch.instancedMesh.getColorAt(index, _tempColor);
