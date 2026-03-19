@@ -89,7 +89,7 @@ export class EnemyKillStreakAnnouncer {
       }
 
       #enemy-kill-streak-announcer .eksa-braille {
-        font-family: monospace;
+        font-family: Consolas, 'Courier New', monospace;
         font-size: 14px;
         line-height: 1.1;
         color: rgba(255,255,255,0.25);
@@ -108,7 +108,7 @@ export class EnemyKillStreakAnnouncer {
       }
 
       #enemy-kill-streak-announcer .eksa-count {
-        font-size: 20px;
+        font-size: 18px;
         font-weight: 600;
         font-family: 'Courier New', monospace;
         color: #ffffff;
@@ -205,6 +205,11 @@ export class EnemyKillStreakAnnouncer {
   // ---------------------------------------------------------------------------
 
   private _announce(count: number): void {
+    // Rapid consecutive kills: immediately replace previous announcement
+    if (this.timeRemaining > 0) {
+      this._hide();
+    }
+
     const tier = getStreakTier(count);
     const tiers = this._getTierIndex(tier.minStreak);
     const pattern = TIER_PATTERNS[Math.min(tiers, TIER_PATTERNS.length - 1)];
@@ -219,6 +224,10 @@ export class EnemyKillStreakAnnouncer {
     ].join(', ');
 
     this.countEl.textContent = `${count} KILL${count === 1 ? '' : 'S'} IN A ROW`;
+
+    // Braille color matches tier's glow (neon effect)
+    this.brailleEl.style.color = tier.glowColor;
+    this.brailleEl.style.textShadow = `0 0 8px ${tier.glowColor}`;
 
     // Restart Braille animation with new pattern
     this.brailleAnimator.stop();

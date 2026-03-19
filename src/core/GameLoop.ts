@@ -104,6 +104,10 @@ export class GameLoop {
     this.bgMusic = deps.bgMusic;
     this.sound = deps.sound;
     this.enemyStreakAnnouncer = new EnemyKillStreakAnnouncer(deps.sound);
+    // Expose announcer for Puppeteer test automation
+    if (new URLSearchParams(location.search).get('testMode') === 'true') {
+      (window as any).__TEST_KILL_STREAK_ANNOUNCER = this.enemyStreakAnnouncer;
+    }
     this.applyStatMultipliers = deps.applyStatMultipliers;
   }
 
