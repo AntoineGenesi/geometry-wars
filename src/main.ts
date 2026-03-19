@@ -80,6 +80,7 @@ import { DebugOverlay } from './ui/DebugOverlay';
 import { ProfilingOverlay } from './ui/ProfilingOverlay';
 import { ProfilingPersistence } from './core/ProfilingPersistence';
 import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
+import { VisualPlayground } from './ui/VisualPlayground';
 import {
   computeDifficultyLevel,
   generateScaledEndlessWave,
@@ -552,6 +553,19 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         game.bloomPass.radius = mobile ? 0.3 : 0.5;
       }
     }
+  });
+
+  // Live-apply visual preset when user selects from VisualPlayground gallery (pause menu)
+  VisualPlayground.setGlobalPresetApplyCallback((preset) => {
+    if (!preset) return;
+    const currentVisualMode = loadVisualMode();
+    const adjustedStrength = getAdjustedBloomStrength(preset.bloomStrength, currentVisualMode);
+    game.setBloomSettings(adjustedStrength, preset.bloomThreshold ?? 0.85);
+    if (game.bloomPass && preset.bloomRadius !== undefined) {
+      game.bloomPass.radius = preset.bloomRadius;
+    }
+    surface.setSurfaceOpacity(preset.surfaceOpacity);
+    surface.setSurfaceColor(preset.surfaceColor);
   });
 
   // Effects demo panel (press G to toggle)

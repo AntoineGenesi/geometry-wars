@@ -101,6 +101,7 @@ import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
+import { VisualPlayground } from './ui/VisualPlayground';
 import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
 import { PerformanceLogger } from './core/PerformanceLogger';
@@ -2381,6 +2382,21 @@ async function main() {
 
   pauseMenu.onAllowAllPauseToggle((allowed: boolean) => {
     network.sendSetAllowAllPause(allowed);
+  });
+
+  // Live-apply visual preset when user selects from VisualPlayground gallery (pause menu)
+  VisualPlayground.setGlobalPresetApplyCallback((preset) => {
+    if (!preset) return;
+    const currentVisualMode = loadVisualMode();
+    const adjustedStrength = getAdjustedBloomStrength(preset.bloomStrength, currentVisualMode);
+    game.setBloomSettings(adjustedStrength, preset.bloomThreshold ?? 0.85);
+    if (game.bloomPass && preset.bloomRadius !== undefined) {
+      game.bloomPass.radius = preset.bloomRadius;
+    }
+    if (surface) {
+      surface.setSurfaceOpacity(preset.surfaceOpacity);
+      surface.setSurfaceColor(preset.surfaceColor);
+    }
   });
 
   // Show short code QR in pause menu — 5-digit code is smaller and more reliable than full URL.

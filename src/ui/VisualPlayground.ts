@@ -1111,6 +1111,14 @@ export class VisualPlayground {
   /** Combined list of built-in presets + custom styles. Rebuilt on open/save. */
   private allPresets: VisualPreset[] = [];
 
+  /** Global callback fired when user clicks APPLY on any preset. Registered by main.ts/network-main.ts. */
+  private static globalPresetApplyCallback: ((preset: VisualPreset | null) => void) | null = null;
+
+  /** Register a callback to live-apply the selected preset to the running game. */
+  static setGlobalPresetApplyCallback(callback: (preset: VisualPreset | null) => void): void {
+    VisualPlayground.globalPresetApplyCallback = callback;
+  }
+
   constructor() {
     // -- Build combined preset list --
     this.rebuildAllPresets();
@@ -1220,7 +1228,7 @@ export class VisualPlayground {
         position: fixed;
         top: 0; left: 0; width: 100%; height: 100%;
         background: rgba(5, 2, 15, 0.95);
-        z-index: 2000;
+        z-index: 3000;
         display: flex;
         justify-content: center;
         align-items: center;
@@ -1606,6 +1614,7 @@ export class VisualPlayground {
         e.stopPropagation();
         const idx = parseInt((btn as HTMLElement).dataset.index ?? '0', 10);
         saveVisualStyle(idx);
+        VisualPlayground.globalPresetApplyCallback?.(this.allPresets[idx] ?? null);
         this.refreshActiveState();
       });
     });
