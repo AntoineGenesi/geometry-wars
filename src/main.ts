@@ -2027,6 +2027,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   let _telemetryExporter: { update(): void } | null = null;
   // -- Test harness API: full game control for automated scenarios (?testMode=true) --
   let _testHarnessAPI: { update(): void } | null = null;
+  // -- Visibility debug overlay (?debugVisibility=true) --
+  let _visibilityOverlay: { update(): void; dispose(): void } | null = null;
 
   // -- Fixed timestep game logic --
   game.onFixedUpdate = (dt: number) => {
@@ -2122,6 +2124,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Render callback --
   game.onRender = (alpha: number) => {
     renderLoop.render(ctx, alpha);
+    // Visibility debug overlay update (throttled internally to 500ms; zero cost when null)
+    if (_visibilityOverlay) _visibilityOverlay.update();
     // Sync render state back
     currentSurfaceOpacity = ctx.state.currentSurfaceOpacity;
     currentGridOpacity = ctx.state.currentGridOpacity;
@@ -2256,6 +2260,21 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     import('./debug/GameTelemetryExporter').then(({ GameTelemetryExporter }) => {
       _telemetryExporter = new GameTelemetryExporter(ctx);
       console.log('[GameTelemetryExporter] Active. window.__GAME_TELEMETRY is live.');
+    });
+  }
+
+  // -- Visibility debug overlay: live on-screen enemy visibility stats (?debugVisibility=true) --
+  // Reads directly from EnemySpawner + EnemyInstanceManager — no TestHarnessAPI required.
+  // Updates every 500ms (internal throttle). Dispose is wired into game teardown below.
+  const debugVisibility = urlParams.get('debugVisibility') === 'true';
+  if (debugVisibility) {
+    import('./debug/VisibilityDebugOverlay').then(({ VisibilityDebugOverlay }) => {
+      _visibilityOverlay = new VisibilityDebugOverlay({
+        getEnemies: () => enemySpawner.getEnemies(),
+        enemyInstanceManager,
+        getWaveNumber: () => waveScheduler.getCurrentWave(),
+      });
+      console.log('[VisibilityDebugOverlay] Active — ?debugVisibility=true');
     });
   }
 

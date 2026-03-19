@@ -6185,6 +6185,9 @@ async function main() {
     (window as any).__PERF_PROFILER = _mpPerfProfiler;
   }
 
+  // Visibility debug overlay — only active when ?debugVisibility=true.
+  let _mpVisibilityOverlay: { update(): void; dispose(): void } | null = null;
+
   game.onFixedUpdate = (dt: number) => {
     if (_mpPerfProfiler) _mpPerfProfiler.beginFrame();
     if (!surfaceReady || !surface) { if (_mpPerfProfiler) _mpPerfProfiler.endFrame(); return; }
@@ -8155,6 +8158,9 @@ async function main() {
     // Update debug overlay HUD (throttled internally — no perf cost when F4 is hidden)
     debugOverlay.update();
 
+    // Visibility debug overlay update (throttled internally to 500ms; zero cost when null)
+    if (_mpVisibilityOverlay) _mpVisibilityOverlay.update();
+
     // -- Client-side game mode render tick --
     if (activeGameMode && gameModeStarted && currentRoomPhase === 'playing') {
       const ctx = buildGameModeContext();
@@ -8164,6 +8170,20 @@ async function main() {
 
   // Start the game loop
   game.start();
+
+  // -- Visibility debug overlay: live on-screen enemy visibility stats (?debugVisibility=true) --
+  // MP: reads from networkEnemies map + EnemyInstanceManager. latestWaveNumber from room state.
+  const _mpDebugVisibility = new URLSearchParams(window.location.search).get('debugVisibility') === 'true';
+  if (_mpDebugVisibility) {
+    import('./debug/VisibilityDebugOverlay').then(({ VisibilityDebugOverlay }) => {
+      _mpVisibilityOverlay = new VisibilityDebugOverlay({
+        getEnemies: () => Array.from(networkEnemies.values()),
+        enemyInstanceManager,
+        getWaveNumber: () => latestWaveNumber,
+      });
+      console.log('[VisibilityDebugOverlay] MP Active — ?debugVisibility=true');
+    });
+  }
 
   // Cleanup on page unload
   window.addEventListener('beforeunload', () => {
@@ -8193,6 +8213,7 @@ async function main() {
     remoteBuffParticleAuras.forEach((aura) => { scene.remove(aura.root); aura.dispose(); });
     remoteBuffParticleAuras.clear();
     debugOverlay.dispose();
+    if (_mpVisibilityOverlay) _mpVisibilityOverlay.dispose();
   });
 
   // Debug hook: read-only access to game state for automated testing.
