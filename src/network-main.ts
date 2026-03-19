@@ -5644,9 +5644,10 @@ async function main() {
         votingScreen.hide();  // Dismiss voting screen (roomPhase → playing)
         // Game is now active — enable joystick touch capture.
         if (input instanceof TouchInput) input.setGamePaused(false);
-        // Start background music (route through compressor to prevent clipping)
+        // Start background music (muted in debug/test modes, route through compressor)
+        const musicEnabled = (!_netMainDebug && !_netMainTestMode) || new URLSearchParams(window.location.search).get('music') === 'true';
         const audioCtx = sound.getAudioContext();
-        if (audioCtx) {
+        if (audioCtx && musicEnabled) {
           const compressor = sound.getCompressor();
           bgMusic.start(audioCtx, compressor ?? undefined);
         }
