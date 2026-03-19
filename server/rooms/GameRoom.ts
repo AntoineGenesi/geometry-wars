@@ -1170,6 +1170,25 @@ export class GameRoom extends Room<GameState> {
    */
   private bulletDamageTracker = new Map<string, number>();
 
+  // ── Reconnection ──────────────────────────────────────────────────────────
+  /** Serialized player state held during reconnection window (keyed by lowercase name). */
+  private disconnectedPlayers: Map<string, {
+    score: number; lives: number; multiplier: number;
+    playerLevel: number; playerKills: number; ddaLevel: number;
+    buffStacks: Record<string, number>;
+    kills: number; deaths: number; enemyKills: number;
+    totalDamageDealt: number; zoneTime: number;
+    health: number; maxHealth: number; shieldCount: number;
+    guardianCount: number; hunterCount: number; protectorCount: number;
+    color: number; surfaceU: number; surfaceV: number;
+    weaponInventory: Array<{ type: string; ammo: number }>;
+    weaponIndex: number;
+    boostState: { active: boolean; timer: number; cooldown: number; prevHeld: boolean };
+    perfWindow: { kills: number; deaths: number; windowStart: number };
+    ddaDecreaseCounter: number;
+    cleanupTimer: ReturnType<typeof setTimeout>;
+  }> = new Map();
+
   onCreate(options: { surfaceType?: string; mapSize?: string; pvpEnabled?: boolean; maxPlayers?: number }) {
     this.setState(new GameState());
     this.state.surfaceType = options.surfaceType || 'sphere';
@@ -1863,20 +1882,57 @@ export class GameRoom extends Room<GameState> {
       rawName = `Player ${this.state.players.size + 1}`;
     }
 
-    // Check for name uniqueness; if taken, append a number
-    let finalName = rawName;
-    let suffix = 2;
-    const existingNames = new Set<string>();
-    this.state.players.forEach((p) => {
-      existingNames.add(p.name.toLowerCase());
-    });
-    while (existingNames.has(finalName.toLowerCase())) {
-      finalName = `${rawName.slice(0, 17)}(${suffix})`;
-      suffix++;
-    }
+    const normalizedName = rawName.toLowerCase();
+    let isReconnect = false;
 
-    player.name = finalName;
-    player.color = getPlayerColor(this.state.players.size);
+    // Check for reconnection: same name, player disconnected unexpectedly during a live game
+    const savedRecord = this.disconnectedPlayers.get(normalizedName);
+    if (savedRecord) {
+      isReconnect = true;
+      clearTimeout(savedRecord.cleanupTimer);
+      this.disconnectedPlayers.delete(normalizedName);
+      // Restore schema fields
+      player.name = rawName;
+      player.score = savedRecord.score;
+      player.lives = savedRecord.lives;
+      player.multiplier = savedRecord.multiplier;
+      player.playerLevel = savedRecord.playerLevel;
+      player.playerKills = savedRecord.playerKills;
+      player.ddaLevel = savedRecord.ddaLevel;
+      player.kills = savedRecord.kills;
+      player.deaths = savedRecord.deaths;
+      player.enemyKills = savedRecord.enemyKills;
+      player.totalDamageDealt = savedRecord.totalDamageDealt;
+      player.zoneTime = savedRecord.zoneTime;
+      player.health = savedRecord.health;
+      player.maxHealth = savedRecord.maxHealth;
+      player.shieldCount = savedRecord.shieldCount;
+      player.guardianCount = savedRecord.guardianCount;
+      player.hunterCount = savedRecord.hunterCount;
+      player.protectorCount = savedRecord.protectorCount;
+      player.color = savedRecord.color;
+      player.surfaceU = savedRecord.surfaceU;
+      player.surfaceV = savedRecord.surfaceV;
+      Object.entries(savedRecord.buffStacks).forEach(([k, v]) => player.buffStacks.set(k, v));
+      // Restore server-side per-player state
+      this.playerWeaponInventory.set(client.sessionId, savedRecord.weaponInventory);
+      this.playerWeaponIndex.set(client.sessionId, savedRecord.weaponIndex);
+      this.playerBoostStates.set(client.sessionId, savedRecord.boostState);
+      this.playerPerfWindows.set(client.sessionId, savedRecord.perfWindow);
+      this.ddaDecreaseCounters.set(client.sessionId, savedRecord.ddaDecreaseCounter);
+      this.logger.log(`[GameRoom] ${rawName} reconnected — score=${player.score}, lives=${player.lives}`);
+    } else {
+      // Check if name is already taken by an active player
+      let nameTaken = false;
+      this.state.players.forEach((p) => {
+        if (p.name.toLowerCase() === normalizedName) nameTaken = true;
+      });
+      if (nameTaken) {
+        throw new Error(`Name already in use: ${rawName}`);
+      }
+      player.name = rawName;
+      player.color = getPlayerColor(this.state.players.size);
+    }
 
     // Determine if this client is connecting from localhost.
     // The server host always runs locally, so localhost clients should take
@@ -1925,14 +1981,17 @@ export class GameRoom extends Room<GameState> {
       }
     }
 
-    // Spawn at evenly-distributed positions based on player index
-    const spawnOffsets = computeSpawnOffsets(this.maxClients);
-    const spawnPos = spawnOffsets[this.state.players.size % this.maxClients];
-    player.surfaceU = spawnPos.u;
-    // s44r6b-03: Pill non-PvP modes restrict spawning to outside surface (v ≤ 0.48)
-    const isPvpLikeJoin = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
-    player.surfaceV = (this.state.surfaceType === 'pill' && !isPvpLikeJoin)
-      ? Math.min(spawnPos.v, 0.48) : spawnPos.v;
+    // Spawn at evenly-distributed positions based on player index.
+    // Reconnecting players restore their saved position (already set above).
+    if (!isReconnect) {
+      const spawnOffsets = computeSpawnOffsets(this.maxClients);
+      const spawnPos = spawnOffsets[this.state.players.size % this.maxClients];
+      player.surfaceU = spawnPos.u;
+      // s44r6b-03: Pill non-PvP modes restrict spawning to outside surface (v ≤ 0.48)
+      const isPvpLikeJoin = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+      player.surfaceV = (this.state.surfaceType === 'pill' && !isPvpLikeJoin)
+        ? Math.min(spawnPos.v, 0.48) : spawnPos.v;
+    }
 
     this.state.players.set(client.sessionId, player);
 
@@ -1961,9 +2020,12 @@ export class GameRoom extends Room<GameState> {
       client.send('phase_sync', { phase: this.state.roomPhase, isPaused: this.state.isPaused });
     }
 
-    // Initialize DDA performance window for new player
-    this.playerPerfWindows.set(client.sessionId, { kills: 0, deaths: 0, windowStart: 0 });
-    this.logger.log(`[GameRoom] ${player.name} joined (${client.sessionId})`);
+    // Initialize DDA performance window for new player (reconnects restore from savedRecord)
+    if (!isReconnect) {
+      this.playerPerfWindows.set(client.sessionId, { kills: 0, deaths: 0, windowStart: 0 });
+    }
+    const joinType = isReconnect ? 'reconnected' : 'joined';
+    this.logger.log(`[GameRoom] ${player.name} ${joinType} (${client.sessionId})`);
     this.logger.log(`[GameRoom] State after join: players.size=${this.state.players.size}, surfaceType=${this.state.surfaceType}, gameStarted=${this.state.gameStarted}`);
     this.state.players.forEach((p, k) => {
       this.logger.log(`[GameRoom]   player ${k}: name=${p.name}, alive=${p.alive}, lives=${p.lives}`);
@@ -1972,6 +2034,50 @@ export class GameRoom extends Room<GameState> {
 
   onLeave(client: Client, consented: boolean) {
     const player = this.state.players.get(client.sessionId);
+
+    // Save disconnected player state for reconnection window.
+    // Only for unexpected disconnects (crash/network) during a live game.
+    if (player && !consented && this.state.roomPhase === 'playing') {
+      const normalizedName = player.name.toLowerCase();
+      const RECONNECT_TIMEOUT_MS = 60_000;
+      const buffStacksRecord: Record<string, number> = {};
+      player.buffStacks.forEach((v: number, k: string) => { buffStacksRecord[k] = v; });
+      const cleanupTimer = setTimeout(() => {
+        this.disconnectedPlayers.delete(normalizedName);
+        this.logger.log(`[GameRoom] Reconnect window expired for "${player.name}"`);
+      }, RECONNECT_TIMEOUT_MS);
+      this.disconnectedPlayers.set(normalizedName, {
+        score: player.score,
+        lives: player.lives,
+        multiplier: player.multiplier,
+        playerLevel: player.playerLevel,
+        playerKills: player.playerKills,
+        ddaLevel: player.ddaLevel,
+        buffStacks: buffStacksRecord,
+        kills: player.kills,
+        deaths: player.deaths,
+        enemyKills: player.enemyKills,
+        totalDamageDealt: player.totalDamageDealt,
+        zoneTime: player.zoneTime,
+        health: player.health,
+        maxHealth: player.maxHealth,
+        shieldCount: player.shieldCount,
+        guardianCount: player.guardianCount,
+        hunterCount: player.hunterCount,
+        protectorCount: player.protectorCount,
+        color: player.color,
+        surfaceU: player.surfaceU,
+        surfaceV: player.surfaceV,
+        weaponInventory: [...(this.playerWeaponInventory.get(client.sessionId) ?? [{ type: 'standard', ammo: -1 }])],
+        weaponIndex: this.playerWeaponIndex.get(client.sessionId) ?? 0,
+        boostState: { ...(this.playerBoostStates.get(client.sessionId) ?? { active: false, timer: 0, cooldown: 0, prevHeld: false }) },
+        perfWindow: { ...(this.playerPerfWindows.get(client.sessionId) ?? { kills: 0, deaths: 0, windowStart: 0 }) },
+        ddaDecreaseCounter: this.ddaDecreaseCounters.get(client.sessionId) ?? 0,
+        cleanupTimer,
+      });
+      this.logger.log(`[GameRoom] ${player.name} disconnected unexpectedly — state held for ${RECONNECT_TIMEOUT_MS / 1000}s`);
+    }
+
     if (player) {
       this.logger.log(`[GameRoom] ${player.name} left`);
       this.state.players.delete(client.sessionId);
@@ -2045,6 +2151,10 @@ export class GameRoom extends Room<GameState> {
   }
 
   onDispose() {
+    // Clear pending reconnect timers to avoid callbacks on disposed room
+    this.disconnectedPlayers.forEach((record) => clearTimeout(record.cleanupTimer));
+    this.disconnectedPlayers.clear();
+
     if (this.metricsLogPath) {
       try {
         const footer = JSON.stringify({

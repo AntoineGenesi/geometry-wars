@@ -398,6 +398,74 @@ async function promptForNameIfNeeded(): Promise<string> {
 }
 
 /**
+ * Shows a name-taken error overlay so the player can pick a different name.
+ * On submit, saves the new name to localStorage and reloads the page.
+ * Called when the server rejects a join with "Name already in use: <name>".
+ */
+function showNameTakenOverlay(takenName: string): void {
+  const overlay = document.createElement('div');
+  overlay.style.cssText =
+    'position:fixed;top:0;left:0;width:100%;height:100%;' +
+    'background:rgba(0,0,16,0.95);z-index:999;' +
+    'display:flex;flex-direction:column;justify-content:center;align-items:center;' +
+    'font-family:monospace;padding:20px;box-sizing:border-box;gap:16px;';
+
+  const title = document.createElement('div');
+  title.style.cssText =
+    'color:#ff4444;font-size:20px;font-weight:bold;letter-spacing:4px;' +
+    'text-align:center;text-shadow:0 0 10px #ff0000;margin-bottom:8px;';
+  title.textContent = 'NAME ALREADY IN USE';
+
+  const hint = document.createElement('div');
+  hint.style.cssText = 'color:#ffaaaa;font-size:13px;text-align:center;margin-bottom:4px;';
+  hint.textContent = `"${takenName}" is already taken by a connected player. Choose a different name.`;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 20;
+  input.placeholder = 'Your name...';
+  input.autocomplete = 'off';
+  input.style.cssText =
+    'background:rgba(40,0,0,0.8);border:2px solid #660000;color:#ff8888;' +
+    'padding:14px 20px;font:18px monospace;width:280px;max-width:90vw;' +
+    'outline:none;text-align:center;letter-spacing:2px;box-sizing:border-box;' +
+    'transition:border-color 0.2s,box-shadow 0.2s;';
+  input.addEventListener('focus', () => {
+    input.style.borderColor = '#ff4444';
+    input.style.boxShadow = '0 0 15px rgba(255,68,68,0.4)';
+  });
+  input.addEventListener('blur', () => {
+    input.style.borderColor = '#660000';
+    input.style.boxShadow = '';
+  });
+
+  const joinBtn = document.createElement('button');
+  joinBtn.textContent = 'JOIN GAME';
+  joinBtn.style.cssText =
+    'background:linear-gradient(180deg,#00aa00,#006600);border:2px solid #00ff00;' +
+    'color:#ffffff;padding:14px 40px;font:bold 16px monospace;cursor:pointer;' +
+    'letter-spacing:3px;width:280px;max-width:90vw;box-sizing:border-box;' +
+    'touch-action:manipulation;transition:all 0.2s;';
+
+  const submit = () => {
+    const name = input.value.trim();
+    if (!name) return;
+    localStorage.setItem('gw3d_player_name', name);
+    window.location.reload();
+  };
+
+  joinBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+
+  overlay.appendChild(title);
+  overlay.appendChild(hint);
+  overlay.appendChild(input);
+  overlay.appendChild(joinBtn);
+  document.body.appendChild(overlay);
+  setTimeout(() => input.focus(), 150);
+}
+
+/**
  * Returns true when this player navigated here via the start menu's "Create Network Game" button.
  * The start menu sets creator=1 in the URL to signal creator intent so the server can assign host.
  * QR code joiners and direct URL users do NOT have this param and become non-host.
@@ -5832,6 +5900,15 @@ async function main() {
     connectionResolved = true; // Prevent the timeout handler from also showing an error
     clearTimeout(timeoutId);
     const msg = err instanceof Error ? err.message : String(err);
+
+    // Special case: name already taken by an active player — re-prompt instead of generic error
+    if (msg.includes('Name already in use:')) {
+      const takenName = msg.replace(/.*Name already in use:\s*/, '').trim();
+      localStorage.removeItem('gw3d_player_name'); // Force name re-prompt on next load
+      showNameTakenOverlay(takenName);
+      return;
+    }
+
     const isServerDown = msg.includes('Cannot reach') || msg.includes('ERR_EMPTY_RESPONSE')
       || msg.includes('ProgressEvent') || msg.includes('ECONNREFUSED');
 
