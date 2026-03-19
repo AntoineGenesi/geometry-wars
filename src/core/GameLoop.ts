@@ -16,6 +16,7 @@ import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
 import { profiler } from './PerformanceProfiler';
 import { loadGraphicsSettings } from '../ui/SettingsMenu';
 import { computeDepthVisibility, BULLET_DEPTH_CURVE } from '../rendering/DepthOpacity';
+import { EnemyKillStreakAnnouncer } from '../ui/EnemyKillStreakAnnouncer';
 
 /**
  * GameLoop — Fixed-timestep game update logic for the main game path.
@@ -68,6 +69,7 @@ export class GameLoop {
   private playerGlow: any = null;
   private bgMusic: any = null;
   private sound: any = null;
+  private enemyStreakAnnouncer: EnemyKillStreakAnnouncer | null = null;
   private applyStatMultipliers: (() => void) | null = null;
   // DDA close call detection: tracks whether player was already "in" a close call episode
   // (avoids recording multiple close calls for one continuous proximity event)
@@ -101,6 +103,7 @@ export class GameLoop {
     this.playerGlow = deps.playerGlow;
     this.bgMusic = deps.bgMusic;
     this.sound = deps.sound;
+    this.enemyStreakAnnouncer = new EnemyKillStreakAnnouncer(deps.sound);
     this.applyStatMultipliers = deps.applyStatMultipliers;
   }
 
@@ -495,6 +498,7 @@ export class GameLoop {
     ctx.scorePopups.update(dt);
     ctx.scoreManager.updateCombo(dt);
     ctx.killLog.update(dt);
+    this.enemyStreakAnnouncer?.update(dt);
     profiler.end('particles_and_pickups');
 
     profiler.begin('effects_and_buffs');
@@ -545,6 +549,7 @@ export class GameLoop {
         const enemyType = killed.constructor.name.toLowerCase();
         const color = ctx.ENEMY_COLORS[enemyType] ?? ctx.ENEMY_COLOR_FALLBACK;
         ctx.scoreManager.awardKill(killed.scoreValue, enemyType);
+        this.enemyStreakAnnouncer?.recordKill();
         ctx.scorePopups.spawnScore(killed.position.clone(), killed.scoreValue);
         ctx.killLog.addKill(enemyType, color.getHex());
         ctx.playerLevel.addKill();
@@ -859,6 +864,7 @@ export class GameLoop {
       ctx.scoreManager.getScorePowerMultiplier() * ctx.playerLevel.damageMultiplier * ctx.buffManager.getDamageMultiplier() * ctx.buffManager.getMasteryMultiplier(WeaponType.Standard).damageMultiplier * ctx.weaponManager.getUpgradeDamageMult(WeaponType.Standard),
       (type: string, color: number) => {
         ctx.killLog.addKill(type, color);
+        this.enemyStreakAnnouncer?.recordKill();
         ctx.playerLevel.addKill();
         ctx.weaponMastery.recordKill(WeaponType.Standard); // blaster bullets are always Standard
         ctx.weaponManager.recordKillForUpgrades(WeaponType.Standard); // upgrade tracker
@@ -957,6 +963,7 @@ export class GameLoop {
               if (!saved) {
                 ctx.perfLogger.recordEvent('player_death', 'Death'); // score graph
                 ctx.player.die();
+                this.enemyStreakAnnouncer?.resetStreak();
                 ctx.particles.playerDeath(ctx.player.mesh.position);
                 ctx.screenShake.shake(0.5, 0.4);
                 getSoundEngine().play('playerDeath');
@@ -1168,5 +1175,11 @@ export class GameLoop {
       .catch((err) => {
         console.error('[GameLoop] Export error:', err);
       });
+  }
+
+  /** Release DOM resources created by the announcer. Call from main.ts teardown. */
+  dispose(): void {
+    this.enemyStreakAnnouncer?.dispose();
+    this.enemyStreakAnnouncer = null;
   }
 }
