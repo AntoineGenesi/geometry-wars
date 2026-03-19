@@ -102,6 +102,8 @@ interface SpawnWarning {
   age: number;
   duration: number;
   type: EnemyType;
+  /** Direct reference to the enemy waiting to materialize — avoids UV-collision ambiguity. */
+  enemy: BaseEnemy;
 }
 
 const SPAWN_WARNING_DURATION = 0.8; // seconds before enemy materializes
@@ -724,6 +726,7 @@ export class EnemySpawner {
         age: 0,
         duration: SPAWN_WARNING_DURATION,
         type,
+        enemy,
       });
 
       // Mark as materializing (spawn warning in progress)
@@ -843,32 +846,29 @@ export class EnemySpawner {
         (warning.mesh.material as THREE.MeshBasicMaterial).dispose();
         this.spawnWarnings.splice(i, 1);
 
-        // Make enemy visible (find the materializing enemy at this position)
-        // GHOST FIX: tolerance increased from 0.001 to 0.05 (matches MIN_ENEMY_SEPARATION)
-        // to handle any residual UV drift from forces applied before separation was gated
-        for (const enemy of this.enemies) {
-          if (enemy.isMaterializing
-              && Math.abs(enemy.surfacePosition.u - warning.u) < 0.05
-              && Math.abs(enemy.surfacePosition.v - warning.v) < 0.05) {
-            enemy.isMaterializing = false;
-            if (enemy.mesh) {
-              if (!enemy.isInstanced) {
-                enemy.mesh.visible = true;
-              }
-              // Scale-in effect
-              enemy.mesh.scale.setScalar(0.01);
-
-              // s44r29-08: Immediately sync instance matrix so the enemy is visible
-              // on the very first frame. Previously, the InstancedMesh slot stayed at
-              // zero-scale until updateInstancesWithLOD ran — causing a timing gap
-              // where the enemy was invisible after materialization ended.
-              if (enemy.isInstanced && this.instanceManager) {
-                // Apply surface transform first so position/rotation are current
-                enemy.applySurfaceTransform((u: number, v: number) => this.getCachedTransform(u, v));
-                this.instanceManager.syncInstanceMatrix(enemy);
-              }
+        // Make enemy visible using direct reference (RC14 fix: avoids UV-collision ambiguity
+        // where 2+ enemies spawning within 0.05 UV of each other caused the second enemy
+        // to stay isMaterializing=true permanently — the old position scan matched the
+        // first enemy at that location and broke, leaving the second stuck invisible).
+        const enemy = warning.enemy;
+        if (enemy && enemy.isMaterializing) {
+          enemy.isMaterializing = false;
+          if (enemy.mesh) {
+            if (!enemy.isInstanced) {
+              enemy.mesh.visible = true;
             }
-            break;
+            // Scale-in effect
+            enemy.mesh.scale.setScalar(0.01);
+
+            // s44r29-08: Immediately sync instance matrix so the enemy is visible
+            // on the very first frame. Previously, the InstancedMesh slot stayed at
+            // zero-scale until updateInstancesWithLOD ran — causing a timing gap
+            // where the enemy was invisible after materialization ended.
+            if (enemy.isInstanced && this.instanceManager) {
+              // Apply surface transform first so position/rotation are current
+              enemy.applySurfaceTransform((u: number, v: number) => this.getCachedTransform(u, v));
+              this.instanceManager.syncInstanceMatrix(enemy);
+            }
           }
         }
       } else {
