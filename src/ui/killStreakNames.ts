@@ -1,6 +1,8 @@
 // killStreakNames.ts — SP/MP enemy kill streak data.
 // Completely separate from the PvP KillStreakAnnouncer system.
-// No external imports — pure data + pure functions.
+
+import type { BraillePattern } from './BrailleAnimator';
+import { ALL_PATTERNS } from './BrailleAnimator';
 
 export interface StreakTier {
   minStreak: number;
@@ -285,4 +287,63 @@ export function getStreakTier(count: number): StreakTier {
     }
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Tier-to-animation mapping (for EnemyKillStreakAnnouncer)
+// ---------------------------------------------------------------------------
+
+/**
+ * 20 distinct patterns for kill tiers 0-19 (one per 10-kill tier in [1,200]).
+ * Index i corresponds to kills [i*10, i*10+9], except tier 0 starts at kill 1.
+ * All 20 are distinct — no repeats within [1,200].
+ */
+const ANIMATION_TIERS: BraillePattern[] = [
+  'pulse',          // tier 0  (kills   1–9)
+  'wave',           // tier 1  (kills  10–19)
+  'orbit',          // tier 2  (kills  20–29)
+  'snake',          // tier 3  (kills  30–39)
+  'cascade',        // tier 4  (kills  40–49)
+  'helix',          // tier 5  (kills  50–59)
+  'sparkle',        // tier 6  (kills  60–69)
+  'rain',           // tier 7  (kills  70–79)
+  'vortex',         // tier 8  (kills  80–89)
+  'fireworks',      // tier 9  (kills  90–99)
+  'lightning',      // tier 10 (kills 100–109)
+  'explosion',      // tier 11 (kills 110–119)
+  'aurora',         // tier 12 (kills 120–129)
+  'blackhole',      // tier 13 (kills 130–139)
+  'supernova',      // tier 14 (kills 140–149)
+  'matrix',         // tier 15 (kills 150–159)
+  'glitch',         // tier 16 (kills 160–169)
+  'nebula',         // tier 17 (kills 170–179)
+  'tornado',        // tier 18 (kills 180–189)
+  'earthquake',     // tier 19 (kills 190–200)
+];
+
+/**
+ * Returns the Braille animation pattern and intensity for the given kill streak count.
+ *
+ * - Kills 1–200: 20 distinct 10-kill tiers, intensity rises within each tier (0.0–1.0)
+ * - Kills >200: cycles through ALL_PATTERNS (all 50) cyclically, intensity always ≥ 0.8
+ *
+ * Never throws for any positive integer (or large values like 2000).
+ */
+export function getAnimationForStreak(count: number): { pattern: BraillePattern; intensity: number } {
+  if (count <= 0) count = 1;
+
+  if (count <= 200) {
+    const tier = Math.min(Math.floor(count / 10), 19);
+    const tierStart = tier * 10;
+    const intensity = Math.min((count - tierStart) / 10, 1.0);
+    return { pattern: ANIMATION_TIERS[tier], intensity };
+  }
+
+  // Above 200: cycle through all 50 patterns, intensity always ≥ 0.8
+  const pos = (count - 201) % (ALL_PATTERNS.length * 10);
+  const cycleTier = Math.floor(pos / 10);
+  const cycleOffset = pos % 10;
+  const pattern = ALL_PATTERNS[cycleTier % ALL_PATTERNS.length];
+  const intensity = 0.8 + 0.2 * (cycleOffset / 10);
+  return { pattern, intensity };
 }
