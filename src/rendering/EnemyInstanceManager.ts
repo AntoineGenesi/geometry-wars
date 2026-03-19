@@ -670,7 +670,7 @@ export class EnemyInstanceManager {
     // so avg(r,g,b) >= MIN_ICB (0.15). Proportional scaling preserves hue.
     if (visibility > 0) {
       const avg = (r + g + b) / 3;
-      const MIN_ICB = 0.50;
+      const MIN_ICB = 0.15;
       if (avg > 0 && avg < MIN_ICB) {
         const scale = MIN_ICB / avg;
         r *= scale;
@@ -905,6 +905,7 @@ export class EnemyInstanceManager {
       color: 0xffffff,
       transparent: true,
       depthWrite: false,
+      depthTest: false,  // RC15: same as type batches — render enemies even behind surface mesh
     });
 
     // Per-instance alpha (same as type batches). See createBatch() REGRESSION GUARD (s44r12-03).
@@ -1027,9 +1028,12 @@ export class EnemyInstanceManager {
       lodBatch.usedCount = Math.max(0, lodBatch.usedCount - 1);
 
       // Update highWaterMark if we just freed the highest slot
+      // RC15: Scan from top of array, not from freed index downward.
+      // Matches the fix in unregister() (lines 316-322) — old code missed
+      // occupied slots above the freed index via wrap-around allocation.
       if (slotIndex >= lodBatch.highWaterMark) {
         let newMax = -1;
-        for (let i = slotIndex - 1; i >= 0; i--) {
+        for (let i = LOD_BATCH_MAX_INSTANCES - 1; i >= 0; i--) {
           if (lodBatch.indexToEnemy[i] !== null) { newMax = i; break; }
         }
         lodBatch.highWaterMark = newMax;
@@ -1131,7 +1135,7 @@ export class EnemyInstanceManager {
       // s44r29-01: Same minimum ICB floor as setInstanceVisibility (see comment there).
       if (visibility > 0) {
         const avg = (r + g + b) / 3;
-        const MIN_ICB = 0.50;
+        const MIN_ICB = 0.15;
         if (avg > 0 && avg < MIN_ICB) {
           const scale = MIN_ICB / avg;
           r *= scale;
