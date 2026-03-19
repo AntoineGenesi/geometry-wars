@@ -425,6 +425,16 @@ export class TestHarnessAPI {
     };
   }
 
+  /** Get current wave number (1-based). Returns 0 before first wave starts. */
+  getWave(): number {
+    const waveScheduler = (this.ctx as any).waveScheduler;
+    if (!waveScheduler) return 0;
+    if (typeof waveScheduler.getCurrentWave === 'function') {
+      return waveScheduler.getCurrentWave();
+    }
+    return 0;
+  }
+
   /** Pause the game. */
   pauseGame(): void {
     this.ctx.game.pause();
