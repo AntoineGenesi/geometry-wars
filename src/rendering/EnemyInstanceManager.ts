@@ -1240,6 +1240,7 @@ export class EnemyInstanceManager {
       color: 0xffffff, // White - actual color comes from instanceColor
       transparent: true,
       depthWrite: false, // Transparent objects should not write to depth buffer
+      depthTest: false,  // RC15: render enemies even behind surface — dimming provides visual depth cue
     });
 
     // Per-instance alpha transparency: two paths depending on renderer backend.
