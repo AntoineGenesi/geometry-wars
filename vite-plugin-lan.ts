@@ -351,7 +351,7 @@ export default function lanPlugin(): Plugin {
     }
   }
 
-  async function handleScan(): Promise<{ found: ScanServer[]; subnets: string[]; isWSL2?: boolean; windowsAddresses?: string[] }> {
+  async function handleScan(isSelfRequest: boolean = true): Promise<{ found: ScanServer[]; subnets: string[]; isWSL2?: boolean; windowsAddresses?: string[] }> {
     const addresses = getLANAddresses();
     const wsl2 = detectWSL2();
     // In WSL2, the Windows LAN IPs (192.168.x.x) are unreachable from WSL2's
@@ -374,7 +374,7 @@ export default function lanPlugin(): Plugin {
           ?? addresses.find(a => !a.startsWith('172.'))
           ?? addresses[0]
           ?? 'localhost');
-      found.push({ ip: primaryIp, port: SERVER_PORT, info: { game: 'geometry-wars-3d', self: true }, rooms: selfRooms });
+      found.push({ ip: primaryIp, port: SERVER_PORT, info: { game: 'geometry-wars-3d', self: isSelfRequest }, rooms: selfRooms });
     }
 
     // Build the list of subnets to scan.
@@ -489,7 +489,9 @@ export default function lanPlugin(): Plugin {
         }
 
         if (route === 'scan' && req.method === 'GET') {
-          handleScan()
+          const remoteAddr = req.socket.remoteAddress ?? '';
+          const isSelfRequest = remoteAddr === '127.0.0.1' || remoteAddr === '::1' || remoteAddr === '::ffff:127.0.0.1';
+          handleScan(isSelfRequest)
             .then((data) => sendJson(res, data))
             .catch((err) => sendJson(res, { found: [], subnets: [], error: (err as Error).message }, 500));
           return;
