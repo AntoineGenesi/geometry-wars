@@ -5669,6 +5669,11 @@ async function main() {
         votingScreen.hide();  // Dismiss voting screen (roomPhase → playing)
         // Game is now active — enable joystick touch capture.
         if (input instanceof TouchInput) input.setGamePaused(false);
+        // Host god mode: if ?godMode=true, tell server to make host permanently invincible
+        if (isHost && new URLSearchParams(window.location.search).get('godMode') === 'true') {
+          network.room?.send('host_god_mode', {});
+          netMainLog('[NetworkMain] Host god mode activated — permanent invincibility');
+        }
         // Start background music (muted in debug/test modes, route through compressor)
         const musicEnabled = (!_netMainDebug && !_netMainTestMode) || new URLSearchParams(window.location.search).get('music') === 'true';
         const audioCtx = sound.getAudioContext();

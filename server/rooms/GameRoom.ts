@@ -1234,6 +1234,13 @@ export class GameRoom extends Room<GameState> {
       }
     });
 
+    // Host god mode: permanent invincibility for the host player (for testing)
+    this.onMessage('host_god_mode', (client) => {
+      if (client.sessionId !== this.state.hostId) return; // Only host can activate
+      this.playerInvincibility.set(client.sessionId, 999999);
+      this.logger.log(`[GameRoom] Host god mode activated for ${client.sessionId}`);
+    });
+
     this.onMessage('start_with_options', (client, data: {
       pvpMode?: string;
       winCondition?: string;
