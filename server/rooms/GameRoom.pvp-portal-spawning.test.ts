@@ -24,6 +24,7 @@ interface PortalState {
   portalBU: number;
   portalBV: number;
   pvpMode: string;
+  gameMode: string;
 }
 
 interface PlayerLike {
@@ -55,8 +56,9 @@ class PortalController {
     this.state.portalAV = 0;
     this.state.portalBU = 0;
     this.state.portalBV = 0;
-    // Mirror: schedule initial 30s spawn in PvP/PvPvE modes
-    const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    // Mirror: schedule initial 30s spawn in PvP/PvPvE/KotH modes (s44r33-02: added 'king')
+    const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve'
+      || this.state.gameMode === 'king';
     if (isPvpOrPvpve) {
       this._portalInitialSpawnTimer = setTimeout(() => {
         this._portalInitialSpawnTimer = null;
@@ -71,8 +73,10 @@ class PortalController {
 
   /** Mirrors GameRoom._checkHalfHealthPortalTrigger(). */
   checkHalfHealthPortalTrigger(player: PlayerLike): void {
-    const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
-    if (!isPvpOrPvpve) return;
+    // s44r33-02: include 'king' (KotH) alongside pvp/pvpve
+    const isPortalMode = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve'
+      || this.state.gameMode === 'king';
+    if (!isPortalMode) return;
     if (this._portalsTriggeredThisGame) return;
     if (player.health > player.maxHealth * 0.5) return;
 
@@ -165,8 +169,8 @@ class PortalController {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeState(pvpMode = 'pvp'): PortalState {
-  return { portalsActive: false, portalAU: 0, portalAV: 0, portalBU: 0, portalBV: 0, pvpMode };
+function makeState(pvpMode = 'pvp', gameMode = pvpMode): PortalState {
+  return { portalsActive: false, portalAU: 0, portalAV: 0, portalBU: 0, portalBV: 0, pvpMode, gameMode };
 }
 
 function makePlayer(health: number, maxHealth = PLAYER_PVP_MAX_HEALTH, u = 0.3, v = 0.3): PlayerLike {
@@ -531,9 +535,56 @@ describe('PvP Portal Spawning — s44r2-10', () => {
 
       // Game ends before 30s timer fires — switch to non-pvp BEFORE reset so no new timer
       state.pvpMode = 'waves';
+      state.gameMode = 'waves';
       ctrl.resetForNewGame(); // clears old timer; no new timer because pvpMode = 'waves'
 
       // Old timer must NOT fire
+      vi.advanceTimersByTime(30_000);
+      expect(state.portalsActive).toBe(false);
+    });
+  });
+
+  describe('KotH mode portal spawning (s44r33-02)', () => {
+    /**
+     * KotH uses gameMode='king' with pvpMode='' (not a pvp mode).
+     * Before s44r33-02, portals never spawned in KotH because the mode check only covered pvp/pvpve.
+     */
+    it('portals activate after 30 seconds in KotH mode', () => {
+      const state = makeState('', 'king'); // pvpMode='', gameMode='king'
+      const ctrl = new PortalController(state);
+      ctrl.resetForNewGame();
+
+      vi.advanceTimersByTime(30_000);
+
+      expect(state.portalsActive).toBe(true);
+      ctrl._clearPortalTimers();
+    });
+
+    it('KotH portals are NOT active at game start (timer pending, not fired)', () => {
+      const state = makeState('', 'king');
+      const ctrl = new PortalController(state);
+      ctrl.resetForNewGame();
+
+      expect(state.portalsActive).toBe(false);
+      ctrl._clearPortalTimers();
+    });
+
+    it('KotH half-health trigger activates portals', () => {
+      const state = makeState('', 'king');
+      const ctrl = new PortalController(state);
+      ctrl.resetForNewGame();
+
+      const player = makePlayer(PLAYER_PVP_MAX_HEALTH * 0.4);
+      ctrl.checkHalfHealthPortalTrigger(player);
+
+      expect(state.portalsActive).toBe(true);
+    });
+
+    it('KotH portals do NOT activate in pure waves mode', () => {
+      const state = makeState('', 'waves'); // neither pvp/pvpve nor king
+      const ctrl = new PortalController(state);
+      ctrl.resetForNewGame();
+
       vi.advanceTimersByTime(30_000);
       expect(state.portalsActive).toBe(false);
     });
