@@ -276,7 +276,10 @@ export class MeshWalker {
       if (displLenSq > 0.000001) {
         const displLen = Math.sqrt(displLenSq);
         const dirFidelity = (dx * projDir.x + dy * projDir.y + dz * projDir.z) / displLen;
-        if (dirFidelity < 0.85) {
+        // Threshold: 0.5 ≈ cos(60°). Catches genuine UV-seam direction flips (cos≈0)
+        // without misfiring on high-curvature bevel transitions (cos≈0.6–0.8) that
+        // caused sphere-tunnel exit jitter (s44r33-05).
+        if (dirFidelity < 0.5) {
           return this._fallbackMove(moveDir, distance);
         }
       }

@@ -351,10 +351,16 @@ export class SphereWithTunnelSurface extends Surface {
     const R = initData.radius
     const tr = Math.min(initData.tunnelRadius, R * 0.5)
     const bR = initData.bevelRadius ?? 0
-    const { totalP } = SphereWithTunnelSurface.computeBevelGeometry(R, tr, bR)
+    const { totalP, bArc } = SphereWithTunnelSurface.computeBevelGeometry(R, tr, bR)
 
-    // Compute segment counts for balanced triangle aspect ratios
-    const radialSegs = Math.max(initData.gridSegmentsV, 32)
+    // Compute segment counts for balanced triangle aspect ratios.
+    // Ensure each bevel arc gets at least 6 radial segments — the bevel has a
+    // large dihedral angle (~66°/segment) when under-sampled, which causes the
+    // deflection guard in MeshWalker to misfire and jitter the player at the
+    // sphere-tunnel exit (s44r33-05).
+    const MIN_BEVEL_SEGS = 6
+    const minSegsForBevel = bArc > 0.001 ? Math.ceil(MIN_BEVEL_SEGS * totalP / bArc) : 32
+    const radialSegs = Math.max(initData.gridSegmentsV, 32, minSegsForBevel)
     const targetStep = totalP / radialSegs
     const ringCircumference = 2 * Math.PI * R
     const tubularSegs = Math.max(Math.round(ringCircumference / targetStep), 48)
