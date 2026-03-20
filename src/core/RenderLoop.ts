@@ -222,6 +222,10 @@ export class RenderLoop {
       // World distance for (b) correctly handles pole distortion: near poles, enemies with
       // the same latitude but different longitude have large UV distance but tiny world
       // distance — they should be visible, not dimmed.
+      // s44r33-01: surfaceVis hoisted out of block scope so the visibility floor (below)
+      // can respect UV-distance dimming. Without this, the depth-occlusion-based floor
+      // overrides UV dimming for far-side enemies when depthOcclusion returns stale/high values.
+      let surfaceVis = 1.0;
       {
         const euRaw = Math.abs(enemy.surfacePosition.u - playerU);
         const evRaw = Math.abs(enemy.surfacePosition.v - playerV);
@@ -235,7 +239,6 @@ export class RenderLoop {
         //   - If entity was NOT dimmed last frame: only start dimming past ENTER (0.17)
         //   - If entity WAS dimmed last frame:   only stop dimming below EXIT  (0.13)
         // This ±0.02 deadband eliminates the bright↔dim oscillation on small torus.
-        let surfaceVis: number;
         const wasDimmed = this._entityDimmedState.get(enemy) ?? false;
         const nearThreshold = wasDimmed ? SURFACE_NEAR_UV_EXIT : SURFACE_NEAR_UV_ENTER;
         if (uvDist <= nearThreshold) {
@@ -339,6 +342,15 @@ export class RenderLoop {
       //   depthOpacity >= 0.90 → floor = 0.70 (clearly front-side)
       //   depthOpacity 0.50..0.90 → floor smoothly interpolates 0.15 → 0.70
       //   depthOpacity <= 0.50 → floor = SURFACE_DIM_OPACITY (behind surface)
+      //
+      // s44r33-01: Cap the floor by surfaceVis to prevent depth-occlusion-based floor from
+      // overriding UV-distance dimming. Root cause of "far-side too bright" regression:
+      // With depthTest:false (RC15) + DoubleSide (RC17), the depth occlusion raycast is
+      // batched (100/frame) and uses EMA smoothing + 0.75 threshold. Far-side enemies may
+      // get depthOpacity=1.0 (stale initial value or inconsistent raycasts) → frontBlend=1.0
+      // → floor=0.70, overriding the correct UV dimming of 0.25. UV dimming is computed
+      // every frame for every enemy and is always reliable. The floor must never raise
+      // visibility above what UV dimming allows.
       const FRONT_SIDE_FLOOR = 0.70;
       const FRONT_BLEND_HIGH = 0.90;
       const FRONT_BLEND_LOW  = 0.50;
@@ -346,7 +358,12 @@ export class RenderLoop {
         (depthOpacity - FRONT_BLEND_LOW) / (FRONT_BLEND_HIGH - FRONT_BLEND_LOW)
       ));
       const visibilityFloor = SURFACE_DIM_OPACITY + frontBlend * (FRONT_SIDE_FLOOR - SURFACE_DIM_OPACITY);
-      visibility = Math.max(visibility, visibilityFloor);
+      // Cap floor by surfaceVis: UV dimming takes precedence over depth-occlusion floor.
+      // Near-side + near UV (surfaceVis=1.0): floor stays 0.70 — front-side enemies stay bright.
+      // Front-side + far UV (surfaceVis=0.25): floor capped at 0.25 — far-away enemies stay dim.
+      // This prevents stale/high depthOpacity from making far-side enemies too bright.
+      const effectiveFloor = Math.min(visibilityFloor, Math.max(surfaceVis, SURFACE_DIM_OPACITY));
+      visibility = Math.max(visibility, effectiveFloor);
 
       // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
       // are both bypassed for tunnels, so enemies MUST be fully visible.

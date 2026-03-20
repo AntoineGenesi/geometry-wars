@@ -7465,6 +7465,10 @@ async function main() {
       // higher FPS. netIsFrontSide is still set for the sphere-tunnel UV-distance override.
       let netIsFrontSide = netDepthOpacity >= 0.7;
 
+      // s44r33-01: surfaceVis hoisted to outer scope so the visibility floor can respect UV dimming.
+      // Same fix as SP RenderLoop.ts — prevents depth-occlusion floor from overriding UV dimming.
+      let surfaceVis = 1.0;
+
       // UV-distance surface dimming (LAN parity with SP RenderLoop.ts).
       // Catches flat/open-surface cases where raycasts register 0 intersections.
       // Skipped for most tunnel surfaces — UV space is unreliable for proximity on tunnels.
@@ -7490,7 +7494,7 @@ async function main() {
         // If uvDist is NaN (from NaN surfacePosition.u/v), all comparisons return false,
         // surfaceVis stays at its initial value. Previously it was `undefined`, causing
         // Math.min(vis, undefined) = NaN → invisible enemies at late waves.
-        let surfaceVis: number = 1.0;
+        // s44r33-01: surfaceVis hoisted to outer scope — assignment here instead of declaration.
         if (uvDist <= NET_SURFACE_NEAR_UV) {
           surfaceVis = 1.0;
         } else if (uvDist >= NET_SURFACE_FAR_UV) {
@@ -7547,7 +7551,11 @@ async function main() {
       // enemies remain visible against the dark tunnel background at wave 4+.
       const dimFloor = _isSphereTunnel ? NET_SPHERE_TUNNEL_DIM_OPC : NET_SURFACE_DIM_OPC;
       const netVisibilityFloor = dimFloor + netFrontBlend * (NET_FRONT_SIDE_FLOOR - dimFloor);
-      vis = Math.max(vis, netVisibilityFloor);
+      // s44r33-01: Cap floor by surfaceVis (SP parity — see RenderLoop.ts).
+      // UV dimming takes precedence over depth-occlusion floor to prevent far-side enemies
+      // from being raised to 0.70 when depthOcclusion returns stale/high values.
+      const netEffectiveFloor = Math.min(netVisibilityFloor, Math.max(surfaceVis, dimFloor));
+      vis = Math.max(vis, netEffectiveFloor);
       // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
       // are both bypassed, so enemies MUST be fully visible. This catches any edge case where
       // a future code path or EMA state leaks could inadvertently dim tunnel enemies.
