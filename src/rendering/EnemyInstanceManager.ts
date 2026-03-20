@@ -691,10 +691,14 @@ export class EnemyInstanceManager {
     // s44r29-01: Minimum ICB floor. SURFACE_DIM_OPACITY=0.25 × dark baseColor (~0.37) = icb≈0.093
     // which is below INVISIBLE_THRESHOLD (0.10) — enemies appear invisible on dark backgrounds.
     // When visibility > 0 (enemy should be dim, not hidden), scale all channels proportionally
-    // so avg(r,g,b) >= MIN_ICB (0.15). Proportional scaling preserves hue.
+    // so avg(r,g,b) >= MIN_ICB. Proportional scaling preserves hue.
+    // s44r33: Raised from 0.15 to 0.35. With DoubleSide+depthTest:false, far-side enemies
+    // render through the surface. 0.15 (RGB 38) is invisible against dark bg (RGB 5-16).
+    // 0.35 (RGB 89) is clearly visible as a dim shape. The dimming system controls the
+    // visibility float, but MIN_ICB guarantees the RENDERED pixels are always perceptible.
     if (visibility > 0) {
       const avg = (r + g + b) / 3;
-      const MIN_ICB = 0.15;
+      const MIN_ICB = 0.35;
       if (avg > 0 && avg < MIN_ICB) {
         const scale = MIN_ICB / avg;
         r *= scale;
@@ -726,7 +730,7 @@ export class EnemyInstanceManager {
    * Call AFTER the per-enemy visibility loop and BEFORE flushColors().
    */
   ensureMinimumVisibility(): void {
-    const MIN_ICB = 0.15;
+    const MIN_ICB = 0.35;
     const MIN_SCALE = 0.001; // Below this, the instance is effectively invisible
 
     for (const batch of this.batches.values()) {
@@ -1171,7 +1175,7 @@ export class EnemyInstanceManager {
       // s44r29-01: Same minimum ICB floor as setInstanceVisibility (see comment there).
       if (visibility > 0) {
         const avg = (r + g + b) / 3;
-        const MIN_ICB = 0.15;
+        const MIN_ICB = 0.35;
         if (avg > 0 && avg < MIN_ICB) {
           const scale = MIN_ICB / avg;
           r *= scale;
