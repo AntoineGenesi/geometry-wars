@@ -63,23 +63,22 @@ describe('SphereWithTunnelSurface tunnel entry', () => {
     expect(walker.position.y).toBeGreaterThan(4)
   })
 
-  it('player can walk back out of tunnel onto outer sphere', () => {
+  it('player can walk back out of tunnel onto outer sphere (regression: s44r33-05 exit jitter)', () => {
+    // Bug: deflection guard fired on high-curvature bevel transitions, triggering BVH
+    // fallback with stale tunnel normal → player snapped back to tunnel → stuck oscillating.
+    // Fix: lower deflection guard threshold 0.85 → 0.5, increase min bevel segments to 6.
     const surface = new SphereWithTunnelSurface({ radius: 8, tunnelRadius: 2, bevelRadius: 0.8 })
     surface.group.updateMatrixWorld(true)
 
     const meshSurface = new MeshSurface(surface.walkableMesh)
 
     // Start inside the tunnel near the north entrance
-    // Tunnel inner face: (2, 5, 0) should be close to the tunnel wall
     const startPos = new THREE.Vector3(2, 5, 0)
     const walker = new MeshWalker(meshSurface, startPos, 5.0)
 
-    // Move outward: the normal at tunnel wall points toward Y axis (-X direction at x=2)
-    // Moving in the +X direction on the tunnel surface means going up toward the entrance
-    // In the tunnel, the move direction along the tunnel is ±Y
-    const moveDir = new THREE.Vector3(0, 1, 0) // up toward north entrance
+    const moveDir = new THREE.Vector3(0, 1, 0) // up toward north entrance (exit)
 
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 80; i++) {
       const n = walker.normal
       const d = moveDir.clone().addScaledVector(n, -moveDir.dot(n))
       const len = d.length()
@@ -88,9 +87,10 @@ describe('SphereWithTunnelSurface tunnel entry', () => {
       }
     }
 
-    // After walking from inside tunnel toward entrance and then onto outer sphere,
-    // the player should be on the sphere exterior (XZ radius approaches sphere radius ~8)
+    // After walking from inside the tunnel toward the exit, the player must reach
+    // the outer sphere. XZ radius > 4 means they're past the bevel (max r ≈ 2.8).
+    // If stuck in exit jitter, xzRadius stays ≈ 2.0 (tunnel wall) with Y frozen.
     const xzRadius = Math.sqrt(walker.position.x ** 2 + walker.position.z ** 2)
-    expect(xzRadius).toBeGreaterThan(2.0) // Has left the tunnel cylinder
+    expect(xzRadius).toBeGreaterThan(4.0) // clearly on outer sphere, not stuck at bevel
   })
 })
