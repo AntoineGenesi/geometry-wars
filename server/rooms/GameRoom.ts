@@ -3562,26 +3562,30 @@ export class GameRoom extends Room<GameState> {
       } else if (isTorus) {
         // Torus: parallel transport + 2-axis metric correction.
         // Normalized radii R=1, r=3/8 (preserves game's 8:3 aspect ratio).
-        // Christoffel symbols: Γ^u_uv = -r*sinV/rho, Γ^v_uu = rho*sinV/r
-        const TORUS_r = 0.375; // minor radius (normalized: r/R = 3/8)
-        const v = bullet.y * 2 * Math.PI;
-        const cosV = Math.cos(v);
-        const sinV = Math.sin(v);
-        const rho = Math.max(1 + TORUS_r * cosV, 0.1); // major + minor*cos(v)
+        // s44r33-04 FIX: After s44o-04b surfaceU/V correction, the UV axes changed:
+        //   bullet.x = surfaceU = tube angle θ/(2π)  (minor circle, through the hole)
+        //   bullet.y = surfaceV = ring angle φ/(2π)  (major circle, around the donut)
+        // Previous code used bullet.y as the tube angle — now WRONG. Fixed to use bullet.x.
+        // dirX = tube component (natural direction), dirY = ring component.
+        const TORUS_r = 0.375; // minor radius normalized (r/R = 3/8)
+        const theta = bullet.x * 2 * Math.PI; // tube angle θ (from surfaceU)
+        const cosT = Math.cos(theta);
+        const sinT = Math.sin(theta);
+        const rho = Math.max(1 + TORUS_r * cosT, 0.1); // ρ = R + r*cos(θ)
 
-        // Parallel transport
-        const Gamma_u_uv = -TORUS_r * sinV / rho;
-        const Gamma_v_uu = rho * sinV / TORUS_r;
+        // Geodesic parallel transport in (θ, φ) coordinates:
+        // d²θ/dt² = -Γ^θ_φφ * (dφ/dt)²  where Γ^θ_φφ = ρ*sin(θ)/r
+        // d²φ/dt² = -2*Γ^φ_θφ * (dθ/dt)(dφ/dt)  where Γ^φ_θφ = -r*sin(θ)/ρ
         const step = BULLET_SPEED * dt;
         const prevDirX = bullet.dirX;
-        bullet.dirX += -2 * Gamma_u_uv * bullet.dirX * bullet.dirY * step;
-        bullet.dirY += -Gamma_v_uu * prevDirX * prevDirX * step;
+        bullet.dirX += -(rho * sinT / TORUS_r) * bullet.dirY * bullet.dirY * step;
+        bullet.dirY += (2 * TORUS_r * sinT / rho) * prevDirX * bullet.dirY * step;
         const torusLen = Math.sqrt(bullet.dirX * bullet.dirX + bullet.dirY * bullet.dirY);
         if (torusLen > 0.001) { bullet.dirX /= torusLen; bullet.dirY /= torusLen; }
 
-        // Move bullet with metric correction (constant arc-length speed)
-        bullet.x += (bullet.dirX / rho) * BULLET_SPEED * dt;
-        bullet.y += (bullet.dirY / TORUS_r) * BULLET_SPEED * dt;
+        // Arc-length metric correction: tube arc = r*dθ, ring arc = ρ(θ)*dφ
+        bullet.x += (bullet.dirX / TORUS_r) * BULLET_SPEED * dt;   // tube direction
+        bullet.y += (bullet.dirY / rho) * BULLET_SPEED * dt;        // ring direction
       } else if (isPill) {
         // s44r6-05: Pill-specific bullet movement with metric correction on hemispherical caps.
         // The pill has three UV regions: bottom cap, cylindrical body, top cap.
