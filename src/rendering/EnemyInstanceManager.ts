@@ -941,6 +941,7 @@ export class EnemyInstanceManager {
       transparent: true,
       depthWrite: false,
       depthTest: false,  // RC15: same as type batches — render enemies even behind surface mesh
+      side: THREE.DoubleSide, // RC17: same as type batches — far-side enemies have back-facing normals
     });
 
     // Per-instance alpha (same as type batches). See createBatch() REGRESSION GUARD (s44r12-03).
@@ -1280,6 +1281,7 @@ export class EnemyInstanceManager {
       transparent: true,
       depthWrite: false, // Transparent objects should not write to depth buffer
       depthTest: false,  // RC15: render enemies even behind surface — dimming provides visual depth cue
+      side: THREE.DoubleSide, // RC17: far-side enemies have back-facing normals — without DoubleSide, GPU culls them
     });
 
     // Per-instance alpha transparency: two paths depending on renderer backend.
