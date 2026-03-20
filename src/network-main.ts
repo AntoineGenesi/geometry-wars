@@ -7453,12 +7453,19 @@ async function main() {
     // Depth occlusion update is still skipped (camera outside → 2 intersections = broken),
     // but UV distance is used to determine front/behind-surface for dimming.
     const _isSphereTunnel = lastCreatedSurfaceType === 'sphere-tunnel';
-    if (!_isTunnelSurface) {
+    // s44r33-03: Cube-ring: depth occlusion produces false positives for inner-face enemies.
+    // Camera is outside the ring; raycasts to inner-face enemies cross outer wall first
+    // → 2 intersections → opacity2Plus=0.04 → enemies appear invisible. Same class of
+    // bug as cube-tunnel. Fix: skip depth occlusion, rely on UV dimming (like sphere-tunnel).
+    // After s44r33-03 server fix, player.surfaceV is accurate, so UV dimming works correctly.
+    const _isCubeRing = lastCreatedSurfaceType === 'cube-ring';
+    const _skipDepthOcclusion = _isTunnelSurface || _isCubeRing;
+    if (!_skipDepthOcclusion) {
       depthOcclusion.update(enemyArray, camera.position, netRenderDt);
     }
     for (const enemy of enemyArray) {
       if (!enemy.alive || !enemy.mesh) continue;
-      const netDepthOpacity = _isTunnelSurface ? 1.0 : depthOcclusion.getOpacity(enemy);
+      const netDepthOpacity = _skipDepthOcclusion ? 1.0 : depthOcclusion.getOpacity(enemy);
       let vis = netDepthOpacity;
       // s44r25-03: removed binary netIsFrontSide threshold (netDepthOpacity >= 0.7) — replaced
       // with smooth blend below (SP parity). The binary caused a jarring visibility cliff at
@@ -7562,7 +7569,8 @@ async function main() {
       // Host-only invisible enemies on sphere-tunnel were caused by some such state difference
       // between host (localhost) and client (LAN) connections — this guard prevents it.
       // s44r25-01: sphere-tunnel excluded — it gets UV-based dimming instead of forced vis=1.0.
-      if (_isTunnelSurface && !_isSphereTunnel) vis = 1.0;
+      // s44r33-03: cube-ring excluded — UV dimming handles far-face visibility correctly.
+      if (_isTunnelSurface && !_isSphereTunnel && !_isCubeRing) vis = 1.0;
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {
         enemyInstanceManager.setLODInstanceVisibility(enemy, vis);

@@ -2801,6 +2801,14 @@ export class GameRoom extends Room<GameState> {
       return this._pillWorldToUV(wx, wy, wz);
     }
 
+    // s44r33-03 FIX: Cube-ring — accurate parametric inversion.
+    // Sphere approximation gives surfaceV = polar angle (acos(y/r)/π), mapping the
+    // outer face (r=R+H, y≈0) to v≈0.5 instead of the correct v≈0.125.
+    // Wrong surfaceV → bullet spawns on wrong face → wrong tangent frame → wrong direction.
+    if (this.state.surfaceType === 'cube-ring') {
+      return this._cubeRingWorldToUV(wx, wy, wz);
+    }
+
     // Sphere parameterization (accurate for sphere/peanut, approximate for others).
     const r = Math.sqrt(wx * wx + wy * wy + wz * wz);
     if (r < 0.001) return { u: 0.5, v: 0.5 };
@@ -2904,6 +2912,53 @@ export class GameRoom extends Room<GameState> {
       const bodyRange = 1 - 2 * cf;
       return { u, v: cf + Math.max(0, Math.min(1, localT)) * bodyRange };
     }
+  }
+
+  /**
+   * Accurate cube-ring UV recovery from world position.
+   * Face layout matches server cubeRingChordDist / SurfaceGeometryBuilder profile:
+   *   outer (r=+H, v∈[0,0.25)), top (y=+H, v∈[0.25,0.5)),
+   *   inner (r=-H, v∈[0.5,0.75)), bottom (y=-H, v∈[0.75,1.0))
+   * s44r33-03: replaces sphere approximation which placed v≈0.5 for outer-face players.
+   */
+  private _cubeRingWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    const scaleFactor = this.state.mapSizeScaleFactor ?? 1;
+    const R = CUBE_RING_MAJOR_R * scaleFactor;
+    const H = CUBE_RING_HALF_SIDE * scaleFactor;
+
+    // u = azimuthal angle around ring (same convention as CubeRingSurface.getPoint)
+    let phi = Math.atan2(wz, wx);
+    if (phi < 0) phi += Math.PI * 2;
+    const u = phi / (Math.PI * 2);
+
+    // Radial offset from ring axis
+    const rDist = Math.sqrt(wx * wx + wz * wz) - R;
+    const yDist = wy;
+
+    // Find nearest face by perpendicular distance to its plane
+    const dOuter  = Math.abs(rDist - H);
+    const dTop    = Math.abs(yDist - H);
+    const dInner  = Math.abs(rDist + H);
+    const dBottom = Math.abs(yDist + H);
+
+    const minDist = Math.min(dOuter, dTop, dInner, dBottom);
+
+    let v: number;
+    if (minDist === dOuter) {
+      // Outer face: v ∈ [0, 0.25), y: -H → H
+      v = (Math.max(-H, Math.min(H, yDist)) + H) / (8 * H);
+    } else if (minDist === dTop) {
+      // Top face: v ∈ [0.25, 0.5), r: H → -H
+      v = (3 * H - Math.max(-H, Math.min(H, rDist))) / (8 * H);
+    } else if (minDist === dInner) {
+      // Inner face: v ∈ [0.5, 0.75), y: H → -H
+      v = (5 * H - Math.max(-H, Math.min(H, yDist))) / (8 * H);
+    } else {
+      // Bottom face: v ∈ [0.75, 1.0), r: -H → H
+      v = (Math.max(-H, Math.min(H, rDist)) + 7 * H) / (8 * H);
+    }
+
+    return { u, v };
   }
 
   private tryShoot(player: PlayerState) {
