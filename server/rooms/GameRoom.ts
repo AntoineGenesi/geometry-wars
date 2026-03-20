@@ -2386,12 +2386,14 @@ export class GameRoom extends Room<GameState> {
     this.claustroZoneCenterZ = claustroCenter.z;
     this.claustroWorldRadiusBase = bsRadius * 2.0; // at UV radius 0.5 → 2x bsRadius → covers entire surface
 
-    // ── Portals: spawn 30s after game start in PvP/PvPvE; also triggered on half-health ──
+    // ── Portals: spawn 30s after game start in PvP/PvPvE/KotH; also triggered on half-health ──
     this._clearPortalTimers();
     this._portalCooldowns.clear();
     this._portalsTriggeredThisGame = false;
     this.state.portalsActive = false;
-    const isPvpForPortals = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
+    // s44r33-02: include 'king' (KotH) — portals are a core mechanic in KotH
+    const isPvpForPortals = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve'
+      || this.state.gameMode === 'king';
     if (isPvpForPortals) {
       // Guarantee portals appear within 30 seconds regardless of combat state.
       // Half-health trigger may fire sooner and will cancel this timer.
@@ -6181,8 +6183,10 @@ export class GameRoom extends Room<GameState> {
   private _checkHalfHealthPortalTrigger(
     player: { health: number; maxHealth: number; surfaceU: number; surfaceV: number; name: string },
   ): void {
-    const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
-    if (!isPvpOrPvpve) return;
+    // s44r33-02: include 'king' (KotH) alongside pvp/pvpve
+    const isPortalMode = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve'
+      || this.state.gameMode === 'king';
+    if (!isPortalMode) return;
     if (this._portalsTriggeredThisGame) return;
     if (player.health > player.maxHealth * 0.5) return;
 
