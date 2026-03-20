@@ -528,6 +528,16 @@ export class EnemyInstanceManager {
         batch.instancedMesh.setMatrixAt(highIndex, enemy.mesh.matrixWorld);
         batch.activeCount++;
 
+        // RC18 DEBUG: detect zero-scale or zero-position matrices
+        if (this._hwmRevalidateCounter === 0) { // once per second
+          const e = enemy.mesh.matrixWorld.elements;
+          const sx = Math.sqrt(e[0]*e[0] + e[1]*e[1] + e[2]*e[2]);
+          const pos = Math.sqrt(e[12]*e[12] + e[13]*e[13] + e[14]*e[14]);
+          if (sx < 0.001 || pos < 0.001) {
+            console.warn(`[RC18] Enemy ${enemy.constructor.name} idx=${highIndex} has zero-scale(${sx.toFixed(4)}) or zero-pos(${pos.toFixed(4)})`, enemy.mesh.position, enemy.mesh.scale);
+          }
+        }
+
         // If enemy was previously in a LOD batch, remove it
         if (this.enemyLODPlacement.has(enemy)) {
           this.removeLODPlacement(enemy);
