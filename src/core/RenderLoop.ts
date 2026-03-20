@@ -359,12 +359,10 @@ export class RenderLoop {
         (depthOpacity - FRONT_BLEND_LOW) / (FRONT_BLEND_HIGH - FRONT_BLEND_LOW)
       ));
       const visibilityFloor = SURFACE_DIM_OPACITY + frontBlend * (FRONT_SIDE_FLOOR - SURFACE_DIM_OPACITY);
-      // Cap floor by surfaceVis: UV dimming takes precedence over depth-occlusion floor.
-      // Near-side + near UV (surfaceVis=1.0): floor stays 0.70 — front-side enemies stay bright.
-      // Front-side + far UV (surfaceVis=0.25): floor capped at 0.25 — far-away enemies stay dim.
-      // This prevents stale/high depthOpacity from making far-side enemies too bright.
-      const effectiveFloor = Math.min(visibilityFloor, Math.max(surfaceVis, SURFACE_DIM_OPACITY));
-      visibility = Math.max(visibility, effectiveFloor);
+      // s44r33-01 reverted: The effectiveFloor cap made far-side enemies invisible by capping
+      // the floor at SURFACE_DIM_OPACITY (0.40) which compounds with Phase 1 culling (0.3×)
+      // to produce invisible enemies. v17.0 worked without this cap. Reverting to v17.0 behavior.
+      visibility = Math.max(visibility, visibilityFloor);
 
       // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
       // are both bypassed for tunnels, so enemies MUST be fully visible.

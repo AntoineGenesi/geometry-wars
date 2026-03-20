@@ -7558,11 +7558,8 @@ async function main() {
       // enemies remain visible against the dark tunnel background at wave 4+.
       const dimFloor = _isSphereTunnel ? NET_SPHERE_TUNNEL_DIM_OPC : NET_SURFACE_DIM_OPC;
       const netVisibilityFloor = dimFloor + netFrontBlend * (NET_FRONT_SIDE_FLOOR - dimFloor);
-      // s44r33-01: Cap floor by surfaceVis (SP parity — see RenderLoop.ts).
-      // UV dimming takes precedence over depth-occlusion floor to prevent far-side enemies
-      // from being raised to 0.70 when depthOcclusion returns stale/high values.
-      const netEffectiveFloor = Math.min(netVisibilityFloor, Math.max(surfaceVis, dimFloor));
-      vis = Math.max(vis, netEffectiveFloor);
+      // s44r33-01 reverted: effectiveFloor cap caused invisible enemies. v17.0 worked without it.
+      vis = Math.max(vis, netVisibilityFloor);
       // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
       // are both bypassed, so enemies MUST be fully visible. This catches any edge case where
       // a future code path or EMA state leaks could inadvertently dim tunnel enemies.
