@@ -49,10 +49,11 @@ const SURFACE_NEAR_UV = 0.15;        // midpoint of hysteresis band (kept for re
 const SURFACE_NEAR_UV_ENTER = 0.17;  // start dimming when uvDist exceeds this (from bright)
 const SURFACE_NEAR_UV_EXIT  = 0.13;  // stop dimming when uvDist drops below this (from dimmed)
 const SURFACE_FAR_UV  = 0.45;    // fully dim beyond 45% of surface
-const SURFACE_DIM_OPACITY = 0.25; // minimum opacity for far-away/behind-surface enemies.
+const SURFACE_DIM_OPACITY = 0.40; // minimum opacity for far-away/behind-surface enemies.
 // s44r22-01: lowered from 0.40→0.08 (double-dimming fixed in s44r12-03, 0.40 was too visible through surfaces).
-// s44r25-02: raised 0.08→0.15. s44r26-01: raised 0.15→0.25.
-// 0.15 was still perceptually invisible on sphere-tunnel dark background at 90+ entities (user confirmed).
+// s44r25-02: raised 0.08→0.15. s44r26-01: raised 0.15→0.25. s44r33-01: raised 0.25→0.40.
+// 0.25 was still invisible after s44r33-01 capped depth floor by UV dimming (user confirmed).
+// With DoubleSide+depthTest:false (RC17), enemies render through surface — need higher floor to be visible.
 // 0.25 provides visible enemies without approaching the too-bright 0.40 level.
 
 /**

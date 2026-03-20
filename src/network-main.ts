@@ -7415,9 +7415,9 @@ async function main() {
     // for enemies on the far side, leaving them fully bright without UV-distance clamping.
     const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
     const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
-    const NET_SURFACE_DIM_OPC  = 0.25;   // minimum opacity for far-away/behind-surface enemies.
-    // s44r22-01: lowered from 0.40→0.08. s44r25-02: raised 0.08→0.15 (parity with RenderLoop.ts SURFACE_DIM_OPACITY).
-    // s44r26-01: raised 0.15→0.25 (parity with RenderLoop.ts). Accidentally reverted by 7c86d822.
+    const NET_SURFACE_DIM_OPC  = 0.40;   // minimum opacity for far-away/behind-surface enemies.
+    // s44r22-01: lowered from 0.40→0.08. s44r25-02: raised 0.08→0.15. s44r26-01: raised 0.15→0.25.
+    // s44r33-01: raised 0.25→0.40. 0.25 invisible after depth floor cap fix + DoubleSide rendering.
     // s44r27-02: restored to 0.25. 0.15 was perceptually invisible on sphere-tunnel dark backgrounds.
     // Sphere-tunnel uses a higher floor (NET_SPHERE_TUNNEL_DIM_OPC) — see below.
     const NET_SPHERE_TUNNEL_DIM_OPC = 0.35; // s44r27-02: sphere-tunnel needs higher floor than other maps.
