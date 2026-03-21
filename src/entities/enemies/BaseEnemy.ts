@@ -50,6 +50,11 @@ export abstract class BaseEnemy extends Entity {
    */
   isGhostForPlayer: boolean = false;
 
+  /** Slow/stun movement factor. 1.0 = full speed, 0.0 = complete stun. */
+  slowFactor: number = 1.0;
+  /** Seconds remaining on the current slow/stun effect. */
+  slowTimer: number = 0;
+
   /**
    * Surface speed normalization factor. Multiplied into ALL UV movement
    * automatically by the base update() method. Ensures consistent
@@ -367,6 +372,21 @@ export abstract class BaseEnemy extends Entity {
     this._knockbackV += impulseV;
   }
 
+  /**
+   * Apply a slow or stun to this enemy. Uses the strongest active effect
+   * (lowest slowFactor). Duration is refreshed if the incoming effect is at
+   * least as strong as the current one.
+   *
+   * @param factor - Movement speed multiplier: 0 = full stun, 0.7 = 30% slow
+   * @param duration - Seconds the effect lasts
+   */
+  applySlowEffect(factor: number, duration: number): void {
+    if (factor <= this.slowFactor) {
+      this.slowFactor = factor;
+      this.slowTimer = duration;
+    }
+  }
+
   /** Set player world-space position (used by mesh-walker-mode enemies). */
   setPlayerWorldPosition(worldPos: THREE.Vector3): void {
     this._playerWorldPos.copy(worldPos);
@@ -389,6 +409,13 @@ export abstract class BaseEnemy extends Entity {
   update(dt: number): void {
     if (!this.alive) return;
 
+    // Tick slow/stun timer and compute effective delta time
+    if (this.slowTimer > 0) {
+      this.slowTimer = Math.max(0, this.slowTimer - dt);
+      if (this.slowTimer === 0) this.slowFactor = 1.0;
+    }
+    const effectiveDt = dt * this.slowFactor;
+
     if (this.walker) {
       // ===== MESH WALKER MODE =====
       profiler.begin('enemy_walker_mode');
@@ -396,12 +423,12 @@ export abstract class BaseEnemy extends Entity {
         console.log(`[Enemy ${this.constructor.name}] Entering walker mode, walker exists:`, !!this.walker);
       }
       // Enemy computes world-space velocity; walker handles surface-constrained movement.
-      const velocity = this.computeMovementDirection(dt, this._playerWorldPos);
+      const velocity = this.computeMovementDirection(effectiveDt, this._playerWorldPos);
       if (velocity && velocity.lengthSq() > 0.0001) {
         const speed = velocity.length();
         this.walker.speed = speed;
         _tempMoveDir.copy(velocity).multiplyScalar(1 / speed); // normalize without alloc
-        this.walker.move(_tempMoveDir, dt);
+        this.walker.move(_tempMoveDir, effectiveDt);
       }
 
       // Sync world position from walker
@@ -445,7 +472,7 @@ export abstract class BaseEnemy extends Entity {
       }
 
       profiler.begin('enemy_uv_behavior');
-      this.updateBehavior(dt, this.playerU, this.playerV);
+      this.updateBehavior(effectiveDt, this.playerU, this.playerV);
       profiler.end('enemy_uv_behavior');
 
       // Compute the raw UV delta the subclass produced

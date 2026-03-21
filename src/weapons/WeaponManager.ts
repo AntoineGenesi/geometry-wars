@@ -106,6 +106,8 @@ export interface WeaponCallbacks {
   getEnemies: () => { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean; maxHealth?: number; health?: number }[];
   onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => void;
   onEnemyPull?: (index: number, pullStrength: number, pullCenter: THREE.Vector3) => void;
+  /** Called to slow or stun an enemy. factor=0 = complete stun, factor=0.7 = 30% slow. */
+  onEnemySlow?: (index: number, factor: number, duration: number) => void;
   spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
   /** Called when a projectile detonates (homing, mortar, etc.) for weapon-specific VFX */
   onProjectileExplosion?: (position: THREE.Vector3, weaponType: WeaponType) => void;
@@ -191,6 +193,9 @@ export class WeaponManager {
   // AR rapid-fire sub-branch tracking
   private arShotCounter: number = 0;           // for AR_8 railgun every 10th shot
   private arInfinityBurstRemaining: number = 0; // for AR_10 unlimited burst on kill
+
+  // Laser ramp-up progress [0.0 = cold start, 1.0 = full power]
+  private laserRampProgress: number = 0;
 
   // Pending delayed shots: used for piercing double/triple tap, mortar carpet bomb, chain blast secondary
   private pendingShots: Array<{
@@ -871,6 +876,23 @@ export class WeaponManager {
 
     // Update chain lightning effects
     this.chainLightning.update(dt);
+
+    // Laser ramp-up: accumulate while laser is active, reset to 0 when not firing
+    {
+      const laserActive = this.activeEffects.some(e => e.type === 'laser');
+      if (laserActive) {
+        const laserNodes = this.activeUpgradeNodes(WeaponType.LaserBeam);
+        if (laserNodes.has('laser_beam_a_3')) {
+          this.laserRampProgress = 1.0; // instant peak
+        } else {
+          const rampTime = laserNodes.has('laser_beam_a_2') ? 0.6 :
+                           laserNodes.has('laser_beam_a_1') ? 1.05 : 1.5;
+          this.laserRampProgress = Math.min(1.0, this.laserRampProgress + dt / rampTime);
+        }
+      } else {
+        this.laserRampProgress = 0;
+      }
+    }
 
     // Update projectiles
     // Clear per-frame missile deduplication set before processing this frame's projectiles
@@ -1617,9 +1639,12 @@ export class WeaponManager {
       }
     }
 
-    // b_4 = stun: TODO — no slow/stun system exists yet. Stub for future implementation.
-    // When a slow system is added: apply 30% speed reduction for 1s to all chain targets.
-    // if (chainNodes.has('chain_lightning_b_4')) { applyStun(chainTargets, 0.3, 1.0); }
+    // b_4 = stun bolt: slow chain targets 30% for 1s
+    if (chainNodes.has('chain_lightning_b_4') && this.callbacks?.onEnemySlow) {
+      for (const target of chainTargets) {
+        this.callbacks.onEnemySlow(target.index, 0.7, 1.0);
+      }
+    }
   }
 
   private fireHoming(origin: THREE.Vector3, direction: THREE.Vector3): void {
@@ -2331,9 +2356,17 @@ export class WeaponManager {
             this.spawnGasCloud(proj.position.clone());
           }
 
-          // b_5 = nova burst stun: TODO — no slow system yet
-          // When slow system added: apply 30% speed reduction for 0.5s to enemies in explosion radius.
-          // if (homingNodes.has('homing_b_5')) { applyStun(nearbyEnemies, 0.3, 0.5); }
+          // b_5 = nova burst stun: full stun for 0.5s to enemies in nova radius
+          if (homingNodes.has('homing_b_5') && this.callbacks?.onEnemySlow) {
+            const stunRadius = 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult;
+            const allEnemies = this.callbacks.getEnemies();
+            for (const e of allEnemies) {
+              if (!e.alive) continue;
+              if (e.position.distanceTo(proj.position) < stunRadius) {
+                this.callbacks.onEnemySlow(e.index, 0.0, 0.5);
+              }
+            }
+          }
 
           this.removeProjectile(index);
           return;
@@ -2547,7 +2580,9 @@ export class WeaponManager {
               const laserMasteryMult = this.masteryMultiplierFn?.(WeaponType.LaserBeam) ?? 1.0;
               const laserSessionMult = this.getSessionDamageMultiplier(WeaponType.LaserBeam);
               const laserUpgradeMult = this.getUpgradeDamageMult(WeaponType.LaserBeam);
-              this.callbacks.onEnemyDamage(enemy.index, 2 * dt * laserMasteryMult * laserSessionMult * laserUpgradeMult, WeaponType.LaserBeam);
+              // Ramp factor: starts at 25% damage, reaches 100% at full ramp
+              const rampFactor = 0.25 + 0.75 * this.laserRampProgress;
+              this.callbacks.onEnemyDamage(enemy.index, 2 * dt * rampFactor * laserMasteryMult * laserSessionMult * laserUpgradeMult, WeaponType.LaserBeam);
             }
           }
         }
@@ -2663,8 +2698,19 @@ export class WeaponManager {
             }
           }
 
-          // b_5 stun: TODO — no slow system yet
-          // When slow system added: apply 30% speed reduction for 0.5s to enemies in radius.
+          // b_5 = surge overload: stun enemies in the tesla field for 0.3s each frame
+          if (teslaNodes.has('tesla_coil_b_5') && this.callbacks?.onEnemySlow) {
+            for (const enemy of enemies) {
+              if (!enemy.alive) continue;
+              const onSurfaceDist = effect.position.distanceTo(enemy.position);
+              const visualDist = enemy.meshPosition
+                ? effect.position.distanceTo(enemy.meshPosition)
+                : onSurfaceDist;
+              if (Math.min(onSurfaceDist, visualDist) < radius) {
+                this.callbacks.onEnemySlow(enemy.index, 0.0, 0.3);
+              }
+            }
+          }
 
           if (effect.mesh) {
             effect.mesh.rotation.x += dt;
