@@ -12,6 +12,7 @@ import { SphereWithTunnelSurface, SphereWithTunnelConfig } from './SphereWithTun
 import { CubeRingSurface, CubeRingConfig } from './CubeRingSurface'
 import { CubeWithTunnelSurface, CubeWithTunnelConfig } from './CubeWithTunnelSurface'
 import { LoadedMeshSurface, LoadedMeshConfig } from './LoadedMeshSurface'
+import { FlatArenaSurface } from './FlatArenaSurface'
 import { loadMeshFromURL, loadMeshFromFile } from '../loaders/MeshLoader'
 
 export type SurfaceType =
@@ -27,6 +28,7 @@ export type SurfaceType =
   | 'sphere-tunnel'
   | 'cube-ring'
   | 'cube-tunnel'
+  | 'flat-arena'
   | 'custom'
 
 export interface CustomMeshConfig extends LoadedMeshConfig {
@@ -49,6 +51,7 @@ export type SurfaceConfigMap = {
   'sphere-tunnel': SphereWithTunnelConfig
   'cube-ring': CubeRingConfig
   'cube-tunnel': CubeWithTunnelConfig
+  'flat-arena': SurfaceConfig
   custom: CustomMeshConfig
 }
 
@@ -82,6 +85,8 @@ export class SurfaceFactory {
         return new CubeRingSurface(config as CubeRingConfig)
       case 'cube-tunnel':
         return new CubeWithTunnelSurface(config as CubeWithTunnelConfig)
+      case 'flat-arena':
+        return new FlatArenaSurface(config as SurfaceConfig)
       default:
         throw new Error(`Unknown surface type: ${type}`)
     }
