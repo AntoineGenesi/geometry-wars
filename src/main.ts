@@ -1290,14 +1290,22 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       const distSq = dx * dx + dz * dz;
       if (distSq < 0.0001) return;
       const dist = Math.sqrt(distSq);
-      const GRAVITY_PULL_FORCE = 0.8;
+      const GRAVITY_PULL_FORCE = 2.5;
+      // Tangential component for spiral orbit (perpendicular to pull vector)
+      const SPIRAL_FACTOR = 0.45;
+      const tx = -dz / dist;
+      const tz = dx / dist;
       enemy.applyKnockback(
-        (dx / dist) * GRAVITY_PULL_FORCE * strength,
-        (dz / dist) * GRAVITY_PULL_FORCE * strength,
+        (dx / dist) * GRAVITY_PULL_FORCE * strength + tx * SPIRAL_FACTOR * strength,
+        (dz / dist) * GRAVITY_PULL_FORCE * strength + tz * SPIRAL_FACTOR * strength,
       );
       // Visual: streaks from enemy toward pull center, colored to match the entity
       const enemyColor = enemy.cachedMaterials?.[0]?.color;
       particles.gravityPullTrail(enemy.position, center, enemyColor);
+      // Extra particle burst when enemy is close to center (dramatic close-in suction)
+      if (strength > 0.7) {
+        particles.gravityPullTrail(enemy.position, center, enemyColor);
+      }
     },
     spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {
       const { u, v } = surface.worldToSurface(origin);

@@ -2745,7 +2745,7 @@ export class WeaponManager {
       if (dist < radius) {
         // Continuous in-flight pull uses 50% max strength (same as Black Hole per-frame pull).
         // On-impact detonation uses full 100% strength.
-        const baseStrength = 1 - dist / radius;
+        const baseStrength = Math.pow(1 - dist / radius, 0.5);
         const strength = continuousPull ? baseStrength * 0.5 : baseStrength;
         this.callbacks.onEnemyPull(enemy.index, strength, center);
         // Kinetic crush: deal instant damage when pulled (detonation only)
