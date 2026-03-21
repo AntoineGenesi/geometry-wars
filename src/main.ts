@@ -1030,7 +1030,24 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     upgradeNotification.showMasteryPointEarned();
   };
 
-  // Notify the player when a weapon upgrade node activates mid-match
+  // When a kill threshold is crossed, pause the game and present a build choice.
+  // TODO(07c): replace auto-confirm stub with real build-choice UI.
+  matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
+    isPaused = true;
+    ctx.state.isPaused = true;
+    game.pause();
+    console.log('[BuildChoice] paused — weapon:', weaponType, 'options:', availableNodeIds);
+    // Stub: auto-confirm the first available node until 07c wires the real UI.
+    const firstNode = availableNodeIds[0];
+    if (firstNode) {
+      matchUpgradeTracker.confirmChoice(firstNode, weaponType);
+    }
+    isPaused = false;
+    ctx.state.isPaused = false;
+    game.resume();
+  };
+
+  // Notify the player when a weapon upgrade node activates mid-match (after confirmChoice)
   matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
     upgradeNotification.show(nodeId, weaponType);
   };
