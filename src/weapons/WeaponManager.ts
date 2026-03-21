@@ -97,6 +97,8 @@ interface ActiveEffect {
   sweepDir?: number;
   /** For laser beam wide beam (b_4): wider hit radius */
   wideBeam?: boolean;
+  /** ar_5 Eternal Collapse: persists until all enemies absorbed, then AoE shockwave on expiry */
+  isEternalCollapse?: boolean;
 }
 
 /**
@@ -188,6 +190,10 @@ export class WeaponManager {
   // Spread cone alternation state (for spread_b_3)
   private spreadConeToggle = false;
 
+  // Piercing BR sub-branch state
+  private piercingShotCounter: number = 0;       // for piercing_br_5: every 5th shot auto-charged
+  private piercingChargeMultiplier: number = 1.0; // set to 5.0 before firing a charged piercing shot
+
   // AR rapid-fire sub-branch tracking
   private arShotCounter: number = 0;           // for AR_8 railgun every 10th shot
   private arInfinityBurstRemaining: number = 0; // for AR_10 unlimited burst on kill
@@ -204,6 +210,8 @@ export class WeaponManager {
     isChainBlast?: boolean;
     chainBlastRadius?: number;
     chainBlastDamage?: number;
+    // For piercing_br_4/br_5: fire a charged shot with 5× damage
+    isChargedShot?: boolean;
   }> = [];
 
   // Session pickup counters: uncapped, NOT reset by ammo depletion
@@ -323,6 +331,9 @@ export class WeaponManager {
         if (active.has('spread_b_2')) bonus += 0.10;  // +10% damage
         if (active.has('spread_b_3')) bonus += 0.20;  // +20% damage
         if (active.has('spread_bl_5')) bonus += 0.50; // +50% damage
+        // BR sub-branch: sniper spread — cumulative damage bonuses
+        if (active.has('spread_br_4')) bonus += 0.50; // Sniper spread: +50% damage per pellet
+        if (active.has('spread_br_5')) bonus += 0.30; // Railgun burst: +30% more (cumulative +80% with br_4)
         break;
       case WeaponType.ChainLightning:
         if (active.has('chain_lightning_b_1')) bonus += 0.25;
@@ -983,7 +994,10 @@ export class WeaponManager {
           this.applyAoeDamage(pending.origin, pending.chainBlastRadius ?? 1.5, pending.chainBlastDamage ?? 0);
           this.callbacks?.onProjectileExplosion?.(pending.origin.clone(), WeaponType.PlasmaMortar);
         } else if (pending.type === WeaponType.Piercing) {
+          if (pending.isChargedShot) this.piercingChargeMultiplier = 5.0; // BR charged bolt: 5× damage
           this.firePiercing(pending.origin, pending.direction, true); // isQueued=true: no further queuing
+        } else if (pending.type === WeaponType.Spread) {
+          this.fireSpread(pending.origin, pending.direction, pending.surfaceNormal, true); // isQueued=true
         } else if (pending.type === WeaponType.PlasmaMortar) {
           this.fireMortar(pending.origin, pending.direction);
         }
@@ -1008,7 +1022,8 @@ export class WeaponManager {
           this.projectileRoot.remove(effect.mesh);
         }
         // LEVEL 5 FINAL FORM — Black Hole Event Horizon: massive AoE explosion on expiry
-        if (effect.type === 'blackhole' && effect.isMasteryL5) {
+        // Also fires for ar_5 Eternal Collapse: shockwave when all enemies absorbed
+        if (effect.type === 'blackhole' && (effect.isMasteryL5 || effect.isEternalCollapse)) {
           this.applyAoeDamage(effect.position, 8.0, 150);
           this.callbacks?.onProjectileExplosion?.(effect.position.clone(), WeaponType.BlackHole);
         }
@@ -1336,7 +1351,7 @@ export class WeaponManager {
     }
   }
 
-  private fireSpread(origin: THREE.Vector3, direction: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
+  private fireSpread(origin: THREE.Vector3, direction: THREE.Vector3, surfaceNormal?: THREE.Vector3, isQueued = false): void {
     const config = WEAPON_CONFIGS[WeaponType.Spread];
     // LEVEL 5 FINAL FORM — Mega Fan: 9 pellets at 45° spread (vs normal 5 at 30°)
     const isL5 = this.isMasteryMaxLevel(WeaponType.Spread);
@@ -1358,7 +1373,9 @@ export class WeaponManager {
 
     // Cone width upgrades (branch B): b_3 alternates, b_1 tightens, b_2 widens
     let spreadAngle: number;
-    if (isL5) {
+    if (spreadNodes.has('spread_br_4') || spreadNodes.has('spread_br_5')) {
+      spreadAngle = Math.PI / 36; // BR sniper spread: ultra-tight 5° cone
+    } else if (isL5) {
       spreadAngle = Math.PI / 4; // L5 override
     } else if (spreadNodes.has('spread_b_3')) {
       // Adaptive cone: alternate tight/wide each shot
@@ -1407,6 +1424,20 @@ export class WeaponManager {
         proj.pierceCount = 0;
       }
     }
+
+    // br_5 = railgun burst: 4 rapid shots (1 immediate + 3 queued at 50ms intervals)
+    if (!isQueued && spreadNodes.has('spread_br_5')) {
+      for (let i = 1; i <= 3; i++) {
+        this.pendingShots.push({
+          delay: i * 0.05,
+          remaining: i * 0.05,
+          type: WeaponType.Spread,
+          origin: origin.clone(),
+          direction: direction.clone(),
+          surfaceNormal: surfaceNormal?.clone(),
+        });
+      }
+    }
   }
 
   private firePiercing(origin: THREE.Vector3, direction: THREE.Vector3, isQueued = false): void {
@@ -1419,6 +1450,30 @@ export class WeaponManager {
     // Beam length upgrades (branch A): +50%, +100%, +200%, +300%, +500% per node
     // a_4 = arc beam (secondary arc to a 2nd target); a_5 = wrap-eligible (doubled max length)
     const piercingNodes = this.activeUpgradeNodes(WeaponType.Piercing);
+
+    // br_4/br_5 = charged bolt: queue a 0.5s delayed mega-shot instead of firing immediately
+    // br_4 alone: every shot is charged (returns early after queuing)
+    // br_5 (requires br_4): every 5th shot is auto-charged, others fire normally
+    if (!isQueued) {
+      this.piercingShotCounter++;
+      const isAutoCharge = piercingNodes.has('piercing_br_5') && this.piercingShotCounter % 5 === 0;
+      const isAlwaysCharge = piercingNodes.has('piercing_br_4') && !piercingNodes.has('piercing_br_5');
+      if (isAlwaysCharge || isAutoCharge) {
+        this.pendingShots.push({
+          delay: 0.5,
+          remaining: 0.5,
+          type: WeaponType.Piercing,
+          origin: origin.clone(),
+          direction: direction.clone(),
+          isChargedShot: true,
+        });
+        if (isAlwaysCharge) return; // br_4 only: skip immediate fire
+      }
+    }
+
+    // Read and reset charge multiplier (set by pendingShots dispatch for isChargedShot)
+    const chargeMult = this.piercingChargeMultiplier;
+    this.piercingChargeMultiplier = 1.0;
     const lengthBonus =
       (piercingNodes.has('piercing_a_1') ? 0.50 : 0) +
       (piercingNodes.has('piercing_a_2') ? 1.00 : 0) +
@@ -1459,7 +1514,7 @@ export class WeaponManager {
             enemy.position, beamPoints[s], beamPoints[s + 1],
           );
           if (segDist < hitRadius) {
-            this.callbacks.onEnemyDamage(enemy.index, config.damage * stackMult * masteryMult * sessionMult, WeaponType.Piercing);
+            this.callbacks.onEnemyDamage(enemy.index, config.damage * stackMult * masteryMult * sessionMult * chargeMult, WeaponType.Piercing);
             // Record hit location for arc beam
             if (!primaryHitPos) {
               primaryHitPos = enemy.position.clone();
@@ -1487,7 +1542,7 @@ export class WeaponManager {
         }
         if (arcTarget) {
           // 50% damage for arc
-          this.callbacks.onEnemyDamage(arcTarget.index, config.damage * stackMult * masteryMult * sessionMult * 0.5, WeaponType.Piercing);
+          this.callbacks.onEnemyDamage(arcTarget.index, config.damage * stackMult * masteryMult * sessionMult * chargeMult * 0.5, WeaponType.Piercing);
         }
       }
     }
@@ -1510,6 +1565,19 @@ export class WeaponManager {
         this.pendingShots.push({ delay: 0.2, remaining: 0.2, type: WeaponType.Piercing, origin: origin.clone(), direction: direction.clone() });
       } else if (piercingNodes.has('piercing_bl_4')) {
         this.pendingShots.push({ delay: 0.1, remaining: 0.1, type: WeaponType.Piercing, origin: origin.clone(), direction: direction.clone() });
+      }
+
+      // ar_4 = twin beams: fire a 2nd parallel beam with slight perpendicular offset
+      // ar_5 = fan sweep: fire 3 beams in a 45° fan (-22.5°, 0°, +22.5°)
+      const localUp = origin.clone().normalize();
+      if (piercingNodes.has('piercing_ar_5')) {
+        const left  = direction.clone().applyAxisAngle(localUp, -Math.PI / 8).normalize();
+        const right = direction.clone().applyAxisAngle(localUp,  Math.PI / 8).normalize();
+        this.firePiercing(origin, left,  true); // isQueued=true: no further multi-beam recursion
+        this.firePiercing(origin, right, true);
+      } else if (piercingNodes.has('piercing_ar_4')) {
+        const perp = new THREE.Vector3().crossVectors(direction, localUp).normalize().multiplyScalar(0.3);
+        this.firePiercing(origin.clone().add(perp), direction, true);
       }
     }
   }
@@ -1885,11 +1953,16 @@ export class WeaponManager {
       (bhNodes.has('black_hole_a_1') ? 0.30 : 0) +
       (bhNodes.has('black_hole_a_2') ? 0.60 : 0) +
       (bhNodes.has('black_hole_a_3') ? 1.00 : 0) +
-      (bhNodes.has('black_hole_al_5') ? 1.50 : 0); // doomsday extra duration
+      (bhNodes.has('black_hole_al_5') ? 1.50 : 0) + // doomsday extra duration
+      (bhNodes.has('black_hole_ar_4') ? 2.00 : 0);  // Mega void: +200% duration
 
     // LEVEL 5 FINAL FORM — Event Horizon: 50% longer duration, stronger pull, AoE explosion on expiry
     const isL5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
-    const duration = (isL5 ? 4.5 : 3.0) * (1.0 + bhDurationBonus);
+    // ar_5 = Eternal Collapse: persists until all enemies absorbed (or 999s as upper bound)
+    const isEternalCollapse = bhNodes.has('black_hole_ar_5');
+    const duration = isEternalCollapse
+      ? 999.0
+      : (isL5 ? 4.5 : 3.0) * (1.0 + bhDurationBonus);
 
     // Helper to spawn one black hole at a position
     const spawnOneBlackHole = (pos: THREE.Vector3): void => {
@@ -1908,6 +1981,7 @@ export class WeaponManager {
         elapsed: 0,
         mesh: bhMesh,
         isMasteryL5: isL5,
+        isEternalCollapse,
       });
     };
 
@@ -2393,6 +2467,19 @@ export class WeaponManager {
             proj.pierceCount++;
             return; // Done with this enemy; continue checking others for this projectile
           }
+          // ar_4/ar_5 = explosive pellets: AoE splash on impact
+          if (proj.type === WeaponType.Spread) {
+            const spreadHitNodes = this.activeUpgradeNodes(WeaponType.Spread);
+            if (spreadHitNodes.has('spread_ar_5')) {
+              // Nova burst: larger shockwave per pellet
+              this.applyAoeDamage(proj.position, 2.5, proj.damage * 1.0);
+              this.callbacks?.onProjectileExplosion?.(proj.position.clone(), WeaponType.Spread);
+            } else if (spreadHitNodes.has('spread_ar_4')) {
+              // Explosive pellets: small AoE splash on impact
+              this.applyAoeDamage(proj.position, 1.5, proj.damage * 0.6);
+              this.callbacks?.onProjectileExplosion?.(proj.position.clone(), WeaponType.Spread);
+            }
+          }
           this.removeProjectile(index);
           return;
         }
@@ -2572,21 +2659,32 @@ export class WeaponManager {
             (bhActiveNodes.has('black_hole_b_2') ? 0.60 : 0) +
             (bhActiveNodes.has('black_hole_b_3') ? 1.00 : 0) +
             (bhActiveNodes.has('black_hole_br_5') ? 1.50 : 0); // Singularity vortex: +150% radius
-          const radius = (3 + progress * 2) * (1.0 + bhPullBonus);
+          // ar_4/ar_5 = mega void / eternal collapse: 40% larger pull radius
+          const arSizeMult = bhActiveNodes.has('black_hole_ar_4') || bhActiveNodes.has('black_hole_ar_5') ? 1.4 : 1.0;
+          // For eternal collapse, clamp progress to 1.0 so size stays at max
+          const effectiveProgress = effect.isEternalCollapse ? 1.0 : progress;
+          const radius = (3 + effectiveProgress * 2) * (1.0 + bhPullBonus) * arSizeMult;
 
           // br_4/br_5 = crush damage: enemies trapped in the black hole take damage/sec
           const bhTrapDPS =
             bhActiveNodes.has('black_hole_br_5') ? 10 :
             bhActiveNodes.has('black_hole_br_4') ? 5 : 0;
 
+          // bl_4 = mass capture: hold up to 12 enemies simultaneously
+          const maxCaptured = bhActiveNodes.has('black_hole_bl_4') || bhActiveNodes.has('black_hole_bl_5')
+            ? 12 : Infinity;
+          let capturedCount = 0;
+
           for (const enemy of enemies) {
             if (!enemy.alive) continue;
+            if (capturedCount >= maxCaptured) break;
 
             // s44r6-04: Use min of on-surface and visual distance (Mobius normal divergence)
             const onSurfaceDist = effect.position.distanceTo(enemy.position);
             const visualDist = enemy.meshPosition ? effect.position.distanceTo(enemy.meshPosition) : onSurfaceDist;
             const dist = Math.min(onSurfaceDist, visualDist);
             if (dist < radius) {
+              capturedCount++;
               // Instant kill in center
               if (dist < 0.5) {
                 this.callbacks.onEnemyDamage(enemy.index, 999, WeaponType.BlackHole);
@@ -2602,9 +2700,35 @@ export class WeaponManager {
             }
           }
 
+          // bl_5 = event gravity: pulled enemies close together take collision damage (2 DPS)
+          if (bhActiveNodes.has('black_hole_bl_5')) {
+            const capturedEnemies = enemies.filter(
+              e => e.alive && effect.position.distanceTo(e.position) < radius
+            );
+            for (let i = 0; i < capturedEnemies.length; i++) {
+              for (let j = i + 1; j < capturedEnemies.length; j++) {
+                const colDist = capturedEnemies[i].position.distanceTo(capturedEnemies[j].position);
+                if (colDist < 1.0) {
+                  this.callbacks.onEnemyDamage(capturedEnemies[i].index, 2 * dt, WeaponType.BlackHole);
+                  this.callbacks.onEnemyDamage(capturedEnemies[j].index, 2 * dt, WeaponType.BlackHole);
+                }
+              }
+            }
+          }
+
+          // ar_5 = eternal collapse: expire when no enemies remain in pull range (min 2s active)
+          if (effect.isEternalCollapse && effect.elapsed > 2.0) {
+            const aliveInRange = enemies.some(
+              e => e.alive && effect.position.distanceTo(e.position) < radius
+            );
+            if (!aliveInRange) {
+              effect.duration = effect.elapsed; // trigger expiry on next frame
+            }
+          }
+
           // Animate mesh
           if (effect.mesh) {
-            effect.mesh.scale.setScalar(1 + progress * 0.5);
+            effect.mesh.scale.setScalar(1 + effectiveProgress * 0.5);
             effect.mesh.rotation.z += dt * 2;
           }
         }

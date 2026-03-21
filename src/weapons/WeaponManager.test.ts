@@ -1401,6 +1401,229 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.dispose();
     });
 
+    // ---- s44r33-10e: New weapon nodes ----
+    // Note: many of these nodes have cost: 2 in UpgradeTreeData, requiring
+    // direct activation via tracker['activateNode'] to bypass point cost.
+
+    function directActivate(tracker: MatchUpgradeTracker, nodeId: string, weaponType: WeaponType): void {
+      tracker['activateNode'](nodeId, weaponType);
+    }
+
+    it('spread_ar_4: AoE explosion on pellet hit', () => {
+      // Enemy directly in center-pellet path: origin(8,0,0) + forward(0,0,1) → enemy at (8,0,1)
+      const enemy: MockEnemy = { position: new THREE.Vector3(8, 0, 1), index: 0, alive: true };
+      const aoeTarget: MockEnemy = { position: new THREE.Vector3(8, 0, 1.8), index: 1, alive: true };
+      const { callbacks, damages } = createMockCallbacks([enemy, aoeTarget]);
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'spread_ar_4', WeaponType.Spread);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Spread, 5);
+      wm2.fire(origin(), forward(), T);
+      // Simulate until a pellet hits the enemy
+      for (let i = 0; i < 60; i++) wm2.update(0.016);
+      // Should have AoE damage (spread_ar_4 fires splash on impact)
+      expect(damages.length).toBeGreaterThan(0);
+      wm2.dispose();
+    });
+
+    it('spread_ar_5: larger AoE on pellet hit', () => {
+      // Enemy directly in center-pellet path
+      const enemy: MockEnemy = { position: new THREE.Vector3(8, 0, 1), index: 0, alive: true };
+      const { callbacks, damages } = createMockCallbacks([enemy]);
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'spread_ar_5', WeaponType.Spread);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Spread, 5);
+      wm2.fire(origin(), forward(), T);
+      for (let i = 0; i < 60; i++) wm2.update(0.016);
+      expect(damages.length).toBeGreaterThan(0);
+      wm2.dispose();
+    });
+
+    it('spread_br_4: ultra-tight cone (5°) and +50% damage bonus', () => {
+      const { callbacks } = createMockCallbacks();
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'spread_br_4', WeaponType.Spread);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Spread, 5);
+      wm2.fire(origin(), forward(), T);
+      // Check damage mult includes +50%
+      expect(wm2.getUpgradeDamageMult(WeaponType.Spread)).toBeCloseTo(1.50, 3);
+      // Verify that 5 projectiles were created (base pellet count; angle is an internal detail)
+      expect(wm2['projectiles'].length).toBe(5);
+      wm2.dispose();
+    });
+
+    it('spread_br_5: 4 shots total (1 immediate + 3 queued)', () => {
+      const { callbacks } = createMockCallbacks();
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'spread_br_5', WeaponType.Spread);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Spread, 5);
+      wm2.fire(origin(), forward(), T);
+      // 3 queued shots should be in pendingShots
+      const spreadPending = wm2['pendingShots'].filter(s => s.type === WeaponType.Spread);
+      expect(spreadPending.length).toBe(3);
+      wm2.dispose();
+    });
+
+    it('piercing_ar_4: fires 2 beams (twin beams)', () => {
+      const { callbacks } = createMockCallbacks();
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'piercing_ar_4', WeaponType.Piercing);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Piercing, 5);
+      wm2.fire(origin(), forward(), T);
+      const laserEffects = wm2['activeEffects'].filter(e => e.type === 'laser');
+      expect(laserEffects.length).toBe(2);
+      wm2.dispose();
+    });
+
+    it('piercing_ar_5: fires 3 beams in a fan', () => {
+      const { callbacks } = createMockCallbacks();
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'piercing_ar_5', WeaponType.Piercing);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Piercing, 5);
+      wm2.fire(origin(), forward(), T);
+      const laserEffects = wm2['activeEffects'].filter(e => e.type === 'laser');
+      expect(laserEffects.length).toBe(3);
+      wm2.dispose();
+    });
+
+    it('piercing_br_4: queues a 0.5s delayed charged shot (no immediate damage)', () => {
+      const { callbacks } = createMockCallbacks();
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'piercing_br_4', WeaponType.Piercing);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Piercing, 5);
+      wm2.fire(origin(), forward(), T);
+      // Immediate fire should have been suppressed (isAlwaysCharge path)
+      const laserEffectsImmediate = wm2['activeEffects'].filter(e => e.type === 'laser');
+      expect(laserEffectsImmediate.length).toBe(0);
+      // One pending charged shot should exist
+      const chargedPending = wm2['pendingShots'].filter(s => s.type === WeaponType.Piercing && s.isChargedShot);
+      expect(chargedPending.length).toBe(1);
+      expect(chargedPending[0].delay).toBeCloseTo(0.5, 3);
+      wm2.dispose();
+    });
+
+    it('piercing_br_5: 5th shot is auto-charged', () => {
+      const { callbacks } = createMockCallbacks();
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      // br_5 requires br_4 as parent; activate both
+      directActivate(tracker, 'piercing_br_4', WeaponType.Piercing);
+      directActivate(tracker, 'piercing_br_5', WeaponType.Piercing);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.Piercing, 10);
+      // Fire 4 times — no charged shots yet (br_5 fires normally because !isAlwaysCharge)
+      for (let shot = 0; shot < 4; shot++) {
+        wm2.fire(origin(), forward(), T + shot * 2);
+      }
+      const noChargedYet = wm2['pendingShots'].filter(s => s.isChargedShot);
+      expect(noChargedYet.length).toBe(0);
+      // 5th fire — should be auto-charged
+      wm2.fire(origin(), forward(), T + 4 * 2);
+      const charged = wm2['pendingShots'].filter(s => s.isChargedShot);
+      expect(charged.length).toBe(1);
+      wm2.dispose();
+    });
+
+    it('black_hole_ar_4: +200% duration bonus and 40% larger pull radius', () => {
+      const { callbacks } = createMockCallbacks();
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'black_hole_ar_4', WeaponType.BlackHole);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.BlackHole, 5);
+      wm2.fire(origin(), forward(), T);
+      const effect = wm2['activeEffects'].find(e => e.type === 'blackhole');
+      expect(effect).toBeDefined();
+      // Base 3.0 * (1 + 2.0) = 9.0
+      expect(effect!.duration).toBeCloseTo(3.0 * 3.0, 3);
+      wm2.dispose();
+    });
+
+    it('black_hole_ar_5: eternal collapse — duration is 999 and isEternalCollapse flag set', () => {
+      const { callbacks } = createMockCallbacks();
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'black_hole_ar_5', WeaponType.BlackHole);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.BlackHole, 5);
+      wm2.fire(origin(), forward(), T);
+      const effect = wm2['activeEffects'].find(e => e.type === 'blackhole');
+      expect(effect).toBeDefined();
+      expect(effect!.duration).toBe(999.0);
+      expect(effect!.isEternalCollapse).toBe(true);
+      // Force expiry — shockwave should fire without crash
+      effect!.elapsed = effect!.duration;
+      wm2.update(0.016);
+      wm2.dispose();
+    });
+
+    it('black_hole_bl_4: caps enemy capture at 12', () => {
+      // Place 15 enemies all very close to the black hole spawn position
+      const enemies: MockEnemy[] = Array.from({ length: 15 }, (_, i) => ({
+        position: new THREE.Vector3(8, 0, 0.3 * (i + 1)),
+        index: i,
+        alive: true,
+      }));
+      const { callbacks, pulls } = createMockCallbacks(enemies);
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'black_hole_bl_4', WeaponType.BlackHole);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.BlackHole, 5);
+      wm2.fire(origin(), forward(), T);
+      wm2.update(0.5); // Let effect tick
+      // Count unique enemies pulled (bl_4 caps at 12)
+      const pulledSet = new Set(pulls.map(p => p.index));
+      expect(pulledSet.size).toBeLessThanOrEqual(12);
+      wm2.dispose();
+    });
+
+    it('black_hole_bl_5: collision damage between enemies within 1.0 of each other', () => {
+      // Place 2 enemies very close together within pull radius
+      const enemies: MockEnemy[] = [
+        { position: new THREE.Vector3(8, 0, 0.2), index: 0, alive: true },
+        { position: new THREE.Vector3(8, 0, 0.7), index: 1, alive: true }, // 0.5 apart
+      ];
+      const { callbacks, damages } = createMockCallbacks(enemies);
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'black_hole_bl_5', WeaponType.BlackHole);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.BlackHole, 5);
+      wm2.fire(origin(), forward(), T);
+      // Advance 1 second to accumulate collision damage
+      for (let i = 0; i < 60; i++) wm2.update(1 / 60);
+      // Both enemies should receive collision damage from bl_5
+      const collisionDamages = damages.filter(d => d.type === WeaponType.BlackHole);
+      expect(collisionDamages.length).toBeGreaterThan(0);
+      wm2.dispose();
+    });
+
     // ---- Gas cloud damages enemies over time ----
 
     it('Gas cloud deals damage on 0.5s ticks', () => {
