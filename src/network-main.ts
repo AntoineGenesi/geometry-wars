@@ -60,6 +60,7 @@ import { MasteryStore } from './systems/MasteryStore';
 import { MasteryPointStore } from './systems/MasteryPointStore';
 import { MatchUpgradeTracker } from './systems/MatchUpgradeTracker';
 import { UpgradeNotification } from './ui/UpgradeNotification';
+import { BuildChoiceScreen } from './ui/BuildChoiceScreen';
 import { WeaponMasteryScreen } from './ui/WeaponMasteryScreen';
 import { MasteryProgressScreen } from './ui/MasteryProgressScreen';
 import { BuffManager, StackBuffType } from './buffs/BuffManager';
@@ -1216,9 +1217,30 @@ async function main() {
   const masteryPointStore = MasteryPointStore.load();
   let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
   const upgradeNotification = new UpgradeNotification();
-  matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
-    upgradeNotification.show(nodeId, weaponType);
-  };
+  const buildChoiceScreen = new BuildChoiceScreen();
+  // Local-only pause flag used while a build-choice card is shown.
+  // We do NOT touch isPaused (which would sync with the server) — only this client pauses.
+  let buildChoiceActive = false;
+
+  function wireBuildChoiceCallback(): void {
+    matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
+      buildChoiceActive = true;
+      game.pause();
+
+      const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
+      const killCount = matchUpgradeTracker.getKillCount(weaponType);
+
+      buildChoiceScreen.show(weaponType, availableNodeIds, activeIds, killCount, (chosenNodeId) => {
+        matchUpgradeTracker.confirmChoice(chosenNodeId, weaponType);
+        buildChoiceActive = false;
+        game.resume();
+      });
+    };
+    matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
+      upgradeNotification.show(nodeId, weaponType);
+    };
+  }
+  wireBuildChoiceCallback();
   localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
 
   // -- Buff system: server-authoritative collection + client visual effects (Phase D) --
@@ -2819,6 +2841,9 @@ async function main() {
       }
 
       if (!network.isConnected()) return;
+
+      // Don't allow pause while build-choice card is open (local-only pause, not server-sync'd)
+      if (buildChoiceActive) return;
 
       // During voting phase: ESC opens localMenuEl (z-index 3200, above VotingScreen)
       // instead of pausing the server. Pausing server during voting is wrong — the
@@ -5324,9 +5349,7 @@ async function main() {
         analyticsPanel.hide();
         // Reset per-match upgrade tracker for the new round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
-        matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
-          upgradeNotification.show(nodeId, weaponType);
-        };
+        wireBuildChoiceCallback();
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
@@ -5349,9 +5372,7 @@ async function main() {
         // Reset entities (safe to call even when empty — clears any stale state).
         // Reset per-match upgrade tracker for the first round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
-        matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
-          upgradeNotification.show(nodeId, weaponType);
-        };
+        wireBuildChoiceCallback();
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
         resetGameEntities();
