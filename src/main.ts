@@ -55,6 +55,7 @@ import { KillLog } from './ui/KillLog';
 import { TotalKillCounter } from './ui/TotalKillCounter';
 import { WeaponHUD } from './ui/WeaponHUD';
 import { UpgradeNotification } from './ui/UpgradeNotification';
+import { BuildChoiceScreen } from './ui/BuildChoiceScreen';
 import { MeshSurface } from './surfaces/MeshSurface';
 import { MeshWalker } from './movement/MeshWalker';
 import { PlayerLevel, LevelUpNotification } from './core/PlayerLevel';
@@ -949,6 +950,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   game.scene.add(playerLevel.auraRing);
   const levelUpNotification = new LevelUpNotification();
   const upgradeNotification = new UpgradeNotification();
+  const buildChoiceScreen = new BuildChoiceScreen();
 
   // -- Buff system (stackable Risk-of-Rain-style buffs) --
   const buffManager = new BuffManager();
@@ -1030,21 +1032,21 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     upgradeNotification.showMasteryPointEarned();
   };
 
-  // When a kill threshold is crossed, pause the game and present a build choice.
-  // TODO(07c): replace auto-confirm stub with real build-choice UI.
+  // When a kill threshold is crossed, pause the game and show the build-choice UI.
   matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
     isPaused = true;
     ctx.state.isPaused = true;
     game.pause();
-    console.log('[BuildChoice] paused — weapon:', weaponType, 'options:', availableNodeIds);
-    // Stub: auto-confirm the first available node until 07c wires the real UI.
-    const firstNode = availableNodeIds[0];
-    if (firstNode) {
-      matchUpgradeTracker.confirmChoice(firstNode, weaponType);
-    }
-    isPaused = false;
-    ctx.state.isPaused = false;
-    game.resume();
+
+    const activeIds = matchUpgradeTracker.getActiveUpgrades(weaponType);
+    const killCount = matchUpgradeTracker.getKillCount(weaponType);
+
+    buildChoiceScreen.show(weaponType, availableNodeIds, activeIds, killCount, (chosenNodeId) => {
+      matchUpgradeTracker.confirmChoice(chosenNodeId, weaponType);
+      isPaused = false;
+      ctx.state.isPaused = false;
+      game.resume();
+    });
   };
 
   // Notify the player when a weapon upgrade node activates mid-match (after confirmChoice)
