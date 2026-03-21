@@ -82,6 +82,9 @@ export const SURFACE_DEFAULT_MAP_SIZES: Record<SurfaceType, MapSize> = {
 
   // Custom mesh — neutral default
   custom: MapSize.MEDIUM,
+
+  // Debug-only flat arena
+  'flat-arena': MapSize.MEDIUM,
 };
 
 /**

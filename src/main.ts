@@ -432,6 +432,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   const bgMusic = new BackgroundMusic();
 
+  // Test arena mode — flat plane, no waves, full TestHarnessAPI
+  const isTestArena = new URLSearchParams(window.location.search).get('testArena') === 'true';
+
   // Load level (-1 = endless Quick Game mode)
   const isEndless = startLevelIndex < 0;
   const levelIndex = isEndless ? -1 : Math.min(startLevelIndex, ADVENTURE_LEVELS.length - 1);
@@ -1074,7 +1077,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   };
 
   // -- Wave scheduler --
-  const waveScheduler = new WaveScheduler(level.waves, isEndless);
+  // In test arena mode, pass empty waves so no auto-spawning happens.
+  // The TestHarnessAPI.spawnGrid() provides manual enemy placement instead.
+  const waveScheduler = new WaveScheduler(isTestArena ? [] : level.waves, isTestArena ? false : isEndless);
 
   // Wire wave start events into perfLogger for score graph markers
   waveScheduler.onWaveStart = (waveNum: number, _elapsed: number) => {
@@ -2235,10 +2240,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const urlParams = new URLSearchParams(window.location.search);
   const debugMode = urlParams.get('debug') === 'true';
   const testMode = urlParams.get('testMode') === 'true';
+  // Note: isTestArena is declared near the top of main() for early use in wave scheduler config.
 
-  // -- Start background music (muted in debug/test modes) --
+  // -- Start background music (muted in debug/test/arena modes) --
   const audioCtx = sound.getAudioContext();
-  const musicEnabled = (!debugMode && !testMode) || urlParams.get('music') === 'true';
+  const musicEnabled = (!debugMode && !testMode && !isTestArena) || urlParams.get('music') === 'true';
   if (audioCtx && musicEnabled) {
     bgMusic.start(audioCtx);
   }
@@ -2280,8 +2286,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   }
 
   // -- Game state exporter: live window._gameState + window._rendererState --
-  // Activated when ?testMode=true. Zero overhead when not active.
-  if (testMode) {
+  // Activated when ?testMode=true or ?testArena=true. Zero overhead when not active.
+  if (testMode || isTestArena) {
     import('./debug/GameStateExporter').then(({ GameStateExporter }) => {
       _stateExporter = new GameStateExporter(ctx);
       console.log('[GameStateExporter] Active. window._gameState and window._rendererState are live.');
@@ -2289,19 +2295,53 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   }
 
   // -- Test harness API: full game control for automated scenarios --
-  // Activated when ?testMode=true. Exposes window.__TEST_API.
-  if (testMode) {
+  // Activated when ?testMode=true or ?testArena=true. Exposes window.__TEST_API.
+  if (testMode || isTestArena) {
     import('./debug/TestHarnessAPI').then(({ TestHarnessAPI }) => {
       const api = new TestHarnessAPI(ctx);
       _testHarnessAPI = api;
       (window as any).__TEST_API = api;
       console.log('[TestHarnessAPI] Active. window.__TEST_API is live.');
+
+      if (isTestArena) {
+        // Spawn initial 5×5 enemy grid after a short delay (game systems need a frame)
+        setTimeout(() => api.spawnGrid(5, 5), 500);
+
+        // Arena HUD overlay — shows weapon, nodes, and enemy count
+        const hud = document.createElement('div');
+        hud.id = 'test-arena-hud';
+        hud.style.cssText = [
+          'position:fixed', 'top:10px', 'left:10px',
+          'color:#0ff', 'font-family:monospace', 'font-size:13px',
+          'background:rgba(0,0,0,0.75)', 'padding:8px 12px',
+          'border:1px solid #0ff', 'border-radius:4px',
+          'z-index:9999', 'pointer-events:none',
+          'line-height:1.6',
+        ].join(';');
+        document.body.appendChild(hud);
+
+        setInterval(() => {
+          const state = api.getGameState();
+          const nodes = api.getActiveNodes();
+          hud.innerHTML = [
+            '<b>TEST ARENA</b>',
+            `Weapon: <b>${state.currentWeapon}</b>`,
+            `Enemies: ${state.enemies}`,
+            `Score: ${state.score}`,
+            `Active nodes: ${nodes.length ? nodes.slice(0, 4).join(', ') + (nodes.length > 4 ? '…' : '') : '<i>none</i>'}`,
+            '<hr style="border-color:#0ff4;margin:4px 0">',
+            'API: window.__TEST_API',
+            '.activateNodes([…])',
+            '.spawnGrid(rows,cols)',
+          ].join('<br>');
+        }, 200);
+      }
     });
   }
 
   // -- Deep telemetry exporter: live window.__GAME_TELEMETRY --
   // Activated when ?debug=true OR ?testMode=true (visual test harness). Zero overhead otherwise.
-  if (debugMode || testMode) {
+  if (debugMode || testMode || isTestArena) {
     import('./debug/GameTelemetryExporter').then(({ GameTelemetryExporter }) => {
       _telemetryExporter = new GameTelemetryExporter(ctx);
       console.log('[GameTelemetryExporter] Active. window.__GAME_TELEMETRY is live.');
@@ -2462,12 +2502,20 @@ function isQuickStartMode(): { enabled: boolean; surface?: SurfaceType; seed?: n
   return { enabled: true, surface, seed, gameMode };
 }
 
+function isTestArenaMode(): boolean {
+  return new URLSearchParams(window.location.search).get('testArena') === 'true';
+}
+
 (async () => {
   await initI18n();
 
 const quickStartConfig = isQuickStartMode();
 
-if (quickStartConfig.enabled) {
+if (isTestArenaMode()) {
+  // Test arena mode: flat plane, 5×5 enemy grid, full TestHarnessAPI, no waves
+  console.log('[Main] Test arena mode — flat plane for weapon testing (?testArena=true)');
+  main('flat-arena', -1);
+} else if (quickStartConfig.enabled) {
   // Quick start mode: skip menu, start game immediately with seed
   console.log(`[Main] Quick start mode: ${quickStartConfig.surface}, mode=${quickStartConfig.gameMode ?? 'waves'}, seed=${quickStartConfig.seed ?? 'random'}`);
   if (quickStartConfig.seed !== undefined) {

@@ -19,6 +19,7 @@ import type { Scenario, ScenarioResult } from './ScenarioEngine';
 import { PerformanceProfiler } from './PerformanceProfiler';
 import type { PerformanceProfile } from './PerformanceProfiler';
 import { profiler as coreProfiler } from '../core/PerformanceProfiler';
+import { UPGRADE_TREES } from '../systems/UpgradeTreeData';
 
 // ---------------------------------------------------------------------------
 // Serializable types (JSON-safe, no THREE objects)
@@ -899,5 +900,69 @@ export class TestHarnessAPI {
       position,
       ...extra,
     });
+  }
+
+  // -----------------------------------------------------------------------
+  // Test Arena API (s44r33-10a)
+  // -----------------------------------------------------------------------
+
+  /**
+   * Force-activate mastery upgrade nodes, bypassing kill thresholds and MasteryPointStore.
+   * Useful for testing weapon effects in the test arena without grinding kills.
+   *
+   * Usage: window.__TEST_API.activateNodes(['standard_al_5', 'homing_b_3'])
+   */
+  activateNodes(nodeIds: string[]): void {
+    const tracker = (this.ctx.weaponManager as any).upgradeTracker as any;
+    if (!tracker) {
+      console.warn('[TestHarnessAPI] activateNodes: upgradeTracker not found on weaponManager');
+      return;
+    }
+    for (const nodeId of nodeIds) {
+      let found = false;
+      for (const [weaponTypeKey, tree] of Object.entries(UPGRADE_TREES)) {
+        const node = (tree as any).nodes.find((n: any) => n.id === nodeId);
+        if (node) {
+          (tracker as any).activateNode(nodeId, weaponTypeKey);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        console.warn(`[TestHarnessAPI] activateNodes: node '${nodeId}' not found in any tree`);
+      }
+    }
+  }
+
+  /**
+   * Get all currently active upgrade node IDs across all weapons.
+   * Useful for verifying that activateNodes() worked correctly.
+   */
+  getActiveNodes(): string[] {
+    const tracker = (this.ctx.weaponManager as any).upgradeTracker as any;
+    if (!tracker?.activeUpgrades) return [];
+    const result: string[] = [];
+    for (const nodeSet of (tracker.activeUpgrades as Map<unknown, Set<string>>).values()) {
+      for (const nodeId of nodeSet) result.push(nodeId);
+    }
+    return result;
+  }
+
+  /**
+   * Spawn a predictable grid of grunt enemies for weapon testing.
+   * Clears existing enemies first, then spawns in a uniform UV grid.
+   *
+   * Usage: window.__TEST_API.spawnGrid() or window.__TEST_API.spawnGrid(3, 3)
+   */
+  spawnGrid(rows = 5, cols = 5): void {
+    this.clearEnemies();
+    const padding = 0.15; // keep away from arena edges
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const u = cols > 1 ? padding + (c / (cols - 1)) * (1 - 2 * padding) : 0.5;
+        const v = rows > 1 ? padding + (r / (rows - 1)) * (1 - 2 * padding) : 0.5;
+        this.spawnEnemy('grunt', u, v);
+      }
+    }
   }
 }
