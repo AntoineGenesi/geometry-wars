@@ -971,7 +971,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const masteryPointStore = MasteryPointStore.load();
 
   // -- Per-match upgrade tracker (activates permanently-unlocked nodes via kill thresholds) --
-  const matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+  const matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
 
   const buffHUD = new BuffHUD();
   if (mobile) {

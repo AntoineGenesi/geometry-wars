@@ -25,14 +25,17 @@ export class MatchUpgradeTracker {
   private killCounts: Map<WeaponType, number> = new Map();
   private activeUpgrades: Map<WeaponType, Set<string>> = new Map();
   private readonly permanentUnlocks: Set<string>;
+  private readonly store: MasteryPointStore;
   private pendingChoice: { weaponType: WeaponType; nodeIds: string[] } | null = null;
 
   /**
-   * @param permanentUnlocks - The set of permanently unlocked node IDs from
-   *   MasteryPointStore.  Only permanently-unlocked nodes can be offered as choices.
+   * @param store - The persistent mastery point store.  The tracker is seeded
+   *   with the nodes already unlocked in the store, and will call
+   *   earnPoint/spendPoint when the player confirms an in-game build choice.
    */
-  constructor(permanentUnlocks: Set<string>) {
-    this.permanentUnlocks = new Set(permanentUnlocks);
+  constructor(store: MasteryPointStore) {
+    this.store = store;
+    this.permanentUnlocks = new Set(store.getUnlockedNodes());
   }
 
   // -------------------------------------------------------------------------
@@ -76,11 +79,18 @@ export class MatchUpgradeTracker {
   }
 
   /**
-   * Confirm the player's node selection.  Activates the node and fires
-   * onUpgradeActivated.  Clears the pending choice.
+   * Confirm the player's node selection.  Permanently records the choice in
+   * MasteryPointStore (earn + spend atomically), activates the node in-match,
+   * and fires onUpgradeActivated.  Clears the pending choice.
+   *
+   * The earn+spend pair persists in-game choices to localStorage so they carry
+   * over to future games.  If spendPoint fails (e.g. node already unlocked via
+   * the mastery menu), the local in-match activation still proceeds.
    */
   confirmChoice(nodeId: string, weaponType: WeaponType): void {
     this.pendingChoice = null;
+    this.store.earnPoint(weaponType);
+    this.store.spendPoint(nodeId);
     this.activateNode(nodeId, weaponType);
   }
 

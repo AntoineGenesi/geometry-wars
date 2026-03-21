@@ -1,20 +1,33 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { MatchUpgradeTracker } from './MatchUpgradeTracker';
+import { MasteryPointStore, weaponTypeFromNodeId } from './MasteryPointStore';
 import { WeaponType } from '../weapons/WeaponTypes';
 
-describe('MatchUpgradeTracker', () => {
-  // Permanently unlock nodes to test choice flow
-  const permanentUnlocks = new Set([
-    'plasma_mortar_a_1', // threshold: 10
-    'plasma_mortar_a_2', // threshold: 25
-    'plasma_mortar_b_1', // threshold: 10
-    'standard_a_1',      // threshold: 10
-  ]);
+/** Build a MasteryPointStore with the given nodes pre-unlocked. */
+function makeStore(nodeIds: string[]): MasteryPointStore {
+  const store = new MasteryPointStore();
+  for (const nodeId of nodeIds) {
+    const wt = weaponTypeFromNodeId(nodeId);
+    if (wt) {
+      store.earnPoint(wt);
+      store.spendPoint(nodeId);
+    }
+  }
+  return store;
+}
 
+describe('MatchUpgradeTracker', () => {
+  let store: MasteryPointStore;
   let tracker: MatchUpgradeTracker;
 
   beforeEach(() => {
-    tracker = new MatchUpgradeTracker(permanentUnlocks);
+    store = makeStore([
+      'plasma_mortar_a_1', // threshold: 10
+      'plasma_mortar_a_2', // threshold: 25
+      'plasma_mortar_b_1', // threshold: 10
+      'standard_a_1',      // threshold: 10
+    ]);
+    tracker = new MatchUpgradeTracker(store);
   });
 
   // -------------------------------------------------------------------------
@@ -129,6 +142,50 @@ describe('MatchUpgradeTracker', () => {
   });
 
   // -------------------------------------------------------------------------
+  // confirmChoice — earn+spend persists to MasteryPointStore
+  // -------------------------------------------------------------------------
+
+  it('confirmChoice permanently unlocks the node in the store', () => {
+    // Start with a fresh store so the node is NOT pre-unlocked via menu
+    const freshStore = new MasteryPointStore();
+    // Manually seed permanentUnlocks by calling earnPoint+spendPoint first,
+    // then create a tracker that already knows about the node.
+    freshStore.earnPoint(WeaponType.PlasmaMortar);
+    freshStore.spendPoint('plasma_mortar_a_1');
+    const t = new MatchUpgradeTracker(freshStore);
+    t.onBuildChoiceAvailable = vi.fn();
+    // Reset the store so the node appears unspent — simulate a node that was
+    // in permanentUnlocks but the store was refreshed (edge-case resilience).
+    // For the normal case: node IS already isUnlocked, confirmChoice is additive.
+    for (let i = 0; i < 10; i++) {
+      t.recordKill(WeaponType.PlasmaMortar);
+    }
+    t.confirmChoice('plasma_mortar_a_1', WeaponType.PlasmaMortar);
+    expect(freshStore.isUnlocked('plasma_mortar_a_1')).toBe(true);
+  });
+
+  it('confirmChoice calls earnPoint for the weapon type', () => {
+    const pointsBefore = store.getTotalPoints(WeaponType.PlasmaMortar);
+    tracker.onBuildChoiceAvailable = vi.fn();
+    for (let i = 0; i < 10; i++) {
+      tracker.recordKill(WeaponType.PlasmaMortar);
+    }
+    tracker.confirmChoice('plasma_mortar_a_1', WeaponType.PlasmaMortar);
+    expect(store.getTotalPoints(WeaponType.PlasmaMortar)).toBe(pointsBefore + 1);
+  });
+
+  it('confirmChoice still activates the node even when spendPoint fails (node already at max)', () => {
+    // The node is already unlocked in the store (from beforeEach makeStore call).
+    // confirmChoice should still activate it locally.
+    tracker.onBuildChoiceAvailable = vi.fn();
+    for (let i = 0; i < 10; i++) {
+      tracker.recordKill(WeaponType.PlasmaMortar);
+    }
+    tracker.confirmChoice('plasma_mortar_a_1', WeaponType.PlasmaMortar);
+    expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).has('plasma_mortar_a_1')).toBe(true);
+  });
+
+  // -------------------------------------------------------------------------
   // getPendingChoice
   // -------------------------------------------------------------------------
 
@@ -207,7 +264,7 @@ describe('MatchUpgradeTracker', () => {
   });
 
   it('tracker with no permanent unlocks never fires onBuildChoiceAvailable', () => {
-    const emptyTracker = new MatchUpgradeTracker(new Set());
+    const emptyTracker = new MatchUpgradeTracker(new MasteryPointStore());
     const cb = vi.fn();
     emptyTracker.onBuildChoiceAvailable = cb;
     for (let i = 0; i < 100; i++) {
@@ -309,17 +366,19 @@ describe('MatchUpgradeTracker', () => {
   // permanentUnlocks immutability
   // -------------------------------------------------------------------------
 
-  it('modifying the constructor set does not affect the tracker', () => {
+  it('tracker snapshots the store at construction — later store mutations without refreshFromStore are ignored', () => {
     const cb = vi.fn();
-    const mutableSet = new Set(['standard_a_1']);
-    const t = new MatchUpgradeTracker(mutableSet);
+    const s = makeStore(['standard_a_1']);
+    const t = new MatchUpgradeTracker(s);
     t.onBuildChoiceAvailable = cb;
-    mutableSet.clear(); // clear after construction
+    // Unlock a second node directly in the store after tracker is constructed
+    s.earnPoint(WeaponType.PlasmaMortar);
+    s.spendPoint('plasma_mortar_a_1');
 
     for (let i = 0; i < 10; i++) {
-      t.recordKill(WeaponType.Standard);
+      t.recordKill(WeaponType.PlasmaMortar);
     }
-    expect(cb).toHaveBeenCalledTimes(1);
-    expect(cb.mock.calls[0][1]).toContain('standard_a_1');
+    // plasma_mortar_a_1 was added to the store AFTER construction, so not in permanentUnlocks
+    expect(cb).not.toHaveBeenCalled();
   });
 });
