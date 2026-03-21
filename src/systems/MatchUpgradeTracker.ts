@@ -94,11 +94,28 @@ export class MatchUpgradeTracker {
     this.activateNode(nodeId, weaponType);
   }
 
-  /** Clear all state — call at the start of a new match. */
+  /** Clear all state and activate permanent unlocks — call at the start of a new match. */
   reset(): void {
     this.killCounts = new Map();
     this.activeUpgrades = new Map();
     this.pendingChoice = null;
+
+    // Activate all permanently unlocked nodes so their effects apply in gameplay.
+    // Without this, permanentUnlocks exist in the store but getActiveUpgrades()
+    // returns empty — upgrades like homing, extra bolts, etc. never take effect.
+    for (const [weaponTypeKey, tree] of Object.entries(UPGRADE_TREES)) {
+      const weaponType = weaponTypeKey as WeaponType;
+      for (const node of tree.nodes) {
+        if (this.permanentUnlocks.has(node.id)) {
+          let weaponSet = this.activeUpgrades.get(weaponType);
+          if (!weaponSet) {
+            weaponSet = new Set<string>();
+            this.activeUpgrades.set(weaponType, weaponSet);
+          }
+          weaponSet.add(node.id);
+        }
+      }
+    }
   }
 
   /**
