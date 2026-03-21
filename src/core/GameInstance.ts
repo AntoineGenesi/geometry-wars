@@ -357,6 +357,7 @@ export class GameInstance {
             index: i,
             alive: e.alive,
             maxHealth: e.maxHealth,
+            health: e.health,
           }));
       },
       onEnemyDamage: (index: number, damage: number) => {

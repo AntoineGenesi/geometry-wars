@@ -1224,6 +1224,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
           index: i,
           alive: e.alive,
           maxHealth: e.maxHealth,
+          health: e.health,
         }));
     },
     onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => {

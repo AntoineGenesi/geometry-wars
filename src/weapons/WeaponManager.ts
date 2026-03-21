@@ -69,6 +69,8 @@ export interface Projectile {
   // For pierce mechanic: number of additional enemies this projectile can pass through
   canPierce?: number;
   pierceCount?: number; // how many enemies already pierced
+  /** Homing turn rate multiplier. 1.0 = default 12.0 rad/s; 2.0 = tighter tracking. */
+  turnRateMult?: number;
 }
 
 /**
@@ -97,7 +99,7 @@ interface ActiveEffect {
  * Callback types for weapon system
  */
 export interface WeaponCallbacks {
-  getEnemies: () => { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean; maxHealth?: number }[];
+  getEnemies: () => { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean; maxHealth?: number; health?: number }[];
   onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => void;
   onEnemyPull?: (index: number, pullStrength: number, pullCenter: THREE.Vector3) => void;
   spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
@@ -289,12 +291,22 @@ export class WeaponManager {
         if (active.has('standard_a_1')) bonus += 0.20;
         if (active.has('standard_a_2')) bonus += 0.40;
         if (active.has('standard_a_3')) bonus += 0.60;
+        if (active.has('standard_b_4')) bonus += 0.40; // Heavy bolt: +40% damage
+        break;
+      case WeaponType.Spread:
+        // Branch A nodes add damage per pellet
+        if (active.has('spread_al_5')) bonus += 0.15; // +15% damage/pellet
+        // Branch B nodes add damage bonuses
+        if (active.has('spread_b_2')) bonus += 0.10;  // +10% damage
+        if (active.has('spread_b_3')) bonus += 0.20;  // +20% damage
+        if (active.has('spread_bl_5')) bonus += 0.50; // +50% damage
         break;
       case WeaponType.ChainLightning:
         if (active.has('chain_lightning_b_1')) bonus += 0.25;
         if (active.has('chain_lightning_b_2')) bonus += 0.50;
         if (active.has('chain_lightning_b_3')) bonus += 0.80;
-        // b_4 = stun (separate effect), b_5 = kill explosion (separate effect)
+        // b_4 = stun (separate effect, Wave 2 slow system)
+        if (active.has('chain_lightning_b_5')) bonus += 0.30; // kill explosion: +30% damage
         break;
       case WeaponType.PlasmaMortar:
         if (active.has('plasma_mortar_b_1')) bonus += 0.25;
@@ -340,13 +352,15 @@ export class WeaponManager {
       if (active.has('standard_b_1')) bonus += 0.15;
       if (active.has('standard_b_2')) bonus += 0.30;
       if (active.has('standard_b_3')) bonus += 0.50;
+      if (active.has('standard_a_4')) bonus += 0.30; // Rapid bolt: +30% fire rate
       // standard_b_4 (Heavy bolt) = damage bonus, no fire rate change
       // standard_bl_5..bl_10 (Seeking/BL sub-branch) = seeking bolts handled in fireSeekingBlasterBolts, no fire rate change
     } else if (weaponType === WeaponType.Piercing) {
       if (active.has('piercing_b_1')) bonus += 0.20;
       if (active.has('piercing_b_2')) bonus += 0.40;
       if (active.has('piercing_b_3')) bonus += 0.60;
-      // piercing_bl_4/bl_5 = double/triple tap: fire rate unchanged, extra shots queued on fire
+      if (active.has('piercing_bl_5')) bonus += 0.70; // Triple tap: +70% fire rate
+      // piercing_bl_4 = double tap: extra shots queued on fire
     }
     return 1.0 + bonus;
   }
@@ -407,6 +421,15 @@ export class WeaponManager {
     if (active.has('standard_bl_6'))  return 0.60; // Smart swarm
     if (active.has('standard_bl_5'))  return 0.30; // Seeking bolts: mild homing
     return 0;
+  }
+
+  /**
+   * Returns 1 if standard_b_4 (Heavy bolt) is active — projectiles pierce 1 extra enemy.
+   */
+  getBlasterPierceCount(): number {
+    if (!this.upgradeTracker) return 0;
+    const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    return active.has('standard_b_4') ? 1 : 0;
   }
 
   /**
@@ -1108,6 +1131,11 @@ export class WeaponManager {
       if (target) {
         proj.targetIndex = target.index;
       }
+      const pierceCount = this.getBlasterPierceCount();
+      if (pierceCount > 0) {
+        proj.canPierce = pierceCount;
+        proj.pierceCount = 0;
+      }
     }
   }
 
@@ -1335,11 +1363,16 @@ export class WeaponManager {
     const extraTargets =
       (chainNodes.has('chain_lightning_a_1') ? 2 : 0) +
       (chainNodes.has('chain_lightning_a_2') ? 2 : 0) +
-      (chainNodes.has('chain_lightning_a_3') ? 2 : 0);
+      (chainNodes.has('chain_lightning_a_3') ? 2 : 0) +
+      (chainNodes.has('chain_lightning_a_4') ? 7 : 0); // Mass hysteria: +7 chain targets
 
-    // a_4 = +40% chain jump range
+    // a_2/a_3/a_4 = chain jump range bonuses (+15%/+25%/+40% cumulative)
     const baseJumpRange = 3;
-    const jumpRange = chainNodes.has('chain_lightning_a_4') ? baseJumpRange * 1.4 : baseJumpRange;
+    const jumpRangeBonus =
+      (chainNodes.has('chain_lightning_a_2') ? 0.15 : 0) +
+      (chainNodes.has('chain_lightning_a_3') ? 0.25 : 0) +
+      (chainNodes.has('chain_lightning_a_4') ? 0.40 : 0);
+    const jumpRange = baseJumpRange * (1.0 + jumpRangeBonus);
 
     const otherEnemies = enemies.filter(e => e.index !== firstTarget!.index);
     const chainTargets = ChainLightningEffect.findChainTargets(
@@ -1419,13 +1452,11 @@ export class WeaponManager {
       (homingNodes.has('homing_a_4') ? 1.00 : 0) +
       (homingNodes.has('homing_a_5') ? 1.50 : 0);
     const upgradeSpeed = config.projectileSpeed * (1.0 + speedBonus);
-    // turnMult increases how aggressively the missile steers toward its target
-    // Applied in updateProjectile via a per-projectile field (stored in speed for now,
-    // since Projectile doesn't have a separate turnRate field — the turn logic in
-    // updateProjectile uses a fixed lerp rate of min(1.0, 12.0 * dt)).
-    // For nodes 4+5, we scale the base speed higher so effectively missiles arrive faster;
-    // the actual turn tightening would require a dedicated turnRate field (future enhancement).
-    // TODO: add turnRate field to Projectile for proper turn tightening.
+    // a_3/a_4 = turn tightening: missiles track more aggressively
+    const turnMult =
+      homingNodes.has('homing_a_4') ? 3.0 :  // Very tight tracking
+      homingNodes.has('homing_a_3') ? 2.0 : 1.0; // Tighter tracking
+    // homing_b_5 = contact stun: TODO Wave 2 — needs slow/stun system
 
     // Missiles persist until they hit something; 60s hard cap prevents infinite missiles
     // (e.g. if the last enemy dies before being reached).
@@ -1447,6 +1478,7 @@ export class WeaponManager {
           MISSILE_MAX_AGE,
         );
         proj.targetIndex = targetIndex;
+        if (turnMult > 1.0) proj.turnRateMult = turnMult;
       }
     } else {
       const proj = this.createProjectile(
@@ -1458,6 +1490,7 @@ export class WeaponManager {
         MISSILE_MAX_AGE,
       );
       proj.targetIndex = targetIndex;
+      if (turnMult > 1.0) proj.turnRateMult = turnMult;
     }
   }
 
@@ -1539,12 +1572,14 @@ export class WeaponManager {
 
     this.projectileRoot.add(laserMesh);
 
-    // Duration upgrades (branch B): +20%, +40%, +70% per node
+    // Duration upgrades (branch B): +20%, +40%, +70%, +100%, +150% per node
     const laserNodes = this.activeUpgradeNodes(WeaponType.LaserBeam);
     const durationBonus =
       (laserNodes.has('laser_beam_b_1') ? 0.20 : 0) +
       (laserNodes.has('laser_beam_b_2') ? 0.40 : 0) +
-      (laserNodes.has('laser_beam_b_3') ? 0.70 : 0);
+      (laserNodes.has('laser_beam_b_3') ? 0.70 : 0) +
+      (laserNodes.has('laser_beam_b_4') ? 1.00 : 0) + // Wide beam: +100% duration
+      (laserNodes.has('laser_beam_b_5') ? 1.50 : 0);  // Sweep beam: +150% duration
     const laserDuration = 0.5 * (1.0 + durationBonus);
 
     // b_4 = wide beam: hits enemies within 0.3 units of beam line instead of 0.35
@@ -1680,6 +1715,20 @@ export class WeaponManager {
     };
 
     spawnOneBlackHole(targetPos);
+
+    // a_2/a_3 = extra shots: singularity pulse (+1 extra) / triple singularity (+2 extra)
+    const extraShots = bhNodes.has('black_hole_a_3') ? 2 :
+                       bhNodes.has('black_hole_a_2') ? 1 : 0;
+    for (let i = 0; i < extraShots; i++) {
+      const perpOffset = new THREE.Vector3().crossVectors(direction, targetPos.clone().normalize()).normalize();
+      const offset = (i % 2 === 0 ? 1.2 : -1.2);
+      const extraPos = targetPos.clone().addScaledVector(perpOffset, offset);
+      if (this.meshSurface) {
+        const result = this.meshSurface.closestPointOnSurface(extraPos);
+        if (result) extraPos.copy(result.point);
+      }
+      spawnOneBlackHole(extraPos);
+    }
 
     // al_4/al_5 = twin holes: spawn a second black hole slightly offset
     if (bhNodes.has('black_hole_al_4') || bhNodes.has('black_hole_al_5')) {
@@ -1943,7 +1992,8 @@ export class WeaponManager {
       if (nearestEnemy) {
         proj.targetIndex = nearestEnemy.index;
         const toTarget = nearestEnemy.position.clone().sub(proj.position).normalize();
-        const turnRate = Math.min(1.0, 12.0 * dt);
+        const baseTurnRate = 12.0 * (proj.turnRateMult ?? 1.0);
+        const turnRate = Math.min(1.0, baseTurnRate * dt);
         proj.direction.lerp(toTarget, turnRate).normalize();
       }
     }
@@ -1992,9 +2042,21 @@ export class WeaponManager {
             (mortarNodes.has('plasma_mortar_a_2') ? 0.60 : 0) +
             (mortarNodes.has('plasma_mortar_a_3') ? 1.00 : 0);
           const blastRadius = 3.0 * (1.0 + mortarRadiusBonus);
-          // b_5 = annihilator: instant-kill enemies below 10% HP. Since we don't have HP access,
-          // apply a large bonus damage to push low-HP enemies over the threshold.
-          // Implementation: deal double damage for b_5 which effectively one-shots weak enemies.
+          // b_5 = annihilator: instant-kill enemies below 20% HP in the blast radius
+          if (mortarNodes.has('plasma_mortar_b_5')) {
+            const blastEnemies = this.callbacks.getEnemies().filter(e => e.alive);
+            for (const e of blastEnemies) {
+              const eDist = proj.position.distanceTo(e.position);
+              if (eDist < blastRadius) {
+                const currentHp = e.health ?? e.maxHealth ?? Infinity;
+                const maxHp = e.maxHealth ?? currentHp;
+                if (currentHp < maxHp * 0.20) {
+                  this.callbacks.onEnemyDamage(e.index, 999, WeaponType.PlasmaMortar);
+                }
+              }
+            }
+          }
+          // AoE blast (b_5 gets +100% damage bonus on top of instant-kill)
           const annihilatorMult = mortarNodes.has('plasma_mortar_b_5') ? 2.0 : 1.0;
           this.applyAoeDamage(proj.position, blastRadius, proj.damage * 0.75 * annihilatorMult);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.PlasmaMortar);
@@ -2144,7 +2206,8 @@ export class WeaponManager {
       (ggNodes.has('gravity_gun_a_1') ? 0.30 : 0) +
       (ggNodes.has('gravity_gun_a_2') ? 0.60 : 0) +
       (ggNodes.has('gravity_gun_a_3') ? 1.00 : 0) +
-      (ggNodes.has('gravity_gun_a_4') ? 1.00 : 0);  // mass capture: +100% radius
+      (ggNodes.has('gravity_gun_a_4') ? 1.00 : 0) +  // mass capture: +100% radius
+      (ggNodes.has('gravity_gun_a_5') ? 1.50 : 0);   // event gravity: +150% radius
     const radius = baseRadius * (1.0 + radiusBonus);
 
     // Kinetic crush damage per detonation (branch B) — extended for b_4/b_5
@@ -2158,9 +2221,13 @@ export class WeaponManager {
 
     const enemies = this.callbacks.getEnemies();
     const pulledPositions: THREE.Vector3[] = [];
+    // a_4 = mass capture: focused singularity — cap at 8 enemies for concentrated effect
+    const maxPulledEnemies = ggNodes.has('gravity_gun_a_4') ? 8 : Infinity;
+    let pulledCount = 0;
 
     for (const enemy of enemies) {
       if (!enemy.alive) continue;
+      if (pulledCount >= maxPulledEnemies) break;
 
       // s44r6-04: Use min of on-surface and visual distance (Mobius normal divergence)
       const onSurfaceDist = center.distanceTo(enemy.position);
@@ -2175,8 +2242,15 @@ export class WeaponManager {
         // Kinetic crush: deal instant damage when pulled (detonation only)
         if (kineticDamage > 0) {
           this.callbacks.onEnemyDamage(enemy.index, kineticDamage * strength, WeaponType.GravityGun);
+          // b_5 = field-kill explosion: approximate trigger when dealing max kinetic damage
+          // (strength near 1.0 = enemy is very close to center = likely kill zone)
+          // TODO: use onEnemyKill callback for precise kill-only trigger (Wave 2)
+          if (ggNodes.has('gravity_gun_b_5') && strength > 0.7) {
+            this.applyAoeDamage(enemy.position, 1.5, kineticDamage * 0.4);
+          }
         }
         pulledPositions.push(enemy.position.clone());
+        pulledCount++;
       }
     }
 
@@ -2188,9 +2262,10 @@ export class WeaponManager {
         for (let j = i + 1; j < collidingEnemies.length; j++) {
           const dist = collidingEnemies[i].position.distanceTo(collidingEnemies[j].position);
           if (dist < 1.0) {
-            // Collision damage: 2 damage to each
-            this.callbacks.onEnemyDamage(collidingEnemies[i].index, 2, WeaponType.GravityGun);
-            this.callbacks.onEnemyDamage(collidingEnemies[j].index, 2, WeaponType.GravityGun);
+            // b_4/b_5 = kinetic annihilator: 3x collision damage
+            const collisionDmg = (ggNodes.has('gravity_gun_b_4') || ggNodes.has('gravity_gun_b_5')) ? 6 : 2;
+            this.callbacks.onEnemyDamage(collidingEnemies[i].index, collisionDmg, WeaponType.GravityGun);
+            this.callbacks.onEnemyDamage(collidingEnemies[j].index, collisionDmg, WeaponType.GravityGun);
           }
         }
       }
@@ -2273,7 +2348,8 @@ export class WeaponManager {
           const bhPullBonus =
             (bhActiveNodes.has('black_hole_b_1') ? 0.30 : 0) +
             (bhActiveNodes.has('black_hole_b_2') ? 0.60 : 0) +
-            (bhActiveNodes.has('black_hole_b_3') ? 1.00 : 0);
+            (bhActiveNodes.has('black_hole_b_3') ? 1.00 : 0) +
+            (bhActiveNodes.has('black_hole_br_5') ? 1.50 : 0); // Singularity vortex: +150% radius
           const radius = (3 + progress * 2) * (1.0 + bhPullBonus);
 
           // br_4/br_5 = crush damage: enemies trapped in the black hole take damage/sec
