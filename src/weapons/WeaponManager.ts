@@ -71,6 +71,10 @@ export interface Projectile {
   pierceCount?: number; // how many enemies already pierced
   /** Homing turn rate multiplier. 1.0 = default 12.0 rad/s; 2.0 = tighter tracking. */
   turnRateMult?: number;
+  /** Set for AR rapid-fire bolts — distinguishes from BL seeking bolts in collision handler */
+  isARBolt?: boolean;
+  /** Set for BR devastation bolts — enables explosion and death-bolt effects on hit */
+  isBRBolt?: boolean;
 }
 
 /**
@@ -184,6 +188,10 @@ export class WeaponManager {
   // Spread cone alternation state (for spread_b_3)
   private spreadConeToggle = false;
 
+  // AR rapid-fire sub-branch tracking
+  private arShotCounter: number = 0;           // for AR_8 railgun every 10th shot
+  private arInfinityBurstRemaining: number = 0; // for AR_10 unlimited burst on kill
+
   // Pending delayed shots: used for piercing double/triple tap, mortar carpet bomb, chain blast secondary
   private pendingShots: Array<{
     delay: number;
@@ -275,6 +283,13 @@ export class WeaponManager {
    */
   recordKillForUpgrades(weaponType: WeaponType): void {
     this.upgradeTracker?.recordKill(weaponType);
+    // AR_10 Infinity burst: kill while Standard active → start 3s rapid-fire burst
+    if (weaponType === WeaponType.Standard && this.upgradeTracker) {
+      const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+      if (active.has('standard_ar_10')) {
+        this.arInfinityBurstRemaining = 3.0;
+      }
+    }
   }
 
   /**
@@ -292,6 +307,14 @@ export class WeaponManager {
         if (active.has('standard_a_2')) bonus += 0.40;
         if (active.has('standard_a_3')) bonus += 0.60;
         if (active.has('standard_b_4')) bonus += 0.40; // Heavy bolt: +40% damage
+        // AL sub-branch damage bonuses
+        if (active.has('standard_al_10')) bonus += 0.50;          // Omega scatter: +50%
+        else if (active.has('standard_al_9')) bonus += 0.30;      // Annihilator: +30%
+        // BR sub-branch damage bonuses (cumulative)
+        if (active.has('standard_br_5'))  bonus += 0.60;          // Power shot: +60%
+        if (active.has('standard_br_7'))  bonus += 0.40;          // Supercharged: cumulative +100%
+        if (active.has('standard_br_8'))  bonus += 0.30;          // Armor-pierce: +30% (no armor system)
+        if (active.has('standard_br_10')) bonus += 0.50;          // Annihilator: cumulative ~+180%
         break;
       case WeaponType.Spread:
         // Branch A nodes add damage per pellet
@@ -355,6 +378,14 @@ export class WeaponManager {
       if (active.has('standard_a_4')) bonus += 0.30; // Rapid bolt: +30% fire rate
       // standard_b_4 (Heavy bolt) = damage bonus, no fire rate change
       // standard_bl_5..bl_10 (Seeking/BL sub-branch) = seeking bolts handled in fireSeekingBlasterBolts, no fire rate change
+      // AR sub-branch fire rate bonuses (cumulative)
+      if (active.has('standard_ar_5'))  bonus += 0.50; // Overclock: +50%
+      if (active.has('standard_ar_6'))  bonus += 0.30; // Hyperclock: cumulative +80%
+      if (active.has('standard_ar_7'))  bonus += 0.40; // Machine gun: cumulative +120%
+      if (active.has('standard_ar_9'))  bonus += 0.80; // Minigun: cumulative +200% (ar_8 no fire rate change)
+      if (active.has('standard_ar_10')) bonus += 0.80; // Infinity burst: cumulative +280%
+      // Infinity burst active window: massive additional fire rate
+      if (active.has('standard_ar_10') && this.arInfinityBurstRemaining > 0) bonus += 7.0;
     } else if (weaponType === WeaponType.Piercing) {
       if (active.has('piercing_b_1')) bonus += 0.20;
       if (active.has('piercing_b_2')) bonus += 0.40;
@@ -382,8 +413,11 @@ export class WeaponManager {
   getBlasterExtraBolts(): number {
     if (!this.upgradeTracker) return 0;
     const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    // AL sub-branch overrides: al_6 (Nova burst) fires 9 bolts total (8 extra)
+    if (active.has('standard_al_6'))  return 8;  // Nova burst: 9 total
+    // al_5 (Shotgun spread): 5 bolts = same as a_4; falls through to a_4 check below
     if (active.has('standard_a_5')) return 6;  // 7 total
-    if (active.has('standard_a_4')) return 4;  // 5 total
+    if (active.has('standard_a_4') || active.has('standard_al_5')) return 4;  // 5 total
     if (active.has('standard_a_3')) return 3;  // 4 total
     if (active.has('standard_a_2')) return 2;  // 3 total
     if (active.has('standard_a_1')) return 1;  // 2 total
@@ -397,6 +431,9 @@ export class WeaponManager {
   getBlasterSpreadAngle(): number {
     if (!this.upgradeTracker) return 0;
     const active = this.upgradeTracker.getActiveUpgrades(WeaponType.Standard);
+    // AL sub-branch overrides
+    if (active.has('standard_al_6'))  return Math.PI * 55 / 180; // Nova burst: 55° fan
+    if (active.has('standard_al_5'))  return Math.PI / 7.2;       // Shotgun spread: 25° (same as a_4)
     if (active.has('standard_a_5')) return Math.PI / 4.5; // 40° fan
     if (active.has('standard_a_4')) return Math.PI / 7.2; // 25°
     if (active.has('standard_a_3')) return Math.PI / 12;  // 15°
@@ -827,6 +864,11 @@ export class WeaponManager {
       }
     }
 
+    // AR_10 Infinity burst countdown
+    if (this.arInfinityBurstRemaining > 0) {
+      this.arInfinityBurstRemaining = Math.max(0, this.arInfinityBurstRemaining - dt);
+    }
+
     // Update chain lightning effects
     this.chainLightning.update(dt);
 
@@ -1071,6 +1113,30 @@ export class WeaponManager {
     if (blConfig.boltCount > 0) {
       this.fireSeekingBlasterBolts(origin, direction, rotAxis, blConfig);
     }
+
+    // AL_7+ Ring scatter: supplemental ring/fan BulletPool bolts
+    const active = this.upgradeTracker?.getActiveUpgrades(WeaponType.Standard) ?? new Set<string>();
+    const hasALRing = active.has('standard_al_7') || active.has('standard_al_8') ||
+                      active.has('standard_al_9') || active.has('standard_al_10');
+    if (hasALRing) {
+      this.fireALScatterRing(origin, direction, rotAxis, active);
+    }
+
+    // AR_6+ Special rapid bolts: supplemental Projectile bolts with pierce/homing
+    const hasARSpecial = active.has('standard_ar_6') || active.has('standard_ar_7') ||
+                         active.has('standard_ar_8') || active.has('standard_ar_9') ||
+                         active.has('standard_ar_10');
+    if (hasARSpecial) {
+      this.fireARSpecialBolts(origin, direction, rotAxis, active);
+    }
+
+    // BR_6+ Devastation bolts: supplemental Projectile bolts with explosion on hit
+    const hasBRDev = active.has('standard_br_6') || active.has('standard_br_7') ||
+                     active.has('standard_br_8') || active.has('standard_br_9') ||
+                     active.has('standard_br_10');
+    if (hasBRDev) {
+      this.fireBRDevastationBolts(origin, direction, rotAxis, active);
+    }
   }
 
   /**
@@ -1136,6 +1202,137 @@ export class WeaponManager {
         proj.canPierce = pierceCount;
         proj.pierceCount = 0;
       }
+    }
+  }
+
+  /**
+   * Fires AL sub-branch ring/scatter patterns as supplemental BulletPool bolts.
+   * al_7: 12-bolt 360° ring
+   * al_8/al_9: 360° ring + 5-bolt forward fan
+   * al_10: two rings (15° offset) + 15-bolt forward fan
+   */
+  private fireALScatterRing(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    rotAxis: THREE.Vector3,
+    active: Set<string>,
+  ): void {
+    const fireRing = (count: number, angularOffset: number = 0) => {
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + angularOffset;
+        const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
+        this.callbacks?.spawnBullet(origin.clone(), boltDir);
+      }
+    };
+
+    const fireFan = (count: number, halfArcRad: number) => {
+      for (let i = 0; i < count; i++) {
+        const t = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;
+        const angle = t * halfArcRad;
+        const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
+        this.callbacks?.spawnBullet(origin.clone(), boltDir);
+      }
+    };
+
+    if (active.has('standard_al_10')) {
+      // Omega scatter: dual-phase ring (two rings offset 15°) + 15-bolt fan
+      fireRing(12, 0);
+      fireRing(12, Math.PI / 12); // second ring rotated 15°
+      fireFan(15, Math.PI / 6);   // 15 bolts in ±30° arc
+    } else if (active.has('standard_al_9') || active.has('standard_al_8')) {
+      // Bullet wall / Annihilator: 360° ring + 5-bolt forward fan
+      fireRing(12, 0);
+      fireFan(5, Math.PI / 12);   // 5 bolts in ±15° arc
+    } else if (active.has('standard_al_7')) {
+      // Ring shot: 12 bolts in full 360°
+      fireRing(12, 0);
+    }
+  }
+
+  /**
+   * Fires AR sub-branch special bolts (Projectile objects, supplemental to base BulletPool bolts).
+   * ar_6: bullets pierce 1 enemy
+   * ar_7: slight homing bias (0.15)
+   * ar_8: every 10th shot fires a high-damage full-pierce railgun bolt
+   * ar_9/ar_10: handled via fire rate bonuses in getUpgradeFireRateMult
+   */
+  private fireARSpecialBolts(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    _rotAxis: THREE.Vector3,
+    active: Set<string>,
+  ): void {
+    const blasterConfig = WEAPON_CONFIGS[WeaponType.Standard];
+    const speedMult = active.has('standard_ar_10') ? 1.30 : 1.0;
+    const speed = blasterConfig.projectileSpeed * speedMult;
+
+    const proj = this.createProjectile(
+      WeaponType.Standard,
+      origin.clone(),
+      direction.clone(),
+      blasterConfig.damage,
+      speed,
+      5.0,
+    );
+    proj.isARBolt = true;
+    proj.canPierce = 1;
+    proj.pierceCount = 0;
+    if (active.has('standard_ar_7') || active.has('standard_ar_8') ||
+        active.has('standard_ar_9') || active.has('standard_ar_10')) {
+      proj.homingBias = 0.15; // slight homing (note: isARBolt checked first in collision handler)
+    }
+
+    // AR_8 Railgun charge: every 10th shot fires a full-pierce high-damage bolt
+    if (active.has('standard_ar_8') || active.has('standard_ar_9') || active.has('standard_ar_10')) {
+      this.arShotCounter++;
+      if (this.arShotCounter >= 10) {
+        this.arShotCounter = 0;
+        const railgunProj = this.createProjectile(
+          WeaponType.Standard,
+          origin.clone(),
+          direction.clone(),
+          blasterConfig.damage * 3.0, // 3× damage for railgun bolt
+          blasterConfig.projectileSpeed * 1.5,
+          8.0,
+        );
+        railgunProj.isARBolt = true;
+        railgunProj.canPierce = 999; // pierces everything
+        railgunProj.pierceCount = 0;
+      }
+    }
+  }
+
+  /**
+   * Fires BR sub-branch devastation bolts (Projectile objects, supplemental to base BulletPool bolts).
+   * br_6+: bolt explodes on impact (AoE splash)
+   * br_9+: 5% chance for instant-kill
+   * br_10: additional shockwave AoE
+   */
+  private fireBRDevastationBolts(
+    origin: THREE.Vector3,
+    direction: THREE.Vector3,
+    rotAxis: THREE.Vector3,
+    active: Set<string>,
+  ): void {
+    const blasterConfig = WEAPON_CONFIGS[WeaponType.Standard];
+    // BR fires bolts matching the B-branch tight cluster angle
+    const tightAngle = this.getBlasterBranchBConeAngle();
+    const boltCount = this.getBlasterBranchBExtraBolts() + 1; // at least 1 bolt
+
+    for (let i = 0; i < boltCount; i++) {
+      const t = boltCount === 1 ? 0 : (i / (boltCount - 1)) * 2 - 1;
+      const angle = t * (tightAngle / 2);
+      const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
+
+      const proj = this.createProjectile(
+        WeaponType.Standard,
+        origin.clone(),
+        boltDir,
+        blasterConfig.damage,
+        blasterConfig.projectileSpeed,
+        5.0,
+      );
+      proj.isBRBolt = true;
     }
   }
 
@@ -2144,6 +2341,31 @@ export class WeaponManager {
           // Pull enemies together
           this.applyGravityPull(proj.position, 2.0);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.GravityGun);
+          this.removeProjectile(index);
+          return;
+        } else if (proj.type === WeaponType.Standard && proj.isARBolt) {
+          // AR rapid-fire bolt hit — check pierce
+          if (proj.canPierce !== undefined && proj.pierceCount !== undefined && proj.pierceCount < proj.canPierce) {
+            proj.pierceCount++;
+            return; // pass through enemy, continue checking next
+          }
+          this.removeProjectile(index);
+          return;
+        } else if (proj.type === WeaponType.Standard && proj.isBRBolt) {
+          // BR devastation bolt hit — trigger explosion AoE
+          const brActive = this.activeUpgradeNodes(WeaponType.Standard);
+          const aoeRadius = brActive.has('standard_br_10') ? 2.5 :
+                            brActive.has('standard_br_7')  ? 2.2 : 2.0;
+          this.applyAoeDamage(proj.position, aoeRadius, proj.damage * 0.5);
+          this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Standard);
+          // Death bolt (br_9+): 5% chance instant-kill via massive bonus damage
+          if ((brActive.has('standard_br_9') || brActive.has('standard_br_10')) && Math.random() < 0.05) {
+            this.callbacks.onEnemyDamage(enemy.index, 9999, WeaponType.Standard);
+          }
+          // Annihilator shockwave (br_10): additional AoE
+          if (brActive.has('standard_br_10')) {
+            this.applyAoeDamage(proj.position, 3.0, proj.damage * 0.3);
+          }
           this.removeProjectile(index);
           return;
         } else if (proj.type === WeaponType.Standard && proj.homingBias) {
