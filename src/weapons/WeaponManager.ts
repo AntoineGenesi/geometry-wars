@@ -75,6 +75,12 @@ export interface Projectile {
   isARBolt?: boolean;
   /** Set for BR devastation bolts — enables explosion and death-bolt effects on hit */
   isBRBolt?: boolean;
+  /** b_8 carpet bomb: fraction (0–1) of maxAge at which missile splits into 3 sub-munitions */
+  splitAt?: number;
+  /** True once the b_8 mid-flight split has spawned children — prevents double-split */
+  hasSplit?: boolean;
+  /** b_9 devastator: child missiles trigger nova burst on detonation */
+  isDevastatorChild?: boolean;
 }
 
 /**
@@ -191,6 +197,9 @@ export class WeaponManager {
   // AR rapid-fire sub-branch tracking
   private arShotCounter: number = 0;           // for AR_8 railgun every 10th shot
   private arInfinityBurstRemaining: number = 0; // for AR_10 unlimited burst on kill
+
+  // b_10 Armageddon: screen-wide shockwave fires once per wave on first missile hit
+  private armageddonFiredThisWave = false;
 
   // Pending delayed shots: used for piercing double/triple tap, mortar carpet bomb, chain blast secondary
   private pendingShots: Array<{
@@ -1647,13 +1656,74 @@ export class WeaponManager {
       (homingNodes.has('homing_a_2') ? 0.50 : 0) +
       (homingNodes.has('homing_a_3') ? 0.80 : 0) +
       (homingNodes.has('homing_a_4') ? 1.00 : 0) +
-      (homingNodes.has('homing_a_5') ? 1.50 : 0);
+      (homingNodes.has('homing_a_5') ? 1.50 : 0) +
+      // a_6 Ramjet: additional +200% speed (stacks with prior bonuses)
+      (homingNodes.has('homing_a_6') ? 2.00 : 0);
     const upgradeSpeed = config.projectileSpeed * (1.0 + speedBonus);
     // a_3/a_4 = turn tightening: missiles track more aggressively
     const turnMult =
       homingNodes.has('homing_a_4') ? 3.0 :  // Very tight tracking
       homingNodes.has('homing_a_3') ? 2.0 : 1.0; // Tighter tracking
     // homing_b_5 = contact stun: TODO Wave 2 — needs slow/stun system
+
+    // a_7–a_10: Railshot — instant beam hit(s) instead of projectile
+    if (homingNodes.has('homing_a_7') || homingNodes.has('homing_a_8') ||
+        homingNodes.has('homing_a_9') || homingNodes.has('homing_a_10')) {
+      const stackMult = this.getStackDamageMultiplier(WeaponType.Homing);
+      const masteryMult = this.masteryMultiplierFn?.(WeaponType.Homing) ?? 1.0;
+      const sessionMult = this.getSessionDamageMultiplier(WeaponType.Homing);
+      const railCount = homingNodes.has('homing_a_10') ? 6 :
+                        homingNodes.has('homing_a_9')  ? 4 :
+                        homingNodes.has('homing_a_8')  ? 2 : 1;
+      const canPierce = homingNodes.has('homing_a_10');
+      const localUp = origin.clone().normalize();
+      const fanSpread = 0.08; // ~4.6° between rails
+      const fanOffsets = [0, -fanSpread, fanSpread, -fanSpread * 2, fanSpread * 2, -fanSpread * 3];
+
+      for (let r = 0; r < railCount; r++) {
+        const railDir = direction.clone().applyAxisAngle(localUp, fanOffsets[r]).normalize();
+        const beamPoints = this.traceBeamPath(origin, railDir, 40, 60);
+
+        // Instant damage along beam
+        if (this.callbacks) {
+          let hitAny = false;
+          for (const enemy of this.callbacks.getEnemies()) {
+            if (!enemy.alive) continue;
+            let hit = false;
+            for (let s = 0; s < beamPoints.length - 1; s++) {
+              const segDist = distanceToSegment(enemy.position, beamPoints[s], beamPoints[s + 1]);
+              if (segDist < 0.4) {
+                this.callbacks.onEnemyDamage(
+                  enemy.index,
+                  config.damage * stackMult * masteryMult * sessionMult,
+                  WeaponType.Homing,
+                );
+                this.callbacks.onProjectileExplosion?.(enemy.position.clone(), WeaponType.Homing);
+                hit = true;
+                hitAny = true;
+                break;
+              }
+            }
+            if (hit && !canPierce) break; // non-pierce: stop at first enemy
+          }
+          if (!hitAny) {
+            // No enemies hit — still show beam flash at max extent
+            this.callbacks.onProjectileExplosion?.(beamPoints[beamPoints.length - 1].clone(), WeaponType.Homing);
+          }
+        }
+
+        // Beam flash visual
+        this.activeEffects.push({
+          type: 'laser',
+          position: origin.clone(),
+          direction: railDir.clone(),
+          duration: 0.15,
+          elapsed: 0,
+          beamPoints,
+        });
+      }
+      return; // railshot: no projectile spawned
+    }
 
     // Missiles persist until they hit something; 60s hard cap prevents infinite missiles
     // (e.g. if the last enemy dies before being reached).
@@ -1676,6 +1746,10 @@ export class WeaponManager {
         );
         proj.targetIndex = targetIndex;
         if (turnMult > 1.0) proj.turnRateMult = turnMult;
+        // b_8+ carpet bombing: missile splits into sub-munitions at 50% travel
+        if (homingNodes.has('homing_b_8') || homingNodes.has('homing_b_9') || homingNodes.has('homing_b_10')) {
+          proj.splitAt = 0.5;
+        }
       }
     } else {
       const proj = this.createProjectile(
@@ -1688,6 +1762,10 @@ export class WeaponManager {
       );
       proj.targetIndex = targetIndex;
       if (turnMult > 1.0) proj.turnRateMult = turnMult;
+      // b_8+ carpet bombing: missile splits into sub-munitions at 50% travel
+      if (homingNodes.has('homing_b_8') || homingNodes.has('homing_b_9') || homingNodes.has('homing_b_10')) {
+        proj.splitAt = 0.5;
+      }
     }
   }
 
@@ -2196,6 +2274,48 @@ export class WeaponManager {
     }
 
     proj.position.add(proj.direction.clone().multiplyScalar(proj.speed * dt));
+
+    const homingNodesUpdate = this.activeUpgradeNodes(WeaponType.Homing);
+
+    // a_6 Ramjet: near-miss explosion — if missile passes within 0.35 units of an enemy
+    // without actually hitting (hit radius is 0.3 in checkProjectileCollisions)
+    if (homingNodesUpdate.has('homing_a_6') && this.callbacks) {
+      const nearMissRadius = 0.35;
+      const hitRadius = 0.3;
+      for (const enemy of this.callbacks.getEnemies()) {
+        if (!enemy.alive) continue;
+        const d = proj.position.distanceTo(enemy.position);
+        if (d < nearMissRadius && d >= hitRadius) {
+          this.applyAoeDamage(proj.position, 2.0, proj.damage * 0.5);
+          this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
+          proj.age = proj.maxAge + 1; // expire missile after near-miss trigger
+          break;
+        }
+      }
+    }
+
+    // b_8+ carpet bombing: split into 3 child missiles at 50% of max travel time
+    if (proj.splitAt !== undefined && !proj.hasSplit && proj.age >= proj.splitAt * proj.maxAge) {
+      proj.hasSplit = true;
+      const isDevastator = homingNodesUpdate.has('homing_b_9') || homingNodesUpdate.has('homing_b_10');
+      const localUp = proj.position.clone().normalize();
+      const miniAngles = [-Math.PI / 8, 0, Math.PI / 8]; // 3 spread directions ~22.5°
+      const config = WEAPON_CONFIGS[WeaponType.Homing];
+      for (const angle of miniAngles) {
+        const miniDir = proj.direction.clone().applyAxisAngle(localUp, angle).normalize();
+        const child = this.createProjectile(
+          WeaponType.Homing,
+          proj.position.clone(),
+          miniDir,
+          config.damage * 0.6, // sub-munitions deal 60% damage each
+          proj.speed * 1.2,
+          15.0,
+        );
+        child.targetIndex = proj.targetIndex;
+        if (isDevastator) child.isDevastatorChild = true;
+      }
+      proj.age = proj.maxAge + 1; // expire parent after split
+    }
   }
 
   private checkProjectileCollisions(proj: Projectile, index: number): void {
@@ -2297,13 +2417,27 @@ export class WeaponManager {
           // will retarget to a different target (unless the enemy is a boss).
           this.missileHitThisFrame.add(enemy.index);
 
+          // b_9 devastator child missiles: trigger nova burst only, skip full warhead chain
+          if (proj.isDevastatorChild) {
+            const homingNodesDev = this.activeUpgradeNodes(WeaponType.Homing);
+            const radiusBonusDev =
+              (homingNodesDev.has('homing_b_1') ? 0.30 : 0) +
+              (homingNodesDev.has('homing_b_2') ? 0.60 : 0);
+            this.applyAoeDamage(proj.position, 3.5 * (1.0 + radiusBonusDev), proj.damage * 0.8);
+            this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
+            this.removeProjectile(index);
+            return;
+          }
+
           // Explosion radius upgrades (branch B): +30%, +60%
           const homingNodes = this.activeUpgradeNodes(WeaponType.Homing);
           const homingRadiusBonus =
             (homingNodes.has('homing_b_1') ? 0.30 : 0) +
             (homingNodes.has('homing_b_2') ? 0.60 : 0);
           // b_5 = nova burst: combines explosion + napalm + stun; bigger radius than base
-          const novaRadiusMult = homingNodes.has('homing_b_5') ? 1.5 : 1.0;
+          const novaRadiusMult = homingNodes.has('homing_b_5') || homingNodes.has('homing_b_6') ||
+            homingNodes.has('homing_b_7') || homingNodes.has('homing_b_8') ||
+            homingNodes.has('homing_b_9') || homingNodes.has('homing_b_10') ? 1.5 : 1.0;
           this.applyAoeDamage(proj.position, 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult, proj.damage * 0.8);
           this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
 
@@ -2326,14 +2460,47 @@ export class WeaponManager {
             }
           }
 
-          // b_4 = napalm: spawn gas cloud on detonation (previously b_3's role)
-          if (homingNodes.has('homing_b_4') || homingNodes.has('homing_b_5')) {
+          // b_4/b_5 = napalm / nova burst: standard gas cloud
+          // b_7+ upgrades the cloud to larger radius/duration (handled below) — skip standard cloud
+          if ((homingNodes.has('homing_b_4') || homingNodes.has('homing_b_5')) &&
+              !homingNodes.has('homing_b_7') && !homingNodes.has('homing_b_8') &&
+              !homingNodes.has('homing_b_9') && !homingNodes.has('homing_b_10')) {
             this.spawnGasCloud(proj.position.clone());
           }
 
           // b_5 = nova burst stun: TODO — no slow system yet
           // When slow system added: apply 30% speed reduction for 0.5s to enemies in explosion radius.
           // if (homingNodes.has('homing_b_5')) { applyStun(nearbyEnemies, 0.3, 0.5); }
+
+          // b_6 Thermobaric: secondary explosion 0.5s after primary
+          if (homingNodes.has('homing_b_6') || homingNodes.has('homing_b_7') ||
+              homingNodes.has('homing_b_8') || homingNodes.has('homing_b_9') ||
+              homingNodes.has('homing_b_10')) {
+            const secondaryRadius = 3.5 * (1.0 + homingRadiusBonus) * novaRadiusMult;
+            this.pendingShots.push({
+              delay: 0.5,
+              remaining: 0.5,
+              type: WeaponType.Homing,
+              origin: proj.position.clone(),
+              direction: proj.direction.clone(),
+              isChainBlast: true,
+              chainBlastRadius: secondaryRadius,
+              chainBlastDamage: proj.damage * 0.6,
+            });
+          }
+
+          // b_7 Fuel-air bomb: double-size long-duration gas cloud
+          if (homingNodes.has('homing_b_7') || homingNodes.has('homing_b_8') ||
+              homingNodes.has('homing_b_9') || homingNodes.has('homing_b_10')) {
+            this.spawnGasCloud(proj.position.clone(), GAS_CLOUD_RADIUS * 2, GAS_CLOUD_DURATION);
+          }
+
+          // b_10 Armageddon: screen-wide shockwave on first missile hit this wave
+          if (homingNodes.has('homing_b_10') && !this.armageddonFiredThisWave) {
+            this.armageddonFiredThisWave = true;
+            this.applyAoeDamage(proj.position, 28.0, proj.damage * 0.4);
+            this.callbacks.onProjectileExplosion?.(proj.position.clone(), WeaponType.Homing);
+          }
 
           this.removeProjectile(index);
           return;
@@ -2675,21 +2842,21 @@ export class WeaponManager {
     }
   }
 
-  private spawnGasCloud(position: THREE.Vector3): void {
+  private spawnGasCloud(position: THREE.Vector3, radius = GAS_CLOUD_RADIUS, duration = GAS_CLOUD_DURATION): void {
     const cloudMat = new THREE.MeshBasicMaterial({
       color: WEAPON_CONFIGS[WeaponType.Homing].color,
       transparent: true,
       opacity: 0.25,
     });
     const cloudMesh = new THREE.Mesh(SharedGeometries.blackholeSphere(), cloudMat);
-    cloudMesh.scale.setScalar(GAS_CLOUD_RADIUS);
+    cloudMesh.scale.setScalar(radius);
     cloudMesh.position.copy(position);
     this.projectileRoot.add(cloudMesh);
 
     this.gasClouds.push({
       position: position.clone(),
       elapsed: 0,
-      duration: GAS_CLOUD_DURATION,
+      duration,
       tickTimer: 0,
       mesh: cloudMesh,
     });
@@ -2730,6 +2897,7 @@ export class WeaponManager {
     }
     this.gasClouds = [];
     this.pendingShots = [];
+    this.armageddonFiredThisWave = false;
 
     this.chainLightning.clear();
   }
