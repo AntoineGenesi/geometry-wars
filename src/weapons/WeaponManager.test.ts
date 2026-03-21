@@ -36,6 +36,7 @@ import * as THREE from 'three';
 import { WeaponManager, WeaponCallbacks } from './WeaponManager';
 import { WeaponType, WEAPON_CONFIGS } from './WeaponTypes';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
+import { MasteryPointStore, weaponTypeFromNodeId } from '../systems/MasteryPointStore';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -1094,8 +1095,12 @@ describe('WeaponManager LAN visual-only mode', () => {
 
   describe('Upgrade Effects (setUpgradeTracker)', () => {
     function makeTracker(unlockedNodes: string[]): MatchUpgradeTracker {
-      const tracker = new MatchUpgradeTracker(new Set(unlockedNodes));
-      return tracker;
+      const store = new MasteryPointStore();
+      for (const nodeId of unlockedNodes) {
+        const wt = weaponTypeFromNodeId(nodeId);
+        if (wt) { store.earnPoint(wt); store.spendPoint(nodeId); }
+      }
+      return new MatchUpgradeTracker(store);
     }
 
     function activateNodes(tracker: MatchUpgradeTracker, weaponType: WeaponType, kills: number): void {
@@ -1491,13 +1496,22 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
   // =========================================================================
 
   describe('Standard BL sub-branch — seeking blaster bolts', () => {
+    function makeStoreFromNodes(nodeIds: string[]): MasteryPointStore {
+      const s = new MasteryPointStore();
+      for (const id of nodeIds) {
+        const wt = weaponTypeFromNodeId(id);
+        if (wt) { s.earnPoint(wt); s.spendPoint(id); }
+      }
+      return s;
+    }
+
     function makeTrackerWithBL(node: string): MatchUpgradeTracker {
       // Need parent nodes unlocked first (b_1..b_4 → bl_5)
       const unlocked = [
         'standard_b_1', 'standard_b_2', 'standard_b_3', 'standard_b_4',
         node,
       ];
-      const tracker = new MatchUpgradeTracker(new Set(unlocked));
+      const tracker = new MatchUpgradeTracker(makeStoreFromNodes(unlocked));
       // Activate node by recording enough kills to reach its threshold
       for (let i = 0; i < 200; i++) tracker.recordKill(WeaponType.Standard);
       return tracker;
@@ -1505,7 +1519,7 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
 
     it('getBlasterHomingStrength: no BL nodes → 0', () => {
       const wm2 = new WeaponManager();
-      const tracker = new MatchUpgradeTracker(new Set([]));
+      const tracker = new MatchUpgradeTracker(makeStoreFromNodes([]));
       wm2.setUpgradeTracker(tracker);
       expect(wm2.getBlasterHomingStrength()).toBe(0);
       wm2.dispose();
@@ -1525,7 +1539,7 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
         'standard_bl_5', 'standard_bl_6', 'standard_bl_7', 'standard_bl_8',
         'standard_bl_9', 'standard_bl_10',
       ];
-      const tracker = new MatchUpgradeTracker(new Set(allBL));
+      const tracker = new MatchUpgradeTracker(makeStoreFromNodes(allBL));
       for (let i = 0; i < 700; i++) tracker.recordKill(WeaponType.Standard);
       wm2.setUpgradeTracker(tracker);
       expect(wm2.getBlasterHomingStrength()).toBe(0.95);
@@ -1567,7 +1581,7 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
         'standard_b_1', 'standard_b_2', 'standard_b_3', 'standard_b_4',
         'standard_bl_5', 'standard_bl_6', 'standard_bl_7', 'standard_bl_8',
       ];
-      const tracker = new MatchUpgradeTracker(new Set(allBL));
+      const tracker = new MatchUpgradeTracker(makeStoreFromNodes(allBL));
       for (let i = 0; i < 400; i++) tracker.recordKill(WeaponType.Standard);
       wm2.setUpgradeTracker(tracker);
 
@@ -1627,7 +1641,7 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
         'standard_bl_5', 'standard_bl_6', 'standard_bl_7', 'standard_bl_8',
         'standard_bl_9', 'standard_bl_10',
       ];
-      const tracker = new MatchUpgradeTracker(new Set(allBL));
+      const tracker = new MatchUpgradeTracker(makeStoreFromNodes(allBL));
       for (let i = 0; i < 700; i++) tracker.recordKill(WeaponType.Standard);
       wm2.setUpgradeTracker(tracker);
 

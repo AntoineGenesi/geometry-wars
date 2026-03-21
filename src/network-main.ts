@@ -1214,7 +1214,7 @@ async function main() {
   // Activates permanently-unlocked mastery nodes via kill thresholds (same as SP).
   // In MP, we create a fresh tracker each time a new round begins.
   const masteryPointStore = MasteryPointStore.load();
-  let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+  let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
   const upgradeNotification = new UpgradeNotification();
   matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
     upgradeNotification.show(nodeId, weaponType);
@@ -5323,7 +5323,7 @@ async function main() {
         // Dismiss analytics panel if countdown expired while reviewing
         analyticsPanel.hide();
         // Reset per-match upgrade tracker for the new round.
-        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
         matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
           upgradeNotification.show(nodeId, weaponType);
         };
@@ -5348,7 +5348,7 @@ async function main() {
         startActiveGameMode();
         // Reset entities (safe to call even when empty — clears any stale state).
         // Reset per-match upgrade tracker for the first round.
-        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore.getUnlockedNodes());
+        matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
         matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
           upgradeNotification.show(nodeId, weaponType);
         };
