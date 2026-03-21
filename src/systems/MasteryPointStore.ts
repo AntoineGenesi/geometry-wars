@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import { WeaponType } from '../weapons/WeaponTypes';
+import { UpgradeTree, isExcluded } from './UpgradeTreeData';
 
 const STORAGE_KEY = 'gw_mastery_points';
 
@@ -135,9 +136,11 @@ export class MasteryPointStore {
    * - Returns true if the spend was successful; false if node is at max points,
    *   insufficient weapon points are available, or nodeId has no weapon owner.
    */
-  spendPoint(nodeId: string, maxPoints: number = 1, cost: number = 1): boolean {
+  spendPoint(nodeId: string, maxPoints: number = 1, cost: number = 1, tree?: UpgradeTree): boolean {
     const weaponType = weaponTypeFromNodeId(nodeId);
     if (weaponType === null) return false;
+
+    if (tree && isExcluded(nodeId, tree, this)) return false;
 
     const current = this.nodePoints[nodeId] ?? 0;
     if (current >= maxPoints) return false;
