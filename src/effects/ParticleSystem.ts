@@ -680,13 +680,13 @@ export class ParticleSystem {
     }
     this.emit({
       position: enemyPos,
-      count: 4,
+      count: 10,
       color: _tempColor,
-      speed: 8,
-      lifetime: 0.15,
-      size: 1.0,
+      speed: 10,
+      lifetime: 0.12,
+      size: 0.3,
       direction: _gravPullDir,
-      spread: 0.5,
+      spread: 0.25,
       gravity: 0,
     });
   }
