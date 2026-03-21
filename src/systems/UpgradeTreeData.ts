@@ -42,6 +42,11 @@ export interface UpgradeNode {
   x?: number;
   /** Optional explicit SVG y position (0–svgHeight). Used for branching layouts. */
   y?: number;
+  /**
+   * Node IDs that become unavailable if this node gains any points.
+   * For bidirectional mutual exclusion, prefer `exclusionPairs` on the tree instead.
+   */
+  excludes?: string[];
 }
 
 /**
@@ -77,6 +82,12 @@ export interface UpgradeTree {
    * is fully unlocked.
    */
   skipConnections?: SkipConnection[];
+  /**
+   * Bidirectional mutual-exclusion pairs declared at the tree level.
+   * If either node in a pair has points > 0, the other becomes unavailable.
+   * Prefer this over per-node `excludes` for cross-branch pairs — declare once, enforced both ways.
+   */
+  exclusionPairs?: [string, string][];
 }
 
 // ---------------------------------------------------------------------------
@@ -210,6 +221,16 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
     skipConnections: [
       { fromId: 'standard_a_2', toId: 'standard_b_3' },
       { fromId: 'standard_b_2', toId: 'standard_a_3' },
+    ],
+    // Mutual exclusion: choosing one sub-branch locks out the other at the same split.
+    // AL (Scatter) vs AR (Rapid Fire) — picking either depth-5 node locks the other sub-branch.
+    // BL (Seeking) vs BR (Devastation) — same pattern on the B side.
+    // Within-depth example: al_7 (Ring shot) vs ar_7 (Machine gun) — redundant given al_5/ar_5,
+    // but included to demonstrate per-depth exclusion granularity.
+    exclusionPairs: [
+      ['standard_al_5', 'standard_ar_5'],
+      ['standard_bl_5', 'standard_br_5'],
+      ['standard_al_7', 'standard_ar_7'],
     ],
   },
 
@@ -598,4 +619,38 @@ export function isPrerequisiteMet(node: UpgradeNode, tree: UpgradeTree, ps: Poin
   }
 
   return false;
+}
+
+/**
+ * Returns the IDs of already-unlocked nodes that exclude `nodeId`.
+ * Checks both `tree.exclusionPairs` (bidirectional) and per-node `excludes` arrays.
+ * An already-unlocked node is one with points > 0.
+ */
+export function getExcludedBy(nodeId: string, tree: UpgradeTree, ps: PointLookup): string[] {
+  const sources: string[] = [];
+
+  // Check tree-level bidirectional exclusion pairs
+  if (tree.exclusionPairs) {
+    for (const [a, b] of tree.exclusionPairs) {
+      if (a === nodeId && ps.getNodePoints(b) > 0) sources.push(b);
+      else if (b === nodeId && ps.getNodePoints(a) > 0) sources.push(a);
+    }
+  }
+
+  // Check per-node excludes arrays
+  for (const n of tree.nodes) {
+    if (n.excludes?.includes(nodeId) && ps.getNodePoints(n.id) > 0) {
+      sources.push(n.id);
+    }
+  }
+
+  return sources;
+}
+
+/**
+ * Returns true if `nodeId` is excluded by any already-unlocked node.
+ * A node is excluded when at least one node that mutually excludes it has points > 0.
+ */
+export function isExcluded(nodeId: string, tree: UpgradeTree, ps: PointLookup): boolean {
+  return getExcludedBy(nodeId, tree, ps).length > 0;
 }

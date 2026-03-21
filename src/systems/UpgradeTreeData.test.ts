@@ -6,6 +6,8 @@ import {
   getBranchNodes,
   getUpgradeTree,
   getNodeMaxPoints,
+  getExcludedBy,
+  isExcluded,
   type UpgradeNode,
 } from './UpgradeTreeData';
 import { WeaponType } from '../weapons/WeaponTypes';
@@ -363,5 +365,155 @@ describe('Homing 10-level branch node ids', () => {
       expect(ids).toContain(`homing_a_${i}`);
       expect(ids).toContain(`homing_b_${i}`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Exclusion system tests
+// ---------------------------------------------------------------------------
+
+/** Minimal PointLookup stub — maps node id → points (default 0). */
+function makePointStore(unlocked: Record<string, number> = {}) {
+  return { getNodePoints: (id: string) => unlocked[id] ?? 0 };
+}
+
+describe('Standard exclusionPairs data', () => {
+  it('Standard tree has exclusionPairs with at least 3 entries', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+    expect(tree.exclusionPairs).toBeDefined();
+    expect(tree.exclusionPairs!.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('Standard exclusionPairs contains AL vs AR sub-branch root pair', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+    const pairs = tree.exclusionPairs!;
+    const hasALvsAR = pairs.some(
+      ([a, b]) =>
+        (a === 'standard_al_5' && b === 'standard_ar_5') ||
+        (a === 'standard_ar_5' && b === 'standard_al_5'),
+    );
+    expect(hasALvsAR).toBe(true);
+  });
+
+  it('Standard exclusionPairs contains BL vs BR sub-branch root pair', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+    const pairs = tree.exclusionPairs!;
+    const hasBLvsBR = pairs.some(
+      ([a, b]) =>
+        (a === 'standard_bl_5' && b === 'standard_br_5') ||
+        (a === 'standard_br_5' && b === 'standard_bl_5'),
+    );
+    expect(hasBLvsBR).toBe(true);
+  });
+
+  it('Standard exclusionPairs contains al_7 vs ar_7 within-depth example', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+    const pairs = tree.exclusionPairs!;
+    const hasDepth7 = pairs.some(
+      ([a, b]) =>
+        (a === 'standard_al_7' && b === 'standard_ar_7') ||
+        (a === 'standard_ar_7' && b === 'standard_al_7'),
+    );
+    expect(hasDepth7).toBe(true);
+  });
+});
+
+describe('isExcluded', () => {
+  const tree = UPGRADE_TREES[WeaponType.Standard];
+
+  it('returns false when no nodes are unlocked', () => {
+    const ps = makePointStore();
+    expect(isExcluded('standard_ar_5', tree, ps)).toBe(false);
+    expect(isExcluded('standard_al_5', tree, ps)).toBe(false);
+  });
+
+  it('returns true for AR sub-branch root when AL root is unlocked', () => {
+    const ps = makePointStore({ 'standard_al_5': 1 });
+    expect(isExcluded('standard_ar_5', tree, ps)).toBe(true);
+  });
+
+  it('returns true for AL sub-branch root when AR root is unlocked (bidirectional)', () => {
+    const ps = makePointStore({ 'standard_ar_5': 1 });
+    expect(isExcluded('standard_al_5', tree, ps)).toBe(true);
+  });
+
+  it('returns true for BR sub-branch root when BL root is unlocked', () => {
+    const ps = makePointStore({ 'standard_bl_5': 1 });
+    expect(isExcluded('standard_br_5', tree, ps)).toBe(true);
+  });
+
+  it('returns true for BL sub-branch root when BR root is unlocked (bidirectional)', () => {
+    const ps = makePointStore({ 'standard_br_5': 1 });
+    expect(isExcluded('standard_bl_5', tree, ps)).toBe(true);
+  });
+
+  it('returns false for a node not involved in any exclusion pair', () => {
+    const ps = makePointStore({ 'standard_al_5': 1 });
+    // a_1 is a trunk node, not in any exclusion pair
+    expect(isExcluded('standard_a_1', tree, ps)).toBe(false);
+  });
+
+  it('returns false when the other side of a pair has 0 points', () => {
+    const ps = makePointStore({ 'standard_al_5': 0 });
+    expect(isExcluded('standard_ar_5', tree, ps)).toBe(false);
+  });
+
+  it('handles within-depth exclusion: al_7 excluded when ar_7 is unlocked', () => {
+    const ps = makePointStore({ 'standard_ar_7': 1 });
+    expect(isExcluded('standard_al_7', tree, ps)).toBe(true);
+  });
+
+  it('handles per-node excludes field on synthetic nodes', () => {
+    const syntheticTree = {
+      ...tree,
+      nodes: [
+        ...tree.nodes,
+        {
+          id: 'standard_x_99',
+          branch: 'a' as const,
+          nodeIndex: 9,
+          description: 'test',
+          killThreshold: 480,
+          effect: 'test',
+          excludes: ['standard_a_1'],
+        },
+      ],
+      exclusionPairs: undefined,
+    };
+    const ps = makePointStore({ 'standard_x_99': 1 });
+    expect(isExcluded('standard_a_1', syntheticTree, ps)).toBe(true);
+    expect(isExcluded('standard_a_2', syntheticTree, ps)).toBe(false);
+  });
+});
+
+describe('getExcludedBy', () => {
+  const tree = UPGRADE_TREES[WeaponType.Standard];
+
+  it('returns empty array when no nodes are unlocked', () => {
+    const ps = makePointStore();
+    expect(getExcludedBy('standard_ar_5', tree, ps)).toEqual([]);
+  });
+
+  it('returns the unlocked AL node as the source excluding AR root', () => {
+    const ps = makePointStore({ 'standard_al_5': 1 });
+    expect(getExcludedBy('standard_ar_5', tree, ps)).toContain('standard_al_5');
+  });
+
+  it('returns the unlocked AR node as the source excluding AL root (bidirectional)', () => {
+    const ps = makePointStore({ 'standard_ar_5': 1 });
+    expect(getExcludedBy('standard_al_5', tree, ps)).toContain('standard_ar_5');
+  });
+
+  it('can return multiple sources if multiple exclusion pairs apply', () => {
+    // al_5 and al_7 both exclude ar_5 and ar_7 respectively — but al_5 excludes ar_5 only
+    // Here: both al_5 and al_7 are unlocked; ar_7 is excluded by al_7 pair
+    const ps = makePointStore({ 'standard_al_5': 1, 'standard_al_7': 1 });
+    const result = getExcludedBy('standard_ar_7', tree, ps);
+    expect(result).toContain('standard_al_7');
+  });
+
+  it('returns empty array for a node not in any exclusion pair', () => {
+    const ps = makePointStore({ 'standard_al_5': 1 });
+    expect(getExcludedBy('standard_a_1', tree, ps)).toEqual([]);
   });
 });
