@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MasteryPointStore, weaponTypeFromNodeId } from './MasteryPointStore';
 import { WeaponType } from '../weapons/WeaponTypes';
+import { UpgradeTree } from './UpgradeTreeData';
 
 // Mock localStorage for test environment
 const localStorageMock = (() => {
@@ -364,6 +365,50 @@ describe('MasteryPointStore', () => {
     expect(migrated.isUnlocked('homing_b_2')).toBe(true);
     expect(migrated.getNodePoints('standard_a_1')).toBe(1);
     expect(migrated.getNodePoints('homing_b_2')).toBe(1);
+  });
+
+  // -------------------------------------------------------------------------
+  // spendPoint — exclusion enforcement via tree param
+  // -------------------------------------------------------------------------
+
+  it('spendPoint returns false when node is excluded by an already-unlocked node', () => {
+    // Build a minimal tree with an exclusion pair: standard_a_3 excludes standard_b_3
+    const tree: UpgradeTree = {
+      weaponType: WeaponType.Standard,
+      branchAName: 'A',
+      branchBName: 'B',
+      nodes: [
+        { id: 'standard_a_3', description: 'Quad burst', effect: '+4 bolts wide', killThreshold: 300, branch: 'a', nodeIndex: 3 },
+        { id: 'standard_b_3', description: 'Quad lance', effect: '+4 bolts tight', killThreshold: 300, branch: 'b', nodeIndex: 3 },
+      ],
+      exclusionPairs: [['standard_a_3', 'standard_b_3']],
+    };
+
+    // Earn enough points to buy both
+    store.earnPoint(WeaponType.Standard);
+    store.earnPoint(WeaponType.Standard);
+
+    // Unlock standard_a_3 first (no tree exclusion check here — just unlock it)
+    store.spendPoint('standard_a_3', 1, 1);
+    expect(store.isUnlocked('standard_a_3')).toBe(true);
+
+    // Now try to spend on standard_b_3 — should fail because standard_a_3 is unlocked
+    const result = store.spendPoint('standard_b_3', 1, 1, tree);
+    expect(result).toBe(false);
+    expect(store.isUnlocked('standard_b_3')).toBe(false);
+    // The point was NOT consumed
+    expect(store.getAvailablePoints(WeaponType.Standard)).toBe(1);
+  });
+
+  it('spendPoint without tree param ignores exclusions', () => {
+    // Without tree, exclusions are not enforced — both nodes can be unlocked
+    store.earnPoint(WeaponType.Standard);
+    store.earnPoint(WeaponType.Standard);
+
+    store.spendPoint('standard_a_3', 1, 1);
+    const result = store.spendPoint('standard_b_3', 1, 1); // no tree — no exclusion check
+    expect(result).toBe(true);
+    expect(store.isUnlocked('standard_b_3')).toBe(true);
   });
 
   // -------------------------------------------------------------------------

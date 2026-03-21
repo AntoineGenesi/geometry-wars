@@ -230,6 +230,19 @@ export class BuildChoiceScreen {
         card.addEventListener('mouseenter', () => {
           this.selectedIndex = idx;
           this._updateHighlight();
+          // Highlight cards that would conflict if this card were chosen
+          const hypotheticalActive = new Set([...activeIds, nodeId]);
+          this.cards.forEach((otherCard, otherIdx) => {
+            if (otherIdx === idx) return;
+            const otherId = nodeIds[otherIdx];
+            if (otherId && !otherCard.classList.contains('bcs-excluded')) {
+              const willConflict = isExcludedByActive(otherId, tree, hypotheticalActive);
+              otherCard.classList.toggle('bcs-will-conflict', willConflict);
+            }
+          });
+        });
+        card.addEventListener('mouseleave', () => {
+          this.cards.forEach(c => c.classList.remove('bcs-will-conflict'));
         });
       }
 
@@ -347,6 +360,12 @@ export class BuildChoiceScreen {
         cursor: default;
         opacity: 0.35;
         border-color: rgba(80, 80, 100, 0.3);
+      }
+      .bcs-will-conflict {
+        opacity: 0.4;
+        border-color: rgba(255, 60, 60, 0.5);
+        box-shadow: 0 0 12px rgba(255, 60, 60, 0.2) inset;
+        transform: none !important;
       }
 
       .bcs-premium {

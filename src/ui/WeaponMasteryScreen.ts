@@ -25,6 +25,8 @@ import {
   getNodeById,
   getImplicitParent,
   isPrerequisiteMet,
+  isExcluded,
+  getExcludedBy,
 } from '../systems/UpgradeTreeData';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 
@@ -419,6 +421,32 @@ function injectStyles(): void {
       border: 2px solid rgba(255,100,50,0.15);
       color: rgba(255,150,100,0.25);
       cursor: not-allowed;
+    }
+
+    /* excluded — conflicts with an already-unlocked node; red tint with ✕ icon */
+    #weapon-mastery-screen .wms-node--excluded {
+      background: rgba(255,50,50,0.06);
+      border: 2px solid #ff4444;
+      color: rgba(255,80,80,0.6);
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    #weapon-mastery-screen .wms-node--excluded::after {
+      content: '✕';
+      position: absolute;
+      font-size: 11px;
+      color: #ff4444;
+      top: -6px;
+      right: -6px;
+      background: rgba(0,0,0,0.8);
+      border-radius: 50%;
+      width: 14px;
+      height: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 14px;
+      text-align: center;
     }
 
     /* affordable — bright weapon-color glow: this is what you SHOULD click next */
@@ -965,7 +993,7 @@ export class WeaponMasteryScreen {
     hasPoints: boolean,
     weaponType?: WeaponType,
     tree?: UpgradeTree | null,
-  ): 'active-this-match' | 'unlocked-inactive' | 'unlocked' | 'partial' | 'affordable' | 'prereq-locked' | 'locked' {
+  ): 'active-this-match' | 'unlocked-inactive' | 'unlocked' | 'partial' | 'excluded' | 'affordable' | 'prereq-locked' | 'locked' {
     const nodeId = node.id;
     const maxPts = getNodeMaxPoints(node);
     const current = ps.getNodePoints(nodeId);
@@ -983,6 +1011,9 @@ export class WeaponMasteryScreen {
       }
       return 'unlocked';
     }
+
+    // Not yet unlocked — check if excluded by an already-unlocked node
+    if (tree && isExcluded(nodeId, tree, ps)) return 'excluded';
 
     // Not yet unlocked — check prerequisites first
     if (tree && !isPrerequisiteMet(node, tree, ps)) return 'prereq-locked';
@@ -1176,13 +1207,15 @@ export class WeaponMasteryScreen {
 
     // Left-click ONLY adds points — never refunds (right-click is for refunds)
     // States that allow spending: affordable, partial (multi-level, not yet at max)
-    // prereq-locked and locked do NOT allow spending
+    // prereq-locked, locked, and excluded do NOT allow spending
     const canSpend = rawState === 'affordable' || rawState === 'partial';
 
     if (canSpend) {
       // For first-time unlock use cost; subsequent ranks on multi-level nodes still cost 1 each
       const pointsToSpend = rawState === 'affordable' ? cost : 1;
-      const spent = ps.spendPoint(nodeId, maxPoints, pointsToSpend);
+      const weaponType = weaponTypeFromNodeId(nodeId) ?? undefined;
+      const tree = weaponType ? (UPGRADE_TREES[weaponType] ?? undefined) : undefined;
+      const spent = ps.spendPoint(nodeId, maxPoints, pointsToSpend, tree);
       if (spent) {
         this._updateNodeEl(nodeEl);
         this._refreshAllNodeStates();
@@ -1275,6 +1308,15 @@ export class WeaponMasteryScreen {
     } else if (state === 'unlocked') {
       const rankStr = maxPoints > 1 ? ` (Rank ${currentPoints}/${maxPoints})` : '';
       costHtml = `<div class="wms-tt-cost">Unlocked${rankStr} &nbsp;·&nbsp; Right-click to refund</div>`;
+    } else if (state === 'excluded') {
+      const weaponType = weaponTypeFromNodeId(nodeId);
+      const tree = weaponType ? (UPGRADE_TREES[weaponType] ?? null) : null;
+      const excludedByIds = tree ? getExcludedBy(nodeId, tree, ps) : [];
+      const conflictNames = excludedByIds
+        .map(id => getNodeById(id)?.description ?? id)
+        .join(', ');
+      const conflictText = conflictNames ? `conflicts with: ${conflictNames}` : 'conflicts with an unlocked node';
+      costHtml = `<div class="wms-tt-prereq">&#x2715; Locked: ${conflictText}</div>`;
     } else if (state === 'prereq-locked') {
       const prereqName = nodeEl.dataset.prereqName ?? '';
       const prereqText = prereqName ? `Unlock <em>${prereqName}</em> first` : 'Unlock the previous node first';
