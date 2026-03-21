@@ -1,25 +1,35 @@
 import { WeaponType } from '../weapons/WeaponTypes';
-import { UPGRADE_TREES } from './UpgradeTreeData';
+import { UPGRADE_TREES, isPrerequisiteMet } from './UpgradeTreeData';
 import { MasteryPointStore } from './MasteryPointStore';
 
 // ---------------------------------------------------------------------------
 // MatchUpgradeTracker
 // Per-match, non-persisted tracker.  Runs alongside WeaponMasteryManager —
 // that system handles buff tier-ups; this one handles upgrade node activation.
+//
+// Flow: kill threshold crossed → onBuildChoiceAvailable → player picks →
+//       confirmChoice() → onUpgradeActivated
 // ---------------------------------------------------------------------------
 
 export class MatchUpgradeTracker {
-  /** Callback fired whenever a new upgrade node becomes active mid-match. */
+  /** Callback fired after the player confirms a build choice (a node is now active). */
   onUpgradeActivated: ((nodeId: string, weaponType: WeaponType) => void) | null = null;
+
+  /**
+   * Callback fired when a kill threshold is crossed and one or more nodes are
+   * available for the player to choose.  The caller should pause the game and
+   * show build-choice UI; call confirmChoice() when the player picks.
+   */
+  onBuildChoiceAvailable: ((weaponType: WeaponType, availableNodeIds: string[]) => void) | null = null;
 
   private killCounts: Map<WeaponType, number> = new Map();
   private activeUpgrades: Map<WeaponType, Set<string>> = new Map();
   private readonly permanentUnlocks: Set<string>;
+  private pendingChoice: { weaponType: WeaponType; nodeIds: string[] } | null = null;
 
   /**
    * @param permanentUnlocks - The set of permanently unlocked node IDs from
-   *   MasteryPointStore.  These act as the "ceiling" — the tracker can only
-   *   activate nodes that are permanently unlocked.
+   *   MasteryPointStore.  Only permanently-unlocked nodes can be offered as choices.
    */
   constructor(permanentUnlocks: Set<string>) {
     this.permanentUnlocks = new Set(permanentUnlocks);
@@ -31,7 +41,7 @@ export class MatchUpgradeTracker {
 
   /**
    * Record a kill with a weapon and check whether any new upgrade nodes
-   * should activate for that weapon.
+   * are available for the player to choose.
    */
   recordKill(weaponType: WeaponType): void {
     const prev = this.killCounts.get(weaponType) ?? 0;
@@ -42,8 +52,8 @@ export class MatchUpgradeTracker {
 
   /**
    * Returns the set of node IDs that are currently active for the given
-   * weapon — the intersection of permanently unlocked nodes and those whose
-   * kill threshold the player has crossed in this match.
+   * weapon — nodes the player has confirmed via confirmChoice() this match.
+   * REGRESSION GUARD: WeaponManager reads this to apply in-match upgrade buffs.
    */
   getActiveUpgrades(weaponType: WeaponType): Set<string> {
     return new Set(this.activeUpgrades.get(weaponType) ?? []);
@@ -56,22 +66,40 @@ export class MatchUpgradeTracker {
     return this.killCounts.get(weaponType) ?? 0;
   }
 
+  /**
+   * Returns the current pending build choice, or null if none.
+   * Use for recovery if the choice screen is dismissed unexpectedly.
+   */
+  getPendingChoice(): { weaponType: WeaponType; nodeIds: string[] } | null {
+    if (!this.pendingChoice) return null;
+    return { ...this.pendingChoice, nodeIds: [...this.pendingChoice.nodeIds] };
+  }
+
+  /**
+   * Confirm the player's node selection.  Activates the node and fires
+   * onUpgradeActivated.  Clears the pending choice.
+   */
+  confirmChoice(nodeId: string, weaponType: WeaponType): void {
+    this.pendingChoice = null;
+    this.activateNode(nodeId, weaponType);
+  }
+
   /** Clear all state — call at the start of a new match. */
   reset(): void {
     this.killCounts = new Map();
     this.activeUpgrades = new Map();
+    this.pendingChoice = null;
   }
 
   /**
    * Refresh permanent unlocks from a (possibly updated) MasteryPointStore.
    * Call this after the player spends mastery points mid-match (via pause menu).
    * For any newly-unlocked nodes whose kill thresholds are already met, fires
-   * onUpgradeActivated immediately.
+   * onBuildChoiceAvailable so the player can confirm immediately.
    */
   refreshFromStore(store: MasteryPointStore): void {
     const newUnlocks = store.getUnlockedNodes();
 
-    // Determine which nodes are newly unlocked (not already tracked)
     const newlyUnlocked: string[] = [];
     for (const nodeId of newUnlocks) {
       if (!this.permanentUnlocks.has(nodeId)) {
@@ -82,15 +110,23 @@ export class MatchUpgradeTracker {
 
     if (newlyUnlocked.length === 0) return;
 
-    // For each weapon type, check if newly-unlocked nodes already have met their kill threshold
     for (const [weaponTypeKey, tree] of Object.entries(UPGRADE_TREES)) {
       const weaponType = weaponTypeKey as WeaponType;
       const currentKills = this.killCounts.get(weaponType) ?? 0;
+      const ps = this.makePointLookup(weaponType);
+
+      const available: string[] = [];
       for (const upgradeNode of tree.nodes) {
         if (!newlyUnlocked.includes(upgradeNode.id)) continue;
-        if (currentKills >= upgradeNode.killThreshold) {
-          this.activateNode(upgradeNode.id, weaponType);
+        const alreadyActive = this.activeUpgrades.get(weaponType)?.has(upgradeNode.id) ?? false;
+        if (!alreadyActive && currentKills >= upgradeNode.killThreshold && isPrerequisiteMet(upgradeNode, tree, ps)) {
+          available.push(upgradeNode.id);
         }
+      }
+
+      if (available.length > 0) {
+        this.pendingChoice = { weaponType, nodeIds: available };
+        this.onBuildChoiceAvailable?.(weaponType, available);
       }
     }
   }
@@ -99,19 +135,33 @@ export class MatchUpgradeTracker {
   // Private
   // -------------------------------------------------------------------------
 
+  /** Creates a PointLookup that treats confirmed in-match nodes as fully invested. */
+  private makePointLookup(weaponType: WeaponType) {
+    const activeSet = this.activeUpgrades.get(weaponType) ?? new Set<string>();
+    return { getNodePoints: (id: string) => (activeSet.has(id) ? 1 : 0) };
+  }
+
   private checkActivations(weaponType: WeaponType, prevKills: number, newKills: number): void {
     const tree = UPGRADE_TREES[weaponType];
     if (!tree) return;
 
-    for (const upgradeNode of tree.nodes) {
-      // Only consider permanently unlocked nodes
-      if (!this.permanentUnlocks.has(upgradeNode.id)) continue;
+    const ps = this.makePointLookup(weaponType);
+    const available: string[] = [];
 
+    for (const upgradeNode of tree.nodes) {
+      if (!this.permanentUnlocks.has(upgradeNode.id)) continue;
       const threshold = upgradeNode.killThreshold;
-      // Activate when the kill count crosses the threshold for the first time
       if (prevKills < threshold && newKills >= threshold) {
-        this.activateNode(upgradeNode.id, weaponType);
+        const alreadyActive = this.activeUpgrades.get(weaponType)?.has(upgradeNode.id) ?? false;
+        if (!alreadyActive && isPrerequisiteMet(upgradeNode, tree, ps)) {
+          available.push(upgradeNode.id);
+        }
       }
+    }
+
+    if (available.length > 0) {
+      this.pendingChoice = { weaponType, nodeIds: available };
+      this.onBuildChoiceAvailable?.(weaponType, available);
     }
   }
 
