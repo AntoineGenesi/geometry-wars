@@ -139,6 +139,10 @@ export class EnemyInstanceManager {
   /** How often to revalidate highWaterMark (every N frames). */
   private static readonly HWM_REVALIDATE_INTERVAL = 60; // ~1s at 60fps
 
+  /** Dirty flag: true when any instanceColor or opacityAttribute value changed this frame.
+   *  flushColors() skips needsUpdate=true if false, avoiding unnecessary GPU buffer uploads. */
+  private _colorsDirty = false;
+
   constructor(scene: THREE.Scene, maxInstances = DEFAULT_MAX_INSTANCES, isWebGPU = false) {
     this.scene = scene;
     this.maxInstances = maxInstances;
@@ -486,6 +490,7 @@ export class EnemyInstanceManager {
               batch.perInstanceColors[ci + 2] * 0.3,
             );
             batch.instancedMesh.setColorAt(highIndex, _tempColor);
+            this._colorsDirty = true;
           }
         } else {
           // Visible entity: restore full opacity and color
@@ -497,6 +502,7 @@ export class EnemyInstanceManager {
             batch.perInstanceColors[ci + 2],
           );
           batch.instancedMesh.setColorAt(highIndex, _tempColor);
+          this._colorsDirty = true;
         }
       }
 
@@ -723,6 +729,7 @@ export class EnemyInstanceManager {
 
     _tempColor.setRGB(r, g, b);
     batch.instancedMesh.setColorAt(index, _tempColor);
+    this._colorsDirty = true;
   }
 
   /**
@@ -773,6 +780,7 @@ export class EnemyInstanceManager {
               _tempColor.setRGB(MIN_ICB, MIN_ICB, MIN_ICB);
             }
             batch.instancedMesh.setColorAt(index, _tempColor);
+            this._colorsDirty = true;
           }
         }
 
@@ -815,6 +823,7 @@ export class EnemyInstanceManager {
               _tempColor.setRGB(MIN_ICB, MIN_ICB, MIN_ICB);
             }
             lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
+            this._colorsDirty = true;
           }
         }
 
@@ -845,6 +854,13 @@ export class EnemyInstanceManager {
    * Flush visibility and color changes (call after setting all visibilities for the frame).
    */
   flushColors(): void {
+    // Skip GPU upload if no color/opacity values changed this frame.
+    // Avoids re-uploading the full instanceColor buffer on every frame when the
+    // scene is stable (enemies at steady-state visibility). Three.js reuses the
+    // previous frame's buffer when needsUpdate is not set.
+    if (!this._colorsDirty) return;
+    this._colorsDirty = false;
+
     for (const batch of this.batches.values()) {
       if (batch.instancedMesh.instanceColor) {
         batch.instancedMesh.instanceColor.needsUpdate = true;
@@ -1200,6 +1216,7 @@ export class EnemyInstanceManager {
 
       _tempColor.setRGB(r, g, b);
       lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
+      this._colorsDirty = true;
     }
   }
 

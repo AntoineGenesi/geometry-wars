@@ -298,11 +298,17 @@ export class DepthOcclusionSystem {
    * @param cameraPos - World-space camera position.
    * @param dt - Frame delta time in seconds (for lerp smoothing).
    */
-  update(entities: OccludableEntity[], cameraPos: THREE.Vector3, dt: number): void {
+  update(entities: OccludableEntity[], cameraPos: THREE.Vector3, dt: number, effectiveBatchSize?: number): void {
     this.frameNumber++;
     if (!this.bvh || !this.surfaceMesh) return;
 
-    const batchSize = this.config.batchSize;
+    // Adaptive batch size: cap at effectiveBatchSize when provided.
+    // At high enemy counts, reducing raycasts/frame trades responsiveness for throughput.
+    // Example: 200 enemies with effectiveBatchSize=34 → each enemy re-checked every ~6 frames
+    // (~100ms at 60fps). EMA smoothing keeps transitions visually smooth within this window.
+    const batchSize = effectiveBatchSize !== undefined
+      ? Math.min(effectiveBatchSize, this.config.batchSize)
+      : this.config.batchSize;
     const entityCount = entities.length;
     if (entityCount === 0) return;
 

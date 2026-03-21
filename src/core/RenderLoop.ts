@@ -49,6 +49,7 @@ const SURFACE_NEAR_UV = 0.15;        // midpoint of hysteresis band (kept for re
 const SURFACE_NEAR_UV_ENTER = 0.17;  // start dimming when uvDist exceeds this (from bright)
 const SURFACE_NEAR_UV_EXIT  = 0.13;  // stop dimming when uvDist drops below this (from dimmed)
 const SURFACE_FAR_UV  = 0.45;    // fully dim beyond 45% of surface
+const SURFACE_FAR_UV_SQ = SURFACE_FAR_UV * SURFACE_FAR_UV; // precomputed to avoid sqrt in common case
 const SURFACE_DIM_OPACITY = 0.40; // minimum opacity for far-away/behind-surface enemies.
 // s44r22-01: lowered from 0.40→0.08 (double-dimming fixed in s44r12-03, 0.40 was too visible through surfaces).
 // s44r25-02: raised 0.08→0.15. s44r26-01: raised 0.15→0.25. s44r33-01: raised 0.25→0.40.
@@ -142,7 +143,12 @@ export class RenderLoop {
     // for MP where the camera sits outside the sphere.
     const _isTunnelSurface = ctx.surfaceType === 'cube-tunnel';
     if (!_isTunnelSurface) {
-      ctx.depthOcclusion.update(allEnemies, camPos, frameDt);
+      // Adaptive raycast budget: at high enemy counts, reduce raycasts per frame so each
+      // enemy is re-checked every ~6 frames (~100ms at 60fps) instead of every 2 frames.
+      // EMA smoothing in DepthOcclusionSystem keeps transitions visually smooth.
+      // Max 100, min 10. At 200 enemies: ceil(200/6)=34. At 50: ceil(50/6)=9→10.
+      const adaptiveBatchSize = Math.max(10, Math.min(100, Math.ceil(allEnemies.length / 6)));
+      ctx.depthOcclusion.update(allEnemies, camPos, frameDt, adaptiveBatchSize);
     }
 
     profiler.end('transparency_and_occlusion');
@@ -233,22 +239,28 @@ export class RenderLoop {
         // Both U and V treated as wrapping — correct for torus; harmless for others
         const eu = Math.min(euRaw, 1.0 - euRaw);
         const ev = wrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
-        const uvDist = Math.sqrt(eu * eu + ev * ev);
+        const uvDistSq = eu * eu + ev * ev;
 
         // (a) Surface dimming: min-clamp visibility based on UV distance.
         // Hysteresis prevents flickering when uvDist hovers near the near threshold:
         //   - If entity was NOT dimmed last frame: only start dimming past ENTER (0.17)
         //   - If entity WAS dimmed last frame:   only stop dimming below EXIT  (0.13)
         // This ±0.02 deadband eliminates the bright↔dim oscillation on small torus.
+        //
+        // Perf: compare against squared thresholds to skip sqrt() in the common near-zone
+        // case (~80% of enemies are within the near threshold during normal gameplay).
+        // sqrt() is only computed for the smoothstep interpolation in the transition zone.
         const wasDimmed = this._entityDimmedState.get(enemy) ?? false;
         const nearThreshold = wasDimmed ? SURFACE_NEAR_UV_EXIT : SURFACE_NEAR_UV_ENTER;
-        if (uvDist <= nearThreshold) {
+        const nearThresholdSq = nearThreshold * nearThreshold;
+        if (uvDistSq <= nearThresholdSq) {
           surfaceVis = 1.0;
           this._entityDimmedState.set(enemy, false);
-        } else if (uvDist >= SURFACE_FAR_UV) {
+        } else if (uvDistSq >= SURFACE_FAR_UV_SQ) {
           surfaceVis = SURFACE_DIM_OPACITY;
           this._entityDimmedState.set(enemy, true);
         } else {
+          const uvDist = Math.sqrt(uvDistSq); // Only compute sqrt when needed for smoothstep
           const uvT = (uvDist - SURFACE_NEAR_UV) / (SURFACE_FAR_UV - SURFACE_NEAR_UV);
           const uvSt = uvT * uvT * (3.0 - 2.0 * uvT);
           surfaceVis = 1.0 - uvSt * (1.0 - SURFACE_DIM_OPACITY);
