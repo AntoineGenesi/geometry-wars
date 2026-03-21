@@ -211,3 +211,103 @@ describe('BaseEnemy.applyKnockback', () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// Slow / stun system tests
+// ---------------------------------------------------------------------------
+
+describe('BaseEnemy slow/stun system', () => {
+  let enemy: TestEnemy;
+
+  beforeEach(() => {
+    enemy = new TestEnemy(0.5, 0.5);
+  });
+
+  it('starts with no slow effect (factor=1.0, timer=0)', () => {
+    expect(enemy.slowFactor).toBe(1.0);
+    expect(enemy.slowTimer).toBe(0);
+  });
+
+  it('applySlowEffect sets factor and timer', () => {
+    enemy.applySlowEffect(0.7, 1.0);
+    expect(enemy.slowFactor).toBe(0.7);
+    expect(enemy.slowTimer).toBe(1.0);
+  });
+
+  it('stronger slow overwrites weaker slow', () => {
+    enemy.applySlowEffect(0.7, 1.0); // 30% slow
+    enemy.applySlowEffect(0.5, 2.0); // 50% slow (stronger)
+    expect(enemy.slowFactor).toBe(0.5);
+    expect(enemy.slowTimer).toBe(2.0);
+  });
+
+  it('weaker slow does not overwrite stronger slow', () => {
+    enemy.applySlowEffect(0.5, 2.0); // 50% slow
+    enemy.applySlowEffect(0.7, 3.0); // 30% slow (weaker) — should be rejected
+    expect(enemy.slowFactor).toBe(0.5); // stays at 50%
+    expect(enemy.slowTimer).toBe(2.0); // stays at 2s
+  });
+
+  it('stun (factor=0) overwrites any slow', () => {
+    enemy.applySlowEffect(0.3, 1.0); // heavy slow
+    enemy.applySlowEffect(0.0, 0.5); // full stun
+    expect(enemy.slowFactor).toBe(0.0);
+    expect(enemy.slowTimer).toBe(0.5);
+  });
+
+  it('slow timer decrements on update()', () => {
+    enemy.applySlowEffect(0.7, 1.0);
+    enemy.update(0.5);
+    expect(enemy.slowTimer).toBeCloseTo(0.5, 5);
+    expect(enemy.slowFactor).toBe(0.7); // still active
+  });
+
+  it('slow expires and factor resets to 1.0 after timer runs out', () => {
+    enemy.applySlowEffect(0.5, 0.5);
+    enemy.update(0.6); // advance past duration
+    expect(enemy.slowTimer).toBe(0);
+    expect(enemy.slowFactor).toBe(1.0);
+  });
+
+  it('slowed enemy moves less in one frame than unslowed enemy', () => {
+    // TestEnemy has no voluntary movement, so use a subclass that does move
+    class MovingEnemy extends BaseEnemy {
+      constructor() { super(0.5, 0.5, 1, 10, 1, 0.06); }
+      updateBehavior(dt: number, _pu: number, _pv: number): void {
+        this.surfacePosition.u += 0.1 * dt; // fixed speed
+      }
+    }
+
+    const fast = new MovingEnemy();
+    const slowed = new MovingEnemy();
+    slowed.applySlowEffect(0.5, 10.0); // 50% slow, long duration
+
+    const dt = 0.016;
+    fast.update(dt);
+    slowed.update(dt);
+
+    const fastMove = fast.surfacePosition.u - 0.5;
+    const slowedMove = slowed.surfacePosition.u - 0.5;
+
+    expect(fastMove).toBeGreaterThan(0);
+    expect(slowedMove).toBeGreaterThan(0);
+    // Slowed enemy should move ~50% as far
+    expect(slowedMove).toBeCloseTo(fastMove * 0.5, 5);
+  });
+
+  it('stun (factor=0) completely stops enemy movement', () => {
+    class MovingEnemy extends BaseEnemy {
+      constructor() { super(0.5, 0.5, 1, 10, 1, 0.06); }
+      updateBehavior(dt: number, _pu: number, _pv: number): void {
+        this.surfacePosition.u += 0.1 * dt;
+      }
+    }
+
+    const stunned = new MovingEnemy();
+    stunned.applySlowEffect(0.0, 1.0); // full stun
+
+    const startU = stunned.surfacePosition.u;
+    stunned.update(0.016);
+    expect(stunned.surfacePosition.u).toBe(startU); // no movement
+  });
+});

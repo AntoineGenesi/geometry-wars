@@ -1784,3 +1784,112 @@ describe('s44r22-11: Mortar targets nearest enemy (not fixed range)', () => {
     wm.dispose();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Laser ramp-up mechanic tests (s44r33-10f)
+// ---------------------------------------------------------------------------
+
+describe('Laser ramp-up mechanic', () => {
+  it('laserRampProgress starts at 0 and increases while laser is active (base: 1.5s ramp)', () => {
+    const enemy: MockEnemy = { position: new THREE.Vector3(8, 0, 0), index: 0, alive: true };
+    const { callbacks } = createMockCallbacks([enemy]);
+    const wm = new WeaponManager();
+    wm.setCallbacks(callbacks);
+    wm.equipWeapon(WeaponType.LaserBeam, 50);
+
+    // Before firing: ramp is at 0
+    expect((wm as any).laserRampProgress).toBe(0);
+
+    wm.fire(origin(), forward(), T);
+
+    // After a few frames, ramp has accumulated
+    for (let i = 0; i < 5; i++) wm.update(0.016); // ~80ms
+    const progressAt80ms = (wm as any).laserRampProgress as number;
+    expect(progressAt80ms).toBeGreaterThan(0);
+    // Base ramp time = 1.5s. After 5 frames × 0.016s = 0.08s: progress ≈ 0.08/1.5 ≈ 0.053
+    expect(progressAt80ms).toBeCloseTo(5 * 0.016 / 1.5, 3);
+    wm.dispose();
+  });
+
+  it('laser_beam_a_3: instant peak — rampProgress set to 1.0 on first update while active', () => {
+    const enemy: MockEnemy = { position: new THREE.Vector3(8, 0, 0), index: 0, alive: true };
+    const { callbacks } = createMockCallbacks([enemy]);
+    // Use a minimal mock tracker that reports laser_beam_a_3 as active
+    const mockTracker = {
+      getActiveUpgrades: (wt: WeaponType) =>
+        wt === WeaponType.LaserBeam
+          ? new Set(['laser_beam_a_3'])
+          : new Set<string>(),
+      recordKill: () => {},
+    };
+    const wm = new WeaponManager();
+    wm.setUpgradeTracker(mockTracker as any);
+    wm.setCallbacks(callbacks);
+    wm.equipWeapon(WeaponType.LaserBeam, 50);
+
+    wm.fire(origin(), forward(), T);
+    // Just one update tick — a_3 should set rampProgress=1.0 immediately
+    wm.update(0.016);
+
+    expect((wm as any).laserRampProgress).toBe(1.0);
+    wm.dispose();
+  });
+
+  it('laserRampProgress accumulates while laser is active, resets to 0 after effect expires', () => {
+    const enemy: MockEnemy = { position: new THREE.Vector3(8, 0, 0), index: 0, alive: true };
+    const { callbacks } = createMockCallbacks([enemy]);
+    const wm = new WeaponManager();
+    wm.setCallbacks(callbacks);
+    wm.equipWeapon(WeaponType.LaserBeam, 50);
+
+    wm.fire(origin(), forward(), T);
+    // After a few frames, ramp should be accumulating (> 0)
+    for (let i = 0; i < 5; i++) wm.update(0.016); // ~80ms
+    expect((wm as any).laserRampProgress).toBeGreaterThan(0);
+
+    // After laser effect expires (~0.5s duration), ramp resets to 0
+    for (let i = 0; i < 60; i++) wm.update(0.016); // ~1s total — well past expiry
+    expect((wm as any).laserRampProgress).toBe(0);
+    wm.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onEnemySlow callback tests (s44r33-10f)
+// ---------------------------------------------------------------------------
+
+describe('WeaponCallbacks onEnemySlow integration', () => {
+  it('chain_lightning_b_4: invokes onEnemySlow(index, 0.7, 1.0) for chain targets', () => {
+    const enemies: MockEnemy[] = [
+      { position: new THREE.Vector3(8.2, 0, 0), index: 0, alive: true },
+      { position: new THREE.Vector3(8.3, 0, 0.1), index: 1, alive: true },
+    ];
+    const slows: { index: number; factor: number; duration: number }[] = [];
+
+    // Use minimal mock tracker to directly activate chain_lightning_b_4
+    const mockTracker = {
+      getActiveUpgrades: (wt: WeaponType) =>
+        wt === WeaponType.ChainLightning
+          ? new Set(['chain_lightning_b_4'])
+          : new Set<string>(),
+      recordKill: () => {},
+    };
+
+    const wm = new WeaponManager();
+    wm.setUpgradeTracker(mockTracker as any);
+    wm.setCallbacks({
+      getEnemies: () => enemies,
+      onEnemyDamage: () => {},
+      onEnemySlow: (index, factor, duration) => slows.push({ index, factor, duration }),
+      spawnBullet: () => {},
+    });
+    wm.equipWeapon(WeaponType.ChainLightning, 10);
+    wm.fire(origin(), forward(), T);
+
+    // Should have invoked onEnemySlow for chain targets
+    expect(slows.length).toBeGreaterThan(0);
+    expect(slows[0].factor).toBe(0.7);
+    expect(slows[0].duration).toBe(1.0);
+    wm.dispose();
+  });
+});

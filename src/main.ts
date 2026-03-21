@@ -1275,6 +1275,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         }
       }
     },
+    onEnemySlow: (index: number, factor: number, duration: number) => {
+      const enemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
+      const enemy = enemies[index];
+      if (!enemy) return;
+      enemy.applySlowEffect(factor, duration);
+    },
     onEnemyPull: (index: number, strength: number, center: THREE.Vector3) => {
       const aliveEnemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
       const enemy = aliveEnemies[index];
