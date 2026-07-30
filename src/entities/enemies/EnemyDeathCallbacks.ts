@@ -39,23 +39,11 @@ export class EnemyDeathCallbacks {
       }
     };
 
-    // Snake: peeled tail segment spawns as independent Grunt
-    Snake.onSegmentDeath = (u: number, v: number) => {
-      const offsetU = (Math.random() - 0.5) * 0.06;
-      const offsetV = (Math.random() - 0.5) * 0.06;
-      enemySpawner.spawn('grunt', Math.max(0, Math.min(1, u + offsetU)), Math.max(0, Math.min(1, v + offsetV)));
-    };
+    Snake.onSegmentDeath = null;
 
-    // Snake head kill: all remaining segments spawn as independent Grunts
-    Snake.onHeadDeath = (segments: Array<{ u: number; v: number }>) => {
-      // Half the segments die quietly (score already given), half spawn as enemies
-      for (let i = 0; i < segments.length; i++) {
-        if (i % 2 === 0) continue; // every other segment escapes
-        const seg = segments[i];
-        const offsetU = (Math.random() - 0.5) * 0.08;
-        const offsetV = (Math.random() - 0.5) * 0.08;
-        enemySpawner.spawn('grunt', Math.max(0, Math.min(1, seg.u + offsetU)), Math.max(0, Math.min(1, seg.v + offsetV)));
-      }
+    // Snake head kill: release every alive queued segment as a normal enemy.
+    Snake.onHeadDeath = (segments) => {
+      enemySpawner.releaseSnakeSegments(segments);
     };
 
     // Splitter death: spawn child splitters at correct generation

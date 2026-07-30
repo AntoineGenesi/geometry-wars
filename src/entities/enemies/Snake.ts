@@ -5,9 +5,16 @@ import { buildTriangle3D, buildDiamond3D } from '../../utils/GeometryBuilder';
 // Pre-allocated temp objects - zero per-frame allocations
 const _tempMatrix = new THREE.Matrix4();
 
-interface SnakeSegData {
-  u: number;
-  v: number;
+export interface SnakeQueuedSegment {
+  type: 'grunt';
+  surfaceU: number;
+  surfaceV: number;
+  health: number;
+  maxHealth: number;
+  queueIndex: number;
+}
+
+interface SnakeSegData extends SnakeQueuedSegment {
   mesh: THREE.Group;
 }
 
@@ -21,6 +28,8 @@ const ORBIT_ANGULAR_SPEED = 0.7; // radians/sec — how fast it circles the play
 const ORBIT_RADIUS = 0.28;       // UV units from player
 const ORBIT_SHRINK_RATE = 0.002; // UV/sec — slowly tightens orbit
 const ORBIT_RADIUS_MIN = 0.10;   // minimum orbit radius
+const DEFAULT_SEGMENT_TYPE: SnakeQueuedSegment['type'] = 'grunt';
+const DEFAULT_SEGMENT_MAX_HEALTH = 2;
 
 /**
  * Snake enemy — a chained series of segments led by a large triangle head.
@@ -30,10 +39,9 @@ const ORBIT_RADIUS_MIN = 0.10;   // minimum orbit radius
  * Every GROW_INTERVAL seconds a new segment appears at the tail.
  *
  * Tactical challenge (risk/reward):
- * - Bullets hitting the snake (70% chance) peel the last tail segment,
- *   which immediately spawns as an independent Grunt.
- * - Bullets that slip through (30% chance) damage the head directly.
- * - Killing the head spawns ALL remaining segments as independent Grunts.
+ * - Bullets damage the head deterministically.
+ * - Killing the head releases ALL alive queued segments as independent Grunts
+ *   at half current segment health.
  * → Shooting it is always risky; ignoring it makes it grow.
  *
  * Visual:
@@ -53,6 +61,7 @@ export class Snake extends BaseEnemy {
   private orbitRadius: number = ORBIT_RADIUS;
 
   private growTimer: number = 0;
+  private usingExternalQueueSegments: boolean = false;
 
   /**
    * Maximum segments this snake can grow to. Configurable per-instance for late-game
@@ -67,11 +76,11 @@ export class Snake extends BaseEnemy {
    */
   private readonly historySize: number;
 
-  /** Fired when the head dies. Caller spawns Grunts at each segment position. */
-  static onHeadDeath: ((segments: Array<{ u: number; v: number }>) => void) | null = null;
+  /** Fired when the head dies. Caller releases queued segment records as enemies. */
+  static onHeadDeath: ((segments: SnakeQueuedSegment[]) => void) | null = null;
 
-  /** Fired when a single tail segment is peeled off. Caller spawns one Grunt. */
-  static onSegmentDeath: ((u: number, v: number) => void) | null = null;
+  /** Kept for older callers; regular snake body peel is now deterministic/off by default. */
+  static onSegmentDeath: ((segment: SnakeQueuedSegment) => void) | null = null;
 
   /**
    * @param u - Initial surface U coordinate
@@ -107,8 +116,12 @@ export class Snake extends BaseEnemy {
       const mesh = this.createSegmentMesh();
       this.segmentRoot.add(mesh);
       this.segs.push({
-        u: (((this.surfacePosition.u - (i + 1) * 0.09) % 1) + 1) % 1,
-        v: this.surfacePosition.v,
+        type: DEFAULT_SEGMENT_TYPE,
+        surfaceU: (((this.surfacePosition.u - (i + 1) * 0.09) % 1) + 1) % 1,
+        surfaceV: this.surfacePosition.v,
+        health: DEFAULT_SEGMENT_MAX_HEALTH,
+        maxHealth: DEFAULT_SEGMENT_MAX_HEALTH,
+        queueIndex: i,
         mesh,
       });
     }
@@ -120,17 +133,17 @@ export class Snake extends BaseEnemy {
     const mesh = this.createSegmentMesh();
     this.segmentRoot.add(mesh);
     this.segs.push({
-      u: last ? last.u : this.surfacePosition.u,
-      v: last ? last.v : this.surfacePosition.v,
+      type: DEFAULT_SEGMENT_TYPE,
+      surfaceU: last ? last.surfaceU : this.surfacePosition.u,
+      surfaceV: last ? last.surfaceV : this.surfacePosition.v,
+      health: DEFAULT_SEGMENT_MAX_HEALTH,
+      maxHealth: DEFAULT_SEGMENT_MAX_HEALTH,
+      queueIndex: this.segs.length,
       mesh,
     });
   }
 
-  /** Peel the last segment and dispose its mesh. */
-  private removeLastSegment(): void {
-    const idx = this.segs.length - 1;
-    const seg = this.segs[idx];
-    this.segs.splice(idx, 1);
+  private disposeSegmentMesh(seg: SnakeSegData): void {
     this.segmentRoot.remove(seg.mesh);
     seg.mesh.traverse((child) => {
       const m = child as THREE.Mesh;
@@ -145,38 +158,87 @@ export class Snake extends BaseEnemy {
   // ─────────────────────────── damage / death ──────────────────────────────
 
   takeDamage(amount: number, attackerId: number = -1): void {
-    // 70% chance: bullet hits a segment — peel tail, spawn as Grunt
-    if (this.segs.length > 0 && Math.random() < 0.70) {
-      const seg = this.segs[this.segs.length - 1];
-      if (Snake.onSegmentDeath) {
-        Snake.onSegmentDeath(seg.u, seg.v);
-      }
-      this.removeLastSegment();
-      // Award partial score via the base death callback chain (handled externally)
-    } else {
-      // Hit the head directly
-      super.takeDamage(amount, attackerId);
-    }
+    super.takeDamage(amount, attackerId);
   }
 
   die(): void {
     if (!this.alive) return;
-    // Spawn remaining segments as independent Grunts
-    if (Snake.onHeadDeath && this.segs.length > 0) {
-      Snake.onHeadDeath(this.segs.map((s) => ({ u: s.u, v: s.v })));
+    const released = this.releaseAllSegments();
+    if (Snake.onHeadDeath && released.length > 0) {
+      Snake.onHeadDeath(released);
     }
     super.die();
+  }
+
+  private releaseAllSegments(): SnakeQueuedSegment[] {
+    const released = this.segs
+      .filter((s) => s.health > 0)
+      .map((s) => ({
+        type: s.type,
+        surfaceU: s.surfaceU,
+        surfaceV: s.surfaceV,
+        health: s.health,
+        maxHealth: s.maxHealth,
+        queueIndex: s.queueIndex,
+      }));
+    for (const seg of this.segs) {
+      this.disposeSegmentMesh(seg);
+    }
+    this.segs = [];
+    return released;
+  }
+
+  damageSegment(queueIndex: number, amount: number): boolean {
+    const seg = this.segs[queueIndex];
+    if (!seg || seg.health <= 0) return false;
+    seg.health = Math.max(0, seg.health - amount);
+    return seg.health <= 0;
+  }
+
+  setQueuedSegmentsFromNetwork(segments: SnakeQueuedSegment[]): void {
+    this.usingExternalQueueSegments = true;
+    const sorted = [...segments].sort((a, b) => a.queueIndex - b.queueIndex);
+
+    while (this.segs.length > sorted.length) {
+      const seg = this.segs.pop();
+      if (seg) this.disposeSegmentMesh(seg);
+    }
+    while (this.segs.length < sorted.length) {
+      const mesh = this.createSegmentMesh();
+      this.segmentRoot.add(mesh);
+      this.segs.push({
+        type: DEFAULT_SEGMENT_TYPE,
+        surfaceU: this.surfacePosition.u,
+        surfaceV: this.surfacePosition.v,
+        health: DEFAULT_SEGMENT_MAX_HEALTH,
+        maxHealth: DEFAULT_SEGMENT_MAX_HEALTH,
+        queueIndex: this.segs.length,
+        mesh,
+      });
+    }
+
+    for (let i = 0; i < sorted.length; i++) {
+      const input = sorted[i];
+      const seg = this.segs[i];
+      seg.type = input.type;
+      seg.surfaceU = input.surfaceU;
+      seg.surfaceV = input.surfaceV;
+      seg.health = input.health;
+      seg.maxHealth = input.maxHealth;
+      seg.queueIndex = input.queueIndex;
+    }
   }
 
   // ─────────────────────────── shared logic ────────────────────────────────
 
   /** Update segment UV positions from head's position history. Also handles growth. */
   private _updateSegmentsAndGrowth(dt: number): void {
+    this.usingExternalQueueSegments = false;
     for (let i = 0; i < this.segs.length; i++) {
       const histIdx = Math.min((i + 1) * SEGMENT_HISTORY_STEP, this.posHistory.length - 1);
       if (histIdx < this.posHistory.length) {
-        this.segs[i].u = this.posHistory[histIdx].u;
-        this.segs[i].v = this.posHistory[histIdx].v;
+        this.segs[i].surfaceU = this.posHistory[histIdx].u;
+        this.segs[i].surfaceV = this.posHistory[histIdx].v;
       }
     }
 
@@ -277,15 +339,15 @@ export class Snake extends BaseEnemy {
     const headU = this.surfacePosition.u;
     const headV = this.surfacePosition.v;
     const lastH = this.posHistory[0];
-    if (!lastH || Math.abs(lastH.u - headU) > 0.0005 || Math.abs(lastH.v - headV) > 0.0005) {
+    if (!this.usingExternalQueueSegments && (!lastH || Math.abs(lastH.u - headU) > 0.0005 || Math.abs(lastH.v - headV) > 0.0005)) {
       this.posHistory.unshift({ u: headU, v: headV });
       if (this.posHistory.length > this.historySize) this.posHistory.pop();
       // Update segment UV positions from history so they trail the head
       for (let i = 0; i < this.segs.length; i++) {
         const histIdx = Math.min((i + 1) * SEGMENT_HISTORY_STEP, this.posHistory.length - 1);
         if (histIdx < this.posHistory.length) {
-          this.segs[i].u = this.posHistory[histIdx].u;
-          this.segs[i].v = this.posHistory[histIdx].v;
+          this.segs[i].surfaceU = this.posHistory[histIdx].u;
+          this.segs[i].surfaceV = this.posHistory[histIdx].v;
         }
       }
     }
@@ -293,7 +355,7 @@ export class Snake extends BaseEnemy {
     // Update each segment mesh in world space
     // segmentRoot is at world origin — child positions ARE world positions
     for (const seg of this.segs) {
-      const t = getTransform(seg.u, seg.v);
+      const t = getTransform(seg.surfaceU, seg.surfaceV);
       seg.mesh.position.copy(t.position).addScaledVector(t.normal, this.radius);
       _tempMatrix.makeBasis(t.bitangent, t.normal, t.tangent);
       seg.mesh.quaternion.setFromRotationMatrix(_tempMatrix);
@@ -304,22 +366,24 @@ export class Snake extends BaseEnemy {
 
   destroy(): void {
     for (const seg of this.segs) {
-      this.segmentRoot.remove(seg.mesh);
-      seg.mesh.traverse((child) => {
-        const m = child as THREE.Mesh;
-        if (m.geometry) m.geometry.dispose();
-        if (m.material) {
-          if (Array.isArray(m.material)) m.material.forEach((mt) => (mt as THREE.Material).dispose());
-          else (m.material as THREE.Material).dispose();
-        }
-      });
+      this.disposeSegmentMesh(seg);
     }
     this.segs = [];
     super.destroy();
   }
 
   /** Expose segment positions for external debugging or special collision queries. */
-  getSegmentData(): Array<{ u: number; v: number; radius: number }> {
-    return this.segs.map((s) => ({ u: s.u, v: s.v, radius: 0.16 }));
+  getSegmentData(): Array<SnakeQueuedSegment & { u: number; v: number; radius: number }> {
+    return this.segs.map((s) => ({
+      type: s.type,
+      surfaceU: s.surfaceU,
+      surfaceV: s.surfaceV,
+      health: s.health,
+      maxHealth: s.maxHealth,
+      queueIndex: s.queueIndex,
+      u: s.surfaceU,
+      v: s.surfaceV,
+      radius: 0.16,
+    }));
   }
 }

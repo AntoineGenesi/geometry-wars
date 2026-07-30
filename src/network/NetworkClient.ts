@@ -72,7 +72,11 @@ export interface NetworkEnemyState {
   surfaceU: number;
   surfaceV: number;
   health: number;
+  maxHealth: number;
   alive: boolean;
+  queued: boolean;
+  parentId: string;
+  queueIndex: number;
 }
 
 /** Geom state from server */
