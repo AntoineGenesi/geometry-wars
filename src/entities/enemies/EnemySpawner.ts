@@ -42,6 +42,9 @@ import { Phaser } from './Phaser';
 import { ApproachGlow } from './ApproachGlow';
 import { StealthStalker } from './StealthStalker';
 import { FractalSnake, FractalSnakeHeadVariant } from './FractalSnake';
+import { PrismLancer } from './PrismLancer';
+import { SentinelOrb } from './SentinelOrb';
+import { ShatterBloom } from './ShatterBloom';
 import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 import type { EnemyDecoratorSystem } from '../../rendering/EnemyDecorators';
 import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
@@ -59,6 +62,7 @@ export type EnemyType =
   | 'cluster' | 'helix' | 'fractal' | 'swarm'
   | 'lurker' | 'orbiter' | 'splitter' | 'phaser'
   | 'approach_glow' | 'stealth_stalker' | 'fractal_snake'
+  | 'prism_lancer' | 'sentinel_orb' | 'shatter_bloom'
   | 'boss_sapphire' | 'boss_ruby' | 'boss_emerald' | 'boss_topaz' | 'boss_amethyst' | 'boss_opal';
 
 export interface SpawnRegion {
@@ -638,6 +642,15 @@ export class EnemySpawner {
         enemy = new FractalSnake(u, v, { numRows: 2, followersPerRow: 4, headVariant: fsHeadVariant });
         break;
       }
+      case 'prism_lancer':
+        enemy = new PrismLancer(u, v);
+        break;
+      case 'sentinel_orb':
+        enemy = new SentinelOrb(u, v);
+        break;
+      case 'shatter_bloom':
+        enemy = new ShatterBloom(u, v);
+        break;
       case 'boss_sapphire':
         enemy = new Boss('sapphire', u, v);
         break;
@@ -863,6 +876,25 @@ export class EnemySpawner {
       const releasedHealth = Math.max(1, Math.ceil(segment.health * 0.5));
       enemy.health = releasedHealth;
       enemy.maxHealth = Math.max(enemy.maxHealth, releasedHealth);
+      released.push(enemy);
+    }
+    return released;
+  }
+
+  releaseShatterBloomShards(u: number, v: number, count: number): BaseEnemy[] {
+    const released: BaseEnemy[] = [];
+    for (let i = 0; i < count; i++) {
+      const activeCount = this.getActiveCount();
+      if (activeCount >= this.maxActiveEnemies) break;
+
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.25;
+      const spread = 0.035 + Math.random() * 0.025;
+      const childU = ((u + Math.cos(angle) * spread) % 1 + 1) % 1;
+      const childV = Math.max(0.001, Math.min(0.999, v + Math.sin(angle) * spread));
+      const enemy = this.spawn('grunt', childU, childV, 0, true);
+      if (!enemy.active) continue;
+      enemy.health = 1;
+      enemy.maxHealth = Math.max(enemy.maxHealth, 1);
       released.push(enemy);
     }
     return released;

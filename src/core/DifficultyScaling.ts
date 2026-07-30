@@ -297,8 +297,8 @@ export interface ScaledWaveEntry {
  */
 const BASIC_TYPES = ['grunt', 'wanderer', 'duck'];
 const MID_TYPES = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'approach_glow'];
-const HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker', 'fractal_snake'];
-const ELITE_TYPES = ['gate', 'virus', 'painter'];
+const HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker', 'fractal_snake', 'prism_lancer', 'sentinel_orb'];
+const ELITE_TYPES = ['gate', 'virus', 'painter', 'shatter_bloom'];
 const SPLITTING_TYPES = [
   'giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron',
   'titan_grunt', 'titan_spinner', 'titan_weaver', 'splitter',
@@ -465,6 +465,29 @@ export function generateScaledEndlessWave(
       type: 'orbiter',
       count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.5) * 0.5)) * entityBrake), 4),
       tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
+    });
+  }
+
+  // -- New geometric roster: make the three distinctive bodies regular wave citizens. --
+  if (waveNum >= 6 && difficultyLevel >= 1.2) {
+    enemies.push({
+      type: 'prism_lancer',
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.2) * 0.5)) * entityBrake), 5),
+      tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
+    });
+  }
+  if (waveNum >= 8 && difficultyLevel >= 1.8) {
+    enemies.push({
+      type: 'sentinel_orb',
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 1.8) * 0.4)) * entityBrake), 4),
+      tier: Math.min(maxTier, Math.max(0, maxTier - 1)),
+    });
+  }
+  if (waveNum >= 10 && difficultyLevel >= 2.5) {
+    enemies.push({
+      type: 'shatter_bloom',
+      count: Math.min(Math.round((1 + Math.floor((difficultyLevel - 2.5) * 0.35)) * entityBrake), 3),
+      tier: maxTier,
     });
   }
 

@@ -917,6 +917,8 @@ export class NetworkClient {
     timeLimit: number;
     livesCount: number;
     choice?: string;
+    settings?: GameSettings;
+    debugStartWave?: number;
   }): void {
     if (!this.room || !this.connected) return;
     this.room.send('start_with_options', options);

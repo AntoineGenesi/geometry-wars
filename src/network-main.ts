@@ -527,6 +527,9 @@ const ENEMY_COLORS: Record<string, THREE.Color> = {
   titangrunt: new THREE.Color(0x2244cc),
   titanspinner: new THREE.Color(0xff22ff),
   titanweaver: new THREE.Color(0x22ff44),
+  prism_lancer: new THREE.Color(0x00e5ff),
+  sentinel_orb: new THREE.Color(0xffd34d),
+  shatter_bloom: new THREE.Color(0xff5df7),
   boss: new THREE.Color(0x4488ff),
   // Server-side enemy types that may not map 1:1 to single player types
   arrow: new THREE.Color(0xffff00),
@@ -566,6 +569,9 @@ const SERVER_TO_SPAWNER_TYPE: Record<string, EnemyType> = {
   titan_spinner: 'titan_spinner',
   titan_weaver: 'titan_weaver',
   giant_snake: 'giant_snake',
+  prism_lancer: 'prism_lancer',
+  sentinel_orb: 'sentinel_orb',
+  shatter_bloom: 'shatter_bloom',
   proton: 'neutron', // closest visual match
   ufo: 'wanderer', // closest visual match
   mines: 'grunt', // closest visual match
@@ -2384,10 +2390,28 @@ async function main() {
   // Shown beneath the lives row; opens GameSettingsPanel as modal overlay.
   // Initialise maxPlayers from the URL param set by StartMenu (host only).
   const _initMaxPlayers = parseInt(new URLSearchParams(window.location.search).get('maxPlayers') ?? '', 10);
+  const readBoundedTestNumber = (name: string, min: number, max: number): number | null => {
+    if (!_netMainTestMode) return null;
+    const raw = urlParams.get(name);
+    if (raw === null) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : null;
+  };
   let currentGameSettings: GameSettings = {
     ...DEFAULT_GAME_SETTINGS,
     maxPlayers: (_initMaxPlayers >= 2 && _initMaxPlayers <= 20) ? _initMaxPlayers : DEFAULT_GAME_SETTINGS.maxPlayers,
   };
+  if (_netMainTestMode) {
+    const testDifficultyMultiplier = readBoundedTestNumber('testDifficultyMultiplier', 0.5, 2.0);
+    const testEnemySpawnRateMultiplier = readBoundedTestNumber('testEnemySpawnRateMultiplier', 0.25, 3.0);
+    const testEnemyCountCap = readBoundedTestNumber('testEnemyCountCap', 10, 100);
+    currentGameSettings = {
+      ...currentGameSettings,
+      ...(testDifficultyMultiplier !== null ? { difficultyMultiplier: testDifficultyMultiplier } : {}),
+      ...(testEnemySpawnRateMultiplier !== null ? { enemySpawnRateMultiplier: testEnemySpawnRateMultiplier } : {}),
+      ...(testEnemyCountCap !== null ? { enemyCountCap: Math.round(testEnemyCountCap) } : {}),
+    };
+  }
   let settingsBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
 
   const settingsBtn = document.createElement('button');
@@ -2483,6 +2507,10 @@ async function main() {
         timeLimit: lobbyTimeLimit,
         livesCount: lobbyLivesCount,
         choice,
+        settings: currentGameSettings,
+        ...(_netMainTestMode && readBoundedTestNumber('testStartWave', 0, 80) !== null
+          ? { debugStartWave: Math.round(readBoundedTestNumber('testStartWave', 0, 80)!) }
+          : {}),
       });
     } else {
       network.startGame(choice, currentGameSettings);

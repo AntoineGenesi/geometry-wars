@@ -65,8 +65,8 @@ const MP_MAX_ENEMIES_BY_PLAYER_COUNT = [30, 50, 70, 90];
 // Enemy type pools (from GameRoom.ts — mirrors DifficultyScaling.ts)
 const MP_BASIC_TYPES = ['grunt', 'wanderer', 'duck'];
 const MP_MID_TYPES = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'orbiter', 'approach_glow'];
-const MP_HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker'];
-const MP_ELITE_TYPES = ['gate', 'virus', 'painter'];
+const MP_HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker', 'prism_lancer', 'sentinel_orb'];
+const MP_ELITE_TYPES = ['gate', 'virus', 'painter', 'shatter_bloom'];
 const MP_SPLITTING_TYPES = ['giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron', 'titan_grunt', 'titan_spinner', 'titan_weaver', 'splitter'];
 
 // ---------------------------------------------------------------------------
@@ -103,8 +103,8 @@ const SP_PLAYER_COUNT_MULTIPLIER = (playerCount: number) =>
 // SP enemy type pools (from src/core/DifficultyScaling.ts)
 const SP_BASIC_TYPES = ['grunt', 'wanderer', 'duck'];
 const SP_MID_TYPES = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'orbiter', 'approach_glow'];
-const SP_HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker', 'fractal_snake'];
-const SP_ELITE_TYPES = ['gate', 'virus', 'painter'];
+const SP_HARD_TYPES = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker', 'fractal_snake', 'prism_lancer', 'sentinel_orb'];
+const SP_ELITE_TYPES = ['gate', 'virus', 'painter', 'shatter_bloom'];
 const SP_SPLITTING_TYPES = ['giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron', 'titan_grunt', 'titan_spinner', 'titan_weaver', 'splitter'];
 
 // ---------------------------------------------------------------------------

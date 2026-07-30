@@ -86,6 +86,9 @@ export class CollisionSystem {
     titangrunt: new THREE.Color(0x2244cc),
     titanspinner: new THREE.Color(0xff22ff),
     titanweaver: new THREE.Color(0x22ff44),
+    prism_lancer: new THREE.Color(0x00e5ff),
+    sentinel_orb: new THREE.Color(0xffd34d),
+    shatter_bloom: new THREE.Color(0xff5df7),
     boss: new THREE.Color(0x4488ff),
   };
 

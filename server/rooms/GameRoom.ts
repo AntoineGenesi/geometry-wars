@@ -921,8 +921,8 @@ const STARTUP_CONFIG_HASH = computeStartupConfigHash(STARTUP_CONFIG_PAYLOAD);
 // ---------------------------------------------------------------------------
 const BASIC_TYPES_WAVE = ['grunt', 'wanderer', 'duck'];
 const MID_TYPES_WAVE = ['weaver', 'spinner', 'rocket', 'neutron', 'mayfly', 'helix', 'swarm', 'lurker', 'approach_glow'];
-const HARD_TYPES_WAVE = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker'];
-const ELITE_TYPES_WAVE = ['gate', 'virus', 'painter'];
+const HARD_TYPES_WAVE = ['snake', 'repulsor', 'gravity_well', 'spawner', 'cluster', 'fractal', 'phaser', 'stealth_stalker', 'prism_lancer', 'sentinel_orb'];
+const ELITE_TYPES_WAVE = ['gate', 'virus', 'painter', 'shatter_bloom'];
 const SPLITTING_TYPES_WAVE = ['giant_wanderer', 'giant_rocket', 'giant_snake', 'giant_neutron', 'titan_grunt', 'titan_spinner', 'titan_weaver', 'splitter'];
 
 // Map DifficultyScaling types that are not in network-main.ts SERVER_TO_SPAWNER_TYPE
@@ -984,6 +984,7 @@ interface ServerEnemyAI {
   dashDirV?: number;
   // Repulsor: phase (0=lock, 1=charge, 2=recovery) + phase timer + charge target
   repulsorPhase?: number;
+  lancerPhase?: number;
   phaseTimer?: number;
   chargeTargetU?: number;
   chargeTargetV?: number;
@@ -1263,12 +1264,17 @@ export class GameRoom extends Room<GameState> {
       timeLimit?: number;
       livesCount?: number;
       choice?: string;
+      settings?: Partial<GameSettings>;
+      debugStartWave?: number;
     }) => {
       if (client.sessionId !== this.state.hostId) {
         this.logger.log(`[GameRoom] Non-host ${client.sessionId} tried to start with options`);
         return;
       }
       if (this.state.roomPhase !== 'lobby') return;
+      if (data.settings) {
+        this.applyValidatedSettings(data.settings);
+      }
 
       // Apply win condition options from the lobby UI
       const VALID_PVP_MODES = ['', 'pvp', 'pvpve'];
@@ -1307,6 +1313,17 @@ export class GameRoom extends Room<GameState> {
         const timeLimit = Math.max(30, Math.min(3600, data.timeLimit ?? 300));
         this.state.timeLimitSeconds = timeLimit;
         this.state.timeRemaining = timeLimit;
+      }
+
+      if (
+        process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS === '1'
+        && typeof data.debugStartWave === 'number'
+        && Number.isFinite(data.debugStartWave)
+      ) {
+        const startWave = Math.max(0, Math.min(80, Math.floor(data.debugStartWave)));
+        this.waveNumber = startWave;
+        this.state.waveNumber = startWave;
+        this.logger.log(`[GameRoom] Debug start wave applied: ${startWave}`);
       }
     });
 
@@ -3808,6 +3825,12 @@ export class GameRoom extends Room<GameState> {
         case 'orbiter':
           this.updateOrbiter(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
           break;
+        case 'sentinel_orb':
+          this.updateSentinelOrb(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
+        case 'prism_lancer':
+          this.updatePrismLancer(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+          break;
         case 'helix':
           this.updateHelix(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
           break;
@@ -4235,6 +4258,69 @@ export class GameRoom extends Room<GameState> {
       enemy.surfaceU += (du / dist) * ORBIT_CHASE_SPEED * dt;
       enemy.surfaceV += (dv / dist) * ORBIT_CHASE_SPEED * dt;
       this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  private updateSentinelOrb(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    const ORBIT_SPEED = 1.35;
+    const ORBIT_RADIUS = ai.orbitRadius ?? 0.24;
+
+    ai.orbitAngle = (ai.orbitAngle ?? 0) + ORBIT_SPEED * (ai.orbitDirection ?? 1) * dt;
+    if (!player) return;
+
+    const orbitU = player.surfaceU + Math.cos(ai.orbitAngle) * ORBIT_RADIUS;
+    const orbitV = player.surfaceV + Math.sin(ai.orbitAngle) * ORBIT_RADIUS;
+    const du = this.uvDelta(enemy.surfaceU, orbitU, true);
+    const dv = this.uvDelta(enemy.surfaceV, orbitV, wrapsV);
+    const dist = Math.sqrt(du * du + dv * dv);
+    if (dist > 0.001) {
+      const speed = this.getEnemySpeed(enemy.type);
+      enemy.surfaceU += (du / dist) * speed * dt;
+      enemy.surfaceV += (dv / dist) * speed * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+    }
+  }
+
+  private updatePrismLancer(
+    enemy: EnemyState, ai: ServerEnemyAI, player: PlayerState | null,
+    dt: number, wrapsV: boolean, surfType: string
+  ): void {
+    ai.phaseTimer = (ai.phaseTimer ?? 0) + dt;
+    ai.lancerPhase = ai.lancerPhase ?? 0;
+
+    if (ai.lancerPhase === 0) {
+      if (player) {
+        const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+        const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+        const dist = Math.sqrt(du * du + dv * dv);
+        if (dist > 0.001) {
+          ai.chargeTargetU = du / dist;
+          ai.chargeTargetV = dv / dist;
+        }
+        const strafeSign = ai.orbitDirection ?? 1;
+        enemy.surfaceU += -(ai.chargeTargetV ?? 0) * strafeSign * 0.045 * dt;
+        enemy.surfaceV += (ai.chargeTargetU ?? 1) * strafeSign * 0.045 * dt;
+        this.applyUVBounds(enemy, wrapsV, surfType);
+      }
+      if (ai.phaseTimer >= 0.85) {
+        ai.lancerPhase = 1;
+        ai.phaseTimer = 0;
+      }
+    } else if (ai.lancerPhase === 1) {
+      enemy.surfaceU += (ai.chargeTargetU ?? 1) * 0.16 * dt;
+      enemy.surfaceV += (ai.chargeTargetV ?? 0) * 0.16 * dt;
+      this.applyUVBounds(enemy, wrapsV, surfType);
+      if (ai.phaseTimer >= 0.8) {
+        ai.lancerPhase = 2;
+        ai.phaseTimer = 0;
+      }
+    } else if (ai.phaseTimer >= 0.55) {
+      ai.lancerPhase = 0;
+      ai.phaseTimer = 0;
+      ai.orbitDirection = -(ai.orbitDirection ?? 1);
     }
   }
 
@@ -4688,8 +4774,24 @@ export class GameRoom extends Room<GameState> {
           reverseTimer: 0,
           nextReverse: 3 + Math.random() * 2,
         };
+      case 'sentinel_orb':
+        return {
+          orbitAngle: Math.random() * Math.PI * 2,
+          orbitRadius: 0.24,
+          orbitDirection: Math.random() < 0.5 ? 1 : -1,
+        };
       case 'helix':
         return { corkscrewPhase: 0 };
+      case 'prism_lancer': {
+        const angle = Math.random() * Math.PI * 2;
+        return {
+          lancerPhase: 0,
+          phaseTimer: 0,
+          chargeTargetU: Math.cos(angle),
+          chargeTargetV: Math.sin(angle),
+          orbitDirection: Math.random() < 0.5 ? 1 : -1,
+        };
+      }
       case 'repulsor':
         return { repulsorPhase: 0, phaseTimer: 0 };
       case 'spawner':
@@ -5629,6 +5731,28 @@ export class GameRoom extends Room<GameState> {
     return released;
   }
 
+  private releaseShatterBloomShards(parent: EnemyState): number {
+    if (parent.type !== 'shatter_bloom') return 0;
+
+    let released = 0;
+    for (let i = 0; i < 3; i++) {
+      if (this.state.enemies.length + this.pendingEnemyCount >= this.getMaxEnemies()) break;
+      const angle = (i / 3) * Math.PI * 2 + Math.random() * 0.25;
+      const spread = 0.035 + Math.random() * 0.025;
+      const child = this.makeEnemyState(
+        'grunt',
+        this.wrapCoord(parent.surfaceU + Math.cos(angle) * spread),
+        Math.max(0.001, Math.min(0.999, parent.surfaceV + Math.sin(angle) * spread)),
+      );
+      child.health = 1;
+      child.maxHealth = Math.max(child.maxHealth, 1);
+      this.enemyAI.set(child.id, this.createEnemyAI(child.type));
+      this.state.enemies.push(child);
+      released++;
+    }
+    return released;
+  }
+
   private removeKilledEnemyAt(index: number): number {
     const enemy = this.state.enemies[index];
     if (!enemy || enemy.queued) return 0;
@@ -5636,8 +5760,9 @@ export class GameRoom extends Room<GameState> {
     enemy.alive = false;
     this.enemyAI.delete(enemy.id);
     const released = this.releaseQueuedSnakeSegments(enemy);
+    const shattered = this.releaseShatterBloomShards(enemy);
     this.state.enemies.splice(index, 1);
-    return released;
+    return released + shattered;
   }
 
   /**
