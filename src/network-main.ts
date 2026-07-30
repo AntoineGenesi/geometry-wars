@@ -113,6 +113,7 @@ import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
 import {
   SettingsMenu,
+  areOpaqueSurfacesEnabled,
   getEffectiveSurfaceOpacity,
   loadDebugSettings,
   loadGraphicsSettings,
@@ -922,7 +923,7 @@ async function main() {
     // Apply surface appearance from graphics settings (overrides visual style defaults).
     {
       const gfxSettings = loadGraphicsSettings();
-      networkOpaqueSurfaces = gfxSettings.surfaceOpaque || (gfxSettings.enable90DegreeHide ?? false);
+      networkOpaqueSurfaces = areOpaqueSurfacesEnabled(gfxSettings);
       surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
       surface.setSurfaceColor(gfxSettings.surfaceColor);
     }
@@ -2618,7 +2619,7 @@ async function main() {
 
   // Apply surface appearance live when user changes settings in the pause menu.
   pauseMenu.onGraphicsChange((gfxSettings) => {
-    networkOpaqueSurfaces = gfxSettings.surfaceOpaque || (gfxSettings.enable90DegreeHide ?? false);
+    networkOpaqueSurfaces = areOpaqueSurfacesEnabled(gfxSettings);
     if (surface) {
       surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
       surface.setSurfaceColor(gfxSettings.surfaceColor);
@@ -7768,7 +7769,7 @@ async function main() {
     if (networkGraphicsSettingsFrameCounter++ >= 60) {
       networkGraphicsSettingsFrameCounter = 0;
       const gfxSettings = loadGraphicsSettings();
-      networkOpaqueSurfaces = gfxSettings.surfaceOpaque || (gfxSettings.enable90DegreeHide ?? false);
+      networkOpaqueSurfaces = areOpaqueSurfacesEnabled(gfxSettings);
     }
     const enemyArray = Array.from(networkEnemies.values());
     const lodAssignments = lodManager.update(camera, enemyArray);

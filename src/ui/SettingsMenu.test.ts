@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
+  areOpaqueSurfacesEnabled,
   loadGraphicsSettings,
   saveGraphicsSettings,
   loadAudioSettings,
@@ -104,6 +105,48 @@ describe('GraphicsSettings', () => {
       const loaded = loadGraphicsSettings();
 
       expect(loaded).toEqual(custom);
+    });
+
+    it('migrates old legacy hide saves into the visible opaque toggle', () => {
+      store['gw3d-graphics-settings'] = JSON.stringify({
+        qualityPreset: 'custom',
+        bloomEnabled: true,
+        bloomStrength: 1,
+        particleCount: 2000,
+        trailEffects: true,
+        maxEnemies: 500,
+        resolutionScale: 1,
+        surfaceOpaque: false,
+        surfaceOpacity: 0.05,
+        surfaceColor: 0x141440,
+        enable90DegreeHide: true,
+      });
+
+      const loaded = loadGraphicsSettings();
+
+      expect(loaded.surfaceOpaque).toBe(true);
+      expect(loaded.enable90DegreeHide).toBe(false);
+      expect(areOpaqueSurfacesEnabled(loaded)).toBe(true);
+      expect(getEffectiveSurfaceOpacity(loaded)).toBe(1.0);
+      expect(JSON.parse(store['gw3d-graphics-settings'])).toMatchObject({
+        surfaceOpaque: true,
+        enable90DegreeHide: false,
+      });
+    });
+
+    it('treats the visible opaque toggle as authoritative when saving off', () => {
+      saveGraphicsSettings({
+        ...getDefaultGraphics(),
+        surfaceOpaque: false,
+        enable90DegreeHide: true,
+      });
+
+      const loaded = loadGraphicsSettings();
+
+      expect(loaded.surfaceOpaque).toBe(false);
+      expect(loaded.enable90DegreeHide).toBe(false);
+      expect(areOpaqueSurfacesEnabled(loaded)).toBe(false);
+      expect(getEffectiveSurfaceOpacity(loaded)).toBe(0.05);
     });
 
     it('uses correct localStorage key', () => {
@@ -438,6 +481,13 @@ describe('Surface appearance settings', () => {
     const opaque = { ...readable, surfaceOpaque: true };
     expect(getEffectiveSurfaceOpacity(readable)).toBe(0.15);
     expect(getEffectiveSurfaceOpacity(opaque)).toBe(1.0);
+  });
+
+  it('fresh settings keep readable dim mode as the effective opaque default', () => {
+    const defaults = getDefaultGraphics();
+    expect(defaults.surfaceOpaque).toBe(false);
+    expect(defaults.enable90DegreeHide).toBe(false);
+    expect(areOpaqueSurfacesEnabled(defaults)).toBe(false);
   });
 
   it('old saves without surfaceOpacity/surfaceColor fall back to defaults', () => {

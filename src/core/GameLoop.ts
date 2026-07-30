@@ -14,7 +14,7 @@ import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { exportLogsToServer } from '../utils/PerformanceExporter';
 import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
 import { profiler } from './PerformanceProfiler';
-import { loadGraphicsSettings } from '../ui/SettingsMenu';
+import { areOpaqueSurfacesEnabled, loadGraphicsSettings } from '../ui/SettingsMenu';
 import { computeDepthVisibility, BULLET_DEPTH_CURVE } from '../rendering/DepthOpacity';
 import { EnemyKillStreakAnnouncer } from '../ui/EnemyKillStreakAnnouncer';
 
@@ -435,7 +435,7 @@ export class GameLoop {
     if (this._hide90DegreeFrameCounter++ >= 60) {
       this._hide90DegreeFrameCounter = 0;
       const graphicsSettings = loadGraphicsSettings();
-      this._hide90DegreeEntities = graphicsSettings.surfaceOpaque || (graphicsSettings.enable90DegreeHide ?? false);
+      this._hide90DegreeEntities = areOpaqueSurfacesEnabled(graphicsSettings);
     }
     ctx.enemyInstanceManager.updateInstancesWithLOD(
       ctx.enemySpawner.getEnemies(),

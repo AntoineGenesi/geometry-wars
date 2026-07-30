@@ -8,7 +8,7 @@ import {
 import { EnemyType } from '../entities/enemies/EnemySpawner';
 import { Boss } from '../entities/enemies/Boss';
 import { UIHelpers } from '../ui/UIHelpers';
-import { loadGraphicsSettings } from '../ui/SettingsMenu';
+import { areOpaqueSurfacesEnabled, loadGraphicsSettings } from '../ui/SettingsMenu';
 import { profiler } from './PerformanceProfiler';
 
 /**
@@ -145,7 +145,7 @@ export class RenderLoop {
     if (this._graphicsSettingsFrameCounter++ >= 60) {
       this._graphicsSettingsFrameCounter = 0;
       const graphicsSettings = loadGraphicsSettings();
-      this._opaqueSurfaces = graphicsSettings.surfaceOpaque || (graphicsSettings.enable90DegreeHide ?? false);
+      this._opaqueSurfaces = areOpaqueSurfacesEnabled(graphicsSettings);
     }
     // s44r24-01: On cube-tunnel, the camera is outside the tunnel → raycasts always hit 2 walls
     // → targetOpacity=0.04 for ALL enemies. Since the result is discarded below (tunnel bypass),
