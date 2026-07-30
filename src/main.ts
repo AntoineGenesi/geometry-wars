@@ -2267,8 +2267,11 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Full programmatic API when ?debug=true, otherwise minimal API for compatibility
 
   if (debugMode) {
-    // Import and initialize GameDebugAPI for full programmatic access
-    import('./debug/GameDebugAPI').then(({ GameDebugAPI }) => {
+    // Import and initialize debug APIs for full programmatic access.
+    Promise.all([
+      import('./debug/GameDebugAPI'),
+      import('./debug/EnemyBodyProofDebug'),
+    ]).then(([{ GameDebugAPI }, { createEnemyBodyProofDebug }]) => {
       const debugAPI = new GameDebugAPI(
         game,
         player,
@@ -2280,6 +2283,34 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         playerWalker,
         surface,
       );
+      let nextBodyProofId = 1;
+      const enemyBodyProofDebug = createEnemyBodyProofDebug({
+        scene: game.scene,
+        camera: game.camera,
+        renderer: game.renderer,
+        enemyInstanceManager,
+        surfaceRoot: surface.group,
+        getEnemies: () => enemySpawner.getEnemies().map((enemy) => {
+          let id = (enemy as any).__bodyProofId as string | undefined;
+          if (!id) {
+            id = `sp_enemy_${nextBodyProofId++}`;
+            (enemy as any).__bodyProofId = id;
+          }
+          return { id, enemy };
+        }),
+      });
+      Object.assign(debugAPI as any, enemyBodyProofDebug, {
+        getWaveText: () => `Wave ${waveScheduler.getCurrentWave()}`,
+        getRendererInfo: () => ({
+          backend: game.backend,
+          isWebGPU: game.isWebGPU,
+          requestedRenderer: new URLSearchParams(window.location.search).get('renderer') || 'auto',
+          canvas: {
+            width: game.renderer.domElement.width,
+            height: game.renderer.domElement.height,
+          },
+        }),
+      });
       (window as any).__gameDebug = debugAPI;
       console.log('[GameDebugAPI] Initialized. Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(debugAPI)).filter(n => n !== 'constructor'));
     });

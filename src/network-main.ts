@@ -137,6 +137,7 @@ import { KillStreakAnnouncer } from './ui/KillStreakAnnouncer';
 import { EnemyKillStreakAnnouncer } from './ui/EnemyKillStreakAnnouncer';
 import { Portal, createPortalPair } from './entities/Portal';
 import { PerformanceProfiler as DebugPerformanceProfiler } from './debug/PerformanceProfiler';
+import { createEnemyBodyProofDebug } from './debug/EnemyBodyProofDebug';
 
 // ---------------------------------------------------------------------------
 // Bloom helper — mirrors main.ts (not exported; each entry point owns its bloom state)
@@ -8564,173 +8565,14 @@ async function main() {
   // Debug hook: read-only access to game state for automated testing.
   // Only active when ?debug=true is in the URL. No behavior changes.
   if (new URLSearchParams(window.location.search).has('debug')) {
-    const _visualProofHidden: Array<{ object: THREE.Object3D; visible: boolean }> = [];
-    const collectEnemyVisualObjects = (includeAuxiliary: boolean = true) => {
-      const allowed = new Set<THREE.Object3D>();
-      const batches = (enemyInstanceManager as any).batches as Map<string, any> | undefined;
-      batches?.forEach((batch) => {
-        if (batch?.instancedMesh) allowed.add(batch.instancedMesh);
-      });
-      const lodMedium = (enemyInstanceManager as any).lodMediumBatch;
-      const lodLow = (enemyInstanceManager as any).lodLowBatch;
-      if (lodMedium?.instancedMesh) allowed.add(lodMedium.instancedMesh);
-      if (lodLow?.instancedMesh) allowed.add(lodLow.instancedMesh);
-      networkEnemies.forEach((enemy) => {
-        if (enemy.mesh && !enemy.isInstanced) allowed.add(enemy.mesh);
-        if (includeAuxiliary) {
-          for (const aux of enemy.auxiliaryObjects) allowed.add(aux);
-        }
-      });
-      return allowed;
-    };
-    const getEnemyRenderSamples = () => {
-      const projection = new THREE.Vector3();
-      const matrix = new THREE.Matrix4();
-      const renderPos = new THREE.Vector3();
-      const renderScale = new THREE.Vector3();
-      const color = new THREE.Color();
-      const size = new THREE.Vector2();
-      game.camera.updateMatrixWorld();
-      game.renderer.getSize(size);
-      const viewportWidth = Math.max(1, window.innerWidth || size.x || 1);
-      const viewportHeight = Math.max(1, window.innerHeight || size.y || 1);
-      const mgr = enemyInstanceManager as any;
-      const samples: Record<string, unknown>[] = [];
-
-      networkEnemies.forEach((enemy, id) => {
-        if (!enemy.active || !enemy.alive) return;
-        const logicalPos = enemy.mesh ? enemy.mesh.position : enemy.position;
-        renderPos.copy(logicalPos);
-        renderScale.setScalar(1);
-        let opacity = 1.0;
-        let colorBrightness = 1.0;
-        let renderBatch = enemy.isInstanced ? 'unknown-instanced' : 'mesh';
-        let slot: number | null = null;
-        let drawCount: number | null = null;
-        let batchVisible: boolean | null = null;
-        let matrixFound = false;
-
-        const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
-        const instanceType = (enemy as any)._instanceType as string | undefined;
-        if (instanceIndex !== undefined && instanceType) {
-          const lodLevel = mgr.enemyLODPlacement?.get(enemy);
-          const lodBatch = lodLevel === 1 ? mgr.lodMediumBatch
-            : lodLevel === 2 ? mgr.lodLowBatch
-              : null;
-          const lodSlot = lodBatch?.enemyToIndex?.get(enemy);
-          const batch = lodBatch && lodSlot !== undefined
-            ? lodBatch
-            : mgr.batches?.get(instanceType);
-          slot = lodBatch && lodSlot !== undefined ? lodSlot : instanceIndex;
-          renderBatch = lodBatch && lodSlot !== undefined
-            ? (lodLevel === 1 ? 'lod-medium' : 'lod-low')
-            : instanceType;
-          drawCount = batch?.instancedMesh?.count ?? null;
-          batchVisible = batch?.instancedMesh?.visible ?? null;
-          if (batch?.opacityAttribute && slot !== null) opacity = batch.opacityAttribute.getX(slot);
-          if (batch?.instancedMesh?.instanceColor && slot !== null) {
-            batch.instancedMesh.getColorAt(slot, color);
-            colorBrightness = (color.r + color.g + color.b) / 3;
-          }
-          if (batch?.instancedMesh && slot !== null) {
-            batch.instancedMesh.getMatrixAt(slot, matrix);
-            renderPos.setFromMatrixPosition(matrix);
-            renderScale.setFromMatrixScale(matrix);
-            matrixFound = true;
-          }
-        } else if (enemy.mesh) {
-          enemy.mesh.updateWorldMatrix(false, false);
-          renderPos.setFromMatrixPosition(enemy.mesh.matrixWorld);
-          renderScale.setFromMatrixScale(enemy.mesh.matrixWorld);
-          batchVisible = enemy.mesh.visible;
-          matrixFound = true;
-        }
-
-        projection.copy(renderPos).project(game.camera);
-        samples.push({
-          id,
-          type: enemy.baseTypeName || enemy.constructor.name,
-          u: enemy.surfacePosition.u,
-          v: enemy.surfacePosition.v,
-          isAlive: enemy.alive,
-          isMaterializing: enemy.isMaterializing,
-          renderBatch,
-          slot,
-          drawCount,
-          batchVisible,
-          matrixFound,
-          opacity,
-          colorBrightness,
-          instanceMatrixScale: Math.max(renderScale.x, renderScale.y, renderScale.z),
-          worldPos: { x: logicalPos.x, y: logicalPos.y, z: logicalPos.z },
-          renderWorldPos: { x: renderPos.x, y: renderPos.y, z: renderPos.z },
-          screen: {
-            x: (projection.x * 0.5 + 0.5) * viewportWidth,
-            y: (-projection.y * 0.5 + 0.5) * viewportHeight,
-            ndcZ: projection.z,
-            inView: projection.x >= -1 && projection.x <= 1
-              && projection.y >= -1 && projection.y <= 1
-              && projection.z >= -1 && projection.z <= 1,
-          },
-        });
-      });
-
-      return samples;
-    };
-    const getEnemyInstanceDebug = () => {
-      const matrix = new THREE.Matrix4();
-      const pos = new THREE.Vector3();
-      const quat = new THREE.Quaternion();
-      const scale = new THREE.Vector3();
-      const color = new THREE.Color();
-      const summarizeBatch = (name: string, batch: any) => {
-        if (!batch?.instancedMesh) return null;
-        const samples: any[] = [];
-        const indexToEnemy = batch.indexToEnemy || [];
-        for (let i = 0; i < indexToEnemy.length && samples.length < 8; i++) {
-          const enemy = indexToEnemy[i];
-          if (!enemy) continue;
-          batch.instancedMesh.getMatrixAt(i, matrix);
-          matrix.decompose(pos, quat, scale);
-          let colorBrightness = null;
-          if (batch.instancedMesh.instanceColor) {
-            batch.instancedMesh.getColorAt(i, color);
-            colorBrightness = (color.r + color.g + color.b) / 3;
-          }
-          samples.push({
-            index: i,
-            type: enemy.baseTypeName || enemy.constructor?.name || name,
-            alive: enemy.alive,
-            materializing: enemy.isMaterializing,
-            positionLen: pos.length(),
-            scale: { x: scale.x, y: scale.y, z: scale.z },
-            scaleMin: Math.min(scale.x, scale.y, scale.z),
-            colorBrightness,
-          });
-        }
-        return {
-          name,
-          visible: batch.instancedMesh.visible,
-          renderOrder: batch.instancedMesh.renderOrder,
-          count: batch.instancedMesh.count,
-          highWaterMark: batch.highWaterMark,
-          registered: batch.enemyToIndex?.size ?? null,
-          activeCount: batch.activeCount ?? null,
-          samples,
-        };
-      };
-      const batches: any[] = [];
-      ((enemyInstanceManager as any).batches as Map<string, any> | undefined)?.forEach((batch, name) => {
-        batches.push(summarizeBatch(name, batch));
-      });
-      const lodMedium = summarizeBatch('lod-medium', (enemyInstanceManager as any).lodMediumBatch);
-      const lodLow = summarizeBatch('lod-low', (enemyInstanceManager as any).lodLowBatch);
-      return {
-        enemyCount: networkEnemies.size,
-        batches: batches.filter(Boolean),
-        lodBatches: [lodMedium, lodLow].filter(Boolean),
-      };
-    };
+    const enemyBodyProofDebug = createEnemyBodyProofDebug({
+      scene,
+      camera: game.camera,
+      renderer: game.renderer,
+      enemyInstanceManager,
+      surfaceRoot: (surface as Surface | null)?.group ?? null,
+      getEnemies: () => Array.from(networkEnemies.entries()).map(([id, enemy]) => ({ id, enemy })),
+    });
     window.__gameDebug = {
       getPlayerPosition: () => {
         const lp = networkPlayers.get(localPlayerId);
@@ -8759,35 +8601,9 @@ async function main() {
       getPlayerCount: () => networkPlayers.size,
       getLocalPlayerId: () => localPlayerId,
       getSurfaceType: () => lastCreatedSurfaceType,
-      getEnemyInstanceDebug,
-      getEnemyRenderSamples,
-      setVisualProofIsolation: (enabled: boolean, includeSurface: boolean = true, includeAuxiliary: boolean = true) => {
-        if (!enabled) {
-          while (_visualProofHidden.length > 0) {
-            const entry = _visualProofHidden.pop()!;
-            entry.object.visible = entry.visible;
-          }
-          return { enabled: false, hidden: 0, enemyInstanceDebug: getEnemyInstanceDebug() };
-        }
-
-        if (_visualProofHidden.length > 0) {
-          return { enabled: true, hidden: _visualProofHidden.length, enemyInstanceDebug: getEnemyInstanceDebug() };
-        }
-
-        const allowedEnemies = collectEnemyVisualObjects(includeAuxiliary);
-        const allowedRoots = new Set<THREE.Object3D>();
-        if (includeSurface && surface?.group) allowedRoots.add(surface.group);
-        allowedEnemies.forEach((object) => allowedRoots.add(object));
-
-        for (const child of scene.children) {
-          const isLight = child instanceof THREE.Light;
-          if (isLight || allowedRoots.has(child)) continue;
-          _visualProofHidden.push({ object: child, visible: child.visible });
-          child.visible = false;
-        }
-
-        return { enabled: true, includeSurface, includeAuxiliary, hidden: _visualProofHidden.length, enemyInstanceDebug: getEnemyInstanceDebug() };
-      },
+      getEnemyInstanceDebug: enemyBodyProofDebug.getEnemyInstanceDebug,
+      getEnemyRenderSamples: enemyBodyProofDebug.getEnemyRenderSamples,
+      setVisualProofIsolation: enemyBodyProofDebug.setVisualProofIsolation,
       isGameStarted: () => {
         // Check via status text as a proxy for game state
         return statusEl.textContent?.includes('Wave') || false;
