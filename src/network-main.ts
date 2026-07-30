@@ -190,6 +190,8 @@ interface GameDebugAPI {
   getPlayerCount: () => number;
   getLocalPlayerId: () => string;
   getSurfaceType: () => string;
+  getEnemyInstanceDebug: () => Record<string, unknown>;
+  setVisualProofIsolation: (enabled: boolean, includeSurface?: boolean) => Record<string, unknown>;
   isGameStarted: () => boolean;
   getWaveText: () => string;
 }
@@ -8393,6 +8395,77 @@ async function main() {
   // Debug hook: read-only access to game state for automated testing.
   // Only active when ?debug=true is in the URL. No behavior changes.
   if (new URLSearchParams(window.location.search).has('debug')) {
+    const _visualProofHidden: Array<{ object: THREE.Object3D; visible: boolean }> = [];
+    const collectEnemyVisualObjects = () => {
+      const allowed = new Set<THREE.Object3D>();
+      const batches = (enemyInstanceManager as any).batches as Map<string, any> | undefined;
+      batches?.forEach((batch) => {
+        if (batch?.instancedMesh) allowed.add(batch.instancedMesh);
+      });
+      const lodMedium = (enemyInstanceManager as any).lodMediumBatch;
+      const lodLow = (enemyInstanceManager as any).lodLowBatch;
+      if (lodMedium?.instancedMesh) allowed.add(lodMedium.instancedMesh);
+      if (lodLow?.instancedMesh) allowed.add(lodLow.instancedMesh);
+      networkEnemies.forEach((enemy) => {
+        if (enemy.mesh && !enemy.isInstanced) allowed.add(enemy.mesh);
+        for (const aux of enemy.auxiliaryObjects) allowed.add(aux);
+      });
+      return allowed;
+    };
+    const getEnemyInstanceDebug = () => {
+      const matrix = new THREE.Matrix4();
+      const pos = new THREE.Vector3();
+      const quat = new THREE.Quaternion();
+      const scale = new THREE.Vector3();
+      const color = new THREE.Color();
+      const summarizeBatch = (name: string, batch: any) => {
+        if (!batch?.instancedMesh) return null;
+        const samples: any[] = [];
+        const indexToEnemy = batch.indexToEnemy || [];
+        for (let i = 0; i < indexToEnemy.length && samples.length < 8; i++) {
+          const enemy = indexToEnemy[i];
+          if (!enemy) continue;
+          batch.instancedMesh.getMatrixAt(i, matrix);
+          matrix.decompose(pos, quat, scale);
+          let colorBrightness = null;
+          if (batch.instancedMesh.instanceColor) {
+            batch.instancedMesh.getColorAt(i, color);
+            colorBrightness = (color.r + color.g + color.b) / 3;
+          }
+          samples.push({
+            index: i,
+            type: enemy.baseTypeName || enemy.constructor?.name || name,
+            alive: enemy.alive,
+            materializing: enemy.isMaterializing,
+            positionLen: pos.length(),
+            scale: { x: scale.x, y: scale.y, z: scale.z },
+            scaleMin: Math.min(scale.x, scale.y, scale.z),
+            colorBrightness,
+          });
+        }
+        return {
+          name,
+          visible: batch.instancedMesh.visible,
+          renderOrder: batch.instancedMesh.renderOrder,
+          count: batch.instancedMesh.count,
+          highWaterMark: batch.highWaterMark,
+          registered: batch.enemyToIndex?.size ?? null,
+          activeCount: batch.activeCount ?? null,
+          samples,
+        };
+      };
+      const batches: any[] = [];
+      ((enemyInstanceManager as any).batches as Map<string, any> | undefined)?.forEach((batch, name) => {
+        batches.push(summarizeBatch(name, batch));
+      });
+      const lodMedium = summarizeBatch('lod-medium', (enemyInstanceManager as any).lodMediumBatch);
+      const lodLow = summarizeBatch('lod-low', (enemyInstanceManager as any).lodLowBatch);
+      return {
+        enemyCount: networkEnemies.size,
+        batches: batches.filter(Boolean),
+        lodBatches: [lodMedium, lodLow].filter(Boolean),
+      };
+    };
     window.__gameDebug = {
       getPlayerPosition: () => {
         const lp = networkPlayers.get(localPlayerId);
@@ -8421,6 +8494,34 @@ async function main() {
       getPlayerCount: () => networkPlayers.size,
       getLocalPlayerId: () => localPlayerId,
       getSurfaceType: () => lastCreatedSurfaceType,
+      getEnemyInstanceDebug,
+      setVisualProofIsolation: (enabled: boolean, includeSurface: boolean = true) => {
+        if (!enabled) {
+          while (_visualProofHidden.length > 0) {
+            const entry = _visualProofHidden.pop()!;
+            entry.object.visible = entry.visible;
+          }
+          return { enabled: false, hidden: 0, enemyInstanceDebug: getEnemyInstanceDebug() };
+        }
+
+        if (_visualProofHidden.length > 0) {
+          return { enabled: true, hidden: _visualProofHidden.length, enemyInstanceDebug: getEnemyInstanceDebug() };
+        }
+
+        const allowedEnemies = collectEnemyVisualObjects();
+        const allowedRoots = new Set<THREE.Object3D>();
+        if (includeSurface && surface?.group) allowedRoots.add(surface.group);
+        allowedEnemies.forEach((object) => allowedRoots.add(object));
+
+        for (const child of scene.children) {
+          const isLight = child instanceof THREE.Light;
+          if (isLight || allowedRoots.has(child)) continue;
+          _visualProofHidden.push({ object: child, visible: child.visible });
+          child.visible = false;
+        }
+
+        return { enabled: true, includeSurface, hidden: _visualProofHidden.length, enemyInstanceDebug: getEnemyInstanceDebug() };
+      },
       isGameStarted: () => {
         // Check via status text as a proxy for game state
         return statusEl.textContent?.includes('Wave') || false;
