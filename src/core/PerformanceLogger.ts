@@ -191,7 +191,32 @@ export interface StoredSession {
 // ---------------------------------------------------------------------------
 
 /** Types of discrete game events recorded for the post-game score graph. */
-export type GameEventType = 'kill' | 'wave_start' | 'buff_pickup' | 'weapon_pickup' | 'player_death' | 'kill_streak';
+export type GameEventType =
+  | 'kill'
+  | 'combo'
+  | 'pvp_kill'
+  | 'wave_start'
+  | 'buff_pickup'
+  | 'weapon_pickup'
+  | 'player_death'
+  | 'kill_streak';
+
+export interface ComboEventMetadata {
+  startTime: number;
+  endTime: number;
+  duration: number;
+  enemyTypes: Record<string, number>;
+}
+
+export interface PvpKillEventMetadata {
+  killerId?: string;
+  killerName: string;
+  victimId?: string;
+  victimName: string;
+  streakCount?: number;
+}
+
+export type GameEventMetadata = ComboEventMetadata | PvpKillEventMetadata;
 
 /** A discrete game event with timestamp. Used for score graph markers. */
 export interface GameEvent {
@@ -203,10 +228,14 @@ export interface GameEvent {
   label: string;
   /** Optional numeric value: streak count, wave number, etc. */
   value?: number;
+  /** Optional structured details for timeline tooltips. */
+  metadata?: GameEventMetadata;
 }
 
 /** Maximum number of game events stored per session (FIFO overflow). */
 const MAX_GAME_EVENTS = 2000;
+const PVE_COMBO_WINDOW_SECONDS = 1.5;
+const PVE_COMBO_MIN_KILLS = 3;
 
 /** Legacy format for backwards compatibility. */
 interface LegacyDataPoint {
@@ -293,6 +322,12 @@ export class PerformanceLogger {
 
   // Game event log (for post-game score graph, ephemeral)
   private readonly gameEvents: GameEvent[] = [];
+  private activePveCombo: {
+    startTime: number;
+    endTime: number;
+    count: number;
+    enemyTypes: Map<string, number>;
+  } | null = null;
 
   // Frame spike tracking
   private readonly spikeEvents: FrameSpikeEvent[] = [];
@@ -768,18 +803,143 @@ export class PerformanceLogger {
     return this.spikeEvents;
   }
 
+  private pushGameEvent(event: GameEvent): void {
+    if (this.gameEvents.length >= MAX_GAME_EVENTS) {
+      this.gameEvents.shift(); // drop oldest (FIFO)
+    }
+    if (
+      this.gameEvents.length === 0 ||
+      this.gameEvents[this.gameEvents.length - 1].time <= event.time
+    ) {
+      this.gameEvents.push(event);
+      return;
+    }
+
+    let insertAt = this.gameEvents.length;
+    while (insertAt > 0 && this.gameEvents[insertAt - 1].time > event.time) {
+      insertAt--;
+    }
+    this.gameEvents.splice(insertAt, 0, event);
+  }
+
+  private recordPveKillForCombo(enemyType: string, elapsed: number): void {
+    if (
+      !this.activePveCombo ||
+      elapsed - this.activePveCombo.endTime > PVE_COMBO_WINDOW_SECONDS
+    ) {
+      this.flushActivePveCombo();
+      this.activePveCombo = {
+        startTime: elapsed,
+        endTime: elapsed,
+        count: 0,
+        enemyTypes: new Map(),
+      };
+    }
+
+    this.activePveCombo.endTime = elapsed;
+    this.activePveCombo.count++;
+    this.activePveCombo.enemyTypes.set(
+      enemyType,
+      (this.activePveCombo.enemyTypes.get(enemyType) ?? 0) + 1,
+    );
+  }
+
+  private flushActivePveCombo(): void {
+    const combo = this.activePveCombo;
+    if (!combo) return;
+    this.activePveCombo = null;
+
+    if (combo.count < PVE_COMBO_MIN_KILLS) return;
+
+    this.pushGameEvent({
+      time: combo.endTime,
+      type: 'combo',
+      label: `${combo.count}x PvE Combo`,
+      value: combo.count,
+      metadata: {
+        startTime: combo.startTime,
+        endTime: combo.endTime,
+        duration: combo.endTime - combo.startTime,
+        enemyTypes: Object.fromEntries(combo.enemyTypes),
+      },
+    });
+  }
+
   /**
    * Record a discrete game event (kill, wave start, death, pickup, streak).
    * Used to populate score graph markers on the post-game screen.
    * Events are ephemeral — not persisted to localStorage.
    * Overflow: drops the oldest event when cap of 2000 is reached.
    */
-  recordEvent(type: GameEventType, label: string, value?: number): void {
+  recordEvent(
+    type: GameEventType,
+    label: string,
+    value?: number,
+    metadata?: GameEventMetadata,
+  ): void {
     const elapsed = (Date.now() - this.sessionStart) / 1000;
-    if (this.gameEvents.length >= MAX_GAME_EVENTS) {
-      this.gameEvents.shift(); // drop oldest (FIFO)
+    if (type === 'kill') {
+      this.recordPveKillForCombo(label, elapsed);
+    } else if (type !== 'kill_streak') {
+      this.flushActivePveCombo();
     }
-    this.gameEvents.push({ time: elapsed, type, label, value });
+
+    this.pushGameEvent({ time: elapsed, type, label, value, metadata });
+  }
+
+  recordPvpKill(event: PvpKillEventMetadata): void {
+    this.recordEvent(
+      'pvp_kill',
+      `${event.killerName} defeated ${event.victimName}`,
+      event.streakCount,
+      event,
+    );
+  }
+
+  recordEventAtElapsedForReview(
+    elapsed: number,
+    type: GameEventType,
+    label: string,
+    value?: number,
+    metadata?: GameEventMetadata,
+  ): void {
+    const normalizedElapsed = Math.max(0, elapsed);
+    if (type === 'kill') {
+      this.recordPveKillForCombo(label, normalizedElapsed);
+    } else if (type !== 'kill_streak') {
+      this.flushActivePveCombo();
+    }
+    this.pushGameEvent({ time: normalizedElapsed, type, label, value, metadata });
+  }
+
+  recordReviewSampleAtElapsed(
+    elapsed: number,
+    data: {
+      fps: number;
+      enemyCount: number;
+      bulletCount: number;
+      score: number;
+      kills: number;
+      deaths?: number;
+      activeWeapon?: string;
+      activeBuffs?: string;
+      activeEffects?: number;
+      enemyTypes?: Map<EnemyType, number>;
+    },
+  ): void {
+    this.setFrameData(data.fps, data.enemyCount, data.bulletCount);
+    this.setGameplayData(
+      data.score,
+      data.kills,
+      data.deaths ?? this.currentDeaths,
+      data.activeWeapon ?? this.currentActiveWeapon,
+      data.activeBuffs ?? this.currentActiveBuffs,
+      data.activeEffects ?? this.currentActiveEffects,
+    );
+    if (data.enemyTypes) {
+      this.setEnemyTypes(data.enemyTypes);
+    }
+    this.takeSample(Math.max(0, elapsed));
   }
 
   /**
@@ -787,6 +947,7 @@ export class PerformanceLogger {
    * Returns readonly view — do not mutate.
    */
   getEvents(): ReadonlyArray<GameEvent> {
+    this.flushActivePveCombo();
     return this.gameEvents;
   }
 
@@ -1027,8 +1188,8 @@ export class PerformanceLogger {
 
   // -- Internal -------------------------------------------------------------
 
-  private takeSample(): void {
-    const elapsed = (Date.now() - this.sessionStart) / 1000;
+  private takeSample(elapsedOverride?: number): void {
+    const elapsed = elapsedOverride ?? (Date.now() - this.sessionStart) / 1000;
     const point = this.buffer[this.bufferIndex];
 
     // Reuse existing object (zero-GC)
@@ -1080,7 +1241,11 @@ export class PerformanceLogger {
         : killsDelta === 3 ? 'Triple Kill'
         : killsDelta === 4 ? 'Quad Kill'
         : `${killsDelta}-Kill Streak`;
-      this.recordEvent('kill_streak', streakLabel, killsDelta);
+      if (elapsedOverride !== undefined) {
+        this.recordEventAtElapsedForReview(elapsed, 'kill_streak', streakLabel, killsDelta);
+      } else {
+        this.recordEvent('kill_streak', streakLabel, killsDelta);
+      }
     }
 
     // Track gameplay peaks

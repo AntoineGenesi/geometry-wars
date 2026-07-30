@@ -45,6 +45,8 @@ const COLOR_CROSSHAIR_DOT = '#ffffff';
 
 // Event marker colors
 const EVENT_COLORS: Record<string, string> = {
+  combo: '#44ff88',          // green
+  pvp_kill: '#ff8844',       // orange
   kill_streak: '#ffff44',    // gold
   wave_start:  '#ffffff',    // white
   player_death: '#ff4444',   // red
@@ -54,6 +56,8 @@ const EVENT_COLORS: Record<string, string> = {
 };
 
 const EVENT_ICONS: Record<string, string> = {
+  combo: 'C',
+  pvp_kill: 'P',
   kill_streak:  '⚡',
   wave_start:   'W',
   player_death: '☠',
@@ -361,6 +365,8 @@ export class ScoreGraphPanel {
     const legend = document.createElement('div');
     legend.className = 'sgp-legend';
     const shown: Array<{ type: string; icon: string; label: string }> = [
+      { type: 'combo',       icon: EVENT_ICONS.combo,       label: 'PvE Combo' },
+      { type: 'pvp_kill',    icon: EVENT_ICONS.pvp_kill,    label: 'PvP Kill' },
       { type: 'wave_start',   icon: EVENT_ICONS.wave_start,   label: 'Wave' },
       { type: 'player_death', icon: EVENT_ICONS.player_death, label: 'Death' },
       { type: 'kill_streak',  icon: EVENT_ICONS.kill_streak,  label: 'Kill Streak (5+)' },
@@ -396,6 +402,8 @@ export class ScoreGraphPanel {
     } else {
       // Default event legend
       const shown: Array<{ type: string; icon: string; label: string }> = [
+        { type: 'combo',       icon: EVENT_ICONS.combo,       label: 'PvE Combo' },
+        { type: 'pvp_kill',    icon: EVENT_ICONS.pvp_kill,    label: 'PvP Kill' },
         { type: 'wave_start',   icon: EVENT_ICONS.wave_start,   label: 'Wave' },
         { type: 'player_death', icon: EVENT_ICONS.player_death, label: 'Death' },
         { type: 'kill_streak',  icon: EVENT_ICONS.kill_streak,  label: 'Kill Streak (5+)' },
@@ -499,7 +507,7 @@ export class ScoreGraphPanel {
     const waveAtTime = getWaveAtTime(this.events, hoveredTime);
 
     // Nearby events (within ±3s)
-    const nearbyEvents = this.getFilteredEvents(maxTime)
+    const nearbyEvents = filterScoreGraphEvents(this.events, maxTime)
       .filter(e => Math.abs(e.time - hoveredTime) < 3)
       .slice(0, 3);
 
@@ -517,7 +525,7 @@ export class ScoreGraphPanel {
       for (const ev of nearbyEvents) {
         const icon = EVENT_ICONS[ev.type] ?? '•';
         const color = EVENT_COLORS[ev.type] ?? '#ffffff';
-        const label = getEventLabel(ev);
+        const label = getScoreGraphEventLabel(ev);
         html += `<div class="sgp-tt-event" style="color:${color}">${icon} ${label}</div>`;
       }
     }
@@ -715,7 +723,7 @@ export class ScoreGraphPanel {
 
     // --- Event markers (only within visible window) ---
     const animatedTime = maxTime * progress;
-    const visibleEvents = this.getFilteredEvents(maxTime)
+    const visibleEvents = filterScoreGraphEvents(this.events, maxTime)
       .filter(e => e.time >= visibleStart && e.time <= visibleEnd);
 
     for (const ev of visibleEvents) {
@@ -939,28 +947,6 @@ export class ScoreGraphPanel {
     }
   }
 
-  /**
-   * Filter events to show on graph — removes per-kill events (too noisy),
-   * and deduplicates wave events that happen very close together.
-   */
-  private getFilteredEvents(maxTime: number): ReadonlyArray<GameEvent> {
-    const shown: GameEvent[] = [];
-    const DEDUPE_WAVE_GAP = 2.0;
-    let lastWaveTime = -Infinity;
-
-    for (const ev of this.events) {
-      if (ev.type === 'kill') continue;
-      if (ev.time > maxTime) continue;
-
-      if (ev.type === 'wave_start') {
-        if (ev.time - lastWaveTime < DEDUPE_WAVE_GAP) continue;
-        lastWaveTime = ev.time;
-      }
-
-      shown.push(ev);
-    }
-    return shown;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -994,8 +980,40 @@ function getWaveAtTime(events: ReadonlyArray<GameEvent>, time: number): number {
   return wave;
 }
 
-function getEventLabel(ev: GameEvent): string {
+export function filterScoreGraphEvents(
+  events: ReadonlyArray<GameEvent>,
+  maxTime: number,
+): ReadonlyArray<GameEvent> {
+  const shown: GameEvent[] = [];
+  const DEDUPE_WAVE_GAP = 2.0;
+  let lastWaveTime = -Infinity;
+
+  for (const ev of events) {
+    if (ev.type === 'kill') continue;
+    if (ev.time > maxTime) continue;
+
+    if (ev.type === 'wave_start') {
+      if (ev.time - lastWaveTime < DEDUPE_WAVE_GAP) continue;
+      lastWaveTime = ev.time;
+    }
+
+    shown.push(ev);
+  }
+  return shown;
+}
+
+export function getScoreGraphEventLabel(ev: GameEvent): string {
   switch (ev.type) {
+    case 'combo': {
+      const duration = ev.metadata && 'duration' in ev.metadata
+        ? ` over ${ev.metadata.duration.toFixed(1)}s`
+        : '';
+      return `${ev.value ?? 0}x PvE combo${duration}`;
+    }
+    case 'pvp_kill':
+      return ev.metadata && 'killerName' in ev.metadata
+        ? `${ev.metadata.killerName} defeated ${ev.metadata.victimName}`
+        : ev.label;
     case 'wave_start':   return `Wave ${ev.value ?? '?'} started`;
     case 'player_death': return 'Player died';
     case 'kill_streak':  return `Kill streak ×${ev.value ?? ''}`;

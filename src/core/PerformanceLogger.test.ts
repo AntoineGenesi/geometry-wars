@@ -20,6 +20,7 @@ describe('PerformanceLogger', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -611,6 +612,99 @@ describe('PerformanceLogger', () => {
       // "other" should include spinner + rocket = 2
       const otherSeries = timeline.series[timeline.types.length - 1];
       expect(otherSeries[otherSeries.length - 1]).toBe(2);
+    });
+  });
+
+  describe('PvE combo timeline events', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000);
+      logger = new PerformanceLogger('sphere');
+    });
+
+    it('aggregates dense PvE kills into a time-limited combo while preserving raw kill data', () => {
+      logger.recordEvent('kill', 'wanderer');
+      vi.advanceTimersByTime(600);
+      logger.recordEvent('kill', 'prism_lancer');
+      vi.advanceTimersByTime(800);
+      logger.recordEvent('kill', 'wanderer');
+
+      const events = logger.getEvents();
+      const combos = events.filter(e => e.type === 'combo');
+      const rawKills = events.filter(e => e.type === 'kill');
+
+      expect(rawKills).toHaveLength(3);
+      expect(combos).toHaveLength(1);
+      expect(combos[0].value).toBe(3);
+      expect(combos[0].label).toBe('3x PvE Combo');
+      expect(combos[0].metadata).toMatchObject({
+        startTime: 0,
+        endTime: 1.4,
+        duration: 1.4,
+        enemyTypes: {
+          wanderer: 2,
+          prism_lancer: 1,
+        },
+      });
+
+      expect(logger.getKillsByEnemyType()[0]).toEqual({ enemyType: 'wanderer', kills: 2 });
+    });
+
+    it('does not create combo markers for sparse or below-threshold PvE kills', () => {
+      logger.recordEvent('kill', 'wanderer');
+      vi.advanceTimersByTime(1_600);
+      logger.recordEvent('kill', 'grunt');
+      vi.advanceTimersByTime(200);
+      logger.recordEvent('kill', 'grunt');
+
+      const events = logger.getEvents();
+      expect(events.filter(e => e.type === 'kill')).toHaveLength(3);
+      expect(events.some(e => e.type === 'combo')).toBe(false);
+    });
+
+    it('keeps PvP kills explicit and outside PvE combo aggregation', () => {
+      logger.recordEvent('kill', 'wanderer');
+      vi.advanceTimersByTime(200);
+      logger.recordEvent('kill', 'grunt');
+      vi.advanceTimersByTime(200);
+      logger.recordPvpKill({
+        killerId: 'p1',
+        killerName: 'Host',
+        victimId: 'p2',
+        victimName: 'Join',
+        streakCount: 4,
+      });
+
+      const events = logger.getEvents();
+      const pvpKills = events.filter(e => e.type === 'pvp_kill');
+
+      expect(events.some(e => e.type === 'combo')).toBe(false);
+      expect(pvpKills).toHaveLength(1);
+      expect(pvpKills[0]).toMatchObject({
+        label: 'Host defeated Join',
+        value: 4,
+        metadata: {
+          killerId: 'p1',
+          killerName: 'Host',
+          victimId: 'p2',
+          victimName: 'Join',
+          streakCount: 4,
+        },
+      });
+    });
+
+    it('does not repurpose kill_streak events as combo events', () => {
+      logger.recordEvent('kill', 'wanderer');
+      vi.advanceTimersByTime(100);
+      logger.recordEvent('kill', 'wanderer');
+      vi.advanceTimersByTime(100);
+      logger.recordEvent('kill', 'shatter_bloom');
+      logger.recordEvent('kill_streak', 'Triple Kill', 3);
+
+      const events = logger.getEvents();
+      expect(events.filter(e => e.type === 'combo')).toHaveLength(1);
+      expect(events.filter(e => e.type === 'kill_streak')).toHaveLength(1);
+      expect(events.filter(e => e.type === 'kill_streak')[0].label).toBe('Triple Kill');
     });
   });
 });
