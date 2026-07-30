@@ -31,6 +31,7 @@ import { GeomPool } from './entities/Geom';
 import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
 import { waveComposer } from './entities/enemies/WaveComposer';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
+import { Boss } from './entities/enemies/Boss';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
 import { PlasmaExplosionEffect } from './effects/PlasmaExplosionEffect';
@@ -72,6 +73,10 @@ import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { CompanionManager, CompanionPickup, CompanionHUD, getRandomCompanionType, RemoteCompanionRenderer } from './entities/Companion';
 import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
+import {
+  ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
+  computeEnemyOcclusionVisibility,
+} from './rendering/EntityCulling';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { LODManager, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
 import { DepthOcclusionSystem, computeDepthVisibility, BULLET_DEPTH_CURVE } from './rendering/DepthOpacity';
@@ -106,7 +111,12 @@ import { DDADecisionEngine } from './difficulty/DDADecisionEngine';
 import { DDASpawnModifier } from './difficulty/DDASpawnModifier';
 import { loadDDASettings } from './difficulty/DDASettings';
 import type { PlayerPosition } from './difficulty/DDASpawnModifier';
-import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
+import {
+  SettingsMenu,
+  getEffectiveSurfaceOpacity,
+  loadDebugSettings,
+  loadGraphicsSettings,
+} from './ui/SettingsMenu';
 import { VisualPlayground } from './ui/VisualPlayground';
 import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
 import { PerformanceTracker } from './core/PerformanceTracker';
@@ -774,6 +784,8 @@ async function main() {
   let lastCreatedSurfaceType: string = '';
   let lastMapSize: string = '';
   let currentMapSizeScaleFactor = 1.0;
+  let networkOpaqueSurfaces = false;
+  let networkGraphicsSettingsFrameCounter = 60;
 
   // -- Enemy spawner (created after surface, used to create real enemy meshes) --
   let enemySpawner: EnemySpawner | null = null;
@@ -910,7 +922,8 @@ async function main() {
     // Apply surface appearance from graphics settings (overrides visual style defaults).
     {
       const gfxSettings = loadGraphicsSettings();
-      surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
+      networkOpaqueSurfaces = gfxSettings.surfaceOpaque || (gfxSettings.enable90DegreeHide ?? false);
+      surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
       surface.setSurfaceColor(gfxSettings.surfaceColor);
     }
 
@@ -2605,8 +2618,9 @@ async function main() {
 
   // Apply surface appearance live when user changes settings in the pause menu.
   pauseMenu.onGraphicsChange((gfxSettings) => {
+    networkOpaqueSurfaces = gfxSettings.surfaceOpaque || (gfxSettings.enable90DegreeHide ?? false);
     if (surface) {
-      surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
+      surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
       surface.setSurfaceColor(gfxSettings.surfaceColor);
     }
   });
@@ -7751,9 +7765,23 @@ async function main() {
     // distance. updateInstancesWithLOD() uses those assignments to select
     // simplified geometry for distant enemies, reducing GPU triangle load.
     // -----------------------------------------------------------------------
+    if (networkGraphicsSettingsFrameCounter++ >= 60) {
+      networkGraphicsSettingsFrameCounter = 0;
+      const gfxSettings = loadGraphicsSettings();
+      networkOpaqueSurfaces = gfxSettings.surfaceOpaque || (gfxSettings.enable90DegreeHide ?? false);
+    }
     const enemyArray = Array.from(networkEnemies.values());
     const lodAssignments = lodManager.update(camera, enemyArray);
-    enemyInstanceManager.updateInstancesWithLOD(enemyArray, lodAssignments, camera);
+    const localPlayerForCulling = networkPlayers.get(localPlayerId);
+    enemyInstanceManager.updateInstancesWithLOD(
+      enemyArray,
+      lodAssignments,
+      camera,
+      localPlayerForCulling?.mesh
+        ? { position: localPlayerForCulling.mesh.position, normal: _localServerNormal }
+        : undefined,
+      networkOpaqueSurfaces,
+    );
 
     // -----------------------------------------------------------------------
     // View-based depth occlusion (S27b): dim enemies behind the surface.
@@ -7926,10 +7954,33 @@ async function main() {
       // s44r33-03: cube-ring excluded — UV dimming handles far-face visibility correctly.
       if (_isTunnelSurface && !_isSphereTunnel && !_isCubeRing) vis = 1.0;
 
+      let minColorBrightness = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS;
+      if (_lpForDim?.mesh) {
+        const occlusionVisibility = computeEnemyOcclusionVisibility(
+          _lpForDim.mesh.position,
+          _localServerNormal,
+          enemy.position,
+          {
+            opaqueSurfaces: networkOpaqueSurfaces,
+            lineOfSightClear: !_skipDepthOcclusion && netDepthOpacity >= 0.9,
+            enemyRadius: enemy.radius,
+            important: enemy instanceof Boss,
+          },
+        );
+        minColorBrightness = occlusionVisibility.minColorBrightness;
+        if (occlusionVisibility.className === 'direct') {
+          vis = 1.0;
+        } else if (occlusionVisibility.className === 'opaque-hidden') {
+          vis = 0;
+        } else {
+          vis = Math.min(vis, occlusionVisibility.visibility);
+        }
+      }
+
       if (enemyInstanceManager.isInLODBatch(enemy)) {
-        enemyInstanceManager.setLODInstanceVisibility(enemy, vis);
+        enemyInstanceManager.setLODInstanceVisibility(enemy, vis, minColorBrightness);
       } else {
-        enemyInstanceManager.setInstanceVisibility(enemy, vis);
+        enemyInstanceManager.setInstanceVisibility(enemy, vis, minColorBrightness);
       }
     }
 

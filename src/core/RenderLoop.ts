@@ -1,9 +1,14 @@
 import * as THREE from 'three';
 import type { GameContext } from './GameContext';
 import { OcclusionSurfaceMaterial } from '../rendering/OcclusionSurfaceMaterial';
+import {
+  ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
+  computeEnemyOcclusionVisibility,
+} from '../rendering/EntityCulling';
 import { EnemyType } from '../entities/enemies/EnemySpawner';
 import { Boss } from '../entities/enemies/Boss';
 import { UIHelpers } from '../ui/UIHelpers';
+import { loadGraphicsSettings } from '../ui/SettingsMenu';
 import { profiler } from './PerformanceProfiler';
 
 /**
@@ -94,6 +99,9 @@ export class RenderLoop {
   // Pre-allocated minimap enemy array — reused each frame to avoid per-frame heap churn
   private _minimapEnemies: Array<{ u: number; v: number; alive: boolean }> = [];
 
+  private _opaqueSurfaces = false;
+  private _graphicsSettingsFrameCounter = 60;
+
   render(ctx: GameContext, alpha: number): void {
     profiler.begin('surface_projection');
     // Project bullets onto surface
@@ -134,6 +142,11 @@ export class RenderLoop {
     // Raycast-based: counts surface intersections between camera and each enemy.
     // Batched across frames for performance (100 raycasts/frame).
     const allEnemies = ctx.enemySpawner.getEnemies();
+    if (this._graphicsSettingsFrameCounter++ >= 60) {
+      this._graphicsSettingsFrameCounter = 0;
+      const graphicsSettings = loadGraphicsSettings();
+      this._opaqueSurfaces = graphicsSettings.surfaceOpaque || (graphicsSettings.enable90DegreeHide ?? false);
+    }
     // s44r24-01: On cube-tunnel, the camera is outside the tunnel → raycasts always hit 2 walls
     // → targetOpacity=0.04 for ALL enemies. Since the result is discarded below (tunnel bypass),
     // skip the update entirely to avoid wasted raycasts and EMA state accumulation.
@@ -381,8 +394,31 @@ export class RenderLoop {
       // This catches any edge case where some other code path inadvertently dims tunnel enemies.
       if (_isTunnelSurface) visibility = 1.0;
 
+      const occlusionVisibility = computeEnemyOcclusionVisibility(
+        playerPos,
+        ctx.playerWalker.normal,
+        enemy.position,
+        {
+          opaqueSurfaces: this._opaqueSurfaces,
+          lineOfSightClear: depthOpacity >= 0.9,
+          enemyRadius: enemy.radius,
+          important: enemy instanceof Boss,
+        },
+      );
+      let minColorBrightness = occlusionVisibility.minColorBrightness;
+      if (occlusionVisibility.className === 'direct') {
+        visibility = 1.0;
+      } else if (occlusionVisibility.className === 'opaque-hidden') {
+        visibility = 0;
+      } else {
+        visibility = Math.min(visibility, occlusionVisibility.visibility);
+      }
+
       // Debug: ?noDim=true disables ALL enemy dimming (forces full brightness)
-      if ((globalThis as any).__NO_DIM) visibility = 1.0;
+      if ((globalThis as any).__NO_DIM) {
+        visibility = 1.0;
+        minColorBrightness = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS;
+      }
 
       visibleEnemyCount++;
 
@@ -390,10 +426,10 @@ export class RenderLoop {
       if (enemy.isInstanced) {
         if (ctx.enemyInstanceManager.isInLODBatch(enemy)) {
           // Enemy is in a shared LOD batch (simplified geometry)
-          ctx.enemyInstanceManager.setLODInstanceVisibility(enemy, visibility);
+          ctx.enemyInstanceManager.setLODInstanceVisibility(enemy, visibility, minColorBrightness);
         } else {
           // Enemy is in its type-specific HIGH-detail batch
-          ctx.enemyInstanceManager.setInstanceVisibility(enemy, visibility);
+          ctx.enemyInstanceManager.setInstanceVisibility(enemy, visibility, minColorBrightness);
         }
         continue;
       }

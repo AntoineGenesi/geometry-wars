@@ -22,6 +22,7 @@ const SURFACE = getArg('surface') || 'sphere-tunnel';
 const GAME_MODE = getArg('game-mode') || 'waves';
 const MAX_SECONDS = Number(getArg('duration') || 75);
 const RENDERER = getArg('renderer') || 'auto';
+const SURFACE_OPAQUE = getArg('surface-opaque') === 'true' || getArg('opaque') === 'true';
 const DEV_BIND_HOST = getArg('dev-bind-host') || '127.0.0.1';
 const BROWSER_HTTP_HOST = getArg('browser-http-host') || '127.0.0.1';
 const DEV_HEALTH_HOST = getArg('dev-health-host') || '127.0.0.1';
@@ -266,6 +267,21 @@ async function main() {
       ],
     });
     const page = await browser.newPage();
+    await page.evaluateOnNewDocument((surfaceOpaque) => {
+      localStorage.setItem('gw3d-graphics-settings', JSON.stringify({
+        qualityPreset: 'custom',
+        bloomEnabled: true,
+        bloomStrength: 1,
+        particleCount: 2000,
+        trailEffects: true,
+        maxEnemies: 500,
+        resolutionScale: 1,
+        surfaceOpaque,
+        surfaceOpacity: 0.05,
+        surfaceColor: 0x141440,
+        enable90DegreeHide: false,
+      }));
+    }, SURFACE_OPAQUE);
     await page.setViewport({ width: 800, height: 600 });
     const errors = [];
     const logs = [];
@@ -318,11 +334,31 @@ async function main() {
     }
 
     const rendererInfo = await page.evaluate(() => window.__gameDebug?.getRendererInfo?.() || null).catch(() => null);
+    const allSamples = checkpoints.flatMap((checkpoint) => checkpoint.metrics?.samples ?? []);
+    const hiddenSamples = allSamples.filter((sample) => (sample.opacity ?? 1) <= 0 || (sample.colorBrightness ?? 1) <= 0.02);
+    const visibleBodySamples = allSamples.filter((sample) => sample.visible);
+    const dimReadableSamples = allSamples.filter((sample) =>
+      (sample.opacity ?? 0) > 0
+        && (sample.colorBrightness ?? 1) > 0.02
+        && (sample.colorBrightness ?? 1) < 0.35
+        && sample.visible
+    );
+    const proofPassed = SURFACE_OPAQUE
+      ? hiddenSamples.length > 0
+      : visibleBodySamples.length > 0;
+    if (!proofPassed) {
+      errors.push(SURFACE_OPAQUE
+        ? 'opaque mode did not produce any intentionally hidden enemy render samples'
+        : 'readable mode did not produce any body-visible enemy samples');
+    }
+
     const report = {
       kind: 'sp-enemy-body-probe',
       runId,
       surface: SURFACE,
       gameMode: GAME_MODE,
+      surfaceOpaque: SURFACE_OPAQUE,
+      visibilityMode: SURFACE_OPAQUE ? 'opaque-hidden' : 'readable-dim',
       url,
       maxSeconds: MAX_SECONDS,
       devHealthHost: DEV_HEALTH_HOST,
@@ -336,6 +372,13 @@ async function main() {
       },
       renderer: rendererInfo,
       checkpoints,
+      sampleSummary: {
+        totalSamples: allSamples.length,
+        visibleBodySamples: visibleBodySamples.length,
+        dimReadableSamples: dimReadableSamples.length,
+        hiddenSamples: hiddenSamples.length,
+        proofPassed,
+      },
       errors,
       criticalErrors: errors.filter((e) => !/AudioContext|favicon|404|WebSocket|Failed to load resource/.test(e)),
       logTail: logs.slice(-80),
@@ -356,8 +399,12 @@ async function main() {
         visibleRate: c.metrics?.visibleRate,
         screenshot: c.screenshot,
       })),
+      sampleSummary: report.sampleSummary,
       criticalErrors: report.criticalErrors,
     }, null, 2));
+    if (!report.sampleSummary.proofPassed) {
+      throw new Error(`SP enemy body proof failed; report written to ${reportPath}`);
+    }
   } finally {
     await browser?.close?.().catch(() => {});
     rmSync(browserProfileDir, { recursive: true, force: true });

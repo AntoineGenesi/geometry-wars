@@ -4,6 +4,7 @@ import {
   saveGraphicsSettings,
   loadAudioSettings,
   saveAudioSettings,
+  getEffectiveSurfaceOpacity,
   getDefaultGraphics,
   getDefaultAudio,
   applyQualityPreset,
@@ -430,6 +431,13 @@ describe('Surface appearance settings', () => {
     const loaded = loadGraphicsSettings();
     expect(loaded.surfaceOpacity).toBe(0.60);
     expect(loaded.surfaceColor).toBe(0xa8d8f0);
+  });
+
+  it('effective surface opacity uses readable opacity by default and solid fill when opaque', () => {
+    const readable = { ...getDefaultGraphics(), surfaceOpaque: false, surfaceOpacity: 0.15 };
+    const opaque = { ...readable, surfaceOpaque: true };
+    expect(getEffectiveSurfaceOpacity(readable)).toBe(0.15);
+    expect(getEffectiveSurfaceOpacity(opaque)).toBe(1.0);
   });
 
   it('old saves without surfaceOpacity/surfaceColor fall back to defaults', () => {

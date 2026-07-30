@@ -82,9 +82,9 @@ export class GameLoop {
   // window.innerHeight during the 3-second countdown without firing a resize event).
   // Reset to false each countdown so the sync fires once per game start.
   private _cameraAspectSyncedForSession = false;
-  // Cached 90-degree hide setting — refreshed every 60 frames to avoid per-frame localStorage reads.
+  // Cached opaque/legacy hide setting — refreshed every 60 frames to avoid per-frame localStorage reads.
   private _hide90DegreeEntities = false;
-  private _hide90DegreeFrameCounter = 0;
+  private _hide90DegreeFrameCounter = 60;
 
   /**
    * Wire in dependencies that are created in main.ts and can't be passed via GameContext
@@ -434,7 +434,8 @@ export class GameLoop {
     // Refresh 90-degree hide setting every 60 frames to avoid per-frame localStorage reads.
     if (this._hide90DegreeFrameCounter++ >= 60) {
       this._hide90DegreeFrameCounter = 0;
-      this._hide90DegreeEntities = loadGraphicsSettings().enable90DegreeHide ?? false;
+      const graphicsSettings = loadGraphicsSettings();
+      this._hide90DegreeEntities = graphicsSettings.surfaceOpaque || (graphicsSettings.enable90DegreeHide ?? false);
     }
     ctx.enemyInstanceManager.updateInstancesWithLOD(
       ctx.enemySpawner.getEnemies(),

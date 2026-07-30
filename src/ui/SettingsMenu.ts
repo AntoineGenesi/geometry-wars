@@ -229,6 +229,10 @@ export function getDefaultGraphics(): GraphicsSettings {
   return { ...DEFAULT_GRAPHICS };
 }
 
+export function getEffectiveSurfaceOpacity(settings: GraphicsSettings): number {
+  return settings.surfaceOpaque ? 1.0 : settings.surfaceOpacity;
+}
+
 export function getDefaultAudio(): AudioSettings {
   return { ...DEFAULT_AUDIO };
 }
@@ -1190,12 +1194,8 @@ export class SettingsMenu {
         <div class="toggle ${g.trailEffects ? 'on' : ''}" id="toggle-trails" data-setting="trailEffects"></div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">${t('settings.graphics.surfaceOpacity')}</span>
+        <span class="setting-label">Opaque Surfaces</span>
         <div class="toggle ${g.surfaceOpaque ? 'on' : ''}" id="toggle-surface-opaque" data-setting="surfaceOpaque"></div>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">Hide Far-Side Entities (90°)</span>
-        <div class="toggle ${g.enable90DegreeHide ? 'on' : ''}" id="toggle-90-degree-hide" data-setting="enable90DegreeHide"></div>
       </div>
 
       <div class="section-heading">Grid Lines</div>
@@ -1470,12 +1470,6 @@ export class SettingsMenu {
     // Surface opacity toggle
     this.attachToggle('toggle-surface-opaque', (on) => {
       this.graphicsSettings = { ...this.graphicsSettings, surfaceOpaque: on, qualityPreset: 'custom' };
-      this.saveAndNotifyGraphics();
-    });
-
-    // 90-degree hide toggle
-    this.attachToggle('toggle-90-degree-hide', (on) => {
-      this.graphicsSettings = { ...this.graphicsSettings, enable90DegreeHide: on, qualityPreset: 'custom' };
       this.saveAndNotifyGraphics();
     });
 
