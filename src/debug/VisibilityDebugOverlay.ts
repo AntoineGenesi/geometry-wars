@@ -218,6 +218,8 @@ export class VisibilityDebugOverlay {
     let highCount = 0;
     let lodMedCount = 0;
     let lodLowCount = 0;
+    let batchLines: string[] = [];
+    let clippedCount = 0;
     if (mgr) {
       // Count enemies in LOD placement
       if (mgr.enemyLODPlacement) {
@@ -228,10 +230,8 @@ export class VisibilityDebugOverlay {
       }
       highCount = totalAlive - lodMedCount - lodLowCount;
       // Per-batch detail: registered vs mesh.count (if count < max registered index, enemies are CLIPPED)
-      let batchLines: string[] = [];
       let totalRegistered = 0;
       let totalMeshCount = 0;
-      let clippedCount = 0;
       if (mgr.batches) {
         for (const [typeName, batch] of mgr.batches) {
           const registered = batch.enemyToIndex?.size ?? 0;
@@ -246,7 +246,7 @@ export class VisibilityDebugOverlay {
             }
           }
           if (registered > 0) {
-            batchLines.push(`  ${typeName}: reg=${registered} cnt=${meshCount} hwm=${hwm}${meshCount <= hwm ? ' !!CLIPPEDo' : ''}`);
+            batchLines.push(`  ${typeName}: reg=${registered} cnt=${meshCount} hwm=${hwm}${meshCount <= hwm ? ' !!CLIPPED' : ''}`);
           }
         }
       }

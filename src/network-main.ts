@@ -1523,6 +1523,7 @@ async function main() {
   let latestWaveNumber = 0;
   let latestMapSize = 'medium';
   let latestGameMode = 'waves';
+  let latestPvpMode = '';
   /** Whether PvP bullet-to-player damage is enabled this round. Synced from server state. */
   let latestPvpEnabled = false;
 
@@ -1827,9 +1828,19 @@ async function main() {
     { id: 'claustrophobia', label: 'CLAUSTROPHOBIA', icon: '🔴' },
   ];
 
-  const urlGameMode = new URLSearchParams(window.location.search).get('gameMode') ?? 'waves';
-  // When host chose pvp/pvpve in the LAN lobby, pre-select that here; wave-style mode stays 'waves'
-  let selectedLobbyMode = (urlGameMode === 'pvp' || urlGameMode === 'pvpve') ? 'waves' : urlGameMode;
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlGameMode = urlParams.get('gameMode') ?? 'waves';
+  const urlPvpModeRaw = urlParams.get('pvpMode') ?? '';
+  const urlPvpMode: '' | 'pvp' | 'pvpve' =
+    urlPvpModeRaw === 'pvp' || urlPvpModeRaw === 'pvpve' ? urlPvpModeRaw : '';
+  const urlRequestedPvpMode: '' | 'pvp' | 'pvpve' = urlPvpMode !== ''
+    ? urlPvpMode
+    : (urlGameMode === 'pvp' || urlGameMode === 'pvpve') ? (urlGameMode as 'pvp' | 'pvpve') : '';
+  // Test harnesses must be able to force real PvP/PvPvE via the start choice.
+  // In normal lobby play, preserve the historical separate PvP selector behavior.
+  let selectedLobbyMode = _netMainTestMode && urlRequestedPvpMode !== ''
+    ? urlRequestedPvpMode
+    : (urlGameMode === 'pvp' || urlGameMode === 'pvpve' || urlPvpMode !== '') ? 'waves' : urlGameMode;
 
   const modeSelectorDiv = document.createElement('div');
   modeSelectorDiv.id = 'lobby-mode-selector';
@@ -1846,9 +1857,7 @@ async function main() {
 
   // ---- Co-op / PvP / PvPvE — primary game mode selection ----
   // Pre-select from URL param if host chose pvp/pvpve in the LAN lobby
-  let lobbyPvpMode: '' | 'pvp' | 'pvpve' = (urlGameMode === 'pvp' || urlGameMode === 'pvpve')
-    ? (urlGameMode as 'pvp' | 'pvpve')
-    : '';
+  let lobbyPvpMode: '' | 'pvp' | 'pvpve' = urlRequestedPvpMode;
   let lobbyWinCondition: 'none' | 'kills' | 'time' | 'lives' = 'none';
   let lobbyKillTarget = 10;
   let lobbyTimeLimit = 300; // seconds
@@ -2269,7 +2278,8 @@ async function main() {
     }
     // lives param: number (1-9) or 'infinite'
     const livesParam = selectedInfiniteLives ? 'infinite' : String(selectedLives);
-    const choice = `${surfaceForChoice}:${selectedLobbyMode}:medium:${livesParam}`;
+    const choiceMode = _netMainTestMode && lobbyPvpMode !== '' ? lobbyPvpMode : selectedLobbyMode;
+    const choice = `${surfaceForChoice}:${choiceMode}:medium:${livesParam}`;
     // If PvP/PvPvE mode selected in the win-condition panel, send options alongside
     if (lobbyPvpMode !== '') {
       network.startGameWithOptions({
@@ -3554,6 +3564,7 @@ async function main() {
     latestWaveNumber = state.waveNumber;
     latestMapSize = state.mapSize || 'medium';
     if (state.gameMode) latestGameMode = state.gameMode;
+    latestPvpMode = state.pvpMode ?? '';
 
     // Sync PvP settings from server state
     const newPvpEnabled = state.pvpEnabled ?? false;
@@ -6237,6 +6248,11 @@ async function main() {
     playerPos: { x: number; y: number; z: number };
     distToPlayer: number;
   }> = [];
+  const _mpTelCameraPos = new THREE.Vector3();
+  const _mpTelCameraQuat = new THREE.Quaternion();
+  const _mpTelProjectionPos = new THREE.Vector3();
+  const _mpTelRendererSize = new THREE.Vector2();
+  const _mpTelInstanceColor = new THREE.Color();
 
   // MP performance profiler — only active in testMode. Exposed on window.__PERF_PROFILER.
   let _mpPerfProfiler: DebugPerformanceProfiler | null = null;
@@ -7105,13 +7121,21 @@ async function main() {
     if (_netMainDebug) {
       const localPlayer = networkPlayers.get(localPlayerId);
       const pPos = localPlayer?.mesh?.position;
+      game.camera.updateMatrixWorld();
+      game.camera.getWorldPosition(_mpTelCameraPos);
+      game.camera.getWorldQuaternion(_mpTelCameraQuat);
+      game.renderer.getSize(_mpTelRendererSize);
+      const viewportWidth = Math.max(1, window.innerWidth || _mpTelRendererSize.x || 1);
+      const viewportHeight = Math.max(1, window.innerHeight || _mpTelRendererSize.y || 1);
 
       // Build enemy array with distances and opacity
       const telEnemies: Array<{
         type: string; u: number; v: number;
         worldPos: { x: number; y: number; z: number };
+        screen: { x: number; y: number; ndcZ: number; inView: boolean };
         surfaceDistToPlayer: number; worldDistToPlayer: number;
         collisionRadius: number; isAlive: boolean; opacity: number;
+        colorBrightness: number;
       }> = [];
       let nearestEnemyWorldDist = Infinity;
       let nearestEnemySurfaceDist = Infinity;
@@ -7123,6 +7147,12 @@ async function main() {
         if (!enemy.active) return;
         const ePos = enemy.mesh ? enemy.mesh.position : enemy.position;
         const worldDist = pPos ? pPos.distanceTo(ePos) : Infinity;
+        _mpTelProjectionPos.copy(ePos).project(game.camera);
+        const screenX = (_mpTelProjectionPos.x * 0.5 + 0.5) * viewportWidth;
+        const screenY = (-_mpTelProjectionPos.y * 0.5 + 0.5) * viewportHeight;
+        const inView = _mpTelProjectionPos.x >= -1 && _mpTelProjectionPos.x <= 1
+          && _mpTelProjectionPos.y >= -1 && _mpTelProjectionPos.y <= 1
+          && _mpTelProjectionPos.z >= -1 && _mpTelProjectionPos.z <= 1;
 
         // UV-based surface distance (wrapping-aware)
         let du = (localPlayer?.surfaceU ?? 0) - enemy.surfacePosition.u;
@@ -7143,12 +7173,17 @@ async function main() {
 
         // Read opacity from EnemyInstanceManager
         let opacity = 1.0;
+        let colorBrightness = 1.0;
         const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
         const instanceType = (enemy as any)._instanceType as string | undefined;
         if (instanceIndex !== undefined && instanceType) {
           const batch = (enemyInstanceManager as any).batches?.get(instanceType);
           if (batch?.opacityAttribute) {
             opacity = batch.opacityAttribute.getX(instanceIndex);
+          }
+          if (batch?.instancedMesh?.instanceColor) {
+            batch.instancedMesh.getColorAt(instanceIndex, _mpTelInstanceColor);
+            colorBrightness = (_mpTelInstanceColor.r + _mpTelInstanceColor.g + _mpTelInstanceColor.b) / 3;
           }
         }
 
@@ -7157,11 +7192,18 @@ async function main() {
           u: enemy.surfacePosition.u,
           v: enemy.surfacePosition.v,
           worldPos: { x: ePos.x, y: ePos.y, z: ePos.z },
+          screen: {
+            x: screenX,
+            y: screenY,
+            ndcZ: _mpTelProjectionPos.z,
+            inView,
+          },
           surfaceDistToPlayer: surfaceDist,
           worldDistToPlayer: worldDist,
           collisionRadius: enemy.radius,
           isAlive: enemy.alive,
           opacity,
+          colorBrightness,
         });
       });
 
@@ -7228,6 +7270,7 @@ async function main() {
           enemyKills: (localPlayer as any)?.enemyKills ?? 0,
           alive: localAlive,
           collisionRadius: playerRadius,
+          distanceToCamera: pPos ? pPos.distanceTo(_mpTelCameraPos) : -1,
         },
         players: otherPlayers,
         enemies: telEnemies,
@@ -7263,6 +7306,15 @@ async function main() {
         },
         frame: _mpTelFrameCount,
         time: game.clock.totalTime,
+        waveNumber: latestWaveNumber,
+        fps: Math.round(perfTracker.fps),
+        renderer: {
+          backend: game.backend,
+          isWebGPU: game.isWebGPU,
+          pixelRatio: game.renderer.getPixelRatio(),
+          width: _mpTelRendererSize.x,
+          height: _mpTelRendererSize.y,
+        },
         deaths: {
           total: _mpTelTotalDeaths,
           log: _mpTelDeathLog,
@@ -7276,6 +7328,54 @@ async function main() {
           aV: syncedPortalAV,
           bU: syncedPortalBU,
           bV: syncedPortalBV,
+          serverTriggerRadius: 0.8,
+          visualWorld: networkPortals
+            ? networkPortals.map((portal, index) => {
+                const pos = portal.mesh.position;
+                const trigger = getTransform ? getTransform(portal.surfaceU, portal.surfaceV) : null;
+                const triggerPos = trigger?.position ?? null;
+                return {
+                  id: index === 0 ? 'A' : 'B',
+                  u: portal.surfaceU,
+                  v: portal.surfaceV,
+                  x: pos.x,
+                  y: pos.y,
+                  z: pos.z,
+                  serverTriggerWorld: triggerPos
+                    ? { x: triggerPos.x, y: triggerPos.y, z: triggerPos.z }
+                    : null,
+                  visualTriggerDelta: triggerPos ? pos.distanceTo(triggerPos) : -1,
+                  playerWorldDist: pPos ? pPos.distanceTo(pos) : -1,
+                };
+              })
+            : [],
+        },
+        camera: {
+          position: { x: _mpTelCameraPos.x, y: _mpTelCameraPos.y, z: _mpTelCameraPos.z },
+          quaternion: {
+            x: _mpTelCameraQuat.x,
+            y: _mpTelCameraQuat.y,
+            z: _mpTelCameraQuat.z,
+            w: _mpTelCameraQuat.w,
+          },
+          up: { x: game.camera.up.x, y: game.camera.up.y, z: game.camera.up.z },
+          distanceToPlayer: pPos ? pPos.distanceTo(_mpTelCameraPos) : -1,
+          serverFrameValid: _localServerFrameValid,
+          serverNormal: { x: _localServerNormal.x, y: _localServerNormal.y, z: _localServerNormal.z },
+          serverTangent: { x: _localServerTangent.x, y: _localServerTangent.y, z: _localServerTangent.z },
+          serverBitangent: { x: _localServerBitangent.x, y: _localServerBitangent.y, z: _localServerBitangent.z },
+          worldTargetValid: _localPlayerWorldTarget.valid,
+          worldTarget: {
+            x: _localPlayerWorldTarget.x,
+            y: _localPlayerWorldTarget.y,
+            z: _localPlayerWorldTarget.z,
+            nx: _localPlayerWorldTarget.nx,
+            ny: _localPlayerWorldTarget.ny,
+            nz: _localPlayerWorldTarget.nz,
+            tx: _localPlayerWorldTarget.tx,
+            ty: _localPlayerWorldTarget.ty,
+            tz: _localPlayerWorldTarget.tz,
+          },
         },
         cameraUp: (() => {
           try {
@@ -7284,6 +7384,7 @@ async function main() {
           } catch { return { x: 0, y: 1, z: 0 }; }
         })(),
         gameMode: latestGameMode ?? 'waves',
+        pvpMode: latestPvpMode,
         pvpEnabled: latestPvpEnabled,
       };
     }

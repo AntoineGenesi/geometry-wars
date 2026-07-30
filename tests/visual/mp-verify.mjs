@@ -12,6 +12,7 @@
  *   node tests/visual/mp-verify.mjs --full                   # ALL 13 surfaces + all scenarios
  *   node tests/visual/mp-verify.mjs --full --quick            # ALL surfaces, 15s smoke test each
  *   node tests/visual/mp-verify.mjs --scenario=pickup_visibility --surface=sphere
+ *   node tests/visual/mp-verify.mjs --surface=sphere-tunnel --mode=pvpve --waves=7 --duration=60 --visual-proof
  *
  * Prerequisites:
  *   - Vite dev server running (port configurable via --port=NNNN, default 3000)
@@ -21,7 +22,7 @@
 
 import puppeteer from 'puppeteer-core';
 import { spawn, execSync } from 'child_process';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readdirSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -32,9 +33,39 @@ const PROJECT_ROOT = resolve(__dirname, '../..');
 // Configuration
 // ---------------------------------------------------------------------------
 
-const CHROME_PATH = process.env.CHROME_PATH
-  || process.env.PUPPETEER_EXECUTABLE_PATH
-  || '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome';
+function commandPath(command) {
+  try {
+    return execSync(`command -v ${command}`, { encoding: 'utf-8' }).trim().split('\n')[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function findCachedPuppeteerChrome() {
+  const cacheRoot = resolve(process.env.HOME || '/home/antoine', '.cache/puppeteer/chrome');
+  try {
+    return readdirSync(cacheRoot, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith('linux-'))
+      .map((entry) => resolve(cacheRoot, entry.name, 'chrome-linux64/chrome'))
+      .filter((path) => existsSync(path))
+      .sort()
+      .reverse();
+  } catch {
+    return [];
+  }
+}
+
+const CHROME_CANDIDATES = [
+  process.env.CHROME_PATH,
+  process.env.PUPPETEER_EXECUTABLE_PATH,
+  commandPath('google-chrome'),
+  commandPath('chromium'),
+  commandPath('chromium-browser'),
+  ...findCachedPuppeteerChrome(),
+  '/home/antoine/.cache/puppeteer/chrome/linux-144.0.7559.96/chrome-linux64/chrome',
+].filter(Boolean);
+
+const CHROME_PATH = CHROME_CANDIDATES.find((path) => existsSync(path)) || CHROME_CANDIDATES[0];
 
 const COLYSEUS_PORT = 2567;
 
@@ -70,6 +101,17 @@ const SURFACE_ARG = getArg('surface');
 const SCENARIO_ARG = getArg('scenario');
 const DEV_SERVER_PORT = parseInt(getArg('port') || '3000', 10);
 const DURATION = parseInt(getArg('duration') || (QUICK_MODE ? '15' : '20'), 10);
+const MODE_ARG = getArg('mode') || '';
+const VALID_MODE_ARGS = new Set(['waves', 'king', 'sniper', 'rainbow', 'claustrophobia', 'pvp', 'pvpve']);
+if (MODE_ARG && !VALID_MODE_ARGS.has(MODE_ARG)) {
+  console.error(`\n  ERROR: unsupported --mode=${MODE_ARG}. Valid modes: ${[...VALID_MODE_ARGS].join(', ')}`);
+  process.exit(1);
+}
+const REQUESTED_PVP_MODE = MODE_ARG === 'pvp' || MODE_ARG === 'pvpve' ? MODE_ARG : '';
+const TARGET_WAVES = parseInt(getArg('waves') || '0', 10);
+const VISUAL_PROOF = args.includes('--visual-proof');
+const RENDERER_ARG = getArg('renderer') || '';
+const GOD_MODE = !args.includes('--no-god-mode');
 
 const BASE_URL = `http://localhost:${DEV_SERVER_PORT}`;
 
@@ -83,6 +125,7 @@ const SCREENSHOT_DIR = resolve(PROJECT_ROOT, 'test-screenshots/mp-verify');
 const now = new Date();
 const dateStr = now.toISOString().substring(0, 10);
 const REPORT_PATH = resolve(PROJECT_ROOT, `reports/mp-harness-report-${dateStr}.html`);
+const EVIDENCE_JSON_PATH = resolve(PROJECT_ROOT, `reports/mp-harness-evidence-${dateStr}.json`);
 
 const LAUNCH_ARGS = [
   '--enable-webgl',
@@ -188,7 +231,20 @@ async function createPage(browser) {
 
 async function navigateToMPGame(page, surface, label = 'Player') {
   await page.evaluateOnNewDocument(() => { localStorage.clear(); });
-  const url = `${BASE_URL}?mode=network&surface=${surface}&server=${encodeURIComponent(`ws://localhost:${COLYSEUS_PORT}`)}&debug=true&name=${label}`;
+  const params = new URLSearchParams({
+    mode: 'network',
+    surface,
+    server: `ws://localhost:${COLYSEUS_PORT}`,
+    debug: 'true',
+    testMode: 'true',
+    name: label,
+  });
+  if (MODE_ARG) params.set('gameMode', MODE_ARG);
+  if (REQUESTED_PVP_MODE) params.set('pvpMode', REQUESTED_PVP_MODE);
+  if (RENDERER_ARG) params.set('renderer', RENDERER_ARG);
+  if (VISUAL_PROOF) params.set('debugVisibility', 'true');
+  if (GOD_MODE && label === 'Host') params.set('godMode', 'true');
+  const url = `${BASE_URL}?${params.toString()}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await sleep(10000);
 }
@@ -262,6 +318,311 @@ async function screenshot(page, name) {
   const path = resolve(SCREENSHOT_DIR, name);
   await page.screenshot({ path }).catch(() => {});
   return path;
+}
+
+async function collectVisualMetrics(page) {
+  return page.evaluate(() => {
+    const telemetry = window.__GAME_TELEMETRY || null;
+    const canvas = document.querySelector('canvas');
+    if (!canvas) {
+      return { ok: false, reason: 'no canvas', telemetry };
+    }
+
+    const metrics = {
+      ok: true,
+      reason: '',
+      canvas: {
+        width: canvas.width,
+        height: canvas.height,
+        clientWidth: canvas.clientWidth,
+        clientHeight: canvas.clientHeight,
+      },
+      telemetry,
+      renderer: telemetry?.renderer || null,
+      time: telemetry?.time ?? null,
+      waveNumber: telemetry?.waveNumber ?? null,
+      gameMode: telemetry?.gameMode ?? null,
+      pvpMode: telemetry?.pvpMode ?? null,
+      fps: telemetry?.fps ?? null,
+      enemyCount: telemetry?.enemies?.length ?? 0,
+      inViewEnemyCount: 0,
+      sampledEnemyCount: 0,
+      visibleEnemyPixelCount: 0,
+      visibleEnemyRate: 0,
+      canvasNonDarkRate: 0,
+      canvasMeanLuma: 0,
+      camera: telemetry?.camera || null,
+      player: telemetry?.player || null,
+      portals: telemetry?.portals || null,
+      enemySamples: [],
+    };
+
+    try {
+      const tmp = document.createElement('canvas');
+      tmp.width = canvas.width;
+      tmp.height = canvas.height;
+      const ctx = tmp.getContext('2d', { willReadFrequently: true });
+      if (!ctx) {
+        metrics.ok = false;
+        metrics.reason = 'no 2d context';
+        return metrics;
+      }
+      ctx.drawImage(canvas, 0, 0);
+
+      const width = Math.max(1, canvas.width);
+      const height = Math.max(1, canvas.height);
+      const viewportWidth = Math.max(1, window.innerWidth || canvas.clientWidth || width);
+      const viewportHeight = Math.max(1, window.innerHeight || canvas.clientHeight || height);
+      const scaleX = width / viewportWidth;
+      const scaleY = height / viewportHeight;
+
+      let gridSamples = 0;
+      let nonDark = 0;
+      let lumaTotal = 0;
+      for (let gy = 0; gy < 20; gy++) {
+        for (let gx = 0; gx < 20; gx++) {
+          const x = Math.min(width - 1, Math.max(0, Math.round(((gx + 0.5) / 20) * width)));
+          const y = Math.min(height - 1, Math.max(0, Math.round(((gy + 0.5) / 20) * height)));
+          const d = ctx.getImageData(x, y, 1, 1).data;
+          const luma = d[0] * 0.2126 + d[1] * 0.7152 + d[2] * 0.0722;
+          lumaTotal += luma;
+          gridSamples++;
+          if (luma > 18 || d[0] > 35 || d[1] > 35 || d[2] > 35) nonDark++;
+        }
+      }
+      metrics.canvasNonDarkRate = gridSamples > 0 ? nonDark / gridSamples : 0;
+      metrics.canvasMeanLuma = gridSamples > 0 ? lumaTotal / gridSamples : 0;
+
+      const enemies = (telemetry?.enemies || []).filter((enemy) => enemy?.isAlive !== false);
+      const inViewEnemies = enemies.filter((enemy) => enemy.screen?.inView);
+      metrics.inViewEnemyCount = inViewEnemies.length;
+
+      for (const enemy of inViewEnemies.slice(0, 24)) {
+        const sx = Math.round(enemy.screen.x * scaleX);
+        const sy = Math.round(enemy.screen.y * scaleY);
+        if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
+
+        let localMax = 0;
+        let localBright = 0;
+        let samples = 0;
+        for (let yy = -8; yy <= 8; yy += 2) {
+          for (let xx = -8; xx <= 8; xx += 2) {
+            const px = Math.min(width - 1, Math.max(0, sx + xx));
+            const py = Math.min(height - 1, Math.max(0, sy + yy));
+            const d = ctx.getImageData(px, py, 1, 1).data;
+            const luma = d[0] * 0.2126 + d[1] * 0.7152 + d[2] * 0.0722;
+            localMax = Math.max(localMax, luma, d[0], d[1], d[2]);
+            if (luma > 22 || d[0] > 42 || d[1] > 42 || d[2] > 42) localBright++;
+            samples++;
+          }
+        }
+
+        const visible = localMax > 32 || localBright >= 2;
+        metrics.sampledEnemyCount++;
+        if (visible) metrics.visibleEnemyPixelCount++;
+        metrics.enemySamples.push({
+          type: enemy.type,
+          screen: enemy.screen,
+          pixel: { x: sx, y: sy },
+          worldDistToPlayer: enemy.worldDistToPlayer,
+          surfaceDistToPlayer: enemy.surfaceDistToPlayer,
+          opacity: enemy.opacity,
+          visible,
+          localMax,
+          localBright,
+          samples,
+        });
+      }
+
+      metrics.visibleEnemyRate = metrics.sampledEnemyCount > 0
+        ? metrics.visibleEnemyPixelCount / metrics.sampledEnemyCount
+        : 0;
+      return metrics;
+    } catch (err) {
+      metrics.ok = false;
+      metrics.reason = err?.message || String(err);
+      return metrics;
+    }
+  });
+}
+
+async function collectEvidenceCheckpoint(hostPage, joinPage, surface, label, screenshots) {
+  const hostShot = await screenshot(hostPage, `${surface}-evidence-${label}-host.png`);
+  const joinShot = await screenshot(joinPage, `${surface}-evidence-${label}-join.png`);
+  screenshots.push(hostShot, joinShot);
+  return {
+    label,
+    capturedAt: new Date().toISOString(),
+    screenshots: { host: hostShot, join: joinShot },
+    host: await collectVisualMetrics(hostPage),
+    join: await collectVisualMetrics(joinPage),
+  };
+}
+
+function buildVisualProofChecks(evidence) {
+  if (!VISUAL_PROOF) return [];
+
+  const checks = [];
+  const record = (name, status, note, detail = '') => {
+    checks.push({ name, status, note, detail });
+    console.log(`    [${status}] ${name}: ${note}`);
+  };
+  const sides = evidence.flatMap((checkpoint) => [
+    { checkpoint: checkpoint.label, side: 'host', metrics: checkpoint.host },
+    { checkpoint: checkpoint.label, side: 'join', metrics: checkpoint.join },
+  ]);
+  const readableSides = sides.filter((side) => side.metrics?.ok);
+  const rendererSides = readableSides.filter((side) => side.metrics?.renderer?.backend);
+  const cameraSides = readableSides.filter((side) =>
+    typeof side.metrics?.camera?.distanceToPlayer === 'number'
+    && side.metrics.camera.distanceToPlayer > 0);
+  const portalSides = readableSides.filter((side) =>
+    side.metrics?.portals?.active && Array.isArray(side.metrics.portals.visualWorld));
+  const sideSummaries = ['host', 'join'].map((sideName) => {
+    const entries = readableSides.filter((side) => side.side === sideName);
+    const sampled = entries.reduce((sum, side) => sum + (side.metrics?.sampledEnemyCount ?? 0), 0);
+    const visible = entries.reduce((sum, side) => sum + (side.metrics?.visibleEnemyPixelCount ?? 0), 0);
+    const maxEnemies = Math.max(0, ...entries.map((side) => side.metrics?.enemyCount ?? 0));
+    const maxInView = Math.max(0, ...entries.map((side) => side.metrics?.inViewEnemyCount ?? 0));
+    return {
+      side: sideName,
+      entries,
+      readable: entries.length > 0,
+      enemyState: maxEnemies > 0,
+      projected: maxInView > 0,
+      sampled,
+      visible,
+      visibleRate: sampled > 0 ? visible / sampled : 0,
+      maxEnemies,
+      maxInView,
+    };
+  });
+  const sideSummaryNote = sideSummaries
+    .map((summary) =>
+      `${summary.side}: enemies=${summary.maxEnemies}, inView=${summary.maxInView}, pixels=${summary.visible}/${summary.sampled} (${(summary.visibleRate * 100).toFixed(0)}%)`)
+    .join(' | ');
+  const sidesWithEnemyState = sideSummaries.filter((summary) => summary.enemyState);
+  const sidesWithProjection = sideSummaries.filter((summary) => summary.projected);
+  const sidesPassingPixels = sideSummaries.filter((summary) =>
+    summary.sampled > 0 && summary.visible > 0);
+  const sidesPassingPixelRate = sideSummaries.filter((summary) =>
+    summary.sampled > 0 && summary.visibleRate >= 0.25);
+
+  record('visual_canvas_readback',
+    readableSides.length >= 2 ? 'PASS' : 'FAIL',
+    `${readableSides.length}/${sides.length} checkpoint sides produced canvas metrics`);
+
+  record('visual_renderer_recorded',
+    rendererSides.length >= 2 ? 'PASS' : 'FAIL',
+    rendererSides.length > 0
+      ? rendererSides.map((side) => `${side.checkpoint}:${side.side}:${side.metrics.renderer.backend}${side.metrics.renderer.isWebGPU ? '/webgpu' : ''}`).join(', ')
+      : 'No renderer metadata');
+
+  if (TARGET_WAVES > 0) {
+    const maxWave = Math.max(0, ...readableSides.map((side) => side.metrics?.waveNumber ?? 0));
+    const maxTime = Math.max(0, ...readableSides.map((side) => side.metrics?.time ?? 0));
+    const roughRequiredSeconds = TARGET_WAVES <= 1 ? 5 : 3 + ((TARGET_WAVES - 1) * 6);
+    const progressionContext = maxWave >= TARGET_WAVES
+      ? 'target reached'
+      : DURATION < roughRequiredSeconds
+        ? `automation budget likely short for target (${DURATION}s run, rough ${roughRequiredSeconds}s needed)`
+        : `target not reached despite enough nominal duration; possible game progression or harness-driving blocker (max game time ${maxTime.toFixed(1)}s)`;
+    record('mp_target_wave_reached',
+      maxWave >= TARGET_WAVES ? 'PASS' : 'FAIL',
+      `Max wave ${maxWave}; target ${TARGET_WAVES}; ${progressionContext}`);
+  }
+
+  record('visual_enemy_state_present',
+    sidesWithEnemyState.length === 2 ? 'PASS' : 'FAIL',
+    sidesWithEnemyState.length === 2
+      ? sideSummaryNote
+      : sidesWithEnemyState.length === 1
+        ? `Asymmetric enemy telemetry; ${sideSummaryNote}`
+        : 'No alive enemies appeared in telemetry on host or join');
+
+  record('visual_enemy_screen_projection',
+    sidesWithProjection.length === 2 ? 'PASS' : 'FAIL',
+    sidesWithProjection.length === 2
+      ? sideSummaryNote
+      : sidesWithProjection.length === 1
+        ? `Asymmetric projected enemy telemetry; ${sideSummaryNote}`
+        : 'No telemetry enemies projected inside either camera frustum');
+
+  for (const summary of sideSummaries) {
+    record(`visual_enemy_pixels_visible_${summary.side}`,
+      summary.sampled > 0 && summary.visible > 0 ? 'PASS' : 'FAIL',
+      summary.sampled > 0
+        ? `${summary.visible}/${summary.sampled} projected enemy samples visible on ${summary.side} (${(summary.visibleRate * 100).toFixed(0)}%)`
+        : `No projected enemy pixel samples on ${summary.side}; max enemies=${summary.maxEnemies}, max in-view=${summary.maxInView}`);
+  }
+
+  record('visual_enemy_pixels_visible',
+    sidesPassingPixels.length === 2 ? 'PASS' : 'FAIL',
+    sidesPassingPixels.length === 2
+      ? sideSummaryNote
+      : `Asymmetric or missing enemy pixels; ${sideSummaryNote}`);
+
+  const sampled = readableSides.reduce((sum, side) => sum + (side.metrics?.sampledEnemyCount ?? 0), 0);
+  const visible = readableSides.reduce((sum, side) => sum + (side.metrics?.visibleEnemyPixelCount ?? 0), 0);
+  const visibleRate = sampled > 0 ? visible / sampled : 0;
+  for (const summary of sideSummaries) {
+    record(`visual_enemy_pixel_visibility_rate_${summary.side}`,
+      summary.sampled > 0 && summary.visibleRate >= 0.25 ? 'PASS' : 'FAIL',
+      summary.sampled > 0
+        ? `${summary.visible}/${summary.sampled} projected enemy samples visible on ${summary.side} (${(summary.visibleRate * 100).toFixed(0)}%; threshold 25%)`
+        : `No projected enemy pixel samples on ${summary.side}; threshold cannot be evaluated`);
+  }
+  record('visual_enemy_pixel_visibility_rate',
+    sidesPassingPixelRate.length === 2 ? 'PASS' : 'FAIL',
+    `${visible}/${sampled} projected enemy samples visible overall (${(visibleRate * 100).toFixed(0)}%); per-side threshold requires host and join >=25%; ${sideSummaryNote}`);
+
+  record('visual_camera_metrics_recorded',
+    cameraSides.length >= 2 ? 'PASS' : 'FAIL',
+    cameraSides.length > 0
+      ? cameraSides.map((side) => `${side.checkpoint}:${side.side}:dist=${side.metrics.camera.distanceToPlayer.toFixed(2)}`).join(', ')
+      : 'No camera distance metrics');
+
+  if (MODE_ARG === 'pvp' || MODE_ARG === 'pvpve') {
+    const portalDeltas = portalSides.flatMap((side) =>
+      (side.metrics?.portals?.visualWorld || [])
+        .map((portal) => ({
+          checkpoint: side.checkpoint,
+          side: side.side,
+          id: portal.id ?? '?',
+          delta: portal.visualTriggerDelta,
+        }))
+        .filter((portal) => typeof portal.delta === 'number' && portal.delta >= 0));
+    const maxPortalDelta = portalDeltas.length > 0
+      ? Math.max(...portalDeltas.map((portal) => portal.delta))
+      : -1;
+    const mismatchedPortals = portalDeltas.filter((portal) => portal.delta > 0.35);
+
+    record('visual_portal_metrics_recorded',
+      portalSides.length > 0 ? 'PASS' : 'WARN',
+      portalSides.length > 0
+        ? portalSides.map((side) => `${side.checkpoint}:${side.side}:${side.metrics.portals.visualWorld.length} visual portals`).join(', ')
+        : 'No active portal visual metrics captured');
+
+    record('visual_portal_trigger_alignment_sampled',
+      portalDeltas.length === 0 ? 'WARN' : mismatchedPortals.length === 0 ? 'PASS' : 'FAIL',
+      portalDeltas.length === 0
+        ? 'No active portal centers available to compare against server-synced trigger UVs'
+        : `Max visual-vs-trigger delta ${maxPortalDelta.toFixed(3)} (${mismatchedPortals.length} over threshold)`);
+  }
+
+  return checks;
+}
+
+function telemetryMatchesRequestedMode(telemetry, requestedMode) {
+  if (!telemetry || !requestedMode) return false;
+  if (requestedMode === 'pvp' || requestedMode === 'pvpve') {
+    return telemetry.gameMode === requestedMode
+      && telemetry.pvpMode === requestedMode
+      && telemetry.pvpEnabled === true;
+  }
+  return telemetry.gameMode === requestedMode
+    && (!telemetry.pvpMode || telemetry.pvpMode === '')
+    && telemetry.pvpEnabled !== true;
 }
 
 function getCriticalErrors(errors) {
@@ -431,6 +792,21 @@ async function setupMPGame(hostPage, joinPage) {
   record('mp_game_started', gameStarted ? 'PASS' : 'FAIL',
     gameStarted ? 'Game started' : `Timeout. Start clicked: ${startClicked}`);
 
+  if (MODE_ARG) {
+    const modeSelected = await waitForCondition(async () => {
+      const hostTel = await getTelemetry(hostPage);
+      const joinTel = await getTelemetry(joinPage);
+      return telemetryMatchesRequestedMode(hostTel, MODE_ARG)
+        && telemetryMatchesRequestedMode(joinTel, MODE_ARG);
+    }, 10000, 1000);
+    const hostTel = await getTelemetry(hostPage);
+    const joinTel = await getTelemetry(joinPage);
+    const hostMode = `${hostTel?.gameMode ?? 'unknown'} / pvpMode=${hostTel?.pvpMode ?? ''} / pvpEnabled=${hostTel?.pvpEnabled ?? false}`;
+    const joinMode = `${joinTel?.gameMode ?? 'unknown'} / pvpMode=${joinTel?.pvpMode ?? ''} / pvpEnabled=${joinTel?.pvpEnabled ?? false}`;
+    record('mp_mode_selected', modeSelected ? 'PASS' : 'FAIL',
+      `Requested ${MODE_ARG}; host=${hostMode}, join=${joinMode}`);
+  }
+
   return { results, ok: gameStarted };
 }
 
@@ -468,9 +844,12 @@ async function runCoreChecks(hostPage, joinPage, surface, durationSecs) {
     const joinSawEnemies = telemetrySamples.join.some(t => t.enemies && t.enemies.length > 0);
     const hostMaxEnemies = Math.max(0, ...telemetrySamples.host.map(t => t.enemies?.length ?? 0));
     const joinMaxEnemies = Math.max(0, ...telemetrySamples.join.map(t => t.enemies?.length ?? 0));
+    const asymmetricNote = hostSawEnemies === joinSawEnemies
+      ? ''
+      : ' — asymmetric enemy telemetry is a core MP visibility failure';
     record('mp_enemies_visible',
-      hostSawEnemies && joinSawEnemies ? 'PASS' : (hostSawEnemies || joinSawEnemies ? 'PASS' : 'FAIL'),
-      `Host max: ${hostMaxEnemies}, Join max: ${joinMaxEnemies}`);
+      hostSawEnemies && joinSawEnemies ? 'PASS' : 'FAIL',
+      `Host max: ${hostMaxEnemies}, Join max: ${joinMaxEnemies}${asymmetricNote}`);
   }
 
   // CHECK: mp_other_player_visible
@@ -520,14 +899,21 @@ async function runCoreChecks(hostPage, joinPage, surface, durationSecs) {
 
   // CHECK: mp_enemy_dimming
   {
-    let hasVariedOpacity = false;
+    let hasDimmingSignal = false;
+    let sampleCount = 0;
     for (const t of telemetrySamples.host) {
-      const opacities = (t.enemies || []).map(e => e.opacity).filter(o => o !== undefined);
-      if (opacities.some(o => o < 0.95)) { hasVariedOpacity = true; break; }
+      const enemies = t.enemies || [];
+      sampleCount += enemies.length;
+      if (enemies.some(e => (e.colorBrightness ?? 1) < 0.95 || (e.opacity ?? 1) < 0.95)) {
+        hasDimmingSignal = true;
+        break;
+      }
     }
     record('mp_enemy_dimming',
-      hasVariedOpacity ? 'PASS' : 'FAIL',
-      hasVariedOpacity ? 'Distance-based dimming active' : 'All enemies full opacity');
+      hasDimmingSignal ? 'PASS' : 'WARN',
+      hasDimmingSignal
+        ? 'Dimming signal captured in opacity or instance color brightness'
+        : `No dimming sample captured in ${sampleCount} enemies; opacity is binary in current renderer, so this is diagnostic only`);
   }
 
   // CHECK: mp_no_phantom_deaths
@@ -857,7 +1243,27 @@ function generateReport(surfaceRuns, durationMs, bugsDetected) {
     `<th style="padding:4px 8px;border:1px solid #1e293b;color:#94a3b8;font-size:10px;text-transform:uppercase;writing-mode:vertical-lr;text-orientation:mixed;min-width:30px">${r.surface}</th>`
   ).join('');
 
-  const surfaceHtml = surfaceRuns.map(({ surface, checks, scenarios, screenshots }) => {
+  function summarizeEvidenceSide(metrics) {
+    if (!metrics?.ok) return metrics?.reason || 'no metrics';
+    const portalDeltas = (metrics.portals?.visualWorld || [])
+      .map((portal) => portal.visualTriggerDelta)
+      .filter((delta) => typeof delta === 'number' && delta >= 0);
+    const portalSummary = portalDeltas.length > 0
+      ? ` portals=${portalDeltas.length} maxPortalDelta=${Math.max(...portalDeltas).toFixed(3)}`
+      : '';
+    return [
+      `mode=${metrics.gameMode || 'unknown'}`,
+      `pvpMode=${metrics.pvpMode || '-'}`,
+      `wave=${metrics.waveNumber ?? '-'}`,
+      `renderer=${metrics.renderer?.backend || 'unknown'}${metrics.renderer?.isWebGPU ? '/webgpu' : ''}`,
+      `enemies=${metrics.enemyCount}`,
+      `pixels=${metrics.visibleEnemyPixelCount}/${metrics.sampledEnemyCount}`,
+      `cameraDist=${typeof metrics.camera?.distanceToPlayer === 'number' ? metrics.camera.distanceToPlayer.toFixed(2) : '-'}`,
+      portalSummary.trim(),
+    ].filter(Boolean).join(' | ');
+  }
+
+  const surfaceHtml = surfaceRuns.map(({ surface, checks, scenarios, screenshots, evidence }) => {
     const allTests = [...checks, ...scenarios];
     const testRows = allTests.map(t => `
       <tr>
@@ -874,6 +1280,13 @@ function generateReport(surfaceRuns, durationMs, bugsDetected) {
         <img src="${relPath}" style="width:180px;border:1px solid #1e293b" onerror="this.style.display='none'">
       </div>`;
     }).join('');
+
+    const evidenceHtml = (evidence || []).map((checkpoint) => `
+      <tr>
+        <td style="padding:5px 8px;border-bottom:1px solid #1e293b;color:#cbd5e1;font-family:monospace;font-size:11px">${checkpoint.label}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:11px">${summarizeEvidenceSide(checkpoint.host)}</td>
+        <td style="padding:5px 8px;border-bottom:1px solid #1e293b;color:#94a3b8;font-size:11px">${summarizeEvidenceSide(checkpoint.join)}</td>
+      </tr>`).join('');
 
     const pass = allTests.filter(t => t.status === 'PASS').length;
     const fail = allTests.filter(t => t.status === 'FAIL').length;
@@ -893,6 +1306,17 @@ function generateReport(surfaceRuns, durationMs, bugsDetected) {
         </tr></thead>
         <tbody>${testRows}</tbody>
       </table>
+      ${evidenceHtml ? `<div style="padding:12px;border-top:1px solid #1e293b">
+        <div style="color:#94a3b8;font-size:11px;text-transform:uppercase;margin-bottom:6px">Structured Evidence Summary</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#111827">
+            <th style="padding:5px 8px;text-align:left;color:#64748b;font-size:10px">Checkpoint</th>
+            <th style="padding:5px 8px;text-align:left;color:#64748b;font-size:10px">Host</th>
+            <th style="padding:5px 8px;text-align:left;color:#64748b;font-size:10px">Join</th>
+          </tr></thead>
+          <tbody>${evidenceHtml}</tbody>
+        </table>
+      </div>` : ''}
       ${screenshotHtml ? `<div style="padding:12px;border-top:1px solid #1e293b">${screenshotHtml}</div>` : ''}
     </div>`;
   }).join('');
@@ -918,7 +1342,8 @@ code{color:#38bdf8;font-size:12px}
 </head><body>
 <h1 style="margin:0 0 4px;font-size:20px">MP Harness Report \u2014 Full Scenarios & Coverage</h1>
 <div style="color:#64748b;font-size:12px;margin-bottom:20px">
-  ${now.toISOString()} | ${(durationMs/1000).toFixed(1)}s total | ${SURFACES_TO_TEST.length} surfaces | SwiftShader headless
+  ${now.toISOString()} | ${(durationMs/1000).toFixed(1)}s total | ${SURFACES_TO_TEST.length} surfaces | headless browser diagnostic
+  ${MODE_ARG ? ` | requested mode ${MODE_ARG}` : ''}${TARGET_WAVES > 0 ? ` | target wave ${TARGET_WAVES}` : ''}
 </div>
 
 <!-- Summary cards -->
@@ -965,7 +1390,8 @@ code{color:#38bdf8;font-size:12px}
 <li>MP harness checks cross-client consistency (enemy sync, pickup visibility)</li>
 <li>Both use <code>window.__GAME_TELEMETRY</code> but MP has additional fields: pickups, bullet spawns, network state</li>
 </ul>
-<p><strong>What it does NOT test:</strong> Map voting UI, Tesla coil multi-hit (requires weapon pickup + timed sequence), upgrade visual rendering (no pixel comparison). These would need dedicated scenario harnesses or visual regression tools.</p>
+<p><strong>Claim boundary:</strong> Headless SwiftShader/WebGL diagnostics can reproduce or disprove state-vs-pixel problems in this environment, but they do not prove the user's Windows WebGPU browser is fixed. Keep the raw JSON and screenshots for review.</p>
+<p><strong>What it does NOT test:</strong> Map voting UI, Tesla coil multi-hit (requires weapon pickup + timed sequence), upgrade visual rendering (no pixel comparison). Short runs may also miss portal spawn timing; portal alignment is only sampled when portals are active.</p>
 </div>
 </details>
 
@@ -1026,6 +1452,11 @@ async function main() {
   console.log(`  Mode: ${FULL_MODE ? 'FULL' : ALL_SURFACES_FLAG ? 'ALL (core 4)' : `Single: ${SURFACES_TO_TEST[0]}`}${QUICK_MODE ? ' (QUICK)' : ''}`);
   console.log(`  Surfaces: ${SURFACES_TO_TEST.join(', ')}`);
   console.log(`  Duration per surface: ${DURATION}s`);
+  if (MODE_ARG) console.log(`  Game mode: ${MODE_ARG}`);
+  if (TARGET_WAVES > 0) console.log(`  Target wave: ${TARGET_WAVES}`);
+  console.log(`  Visual proof: ${VISUAL_PROOF ? 'enabled' : 'disabled'}`);
+  if (RENDERER_ARG) console.log(`  Renderer: ${RENDERER_ARG}`);
+  console.log(`  God mode: ${GOD_MODE ? 'host enabled' : 'disabled'}`);
   if (SCENARIO_ARG) console.log(`  Scenario filter: ${SCENARIO_ARG}`);
   console.log(`  Dev server: ${BASE_URL}`);
   console.log('='.repeat(60));
@@ -1073,6 +1504,7 @@ async function main() {
       const hostPage = await createPage(hostBrowser);
       const joinPage = await createPage(joinBrowser);
       const screenshots = [];
+      const evidence = [];
 
       console.log(`  Navigating Host (${surface})...`);
       await navigateToMPGame(hostPage, surface, 'Host');
@@ -1093,11 +1525,21 @@ async function main() {
       let scenarios = [];
 
       if (setup.ok) {
+        if (VISUAL_PROOF) {
+          console.log('\n  Evidence checkpoint: start');
+          evidence.push(await collectEvidenceCheckpoint(hostPage, joinPage, surface, 'start', screenshots));
+        }
+
         // Run core checks
         const coreResult = await runCoreChecks(hostPage, joinPage, surface, DURATION);
         checks = [...checks, ...coreResult.results];
         screenshots.push(await screenshot(hostPage, `${surface}-03-host-mid.png`));
         screenshots.push(await screenshot(joinPage, `${surface}-03-join-mid.png`));
+
+        if (VISUAL_PROOF) {
+          console.log('\n  Evidence checkpoint: after-core');
+          evidence.push(await collectEvidenceCheckpoint(hostPage, joinPage, surface, 'after-core', screenshots));
+        }
 
         // Run extended scenarios on core surfaces or in --full mode
         const isCoreSurface = CORE_SURFACES.includes(surface);
@@ -1107,7 +1549,19 @@ async function main() {
 
         screenshots.push(await screenshot(hostPage, `${surface}-04-host-final.png`));
         screenshots.push(await screenshot(joinPage, `${surface}-04-join-final.png`));
+
+        if (VISUAL_PROOF) {
+          console.log('\n  Evidence checkpoint: final');
+          evidence.push(await collectEvidenceCheckpoint(hostPage, joinPage, surface, 'final', screenshots));
+          checks = [...checks, ...buildVisualProofChecks(evidence)];
+        }
       } else {
+        if (VISUAL_PROOF) {
+          console.log('\n  Evidence checkpoint: setup-failed');
+          evidence.push(await collectEvidenceCheckpoint(hostPage, joinPage, surface, 'setup-failed', screenshots));
+          checks = [...checks, ...buildVisualProofChecks(evidence)];
+        }
+
         // Game didn't start — skip all checks
         for (const check of ['mp_enemies_visible', 'mp_hit_detection', 'mp_no_desync',
           'mp_enemy_dimming', 'mp_no_phantom_deaths', 'mp_player_alive',
@@ -1122,7 +1576,7 @@ async function main() {
       const fail = [...checks, ...scenarios].filter(r => r.status === 'FAIL').length;
       console.log(`\n  ${surface}: ${pass} passed, ${warn} warned, ${fail} failed`);
 
-      surfaceRuns.push({ surface, checks, scenarios, screenshots });
+      surfaceRuns.push({ surface, checks, scenarios, screenshots, evidence });
 
       await hostPage.close().catch(() => {});
       await joinPage.close().catch(() => {});
@@ -1157,8 +1611,9 @@ async function main() {
     {
       bug: '1. Invisible enemies on cube-tunnel',
       detected: surfaceRuns.some(r => r.surface === 'cube-tunnel' &&
-        [...r.checks, ...r.scenarios].some(t => t.name === 'mp_enemies_visible')),
-      check: 'mp_enemies_visible on cube-tunnel surface',
+        [...r.checks, ...r.scenarios].some(t =>
+          t.name === 'mp_enemies_visible' || t.name === 'visual_enemy_pixels_visible')),
+      check: 'mp_enemies_visible plus visual_enemy_pixels_visible on cube-tunnel surface',
     },
     {
       bug: '2. Green square upgrades',
@@ -1230,7 +1685,27 @@ async function main() {
 
   const html = generateReport(surfaceRuns, durationMs, bugsDetected);
   writeFileSync(REPORT_PATH, html);
+  writeFileSync(EVIDENCE_JSON_PATH, JSON.stringify({
+    generatedAt: now.toISOString(),
+    durationMs,
+    config: {
+      surfaces: SURFACES_TO_TEST,
+      durationSecs: DURATION,
+      mode: MODE_ARG || null,
+      targetWaves: TARGET_WAVES,
+      visualProof: VISUAL_PROOF,
+      renderer: RENDERER_ARG || null,
+      godMode: GOD_MODE,
+      devServer: BASE_URL,
+      colyseusPort: COLYSEUS_PORT,
+      launchArgs: LAUNCH_ARGS,
+    },
+    totals: { totalTests, totalPass, totalFail },
+    surfaceRuns,
+    bugsDetected,
+  }, null, 2));
   console.log(`\n  Report: ${REPORT_PATH}`);
+  console.log(`  Evidence JSON: ${EVIDENCE_JSON_PATH}`);
   console.log(`  Screenshots: ${SCREENSHOT_DIR}/`);
 
   return totalFail === 0;
