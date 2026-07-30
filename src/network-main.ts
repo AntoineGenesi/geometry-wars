@@ -799,6 +799,7 @@ async function main() {
     remotePlayerTargetWorldPos.clear();
     _localServerFrameValid = false;
     _localPlayerWorldTarget.valid = false;
+    clearLocalRenderTarget();
     _localPlayerQuatInitialized = false; // s44f-06: reset smoothed orientation on surface change
     _predictedPlayerVisualValid = false; // s44h-08: reset predicted position on surface change
     bulletTargetUV.clear();
@@ -941,6 +942,7 @@ async function main() {
     // Reset camera frame so the sign-flip continuity check doesn't fire on the
     // first frame and invert controls (see CameraController.resetFrameForNewSurface).
     cameraController.resetFrameForNewSurface();
+    clearLocalRenderTarget();
   }
 
   // -- Shared visual systems (same as co-op) --
@@ -1340,6 +1342,158 @@ async function main() {
     tx: 1, ty: 0, tz: 0,
     valid: false,
   };
+
+  const LOCAL_PLAYER_RENDER_OFFSET = 0.15;
+  const LOCAL_RENDER_EXTRAPOLATE_MS = 80;
+  const LOCAL_RENDER_STALE_FADE_MS = 120;
+  const _localRenderPrevServerPos = new THREE.Vector3();
+  const _localRenderLatestServerPos = new THREE.Vector3();
+  const _localRenderVelocity = new THREE.Vector3();
+  const _localRenderFrameTarget = new THREE.Vector3();
+  const _localRenderPrevTarget = new THREE.Vector3();
+  const _localRenderPrevCameraPos = new THREE.Vector3();
+  const _localRenderTelemetryTarget = new THREE.Vector3();
+  let _localRenderPrevServerTimeMs = 0;
+  let _localRenderLatestServerTimeMs = 0;
+  let _localRenderValid = false;
+  let _localRenderPrevSampleValid = false;
+  let _localRenderPrevTargetValid = false;
+  let _localRenderPrevCameraValid = false;
+  let _localRenderSampleCount = 0;
+  let _localRenderResetCount = 0;
+  let _localRenderSnapCount = 0;
+  let _localRenderServerSampleDelta = 0;
+  let _localRenderServerSampleIntervalMs = 0;
+  let _localRenderLastSampleAgeMs = -1;
+  let _localRenderLastExtrapolatedMs = 0;
+  let _localRenderLastStaleScale = 1;
+  let _localRenderLastTargetDelta = 0;
+  let _localRenderLastCameraDelta = 0;
+  let _localRenderLastDistanceToPlayer = -1;
+  let _localRenderLastTargetToPlayer = -1;
+
+  function getLocalServerRenderPosition(out: THREE.Vector3): boolean {
+    if (!_localPlayerWorldTarget.valid) return false;
+    const tgt = _localPlayerWorldTarget;
+    out.set(
+      tgt.x + tgt.nx * LOCAL_PLAYER_RENDER_OFFSET,
+      tgt.y + tgt.ny * LOCAL_PLAYER_RENDER_OFFSET,
+      tgt.z + tgt.nz * LOCAL_PLAYER_RENDER_OFFSET,
+    );
+    return true;
+  }
+
+  function resetLocalRenderTargetTo(pos: THREE.Vector3, nowMs: number, countReset = true): void {
+    _localRenderPrevServerPos.copy(pos);
+    _localRenderLatestServerPos.copy(pos);
+    _localRenderVelocity.set(0, 0, 0);
+    _localRenderPrevServerTimeMs = nowMs;
+    _localRenderLatestServerTimeMs = nowMs;
+    _localRenderValid = true;
+    _localRenderPrevSampleValid = true;
+    _localRenderServerSampleDelta = 0;
+    _localRenderServerSampleIntervalMs = 0;
+    if (countReset) _localRenderResetCount++;
+  }
+
+  function resetLocalRenderTargetToServer(nowMs = performance.now(), countReset = true): boolean {
+    if (!getLocalServerRenderPosition(_localRenderFrameTarget)) return false;
+    resetLocalRenderTargetTo(_localRenderFrameTarget, nowMs, countReset);
+    return true;
+  }
+
+  function clearLocalRenderTarget(): void {
+    _localRenderValid = false;
+    _localRenderPrevSampleValid = false;
+    _localRenderPrevTargetValid = false;
+    _localRenderPrevCameraValid = false;
+    _localRenderVelocity.set(0, 0, 0);
+    _localRenderLastSampleAgeMs = -1;
+    _localRenderLastExtrapolatedMs = 0;
+    _localRenderLastStaleScale = 1;
+    _localRenderLastTargetDelta = 0;
+    _localRenderLastCameraDelta = 0;
+    _localRenderLastDistanceToPlayer = -1;
+    _localRenderLastTargetToPlayer = -1;
+  }
+
+  function recordLocalRenderTargetSample(nowMs = performance.now()): void {
+    if (!getLocalServerRenderPosition(_localRenderFrameTarget)) return;
+    if (!_localRenderValid) {
+      resetLocalRenderTargetTo(_localRenderFrameTarget, nowMs, false);
+      _localRenderSampleCount++;
+      return;
+    }
+
+    _localRenderPrevServerPos.copy(_localRenderLatestServerPos);
+    _localRenderPrevServerTimeMs = _localRenderLatestServerTimeMs;
+    _localRenderLatestServerPos.copy(_localRenderFrameTarget);
+    _localRenderLatestServerTimeMs = nowMs;
+    _localRenderPrevSampleValid = true;
+    _localRenderSampleCount++;
+
+    _localRenderServerSampleDelta = _localRenderLatestServerPos.distanceTo(_localRenderPrevServerPos);
+    _localRenderServerSampleIntervalMs = Math.max(1, _localRenderLatestServerTimeMs - _localRenderPrevServerTimeMs);
+    _localRenderVelocity.copy(_localRenderLatestServerPos)
+      .sub(_localRenderPrevServerPos)
+      .multiplyScalar(1000 / _localRenderServerSampleIntervalMs);
+  }
+
+  function getLocalRenderTarget(nowMs: number, out: THREE.Vector3): boolean {
+    if (!_localRenderValid) {
+      if (!getLocalServerRenderPosition(out)) return false;
+      resetLocalRenderTargetTo(out, nowMs, false);
+      return true;
+    }
+
+    const ageMs = Math.max(0, nowMs - _localRenderLatestServerTimeMs);
+    const extrapolatedMs = Math.min(ageMs, LOCAL_RENDER_EXTRAPOLATE_MS);
+    const staleScale = ageMs <= LOCAL_RENDER_EXTRAPOLATE_MS
+      ? 1
+      : Math.max(0, 1 - (ageMs - LOCAL_RENDER_EXTRAPOLATE_MS) / LOCAL_RENDER_STALE_FADE_MS);
+
+    out.copy(_localRenderLatestServerPos)
+      .addScaledVector(_localRenderVelocity, (extrapolatedMs / 1000) * staleScale);
+
+    _localRenderLastSampleAgeMs = ageMs;
+    _localRenderLastExtrapolatedMs = extrapolatedMs;
+    _localRenderLastStaleScale = staleScale;
+    return true;
+  }
+
+  function snapCameraToLocalServerFrame(nowMs = performance.now()): boolean {
+    if (!_localServerFrameValid || !resetLocalRenderTargetToServer(nowMs)) return false;
+    cameraController.snapToFrame(
+      _localRenderFrameTarget,
+      _localServerNormal,
+      { tangent: _localServerTangent, bitangent: _localServerBitangent },
+    );
+    _localRenderSnapCount++;
+    return true;
+  }
+
+  function recordLocalRenderTelemetry(
+    target: THREE.Vector3,
+    localPlayer: Player,
+    nowMs: number,
+  ): void {
+    _localRenderTelemetryTarget.copy(target);
+    _localRenderLastTargetDelta = _localRenderPrevTargetValid
+      ? target.distanceTo(_localRenderPrevTarget)
+      : 0;
+    _localRenderPrevTarget.copy(target);
+    _localRenderPrevTargetValid = true;
+
+    _localRenderLastCameraDelta = _localRenderPrevCameraValid
+      ? game.camera.position.distanceTo(_localRenderPrevCameraPos)
+      : 0;
+    _localRenderPrevCameraPos.copy(game.camera.position);
+    _localRenderPrevCameraValid = true;
+
+    _localRenderLastDistanceToPlayer = localPlayer.mesh.position.distanceTo(game.camera.position);
+    _localRenderLastTargetToPlayer = localPlayer.mesh.position.distanceTo(target);
+    _localRenderLastSampleAgeMs = _localRenderValid ? Math.max(0, nowMs - _localRenderLatestServerTimeMs) : -1;
+  }
   // Track previous health per enemy to detect damage and spawn damage number popups
   const enemyPrevHealth = new Map<string, number>();
 
@@ -3484,6 +3638,7 @@ async function main() {
     // Without this, targetUp may still hold the last surface's tangentV, which
     // can mismatch the new spawn orientation and trigger the sign-flip protection.
     cameraController.resetFrameForNewSurface();
+    clearLocalRenderTarget();
 
     netMainLog('[NetworkMain] Game entities reset for new round');
   }
@@ -3792,6 +3947,7 @@ async function main() {
           _localPlayerWorldTarget.ty = netPlayer.ty ?? 0;
           _localPlayerWorldTarget.tz = netPlayer.tz ?? 0;
           _localPlayerWorldTarget.valid = true;
+          recordLocalRenderTargetSample();
         }
 
         // s44b-01: Snap camera to player position on first server frame.
@@ -3801,20 +3957,10 @@ async function main() {
         // After respawn the camera is already positioned, so it's correct — this
         // snap only fires when hasBeenPositioned=false (i.e., after resetFrameForNewSurface).
         if (!cameraController.hasBeenPositioned && _localServerFrameValid && _localPlayerWorldTarget.valid) {
-          const tgt = _localPlayerWorldTarget;
-          const snapPos = new THREE.Vector3(
-            // s44g-05: Server wx/wy/wz are already in scaled world space (server mesh has
-            // scale baked into vertex positions via SurfaceGeometryBuilder). Don't multiply
-            // by currentMapSizeScaleFactor — that would double-scale positions on EPIC maps.
-            tgt.x + _localServerNormal.x * 0.15,
-            tgt.y + _localServerNormal.y * 0.15,
-            tgt.z + _localServerNormal.z * 0.15,
-          );
-          cameraController.snapToFrame(
-            snapPos,
-            _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
-          );
+          // s44g-05: Server wx/wy/wz are already in scaled world space (server mesh has
+          // scale baked into vertex positions via SurfaceGeometryBuilder). Don't multiply
+          // by currentMapSizeScaleFactor — that would double-scale positions on EPIC maps.
+          snapCameraToLocalServerFrame();
         }
 
         // s44r8-03: For cube surfaces, sphere-approx UV diverges dramatically from CubeSurface UV.
@@ -3859,19 +4005,7 @@ async function main() {
             // "inside cube" view). Wrong camera axes during lerp corrupt
             // computeCameraRelativeAimAngle() → bullets snap to wrong directions.
             // Mirrors the respawn snap at line ~3793 which already works correctly.
-            if (_localServerFrameValid && _localPlayerWorldTarget.valid) {
-              const tgt = _localPlayerWorldTarget;
-              const snapPos = new THREE.Vector3(
-                tgt.x + _localServerNormal.x * 0.15,
-                tgt.y + _localServerNormal.y * 0.15,
-                tgt.z + _localServerNormal.z * 0.15,
-              );
-              cameraController.snapToFrame(
-                snapPos,
-                _localServerNormal,
-                { tangent: _localServerTangent, bitangent: _localServerBitangent },
-              );
-            }
+            snapCameraToLocalServerFrame();
           }
           // s44r8-03: Use accurate cube UV (not sphere-approx) so surfaceU/V is correct for
           // subsequent bullet tangent lookups and client prediction continuity on cube faces.
@@ -3887,10 +4021,11 @@ async function main() {
             const nx = netPlayer.nx ?? 0; const ny = netPlayer.ny ?? 1; const nz = netPlayer.nz ?? 0;
             player.mesh.position.set(
               // s44g-05: server positions already in scaled world space, no extra multiply
-              netPlayer.wx! + nx * 0.15,
-              netPlayer.wy! + ny * 0.15,
-              netPlayer.wz! + nz * 0.15,
+              netPlayer.wx! + nx * LOCAL_PLAYER_RENDER_OFFSET,
+              netPlayer.wy! + ny * LOCAL_PLAYER_RENDER_OFFSET,
+              netPlayer.wz! + nz * LOCAL_PLAYER_RENDER_OFFSET,
             );
+            resetLocalRenderTargetTo(player.mesh.position, performance.now(), false);
           } else {
             // s44l-16 FIX: For torus, sphere-approx surfaceU/V is swapped vs torus UV,
             // so getPoint(sphere_u, sphere_v) maps to the inner edge instead of the outer.
@@ -4105,17 +4240,7 @@ async function main() {
               && (_localPlayerWorldTarget.x !== 0 || _localPlayerWorldTarget.y !== 0 || _localPlayerWorldTarget.z !== 0);
             if (hasRespawnWorldPos && _localServerFrameValid) {
               // Preferred: server world-space position + server tangent frame (accurate for all surfaces)
-              const tgt = _localPlayerWorldTarget;
-              const respawnPos = new THREE.Vector3(
-                tgt.x + _localServerNormal.x * 0.15,
-                tgt.y + _localServerNormal.y * 0.15,
-                tgt.z + _localServerNormal.z * 0.15,
-              );
-              cameraController.snapToFrame(
-                respawnPos,
-                _localServerNormal,
-                { tangent: _localServerTangent, bitangent: _localServerBitangent },
-              );
+              snapCameraToLocalServerFrame();
             } else {
               // Fallback: use player.surfaceU/V (already set to accurate UV by snap code above)
               const respawnSp = surf.getPoint(player.surfaceU, player.surfaceV);
@@ -4125,6 +4250,9 @@ async function main() {
                 respawnSp.normal,
                 { tangent: respawnSp.tangentU, bitangent: respawnSp.tangentV },
               );
+              clearLocalRenderTarget();
+              _localRenderSnapCount++;
+              _localRenderResetCount++;
             }
           }
         }
@@ -6511,9 +6639,9 @@ async function main() {
           // s44g-05: server positions already in scaled world space, no extra multiply.
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
-            tgt.x + tgt.nx * 0.15,
-            tgt.y + tgt.ny * 0.15,
-            tgt.z + tgt.nz * 0.15,
+            tgt.x + tgt.nx * LOCAL_PLAYER_RENDER_OFFSET,
+            tgt.y + tgt.ny * LOCAL_PLAYER_RENDER_OFFSET,
+            tgt.z + tgt.nz * LOCAL_PLAYER_RENDER_OFFSET,
           );
           localPlayer.mesh.position.copy(_netTempPos);
           _netTempNormal.set(tgt.nx, tgt.ny, tgt.nz);
@@ -7378,6 +7506,25 @@ async function main() {
             ty: _localPlayerWorldTarget.ty,
             tz: _localPlayerWorldTarget.tz,
           },
+          renderTarget: {
+            valid: _localRenderValid,
+            x: _localRenderTelemetryTarget.x,
+            y: _localRenderTelemetryTarget.y,
+            z: _localRenderTelemetryTarget.z,
+            targetDelta: _localRenderLastTargetDelta,
+            cameraDelta: _localRenderLastCameraDelta,
+            distanceToPlayer: _localRenderLastDistanceToPlayer,
+            targetToPlayer: _localRenderLastTargetToPlayer,
+            serverSampleAgeMs: _localRenderLastSampleAgeMs,
+            extrapolatedMs: _localRenderLastExtrapolatedMs,
+            staleScale: _localRenderLastStaleScale,
+            serverSampleDelta: _localRenderServerSampleDelta,
+            serverSampleIntervalMs: _localRenderServerSampleIntervalMs,
+            sampleCount: _localRenderSampleCount,
+            snapCount: _localRenderSnapCount,
+            resetCount: _localRenderResetCount,
+            prevSampleValid: _localRenderPrevSampleValid,
+          },
         },
         cameraUp: (() => {
           try {
@@ -8073,29 +8220,21 @@ async function main() {
       } else if (_localServerFrameValid) {
         // Normal case: follow local player with server's stable tangent frame (s44-epic-06).
         // Using _localServerBitangent avoids UV-derived tangentV which flips sign at poles.
-        // s44i-01: Use server world-space position for camera target (via
-        // _predictedPlayerVisualPos which now always holds server pos after s44h-08 revert).
-        // Server tangent frame is still used for stability (no UV-pole flipping).
-        if (_predictedPlayerVisualValid) {
+        // s44i-01: Keep visual placement server-world authoritative, not UV-predicted.
+        // Worker L: use one bounded render-frame world target for BOTH the local mesh
+        // and the camera so the camera target is not a 30Hz stair-step while moving.
+        if (getLocalRenderTarget(_cameraRenderNow, _localRenderFrameTarget)) {
+          localPlayer.mesh.position.copy(_localRenderFrameTarget);
+          _predictedPlayerVisualPos.copy(_localRenderFrameTarget);
+          _predictedPlayerVisualNormal.copy(_localServerNormal);
+          _predictedPlayerVisualValid = true;
           cameraController.updateFromFrame(
-            _predictedPlayerVisualPos,
+            _localRenderFrameTarget,
             _localServerNormal,
             { tangent: _localServerTangent, bitangent: _localServerBitangent },
             _cameraRenderDt,
           );
-        } else if (_localPlayerWorldTarget.valid) {
-          _netTempPos.set(
-            // s44g-05: server positions already in scaled world space, no extra multiply
-            _localPlayerWorldTarget.x + _localServerNormal.x * 0.15,
-            _localPlayerWorldTarget.y + _localServerNormal.y * 0.15,
-            _localPlayerWorldTarget.z + _localServerNormal.z * 0.15,
-          );
-          cameraController.updateFromFrame(
-            _netTempPos,
-            _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
-            _cameraRenderDt,
-          );
+          recordLocalRenderTelemetry(_localRenderFrameTarget, localPlayer, _cameraRenderNow);
         } else {
           cameraController.updateFromFrame(
             localPlayer.mesh.position,
