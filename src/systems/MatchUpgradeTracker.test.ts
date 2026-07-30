@@ -210,6 +210,19 @@ describe('MatchUpgradeTracker', () => {
     expect(tracker.getPendingChoice()!.nodeIds).not.toContain('fake_node');
   });
 
+  it('MP server rejection cleanup clears pending choice without activating locally', () => {
+    tracker.onBuildChoiceAvailable = vi.fn();
+    for (let i = 0; i < 10; i++) {
+      tracker.recordKill(WeaponType.PlasmaMortar);
+    }
+
+    expect(tracker.getPendingChoice()).not.toBeNull();
+    tracker.clearPendingChoice();
+
+    expect(tracker.getPendingChoice()).toBeNull();
+    expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
+  });
+
   // -------------------------------------------------------------------------
   // Prerequisite filtering
   // -------------------------------------------------------------------------

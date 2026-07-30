@@ -1496,52 +1496,7 @@ export class GameRoom extends Room<GameState> {
     // Companion bullet hit: client detects collision (guardian/hunter bullets are client-only),
     // server applies 1 damage and kills the enemy if health reaches zero.
     this.onMessage('companion_hit', (client, data: { enemyId: string }) => {
-      if (this.state.roomPhase !== 'playing') return;
-      const { enemyId } = data;
-      if (!enemyId || typeof enemyId !== 'string') return;
-
-      // Find enemy by ID in the ArraySchema
-      let targetIndex = -1;
-      this.state.enemies.forEach((enemy, index) => {
-        if (enemy.id === enemyId) targetIndex = index;
-      });
-      if (targetIndex < 0) return;
-
-      const enemy = this.state.enemies[targetIndex];
-      if (!enemy.alive) return;
-
-      enemy.health -= 1; // GUARDIAN_DAMAGE = 1
-
-      if (enemy.health <= 0) {
-        enemy.alive = false;
-        this.enemyAI.delete(enemy.id);
-        this.state.enemies.splice(targetIndex, 1);
-
-        // Award score/level to the shooting player
-        const player = this.state.players.get(client.sessionId);
-        if (player) {
-          player.score += this.getEnemyScore(enemy.type) * player.multiplier;
-          player.playerKills++;
-          player.enemyKills++;
-          const newLevel = this.getPlayerLevel(player.playerKills);
-          if (newLevel > player.playerLevel) {
-            player.playerLevel = newLevel;
-            this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
-          }
-          this.trackDDAKill(client.sessionId);
-        }
-
-        // Chance to spawn pickups (same as bullet kills)
-        if (Math.random() < WEAPON_DROP_CHANCE) {
-          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
-          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < 0.05) {
-          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-      }
+      this.handleCompanionHit(client.sessionId, data.enemyId);
     });
 
     // s44r-04-02: Client-authoritative bullet-enemy hit detection.
@@ -2249,6 +2204,52 @@ export class GameRoom extends Room<GameState> {
     }
 
     return result;
+  }
+
+  private handleCompanionHit(sessionId: string, enemyId: string): void {
+    if (this.state.roomPhase !== 'playing') return;
+    if (!enemyId || typeof enemyId !== 'string') return;
+
+    let targetIndex = -1;
+    this.state.enemies.forEach((enemy, index) => {
+      if (enemy.id === enemyId) targetIndex = index;
+    });
+    if (targetIndex < 0) return;
+
+    const enemy = this.state.enemies[targetIndex];
+    if (!enemy.alive) return;
+
+    enemy.health -= 1; // GUARDIAN_DAMAGE = 1
+
+    if (enemy.health <= 0) {
+      enemy.alive = false;
+      this.enemyAI.delete(enemy.id);
+      this.state.enemies.splice(targetIndex, 1);
+
+      const player = this.state.players.get(sessionId);
+      if (player) {
+        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
+        player.playerKills++;
+        player.enemyKills++;
+        this.recordUpgradeKill(sessionId, player.weaponType);
+        const newLevel = this.getPlayerLevel(player.playerKills);
+        if (newLevel > player.playerLevel) {
+          player.playerLevel = newLevel;
+          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+        }
+        this.trackDDAKill(sessionId);
+      }
+
+      if (Math.random() < WEAPON_DROP_CHANCE) {
+        this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+      }
+      if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+        this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
+      }
+      if (Math.random() < 0.05) {
+        this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
+      }
+    }
   }
 
   private handleClientMetrics(client: Client, data: Record<string, unknown>): void {
@@ -3436,6 +3437,7 @@ export class GameRoom extends Room<GameState> {
     if (enemiesToRemove.length > 0) {
       player.playerKills += enemiesToRemove.length;
       player.enemyKills += enemiesToRemove.length;
+      this.recordUpgradeKill(player.id, player.weaponType, enemiesToRemove.length);
       const newLevel = this.getPlayerLevel(player.playerKills);
       if (newLevel > player.playerLevel) {
         player.playerLevel = newLevel;

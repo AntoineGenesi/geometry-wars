@@ -79,6 +79,14 @@ export class MatchUpgradeTracker {
   }
 
   /**
+   * Clear the pending build choice without activating it.
+   * MP uses this when the authoritative server rejects an activation request.
+   */
+  clearPendingChoice(): void {
+    this.pendingChoice = null;
+  }
+
+  /**
    * Confirm the player's node selection.  Permanently records the choice in
    * MasteryPointStore (earn + spend atomically), activates the node in-match,
    * and fires onUpgradeActivated.  Clears the pending choice.

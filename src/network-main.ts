@@ -90,6 +90,11 @@ import {
   NetworkGameState,
   ClientMetricsPayload,
 } from './network/NetworkClient';
+import {
+  reconcileUpgradeActivationResult,
+  upgradeActivationKey,
+  type PendingUpgradeActivation,
+} from './network/mpUpgradeActivationClient';
 import { PlayerNameLabels, PlayerLabelData } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
 import { GameOverScreen, PvpPlayerStat, PvpvePlayerStat } from './ui/GameOverScreen';
@@ -1239,6 +1244,7 @@ async function main() {
   // Local-only pause flag used while a build-choice card is shown.
   // We do NOT touch isPaused (which would sync with the server) — only this client pauses.
   let buildChoiceActive = false;
+  const pendingUpgradeActivations = new Map<string, PendingUpgradeActivation>();
 
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
@@ -1249,18 +1255,19 @@ async function main() {
       const killCount = matchUpgradeTracker.getKillCount(weaponType);
 
       buildChoiceScreen.show(weaponType, availableNodeIds, activeIds, killCount, (chosenNodeId) => {
-        matchUpgradeTracker.confirmChoice(chosenNodeId, weaponType);
+        const key = upgradeActivationKey(chosenNodeId, weaponType);
+        pendingUpgradeActivations.set(key, { nodeId: chosenNodeId, weaponType });
+        network.sendUpgradeActivation({
+          nodeId: chosenNodeId,
+          weaponType,
+          unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
+        });
         buildChoiceActive = false;
         game.resume();
       });
     };
     matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
       upgradeNotification.show(nodeId, weaponType);
-      network.sendUpgradeActivation({
-        nodeId,
-        weaponType,
-        unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
-      });
     };
   }
   wireBuildChoiceCallback();
@@ -5511,6 +5518,7 @@ async function main() {
         analyticsPanel.hide();
         // Reset per-match upgrade tracker for the new round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
+        pendingUpgradeActivations.clear();
         wireBuildChoiceCallback();
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
@@ -5534,6 +5542,7 @@ async function main() {
         // Reset entities (safe to call even when empty — clears any stale state).
         // Reset per-match upgrade tracker for the first round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
+        pendingUpgradeActivations.clear();
         wireBuildChoiceCallback();
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
@@ -5995,10 +6004,21 @@ async function main() {
         }
       },
       onUpgradeActivationResult: (data) => {
+        const weaponType = SERVER_TO_WEAPON_TYPE[data.weaponType] ?? WeaponType.Standard;
+        const reconciliation = reconcileUpgradeActivationResult({
+          accepted: data.accepted,
+          nodeId: data.nodeId,
+          weaponType,
+          pendingUpgradeActivations,
+          matchUpgradeTracker,
+        });
         if (data.accepted) {
           netMainLog(`[NetworkMain] Server accepted upgrade activation: ${data.weaponType}/${data.nodeId}`);
         } else {
           console.warn(`[NetworkMain] Server rejected upgrade activation: ${data.weaponType}/${data.nodeId} (${data.reason ?? 'unknown'})`);
+        }
+        if (reconciliation === 'missing_pending') {
+          netMainLog(`[NetworkMain] Ignored stale upgrade activation result with no pending request: ${data.weaponType}/${data.nodeId}`);
         }
       },
       onPvpKill: (data) => {
