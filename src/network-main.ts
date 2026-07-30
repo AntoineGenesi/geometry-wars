@@ -1207,6 +1207,10 @@ async function main() {
     levelUpNotification.show(level, perk);
     sound.play('multiplierUp', { pitch: 1.2 + level * 0.05 });
   };
+  playerLevel.onMasteryPointEarned = () => {
+    masteryPointStore.earnPoint(localWeaponManager.getCurrentWeapon());
+    upgradeNotification.showMasteryPointEarned();
+  };
 
   // -- KillStreakAnnouncer: centered overlay for PvP kill streak announcements --
   const killStreakAnnouncer = new KillStreakAnnouncer(sound);
@@ -1252,6 +1256,11 @@ async function main() {
     };
     matchUpgradeTracker.onUpgradeActivated = (nodeId, weaponType) => {
       upgradeNotification.show(nodeId, weaponType);
+      network.sendUpgradeActivation({
+        nodeId,
+        weaponType,
+        unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
+      });
     };
   }
   wireBuildChoiceCallback();
@@ -2554,6 +2563,9 @@ async function main() {
   });
   pauseMenu.setMasteryPointStore(masteryPointStore);
   pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
+  pauseMenu.onMasteryScreenClose(() => {
+    matchUpgradeTracker.refreshFromStore(masteryPointStore);
+  });
 
   // Sync pause menu with saved visual mode; wire the toggle
   pauseMenu.setVisualMode(savedVisualMode);
@@ -5982,6 +5994,13 @@ async function main() {
           sound.play('multiplierUp', { pitch: 1.2 + data.newLevel * 0.05 });
         }
       },
+      onUpgradeActivationResult: (data) => {
+        if (data.accepted) {
+          netMainLog(`[NetworkMain] Server accepted upgrade activation: ${data.weaponType}/${data.nodeId}`);
+        } else {
+          console.warn(`[NetworkMain] Server rejected upgrade activation: ${data.weaponType}/${data.nodeId} (${data.reason ?? 'unknown'})`);
+        }
+      },
       onPvpKill: (data) => {
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
         killStreakAnnouncer.announce(data.killerName, data.streakCount);
@@ -7928,7 +7947,19 @@ async function main() {
         player.mesh.position.lerp(_netTempPos, PLAYER_LERP);
         _netTempNormal.set(worldTarget.nx, worldTarget.ny, worldTarget.nz);
         _netTempTangent.set(worldTarget.tx, worldTarget.ty, worldTarget.tz);
-        orientPlayerOnSurface(player, _netTempNormal, target.aimAngle, _netTempTangent);
+        let orientTangentU = _netTempTangent;
+        if (surface) {
+          _aimUnscaledPos.copy(player.mesh.position);
+          if (currentMapSizeScaleFactor !== 1.0) {
+            _aimUnscaledPos.divideScalar(currentMapSizeScaleFactor);
+          }
+          const orientUV = surface.worldToSurface(_aimUnscaledPos);
+          const orientSp = surface.getPoint(orientUV.u, orientUV.v);
+          if (orientSp.tangentU.lengthSq() > 0.001) {
+            orientTangentU = orientSp.tangentU;
+          }
+        }
+        orientPlayerOnSurface(player, _netTempNormal, target.aimAngle, orientTangentU);
       } else {
         // Fallback: UV-based positioning (legacy server or before first world-pos arrives).
         // s44l-16 FIX: For torus, sphere-approx UV (newU/newV) is swapped vs torus UV.
