@@ -1526,7 +1526,7 @@ export class GameRoom extends Room<GameState> {
       if (targetIndex < 0) return;
 
       const enemy = this.state.enemies[targetIndex];
-      if (!enemy.alive) return;
+      if (!enemy.alive || enemy.queued) return;
 
       // Apply damage formula with penetration budget tracking (s44r3-02).
       // A bullet's total damage budget equals finalDamage. Each hit consumes
@@ -1556,9 +1556,7 @@ export class GameRoom extends Room<GameState> {
       this.logger.log(`[GameRoom] bullet_hit: ${weaponType} dealt ${actualDamage.toFixed(1)} to ${enemy.type} (hp=${enemy.health.toFixed(1)}, remaining=${newRemaining.toFixed(1)})`);
 
       if (enemy.health <= 0) {
-        enemy.alive = false;
-        this.enemyAI.delete(enemy.id);
-        this.state.enemies.splice(targetIndex, 1);
+        this.removeKilledEnemyAt(targetIndex);
 
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
         player.playerKills++;
@@ -2217,14 +2215,12 @@ export class GameRoom extends Room<GameState> {
     if (targetIndex < 0) return;
 
     const enemy = this.state.enemies[targetIndex];
-    if (!enemy.alive) return;
+    if (!enemy.alive || enemy.queued) return;
 
     enemy.health -= 1; // GUARDIAN_DAMAGE = 1
 
     if (enemy.health <= 0) {
-      enemy.alive = false;
-      this.enemyAI.delete(enemy.id);
-      this.state.enemies.splice(targetIndex, 1);
+      this.removeKilledEnemyAt(targetIndex);
 
       const player = this.state.players.get(sessionId);
       if (player) {
@@ -3167,7 +3163,7 @@ export class GameRoom extends Room<GameState> {
     const enemiesToKill: number[] = [];
 
     this.state.enemies.forEach((enemy, eIndex) => {
-      if (!enemy.alive) return;
+      if (!this.isTargetableEnemy(enemy)) return;
 
       // Vector from player to enemy (wrap-aware U axis)
       let dU = enemy.surfaceU - player.surfaceU;
@@ -3185,8 +3181,6 @@ export class GameRoom extends Room<GameState> {
       enemy.health -= damage;
 
       if (enemy.health <= 0) {
-        enemy.alive = false;
-        this.enemyAI.delete(enemy.id);
         enemiesToKill.push(eIndex);
 
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
@@ -3214,7 +3208,7 @@ export class GameRoom extends Room<GameState> {
 
     // Remove killed enemies in reverse order to preserve indices
     for (let i = enemiesToKill.length - 1; i >= 0; i--) {
-      this.state.enemies.splice(enemiesToKill[i], 1);
+      this.removeKilledEnemyAt(enemiesToKill[i]);
     }
   }
 
@@ -3266,7 +3260,7 @@ export class GameRoom extends Room<GameState> {
     const enemiesToKill: number[] = [];
 
     this.state.enemies.forEach((enemy, eIndex) => {
-      if (!enemy.alive) return;
+      if (!this.isTargetableEnemy(enemy)) return;
 
       let dist: number;
       if (useWorldDist) {
@@ -3288,8 +3282,6 @@ export class GameRoom extends Room<GameState> {
       enemy.health -= damage;
 
       if (enemy.health <= 0) {
-        enemy.alive = false;
-        this.enemyAI.delete(enemy.id);
         enemiesToKill.push(eIndex);
 
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
@@ -3317,7 +3309,7 @@ export class GameRoom extends Room<GameState> {
 
     // Remove killed enemies in reverse order to preserve indices
     for (let i = enemiesToKill.length - 1; i >= 0; i--) {
-      this.state.enemies.splice(enemiesToKill[i], 1);
+      this.removeKilledEnemyAt(enemiesToKill[i]);
     }
   }
 
@@ -3349,7 +3341,7 @@ export class GameRoom extends Room<GameState> {
     // Collect all enemies in range, sorted by UV distance
     const candidates: Array<{ eIndex: number; dist: number }> = [];
     this.state.enemies.forEach((enemy, eIndex) => {
-      if (!enemy.alive) return;
+      if (!this.isTargetableEnemy(enemy)) return;
       let dU = enemy.surfaceU - player.surfaceU;
       let dV = enemy.surfaceV - player.surfaceV;
       if (dU > 0.5) dU -= 1; else if (dU < -0.5) dU += 1;
@@ -3367,13 +3359,11 @@ export class GameRoom extends Room<GameState> {
     const enemiesToKill: number[] = [];
     for (const { eIndex } of hits) {
       const enemy = this.state.enemies[eIndex];
-      if (!enemy || !enemy.alive) continue;
+      if (!enemy || !this.isTargetableEnemy(enemy)) continue;
 
       enemy.health -= damage;
 
       if (enemy.health <= 0) {
-        enemy.alive = false;
-        this.enemyAI.delete(enemy.id);
         enemiesToKill.push(eIndex);
 
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
@@ -3402,7 +3392,7 @@ export class GameRoom extends Room<GameState> {
     // Remove killed enemies in reverse index order to preserve earlier indices
     enemiesToKill.sort((a, b) => b - a);
     for (const idx of enemiesToKill) {
-      this.state.enemies.splice(idx, 1);
+      this.removeKilledEnemyAt(idx);
     }
   }
 
@@ -3415,9 +3405,7 @@ export class GameRoom extends Room<GameState> {
     // Kill all enemies
     const enemiesToRemove: number[] = [];
     this.state.enemies.forEach((enemy, index) => {
-      if (enemy.alive) {
-        enemy.alive = false;
-        this.enemyAI.delete(enemy.id);
+      if (this.isTargetableEnemy(enemy)) {
         enemiesToRemove.push(index);
 
         // Geoms removed (s27g-geons-point-pickups-remove-mp)
@@ -3430,7 +3418,7 @@ export class GameRoom extends Room<GameState> {
 
     // Remove dead enemies (iterate in reverse)
     for (let i = enemiesToRemove.length - 1; i >= 0; i--) {
-      this.state.enemies.splice(enemiesToRemove[i], 1);
+      this.removeKilledEnemyAt(enemiesToRemove[i]);
     }
 
     // Track kills for level progression (bomb kills count)
@@ -3782,7 +3770,7 @@ export class GameRoom extends Room<GameState> {
     const surfType = this.state.surfaceType;
 
     this.state.enemies.forEach((enemy) => {
-      if (!enemy.alive) return;
+      if (!enemy.alive || enemy.queued) return;
 
       const ai = this.enemyAI.get(enemy.id) ?? {};
       const nearestPlayer = this.findNearestPlayer(enemy.surfaceU, enemy.surfaceV);
@@ -3856,6 +3844,10 @@ export class GameRoom extends Room<GameState> {
         default:
           this.updateDefaultChase(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
           break;
+      }
+
+      if (enemy.type === 'snake') {
+        this.syncQueuedSnakeSegments(enemy, wrapsV, surfType);
       }
 
       // Persist updated AI state
@@ -4566,16 +4558,14 @@ export class GameRoom extends Room<GameState> {
     if (this.state.enemies.length + this.pendingEnemyCount >= maxEnemies) return;
     if (this.state.roomPhase !== 'playing') return;
 
-    const enemy = new EnemyState();
-    enemy.id = `e${this.nextEnemyId++}`;
-    enemy.type = type;
     // Small random offset from spawner position
     const offsetU = (Math.random() - 0.5) * 0.06;
     const offsetV = (Math.random() - 0.5) * 0.06;
-    enemy.surfaceU = Math.max(0.05, Math.min(0.95, u + offsetU));
-    enemy.surfaceV = Math.max(0.05, Math.min(0.95, v + offsetV));
-    enemy.health = this.getEnemyHealth(type);
-    enemy.alive = true;
+    const enemy = this.makeEnemyState(
+      type,
+      Math.max(0.05, Math.min(0.95, u + offsetU)),
+      Math.max(0.05, Math.min(0.95, v + offsetV)),
+    );
     this.enemyAI.set(enemy.id, this.createEnemyAI(type));
     this.state.enemies.push(enemy);
   }
@@ -4825,7 +4815,7 @@ export class GameRoom extends Room<GameState> {
       if (hitBullets.has(bIndex)) return; // Already consumed by an earlier enemy hit
 
       this.state.enemies.forEach((enemy, eIndex) => {
-        if (!enemy.alive) return;
+        if (!this.isTargetableEnemy(enemy)) return;
         if (hitBullets.has(bIndex)) return; // Already consumed within this bullet's loop
 
         // s44e-06: Use world-space chord distance for surfaces with UV distortion, matching
@@ -4867,8 +4857,6 @@ export class GameRoom extends Room<GameState> {
           enemy.health -= finalDamage;
 
           if (enemy.health <= 0) {
-            enemy.alive = false;
-            this.enemyAI.delete(enemy.id);
             enemiesToRemove.push(eIndex);
 
             if (owner) {
@@ -4909,7 +4897,7 @@ export class GameRoom extends Room<GameState> {
       const GRAVITY_PULL_STRENGTH = 0.08; // UV displacement per hit
       for (const hit of gravityGunHits) {
         this.state.enemies.forEach((pullEnemy) => {
-          if (!pullEnemy.alive) return;
+          if (!this.isTargetableEnemy(pullEnemy)) return;
           const dU = hit.x - pullEnemy.surfaceU;
           const dV = hit.y - pullEnemy.surfaceV;
           const uvDist = Math.sqrt(dU * dU + dV * dV);
@@ -5065,7 +5053,7 @@ export class GameRoom extends Room<GameState> {
         if (this.state.gameTime - lastLog >= this.NEAR_MISS_LOG_THROTTLE) {
           let nearMissLogged = false;
           this.state.enemies.forEach((enemy) => {
-            if (nearMissLogged || !enemy.alive) return;
+            if (nearMissLogged || !this.isTargetableEnemy(enemy)) return;
             // s44r8-02: Use player world position (accurate from ServerMeshWalker) instead of
             // player.surfaceU/V (sphere-approx, wrong on cube/sphere-tunnel/peanut/cube-ring).
             const dist = usesWorldDist
@@ -5098,7 +5086,7 @@ export class GameRoom extends Room<GameState> {
       let wasHit = false;
 
       this.state.enemies.forEach((enemy) => {
-        if (!enemy.alive) return;
+        if (!this.isTargetableEnemy(enemy)) return;
         if (wasHit) return; // Only one hit per player per tick
         if (hitEnemyIds.has(enemy.id)) return; // Each enemy hits at most one player per tick
 
@@ -5405,7 +5393,7 @@ export class GameRoom extends Room<GameState> {
       this.state.bullets.splice(bulletsToRemove[i], 1);
     }
     for (let i = enemiesToRemove.length - 1; i >= 0; i--) {
-      this.state.enemies.splice(enemiesToRemove[i], 1);
+      this.removeKilledEnemyAt(enemiesToRemove[i]);
     }
     for (let i = geomsToRemove.length - 1; i >= 0; i--) {
       this.state.geoms.splice(geomsToRemove[i], 1);
@@ -5560,6 +5548,96 @@ export class GameRoom extends Room<GameState> {
     const playerCap = getMaxEnemiesForPlayerCount(playerCount);
     // Apply the host-configurable enemy count cap from settings
     return Math.min(playerCap, this.currentSettings.enemyCountCap);
+  }
+
+  private isTargetableEnemy(enemy: EnemyState): boolean {
+    return enemy.alive && !enemy.queued;
+  }
+
+  private getServerSnakeMaxSegments(): number {
+    if (this.waveNumber < 10) return 14;
+    if (this.waveNumber < 30) return 14 + (this.waveNumber - 9);
+    return Math.min(50, 34 + Math.floor((this.waveNumber - 29) * 0.8));
+  }
+
+  private getServerSnakeQueueLength(type: string): number {
+    if (type !== 'snake') return 0;
+
+    const difficulty = Math.max(0, this.computeDifficultyLevel());
+    let target: number;
+    if (difficulty < 2) {
+      target = 2 + Math.floor(difficulty);
+    } else if (difficulty < 6) {
+      target = 5 + Math.floor((difficulty - 2) * 1.25);
+    } else {
+      target = 10 + Math.floor((difficulty - 6) * 2);
+    }
+
+    const remainingBudget = Math.max(0, this.getMaxEnemies() - this.state.enemies.length - this.pendingEnemyCount - 1);
+    return Math.max(0, Math.min(target, this.getServerSnakeMaxSegments(), remainingBudget));
+  }
+
+  private makeEnemyState(type: string, u: number, v: number): EnemyState {
+    const enemy = new EnemyState();
+    enemy.id = `e${this.nextEnemyId++}`;
+    enemy.type = type;
+    enemy.surfaceU = u;
+    enemy.surfaceV = v;
+    enemy.health = this.getEnemyHealth(type);
+    enemy.maxHealth = enemy.health;
+    enemy.alive = true;
+    enemy.queued = false;
+    enemy.parentId = '';
+    enemy.queueIndex = -1;
+    return enemy;
+  }
+
+  private makeSnakeSegmentState(parent: EnemyState, queueIndex: number): EnemyState {
+    const offset = (queueIndex + 1) * 0.035;
+    const segment = this.makeEnemyState('grunt', this.wrapCoord(parent.surfaceU - offset), parent.surfaceV);
+    segment.id = `${parent.id}:q${queueIndex}`;
+    segment.queued = true;
+    segment.parentId = parent.id;
+    segment.queueIndex = queueIndex;
+    return segment;
+  }
+
+  private syncQueuedSnakeSegments(parent: EnemyState, wrapsV: boolean, surfType: string): void {
+    this.state.enemies.forEach((segment) => {
+      if (!segment.queued || segment.parentId !== parent.id) return;
+      const offset = (segment.queueIndex + 1) * 0.035;
+      segment.surfaceU = this.wrapCoord(parent.surfaceU - offset);
+      segment.surfaceV = parent.surfaceV;
+      this.applyUVBounds(segment, wrapsV, surfType);
+    });
+  }
+
+  private releaseQueuedSnakeSegments(parent: EnemyState): number {
+    if (parent.type !== 'snake') return 0;
+
+    let released = 0;
+    this.state.enemies.forEach((segment) => {
+      if (!segment.queued || segment.parentId !== parent.id || !segment.alive) return;
+      segment.queued = false;
+      segment.parentId = '';
+      segment.queueIndex = -1;
+      segment.health = Math.max(1, Math.ceil(segment.health * 0.5));
+      segment.maxHealth = Math.max(segment.maxHealth, this.getEnemyHealth(segment.type), segment.health);
+      this.enemyAI.set(segment.id, this.createEnemyAI(segment.type));
+      released++;
+    });
+    return released;
+  }
+
+  private removeKilledEnemyAt(index: number): number {
+    const enemy = this.state.enemies[index];
+    if (!enemy || enemy.queued) return 0;
+
+    enemy.alive = false;
+    this.enemyAI.delete(enemy.id);
+    const released = this.releaseQueuedSnakeSegments(enemy);
+    this.state.enemies.splice(index, 1);
+    return released;
   }
 
   /**
@@ -6027,7 +6105,7 @@ export class GameRoom extends Room<GameState> {
       // Stay clear of all alive enemies
       let clearOfEnemies = true;
       this.state.enemies.forEach((enemy) => {
-        if (!enemy.alive) return;
+        if (!this.isTargetableEnemy(enemy)) return;
         let edu = Math.abs(u - enemy.surfaceU);
         if (edu > 0.5) edu = 1 - edu;
         const edv = Math.abs(v - enemy.surfaceV);
@@ -6057,13 +6135,11 @@ export class GameRoom extends Room<GameState> {
     // This is the core fix for phantom warning rings: we never send a warning for
     // an enemy that will be silently dropped by the cap check in the setTimeout.
     const maxEnemies = this.getMaxEnemies();
-    if (this.state.enemies.length + this.pendingEnemyCount >= maxEnemies) {
+    const queueLength = this.getServerSnakeQueueLength(type);
+    const reservedCount = 1 + queueLength;
+    if (this.state.enemies.length + this.pendingEnemyCount + reservedCount - 1 >= maxEnemies) {
       return false;
     }
-
-    const enemy = new EnemyState();
-    enemy.id = `e${this.nextEnemyId++}`;
-    enemy.type = type;
 
     // Spawn at a position visible to the player (S27h fix).
     // Old logic spawned at U=0/1 (UV seam = back of sphere) which produced
@@ -6071,11 +6147,11 @@ export class GameRoom extends Room<GameState> {
     // the sphere geometry.  getSpawnPosition() places enemies 0.25–0.45 UV
     // units from the nearest player so the ring is in their visible field.
     const pos = this.getSpawnPosition();
-    enemy.surfaceU = pos.u;
-    enemy.surfaceV = pos.v;
-
-    enemy.health = this.getEnemyHealth(type);
-    enemy.alive = true;
+    const enemy = this.makeEnemyState(type, pos.u, pos.v);
+    const queuedSegments: EnemyState[] = [];
+    for (let i = 0; i < queueLength; i++) {
+      queuedSegments.push(this.makeSnakeSegmentState(enemy, i));
+    }
 
     // Initialize per-type AI state
     this.enemyAI.set(enemy.id, this.createEnemyAI(type));
@@ -6083,7 +6159,7 @@ export class GameRoom extends Room<GameState> {
     // Allocate this enemy in the pending count before broadcasting the warning.
     // This ensures any subsequent calls to spawnSingleEnemy (synchronous, same tick)
     // see the updated count and don't over-allocate.
-    this.pendingEnemyCount++;
+    this.pendingEnemyCount += reservedCount;
     const gen = this.spawnGeneration;
 
     // Broadcast pre-spawn warning to all clients so they can show a pulsing
@@ -6099,11 +6175,14 @@ export class GameRoom extends Room<GameState> {
       // enemies than the cap) and produce phantom warning rings in the new round.
       if (this.spawnGeneration !== gen) return;
 
-      this.pendingEnemyCount = Math.max(0, this.pendingEnemyCount - 1);
+      this.pendingEnemyCount = Math.max(0, this.pendingEnemyCount - reservedCount);
 
       // Only push if game is still in progress (phase check is a safety net).
       if (this.state.roomPhase === 'playing') {
         this.state.enemies.push(enemy);
+        for (const segment of queuedSegments) {
+          this.state.enemies.push(segment);
+        }
       }
     }, PRE_SPAWN_WARNING_MS);
 
@@ -6192,7 +6271,7 @@ export class GameRoom extends Room<GameState> {
       // Skip if too close to any enemy
       let clearOfEnemies = true;
       this.state.enemies.forEach((enemy) => {
-        if (!enemy.alive) return;
+        if (!this.isTargetableEnemy(enemy)) return;
         let edu = Math.abs(u - enemy.surfaceU);
         if (edu > 0.5) edu = 1 - edu;
         const edv = Math.abs(v - enemy.surfaceV);

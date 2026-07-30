@@ -32,6 +32,7 @@ import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
 import { waveComposer } from './entities/enemies/WaveComposer';
 import { BaseEnemy } from './entities/enemies/BaseEnemy';
 import { Boss } from './entities/enemies/Boss';
+import { Snake, type SnakeQueuedSegment } from './entities/enemies/Snake';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
 import { PlasmaExplosionEffect } from './effects/PlasmaExplosionEffect';
@@ -4370,11 +4371,29 @@ async function main() {
 
     // ----- Sync enemies -----
     const activeEnemyIds = new Set<string>();
+    const queuedSnakeSegments = new Map<string, SnakeQueuedSegment[]>();
+
     state.enemies.forEach((netEnemy: NetworkEnemyState) => {
+      if (netEnemy.queued && netEnemy.parentId) {
+        const segments = queuedSnakeSegments.get(netEnemy.parentId) ?? [];
+        segments.push({
+          type: 'grunt',
+          surfaceU: netEnemy.surfaceU,
+          surfaceV: netEnemy.surfaceV,
+          health: netEnemy.health,
+          maxHealth: netEnemy.maxHealth,
+          queueIndex: netEnemy.queueIndex,
+        });
+        queuedSnakeSegments.set(netEnemy.parentId, segments);
+        return;
+      }
+
       activeEnemyIds.add(netEnemy.id);
 
       const enemy = getOrCreateEnemy(netEnemy.id, netEnemy);
       if (!enemy) return;
+      enemy.health = netEnemy.health;
+      enemy.maxHealth = netEnemy.maxHealth;
 
       // Store target UV for per-frame interpolation in onRender (60Hz).
       // Previously this lerp happened here at 30Hz, causing visible stutter.
@@ -4425,6 +4444,19 @@ async function main() {
         scorePopups.spawnDamage(enemy.position.clone(), damageDealt);
       }
       enemyPrevHealth.set(netEnemy.id, netEnemy.health);
+    });
+
+    queuedSnakeSegments.forEach((segments, parentId) => {
+      const parent = networkEnemies.get(parentId);
+      if (parent instanceof Snake) {
+        parent.setQueuedSegmentsFromNetwork(segments);
+      }
+    });
+
+    networkEnemies.forEach((enemy, id) => {
+      if (enemy instanceof Snake && !queuedSnakeSegments.has(id)) {
+        enemy.setQueuedSegmentsFromNetwork([]);
+      }
     });
 
     // Remove dead/removed enemies (with death effects)

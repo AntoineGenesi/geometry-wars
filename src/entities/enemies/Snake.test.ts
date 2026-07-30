@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Snake } from './Snake';
+import { computeSnakeInitialQueueLength } from './EnemySpawner';
 
 // Minimal mock surface transform used for applySurfaceTransform calls
 const mockTransform = {
@@ -74,30 +75,36 @@ describe('Snake enemy', () => {
 
   // ──────────────────── takeDamage ────────────────────
 
-  it('frequently peels a tail segment when segments exist', () => {
-    const segDead: Array<{ u: number; v: number }> = [];
-    Snake.onSegmentDeath = (u, v) => segDead.push({ u, v });
-
-    // Force the random to always pick the segment path
-    const randSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1); // < 0.7 → segment hit
-
+  it('damages the head deterministically instead of randomly peeling tail segments', () => {
+    Snake.onSegmentDeath = vi.fn();
     const initialSegCount = snake.getSegmentData().length;
+    const initialHP = snake.health;
     snake.takeDamage(1);
 
-    expect(segDead.length).toBe(1);
-    expect(snake.getSegmentData().length).toBe(initialSegCount - 1);
-    expect(snake.segmentRoot.children.length).toBe(initialSegCount - 1);
+    expect(snake.health).toBe(initialHP - 1);
+    expect(snake.getSegmentData().length).toBe(initialSegCount);
+    expect(snake.segmentRoot.children.length).toBe(initialSegCount);
     expect(snake.alive).toBe(true); // head still alive
-
-    randSpy.mockRestore();
+    expect(Snake.onSegmentDeath).not.toHaveBeenCalled();
   });
 
-  it('damages head when random says head hit', () => {
+  it('keeps queue records with explicit type, health, maxHealth, and queueIndex', () => {
+    const data = snake.getSegmentData();
+    expect(data[0]).toMatchObject({
+      type: 'grunt',
+      health: 2,
+      maxHealth: 2,
+      queueIndex: 0,
+    });
+    expect(typeof data[0].surfaceU).toBe('number');
+    expect(typeof data[0].surfaceV).toBe('number');
+  });
+
+  it('damages head even when Math.random would have taken the old peel path', () => {
     Snake.onSegmentDeath = vi.fn();
     const initialHP = snake.health;
 
-    // Force random to head-hit path (>= 0.7)
-    const randSpy = vi.spyOn(Math, 'random').mockReturnValue(0.9);
+    const randSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
 
     snake.takeDamage(1);
 
@@ -107,58 +114,58 @@ describe('Snake enemy', () => {
     randSpy.mockRestore();
   });
 
-  it('always damages head when no segments remain', () => {
-    // Remove all segments manually by hitting with segment path
-    const randSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1);
-    const segmentCount = snake.getSegmentData().length;
-    for (let i = 0; i < segmentCount; i++) {
-      snake.takeDamage(1);
-    }
-    randSpy.mockRestore();
+  it('tracks dead queue segments without releasing them on head death', () => {
+    expect(snake.damageSegment(0, 2)).toBe(true);
 
-    expect(snake.getSegmentData().length).toBe(0);
-    const hp = snake.health;
+    const released: Array<{ queueIndex: number }> = [];
+    Snake.onHeadDeath = (segs) => released.push(...segs);
 
-    // Force random to segment path again — but there are none, so should still hit head
-    vi.spyOn(Math, 'random').mockReturnValue(0.1);
-    snake.takeDamage(1);
+    snake.takeDamage(snake.health);
 
-    expect(snake.health).toBe(hp - 1);
+    expect(released.map((s) => s.queueIndex)).toEqual([1]);
   });
 
   // ──────────────────── head death ────────────────────
 
   it('fires onHeadDeath with all remaining segments when head is killed', () => {
-    const spawnedGrunts: Array<{ u: number; v: number }> = [];
+    const spawnedGrunts: Array<{ surfaceU: number; surfaceV: number; health: number; maxHealth: number; queueIndex: number }> = [];
     Snake.onHeadDeath = (segs) => segs.forEach((s) => spawnedGrunts.push(s));
-
-    // Kill head directly (bypass segment shield by forcing rand >= 0.7 always)
-    const randSpy = vi.spyOn(Math, 'random').mockReturnValue(0.9);
-
-    // Reduce health to 1
-    for (let i = 0; i < snake.health - 1; i++) {
-      snake.takeDamage(1);
-    }
     const remainingSegs = snake.getSegmentData().length;
-    snake.takeDamage(1); // kill shot
+    snake.takeDamage(snake.health);
 
     expect(snake.alive).toBe(false);
     expect(spawnedGrunts.length).toBe(remainingSegs);
-
-    randSpy.mockRestore();
+    expect(spawnedGrunts[0]).toMatchObject({
+      health: 2,
+      maxHealth: 2,
+      queueIndex: 0,
+    });
+    expect(snake.getSegmentData().length).toBe(0);
+    expect(snake.segmentRoot.children.length).toBe(0);
   });
 
   it('does not fire onHeadDeath twice on double die()', () => {
     const calls: number[] = [];
     Snake.onHeadDeath = (segs) => calls.push(segs.length);
 
-    const randSpy = vi.spyOn(Math, 'random').mockReturnValue(0.9);
-    // Kill head
-    for (let i = 0; i < snake.health; i++) snake.takeDamage(1);
+    snake.takeDamage(snake.health);
     snake.die(); // second call should be ignored (alive=false guard)
 
     expect(calls.length).toBe(1);
-    randSpy.mockRestore();
+  });
+
+  it('syncs queued segment records from MP network state', () => {
+    snake.setQueuedSegmentsFromNetwork([
+      { type: 'grunt', surfaceU: 0.7, surfaceV: 0.6, health: 4, maxHealth: 6, queueIndex: 1 },
+      { type: 'grunt', surfaceU: 0.8, surfaceV: 0.6, health: 3, maxHealth: 6, queueIndex: 0 },
+      { type: 'grunt', surfaceU: 0.9, surfaceV: 0.6, health: 2, maxHealth: 6, queueIndex: 2 },
+    ]);
+
+    const data = snake.getSegmentData();
+    expect(data).toHaveLength(3);
+    expect(data.map((s) => s.queueIndex)).toEqual([0, 1, 2]);
+    expect(data.map((s) => s.health)).toEqual([3, 4, 2]);
+    expect(snake.segmentRoot.children.length).toBe(3);
   });
 
   // ──────────────────── movement ────────────────────
@@ -210,5 +217,17 @@ describe('Snake enemy', () => {
     snake.destroy();
     expect(snake.getSegmentData().length).toBe(0);
     expect(snake.segmentRoot.children.length).toBe(0);
+  });
+});
+
+describe('snake queue length scaling', () => {
+  it('scales early, mid, and late queues while honoring max segment and enemy budgets', () => {
+    expect(computeSnakeInitialQueueLength(0, 50, 50)).toBe(2);
+    expect(computeSnakeInitialQueueLength(1.9, 50, 50)).toBe(3);
+    expect(computeSnakeInitialQueueLength(3, 50, 50)).toBe(6);
+    expect(computeSnakeInitialQueueLength(5.9, 50, 50)).toBe(9);
+    expect(computeSnakeInitialQueueLength(8, 50, 50)).toBe(14);
+    expect(computeSnakeInitialQueueLength(20, 50, 7)).toBe(7);
+    expect(computeSnakeInitialQueueLength(20, 6, 50)).toBe(6);
   });
 });

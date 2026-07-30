@@ -16,7 +16,7 @@ import { Rocket } from './Rocket';
 import { Neutron } from './Neutron';
 import { Weaver } from './Weaver';
 import { Spinner } from './Spinner';
-import { Snake } from './Snake';
+import { Snake, type SnakeQueuedSegment } from './Snake';
 import { Repulsor } from './Repulsor';
 import { GravityWell } from './GravityWell';
 import { Gate } from './Gate';
@@ -107,6 +107,26 @@ interface SpawnWarning {
 }
 
 const SPAWN_WARNING_DURATION = 0.8; // seconds before enemy materializes
+
+export function computeSnakeInitialQueueLength(
+  continuousDifficultyLevel: number | undefined,
+  maxSegments: number,
+  remainingEnemyBudget: number,
+): number {
+  const difficulty = Math.max(0, continuousDifficultyLevel ?? 0);
+  let target: number;
+
+  if (difficulty < 2) {
+    target = 2 + Math.floor(difficulty);
+  } else if (difficulty < 6) {
+    target = 5 + Math.floor((difficulty - 2) * 1.25);
+  } else {
+    target = 10 + Math.floor((difficulty - 6) * 2);
+  }
+
+  const cap = Math.max(0, Math.min(maxSegments, remainingEnemyBudget));
+  return Math.max(0, Math.min(target, cap));
+}
 
 export class EnemySpawner {
   private scene: THREE.Scene;
@@ -527,10 +547,12 @@ export class EnemySpawner {
         enemy = new Spinner(u, v);
         break;
       case 'snake': {
-        // Scale initial segments with difficulty: 2 at start, up to 10 at high difficulty
-        const snakeInitialSegs = continuousDifficultyLevel !== undefined
-          ? Math.min(10, 2 + Math.floor(continuousDifficultyLevel * 1.5))
-          : 2;
+        const remainingBudget = Math.max(0, this.maxActiveEnemies - activeCount - 1);
+        const snakeInitialSegs = computeSnakeInitialQueueLength(
+          continuousDifficultyLevel,
+          maxSegments ?? 14,
+          remainingBudget,
+        );
         enemy = new Snake(u, v, maxSegments, snakeInitialSegs);
         break;
       }
@@ -825,6 +847,25 @@ export class EnemySpawner {
 
   getFractalSnakes(): FractalSnake[] {
     return this.fractalSnakes;
+  }
+
+  releaseSnakeSegments(segments: SnakeQueuedSegment[]): BaseEnemy[] {
+    const released: BaseEnemy[] = [];
+    for (const segment of segments) {
+      if (segment.health <= 0) continue;
+
+      const activeCount = this.getActiveCount();
+      if (activeCount >= this.maxActiveEnemies) break;
+
+      const enemy = this.spawn(segment.type, segment.surfaceU, segment.surfaceV, 0, true);
+      if (!enemy.active) continue;
+
+      const releasedHealth = Math.max(1, Math.ceil(segment.health * 0.5));
+      enemy.health = releasedHealth;
+      enemy.maxHealth = Math.max(enemy.maxHealth, releasedHealth);
+      released.push(enemy);
+    }
+    return released;
   }
 
   update(dt: number, playerU: number, playerV: number): void {

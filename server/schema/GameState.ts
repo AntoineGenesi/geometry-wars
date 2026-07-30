@@ -207,7 +207,11 @@ export class EnemyState extends Schema {
   declare surfaceU: number;
   declare surfaceV: number;
   declare health: number;
+  declare maxHealth: number;
   declare alive: boolean;
+  declare queued: boolean;
+  declare parentId: string;
+  declare queueIndex: number;
 
   constructor() {
     super();
@@ -216,7 +220,11 @@ export class EnemyState extends Schema {
     this.surfaceU = 0.5;
     this.surfaceV = 0.5;
     this.health = 1;
+    this.maxHealth = 1;
     this.alive = true;
+    this.queued = false;
+    this.parentId = '';
+    this.queueIndex = -1;
   }
 }
 
@@ -226,7 +234,11 @@ defineTypes(EnemyState, {
   surfaceU: 'number',
   surfaceV: 'number',
   health: 'number',
+  maxHealth: 'number',
   alive: 'boolean',
+  queued: 'boolean',
+  parentId: 'string',
+  queueIndex: 'int16',
 });
 
 /**
