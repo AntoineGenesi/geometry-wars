@@ -22,6 +22,7 @@ const SURFACE = getArg('surface') || 'cube-tunnel';
 const MODE = getArg('mode') || 'pvpve';
 const MAX_SECONDS = Number(getArg('duration') || 95);
 const RENDERER = getArg('renderer') || 'webgl';
+const SURFACE_OPAQUE = getArg('surface-opaque') === 'true' || getArg('opaque') === 'true';
 const CONNECT_DEBUG_PORT = Number(getArg('connect-debug-port') || 0);
 const CONNECT_DEBUG_HOST = getArg('connect-debug-host') || '127.0.0.1';
 const DEV_BIND_HOST = getArg('dev-bind-host') || '127.0.0.1';
@@ -319,6 +320,21 @@ async function main() {
   const logs = [];
   try {
     page = await browser.newPage();
+    await page.evaluateOnNewDocument((surfaceOpaque) => {
+      localStorage.setItem('gw3d-graphics-settings', JSON.stringify({
+        qualityPreset: 'custom',
+        bloomEnabled: true,
+        bloomStrength: 1,
+        particleCount: 2000,
+        trailEffects: true,
+        maxEnemies: 500,
+        resolutionScale: 1,
+        surfaceOpaque,
+        surfaceOpacity: 0.05,
+        surfaceColor: 0x141440,
+        enable90DegreeHide: false,
+      }));
+    }, SURFACE_OPAQUE);
     await page.setViewport({ width: 800, height: 600 });
     page.on('pageerror', (err) => errors.push(err.message));
     page.on('console', (msg) => logs.push(`[${msg.type()}] ${msg.text()}`));
@@ -377,11 +393,31 @@ async function main() {
       checkpoints.push(await collectBodyCheckpoint(page, 'final'));
     }
 
+    const allSamples = checkpoints.flatMap((checkpoint) => checkpoint.metrics?.samples ?? []);
+    const hiddenSamples = allSamples.filter((sample) => (sample.opacity ?? 1) <= 0 || (sample.colorBrightness ?? 1) <= 0.02);
+    const visibleBodySamples = allSamples.filter((sample) => sample.visible);
+    const dimReadableSamples = allSamples.filter((sample) =>
+      (sample.opacity ?? 0) > 0
+        && (sample.colorBrightness ?? 1) > 0.02
+        && (sample.colorBrightness ?? 1) < 0.35
+        && sample.visible
+    );
+    const proofPassed = SURFACE_OPAQUE
+      ? hiddenSamples.length > 0
+      : visibleBodySamples.length > 0;
+    if (!proofPassed) {
+      errors.push(SURFACE_OPAQUE
+        ? 'opaque mode did not produce any intentionally hidden enemy render samples'
+        : 'readable mode did not produce any body-visible enemy samples');
+    }
+
     const report = {
       kind: 'mp-late-enemy-body-probe',
       runId,
       surface: SURFACE,
       mode: MODE,
+      surfaceOpaque: SURFACE_OPAQUE,
+      visibilityMode: SURFACE_OPAQUE ? 'opaque-hidden' : 'readable-dim',
       url,
       maxSeconds: MAX_SECONDS,
       serverHealthHost: SERVER_HEALTH_HOST,
@@ -399,6 +435,13 @@ async function main() {
         : launchedBrowser,
       startedByButton: clicked,
       checkpoints,
+      sampleSummary: {
+        totalSamples: allSamples.length,
+        visibleBodySamples: visibleBodySamples.length,
+        dimReadableSamples: dimReadableSamples.length,
+        hiddenSamples: hiddenSamples.length,
+        proofPassed,
+      },
       errors,
       criticalErrors: errors.filter((e) => !/AudioContext|favicon|404|WebSocket|Failed to load resource/.test(e)),
       logTail: logs.slice(-80),
@@ -417,8 +460,12 @@ async function main() {
         visibleRate: c.metrics?.visibleRate,
         screenshot: c.screenshot,
       })),
+      sampleSummary: report.sampleSummary,
       criticalErrors: report.criticalErrors,
     }, null, 2));
+    if (!report.sampleSummary.proofPassed) {
+      throw new Error(`MP enemy body proof failed; report written to ${reportPath}`);
+    }
   } finally {
     if (connectedExternal) {
       await page?.close?.().catch(() => {});

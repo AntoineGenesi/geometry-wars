@@ -1,6 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
-import { getEntityVisibilityState, getEntityCubeFace, EntityVisibilityState } from './EntityCulling';
+import {
+  ENEMY_OCCLUSION_FAR_DIM_VISIBILITY,
+  ENEMY_OCCLUSION_LARGE_FAR_DIM_VISIBILITY,
+  ENEMY_OCCLUSION_NEAR_DIM_VISIBILITY,
+  EntityVisibilityState,
+  computeEnemyOcclusionVisibility,
+  getEntityCubeFace,
+  getEntityVisibilityState,
+} from './EntityCulling';
 
 describe('getEntityVisibilityState', () => {
   const playerPos = new THREE.Vector3(0, 10, 0); // Player on top of a sphere
@@ -130,5 +138,77 @@ describe('getEntityCubeFace', () => {
     expect(face.x).toBe(1);
     expect(face.y).toBe(0);
     expect(face.z).toBe(0);
+  });
+});
+
+describe('computeEnemyOcclusionVisibility', () => {
+  const playerPos = new THREE.Vector3(0, 10, 0);
+  const playerNormal = new THREE.Vector3(0, 1, 0);
+
+  it('keeps direct enemies fully visible', () => {
+    const result = computeEnemyOcclusionVisibility(
+      playerPos,
+      playerNormal,
+      new THREE.Vector3(0, 14, 0),
+    );
+    expect(result.className).toBe('direct');
+    expect(result.visibility).toBe(1.0);
+    expect(result.occluded).toBe(false);
+  });
+
+  it('keeps nearby occluded enemies readable in default mode', () => {
+    const result = computeEnemyOcclusionVisibility(
+      playerPos,
+      playerNormal,
+      new THREE.Vector3(0, 6, 0),
+    );
+    expect(result.className).toBe('near-occluded');
+    expect(result.visibility).toBeCloseTo(ENEMY_OCCLUSION_NEAR_DIM_VISIBILITY, 5);
+    expect(result.minColorBrightness).toBeCloseTo(result.visibility, 5);
+  });
+
+  it('makes far occluded regular enemies super dim but not hidden', () => {
+    const result = computeEnemyOcclusionVisibility(
+      playerPos,
+      playerNormal,
+      new THREE.Vector3(0, -12, 0),
+    );
+    expect(result.className).toBe('far-occluded');
+    expect(result.visibility).toBeCloseTo(ENEMY_OCCLUSION_FAR_DIM_VISIBILITY, 5);
+    expect(result.visibility).toBeGreaterThan(0);
+  });
+
+  it('preserves stronger far-side presence for large enemies', () => {
+    const result = computeEnemyOcclusionVisibility(
+      playerPos,
+      playerNormal,
+      new THREE.Vector3(0, -12, 0),
+      { enemyRadius: 1.5 },
+    );
+    expect(result.className).toBe('far-occluded');
+    expect(result.visibility).toBeCloseTo(ENEMY_OCCLUSION_LARGE_FAR_DIM_VISIBILITY, 5);
+  });
+
+  it('intentionally hides occluded enemies in opaque-surface mode', () => {
+    const result = computeEnemyOcclusionVisibility(
+      playerPos,
+      playerNormal,
+      new THREE.Vector3(0, -12, 0),
+      { opaqueSurfaces: true },
+    );
+    expect(result.className).toBe('opaque-hidden');
+    expect(result.visibility).toBe(0);
+    expect(result.minColorBrightness).toBe(0);
+  });
+
+  it('treats clear line of sight as direct even when the hemisphere test is behind', () => {
+    const result = computeEnemyOcclusionVisibility(
+      playerPos,
+      playerNormal,
+      new THREE.Vector3(0, -12, 0),
+      { lineOfSightClear: true },
+    );
+    expect(result.className).toBe('direct');
+    expect(result.visibility).toBe(1.0);
   });
 });

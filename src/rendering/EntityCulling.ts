@@ -14,6 +14,32 @@ export const enum EntityVisibilityState {
   DIMMED = 2, // Phase 2 — reserved for face-dimming
 }
 
+export const ENEMY_OCCLUSION_DIRECT_VISIBILITY = 1.0;
+export const ENEMY_OCCLUSION_NEAR_DIM_VISIBILITY = 0.36;
+export const ENEMY_OCCLUSION_FAR_DIM_VISIBILITY = 0.16;
+export const ENEMY_OCCLUSION_LARGE_FAR_DIM_VISIBILITY = 0.24;
+export const ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS = 0.35;
+
+const OCCLUDED_NEAR_WORLD = 5.0;
+const OCCLUDED_FAR_WORLD = 18.0;
+const LARGE_ENEMY_RADIUS = 1.1;
+
+export type EnemyOcclusionClass = 'direct' | 'near-occluded' | 'far-occluded' | 'opaque-hidden';
+
+export interface EnemyOcclusionVisibility {
+  className: EnemyOcclusionClass;
+  visibility: number;
+  minColorBrightness: number;
+  occluded: boolean;
+}
+
+export interface EnemyOcclusionVisibilityOptions {
+  opaqueSurfaces?: boolean;
+  lineOfSightClear?: boolean;
+  enemyRadius?: number;
+  important?: boolean;
+}
+
 /** Pre-allocated direction vector to avoid per-frame GC pressure. */
 const _tempDir = new THREE.Vector3();
 
@@ -56,6 +82,68 @@ export function getEntityVisibilityState(
   // Phase 2: return DIMMED for entities near the 90° boundary on adjacent faces.
   // For now, everything at dot >= 0 is VISIBLE.
   return EntityVisibilityState.VISIBLE;
+}
+
+/**
+ * Shared player-facing enemy occlusion model for SP and MP.
+ *
+ * Direct enemies stay full-bright. Other-side enemies are readable by default:
+ * near occluded enemies remain clear enough to anticipate, far occluded enemies
+ * become subtle, and large/important enemies keep a stronger far-side presence.
+ * In opaque-surface mode, other-side enemies are intentionally hidden.
+ */
+export function computeEnemyOcclusionVisibility(
+  playerPos: THREE.Vector3,
+  playerNormal: THREE.Vector3,
+  enemyPos: THREE.Vector3,
+  options: EnemyOcclusionVisibilityOptions = {},
+): EnemyOcclusionVisibility {
+  _tempDir.subVectors(enemyPos, playerPos);
+  const distSq = _tempDir.lengthSq();
+  if (distSq < 1e-6) {
+    return {
+      className: 'direct',
+      visibility: ENEMY_OCCLUSION_DIRECT_VISIBILITY,
+      minColorBrightness: ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
+      occluded: false,
+    };
+  }
+
+  const dot = _tempDir.dot(playerNormal);
+  if (dot >= 0 || options.lineOfSightClear === true) {
+    return {
+      className: 'direct',
+      visibility: ENEMY_OCCLUSION_DIRECT_VISIBILITY,
+      minColorBrightness: ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
+      occluded: false,
+    };
+  }
+
+  if (options.opaqueSurfaces) {
+    return {
+      className: 'opaque-hidden',
+      visibility: 0,
+      minColorBrightness: 0,
+      occluded: true,
+    };
+  }
+
+  const dist = Math.sqrt(distSq);
+  const t = Math.max(0, Math.min(1, (dist - OCCLUDED_NEAR_WORLD) / (OCCLUDED_FAR_WORLD - OCCLUDED_NEAR_WORLD)));
+  const smoothT = t * t * (3 - 2 * t);
+  const important = options.important === true || (options.enemyRadius ?? 0) >= LARGE_ENEMY_RADIUS;
+  const farVisibility = important
+    ? ENEMY_OCCLUSION_LARGE_FAR_DIM_VISIBILITY
+    : ENEMY_OCCLUSION_FAR_DIM_VISIBILITY;
+  const visibility = ENEMY_OCCLUSION_NEAR_DIM_VISIBILITY
+    - smoothT * (ENEMY_OCCLUSION_NEAR_DIM_VISIBILITY - farVisibility);
+
+  return {
+    className: t >= 1 ? 'far-occluded' : 'near-occluded',
+    visibility,
+    minColorBrightness: visibility,
+    occluded: true,
+  };
 }
 
 /**

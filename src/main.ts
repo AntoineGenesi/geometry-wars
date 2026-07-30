@@ -80,7 +80,12 @@ import { PerformanceTracker } from './core/PerformanceTracker';
 import { DebugOverlay } from './ui/DebugOverlay';
 import { ProfilingOverlay } from './ui/ProfilingOverlay';
 import { ProfilingPersistence } from './core/ProfilingPersistence';
-import { SettingsMenu, loadDebugSettings, loadGraphicsSettings } from './ui/SettingsMenu';
+import {
+  SettingsMenu,
+  getEffectiveSurfaceOpacity,
+  loadDebugSettings,
+  loadGraphicsSettings,
+} from './ui/SettingsMenu';
 import { VisualPlayground } from './ui/VisualPlayground';
 import {
   computeDifficultyLevel,
@@ -639,7 +644,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Apply surface appearance from graphics settings (overrides visual style defaults).
   {
     const gfxSettings = loadGraphicsSettings();
-    surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
+    surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
     surface.setSurfaceColor(gfxSettings.surfaceColor);
   }
 
@@ -1622,7 +1627,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   // Apply surface appearance live when user changes settings in the pause menu
   pauseMenu.onGraphicsChange((gfxSettings) => {
-    surface.setSurfaceOpacity(gfxSettings.surfaceOpacity);
+    surface.setSurfaceOpacity(getEffectiveSurfaceOpacity(gfxSettings));
     surface.setSurfaceColor(gfxSettings.surfaceColor);
   });
 

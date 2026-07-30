@@ -167,7 +167,11 @@ export function loadGraphicsSettings(): GraphicsSettings {
     const raw = localStorage.getItem(GRAPHICS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { ...DEFAULT_GRAPHICS, ...parsed };
+      const loaded = normalizeLoadedGraphicsSettings({ ...DEFAULT_GRAPHICS, ...parsed });
+      if (loaded.surfaceOpaque !== parsed.surfaceOpaque || parsed.enable90DegreeHide === true) {
+        saveGraphicsSettings(loaded);
+      }
+      return loaded;
     }
   } catch {
     // corrupted or unavailable
@@ -177,7 +181,7 @@ export function loadGraphicsSettings(): GraphicsSettings {
 
 export function saveGraphicsSettings(settings: GraphicsSettings): void {
   try {
-    localStorage.setItem(GRAPHICS_STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(GRAPHICS_STORAGE_KEY, JSON.stringify(normalizeSavedGraphicsSettings(settings)));
   } catch {
     // localStorage unavailable
   }
@@ -227,6 +231,29 @@ export function saveDebugSettings(settings: DebugSettings): void {
 
 export function getDefaultGraphics(): GraphicsSettings {
   return { ...DEFAULT_GRAPHICS };
+}
+
+export function getEffectiveSurfaceOpacity(settings: GraphicsSettings): number {
+  return settings.surfaceOpaque ? 1.0 : settings.surfaceOpacity;
+}
+
+export function areOpaqueSurfacesEnabled(settings: GraphicsSettings): boolean {
+  return settings.surfaceOpaque;
+}
+
+function normalizeLoadedGraphicsSettings(settings: GraphicsSettings): GraphicsSettings {
+  return {
+    ...settings,
+    surfaceOpaque: settings.surfaceOpaque || settings.enable90DegreeHide,
+    enable90DegreeHide: false,
+  };
+}
+
+function normalizeSavedGraphicsSettings(settings: GraphicsSettings): GraphicsSettings {
+  return {
+    ...settings,
+    enable90DegreeHide: false,
+  };
 }
 
 export function getDefaultAudio(): AudioSettings {
@@ -1190,12 +1217,8 @@ export class SettingsMenu {
         <div class="toggle ${g.trailEffects ? 'on' : ''}" id="toggle-trails" data-setting="trailEffects"></div>
       </div>
       <div class="setting-row">
-        <span class="setting-label">${t('settings.graphics.surfaceOpacity')}</span>
+        <span class="setting-label">Opaque Surfaces</span>
         <div class="toggle ${g.surfaceOpaque ? 'on' : ''}" id="toggle-surface-opaque" data-setting="surfaceOpaque"></div>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">Hide Far-Side Entities (90°)</span>
-        <div class="toggle ${g.enable90DegreeHide ? 'on' : ''}" id="toggle-90-degree-hide" data-setting="enable90DegreeHide"></div>
       </div>
 
       <div class="section-heading">Grid Lines</div>
@@ -1469,13 +1492,12 @@ export class SettingsMenu {
 
     // Surface opacity toggle
     this.attachToggle('toggle-surface-opaque', (on) => {
-      this.graphicsSettings = { ...this.graphicsSettings, surfaceOpaque: on, qualityPreset: 'custom' };
-      this.saveAndNotifyGraphics();
-    });
-
-    // 90-degree hide toggle
-    this.attachToggle('toggle-90-degree-hide', (on) => {
-      this.graphicsSettings = { ...this.graphicsSettings, enable90DegreeHide: on, qualityPreset: 'custom' };
+      this.graphicsSettings = {
+        ...this.graphicsSettings,
+        surfaceOpaque: on,
+        enable90DegreeHide: false,
+        qualityPreset: 'custom',
+      };
       this.saveAndNotifyGraphics();
     });
 

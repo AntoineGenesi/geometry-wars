@@ -4,7 +4,11 @@ import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { LODLevel, LODGeometryCache } from './LODManager';
 // s44r11-01: shader effects (lava, crystal, etc.) removed — incompatible with MeshBasicMaterial.
 // import { getEnemyShaderStyle, enhanceMaterialWithShaderEffect } from './EnemyShaderEffects';
-import { getEntityVisibilityState, EntityVisibilityState } from './EntityCulling';
+import {
+  ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
+  getEntityVisibilityState,
+  EntityVisibilityState,
+} from './EntityCulling';
 
 /**
  * EnemyInstanceManager - Replaces individual enemy meshes with InstancedMesh
@@ -54,6 +58,10 @@ interface InstanceBatch {
    *  This enables RGB-based dimming that works on BOTH WebGL and WebGPU
    *  (onBeforeCompile-based alpha dimming is WebGL-only). */
   perInstanceColors: Float32Array;
+  /** Per-slot brightness safety floor. Defaults to the historical global floor;
+   * far occluded readable enemies can lower this per slot without weakening
+   * normal/direct enemy safeguards. */
+  perInstanceMinBrightness: Float32Array;
   /** Highest slot index ever allocated (inclusive). Maintained by allocateSlot/unregister.
    *  Used as a cheap O(1) substitute for getMaxUsedIndex() when setting instancedMesh.count. */
   highWaterMark: number;
@@ -79,6 +87,8 @@ interface LODSharedBatch {
   usedCount: number;
   /** Highest slot index ever allocated (inclusive). O(1) substitute for getMaxUsedLODIndex(). */
   highWaterMark: number;
+  /** Per-slot brightness safety floor for shared LOD batches. */
+  minBrightness: Float32Array;
 }
 
 /** Temporary objects reused per-frame to avoid GC pressure. */
@@ -288,6 +298,7 @@ export class EnemyInstanceManager {
     batch.perInstanceColors[ci] = batch.baseColor.r;
     batch.perInstanceColors[ci + 1] = batch.baseColor.g;
     batch.perInstanceColors[ci + 2] = batch.baseColor.b;
+    batch.perInstanceMinBrightness[index] = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS;
 
     // Track the instance index on the enemy for external reference
     (enemy as any)._instanceIndex = index;
@@ -479,30 +490,14 @@ export class EnemyInstanceManager {
             }
             continue;
           } else {
-            // Dim behavior: render at 0.3 opacity so the entity is visible but clearly on the far side
-            // s44r18-20: opacityAttribute stays 1.0 to avoid visibility² darkening (see setInstanceVisibility).
+            // Readable mode: Phase 2 owns final RGB dimming. Do not write a
+            // second 0.3x color here; RenderLoop/network-main apply the shared
+            // distance/importance-aware model once via setInstanceVisibility().
             batch.opacityAttribute.setX(highIndex, 1.0);
-            // RGB dimming for WebGPU compatibility
-            const ci = highIndex * 3;
-            _tempColor.setRGB(
-              batch.perInstanceColors[ci] * 0.3,
-              batch.perInstanceColors[ci + 1] * 0.3,
-              batch.perInstanceColors[ci + 2] * 0.3,
-            );
-            batch.instancedMesh.setColorAt(highIndex, _tempColor);
-            this._colorsDirty = true;
           }
         } else {
-          // Visible entity: restore full opacity and color
+          // Visible entity: keep opacity drawable. Phase 2 restores final color.
           batch.opacityAttribute.setX(highIndex, 1.0);
-          const ci = highIndex * 3;
-          _tempColor.setRGB(
-            batch.perInstanceColors[ci],
-            batch.perInstanceColors[ci + 1],
-            batch.perInstanceColors[ci + 2],
-          );
-          batch.instancedMesh.setColorAt(highIndex, _tempColor);
-          this._colorsDirty = true;
         }
       }
 
@@ -673,7 +668,11 @@ export class EnemyInstanceManager {
    * attribute and applies it to the fragment alpha, producing real
    * alpha transparency per instance.
    */
-  setInstanceVisibility(enemy: BaseEnemy, visibility: number): void {
+  setInstanceVisibility(
+    enemy: BaseEnemy,
+    visibility: number,
+    minColorBrightness = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
+  ): void {
     const typeKey = (enemy as any)._instanceType as string | undefined;
     if (!typeKey) return;
 
@@ -694,6 +693,9 @@ export class EnemyInstanceManager {
     // Fix: opacityAttribute is binary; only instanceColor provides dimming (linear, not squared).
     // At visibility=0.40: output=baseColor×0.40 = 40% brightness — dim but clearly visible.
     batch.opacityAttribute.setX(index, visibility > 0 ? 1.0 : 0.0);
+    batch.perInstanceMinBrightness[index] = visibility > 0
+      ? Math.max(0, Math.min(ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS, minColorBrightness))
+      : 0;
 
     // RGB-based dimming: modulate instanceColor by visibility.
     // This works on BOTH WebGL and WebGPU (onBeforeCompile alpha is WebGL-only).
@@ -714,7 +716,7 @@ export class EnemyInstanceManager {
     // visibility float, but MIN_ICB guarantees the RENDERED pixels are always perceptible.
     if (visibility > 0) {
       const avg = (r + g + b) / 3;
-      const MIN_ICB = 0.35;
+      const MIN_ICB = batch.perInstanceMinBrightness[index];
       if (avg > 0 && avg < MIN_ICB) {
         const scale = MIN_ICB / avg;
         r *= scale;
@@ -747,7 +749,7 @@ export class EnemyInstanceManager {
    * Call AFTER the per-enemy visibility loop and BEFORE flushColors().
    */
   ensureMinimumVisibility(): void {
-    const MIN_ICB = 0.35;
+    const DEFAULT_MIN_ICB = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS;
     const MIN_SCALE = 0.001; // Below this, the instance is effectively invisible
 
     for (const batch of this.batches.values()) {
@@ -767,17 +769,18 @@ export class EnemyInstanceManager {
         // --- Color check (existing) ---
         batch.instancedMesh.getColorAt(index, _tempColor);
         const avg = (_tempColor.r + _tempColor.g + _tempColor.b) / 3;
-        if (avg < MIN_ICB && avg >= 0) {
+        const minIcb = batch.perInstanceMinBrightness[index] ?? DEFAULT_MIN_ICB;
+        if (avg < minIcb && avg >= 0) {
           // Only fix if opacity indicates visible (not intentionally hidden)
           const opacity = batch.opacityAttribute.getX(index);
           if (opacity > 0) {
             if (avg > 0) {
-              const scale = MIN_ICB / avg;
+              const scale = minIcb / avg;
               _tempColor.r *= scale;
               _tempColor.g *= scale;
               _tempColor.b *= scale;
             } else {
-              _tempColor.setRGB(MIN_ICB, MIN_ICB, MIN_ICB);
+              _tempColor.setRGB(minIcb, minIcb, minIcb);
             }
             batch.instancedMesh.setColorAt(index, _tempColor);
             this._colorsDirty = true;
@@ -811,16 +814,17 @@ export class EnemyInstanceManager {
         // --- Color check ---
         lodBatch.instancedMesh.getColorAt(slotIndex, _tempColor);
         const avg = (_tempColor.r + _tempColor.g + _tempColor.b) / 3;
-        if (avg < MIN_ICB && avg >= 0) {
+        const minIcb = lodBatch.minBrightness[slotIndex] ?? DEFAULT_MIN_ICB;
+        if (avg < minIcb && avg >= 0) {
           const opacity = lodBatch.opacityAttribute.getX(slotIndex);
           if (opacity > 0) {
             if (avg > 0) {
-              const scale = MIN_ICB / avg;
+              const scale = minIcb / avg;
               _tempColor.r *= scale;
               _tempColor.g *= scale;
               _tempColor.b *= scale;
             } else {
-              _tempColor.setRGB(MIN_ICB, MIN_ICB, MIN_ICB);
+              _tempColor.setRGB(minIcb, minIcb, minIcb);
             }
             lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
             this._colorsDirty = true;
@@ -1014,6 +1018,7 @@ export class EnemyInstanceManager {
       nextFreeIndex: 0,
       usedCount: 0,
       highWaterMark: -1,
+      minBrightness: new Float32Array(LOD_BATCH_MAX_INSTANCES).fill(ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS),
     };
   }
 
@@ -1172,7 +1177,11 @@ export class EnemyInstanceManager {
    * Set per-instance opacity on LOD batches for a given enemy.
    * Called from main.ts render loop alongside setInstanceVisibility.
    */
-  setLODInstanceVisibility(enemy: BaseEnemy, visibility: number): void {
+  setLODInstanceVisibility(
+    enemy: BaseEnemy,
+    visibility: number,
+    minColorBrightness = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
+  ): void {
     const currentLOD = this.enemyLODPlacement.get(enemy);
     if (currentLOD === undefined) return;
 
@@ -1188,6 +1197,9 @@ export class EnemyInstanceManager {
     // s44r18-20: RGB-only dimming — binary opacityAttribute to avoid visibility² darkening.
     // See setInstanceVisibility for full rationale.
     lodBatch.opacityAttribute.setX(slotIndex, visibility > 0 ? 1.0 : 0.0);
+    lodBatch.minBrightness[slotIndex] = visibility > 0
+      ? Math.max(0, Math.min(ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS, minColorBrightness))
+      : 0;
 
     // RGB-based dimming for LOD batches (WebGPU compatibility).
     // Use the enemy type's base color since LOD batches are shared across types.
@@ -1201,7 +1213,7 @@ export class EnemyInstanceManager {
       // s44r29-01: Same minimum ICB floor as setInstanceVisibility (see comment there).
       if (visibility > 0) {
         const avg = (r + g + b) / 3;
-        const MIN_ICB = 0.35;
+        const MIN_ICB = lodBatch.minBrightness[slotIndex];
         if (avg > 0 && avg < MIN_ICB) {
           const scale = MIN_ICB / avg;
           r *= scale;
@@ -1370,6 +1382,8 @@ export class EnemyInstanceManager {
       perInstanceColors[i * 3 + 1] = baseColor.g;
       perInstanceColors[i * 3 + 2] = baseColor.b;
     }
+    const perInstanceMinBrightness = new Float32Array(this.maxInstances);
+    perInstanceMinBrightness.fill(ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS);
 
     return {
       geometry: mergedGeometry,
@@ -1377,6 +1391,7 @@ export class EnemyInstanceManager {
       instancedMesh,
       opacityAttribute,
       perInstanceColors,
+      perInstanceMinBrightness,
       enemyToIndex: new Map(),
       indexToEnemy: new Array(this.maxInstances).fill(null),
       nextFreeIndex: 0,
