@@ -5745,7 +5745,7 @@ export class GameRoom extends Room<GameState> {
         Math.max(0.001, Math.min(0.999, parent.surfaceV + Math.sin(angle) * spread)),
       );
       child.health = 1;
-      child.maxHealth = Math.max(child.maxHealth, 1);
+      child.maxHealth = 1;
       this.enemyAI.set(child.id, this.createEnemyAI(child.type));
       this.state.enemies.push(child);
       released++;

@@ -894,7 +894,7 @@ export class EnemySpawner {
       const enemy = this.spawn('grunt', childU, childV, 0, true);
       if (!enemy.active) continue;
       enemy.health = 1;
-      enemy.maxHealth = Math.max(enemy.maxHealth, 1);
+      enemy.maxHealth = 1;
       released.push(enemy);
     }
     return released;

@@ -136,4 +136,3 @@ export class PrismLancer extends BaseEnemy {
     return _worldDir;
   }
 }
-

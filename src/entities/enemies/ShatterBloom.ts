@@ -81,4 +81,3 @@ export class ShatterBloom extends BaseEnemy {
     }
   }
 }
-

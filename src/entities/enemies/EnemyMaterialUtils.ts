@@ -6,4 +6,3 @@ export function useBasicEnemyMaterials(root: THREE.Object3D, color: THREE.ColorR
     child.material = new THREE.MeshBasicMaterial({ color });
   });
 }
-

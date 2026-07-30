@@ -60,6 +60,8 @@ describe('GameRoom new geometric enemy roster parity', () => {
     expect(room.state.enemies).toHaveLength(3);
     expect(room.state.enemies.every((enemy: EnemyState) => enemy.type === 'grunt')).toBe(true);
     expect(room.state.enemies.every((enemy: EnemyState) => enemy.alive && !enemy.queued)).toBe(true);
+    expect(room.state.enemies.every((enemy: EnemyState) => enemy.health === 1)).toBe(true);
+    expect(room.state.enemies.every((enemy: EnemyState) => enemy.maxHealth === 1)).toBe(true);
     expect(room.state.enemies.every((enemy: EnemyState) => room.enemyAI.has(enemy.id))).toBe(true);
     expect(room.enemyAI.has(bloom.id)).toBe(false);
   });
@@ -87,4 +89,3 @@ describe('GameRoom new geometric enemy roster parity', () => {
     expect(Math.abs(sentinel.surfaceU - sentinelStart.u) + Math.abs(sentinel.surfaceV - sentinelStart.v)).toBeGreaterThan(0);
   });
 });
-

@@ -7,7 +7,7 @@ import { InputManager } from './input/InputManager';
 import { Player, BOOST_SPEED_MULTIPLIER } from './entities/Player';
 import { BulletPool } from './entities/Bullet';
 import { EnemySpawner, EnemyType } from './entities/enemies/EnemySpawner';
-import { BaseEnemy } from './entities/enemies/BaseEnemy';
+import { BaseEnemy, getEnemyTypeKey } from './entities/enemies/BaseEnemy';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
 import { SurfaceShockwave } from './effects/SurfaceShockwave';
@@ -1260,7 +1260,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         scorePopups.spawnDamage(enemy.position, damage * scorePower, dmgColor);
       }
       if (!enemy.alive) {
-        const enemyType = enemy.constructor.name.toLowerCase();
+        const enemyType = getEnemyTypeKey(enemy);
         const color = ENEMY_COLORS[enemyType] ?? ENEMY_COLOR_FALLBACK;
 
         // Use lightweight death effect for AoE weapon kills to avoid screen-blocking
@@ -2239,7 +2239,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     const enemies = enemySpawner.getEnemies();
     for (const enemy of enemies) {
       if (enemy.active) {
-        const enemyType = enemy.constructor.name.toLowerCase();
+        const enemyType = getEnemyTypeKey(enemy);
         const color = ENEMY_COLORS[enemyType] ?? ENEMY_COLOR_FALLBACK;
         particles.enemyDeath(enemy.position, color);
         killLog.addKill(enemyType, color.getHex());

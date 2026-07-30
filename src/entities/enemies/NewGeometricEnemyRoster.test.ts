@@ -5,6 +5,7 @@ import { PrismLancer } from './PrismLancer';
 import { SentinelOrb } from './SentinelOrb';
 import { ShatterBloom } from './ShatterBloom';
 import { generateScaledEndlessWave } from '../../core/DifficultyScaling';
+import { getEnemyTypeKey } from './BaseEnemy';
 
 const transform = {
   position: new THREE.Vector3(0, 0, 0),
@@ -88,6 +89,14 @@ describe('new geometric enemy roster', () => {
     expect(callback).toHaveBeenCalledWith(0.45, 0.55, 3);
   });
 
+  it('normalizes SP kill keys for new roster enemies to underscore type names', () => {
+    const prism = new PrismLancer(0.45, 0.55);
+
+    expect(getEnemyTypeKey(prism)).toBe('prism_lancer');
+
+    prism.destroy();
+  });
+
   it('EnemySpawner releases shatter-bloom shards as real grunt enemies', () => {
     const scene = new THREE.Scene();
     const spawner = new EnemySpawner(scene, getTransform);
@@ -97,6 +106,7 @@ describe('new geometric enemy roster', () => {
     expect(released).toHaveLength(3);
     expect(released.every((enemy) => enemy.baseTypeName === 'grunt')).toBe(true);
     expect(released.every((enemy) => enemy.active && enemy.health === 1)).toBe(true);
+    expect(released.every((enemy) => enemy.maxHealth === 1)).toBe(true);
     spawner.clear();
   });
 
@@ -113,4 +123,3 @@ describe('new geometric enemy roster', () => {
     expect(seen.has('shatter_bloom')).toBe(true);
   });
 });
-
