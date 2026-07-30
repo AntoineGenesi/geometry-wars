@@ -6106,6 +6106,13 @@ async function main() {
       },
       onPvpKill: (data) => {
         netMainLog(`[PvP] ${data.killerName} killed ${data.victimName} (streak: ${data.streakCount})`);
+        mpPerfLogger.recordPvpKill({
+          killerId: data.killerId,
+          killerName: data.killerName,
+          victimId: data.victimId,
+          victimName: data.victimName,
+          streakCount: data.streakCount,
+        });
         killStreakAnnouncer.announce(data.killerName, data.streakCount);
         // Add to kill feed with correct local player flags (s44r2-07)
         killFeed.addKill({

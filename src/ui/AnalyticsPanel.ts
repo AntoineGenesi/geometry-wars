@@ -11,6 +11,7 @@
 
 import type { PerformanceLogger, GameEvent } from '../core/PerformanceLogger';
 import { ScoreGraphPanel, injectScoreGraphStyles } from './ScoreGraphPanel';
+import { createEnemyModelPreviewElement } from './EnemyModelPreview';
 
 // Weapon display names (matches WeaponType enum values)
 const WEAPON_DISPLAY: Record<string, string> = {
@@ -268,6 +269,78 @@ export class AnalyticsPanel {
         font-size: 13px;
         color: #88aacc;
         text-align: left;
+      }
+      #analytics-panel .ap-kills-section {
+        margin-bottom: 22px;
+      }
+      #analytics-panel .ap-kills-list {
+        max-height: min(430px, 48vh);
+        overflow-y: auto;
+        padding-right: 4px;
+      }
+      #analytics-panel .ap-kill-row {
+        display: grid;
+        grid-template-columns: 48px minmax(96px, 150px) minmax(96px, 1fr) 76px;
+        align-items: center;
+        min-height: 54px;
+        gap: 10px;
+        margin-bottom: 7px;
+      }
+      #analytics-panel .ap-enemy-preview {
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+      #analytics-panel .ap-enemy-preview-img {
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+        filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.45));
+        animation: ap-enemy-float 2.6s ease-in-out infinite;
+      }
+      #analytics-panel .ap-enemy-preview-fallback {
+        width: 26px;
+        height: 26px;
+        border: 2px solid;
+        transform: rotate(45deg);
+      }
+      @keyframes ap-enemy-float {
+        0%, 100% { transform: translateY(1px); }
+        50% { transform: translateY(-3px); }
+      }
+      #analytics-panel .ap-kill-name {
+        min-width: 0;
+        color: #aacccc;
+        font-size: 13px;
+        font-weight: bold;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #analytics-panel .ap-kill-value {
+        color: #88aacc;
+        font-size: 13px;
+        text-align: right;
+        white-space: nowrap;
+      }
+      @media (max-width: 520px) {
+        #analytics-panel .ap-kill-row {
+          grid-template-columns: 38px minmax(74px, 112px) minmax(72px, 1fr) 62px;
+          min-height: 46px;
+          gap: 6px;
+        }
+        #analytics-panel .ap-enemy-preview,
+        #analytics-panel .ap-enemy-preview-img {
+          width: 34px;
+          height: 34px;
+        }
+        #analytics-panel .ap-kill-name,
+        #analytics-panel .ap-kill-value {
+          font-size: 11px;
+        }
       }
       #analytics-panel .ap-empty {
         color: #334455;
@@ -565,18 +638,53 @@ export class AnalyticsPanel {
     `;
     content.appendChild(summary);
 
-    // Per-type breakdown with bars
+    // Per-type breakdown with model previews and bars
     const maxKills = killsByType[0].kills;
-    content.appendChild(this.buildSection(
-      'KILLS BY ENEMY TYPE',
-      killsByType,
-      ({ enemyType, kills }) => ({
-        label: ENEMY_DISPLAY[enemyType] ?? enemyType,
-        value: `${kills} (${totalKills > 0 ? ((kills / totalKills) * 100).toFixed(1) : '0'}%)`,
-        pct: (kills / maxKills) * 100,
-        color: ENEMY_TYPE_COLORS[enemyType] ?? '#666688',
-      }),
-    ));
+    const section = document.createElement('div');
+    section.className = 'ap-kills-section';
+
+    const sectionTitle = document.createElement('div');
+    sectionTitle.className = 'ap-section-title';
+    sectionTitle.textContent = 'KILLS BY ENEMY TYPE';
+    section.appendChild(sectionTitle);
+
+    const list = document.createElement('div');
+    list.className = 'ap-kills-list';
+
+    for (const { enemyType, kills } of killsByType) {
+      const label = ENEMY_DISPLAY[enemyType] ?? enemyType;
+      const color = ENEMY_TYPE_COLORS[enemyType] ?? '#666688';
+      const pct = totalKills > 0 ? (kills / totalKills) * 100 : 0;
+      const row = document.createElement('div');
+      row.className = 'ap-kill-row';
+
+      const name = document.createElement('div');
+      name.className = 'ap-kill-name';
+      name.textContent = label;
+      name.title = label;
+
+      const track = document.createElement('div');
+      track.className = 'ap-bar-track';
+      const fill = document.createElement('div');
+      fill.className = 'ap-bar-fill';
+      fill.style.width = `${Math.min(100, (kills / maxKills) * 100).toFixed(1)}%`;
+      fill.style.background = color;
+      fill.style.opacity = '0.75';
+      track.appendChild(fill);
+
+      const value = document.createElement('div');
+      value.className = 'ap-kill-value';
+      value.textContent = `${kills} (${pct.toFixed(1)}%)`;
+
+      row.appendChild(createEnemyModelPreviewElement(enemyType, label, color));
+      row.appendChild(name);
+      row.appendChild(track);
+      row.appendChild(value);
+      list.appendChild(row);
+    }
+
+    section.appendChild(list);
+    content.appendChild(section);
 
     // Smart summary text
     if (killsByType.length >= 2) {

@@ -144,6 +144,70 @@ function isNetworkMode(): boolean {
   return params.get('mode') === 'network';
 }
 
+function isEndgameReviewDebugMode(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('debugEndgameReview') === '1';
+}
+
+function createEndgameReviewDebugLogger(): PerformanceLogger {
+  const logger = new PerformanceLogger('debug-endgame-review');
+  const enemyTotals: Array<[EnemyType, number]> = [
+    ['wanderer', 3],
+    ['prism_lancer', 2],
+    ['shatter_bloom', 2],
+    ['sentinel_orb', 1],
+    ['grunt', 1],
+    ['rocket', 1],
+  ];
+
+  const enemyCountsAt = (entries: Array<[EnemyType, number]>) => new Map<EnemyType, number>(entries);
+  const samples = [
+    { time: 0.0, score: 0, kills: 0, enemyTypes: [] as Array<[EnemyType, number]> },
+    { time: 1.0, score: 450, kills: 3, enemyTypes: [['wanderer', 2], ['prism_lancer', 1]] as Array<[EnemyType, number]> },
+    { time: 2.0, score: 980, kills: 5, enemyTypes: [['wanderer', 3], ['prism_lancer', 1], ['sentinel_orb', 1]] as Array<[EnemyType, number]> },
+    { time: 3.0, score: 1850, kills: 7, enemyTypes: [['wanderer', 2], ['prism_lancer', 2], ['sentinel_orb', 1], ['shatter_bloom', 2]] as Array<[EnemyType, number]> },
+    { time: 4.0, score: 2600, kills: 7, enemyTypes: [['wanderer', 2], ['prism_lancer', 2], ['sentinel_orb', 1], ['shatter_bloom', 2]] as Array<[EnemyType, number]> },
+    { time: 5.0, score: 3920, kills: 10, enemyTypes: enemyTotals },
+  ];
+
+  logger.recordEventAtElapsedForReview(0.2, 'wave_start', 'Wave 1', 1);
+  logger.recordEventAtElapsedForReview(0.4, 'kill', 'wanderer');
+  logger.recordEventAtElapsedForReview(0.8, 'kill', 'prism_lancer');
+  logger.recordEventAtElapsedForReview(1.2, 'kill', 'sentinel_orb');
+  logger.recordEventAtElapsedForReview(1.6, 'pvp_kill', 'Host defeated Join', 2, {
+    killerId: 'host',
+    killerName: 'Host',
+    victimId: 'join',
+    victimName: 'Join',
+    streakCount: 2,
+  });
+  logger.recordEventAtElapsedForReview(2.2, 'kill', 'shatter_bloom');
+  logger.recordEventAtElapsedForReview(2.5, 'kill', 'wanderer');
+  logger.recordEventAtElapsedForReview(2.8, 'kill', 'prism_lancer');
+  logger.recordEventAtElapsedForReview(3.0, 'kill', 'shatter_bloom');
+  logger.recordEventAtElapsedForReview(3.4, 'wave_start', 'Wave 2', 2);
+  logger.recordEventAtElapsedForReview(4.1, 'kill', 'grunt');
+  logger.recordEventAtElapsedForReview(4.4, 'kill', 'rocket');
+  logger.recordEventAtElapsedForReview(4.7, 'kill', 'wanderer');
+
+  for (const sample of samples) {
+    logger.recordReviewSampleAtElapsed(sample.time, {
+      fps: 60,
+      enemyCount: Math.max(0, 18 - sample.time * 2),
+      bulletCount: 12 + sample.kills,
+      score: sample.score,
+      kills: sample.kills,
+      deaths: 0,
+      activeWeapon: sample.time < 3 ? 'Standard' : 'laser_beam',
+      activeBuffs: sample.time >= 3 ? 'hot_hands:2' : '',
+      activeEffects: 2,
+      enemyTypes: enemyCountsAt(sample.enemyTypes),
+    });
+  }
+
+  return logger;
+}
+
 // ---------------------------------------------------------------------------
 // UI helpers (now in UIHelpers module)
 // ---------------------------------------------------------------------------
@@ -1689,6 +1753,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // -- Game over screen --
   const gameOverScreen = new GameOverScreen();
   const analyticsPanel = new AnalyticsPanel();
+  if (isEndgameReviewDebugMode()) {
+    analyticsPanel.show(createEndgameReviewDebugLogger());
+    (window as Window & { __endgameReviewDebugReady?: boolean }).__endgameReviewDebugReady = true;
+  }
   gameOverScreen.onContinue(() => {
     // Show weapon analytics before navigating away
     analyticsPanel.show(perfLogger);
