@@ -62,11 +62,13 @@ export default defineConfig({
     proxy: {
       // Route Colyseus WebSocket (and matchmake HTTP) through the Vite dev server.
       // LAN clients connect to ws://host:3000/ws (same port as the web page),
-      // and Vite proxies it to localhost:2567 (Colyseus) from inside WSL2 / Windows.
+      // and Vite proxies it to 127.0.0.1:2567 (Colyseus) from inside WSL2 / Windows.
+      // Use IPv4 loopback explicitly: Windows Node may resolve localhost to ::1
+      // while the Colyseus server is bound on IPv4.
       // This eliminates the need for a separate portproxy rule for port 2567 —
       // only port 3000 needs to be accessible from the LAN.
       '/ws': {
-        target: 'http://localhost:2567',
+        target: 'http://127.0.0.1:2567',
         ws: true,
         rewrite: (path: string) => path.replace(/^\/ws/, '') || '/',
       },

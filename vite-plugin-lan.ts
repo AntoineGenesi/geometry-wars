@@ -7,6 +7,8 @@ import http from 'http';
 import path from 'path';
 
 const SERVER_PORT = 2567;
+const SERVER_LOOPBACK_HOST = '127.0.0.1';
+const SERVER_HTTP_BASE = `http://${SERVER_LOOPBACK_HOST}:${SERVER_PORT}`;
 
 /** Check if running inside WSL2 */
 function detectWSL2(): boolean {
@@ -132,7 +134,7 @@ export default function lanPlugin(): Plugin {
 
   async function checkServerHealth(): Promise<boolean> {
     try {
-      await fetchWithTimeout(`http://localhost:${SERVER_PORT}/health`, 500);
+      await fetchWithTimeout(`${SERVER_HTTP_BASE}/health`, 500);
       return true;
     } catch {
       return false;
@@ -147,8 +149,8 @@ export default function lanPlugin(): Plugin {
   async function checkServerDeep(): Promise<boolean> {
     try {
       // Check both health AND rooms endpoint (rooms requires Colyseus matchMaker)
-      await fetchWithTimeout(`http://localhost:${SERVER_PORT}/health`, 500);
-      const roomsData = await fetchWithTimeout(`http://localhost:${SERVER_PORT}/api/rooms`, 1000);
+      await fetchWithTimeout(`${SERVER_HTTP_BASE}/health`, 500);
+      const roomsData = await fetchWithTimeout(`${SERVER_HTTP_BASE}/api/rooms`, 1000);
       const parsed = JSON.parse(roomsData);
       // If we can parse rooms, the server's matchMaker is functional
       return Array.isArray(parsed.rooms) || parsed.note !== undefined;
@@ -304,7 +306,7 @@ export default function lanPlugin(): Plugin {
     if (!force) {
       try {
         const protectionData = await fetchWithTimeout(
-          `http://localhost:${SERVER_PORT}/api/stop-protection`,
+          `${SERVER_HTTP_BASE}/api/stop-protection`,
           1500
         );
         const protection = JSON.parse(protectionData) as { protected: boolean; reason?: string };
@@ -364,7 +366,7 @@ export default function lanPlugin(): Plugin {
     const localServerAlive = await checkServerHealth();
     if (localServerAlive) {
       serverReady = true; // Mark as ready so stop button works
-      const selfRooms = await fetchRooms('localhost', SERVER_PORT);
+      const selfRooms = await fetchRooms(SERVER_LOOPBACK_HOST, SERVER_PORT);
       // In WSL2: use Windows LAN IP (192.168.x.x) so other devices can connect.
       // WSL2 internal IPs (172.28.x.x) are unreachable from laptop/phone.
       // On Windows/non-WSL2: prefer 192.168.x.x, then any non-172.x, then first available.
@@ -482,7 +484,7 @@ export default function lanPlugin(): Plugin {
 
         if (route === 'stop-protection' && req.method === 'GET') {
           // Proxy to Colyseus /api/stop-protection (s44r22-08)
-          fetchWithTimeout(`http://localhost:${SERVER_PORT}/api/stop-protection`, 1500)
+          fetchWithTimeout(`${SERVER_HTTP_BASE}/api/stop-protection`, 1500)
             .then((data) => sendJson(res, JSON.parse(data)))
             .catch(() => sendJson(res, { protected: false })); // fail open
           return;

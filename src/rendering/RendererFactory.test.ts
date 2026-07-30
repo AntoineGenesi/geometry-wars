@@ -164,6 +164,28 @@ describe('RendererFactory', () => {
 
       vi.unstubAllGlobals();
     });
+
+    it('defaults multiplayer network mode to webgl2 when WebGPU is available', () => {
+      const mockLocation = { search: '?mode=network&surface=sphere-tunnel' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+
+      const caps = mockCapabilities({ webgpu: true });
+      const result = resolveRendererPreference(caps);
+      expect(result).toBe('webgl2');
+
+      vi.unstubAllGlobals();
+    });
+
+    it('allows multiplayer network mode to opt into WebGPU explicitly', () => {
+      const mockLocation = { search: '?mode=network&surface=sphere-tunnel&renderer=webgpu' } as Location;
+      vi.stubGlobal('window', { location: mockLocation });
+
+      const caps = mockCapabilities({ webgpu: true });
+      const result = resolveRendererPreference(caps);
+      expect(result).toBe('webgpu');
+
+      vi.unstubAllGlobals();
+    });
   });
 
   // ------------------------------------------------------------------

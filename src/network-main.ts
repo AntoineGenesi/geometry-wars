@@ -191,7 +191,8 @@ interface GameDebugAPI {
   getLocalPlayerId: () => string;
   getSurfaceType: () => string;
   getEnemyInstanceDebug: () => Record<string, unknown>;
-  setVisualProofIsolation: (enabled: boolean, includeSurface?: boolean) => Record<string, unknown>;
+  getEnemyRenderSamples: () => Record<string, unknown>[];
+  setVisualProofIsolation: (enabled: boolean, includeSurface?: boolean, includeAuxiliary?: boolean) => Record<string, unknown>;
   isGameStarted: () => boolean;
   getWaveText: () => string;
 }
@@ -799,6 +800,7 @@ async function main() {
     remotePlayerTargetWorldPos.clear();
     _localServerFrameValid = false;
     _localPlayerWorldTarget.valid = false;
+    clearLocalRenderTarget();
     _localPlayerQuatInitialized = false; // s44f-06: reset smoothed orientation on surface change
     _predictedPlayerVisualValid = false; // s44h-08: reset predicted position on surface change
     bulletTargetUV.clear();
@@ -941,6 +943,7 @@ async function main() {
     // Reset camera frame so the sign-flip continuity check doesn't fire on the
     // first frame and invert controls (see CameraController.resetFrameForNewSurface).
     cameraController.resetFrameForNewSurface();
+    clearLocalRenderTarget();
   }
 
   // -- Shared visual systems (same as co-op) --
@@ -1340,6 +1343,157 @@ async function main() {
     tx: 1, ty: 0, tz: 0,
     valid: false,
   };
+  const LOCAL_PLAYER_RENDER_OFFSET = 0.15;
+  const LOCAL_RENDER_EXTRAPOLATE_MS = 80;
+  const LOCAL_RENDER_STALE_FADE_MS = 120;
+  const _localRenderPrevServerPos = new THREE.Vector3();
+  const _localRenderLatestServerPos = new THREE.Vector3();
+  const _localRenderVelocity = new THREE.Vector3();
+  const _localRenderFrameTarget = new THREE.Vector3();
+  const _localRenderPrevTarget = new THREE.Vector3();
+  const _localRenderPrevCameraPos = new THREE.Vector3();
+  const _localRenderTelemetryTarget = new THREE.Vector3();
+  let _localRenderPrevServerTimeMs = 0;
+  let _localRenderLatestServerTimeMs = 0;
+  let _localRenderValid = false;
+  let _localRenderPrevSampleValid = false;
+  let _localRenderPrevTargetValid = false;
+  let _localRenderPrevCameraValid = false;
+  let _localRenderSampleCount = 0;
+  let _localRenderResetCount = 0;
+  let _localRenderSnapCount = 0;
+  let _localRenderServerSampleDelta = 0;
+  let _localRenderServerSampleIntervalMs = 0;
+  let _localRenderLastSampleAgeMs = -1;
+  let _localRenderLastExtrapolatedMs = 0;
+  let _localRenderLastStaleScale = 1;
+  let _localRenderLastTargetDelta = 0;
+  let _localRenderLastCameraDelta = 0;
+  let _localRenderLastDistanceToPlayer = -1;
+  let _localRenderLastTargetToPlayer = -1;
+
+  function getLocalServerRenderPosition(out: THREE.Vector3): boolean {
+    if (!_localPlayerWorldTarget.valid) return false;
+    const tgt = _localPlayerWorldTarget;
+    out.set(
+      tgt.x + tgt.nx * LOCAL_PLAYER_RENDER_OFFSET,
+      tgt.y + tgt.ny * LOCAL_PLAYER_RENDER_OFFSET,
+      tgt.z + tgt.nz * LOCAL_PLAYER_RENDER_OFFSET,
+    );
+    return true;
+  }
+
+  function resetLocalRenderTargetTo(pos: THREE.Vector3, nowMs: number, countReset = true): void {
+    _localRenderPrevServerPos.copy(pos);
+    _localRenderLatestServerPos.copy(pos);
+    _localRenderVelocity.set(0, 0, 0);
+    _localRenderPrevServerTimeMs = nowMs;
+    _localRenderLatestServerTimeMs = nowMs;
+    _localRenderValid = true;
+    _localRenderPrevSampleValid = true;
+    _localRenderServerSampleDelta = 0;
+    _localRenderServerSampleIntervalMs = 0;
+    if (countReset) _localRenderResetCount++;
+  }
+
+  function resetLocalRenderTargetToServer(nowMs = performance.now(), countReset = true): boolean {
+    if (!getLocalServerRenderPosition(_localRenderFrameTarget)) return false;
+    resetLocalRenderTargetTo(_localRenderFrameTarget, nowMs, countReset);
+    return true;
+  }
+
+  function clearLocalRenderTarget(): void {
+    _localRenderValid = false;
+    _localRenderPrevSampleValid = false;
+    _localRenderPrevTargetValid = false;
+    _localRenderPrevCameraValid = false;
+    _localRenderVelocity.set(0, 0, 0);
+    _localRenderLastSampleAgeMs = -1;
+    _localRenderLastExtrapolatedMs = 0;
+    _localRenderLastStaleScale = 1;
+    _localRenderLastTargetDelta = 0;
+    _localRenderLastCameraDelta = 0;
+    _localRenderLastDistanceToPlayer = -1;
+    _localRenderLastTargetToPlayer = -1;
+  }
+
+  function recordLocalRenderTargetSample(nowMs = performance.now()): void {
+    if (!getLocalServerRenderPosition(_localRenderFrameTarget)) return;
+    if (!_localRenderValid) {
+      resetLocalRenderTargetTo(_localRenderFrameTarget, nowMs, false);
+      _localRenderSampleCount++;
+      return;
+    }
+
+    _localRenderPrevServerPos.copy(_localRenderLatestServerPos);
+    _localRenderPrevServerTimeMs = _localRenderLatestServerTimeMs;
+    _localRenderLatestServerPos.copy(_localRenderFrameTarget);
+    _localRenderLatestServerTimeMs = nowMs;
+    _localRenderPrevSampleValid = true;
+    _localRenderSampleCount++;
+
+    _localRenderServerSampleDelta = _localRenderLatestServerPos.distanceTo(_localRenderPrevServerPos);
+    _localRenderServerSampleIntervalMs = Math.max(1, _localRenderLatestServerTimeMs - _localRenderPrevServerTimeMs);
+    _localRenderVelocity.copy(_localRenderLatestServerPos)
+      .sub(_localRenderPrevServerPos)
+      .multiplyScalar(1000 / _localRenderServerSampleIntervalMs);
+  }
+
+  function getLocalRenderTarget(nowMs: number, out: THREE.Vector3): boolean {
+    if (!_localRenderValid) {
+      if (!getLocalServerRenderPosition(out)) return false;
+      resetLocalRenderTargetTo(out, nowMs, false);
+      return true;
+    }
+
+    const ageMs = Math.max(0, nowMs - _localRenderLatestServerTimeMs);
+    const extrapolatedMs = Math.min(ageMs, LOCAL_RENDER_EXTRAPOLATE_MS);
+    const staleScale = ageMs <= LOCAL_RENDER_EXTRAPOLATE_MS
+      ? 1
+      : Math.max(0, 1 - (ageMs - LOCAL_RENDER_EXTRAPOLATE_MS) / LOCAL_RENDER_STALE_FADE_MS);
+
+    out.copy(_localRenderLatestServerPos)
+      .addScaledVector(_localRenderVelocity, (extrapolatedMs / 1000) * staleScale);
+
+    _localRenderLastSampleAgeMs = ageMs;
+    _localRenderLastExtrapolatedMs = extrapolatedMs;
+    _localRenderLastStaleScale = staleScale;
+    return true;
+  }
+
+  function snapCameraToLocalServerFrame(nowMs = performance.now()): boolean {
+    if (!_localServerFrameValid || !resetLocalRenderTargetToServer(nowMs)) return false;
+    cameraController.snapToFrame(
+      _localRenderFrameTarget,
+      _localServerNormal,
+      { tangent: _localServerTangent, bitangent: _localServerBitangent },
+    );
+    _localRenderSnapCount++;
+    return true;
+  }
+
+  function recordLocalRenderTelemetry(
+    target: THREE.Vector3,
+    localPlayer: Player,
+    nowMs: number,
+  ): void {
+    _localRenderTelemetryTarget.copy(target);
+    _localRenderLastTargetDelta = _localRenderPrevTargetValid
+      ? target.distanceTo(_localRenderPrevTarget)
+      : 0;
+    _localRenderPrevTarget.copy(target);
+    _localRenderPrevTargetValid = true;
+
+    _localRenderLastCameraDelta = _localRenderPrevCameraValid
+      ? game.camera.position.distanceTo(_localRenderPrevCameraPos)
+      : 0;
+    _localRenderPrevCameraPos.copy(game.camera.position);
+    _localRenderPrevCameraValid = true;
+
+    _localRenderLastDistanceToPlayer = localPlayer.mesh.position.distanceTo(game.camera.position);
+    _localRenderLastTargetToPlayer = localPlayer.mesh.position.distanceTo(target);
+    _localRenderLastSampleAgeMs = _localRenderValid ? Math.max(0, nowMs - _localRenderLatestServerTimeMs) : -1;
+  }
   // Track previous health per enemy to detect damage and spawn damage number popups
   const enemyPrevHealth = new Map<string, number>();
 
@@ -2280,7 +2434,7 @@ async function main() {
     }
     // lives param: number (1-9) or 'infinite'
     const livesParam = selectedInfiniteLives ? 'infinite' : String(selectedLives);
-    const choiceMode = _netMainTestMode && lobbyPvpMode !== '' ? lobbyPvpMode : selectedLobbyMode;
+    const choiceMode = lobbyPvpMode !== '' ? lobbyPvpMode : selectedLobbyMode;
     const choice = `${surfaceForChoice}:${choiceMode}:medium:${livesParam}`;
     // If PvP/PvPvE mode selected in the win-condition panel, send options alongside
     if (lobbyPvpMode !== '') {
@@ -3484,6 +3638,7 @@ async function main() {
     // Without this, targetUp may still hold the last surface's tangentV, which
     // can mismatch the new spawn orientation and trigger the sign-flip protection.
     cameraController.resetFrameForNewSurface();
+    clearLocalRenderTarget();
 
     netMainLog('[NetworkMain] Game entities reset for new round');
   }
@@ -3792,6 +3947,7 @@ async function main() {
           _localPlayerWorldTarget.ty = netPlayer.ty ?? 0;
           _localPlayerWorldTarget.tz = netPlayer.tz ?? 0;
           _localPlayerWorldTarget.valid = true;
+          recordLocalRenderTargetSample();
         }
 
         // s44b-01: Snap camera to player position on first server frame.
@@ -3801,20 +3957,10 @@ async function main() {
         // After respawn the camera is already positioned, so it's correct — this
         // snap only fires when hasBeenPositioned=false (i.e., after resetFrameForNewSurface).
         if (!cameraController.hasBeenPositioned && _localServerFrameValid && _localPlayerWorldTarget.valid) {
-          const tgt = _localPlayerWorldTarget;
-          const snapPos = new THREE.Vector3(
-            // s44g-05: Server wx/wy/wz are already in scaled world space (server mesh has
-            // scale baked into vertex positions via SurfaceGeometryBuilder). Don't multiply
-            // by currentMapSizeScaleFactor — that would double-scale positions on EPIC maps.
-            tgt.x + _localServerNormal.x * 0.15,
-            tgt.y + _localServerNormal.y * 0.15,
-            tgt.z + _localServerNormal.z * 0.15,
-          );
-          cameraController.snapToFrame(
-            snapPos,
-            _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
-          );
+          // s44g-05: Server wx/wy/wz are already in scaled world space (server mesh has
+          // scale baked into vertex positions via SurfaceGeometryBuilder). Don't multiply
+          // by currentMapSizeScaleFactor — that would double-scale positions on EPIC maps.
+          snapCameraToLocalServerFrame();
         }
 
         // s44r8-03: For cube surfaces, sphere-approx UV diverges dramatically from CubeSurface UV.
@@ -3859,19 +4005,7 @@ async function main() {
             // "inside cube" view). Wrong camera axes during lerp corrupt
             // computeCameraRelativeAimAngle() → bullets snap to wrong directions.
             // Mirrors the respawn snap at line ~3793 which already works correctly.
-            if (_localServerFrameValid && _localPlayerWorldTarget.valid) {
-              const tgt = _localPlayerWorldTarget;
-              const snapPos = new THREE.Vector3(
-                tgt.x + _localServerNormal.x * 0.15,
-                tgt.y + _localServerNormal.y * 0.15,
-                tgt.z + _localServerNormal.z * 0.15,
-              );
-              cameraController.snapToFrame(
-                snapPos,
-                _localServerNormal,
-                { tangent: _localServerTangent, bitangent: _localServerBitangent },
-              );
-            }
+            snapCameraToLocalServerFrame();
           }
           // s44r8-03: Use accurate cube UV (not sphere-approx) so surfaceU/V is correct for
           // subsequent bullet tangent lookups and client prediction continuity on cube faces.
@@ -3887,10 +4021,11 @@ async function main() {
             const nx = netPlayer.nx ?? 0; const ny = netPlayer.ny ?? 1; const nz = netPlayer.nz ?? 0;
             player.mesh.position.set(
               // s44g-05: server positions already in scaled world space, no extra multiply
-              netPlayer.wx! + nx * 0.15,
-              netPlayer.wy! + ny * 0.15,
-              netPlayer.wz! + nz * 0.15,
+              netPlayer.wx! + nx * LOCAL_PLAYER_RENDER_OFFSET,
+              netPlayer.wy! + ny * LOCAL_PLAYER_RENDER_OFFSET,
+              netPlayer.wz! + nz * LOCAL_PLAYER_RENDER_OFFSET,
             );
+            resetLocalRenderTargetTo(player.mesh.position, performance.now(), false);
           } else {
             // s44l-16 FIX: For torus, sphere-approx surfaceU/V is swapped vs torus UV,
             // so getPoint(sphere_u, sphere_v) maps to the inner edge instead of the outer.
@@ -4105,17 +4240,7 @@ async function main() {
               && (_localPlayerWorldTarget.x !== 0 || _localPlayerWorldTarget.y !== 0 || _localPlayerWorldTarget.z !== 0);
             if (hasRespawnWorldPos && _localServerFrameValid) {
               // Preferred: server world-space position + server tangent frame (accurate for all surfaces)
-              const tgt = _localPlayerWorldTarget;
-              const respawnPos = new THREE.Vector3(
-                tgt.x + _localServerNormal.x * 0.15,
-                tgt.y + _localServerNormal.y * 0.15,
-                tgt.z + _localServerNormal.z * 0.15,
-              );
-              cameraController.snapToFrame(
-                respawnPos,
-                _localServerNormal,
-                { tangent: _localServerTangent, bitangent: _localServerBitangent },
-              );
+              snapCameraToLocalServerFrame();
             } else {
               // Fallback: use player.surfaceU/V (already set to accurate UV by snap code above)
               const respawnSp = surf.getPoint(player.surfaceU, player.surfaceV);
@@ -4125,6 +4250,9 @@ async function main() {
                 respawnSp.normal,
                 { tangent: respawnSp.tangentU, bitangent: respawnSp.tangentV },
               );
+              clearLocalRenderTarget();
+              _localRenderSnapCount++;
+              _localRenderResetCount++;
             }
           }
         }
@@ -6255,6 +6383,9 @@ async function main() {
   const _mpTelProjectionPos = new THREE.Vector3();
   const _mpTelRendererSize = new THREE.Vector2();
   const _mpTelInstanceColor = new THREE.Color();
+  const _mpTelInstanceMatrix = new THREE.Matrix4();
+  const _mpTelRenderPos = new THREE.Vector3();
+  const _mpTelRenderScale = new THREE.Vector3();
 
   // MP performance profiler — only active in testMode. Exposed on window.__PERF_PROFILER.
   let _mpPerfProfiler: DebugPerformanceProfiler | null = null;
@@ -6511,9 +6642,9 @@ async function main() {
           // s44g-05: server positions already in scaled world space, no extra multiply.
           const tgt = _localPlayerWorldTarget;
           _netTempPos.set(
-            tgt.x + tgt.nx * 0.15,
-            tgt.y + tgt.ny * 0.15,
-            tgt.z + tgt.nz * 0.15,
+            tgt.x + tgt.nx * LOCAL_PLAYER_RENDER_OFFSET,
+            tgt.y + tgt.ny * LOCAL_PLAYER_RENDER_OFFSET,
+            tgt.z + tgt.nz * LOCAL_PLAYER_RENDER_OFFSET,
           );
           localPlayer.mesh.position.copy(_netTempPos);
           _netTempNormal.set(tgt.nx, tgt.ny, tgt.nz);
@@ -7134,10 +7265,11 @@ async function main() {
       const telEnemies: Array<{
         type: string; u: number; v: number;
         worldPos: { x: number; y: number; z: number };
+        renderWorldPos: { x: number; y: number; z: number };
         screen: { x: number; y: number; ndcZ: number; inView: boolean };
         surfaceDistToPlayer: number; worldDistToPlayer: number;
         collisionRadius: number; isAlive: boolean; opacity: number;
-        colorBrightness: number;
+        colorBrightness: number; renderBatch: string; instanceMatrixScale: number;
       }> = [];
       let nearestEnemyWorldDist = Infinity;
       let nearestEnemySurfaceDist = Infinity;
@@ -7149,12 +7281,6 @@ async function main() {
         if (!enemy.active) return;
         const ePos = enemy.mesh ? enemy.mesh.position : enemy.position;
         const worldDist = pPos ? pPos.distanceTo(ePos) : Infinity;
-        _mpTelProjectionPos.copy(ePos).project(game.camera);
-        const screenX = (_mpTelProjectionPos.x * 0.5 + 0.5) * viewportWidth;
-        const screenY = (-_mpTelProjectionPos.y * 0.5 + 0.5) * viewportHeight;
-        const inView = _mpTelProjectionPos.x >= -1 && _mpTelProjectionPos.x <= 1
-          && _mpTelProjectionPos.y >= -1 && _mpTelProjectionPos.y <= 1
-          && _mpTelProjectionPos.z >= -1 && _mpTelProjectionPos.z <= 1;
 
         // UV-based surface distance (wrapping-aware)
         let du = (localPlayer?.surfaceU ?? 0) - enemy.surfacePosition.u;
@@ -7173,27 +7299,57 @@ async function main() {
           if (pPos.distanceToSquared(ePos) < hitRadiusSq) enemiesInPlayerRadius++;
         }
 
-        // Read opacity from EnemyInstanceManager
+        // Read actual render data from EnemyInstanceManager. Instanced enemies
+        // intentionally hide enemy.mesh, so visual proof must project the
+        // InstancedMesh slot matrix, not the hidden logical mesh position.
         let opacity = 1.0;
         let colorBrightness = 1.0;
+        let renderBatch = 'mesh';
+        let instanceMatrixScale = 1.0;
+        _mpTelRenderPos.copy(ePos);
         const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
         const instanceType = (enemy as any)._instanceType as string | undefined;
         if (instanceIndex !== undefined && instanceType) {
-          const batch = (enemyInstanceManager as any).batches?.get(instanceType);
+          const mgr = enemyInstanceManager as any;
+          const lodLevel = mgr.enemyLODPlacement?.get(enemy);
+          const lodBatch = lodLevel === 1 ? mgr.lodMediumBatch
+            : lodLevel === 2 ? mgr.lodLowBatch
+              : null;
+          const lodSlot = lodBatch?.enemyToIndex?.get(enemy);
+          const batch = lodBatch && lodSlot !== undefined
+            ? lodBatch
+            : mgr.batches?.get(instanceType);
+          const slot = lodBatch && lodSlot !== undefined ? lodSlot : instanceIndex;
+          renderBatch = lodBatch && lodSlot !== undefined
+            ? (lodLevel === 1 ? 'lod-medium' : 'lod-low')
+            : instanceType;
           if (batch?.opacityAttribute) {
-            opacity = batch.opacityAttribute.getX(instanceIndex);
+            opacity = batch.opacityAttribute.getX(slot);
           }
           if (batch?.instancedMesh?.instanceColor) {
-            batch.instancedMesh.getColorAt(instanceIndex, _mpTelInstanceColor);
+            batch.instancedMesh.getColorAt(slot, _mpTelInstanceColor);
             colorBrightness = (_mpTelInstanceColor.r + _mpTelInstanceColor.g + _mpTelInstanceColor.b) / 3;
           }
+          if (batch?.instancedMesh) {
+            batch.instancedMesh.getMatrixAt(slot, _mpTelInstanceMatrix);
+            _mpTelRenderPos.setFromMatrixPosition(_mpTelInstanceMatrix);
+            _mpTelRenderScale.setFromMatrixScale(_mpTelInstanceMatrix);
+            instanceMatrixScale = Math.max(_mpTelRenderScale.x, _mpTelRenderScale.y, _mpTelRenderScale.z);
+          }
         }
+        _mpTelProjectionPos.copy(_mpTelRenderPos).project(game.camera);
+        const screenX = (_mpTelProjectionPos.x * 0.5 + 0.5) * viewportWidth;
+        const screenY = (-_mpTelProjectionPos.y * 0.5 + 0.5) * viewportHeight;
+        const inView = _mpTelProjectionPos.x >= -1 && _mpTelProjectionPos.x <= 1
+          && _mpTelProjectionPos.y >= -1 && _mpTelProjectionPos.y <= 1
+          && _mpTelProjectionPos.z >= -1 && _mpTelProjectionPos.z <= 1;
 
         telEnemies.push({
           type: enemy.baseTypeName || enemy.constructor.name,
           u: enemy.surfacePosition.u,
           v: enemy.surfacePosition.v,
           worldPos: { x: ePos.x, y: ePos.y, z: ePos.z },
+          renderWorldPos: { x: _mpTelRenderPos.x, y: _mpTelRenderPos.y, z: _mpTelRenderPos.z },
           screen: {
             x: screenX,
             y: screenY,
@@ -7206,6 +7362,8 @@ async function main() {
           isAlive: enemy.alive,
           opacity,
           colorBrightness,
+          renderBatch,
+          instanceMatrixScale,
         });
       });
 
@@ -7377,6 +7535,25 @@ async function main() {
             tx: _localPlayerWorldTarget.tx,
             ty: _localPlayerWorldTarget.ty,
             tz: _localPlayerWorldTarget.tz,
+          },
+          renderTarget: {
+            valid: _localRenderValid,
+            x: _localRenderTelemetryTarget.x,
+            y: _localRenderTelemetryTarget.y,
+            z: _localRenderTelemetryTarget.z,
+            targetDelta: _localRenderLastTargetDelta,
+            cameraDelta: _localRenderLastCameraDelta,
+            distanceToPlayer: _localRenderLastDistanceToPlayer,
+            targetToPlayer: _localRenderLastTargetToPlayer,
+            serverSampleAgeMs: _localRenderLastSampleAgeMs,
+            extrapolatedMs: _localRenderLastExtrapolatedMs,
+            staleScale: _localRenderLastStaleScale,
+            serverSampleDelta: _localRenderServerSampleDelta,
+            serverSampleIntervalMs: _localRenderServerSampleIntervalMs,
+            sampleCount: _localRenderSampleCount,
+            snapCount: _localRenderSnapCount,
+            resetCount: _localRenderResetCount,
+            prevSampleValid: _localRenderPrevSampleValid,
           },
         },
         cameraUp: (() => {
@@ -8073,29 +8250,21 @@ async function main() {
       } else if (_localServerFrameValid) {
         // Normal case: follow local player with server's stable tangent frame (s44-epic-06).
         // Using _localServerBitangent avoids UV-derived tangentV which flips sign at poles.
-        // s44i-01: Use server world-space position for camera target (via
-        // _predictedPlayerVisualPos which now always holds server pos after s44h-08 revert).
-        // Server tangent frame is still used for stability (no UV-pole flipping).
-        if (_predictedPlayerVisualValid) {
+        // s44i-01: Keep visual placement server-world authoritative, not UV-predicted.
+        // Worker L: use one bounded render-frame world target for BOTH the local mesh
+        // and the camera so the camera target is not a 30Hz stair-step while moving.
+        if (getLocalRenderTarget(_cameraRenderNow, _localRenderFrameTarget)) {
+          localPlayer.mesh.position.copy(_localRenderFrameTarget);
+          _predictedPlayerVisualPos.copy(_localRenderFrameTarget);
+          _predictedPlayerVisualNormal.copy(_localServerNormal);
+          _predictedPlayerVisualValid = true;
           cameraController.updateFromFrame(
-            _predictedPlayerVisualPos,
+            _localRenderFrameTarget,
             _localServerNormal,
             { tangent: _localServerTangent, bitangent: _localServerBitangent },
             _cameraRenderDt,
           );
-        } else if (_localPlayerWorldTarget.valid) {
-          _netTempPos.set(
-            // s44g-05: server positions already in scaled world space, no extra multiply
-            _localPlayerWorldTarget.x + _localServerNormal.x * 0.15,
-            _localPlayerWorldTarget.y + _localServerNormal.y * 0.15,
-            _localPlayerWorldTarget.z + _localServerNormal.z * 0.15,
-          );
-          cameraController.updateFromFrame(
-            _netTempPos,
-            _localServerNormal,
-            { tangent: _localServerTangent, bitangent: _localServerBitangent },
-            _cameraRenderDt,
-          );
+          recordLocalRenderTelemetry(_localRenderFrameTarget, localPlayer, _cameraRenderNow);
         } else {
           cameraController.updateFromFrame(
             localPlayer.mesh.position,
@@ -8396,7 +8565,7 @@ async function main() {
   // Only active when ?debug=true is in the URL. No behavior changes.
   if (new URLSearchParams(window.location.search).has('debug')) {
     const _visualProofHidden: Array<{ object: THREE.Object3D; visible: boolean }> = [];
-    const collectEnemyVisualObjects = () => {
+    const collectEnemyVisualObjects = (includeAuxiliary: boolean = true) => {
       const allowed = new Set<THREE.Object3D>();
       const batches = (enemyInstanceManager as any).batches as Map<string, any> | undefined;
       batches?.forEach((batch) => {
@@ -8408,9 +8577,105 @@ async function main() {
       if (lodLow?.instancedMesh) allowed.add(lodLow.instancedMesh);
       networkEnemies.forEach((enemy) => {
         if (enemy.mesh && !enemy.isInstanced) allowed.add(enemy.mesh);
-        for (const aux of enemy.auxiliaryObjects) allowed.add(aux);
+        if (includeAuxiliary) {
+          for (const aux of enemy.auxiliaryObjects) allowed.add(aux);
+        }
       });
       return allowed;
+    };
+    const getEnemyRenderSamples = () => {
+      const projection = new THREE.Vector3();
+      const matrix = new THREE.Matrix4();
+      const renderPos = new THREE.Vector3();
+      const renderScale = new THREE.Vector3();
+      const color = new THREE.Color();
+      const size = new THREE.Vector2();
+      game.camera.updateMatrixWorld();
+      game.renderer.getSize(size);
+      const viewportWidth = Math.max(1, window.innerWidth || size.x || 1);
+      const viewportHeight = Math.max(1, window.innerHeight || size.y || 1);
+      const mgr = enemyInstanceManager as any;
+      const samples: Record<string, unknown>[] = [];
+
+      networkEnemies.forEach((enemy, id) => {
+        if (!enemy.active || !enemy.alive) return;
+        const logicalPos = enemy.mesh ? enemy.mesh.position : enemy.position;
+        renderPos.copy(logicalPos);
+        renderScale.setScalar(1);
+        let opacity = 1.0;
+        let colorBrightness = 1.0;
+        let renderBatch = enemy.isInstanced ? 'unknown-instanced' : 'mesh';
+        let slot: number | null = null;
+        let drawCount: number | null = null;
+        let batchVisible: boolean | null = null;
+        let matrixFound = false;
+
+        const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
+        const instanceType = (enemy as any)._instanceType as string | undefined;
+        if (instanceIndex !== undefined && instanceType) {
+          const lodLevel = mgr.enemyLODPlacement?.get(enemy);
+          const lodBatch = lodLevel === 1 ? mgr.lodMediumBatch
+            : lodLevel === 2 ? mgr.lodLowBatch
+              : null;
+          const lodSlot = lodBatch?.enemyToIndex?.get(enemy);
+          const batch = lodBatch && lodSlot !== undefined
+            ? lodBatch
+            : mgr.batches?.get(instanceType);
+          slot = lodBatch && lodSlot !== undefined ? lodSlot : instanceIndex;
+          renderBatch = lodBatch && lodSlot !== undefined
+            ? (lodLevel === 1 ? 'lod-medium' : 'lod-low')
+            : instanceType;
+          drawCount = batch?.instancedMesh?.count ?? null;
+          batchVisible = batch?.instancedMesh?.visible ?? null;
+          if (batch?.opacityAttribute && slot !== null) opacity = batch.opacityAttribute.getX(slot);
+          if (batch?.instancedMesh?.instanceColor && slot !== null) {
+            batch.instancedMesh.getColorAt(slot, color);
+            colorBrightness = (color.r + color.g + color.b) / 3;
+          }
+          if (batch?.instancedMesh && slot !== null) {
+            batch.instancedMesh.getMatrixAt(slot, matrix);
+            renderPos.setFromMatrixPosition(matrix);
+            renderScale.setFromMatrixScale(matrix);
+            matrixFound = true;
+          }
+        } else if (enemy.mesh) {
+          enemy.mesh.updateWorldMatrix(false, false);
+          renderPos.setFromMatrixPosition(enemy.mesh.matrixWorld);
+          renderScale.setFromMatrixScale(enemy.mesh.matrixWorld);
+          batchVisible = enemy.mesh.visible;
+          matrixFound = true;
+        }
+
+        projection.copy(renderPos).project(game.camera);
+        samples.push({
+          id,
+          type: enemy.baseTypeName || enemy.constructor.name,
+          u: enemy.surfacePosition.u,
+          v: enemy.surfacePosition.v,
+          isAlive: enemy.alive,
+          isMaterializing: enemy.isMaterializing,
+          renderBatch,
+          slot,
+          drawCount,
+          batchVisible,
+          matrixFound,
+          opacity,
+          colorBrightness,
+          instanceMatrixScale: Math.max(renderScale.x, renderScale.y, renderScale.z),
+          worldPos: { x: logicalPos.x, y: logicalPos.y, z: logicalPos.z },
+          renderWorldPos: { x: renderPos.x, y: renderPos.y, z: renderPos.z },
+          screen: {
+            x: (projection.x * 0.5 + 0.5) * viewportWidth,
+            y: (-projection.y * 0.5 + 0.5) * viewportHeight,
+            ndcZ: projection.z,
+            inView: projection.x >= -1 && projection.x <= 1
+              && projection.y >= -1 && projection.y <= 1
+              && projection.z >= -1 && projection.z <= 1,
+          },
+        });
+      });
+
+      return samples;
     };
     const getEnemyInstanceDebug = () => {
       const matrix = new THREE.Matrix4();
@@ -8495,7 +8760,8 @@ async function main() {
       getLocalPlayerId: () => localPlayerId,
       getSurfaceType: () => lastCreatedSurfaceType,
       getEnemyInstanceDebug,
-      setVisualProofIsolation: (enabled: boolean, includeSurface: boolean = true) => {
+      getEnemyRenderSamples,
+      setVisualProofIsolation: (enabled: boolean, includeSurface: boolean = true, includeAuxiliary: boolean = true) => {
         if (!enabled) {
           while (_visualProofHidden.length > 0) {
             const entry = _visualProofHidden.pop()!;
@@ -8508,7 +8774,7 @@ async function main() {
           return { enabled: true, hidden: _visualProofHidden.length, enemyInstanceDebug: getEnemyInstanceDebug() };
         }
 
-        const allowedEnemies = collectEnemyVisualObjects();
+        const allowedEnemies = collectEnemyVisualObjects(includeAuxiliary);
         const allowedRoots = new Set<THREE.Object3D>();
         if (includeSurface && surface?.group) allowedRoots.add(surface.group);
         allowedEnemies.forEach((object) => allowedRoots.add(object));
@@ -8520,7 +8786,7 @@ async function main() {
           child.visible = false;
         }
 
-        return { enabled: true, includeSurface, hidden: _visualProofHidden.length, enemyInstanceDebug: getEnemyInstanceDebug() };
+        return { enabled: true, includeSurface, includeAuxiliary, hidden: _visualProofHidden.length, enemyInstanceDebug: getEnemyInstanceDebug() };
       },
       isGameStarted: () => {
         // Check via status text as a proxy for game state

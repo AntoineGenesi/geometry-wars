@@ -1270,7 +1270,8 @@ export class GameRoom extends Room<GameState> {
       // bypassed the pvpEnabled logic in startGameWithSettings(), leaving pvpEnabled=false and
       // breaking ALL PvP damage, health bars, and hit detection.
       if (data.choice) {
-        this.startGameWithSettings(data.choice);
+        const effectiveChoice = this.getChoiceWithAuthoritativePvpMode(data.choice, this.state.pvpMode);
+        this.startGameWithSettings(effectiveChoice);
       } else {
         // Fallback: no choice string — force pvpEnabled/friendlyFire manually before startGame()
         const isPvpOrPvpve = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve';
@@ -2161,6 +2162,8 @@ export class GameRoom extends Room<GameState> {
     // Clear pending reconnect timers to avoid callbacks on disposed room
     this.disconnectedPlayers.forEach((record) => clearTimeout(record.cleanupTimer));
     this.disconnectedPlayers.clear();
+    this._clearPortalTimers();
+    this._portalCooldowns.clear();
 
     if (this.metricsLogPath) {
       try {
@@ -2258,6 +2261,13 @@ export class GameRoom extends Room<GameState> {
     this.maxClients = Math.max(desiredMax, this.state.players.size);
     // Sync pending indicator so clients can show "Apply Next Round" status
     this.state.hasPendingSettings = this.pendingSettings !== null;
+  }
+
+  private getChoiceWithAuthoritativePvpMode(choice: string, pvpMode: string): string {
+    if (pvpMode !== 'pvp' && pvpMode !== 'pvpve') return choice;
+    const parts = choice.split(':');
+    parts[1] = pvpMode;
+    return parts.join(':');
   }
 
   private startGameWithSettings(choice: string) {

@@ -9,6 +9,7 @@
  * URL parameters:
  *   ?renderer=webgpu  - Force WebGPU renderer
  *   ?renderer=webgl   - Force WebGL2 renderer
+ *   ?mode=network     - Defaults to WebGL2 unless renderer is explicitly set
  *   ?testMode=true    - Enable preserveDrawingBuffer for automated testing
  *
  * The factory also logs the capability report so developers can see
@@ -46,6 +47,10 @@ export function resolveRendererPreference(
   // Explicit URL override
   if (pref === 'webgl') return 'webgl2';
   if (pref === 'webgpu' && capabilities.webgpu) return 'webgpu';
+
+  // Multiplayer/LAN stays on the proven WebGL2 path by default. WebGPU can
+  // still be opted into with ?renderer=webgpu for diagnostics and future proof.
+  if (params.get('mode') === 'network') return 'webgl2';
 
   // Auto-select: prefer WebGPU when available
   if (capabilities.webgpu) {
