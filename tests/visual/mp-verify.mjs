@@ -473,14 +473,40 @@ function buildVisualProofChecks(evidence) {
   ]);
   const readableSides = sides.filter((side) => side.metrics?.ok);
   const rendererSides = readableSides.filter((side) => side.metrics?.renderer?.backend);
-  const enemyStateSides = readableSides.filter((side) => side.metrics?.enemyCount > 0);
-  const projectedSides = readableSides.filter((side) => side.metrics?.inViewEnemyCount > 0);
-  const pixelVisibleSides = readableSides.filter((side) => side.metrics?.visibleEnemyPixelCount > 0);
   const cameraSides = readableSides.filter((side) =>
     typeof side.metrics?.camera?.distanceToPlayer === 'number'
     && side.metrics.camera.distanceToPlayer > 0);
   const portalSides = readableSides.filter((side) =>
     side.metrics?.portals?.active && Array.isArray(side.metrics.portals.visualWorld));
+  const sideSummaries = ['host', 'join'].map((sideName) => {
+    const entries = readableSides.filter((side) => side.side === sideName);
+    const sampled = entries.reduce((sum, side) => sum + (side.metrics?.sampledEnemyCount ?? 0), 0);
+    const visible = entries.reduce((sum, side) => sum + (side.metrics?.visibleEnemyPixelCount ?? 0), 0);
+    const maxEnemies = Math.max(0, ...entries.map((side) => side.metrics?.enemyCount ?? 0));
+    const maxInView = Math.max(0, ...entries.map((side) => side.metrics?.inViewEnemyCount ?? 0));
+    return {
+      side: sideName,
+      entries,
+      readable: entries.length > 0,
+      enemyState: maxEnemies > 0,
+      projected: maxInView > 0,
+      sampled,
+      visible,
+      visibleRate: sampled > 0 ? visible / sampled : 0,
+      maxEnemies,
+      maxInView,
+    };
+  });
+  const sideSummaryNote = sideSummaries
+    .map((summary) =>
+      `${summary.side}: enemies=${summary.maxEnemies}, inView=${summary.maxInView}, pixels=${summary.visible}/${summary.sampled} (${(summary.visibleRate * 100).toFixed(0)}%)`)
+    .join(' | ');
+  const sidesWithEnemyState = sideSummaries.filter((summary) => summary.enemyState);
+  const sidesWithProjection = sideSummaries.filter((summary) => summary.projected);
+  const sidesPassingPixels = sideSummaries.filter((summary) =>
+    summary.sampled > 0 && summary.visible > 0);
+  const sidesPassingPixelRate = sideSummaries.filter((summary) =>
+    summary.sampled > 0 && summary.visibleRate >= 0.25);
 
   record('visual_canvas_readback',
     readableSides.length >= 2 ? 'PASS' : 'FAIL',
@@ -507,29 +533,48 @@ function buildVisualProofChecks(evidence) {
   }
 
   record('visual_enemy_state_present',
-    enemyStateSides.length > 0 ? 'PASS' : 'FAIL',
-    enemyStateSides.length > 0
-      ? enemyStateSides.map((side) => `${side.checkpoint}:${side.side}:${side.metrics.enemyCount}`).join(', ')
-      : 'No alive enemies appeared in telemetry');
+    sidesWithEnemyState.length === 2 ? 'PASS' : 'FAIL',
+    sidesWithEnemyState.length === 2
+      ? sideSummaryNote
+      : sidesWithEnemyState.length === 1
+        ? `Asymmetric enemy telemetry; ${sideSummaryNote}`
+        : 'No alive enemies appeared in telemetry on host or join');
 
   record('visual_enemy_screen_projection',
-    projectedSides.length > 0 ? 'PASS' : 'FAIL',
-    projectedSides.length > 0
-      ? projectedSides.map((side) => `${side.checkpoint}:${side.side}:${side.metrics.inViewEnemyCount} in view`).join(', ')
-      : 'No telemetry enemies projected inside the camera frustum');
+    sidesWithProjection.length === 2 ? 'PASS' : 'FAIL',
+    sidesWithProjection.length === 2
+      ? sideSummaryNote
+      : sidesWithProjection.length === 1
+        ? `Asymmetric projected enemy telemetry; ${sideSummaryNote}`
+        : 'No telemetry enemies projected inside either camera frustum');
 
-  const enemyPixelSummary = pixelVisibleSides.map((side) =>
-    `${side.checkpoint}:${side.side}:${side.metrics.visibleEnemyPixelCount}/${side.metrics.sampledEnemyCount}`);
+  for (const summary of sideSummaries) {
+    record(`visual_enemy_pixels_visible_${summary.side}`,
+      summary.sampled > 0 && summary.visible > 0 ? 'PASS' : 'FAIL',
+      summary.sampled > 0
+        ? `${summary.visible}/${summary.sampled} projected enemy samples visible on ${summary.side} (${(summary.visibleRate * 100).toFixed(0)}%)`
+        : `No projected enemy pixel samples on ${summary.side}; max enemies=${summary.maxEnemies}, max in-view=${summary.maxInView}`);
+  }
+
   record('visual_enemy_pixels_visible',
-    pixelVisibleSides.length > 0 ? 'PASS' : 'FAIL',
-    enemyPixelSummary.length > 0 ? enemyPixelSummary.join(', ') : 'No bright pixels near projected enemy positions');
+    sidesPassingPixels.length === 2 ? 'PASS' : 'FAIL',
+    sidesPassingPixels.length === 2
+      ? sideSummaryNote
+      : `Asymmetric or missing enemy pixels; ${sideSummaryNote}`);
 
   const sampled = readableSides.reduce((sum, side) => sum + (side.metrics?.sampledEnemyCount ?? 0), 0);
   const visible = readableSides.reduce((sum, side) => sum + (side.metrics?.visibleEnemyPixelCount ?? 0), 0);
   const visibleRate = sampled > 0 ? visible / sampled : 0;
+  for (const summary of sideSummaries) {
+    record(`visual_enemy_pixel_visibility_rate_${summary.side}`,
+      summary.sampled > 0 && summary.visibleRate >= 0.25 ? 'PASS' : 'FAIL',
+      summary.sampled > 0
+        ? `${summary.visible}/${summary.sampled} projected enemy samples visible on ${summary.side} (${(summary.visibleRate * 100).toFixed(0)}%; threshold 25%)`
+        : `No projected enemy pixel samples on ${summary.side}; threshold cannot be evaluated`);
+  }
   record('visual_enemy_pixel_visibility_rate',
-    sampled > 0 && visibleRate >= 0.25 ? 'PASS' : 'FAIL',
-    `${visible}/${sampled} projected enemy samples visible (${(visibleRate * 100).toFixed(0)}%)`);
+    sidesPassingPixelRate.length === 2 ? 'PASS' : 'FAIL',
+    `${visible}/${sampled} projected enemy samples visible overall (${(visibleRate * 100).toFixed(0)}%); per-side threshold requires host and join >=25%; ${sideSummaryNote}`);
 
   record('visual_camera_metrics_recorded',
     cameraSides.length >= 2 ? 'PASS' : 'FAIL',
@@ -799,9 +844,12 @@ async function runCoreChecks(hostPage, joinPage, surface, durationSecs) {
     const joinSawEnemies = telemetrySamples.join.some(t => t.enemies && t.enemies.length > 0);
     const hostMaxEnemies = Math.max(0, ...telemetrySamples.host.map(t => t.enemies?.length ?? 0));
     const joinMaxEnemies = Math.max(0, ...telemetrySamples.join.map(t => t.enemies?.length ?? 0));
+    const asymmetricNote = hostSawEnemies === joinSawEnemies
+      ? ''
+      : ' — asymmetric enemy telemetry is a core MP visibility failure';
     record('mp_enemies_visible',
-      hostSawEnemies && joinSawEnemies ? 'PASS' : (hostSawEnemies || joinSawEnemies ? 'PASS' : 'FAIL'),
-      `Host max: ${hostMaxEnemies}, Join max: ${joinMaxEnemies}`);
+      hostSawEnemies && joinSawEnemies ? 'PASS' : 'FAIL',
+      `Host max: ${hostMaxEnemies}, Join max: ${joinMaxEnemies}${asymmetricNote}`);
   }
 
   // CHECK: mp_other_player_visible
