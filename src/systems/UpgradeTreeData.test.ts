@@ -418,6 +418,38 @@ describe('Standard exclusionPairs data', () => {
   });
 });
 
+describe('Black Hole exclusionPairs data', () => {
+  it('Black Hole tree contains only the proven Multi Void vs Giant Void root conflict', () => {
+    const tree = UPGRADE_TREES[WeaponType.BlackHole];
+    expect(tree.exclusionPairs).toEqual([
+      ['black_hole_al_4', 'black_hole_ar_4'],
+    ]);
+  });
+
+  it('Black Hole AL root excludes AR root bidirectionally', () => {
+    const tree = UPGRADE_TREES[WeaponType.BlackHole];
+
+    expect(isExcluded('black_hole_ar_4', tree, makePointStore({ 'black_hole_al_4': 1 }))).toBe(true);
+    expect(isExcluded('black_hole_al_4', tree, makePointStore({ 'black_hole_ar_4': 1 }))).toBe(true);
+    expect(getExcludedBy('black_hole_ar_4', tree, makePointStore({ 'black_hole_al_4': 1 }))).toEqual([
+      'black_hole_al_4',
+    ]);
+    expect(getExcludedBy('black_hole_al_4', tree, makePointStore({ 'black_hole_ar_4': 1 }))).toEqual([
+      'black_hole_ar_4',
+    ]);
+  });
+});
+
+describe('intentional synergy relationships', () => {
+  it('Standard trunk A/B synergy candidate remains combinable', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+
+    expect(isExcluded('standard_b_3', tree, makePointStore({ 'standard_a_3': 1 }))).toBe(false);
+    expect(isExcluded('standard_a_3', tree, makePointStore({ 'standard_b_3': 1 }))).toBe(false);
+    expect(getExcludedBy('standard_b_3', tree, makePointStore({ 'standard_a_3': 1 }))).toEqual([]);
+  });
+});
+
 describe('isExcluded', () => {
   const tree = UPGRADE_TREES[WeaponType.Standard];
 

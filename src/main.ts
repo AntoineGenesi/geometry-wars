@@ -432,8 +432,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
 
   const bgMusic = new BackgroundMusic();
 
-  // Test arena mode — flat plane, no waves, full TestHarnessAPI
-  const isTestArena = new URLSearchParams(window.location.search).get('testArena') === 'true';
+  // Debug/test modes — parsed early because mastery points, arena, audio, and
+  // harness wiring all depend on the same URL flags.
+  const urlParams = new URLSearchParams(window.location.search);
+  const debugMode = urlParams.get('debug') === 'true';
+  const testMode = urlParams.get('testMode') === 'true';
+  const isTestArena = urlParams.get('testArena') === 'true';
 
   // Load level (-1 = endless Quick Game mode)
   const isEndless = startLevelIndex < 0;
@@ -971,7 +975,9 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   const weaponMastery = new WeaponMasteryManager();
 
   // -- Mastery point store (cross-session persistent; tracks earned/spent points & permanent unlocks) --
-  const masteryPointStore = MasteryPointStore.load();
+  const masteryPointStore = MasteryPointStore.load({
+    debugPointMode: debugMode || testMode || isTestArena,
+  });
 
   // -- Per-match upgrade tracker (activates permanently-unlocked nodes via kill thresholds) --
   const matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
@@ -2250,11 +2256,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     ddaLogger.recordDeath(0); // DDA logger: log death event
   };
 
-  // -- Parse URL parameters early (needed for audio/debug decisions) --
-  const urlParams = new URLSearchParams(window.location.search);
-  const debugMode = urlParams.get('debug') === 'true';
-  const testMode = urlParams.get('testMode') === 'true';
-  // Note: isTestArena is declared near the top of main() for early use in wave scheduler config.
+  // -- URL parameters were parsed near the top of main() for mastery/debug/audio setup. --
 
   // -- Start background music (muted in debug/test/arena modes) --
   const audioCtx = sound.getAudioContext();

@@ -232,6 +232,10 @@ declare global {
 // The LAN E2E test suite uses these [NetworkMain] logs for diagnostics.
 const _netMainDebug = new URLSearchParams(window.location.search).has('debug');
 const _netMainTestMode = new URLSearchParams(window.location.search).has('testMode');
+const _netMainDebugMasteryPoints = (() => {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('debug') === 'true' || params.get('testMode') === 'true';
+})();
 function netMainLog(...args: unknown[]): void {
   if (_netMainDebug) {
     console.log(...args);
@@ -1237,7 +1241,9 @@ async function main() {
   // -- Per-match upgrade tracker (reset each round in MP) --
   // Activates permanently-unlocked mastery nodes via kill thresholds (same as SP).
   // In MP, we create a fresh tracker each time a new round begins.
-  const masteryPointStore = MasteryPointStore.load();
+  const masteryPointStore = MasteryPointStore.load({
+    debugPointMode: _netMainDebugMasteryPoints,
+  });
   let matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
   const upgradeNotification = new UpgradeNotification();
   const buildChoiceScreen = new BuildChoiceScreen();
@@ -3313,7 +3319,9 @@ async function main() {
     },
     onOpenMastery: () => {
       if (activeVotingMasteryScreen) return; // already open
-      const masteryPointStore = MasteryPointStore.load();
+      const masteryPointStore = MasteryPointStore.load({
+        debugPointMode: _netMainDebugMasteryPoints,
+      });
       const screen = new WeaponMasteryScreen();
       screen.setPointStore(masteryPointStore);
       activeVotingMasteryScreen = screen;

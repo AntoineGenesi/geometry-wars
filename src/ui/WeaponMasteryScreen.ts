@@ -726,6 +726,10 @@ export class WeaponMasteryScreen {
     const cards = weapons
       .map(w => this._buildCard(w, allProgress.get(w.type)!, ps))
       .join('');
+    const pointsLabel = ps.isDebugPointMode() ? 'Test Points Available' : 'Total Points Earned';
+    const pointsSecondary = ps.isDebugPointMode()
+      ? 'Debug/test mode: virtual mastery points are session-local and do not change saved totals'
+      : "Earn 1 point per player level-up (while using that weapon) &mdash; spend in each weapon's upgrade tree";
 
     this.container.innerHTML = `
       <div class="wms-content">
@@ -735,8 +739,8 @@ export class WeaponMasteryScreen {
         </div>
         <div class="wms-points-bar">
           <span class="wms-points-available" id="wms-points-display">${ps.getTotalPoints()}</span>
-          <span class="wms-points-label">Total Points Earned</span>
-          <span class="wms-points-secondary">Earn 1 point per player level-up (while using that weapon) &mdash; spend in each weapon's upgrade tree</span>
+          <span class="wms-points-label">${pointsLabel}</span>
+          <span class="wms-points-secondary">${pointsSecondary}</span>
         </div>
         <div class="wms-grid">
           ${cards}
@@ -772,7 +776,7 @@ export class WeaponMasteryScreen {
           <div class="wms-swatch" style="background: ${color}"></div>
           <span class="wms-weapon-name">${w.name}</span>
           <span class="wms-level-badge" title="Weapon Level (1–5): earned by getting kills with this weapon. Grants passive bonuses.">Lv.${level} / 5</span>
-          <span class="wms-pts-badge" title="Available mastery points for this weapon. Earn 1 point each time you reach a new player level while this weapon is equipped." data-weapon-pts="${w.type}">${ps.getAvailablePoints(w.type)} pts</span>
+          <span class="wms-pts-badge" title="${this._pointBadgeTitle(ps)}" data-weapon-pts="${w.type}">${this._pointBadgeText(ps, w.type)}</span>
         </div>
         <div class="wms-xp-row">
           <span class="wms-xp-label">XP</span>
@@ -1031,6 +1035,18 @@ export class WeaponMasteryScreen {
     return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
+  private _pointBadgeTitle(ps: MasteryPointStore): string {
+    if (ps.isDebugPointMode()) {
+      return 'Available test mastery points for this weapon. Debug/test points are not saved.';
+    }
+    return 'Available mastery points for this weapon. Earn 1 point each time you reach a new player level while this weapon is equipped.';
+  }
+
+  private _pointBadgeText(ps: MasteryPointStore, weaponType: WeaponType): string {
+    const suffix = ps.isDebugPointMode() ? 'test pts' : 'pts';
+    return `${ps.getAvailablePoints(weaponType)} ${suffix}`;
+  }
+
   // ── Incremental DOM updates ─────────────────────────────────────────────────
 
   /** Update the points counter in the header. */
@@ -1049,7 +1065,7 @@ export class WeaponMasteryScreen {
     // Update per-weapon available-points badges
     this.container.querySelectorAll<HTMLElement>('[data-weapon-pts]').forEach(badge => {
       const wt = badge.dataset.weaponPts as WeaponType;
-      badge.textContent = `${ps.getAvailablePoints(wt)} pts`;
+      badge.textContent = this._pointBadgeText(ps, wt);
     });
   }
 
