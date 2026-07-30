@@ -31,6 +31,12 @@ export function shapeIconSVG(type: string, hexColor: string, size = 14): string 
       return `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><polygon points="8,1 13,3 15,8 13,13 8,15 3,13 1,8 3,3" fill="${fill}"/></svg>`;
     case 'rocket':
       return `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><polygon points="8,0 13,10 10,9 10,16 6,16 6,9 3,10" fill="${fill}"/></svg>`;
+    case 'prism_lancer':
+      return `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><polygon points="8,0 15,14 8,10 1,14" fill="${fill}"/><polygon points="8,4 12,12 8,9 4,12" fill="${fill}" opacity="0.6"/></svg>`;
+    case 'sentinel_orb':
+      return `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6" fill="none" stroke="${fill}" stroke-width="2"/><rect x="4" y="4" width="8" height="8" fill="none" stroke="${fill}" stroke-width="1.5" transform="rotate(45 8 8)"/></svg>`;
+    case 'shatter_bloom':
+      return `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><polygon points="8,0 10,6 16,8 10,10 8,16 6,10 0,8 6,6" fill="${fill}"/><circle cx="8" cy="8" r="3" fill="${fill}" opacity="0.55"/></svg>`;
     case 'spinner':
     case 'titanspinner':
       return `<svg width="${s}" height="${s}" viewBox="0 0 16 16"><polygon points="5,1 11,1 15,5 15,11 11,15 5,15 1,11 1,5" fill="${fill}"/></svg>`;
@@ -89,6 +95,9 @@ export const ENEMY_HEX_COLORS: Record<string, string> = {
   titangrunt: '#2244cc',
   titanspinner: '#ff22ff',
   titanweaver: '#22ff44',
+  prism_lancer: '#00e5ff',
+  sentinel_orb: '#ffd34d',
+  shatter_bloom: '#ff5df7',
   boss: '#ffcc00',
 };
 
@@ -120,5 +129,8 @@ export const DISPLAY_NAMES: Record<string, string> = {
   titangrunt: 'Titan Grunt',
   titanspinner: 'Titan Spinner',
   titanweaver: 'Titan Weaver',
+  prism_lancer: 'Prism Lancer',
+  sentinel_orb: 'Sentinel Orb',
+  shatter_bloom: 'Shatter Bloom',
   boss: 'Boss',
 };

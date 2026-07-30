@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Player } from '../entities/Player';
 import { BulletPool } from '../entities/Bullet';
-import { BaseEnemy } from '../entities/enemies/BaseEnemy';
+import { BaseEnemy, getEnemyTypeKey } from '../entities/enemies/BaseEnemy';
 import { Boss } from '../entities/enemies/Boss';
 import { ParticleSystem } from '../effects/ParticleSystem';
 import { ScreenShake } from '../effects/ScreenShake';
@@ -86,6 +86,9 @@ export class CollisionSystem {
     titangrunt: new THREE.Color(0x2244cc),
     titanspinner: new THREE.Color(0xff22ff),
     titanweaver: new THREE.Color(0x22ff44),
+    prism_lancer: new THREE.Color(0x00e5ff),
+    sentinel_orb: new THREE.Color(0xffd34d),
+    shatter_bloom: new THREE.Color(0xff5df7),
     boss: new THREE.Color(0x4488ff),
   };
 
@@ -240,7 +243,7 @@ export class CollisionSystem {
           if (!enemy.alive) {
             // Enemy died
             if (debugFreeze) console.log('[CollisionSystem] Enemy died, starting death callback');
-            const enemyType = enemy.constructor.name.toLowerCase();
+            const enemyType = getEnemyTypeKey(enemy);
             const color = CollisionSystem.ENEMY_COLORS[enemyType] ?? CollisionSystem.ENEMY_COLOR_FALLBACK;
             // Use lightweight effect for companion kills on normal enemies to avoid frame drops
             // when many drones are killing rapidly. Boss kills always get the full effect.

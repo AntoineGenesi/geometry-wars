@@ -582,3 +582,7 @@ export abstract class BaseEnemy extends Entity {
     // Base collision handling - can be overridden
   }
 }
+
+export function getEnemyTypeKey(enemy: BaseEnemy): string {
+  return enemy.baseTypeName || enemy.constructor.name.toLowerCase();
+}

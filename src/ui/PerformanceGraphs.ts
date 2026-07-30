@@ -101,6 +101,9 @@ export const ENEMY_COLORS: Record<string, string> = {
   orbiter: '#ff44ff',
   splitter: '#ff44ee',
   phaser: '#ff44cc',
+  prism_lancer: '#00e5ff',
+  sentinel_orb: '#ffd34d',
+  shatter_bloom: '#ff5df7',
 };
 
 // ---------------------------------------------------------------------------

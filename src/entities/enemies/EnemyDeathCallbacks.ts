@@ -14,6 +14,7 @@ import { GiantSnake } from './GiantSnake';
 import { GiantNeutron } from './GiantNeutron';
 import { Virus } from './Virus';
 import { Splitter } from './Splitter';
+import { ShatterBloom } from './ShatterBloom';
 
 /**
  * EnemyDeathCallbacks
@@ -50,6 +51,10 @@ export class EnemyDeathCallbacks {
     Splitter.onSplitterDeath = (u: number, v: number, generation: number) => {
       enemySpawner._nextSplitterGen = generation;
       enemySpawner.spawn('splitter', u, v);
+    };
+
+    ShatterBloom.onBloomDeath = (u: number, v: number, count: number) => {
+      enemySpawner.releaseShatterBloomShards(u, v, count);
     };
 
     // Spawner: periodically spawns wanderers

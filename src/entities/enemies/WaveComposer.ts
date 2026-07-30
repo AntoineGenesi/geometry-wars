@@ -52,9 +52,20 @@ const ARCHETYPES: WaveArchetype[] = [
   {
     name: 'Chaos',
     entries: [
-      { type: 'rocket',  weight: 0.33 },
-      { type: 'spinner', weight: 0.33 },
-      { type: 'painter', weight: 0.34 },
+      { type: 'rocket',        weight: 0.24 },
+      { type: 'spinner',       weight: 0.22 },
+      { type: 'painter',       weight: 0.20 },
+      { type: 'prism_lancer',  weight: 0.20, minWave: 6 },
+      { type: 'shatter_bloom', weight: 0.14, minWave: 9 },
+    ],
+  },
+  {
+    name: 'Sentinel',
+    entries: [
+      { type: 'sentinel_orb',  weight: 0.4, minWave: 7 },
+      { type: 'weaver',        weight: 0.25 },
+      { type: 'prism_lancer',  weight: 0.2, minWave: 8 },
+      { type: 'shatter_bloom', weight: 0.15, minWave: 10 },
     ],
   },
   {
@@ -77,7 +88,7 @@ const ARCHETYPES: WaveArchetype[] = [
 ];
 
 /** Index of the Rest archetype in the ARCHETYPES array. */
-const REST_ARCHETYPE_IDX = 4;
+const REST_ARCHETYPE_IDX = 5;
 /** How often (in waves) a rest wave appears. */
 const REST_WAVE_INTERVAL = 15;
 /** Number of main archetypes (excluding Rest). */
