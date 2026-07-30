@@ -19,6 +19,8 @@ const _tempOffsetVec3 = new THREE.Vector3();
 const _tempMoveDir = new THREE.Vector3();
 const _tempLocalPos = new THREE.Vector3();
 const _tempInverseRot = new THREE.Quaternion();
+const _tempSurfaceTargetPos = new THREE.Vector3();
+const _tempSurfacePathDir = new THREE.Vector3();
 
 export abstract class BaseEnemy extends Entity {
   health: number;
@@ -406,6 +408,76 @@ export abstract class BaseEnemy extends Entity {
     return null; // Default: no movement. Subclasses override when migrated to walker mode.
   }
 
+  private shortestAxisDelta(current: number, target: number, wraps: boolean): number {
+    let delta = target - current;
+    if (wraps) {
+      if (delta > 0.5) delta -= 1.0;
+      if (delta < -0.5) delta += 1.0;
+    }
+    return delta;
+  }
+
+  private cubeTunnelVRegion(v: number): 'outerWall' | 'topLip' | 'innerWall' | 'bottomLip' | null {
+    const surface = this.surfaceRef as (Surface & { outerWallFrac?: number; lipFrac?: number }) | null;
+    const outerWallFrac = surface?.outerWallFrac;
+    const lipFrac = surface?.lipFrac;
+    if (typeof outerWallFrac !== 'number' || typeof lipFrac !== 'number') return null;
+
+    const wrapped = ((v % 1) + 1) % 1;
+    if (wrapped < outerWallFrac) return 'outerWall';
+    if (wrapped < outerWallFrac + lipFrac) return 'topLip';
+    if (wrapped < 2 * outerWallFrac + lipFrac) return 'innerWall';
+    return 'bottomLip';
+  }
+
+  private shouldUseSurfacePathAcrossWall(): boolean {
+    if (!this.surfaceRef) return false;
+    if (this.surfaceRef.areOnOppositeWallSides(this.playerV, this.surfacePosition.v)) return true;
+
+    const playerRegion = this.cubeTunnelVRegion(this.playerV);
+    const enemyRegion = this.cubeTunnelVRegion(this.surfacePosition.v);
+    if (!playerRegion || !enemyRegion) return false;
+
+    if (playerRegion === 'innerWall') return enemyRegion !== 'innerWall';
+    if (playerRegion === 'outerWall') return enemyRegion !== 'outerWall';
+    return false;
+  }
+
+  /**
+   * Cube-tunnel has two nearby-but-separated wall sides. A straight world chord
+   * from an outer wall enemy to an inner wall player points through the wall;
+   * MeshWalker projects that onto almost no tangent motion, so the enemy stalls.
+   * When the surface exposes that topology, steer toward the next wrapped UV
+   * neighbor instead while preserving the subclass-chosen speed.
+   */
+  private applyOppositeWallSurfacePath(velocity: THREE.Vector3): THREE.Vector3 {
+    if (!this.walker || !this.surfaceRef) return velocity;
+    if (!this.shouldUseSurfacePathAcrossWall()) return velocity;
+
+    const speed = velocity.length();
+    if (speed <= 0.0001) return velocity;
+
+    const deltaU = this.shortestAxisDelta(this.surfacePosition.u, this.playerU, this.surfaceRef.wrapsU);
+    const deltaV = this.shortestAxisDelta(this.surfacePosition.v, this.playerV, this.surfaceRef.wrapsV);
+    const uvLen = Math.sqrt(deltaU * deltaU + deltaV * deltaV);
+    if (uvLen <= 0.000001) return velocity;
+
+    const step = Math.min(0.02, uvLen);
+    const next = this.surfaceRef.moveOnSurface(
+      this.surfacePosition.u,
+      this.surfacePosition.v,
+      (deltaU / uvLen) * step,
+      (deltaV / uvLen) * step,
+    );
+    const surfacePoint = this.surfaceRef.getPoint(next.u, next.v);
+    _tempSurfaceTargetPos.copy(surfacePoint.position);
+    _tempSurfacePathDir.copy(_tempSurfaceTargetPos).sub(this.walker.position);
+    const pathLen = _tempSurfacePathDir.length();
+    if (pathLen <= 0.0001) return velocity;
+
+    return _tempSurfacePathDir.multiplyScalar(speed / pathLen);
+  }
+
   update(dt: number): void {
     if (!this.alive) return;
 
@@ -425,9 +497,10 @@ export abstract class BaseEnemy extends Entity {
       // Enemy computes world-space velocity; walker handles surface-constrained movement.
       const velocity = this.computeMovementDirection(effectiveDt, this._playerWorldPos);
       if (velocity && velocity.lengthSq() > 0.0001) {
-        const speed = velocity.length();
+        const movementVelocity = this.applyOppositeWallSurfacePath(velocity);
+        const speed = movementVelocity.length();
         this.walker.speed = speed;
-        _tempMoveDir.copy(velocity).multiplyScalar(1 / speed); // normalize without alloc
+        _tempMoveDir.copy(movementVelocity).multiplyScalar(1 / speed); // normalize without alloc
         this.walker.move(_tempMoveDir, effectiveDt);
       }
 
