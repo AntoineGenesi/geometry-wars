@@ -514,6 +514,11 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.BlackHole, 'br', 4, 'Crushing void','+100% radius; trapped enemies take 5 dmg/s',  { parentId: 'black_hole_b_3', cost: 2, x: 250, y: 148 }),
       node(WeaponType.BlackHole, 'br', 5, 'Event horizon','+150% radius; enemies cannot escape; 10 dmg/s',{ parentId: 'black_hole_br_4', cost: 2, x: 264, y: 186 }),
     ],
+    // Multi Void fires multiple simultaneous black holes; Giant Void is the
+    // single massive/eternal black-hole path. The root pair blocks the split.
+    exclusionPairs: [
+      ['black_hole_al_4', 'black_hole_ar_4'],
+    ],
   },
 
   // -------------------------------------------------------------------------

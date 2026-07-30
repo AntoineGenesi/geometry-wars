@@ -8,6 +8,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { UPGRADE_TREES, getBranchNodes, getAllNodes, getImplicitParent, isPrerequisiteMet } from '../systems/UpgradeTreeData';
+import { DEBUG_MASTERY_POINTS_PER_WEAPON } from '../systems/MasteryPointStore';
 import { WeaponType as WT } from '../weapons/WeaponTypes';
 
 // ── Minimal DOM mock ──────────────────────────────────────────────────────────
@@ -300,6 +301,17 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     const html = mockBody.children[0].innerHTML;
     // Points display element should contain '5'
     expect(html).toContain('>5<');
+  });
+
+  it('show() with debug point mode renders test point labels and large per-weapon balance', () => {
+    const ps = new MasteryPointStore({ debugPointMode: true });
+    screen.setPointStore(ps);
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+
+    expect(html).toContain('Test Points Available');
+    expect(html).toContain('Debug/test mode: virtual mastery points are session-local');
+    expect(html).toContain(`>${DEBUG_MASTERY_POINTS_PER_WEAPON} test pts</span>`);
   });
 
   it('show() HTML contains constellation node elements', () => {

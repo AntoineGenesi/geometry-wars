@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { MasteryPointStore, weaponTypeFromNodeId } from './MasteryPointStore';
+import { DEBUG_MASTERY_POINTS_PER_WEAPON, MasteryPointStore, weaponTypeFromNodeId } from './MasteryPointStore';
 import { WeaponType } from '../weapons/WeaponTypes';
-import { UpgradeTree } from './UpgradeTreeData';
+import { UPGRADE_TREES, UpgradeTree } from './UpgradeTreeData';
 
 // Mock localStorage for test environment
 const localStorageMock = (() => {
@@ -40,6 +40,54 @@ describe('MasteryPointStore', () => {
 
   it('starts with no unlocked nodes', () => {
     expect(store.getUnlockedNodes().size).toBe(0);
+  });
+
+  it('debug point mode starts with a large virtual balance for every weapon', () => {
+    const debugStore = new MasteryPointStore({ debugPointMode: true });
+    expect(debugStore.isDebugPointMode()).toBe(true);
+    for (const weaponType of Object.values(WeaponType)) {
+      expect(debugStore.getAvailablePoints(weaponType)).toBe(DEBUG_MASTERY_POINTS_PER_WEAPON);
+      expect(debugStore.getTotalPoints(weaponType)).toBe(DEBUG_MASTERY_POINTS_PER_WEAPON);
+    }
+    expect(debugStore.getTotalPoints()).toBe(DEBUG_MASTERY_POINTS_PER_WEAPON * Object.values(WeaponType).length);
+  });
+
+  it('debug point mode can spend virtual points but still enforces maxPoints', () => {
+    const debugStore = new MasteryPointStore({ debugPointMode: true });
+
+    expect(debugStore.spendPoint('black_hole_a_1', 3)).toBe(true);
+    expect(debugStore.spendPoint('black_hole_a_1', 3)).toBe(true);
+    expect(debugStore.spendPoint('black_hole_a_1', 3)).toBe(true);
+    expect(debugStore.spendPoint('black_hole_a_1', 3)).toBe(false);
+
+    expect(debugStore.getNodePoints('black_hole_a_1')).toBe(3);
+    expect(debugStore.getAvailablePoints(WeaponType.BlackHole)).toBe(DEBUG_MASTERY_POINTS_PER_WEAPON - 3);
+  });
+
+  it('debug point mode still rejects tree-level excluded nodes', () => {
+    const debugStore = new MasteryPointStore({ debugPointMode: true });
+    const tree = UPGRADE_TREES[WeaponType.BlackHole];
+
+    debugStore.spendPoint('black_hole_a_1', 3, 1, tree);
+    debugStore.spendPoint('black_hole_a_1', 3, 1, tree);
+    debugStore.spendPoint('black_hole_a_1', 3, 1, tree);
+    debugStore.spendPoint('black_hole_a_2', 1, 1, tree);
+    debugStore.spendPoint('black_hole_a_3', 1, 1, tree);
+    expect(debugStore.spendPoint('black_hole_al_4', 1, 1, tree)).toBe(true);
+
+    expect(debugStore.spendPoint('black_hole_ar_4', 1, 2, tree)).toBe(false);
+    expect(debugStore.isUnlocked('black_hole_ar_4')).toBe(false);
+  });
+
+  it('debug point mode does not persist virtual totals or debug purchases', () => {
+    const debugStore = new MasteryPointStore({ debugPointMode: true });
+    debugStore.spendPoint('standard_a_1');
+
+    expect(localStorageMock.getItem('gw_mastery_points')).toBeNull();
+
+    const normalStore = new MasteryPointStore();
+    expect(normalStore.getTotalPoints(WeaponType.Standard)).toBe(0);
+    expect(normalStore.isUnlocked('standard_a_1')).toBe(false);
   });
 
   // -------------------------------------------------------------------------

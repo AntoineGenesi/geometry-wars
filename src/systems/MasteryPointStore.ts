@@ -14,6 +14,16 @@ import { WeaponType } from '../weapons/WeaponTypes';
 import { UpgradeTree, isExcluded } from './UpgradeTreeData';
 
 const STORAGE_KEY = 'gw_mastery_points';
+export const DEBUG_MASTERY_POINTS_PER_WEAPON = 9999;
+
+export interface MasteryPointStoreOptions {
+  /**
+   * Grants a large virtual point balance for debug/test UIs without persisting
+   * that fake balance or debug purchases back to normal localStorage.
+   */
+  debugPointMode?: boolean;
+  debugPointsPerWeapon?: number;
+}
 
 // ---------------------------------------------------------------------------
 // Storage format
@@ -76,8 +86,12 @@ export class MasteryPointStore {
   private weaponPoints: Map<WeaponType, WeaponPointEntry> = new Map();
   /** Points invested per node (0 = locked, ≥1 = at least partially unlocked). */
   private nodePoints: Record<string, number> = {};
+  private readonly debugPointMode: boolean;
+  private readonly debugPointsPerWeapon: number;
 
-  constructor() {
+  constructor(options: MasteryPointStoreOptions = {}) {
+    this.debugPointMode = options.debugPointMode === true;
+    this.debugPointsPerWeapon = options.debugPointsPerWeapon ?? DEBUG_MASTERY_POINTS_PER_WEAPON;
     this.load();
   }
 
@@ -87,6 +101,9 @@ export class MasteryPointStore {
 
   /** Available points for a specific weapon (total - spent). */
   getAvailablePoints(weaponType: WeaponType): number {
+    if (this.debugPointMode) {
+      return Math.max(0, this.debugPointsPerWeapon - this.getSpentPoints(weaponType));
+    }
     const entry = this.weaponPoints.get(weaponType);
     if (!entry) return 0;
     return Math.max(0, entry.total - entry.spent);
@@ -95,7 +112,12 @@ export class MasteryPointStore {
   /** Total points earned across all weapons (or for a specific weapon). */
   getTotalPoints(weaponType?: WeaponType): number {
     if (weaponType !== undefined) {
+      if (this.debugPointMode) return this.debugPointsPerWeapon;
       return this.weaponPoints.get(weaponType)?.total ?? 0;
+    }
+    if (this.debugPointMode) {
+      return (Object.values(WeaponType) as WeaponType[])
+        .reduce((sum, wt) => sum + this.getTotalPoints(wt), 0);
     }
     let sum = 0;
     for (const entry of this.weaponPoints.values()) sum += entry.total;
@@ -110,6 +132,11 @@ export class MasteryPointStore {
     let sum = 0;
     for (const entry of this.weaponPoints.values()) sum += entry.spent;
     return sum;
+  }
+
+  /** True when this store is using non-persistent virtual points for debug/test. */
+  isDebugPointMode(): boolean {
+    return this.debugPointMode;
   }
 
   // -------------------------------------------------------------------------
@@ -206,6 +233,8 @@ export class MasteryPointStore {
   // -------------------------------------------------------------------------
 
   save(): void {
+    if (this.debugPointMode) return;
+
     const weaponPointsObj: { [k: string]: WeaponPointEntry } = {};
     for (const [wt, entry] of this.weaponPoints.entries()) {
       weaponPointsObj[wt] = { ...entry };
@@ -283,6 +312,8 @@ export class MasteryPointStore {
   reset(): void {
     this.weaponPoints = new Map();
     this.nodePoints = {};
+    if (this.debugPointMode) return;
+
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch {
@@ -295,7 +326,7 @@ export class MasteryPointStore {
   // -------------------------------------------------------------------------
 
   /** Load from localStorage and return a fully initialised store. */
-  static load(): MasteryPointStore {
-    return new MasteryPointStore();
+  static load(options: MasteryPointStoreOptions = {}): MasteryPointStore {
+    return new MasteryPointStore(options);
   }
 }
