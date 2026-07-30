@@ -210,6 +210,19 @@ describe('MatchUpgradeTracker', () => {
     expect(tracker.getPendingChoice()!.nodeIds).not.toContain('fake_node');
   });
 
+  it('MP server rejection cleanup clears pending choice without activating locally', () => {
+    tracker.onBuildChoiceAvailable = vi.fn();
+    for (let i = 0; i < 10; i++) {
+      tracker.recordKill(WeaponType.PlasmaMortar);
+    }
+
+    expect(tracker.getPendingChoice()).not.toBeNull();
+    tracker.clearPendingChoice();
+
+    expect(tracker.getPendingChoice()).toBeNull();
+    expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
+  });
+
   // -------------------------------------------------------------------------
   // Prerequisite filtering
   // -------------------------------------------------------------------------
@@ -380,5 +393,28 @@ describe('MatchUpgradeTracker', () => {
     }
     // plasma_mortar_a_1 was added to the store AFTER construction, so not in permanentUnlocks
     expect(cb).not.toHaveBeenCalled();
+  });
+
+  it('refreshFromStore offers newly unlocked nodes whose kill threshold was already met', () => {
+    const s = makeStore([]);
+    const t = new MatchUpgradeTracker(s);
+    const cb = vi.fn();
+    t.onBuildChoiceAvailable = cb;
+
+    for (let i = 0; i < 10; i++) {
+      t.recordKill(WeaponType.Standard);
+    }
+    expect(cb).not.toHaveBeenCalled();
+
+    s.earnPoint(WeaponType.Standard);
+    s.spendPoint('standard_a_1');
+    t.refreshFromStore(s);
+
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenCalledWith(WeaponType.Standard, ['standard_a_1']);
+    expect(t.getPendingChoice()).toEqual({
+      weaponType: WeaponType.Standard,
+      nodeIds: ['standard_a_1'],
+    });
   });
 });

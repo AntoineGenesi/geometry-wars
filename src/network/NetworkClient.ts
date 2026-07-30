@@ -279,6 +279,19 @@ export interface NetworkStartupConfig {
   serverVersion: string;
 }
 
+export interface UpgradeActivationPayload {
+  nodeId: string;
+  weaponType: string;
+  unlockedNodeIds: string[];
+}
+
+export interface UpgradeActivationResult {
+  accepted: boolean;
+  nodeId: string;
+  weaponType: string;
+  reason?: string;
+}
+
 /** Event callbacks */
 export interface NetworkCallbacks {
   onStateChange?: (state: NetworkGameState) => void;
@@ -341,6 +354,8 @@ export interface NetworkCallbacks {
    * Includes actual damage dealt so client can show correct damage numbers. (s44r2-07)
    */
   onPvpHit?: (data: { killerId: string; killerName: string; victimId: string; victimName: string; damage: number }) => void;
+  /** Fired after the server accepts or rejects a match upgrade activation. */
+  onUpgradeActivationResult?: (data: UpgradeActivationResult) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -712,6 +727,11 @@ export class NetworkClient {
       this.callbacks.onPlayerHit?.(data);
     });
 
+    this.room.onMessage('upgrade_activation_result', (data: UpgradeActivationResult) => {
+      netLog(`[Network] upgrade_activation_result: accepted=${data.accepted} weapon=${data.weaponType} node=${data.nodeId} reason=${data.reason ?? ''}`);
+      this.callbacks.onUpgradeActivationResult?.(data);
+    });
+
     // Disconnection
     this.room.onLeave((code) => {
       netLog(`[Network] Left room with code: ${code}`);
@@ -978,6 +998,16 @@ export class NetworkClient {
   sendPvpBulletHit(data: { bulletId: string; targetId: string; weaponType: string; ownerId: string }): void {
     if (!this.room || !this.connected) return;
     this.room.send('pvp_bullet_hit', data);
+  }
+
+  /**
+   * Request server-authoritative activation of a match upgrade node.
+   * The client supplies persistent unlock entitlement from localStorage, while
+   * the server validates match kills, prerequisites, conflicts, and duplicates.
+   */
+  sendUpgradeActivation(data: UpgradeActivationPayload): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('activate_upgrade', data);
   }
 
   /**

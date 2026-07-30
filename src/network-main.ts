@@ -90,6 +90,11 @@ import {
   NetworkGameState,
   ClientMetricsPayload,
 } from './network/NetworkClient';
+import {
+  reconcileUpgradeActivationResult,
+  upgradeActivationKey,
+  type PendingUpgradeActivation,
+} from './network/mpUpgradeActivationClient';
 import { PlayerNameLabels, PlayerLabelData } from './ui/PlayerNameLabel';
 import { Minimap } from './ui/Minimap';
 import { GameOverScreen, PvpPlayerStat, PvpvePlayerStat } from './ui/GameOverScreen';
@@ -1207,6 +1212,10 @@ async function main() {
     levelUpNotification.show(level, perk);
     sound.play('multiplierUp', { pitch: 1.2 + level * 0.05 });
   };
+  playerLevel.onMasteryPointEarned = () => {
+    masteryPointStore.earnPoint(localWeaponManager.getCurrentWeapon());
+    upgradeNotification.showMasteryPointEarned();
+  };
 
   // -- KillStreakAnnouncer: centered overlay for PvP kill streak announcements --
   const killStreakAnnouncer = new KillStreakAnnouncer(sound);
@@ -1235,6 +1244,7 @@ async function main() {
   // Local-only pause flag used while a build-choice card is shown.
   // We do NOT touch isPaused (which would sync with the server) — only this client pauses.
   let buildChoiceActive = false;
+  const pendingUpgradeActivations = new Map<string, PendingUpgradeActivation>();
 
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
@@ -1245,7 +1255,13 @@ async function main() {
       const killCount = matchUpgradeTracker.getKillCount(weaponType);
 
       buildChoiceScreen.show(weaponType, availableNodeIds, activeIds, killCount, (chosenNodeId) => {
-        matchUpgradeTracker.confirmChoice(chosenNodeId, weaponType);
+        const key = upgradeActivationKey(chosenNodeId, weaponType);
+        pendingUpgradeActivations.set(key, { nodeId: chosenNodeId, weaponType });
+        network.sendUpgradeActivation({
+          nodeId: chosenNodeId,
+          weaponType,
+          unlockedNodeIds: Array.from(masteryPointStore.getUnlockedNodes()),
+        });
         buildChoiceActive = false;
         game.resume();
       });
@@ -2554,6 +2570,9 @@ async function main() {
   });
   pauseMenu.setMasteryPointStore(masteryPointStore);
   pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
+  pauseMenu.onMasteryScreenClose(() => {
+    matchUpgradeTracker.refreshFromStore(masteryPointStore);
+  });
 
   // Sync pause menu with saved visual mode; wire the toggle
   pauseMenu.setVisualMode(savedVisualMode);
@@ -5499,6 +5518,7 @@ async function main() {
         analyticsPanel.hide();
         // Reset per-match upgrade tracker for the new round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
+        pendingUpgradeActivations.clear();
         wireBuildChoiceCallback();
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
@@ -5522,6 +5542,7 @@ async function main() {
         // Reset entities (safe to call even when empty — clears any stale state).
         // Reset per-match upgrade tracker for the first round.
         matchUpgradeTracker = new MatchUpgradeTracker(masteryPointStore);
+        pendingUpgradeActivations.clear();
         wireBuildChoiceCallback();
         localWeaponManager.setUpgradeTracker(matchUpgradeTracker);
         pauseMenu.setMatchUpgradeTracker(matchUpgradeTracker);
@@ -5980,6 +6001,24 @@ async function main() {
           const perk = getLevelPerk(data.newLevel);
           levelUpNotification.show(data.newLevel, perk);
           sound.play('multiplierUp', { pitch: 1.2 + data.newLevel * 0.05 });
+        }
+      },
+      onUpgradeActivationResult: (data) => {
+        const weaponType = SERVER_TO_WEAPON_TYPE[data.weaponType] ?? WeaponType.Standard;
+        const reconciliation = reconcileUpgradeActivationResult({
+          accepted: data.accepted,
+          nodeId: data.nodeId,
+          weaponType,
+          pendingUpgradeActivations,
+          matchUpgradeTracker,
+        });
+        if (data.accepted) {
+          netMainLog(`[NetworkMain] Server accepted upgrade activation: ${data.weaponType}/${data.nodeId}`);
+        } else {
+          console.warn(`[NetworkMain] Server rejected upgrade activation: ${data.weaponType}/${data.nodeId} (${data.reason ?? 'unknown'})`);
+        }
+        if (reconciliation === 'missing_pending') {
+          netMainLog(`[NetworkMain] Ignored stale upgrade activation result with no pending request: ${data.weaponType}/${data.nodeId}`);
         }
       },
       onPvpKill: (data) => {
@@ -7928,7 +7967,19 @@ async function main() {
         player.mesh.position.lerp(_netTempPos, PLAYER_LERP);
         _netTempNormal.set(worldTarget.nx, worldTarget.ny, worldTarget.nz);
         _netTempTangent.set(worldTarget.tx, worldTarget.ty, worldTarget.tz);
-        orientPlayerOnSurface(player, _netTempNormal, target.aimAngle, _netTempTangent);
+        let orientTangentU = _netTempTangent;
+        if (surface) {
+          _aimUnscaledPos.copy(player.mesh.position);
+          if (currentMapSizeScaleFactor !== 1.0) {
+            _aimUnscaledPos.divideScalar(currentMapSizeScaleFactor);
+          }
+          const orientUV = surface.worldToSurface(_aimUnscaledPos);
+          const orientSp = surface.getPoint(orientUV.u, orientUV.v);
+          if (orientSp.tangentU.lengthSq() > 0.001) {
+            orientTangentU = orientSp.tangentU;
+          }
+        }
+        orientPlayerOnSurface(player, _netTempNormal, target.aimAngle, orientTangentU);
       } else {
         // Fallback: UV-based positioning (legacy server or before first world-pos arrives).
         // s44l-16 FIX: For torus, sphere-approx UV (newU/newV) is swapped vs torus UV.

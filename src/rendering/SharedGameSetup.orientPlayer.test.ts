@@ -68,6 +68,41 @@ describe('orientPlayerOnSurface', () => {
     expect(localY.dot(normal)).toBeCloseTo(1.0, 3);
   });
 
+  it('aligns mesh +Z with the protected bullet aim vector', () => {
+    const cases = [
+      {
+        normal: new THREE.Vector3(0, 1, 0),
+        tangentU: new THREE.Vector3(1, 0, 0),
+        angles: [0, Math.PI / 2, -Math.PI / 2, Math.PI],
+      },
+      {
+        normal: new THREE.Vector3(0.35, 0.82, 0.45).normalize(),
+        tangentU: new THREE.Vector3(1, 0, 0)
+          .projectOnPlane(new THREE.Vector3(0.35, 0.82, 0.45).normalize())
+          .normalize(),
+        angles: [0.35, 1.2, -2.1],
+      },
+    ];
+
+    for (const { normal, tangentU, angles } of cases) {
+      const tangentV = tangentU.clone().cross(normal).normalize();
+      for (const aimAngle of angles) {
+        const mesh = new THREE.Object3D();
+        orientPlayerOnSurface(mesh, normal, aimAngle, tangentU);
+
+        const meshForward = new THREE.Vector3(0, 0, 1)
+          .applyQuaternion(mesh.quaternion)
+          .normalize();
+        const bulletAim = tangentU.clone()
+          .multiplyScalar(Math.cos(aimAngle))
+          .add(tangentV.clone().multiplyScalar(Math.sin(aimAngle)))
+          .normalize();
+
+        expect(meshForward.dot(bulletAim)).toBeGreaterThan(0.99);
+      }
+    }
+  });
+
   // REGRESSION GUARD: s44r17-06 — aimAngle sign must be negative
   it('REGRESSION: aimAngle rotation must match SP sign convention (-aimAngle)', () => {
     const mesh = new THREE.Object3D();

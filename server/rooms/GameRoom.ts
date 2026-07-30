@@ -50,6 +50,11 @@ import {
   DEFAULT_GAME_SETTINGS,
 } from '../shared/GameSettings';
 import type { GameSettings } from '../shared/GameSettings';
+import {
+  validateMpUpgradeActivation,
+  type UpgradeActivationRequest,
+  type UpgradeActivationResult,
+} from './mpUpgradeActivation';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -1106,6 +1111,11 @@ export class GameRoom extends Room<GameState> {
   /** Current inventory index per player (0 = standard). */
   private playerWeaponIndex: Map<string, number> = new Map();
 
+  /** Per-player/per-weapon kill counts used to validate match upgrade activation. */
+  private playerUpgradeKillCounts: Map<string, Map<string, number>> = new Map();
+  /** Per-player/per-weapon active upgrade nodes accepted by the server for this match. */
+  private playerActiveUpgradeNodes: Map<string, Map<string, Set<string>>> = new Map();
+
   /** Server-side surface geometry + walker pool. Replaces UV-based player movement. */
   private surfaceManager = new ServerSurfaceManager();
 
@@ -1212,6 +1222,11 @@ export class GameRoom extends Room<GameState> {
     // Register message handlers
     this.onMessage('input', (client, input: PlayerInput) => {
       this.handleInput(client, input);
+    });
+
+    this.onMessage('activate_upgrade', (client, data: UpgradeActivationRequest) => {
+      const result = this.handleUpgradeActivationRequest(client.sessionId, data);
+      client.send('upgrade_activation_result', result);
     });
 
     this.onMessage('start', (client, data?: { choice?: string; settings?: Partial<GameSettings> }) => {
@@ -1481,52 +1496,7 @@ export class GameRoom extends Room<GameState> {
     // Companion bullet hit: client detects collision (guardian/hunter bullets are client-only),
     // server applies 1 damage and kills the enemy if health reaches zero.
     this.onMessage('companion_hit', (client, data: { enemyId: string }) => {
-      if (this.state.roomPhase !== 'playing') return;
-      const { enemyId } = data;
-      if (!enemyId || typeof enemyId !== 'string') return;
-
-      // Find enemy by ID in the ArraySchema
-      let targetIndex = -1;
-      this.state.enemies.forEach((enemy, index) => {
-        if (enemy.id === enemyId) targetIndex = index;
-      });
-      if (targetIndex < 0) return;
-
-      const enemy = this.state.enemies[targetIndex];
-      if (!enemy.alive) return;
-
-      enemy.health -= 1; // GUARDIAN_DAMAGE = 1
-
-      if (enemy.health <= 0) {
-        enemy.alive = false;
-        this.enemyAI.delete(enemy.id);
-        this.state.enemies.splice(targetIndex, 1);
-
-        // Award score/level to the shooting player
-        const player = this.state.players.get(client.sessionId);
-        if (player) {
-          player.score += this.getEnemyScore(enemy.type) * player.multiplier;
-          player.playerKills++;
-          player.enemyKills++;
-          const newLevel = this.getPlayerLevel(player.playerKills);
-          if (newLevel > player.playerLevel) {
-            player.playerLevel = newLevel;
-            this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
-          }
-          this.trackDDAKill(client.sessionId);
-        }
-
-        // Chance to spawn pickups (same as bullet kills)
-        if (Math.random() < WEAPON_DROP_CHANCE) {
-          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
-          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < 0.05) {
-          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-      }
+      this.handleCompanionHit(client.sessionId, data.enemyId);
     });
 
     // s44r-04-02: Client-authoritative bullet-enemy hit detection.
@@ -1593,6 +1563,7 @@ export class GameRoom extends Room<GameState> {
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
         player.playerKills++;
         player.enemyKills++;
+        this.recordUpgradeKill(client.sessionId, weaponType);
         const newLevel = this.getPlayerLevel(player.playerKills);
         if (newLevel > player.playerLevel) {
           player.playerLevel = newLevel;
@@ -2094,6 +2065,8 @@ export class GameRoom extends Room<GameState> {
       this.playerBoostStates.delete(client.sessionId);
       this.playerWeaponInventory.delete(client.sessionId);
       this.playerWeaponIndex.delete(client.sessionId);
+      this.playerUpgradeKillCounts.delete(client.sessionId);
+      this.playerActiveUpgradeNodes.delete(client.sessionId);
       this.surfaceManager.removeWalker(client.sessionId);
       this.playerPerfWindows.delete(client.sessionId);
       this.ddaDecreaseCounters.delete(client.sessionId);
@@ -2181,6 +2154,102 @@ export class GameRoom extends Room<GameState> {
     }
     this.surfaceManager.dispose();
     this.logger.log('[GameRoom] Disposed');
+  }
+
+  private getUpgradeKillCount(sessionId: string, weaponType: string): number {
+    return this.playerUpgradeKillCounts.get(sessionId)?.get(weaponType) ?? 0;
+  }
+
+  private getActiveUpgradeNodes(sessionId: string, weaponType: string): Set<string> {
+    let byWeapon = this.playerActiveUpgradeNodes.get(sessionId);
+    if (!byWeapon) {
+      byWeapon = new Map<string, Set<string>>();
+      this.playerActiveUpgradeNodes.set(sessionId, byWeapon);
+    }
+
+    let active = byWeapon.get(weaponType);
+    if (!active) {
+      active = new Set<string>();
+      byWeapon.set(weaponType, active);
+    }
+
+    return active;
+  }
+
+  private recordUpgradeKill(sessionId: string, weaponType: string, count = 1): void {
+    let byWeapon = this.playerUpgradeKillCounts.get(sessionId);
+    if (!byWeapon) {
+      byWeapon = new Map<string, number>();
+      this.playerUpgradeKillCounts.set(sessionId, byWeapon);
+    }
+    byWeapon.set(weaponType, (byWeapon.get(weaponType) ?? 0) + count);
+  }
+
+  private handleUpgradeActivationRequest(
+    sessionId: string,
+    data: UpgradeActivationRequest,
+  ): UpgradeActivationResult {
+    const weaponType = typeof data.weaponType === 'string' ? data.weaponType : '';
+    const activeNodeIds = this.getActiveUpgradeNodes(sessionId, weaponType);
+    const result = validateMpUpgradeActivation(data, {
+      activeNodeIds,
+      killCount: this.getUpgradeKillCount(sessionId, weaponType),
+    });
+
+    if (result.accepted) {
+      activeNodeIds.add(result.nodeId);
+      this.logger.log(`[GameRoom] upgrade activation accepted: player=${sessionId} weapon=${result.weaponType} node=${result.nodeId}`);
+    } else {
+      this.logger.log(`[GameRoom] upgrade activation rejected: player=${sessionId} weapon=${result.weaponType} node=${result.nodeId} reason=${result.reason}`);
+    }
+
+    return result;
+  }
+
+  private handleCompanionHit(sessionId: string, enemyId: string): void {
+    if (this.state.roomPhase !== 'playing') return;
+    if (!enemyId || typeof enemyId !== 'string') return;
+
+    let targetIndex = -1;
+    this.state.enemies.forEach((enemy, index) => {
+      if (enemy.id === enemyId) targetIndex = index;
+    });
+    if (targetIndex < 0) return;
+
+    const enemy = this.state.enemies[targetIndex];
+    if (!enemy.alive) return;
+
+    enemy.health -= 1; // GUARDIAN_DAMAGE = 1
+
+    if (enemy.health <= 0) {
+      enemy.alive = false;
+      this.enemyAI.delete(enemy.id);
+      this.state.enemies.splice(targetIndex, 1);
+
+      const player = this.state.players.get(sessionId);
+      if (player) {
+        player.score += this.getEnemyScore(enemy.type) * player.multiplier;
+        player.playerKills++;
+        player.enemyKills++;
+        this.recordUpgradeKill(sessionId, player.weaponType);
+        const newLevel = this.getPlayerLevel(player.playerKills);
+        if (newLevel > player.playerLevel) {
+          player.playerLevel = newLevel;
+          this.broadcast('player_level_up', { playerId: player.id, newLevel, playerName: player.name });
+        }
+        this.trackDDAKill(sessionId);
+      }
+
+      if (Math.random() < WEAPON_DROP_CHANCE) {
+        this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
+      }
+      if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+        this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
+      }
+      if (Math.random() < 0.05) {
+        this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
+      }
+    }
   }
 
   private handleClientMetrics(client: Client, data: Record<string, unknown>): void {
@@ -2497,6 +2566,8 @@ export class GameRoom extends Room<GameState> {
     this.playerPerfWindows.clear();
     this.ddaUpdateTimer = 0;
     this.ddaDecreaseCounters.clear();
+    this.playerUpgradeKillCounts.clear();
+    this.playerActiveUpgradeNodes.clear();
 
     // Clear entities
     this.state.bullets.clear();
@@ -3121,6 +3192,7 @@ export class GameRoom extends Room<GameState> {
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
         player.playerKills++;
         player.enemyKills++;
+        this.recordUpgradeKill(player.id, player.weaponType);
         const newLevel = this.getPlayerLevel(player.playerKills);
         if (newLevel > player.playerLevel) {
           player.playerLevel = newLevel;
@@ -3223,6 +3295,7 @@ export class GameRoom extends Room<GameState> {
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
         player.playerKills++;
         player.enemyKills++;
+        this.recordUpgradeKill(player.id, player.weaponType);
         const newLevel = this.getPlayerLevel(player.playerKills);
         if (newLevel > player.playerLevel) {
           player.playerLevel = newLevel;
@@ -3306,6 +3379,7 @@ export class GameRoom extends Room<GameState> {
         player.score += this.getEnemyScore(enemy.type) * player.multiplier;
         player.playerKills++;
         player.enemyKills++;
+        this.recordUpgradeKill(player.id, player.weaponType);
         const newLevel = this.getPlayerLevel(player.playerKills);
         if (newLevel > player.playerLevel) {
           player.playerLevel = newLevel;
@@ -3363,6 +3437,7 @@ export class GameRoom extends Room<GameState> {
     if (enemiesToRemove.length > 0) {
       player.playerKills += enemiesToRemove.length;
       player.enemyKills += enemiesToRemove.length;
+      this.recordUpgradeKill(player.id, player.weaponType, enemiesToRemove.length);
       const newLevel = this.getPlayerLevel(player.playerKills);
       if (newLevel > player.playerLevel) {
         player.playerLevel = newLevel;
@@ -4800,6 +4875,7 @@ export class GameRoom extends Room<GameState> {
               owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
               owner.playerKills++;
               owner.enemyKills++;
+              this.recordUpgradeKill(bullet.ownerId, bulletWeaponType);
               const newLevel = this.getPlayerLevel(owner.playerKills);
               if (newLevel > owner.playerLevel) {
                 owner.playerLevel = newLevel;
