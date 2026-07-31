@@ -1040,7 +1040,11 @@ export class GameLoop {
       }
 
       ctx.ddaTracker.update(dt, nearestEnemyDist, ctx.player.lives / 3);
-      ctx.ddaEngine.update(dt, [ctx.ddaTracker]);
+      const currentDifficultyTier =
+        typeof ctx.waveScheduler?.currentDifficultyLevel === 'number'
+          ? ctx.waveScheduler.currentDifficultyLevel
+          : 0;
+      ctx.ddaEngine.update(dt, [ctx.ddaTracker], currentDifficultyTier);
       ctx.ddaLogger.update(dt);
       ctx.ddaPlayers[0].u = ctx.player.surfaceU;
       ctx.ddaPlayers[0].v = ctx.player.surfaceV;

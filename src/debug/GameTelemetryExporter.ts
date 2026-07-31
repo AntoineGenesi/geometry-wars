@@ -56,6 +56,10 @@ export class GameTelemetryExporter {
       surfaceDistToPlayer: number;
       worldDistToPlayer: number;
       collisionRadius: number;
+      health: number;
+      maxHealth: number;
+      difficultyTier: number;
+      difficultyTierName: string;
       isAlive: boolean;
       opacity: number;
     }> = [];
@@ -105,6 +109,10 @@ export class GameTelemetryExporter {
         surfaceDistToPlayer: surfaceDist,
         worldDistToPlayer: worldDist,
         collisionRadius: enemy.radius,
+        health: enemy.health,
+        maxHealth: enemy.maxHealth,
+        difficultyTier: enemy.difficultyTier?.tier ?? 0,
+        difficultyTierName: enemy.difficultyTier?.name ?? 'Normal',
         isAlive: enemy.alive,
         opacity,
       });
@@ -227,6 +235,27 @@ export class GameTelemetryExporter {
       frame: this.frameCount,
       time: game.clock.totalTime,
       fps: 1 / game.clock.fixedDeltaTime,
+      difficulty: {
+        level: Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0),
+        tier: Math.floor(Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0)),
+        wave: typeof (ctx.waveScheduler as any)?.getCurrentWave === 'function'
+          ? (ctx.waveScheduler as any).getCurrentWave()
+          : 0,
+      },
+      dda: {
+        enabled: ctx.ddaEngine.isEnabled(),
+        assistanceLevel: ctx.ddaEngine.getDDALevel(0),
+        assistanceLevelSmooth: ctx.ddaEngine.getDDALevelSmooth(0),
+        speedMultiplier: ctx.ddaEngine.getSpeedMultiplier(0),
+        compositeScore: ctx.ddaEngine.getCompositeScore(0),
+        dominanceHpMultiplier: ctx.ddaSpawnModifier.getDominanceHpMultiplier(
+          0,
+          ctx.companionManager.count,
+          ctx.mapSizeScaleFactor < 1.0,
+        ),
+        companionCount: ctx.companionManager.count,
+        isSmallMap: ctx.mapSizeScaleFactor < 1.0,
+      },
       deaths: {
         total: this.totalDeaths,
         log: this.deathLog,

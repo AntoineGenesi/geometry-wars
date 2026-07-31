@@ -81,6 +81,9 @@ export interface EnemyInfo {
   worldPos: Vec3;
   alive: boolean;
   health: number;
+  maxHealth: number;
+  difficultyTier: number;
+  difficultyTierName: string;
   opacity: number;
   /** Average brightness of the actual rendered instanceColor (0..1).
    *  After s44r18-20 fix, opacity is binary; all dimming is in instanceColor only.
@@ -285,6 +288,9 @@ export class TestHarnessAPI {
         worldPos: { x: pos.x, y: pos.y, z: pos.z },
         alive: enemy.alive,
         health: enemy.health,
+        maxHealth: enemy.maxHealth,
+        difficultyTier: enemy.difficultyTier?.tier ?? 0,
+        difficultyTierName: enemy.difficultyTier?.name ?? 'Normal',
         opacity,
         isMaterializing: enemy.isMaterializing ?? false,
         instanceColorBrightness,
@@ -453,6 +459,127 @@ export class TestHarnessAPI {
   /** Get the full telemetry snapshot instantly. */
   getTelemetry(): any {
     return (window as any).__GAME_TELEMETRY ?? null;
+  }
+
+  /** Get a DDA/dominance/difficulty snapshot from the real SP GameLoop path. */
+  getDDAState(): any {
+    const ctxAny = this.ctx as any;
+    const waveScheduler = ctxAny.waveScheduler;
+    const difficultyLevel = Number(waveScheduler?.currentDifficultyLevel ?? 0);
+    const assistanceDisableOnTier =
+      typeof this.ctx.ddaEngine.getDisableOnTier === 'function'
+        ? this.ctx.ddaEngine.getDisableOnTier()
+        : 4;
+    const trackerSnapshot = this.ctx.ddaTracker.getSnapshot();
+    const companionCount = this.ctx.companionManager.count;
+    const isSmallMap = this.ctx.mapSizeScaleFactor < 1.0;
+    const dominanceHpMultiplier = this.ctx.ddaSpawnModifier.getDominanceHpMultiplier(
+      0,
+      companionCount,
+      isSmallMap,
+    );
+    const activeEnemies = this.ctx.enemySpawner.getEnemies().filter((enemy) => enemy.active);
+    const enemiesByTier: Record<string, number> = {};
+    const enemiesByType: Record<string, number> = {};
+    let totalHealth = 0;
+    let maxHealth = 0;
+    let maxTier = 0;
+
+    for (const enemy of activeEnemies) {
+      const tier = enemy.difficultyTier?.tier ?? 0;
+      const type = enemy.baseTypeName || enemy.constructor.name.toLowerCase();
+      enemiesByTier[String(tier)] = (enemiesByTier[String(tier)] ?? 0) + 1;
+      enemiesByType[type] = (enemiesByType[type] ?? 0) + 1;
+      totalHealth += enemy.maxHealth;
+      maxHealth = Math.max(maxHealth, enemy.maxHealth);
+      maxTier = Math.max(maxTier, tier);
+    }
+
+    const pickupSpawner = this.ctx.pickupSpawner as any;
+    const renderer = this.ctx.game.renderer;
+
+    return {
+      path: 'sp-main-game-loop',
+      time: this.ctx.game.clock.totalTime,
+      frame: this.frameCount,
+      surface: String(this.ctx.surfaceType),
+      wave: {
+        current: typeof waveScheduler?.getCurrentWave === 'function' ? waveScheduler.getCurrentWave() : 0,
+        elapsed: typeof waveScheduler?.getElapsed === 'function' ? waveScheduler.getElapsed() : 0,
+      },
+      difficulty: {
+        level: difficultyLevel,
+        tier: Math.floor(difficultyLevel),
+        assistanceDisableOnTier,
+        assistanceShouldBeDisabled: difficultyLevel >= assistanceDisableOnTier,
+      },
+      player: {
+        score: this.ctx.player.score,
+        lives: this.ctx.player.lives,
+        alive: this.ctx.player.alive,
+        powerLevel: this.ctx.playerLevel.level,
+        totalKills: this.ctx.playerLevel.totalKills,
+        buffPower: this.ctx.buffManager.getTotalBuffPower(),
+        activeBuffs: this.ctx.buffManager.getActiveBuffs().map((buff) => `${buff.type}:${buff.stacks}`),
+        companions: companionCount,
+        companionCounts: this.ctx.companionManager.getCompanionCounts(),
+        currentWeapon: this.ctx.weaponManager.getCurrentWeapon(),
+      },
+      dda: {
+        enabled: this.ctx.ddaEngine.isEnabled(),
+        assistanceLevel: this.ctx.ddaEngine.getDDALevel(0),
+        assistanceLevelSmooth: this.ctx.ddaEngine.getDDALevelSmooth(0),
+        speedMultiplier: this.ctx.ddaEngine.getSpeedMultiplier(0),
+        compositeScore: this.ctx.ddaEngine.getCompositeScore(0),
+        tracker: {
+          killRate: trackerSnapshot.killRate,
+          deathRate: trackerSnapshot.deathRate,
+          scoreRate: trackerSnapshot.scoreRate,
+          closeCallFreq: trackerSnapshot.closeCallFreq,
+          avgEnemyProximity: trackerSnapshot.avgEnemyProximity,
+          timeAtLowHealth: trackerSnapshot.timeAtLowHealth,
+          warmedUp: this.ctx.ddaTracker.isWarmedUp,
+          totalKills: this.ctx.ddaTracker.totalKills,
+          totalDeaths: this.ctx.ddaTracker.totalDeaths,
+        },
+        dominanceHpMultiplier,
+        isSmallMap,
+      },
+      spawner: {
+        activeEnemyCount: this.ctx.enemySpawner.getActiveCount(),
+        maxActiveEnemies: this.ctx.enemySpawner.getMaxActiveEnemies(),
+        pickupRates: {
+          superState: pickupSpawner.superStateDropRate,
+          weapon: pickupSpawner.weaponDropRate,
+          oldBuff: pickupSpawner.oldBuffDropRate,
+          companion: pickupSpawner.companionDropRate,
+          heal: pickupSpawner.healDropRate,
+          shield: pickupSpawner.shieldDropRate,
+        },
+      },
+      enemies: {
+        active: activeEnemies.length,
+        byTier: enemiesByTier,
+        byType: enemiesByType,
+        maxTier,
+        avgMaxHealth: activeEnemies.length > 0 ? totalHealth / activeEnemies.length : 0,
+        maxHealth,
+        sample: activeEnemies.slice(0, 16).map((enemy) => ({
+          type: enemy.baseTypeName || enemy.constructor.name.toLowerCase(),
+          health: enemy.health,
+          maxHealth: enemy.maxHealth,
+          tier: enemy.difficultyTier?.tier ?? 0,
+          tierName: enemy.difficultyTier?.name ?? 'Normal',
+          materializing: enemy.isMaterializing,
+        })),
+      },
+      renderer: {
+        backend: (this.ctx.game as any).backend ?? 'unknown',
+        isWebGPU: Boolean((this.ctx.game as any).isWebGPU),
+        fixedFps: 1 / this.ctx.game.clock.fixedDeltaTime,
+        pixelRatio: renderer.getPixelRatio(),
+      },
+    };
   }
 
   /** Get recent death events. */

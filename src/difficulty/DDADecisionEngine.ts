@@ -281,6 +281,11 @@ export class DDADecisionEngine {
     return this.enabled;
   }
 
+  /** Difficulty tier at which assistance DDA is disabled. */
+  getDisableOnTier(): number {
+    return this.config.disableOnTier;
+  }
+
   // -----------------------------------------------------------------------
   // Internal
   // -----------------------------------------------------------------------
