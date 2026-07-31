@@ -146,6 +146,49 @@ export interface BulletTrajectory {
   age: number;
 }
 
+export interface WeaponProjectileInfo {
+  type: string;
+  position: Vec3;
+  direction: Vec3;
+  age: number;
+  maxAge: number;
+  damage: number;
+  speed: number;
+}
+
+export interface WeaponEffectInfo {
+  type: string;
+  position: Vec3;
+  direction: Vec3 | null;
+  duration: number;
+  elapsed: number;
+  beamPointCount: number;
+}
+
+export interface WeaponRuntimeSnapshot {
+  currentWeapon: string;
+  inventory: Array<{ type: string; ammo: number; stacks: number }>;
+  bulletCount: number;
+  bullets: BulletTrajectory[];
+  projectileCount: number;
+  projectiles: WeaponProjectileInfo[];
+  effectCount: number;
+  effects: WeaponEffectInfo[];
+  visualRootChildren: number;
+}
+
+export interface WeaponFireEvidence {
+  selectedWeapon: string;
+  firedSignal: boolean;
+  firedIndicators: string[];
+  origin: Vec3;
+  direction: Vec3;
+  targetEnemyId: string | null;
+  targetBefore: EnemyInfo | null;
+  runtimeBefore: WeaponRuntimeSnapshot;
+  runtimeAfter: WeaponRuntimeSnapshot;
+}
+
 export class TestHarnessAPI {
   private ctx: GameContext;
   private frameCount = 0;
@@ -341,21 +384,43 @@ export class TestHarnessAPI {
     };
   }
 
-  /** Simulate weapon fire (one shot). */
-  fireWeapon(): void {
-    const { player, playerWalker } = this.ctx;
-    if (!player.alive) return;
-    // Use the player's aim direction or forward direction
+  /** Simulate weapon fire (one shot). Returns proof-oriented runtime evidence. */
+  fireWeapon(targetEnemyId?: string): WeaponFireEvidence {
+    const { player } = this.ctx;
+    const selectedWeapon = this.ctx.weaponManager.getCurrentWeapon();
     const origin = player.mesh.position.clone();
-    const direction = new THREE.Vector3(0, 0, -1).applyQuaternion(player.mesh.quaternion);
-    if (player.weaponFireHandler) {
+    const targetBefore = targetEnemyId ? this.getEnemyInfoById(targetEnemyId) : null;
+    const direction = this.getFireDirection(origin, targetEnemyId);
+    const runtimeBefore = this.getWeaponRuntimeSnapshot();
+
+    if (player.alive && player.weaponFireHandler) {
       player.weaponFireHandler(origin, direction);
     }
+
+    const runtimeAfter = this.getWeaponRuntimeSnapshot();
+    const firedIndicators = this.getFireIndicators(runtimeBefore, runtimeAfter, selectedWeapon);
+
+    return {
+      selectedWeapon,
+      firedSignal: firedIndicators.length > 0,
+      firedIndicators,
+      origin: this.toVec3(origin),
+      direction: this.toVec3(direction),
+      targetEnemyId: targetEnemyId ?? null,
+      targetBefore,
+      runtimeBefore,
+      runtimeAfter,
+    };
   }
 
   /** Equip a weapon by name. */
   equipWeapon(type: string): void {
     this.ctx.weaponManager.equipWeapon(type as WeaponType);
+  }
+
+  /** Force-equip a weapon by name for deterministic proof scripts. */
+  forceEquipWeapon(type: string, ammo = 999): void {
+    this.ctx.weaponManager.forceSetWeapon(type as WeaponType, ammo);
   }
 
   /** Get current weapon type. */
@@ -627,6 +692,47 @@ export class TestHarnessAPI {
       });
     });
     return result;
+  }
+
+  /** Get live weapon projectile/effect state for browser proof scripts. */
+  getWeaponRuntimeSnapshot(): WeaponRuntimeSnapshot {
+    const weaponManager = this.ctx.weaponManager as any;
+    const projectiles = (weaponManager.projectiles ?? []) as any[];
+    const activeEffects = (weaponManager.activeEffects ?? []) as any[];
+    const visualRoot = typeof this.ctx.weaponManager.getVisualRoot === 'function'
+      ? this.ctx.weaponManager.getVisualRoot()
+      : null;
+
+    return {
+      currentWeapon: this.ctx.weaponManager.getCurrentWeapon(),
+      inventory: this.ctx.weaponManager.getInventory().map((entry) => ({
+        type: entry.type,
+        ammo: entry.ammo,
+        stacks: entry.stacks,
+      })),
+      bulletCount: this.ctx.bulletPool.activeCount,
+      bullets: this.getBulletTrajectories(),
+      projectileCount: projectiles.length,
+      projectiles: projectiles.slice(0, 24).map((projectile) => ({
+        type: String(projectile.type ?? 'unknown'),
+        position: this.toVec3(projectile.position),
+        direction: this.toVec3(projectile.direction),
+        age: Number(projectile.age ?? 0),
+        maxAge: Number(projectile.maxAge ?? 0),
+        damage: Number(projectile.damage ?? 0),
+        speed: Number(projectile.speed ?? 0),
+      })),
+      effectCount: activeEffects.length,
+      effects: activeEffects.slice(0, 24).map((effect) => ({
+        type: String(effect.type ?? 'unknown'),
+        position: this.toVec3(effect.position),
+        direction: effect.direction ? this.toVec3(effect.direction) : null,
+        duration: Number(effect.duration ?? 0),
+        elapsed: Number(effect.elapsed ?? 0),
+        beamPointCount: Array.isArray(effect.beamPoints) ? effect.beamPoints.length : 0,
+      })),
+      visualRootChildren: visualRoot?.children?.length ?? 0,
+    };
   }
 
   /** Simulate a key press (and optional release after duration ms). */
@@ -1087,6 +1193,85 @@ export class TestHarnessAPI {
       if ((enemy as any).__testId === id) return enemy;
     }
     return null;
+  }
+
+  private getEnemyInfoById(id: string): EnemyInfo | null {
+    return this.getEnemies().find((enemy) => enemy.id === id) ?? null;
+  }
+
+  private getFireDirection(origin: THREE.Vector3, targetEnemyId?: string): THREE.Vector3 {
+    if (targetEnemyId) {
+      const enemy = this.findEnemyById(targetEnemyId);
+      const targetPosition = enemy?.mesh ? enemy.mesh.position : enemy?.position;
+      if (targetPosition) {
+        const toTarget = targetPosition.clone().sub(origin);
+        if (toTarget.lengthSq() > 0.0001) {
+          return toTarget.normalize();
+        }
+      }
+    }
+
+    return new THREE.Vector3(0, 0, -1).applyQuaternion(this.ctx.player.mesh.quaternion).normalize();
+  }
+
+  private getFireIndicators(
+    before: WeaponRuntimeSnapshot,
+    after: WeaponRuntimeSnapshot,
+    selectedWeapon: string,
+  ): string[] {
+    const indicators: string[] = [];
+
+    if (after.bulletCount > before.bulletCount) indicators.push('bullet_count_increased');
+    if (after.projectileCount > before.projectileCount) indicators.push('projectile_count_increased');
+    if (after.effectCount > before.effectCount) indicators.push('effect_count_increased');
+    if (after.visualRootChildren > before.visualRootChildren) indicators.push('visual_root_child_count_increased');
+
+    const beforeAmmo = before.inventory.find((entry) => entry.type === selectedWeapon)?.ammo;
+    const afterAmmo = after.inventory.find((entry) => entry.type === selectedWeapon)?.ammo;
+    if (
+      beforeAmmo !== undefined
+      && afterAmmo !== undefined
+      && beforeAmmo >= 0
+      && afterAmmo < beforeAmmo
+    ) {
+      indicators.push('selected_weapon_ammo_decreased');
+    }
+
+    const selectedEffectType = this.getExpectedEffectType(selectedWeapon);
+    if (selectedEffectType && after.effects.some((effect) => effect.type === selectedEffectType)) {
+      indicators.push(`selected_effect_active:${selectedEffectType}`);
+    }
+
+    if (after.projectiles.some((projectile) => projectile.type === selectedWeapon)) {
+      indicators.push(`selected_projectile_active:${selectedWeapon}`);
+    }
+
+    if (selectedWeapon === WeaponType.Standard && after.bullets.length > before.bullets.length) {
+      indicators.push('standard_bullet_active');
+    }
+
+    return [...new Set(indicators)];
+  }
+
+  private getExpectedEffectType(weaponType: string): string | null {
+    switch (weaponType) {
+      case WeaponType.LaserBeam:
+        return 'laser';
+      case WeaponType.TeslaCoil:
+        return 'tesla';
+      case WeaponType.BlackHole:
+        return 'blackhole';
+      default:
+        return null;
+    }
+  }
+
+  private toVec3(value: THREE.Vector3 | undefined | null): Vec3 {
+    return {
+      x: Number(value?.x ?? 0),
+      y: Number(value?.y ?? 0),
+      z: Number(value?.z ?? 0),
+    };
   }
 
   /**
