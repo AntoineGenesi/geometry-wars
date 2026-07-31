@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { GameRoom } from './GameRoom';
 import { WeaponType } from '../../src/weapons/WeaponTypes';
+import { validateMpUpgradeActivation } from './mpUpgradeActivation';
 
 function makeRoom() {
   const room = Object.create(GameRoom.prototype) as any;
@@ -72,5 +73,32 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
 
     expect(result.accepted).toBe(true);
     expect(activeUpgradeNodes.get('standard:standard_a_1')).toBe(1);
+  });
+
+  it('clears private and schema upgrade state together at round reset', () => {
+    const room = makeRoom();
+    const activeUpgradeNodes = new Map<string, number>([['standard:standard_a_1', 1]]);
+    room.state.players.set('p1', { activeUpgradeNodes });
+    room.playerUpgradeKillCounts.set('p1', new Map([[WeaponType.Standard, 25]]));
+    room.playerActiveUpgradeNodes.set('p1', new Map([
+      [WeaponType.Standard, new Set(['standard_a_1'])],
+    ]));
+
+    room.clearActiveUpgradeState();
+
+    expect(room.playerUpgradeKillCounts.size).toBe(0);
+    expect(room.playerActiveUpgradeNodes.size).toBe(0);
+    expect(activeUpgradeNodes.size).toBe(0);
+  });
+
+  it('rejects accepted-tree nodes whose MP runtime effect is not implemented', () => {
+    expect(validateMpUpgradeActivation({
+      nodeId: 'standard_bl_5',
+      weaponType: WeaponType.Standard,
+      unlockedNodeIds: ['standard_bl_5'],
+    }, {
+      activeNodeIds: new Set(['standard_b_4']),
+      killCount: 120,
+    })).toMatchObject({ accepted: false, reason: 'unsupported_runtime_effect' });
   });
 });

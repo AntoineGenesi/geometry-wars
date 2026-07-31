@@ -2699,8 +2699,7 @@ export class GameRoom extends Room<GameState> {
     this.playerPerfWindows.clear();
     this.ddaUpdateTimer = 0;
     this.ddaDecreaseCounters.clear();
-    this.playerUpgradeKillCounts.clear();
-    this.playerActiveUpgradeNodes.clear();
+    this.clearActiveUpgradeState();
 
     // Clear entities
     this.state.bullets.clear();
@@ -2782,11 +2781,22 @@ export class GameRoom extends Room<GameState> {
       spawnIdx++;
     });
 
+    // A soft restart is a new round: private authority and schema-visible
+    // upgrade state must reset together, just like startGame().
+    this.clearActiveUpgradeState();
+
     // Clear any pending settings — they have now been applied
     this.pendingSettings = null;
 
     this.broadcast('round_restarted', {});
     this.logger.log('[GameRoom] Round soft-restarted with new settings');
+  }
+
+  /** Clear all per-round upgrade authority and its schema-visible projection. */
+  private clearActiveUpgradeState(): void {
+    this.playerUpgradeKillCounts.clear();
+    this.playerActiveUpgradeNodes.clear();
+    this.state.players.forEach((player) => player.activeUpgradeNodes?.clear());
   }
 
   private handleInput(client: Client, input: PlayerInput) {

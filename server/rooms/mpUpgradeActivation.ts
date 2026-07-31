@@ -6,6 +6,7 @@ import {
   type UpgradeTree,
 } from '../../src/systems/UpgradeTreeData';
 import { WeaponType } from '../../src/weapons/WeaponTypes';
+import { isMpUpgradeNodeSupported } from '../../src/shared/WeaponUpgradeEffects';
 
 export interface UpgradeActivationRequest {
   nodeId?: unknown;
@@ -97,6 +98,10 @@ export function validateMpUpgradeActivation(
 
   if (node.excludes?.some((excludedId) => state.activeNodeIds.has(excludedId))) {
     return { accepted: false, nodeId, weaponType, reason: 'excluded' };
+  }
+
+  if (!isMpUpgradeNodeSupported(nodeId)) {
+    return { accepted: false, nodeId, weaponType, reason: 'unsupported_runtime_effect' };
   }
 
   return { accepted: true, nodeId, weaponType };
