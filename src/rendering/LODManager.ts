@@ -6,7 +6,7 @@ import { BaseEnemy } from '../entities/enemies/BaseEnemy';
  *
  * - HIGH: Full geometry (~50-200 triangles)
  * - MEDIUM: Simplified icosahedron (~20 triangles)
- * - LOW: Billboard quad (2 triangles)
+ * - LOW: Coarse octahedral proxy (8 triangles)
  */
 export enum LODLevel {
   HIGH = 0,
@@ -37,12 +37,10 @@ export const DEFAULT_LOD_CONFIG: LODConfig = {
 
 /** Triangle count estimates per LOD level. */
 const MEDIUM_TRIANGLE_COUNT = 20;
-const LOW_TRIANGLE_COUNT = 2;
+const LOW_TRIANGLE_COUNT = 8;
 
 /** Pre-allocated temp objects to avoid per-frame GC pressure. */
 const _tempVec3 = new THREE.Vector3();
-const _tempMatrix = new THREE.Matrix4();
-const _tempUp = new THREE.Vector3(0, 1, 0);
 
 /**
  * LODGeometryCache - Creates and caches simplified geometries for
@@ -64,12 +62,11 @@ export class LODGeometryCache {
   }
 
   /**
-   * Get the LOW LOD geometry: a single quad (2 triangles) for billboard rendering.
-   * Vertices in XY plane, centered at origin, unit size (scaled per-instance).
+   * Get the LOW LOD geometry: a volumetric octahedron with stable local axes.
    */
   getLowGeometry(): THREE.BufferGeometry {
     if (!this.lowGeo) {
-      this.lowGeo = new THREE.PlaneGeometry(0.6, 0.6, 1, 1);
+      this.lowGeo = new THREE.OctahedronGeometry(0.3, 0);
     }
     return this.lowGeo;
   }
@@ -116,9 +113,9 @@ interface TriangleEstimate {
  * which geometry/material to use per enemy.
  *
  * Features:
- * - Three LOD levels: HIGH (full), MEDIUM (simplified icosahedron), LOW (billboard)
+ * - Three LOD levels: HIGH (full), MEDIUM (icosahedron), LOW (octahedron)
  * - Hysteresis bands to prevent flickering at distance boundaries
- * - Billboard quaternion computation for LOW-level enemies
+ * - Stable surface orientation for all LOD levels
  * - Base color extraction from enemy meshes for billboard tinting
  * - Geometry cache for simplified/billboard geometries
  * - Performance stats and triangle reduction estimation
@@ -235,35 +232,6 @@ export class LODManager {
         }
         return LODLevel.LOW;
     }
-  }
-
-  /**
-   * Compute a quaternion that orients a billboard quad to face the camera.
-   *
-   * @param entityPos - World position of the entity.
-   * @param cameraPos - World position of the camera.
-   * @returns A quaternion that makes a quad face the camera.
-   */
-  static computeBillboardQuaternion(
-    entityPos: THREE.Vector3,
-    cameraPos: THREE.Vector3,
-  ): THREE.Quaternion {
-    const direction = _tempVec3.subVectors(cameraPos, entityPos);
-    const lengthSq = direction.lengthSq();
-
-    // Degenerate case: entity is at camera position
-    if (lengthSq < 1e-10) {
-      return new THREE.Quaternion();
-    }
-
-    direction.normalize();
-
-    // Build a lookAt matrix from entity toward camera
-    _tempMatrix.lookAt(entityPos, cameraPos, _tempUp);
-    const quat = new THREE.Quaternion();
-    quat.setFromRotationMatrix(_tempMatrix);
-
-    return quat;
   }
 
   /**

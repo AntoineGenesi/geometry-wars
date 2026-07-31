@@ -233,8 +233,8 @@ describe('EnemyInstanceManager', () => {
       manager.register(farGrunt);
 
       // Simulate dimming: near enemy is bright, far enemy is dim
-      manager.setInstanceVisibility(nearGrunt, 1.0);
-      manager.setInstanceVisibility(farGrunt, 0.15);
+      manager.setInstanceVisibility(nearGrunt, 1.0, 0.35);
+      manager.setInstanceVisibility(farGrunt, 0.15, 0.15);
       manager.flushColors();
 
       // Read back instanceColor for each enemy
@@ -341,7 +341,7 @@ describe('EnemyInstanceManager', () => {
       manager.setEnemyColor(grunt, rainbowColor);
 
       // Apply dimming
-      manager.setInstanceVisibility(grunt, 0.5);
+      manager.setInstanceVisibility(grunt, 0.5, 0);
       manager.flushColors();
 
       // Read back instanceColor — should be rainbow color * 0.5
@@ -736,7 +736,7 @@ describe('EnemyInstanceManager', () => {
       expect(posAttr.count).toBeLessThan(highPosAttr.count);
     });
 
-    it('uses billboard geometry with 2 triangles for LOW LOD', () => {
+    it('uses volumetric geometry for LOW LOD', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
 
@@ -755,9 +755,67 @@ describe('EnemyInstanceManager', () => {
       ) as THREE.InstancedMesh;
       expect(lodLowBatch).toBeDefined();
 
-      // Billboard = PlaneGeometry = 4 vertices (indexed) or 6 (non-indexed)
       const posAttr = lodLowBatch.geometry.getAttribute('position');
-      expect(posAttr.count).toBeLessThanOrEqual(6);
+      expect(posAttr.count).toBeGreaterThan(6);
+      lodLowBatch.geometry.computeBoundingBox();
+      const size = lodLowBatch.geometry.boundingBox!.getSize(new THREE.Vector3());
+      expect(size.x).toBeGreaterThan(0);
+      expect(size.y).toBeGreaterThan(0);
+      expect(size.z).toBeGreaterThan(0);
+    });
+
+    it('keeps LOW orientation tied to the enemy instead of the camera', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(3, 4, 5);
+      grunt.mesh!.rotation.set(0.3, 0.7, -0.2);
+      grunt.mesh!.updateMatrixWorld(true);
+      const expected = new THREE.Quaternion().setFromRotationMatrix(grunt.mesh!.matrixWorld);
+      const assignments = new Map<BaseEnemy, LODLevel>([[grunt, LODLevel.LOW]]);
+      const camera = new THREE.PerspectiveCamera();
+      camera.position.set(0, 0, 15);
+
+      manager.updateInstancesWithLOD([grunt], assignments, camera);
+      const lowBatch = scene.getObjectByName('lod-low') as THREE.InstancedMesh;
+      const first = new THREE.Matrix4();
+      lowBatch.getMatrixAt(0, first);
+      const firstPosition = new THREE.Vector3();
+      const firstRotation = new THREE.Quaternion();
+      const firstScale = new THREE.Vector3();
+      first.decompose(firstPosition, firstRotation, firstScale);
+
+      camera.position.set(50, -20, 4);
+      manager.updateInstancesWithLOD([grunt], assignments, camera);
+      const second = new THREE.Matrix4();
+      lowBatch.getMatrixAt(0, second);
+      const secondRotation = new THREE.Quaternion();
+      second.decompose(new THREE.Vector3(), secondRotation, new THREE.Vector3());
+
+      expect(Math.abs(firstRotation.dot(expected))).toBeGreaterThan(0.999);
+      expect(Math.abs(secondRotation.dot(firstRotation))).toBeGreaterThan(0.999);
+      expect(Math.min(firstScale.x, firstScale.y, firstScale.z)).toBeGreaterThan(0);
+    });
+
+    it('enables depth testing and writes for HIGH, MEDIUM, and LOW batches', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.updateMatrixWorld(true);
+      const camera = new THREE.PerspectiveCamera();
+      manager.updateInstancesWithLOD(
+        [grunt],
+        new Map<BaseEnemy, LODLevel>([[grunt, LODLevel.MEDIUM]]),
+        camera,
+      );
+
+      const batches = ['instanced-Grunt', 'lod-medium', 'lod-low'].map(
+        name => scene.getObjectByName(name) as THREE.InstancedMesh,
+      );
+      for (const batch of batches) {
+        const material = batch.material as THREE.MeshBasicMaterial;
+        expect(material.depthTest).toBe(true);
+        expect(material.depthWrite).toBe(true);
+        expect(batch.renderOrder).toBe(2);
+      }
     });
   });
 
@@ -791,9 +849,9 @@ describe('EnemyInstanceManager', () => {
     });
   });
 
-  // ====== Phase 1 entity culling tests ======
+  // ====== Instance lifecycle has no independent visibility authority ======
 
-  describe('updateInstancesWithLOD — player culling', () => {
+  describe('updateInstancesWithLOD — topology resolver ownership', () => {
     let camera: THREE.PerspectiveCamera;
 
     beforeEach(() => {
@@ -839,7 +897,7 @@ describe('EnemyInstanceManager', () => {
       expect(scale.length()).toBeGreaterThan(0.01); // Non-zero scale = visible
     });
 
-    it('zero-scales enemy that is >90° from player normal when hide90DegreeEntities=true', () => {
+    it('does not zero-scale an enemy based on a player-normal hemisphere', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
       // Enemy is at (0, -10, 0) — directly below player's surface normal
@@ -853,13 +911,11 @@ describe('EnemyInstanceManager', () => {
       const playerPos = new THREE.Vector3(0, 5, 0);
       const playerNormal = new THREE.Vector3(0, 1, 0);
 
-      // hide90DegreeEntities=true → zero-scale hidden enemies
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal }, true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
 
       const batch = getGruntBatch();
       const scale = getScaleFromMatrix(getInstanceMatrix(batch, 0));
-      // Scale should be ~0 (culled)
-      expect(scale.length()).toBeLessThan(0.001);
+      expect(scale.length()).toBeGreaterThan(0.01);
     });
 
     it('dims enemy that is >90° from player normal when hide90DegreeEntities=false (default)', () => {
@@ -875,7 +931,7 @@ describe('EnemyInstanceManager', () => {
       const playerNormal = new THREE.Vector3(0, 1, 0);
 
       // Default (false) → dim to 0.3, NOT zero-scale
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
 
       const batch = getGruntBatch();
       const scale = getScaleFromMatrix(getInstanceMatrix(batch, 0));
@@ -896,7 +952,7 @@ describe('EnemyInstanceManager', () => {
       const playerPos = new THREE.Vector3(0, 5, 0);
       const playerNormal = new THREE.Vector3(0, 1, 0);
 
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal });
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
 
       const batch = getGruntBatch();
       const scale = getScaleFromMatrix(getInstanceMatrix(batch, 0));
@@ -904,7 +960,7 @@ describe('EnemyInstanceManager', () => {
       expect(scale.length()).toBeGreaterThan(0.01);
     });
 
-    it('culled enemy is removed from LOD placement when hide90DegreeEntities=true', () => {
+    it('keeps opposite-position enemies in their assigned LOD batch', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
       grunt.mesh!.position.set(0, -10, 0);
@@ -916,14 +972,12 @@ describe('EnemyInstanceManager', () => {
       const playerPos = new THREE.Vector3(0, 5, 0);
       const playerNormal = new THREE.Vector3(0, 1, 0);
 
-      // hide90DegreeEntities=true → fully cull hidden enemies
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal }, true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
 
-      // Culled enemy should NOT be in LOD batch
-      expect(manager.isInLODBatch(grunt)).toBe(false);
+      expect(manager.isInLODBatch(grunt)).toBe(true);
     });
 
-    it('enemy transitions from culled to visible when position changes (hide90DegreeEntities=true)', () => {
+    it('keeps a non-zero HIGH matrix while an enemy moves across hemispheres', () => {
       const grunt = new TestGrunt();
       manager.register(grunt);
 
@@ -933,19 +987,19 @@ describe('EnemyInstanceManager', () => {
       const playerPos = new THREE.Vector3(0, 5, 0);
       const playerNormal = new THREE.Vector3(0, 1, 0);
 
-      // Frame 1: enemy is behind surface (culled)
+      // Frame 1: enemy is behind the player-normal hemisphere.
       grunt.mesh!.position.set(0, -10, 0);
       grunt.mesh!.updateMatrixWorld(true);
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal }, true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
 
       const batch = getGruntBatch();
       const scale1 = getScaleFromMatrix(getInstanceMatrix(batch, 0));
-      expect(scale1.length()).toBeLessThan(0.001); // Culled
+      expect(scale1.length()).toBeGreaterThan(0.01);
 
       // Frame 2: enemy moves to front (visible)
       grunt.mesh!.position.set(1, 10, 0);
       grunt.mesh!.updateMatrixWorld(true);
-      manager.updateInstancesWithLOD([grunt], lodAssignments, camera, { position: playerPos, normal: playerNormal }, true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
 
       const scale2 = getScaleFromMatrix(getInstanceMatrix(batch, 0));
       expect(scale2.length()).toBeGreaterThan(0.01); // Visible again

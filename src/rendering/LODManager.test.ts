@@ -252,48 +252,6 @@ describe('LODManager', () => {
     });
   });
 
-  // ====== Billboard orientation ======
-
-  describe('billboard orientation', () => {
-    it('generates a billboard quaternion facing the camera', () => {
-      const enemy = new TestGrunt();
-      placeEnemy(enemy, 5, 0, 0);
-
-      const quat = LODManager.computeBillboardQuaternion(
-        enemy.position,
-        camera.position,
-      );
-
-      // The billboard should face toward the camera.
-      // lookAt builds a basis where -Z points from entity to camera (Three.js convention),
-      // so applying quat to (0,0,1) gives the BACK of the billboard which faces away.
-      // Check absolute dot > 0.9 (the Z axis is aligned with the camera direction).
-      const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(quat);
-      const toCamera = new THREE.Vector3()
-        .subVectors(camera.position, enemy.position)
-        .normalize();
-
-      // Z axis should be aligned with the entity-to-camera direction (either sign)
-      expect(Math.abs(forward.dot(toCamera))).toBeGreaterThan(0.9);
-    });
-
-    it('returns identity quaternion when enemy is at camera position', () => {
-      const enemy = new TestGrunt();
-      placeEnemy(enemy, camera.position.x, camera.position.y, camera.position.z);
-
-      const quat = LODManager.computeBillboardQuaternion(
-        enemy.position,
-        camera.position,
-      );
-
-      // Should not produce NaN
-      expect(Number.isNaN(quat.x)).toBe(false);
-      expect(Number.isNaN(quat.y)).toBe(false);
-      expect(Number.isNaN(quat.z)).toBe(false);
-      expect(Number.isNaN(quat.w)).toBe(false);
-    });
-  });
-
   // ====== Integration with enemy types ======
 
   describe('enemy type integration', () => {
@@ -345,14 +303,18 @@ describe('LODManager', () => {
       expect(posAttr.count).toBeLessThanOrEqual(100);
     });
 
-    it('creates LOW geometry (billboard quad)', () => {
+    it('creates volumetric LOW geometry with non-zero extent on all axes', () => {
       const geo = cache.getLowGeometry();
 
       expect(geo).toBeInstanceOf(THREE.BufferGeometry);
       const posAttr = geo.getAttribute('position');
-      // Quad = 2 triangles = 4 vertices (indexed) or 6 vertices (non-indexed)
-      expect(posAttr.count).toBeLessThanOrEqual(6);
-      expect(posAttr.count).toBeGreaterThanOrEqual(4);
+      expect(posAttr.count).toBeGreaterThan(6);
+      expect(posAttr.count).toBeLessThanOrEqual(30);
+      geo.computeBoundingBox();
+      const size = geo.boundingBox!.getSize(new THREE.Vector3());
+      expect(size.x).toBeGreaterThan(0);
+      expect(size.y).toBeGreaterThan(0);
+      expect(size.z).toBeGreaterThan(0);
     });
 
     it('returns same geometry instance on repeated calls (cached)', () => {

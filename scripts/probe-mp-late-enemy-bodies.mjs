@@ -217,7 +217,14 @@ async function collectBodyCheckpoint(page, label) {
           drawCount: enemy.drawCount,
           batchVisible: enemy.batchVisible,
           matrixFound: enemy.matrixFound,
+          lodLevel: enemy.lodLevel,
+          geometryType: enemy.geometryType,
+          depthTest: enemy.depthTest,
+          depthWrite: enemy.depthWrite,
+          renderOrder: enemy.renderOrder,
           instanceMatrixScale: enemy.instanceMatrixScale,
+          instanceMatrixScaleXYZ: enemy.instanceMatrixScaleXYZ,
+          surfaceVisibility: enemy.surfaceVisibility,
           screen: enemy.screen,
           opacity: enemy.opacity,
           colorBrightness: enemy.colorBrightness,
@@ -238,12 +245,25 @@ async function collectBodyCheckpoint(page, label) {
         visible,
         visibleRate: samples.length ? visible / samples.length : 0,
         renderer: telemetry.renderer,
+        visibilityStats: window.__surfaceVisibilityStats || null,
         isolation: { includeSurface: false, includeAuxiliary: false, capture: 'canvas-only' },
         samples,
         debug,
       };
     });
-    return { label, screenshot, metrics };
+    await page.evaluate(() => window.__gameDebug?.setVisualProofIsolation?.(false));
+    await page.evaluate(() => window.__gameDebug?.setVisualProofIsolation?.(true, true, false));
+    await sleep(250);
+    const composedScreenshot = resolve(OUT_DIR, `${label}-composed-${runId}.png`);
+    const composedDataUrl = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      return canvas instanceof HTMLCanvasElement ? canvas.toDataURL('image/png') : '';
+    });
+    if (!composedDataUrl.startsWith('data:image/png;base64,')) {
+      throw new Error('Canvas toDataURL failed for composed proof');
+    }
+    writeFileSync(composedScreenshot, Buffer.from(composedDataUrl.split(',')[1], 'base64'));
+    return { label, screenshot, composedScreenshot, metrics };
   } finally {
     await page.evaluate(() => window.__gameDebug?.setVisualProofIsolation?.(false)).catch(() => {});
   }
@@ -402,9 +422,31 @@ async function main() {
         && (sample.colorBrightness ?? 1) < 0.35
         && sample.visible
     );
-    const proofPassed = SURFACE_OPAQUE
+    const classifiedSamples = allSamples.filter((sample) => sample.surfaceVisibility?.className);
+    const visibilityClassCounts = classifiedSamples.reduce((counts, sample) => {
+      const name = sample.surfaceVisibility.className;
+      counts[name] = (counts[name] || 0) + 1;
+      return counts;
+    }, {});
+    const depthViolations = allSamples.filter((sample) =>
+      sample.renderBatch !== 'mesh' && (sample.depthTest !== true || sample.depthWrite !== true)
+    );
+    const low3DViolations = allSamples.filter((sample) => sample.lodLevel === 'LOW' && (
+      sample.geometryType === 'PlaneGeometry'
+        || !sample.instanceMatrixScaleXYZ
+        || Math.min(
+          sample.instanceMatrixScaleXYZ.x,
+          sample.instanceMatrixScaleXYZ.y,
+          sample.instanceMatrixScaleXYZ.z,
+        ) <= 0
+    ));
+    const visualModePassed = SURFACE_OPAQUE
       ? hiddenSamples.length > 0
       : visibleBodySamples.length > 0;
+    const proofPassed = visualModePassed
+      && classifiedSamples.length > 0
+      && depthViolations.length === 0
+      && low3DViolations.length === 0;
     if (!proofPassed) {
       errors.push(SURFACE_OPAQUE
         ? 'opaque mode did not produce any intentionally hidden enemy render samples'
@@ -440,6 +482,10 @@ async function main() {
         visibleBodySamples: visibleBodySamples.length,
         dimReadableSamples: dimReadableSamples.length,
         hiddenSamples: hiddenSamples.length,
+        classifiedSamples: classifiedSamples.length,
+        visibilityClassCounts,
+        depthViolations: depthViolations.length,
+        low3DViolations: low3DViolations.length,
         proofPassed,
       },
       errors,
@@ -459,6 +505,7 @@ async function main() {
         sampled: c.metrics?.sampled,
         visibleRate: c.metrics?.visibleRate,
         screenshot: c.screenshot,
+        composedScreenshot: c.composedScreenshot,
       })),
       sampleSummary: report.sampleSummary,
       criticalErrors: report.criticalErrors,

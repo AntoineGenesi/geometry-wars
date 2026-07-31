@@ -2368,6 +2368,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         renderer: game.renderer,
         enemyInstanceManager,
         surfaceRoot: surface.group,
+        getPlayerRoot: () => player.mesh,
         getEnemies: () => enemySpawner.getEnemies().map((enemy) => {
           let id = (enemy as any).__bodyProofId as string | undefined;
           if (!id) {

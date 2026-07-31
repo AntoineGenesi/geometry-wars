@@ -14,6 +14,8 @@ export interface EnemyBodyProofDebugOptions {
   enemyInstanceManager: EnemyInstanceManager;
   getEnemies: () => EnemyBodyProofEntry[];
   surfaceRoot?: THREE.Object3D | null;
+  getSurfaceRoot?: () => THREE.Object3D | null;
+  getPlayerRoot?: () => THREE.Object3D | null;
 }
 
 export interface EnemyBodyProofDebugAPI {
@@ -74,13 +76,18 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
       let drawCount: number | null = null;
       let batchVisible: boolean | null = null;
       let matrixFound = false;
+      let lodLevel = 'HIGH';
+      let geometryType: string | null = null;
+      let depthTest: boolean | null = null;
+      let depthWrite: boolean | null = null;
+      let renderOrder: number | null = null;
 
       const instanceIndex = (enemy as any)._instanceIndex as number | undefined;
       const instanceType = (enemy as any)._instanceType as string | undefined;
       if (instanceIndex !== undefined && instanceType) {
-        const lodLevel = mgr.enemyLODPlacement?.get(enemy);
-        const lodBatch = lodLevel === 1 ? mgr.lodMediumBatch
-          : lodLevel === 2 ? mgr.lodLowBatch
+        const lodPlacement = mgr.enemyLODPlacement?.get(enemy);
+        const lodBatch = lodPlacement === 1 ? mgr.lodMediumBatch
+          : lodPlacement === 2 ? mgr.lodLowBatch
             : null;
         const lodSlot = lodBatch?.enemyToIndex?.get(enemy);
         const batch = lodBatch && lodSlot !== undefined
@@ -88,10 +95,17 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
           : mgr.batches?.get(instanceType);
         slot = lodBatch && lodSlot !== undefined ? lodSlot : instanceIndex;
         renderBatch = lodBatch && lodSlot !== undefined
-          ? (lodLevel === 1 ? 'lod-medium' : 'lod-low')
+          ? (lodPlacement === 1 ? 'lod-medium' : 'lod-low')
           : instanceType;
+        lodLevel = lodBatch && lodSlot !== undefined
+          ? (lodPlacement === 1 ? 'MEDIUM' : 'LOW')
+          : 'HIGH';
         drawCount = batch?.instancedMesh?.count ?? null;
         batchVisible = batch?.instancedMesh?.visible ?? null;
+        geometryType = batch?.geometry?.type ?? null;
+        depthTest = batch?.material?.depthTest ?? null;
+        depthWrite = batch?.material?.depthWrite ?? null;
+        renderOrder = batch?.instancedMesh?.renderOrder ?? null;
         if (batch?.opacityAttribute && slot !== null) opacity = batch.opacityAttribute.getX(slot);
         if (batch?.instancedMesh?.instanceColor && slot !== null) {
           batch.instancedMesh.getColorAt(slot, color);
@@ -109,6 +123,7 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
         renderScale.setFromMatrixScale(enemy.mesh.matrixWorld);
         batchVisible = enemy.mesh.visible;
         matrixFound = true;
+        geometryType = enemy.mesh.type;
       }
 
       projection.copy(renderPos).project(options.camera);
@@ -124,9 +139,16 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
         drawCount,
         batchVisible,
         matrixFound,
+        lodLevel,
+        geometryType,
+        depthTest,
+        depthWrite,
+        renderOrder,
         opacity,
         colorBrightness,
         instanceMatrixScale: Math.max(renderScale.x, renderScale.y, renderScale.z),
+        instanceMatrixScaleXYZ: { x: renderScale.x, y: renderScale.y, z: renderScale.z },
+        surfaceVisibility: (enemy as any).__surfaceVisibility ?? null,
         worldPos: { x: logicalPos.x, y: logicalPos.y, z: logicalPos.z },
         renderWorldPos: { x: renderPos.x, y: renderPos.y, z: renderPos.z },
         screen: {
@@ -182,6 +204,9 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
         highWaterMark: batch.highWaterMark,
         registered: batch.enemyToIndex?.size ?? null,
         activeCount: batch.activeCount ?? null,
+        geometryType: batch.geometry?.type ?? null,
+        depthTest: batch.material?.depthTest ?? null,
+        depthWrite: batch.material?.depthWrite ?? null,
         samples,
       };
     };
@@ -220,7 +245,12 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
 
     const allowedEnemies = collectEnemyVisualObjects(includeAuxiliary);
     const allowedRoots = new Set<THREE.Object3D>();
-    if (includeSurface && options.surfaceRoot) allowedRoots.add(options.surfaceRoot);
+    if (includeSurface) {
+      const surfaceRoot = options.getSurfaceRoot?.() ?? options.surfaceRoot;
+      if (surfaceRoot) allowedRoots.add(surfaceRoot);
+      const playerRoot = options.getPlayerRoot?.();
+      if (playerRoot) allowedRoots.add(playerRoot);
+    }
     allowedEnemies.forEach((object) => allowedRoots.add(object));
 
     for (const child of options.scene.children) {

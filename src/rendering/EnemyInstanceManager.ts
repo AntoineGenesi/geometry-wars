@@ -5,10 +5,8 @@ import { LODLevel, LODGeometryCache } from './LODManager';
 // s44r11-01: shader effects (lava, crystal, etc.) removed — incompatible with MeshBasicMaterial.
 // import { getEnemyShaderStyle, enhanceMaterialWithShaderEffect } from './EnemyShaderEffects';
 import {
-  ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
-  getEntityVisibilityState,
-  EntityVisibilityState,
-} from './EntityCulling';
+  SURFACE_VISIBILITY_DEFAULT_MIN_BRIGHTNESS as ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
+} from './SurfaceVisibilityResolver';
 
 /**
  * EnemyInstanceManager - Replaces individual enemy meshes with InstancedMesh
@@ -70,7 +68,7 @@ interface InstanceBatch {
 /**
  * LODSharedBatch - A shared InstancedMesh for all enemies at a given LOD level.
  * MEDIUM LOD uses simplified icosahedron geometry (20 tris).
- * LOW LOD uses billboard quad geometry (2 tris).
+ * LOW LOD uses a coarse octahedral geometry (8 tris).
  * Enemies are colored per-instance using their type's base color.
  */
 interface LODSharedBatch {
@@ -98,7 +96,6 @@ const _tempQuaternion = new THREE.Quaternion();
 const _tempColor = new THREE.Color();
 const _zeroScale = new THREE.Vector3(0, 0, 0);
 const _lodScale = new THREE.Vector3();
-const _lodBillboardUp = new THREE.Vector3(0, 1, 0);
 const _tempScale = new THREE.Vector3();
 
 /**
@@ -408,20 +405,16 @@ export class EnemyInstanceManager {
    * Update all instance matrices with LOD-aware geometry swapping.
    * Enemies at MEDIUM/LOW LOD are hidden in their type-specific batch and
    * shown in a shared simplified-geometry batch instead. This reduces triangle
-   * count for distant enemies from ~200 per enemy to 20 (medium) or 2 (low).
+   * count for distant enemies from ~200 per enemy to 20 (medium) or 8 (low).
    *
    * @param enemies - All active enemies.
    * @param lodAssignments - LOD level per enemy from LODManager.update().
-   * @param camera - Camera for billboard orientation (LOW LOD quads face camera).
+   * @param camera - Retained for call-site compatibility; LOD orientation comes from the enemy.
    */
   updateInstancesWithLOD(
     enemies: BaseEnemy[],
     lodAssignments: Map<BaseEnemy, LODLevel>,
-    camera: THREE.Camera,
-    /** Phase 1 culling: hide or dim instanced enemies >90° from player's surface normal. */
-    playerCulling?: { position: THREE.Vector3; normal: THREE.Vector3 },
-    /** When true, entities >90° are fully hidden (zero-scaled). When false (default), they are dimmed to 0.3 opacity. */
-    hide90DegreeEntities: boolean = false,
+    _camera: THREE.Camera,
   ): void {
     // Lazily create shared LOD batches on first use
     if (!this.lodMediumBatch) {
@@ -448,8 +441,6 @@ export class EnemyInstanceManager {
     this.hideAllLODInstances(this.lodMediumBatch);
     this.hideAllLODInstances(this.lodLowBatch);
 
-    const cameraPos = camera.position;
-
     for (const enemy of enemies) {
       if (!enemy.active || !enemy.alive) continue;
 
@@ -472,42 +463,13 @@ export class EnemyInstanceManager {
         continue;
       }
 
-      // Phase 1 culling: hide or dim enemies >90° from player's surface normal hemisphere.
-      if (playerCulling && enemy.mesh) {
-        const visibility = getEntityVisibilityState(
-          playerCulling.position,
-          playerCulling.normal,
-          enemy.mesh.position,
-        );
-        if (visibility === EntityVisibilityState.HIDDEN) {
-          if (hide90DegreeEntities) {
-            // Old behavior: zero-scale the high-detail instance slot (fully hidden)
-            _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
-            batch.instancedMesh.setMatrixAt(highIndex, _tempMatrix);
-            // Remove from any LOD shared batch too
-            if (this.enemyLODPlacement.has(enemy)) {
-              this.removeLODPlacement(enemy);
-            }
-            continue;
-          } else {
-            // Readable mode: Phase 2 owns final RGB dimming. Do not write a
-            // second 0.3x color here; RenderLoop/network-main apply the shared
-            // distance/importance-aware model once via setInstanceVisibility().
-            batch.opacityAttribute.setX(highIndex, 1.0);
-          }
-        } else {
-          // Visible entity: keep opacity drawable. Phase 2 restores final color.
-          batch.opacityAttribute.setX(highIndex, 1.0);
-        }
-      }
-
       const lodLevel = lodAssignments.get(enemy);
 
       if (lodLevel === LODLevel.MEDIUM || lodLevel === LODLevel.LOW) {
         // Show in the shared LOD batch
         const lodBatch = lodLevel === LODLevel.MEDIUM ? this.lodMediumBatch : this.lodLowBatch;
         enemy.mesh.updateWorldMatrix(false, false);
-        this.placeLODInstance(enemy, typeKey, lodBatch, lodLevel, cameraPos);
+        this.placeLODInstance(enemy, typeKey, lodBatch, lodLevel);
 
         // s44r29-02: Only hide HIGH batch if LOD placement succeeded.
         // If LOD slot allocation failed (batch full), fall back to HIGH batch
@@ -710,10 +672,9 @@ export class EnemyInstanceManager {
     // which is below INVISIBLE_THRESHOLD (0.10) — enemies appear invisible on dark backgrounds.
     // When visibility > 0 (enemy should be dim, not hidden), scale all channels proportionally
     // so avg(r,g,b) >= MIN_ICB. Proportional scaling preserves hue.
-    // s44r33: Raised from 0.15 to 0.35. With DoubleSide+depthTest:false, far-side enemies
-    // render through the surface. 0.15 (RGB 38) is invisible against dark bg (RGB 5-16).
-    // 0.35 (RGB 89) is clearly visible as a dim shape. The dimming system controls the
-    // visibility float, but MIN_ICB guarantees the RENDERED pixels are always perceptible.
+    // The per-result floor comes from SurfaceVisibilityResolver. Direct enemies
+    // retain the historical 0.35 safeguard while blocked/long-path enemies can
+    // use their documented lower class floor without being raised again here.
     if (visibility > 0) {
       const avg = (r + g + b) / 3;
       const MIN_ICB = batch.perInstanceMinBrightness[index];
@@ -973,9 +934,9 @@ export class EnemyInstanceManager {
     const material = new THREE.MeshBasicMaterial({
       color: 0xffffff,
       transparent: true,
-      depthWrite: false,
-      depthTest: false,  // RC15: same as type batches — render enemies even behind surface mesh
-      side: THREE.DoubleSide, // RC17: same as type batches — far-side enemies have back-facing normals
+      depthWrite: true,
+      depthTest: true,
+      side: THREE.DoubleSide,
     });
 
     // Per-instance alpha (same as type batches). See createBatch() REGRESSION GUARD (s44r12-03).
@@ -989,8 +950,9 @@ export class EnemyInstanceManager {
     instancedMesh.count = 0;
     instancedMesh.frustumCulled = false;
     instancedMesh.name = name;
-    // s44r28-01: Same renderOrder as type batches (above surface/grid/zones)
-    instancedMesh.renderOrder = 3;
+    // Surface/grid do not write depth; player bodies do. Rendering after the
+    // grid while respecting depth keeps readable ghosts behind player pixels.
+    instancedMesh.renderOrder = 2;
 
     // Initialize all slots to zero-scale
     for (let i = 0; i < LOD_BATCH_MAX_INSTANCES; i++) {
@@ -1025,14 +987,13 @@ export class EnemyInstanceManager {
   /**
    * Place an enemy instance into a shared LOD batch.
    * Uses the enemy's world position + the type's base color.
-   * For LOW LOD (billboards), orients the quad to face the camera.
+   * Both simplified levels retain the enemy's surface orientation.
    */
   private placeLODInstance(
     enemy: BaseEnemy,
     typeKey: string,
     lodBatch: LODSharedBatch,
     lodLevel: LODLevel,
-    cameraPos: THREE.Vector3,
   ): void {
     // Get or allocate a slot
     let slotIndex = lodBatch.enemyToIndex.get(enemy);
@@ -1046,21 +1007,10 @@ export class EnemyInstanceManager {
     // Extract position from enemy mesh world matrix
     _tempPosition.setFromMatrixPosition(enemy.mesh!.matrixWorld);
 
-    if (lodLevel === LODLevel.LOW) {
-      // Billboard: orient quad to face camera
-      _tempMatrix.lookAt(_tempPosition, cameraPos, _lodBillboardUp);
-      _tempQuaternion.setFromRotationMatrix(_tempMatrix);
-      // Scale based on enemy radius for appropriate visual size
-      const s = enemy.radius * 2;
-      _lodScale.set(s, s, s);
-      _tempMatrix.compose(_tempPosition, _tempQuaternion, _lodScale);
-    } else {
-      // MEDIUM: use icosahedron with enemy's rotation but simplified geometry
-      _tempQuaternion.setFromRotationMatrix(enemy.mesh!.matrixWorld);
-      const s = enemy.radius * 1.5;
-      _lodScale.set(s, s, s);
-      _tempMatrix.compose(_tempPosition, _tempQuaternion, _lodScale);
-    }
+    _tempQuaternion.setFromRotationMatrix(enemy.mesh!.matrixWorld);
+    const s = enemy.radius * (lodLevel === LODLevel.LOW ? 1.65 : 1.5);
+    _lodScale.set(s, s, s);
+    _tempMatrix.compose(_tempPosition, _tempQuaternion, _lodScale);
 
     lodBatch.instancedMesh.setMatrixAt(slotIndex, _tempMatrix);
 
@@ -1322,9 +1272,9 @@ export class EnemyInstanceManager {
     const material = new THREE.MeshBasicMaterial({
       color: 0xffffff, // White - actual color comes from instanceColor
       transparent: true,
-      depthWrite: false, // Transparent objects should not write to depth buffer
-      depthTest: false,  // RC15: render enemies even behind surface — dimming provides visual depth cue
-      side: THREE.DoubleSide, // RC17: far-side enemies have back-facing normals — without DoubleSide, GPU culls them
+      depthWrite: true,
+      depthTest: true,
+      side: THREE.DoubleSide,
     });
 
     // Per-instance alpha transparency: two paths depending on renderer backend.
@@ -1345,12 +1295,7 @@ export class EnemyInstanceManager {
     instancedMesh.count = 0; // Start with 0 visible instances
     instancedMesh.frustumCulled = false; // Enemies are on curved surfaces; bbox culling is unreliable
     instancedMesh.name = `instanced-${typeKey}`;
-    // s44r28-01: Explicit renderOrder ensures enemies render AFTER the surface mesh (0)
-    // and grid (1). Without this, transparent objects with equal renderOrder are sorted
-    // by distance — but InstancedMesh and Surface are both at origin, so the sort is
-    // unstable across renderers. On WebGPU, the surface could render after enemies,
-    // alpha-blending on top and making enemies invisible (surface opacity ~0.92 covers them).
-    instancedMesh.renderOrder = 3;
+    instancedMesh.renderOrder = 2;
 
     // Initialize all instance matrices to zero-scale (hidden)
     for (let i = 0; i < this.maxInstances; i++) {

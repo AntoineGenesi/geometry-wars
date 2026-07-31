@@ -74,13 +74,10 @@ import { BuffPickupNew } from './buffs/BuffPickupNew';
 import { CompanionManager, CompanionPickup, CompanionHUD, getRandomCompanionType, RemoteCompanionRenderer } from './entities/Companion';
 import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
-import {
-  ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
-  computeEnemyOcclusionVisibility,
-} from './rendering/EntityCulling';
+import { SurfaceVisibilityResolver } from './rendering/SurfaceVisibilityResolver';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { LODManager, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
-import { DepthOcclusionSystem, computeDepthVisibility, BULLET_DEPTH_CURVE } from './rendering/DepthOpacity';
+import { computeDepthVisibility, BULLET_DEPTH_CURVE } from './rendering/DepthOpacity';
 import { OcclusionSurfaceMaterial } from './rendering/OcclusionSurfaceMaterial';
 import { AdaptiveQuality, QualityLevel } from './rendering/AdaptiveQuality';
 import {
@@ -744,7 +741,7 @@ async function main() {
   const scene = game.scene;
   const camera = game.camera;
 
-  // Frame-time tracker for depth-occlusion lerp in onRender (avoids per-frame allocation)
+  // Render-frame delta shared by effects that interpolate outside the fixed tick.
   let _lastNetRenderTime = performance.now();
   // Separate tracker for camera lerp — ensures framerate-independent camera feel.
   // Camera updateFromFrame() is called from onRender (display refresh rate, not fixed 60Hz).
@@ -787,6 +784,7 @@ async function main() {
   // -- Surface (created after connecting, using server's authoritative type) --
   let surface: Surface | null = null;
   let meshSurface: MeshSurface | null = null;
+  let surfaceVisibilityResolver: SurfaceVisibilityResolver | null = null;
   let surfaceReady = false;
   let getTransform: ReturnType<typeof makeSurfaceTransformFn> | null = null;
   let lastCreatedSurfaceType: string = '';
@@ -855,6 +853,7 @@ async function main() {
 
     surface = null;
     meshSurface = null;
+    surfaceVisibilityResolver = null;
     getTransform = null;
     // Clear spawner before nulling: removes spawn warning rings from scene
     // (SpawnWarning meshes are added to scene by EnemySpawner but NOT tracked
@@ -939,6 +938,7 @@ async function main() {
     // bakes correctly-scaled world-space coordinates (not unscaled local coords).
     surface.mesh.updateMatrixWorld(true);
     meshSurface = new MeshSurface(surface.mesh);
+    surfaceVisibilityResolver = new SurfaceVisibilityResolver(meshSurface);
     bulletPool.setMeshSurface(meshSurface);
     companionBulletPool.setMeshSurface(meshSurface);
     companionManager.setMeshSurface(meshSurface);
@@ -947,8 +947,6 @@ async function main() {
     companionManager.setMapSizeScaleFactor(mapSizeScaleFactor);
     // Scale bullet range with map size: larger maps → bullets travel proportionally further.
     bulletPool.lifetimeMultiplier = mapSizeScaleFactor;
-    // Wire depth occlusion to new surface mesh (BVH built internally for fast raycasting)
-    depthOcclusion.setSurfaceMesh(surface.mesh);
     localWeaponManager.setMeshSurface(meshSurface);
 
     // Pass mapSizeScaleFactor so UV→world transforms correctly reflect the surface scale.
@@ -984,19 +982,6 @@ async function main() {
   // -- GPU instanced enemy rendering (reduces draw calls from ~2000 to ~15) --
   // Created before initSurface() so it can be wired into the enemySpawner.
   const enemyInstanceManager = new EnemyInstanceManager(scene, undefined, game.isWebGPU);
-
-  // -- Depth-based occlusion: dims enemies behind the surface (view-based, not proximity-based) --
-  // S27b: replaces the disabled proximity-based depth opacity with raycast-based occlusion.
-  // Uses EnemyInstanceManager for performance-friendly instanced visibility updates.
-  // s44r17-01: Config aligned with SP — raised opacity1/2Plus to prevent compound dimming.
-  // s44r22-01: Lowered opacity1/2Plus back down — double-dimming fixed in s44r12-03,
-  // NaN guard fixed in s44r21-01. User wants enemies "super dim" when behind surfaces.
-  const depthOcclusion = new DepthOcclusionSystem({
-    opacity0: 1.0,
-    opacity1: 0.08,    // Behind one surface: super dim (s44r22-01)
-    opacity2Plus: 0.04, // Behind multiple surfaces: almost invisible (s44r22-01)
-    lerpSpeed: 10.0,
-  });
 
   // -- LOD: reduce triangle count for distant enemies (same as single-player) --
   const lodManager = new LODManager(
@@ -3571,11 +3556,6 @@ async function main() {
     networkEnemies.clear();
     enemyTargetUV.clear();
     enemyPrevHealth.clear();
-
-    // s44r29-02: Clear depth occlusion EMA state between rounds.
-    // Without this, EMA opacity values from the old surface/enemy layout can
-    // carry over to new enemies on the new map, causing stale dimming at wave 1.
-    depthOcclusion.clear();
 
     // Clear all geoms
     geomIdToIndex.forEach((idx) => {
@@ -7738,6 +7718,10 @@ async function main() {
     if (!surfaceReady || !surface || !getTransform) return;
     if (!surfaceConfirmedFromServer) return; // Wait for server-confirmed surface type before rendering entities
 
+    const netRenderNow = performance.now();
+    const netRenderDt = Math.min((netRenderNow - _lastNetRenderTime) / 1000, 0.1);
+    _lastNetRenderTime = netRenderNow;
+
     // Actual render-frame delta for framerate-independent camera lerp.
     // Clamped to avoid huge jumps after tab-hide/unhide (same cap as netRenderDt).
     const _cameraRenderNow = performance.now();
@@ -7869,216 +7853,42 @@ async function main() {
     }
     const enemyArray = Array.from(networkEnemies.values());
     const lodAssignments = lodManager.update(camera, enemyArray);
-    const localPlayerForCulling = networkPlayers.get(localPlayerId);
     enemyInstanceManager.updateInstancesWithLOD(
       enemyArray,
       lodAssignments,
       camera,
-      localPlayerForCulling?.mesh
-        ? { position: localPlayerForCulling.mesh.position, normal: _localServerNormal }
-        : undefined,
-      networkOpaqueSurfaces,
     );
 
-    // -----------------------------------------------------------------------
-    // View-based depth occlusion (S27b): dim enemies behind the surface.
-    // Raycasts from camera to each enemy — counts surface intersections.
-    // 0 intersections = fully visible, 1 = dimmed, 2+ = nearly invisible.
-    // Uses EnemyInstanceManager (GPU-instanced color buffer) for zero per-enemy
-    // material state flushes — avoids the performance problem of the old approach.
-    // -----------------------------------------------------------------------
-    const netRenderNow = performance.now();
-    const netRenderDt = Math.min((netRenderNow - _lastNetRenderTime) / 1000, 0.1);
-    _lastNetRenderTime = netRenderNow;
-
-    // UV-distance surface dimming constants (SP parity — RenderLoop.ts SURFACE_* consts).
-    // Dims enemies far from the local player on the surface. This handles flat/open
-    // surfaces (e.g. cylinder, cube faces) where raycasts may count 0 intersections
-    // for enemies on the far side, leaving them fully bright without UV-distance clamping.
-    const NET_SURFACE_NEAR_UV  = 0.15;   // fully bright within 15% surface distance
-    const NET_SURFACE_FAR_UV   = 0.45;   // fully dim beyond 45% surface distance
-    const NET_SURFACE_DIM_OPC  = 0.40;   // minimum opacity for far-away/behind-surface enemies.
-    // s44r22-01: lowered from 0.40→0.08. s44r25-02: raised 0.08→0.15. s44r26-01: raised 0.15→0.25.
-    // s44r33-01: raised 0.25→0.40. 0.25 invisible after depth floor cap fix + DoubleSide rendering.
-    // s44r27-02: restored to 0.25. 0.15 was perceptually invisible on sphere-tunnel dark backgrounds.
-    // Sphere-tunnel uses a higher floor (NET_SPHERE_TUNNEL_DIM_OPC) — see below.
-    const NET_SPHERE_TUNNEL_DIM_OPC = 0.35; // s44r27-02: sphere-tunnel needs higher floor than other maps.
-    // The sphere-tunnel background is very dark and enemies at 0.25 are still perceptually invisible
-    // at wave 4+ (~60-80 enemies). 0.35 ensures far-hemisphere enemies remain visible.
-    // World-space proximity override constants (SP parity — RenderLoop.ts PROXIMITY_*).
-    const NET_PROXIMITY_NEAR_WORLD    = 2.0;
-    const NET_PROXIMITY_NEAR_WORLD_SQ = NET_PROXIMITY_NEAR_WORLD * NET_PROXIMITY_NEAR_WORLD;
-    const NET_PROXIMITY_FADE_WORLD    = 5.0;
-    const NET_PROXIMITY_FADE_WORLD_SQ = NET_PROXIMITY_FADE_WORLD * NET_PROXIMITY_FADE_WORLD;
-
-    const _lpForDim = networkPlayers.get(localPlayerId);
-    const _lpU = _lpForDim?.surfaceU ?? 0;
-    const _lpV = _lpForDim?.surfaceV ?? 0;
-    const _netWrapsV = surf.wrapsV;
-
-    // For tunnel surfaces (cube-tunnel, sphere-tunnel, torus-tunnel), skip depth occlusion
-    // AND UV-distance dimming entirely. Both systems produce false-positives on tunnel geometry:
-    //   - Depth occlusion: MP camera (distance 20) is OUTSIDE the tunnel, so raycasts cross
-    //     2 wall faces for every enemy → opacity2Plus=0.04 → essentially invisible.
-    //   - UV-distance dimming: tunnel UV space is elongated, so enemies in the tunnel appear
-    //     "far" in UV coordinates even when physically nearby (sphere-approx UV mismatch).
-    // Bypass both so all tunnel enemies are fully visible.
-    // s44r12-08: original bypass for cube-tunnel/sphere-tunnel (depth occlusion only).
-    // s44r16-07: extended to torus-tunnel, also bypasses UV dimming for all tunnel surfaces.
-    // s44r24-01: also skip depthOcclusion.update() for tunnel surfaces — raycasts are wasted
-    // (results are discarded) and accumulating "2 wall intersections" in the EMA weakmap
-    // can interfere with other surfaces if the surface type changes mid-session.
-    const _isTunnelSurface = lastCreatedSurfaceType === 'cube-tunnel'
-      || lastCreatedSurfaceType === 'sphere-tunnel'
-      || lastCreatedSurfaceType === 'torus-tunnel';
-    // s44r25-01: sphere-tunnel gets UV-based dimming instead of the full vis=1.0 bypass.
-    // Depth occlusion update is still skipped (camera outside → 2 intersections = broken),
-    // but UV distance is used to determine front/behind-surface for dimming.
-    const _isSphereTunnel = lastCreatedSurfaceType === 'sphere-tunnel';
-    // s44r33-03: Cube-ring: depth occlusion produces false positives for inner-face enemies.
-    // Camera is outside the ring; raycasts to inner-face enemies cross outer wall first
-    // → 2 intersections → opacity2Plus=0.04 → enemies appear invisible. Same class of
-    // bug as cube-tunnel. Fix: skip depth occlusion, rely on UV dimming (like sphere-tunnel).
-    // After s44r33-03 server fix, player.surfaceV is accurate, so UV dimming works correctly.
-    const _isCubeRing = lastCreatedSurfaceType === 'cube-ring';
-    const _skipDepthOcclusion = _isTunnelSurface || _isCubeRing;
-    if (!_skipDepthOcclusion) {
-      depthOcclusion.update(enemyArray, camera.position, netRenderDt);
-    }
+    const localVisibilityPlayer = networkPlayers.get(localPlayerId);
+    const playerVisibilityFace = localVisibilityPlayer?.mesh && surfaceVisibilityResolver
+      ? surfaceVisibilityResolver.locateFace(localVisibilityPlayer.mesh.position)
+      : undefined;
     for (const enemy of enemyArray) {
       if (!enemy.alive || !enemy.mesh) continue;
-      const netDepthOpacity = _skipDepthOcclusion ? 1.0 : depthOcclusion.getOpacity(enemy);
-      let vis = netDepthOpacity;
-      // s44r25-03: removed binary netIsFrontSide threshold (netDepthOpacity >= 0.7) — replaced
-      // with smooth blend below (SP parity). The binary caused a jarring visibility cliff at
-      // higher FPS. netIsFrontSide is still set for the sphere-tunnel UV-distance override.
-      let netIsFrontSide = netDepthOpacity >= 0.7;
-
-      // s44r33-01: surfaceVis hoisted to outer scope so the visibility floor can respect UV dimming.
-      // Same fix as SP RenderLoop.ts — prevents depth-occlusion floor from overriding UV dimming.
-      let surfaceVis = 1.0;
-
-      // UV-distance surface dimming (LAN parity with SP RenderLoop.ts).
-      // Catches flat/open-surface cases where raycasts register 0 intersections.
-      // Skipped for most tunnel surfaces — UV space is unreliable for proximity on tunnels.
-      // s44r25-01: sphere-tunnel is re-enabled — UV distance reliably indicates front vs back
-      // hemisphere since the sphere UV wraps normally (unlike cube-tunnel which has seam artifacts).
-      if (_lpForDim && (!_isTunnelSurface || _isSphereTunnel)) {
-        const euRaw = Math.abs(enemy.surfacePosition.u - _lpU);
-        const evRaw = Math.abs(enemy.surfacePosition.v - _lpV);
-        const eu = Math.min(euRaw, 1.0 - euRaw);
-        const ev = _netWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
-        const uvDist = Math.sqrt(eu * eu + ev * ev);
-        // s44r27-02: sphere-tunnel uses a higher dim floor than other surfaces — its dark
-        // background makes enemies at 0.25 perceptually invisible at wave 4+.
-        const dimOpc = _isSphereTunnel ? NET_SPHERE_TUNNEL_DIM_OPC : NET_SURFACE_DIM_OPC;
-        // s44r25-01: For sphere-tunnel, UV distance determines front vs behind-surface.
-        // Depth occlusion is unavailable in MP (camera outside → 2 intersections for all),
-        // so we use UV distance as a proxy: enemies beyond NET_SURFACE_NEAR_UV are likely
-        // on the far hemisphere → apply the behind-surface floor (0.08) instead of front-side (0.70).
-        if (_isSphereTunnel && uvDist > NET_SURFACE_NEAR_UV) {
-          netIsFrontSide = false;
-        }
-        // s44r21-01: Initialize to 1.0 (fully visible) instead of leaving uninitialized.
-        // If uvDist is NaN (from NaN surfacePosition.u/v), all comparisons return false,
-        // surfaceVis stays at its initial value. Previously it was `undefined`, causing
-        // Math.min(vis, undefined) = NaN → invisible enemies at late waves.
-        // s44r33-01: surfaceVis hoisted to outer scope — assignment here instead of declaration.
-        if (uvDist <= NET_SURFACE_NEAR_UV) {
-          surfaceVis = 1.0;
-        } else if (uvDist >= NET_SURFACE_FAR_UV) {
-          surfaceVis = dimOpc;
-        } else {
-          const uvT = (uvDist - NET_SURFACE_NEAR_UV) / (NET_SURFACE_FAR_UV - NET_SURFACE_NEAR_UV);
-          const uvSt = uvT * uvT * (3.0 - 2.0 * uvT);
-          surfaceVis = 1.0 - uvSt * (1.0 - dimOpc);
-        }
-        vis = Math.min(vis, surfaceVis);
-
-        // World-space proximity override (SP parity — pole-distortion fix).
-        // Near poles, UV distance is warped so UV-far enemies may be world-close.
-        // World distance correctly identifies enemies that are physically adjacent.
-        if (_lpForDim.mesh) {
-          const oppositeWalls = surf.areOnOppositeWallSides(_lpV, enemy.surfacePosition.v);
-          if (!oppositeWalls) {
-            const worldDistSq = enemy.position.distanceToSquared(_lpForDim.mesh.position);
-            if (worldDistSq <= NET_PROXIMITY_NEAR_WORLD_SQ) {
-              vis = Math.max(vis, 1.0);
-            } else if (worldDistSq <= NET_PROXIMITY_FADE_WORLD_SQ) {
-              const worldDist = Math.sqrt(worldDistSq);
-              const t = (worldDist - NET_PROXIMITY_NEAR_WORLD) / (NET_PROXIMITY_FADE_WORLD - NET_PROXIMITY_NEAR_WORLD);
-              vis = Math.max(vis, 1.0 - t);
-            }
-          }
-        }
+      if (!surfaceVisibilityResolver || !localVisibilityPlayer?.mesh || playerVisibilityFace === undefined) {
+        continue;
       }
-
-      // s44r17-01: Floor compound visibility to prevent multiple dimming systems
-      // from pushing enemies below perceptible levels (SP parity).
-      // s44r21-01: Remove `if (vis > 0)` guard — matches SP RenderLoop.ts line 288
-      // which applies the floor unconditionally. In MP, vis is never intentionally 0
-      // (min depthOcclusion value is 0.04), and the guard allowed NaN to slip through:
-      // if surfacePosition.u/v is NaN → uvDist is NaN → surfaceVis stays undefined →
-      // Math.min(vis, undefined) = NaN → NaN > 0 is false → floor skipped → invisible.
-      // Also add isFinite guard as defense-in-depth against any NaN propagation path.
-      if (!isFinite(vis)) vis = 1.0;
-      // s44r25-03: Smooth visibility floor (SP parity — see RenderLoop.ts).
-      // Replaced binary netIsFrontSide floor (0.70 ↔ 0.15 cliff) with smooth blend
-      // based on netDepthOpacity. Eliminates single-frame 55% brightness drops.
-      // For sphere-tunnel where netIsFrontSide is set by UV distance (not depth EMA),
-      // we still respect it: if UV says behind-surface, depthOpacity is 1.0 (tunnel bypass)
-      // but netIsFrontSide is false → we force depthOpacity to 0.0 for the blend so floor = dimFloor.
-      const NET_FRONT_SIDE_FLOOR = 0.70;
-      const NET_FRONT_BLEND_HIGH = 0.90;
-      const NET_FRONT_BLEND_LOW  = 0.50;
-      const effectiveDepthOpc = (!netIsFrontSide && _isSphereTunnel) ? 0.0 : netDepthOpacity;
-      const netFrontBlend = Math.max(0.0, Math.min(1.0,
-        (effectiveDepthOpc - NET_FRONT_BLEND_LOW) / (NET_FRONT_BLEND_HIGH - NET_FRONT_BLEND_LOW)
-      ));
-      // s44r27-02: sphere-tunnel uses NET_SPHERE_TUNNEL_DIM_OPC (0.35) as its floor base,
-      // other surfaces use NET_SURFACE_DIM_OPC (0.25). This ensures sphere-tunnel far-hemisphere
-      // enemies remain visible against the dark tunnel background at wave 4+.
-      const dimFloor = _isSphereTunnel ? NET_SPHERE_TUNNEL_DIM_OPC : NET_SURFACE_DIM_OPC;
-      const netVisibilityFloor = dimFloor + netFrontBlend * (NET_FRONT_SIDE_FLOOR - dimFloor);
-      // s44r33-01 reverted: effectiveFloor cap caused invisible enemies. v17.0 worked without it.
-      vis = Math.max(vis, netVisibilityFloor);
-      // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
-      // are both bypassed, so enemies MUST be fully visible. This catches any edge case where
-      // a future code path or EMA state leaks could inadvertently dim tunnel enemies.
-      // Host-only invisible enemies on sphere-tunnel were caused by some such state difference
-      // between host (localhost) and client (LAN) connections — this guard prevents it.
-      // s44r25-01: sphere-tunnel excluded — it gets UV-based dimming instead of forced vis=1.0.
-      // s44r33-03: cube-ring excluded — UV dimming handles far-face visibility correctly.
-      if (_isTunnelSurface && !_isSphereTunnel && !_isCubeRing) vis = 1.0;
-
-      let minColorBrightness = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS;
-      if (_lpForDim?.mesh) {
-        const occlusionVisibility = computeEnemyOcclusionVisibility(
-          _lpForDim.mesh.position,
-          _localServerNormal,
-          enemy.position,
-          {
-            opaqueSurfaces: networkOpaqueSurfaces,
-            lineOfSightClear: !_skipDepthOcclusion && netDepthOpacity >= 0.9,
-            enemyRadius: enemy.radius,
-            important: enemy instanceof Boss,
-          },
-        );
-        minColorBrightness = occlusionVisibility.minColorBrightness;
-        if (occlusionVisibility.className === 'direct') {
-          vis = 1.0;
-        } else if (occlusionVisibility.className === 'opaque-hidden') {
-          vis = 0;
-        } else {
-          vis = Math.min(vis, occlusionVisibility.visibility);
-        }
-      }
+      const surfaceVisibility = surfaceVisibilityResolver.resolve({
+        playerWorldPosition: localVisibilityPlayer.mesh.position,
+        playerFaceIndex: playerVisibilityFace,
+        entityWorldPosition: enemy.mesh.position,
+        entityKey: enemy,
+        opaqueSurfaces: networkOpaqueSurfaces,
+        enemyRadius: enemy.radius,
+        important: enemy instanceof Boss,
+      });
+      (enemy as any).__surfaceVisibility = surfaceVisibility;
+      const vis = surfaceVisibility.visibility;
+      const minColorBrightness = surfaceVisibility.minColorBrightness;
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {
         enemyInstanceManager.setLODInstanceVisibility(enemy, vis, minColorBrightness);
       } else {
         enemyInstanceManager.setInstanceVisibility(enemy, vis, minColorBrightness);
       }
+    }
+    if (surfaceVisibilityResolver) {
+      (globalThis as any).__surfaceVisibilityStats = surfaceVisibilityResolver.getStats();
     }
 
     // s44r29-02: Universal safety net — catch any enemy that slipped through
@@ -8777,7 +8587,8 @@ async function main() {
       camera: game.camera,
       renderer: game.renderer,
       enemyInstanceManager,
-      surfaceRoot: (surface as Surface | null)?.group ?? null,
+      getSurfaceRoot: () => surface?.group ?? null,
+      getPlayerRoot: () => networkPlayers.get(localPlayerId)?.mesh ?? null,
       getEnemies: () => Array.from(networkEnemies.entries()).map(([id, enemy]) => ({ id, enemy })),
     });
     window.__gameDebug = {

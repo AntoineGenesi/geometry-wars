@@ -2,65 +2,14 @@ import * as THREE from 'three';
 import type { GameContext } from './GameContext';
 import { OcclusionSurfaceMaterial } from '../rendering/OcclusionSurfaceMaterial';
 import {
-  ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS,
-  computeEnemyOcclusionVisibility,
-} from '../rendering/EntityCulling';
+  SurfaceVisibilityResolver,
+} from '../rendering/SurfaceVisibilityResolver';
+import type { MeshSurface } from '../surfaces/MeshSurface';
 import { EnemyType } from '../entities/enemies/EnemySpawner';
 import { Boss } from '../entities/enemies/Boss';
 import { UIHelpers } from '../ui/UIHelpers';
 import { areOpaqueSurfacesEnabled, loadGraphicsSettings } from '../ui/SettingsMenu';
 import { profiler } from './PerformanceProfiler';
-
-/**
- * Proximity visibility override using world-space (Euclidean 3D) distance.
- * Enemies within PROXIMITY_NEAR_WORLD units of the player are forced to full
- * visibility, overriding depth-occlusion and surface-dimming.
- *
- * World distance is used instead of UV distance because UV space is severely
- * warped near poles (sphere, peanut, capsule): two enemies at the same pole
- * with different longitudes have large UV distance but near-zero world distance.
- * UV-based proximity incorrectly dimmed these enemies even though they were
- * physically adjacent and about to hit the player.
- *
- * The cube-tunnel opposite-wall guard (areOnOppositeWallSides) still prevents
- * the inner-wall false-positive that was the original motivation for UV distance.
- */
-const PROXIMITY_NEAR_WORLD    = 2.0;   // fully visible within 2 world units
-const PROXIMITY_NEAR_WORLD_SQ = PROXIMITY_NEAR_WORLD * PROXIMITY_NEAR_WORLD;
-const PROXIMITY_FADE_WORLD    = 5.0;   // fade to surface dimming by 5 world units
-const PROXIMITY_FADE_WORLD_SQ = PROXIMITY_FADE_WORLD * PROXIMITY_FADE_WORLD;
-
-/**
- * Surface UV-distance visibility constants.
- * Dims enemies that are far from the player along the surface — using UV coordinates
- * (normalized surface parameterization) rather than Euclidean 3D distance.
- *
- * Why UV distance instead of 3D distance: on surfaces with holes (torus, cube-ring,
- * sphere-tunnel), raycasts can pass through the hole giving 0 intersections → full
- * brightness for enemies actually far away on the surface. UV distance is always
- * proportional to surface arc length regardless of the hole topology.
- *
- * UV space is [0,1]×[0,1] for all surfaces. Distance ~0 = same position, ~0.5 = far.
- * Both U and V are treated as wrapping (correct for torus; slight over-correction for
- * non-wrapping surfaces is negligible at UV distances below 0.5).
- *
- * HYSTERESIS (anti-flicker): entities near the near-threshold oscillate between
- * fully-bright and partially-dimmed states when their UV distance hovers around 0.15.
- * Two separate thresholds prevent this: dimming starts only when crossing ENTER (0.17)
- * and stops only when crossing EXIT (0.13). This eliminates flickering on compact
- * surfaces like the small torus where enemies frequently orbit the threshold.
- */
-const SURFACE_NEAR_UV = 0.15;        // midpoint of hysteresis band (kept for reference)
-const SURFACE_NEAR_UV_ENTER = 0.17;  // start dimming when uvDist exceeds this (from bright)
-const SURFACE_NEAR_UV_EXIT  = 0.13;  // stop dimming when uvDist drops below this (from dimmed)
-const SURFACE_FAR_UV  = 0.45;    // fully dim beyond 45% of surface
-const SURFACE_FAR_UV_SQ = SURFACE_FAR_UV * SURFACE_FAR_UV; // precomputed to avoid sqrt in common case
-const SURFACE_DIM_OPACITY = 0.40; // minimum opacity for far-away/behind-surface enemies.
-// s44r22-01: lowered from 0.40→0.08 (double-dimming fixed in s44r12-03, 0.40 was too visible through surfaces).
-// s44r25-02: raised 0.08→0.15. s44r26-01: raised 0.15→0.25. s44r33-01: raised 0.25→0.40.
-// 0.25 was still invisible after s44r33-01 capped depth floor by UV dimming (user confirmed).
-// With DoubleSide+depthTest:false (RC17), enemies render through surface — need higher floor to be visible.
-// 0.25 provides visible enemies without approaching the too-bright 0.40 level.
 
 /**
  * RenderLoop contains the render callback logic, extracted from main.ts onRender.
@@ -70,11 +19,6 @@ export class RenderLoop {
   // Pre-allocated temp vectors for render loop (avoids ~5 clone() per enemy per frame)
   private _renderTempToPlayer = new THREE.Vector3();
   private _renderTempToPlayerDir = new THREE.Vector3();
-  private _renderTempToEnemy = new THREE.Vector3();
-
-  // Pre-allocated vectors for far-side enemy culling (zero per-frame allocation)
-  private _farSideCamDir = new THREE.Vector3();
-  private _farSideTempDir = new THREE.Vector3();
 
   // Module-level pre-allocated objects for zero-GC frustum visibility checks
   private _frustum = new THREE.Frustum();
@@ -86,21 +30,13 @@ export class RenderLoop {
   private _lastHudUpdateTime = 0;
   private static readonly HUD_UPDATE_INTERVAL_MS = 100;
 
-  // Hysteresis state for far-side entity culling.
-  // Prevents flickering when enemy count oscillates around the activation threshold.
-  private _farSideCullingActive = false;
-
-  // Per-entity dimmed state for UV-distance hysteresis.
-  // Tracks whether each entity was dimmed last frame so we can apply two separate
-  // thresholds for entering vs exiting the dimmed state. WeakMap ensures automatic
-  // cleanup when enemies are garbage-collected (no manual disposal needed).
-  private _entityDimmedState: WeakMap<object, boolean> = new WeakMap();
-
   // Pre-allocated minimap enemy array — reused each frame to avoid per-frame heap churn
   private _minimapEnemies: Array<{ u: number; v: number; alive: boolean }> = [];
 
   private _opaqueSurfaces = false;
   private _graphicsSettingsFrameCounter = 60;
+  private _surfaceVisibilityResolver: SurfaceVisibilityResolver | null = null;
+  private _surfaceVisibilityMesh: MeshSurface | null = null;
 
   render(ctx: GameContext, alpha: number): void {
     profiler.begin('surface_projection');
@@ -138,69 +74,25 @@ export class RenderLoop {
     const gridMat = ctx.surface.gridMesh.material as THREE.LineBasicMaterial;
     gridMat.opacity = ctx.state.currentGridOpacity;
 
-    // Depth-based occlusion + tunnel-blocking opacity + LOD-based fading for enemies
-    // Raycast-based: counts surface intersections between camera and each enemy.
-    // Batched across frames for performance (100 raycasts/frame).
+    // Enemy visibility is topology-based below. The camera ray above only fades
+    // the surface corridor so the player remains readable.
     const allEnemies = ctx.enemySpawner.getEnemies();
     if (this._graphicsSettingsFrameCounter++ >= 60) {
       this._graphicsSettingsFrameCounter = 0;
       const graphicsSettings = loadGraphicsSettings();
       this._opaqueSurfaces = areOpaqueSurfacesEnabled(graphicsSettings);
     }
-    // s44r24-01: On cube-tunnel, the camera is outside the tunnel → raycasts always hit 2 walls
-    // → targetOpacity=0.04 for ALL enemies. Since the result is discarded below (tunnel bypass),
-    // skip the update entirely to avoid wasted raycasts and EMA state accumulation.
-    // s44r25-01: sphere-tunnel removed from bypass — SP camera is INSIDE the sphere shell,
-    // so depth occlusion gives correct results: 0 intersections for near-side enemies (clear),
-    // 1 intersection for far-side enemies (behind sphere wall → dim). The bypass was only needed
-    // for MP where the camera sits outside the sphere.
-    const _isTunnelSurface = ctx.surfaceType === 'cube-tunnel';
-    if (!_isTunnelSurface) {
-      // Adaptive raycast budget: at high enemy counts, reduce raycasts per frame so each
-      // enemy is re-checked every ~6 frames (~100ms at 60fps) instead of every 2 frames.
-      // EMA smoothing in DepthOcclusionSystem keeps transitions visually smooth.
-      // Max 100, min 10. At 200 enemies: ceil(200/6)=34. At 50: ceil(50/6)=9→10.
-      const adaptiveBatchSize = Math.max(10, Math.min(100, Math.ceil(allEnemies.length / 6)));
-      ctx.depthOcclusion.update(allEnemies, camPos, frameDt, adaptiveBatchSize);
-    }
-
     profiler.end('transparency_and_occlusion');
 
     profiler.begin('enemy_visibility');
-    const meshCenter = ctx.meshSurface.getCenter();
     const qualitySettings = ctx.adaptiveQuality.getSettings();
     const maxVisible = qualitySettings.maxVisibleEnemies;
     let visibleEnemyCount = 0;
-
-    // Cache player UV position for surface-distance calculations (once per frame)
-    const playerU = ctx.player.surfaceU;
-    const playerV = ctx.player.surfaceV;
-    const wrapsV = ctx.surface.wrapsV;
-
-    // Far-side enemy culling: at high entity counts, hide regular enemies on the back of the surface.
-    // Bosses are exempt — they keep their depth-occlusion opacity (dim but visible as a threat cue).
-    // Uses dot product between camera direction from center and enemy direction from center.
-    // Smooth fade zone near horizon (dot=0) so enemies don't pop in/out.
-    //
-    // Hysteresis: turn ON at 150 entities, turn OFF below 120. This prevents flickering when
-    // enemy count oscillates around 150 (enemies dying/spawning), which would otherwise cause
-    // far-side entities to abruptly jump between their dimmed state and fully hidden.
-    const FAR_SIDE_ENTITY_THRESHOLD_ON  = 150;
-    const FAR_SIDE_ENTITY_THRESHOLD_OFF = 120;
-    const FAR_SIDE_NEAR_DOT = 0.15;   // dot > this → fully visible (near side)
-    const FAR_SIDE_FAR_DOT = -0.10;   // dot < this → hidden (far side)
-    const farSideRange = FAR_SIDE_NEAR_DOT - FAR_SIDE_FAR_DOT; // 0.25
-
-    if (!this._farSideCullingActive && allEnemies.length >= FAR_SIDE_ENTITY_THRESHOLD_ON) {
-      this._farSideCullingActive = true;
-    } else if (this._farSideCullingActive && allEnemies.length < FAR_SIDE_ENTITY_THRESHOLD_OFF) {
-      this._farSideCullingActive = false;
+    if (this._surfaceVisibilityMesh !== ctx.meshSurface) {
+      this._surfaceVisibilityMesh = ctx.meshSurface;
+      this._surfaceVisibilityResolver = new SurfaceVisibilityResolver(ctx.meshSurface);
     }
-    const doFarSideCulling = this._farSideCullingActive;
-    if (doFarSideCulling) {
-      // Camera direction from mesh center — computed once per frame, used per-enemy below
-      this._farSideCamDir.copy(camPos).sub(meshCenter).normalize();
-    }
+    const visibilityResolver = this._surfaceVisibilityResolver!;
 
     for (const enemy of allEnemies) {
       if (!enemy.alive || !enemy.mesh) continue;
@@ -219,205 +111,23 @@ export class RenderLoop {
         continue;
       }
 
-      // Raycast-based occlusion: opacity based on how many surface layers are
-      // between camera and this enemy. 0 layers = full, 1 = dimmed, 2+ = nearly invisible.
-      // s44r24-01: For tunnel surfaces, bypass depth occlusion entirely (always 1.0).
-      // The camera is outside the tunnel → raycasts always count 2 wall intersections → 0.04 opacity.
-      // That's wrong for enemies that are physically visible to the player inside the tunnel.
-      const depthOpacity = _isTunnelSurface ? 1.0 : ctx.depthOcclusion.getOpacity(enemy);
-      let visibility = depthOpacity;
-      // s44r23-01: depthOpacity used below for smooth visibility floor blend.
-      // s44r25-03: removed binary isFrontSide threshold (depthOpacity >= 0.7) — it caused a
-      // jarring visibility cliff where enemies jumped from floor 0.70 to 0.15 in a single frame
-      // when the EMA crossed the threshold. At higher FPS (host PC), the cliff was more noticeable.
-
-      // Surface UV-distance visibility + world-space proximity override.
-      // UV distance is computed for:
-      //   (a) surface dimming — dims enemies far from the player along the surface
-      // World-space (Euclidean 3D) distance is used for:
-      //   (b) proximity override — keeps very-close enemies visible despite occlusion
-      //
-      // UV distance for (a) correctly handles torus/ring topology: enemies visible through
-      // the hole have large UV distance and stay dim.
-      // World distance for (b) correctly handles pole distortion: near poles, enemies with
-      // the same latitude but different longitude have large UV distance but tiny world
-      // distance — they should be visible, not dimmed.
-      // s44r33-01: surfaceVis hoisted out of block scope so the visibility floor (below)
-      // can respect UV-distance dimming. Without this, the depth-occlusion-based floor
-      // overrides UV dimming for far-side enemies when depthOcclusion returns stale/high values.
-      let surfaceVis = 1.0;
-      {
-        const euRaw = Math.abs(enemy.surfacePosition.u - playerU);
-        const evRaw = Math.abs(enemy.surfacePosition.v - playerV);
-        // Both U and V treated as wrapping — correct for torus; harmless for others
-        const eu = Math.min(euRaw, 1.0 - euRaw);
-        const ev = wrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
-        const uvDistSq = eu * eu + ev * ev;
-
-        // (a) Surface dimming: min-clamp visibility based on UV distance.
-        // Hysteresis prevents flickering when uvDist hovers near the near threshold:
-        //   - If entity was NOT dimmed last frame: only start dimming past ENTER (0.17)
-        //   - If entity WAS dimmed last frame:   only stop dimming below EXIT  (0.13)
-        // This ±0.02 deadband eliminates the bright↔dim oscillation on small torus.
-        //
-        // Perf: compare against squared thresholds to skip sqrt() in the common near-zone
-        // case (~80% of enemies are within the near threshold during normal gameplay).
-        // sqrt() is only computed for the smoothstep interpolation in the transition zone.
-        const wasDimmed = this._entityDimmedState.get(enemy) ?? false;
-        const nearThreshold = wasDimmed ? SURFACE_NEAR_UV_EXIT : SURFACE_NEAR_UV_ENTER;
-        const nearThresholdSq = nearThreshold * nearThreshold;
-        if (uvDistSq <= nearThresholdSq) {
-          surfaceVis = 1.0;
-          this._entityDimmedState.set(enemy, false);
-        } else if (uvDistSq >= SURFACE_FAR_UV_SQ) {
-          surfaceVis = SURFACE_DIM_OPACITY;
-          this._entityDimmedState.set(enemy, true);
-        } else {
-          const uvDist = Math.sqrt(uvDistSq); // Only compute sqrt when needed for smoothstep
-          const uvT = (uvDist - SURFACE_NEAR_UV) / (SURFACE_FAR_UV - SURFACE_NEAR_UV);
-          const uvSt = uvT * uvT * (3.0 - 2.0 * uvT);
-          surfaceVis = 1.0 - uvSt * (1.0 - SURFACE_DIM_OPACITY);
-          this._entityDimmedState.set(enemy, true);
-        }
-        visibility = Math.min(visibility, surfaceVis);
-
-        // (b) Proximity override: enemies very close in world space are always visible,
-        // overriding depth-occlusion. Applied after min-clamp so it can only raise visibility.
-        // Uses world-space (Euclidean 3D) distance rather than UV distance to correctly
-        // handle pole-distorted UV coordinates — near poles, enemies with large UV distance
-        // may be physically adjacent (tiny world distance) and should stay visible.
-        // EXCEPTION: suppress the override when player and enemy are on opposite wall sides
-        // (e.g., outer vs inner tunnel wall on cube-tunnel). These entities are physically
-        // separated by the wall regardless of world distance.
-        const oppositeWalls = ctx.surface.areOnOppositeWallSides(playerV, enemy.surfacePosition.v);
-        if (!oppositeWalls) {
-          const worldDistSq = enemy.position.distanceToSquared(playerPos);
-          if (worldDistSq <= PROXIMITY_NEAR_WORLD_SQ) {
-            visibility = Math.max(visibility, 1.0);
-          } else if (worldDistSq <= PROXIMITY_FADE_WORLD_SQ) {
-            const worldDist = Math.sqrt(worldDistSq);
-            const t = (worldDist - PROXIMITY_NEAR_WORLD) / (PROXIMITY_FADE_WORLD - PROXIMITY_NEAR_WORLD);
-            visibility = Math.max(visibility, 1.0 - t);
-          }
-        }
-      }
-
-      // When surface is blocking camera-to-player, also fade enemies between camera and player
-      if (ctx.state.isCurrentlyBlocked) {
-        this._renderTempToEnemy.copy(enemy.position).sub(camPos);
-        const enemyDist = this._renderTempToEnemy.length();
-        // Check if enemy is between camera and player (closer than player)
-        if (enemyDist < distToPlayer) {
-          // Check if enemy is roughly along the camera-to-player line
-          this._renderTempToEnemy.normalize();
-          const alignment = this._renderTempToPlayerDir.dot(this._renderTempToEnemy);
-          // If enemy is within ~45 degrees of the camera-to-player line, fade it
-          if (alignment > 0.7) {
-            const fadeFactor = (alignment - 0.7) / 0.3;
-            const tunnelEnemyOpacity = 0.12;
-            const tunnelVisibility = 1.0 - fadeFactor * (1.0 - tunnelEnemyOpacity);
-            visibility = Math.min(visibility, tunnelVisibility);
-          }
-        }
-      }
-
-      // s44r17-01: LOD-based visibility reduction REMOVED.
-      // LOD already uses simplified geometry (icosahedron for MEDIUM, billboard for LOW).
-      // Multiplying visibility by 0.85/0.95 on top of depth-occlusion and surface-UV
-      // dimming caused compound dimming: e.g., depth=0.12 × LOD=0.85 = 0.102,
-      // which with RGB × alpha double-path → <1% effective visibility → invisible.
-      // This was the root cause of "progressive invisible enemies after waves" — as
-      // wave count increases, more enemies push to MEDIUM/LOW LOD, triggering the
-      // compound dimming that made them disappear.
-
-      // s44r17-01: Floor compound visibility BEFORE far-side culling.
-      // Depth-occlusion (0.40 behind 1 surface) and UV-dimming (0.40 at max
-      // distance) apply independently via Math.min. Their compound result can
-      // still be 0.40 × 0.40 = 0.16 when setInstanceVisibility does RGB × alpha.
-      // The floor prevents any compound path from dropping below SURFACE_DIM_OPACITY.
-      // Far-side culling (below) can still force visibility to 0 intentionally.
-      visibility = Math.max(visibility, SURFACE_DIM_OPACITY);
-
-      // Far-side culling at high entity counts (150+): hide regular enemies on the back half
-      // of the surface to reduce visual clutter. Bosses are exempt (threat cue preserved).
-      if (doFarSideCulling && !(enemy instanceof Boss)) {
-        // Compute enemy direction from mesh center (normalized, zero-alloc)
-        this._farSideTempDir.copy(enemy.position).sub(meshCenter);
-        const enemyFromCenterLen = this._farSideTempDir.length();
-        if (enemyFromCenterLen > 0.001) {
-          this._farSideTempDir.multiplyScalar(1 / enemyFromCenterLen);
-        }
-        // dot > FAR_SIDE_NEAR_DOT: near side → farFactor=1 (fully visible)
-        // dot < FAR_SIDE_FAR_DOT: far side → farFactor=0 (hidden)
-        // in between: smooth linear fade at the horizon
-        const farSideDot = this._farSideCamDir.dot(this._farSideTempDir);
-        const farFactor = Math.max(0, Math.min(1, (farSideDot - FAR_SIDE_FAR_DOT) / farSideRange));
-        visibility = Math.min(visibility, farFactor);
-      }
-
-      // s44r23-01: Visibility floor AFTER far-side culling.
-      // Far-side culling can legitimately drive behind-surface enemies to 0 (visual clutter reduction).
-      // But it must NEVER hide front-side enemies (enemies the player can directly see).
-      //
-      // s44r25-03: Replaced binary isFrontSide threshold (depthOpacity >= 0.7 → floor jumps
-      // 0.70 ↔ 0.15 in one frame) with smooth blend based on depthOpacity.
-      // The binary caused a jarring visibility cliff: enemies spawned at depthOpacity=1.0 (floor=0.70),
-      // then as EMA converged the currentOpacity crossed 0.70 and floor instantly dropped to 0.15 —
-      // a 55% brightness drop in one frame. At higher FPS (host PC), smaller lerpFactor per frame
-      // kept enemies visibly at 0.70 for longer before the cliff hit, making it more noticeable.
-      //   depthOpacity >= 0.90 → floor = 0.70 (clearly front-side)
-      //   depthOpacity 0.50..0.90 → floor smoothly interpolates 0.15 → 0.70
-      //   depthOpacity <= 0.50 → floor = SURFACE_DIM_OPACITY (behind surface)
-      //
-      // s44r33-01: Cap the floor by surfaceVis to prevent depth-occlusion-based floor from
-      // overriding UV-distance dimming. Root cause of "far-side too bright" regression:
-      // With depthTest:false (RC15) + DoubleSide (RC17), the depth occlusion raycast is
-      // batched (100/frame) and uses EMA smoothing + 0.75 threshold. Far-side enemies may
-      // get depthOpacity=1.0 (stale initial value or inconsistent raycasts) → frontBlend=1.0
-      // → floor=0.70, overriding the correct UV dimming of 0.25. UV dimming is computed
-      // every frame for every enemy and is always reliable. The floor must never raise
-      // visibility above what UV dimming allows.
-      const FRONT_SIDE_FLOOR = 0.70;
-      const FRONT_BLEND_HIGH = 0.90;
-      const FRONT_BLEND_LOW  = 0.50;
-      const frontBlend = Math.max(0.0, Math.min(1.0,
-        (depthOpacity - FRONT_BLEND_LOW) / (FRONT_BLEND_HIGH - FRONT_BLEND_LOW)
-      ));
-      const visibilityFloor = SURFACE_DIM_OPACITY + frontBlend * (FRONT_SIDE_FLOOR - SURFACE_DIM_OPACITY);
-      // s44r33-01 reverted: The effectiveFloor cap made far-side enemies invisible by capping
-      // the floor at SURFACE_DIM_OPACITY (0.40) which compounds with Phase 1 culling (0.3×)
-      // to produce invisible enemies. v17.0 worked without this cap. Reverting to v17.0 behavior.
-      visibility = Math.max(visibility, visibilityFloor);
-
-      // s44r24-01: Defensive guarantee for tunnel surfaces — depth occlusion AND UV dimming
-      // are both bypassed for tunnels, so enemies MUST be fully visible.
-      // This catches any edge case where some other code path inadvertently dims tunnel enemies.
-      if (_isTunnelSurface) visibility = 1.0;
-
-      const occlusionVisibility = computeEnemyOcclusionVisibility(
-        playerPos,
-        ctx.playerWalker.normal,
-        enemy.position,
-        {
-          opaqueSurfaces: this._opaqueSurfaces,
-          lineOfSightClear: depthOpacity >= 0.9,
-          enemyRadius: enemy.radius,
-          important: enemy instanceof Boss,
-        },
-      );
-      let minColorBrightness = occlusionVisibility.minColorBrightness;
-      if (occlusionVisibility.className === 'direct') {
-        visibility = 1.0;
-      } else if (occlusionVisibility.className === 'opaque-hidden') {
-        visibility = 0;
-      } else {
-        visibility = Math.min(visibility, occlusionVisibility.visibility);
-      }
+      const surfaceVisibility = visibilityResolver.resolve({
+        playerWorldPosition: ctx.playerWalker.position,
+        playerFaceIndex: ctx.playerWalker.faceIndex,
+        entityWorldPosition: enemy.mesh.position,
+        entityFaceIndex: enemy.walker?.faceIndex,
+        opaqueSurfaces: this._opaqueSurfaces,
+        enemyRadius: enemy.radius,
+        important: enemy instanceof Boss,
+      });
+      (enemy as any).__surfaceVisibility = surfaceVisibility;
+      let visibility = surfaceVisibility.visibility;
+      let minColorBrightness = surfaceVisibility.minColorBrightness;
 
       // Debug: ?noDim=true disables ALL enemy dimming (forces full brightness)
       if ((globalThis as any).__NO_DIM) {
         visibility = 1.0;
-        minColorBrightness = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS;
+        minColorBrightness = 1.0;
       }
 
       visibleEnemyCount++;
@@ -453,6 +163,7 @@ export class RenderLoop {
         });
       }
     }
+    (globalThis as any).__surfaceVisibilityStats = visibilityResolver.getStats();
     // s44r29-02: Universal safety net — catch any enemy that slipped through
     // the per-enemy visibility loop with ICB below minimum (LOD transitions,
     // race conditions, skipped enemies, etc.).
@@ -463,6 +174,10 @@ export class RenderLoop {
     profiler.end('enemy_visibility');
 
     profiler.begin('pickup_dimming');
+    // Pickup visibility remains owned by the dependent pickup rewrite task.
+    const playerU = ctx.player.surfaceU;
+    const playerV = ctx.player.surfaceV;
+    const wrapsV = ctx.surface.wrapsV;
     // Surface UV-distance dimming for pickups.
     // Same UV metric as entity dimming — pickups on the far side of the surface are dimmed.
     // More generous minimum (0.35) than entities (0.08): pickups stay visible as navigation targets.
