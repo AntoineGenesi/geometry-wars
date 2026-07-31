@@ -64,10 +64,72 @@ describe('EnemyInstanceManager', () => {
   let scene: THREE.Scene;
   let manager: EnemyInstanceManager;
 
+  type TestLODBatch = {
+    enemyToIndex: Map<BaseEnemy, number>;
+    indexToEnemy: Array<BaseEnemy | null>;
+    usedCount: number;
+    highWaterMark: number;
+    instancedMesh: THREE.InstancedMesh;
+    opacityAttribute: THREE.InstancedBufferAttribute;
+    minBrightness: Float32Array;
+  };
+
   beforeEach(() => {
     scene = new THREE.Scene();
     manager = new EnemyInstanceManager(scene, 50);
   });
+
+  const getLODBatch = (key: 'lodMediumBatch' | 'lodLowBatch'): TestLODBatch => {
+    const batch = (manager as any)[key] as TestLODBatch | null;
+    expect(batch).toBeTruthy();
+    return batch!;
+  };
+
+  const expectBatchOwnsOnly = (
+    enemy: BaseEnemy,
+    owningKey: 'lodMediumBatch' | 'lodLowBatch',
+  ): void => {
+    const medium = getLODBatch('lodMediumBatch');
+    const low = getLODBatch('lodLowBatch');
+    const owner = owningKey === 'lodMediumBatch' ? medium : low;
+    const other = owningKey === 'lodMediumBatch' ? low : medium;
+
+    expect(owner.enemyToIndex.has(enemy)).toBe(true);
+    expect(owner.usedCount).toBe(1);
+    const slot = owner.enemyToIndex.get(enemy)!;
+    expect(owner.indexToEnemy[slot]).toBe(enemy);
+
+    expect(other.enemyToIndex.has(enemy)).toBe(false);
+    expect(other.usedCount).toBe(0);
+  };
+
+  const expectRetiredLODSlot = (
+    batch: TestLODBatch,
+    enemy: BaseEnemy,
+    slot: number,
+  ): void => {
+    expect(batch.enemyToIndex.has(enemy)).toBe(false);
+    expect(batch.indexToEnemy[slot]).toBeNull();
+    expect(batch.usedCount).toBe(0);
+    expect(batch.highWaterMark).toBe(-1);
+    expect(batch.instancedMesh.count).toBe(0);
+
+    const matrix = new THREE.Matrix4();
+    const scale = new THREE.Vector3();
+    batch.instancedMesh.getMatrixAt(slot, matrix);
+    scale.setFromMatrixScale(matrix);
+    expect(scale.x).toBe(0);
+    expect(scale.y).toBe(0);
+    expect(scale.z).toBe(0);
+    expect(batch.opacityAttribute.getX(slot)).toBe(0);
+    expect(batch.minBrightness[slot]).toBe(0);
+
+    const color = new THREE.Color();
+    batch.instancedMesh.getColorAt(slot, color);
+    expect(color.r).toBe(0);
+    expect(color.g).toBe(0);
+    expect(color.b).toBe(0);
+  };
 
   describe('isInstanceable', () => {
     it('returns true for Grunt (instanceable type)', () => {
@@ -555,6 +617,94 @@ describe('EnemyInstanceManager', () => {
       lodAssignments.set(grunt, LODLevel.HIGH);
       manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
       expect(manager.isInLODBatch(grunt)).toBe(false);
+    });
+
+    it('retires stale MEDIUM ownership when moving MEDIUM -> LOW -> HIGH', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      manager.setLODInstanceVisibility(grunt, 0.45, 0.2);
+      manager.ensureMinimumVisibility();
+      manager.flushColors();
+
+      expectBatchOwnsOnly(grunt, 'lodMediumBatch');
+      const mediumBatch = getLODBatch('lodMediumBatch');
+      const mediumSlot = mediumBatch.enemyToIndex.get(grunt)!;
+
+      lodAssignments.set(grunt, LODLevel.LOW);
+      grunt.mesh!.position.set(2, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      manager.setLODInstanceVisibility(grunt, 0.65, 0.2);
+      manager.ensureMinimumVisibility();
+      manager.flushColors();
+
+      expectBatchOwnsOnly(grunt, 'lodLowBatch');
+      expectRetiredLODSlot(mediumBatch, grunt, mediumSlot);
+      expect((manager as any).enemyLODPlacement.get(grunt)).toBe(LODLevel.LOW);
+      const lowBatch = getLODBatch('lodLowBatch');
+      const lowSlot = lowBatch.enemyToIndex.get(grunt)!;
+
+      lodAssignments.set(grunt, LODLevel.HIGH);
+      grunt.mesh!.position.set(3, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      manager.ensureMinimumVisibility();
+      manager.flushColors();
+
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+      expectRetiredLODSlot(lowBatch, grunt, lowSlot);
+      expect(getLODBatch('lodMediumBatch').usedCount).toBe(0);
+      expect(manager.getLODStats()).toEqual({ mediumCount: 0, lowCount: 0 });
+    });
+
+    it('retires stale LOW ownership when moving LOW -> MEDIUM -> unregister', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      grunt.mesh!.position.set(1, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+
+      const lodAssignments = new Map<BaseEnemy, LODLevel>();
+
+      lodAssignments.set(grunt, LODLevel.LOW);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      manager.setLODInstanceVisibility(grunt, 0.5, 0.2);
+      manager.ensureMinimumVisibility();
+      manager.flushColors();
+
+      expectBatchOwnsOnly(grunt, 'lodLowBatch');
+      const lowBatch = getLODBatch('lodLowBatch');
+      const lowSlot = lowBatch.enemyToIndex.get(grunt)!;
+
+      lodAssignments.set(grunt, LODLevel.MEDIUM);
+      grunt.mesh!.position.set(2, 0, 0);
+      grunt.mesh!.updateMatrixWorld(true);
+      manager.updateInstancesWithLOD([grunt], lodAssignments, camera);
+      manager.setLODInstanceVisibility(grunt, 0.7, 0.2);
+      manager.ensureMinimumVisibility();
+      manager.flushColors();
+
+      expectBatchOwnsOnly(grunt, 'lodMediumBatch');
+      expectRetiredLODSlot(lowBatch, grunt, lowSlot);
+      expect((manager as any).enemyLODPlacement.get(grunt)).toBe(LODLevel.MEDIUM);
+      const mediumBatch = getLODBatch('lodMediumBatch');
+      const mediumSlot = mediumBatch.enemyToIndex.get(grunt)!;
+
+      manager.unregister(grunt);
+      manager.ensureMinimumVisibility();
+      manager.flushColors();
+
+      expect(manager.isManaged(grunt)).toBe(false);
+      expect(manager.isInLODBatch(grunt)).toBe(false);
+      expectRetiredLODSlot(mediumBatch, grunt, mediumSlot);
+      expect(getLODBatch('lodLowBatch').usedCount).toBe(0);
+      expect(manager.getLODStats()).toEqual({ mediumCount: 0, lowCount: 0 });
     });
 
     it('handles mixed LOD levels across multiple enemies', () => {

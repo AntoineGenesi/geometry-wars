@@ -1007,6 +1007,16 @@ export class EnemyInstanceManager {
     lodBatch: LODSharedBatch,
     lodLevel: LODLevel,
   ): void {
+    const currentLOD = this.enemyLODPlacement.get(enemy);
+    if (currentLOD !== undefined && currentLOD !== lodLevel) {
+      this.removeLODPlacement(enemy);
+    }
+
+    const staleBatch = lodLevel === LODLevel.MEDIUM ? this.lodLowBatch : this.lodMediumBatch;
+    if (staleBatch) {
+      this.removeLODSlot(staleBatch, enemy);
+    }
+
     // Get or allocate a slot
     let slotIndex = lodBatch.enemyToIndex.get(enemy);
     let allocated = false;
@@ -1035,6 +1045,7 @@ export class EnemyInstanceManager {
       const baseColor = this.typeBaseColors.get(typeKey);
       if (baseColor) lodBatch.instancedMesh.setColorAt(slotIndex, baseColor);
       lodBatch.opacityAttribute.setX(slotIndex, 1.0);
+      lodBatch.minBrightness[slotIndex] = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS;
       this._colorsDirty = true;
       this._dirtyLODBatches.add(lodBatch);
     }
@@ -1048,36 +1059,59 @@ export class EnemyInstanceManager {
    */
   private removeLODPlacement(enemy: BaseEnemy): void {
     const currentLOD = this.enemyLODPlacement.get(enemy);
-    if (currentLOD === undefined) return;
 
-    const lodBatch = currentLOD === LODLevel.MEDIUM ? this.lodMediumBatch : this.lodLowBatch;
-    if (!lodBatch) return;
-
-    const slotIndex = lodBatch.enemyToIndex.get(enemy);
-    if (slotIndex !== undefined) {
-      // Zero-scale to hide
-      _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
-      lodBatch.instancedMesh.setMatrixAt(slotIndex, _tempMatrix);
-      lodBatch.opacityAttribute.setX(slotIndex, 0.0);
-
-      lodBatch.enemyToIndex.delete(enemy);
-      lodBatch.indexToEnemy[slotIndex] = null;
-      lodBatch.usedCount = Math.max(0, lodBatch.usedCount - 1);
-
-      // Update highWaterMark if we just freed the highest slot
-      // RC15: Scan from top of array, not from freed index downward.
-      // Matches the fix in unregister() (lines 316-322) — old code missed
-      // occupied slots above the freed index via wrap-around allocation.
-      if (slotIndex >= lodBatch.highWaterMark) {
-        let newMax = -1;
-        for (let i = LOD_BATCH_MAX_INSTANCES - 1; i >= 0; i--) {
-          if (lodBatch.indexToEnemy[i] !== null) { newMax = i; break; }
-        }
-        lodBatch.highWaterMark = newMax;
+    if (currentLOD !== undefined) {
+      const lodBatch = currentLOD === LODLevel.MEDIUM ? this.lodMediumBatch : this.lodLowBatch;
+      if (lodBatch) {
+        this.removeLODSlot(lodBatch, enemy);
       }
     }
 
+    // Defensive cleanup for registrations left behind by older cross-LOD moves.
+    this.removeLODSlot(this.lodMediumBatch, enemy);
+    this.removeLODSlot(this.lodLowBatch, enemy);
     this.enemyLODPlacement.delete(enemy);
+  }
+
+  /**
+   * Retire one enemy slot from a shared LOD batch without relying on the single
+   * enemyLODPlacement entry. Cross-LOD moves can otherwise strand a slot in the
+   * previous batch after the placement marker has moved to the new batch.
+   */
+  private removeLODSlot(lodBatch: LODSharedBatch | null, enemy: BaseEnemy): boolean {
+    if (!lodBatch) return false;
+
+    const slotIndex = lodBatch.enemyToIndex.get(enemy);
+    if (slotIndex === undefined) return false;
+
+    _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
+    lodBatch.instancedMesh.setMatrixAt(slotIndex, _tempMatrix);
+    if (lodBatch.instancedMesh.instanceColor) {
+      _tempColor.setRGB(0, 0, 0);
+      lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
+    }
+    lodBatch.opacityAttribute.setX(slotIndex, 0.0);
+    lodBatch.minBrightness[slotIndex] = 0;
+
+    lodBatch.enemyToIndex.delete(enemy);
+    lodBatch.indexToEnemy[slotIndex] = null;
+    lodBatch.usedCount = Math.max(0, lodBatch.usedCount - 1);
+    lodBatch.nextFreeIndex = Math.min(lodBatch.nextFreeIndex, slotIndex);
+
+    // Update highWaterMark if we just freed the highest slot.
+    if (slotIndex >= lodBatch.highWaterMark) {
+      let newMax = -1;
+      for (let i = LOD_BATCH_MAX_INSTANCES - 1; i >= 0; i--) {
+        if (lodBatch.indexToEnemy[i] !== null) { newMax = i; break; }
+      }
+      lodBatch.highWaterMark = newMax;
+    }
+
+    lodBatch.instancedMesh.instanceMatrix.needsUpdate = true;
+    lodBatch.instancedMesh.count = lodBatch.highWaterMark + 1;
+    this._colorsDirty = true;
+    this._dirtyLODBatches.add(lodBatch);
+    return true;
   }
 
   /**
