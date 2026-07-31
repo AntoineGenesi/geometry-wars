@@ -4820,17 +4820,18 @@ async function main() {
               bulletTangentV = sp.tangentV;
             }
 
+            // Convert UV-space direction to world-space using surface tangent frame.
+            // Apply same torus dirX negation as rendering for consistency.
+            const bDirX = lastCreatedSurfaceType === 'torus' ? -bullet.dirX : bullet.dirX;
+            const bulletWorldDir = new THREE.Vector3()
+              .addScaledVector(bulletTangentU, bDirX)
+              .addScaledVector(bulletTangentV, bullet.dirY)
+              .normalize();
+
             const closest = meshSurface.closestPointOnSurface(bulletWorldPos);
             if (closest) {
               const facePos = meshSurface.initGeodesicPosition(closest.point, closest.faceIndex);
-              // Convert UV-space direction to world-space using surface tangent frame.
-              // Apply same torus dirX negation as rendering for consistency.
-              const bDirX = lastCreatedSurfaceType === 'torus' ? -bullet.dirX : bullet.dirX;
-              const dirWorld = new THREE.Vector3()
-                .addScaledVector(bulletTangentU, bDirX)
-                .addScaledVector(bulletTangentV, bullet.dirY)
-                .normalize();
-              bulletGeodesicState.set(bullet.id, { facePos, dirWorld });
+              bulletGeodesicState.set(bullet.id, { facePos, dirWorld: bulletWorldDir });
             }
 
             // Track bullet spawn origin for telemetry (bullet_origin_check)
@@ -4844,7 +4845,7 @@ async function main() {
                   origin: { x: bulletWorldPos.x, y: bulletWorldPos.y, z: bulletWorldPos.z },
                   playerPos: { x: ownerMesh.position.x, y: ownerMesh.position.y, z: ownerMesh.position.z },
                   uvDir: { x: bullet.dirX, y: bullet.dirY, z: bullet.dirZ },
-                  worldDir: { x: dirWorld.x, y: dirWorld.y, z: dirWorld.z },
+                  worldDir: { x: bulletWorldDir.x, y: bulletWorldDir.y, z: bulletWorldDir.z },
                   distToPlayer: dist,
                 });
                 // Keep only last 50 spawns to avoid memory growth

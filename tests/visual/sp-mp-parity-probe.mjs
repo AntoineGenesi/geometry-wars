@@ -258,6 +258,12 @@ async function createPage(browser) {
   return page;
 }
 
+function relevantPageErrors(errors) {
+  return (errors ?? [])
+    .map((error) => String(error ?? '').trim())
+    .filter(Boolean);
+}
+
 async function screenshot(page, name) {
   const path = resolve(SCREENSHOT_DIR, `${name}.png`);
   await page.screenshot({ path }).catch(() => {});
@@ -586,19 +592,21 @@ async function runSpCase(browser, surface) {
     await page.mouse.up({ button: 'left' }).catch(() => {});
     screenshots.push(await screenshot(page, `${caseId}-end`));
     const canvas = await collectCanvasStats(page);
+    const pageErrors = relevantPageErrors(page.__errors);
     return {
       id: caseId,
       path: 'src/main.ts -> src/core/GameLoop.ts',
       mode: 'waves',
       surface,
-      status: 'PASS',
+      status: pageErrors.length > 0 ? 'FAIL' : 'PASS',
+      error: pageErrors.length > 0 ? `Relevant page errors: ${pageErrors.slice(0, 3).join(' | ')}` : undefined,
       durationSeconds: SP_DURATION,
       samples,
       summary: summarizeCase(samples),
       screenshots,
       inputTrace,
       canvas,
-      errors: page.__errors,
+      errors: pageErrors,
       consoleTail: page.__logs.slice(-80),
     };
   } catch (err) {
@@ -685,19 +693,21 @@ async function runMpCase(browser, surface, mode = 'pvpve', durationSeconds = MP_
     await page.mouse.up({ button: 'left' }).catch(() => {});
     screenshots.push(await screenshot(page, `${caseId}-end`));
     const canvas = await collectCanvasStats(page);
+    const pageErrors = relevantPageErrors(page.__errors);
     return {
       id: caseId,
       path: 'src/main.ts -> src/network-main.ts + server/rooms/GameRoom.ts',
       mode,
       surface,
-      status: 'PASS',
+      status: pageErrors.length > 0 ? 'FAIL' : 'PASS',
+      error: pageErrors.length > 0 ? `Relevant page errors: ${pageErrors.slice(0, 3).join(' | ')}` : undefined,
       durationSeconds,
       samples,
       summary: summarizeCase(samples),
       screenshots,
       inputTrace,
       canvas,
-      errors: page.__errors,
+      errors: pageErrors,
       consoleTail: page.__logs.slice(-100),
     };
   } catch (err) {
@@ -721,9 +731,20 @@ async function runMpCase(browser, surface, mode = 'pvpve', durationSeconds = MP_
 }
 
 function classify(results) {
-  const failures = results.filter((result) => result.status !== 'PASS');
+  const failures = [];
   const suspects = [];
   for (const result of results) {
+    const pageErrors = relevantPageErrors(result.errors);
+    if (result.status !== 'PASS' || pageErrors.length > 0) {
+      failures.push({
+        id: result.id,
+        error: result.error ?? (pageErrors.length > 0 ? `Relevant page errors: ${pageErrors.slice(0, 3).join(' | ')}` : null),
+        pageErrors,
+      });
+    }
+    if (pageErrors.length > 0) {
+      suspects.push({ id: result.id, kind: 'page_error', count: pageErrors.length, sample: pageErrors.slice(0, 3) });
+    }
     if (result.summary?.camera?.insideSurfaceSuspect) {
       suspects.push({ id: result.id, kind: 'camera_inside_surface', minOutsideSurfaceDot: result.summary.camera.minOutsideSurfaceDot });
     }
@@ -751,7 +772,7 @@ function classify(results) {
       : suspects.length > 0
         ? 'DEFECT_REPRODUCED'
         : 'NO_REPRO_BOUNDED',
-    failures: failures.map((result) => ({ id: result.id, error: result.error ?? null })),
+    failures,
     suspects,
     claimBoundary: 'Linux WSL2 headless Chromium/SwiftShader/WebGL proof only; no Windows hardware WebGPU or two-device LAN feel coverage.',
   };
