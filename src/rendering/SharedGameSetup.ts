@@ -244,19 +244,18 @@ export function orientPlayerOnSurface(
   surfaceNormal: THREE.Vector3,
   aimAngle: number,
   tangentU: THREE.Vector3,
+  tangentV: THREE.Vector3,
 ): void {
   const normal = surfaceNormal.clone().normalize();
-  const forward = tangentU.clone().normalize();
+  const forward = tangentU.clone()
+    .multiplyScalar(Math.cos(aimAngle))
+    .addScaledVector(tangentV, Math.sin(aimAngle))
+    .projectOnPlane(normal)
+    .normalize();
   const right = new THREE.Vector3().crossVectors(normal, forward).normalize();
   const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
   const rotMatrix = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
   mesh.quaternion.setFromRotationMatrix(rotMatrix);
-  // s44r17-06 FIX: Negate aimAngle to match SP behavior.
-  // SP uses setFromAxisAngle(normal, -aimAngle) — the negative sign is critical.
-  // After makeBasis sets local Y = surface normal, rotateOnAxis(Y, angle) rotates
-  // around the normal. Using positive aimAngle caused the player to spin in the
-  // wrong direction on all surfaces (inverted/rotated aim vs mouse movement).
-  mesh.rotateOnAxis(new THREE.Vector3(0, 1, 0), -aimAngle);
 }
 
 // ---------------------------------------------------------------------------

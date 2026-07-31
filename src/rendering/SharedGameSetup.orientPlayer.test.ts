@@ -1,135 +1,100 @@
 /**
- * Regression test for orientPlayerOnSurface — s44r17-06.
+ * Regression tests for MP player orientation in the real surface frame.
  *
- * Verifies that the aim rotation uses the NEGATIVE aimAngle (matching SP behavior).
- * The bug: MP used +aimAngle while SP used -aimAngle, causing the player to spin
- * in the wrong direction on all surfaces.
+ * Surface frames satisfy tangentU x tangentV = normal, and server-returned
+ * bullets use tangentU*cos(aimAngle) + tangentV*sin(aimAngle). The chevron's
+ * local +Z must use that same world direction.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { orientPlayerOnSurface } from './SharedGameSetup';
 
+function makeFrame(normalInput: THREE.Vector3, tangentInput: THREE.Vector3) {
+  const normal = normalInput.clone().normalize();
+  const tangentU = tangentInput.clone().projectOnPlane(normal).normalize();
+  const tangentV = new THREE.Vector3().crossVectors(normal, tangentU).normalize();
+  return { normal, tangentU, tangentV };
+}
+
+function orientedAxes(
+  normal: THREE.Vector3,
+  tangentU: THREE.Vector3,
+  tangentV: THREE.Vector3,
+  aimAngle: number,
+) {
+  const mesh = new THREE.Object3D();
+  orientPlayerOnSurface(mesh, normal, aimAngle, tangentU, tangentV);
+  return {
+    forward: new THREE.Vector3(0, 0, 1).applyQuaternion(mesh.quaternion).normalize(),
+    up: new THREE.Vector3(0, 1, 0).applyQuaternion(mesh.quaternion).normalize(),
+    quaternion: mesh.quaternion.clone(),
+  };
+}
+
 describe('orientPlayerOnSurface', () => {
-  it('should rotate in the same direction as SP (negative aimAngle)', () => {
-    // Setup: surface normal = Y-up, tangentU = X-right
-    const mesh = new THREE.Object3D();
-    const normal = new THREE.Vector3(0, 1, 0);
-    const tangentU = new THREE.Vector3(1, 0, 0);
+  it('aligns zero-angle chevron forward with tangentU', () => {
+    const { normal, tangentU, tangentV } = makeFrame(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(1, 0, 0),
+    );
+    const axes = orientedAxes(normal, tangentU, tangentV, 0);
 
-    // Apply zero aimAngle — establish reference orientation
-    orientPlayerOnSurface(mesh, normal, 0, tangentU);
-    const refQuat = mesh.quaternion.clone();
-
-    // Apply a positive aimAngle
-    orientPlayerOnSurface(mesh, normal, Math.PI / 4, tangentU);
-    const posQuat = mesh.quaternion.clone();
-
-    // SP equivalent: quaternion from basis, then premultiply setFromAxisAngle(normal, -aimAngle)
-    // Build the same basis as orientPlayerOnSurface
-    const right = new THREE.Vector3().crossVectors(normal, tangentU).normalize();
-    const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
-    const mat = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
-    const spBasisQuat = new THREE.Quaternion().setFromRotationMatrix(mat);
-    const spAimQuat = new THREE.Quaternion().setFromAxisAngle(normal, -Math.PI / 4);
-    const spExpected = spBasisQuat.clone().premultiply(spAimQuat);
-
-    // The MP result should match SP behavior (using -aimAngle around normal)
-    expect(posQuat.dot(spExpected)).toBeCloseTo(1.0, 3);
+    expect(axes.forward.dot(tangentU)).toBeCloseTo(1, 6);
+    expect(axes.up.dot(normal)).toBeCloseTo(1, 6);
   });
 
-  it('should produce different orientations for opposite aimAngles', () => {
-    const mesh = new THREE.Object3D();
-    const normal = new THREE.Vector3(0, 1, 0);
-    const tangentU = new THREE.Vector3(1, 0, 0);
+  it('produces different orientations for opposite aim angles', () => {
+    const { normal, tangentU, tangentV } = makeFrame(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(1, 0, 0),
+    );
+    const positive = orientedAxes(normal, tangentU, tangentV, Math.PI / 4);
+    const negative = orientedAxes(normal, tangentU, tangentV, -Math.PI / 4);
 
-    orientPlayerOnSurface(mesh, normal, Math.PI / 4, tangentU);
-    const q1 = mesh.quaternion.clone();
-
-    orientPlayerOnSurface(mesh, normal, -Math.PI / 4, tangentU);
-    const q2 = mesh.quaternion.clone();
-
-    // Opposite angles should produce different orientations
-    expect(q1.dot(q2)).not.toBeCloseTo(1.0, 3);
+    expect(Math.abs(positive.quaternion.dot(negative.quaternion))).not.toBeCloseTo(1, 3);
   });
 
-  it('should handle non-Y-up normals correctly (curved surface)', () => {
-    const mesh = new THREE.Object3D();
-    // Tilted normal (like a tube section of sphere-tunnel)
-    const normal = new THREE.Vector3(0.5, 0.5, 0.707).normalize();
-    const tangentU = new THREE.Vector3(1, 0, 0).normalize();
+  it('keeps chevron up aligned on a curved surface frame', () => {
+    const { normal, tangentU, tangentV } = makeFrame(
+      new THREE.Vector3(0.5, 0.5, 0.707),
+      new THREE.Vector3(1, 0, 0),
+    );
+    const axes = orientedAxes(normal, tangentU, tangentV, Math.PI / 3);
 
-    // Should not throw and should produce a valid quaternion
-    orientPlayerOnSurface(mesh, normal, Math.PI / 3, tangentU);
-    expect(mesh.quaternion.length()).toBeCloseTo(1.0, 5);
-
-    // Verify the local Y axis of the mesh aligns with the surface normal
-    const localY = new THREE.Vector3(0, 1, 0).applyQuaternion(mesh.quaternion);
-    // After aim rotation around normal, the local Y should still be the normal
-    expect(localY.dot(normal)).toBeCloseTo(1.0, 3);
+    expect(axes.quaternion.length()).toBeCloseTo(1, 6);
+    expect(axes.up.dot(normal)).toBeCloseTo(1, 6);
   });
 
-  it('aligns mesh +Z with the protected bullet aim vector', () => {
-    const cases = [
-      {
-        normal: new THREE.Vector3(0, 1, 0),
-        tangentU: new THREE.Vector3(1, 0, 0),
-        angles: [0, Math.PI / 2, -Math.PI / 2, Math.PI],
-      },
-      {
-        normal: new THREE.Vector3(0.35, 0.82, 0.45).normalize(),
-        tangentU: new THREE.Vector3(1, 0, 0)
-          .projectOnPlane(new THREE.Vector3(0.35, 0.82, 0.45).normalize())
-          .normalize(),
-        angles: [0.35, 1.2, -2.1],
-      },
+  it('aligns mesh +Z with the server-returned bullet world direction', () => {
+    const frames = [
+      makeFrame(new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, 0, 0)),
+      makeFrame(new THREE.Vector3(0.35, 0.82, 0.45), new THREE.Vector3(1, 0, 0)),
     ];
+    const angles = [0, Math.PI / 2, -Math.PI / 2, Math.PI, 0.35, 1.2, -2.1];
 
-    for (const { normal, tangentU, angles } of cases) {
-      const tangentV = tangentU.clone().cross(normal).normalize();
+    for (const { normal, tangentU, tangentV } of frames) {
       for (const aimAngle of angles) {
-        const mesh = new THREE.Object3D();
-        orientPlayerOnSurface(mesh, normal, aimAngle, tangentU);
-
-        const meshForward = new THREE.Vector3(0, 0, 1)
-          .applyQuaternion(mesh.quaternion)
-          .normalize();
+        const axes = orientedAxes(normal, tangentU, tangentV, aimAngle);
         const bulletAim = tangentU.clone()
           .multiplyScalar(Math.cos(aimAngle))
-          .add(tangentV.clone().multiplyScalar(Math.sin(aimAngle)))
+          .addScaledVector(tangentV, Math.sin(aimAngle))
           .normalize();
 
-        expect(meshForward.dot(bulletAim)).toBeGreaterThan(0.99);
+        expect(axes.forward.dot(bulletAim)).toBeCloseTo(1, 6);
+        expect(axes.up.dot(normal)).toBeCloseTo(1, 6);
       }
     }
   });
 
-  // REGRESSION GUARD: s44r17-06 — aimAngle sign must be negative
-  it('REGRESSION: aimAngle rotation must match SP sign convention (-aimAngle)', () => {
-    const mesh = new THREE.Object3D();
-    const normal = new THREE.Vector3(0, 1, 0);
-    const tangentU = new THREE.Vector3(1, 0, 0);
-    const testAngle = 1.0; // ~57 degrees
+  it('REGRESSION: uses the real tangentV handedness for non-horizontal aim', () => {
+    const { normal, tangentU, tangentV } = makeFrame(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(1, 0, 0),
+    );
+    const axes = orientedAxes(normal, tangentU, tangentV, Math.PI / 2);
+    const mirroredDirection = tangentV.clone().negate();
 
-    orientPlayerOnSurface(mesh, normal, testAngle, tangentU);
-
-    // Extract the rotation around Y (the normal) from the final quaternion
-    // by removing the basis component.
-    const right = new THREE.Vector3().crossVectors(normal, tangentU).normalize();
-    const correctedForward = new THREE.Vector3().crossVectors(right, normal).normalize();
-    const basisMat = new THREE.Matrix4().makeBasis(right, normal, correctedForward);
-    const basisQuat = new THREE.Quaternion().setFromRotationMatrix(basisMat);
-    const basisInv = basisQuat.clone().invert();
-
-    // Remove basis to isolate the aim rotation
-    const aimOnly = mesh.quaternion.clone().multiply(basisInv);
-    // aimOnly should be a rotation around local Y by -testAngle
-    // For a Y-axis rotation by angle θ: w = cos(θ/2), y = sin(θ/2)
-    const expectedW = Math.cos(-testAngle / 2);
-    const expectedY = Math.sin(-testAngle / 2);
-
-    expect(aimOnly.w).toBeCloseTo(expectedW, 3);
-    expect(aimOnly.y).toBeCloseTo(expectedY, 3);
-    expect(Math.abs(aimOnly.x)).toBeLessThan(0.01);
-    expect(Math.abs(aimOnly.z)).toBeLessThan(0.01);
+    expect(axes.forward.dot(tangentV)).toBeCloseTo(1, 6);
+    expect(axes.forward.dot(mirroredDirection)).toBeCloseTo(-1, 6);
   });
 });

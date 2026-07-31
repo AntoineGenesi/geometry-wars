@@ -213,6 +213,10 @@ interface GameDebugAPI {
   getEnemies: () => { id: string; type: string; u: number; v: number; hp: number }[];
   getEnemyMeshPathingSamples: () => Record<string, unknown>[];
   getBulletCount: () => number;
+  getChevronAimProofState: () => Record<string, unknown>;
+  startChevronAimProofGame: (surfaceType: string) => boolean;
+  resumeChevronAimProofGame: () => boolean;
+  fireChevronAimProofShot: () => boolean;
   getUpgradeProofState: () => Record<string, unknown>;
   setupUpgradeProof: (weaponType: string, killCount: number) => boolean;
   requestUpgradeProofActivation: (weaponType: string, nodeId: string, unlockedNodeIds: string[]) => boolean;
@@ -276,6 +280,7 @@ const _netTempPos = new THREE.Vector3();
 const _netTempDir = new THREE.Vector3();
 const _netTempNormal = new THREE.Vector3();
 const _netTempTangent = new THREE.Vector3();
+const _netTempBitangent = new THREE.Vector3();
 const _bulletTmpColor = new THREE.Color();
 // Pre-allocated for bullet depth dimming (approximated surface normal = pos.normalize())
 const _netBulletNormal = new THREE.Vector3();
@@ -632,8 +637,9 @@ function orientPlayerOnSurface(
   surfaceNormal: THREE.Vector3,
   aimAngle: number,
   tangentU: THREE.Vector3,
+  tangentV: THREE.Vector3,
 ): void {
-  sharedOrientPlayerOnSurface(player.mesh, surfaceNormal, aimAngle, tangentU);
+  sharedOrientPlayerOnSurface(player.mesh, surfaceNormal, aimAngle, tangentU, tangentV);
 }
 
 // ---------------------------------------------------------------------------
@@ -5014,13 +5020,15 @@ async function main() {
               });
             }
 
-            // Track bullet spawn origin for telemetry (bullet_origin_check)
-            if (_netMainDebug && bullet.ownerId === localPlayerId) {
-              const ownerMesh = networkPlayers.get(localPlayerId)?.mesh;
+            // Track server-returned bullet direction for debug proof.
+            if (_netMainDebug) {
+              const ownerMesh = networkPlayers.get(bullet.ownerId)?.mesh;
               if (ownerMesh) {
                 const dist = bulletWorldPos.distanceTo(ownerMesh.position);
                 _mpTelBulletSpawns.push({
+                  id: bullet.id,
                   frame: _mpTelFrameCount,
+                  time: game.clock.totalTime,
                   ownerId: bullet.ownerId,
                   origin: { x: bulletWorldPos.x, y: bulletWorldPos.y, z: bulletWorldPos.z },
                   playerPos: { x: ownerMesh.position.x, y: ownerMesh.position.y, z: ownerMesh.position.z },
@@ -6686,7 +6694,9 @@ async function main() {
   }> = [];
   // Track recent bullet spawn origins for bullet_origin_check scenario
   const _mpTelBulletSpawns: Array<{
+    id: string;
     frame: number;
+    time: number;
     ownerId: string;
     origin: { x: number; y: number; z: number };
     playerPos: { x: number; y: number; z: number };
@@ -6971,7 +6981,13 @@ async function main() {
           {
             const _orientTangentU = _predSp.tangentU.lengthSq() > 0.001
               ? _predSp.tangentU : _netTempTangent;
-            orientPlayerOnSurface(localPlayer, _netTempNormal, aimAngle, _orientTangentU);
+            orientPlayerOnSurface(
+              localPlayer,
+              _netTempNormal,
+              aimAngle,
+              _orientTangentU,
+              _predSp.tangentV,
+            );
           }
           // Update predicted pos cache from server pos
           _predictedPlayerVisualPos.copy(_netTempPos);
@@ -6981,7 +6997,13 @@ async function main() {
           // Fallback until first server world-space frame arrives.
           localPlayer.mesh.position.copy(_predSp.position).multiplyScalar(currentMapSizeScaleFactor);
           localPlayer.mesh.position.addScaledVector(_predSp.normal, 0.15);
-          orientPlayerOnSurface(localPlayer, _predSp.normal, aimAngle, _predTangentU);
+          orientPlayerOnSurface(
+            localPlayer,
+            _predSp.normal,
+            aimAngle,
+            _predTangentU,
+            _predSp.tangentV,
+          );
           _predictedPlayerVisualPos.copy(localPlayer.mesh.position);
           _predictedPlayerVisualNormal.copy(_predSp.normal);
           _predictedPlayerVisualValid = true;
@@ -8105,6 +8127,9 @@ async function main() {
         _netTempNormal.set(worldTarget.nx, worldTarget.ny, worldTarget.nz);
         _netTempTangent.set(worldTarget.tx, worldTarget.ty, worldTarget.tz);
         let orientTangentU = _netTempTangent;
+        let orientTangentV = _netTempBitangent
+          .crossVectors(_netTempNormal, _netTempTangent)
+          .normalize();
         if (surface) {
           _aimUnscaledPos.copy(player.mesh.position);
           if (currentMapSizeScaleFactor !== 1.0) {
@@ -8114,9 +8139,16 @@ async function main() {
           const orientSp = surface.getPoint(orientUV.u, orientUV.v);
           if (orientSp.tangentU.lengthSq() > 0.001) {
             orientTangentU = orientSp.tangentU;
+            orientTangentV = orientSp.tangentV;
           }
         }
-        orientPlayerOnSurface(player, _netTempNormal, target.aimAngle, orientTangentU);
+        orientPlayerOnSurface(
+          player,
+          _netTempNormal,
+          target.aimAngle,
+          orientTangentU,
+          orientTangentV,
+        );
       } else {
         // Fallback: UV-based positioning (legacy server or before first world-pos arrives).
         // s44l-16 FIX: For torus, sphere-approx UV (newU/newV) is swapped vs torus UV.
@@ -8138,7 +8170,7 @@ async function main() {
           sp = surf.getPoint(newU, newV);
         }
         player.mesh.position.copy(sp.position).multiplyScalar(currentMapSizeScaleFactor).addScaledVector(sp.normal, 0.15);
-        orientPlayerOnSurface(player, sp.normal, target.aimAngle, sp.tangentU);
+        orientPlayerOnSurface(player, sp.normal, target.aimAngle, sp.tangentU, sp.tangentV);
       }
 
       // Update glow trail with interpolated position
@@ -8774,6 +8806,139 @@ async function main() {
         return samples;
       },
       getBulletCount: () => bulletIdToIndex.size,
+      getChevronAimProofState: () => {
+        const canvasRect = game.renderer.domElement.getBoundingClientRect();
+        const projectWorldPoint = (point: THREE.Vector3) => {
+          const projected = point.clone().project(camera);
+          return {
+            x: canvasRect.left + (projected.x + 1) * canvasRect.width / 2,
+            y: canvasRect.top + (1 - projected.y) * canvasRect.height / 2,
+            ndcZ: projected.z,
+            inView: Math.abs(projected.x) <= 1
+              && Math.abs(projected.y) <= 1
+              && projected.z >= -1
+              && projected.z <= 1,
+          };
+        };
+        const players: Record<string, unknown>[] = [];
+        networkPlayers.forEach((player, id) => {
+          if (!surface) return;
+          const position = new THREE.Vector3();
+          const worldQuaternion = new THREE.Quaternion();
+          player.mesh.getWorldPosition(position);
+          player.mesh.getWorldQuaternion(worldQuaternion);
+
+          const unscaledPosition = position.clone();
+          if (currentMapSizeScaleFactor !== 1.0) {
+            unscaledPosition.divideScalar(currentMapSizeScaleFactor);
+          }
+          const uv = surface.worldToSurface(unscaledPosition);
+          const sp = surface.getPoint(uv.u, uv.v);
+          const remoteTarget = remotePlayerTargetWorldPos.get(id);
+          const isLocal = id === localPlayerId;
+          const aimAngle = isLocal
+            ? (lastSentInput?.aimAngle ?? 0)
+            : (remoteTarget?.aimAngle ?? remotePlayerTargetUV.get(id)?.aimAngle ?? 0);
+          const normal = isLocal && _localPlayerWorldTarget.valid
+            ? new THREE.Vector3(
+                _localPlayerWorldTarget.nx,
+                _localPlayerWorldTarget.ny,
+                _localPlayerWorldTarget.nz,
+              ).normalize()
+            : remoteTarget
+              ? new THREE.Vector3(remoteTarget.nx, remoteTarget.ny, remoteTarget.nz).normalize()
+              : sp.normal.clone().normalize();
+          const tangentU = sp.tangentU.clone().normalize();
+          const tangentV = sp.tangentV.clone().normalize();
+          const aimWorld = tangentU.clone()
+            .multiplyScalar(Math.cos(aimAngle))
+            .addScaledVector(tangentV, Math.sin(aimAngle))
+            .normalize();
+          const chevronForward = new THREE.Vector3(0, 0, 1)
+            .applyQuaternion(worldQuaternion)
+            .normalize();
+          const chevronUp = new THREE.Vector3(0, 1, 0)
+            .applyQuaternion(worldQuaternion)
+            .normalize();
+          const noseWorld = position.clone().addScaledVector(chevronForward, 0.45);
+          const tailWorld = position.clone().addScaledVector(chevronForward, -0.25);
+          let visibleChildCount = 0;
+          player.mesh.traverse((object) => {
+            if (object.visible && (object as THREE.Mesh).isMesh) visibleChildCount++;
+          });
+
+          players.push({
+            id,
+            isLocal,
+            aimAngle,
+            aimSource: isLocal ? 'mouse-derived-last-sent-input' : 'server-replicated-player-state',
+            position: position.toArray(),
+            surfaceNormal: normal.toArray(),
+            tangentU: tangentU.toArray(),
+            tangentV: tangentV.toArray(),
+            mouseOrReplicatedWorldAim: aimWorld.toArray(),
+            chevronForward: chevronForward.toArray(),
+            chevronUp: chevronUp.toArray(),
+            chevronToAimDot: chevronForward.dot(aimWorld),
+            chevronUpToNormalDot: chevronUp.dot(normal),
+            meshVisible: player.mesh.visible,
+            visibleChildCount,
+            noseWorld: noseWorld.toArray(),
+            tailWorld: tailWorld.toArray(),
+            noseScreen: projectWorldPoint(noseWorld),
+            tailScreen: projectWorldPoint(tailWorld),
+          });
+        });
+        return {
+          frame: _mpTelFrameCount,
+          time: game.clock.totalTime,
+          backend: game.backend,
+          isWebGPU: game.isWebGPU,
+          roomPhase: currentRoomPhase,
+          isPaused,
+          surface: lastCreatedSurfaceType,
+          localPlayerId,
+          players,
+          recentServerBulletSpawns: _mpTelBulletSpawns.slice(-50).map((spawn) => {
+            const origin = new THREE.Vector3(spawn.origin.x, spawn.origin.y, spawn.origin.z);
+            const directionEnd = origin.clone().add(new THREE.Vector3(
+              spawn.worldDir.x,
+              spawn.worldDir.y,
+              spawn.worldDir.z,
+            ).multiplyScalar(0.8));
+            return {
+              ...spawn,
+              originScreen: projectWorldPoint(origin),
+              directionEndScreen: projectWorldPoint(directionEnd),
+            };
+          }),
+        };
+      },
+      startChevronAimProofGame: (surfaceType) => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        if (surfaceType !== 'cube' && surfaceType !== 'sphere') return false;
+        network.startGame(`${surfaceType}:waves:medium:infinite`, {
+          ...currentGameSettings,
+          surface: surfaceType,
+          infiniteLives: true,
+        });
+        return true;
+      },
+      resumeChevronAimProofGame: () => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        network.sendPause(false);
+        game.resume();
+        return true;
+      },
+      fireChevronAimProofShot: () => {
+        if (!_netMainTestMode || !network.isConnected() || !lastSentInput) return false;
+        const proofInput = { ...lastSentInput, moveX: 0, moveY: 0, shooting: true };
+        network.sendInput(proofInput);
+        setTimeout(() => network.sendInput(proofInput), 75);
+        setTimeout(() => network.sendInput(proofInput), 150);
+        setTimeout(() => network.sendInput({ ...proofInput, shooting: false }), 300);
+        return true;
+      },
       getUpgradeProofState: () => {
         const bulletCounts: Record<string, number> = {};
         bulletWeaponType.forEach((weaponType) => {
