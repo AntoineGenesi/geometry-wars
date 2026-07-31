@@ -144,18 +144,18 @@ export class DDADecisionEngine {
    */
   update(dt: number, trackers: readonly DDAPerformanceTracker[], currentDifficultyTier: number = 0): void {
     if (!this.enabled) return;
-
-    // Disable on Nightmare tier
-    if (currentDifficultyTier >= this.config.disableOnTier) {
-      this.resetAllStates();
-      return;
-    }
+    const assistanceDisabled = currentDifficultyTier >= this.config.disableOnTier;
 
     // Throttled recalculation
     this.updateAccumulator += dt;
     if (this.updateAccumulator >= this.config.updateInterval) {
       this.updateAccumulator -= this.config.updateInterval;
       this.recalculate(trackers);
+    }
+
+    if (assistanceDisabled) {
+      this.resetAssistanceOutputs();
+      return;
     }
 
     // Ramp current level toward target every frame (smooth transition)
@@ -403,6 +403,15 @@ export class DDADecisionEngine {
       state.targetLevel = 0;
       state.currentLevel = 0;
       state.compositeScore = 0.5;
+      state.speedMultiplier = 1.0;
+    }
+  }
+
+  /** Reset assistance outputs while preserving composite score for dominance scaling. */
+  private resetAssistanceOutputs(): void {
+    for (const state of this.playerStates) {
+      state.targetLevel = 0;
+      state.currentLevel = 0;
       state.speedMultiplier = 1.0;
     }
   }

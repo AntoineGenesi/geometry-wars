@@ -255,6 +255,24 @@ describe('DDADecisionEngine', () => {
     expect(engine.getDDALevel(0)).toBe(0);
   });
 
+  it('should disable only assistance on Nightmare tier while preserving dominance score', () => {
+    const tracker = new DDAPerformanceTracker(0);
+    // Warmup
+    for (let i = 0; i < 360; i++) tracker.update(1 / 60, 0.5, 1.0);
+    // Dominating player: frequent kills, high score flow, far from enemies, full health.
+    for (let i = 0; i < 600; i++) {
+      if (i % 5 === 0) tracker.recordKill(5_000);
+      tracker.update(1 / 60, 0.8, 1.0);
+      engine.update(1 / 60, [tracker], 4);
+    }
+
+    expect(engine.getDDALevel(0)).toBe(0);
+    expect(engine.getDDALevelSmooth(0)).toBe(0);
+    expect(engine.getSpeedMultiplier(0)).toBe(1.0);
+    expect(engine.getCompositeScore(0)).toBeGreaterThan(0.65);
+    expect(engine.getDominanceHpMultiplier(0, 0, false)).toBeGreaterThan(1.0);
+  });
+
   it('should return default values for out-of-range player indices', () => {
     expect(engine.getDDALevel(99)).toBe(0);
     expect(engine.getSpeedMultiplier(99)).toBe(1.0);

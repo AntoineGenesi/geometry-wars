@@ -249,9 +249,19 @@ function summarize(samples, profile) {
   const assistanceLeakSamples = highTierSamples.filter(
     (sample) => sample.dda.assistanceLevelSmooth > 0.25,
   );
+  const highTierStrongSamples = highTierSamples.filter(
+    (sample) => sample.player.score >= 800_000 && sample.player.totalKills >= 80,
+  );
+  const highTierDominanceDropSamples = highTierStrongSamples.filter(
+    (sample) => sample.dda.dominanceHpMultiplier <= 1.01,
+  );
   const maxDifficulty = Math.max(0, ...ddaSamples.map((sample) => sample.difficulty.level));
   const maxWave = Math.max(0, ...ddaSamples.map((sample) => sample.wave.current));
   const maxDominance = Math.max(0, ...ddaSamples.map((sample) => sample.dda.dominanceHpMultiplier));
+  const highTierMaxDominance = Math.max(0, ...highTierStrongSamples.map((sample) => sample.dda.dominanceHpMultiplier));
+  const highTierMinDominance = highTierStrongSamples.length > 0
+    ? Math.min(...highTierStrongSamples.map((sample) => sample.dda.dominanceHpMultiplier))
+    : 0;
   const maxEnemyHealth = Math.max(0, ...ddaSamples.map((sample) => sample.enemies.maxHealth));
   const maxEnemyTier = Math.max(0, ...ddaSamples.map((sample) => sample.enemies.maxTier));
   const maxEnemyCount = Math.max(0, ...ddaSamples.map((sample) => sample.spawner.activeEnemyCount));
@@ -265,10 +275,15 @@ function summarize(samples, profile) {
       ? `Nightmare-tier samples=${highTierSamples.length}; assistance leak samples=0`
       : `Nightmare-tier samples=${highTierSamples.length}; assistance leak samples=${assistanceLeakSamples.length}`;
   } else {
-    passed = maxDifficulty >= 1.0 && maxDominance > 1.0 && maxEnemyHealth > 2 && maxEnemyCount > 0;
+    passed = maxDifficulty >= 1.0
+      && highTierStrongSamples.length >= 3
+      && highTierDominanceDropSamples.length === 0
+      && highTierMinDominance > 1.01
+      && maxEnemyHealth > 2
+      && maxEnemyCount > 0;
     reason = passed
-      ? `Difficulty ${maxDifficulty.toFixed(2)}, dominance ${maxDominance.toFixed(2)}x, max enemy HP ${maxEnemyHealth}`
-      : `Insufficient dominance evidence: difficulty=${maxDifficulty.toFixed(2)}, dominance=${maxDominance.toFixed(2)}x, maxEnemyHealth=${maxEnemyHealth}, enemies=${maxEnemyCount}`;
+      ? `Difficulty ${maxDifficulty.toFixed(2)}, high-tier dominance ${highTierMinDominance.toFixed(2)}-${highTierMaxDominance.toFixed(2)}x, max enemy HP ${maxEnemyHealth}`
+      : `Insufficient high-tier dominance evidence: difficulty=${maxDifficulty.toFixed(2)}, highTierStrongSamples=${highTierStrongSamples.length}, highTierDominanceDrops=${highTierDominanceDropSamples.length}, highTierMinDominance=${highTierMinDominance.toFixed(2)}, maxEnemyHealth=${maxEnemyHealth}, enemies=${maxEnemyCount}`;
   }
 
   return {
@@ -279,12 +294,16 @@ function summarize(samples, profile) {
     maxDifficulty,
     maxWave,
     maxDominance,
+    highTierMaxDominance,
+    highTierMinDominance,
     maxEnemyHealth,
     maxEnemyTier,
     maxEnemyCount,
     minFixedFps: Number.isFinite(minFixedFps) ? minFixedFps : null,
     highTierSamples: highTierSamples.length,
+    highTierStrongSamples: highTierStrongSamples.length,
     assistanceLeakSamples: assistanceLeakSamples.length,
+    highTierDominanceDropSamples: highTierDominanceDropSamples.length,
   };
 }
 
@@ -358,7 +377,7 @@ function writeReports(report) {
   for (const result of report.results) {
     const s = result.summary;
     lines.push(
-      `- ${result.surface}: ${s.passed ? 'PASS' : 'FAIL'} - ${s.reason}; wave=${s.maxWave}, maxDifficulty=${s.maxDifficulty.toFixed(2)}, maxDominance=${s.maxDominance.toFixed(2)}x, maxEnemyCount=${s.maxEnemyCount}, maxEnemyHealth=${s.maxEnemyHealth}`,
+      `- ${result.surface}: ${s.passed ? 'PASS' : 'FAIL'} - ${s.reason}; wave=${s.maxWave}, maxDifficulty=${s.maxDifficulty.toFixed(2)}, maxDominance=${s.maxDominance.toFixed(2)}x, highTierMinDominance=${s.highTierMinDominance.toFixed(2)}x, maxEnemyCount=${s.maxEnemyCount}, maxEnemyHealth=${s.maxEnemyHealth}`,
     );
   }
   lines.push('', `JSON artifact: \`${JSON_REPORT_PATH}\``);
