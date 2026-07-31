@@ -1358,9 +1358,6 @@ async function main() {
     normal: THREE.Vector3;
     tangent: THREE.Vector3;
     bitangent: THREE.Vector3;
-    faceIndex: number;
-    aggroTargetId: string;
-    aggroUntil: number;
   }>();
   const remotePlayerTargetUV = new Map<string, { u: number; v: number; aimAngle: number }>();
 
@@ -4559,24 +4556,25 @@ async function main() {
           normal: new THREE.Vector3(),
           tangent: new THREE.Vector3(),
           bitangent: new THREE.Vector3(),
-          faceIndex: -1,
-          aggroTargetId: '',
-          aggroUntil: 0,
         };
         enemyTargetMeshLocation.set(netEnemy.id, targetLocation);
       }
       targetLocation.position.set(netEnemy.wx, netEnemy.wy, netEnemy.wz);
-      targetLocation.normal.set(netEnemy.nx, netEnemy.ny, netEnemy.nz);
-      targetLocation.tangent.set(netEnemy.tx, netEnemy.ty, netEnemy.tz);
-      targetLocation.bitangent.set(netEnemy.bx, netEnemy.by, netEnemy.bz);
-      targetLocation.faceIndex = netEnemy.walkerFaceIndex;
-      targetLocation.aggroTargetId = netEnemy.aggroTargetId;
-      targetLocation.aggroUntil = netEnemy.aggroUntil;
+      const frame = surface?.getPoint(netEnemy.surfaceU, netEnemy.surfaceV);
+      if (frame) {
+        targetLocation.normal.copy(frame.normal);
+        targetLocation.tangent.copy(frame.tangentU);
+        targetLocation.bitangent.copy(frame.tangentV);
+      } else {
+        targetLocation.normal.set(0, 1, 0);
+        targetLocation.tangent.set(1, 0, 0);
+        targetLocation.bitangent.set(0, 0, 1);
+      }
+      enemy.surfacePosition.u = netEnemy.surfaceU;
+      enemy.surfacePosition.v = netEnemy.surfaceV;
 
       // On first creation, snap to position immediately (no lerp needed)
       if (isNewEnemy) {
-        enemy.surfacePosition.u = netEnemy.surfaceU;
-        enemy.surfacePosition.v = netEnemy.surfaceV;
         enemy.applyCanonicalSurfaceTransform(
           targetLocation.position,
           targetLocation.normal,
@@ -8722,12 +8720,11 @@ async function main() {
           samples.push({
             id,
             type: enemy.baseTypeName || 'unknown',
-            faceIndex: target.faceIndex,
+            surfaceU: enemy.surfacePosition.u,
+            surfaceV: enemy.surfacePosition.v,
             canonicalWorld: target.position.toArray(),
             renderedWorld: enemy.position.toArray(),
             renderCanonicalDelta: enemy.position.distanceTo(target.position),
-            aggroTargetId: target.aggroTargetId,
-            aggroUntil: target.aggroUntil,
             alive: enemy.alive,
           });
         });

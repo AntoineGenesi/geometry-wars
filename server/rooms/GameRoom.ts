@@ -1611,15 +1611,7 @@ export class GameRoom extends Room<GameState> {
         }
         this.trackDDAKill(client.sessionId);
 
-        if (Math.random() < WEAPON_DROP_CHANCE) {
-          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
-          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < 0.05) {
-          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
-        }
+        this.rollEnemyPickupDrops(enemy);
       }
     });
 
@@ -2257,6 +2249,57 @@ export class GameRoom extends Room<GameState> {
     return actualDamage;
   }
 
+  private enemyCanonicalUV(enemy: EnemyState): { u: number; v: number } {
+    return { u: enemy.surfaceU, v: enemy.surfaceV };
+  }
+
+  private rollEnemyPickupDrops(enemy: EnemyState, includeShield = true): void {
+    const uv = this.enemyCanonicalUV(enemy);
+    if (Math.random() < WEAPON_DROP_CHANCE) {
+      this.spawnWeaponPickup(uv.u, uv.v);
+    }
+    if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
+      this.spawnBuffPickup(uv.u, uv.v);
+    }
+    if (includeShield && Math.random() < 0.05) {
+      this.spawnShieldPickup(uv.u, uv.v);
+    }
+  }
+
+  private enemyWorldDistanceToPlayer(player: PlayerState, enemy: EnemyState): number {
+    return Math.hypot(player.wx - enemy.wx, player.wy - enemy.wy, player.wz - enemy.wz);
+  }
+
+  private enemyPlayerFrameDelta(
+    player: PlayerState,
+    enemy: EnemyState,
+  ): { x: number; y: number; dist: number } {
+    const dx = enemy.wx - player.wx;
+    const dy = enemy.wy - player.wy;
+    const dz = enemy.wz - player.wz;
+    this._enemyTargetDelta.du = dx * player.tx + dy * player.ty + dz * player.tz;
+    this._enemyTargetDelta.dv = dx * player.bx + dy * player.by + dz * player.bz;
+    this._enemyTargetDelta.dist = Math.hypot(dx, dy, dz);
+    return {
+      x: this._enemyTargetDelta.du,
+      y: this._enemyTargetDelta.dv,
+      dist: this._enemyTargetDelta.dist,
+    };
+  }
+
+  private bulletWorldDistanceToEnemy(bullet: BulletState, enemy: EnemyState): number {
+    const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
+    const sphereR = 10 * scaleFactor;
+    const [bx, by, bz] = surfaceUVToWorld3D(
+      this.state.surfaceType,
+      bullet.x,
+      bullet.y,
+      scaleFactor,
+      sphereR,
+    );
+    return Math.hypot(bx - enemy.wx, by - enemy.wy, bz - enemy.wz);
+  }
+
   private handleUpgradeActivationRequest(
     sessionId: string,
     data: UpgradeActivationRequest,
@@ -2310,15 +2353,7 @@ export class GameRoom extends Room<GameState> {
         this.trackDDAKill(sessionId);
       }
 
-      if (Math.random() < WEAPON_DROP_CHANCE) {
-        this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
-      }
-      if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
-        this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
-      }
-      if (Math.random() < 0.05) {
-        this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
-      }
+      this.rollEnemyPickupDrops(enemy);
     }
   }
 
@@ -2978,6 +3013,14 @@ export class GameRoom extends Room<GameState> {
       return this._pillWorldToUV(wx, wy, wz);
     }
 
+    if (this.state.surfaceType === 'cube') {
+      return this._cubeWorldToUV(wx, wy, wz);
+    }
+
+    if (this.state.surfaceType === 'cube-tunnel') {
+      return this._cubeTunnelWorldToUV(wx, wy, wz);
+    }
+
     // s44r33-03 FIX: Cube-ring — accurate parametric inversion.
     // Sphere approximation gives surfaceV = polar angle (acos(y/r)/π), mapping the
     // outer face (r=R+H, y≈0) to v≈0.5 instead of the correct v≈0.125.
@@ -2992,6 +3035,192 @@ export class GameRoom extends Room<GameState> {
     const v = Math.acos(Math.max(-1, Math.min(1, wy / r))) / Math.PI;
     const u = ((Math.atan2(wz, wx) / (2 * Math.PI)) + 1) % 1;
     return { u, v };
+  }
+
+  private _cubeWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    const scaleFactor = this.state.mapSizeScaleFactor ?? 1;
+    const size = CUBE_BASE_SIZE * scaleFactor;
+    const bevel = Math.min(CUBE_BASE_BEVEL * scaleFactor, size * 0.4);
+    const halfSize = size / 2;
+    const flatHalfSize = halfSize - bevel;
+    const bevelArc = (Math.PI / 2) * bevel;
+    const totalHeight = 4 * flatHalfSize + 2 * bevelArc;
+    const flatFraction = flatHalfSize / totalHeight;
+    const bevelFraction = bevelArc / totalHeight;
+
+    let v: number;
+    if (wy <= -(halfSize - 0.01)) {
+      const normalPos = Math.max(Math.abs(wx), Math.abs(wz));
+      v = Math.max(0, Math.min(1, normalPos / flatHalfSize)) * flatFraction;
+    } else if (wy <= -flatHalfSize) {
+      const horizDist = Math.max(0, Math.sqrt(wx * wx + wz * wz) - flatHalfSize);
+      const vertDist = Math.abs(wy + flatHalfSize);
+      const angle = Math.atan2(vertDist, horizDist);
+      const localT = 1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)));
+      v = flatFraction + localT * bevelFraction;
+    } else if (wy >= (halfSize - 0.01)) {
+      const normalPos = Math.max(Math.abs(wx), Math.abs(wz));
+      const localT = Math.max(0, Math.min(1, 1 - normalPos / flatHalfSize));
+      v = 1 - flatFraction + localT * flatFraction;
+    } else if (wy >= flatHalfSize) {
+      const horizDist = Math.max(0, Math.sqrt(wx * wx + wz * wz) - flatHalfSize);
+      const vertDist = Math.abs(wy - flatHalfSize);
+      const angle = Math.atan2(vertDist, horizDist);
+      const localT = Math.max(0, Math.min(1, angle / (Math.PI / 2)));
+      v = 1 - flatFraction - bevelFraction + localT * bevelFraction;
+    } else {
+      const middleStart = flatFraction + bevelFraction;
+      const middleEnd = 1 - flatFraction - bevelFraction;
+      const localT = (wy + flatHalfSize) / (2 * flatHalfSize);
+      v = middleStart + localT * (middleEnd - middleStart);
+    }
+
+    const u = this._squarePerimeterWorldU(wx, wz, flatHalfSize, bevel);
+    return { u, v: Math.max(0, Math.min(1, v)) };
+  }
+
+  private _cubeTunnelWorldToUV(wx: number, wy: number, wz: number): { u: number; v: number } {
+    const scaleFactor = this.state.mapSizeScaleFactor ?? 1;
+    const size = CT_BASE_SIZE * scaleFactor;
+    const wallThickness = CT_WALL_THICKNESS * scaleFactor;
+    const lipRadius = wallThickness / 2;
+    const halfSize = size / 2;
+    const wallHeight = halfSize - lipRadius;
+    const minBevel = wallThickness / 2 + 0.1 * scaleFactor;
+    const bevelRadius = Math.max(size * 0.12, minBevel);
+    const spineHalfSize = halfSize - lipRadius;
+    const spineFlatHalfSize = spineHalfSize - bevelRadius;
+
+    const u = this._squarePerimeterWorldU(wx, wz, spineFlatHalfSize, bevelRadius);
+    const spine = this._cubeTunnelSpinePoint(u, spineHalfSize, spineFlatHalfSize, bevelRadius);
+    const nOffset = (wx - spine.x) * spine.ox + (wz - spine.z) * spine.oz;
+
+    const outerWallLen = 2 * wallHeight;
+    const lipLen = Math.PI * lipRadius;
+    const totalV = 2 * outerWallLen + 2 * lipLen;
+    const owf = outerWallLen / totalV;
+    const lf = lipLen / totalV;
+
+    let v: number;
+    if (wy > wallHeight) {
+      const angle = Math.atan2(wy - wallHeight, nOffset);
+      v = owf + Math.max(0, Math.min(1, angle / Math.PI)) * lf;
+    } else if (wy < -wallHeight) {
+      const angle = Math.atan2(-(wy + wallHeight), -nOffset);
+      v = 2 * owf + lf + Math.max(0, Math.min(1, angle / Math.PI)) * lf;
+    } else if (nOffset >= 0) {
+      v = Math.max(0.001, Math.min(owf - 0.001, ((wy + wallHeight) / (2 * wallHeight)) * owf));
+    } else {
+      v = owf + lf + Math.max(0.001, Math.min(owf - 0.001, ((wallHeight - wy) / (2 * wallHeight)) * owf));
+    }
+
+    return { u, v: ((v % 1) + 1) % 1 };
+  }
+
+  private _squarePerimeterWorldU(wx: number, wz: number, flatHalfSize: number, bevelRadius: number): number {
+    const absX = Math.abs(wx);
+    const absZ = Math.abs(wz);
+    const faceWidth = 2 * flatHalfSize;
+    const bevelWidth = (Math.PI / 2) * bevelRadius;
+    const segmentWidth = faceWidth + bevelWidth;
+    const totalWidth = 4 * segmentWidth;
+    let u: number;
+
+    if (absZ >= absX) {
+      if (wz >= 0) {
+        if (absX <= flatHalfSize) {
+          u = (((wx / flatHalfSize + 1) / 2) * faceWidth) / totalWidth;
+        } else if (wx > 0) {
+          const angle = Math.atan2(wx - flatHalfSize, wz - flatHalfSize);
+          u = (faceWidth + Math.max(0, Math.min(1, angle / (Math.PI / 2))) * bevelWidth) / totalWidth;
+        } else {
+          const angle = Math.atan2(-wx - flatHalfSize, wz - flatHalfSize);
+          const localS = 1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)));
+          u = localS <= 0
+            ? (3 * segmentWidth + faceWidth + bevelWidth) / totalWidth
+            : (localS * faceWidth) / totalWidth;
+        }
+      } else {
+        const base = 2 * segmentWidth;
+        if (absX <= flatHalfSize) {
+          u = (base + (((-wx / flatHalfSize + 1) / 2) * faceWidth)) / totalWidth;
+        } else if (wx < 0) {
+          const angle = Math.atan2(-wx - flatHalfSize, -wz - flatHalfSize);
+          u = (base + faceWidth + Math.max(0, Math.min(1, angle / (Math.PI / 2))) * bevelWidth) / totalWidth;
+        } else {
+          const angle = Math.atan2(wx - flatHalfSize, -wz - flatHalfSize);
+          u = (base + (1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))) * faceWidth) / totalWidth;
+        }
+      }
+    } else if (wx >= 0) {
+      const base = segmentWidth;
+      if (absZ <= flatHalfSize) {
+        u = (base + (((-wz / flatHalfSize + 1) / 2) * faceWidth)) / totalWidth;
+      } else if (wz < 0) {
+        const angle = Math.atan2(-wz - flatHalfSize, wx - flatHalfSize);
+        u = (base + faceWidth + Math.max(0, Math.min(1, angle / (Math.PI / 2))) * bevelWidth) / totalWidth;
+      } else {
+        const angle = Math.atan2(wz - flatHalfSize, wx - flatHalfSize);
+        u = (base + (1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))) * faceWidth) / totalWidth;
+      }
+    } else {
+      const base = 3 * segmentWidth;
+      if (absZ <= flatHalfSize) {
+        u = (base + (((wz / flatHalfSize + 1) / 2) * faceWidth)) / totalWidth;
+      } else if (wz > 0) {
+        const angle = Math.atan2(wz - flatHalfSize, -wx - flatHalfSize);
+        u = (base + faceWidth + Math.max(0, Math.min(1, angle / (Math.PI / 2))) * bevelWidth) / totalWidth;
+      } else {
+        const angle = Math.atan2(-wz - flatHalfSize, -wx - flatHalfSize);
+        u = (base + (1 - Math.max(0, Math.min(1, angle / (Math.PI / 2)))) * faceWidth) / totalWidth;
+      }
+    }
+
+    return ((u % 1) + 1) % 1;
+  }
+
+  private _cubeTunnelSpinePoint(
+    u: number,
+    spineHalfSize: number,
+    spineFlatHalfSize: number,
+    bevelRadius: number,
+  ): { x: number; z: number; ox: number; oz: number } {
+    const faceWidth = 2 * spineFlatHalfSize;
+    const bevelWidth = (Math.PI / 2) * bevelRadius;
+    const segmentWidth = faceWidth + bevelWidth;
+    const totalWidth = 4 * segmentWidth;
+    const posInTotal = ((u % 1) + 1) % 1 * totalWidth;
+    const segIdx = Math.min(3, Math.floor(posInTotal / segmentWidth));
+    const posInSeg = posInTotal - segIdx * segmentWidth;
+    const uIsFace = posInSeg < faceWidth;
+    const localS = uIsFace
+      ? (faceWidth > 0 ? posInSeg / faceWidth : 0.5)
+      : (bevelWidth > 0 ? (posInSeg - faceWidth) / bevelWidth : 0);
+    const fn = _CT_FN[segIdx];
+
+    if (uIsFace) {
+      const fr = _CT_FR[segIdx];
+      const x = (localS - 0.5) * 2 * spineFlatHalfSize;
+      return {
+        x: fn[0] * spineHalfSize + fr[0] * x,
+        z: fn[1] * spineHalfSize + fr[1] * x,
+        ox: fn[0],
+        oz: fn[1],
+      };
+    }
+
+    const nextFn = _CT_FN[(segIdx + 1) % 4];
+    const a = localS * (Math.PI / 2);
+    const ox = fn[0] * Math.cos(a) + nextFn[0] * Math.sin(a);
+    const oz = fn[1] * Math.cos(a) + nextFn[1] * Math.sin(a);
+    const ccx = fn[0] * spineFlatHalfSize + nextFn[0] * spineFlatHalfSize;
+    const ccz = fn[1] * spineFlatHalfSize + nextFn[1] * spineFlatHalfSize;
+    return {
+      x: ccx + ox * bevelRadius,
+      z: ccz + oz * bevelRadius,
+      ox,
+      oz,
+    };
   }
 
   /**
@@ -3252,7 +3481,7 @@ export class GameRoom extends Room<GameState> {
     }
 
     // Laser parameters — tuned to match SP damage feel
-    const LASER_RANGE = 0.45;         // UV reach (~half the surface from equator)
+    const LASER_RANGE_WORLD = 25;     // world reach, matching the SP surface-traced beam scale
     const LASER_DOT_THRESHOLD = 0.90; // cos(~26°) — moderately narrow cone
     const LASER_DPS = 2.0;            // damage per second (matches WeaponConfig.damage)
 
@@ -3269,16 +3498,13 @@ export class GameRoom extends Room<GameState> {
     this.state.enemies.forEach((enemy, eIndex) => {
       if (!this.isTargetableEnemy(enemy)) return;
 
-      // Vector from player to enemy (wrap-aware U axis)
-      let dU = enemy.surfaceU - player.surfaceU;
-      let dV = enemy.surfaceV - player.surfaceV;
-      if (dU > 0.5) dU -= 1; else if (dU < -0.5) dU += 1;
-
-      const dist = Math.sqrt(dU * dU + dV * dV);
-      if (dist > LASER_RANGE || dist < 0.001) return;
+      const delta = this.enemyPlayerFrameDelta(player, enemy);
+      if (delta.dist > LASER_RANGE_WORLD || delta.dist < 0.001) return;
+      const frameDist = Math.hypot(delta.x, delta.y);
+      if (frameDist < 0.001) return;
 
       // Dot product: is enemy in the aim direction?
-      const dot = (dU / dist) * aimDirX + (dV / dist) * aimDirY;
+      const dot = (delta.x / frameDist) * aimDirX + (delta.y / frameDist) * aimDirY;
       if (dot < LASER_DOT_THRESHOLD) return;
 
       // Apply continuous damage
@@ -3298,15 +3524,7 @@ export class GameRoom extends Room<GameState> {
         }
         this.trackDDAKill(player.id);
 
-        if (Math.random() < WEAPON_DROP_CHANCE) {
-          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
-          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < 0.05) {
-          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
-        }
+        this.rollEnemyPickupDrops(enemy);
       }
     });
 
@@ -3368,10 +3586,7 @@ export class GameRoom extends Room<GameState> {
 
       let dist: number;
       if (useWorldDist) {
-        // s44r8-02: Use player world position (exact from ServerMeshWalker) instead of
-        // player.surfaceU/V (sphere-approx on non-spherical surfaces → wrong distances).
-        dist = playerEnemyDist3D(surfaceType, player.wx, player.wy, player.wz,
-          enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR);
+        dist = this.enemyWorldDistanceToPlayer(player, enemy);
       } else {
         // Simple UV distance for sphere-like surfaces
         let dU = enemy.surfaceU - player.surfaceU;
@@ -3399,15 +3614,7 @@ export class GameRoom extends Room<GameState> {
         }
         this.trackDDAKill(player.id);
 
-        if (Math.random() < WEAPON_DROP_CHANCE) {
-          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
-          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < 0.05) {
-          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
-        }
+        this.rollEnemyPickupDrops(enemy);
       }
     });
 
@@ -3423,7 +3630,7 @@ export class GameRoom extends Room<GameState> {
    * In MP a UV-space bullet never reliably reaches enemies (UV-position mismatch on non-sphere
    * surfaces), so we replicate SP's instant-damage model server-side.
    *
-   * Range: 0.30 UV (~9-10 world units on sphere R=10, same as SP's 10-unit range).
+   * Range: 10 world units, matching SP's instant chain-lightning selection.
    * Targets: up to 5 nearest enemies (sorted by UV distance from player).
    * Damage: WEAPON_CONFIGS.chain_lightning.damage × level × buff multipliers.
    * Client arc visual: handled by localWeaponManager.fire() in network-main.ts (no change needed).
@@ -3431,9 +3638,7 @@ export class GameRoom extends Room<GameState> {
   private fireChainLightningMP(player: PlayerState): void {
     if (!player.alive) return;
 
-    // UV range: ~0.30 UV ≈ 9-10 world units on sphere R=10, matching SP's 10-unit range.
-    // Derived from tesla ratio: tesla TESLA_RADIUS=0.10 ≈ 3 world units → 10 units ≈ 0.33 UV.
-    const CHAIN_UV_RANGE = 0.30;
+    const CHAIN_WORLD_RANGE = 10;
     const MAX_TARGETS = 5;
 
     const levelIdx = Math.min(player.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
@@ -3442,15 +3647,12 @@ export class GameRoom extends Room<GameState> {
     const weapConfig = WEAPON_CONFIGS['chain_lightning'];
     const damage = weapConfig.damage * levelDamageMult * buffDamageMult;
 
-    // Collect all enemies in range, sorted by UV distance
+    // Collect all enemies in range, sorted by canonical world distance
     const candidates: Array<{ eIndex: number; dist: number }> = [];
     this.state.enemies.forEach((enemy, eIndex) => {
       if (!this.isTargetableEnemy(enemy)) return;
-      let dU = enemy.surfaceU - player.surfaceU;
-      let dV = enemy.surfaceV - player.surfaceV;
-      if (dU > 0.5) dU -= 1; else if (dU < -0.5) dU += 1;
-      const dist = Math.sqrt(dU * dU + dV * dV);
-      if (dist <= CHAIN_UV_RANGE) {
+      const dist = this.enemyWorldDistanceToPlayer(player, enemy);
+      if (dist <= CHAIN_WORLD_RANGE) {
         candidates.push({ eIndex, dist });
       }
     });
@@ -3481,15 +3683,7 @@ export class GameRoom extends Room<GameState> {
         }
         this.trackDDAKill(player.id);
 
-        if (Math.random() < WEAPON_DROP_CHANCE) {
-          this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
-          this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
-        }
-        if (Math.random() < 0.05) {
-          this.spawnShieldPickup(enemy.surfaceU, enemy.surfaceV);
-        }
+        this.rollEnemyPickupDrops(enemy);
       }
     }
 
@@ -4041,6 +4235,9 @@ export class GameRoom extends Room<GameState> {
     enemy.walkerBaryU = location.baryU;
     enemy.walkerBaryV = location.baryV;
     enemy.walkerBaryW = location.baryW;
+    const uv = this._worldPosToApproxUV(location.wx, location.wy, location.wz);
+    enemy.surfaceU = uv.u;
+    enemy.surfaceV = uv.v;
   }
 
   private moveEnemyWalker(
@@ -4698,7 +4895,8 @@ export class GameRoom extends Room<GameState> {
       ai.spawnTimer = 0;
       const count = 2 + Math.floor(Math.random() * 2); // 2 or 3
       for (let i = 0; i < count; i++) {
-        this.spawnEnemyNearPosition('spawnlet', enemy.surfaceU, enemy.surfaceV);
+        const uv = this.enemyCanonicalUV(enemy);
+        this.spawnEnemyNearPosition('spawnlet', uv.u, uv.v);
       }
     }
   }
@@ -5132,7 +5330,7 @@ export class GameRoom extends Room<GameState> {
         // surfaceWorldDist() returns Euclidean 3D chord distance, matching SP's CollisionSystem.ts.
         // Wrapping is handled implicitly (3D positions are identical on either side of the UV seam).
         const dist = usesWorldDist
-          ? surfaceWorldDist(surfaceType, bullet.x, bullet.y, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
+          ? this.bulletWorldDistanceToEnemy(bullet, enemy)
           : this.uvDistWrapped(bullet.x, bullet.y, enemy.surfaceU, enemy.surfaceV);
 
         if (dist < (usesWorldDist ? BULLET_HIT_WORLD : BULLET_HIT_RADIUS)) {
@@ -5187,14 +5385,7 @@ export class GameRoom extends Room<GameState> {
             // this.spawnGeom(enemy.surfaceU, enemy.surfaceV);
 
             // Chance to spawn weapon pickup
-            if (Math.random() < WEAPON_DROP_CHANCE) {
-              this.spawnWeaponPickup(enemy.surfaceU, enemy.surfaceV);
-            }
-
-            // Chance to spawn a damage-affecting buff pickup
-            if (Math.random() < BUFF_PICKUP_DROP_CHANCE) {
-              this.spawnBuffPickup(enemy.surfaceU, enemy.surfaceV);
-            }
+            this.rollEnemyPickupDrops(enemy, false);
           }
           bulletsToRemove.push(bIndex);
         }

@@ -207,8 +207,8 @@ async function main() {
       !/AudioContext|favicon|404|Failed to load resource/.test(message));
     const survivingSamples = movement.filter((sample) => sample.movedWorld !== null);
     const canonicalValid = movement.length >= 3 && movement.every((sample) =>
-      Number.isInteger(sample.faceIndex)
-      && sample.faceIndex >= 0
+      Number.isFinite(sample.surfaceU)
+      && Number.isFinite(sample.surfaceV)
       && sample.canonicalWorld.every(Number.isFinite)
       && sample.renderedWorld.every(Number.isFinite)
       && Number.isFinite(sample.renderCanonicalDelta));
@@ -252,7 +252,7 @@ async function main() {
       pageErrors,
       criticalErrors,
       consoleTail,
-      proofBoundary: 'One headless browser on real network-main.ts plus one Colyseus PvPvE cube-tunnel room. Proves canonical enemy face/world fields reach rendering, rendered enemies converge on server world targets, and at least one live enemy moves. Mesh-path-distance decrease, legacy projected-target rejection, and aggro expiry/strategy resume are covered by focused deterministic server tests; no two-client LAN, WebGPU, or human play claim.',
+      proofBoundary: 'One headless browser on real network-main.ts plus one Colyseus PvPvE cube-tunnel room. Proves canonical enemy world fields reach rendering, current canonical-derived compatibility UV reaches client-side DDA/minimap consumers, rendered enemies converge on server world targets, and at least one live enemy moves. Mesh-path-distance decrease, legacy projected-target rejection, and aggro expiry/strategy resume are covered by focused deterministic server tests; no two-client LAN, WebGPU, or human play claim.',
     };
     writeFileSync(reportPath, JSON.stringify(report, null, 2));
     console.log(JSON.stringify({ verdict: report.verdict, reportPath, screenshot, checks: report.checks }, null, 2));

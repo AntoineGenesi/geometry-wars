@@ -5,8 +5,8 @@ import { ServerMeshPathfinder } from '../movement/ServerMeshPathfinder';
 import type { ServerMeshLocation } from '../movement/ServerMeshLocation';
 import { ServerMeshWalker } from '../movement/ServerMeshWalker';
 import type { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
-import { EnemyState, GameState, PlayerState } from '../schema/GameState';
-import { GameRoom } from './GameRoom';
+import { BulletState, EnemyState, GameState, PlayerState } from '../schema/GameState';
+import { GameRoom, surfaceUVToWorld3D } from './GameRoom';
 
 interface EnemyAIState {
   directionU?: number;
@@ -29,6 +29,12 @@ interface EnemyRoomInternals {
     sourcePlayerId: string,
     sourceKind: string,
   ): number;
+  applyLaserDamage(player: PlayerState, dt: number): void;
+  applyTeslaDamage(player: PlayerState, dt: number): void;
+  fireChainLightningMP(player: PlayerState): void;
+  bulletWorldDistanceToEnemy(bullet: BulletState, enemy: EnemyState): number;
+  rollEnemyPickupDrops(enemy: EnemyState, includeShield?: boolean): void;
+  spawnEnemyNearPosition(type: string, u: number, v: number): void;
 }
 
 interface EnemyScenario {
@@ -117,6 +123,11 @@ function pathDistance(scenario: EnemyScenario): number {
   });
 }
 
+function compatibilityWorldDistance(surfaceType: string, enemy: EnemyState): number {
+  const [x, y, z] = surfaceUVToWorld3D(surfaceType, enemy.surfaceU, enemy.surfaceV, 1, 10);
+  return Math.hypot(enemy.wx - x, enemy.wy - y, enemy.wz - z);
+}
+
 describe.each(['cube', 'cube-ring', 'cube-tunnel', 'sphere'])(
   'GameRoom canonical enemy chase on %s',
   (surfaceType) => {
@@ -188,6 +199,75 @@ describe('GameRoom enemy target authority and damage aggro', () => {
     expect(scenario.enemy.aggroTargetId).toBe('');
     expect(scenario.enemy.aggroUntil).toBe(0);
     expect(ai.directionChangeTimer).toBeGreaterThan(0);
+  });
+
+  it.each(['cube', 'cube-tunnel'])('keeps compatibility UV derived from canonical movement on %s', (surfaceType) => {
+    const scenario = makeScenario(surfaceType);
+    advanceScenario(scenario, 5);
+
+    expect(compatibilityWorldDistance(surfaceType, scenario.enemy)).toBeLessThan(0.75);
+  });
+
+  it('uses canonical enemy location for MP weapon, pickup, and spawnlet consumers', () => {
+    const scenario = makeScenario('cube-tunnel');
+    const player = scenario.player;
+    const enemy = scenario.enemy;
+    const correctUV = { u: enemy.surfaceU, v: enemy.surfaceV };
+
+    enemy.surfaceU = 0.01;
+    enemy.surfaceV = 0.99;
+    enemy.wx = player.wx + player.tx * 5;
+    enemy.wy = player.wy + player.ty * 5;
+    enemy.wz = player.wz + player.tz * 5;
+    enemy.health = 5;
+    player.aimAngle = 0;
+    scenario.internals.applyLaserDamage(player, 1 / 60);
+    expect(enemy.health).toBeLessThan(5);
+
+    enemy.health = 5;
+    enemy.wx = player.wx + player.nx;
+    enemy.wy = player.wy + player.ny;
+    enemy.wz = player.wz + player.nz;
+    scenario.internals.applyTeslaDamage(player, 1 / 60);
+    expect(enemy.health).toBeLessThan(5);
+
+    enemy.health = 5;
+    scenario.internals.fireChainLightningMP(player);
+    expect(enemy.health).toBeLessThan(5);
+
+    const [bulletX, bulletY, bulletZ] = surfaceUVToWorld3D('cube-tunnel', correctUV.u, correctUV.v, 1, 10);
+    enemy.wx = bulletX;
+    enemy.wy = bulletY;
+    enemy.wz = bulletZ;
+    const bullet = new BulletState();
+    bullet.x = correctUV.u;
+    bullet.y = correctUV.v;
+    expect(scenario.internals.bulletWorldDistanceToEnemy(bullet, enemy)).toBeLessThan(0.01);
+
+    const originalRandom = Math.random;
+    try {
+      const randomValues = [0, 0.5, 0.5, 0.1, 1, 1];
+      Math.random = () => randomValues.shift() ?? 0.5;
+      scenario.internals.applyWalkerStateToEnemy(
+        enemy,
+        scenario.internals.enemyWalkers.get(enemy.id)!.getLocation(),
+      );
+      scenario.internals.rollEnemyPickupDrops(enemy);
+      const pickup = scenario.room.state.weaponPickups[scenario.room.state.weaponPickups.length - 1]!;
+      expect(compatibilityWorldDistance('cube-tunnel', {
+        ...enemy,
+        surfaceU: pickup.surfaceU,
+        surfaceV: pickup.surfaceV,
+      } as EnemyState)).toBeLessThan(0.75);
+
+      const beforeSpawnlets = scenario.room.state.enemies.length;
+      scenario.internals.spawnEnemyNearPosition('spawnlet', enemy.surfaceU, enemy.surfaceV);
+      expect(scenario.room.state.enemies.length).toBe(beforeSpawnlets + 1);
+      const spawnlet = scenario.room.state.enemies[scenario.room.state.enemies.length - 1]!;
+      expect(compatibilityWorldDistance('cube-tunnel', spawnlet)).toBeLessThan(0.75);
+    } finally {
+      Math.random = originalRandom;
+    }
   });
 });
 
