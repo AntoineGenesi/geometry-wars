@@ -16,7 +16,7 @@ export interface SpreadUpgradePattern {
 // GameRoom.tryShoot() and its authoritative bullet damage paths.
 const MP_SUPPORTED_UPGRADE_NODE_IDS = new Set([
   'standard_a_1', 'standard_a_2', 'standard_a_3', 'standard_a_4',
-  'standard_b_1', 'standard_b_2', 'standard_b_3', 'standard_b_4',
+  'standard_b_1', 'standard_b_2', 'standard_b_3',
   'standard_al_5', 'standard_al_6',
   'spread_a_1', 'spread_a_2', 'spread_a_3', 'spread_al_4', 'spread_al_5',
   'spread_b_1', 'spread_b_2',

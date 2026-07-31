@@ -145,6 +145,17 @@ describe('MP upgrade activation validation', () => {
     }, ['standard_a_1'], 25)).toMatchObject({ accepted: true });
   });
 
+  it('rejects unsupported Spread nodes after entitlement and prerequisites pass', () => {
+    expect(validate({
+      nodeId: 'spread_ar_4',
+      weaponType: WeaponType.Spread,
+      unlockedNodeIds: ['spread_ar_4'],
+    }, ['spread_a_3'], 120)).toMatchObject({
+      accepted: false,
+      reason: 'unsupported_runtime_effect',
+    });
+  });
+
   it('rejects excluded/conflicting activations', () => {
     expect(validate({
       nodeId: 'standard_ar_5',

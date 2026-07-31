@@ -27,6 +27,87 @@ function makePlayer(weaponType: string = WeaponType.Standard) {
   };
 }
 
+function makeLifecycleRoom() {
+  const room = Object.create(GameRoom.prototype) as any;
+  const activeUpgradeNodes = new Map<string, number>([['standard:standard_a_1', 1]]);
+  const player = {
+    ...makePlayer(),
+    activeUpgradeNodes,
+    alive: true,
+    buffStacks: new Map(),
+    bombs: 3,
+    deaths: 0,
+    enemyKills: 0,
+    health: 1,
+    kills: 0,
+    lives: 3,
+    maxHealth: 1,
+    multiplier: 1,
+    playerKills: 0,
+    playerLevel: 0,
+    score: 100,
+    shieldCount: 0,
+    totalDamageDealt: 0,
+    zoneTime: 0,
+  };
+  room.state = {
+    roomPhase: 'playing',
+    gameMode: 'waves',
+    pvpMode: 'waves',
+    surfaceType: 'cube',
+    mapSize: 'medium',
+    initialLives: 3,
+    bullets: new Map(),
+    players: new Map([['p1', player]]),
+    enemies: new Map(),
+    geoms: new Map(),
+    weaponPickups: new Map(),
+    superPickups: new Map(),
+    buffPickups: new Map(),
+    healthPickups: new Map(),
+  };
+  room.currentSettings = {
+    startingWeapon: WeaponType.Standard,
+    healingFrequency: 'normal',
+    healingAmount: 1,
+  };
+  room.pendingSettings = null;
+  room.maxClients = 1;
+  room.KOTH_ZONE_DURATION = 10;
+  room.surfaceManager = {
+    initSurface: vi.fn(),
+    getMeshSurface: vi.fn(() => null),
+    getBoundingSphereRadius: vi.fn(() => 1),
+    getWorldPosForUV: vi.fn(() => ({ x: 0, y: 0, z: 0 })),
+    createWalker: vi.fn(() => null),
+  };
+  room.enemyWalkers = new Map();
+  room.enemyAI = new Map();
+  room.bulletDamageTracker = new Map();
+  room.lastHealthPickupSpawnTime = new Map();
+  room.playerInvincibility = new Map();
+  room.lastNearMissLogTime = new Map();
+  room.pendingRespawns = new Map();
+  room._portalCooldowns = new Map();
+  room._portalLocations = { A: null, B: null };
+  room.pvpKillStreaks = new Map();
+  room.playerWeaponInventory = new Map();
+  room.playerWeaponIndex = new Map();
+  room.playerPerfWindows = new Map();
+  room.ddaDecreaseCounters = new Map();
+  room.playerUpgradeKillCounts = new Map([['p1', new Map([[WeaponType.Standard, 25]])]]);
+  room.playerActiveUpgradeNodes = new Map([
+    ['p1', new Map([[WeaponType.Standard, new Set(['standard_a_1'])]])],
+  ]);
+  room._updateKothZoneWorldPos = vi.fn();
+  room._clearPortalTimers = vi.fn();
+  room.syncSettingsToState = vi.fn();
+  room.setMetadata = vi.fn();
+  room.broadcast = vi.fn();
+  room.logger = { log: vi.fn() };
+  return { room, activeUpgradeNodes };
+}
+
 describe('GameRoom MP weapon upgrade runtime parity', () => {
   it('emits upgraded Standard projectile patterns from server-authoritative nodes', () => {
     const room = makeRoom();
@@ -91,6 +172,33 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
     expect(activeUpgradeNodes.size).toBe(0);
   });
 
+  it('startGame clears private and schema active upgrade state together', () => {
+    const { room, activeUpgradeNodes } = makeLifecycleRoom();
+
+    room.startGame();
+
+    expect(room.playerUpgradeKillCounts.size).toBe(0);
+    expect(room.playerActiveUpgradeNodes.size).toBe(0);
+    expect(activeUpgradeNodes.size).toBe(0);
+  });
+
+  it('softRestartRound clears private and schema active upgrade state together', () => {
+    const { room, activeUpgradeNodes } = makeLifecycleRoom();
+
+    room.softRestartRound({
+      surface: 'cube',
+      mode: 'waves',
+      infiniteLives: false,
+      lives: 3,
+      healingFrequency: 'normal',
+      healingAmount: 1,
+    });
+
+    expect(room.playerUpgradeKillCounts.size).toBe(0);
+    expect(room.playerActiveUpgradeNodes.size).toBe(0);
+    expect(activeUpgradeNodes.size).toBe(0);
+  });
+
   it('rejects accepted-tree nodes whose MP runtime effect is not implemented', () => {
     expect(validateMpUpgradeActivation({
       nodeId: 'standard_bl_5',
@@ -98,6 +206,17 @@ describe('GameRoom MP weapon upgrade runtime parity', () => {
       unlockedNodeIds: ['standard_bl_5'],
     }, {
       activeNodeIds: new Set(['standard_b_4']),
+      killCount: 120,
+    })).toMatchObject({ accepted: false, reason: 'unsupported_runtime_effect' });
+  });
+
+  it('rejects Standard heavy bolt until MP penetration is implemented', () => {
+    expect(validateMpUpgradeActivation({
+      nodeId: 'standard_b_4',
+      weaponType: WeaponType.Standard,
+      unlockedNodeIds: ['standard_b_4'],
+    }, {
+      activeNodeIds: new Set(['standard_b_3']),
       killCount: 120,
     })).toMatchObject({ accepted: false, reason: 'unsupported_runtime_effect' });
   });
