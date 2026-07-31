@@ -96,6 +96,7 @@ import {
   NetworkBuffPickupState,
   NetworkHealthPickupState,
   NetworkGameState,
+  NetworkMeshLocation,
   ClientMetricsPayload,
 } from './network/NetworkClient';
 import {
@@ -862,6 +863,8 @@ async function main() {
     dyingPortals = [];
     syncedPortalAU = -1; syncedPortalAV = -1;
     syncedPortalBU = -1; syncedPortalBV = -1;
+    syncedPortalALocation = null;
+    syncedPortalBLocation = null;
 
     surface = null;
     meshSurface = null;
@@ -1805,9 +1808,44 @@ async function main() {
   let networkPortals: [Portal, Portal] | null = null;
   /** Portals running their despawn animation before being disposed. */
   let dyingPortals: Portal[] = [];
-  /** UV positions of portals synced from server state. */
+  /** Compatibility UV plus canonical mesh locations synced from the server. */
   let syncedPortalAU = -1; let syncedPortalAV = -1;
   let syncedPortalBU = -1; let syncedPortalBV = -1;
+  let syncedPortalALocation: NetworkMeshLocation | null = null;
+  let syncedPortalBLocation: NetworkMeshLocation | null = null;
+  const _portalFramePosition = new THREE.Vector3();
+  const _portalFrameNormal = new THREE.Vector3();
+  const _portalFrameTangent = new THREE.Vector3();
+  const _portalFrameBitangent = new THREE.Vector3();
+
+  const snapshotPortalLocation = (location: NetworkMeshLocation): NetworkMeshLocation => ({
+    faceIndex: location.faceIndex,
+    baryU: location.baryU, baryV: location.baryV, baryW: location.baryW,
+    wx: location.wx, wy: location.wy, wz: location.wz,
+    nx: location.nx, ny: location.ny, nz: location.nz,
+    tangentX: location.tangentX,
+    tangentY: location.tangentY,
+    tangentZ: location.tangentZ,
+    bitangentX: location.bitangentX,
+    bitangentY: location.bitangentY,
+    bitangentZ: location.bitangentZ,
+  });
+  const portalLocationChanged = (
+    previous: NetworkMeshLocation | null,
+    next: NetworkMeshLocation,
+  ): boolean => !previous
+    || previous.faceIndex !== next.faceIndex
+    || previous.baryU !== next.baryU
+    || previous.baryV !== next.baryV
+    || previous.baryW !== next.baryW;
+  const applyPortalLocation = (portal: Portal, location: NetworkMeshLocation): void => {
+    portal.applyWorldTransform(
+      _portalFramePosition.set(location.wx, location.wy, location.wz),
+      _portalFrameNormal.set(location.nx, location.ny, location.nz),
+      _portalFrameTangent.set(location.tangentX, location.tangentY, location.tangentZ),
+      _portalFrameBitangent.set(location.bitangentX, location.bitangentY, location.bitangentZ),
+    );
+  };
   /** Which players' health bars are visible: 'all' | 'friendly' | 'enemy' | 'none' */
   let latestHealthBarVisibility = 'all';
   // Active client-side game mode instance (KingMode, SniperMode, etc.)
@@ -3957,15 +3995,22 @@ async function main() {
 
     // ── Portal sync: create/update portals when server broadcasts positions ──
     {
-      const sPortalsActive = state.portalsActive ?? false;
+      const portalPayload = network.getPortalLocations();
+      const sPortalsActive = (state.portalsActive ?? false) && portalPayload.active;
       if (sPortalsActive) {
         const aU = state.portalAU ?? 0.25;
         const aV = state.portalAV ?? 0.25;
         const bU = state.portalBU ?? 0.75;
         const bV = state.portalBV ?? 0.75;
+        const aLocation = portalPayload.a;
+        const bLocation = portalPayload.b;
+        if (!aLocation || !bLocation) {
+          netMainLog('[Portals] Active state arrived without canonical mesh locations');
+        }
         // Create portal pair if not yet created or if positions changed
-        if (!networkPortals || aU !== syncedPortalAU || aV !== syncedPortalAV
-            || bU !== syncedPortalBU || bV !== syncedPortalBV) {
+        else if (!networkPortals
+            || portalLocationChanged(syncedPortalALocation, aLocation)
+            || portalLocationChanged(syncedPortalBLocation, bLocation)) {
           // Animate out old portals before replacing them
           if (networkPortals) {
             for (const p of networkPortals) {
@@ -3981,6 +4026,8 @@ async function main() {
           const invB = 1 - gridColor.b;
           const portalColor = new THREE.Color(invR, invG, invB);
           networkPortals = createPortalPair(portalColor, 0.25, aU, aV, bU, bV);
+          applyPortalLocation(networkPortals[0], aLocation);
+          applyPortalLocation(networkPortals[1], bLocation);
           scene.add(networkPortals[0].mesh);
           scene.add(networkPortals[1].mesh);
           // Attach surface-conforming ring overlays so rings curve along surface geometry
@@ -3990,6 +4037,8 @@ async function main() {
           }
           syncedPortalAU = aU; syncedPortalAV = aV;
           syncedPortalBU = bU; syncedPortalBV = bV;
+          syncedPortalALocation = snapshotPortalLocation(aLocation);
+          syncedPortalBLocation = snapshotPortalLocation(bLocation);
         }
       } else if (networkPortals) {
         // Portals deactivated — animate out instead of instant remove
@@ -4000,6 +4049,8 @@ async function main() {
         networkPortals = null;
         syncedPortalAU = -1; syncedPortalAV = -1;
         syncedPortalBU = -1; syncedPortalBV = -1;
+        syncedPortalALocation = null;
+        syncedPortalBLocation = null;
       }
     }
 
@@ -7214,24 +7265,20 @@ async function main() {
     }
 
     // ── Portals: animate (visuals only — teleportation is server-authoritative) ──
-    if (getTransform && networkPortals) {
-      const transform = getTransform;
-      for (const portal of networkPortals) {
-        portal.update(dt);
-        portal.applySurfaceTransform(transform);
-        portal.updateSurfaceRing();
-      }
+    if (networkPortals && syncedPortalALocation && syncedPortalBLocation) {
+      networkPortals[0].update(dt);
+      applyPortalLocation(networkPortals[0], syncedPortalALocation);
+      networkPortals[0].updateSurfaceRing();
+      networkPortals[1].update(dt);
+      applyPortalLocation(networkPortals[1], syncedPortalBLocation);
+      networkPortals[1].updateSurfaceRing();
     }
 
     // ── Dying portals: finish despawn animation then dispose ─────────────────
     if (dyingPortals.length > 0) {
-      if (getTransform) {
-        const transform = getTransform;
-        for (const portal of dyingPortals) {
-          portal.update(dt);
-          portal.applySurfaceTransform(transform);
-          portal.updateSurfaceRing();
-        }
+      for (const portal of dyingPortals) {
+        portal.update(dt);
+        portal.updateSurfaceRing();
       }
       dyingPortals = dyingPortals.filter((portal) => {
         if (portal.isDespawnComplete) {
@@ -7715,13 +7762,27 @@ async function main() {
           serverTriggerRadius: 0.8,
           visualWorld: networkPortals
             ? networkPortals.map((portal, index) => {
-                const pos = portal.mesh.position;
-                const trigger = getTransform ? getTransform(portal.surfaceU, portal.surfaceV) : null;
-                const triggerPos = trigger?.position ?? null;
+                const pos = portal.worldPosition;
+                const location = index === 0 ? syncedPortalALocation : syncedPortalBLocation;
+                const triggerPos = location
+                  ? new THREE.Vector3(location.wx, location.wy, location.wz)
+                  : null;
                 return {
                   id: index === 0 ? 'A' : 'B',
                   u: portal.surfaceU,
                   v: portal.surfaceV,
+                  faceIndex: location?.faceIndex ?? -1,
+                  bary: location
+                    ? { u: location.baryU, v: location.baryV, w: location.baryW }
+                    : null,
+                  serverFrameFinite: location
+                    ? [
+                        location.nx, location.ny, location.nz,
+                        location.tangentX, location.tangentY, location.tangentZ,
+                        location.bitangentX, location.bitangentY, location.bitangentZ,
+                      ].every(Number.isFinite)
+                    : false,
+                  visualQuaternionFinite: portal.mesh.quaternion.toArray().every(Number.isFinite),
                   x: pos.x,
                   y: pos.y,
                   z: pos.z,

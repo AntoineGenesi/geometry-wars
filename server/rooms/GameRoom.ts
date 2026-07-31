@@ -44,7 +44,7 @@ import {
   DIFFICULTY_PER_PLAYER_FACTOR,
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
-import type { ServerWalkerState } from '../movement/ServerMeshWalker';
+import type { ServerMeshLocation } from '../movement/ServerMeshLocation';
 import {
   validateSettings,
   DEFAULT_GAME_SETTINGS,
@@ -1164,8 +1164,13 @@ export class GameRoom extends Room<GameState> {
   // ── Portals ───────────────────────────────────────────────────────────────
   /** Per-sessionId cooldown timestamp (ms) — player cannot re-enter a portal until this time. */
   private _portalCooldowns: Map<string, number> = new Map();
-  /** Portal trigger radius in world units (used with surfaceWorldDist — consistent on all surfaces). */
+  /** Portal trigger radius in world units inside a connected mesh patch. */
   private static readonly PORTAL_WORLD_RADIUS = 0.8; // s44r18-05: reduced so player must step INTO ring
+  /** Mesh-native trigger and exit authority. Schema mirrors are sync-only. */
+  private _portalLocations: { A: ServerMeshLocation | null; B: ServerMeshLocation | null } = {
+    A: null,
+    B: null,
+  };
   /** True once any player has dropped to ≤50% health this game (one-shot trigger). */
   private _portalsTriggeredThisGame = false;
   /** Timer handle for scheduled portal despawn. */
@@ -1223,6 +1228,14 @@ export class GameRoom extends Room<GameState> {
     // Register message handlers
     this.onMessage('input', (client, input: PlayerInput) => {
       this.handleInput(client, input);
+    });
+
+    this.onMessage('request_portal_locations', (client) => {
+      const a = this._portalLocations.A;
+      const b = this._portalLocations.B;
+      client.send('portal_locations', a && b
+        ? { active: true, a, b }
+        : { active: false });
     });
 
     this.onMessage('activate_upgrade', (client, data: UpgradeActivationRequest) => {
@@ -2000,7 +2013,7 @@ export class GameRoom extends Room<GameState> {
     if (this.state.roomPhase === 'playing' && this.surfaceManager.getMeshSurface()) {
       const walker = this.surfaceManager.createWalker(client.sessionId, player.surfaceU, player.surfaceV);
       if (walker) {
-        this.applyWalkerStateToPlayer(player, walker.getState());
+        this.applyWalkerStateToPlayer(player, walker.getLocation());
       }
     }
 
@@ -2152,6 +2165,8 @@ export class GameRoom extends Room<GameState> {
     this.disconnectedPlayers.clear();
     this._clearPortalTimers();
     this._portalCooldowns.clear();
+    this._portalLocations.A = null;
+    this._portalLocations.B = null;
 
     if (this.metricsLogPath) {
       try {
@@ -2481,6 +2496,8 @@ export class GameRoom extends Room<GameState> {
     // ── Portals: spawn 30s after game start in PvP/PvPvE/KotH; also triggered on half-health ──
     this._clearPortalTimers();
     this._portalCooldowns.clear();
+    this._portalLocations.A = null;
+    this._portalLocations.B = null;
     this._portalsTriggeredThisGame = false;
     this.state.portalsActive = false;
     // s44r33-02: include 'king' (KotH) — portals are a core mechanic in KotH
@@ -2489,6 +2506,12 @@ export class GameRoom extends Room<GameState> {
     if (isPvpForPortals) {
       // Guarantee portals appear within 30 seconds regardless of combat state.
       // Half-health trigger may fire sooner and will cancel this timer.
+      const proofDelay = process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS === '1'
+        ? Number(process.env.GEOMETRY_WARS_PORTAL_PROOF_DELAY_MS)
+        : NaN;
+      const initialPortalDelayMs = Number.isFinite(proofDelay)
+        ? Math.max(250, Math.min(30_000, proofDelay))
+        : 30_000;
       this._portalInitialSpawnTimer = setTimeout(() => {
         this._portalInitialSpawnTimer = null;
         if (!this._portalsTriggeredThisGame) {
@@ -2497,7 +2520,7 @@ export class GameRoom extends Room<GameState> {
           this._spawnPortals();
           this._schedulePortalCycle();
         }
-      }, 30_000);
+      }, initialPortalDelayMs);
     }
 
     // Apply currentSettings to room and internal state before resetting players.
@@ -2569,7 +2592,7 @@ export class GameRoom extends Room<GameState> {
       // Create walker at spawn position and sync initial world-space state
       const walker = this.surfaceManager.createWalker(sessionId, player.surfaceU, player.surfaceV);
       if (walker) {
-        this.applyWalkerStateToPlayer(player, walker.getState());
+        this.applyWalkerStateToPlayer(player, walker.getLocation());
       }
 
       spawnIdx++;
@@ -2655,7 +2678,7 @@ export class GameRoom extends Room<GameState> {
         ? Math.min(spawnPos.v, 0.48) : spawnPos.v;
       const walker = this.surfaceManager.createWalker(sessionId, player.surfaceU, player.surfaceV);
       if (walker) {
-        this.applyWalkerStateToPlayer(player, walker.getState());
+        this.applyWalkerStateToPlayer(player, walker.getLocation());
       }
       spawnIdx++;
     });
@@ -2832,7 +2855,7 @@ export class GameRoom extends Room<GameState> {
       );
 
       // Write world-space state to schema fields
-      const walkerState = walker.getState();
+      const walkerState = walker.getLocation();
       this.applyWalkerStateToPlayer(player, walkerState);
 
       // Update surfaceU/V for backwards compat: collision detection and
@@ -2862,12 +2885,15 @@ export class GameRoom extends Room<GameState> {
   }
 
   /** Write ServerMeshWalker state to PlayerState schema fields. */
-  private applyWalkerStateToPlayer(player: PlayerState, state: ServerWalkerState): void {
+  private applyWalkerStateToPlayer(player: PlayerState, state: ServerMeshLocation): void {
     player.wx = state.wx; player.wy = state.wy; player.wz = state.wz;
     player.nx = state.nx; player.ny = state.ny; player.nz = state.nz;
     player.tx = state.tangentX; player.ty = state.tangentY; player.tz = state.tangentZ;
     player.bx = state.bitangentX; player.by = state.bitangentY; player.bz = state.bitangentZ;
     player.walkerFaceIndex = state.faceIndex;
+    player.walkerBaryU = state.baryU;
+    player.walkerBaryV = state.baryV;
+    player.walkerBaryW = state.baryW;
   }
 
   /**
@@ -5332,7 +5358,7 @@ export class GameRoom extends Room<GameState> {
             this.surfaceManager.teleportWalkerToUV(player.id, respawnPos.u, respawnPos.v);
             const respawnWalker = this.surfaceManager.getWalker(player.id);
             if (respawnWalker) {
-              this.applyWalkerStateToPlayer(player, respawnWalker.getState());
+              this.applyWalkerStateToPlayer(player, respawnWalker.getLocation());
             }
             this.playerInvincibility.set(player.id, 2.0);
             const livesRemaining = this.state.infiniteLives ? '∞' : String(player.lives);
@@ -5644,7 +5670,7 @@ export class GameRoom extends Room<GameState> {
       this.surfaceManager.teleportWalkerToUV(player.id, respawnU, respawnV);
       const respawnWalker = this.surfaceManager.getWalker(player.id);
       if (respawnWalker) {
-        this.applyWalkerStateToPlayer(player, respawnWalker.getState());
+        this.applyWalkerStateToPlayer(player, respawnWalker.getLocation());
       }
       this.playerInvincibility.set(player.id, 2.0);
       const livesRemaining = this.state.infiniteLives ? '∞' : String(player.lives);
@@ -6363,7 +6389,7 @@ export class GameRoom extends Room<GameState> {
       player.surfaceV = respawnPos.v;
       this.surfaceManager.teleportWalkerToUV(id, respawnPos.u, respawnPos.v);
       const walker = this.surfaceManager.getWalker(id);
-      if (walker) this.applyWalkerStateToPlayer(player, walker.getState());
+      if (walker) this.applyWalkerStateToPlayer(player, walker.getLocation());
       player.health = player.maxHealth;
       player.shieldCount = 0; // Reset shields on respawn
       player.alive = true;
@@ -6539,9 +6565,7 @@ export class GameRoom extends Room<GameState> {
    * Called after each PvP damage event. Fires the one-shot portal trigger when any
    * player first drops to ≤50% health, then starts the despawn/respawn cycle.
    */
-  private _checkHalfHealthPortalTrigger(
-    player: { health: number; maxHealth: number; surfaceU: number; surfaceV: number; name: string },
-  ): void {
+  private _checkHalfHealthPortalTrigger(player: PlayerState): void {
     // s44r33-02: include 'king' (KotH) alongside pvp/pvpve
     const isPortalMode = this.state.pvpMode === 'pvp' || this.state.pvpMode === 'pvpve'
       || this.state.gameMode === 'king';
@@ -6556,47 +6580,57 @@ export class GameRoom extends Room<GameState> {
       this._portalInitialSpawnTimer = null;
     }
     this.logger.log(`[Portals] Half-health trigger: ${player.name} at ${player.health}/${player.maxHealth} — spawning portals`);
-    this._spawnPortals(player.surfaceU, player.surfaceV);
+    this._spawnPortals(player.id);
     this._schedulePortalCycle();
   }
 
   /**
-   * Spawn a portal pair. Portal A lands near the given UV (if provided), portal B far away.
-   * Positions are broadcast via portalsActive + portalAU/V/BU/V state fields.
+   * Spawn a portal pair from exact mesh triangles. When requested, portal A is
+   * placed a short geodesic step from the damaged player's canonical location.
    */
-  private _spawnPortals(nearU?: number, nearV?: number): void {
-    const margin = 0.12;
-    let uA: number, vA: number;
-
-    if (nearU !== undefined && nearV !== undefined) {
-      // Place portal A near the damaged player (±0.15 UV jitter, clamped inside margins)
-      const jitter = 0.15;
-      uA = Math.max(margin, Math.min(1 - margin, nearU + (Math.random() - 0.5) * jitter * 2));
-      vA = Math.max(margin, Math.min(1 - margin, nearV + (Math.random() - 0.5) * jitter * 2));
-    } else {
-      uA = margin + Math.random() * (1 - 2 * margin);
-      vA = margin + Math.random() * (1 - 2 * margin);
+  private _spawnPortals(nearSessionId?: string): void {
+    const portalA = (nearSessionId
+      ? this.surfaceManager.createLocationNearWalker(nearSessionId, 2.0)
+      : null) ?? this.surfaceManager.createRandomLocation();
+    if (!portalA) {
+      this.logger.error('[Portals] Cannot spawn without an initialized mesh surface');
+      return;
     }
 
-    // Portal B: require minimum UV-space separation of 0.35 (placed far from A)
-    const minSep = 0.35;
-    let uB = uA;
-    let vB = vA;
-    let attempts = 0;
-    do {
-      uB = margin + Math.random() * (1 - 2 * margin);
-      vB = margin + Math.random() * (1 - 2 * margin);
-      const du = Math.min(Math.abs(uB - uA), 1 - Math.abs(uB - uA));
-      const dv = Math.min(Math.abs(vB - vA), 1 - Math.abs(vB - vA));
-      if (Math.sqrt(du * du + dv * dv) >= minSep) break;
-    } while (++attempts < 100);
+    const minWorldSeparation = Math.max(
+      GameRoom.PORTAL_WORLD_RADIUS * 4,
+      this.surfaceManager.getBoundingSphereRadius() * 0.4,
+    );
+    let portalB: ServerMeshLocation | null = null;
+    for (let attempts = 0; attempts < 100; attempts++) {
+      const candidate = this.surfaceManager.createRandomLocation();
+      if (!candidate) break;
+      portalB = candidate;
+      const dx = candidate.wx - portalA.wx;
+      const dy = candidate.wy - portalA.wy;
+      const dz = candidate.wz - portalA.wz;
+      if (dx * dx + dy * dy + dz * dz >= minWorldSeparation * minWorldSeparation) break;
+    }
+    if (!portalB) return;
 
-    this.state.portalAU = uA;
-    this.state.portalAV = vA;
-    this.state.portalBU = uB;
-    this.state.portalBV = vB;
+    this._portalLocations.A = portalA;
+    this._portalLocations.B = portalB;
+    this.broadcast('portal_locations', { active: true, a: portalA, b: portalB });
+
+    // Compatibility only. Portal rendering, trigger checks, and teleport do not read these UVs.
+    const uvA = this._worldPosToApproxUV(portalA.wx, portalA.wy, portalA.wz);
+    const uvB = this._worldPosToApproxUV(portalB.wx, portalB.wy, portalB.wz);
+    this.state.portalAU = uvA.u;
+    this.state.portalAV = uvA.v;
+    this.state.portalBU = uvB.u;
+    this.state.portalBV = uvB.v;
     this.state.portalsActive = true;
-    this.logger.log(`[Portals] Spawned: A=(${uA.toFixed(3)},${vA.toFixed(3)}) B=(${uB.toFixed(3)},${vB.toFixed(3)})`);
+    this.logger.log(
+      `[Portals] Spawned mesh locations: A=face ${portalA.faceIndex} `
+      + `(${portalA.wx.toFixed(2)},${portalA.wy.toFixed(2)},${portalA.wz.toFixed(2)}) `
+      + `B=face ${portalB.faceIndex} `
+      + `(${portalB.wx.toFixed(2)},${portalB.wy.toFixed(2)},${portalB.wz.toFixed(2)})`,
+    );
   }
 
   /**
@@ -6625,6 +6659,9 @@ export class GameRoom extends Room<GameState> {
   private _deactivatePortals(): void {
     this.state.portalsActive = false;
     this._portalCooldowns.clear();
+    this._portalLocations.A = null;
+    this._portalLocations.B = null;
+    this.broadcast('portal_locations', { active: false });
   }
 
   /** Cancel any pending despawn/respawn timers. */
@@ -6646,63 +6683,60 @@ export class GameRoom extends Room<GameState> {
   /**
    * Check whether any player has stepped into a portal and teleport them.
    * Called every tick when portalsActive === true.
-   * Uses UV surface-space distance (surfaceWorldDist) for consistent detection on all surfaces —
-   * this avoids the 3D world-space inaccuracy from sphere-approx UV→world conversion.
+   * Trigger membership is limited to the connected mesh patch inside the
+   * visible disk, so a nearby folded wall cannot activate the portal.
    */
   private updatePortalCollision(): void {
     if (!this.state.portalsActive) return;
     const now = Date.now();
-    const surfaceType = this.state.surfaceType;
-    const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
-    const sphereR = this.surfaceManager.getBoundingSphereRadius();
     const threshold = GameRoom.PORTAL_WORLD_RADIUS;
+    const portalA = this._portalLocations.A;
+    const portalB = this._portalLocations.B;
+    if (!portalA || !portalB) return;
 
     this.state.players.forEach((player, sessionId) => {
       if (!player.alive) return;
       // Per-player cooldown prevents bounce-back teleports
       if ((this._portalCooldowns.get(sessionId) ?? 0) > now) return;
 
-      // UV-based on-surface chord distance: consistent regardless of surface curvature
-      const distToA = surfaceWorldDist(
-        surfaceType,
-        player.surfaceU, player.surfaceV,
-        this.state.portalAU, this.state.portalAV,
-        scaleFactor, sphereR,
-      );
-      if (distToA < threshold) {
+      const playerLocation = this.surfaceManager.getWalkerLocation(sessionId);
+      if (!playerLocation) return;
+      if (this.surfaceManager.isWithinConnectedRadius(portalA, playerLocation, threshold)) {
         this._teleportPlayerToPortal(sessionId, player, 'B');
         return;
       }
-      const distToB = surfaceWorldDist(
-        surfaceType,
-        player.surfaceU, player.surfaceV,
-        this.state.portalBU, this.state.portalBV,
-        scaleFactor, sphereR,
-      );
-      if (distToB < threshold) {
+      if (this.surfaceManager.isWithinConnectedRadius(portalB, playerLocation, threshold)) {
         this._teleportPlayerToPortal(sessionId, player, 'A');
       }
     });
   }
 
   /**
-   * Teleport a player to the specified portal's UV position.
+   * Teleport a player to the specified canonical portal location.
    * @param exit - 'A' or 'B' — which portal is the exit
    */
   private _teleportPlayerToPortal(
     sessionId: string,
-    player: { surfaceU: number; surfaceV: number; name: string },
+    player: PlayerState,
     exit: 'A' | 'B',
   ): void {
-    const exitU = exit === 'A' ? this.state.portalAU : this.state.portalBU;
-    const exitV = exit === 'A' ? this.state.portalAV : this.state.portalBV;
+    const exitLocation = this._portalLocations[exit];
+    if (!exitLocation) return;
 
-    // Move walker to exit portal position
-    this.surfaceManager.teleportWalkerToUV(sessionId, exitU, exitV);
+    if (!this.surfaceManager.teleportWalkerToLocation(sessionId, exitLocation)) return;
+    const walker = this.surfaceManager.getWalker(sessionId);
+    if (!walker) return;
+    const teleportedLocation = walker.getLocation();
+    this.applyWalkerStateToPlayer(player, teleportedLocation);
 
-    // Update authoritative UV on player state (clients will interpolate to this)
-    player.surfaceU = exitU;
-    player.surfaceV = exitV;
+    // UV remains compatibility data; full world/face/frame is already synchronized this tick.
+    const exitUV = this._worldPosToApproxUV(
+      teleportedLocation.wx,
+      teleportedLocation.wy,
+      teleportedLocation.wz,
+    );
+    player.surfaceU = exitUV.u;
+    player.surfaceV = exitUV.v;
 
     // Set cooldown: player cannot re-enter any portal for 2 seconds
     this._portalCooldowns.set(sessionId, Date.now() + 2000);
@@ -6712,7 +6746,10 @@ export class GameRoom extends Room<GameState> {
     // with enemies (PvPvE mode) caused immediate death + double respawn.
     this.playerInvincibility.set(sessionId, 1.0);
 
-    this.logger.log(`[Portals] ${player.name} teleported to portal ${exit} (${exitU.toFixed(3)},${exitV.toFixed(3)}) — 1s invincibility`);
+    this.logger.log(
+      `[Portals] ${player.name} teleported to portal ${exit} face ${teleportedLocation.faceIndex} `
+      + `(${teleportedLocation.wx.toFixed(2)},${teleportedLocation.wy.toFixed(2)},${teleportedLocation.wz.toFixed(2)}) — 1s invincibility`,
+    );
   }
 
   private checkGameOver() {

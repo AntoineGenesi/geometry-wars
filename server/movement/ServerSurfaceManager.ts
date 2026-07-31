@@ -16,12 +16,19 @@ import * as THREE from 'three';
 import { MeshSurface } from '../../src/surfaces/MeshSurface';
 import { buildSurfaceGeometry, SupportedSurface } from './SurfaceGeometryBuilder';
 import { ServerMeshWalker } from './ServerMeshWalker';
+import {
+  createServerMeshLocation,
+  isWithinConnectedSurfacePatch,
+  toFacePosition,
+  type ServerMeshLocation,
+} from './ServerMeshLocation';
 import { PLAYER_WORLD_SPEED } from '../shared/GameConstants';
 
 export class ServerSurfaceManager {
   private meshSurface: MeshSurface | null = null;
   private surfaceType: SupportedSurface | null = null;
   private scaleFactor: number = 1.0;
+  private readonly _portalDirection = new THREE.Vector3();
 
   /** Per-session-id walker. */
   private walkers: Map<string, ServerMeshWalker> = new Map();
@@ -59,6 +66,10 @@ export class ServerSurfaceManager {
     return this.walkers.get(sessionId) ?? null;
   }
 
+  getWalkerLocation(sessionId: string): ServerMeshLocation | null {
+    return this.walkers.get(sessionId)?.getLocation() ?? null;
+  }
+
   removeWalker(sessionId: string): void {
     this.walkers.delete(sessionId);
   }
@@ -85,6 +96,72 @@ export class ServerSurfaceManager {
     if (!walker) return;
     const worldPos = this._uvToApproxWorldPos(u, v);
     walker.teleportToWorldPos(worldPos.x, worldPos.y, worldPos.z);
+  }
+
+  /** Teleport directly to an authoritative face-constrained location. */
+  teleportWalkerToLocation(sessionId: string, location: ServerMeshLocation): boolean {
+    const walker = this.walkers.get(sessionId);
+    if (!walker) return false;
+    walker.teleportToLocation(location);
+    return true;
+  }
+
+  /** Sample a portal directly on a mesh triangle, with no UV inverse/approximation. */
+  createRandomLocation(random: () => number = Math.random): ServerMeshLocation | null {
+    if (!this.meshSurface) return null;
+    const faceCount = this.meshSurface.geodesic.halfEdge.faceCount;
+    if (faceCount === 0) return null;
+    const faceIndex = Math.min(faceCount - 1, Math.floor(random() * faceCount));
+    const sqrtR1 = Math.sqrt(Math.max(0, Math.min(1, random())));
+    const r2 = Math.max(0, Math.min(1, random()));
+    return createServerMeshLocation(this.meshSurface, {
+      faceIndex,
+      bary: {
+        u: 1 - sqrtR1,
+        v: sqrtR1 * (1 - r2),
+        w: sqrtR1 * r2,
+      },
+    });
+  }
+
+  /**
+   * Place a portal a known geodesic step from a player's exact walker location.
+   * Used by the half-health spawn so "near player" no longer means nearby UV.
+   */
+  createLocationNearWalker(
+    sessionId: string,
+    distance: number,
+    angleRadians: number = Math.random() * Math.PI * 2,
+  ): ServerMeshLocation | null {
+    if (!this.meshSurface) return null;
+    const start = this.walkers.get(sessionId)?.getLocation();
+    if (!start) return null;
+    this._portalDirection.set(0, 0, 0)
+      .addScaledVector(
+        new THREE.Vector3(start.tangentX, start.tangentY, start.tangentZ),
+        Math.cos(angleRadians),
+      )
+      .addScaledVector(
+        new THREE.Vector3(start.bitangentX, start.bitangentY, start.bitangentZ),
+        Math.sin(angleRadians),
+      )
+      .normalize();
+    const result = this.meshSurface.moveGeodesic(
+      toFacePosition(start),
+      this._portalDirection,
+      distance,
+    );
+    return createServerMeshLocation(this.meshSurface, result.facePosition);
+  }
+
+  isWithinConnectedRadius(
+    origin: ServerMeshLocation,
+    candidate: ServerMeshLocation,
+    radius: number,
+  ): boolean {
+    return this.meshSurface
+      ? isWithinConnectedSurfacePatch(this.meshSurface, origin, candidate, radius)
+      : false;
   }
 
   /**

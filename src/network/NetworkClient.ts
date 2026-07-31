@@ -48,6 +48,23 @@ export interface NetworkPlayerState {
   bx?: number; by?: number; bz?: number;
   /** Face index under the walker (for telemetry/debugging) */
   walkerFaceIndex?: number;
+  walkerBaryU?: number; walkerBaryV?: number; walkerBaryW?: number;
+}
+
+/** Canonical face-constrained location synchronized by the server. */
+export interface NetworkMeshLocation {
+  faceIndex: number;
+  baryU: number; baryV: number; baryW: number;
+  wx: number; wy: number; wz: number;
+  nx: number; ny: number; nz: number;
+  tangentX: number; tangentY: number; tangentZ: number;
+  bitangentX: number; bitangentY: number; bitangentZ: number;
+}
+
+export interface NetworkPortalLocations {
+  active: boolean;
+  a?: NetworkMeshLocation;
+  b?: NetworkMeshLocation;
 }
 
 /** Bullet state from server */
@@ -360,6 +377,7 @@ export interface NetworkCallbacks {
   onPvpHit?: (data: { killerId: string; killerName: string; victimId: string; victimName: string; damage: number }) => void;
   /** Fired after the server accepts or rejects a match upgrade activation. */
   onUpgradeActivationResult?: (data: UpgradeActivationResult) => void;
+  onPortalLocations?: (data: NetworkPortalLocations) => void;
 }
 
 // Network debug logging: enabled when ?debug=true is in the URL.
@@ -384,6 +402,7 @@ export class NetworkClient {
   private callbacks: NetworkCallbacks = {};
   private localPlayerId: string = '';
   private connected = false;
+  private portalLocations: NetworkPortalLocations = { active: false };
 
   // Debounce onStateChange to prevent multiple rapid-fire calls from
   // onAdd/listen/onStateChange all triggering simultaneously. Uses
@@ -648,6 +667,15 @@ export class NetworkClient {
     this.room.onMessage('pre_spawn', (data: { type: string; u: number; v: number }) => {
       this.callbacks.onPreSpawn?.(data);
     });
+
+    this.room.onMessage('portal_locations', (data: NetworkPortalLocations) => {
+      this.portalLocations = data.active && data.a && data.b
+        ? { active: true, a: data.a, b: data.b }
+        : { active: false };
+      this.callbacks.onPortalLocations?.(this.portalLocations);
+      this.scheduleStateChange();
+    });
+    this.room.send('request_portal_locations');
 
     // Phase sync: server sends this on join when game is in voting/playing phase.
     // Allows the client to immediately route to the correct screen. (s44j-14)
@@ -1147,6 +1175,10 @@ export class NetworkClient {
     return (this.room.state as { hostId?: string }).hostId || '';
   }
 
+  getPortalLocations(): NetworkPortalLocations {
+    return this.portalLocations;
+  }
+
   /**
    * Check if connected
    */
@@ -1163,6 +1195,7 @@ export class NetworkClient {
       this.room = null;
     }
     this.connected = false;
+    this.portalLocations = { active: false };
     netLog('[Network] Disconnected');
   }
 }

@@ -11,6 +11,12 @@
 import * as THREE from 'three';
 import { MeshSurface } from '../../src/surfaces/MeshSurface';
 import { MeshWalker } from '../../src/movement/MeshWalker';
+import {
+  createServerMeshLocation,
+  resolveServerMeshLocation,
+  toFacePosition,
+  type ServerMeshLocation,
+} from './ServerMeshLocation';
 
 export interface ServerWalkerState {
   wx: number; wy: number; wz: number;          // world position
@@ -27,6 +33,8 @@ export class ServerMeshWalker {
   private readonly _camRight = new THREE.Vector3();
   private readonly _camUp = new THREE.Vector3();
   private readonly _moveDir = new THREE.Vector3();
+  private readonly _locationPoint = new THREE.Vector3();
+  private readonly _locationNormal = new THREE.Vector3();
 
   constructor(surface: MeshSurface, startWorldPos: THREE.Vector3, speed: number) {
     this.walker = new MeshWalker(surface, startWorldPos, speed);
@@ -112,6 +120,30 @@ export class ServerMeshWalker {
       bitangentZ: frame.bitangent.z,
       faceIndex: this.walker.faceIndex,
     };
+  }
+
+  /** Export the authoritative face-constrained location. */
+  getLocation(): ServerMeshLocation {
+    const facePos = this.walker.surface.initGeodesicPosition(
+      this.walker.position,
+      this.walker.faceIndex,
+    );
+    return createServerMeshLocation(this.walker.surface, facePos, this.walker.getTangentFrame());
+  }
+
+  /**
+   * Teleport directly to a canonical mesh location.
+   * The point is reconstructed from face+barycentric coordinates rather than
+   * trusting a nearby world point or asking the BVH to choose a triangle.
+   */
+  teleportToLocation(location: ServerMeshLocation): void {
+    resolveServerMeshLocation(
+      this.walker.surface,
+      toFacePosition(location),
+      this._locationPoint,
+      this._locationNormal,
+    );
+    this.walker.teleportTo(this._locationPoint, location.faceIndex, this._locationNormal);
   }
 
   /** Get world-space position for collision checks (enemy-player, bullet-player). */

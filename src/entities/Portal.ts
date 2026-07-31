@@ -347,6 +347,17 @@ export class Portal {
   ): void {
     const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
 
+    this.applyWorldTransform(position, normal, tangent, bitangent);
+  }
+
+  /** Position the portal from the server-synchronized canonical mesh frame. */
+  applyWorldTransform(
+    position: THREE.Vector3,
+    normal: THREE.Vector3,
+    tangent: THREE.Vector3,
+    bitangent: THREE.Vector3,
+  ): void {
+
     // Store for collision check (visual, not authoritative)
     this._surfaceWorldPos.copy(position);
 
