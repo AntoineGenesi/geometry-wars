@@ -111,6 +111,26 @@ export interface GameInstanceConfig {
   mapSize?: MapSize;
 }
 
+export interface GameInstanceWeaponDemoSnapshot {
+  currentWeapon: WeaponType;
+  currentAmmo: number;
+  bulletCount: number;
+  weaponVisualObjectCount: number;
+  enemyCount: number;
+  enemies: Array<{
+    alive: boolean;
+    health: number;
+    maxHealth: number;
+    materializing: boolean;
+  }>;
+  player: {
+    alive: boolean;
+    lives: number;
+    position: { x: number; y: number; z: number };
+  };
+  started: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -526,6 +546,44 @@ export class GameInstance {
     return { lives: this.player.lives };
   }
 
+  /** Snapshot for embedded weapon demos and browser proof. */
+  getWeaponDemoSnapshot(): GameInstanceWeaponDemoSnapshot {
+    const enemies = this.enemySpawner.getEnemies()
+      .filter(enemy => enemy.alive && enemy.mesh)
+      .map(enemy => ({
+        alive: enemy.alive,
+        health: enemy.health,
+        maxHealth: enemy.maxHealth,
+        materializing: enemy.isMaterializing,
+      }));
+
+    let weaponVisualObjectCount = 0;
+    this.weaponManager.projectileRoot.traverse((object) => {
+      if (object !== this.weaponManager.projectileRoot && object.visible !== false) {
+        weaponVisualObjectCount++;
+      }
+    });
+
+    return {
+      currentWeapon: this.weaponManager.getCurrentWeapon(),
+      currentAmmo: this.weaponManager.getCurrentAmmo(),
+      bulletCount: this.bulletPool.activeCount,
+      weaponVisualObjectCount,
+      enemyCount: enemies.length,
+      enemies,
+      player: {
+        alive: this.player.alive,
+        lives: this.player.lives,
+        position: {
+          x: this.player.mesh.position.x,
+          y: this.player.mesh.position.y,
+          z: this.player.mesh.position.z,
+        },
+      },
+      started: this.started,
+    };
+  }
+
   /** Start the game loop */
   start(): void {
     if (this.started) return;
@@ -693,10 +751,9 @@ export class GameInstance {
 
   /** Set a different weapon (for demos) */
   setWeapon(weapon: WeaponType): void {
-    // Use equipWeapon to directly set the weapon — this avoids an infinite loop
-    // that occurred when cycling through weapons that aren't in the inventory.
-    // equipWeapon adds the weapon to inventory (if not present) and switches to it.
-    this.weaponManager.equipWeapon(weapon);
+    // Playground demos are modal-selected: each TRY IT view must represent the
+    // requested weapon even if another special weapon was active previously.
+    this.weaponManager.forceSetWeapon(weapon);
   }
 
   /** Change surface (for demos) */

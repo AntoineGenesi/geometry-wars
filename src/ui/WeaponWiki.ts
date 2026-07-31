@@ -968,6 +968,9 @@ export class WeaponWiki {
         try {
           this.playground = new WeaponPlayground(mountEl);
           this.playground.setWeapon(wType);
+          requestAnimationFrame(() => {
+            mountEl.scrollIntoView({ block: 'center', behavior: 'auto' });
+          });
         } catch (err) {
           // If playground fails to initialize (e.g., WebGL context error),
           // reset the UI state so the button doesn't get stuck on "CLOSE DEMO"

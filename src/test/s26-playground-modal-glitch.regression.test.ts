@@ -192,6 +192,7 @@ vi.mock('three', async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 import { GameInstance } from '../core/GameInstance';
+import { WeaponType } from '../weapons/WeaponTypes';
 
 // ---------------------------------------------------------------------------
 // Helper: create a mock container
@@ -262,6 +263,24 @@ describe('S26 Regression: Playground Modal Glitch', () => {
 
       // GameInstance.dispose() → game.dispose() → canvas.remove()
       expect(mockRemoveCallCount).toBe(1);
+    });
+  });
+
+  describe('Weapon Wiki TRY IT weapon selection', () => {
+    it('GameInstance.setWeapon() force-switches between special weapons for modal demos', () => {
+      const container = createMockContainer();
+      const instance = new GameInstance({ container, mode: 'demo', enemyCount: 0 });
+
+      instance.setWeapon(WeaponType.LaserBeam);
+      expect(instance.weaponManager.getCurrentWeapon()).toBe(WeaponType.LaserBeam);
+
+      instance.setWeapon(WeaponType.Homing);
+      expect(instance.weaponManager.getCurrentWeapon()).toBe(WeaponType.Homing);
+
+      instance.setWeapon(WeaponType.BlackHole);
+      expect(instance.weaponManager.getCurrentWeapon()).toBe(WeaponType.BlackHole);
+
+      instance.dispose();
     });
   });
 

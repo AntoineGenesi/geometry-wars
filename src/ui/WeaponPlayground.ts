@@ -315,6 +315,7 @@ export class WeaponPlayground {
 
     // Don't auto-start; wait for user click
     this.lastTime = performance.now();
+    this.writeDiagnosticSnapshot();
     this.uiLoop(this.lastTime);
   }
 
@@ -421,6 +422,7 @@ export class WeaponPlayground {
 
     // Switch weapon in the real game engine
     this.gameInstance.setWeapon(wt);
+    this.writeDiagnosticSnapshot();
   }
 
   dispose(): void {
@@ -463,6 +465,7 @@ export class WeaponPlayground {
   private uiLoop = (now: number): void => {
     if (this.disposed) return;
     this.rafId = requestAnimationFrame(this.uiLoop);
+    this.writeDiagnosticSnapshot();
 
     const rawDt = (now - this.lastTime) / 1000;
     this.lastTime = now;
@@ -539,5 +542,22 @@ export class WeaponPlayground {
     if (dpsEl) dpsEl.textContent = `DPS: ${this.dps}`;
     if (killsEl) killsEl.textContent = `KILLS: ${this.kills}`;
     if (timeEl) timeEl.textContent = `${this.elapsed.toFixed(1)}s`;
+  }
+
+  private writeDiagnosticSnapshot(): void {
+    const snapshot = {
+      activeWeapon: this.activeWeapon,
+      focused: this.focused,
+      paused: this.paused,
+      gameOver: this.gameOver,
+      elapsed: this.elapsed,
+      kills: this.kills,
+      game: this.gameInstance.getWeaponDemoSnapshot(),
+    };
+
+    this.container.dataset.playgroundActiveWeapon = this.activeWeapon;
+    this.container.dataset.playgroundFocused = String(this.focused);
+    this.container.dataset.playgroundPaused = String(this.paused);
+    this.container.dataset.playgroundSnapshot = JSON.stringify(snapshot);
   }
 }
