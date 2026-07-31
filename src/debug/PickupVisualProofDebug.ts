@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { PickupSurfacePoseState } from '../pickups/PickupSurfaceVisual';
 
 export interface PickupVisualProofRecord {
   id: string;
@@ -20,6 +21,16 @@ export interface PickupVisualProofSample {
   matrixScale: [number, number, number];
   worldPosition: [number, number, number];
   quaternion: [number, number, number, number];
+  attachedToScene: boolean;
+  pose: {
+    revision: number;
+    sourcePosition: [number, number, number] | null;
+    sourceNormal: [number, number, number] | null;
+    normalOffset: number | null;
+    positionError: number | null;
+    orientationError: number | null;
+    matchesRequestedFrame: boolean;
+  };
   projected: { x: number; y: number; z: number; inView: boolean };
   body: {
     meshCount: number;
@@ -62,7 +73,7 @@ export function createPickupVisualProofDebug(options: PickupVisualProofOptions) 
     const backgroundOnly = pickupId === '__background__';
     if (!selected && !backgroundOnly) return { isolated: false, error: `unknown pickup ${pickupId}` };
 
-    const pickupRoots = new Set(records.map((record) => record.mesh));
+    const pickupRoots = new Set<THREE.Object3D>(records.map((record) => record.mesh));
     for (const root of options.scene.children) {
       originalRootVisibility.set(root, root.visible);
       root.visible = root instanceof THREE.Light
@@ -115,6 +126,18 @@ export function createPickupVisualProofDebug(options: PickupVisualProofOptions) 
       const surfaceVisibility = record.mesh.userData.surfaceVisibility as { className?: string } | undefined;
       const bodyVisibility = record.mesh.userData.pickupBodyVisibility;
       const indicator = record.mesh.getObjectByName('spawn-indicator');
+      const poseState = record.mesh.userData.pickupSurfacePose as PickupSurfacePoseState | undefined;
+      const expectedPosition = poseState
+        ? new THREE.Vector3().fromArray(poseState.sourcePosition)
+          .addScaledVector(new THREE.Vector3().fromArray(poseState.sourceNormal), poseState.normalOffset)
+        : null;
+      const expectedQuaternion = poseState
+        ? new THREE.Quaternion().fromArray(poseState.appliedQuaternion)
+        : null;
+      const positionError = expectedPosition ? record.mesh.position.distanceTo(expectedPosition) : null;
+      const orientationError = expectedQuaternion
+        ? 1 - Math.abs(record.mesh.quaternion.dot(expectedQuaternion))
+        : null;
 
       return {
         id: record.id,
@@ -124,6 +147,26 @@ export function createPickupVisualProofDebug(options: PickupVisualProofOptions) 
         matrixScale: scale.toArray(),
         worldPosition: position.toArray(),
         quaternion: quaternion.toArray(),
+        attachedToScene: options.scene.getObjectById(record.mesh.id) === record.mesh,
+        pose: {
+          revision: poseState?.revision ?? 0,
+          sourcePosition: poseState?.sourcePosition ?? null,
+          sourceNormal: poseState?.sourceNormal ?? null,
+          normalOffset: poseState?.normalOffset ?? null,
+          positionError,
+          orientationError,
+          matchesRequestedFrame: Boolean(
+            poseState
+              && poseState.revision > 0
+              && poseState.sourcePosition.every(Number.isFinite)
+              && poseState.sourceNormal.every(Number.isFinite)
+              && poseState.sourcePosition.some((axis) => Math.abs(axis) > 0.001)
+              && positionError !== null
+              && positionError <= 0.0001
+              && orientationError !== null
+              && orientationError <= 0.000001
+          ),
+        },
         projected: {
           x: projected.x,
           y: projected.y,

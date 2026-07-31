@@ -6,6 +6,7 @@ import type { Surface } from '../surfaces/Surface';
 import { SurfaceVisibilityResolver } from '../rendering/SurfaceVisibilityResolver';
 import {
   PICKUP_OCCLUDED_BODY_FLOOR,
+  applyPickupBodyVisibility,
   applyPickupSurfacePose,
   makeRightHandedPickupBasis,
   resolveAndApplyPickupVisibility,
@@ -91,6 +92,38 @@ describe('pickup right-handed surface pose', () => {
     expect(basis.elements.every(Number.isFinite)).toBe(true);
     expect(basis.determinant()).toBeCloseTo(1, 6);
   });
+
+  it('publishes a pose revision and requested frame only after a successful update', () => {
+    const mesh = new THREE.Group();
+    const invalidFrame = {
+      position: new THREE.Vector3(Number.NaN, 0, 0),
+      normal: new THREE.Vector3(0, 1, 0),
+      tangent: new THREE.Vector3(1, 0, 0),
+      bitangent: new THREE.Vector3(0, 0, 1),
+    };
+    expect(applyPickupSurfacePose(mesh, invalidFrame, { normalOffset: 0.4 })).toBe(false);
+    expect(mesh.userData.pickupSurfacePose).toBeUndefined();
+
+    const frame = {
+      position: new THREE.Vector3(4, -2, 3),
+      normal: new THREE.Vector3(0, 2, 0),
+      tangent: new THREE.Vector3(1, 0, 0),
+      bitangent: new THREE.Vector3(0, 0, -1),
+    };
+    expect(applyPickupSurfacePose(mesh, frame, { normalOffset: 0.5, spinAngle: 0.25 })).toBe(true);
+    expect(mesh.userData.pickupSurfacePose).toMatchObject({
+      revision: 1,
+      sourcePosition: [4, -2, 3],
+      sourceNormal: [0, 1, 0],
+      normalOffset: 0.5,
+      spinAngle: 0.25,
+    });
+    expect(mesh.userData.pickupSurfacePose.appliedQuaternion).toEqual(mesh.quaternion.toArray());
+
+    expect(applyPickupSurfacePose(mesh, frame, { normalOffset: 0.6, spinAngle: 0.5 })).toBe(true);
+    expect(mesh.userData.pickupSurfacePose.revision).toBe(2);
+    expect(mesh.userData.pickupSurfacePose.normalOffset).toBe(0.6);
+  });
 });
 
 describe('pickup topology visibility policy', () => {
@@ -163,5 +196,20 @@ describe('pickup topology visibility policy', () => {
     });
     expect(hidden.className).toBe('opaque-hidden');
     expect(hiddenMaterial.opacity).toBe(0);
+  });
+
+  it('composes a changing authored pulse with age and shared visibility', () => {
+    const pickupMesh = new THREE.Group();
+    pickupMesh.userData.ageFactor = 0.75;
+    const material = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8 });
+    pickupMesh.add(new THREE.Mesh(new THREE.SphereGeometry(0.1), material));
+
+    material.userData.pickupOpacityFactor = 0.55;
+    applyPickupBodyVisibility(pickupMesh, 0.35);
+    expect(material.opacity).toBeCloseTo(0.8 * 0.55 * 0.75 * 0.35);
+
+    material.userData.pickupOpacityFactor = 0.85;
+    applyPickupBodyVisibility(pickupMesh, 0.35);
+    expect(material.opacity).toBeCloseTo(0.8 * 0.85 * 0.75 * 0.35);
   });
 });

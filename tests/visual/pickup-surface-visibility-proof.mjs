@@ -94,6 +94,24 @@ async function waitFrames(page, frameCount = 4) {
   }), frameCount);
 }
 
+async function waitForPickupPoses(page, mode, timeoutMs = 15000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const ready = await page.evaluate((proofMode) => {
+      const api = proofMode === 'sp' ? window.__TEST_API : window.__gameDebug;
+      const samples = api?.getPickupVisualProofSamples?.() || [];
+      return samples.length > 0 && samples.every((sample) =>
+        sample.attachedToScene
+          && sample.pose?.revision > 0
+          && sample.pose.matchesRequestedFrame
+      );
+    }, mode).catch(() => false);
+    if (ready) return;
+    await sleep(100);
+  }
+  throw new Error(`Timed out waiting for ${mode.toUpperCase()} pickup surface pose updates`);
+}
+
 async function writeCanvasPng(page, path) {
   const dataUrl = await page.evaluate(() => {
     const canvas = document.querySelector('canvas');
@@ -186,7 +204,7 @@ async function collectIsolatedSample(page, mode, scenarioName, pickup) {
       bounds: { minX, minY, maxX, maxY, width, height },
       aspectRatio,
       centroid: bodyPixels > 0 ? { x: sumX / bodyPixels, y: sumY / bodyPixels } : null,
-      nonLineFootprint: bodyPixels >= 12 && width >= 4 && height >= 4 && aspectRatio <= 6,
+      nonLineFootprint: bodyPixels >= 20 && width >= 8 && height >= 8 && aspectRatio <= 3.5,
     };
   });
 
@@ -201,12 +219,30 @@ async function collectIsolatedSample(page, mode, scenarioName, pickup) {
         ? sample.body.hasCore
         : sample.body.meshCount >= 2
   );
+  const expectedCentroid = sample ? {
+    x: (sample.projected.x + 1) * pixels.canvas.width / 2,
+    y: (1 - sample.projected.y) * pixels.canvas.height / 2,
+  } : null;
+  const centroidError = expectedCentroid && pixels.centroid
+    ? Math.hypot(pixels.centroid.x - expectedCentroid.x, pixels.centroid.y - expectedCentroid.y)
+    : Number.POSITIVE_INFINITY;
+  const projectedOriginInBodyBounds = Boolean(
+    expectedCentroid
+      && pixels.bodyPixels > 0
+      && expectedCentroid.x >= pixels.bounds.minX - 4
+      && expectedCentroid.x <= pixels.bounds.maxX + 4
+      && expectedCentroid.y >= pixels.bounds.minY - 4
+      && expectedCentroid.y <= pixels.bounds.maxY + 4
+  );
   const passed = Boolean(
     isolation?.isolated
       && sample?.matrixFinite
       && Number.isFinite(sample.determinant)
       && sample.determinant > 0
       && sample.matrixScale.every((axis) => Number.isFinite(axis) && axis > 0.005)
+      && sample.attachedToScene
+      && sample.pose.revision > 0
+      && sample.pose.matchesRequestedFrame
       && sample.projected.inView
       && sample.visibilityClass
       && typeof sample.bodyVisibility === 'number'
@@ -216,9 +252,20 @@ async function collectIsolatedSample(page, mode, scenarioName, pickup) {
       && iconCoreContract
       && pixels.nonLineFootprint
       && pixels.strongPixels >= 3
+      && projectedOriginInBodyBounds
   );
 
-  return { ...pickup, passed, isolation, sample, pixels, screenshot };
+  return {
+    ...pickup,
+    passed,
+    isolation,
+    sample,
+    pixels,
+    expectedCentroid,
+    centroidError,
+    projectedOriginInBodyBounds,
+    screenshot,
+  };
 }
 
 async function runScenario(page, { mode, surface, name, url }) {
@@ -261,7 +308,7 @@ async function runScenario(page, { mode, surface, name, url }) {
     await page.evaluate(() => window.__gameDebug.spawnPickupVisualProofSet());
   }
 
-  await sleep(900);
+  await waitForPickupPoses(page, mode);
   await waitFrames(page, 8);
   const pickups = await page.evaluate((proofMode) => {
     const api = proofMode === 'sp' ? window.__TEST_API : window.__gameDebug;

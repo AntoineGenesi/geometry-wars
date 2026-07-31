@@ -16,6 +16,15 @@ export interface PickupSurfacePoseOptions {
   spinAngle?: number;
 }
 
+export interface PickupSurfacePoseState {
+  revision: number;
+  sourcePosition: [number, number, number];
+  sourceNormal: [number, number, number];
+  normalOffset: number;
+  spinAngle: number;
+  appliedQuaternion: [number, number, number, number];
+}
+
 export interface ResolvePickupVisibilityOptions {
   resolver: SurfaceVisibilityResolver;
   playerWorldPosition: THREE.Vector3;
@@ -95,7 +104,25 @@ export function applyPickupSurfacePose(
   mesh.quaternion.copy(_surfaceQuaternion).multiply(_spinQuaternion).normalize();
   mesh.updateMatrix();
 
-  return mesh.matrix.elements.every(Number.isFinite) && mesh.matrix.determinant() > 0;
+  if (!mesh.matrix.elements.every(Number.isFinite) || mesh.matrix.determinant() <= 0) return false;
+
+  const existingState = mesh.userData.pickupSurfacePose as PickupSurfacePoseState | undefined;
+  const poseState: PickupSurfacePoseState = existingState ?? {
+    revision: 0,
+    sourcePosition: [0, 0, 0],
+    sourceNormal: [0, 0, 0],
+    normalOffset: 0,
+    spinAngle: 0,
+    appliedQuaternion: [0, 0, 0, 1],
+  };
+  poseState.revision++;
+  frame.position.toArray(poseState.sourcePosition);
+  _normal.toArray(poseState.sourceNormal);
+  poseState.normalOffset = options.normalOffset;
+  poseState.spinAngle = Number.isFinite(options.spinAngle) ? options.spinAngle! : 0;
+  mesh.quaternion.toArray(poseState.appliedQuaternion);
+  mesh.userData.pickupSurfacePose = poseState;
+  return true;
 }
 
 export function getPickupBodyVisibility(result: SurfaceVisibilityResult): number {
@@ -138,7 +165,11 @@ export function applyPickupBodyVisibility(mesh: THREE.Group, visibility: number)
   );
 
   for (const target of getPickupMaterials(mesh)) {
-    target.material.opacity = target.baseOpacity * ageFactor * visibility;
+    const authoredFactor = typeof target.material.userData.pickupOpacityFactor === 'number'
+      && Number.isFinite(target.material.userData.pickupOpacityFactor)
+      ? Math.max(0, target.material.userData.pickupOpacityFactor as number)
+      : 1;
+    target.material.opacity = target.baseOpacity * authoredFactor * ageFactor * visibility;
   }
 }
 

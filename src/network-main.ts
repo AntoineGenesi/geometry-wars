@@ -7306,7 +7306,7 @@ async function main() {
         const core = visual.mesh.children[0] as THREE.Mesh | undefined;
         if (core && core.material instanceof THREE.Material && 'opacity' in core.material) {
           const pulse = 0.7 + Math.sin(totalTime * 6) * 0.15;
-          (core.material as THREE.MeshBasicMaterial).opacity = pulse * (core.material.userData.baseOpacity ?? 0.85);
+          core.material.userData.pickupOpacityFactor = pulse;
         }
         visual.mesh.userData.ageFactor = 1.0;
         visual.mesh.userData.surfaceU = visual.surfaceU;
