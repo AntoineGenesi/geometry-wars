@@ -57,6 +57,12 @@ import {
   type UpgradeActivationRequest,
   type UpgradeActivationResult,
 } from './mpUpgradeActivation';
+import {
+  getSpreadUpgradePattern,
+  getStandardUpgradePattern,
+  getUpgradeDamageMultiplier,
+  getUpgradeFireRateMultiplier,
+} from '../../src/shared/WeaponUpgradeEffects';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -1578,7 +1584,8 @@ export class GameRoom extends Room<GameState> {
       const levelIdx = Math.min(player.playerLevel, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
       const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
       const buffDamageMult = this.calculateBuffDamageMult(player);
-      const finalDamage = weaponCfg.damage * levelDamageMult * buffDamageMult;
+      const upgradeDamageMult = this.getUpgradeDamageMult(client.sessionId, weaponType);
+      const finalDamage = weaponCfg.damage * levelDamageMult * buffDamageMult * upgradeDamageMult;
 
       // Get or initialize remaining damage budget for this bullet
       const currentRemaining = this.bulletDamageTracker.has(data.bulletId)
@@ -1649,7 +1656,10 @@ export class GameRoom extends Room<GameState> {
       const weaponType = typeof data.weaponType === 'string' ? data.weaponType : 'standard';
       const weaponCfg = WEAPON_CONFIGS[weaponType] ?? WEAPON_CONFIGS.standard;
       const levelIdx = Math.min(owner.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-      const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx] * this.state.pvpDamageMultiplier;
+      const damage = weaponCfg.damage
+        * LEVEL_DAMAGE_MULTIPLIERS[levelIdx]
+        * this.state.pvpDamageMultiplier
+        * this.getUpgradeDamageMult(owner.id, weaponType);
 
       // Get or initialize remaining damage budget for this bullet
       const currentRemaining = this.bulletDamageTracker.has(data.bulletId)
@@ -2212,6 +2222,11 @@ export class GameRoom extends Room<GameState> {
     return active;
   }
 
+  /** Resolve the server-authoritative upgrade multiplier for one player's weapon. */
+  private getUpgradeDamageMult(sessionId: string, weaponType: string): number {
+    return getUpgradeDamageMultiplier(weaponType, this.getActiveUpgradeNodes(sessionId, weaponType));
+  }
+
   private recordUpgradeKill(sessionId: string, weaponType: string, count = 1): void {
     let byWeapon = this.playerUpgradeKillCounts.get(sessionId);
     if (!byWeapon) {
@@ -2313,6 +2328,8 @@ export class GameRoom extends Room<GameState> {
 
     if (result.accepted) {
       activeNodeIds.add(result.nodeId);
+      const player = this.state?.players?.get(sessionId);
+      player?.activeUpgradeNodes?.set(`${result.weaponType}:${result.nodeId}`, 1);
       this.logger.log(`[GameRoom] upgrade activation accepted: player=${sessionId} weapon=${result.weaponType} node=${result.nodeId}`);
     } else {
       this.logger.log(`[GameRoom] upgrade activation rejected: player=${sessionId} weapon=${result.weaponType} node=${result.nodeId} reason=${result.reason}`);
@@ -3377,20 +3394,36 @@ export class GameRoom extends Room<GameState> {
 
     // ── Blaster: always fires on its own independent cooldown ──
     const blasterConfig = WEAPON_CONFIGS['standard'];
-    const blasterInterval = blasterConfig ? 1 / blasterConfig.fireRate : 1 / 6;
+    const standardUpgrades = this.getActiveUpgradeNodes(player.id, 'standard');
+    const blasterInterval = blasterConfig
+      ? 1 / (blasterConfig.fireRate * getUpgradeFireRateMultiplier('standard', standardUpgrades))
+      : 1 / 6;
     const rawLastBlasterShot = (player as unknown as { lastBlasterShotTime?: number }).lastBlasterShotTime;
     const lastBlasterShot = Number.isFinite(rawLastBlasterShot) && rawLastBlasterShot! <= now
       ? rawLastBlasterShot!
       : -Infinity;
     if (now - lastBlasterShot >= blasterInterval) {
       (player as unknown as { lastBlasterShotTime: number }).lastBlasterShotTime = now;
-      // Dual-barrel: 2 bullets with small perpendicular UV offset
-      const perpAngle = angle + Math.PI / 2;
-      const uvOffset = 0.003; // ~0.1 world units on sphere r=10
-      const duPerp = Math.cos(perpAngle) * uvOffset;
-      const dvPerp = Math.sin(perpAngle) * uvOffset;
-      this.spawnBullet(player, angle, -duPerp, -dvPerp, 'standard');
-      this.spawnBullet(player, angle,  duPerp,  dvPerp, 'standard');
+      const standardPattern = getStandardUpgradePattern(standardUpgrades);
+      const emitCluster = (count: number, totalAngle: number): void => {
+        for (let i = 0; i < count; i++) {
+          const t = count === 1 ? 0 : (i / (count - 1)) * 2 - 1;
+          this.spawnBullet(player, angle + t * (totalAngle / 2), 0, 0, 'standard');
+        }
+      };
+      const hasFan = standardPattern.fanExtraBolts > 0 && standardPattern.fanAngle > 0;
+      const hasBranchB = standardPattern.branchBExtraBolts > 0 && standardPattern.branchBConeAngle > 0;
+      if (hasFan) emitCluster(standardPattern.fanExtraBolts + 1, standardPattern.fanAngle);
+      if (hasBranchB) emitCluster(standardPattern.branchBExtraBolts + 1, standardPattern.branchBConeAngle);
+      if (!hasFan && !hasBranchB) {
+        // Baseline dual-barrel shot, matching SP WeaponManager.fireStandard().
+        const perpAngle = angle + Math.PI / 2;
+        const uvOffset = 0.003; // ~0.1 world units on sphere r=10
+        const duPerp = Math.cos(perpAngle) * uvOffset;
+        const dvPerp = Math.sin(perpAngle) * uvOffset;
+        this.spawnBullet(player, angle, -duPerp, -dvPerp, 'standard');
+        this.spawnBullet(player, angle,  duPerp,  dvPerp, 'standard');
+      }
     }
 
     // ── Secondary weapon: fires on its own independent cooldown (if not standard) ──
@@ -3417,9 +3450,10 @@ export class GameRoom extends Room<GameState> {
         }
 
         if (weaponType === 'spread') {
-          // Spread shot: 5 bullets in a 30° fan pattern (matches SP fireSpread base config)
-          const bulletCount = 5;
-          const spreadAngle = Math.PI / 6; // 30° total spread
+          // Spread shot: consume the same active-node pellet/cone rules as SP.
+          const spreadPattern = getSpreadUpgradePattern(this.getActiveUpgradeNodes(player.id, 'spread'));
+          const bulletCount = spreadPattern.bulletCount;
+          const spreadAngle = spreadPattern.spreadAngle;
           const centerIdx = Math.floor(bulletCount / 2); // = 2 (center bullet)
           for (let i = 0; i < bulletCount; i++) {
             const angleOffset = (i - centerIdx) * (spreadAngle / (bulletCount - 1));
@@ -5355,8 +5389,8 @@ export class GameRoom extends Room<GameState> {
           const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
           const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
           const buffDamageMult = owner ? this.calculateBuffDamageMult(owner) : 1.0;
-          const masteryDamageMult = 1.0; // TODO: weapon mastery damage multiplier
-          const finalDamage = baseDamage * levelDamageMult * buffDamageMult * masteryDamageMult;
+          const upgradeDamageMult = this.getUpgradeDamageMult(bullet.ownerId, bulletWeaponType);
+          const finalDamage = baseDamage * levelDamageMult * buffDamageMult * upgradeDamageMult;
           this.applyPlayerOwnedEnemyDamage(
             enemy,
             finalDamage,
@@ -5449,7 +5483,10 @@ export class GameRoom extends Room<GameState> {
             const owner = this.state.players.get(bullet.ownerId);
             const weaponCfg = WEAPON_CONFIGS[bullet.weaponType] ?? WEAPON_CONFIGS.standard;
             const levelIdx = Math.min(owner?.playerLevel ?? 0, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
-            const damage = weaponCfg.damage * LEVEL_DAMAGE_MULTIPLIERS[levelIdx] * this.state.pvpDamageMultiplier;
+            const damage = weaponCfg.damage
+              * LEVEL_DAMAGE_MULTIPLIERS[levelIdx]
+              * this.state.pvpDamageMultiplier
+              * this.getUpgradeDamageMult(bullet.ownerId, bullet.weaponType);
 
             const prevHealth = target.health;
             target.health = Math.max(0, target.health - damage);

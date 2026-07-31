@@ -76,6 +76,8 @@ export class PlayerState extends Schema {
   declare protectorCount: number;
   /** Stackable shield layers (absorb one hit each). */
   declare shieldCount: number;
+  /** Server-authoritative in-match weapon upgrades, keyed as weaponType:nodeId. */
+  declare activeUpgradeNodes: MapSchema<number>;
 
   constructor() {
     super();
@@ -120,6 +122,7 @@ export class PlayerState extends Schema {
     this.hunterCount = 0;
     this.protectorCount = 0;
     this.shieldCount = 0;
+    this.activeUpgradeNodes = new MapSchema<number>();
   }
 }
 
@@ -160,6 +163,7 @@ defineTypes(PlayerState, {
   hunterCount: 'int8',
   protectorCount: 'int8',
   shieldCount: 'int8',
+  activeUpgradeNodes: { map: 'number' },
 });
 
 /**

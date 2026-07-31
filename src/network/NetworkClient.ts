@@ -39,6 +39,8 @@ export interface NetworkPlayerState {
   guardianCount?: number;
   hunterCount?: number;
   protectorCount?: number;
+  /** Server-authoritative active weapon upgrades, keyed as weaponType:nodeId. */
+  activeUpgradeNodes?: { forEach(cb: (value: number, key: string) => void): void };
   // World-space position from ServerMeshWalker (Phase 4 — s44-epic-06)
   wx?: number; wy?: number; wz?: number;
   // Surface normal (world-space)

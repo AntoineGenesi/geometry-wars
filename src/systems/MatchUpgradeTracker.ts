@@ -63,6 +63,14 @@ export class MatchUpgradeTracker {
   }
 
   /**
+   * Reconcile local visual/effect state with server-confirmed MP upgrades.
+   * This does not spend points or fire the build-choice callback.
+   */
+  syncActiveUpgrades(weaponType: WeaponType, nodeIds: Iterable<string>): void {
+    this.activeUpgrades.set(weaponType, new Set(nodeIds));
+  }
+
+  /**
    * Returns the current kill count for a weapon in this match.
    */
   getKillCount(weaponType: WeaponType): number {

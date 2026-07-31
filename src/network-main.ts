@@ -4068,6 +4068,24 @@ async function main() {
     state.players.forEach((netPlayer: NetworkPlayerState, id: string) => {
       const player = getOrCreatePlayer(id, netPlayer);
 
+      // Server is authoritative for accepted in-match upgrades. Reconcile the
+      // local tracker so WeaponManager visuals follow the same state as damage.
+      if (id === localPlayerId && netPlayer.activeUpgradeNodes) {
+        const byWeapon = new Map<WeaponType, string[]>();
+        netPlayer.activeUpgradeNodes.forEach((_value, key) => {
+          const separator = key.indexOf(':');
+          if (separator <= 0) return;
+          const weaponType = SERVER_TO_WEAPON_TYPE[key.slice(0, separator)];
+          if (!weaponType) return;
+          const nodeIds = byWeapon.get(weaponType) ?? [];
+          nodeIds.push(key.slice(separator + 1));
+          byWeapon.set(weaponType, nodeIds);
+        });
+        for (const [weaponType, nodeIds] of byWeapon) {
+          matchUpgradeTracker.syncActiveUpgrades(weaponType, nodeIds);
+        }
+      }
+
       // Sync state from server
       player.lives = netPlayer.lives;
       player.bombs = netPlayer.bombs;
