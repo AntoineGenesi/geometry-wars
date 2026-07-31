@@ -89,6 +89,11 @@ export function updateSpawnIndicator(
   const indicator = mesh.getObjectByName('spawn-indicator') as THREE.Sprite | undefined;
   if (!indicator) return;
 
+  if (mesh.userData.pickupBodyProofIsolated === true) {
+    indicator.visible = false;
+    return;
+  }
+
   if (age >= 30) {
     indicator.visible = false;
     return;

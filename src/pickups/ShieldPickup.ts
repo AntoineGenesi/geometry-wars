@@ -1,14 +1,10 @@
 import * as THREE from 'three';
+import { applyPickupSurfacePose } from './PickupSurfaceVisual';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
 
 const SHIELD_PICKUP_LIFETIME = 12; // seconds — slightly longer than heal
 const SHIELD_PICKUP_FADE_START = 9;
 const SHIELD_COLOR = 0x4488ff;
-
-const _mat4 = new THREE.Matrix4();
-const _qSurface = new THREE.Quaternion();
-const _qSpin = new THREE.Quaternion();
-const _spinAxis = new THREE.Vector3(0, 1, 0);
 
 /**
  * ShieldPickup — blue diamond pickup that grants one stackable shield layer.
@@ -25,8 +21,6 @@ export class ShieldPickup {
   private readonly mapSizeScaleFactor: number;
   private _currentTotalTime = 0;
   private readonly _surfaceWorldPos = new THREE.Vector3();
-  /** Cached opacity multiplier — only call traverse() when this changes (s44r19-01 fix). */
-  private _lastOpacityMultiplier = 1.0;
 
   constructor(u: number, v: number, mapSizeScaleFactor = 1.0) {
     this.surfaceU = u;
@@ -85,23 +79,9 @@ export class ShieldPickup {
     }
     this._currentTotalTime = totalTime;
 
-    // Fade near end of life.
-    // Only call traverse() when opacity actually changes — avoids per-frame mesh walks (s44r19-01 fix).
-    if (this.age > SHIELD_PICKUP_FADE_START) {
-      const fadeProgress = (this.age - SHIELD_PICKUP_FADE_START) / (SHIELD_PICKUP_LIFETIME - SHIELD_PICKUP_FADE_START);
-      const opacity = Math.max(0, 1 - fadeProgress);
-      if (Math.abs(opacity - this._lastOpacityMultiplier) > 0.005) {
-        this._lastOpacityMultiplier = opacity;
-        this.mesh.traverse((child) => {
-          if (child instanceof THREE.Mesh) {
-            const mat = child.material as THREE.MeshBasicMaterial;
-            if (mat.transparent && mat.userData.baseOpacity != null) {
-              mat.opacity = opacity * mat.userData.baseOpacity;
-            }
-          }
-        });
-      }
-    }
+    this.mesh.userData.ageFactor = this.age > SHIELD_PICKUP_FADE_START
+      ? Math.max(0, 1 - (this.age - SHIELD_PICKUP_FADE_START) / (SHIELD_PICKUP_LIFETIME - SHIELD_PICKUP_FADE_START))
+      : 1;
   }
 
   applySurfaceTransform(
@@ -112,18 +92,17 @@ export class ShieldPickup {
       bitangent: THREE.Vector3;
     },
   ): void {
-    const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
-    this._surfaceWorldPos.copy(position);
+    const frame = getTransform(this.surfaceU, this.surfaceV);
+    this._surfaceWorldPos.copy(frame.position);
     const bob = Math.sin(this._currentTotalTime * 2.5 + this.bobPhase) * 0.07 * this.mapSizeScaleFactor;
-    this.mesh.position.copy(position).addScaledVector(normal, 0.35 + bob);
-    _mat4.makeBasis(tangent, normal, bitangent);
-    _qSurface.setFromRotationMatrix(_mat4);
-    // Counter-rotate for contrast with HealPickup
-    _qSpin.setFromAxisAngle(_spinAxis, -this._currentTotalTime * 1.2);
-    this.mesh.quaternion.copy(_qSurface).multiply(_qSpin);
+    applyPickupSurfacePose(this.mesh, frame, {
+      normalOffset: 0.35 + bob,
+      spinAngle: -this._currentTotalTime * 1.2,
+    });
   }
 
   checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
+    if (this.mesh.userData.pickupVisualProof === true) return false;
     if (!this.active) return false;
     if (playerWorldPos) {
       return playerWorldPos.distanceTo(this._surfaceWorldPos) < PICKUP_WORLD_RADIUS * this.mapSizeScaleFactor;

@@ -12,6 +12,15 @@ import * as THREE from 'three';
 import type { GameContext } from '../core/GameContext';
 import type { EnemyType } from '../entities/enemies/EnemySpawner';
 import { WeaponType } from '../weapons/WeaponTypes';
+import { WeaponPickup } from '../weapons/WeaponPickup';
+import { BuffPickup, BuffType } from '../weapons/BuffPickup';
+import { SuperStatePickup } from '../weapons/SuperStatePickup';
+import { SuperStateType } from '../weapons/SuperState';
+import { BuffPickupNew } from '../buffs/BuffPickupNew';
+import { StackBuffType } from '../buffs/BuffManager';
+import { CompanionPickup, CompanionType } from '../entities/Companion';
+import { HealPickup } from '../pickups/HealPickup';
+import { ShieldPickup } from '../pickups/ShieldPickup';
 import type { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { StateRecorder } from './StateRecorder';
 import { ScenarioEngine } from './ScenarioEngine';
@@ -20,6 +29,10 @@ import { PerformanceProfiler } from './PerformanceProfiler';
 import type { PerformanceProfile } from './PerformanceProfiler';
 import { profiler as coreProfiler } from '../core/PerformanceProfiler';
 import { UPGRADE_TREES } from '../systems/UpgradeTreeData';
+import {
+  createPickupVisualProofDebug,
+  type PickupVisualProofRecord,
+} from './PickupVisualProofDebug';
 
 // ---------------------------------------------------------------------------
 // Serializable types (JSON-safe, no THREE objects)
@@ -204,12 +217,19 @@ export class TestHarnessAPI {
   private readonly stateRecorder: StateRecorder;
   private readonly scenarioEngine: ScenarioEngine;
   private readonly performanceProfiler: PerformanceProfiler;
+  private readonly pickupVisualProofRecords: PickupVisualProofRecord[] = [];
+  private readonly pickupVisualProofDebug: ReturnType<typeof createPickupVisualProofDebug>;
 
   constructor(ctx: GameContext) {
     this.ctx = ctx;
     this.stateRecorder = new StateRecorder(ctx);
     this.scenarioEngine = new ScenarioEngine(this, this.stateRecorder);
     this.performanceProfiler = new PerformanceProfiler();
+    this.pickupVisualProofDebug = createPickupVisualProofDebug({
+      scene: ctx.game.scene,
+      camera: ctx.game.camera,
+      getPickups: () => this.pickupVisualProofRecords,
+    });
     // Expose profiler globally so GameLoop wrappers can call it
     (window as any).__PERF_PROFILER = this.performanceProfiler;
   }
@@ -439,6 +459,43 @@ export class TestHarnessAPI {
     const id = `pickup_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     this.ctx.pickupSpawner.spawnPickupsOnEnemyDeath(u, v);
     return id;
+  }
+
+  /** Spawn one deterministic instance of every SP pickup visual for body-only proof. */
+  spawnPickupVisualProofSet(u = 0.125, v = 0.7): Array<{ id: string; type: string }> {
+    if (this.pickupVisualProofRecords.length > 0) {
+      return this.pickupVisualProofRecords.map(({ id, type }) => ({ id, type }));
+    }
+    const { pickupSpawner, game } = this.ctx;
+    const add = <T extends { mesh: THREE.Group }>(
+      id: string,
+      type: string,
+      pickup: T,
+      collection: T[],
+    ): void => {
+      pickup.mesh.userData.pickupProofId = id;
+      pickup.mesh.userData.pickupVisualProof = true;
+      game.scene.add(pickup.mesh);
+      collection.push(pickup);
+      this.pickupVisualProofRecords.push({ id, type, mesh: pickup.mesh });
+    };
+
+    add('sp-super', 'super', new SuperStatePickup(SuperStateType.QuadFire, u, v), pickupSpawner.superPickups);
+    add('sp-weapon', 'weapon', new WeaponPickup(WeaponType.Spread, u, v), pickupSpawner.weaponPickups);
+    add('sp-buff', 'buff', new BuffPickup(BuffType.RapidFire, u, v), pickupSpawner.buffPickups);
+    add('sp-stack-buff', 'stack-buff', new BuffPickupNew(StackBuffType.HotHands, u, v), pickupSpawner.newBuffPickups);
+    add('sp-companion', 'companion', new CompanionPickup(CompanionType.Guardian, u, v), pickupSpawner.companionPickups);
+    add('sp-heal', 'heal', new HealPickup(u, v), pickupSpawner.healPickups);
+    add('sp-shield', 'shield', new ShieldPickup(u, v), pickupSpawner.shieldPickups);
+    return this.pickupVisualProofRecords.map(({ id, type }) => ({ id, type }));
+  }
+
+  getPickupVisualProofSamples() {
+    return this.pickupVisualProofDebug.getPickupVisualProofSamples();
+  }
+
+  setPickupVisualProofIsolation(pickupId: string | null) {
+    return this.pickupVisualProofDebug.setPickupVisualProofIsolation(pickupId);
   }
 
   /** Get all visible pickups. */

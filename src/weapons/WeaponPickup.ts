@@ -3,13 +3,8 @@ import { WeaponType, WEAPON_CONFIGS, getWeaponColor } from './WeaponTypes';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
 import { createWeaponIconSprite } from '../pickups/PickupIconSprite';
+import { applyPickupSurfacePose } from '../pickups/PickupSurfaceVisual';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
-
-// Pre-allocated temps for applySurfaceTransform (zero per-call allocations)
-const _wpMat4 = new THREE.Matrix4();
-const _wpQSurface = new THREE.Quaternion();
-const _wpQSpin = new THREE.Quaternion();
-const _wpSpinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
 
 // PICKUP_WORLD_RADIUS imported from src/shared/GameBalanceConstants.ts (s44r8-06).
 // Shared constant ensures all pickup types stay in sync.
@@ -177,23 +172,6 @@ export class WeaponPickup {
       ? Math.max(0, 1 - (this.age - this.fadeStart) / (this.maxAge - this.fadeStart))
       : 1.0;
 
-    // Fade out near end of life
-    if (this.age > this.fadeStart) {
-      const fadeProgress = (this.age - this.fadeStart) / (this.maxAge - this.fadeStart);
-      const opacity = 1 - fadeProgress;
-
-      this.mesh.traverse((child) => {
-        if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-          const mat = child.material as THREE.Material;
-          if ('opacity' in mat) {
-            mat.opacity = opacity * (mat.userData.baseOpacity ?? 0.8);
-          }
-        }
-        if (child instanceof THREE.Sprite) {
-          child.material.opacity = opacity * 0.4;
-        }
-      });
-    }
   }
 
   /**
@@ -207,26 +185,23 @@ export class WeaponPickup {
       bitangent: THREE.Vector3;
     },
   ): void {
-    const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
+    const frame = getTransform(this.surfaceU, this.surfaceV);
 
     // Store surface world position (before hover offset) for hitbox
-    this._surfaceWorldPos.copy(position);
+    this._surfaceWorldPos.copy(frame.position);
 
     // Hover above surface with bob animation along normal (scaled by map size for consistency)
     const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08 * this.mapSizeScaleFactor;
-    this.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
-
-    // Orient to surface, then apply spin around local Y (= surface normal).
-    // This makes the 3D wireframe visibly rotate so the octahedron looks 3D,
-    // not like a flat 2D diamond. (Previously rotation.y in update() was overridden here.)
-    _wpMat4.makeBasis(tangent, normal, bitangent);
-    _wpQSurface.setFromRotationMatrix(_wpMat4);
-    _wpQSpin.setFromAxisAngle(_wpSpinAxis, this._currentTotalTime * this.spinSpeed);
-    this.mesh.quaternion.copy(_wpQSurface).multiply(_wpQSpin);
+    const poseApplied = applyPickupSurfacePose(this.mesh, frame, {
+      normalOffset: 0.5 + bob,
+      spinAngle: this._currentTotalTime * this.spinSpeed,
+    });
 
     // Update spawn indicator NOW (after quaternion is set) so the correct surface
     // orientation is used to transform cameraUp into local space.
-    updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
+    if (poseApplied) {
+      updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
+    }
   }
 
   /**
@@ -235,6 +210,7 @@ export class WeaponPickup {
    * Falls back to UV-space when playerWorldPos is unavailable.
    */
   checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
+    if (this.mesh.userData.pickupVisualProof === true) return false;
     if (!this.active) return false;
 
     if (playerWorldPos) {

@@ -1,7 +1,7 @@
 /**
  * Regression test: s44r2-08 — MP pickup rendering invisible/black
  *
- * Root cause: the dimming loop in network-main.ts had no active guard on
+ * Original root cause: the dimming loop in network-main.ts had no active guard on
  * WeaponPickup / BuffPickupNew entries. When a pickup's client-side age
  * exceeded maxAge, WeaponPickup.update() set active=false and stopped
  * updating ageFactor. The dimming loop still ran on the inactive pickup,
@@ -10,12 +10,13 @@
  * indicator sprite was exempt from dimming, so only the arrow remained
  * visible — appearing as "black/invisible pickup with arrow indicator".
  *
- * Fix: guard inactive pickups in the dimming loop and hide their meshes.
- * This test verifies the guard logic using minimal fake pickup objects.
+ * Current contract: MP guards inactive pickups, while active bodies use the
+ * shared pickup visibility helper rather than a duplicated UV/material-tree path.
  */
 
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three';
+import { applyPickupBodyVisibility } from '../pickups/PickupSurfaceVisual';
 
 // Minimal fake pickup shape matching WeaponPickup / BuffPickupNew public API
 interface FakePickup {
@@ -38,22 +39,13 @@ function makeFakePickup(active: boolean, ageFactor: number): FakePickup {
   return { active, surfaceU: 0.5, surfaceV: 0.5, mesh: group };
 }
 
-/** Mirrors the FIXED dimming guard from network-main.ts */
+/** Mirrors the small active guard around the shared network visibility call. */
 function applyDimmingWithGuard(pickup: FakePickup, dimFactor: number): void {
   if (!pickup.active) {
     pickup.mesh.visible = false;
     return;
   }
-  const ageFactor = (pickup.mesh.userData.ageFactor as number) ?? 1.0;
-  pickup.mesh.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      const mat = child.material as THREE.MeshBasicMaterial;
-      if ('opacity' in mat) {
-        if (mat.userData.baseOpacity === undefined) mat.userData.baseOpacity = mat.opacity;
-        mat.opacity = (mat.userData.baseOpacity as number) * ageFactor * dimFactor;
-      }
-    }
-  });
+  applyPickupBodyVisibility(pickup.mesh, dimFactor);
 }
 
 describe('pickup rendering — invisible/black regression (s44r2-08)', () => {

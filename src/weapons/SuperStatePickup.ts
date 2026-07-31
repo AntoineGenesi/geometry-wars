@@ -2,13 +2,8 @@ import * as THREE from 'three';
 import { SuperStateType } from './SuperState';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
+import { applyPickupSurfacePose } from '../pickups/PickupSurfaceVisual';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
-
-// Pre-allocated temps for applySurfaceTransform (zero per-call allocations)
-const _sspMat4 = new THREE.Matrix4();
-const _sspQSurface = new THREE.Quaternion();
-const _sspQSpin = new THREE.Quaternion();
-const _sspSpinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
 
 export interface SurfaceTransform {
   position: THREE.Vector3;
@@ -93,8 +88,8 @@ export class SuperStatePickup {
     }
   }
 
-  // Dot patterns use the XZ plane (y=0) because with makeBasis(tangent, normal, bitangent):
-  // local X = tangent, local Y = normal (surface outward), local Z = bitangent.
+  // Dot patterns use the XZ plane (y=0) because the shared pickup basis maps
+  // local X to tangent, local Y to surface normal, and local Z to tangent x normal.
   // XZ plane = surface tangent plane, so dots sit flat on the surface.
 
   private createSquarePattern(): Array<{ x: number; y: number; z: number }> {
@@ -236,20 +231,19 @@ export class SuperStatePickup {
 
     // Hover above surface with bob animation along normal
     const bob = Math.sin(this.animationTime * 2.5 + this._bobPhase) * 0.07;
-    this.mesh.position.copy(transform.position).addScaledVector(transform.normal, 0.3 + bob);
-
-    // Orient to surface, then spin around local Y (= surface normal) so the dot pattern
-    // visibly rotates rather than appearing as a static thin line edge-on to the camera.
-    _sspMat4.makeBasis(transform.tangent, transform.normal, transform.bitangent);
-    _sspQSurface.setFromRotationMatrix(_sspMat4);
-    _sspQSpin.setFromAxisAngle(_sspSpinAxis, this.animationTime * 0.5);
-    this.mesh.quaternion.copy(_sspQSurface).multiply(_sspQSpin);
+    const poseApplied = applyPickupSurfacePose(this.mesh, transform, {
+      normalOffset: 0.3 + bob,
+      spinAngle: this.animationTime * 0.5,
+    });
 
     // Update spawn indicator after quaternion is set so cameraUp transforms correctly
-    updateSpawnIndicator(this.mesh, this.animationTime, this.animationTime, this._hasCameraUp ? this._storedCameraUp : undefined);
+    if (poseApplied) {
+      updateSpawnIndicator(this.mesh, this.animationTime, this.animationTime, this._hasCameraUp ? this._storedCameraUp : undefined);
+    }
   }
 
   checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
+    if (this.mesh.userData.pickupVisualProof === true) return false;
     if (playerWorldPos) {
       return playerWorldPos.distanceTo(this._surfaceWorldPos) < PICKUP_WORLD_RADIUS * this.mapSizeScaleFactor;
     }

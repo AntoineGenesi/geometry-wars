@@ -1,12 +1,7 @@
 import * as THREE from 'three';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from './SpawnIndicator';
+import { applyPickupSurfacePose } from '../pickups/PickupSurfaceVisual';
 import { WEAPON_PICKUP_WORLD_RADIUS as PICKUP_WORLD_RADIUS } from '../shared/GameBalanceConstants';
-
-// Pre-allocated temps for applySurfaceTransform
-const _bufpMat4 = new THREE.Matrix4();
-const _bufpQSurface = new THREE.Quaternion();
-const _bufpQSpin = new THREE.Quaternion();
-const _bufpSpinAxis = new THREE.Vector3(0, 1, 0);
 
 /**
  * Buff type identifiers
@@ -215,19 +210,6 @@ export class BuffPickup {
       ? Math.max(0, 1 - (this.age - this.fadeStart) / (this.maxAge - this.fadeStart))
       : 1.0;
 
-    // Fade near end of life
-    if (this.age > this.fadeStart) {
-      const fadeProgress = (this.age - this.fadeStart) / (this.maxAge - this.fadeStart);
-      const opacity = 1 - fadeProgress;
-      this.mesh.traverse((child) => {
-        if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-          const mat = child.material as THREE.Material;
-          if ('opacity' in mat) {
-            (mat as THREE.MeshBasicMaterial).opacity = opacity * 0.8;
-          }
-        }
-      });
-    }
   }
 
   applySurfaceTransform(
@@ -238,22 +220,22 @@ export class BuffPickup {
       bitangent: THREE.Vector3;
     },
   ): void {
-    const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
-    this._surfaceWorldPos.copy(position);
+    const frame = getTransform(this.surfaceU, this.surfaceV);
+    this._surfaceWorldPos.copy(frame.position);
     const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.08 * this.mapSizeScaleFactor;
-    this.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
-    // Orient to surface + spin around local Y (= surface normal) so the wireframe box
-    // reads as 3D rather than a flat 2D silhouette.
-    _bufpMat4.makeBasis(tangent, normal, bitangent);
-    _bufpQSurface.setFromRotationMatrix(_bufpMat4);
-    _bufpQSpin.setFromAxisAngle(_bufpSpinAxis, this._currentTotalTime * 3);
-    this.mesh.quaternion.copy(_bufpQSurface).multiply(_bufpQSpin);
+    const poseApplied = applyPickupSurfacePose(this.mesh, frame, {
+      normalOffset: 0.5 + bob,
+      spinAngle: this._currentTotalTime * 3,
+    });
 
     // Update spawn indicator after quaternion is set so cameraUp transforms correctly
-    updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
+    if (poseApplied) {
+      updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
+    }
   }
 
   checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
+    if (this.mesh.userData.pickupVisualProof === true) return false;
     if (!this.active) return false;
     if (playerWorldPos) {
       return playerWorldPos.distanceTo(this._surfaceWorldPos) < PICKUP_WORLD_RADIUS * this.mapSizeScaleFactor;

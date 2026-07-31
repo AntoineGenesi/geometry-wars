@@ -5,6 +5,7 @@ import {
   SurfaceVisibilityResolver,
 } from '../rendering/SurfaceVisibilityResolver';
 import { applyNonInstancedEnemyVisibility } from '../rendering/EnemyMaterialVisibility';
+import { resolveAndApplyPickupVisibility } from '../pickups/PickupSurfaceVisual';
 import type { MeshSurface } from '../surfaces/MeshSurface';
 import { EnemyType } from '../entities/enemies/EnemySpawner';
 import { Boss } from '../entities/enemies/Boss';
@@ -155,64 +156,25 @@ export class RenderLoop {
     profiler.end('enemy_visibility');
 
     profiler.begin('pickup_dimming');
-    // Pickup visibility remains owned by the dependent pickup rewrite task.
-    const playerU = ctx.player.surfaceU;
-    const playerV = ctx.player.surfaceV;
-    const wrapsV = ctx.surface.wrapsV;
-    // Surface UV-distance dimming for pickups.
-    // Same UV metric as entity dimming — pickups on the far side of the surface are dimmed.
-    // More generous minimum (0.35) than entities (0.08): pickups stay visible as navigation targets.
-    // The spawn-indicator arrow is NOT dimmed so players always see where pickups are.
-    {
-      const PICKUP_NEAR_UV = 0.20;   // fully bright within 20% surface distance
-      const PICKUP_FAR_UV  = 0.45;   // fully dim beyond 45%
-      const PICKUP_MIN_SCALE = 0.35; // minimum opacity scale for opposite-surface pickups
-
-      const computePickupDimFactor = (pu: number, pv: number): number => {
-        const euRaw = Math.abs(pu - playerU);
-        const evRaw = Math.abs(pv - playerV);
-        const eu = Math.min(euRaw, 1.0 - euRaw);
-        const ev = wrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
-        const uvDist = Math.sqrt(eu * eu + ev * ev);
-        if (uvDist <= PICKUP_NEAR_UV) return 1.0;
-        if (uvDist >= PICKUP_FAR_UV) return PICKUP_MIN_SCALE;
-        const t = (uvDist - PICKUP_NEAR_UV) / (PICKUP_FAR_UV - PICKUP_NEAR_UV);
-        const smooth = t * t * (3.0 - 2.0 * t);
-        return 1.0 - smooth * (1.0 - PICKUP_MIN_SCALE);
-      };
-
-      const dimPickupMesh = (mesh: THREE.Group, pickupU: number, pickupV: number): void => {
-        const dimFactor = computePickupDimFactor(pickupU, pickupV);
-        const ageFactor = (mesh.userData.ageFactor as number) ?? 1.0;
-
-        mesh.traverse((child) => {
-          // Spawn indicator keeps full brightness — it's the "where is this pickup" signal
-          if (child.name === 'spawn-indicator') return;
-
-          if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-            const mat = child.material as THREE.MeshBasicMaterial;
-            if ('opacity' in mat) {
-              // Lazily capture base opacity on first visit (before any aging or dimming)
-              if (mat.userData.baseOpacity === undefined) {
-                mat.userData.baseOpacity = mat.opacity;
-              }
-              mat.opacity = (mat.userData.baseOpacity as number) * ageFactor * dimFactor;
-            }
-          } else if (child instanceof THREE.Sprite) {
-            if (child.material.userData.baseOpacity !== undefined) {
-              child.material.opacity = (child.material.userData.baseOpacity as number) * ageFactor * dimFactor;
-            }
-          }
-        });
-      };
-
-      const ps = ctx.pickupSpawner;
-      for (const p of ps.superPickups)    { if (p.active) dimPickupMesh(p.mesh, p.surfaceU, p.surfaceV); }
-      for (const p of ps.weaponPickups)   { if (p.active) dimPickupMesh(p.mesh, p.surfaceU, p.surfaceV); }
-      for (const p of ps.buffPickups)     { if (p.active) dimPickupMesh(p.mesh, p.surfaceU, p.surfaceV); }
-      for (const p of ps.newBuffPickups)  { if (p.active) dimPickupMesh(p.mesh, p.surfaceU, p.surfaceV); }
-      for (const p of ps.companionPickups){ if (p.active) dimPickupMesh(p.mesh, p.surfaceU, p.surfaceV); }
-    }
+    const applyPickupVisibility = (pickup: { active: boolean; mesh: THREE.Group }): void => {
+      if (!pickup.active) return;
+      resolveAndApplyPickupVisibility({
+        resolver: visibilityResolver,
+        playerWorldPosition: ctx.playerWalker.position,
+        playerFaceIndex: ctx.playerWalker.faceIndex,
+        pickupWorldPosition: pickup.mesh.position,
+        pickupMesh: pickup.mesh,
+        opaqueSurfaces: this._opaqueSurfaces,
+      });
+    };
+    const ps = ctx.pickupSpawner;
+    for (const pickup of ps.superPickups) applyPickupVisibility(pickup);
+    for (const pickup of ps.weaponPickups) applyPickupVisibility(pickup);
+    for (const pickup of ps.buffPickups) applyPickupVisibility(pickup);
+    for (const pickup of ps.newBuffPickups) applyPickupVisibility(pickup);
+    for (const pickup of ps.companionPickups) applyPickupVisibility(pickup);
+    for (const pickup of ps.healPickups) applyPickupVisibility(pickup);
+    for (const pickup of ps.shieldPickups) applyPickupVisibility(pickup);
     profiler.end('pickup_dimming');
 
     profiler.begin('camera_and_ui');

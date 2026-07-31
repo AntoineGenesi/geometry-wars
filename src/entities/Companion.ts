@@ -6,6 +6,7 @@ import { SurfaceAgent } from '../agents/SurfaceAgent';
 import { OrbitBehavior } from '../agents/behaviors';
 import type { MeshSurface } from '../surfaces/MeshSurface';
 import { createSpawnIndicatorSprite, updateSpawnIndicator } from '../weapons/SpawnIndicator';
+import { applyPickupSurfacePose } from '../pickups/PickupSurfaceVisual';
 
 // ---------------------------------------------------------------------------
 // Companion Types
@@ -90,12 +91,6 @@ const _tempOrientZ = new THREE.Vector3();
 const _spinX = new THREE.Vector3(1, 0, 0);
 const _spinY = new THREE.Vector3(0, 1, 0);
 const _spinZ = new THREE.Vector3(0, 0, 1);
-
-// Pre-allocated temps for CompanionPickup.applySurfaceTransform
-const _cpMat4 = new THREE.Matrix4();
-const _cpQSurface = new THREE.Quaternion();
-const _cpQSpin = new THREE.Quaternion();
-const _cpSpinAxis = new THREE.Vector3(0, 1, 0); // local Y = surface normal
 
 // ---------------------------------------------------------------------------
 // Single Companion entity
@@ -789,24 +784,6 @@ export class CompanionPickup {
       ? Math.max(0, 1 - (this.age - this.fadeStart) / (this.maxAge - this.fadeStart))
       : 1.0;
 
-    // Fade near end of life
-    if (this.age > this.fadeStart) {
-      const fadeProgress = (this.age - this.fadeStart) / (this.maxAge - this.fadeStart);
-      const opacity = 1 - fadeProgress;
-      this.mesh.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          const mat = child.material as THREE.Material;
-          if ('opacity' in mat) {
-            (mat as any).opacity = opacity * ((mat as any).userData?.baseOpacity ?? 0.8);
-          }
-        }
-        if (child instanceof THREE.Sprite) {
-          if ((child as THREE.Sprite).name !== 'spawn-indicator') {
-            child.material.opacity = opacity * 0.3;
-          }
-        }
-      });
-    }
   }
 
   applySurfaceTransform(
@@ -817,22 +794,22 @@ export class CompanionPickup {
       bitangent: THREE.Vector3;
     },
   ): void {
-    const { position, normal, tangent, bitangent } = getTransform(this.surfaceU, this.surfaceV);
-    this._surfaceWorldPos.copy(position);
+    const frame = getTransform(this.surfaceU, this.surfaceV);
+    this._surfaceWorldPos.copy(frame.position);
     const bob = Math.sin(this._currentTotalTime * 3 + this.bobPhase) * 0.07 * this.mapSizeScaleFactor;
-    this.mesh.position.copy(position).addScaledVector(normal, 0.4 + bob);
-    // Orient to surface + spin around local Y (= surface normal) so the wireframe
-    // octahedron reads as 3D rather than a flat 2D diamond silhouette.
-    _cpMat4.makeBasis(tangent, normal, bitangent);
-    _cpQSurface.setFromRotationMatrix(_cpMat4);
-    _cpQSpin.setFromAxisAngle(_cpSpinAxis, this._currentTotalTime * 2);
-    this.mesh.quaternion.copy(_cpQSurface).multiply(_cpQSpin);
+    const poseApplied = applyPickupSurfacePose(this.mesh, frame, {
+      normalOffset: 0.4 + bob,
+      spinAngle: this._currentTotalTime * 2,
+    });
 
     // Update spawn indicator after quaternion is set so cameraUp transforms correctly
-    updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
+    if (poseApplied) {
+      updateSpawnIndicator(this.mesh, this.age, this._currentTotalTime, this._hasCameraUp ? this._storedCameraUp : undefined);
+    }
   }
 
   checkPlayerCollision(playerU: number, playerV: number, playerWorldPos?: THREE.Vector3): boolean {
+    if (this.mesh.userData.pickupVisualProof === true) return false;
     if (!this.active) return false;
     if (playerWorldPos) {
       return playerWorldPos.distanceTo(this._surfaceWorldPos) < COMPANION_PICKUP_WORLD_RADIUS * this.mapSizeScaleFactor;

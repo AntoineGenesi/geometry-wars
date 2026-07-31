@@ -71,11 +71,15 @@ import { BuffAuraRenderer } from './buffs/BuffAuraRenderer';
 import { BuffParticleAura } from './buffs/BuffParticleAura';
 import { ShockArcRenderer } from './buffs/ShockArcRenderer';
 import { BuffPickupNew } from './buffs/BuffPickupNew';
-import { CompanionManager, CompanionPickup, CompanionHUD, getRandomCompanionType, RemoteCompanionRenderer } from './entities/Companion';
+import { CompanionManager, CompanionPickup, CompanionHUD, CompanionType, getRandomCompanionType, RemoteCompanionRenderer } from './entities/Companion';
 import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { SurfaceVisibilityResolver } from './rendering/SurfaceVisibilityResolver';
 import { applyNonInstancedEnemyVisibility } from './rendering/EnemyMaterialVisibility';
+import {
+  applyPickupSurfacePose,
+  resolveAndApplyPickupVisibility,
+} from './pickups/PickupSurfaceVisual';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { LODManager, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
 import { computeDepthVisibility, BULLET_DEPTH_CURVE } from './rendering/DepthOpacity';
@@ -153,6 +157,10 @@ import { EnemyKillStreakAnnouncer } from './ui/EnemyKillStreakAnnouncer';
 import { Portal, createPortalPair } from './entities/Portal';
 import { PerformanceProfiler as DebugPerformanceProfiler } from './debug/PerformanceProfiler';
 import { createEnemyBodyProofDebug } from './debug/EnemyBodyProofDebug';
+import {
+  createPickupVisualProofDebug,
+  type PickupVisualProofRecord,
+} from './debug/PickupVisualProofDebug';
 
 // ---------------------------------------------------------------------------
 // Bloom helper — mirrors main.ts (not exported; each entry point owns its bloom state)
@@ -209,6 +217,9 @@ interface GameDebugAPI {
   getEnemyInstanceDebug: () => Record<string, unknown>;
   getEnemyRenderSamples: () => Record<string, unknown>[];
   setVisualProofIsolation: (enabled: boolean, includeSurface?: boolean, includeAuxiliary?: boolean) => Record<string, unknown>;
+  spawnPickupVisualProofSet: () => Array<{ id: string; type: string }>;
+  getPickupVisualProofSamples: () => unknown[];
+  setPickupVisualProofIsolation: (pickupId: string | null) => Record<string, unknown>;
   isGameStarted: () => boolean;
   getWaveText: () => string;
 }
@@ -1593,6 +1604,93 @@ async function main() {
   }
   const networkShieldPickups = new Map<string, ShieldPickupVisual>();
   const pendingShieldCollections = new Set<string>();
+  const pickupVisualProofRecords: PickupVisualProofRecord[] = [];
+  const pickupVisualProofDebug = createPickupVisualProofDebug({
+    scene,
+    camera: game.camera,
+    getPickups: () => pickupVisualProofRecords,
+  });
+
+  const spawnPickupVisualProofSet = (): Array<{ id: string; type: string }> => {
+    if (pickupVisualProofRecords.length > 0) {
+      return pickupVisualProofRecords.map(({ id, type }) => ({ id, type }));
+    }
+    const local = networkPlayers.get(localPlayerId);
+    const proofSurfacePosition = local?.mesh && surface
+      ? surface.worldToSurface(local.mesh.position)
+      : null;
+    const u = proofSurfacePosition?.u ?? local?.surfaceU ?? 0.125;
+    const v = THREE.MathUtils.clamp(proofSurfacePosition?.v ?? local?.surfaceV ?? 0.5, 0.05, 0.95);
+    const addRecord = (id: string, type: string, mesh: THREE.Group): void => {
+      mesh.userData.pickupProofId = id;
+      mesh.userData.pickupVisualProof = true;
+      scene.add(mesh);
+      pickupVisualProofRecords.push({ id, type, mesh });
+    };
+
+    const weapon = new WeaponPickup(WeaponType.Spread, u, v, currentMapSizeScaleFactor);
+    networkWeaponPickups.set('__pickup_proof_weapon', weapon);
+    addRecord('mp-weapon', 'weapon', weapon.mesh);
+
+    const buff = new BuffPickupNew(StackBuffType.HotHands, u, v, currentMapSizeScaleFactor);
+    networkBuffPickups.set('__pickup_proof_stack_buff', buff);
+    addRecord('mp-stack-buff', 'stack-buff', buff.mesh);
+
+    const companion = new CompanionPickup(CompanionType.Guardian, u, v, currentMapSizeScaleFactor);
+    localCompanionPickups.push(companion);
+    addRecord('mp-companion', 'companion', companion.mesh);
+
+    const makeProofGroup = (name: string, color: number, geometry: THREE.BufferGeometry): THREE.Group => {
+      const group = new THREE.Group();
+      group.name = name;
+      const outerMaterial = new THREE.MeshBasicMaterial({
+        color,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.5,
+      });
+      outerMaterial.userData.baseOpacity = 0.5;
+      const outer = new THREE.Mesh(geometry, outerMaterial);
+      outer.scale.setScalar(1.35);
+      group.add(outer);
+      const coreMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+      coreMaterial.userData.baseOpacity = 0.9;
+      const core = new THREE.Mesh(geometry, coreMaterial);
+      core.name = 'core';
+      group.add(core);
+      return group;
+    };
+
+    const superMesh = makeProofGroup('SuperPickup_proof', 0xffd700, superPickupGeometry);
+    networkSuperPickups.set('__pickup_proof_super', {
+      mesh: superMesh,
+      surfaceU: u,
+      surfaceV: v,
+      pickupType: 'bomb_resupply',
+      spawnTime: game.clock.totalTime,
+    });
+    addRecord('mp-super', 'super', superMesh);
+
+    const healthMesh = makeProofGroup('HealthPickup_proof', 0x00ff44, healthPickupGeometry);
+    networkHealthPickups.set('__pickup_proof_health', {
+      mesh: healthMesh,
+      surfaceU: u,
+      surfaceV: v,
+      spawnTime: game.clock.totalTime,
+    });
+    addRecord('mp-heal', 'heal', healthMesh);
+
+    const shieldMesh = makeProofGroup('ShieldPickup_proof', 0x4488ff, shieldPickupGeometry);
+    networkShieldPickups.set('__pickup_proof_shield', {
+      mesh: shieldMesh,
+      surfaceU: u,
+      surfaceV: v,
+      spawnTime: game.clock.totalTime,
+    });
+    addRecord('mp-shield', 'shield', shieldMesh);
+
+    return pickupVisualProofRecords.map(({ id, type }) => ({ id, type }));
+  };
 
   // Track super/health pickup IDs sent to server via collect_pickup (no active flag on these visuals).
   // Prevents double-sends while waiting for server state confirmation.
@@ -1607,18 +1705,6 @@ async function main() {
 
   // Shared geometries for super pickups (created once, never disposed)
   const superPickupGeometry = new THREE.SphereGeometry(0.25, 12, 8);
-
-  // Pre-allocated temps for super pickup animation (zero per-frame allocations)
-  const _spMat4 = new THREE.Matrix4();
-  const _spQSurface = new THREE.Quaternion();
-  const _spQSpin = new THREE.Quaternion();
-  const _spSpinAxis = new THREE.Vector3(0, 1, 0);
-
-  // Pre-allocated temps for shield pickup animation (zero per-frame allocations — s44r19-01 fix)
-  const _shMat4 = new THREE.Matrix4();
-  const _shQSurface = new THREE.Quaternion();
-  const _shQSpin = new THREE.Quaternion();
-  const _shSpinAxis = new THREE.Vector3(0, 1, 0);
 
   // -- Spawn warning rings (LAN visual parity) --
   // Created when 'pre_spawn' message arrives; cleaned up when enemy appears or times out.
@@ -4991,7 +5077,7 @@ async function main() {
     });
     // Remove collected/expired super pickups (with particle burst effect)
     networkSuperPickups.forEach((visual, id) => {
-      if (!activeSuperPickupIds.has(id)) {
+      if (!activeSuperPickupIds.has(id) && !id.startsWith('__pickup_proof_')) {
         // Fire collection burst at pickup position
         const burstColor = visual.pickupType === 'bomb_resupply'
           ? new THREE.Color(0xffd700)  // gold
@@ -5040,7 +5126,7 @@ async function main() {
 
     // Remove collected/expired pickups
     networkWeaponPickups.forEach((pickup, id) => {
-      if (!activePickupIds.has(id)) {
+      if (!activePickupIds.has(id) && !id.startsWith('__pickup_proof_')) {
         scene.remove(pickup.mesh);
         pickup.dispose();
         networkWeaponPickups.delete(id);
@@ -5073,7 +5159,7 @@ async function main() {
     });
     // Remove collected/expired buff pickups
     networkBuffPickups.forEach((bp, id) => {
-      if (!activeBuffPickupIds.has(id)) {
+      if (!activeBuffPickupIds.has(id) && !id.startsWith('__pickup_proof_')) {
         scene.remove(bp.mesh);
         bp.dispose();
         networkBuffPickups.delete(id);
@@ -5152,7 +5238,7 @@ async function main() {
     });
     // Remove collected/expired health pickups
     networkHealthPickups.forEach((visual, id) => {
-      if (!activeHealthPickupIds.has(id)) {
+      if (!activeHealthPickupIds.has(id) && !id.startsWith('__pickup_proof_')) {
         particles.enemyDeath(visual.mesh.position, new THREE.Color(0x00ff44));
         sound.play('multiplierUp', { volume: 0.5, pitch: 1.8 });
         scene.remove(visual.mesh);
@@ -5225,7 +5311,7 @@ async function main() {
     }
     // Remove collected/expired shield pickups
     networkShieldPickups.forEach((visual, id) => {
-      if (!activeShieldPickupIds.has(id)) {
+      if (!activeShieldPickupIds.has(id) && !id.startsWith('__pickup_proof_')) {
         particles.enemyDeath(visual.mesh.position, new THREE.Color(0x4488ff));
         sound.play('multiplierUp', { volume: 0.5, pitch: 2.2 });
         scene.remove(visual.mesh);
@@ -7182,17 +7268,14 @@ async function main() {
       const transform = getTransform;
       const totalTime = game.clock.totalTime;
       networkSuperPickups.forEach((visual) => {
-        const { position, normal, tangent, bitangent } = transform(visual.surfaceU, visual.surfaceV);
+        const frame = transform(visual.surfaceU, visual.surfaceV);
 
         // Bob above surface
         const bob = Math.sin(totalTime * 3 + visual.spawnTime) * 0.08;
-        visual.mesh.position.copy(position).addScaledVector(normal, 0.5 + bob);
-
-        // Orient to surface + slow spin
-        _spMat4.makeBasis(tangent, normal, bitangent);
-        _spQSurface.setFromRotationMatrix(_spMat4);
-        _spQSpin.setFromAxisAngle(_spSpinAxis, totalTime * 1.2);
-        visual.mesh.quaternion.copy(_spQSurface).multiply(_spQSpin);
+        applyPickupSurfacePose(visual.mesh, frame, {
+          normalOffset: 0.5 + bob,
+          spinAngle: totalTime * 1.2,
+        });
 
         // Pulse core scale
         const core = visual.mesh.getObjectByName('core');
@@ -7213,9 +7296,12 @@ async function main() {
       const transform = getTransform;
       const totalTime = game.clock.totalTime;
       networkHealthPickups.forEach((visual) => {
-        const { position, normal } = transform(visual.surfaceU, visual.surfaceV);
+        const frame = transform(visual.surfaceU, visual.surfaceV);
         const bob = Math.sin(totalTime * 4 + visual.spawnTime) * 0.07;
-        visual.mesh.position.copy(position).addScaledVector(normal, 0.45 + bob);
+        applyPickupSurfacePose(visual.mesh, frame, {
+          normalOffset: 0.45 + bob,
+          spinAngle: totalTime * 0.8,
+        });
         // Pulse opacity on core
         const core = visual.mesh.children[0] as THREE.Mesh | undefined;
         if (core && core.material instanceof THREE.Material && 'opacity' in core.material) {
@@ -7233,14 +7319,12 @@ async function main() {
       const transform = getTransform;
       const totalTime = game.clock.totalTime;
       networkShieldPickups.forEach((visual) => {
-        const { position, normal, tangent, bitangent } = transform(visual.surfaceU, visual.surfaceV);
+        const frame = transform(visual.surfaceU, visual.surfaceV);
         const bob = Math.sin(totalTime * 3 + visual.spawnTime * 0.7) * 0.06;
-        visual.mesh.position.copy(position).addScaledVector(normal, 0.42 + bob);
-        // Spin the octahedron — reuse pre-allocated temp objects (no GC pressure, s44r19-01 fix)
-        _shMat4.makeBasis(tangent, normal, bitangent);
-        _shQSurface.setFromRotationMatrix(_shMat4);
-        _shQSpin.setFromAxisAngle(_shSpinAxis, -totalTime * 1.5);
-        visual.mesh.quaternion.copy(_shQSurface).multiply(_shQSpin);
+        applyPickupSurfacePose(visual.mesh, frame, {
+          normalOffset: 0.42 + bob,
+          spinAngle: -totalTime * 1.5,
+        });
         visual.mesh.userData.ageFactor = 1.0;
         visual.mesh.userData.surfaceU = visual.surfaceU;
         visual.mesh.userData.surfaceV = visual.surfaceV;
@@ -8316,81 +8400,43 @@ async function main() {
     geomPool.applySurfaceProjection(transform);
 
     // -----------------------------------------------------------------------
-    // Pickup dimming (LAN parity with SP's RenderLoop.ts pickup_dimming).
-    // Dims ALL pickup types on the far side of the surface so players know
-    // they are not immediately reachable. Uses UV distance from local player
-    // — same thresholds as single-player (NEAR=0.20, FAR=0.45, min=0.35).
-    // The spawn-indicator ring is kept at full brightness.
-    // Covers: networkWeaponPickups, networkBuffPickups, localCompanionPickups, localBuffPickups.
+    // Pickup visibility uses the same topology classifier as enemies. The
+    // shared pickup policy keeps occluded bodies readable and exempts spawn
+    // indicators while preserving opaque-surface behavior.
     // -----------------------------------------------------------------------
-    {
-      const lpPickup = networkPlayers.get(localPlayerId);
-      const hasAnyPickup = networkWeaponPickups.size > 0 || networkBuffPickups.size > 0 || localCompanionPickups.length > 0 || localBuffPickups.length > 0;
-      if (lpPickup && hasAnyPickup) {
-        const PICKUP_NEAR_UV   = 0.20;
-        const PICKUP_FAR_UV    = 0.45;
-        const PICKUP_MIN_SCALE = 0.35;
-        const puPlayerU = lpPickup.surfaceU;
-        const puPlayerV = lpPickup.surfaceV;
-        const puWrapsV  = surf.wrapsV;
-
-        const computeDimFactor = (pickupU: number, pickupV: number): number => {
-          const euRaw = Math.abs(pickupU - puPlayerU);
-          const evRaw = Math.abs(pickupV - puPlayerV);
-          const eu = Math.min(euRaw, 1.0 - euRaw);
-          const ev = puWrapsV ? Math.min(evRaw, 1.0 - evRaw) : evRaw;
-          const uvDist = Math.sqrt(eu * eu + ev * ev);
-          if (uvDist <= PICKUP_NEAR_UV) return 1.0;
-          if (uvDist >= PICKUP_FAR_UV) return PICKUP_MIN_SCALE;
-          const t = (uvDist - PICKUP_NEAR_UV) / (PICKUP_FAR_UV - PICKUP_NEAR_UV);
-          const smooth = t * t * (3.0 - 2.0 * t);
-          return 1.0 - smooth * (1.0 - PICKUP_MIN_SCALE);
-        };
-
-        const applyDimming = (mesh: THREE.Group, pickupU: number, pickupV: number): void => {
-          const dimFactor = computeDimFactor(pickupU, pickupV);
-          const ageFactor = (mesh.userData.ageFactor as number) ?? 1.0;
-          mesh.traverse((child) => {
-            if (child.name === 'spawn-indicator') return;
-            if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-              const mat = child.material as THREE.MeshBasicMaterial;
-              if ('opacity' in mat) {
-                if (mat.userData.baseOpacity === undefined) {
-                  mat.userData.baseOpacity = mat.opacity;
-                }
-                mat.opacity = (mat.userData.baseOpacity as number) * ageFactor * dimFactor;
-              }
-            } else if (child instanceof THREE.Sprite) {
-              if (child.material.userData.baseOpacity !== undefined) {
-                child.material.opacity = (child.material.userData.baseOpacity as number) * ageFactor * dimFactor;
-              }
-            }
-          });
-        };
-
-        networkWeaponPickups.forEach((pickup) => {
-          if (!pickup.active) { pickup.mesh.visible = false; return; }
-          applyDimming(pickup.mesh, pickup.surfaceU, pickup.surfaceV);
+    if (localVisibilityPlayer?.mesh && surfaceVisibilityResolver && playerVisibilityFace !== undefined) {
+      const applyPickupVisibility = (mesh: THREE.Group): void => {
+        resolveAndApplyPickupVisibility({
+          resolver: surfaceVisibilityResolver!,
+          playerWorldPosition: localVisibilityPlayer.mesh.position,
+          playerFaceIndex: playerVisibilityFace,
+          pickupWorldPosition: mesh.position,
+          pickupMesh: mesh,
+          opaqueSurfaces: networkOpaqueSurfaces,
         });
-        networkSuperPickups.forEach((visual) => {
-          if (!visual.mesh.visible) return;
-          applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV);
-        });
-        networkBuffPickups.forEach((bp) => {
-          if (!bp.active) { bp.mesh.visible = false; return; }
-          applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV);
-        });
-        networkHealthPickups.forEach((visual) => {
-          if (!visual.mesh.visible) return;
-          applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV);
-        });
-        networkShieldPickups.forEach((visual) => {
-          if (!visual.mesh.visible) return;
-          applyDimming(visual.mesh, visual.surfaceU, visual.surfaceV);
-        });
-        for (const cp of localCompanionPickups) { if (cp.active) applyDimming(cp.mesh, cp.surfaceU, cp.surfaceV); }
-        for (const bp of localBuffPickups)      { if (bp.active) applyDimming(bp.mesh, bp.surfaceU, bp.surfaceV); }
-      }
+      };
+      networkWeaponPickups.forEach((pickup) => {
+        if (!pickup.active) { pickup.mesh.visible = false; return; }
+        applyPickupVisibility(pickup.mesh);
+      });
+      networkSuperPickups.forEach((visual) => {
+        if (!visual.mesh.visible) return;
+        applyPickupVisibility(visual.mesh);
+      });
+      networkBuffPickups.forEach((bp) => {
+        if (!bp.active) { bp.mesh.visible = false; return; }
+        applyPickupVisibility(bp.mesh);
+      });
+      networkHealthPickups.forEach((visual) => {
+        if (!visual.mesh.visible) return;
+        applyPickupVisibility(visual.mesh);
+      });
+      networkShieldPickups.forEach((visual) => {
+        if (!visual.mesh.visible) return;
+        applyPickupVisibility(visual.mesh);
+      });
+      for (const cp of localCompanionPickups) { if (cp.active) applyPickupVisibility(cp.mesh); }
+      for (const bp of localBuffPickups)      { if (bp.active) applyPickupVisibility(bp.mesh); }
     }
 
     // -----------------------------------------------------------------------
@@ -8633,6 +8679,9 @@ async function main() {
       getEnemyInstanceDebug: enemyBodyProofDebug.getEnemyInstanceDebug,
       getEnemyRenderSamples: enemyBodyProofDebug.getEnemyRenderSamples,
       setVisualProofIsolation: enemyBodyProofDebug.setVisualProofIsolation,
+      spawnPickupVisualProofSet,
+      getPickupVisualProofSamples: pickupVisualProofDebug.getPickupVisualProofSamples,
+      setPickupVisualProofIsolation: pickupVisualProofDebug.setPickupVisualProofIsolation,
       forceLowLOD: enemyBodyProofDebug.forceLowLOD,
       sampleEnemyRenderAfterCameraOffset: enemyBodyProofDebug.sampleEnemyRenderAfterCameraOffset,
       runAlignedPlayerLayeringProof: enemyBodyProofDebug.runAlignedPlayerLayeringProof,
