@@ -192,6 +192,7 @@ describe('isProtectedFromStop', () => {
     let lastRotateTime: Map<string, number>;
     let lastShotTime: Map<string, number>;
     let lastAimAngle: Map<string, number>;
+    let playerShooting: Map<string, boolean>;
 
     function simulateInput(
       sessionId: string,
@@ -209,6 +210,7 @@ describe('isProtectedFromStop', () => {
       if (input.shooting) {
         lastShotTime.set(sessionId, timestamp);
       }
+      playerShooting.set(sessionId, input.shooting);
     }
 
     beforeEach(() => {
@@ -216,6 +218,7 @@ describe('isProtectedFromStop', () => {
       lastRotateTime = new Map();
       lastShotTime = new Map();
       lastAimAngle = new Map();
+      playerShooting = new Map();
     });
 
     it('records move time when moveX != 0', () => {
@@ -253,11 +256,13 @@ describe('isProtectedFromStop', () => {
     it('records shot time when shooting=true', () => {
       simulateInput('p1', { moveX: 0, moveY: 0, aimAngle: 0, shooting: true }, 10000);
       expect(lastShotTime.get('p1')).toBe(10000);
+      expect(playerShooting.get('p1')).toBe(true);
     });
 
     it('does NOT record shot time when shooting=false', () => {
       simulateInput('p1', { moveX: 0, moveY: 0, aimAngle: 0, shooting: false }, 10000);
       expect(lastShotTime.get('p1')).toBeUndefined();
+      expect(playerShooting.get('p1')).toBe(false);
     });
   });
 });
