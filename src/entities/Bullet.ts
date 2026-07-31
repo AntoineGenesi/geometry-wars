@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three';
 import { MeshSurface, FacePosition } from '../surfaces/MeshSurface';
+import { advanceProjectileOnMesh } from '../surfaces/geodesic/ProjectileGeodesic';
 import { BULLET_SPEED_WORLD, BULLET_LIFETIME } from '../shared/GameBalanceConstants';
 
 // ---------------------------------------------------------------------------
@@ -285,84 +286,34 @@ export class BulletPool {
         line.position.y = prevY;
         line.position.z = prevZ;
 
-        const geoResult = this.meshSurface.moveGeodesic(b.facePos, _tempDir, dist);
-
-        if (geoResult.distanceTraveled < dist * 0.05 ||
-            isNaN(geoResult.position.x) || isNaN(geoResult.position.y) || isNaN(geoResult.position.z)) {
-          // Geodesic walk failed -- fall back to BVH projection
-          line.position.x = prevX + b.dirX * dist;
-          line.position.y = prevY + b.dirY * dist;
-          line.position.z = prevZ + b.dirZ * dist;
-
-          const bvhResult = this.meshSurface.closestPointOnSurface(line.position);
-          if (!bvhResult) {
-            this.kill(i);
-            continue;
-          }
-
-          line.position.copy(bvhResult.point);
-          b.facePos = this.meshSurface.initGeodesicPosition(bvhResult.point, bvhResult.faceIndex);
-          b.faceIndex = bvhResult.faceIndex;
-
-          // Update direction tangent to new surface
-          const normal = bvhResult.normal;
-          _tempDir.set(b.dirX, b.dirY, b.dirZ);
-          const dot = _tempDir.dot(normal);
-          _tempDir.x -= dot * normal.x;
-          _tempDir.y -= dot * normal.y;
-          _tempDir.z -= dot * normal.z;
-          const dirLen = _tempDir.length();
-          if (dirLen > 0.0001) {
-            _tempDir.multiplyScalar(1 / dirLen);
-          } else {
-            this.kill(i);
-            continue;
-          }
-          b.dirX = _tempDir.x;
-          b.dirY = _tempDir.y;
-          b.dirZ = _tempDir.z;
-          // Update surface normal from BVH fallback
-          b.normalX = normal.x;
-          b.normalY = normal.y;
-          b.normalZ = normal.z;
-        } else {
-          // Geodesic walk succeeded
-          line.position.copy(geoResult.position);
-          b.facePos = geoResult.facePosition;
-          b.faceIndex = geoResult.faceIndex;
-
-          // Use the parallel-transported direction from the geodesic walker
-          const transportedDir = geoResult.direction;
-          const tLen = transportedDir.length();
-          if (tLen > 0.0001) {
-            b.dirX = transportedDir.x / tLen;
-            b.dirY = transportedDir.y / tLen;
-            b.dirZ = transportedDir.z / tLen;
-          } else {
-            this.kill(i);
-            continue;
-          }
-          // Update surface normal for depth-based opacity computation
-          b.normalX = geoResult.normal.x;
-          b.normalY = geoResult.normal.y;
-          b.normalZ = geoResult.normal.z;
-
-          // If geodesic only covered part of the distance, use BVH for remainder
-          const remaining = dist - geoResult.distanceTraveled;
-          if (remaining > dist * 0.1) {
-            const bvhResult = this.meshSurface.moveOnSurface(
-              line.position,
-              geoResult.normal,
-              transportedDir,
-              remaining,
-            );
-            if (bvhResult && line.position.distanceTo(bvhResult.point) > remaining * 0.05) {
-              line.position.copy(bvhResult.point);
-              b.facePos = this.meshSurface.initGeodesicPosition(bvhResult.point, bvhResult.faceIndex);
-              b.faceIndex = bvhResult.faceIndex;
-            }
-          }
+        const geoResult = advanceProjectileOnMesh(
+          this.meshSurface,
+          b.facePos,
+          line.position,
+          _tempDir,
+          dist,
+        );
+        if (!geoResult) {
+          this.kill(i);
+          continue;
         }
+
+        line.position.copy(geoResult.position);
+        b.facePos = geoResult.facePosition;
+        b.faceIndex = geoResult.faceIndex;
+
+        const transportedDir = geoResult.direction;
+        const tLen = transportedDir.length();
+        if (tLen <= 0.0001) {
+          this.kill(i);
+          continue;
+        }
+        b.dirX = transportedDir.x / tLen;
+        b.dirY = transportedDir.y / tLen;
+        b.dirZ = transportedDir.z / tLen;
+        b.normalX = geoResult.normal.x;
+        b.normalY = geoResult.normal.y;
+        b.normalZ = geoResult.normal.z;
       } else if (this.meshSurface) {
         // -- BVH projection fallback (no geodesic state) --
         const result = this.meshSurface.closestPointOnSurface(line.position);

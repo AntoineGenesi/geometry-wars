@@ -43,6 +43,7 @@ import { InputManager } from './input/InputManager';
 import { isMobile } from './core/MobileDetector';
 import { TouchInput } from './input/TouchInput';
 import { MeshSurface, FacePosition } from './surfaces/MeshSurface';
+import { advanceProjectileOnMesh } from './surfaces/geodesic/ProjectileGeodesic';
 import { getSoundEngine } from './audio/SoundEngine';
 import { BackgroundMusic } from './audio/BackgroundMusic';
 import { KillLog } from './ui/KillLog';
@@ -1553,10 +1554,14 @@ async function main() {
   // instead of snapping in onStateChange (was 30Hz, now 60Hz but still benefits
   // from smooth lerp). Same pattern as enemyTargetMeshLocation.
   const bulletTargetUV = new Map<string, { u: number; v: number; dirX: number; dirY: number }>();
-  // Client-side geodesic state for visual bullet rendering.
-  // Server uses UV-based movement (Christoffel stepping) for authoritative hit detection.
-  // Client uses FaceWalker geodesics so bullets visually follow great circles on every surface.
-  const bulletGeodesicState = new Map<string, { facePos: FacePosition, dirWorld: THREE.Vector3 }>();
+  // Client-side geodesic state for rendering and active MP hit reporting.
+  // Server UV movement keeps schema lifetime/state presence; its legacy collision loops are
+  // disabled by default. SP BulletPool and this MP path share advanceProjectileOnMesh().
+  const bulletGeodesicState = new Map<string, {
+    facePos: FacePosition;
+    positionWorld: THREE.Vector3;
+    dirWorld: THREE.Vector3;
+  }>();
   // s44r-04-02 / s44r3-02: Track per-bullet, per-enemy hits to prevent double-hitting the same enemy.
   // Using Map<bulletId, Set<enemyId>> instead of a flat Set<bulletId> so a bullet can hit
   // multiple different enemies (penetration) while still deduplicating hits on the same enemy.
@@ -4977,7 +4982,11 @@ async function main() {
             const closest = meshSurface.closestPointOnSurface(bulletWorldPos);
             if (closest) {
               const facePos = meshSurface.initGeodesicPosition(closest.point, closest.faceIndex);
-              bulletGeodesicState.set(bullet.id, { facePos, dirWorld: bulletWorldDir });
+              bulletGeodesicState.set(bullet.id, {
+                facePos,
+                positionWorld: closest.point.clone(),
+                dirWorld: bulletWorldDir,
+              });
             }
 
             // Track bullet spawn origin for telemetry (bullet_origin_check)
@@ -8140,9 +8149,9 @@ async function main() {
     // Per-frame bullet rendering via client-side FaceWalker geodesics.
     // s41-01 fix: restored FaceWalker (s40-04) after s40-08 regression.
     //
-    // Architecture: visual rendering (client) and hit detection (server) are separate:
-    //   Visual: client uses FaceWalker.moveGeodesic() — true great-circle paths on all surfaces
-    //   Hit detection: server uses Christoffel UV-based collision (unchanged, server-authoritative)
+    // Architecture: SP and MP active projectile positions share the same FaceWalker +
+    // validated surface-fallback helper. The MP client uses that position for rendering
+    // and hit reports; server UV stepping remains lifetime/state bookkeeping by default.
     //
     // Server sends b.surfaceU/V/dirX/dirY on each state patch (~20Hz) used for spawn init.
     // Client FaceWalker advances independently between patches for smooth geodesic rendering.
@@ -8166,8 +8175,16 @@ async function main() {
       if (meshSurface && geoState) {
         // Advance bullet along geodesic (true great-circle path on any surface)
         const dist = BULLET_SPEED_WORLD * renderDt;
-        const result = meshSurface.moveGeodesic(geoState.facePos, geoState.dirWorld, dist);
+        const result = advanceProjectileOnMesh(
+          meshSurface,
+          geoState.facePos,
+          geoState.positionWorld,
+          geoState.dirWorld,
+          dist,
+        );
+        if (!result) return;
         geoState.facePos = result.facePosition;
+        geoState.positionWorld.copy(result.position);
         geoState.dirWorld.copy(result.direction);
         _netTempPos.copy(result.position).addScaledVector(result.normal, 0.02);
         _netTempDir.copy(result.direction);
