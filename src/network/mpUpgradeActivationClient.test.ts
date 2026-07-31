@@ -3,10 +3,16 @@ import { MasteryPointStore, weaponTypeFromNodeId } from '../systems/MasteryPoint
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import { WeaponType } from '../weapons/WeaponTypes';
 import {
+  reconcileActiveUpgradeSnapshot,
   reconcileUpgradeActivationResult,
   upgradeActivationKey,
   type PendingUpgradeActivation,
 } from './mpUpgradeActivationClient';
+
+const SERVER_TO_WEAPON_TYPE = {
+  standard: WeaponType.Standard,
+  spread: WeaponType.Spread,
+} satisfies Record<string, WeaponType>;
 
 function makeStore(nodeIds: string[]): MasteryPointStore {
   const store = new MasteryPointStore();
@@ -84,5 +90,39 @@ describe('MP upgrade activation client reconciliation', () => {
     expect(tracker.getPendingChoice()).toBeNull();
     expect(tracker.getActiveUpgrades(WeaponType.Standard).size).toBe(0);
     expect(onActivated).not.toHaveBeenCalled();
+  });
+
+  it('treats an empty server active-upgrade snapshot as a complete clear', () => {
+    const tracker = new MatchUpgradeTracker(makeStore([]));
+    tracker.syncActiveUpgrades(WeaponType.Standard, ['standard_a_2']);
+    tracker.syncActiveUpgrades(WeaponType.Spread, ['spread_a_1']);
+
+    const activeKeys = reconcileActiveUpgradeSnapshot({
+      activeUpgradeNodes: new Map<string, number>(),
+      serverToWeaponType: SERVER_TO_WEAPON_TYPE,
+      knownWeaponTypes: [WeaponType.Standard, WeaponType.Spread],
+      matchUpgradeTracker: tracker,
+    });
+
+    expect(activeKeys).toEqual([]);
+    expect(tracker.getActiveUpgrades(WeaponType.Standard).size).toBe(0);
+    expect(tracker.getActiveUpgrades(WeaponType.Spread).size).toBe(0);
+  });
+
+  it('treats a reduced server active-upgrade snapshot as a replacement', () => {
+    const tracker = new MatchUpgradeTracker(makeStore([]));
+    tracker.syncActiveUpgrades(WeaponType.Standard, ['standard_a_2']);
+    tracker.syncActiveUpgrades(WeaponType.Spread, ['spread_a_1', 'spread_a_2']);
+
+    const activeKeys = reconcileActiveUpgradeSnapshot({
+      activeUpgradeNodes: new Map<string, number>([['standard:standard_a_1', 1]]),
+      serverToWeaponType: SERVER_TO_WEAPON_TYPE,
+      knownWeaponTypes: [WeaponType.Standard, WeaponType.Spread],
+      matchUpgradeTracker: tracker,
+    });
+
+    expect(activeKeys).toEqual(['standard:standard_a_1']);
+    expect([...tracker.getActiveUpgrades(WeaponType.Standard)]).toEqual(['standard_a_1']);
+    expect(tracker.getActiveUpgrades(WeaponType.Spread).size).toBe(0);
   });
 });

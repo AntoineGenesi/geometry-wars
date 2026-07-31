@@ -101,6 +101,7 @@ import {
   ClientMetricsPayload,
 } from './network/NetworkClient';
 import {
+  reconcileActiveUpgradeSnapshot,
   reconcileUpgradeActivationResult,
   upgradeActivationKey,
   type PendingUpgradeActivation,
@@ -612,6 +613,8 @@ const SERVER_TO_WEAPON_TYPE: Record<string, WeaponType> = {
   black_hole: WeaponType.BlackHole,
   tesla_coil: WeaponType.TeslaCoil,
 };
+
+const SERVER_KNOWN_WEAPON_TYPES = [...new Set(Object.values(SERVER_TO_WEAPON_TYPE))];
 
 // ---------------------------------------------------------------------------
 // Surface transform helper — now using shared module (SharedGameSetup.ts)
@@ -4082,22 +4085,12 @@ async function main() {
       // Server is authoritative for accepted in-match upgrades. Reconcile the
       // local tracker so WeaponManager visuals follow the same state as damage.
       if (id === localPlayerId && netPlayer.activeUpgradeNodes) {
-        const byWeapon = new Map<WeaponType, string[]>();
-        const activeKeys: string[] = [];
-        netPlayer.activeUpgradeNodes.forEach((_value, key) => {
-          activeKeys.push(key);
-          const separator = key.indexOf(':');
-          if (separator <= 0) return;
-          const weaponType = SERVER_TO_WEAPON_TYPE[key.slice(0, separator)];
-          if (!weaponType) return;
-          const nodeIds = byWeapon.get(weaponType) ?? [];
-          nodeIds.push(key.slice(separator + 1));
-          byWeapon.set(weaponType, nodeIds);
+        latestLocalActiveUpgradeKeys = reconcileActiveUpgradeSnapshot({
+          activeUpgradeNodes: netPlayer.activeUpgradeNodes,
+          serverToWeaponType: SERVER_TO_WEAPON_TYPE,
+          knownWeaponTypes: SERVER_KNOWN_WEAPON_TYPES,
+          matchUpgradeTracker,
         });
-        latestLocalActiveUpgradeKeys = activeKeys.sort();
-        for (const [weaponType, nodeIds] of byWeapon) {
-          matchUpgradeTracker.syncActiveUpgrades(weaponType, nodeIds);
-        }
       }
 
       // Sync state from server
