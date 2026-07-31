@@ -212,6 +212,10 @@ interface GameDebugAPI {
   getEnemies: () => { id: string; type: string; u: number; v: number; hp: number }[];
   getEnemyMeshPathingSamples: () => Record<string, unknown>[];
   getBulletCount: () => number;
+  getUpgradeProofState: () => Record<string, unknown>;
+  setupUpgradeProof: (weaponType: string, killCount: number) => boolean;
+  requestUpgradeProofActivation: (weaponType: string, nodeId: string, unlockedNodeIds: string[]) => boolean;
+  fireUpgradeProofShot: () => boolean;
   getScore: () => number;
   isConnected: () => boolean;
   getPlayerCount: () => number;
@@ -1274,6 +1278,13 @@ async function main() {
   // We do NOT touch isPaused (which would sync with the server) — only this client pauses.
   let buildChoiceActive = false;
   const pendingUpgradeActivations = new Map<string, PendingUpgradeActivation>();
+  let latestLocalActiveUpgradeKeys: string[] = [];
+  let lastUpgradeActivationResult: {
+    accepted: boolean;
+    nodeId: string;
+    weaponType: string;
+    reason?: string;
+  } | null = null;
 
   function wireBuildChoiceCallback(): void {
     matchUpgradeTracker.onBuildChoiceAvailable = (weaponType, availableNodeIds) => {
@@ -4072,7 +4083,9 @@ async function main() {
       // local tracker so WeaponManager visuals follow the same state as damage.
       if (id === localPlayerId && netPlayer.activeUpgradeNodes) {
         const byWeapon = new Map<WeaponType, string[]>();
+        const activeKeys: string[] = [];
         netPlayer.activeUpgradeNodes.forEach((_value, key) => {
+          activeKeys.push(key);
           const separator = key.indexOf(':');
           if (separator <= 0) return;
           const weaponType = SERVER_TO_WEAPON_TYPE[key.slice(0, separator)];
@@ -4081,6 +4094,7 @@ async function main() {
           nodeIds.push(key.slice(separator + 1));
           byWeapon.set(weaponType, nodeIds);
         });
+        latestLocalActiveUpgradeKeys = activeKeys.sort();
         for (const [weaponType, nodeIds] of byWeapon) {
           matchUpgradeTracker.syncActiveUpgrades(weaponType, nodeIds);
         }
@@ -6263,6 +6277,7 @@ async function main() {
         }
       },
       onUpgradeActivationResult: (data) => {
+        lastUpgradeActivationResult = { ...data };
         const weaponType = SERVER_TO_WEAPON_TYPE[data.weaponType] ?? WeaponType.Standard;
         const reconciliation = reconcileUpgradeActivationResult({
           accepted: data.accepted,
@@ -8766,6 +8781,46 @@ async function main() {
         return samples;
       },
       getBulletCount: () => bulletIdToIndex.size,
+      getUpgradeProofState: () => {
+        const bulletCounts: Record<string, number> = {};
+        bulletWeaponType.forEach((weaponType) => {
+          bulletCounts[weaponType] = (bulletCounts[weaponType] ?? 0) + 1;
+        });
+        return {
+          currentWeapon: localPlayerWeaponType,
+          schemaActiveUpgradeNodes: [...latestLocalActiveUpgradeKeys],
+          trackerActiveUpgradeNodes: {
+            standard: [...matchUpgradeTracker.getActiveUpgrades(WeaponType.Standard)],
+            spread: [...matchUpgradeTracker.getActiveUpgrades(WeaponType.Spread)],
+          },
+          lastActivationResult: lastUpgradeActivationResult,
+          bulletCounts,
+        };
+      },
+      setupUpgradeProof: (weaponType, killCount) => {
+        if (!_netMainTestMode || (weaponType !== 'standard' && weaponType !== 'spread')) return false;
+        network.sendUpgradeProofSetup({ weaponType, killCount });
+        return true;
+      },
+      requestUpgradeProofActivation: (weaponType, nodeId, unlockedNodeIds) => {
+        if (!_netMainTestMode) return false;
+        const mappedWeapon = SERVER_TO_WEAPON_TYPE[weaponType];
+        if (!mappedWeapon) return false;
+        pendingUpgradeActivations.set(
+          upgradeActivationKey(nodeId, mappedWeapon),
+          { nodeId, weaponType: mappedWeapon },
+        );
+        lastUpgradeActivationResult = null;
+        network.sendUpgradeActivation({ nodeId, weaponType, unlockedNodeIds });
+        return true;
+      },
+      fireUpgradeProofShot: () => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        const idle = { moveX: 0, moveY: 0, aimAngle: 0, bomb: false, boost: false };
+        network.sendInput({ ...idle, shooting: true });
+        setTimeout(() => network.sendInput({ ...idle, shooting: false }), 75);
+        return true;
+      },
       getScore: () => {
         const lp = networkPlayers.get(localPlayerId);
         return lp ? lp.score : 0;

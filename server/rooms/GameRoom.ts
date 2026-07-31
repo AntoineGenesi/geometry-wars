@@ -1261,6 +1261,39 @@ export class GameRoom extends Room<GameState> {
       client.send('upgrade_activation_result', result);
     });
 
+    this.onMessage('upgrade_proof_setup', (client, data: { weaponType?: unknown; killCount?: unknown }) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') return;
+      if (client.sessionId !== this.state.hostId) return;
+      const weaponType = data?.weaponType === 'standard' || data?.weaponType === 'spread'
+        ? data.weaponType
+        : null;
+      const player = this.state.players.get(client.sessionId);
+      if (!weaponType || !player) return;
+
+      const killCount = typeof data.killCount === 'number' && Number.isFinite(data.killCount)
+        ? Math.max(0, Math.min(650, Math.floor(data.killCount)))
+        : 0;
+      let weaponKills = this.playerUpgradeKillCounts.get(client.sessionId);
+      if (!weaponKills) {
+        weaponKills = new Map<string, number>();
+        this.playerUpgradeKillCounts.set(client.sessionId, weaponKills);
+      }
+      weaponKills.set(weaponType, killCount);
+
+      const ammo = weaponType === 'spread' ? 999 : -1;
+      player.weaponType = weaponType;
+      player.weaponAmmo = ammo;
+      this.playerWeaponInventory.set(client.sessionId, [
+        { type: 'standard', ammo: -1 },
+        ...(weaponType === 'spread' ? [{ type: 'spread', ammo }] : []),
+      ]);
+      this.playerWeaponIndex.set(client.sessionId, weaponType === 'spread' ? 1 : 0);
+      (player as unknown as { lastBlasterShotTime?: number; lastShotTime?: number }).lastBlasterShotTime = -Infinity;
+      (player as unknown as { lastBlasterShotTime?: number; lastShotTime?: number }).lastShotTime = -Infinity;
+      this.state.bullets.clear();
+      this.logger.log(`[GameRoom] Upgrade proof setup: player=${client.sessionId} weapon=${weaponType} kills=${killCount}`);
+    });
+
     this.onMessage('start', (client, data?: { choice?: string; settings?: Partial<GameSettings> }) => {
       // Only the host can start the game
       if (client.sessionId !== this.state.hostId) {

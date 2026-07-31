@@ -1048,6 +1048,15 @@ export class NetworkClient {
   }
 
   /**
+   * Configure deterministic state for the opt-in MP browser proof harness.
+   * The server ignores this message unless GEOMETRY_WARS_MP_PROOF_CONTROLS=1.
+   */
+  sendUpgradeProofSetup(data: { weaponType: string; killCount: number }): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('upgrade_proof_setup', data);
+  }
+
+  /**
    * Client-authoritative pickup collection: player detects proximity in world space
    * and notifies server to apply the effect and remove the pickup from state.
    * Server trusts this message (no UV-based re-check) to avoid sphere-approx errors.

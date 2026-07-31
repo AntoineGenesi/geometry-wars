@@ -233,8 +233,18 @@ async function createPage(browser) {
   return page;
 }
 
-async function navigateToGame(page, surface) {
-  const url = `${BASE_URL}?mode=network&surface=${surface}&server=${encodeURIComponent(SERVER_URL)}&debug=true&testMode=true`;
+async function navigateToGame(page, surface, { name, creator }) {
+  const params = new URLSearchParams({
+    mode: 'network',
+    surface,
+    server: SERVER_URL,
+    debug: 'true',
+    testMode: 'true',
+    renderer: 'webgl',
+    name,
+  });
+  if (creator) params.set('creator', '1');
+  const url = `${BASE_URL}?${params.toString()}`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: TIMEOUTS.pageLoad });
   await sleep(TIMEOUTS.gameInit);
 }
@@ -434,7 +444,7 @@ async function runSmokeTests(hostPage, joinPage, surface) {
   console.log('\n  Scenario 4: Stability');
 
   const stabilityStart = Date.now();
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 13; i++) {
     const key = ['w', 'a', 's', 'd'][i % 4];
     await hostPage.keyboard.down(key);
     const x = 320 + Math.cos(i * 0.5) * 150;
@@ -478,6 +488,9 @@ function generateHtmlReport(surfaceRuns, screenshotPaths, durationMs) {
   const totalFail = surfaceRuns.reduce((sum, r) => sum + r.results.filter(t => t.status === 'FAIL').length, 0);
   const totalSkip = surfaceRuns.reduce((sum, r) => sum + r.results.filter(t => t.status === 'SKIP').length, 0);
   const overallPass = totalFail === 0;
+  const connectionPass = surfaceRuns.length > 0 && surfaceRuns.every((run) =>
+    run.results.find((test) => test.name.startsWith('1a:'))?.status === 'PASS'
+    && run.results.find((test) => test.name.startsWith('1b:'))?.status === 'PASS');
 
   const statusColor = (s) => s === 'PASS' ? '#22c55e' : s === 'FAIL' ? '#ef4444' : '#94a3b8';
 
@@ -577,18 +590,18 @@ function generateHtmlReport(surfaceRuns, screenshotPaths, durationMs) {
 
   <div class="level6">
     <h3>⚠ Level 6 items (requires human testing)</h3>
-    ${level6Items}
+    ${level6Items.trim()}
   </div>
 
-  ${surfaceRows}
+  ${surfaceRows.trim()}
 
   <div style="margin-top:32px;padding:16px;background:#0f172a;border:1px solid #1e293b;border-radius:8px">
-    <h3 style="margin:0 0 8px;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:1px">Code Path Verified</h3>
+    <h3 style="margin:0 0 8px;color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:1px">${overallPass ? 'Full Smoke Path Verified' : connectionPass ? 'Connection Path Verified; Gameplay Checks Failed' : 'Live Attempt Inconclusive'}</h3>
     <p style="margin:0;color:#94a3b8;font-size:13px">
-      Tests exercise the REAL code paths:<br>
+      ${connectionPass ? 'Both browser clients connected through' : 'The run attempted'} the real code paths:<br>
       <code style="color:#38bdf8">src/network-main.ts</code> (client) →
       <code style="color:#38bdf8">server/rooms/GameRoom.ts</code> (server)<br>
-      No mocking. Two real WebSocket clients connected to a live Colyseus server.
+      ${overallPass ? 'All smoke checks passed.' : connectionPass ? 'Connection succeeded, but this report is not a full gameplay smoke pass.' : 'No live connection or gameplay claim is made.'}
     </p>
   </div>
 </body>
@@ -608,7 +621,7 @@ async function runSurfaceSmokeTest(hostPage, joinPage, surface, runIdx) {
 
   // Navigate both pages
   console.log(`\n  Navigating Host page (${surface})...`);
-  await navigateToGame(hostPage, surface);
+  await navigateToGame(hostPage, surface, { name: `MPHost${runIdx}`, creator: true });
   const ss1 = await screenshot(hostPage, `${surface}-01-host-loaded.png`);
   screenshots.push(ss1);
 
@@ -616,7 +629,7 @@ async function runSurfaceSmokeTest(hostPage, joinPage, surface, runIdx) {
   await sleep(5000);
 
   console.log(`  Navigating Join page (${surface})...`);
-  await navigateToGame(joinPage, surface);
+  await navigateToGame(joinPage, surface, { name: `MPJoin${runIdx}`, creator: false });
   const ss2 = await screenshot(joinPage, `${surface}-02-join-loaded.png`);
   screenshots.push(ss2);
 
@@ -727,7 +740,7 @@ async function main() {
       console.log('  Vite stopped.');
     }
     await sleep(1000);
-    killPortProcesses([COLYSEUS_PORT]);
+    killPortProcesses([DEV_SERVER_PORT, COLYSEUS_PORT]);
 
     // Verify cleanup
     try {
