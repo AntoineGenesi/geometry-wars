@@ -4843,6 +4843,8 @@ async function main() {
                   ownerId: bullet.ownerId,
                   origin: { x: bulletWorldPos.x, y: bulletWorldPos.y, z: bulletWorldPos.z },
                   playerPos: { x: ownerMesh.position.x, y: ownerMesh.position.y, z: ownerMesh.position.z },
+                  uvDir: { x: bullet.dirX, y: bullet.dirY, z: bullet.dirZ },
+                  worldDir: { x: dirWorld.x, y: dirWorld.y, z: dirWorld.z },
                   distToPlayer: dist,
                 });
                 // Keep only last 50 spawns to avoid memory growth
@@ -6506,6 +6508,8 @@ async function main() {
     ownerId: string;
     origin: { x: number; y: number; z: number };
     playerPos: { x: number; y: number; z: number };
+    uvDir: { x: number; y: number; z: number };
+    worldDir: { x: number; y: number; z: number };
     distToPlayer: number;
   }> = [];
   const _mpTelCameraPos = new THREE.Vector3();
@@ -7390,6 +7394,7 @@ async function main() {
       game.renderer.getSize(_mpTelRendererSize);
       const viewportWidth = Math.max(1, window.innerWidth || _mpTelRendererSize.x || 1);
       const viewportHeight = Math.max(1, window.innerHeight || _mpTelRendererSize.y || 1);
+      const localServerPlayer = localPlayerId ? latestGameState?.players.get(localPlayerId) : null;
 
       // Build enemy array with distances and opacity
       const telEnemies: Array<{
@@ -7558,6 +7563,9 @@ async function main() {
           kills: (localPlayer as any)?.kills ?? 0,
           zoneTime: (localPlayer as any)?.zoneTime ?? 0,
           enemyKills: (localPlayer as any)?.enemyKills ?? 0,
+          weaponType: localServerPlayer?.weaponType ?? 'unknown',
+          weaponAmmo: localServerPlayer?.weaponAmmo ?? 0,
+          shooting: localServerPlayer?.shooting ?? false,
           alive: localAlive,
           collisionRadius: playerRadius,
           distanceToCamera: pPos ? pPos.distanceTo(_mpTelCameraPos) : -1,
@@ -7567,6 +7575,24 @@ async function main() {
         bullets: {
           count: bulletIdToIndex.size,
           recentSpawns: _mpTelBulletSpawns.slice(-20),
+          active: Array.from(bulletIdToIndex.entries()).slice(0, 20).map(([id, idx]) => {
+            const b = bulletPool.getBulletData(idx);
+            return {
+              id,
+              ownerId: bulletOwnerIds.get(id) ?? '',
+              u: b.surfaceU,
+              v: b.surfaceV,
+              dirX: b.dirX,
+              dirY: b.dirY,
+              dirZ: b.dirZ,
+              age: b.age,
+            };
+          }),
+        },
+        aim: {
+          lastSentInput: lastSentInput ? { ...lastSentInput } : null,
+          cameraRight: { x: _aimCamRight.x, y: _aimCamRight.y, z: _aimCamRight.z },
+          cameraUp: { x: _aimCamUp.x, y: _aimCamUp.y, z: _aimCamUp.z },
         },
         pickups: {
           weaponCount: networkWeaponPickups.size,
@@ -7593,6 +7619,7 @@ async function main() {
           playerCount: networkPlayers.size,
           isHost,
           localPlayerId,
+          roomPhase: currentRoomPhase,
         },
         frame: _mpTelFrameCount,
         time: game.clock.totalTime,
@@ -7636,6 +7663,7 @@ async function main() {
                     : null,
                   visualTriggerDelta: triggerPos ? pos.distanceTo(triggerPos) : -1,
                   playerWorldDist: pPos ? pPos.distanceTo(pos) : -1,
+                  playerTriggerWorldDist: pPos && triggerPos ? pPos.distanceTo(triggerPos) : -1,
                 };
               })
             : [],

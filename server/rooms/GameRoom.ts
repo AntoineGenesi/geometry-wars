@@ -2702,6 +2702,14 @@ export class GameRoom extends Room<GameState> {
 
     // Apply aim angle immediately (no movement dependency)
     player.aimAngle = input.aimAngle;
+    player.shooting = input.shooting;
+    if (input.shooting
+        && this.state.roomPhase === 'playing'
+        && !this.state.isPaused
+        && player.weaponType !== 'laser_beam'
+        && player.weaponType !== 'tesla_coil') {
+      this.tryShoot(player);
+    }
 
     // Handle bomb immediately (one-shot action, not continuous)
     // DISABLED (s44r-02): Bombs are not allowed in multiplayer
@@ -3068,7 +3076,10 @@ export class GameRoom extends Room<GameState> {
     // ── Blaster: always fires on its own independent cooldown ──
     const blasterConfig = WEAPON_CONFIGS['standard'];
     const blasterInterval = blasterConfig ? 1 / blasterConfig.fireRate : 1 / 6;
-    const lastBlasterShot = (player as unknown as { lastBlasterShotTime?: number }).lastBlasterShotTime ?? 0;
+    const rawLastBlasterShot = (player as unknown as { lastBlasterShotTime?: number }).lastBlasterShotTime;
+    const lastBlasterShot = Number.isFinite(rawLastBlasterShot) && rawLastBlasterShot! <= now
+      ? rawLastBlasterShot!
+      : -Infinity;
     if (now - lastBlasterShot >= blasterInterval) {
       (player as unknown as { lastBlasterShotTime: number }).lastBlasterShotTime = now;
       // Dual-barrel: 2 bullets with small perpendicular UV offset
@@ -3084,7 +3095,10 @@ export class GameRoom extends Room<GameState> {
     if (player.weaponType !== 'standard') {
       const weaponConfig = WEAPON_CONFIGS[player.weaponType];
       const fireInterval = weaponConfig ? 1 / weaponConfig.fireRate : 0.1;
-      const lastShot = (player as unknown as { lastShotTime?: number }).lastShotTime ?? 0;
+      const rawLastShot = (player as unknown as { lastShotTime?: number }).lastShotTime;
+      const lastShot = Number.isFinite(rawLastShot) && rawLastShot! <= now
+        ? rawLastShot!
+        : -Infinity;
       if (now - lastShot >= fireInterval) {
         (player as unknown as { lastShotTime: number }).lastShotTime = now;
 

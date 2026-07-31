@@ -684,6 +684,90 @@ export class TestHarnessAPI {
     }
   }
 
+  /**
+   * Capture the real SP GameLoop path frame used by visual parity probes.
+   * This is test/debug-only data; it does not drive gameplay.
+   */
+  getParityFrame(): any {
+    try {
+      const cam = this.ctx.game.camera;
+      cam.updateMatrixWorld();
+      const player = this.ctx.player;
+      const walker = this.ctx.playerWalker;
+      const frame = walker.getTangentFrame();
+      const inputState = this.ctx.input.getState();
+      const camRight = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 0);
+      const camUp = new THREE.Vector3().setFromMatrixColumn(cam.matrixWorld, 1);
+      const projectedRight = camRight.clone().addScaledVector(walker.normal, -camRight.dot(walker.normal));
+      const projectedUp = camUp.clone().addScaledVector(walker.normal, -camUp.dot(walker.normal));
+      if (projectedRight.lengthSq() > 0.0001) projectedRight.normalize();
+      if (projectedUp.lengthSq() > 0.0001) projectedUp.normalize();
+      const cameraToPlayer = cam.position.clone().sub(walker.position);
+      const renderer = this.ctx.game.renderer;
+      const size = new THREE.Vector2();
+      renderer.getSize(size);
+      const bullets = this.getBulletTrajectories();
+      return {
+        path: 'sp-main-game-loop',
+        time: this.ctx.game.clock.totalTime,
+        frame: this.frameCount,
+        surface: { type: String(this.ctx.surfaceType) },
+        renderer: {
+          backend: (this.ctx.game as any).backend ?? 'unknown',
+          isWebGPU: Boolean((this.ctx.game as any).isWebGPU),
+          pixelRatio: renderer.getPixelRatio(),
+          width: size.x,
+          height: size.y,
+        },
+        player: {
+          u: player.surfaceU,
+          v: player.surfaceV,
+          worldPos: { x: walker.position.x, y: walker.position.y, z: walker.position.z },
+          meshWorldPos: { x: player.mesh.position.x, y: player.mesh.position.y, z: player.mesh.position.z },
+          normal: { x: walker.normal.x, y: walker.normal.y, z: walker.normal.z },
+          tangent: { x: frame.tangent.x, y: frame.tangent.y, z: frame.tangent.z },
+          bitangent: { x: frame.bitangent.x, y: frame.bitangent.y, z: frame.bitangent.z },
+          faceIndex: walker.faceIndex,
+          aimAngle: player.aimAngle,
+          alive: player.alive,
+          lives: player.lives,
+        },
+        camera: {
+          position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+          quaternion: { x: cam.quaternion.x, y: cam.quaternion.y, z: cam.quaternion.z, w: cam.quaternion.w },
+          up: { x: cam.up.x, y: cam.up.y, z: cam.up.z },
+          right: { x: camRight.x, y: camRight.y, z: camRight.z },
+          matrixUp: { x: camUp.x, y: camUp.y, z: camUp.z },
+          projectedRight: { x: projectedRight.x, y: projectedRight.y, z: projectedRight.z },
+          projectedUp: { x: projectedUp.x, y: projectedUp.y, z: projectedUp.z },
+          distanceToPlayer: cameraToPlayer.length(),
+          outsideSurfaceDot: cameraToPlayer.dot(walker.normal),
+          targetUp: {
+            x: this.ctx.cameraController.targetUp.x,
+            y: this.ctx.cameraController.targetUp.y,
+            z: this.ctx.cameraController.targetUp.z,
+          },
+        },
+        aim: {
+          input: inputState,
+          aimAngle: player.aimAngle,
+          latestBullet: bullets.length > 0 ? bullets[bullets.length - 1] : null,
+          bulletCount: bullets.length,
+        },
+        movement: {
+          input: { moveX: inputState.moveX, moveY: inputState.moveY },
+          faceIndex: walker.faceIndex,
+        },
+        portals: {
+          active: this.ctx.portals.length > 0,
+          count: this.ctx.portals.length,
+        },
+      };
+    } catch (err) {
+      return { path: 'sp-main-game-loop', error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Frame update — called every game tick when testMode=true
   // -----------------------------------------------------------------------
