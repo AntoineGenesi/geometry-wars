@@ -89,6 +89,18 @@ export class ServerMeshWalker {
     }
   }
 
+  /** Move in an arbitrary world-space direction projected onto the surface. */
+  moveInWorldDirection(x: number, y: number, z: number, dt: number): void {
+    this._moveDir.set(x, y, z);
+    const normal = this.walker.normal;
+    this._moveDir.addScaledVector(normal, -this._moveDir.dot(normal));
+    const lengthSq = this._moveDir.lengthSq();
+    if (lengthSq > 0.000001) {
+      this._moveDir.multiplyScalar(1 / Math.sqrt(lengthSq));
+      this.walker.move(this._moveDir, dt);
+    }
+  }
+
   /**
    * Teleport to a world-space position (respawn, round start).
    * Uses the BVH to snap to the nearest surface point.

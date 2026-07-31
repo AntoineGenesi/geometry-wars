@@ -118,13 +118,13 @@ export class Repulsor extends BaseEnemy {
     }
   }
 
-  takeDamage(amount: number): void {
+  takeDamage(amount: number, attackerId: number = -1): void {
     // Only take damage if hit from behind
     // This would require checking the bullet's approach angle
     // For now, we'll implement a simple rear-only damage system
     // The game/collision system would need to check if hit is on rear mesh
 
-    super.takeDamage(amount);
+    super.takeDamage(amount, attackerId);
   }
 
   // Method for game to check if a position hits the vulnerable rear

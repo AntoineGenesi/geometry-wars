@@ -894,6 +894,7 @@ export class GameLoop {
           camera: ctx.game.camera,
         });
       } : undefined,
+      0,
     );
 
     // Player vs enemies (immune if shielded OR tesla coil active OR companion shield active)
@@ -1111,7 +1112,7 @@ export class GameLoop {
           ctx.scoreManager.getScorePowerMultiplier() *
           ctx.playerLevel.damageMultiplier *
           ctx.buffManager.getDamageMultiplier();
-        (enemy as BaseEnemy).takeDamage(damage * scorePower);
+        (enemy as BaseEnemy).takeDamage(damage * scorePower, 0);
       },
     );
 

@@ -385,7 +385,7 @@ export class GameInstance {
         const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh && !e.isMaterializing);
         const enemy = enemies[index];
         if (enemy) {
-          enemy.takeDamage(damage);
+          enemy.takeDamage(damage, 0);
           if (!enemy.alive) {
             this.particles.enemyDeath(enemy.mesh!.position, new THREE.Color(0xff4444));
             this.config.onEnemyKill(enemy.baseTypeName || 'unknown');
@@ -432,7 +432,7 @@ export class GameInstance {
       const enemies = this.enemySpawner.getEnemies();
       for (const enemy of enemies) {
         if (enemy.alive) {
-          enemy.takeDamage(999); // Instant kill
+          enemy.takeDamage(999, 0); // Instant kill
         }
       }
     };
@@ -456,7 +456,7 @@ export class GameInstance {
         const distSq = bulletPos.distanceToSquared(visualPos);
         if (distSq < 2 * enemy.radius * enemy.radius) {
           const actualDamage = Math.min(mutableBullet.remainingDamage, enemy.health);
-          enemy.takeDamage(actualDamage);
+          enemy.takeDamage(actualDamage, 0);
           mutableBullet.remainingDamage -= actualDamage;
           if (!enemy.alive) {
             this.particles.enemyDeath(enemy.mesh!.position, new THREE.Color(0xff4444));

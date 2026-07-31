@@ -88,6 +88,14 @@ export interface NetworkEnemyState {
   type: string;
   surfaceU: number;
   surfaceV: number;
+  wx: number; wy: number; wz: number;
+  nx: number; ny: number; nz: number;
+  tx: number; ty: number; tz: number;
+  bx: number; by: number; bz: number;
+  walkerFaceIndex: number;
+  walkerBaryU: number; walkerBaryV: number; walkerBaryW: number;
+  aggroTargetId: string;
+  aggroUntil: number;
   health: number;
   maxHealth: number;
   alive: boolean;

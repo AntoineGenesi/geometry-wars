@@ -177,8 +177,8 @@ export class GravityWell extends BaseEnemy {
     return null; // Stationary when gravity is active
   }
 
-  takeDamage(amount: number): void {
-    super.takeDamage(amount);
+  takeDamage(amount: number, attackerId: number = -1): void {
+    super.takeDamage(amount, attackerId);
 
     // Activate on first hit
     if (!this.gravityActive) {

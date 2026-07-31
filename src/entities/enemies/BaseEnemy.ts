@@ -23,6 +23,8 @@ const _tempSurfaceTargetPos = new THREE.Vector3();
 const _tempSurfacePathDir = new THREE.Vector3();
 
 export abstract class BaseEnemy extends Entity {
+  static readonly DAMAGE_AGGRO_DURATION = 4;
+
   health: number;
   maxHealth: number;
   scoreValue: number;
@@ -109,6 +111,10 @@ export abstract class BaseEnemy extends Entity {
 
   /** Tracks damage dealt by each player (playerId -> total damage). */
   readonly damageBy: Map<number, number> = new Map();
+  /** Temporary player-owned damage target override; -1 means normal strategy. */
+  aggroTargetId: number = -1;
+  aggroUntil: number = 0;
+  private _behaviorTime: number = 0;
 
   protected playerU: number = 0.5;
   protected playerV: number = 0.5;
@@ -275,9 +281,19 @@ export abstract class BaseEnemy extends Entity {
       const prev = this.damageBy.get(attackerId) ?? 0;
       this.damageBy.set(attackerId, prev + amount);
     }
+    if (this.health > 0 && attackerId >= 0) {
+      this.aggroTargetId = attackerId;
+      this.aggroUntil = this._behaviorTime + BaseEnemy.DAMAGE_AGGRO_DURATION;
+    }
     if (this.health <= 0) {
+      this.aggroTargetId = -1;
+      this.aggroUntil = 0;
       this.die();
     }
+  }
+
+  isDamageAggroActive(): boolean {
+    return this.aggroTargetId >= 0 && this._behaviorTime < this.aggroUntil;
   }
 
   die(): void {
@@ -350,6 +366,32 @@ export abstract class BaseEnemy extends Entity {
           if (mat.emissive !== undefined) {
             this.cachedMaterials!.push(mat);
           }
+        }
+      });
+    }
+  }
+
+  /** Apply a server-authoritative mesh location without reconstructing from UV. */
+  applyCanonicalSurfaceTransform(
+    position: THREE.Vector3,
+    normal: THREE.Vector3,
+    tangent: THREE.Vector3,
+    bitangent: THREE.Vector3,
+  ): void {
+    this.position.copy(position);
+    if (this.mesh) {
+      _tempOffsetVec3.copy(position).addScaledVector(normal, this.radius);
+      this.mesh.position.copy(_tempOffsetVec3);
+      _tempMatrix4.makeBasis(bitangent, normal, tangent);
+      this.mesh.quaternion.setFromRotationMatrix(_tempMatrix4);
+    }
+
+    if (this.mesh && !this.cachedMaterials) {
+      this.cachedMaterials = [];
+      this.mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh && child.material) {
+          const mat = child.material as THREE.MeshStandardMaterial;
+          if (mat.emissive !== undefined) this.cachedMaterials!.push(mat);
         }
       });
     }
@@ -480,6 +522,11 @@ export abstract class BaseEnemy extends Entity {
 
   update(dt: number): void {
     if (!this.alive) return;
+    this._behaviorTime += dt;
+    if (this.aggroTargetId >= 0 && this._behaviorTime >= this.aggroUntil) {
+      this.aggroTargetId = -1;
+      this.aggroUntil = 0;
+    }
 
     // Tick slow/stun timer and compute effective delta time
     if (this.slowTimer > 0) {
@@ -495,7 +542,10 @@ export abstract class BaseEnemy extends Entity {
         console.log(`[Enemy ${this.constructor.name}] Entering walker mode, walker exists:`, !!this.walker);
       }
       // Enemy computes world-space velocity; walker handles surface-constrained movement.
-      const velocity = this.computeMovementDirection(effectiveDt, this._playerWorldPos);
+      const velocity = this.isDamageAggroActive()
+        ? _tempSurfacePathDir.copy(this._playerWorldPos).sub(this.walker.position)
+          .normalize().multiplyScalar(this.speed * this.walkerSpeedScale)
+        : this.computeMovementDirection(effectiveDt, this._playerWorldPos);
       if (velocity && velocity.lengthSq() > 0.0001) {
         const movementVelocity = this.applyOppositeWallSurfacePath(velocity);
         const speed = movementVelocity.length();
@@ -545,7 +595,19 @@ export abstract class BaseEnemy extends Entity {
       }
 
       profiler.begin('enemy_uv_behavior');
-      this.updateBehavior(effectiveDt, this.playerU, this.playerV);
+      if (this.isDamageAggroActive()) {
+        const wrapsU = this.surfaceRef?.wrapsU ?? true;
+        const wrapsV = this.surfaceRef?.wrapsV ?? false;
+        const deltaU = this.shortestAxisDelta(this.surfacePosition.u, this.playerU, wrapsU);
+        const deltaV = this.shortestAxisDelta(this.surfacePosition.v, this.playerV, wrapsV);
+        const distance = Math.hypot(deltaU, deltaV);
+        if (distance > 0.0001) {
+          this.surfacePosition.u += (deltaU / distance) * this.speed * effectiveDt;
+          this.surfacePosition.v += (deltaV / distance) * this.speed * effectiveDt;
+        }
+      } else {
+        this.updateBehavior(effectiveDt, this.playerU, this.playerV);
+      }
       profiler.end('enemy_uv_behavior');
 
       // Compute the raw UV delta the subclass produced

@@ -212,8 +212,29 @@ defineTypes(BulletState, {
 export class EnemyState extends Schema {
   declare id: string;
   declare type: string;
+  /** Derived compatibility coordinates. Mesh face/barycentric location is authoritative. */
   declare surfaceU: number;
   declare surfaceV: number;
+  declare wx: number;
+  declare wy: number;
+  declare wz: number;
+  declare nx: number;
+  declare ny: number;
+  declare nz: number;
+  declare tx: number;
+  declare ty: number;
+  declare tz: number;
+  declare bx: number;
+  declare by: number;
+  declare bz: number;
+  declare walkerFaceIndex: number;
+  declare walkerBaryU: number;
+  declare walkerBaryV: number;
+  declare walkerBaryW: number;
+  /** Player whose damage temporarily overrides the enemy's normal strategy. */
+  declare aggroTargetId: string;
+  /** Server game time in seconds when the damage aggro override expires. */
+  declare aggroUntil: number;
   declare health: number;
   declare maxHealth: number;
   declare alive: boolean;
@@ -227,6 +248,16 @@ export class EnemyState extends Schema {
     this.type = 'grunt';
     this.surfaceU = 0.5;
     this.surfaceV = 0.5;
+    this.wx = 0; this.wy = 10; this.wz = 0;
+    this.nx = 0; this.ny = 1; this.nz = 0;
+    this.tx = 1; this.ty = 0; this.tz = 0;
+    this.bx = 0; this.by = 0; this.bz = 1;
+    this.walkerFaceIndex = 0;
+    this.walkerBaryU = 1;
+    this.walkerBaryV = 0;
+    this.walkerBaryW = 0;
+    this.aggroTargetId = '';
+    this.aggroUntil = 0;
     this.health = 1;
     this.maxHealth = 1;
     this.alive = true;
@@ -241,6 +272,14 @@ defineTypes(EnemyState, {
   type: 'string',
   surfaceU: 'number',
   surfaceV: 'number',
+  wx: 'number', wy: 'number', wz: 'number',
+  nx: 'number', ny: 'number', nz: 'number',
+  tx: 'number', ty: 'number', tz: 'number',
+  bx: 'number', by: 'number', bz: 'number',
+  walkerFaceIndex: 'number',
+  walkerBaryU: 'number', walkerBaryV: 'number', walkerBaryW: 'number',
+  aggroTargetId: 'string',
+  aggroUntil: 'number',
   health: 'number',
   maxHealth: 'number',
   alive: 'boolean',

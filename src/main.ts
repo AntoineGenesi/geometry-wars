@@ -1315,7 +1315,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       const enemy = enemies[index];
       if (!enemy) return;
       const scorePower = scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier * buffManager.getDamageMultiplier();
-      enemy.takeDamage(damage * scorePower);
+      enemy.takeDamage(damage * scorePower, 0);
       // Trigger on-hit procs (incendiary etc.) with reduced proc coefficient for weapon damage
       if (enemy.alive) {
         buffManager.onBulletHit(enemy, 0.3);
@@ -1599,7 +1599,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     const allEnemies = enemySpawner.getEnemies();
     for (const enemy of allEnemies) {
       if (enemy.position.distanceTo(position) < blastRadius) {
-        enemy.takeDamage(999);
+        enemy.takeDamage(999, 0);
         particles.enemyDeath(enemy.position, gateColor);
       }
     }

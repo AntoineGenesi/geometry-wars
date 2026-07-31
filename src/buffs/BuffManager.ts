@@ -674,7 +674,7 @@ export class BuffManager {
       const dist = other.position.distanceTo(enemy.position);
       if (dist < explosionRadius) {
         const falloff = 1 - dist / explosionRadius;
-        other.takeDamage(explosionDamage * falloff);
+        other.takeDamage(explosionDamage * falloff, 0);
       }
     }
 
@@ -780,7 +780,7 @@ export class BuffManager {
 
     // Damage enemies in range + create shock arcs
     for (const enemy of inRange) {
-      enemy.takeDamage(tickDamage);
+      enemy.takeDamage(tickDamage, 0);
 
       // Show damage number popup for aura hit (only if enemy survived — killed enemies show score popup)
       if (scorePopups && enemy.alive) {
@@ -803,7 +803,7 @@ export class BuffManager {
 
           const chainDist = other.position.distanceTo(enemy.position);
           if (chainDist < chainRange) {
-            other.takeDamage(tickDamage * 0.5); // Chain does half damage
+            other.takeDamage(tickDamage * 0.5, 0); // Chain does half damage
 
             // Show damage number for chain hit too
             if (scorePopups && other.alive) {
@@ -849,7 +849,7 @@ export class BuffManager {
 
       // Apply DOT damage
       const tickDamage = burn.dps * dt;
-      burn.enemy.takeDamage(tickDamage);
+      burn.enemy.takeDamage(tickDamage, 0);
 
       // Accumulate damage for throttled popup (avoid per-frame spam)
       burn.damageAccumulator += tickDamage;

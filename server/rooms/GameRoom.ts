@@ -45,6 +45,8 @@ import {
 } from '../shared/GameConstants';
 import { ServerSurfaceManager } from '../movement/ServerSurfaceManager';
 import type { ServerMeshLocation } from '../movement/ServerMeshLocation';
+import { ServerMeshWalker } from '../movement/ServerMeshWalker';
+import { ServerMeshPathfinder } from '../movement/ServerMeshPathfinder';
 import {
   validateSettings,
   DEFAULT_GAME_SETTINGS,
@@ -110,6 +112,8 @@ const VOTING_COUNTDOWN_SECS = 30;
 const BOOST_DURATION = 0.5;       // seconds the speed boost lasts
 const BOOST_COOLDOWN = 5.0;       // seconds between boosts
 const BOOST_SPEED_MULTIPLIER = 3.0; // speed multiplier during boost
+const ENEMY_WALKER_SPEED_SCALE = 30;
+const ENEMY_DAMAGE_AGGRO_SECONDS = 4;
 
 // Wave scheduling constants (mirrors WaveScheduler in src/core/)
 const WAVE_FIRST_AT = 3.0;       // first wave at 3s (reduced from 6s to speed up MP start, s44-05)
@@ -1089,6 +1093,14 @@ export class GameRoom extends Room<GameState> {
 
   // Per-enemy AI state (server-side only — not synced to clients)
   private enemyAI: Map<string, ServerEnemyAI> = new Map();
+  /** Canonical mesh walkers keyed by enemy id. UV is compatibility data only. */
+  private enemyWalkers: Map<string, ServerMeshWalker> = new Map();
+  private enemyPathfinder: ServerMeshPathfinder | null = null;
+  private readonly _enemyPathDirection = new THREE.Vector3();
+  private readonly _enemyMoveDirection = new THREE.Vector3();
+  private readonly _enemyOriginPoint = { faceIndex: 0, wx: 0, wy: 0, wz: 0 };
+  private readonly _enemyTargetPoint = { faceIndex: 0, wx: 0, wy: 0, wz: 0 };
+  private readonly _enemyTargetDelta = { du: 0, dv: 0, dist: 0 };
 
   /**
    * Latest input state per player. Updated on message receipt, consumed
@@ -1581,7 +1593,7 @@ export class GameRoom extends Room<GameState> {
       const newRemaining = currentRemaining - actualDamage;
       this.bulletDamageTracker.set(data.bulletId, newRemaining);
 
-      enemy.health -= actualDamage;
+      this.applyPlayerOwnedEnemyDamage(enemy, actualDamage, client.sessionId, weaponType);
 
       this.logger.log(`[GameRoom] bullet_hit: ${weaponType} dealt ${actualDamage.toFixed(1)} to ${enemy.type} (hp=${enemy.health.toFixed(1)}, remaining=${newRemaining.toFixed(1)})`);
 
@@ -2183,6 +2195,8 @@ export class GameRoom extends Room<GameState> {
       }
     }
     this.surfaceManager.dispose();
+    this.enemyWalkers.clear();
+    this.enemyPathfinder = null;
     this.logger.log('[GameRoom] Disposed');
   }
 
@@ -2213,6 +2227,34 @@ export class GameRoom extends Room<GameState> {
       this.playerUpgradeKillCounts.set(sessionId, byWeapon);
     }
     byWeapon.set(weaponType, (byWeapon.get(weaponType) ?? 0) + count);
+  }
+
+  /** Single authority for player-owned MP damage and bounded survivor aggro. */
+  private applyPlayerOwnedEnemyDamage(
+    enemy: EnemyState,
+    requestedDamage: number,
+    sourcePlayerId: string,
+    sourceKind: string,
+  ): number {
+    if (!this.isTargetableEnemy(enemy) || !Number.isFinite(requestedDamage) || requestedDamage <= 0) {
+      return 0;
+    }
+    const actualDamage = Math.min(enemy.health, requestedDamage);
+    enemy.health = Math.max(0, enemy.health - actualDamage);
+
+    const attacker = this.state.players.get(sourcePlayerId);
+    if (enemy.health > 0 && attacker?.alive) {
+      const changedTarget = enemy.aggroTargetId !== sourcePlayerId;
+      enemy.aggroTargetId = sourcePlayerId;
+      enemy.aggroUntil = this.state.gameTime + ENEMY_DAMAGE_AGGRO_SECONDS;
+      if (changedTarget) {
+        this.logger.log(`[GameRoom] enemy_aggro: source=${sourceKind} player=${sourcePlayerId} enemy=${enemy.id} until=${enemy.aggroUntil.toFixed(2)}`);
+      }
+    } else if (enemy.health <= 0) {
+      enemy.aggroTargetId = '';
+      enemy.aggroUntil = 0;
+    }
+    return actualDamage;
   }
 
   private handleUpgradeActivationRequest(
@@ -2249,7 +2291,7 @@ export class GameRoom extends Room<GameState> {
     const enemy = this.state.enemies[targetIndex];
     if (!enemy.alive || enemy.queued) return;
 
-    enemy.health -= 1; // GUARDIAN_DAMAGE = 1
+    this.applyPlayerOwnedEnemyDamage(enemy, 1, sessionId, 'companion'); // GUARDIAN_DAMAGE = 1
 
     if (enemy.health <= 0) {
       this.removeKilledEnemyAt(targetIndex);
@@ -2479,6 +2521,9 @@ export class GameRoom extends Room<GameState> {
     // Must happen before creating walkers below.
     const scaleFactor = getMapScaleFactor(this.state.mapSize);
     this.surfaceManager.initSurface(this.state.surfaceType, scaleFactor);
+    const enemySurface = this.surfaceManager.getMeshSurface();
+    this.enemyWalkers.clear();
+    this.enemyPathfinder = enemySurface ? new ServerMeshPathfinder(enemySurface) : null;
 
     // Compute world-space zone data AFTER initSurface (surface geometry must exist).
     // KotH: zone center world pos, radius base scaled to this surface's size.
@@ -2610,6 +2655,7 @@ export class GameRoom extends Room<GameState> {
     this.bulletDamageTracker.clear(); // s44r3-02: reset penetration budgets
     this.state.enemies.clear();
     this.enemyAI.clear();
+    this.enemyWalkers.clear();
     this.state.geoms.clear();
     this.state.weaponPickups.clear();
     this.state.superPickups.clear();
@@ -2655,6 +2701,7 @@ export class GameRoom extends Room<GameState> {
     this.bulletDamageTracker.clear(); // s44r3-02: reset penetration budgets
     this.state.enemies.clear();
     this.enemyAI.clear();
+    this.enemyWalkers.clear();
     this.state.geoms.clear();
     this.state.weaponPickups.clear();
     this.state.superPickups.clear();
@@ -3235,7 +3282,7 @@ export class GameRoom extends Room<GameState> {
       if (dot < LASER_DOT_THRESHOLD) return;
 
       // Apply continuous damage
-      enemy.health -= damage;
+      this.applyPlayerOwnedEnemyDamage(enemy, damage, player.id, 'laser');
 
       if (enemy.health <= 0) {
         enemiesToKill.push(eIndex);
@@ -3336,7 +3383,7 @@ export class GameRoom extends Room<GameState> {
       if (dist > threshold) return;
 
       // Apply continuous area damage
-      enemy.health -= damage;
+      this.applyPlayerOwnedEnemyDamage(enemy, damage, player.id, 'tesla');
 
       if (enemy.health <= 0) {
         enemiesToKill.push(eIndex);
@@ -3418,7 +3465,7 @@ export class GameRoom extends Room<GameState> {
       const enemy = this.state.enemies[eIndex];
       if (!enemy || !this.isTargetableEnemy(enemy)) continue;
 
-      enemy.health -= damage;
+      this.applyPlayerOwnedEnemyDamage(enemy, damage, player.id, 'chain_lightning');
 
       if (enemy.health <= 0) {
         enemiesToKill.push(eIndex);
@@ -3463,6 +3510,7 @@ export class GameRoom extends Room<GameState> {
     const enemiesToRemove: number[] = [];
     this.state.enemies.forEach((enemy, index) => {
       if (this.isTargetableEnemy(enemy)) {
+        this.applyPlayerOwnedEnemyDamage(enemy, enemy.health, player.id, 'bomb');
         enemiesToRemove.push(index);
 
         // Geoms removed (s27g-geons-point-pickups-remove-mp)
@@ -3830,7 +3878,17 @@ export class GameRoom extends Room<GameState> {
       if (!enemy.alive || enemy.queued) return;
 
       const ai = this.enemyAI.get(enemy.id) ?? {};
-      const nearestPlayer = this.findNearestPlayer(enemy.surfaceU, enemy.surfaceV);
+      const walker = this.ensureEnemyWalker(enemy);
+      const previousU = enemy.surfaceU;
+      const previousV = enemy.surfaceV;
+      const nearestPlayer = this.findNearestPlayer(enemy);
+
+      if (nearestPlayer && enemy.aggroTargetId) {
+        this.updateDefaultChase(enemy, ai, nearestPlayer, dt, wrapsV, surfType);
+        this.moveEnemyWalker(enemy, walker, previousU, previousV, dt, wrapsV);
+        this.enemyAI.set(enemy.id, ai);
+        return;
+      }
 
       switch (enemy.type) {
         case 'grunt':
@@ -3913,20 +3971,143 @@ export class GameRoom extends Room<GameState> {
         this.syncQueuedSnakeSegments(enemy, wrapsV, surfType);
       }
 
+      this.moveEnemyWalker(enemy, walker, previousU, previousV, dt, wrapsV);
+
       // Persist updated AI state
       this.enemyAI.set(enemy.id, ai);
     });
   }
 
-  private findNearestPlayer(u: number, v: number): PlayerState | null {
+  private findNearestPlayer(enemy: EnemyState): PlayerState | null {
+    if (enemy.aggroTargetId) {
+      const aggroTarget = this.state.players.get(enemy.aggroTargetId);
+      if (enemy.aggroUntil > this.state.gameTime && aggroTarget?.alive) return aggroTarget;
+      enemy.aggroTargetId = '';
+      enemy.aggroUntil = 0;
+    }
+
     let nearest: PlayerState | null = null;
     let nearestDist = Infinity;
+    this._enemyOriginPoint.faceIndex = enemy.walkerFaceIndex;
+    this._enemyOriginPoint.wx = enemy.wx;
+    this._enemyOriginPoint.wy = enemy.wy;
+    this._enemyOriginPoint.wz = enemy.wz;
     this.state.players.forEach((p) => {
       if (!p.alive) return;
-      const d = this.uvDistWrapped(u, v, p.surfaceU, p.surfaceV);
+      this._enemyTargetPoint.faceIndex = p.walkerFaceIndex;
+      this._enemyTargetPoint.wx = p.wx;
+      this._enemyTargetPoint.wy = p.wy;
+      this._enemyTargetPoint.wz = p.wz;
+      const d = this.enemyPathfinder?.getPathDistance(
+        this._enemyOriginPoint,
+        this._enemyTargetPoint,
+      ) ?? this.uvDistWrapped(enemy.surfaceU, enemy.surfaceV, p.surfaceU, p.surfaceV);
       if (d < nearestDist) { nearestDist = d; nearest = p; }
     });
     return nearest;
+  }
+
+  private ensureEnemyWalker(enemy: EnemyState): ServerMeshWalker | null {
+    const existing = this.enemyWalkers.get(enemy.id);
+    if (existing) return existing;
+
+    const surface = this.surfaceManager.getMeshSurface();
+    if (!surface) return null;
+    const scaleFactor = getMapScaleFactor(this.state.mapSize || 'medium');
+    const sphereR = 10 * scaleFactor;
+    const [wx, wy, wz] = surfaceUVToWorld3D(
+      this.state.surfaceType,
+      enemy.surfaceU,
+      enemy.surfaceV,
+      scaleFactor,
+      sphereR,
+    );
+    const walker = new ServerMeshWalker(
+      surface,
+      new THREE.Vector3(wx, wy, wz),
+      this.getEnemySpeed(enemy.type) * ENEMY_WALKER_SPEED_SCALE,
+    );
+    this.enemyWalkers.set(enemy.id, walker);
+    this.applyWalkerStateToEnemy(enemy, walker.getLocation());
+    return walker;
+  }
+
+  private applyWalkerStateToEnemy(enemy: EnemyState, location: ServerMeshLocation): void {
+    enemy.wx = location.wx; enemy.wy = location.wy; enemy.wz = location.wz;
+    enemy.nx = location.nx; enemy.ny = location.ny; enemy.nz = location.nz;
+    enemy.tx = location.tangentX; enemy.ty = location.tangentY; enemy.tz = location.tangentZ;
+    enemy.bx = location.bitangentX; enemy.by = location.bitangentY; enemy.bz = location.bitangentZ;
+    enemy.walkerFaceIndex = location.faceIndex;
+    enemy.walkerBaryU = location.baryU;
+    enemy.walkerBaryV = location.baryV;
+    enemy.walkerBaryW = location.baryW;
+  }
+
+  private moveEnemyWalker(
+    enemy: EnemyState,
+    walker: ServerMeshWalker | null,
+    previousU: number,
+    previousV: number,
+    dt: number,
+    wrapsV: boolean,
+  ): void {
+    if (!walker || dt <= 0) return;
+    const deltaU = this.uvDelta(previousU, enemy.surfaceU, true);
+    const deltaV = this.uvDelta(previousV, enemy.surfaceV, wrapsV);
+    const uvDistance = Math.hypot(deltaU, deltaV);
+    if (uvDistance > 0.0000001) {
+      const invDistance = 1 / uvDistance;
+      this._enemyMoveDirection.set(0, 0, 0)
+        .addScaledVector(this._enemyPathDirection.set(enemy.tx, enemy.ty, enemy.tz), deltaU * invDistance)
+        .addScaledVector(this._enemyPathDirection.set(enemy.bx, enemy.by, enemy.bz), deltaV * invDistance);
+      walker.speed = Math.min(0.25, uvDistance / dt) * ENEMY_WALKER_SPEED_SCALE;
+      walker.moveInWorldDirection(
+        this._enemyMoveDirection.x,
+        this._enemyMoveDirection.y,
+        this._enemyMoveDirection.z,
+        dt,
+      );
+    }
+    this.applyWalkerStateToEnemy(enemy, walker.getLocation());
+  }
+
+  private canonicalTargetDelta(
+    enemy: EnemyState,
+    player: PlayerState,
+    wrapsV: boolean,
+  ): { du: number; dv: number; dist: number } {
+    if (this.enemyPathfinder) {
+      this._enemyOriginPoint.faceIndex = enemy.walkerFaceIndex;
+      this._enemyOriginPoint.wx = enemy.wx;
+      this._enemyOriginPoint.wy = enemy.wy;
+      this._enemyOriginPoint.wz = enemy.wz;
+      this._enemyTargetPoint.faceIndex = player.walkerFaceIndex;
+      this._enemyTargetPoint.wx = player.wx;
+      this._enemyTargetPoint.wy = player.wy;
+      this._enemyTargetPoint.wz = player.wz;
+      const dist = this.enemyPathfinder.getPathDirection(
+        this._enemyOriginPoint,
+        this._enemyTargetPoint,
+        this._enemyPathDirection,
+      );
+      if (Number.isFinite(dist) && this._enemyPathDirection.lengthSq() > 0.0000001) {
+        this._enemyPathDirection.normalize();
+        this._enemyTargetDelta.du = this._enemyPathDirection.dot(
+          this._enemyMoveDirection.set(enemy.tx, enemy.ty, enemy.tz),
+        );
+        this._enemyTargetDelta.dv = this._enemyPathDirection.dot(
+          this._enemyMoveDirection.set(enemy.bx, enemy.by, enemy.bz),
+        );
+        this._enemyTargetDelta.dist = dist;
+        return this._enemyTargetDelta;
+      }
+    }
+    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
+    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    this._enemyTargetDelta.du = du;
+    this._enemyTargetDelta.dv = dv;
+    this._enemyTargetDelta.dist = Math.hypot(du, dv);
+    return this._enemyTargetDelta;
   }
 
   /** Grunt: accelerates toward nearest player over time */
@@ -3936,10 +4117,10 @@ export class GameRoom extends Room<GameState> {
   ): void {
     ai.currentSpeed = Math.min(0.06, (ai.currentSpeed ?? 0.02) + 0.002 * dt);
     if (!player) return;
-    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
-    const dist = Math.sqrt(du * du + dv * dv);
-    if (dist > 0.01) {
+    const target = this.canonicalTargetDelta(enemy, player, wrapsV);
+    const { du, dv } = target;
+    const dist = Math.hypot(du, dv);
+    if (target.dist > 0.05 && dist > 0.0001) {
       enemy.surfaceU += (du / dist) * ai.currentSpeed * dt;
       enemy.surfaceV += (dv / dist) * ai.currentSpeed * dt;
       this.applyUVBounds(enemy, wrapsV, surfType);
@@ -4129,10 +4310,9 @@ export class GameRoom extends Room<GameState> {
     }
 
     if (!player) return;
-    const targetU = player.surfaceU + (ai.jitterOffsetU ?? 0);
-    const targetV = player.surfaceV + (ai.jitterOffsetV ?? 0);
-    const du = this.uvDelta(enemy.surfaceU, targetU, true);
-    const dv = this.uvDelta(enemy.surfaceV, targetV, wrapsV);
+    const target = this.canonicalTargetDelta(enemy, player, wrapsV);
+    const du = target.du + (ai.jitterOffsetU ?? 0);
+    const dv = target.dv + (ai.jitterOffsetV ?? 0);
     const dist = Math.sqrt(du * du + dv * dv);
     if (dist > 0.001) {
       const MAYFLY_SPEED = 0.095;
@@ -4151,8 +4331,7 @@ export class GameRoom extends Room<GameState> {
     ai.momentumV = ai.momentumV ?? 0;
 
     if (player) {
-      const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-      const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+      const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
       const dist = Math.sqrt(du * du + dv * dv);
       if (dist > 0.01) {
         ai.momentumU += (du / dist) * 0.3 * dt;
@@ -4196,8 +4375,7 @@ export class GameRoom extends Room<GameState> {
 
       if (player && Math.random() >= 0.2) {
         // Bias toward player: pick cardinal direction that reduces distance most
-        const du = player.surfaceU - enemy.surfaceU;
-        const dv = player.surfaceV - enemy.surfaceV;
+        const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
         if (Math.abs(du) > Math.abs(dv)) {
           ai.duckDirection = du > 0 ? 1 : 3; // right or left
         } else {
@@ -4232,11 +4410,9 @@ export class GameRoom extends Room<GameState> {
 
     const wobbleU = (Math.random() - 0.5) * WOBBLE_AMOUNT;
     const wobbleV = (Math.random() - 0.5) * WOBBLE_AMOUNT;
-    const targetU = player.surfaceU + wobbleU;
-    const targetV = player.surfaceV + wobbleV;
-
-    const du = this.uvDelta(enemy.surfaceU, targetU, true);
-    const dv = this.uvDelta(enemy.surfaceV, targetV, wrapsV);
+    const target = this.canonicalTargetDelta(enemy, player, wrapsV);
+    const du = target.du + wobbleU;
+    const dv = target.dv + wobbleV;
     const dist = Math.sqrt(du * du + dv * dv);
 
     if (dist > 0.01) {
@@ -4254,8 +4430,7 @@ export class GameRoom extends Room<GameState> {
     const maxSpeed = ai.maxSpeed ?? 0.055;
     ai.currentSpeed = Math.min(maxSpeed, (ai.currentSpeed ?? 0.02) + 0.002 * dt);
     if (!player) return;
-    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
     const dist = Math.sqrt(du * du + dv * dv);
     if (dist > 0.01) {
       enemy.surfaceU += (du / dist) * ai.currentSpeed * dt;
@@ -4285,13 +4460,10 @@ export class GameRoom extends Room<GameState> {
 
     if (!player) return;
 
-    // Calculate target orbit position around player
-    const orbitU = player.surfaceU + Math.cos(ai.orbitAngle) * ORBIT_RADIUS;
-    const orbitV = player.surfaceV + Math.sin(ai.orbitAngle) * ORBIT_RADIUS;
-
-    // Chase toward the orbit position at fixed speed
-    const du = this.uvDelta(enemy.surfaceU, orbitU, true);
-    const dv = this.uvDelta(enemy.surfaceV, orbitV, wrapsV);
+    // Chase a local tangent-space orbit around the canonical player path.
+    const target = this.canonicalTargetDelta(enemy, player, wrapsV);
+    const du = target.du + Math.cos(ai.orbitAngle) * ORBIT_RADIUS;
+    const dv = target.dv + Math.sin(ai.orbitAngle) * ORBIT_RADIUS;
     const dist = Math.sqrt(du * du + dv * dv);
     if (dist > 0.001) {
       const ORBIT_CHASE_SPEED = 0.07;
@@ -4311,10 +4483,9 @@ export class GameRoom extends Room<GameState> {
     ai.orbitAngle = (ai.orbitAngle ?? 0) + ORBIT_SPEED * (ai.orbitDirection ?? 1) * dt;
     if (!player) return;
 
-    const orbitU = player.surfaceU + Math.cos(ai.orbitAngle) * ORBIT_RADIUS;
-    const orbitV = player.surfaceV + Math.sin(ai.orbitAngle) * ORBIT_RADIUS;
-    const du = this.uvDelta(enemy.surfaceU, orbitU, true);
-    const dv = this.uvDelta(enemy.surfaceV, orbitV, wrapsV);
+    const target = this.canonicalTargetDelta(enemy, player, wrapsV);
+    const du = target.du + Math.cos(ai.orbitAngle) * ORBIT_RADIUS;
+    const dv = target.dv + Math.sin(ai.orbitAngle) * ORBIT_RADIUS;
     const dist = Math.sqrt(du * du + dv * dv);
     if (dist > 0.001) {
       const speed = this.getEnemySpeed(enemy.type);
@@ -4333,8 +4504,7 @@ export class GameRoom extends Room<GameState> {
 
     if (ai.lancerPhase === 0) {
       if (player) {
-        const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-        const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+        const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
         const dist = Math.sqrt(du * du + dv * dv);
         if (dist > 0.001) {
           ai.chargeTargetU = du / dist;
@@ -4378,8 +4548,7 @@ export class GameRoom extends Room<GameState> {
     // Advance corkscrew phase
     ai.corkscrewPhase = (ai.corkscrewPhase ?? 0) + CORKSCREW_RATE * dt;
 
-    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
     const dist = Math.sqrt(du * du + dv * dv);
 
     if (dist > 0.001) {
@@ -4413,8 +4582,7 @@ export class GameRoom extends Room<GameState> {
       }
       case 1: { // Charging: 1s windup, tracks player and locks dash direction
         if (player) {
-          const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-          const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+          const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
           const dist = Math.sqrt(du * du + dv * dv);
           if (dist > 0.001) {
             ai.dashDirU = du / dist;
@@ -4459,8 +4627,7 @@ export class GameRoom extends Room<GameState> {
     switch (ai.repulsorPhase ?? 0) {
       case 0: { // Lock: moves slowly toward player, picks charge direction after 2s
         if (player) {
-          const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-          const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+          const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
           const dist = Math.sqrt(du * du + dv * dv);
           if (dist > 0.01) {
             const LOCK_SPEED = 0.03;
@@ -4470,8 +4637,8 @@ export class GameRoom extends Room<GameState> {
           }
           if (ai.phaseTimer >= 2.0) {
             // Charge direction: AWAY from player (enemy - player direction)
-            const awayU = this.uvDelta(player.surfaceU, enemy.surfaceU, true);
-            const awayV = this.uvDelta(player.surfaceV, enemy.surfaceV, wrapsV);
+            const awayU = -du;
+            const awayV = -dv;
             const awayDist = Math.sqrt(awayU * awayU + awayV * awayV);
             if (awayDist > 0.001) {
               ai.chargeTargetU = awayU / awayDist; // normalized direction
@@ -4515,8 +4682,7 @@ export class GameRoom extends Room<GameState> {
   ): void {
     // Very slow drift toward player (0.02 UV/s)
     if (player) {
-      const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-      const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+      const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
       const dist = Math.sqrt(du * du + dv * dv);
       if (dist > 0.01) {
         const SPAWNER_DRIFT = 0.02;
@@ -4613,8 +4779,7 @@ export class GameRoom extends Room<GameState> {
   ): void {
     ai.currentSpeed = Math.min(0.08, (ai.currentSpeed ?? 0.03) + 0.003 * dt);
     if (!player) return;
-    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
     const dist = Math.sqrt(du * du + dv * dv);
     if (dist > 0.01) {
       enemy.surfaceU += (du / dist) * ai.currentSpeed * dt;
@@ -4633,10 +4798,9 @@ export class GameRoom extends Room<GameState> {
     const WOBBLE_AMOUNT = 0.12;
     const wobbleU = (Math.random() - 0.5) * WOBBLE_AMOUNT;
     const wobbleV = (Math.random() - 0.5) * WOBBLE_AMOUNT;
-    const targetU = player.surfaceU + wobbleU;
-    const targetV = player.surfaceV + wobbleV;
-    const du = this.uvDelta(enemy.surfaceU, targetU, true);
-    const dv = this.uvDelta(enemy.surfaceV, targetV, wrapsV);
+    const target = this.canonicalTargetDelta(enemy, player, wrapsV);
+    const du = target.du + wobbleU;
+    const dv = target.dv + wobbleV;
     const dist = Math.sqrt(du * du + dv * dv);
     if (dist > 0.01) {
       enemy.surfaceU += (du / dist) * TITAN_SPINNER_SPEED * dt;
@@ -4653,8 +4817,7 @@ export class GameRoom extends Room<GameState> {
     ai.momentumU = ai.momentumU ?? 0;
     ai.momentumV = ai.momentumV ?? 0;
     if (player) {
-      const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-      const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+      const { du, dv } = this.canonicalTargetDelta(enemy, player, wrapsV);
       const dist = Math.sqrt(du * du + dv * dv);
       if (dist > 0.01) {
         ai.momentumU += (du / dist) * 0.4 * dt;
@@ -4692,6 +4855,7 @@ export class GameRoom extends Room<GameState> {
       Math.max(0.05, Math.min(0.95, u + offsetU)),
       Math.max(0.05, Math.min(0.95, v + offsetV)),
     );
+    this.ensureEnemyWalker(enemy);
     this.enemyAI.set(enemy.id, this.createEnemyAI(type));
     this.state.enemies.push(enemy);
   }
@@ -4702,10 +4866,10 @@ export class GameRoom extends Room<GameState> {
     dt: number, wrapsV: boolean, surfType: string
   ): void {
     if (!player) return;
-    const du = this.uvDelta(enemy.surfaceU, player.surfaceU, true);
-    const dv = this.uvDelta(enemy.surfaceV, player.surfaceV, wrapsV);
+    const target = this.canonicalTargetDelta(enemy, player, wrapsV);
+    const { du, dv } = target;
     const dist = Math.sqrt(du * du + dv * dv);
-    if (dist > 0.01) {
+    if (target.dist > 0.05 && dist > 0.0001) {
       const speed = this.getEnemySpeed(enemy.type);
       enemy.surfaceU += (du / dist) * speed * dt;
       enemy.surfaceV += (dv / dist) * speed * dt;
@@ -4932,7 +5096,6 @@ export class GameRoom extends Room<GameState> {
     //   For torus and cube-ring, these are now handled by torusChordDist/cubeRingChordDist above.
     //   S44c-12: pill moved to usesWorldDist — was accidentally left in UV fallback.
     const BULLET_HIT_RADIUS = 0.015 / scaleFactor;
-    const ENEMY_HIT_RADIUS  = 0.04  / scaleFactor;  // UV-space fallback for misc surfaces
     const GEOM_RADIUS       = 0.025 / scaleFactor;  // was 0.05
     const PICKUP_RADIUS     = 0.02  / scaleFactor;  // was 0.04
 
@@ -4996,7 +5159,12 @@ export class GameRoom extends Room<GameState> {
           const buffDamageMult = owner ? this.calculateBuffDamageMult(owner) : 1.0;
           const masteryDamageMult = 1.0; // TODO: weapon mastery damage multiplier
           const finalDamage = baseDamage * levelDamageMult * buffDamageMult * masteryDamageMult;
-          enemy.health -= finalDamage;
+          this.applyPlayerOwnedEnemyDamage(
+            enemy,
+            finalDamage,
+            bullet.ownerId,
+            bulletWeaponType,
+          );
 
           if (enemy.health <= 0) {
             enemiesToRemove.push(eIndex);
@@ -5198,10 +5366,9 @@ export class GameRoom extends Room<GameState> {
             if (nearMissLogged || !this.isTargetableEnemy(enemy)) return;
             // s44r8-02: Use player world position (accurate from ServerMeshWalker) instead of
             // player.surfaceU/V (sphere-approx, wrong on cube/sphere-tunnel/peanut/cube-ring).
-            const dist = usesWorldDist
-              ? playerEnemyDist3D(surfaceType, player.wx, player.wy, player.wz, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
-              : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
-            const hitThreshold = usesWorldDist ? (surfaceType === 'cube' || surfaceType === 'cube-tunnel' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD) : ENEMY_HIT_RADIUS;
+            const dist = Math.hypot(player.wx - enemy.wx, player.wy - enemy.wy, player.wz - enemy.wz);
+            const hitThreshold = surfaceType === 'cube' || surfaceType === 'cube-tunnel'
+              ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD;
             if (dist < hitThreshold) {
               nearMissLogged = true;
               this.lastNearMissLogTime.set(player.id, this.state.gameTime);
@@ -5243,15 +5410,12 @@ export class GameRoom extends Room<GameState> {
         // for non-spherical surfaces (cube, sphere-tunnel, cube-tunnel, peanut, cube-ring).
         // The sphere-approx UV → wrong 3D player position → wrong chord distance → false kills.
         // Fix: use player.wx/wy/wz (exact world pos from ServerMeshWalker) + enemy UV → world.
-        const dist = usesWorldDist
-          ? playerEnemyDist3D(surfaceType, player.wx, player.wy, player.wz, enemy.surfaceU, enemy.surfaceV, scaleFactor, sphereR)
-          : this.uvDistWrapped(player.surfaceU, player.surfaceV, enemy.surfaceU, enemy.surfaceV);
+        const dist = Math.hypot(player.wx - enemy.wx, player.wy - enemy.wy, player.wz - enemy.wz);
         // s44r6b-02: Cube uses tighter threshold — enemies must visually overlap player, not just touch
         // s44r6b-03: Pill uses tighter threshold — curved body makes chord dist ~27% smaller than visual
         // s44r6c-02: Cube-tunnel shares cube's corner visibility issue
-        const hitThreshold = usesWorldDist
-          ? (surfaceType === 'cube' || surfaceType === 'cube-tunnel' ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD)
-          : ENEMY_HIT_RADIUS;
+        const hitThreshold = surfaceType === 'cube' || surfaceType === 'cube-tunnel'
+          ? ENEMY_HIT_WORLD_CUBE : surfaceType === 'pill' ? ENEMY_HIT_WORLD_PILL : ENEMY_HIT_WORLD;
 
         if (dist < hitThreshold) {
           // Player hit!
@@ -5766,6 +5930,7 @@ export class GameRoom extends Room<GameState> {
       segment.health = Math.max(1, Math.ceil(segment.health * 0.5));
       segment.maxHealth = Math.max(segment.maxHealth, this.getEnemyHealth(segment.type), segment.health);
       this.enemyAI.set(segment.id, this.createEnemyAI(segment.type));
+      this.ensureEnemyWalker(segment);
       released++;
     });
     return released;
@@ -5786,6 +5951,7 @@ export class GameRoom extends Room<GameState> {
       );
       child.health = 1;
       child.maxHealth = 1;
+      this.ensureEnemyWalker(child);
       this.enemyAI.set(child.id, this.createEnemyAI(child.type));
       this.state.enemies.push(child);
       released++;
@@ -5799,6 +5965,7 @@ export class GameRoom extends Room<GameState> {
 
     enemy.alive = false;
     this.enemyAI.delete(enemy.id);
+    this.enemyWalkers.delete(enemy.id);
     const released = this.releaseQueuedSnakeSegments(enemy);
     const shattered = this.releaseShatterBloomShards(enemy);
     this.state.enemies.splice(index, 1);
@@ -6313,6 +6480,7 @@ export class GameRoom extends Room<GameState> {
     // units from the nearest player so the ring is in their visible field.
     const pos = this.getSpawnPosition();
     const enemy = this.makeEnemyState(type, pos.u, pos.v);
+    this.ensureEnemyWalker(enemy);
     const queuedSegments: EnemyState[] = [];
     for (let i = 0; i < queueLength; i++) {
       queuedSegments.push(this.makeSnakeSegmentState(enemy, i));

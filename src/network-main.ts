@@ -209,6 +209,7 @@ interface GameDebugAPI {
   getPlayerPosition: () => { u: number; v: number } | null;
   getEnemyCount: () => number;
   getEnemies: () => { id: string; type: string; u: number; v: number; hp: number }[];
+  getEnemyMeshPathingSamples: () => Record<string, unknown>[];
   getBulletCount: () => number;
   getScore: () => number;
   isConnected: () => boolean;
@@ -830,7 +831,7 @@ async function main() {
       enemy.active = false;
     });
     networkEnemies.clear();
-    enemyTargetUV.clear();
+    enemyTargetMeshLocation.clear();
     enemyPrevHealth.clear();
     enemyGlowTrails.forEach((trail) => {
       scene.remove(trail.root);
@@ -1350,10 +1351,17 @@ async function main() {
   const FAST_ENEMY_TYPES = mobile ? new Set<string>() : new Set<string>(['mayfly', 'rocket', 'duck']);
 
   // -- Interpolation targets (updated at 30Hz from server, consumed at 60Hz in render) --
-  // Store target UV positions for enemies and remote players so we can
-  // lerp toward them every RENDER frame (60Hz) instead of only on state
-  // change (30Hz). This is the #1 reason co-op feels smooth and LAN doesn't.
-  const enemyTargetUV = new Map<string, { u: number; v: number }>();
+  // Store canonical mesh targets for enemies and compatibility UV targets for
+  // remote players so rendering can interpolate every frame between patches.
+  const enemyTargetMeshLocation = new Map<string, {
+    position: THREE.Vector3;
+    normal: THREE.Vector3;
+    tangent: THREE.Vector3;
+    bitangent: THREE.Vector3;
+    faceIndex: number;
+    aggroTargetId: string;
+    aggroUntil: number;
+  }>();
   const remotePlayerTargetUV = new Map<string, { u: number; v: number; aimAngle: number }>();
 
   // -- World-space targets for remote players (s44-epic-06) --
@@ -1546,7 +1554,7 @@ async function main() {
   const bulletIdToIndex = new Map<string, number>();
   // Interpolation targets for bullets: lerp toward server UV in onRender (60Hz)
   // instead of snapping in onStateChange (was 30Hz, now 60Hz but still benefits
-  // from smooth lerp). Same pattern as enemyTargetUV.
+  // from smooth lerp). Same pattern as enemyTargetMeshLocation.
   const bulletTargetUV = new Map<string, { u: number; v: number; dirX: number; dirY: number }>();
   // Client-side geodesic state for visual bullet rendering.
   // Server uses UV-based movement (Christoffel stepping) for authoritative hit detection.
@@ -3680,7 +3688,7 @@ async function main() {
       enemy.active = false;
     });
     networkEnemies.clear();
-    enemyTargetUV.clear();
+    enemyTargetMeshLocation.clear();
     enemyPrevHealth.clear();
 
     // Clear all geoms
@@ -4542,18 +4550,39 @@ async function main() {
       enemy.health = netEnemy.health;
       enemy.maxHealth = netEnemy.maxHealth;
 
-      // Store target UV for per-frame interpolation in onRender (60Hz).
-      // Previously this lerp happened here at 30Hz, causing visible stutter.
-      const isNewEnemy = !enemyTargetUV.has(netEnemy.id);
-      enemyTargetUV.set(netEnemy.id, { u: netEnemy.surfaceU, v: netEnemy.surfaceV });
+      // Canonical server mesh location drives rendering. UV remains spawn/pickup compatibility data.
+      const isNewEnemy = !enemyTargetMeshLocation.has(netEnemy.id);
+      let targetLocation = enemyTargetMeshLocation.get(netEnemy.id);
+      if (!targetLocation) {
+        targetLocation = {
+          position: new THREE.Vector3(),
+          normal: new THREE.Vector3(),
+          tangent: new THREE.Vector3(),
+          bitangent: new THREE.Vector3(),
+          faceIndex: -1,
+          aggroTargetId: '',
+          aggroUntil: 0,
+        };
+        enemyTargetMeshLocation.set(netEnemy.id, targetLocation);
+      }
+      targetLocation.position.set(netEnemy.wx, netEnemy.wy, netEnemy.wz);
+      targetLocation.normal.set(netEnemy.nx, netEnemy.ny, netEnemy.nz);
+      targetLocation.tangent.set(netEnemy.tx, netEnemy.ty, netEnemy.tz);
+      targetLocation.bitangent.set(netEnemy.bx, netEnemy.by, netEnemy.bz);
+      targetLocation.faceIndex = netEnemy.walkerFaceIndex;
+      targetLocation.aggroTargetId = netEnemy.aggroTargetId;
+      targetLocation.aggroUntil = netEnemy.aggroUntil;
 
       // On first creation, snap to position immediately (no lerp needed)
       if (isNewEnemy) {
         enemy.surfacePosition.u = netEnemy.surfaceU;
         enemy.surfacePosition.v = netEnemy.surfaceV;
-        if (getTransform) {
-          enemy.applySurfaceTransform(getTransform);
-        }
+        enemy.applyCanonicalSurfaceTransform(
+          targetLocation.position,
+          targetLocation.normal,
+          targetLocation.tangent,
+          targetLocation.bitangent,
+        );
 
         // Remove any matching spawn warning ring at this UV position.
         // The ring was created 1.5s ago by the 'pre_spawn' message.
@@ -4711,7 +4740,7 @@ async function main() {
         // all new spawns to return a dummy inactive Wanderer (invisible enemies).
         enemy.active = false;
         networkEnemies.delete(id);
-        enemyTargetUV.delete(id);
+        enemyTargetMeshLocation.delete(id);
         enemyPrevHealth.delete(id);
 
         // Clean up glow trail for fast enemies
@@ -7910,7 +7939,7 @@ async function main() {
     }
 
     // -----------------------------------------------------------------------
-    // Per-frame interpolation for enemies (60Hz lerp toward 30Hz targets)
+    // Per-frame interpolation for enemies toward canonical server mesh targets.
     // THIS IS THE KEY FIX: previously enemies only moved on onStateChange
     // (30Hz), causing visible stutter. Now they smoothly interpolate every
     // render frame, matching how co-op updates enemies every frame.
@@ -7926,59 +7955,16 @@ async function main() {
     // NOTE: Newly spawned enemies are SNAPPED (not lerped) in onStateChange,
     // so there is no visible rubber-band on first appearance.
     const ENEMY_LERP = 0.35; // Phase 3: was 0.15; 12-frame convergence at 60fps
-    // s44r2-03: UV wraps for all surfaces on U, and also on V for torus-like surfaces.
-    // Using surf.wrapsV here (same flag used by server enemy AI and UV dimming logic).
-    const _enemyLerpWrapsV = surf ? surf.wrapsV : false;
-    // s44r22-19: Mobius half-twist detection. On Mobius, crossing the U=0/1 seam inverts V
-    // (the fundamental non-orientable property). When the server sends a new target UV with
-    // V inverted (e.g., from v=0.3 to v=0.7), naive lerp produces intermediate V values that
-    // place enemies INSIDE the surface geometry. This causes depth occlusion raycasts to count
-    // 2+ intersections, dimming enemies to opacity2Plus (0.12) → near invisible. The problem
-    // is progressive: more enemies crossing the seam per frame = more temporarily invisible.
-    // In PvPvE (more enemies + faster waves), this manifests as invisible enemies by wave 4.
-    // Fix: detect Mobius V-inversion from twist crossing and SNAP V instead of lerping.
-    const _isMobiusSurface = lastCreatedSurfaceType === 'mobius';
     networkEnemies.forEach((enemy, id) => {
-      const target = enemyTargetUV.get(id);
+      const target = enemyTargetMeshLocation.get(id);
       if (!target) return;
-
-      // s44r2-03 + s44r2-05: Wrap-aware UV lerp — takes the SHORTEST path across UV seams.
-      // Without this, enemies crossing the U=0/1 seam (or V=0/1 on torus) rubber-band
-      // across the entire surface: lerp goes 0.96 UV units backward instead of 0.04 forward.
-      // U always wraps [0,1]. V wraps only on torus/torus-tunnel (surf.wrapsV=true).
-      let du = target.u - enemy.surfacePosition.u;
-      if (Math.abs(du) > 0.5) du -= Math.sign(du); // shortest path across U seam
-      let dv = target.v - enemy.surfacePosition.v;
-      if (_enemyLerpWrapsV && Math.abs(dv) > 0.5) dv -= Math.sign(dv); // shortest path across V seam
-
-      // s44r22-19: Mobius half-twist snap. When an enemy crosses the U=0/1 seam on Mobius,
-      // the server inverts V (the half-twist). This produces a large V delta (|dv| > 0.3)
-      // combined with a U seam crossing (|du| was > 0.5 before wrap correction, meaning
-      // the raw U delta crossed the seam). In this case, lerping V through intermediate
-      // values would place the enemy inside the surface. Snap V immediately instead.
-      // The threshold 0.3 is conservative: the Mobius strip width maps to v=[0,1],
-      // so normal movement produces dv < 0.1 per frame. A dv > 0.3 is almost certainly
-      // a half-twist inversion.
-      let snapV = false;
-      if (_isMobiusSurface && Math.abs(dv) > 0.3) {
-        snapV = true;
-      }
-
-      const newU = enemy.surfacePosition.u + du * ENEMY_LERP;
-      const newV = snapV ? target.v : (enemy.surfacePosition.v + dv * ENEMY_LERP);
-      // Keep UV in [0,1] after wrap-aware step
-      enemy.surfacePosition.u = ((newU % 1) + 1) % 1;
-      if (_isMobiusSurface) {
-        // s44r22-19: Clamp V for Mobius (strip has physical edges at v=0 and v=1).
-        // Without wrapsV, V can drift outside [0,1] during lerp, producing positions
-        // off the edge of the strip → inside the surface → depth-occluded → invisible.
-        enemy.surfacePosition.v = Math.max(0.02, Math.min(0.98, newV));
-      } else {
-        enemy.surfacePosition.v = _enemyLerpWrapsV ? ((newV % 1) + 1) % 1 : newV;
-      }
-
-      // Apply surface transform to update 3D position from UV
-      enemy.applySurfaceTransform(transform);
+      enemy.position.lerp(target.position, ENEMY_LERP);
+      enemy.applyCanonicalSurfaceTransform(
+        enemy.position,
+        target.normal,
+        target.tangent,
+        target.bitangent,
+      );
 
       // Add glow trail point for fast enemies (after position is updated)
       const enemyTrail = enemyGlowTrails.get(id);
@@ -8727,6 +8713,25 @@ async function main() {
           });
         });
         return result;
+      },
+      getEnemyMeshPathingSamples: () => {
+        const samples: Record<string, unknown>[] = [];
+        networkEnemies.forEach((enemy, id) => {
+          const target = enemyTargetMeshLocation.get(id);
+          if (!target) return;
+          samples.push({
+            id,
+            type: enemy.baseTypeName || 'unknown',
+            faceIndex: target.faceIndex,
+            canonicalWorld: target.position.toArray(),
+            renderedWorld: enemy.position.toArray(),
+            renderCanonicalDelta: enemy.position.distanceTo(target.position),
+            aggroTargetId: target.aggroTargetId,
+            aggroUntil: target.aggroUntil,
+            alive: enemy.alive,
+          });
+        });
+        return samples;
       },
       getBulletCount: () => bulletIdToIndex.size,
       getScore: () => {

@@ -115,6 +115,8 @@ export class CollisionSystem {
     bloomEffectManager?: BloomEffectManager | null,
     /** Optional score multiplier callback (e.g. Rainbow mode: 3x for color match, 0.5x for mismatch). */
     onScoreMultiplier?: (enemy: BaseEnemy) => number,
+    /** Player id owning these bullets; enables bounded SP damage aggro. */
+    attackerId: number = -1,
   ): void {
     // DIAGNOSTIC: Entry guard (remove after freeze investigation)
     const debugFreeze = (window as any).__debugFreeze ?? false;
@@ -182,7 +184,7 @@ export class CollisionSystem {
           // Cap damage by remaining budget; budget consumed = HP actually destroyed.
           // This enables piercing for high-damage weapons (Piercing, high-level player).
           const actualDamage = Math.min(mutableBullet.remainingDamage, enemy.health);
-          enemy.takeDamage(actualDamage);
+          enemy.takeDamage(actualDamage, attackerId);
           mutableBullet.remainingDamage -= actualDamage;
 
           // Emit telemetry after damage applied
@@ -392,7 +394,7 @@ export class CollisionSystem {
         }
         if (isShielded) {
           // Shield absorbs the hit and kills the enemy
-          enemy.takeDamage(999);
+          enemy.takeDamage(999, 0);
           particles.bulletImpact(enemy.position);
           screenShake.shake(0.2, 0.15);
           getSoundEngine().play('shieldHit');
@@ -401,7 +403,7 @@ export class CollisionSystem {
           const saved = onPlayerHit?.() ?? false;
           if (saved) {
             // Companion protector activated - kill the enemy, player survives
-            enemy.takeDamage(999);
+            enemy.takeDamage(999, 0);
             particles.bulletImpact(enemy.position);
             screenShake.shake(0.3, 0.2);
             // Screen flash handled by caller
