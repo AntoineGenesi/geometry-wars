@@ -893,4 +893,18 @@ describe('MeshSurface — map size scale (S26 regression)', () => {
       expect(result.distanceTraveled).toBeLessThanOrEqual(worldDistance * 1.1);
     });
   });
+
+  describe('intersectsSegment', () => {
+    it('uses the BVH first hit and respects the finite segment length', () => {
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2));
+      mesh.updateMatrixWorld(true);
+      const surface = new MeshSurface(mesh);
+      const origin = new THREE.Vector3(0, 0, 3);
+      const direction = new THREE.Vector3(0, 0, -1);
+
+      expect(surface.intersectsSegment(origin, direction, 3)).toBe(true);
+      expect(surface.intersectsSegment(origin, direction, 1.5)).toBe(false);
+      expect(surface.intersectsSegment(origin, new THREE.Vector3(0, 1, 0), 10)).toBe(false);
+    });
+  });
 });

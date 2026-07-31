@@ -28,6 +28,10 @@ export interface EnemyBodyProofDebugAPI {
     includeSurface?: boolean,
     includeAuxiliary?: boolean,
   ) => Record<string, unknown>;
+  captureTargetIsolatedBody: (
+    targetId: string,
+    includeTarget?: boolean,
+  ) => Record<string, unknown>;
   forceLowLOD: () => Record<string, unknown>;
   sampleEnemyRenderAfterCameraOffset: (
     x?: number,
@@ -316,6 +320,99 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
     };
   };
 
+  const captureTargetIsolatedBody = (targetId: string, includeTarget = true) => {
+    const target = options.getEnemies().find((entry) => entry.id === targetId);
+    if (!target || !target.enemy.active || !target.enemy.alive) {
+      return { ok: false, reason: 'target enemy unavailable', targetId, includeTarget };
+    }
+
+    const mgr = options.enemyInstanceManager as any;
+    const allBatches = [
+      ...Array.from((mgr.batches as Map<string, any> | undefined)?.values() ?? []),
+      mgr.lodMediumBatch,
+      mgr.lodLowBatch,
+    ].filter(Boolean) as any[];
+    const batchVisibility = allBatches.map((batch) => ({
+      batch,
+      visible: batch.instancedMesh.visible as boolean,
+    }));
+    const enemyVisibility = options.getEnemies().flatMap(({ enemy }) => {
+      const objects = [enemy.mesh, ...enemy.auxiliaryObjects].filter(Boolean) as THREE.Object3D[];
+      return objects.map((object) => ({ object, visible: object.visible }));
+    });
+    const sceneVisibility = options.scene.children.map((object) => ({ object, visible: object.visible }));
+
+    let selectedBatch: any = null;
+    let selectedSlot: number | undefined;
+    const enemy = target.enemy;
+    if (enemy.isInstanced) {
+      const lodPlacement = mgr.enemyLODPlacement?.get(enemy);
+      const lodBatch = lodPlacement === 1 ? mgr.lodMediumBatch
+        : lodPlacement === 2 ? mgr.lodLowBatch
+          : null;
+      const lodSlot = lodBatch?.enemyToIndex?.get(enemy);
+      const typeKey = (enemy as any)._instanceType as string | undefined;
+      selectedBatch = lodBatch && lodSlot !== undefined ? lodBatch : mgr.batches?.get(typeKey);
+      selectedSlot = lodBatch && lodSlot !== undefined
+        ? lodSlot
+        : selectedBatch?.enemyToIndex?.get(enemy);
+    }
+
+    const selectedMatrices: THREE.Matrix4[] = [];
+    const zeroMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
+    try {
+      for (const entry of sceneVisibility) {
+        if (!(entry.object instanceof THREE.Light)) entry.object.visible = false;
+      }
+      for (const entry of batchVisibility) entry.batch.instancedMesh.visible = false;
+      for (const entry of enemyVisibility) entry.object.visible = false;
+
+      if (includeTarget) {
+        if (selectedBatch && selectedSlot !== undefined) {
+          const count = selectedBatch.instancedMesh.count as number;
+          for (let i = 0; i < count; i++) {
+            const matrix = new THREE.Matrix4();
+            selectedBatch.instancedMesh.getMatrixAt(i, matrix);
+            selectedMatrices.push(matrix);
+            selectedBatch.instancedMesh.setMatrixAt(i, i === selectedSlot ? matrix : zeroMatrix);
+          }
+          selectedBatch.instancedMesh.instanceMatrix.needsUpdate = true;
+          selectedBatch.instancedMesh.visible = true;
+        } else if (!enemy.isInstanced && enemy.mesh) {
+          let object: THREE.Object3D | null = enemy.mesh;
+          while (object && object !== options.scene) {
+            object.visible = true;
+            object = object.parent;
+          }
+        }
+      }
+
+      options.renderer.render(options.scene, options.camera);
+      const canvas = options.renderer.domElement;
+      const dataUrl = canvas.toDataURL('image/png');
+      const sample = getEnemyRenderSamples().find((entry) => entry.id === targetId) ?? null;
+      return {
+        ok: dataUrl.startsWith('data:image/png;base64,'),
+        targetId,
+        includeTarget,
+        capture: 'canvas-only-synchronous-render',
+        dataUrl,
+        sample,
+      };
+    } finally {
+      if (selectedBatch && selectedMatrices.length > 0) {
+        for (let i = 0; i < selectedMatrices.length; i++) {
+          selectedBatch.instancedMesh.setMatrixAt(i, selectedMatrices[i]);
+        }
+        selectedBatch.instancedMesh.instanceMatrix.needsUpdate = true;
+      }
+      for (const entry of sceneVisibility) entry.object.visible = entry.visible;
+      for (const entry of batchVisibility) entry.batch.instancedMesh.visible = entry.visible;
+      for (const entry of enemyVisibility) entry.object.visible = entry.visible;
+      options.renderer.render(options.scene, options.camera);
+    }
+  };
+
   const forceLowLOD = () => {
     if (!options.lodManager) return { ok: false, reason: 'LODManager unavailable' };
     options.lodManager.setConfig({ highDistance: -1, mediumDistance: -1, hysteresis: 0 });
@@ -532,7 +629,9 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
           && playerDominantPixels >= 20,
         enemyId: blocked.id,
         enemyType: enemy.baseTypeName || enemy.constructor.name,
-        alignedPlayerMesh: alignedPlayerMesh?.name || alignedPlayerMesh?.type || null,
+        alignedPlayerMesh: (alignedPlayerMesh as THREE.Mesh | null)?.name
+          || (alignedPlayerMesh as THREE.Mesh | null)?.type
+          || null,
         alignedPlayerRadius,
         visibilityClass: (enemy as any).__surfaceVisibility?.className ?? null,
         resolverVisibility: (enemy as any).__surfaceVisibility?.visibility ?? null,
@@ -571,6 +670,7 @@ export function createEnemyBodyProofDebug(options: EnemyBodyProofDebugOptions): 
     getEnemyRenderSamples,
     getEnemyInstanceDebug,
     setVisualProofIsolation,
+    captureTargetIsolatedBody,
     forceLowLOD,
     sampleEnemyRenderAfterCameraOffset,
     runAlignedPlayerLayeringProof,

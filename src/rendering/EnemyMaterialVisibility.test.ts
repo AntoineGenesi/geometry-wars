@@ -33,4 +33,11 @@ describe('applyNonInstancedEnemyVisibility', () => {
     expect(applyNonInstancedEnemyVisibility(enemy, Number.NaN)).toBe(1);
     expect(material.opacity).toBe(1);
   });
+
+  it('preserves explicit zero for intentionally hidden enemies', () => {
+    const material = new THREE.MeshBasicMaterial({ opacity: 1 });
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material);
+    expect(applyNonInstancedEnemyVisibility({ mesh, cachedMaterials: [material] }, 0)).toBe(1);
+    expect(material.opacity).toBe(0);
+  });
 });

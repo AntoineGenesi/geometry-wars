@@ -354,6 +354,23 @@ describe('EnemyInstanceManager', () => {
       expect(color.g).toBeCloseTo(0.0, 2);   // 0.0 * 0.5
       expect(color.b).toBeCloseTo(0.25, 2);  // 0.5 * 0.5
     });
+
+    it('does not upload unchanged color and opacity buffers again', () => {
+      const grunt = new TestGrunt();
+      manager.register(grunt);
+      manager.setInstanceVisibility(grunt, 0.5, 0.2);
+      manager.flushColors();
+
+      const batch = (manager as any).batches.get('Grunt');
+      const colorVersion = batch.instancedMesh.instanceColor.version;
+      const opacityVersion = batch.opacityAttribute.version;
+
+      manager.setInstanceVisibility(grunt, 0.5, 0.2);
+      manager.flushColors();
+
+      expect(batch.instancedMesh.instanceColor.version).toBe(colorVersion);
+      expect(batch.opacityAttribute.version).toBe(opacityVersion);
+    });
   });
 
   describe('getStats', () => {

@@ -149,6 +149,8 @@ export class EnemyInstanceManager {
   /** Dirty flag: true when any instanceColor or opacityAttribute value changed this frame.
    *  flushColors() skips needsUpdate=true if false, avoiding unnecessary GPU buffer uploads. */
   private _colorsDirty = false;
+  private readonly _dirtyTypeBatches = new Set<InstanceBatch>();
+  private readonly _dirtyLODBatches = new Set<LODSharedBatch>();
 
   constructor(scene: THREE.Scene, maxInstances = DEFAULT_MAX_INSTANCES, isWebGPU = false) {
     this.scene = scene;
@@ -296,6 +298,8 @@ export class EnemyInstanceManager {
     batch.perInstanceColors[ci + 1] = batch.baseColor.g;
     batch.perInstanceColors[ci + 2] = batch.baseColor.b;
     batch.perInstanceMinBrightness[index] = ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS;
+    this._colorsDirty = true;
+    this._dirtyTypeBatches.add(batch);
 
     // Track the instance index on the enemy for external reference
     (enemy as any)._instanceIndex = index;
@@ -319,6 +323,8 @@ export class EnemyInstanceManager {
     _tempMatrix.compose(_tempPosition.set(0, 0, 0), _tempQuaternion.identity(), _zeroScale);
     batch.instancedMesh.setMatrixAt(index, _tempMatrix);
     batch.opacityAttribute.setX(index, 0.0);
+    this._colorsDirty = true;
+    this._dirtyTypeBatches.add(batch);
 
     // Free the slot
     batch.enemyToIndex.delete(enemy);
@@ -520,14 +526,6 @@ export class EnemyInstanceManager {
     // Finalize HIGH-detail batches
     for (const batch of this.batches.values()) {
       batch.instancedMesh.instanceMatrix.needsUpdate = true;
-      if (batch.instancedMesh.instanceColor) {
-        batch.instancedMesh.instanceColor.needsUpdate = true;
-      }
-      // Flush per-instance opacity attribute so the shader reads updated values.
-      // Without this, opacityAttribute.setX() changes in the culling loop above
-      // are never uploaded to the GPU, making shader-based dimming invisible.
-      batch.opacityAttribute.needsUpdate = true;
-
       if (doFullRevalidation) {
         // Full scan: recompute highWaterMark from scratch
         const trueMax = this.getMaxUsedIndex(batch);
@@ -567,6 +565,8 @@ export class EnemyInstanceManager {
     batch.perInstanceColors[ci] = color.r;
     batch.perInstanceColors[ci + 1] = color.g;
     batch.perInstanceColors[ci + 2] = color.b;
+    this._colorsDirty = true;
+    this._dirtyTypeBatches.add(batch);
   }
 
   /**
@@ -654,8 +654,8 @@ export class EnemyInstanceManager {
     // At visibility=0.40: 0.40²=16% effective brightness → near-invisible on dark background.
     // Fix: opacityAttribute is binary; only instanceColor provides dimming (linear, not squared).
     // At visibility=0.40: output=baseColor×0.40 = 40% brightness — dim but clearly visible.
-    batch.opacityAttribute.setX(index, visibility > 0 ? 1.0 : 0.0);
-    batch.perInstanceMinBrightness[index] = visibility > 0
+    const nextOpacity = visibility > 0 ? 1.0 : 0.0;
+    const nextMinBrightness = visibility > 0
       ? Math.max(0, Math.min(ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS, minColorBrightness))
       : 0;
 
@@ -677,7 +677,7 @@ export class EnemyInstanceManager {
     // use their documented lower class floor without being raised again here.
     if (visibility > 0) {
       const avg = (r + g + b) / 3;
-      const MIN_ICB = batch.perInstanceMinBrightness[index];
+      const MIN_ICB = nextMinBrightness;
       if (avg > 0 && avg < MIN_ICB) {
         const scale = MIN_ICB / avg;
         r *= scale;
@@ -690,9 +690,23 @@ export class EnemyInstanceManager {
       }
     }
 
-    _tempColor.setRGB(r, g, b);
-    batch.instancedMesh.setColorAt(index, _tempColor);
-    this._colorsDirty = true;
+    const colorAttribute = batch.instancedMesh.instanceColor;
+    const colorChanged = !colorAttribute
+      || Math.abs(colorAttribute.getX(index) - r) > 1e-6
+      || Math.abs(colorAttribute.getY(index) - g) > 1e-6
+      || Math.abs(colorAttribute.getZ(index) - b) > 1e-6;
+    const opacityChanged = Math.abs(batch.opacityAttribute.getX(index) - nextOpacity) > 1e-6;
+    const minChanged = Math.abs(batch.perInstanceMinBrightness[index] - nextMinBrightness) > 1e-6;
+    if (opacityChanged) batch.opacityAttribute.setX(index, nextOpacity);
+    if (minChanged) batch.perInstanceMinBrightness[index] = nextMinBrightness;
+    if (colorChanged) {
+      _tempColor.setRGB(r, g, b);
+      batch.instancedMesh.setColorAt(index, _tempColor);
+    }
+    if (colorChanged || opacityChanged) {
+      this._colorsDirty = true;
+      this._dirtyTypeBatches.add(batch);
+    }
   }
 
   /**
@@ -745,6 +759,7 @@ export class EnemyInstanceManager {
             }
             batch.instancedMesh.setColorAt(index, _tempColor);
             this._colorsDirty = true;
+            this._dirtyTypeBatches.add(batch);
           }
         }
 
@@ -789,6 +804,7 @@ export class EnemyInstanceManager {
             }
             lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
             this._colorsDirty = true;
+            this._dirtyLODBatches.add(lodBatch);
           }
         }
 
@@ -826,25 +842,21 @@ export class EnemyInstanceManager {
     if (!this._colorsDirty) return;
     this._colorsDirty = false;
 
-    for (const batch of this.batches.values()) {
+    for (const batch of this._dirtyTypeBatches) {
       if (batch.instancedMesh.instanceColor) {
         batch.instancedMesh.instanceColor.needsUpdate = true;
       }
       batch.opacityAttribute.needsUpdate = true;
     }
     // Also flush LOD batches
-    if (this.lodMediumBatch) {
-      if (this.lodMediumBatch.instancedMesh.instanceColor) {
-        this.lodMediumBatch.instancedMesh.instanceColor.needsUpdate = true;
+    for (const lodBatch of this._dirtyLODBatches) {
+      if (lodBatch.instancedMesh.instanceColor) {
+        lodBatch.instancedMesh.instanceColor.needsUpdate = true;
       }
-      this.lodMediumBatch.opacityAttribute.needsUpdate = true;
+      lodBatch.opacityAttribute.needsUpdate = true;
     }
-    if (this.lodLowBatch) {
-      if (this.lodLowBatch.instancedMesh.instanceColor) {
-        this.lodLowBatch.instancedMesh.instanceColor.needsUpdate = true;
-      }
-      this.lodLowBatch.opacityAttribute.needsUpdate = true;
-    }
+    this._dirtyTypeBatches.clear();
+    this._dirtyLODBatches.clear();
   }
 
   /**
@@ -997,11 +1009,13 @@ export class EnemyInstanceManager {
   ): void {
     // Get or allocate a slot
     let slotIndex = lodBatch.enemyToIndex.get(enemy);
+    let allocated = false;
     if (slotIndex === undefined) {
       slotIndex = this.allocateLODSlot(lodBatch);
       if (slotIndex < 0) return; // No free slots
       lodBatch.enemyToIndex.set(enemy, slotIndex);
       lodBatch.indexToEnemy[slotIndex] = enemy;
+      allocated = true;
     }
 
     // Extract position from enemy mesh world matrix
@@ -1014,14 +1028,16 @@ export class EnemyInstanceManager {
 
     lodBatch.instancedMesh.setMatrixAt(slotIndex, _tempMatrix);
 
-    // Color from the enemy type's base color
-    const baseColor = this.typeBaseColors.get(typeKey);
-    if (baseColor) {
-      lodBatch.instancedMesh.setColorAt(slotIndex, baseColor);
+    if (allocated) {
+      // Initialize visual attributes once. The rendered-frame visibility pass owns
+      // subsequent changes; rewriting base color/opacity here forced a GPU upload
+      // every frame for dimmed LOD enemies.
+      const baseColor = this.typeBaseColors.get(typeKey);
+      if (baseColor) lodBatch.instancedMesh.setColorAt(slotIndex, baseColor);
+      lodBatch.opacityAttribute.setX(slotIndex, 1.0);
+      this._colorsDirty = true;
+      this._dirtyLODBatches.add(lodBatch);
     }
-
-    // Opacity: keep at 1.0 (main.ts render loop handles opacity via setInstanceVisibility)
-    lodBatch.opacityAttribute.setX(slotIndex, 1.0);
 
     // Track placement
     this.enemyLODPlacement.set(enemy, lodLevel);
@@ -1115,10 +1131,6 @@ export class EnemyInstanceManager {
    */
   private finalizeLODBatch(lodBatch: LODSharedBatch): void {
     lodBatch.instancedMesh.instanceMatrix.needsUpdate = true;
-    if (lodBatch.instancedMesh.instanceColor) {
-      lodBatch.instancedMesh.instanceColor.needsUpdate = true;
-    }
-    lodBatch.opacityAttribute.needsUpdate = true;
     // highWaterMark is O(1) — maintained incrementally in allocateLODSlot/removeLODPlacement.
     lodBatch.instancedMesh.count = lodBatch.highWaterMark + 1;
   }
@@ -1146,8 +1158,8 @@ export class EnemyInstanceManager {
 
     // s44r18-20: RGB-only dimming — binary opacityAttribute to avoid visibility² darkening.
     // See setInstanceVisibility for full rationale.
-    lodBatch.opacityAttribute.setX(slotIndex, visibility > 0 ? 1.0 : 0.0);
-    lodBatch.minBrightness[slotIndex] = visibility > 0
+    const nextOpacity = visibility > 0 ? 1.0 : 0.0;
+    const nextMinBrightness = visibility > 0
       ? Math.max(0, Math.min(ENEMY_OCCLUSION_DEFAULT_MIN_BRIGHTNESS, minColorBrightness))
       : 0;
 
@@ -1163,7 +1175,7 @@ export class EnemyInstanceManager {
       // s44r29-01: Same minimum ICB floor as setInstanceVisibility (see comment there).
       if (visibility > 0) {
         const avg = (r + g + b) / 3;
-        const MIN_ICB = lodBatch.minBrightness[slotIndex];
+        const MIN_ICB = nextMinBrightness;
         if (avg > 0 && avg < MIN_ICB) {
           const scale = MIN_ICB / avg;
           r *= scale;
@@ -1176,9 +1188,23 @@ export class EnemyInstanceManager {
         }
       }
 
-      _tempColor.setRGB(r, g, b);
-      lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
-      this._colorsDirty = true;
+      const colorAttribute = lodBatch.instancedMesh.instanceColor;
+      const colorChanged = !colorAttribute
+        || Math.abs(colorAttribute.getX(slotIndex) - r) > 1e-6
+        || Math.abs(colorAttribute.getY(slotIndex) - g) > 1e-6
+        || Math.abs(colorAttribute.getZ(slotIndex) - b) > 1e-6;
+      const opacityChanged = Math.abs(lodBatch.opacityAttribute.getX(slotIndex) - nextOpacity) > 1e-6;
+      const minChanged = Math.abs(lodBatch.minBrightness[slotIndex] - nextMinBrightness) > 1e-6;
+      if (opacityChanged) lodBatch.opacityAttribute.setX(slotIndex, nextOpacity);
+      if (minChanged) lodBatch.minBrightness[slotIndex] = nextMinBrightness;
+      if (colorChanged) {
+        _tempColor.setRGB(r, g, b);
+        lodBatch.instancedMesh.setColorAt(slotIndex, _tempColor);
+      }
+      if (colorChanged || opacityChanged) {
+        this._colorsDirty = true;
+        this._dirtyLODBatches.add(lodBatch);
+      }
     }
   }
 

@@ -21,6 +21,7 @@ import { createRenderer, RendererBackend, installWebGPUDiagnostic } from '../ren
 import { EntityLimits, getEntityLimits } from '../rendering/EntityLimits';
 import { BloomEffectManager } from '../effects/BloomEffectManager';
 import { type VisualMode } from '../ui/VisualStyleSettings';
+import { profiler } from './PerformanceProfiler';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -618,6 +619,13 @@ export class Game {
   private loop = (timestamp: number): void => {
     if (!this.running) return;
     this.rafId = requestAnimationFrame(this.loop);
+    const perfCapture = (globalThis as any).__GW_RENDER_FRAME_CAPTURE as {
+      enabled?: boolean;
+      maxFrames?: number;
+      frames?: Array<Record<string, unknown>>;
+    } | undefined;
+    const captureFrame = perfCapture?.enabled === true;
+    const callbackStart = captureFrame ? performance.now() : 0;
 
     // Advance physics (GameClock calls fixedUpdate N times).
     // Wrapped in try/catch so exceptions never block rendering — the game
@@ -630,12 +638,15 @@ export class Game {
         console.error('[Game] Error in fixedUpdate:', err);
       }
     }
+    const updateEnd = captureFrame ? performance.now() : 0;
 
     // Pre-render callback (surface projection, etc.).
     this.onRender?.(this.clock.alpha);
+    const preRenderEnd = captureFrame ? performance.now() : 0;
 
     // Render with interpolation.
     this.updateCamera(this.clock.alpha);
+    const cameraEnd = captureFrame ? performance.now() : 0;
     if (this.renderOverride) {
       this.renderOverride();
     } else if (this.webgpuPostProcessing) {
@@ -645,6 +656,25 @@ export class Game {
     } else {
       // Direct render fallback (WebGPU without PostProcessing)
       (this.renderer as any).render(this.scene, this.camera);
+    }
+    if (captureFrame && perfCapture) {
+      const renderEnd = performance.now();
+      const frames = perfCapture.frames ?? (perfCapture.frames = []);
+      frames.push({
+        rafTimestamp: timestamp,
+        updateMs: updateEnd - callbackStart,
+        preRenderMs: preRenderEnd - updateEnd,
+        cameraMs: cameraEnd - preRenderEnd,
+        rendererCallMs: renderEnd - cameraEnd,
+        callbackMs: renderEnd - callbackStart,
+        scopes: profiler.getFrameData().map((scope) => ({
+          name: scope.label,
+          totalMs: scope.totalMs,
+          calls: scope.callCount,
+        })),
+      });
+      const maxFrames = Math.max(1, perfCapture.maxFrames ?? 1200);
+      if (frames.length > maxFrames) frames.splice(0, frames.length - maxFrames);
     }
   };
 

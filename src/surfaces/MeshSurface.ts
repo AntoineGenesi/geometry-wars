@@ -201,6 +201,20 @@ export class MeshSurface {
     };
   }
 
+  /** Fast BVH-backed segment visibility query without collecting every triangle hit. */
+  intersectsSegment(origin: THREE.Vector3, direction: THREE.Vector3, maxWorldDistance: number): boolean {
+    this._invMatrix.copy(this.mesh.matrixWorld).invert();
+    this._ray.origin.copy(origin).applyMatrix4(this._invMatrix);
+    this._ray.direction.copy(direction).transformDirection(this._invMatrix).normalize();
+    const hit = this.bvh.raycastFirst(this._ray);
+    if (!hit) return false;
+
+    const worldDistance = this._tempVec.copy(hit.point)
+      .applyMatrix4(this.mesh.matrixWorld)
+      .distanceTo(origin);
+    return worldDistance < Math.max(0, maxWorldDistance - 1e-4);
+  }
+
   /**
    * Compute a tangent frame at a surface point.
    * Returns orthonormal basis (normal, tangent, bitangent) for movement.
