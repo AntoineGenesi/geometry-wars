@@ -4,6 +4,7 @@ import { OcclusionSurfaceMaterial } from '../rendering/OcclusionSurfaceMaterial'
 import {
   SurfaceVisibilityResolver,
 } from '../rendering/SurfaceVisibilityResolver';
+import { applyNonInstancedEnemyVisibility } from '../rendering/EnemyMaterialVisibility';
 import type { MeshSurface } from '../surfaces/MeshSurface';
 import { EnemyType } from '../entities/enemies/EnemySpawner';
 import { Boss } from '../entities/enemies/Boss';
@@ -102,11 +103,8 @@ export class RenderLoop {
         // Hide excess enemies by zeroing visibility
         if (enemy.isInstanced) {
           ctx.enemyInstanceManager.setInstanceVisibility(enemy, 0);
-        } else if (enemy.cachedMaterials) {
-          for (const mat of enemy.cachedMaterials) {
-            (mat as any).transparent = true;
-            (mat as any).opacity = 0;
-          }
+        } else {
+          applyNonInstancedEnemyVisibility(enemy, 0);
         }
         continue;
       }
@@ -144,24 +142,7 @@ export class RenderLoop {
         continue;
       }
 
-      // Non-instanced: use cached materials instead of traverse()
-      if (enemy.cachedMaterials) {
-        for (const mat of enemy.cachedMaterials) {
-          (mat as any).transparent = true;
-          (mat as any).opacity = visibility;
-        }
-      } else {
-        // Fallback for enemies without cached materials yet
-        enemy.mesh.traverse((child) => {
-          if (child instanceof THREE.Mesh && child.material) {
-            const mat = child.material as THREE.MeshBasicMaterial;
-            if (mat.transparent !== undefined) {
-              mat.transparent = true;
-              mat.opacity = visibility;
-            }
-          }
-        });
-      }
+      applyNonInstancedEnemyVisibility(enemy, visibility);
     }
     (globalThis as any).__surfaceVisibilityStats = visibilityResolver.getStats();
     // s44r29-02: Universal safety net — catch any enemy that slipped through

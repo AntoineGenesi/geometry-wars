@@ -28,8 +28,10 @@ describe('surface visibility live-path integration', () => {
     );
 
     expect(source).toContain("from './rendering/SurfaceVisibilityResolver'");
+    expect(source).toContain("from './rendering/EnemyMaterialVisibility'");
     expect(source).toContain('surfaceVisibilityResolver = new SurfaceVisibilityResolver(meshSurface)');
     expect(enemySection).toContain('surfaceVisibilityResolver.resolve({');
+    expect(enemySection).toContain('applyNonInstancedEnemyVisibility(enemy, vis)');
     expect(enemySection).not.toMatch(/NET_SURFACE_|surfacePosition\.[uv]|depthOcclusion/);
     expect(enemySection).not.toMatch(/cube-ring|cube-tunnel|sphere-tunnel|_isTunnelSurface/);
   });

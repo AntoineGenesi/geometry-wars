@@ -23,6 +23,7 @@ const MODE = getArg('mode') || 'pvpve';
 const MAX_SECONDS = Number(getArg('duration') || 95);
 const RENDERER = getArg('renderer') || 'webgl';
 const SURFACE_OPAQUE = getArg('surface-opaque') === 'true' || getArg('opaque') === 'true';
+const REVIEW_FIX_PROOF = getArg('review-fix-proof') === 'true';
 const CONNECT_DEBUG_PORT = Number(getArg('connect-debug-port') || 0);
 const CONNECT_DEBUG_HOST = getArg('connect-debug-host') || '127.0.0.1';
 const DEV_BIND_HOST = getArg('dev-bind-host') || '127.0.0.1';
@@ -224,6 +225,9 @@ async function collectBodyCheckpoint(page, label) {
           renderOrder: enemy.renderOrder,
           instanceMatrixScale: enemy.instanceMatrixScale,
           instanceMatrixScaleXYZ: enemy.instanceMatrixScaleXYZ,
+          instanceQuaternion: enemy.instanceQuaternion,
+          enemyWorldQuaternion: enemy.enemyWorldQuaternion,
+          orientationDotToEnemy: enemy.orientationDotToEnemy,
           surfaceVisibility: enemy.surfaceVisibility,
           screen: enemy.screen,
           opacity: enemy.opacity,
@@ -267,6 +271,131 @@ async function collectBodyCheckpoint(page, label) {
   } finally {
     await page.evaluate(() => window.__gameDebug?.setVisualProofIsolation?.(false)).catch(() => {});
   }
+}
+
+function saveProofDataUrl(name, dataUrl) {
+  if (!dataUrl?.startsWith('data:image/png;base64,')) {
+    throw new Error(`Missing PNG data for ${name}`);
+  }
+  const path = resolve(OUT_DIR, `${name}-${runId}.png`);
+  writeFileSync(path, Buffer.from(dataUrl.split(',')[1], 'base64'));
+  return path;
+}
+
+async function collectReviewFixProof(page) {
+  const spawnedNonInstanced = await page.evaluate(() =>
+    window.__gameDebug?.spawnNonInstancedVisibilityProofEnemies?.() || []
+  );
+  await sleep(500);
+  let layering = null;
+  const layeringStart = Date.now();
+  while (Date.now() - layeringStart < 15000 && !layering?.ok) {
+    layering = await page.evaluate(() => window.__gameDebug?.runAlignedPlayerLayeringProof?.() || null);
+    if (!layering?.ok) await sleep(500);
+  }
+
+  const screenshotPaths = {};
+  if (layering) {
+    for (const key of ['background', 'baseline', 'enemyOnly', 'layered']) {
+      const dataKey = `${key}DataUrl`;
+      if (layering[dataKey]) {
+        screenshotPaths[key] = saveProofDataUrl(`review-${key}`, layering[dataKey]);
+        delete layering[dataKey];
+      }
+    }
+  }
+
+  const before = await page.evaluate(() => window.__gameDebug?.getEnemyRenderSamples?.() || []);
+  const regularNonInstancedSamples = before.filter((sample) =>
+    sample.renderBatch === 'mesh'
+      && sample.surfaceVisibility?.className
+      && !String(sample.type || '').toLowerCase().includes('snake')
+  );
+  const nonInstancedVisibilityViolations = regularNonInstancedSamples.filter((sample) =>
+    Math.abs((sample.opacity ?? 1) - sample.surfaceVisibility.visibility) > 0.001
+  );
+
+  const forced = await page.evaluate(() => window.__gameDebug?.forceLowLOD?.() || null);
+  await sleep(750);
+  const afterTransition = await page.evaluate(() => window.__gameDebug?.getEnemyRenderSamples?.() || []);
+  const cameraOffset = await page.evaluate(() =>
+    window.__gameDebug?.sampleEnemyRenderAfterCameraOffset?.(2, 1, 0) || null
+  );
+
+  const lowSamples = afterTransition.filter((sample) => sample.lodLevel === 'LOW');
+  const low3DViolations = lowSamples.filter((sample) =>
+    sample.geometryType !== 'OctahedronGeometry'
+      || !sample.instanceMatrixScaleXYZ
+      || Math.min(
+        sample.instanceMatrixScaleXYZ.x,
+        sample.instanceMatrixScaleXYZ.y,
+        sample.instanceMatrixScaleXYZ.z,
+      ) <= 0
+      || (sample.orientationDotToEnemy ?? 0) < 0.999
+  );
+
+  const transitionBefore = new Map(before.map((sample) => [sample.id, sample]));
+  const transitionPairs = lowSamples
+    .filter((sample) => transitionBefore.has(sample.id))
+    .map((sample) => ({ before: transitionBefore.get(sample.id), after: sample }));
+  const brightHiddenTransitionViolations = transitionPairs.filter(({ before: prior, after }) => {
+    const beforeShown = (prior.opacity ?? 0) > 0 && (prior.colorBrightness ?? 0) > 0.02;
+    const afterShown = (after.opacity ?? 0) > 0 && (after.colorBrightness ?? 0) > 0.02;
+    return prior.surfaceVisibility?.className === after.surfaceVisibility?.className
+      && beforeShown !== afterShown;
+  });
+
+  const offsetBefore = new Map((cameraOffset?.before || []).map((sample) => [sample.id, sample]));
+  const orientationPairs = (cameraOffset?.during || [])
+    .filter((sample) => sample.lodLevel === 'LOW' && offsetBefore.has(sample.id))
+    .map((sample) => {
+      const prior = offsetBefore.get(sample.id);
+      const a = prior.instanceQuaternion;
+      const b = sample.instanceQuaternion;
+      const quaternionDot = a && b
+        ? Math.abs(a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w)
+        : 0;
+      return { id: sample.id, quaternionDot };
+    });
+  const orientationViolations = orientationPairs.filter((pair) => pair.quaternionDot < 0.999999);
+  const cameraMovement = cameraOffset?.cameraBefore && cameraOffset?.cameraDuring
+    ? Math.hypot(...cameraOffset.cameraDuring.map((value, index) => value - cameraOffset.cameraBefore[index]))
+    : 0;
+
+  const proofPassed = Boolean(
+    layering?.ok
+      && forced?.ok
+      && regularNonInstancedSamples.length > 0
+      && nonInstancedVisibilityViolations.length === 0
+      && lowSamples.length > 0
+      && low3DViolations.length === 0
+      && transitionPairs.length > 0
+      && brightHiddenTransitionViolations.length === 0
+      && cameraMovement > 0.5
+      && orientationPairs.length > 0
+      && orientationViolations.length === 0
+  );
+
+  return {
+    proofPassed,
+    nonInstanced: {
+      spawned: spawnedNonInstanced,
+      regularSamples: regularNonInstancedSamples,
+      visibilityViolations: nonInstancedVisibilityViolations,
+    },
+    lowLOD: {
+      forced,
+      sampleCount: lowSamples.length,
+      samples: lowSamples,
+      geometryOrScaleViolations: low3DViolations,
+      transitionPairCount: transitionPairs.length,
+      brightHiddenTransitionViolations,
+      cameraMovement,
+      orientationPairs,
+      orientationViolations,
+    },
+    layering: layering ? { ...layering, screenshots: screenshotPaths } : null,
+  };
 }
 
 async function main() {
@@ -385,12 +514,14 @@ async function main() {
     await waitForDebug(page, () => window.__GAME_TELEMETRY?.waveNumber >= 1, 30000);
 
     const checkpoints = [];
-    const targets = [
-      { label: 'wave1-early', wave: 1, minEnemies: 3 },
-      { label: 'wave2-second-group', wave: 2, minEnemies: 8 },
-      { label: 'wave3-late-group', wave: 3, minEnemies: 14 },
-      { label: 'wave4-plus-later-group', wave: 4, minEnemies: 18 },
-    ];
+    const targets = REVIEW_FIX_PROOF
+      ? [{ label: 'wave1-review-fix', wave: 1, minEnemies: 3 }]
+      : [
+          { label: 'wave1-early', wave: 1, minEnemies: 3 },
+          { label: 'wave2-second-group', wave: 2, minEnemies: 8 },
+          { label: 'wave3-late-group', wave: 3, minEnemies: 14 },
+          { label: 'wave4-plus-later-group', wave: 4, minEnemies: 18 },
+        ];
     const captured = new Set();
     const start = Date.now();
     while (Date.now() - start < MAX_SECONDS * 1000 && captured.size < targets.length) {
@@ -411,6 +542,11 @@ async function main() {
 
     if (!captured.has('final')) {
       checkpoints.push(await collectBodyCheckpoint(page, 'final'));
+    }
+
+    const reviewFixProof = REVIEW_FIX_PROOF ? await collectReviewFixProof(page) : null;
+    if (REVIEW_FIX_PROOF && !reviewFixProof?.proofPassed) {
+      errors.push('review-fix proof did not cover non-instanced opacity, LOW LOD, and aligned player layering');
     }
 
     const allSamples = checkpoints.flatMap((checkpoint) => checkpoint.metrics?.samples ?? []);
@@ -446,11 +582,14 @@ async function main() {
     const proofPassed = visualModePassed
       && classifiedSamples.length > 0
       && depthViolations.length === 0
-      && low3DViolations.length === 0;
+      && low3DViolations.length === 0
+      && (!REVIEW_FIX_PROOF || reviewFixProof?.proofPassed === true);
     if (!proofPassed) {
-      errors.push(SURFACE_OPAQUE
-        ? 'opaque mode did not produce any intentionally hidden enemy render samples'
-        : 'readable mode did not produce any body-visible enemy samples');
+      errors.push(REVIEW_FIX_PROOF && !reviewFixProof?.proofPassed
+        ? 'review-fix browser gate failed'
+        : SURFACE_OPAQUE
+          ? 'opaque mode did not produce any intentionally hidden enemy render samples'
+          : 'readable mode did not produce any body-visible enemy samples');
     }
 
     const report = {
@@ -466,6 +605,7 @@ async function main() {
       devHealthHost: DEV_HEALTH_HOST,
       startServer: SHOULD_START_SERVER,
       startVite: SHOULD_START_VITE,
+      reviewFixProofRequested: REVIEW_FIX_PROOF,
       browser: connectedExternal
         ? {
             mode: 'external-devtools',
@@ -477,6 +617,7 @@ async function main() {
         : launchedBrowser,
       startedByButton: clicked,
       checkpoints,
+      reviewFixProof,
       sampleSummary: {
         totalSamples: allSamples.length,
         visibleBodySamples: visibleBodySamples.length,

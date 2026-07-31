@@ -2367,6 +2367,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         camera: game.camera,
         renderer: game.renderer,
         enemyInstanceManager,
+        lodManager,
         surfaceRoot: surface.group,
         getPlayerRoot: () => player.mesh,
         getEnemies: () => enemySpawner.getEnemies().map((enemy) => {

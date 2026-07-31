@@ -75,6 +75,7 @@ import { CompanionManager, CompanionPickup, CompanionHUD, getRandomCompanionType
 import { CameraController } from './core/CameraController';
 import { EnemyInstanceManager } from './rendering/EnemyInstanceManager';
 import { SurfaceVisibilityResolver } from './rendering/SurfaceVisibilityResolver';
+import { applyNonInstancedEnemyVisibility } from './rendering/EnemyMaterialVisibility';
 import { BulletInstanceManager, BulletVisualType } from './rendering/BulletInstanceManager';
 import { LODManager, DEFAULT_LOD_CONFIG } from './rendering/LODManager';
 import { computeDepthVisibility, BULLET_DEPTH_CURVE } from './rendering/DepthOpacity';
@@ -1328,6 +1329,7 @@ async function main() {
   // -- Enemy tracking --
   // Maps server enemy ID -> real BaseEnemy instance (created via EnemySpawner)
   const networkEnemies = new Map<string, BaseEnemy>();
+  const visibilityProofEnemies = new Map<string, BaseEnemy>();
   // Maps fast enemy ID -> GlowTrail (Mayfly/Rocket/Duck only, same as single-player)
   const enemyGlowTrails = new Map<string, GlowTrail>();
   // On mobile: skip glow trails for fast enemies — extra draw calls hurt fill-rate-limited mobile GPUs (parity with SP main.ts)
@@ -7851,7 +7853,10 @@ async function main() {
       const gfxSettings = loadGraphicsSettings();
       networkOpaqueSurfaces = areOpaqueSurfacesEnabled(gfxSettings);
     }
-    const enemyArray = Array.from(networkEnemies.values());
+    const enemyArray = [
+      ...networkEnemies.values(),
+      ...visibilityProofEnemies.values(),
+    ];
     const lodAssignments = lodManager.update(camera, enemyArray);
     enemyInstanceManager.updateInstancesWithLOD(
       enemyArray,
@@ -7883,8 +7888,10 @@ async function main() {
 
       if (enemyInstanceManager.isInLODBatch(enemy)) {
         enemyInstanceManager.setLODInstanceVisibility(enemy, vis, minColorBrightness);
-      } else {
+      } else if (enemy.isInstanced) {
         enemyInstanceManager.setInstanceVisibility(enemy, vis, minColorBrightness);
+      } else {
+        applyNonInstancedEnemyVisibility(enemy, vis);
       }
     }
     if (surfaceVisibilityResolver) {
@@ -8587,9 +8594,13 @@ async function main() {
       camera: game.camera,
       renderer: game.renderer,
       enemyInstanceManager,
+      lodManager,
       getSurfaceRoot: () => surface?.group ?? null,
       getPlayerRoot: () => networkPlayers.get(localPlayerId)?.mesh ?? null,
-      getEnemies: () => Array.from(networkEnemies.entries()).map(([id, enemy]) => ({ id, enemy })),
+      getEnemies: () => [
+        ...Array.from(networkEnemies.entries()).map(([id, enemy]) => ({ id, enemy })),
+        ...Array.from(visibilityProofEnemies.entries()).map(([id, enemy]) => ({ id, enemy })),
+      ],
     });
     window.__gameDebug = {
       getPlayerPosition: () => {
@@ -8622,6 +8633,24 @@ async function main() {
       getEnemyInstanceDebug: enemyBodyProofDebug.getEnemyInstanceDebug,
       getEnemyRenderSamples: enemyBodyProofDebug.getEnemyRenderSamples,
       setVisualProofIsolation: enemyBodyProofDebug.setVisualProofIsolation,
+      forceLowLOD: enemyBodyProofDebug.forceLowLOD,
+      sampleEnemyRenderAfterCameraOffset: enemyBodyProofDebug.sampleEnemyRenderAfterCameraOffset,
+      runAlignedPlayerLayeringProof: enemyBodyProofDebug.runAlignedPlayerLayeringProof,
+      spawnNonInstancedVisibilityProofEnemies: () => {
+        if (!enemySpawner) return [];
+        const proofPositions = [
+          [0.05, 0.05],
+          [0.05, 0.95],
+          [0.95, 0.05],
+          [0.95, 0.95],
+        ];
+        return proofPositions.map(([u, v], index) => {
+          const id = `__visibility_proof_phaser_${index}`;
+          const enemy = enemySpawner!.spawn('phaser', u, v, 0, true);
+          visibilityProofEnemies.set(id, enemy);
+          return { id, type: enemy.baseTypeName, isInstanced: enemy.isInstanced, u, v };
+        });
+      },
       isGameStarted: () => {
         // Check via status text as a proxy for game state
         return statusEl.textContent?.includes('Wave') || false;
