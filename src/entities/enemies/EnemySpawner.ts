@@ -98,6 +98,8 @@ const MIN_ENEMY_SEPARATION = 0.05;
 const MAX_ENEMY_COUNT = 400;
 // Max attempts to find valid spawn position
 const MAX_SPAWN_ATTEMPTS = 20;
+/** Prevent near-neutral dominance samples from turning 1 HP enemies into 2 HP via Math.ceil. */
+const MIN_DDA_HP_MULTIPLIER_TO_SCALE = 1.05;
 
 /** Spawn warning indicator - pulsing ring at spawn location */
 interface SpawnWarning {
@@ -717,7 +719,7 @@ export class EnemySpawner {
           this.ddaIsSmallMap,
         )
         ?? 1;
-      if (hpMult > 1.0) {
+      if (hpMult >= MIN_DDA_HP_MULTIPLIER_TO_SCALE) {
         enemy.health = Math.ceil(enemy.health * hpMult);
         enemy.maxHealth = Math.ceil(enemy.maxHealth * hpMult);
       }

@@ -5,7 +5,11 @@ import {
   getContinuousHealthMultiplier,
   type DifficultyInput,
 } from './DifficultyScaling';
-import { computePlayerPower } from '../shared/PlayerPowerModel';
+import {
+  computePlayerPower,
+  GUARDIAN_SHOTS_PER_SECOND,
+  HUNTER_SHOTS_PER_SECOND,
+} from '../shared/PlayerPowerModel';
 
 const legacyBase: DifficultyInput = {
   score: 0,
@@ -48,7 +52,14 @@ describe('SP player-power pressure integration', () => {
       survivalSeconds: 600,
       streak: 250,
       blaster: { damage: 2, shotsPerSecond: 9, projectilesPerShot: 4 },
-      companions: { guardian: 2, hunter: 2 },
+      companions: {
+        guardian: 2,
+        hunter: 2,
+        guardianDamage: 2,
+        hunterDamage: 2,
+        guardianShotsPerSecond: GUARDIAN_SHOTS_PER_SECOND,
+        hunterShotsPerSecond: HUNTER_SHOTS_PER_SECOND,
+      },
     });
     const baselineDifficulty = computeDifficultyLevel({ ...legacyBase, playerPower: baselinePower });
     const highDifficulty = computeDifficultyLevel({ ...legacyBase, playerPower: highPower });
@@ -62,6 +73,46 @@ describe('SP player-power pressure integration', () => {
     expect(highCount).toBeGreaterThan(baselineCount);
   });
 
+  it('beats the old same-wave high-power pressure with controlled inputs', () => {
+    const legacyHighPower = computeDifficultyLevel({
+      ...legacyBase,
+      score: 1_000_000,
+      totalKills: 250,
+      playerLevel: 9,
+      companionCount: 4,
+    });
+    const sharedPower = computePlayerPower({
+      score: 1_000_000,
+      survivalSeconds: 600,
+      streak: 250,
+      blaster: { damage: 2, shotsPerSecond: 9, projectilesPerShot: 4 },
+      companions: {
+        guardian: 2,
+        hunter: 2,
+        guardianDamage: 2,
+        hunterDamage: 2,
+        guardianShotsPerSecond: GUARDIAN_SHOTS_PER_SECOND,
+        hunterShotsPerSecond: HUNTER_SHOTS_PER_SECOND,
+      },
+    });
+    const sharedHighPower = computeDifficultyLevel({
+      ...legacyBase,
+      score: 1_000_000,
+      totalKills: 250,
+      playerLevel: 9,
+      companionCount: 4,
+      playerPower: sharedPower,
+    });
+    const legacyCount = waveCount(50, legacyHighPower);
+    const sharedCount = waveCount(50, sharedHighPower);
+    const legacyHealth = legacyCount * getContinuousHealthMultiplier(legacyHighPower);
+    const sharedHealth = sharedCount * getContinuousHealthMultiplier(sharedHighPower);
+
+    expect(sharedHighPower).toBeGreaterThan(legacyHighPower);
+    expect(sharedCount).toBeGreaterThan(legacyCount);
+    expect(sharedHealth).toBeGreaterThan(legacyHealth);
+  });
+
   it('leaves a struggling baseline player without meaningful dominance uplift', () => {
     const struggling = computePlayerPower({
       score: 1_000,
@@ -70,6 +121,6 @@ describe('SP player-power pressure integration', () => {
       blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 },
     });
     expect(struggling.difficultyBonus).toBeLessThan(0.05);
-    expect(struggling.hpMultiplier).toBeCloseTo(1, 1);
+    expect(struggling.hpMultiplier).toBe(1);
   });
 });

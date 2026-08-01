@@ -16,7 +16,11 @@ import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
 import { profiler } from './PerformanceProfiler';
 import { computeDepthVisibility, BULLET_DEPTH_CURVE } from '../rendering/DepthOpacity';
 import { EnemyKillStreakAnnouncer } from '../ui/EnemyKillStreakAnnouncer';
-import { computePlayerPower } from '../shared/PlayerPowerModel';
+import {
+  computePlayerPower,
+  GUARDIAN_SHOTS_PER_SECOND,
+  HUNTER_SHOTS_PER_SECOND,
+} from '../shared/PlayerPowerModel';
 
 /**
  * GameLoop — Fixed-timestep game update logic for the main game path.
@@ -1066,13 +1070,20 @@ export class GameLoop {
           * ctx.buffManager.getMasteryMultiplier(WeaponType.Standard).damageMultiplier
           * ctx.weaponManager.getUpgradeDamageMult(WeaponType.Standard);
         const weapons = ctx.weaponManager.getPlayerPowerWeapons(blasterDamagePerBolt);
+        const companionCounts = ctx.companionManager.getCompanionCounts();
         const input = {
           score: ctx.player.score,
           survivalSeconds: ctx.playerPowerRuntime.proofOverride?.survivalSeconds
             ?? this._powerSurvivalSeconds,
           streak: ctx.playerPowerRuntime.proofOverride?.streak ?? this._powerStreak,
           ...weapons,
-          companions: ctx.companionManager.getCompanionCounts(),
+          companions: {
+            ...companionCounts,
+            guardianDamage: blasterDamagePerBolt,
+            hunterDamage: blasterDamagePerBolt,
+            guardianShotsPerSecond: GUARDIAN_SHOTS_PER_SECOND,
+            hunterShotsPerSecond: HUNTER_SHOTS_PER_SECOND,
+          },
         };
         ctx.playerPowerRuntime.input = input;
         ctx.playerPowerRuntime.breakdown = computePlayerPower(input);

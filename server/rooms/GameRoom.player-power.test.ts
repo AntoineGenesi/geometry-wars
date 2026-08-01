@@ -57,8 +57,12 @@ describe('GameRoom authoritative player-power integration', () => {
     const dominance = room.getRoomDominance();
     expect(snapshot.streak).toBe(250);
     expect(snapshot.survivalSeconds).toBe(600);
+    expect(snapshot.companions?.guardianDamage).toBe(1);
+    expect(snapshot.companions?.hunterDamage).toBe(1);
+    expect(snapshot.companions?.guardianShotsPerSecond).toBe(3);
+    expect(snapshot.companions?.hunterShotsPerSecond).toBe(1.5);
     expect(dominance.guardianDps).toBe(12);
-    expect(dominance.hunterDps).toBe(12);
+    expect(dominance.hunterDps).toBe(6);
     expect(dominance.protectorValue).toBeCloseTo(0.6);
     expect(dominance.difficultyBonus).toBeGreaterThanOrEqual(3);
     expect(dominance.difficultyBonus).toBeLessThanOrEqual(5);

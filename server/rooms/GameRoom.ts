@@ -65,6 +65,9 @@ import {
 } from '../../src/shared/WeaponUpgradeEffects';
 import {
   computePlayerPower,
+  GUARDIAN_SHOTS_PER_SECOND,
+  HUNTER_SHOTS_PER_SECOND,
+  MP_COMPANION_DAMAGE_PER_HIT,
   type PlayerPowerBreakdown,
   type PlayerPowerInput,
 } from '../../src/shared/PlayerPowerModel';
@@ -6415,6 +6418,10 @@ export class GameRoom extends Room<GameState> {
         guardian: player.guardianCount,
         hunter: player.hunterCount,
         protector: player.protectorCount,
+        guardianDamage: MP_COMPANION_DAMAGE_PER_HIT,
+        hunterDamage: MP_COMPANION_DAMAGE_PER_HIT,
+        guardianShotsPerSecond: GUARDIAN_SHOTS_PER_SECOND,
+        hunterShotsPerSecond: HUNTER_SHOTS_PER_SECOND,
       },
     };
   }

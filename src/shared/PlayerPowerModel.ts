@@ -9,6 +9,10 @@ export interface CompanionPowerInput {
   guardian?: number;
   hunter?: number;
   protector?: number;
+  guardianDamage?: number;
+  hunterDamage?: number;
+  guardianShotsPerSecond?: number;
+  hunterShotsPerSecond?: number;
 }
 
 export interface PlayerPowerInput {
@@ -44,9 +48,11 @@ export interface PlayerPowerRuntimeState {
 }
 
 export const BASELINE_BLASTER_DPS = 12;
-export const GUARDIAN_DPS = 3;
-export const HUNTER_DPS = 3;
+export const GUARDIAN_SHOTS_PER_SECOND = 3;
+export const HUNTER_SHOTS_PER_SECOND = 1.5;
+export const MP_COMPANION_DAMAGE_PER_HIT = 1;
 export const MAX_POWER_DIFFICULTY_BONUS = 5;
+export const HP_SCALING_DIFFICULTY_THRESHOLD = 0.25;
 
 const MAX_SCORE = 5_000_000;
 const MAX_SURVIVAL_SECONDS = 600;
@@ -68,6 +74,12 @@ function weaponDps(input: WeaponPowerInput | undefined): number {
   const projectiles = clamp(finiteNonNegative(input.projectilesPerShot) || 1, 1, 12);
   const multiHit = clamp(finiteNonNegative(input.multiHitPotential) || 1, 1, 4);
   return damage * rate * projectiles * multiHit;
+}
+
+function computeCompanionDps(count: number, damage: number | undefined, shotsPerSecond: number | undefined): number {
+  const shotDamage = finiteNonNegative(damage ?? MP_COMPANION_DAMAGE_PER_HIT);
+  const rate = finiteNonNegative(shotsPerSecond);
+  return count * shotDamage * rate;
 }
 
 /**
@@ -92,8 +104,16 @@ export function computePlayerPower(input: PlayerPowerInput = {}): PlayerPowerBre
   const guardianCount = Math.min(MAX_COMPANIONS_PER_TYPE, finiteNonNegative(input.companions?.guardian));
   const hunterCount = Math.min(MAX_COMPANIONS_PER_TYPE, finiteNonNegative(input.companions?.hunter));
   const protectorCount = Math.min(MAX_COMPANIONS_PER_TYPE, finiteNonNegative(input.companions?.protector));
-  const guardianDps = guardianCount * GUARDIAN_DPS;
-  const hunterDps = hunterCount * HUNTER_DPS;
+  const guardianDps = computeCompanionDps(
+    guardianCount,
+    input.companions?.guardianDamage,
+    input.companions?.guardianShotsPerSecond ?? GUARDIAN_SHOTS_PER_SECOND,
+  );
+  const hunterDps = computeCompanionDps(
+    hunterCount,
+    input.companions?.hunterDamage,
+    input.companions?.hunterShotsPerSecond ?? HUNTER_SHOTS_PER_SECOND,
+  );
   const companionDps = guardianDps + hunterDps;
   const protectorValue = 0.15 * protectorCount;
 
@@ -102,6 +122,9 @@ export function computePlayerPower(input: PlayerPowerInput = {}): PlayerPowerBre
   const offensePressure = clamp(Math.log2(Math.max(1, offenseRatio)) * 1.35, 0, 3.5);
   const powerScore = scorePressure + survivalPressure + streakPressure + offensePressure + protectorValue;
   const difficultyBonus = clamp(powerScore, 0, MAX_POWER_DIFFICULTY_BONUS);
+  const hpMultiplier = difficultyBonus >= HP_SCALING_DIFFICULTY_THRESHOLD
+    ? 1 + difficultyBonus * 0.25
+    : 1;
 
   return {
     scorePressure,
@@ -116,6 +139,6 @@ export function computePlayerPower(input: PlayerPowerInput = {}): PlayerPowerBre
     offenseRatio,
     powerScore,
     difficultyBonus,
-    hpMultiplier: 1 + difficultyBonus * 0.25,
+    hpMultiplier,
   };
 }

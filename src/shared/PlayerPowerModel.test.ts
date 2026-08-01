@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   BASELINE_BLASTER_DPS,
   computePlayerPower,
+  GUARDIAN_SHOTS_PER_SECOND,
+  HUNTER_SHOTS_PER_SECOND,
+  MP_COMPANION_DAMAGE_PER_HIT,
   type PlayerPowerInput,
 } from './PlayerPowerModel';
 
@@ -68,6 +71,34 @@ describe('computePlayerPower', () => {
     expect(result.protectorValue).toBeGreaterThan(0);
   });
 
+  it('defaults Guardian and Hunter output to the MP authoritative companion-hit formula', () => {
+    const result = computePlayerPower({
+      ...baseline,
+      companions: { guardian: 4, hunter: 4 },
+    });
+
+    expect(result.guardianDps).toBe(4 * MP_COMPANION_DAMAGE_PER_HIT * GUARDIAN_SHOTS_PER_SECOND);
+    expect(result.hunterDps).toBe(4 * MP_COMPANION_DAMAGE_PER_HIT * HUNTER_SHOTS_PER_SECOND);
+  });
+
+  it('allows SP collectors to feed live blaster bullet damage into companion output', () => {
+    const liveBulletDamage = 2.2;
+    const result = computePlayerPower({
+      ...baseline,
+      companions: {
+        guardian: 2,
+        hunter: 2,
+        guardianDamage: liveBulletDamage,
+        hunterDamage: liveBulletDamage,
+        guardianShotsPerSecond: GUARDIAN_SHOTS_PER_SECOND,
+        hunterShotsPerSecond: HUNTER_SHOTS_PER_SECOND,
+      },
+    });
+
+    expect(result.guardianDps).toBeCloseTo(2 * liveBulletDamage * GUARDIAN_SHOTS_PER_SECOND);
+    expect(result.hunterDps).toBeCloseTo(2 * liveBulletDamage * HUNTER_SHOTS_PER_SECOND);
+  });
+
   it('gives the reported high-power case decisive bounded pressure', () => {
     const highPower = computePlayerPower({
       score: 1_000_000,
@@ -94,5 +125,18 @@ describe('computePlayerPower', () => {
     };
     const mpSnapshot = structuredClone(spSnapshot);
     expect(computePlayerPower(mpSnapshot)).toEqual(computePlayerPower(spSnapshot));
+  });
+
+  it('does not emit an HP multiplier for near-neutral survival-only pressure', () => {
+    const result = computePlayerPower({
+      score: 1_000,
+      survivalSeconds: 5,
+      streak: 0,
+      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 },
+    });
+
+    expect(result.difficultyBonus).toBeGreaterThan(0);
+    expect(result.difficultyBonus).toBeLessThan(0.05);
+    expect(result.hpMultiplier).toBe(1);
   });
 });
