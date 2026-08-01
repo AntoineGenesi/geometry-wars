@@ -44,6 +44,7 @@ import { MeshSurface } from '../surfaces/MeshSurface';
 import { MeshWalker } from '../movement/MeshWalker';
 import { WeaponManager } from '../weapons/WeaponManager';
 import { WeaponType } from '../weapons/WeaponTypes';
+import { BaseEnemy } from '../entities/enemies/BaseEnemy';
 import { ParticleSystem } from '../effects/ParticleSystem';
 import { InputManager, InputState } from '../input/InputManager';
 import { DepthOcclusionSystem } from '../rendering/DepthOpacity';
@@ -378,18 +379,26 @@ export class GameInstance {
             alive: e.alive,
             maxHealth: e.maxHealth,
             health: e.health,
+            targetId: e,
           }));
       },
-      onEnemyDamage: (index: number, damage: number) => {
+      onEnemyDamage: (index: number, damage: number, _weaponType: WeaponType, targetId?: object | string | number) => {
         // Must use same filter as getEnemies so indices match.
         const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh && !e.isMaterializing);
-        const enemy = enemies[index];
-        if (enemy) {
+        const enemy = targetId instanceof BaseEnemy ? targetId : enemies[index];
+        if (enemy?.alive) {
           enemy.takeDamage(damage, 0);
           if (!enemy.alive) {
             this.particles.enemyDeath(enemy.mesh!.position, new THREE.Color(0xff4444));
             this.config.onEnemyKill(enemy.baseTypeName || 'unknown');
           }
+        }
+      },
+      onBlackHolePull: (index, pullSpeed, center, dt, spiralRatio, targetId) => {
+        const enemies = this.enemySpawner.getEnemies().filter(e => e.alive && e.mesh && !e.isMaterializing);
+        const enemy = targetId instanceof BaseEnemy ? targetId : enemies[index];
+        if (enemy?.alive) {
+          enemy.applySurfacePull(center, pullSpeed, spiralRatio, dt);
         }
       },
       spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => {

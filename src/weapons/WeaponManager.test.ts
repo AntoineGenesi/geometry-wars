@@ -46,22 +46,26 @@ interface MockEnemy {
   position: THREE.Vector3;
   index: number;
   alive: boolean;
+  targetId?: object | string | number;
 }
 
 function createMockCallbacks(enemies: MockEnemy[] = []) {
-  const damages: { index: number; damage: number; type: WeaponType }[] = [];
-  const pulls: { index: number; strength: number; center: THREE.Vector3 }[] = [];
+  const damages: { index: number; damage: number; type: WeaponType; targetId?: object | string | number }[] = [];
+  const pulls: { index: number; strength: number; center: THREE.Vector3; dt?: number; targetId?: object | string | number }[] = [];
   const bullets: { origin: THREE.Vector3; direction: THREE.Vector3 }[] = [];
 
   const callbacks: WeaponCallbacks = {
     getEnemies: () => enemies,
-    onEnemyDamage: (index, damage, weaponType) => {
-      damages.push({ index, damage, type: weaponType });
+    onEnemyDamage: (index, damage, weaponType, targetId) => {
+      damages.push({ index, damage, type: weaponType, targetId });
       const enemy = enemies.find(e => e.index === index);
       if (enemy && damage >= 999) enemy.alive = false;
     },
     onEnemyPull: (index, strength, center) => {
       pulls.push({ index, strength, center: center.clone() });
+    },
+    onBlackHolePull: (index, strength, center, dt, _spiralRatio, targetId) => {
+      pulls.push({ index, strength, center: center.clone(), dt, targetId });
     },
     spawnBullet: (origin, direction) => {
       bullets.push({ origin: origin.clone(), direction: direction.clone() });
@@ -736,7 +740,7 @@ describe('WeaponManager', () => {
       expect(manager.projectileRoot.children.length).toBe(1);
     });
 
-    it('should instant-kill enemies at center', () => {
+    it('deals cadence-based field damage at center without a 999 kill', () => {
       // Compute where the BH will land (origin + 4*forward, projected to sphere)
       const bhPos = sphereProject(
         origin().clone().add(forward().clone().multiplyScalar(4)),
@@ -748,11 +752,10 @@ describe('WeaponManager', () => {
       manager.setCallbacks(mock.callbacks);
 
       manager.fire(origin(), forward(), T);
-      manager.update(0.05);
+      manager.update(0.51);
 
-      // Enemy at center should receive 999 damage (instant kill)
-      const killDamages = mock.damages.filter(d => d.damage === 999);
-      expect(killDamages.length).toBeGreaterThan(0);
+      expect(mock.damages.some(d => d.damage === 999)).toBe(false);
+      expect(mock.damages.map(d => d.damage)).toContain(0.5);
     });
 
     it('should pull nearby enemies', () => {
@@ -783,8 +786,41 @@ describe('WeaponManager', () => {
       expect(manager.projectileRoot.children.length).toBe(0);
     });
 
-    it('should have very high damage (999)', () => {
-      expect(WEAPON_CONFIGS[WeaponType.BlackHole].damage).toBe(999);
+    it('uses a modest collapse hit and disposes all visual children', () => {
+      const bhPos = sphereProject(
+        origin().clone().add(forward().clone().multiplyScalar(4)),
+        origin().length(),
+      );
+      const enemy: MockEnemy = { position: bhPos.clone(), index: 0, alive: true };
+      mock = createMockCallbacks([enemy]);
+      manager.setCallbacks(mock.callbacks);
+      manager.fire(origin(), forward(), T);
+      manager.update(3.01);
+
+      expect(mock.damages.some(d => d.damage === 8)).toBe(true);
+      expect(mock.damages.some(d => d.damage === 999)).toBe(false);
+      expect(manager.projectileRoot.children).toHaveLength(0);
+    });
+
+    it('passes stable target identity to every callback in one effect tick', () => {
+      const bhPos = sphereProject(
+        origin().clone().add(forward().clone().multiplyScalar(4)),
+        origin().length(),
+      );
+      const firstId = {};
+      const secondId = {};
+      const enemies: MockEnemy[] = [
+        { position: bhPos.clone(), index: 0, alive: true, targetId: firstId },
+        { position: bhPos.clone().add(new THREE.Vector3(0, 0.3, 0)), index: 1, alive: true, targetId: secondId },
+      ];
+      mock = createMockCallbacks(enemies);
+      manager.setCallbacks(mock.callbacks);
+      manager.fire(origin(), forward(), T);
+      manager.update(0.51);
+
+      expect(mock.damages.map(d => d.targetId)).toEqual([firstId, secondId]);
+      expect(mock.pulls.map(p => p.targetId)).toEqual([firstId, secondId]);
+      expect(mock.pulls.every(p => p.dt === 0.51)).toBe(true);
     });
   });
 
@@ -1388,7 +1424,7 @@ describe('WeaponManager LAN visual-only mode', () => {
 
     it('BlackHole a_1: duration increases by 30%', () => {
       const tracker = makeTracker(['black_hole_a_1']);
-      activateNodes(tracker, WeaponType.BlackHole, 10);
+      tracker['activateNode']('black_hole_a_1', WeaponType.BlackHole);
       const wm2 = new WeaponManager();
       wm2.setUpgradeTracker(tracker);
       const { callbacks } = createMockCallbacks();
@@ -1580,13 +1616,23 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.dispose();
     });
 
-    it('black_hole_bl_4: caps enemy capture at 12', () => {
+    it('black_hole_bl_4: raises enemy capture cap from eight to exactly twelve', () => {
       // Place 15 enemies all very close to the black hole spawn position
       const enemies: MockEnemy[] = Array.from({ length: 15 }, (_, i) => ({
         position: new THREE.Vector3(8, 0, 0.3 * (i + 1)),
         index: i,
         alive: true,
       }));
+      const baseCallbacks = createMockCallbacks(enemies);
+      const base = new WeaponManager();
+      base.setCallbacks(baseCallbacks.callbacks);
+      base.equipWeapon(WeaponType.BlackHole, 5);
+      base.fire(origin(), forward(), T);
+      base.update(0.5);
+      expect(new Set(baseCallbacks.pulls.map(p => p.index)).size).toBe(8);
+      base.dispose();
+
+      for (const enemy of enemies) enemy.alive = true;
       const { callbacks, pulls } = createMockCallbacks(enemies);
       const wm2 = new WeaponManager();
       const tracker = makeTracker([]);
@@ -1598,7 +1644,7 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.update(0.5); // Let effect tick
       // Count unique enemies pulled (bl_4 caps at 12)
       const pulledSet = new Set(pulls.map(p => p.index));
-      expect(pulledSet.size).toBeLessThanOrEqual(12);
+      expect(pulledSet.size).toBe(12);
       wm2.dispose();
     });
 

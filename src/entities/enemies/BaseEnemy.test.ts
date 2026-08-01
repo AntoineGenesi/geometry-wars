@@ -12,6 +12,7 @@ vi.mock('three', () => {
     addScaledVector(v: Vector3, s: number) {
       this.x += v.x * s; this.y += v.y * s; this.z += v.z * s; return this;
     }
+    add(v: Vector3) { this.x += v.x; this.y += v.y; this.z += v.z; return this; }
     multiplyScalar(s: number) { this.x *= s; this.y *= s; this.z *= s; return this; }
     length() { return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z); }
     lengthSq() { return this.x * this.x + this.y * this.y + this.z * this.z; }
@@ -30,6 +31,14 @@ vi.mock('three', () => {
       return dx * dx + dy * dy + dz * dz;
     }
     sub(v: Vector3) { this.x -= v.x; this.y -= v.y; this.z -= v.z; return this; }
+    dot(v: Vector3) { return this.x * v.x + this.y * v.y + this.z * v.z; }
+    crossVectors(a: Vector3, b: Vector3) {
+      const x = a.y * b.z - a.z * b.y;
+      const y = a.z * b.x - a.x * b.z;
+      const z = a.x * b.y - a.y * b.x;
+      this.x = x; this.y = y; this.z = z; return this;
+    }
+    applyQuaternion() { return this; }
   }
 
   class Quaternion {
@@ -209,6 +218,45 @@ describe('BaseEnemy.applyKnockback', () => {
       expect((enemy as any)._knockbackU).toBe(0);
       expect((enemy as any)._knockbackV).toBe(0);
     });
+  });
+});
+
+describe('BaseEnemy.applySurfacePull', () => {
+  it('moves walker enemies toward the field with delta-time-aware MeshWalker movement', () => {
+    const enemy = new TestEnemy();
+    enemy.position.set(0, 0, 0);
+    const walker = {
+      position: new THREE.Vector3(0, 0, 0),
+      normal: new THREE.Vector3(0, 1, 0),
+      speed: 0,
+      move(direction: THREE.Vector3, dt: number) {
+        this.position.addScaledVector(direction, this.speed * dt);
+      },
+    };
+    (enemy as any).walker = walker;
+
+    expect(enemy.applySurfacePull(new THREE.Vector3(4, 0, 0), 2, 0, 0.5)).toBe(true);
+    expect(walker.position.x).toBeCloseTo(1);
+    expect(enemy.position.x).toBeCloseTo(1);
+  });
+
+  it('routes UV enemies through Surface.moveOnSurface', () => {
+    const enemy = new TestEnemy(0.2, 0.5);
+    const moveOnSurface = vi.fn((u: number, v: number, du: number, dv: number) => ({
+      u: u + du,
+      v: v + dv,
+    }));
+    enemy.surfaceRef = {
+      wrapsU: false,
+      wrapsV: false,
+      worldRotation: new THREE.Quaternion(),
+      worldToSurface: vi.fn(() => ({ u: 0.8, v: 0.5 })),
+      moveOnSurface,
+    } as any;
+
+    expect(enemy.applySurfacePull(new THREE.Vector3(1, 0, 0), 3, 0.2, 0.25)).toBe(true);
+    expect(moveOnSurface).toHaveBeenCalledOnce();
+    expect(enemy.surfacePosition.u).toBeGreaterThan(0.2);
   });
 });
 

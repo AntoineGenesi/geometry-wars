@@ -1314,13 +1314,31 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
           alive: e.alive,
           maxHealth: e.maxHealth,
           health: e.health,
+          targetId: e,
         }));
     },
-    onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => {
+    onEnemyDamage: (
+      index: number,
+      damage: number,
+      weaponType: WeaponType,
+      targetId?: object | string | number,
+    ) => {
       const enemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
-      const enemy = enemies[index];
-      if (!enemy) return;
+      const enemy = targetId instanceof BaseEnemy ? targetId : enemies[index];
+      if (!enemy?.alive) return;
       const scorePower = scoreManager.getScorePowerMultiplier() * playerLevel.damageMultiplier * buffManager.getDamageMultiplier();
+      const testId = (enemy as any).__testId as string | undefined;
+      (window as any).__TEST_API?.recordDamage?.(
+        'weapon',
+        enemy.baseTypeName || enemy.constructor.name,
+        testId ?? `enemy-index-${index}`,
+        { x: enemy.position.x, y: enemy.position.y, z: enemy.position.z },
+        {
+          weaponType,
+          collisionSource: 'WeaponManager.onEnemyDamage',
+          damage: damage * scorePower,
+        },
+      );
       enemy.takeDamage(damage * scorePower, 0);
       // Trigger on-hit procs (incendiary etc.) with reduced proc coefficient for weapon damage
       if (enemy.alive) {
@@ -1364,6 +1382,22 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
       const enemy = enemies[index];
       if (!enemy) return;
       enemy.applySlowEffect(factor, duration);
+    },
+    onBlackHolePull: (
+      index: number,
+      strength: number,
+      center: THREE.Vector3,
+      dt: number,
+      spiralRatio: number,
+      targetId?: object | string | number,
+    ) => {
+      const aliveEnemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
+      const enemy = targetId instanceof BaseEnemy ? targetId : aliveEnemies[index];
+      if (!enemy?.alive) return;
+      enemy.applySurfacePull(center, strength, spiralRatio, dt);
+      const enemyColor = enemy.cachedMaterials?.[0]?.color;
+      particles.gravityPullTrail(enemy.position, center, enemyColor);
+      if (strength > 2.5) particles.gravityPullTrail(enemy.position, center, enemyColor);
     },
     onEnemyPull: (index: number, strength: number, center: THREE.Vector3) => {
       const aliveEnemies = enemySpawner.getEnemies().filter(e => e.alive && e.mesh);
@@ -1432,6 +1466,12 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
         // Gravity implosion particles (replaces generic bulletImpact)
         particles.gravityExplosion(position);
         screenShake.shake(0.08, 0.3);
+      } else if (wType === WeaponType.BlackHole) {
+        surface.applyMeshForce(position, -1.4, 2.5);
+        surface.applyForce(position, -0.12, 2.5);
+        particles.gravityExplosion(position);
+        surfaceShockwave.spawn(position, 4.5, 9, 0.45);
+        screenShake.shake(0.16, 0.24);
       }
     },
     onGravityGunMove: (position: THREE.Vector3) => {
@@ -2644,9 +2684,11 @@ function isTestArenaMode(): boolean {
 const quickStartConfig = isQuickStartMode();
 
 if (isTestArenaMode()) {
-  // Test arena mode: flat plane, 5×5 enemy grid, full TestHarnessAPI, no waves
-  console.log('[Main] Test arena mode — flat plane for weapon testing (?testArena=true)');
-  main('flat-arena', -1);
+  // Flat remains the default; surface= enables real-surface weapon proof.
+  const requestedSurface = new URLSearchParams(window.location.search).get('surface') as SurfaceType | null;
+  const testSurface: SurfaceType = requestedSurface ?? 'flat-arena';
+  console.log(`[Main] Test arena mode — ${testSurface} surface for weapon testing`);
+  main(testSurface, -1);
 } else if (quickStartConfig.enabled) {
   // Quick start mode: skip menu, start game immediately with seed
   console.log(`[Main] Quick start mode: ${quickStartConfig.surface}, mode=${quickStartConfig.gameMode ?? 'waves'}, seed=${quickStartConfig.seed ?? 'random'}`);

@@ -64,6 +64,8 @@ export interface DamageEvent {
   bulletAge?: number;
   /** Weapon type that fired the bullet (bullet-enemy hits only). */
   weaponType?: string;
+  /** Damage attributed by the weapon callback before health clamping. */
+  damage?: number;
 }
 
 export interface DeathEvent {
@@ -176,6 +178,10 @@ export interface WeaponEffectInfo {
   duration: number;
   elapsed: number;
   beamPointCount: number;
+  phase: string | null;
+  radius: number;
+  affectedCount: number;
+  visualChildCount: number;
 }
 
 export interface WeaponRuntimeSnapshot {
@@ -188,6 +194,7 @@ export interface WeaponRuntimeSnapshot {
   effectCount: number;
   effects: WeaponEffectInfo[];
   visualRootChildren: number;
+  blackHoleMeshCount: number;
 }
 
 export interface WeaponFireEvidence {
@@ -200,6 +207,8 @@ export interface WeaponFireEvidence {
   targetBefore: EnemyInfo | null;
   runtimeBefore: WeaponRuntimeSnapshot;
   runtimeAfter: WeaponRuntimeSnapshot;
+  baselineBulletCountBeforeClear: number;
+  baselineBulletsCleared: boolean;
 }
 
 export class TestHarnessAPI {
@@ -253,6 +262,39 @@ export class TestHarnessAPI {
     if (!enemy) return;
     // Store movement target — the update() method drives this each frame
     (enemy as any).__testTarget = { u: targetU, v: targetV, speed };
+  }
+
+  /** Configure a proof enemy without holding it at a harness-owned position. */
+  configureEnemy(
+    id: string,
+    options: { health?: number; speed?: number; releaseMovement?: boolean },
+  ): boolean {
+    const enemy = this.findEnemyById(id);
+    if (!enemy) return false;
+    if (options.health !== undefined) {
+      enemy.health = options.health;
+      enemy.maxHealth = options.health;
+    }
+    if (options.speed !== undefined) enemy.speed = options.speed;
+    if (options.releaseMovement !== false) {
+      delete (enemy as any).__testTarget;
+      delete (enemy as any).__testUV;
+    }
+    return true;
+  }
+
+  /** Project a world point onto the active walkable mesh and return both frames. */
+  projectWorldPoint(worldPos: Vec3): { u: number; v: number; worldPos: Vec3 } | null {
+    const projected = this.ctx.meshSurface.closestPointOnSurface(
+      new THREE.Vector3(worldPos.x, worldPos.y, worldPos.z),
+    );
+    if (!projected) return null;
+    const local = projected.point.clone();
+    const scale = this.ctx.surface.group.scale.x || 1;
+    local.multiplyScalar(1 / scale);
+    local.applyQuaternion(this.ctx.surface.worldRotation.clone().invert());
+    const uv = this.ctx.surface.worldToSurface(local);
+    return { u: uv.u, v: uv.v, worldPos: this.toVec3(projected.point) };
   }
 
   /** Get an enemy's current position by ID. */
@@ -405,7 +447,7 @@ export class TestHarnessAPI {
   }
 
   /** Simulate weapon fire (one shot). Returns proof-oriented runtime evidence. */
-  fireWeapon(targetEnemyId?: string): WeaponFireEvidence {
+  fireWeapon(targetEnemyId?: string, options?: { clearBaselineBullets?: boolean }): WeaponFireEvidence {
     const { player } = this.ctx;
     const selectedWeapon = this.ctx.weaponManager.getCurrentWeapon();
     const origin = player.mesh.position.clone();
@@ -416,6 +458,10 @@ export class TestHarnessAPI {
     if (player.alive && player.weaponFireHandler) {
       player.weaponFireHandler(origin, direction);
     }
+
+    const baselineBulletCountBeforeClear = this.ctx.bulletPool.activeCount;
+    const baselineBulletsCleared = options?.clearBaselineBullets === true;
+    if (baselineBulletsCleared) this.ctx.bulletPool.clear();
 
     const runtimeAfter = this.getWeaponRuntimeSnapshot();
     const firedIndicators = this.getFireIndicators(runtimeBefore, runtimeAfter, selectedWeapon);
@@ -430,6 +476,8 @@ export class TestHarnessAPI {
       targetBefore,
       runtimeBefore,
       runtimeAfter,
+      baselineBulletCountBeforeClear,
+      baselineBulletsCleared,
     };
   }
 
@@ -779,9 +827,10 @@ export class TestHarnessAPI {
     const weaponManager = this.ctx.weaponManager as any;
     const projectiles = (weaponManager.projectiles ?? []) as any[];
     const activeEffects = (weaponManager.activeEffects ?? []) as any[];
-    const visualRoot = typeof this.ctx.weaponManager.getVisualRoot === 'function'
-      ? this.ctx.weaponManager.getVisualRoot()
-      : null;
+    const visualRoot = weaponManager.projectileRoot
+      ?? (typeof this.ctx.weaponManager.getVisualRoot === 'function'
+        ? this.ctx.weaponManager.getVisualRoot()
+        : null);
 
     return {
       currentWeapon: this.ctx.weaponManager.getCurrentWeapon(),
@@ -810,9 +859,21 @@ export class TestHarnessAPI {
         duration: Number(effect.duration ?? 0),
         elapsed: Number(effect.elapsed ?? 0),
         beamPointCount: Array.isArray(effect.beamPoints) ? effect.beamPoints.length : 0,
+        phase: effect.blackHolePhase ? String(effect.blackHolePhase) : null,
+        radius: Number(effect.blackHoleRadius ?? 0),
+        affectedCount: Number(effect.blackHoleAffectedCount ?? 0),
+        visualChildCount: Number(effect.blackHoleVisual?.root?.children?.length ?? 0),
       })),
-      visualRootChildren: visualRoot?.children?.length ?? 0,
+      visualRootChildren: weaponManager.projectileRoot?.children?.length ?? visualRoot?.children?.length ?? 0,
+      blackHoleMeshCount: activeEffects
+        .filter((effect) => effect.type === 'blackhole')
+        .reduce((count, effect) => count + Number(effect.blackHoleVisual?.root?.children?.length ?? 0), 0),
     };
+  }
+
+  /** Clear WeaponManager projectiles/effects through the production lifecycle. */
+  clearWeaponEffects(): void {
+    this.ctx.weaponManager.clear();
   }
 
   /** Simulate a key press (and optional release after duration ms). */
@@ -1364,7 +1425,7 @@ export class TestHarnessAPI {
     target: string,
     targetId: string,
     position: Vec3,
-    extra?: Partial<Pick<DamageEvent, 'bulletPos' | 'enemyPos' | 'distance' | 'collisionRadius' | 'collisionSource' | 'bulletAge' | 'weaponType'>>,
+    extra?: Partial<Pick<DamageEvent, 'bulletPos' | 'enemyPos' | 'distance' | 'collisionRadius' | 'collisionSource' | 'bulletAge' | 'weaponType' | 'damage'>>,
   ): void {
     this.damageLog.push({
       time: this.ctx.game.clock.totalTime,

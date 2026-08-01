@@ -21,6 +21,9 @@ const _tempLocalPos = new THREE.Vector3();
 const _tempInverseRot = new THREE.Quaternion();
 const _tempSurfaceTargetPos = new THREE.Vector3();
 const _tempSurfacePathDir = new THREE.Vector3();
+const _tempPullLocalTarget = new THREE.Vector3();
+const _tempPullTangent = new THREE.Vector3();
+const _tempPullSpiral = new THREE.Vector3();
 
 export abstract class BaseEnemy extends Entity {
   static readonly DAMAGE_AGGRO_DURATION = 4;
@@ -414,6 +417,110 @@ export abstract class BaseEnemy extends Entity {
     if (this.walker) return; // Skip walker-mode enemies
     this._knockbackU += impulseU;
     this._knockbackV += impulseV;
+  }
+
+  /**
+   * Move this enemy toward a world-space field center along its current surface.
+   * Walker enemies use geodesic movement; legacy UV enemies route through the
+   * surface movement API. The displacement is fully delta-time based.
+   */
+  applySurfacePull(
+    center: THREE.Vector3,
+    pullSpeed: number,
+    spiralRatio: number,
+    dt: number,
+  ): boolean {
+    if (!this.alive || pullSpeed <= 0 || dt <= 0) return false;
+
+    if (this.walker) {
+      _tempPullTangent.copy(center).sub(this.walker.position);
+      _tempPullTangent.addScaledVector(
+        this.walker.normal,
+        -_tempPullTangent.dot(this.walker.normal),
+      );
+
+      // A nearby field has an unambiguous tangent direction. MeshWalker owns
+      // the actual face crossing; UV routing is only needed for a degenerate
+      // world chord (for example, separated tunnel walls).
+      if (_tempPullTangent.lengthSq() <= 0.000001 && this.surfaceRef) {
+        _tempInverseRot.copy(this.surfaceRef.worldRotation).invert();
+        _tempPullLocalTarget.copy(center).applyQuaternion(_tempInverseRot);
+        const targetUV = this.surfaceRef.worldToSurface(_tempPullLocalTarget);
+        const deltaU = this.shortestAxisDelta(
+          this.surfacePosition.u,
+          targetUV.u,
+          this.surfaceRef.wrapsU,
+        );
+        const deltaV = this.shortestAxisDelta(
+          this.surfacePosition.v,
+          targetUV.v,
+          this.surfaceRef.wrapsV,
+        );
+        const uvDistance = Math.hypot(deltaU, deltaV);
+        if (uvDistance > 0.000001) {
+          const uvStep = Math.min(0.025, uvDistance);
+          const next = this.surfaceRef.moveOnSurface(
+            this.surfacePosition.u,
+            this.surfacePosition.v,
+            deltaU / uvDistance * uvStep,
+            deltaV / uvDistance * uvStep,
+          );
+          const nextPoint = this.surfaceRef.getPoint(next.u, next.v);
+          _tempSurfaceTargetPos.copy(nextPoint.position)
+            .applyQuaternion(this.surfaceRef.worldRotation)
+            .multiplyScalar(this.surfaceRef.group.scale.x);
+          _tempPullTangent.copy(_tempSurfaceTargetPos).sub(this.walker.position);
+        }
+      }
+
+      _tempPullTangent.addScaledVector(
+        this.walker.normal,
+        -_tempPullTangent.dot(this.walker.normal),
+      );
+      if (_tempPullTangent.lengthSq() <= 0.000001) return false;
+      _tempPullTangent.normalize();
+      _tempPullSpiral.crossVectors(this.walker.normal, _tempPullTangent).normalize();
+      _tempMoveDir.copy(_tempPullTangent)
+        .addScaledVector(_tempPullSpiral, spiralRatio)
+        .normalize();
+      this.walker.speed = pullSpeed;
+      this.walker.move(_tempMoveDir, dt);
+      this.position.copy(this.walker.position);
+
+      if (this.surfaceRef) {
+        _tempInverseRot.copy(this.surfaceRef.worldRotation).invert();
+        _tempLocalPos.copy(this.walker.position).applyQuaternion(_tempInverseRot);
+        const uv = this.surfaceRef.worldToSurface(_tempLocalPos);
+        this.surfacePosition.u = uv.u;
+        this.surfacePosition.v = uv.v;
+      }
+      return true;
+    }
+
+    if (!this.surfaceRef) return false;
+    _tempInverseRot.copy(this.surfaceRef.worldRotation).invert();
+    _tempPullLocalTarget.copy(center).applyQuaternion(_tempInverseRot);
+    const targetUV = this.surfaceRef.worldToSurface(_tempPullLocalTarget);
+    const deltaU = this.shortestAxisDelta(this.surfacePosition.u, targetUV.u, this.surfaceRef.wrapsU);
+    const deltaV = this.shortestAxisDelta(this.surfacePosition.v, targetUV.v, this.surfaceRef.wrapsV);
+    const uvDistance = Math.hypot(deltaU, deltaV);
+    if (uvDistance <= 0.000001) return false;
+
+    const radialU = deltaU / uvDistance;
+    const radialV = deltaV / uvDistance;
+    const directionU = radialU - radialV * spiralRatio;
+    const directionV = radialV + radialU * spiralRatio;
+    const directionLength = Math.hypot(directionU, directionV);
+    const uvStep = pullSpeed / this.walkerSpeedScale * dt;
+    const next = this.surfaceRef.moveOnSurface(
+      this.surfacePosition.u,
+      this.surfacePosition.v,
+      directionU / directionLength * uvStep,
+      directionV / directionLength * uvStep,
+    );
+    this.surfacePosition.u = next.u;
+    this.surfacePosition.v = next.v;
+    return true;
   }
 
   /**

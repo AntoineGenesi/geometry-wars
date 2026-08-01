@@ -6,6 +6,7 @@ import { WeaponType } from '../weapons/WeaponTypes';
 function createApi() {
   const projectiles: any[] = [];
   const effects: any[] = [];
+  const enemies: any[] = [];
   const inventory = [{ type: WeaponType.Homing, ammo: 40, stacks: 1 }];
   const getCurrentWeapon = vi.fn(() => WeaponType.Homing);
   const weaponManager = {
@@ -14,6 +15,11 @@ function createApi() {
     getCurrentWeapon,
     getInventory: vi.fn(() => inventory),
     getVisualRoot: vi.fn(() => ({ children: projectiles })),
+    projectileRoot: { children: projectiles },
+    clear: vi.fn(() => {
+      projectiles.length = 0;
+      effects.length = 0;
+    }),
     forceSetWeapon: vi.fn((type: WeaponType, ammo: number) => {
       inventory[0] = { type, ammo, stacks: 1 };
       getCurrentWeapon.mockReturnValue(type);
@@ -49,9 +55,10 @@ function createApi() {
       bulletPool: {
         activeCount: 0,
         forEachActive: vi.fn(),
+        clear: vi.fn(),
       },
       enemySpawner: {
-        getEnemies: vi.fn(() => []),
+        getEnemies: vi.fn(() => enemies),
       },
       game: {
         clock: {
@@ -62,6 +69,8 @@ function createApi() {
     } as any),
     player,
     weaponManager,
+    effects,
+    enemies,
   };
 }
 
@@ -88,5 +97,56 @@ describe('TestHarnessAPI weapon proof evidence', () => {
 
     expect(weaponManager.forceSetWeapon).toHaveBeenCalledWith(WeaponType.BlackHole, 12);
     expect(api.getCurrentWeapon()).toBe(WeaponType.BlackHole);
+  });
+
+  it('can synchronously clear baseline bullets for unconfounded field proof', () => {
+    const { api } = createApi();
+    const bulletPool = (api as any).ctx.bulletPool;
+
+    const evidence = api.fireWeapon(undefined, { clearBaselineBullets: true });
+
+    expect(bulletPool.clear).toHaveBeenCalledOnce();
+    expect(evidence.baselineBulletsCleared).toBe(true);
+  });
+
+  it('configures durable proof enemies without leaving harness movement control', () => {
+    const { api, enemies } = createApi();
+    const enemy = {
+      __testId: 'durable-1',
+      health: 1,
+      maxHealth: 1,
+      speed: 0.2,
+      __testTarget: { u: 0.5, v: 0.5, speed: 0 },
+      __testUV: { u: 0.5, v: 0.5 },
+    };
+    enemies.push(enemy);
+
+    expect(api.configureEnemy('durable-1', { health: 100, speed: 0 })).toBe(true);
+    expect(enemy).toMatchObject({ health: 100, maxHealth: 100, speed: 0 });
+    expect(enemy).not.toHaveProperty('__testTarget');
+    expect(enemy).not.toHaveProperty('__testUV');
+  });
+
+  it('reports Black Hole phase/mesh telemetry and clears through WeaponManager', () => {
+    const { api, effects, weaponManager } = createApi();
+    effects.push({
+      type: 'blackhole',
+      position: new THREE.Vector3(1, 2, 3),
+      duration: 3,
+      elapsed: 1,
+      blackHolePhase: 'sustain',
+      blackHoleRadius: 5,
+      blackHoleAffectedCount: 4,
+      blackHoleVisual: { root: { children: new Array(7).fill({}) } },
+    });
+
+    expect(api.getWeaponRuntimeSnapshot()).toMatchObject({
+      effectCount: 1,
+      blackHoleMeshCount: 7,
+      effects: [{ phase: 'sustain', radius: 5, affectedCount: 4, visualChildCount: 7 }],
+    });
+    api.clearWeaponEffects();
+    expect(weaponManager.clear).toHaveBeenCalledOnce();
+    expect(api.getWeaponRuntimeSnapshot().effectCount).toBe(0);
   });
 });

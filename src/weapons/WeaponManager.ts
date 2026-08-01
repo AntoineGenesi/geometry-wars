@@ -6,6 +6,15 @@ import { BuffType, BUFF_CONFIGS, ActiveBuff } from './BuffPickup';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
 import type { WeaponPowerInput } from '../shared/PlayerPowerModel';
+import {
+  createBlackHoleConfig,
+  getBlackHoleDamageTickCount,
+  getBlackHolePullSpeed,
+  getBlackHoleState,
+  type BlackHoleConfig,
+  type BlackHolePhase,
+} from '../shared/BlackHoleModel';
+import { BlackHoleVisual } from '../effects/BlackHoleVisual';
 
 // ---------------------------------------------------------------------------
 // Gas Cloud (Homing branch B node 3)
@@ -106,15 +115,45 @@ interface ActiveEffect {
   wideBeam?: boolean;
   /** ar_5 Eternal Collapse: persists until all enemies absorbed, then AoE shockwave on expiry */
   isEternalCollapse?: boolean;
+  blackHoleConfig?: BlackHoleConfig;
+  blackHoleVisual?: BlackHoleVisual;
+  blackHolePhase?: BlackHolePhase;
+  blackHoleRadius?: number;
+  blackHoleAffectedCount?: number;
+  collapseApplied?: boolean;
+}
+
+export interface WeaponEnemyTarget {
+  position: THREE.Vector3;
+  meshPosition?: THREE.Vector3;
+  index: number;
+  alive: boolean;
+  maxHealth?: number;
+  health?: number;
+  /** Stable identity used when an earlier callback removes another target. */
+  targetId?: object | string | number;
 }
 
 /**
  * Callback types for weapon system
  */
 export interface WeaponCallbacks {
-  getEnemies: () => { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean; maxHealth?: number; health?: number }[];
-  onEnemyDamage: (index: number, damage: number, weaponType: WeaponType) => void;
+  getEnemies: () => WeaponEnemyTarget[];
+  onEnemyDamage: (
+    index: number,
+    damage: number,
+    weaponType: WeaponType,
+    targetId?: WeaponEnemyTarget['targetId'],
+  ) => void;
   onEnemyPull?: (index: number, pullStrength: number, pullCenter: THREE.Vector3) => void;
+  onBlackHolePull?: (
+    index: number,
+    pullStrength: number,
+    pullCenter: THREE.Vector3,
+    dt: number,
+    spiralRatio: number,
+    targetId?: WeaponEnemyTarget['targetId'],
+  ) => void;
   /** Called to slow or stun an enemy. factor=0 = complete stun, factor=0.7 = 30% slow. */
   onEnemySlow?: (index: number, factor: number, duration: number) => void;
   spawnBullet: (origin: THREE.Vector3, direction: THREE.Vector3) => void;
@@ -1098,14 +1137,11 @@ export class WeaponManager {
       effect.elapsed += dt;
 
       if (effect.elapsed >= effect.duration) {
-        if (effect.mesh) {
+        if (effect.type === 'blackhole') {
+          this.completeBlackHole(effect);
+          effect.blackHoleVisual?.dispose();
+        } else if (effect.mesh) {
           this.projectileRoot.remove(effect.mesh);
-        }
-        // LEVEL 5 FINAL FORM — Black Hole Event Horizon: massive AoE explosion on expiry
-        // Also fires for ar_5 Eternal Collapse: shockwave when all enemies absorbed
-        if (effect.type === 'blackhole' && (effect.isMasteryL5 || effect.isEternalCollapse)) {
-          this.applyAoeDamage(effect.position, 8.0, 150);
-          this.callbacks?.onProjectileExplosion?.(effect.position.clone(), WeaponType.BlackHole);
         }
         this.activeEffects.splice(i, 1);
         continue;
@@ -2081,14 +2117,15 @@ export class WeaponManager {
   }
 
   private fireBlackHole(origin: THREE.Vector3, direction: THREE.Vector3): void {
-    const config = WEAPON_CONFIGS[WeaponType.BlackHole];
     let targetPos = origin.clone().add(direction.clone().multiplyScalar(4));
+    let targetNormal = targetPos.clone().normalize();
 
     // Project onto surface
     if (this.meshSurface) {
       const result = this.meshSurface.closestPointOnSurface(targetPos);
       if (result) {
         targetPos = result.point;
+        targetNormal = result.normal;
       }
     } else {
       // Fallback: project onto sphere
@@ -2098,42 +2135,32 @@ export class WeaponManager {
       }
     }
 
-    // Duration upgrades (branch A): +30%, +60%, +100% per node
-    // a_4 = twin holes (2 black holes), a_5 = doomsday (2 holes + +150% duration)
     const bhNodes = this.activeUpgradeNodes(WeaponType.BlackHole);
-    const bhDurationBonus =
-      (bhNodes.has('black_hole_a_1') ? 0.30 : 0) +
-      (bhNodes.has('black_hole_a_2') ? 0.60 : 0) +
-      (bhNodes.has('black_hole_a_3') ? 1.00 : 0) +
-      (bhNodes.has('black_hole_al_5') ? 1.50 : 0) + // doomsday extra duration
-      (bhNodes.has('black_hole_ar_4') ? 2.00 : 0);  // Mega void: +200% duration
-
-    // LEVEL 5 FINAL FORM — Event Horizon: 50% longer duration, stronger pull, AoE explosion on expiry
     const isL5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
-    // ar_5 = Eternal Collapse: persists until all enemies absorbed (or 999s as upper bound)
-    const isEternalCollapse = bhNodes.has('black_hole_ar_5');
-    const duration = isEternalCollapse
-      ? 999.0
-      : (isL5 ? 4.5 : 3.0) * (1.0 + bhDurationBonus);
+    const blackHoleConfig = createBlackHoleConfig({ activeNodes: bhNodes, masteryLevel5: isL5 });
 
     // Helper to spawn one black hole at a position
     const spawnOneBlackHole = (pos: THREE.Vector3): void => {
-      const bhMat = new THREE.MeshBasicMaterial({
-        color: isL5 ? 0x110022 : 0x220044, // darker core at L5
-        transparent: true,
-        opacity: 0.9,
-      });
-      const bhMesh = new THREE.Mesh(SharedGeometries.blackholeSphere(), bhMat);
-      bhMesh.position.copy(pos);
-      this.projectileRoot.add(bhMesh);
+      let normal = targetNormal;
+      if (this.meshSurface) {
+        normal = this.meshSurface.closestPointOnSurface(pos)?.normal ?? targetNormal;
+      }
+      const visual = new BlackHoleVisual(pos, normal);
+      this.projectileRoot.add(visual.root);
       this.activeEffects.push({
         type: 'blackhole',
-        position: pos,
-        duration,
+        position: pos.clone(),
+        duration: blackHoleConfig.duration,
         elapsed: 0,
-        mesh: bhMesh,
+        mesh: visual.root,
         isMasteryL5: isL5,
-        isEternalCollapse,
+        isEternalCollapse: blackHoleConfig.isEternalCollapse,
+        blackHoleConfig,
+        blackHoleVisual: visual,
+        blackHolePhase: 'formation',
+        blackHoleRadius: 0,
+        blackHoleAffectedCount: 0,
+        collapseApplied: false,
       });
     };
 
@@ -2830,6 +2857,113 @@ export class WeaponManager {
     }
   }
 
+  private updateBlackHole(effect: ActiveEffect, dt: number): void {
+    const config = effect.blackHoleConfig;
+    if (!config || !this.callbacks) return;
+
+    const state = getBlackHoleState(effect.elapsed, config, effect.duration);
+    const targets = this.callbacks.getEnemies()
+      .filter((enemy) => enemy.alive)
+      .map((enemy) => {
+        const surfaceDistance = effect.position.distanceTo(enemy.position);
+        const visualDistance = enemy.meshPosition
+          ? effect.position.distanceTo(enemy.meshPosition)
+          : surfaceDistance;
+        return { enemy, distance: Math.min(surfaceDistance, visualDistance) };
+      })
+      .filter((target) => target.distance < state.radius)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, config.captureLimit);
+
+    const previousElapsed = Math.max(0, effect.elapsed - dt);
+    const damageTicks = getBlackHoleDamageTickCount(
+      previousElapsed,
+      effect.elapsed,
+      config,
+      effect.duration,
+    );
+    const damageMultiplier = (this.masteryMultiplierFn?.(WeaponType.BlackHole) ?? 1)
+      * this.getSessionDamageMultiplier(WeaponType.BlackHole);
+
+    for (const { enemy, distance } of targets) {
+      const pullSpeed = getBlackHolePullSpeed(distance, state.radius, config.maxPullSpeed) * state.pullScale;
+      if (pullSpeed > 0) {
+        this.callbacks.onBlackHolePull?.(
+          enemy.index,
+          pullSpeed,
+          effect.position,
+          dt,
+          config.spiralRatio,
+          enemy.targetId,
+        );
+      }
+      if (damageTicks > 0) {
+        this.callbacks.onEnemyDamage(
+          enemy.index,
+          config.damagePerSecond * config.damageCadence * damageTicks * damageMultiplier,
+          WeaponType.BlackHole,
+          enemy.targetId,
+        );
+      }
+    }
+
+    const activeNodes = this.activeUpgradeNodes(WeaponType.BlackHole);
+    if (activeNodes.has('black_hole_bl_5')) {
+      for (let i = 0; i < targets.length; i++) {
+        for (let j = i + 1; j < targets.length; j++) {
+          if (targets[i].enemy.position.distanceTo(targets[j].enemy.position) >= 1) continue;
+          this.callbacks.onEnemyDamage(
+            targets[i].enemy.index,
+            2 * dt,
+            WeaponType.BlackHole,
+            targets[i].enemy.targetId,
+          );
+          this.callbacks.onEnemyDamage(
+            targets[j].enemy.index,
+            2 * dt,
+            WeaponType.BlackHole,
+            targets[j].enemy.targetId,
+          );
+        }
+      }
+    }
+
+    if (config.isEternalCollapse && effect.elapsed > 2 && targets.length === 0) {
+      effect.duration = effect.elapsed + config.collapseDuration;
+    }
+
+    effect.blackHolePhase = state.phase;
+    effect.blackHoleRadius = state.radius;
+    effect.blackHoleAffectedCount = targets.length;
+    effect.blackHoleVisual?.update(state, effect.elapsed, targets.map(({ enemy }) => enemy.position));
+  }
+
+  private completeBlackHole(effect: ActiveEffect): void {
+    if (effect.collapseApplied) return;
+    effect.collapseApplied = true;
+
+    const config = effect.blackHoleConfig;
+    if (config && this.callbacks) {
+      const targets = this.callbacks.getEnemies()
+        .filter((enemy) => enemy.alive)
+        .map((enemy) => ({ enemy, distance: effect.position.distanceTo(enemy.position) }))
+        .filter((target) => target.distance < config.collapseRadius)
+        .sort((a, b) => a.distance - b.distance)
+        .slice(0, config.captureLimit);
+      const damageMultiplier = (this.masteryMultiplierFn?.(WeaponType.BlackHole) ?? 1)
+        * this.getSessionDamageMultiplier(WeaponType.BlackHole);
+      for (const { enemy } of targets) {
+        this.callbacks.onEnemyDamage(
+          enemy.index,
+          config.collapseDamage * damageMultiplier,
+          WeaponType.BlackHole,
+          enemy.targetId,
+        );
+      }
+    }
+    this.callbacks?.onProjectileExplosion?.(effect.position.clone(), WeaponType.BlackHole);
+  }
+
   private updateEffect(effect: ActiveEffect, dt: number): void {
     const progress = effect.elapsed / effect.duration;
 
@@ -2900,89 +3034,7 @@ export class WeaponManager {
         break;
 
       case 'blackhole':
-        // Pull and damage enemies
-        if (this.callbacks) {
-          const enemies = this.callbacks.getEnemies();
-          // Pull radius upgrades (branch B): +30%, +60%, +100%
-          const bhActiveNodes = this.activeUpgradeNodes(WeaponType.BlackHole);
-          const bhPullBonus =
-            (bhActiveNodes.has('black_hole_b_1') ? 0.30 : 0) +
-            (bhActiveNodes.has('black_hole_b_2') ? 0.60 : 0) +
-            (bhActiveNodes.has('black_hole_b_3') ? 1.00 : 0) +
-            (bhActiveNodes.has('black_hole_br_5') ? 1.50 : 0); // Singularity vortex: +150% radius
-          // ar_4/ar_5 = mega void / eternal collapse: 40% larger pull radius
-          const arSizeMult = bhActiveNodes.has('black_hole_ar_4') || bhActiveNodes.has('black_hole_ar_5') ? 1.4 : 1.0;
-          // For eternal collapse, clamp progress to 1.0 so size stays at max
-          const effectiveProgress = effect.isEternalCollapse ? 1.0 : progress;
-          const radius = (3 + effectiveProgress * 2) * (1.0 + bhPullBonus) * arSizeMult;
-
-          // br_4/br_5 = crush damage: enemies trapped in the black hole take damage/sec
-          const bhTrapDPS =
-            bhActiveNodes.has('black_hole_br_5') ? 10 :
-            bhActiveNodes.has('black_hole_br_4') ? 5 : 0;
-
-          // bl_4 = mass capture: hold up to 12 enemies simultaneously
-          const maxCaptured = bhActiveNodes.has('black_hole_bl_4') || bhActiveNodes.has('black_hole_bl_5')
-            ? 12 : Infinity;
-          let capturedCount = 0;
-
-          for (const enemy of enemies) {
-            if (!enemy.alive) continue;
-            if (capturedCount >= maxCaptured) break;
-
-            // s44r6-04: Use min of on-surface and visual distance (Mobius normal divergence)
-            const onSurfaceDist = effect.position.distanceTo(enemy.position);
-            const visualDist = enemy.meshPosition ? effect.position.distanceTo(enemy.meshPosition) : onSurfaceDist;
-            const dist = Math.min(onSurfaceDist, visualDist);
-            if (dist < radius) {
-              capturedCount++;
-              // Instant kill in center
-              if (dist < 0.5) {
-                this.callbacks.onEnemyDamage(enemy.index, 999, WeaponType.BlackHole);
-              } else {
-                // LEVEL 5 FINAL FORM — Event Horizon: 30% stronger pull
-                const pullStrength = effect.isMasteryL5 ? 0.65 : 0.5;
-                this.callbacks.onEnemyPull?.(enemy.index, pullStrength, effect.position);
-                // Crush damage per second for trapped enemies (b_4/b_5)
-                if (bhTrapDPS > 0) {
-                  this.callbacks.onEnemyDamage(enemy.index, bhTrapDPS * dt, WeaponType.BlackHole);
-                }
-              }
-            }
-          }
-
-          // bl_5 = event gravity: pulled enemies close together take collision damage (2 DPS)
-          if (bhActiveNodes.has('black_hole_bl_5')) {
-            const capturedEnemies = enemies.filter(
-              e => e.alive && effect.position.distanceTo(e.position) < radius
-            );
-            for (let i = 0; i < capturedEnemies.length; i++) {
-              for (let j = i + 1; j < capturedEnemies.length; j++) {
-                const colDist = capturedEnemies[i].position.distanceTo(capturedEnemies[j].position);
-                if (colDist < 1.0) {
-                  this.callbacks.onEnemyDamage(capturedEnemies[i].index, 2 * dt, WeaponType.BlackHole);
-                  this.callbacks.onEnemyDamage(capturedEnemies[j].index, 2 * dt, WeaponType.BlackHole);
-                }
-              }
-            }
-          }
-
-          // ar_5 = eternal collapse: expire when no enemies remain in pull range (min 2s active)
-          if (effect.isEternalCollapse && effect.elapsed > 2.0) {
-            const aliveInRange = enemies.some(
-              e => e.alive && effect.position.distanceTo(e.position) < radius
-            );
-            if (!aliveInRange) {
-              effect.duration = effect.elapsed; // trigger expiry on next frame
-            }
-          }
-
-          // Animate mesh
-          if (effect.mesh) {
-            effect.mesh.scale.setScalar(1 + effectiveProgress * 0.5);
-            effect.mesh.rotation.z += dt * 2;
-          }
-        }
+        this.updateBlackHole(effect, dt);
         break;
 
       case 'tesla':
@@ -3105,7 +3157,9 @@ export class WeaponManager {
     }
 
     for (const effect of this.activeEffects) {
-      if (effect.mesh) {
+      if (effect.type === 'blackhole') {
+        effect.blackHoleVisual?.dispose();
+      } else if (effect.mesh) {
         this.projectileRoot.remove(effect.mesh);
       }
     }
