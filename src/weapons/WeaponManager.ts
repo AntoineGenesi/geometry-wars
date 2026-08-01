@@ -120,6 +120,7 @@ interface ActiveEffect {
   blackHolePhase?: BlackHolePhase;
   blackHoleRadius?: number;
   blackHoleAffectedCount?: number;
+  blackHoleCollapseDeadline?: number;
   collapseApplied?: boolean;
 }
 
@@ -2861,7 +2862,7 @@ export class WeaponManager {
     const config = effect.blackHoleConfig;
     if (!config || !this.callbacks) return;
 
-    const state = getBlackHoleState(effect.elapsed, config, effect.duration);
+    let state = getBlackHoleState(effect.elapsed, config, effect.duration);
     const targets = this.callbacks.getEnemies()
       .filter((enemy) => enemy.alive)
       .map((enemy) => {
@@ -2928,8 +2929,15 @@ export class WeaponManager {
       }
     }
 
-    if (config.isEternalCollapse && effect.elapsed > 2 && targets.length === 0) {
-      effect.duration = effect.elapsed + config.collapseDuration;
+    if (
+      config.isEternalCollapse &&
+      effect.elapsed > 2 &&
+      targets.length === 0 &&
+      effect.blackHoleCollapseDeadline === undefined
+    ) {
+      effect.blackHoleCollapseDeadline = effect.elapsed + config.collapseDuration;
+      effect.duration = effect.blackHoleCollapseDeadline;
+      state = getBlackHoleState(effect.elapsed, config, effect.duration);
     }
 
     effect.blackHolePhase = state.phase;

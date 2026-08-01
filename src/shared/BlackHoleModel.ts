@@ -137,4 +137,3 @@ export function getBlackHoleDamageTickCount(
       - Math.floor((previous - damageStart + 1e-9) / config.damageCadence),
   );
 }
-

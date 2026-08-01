@@ -129,4 +129,3 @@ export class BlackHoleVisual {
     return mesh;
   }
 }
-

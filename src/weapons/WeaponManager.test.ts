@@ -1616,6 +1616,58 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.dispose();
     });
 
+    it('black_hole_ar_5: latches collapse after targets leave and removes visual after collapse interval', () => {
+      const bhPos = sphereProject(
+        origin().clone().add(forward().clone().multiplyScalar(4)),
+        origin().length(),
+      );
+      const enemy: MockEnemy = {
+        position: bhPos.clone().add(new THREE.Vector3(0, 0.5, 0)),
+        index: 0,
+        alive: true,
+        targetId: 'returning-target',
+      };
+      const { callbacks, damages } = createMockCallbacks([enemy]);
+      const wm2 = new WeaponManager();
+      const tracker = makeTracker([]);
+      directActivate(tracker, 'black_hole_ar_5', WeaponType.BlackHole);
+      wm2.setUpgradeTracker(tracker);
+      wm2.setCallbacks(callbacks);
+      wm2.equipWeapon(WeaponType.BlackHole, 5);
+      wm2.fire(origin(), forward(), T);
+
+      const frame = 1 / 60;
+      for (let i = 0; i < 120; i++) wm2.update(frame);
+      let effect = wm2['activeEffects'].find(e => e.type === 'blackhole');
+      expect(effect).toBeDefined();
+      expect(effect!.duration).toBe(999);
+      const collapseDamage = effect!.blackHoleConfig!.collapseDamage;
+      expect(wm2.projectileRoot.children.length).toBe(1);
+
+      enemy.position = bhPos.clone().add(new THREE.Vector3(20, 0, 0));
+      wm2.update(frame);
+      effect = wm2['activeEffects'].find(e => e.type === 'blackhole');
+      expect(effect).toBeDefined();
+      const collapseDeadline = effect!.duration;
+      expect(collapseDeadline).toBeCloseTo(effect!.elapsed + 0.5, 6);
+
+      for (let i = 0; i < 12; i++) wm2.update(frame);
+      effect = wm2['activeEffects'].find(e => e.type === 'blackhole');
+      expect(effect).toBeDefined();
+      expect(effect!.duration).toBeCloseTo(collapseDeadline, 6);
+
+      enemy.position = bhPos.clone();
+      for (let i = 0; i < 20; i++) wm2.update(frame);
+      expect(wm2['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(0);
+      expect(wm2.projectileRoot.children.length).toBe(0);
+
+      for (let i = 0; i < 30; i++) wm2.update(frame);
+      const collapseHits = damages.filter(d => d.type === WeaponType.BlackHole && d.damage === collapseDamage);
+      expect(collapseHits).toHaveLength(1);
+      expect(collapseHits[0].targetId).toBe('returning-target');
+      wm2.dispose();
+    });
+
     it('black_hole_bl_4: raises enemy capture cap from eight to exactly twelve', () => {
       // Place 15 enemies all very close to the black hole spawn position
       const enemies: MockEnemy[] = Array.from({ length: 15 }, (_, i) => ({

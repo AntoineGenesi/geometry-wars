@@ -48,4 +48,3 @@ describe('BlackHoleModel', () => {
     expect(eternal.isEternalCollapse).toBe(true);
   });
 });
-
