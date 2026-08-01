@@ -36,6 +36,7 @@ import { Snake, type SnakeQueuedSegment } from './entities/enemies/Snake';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { ScreenShake } from './effects/ScreenShake';
 import { PlasmaExplosionEffect } from './effects/PlasmaExplosionEffect';
+import { BlackHoleVisual } from './effects/BlackHoleVisual';
 import { ScorePopupManager } from './effects/ScorePopup';
 import { GlowTrail } from './effects/GlowTrail';
 import { EntityGlow, EntityGlowManager, GlowPresets } from './effects/EntityGlow';
@@ -53,6 +54,11 @@ import { KillFeed } from './ui/KillFeed';
 import { WeaponPickup } from './weapons/WeaponPickup';
 import { WeaponType, WEAPON_CONFIGS } from './weapons/WeaponTypes';
 import { BULLET_SPEED_WORLD as SHARED_BULLET_SPEED_WORLD, PLAYER_SPEED_UV } from './shared/GameBalanceConstants';
+import {
+  createBlackHoleConfig,
+  getBlackHoleState,
+  type BlackHolePhase,
+} from './shared/BlackHoleModel';
 import { WeaponHUD } from './ui/WeaponHUD';
 import { WeaponManager } from './weapons/WeaponManager';
 import type { WeaponInventoryEntry } from './weapons/WeaponManager';
@@ -91,6 +97,7 @@ import {
   NetworkPlayerState,
   NetworkEnemyState,
   NetworkBulletState,
+  NetworkBlackHoleFieldState,
   NetworkGeomState,
   NetworkWeaponPickupState,
   NetworkSuperPickupState,
@@ -213,6 +220,11 @@ interface GameDebugAPI {
   getEnemies: () => { id: string; type: string; u: number; v: number; hp: number }[];
   getEnemyMeshPathingSamples: () => Record<string, unknown>[];
   getBulletCount: () => number;
+  getBlackHoleProofState: () => Record<string, unknown>;
+  startBlackHoleProofGame: () => boolean;
+  resumeBlackHoleProofGame: () => boolean;
+  setupBlackHoleProof: () => boolean;
+  fireBlackHoleProof: () => boolean;
   getChevronAimProofState: () => Record<string, unknown>;
   startChevronAimProofGame: (surfaceType: string) => boolean;
   resumeChevronAimProofGame: () => boolean;
@@ -620,6 +632,7 @@ const SERVER_TO_WEAPON_TYPE: Record<string, WeaponType> = {
 };
 
 const SERVER_KNOWN_WEAPON_TYPES = [...new Set(Object.values(SERVER_TO_WEAPON_TYPE))];
+const MP_BLACK_HOLE_VISUAL_CONFIG = createBlackHoleConfig();
 
 // ---------------------------------------------------------------------------
 // Surface transform helper — now using shared module (SharedGameSetup.ts)
@@ -1092,6 +1105,15 @@ async function main() {
   // (LaserBeam, ChainLightning, TeslaCoil) that are NOT represented in bullet state.
   const localWeaponManager = new WeaponManager();
   scene.add(localWeaponManager.getVisualRoot());
+  const networkBlackHoleVisuals = new Map<string, {
+    visual: BlackHoleVisual;
+    affectedPositions: THREE.Vector3[];
+  }>();
+
+  const clearNetworkBlackHoleVisuals = (): void => {
+    networkBlackHoleVisuals.forEach(({ visual }) => visual.dispose());
+    networkBlackHoleVisuals.clear();
+  };
   localWeaponManager.setCallbacks({
     getEnemies: () => {
       const result: { position: THREE.Vector3; meshPosition?: THREE.Vector3; index: number; alive: boolean }[] = [];
@@ -3828,6 +3850,7 @@ async function main() {
     // Without this, active effects (laser beams, tesla coil aura, black holes) and
     // queued projectiles from the old round persist into the new round's update loop.
     localWeaponManager.clear();
+    clearNetworkBlackHoleVisuals();
 
     // Clean up enemy glow trails from the previous round
     enemyGlowTrails.forEach((trail) => {
@@ -4784,6 +4807,46 @@ async function main() {
           enemyTrail.dispose();
           enemyGlowTrails.delete(id);
         }
+      }
+    });
+
+    // ----- Sync authoritative Black Hole fields -----
+    const activeBlackHoleFieldIds = new Set<string>();
+    state.blackHoleFields?.forEach((field: NetworkBlackHoleFieldState) => {
+      activeBlackHoleFieldIds.add(field.id);
+      let entry = networkBlackHoleVisuals.get(field.id);
+      if (!entry) {
+        const center = new THREE.Vector3(field.wx, field.wy, field.wz);
+        const normal = new THREE.Vector3(field.nx, field.ny, field.nz).normalize();
+        const visual = new BlackHoleVisual(center, normal);
+        scene.add(visual.root);
+        entry = { visual, affectedPositions: [] };
+        networkBlackHoleVisuals.set(field.id, entry);
+      }
+
+      entry.affectedPositions.length = 0;
+      networkEnemies.forEach((enemy) => {
+        if (entry!.affectedPositions.length >= MP_BLACK_HOLE_VISUAL_CONFIG.captureLimit) return;
+        if (enemy.alive && enemy.position.distanceToSquared(entry!.visual.core.position) <= field.radius * field.radius) {
+          entry!.affectedPositions.push(enemy.position);
+        }
+      });
+      const derivedState = getBlackHoleState(
+        field.age,
+        MP_BLACK_HOLE_VISUAL_CONFIG,
+        field.duration,
+      );
+      entry.visual.update({
+        ...derivedState,
+        phase: field.phase as BlackHolePhase,
+        radius: field.radius,
+      }, field.age, entry.affectedPositions);
+    });
+
+    networkBlackHoleVisuals.forEach(({ visual }, fieldId) => {
+      if (!activeBlackHoleFieldIds.has(fieldId)) {
+        visual.dispose();
+        networkBlackHoleVisuals.delete(fieldId);
       }
     });
 
@@ -8748,6 +8811,7 @@ async function main() {
     remoteCompanionRenderers.clear();
     remoteBuffParticleAuras.forEach((aura) => { scene.remove(aura.root); aura.dispose(); });
     remoteBuffParticleAuras.clear();
+    clearNetworkBlackHoleVisuals();
     debugOverlay.dispose();
     if (_mpVisibilityOverlay) _mpVisibilityOverlay.dispose();
   });
@@ -8806,6 +8870,102 @@ async function main() {
         return samples;
       },
       getBulletCount: () => bulletIdToIndex.size,
+      getBlackHoleProofState: () => {
+        const fields: Record<string, unknown>[] = [];
+        latestGameState?.blackHoleFields?.forEach((field) => {
+          const entry = networkBlackHoleVisuals.get(field.id);
+          const coreMaterial = entry?.visual.core.material as THREE.MeshBasicMaterial | undefined;
+          const collapseMaterial = entry?.visual.collapseFlash.material as THREE.MeshBasicMaterial | undefined;
+          const shockwaveMaterial = entry?.visual.shockwave.material as THREE.MeshBasicMaterial | undefined;
+          fields.push({
+            id: field.id,
+            ownerId: field.ownerId,
+            center: [field.wx, field.wy, field.wz],
+            normal: [field.nx, field.ny, field.nz],
+            faceIndex: field.walkerFaceIndex,
+            barycentric: [field.walkerBaryU, field.walkerBaryV, field.walkerBaryW],
+            age: field.age,
+            duration: field.duration,
+            radius: field.radius,
+            phase: field.phase,
+            visual: entry ? {
+              rootChildren: entry.visual.root.children.length,
+              coreScale: entry.visual.core.scale.x,
+              coreOpacity: coreMaterial?.opacity ?? null,
+              boundaryScale: entry.visual.boundary.scale.x,
+              collapseFlashOpacity: collapseMaterial?.opacity ?? null,
+              shockwaveOpacity: shockwaveMaterial?.opacity ?? null,
+              affectedTrailSegments: entry.visual.trails.geometry.drawRange.count / 2,
+            } : null,
+          });
+        });
+        const enemies: Record<string, unknown>[] = [];
+        latestGameState?.enemies.forEach((enemy) => {
+          const rendered = networkEnemies.get(enemy.id);
+          enemies.push({
+            id: enemy.id,
+            health: enemy.health,
+            maxHealth: enemy.maxHealth,
+            world: [enemy.wx, enemy.wy, enemy.wz],
+            renderedWorld: rendered?.position.toArray() ?? null,
+          });
+        });
+        const bulletCounts: Record<string, number> = {};
+        latestGameState?.bullets.forEach((bullet) => {
+          const type = bullet.weaponType ?? 'standard';
+          bulletCounts[type] = (bulletCounts[type] ?? 0) + 1;
+        });
+        const owner = localPlayerId ? latestGameState?.players.get(localPlayerId) : null;
+        return {
+          backend: game.backend,
+          isWebGPU: game.isWebGPU,
+          roomPhase: currentRoomPhase,
+          surface: lastCreatedSurfaceType,
+          gameMode: latestGameMode,
+          localPlayerId,
+          fields,
+          visualCount: networkBlackHoleVisuals.size,
+          bulletCounts,
+          enemies,
+          owner: owner ? {
+            score: owner.score,
+            playerKills: owner.playerKills,
+            enemyKills: owner.enemyKills ?? 0,
+            weaponType: owner.weaponType,
+            weaponAmmo: owner.weaponAmmo,
+          } : null,
+        };
+      },
+      startBlackHoleProofGame: () => {
+        if (!_netMainTestMode || !isHost || !network.isConnected()) return false;
+        network.startGame('cube:waves:medium:infinite', {
+          ...currentGameSettings,
+          surface: 'cube',
+          mode: 'waves',
+          startingWeapon: 'black_hole',
+          infiniteLives: true,
+        });
+        return true;
+      },
+      resumeBlackHoleProofGame: () => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        network.sendPause(false);
+        network.sendResumeTimer();
+        game.resume();
+        return true;
+      },
+      setupBlackHoleProof: () => {
+        if (!_netMainTestMode || !network.isConnected()) return false;
+        network.sendBlackHoleProofSetup();
+        return true;
+      },
+      fireBlackHoleProof: () => {
+        if (!_netMainTestMode || !network.isConnected() || !lastSentInput) return false;
+        const proofInput = { ...lastSentInput, moveX: 0, moveY: 0, shooting: true };
+        network.sendInput(proofInput);
+        setTimeout(() => network.sendInput({ ...proofInput, shooting: false }), 50);
+        return true;
+      },
       getChevronAimProofState: () => {
         const canvasRect = game.renderer.domElement.getBoundingClientRect();
         const projectWorldPoint = (point: THREE.Vector3) => {

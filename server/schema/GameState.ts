@@ -210,6 +210,65 @@ defineTypes(BulletState, {
   weaponType: 'string',
 });
 
+/** Server-owned Black Hole field synchronized to every client. */
+export class BlackHoleFieldState extends Schema {
+  declare id: string;
+  declare ownerId: string;
+  declare wx: number;
+  declare wy: number;
+  declare wz: number;
+  declare nx: number;
+  declare ny: number;
+  declare nz: number;
+  declare tx: number;
+  declare ty: number;
+  declare tz: number;
+  declare bx: number;
+  declare by: number;
+  declare bz: number;
+  declare walkerFaceIndex: number;
+  declare walkerBaryU: number;
+  declare walkerBaryV: number;
+  declare walkerBaryW: number;
+  declare age: number;
+  declare duration: number;
+  declare radius: number;
+  declare phase: string;
+
+  constructor() {
+    super();
+    this.id = '';
+    this.ownerId = '';
+    this.wx = 0; this.wy = 0; this.wz = 0;
+    this.nx = 0; this.ny = 1; this.nz = 0;
+    this.tx = 1; this.ty = 0; this.tz = 0;
+    this.bx = 0; this.by = 0; this.bz = 1;
+    this.walkerFaceIndex = 0;
+    this.walkerBaryU = 1;
+    this.walkerBaryV = 0;
+    this.walkerBaryW = 0;
+    this.age = 0;
+    this.duration = 0;
+    this.radius = 0;
+    this.phase = 'formation';
+  }
+}
+
+defineTypes(BlackHoleFieldState, {
+  id: 'string',
+  ownerId: 'string',
+  wx: 'number', wy: 'number', wz: 'number',
+  nx: 'number', ny: 'number', nz: 'number',
+  tx: 'number', ty: 'number', tz: 'number',
+  bx: 'number', by: 'number', bz: 'number',
+  walkerFaceIndex: 'number',
+  walkerBaryU: 'number', walkerBaryV: 'number', walkerBaryW: 'number',
+  age: 'number',
+  duration: 'number',
+  radius: 'number',
+  phase: 'string',
+});
+
 /**
  * Enemy state
  */
@@ -469,6 +528,7 @@ defineTypes(ShieldPickupState, {
 export class GameState extends Schema {
   declare players: MapSchema<PlayerState>;
   declare bullets: ArraySchema<BulletState>;
+  declare blackHoleFields: ArraySchema<BlackHoleFieldState>;
   declare enemies: ArraySchema<EnemyState>;
   declare geoms: ArraySchema<GeomState>;
   declare weaponPickups: ArraySchema<WeaponPickupState>;
@@ -574,6 +634,7 @@ export class GameState extends Schema {
     super();
     this.players = new MapSchema<PlayerState>();
     this.bullets = new ArraySchema<BulletState>();
+    this.blackHoleFields = new ArraySchema<BlackHoleFieldState>();
     this.enemies = new ArraySchema<EnemyState>();
     this.geoms = new ArraySchema<GeomState>();
     this.weaponPickups = new ArraySchema<WeaponPickupState>();
@@ -649,6 +710,7 @@ export class GameState extends Schema {
 defineTypes(GameState, {
   players: { map: PlayerState },
   bullets: [BulletState],
+  blackHoleFields: [BlackHoleFieldState],
   enemies: [EnemyState],
   geoms: [GeomState],
   weaponPickups: [WeaponPickupState],

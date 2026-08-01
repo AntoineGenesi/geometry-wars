@@ -4,6 +4,7 @@ import {
   GameState,
   PlayerState,
   BulletState,
+  BlackHoleFieldState,
   EnemyState,
   GeomState,
   WeaponPickupState,
@@ -71,6 +72,12 @@ import {
   type PlayerPowerBreakdown,
   type PlayerPowerInput,
 } from '../../src/shared/PlayerPowerModel';
+import {
+  createBlackHoleConfig,
+  getBlackHoleDamageTickCount,
+  getBlackHolePullSpeed,
+  getBlackHoleState,
+} from '../../src/shared/BlackHoleModel';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -117,6 +124,8 @@ interface PlayerPerfWindow {
 
 // Constants
 const TICK_RATE = 60;
+const MP_BLACK_HOLE_CONFIG = createBlackHoleConfig();
+const MP_BLACK_HOLE_PLACEMENT_DISTANCE = 4;
 // How far in advance (ms) the server warns clients before spawning an enemy.
 // Clients show a pulsing red ring for this duration before the enemy appears.
 const PRE_SPAWN_WARNING_MS = 1500;
@@ -1115,6 +1124,10 @@ export class GameRoom extends Room<GameState> {
   private readonly _enemyOriginPoint = { faceIndex: 0, wx: 0, wy: 0, wz: 0 };
   private readonly _enemyTargetPoint = { faceIndex: 0, wx: 0, wy: 0, wz: 0 };
   private readonly _enemyTargetDelta = { du: 0, dv: 0, dist: 0 };
+  private nextBlackHoleFieldId = 1;
+  private readonly _blackHoleMoveDirection = new THREE.Vector3();
+  private readonly _blackHoleSpiralDirection = new THREE.Vector3();
+  private readonly _blackHoleEnemyNormal = new THREE.Vector3();
 
   /**
    * Latest input state per player. Updated on message receipt, consumed
@@ -1305,6 +1318,13 @@ export class GameRoom extends Room<GameState> {
       (player as unknown as { lastBlasterShotTime?: number; lastShotTime?: number }).lastShotTime = -Infinity;
       this.state.bullets.clear();
       this.logger.log(`[GameRoom] Upgrade proof setup: player=${client.sessionId} weapon=${weaponType} kills=${killCount}`);
+    });
+
+    this.onMessage('black_hole_proof_setup', (client) => {
+      if (process.env.GEOMETRY_WARS_MP_PROOF_CONTROLS !== '1') return;
+      if (client.sessionId !== this.state.hostId || this.state.roomPhase !== 'playing') return;
+      const player = this.state.players.get(client.sessionId);
+      if (player) this.setupBlackHoleProof(player);
     });
 
     this.onMessage('start', (client, data?: { choice?: string; settings?: Partial<GameSettings> }) => {
@@ -2149,6 +2169,7 @@ export class GameRoom extends Room<GameState> {
 
     if (player) {
       this.logger.log(`[GameRoom] ${player.name} left`);
+      this.removeBlackHoleFieldsOwnedBy(client.sessionId);
       this.state.players.delete(client.sessionId);
       this.playerInputs.delete(client.sessionId);
       this.playerInvincibility.delete(client.sessionId);
@@ -2231,6 +2252,7 @@ export class GameRoom extends Room<GameState> {
     this._portalCooldowns.clear();
     this._portalLocations.A = null;
     this._portalLocations.B = null;
+    this.state.blackHoleFields?.clear();
 
     if (this.metricsLogPath) {
       try {
@@ -2757,6 +2779,7 @@ export class GameRoom extends Room<GameState> {
 
     // Clear entities
     this.state.bullets.clear();
+    this.state.blackHoleFields?.clear();
     this.bulletDamageTracker.clear(); // s44r3-02: reset penetration budgets
     this.state.enemies.clear();
     this.enemyAI.clear();
@@ -2803,6 +2826,7 @@ export class GameRoom extends Room<GameState> {
 
     // Clear all entities
     this.state.bullets.clear();
+    this.state.blackHoleFields?.clear();
     this.bulletDamageTracker.clear(); // s44r3-02: reset penetration budgets
     this.state.enemies.clear();
     this.enemyAI.clear();
@@ -3528,6 +3552,8 @@ export class GameRoom extends Room<GameState> {
           // A UV-space bullet never reliably reaches enemies; the weapon is fundamentally area-based.
           // Client-side visual arc is handled by localWeaponManager.fire() in network-main.ts.
           this.fireChainLightningMP(player);
+        } else if (weaponType === 'black_hole') {
+          this.fireBlackHoleMP(player);
         } else {
           // Default: single bullet for secondary weapon
           this.spawnBullet(player, angle, 0, 0, weaponType);
@@ -3559,6 +3585,288 @@ export class GameRoom extends Room<GameState> {
     bullet.age = 0;
 
     this.state.bullets.push(bullet);
+  }
+
+  /** Build a bounded deterministic Waves scene for the opt-in browser proof. */
+  private setupBlackHoleProof(player: PlayerState): void {
+    const surface = this.surfaceManager.getMeshSurface();
+    const center = this.surfaceManager.createLocationNearWalker(
+      player.id,
+      MP_BLACK_HOLE_PLACEMENT_DISTANCE,
+      player.aimAngle,
+    );
+    if (!surface || !center) return;
+
+    this.spawnGeneration++;
+    this.pendingEnemyCount = 0;
+    this.waveElapsed = 0;
+    this.nextWaveAt = Number.POSITIVE_INFINITY;
+    this.state.bullets.clear();
+    this.bulletDamageTracker.clear();
+    this.state.blackHoleFields?.clear();
+    this.state.enemies.clear();
+    this.enemyAI.clear();
+    this.enemyWalkers.clear();
+    player.weaponType = 'black_hole';
+    player.weaponAmmo = 5;
+    this.playerWeaponInventory.set(player.id, [
+      { type: 'standard', ammo: -1 },
+      { type: 'black_hole', ammo: 5 },
+    ]);
+    this.playerWeaponIndex.set(player.id, 1);
+    (player as unknown as { lastBlasterShotTime: number }).lastBlasterShotTime = this.state.gameTime;
+    (player as unknown as { lastShotTime: number }).lastShotTime = -Infinity;
+
+    const offsets = [
+      { distance: 1.4, angle: Math.PI * 0.35 },
+      { distance: 1.6, angle: Math.PI * 0.85 },
+      { distance: 1.8, angle: Math.PI * 1.35 },
+      { distance: 2.0, angle: Math.PI * 1.85 },
+    ];
+    for (const offset of offsets) {
+      const walker = new ServerMeshWalker(
+        surface,
+        new THREE.Vector3(center.wx, center.wy, center.wz),
+        1,
+      );
+      walker.teleportToLocation(center);
+      walker.speed = 1;
+      this._blackHoleMoveDirection.set(0, 0, 0)
+        .addScaledVector(
+          this._enemyPathDirection.set(center.tangentX, center.tangentY, center.tangentZ),
+          Math.cos(offset.angle),
+        )
+        .addScaledVector(
+          this._enemyPathDirection.set(center.bitangentX, center.bitangentY, center.bitangentZ),
+          Math.sin(offset.angle),
+        )
+        .normalize();
+      walker.moveInWorldDirection(
+        this._blackHoleMoveDirection.x,
+        this._blackHoleMoveDirection.y,
+        this._blackHoleMoveDirection.z,
+        offset.distance,
+      );
+
+      const enemy = this.makeEnemyState('wanderer', player.surfaceU, player.surfaceV);
+      enemy.health = 10;
+      enemy.maxHealth = 10;
+      this.enemyWalkers.set(enemy.id, walker);
+      this.applyWalkerStateToEnemy(enemy, walker.getLocation());
+      this.enemyAI.set(enemy.id, {
+        directionU: 0,
+        directionV: 0,
+        directionChangeTimer: 0,
+        nextDirectionChange: 999,
+      });
+      this.state.enemies.push(enemy);
+    }
+    this.logger.log(`[GameRoom] Black Hole proof setup: player=${player.id} enemies=${offsets.length}`);
+  }
+
+  /** Place a stationary field from the shooter's authoritative mesh walker. */
+  private fireBlackHoleMP(player: PlayerState): void {
+    const location = this.surfaceManager.createLocationNearWalker(
+      player.id,
+      MP_BLACK_HOLE_PLACEMENT_DISTANCE,
+      player.aimAngle,
+    );
+    if (!location) return;
+
+    const field = new BlackHoleFieldState();
+    field.id = `bh${this.nextBlackHoleFieldId++}`;
+    field.ownerId = player.id;
+    field.wx = location.wx; field.wy = location.wy; field.wz = location.wz;
+    field.nx = location.nx; field.ny = location.ny; field.nz = location.nz;
+    field.tx = location.tangentX; field.ty = location.tangentY; field.tz = location.tangentZ;
+    field.bx = location.bitangentX; field.by = location.bitangentY; field.bz = location.bitangentZ;
+    field.walkerFaceIndex = location.faceIndex;
+    field.walkerBaryU = location.baryU;
+    field.walkerBaryV = location.baryV;
+    field.walkerBaryW = location.baryW;
+    field.age = 0;
+    field.duration = MP_BLACK_HOLE_CONFIG.duration;
+    field.radius = 0;
+    field.phase = 'formation';
+    this.state.blackHoleFields.push(field);
+  }
+
+  /** Advance synchronized field state, then apply server-owned pull and damage. */
+  private updateBlackHoleFields(dt: number): void {
+    for (let fieldIndex = this.state.blackHoleFields.length - 1; fieldIndex >= 0; fieldIndex--) {
+      const field = this.state.blackHoleFields[fieldIndex];
+      const previousAge = field.age;
+      const nextAge = field.age + dt;
+      field.age = nextAge >= field.duration - 1e-6 ? field.duration : nextAge;
+      const modelState = getBlackHoleState(field.age, MP_BLACK_HOLE_CONFIG, field.duration);
+      field.phase = modelState.phase;
+      field.radius = modelState.radius;
+
+      if (modelState.phase === 'expired') {
+        this.applyBlackHoleCollapse(field);
+        this.state.blackHoleFields.splice(fieldIndex, 1);
+        continue;
+      }
+
+      const targets = this.getBlackHoleTargets(field, field.radius);
+      for (const { enemy, distance } of targets) {
+        this.pullEnemyTowardBlackHole(enemy, field, distance, modelState.pullScale, dt);
+      }
+
+      const tickCount = getBlackHoleDamageTickCount(
+        previousAge,
+        field.age,
+        MP_BLACK_HOLE_CONFIG,
+        field.duration,
+      );
+      if (tickCount > 0) {
+        const damage = MP_BLACK_HOLE_CONFIG.damagePerSecond
+          * MP_BLACK_HOLE_CONFIG.damageCadence
+          * tickCount
+          * this.getBlackHoleOwnerDamageMultiplier(field.ownerId);
+        this.applyBlackHoleDamage(field.ownerId, targets.map(({ enemy }) => enemy), damage);
+      }
+    }
+  }
+
+  private getBlackHoleTargets(
+    field: BlackHoleFieldState,
+    radius: number,
+  ): Array<{ enemy: EnemyState; distance: number }> {
+    if (radius <= 0) return [];
+    const targets: Array<{ enemy: EnemyState; distance: number }> = [];
+    this._enemyTargetPoint.faceIndex = field.walkerFaceIndex;
+    this._enemyTargetPoint.wx = field.wx;
+    this._enemyTargetPoint.wy = field.wy;
+    this._enemyTargetPoint.wz = field.wz;
+
+    this.state.enemies.forEach((enemy) => {
+      if (!this.isTargetableEnemy(enemy)) return;
+      this._enemyOriginPoint.faceIndex = enemy.walkerFaceIndex;
+      this._enemyOriginPoint.wx = enemy.wx;
+      this._enemyOriginPoint.wy = enemy.wy;
+      this._enemyOriginPoint.wz = enemy.wz;
+      let distance: number;
+      if (this.enemyPathfinder) {
+        const pathDistance = this.enemyPathfinder.getPathDistance(
+          this._enemyOriginPoint,
+          this._enemyTargetPoint,
+        );
+        if (!Number.isFinite(pathDistance)) return;
+        distance = pathDistance;
+      } else {
+        distance = Math.hypot(enemy.wx - field.wx, enemy.wy - field.wy, enemy.wz - field.wz);
+      }
+      if (distance < radius) targets.push({ enemy, distance });
+    });
+
+    targets.sort((a, b) => a.distance - b.distance);
+    return targets.slice(0, MP_BLACK_HOLE_CONFIG.captureLimit);
+  }
+
+  private pullEnemyTowardBlackHole(
+    enemy: EnemyState,
+    field: BlackHoleFieldState,
+    distance: number,
+    pullScale: number,
+    dt: number,
+  ): void {
+    if (distance <= 0.05 || pullScale <= 0) return;
+    const walker = this.ensureEnemyWalker(enemy);
+    if (!walker) return;
+
+    this._enemyOriginPoint.faceIndex = enemy.walkerFaceIndex;
+    this._enemyOriginPoint.wx = enemy.wx;
+    this._enemyOriginPoint.wy = enemy.wy;
+    this._enemyOriginPoint.wz = enemy.wz;
+    this._enemyTargetPoint.faceIndex = field.walkerFaceIndex;
+    this._enemyTargetPoint.wx = field.wx;
+    this._enemyTargetPoint.wy = field.wy;
+    this._enemyTargetPoint.wz = field.wz;
+    const pathDistance = this.enemyPathfinder?.getPathDirection(
+      this._enemyOriginPoint,
+      this._enemyTargetPoint,
+      this._enemyPathDirection,
+    );
+    if (!Number.isFinite(pathDistance) || this._enemyPathDirection.lengthSq() <= 0.000001) return;
+
+    this._enemyPathDirection.normalize();
+    this._blackHoleEnemyNormal.set(enemy.nx, enemy.ny, enemy.nz).normalize();
+    this._blackHoleSpiralDirection
+      .crossVectors(this._blackHoleEnemyNormal, this._enemyPathDirection)
+      .normalize();
+    this._blackHoleMoveDirection
+      .copy(this._enemyPathDirection)
+      .addScaledVector(this._blackHoleSpiralDirection, MP_BLACK_HOLE_CONFIG.spiralRatio)
+      .normalize();
+    walker.speed = getBlackHolePullSpeed(
+      distance,
+      field.radius,
+      MP_BLACK_HOLE_CONFIG.maxPullSpeed,
+    ) * pullScale;
+    walker.moveInWorldDirection(
+      this._blackHoleMoveDirection.x,
+      this._blackHoleMoveDirection.y,
+      this._blackHoleMoveDirection.z,
+      dt,
+    );
+    this.applyWalkerStateToEnemy(enemy, walker.getLocation());
+  }
+
+  private applyBlackHoleCollapse(field: BlackHoleFieldState): void {
+    const targets = this.getBlackHoleTargets(field, MP_BLACK_HOLE_CONFIG.collapseRadius);
+    const damage = MP_BLACK_HOLE_CONFIG.collapseDamage
+      * this.getBlackHoleOwnerDamageMultiplier(field.ownerId);
+    this.applyBlackHoleDamage(field.ownerId, targets.map(({ enemy }) => enemy), damage);
+  }
+
+  private applyBlackHoleDamage(ownerId: string, targets: EnemyState[], damage: number): void {
+    const killedIds: string[] = [];
+    for (const enemy of targets) {
+      this.applyPlayerOwnedEnemyDamage(enemy, damage, ownerId, 'black_hole');
+      if (enemy.health <= 0) killedIds.push(enemy.id);
+    }
+    for (const enemyId of killedIds) this.creditBlackHoleKill(enemyId, ownerId);
+  }
+
+  private getBlackHoleOwnerDamageMultiplier(ownerId: string): number {
+    const owner = this.state.players.get(ownerId);
+    if (!owner) return 1;
+    const levelIndex = Math.min(owner.playerLevel, LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+    return LEVEL_DAMAGE_MULTIPLIERS[levelIndex] * this.calculateBuffDamageMult(owner);
+  }
+
+  private creditBlackHoleKill(enemyId: string, ownerId: string): void {
+    const enemyIndex = this.state.enemies.findIndex((enemy) => enemy.id === enemyId);
+    if (enemyIndex < 0) return;
+    const enemy = this.state.enemies[enemyIndex];
+    const owner = this.state.players.get(ownerId);
+    this.removeKilledEnemyAt(enemyIndex);
+    if (!owner) return;
+
+    owner.score += this.getEnemyScore(enemy.type) * owner.multiplier;
+    owner.playerKills++;
+    owner.enemyKills++;
+    this.recordUpgradeKill(ownerId, 'black_hole');
+    const newLevel = this.getPlayerLevel(owner.playerKills);
+    if (newLevel > owner.playerLevel) {
+      owner.playerLevel = newLevel;
+      this.broadcast('player_level_up', {
+        playerId: owner.id,
+        newLevel,
+        playerName: owner.name,
+      });
+    }
+    this.trackDDAKill(ownerId);
+    this.rollEnemyPickupDrops(enemy);
+  }
+
+  private removeBlackHoleFieldsOwnedBy(ownerId: string): void {
+    for (let i = this.state.blackHoleFields.length - 1; i >= 0; i--) {
+      if (this.state.blackHoleFields[i].ownerId === ownerId) {
+        this.state.blackHoleFields.splice(i, 1);
+      }
+    }
   }
 
   /**
@@ -3860,6 +4168,9 @@ export class GameRoom extends Room<GameState> {
 
     // Update enemies
     this.updateEnemies(dt);
+
+    // Black Hole is a server-owned field layered on top of normal enemy AI.
+    this.updateBlackHoleFields(dt);
 
     // Check collisions
     this.checkCollisions();
@@ -7401,6 +7712,7 @@ export class GameRoom extends Room<GameState> {
     this.spawnGeneration++;
     this.pendingEnemyCount = 0;
     this.state.bullets.clear();
+    this.state.blackHoleFields?.clear();
     this.bulletDamageTracker.clear(); // s44r3-02: reset penetration budgets
     this.state.enemies.clear();
     this.enemyAI.clear();

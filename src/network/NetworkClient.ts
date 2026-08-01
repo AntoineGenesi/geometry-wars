@@ -84,6 +84,22 @@ export interface NetworkBulletState {
   weaponType?: string;
 }
 
+/** Server-owned Black Hole field state. */
+export interface NetworkBlackHoleFieldState {
+  id: string;
+  ownerId: string;
+  wx: number; wy: number; wz: number;
+  nx: number; ny: number; nz: number;
+  tx: number; ty: number; tz: number;
+  bx: number; by: number; bz: number;
+  walkerFaceIndex: number;
+  walkerBaryU: number; walkerBaryV: number; walkerBaryW: number;
+  age: number;
+  duration: number;
+  radius: number;
+  phase: string;
+}
+
 /** Enemy state from server */
 export interface NetworkEnemyState {
   id: string;
@@ -162,6 +178,7 @@ export interface ForEachable<T> {
 export interface NetworkGameState {
   players: Map<string, NetworkPlayerState>;
   bullets: ForEachable<NetworkBulletState>;
+  blackHoleFields?: ForEachable<NetworkBlackHoleFieldState>;
   enemies: ForEachable<NetworkEnemyState>;
   geoms: ForEachable<NetworkGeomState>;
   weaponPickups: ForEachable<NetworkWeaponPickupState>;
@@ -785,6 +802,7 @@ export class NetworkClient {
     const s = state as {
       players: Map<string, NetworkPlayerState>;
       bullets: ForEachable<NetworkBulletState>;
+      blackHoleFields: ForEachable<NetworkBlackHoleFieldState>;
       enemies: ForEachable<NetworkEnemyState>;
       geoms: ForEachable<NetworkGeomState>;
       weaponPickups: ForEachable<NetworkWeaponPickupState>;
@@ -852,6 +870,7 @@ export class NetworkClient {
     return {
       players: s.players,
       bullets: s.bullets || emptyArray,
+      blackHoleFields: s.blackHoleFields || emptyArray,
       enemies: s.enemies || emptyArray,
       geoms: s.geoms || emptyArray,
       weaponPickups: s.weaponPickups || emptyArray,
@@ -1054,6 +1073,12 @@ export class NetworkClient {
   sendUpgradeProofSetup(data: { weaponType: string; killCount: number }): void {
     if (!this.room || !this.connected) return;
     this.room.send('upgrade_proof_setup', data);
+  }
+
+  /** Request the opt-in authoritative Black Hole browser proof scene. */
+  sendBlackHoleProofSetup(): void {
+    if (!this.room || !this.connected) return;
+    this.room.send('black_hole_proof_setup');
   }
 
   /**
