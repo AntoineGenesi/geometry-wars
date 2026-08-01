@@ -1,3 +1,5 @@
+import type { PlayerPowerBreakdown } from '../shared/PlayerPowerModel';
+
 // ---------------------------------------------------------------------------
 // Difficulty Scaling System
 //
@@ -190,6 +192,8 @@ export interface DifficultyInput {
   playerCount?: number;
   /** Total number of active companion drones. Optional — defaults to 0. */
   companionCount?: number;
+  /** Shared authoritative capability snapshot. Replaces overlapping legacy bonuses when present. */
+  playerPower?: PlayerPowerBreakdown;
 }
 
 /**
@@ -254,6 +258,10 @@ export function computeDifficultyLevel(input: DifficultyInput): number {
   // 2p → +0.3, 3p → +0.6, 4p → +0.9.
   // Rationale: co-op groups kill enemies faster, so harder types arrive sooner.
   const playerCountBonus = ((input.playerCount ?? 1) - 1) * 0.3;
+
+  if (input.playerPower) {
+    return timeLevel * 0.5 + playerCountBonus + input.playerPower.difficultyBonus;
+  }
 
   // Companion drone bonus: each companion adds 0.4 difficulty levels.
   // 5 companions → +2.0 (significant but capped).

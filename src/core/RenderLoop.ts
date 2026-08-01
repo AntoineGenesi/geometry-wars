@@ -259,6 +259,26 @@ export class RenderLoop {
     ctx.perfLogger.setLODStats(lodStats.high, lodStats.medium, lodStats.low);
     ctx.perfLogger.setDDALevel(ctx.ddaEngine.getDDALevelSmooth(0));
     ctx.perfLogger.setDifficultyTier(ctx.waveScheduler?.currentDifficultyLevel ?? 0);
+    const dominance = ctx.playerPowerRuntime?.breakdown;
+    const dominanceBonus = dominance?.difficultyBonus ?? 0;
+    const finalDifficulty = Number(ctx.waveScheduler?.currentDifficultyLevel ?? 0);
+    ctx.perfLogger.setAdaptiveDifficultyData(
+      {
+        level: ctx.ddaEngine.getDDALevel(0),
+        smoothLevel: ctx.ddaEngine.getDDALevelSmooth(0),
+        speedAid: ctx.ddaEngine.getSpeedMultiplier(0),
+        struggleComposite: ctx.ddaEngine.getCompositeScore(0),
+      },
+      dominance,
+      {
+        baseDifficulty: Math.max(0, finalDifficulty - dominanceBonus),
+        dominanceBonus,
+        finalDifficulty,
+        enemyCap: ctx.enemySpawner.getMaxActiveEnemies(),
+        spawnInterval: Math.max(0, Number(ctx.waveScheduler?.endlessNextSpawn ?? 0)
+          - Number(ctx.waveScheduler?.getElapsed?.() ?? 0)),
+      },
+    );
     ctx.perfLogger.setPlayerPowerLevel(ctx.playerLevel.level);
     ctx.perfLogger.setQualityLevel(ctx.adaptiveQuality.getQualityLevel());
 

@@ -69,6 +69,8 @@ const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
 const REPORT_DIR = resolve(PROJECT_ROOT, 'reports');
 mkdirSync(REPORT_DIR, { recursive: true });
+const SCREENSHOT_DIR = resolve(PROJECT_ROOT, 'test-screenshots/dda-power-model');
+mkdirSync(SCREENSHOT_DIR, { recursive: true });
 const JSON_REPORT_PATH = resolve(REPORT_DIR, `dda-long-run-proof-${PROFILE}-${timestamp}.json`);
 const MD_REPORT_PATH = resolve(REPORT_DIR, `dda-long-run-proof-${PROFILE}-${timestamp}.md`);
 
@@ -212,15 +214,11 @@ async function applyProfileTick(page, profile) {
 
     if (!window.__DDA_PROOF_DOMINANCE) {
       window.__DDA_PROOF_DOMINANCE = true;
-      globalThis.__GOD_MODE = true;
-      ctx.player.lives = 3;
+      const setup = api.setupDDAPowerProof();
+      return { ok: true, profile: profileName, injected: 'real_wave_50_loadout', setup };
     }
-    ctx.player.addScore(40_000);
-    for (let i = 0; i < 4; i++) {
-      ctx.playerLevel.addKill();
-      ctx.ddaTracker.recordKill(1_000);
-    }
-    return { ok: true, profile: profileName, injected: 'dominant_player_power' };
+    const setup = api.setupDDAPowerProof();
+    return { ok: true, profile: profileName, injected: 'stationary_observation', setup };
   }, profile);
 }
 
@@ -231,9 +229,6 @@ async function sampleState(page) {
     return {
       dda,
       telemetry: window.__GAME_TELEMETRY ?? null,
-      performanceProfile: typeof api.getPerformanceProfile === 'function'
-        ? api.getPerformanceProfile()
-        : null,
       url: window.location.href,
       userAgent: navigator.userAgent,
     };
@@ -242,6 +237,7 @@ async function sampleState(page) {
 
 function summarize(samples, profile) {
   const ddaSamples = samples.map((sample) => sample.dda).filter(Boolean);
+  const baseline = ddaSamples[0] ?? null;
   const final = ddaSamples.at(-1) ?? null;
   const highTierSamples = ddaSamples.filter(
     (sample) => sample.difficulty.level >= sample.difficulty.assistanceDisableOnTier,
@@ -255,6 +251,15 @@ function summarize(samples, profile) {
   const highTierDominanceDropSamples = highTierStrongSamples.filter(
     (sample) => sample.dda.dominanceHpMultiplier <= 1.01,
   );
+  const powerLoadoutSamples = ddaSamples.filter((sample) => {
+    const counts = sample.player.companionCounts ?? {};
+    const activeNodes = sample.player.activeNodes ?? [];
+    return sample.wave.current >= 50
+      && (counts.guardian ?? 0) + (counts.hunter ?? 0) === 4
+      && activeNodes.includes('standard_a_3')
+      && activeNodes.includes('standard_b_3')
+      && Number(sample.dominance?.difficultyBonus ?? 0) >= 3;
+  });
   const maxDifficulty = Math.max(0, ...ddaSamples.map((sample) => sample.difficulty.level));
   const maxWave = Math.max(0, ...ddaSamples.map((sample) => sample.wave.current));
   const maxDominance = Math.max(0, ...ddaSamples.map((sample) => sample.dda.dominanceHpMultiplier));
@@ -266,6 +271,11 @@ function summarize(samples, profile) {
   const maxEnemyTier = Math.max(0, ...ddaSamples.map((sample) => sample.enemies.maxTier));
   const maxEnemyCount = Math.max(0, ...ddaSamples.map((sample) => sample.spawner.activeEnemyCount));
   const minFixedFps = Math.min(...ddaSamples.map((sample) => sample.renderer.fixedFps).filter(Number.isFinite));
+  const baselinePressure = baseline?.pressure ?? null;
+  const highPowerMaxAggregateHealth = Math.max(0,
+    ...powerLoadoutSamples.map((sample) => Number(sample.pressure?.aggregateHealth ?? 0)));
+  const pressureCountMoved = powerLoadoutSamples.some((sample) =>
+    Number(sample.pressure?.enemyCount ?? 0) > Number(baselinePressure?.enemyCount ?? 0));
 
   let passed;
   let reason;
@@ -279,11 +289,16 @@ function summarize(samples, profile) {
       && highTierStrongSamples.length >= 3
       && highTierDominanceDropSamples.length === 0
       && highTierMinDominance > 1.01
+      && powerLoadoutSamples.length >= 3
+      && Number(powerLoadoutSamples.at(-1)?.pressure?.finalDifficulty ?? 0)
+        > Number(baselinePressure?.finalDifficulty ?? 0) + 2
+      && highPowerMaxAggregateHealth > Number(baselinePressure?.aggregateHealth ?? 0)
+      && pressureCountMoved
       && maxEnemyHealth > 2
       && maxEnemyCount > 0;
     reason = passed
-      ? `Difficulty ${maxDifficulty.toFixed(2)}, high-tier dominance ${highTierMinDominance.toFixed(2)}-${highTierMaxDominance.toFixed(2)}x, max enemy HP ${maxEnemyHealth}`
-      : `Insufficient high-tier dominance evidence: difficulty=${maxDifficulty.toFixed(2)}, highTierStrongSamples=${highTierStrongSamples.length}, highTierDominanceDrops=${highTierDominanceDropSamples.length}, highTierMinDominance=${highTierMinDominance.toFixed(2)}, maxEnemyHealth=${maxEnemyHealth}, enemies=${maxEnemyCount}`;
+      ? `Wave-50 loadout samples=${powerLoadoutSamples.length}, difficulty ${Number(baselinePressure?.finalDifficulty ?? 0).toFixed(2)} -> ${maxDifficulty.toFixed(2)}, dominance bonus ${Number(powerLoadoutSamples.at(-1)?.dominance?.difficultyBonus ?? 0).toFixed(2)}, aggregate health ${Number(baselinePressure?.aggregateHealth ?? 0).toFixed(1)} -> ${highPowerMaxAggregateHealth.toFixed(1)}, max enemies ${maxEnemyCount}`
+      : `Insufficient wave-50 power pressure: difficulty=${maxDifficulty.toFixed(2)}, loadoutSamples=${powerLoadoutSamples.length}, highTierStrongSamples=${highTierStrongSamples.length}, highTierDominanceDrops=${highTierDominanceDropSamples.length}, aggregateHealth=${highPowerMaxAggregateHealth}, countMoved=${pressureCountMoved}, maxEnemyHealth=${maxEnemyHealth}, enemies=${maxEnemyCount}`;
   }
 
   return {
@@ -291,6 +306,7 @@ function summarize(samples, profile) {
     reason,
     sampleCount: ddaSamples.length,
     final,
+    baseline,
     maxDifficulty,
     maxWave,
     maxDominance,
@@ -304,6 +320,9 @@ function summarize(samples, profile) {
     highTierStrongSamples: highTierStrongSamples.length,
     assistanceLeakSamples: assistanceLeakSamples.length,
     highTierDominanceDropSamples: highTierDominanceDropSamples.length,
+    powerLoadoutSamples: powerLoadoutSamples.length,
+    highPowerMaxAggregateHealth,
+    pressureCountMoved,
   };
 }
 
@@ -335,6 +354,7 @@ async function runSurface(browser, surface) {
 
   const samples = [];
   const profileEvents = [];
+  samples.push(await sampleState(page));
   const started = Date.now();
   while (Date.now() - started < DURATION_SEC * 1000) {
     profileEvents.push(await applyProfileTick(page, PROFILE));
@@ -343,6 +363,8 @@ async function runSurface(browser, surface) {
   }
   samples.push(await sampleState(page));
   const summary = summarize(samples, PROFILE);
+  const screenshotPath = resolve(SCREENSHOT_DIR, `${PROFILE}-${surface}-${timestamp}.png`);
+  await page.screenshot({ path: screenshotPath });
   await page.close();
 
   return {
@@ -354,6 +376,7 @@ async function runSurface(browser, surface) {
     renderer: RENDERER,
     path: 'index.html -> src/main.ts -> src/core/GameLoop.ts',
     summary,
+    screenshotPath,
     profileEvents: profileEvents.slice(-10),
     samples,
     consoleMessages,
@@ -379,6 +402,7 @@ function writeReports(report) {
     lines.push(
       `- ${result.surface}: ${s.passed ? 'PASS' : 'FAIL'} - ${s.reason}; wave=${s.maxWave}, maxDifficulty=${s.maxDifficulty.toFixed(2)}, maxDominance=${s.maxDominance.toFixed(2)}x, highTierMinDominance=${s.highTierMinDominance.toFixed(2)}x, maxEnemyCount=${s.maxEnemyCount}, maxEnemyHealth=${s.maxEnemyHealth}`,
     );
+    lines.push(`  Screenshot: \`${result.screenshotPath}\``);
   }
   lines.push('', `JSON artifact: \`${JSON_REPORT_PATH}\``);
   writeFileSync(MD_REPORT_PATH, `${lines.join('\n')}\n`);
@@ -427,7 +451,7 @@ async function main() {
       browser: { executablePath: CHROME_PATH, launchArgs: LAUNCH_ARGS },
       claimBoundary: PROFILE === 'tier-disable'
         ? 'Scripted struggle profile verifies assistance DDA disable wiring at Nightmare tier; it is not a human balance claim.'
-        : 'Scripted dominance profile drives real SP wave/dominance systems with injected score/kills; it proves wiring/response, not organic human balance.',
+        : 'Scripted stationary SP proof uses real activated blaster nodes and four real shooting companions at a staged wave 50; accelerated score, streak, and survival inputs prove wiring/response, not organic human balance.',
       results,
       artifacts: {
         json: JSON_REPORT_PATH,

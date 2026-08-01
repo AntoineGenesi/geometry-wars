@@ -59,6 +59,7 @@ import type { GameOverScreen } from '../ui/GameOverScreen';
 import type { LevelCompleteScreen } from '../ui/LevelCompleteScreen';
 import type { PauseMenu } from '../ui/PauseMenu';
 import type { Portal } from '../entities/Portal';
+import type { PlayerPowerRuntimeState } from '../shared/PlayerPowerModel';
 
 /**
  * GameContext bundles all the shared state needed by GameLoop and RenderLoop.
@@ -133,6 +134,7 @@ export interface GameContext {
   ddaSpawnModifier: DDASpawnModifier;
   ddaLogger: DDALogger;
   ddaPlayers: Array<{ index: number; u: number; v: number }>;
+  playerPowerRuntime?: PlayerPowerRuntimeState;
   /** Map size scale factor (<1 = small map, 1 = medium, >1 = large). Used for dominance scaling. */
   mapSizeScaleFactor: number;
 

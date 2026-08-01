@@ -16,6 +16,7 @@ import { LoadedMeshSurface } from '../surfaces/LoadedMeshSurface';
 import { profiler } from './PerformanceProfiler';
 import { computeDepthVisibility, BULLET_DEPTH_CURVE } from '../rendering/DepthOpacity';
 import { EnemyKillStreakAnnouncer } from '../ui/EnemyKillStreakAnnouncer';
+import { computePlayerPower } from '../shared/PlayerPowerModel';
 
 /**
  * GameLoop — Fixed-timestep game update logic for the main game path.
@@ -81,6 +82,11 @@ export class GameLoop {
   // window.innerHeight during the 3-second countdown without firing a resize event).
   // Reset to false each countdown so the sync fires once per game start.
   private _cameraAspectSyncedForSession = false;
+  private _powerLastTotalKills = 0;
+  private _powerLastDeaths = 0;
+  private _powerStreak = 0;
+  private _powerSurvivalSeconds = 0;
+  private _powerSampleAccumulator = 1;
   // Cached opaque/legacy hide setting — refreshed every 60 frames to avoid per-frame localStorage reads.
 
   /**
@@ -1038,10 +1044,40 @@ export class GameLoop {
       ctx.ddaPlayers[0].u = ctx.player.surfaceU;
       ctx.ddaPlayers[0].v = ctx.player.surfaceV;
 
-      // Update dominance HP scaling inputs so spawned enemies get tougher when player dominates.
-      // isSmallMap: scale factor < 1.0 means map is smaller than medium → player can dominate more easily.
-      const isSmallMap = ctx.mapSizeScaleFactor < 1.0;
-      ctx.enemySpawner.setDDADominanceInputs(ctx.companionManager.count, isSmallMap);
+      const totalKills = ctx.playerLevel.totalKills;
+      const totalDeaths = ctx.ddaTracker.totalDeaths;
+      if (totalDeaths > this._powerLastDeaths) {
+        this._powerStreak = 0;
+        this._powerSurvivalSeconds = 0;
+        this._powerLastDeaths = totalDeaths;
+      }
+      if (totalKills > this._powerLastTotalKills) {
+        this._powerStreak += totalKills - this._powerLastTotalKills;
+      }
+      this._powerLastTotalKills = totalKills;
+      if (ctx.player.alive) this._powerSurvivalSeconds += dt;
+
+      this._powerSampleAccumulator += dt;
+      if (ctx.playerPowerRuntime && this._powerSampleAccumulator >= 0.5) {
+        this._powerSampleAccumulator = 0;
+        const blasterDamagePerBolt = ctx.scoreManager.getScorePowerMultiplier()
+          * ctx.playerLevel.damageMultiplier
+          * ctx.buffManager.getDamageMultiplier()
+          * ctx.buffManager.getMasteryMultiplier(WeaponType.Standard).damageMultiplier
+          * ctx.weaponManager.getUpgradeDamageMult(WeaponType.Standard);
+        const weapons = ctx.weaponManager.getPlayerPowerWeapons(blasterDamagePerBolt);
+        const input = {
+          score: ctx.player.score,
+          survivalSeconds: ctx.playerPowerRuntime.proofOverride?.survivalSeconds
+            ?? this._powerSurvivalSeconds,
+          streak: ctx.playerPowerRuntime.proofOverride?.streak ?? this._powerStreak,
+          ...weapons,
+          companions: ctx.companionManager.getCompanionCounts(),
+        };
+        ctx.playerPowerRuntime.input = input;
+        ctx.playerPowerRuntime.breakdown = computePlayerPower(input);
+        ctx.enemySpawner.setDDAPlayerPower(ctx.playerPowerRuntime.breakdown);
+      }
     }
     profiler.end('dda_system');
 

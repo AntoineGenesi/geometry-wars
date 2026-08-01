@@ -13,6 +13,7 @@
  */
 
 import { EnemyType } from '../entities/enemies/EnemySpawner';
+import type { PlayerPowerBreakdown } from '../shared/PlayerPowerModel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,21 @@ export interface RendererSnapshot {
   drawCalls: number;
   triangles: number;
   memoryMB: number;
+}
+
+export interface DDAAssistanceTelemetry {
+  level: number;
+  smoothLevel: number;
+  speedAid: number;
+  struggleComposite: number;
+}
+
+export interface DDAPressureTelemetry {
+  baseDifficulty: number;
+  dominanceBonus: number;
+  finalDifficulty: number;
+  enemyCap: number;
+  spawnInterval: number;
 }
 
 /** A single time-series data point. */
@@ -97,6 +113,9 @@ export interface PerformanceDataPoint {
   playerWorldZ: number;
   /** True if player UV+face unchanged for >2 seconds (stuck in mesh). */
   playerStuck: boolean;
+  assistance?: DDAAssistanceTelemetry;
+  dominance?: PlayerPowerBreakdown;
+  pressure?: DDAPressureTelemetry;
 }
 
 /** Serialized data point for localStorage. */
@@ -135,6 +154,9 @@ export interface SerializedDataPoint {
   py?: number;  // playerWorldY
   pz?: number;  // playerWorldZ
   ps?: boolean; // playerStuck
+  assistance?: DDAAssistanceTelemetry;
+  dominance?: PlayerPowerBreakdown;
+  pressure?: DDAPressureTelemetry;
 }
 
 /** Frame spike event logged individually. */
@@ -291,6 +313,9 @@ export class PerformanceLogger {
   private currentDifficultyTier = 0;
   private currentPlayerPowerLevel = 0;
   private currentQualityLevel = 'HIGH';
+  private currentAssistance?: DDAAssistanceTelemetry;
+  private currentDominance?: PlayerPowerBreakdown;
+  private currentPressure?: DDAPressureTelemetry;
 
   // Gameplay telemetry (set externally)
   private currentScore = 0;
@@ -444,6 +469,16 @@ export class PerformanceLogger {
   setDifficultyTier(tier: number): void {
     this.currentDifficultyTier = tier;
     if (tier > this.peakDifficultyTier) this.peakDifficultyTier = tier;
+  }
+
+  setAdaptiveDifficultyData(
+    assistance: DDAAssistanceTelemetry,
+    dominance: PlayerPowerBreakdown | undefined,
+    pressure: DDAPressureTelemetry,
+  ): void {
+    this.currentAssistance = assistance;
+    this.currentDominance = dominance;
+    this.currentPressure = pressure;
   }
 
   /**
@@ -1207,6 +1242,9 @@ export class PerformanceLogger {
     point.difficultyTier = Math.round(this.currentDifficultyTier * 100) / 100;
     point.playerPowerLevel = this.currentPlayerPowerLevel;
     point.qualityLevel = this.currentQualityLevel;
+    point.assistance = this.currentAssistance;
+    point.dominance = this.currentDominance;
+    point.pressure = this.currentPressure;
 
     // Gameplay telemetry
     point.score = this.currentScore;
@@ -1298,6 +1336,9 @@ export class PerformanceLogger {
       playerWorldY: point.playerWorldY,
       playerWorldZ: point.playerWorldZ,
       playerStuck: point.playerStuck,
+      assistance: point.assistance,
+      dominance: point.dominance,
+      pressure: point.pressure,
     };
   }
 
@@ -1354,6 +1395,9 @@ export class PerformanceLogger {
       py: point.playerWorldY !== 0 ? Math.round(point.playerWorldY * 1000) / 1000 : undefined,
       pz: point.playerWorldZ !== 0 ? Math.round(point.playerWorldZ * 1000) / 1000 : undefined,
       ps: point.playerStuck || undefined,  // omit false to save space
+      assistance: point.assistance,
+      dominance: point.dominance,
+      pressure: point.pressure,
     };
   }
 }

@@ -48,6 +48,7 @@ import { ShatterBloom } from './ShatterBloom';
 import { EnemyInstanceManager } from '../../rendering/EnemyInstanceManager';
 import type { EnemyDecoratorSystem } from '../../rendering/EnemyDecorators';
 import type { DDASpawnModifier, PlayerPosition } from '../../difficulty/DDASpawnModifier';
+import type { PlayerPowerBreakdown } from '../../shared/PlayerPowerModel';
 import type { Surface } from '../../surfaces/Surface';
 import { MeshWalker } from '../../movement/MeshWalker';
 import type { MeshSurface } from '../../surfaces/MeshSurface';
@@ -171,6 +172,7 @@ export class EnemySpawner {
   private ddaDominanceEnabled: boolean = true;
   /** Current companion count for dominance penalty calculation. */
   private ddaCompanionCount: number = 0;
+  private ddaPlayerPower: PlayerPowerBreakdown | null = null;
   /** Whether the current map is small (affects dominance scaling). */
   private ddaIsSmallMap: boolean = false;
 
@@ -286,6 +288,11 @@ export class EnemySpawner {
   setDDADominanceInputs(companionCount: number, isSmallMap: boolean): void {
     this.ddaCompanionCount = companionCount;
     this.ddaIsSmallMap = isSmallMap;
+  }
+
+  /** Prefer the shared dominance model over the legacy assistance-derived HP path. */
+  setDDAPlayerPower(power: PlayerPowerBreakdown | null): void {
+    this.ddaPlayerPower = power;
   }
 
   /**
@@ -701,13 +708,15 @@ export class EnemySpawner {
 
     // Apply dominance HP multiplier: when player is dominating, enemies get tankier.
     // Boss-type enemies are excluded (they already have their own scaling).
-    if (this.ddaModifier && this.ddaDominanceEnabled) {
+    if (this.ddaDominanceEnabled) {
       const playerIdx = this.ddaPlayers.length > 0 ? 0 : 0; // single-player always index 0
-      const hpMult = this.ddaModifier.getDominanceHpMultiplier(
-        playerIdx,
-        this.ddaCompanionCount,
-        this.ddaIsSmallMap,
-      );
+      const hpMult = this.ddaPlayerPower?.hpMultiplier
+        ?? this.ddaModifier?.getDominanceHpMultiplier(
+          playerIdx,
+          this.ddaCompanionCount,
+          this.ddaIsSmallMap,
+        )
+        ?? 1;
       if (hpMult > 1.0) {
         enemy.health = Math.ceil(enemy.health * hpMult);
         enemy.maxHealth = Math.ceil(enemy.maxHealth * hpMult);

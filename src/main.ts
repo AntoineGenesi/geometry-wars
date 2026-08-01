@@ -103,6 +103,7 @@ import { loadDDASettings } from './difficulty/DDASettings';
 import { waveComposer } from './entities/enemies/WaveComposer';
 import { DDALogger } from './difficulty/DDALogger';
 import { EntityAudit } from './core/EntityAudit';
+import { computePlayerPower, type PlayerPowerRuntimeState } from './shared/PlayerPowerModel';
 import { PerformanceLogger } from './core/PerformanceLogger';
 import { loadVisualStyle, loadVisualMode, saveVisualMode, type VisualMode } from './ui/VisualStyleSettings';
 import { UIHelpers } from './ui/UIHelpers';
@@ -1155,6 +1156,10 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // In test arena mode, pass empty waves so no auto-spawning happens.
   // The TestHarnessAPI.spawnGrid() provides manual enemy placement instead.
   const waveScheduler = new WaveScheduler(isTestArena ? [] : level.waves, isTestArena ? false : isEndless);
+  const playerPowerRuntime: PlayerPowerRuntimeState = {
+    input: {},
+    breakdown: computePlayerPower(),
+  };
 
   // Wire wave start events into perfLogger for score graph markers
   waveScheduler.onWaveStart = (waveNum: number, _elapsed: number) => {
@@ -1171,6 +1176,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     buffPower: buffManager.getTotalBuffPower(),
     playerCount: waveScheduler.playerCount, // always 1 for main.ts (single-player)
     companionCount: companionManager.count,
+    playerPower: playerPowerRuntime.breakdown,
   });
 
   // -- Game mode --
@@ -2089,6 +2095,7 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
     ddaSpawnModifier,
     ddaLogger,
     ddaPlayers,
+    playerPowerRuntime,
     mapSizeScaleFactor,
     persistentMasteryLevels,
     gameMode,

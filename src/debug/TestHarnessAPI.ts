@@ -595,7 +595,7 @@ export class TestHarnessAPI {
     const trackerSnapshot = this.ctx.ddaTracker.getSnapshot();
     const companionCount = this.ctx.companionManager.count;
     const isSmallMap = this.ctx.mapSizeScaleFactor < 1.0;
-    const dominanceHpMultiplier = this.ctx.ddaSpawnModifier.getDominanceHpMultiplier(
+    const legacyDominanceHpMultiplier = this.ctx.ddaSpawnModifier.getDominanceHpMultiplier(
       0,
       companionCount,
       isSmallMap,
@@ -619,6 +619,25 @@ export class TestHarnessAPI {
 
     const pickupSpawner = this.ctx.pickupSpawner as any;
     const renderer = this.ctx.game.renderer;
+    const dominance = this.ctx.playerPowerRuntime?.breakdown;
+    const dominanceBonus = dominance?.difficultyBonus ?? 0;
+    const assistance = {
+      level: this.ctx.ddaEngine.getDDALevel(0),
+      smoothLevel: this.ctx.ddaEngine.getDDALevelSmooth(0),
+      speedAid: this.ctx.ddaEngine.getSpeedMultiplier(0),
+      struggleComposite: this.ctx.ddaEngine.getCompositeScore(0),
+    };
+    const pressure = {
+      baseDifficulty: Math.max(0, difficultyLevel - dominanceBonus),
+      dominanceBonus,
+      finalDifficulty: difficultyLevel,
+      enemyCap: this.ctx.enemySpawner.getMaxActiveEnemies(),
+      spawnInterval: Math.max(0, Number(waveScheduler?.endlessNextSpawn ?? 0)
+        - Number(waveScheduler?.getElapsed?.() ?? 0)),
+      enemyCount: activeEnemies.length,
+      aggregateHealth: totalHealth,
+      maxTier,
+    };
 
     return {
       path: 'sp-main-game-loop',
@@ -635,6 +654,9 @@ export class TestHarnessAPI {
         assistanceDisableOnTier,
         assistanceShouldBeDisabled: difficultyLevel >= assistanceDisableOnTier,
       },
+      assistance,
+      dominance,
+      pressure,
       player: {
         score: this.ctx.player.score,
         lives: this.ctx.player.lives,
@@ -646,6 +668,7 @@ export class TestHarnessAPI {
         companions: companionCount,
         companionCounts: this.ctx.companionManager.getCompanionCounts(),
         currentWeapon: this.ctx.weaponManager.getCurrentWeapon(),
+        activeNodes: this.getActiveNodes(),
       },
       dda: {
         enabled: this.ctx.ddaEngine.isEnabled(),
@@ -664,7 +687,7 @@ export class TestHarnessAPI {
           totalKills: this.ctx.ddaTracker.totalKills,
           totalDeaths: this.ctx.ddaTracker.totalDeaths,
         },
-        dominanceHpMultiplier,
+        dominanceHpMultiplier: dominance?.hpMultiplier ?? legacyDominanceHpMultiplier,
         isSmallMap,
       },
       spawner: {
@@ -1399,6 +1422,53 @@ export class TestHarnessAPI {
       for (const nodeId of nodeSet) result.push(nodeId);
     }
     return result;
+  }
+
+  /** Configure the reported wave-50 loadout through real SP managers. */
+  setupDDAPowerProof(): {
+    activeNodes: string[];
+    companionCounts: { guardian: number; hunter: number; protector: number };
+    score: number;
+    totalKills: number;
+    stagedWave: number;
+  } {
+    const marker = '__DDA_POWER_PROOF_CONFIGURED';
+    if (!(this as any)[marker]) {
+      (this as any)[marker] = true;
+      this.activateNodes([
+        'standard_a_1', 'standard_a_2', 'standard_a_3',
+        'standard_b_1', 'standard_b_2', 'standard_b_3',
+      ]);
+      this.ctx.player.addScore(Math.max(0, 1_000_000 - this.ctx.player.score));
+      while (this.ctx.playerLevel.totalKills < 250) this.ctx.playerLevel.addKill();
+      if (this.ctx.playerPowerRuntime) {
+        this.ctx.playerPowerRuntime.proofOverride = { survivalSeconds: 600, streak: 250 };
+      }
+      const waveScheduler = this.ctx.waveScheduler as any;
+      waveScheduler.endlessWave = 49;
+      waveScheduler.elapsed = 600;
+      waveScheduler.endlessNextSpawn = 602;
+      globalThis.__GOD_MODE = true;
+      this.ctx.player.lives = 3;
+    }
+
+    const counts = this.ctx.companionManager.getCompanionCounts();
+    if (counts.guardian !== 2 || counts.hunter !== 2 || counts.protector !== 0) {
+      this.ctx.companionManager.reset();
+      this.ctx.companionManager.addCompanion(CompanionType.Guardian);
+      this.ctx.companionManager.addCompanion(CompanionType.Guardian);
+      this.ctx.companionManager.addCompanion(CompanionType.Hunter);
+      this.ctx.companionManager.addCompanion(CompanionType.Hunter);
+    }
+    this.ctx.weaponManager.forceSetWeapon(WeaponType.Standard, -1);
+
+    return {
+      activeNodes: this.getActiveNodes(),
+      companionCounts: this.ctx.companionManager.getCompanionCounts(),
+      score: this.ctx.player.score,
+      totalKills: this.ctx.playerLevel.totalKills,
+      stagedWave: 50,
+    };
   }
 
   /**

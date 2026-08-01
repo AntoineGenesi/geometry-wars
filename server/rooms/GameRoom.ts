@@ -63,6 +63,11 @@ import {
   getUpgradeDamageMultiplier,
   getUpgradeFireRateMultiplier,
 } from '../../src/shared/WeaponUpgradeEffects';
+import {
+  computePlayerPower,
+  type PlayerPowerBreakdown,
+  type PlayerPowerInput,
+} from '../../src/shared/PlayerPowerModel';
 // NOTE: InterestManager and PriorityQueue exist in ../systems/ but are not
 // currently used. Interest management was disabled because Colyseus's state
 // patching doesn't consume shouldSyncEntity() results. If re-enabled, import
@@ -1134,6 +1139,11 @@ export class GameRoom extends Room<GameState> {
   private playerUpgradeKillCounts: Map<string, Map<string, number>> = new Map();
   /** Per-player/per-weapon active upgrade nodes accepted by the server for this match. */
   private playerActiveUpgradeNodes: Map<string, Map<string, Set<string>>> = new Map();
+  /** Authoritative PvE streak and survival state used only for dominance pressure. */
+  private playerPowerStreaks: Map<string, number> = new Map();
+  private playerPowerLastDeathAt: Map<string, number> = new Map();
+  private roomDominanceCache: PlayerPowerBreakdown = computePlayerPower();
+  private roomDominanceCacheAt = -1;
 
   /** Server-side surface geometry + walker pool. Replaces UV-based player movement. */
   private surfaceManager = new ServerSurfaceManager();
@@ -2077,6 +2087,8 @@ export class GameRoom extends Room<GameState> {
     // Initialize DDA performance window for new player (reconnects restore from savedRecord)
     if (!isReconnect) {
       this.playerPerfWindows.set(client.sessionId, { kills: 0, deaths: 0, windowStart: 0 });
+      this.playerPowerStreaks.set(client.sessionId, 0);
+      this.playerPowerLastDeathAt.set(client.sessionId, this.state.gameTime);
     }
     const joinType = isReconnect ? 'reconnected' : 'joined';
     this.logger.log(`[GameRoom] ${player.name} ${joinType} (${client.sessionId})`);
@@ -2142,6 +2154,8 @@ export class GameRoom extends Room<GameState> {
       this.playerWeaponIndex.delete(client.sessionId);
       this.playerUpgradeKillCounts.delete(client.sessionId);
       this.playerActiveUpgradeNodes.delete(client.sessionId);
+      this.playerPowerStreaks?.delete(client.sessionId);
+      this.playerPowerLastDeathAt?.delete(client.sessionId);
       this.surfaceManager.removeWalker(client.sessionId);
       this.playerPerfWindows.delete(client.sessionId);
       this.ddaDecreaseCounters.delete(client.sessionId);
@@ -2580,6 +2594,8 @@ export class GameRoom extends Room<GameState> {
   }
 
   private startGame() {
+    this.playerPowerStreaks ??= new Map();
+    this.playerPowerLastDeathAt ??= new Map();
     this.state.roomPhase = 'playing';
     this.state.gameStarted = true;   // backward compat
     this.state.gameOver = false;     // backward compat
@@ -2718,6 +2734,8 @@ export class GameRoom extends Room<GameState> {
       player.surfaceV = (this.state.surfaceType === 'pill' && !isPvpLikeRound)
         ? Math.min(spawnPos.v, 0.48) : spawnPos.v;
       player.ddaLevel = 0;
+      this.playerPowerStreaks.set(sessionId, 0);
+      this.playerPowerLastDeathAt.set(sessionId, 0);
 
       // Create walker at spawn position and sync initial world-space state
       const walker = this.surfaceManager.createWalker(sessionId, player.surfaceU, player.surfaceV);
@@ -6346,7 +6364,72 @@ export class GameRoom extends Room<GameState> {
       : 0;
     // Apply host-configurable difficulty multiplier (0.5 = half speed, 2.0 = double speed)
     // No hard cap — difficulty scales continuously so high waves remain challenging (s44r22-14).
-    return (base + claustrophobiaBonus) * this.currentSettings.difficultyMultiplier;
+    const dominanceBonus = this.getRoomDominance().difficultyBonus;
+    return (base + claustrophobiaBonus) * this.currentSettings.difficultyMultiplier + dominanceBonus;
+  }
+
+  private collectPlayerPower(player: PlayerState): PlayerPowerInput {
+    const levelIdx = Math.min(Math.max(0, player.playerLevel), LEVEL_DAMAGE_MULTIPLIERS.length - 1);
+    const levelDamageMult = LEVEL_DAMAGE_MULTIPLIERS[levelIdx];
+    const buffDamageMult = this.calculateBuffDamageMult(player);
+    const standardNodes = this.getActiveUpgradeNodes(player.id, 'standard');
+    const standardPattern = getStandardUpgradePattern(standardNodes);
+    const fanCount = standardPattern.fanExtraBolts > 0 ? standardPattern.fanExtraBolts + 1 : 0;
+    const branchBCount = standardPattern.branchBExtraBolts > 0 ? standardPattern.branchBExtraBolts + 1 : 0;
+    const standardProjectiles = fanCount + branchBCount || 2;
+    const blasterConfig = WEAPON_CONFIGS.standard;
+
+    let activeWeapon: PlayerPowerInput['activeWeapon'];
+    if (player.weaponType !== 'standard') {
+      const weaponType = WEAPON_CONFIGS[player.weaponType] ? player.weaponType : 'standard';
+      const config = WEAPON_CONFIGS[weaponType];
+      const activeNodes = this.getActiveUpgradeNodes(player.id, weaponType);
+      const projectilesPerShot = weaponType === 'spread'
+        ? getSpreadUpgradePattern(activeNodes).bulletCount
+        : 1;
+      const multiHitPotential = weaponType === 'chain_lightning' ? 4
+        : weaponType === 'piercing' || weaponType === 'plasma_mortar' ? 2
+        : 1;
+      activeWeapon = {
+        damage: config.damage * levelDamageMult * buffDamageMult
+          * this.getUpgradeDamageMult(player.id, weaponType),
+        shotsPerSecond: config.fireRate,
+        projectilesPerShot,
+        multiHitPotential,
+      };
+    }
+
+    return {
+      score: player.score,
+      survivalSeconds: Math.max(0, this.state.gameTime - (this.playerPowerLastDeathAt.get(player.id) ?? 0)),
+      streak: this.playerPowerStreaks.get(player.id) ?? 0,
+      blaster: {
+        damage: blasterConfig.damage * levelDamageMult * buffDamageMult
+          * this.getUpgradeDamageMult(player.id, 'standard'),
+        shotsPerSecond: blasterConfig.fireRate
+          * getUpgradeFireRateMultiplier('standard', standardNodes),
+        projectilesPerShot: standardProjectiles,
+      },
+      activeWeapon,
+      companions: {
+        guardian: player.guardianCount,
+        hunter: player.hunterCount,
+        protector: player.protectorCount,
+      },
+    };
+  }
+
+  private getRoomDominance(): PlayerPowerBreakdown {
+    if (this.roomDominanceCacheAt === this.state.gameTime) return this.roomDominanceCache;
+    let strongest = computePlayerPower();
+    this.state.players.forEach((player) => {
+      if (!player.alive) return;
+      const candidate = computePlayerPower(this.collectPlayerPower(player));
+      if (candidate.difficultyBonus > strongest.difficultyBonus) strongest = candidate;
+    });
+    this.roomDominanceCache = strongest;
+    this.roomDominanceCacheAt = this.state.gameTime;
+    return strongest;
   }
 
   /**
@@ -6926,12 +7009,18 @@ export class GameRoom extends Room<GameState> {
   private trackDDAKill(sessionId: string) {
     const window = this.playerPerfWindows.get(sessionId);
     if (window) window.kills++;
+    this.playerPowerStreaks ??= new Map();
+    this.playerPowerStreaks.set(sessionId, (this.playerPowerStreaks.get(sessionId) ?? 0) + 1);
   }
 
   /** Record a life-loss (hit) for the player with the given sessionId. */
   private trackDDADeath(sessionId: string) {
     const window = this.playerPerfWindows.get(sessionId);
     if (window) window.deaths++;
+    this.playerPowerStreaks ??= new Map();
+    this.playerPowerLastDeathAt ??= new Map();
+    this.playerPowerStreaks.set(sessionId, 0);
+    this.playerPowerLastDeathAt.set(sessionId, this.state.gameTime);
   }
 
   /**

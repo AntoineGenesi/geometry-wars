@@ -5,6 +5,7 @@ import { MeshSurface } from '../surfaces/MeshSurface';
 import { BuffType, BUFF_CONFIGS, ActiveBuff } from './BuffPickup';
 import { SharedGeometries } from '../rendering/GeometryCache';
 import { MatchUpgradeTracker } from '../systems/MatchUpgradeTracker';
+import type { WeaponPowerInput } from '../shared/PlayerPowerModel';
 
 // ---------------------------------------------------------------------------
 // Gas Cloud (Homing branch B node 3)
@@ -392,7 +393,7 @@ export class WeaponManager {
   }
 
   /** Upgrade fire rate multiplier for a weapon (used in cooldown computation). */
-  private getUpgradeFireRateMult(weaponType: WeaponType): number {
+  getUpgradeFireRateMult(weaponType: WeaponType): number {
     if (!this.upgradeTracker) return 1.0;
     const active = this.upgradeTracker.getActiveUpgrades(weaponType);
     let bonus = 0;
@@ -597,6 +598,54 @@ export class WeaponManager {
    */
   getCurrentWeapon(): WeaponType {
     return this.currentWeapon;
+  }
+
+  /** Read-only live weapon capability for the shared DDA power model. */
+  getPlayerPowerWeapons(blasterDamagePerBolt: number): {
+    blaster: WeaponPowerInput;
+    activeWeapon?: WeaponPowerInput;
+  } {
+    const rapidMult = this.getBuffMultiplier(BuffType.RapidFire);
+    const blasterRate = WEAPON_CONFIGS[WeaponType.Standard].fireRate
+      * rapidMult
+      * this.getUpgradeFireRateMult(WeaponType.Standard);
+    const fanExtraBolts = this.getBlasterExtraBolts();
+    const branchBExtraBolts = this.getBlasterBranchBExtraBolts();
+    const blasterProjectiles = fanExtraBolts > 0 || branchBExtraBolts > 0
+      ? (fanExtraBolts > 0 ? fanExtraBolts + 1 : 0)
+        + (branchBExtraBolts > 0 ? branchBExtraBolts + 1 : 0)
+      : 2;
+    const blaster: WeaponPowerInput = {
+      damage: Math.max(0, blasterDamagePerBolt),
+      shotsPerSecond: blasterRate,
+      projectilesPerShot: blasterProjectiles,
+      multiHitPotential: 1 + Math.min(1, this.getBlasterPierceCount() * 0.5),
+    };
+
+    if (this.currentWeapon === WeaponType.Standard) return { blaster };
+
+    const config = WEAPON_CONFIGS[this.currentWeapon];
+    const masteryMult = this.masteryMultiplierFn?.(this.currentWeapon) ?? 1;
+    const damage = config.damage
+      * this.getStackDamageMultiplier(this.currentWeapon)
+      * masteryMult
+      * this.getSessionDamageMultiplier(this.currentWeapon)
+      * this.getUpgradeDamageMult(this.currentWeapon);
+    const projectilesPerShot = this.currentWeapon === WeaponType.Spread ? 5 : 1;
+    const multiHitPotential = this.currentWeapon === WeaponType.ChainLightning ? 4
+      : this.currentWeapon === WeaponType.Piercing ? 2
+      : this.currentWeapon === WeaponType.PlasmaMortar ? 2
+      : 1;
+
+    return {
+      blaster,
+      activeWeapon: {
+        damage,
+        shotsPerSecond: config.fireRate * rapidMult * this.getUpgradeFireRateMult(this.currentWeapon),
+        projectilesPerShot,
+        multiHitPotential,
+      },
+    };
   }
 
   /**

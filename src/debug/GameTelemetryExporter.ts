@@ -256,6 +256,24 @@ export class GameTelemetryExporter {
         companionCount: ctx.companionManager.count,
         isSmallMap: ctx.mapSizeScaleFactor < 1.0,
       },
+      assistance: {
+        level: ctx.ddaEngine.getDDALevel(0),
+        smoothLevel: ctx.ddaEngine.getDDALevelSmooth(0),
+        speedAid: ctx.ddaEngine.getSpeedMultiplier(0),
+        struggleComposite: ctx.ddaEngine.getCompositeScore(0),
+      },
+      dominance: ctx.playerPowerRuntime?.breakdown,
+      pressure: {
+        baseDifficulty: Math.max(0,
+          Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0)
+            - Number(ctx.playerPowerRuntime?.breakdown.difficultyBonus ?? 0)),
+        dominanceBonus: Number(ctx.playerPowerRuntime?.breakdown.difficultyBonus ?? 0),
+        finalDifficulty: Number((ctx.waveScheduler as any)?.currentDifficultyLevel ?? 0),
+        enemyCap: ctx.enemySpawner.getMaxActiveEnemies(),
+        spawnInterval: Math.max(0,
+          Number((ctx.waveScheduler as any)?.endlessNextSpawn ?? 0)
+            - Number((ctx.waveScheduler as any)?.getElapsed?.() ?? 0)),
+      },
       deaths: {
         total: this.totalDeaths,
         log: this.deathLog,
