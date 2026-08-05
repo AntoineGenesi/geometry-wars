@@ -112,10 +112,9 @@ export class BuildChoiceScreen {
     this.overlay.classList.remove('hidden');
 
     // Auto-confirm if only one selectable option
-    const allExcluded = this.selectableIndices.length === 0;
     const onlyOne = this.selectableIndices.length === 1 && availableNodeIds.length <= 1;
-    if (onlyOne || allExcluded) {
-      const confirmIdx = allExcluded ? 0 : this.selectableIndices[0];
+    if (onlyOne) {
+      const confirmIdx = this.selectableIndices[0];
       const nodeId = availableNodeIds[confirmIdx];
       if (nodeId) {
         this.autoTimer = setTimeout(() => {

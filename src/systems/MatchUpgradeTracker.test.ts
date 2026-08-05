@@ -185,6 +185,32 @@ describe('MatchUpgradeTracker', () => {
     expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).has('plasma_mortar_a_1')).toBe(true);
   });
 
+  it('confirmChoice allows formerly excluded Standard AL/AR combinations', () => {
+    tracker.syncActiveUpgrades(WeaponType.Standard, ['standard_a_4', 'standard_al_5']);
+    const activated = vi.fn();
+    tracker.onUpgradeActivated = activated;
+
+    tracker.confirmChoice('standard_ar_5', WeaponType.Standard);
+
+    expect(tracker.getActiveUpgrades(WeaponType.Standard).has('standard_al_5')).toBe(true);
+    expect(tracker.getActiveUpgrades(WeaponType.Standard).has('standard_ar_5')).toBe(true);
+    expect(activated).toHaveBeenCalledWith('standard_ar_5', WeaponType.Standard);
+  });
+
+  it('confirmChoice rejects Black Hole nodes excluded by already-active Black Hole choices', () => {
+    const blackHoleStore = makeStore(['black_hole_ar_4']);
+    const blackHoleTracker = new MatchUpgradeTracker(blackHoleStore);
+    blackHoleTracker.syncActiveUpgrades(WeaponType.BlackHole, ['black_hole_al_4']);
+    const activated = vi.fn();
+    blackHoleTracker.onUpgradeActivated = activated;
+
+    blackHoleTracker.confirmChoice('black_hole_ar_4', WeaponType.BlackHole);
+
+    expect(blackHoleTracker.getActiveUpgrades(WeaponType.BlackHole).has('black_hole_al_4')).toBe(true);
+    expect(blackHoleTracker.getActiveUpgrades(WeaponType.BlackHole).has('black_hole_ar_4')).toBe(false);
+    expect(activated).not.toHaveBeenCalled();
+  });
+
   // -------------------------------------------------------------------------
   // getPendingChoice
   // -------------------------------------------------------------------------
@@ -333,7 +359,7 @@ describe('MatchUpgradeTracker', () => {
   // reset
   // -------------------------------------------------------------------------
 
-  it('reset clears kill counts, active upgrades, and pending choice', () => {
+  it('reset clears kill counts and pending choice, then reactivates permanent unlocks', () => {
     tracker.onBuildChoiceAvailable = vi.fn();
     for (let i = 0; i < 25; i++) {
       tracker.recordKill(WeaponType.PlasmaMortar);
@@ -343,11 +369,15 @@ describe('MatchUpgradeTracker', () => {
     tracker.reset();
 
     expect(tracker.getKillCount(WeaponType.PlasmaMortar)).toBe(0);
-    expect(tracker.getActiveUpgrades(WeaponType.PlasmaMortar).size).toBe(0);
+    expect([...tracker.getActiveUpgrades(WeaponType.PlasmaMortar)].sort()).toEqual([
+      'plasma_mortar_a_1',
+      'plasma_mortar_a_2',
+      'plasma_mortar_b_1',
+    ]);
     expect(tracker.getPendingChoice()).toBeNull();
   });
 
-  it('after reset, nodes can be offered again in a new match', () => {
+  it('after reset, permanently unlocked nodes are active and are not re-offered', () => {
     const cb = vi.fn();
     tracker.onBuildChoiceAvailable = cb;
     for (let i = 0; i < 10; i++) {
@@ -357,7 +387,12 @@ describe('MatchUpgradeTracker', () => {
     for (let i = 0; i < 10; i++) {
       tracker.recordKill(WeaponType.PlasmaMortar);
     }
-    expect(cb).toHaveBeenCalledTimes(2); // once before reset, once after
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect([...tracker.getActiveUpgrades(WeaponType.PlasmaMortar)].sort()).toEqual([
+      'plasma_mortar_a_1',
+      'plasma_mortar_a_2',
+      'plasma_mortar_b_1',
+    ]);
   });
 
   // -------------------------------------------------------------------------

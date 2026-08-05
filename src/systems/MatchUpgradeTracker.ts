@@ -1,5 +1,5 @@
 import { WeaponType } from '../weapons/WeaponTypes';
-import { UPGRADE_TREES, isPrerequisiteMet } from './UpgradeTreeData';
+import { UPGRADE_TREES, isExcluded, isPrerequisiteMet } from './UpgradeTreeData';
 import { MasteryPointStore } from './MasteryPointStore';
 
 // ---------------------------------------------------------------------------
@@ -105,8 +105,16 @@ export class MatchUpgradeTracker {
    */
   confirmChoice(nodeId: string, weaponType: WeaponType): void {
     this.pendingChoice = null;
+    const tree = UPGRADE_TREES[weaponType];
+    const node = tree?.nodes.find(upgradeNode => upgradeNode.id === nodeId);
+    if (!tree || !node) return;
+
+    const ps = this.makePointLookup(weaponType);
+    if (isExcluded(nodeId, tree, ps)) return;
+    if (node.excludes?.some(excludedId => ps.getNodePoints(excludedId) > 0)) return;
+
     this.store.earnPoint(weaponType);
-    this.store.spendPoint(nodeId);
+    this.store.spendPoint(nodeId, node.maxPoints ?? 1, node.cost ?? 1, tree);
     this.activateNode(nodeId, weaponType);
   }
 
@@ -162,7 +170,12 @@ export class MatchUpgradeTracker {
       for (const upgradeNode of tree.nodes) {
         if (!newlyUnlocked.includes(upgradeNode.id)) continue;
         const alreadyActive = this.activeUpgrades.get(weaponType)?.has(upgradeNode.id) ?? false;
-        if (!alreadyActive && currentKills >= upgradeNode.killThreshold && isPrerequisiteMet(upgradeNode, tree, ps)) {
+        if (
+          !alreadyActive
+          && currentKills >= upgradeNode.killThreshold
+          && isPrerequisiteMet(upgradeNode, tree, ps)
+          && !isExcluded(upgradeNode.id, tree, ps)
+        ) {
           available.push(upgradeNode.id);
         }
       }
@@ -196,7 +209,7 @@ export class MatchUpgradeTracker {
       const threshold = upgradeNode.killThreshold;
       if (prevKills < threshold && newKills >= threshold) {
         const alreadyActive = this.activeUpgrades.get(weaponType)?.has(upgradeNode.id) ?? false;
-        if (!alreadyActive && isPrerequisiteMet(upgradeNode, tree, ps)) {
+        if (!alreadyActive && isPrerequisiteMet(upgradeNode, tree, ps) && !isExcluded(upgradeNode.id, tree, ps)) {
           available.push(upgradeNode.id);
         }
       }

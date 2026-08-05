@@ -378,43 +378,33 @@ function makePointStore(unlocked: Record<string, number> = {}) {
 }
 
 describe('Standard exclusionPairs data', () => {
-  it('Standard tree has exclusionPairs with at least 3 entries', () => {
+  it('Standard tree has no arbitrary exclusionPairs', () => {
     const tree = UPGRADE_TREES[WeaponType.Standard];
-    expect(tree.exclusionPairs).toBeDefined();
-    expect(tree.exclusionPairs!.length).toBeGreaterThanOrEqual(3);
+    expect(tree.exclusionPairs ?? []).toEqual([]);
   });
 
-  it('Standard exclusionPairs contains AL vs AR sub-branch root pair', () => {
+  it('Standard Scatter and Rapid Fire roots are intentionally combinable', () => {
     const tree = UPGRADE_TREES[WeaponType.Standard];
-    const pairs = tree.exclusionPairs!;
-    const hasALvsAR = pairs.some(
-      ([a, b]) =>
-        (a === 'standard_al_5' && b === 'standard_ar_5') ||
-        (a === 'standard_ar_5' && b === 'standard_al_5'),
-    );
-    expect(hasALvsAR).toBe(true);
+
+    expect(isExcluded('standard_ar_5', tree, makePointStore({ 'standard_al_5': 1 }))).toBe(false);
+    expect(isExcluded('standard_al_5', tree, makePointStore({ 'standard_ar_5': 1 }))).toBe(false);
+    expect(getExcludedBy('standard_ar_5', tree, makePointStore({ 'standard_al_5': 1 }))).toEqual([]);
   });
 
-  it('Standard exclusionPairs contains BL vs BR sub-branch root pair', () => {
+  it('Standard Seeking and Devastation roots are intentionally combinable', () => {
     const tree = UPGRADE_TREES[WeaponType.Standard];
-    const pairs = tree.exclusionPairs!;
-    const hasBLvsBR = pairs.some(
-      ([a, b]) =>
-        (a === 'standard_bl_5' && b === 'standard_br_5') ||
-        (a === 'standard_br_5' && b === 'standard_bl_5'),
-    );
-    expect(hasBLvsBR).toBe(true);
+
+    expect(isExcluded('standard_br_5', tree, makePointStore({ 'standard_bl_5': 1 }))).toBe(false);
+    expect(isExcluded('standard_bl_5', tree, makePointStore({ 'standard_br_5': 1 }))).toBe(false);
+    expect(getExcludedBy('standard_br_5', tree, makePointStore({ 'standard_bl_5': 1 }))).toEqual([]);
   });
 
-  it('Standard exclusionPairs contains al_7 vs ar_7 within-depth example', () => {
+  it('Standard Ring shot and Machine gun are intentionally combinable', () => {
     const tree = UPGRADE_TREES[WeaponType.Standard];
-    const pairs = tree.exclusionPairs!;
-    const hasDepth7 = pairs.some(
-      ([a, b]) =>
-        (a === 'standard_al_7' && b === 'standard_ar_7') ||
-        (a === 'standard_ar_7' && b === 'standard_al_7'),
-    );
-    expect(hasDepth7).toBe(true);
+
+    expect(isExcluded('standard_al_7', tree, makePointStore({ 'standard_ar_7': 1 }))).toBe(false);
+    expect(isExcluded('standard_ar_7', tree, makePointStore({ 'standard_al_7': 1 }))).toBe(false);
+    expect(getExcludedBy('standard_ar_7', tree, makePointStore({ 'standard_al_7': 1 }))).toEqual([]);
   });
 });
 
@@ -459,24 +449,24 @@ describe('isExcluded', () => {
     expect(isExcluded('standard_al_5', tree, ps)).toBe(false);
   });
 
-  it('returns true for AR sub-branch root when AL root is unlocked', () => {
+  it('returns false for AR sub-branch root when AL root is unlocked', () => {
     const ps = makePointStore({ 'standard_al_5': 1 });
-    expect(isExcluded('standard_ar_5', tree, ps)).toBe(true);
+    expect(isExcluded('standard_ar_5', tree, ps)).toBe(false);
   });
 
-  it('returns true for AL sub-branch root when AR root is unlocked (bidirectional)', () => {
+  it('returns false for AL sub-branch root when AR root is unlocked', () => {
     const ps = makePointStore({ 'standard_ar_5': 1 });
-    expect(isExcluded('standard_al_5', tree, ps)).toBe(true);
+    expect(isExcluded('standard_al_5', tree, ps)).toBe(false);
   });
 
-  it('returns true for BR sub-branch root when BL root is unlocked', () => {
+  it('returns false for BR sub-branch root when BL root is unlocked', () => {
     const ps = makePointStore({ 'standard_bl_5': 1 });
-    expect(isExcluded('standard_br_5', tree, ps)).toBe(true);
+    expect(isExcluded('standard_br_5', tree, ps)).toBe(false);
   });
 
-  it('returns true for BL sub-branch root when BR root is unlocked (bidirectional)', () => {
+  it('returns false for BL sub-branch root when BR root is unlocked', () => {
     const ps = makePointStore({ 'standard_br_5': 1 });
-    expect(isExcluded('standard_bl_5', tree, ps)).toBe(true);
+    expect(isExcluded('standard_bl_5', tree, ps)).toBe(false);
   });
 
   it('returns false for a node not involved in any exclusion pair', () => {
@@ -490,9 +480,9 @@ describe('isExcluded', () => {
     expect(isExcluded('standard_ar_5', tree, ps)).toBe(false);
   });
 
-  it('handles within-depth exclusion: al_7 excluded when ar_7 is unlocked', () => {
+  it('does not exclude al_7 when ar_7 is unlocked', () => {
     const ps = makePointStore({ 'standard_ar_7': 1 });
-    expect(isExcluded('standard_al_7', tree, ps)).toBe(true);
+    expect(isExcluded('standard_al_7', tree, ps)).toBe(false);
   });
 
   it('handles per-node excludes field on synthetic nodes', () => {
@@ -526,22 +516,20 @@ describe('getExcludedBy', () => {
     expect(getExcludedBy('standard_ar_5', tree, ps)).toEqual([]);
   });
 
-  it('returns the unlocked AL node as the source excluding AR root', () => {
+  it('returns no unlocked AL source for the AR root', () => {
     const ps = makePointStore({ 'standard_al_5': 1 });
-    expect(getExcludedBy('standard_ar_5', tree, ps)).toContain('standard_al_5');
+    expect(getExcludedBy('standard_ar_5', tree, ps)).toEqual([]);
   });
 
-  it('returns the unlocked AR node as the source excluding AL root (bidirectional)', () => {
+  it('returns no unlocked AR source for the AL root', () => {
     const ps = makePointStore({ 'standard_ar_5': 1 });
-    expect(getExcludedBy('standard_al_5', tree, ps)).toContain('standard_ar_5');
+    expect(getExcludedBy('standard_al_5', tree, ps)).toEqual([]);
   });
 
-  it('can return multiple sources if multiple exclusion pairs apply', () => {
-    // al_5 and al_7 both exclude ar_5 and ar_7 respectively — but al_5 excludes ar_5 only
-    // Here: both al_5 and al_7 are unlocked; ar_7 is excluded by al_7 pair
+  it('returns no sources for formerly excluded Standard depth pairs', () => {
     const ps = makePointStore({ 'standard_al_5': 1, 'standard_al_7': 1 });
     const result = getExcludedBy('standard_ar_7', tree, ps);
-    expect(result).toContain('standard_al_7');
+    expect(result).toEqual([]);
   });
 
   it('returns empty array for a node not in any exclusion pair', () => {

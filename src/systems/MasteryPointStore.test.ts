@@ -459,6 +459,36 @@ describe('MasteryPointStore', () => {
     expect(store.isUnlocked('standard_b_3')).toBe(true);
   });
 
+  it('spendPoint allows formerly excluded Standard AL and AR roots with the real tree', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+    for (let i = 0; i < 8; i++) store.earnPoint(WeaponType.Standard);
+
+    for (const nodeId of ['standard_a_1', 'standard_a_2', 'standard_a_3', 'standard_a_4', 'standard_al_5']) {
+      const node = tree.nodes.find(n => n.id === nodeId)!;
+      expect(store.spendPoint(nodeId, node.maxPoints ?? 1, node.cost ?? 1, tree)).toBe(true);
+    }
+
+    const ar5 = tree.nodes.find(n => n.id === 'standard_ar_5')!;
+    expect(store.spendPoint('standard_ar_5', ar5.maxPoints ?? 1, ar5.cost ?? 1, tree)).toBe(true);
+    expect(store.isUnlocked('standard_al_5')).toBe(true);
+    expect(store.isUnlocked('standard_ar_5')).toBe(true);
+  });
+
+  it('spendPoint allows formerly excluded Standard BL and BR roots with the real tree', () => {
+    const tree = UPGRADE_TREES[WeaponType.Standard];
+    for (let i = 0; i < 8; i++) store.earnPoint(WeaponType.Standard);
+
+    for (const nodeId of ['standard_b_1', 'standard_b_2', 'standard_b_3', 'standard_b_4', 'standard_bl_5']) {
+      const node = tree.nodes.find(n => n.id === nodeId)!;
+      expect(store.spendPoint(nodeId, node.maxPoints ?? 1, node.cost ?? 1, tree)).toBe(true);
+    }
+
+    const br5 = tree.nodes.find(n => n.id === 'standard_br_5')!;
+    expect(store.spendPoint('standard_br_5', br5.maxPoints ?? 1, br5.cost ?? 1, tree)).toBe(true);
+    expect(store.isUnlocked('standard_bl_5')).toBe(true);
+    expect(store.isUnlocked('standard_br_5')).toBe(true);
+  });
+
   // -------------------------------------------------------------------------
   // weaponTypeFromNodeId helper
   // -------------------------------------------------------------------------
