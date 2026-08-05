@@ -109,6 +109,32 @@ function makeLifecycleRoom() {
 }
 
 describe('GameRoom MP weapon upgrade runtime parity', () => {
+  it('emits one Standard starter bolt before mastery unlocks', () => {
+    const room = makeRoom();
+    const player = makePlayer();
+    room.state.players.set('p1', player);
+
+    room.tryShoot(player);
+
+    const standardBullets = room.state.bullets.filter((b: any) => b.weaponType === WeaponType.Standard);
+    expect(standardBullets).toHaveLength(1);
+  });
+
+  it('emits two Standard bolts when standard_a_1 is active', () => {
+    const room = makeRoom();
+    const player = makePlayer();
+    room.state.players.set('p1', player);
+    room.playerActiveUpgradeNodes.set('p1', new Map([
+      [WeaponType.Standard, new Set(['standard_a_1'])],
+    ]));
+
+    room.tryShoot(player);
+
+    const standardBullets = room.state.bullets.filter((b: any) => b.weaponType === WeaponType.Standard);
+    expect(standardBullets).toHaveLength(2);
+    expect(new Set(standardBullets.map((b: any) => b.dirY)).size).toBe(2);
+  });
+
   it('emits upgraded Standard projectile patterns from server-authoritative nodes', () => {
     const room = makeRoom();
     const player = makePlayer();

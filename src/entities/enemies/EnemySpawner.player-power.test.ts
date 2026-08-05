@@ -38,7 +38,7 @@ describe('EnemySpawner player-power HP scaling', () => {
       score: 1_000,
       survivalSeconds: 5,
       streak: 0,
-      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 },
+      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 },
     }));
 
     expect(spawnedHealth(spawner, 'virus')).toBe(1);

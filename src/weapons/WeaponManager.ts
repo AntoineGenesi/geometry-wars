@@ -229,7 +229,7 @@ export class WeaponManager {
   // Upgrade tracker — per-match, wired from main.ts
   private upgradeTracker: MatchUpgradeTracker | null = null;
 
-  // Active gas clouds (Homing branch B node 3)
+  // Active gas clouds (Homing branch B node 4+)
   private gasClouds: GasCloudInstance[] = [];
 
   // Per-frame deduplication for homing missiles: tracks enemy indices hit this frame.
@@ -365,8 +365,7 @@ export class WeaponManager {
     let bonus = 0;
     switch (weaponType) {
       case WeaponType.Standard:
-        // Branch A nodes 1-3 are damage bonuses; 4+5 switch to fan-out (handled via getBlasterExtraBolts)
-        if (active.has('standard_a_1')) bonus += 0.20;
+        // Branch A a_1 is the dual-bolt unlock; later trunk nodes add damage.
         if (active.has('standard_a_2')) bonus += 0.40;
         if (active.has('standard_a_3')) bonus += 0.60;
         if (active.has('standard_b_4')) bonus += 0.40; // Heavy bolt: +40% damage
@@ -438,7 +437,7 @@ export class WeaponManager {
     const active = this.upgradeTracker.getActiveUpgrades(weaponType);
     let bonus = 0;
     if (weaponType === WeaponType.Standard) {
-      if (active.has('standard_b_1')) bonus += 0.15;
+      // Branch B b_1 is the focused-pair unlock; later trunk nodes add fire rate.
       if (active.has('standard_b_2')) bonus += 0.30;
       if (active.has('standard_b_3')) bonus += 0.50;
       if (active.has('standard_a_4')) bonus += 0.30; // Rapid bolt: +30% fire rate
@@ -474,7 +473,7 @@ export class WeaponManager {
 
   /**
    * Returns how many extra side bolts to spawn for the blaster (Branch A fan-out).
-   * 0 = only the standard 2 parallel bolts; 6 = 7 total in a fan.
+   * 0 = only the standard single starter bolt; 6 = 7 total in a fan.
    */
   getBlasterExtraBolts(): number {
     if (!this.upgradeTracker) return 0;
@@ -482,7 +481,6 @@ export class WeaponManager {
     // AL sub-branch overrides: al_6 (Nova burst) fires 9 bolts total (8 extra)
     if (active.has('standard_al_6'))  return 8;  // Nova burst: 9 total
     // al_5 (Shotgun spread): 5 bolts = same as a_4; falls through to a_4 check below
-    if (active.has('standard_a_5')) return 6;  // 7 total
     if (active.has('standard_a_4') || active.has('standard_al_5')) return 4;  // 5 total
     if (active.has('standard_a_3')) return 3;  // 4 total
     if (active.has('standard_a_2')) return 2;  // 3 total
@@ -500,7 +498,6 @@ export class WeaponManager {
     // AL sub-branch overrides
     if (active.has('standard_al_6'))  return Math.PI * 55 / 180; // Nova burst: 55° fan
     if (active.has('standard_al_5'))  return Math.PI / 7.2;       // Shotgun spread: 25° (same as a_4)
-    if (active.has('standard_a_5')) return Math.PI / 4.5; // 40° fan
     if (active.has('standard_a_4')) return Math.PI / 7.2; // 25°
     if (active.has('standard_a_3')) return Math.PI / 12;  // 15°
     if (active.has('standard_a_2')) return Math.PI / 18;  // 10°
@@ -654,7 +651,7 @@ export class WeaponManager {
     const blasterProjectiles = fanExtraBolts > 0 || branchBExtraBolts > 0
       ? (fanExtraBolts > 0 ? fanExtraBolts + 1 : 0)
         + (branchBExtraBolts > 0 ? branchBExtraBolts + 1 : 0)
-      : 2;
+      : 1;
     const blaster: WeaponPowerInput = {
       damage: Math.max(0, blasterDamagePerBolt),
       shotsPerSecond: blasterRate,
@@ -1080,7 +1077,7 @@ export class WeaponManager {
       this.checkProjectileCollisions(proj, i);
     }
 
-    // Update gas clouds (Homing branch B node 3)
+    // Update gas clouds (Homing branch B node 4+)
     for (let i = this.gasClouds.length - 1; i >= 0; i--) {
       const cloud = this.gasClouds[i];
       cloud.elapsed += dt;
@@ -1157,7 +1154,7 @@ export class WeaponManager {
   // -------------------------------------------------------------------------
 
   private fireStandard(origin: THREE.Vector3, direction: THREE.Vector3, surfaceNormal?: THREE.Vector3): void {
-    // Dual-barrel setup: fire 2 bullets slightly offset perpendicular to aim direction
+    // Dual/focused unlock setup: offset paired bullets perpendicular to aim direction.
     const up = surfaceNormal?.clone().normalize() ?? new THREE.Vector3(0, 1, 0);
     const right = new THREE.Vector3().crossVectors(direction, up).normalize();
     const offset = 0.15;
@@ -1220,12 +1217,14 @@ export class WeaponManager {
         const t = totalBolts === 1 ? 0 : (i / (totalBolts - 1)) * 2 - 1;
         const angle = t * (tightAngle / 2);
         const boltDir = direction.clone().applyAxisAngle(rotAxis, angle).normalize();
-        this.callbacks?.spawnBullet(origin.clone(), boltDir);
+        const boltOrigin = totalBolts === 2
+          ? (i === 0 ? leftOrigin : rightOrigin)
+          : origin;
+        this.callbacks?.spawnBullet(boltOrigin.clone(), boltDir);
       }
     } else {
-      // Default: dual-barrel (no branch A or B upgrades)
-      this.callbacks?.spawnBullet(leftOrigin, direction);
-      this.callbacks?.spawnBullet(rightOrigin, direction);
+      // Default: single starter bolt. Dual/focused pairs are real mastery unlocks.
+      this.callbacks?.spawnBullet(origin.clone(), direction);
     }
 
     // LEVEL 5 FINAL FORM — Twin Stream: fire 2 additional V-patterned bullets at ±15°
@@ -1240,7 +1239,7 @@ export class WeaponManager {
 
     // BL Sub-branch: Seeking bolts (standard_bl_5 through standard_bl_10)
     // When any BL node is active, spawn Projectile-based homing bolts that track enemies.
-    // These supplement the normal dual-barrel bolts (they do not replace them).
+    // These supplement the normal Standard bolts (they do not replace them).
     const blConfig = this.getBlasterBLSeekingConfig();
     if (blConfig.boltCount > 0) {
       this.fireSeekingBlasterBolts(origin, direction, rotAxis, blConfig);
@@ -2383,6 +2382,8 @@ export class WeaponManager {
           const t = Math.min(proj.age / proj.spreadDuration, 1.0);
           if (t < 1.0) {
             proj.direction.lerpVectors(proj.spreadStartDir, proj.spreadEndDir, t).normalize();
+          } else {
+            proj.direction.copy(proj.spreadEndDir).normalize();
           }
         }
         // Linear movement

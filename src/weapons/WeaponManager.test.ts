@@ -96,6 +96,15 @@ function sphereProject(pos: THREE.Vector3, radius: number): THREE.Vector3 {
   return len > 0.01 ? pos.clone().multiplyScalar(radius / len) : pos.clone();
 }
 
+function createActiveUpgradeTracker(nodeIds: string[]): MatchUpgradeTracker {
+  return {
+    getActiveUpgrades: (weaponType: WeaponType) => new Set(
+      nodeIds.filter(nodeId => weaponTypeFromNodeId(nodeId) === weaponType),
+    ),
+    recordKill: vi.fn(),
+  } as unknown as MatchUpgradeTracker;
+}
+
 // Base fire time - must be past longest cooldown (BlackHole: 1/0.3 = 3.33s)
 const T = 10.0;
 
@@ -301,28 +310,37 @@ describe('WeaponManager', () => {
   // =========================================================================
 
   describe('Standard (Blaster)', () => {
-    it('should fire two bullets (dual-barrel)', () => {
+    it('should fire one starter bolt before Standard mastery unlocks', () => {
       manager.fire(origin(), forward(), T);
-      expect(mock.bullets.length).toBe(2);
+      expect(mock.bullets.length).toBe(1);
+      expect(mock.bullets[0].origin.distanceTo(origin())).toBeLessThan(0.001);
     });
 
-    it('should offset bullets slightly perpendicular to aim', () => {
+    it('standard_a_1 should unlock two slightly spread bolts', () => {
+      const tracker = createActiveUpgradeTracker(['standard_a_1']);
+      manager.setUpgradeTracker(tracker);
       manager.fire(origin(), forward(), T, normal());
       expect(mock.bullets.length).toBe(2);
 
-      const b0 = mock.bullets[0].origin;
-      const b1 = mock.bullets[1].origin;
-      // Bullets should be offset perpendicular to aim direction
-      const diff = b0.clone().sub(b1);
-      expect(diff.length()).toBeGreaterThan(0.1);
-      // Both should aim forward
       expect(mock.bullets[0].direction.dot(forward())).toBeGreaterThan(0.99);
       expect(mock.bullets[1].direction.dot(forward())).toBeGreaterThan(0.99);
+      expect(mock.bullets[0].direction.angleTo(mock.bullets[1].direction)).toBeGreaterThan(0.01);
     });
 
-    it('should reduce barrel offset near pill/capsule surface poles', () => {
-      const T0 = 0;
-      const T1 = 0.11; // past blaster cooldown (0.1s)
+    it('standard_b_1 should unlock two focused offset bolts', () => {
+      const tracker = createActiveUpgradeTracker(['standard_b_1']);
+      manager.setUpgradeTracker(tracker);
+      manager.fire(origin(), forward(), T, normal());
+      expect(mock.bullets.length).toBe(2);
+      expect(mock.bullets[0].direction.angleTo(mock.bullets[1].direction)).toBeGreaterThan(0);
+      expect(mock.bullets[0].direction.angleTo(mock.bullets[1].direction)).toBeLessThan(Math.PI / 24);
+    });
+
+    it('should reduce paired-bolt barrel offset near pill/capsule surface poles', () => {
+      const tracker = createActiveUpgradeTracker(['standard_b_1']);
+      manager.setUpgradeTracker(tracker);
+      const T0 = T;
+      const T1 = T + 0.2; // past blaster cooldown
 
       // Body position: normal horizontal (pill cylindrical body)
       const bodyNormal = new THREE.Vector3(1, 0, 0);
@@ -336,7 +354,7 @@ describe('WeaponManager', () => {
       expect(mock.bullets.length).toBe(4);
       const poleDiff = mock.bullets[2].origin.distanceTo(mock.bullets[3].origin);
 
-      // At body: barrels should be clearly separated (full 0.3 world units apart)
+      // At body: paired barrels should be clearly separated (full 0.3 world units apart)
       expect(bodyDiff).toBeGreaterThan(0.2);
       // At pole: barrels should converge — metric factor collapses to ~0 near pole
       expect(poleDiff).toBeLessThan(0.05);
@@ -1143,6 +1161,15 @@ describe('WeaponManager LAN visual-only mode', () => {
       for (let i = 0; i < kills; i++) {
         tracker.recordKill(weaponType);
       }
+      const internals = tracker as unknown as {
+        permanentUnlocks?: Set<string>;
+        activateNode?: (nodeId: string, weaponType: WeaponType) => void;
+      };
+      for (const nodeId of internals.permanentUnlocks ?? []) {
+        if (weaponTypeFromNodeId(nodeId) === weaponType) {
+          internals.activateNode?.call(tracker, nodeId, weaponType);
+        }
+      }
     }
 
     // ---- setUpgradeTracker / getUpgradeDamageMult ----
@@ -1162,21 +1189,21 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.dispose();
     });
 
-    it('getUpgradeDamageMult: Standard a_1 → +20%', () => {
+    it('getUpgradeDamageMult: Standard a_1 is projectile-count only', () => {
       const tracker = makeTracker(['standard_a_1']);
       activateNodes(tracker, WeaponType.Standard, 10); // threshold for node 1
       const wm2 = new WeaponManager();
       wm2.setUpgradeTracker(tracker);
-      expect(wm2.getUpgradeDamageMult(WeaponType.Standard)).toBeCloseTo(1.20, 5);
+      expect(wm2.getUpgradeDamageMult(WeaponType.Standard)).toBeCloseTo(1.0, 5);
       wm2.dispose();
     });
 
-    it('getUpgradeDamageMult: Standard all a nodes → +20% + +40% + +60% = 2.2x', () => {
+    it('getUpgradeDamageMult: Standard later a nodes → +40% + +60% = 2.0x', () => {
       const tracker = makeTracker(['standard_a_1', 'standard_a_2', 'standard_a_3']);
       activateNodes(tracker, WeaponType.Standard, 50); // activates all 3
       const wm2 = new WeaponManager();
       wm2.setUpgradeTracker(tracker);
-      expect(wm2.getUpgradeDamageMult(WeaponType.Standard)).toBeCloseTo(2.20, 5);
+      expect(wm2.getUpgradeDamageMult(WeaponType.Standard)).toBeCloseTo(2.00, 5);
       wm2.dispose();
     });
 
@@ -1339,12 +1366,12 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.dispose();
     });
 
-    // ---- Gas cloud spawns when homing_b_3 is active ----
+    // ---- Gas cloud spawns when homing_b_4 is active ----
 
-    it('Gas cloud spawns on Homing detonation when homing_b_3 active', () => {
+    it('Gas cloud spawns on Homing detonation when homing_b_4 active', () => {
       const enemy: MockEnemy = { position: new THREE.Vector3(8.2, 0, 0.1), index: 0, alive: true };
-      const tracker = makeTracker(['homing_b_3']);
-      activateNodes(tracker, WeaponType.Homing, 50); // b_3 requires 50 kills
+      const tracker = makeTracker(['homing_b_4']);
+      activateNodes(tracker, WeaponType.Homing, 80); // b_4 requires 80 kills
       const wm2 = new WeaponManager();
       wm2.setUpgradeTracker(tracker);
       const { callbacks } = createMockCallbacks([enemy]);
@@ -1398,8 +1425,8 @@ describe('WeaponManager LAN visual-only mode', () => {
       for (let i = 0; i < 10; i++) {
         wm2.recordKillForUpgrades(WeaponType.Standard);
       }
-      // After threshold: standard_a_1 active → +20%
-      expect(wm2.getUpgradeDamageMult(WeaponType.Standard)).toBeCloseTo(1.20, 5);
+      // After threshold: standard_a_1 is active, but it unlocks the second bolt rather than damage.
+      expect(wm2.getUpgradeDamageMult(WeaponType.Standard)).toBeCloseTo(1.0, 5);
       wm2.dispose();
     });
 
@@ -1835,6 +1862,9 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
       const tracker = new MatchUpgradeTracker(makeStoreFromNodes(unlocked));
       // Activate node by recording enough kills to reach its threshold
       for (let i = 0; i < 200; i++) tracker.recordKill(WeaponType.Standard);
+      for (const nodeId of unlocked) {
+        tracker['activateNode'](nodeId, WeaponType.Standard);
+      }
       return tracker;
     }
 
@@ -1862,12 +1892,15 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
       ];
       const tracker = new MatchUpgradeTracker(makeStoreFromNodes(allBL));
       for (let i = 0; i < 700; i++) tracker.recordKill(WeaponType.Standard);
+      for (const nodeId of allBL) {
+        tracker['activateNode'](nodeId, WeaponType.Standard);
+      }
       wm2.setUpgradeTracker(tracker);
       expect(wm2.getBlasterHomingStrength()).toBe(0.95);
       wm2.dispose();
     });
 
-    it('bl_5 (Seeking bolts): fires seeking projectiles IN ADDITION to normal dual-barrel bolts', () => {
+    it('bl_5 (Seeking bolts): fires seeking projectiles in addition to normal Standard bolts', () => {
       const wm2 = new WeaponManager();
       const spawnedBullets: { origin: THREE.Vector3; direction: THREE.Vector3 }[] = [];
       const damages: number[] = [];
@@ -1880,7 +1913,7 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
 
       wm2.fire(origin(), forward(), T, normal());
 
-      // Normal dual-barrel bolts still fire (2 bullets via spawnBullet)
+      // Branch B prerequisites still fire their supported tight cluster via spawnBullet.
       expect(spawnedBullets.length).toBeGreaterThanOrEqual(2);
 
       // BL seeking projectiles are added to the projectile root (not via spawnBullet)
@@ -1904,6 +1937,9 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
       ];
       const tracker = new MatchUpgradeTracker(makeStoreFromNodes(allBL));
       for (let i = 0; i < 400; i++) tracker.recordKill(WeaponType.Standard);
+      for (const nodeId of allBL) {
+        tracker['activateNode'](nodeId, WeaponType.Standard);
+      }
       wm2.setUpgradeTracker(tracker);
 
       wm2.fire(origin(), forward(), T, normal());
@@ -1964,6 +2000,9 @@ describe('Homing missile visual orientation (s44r3-05 regression)', () => {
       ];
       const tracker = new MatchUpgradeTracker(makeStoreFromNodes(allBL));
       for (let i = 0; i < 700; i++) tracker.recordKill(WeaponType.Standard);
+      for (const nodeId of allBL) {
+        tracker['activateNode'](nodeId, WeaponType.Standard);
+      }
       wm2.setUpgradeTracker(tracker);
 
       // Fire toward opposite direction from enemy (so bolt misses)

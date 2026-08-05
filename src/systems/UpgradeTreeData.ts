@@ -150,7 +150,7 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
   // -------------------------------------------------------------------------
   // 1. Standard (Blaster) — 4-endpoint branching tree
   //
-  //    Branch A trunk (a_1..a_4): Fire-rate theme, diverges at level 4
+  //    Branch A trunk (a_1..a_4): Multi-bolt fan theme, diverges at level 4
   //      Sub-branch AL (al_5..al_10): "Scatter" — explosive multi-bolt spread [cost:1]
   //      Sub-branch AR (ar_5..ar_10): "Rapid Fire" — extreme fire rate [cost:2]
   //
@@ -163,7 +163,7 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
   // -------------------------------------------------------------------------
   [WeaponType.Standard]: {
     weaponType: WeaponType.Standard,
-    branchAName: 'Fire Rate',
+    branchAName: 'Multi-Bolt',
     branchBName: 'Damage',
     branchALName: 'Scatter',
     branchARName: 'Rapid Fire',
@@ -171,7 +171,7 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
     branchBRName: 'Devastation',
     svgHeight: 390,
     nodes: [
-      // ── Trunk A (Fire Rate theme) ──
+      // ── Trunk A (Multi-Bolt fan theme) ──
       node(WeaponType.Standard, 'a', 1, 'Dual bolts',    'Fires 2 bolts side by side (+1 bullet)',          { x: 103, y:  46 }),
       node(WeaponType.Standard, 'a', 2, 'Triple spray',  'Fires 3 bolts in a narrow fan (+2 bullets)',      { x:  80, y:  78 }),
       node(WeaponType.Standard, 'a', 3, 'Quad burst',    'Fires 4 bolts, fan widens slightly (+3 bullets)', { x:  57, y: 110 }),
@@ -215,7 +215,7 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       node(WeaponType.Standard, 'br', 9, 'Death bolt',     'Each bolt has 5% chance to instant-kill enemy',         { parentId: 'standard_br_8', cost: 2, x: 256, y: 318 }),
       node(WeaponType.Standard, 'br', 10,'Annihilator',    '+150% damage; kills trigger mini-shockwave',            { parentId: 'standard_br_9', cost: 2, x: 266, y: 352 }),
     ],
-    // Cross-branch shortcuts: Fire Rate trunk tier 2 → Damage trunk tier 3 (and vice versa).
+    // Cross-branch shortcuts: Multi-Bolt trunk tier 2 → Damage trunk tier 3 (and vice versa).
     // Unlocking Triple spray (a_2) grants shortcut access to Quad lance (b_3),
     // and unlocking Triple needle (b_2) grants shortcut to Quad burst (a_3).
     skipConnections: [

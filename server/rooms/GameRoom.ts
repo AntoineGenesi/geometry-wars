@@ -3505,13 +3505,8 @@ export class GameRoom extends Room<GameState> {
       if (hasFan) emitCluster(standardPattern.fanExtraBolts + 1, standardPattern.fanAngle);
       if (hasBranchB) emitCluster(standardPattern.branchBExtraBolts + 1, standardPattern.branchBConeAngle);
       if (!hasFan && !hasBranchB) {
-        // Baseline dual-barrel shot, matching SP WeaponManager.fireStandard().
-        const perpAngle = angle + Math.PI / 2;
-        const uvOffset = 0.003; // ~0.1 world units on sphere r=10
-        const duPerp = Math.cos(perpAngle) * uvOffset;
-        const dvPerp = Math.sin(perpAngle) * uvOffset;
-        this.spawnBullet(player, angle, -duPerp, -dvPerp, 'standard');
-        this.spawnBullet(player, angle,  duPerp,  dvPerp, 'standard');
+        // Baseline Standard is one starter bolt. Dual/focused pairs are mastery unlocks.
+        this.spawnBullet(player, angle, 0, 0, 'standard');
       }
     }
 
@@ -6691,7 +6686,7 @@ export class GameRoom extends Room<GameState> {
     const standardPattern = getStandardUpgradePattern(standardNodes);
     const fanCount = standardPattern.fanExtraBolts > 0 ? standardPattern.fanExtraBolts + 1 : 0;
     const branchBCount = standardPattern.branchBExtraBolts > 0 ? standardPattern.branchBExtraBolts + 1 : 0;
-    const standardProjectiles = fanCount + branchBCount || 2;
+    const standardProjectiles = fanCount + branchBCount || 1;
     const blasterConfig = WEAPON_CONFIGS.standard;
 
     let activeWeapon: PlayerPowerInput['activeWeapon'];

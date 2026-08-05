@@ -34,7 +34,6 @@ export function getUpgradeDamageMultiplier(
   let bonus = 0;
   switch (weaponType) {
     case WeaponType.Standard:
-      if (active.has('standard_a_1')) bonus += 0.20;
       if (active.has('standard_a_2')) bonus += 0.40;
       if (active.has('standard_a_3')) bonus += 0.60;
       if (active.has('standard_b_4')) bonus += 0.40;
@@ -92,7 +91,6 @@ export function getUpgradeFireRateMultiplier(
 ): number {
   let bonus = 0;
   if (weaponType === WeaponType.Standard) {
-    if (active.has('standard_b_1')) bonus += 0.15;
     if (active.has('standard_b_2')) bonus += 0.30;
     if (active.has('standard_b_3')) bonus += 0.50;
     if (active.has('standard_a_4')) bonus += 0.30;

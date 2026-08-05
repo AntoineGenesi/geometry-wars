@@ -9,7 +9,7 @@ import {
 } from './PlayerPowerModel';
 
 const baseline: PlayerPowerInput = {
-  blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 },
+  blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 },
 };
 
 function expectMonotonic(field: keyof PlayerPowerInput, low: unknown, high: unknown): void {
@@ -43,7 +43,7 @@ describe('computePlayerPower', () => {
     expect(computePlayerPower({ score: 0, survivalSeconds: 0, streak: 0 }).difficultyBonus).toBe(0);
   });
 
-  it('uses the real dual-blaster baseline', () => {
+  it('uses the real one-bolt blaster baseline', () => {
     const result = computePlayerPower(baseline);
     expect(result.blasterDps).toBe(BASELINE_BLASTER_DPS);
     expect(result.offenseRatio).toBe(1);
@@ -55,7 +55,7 @@ describe('computePlayerPower', () => {
     expectMonotonic('survivalSeconds', 10, 500);
     expectMonotonic('streak', 1, 200);
 
-    const weakBlaster = computePlayerPower({ blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 } });
+    const weakBlaster = computePlayerPower({ blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 } });
     const strongBlaster = computePlayerPower({ blaster: { damage: 2, shotsPerSecond: 9, projectilesPerShot: 4 } });
     expect(strongBlaster.difficultyBonus).toBeGreaterThan(weakBlaster.difficultyBonus);
 
@@ -183,7 +183,7 @@ describe('computePlayerPower', () => {
       score: 1_000,
       survivalSeconds: 5,
       streak: 0,
-      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 2 },
+      blaster: { damage: 1, shotsPerSecond: 6, projectilesPerShot: 1 },
     });
 
     expect(result.difficultyBonus).toBeGreaterThan(0);

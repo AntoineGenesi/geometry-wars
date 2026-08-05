@@ -59,7 +59,7 @@ export interface PlayerPowerRuntimeState {
   proofOverride?: Pick<PlayerPowerInput, 'survivalSeconds' | 'streak'>;
 }
 
-export const BASELINE_BLASTER_DPS = 12;
+export const BASELINE_BLASTER_DPS = 6;
 export const GUARDIAN_SHOTS_PER_SECOND = 3;
 export const HUNTER_SHOTS_PER_SECOND = 1.5;
 export const MP_COMPANION_DAMAGE_PER_HIT = 1;

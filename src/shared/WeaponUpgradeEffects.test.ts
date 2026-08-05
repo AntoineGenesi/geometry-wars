@@ -26,7 +26,9 @@ describe('shared weapon upgrade effects', () => {
   });
 
   it('applies the same Standard and Spread damage/fire-rate families used by SP', () => {
-    expect(getUpgradeDamageMultiplier(WeaponType.Standard, new Set(['standard_a_1']))).toBeCloseTo(1.2);
+    expect(getUpgradeDamageMultiplier(WeaponType.Standard, new Set(['standard_a_1']))).toBeCloseTo(1);
+    expect(getUpgradeDamageMultiplier(WeaponType.Standard, new Set(['standard_a_2']))).toBeCloseTo(1.4);
+    expect(getUpgradeFireRateMultiplier(WeaponType.Standard, new Set(['standard_b_1']))).toBeCloseTo(1);
     expect(getUpgradeDamageMultiplier(WeaponType.Spread, new Set(['spread_al_5']))).toBeCloseTo(1.15);
     expect(getUpgradeFireRateMultiplier(WeaponType.Standard, new Set(['standard_ar_5']))).toBeCloseTo(1.5);
   });
