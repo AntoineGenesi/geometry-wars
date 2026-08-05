@@ -8673,6 +8673,7 @@ async function main() {
 
         // Surface occlusion shader: fade surface between camera and player only
         // when the surface actually blocks that segment.
+        surf.setSurfaceOpaqueDepthMode(networkOpaqueSurfaces, isBlocked);
         if (surf.mesh.material instanceof OcclusionSurfaceMaterial) {
           surf.mesh.material.setOcclusionParams(camPos, playerPos, isBlocked);
         }

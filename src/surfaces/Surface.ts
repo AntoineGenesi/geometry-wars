@@ -202,7 +202,33 @@ export abstract class Surface {
   /** Update the surface material opacity. */
   setSurfaceOpacity(opacity: number): void {
     if (this.mesh.material && typeof (this.mesh.material as any).opacity === 'number') {
-      (this.mesh.material as any).opacity = opacity
+      const material = this.mesh.material as THREE.Material & { opacity?: number };
+      material.opacity = opacity;
+      this.setSurfaceOpaqueDepthMode(opacity >= 0.999);
+    }
+  }
+
+  /**
+   * Keep opaque surface mode honest in the depth buffer.
+   *
+   * A visually solid surface that remains `transparent` with `depthWrite=false`
+   * cannot reliably occlude enemies behind it, which forces brittle
+   * topology-based hard hiding. Tunnel corridor fade is the one exception: when
+   * the camera-to-player ray is blocked, the shader needs transparent blending.
+   */
+  setSurfaceOpaqueDepthMode(opaque: boolean, corridorFadeActive: boolean = false): void {
+    const material = this.mesh.material;
+    if (!(material instanceof THREE.Material)) return;
+
+    const shouldBeTransparent = !opaque || corridorFadeActive;
+    const shouldWriteDepth = opaque && !corridorFadeActive;
+    if (material.transparent !== shouldBeTransparent) {
+      material.transparent = shouldBeTransparent;
+      material.needsUpdate = true;
+    }
+    if (material.depthWrite !== shouldWriteDepth) {
+      material.depthWrite = shouldWriteDepth;
+      material.needsUpdate = true;
     }
   }
 
