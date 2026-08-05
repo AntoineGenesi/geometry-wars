@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import * as THREE from 'three';
 import { SurfaceFactory, type SurfaceType } from '../surfaces/SurfaceFactory';
 import { MeshSurface } from '../surfaces/MeshSurface';
 import type { Surface } from '../surfaces/Surface';
@@ -10,6 +11,20 @@ import {
 } from './SurfaceVisibilityResolver';
 
 const REQUIRED_SURFACES = ['cube', 'cube-ring', 'cube-tunnel', 'torus'] as const;
+const SELECTABLE_SURFACES = [
+  'sphere',
+  'cube',
+  'pill',
+  'pipe',
+  'torus',
+  'peanut',
+  'capsule',
+  'icosahedron',
+  'mobius',
+  'sphere-tunnel',
+  'cube-ring',
+  'cube-tunnel',
+] as const;
 
 interface Fixture {
   surface: Surface;
@@ -115,7 +130,7 @@ describe('SurfaceVisibilityResolver policy', () => {
     expect(result.visibility).toBe(SURFACE_VISIBILITY_IMPORTANT_FLOOR);
   });
 
-  it('keeps the five non-opposite cube faces visible in opaque mode', () => {
+  it('keeps the five non-opposite cube faces resolver-visible in opaque mode', () => {
     const { surface, resolver } = createFixture('cube');
     const player = surface.getPoint(0.125, 0.5).position;
     const visiblePoints = [
@@ -140,7 +155,7 @@ describe('SurfaceVisibilityResolver policy', () => {
     }
   });
 
-  it('hides the opposite cube face in opaque mode', () => {
+  it('does not use topology ratio as a hard opacity cutoff in opaque mode', () => {
     const { surface, resolver } = createFixture('cube');
     const result = resolver.resolve({
       playerWorldPosition: surface.getPoint(0.125, 0.5).position,
@@ -148,9 +163,56 @@ describe('SurfaceVisibilityResolver policy', () => {
       opaqueSurfaces: true,
     });
 
-    expect(result.className).toBe('opaque-hidden');
-    expect(result.visibility).toBe(0);
-    expect(result.minColorBrightness).toBe(0);
+    expect(result.className).toBe('direct');
+    expect(result.visibility).toBe(1);
+    expect(result.minColorBrightness).toBe(1);
+    expect(result.topologyDistanceRatio).toBeGreaterThan(0.45);
+  });
+
+  it.each(SELECTABLE_SURFACES)(
+    '%s keeps reachable sampled enemies resolver-visible in opaque mode',
+    (type) => {
+      const { surface, resolver } = createFixture(type);
+      const player = surface.getPoint(0.125, 0.5).position;
+      const samples = [
+        surface.getPoint(0.125, 0.62).position,
+        surface.getPoint(0.125, 0.8).position,
+        surface.getPoint(0.375, 0.5).position,
+        surface.getPoint(0.875, 0.5).position,
+        surface.getPoint(0.125, 0.95).position,
+        surface.getPoint(0.125, 0.05).position,
+        surface.getPoint(0.625, 0.5).position,
+      ];
+
+      for (const entityWorldPosition of samples) {
+        const result = resolver.resolve({
+          playerWorldPosition: player,
+          entityWorldPosition,
+          opaqueSurfaces: true,
+        });
+
+        expect(result.className).toBe('direct');
+        expect(result.visibility).toBe(1);
+        expect(result.minColorBrightness).toBe(1);
+      }
+    },
+  );
+
+  it('switches solid surfaces into depth-writing opaque material mode', () => {
+    const { surface } = createFixture('sphere');
+    const material = surface.mesh.material as THREE.Material;
+
+    surface.setSurfaceOpacity(1);
+    expect(material.transparent).toBe(false);
+    expect(material.depthWrite).toBe(true);
+
+    surface.setSurfaceOpaqueDepthMode(true, true);
+    expect(material.transparent).toBe(true);
+    expect(material.depthWrite).toBe(false);
+
+    surface.setSurfaceOpacity(0.05);
+    expect(material.transparent).toBe(true);
+    expect(material.depthWrite).toBe(false);
   });
 });
 

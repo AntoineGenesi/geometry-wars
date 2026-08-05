@@ -4,8 +4,8 @@
  *
  * Verifies the real single-player path:
  * - default/legacy graphics settings make surfaces opaque;
- * - cube opaque mode keeps same/adjacent/top/bottom face enemies visible;
- * - the opposite/back face is intentionally hidden in opaque mode;
+ * - opaque mode uses a depth-writing surface and does not hard-hide reachable
+ *   enemies through resolver thresholds;
  * - explicit see-through mode keeps far-side enemies dim/readable.
  */
 
@@ -18,7 +18,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASE_URL = process.env.BASE_URL || 'http://127.0.0.1:3033';
 const CHROME_PATH = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
 const REPORTS_DIR = resolve(__dirname, '../../reports');
-const surface = process.argv.find((arg) => arg.startsWith('--surface='))?.split('=')[1] || 'cube';
+const surfaceArg = process.argv.find((arg) => arg.startsWith('--surface='))?.split('=')[1];
+const surfacesArg = process.argv.find((arg) => arg.startsWith('--surfaces='))?.split('=')[1];
+const surfaces = (surfacesArg || surfaceArg || 'cube')
+  .split(',')
+  .map((entry) => entry.trim())
+  .filter(Boolean);
 const runDate = new Date().toISOString().replace(/[:.]/g, '-');
 
 const sleep = (ms) => new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
@@ -40,9 +45,9 @@ async function configureStorage(page, mode) {
   }, mode);
 }
 
-async function runMode(page, mode) {
+async function runMode(page, surface, mode) {
   await configureStorage(page, mode);
-  const url = `${BASE_URL}?quickStart=true&surface=${surface}&debug=true&testMode=true`;
+  const url = `${BASE_URL}?quickStart=true&surface=${surface}&renderer=webgl&debug=true&testMode=true`;
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForSelector('canvas', { timeout: 15000 });
   await sleep(3000);
@@ -104,6 +109,7 @@ async function runMode(page, mode) {
       isWebGPU: ctx.game.isWebGPU,
       surfaceOpacity: material.opacity,
       surfaceTransparent: material.transparent,
+      surfaceDepthWrite: material.depthWrite,
       occlusionFadeEnabled,
       spawned,
     };
@@ -111,6 +117,52 @@ async function runMode(page, mode) {
   const screenshotPath = resolve(REPORTS_DIR, `surface-opacity-mode-${surface}-${mode}-${runDate}.png`);
   await page.screenshot({ path: screenshotPath });
   return { ...summary, screenshotPath };
+}
+
+function evaluateChecks(surface, defaultMode, seeThroughMode, pageErrors) {
+  const criticalPageErrors = pageErrors.filter((error) => !/Failed to load resource: the server responded with a status of 404/.test(error));
+  const defaultSpawnedVisible = defaultMode.spawned.every(({ enemy, raw }) => (
+    raw?.className !== 'opaque-hidden'
+    && raw?.visibility === 1
+    && (enemy?.opacity ?? 0) > 0
+    && (enemy?.instanceColorBrightness ?? 0) > 0.3
+    && (enemy?.instanceMatrixScale ?? 0) > 0
+  ));
+  const seeThroughDimReadable = seeThroughMode.spawned.some(({ enemy, raw }) => (
+    raw?.className !== 'direct'
+    && raw?.className !== 'opaque-hidden'
+    && (enemy?.opacity ?? 0) > 0
+    && (enemy?.instanceColorBrightness ?? 0) >= 0.3
+    && (enemy?.instanceMatrixScale ?? 0) > 0
+  ));
+
+  const checks = {
+    defaultSurfaceOpaque: defaultMode.surfaceOpacity === 1,
+    defaultSurfaceDepthWrites: defaultMode.occlusionFadeEnabled === true
+      ? defaultMode.surfaceDepthWrite === false
+      : defaultMode.surfaceDepthWrite === true,
+    defaultSurfaceTransparencyMatchesCorridorFade: defaultMode.occlusionFadeEnabled === true
+      ? defaultMode.surfaceTransparent === true
+      : defaultMode.surfaceTransparent === false,
+    defaultNoResolverHardHidden: defaultMode.spawned.every(({ raw }) => raw?.className !== 'opaque-hidden'),
+    defaultSpawnedVisible,
+    seeThroughSurfaceReadable: seeThroughMode.surfaceOpacity === 0.05,
+    seeThroughSurfaceTransparent: seeThroughMode.surfaceTransparent === true,
+    seeThroughSurfaceDoesNotDepthWrite: seeThroughMode.surfaceDepthWrite === false,
+    seeThroughNoOpaqueHidden: seeThroughMode.spawned.every(({ raw }) => raw?.className !== 'opaque-hidden'),
+    seeThroughOccludedEnemyDimReadable: seeThroughDimReadable,
+    noCriticalPageErrors: criticalPageErrors.length === 0,
+  };
+  return {
+    passed: Object.values(checks).every(Boolean),
+    checks,
+    surface,
+    defaultMode,
+    seeThroughMode,
+    pageErrors,
+    criticalPageErrors,
+    timestamp: new Date().toISOString(),
+  };
 }
 
 async function main() {
@@ -138,59 +190,46 @@ async function main() {
   const browser = await puppeteer.launch(launchOptions);
   const page = await browser.newPage();
   await page.setViewport({ width: 800, height: 600 });
-  const pageErrors = [];
-  page.on('pageerror', (error) => pageErrors.push(error.message));
-  page.on('console', (message) => {
-    if (message.type() === 'error') pageErrors.push(message.text());
-  });
+  const allReports = [];
 
   try {
-    const defaultMode = await runMode(page, 'default');
-    const seeThroughMode = await runMode(page, 'see-through');
-    const criticalPageErrors = pageErrors.filter((error) => !/Failed to load resource: the server responded with a status of 404/.test(error));
-    const checks = {
-      defaultSurfaceOpaque: defaultMode.surfaceOpacity === 1,
-      defaultOcclusionFadeDisabledOnVisibleCubeFace: defaultMode.occlusionFadeEnabled === false,
-      defaultVisibleCubeFacesRendered: defaultMode.spawned
-        .filter(({ role }) => role !== 'opposite-face')
-        .every(({ enemy, raw }) => (
-          raw?.className === 'direct'
-          && raw?.visibility === 1
-          && (enemy?.opacity ?? 0) > 0
-          && (enemy?.instanceColorBrightness ?? 0) > 0.3
-          && (enemy?.instanceMatrixScale ?? 0) > 0
-        )),
-      defaultOppositeEnemyHidden: defaultMode.spawned.some(({ role, enemy, raw }) => (
-        role === 'opposite-face'
-        && raw?.className === 'opaque-hidden'
-        && (enemy?.opacity ?? 1) === 0
-      )),
-      seeThroughSurfaceReadable: seeThroughMode.surfaceOpacity === 0.05,
-      seeThroughNoOpaqueHidden: seeThroughMode.spawned.every(({ raw }) => raw?.className !== 'opaque-hidden'),
-      seeThroughOccludedEnemyDimReadable: seeThroughMode.spawned.some(({ enemy, raw }) => (
-        raw?.className !== 'direct'
-        && (enemy?.opacity ?? 0) > 0
-        && (enemy?.instanceColorBrightness ?? 0) >= 0.3
-      )),
-      noCriticalPageErrors: criticalPageErrors.length === 0,
-    };
-    const passed = Object.values(checks).every(Boolean);
-    const report = {
+    for (const surface of surfaces) {
+      const pageErrors = [];
+      const onPageError = (error) => pageErrors.push(error.message);
+      const onConsole = (message) => {
+        if (message.type() === 'error') pageErrors.push(message.text());
+      };
+      page.on('pageerror', onPageError);
+      page.on('console', onConsole);
+      const defaultMode = await runMode(page, surface, 'default');
+      const seeThroughMode = await runMode(page, surface, 'see-through');
+      page.off('pageerror', onPageError);
+      page.off('console', onConsole);
+
+      const report = evaluateChecks(surface, defaultMode, seeThroughMode, pageErrors);
+      allReports.push(report);
+      console.log(`${report.passed ? 'PASS' : 'FAIL'} ${surface}`);
+      if (!report.passed) {
+        console.log(JSON.stringify({
+          surface,
+          checks: report.checks,
+          defaultMode,
+          seeThroughMode,
+          criticalPageErrors: report.criticalPageErrors,
+        }, null, 2));
+      }
+    }
+
+    const passed = allReports.every((report) => report.passed);
+    const reportPath = resolve(REPORTS_DIR, `surface-opacity-mode-${surfaces.join('_')}-${runDate}.json`);
+    writeFileSync(reportPath, JSON.stringify({
       passed,
-      checks,
-      surface,
-      defaultMode,
-      seeThroughMode,
-      pageErrors,
-      criticalPageErrors,
+      surfaces,
+      reports: allReports,
       timestamp: new Date().toISOString(),
-    };
-    const reportPath = resolve(REPORTS_DIR, `surface-opacity-mode-${surface}-${runDate}.json`);
-    writeFileSync(reportPath, JSON.stringify(report, null, 2));
-    console.log(`${passed ? 'PASS' : 'FAIL'} ${surface}`);
+    }, null, 2));
     console.log(`Report: ${reportPath}`);
     if (!passed) {
-      console.log(JSON.stringify({ checks, defaultMode, seeThroughMode, criticalPageErrors }, null, 2));
       process.exitCode = 1;
     }
   } finally {

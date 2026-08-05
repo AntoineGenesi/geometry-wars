@@ -78,6 +78,7 @@ export class RenderLoop {
     // camera and player. Leaving this enabled on visible opaque faces creates a
     // dark corridor patch around the player.
     const occlusionMat = ctx.surface.mesh.material as OcclusionSurfaceMaterial;
+    ctx.surface.setSurfaceOpaqueDepthMode(this._opaqueSurfaces, ctx.state.isCurrentlyBlocked);
     occlusionMat.setOcclusionParams(camPos, playerPos, ctx.state.isCurrentlyBlocked);
     const gridMat = ctx.surface.gridMesh.material as THREE.LineBasicMaterial;
     gridMat.opacity = ctx.state.currentGridOpacity;

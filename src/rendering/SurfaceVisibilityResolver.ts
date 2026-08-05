@@ -9,8 +9,6 @@ export const SURFACE_VISIBILITY_DEFAULT_MIN_BRIGHTNESS = 0.35;
 
 const HARD_EDGE_COSINE = Math.cos(THREE.MathUtils.degToRad(50));
 const LONG_PATH_RATIO = 0.52;
-const OPAQUE_BACKSIDE_RATIO = 0.45;
-const OPAQUE_BACKSIDE_NORMAL_DOT = -0.45;
 const MAX_CACHED_FIELDS = 6;
 const LARGE_ENEMY_RADIUS = 1.1;
 const DISTANCE_EPSILON = 1e-7;
@@ -187,17 +185,15 @@ export class SurfaceVisibilityResolver {
     const longPath = !reachable || ratio >= LONG_PATH_RATIO;
 
     if (options.opaqueSurfaces) {
-      const normalDot = reachable
-        ? this.faceNormals[playerFace]?.dot(this.faceNormals[entityFace]) ?? 1
-        : -1;
-      const backSide = !reachable
-        || (ratio >= OPAQUE_BACKSIDE_RATIO && normalDot <= OPAQUE_BACKSIDE_NORMAL_DOT);
-
-      if (backSide) {
+      if (!reachable) {
         return this.result('opaque-hidden', 0, true, playerFace, entityFace,
           topologyDistance, ratio, hardEdgeCrossings);
       }
 
+      // Opaque surface mode now relies on the surface material's depth write to
+      // hide genuinely blocked geometry. Do not use global topology ratio or
+      // face-normal thresholds as a hard enemy opacity cutoff; those thresholds
+      // caused cross-surface pop-in on curved, tunnel, and non-orientable maps.
       return this.result('direct', SURFACE_VISIBILITY_DIRECT, false, playerFace, entityFace,
         topologyDistance, ratio, hardEdgeCrossings);
     }
