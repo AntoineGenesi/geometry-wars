@@ -24,6 +24,12 @@ const _tempSurfacePathDir = new THREE.Vector3();
 const _tempPullLocalTarget = new THREE.Vector3();
 const _tempPullTangent = new THREE.Vector3();
 const _tempPullSpiral = new THREE.Vector3();
+const _tempPreMovePos = new THREE.Vector3();
+const DAMAGE_AGGRO_NATURAL_SPEED_TYPES = new Set([
+  'grunt',
+  'approach_glow',
+  'stealth_stalker',
+]);
 
 export abstract class BaseEnemy extends Entity {
   static readonly DAMAGE_AGGRO_DURATION = 4;
@@ -103,6 +109,17 @@ export abstract class BaseEnemy extends Entity {
    * Set by EnemySpawner. May be tuned per-surface in the future.
    */
   walkerSpeedScale: number = 30;
+
+  /** Last commanded movement speed in world units/sec, exposed for live pressure proof. */
+  lastCommandedWorldSpeed: number = 0;
+  /** Last actual movement speed after MeshWalker projection, in world units/sec. */
+  lastActualWorldSpeed: number = 0;
+  /** Last world-space distance to the current player target. */
+  lastDistanceToPlayer: number = 0;
+  /** Whether this frame used the damage-aggro steering override. */
+  lastDamageAggroActive: boolean = false;
+  /** Whether this frame used mesh-walker or legacy UV movement. */
+  lastMovementMode: 'walker' | 'uv' = 'uv';
 
   /**
    * Extra THREE.Object3D roots that were added to the scene alongside `mesh`.
@@ -627,6 +644,11 @@ export abstract class BaseEnemy extends Entity {
     return _tempSurfacePathDir.multiplyScalar(speed / pathLen);
   }
 
+  private shouldCapDamageAggroToNaturalSpeed(): boolean {
+    const type = this.baseTypeName || this.constructor.name.toLowerCase();
+    return DAMAGE_AGGRO_NATURAL_SPEED_TYPES.has(type);
+  }
+
   update(dt: number): void {
     if (!this.alive) return;
     this._behaviorTime += dt;
@@ -648,14 +670,37 @@ export abstract class BaseEnemy extends Entity {
       if (typeof window !== 'undefined' && (window as any).__debugEnemyUV) {
         console.log(`[Enemy ${this.constructor.name}] Entering walker mode, walker exists:`, !!this.walker);
       }
+      this.lastMovementMode = 'walker';
+      this.lastDamageAggroActive = this.isDamageAggroActive();
+      this.lastDistanceToPlayer = this._playerWorldPos.distanceTo(this.walker.position);
+      this.lastCommandedWorldSpeed = 0;
+      this.lastActualWorldSpeed = 0;
+      _tempPreMovePos.copy(this.walker.position);
+
+      const capAggroToNaturalSpeed = this.lastDamageAggroActive && this.shouldCapDamageAggroToNaturalSpeed();
       // Enemy computes world-space velocity; walker handles surface-constrained movement.
-      const velocity = this.isDamageAggroActive()
-        ? _tempSurfacePathDir.copy(this._playerWorldPos).sub(this.walker.position)
-          .normalize().multiplyScalar(this.speed * this.walkerSpeedScale)
-        : this.computeMovementDirection(effectiveDt, this._playerWorldPos);
+      // For specific early chasers, damage aggro should retarget without turning their
+      // high legacy constructor speed into a faster-than-player magnet. Leave phase/timer
+      // enemies on the old raw aggro path because their movement methods are stateful.
+      const naturalVelocity = !this.lastDamageAggroActive || capAggroToNaturalSpeed
+        ? this.computeMovementDirection(effectiveDt, this._playerWorldPos)
+        : null;
+      const velocity = this.lastDamageAggroActive
+        ? (() => {
+          const aggroDir = _tempSurfacePathDir.copy(this._playerWorldPos).sub(this.walker!.position);
+          if (aggroDir.lengthSq() <= 0.0001) return null;
+          const rawAggroSpeed = this.speed * this.walkerSpeedScale;
+          const naturalSpeed = capAggroToNaturalSpeed ? naturalVelocity?.length() ?? 0 : 0;
+          const aggroSpeed = capAggroToNaturalSpeed && naturalSpeed > 0.0001
+            ? Math.min(rawAggroSpeed, naturalSpeed)
+            : rawAggroSpeed;
+          return aggroDir.normalize().multiplyScalar(aggroSpeed);
+        })()
+        : naturalVelocity;
       if (velocity && velocity.lengthSq() > 0.0001) {
         const movementVelocity = this.applyOppositeWallSurfacePath(velocity);
         const speed = movementVelocity.length();
+        this.lastCommandedWorldSpeed = speed;
         this.walker.speed = speed;
         _tempMoveDir.copy(movementVelocity).multiplyScalar(1 / speed); // normalize without alloc
         this.walker.move(_tempMoveDir, effectiveDt);
@@ -663,6 +708,9 @@ export abstract class BaseEnemy extends Entity {
 
       // Sync world position from walker
       this.position.copy(this.walker.position);
+      if (effectiveDt > 0) {
+        this.lastActualWorldSpeed = _tempPreMovePos.distanceTo(this.walker.position) / effectiveDt;
+      }
 
       // Bridge: derive UV coordinates for backward compatibility
       // (separation, DDA, gate pass-through, collision, etc. still use UV)
@@ -681,6 +729,10 @@ export abstract class BaseEnemy extends Entity {
       profiler.end('enemy_walker_mode');
     } else {
       // ===== UV MODE (existing) =====
+      this.lastMovementMode = 'uv';
+      this.lastDamageAggroActive = this.isDamageAggroActive();
+      this.lastCommandedWorldSpeed = 0;
+      this.lastActualWorldSpeed = 0;
       if (typeof window !== 'undefined' && (window as any).__debugEnemyUV) {
         console.log(`[Enemy ${this.constructor.name}] Using UV mode (no walker)`);
       }

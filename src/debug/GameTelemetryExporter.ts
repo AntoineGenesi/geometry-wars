@@ -62,6 +62,13 @@ export class GameTelemetryExporter {
       difficultyTierName: string;
       isAlive: boolean;
       opacity: number;
+      movementMode: 'walker' | 'uv';
+      commandedWorldSpeed: number;
+      actualWorldSpeed: number;
+      damageAggroActive: boolean;
+      ghostForPlayer: boolean;
+      materializing: boolean;
+      walkerFaceIndex: number | null;
     }> = [];
 
     for (const enemy of enemies) {
@@ -115,6 +122,13 @@ export class GameTelemetryExporter {
         difficultyTierName: enemy.difficultyTier?.name ?? 'Normal',
         isAlive: enemy.alive,
         opacity,
+        movementMode: enemy.lastMovementMode,
+        commandedWorldSpeed: enemy.lastCommandedWorldSpeed,
+        actualWorldSpeed: enemy.lastActualWorldSpeed,
+        damageAggroActive: enemy.lastDamageAggroActive,
+        ghostForPlayer: enemy.isGhostForPlayer,
+        materializing: enemy.isMaterializing,
+        walkerFaceIndex: enemy.walker?.faceIndex ?? null,
       });
     }
 
