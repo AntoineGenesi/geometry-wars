@@ -258,6 +258,8 @@ export interface GameEvent {
 const MAX_GAME_EVENTS = 2000;
 const PVE_COMBO_WINDOW_SECONDS = 1.5;
 const PVE_COMBO_MIN_KILLS = 3;
+const PVE_STREAK_MIN_KILLS = 5;
+const PVE_STREAK_MARKER_STEP = 5;
 
 /** Legacy format for backwards compatibility. */
 interface LegacyDataPoint {
@@ -353,6 +355,8 @@ export class PerformanceLogger {
     count: number;
     enemyTypes: Map<string, number>;
   } | null = null;
+  private currentPveKillStreak = 0;
+  private lastPveStreakMarker = 0;
 
   // Frame spike tracking
   private readonly spikeEvents: FrameSpikeEvent[] = [];
@@ -900,6 +904,31 @@ export class PerformanceLogger {
     });
   }
 
+  private recordPveKillStreakAtElapsed(elapsed: number): void {
+    this.currentPveKillStreak++;
+    const count = this.currentPveKillStreak;
+    const shouldMark =
+      count >= PVE_STREAK_MIN_KILLS &&
+      (
+        this.lastPveStreakMarker === 0 ||
+        count - this.lastPveStreakMarker >= PVE_STREAK_MARKER_STEP
+      );
+
+    if (!shouldMark) return;
+    this.lastPveStreakMarker = count;
+    this.pushGameEvent({
+      time: elapsed,
+      type: 'kill_streak',
+      label: `${count}-kill streak`,
+      value: count,
+    });
+  }
+
+  private resetPveKillStreak(): void {
+    this.currentPveKillStreak = 0;
+    this.lastPveStreakMarker = 0;
+  }
+
   /**
    * Record a discrete game event (kill, wave start, death, pickup, streak).
    * Used to populate score graph markers on the post-game screen.
@@ -915,6 +944,12 @@ export class PerformanceLogger {
     const elapsed = (Date.now() - this.sessionStart) / 1000;
     if (type === 'kill') {
       this.recordPveKillForCombo(label, elapsed);
+      this.pushGameEvent({ time: elapsed, type, label, value, metadata });
+      this.recordPveKillStreakAtElapsed(elapsed);
+      return;
+    } else if (type === 'player_death') {
+      this.flushActivePveCombo();
+      this.resetPveKillStreak();
     } else if (type !== 'kill_streak') {
       this.flushActivePveCombo();
     }
@@ -941,6 +976,12 @@ export class PerformanceLogger {
     const normalizedElapsed = Math.max(0, elapsed);
     if (type === 'kill') {
       this.recordPveKillForCombo(label, normalizedElapsed);
+      this.pushGameEvent({ time: normalizedElapsed, type, label, value, metadata });
+      this.recordPveKillStreakAtElapsed(normalizedElapsed);
+      return;
+    } else if (type === 'player_death') {
+      this.flushActivePveCombo();
+      this.resetPveKillStreak();
     } else if (type !== 'kill_streak') {
       this.flushActivePveCombo();
     }
@@ -1272,19 +1313,6 @@ export class PerformanceLogger {
     const killsDelta = this.currentKills - this.lastSampleKills;
     point.killsThisSample = killsDelta;
     this.lastSampleKills = this.currentKills;
-
-    // Detect multi-kills: 2+ kills in a single 500ms sample window
-    if (killsDelta >= 2) {
-      const streakLabel = killsDelta === 2 ? 'Double Kill'
-        : killsDelta === 3 ? 'Triple Kill'
-        : killsDelta === 4 ? 'Quad Kill'
-        : `${killsDelta}-Kill Streak`;
-      if (elapsedOverride !== undefined) {
-        this.recordEventAtElapsedForReview(elapsed, 'kill_streak', streakLabel, killsDelta);
-      } else {
-        this.recordEvent('kill_streak', streakLabel, killsDelta);
-      }
-    }
 
     // Track gameplay peaks
     if (killsDelta > this.peakKillRate) this.peakKillRate = killsDelta;

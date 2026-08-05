@@ -65,7 +65,7 @@ const BUFF_COLORS: Record<string, string> = {
 };
 
 // Enemy type display names (keys match EnemyType from EnemySpawner)
-const ENEMY_DISPLAY: Record<string, string> = {
+export const ENEMY_DISPLAY: Record<string, string> = {
   wanderer: 'Wanderer',
   grunt: 'Grunt',
   duck: 'Duck',
@@ -294,12 +294,20 @@ export class AnalyticsPanel {
         justify-content: center;
         position: relative;
       }
+      #analytics-panel .ap-enemy-preview-rotating {
+        overflow: hidden;
+      }
       #analytics-panel .ap-enemy-preview-img {
         width: 44px;
         height: 44px;
         object-fit: contain;
         filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.45));
-        animation: ap-enemy-float 2.6s ease-in-out infinite;
+      }
+      #analytics-panel .ap-enemy-preview-frame {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        animation: ap-enemy-rotate 2.4s steps(1, end) infinite;
       }
       #analytics-panel .ap-enemy-preview-fallback {
         width: 26px;
@@ -307,9 +315,9 @@ export class AnalyticsPanel {
         border: 2px solid;
         transform: rotate(45deg);
       }
-      @keyframes ap-enemy-float {
-        0%, 100% { transform: translateY(1px); }
-        50% { transform: translateY(-3px); }
+      @keyframes ap-enemy-rotate {
+        0%, 12.49% { opacity: 1; transform: translateY(1px); }
+        12.5%, 100% { opacity: 0; transform: translateY(-1px); }
       }
       #analytics-panel .ap-kill-name {
         min-width: 0;
