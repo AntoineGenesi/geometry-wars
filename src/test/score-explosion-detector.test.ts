@@ -132,4 +132,21 @@ describe('ScoreExplosionDetector', () => {
     const bonus = strict.update(35_000, 10); // 3.5x in 10s → surge
     expect(bonus).toBeGreaterThan(0);
   });
+
+  it('does not surge on the reported 770K display score when the raw DDA score is flat', () => {
+    const rawDetector = new ScoreExplosionDetector();
+    const multipliedDetector = new ScoreExplosionDetector();
+
+    const rawPath = [
+      rawDetector.update(40_000, 0),
+      rawDetector.update(40_000, 5),
+    ];
+    const multipliedPath = [
+      multipliedDetector.update(40_000, 0),
+      multipliedDetector.update(770_000, 5),
+    ];
+
+    expect(multipliedPath[1]).toBeGreaterThan(0);
+    expect(rawPath).toEqual([0, 0]);
+  });
 });

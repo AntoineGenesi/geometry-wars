@@ -1170,6 +1170,8 @@ async function main(selectedSurface?: SurfaceType, startLevelIndex = 0, customMe
   // Wire difficulty scaling into wave scheduler (reads player state each wave)
   waveScheduler.getDifficultyInput = () => ({
     score: player.score,
+    rawScore: scoreManager.getRawKillScore(),
+    multipliedScore: player.score,
     elapsedTime: 0, // overridden inside WaveScheduler.update()
     combo: scoreManager.combo,
     totalKills: playerLevel.totalKills,
