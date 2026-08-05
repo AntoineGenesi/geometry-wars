@@ -96,6 +96,13 @@ function sphereProject(pos: THREE.Vector3, radius: number): THREE.Vector3 {
   return len > 0.01 ? pos.clone().multiplyScalar(radius / len) : pos.clone();
 }
 
+function blackHolePathPoint(distance: number): THREE.Vector3 {
+  return sphereProject(
+    origin().clone().add(forward().clone().multiplyScalar(distance)),
+    origin().length(),
+  );
+}
+
 function createActiveUpgradeTracker(nodeIds: string[]): MatchUpgradeTracker {
   return {
     getActiveUpgrades: (weaponType: WeaponType) => new Set(
@@ -753,23 +760,63 @@ describe('WeaponManager', () => {
       manager.equipWeapon(WeaponType.BlackHole, 5);
     });
 
-    it('should create a black hole effect', () => {
+    it('fires a travelling bolt before creating a black hole field', () => {
       manager.fire(origin(), forward(), T);
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(1);
+      expect(manager['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(0);
       expect(manager.projectileRoot.children.length).toBe(1);
     });
 
+    it('expires on a miss without placing the impact field', () => {
+      manager.fire(origin(), forward(), T);
+
+      manager.update(1.25);
+
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(0);
+      expect(manager['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(0);
+      expect(manager.projectileRoot.children.length).toBe(0);
+    });
+
+    it('direct hits bloom into a temporary black hole at impact', () => {
+      const enemy: MockEnemy = { position: blackHolePathPoint(0.2), index: 0, alive: true };
+      mock = createMockCallbacks([enemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      manager.update(0.05);
+
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(0);
+      const effects = manager['activeEffects'].filter(e => e.type === 'blackhole');
+      expect(effects).toHaveLength(1);
+      expect(effects[0].position.distanceTo(enemy.position)).toBeLessThan(0.4);
+    });
+
+    it('pulls near-line enemies during travel without counting them as direct hits', () => {
+      const nearLineEnemy: MockEnemy = {
+        position: blackHolePathPoint(0.45).add(new THREE.Vector3(0, 1.0, 0)),
+        index: 0, alive: true,
+      };
+
+      mock = createMockCallbacks([nearLineEnemy]);
+      manager.setCallbacks(mock.callbacks);
+
+      manager.fire(origin(), forward(), T);
+      manager.update(0.1);
+
+      expect(mock.pulls.length).toBeGreaterThan(0);
+      expect(manager['projectiles'].filter(p => p.type === WeaponType.BlackHole)).toHaveLength(1);
+      expect(manager['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(0);
+    });
+
     it('deals cadence-based field damage at center without a 999 kill', () => {
-      // Compute where the BH will land (origin + 4*forward, projected to sphere)
-      const bhPos = sphereProject(
-        origin().clone().add(forward().clone().multiplyScalar(4)),
-        origin().length(),
-      );
+      const bhPos = blackHolePathPoint(0.2);
       const enemy: MockEnemy = { position: bhPos.clone(), index: 0, alive: true };
 
       mock = createMockCallbacks([enemy]);
       manager.setCallbacks(mock.callbacks);
 
       manager.fire(origin(), forward(), T);
+      manager.update(0.05);
       manager.update(0.51);
 
       expect(mock.damages.some(d => d.damage === 999)).toBe(false);
@@ -777,10 +824,7 @@ describe('WeaponManager', () => {
     });
 
     it('should pull nearby enemies', () => {
-      const bhPos = sphereProject(
-        origin().clone().add(forward().clone().multiplyScalar(4)),
-        origin().length(),
-      );
+      const bhPos = blackHolePathPoint(0.2);
       // Place enemy 1 unit away from BH center (within radius, but > 0.5 for pull)
       const nearbyEnemy: MockEnemy = {
         position: bhPos.clone().add(new THREE.Vector3(0, 1, 0)),
@@ -792,27 +836,33 @@ describe('WeaponManager', () => {
 
       manager.fire(origin(), forward(), T);
       manager.update(0.05);
+      manager.update(0.05);
 
       expect(mock.pulls.length).toBeGreaterThan(0);
     });
 
-    it('should expire after 3 seconds', () => {
+    it('impact field should expire after 3 seconds', () => {
+      const enemy: MockEnemy = { position: blackHolePathPoint(0.2), index: 0, alive: true };
+      mock = createMockCallbacks([enemy]);
+      manager.setCallbacks(mock.callbacks);
+
       manager.fire(origin(), forward(), T);
       expect(manager.projectileRoot.children.length).toBe(1);
+
+      manager.update(0.05);
+      expect(manager['activeEffects'].filter(e => e.type === 'blackhole')).toHaveLength(1);
 
       manager.update(3.1);
       expect(manager.projectileRoot.children.length).toBe(0);
     });
 
     it('uses a modest collapse hit and disposes all visual children', () => {
-      const bhPos = sphereProject(
-        origin().clone().add(forward().clone().multiplyScalar(4)),
-        origin().length(),
-      );
+      const bhPos = blackHolePathPoint(0.2);
       const enemy: MockEnemy = { position: bhPos.clone(), index: 0, alive: true };
       mock = createMockCallbacks([enemy]);
       manager.setCallbacks(mock.callbacks);
       manager.fire(origin(), forward(), T);
+      manager.update(0.05);
       manager.update(3.01);
 
       expect(mock.damages.some(d => d.damage === 8)).toBe(true);
@@ -821,10 +871,7 @@ describe('WeaponManager', () => {
     });
 
     it('passes stable target identity to every callback in one effect tick', () => {
-      const bhPos = sphereProject(
-        origin().clone().add(forward().clone().multiplyScalar(4)),
-        origin().length(),
-      );
+      const bhPos = blackHolePathPoint(0.2);
       const firstId = {};
       const secondId = {};
       const enemies: MockEnemy[] = [
@@ -834,11 +881,12 @@ describe('WeaponManager', () => {
       mock = createMockCallbacks(enemies);
       manager.setCallbacks(mock.callbacks);
       manager.fire(origin(), forward(), T);
+      manager.update(0.05);
       manager.update(0.51);
 
       expect(mock.damages.map(d => d.targetId)).toEqual([firstId, secondId]);
-      expect(mock.pulls.map(p => p.targetId)).toEqual([firstId, secondId]);
-      expect(mock.pulls.every(p => p.dt === 0.51)).toBe(true);
+      const fieldPulls = mock.pulls.filter(p => p.dt === 0.51);
+      expect(fieldPulls.map(p => p.targetId)).toEqual([firstId, secondId]);
     });
   });
 
@@ -1454,10 +1502,13 @@ describe('WeaponManager LAN visual-only mode', () => {
       tracker['activateNode']('black_hole_a_1', WeaponType.BlackHole);
       const wm2 = new WeaponManager();
       wm2.setUpgradeTracker(tracker);
-      const { callbacks } = createMockCallbacks();
+      const { callbacks } = createMockCallbacks([
+        { position: blackHolePathPoint(0.2), index: 0, alive: true },
+      ]);
       wm2.setCallbacks(callbacks);
       wm2.equipWeapon(WeaponType.BlackHole, 5);
       wm2.fire(origin(), forward(), T);
+      wm2.update(0.05);
       const effect = wm2['activeEffects'].find(e => e.type === 'blackhole');
       expect(effect).toBeDefined();
       expect(effect!.duration).toBeCloseTo(3.0 * 1.30, 3);
@@ -1609,7 +1660,9 @@ describe('WeaponManager LAN visual-only mode', () => {
     });
 
     it('black_hole_ar_4: +200% duration bonus and 40% larger pull radius', () => {
-      const { callbacks } = createMockCallbacks();
+      const { callbacks } = createMockCallbacks([
+        { position: blackHolePathPoint(0.2), index: 0, alive: true },
+      ]);
       const wm2 = new WeaponManager();
       const tracker = makeTracker([]);
       directActivate(tracker, 'black_hole_ar_4', WeaponType.BlackHole);
@@ -1617,6 +1670,7 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.setCallbacks(callbacks);
       wm2.equipWeapon(WeaponType.BlackHole, 5);
       wm2.fire(origin(), forward(), T);
+      wm2.update(0.05);
       const effect = wm2['activeEffects'].find(e => e.type === 'blackhole');
       expect(effect).toBeDefined();
       // Base 3.0 * (1 + 2.0) = 9.0
@@ -1625,7 +1679,9 @@ describe('WeaponManager LAN visual-only mode', () => {
     });
 
     it('black_hole_ar_5: eternal collapse — duration is 999 and isEternalCollapse flag set', () => {
-      const { callbacks } = createMockCallbacks();
+      const { callbacks } = createMockCallbacks([
+        { position: blackHolePathPoint(0.2), index: 0, alive: true },
+      ]);
       const wm2 = new WeaponManager();
       const tracker = makeTracker([]);
       directActivate(tracker, 'black_hole_ar_5', WeaponType.BlackHole);
@@ -1633,6 +1689,7 @@ describe('WeaponManager LAN visual-only mode', () => {
       wm2.setCallbacks(callbacks);
       wm2.equipWeapon(WeaponType.BlackHole, 5);
       wm2.fire(origin(), forward(), T);
+      wm2.update(0.05);
       const effect = wm2['activeEffects'].find(e => e.type === 'blackhole');
       expect(effect).toBeDefined();
       expect(effect!.duration).toBe(999.0);
@@ -1644,12 +1701,9 @@ describe('WeaponManager LAN visual-only mode', () => {
     });
 
     it('black_hole_ar_5: latches collapse after targets leave and removes visual after collapse interval', () => {
-      const bhPos = sphereProject(
-        origin().clone().add(forward().clone().multiplyScalar(4)),
-        origin().length(),
-      );
+      const bhPos = blackHolePathPoint(0.2);
       const enemy: MockEnemy = {
-        position: bhPos.clone().add(new THREE.Vector3(0, 0.5, 0)),
+        position: bhPos.clone(),
         index: 0,
         alive: true,
         targetId: 'returning-target',

@@ -57,7 +57,7 @@ export const WEAPON_CONFIGS: Record<WeaponType, WeaponConfig> = {
   [WeaponType.PlasmaMortar]: weaponConfig(WeaponType.PlasmaMortar, 'Plasma Mortar', 0x44ff44, 1.0, 'Devastating AoE explosion on impact'),
   [WeaponType.GravityGun]: weaponConfig(WeaponType.GravityGun, 'Gravity Gun', 0x8844ff, 1.0, 'Pulls enemies together'),
   [WeaponType.LaserBeam]: weaponConfig(WeaponType.LaserBeam, 'Laser Beam', 0xff0000, 0, 'Sustained high-damage beam'),
-  [WeaponType.BlackHole]: weaponConfig(WeaponType.BlackHole, 'Black Hole', 0x220044, 0.4, 'Vortex that destroys everything'),
+  [WeaponType.BlackHole]: weaponConfig(WeaponType.BlackHole, 'Black Hole', 0x220044, 5.5, 'Travelling vortex bolt that blooms on impact'),
   [WeaponType.TeslaCoil]: weaponConfig(WeaponType.TeslaCoil, 'Tesla Coil', 0x88aaff, 0, 'Damages all nearby enemies'),
 };
 

@@ -76,8 +76,10 @@ const scenarios = [
     enemy: { u: 0.5, v: 0.47 },
     preFireWaitMs: 3600,
     waitMs: 1400,
-    selectedEvidence: (fire) => fire.firedIndicators.includes('selected_effect_active:blackhole'),
+    selectedEvidence: (fire) => fire.firedIndicators.includes('selected_projectile_active:black_hole')
+      || fire.firedIndicators.includes('selected_effect_active:blackhole'),
     presenceSummary: (fire) => ({
+      projectilesAfterFire: fire.runtimeAfter.projectiles.filter((projectile) => projectile.type === 'black_hole'),
       effectsAfterFire: fire.runtimeAfter.effects.filter((effect) => effect.type === 'blackhole'),
     }),
   },
