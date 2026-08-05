@@ -26,6 +26,7 @@ function makeRoomForKillPath() {
       enemies: any[];
     };
     enemyAI: Map<string, unknown>;
+    enemyWalkers: Map<string, unknown>;
     playerUpgradeKillCounts: Map<string, Map<string, number>>;
     playerActiveUpgradeNodes: Map<string, Map<string, Set<string>>>;
     logger: { log: ReturnType<typeof vi.fn> };
@@ -55,6 +56,7 @@ function makeRoomForKillPath() {
     enemies: [],
   };
   room.enemyAI = new Map();
+  room.enemyWalkers = new Map();
   room.playerUpgradeKillCounts = new Map();
   room.playerActiveUpgradeNodes = new Map();
   room.logger = { log: vi.fn() };
@@ -156,12 +158,23 @@ describe('MP upgrade activation validation', () => {
     });
   });
 
-  it('rejects excluded/conflicting activations', () => {
+  it('rejects unsupported Standard upper-tier activations after conflict cleanup', () => {
     expect(validate({
       nodeId: 'standard_ar_5',
       weaponType: WeaponType.Standard,
       unlockedNodeIds: ['standard_ar_5'],
     }, ['standard_a_4', 'standard_al_5'], 120)).toMatchObject({
+      accepted: false,
+      reason: 'unsupported_runtime_effect',
+    });
+  });
+
+  it('still rejects proven Black Hole conflicting activations', () => {
+    expect(validate({
+      nodeId: 'black_hole_ar_4',
+      weaponType: WeaponType.BlackHole,
+      unlockedNodeIds: ['black_hole_ar_4'],
+    }, ['black_hole_a_3', 'black_hole_al_4'], 80)).toMatchObject({
       accepted: false,
       reason: 'excluded',
     });

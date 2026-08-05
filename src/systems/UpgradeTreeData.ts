@@ -222,16 +222,6 @@ export const UPGRADE_TREES: Record<WeaponType, UpgradeTree> = {
       { fromId: 'standard_a_2', toId: 'standard_b_3' },
       { fromId: 'standard_b_2', toId: 'standard_a_3' },
     ],
-    // Mutual exclusion: choosing one sub-branch locks out the other at the same split.
-    // AL (Scatter) vs AR (Rapid Fire) — picking either depth-5 node locks the other sub-branch.
-    // BL (Seeking) vs BR (Devastation) — same pattern on the B side.
-    // Within-depth example: al_7 (Ring shot) vs ar_7 (Machine gun) — redundant given al_5/ar_5,
-    // but included to demonstrate per-depth exclusion granularity.
-    exclusionPairs: [
-      ['standard_al_5', 'standard_ar_5'],
-      ['standard_bl_5', 'standard_br_5'],
-      ['standard_al_7', 'standard_ar_7'],
-    ],
   },
 
   // -------------------------------------------------------------------------

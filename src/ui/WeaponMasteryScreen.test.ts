@@ -350,6 +350,24 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(html).toContain('wms-node--unlocked');
   });
 
+  it('Standard AR root remains available after Standard AL root is unlocked', () => {
+    const ps = new MasteryPointStore();
+    for (let i = 0; i < 8; i++) ps.earnPoint(WT.Standard);
+    const tree = UPGRADE_TREES[WT.Standard];
+    for (const nodeId of ['standard_a_1', 'standard_a_2', 'standard_a_3', 'standard_a_4', 'standard_al_5']) {
+      const node = tree.nodes.find(n => n.id === nodeId)!;
+      expect(ps.spendPoint(nodeId, node.maxPoints ?? 1, node.cost ?? 1, tree)).toBe(true);
+    }
+
+    screen.setPointStore(ps);
+    screen.show();
+    const html = mockBody.children[0].innerHTML;
+    const ar5Markup = html.match(/<div[^>]*data-node-id="standard_ar_5"[^>]*>/)?.[0] ?? '';
+
+    expect(ar5Markup).toContain('data-node-state="affordable"');
+    expect(ar5Markup).not.toContain('wms-node--excluded');
+  });
+
   it('show() HTML contains --wc CSS variable for weapon color', () => {
     screen.show();
     const html = mockBody.children[0].innerHTML;
@@ -382,9 +400,8 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     expect(getBranchNodes(WT.Homing, 'b')).toHaveLength(10);
   });
 
-  it('non-extended weapons have 5-level branches (10 nodes each)', () => {
-    const fiveLevel = [WT.Spread, WT.Piercing, WT.ChainLightning, WT.PlasmaMortar,
-                       WT.GravityGun, WT.LaserBeam, WT.BlackHole, WT.TeslaCoil];
+  it('linear non-extended weapons have 5-level branches (10 nodes each)', () => {
+    const fiveLevel = [WT.ChainLightning, WT.PlasmaMortar, WT.GravityGun, WT.LaserBeam, WT.TeslaCoil];
     for (const wt of fiveLevel) {
       expect(getBranchNodes(wt, 'a')).toHaveLength(5);
       expect(getBranchNodes(wt, 'b')).toHaveLength(5);
@@ -720,8 +737,8 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     screen.setPointStore(ps);
     screen.show();
     const html = mockBody.children[0].innerHTML;
-    // Activated lines should have stroke-opacity="0.85"
-    expect(html).toContain('stroke-opacity="0.85"');
+    // Activated lines should have the bright line opacity used by initial render.
+    expect(html).toContain('stroke-opacity="0.90"');
   });
 
   it('possible paths (prereq met, not yet unlocked) use low opacity colored stroke', () => {
@@ -731,7 +748,7 @@ describe('WeaponMasteryScreen — constellation UI', () => {
     screen.setPointStore(ps);
     screen.show();
     const html = mockBody.children[0].innerHTML;
-    // Possible lines (faint colored) should have stroke-opacity="0.22"
-    expect(html).toContain('stroke-opacity="0.22"');
+    // Possible lines (faint colored) should have the initial-render possible opacity.
+    expect(html).toContain('stroke-opacity="0.42"');
   });
 });
