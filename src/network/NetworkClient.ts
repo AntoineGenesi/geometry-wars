@@ -84,6 +84,22 @@ export interface NetworkBulletState {
   weaponType?: string;
 }
 
+/** Server-owned travelling Black Hole bolt state. */
+export interface NetworkBlackHoleBoltState {
+  id: string;
+  ownerId: string;
+  wx: number; wy: number; wz: number;
+  nx: number; ny: number; nz: number;
+  tx: number; ty: number; tz: number;
+  bx: number; by: number; bz: number;
+  walkerFaceIndex: number;
+  walkerBaryU: number; walkerBaryV: number; walkerBaryW: number;
+  dirX: number; dirY: number; dirZ: number;
+  age: number;
+  maxAge: number;
+  pullRadius: number;
+}
+
 /** Server-owned Black Hole field state. */
 export interface NetworkBlackHoleFieldState {
   id: string;
@@ -178,6 +194,7 @@ export interface ForEachable<T> {
 export interface NetworkGameState {
   players: Map<string, NetworkPlayerState>;
   bullets: ForEachable<NetworkBulletState>;
+  blackHoleBolts?: ForEachable<NetworkBlackHoleBoltState>;
   blackHoleFields?: ForEachable<NetworkBlackHoleFieldState>;
   enemies: ForEachable<NetworkEnemyState>;
   geoms: ForEachable<NetworkGeomState>;
@@ -802,6 +819,7 @@ export class NetworkClient {
     const s = state as {
       players: Map<string, NetworkPlayerState>;
       bullets: ForEachable<NetworkBulletState>;
+      blackHoleBolts: ForEachable<NetworkBlackHoleBoltState>;
       blackHoleFields: ForEachable<NetworkBlackHoleFieldState>;
       enemies: ForEachable<NetworkEnemyState>;
       geoms: ForEachable<NetworkGeomState>;
@@ -870,6 +888,7 @@ export class NetworkClient {
     return {
       players: s.players,
       bullets: s.bullets || emptyArray,
+      blackHoleBolts: s.blackHoleBolts || emptyArray,
       blackHoleFields: s.blackHoleFields || emptyArray,
       enemies: s.enemies || emptyArray,
       geoms: s.geoms || emptyArray,
