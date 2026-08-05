@@ -32,6 +32,12 @@ const GAS_CLOUD_RADIUS = 2.0;
 const GAS_CLOUD_DAMAGE = 3.0;   // per tick
 const GAS_CLOUD_DURATION = 5.0; // seconds
 const GAS_CLOUD_TICK = 0.5;     // seconds between damage ticks
+const BLACK_HOLE_BOLT_MAX_AGE = 1.2;
+const BLACK_HOLE_BOLT_PULL_RADIUS_FACTOR = 0.35;
+const BLACK_HOLE_BOLT_MIN_PULL_RADIUS = 1.25;
+const BLACK_HOLE_BOLT_MAX_PULL_RADIUS = 2.75;
+const BLACK_HOLE_BOLT_PULL_SPEED_FACTOR = 0.7;
+const BLACK_HOLE_BOLT_HIT_RADIUS = 0.35;
 
 // Pre-allocated constant for projectile mesh orientation.
 // Homing cone geometry apex is baked at local +Z (after geo.rotateX(π/2)).
@@ -46,6 +52,7 @@ const _PROJ_CONE_UP = new THREE.Vector3(0, 1, 0);
 export interface Projectile {
   type: WeaponType;
   position: THREE.Vector3;
+  previousPosition?: THREE.Vector3;
   direction: THREE.Vector3;
   age: number;
   maxAge: number;
@@ -285,6 +292,7 @@ export class WeaponManager {
   private projectileMaterials: Map<WeaponType, THREE.Material> = new Map();
   // Distinct material for child (split) projectiles
   private childSpreadMaterial: THREE.MeshBasicMaterial | null = null;
+  private blackHoleBoltHaloMaterial: THREE.MeshBasicMaterial | null = null;
 
   constructor() {
     this.chainLightning = new ChainLightningEffect();
@@ -621,6 +629,19 @@ export class WeaponManager {
       transparent: true,
       opacity: 0.8,
     }));
+
+    this.projectileMaterials.set(WeaponType.BlackHole, new THREE.MeshBasicMaterial({
+      color: 0x140018,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    }));
+    this.blackHoleBoltHaloMaterial = new THREE.MeshBasicMaterial({
+      color: 0xaa44ff,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+    });
 
     // Standard (seeking bolts) - yellow-gold, visually distinct from BulletPool bolts
     this.projectileMaterials.set(WeaponType.Standard, new THREE.MeshBasicMaterial({
@@ -1035,8 +1056,11 @@ export class WeaponManager {
         continue;
       }
 
+      const previousPosition = proj.position.clone();
+
       // Update position based on type
       this.updateProjectile(proj, dt);
+      proj.previousPosition = previousPosition;
 
       // Update mesh position and orientation
       const mesh = this.projectileMeshes.get(proj);
@@ -1065,6 +1089,10 @@ export class WeaponManager {
         // a "suction field" ahead of the projectile. Strength capped at 50% vs full
         // detonation pull to avoid over-powering before the bullet arrives.
         this.applyGravityPull(proj.position, 3.0, true);
+      }
+
+      if (proj.type === WeaponType.BlackHole) {
+        this.applyBlackHoleBoltPull(proj, dt);
       }
 
       // Check for spread pellet split (spawns child projectiles mid-flight)
@@ -2117,80 +2145,88 @@ export class WeaponManager {
   }
 
   private fireBlackHole(origin: THREE.Vector3, direction: THREE.Vector3): void {
-    let targetPos = origin.clone().add(direction.clone().multiplyScalar(4));
-    let targetNormal = targetPos.clone().normalize();
-
-    // Project onto surface
-    if (this.meshSurface) {
-      const result = this.meshSurface.closestPointOnSurface(targetPos);
-      if (result) {
-        targetPos = result.point;
-        targetNormal = result.normal;
-      }
-    } else {
-      // Fallback: project onto sphere
-      const radius = origin.length();
-      if (radius > 0.01) {
-        targetPos.normalize().multiplyScalar(radius);
-      }
-    }
-
     const bhNodes = this.activeUpgradeNodes(WeaponType.BlackHole);
-    const isL5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
-    const blackHoleConfig = createBlackHoleConfig({ activeNodes: bhNodes, masteryLevel5: isL5 });
-
-    // Helper to spawn one black hole at a position
-    const spawnOneBlackHole = (pos: THREE.Vector3): void => {
-      let normal = targetNormal;
-      if (this.meshSurface) {
-        normal = this.meshSurface.closestPointOnSurface(pos)?.normal ?? targetNormal;
-      }
-      const visual = new BlackHoleVisual(pos, normal);
-      this.projectileRoot.add(visual.root);
-      this.activeEffects.push({
-        type: 'blackhole',
-        position: pos.clone(),
-        duration: blackHoleConfig.duration,
-        elapsed: 0,
-        mesh: visual.root,
-        isMasteryL5: isL5,
-        isEternalCollapse: blackHoleConfig.isEternalCollapse,
-        blackHoleConfig,
-        blackHoleVisual: visual,
-        blackHolePhase: 'formation',
-        blackHoleRadius: 0,
-        blackHoleAffectedCount: 0,
-        collapseApplied: false,
-      });
-    };
-
-    spawnOneBlackHole(targetPos);
+    const blackHoleConfig = this.createActiveBlackHoleConfig();
 
     // a_2/a_3 = extra shots: singularity pulse (+1 extra) / triple singularity (+2 extra)
     const extraShots = bhNodes.has('black_hole_a_3') ? 2 :
                        bhNodes.has('black_hole_a_2') ? 1 : 0;
-    for (let i = 0; i < extraShots; i++) {
-      const perpOffset = new THREE.Vector3().crossVectors(direction, targetPos.clone().normalize()).normalize();
-      const offset = (i % 2 === 0 ? 1.2 : -1.2);
-      const extraPos = targetPos.clone().addScaledVector(perpOffset, offset);
-      if (this.meshSurface) {
-        const result = this.meshSurface.closestPointOnSurface(extraPos);
-        if (result) extraPos.copy(result.point);
-      }
-      spawnOneBlackHole(extraPos);
+
+    // al_4/al_5 = twin holes: fire a second bolt slightly offset.
+    const twinBolts = bhNodes.has('black_hole_al_4') || bhNodes.has('black_hole_al_5') ? 1 : 0;
+    const boltCount = 1 + extraShots + twinBolts;
+    const normal = origin.lengthSq() > 0.0001 ? origin.clone().normalize() : new THREE.Vector3(0, 1, 0);
+    let side = new THREE.Vector3().crossVectors(direction, normal);
+    if (side.lengthSq() < 0.0001) {
+      side = new THREE.Vector3().crossVectors(direction, new THREE.Vector3(0, 1, 0));
+    }
+    if (side.lengthSq() < 0.0001) {
+      side.set(1, 0, 0);
+    }
+    side.normalize();
+
+    for (let i = 0; i < boltCount; i++) {
+      const offset = (i - (boltCount - 1) / 2) * 0.45;
+      const boltOrigin = this.projectPointToWeaponSurface(origin.clone().addScaledVector(side, offset));
+      this.createProjectile(
+        WeaponType.BlackHole,
+        boltOrigin,
+        direction.clone(),
+        0,
+        blackHoleConfig.projectileSpeed,
+        BLACK_HOLE_BOLT_MAX_AGE,
+      );
+    }
+  }
+
+  private createActiveBlackHoleConfig(): BlackHoleConfig & { projectileSpeed: number } {
+    const activeNodes = this.activeUpgradeNodes(WeaponType.BlackHole);
+    const masteryLevel5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
+    return {
+      ...createBlackHoleConfig({ activeNodes, masteryLevel5 }),
+      projectileSpeed: WEAPON_CONFIGS[WeaponType.BlackHole].projectileSpeed,
+    };
+  }
+
+  private spawnBlackHoleEffect(position: THREE.Vector3): void {
+    const blackHoleConfig = this.createActiveBlackHoleConfig();
+    const isL5 = this.isMasteryMaxLevel(WeaponType.BlackHole);
+    const point = this.projectPointToWeaponSurface(position);
+    const normal = this.getWeaponSurfaceNormal(point);
+    const visual = new BlackHoleVisual(point, normal);
+    this.projectileRoot.add(visual.root);
+    this.activeEffects.push({
+      type: 'blackhole',
+      position: point.clone(),
+      duration: blackHoleConfig.duration,
+      elapsed: 0,
+      mesh: visual.root,
+      isMasteryL5: isL5,
+      isEternalCollapse: blackHoleConfig.isEternalCollapse,
+      blackHoleConfig,
+      blackHoleVisual: visual,
+      blackHolePhase: 'formation',
+      blackHoleRadius: 0,
+      blackHoleAffectedCount: 0,
+      collapseApplied: false,
+    });
+  }
+
+  private projectPointToWeaponSurface(point: THREE.Vector3): THREE.Vector3 {
+    if (this.meshSurface) {
+      return this.meshSurface.closestPointOnSurface(point)?.point.clone() ?? point;
     }
 
-    // al_4/al_5 = twin holes: spawn a second black hole slightly offset
-    if (bhNodes.has('black_hole_al_4') || bhNodes.has('black_hole_al_5')) {
-      const perpOffset = new THREE.Vector3().crossVectors(direction, targetPos.clone().normalize()).normalize();
-      const secondPos = targetPos.clone().addScaledVector(perpOffset, 1.5);
-      // Project second hole onto surface
-      if (this.meshSurface) {
-        const result = this.meshSurface.closestPointOnSurface(secondPos);
-        if (result) secondPos.copy(result.point);
-      }
-      spawnOneBlackHole(secondPos);
+    const radius = point.length();
+    return radius > 0.01 ? point.clone().multiplyScalar(8 / radius) : point;
+  }
+
+  private getWeaponSurfaceNormal(point: THREE.Vector3): THREE.Vector3 {
+    if (this.meshSurface) {
+      return this.meshSurface.closestPointOnSurface(point)?.normal.clone().normalize()
+        ?? point.clone().normalize();
     }
+    return point.lengthSq() > 0.0001 ? point.clone().normalize() : new THREE.Vector3(0, 1, 0);
   }
 
   private fireTesla(origin: THREE.Vector3): void {
@@ -2309,6 +2345,21 @@ export class WeaponManager {
 
       case WeaponType.GravityGun:
         return new THREE.Mesh(SharedGeometries.gravityProjectile(), material);
+
+      case WeaponType.BlackHole: {
+        const bolt = new THREE.Group();
+        bolt.name = 'BlackHoleBolt';
+        const core = new THREE.Mesh(SharedGeometries.blackholeSphere(), material);
+        core.scale.setScalar(0.58);
+        const halo = new THREE.Mesh(
+          SharedGeometries.gravityProjectile(),
+          this.blackHoleBoltHaloMaterial ?? material,
+        );
+        halo.scale.setScalar(1.35);
+        halo.renderOrder = 25;
+        bolt.add(core, halo);
+        return bolt;
+      }
 
       default:
         return new THREE.Mesh(
@@ -2513,6 +2564,27 @@ export class WeaponManager {
       const onSurfaceDist = proj.position.distanceTo(enemy.position);
       const visualDist = enemy.meshPosition ? proj.position.distanceTo(enemy.meshPosition) : onSurfaceDist;
       const dist = Math.min(onSurfaceDist, visualDist);
+
+      if (proj.type === WeaponType.BlackHole) {
+        const start = proj.previousPosition ?? proj.position;
+        const end = proj.position;
+        const surfaceImpact = closestPointOnSegment(enemy.position, start, end);
+        const surfaceHitDistance = enemy.position.distanceTo(surfaceImpact);
+        const visualImpact = enemy.meshPosition
+          ? closestPointOnSegment(enemy.meshPosition, start, end)
+          : surfaceImpact;
+        const visualHitDistance = enemy.meshPosition
+          ? enemy.meshPosition.distanceTo(visualImpact)
+          : surfaceHitDistance;
+        const hitDistance = Math.min(surfaceHitDistance, visualHitDistance);
+        if (hitDistance < BLACK_HOLE_BOLT_HIT_RADIUS) {
+          this.spawnBlackHoleEffect(surfaceHitDistance <= visualHitDistance ? surfaceImpact : visualImpact);
+          this.removeProjectile(index);
+          return;
+        }
+        continue;
+      }
+
       if (dist < hitRadius) {
         // Homing missile deduplication: if another missile already hit this (weak) enemy
         // this frame, retarget instead of detonating. Strong enemies (bosses, titans)
@@ -2856,6 +2928,52 @@ export class WeaponManager {
           }
         }
       }
+    }
+  }
+
+  private applyBlackHoleBoltPull(proj: Projectile, dt: number): void {
+    if (!this.callbacks?.onBlackHolePull) return;
+
+    const config = this.createActiveBlackHoleConfig();
+    const pullRadius = Math.max(
+      BLACK_HOLE_BOLT_MIN_PULL_RADIUS,
+      Math.min(BLACK_HOLE_BOLT_MAX_PULL_RADIUS, config.maxRadius * BLACK_HOLE_BOLT_PULL_RADIUS_FACTOR),
+    );
+    const start = proj.previousPosition ?? proj.position;
+    const end = proj.position;
+    const targets = this.callbacks.getEnemies()
+      .filter((enemy) => enemy.alive)
+      .map((enemy) => {
+        const surfaceCenter = closestPointOnSegment(enemy.position, start, end);
+        const surfaceDistance = enemy.position.distanceTo(surfaceCenter);
+        if (!enemy.meshPosition) {
+          return { enemy, center: surfaceCenter, distance: surfaceDistance };
+        }
+        const visualCenter = closestPointOnSegment(enemy.meshPosition, start, end);
+        const visualDistance = enemy.meshPosition.distanceTo(visualCenter);
+        return visualDistance < surfaceDistance
+          ? { enemy, center: visualCenter, distance: visualDistance }
+          : { enemy, center: surfaceCenter, distance: surfaceDistance };
+      })
+      .filter((target) => target.distance < pullRadius)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, config.captureLimit);
+
+    for (const { enemy, center, distance } of targets) {
+      const pullSpeed = getBlackHolePullSpeed(
+        distance,
+        pullRadius,
+        config.maxPullSpeed * BLACK_HOLE_BOLT_PULL_SPEED_FACTOR,
+      );
+      if (pullSpeed <= 0) continue;
+      this.callbacks.onBlackHolePull(
+        enemy.index,
+        pullSpeed,
+        center,
+        dt,
+        config.spiralRatio * 0.5,
+        enemy.targetId,
+      );
     }
   }
 
@@ -3300,6 +3418,8 @@ export class WeaponManager {
     }
     this.childSpreadMaterial?.dispose();
     this.childSpreadMaterial = null;
+    this.blackHoleBoltHaloMaterial?.dispose();
+    this.blackHoleBoltHaloMaterial = null;
   }
 }
 
@@ -3312,17 +3432,20 @@ export class WeaponManager {
  * Uses clamped projection onto the segment.
  */
 function distanceToSegment(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): number {
+  return p.distanceTo(closestPointOnSegment(p, a, b));
+}
+
+function closestPointOnSegment(p: THREE.Vector3, a: THREE.Vector3, b: THREE.Vector3): THREE.Vector3 {
   const ab = b.clone().sub(a);
   const ap = p.clone().sub(a);
   const abLenSq = ab.lengthSq();
 
   // Degenerate segment (A === B)
-  if (abLenSq < 0.000001) return ap.length();
+  if (abLenSq < 0.000001) return a.clone();
 
   // Project AP onto AB, clamped to [0, 1]
   const t = Math.max(0, Math.min(1, ap.dot(ab) / abLenSq));
 
   // Closest point on segment
-  const closest = a.clone().addScaledVector(ab, t);
-  return p.distanceTo(closest);
+  return a.clone().addScaledVector(ab, t);
 }
