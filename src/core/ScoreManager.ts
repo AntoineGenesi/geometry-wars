@@ -5,6 +5,7 @@ import type { Player } from '../entities/Player';
 // ---------------------------------------------------------------------------
 
 export interface ScoreEvent {
+  rawPoints: number;
   basePoints: number;
   multipliedPoints: number;
   multiplier: number;
@@ -24,6 +25,9 @@ export class ScoreManager {
 
   /** Recent score events for combo display. */
   private readonly recentEvents: ScoreEvent[] = [];
+  private rawKillScore = 0;
+  private comboAdjustedKillScore = 0;
+  private multipliedKillScore = 0;
 
   /** Combo tracking */
   private comboCount = 0;
@@ -63,8 +67,12 @@ export class ScoreManager {
 
     const multipliedPoints = comboPoints * this.player.multiplier;
     this.player.addScore(comboPoints);
+    this.rawKillScore += Math.max(0, basePoints);
+    this.comboAdjustedKillScore += Math.max(0, comboPoints);
+    this.multipliedKillScore += Math.max(0, multipliedPoints);
 
     const event: ScoreEvent = {
+      rawPoints: basePoints,
       basePoints: comboPoints,
       multipliedPoints,
       multiplier: this.player.multiplier,
@@ -117,6 +125,25 @@ export class ScoreManager {
 
   getRecentEvents(): ReadonlyArray<ScoreEvent> {
     return this.recentEvents;
+  }
+
+  getRawKillScore(): number {
+    return this.rawKillScore;
+  }
+
+  getComboAdjustedKillScore(): number {
+    return this.comboAdjustedKillScore;
+  }
+
+  getMultipliedKillScore(): number {
+    return this.multipliedKillScore;
+  }
+
+  /** Test/proof harness hook for staging long-run DDA states without replaying hundreds of kills. */
+  seedScoreTotalsForProof(rawScore: number, comboAdjustedScore = rawScore, multipliedScore = comboAdjustedScore): void {
+    this.rawKillScore = Math.max(0, rawScore);
+    this.comboAdjustedKillScore = Math.max(0, comboAdjustedScore);
+    this.multipliedKillScore = Math.max(0, multipliedScore);
   }
 
   /**

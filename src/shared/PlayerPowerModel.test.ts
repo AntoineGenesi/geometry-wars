@@ -21,9 +21,14 @@ function expectMonotonic(field: keyof PlayerPowerInput, low: unknown, high: unkn
 describe('computePlayerPower', () => {
   it('keeps zero and undefined capability at baseline', () => {
     expect(computePlayerPower()).toEqual({
+      rawScore: 0,
+      multipliedScore: 0,
+      effectiveScore: 0,
       scorePressure: 0,
+      multiplierScorePressure: 0,
       survivalPressure: 0,
       streakPressure: 0,
+      killPressure: 0,
       blasterDps: 0,
       activeWeaponDps: 0,
       guardianDps: 0,
@@ -61,6 +66,46 @@ describe('computePlayerPower', () => {
     const noDrones = computePlayerPower(baseline);
     const drones = computePlayerPower({ ...baseline, companions: { guardian: 2, hunter: 2 } });
     expect(drones.difficultyBonus).toBeGreaterThan(noDrones.difficultyBonus);
+  });
+
+  it('dampens a 770K multiplied-score spike when raw combat score is low', () => {
+    const rawRun = computePlayerPower({
+      rawScore: 40_000,
+      multipliedScore: 770_000,
+      survivalSeconds: 180,
+      streak: 120,
+      totalKills: 80,
+      blaster: { damage: 1.2, shotsPerSecond: 7, projectilesPerShot: 2 },
+    });
+    const inflatedRun = computePlayerPower({
+      rawScore: 770_000,
+      multipliedScore: 770_000,
+      survivalSeconds: 180,
+      streak: 120,
+      totalKills: 80,
+      blaster: { damage: 1.2, shotsPerSecond: 7, projectilesPerShot: 2 },
+    });
+
+    expect(rawRun.effectiveScore).toBeLessThan(100_000);
+    expect(rawRun.multiplierScorePressure).toBeLessThan(0.15);
+    expect(rawRun.difficultyBonus).toBeLessThan(inflatedRun.difficultyBonus - 0.4);
+  });
+
+  it('still recognizes strong play from kills, survival, and weapon output when score is dampened', () => {
+    const strongCombat = computePlayerPower({
+      rawScore: 60_000,
+      multipliedScore: 770_000,
+      survivalSeconds: 600,
+      streak: 250,
+      totalKills: 300,
+      blaster: { damage: 2, shotsPerSecond: 9, projectilesPerShot: 4 },
+      companions: { guardian: 2, hunter: 2 },
+    });
+
+    expect(strongCombat.rawScore).toBe(60_000);
+    expect(strongCombat.effectiveScore).toBeLessThan(100_000);
+    expect(strongCombat.killPressure).toBeGreaterThan(0.3);
+    expect(strongCombat.difficultyBonus).toBeGreaterThanOrEqual(3);
   });
 
   it('counts Protector only as bounded defensive value', () => {
@@ -102,6 +147,9 @@ describe('computePlayerPower', () => {
   it('gives the reported high-power case decisive bounded pressure', () => {
     const highPower = computePlayerPower({
       score: 1_000_000,
+      rawScore: 1_000_000,
+      multipliedScore: 1_000_000,
+      totalKills: 250,
       survivalSeconds: 600,
       streak: 250,
       blaster: { damage: 2, shotsPerSecond: 9, projectilesPerShot: 4 },
@@ -117,6 +165,9 @@ describe('computePlayerPower', () => {
   it('produces equivalent output from equivalent SP and MP snapshots', () => {
     const spSnapshot: PlayerPowerInput = {
       score: 250_000,
+      rawScore: 250_000,
+      multipliedScore: 250_000,
+      totalKills: 75,
       survivalSeconds: 180,
       streak: 75,
       blaster: { damage: 1.4, shotsPerSecond: 7.8, projectilesPerShot: 3 },

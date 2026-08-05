@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeDifficultyLevel,
+  computeEntityPressurePlan,
   generateScaledEndlessWave,
   getDifficultyTier,
   getMaxSpawnTier,
@@ -314,13 +315,23 @@ describe('Full Game Simulation', () => {
     expect(count).toBeGreaterThanOrEqual(50);
   });
 
-  it('entity count brake: no effect below 200 entities', () => {
-    // Waves with 0 or 100 entities should produce the same counts
+  it('entity count brake: starts applying around the reported 90-110 entity mobbing range', () => {
     const withNone = generateScaledEndlessWave(20, 4.0, 0);
     const withFew = generateScaledEndlessWave(20, 4.0, 100);
     const totalNone = withNone.reduce((s, e) => s + e.count, 0);
     const totalFew = withFew.reduce((s, e) => s + e.count, 0);
-    expect(totalNone).toBe(totalFew); // below 200 → no change
+    const plan = computeEntityPressurePlan(100, 4.0);
+
+    expect(plan.crowding).toBeGreaterThan(0);
+    expect(totalFew).toBeLessThan(totalNone);
+    expect(totalFew).toBeGreaterThan(totalNone * 0.55);
+  });
+
+  it('entity count brake: reduces fodder more than specialist/elite pressure at 100 entities', () => {
+    const plan = computeEntityPressurePlan(100, 4.0);
+
+    expect(plan.fodderBrake).toBeLessThan(plan.specialistBrake);
+    expect(plan.specialistBrake).toBeLessThan(plan.eliteBrake);
   });
 
   it('entity count brake: reduces wave counts above 200 entities', () => {
@@ -342,15 +353,12 @@ describe('Full Game Simulation', () => {
     expect(typesBase).toEqual(typesHigh);
   });
 
-  it('entity count brake: floors at 0.40 at 500+ entities', () => {
-    // At 500 entities: brake = max(0.40, 200/500) = max(0.40, 0.40) = 0.40
-    // At 1000 entities: brake = max(0.40, 200/1000) = max(0.40, 0.20) = 0.40
-    // Both should produce the same counts (floor has kicked in)
+  it('entity count brake: floors at its strategic-pressure floor at 500+ entities', () => {
     const wave500 = generateScaledEndlessWave(20, 4.0, 500);
     const wave1000 = generateScaledEndlessWave(20, 4.0, 1000);
     const total500 = wave500.reduce((s, e) => s + e.count, 0);
     const total1000 = wave1000.reduce((s, e) => s + e.count, 0);
-    expect(total500).toBe(total1000); // floor kicks in at same brake value
+    expect(total500).toBe(total1000);
   });
 
   it('progression summary: difficulty level at key score milestones', () => {
@@ -581,15 +589,12 @@ describe('Phase 2 Rebalance: Score Curve Acceptance Criteria', () => {
     expect(totalCrowded).toBeGreaterThanOrEqual(totalUncrowded * 0.55);
   });
 
-  it('AC6: entityBrake floor still 0.40 below difficulty 8 (no regression)', () => {
-    // At diff 4, 500 entities: brake = max(0.40, 200/500) = 0.40
-    // Crowded wave should retain approximately 40% of uncrowded count
+  it('AC6: strategic pressure floor still reduces crowded waves below difficulty 8', () => {
     const uncrowded = generateScaledEndlessWave(20, 4.0, 0);
     const crowded = generateScaledEndlessWave(20, 4.0, 500);
     const totalUncrowded = uncrowded.reduce((s, e) => s + e.count, 0);
     const totalCrowded = crowded.reduce((s, e) => s + e.count, 0);
-    // Should be < 50% (confirming 0.40 floor, not 0.60)
-    expect(totalCrowded).toBeLessThan(totalUncrowded * 0.50);
+    expect(totalCrowded).toBeLessThan(totalUncrowded * 0.70);
     expect(totalCrowded).toBeGreaterThan(0);
   });
 

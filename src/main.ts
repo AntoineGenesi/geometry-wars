@@ -323,8 +323,9 @@ class WaveScheduler {
         ...input,
         elapsedTime: this.elapsed,
       });
-      // Score explosion: adds +2 difficulty levels when player scores 5x in 60s
-      const surgeBonus = this.scoreExplosion.update(input.score, this.elapsed);
+      // Score explosion uses raw kill score when available so score multipliers
+      // alone cannot trigger a large DDA surge.
+      const surgeBonus = this.scoreExplosion.update(input.rawScore ?? input.score, this.elapsed);
       this.currentDifficultyLevel = baseLevel + surgeBonus;
     }
 

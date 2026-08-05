@@ -1080,9 +1080,12 @@ export class GameLoop {
         const companionCounts = ctx.companionManager.getCompanionCounts();
         const input = {
           score: ctx.player.score,
+          rawScore: ctx.scoreManager.getRawKillScore(),
+          multipliedScore: ctx.player.score,
           survivalSeconds: ctx.playerPowerRuntime.proofOverride?.survivalSeconds
             ?? this._powerSurvivalSeconds,
           streak: ctx.playerPowerRuntime.proofOverride?.streak ?? this._powerStreak,
+          totalKills,
           ...weapons,
           companions: {
             ...companionCounts,

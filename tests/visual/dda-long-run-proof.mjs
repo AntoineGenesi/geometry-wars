@@ -7,6 +7,8 @@
  * - dominance: fixed high-power player profile that drives wave/dominance difficulty.
  * - tier-disable: fixed struggling-player profile at Nightmare tier to verify assistance
  *   DDA is disabled separately from dominance/wave difficulty.
+ * - pressure-97: deterministic high-active-count pressure profile around the
+ *   reported 90-110 entity range, with raw vs multiplied score telemetry.
  */
 
 import puppeteer from 'puppeteer-core';
@@ -190,6 +192,34 @@ async function applyProfileTick(page, profile) {
     const ctx = api?.ctx;
     if (!api || !ctx) return { ok: false, reason: 'missing api ctx' };
 
+    if (profileName === 'pressure-97') {
+      if (!window.__DDA_PROOF_PRESSURE_97) {
+        window.__DDA_PROOF_PRESSURE_97 = true;
+        globalThis.__GOD_MODE = true;
+        ctx.player.lives = 3;
+        ctx.player.score = 770_000;
+        ctx.scoreManager.seedScoreTotalsForProof(40_000, 80_000, 770_000);
+        while (ctx.playerLevel.totalKills < 80) ctx.playerLevel.addKill();
+        if (ctx.playerPowerRuntime) {
+          ctx.playerPowerRuntime.proofOverride = { survivalSeconds: 180, streak: 120 };
+        }
+        const waveScheduler = ctx.waveScheduler;
+        waveScheduler.endlessWave = Math.max(waveScheduler.endlessWave ?? 0, 20);
+        waveScheduler.elapsed = Math.max(waveScheduler.elapsed ?? 0, 240);
+        waveScheduler.endlessNextSpawn = 9999;
+        api.setPlayerPosition(0.05, 0.05);
+        api.spawnGrid(10, 10);
+        for (const enemy of api.getEnemies()) {
+          api.configureEnemy(enemy.id, { speed: 0, health: 5, releaseMovement: false });
+        }
+      }
+      return {
+        ok: true,
+        profile: profileName,
+        injected: 'raw_score_40k_multiplied_770k_frozen_100_enemy_grid',
+      };
+    }
+
     if (profileName === 'tier-disable') {
       if (!window.__DDA_PROOF_TIER_DISABLE) {
         window.__DDA_PROOF_TIER_DISABLE = true;
@@ -284,6 +314,34 @@ function summarize(samples, profile) {
     reason = passed
       ? `Nightmare-tier samples=${highTierSamples.length}; assistance leak samples=0`
       : `Nightmare-tier samples=${highTierSamples.length}; assistance leak samples=${assistanceLeakSamples.length}`;
+  } else if (profile === 'pressure-97') {
+    const pressureSamples = ddaSamples.filter((sample) => {
+      const plan = sample.pressure?.pressurePlan;
+      const player = sample.player ?? {};
+      const dominance = sample.dominance ?? {};
+      const enemyCount = Number(sample.spawner?.activeEnemyCount ?? sample.pressure?.enemyCount ?? 0);
+      return enemyCount >= 90
+        && enemyCount <= 110
+        && Number(plan?.crowding ?? 0) > 0
+        && Number(plan?.fodderBrake ?? 1) < Number(plan?.specialistBrake ?? 0)
+        && Number(plan?.specialistBrake ?? 1) <= Number(plan?.eliteBrake ?? 0)
+        && Number(player.rawScore ?? 0) < Number(player.score ?? 0)
+        && Number(dominance.effectiveScore ?? Number.MAX_SAFE_INTEGER) < Number(player.score ?? 0)
+        && Number(dominance.multiplierScorePressure ?? 1) < 0.2;
+    });
+    const finalPlan = final?.pressure?.pressurePlan ?? null;
+    const finalPlayer = final?.player ?? {};
+    const finalDominance = final?.dominance ?? {};
+    passed = pressureSamples.length >= 3
+      && Number(finalPlayer.rawScore ?? 0) === 40_000
+      && Number(finalPlayer.score ?? 0) === 770_000
+      && Number(finalDominance.effectiveScore ?? 0) < 100_000
+      && Number(finalPlan?.fodderBrake ?? 1) < Number(finalPlan?.specialistBrake ?? 0)
+      && maxEnemyCount >= 90
+      && maxEnemyCount <= 110;
+    reason = passed
+      ? `Pressure samples=${pressureSamples.length}, enemies=${maxEnemyCount}, rawScore=${Number(finalPlayer.rawScore ?? 0)}, multipliedScore=${Number(finalPlayer.score ?? 0)}, effectiveScore=${Number(finalDominance.effectiveScore ?? 0).toFixed(0)}, brakes f/s/e=${Number(finalPlan?.fodderBrake ?? 0).toFixed(2)}/${Number(finalPlan?.specialistBrake ?? 0).toFixed(2)}/${Number(finalPlan?.eliteBrake ?? 0).toFixed(2)}`
+      : `Pressure proof failed: samples=${pressureSamples.length}, enemies=${maxEnemyCount}, rawScore=${Number(finalPlayer.rawScore ?? -1)}, multipliedScore=${Number(finalPlayer.score ?? -1)}, effectiveScore=${Number(finalDominance.effectiveScore ?? -1)}, plan=${JSON.stringify(finalPlan)}`;
   } else {
     passed = maxDifficulty >= 1.0
       && highTierStrongSamples.length >= 3
@@ -450,7 +508,9 @@ async function main() {
       renderer: RENDERER,
       browser: { executablePath: CHROME_PATH, launchArgs: LAUNCH_ARGS },
       claimBoundary: PROFILE === 'tier-disable'
-        ? 'Scripted struggle profile verifies assistance DDA disable wiring at Nightmare tier; it is not a human balance claim.'
+      ? 'Scripted struggle profile verifies assistance DDA disable wiring at Nightmare tier; it is not a human balance claim.'
+      : PROFILE === 'pressure-97'
+        ? 'Scripted SP pressure proof freezes a 100-enemy grid around the reported 90-110 active entity range and verifies DDA score dampening plus strategic pressure telemetry; it is not a human balance claim.'
         : 'Scripted stationary SP proof uses real activated blaster nodes and four real shooting companions at a staged wave 50; accelerated score, streak, and survival inputs prove wiring/response, not organic human balance.',
       results,
       artifacts: {
